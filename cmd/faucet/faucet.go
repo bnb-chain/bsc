@@ -42,7 +42,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -71,9 +70,9 @@ var (
 	statsFlag   = flag.String("ethstats", "", "Ethstats network monitoring auth string")
 
 	netnameFlag = flag.String("faucet.name", "", "Network name to assign to the faucet")
-	payoutFlag  = flag.Int("faucet.amount", 1, "Number of Ethers to pay out per user request")
+	payoutFlag  = flag.Int("faucet.amount", 100, "Number of Ethers to pay out per user request")
 	minutesFlag = flag.Int("faucet.minutes", 1440, "Number of minutes to wait between funding rounds")
-	tiersFlag   = flag.Int("faucet.tiers", 3, "Number of funding tiers to enable (x3 time, x2.5 funds)")
+	tiersFlag   = flag.Int("faucet.tiers", 1, "Number of funding tiers to enable (x3 time, x2.5 funds)")
 
 	accJSONFlag = flag.String("account.json", "", "Key json file to fund user requests with")
 	accPassFlag = flag.String("account.pass", "", "Decryption password to access faucet funds")
@@ -84,21 +83,23 @@ var (
 	noauthFlag = flag.Bool("noauth", false, "Enables funding requests without authentication")
 	logFlag    = flag.Int("loglevel", 3, "Log level to use for Ethereum and the faucet")
 
-	bep2eContracts = flag.String("bep2eContracts", "", "the list of bep2p contracts")
-	bep2eSymbols   = flag.String("bep2eSymbols", "", "the symbol of bep2p tokens")
-	bep2eAmounts   = flag.String("bep2eAmounts", "", "the amount of bep2p tokens")
-	fixGasPrice    = flag.Int64("faucet.fixedprice", 0, "Will use fixed gas price if specified")
+	fixGasPrice = flag.Int64("faucet.fixedprice", 0, "Will use fixed gas price if specified")
+	historyFile = flag.String("history", "history.json", "the airdrop history")
 )
 
 var (
-	ether        = new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-	bep2eAbiJson = `[ { "anonymous": false, "inputs": [ { "indexed": true, "internalType": "address", "name": "owner", "type": "address" }, { "indexed": true, "internalType": "address", "name": "spender", "type": "address" }, { "indexed": false, "internalType": "uint256", "name": "value", "type": "uint256" } ], "name": "Approval", "type": "event" }, { "anonymous": false, "inputs": [ { "indexed": true, "internalType": "address", "name": "from", "type": "address" }, { "indexed": true, "internalType": "address", "name": "to", "type": "address" }, { "indexed": false, "internalType": "uint256", "name": "value", "type": "uint256" } ], "name": "Transfer", "type": "event" }, { "inputs": [], "name": "totalSupply", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" }, { "inputs": [], "name": "decimals", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" }, { "inputs": [], "name": "symbol", "outputs": [ { "internalType": "string", "name": "", "type": "string" } ], "stateMutability": "view", "type": "function" }, { "inputs": [], "name": "getOwner", "outputs": [ { "internalType": "address", "name": "", "type": "address" } ], "stateMutability": "view", "type": "function" }, { "inputs": [ { "internalType": "address", "name": "account", "type": "address" } ], "name": "balanceOf", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" }, { "inputs": [ { "internalType": "address", "name": "recipient", "type": "address" }, { "internalType": "uint256", "name": "amount", "type": "uint256" } ], "name": "transfer", "outputs": [ { "internalType": "bool", "name": "", "type": "bool" } ], "stateMutability": "nonpayable", "type": "function" }, { "inputs": [ { "internalType": "address", "name": "_owner", "type": "address" }, { "internalType": "address", "name": "spender", "type": "address" } ], "name": "allowance", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" }, { "inputs": [ { "internalType": "address", "name": "spender", "type": "address" }, { "internalType": "uint256", "name": "amount", "type": "uint256" } ], "name": "approve", "outputs": [ { "internalType": "bool", "name": "", "type": "bool" } ], "stateMutability": "nonpayable", "type": "function" }, { "inputs": [ { "internalType": "address", "name": "sender", "type": "address" }, { "internalType": "address", "name": "recipient", "type": "address" }, { "internalType": "uint256", "name": "amount", "type": "uint256" } ], "name": "transferFrom", "outputs": [ { "internalType": "bool", "name": "", "type": "bool" } ], "stateMutability": "nonpayable", "type": "function" } ]`
+	ether = new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 )
 
 var (
 	gitCommit = "" // Git SHA1 commit hash of the release (set via linker flags)
 	gitDate   = "" // Git commit date YYYYMMDD of the release (set via linker flags)
 )
+
+type HistoryData struct {
+	UpdateAt  time.Time
+	Addresses map[common.Address]bool
+}
 
 func main() {
 	// Parse the flags and set up the logger to print everything requested
@@ -107,6 +108,7 @@ func main() {
 
 	// Construct the payout tiers
 	amounts := make([]string, *tiersFlag)
+	periods := make([]string, *tiersFlag)
 	for i := 0; i < *tiersFlag; i++ {
 		// Calculate the amount for the next tier and format it
 		amount := float64(*payoutFlag) * math.Pow(2.5, float64(i))
@@ -114,38 +116,20 @@ func main() {
 		if amount == 1 {
 			amounts[i] = strings.TrimSuffix(amounts[i], "s")
 		}
-	}
-	bep2eNumAmounts := make([]string, 0)
-	if bep2eAmounts != nil && len(*bep2eAmounts) > 0 {
-		bep2eNumAmounts = strings.Split(*bep2eAmounts, ",")
-	}
+		// Calculate the period for the next tier and format it
+		period := *minutesFlag * int(math.Pow(3, float64(i)))
+		periods[i] = fmt.Sprintf("%d mins", period)
+		if period%60 == 0 {
+			period /= 60
+			periods[i] = fmt.Sprintf("%d hours", period)
 
-	symbols := make([]string, 0)
-	if bep2eSymbols != nil && len(*bep2eSymbols) > 0 {
-		symbols = strings.Split(*bep2eSymbols, ",")
-	}
-
-	contracts := make([]string, 0)
-	if bep2eContracts != nil && len(*bep2eContracts) > 0 {
-		contracts = strings.Split(*bep2eContracts, ",")
-	}
-
-	if len(bep2eNumAmounts) != len(symbols) || len(symbols) != len(contracts) {
-		log.Crit("Length of bep2eContracts, bep2eSymbols, bep2eAmounts mismatch")
-	}
-
-	bep2eInfos := make(map[string]bep2eInfo, 0)
-	for idx, s := range symbols {
-		n, ok := big.NewInt(0).SetString(bep2eNumAmounts[idx], 10)
-		if !ok {
-			log.Crit("failed to parse bep2eAmounts")
+			if period%24 == 0 {
+				period /= 24
+				periods[i] = fmt.Sprintf("%d days", period)
+			}
 		}
-		amountStr := big.NewFloat(0).Quo(big.NewFloat(0).SetInt(n), big.NewFloat(0).SetInt64(params.Ether)).String()
-
-		bep2eInfos[s] = bep2eInfo{
-			Contract:  common.HexToAddress(contracts[idx]),
-			Amount:    *n,
-			AmountStr: amountStr,
+		if period == 1 {
+			periods[i] = strings.TrimSuffix(periods[i], "s")
 		}
 	}
 	// Load up and render the faucet website
@@ -155,11 +139,11 @@ func main() {
 	}
 	website := new(bytes.Buffer)
 	err = template.Must(template.New("").Parse(string(tmpl))).Execute(website, map[string]interface{}{
-		"Network":    *netnameFlag,
-		"Amounts":    amounts,
-		"Recaptcha":  *captchaToken,
-		"NoAuth":     *noauthFlag,
-		"Bep2eInfos": bep2eInfos,
+		"Network":   *netnameFlag,
+		"Amounts":   amounts,
+		"Periods":   periods,
+		"Recaptcha": *captchaToken,
+		"NoAuth":    *noauthFlag,
 	})
 	if err != nil {
 		log.Crit("Failed to render the faucet template", "err", err)
@@ -199,8 +183,17 @@ func main() {
 	}
 	ks.Unlock(acc, pass)
 
+	historyBytes, err := ioutil.ReadFile(*historyFile)
+	if err != nil {
+		panic(err)
+	}
+	var history HistoryData
+	json.Unmarshal(historyBytes, &history)
+	if history.Addresses == nil {
+		history.Addresses = make(map[common.Address]bool, 0)
+	}
 	// Assemble and start the faucet light service
-	faucet, err := newFaucet(genesis, *ethPortFlag, enodes, *netFlag, *statsFlag, ks, website.Bytes(), bep2eInfos)
+	faucet, err := newFaucet(genesis, *ethPortFlag, enodes, *netFlag, *statsFlag, ks, website.Bytes(), history)
 	if err != nil {
 		log.Crit("Failed to start faucet", "err", err)
 	}
@@ -217,12 +210,6 @@ type request struct {
 	Account common.Address     `json:"account"` // Ethereum address being funded
 	Time    time.Time          `json:"time"`    // Timestamp when the request was accepted
 	Tx      *types.Transaction `json:"tx"`      // Transaction funding the account
-}
-
-type bep2eInfo struct {
-	Contract  common.Address
-	Amount    big.Int
-	AmountStr string
 }
 
 // faucet represents a crypto faucet backed by an Ethereum light client.
@@ -246,11 +233,10 @@ type faucet struct {
 
 	lock sync.RWMutex // Lock protecting the faucet's internals
 
-	bep2eInfos map[string]bep2eInfo
-	bep2eAbi   abi.ABI
+	history HistoryData
 }
 
-func newFaucet(genesis *core.Genesis, port int, enodes []*discv5.Node, network uint64, stats string, ks *keystore.KeyStore, index []byte, bep2eInfos map[string]bep2eInfo) (*faucet, error) {
+func newFaucet(genesis *core.Genesis, port int, enodes []*discv5.Node, network uint64, stats string, ks *keystore.KeyStore, index []byte, data HistoryData) (*faucet, error) {
 	// Assemble the raw devp2p protocol stack
 	stack, err := node.New(&node.Config{
 		Name:    "geth",
@@ -266,10 +252,6 @@ func newFaucet(genesis *core.Genesis, port int, enodes []*discv5.Node, network u
 			BootstrapNodesV5: enodes,
 		},
 	})
-	if err != nil {
-		return nil, err
-	}
-	bep2eAbi, err := abi.JSON(strings.NewReader(bep2eAbiJson))
 	if err != nil {
 		return nil, err
 	}
@@ -312,16 +294,15 @@ func newFaucet(genesis *core.Genesis, port int, enodes []*discv5.Node, network u
 	client := ethclient.NewClient(api)
 
 	return &faucet{
-		config:     genesis.Config,
-		stack:      stack,
-		client:     client,
-		index:      index,
-		keystore:   ks,
-		account:    ks.Accounts()[0],
-		timeouts:   make(map[string]time.Time),
-		update:     make(chan struct{}, 1),
-		bep2eInfos: bep2eInfos,
-		bep2eAbi:   bep2eAbi,
+		config:   genesis.Config,
+		stack:    stack,
+		client:   client,
+		index:    index,
+		keystore: ks,
+		history:  data,
+		account:  ks.Accounts()[0],
+		timeouts: make(map[string]time.Time),
+		update:   make(chan struct{}, 1),
 	}, nil
 }
 
@@ -334,6 +315,7 @@ func (f *faucet) close() error {
 // for service user funding requests.
 func (f *faucet) listenAndServe(port int) error {
 	go f.loop()
+	go f.updateHistory()
 
 	http.HandleFunc("/", f.webHandler)
 	http.HandleFunc("/api", f.apiHandler)
@@ -401,14 +383,11 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Send over the initial stats and the latest header
-	f.lock.RLock()
-	reqs := f.reqs
-	f.lock.RUnlock()
 	if err = send(conn, map[string]interface{}{
 		"funds":    new(big.Int).Div(balance, ether),
 		"funded":   nonce,
 		"peers":    f.stack.Server().PeerCount(),
-		"requests": reqs,
+		"requests": f.reqs,
 	}, 3*time.Second); err != nil {
 		log.Warn("Failed to send initial stats to client", "err", err)
 		return
@@ -424,7 +403,6 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			URL     string `json:"url"`
 			Tier    uint   `json:"tier"`
 			Captcha string `json:"captcha"`
-			Symbol  string `json:"symbol"`
 		}
 		if err = conn.ReadJSON(&msg); err != nil {
 			return
@@ -507,7 +485,11 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		case strings.HasPrefix(msg.URL, "https://twitter.com/"):
 			username, avatar, address, err = authTwitter(msg.URL)
 		case strings.HasPrefix(msg.URL, "https://www.facebook.com/"):
-			username, avatar, address, err = authFacebook(msg.URL)
+			if err = sendError(conn, errors.New("facebook authentication discontinued as the service was sunset")); err != nil {
+				log.Warn("Failed to send facebook deprecation to client", "err", err)
+				return
+			}
+			continue
 		case *noauthFlag:
 			username, avatar, address, err = authNoAuth(msg.URL)
 		default:
@@ -529,31 +511,13 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			fund    bool
 			timeout time.Time
 		)
-
 		if timeout = f.timeouts[username]; time.Now().After(timeout) {
-			var tx *types.Transaction
-			if msg.Symbol == "BNB" {
-				// User wasn't funded recently, create the funding transaction
-				amount := new(big.Int).Mul(big.NewInt(int64(*payoutFlag)), ether)
-				amount = new(big.Int).Mul(amount, new(big.Int).Exp(big.NewInt(5), big.NewInt(int64(msg.Tier)), nil))
-				amount = new(big.Int).Div(amount, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(msg.Tier)), nil))
+			// User wasn't funded recently, create the funding transaction
+			amount := new(big.Int).Mul(big.NewInt(int64(*payoutFlag)), ether)
+			amount = new(big.Int).Mul(amount, new(big.Int).Exp(big.NewInt(5), big.NewInt(int64(msg.Tier)), nil))
+			amount = new(big.Int).Div(amount, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(msg.Tier)), nil))
 
-				tx = types.NewTransaction(f.nonce+uint64(len(f.reqs)), address, amount, 21000, f.price, nil)
-			} else {
-				tokenInfo, ok := f.bep2eInfos[msg.Symbol]
-				if !ok {
-					f.lock.Unlock()
-					log.Warn("Failed to find symbol", "symbol", msg.Symbol)
-					continue
-				}
-				input, err := f.bep2eAbi.Pack("transfer", address, &tokenInfo.Amount)
-				if err != nil {
-					f.lock.Unlock()
-					log.Warn("Failed to pack transfer transaction", "err", err)
-					continue
-				}
-				tx = types.NewTransaction(f.nonce+uint64(len(f.reqs)), tokenInfo.Contract, nil, 420000, f.price, input)
-			}
+			tx := types.NewTransaction(f.nonce+uint64(len(f.reqs)), address, amount, 21000, f.price, nil)
 			signed, err := f.keystore.SignTx(f.account, tx, f.config.ChainID)
 			if err != nil {
 				f.lock.Unlock()
@@ -572,6 +536,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
+			f.history.Addresses[address] = true
 			f.reqs = append(f.reqs, &request{
 				Avatar:  avatar,
 				Account: address,
@@ -648,6 +613,20 @@ func (f *faucet) refresh(head *types.Header) error {
 	f.lock.Unlock()
 
 	return nil
+}
+
+func (f *faucet) updateHistory() {
+	tick := time.Tick(1 * time.Minute)
+	for {
+		<-tick
+		f.history.UpdateAt = time.Now()
+		bz, err := json.Marshal(f.history)
+		if err != nil {
+			log.Error("failed to write history data")
+			continue
+		}
+		ioutil.WriteFile(*historyFile, bz, 0666)
+	}
 }
 
 // loop keeps waiting for interesting events and pushes them out to connected
@@ -758,8 +737,11 @@ func authTwitter(url string) (string, string, common.Address, error) {
 		return "", "", common.Address{}, errors.New("Invalid Twitter status URL")
 	}
 	// Twitter's API isn't really friendly with direct links. Still, we don't
-	// want to do ask read permissions from users, so just load the public posts and
-	// scrape it for the Ethereum address and profile URL.
+	// want to do ask read permissions from users, so just load the public posts
+	// and scrape it for the Ethereum address and profile URL. We need to load
+	// the mobile page though since the main page loads tweet contents via JS.
+	url = strings.Replace(url, "https://twitter.com/", "https://mobile.twitter.com/", 1)
+
 	res, err := http.Get(url)
 	if err != nil {
 		return "", "", common.Address{}, err

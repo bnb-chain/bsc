@@ -5,7 +5,7 @@
 		<meta http-equiv="X-UA-Compatible" content="IE=edge">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
 
-		<title>{{.Network}}: Faucet</title>
+		<title>{{.Network}}: Authenticated Faucet</title>
 
 		<link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" />
 		<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
@@ -43,23 +43,17 @@
 			<div class="container">
 				<div class="row" style="margin-bottom: 16px;">
 					<div class="col-lg-12">
-						<h1 style="text-align: center;"><i class="fa fa-bath" aria-hidden="true"></i> {{.Network}} Faucet</h1>
+						<h1 style="text-align: center;"><i class="fa fa-bath" aria-hidden="true"></i> {{.Network}} Authenticated Faucet</h1>
 					</div>
 				</div>
 				<div class="row">
 					<div class="col-lg-8 col-lg-offset-2">
 						<div class="input-group">
-							<input id="url" name="url" type="text" class="form-control" placeholder="Input your Binance Smart Chain address...">
+							<input id="url" name="url" type="text" class="form-control" placeholder="Social network URL containing your Binance Smart Chain address...">
 							<span class="input-group-btn">
 								<button class="btn btn-default dropdown-toggle" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Give me BNB	<i class="fa fa-caret-down" aria-hidden="true"></i></button>
 				        <ul class="dropdown-menu dropdown-menu-right">{{range $idx, $amount := .Amounts}}
-				          <li><a style="text-align: center;" onclick="tier={{$idx}};symbol='BNB'; {{if $.Recaptcha}}grecaptcha.execute(){{else}}submit({{$idx}}){{end}}">{{$amount}}</a></li>{{end}}
-				        </ul>
-							</span>
-							<span class="input-group-btn">
-								<button class="btn btn-default dropdown-toggle" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Peggy tokens<i class="fa fa-caret-down" aria-hidden="true"></i></button>
-				        <ul class="dropdown-menu dropdown-menu-right"> {{range $symbol, $bep2eInfo := .Bep2eInfos}}
-								<li><a style="text-align: center;" onclick="symbol={{$symbol}}; {{if $.Recaptcha}}grecaptcha.execute(){{else}}submitBep2e({{$symbol}}){{end}}">{{$bep2eInfo.AmountStr}} {{$symbol}}</a></li>{{end}}
+				          <li><a style="text-align: center;" onclick="tier={{$idx}}; {{if $.Recaptcha}}grecaptcha.execute(){{else}}submit({{$idx}}){{end}}">{{$amount}} / {{index $.Periods $idx}}</a></li>{{end}}
 				        </ul>
 							</span>
 						</div>{{if .Recaptcha}}
@@ -83,6 +77,23 @@
 						</div>
 					</div>
 				</div>
+				<div class="row" style="margin-top: 32px;">
+					<div class="col-lg-12">
+						<h3>How does this work?</h3>
+						<p>This faucet is running on the {{.Network}} network. To prevent malicious actors from exhausting all available funds or accumulating enough BNB to mount long running spam attacks, requests are tied to common 3rd party social network accounts. Anyone having a Twitter account may request funds within the permitted limits.</p>
+						<dl class="dl-horizontal">
+							<dt style="width: auto; margin-left: 40px;"><i class="fa fa-twitter" aria-hidden="true" style="font-size: 36px;"></i></dt>
+							<dd style="margin-left: 88px; margin-bottom: 10px;"></i> To request funds via Twitter, make a <a href="https://twitter.com/intent/tweet?text=Requesting%20faucet%20funds%20into%200x0000000000000000000000000000000000000000%20on%20the%20%23{{.Network}}%20%23%20test%20network." target="_about:blank">tweet</a> with your Binance Smart Chain address pasted into the contents (surrounding text doesn't matter).<br/>Copy-paste the <a href="https://support.twitter.com/articles/80586" target="_about:blank">tweets URL</a> into the above input box and fire away!</dd>
+
+							{{if .NoAuth}}
+								<dt class="text-danger" style="width: auto; margin-left: 40px;"><i class="fa fa-unlock-alt" aria-hidden="true" style="font-size: 36px;"></i></dt>
+								<dd class="text-danger" style="margin-left: 88px; margin-bottom: 10px;"></i> To request funds <strong>without authentication</strong>, simply copy-paste your Binance Smart Chain address into the above input box (surrounding text doesn't matter) and fire away.<br/>This mode is susceptible to Byzantine attacks. Only use for debugging or private networks!</dd>
+							{{end}}
+						</dl>
+						<p>You can track the current pending requests below the input field to see how much you have to wait until your turn comes.</p>
+						{{if .Recaptcha}}<em>The faucet is running invisible reCaptcha protection against bots.</em>{{end}}
+					</div>
+				</div>
 			</div>
 		</div>
 
@@ -91,7 +102,6 @@
 			var attempt = 0;
 			var server;
 			var tier = 0;
-			var symbol="";
 			var requests = [];
 
 			// Define a function that creates closures to drop old requests
@@ -107,7 +117,7 @@
 			};
 			// Define the function that submits a gist url to the server
 			var submit = function({{if .Recaptcha}}captcha{{end}}) {
-				server.send(JSON.stringify({url: $("#url")[0].value, symbol: symbol, tier: tier{{if .Recaptcha}}, captcha: captcha{{end}}}));{{if .Recaptcha}}
+				server.send(JSON.stringify({url: $("#url")[0].value, tier: tier{{if .Recaptcha}}, captcha: captcha{{end}}}));{{if .Recaptcha}}
 				grecaptcha.reset();{{end}}
 			};
 			// Define a method to reconnect upon server loss
