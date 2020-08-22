@@ -511,6 +511,14 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			fund    bool
 			timeout time.Time
 		)
+		if timeout1 := f.timeouts[address.String()]; time.Now().Before(timeout1) {
+			if err = sendError(conn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(timeout1)))); err != nil { // nolint: gosimple
+				log.Warn("Failed to send funding error to client", "err", err)
+				return
+			}
+			f.lock.Unlock()
+			continue
+		}
 		if timeout = f.timeouts[username]; time.Now().After(timeout) {
 			// User wasn't funded recently, create the funding transaction
 			amount := new(big.Int).Mul(big.NewInt(int64(*payoutFlag)), ether)
@@ -547,6 +555,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			grace := timeout / 288 // 24h timeout => 5m grace
 
 			f.timeouts[username] = time.Now().Add(timeout - grace)
+			f.timeouts[address.String()] = time.Now().Add(timeout - grace)
 			fund = true
 		}
 		f.lock.Unlock()
