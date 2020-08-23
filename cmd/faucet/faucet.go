@@ -31,6 +31,7 @@ import (
 	"io/ioutil"
 	"math"
 	"math/big"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -226,7 +227,8 @@ type faucet struct {
 	nonce    uint64             // Current pending nonce of the faucet
 	price    *big.Int           // Current gas price to issue funds with
 
-	conns    []*websocket.Conn    // Currently live websocket connections
+	conns    []*websocket.Conn // Currently live websocket connections
+	uuidMap  map[int64]bool
 	timeouts map[string]time.Time // History of users and their funding timeouts
 	reqs     []*request           // Currently pending funding requests
 	update   chan struct{}        // Channel to signal request updates
@@ -303,6 +305,7 @@ func newFaucet(genesis *core.Genesis, port int, enodes []*discv5.Node, network u
 		account:  ks.Accounts()[0],
 		timeouts: make(map[string]time.Time),
 		update:   make(chan struct{}, 1),
+		uuidMap:  make(map[int64]bool),
 	}, nil
 }
 
@@ -339,7 +342,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Start tracking the connection and drop at the end
 	defer conn.Close()
-
+	uid := rand.Int63()
 	f.lock.Lock()
 	f.conns = append(f.conns, conn)
 	f.lock.Unlock()
@@ -352,6 +355,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
+		f.uuidMap[uid] = false
 		f.lock.Unlock()
 	}()
 	// Gather the initial stats from the network to report
@@ -511,7 +515,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			fund    bool
 			timeout time.Time
 		)
-		if timeout1 := f.timeouts[address.String()]; time.Now().Before(timeout1) {
+		if timeout1 := f.timeouts[address.String()]; time.Now().Before(timeout1) || f.uuidMap[uid] {
 			if err = sendError(conn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(timeout1)))); err != nil { // nolint: gosimple
 				log.Warn("Failed to send funding error to client", "err", err)
 				return
@@ -557,6 +561,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			f.timeouts[username] = time.Now().Add(timeout - grace)
 			f.timeouts[address.String()] = time.Now().Add(timeout - grace)
 			fund = true
+			f.uuidMap[uid] = true
 		}
 		f.lock.Unlock()
 
