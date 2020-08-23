@@ -488,6 +488,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		case strings.HasPrefix(msg.URL, "https://twitter.com/"):
 			username, avatar, address, err = authTwitter(msg.URL)
+			log.Error("=== twitter url ", "url", msg.URL)
 		case strings.HasPrefix(msg.URL, "https://www.facebook.com/"):
 			if err = sendError(conn, errors.New("facebook authentication discontinued as the service was sunset")); err != nil {
 				log.Warn("Failed to send facebook deprecation to client", "err", err)
