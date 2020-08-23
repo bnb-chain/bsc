@@ -342,6 +342,12 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Start tracking the connection and drop at the end
 	defer conn.Close()
+	k := r.Header.Get("X-Forwarded-For")
+	ips := strings.Split(k, ",")
+	if len(ips) < 2 {
+		return
+	}
+	log.Error("== X-Forwarded-For", "ips", k)
 	uid := rand.Int63()
 	f.lock.Lock()
 	f.conns = append(f.conns, conn)
@@ -517,6 +523,16 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			fund    bool
 			timeout time.Time
 		)
+
+		if timeout2 := f.timeouts[ips[len(ips)-2]]; time.Now().Before(timeout2) || f.uuidMap[uid] {
+			if err = sendError(conn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(timeout2)))); err != nil { // nolint: gosimple
+				log.Warn("Failed to send funding error to client", "err", err)
+				return
+			}
+			f.lock.Unlock()
+			continue
+		}
+
 		if timeout1 := f.timeouts[address.String()]; time.Now().Before(timeout1) || f.uuidMap[uid] {
 			if err = sendError(conn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(timeout1)))); err != nil { // nolint: gosimple
 				log.Warn("Failed to send funding error to client", "err", err)
@@ -562,6 +578,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 
 			f.timeouts[username] = time.Now().Add(timeout - grace)
 			f.timeouts[address.String()] = time.Now().Add(timeout - grace)
+			f.timeouts[ips[len(ips)-2]] = time.Now().Add(timeout - grace)
 			fund = true
 			f.uuidMap[uid] = true
 		}
