@@ -357,6 +357,11 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Start tracking the connection and drop at the end
 	defer conn.Close()
+	ipsStr := r.Header.Get("X-Forwarded-For")
+	ips := strings.Split(ipsStr, ",")
+	if len(ips) < 2 {
+		return
+	}
 
 	f.lock.Lock()
 	f.conns = append(f.conns, conn)
@@ -530,6 +535,15 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			timeout time.Time
 		)
 
+		if ipTimeout := f.timeouts[ips[len(ips)-2]]; time.Now().Before(ipTimeout) {
+			if err = sendError(conn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(ipTimeout)))); err != nil { // nolint: gosimple
+				log.Warn("Failed to send funding error to client", "err", err)
+				return
+			}
+			f.lock.Unlock()
+			continue
+		}
+
 		if timeout = f.timeouts[username]; time.Now().After(timeout) {
 			var tx *types.Transaction
 			if msg.Symbol == "BNB" {
@@ -582,6 +596,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			grace := timeout / 288 // 24h timeout => 5m grace
 
 			f.timeouts[username] = time.Now().Add(timeout - grace)
+			f.timeouts[ips[len(ips)-2]] = time.Now().Add(timeout - grace)
 			fund = true
 		}
 		f.lock.Unlock()
