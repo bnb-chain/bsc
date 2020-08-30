@@ -1,0 +1,789 @@
+[
+	{
+		"inputs": [],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "contractAddr",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "bep2Symbol",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint32",
+				"name": "failedReason",
+				"type": "uint32"
+			}
+		],
+		"name": "bindFailure",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "contractAddr",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "bep2Symbol",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "totalSupply",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "peggyAmount",
+				"type": "uint256"
+			}
+		],
+		"name": "bindSuccess",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "uint8",
+				"name": "channelId",
+				"type": "uint8"
+			},
+			{
+				"indexed": false,
+				"internalType": "bytes",
+				"name": "msgBytes",
+				"type": "bytes"
+			}
+		],
+		"name": "unexpectedPackage",
+		"type": "event"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_CHANNELID",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_PACKAGE",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_STATUS_ALREADY_BOUND_TOKEN",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_STATUS_DECIMALS_MISMATCH",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_STATUS_REJECTED",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_STATUS_SUCCESS",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_STATUS_SYMBOL_MISMATCH",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_STATUS_TIMEOUT",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_STATUS_TOO_MUCH_TOKENHUB_BALANCE",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "BIND_STATUS_TOTAL_SUPPLY_MISMATCH",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "CODE_OK",
+		"outputs": [
+			{
+				"internalType": "uint32",
+				"name": "",
+				"type": "uint32"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "CROSS_CHAIN_CONTRACT_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "ERROR_FAIL_DECODE",
+		"outputs": [
+			{
+				"internalType": "uint32",
+				"name": "",
+				"type": "uint32"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "GOV_CHANNELID",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "GOV_HUB_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "INCENTIVIZE_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "LIGHT_CLIENT_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "MAXIMUM_BEP20_SYMBOL_LEN",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "MINIMUM_BEP20_SYMBOL_LEN",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "RELAYERHUB_CONTRACT_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "SLASH_CHANNELID",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "SLASH_CONTRACT_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "STAKING_CHANNELID",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "SYSTEM_REWARD_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "TEN_DECIMALS",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "TOKEN_HUB_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "TOKEN_MANAGER_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "TRANSFER_IN_CHANNELID",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "TRANSFER_OUT_CHANNELID",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "UNBIND_PACKAGE",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "VALIDATOR_CONTRACT_ADDR",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "alreadyInit",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [
+			{
+				"internalType": "bytes32",
+				"name": "",
+				"type": "bytes32"
+			}
+		],
+		"name": "bindPackageRecord",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "packageType",
+				"type": "uint8"
+			},
+			{
+				"internalType": "bytes32",
+				"name": "bep2TokenSymbol",
+				"type": "bytes32"
+			},
+			{
+				"internalType": "address",
+				"name": "contractAddr",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "totalSupply",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "peggyAmount",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint8",
+				"name": "bep20Decimals",
+				"type": "uint8"
+			},
+			{
+				"internalType": "uint64",
+				"name": "expireTime",
+				"type": "uint64"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [],
+		"name": "bscChainID",
+		"outputs": [
+			{
+				"internalType": "uint16",
+				"name": "",
+				"type": "uint16"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			},
+			{
+				"internalType": "bytes",
+				"name": "msgBytes",
+				"type": "bytes"
+			}
+		],
+		"name": "handleSynPackage",
+		"outputs": [
+			{
+				"internalType": "bytes",
+				"name": "",
+				"type": "bytes"
+			}
+		],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"internalType": "uint8",
+				"name": "channelId",
+				"type": "uint8"
+			},
+			{
+				"internalType": "bytes",
+				"name": "msgBytes",
+				"type": "bytes"
+			}
+		],
+		"name": "handleAckPackage",
+		"outputs": [],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"internalType": "uint8",
+				"name": "channelId",
+				"type": "uint8"
+			},
+			{
+				"internalType": "bytes",
+				"name": "msgBytes",
+				"type": "bytes"
+			}
+		],
+		"name": "handleFailAckPackage",
+		"outputs": [],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "contractAddr",
+				"type": "address"
+			},
+			{
+				"internalType": "string",
+				"name": "bep2Symbol",
+				"type": "string"
+			}
+		],
+		"name": "approveBind",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"payable": true,
+		"stateMutability": "payable",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "contractAddr",
+				"type": "address"
+			},
+			{
+				"internalType": "string",
+				"name": "bep2Symbol",
+				"type": "string"
+			}
+		],
+		"name": "rejectBind",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"payable": true,
+		"stateMutability": "payable",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "bep2Symbol",
+				"type": "string"
+			}
+		],
+		"name": "expireBind",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"payable": true,
+		"stateMutability": "payable",
+		"type": "function"
+	},
+	{
+		"constant": true,
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "symbol",
+				"type": "string"
+			}
+		],
+		"name": "queryRequiredLockAmountForBind",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"payable": false,
+		"stateMutability": "view",
+		"type": "function"
+	}
+]
