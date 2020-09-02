@@ -23,7 +23,7 @@ Although Proof-of-Work (PoW) has been approved as a practical mechanism to imple
 Proof-of-Authority(PoA) provides some defense to 51% attack, with improved efficiency and tolerance to certain levels of Byzantine players (malicious or hacked). 
 Meanwhile, the PoA protocol is most criticized for being not as decentralized as PoW, as the validators, i.e. the nodes that take turns to produce blocks, have all the authorities and are prone to corruption and security attacks.
 
-Other blockchains, such as EOS and Cosmos both, introduce different types of Deputy Proof of Stake (DPoS) to allow the token holders to vote and elect the validator set. It increases the decentralization and favors community governance. 
+Other blockchains, such as EOS and Cosmos both, introduce different types of Delegated Proof of Stake (DPoS) to allow the token holders to vote and elect the validator set. It increases the decentralization and favors community governance. 
 
 To combine DPoS and PoA for consensus, Binance Smart Chain implement a novel consensus engine called Parlia that:
 
