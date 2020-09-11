@@ -889,7 +889,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args CallArgs, blockNrOrHash 
 	)
 	// Use zero address if sender unspecified.
 	if args.From == nil {
-		args.From = new(common.Address)
+		return 0, fmt.Errorf("missing from address")
 	}
 	// Determine the highest gas limit can be used during the estimation.
 	if args.Gas != nil && uint64(*args.Gas) >= params.TxGas {
