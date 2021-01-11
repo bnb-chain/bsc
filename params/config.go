@@ -265,9 +265,9 @@ var (
 		PetersburgBlock:     big.NewInt(0),
 		IstanbulBlock:       big.NewInt(0),
 		MuirGlacierBlock:    big.NewInt(0),
-		RamanujanBlock:      big.NewInt(50),
+		RamanujanBlock:      big.NewInt(400),
 		NielsBlock:          big.NewInt(0),
-		MirrorSyncBlock:     big.NewInt(100),
+		MirrorSyncBlock:     big.NewInt(400),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,

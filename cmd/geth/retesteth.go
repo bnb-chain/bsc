@@ -135,7 +135,7 @@ type CParamsParams struct {
 	ConstantinopleFixForkBlock *math.HexOrDecimal64  `json:"constantinopleFixForkBlock"`
 	IstanbulBlock              *math.HexOrDecimal64  `json:"istanbulForkBlock"`
 	RamanujanForkBlock         *math.HexOrDecimal64  `json:"ramanujanForkBlock"`
-	MirrorSyncForkBlock	       *math.HexOrDecimal64  `json:"mirrorSyncForkBlock"`
+	MirrorSyncForkBlock        *math.HexOrDecimal64  `json:"mirrorSyncForkBlock"`
 	ChainID                    *math.HexOrDecimal256 `json:"chainID"`
 	MaximumExtraDataSize       math.HexOrDecimal64   `json:"maximumExtraDataSize"`
 	TieBreakingGas             bool                  `json:"tieBreakingGas"`
