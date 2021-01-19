@@ -227,7 +227,7 @@ var (
 		MuirGlacierBlock:    big.NewInt(0),
 		RamanujanBlock:      big.NewInt(0),
 		NielsBlock:          big.NewInt(0),
-		MirrorSyncBlock:     big.NewInt(4000000),
+		MirrorSyncBlock:     big.NewInt(0),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -247,7 +247,7 @@ var (
 		MuirGlacierBlock:    big.NewInt(0),
 		RamanujanBlock:      big.NewInt(1010000),
 		NielsBlock:          big.NewInt(1014369),
-		MirrorSyncBlock:     big.NewInt(5000000),
+		MirrorSyncBlock:     big.NewInt(5582500),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
