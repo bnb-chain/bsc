@@ -98,6 +98,9 @@ type Config struct {
 	// DirectBroadcast enable directly broadcast mined block to all peers
 	DirectBroadcast bool `toml:",omitempty"`
 
+	// RangeLimit enable 5000 blocks limit when handle range query
+	RangeLimit bool `toml:",omitempty"`
+
 	// SmartCardDaemonPath is the path to the smartcard daemon's socket
 	SmartCardDaemonPath string `toml:",omitempty"`
 
