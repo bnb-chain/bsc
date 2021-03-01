@@ -143,6 +143,10 @@ var (
 		Usage: "Data directory for the databases and keystore",
 		Value: DirectoryString(node.DefaultDataDir()),
 	}
+	DirectBroadcastFlag = cli.BoolFlag{
+		Name:  "directbroadcast",
+		Usage: "Enable directly broadcast mined block to all peers",
+	}
 	AncientFlag = DirectoryFlag{
 		Name:  "datadir.ancient",
 		Usage: "Data directory for ancient chain segments (default = inside chaindata)",
@@ -787,13 +791,13 @@ var (
 		Value: "",
 	}
 
-	InitNetworkIps= cli.StringFlag{
+	InitNetworkIps = cli.StringFlag{
 		Name:  "init.ips",
 		Usage: "the ips of each node in the network, example '192.168.0.1,192.168.0.2'",
 		Value: "",
 	}
 
-	InitNetworkPort= cli.IntFlag{
+	InitNetworkPort = cli.IntFlag{
 		Name:  "init.p2p-port",
 		Usage: "the p2p port of the nodes in the network",
 		Value: 30311,
@@ -1243,6 +1247,9 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.GlobalIsSet(NoUSBFlag.Name) {
 		cfg.NoUSB = ctx.GlobalBool(NoUSBFlag.Name)
 	}
+	if ctx.GlobalIsSet(DirectBroadcastFlag.Name) {
+		cfg.DirectBroadcast = ctx.GlobalBool(DirectBroadcastFlag.Name)
+	}
 	if ctx.GlobalIsSet(InsecureUnlockAllowedFlag.Name) {
 		cfg.InsecureUnlockAllowed = ctx.GlobalBool(InsecureUnlockAllowedFlag.Name)
 	}
@@ -1518,6 +1525,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *eth.Config) {
 	}
 	if ctx.GlobalIsSet(GCModeFlag.Name) {
 		cfg.NoPruning = ctx.GlobalString(GCModeFlag.Name) == "archive"
+	}
+	if ctx.GlobalIsSet(DirectBroadcastFlag.Name) {
+		cfg.DirectBroadcast = ctx.GlobalBool(DirectBroadcastFlag.Name)
 	}
 	if ctx.GlobalIsSet(CacheNoPrefetchFlag.Name) {
 		cfg.NoPrefetch = ctx.GlobalBool(CacheNoPrefetchFlag.Name)
