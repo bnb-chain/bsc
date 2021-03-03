@@ -64,8 +64,9 @@ type ProtocolManager struct {
 	networkID  uint64
 	forkFilter forkid.Filter // Fork ID filter, constant across the lifetime of the node
 
-	fastSync  uint32 // Flag whether fast sync is enabled (gets disabled if we already have blocks)
-	acceptTxs uint32 // Flag whether we're considered synchronised (enables transaction processing)
+	fastSync        uint32 // Flag whether fast sync is enabled (gets disabled if we already have blocks)
+	acceptTxs       uint32 // Flag whether we're considered synchronised (enables transaction processing)
+	directBroadcast bool
 
 	checkpointNumber uint64      // Block number for the sync progress validator to cross reference
 	checkpointHash   common.Hash // Block hash for the sync progress validator to cross reference
@@ -100,18 +101,19 @@ type ProtocolManager struct {
 
 // NewProtocolManager returns a new Ethereum sub protocol manager. The Ethereum sub protocol manages peers capable
 // with the Ethereum network.
-func NewProtocolManager(config *params.ChainConfig, checkpoint *params.TrustedCheckpoint, mode downloader.SyncMode, networkID uint64, mux *event.TypeMux, txpool txPool, engine consensus.Engine, blockchain *core.BlockChain, chaindb ethdb.Database, cacheLimit int, whitelist map[uint64]common.Hash) (*ProtocolManager, error) {
+func NewProtocolManager(config *params.ChainConfig, checkpoint *params.TrustedCheckpoint, mode downloader.SyncMode, networkID uint64, mux *event.TypeMux, txpool txPool, engine consensus.Engine, blockchain *core.BlockChain, chaindb ethdb.Database, cacheLimit int, whitelist map[uint64]common.Hash, directBroadcast bool) (*ProtocolManager, error) {
 	// Create the protocol manager with the base fields
 	manager := &ProtocolManager{
-		networkID:  networkID,
-		forkFilter: forkid.NewFilter(blockchain),
-		eventMux:   mux,
-		txpool:     txpool,
-		blockchain: blockchain,
-		peers:      newPeerSet(),
-		whitelist:  whitelist,
-		txsyncCh:   make(chan *txsync),
-		quitSync:   make(chan struct{}),
+		directBroadcast: directBroadcast,
+		networkID:       networkID,
+		forkFilter:      forkid.NewFilter(blockchain),
+		eventMux:        mux,
+		txpool:          txpool,
+		blockchain:      blockchain,
+		peers:           newPeerSet(),
+		whitelist:       whitelist,
+		txsyncCh:        make(chan *txsync),
+		quitSync:        make(chan struct{}),
 	}
 
 	if mode == downloader.FullSync {
@@ -821,7 +823,12 @@ func (pm *ProtocolManager) BroadcastBlock(block *types.Block, propagate bool) {
 			return
 		}
 		// Send the block to a subset of our peers
-		transfer := peers[:int(math.Sqrt(float64(len(peers))))]
+		var transfer []*peer
+		if pm.directBroadcast {
+			transfer = peers[:int(len(peers))]
+		} else {
+			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
+		}
 		for _, peer := range transfer {
 			peer.AsyncSendNewBlock(block, td)
 		}
