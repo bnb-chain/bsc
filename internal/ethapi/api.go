@@ -19,8 +19,10 @@ package ethapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	lru "github.com/hashicorp/golang-lru"
 	"math/big"
 	"strings"
 	"time"
@@ -505,11 +507,20 @@ func (s *PrivateAccountAPI) Unpair(ctx context.Context, url string, pin string) 
 // It offers only methods that operate on public data that is freely available to anyone.
 type PublicBlockChainAPI struct {
 	b Backend
+
+	cache *lru.Cache
 }
+
+const DefaultLruCacheSize = 100000
 
 // NewPublicBlockChainAPI creates a new Ethereum blockchain API.
 func NewPublicBlockChainAPI(b Backend) *PublicBlockChainAPI {
-	return &PublicBlockChainAPI{b}
+	cache, err := lru.New(DefaultLruCacheSize)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return &PublicBlockChainAPI{b,cache}
 }
 
 // ChainId returns the chainID value for transaction replay protection.
@@ -876,6 +887,17 @@ func (s *PublicBlockChainAPI) Call(ctx context.Context, args CallArgs, blockNrOr
 	if overrides != nil {
 		accounts = *overrides
 	}
+
+	bz, err := json.Marshal(&args)
+	if err == nil {
+		hash := crypto.Keccak256(bz)
+		_, ok := s.cache.Get(string(hash))
+		if !ok {
+			s.cache.Add(string(hash), true)
+			newRpcCallRequestGauge().Inc(1)
+		}
+	}
+
 	result, _, _, err := DoCall(ctx, s.b, args, blockNrOrHash, accounts, vm.Config{}, 5*time.Second, s.b.RPCGasCap())
 	return (hexutil.Bytes)(result), err
 }
