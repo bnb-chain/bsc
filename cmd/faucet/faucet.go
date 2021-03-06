@@ -538,7 +538,6 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		if ipTimeout := f.timeouts[ips[len(ips)-2]]; time.Now().Before(ipTimeout) {
 			if err = sendError(conn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(ipTimeout)))); err != nil { // nolint: gosimple
 				log.Warn("Failed to send funding error to client", "err", err)
-				return
 			}
 			f.lock.Unlock()
 			continue
