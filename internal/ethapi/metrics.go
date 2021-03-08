@@ -22,7 +22,12 @@ import (
 "github.com/ethereum/go-ethereum/metrics"
 )
 
-func newRpcCallRequestGauge() metrics.Gauge {
+func newDistinctRpcCallRequestGauge() metrics.Gauge {
 	m := fmt.Sprintf("rpc/distinct_count/call")
 	return metrics.GetOrRegisterGauge(m, nil)
 }
+func newTotalRpcCallRequestGauge() metrics.Gauge {
+	m := fmt.Sprintf("rpc/total_count/call")
+	return metrics.GetOrRegisterGauge(m, nil)
+}
+

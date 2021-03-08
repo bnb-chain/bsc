@@ -890,13 +890,15 @@ func (s *PublicBlockChainAPI) Call(ctx context.Context, args CallArgs, blockNrOr
 
 	bz, err := json.Marshal(&args)
 	if err == nil {
+		bz = append(bz, s.b.CurrentBlock().Hash().Bytes()...)
 		hash := crypto.Keccak256(bz)
 		_, ok := s.cache.Get(string(hash))
 		if !ok {
 			s.cache.Add(string(hash), true)
-			newRpcCallRequestGauge().Inc(1)
+			newDistinctRpcCallRequestGauge().Inc(1)
 		}
 	}
+	newTotalRpcCallRequestGauge().Inc(1)
 
 	result, _, _, err := DoCall(ctx, s.b, args, blockNrOrHash, accounts, vm.Config{}, 5*time.Second, s.b.RPCGasCap())
 	return (hexutil.Bytes)(result), err
