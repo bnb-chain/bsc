@@ -888,7 +888,18 @@ func (s *PublicBlockChainAPI) Call(ctx context.Context, args CallArgs, blockNrOr
 		accounts = *overrides
 	}
 
-	bz, err := json.Marshal(&args)
+	type CallReq struct {
+		Args CallArgs
+		BlockNrOrHash rpc.BlockNumberOrHash
+		Accounts map[common.Address]account
+	}
+	cr := &CallReq{
+		args,
+		blockNrOrHash,
+		accounts,
+	}
+	bz, err := json.Marshal(cr)
+
 	if err == nil {
 		bz = append(bz, s.b.CurrentBlock().Hash().Bytes()...)
 		hash := crypto.Keccak256(bz)
