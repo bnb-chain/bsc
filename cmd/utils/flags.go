@@ -147,6 +147,10 @@ var (
 		Name:  "directbroadcast",
 		Usage: "Enable directly broadcast mined block to all peers",
 	}
+	RangeLimitFlag = cli.BoolFlag{
+		Name:  "rangelimit",
+		Usage: "Enable 5000 blocks limit for range query",
+	}
 	AncientFlag = DirectoryFlag{
 		Name:  "datadir.ancient",
 		Usage: "Data directory for ancient chain segments (default = inside chaindata)",
@@ -1250,6 +1254,9 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.GlobalIsSet(DirectBroadcastFlag.Name) {
 		cfg.DirectBroadcast = ctx.GlobalBool(DirectBroadcastFlag.Name)
 	}
+	if ctx.GlobalIsSet(RangeLimitFlag.Name) {
+		cfg.RangeLimit = ctx.GlobalBool(RangeLimitFlag.Name)
+	}
 	if ctx.GlobalIsSet(InsecureUnlockAllowedFlag.Name) {
 		cfg.InsecureUnlockAllowed = ctx.GlobalBool(InsecureUnlockAllowedFlag.Name)
 	}
@@ -1528,6 +1535,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *eth.Config) {
 	}
 	if ctx.GlobalIsSet(DirectBroadcastFlag.Name) {
 		cfg.DirectBroadcast = ctx.GlobalBool(DirectBroadcastFlag.Name)
+	}
+	if ctx.GlobalIsSet(RangeLimitFlag.Name) {
+		cfg.RangeLimit = ctx.GlobalBool(RangeLimitFlag.Name)
 	}
 	if ctx.GlobalIsSet(CacheNoPrefetchFlag.Name) {
 		cfg.NoPrefetch = ctx.GlobalBool(CacheNoPrefetchFlag.Name)

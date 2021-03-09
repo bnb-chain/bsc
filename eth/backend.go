@@ -328,7 +328,7 @@ func (s *Ethereum) APIs() []rpc.API {
 		}, {
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   filters.NewPublicFilterAPI(s.APIBackend, false),
+			Service:   filters.NewPublicFilterAPI(s.APIBackend, false, s.config.RangeLimit),
 			Public:    true,
 		}, {
 			Namespace: "admin",
