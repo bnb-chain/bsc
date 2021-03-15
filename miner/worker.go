@@ -737,6 +737,13 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	}
 
 	var coalescedLogs []*types.Log
+	var stopTimer *time.Timer
+	delay := w.engine.Delay(w.chain, w.current.header)
+	if delay != nil {
+		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
+		log.Info("Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String())
+		defer stopTimer.Stop()
+	}
 
 	for {
 		// In the following three cases, we will interrupt the execution of the transaction.
@@ -763,6 +770,14 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 		if w.current.gasPool.Gas() < params.TxGas {
 			log.Trace("Not enough gas for further transactions", "have", w.current.gasPool, "want", params.TxGas)
 			break
+		}
+		if stopTimer != nil {
+			select {
+			case <-stopTimer.C:
+				log.Info("Not enough time for further transactions", "txs", len(w.current.txs))
+				break
+			default:
+			}
 		}
 		// Retrieve the next transaction and abort if all done
 		tx := txs.Peek()
