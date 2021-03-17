@@ -1399,21 +1399,29 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 			// If we exceeded out time allowance, flush an entire trie to disk
 			if bc.gcproc > bc.cacheConfig.TrieTimeLimit {
-				// If the header is missing (canonical chain behind), we're reorging a low
-				// diff sidechain. Suspend committing until this operation is completed.
-				header := bc.GetHeaderByNumber(chosen)
-				if header == nil {
-					log.Warn("Reorg in progress, trie commit postponed", "number", chosen)
-				} else {
-					// If we're exceeding limits but haven't reached a large enough memory gap,
-					// warn the user that the system is becoming unstable.
-					if chosen < lastWrite+TriesInMemory && bc.gcproc >= 2*bc.cacheConfig.TrieTimeLimit {
-						log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", bc.cacheConfig.TrieTimeLimit, "optimum", float64(chosen-lastWrite)/TriesInMemory)
+				canWrite := true
+				if posa, ok := bc.engine.(consensus.PoSA); ok {
+					if !posa.EnoughDistance(bc, block.Header()) {
+						canWrite = false
 					}
-					// Flush an entire trie and restart the counters
-					triedb.Commit(header.Root, true)
-					lastWrite = chosen
-					bc.gcproc = 0
+				}
+				if canWrite {
+					// If the header is missing (canonical chain behind), we're reorging a low
+					// diff sidechain. Suspend committing until this operation is completed.
+					header := bc.GetHeaderByNumber(chosen)
+					if header == nil {
+						log.Warn("Reorg in progress, trie commit postponed", "number", chosen)
+					} else {
+						// If we're exceeding limits but haven't reached a large enough memory gap,
+						// warn the user that the system is becoming unstable.
+						if chosen < lastWrite+TriesInMemory && bc.gcproc >= 2*bc.cacheConfig.TrieTimeLimit {
+							log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", bc.cacheConfig.TrieTimeLimit, "optimum", float64(chosen-lastWrite)/TriesInMemory)
+						}
+						// Flush an entire trie and restart the counters
+						triedb.Commit(header.Root, true)
+						lastWrite = chosen
+						bc.gcproc = 0
+					}
 				}
 			}
 			// Garbage collect anything below our required write retention
