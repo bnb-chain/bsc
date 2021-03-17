@@ -1342,10 +1342,16 @@ func (s *PublicTransactionPoolAPI) GetTransactionReceiptsByBlockNumber(ctx conte
 	if err != nil {
 		return nil, err
 	}
-	block, _ := s.b.BlockByHash(ctx, blockHash)
+	block, err := s.b.BlockByHash(ctx, blockHash)
+	if err != nil {
+		return nil, err
+	}
 	txs := block.Transactions()
+	if len(txs) != len(receipts) {
+		return nil, fmt.Errorf("txs length doesn't equal to receipts' length")
+	}
 
-	txRecipients := make([]map[string]interface{}, 0, len(txs))
+	txReceipts := make([]map[string]interface{}, 0, len(txs))
 	for idx, receipt := range receipts {
 		tx := txs[idx]
 		var signer types.Signer = types.FrontierSigner{}
@@ -1382,10 +1388,10 @@ func (s *PublicTransactionPoolAPI) GetTransactionReceiptsByBlockNumber(ctx conte
 			fields["contractAddress"] = receipt.ContractAddress
 		}
 
-		txRecipients = append(txRecipients, fields)
+		txReceipts = append(txReceipts, fields)
 	}
 
-	return txRecipients, nil
+	return txReceipts, nil
 }
 
 // GetTransactionDataAndReceipt returns the original transaction data and transaction receipt for the given transaction hash.
@@ -1456,8 +1462,8 @@ func (s *PublicTransactionPoolAPI) GetTransactionDataAndReceipt(ctx context.Cont
 		fields["contractAddress"] = receipt.ContractAddress
 	}
 	result := map[string]interface{}{
-		"tx_data":   txData,
-		"recipient": fields,
+		"tx_data": txData,
+		"receipt": fields,
 	}
 	return result, nil
 }
