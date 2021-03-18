@@ -3769,27 +3769,6 @@ var inputTransactionFormatter = function (options){
 };
 
 /**
- * Formats the output of a transactions to its proper values
- *
- * @method outputTransactionsFormatter
- * @param {SafeArray} txs
- * @returns {SafeArray}
- */
-var outputTransactionsFormatter = function (txs){
-  txs = txs.map(function(tx){
-    if(tx.blockNumber !== null)
-      tx.blockNumber = utils.toDecimal(tx.blockNumber);
-    if(tx.transactionIndex !== null)
-      tx.transactionIndex = utils.toDecimal(tx.transactionIndex);
-    tx.nonce = utils.toDecimal(tx.nonce);
-    tx.gas = utils.toDecimal(tx.gas);
-    tx.gasPrice = utils.toBigNumber(tx.gasPrice);
-    tx.value = utils.toBigNumber(tx.value);
-  })
-  return txs;
-};
-
-/**
  * Formats the output of a transaction to its proper values
  *
  * @method outputTransactionFormatter
@@ -3806,31 +3785,6 @@ var outputTransactionFormatter = function (tx){
     tx.gasPrice = utils.toBigNumber(tx.gasPrice);
     tx.value = utils.toBigNumber(tx.value);
     return tx;
-};
-
-/**
- * Formats the output of a transaction receipts to its proper values
- *
- * @method outputTransactionReceiptsFormatter
- * @param {SafeArray} receipts
- * @returns {SafeArray}
- */
-var outputTransactionReceiptsFormatter = function (receipts){
-  receipts = receipts.map(function(receipt) {
-    if (receipt.blockNumber !== null)
-      receipt.blockNumber = utils.toDecimal(receipt.blockNumber);
-    if (receipt.transactionIndex !== null)
-      receipt.transactionIndex = utils.toDecimal(receipt.transactionIndex);
-    receipt.cumulativeGasUsed = utils.toDecimal(receipt.cumulativeGasUsed);
-    receipt.gasUsed = utils.toDecimal(receipt.gasUsed);
-
-    if (utils.isArray(receipt.logs)) {
-      receipt.logs = receipt.logs.map(function (log) {
-        return outputLogFormatter(log);
-      });
-    }
-  })
-  return receipts;
 };
 
 /**
@@ -4035,9 +3989,7 @@ module.exports = {
     inputPostFormatter: inputPostFormatter,
     outputBigNumberFormatter: outputBigNumberFormatter,
     outputTransactionFormatter: outputTransactionFormatter,
-    outputTransactionsFormatter: outputTransactionsFormatter,
     outputTransactionReceiptFormatter: outputTransactionReceiptFormatter,
-    outputTransactionReceiptsFormatter: outputTransactionReceiptsFormatter,
     outputTransactionDataAndReceiptFormatter: outputTransactionDataAndReceiptFormatter,
     outputBlockFormatter: outputBlockFormatter,
     outputLogFormatter: outputLogFormatter,
@@ -5436,14 +5388,14 @@ var methods = function () {
       name: 'getTransactionsByBlockNumber',
       call: 'eth_getTransactionsByBlockNumber',
       params: 1,
-      outputFormatter: formatters.outputTransactionsFormatter
+      outputFormatter: formatters.outputTransactionFormatter
     });
 
     var getTransactionReceiptsByBlockNumber = new Method({
       name: 'getTransactionReceiptsByBlockNumber',
       call: 'eth_getTransactionReceiptsByBlockNumber',
       params: 1,
-      outputFormatter: formatters.outputTransactionReceiptsFormatter
+      outputFormatter: formatters.outputTransactionReceiptFormatter
     });
 
     var getTransactionReceipt = new Method({
