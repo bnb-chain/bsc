@@ -3832,14 +3832,14 @@ var outputTransactionDataAndReceiptFormatter = function (dataAndReceipt){
     });
   }
 
-  if(dataAndReceipt.tx_data.blockNumber !== null)
-    dataAndReceipt.tx_data.blockNumber = utils.toDecimal(dataAndReceipt.tx_data.blockNumber);
-  if(dataAndReceipt.tx_data.transactionIndex !== null)
-    dataAndReceipt.tx_data.transactionIndex = utils.toDecimal(dataAndReceipt.tx_data.transactionIndex);
-  dataAndReceipt.tx_data.nonce = utils.toDecimal(dataAndReceipt.tx_data.nonce);
-  dataAndReceipt.tx_data.gas = utils.toDecimal(dataAndReceipt.tx_data.gas);
-  dataAndReceipt.tx_data.gasPrice = utils.toBigNumber(dataAndReceipt.tx_data.gasPrice);
-  dataAndReceipt.tx_data.value = utils.toBigNumber(dataAndReceipt.tx_data.value);
+  if(dataAndReceipt.txData.blockNumber !== null)
+    dataAndReceipt.txData.blockNumber = utils.toDecimal(dataAndReceipt.txData.blockNumber);
+  if(dataAndReceipt.txData.transactionIndex !== null)
+    dataAndReceipt.txData.transactionIndex = utils.toDecimal(dataAndReceipt.txData.transactionIndex);
+  dataAndReceipt.txData.nonce = utils.toDecimal(dataAndReceipt.txData.nonce);
+  dataAndReceipt.txData.gas = utils.toDecimal(dataAndReceipt.txData.gas);
+  dataAndReceipt.txData.gasPrice = utils.toBigNumber(dataAndReceipt.txData.gasPrice);
+  dataAndReceipt.txData.value = utils.toBigNumber(dataAndReceipt.txData.value);
 
   return dataAndReceipt;
 };

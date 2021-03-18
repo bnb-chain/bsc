@@ -1462,7 +1462,7 @@ func (s *PublicTransactionPoolAPI) GetTransactionDataAndReceipt(ctx context.Cont
 		fields["contractAddress"] = receipt.ContractAddress
 	}
 	result := map[string]interface{}{
-		"tx_data": txData,
+		"txData": txData,
 		"receipt": fields,
 	}
 	return result, nil

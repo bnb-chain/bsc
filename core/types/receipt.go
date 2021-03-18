@@ -49,7 +49,7 @@ const (
 // Receipt represents the results of a transaction.
 type OriginalDataAndReceipt struct {
 	Receipt Receipt     `json:"receipt"`
-	TxData  Transaction `json:"tx_data"`
+	TxData  Transaction `json:"txData"`
 }
 
 // Receipt represents the results of a transaction.
