@@ -582,6 +582,10 @@ func (c *Clique) Authorize(signer common.Address, signFn SignerFn) {
 	c.signFn = signFn
 }
 
+func (c *Clique) Delay(chain consensus.ChainReader, header *types.Header) *time.Duration {
+	return nil
+}
+
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *Clique) Seal(chain consensus.ChainReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {

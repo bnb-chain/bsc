@@ -39,9 +39,9 @@ import (
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/trie"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -363,7 +363,7 @@ func initNetwork(ctx *cli.Context) error {
 		defer dump.Close()
 		dump.Write(out)
 	}
-        return nil
+	return nil
 }
 
 func dumpGenesis(ctx *cli.Context) error {

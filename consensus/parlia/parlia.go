@@ -780,6 +780,16 @@ func (p *Parlia) Authorize(val common.Address, signFn SignerFn, signTxFn SignerT
 	p.signTxFn = signTxFn
 }
 
+func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header) *time.Duration {
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		return nil
+	}
+	delay := p.delayForRamanujanFork(snap, header)
+	return &delay
+}
+
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (p *Parlia) Seal(chain consensus.ChainReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
