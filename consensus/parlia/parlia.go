@@ -862,6 +862,14 @@ func (p *Parlia) Seal(chain consensus.ChainReader, block *types.Block, results c
 	return nil
 }
 
+func (p *Parlia) EnoughDistance(chain consensus.ChainReader, header *types.Header) bool {
+	snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
+	if err != nil {
+		return true
+	}
+	return snap.enoughDistance(p.val)
+}
+
 // CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 // that a new block should have based on the previous blocks in the chain and the
 // current signer.
