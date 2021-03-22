@@ -47,6 +47,8 @@ import (
 	"github.com/tyler-smith/go-bip39"
 )
 
+const UnHealthyTimeout = 5 * time.Second
+
 // PublicEthereumAPI provides an API to access Ethereum related information.
 // It offers only methods that operate on public data that is freely available to anyone.
 type PublicEthereumAPI struct {
@@ -655,6 +657,13 @@ func (s *PublicBlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Ha
 		return s.rpcMarshalBlock(block, true, fullTx)
 	}
 	return nil, err
+}
+
+func (s *PublicBlockChainAPI) Health() bool {
+	if rpc.RpcServingTimer != nil {
+		return rpc.RpcServingTimer.Percentile(0.75) < float64(UnHealthyTimeout)
+	}
+	return true
 }
 
 // GetUncleByBlockNumberAndIndex returns the uncle block for the given block hash and index. When fullTx is true

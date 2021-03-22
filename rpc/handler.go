@@ -340,7 +340,7 @@ func (h *handler) handleCall(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage 
 		} else {
 			successfulRequestGauge.Inc(1)
 		}
-		rpcServingTimer.UpdateSince(start)
+		RpcServingTimer.UpdateSince(start)
 		newRPCRequestGauge(msg.Method).Inc(1)
 		newRPCServingTimer(msg.Method, answer.Error == nil).UpdateSince(start)
 	}
