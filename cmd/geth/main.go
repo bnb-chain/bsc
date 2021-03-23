@@ -130,6 +130,7 @@ var (
 		utils.MinerExtraDataFlag,
 		utils.MinerLegacyExtraDataFlag,
 		utils.MinerRecommitIntervalFlag,
+		utils.MinerDelayLeftoverFlag,
 		utils.MinerNoVerfiyFlag,
 		utils.NATFlag,
 		utils.NoDiscoverFlag,

@@ -491,6 +491,11 @@ var (
 		Usage: "Time interval to recreate the block being mined",
 		Value: eth.DefaultConfig.Miner.Recommit,
 	}
+	MinerDelayLeftoverFlag = cli.DurationFlag{
+		Name:  "miner.delayleftover",
+		Usage: "Time interval to for broadcast block",
+		Value: eth.DefaultConfig.Miner.DelayLeftOver,
+	}
 	MinerNoVerfiyFlag = cli.BoolFlag{
 		Name:  "miner.noverify",
 		Usage: "Disable remote sealing verification",
@@ -1411,6 +1416,9 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	}
 	if ctx.GlobalIsSet(MinerRecommitIntervalFlag.Name) {
 		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)
+	}
+	if ctx.GlobalIsSet(MinerDelayLeftoverFlag.Name) {
+		cfg.DelayLeftOver = ctx.Duration(MinerDelayLeftoverFlag.Name)
 	}
 	if ctx.GlobalIsSet(MinerNoVerfiyFlag.Name) {
 		cfg.Noverify = ctx.Bool(MinerNoVerfiyFlag.Name)

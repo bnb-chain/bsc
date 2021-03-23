@@ -19,6 +19,7 @@ package consensus
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -116,6 +117,9 @@ type Engine interface {
 	// APIs returns the RPC APIs this consensus engine provides.
 	APIs(chain ChainReader) []rpc.API
 
+	// Delay returns the max duration the miner can commit txs
+	Delay(chain ChainReader, header *types.Header) *time.Duration
+
 	// Close terminates any background threads maintained by the consensus engine.
 	Close() error
 }
@@ -133,4 +137,5 @@ type PoSA interface {
 
 	IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error)
 	IsSystemContract(to *common.Address) bool
+	EnoughDistance(chain ChainReader, header *types.Header) bool
 }

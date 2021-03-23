@@ -47,6 +47,12 @@ const (
 )
 
 // Receipt represents the results of a transaction.
+type OriginalDataAndReceipt struct {
+	Receipt Receipt     `json:"receipt"`
+	TxData  Transaction `json:"txData"`
+}
+
+// Receipt represents the results of a transaction.
 type Receipt struct {
 	// Consensus fields: These fields are defined by the Yellow Paper
 	PostState         []byte `json:"root"`
