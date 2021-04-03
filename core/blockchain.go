@@ -82,12 +82,12 @@ var (
 const (
 	bodyCacheLimit      = 256
 	blockCacheLimit     = 256
-	receiptsCacheLimit  = 32
+	receiptsCacheLimit  = 10000
 	txLookupCacheLimit  = 1024
 	maxFutureBlocks     = 256
 	maxTimeFutureBlocks = 30
 	badBlockLimit       = 10
-	TriesInMemory       = 128
+	TriesInMemory       = 1024
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -320,6 +320,10 @@ func (bc *BlockChain) getProcInterrupt() bool {
 // GetVMConfig returns the block chain VM config.
 func (bc *BlockChain) GetVMConfig() *vm.Config {
 	return &bc.vmConfig
+}
+
+func (bc *BlockChain) CacheReceipts(hash common.Hash, receipts types.Receipts) {
+	bc.receiptsCache.Add(hash, receipts)
 }
 
 // empty returns an indicator whether the blockchain is empty.
@@ -1725,6 +1729,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			atomic.StoreUint32(&followupInterrupt, 1)
 			return it.index, err
 		}
+		bc.CacheReceipts(block.Hash(), receipts)
 		// Update the metrics touched during block processing
 		accountReadTimer.Update(statedb.AccountReads)                 // Account reads are complete, we can mark them
 		storageReadTimer.Update(statedb.StorageReads)                 // Storage reads are complete, we can mark them
