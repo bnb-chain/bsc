@@ -255,7 +255,7 @@ func TestServerAtCap(t *testing.T) {
 		fd, _ := net.Pipe()
 		tx := newTestTransport(&trustedNode.PublicKey, fd)
 		node := enode.SignNull(new(enr.Record), id)
-		return &conn{fd: fd, transport: tx, flags: inboundConn, node: node, cont: make(chan error)}
+		return &conn{fd: fd, transport: tx, flags: InboundConn, node: node, cont: make(chan error)}
 	}
 
 	// Inject a few connections to fill up the peer set.
@@ -276,7 +276,7 @@ func TestServerAtCap(t *testing.T) {
 	if err := srv.checkpoint(c, srv.checkpointPostHandshake); err != nil {
 		t.Error("unexpected error for trusted conn @posthandshake:", err)
 	}
-	if !c.is(trustedConn) {
+	if !c.is(TrustedConn) {
 		t.Error("Server did not set trusted flag")
 	}
 
@@ -293,7 +293,7 @@ func TestServerAtCap(t *testing.T) {
 	if err := srv.checkpoint(c, srv.checkpointPostHandshake); err != nil {
 		t.Error("unexpected error for trusted conn @posthandshake:", err)
 	}
-	if !c.is(trustedConn) {
+	if !c.is(TrustedConn) {
 		t.Error("Server did not set trusted flag")
 	}
 }
@@ -329,7 +329,7 @@ func TestServerPeerLimits(t *testing.T) {
 	defer srv.Stop()
 
 	// Check that server is full (MaxPeers=0)
-	flags := dynDialedConn
+	flags := DynDialedConn
 	dialDest := clientnode
 	conn, _ := net.Pipe()
 	srv.SetupConn(conn, flags, dialDest)
@@ -372,7 +372,7 @@ func TestServerSetupConn(t *testing.T) {
 	tests := []struct {
 		dontstart bool
 		tt        *setupTransport
-		flags     connFlag
+		flags     ConnFlag
 		dialDest  *enode.Node
 
 		wantCloseErr error
@@ -386,40 +386,40 @@ func TestServerSetupConn(t *testing.T) {
 		},
 		{
 			tt:           &setupTransport{pubkey: clientpub, encHandshakeErr: errors.New("read error")},
-			flags:        inboundConn,
+			flags:        InboundConn,
 			wantCalls:    "doEncHandshake,close,",
 			wantCloseErr: errors.New("read error"),
 		},
 		{
 			tt:           &setupTransport{pubkey: clientpub},
 			dialDest:     enode.NewV4(&newkey().PublicKey, nil, 0, 0),
-			flags:        dynDialedConn,
+			flags:        DynDialedConn,
 			wantCalls:    "doEncHandshake,close,",
 			wantCloseErr: DiscUnexpectedIdentity,
 		},
 		{
 			tt:           &setupTransport{pubkey: clientpub, phs: protoHandshake{ID: randomID().Bytes()}},
 			dialDest:     enode.NewV4(clientpub, nil, 0, 0),
-			flags:        dynDialedConn,
+			flags:        DynDialedConn,
 			wantCalls:    "doEncHandshake,doProtoHandshake,close,",
 			wantCloseErr: DiscUnexpectedIdentity,
 		},
 		{
 			tt:           &setupTransport{pubkey: clientpub, protoHandshakeErr: errors.New("foo")},
 			dialDest:     enode.NewV4(clientpub, nil, 0, 0),
-			flags:        dynDialedConn,
+			flags:        DynDialedConn,
 			wantCalls:    "doEncHandshake,doProtoHandshake,close,",
 			wantCloseErr: errors.New("foo"),
 		},
 		{
 			tt:           &setupTransport{pubkey: srvpub, phs: protoHandshake{ID: crypto.FromECDSAPub(srvpub)[1:]}},
-			flags:        inboundConn,
+			flags:        InboundConn,
 			wantCalls:    "doEncHandshake,close,",
 			wantCloseErr: DiscSelf,
 		},
 		{
 			tt:           &setupTransport{pubkey: clientpub, phs: protoHandshake{ID: crypto.FromECDSAPub(clientpub)[1:]}},
-			flags:        inboundConn,
+			flags:        InboundConn,
 			wantCalls:    "doEncHandshake,doProtoHandshake,close,",
 			wantCloseErr: DiscUselessPeer,
 		},

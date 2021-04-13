@@ -143,6 +143,11 @@ func (p *Peer) Name() string {
 	return p.rw.name
 }
 
+// Name returns the node name that the remote node advertised.
+func (p *Peer) Flag() ConnFlag {
+	return p.rw.flags
+}
+
 // Caps returns the capabilities (supported subprotocols) of the remote peer.
 func (p *Peer) Caps() []Cap {
 	// TODO: maybe return copy
@@ -176,7 +181,7 @@ func (p *Peer) String() string {
 
 // Inbound returns true if the peer is an inbound connection
 func (p *Peer) Inbound() bool {
-	return p.rw.is(inboundConn)
+	return p.rw.is(InboundConn)
 }
 
 func newPeer(log log.Logger, conn *conn, protocols []Protocol) *Peer {
@@ -471,9 +476,9 @@ func (p *Peer) Info() *PeerInfo {
 	}
 	info.Network.LocalAddress = p.LocalAddr().String()
 	info.Network.RemoteAddress = p.RemoteAddr().String()
-	info.Network.Inbound = p.rw.is(inboundConn)
-	info.Network.Trusted = p.rw.is(trustedConn)
-	info.Network.Static = p.rw.is(staticDialedConn)
+	info.Network.Inbound = p.rw.is(InboundConn)
+	info.Network.Trusted = p.rw.is(TrustedConn)
+	info.Network.Static = p.rw.is(StaticDialedConn)
 
 	// Gather all the running protocol infos
 	for _, proto := range p.running {

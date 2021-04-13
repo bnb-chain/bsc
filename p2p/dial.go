@@ -106,7 +106,7 @@ type dialScheduler struct {
 	// Everything below here belongs to loop and
 	// should only be accessed by code on the loop goroutine.
 	dialing   map[enode.ID]*dialTask // active tasks
-	peers     map[enode.ID]connFlag  // all connected peers
+	peers     map[enode.ID]ConnFlag  // all connected peers
 	dialPeers int                    // current number of dialed peers
 
 	// The static map tracks all static dial tasks. The subset of usable static dial tasks
@@ -126,7 +126,7 @@ type dialScheduler struct {
 	doneSinceLastLog int
 }
 
-type dialSetupFunc func(net.Conn, connFlag, *enode.Node) error
+type dialSetupFunc func(net.Conn, ConnFlag, *enode.Node) error
 
 type dialConfig struct {
 	self           enode.ID         // our own ID
@@ -165,7 +165,7 @@ func newDialScheduler(config dialConfig, it enode.Iterator, setupFunc dialSetupF
 		setupFunc:   setupFunc,
 		dialing:     make(map[enode.ID]*dialTask),
 		static:      make(map[enode.ID]*dialTask),
-		peers:       make(map[enode.ID]connFlag),
+		peers:       make(map[enode.ID]ConnFlag),
 		doneCh:      make(chan *dialTask),
 		nodesIn:     make(chan *enode.Node),
 		addStaticCh: make(chan *enode.Node),
@@ -244,7 +244,7 @@ loop:
 			if err := d.checkDial(node); err != nil {
 				d.log.Trace("Discarding dial candidate", "id", node.ID(), "ip", node.IP(), "reason", err)
 			} else {
-				d.startDial(newDialTask(node, dynDialedConn))
+				d.startDial(newDialTask(node, DynDialedConn))
 			}
 
 		case task := <-d.doneCh:
@@ -254,7 +254,7 @@ loop:
 			d.doneSinceLastLog++
 
 		case c := <-d.addPeerCh:
-			if c.is(dynDialedConn) || c.is(staticDialedConn) {
+			if c.is(DynDialedConn) || c.is(StaticDialedConn) {
 				d.dialPeers++
 			}
 			id := c.node.ID()
@@ -267,7 +267,7 @@ loop:
 			// TODO: cancel dials to connected peers
 
 		case c := <-d.remPeerCh:
-			if c.is(dynDialedConn) || c.is(staticDialedConn) {
+			if c.is(DynDialedConn) || c.is(StaticDialedConn) {
 				d.dialPeers--
 			}
 			delete(d.peers, c.node.ID())
@@ -280,7 +280,7 @@ loop:
 			if exists {
 				continue loop
 			}
-			task := newDialTask(node, staticDialedConn)
+			task := newDialTask(node, StaticDialedConn)
 			d.static[id] = task
 			if d.checkDial(node) == nil {
 				d.addToStaticPool(task)
@@ -457,7 +457,7 @@ func (d *dialScheduler) startDial(task *dialTask) {
 // A dialTask generated for each node that is dialed.
 type dialTask struct {
 	staticPoolIndex int
-	flags           connFlag
+	flags           ConnFlag
 	// These fields are private to the task and should not be
 	// accessed by dialScheduler while the task is running.
 	dest         *enode.Node
@@ -465,7 +465,7 @@ type dialTask struct {
 	resolveDelay time.Duration
 }
 
-func newDialTask(dest *enode.Node, flags connFlag) *dialTask {
+func newDialTask(dest *enode.Node, flags ConnFlag) *dialTask {
 	return &dialTask{dest: dest, flags: flags, staticPoolIndex: -1}
 }
 
@@ -483,7 +483,7 @@ func (t *dialTask) run(d *dialScheduler) {
 	err := t.dial(d, t.dest)
 	if err != nil {
 		// Try resolving the ID of static nodes if dialing failed.
-		if _, ok := err.(*dialError); ok && t.flags&staticDialedConn != 0 {
+		if _, ok := err.(*dialError); ok && t.flags&StaticDialedConn != 0 {
 			if t.resolve(d) {
 				t.dial(d, t.dest)
 			}

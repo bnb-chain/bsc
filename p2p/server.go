@@ -208,13 +208,13 @@ type peerDrop struct {
 	requested bool // true if signaled by the peer
 }
 
-type connFlag int32
+type ConnFlag int32
 
 const (
-	dynDialedConn connFlag = 1 << iota
-	staticDialedConn
-	inboundConn
-	trustedConn
+	DynDialedConn ConnFlag = 1 << iota
+	StaticDialedConn
+	InboundConn
+	TrustedConn
 )
 
 // conn wraps a network connection with information gathered
@@ -223,7 +223,7 @@ type conn struct {
 	fd net.Conn
 	transport
 	node  *enode.Node
-	flags connFlag
+	flags ConnFlag
 	cont  chan error // The run loop uses cont to signal errors to SetupConn.
 	caps  []Cap      // valid after the protocol handshake
 	name  string     // valid after the protocol handshake
@@ -252,18 +252,18 @@ func (c *conn) String() string {
 	return s
 }
 
-func (f connFlag) String() string {
+func (f ConnFlag) String() string {
 	s := ""
-	if f&trustedConn != 0 {
+	if f&TrustedConn != 0 {
 		s += "-trusted"
 	}
-	if f&dynDialedConn != 0 {
+	if f&DynDialedConn != 0 {
 		s += "-dyndial"
 	}
-	if f&staticDialedConn != 0 {
+	if f&StaticDialedConn != 0 {
 		s += "-staticdial"
 	}
-	if f&inboundConn != 0 {
+	if f&InboundConn != 0 {
 		s += "-inbound"
 	}
 	if s != "" {
@@ -272,14 +272,14 @@ func (f connFlag) String() string {
 	return s
 }
 
-func (c *conn) is(f connFlag) bool {
-	flags := connFlag(atomic.LoadInt32((*int32)(&c.flags)))
+func (c *conn) is(f ConnFlag) bool {
+	flags := ConnFlag(atomic.LoadInt32((*int32)(&c.flags)))
 	return flags&f != 0
 }
 
-func (c *conn) set(f connFlag, val bool) {
+func (c *conn) set(f ConnFlag, val bool) {
 	for {
-		oldFlags := connFlag(atomic.LoadInt32((*int32)(&c.flags)))
+		oldFlags := ConnFlag(atomic.LoadInt32((*int32)(&c.flags)))
 		flags := oldFlags
 		if val {
 			flags |= f
@@ -722,7 +722,7 @@ running:
 			srv.log.Trace("Adding trusted node", "node", n)
 			trusted[n.ID()] = true
 			if p, ok := peers[n.ID()]; ok {
-				p.rw.set(trustedConn, true)
+				p.rw.set(TrustedConn, true)
 			}
 
 		case n := <-srv.removetrusted:
@@ -731,7 +731,7 @@ running:
 			srv.log.Trace("Removing trusted node", "node", n)
 			delete(trusted, n.ID())
 			if p, ok := peers[n.ID()]; ok {
-				p.rw.set(trustedConn, false)
+				p.rw.set(TrustedConn, false)
 			}
 
 		case op := <-srv.peerOp:
@@ -744,7 +744,7 @@ running:
 			// the remote identity is known (but hasn't been verified yet).
 			if trusted[c.node.ID()] {
 				// Ensure that the trusted flag is set before checking against MaxPeers.
-				c.flags |= trustedConn
+				c.flags |= TrustedConn
 			}
 			// TODO: track in-progress inbound node IDs (pre-Peer) to avoid dialing them.
 			c.cont <- srv.postHandshakeChecks(peers, inboundCount, c)
@@ -802,9 +802,9 @@ running:
 
 func (srv *Server) postHandshakeChecks(peers map[enode.ID]*Peer, inboundCount int, c *conn) error {
 	switch {
-	case !c.is(trustedConn) && len(peers) >= srv.MaxPeers:
+	case !c.is(TrustedConn) && len(peers) >= srv.MaxPeers:
 		return DiscTooManyPeers
-	case !c.is(trustedConn) && c.is(inboundConn) && inboundCount >= srv.maxInboundConns():
+	case !c.is(TrustedConn) && c.is(InboundConn) && inboundCount >= srv.maxInboundConns():
 		return DiscTooManyPeers
 	case peers[c.node.ID()] != nil:
 		return DiscAlreadyConnected
@@ -886,7 +886,7 @@ func (srv *Server) listenLoop() {
 			srv.log.Trace("Accepted connection", "addr", fd.RemoteAddr())
 		}
 		go func() {
-			srv.SetupConn(fd, inboundConn, nil)
+			srv.SetupConn(fd, InboundConn, nil)
 			slots <- struct{}{}
 		}()
 	}
@@ -913,7 +913,7 @@ func (srv *Server) checkInboundConn(fd net.Conn, remoteIP net.IP) error {
 // SetupConn runs the handshakes and attempts to add the connection
 // as a peer. It returns when the connection has been added as a peer
 // or the handshakes have failed.
-func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) error {
+func (srv *Server) SetupConn(fd net.Conn, flags ConnFlag, dialDest *enode.Node) error {
 	c := &conn{fd: fd, transport: srv.newTransport(fd), flags: flags, cont: make(chan error)}
 	err := srv.setupConn(c, flags, dialDest)
 	if err != nil {
@@ -922,7 +922,7 @@ func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) 
 	return err
 }
 
-func (srv *Server) setupConn(c *conn, flags connFlag, dialDest *enode.Node) error {
+func (srv *Server) setupConn(c *conn, flags ConnFlag, dialDest *enode.Node) error {
 	// Prevent leftover pending conns from entering the handshake.
 	srv.lock.Lock()
 	running := srv.running

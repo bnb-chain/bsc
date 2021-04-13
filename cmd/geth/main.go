@@ -69,6 +69,7 @@ var (
 		utils.ExternalSignerFlag,
 		utils.NoUSBFlag,
 		utils.DirectBroadcastFlag,
+		utils.SkipAnnounceTxFlag,
 		utils.RangeLimitFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.OverrideIstanbulFlag,

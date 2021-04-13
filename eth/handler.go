@@ -67,6 +67,7 @@ type ProtocolManager struct {
 	fastSync        uint32 // Flag whether fast sync is enabled (gets disabled if we already have blocks)
 	acceptTxs       uint32 // Flag whether we're considered synchronised (enables transaction processing)
 	directBroadcast bool
+	skipAnnounceTx  bool
 
 	checkpointNumber uint64      // Block number for the sync progress validator to cross reference
 	checkpointHash   common.Hash // Block hash for the sync progress validator to cross reference
@@ -101,10 +102,11 @@ type ProtocolManager struct {
 
 // NewProtocolManager returns a new Ethereum sub protocol manager. The Ethereum sub protocol manages peers capable
 // with the Ethereum network.
-func NewProtocolManager(config *params.ChainConfig, checkpoint *params.TrustedCheckpoint, mode downloader.SyncMode, networkID uint64, mux *event.TypeMux, txpool txPool, engine consensus.Engine, blockchain *core.BlockChain, chaindb ethdb.Database, cacheLimit int, whitelist map[uint64]common.Hash, directBroadcast bool) (*ProtocolManager, error) {
+func NewProtocolManager(config *params.ChainConfig, checkpoint *params.TrustedCheckpoint, mode downloader.SyncMode, networkID uint64, mux *event.TypeMux, txpool txPool, engine consensus.Engine, blockchain *core.BlockChain, chaindb ethdb.Database, cacheLimit int, whitelist map[uint64]common.Hash, directBroadcast, skipAnnounceTx bool) (*ProtocolManager, error) {
 	// Create the protocol manager with the base fields
 	manager := &ProtocolManager{
 		directBroadcast: directBroadcast,
+		skipAnnounceTx:  skipAnnounceTx,
 		networkID:       networkID,
 		forkFilter:      forkid.NewFilter(blockchain),
 		eventMux:        mux,
@@ -854,14 +856,25 @@ func (pm *ProtocolManager) BroadcastTransactions(txs types.Transactions, propaga
 	// Broadcast transactions to a batch of peers not knowing about it
 	if propagate {
 		for _, tx := range txs {
-			peers := pm.peers.PeersWithoutTx(tx.Hash())
+			var unknownList, staticList []*peer
+			if pm.skipAnnounceTx {
+				unknownList, staticList = pm.peers.PeersWithoutTxOrStatic(tx.Hash())
+			} else {
+				unknownList = pm.peers.PeersWithoutTx(tx.Hash())
+			}
 
 			// Send the block to a subset of our peers
-			transfer := peers[:int(math.Sqrt(float64(len(peers))))]
+			transfer := unknownList[:int(math.Sqrt(float64(len(unknownList))))]
 			for _, peer := range transfer {
 				txset[peer] = append(txset[peer], tx.Hash())
 			}
-			log.Trace("Broadcast transaction", "hash", tx.Hash(), "recipients", len(peers))
+			if staticList != nil {
+				for _, peer := range staticList[:int(math.Sqrt(float64(len(staticList))))] {
+					txset[peer] = append(txset[peer], tx.Hash())
+				}
+			}
+			log.Debug("Broadcast transaction to unknown peers", "hash", tx.Hash(), "recipients", len(transfer))
+			log.Debug("Broadcast transaction to static peers", "hash", tx.Hash(), "recipients", len(staticList))
 		}
 		for peer, hashes := range txset {
 			peer.AsyncSendTransactions(hashes)
@@ -908,8 +921,10 @@ func (pm *ProtocolManager) txBroadcastLoop() {
 				pm.BroadcastTransactions(event.Txs, false)
 				continue
 			}
-			pm.BroadcastTransactions(event.Txs, true)  // First propagate transactions to peers
-			pm.BroadcastTransactions(event.Txs, false) // Only then announce to the rest
+			pm.BroadcastTransactions(event.Txs, true) // First propagate transactions to peers
+			if !pm.skipAnnounceTx {
+				pm.BroadcastTransactions(event.Txs, false) // Only then announce to the rest
+			}
 
 		case <-pm.txsSub.Err():
 			return

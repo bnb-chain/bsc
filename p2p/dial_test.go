@@ -47,9 +47,9 @@ func TestDialSchedDynDial(t *testing.T) {
 		// 9 nodes are discovered, but only 2 are dialed.
 		{
 			peersAdded: []*conn{
-				{flags: staticDialedConn, node: newNode(uintID(0x00), "")},
-				{flags: dynDialedConn, node: newNode(uintID(0x01), "")},
-				{flags: dynDialedConn, node: newNode(uintID(0x02), "")},
+				{flags: StaticDialedConn, node: newNode(uintID(0x00), "")},
+				{flags: DynDialedConn, node: newNode(uintID(0x01), "")},
+				{flags: DynDialedConn, node: newNode(uintID(0x02), "")},
 			},
 			discovered: []*enode.Node{
 				newNode(uintID(0x00), "127.0.0.1:30303"), // not dialed because already connected as static peer
@@ -165,8 +165,8 @@ func TestDialSchedStaticDial(t *testing.T) {
 		// aren't yet connected.
 		{
 			peersAdded: []*conn{
-				{flags: dynDialedConn, node: newNode(uintID(0x01), "127.0.0.1:30303")},
-				{flags: dynDialedConn, node: newNode(uintID(0x02), "127.0.0.2:30303")},
+				{flags: DynDialedConn, node: newNode(uintID(0x01), "127.0.0.1:30303")},
+				{flags: DynDialedConn, node: newNode(uintID(0x02), "127.0.0.2:30303")},
 			},
 			update: func(d *dialScheduler) {
 				// These two are not dialed because they're already connected
@@ -214,7 +214,7 @@ func TestDialSchedStaticDial(t *testing.T) {
 		// Only 0x01 is dialed.
 		{
 			peersAdded: []*conn{
-				{flags: inboundConn, node: newNode(uintID(0x07), "127.0.0.7:30303")},
+				{flags: InboundConn, node: newNode(uintID(0x07), "127.0.0.7:30303")},
 			},
 			peersRemoved: []enode.ID{
 				uintID(0x01),
@@ -286,8 +286,8 @@ func TestDialSchedManyStaticNodes(t *testing.T) {
 	runDialTest(t, config, []dialTestRound{
 		{
 			peersAdded: []*conn{
-				{flags: dynDialedConn, node: newNode(uintID(0xFFFE), "")},
-				{flags: dynDialedConn, node: newNode(uintID(0xFFFF), "")},
+				{flags: DynDialedConn, node: newNode(uintID(0xFFFE), "")},
+				{flags: DynDialedConn, node: newNode(uintID(0xFFFF), "")},
 			},
 			update: func(d *dialScheduler) {
 				for id := uint16(0); id < 2000; id++ {
@@ -428,7 +428,7 @@ func runDialTest(t *testing.T, config dialConfig, rounds []dialTestRound) {
 	// Set up the dialer. The setup function below runs on the dialTask
 	// goroutine and adds the peer.
 	var dialsched *dialScheduler
-	setup := func(fd net.Conn, f connFlag, node *enode.Node) error {
+	setup := func(fd net.Conn, f ConnFlag, node *enode.Node) error {
 		conn := &conn{flags: f, node: node}
 		dialsched.peerAdded(conn)
 		setupCh <- conn

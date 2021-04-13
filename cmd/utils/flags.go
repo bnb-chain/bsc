@@ -147,6 +147,10 @@ var (
 		Name:  "directbroadcast",
 		Usage: "Enable directly broadcast mined block to all peers",
 	}
+	SkipAnnounceTxFlag = cli.BoolFlag{
+		Name:  "skipAnnounceTx",
+		Usage: "Skip announce transactions to peers",
+	}
 	RangeLimitFlag = cli.BoolFlag{
 		Name:  "rangelimit",
 		Usage: "Enable 5000 blocks limit for range query",
@@ -1259,6 +1263,10 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.GlobalIsSet(DirectBroadcastFlag.Name) {
 		cfg.DirectBroadcast = ctx.GlobalBool(DirectBroadcastFlag.Name)
 	}
+	if ctx.GlobalIsSet(SkipAnnounceTxFlag.Name) {
+		cfg.SkipAnnounceTx = ctx.GlobalBool(SkipAnnounceTxFlag.Name)
+	}
+
 	if ctx.GlobalIsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.GlobalBool(RangeLimitFlag.Name)
 	}
@@ -1543,6 +1551,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *eth.Config) {
 	}
 	if ctx.GlobalIsSet(DirectBroadcastFlag.Name) {
 		cfg.DirectBroadcast = ctx.GlobalBool(DirectBroadcastFlag.Name)
+	}
+	if ctx.GlobalIsSet(SkipAnnounceTxFlag.Name) {
+		cfg.SkipAnnounceTx = ctx.GlobalBool(SkipAnnounceTxFlag.Name)
 	}
 	if ctx.GlobalIsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.GlobalBool(RangeLimitFlag.Name)

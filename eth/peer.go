@@ -261,7 +261,6 @@ func (p *peer) announceTransactions() {
 				// Fancy copy and resize to ensure buffer doesn't grow indefinitely
 				queue = queue[:copy(queue, queue[len(queue)-maxQueuedTxs:])]
 			}
-
 		case <-done:
 			done = nil
 
@@ -785,6 +784,24 @@ func (ps *peerSet) PeersWithoutTx(hash common.Hash) []*peer {
 		}
 	}
 	return list
+}
+
+func (ps *peerSet) PeersWithoutTxOrStatic(hash common.Hash) ([]*peer, []*peer) {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	unknownList := make([]*peer, 0, len(ps.peers))
+	staticList := make([]*peer, 0, len(ps.peers))
+	for _, p := range ps.peers {
+		if !p.knownTxs.Contains(hash) {
+			if p.Peer.Flag() == p2p.StaticDialedConn {
+				staticList = append(staticList, p)
+			} else {
+				unknownList = append(unknownList, p)
+			}
+		}
+	}
+	return unknownList, staticList
 }
 
 // BestPeer retrieves the known peer with the currently highest total difficulty.
