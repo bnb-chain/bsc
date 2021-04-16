@@ -948,9 +948,9 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash) ([]common.Address, 
 		return nil, err
 	}
 
-	valz := make([]common.Address, len(ret0))
-	for i, a := range ret0 {
-		valz[i] = a.(common.Address)
+	var valz []common.Address
+	if len(ret0) > 0 {
+		valz = ret0[0].([]common.Address)
 	}
 	return valz, nil
 }
