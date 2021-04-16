@@ -41,7 +41,9 @@ func newStateTest() *stateTest {
 }
 
 func TestDump(t *testing.T) {
-	s := newStateTest()
+	db := rawdb.NewMemoryDatabase()
+	sdb, _ := New(common.Hash{}, NewDatabaseWithConfig(db, nil), nil)
+	s := &stateTest{db: db, state: sdb}
 
 	// generate a few entries
 	obj1 := s.state.GetOrNewStateObject(toAddr([]byte{0x01}))
@@ -56,7 +58,7 @@ func TestDump(t *testing.T) {
 	s.state.updateStateObject(obj2)
 	s.state.Commit(false)
 
-	// check that dump contains the state objects that are in trie
+	// check that DumpToCollector contains the state objects that are in trie
 	got := string(s.state.Dump(false, false, true))
 	want := `{
     "root": "71edff0130dd2385947095001c73d9e28d862fc286fca2b922ca6f6f3cddfdd2",
@@ -83,7 +85,7 @@ func TestDump(t *testing.T) {
     }
 }`
 	if got != want {
-		t.Errorf("dump mismatch:\ngot: %s\nwant: %s\n", got, want)
+		t.Errorf("DumpToCollector mismatch:\ngot: %s\nwant: %s\n", got, want)
 	}
 }
 
@@ -168,7 +170,7 @@ func TestSnapshot2(t *testing.T) {
 	state.setStateObject(so0)
 
 	root, _ := state.Commit(false)
-	state.Reset(root)
+	state, _ = New(root, state.db, state.snaps)
 
 	// and one with deleted == true
 	so1 := state.getStateObject(stateobjaddr1)

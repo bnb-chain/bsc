@@ -141,7 +141,7 @@ func (s *Snapshot) isMajorityFork(forkHash string) bool {
 	return ally > len(s.RecentForkHashes)/2
 }
 
-func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainReader, parents []*types.Header, chainId *big.Int) (*Snapshot, error) {
+func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainId *big.Int) (*Snapshot, error) {
 	// Allow passing in no headers for cleaner code
 	if len(headers) == 0 {
 		return s, nil
@@ -288,7 +288,7 @@ func ParseValidators(validatorsBytes []byte) ([]common.Address, error) {
 	return result, nil
 }
 
-func FindAncientHeader(header *types.Header, ite uint64, chain consensus.ChainReader, candidateParents []*types.Header) *types.Header {
+func FindAncientHeader(header *types.Header, ite uint64, chain consensus.ChainHeaderReader, candidateParents []*types.Header) *types.Header {
 	ancient := header
 	for i := uint64(1); i <= ite; i++ {
 		parentHash := ancient.ParentHash
