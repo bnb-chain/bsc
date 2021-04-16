@@ -943,14 +943,18 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash) ([]common.Address, 
 		return nil, err
 	}
 
-	var ret0 = make([]interface{}, 0)
-	if ret0, err = p.validatorSetABI.Unpack(method, result); err != nil {
+	var (
+		ret0 = new([]common.Address)
+	)
+	out := ret0
+
+	if err := p.validatorSetABI.UnpackIntoInterface(out, method, result); err != nil {
 		return nil, err
 	}
 
-	var valz []common.Address
-	if len(ret0) > 0 {
-		valz = ret0[0].([]common.Address)
+	valz := make([]common.Address, len(*ret0))
+	for i, a := range *ret0 {
+		valz[i] = a
 	}
 	return valz, nil
 }
