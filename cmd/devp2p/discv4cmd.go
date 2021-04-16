@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/cmd/devp2p/internal/v4test"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/discover"
@@ -40,6 +41,7 @@ var (
 			discv4ResolveCommand,
 			discv4ResolveJSONCommand,
 			discv4CrawlCommand,
+			discv4TestCommand,
 		},
 	}
 	discv4PingCommand = cli.Command{
@@ -74,6 +76,18 @@ var (
 		Action: discv4Crawl,
 		Flags:  []cli.Flag{bootnodesFlag, crawlTimeoutFlag},
 	}
+	discv4TestCommand = cli.Command{
+		Name:   "test",
+		Usage:  "Runs tests against a node",
+		Action: discv4Test,
+		Flags: []cli.Flag{
+			remoteEnodeFlag,
+			testPatternFlag,
+			testTAPFlag,
+			testListen1Flag,
+			testListen2Flag,
+		},
+	}
 )
 
 var (
@@ -97,6 +111,11 @@ var (
 		Name:  "timeout",
 		Usage: "Time limit for the crawl.",
 		Value: 30 * time.Minute,
+	}
+	remoteEnodeFlag = cli.StringFlag{
+		Name:   "remote",
+		Usage:  "Enode of the remote node under test",
+		EnvVar: "REMOTE_ENODE",
 	}
 )
 
@@ -184,6 +203,18 @@ func discv4Crawl(ctx *cli.Context) error {
 	return nil
 }
 
+// discv4Test runs the protocol test suite.
+func discv4Test(ctx *cli.Context) error {
+	// Configure test package globals.
+	if !ctx.IsSet(remoteEnodeFlag.Name) {
+		return fmt.Errorf("Missing -%v", remoteEnodeFlag.Name)
+	}
+	v4test.Remote = ctx.String(remoteEnodeFlag.Name)
+	v4test.Listen1 = ctx.String(testListen1Flag.Name)
+	v4test.Listen2 = ctx.String(testListen2Flag.Name)
+	return runTests(ctx, v4test.AllTests)
+}
+
 // startV4 starts an ephemeral discovery V4 node.
 func startV4(ctx *cli.Context) *discover.UDPv4 {
 	ln, config := makeDiscoveryConfig(ctx)
@@ -235,7 +266,11 @@ func listen(ln *enode.LocalNode, addr string) *net.UDPConn {
 	}
 	usocket := socket.(*net.UDPConn)
 	uaddr := socket.LocalAddr().(*net.UDPAddr)
-	ln.SetFallbackIP(net.IP{127, 0, 0, 1})
+	if uaddr.IP.IsUnspecified() {
+		ln.SetFallbackIP(net.IP{127, 0, 0, 1})
+	} else {
+		ln.SetFallbackIP(uaddr.IP)
+	}
 	ln.SetFallbackUDP(uaddr.Port)
 	return usocket
 }
@@ -243,7 +278,11 @@ func listen(ln *enode.LocalNode, addr string) *net.UDPConn {
 func parseBootnodes(ctx *cli.Context) ([]*enode.Node, error) {
 	s := params.RinkebyBootnodes
 	if ctx.IsSet(bootnodesFlag.Name) {
-		s = strings.Split(ctx.String(bootnodesFlag.Name), ",")
+		input := ctx.String(bootnodesFlag.Name)
+		if input == "" {
+			return nil, nil
+		}
+		s = strings.Split(input, ",")
 	}
 	nodes := make([]*enode.Node, len(s))
 	var err error

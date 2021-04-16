@@ -46,7 +46,10 @@ func encodePubkey(key *ecdsa.PublicKey) encPubkey {
 	return e
 }
 
-func decodePubkey(curve elliptic.Curve, e encPubkey) (*ecdsa.PublicKey, error) {
+func decodePubkey(curve elliptic.Curve, e []byte) (*ecdsa.PublicKey, error) {
+	if len(e) != len(encPubkey{}) {
+		return nil, errors.New("wrong size public key data")
+	}
 	p := &ecdsa.PublicKey{Curve: curve, X: new(big.Int), Y: new(big.Int)}
 	half := len(e) / 2
 	p.X.SetBytes(e[:half])
@@ -59,17 +62,6 @@ func decodePubkey(curve elliptic.Curve, e encPubkey) (*ecdsa.PublicKey, error) {
 
 func (e encPubkey) id() enode.ID {
 	return enode.ID(crypto.Keccak256Hash(e[:]))
-}
-
-// recoverNodeKey computes the public key used to sign the
-// given hash from the signature.
-func recoverNodeKey(hash, sig []byte) (key encPubkey, err error) {
-	pubkey, err := crypto.Ecrecover(hash, sig)
-	if err != nil {
-		return key, err
-	}
-	copy(key[:], pubkey[1:])
-	return key, nil
 }
 
 func wrapNode(n *enode.Node) *node {

@@ -16,28 +16,55 @@
 
 package utils
 
-import "math/rand"
+import (
+	"math"
+	"math/rand"
 
-// wrsItem interface should be implemented by any entries that are to be selected from
-// a WeightedRandomSelect set. Note that recalculating monotonously decreasing item
-// weights on-demand (without constantly calling Update) is allowed
-type wrsItem interface {
-	Weight() int64
-}
+	"github.com/ethereum/go-ethereum/log"
+)
 
-// WeightedRandomSelect is capable of weighted random selection from a set of items
-type WeightedRandomSelect struct {
-	root *wrsNode
-	idx  map[wrsItem]int
-}
+type (
+	// WeightedRandomSelect is capable of weighted random selection from a set of items
+	WeightedRandomSelect struct {
+		root *wrsNode
+		idx  map[WrsItem]int
+		wfn  WeightFn
+	}
+	WrsItem  interface{}
+	WeightFn func(interface{}) uint64
+)
 
 // NewWeightedRandomSelect returns a new WeightedRandomSelect structure
-func NewWeightedRandomSelect() *WeightedRandomSelect {
-	return &WeightedRandomSelect{root: &wrsNode{maxItems: wrsBranches}, idx: make(map[wrsItem]int)}
+func NewWeightedRandomSelect(wfn WeightFn) *WeightedRandomSelect {
+	return &WeightedRandomSelect{root: &wrsNode{maxItems: wrsBranches}, idx: make(map[WrsItem]int), wfn: wfn}
+}
+
+// Update updates an item's weight, adds it if it was non-existent or removes it if
+// the new weight is zero. Note that explicitly updating decreasing weights is not necessary.
+func (w *WeightedRandomSelect) Update(item WrsItem) {
+	w.setWeight(item, w.wfn(item))
+}
+
+// Remove removes an item from the set
+func (w *WeightedRandomSelect) Remove(item WrsItem) {
+	w.setWeight(item, 0)
+}
+
+// IsEmpty returns true if the set is empty
+func (w *WeightedRandomSelect) IsEmpty() bool {
+	return w.root.sumCost == 0
 }
 
 // setWeight sets an item's weight to a specific value (removes it if zero)
-func (w *WeightedRandomSelect) setWeight(item wrsItem, weight int64) {
+func (w *WeightedRandomSelect) setWeight(item WrsItem, weight uint64) {
+	if weight > math.MaxInt64-w.root.sumCost {
+		// old weight is still included in sumCost, remove and check again
+		w.setWeight(item, 0)
+		if weight > math.MaxInt64-w.root.sumCost {
+			log.Error("WeightedRandomSelect overflow", "sumCost", w.root.sumCost, "new weight", weight)
+			weight = math.MaxInt64 - w.root.sumCost
+		}
+	}
 	idx, ok := w.idx[item]
 	if ok {
 		w.root.setWeight(idx, weight)
@@ -48,9 +75,9 @@ func (w *WeightedRandomSelect) setWeight(item wrsItem, weight int64) {
 		if weight != 0 {
 			if w.root.itemCnt == w.root.maxItems {
 				// add a new level
-				newRoot := &wrsNode{sumWeight: w.root.sumWeight, itemCnt: w.root.itemCnt, level: w.root.level + 1, maxItems: w.root.maxItems * wrsBranches}
+				newRoot := &wrsNode{sumCost: w.root.sumCost, itemCnt: w.root.itemCnt, level: w.root.level + 1, maxItems: w.root.maxItems * wrsBranches}
 				newRoot.items[0] = w.root
-				newRoot.weights[0] = w.root.sumWeight
+				newRoot.weights[0] = w.root.sumCost
 				w.root = newRoot
 			}
 			w.idx[item] = w.root.insert(item, weight)
@@ -58,33 +85,22 @@ func (w *WeightedRandomSelect) setWeight(item wrsItem, weight int64) {
 	}
 }
 
-// Update updates an item's weight, adds it if it was non-existent or removes it if
-// the new weight is zero. Note that explicitly updating decreasing weights is not necessary.
-func (w *WeightedRandomSelect) Update(item wrsItem) {
-	w.setWeight(item, item.Weight())
-}
-
-// Remove removes an item from the set
-func (w *WeightedRandomSelect) Remove(item wrsItem) {
-	w.setWeight(item, 0)
-}
-
 // Choose randomly selects an item from the set, with a chance proportional to its
 // current weight. If the weight of the chosen element has been decreased since the
 // last stored value, returns it with a newWeight/oldWeight chance, otherwise just
 // updates its weight and selects another one
-func (w *WeightedRandomSelect) Choose() wrsItem {
+func (w *WeightedRandomSelect) Choose() WrsItem {
 	for {
-		if w.root.sumWeight == 0 {
+		if w.root.sumCost == 0 {
 			return nil
 		}
-		val := rand.Int63n(w.root.sumWeight)
+		val := uint64(rand.Int63n(int64(w.root.sumCost)))
 		choice, lastWeight := w.root.choose(val)
-		weight := choice.Weight()
+		weight := w.wfn(choice)
 		if weight != lastWeight {
 			w.setWeight(choice, weight)
 		}
-		if weight >= lastWeight || rand.Int63n(lastWeight) < weight {
+		if weight >= lastWeight || uint64(rand.Int63n(int64(lastWeight))) < weight {
 			return choice
 		}
 	}
@@ -92,16 +108,16 @@ func (w *WeightedRandomSelect) Choose() wrsItem {
 
 const wrsBranches = 8 // max number of branches in the wrsNode tree
 
-// wrsNode is a node of a tree structure that can store wrsItems or further wrsNodes.
+// wrsNode is a node of a tree structure that can store WrsItems or further wrsNodes.
 type wrsNode struct {
 	items                    [wrsBranches]interface{}
-	weights                  [wrsBranches]int64
-	sumWeight                int64
+	weights                  [wrsBranches]uint64
+	sumCost                  uint64
 	level, itemCnt, maxItems int
 }
 
 // insert recursively inserts a new item to the tree and returns the item index
-func (n *wrsNode) insert(item wrsItem, weight int64) int {
+func (n *wrsNode) insert(item WrsItem, weight uint64) int {
 	branch := 0
 	for n.items[branch] != nil && (n.level == 0 || n.items[branch].(*wrsNode).itemCnt == n.items[branch].(*wrsNode).maxItems) {
 		branch++
@@ -110,7 +126,7 @@ func (n *wrsNode) insert(item wrsItem, weight int64) int {
 		}
 	}
 	n.itemCnt++
-	n.sumWeight += weight
+	n.sumCost += weight
 	n.weights[branch] += weight
 	if n.level == 0 {
 		n.items[branch] = item
@@ -129,12 +145,12 @@ func (n *wrsNode) insert(item wrsItem, weight int64) int {
 
 // setWeight updates the weight of a certain item (which should exist) and returns
 // the change of the last weight value stored in the tree
-func (n *wrsNode) setWeight(idx int, weight int64) int64 {
+func (n *wrsNode) setWeight(idx int, weight uint64) uint64 {
 	if n.level == 0 {
 		oldWeight := n.weights[idx]
 		n.weights[idx] = weight
 		diff := weight - oldWeight
-		n.sumWeight += diff
+		n.sumCost += diff
 		if weight == 0 {
 			n.items[idx] = nil
 			n.itemCnt--
@@ -145,19 +161,19 @@ func (n *wrsNode) setWeight(idx int, weight int64) int64 {
 	branch := idx / branchItems
 	diff := n.items[branch].(*wrsNode).setWeight(idx-branch*branchItems, weight)
 	n.weights[branch] += diff
-	n.sumWeight += diff
+	n.sumCost += diff
 	if weight == 0 {
 		n.itemCnt--
 	}
 	return diff
 }
 
-// Choose recursively selects an item from the tree and returns it along with its weight
-func (n *wrsNode) choose(val int64) (wrsItem, int64) {
+// choose recursively selects an item from the tree and returns it along with its weight
+func (n *wrsNode) choose(val uint64) (WrsItem, uint64) {
 	for i, w := range n.weights {
 		if val < w {
 			if n.level == 0 {
-				return n.items[i].(wrsItem), n.weights[i]
+				return n.items[i].(WrsItem), n.weights[i]
 			}
 			return n.items[i].(*wrsNode).choose(val)
 		}

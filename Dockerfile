@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 FROM golang:1.15-alpine as builder
+=======
+# Build Geth in a stock Go builder container
+FROM golang:1.16-alpine as builder
+>>>>>>> origin/master
 
 RUN apk add --no-cache make gcc musl-dev linux-headers git bash
 
@@ -17,5 +22,10 @@ FROM alpine:latest
 RUN apk add --no-cache ca-certificates curl jq tini
 COPY --from=builder /go-ethereum/build/bin/geth /usr/local/bin/
 
+<<<<<<< HEAD
 EXPOSE 8545 8546 8547 30303 30303/udp
 ENTRYPOINT ["geth"]
+=======
+EXPOSE 8545 8546 30303 30303/udp
+ENTRYPOINT ["geth"]
+>>>>>>> origin/master
