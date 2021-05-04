@@ -378,7 +378,7 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 		}
 		rebloom(persisted.root)
 	}
-	log.Info("Snapshot capped", "root", root)
+	log.Debug("Snapshot capped", "root", root)
 	return nil
 }
 

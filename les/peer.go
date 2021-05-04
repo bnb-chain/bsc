@@ -1043,9 +1043,6 @@ func (p *clientPeer) Handshake(td *big.Int, head common.Hash, headNum uint64, ge
 	if server.config.UltraLightOnlyAnnounce {
 		recentTx = txIndexDisabled
 	}
-	if recentTx != txIndexUnlimited && p.version < lpv4 {
-		return errors.New("Cannot serve old clients without a complete tx index")
-	}
 	// Note: clientPeer.headInfo should contain the last head announced to the client by us.
 	// The values announced in the handshake are dummy values for compatibility reasons and should be ignored.
 	p.headInfo = blockInfo{Hash: head, Number: headNum, Td: td}
