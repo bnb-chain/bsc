@@ -189,8 +189,10 @@ func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, sta
 	// Pruning is done, now drop the "useless" layers from the snapshot.
 	// Firstly, flushing the target layer into the disk. After that all
 	// diff layers below the target will all be merged into the disk.
-	if err := snaptree.Cap(root, 0); err != nil {
-		return err
+	if root != snaptree.DiskRoot() {
+		if err := snaptree.Cap(root, 0); err != nil {
+			return err
+		}
 	}
 	// Secondly, flushing the snapshot journal into the disk. All diff
 	// layers upon are dropped silently. Eventually the entire snapshot
@@ -275,16 +277,23 @@ func (p *Pruner) Prune(root common.Hash) error {
 		// bottom-most diff layer. Try to find the bottom-most snapshot
 		// layer with state available.
 		//
-		// Note HEAD and HEAD-1 is ignored. Usually there is the associated
+		// Note HEAD is ignored. Usually there is the associated
 		// state available, but we don't want to use the topmost state
 		// as the pruning target.
 		var found bool
-		for i := len(layers) - 2; i >= 2; i-- {
+		for i := len(layers) - 2; i >= 1; i-- {
 			if blob := rawdb.ReadTrieNode(p.db, layers[i].Root()); len(blob) != 0 {
 				root = layers[i].Root()
 				found = true
 				log.Info("Selecting middle-layer as the pruning target", "root", root, "depth", i)
 				break
+			}
+		}
+		if !found {
+			if blob := rawdb.ReadTrieNode(p.db, p.snaptree.DiskRoot()); len(blob) != 0 {
+				root = p.snaptree.DiskRoot()
+				found = true
+				log.Info("Selecting disk-layer as the pruning target", "root", root)
 			}
 		}
 		if !found {
