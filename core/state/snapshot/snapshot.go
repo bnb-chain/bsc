@@ -204,6 +204,7 @@ func New(diskdb ethdb.KeyValueStore, triedb *trie.Database, cache int, root comm
 		snap.layers[head.Root()] = head
 		head = head.Parent()
 	}
+	log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root)
 	return snap, nil
 }
 
@@ -343,6 +344,7 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 	defer t.lock.Unlock()
 
 	t.layers[snap.root] = snap
+	log.Info("Snapshot updated", "blockRoot", blockRoot)
 	return nil
 }
 
@@ -425,6 +427,7 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 		}
 		rebloom(persisted.root)
 	}
+	log.Debug("Snapshot capped", "root", root)
 	return nil
 }
 
