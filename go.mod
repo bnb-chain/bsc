@@ -11,7 +11,7 @@ require (
 	github.com/VividCortex/gohistogram v1.0.0 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20170210015632-ea17b1a17847
 	github.com/aws/aws-sdk-go v1.25.48
-	github.com/btcsuite/btcd v0.20.0-beta
+	github.com/btcsuite/btcd v0.20.1-beta
 	github.com/cespare/cp v0.1.0
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/cloudflare/cloudflare-go v0.10.2-0.20190916151808-a80f83b9add9
