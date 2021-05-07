@@ -1,4 +1,9 @@
 # Changelog
+## v1.0.7-hf.1
+BUGFIX
+* [\#190](https://github.com/binance-chain/bsc/pull/190) fix disk increase dramaticly
+* [\#191](https://github.com/binance-chain/bsc/pull/191) fix the reorg routine of tx pool stuck issue
+
 ## v1.0.7
 * [\#120](https://github.com/binance-chain/bsc/pull/120) add health check endpoint
 * [\#116](https://github.com/binance-chain/bsc/pull/116) validator only write database state when enough distance 
