@@ -1,4 +1,17 @@
 # Changelog
+
+## v1.1.0
+*[\#152](https://github.com/binance-chain/bsc/pull/152) upgrade to go-ethereum 1.10.3
+
+## v1.0.7-hf.2
+BUGFIX
+* [\#194](https://github.com/binance-chain/bsc/pull/194) bump btcd to v0.20.1-beta
+
+## v1.0.7-hf.1
+BUGFIX
+* [\#190](https://github.com/binance-chain/bsc/pull/190) fix disk increase dramaticly
+* [\#191](https://github.com/binance-chain/bsc/pull/191) fix the reorg routine of tx pool stuck issue
+
 ## v1.0.7
 * [\#120](https://github.com/binance-chain/bsc/pull/120) add health check endpoint
 * [\#116](https://github.com/binance-chain/bsc/pull/116) validator only write database state when enough distance 
