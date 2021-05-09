@@ -24,13 +24,13 @@ import (
 	"net"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/simulations/pipes"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/binance-chain/bsc/event"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/node"
+	"github.com/binance-chain/bsc/p2p"
+	"github.com/binance-chain/bsc/p2p/enode"
+	"github.com/binance-chain/bsc/p2p/simulations/pipes"
+	"github.com/binance-chain/bsc/rpc"
 	"github.com/gorilla/websocket"
 )
 

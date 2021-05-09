@@ -28,11 +28,11 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/binance-chain/bsc/internal/jsre"
+	"github.com/binance-chain/bsc/internal/jsre/deps"
+	"github.com/binance-chain/bsc/internal/web3ext"
+	"github.com/binance-chain/bsc/rpc"
 	"github.com/dop251/goja"
-	"github.com/ethereum/go-ethereum/internal/jsre"
-	"github.com/ethereum/go-ethereum/internal/jsre/deps"
-	"github.com/ethereum/go-ethereum/internal/web3ext"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/mattn/go-colorable"
 	"github.com/peterh/liner"
 )

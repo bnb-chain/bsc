@@ -26,13 +26,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core/rawdb"
+	"github.com/binance-chain/bsc/core/state"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/crypto"
+	"github.com/binance-chain/bsc/event"
+	"github.com/binance-chain/bsc/params"
 )
 
 // testTxPoolConfig is a transaction pool configuration without stateful disk

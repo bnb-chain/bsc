@@ -23,10 +23,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/crypto"
+	"github.com/binance-chain/bsc/params"
+	"github.com/binance-chain/bsc/rlp"
 )
 
 func TestLegacyReceiptDecoding(t *testing.T) {

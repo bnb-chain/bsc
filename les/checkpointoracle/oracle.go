@@ -23,12 +23,12 @@ import (
 	"encoding/binary"
 	"sync/atomic"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/contracts/checkpointoracle"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/binance-chain/bsc/accounts/abi/bind"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/contracts/checkpointoracle"
+	"github.com/binance-chain/bsc/crypto"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/params"
 )
 
 // CheckpointOracle is responsible for offering the latest stable checkpoint

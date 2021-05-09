@@ -27,14 +27,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/internal/debug"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/binance-chain/bsc/accounts"
+	"github.com/binance-chain/bsc/core/rawdb"
+	"github.com/binance-chain/bsc/ethdb"
+	"github.com/binance-chain/bsc/event"
+	"github.com/binance-chain/bsc/internal/debug"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/p2p"
+	"github.com/binance-chain/bsc/rpc"
 	"github.com/prometheus/tsdb/fileutil"
 )
 

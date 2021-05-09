@@ -19,9 +19,9 @@ package client
 import (
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/les/utils"
-	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/binance-chain/bsc/common/mclock"
+	"github.com/binance-chain/bsc/les/utils"
+	"github.com/binance-chain/bsc/p2p/enode"
 )
 
 // PrivateClientAPI implements the lespay client side API

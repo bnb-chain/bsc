@@ -22,13 +22,13 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/bloombits"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core"
+	"github.com/binance-chain/bsc/core/bloombits"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/ethdb"
+	"github.com/binance-chain/bsc/event"
+	"github.com/binance-chain/bsc/rpc"
 )
 
 const maxFilterBlockRange = 5000

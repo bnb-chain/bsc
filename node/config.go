@@ -26,17 +26,17 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/external"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/accounts/scwallet"
-	"github.com/ethereum/go-ethereum/accounts/usbwallet"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/binance-chain/bsc/accounts"
+	"github.com/binance-chain/bsc/accounts/external"
+	"github.com/binance-chain/bsc/accounts/keystore"
+	"github.com/binance-chain/bsc/accounts/scwallet"
+	"github.com/binance-chain/bsc/accounts/usbwallet"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/crypto"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/p2p"
+	"github.com/binance-chain/bsc/p2p/enode"
+	"github.com/binance-chain/bsc/rpc"
 )
 
 const (

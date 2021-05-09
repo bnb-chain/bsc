@@ -21,8 +21,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/event"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/event"
 )
 
 // Config contains the settings of the global account manager.

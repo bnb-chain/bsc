@@ -21,13 +21,13 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/consensus/ethash"
+	"github.com/binance-chain/bsc/core/rawdb"
+	"github.com/binance-chain/bsc/core/vm"
+	"github.com/binance-chain/bsc/ethdb"
+	"github.com/binance-chain/bsc/params"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 func TestDefaultGenesisBlock(t *testing.T) {

@@ -19,12 +19,12 @@ package tests
 import (
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/common/hexutil"
+	"github.com/binance-chain/bsc/core"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/params"
+	"github.com/binance-chain/bsc/rlp"
 )
 
 // TransactionTest checks RLP decoding and sender derivation of transactions.

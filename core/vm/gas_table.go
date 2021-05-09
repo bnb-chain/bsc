@@ -19,9 +19,9 @@ package vm
 import (
 	"errors"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/common/math"
+	"github.com/binance-chain/bsc/params"
 )
 
 // memoryGasCost calculates the quadratic gas for memory expansion. It does so

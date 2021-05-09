@@ -41,24 +41,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/ethstats"
-	"github.com/ethereum/go-ethereum/les"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/discv5"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/nat"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/binance-chain/bsc/accounts"
+	"github.com/binance-chain/bsc/accounts/abi"
+	"github.com/binance-chain/bsc/accounts/keystore"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/eth"
+	"github.com/binance-chain/bsc/eth/downloader"
+	"github.com/binance-chain/bsc/ethclient"
+	"github.com/binance-chain/bsc/ethstats"
+	"github.com/binance-chain/bsc/les"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/node"
+	"github.com/binance-chain/bsc/p2p"
+	"github.com/binance-chain/bsc/p2p/discv5"
+	"github.com/binance-chain/bsc/p2p/enode"
+	"github.com/binance-chain/bsc/p2p/nat"
+	"github.com/binance-chain/bsc/params"
 	"github.com/gorilla/websocket"
 )
 
@@ -512,7 +512,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			username, avatar, address, err = authNoAuth(msg.URL)
 		default:
 			//lint:ignore ST1005 This error is to be displayed in the browser
-			err = errors.New("Something funky happened, please open an issue at https://github.com/ethereum/go-ethereum/issues")
+			err = errors.New("Something funky happened, please open an issue at https://github.com/binance-chain/bsc/issues")
 		}
 		if err != nil {
 			if err = sendError(conn, err); err != nil {

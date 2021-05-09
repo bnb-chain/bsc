@@ -24,11 +24,11 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core/rawdb"
+	"github.com/binance-chain/bsc/core/state"
+	"github.com/binance-chain/bsc/crypto"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var dumper = spew.ConfigState{Indent: "    "}

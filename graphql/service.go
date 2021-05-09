@@ -21,11 +21,11 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/binance-chain/bsc/internal/ethapi"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/node"
+	"github.com/binance-chain/bsc/p2p"
+	"github.com/binance-chain/bsc/rpc"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
 )

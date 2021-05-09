@@ -25,16 +25,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
+	ethereum "github.com/binance-chain/bsc"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core/rawdb"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/ethdb"
+	"github.com/binance-chain/bsc/event"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/metrics"
+	"github.com/binance-chain/bsc/params"
+	"github.com/binance-chain/bsc/trie"
 )
 
 var (

@@ -25,10 +25,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/params"
+	"github.com/binance-chain/bsc/rlp"
 	"golang.org/x/crypto/sha3"
 )
 

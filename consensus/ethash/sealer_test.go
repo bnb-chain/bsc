@@ -25,10 +25,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/internal/testlog"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/internal/testlog"
+	"github.com/binance-chain/bsc/log"
 )
 
 // Tests whether remote HTTP servers are correctly notified of new work.

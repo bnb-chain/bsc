@@ -28,12 +28,12 @@ import (
 	"testing"
 	"testing/quick"
 
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/crypto"
+	"github.com/binance-chain/bsc/ethdb/leveldb"
+	"github.com/binance-chain/bsc/ethdb/memorydb"
+	"github.com/binance-chain/bsc/rlp"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb/leveldb"
-	"github.com/ethereum/go-ethereum/ethdb/memorydb"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 func init() {

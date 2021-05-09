@@ -22,11 +22,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/p2p"
+	"github.com/binance-chain/bsc/rlp"
 	mapset "github.com/deckarep/golang-set"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // Peer represents a whisper protocol peer connection.

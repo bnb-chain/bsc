@@ -22,12 +22,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/binance-chain/bsc/internal/ethapi"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/signer/core"
+	"github.com/binance-chain/bsc/signer/rules/deps"
+	"github.com/binance-chain/bsc/signer/storage"
 	"github.com/dop251/goja"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/signer/core"
-	"github.com/ethereum/go-ethereum/signer/rules/deps"
-	"github.com/ethereum/go-ethereum/signer/storage"
 )
 
 var (

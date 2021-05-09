@@ -25,16 +25,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/binance-chain/bsc"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/consensus/ethash"
+	"github.com/binance-chain/bsc/core"
+	"github.com/binance-chain/bsc/core/rawdb"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/crypto"
+	"github.com/binance-chain/bsc/eth"
+	"github.com/binance-chain/bsc/node"
+	"github.com/binance-chain/bsc/params"
 )
 
 // Verify that Client implements the ethereum interfaces.

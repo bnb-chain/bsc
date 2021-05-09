@@ -27,10 +27,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/binance-chain/bsc/accounts"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/log"
 	mapset "github.com/deckarep/golang-set"
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 // Minimum amount of time between cache reloads. This limit applies if the platform does

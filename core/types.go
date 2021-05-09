@@ -17,9 +17,9 @@
 package core
 
 import (
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/binance-chain/bsc/core/state"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/core/vm"
 )
 
 // Validator is an interface which defines the standard for block validation. It

@@ -23,9 +23,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/binance-chain/bsc/common/math"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/params"
 )
 
 type diffTest struct {

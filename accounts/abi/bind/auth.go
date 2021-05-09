@@ -22,12 +22,12 @@ import (
 	"io"
 	"io/ioutil"
 
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/external"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/binance-chain/bsc/accounts"
+	"github.com/binance-chain/bsc/accounts/external"
+	"github.com/binance-chain/bsc/accounts/keystore"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/crypto"
 )
 
 // NewTransactor is a utility method to easily create a transaction signer from

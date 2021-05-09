@@ -20,10 +20,10 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/ethdb"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/rlp"
 )
 
 // Prove constructs a merkle proof for key. The result contains all encoded nodes

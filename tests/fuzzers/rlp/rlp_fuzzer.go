@@ -20,8 +20,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/rlp"
 )
 
 func decodeEncode(input []byte, val interface{}, i int) {

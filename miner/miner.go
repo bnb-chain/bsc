@@ -23,16 +23,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/common/hexutil"
+	"github.com/binance-chain/bsc/consensus"
+	"github.com/binance-chain/bsc/core"
+	"github.com/binance-chain/bsc/core/state"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/eth/downloader"
+	"github.com/binance-chain/bsc/event"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/params"
 )
 
 // Backend wraps all methods required for mining.

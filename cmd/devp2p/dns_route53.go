@@ -27,8 +27,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/route53"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p/dnsdisc"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/p2p/dnsdisc"
 	"gopkg.in/urfave/cli.v1"
 )
 

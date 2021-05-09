@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/p2p/discover"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/p2p/discover"
 	"gopkg.in/urfave/cli.v1"
 )
 

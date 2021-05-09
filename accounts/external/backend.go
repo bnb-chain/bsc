@@ -21,16 +21,16 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethereum/go-ethereum/signer/core"
+	"github.com/binance-chain/bsc"
+	"github.com/binance-chain/bsc/accounts"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/common/hexutil"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/event"
+	"github.com/binance-chain/bsc/internal/ethapi"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/rpc"
+	"github.com/binance-chain/bsc/signer/core"
 )
 
 type ExternalBackend struct {

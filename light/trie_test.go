@@ -22,14 +22,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/binance-chain/bsc/consensus/ethash"
+	"github.com/binance-chain/bsc/core"
+	"github.com/binance-chain/bsc/core/rawdb"
+	"github.com/binance-chain/bsc/core/state"
+	"github.com/binance-chain/bsc/core/vm"
+	"github.com/binance-chain/bsc/params"
+	"github.com/binance-chain/bsc/trie"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
 )
 
 func TestNodeIterator(t *testing.T) {

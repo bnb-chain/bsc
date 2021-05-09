@@ -16,7 +16,7 @@
 
 package bind
 
-import "github.com/ethereum/go-ethereum/accounts/abi"
+import "github.com/binance-chain/bsc/accounts/abi"
 
 // tmplData is the data structure required to fill the binding template.
 type tmplData struct {
@@ -90,12 +90,12 @@ import (
 	"math/big"
 	"strings"
 
-	ethereum "github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/event"
+	ethereum "github.com/binance-chain/bsc"
+	"github.com/binance-chain/bsc/accounts/abi"
+	"github.com/binance-chain/bsc/accounts/abi/bind"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/event"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

@@ -27,15 +27,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/les/utils"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/discv5"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/binance-chain/bsc/common/mclock"
+	"github.com/binance-chain/bsc/crypto"
+	"github.com/binance-chain/bsc/ethdb"
+	"github.com/binance-chain/bsc/les/utils"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/p2p"
+	"github.com/binance-chain/bsc/p2p/discv5"
+	"github.com/binance-chain/bsc/p2p/enode"
+	"github.com/binance-chain/bsc/rlp"
 )
 
 const (

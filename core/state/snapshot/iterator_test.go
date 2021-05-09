@@ -24,8 +24,8 @@ import (
 	"testing"
 
 	"github.com/VictoriaMetrics/fastcache"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core/rawdb"
 )
 
 // TestAccountIteratorBasics tests some simple single-layer iteration

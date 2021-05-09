@@ -21,11 +21,11 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/core/state"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/params"
+	"github.com/binance-chain/bsc/rpc"
 )
 
 var (

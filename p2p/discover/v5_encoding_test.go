@@ -25,10 +25,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/binance-chain/bsc/common/mclock"
+	"github.com/binance-chain/bsc/crypto"
+	"github.com/binance-chain/bsc/p2p/enode"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
 var (

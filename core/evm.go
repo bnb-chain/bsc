@@ -19,10 +19,10 @@ package core
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/consensus"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/core/vm"
 )
 
 // ChainContext supports retrieving headers and consensus parameters from the

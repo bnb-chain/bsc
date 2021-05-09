@@ -26,8 +26,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/binance-chain/bsc/log"
 	mapset "github.com/deckarep/golang-set"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/gorilla/websocket"
 )
 

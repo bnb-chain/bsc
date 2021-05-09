@@ -23,12 +23,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/les/flowcontrol"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/binance-chain/bsc/common/mclock"
+	"github.com/binance-chain/bsc/eth"
+	"github.com/binance-chain/bsc/ethdb"
+	"github.com/binance-chain/bsc/les/flowcontrol"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/metrics"
 )
 
 const makeCostStats = false // make request cost statistics during operation

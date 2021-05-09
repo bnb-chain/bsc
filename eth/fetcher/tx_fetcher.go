@@ -23,13 +23,13 @@ import (
 	"sort"
 	"time"
 
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/common/mclock"
+	"github.com/binance-chain/bsc/core"
+	"github.com/binance-chain/bsc/core/types"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/metrics"
 	mapset "github.com/deckarep/golang-set"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 )
 
 const (

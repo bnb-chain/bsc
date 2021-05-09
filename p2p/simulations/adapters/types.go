@@ -25,14 +25,14 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/binance-chain/bsc/crypto"
+	"github.com/binance-chain/bsc/log"
+	"github.com/binance-chain/bsc/node"
+	"github.com/binance-chain/bsc/p2p"
+	"github.com/binance-chain/bsc/p2p/enode"
+	"github.com/binance-chain/bsc/p2p/enr"
+	"github.com/binance-chain/bsc/rpc"
 	"github.com/docker/docker/pkg/reexec"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/gorilla/websocket"
 )
 

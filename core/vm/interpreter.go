@@ -21,9 +21,9 @@ import (
 	"hash"
 	"sync/atomic"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/binance-chain/bsc/common"
+	"github.com/binance-chain/bsc/common/math"
+	"github.com/binance-chain/bsc/log"
 )
 
 // Config are the configuration options for the Interpreter
