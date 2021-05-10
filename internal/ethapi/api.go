@@ -21,10 +21,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"math/big"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/core/rawdb"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/accounts"
@@ -789,7 +790,7 @@ func (args *CallArgs) ToMessage(globalGasCap uint64) types.Message {
 		gas = uint64(*args.Gas)
 	}
 	if globalGasCap != 0 && globalGasCap < gas {
-		log.Warn("Caller gas above allowance, capping", "requested", gas, "cap", globalGasCap)
+		log.Debug("Caller gas above allowance, capping", "requested", gas, "cap", globalGasCap)
 		gas = globalGasCap
 	}
 	gasPrice := new(big.Int)
@@ -1019,7 +1020,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args CallArgs, blockNrOrHash 
 	}
 	// Recap the highest gas allowance with specified gascap.
 	if gasCap != 0 && hi > gasCap {
-		log.Warn("Caller gas above allowance, capping", "requested", hi, "cap", gasCap)
+		log.Debug("Caller gas above allowance, capping", "requested", hi, "cap", gasCap)
 		hi = gasCap
 	}
 	cap = hi
