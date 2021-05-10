@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"mime"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -40,9 +41,11 @@ var acceptedContentTypes = []string{contentType, "application/json-rpc", "applic
 
 type httpConn struct {
 	client    *http.Client
-	req       *http.Request
+	url       string
 	closeOnce sync.Once
 	closeCh   chan interface{}
+	mu        sync.Mutex // protects headers
+	headers   http.Header
 }
 
 // httpConn is treated specially by Client.
@@ -51,7 +54,7 @@ func (hc *httpConn) writeJSON(context.Context, interface{}) error {
 }
 
 func (hc *httpConn) remoteAddr() string {
-	return hc.req.URL.String()
+	return hc.url
 }
 
 func (hc *httpConn) readBatch() ([]*jsonrpcMessage, bool, error) {
@@ -102,16 +105,24 @@ var DefaultHTTPTimeouts = HTTPTimeouts{
 // DialHTTPWithClient creates a new RPC client that connects to an RPC server over HTTP
 // using the provided HTTP Client.
 func DialHTTPWithClient(endpoint string, client *http.Client) (*Client, error) {
-	req, err := http.NewRequest(http.MethodPost, endpoint, nil)
+	// Sanity check URL so we don't end up with a client that will fail every request.
+	_, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("Accept", contentType)
 
 	initctx := context.Background()
+	headers := make(http.Header, 2)
+	headers.Set("accept", contentType)
+	headers.Set("content-type", contentType)
 	return newClient(initctx, func(context.Context) (ServerCodec, error) {
-		return &httpConn{client: client, req: req, closeCh: make(chan interface{})}, nil
+		hc := &httpConn{
+			client:  client,
+			headers: headers,
+			url:     endpoint,
+			closeCh: make(chan interface{}),
+		}
+		return hc, nil
 	})
 }
 
@@ -123,19 +134,11 @@ func DialHTTP(endpoint string) (*Client, error) {
 func (c *Client) sendHTTP(ctx context.Context, op *requestOp, msg interface{}) error {
 	hc := c.writeConn.(*httpConn)
 	respBody, err := hc.doRequest(ctx, msg)
-	if respBody != nil {
-		defer respBody.Close()
-	}
-
 	if err != nil {
-		if respBody != nil {
-			buf := new(bytes.Buffer)
-			if _, err2 := buf.ReadFrom(respBody); err2 == nil {
-				return fmt.Errorf("%v %v", err, buf.String())
-			}
-		}
 		return err
 	}
+	defer respBody.Close()
+
 	var respmsg jsonrpcMessage
 	if err := json.NewDecoder(respBody).Decode(&respmsg); err != nil {
 		return err
@@ -166,16 +169,34 @@ func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadClos
 	if err != nil {
 		return nil, err
 	}
-	req := hc.req.WithContext(ctx)
-	req.Body = ioutil.NopCloser(bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", hc.url, ioutil.NopCloser(bytes.NewReader(body)))
+	if err != nil {
+		return nil, err
+	}
 	req.ContentLength = int64(len(body))
 
+	// set headers
+	hc.mu.Lock()
+	req.Header = hc.headers.Clone()
+	hc.mu.Unlock()
+
+	// do request
 	resp, err := hc.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return resp.Body, errors.New(resp.Status)
+		var buf bytes.Buffer
+		var body []byte
+		if _, err := buf.ReadFrom(resp.Body); err == nil {
+			body = buf.Bytes()
+		}
+
+		return nil, HTTPError{
+			Status:     resp.Status,
+			StatusCode: resp.StatusCode,
+			Body:       body,
+		}
 	}
 	return resp.Body, nil
 }
@@ -208,6 +229,7 @@ func (t *httpServerConn) SetWriteDeadline(time.Time) error { return nil }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Permit dumb empty requests for remote health-checks (AWS)
 	if r.Method == http.MethodGet && r.ContentLength == 0 && r.URL.RawQuery == "" {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if code, err := validateRequest(r); err != nil {

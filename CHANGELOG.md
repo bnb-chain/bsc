@@ -1,4 +1,8 @@
 # Changelog
+
+## v1.1.0
+*[\#152](https://github.com/binance-chain/bsc/pull/152) upgrade to go-ethereum 1.10.3
+
 ## v1.0.7-hf.2
 BUGFIX
 * [\#194](https://github.com/binance-chain/bsc/pull/194) bump btcd to v0.20.1-beta

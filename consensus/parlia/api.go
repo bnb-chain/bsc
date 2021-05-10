@@ -25,7 +25,7 @@ import (
 
 // API is a user facing RPC API to allow query snapshot and validators
 type API struct {
-	chain  consensus.ChainReader
+	chain  consensus.ChainHeaderReader
 	parlia *Parlia
 }
 
