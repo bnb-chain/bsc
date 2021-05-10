@@ -344,7 +344,7 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 	defer t.lock.Unlock()
 
 	t.layers[snap.root] = snap
-	log.Info("Snapshot updated", "blockRoot", blockRoot)
+	log.Debug("Snapshot updated", "blockRoot", blockRoot)
 	return nil
 }
 
