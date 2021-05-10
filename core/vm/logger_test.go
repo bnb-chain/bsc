@@ -60,8 +60,8 @@ func TestStoreCapture(t *testing.T) {
 			Contract: contract,
 		}
 	)
-	scope.Stack.push(uint256.NewInt().SetUint64(1))
-	scope.Stack.push(uint256.NewInt())
+	scope.Stack.push(uint256.NewInt(1))
+	scope.Stack.push(new(uint256.Int))
 	var index common.Hash
 	logger.CaptureStart(env, common.Address{}, contract.Address(), false, nil, 0, nil)
 	logger.CaptureState(0, SSTORE, 0, 0, scope, nil, 0, nil)

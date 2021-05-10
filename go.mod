@@ -78,5 +78,4 @@ require (
 replace (
 	github.com/ferranbt/fastssz => github.com/prysmaticlabs/fastssz v0.0.0-20220110145812-fafb696cae88
 	github.com/grpc-ecosystem/grpc-gateway/v2 => github.com/prysmaticlabs/grpc-gateway/v2 v2.3.1-0.20210702154020-550e1cd83ec1
-	github.com/holiman/uint256 => github.com/holiman/uint256 v1.1.1
 )
