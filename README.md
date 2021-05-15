@@ -100,10 +100,11 @@ on how you can run your own `geth` instance.
 
 The hardware must meet certain requirements to run a full node.
 - VPS running recent versions of Mac OS X or Linux.
-- 1T of SSD storage for mainnet, 500G of SSD storage for testnet.
+- 1T of NVMe storage for mainnet, 500G of SSD storage for testnet.
 - 8 cores of CPU and 32 gigabytes of memory (RAM) for mainnet.
 - 4 cores of CPU and 8 gigabytes of memory (RAM) for testnet.
 - A broadband Internet connection with upload/download speeds of at least 10 megabyte per second
+- Chaindata on XFS
 
 ```shell
 $ geth console
