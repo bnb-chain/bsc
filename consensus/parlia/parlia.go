@@ -868,7 +868,7 @@ func (p *Parlia) EnoughDistance(chain consensus.ChainReader, header *types.Heade
 	if err != nil {
 		return true
 	}
-	return snap.enoughDistance(p.val)
+	return snap.enoughDistance(p.val, header)
 }
 
 // CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty

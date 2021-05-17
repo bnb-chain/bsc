@@ -244,17 +244,23 @@ func (s *Snapshot) inturn(validator common.Address) bool {
 	return validators[offset] == validator
 }
 
-func (s *Snapshot) enoughDistance(validator common.Address) bool {
+func (s *Snapshot) enoughDistance(validator common.Address, header *types.Header) bool {
 	idx := s.indexOfVal(validator)
 	if idx < 0 {
 		return true
 	}
 	validatorNum := int64(len(s.validators()))
+	if validatorNum == 1 {
+		return true
+	}
+	if validator == header.Coinbase {
+		return false
+	}
 	offset := (int64(s.Number) + 1) % int64(validatorNum)
 	if int64(idx) >= offset {
-		return int64(idx)-offset >= validatorNum/2
+		return int64(idx)-offset >= validatorNum-2
 	} else {
-		return validatorNum+int64(idx)-offset >= validatorNum/2
+		return validatorNum+int64(idx)-offset >= validatorNum-2
 	}
 }
 
