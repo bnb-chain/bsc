@@ -26,15 +26,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/haythem-chain/hsc"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/core/rawdb"
+	"github.com/haythem-chain/hsc/core/state/snapshot"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/eth/protocols/eth"
+	"github.com/haythem-chain/hsc/ethdb"
+	"github.com/haythem-chain/hsc/event"
+	"github.com/haythem-chain/hsc/trie"
 )
 
 // Reduce some of the parameters to make the tester faster.

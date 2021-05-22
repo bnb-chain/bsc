@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/haythem-chain/hsc/consensus"
+	"github.com/haythem-chain/hsc/core/state"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/params"
+	"github.com/haythem-chain/hsc/trie"
 )
 
 // BlockValidator is responsible for validating block headers, uncles and

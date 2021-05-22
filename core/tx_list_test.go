@@ -21,8 +21,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/crypto"
 )
 
 // Tests that transactions can be added to strict lists and list contents and

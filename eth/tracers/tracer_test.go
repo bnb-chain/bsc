@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/core/state"
+	"github.com/haythem-chain/hsc/core/vm"
+	"github.com/haythem-chain/hsc/params"
 )
 
 type account struct{}

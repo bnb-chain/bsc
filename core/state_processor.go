@@ -19,15 +19,15 @@ package core
 import (
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/consensus/misc"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/consensus"
+	"github.com/haythem-chain/hsc/consensus/misc"
+	"github.com/haythem-chain/hsc/core/state"
+	"github.com/haythem-chain/hsc/core/systemcontracts"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/core/vm"
+	"github.com/haythem-chain/hsc/crypto"
+	"github.com/haythem-chain/hsc/params"
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning

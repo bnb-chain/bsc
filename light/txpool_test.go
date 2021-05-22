@@ -23,13 +23,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/consensus/ethash"
+	"github.com/haythem-chain/hsc/core"
+	"github.com/haythem-chain/hsc/core/rawdb"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/core/vm"
+	"github.com/haythem-chain/hsc/params"
 )
 
 type testTxRelay struct {

@@ -23,13 +23,13 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/internal/utesting"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/rlpx"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/crypto"
+	"github.com/haythem-chain/hsc/eth/protocols/eth"
+	"github.com/haythem-chain/hsc/internal/utesting"
+	"github.com/haythem-chain/hsc/p2p"
+	"github.com/haythem-chain/hsc/p2p/enode"
+	"github.com/haythem-chain/hsc/p2p/rlpx"
 	"github.com/stretchr/testify/assert"
 )
 

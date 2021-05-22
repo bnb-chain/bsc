@@ -26,11 +26,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/forkid"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/haythem-chain/hsc/core"
+	"github.com/haythem-chain/hsc/core/forkid"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/params"
+	"github.com/haythem-chain/hsc/rlp"
 )
 
 type Chain struct {

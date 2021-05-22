@@ -26,12 +26,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/signer/core"
+	"github.com/haythem-chain/hsc/accounts/keystore"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/common/hexutil"
+	"github.com/haythem-chain/hsc/common/math"
+	"github.com/haythem-chain/hsc/crypto"
+	"github.com/haythem-chain/hsc/signer/core"
 )
 
 var typesStandard = core.Types{

@@ -22,8 +22,8 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/haythem-chain/hsc/cmd/utils"
+	"github.com/haythem-chain/hsc/crypto"
 	"gopkg.in/urfave/cli.v1"
 )
 

@@ -24,16 +24,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/asm"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/haythem-chain/hsc/accounts/abi"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/consensus"
+	"github.com/haythem-chain/hsc/core"
+	"github.com/haythem-chain/hsc/core/asm"
+	"github.com/haythem-chain/hsc/core/rawdb"
+	"github.com/haythem-chain/hsc/core/state"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/core/vm"
+	"github.com/haythem-chain/hsc/params"
 )
 
 func TestDefaults(t *testing.T) {
@@ -611,7 +611,7 @@ func TestEip2929Cases(t *testing.T) {
 
 // TestColdAccountAccessCost test that the cold account access cost is reported
 // correctly
-// see: https://github.com/ethereum/go-ethereum/issues/22649
+// see: https://github.com/haythem-chain/hsc/issues/22649
 func TestColdAccountAccessCost(t *testing.T) {
 	for i, tc := range []struct {
 		code []byte

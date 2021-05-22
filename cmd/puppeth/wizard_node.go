@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/haythem-chain/hsc/accounts/keystore"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/log"
 )
 
 // deployNode creates a new node configuration based on some user input.

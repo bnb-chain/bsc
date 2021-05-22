@@ -20,11 +20,11 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/ethdb"
+	"github.com/haythem-chain/hsc/log"
+	"github.com/haythem-chain/hsc/params"
+	"github.com/haythem-chain/hsc/rlp"
 )
 
 // ReadDatabaseVersion retrieves the version number of the database.

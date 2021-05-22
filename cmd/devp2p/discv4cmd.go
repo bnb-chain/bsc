@@ -22,12 +22,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/cmd/devp2p/internal/v4test"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/p2p/discover"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/haythem-chain/hsc/cmd/devp2p/internal/v4test"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/crypto"
+	"github.com/haythem-chain/hsc/p2p/discover"
+	"github.com/haythem-chain/hsc/p2p/enode"
+	"github.com/haythem-chain/hsc/params"
 	"gopkg.in/urfave/cli.v1"
 )
 

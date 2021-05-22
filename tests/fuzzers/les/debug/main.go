@@ -21,7 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/ethereum/go-ethereum/tests/fuzzers/les"
+	"github.com/haythem-chain/hsc/tests/fuzzers/les"
 )
 
 func main() {

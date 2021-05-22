@@ -21,11 +21,11 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/consensus"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/core/vm"
+	"github.com/haythem-chain/hsc/params"
 )
 
 /*

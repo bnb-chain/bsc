@@ -23,10 +23,10 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/contracts/checkpointoracle/contract"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/haythem-chain/hsc/accounts/abi/bind"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/contracts/checkpointoracle/contract"
+	"github.com/haythem-chain/hsc/core/types"
 )
 
 // CheckpointOracle is a Go wrapper around an on-chain checkpoint oracle contract.

@@ -27,17 +27,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/tests"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/common/hexutil"
+	"github.com/haythem-chain/hsc/common/math"
+	"github.com/haythem-chain/hsc/core"
+	"github.com/haythem-chain/hsc/core/rawdb"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/core/vm"
+	"github.com/haythem-chain/hsc/crypto"
+	"github.com/haythem-chain/hsc/params"
+	"github.com/haythem-chain/hsc/rlp"
+	"github.com/haythem-chain/hsc/tests"
 )
 
 // To generate a new callTracer test, copy paste the makeTest method below into

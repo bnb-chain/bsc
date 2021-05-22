@@ -23,12 +23,12 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	vfc "github.com/ethereum/go-ethereum/les/vflux/client"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/crypto"
+	vfc "github.com/haythem-chain/hsc/les/vflux/client"
+	"github.com/haythem-chain/hsc/p2p/enode"
+	"github.com/haythem-chain/hsc/rlp"
 )
 
 // Constants to match up protocol versions and messages

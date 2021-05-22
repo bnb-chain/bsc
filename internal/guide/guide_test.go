@@ -30,9 +30,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/haythem-chain/hsc/accounts/keystore"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/core/types"
 )
 
 // Tests that the account management snippets work correctly.

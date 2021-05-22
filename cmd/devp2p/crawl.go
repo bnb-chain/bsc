@@ -19,8 +19,8 @@ package main
 import (
 	"time"
 
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/haythem-chain/hsc/log"
+	"github.com/haythem-chain/hsc/p2p/enode"
 )
 
 type crawler struct {

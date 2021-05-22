@@ -17,8 +17,8 @@
 package core
 
 import (
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/core/types"
 )
 
 // NewTxsEvent is posted when a batch of transactions enter the transaction pool.

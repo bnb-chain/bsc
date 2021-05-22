@@ -27,13 +27,13 @@ import (
 
 	"gopkg.in/urfave/cli.v1"
 
-	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/eth/catalyst"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/haythem-chain/hsc/cmd/utils"
+	"github.com/haythem-chain/hsc/eth/catalyst"
+	"github.com/haythem-chain/hsc/eth/ethconfig"
+	"github.com/haythem-chain/hsc/internal/ethapi"
+	"github.com/haythem-chain/hsc/metrics"
+	"github.com/haythem-chain/hsc/node"
+	"github.com/haythem-chain/hsc/params"
 	"github.com/naoina/toml"
 )
 

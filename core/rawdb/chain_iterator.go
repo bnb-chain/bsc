@@ -21,12 +21,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/prque"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/common/prque"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/ethdb"
+	"github.com/haythem-chain/hsc/log"
+	"github.com/haythem-chain/hsc/rlp"
 )
 
 // InitDatabaseFromFreezer reinitializes an empty database from a previous batch

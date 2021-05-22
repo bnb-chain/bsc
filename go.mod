@@ -1,4 +1,4 @@
-module github.com/ethereum/go-ethereum
+module github.com/haythem-chain/hsc
 
 go 1.15
 

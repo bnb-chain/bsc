@@ -19,7 +19,7 @@ package main
 import (
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/haythem-chain/hsc/common"
 )
 
 func TestFacebook(t *testing.T) {

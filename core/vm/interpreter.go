@@ -20,9 +20,9 @@ import (
 	"hash"
 	"sync/atomic"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/common/math"
+	"github.com/haythem-chain/hsc/log"
 )
 
 // Config are the configuration options for the Interpreter

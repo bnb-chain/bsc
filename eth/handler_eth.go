@@ -23,13 +23,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/core"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/eth/protocols/eth"
+	"github.com/haythem-chain/hsc/log"
+	"github.com/haythem-chain/hsc/p2p/enode"
+	"github.com/haythem-chain/hsc/trie"
 )
 
 // ethHandler implements the eth.Backend interface to handle the various network

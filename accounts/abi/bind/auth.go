@@ -23,13 +23,13 @@ import (
 	"io/ioutil"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/external"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/haythem-chain/hsc/accounts"
+	"github.com/haythem-chain/hsc/accounts/external"
+	"github.com/haythem-chain/hsc/accounts/keystore"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/crypto"
+	"github.com/haythem-chain/hsc/log"
 )
 
 // ErrNoChainID is returned whenever the user failed to specify a chain id.

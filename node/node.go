@@ -27,13 +27,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/haythem-chain/hsc/accounts"
+	"github.com/haythem-chain/hsc/core/rawdb"
+	"github.com/haythem-chain/hsc/ethdb"
+	"github.com/haythem-chain/hsc/event"
+	"github.com/haythem-chain/hsc/log"
+	"github.com/haythem-chain/hsc/p2p"
+	"github.com/haythem-chain/hsc/rpc"
 	"github.com/prometheus/tsdb/fileutil"
 )
 

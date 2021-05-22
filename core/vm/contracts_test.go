@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/haythem-chain/hsc/common"
 )
 
 // precompiledTest defines the input/output pairs for precompiled contract tests.

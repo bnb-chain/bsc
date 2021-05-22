@@ -21,17 +21,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/light"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/core"
+	"github.com/haythem-chain/hsc/core/state"
+	"github.com/haythem-chain/hsc/light"
+	"github.com/haythem-chain/hsc/log"
+	"github.com/haythem-chain/hsc/metrics"
+	"github.com/haythem-chain/hsc/p2p"
+	"github.com/haythem-chain/hsc/p2p/enode"
+	"github.com/haythem-chain/hsc/p2p/enr"
+	"github.com/haythem-chain/hsc/rlp"
+	"github.com/haythem-chain/hsc/trie"
 )
 
 const (

@@ -26,12 +26,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/prque"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/common/prque"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/log"
+	"github.com/haythem-chain/hsc/metrics"
+	"github.com/haythem-chain/hsc/trie"
 )
 
 const (

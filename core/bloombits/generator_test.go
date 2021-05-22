@@ -21,7 +21,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/haythem-chain/hsc/core/types"
 )
 
 // Tests that batched bloom bits are correctly rotated from the input bloom

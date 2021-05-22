@@ -7,12 +7,12 @@ import (
 	"math/big"
 	"strings"
 
-	ethereum "github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/event"
+	ethereum "github.com/haythem-chain/hsc"
+	"github.com/haythem-chain/hsc/accounts/abi"
+	"github.com/haythem-chain/hsc/accounts/abi/bind"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/core/types"
+	"github.com/haythem-chain/hsc/event"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

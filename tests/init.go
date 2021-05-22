@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"sort"
 
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/haythem-chain/hsc/params"
 )
 
 // Forks table defines supported forks and their chain config.

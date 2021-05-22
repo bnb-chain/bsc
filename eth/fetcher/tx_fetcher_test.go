@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/common/mclock"
+	"github.com/haythem-chain/hsc/core"
+	"github.com/haythem-chain/hsc/core/types"
 )
 
 var (

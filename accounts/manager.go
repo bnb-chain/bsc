@@ -21,8 +21,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/event"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/event"
 )
 
 // Config contains the settings of the global account manager.

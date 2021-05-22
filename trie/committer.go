@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/haythem-chain/hsc/common"
+	"github.com/haythem-chain/hsc/crypto"
 	"golang.org/x/crypto/sha3"
 )
 

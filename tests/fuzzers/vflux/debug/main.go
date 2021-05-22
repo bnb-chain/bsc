@@ -21,8 +21,8 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/tests/fuzzers/vflux"
+	"github.com/haythem-chain/hsc/log"
+	"github.com/haythem-chain/hsc/tests/fuzzers/vflux"
 )
 
 func main() {
