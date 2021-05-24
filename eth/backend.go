@@ -574,6 +574,9 @@ func (s *Ethereum) Stop() error {
 	close(s.closeBloomHandler)
 	s.txPool.Stop()
 	s.miner.Stop()
+	s.miner.Close()
+	// TODO this is a hotfix for https://github.com/ethereum/go-ethereum/issues/22892, need a better solution
+	time.Sleep(5 * time.Second)
 	s.blockchain.Stop()
 	s.engine.Close()
 	rawdb.PopUncleanShutdownMarker(s.chainDb)
