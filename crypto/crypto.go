@@ -29,6 +29,9 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
+	"sync"
+
+	"github.com/VictoriaMetrics/fastcache"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -48,9 +51,16 @@ const DigestLength = 32
 var (
 	secp256k1N, _  = new(big.Int).SetString("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16)
 	secp256k1halfN = new(big.Int).Div(secp256k1N, big.NewInt(2))
+
+	keccakState256Cache = fastcache.New(100 * 1024 * 1024)
 )
 
 var errInvalidPubkey = errors.New("invalid secp256k1 public key")
+
+var keccakState256Pool = sync.Pool{
+	New: func() interface{} {
+		return sha3.NewLegacyKeccak256().(KeccakState)
+	}}
 
 // KeccakState wraps sha3.state. In addition to the usual hash methods, it also supports
 // Read to get a variable amount of data from the hash state. Read is faster than Sum
@@ -67,31 +77,55 @@ func NewKeccakState() KeccakState {
 
 // HashData hashes the provided data using the KeccakState and returns a 32 byte hash
 func HashData(kh KeccakState, data []byte) (h common.Hash) {
+	if hash, ok := keccakState256Cache.HasGet(nil, data); ok {
+		return common.BytesToHash(hash)
+	}
 	kh.Reset()
 	kh.Write(data)
 	kh.Read(h[:])
+	keccakState256Cache.Set(data, h.Bytes())
 	return h
 }
 
 // Keccak256 calculates and returns the Keccak256 hash of the input data.
 func Keccak256(data ...[]byte) []byte {
+	if len(data) == 1 {
+		if hash, ok := keccakState256Cache.HasGet(nil, data[0]); ok {
+			return hash
+		}
+	}
 	b := make([]byte, 32)
-	d := NewKeccakState()
+	d := keccakState256Pool.Get().(KeccakState)
+	defer keccakState256Pool.Put(d)
+	d.Reset()
 	for _, b := range data {
 		d.Write(b)
 	}
 	d.Read(b)
+	if len(data) == 1 {
+		keccakState256Cache.Set(data[0], b)
+	}
 	return b
 }
 
 // Keccak256Hash calculates and returns the Keccak256 hash of the input data,
 // converting it to an internal Hash data structure.
 func Keccak256Hash(data ...[]byte) (h common.Hash) {
-	d := NewKeccakState()
+	if len(data) == 1 {
+		if hash, ok := keccakState256Cache.HasGet(nil, data[0]); ok {
+			return common.BytesToHash(hash)
+		}
+	}
+	d := keccakState256Pool.Get().(KeccakState)
+	defer keccakState256Pool.Put(d)
+	d.Reset()
 	for _, b := range data {
 		d.Write(b)
 	}
 	d.Read(h[:])
+	if len(data) == 1 {
+		keccakState256Cache.Set(data[0], h.Bytes())
+	}
 	return h
 }
 

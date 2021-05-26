@@ -456,11 +456,11 @@ func (pool *TxPool) Stats() (int, int) {
 func (pool *TxPool) stats() (int, int) {
 	pending := 0
 	for _, list := range pool.pending {
-		pending += list.Len()
+		pending += len(list.txs.items)
 	}
 	queued := 0
 	for _, list := range pool.queue {
-		queued += list.Len()
+		queued += len(list.txs.items)
 	}
 	return pending, queued
 }
@@ -580,7 +580,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
 	if pool.all.Get(hash) != nil {
-		log.Trace("Discarding already known transaction", "hash", hash)
+		//log.Trace("Discarding already known transaction", "hash", hash)
 		knownTxMeter.Mark(1)
 		return false, ErrAlreadyKnown
 	}
@@ -590,7 +590,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 
 	// If the transaction fails basic validation, discard it
 	if err := pool.validateTx(tx, isLocal); err != nil {
-		log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
+		//log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
 		invalidTxMeter.Mark(1)
 		return false, err
 	}
@@ -598,7 +598,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	if uint64(pool.all.Count()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
-			log.Trace("Discarding underpriced transaction", "hash", hash, "price", tx.GasPrice())
+			//log.Trace("Discarding underpriced transaction", "hash", hash, "price", tx.GasPrice())
 			underpricedTxMeter.Mark(1)
 			return false, ErrUnderpriced
 		}
@@ -609,13 +609,13 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 
 		// Special case, we still can't make the room for the new remote one.
 		if !isLocal && !success {
-			log.Trace("Discarding overflown transaction", "hash", hash)
+			//log.Trace("Discarding overflown transaction", "hash", hash)
 			overflowedTxMeter.Mark(1)
 			return false, ErrTxPoolOverflow
 		}
 		// Kick out the underpriced remote transactions.
 		for _, tx := range drop {
-			log.Trace("Discarding freshly underpriced transaction", "hash", tx.Hash(), "price", tx.GasPrice())
+			//log.Trace("Discarding freshly underpriced transaction", "hash", tx.Hash(), "price", tx.GasPrice())
 			underpricedTxMeter.Mark(1)
 			pool.removeTx(tx.Hash(), false)
 		}
@@ -639,7 +639,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		pool.priced.Put(tx, isLocal)
 		pool.journalTx(from, tx)
 		pool.queueTxEvent(tx)
-		log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
+		//log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
 		pool.beats[from] = time.Now()
@@ -652,7 +652,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	}
 	// Mark local addresses and journal local transactions
 	if local && !pool.locals.contains(from) {
-		log.Info("Setting new local account", "address", from)
+		//log.Info("Setting new local account", "address", from)
 		pool.locals.add(from)
 		pool.priced.Removed(pool.all.RemoteToLocals(pool.locals)) // Migrate the remotes if it's marked as local first time.
 	}
@@ -661,7 +661,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	}
 	pool.journalTx(from, tx)
 
-	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
+	//log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
 }
 
@@ -1070,7 +1070,7 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 		// Nonces were reset, discard any events that became stale
 		for addr := range events {
 			events[addr].Forward(pool.pendingNonces.get(addr))
-			if events[addr].Len() == 0 {
+			if len(events[addr].items) == 0 {
 				delete(events, addr)
 			}
 		}
@@ -1279,7 +1279,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 func (pool *TxPool) truncatePending() {
 	pending := uint64(0)
 	for _, list := range pool.pending {
-		pending += uint64(list.Len())
+		pending += uint64(len(list.txs.items))
 	}
 	if pending <= pool.config.GlobalSlots {
 		return
@@ -1290,8 +1290,8 @@ func (pool *TxPool) truncatePending() {
 	spammers := prque.New(nil)
 	for addr, list := range pool.pending {
 		// Only evict transactions from high rollers
-		if !pool.locals.contains(addr) && uint64(list.Len()) > pool.config.AccountSlots {
-			spammers.Push(addr, int64(list.Len()))
+		if !pool.locals.contains(addr) && uint64(len(list.txs.items)) > pool.config.AccountSlots {
+			spammers.Push(addr, int64(len(list.txs.items)))
 		}
 	}
 	// Gradually drop transactions from offenders
@@ -1304,14 +1304,14 @@ func (pool *TxPool) truncatePending() {
 		// Equalize balances until all the same or below threshold
 		if len(offenders) > 1 {
 			// Calculate the equalization threshold for all current offenders
-			threshold := pool.pending[offender.(common.Address)].Len()
+			threshold := len(pool.pending[offender.(common.Address)].txs.items)
 
 			// Iteratively reduce all offenders until below limit or threshold reached
-			for pending > pool.config.GlobalSlots && pool.pending[offenders[len(offenders)-2]].Len() > threshold {
+			for pending > pool.config.GlobalSlots && len(pool.pending[offenders[len(offenders)-2]].txs.items) > threshold {
 				for i := 0; i < len(offenders)-1; i++ {
 					list := pool.pending[offenders[i]]
 
-					caps := list.Cap(list.Len() - 1)
+					caps := list.Cap(len(list.txs.items) - 1)
 					for _, tx := range caps {
 						// Drop the transaction from the global pools too
 						hash := tx.Hash()
@@ -1334,11 +1334,11 @@ func (pool *TxPool) truncatePending() {
 
 	// If still above threshold, reduce to limit or min allowance
 	if pending > pool.config.GlobalSlots && len(offenders) > 0 {
-		for pending > pool.config.GlobalSlots && uint64(pool.pending[offenders[len(offenders)-1]].Len()) > pool.config.AccountSlots {
+		for pending > pool.config.GlobalSlots && uint64(len(pool.pending[offenders[len(offenders)-1]].txs.items)) > pool.config.AccountSlots {
 			for _, addr := range offenders {
 				list := pool.pending[addr]
 
-				caps := list.Cap(list.Len() - 1)
+				caps := list.Cap(len(list.txs.items) - 1)
 				for _, tx := range caps {
 					// Drop the transaction from the global pools too
 					hash := tx.Hash()
@@ -1364,7 +1364,7 @@ func (pool *TxPool) truncatePending() {
 func (pool *TxPool) truncateQueue() {
 	queued := uint64(0)
 	for _, list := range pool.queue {
-		queued += uint64(list.Len())
+		queued += uint64(len(list.txs.items))
 	}
 	if queued <= pool.config.GlobalQueue {
 		return
@@ -1387,7 +1387,7 @@ func (pool *TxPool) truncateQueue() {
 		addresses = addresses[:len(addresses)-1]
 
 		// Drop all transactions if they are less than the overflow
-		if size := uint64(list.Len()); size <= drop {
+		if size := uint64(len(list.txs.items)); size <= drop {
 			for _, tx := range list.Flatten() {
 				pool.removeTx(tx.Hash(), true)
 			}
@@ -1442,7 +1442,7 @@ func (pool *TxPool) demoteUnexecutables() {
 			localGauge.Dec(int64(len(olds) + len(drops) + len(invalids)))
 		}
 		// If there's a gap in front, alert (should never happen) and postpone all transactions
-		if list.Len() > 0 && list.txs.Get(nonce) == nil {
+		if len(list.txs.items) > 0 && list.txs.Get(nonce) == nil {
 			gapped := list.Cap(0)
 			for _, tx := range gapped {
 				hash := tx.Hash()

@@ -21,10 +21,17 @@ import (
 	"math"
 	"math/big"
 	"sort"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
+
+var txSortedMapPool = sync.Pool{
+	New: func() interface{} {
+		return make(types.Transactions, 0, 10)
+	},
+}
 
 // nonceHeap is a heap.Interface implementation over 64bit unsigned integers for
 // retrieving sorted transactions from the possibly gapped future queue.
@@ -73,6 +80,9 @@ func (m *txSortedMap) Put(tx *types.Transaction) {
 	nonce := tx.Nonce()
 	if m.items[nonce] == nil {
 		heap.Push(m.index, nonce)
+	}
+	if m.cache != nil {
+		txSortedMapPool.Put(m.cache)
 	}
 	m.items[nonce], m.cache = tx, nil
 }
@@ -132,7 +142,10 @@ func (m *txSortedMap) filter(filter func(*types.Transaction) bool) types.Transac
 		}
 	}
 	if len(removed) > 0 {
-		m.cache = nil
+		if m.cache != nil {
+			txSortedMapPool.Put(m.cache)
+			m.cache = nil
+		}
 	}
 	return removed
 }
@@ -178,7 +191,10 @@ func (m *txSortedMap) Remove(nonce uint64) bool {
 		}
 	}
 	delete(m.items, nonce)
-	m.cache = nil
+	if m.cache != nil {
+		txSortedMapPool.Put(m.cache)
+		m.cache = nil
+	}
 
 	return true
 }
@@ -202,7 +218,10 @@ func (m *txSortedMap) Ready(start uint64) types.Transactions {
 		delete(m.items, next)
 		heap.Pop(m.index)
 	}
-	m.cache = nil
+	if m.cache != nil {
+		txSortedMapPool.Put(m.cache)
+		m.cache = nil
+	}
 
 	return ready
 }
@@ -215,7 +234,13 @@ func (m *txSortedMap) Len() int {
 func (m *txSortedMap) flatten() types.Transactions {
 	// If the sorting was not cached yet, create and cache it
 	if m.cache == nil {
-		m.cache = make(types.Transactions, 0, len(m.items))
+		cache := txSortedMapPool.Get()
+		if cache != nil {
+			m.cache = cache.(types.Transactions)
+			m.cache = m.cache[:0]
+		} else {
+			m.cache = make(types.Transactions, 0, len(m.items))
+		}
 		for _, tx := range m.items {
 			m.cache = append(m.cache, tx)
 		}
@@ -384,7 +409,7 @@ func (l *txList) Ready(start uint64) types.Transactions {
 
 // Len returns the length of the transaction list.
 func (l *txList) Len() int {
-	return l.txs.Len()
+	return len(l.txs.items)
 }
 
 // Empty returns whether the list of transactions is empty or not.

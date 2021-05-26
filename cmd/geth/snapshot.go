@@ -63,6 +63,7 @@ var (
 					utils.GoerliFlag,
 					utils.CacheTrieJournalFlag,
 					utils.BloomFilterSizeFlag,
+					utils.TriesInMemoryFlag,
 				},
 				Description: `
 geth snapshot prune-state <state-root>
@@ -153,7 +154,7 @@ func pruneState(ctx *cli.Context) error {
 	defer stack.Close()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, false)
-	pruner, err := pruner.NewPruner(chaindb, stack.ResolvePath(""), stack.ResolvePath(config.Eth.TrieCleanCacheJournal), ctx.GlobalUint64(utils.BloomFilterSizeFlag.Name))
+	pruner, err := pruner.NewPruner(chaindb, stack.ResolvePath(""), stack.ResolvePath(config.Eth.TrieCleanCacheJournal), ctx.GlobalUint64(utils.BloomFilterSizeFlag.Name), ctx.GlobalUint64(utils.TriesInMemoryFlag.Name))
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)
 		return err
@@ -187,7 +188,7 @@ func verifyState(ctx *cli.Context) error {
 		log.Error("Failed to load head block")
 		return errors.New("no head block")
 	}
-	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, headBlock.Root(), false, false, false)
+	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, 128, headBlock.Root(), false, false, false)
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)
 		return err

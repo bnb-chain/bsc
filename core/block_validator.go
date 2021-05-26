@@ -64,14 +64,42 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	if hash := types.CalcUncleHash(block.Uncles()); hash != header.UncleHash {
 		return fmt.Errorf("uncle root hash mismatch: have %x, want %x", hash, header.UncleHash)
 	}
-	if hash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil)); hash != header.TxHash {
-		return fmt.Errorf("transaction root hash mismatch: have %x, want %x", hash, header.TxHash)
+
+	validateFuns := []func() error{
+		func() error {
+			if v.bc.HasBlockAndState(block.Hash(), block.NumberU64()) {
+				return ErrKnownBlock
+			}
+			return nil
+		},
+		func() error {
+			if hash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil)); hash != header.TxHash {
+				return fmt.Errorf("transaction root hash mismatch: have %x, want %x", hash, header.TxHash)
+			}
+			return nil
+		},
+		func() error {
+			if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
+				if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
+					return consensus.ErrUnknownAncestor
+				}
+				return consensus.ErrPrunedAncestor
+			}
+			return nil
+		},
 	}
-	if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
-		if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
-			return consensus.ErrUnknownAncestor
+	validateRes := make(chan error, len(validateFuns))
+	for _, f := range validateFuns {
+		tmpFunc := f
+		go func() {
+			validateRes <- tmpFunc()
+		}()
+	}
+	for i := 0; i < len(validateFuns); i++ {
+		r := <-validateRes
+		if r != nil {
+			return r
 		}
-		return consensus.ErrPrunedAncestor
 	}
 	return nil
 }
@@ -87,20 +115,43 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	}
 	// Validate the received block's bloom with the one derived from the generated receipts.
 	// For valid blocks this should always validate to true.
-	rbloom := types.CreateBloom(receipts)
-	if rbloom != header.Bloom {
-		return fmt.Errorf("invalid bloom (remote: %x  local: %x)", header.Bloom, rbloom)
+	validateFuns := []func() error{
+		func() error {
+			rbloom := types.CreateBloom(receipts)
+			if rbloom != header.Bloom {
+				return fmt.Errorf("invalid bloom (remote: %x  local: %x)", header.Bloom, rbloom)
+			}
+			return nil
+		},
+		func() error {
+			receiptSha := types.DeriveSha(receipts, trie.NewStackTrie(nil))
+			if receiptSha != header.ReceiptHash {
+				return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
+			} else {
+				return nil
+			}
+		},
+		func() error {
+			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
+				statedb.IterativeDump(true, true, true, json.NewEncoder(os.Stdout))
+				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", header.Root, root)
+			} else {
+				return nil
+			}
+		},
 	}
-	// Tre receipt Trie's root (R = (Tr [[H1, R1], ... [Hn, Rn]]))
-	receiptSha := types.DeriveSha(receipts, trie.NewStackTrie(nil))
-	if receiptSha != header.ReceiptHash {
-		return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
+	validateRes := make(chan error, len(validateFuns))
+	for _, f := range validateFuns {
+		tmpFunc := f
+		go func() {
+			validateRes <- tmpFunc()
+		}()
 	}
-	// Validate the state root against the received state root and throw
-	// an error if they don't match.
-	if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
-		statedb.IterativeDump(true, true, true, json.NewEncoder(os.Stdout))
-		return fmt.Errorf("invalid merkle root (remote: %x local: %x)", header.Root, root)
+	for i := 0; i < len(validateFuns); i++ {
+		r := <-validateRes
+		if r != nil {
+			return r
+		}
 	}
 	return nil
 }

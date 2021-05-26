@@ -45,6 +45,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TrieCleanCacheRejournal time.Duration `toml:",omitempty"`
 		TrieDirtyCache          int
 		TrieTimeout             time.Duration
+		TriesInMemory           uint64 `toml:",omitempty"`
 		SnapshotCache           int
 		Preimages               bool
 		Miner                   miner.Config
@@ -67,7 +68,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.EthDiscoveryURLs = c.EthDiscoveryURLs
 	enc.SnapDiscoveryURLs = c.SnapDiscoveryURLs
 	enc.NoPruning = c.NoPruning
-	enc.NoPrefetch = c.NoPrefetch
 	enc.TxLookupLimit = c.TxLookupLimit
 	enc.Whitelist = c.Whitelist
 	enc.LightServ = c.LightServ
@@ -89,6 +89,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TrieCleanCacheRejournal = c.TrieCleanCacheRejournal
 	enc.TrieDirtyCache = c.TrieDirtyCache
 	enc.TrieTimeout = c.TrieTimeout
+	enc.TriesInMemory = c.TriesInMemory
 	enc.SnapshotCache = c.SnapshotCache
 	enc.Preimages = c.Preimages
 	enc.Miner = c.Miner
@@ -137,6 +138,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TrieCleanCacheRejournal *time.Duration `toml:",omitempty"`
 		TrieDirtyCache          *int
 		TrieTimeout             *time.Duration
+		TriesInMemory           *uint64 `toml:",omitempty"`
 		SnapshotCache           *int
 		Preimages               *bool
 		Miner                   *miner.Config
@@ -173,9 +175,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.NoPruning != nil {
 		c.NoPruning = *dec.NoPruning
-	}
-	if dec.NoPrefetch != nil {
-		c.NoPrefetch = *dec.NoPrefetch
 	}
 	if dec.TxLookupLimit != nil {
 		c.TxLookupLimit = *dec.TxLookupLimit
@@ -239,6 +238,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.TrieTimeout != nil {
 		c.TrieTimeout = *dec.TrieTimeout
+	}
+	if dec.TriesInMemory != nil {
+		c.TriesInMemory = *dec.TriesInMemory
 	}
 	if dec.SnapshotCache != nil {
 		c.SnapshotCache = *dec.SnapshotCache

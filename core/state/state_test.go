@@ -165,7 +165,7 @@ func TestSnapshot2(t *testing.T) {
 	so0.SetCode(crypto.Keccak256Hash([]byte{'c', 'a', 'f', 'e'}), []byte{'c', 'a', 'f', 'e'})
 	so0.suicided = false
 	so0.deleted = false
-	state.setStateObject(so0)
+	state.SetStateObject(so0)
 
 	root, _ := state.Commit(false)
 	state, _ = New(root, state.db, state.snaps)
@@ -177,7 +177,7 @@ func TestSnapshot2(t *testing.T) {
 	so1.SetCode(crypto.Keccak256Hash([]byte{'c', 'a', 'f', 'e', '2'}), []byte{'c', 'a', 'f', 'e', '2'})
 	so1.suicided = true
 	so1.deleted = true
-	state.setStateObject(so1)
+	state.SetStateObject(so1)
 
 	so1 = state.getStateObject(stateobjaddr1)
 	if so1 != nil {
@@ -201,7 +201,7 @@ func TestSnapshot2(t *testing.T) {
 	}
 }
 
-func compareStateObjects(so0, so1 *stateObject, t *testing.T) {
+func compareStateObjects(so0, so1 *StateObject, t *testing.T) {
 	if so0.Address() != so1.Address() {
 		t.Fatalf("Address mismatch: have %v, want %v", so0.address, so1.address)
 	}

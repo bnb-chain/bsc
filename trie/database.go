@@ -88,6 +88,11 @@ type Database struct {
 	childrenSize  common.StorageSize // Storage size of the external children tracking
 	preimagesSize common.StorageSize // Storage size of the preimages cache
 
+	//metrics with light lock
+	sizeLock           sync.RWMutex
+	roughPreimagesSize common.StorageSize
+	roughDirtiesSize   common.StorageSize
+
 	lock sync.RWMutex
 }
 
@@ -483,9 +488,15 @@ func (db *Database) Nodes() []common.Hash {
 // are referenced together by database itself.
 func (db *Database) Reference(child common.Hash, parent common.Hash) {
 	db.lock.Lock()
-	defer db.lock.Unlock()
-
 	db.reference(child, parent)
+	var roughDirtiesSize = common.StorageSize((len(db.dirties)-1)*cachedNodeSize) + db.dirtiesSize + db.childrenSize - common.StorageSize(len(db.dirties[common.Hash{}].children)*(common.HashLength+2))
+	var roughPreimagesSize = db.preimagesSize
+	db.lock.Unlock()
+
+	db.sizeLock.Lock()
+	db.roughDirtiesSize = roughDirtiesSize
+	db.roughPreimagesSize = roughPreimagesSize
+	db.sizeLock.Unlock()
 }
 
 // reference is the private locked version of Reference.
@@ -703,12 +714,6 @@ func (db *Database) Commit(node common.Hash, report bool, callback func(common.H
 	// Move all of the accumulated preimages into a write batch
 	if db.preimages != nil {
 		rawdb.WritePreimages(batch, db.preimages)
-		if batch.ValueSize() > ethdb.IdealBatchSize {
-			if err := batch.Write(); err != nil {
-				return err
-			}
-			batch.Reset()
-		}
 		// Since we're going to replay trie node writes into the clean cache, flush out
 		// any batched pre-images before continuing.
 		if err := batch.Write(); err != nil {
@@ -843,15 +848,9 @@ func (c *cleaner) Delete(key []byte) error {
 // Size returns the current storage size of the memory cache in front of the
 // persistent database layer.
 func (db *Database) Size() (common.StorageSize, common.StorageSize) {
-	db.lock.RLock()
-	defer db.lock.RUnlock()
-
-	// db.dirtiesSize only contains the useful data in the cache, but when reporting
-	// the total memory consumption, the maintenance metadata is also needed to be
-	// counted.
-	var metadataSize = common.StorageSize((len(db.dirties) - 1) * cachedNodeSize)
-	var metarootRefs = common.StorageSize(len(db.dirties[common.Hash{}].children) * (common.HashLength + 2))
-	return db.dirtiesSize + db.childrenSize + metadataSize - metarootRefs, db.preimagesSize
+	db.sizeLock.RLock()
+	defer db.sizeLock.RUnlock()
+	return db.roughDirtiesSize, db.roughPreimagesSize
 }
 
 // saveCache saves clean state cache to given directory path

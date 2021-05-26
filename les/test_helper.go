@@ -373,7 +373,7 @@ func (p *testPeer) handshakeWithClient(t *testing.T, td *big.Int, head common.Ha
 	sendList = sendList.add("serveHeaders", nil)
 	sendList = sendList.add("serveChainSince", uint64(0))
 	sendList = sendList.add("serveStateSince", uint64(0))
-	sendList = sendList.add("serveRecentState", uint64(core.TriesInMemory-4))
+	sendList = sendList.add("serveRecentState", uint64(128-4))
 	sendList = sendList.add("txRelay", nil)
 	sendList = sendList.add("flowControl/BL", testBufLimit)
 	sendList = sendList.add("flowControl/MRR", testBufRecharge)
