@@ -44,6 +44,8 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 	return NewCustom(file, namespace, func(options *pebble.Options) {
 		c := pebble.NewCache(20 * (1 << 30))
 		options.Cache = c
+		options.MaxConcurrentCompactions = 8
+		options.MemTableSize = 8 << 20
 		// Ensure we have some minimal caching and file guarantees
 		if readonly {
 			options.ReadOnly = true
