@@ -42,7 +42,7 @@ type Database struct {
 // metrics reporting should use for surfacing internal stats.
 func New(file string, cache int, handles int, namespace string, readonly bool) (*Database, error) {
 	return NewCustom(file, namespace, func(options *pebble.Options) {
-		c := pebble.NewCache(10 * (1 << 30))
+		c := pebble.NewCache(20 * (1 << 30))
 		options.Cache = c
 		// Ensure we have some minimal caching and file guarantees
 		if readonly {
