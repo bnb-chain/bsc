@@ -2,8 +2,9 @@ package pebble
 
 import (
 	"fmt"
-
 	"sync"
+
+	"github.com/cockroachdb/pebble/bloom"
 
 	"github.com/cockroachdb/pebble"
 
@@ -46,6 +47,10 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		options.Cache = c
 		options.MaxConcurrentCompactions = 8
 		options.MemTableSize = 8 << 20
+		if options.Filters == nil {
+			options.Filters = make(map[string]pebble.FilterPolicy)
+		}
+		options.Filters[bloom.FilterPolicy(10).Name()] = bloom.FilterPolicy(10)
 		// Ensure we have some minimal caching and file guarantees
 		if readonly {
 			options.ReadOnly = true
