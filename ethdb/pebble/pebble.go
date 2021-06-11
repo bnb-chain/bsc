@@ -46,7 +46,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		c := pebble.NewCache(20 * (1 << 30))
 		options.Cache = c
 		options.MaxConcurrentCompactions = 8
-		options.MemTableSize = 4500 << 20
+		options.MemTableSize = 2000 << 20
 		if options.Filters == nil {
 			options.Filters = make(map[string]pebble.FilterPolicy)
 		}
