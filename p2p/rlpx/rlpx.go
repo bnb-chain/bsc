@@ -34,12 +34,20 @@ import (
 	"net"
 	"time"
 
+	"github.com/VictoriaMetrics/fastcache"
+	"github.com/golang/snappy"
+	"golang.org/x/crypto/sha3"
+
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/golang/snappy"
-	"golang.org/x/crypto/sha3"
 )
+
+var snappyCache *fastcache.Cache
+
+func init() {
+	snappyCache = fastcache.New(50 * 1024 * 1024)
+}
 
 // Conn is an RLPx network connection. It wraps a low-level network connection. The
 // underlying connection should not be used for other activity when it is wrapped by Conn.
@@ -179,7 +187,14 @@ func (c *Conn) Write(code uint64, data []byte) (uint32, error) {
 		return 0, errPlainMessageTooLarge
 	}
 	if c.snappy {
-		data = snappy.Encode(nil, data)
+		if encodedResult, ok := snappyCache.HasGet(nil, data); ok {
+			data = encodedResult
+		} else {
+			encodedData := snappy.Encode(nil, data)
+			snappyCache.Set(data, encodedData)
+
+			data = encodedData
+		}
 	}
 
 	wireSize := uint32(len(data))

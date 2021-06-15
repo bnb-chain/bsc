@@ -164,7 +164,7 @@ func (p *Peer) announceTransactions() {
 						return
 					}
 					close(done)
-					p.Log().Trace("Sent transaction announcements", "count", len(pending))
+					//p.Log().Trace("Sent transaction announcements", "count", len(pending))
 				}()
 			}
 		}
