@@ -2,7 +2,6 @@ package pebble
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/cockroachdb/pebble/bloom"
 
@@ -10,7 +9,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 )
 
 // Database is a persistent key-value store. Apart from basic data storage
@@ -19,22 +17,6 @@ import (
 type Database struct {
 	fn string     // filename for reporting
 	db *pebble.DB // LevelDB instance
-
-	compTimeMeter      metrics.Meter // Meter for measuring the total time spent in database compaction
-	compReadMeter      metrics.Meter // Meter for measuring the data read during compaction
-	compWriteMeter     metrics.Meter // Meter for measuring the data written during compaction
-	writeDelayNMeter   metrics.Meter // Meter for measuring the write delay number due to database compaction
-	writeDelayMeter    metrics.Meter // Meter for measuring the write delay duration due to database compaction
-	diskSizeGauge      metrics.Gauge // Gauge for tracking the size of all the levels in the database
-	diskReadMeter      metrics.Meter // Meter for measuring the effective amount of data read
-	diskWriteMeter     metrics.Meter // Meter for measuring the effective amount of data written
-	memCompGauge       metrics.Gauge // Gauge for tracking the number of memory compaction
-	level0CompGauge    metrics.Gauge // Gauge for tracking the number of table compaction in level0
-	nonlevel0CompGauge metrics.Gauge // Gauge for tracking the number of table compaction in non0 level
-	seekCompGauge      metrics.Gauge // Gauge for tracking the number of table compaction caused by read opt
-
-	quitLock sync.Mutex      // Mutex protecting the quit channel access
-	quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
 
 	log log.Logger // Contextual logger tracking the database path
 }
@@ -46,7 +28,10 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		c := pebble.NewCache(20 * (1 << 30))
 		options.Cache = c
 		options.MaxConcurrentCompactions = 8
-		options.MemTableSize = 2000 << 20
+		options.MemTableSize = 16 * (1 << 20)
+		options.DisableWAL = true
+		options.BytesPerSync = 1024 << 10
+		options.MaxOpenFiles = 100000
 
 		options.Levels = make([]pebble.LevelOptions, 1)
 		options.Levels[0].FilterPolicy = bloom.FilterPolicy(10)
@@ -73,10 +58,9 @@ func NewCustom(file string, namespace string, customize func(options *pebble.Opt
 
 	// Assemble the wrapper with all the registered metrics
 	ldb := &Database{
-		fn:       file,
-		db:       db,
-		log:      logger,
-		quitChan: make(chan chan error),
+		fn:  file,
+		db:  db,
+		log: logger,
 	}
 
 	return ldb, nil
@@ -96,8 +80,6 @@ func configureOptions(customizeFn func(*pebble.Options)) *pebble.Options {
 // Close stops the metrics collection, flushes any pending data to disk and closes
 // all io accesses to the underlying key-value store.
 func (db *Database) Close() error {
-	db.quitLock.Lock()
-	defer db.quitLock.Unlock()
 
 	return db.db.Close()
 }
