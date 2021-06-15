@@ -46,7 +46,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		c := pebble.NewCache(20 * (1 << 30))
 		options.Cache = c
 		options.MaxConcurrentCompactions = 8
-		options.MemTableSize = 2000 << 20
+		options.MemTableSize = 16 * (1 << 20)
 
 		options.Levels = make([]pebble.LevelOptions, 1)
 		options.Levels[0].FilterPolicy = bloom.FilterPolicy(10)
