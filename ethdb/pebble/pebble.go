@@ -50,6 +50,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 
 		options.Levels = make([]pebble.LevelOptions, 1)
 		options.Levels[0].FilterPolicy = bloom.FilterPolicy(10)
+		options.Levels[0].BlockSize = 10240
 		// Ensure we have some minimal caching and file guarantees
 		if readonly {
 			options.ReadOnly = true
