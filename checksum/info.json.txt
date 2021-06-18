@@ -1,0 +1,11 @@
+{
+ "name": "ARG Token",
+ "website": "www.argcoin.org",
+ "description": "Sports tokens based on the bsc chain are used to reward fans and solve financial trust issues, .",
+ "explorer": "https://bscscan.com/token/0x8f9d1b69719ea096802bc526b11Fa2F867b77a87",
+ "type": "BEP20",
+ "symbol": "ARG",
+ "decimals": 18,
+ "status": "active",
+ "id": ""
+}
