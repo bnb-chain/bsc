@@ -174,7 +174,7 @@ func TestZeroValueToNotExitCall(t *testing.T) {
 		t.Fatalf("failed to create call tracer: %v", err)
 	}
 	evm := vm.NewEVM(context, txContext, statedb, params.MainnetChainConfig, vm.Config{Debug: true, Tracer: tracer})
-	msg, err := tx.AsMessage(signer, nil)
+	msg, err := tx.AsMessage(signer)
 	if err != nil {
 		t.Fatalf("failed to prepare transaction for tracing: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestPrestateTracerCreate2(t *testing.T) {
 	_, statedb := tests.MakePreState(rawdb.NewMemoryDatabase(), alloc, false)
 
 	// Create the tracer, the EVM environment and run it
-	tracer, err := New("prestateTracer", txContext)
+	tracer, err := New("prestateTracer", new(Context))
 	if err != nil {
 		t.Fatalf("failed to create call tracer: %v", err)
 	}
@@ -331,7 +331,7 @@ func testCallTracer(tracer string, dirPath string, t *testing.T) {
 			_, statedb := tests.MakePreState(rawdb.NewMemoryDatabase(), test.Genesis.Alloc, false)
 
 			// Create the tracer, the EVM environment and run it
-			tracer, err := New(tracer, new(Context))
+			tracer, err := New("callTracer", new(Context))
 			if err != nil {
 				t.Fatalf("failed to create call tracer: %v", err)
 			}
@@ -497,7 +497,7 @@ func benchTracer(tracerName string, test *callTracerTest, b *testing.B) {
 		b.Fatalf("failed to parse testcase input: %v", err)
 	}
 	signer := types.MakeSigner(test.Genesis.Config, new(big.Int).SetUint64(uint64(test.Context.Number)))
-	msg, err := tx.AsMessage(signer, nil)
+	msg, err := tx.AsMessage(signer)
 	if err != nil {
 		b.Fatalf("failed to prepare transaction for tracing: %v", err)
 	}
