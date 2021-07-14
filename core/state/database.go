@@ -72,6 +72,9 @@ type Database interface {
 
 	// Cache the storage trie tree
 	CacheStorage(addrHash common.Hash, root common.Hash, t Trie)
+
+	// Purge cache
+	Purge()
 }
 
 // Trie is a Ethereum Merkle Patricia trie.

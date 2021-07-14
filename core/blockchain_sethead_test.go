@@ -184,7 +184,7 @@ func testShortSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       4,
 	}, snapshots)
 }
 
@@ -227,7 +227,7 @@ func testShortFastSyncedSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       4,
 	}, snapshots)
 }
 
@@ -269,7 +269,7 @@ func testShortFastSyncingSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       0,
 	}, snapshots)
 }
 
@@ -315,7 +315,7 @@ func testShortOldForkedSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       4,
 	}, snapshots)
 }
 
@@ -365,7 +365,7 @@ func testShortOldForkedFastSyncedSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       4,
 	}, snapshots)
 }
 
@@ -414,7 +414,7 @@ func testShortOldForkedFastSyncingSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       0,
 	}, snapshots)
 }
 
@@ -464,7 +464,7 @@ func testShortNewlyForkedSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       4,
 	}, snapshots)
 }
 
@@ -517,7 +517,7 @@ func testShortNewlyForkedFastSyncedSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       4,
 	}, snapshots)
 }
 
@@ -570,7 +570,7 @@ func testShortNewlyForkedFastSyncingSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       0,
 	}, snapshots)
 }
 
@@ -619,7 +619,7 @@ func testShortReorgedSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       4,
 	}, snapshots)
 }
 
@@ -673,7 +673,7 @@ func testShortReorgedFastSyncedSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       4,
 	}, snapshots)
 }
 
@@ -725,7 +725,7 @@ func testShortReorgedFastSyncingSetHead(t *testing.T, snapshots bool) {
 		expFrozen:          0,
 		expHeadHeader:      7,
 		expHeadFastBlock:   7,
-		expHeadBlock:       7,
+		expHeadBlock:       0,
 	}, snapshots)
 }
 
@@ -2022,6 +2022,7 @@ func testSetHead(t *testing.T, tt *rewindTest, snapshots bool) {
 	for _, block := range canonblocks {
 		chain.stateCache.TrieDB().Dereference(block.Root())
 	}
+	chain.stateCache.Purge()
 	// Force run a freeze cycle
 	type freezer interface {
 		Freeze(threshold uint64) error
