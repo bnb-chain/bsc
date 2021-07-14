@@ -34,7 +34,7 @@ const (
 	codeSizeCacheSize = 100000
 
 	// Number of state trie in cache
-	accountTrieCacheSize = 11
+	accountTrieCacheSize = 32
 
 	// Number of storage Trie in cache
 	storageTrieCacheSize = 2000

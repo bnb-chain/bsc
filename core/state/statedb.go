@@ -130,15 +130,10 @@ type StateDB struct {
 
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	return newStateDB(root, db, snaps, false)
+	return newStateDB(root, db, snaps)
 }
 
-// New creates a new state, but do not open the trie tree at first.
-func LazyNew(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	return newStateDB(root, db, snaps, true)
-}
-
-func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree, lazy bool) (*StateDB, error) {
+func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	sdb := &StateDB{
 		db:                  db,
 		originalRoot:        root,
@@ -151,20 +146,17 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree, lazy bool) 
 		journal:             newJournal(),
 		hasher:              crypto.NewKeccakState(),
 	}
+	tr, err := db.OpenTrie(root)
+	if err != nil {
+		return nil, err
+	}
+	sdb.trie = tr
 	if sdb.snaps != nil {
 		if sdb.snap = sdb.snaps.Snapshot(root); sdb.snap != nil {
 			sdb.snapDestructs = make(map[common.Hash]struct{})
 			sdb.snapAccounts = make(map[common.Hash][]byte)
 			sdb.snapStorage = make(map[common.Hash]map[common.Hash][]byte)
 		}
-	}
-	// if without snaps, still init with trie tree
-	if !lazy || sdb.snap == nil {
-		tr, err := db.OpenTrie(root)
-		if err != nil {
-			return nil, err
-		}
-		sdb.trie = tr
 	}
 	return sdb, nil
 }
