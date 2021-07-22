@@ -36,12 +36,12 @@ import (
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/golang/snappy"
+	"github.com/oxtoacart/bpool"
 	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/oxtoacart/bpool"
 )
 
 var snappyCache *fastcache.Cache

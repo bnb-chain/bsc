@@ -38,7 +38,10 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-const defaultNumOfSlots = 100
+const (
+	preLoadLimit      = 64
+	defaultNumOfSlots = 100
+)
 
 type revision struct {
 	id           int
@@ -516,7 +519,47 @@ func (s *StateDB) getStateObject(addr common.Address) *StateObject {
 	return nil
 }
 
-func (s *StateDB) PreloadStateObject(address []common.Address) []*StateObject {
+func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
+	accounts := make(map[common.Address]bool, block.Transactions().Len())
+	accountsSlice := make([]common.Address, 0, block.Transactions().Len())
+	for _, tx := range block.Transactions() {
+		from, err := types.Sender(signer, tx)
+		if err != nil {
+			break
+		}
+		accounts[from] = true
+		if tx.To() != nil {
+			accounts[*tx.To()] = true
+		}
+	}
+	for account, _ := range accounts {
+		accountsSlice = append(accountsSlice, account)
+	}
+	if len(accountsSlice) >= preLoadLimit && len(accountsSlice) > runtime.NumCPU() {
+		objsChan := make(chan []*StateObject, runtime.NumCPU())
+		for i := 0; i < runtime.NumCPU(); i++ {
+			start := i * len(accountsSlice) / runtime.NumCPU()
+			end := (i + 1) * len(accountsSlice) / runtime.NumCPU()
+			if i+1 == runtime.NumCPU() {
+				end = len(accountsSlice)
+			}
+			go func(start, end int) {
+				objs := s.preloadStateObject(accountsSlice[start:end])
+				objsChan <- objs
+			}(start, end)
+		}
+		for i := 0; i < runtime.NumCPU(); i++ {
+			objs := <-objsChan
+			if objs != nil {
+				for _, obj := range objs {
+					s.SetStateObject(obj)
+				}
+			}
+		}
+	}
+}
+
+func (s *StateDB) preloadStateObject(address []common.Address) []*StateObject {
 	// Prefer live objects if any is available
 	if s.snap == nil {
 		return nil
