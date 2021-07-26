@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
+	ethereum "github.com/perwpqwe/bsc"
 	"github.com/perwpqwe/bsc/accounts/abi"
 	"github.com/perwpqwe/bsc/accounts/abi/bind"
 	"github.com/perwpqwe/bsc/common"

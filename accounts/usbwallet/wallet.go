@@ -25,8 +25,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/karalabe/usb"
+	ethereum "github.com/perwpqwe/bsc"
 	"github.com/perwpqwe/bsc/accounts"
 	"github.com/perwpqwe/bsc/common"
 	"github.com/perwpqwe/bsc/core/types"

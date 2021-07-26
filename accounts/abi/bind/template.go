@@ -91,7 +91,7 @@ import (
 	"math/big"
 	"strings"
 
-	ethereum "github.com/ethereum/go-ethereum"
+	ethereum "github.com/perwpqwe/bsc"
 	"github.com/perwpqwe/bsc/accounts/abi"
 	"github.com/perwpqwe/bsc/accounts/abi/bind"
 	"github.com/perwpqwe/bsc/common"

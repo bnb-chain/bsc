@@ -28,7 +28,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/perwpqwe/bsc/accounts/keystore"
 	"github.com/perwpqwe/bsc/common"
 	"github.com/perwpqwe/bsc/common/fdlimit"
@@ -38,6 +37,7 @@ import (
 	"github.com/perwpqwe/bsc/crypto"
 	"github.com/perwpqwe/bsc/eth"
 	"github.com/perwpqwe/bsc/eth/downloader"
+	"github.com/perwpqwe/bsc/eth/ethconfig"
 	"github.com/perwpqwe/bsc/log"
 	"github.com/perwpqwe/bsc/miner"
 	"github.com/perwpqwe/bsc/node"

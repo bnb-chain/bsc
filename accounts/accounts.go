@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum"
+	ethereum "github.com/perwpqwe/bsc"
 	"github.com/perwpqwe/bsc/common"
 	"github.com/perwpqwe/bsc/core/types"
 	"github.com/perwpqwe/bsc/event"

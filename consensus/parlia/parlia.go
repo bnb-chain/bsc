@@ -18,7 +18,7 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	"golang.org/x/crypto/sha3"
 
-	"github.com/ethereum/go-ethereum"
+	ethereum "github.com/perwpqwe/bsc"
 	"github.com/perwpqwe/bsc/accounts"
 	"github.com/perwpqwe/bsc/accounts/abi"
 	"github.com/perwpqwe/bsc/common"

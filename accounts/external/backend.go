@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/ethereum/go-ethereum"
+	ethereum "github.com/perwpqwe/bsc"
 	"github.com/perwpqwe/bsc/accounts"
 	"github.com/perwpqwe/bsc/common"
 	"github.com/perwpqwe/bsc/common/hexutil"
