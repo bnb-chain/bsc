@@ -24,7 +24,6 @@ require (
 	github.com/dop251/goja v0.0.0-20200721192441-a695b0cdd498
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/etcd-io/bbolt v1.3.3 // indirect
-	github.com/ethereum/go-ethereum v1.10.6
 	github.com/fatih/color v1.7.0
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
 	github.com/fortytw2/leaktest v1.3.0 // indirect
