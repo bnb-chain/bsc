@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/mclock"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/types"
 )
 
 var (

@@ -26,12 +26,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/hexutil"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/ethdb"
+	"github.com/perwpqwe/bsc/event"
+	"github.com/perwpqwe/bsc/rpc"
 )
 
 // filter is a helper struct that holds meta information over the filter type

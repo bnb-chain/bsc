@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/state"
+	"github.com/perwpqwe/bsc/core/vm"
+	"github.com/perwpqwe/bsc/params"
 )
 
 type account struct{}

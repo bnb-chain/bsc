@@ -26,10 +26,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/internal/testlog"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/internal/testlog"
+	"github.com/perwpqwe/bsc/log"
 )
 
 // Tests whether remote HTTP servers are correctly notified of new work.

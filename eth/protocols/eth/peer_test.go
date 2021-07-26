@@ -22,8 +22,8 @@ package eth
 import (
 	"crypto/rand"
 
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/perwpqwe/bsc/p2p"
+	"github.com/perwpqwe/bsc/p2p/enode"
 )
 
 // testPeer is a simulated peer to allow testing direct network calls.

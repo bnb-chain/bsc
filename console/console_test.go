@@ -26,15 +26,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/console/prompt"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/internal/jsre"
-	"github.com/ethereum/go-ethereum/miner"
-	"github.com/ethereum/go-ethereum/node"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/consensus/ethash"
+	"github.com/perwpqwe/bsc/console/prompt"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/eth"
+	"github.com/perwpqwe/bsc/eth/ethconfig"
+	"github.com/perwpqwe/bsc/internal/jsre"
+	"github.com/perwpqwe/bsc/miner"
+	"github.com/perwpqwe/bsc/node"
 )
 
 const (

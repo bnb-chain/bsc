@@ -21,13 +21,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/rawdb"
+	"github.com/perwpqwe/bsc/core/state"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/crypto"
+	"github.com/perwpqwe/bsc/ethdb"
+	"github.com/perwpqwe/bsc/trie"
 )
 
 var (

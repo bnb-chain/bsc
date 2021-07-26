@@ -26,12 +26,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/karalabe/usb"
+	"github.com/perwpqwe/bsc/accounts"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/crypto"
+	"github.com/perwpqwe/bsc/log"
 )
 
 // Maximum time between wallet health checks to detect USB unplugs.

@@ -22,16 +22,16 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/hexutil"
+	"github.com/perwpqwe/bsc/consensus"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/state"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/eth/downloader"
+	"github.com/perwpqwe/bsc/event"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/params"
 )
 
 // Backend wraps all methods required for mining.

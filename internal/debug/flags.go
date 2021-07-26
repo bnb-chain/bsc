@@ -24,12 +24,12 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/metrics/exp"
 	"github.com/fjl/memsize/memsizeui"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/metrics"
+	"github.com/perwpqwe/bsc/metrics/exp"
 	"gopkg.in/urfave/cli.v1"
 )
 

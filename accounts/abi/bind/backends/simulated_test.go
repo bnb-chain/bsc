@@ -27,13 +27,13 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/perwpqwe/bsc/accounts/abi"
+	"github.com/perwpqwe/bsc/accounts/abi/bind"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/crypto"
+	"github.com/perwpqwe/bsc/params"
 )
 
 func TestSimulatedBackend(t *testing.T) {

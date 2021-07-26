@@ -26,14 +26,14 @@ import (
 	"strconv"
 
 	"github.com/docker/docker/pkg/reexec"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/gorilla/websocket"
+	"github.com/perwpqwe/bsc/crypto"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/node"
+	"github.com/perwpqwe/bsc/p2p"
+	"github.com/perwpqwe/bsc/p2p/enode"
+	"github.com/perwpqwe/bsc/p2p/enr"
+	"github.com/perwpqwe/bsc/rpc"
 )
 
 // Node represents a node in a simulation network which is created by a

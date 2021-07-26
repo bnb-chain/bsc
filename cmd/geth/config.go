@@ -27,14 +27,14 @@ import (
 
 	"gopkg.in/urfave/cli.v1"
 
-	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/eth/catalyst"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/naoina/toml"
+	"github.com/perwpqwe/bsc/cmd/utils"
+	"github.com/perwpqwe/bsc/eth/catalyst"
+	"github.com/perwpqwe/bsc/eth/ethconfig"
+	"github.com/perwpqwe/bsc/internal/ethapi"
+	"github.com/perwpqwe/bsc/metrics"
+	"github.com/perwpqwe/bsc/node"
+	"github.com/perwpqwe/bsc/params"
 )
 
 var (

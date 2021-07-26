@@ -19,15 +19,15 @@ package core
 import (
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/consensus/misc"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/consensus"
+	"github.com/perwpqwe/bsc/consensus/misc"
+	"github.com/perwpqwe/bsc/core/state"
+	"github.com/perwpqwe/bsc/core/systemcontracts"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/core/vm"
+	"github.com/perwpqwe/bsc/crypto"
+	"github.com/perwpqwe/bsc/params"
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning

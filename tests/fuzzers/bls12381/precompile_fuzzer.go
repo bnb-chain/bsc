@@ -20,8 +20,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/vm"
 )
 
 const (

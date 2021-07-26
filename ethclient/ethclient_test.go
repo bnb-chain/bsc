@@ -27,17 +27,17 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/consensus/ethash"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/rawdb"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/crypto"
+	"github.com/perwpqwe/bsc/eth"
+	"github.com/perwpqwe/bsc/eth/ethconfig"
+	"github.com/perwpqwe/bsc/node"
+	"github.com/perwpqwe/bsc/params"
+	"github.com/perwpqwe/bsc/rpc"
 )
 
 // Verify that Client implements the ethereum interfaces.
