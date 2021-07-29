@@ -35,7 +35,6 @@ import (
 // SecureTrie is not safe for concurrent use.
 type SecureTrie struct {
 	trie             Trie
-	hashKeyBuf       [common.HashLength]byte
 	secKeyCache      map[string][]byte
 	secKeyCacheOwner *SecureTrie // Pointer to self, replace the key cache on mismatch
 }
@@ -172,6 +171,17 @@ func (t *SecureTrie) Copy() *SecureTrie {
 	return &cpy
 }
 
+func (t *SecureTrie) ResetCopy() *SecureTrie {
+	cpy := *t
+	cpy.secKeyCacheOwner = nil
+	cpy.secKeyCache = nil
+	return &cpy
+}
+
+func (t *SecureTrie) GetRawTrie() Trie {
+	return t.trie
+}
+
 // NodeIterator returns an iterator that returns nodes of the underlying trie. Iteration
 // starts at the key after the given start key.
 func (t *SecureTrie) NodeIterator(start []byte) NodeIterator {
@@ -182,12 +192,13 @@ func (t *SecureTrie) NodeIterator(start []byte) NodeIterator {
 // The caller must not hold onto the return value because it will become
 // invalid on the next call to hashKey or secKey.
 func (t *SecureTrie) hashKey(key []byte) []byte {
+	hash := make([]byte, common.HashLength)
 	h := newHasher(false)
 	h.sha.Reset()
 	h.sha.Write(key)
-	h.sha.Read(t.hashKeyBuf[:])
+	h.sha.Read(hash)
 	returnHasherToPool(h)
-	return t.hashKeyBuf[:]
+	return hash
 }
 
 // getSecKeyCache returns the current secure key cache, creating a new one if

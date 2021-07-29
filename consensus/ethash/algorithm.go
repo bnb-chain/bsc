@@ -29,6 +29,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bitutil"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"golang.org/x/crypto/sha3"
@@ -168,7 +169,7 @@ func generateCache(dest []uint32, epoch uint64, seed []byte) {
 	done := make(chan struct{})
 	defer close(done)
 
-	go func() {
+	gopool.Submit(func() {
 		for {
 			select {
 			case <-done:
@@ -177,7 +178,7 @@ func generateCache(dest []uint32, epoch uint64, seed []byte) {
 				logger.Info("Generating ethash verification cache", "percentage", atomic.LoadUint32(&progress)*100/uint32(rows)/(cacheRounds+1), "elapsed", common.PrettyDuration(time.Since(start)))
 			}
 		}
-	}()
+	})
 	// Create a hasher to reuse between invocations
 	keccak512 := makeHasher(sha3.NewLegacyKeccak512())
 

@@ -25,6 +25,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -794,15 +795,15 @@ func (f *TxFetcher) scheduleFetches(timer *mclock.Timer, timeout chan struct{}, 
 		if len(hashes) > 0 {
 			f.requests[peer] = &txRequest{hashes: hashes, time: f.clock.Now()}
 			txRequestOutMeter.Mark(int64(len(hashes)))
-
-			go func(peer string, hashes []common.Hash) {
+			p := peer
+			gopool.Submit(func() {
 				// Try to fetch the transactions, but in case of a request
 				// failure (e.g. peer disconnected), reschedule the hashes.
-				if err := f.fetchTxs(peer, hashes); err != nil {
+				if err := f.fetchTxs(p, hashes); err != nil {
 					txRequestFailMeter.Mark(int64(len(hashes)))
-					f.Drop(peer)
+					f.Drop(p)
 				}
-			}(peer, hashes)
+			})
 		}
 	})
 	// If a new request was fired, schedule a timeout timer

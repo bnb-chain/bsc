@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
@@ -263,7 +264,7 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 	)
 	for th := 0; th < threads; th++ {
 		pend.Add(1)
-		go func() {
+		gopool.Submit(func() {
 			defer pend.Done()
 
 			// Fetch and execute the next block trace tasks
@@ -295,12 +296,12 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 					return
 				}
 			}
-		}()
+		})
 	}
 	// Start a goroutine to feed all the blocks into the tracers
 	begin := time.Now()
 
-	go func() {
+	gopool.Submit(func() {
 		var (
 			logged  time.Time
 			number  uint64
@@ -375,10 +376,10 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 			}
 			traced += uint64(len(txs))
 		}
-	}()
+	})
 
 	// Keep reading the trace results and stream the to the user
-	go func() {
+	gopool.Submit(func() {
 		var (
 			done = make(map[uint64]*blockTraceResult)
 			next = start.NumberU64() + 1
@@ -405,7 +406,7 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 				next++
 			}
 		}
-	}()
+	})
 	return sub, nil
 }
 
@@ -520,7 +521,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	blockHash := block.Hash()
 	for th := 0; th < threads; th++ {
 		pend.Add(1)
-		go func() {
+		gopool.Submit(func() {
 			defer pend.Done()
 			// Fetch and execute the next transaction trace tasks
 			for task := range jobs {
@@ -537,7 +538,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 				}
 				results[task.index] = &txTraceResult{Result: res}
 			}
-		}()
+		})
 	}
 	// Feed the transactions into the tracers and return
 	var failed error
@@ -814,12 +815,12 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 		}
 		// Handle timeouts and RPC cancellations
 		deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
-		go func() {
+		gopool.Submit(func() {
 			<-deadlineCtx.Done()
 			if deadlineCtx.Err() == context.DeadlineExceeded {
 				tracer.(*Tracer).Stop(errors.New("execution timeout"))
 			}
-		}()
+		})
 		defer cancel()
 
 	case config == nil:

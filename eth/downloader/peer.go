@@ -150,8 +150,8 @@ func (p *peerConnection) FetchHeaders(from uint64, count int) error {
 	p.headerStarted = time.Now()
 
 	// Issue the header retrieval request (absolute upwards without gaps)
-	go p.peer.RequestHeadersByNumber(from, count, 0, false)
 
+	go p.peer.RequestHeadersByNumber(from, count, 0, false)
 	return nil
 }
 
@@ -202,7 +202,6 @@ func (p *peerConnection) FetchNodeData(hashes []common.Hash) error {
 		return errAlreadyFetching
 	}
 	p.stateStarted = time.Now()
-
 	go p.peer.RequestNodeData(hashes)
 
 	return nil

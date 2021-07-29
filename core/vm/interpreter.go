@@ -18,12 +18,19 @@ package vm
 
 import (
 	"hash"
+	"sync"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/log"
 )
+
+var EVMInterpreterPool = sync.Pool{
+	New: func() interface{} {
+		return &EVMInterpreter{}
+	},
+}
 
 // Config are the configuration options for the Interpreter
 type Config struct {
@@ -124,11 +131,12 @@ func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
 		}
 		cfg.JumpTable = jt
 	}
-
-	return &EVMInterpreter{
-		evm: evm,
-		cfg: cfg,
-	}
+	evmInterpreter := EVMInterpreterPool.Get().(*EVMInterpreter)
+	evmInterpreter.evm = evm
+	evmInterpreter.cfg = cfg
+	evmInterpreter.readOnly = false
+	evmInterpreter.returnData = nil
+	return evmInterpreter
 }
 
 // Run loops and evaluates the contract's code with the given input data and returns
