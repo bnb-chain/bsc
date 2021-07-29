@@ -1,4 +1,9 @@
 # Changelog
+## v1.1.1-beta
+*[\#333](https://github.com/binance-chain/bsc/pull/333) improve block fetcher efficiency
+*[\#326](https://github.com/binance-chain/bsc/pull/326) eth/tracers: improve tracing performance
+*[\#257](https://github.com/binance-chain/bsc/pull/257) performance improvement in many aspects
+
 
 ## v1.1.0
 *[\#282](https://github.com/binance-chain/bsc/pull/282) update discord link
