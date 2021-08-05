@@ -882,6 +882,34 @@ func (p *Parlia) EnoughDistance(chain consensus.ChainReader, header *types.Heade
 	return snap.enoughDistance(p.val, header)
 }
 
+func (p *Parlia) IsLocalBlock(header *types.Header) bool {
+	return p.val == header.Coinbase
+}
+
+func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Header) (bool, error) {
+	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.ParentHash, nil)
+	if err != nil {
+		return true, err
+	}
+
+	// Bail out if we're unauthorized to sign a block
+	if _, authorized := snap.Validators[p.val]; !authorized {
+		return true, errUnauthorizedValidator
+	}
+
+	// If we're amongst the recent signers, wait for the next block
+	number := parent.Number.Uint64() + 1
+	for seen, recent := range snap.Recents {
+		if recent == p.val {
+			// Signer is among recents, only wait if the current block doesn't shift it out
+			if limit := uint64(len(snap.Validators)/2 + 1); number < limit || seen > number-limit {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 // that a new block should have based on the previous blocks in the chain and the
 // current signer.
