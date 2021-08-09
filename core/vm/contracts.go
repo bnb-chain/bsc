@@ -1075,6 +1075,7 @@ func (c *sha3fips) Run(input []byte) ([]byte, error) {
 // Uncompressed Public Key recovery implementation.
 type ecrecoverPublicKey struct{}
 
+// Gas fee same as of the Ecrecover Gas for the uncompressed Publickey
 func (c *ecrecoverPublicKey) RequiredGas(input []byte) uint64 {
 	return params.EcrecoverGas
 }
@@ -1083,9 +1084,9 @@ func (c *ecrecoverPublicKey) Run(input []byte) ([]byte, error) {
 	const ecrecoverPublicKeyInputLength = 128
 
 	input = common.RightPadBytes(input, ecrecoverPublicKeyInputLength)
-	// "input" is (hash, v, r, s), each 32 bytes
-	// but for ecrecover we want (r, s, v)
 
+	// "input" is (hash, v, r, s), each 32 bytes
+	// but for ecrecover we want (r, s, v) changing the order from input bytes
 	r := new(big.Int).SetBytes(input[64:96])
 	s := new(big.Int).SetBytes(input[96:128])
 	v := input[63]
