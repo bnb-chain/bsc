@@ -1,14 +1,14 @@
 [
-    {
+	{
 		"Input": "0448250ebe88d77e0a12bcf530fe6a2cf1ac176945638d309b840d631940c93b78c2bd6d16f227a8877e3f1604cd75b9c5a8ab0cac95174a8a0a0f8ea9e4c10bca",
 		"Expected": "c7647f7e251bf1bd70863c8693e93a4e77dd0c9a689073e987d51254317dc704",
-		"Name":     "sha3fip",
-        "Gas" : 96
+		"Name": "sha3fip",
+		"Gas": 96
 	},
 	{
 		"Input": "1234",
 		"Expected": "19becdc0e8d6dd4aa2c9c2983dbb9c61956a8ade69b360d3e6019f0bcd5557a9",
-		"Name":     "sha3fip",
-        "Gas" : 72
+		"Name": "sha3fip",
+		"Gas": 72
 	}
 ]
