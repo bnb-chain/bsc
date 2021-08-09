@@ -217,6 +217,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
 	}
+	if cacheConfig.TriesInMemory != 128 {
+		log.Warn("TriesInMemory isn't the default value(128), you need specify exact same TriesInMemory when prune data", "triesInMemory", cacheConfig.TriesInMemory)
+	}
 	bodyCache, _ := lru.New(bodyCacheLimit)
 	bodyRLPCache, _ := lru.New(bodyCacheLimit)
 	receiptsCache, _ := lru.New(receiptsCacheLimit)
