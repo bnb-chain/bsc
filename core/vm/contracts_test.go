@@ -394,7 +394,6 @@ func BenchmarkPrecompiledBLS12381G2MultiExpWorstCase(b *testing.B) {
 	benchmarkPrecompiled("0f", testcase, b)
 }
 
-
 func TestPrecompiledSHA3fips(t *testing.T) { testJson("sha3fips", "66", t) }
 
 func TestPrecompiledEcrecoverPublicKey(t *testing.T) { testJson("ecRecoverPublicKey", "67", t) }
