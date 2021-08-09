@@ -19,6 +19,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,8 +33,18 @@ const (
 	// Number of codehash->size associations to keep.
 	codeSizeCacheSize = 100000
 
+	// Number of state trie in cache
+	accountTrieCacheSize = 32
+
+	// Number of storage Trie in cache
+	storageTrieCacheSize = 2000
+
 	// Cache size granted for caching clean code.
 	codeCacheSize = 64 * 1024 * 1024
+
+	purgeInterval = 600
+
+	maxAccountTrieSize = 1024 * 1024
 )
 
 // Database wraps access to tries and contract code.
@@ -55,6 +66,15 @@ type Database interface {
 
 	// TrieDB retrieves the low level trie database used for data storage.
 	TrieDB() *trie.Database
+
+	// Cache the account trie tree
+	CacheAccount(root common.Hash, t Trie)
+
+	// Cache the storage trie tree
+	CacheStorage(addrHash common.Hash, root common.Hash, t Trie)
+
+	// Purge cache
+	Purge()
 }
 
 // Trie is a Ethereum Merkle Patricia trie.
@@ -121,14 +141,56 @@ func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 	}
 }
 
+func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Database {
+	csc, _ := lru.New(codeSizeCacheSize)
+	atc, _ := lru.New(accountTrieCacheSize)
+	stc, _ := lru.New(storageTrieCacheSize)
+
+	database := &cachingDB{
+		db:               trie.NewDatabaseWithConfig(db, config),
+		codeSizeCache:    csc,
+		codeCache:        fastcache.New(codeCacheSize),
+		accountTrieCache: atc,
+		storageTrieCache: stc,
+	}
+	go database.purgeLoop()
+	return database
+}
+
 type cachingDB struct {
-	db            *trie.Database
-	codeSizeCache *lru.Cache
-	codeCache     *fastcache.Cache
+	db               *trie.Database
+	codeSizeCache    *lru.Cache
+	codeCache        *fastcache.Cache
+	accountTrieCache *lru.Cache
+	storageTrieCache *lru.Cache
+}
+
+type triePair struct {
+	root common.Hash
+	trie Trie
+}
+
+func (db *cachingDB) purgeLoop() {
+	for {
+		time.Sleep(purgeInterval * time.Second)
+		_, accounts, ok := db.accountTrieCache.GetOldest()
+		if !ok {
+			continue
+		}
+		tr := accounts.(*trie.SecureTrie).GetRawTrie()
+		if tr.Size() > maxAccountTrieSize {
+			db.Purge()
+		}
+	}
 }
 
 // OpenTrie opens the main account trie at a specific root hash.
 func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
+	if db.accountTrieCache != nil {
+		if tr, exist := db.accountTrieCache.Get(root); exist {
+			return tr.(Trie).(*trie.SecureTrie).Copy(), nil
+		}
+	}
 	tr, err := trie.NewSecure(root, db.db)
 	if err != nil {
 		return nil, err
@@ -138,11 +200,59 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 
 // OpenStorageTrie opens the storage trie of an account.
 func (db *cachingDB) OpenStorageTrie(addrHash, root common.Hash) (Trie, error) {
+	if db.storageTrieCache != nil {
+		if tries, exist := db.storageTrieCache.Get(addrHash); exist {
+			triesPairs := tries.([3]*triePair)
+			for _, triePair := range triesPairs {
+				if triePair != nil && triePair.root == root {
+					return triePair.trie.(*trie.SecureTrie).Copy(), nil
+				}
+			}
+		}
+	}
+
 	tr, err := trie.NewSecure(root, db.db)
 	if err != nil {
 		return nil, err
 	}
 	return tr, nil
+}
+
+func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
+	if db.accountTrieCache == nil {
+		return
+	}
+	tr := t.(*trie.SecureTrie)
+	db.accountTrieCache.Add(root, tr.ResetCopy())
+}
+
+func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie) {
+	if db.storageTrieCache == nil {
+		return
+	}
+	tr := t.(*trie.SecureTrie)
+	if tries, exist := db.storageTrieCache.Get(addrHash); exist {
+		triesArray := tries.([3]*triePair)
+		newTriesArray := [3]*triePair{
+			{root: root, trie: tr.ResetCopy()},
+			triesArray[0],
+			triesArray[1],
+		}
+		db.storageTrieCache.Add(addrHash, newTriesArray)
+	} else {
+		triesArray := [3]*triePair{{root: root, trie: tr.ResetCopy()}, nil, nil}
+		db.storageTrieCache.Add(addrHash, triesArray)
+	}
+	return
+}
+
+func (db *cachingDB) Purge() {
+	if db.storageTrieCache != nil {
+		db.storageTrieCache.Purge()
+	}
+	if db.accountTrieCache != nil {
+		db.accountTrieCache.Purge()
+	}
 }
 
 // CopyTrie returns an independent copy of the given trie.

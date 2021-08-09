@@ -79,7 +79,11 @@ func generateTestChainWithFork(n int, fork int) (*core.Genesis, []*types.Block, 
 		MuirGlacierBlock:    big.NewInt(0),
 		BerlinBlock:         big.NewInt(0),
 		CatalystBlock:       big.NewInt(0),
-		Ethash:              new(params.EthashConfig),
+		RamanujanBlock:      big.NewInt(0),
+		NielsBlock:          big.NewInt(0),
+		MirrorSyncBlock:     big.NewInt(0),
+
+		Ethash: new(params.EthashConfig),
 	}
 	genesis := &core.Genesis{
 		Config:    config,

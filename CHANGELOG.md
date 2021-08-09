@@ -1,6 +1,16 @@
 # Changelog
+## v1.1.1-beta
+*[\#333](https://github.com/binance-chain/bsc/pull/333) improve block fetcher efficiency
+*[\#326](https://github.com/binance-chain/bsc/pull/326) eth/tracers: improve tracing performance
+*[\#257](https://github.com/binance-chain/bsc/pull/257) performance improvement in many aspects
+
 
 ## v1.1.0
+*[\#282](https://github.com/binance-chain/bsc/pull/282) update discord link
+*[\#280](https://github.com/binance-chain/bsc/pull/280) update discord link
+*[\#227](https://github.com/binance-chain/bsc/pull/227) use more aggressive write cache policy
+
+## v1.1.0-beta
 *[\#152](https://github.com/binance-chain/bsc/pull/152) upgrade to go-ethereum 1.10.3
 
 ## v1.0.7-hf.2

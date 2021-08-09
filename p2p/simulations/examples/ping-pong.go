@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -140,7 +141,7 @@ func (p *pingPongService) Run(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
 	log := p.log.New("peer.id", peer.ID())
 
 	errC := make(chan error)
-	go func() {
+	gopool.Submit(func() {
 		for range time.Tick(10 * time.Second) {
 			log.Info("sending ping")
 			if err := p2p.Send(rw, pingMsgCode, "PING"); err != nil {
@@ -148,8 +149,8 @@ func (p *pingPongService) Run(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
 				return
 			}
 		}
-	}()
-	go func() {
+	})
+	gopool.Submit(func() {
 		for {
 			msg, err := rw.ReadMsg()
 			if err != nil {
@@ -165,9 +166,9 @@ func (p *pingPongService) Run(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
 			atomic.AddInt64(&p.received, 1)
 			if msg.Code == pingMsgCode {
 				log.Info("sending pong")
-				go p2p.Send(rw, pongMsgCode, "PONG")
+				gopool.Submit(func() { p2p.Send(rw, pongMsgCode, "PONG") })
 			}
 		}
-	}()
+	})
 	return <-errC
 }

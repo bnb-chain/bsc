@@ -260,6 +260,9 @@ func (tx *Transaction) Gas() uint64 { return tx.inner.gas() }
 // GasPrice returns the gas price of the transaction.
 func (tx *Transaction) GasPrice() *big.Int { return new(big.Int).Set(tx.inner.gasPrice()) }
 
+// The return value of ImmutableGasPrice can not been modified.
+func (tx *Transaction) ImmutableGasPrice() *big.Int { return tx.inner.gasPrice() }
+
 // Value returns the ether amount of the transaction.
 func (tx *Transaction) Value() *big.Int { return new(big.Int).Set(tx.inner.value()) }
 
@@ -394,7 +397,7 @@ func (s TxByPriceAndTime) Len() int { return len(s) }
 func (s TxByPriceAndTime) Less(i, j int) bool {
 	// If the prices are equal, use the time the transaction was first seen for
 	// deterministic sorting
-	cmp := s[i].GasPrice().Cmp(s[j].GasPrice())
+	cmp := s[i].ImmutableGasPrice().Cmp(s[j].ImmutableGasPrice())
 	if cmp == 0 {
 		return s[i].time.Before(s[j].time)
 	}

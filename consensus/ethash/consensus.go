@@ -26,6 +26,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
@@ -133,16 +134,16 @@ func (ethash *Ethash) VerifyHeaders(chain consensus.ChainHeaderReader, headers [
 		unixNow = time.Now().Unix()
 	)
 	for i := 0; i < workers; i++ {
-		go func() {
+		gopool.Submit(func() {
 			for index := range inputs {
 				errors[index] = ethash.verifyHeaderWorker(chain, headers, seals, index, unixNow)
 				done <- index
 			}
-		}()
+		})
 	}
 
 	errorsOut := make(chan error, len(headers))
-	go func() {
+	gopool.Submit(func() {
 		defer close(inputs)
 		var (
 			in, out = 0, 0
@@ -167,7 +168,7 @@ func (ethash *Ethash) VerifyHeaders(chain consensus.ChainHeaderReader, headers [
 				return
 			}
 		}
-	}()
+	})
 	return abort, errorsOut
 }
 
