@@ -221,11 +221,12 @@ const (
 type conn struct {
 	fd net.Conn
 	transport
-	node  *enode.Node
-	flags connFlag
-	cont  chan error // The run loop uses cont to signal errors to SetupConn.
-	caps  []Cap      // valid after the protocol handshake
-	name  string     // valid after the protocol handshake
+	node    *enode.Node
+	flags   connFlag
+	cont    chan error // The run loop uses cont to signal errors to SetupConn.
+	caps    []Cap      // valid after the protocol handshake
+	name    string     // valid after the protocol handshake
+	latency time.Duration
 }
 
 type transport interface {
@@ -954,11 +955,13 @@ func (srv *Server) setupConn(c *conn, flags connFlag, dialDest *enode.Node) erro
 	}
 
 	// Run the RLPx handshake.
+	timeStart := time.Now()
 	remotePubkey, err := c.doEncHandshake(srv.PrivateKey)
 	if err != nil {
 		srv.log.Trace("Failed RLPx handshake", "addr", c.fd.RemoteAddr(), "conn", c.flags, "err", err)
 		return err
 	}
+	c.latency = time.Since(timeStart)
 	if dialDest != nil {
 		c.node = dialDest
 	} else {
