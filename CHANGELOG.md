@@ -1,26 +1,29 @@
 # Changelog
+
 ## v1.1.1
-https://github.com/binance-chain/bsc/pull/350
-*[\#350](https://github.com/binance-chain/bsc/pull/350) flag: fix TriesInmemory specified but not work
-*[\#355](https://github.com/binance-chain/bsc/pull/355) miner should propose block on a proper fork
-*[\#358](https://github.com/binance-chain/bsc/pull/358) miner: fix null pending block
-*[\#360](https://github.com/binance-chain/bsc/pull/360) pruner: fix state bloom sync permission in Windows 
-*[\#366](https://github.com/binance-chain/bsc/pull/366) fix double close channel of subfetcher git reba
+IMPROVEMENT
+* [\#355](https://github.com/binance-chain/bsc/pull/355) miner should propose block on a proper fork
+
+BUGFIX
+* [\#350](https://github.com/binance-chain/bsc/pull/350) flag: fix TriesInmemory specified but not work
+* [\#358](https://github.com/binance-chain/bsc/pull/358) miner: fix null pending block
+* [\#360](https://github.com/binance-chain/bsc/pull/360) pruner: fix state bloom sync permission in Windows 
+* [\#366](https://github.com/binance-chain/bsc/pull/366) fix double close channel of subfetcher
 
 
 ## v1.1.1-beta
-*[\#333](https://github.com/binance-chain/bsc/pull/333) improve block fetcher efficiency
-*[\#326](https://github.com/binance-chain/bsc/pull/326) eth/tracers: improve tracing performance
-*[\#257](https://github.com/binance-chain/bsc/pull/257) performance improvement in many aspects
+* [\#333](https://github.com/binance-chain/bsc/pull/333) improve block fetcher efficiency
+* [\#326](https://github.com/binance-chain/bsc/pull/326) eth/tracers: improve tracing performance
+* [\#257](https://github.com/binance-chain/bsc/pull/257) performance improvement in many aspects
 
 
 ## v1.1.0
-*[\#282](https://github.com/binance-chain/bsc/pull/282) update discord link
-*[\#280](https://github.com/binance-chain/bsc/pull/280) update discord link
-*[\#227](https://github.com/binance-chain/bsc/pull/227) use more aggressive write cache policy
+* [\#282](https://github.com/binance-chain/bsc/pull/282) update discord link
+* [\#280](https://github.com/binance-chain/bsc/pull/280) update discord link
+* [\#227](https://github.com/binance-chain/bsc/pull/227) use more aggressive write cache policy
 
 ## v1.1.0-beta
-*[\#152](https://github.com/binance-chain/bsc/pull/152) upgrade to go-ethereum 1.10.3
+* [\#152](https://github.com/binance-chain/bsc/pull/152) upgrade to go-ethereum 1.10.3
 
 ## v1.0.7-hf.2
 BUGFIX
