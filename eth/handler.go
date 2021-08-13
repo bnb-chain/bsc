@@ -18,7 +18,6 @@ package eth
 
 import (
 	"errors"
-	"math"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -447,19 +446,19 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			return
 		}
 		// Send the block to a subset of our peers
-		var transfer []*ethPeer
-		if h.directBroadcast {
-			transfer = peers[:int(len(peers))]
-		} else {
-			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
-		}
-		for _, peer := range transfer {
+		// var transfer []*ethPeer
+		// if h.directBroadcast {
+		// 	transfer = peers[:int(len(peers))]
+		// } else {
+		// 	transfer = peers[:int(math.Sqrt(float64(len(peers))))]
+		// }
+		for _, peer := range peers {
 			peer.AsyncSendNewBlock(block, td)
 		}
-		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		log.Trace("Propagated block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return
 	}
-	// Otherwise if the block is indeed in out own chain, announce it
+	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
 			peer.AsyncSendNewBlockHash(block)
@@ -486,15 +485,18 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	// Broadcast transactions to a batch of peers not knowing about it
 	for _, tx := range txs {
 		peers := h.peers.peersWithoutTransaction(tx.Hash())
-		// Send the tx unconditionally to a subset of our peers
-		numDirect := int(math.Sqrt(float64(len(peers))))
-		for _, peer := range peers[:numDirect] {
+		for _, peer := range peers {
 			txset[peer] = append(txset[peer], tx.Hash())
 		}
-		// For the remaining peers, send announcement only
-		for _, peer := range peers[numDirect:] {
-			annos[peer] = append(annos[peer], tx.Hash())
-		}
+		// Send the tx unconditionally to a subset of our peers
+		// numDirect := int(math.Sqrt(float64(len(peers))))
+		// for _, peer := range peers[:numDirect] {
+		// 	txset[peer] = append(txset[peer], tx.Hash())
+		// }
+		// // For the remaining peers, send announcement only
+		// for _, peer := range peers[numDirect:] {
+		// 	annos[peer] = append(annos[peer], tx.Hash())
+		// }
 	}
 	for peer, hashes := range txset {
 		directPeers++
