@@ -400,11 +400,14 @@ func (pool *TxPool) add(ctx context.Context, tx *types.Transaction) error {
 	if pool.pending[hash] != nil {
 		return fmt.Errorf("Known transaction (%x)", hash[:4])
 	}
+	// Notify the subscribers. This event is posted in a goroutine
+	// because it's possible that somewhere during the post "Remove transaction"
+	// gets called which will then wait for the global tx pool lock and deadlock.
+	go pool.txFeed.Send(core.NewTxsEvent{Txs: types.Transactions{tx}})
 	err := pool.validateTx(ctx, tx)
 	if err != nil {
 		return err
 	}
-
 	if _, ok := pool.pending[hash]; !ok {
 		pool.pending[hash] = tx
 
@@ -414,11 +417,6 @@ func (pool *TxPool) add(ctx context.Context, tx *types.Transaction) error {
 		if nonce > pool.nonce[addr] {
 			pool.nonce[addr] = nonce
 		}
-
-		// Notify the subscribers. This event is posted in a goroutine
-		// because it's possible that somewhere during the post "Remove transaction"
-		// gets called which will then wait for the global tx pool lock and deadlock.
-		go pool.txFeed.Send(core.NewTxsEvent{Txs: types.Transactions{tx}})
 	}
 
 	// Print a log message if low enough level is set
