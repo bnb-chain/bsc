@@ -59,10 +59,11 @@ type txPool interface {
 	// Get retrieves the transaction from local txpool with given
 	// tx hash.
 	Get(hash common.Hash) *types.Transaction
-
+	GetLocal(hash common.Hash) *types.Transaction
+	// GetLocal(hash common.Hash) *types.Transaction
 	// AddRemotes should add the given transactions to the pool.
-	AddRemotes([]*types.Transaction) []error
-
+	// AddRemotes([]*types.Transaction) []error
+	AddTxs(txs []*types.Transaction, islocal bool) []error
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
 	Pending() (map[common.Address]types.Transactions, error)
@@ -230,7 +231,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return p.RequestTxs(hashes)
 	}
-	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, h.txpool.AddRemotes, fetchTx)
+	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, h.txpool.AddTxs, fetchTx)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
 }
@@ -477,16 +478,33 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		annoPeers   int
 		directCount int // Count of the txs sent directly to peers
 		directPeers int // Count of the peers that were sent transactions directly
+		relayCount  int // Count of announcements made
+		relayPeers  int
 
-		txset = make(map[*ethPeer][]common.Hash) // Set peer->hash to transfer directly
-		annos = make(map[*ethPeer][]common.Hash) // Set peer->hash to announce
+		txset   = make(map[*ethPeer]types.Transactions) // Set peer->hash to transfer directly
+		relaytx = make(map[*ethPeer]types.Transactions) // Set peer->hash to transfer directly
+		annos   = make(map[*ethPeer][]common.Hash)      // Set peer->hash to announce
 
 	)
 	// Broadcast transactions to a batch of peers not knowing about it
 	for _, tx := range txs {
+		islocal := h.txpool.GetLocal(tx.Hash()) != nil
 		peers := h.peers.peersWithoutTransaction(tx.Hash())
 		for _, peer := range peers {
-			txset[peer] = append(txset[peer], tx.Hash())
+			if !islocal && !peer.IsTrusted() {
+				continue
+			}
+			if !islocal {
+				txset[peer] = append(txset[peer], tx)
+			} else {
+				if peer.IsTrusted() {
+					// islocal and relay to trusted node.
+					relaytx[peer] = append(relaytx[peer], tx)
+				} else {
+					// islocal but to public node
+					txset[peer] = append(txset[peer], tx)
+				}
+			}
 		}
 		// Send the tx unconditionally to a subset of our peers
 		// numDirect := int(math.Sqrt(float64(len(peers))))
@@ -498,10 +516,15 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		// 	annos[peer] = append(annos[peer], tx.Hash())
 		// }
 	}
-	for peer, hashes := range txset {
+	for peer, txs := range txset {
 		directPeers++
-		directCount += len(hashes)
-		peer.AsyncSendTransactions(hashes)
+		directCount += len(txs)
+		peer.SendTransactions(txs)
+	}
+	for peer, txs := range relaytx {
+		relayPeers++
+		relayCount += len(txs)
+		peer.RelayTransactions(txs)
 	}
 	for peer, hashes := range annos {
 		annoPeers++
@@ -509,7 +532,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
 	log.Debug("Transaction broadcast", "txs", len(txs),
-		"announce packs", annoPeers, "announced hashes", annoCount,
+		"relayed packs", relayPeers, "relayed hashes", relayCount,
 		"tx packs", directPeers, "broadcast txs", directCount)
 }
 

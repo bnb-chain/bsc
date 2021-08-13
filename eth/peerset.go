@@ -204,7 +204,7 @@ func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {
 
 	list := make([]*ethPeer, 0, len(ps.peers))
 	for _, p := range ps.peers {
-		if p.Peer.IsTrusted() && !p.KnownTransaction(hash) {
+		if !p.KnownTransaction(hash) {
 			list = append(list, p)
 		}
 	}

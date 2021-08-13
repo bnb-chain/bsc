@@ -198,6 +198,16 @@ func (p *Peer) SendTransactions(txs types.Transactions) error {
 	}
 	return p2p.Send(p.rw, TransactionsMsg, txs)
 }
+func (p *Peer) RelayTransactions(txs types.Transactions) error {
+	// Mark all the transactions as known, but ensure we don't overflow our limits
+	for p.knownTxs.Cardinality() > max(0, maxKnownTxs-len(txs)) {
+		p.knownTxs.Pop()
+	}
+	for _, tx := range txs {
+		p.knownTxs.Add(tx.Hash())
+	}
+	return p2p.Send(p.rw, RelayMsg, txs)
+}
 
 // AsyncSendTransactions queues a list of transactions (by hash) to eventually
 // propagate to a remote peer. The number of pending sends are capped (new ones
