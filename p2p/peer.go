@@ -476,6 +476,10 @@ type PeerInfo struct {
 	Protocols map[string]interface{} `json:"protocols"` // Sub-protocol specific metadata fields
 }
 
+func (p *Peer) IsTrusted() bool {
+	return p.rw.is(trustedConn)
+}
+
 // Info gathers and returns a collection of metadata known about a peer.
 func (p *Peer) Info() *PeerInfo {
 	// Gather the protocol capabilities

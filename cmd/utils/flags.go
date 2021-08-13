@@ -33,7 +33,6 @@ import (
 	"text/template"
 	"time"
 
-	pcsclite "github.com/gballet/go-libpcsclite"
 	"github.com/perwpqwe/bsc/accounts"
 	"github.com/perwpqwe/bsc/accounts/keystore"
 	"github.com/perwpqwe/bsc/common"
@@ -144,7 +143,7 @@ var (
 	SmartCardDaemonPathFlag = cli.StringFlag{
 		Name:  "pcscdpath",
 		Usage: "Path to the smartcard daemon (pcscd) socket file",
-		Value: pcsclite.PCSCDSockName,
+		Value: "",
 	}
 	NetworkIdFlag = cli.Uint64Flag{
 		Name:  "networkid",
