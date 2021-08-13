@@ -183,6 +183,7 @@ var eth65 = map[uint64]msgHandler{
 	NewBlockHashesMsg:             handleNewBlockhashes,
 	NewBlockMsg:                   handleNewBlock,
 	TransactionsMsg:               handleTransactions,
+	RelayMsg:                      handleRelayTransactions,
 	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes,
 	GetPooledTransactionsMsg:      handleGetPooledTransactions,
 	PooledTransactionsMsg:         handlePooledTransactions,
@@ -192,6 +193,7 @@ var eth66 = map[uint64]msgHandler{
 	NewBlockHashesMsg:             handleNewBlockhashes,
 	NewBlockMsg:                   handleNewBlock,
 	TransactionsMsg:               handleTransactions,
+	RelayMsg:                      handleRelayTransactions,
 	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes,
 	// eth66 messages with request-id
 	GetBlockHeadersMsg:       handleGetBlockHeaders66,

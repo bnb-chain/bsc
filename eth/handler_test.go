@@ -146,9 +146,9 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 	txpool := newTestTxPool()
 
 	handler, _ := newHandler(&handlerConfig{
-		Database:   db,
-		Chain:      chain,
-		TxPool:     txpool,
+		Database: db,
+		Chain:    chain,
+		// TxPool:     txpool,
 		Network:    1,
 		Sync:       downloader.FastSync,
 		BloomCache: 1,

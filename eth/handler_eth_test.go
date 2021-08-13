@@ -113,17 +113,17 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 		blocksProFork, _ = core.GenerateChain(configProFork, genesisProFork, engine, dbProFork, 2, nil)
 
 		ethNoFork, _ = newHandler(&handlerConfig{
-			Database:   dbNoFork,
-			Chain:      chainNoFork,
-			TxPool:     newTestTxPool(),
+			Database: dbNoFork,
+			Chain:    chainNoFork,
+			// TxPool:     newTestTxPool(),
 			Network:    1,
 			Sync:       downloader.FullSync,
 			BloomCache: 1,
 		})
 		ethProFork, _ = newHandler(&handlerConfig{
-			Database:   dbProFork,
-			Chain:      chainProFork,
-			TxPool:     newTestTxPool(),
+			Database: dbProFork,
+			Chain:    chainProFork,
+			// TxPool:     newTestTxPool(),
 			Network:    1,
 			Sync:       downloader.FullSync,
 			BloomCache: 1,

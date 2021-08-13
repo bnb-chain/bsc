@@ -589,11 +589,11 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	isLocal := local || pool.locals.containsTx(tx)
 
 	// If the transaction fails basic validation, discard it
-	if err := pool.validateTx(tx, isLocal); err != nil {
-		log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
-		invalidTxMeter.Mark(1)
-		return false, err
-	}
+	// if err := pool.validateTx(tx, isLocal); err != nil {
+	// 	log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
+	// 	invalidTxMeter.Mark(1)
+	// 	return false, err
+	// }
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Count()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
@@ -798,6 +798,14 @@ func (pool *TxPool) AddRemote(tx *types.Transaction) error {
 	return errs[0]
 }
 
+func (pool *TxPool) AddTxs(txs []*types.Transaction, islocal bool) []error {
+	if islocal {
+		return pool.AddLocals(txs)
+	} else {
+		return pool.AddRemotes(txs)
+	}
+}
+
 // addTxs attempts to queue a batch of transactions if they are valid.
 func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 	// Filter out known ones without obtaining the pool lock or recovering signatures
@@ -815,12 +823,12 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		// Exclude transactions with invalid signatures as soon as
 		// possible and cache senders in transactions before
 		// obtaining lock
-		_, err := types.Sender(pool.signer, tx)
-		if err != nil {
-			errs[i] = ErrInvalidSender
-			invalidTxMeter.Mark(1)
-			continue
-		}
+		// _, err := types.Sender(pool.signer, tx)
+		// if err != nil {
+		// 	errs[i] = ErrInvalidSender
+		// 	invalidTxMeter.Mark(1)
+		// 	continue
+		// }
 		// Accumulate all unknown transactions for deeper processing
 		news = append(news, tx)
 	}
@@ -891,6 +899,9 @@ func (pool *TxPool) Status(hashes []common.Hash) []TxStatus {
 // Get returns a transaction if it is contained in the pool and nil otherwise.
 func (pool *TxPool) Get(hash common.Hash) *types.Transaction {
 	return pool.all.Get(hash)
+}
+func (pool *TxPool) GetLocal(hash common.Hash) *types.Transaction {
+	return pool.all.GetLocal(hash)
 }
 
 // Has returns an indicator whether txpool has a transaction cached with the
