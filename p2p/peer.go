@@ -480,6 +480,10 @@ func (p *Peer) IsTrusted() bool {
 	return p.rw.is(trustedConn)
 }
 
+func (p *Peer) Latency() time.Duration {
+	return p.rw.latency
+}
+
 // Info gathers and returns a collection of metadata known about a peer.
 func (p *Peer) Info() *PeerInfo {
 	// Gather the protocol capabilities

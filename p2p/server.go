@@ -962,10 +962,6 @@ func (srv *Server) setupConn(c *conn, flags connFlag, dialDest *enode.Node) erro
 		return err
 	}
 	c.latency = time.Since(timeStart)
-	if c.latency > 100*time.Millisecond {
-		srv.log.Trace("Latency too high", "addr", c.fd.RemoteAddr(), "latency", c.latency)
-		return errors.New("high latency peer dropped")
-	}
 	if dialDest != nil {
 		c.node = dialDest
 	} else {
