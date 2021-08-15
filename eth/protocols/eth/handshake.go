@@ -74,12 +74,12 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	}
 	if !p.IsTrusted() {
 		if p.Latency() > 100*time.Millisecond {
-			return fmt.Errorf("remote latency too high: %v", p.Latency())
+			return fmt.Errorf("%v latency too high: %v", p.RemoteAddr(), p.Latency())
 		}
 		tdThreshold := new(big.Int).Mul(td, big.NewInt(90))
 		tdThreshold.Div(tdThreshold, big.NewInt(100))
 		if tdThreshold.Cmp(p.td) == 1 {
-			return fmt.Errorf("remote total difficulty too low: %v  required: %v", p.td, tdThreshold)
+			return fmt.Errorf("%v total difficulty too low: %v  required: %v", p.RemoteAddr(), p.td, tdThreshold)
 		}
 	}
 	return nil
