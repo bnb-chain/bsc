@@ -72,6 +72,11 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	if tdlen := p.td.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
 	}
+	tdThreshold := new(big.Int).Mul(td, big.NewInt(90))
+	tdThreshold.Div(tdThreshold, big.NewInt(100))
+	if tdThreshold.Cmp(p.td) == 1 {
+		return fmt.Errorf("remote total difficulty too low: %v  required: %v", p.td, tdThreshold)
+	}
 	return nil
 }
 
