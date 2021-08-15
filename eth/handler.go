@@ -481,10 +481,10 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		relayCount  int // Count of announcements made
 		relayPeers  int
 
-		txset   = make(map[*ethPeer]types.Transactions) // Set peer->hash to transfer directly
+		// txset   = make(map[*ethPeer]types.Transactions) // Set peer->hash to transfer directly
 		relaytx = make(map[*ethPeer]types.Transactions) // Set peer->hash to transfer directly
 		annos   = make(map[*ethPeer][]common.Hash)      // Set peer->hash to announce
-
+		txset   = make(map[*ethPeer][]common.Hash)
 	)
 	// Broadcast transactions to a batch of peers not knowing about it
 	for _, tx := range txs {
@@ -495,14 +495,14 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 				continue
 			}
 			if !islocal {
-				txset[peer] = append(txset[peer], tx)
+				txset[peer] = append(txset[peer], tx.Hash())
 			} else {
 				if peer.IsTrusted() {
 					// islocal and relay to trusted node.
 					relaytx[peer] = append(relaytx[peer], tx)
 				} else {
 					// islocal but to public node
-					txset[peer] = append(txset[peer], tx)
+					txset[peer] = append(txset[peer], tx.Hash())
 				}
 			}
 		}
@@ -519,7 +519,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	for peer, txs := range txset {
 		directPeers++
 		directCount += len(txs)
-		peer.SendTransactions(txs)
+		peer.AsyncSendTransactions(txs)
 	}
 	for peer, txs := range relaytx {
 		relayPeers++

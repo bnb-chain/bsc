@@ -198,6 +198,8 @@ func (p *Peer) SendTransactions(txs types.Transactions) error {
 	}
 	return p2p.Send(p.rw, TransactionsMsg, txs)
 }
+
+// relay Tx directly to trusted node
 func (p *Peer) RelayTransactions(txs types.Transactions) error {
 	// Mark all the transactions as known, but ensure we don't overflow our limits
 	for p.knownTxs.Cardinality() > max(0, maxKnownTxs-len(txs)) {
