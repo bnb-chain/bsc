@@ -103,7 +103,7 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	case *eth.RelayTxPacket:
 		if peer.IsTrusted() {
 			id = "X"
-			log.Info("Get RelayPacket from Trusted Node:", peer.ID())
+			log.Error("Get RelayPacket from Trusted Node:", peer.ID())
 		}
 		return h.txFetcher.Enqueue(id, *packet, true)
 	default:
