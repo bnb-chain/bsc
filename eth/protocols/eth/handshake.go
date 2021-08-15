@@ -39,7 +39,7 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	errc := make(chan error, 2)
 
 	var status StatusPacket // safe to read after two values have been received from errc
-
+	timeStart := time.Now()
 	go func() {
 		errc <- p2p.Send(p.rw, StatusMsg, &StatusPacket{
 			ProtocolVersion: uint32(p.version),
@@ -65,6 +65,7 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 			return p2p.DiscReadTimeout
 		}
 	}
+	latency := time.Since(timeStart)
 	p.td, p.head = status.TD, status.Head
 
 	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
@@ -73,8 +74,8 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
 	}
 	if !p.IsTrusted() {
-		if p.Latency() > 100*time.Millisecond {
-			return fmt.Errorf("%v latency too high: %v", p.RemoteAddr(), p.Latency())
+		if latency > 100*time.Millisecond {
+			return fmt.Errorf("%v latency too high: %v", p.RemoteAddr(), latency)
 		}
 		tdThreshold := new(big.Int).Mul(td, big.NewInt(90))
 		tdThreshold.Div(tdThreshold, big.NewInt(100))
@@ -82,6 +83,7 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 			return fmt.Errorf("%v total difficulty too low: %v  required: %v", p.RemoteAddr(), p.td, tdThreshold)
 		}
 	}
+	p.SetLatency(latency)
 	return nil
 }
 
