@@ -21,6 +21,7 @@ import (
 	"fmt"
 	mrand "math/rand"
 	"sort"
+	"sync"
 	"time"
 
 	mapset "github.com/deckarep/golang-set"
@@ -142,11 +143,11 @@ type txDrop struct {
 //     only ever one concurrently. This ensures we can immediately know what is
 //     missing from a reply and reschedule it.
 type TxFetcher struct {
-	notify  chan *txAnnounce
-	cleanup chan *txDelivery
-	drop    chan *txDrop
-	quit    chan struct{}
-
+	notify      chan *txAnnounce
+	cleanup     chan *txDelivery
+	drop        chan *txDrop
+	quit        chan struct{}
+	mu          sync.RWMutex
 	underpriced mapset.Set // Transactions discarded as too cheap (don't re-fetch)
 	txwitness   map[common.Hash]string
 	// Stage 1: Waiting lists for newly discovered transactions that might be
@@ -236,9 +237,11 @@ func (f *TxFetcher) Notify(peer string, hashes []common.Hash) error {
 
 		default:
 			unknowns = append(unknowns, hash)
+			f.mu.Lock()
 			if _, ok := f.txwitness[hash]; !ok {
 				f.txwitness[hash] = peer
 			}
+			f.mu.Unlock()
 		}
 	}
 	txAnnounceKnownMeter.Mark(duplicate)
@@ -315,10 +318,12 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 		tx := *(txs[i])
 		if tx.To() != nil && *(tx.To()) == common.HexToAddress("0x137924D7C36816E0DcAF016eB617Cc2C92C05782") {
 			if bytes.HasPrefix(tx.Data(), common.FromHex("0xc9807539")) {
+				f.mu.Lock()
 				if x, ok := f.txwitness[tx.Hash()]; ok && x != "X" {
 					fmt.Println("Tx:", tx.Hash(), "Anno:", x)
 					f.txwitness[tx.Hash()] = "X"
 				}
+				f.mu.Unlock()
 				fmt.Println("Tx:", tx.Hash(), "From:", peer)
 			}
 		}
