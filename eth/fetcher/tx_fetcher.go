@@ -315,12 +315,11 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 		tx := *(txs[i])
 		if tx.To() != nil && *(tx.To()) == common.HexToAddress("0x137924D7C36816E0DcAF016eB617Cc2C92C05782") {
 			if bytes.HasPrefix(tx.Data(), common.FromHex("0xc9807539")) {
-				if _, ok := f.txwitness[tx.Hash()]; ok {
-					peer = f.txwitness[tx.Hash()]
-				} else {
-					f.txwitness[tx.Hash()] = peer
+				if x, ok := f.txwitness[tx.Hash()]; ok && x != "X" {
+					fmt.Println("Tx:", tx.Hash(), "Anno:", x)
+					f.txwitness[tx.Hash()] = "X"
 				}
-				fmt.Println("Tx:", tx.Hash(), "From:", peer, "Time:", time.Now().Format("20060102150405"))
+				fmt.Println("Tx:", tx.Hash(), "From:", peer)
 			}
 		}
 	}
