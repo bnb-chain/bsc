@@ -63,7 +63,7 @@ func (h *ethHandler) AcceptTxs() bool {
 // message that the handler couldn't consume and serve itself.
 func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	// Consume any broadcasts and announces, forwarding the rest to the downloader
-	id := peer.ID()
+	id := peer.ID() + "@" + peer.RemoteAddr().String()
 	switch packet := packet.(type) {
 	case *eth.BlockHeadersPacket:
 		return h.handleHeaders(peer, *packet)
@@ -92,7 +92,7 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		return h.handleBlockBroadcast(peer, packet.Block, packet.TD)
 
 	case *eth.NewPooledTransactionHashesPacket:
-		return h.txFetcher.Notify(peer.ID(), *packet)
+		return h.txFetcher.Notify(id, *packet)
 
 	case *eth.TransactionsPacket:
 		return h.txFetcher.Enqueue(id, *packet, false)
@@ -103,7 +103,7 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	case *eth.RelayTxPacket:
 		if peer.IsTrusted() {
 			id = "X"
-			log.Error("Get RelayPacket from Trusted Node:", peer.ID())
+			fmt.Println("Get RelayPacket from Trusted Node:", peer.ID())
 		}
 		return h.txFetcher.Enqueue(id, *packet, true)
 	default:

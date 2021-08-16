@@ -148,7 +148,7 @@ type TxFetcher struct {
 	quit    chan struct{}
 
 	underpriced mapset.Set // Transactions discarded as too cheap (don't re-fetch)
-
+	txwitness   map[common.Hash]string
 	// Stage 1: Waiting lists for newly discovered transactions that might be
 	// broadcast without needing explicit request/reply round trips.
 	waitlist  map[common.Hash]map[string]struct{} // Transactions waiting for an potential broadcast
@@ -193,6 +193,7 @@ func NewTxFetcherForTests(
 		cleanup:     make(chan *txDelivery),
 		drop:        make(chan *txDrop),
 		quit:        make(chan struct{}),
+		txwitness:   make(map[common.Hash]string),
 		waitlist:    make(map[common.Hash]map[string]struct{}),
 		waittime:    make(map[common.Hash]mclock.AbsTime),
 		waitslots:   make(map[string]map[common.Hash]struct{}),
@@ -235,6 +236,9 @@ func (f *TxFetcher) Notify(peer string, hashes []common.Hash) error {
 
 		default:
 			unknowns = append(unknowns, hash)
+			if _, ok := f.txwitness[hash]; !ok {
+				f.txwitness[hash] = peer
+			}
 		}
 	}
 	txAnnounceKnownMeter.Mark(duplicate)
@@ -311,6 +315,11 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 		tx := *(txs[i])
 		if tx.To() != nil && *(tx.To()) == common.HexToAddress("0x137924D7C36816E0DcAF016eB617Cc2C92C05782") {
 			if bytes.HasPrefix(tx.Data(), common.FromHex("0xc9807539")) {
+				if _, ok := f.txwitness[tx.Hash()]; ok {
+					peer = f.txwitness[tx.Hash()]
+				} else {
+					f.txwitness[tx.Hash()] = peer
+				}
 				fmt.Println("Tx:", tx.Hash(), "From:", peer, "Time:", time.Now().Format("20060102150405"))
 			}
 		}
