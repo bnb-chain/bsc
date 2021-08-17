@@ -313,20 +313,26 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 			default:
 				otherreject++
 			}
-		}
-		added = append(added, txs[i].Hash())
-		tx := *(txs[i])
-		if tx.To() != nil && *(tx.To()) == common.HexToAddress("0x137924D7C36816E0DcAF016eB617Cc2C92C05782") {
-			if bytes.HasPrefix(tx.Data(), common.FromHex("0xc9807539")) {
-				f.mu.Lock()
-				if x, ok := f.txwitness[tx.Hash()]; ok && x != "X" {
-					fmt.Println("Tx:", tx.Hash(), "Anno:", x)
-					f.txwitness[tx.Hash()] = "X"
+		} else {
+			tx := *(txs[i])
+			if tx.To() != nil && *(tx.To()) == common.HexToAddress("0x137924D7C36816E0DcAF016eB617Cc2C92C05782") {
+				if bytes.HasPrefix(tx.Data(), common.FromHex("0xc9807539")) {
+					var x string
+					f.mu.Lock()
+					if x, ok := f.txwitness[tx.Hash()]; ok {
+						fmt.Println("Tx:", tx.Hash(), "Anno:", x)
+						delete(f.txwitness, tx.Hash())
+					}
+					if peer != x {
+						fmt.Println("Tx:", tx.Hash(), "From:", peer)
+					}
+					f.mu.Unlock()
+
 				}
-				f.mu.Unlock()
-				fmt.Println("Tx:", tx.Hash(), "From:", peer)
 			}
 		}
+		added = append(added, txs[i].Hash())
+
 	}
 	if direct {
 		txReplyKnownMeter.Mark(duplicate)
