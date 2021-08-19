@@ -223,11 +223,12 @@ const (
 type conn struct {
 	fd net.Conn
 	transport
-	node  *enode.Node
-	flags connFlag
-	cont  chan error // The run loop uses cont to signal errors to SetupConn.
-	caps  []Cap      // valid after the protocol handshake
-	name  string     // valid after the protocol handshake
+	node    *enode.Node
+	flags   connFlag
+	cont    chan error // The run loop uses cont to signal errors to SetupConn.
+	caps    []Cap      // valid after the protocol handshake
+	name    string     // valid after the protocol handshake
+	latency time.Duration
 }
 
 type transport interface {
@@ -927,11 +928,12 @@ func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) 
 	} else {
 		c.transport = srv.newTransport(fd, dialDest.Pubkey())
 	}
-
+	timeStart := time.Now()
 	err := srv.setupConn(c, flags, dialDest)
 	if err != nil {
 		c.close(err)
 	}
+	c.latency = time.Since(timeStart)
 	return err
 }
 

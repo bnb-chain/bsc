@@ -481,8 +481,8 @@ func (p *Peer) IsTrusted() bool {
 	return p.rw.is(trustedConn)
 }
 
-func (p *Peer) SetLatency(lat time.Duration) {
-	p.latency = lat
+func (p *Peer) Latency() time.Duration {
+	return p.rw.latency
 }
 
 // Info gathers and returns a collection of metadata known about a peer.
@@ -508,7 +508,7 @@ func (p *Peer) Info() *PeerInfo {
 	info.Network.Inbound = p.rw.is(inboundConn)
 	info.Network.Trusted = p.rw.is(trustedConn)
 	info.Network.Static = p.rw.is(staticDialedConn)
-	info.Network.Latency = p.latency.String()
+	info.Network.Latency = p.rw.latency.String()
 
 	// Gather all the running protocol infos
 	for _, proto := range p.running {
