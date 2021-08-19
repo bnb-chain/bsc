@@ -64,21 +64,6 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 			return p2p.DiscReadTimeout
 		}
 	}
-	timeStart := time.Now()
-	// Send PingMsg
-	if err := p2p.SendItems(p.rw, 0x02); err != nil {
-		return err
-	}
-	msg, err := p.rw.ReadMsg()
-	if err != nil {
-		return err
-	}
-	// check PongMsg
-	if msg.Code != 0x03 {
-		return fmt.Errorf("expecting PongMsg(0x03), received: %v", msg.Code)
-	}
-	latency := time.Since(timeStart)
-	msg.Discard()
 	p.td, p.head = status.TD, status.Head
 
 	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
@@ -86,6 +71,28 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	if tdlen := p.td.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
 	}
+	timeStart := time.Now()
+	// Send PingMsg
+	if err := p2p.SendItems(p.rw, 0x02); err != nil {
+		return err
+	}
+	var i = 0
+	for ; i < 10; i++ {
+		msg, err := p.rw.ReadMsg()
+		if err != nil {
+			return err
+		}
+		// check PongMsg
+		if msg.Code == 0x03 {
+			msg.Discard()
+			break
+		}
+		msg.Discard()
+	}
+	if i == 10 {
+		return fmt.Errorf("expecting PongMsg")
+	}
+	latency := time.Since(timeStart)
 	if !p.IsTrusted() {
 		if latency > 100*time.Millisecond {
 			return fmt.Errorf("%v latency too high: %v", p.RemoteAddr(), latency)
