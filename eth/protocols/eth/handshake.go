@@ -37,7 +37,7 @@ const (
 func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis common.Hash, forkID forkid.ID, forkFilter forkid.Filter) error {
 	// Send out own handshake in a new thread
 	errc := make(chan error, 2)
-
+	timeStart := time.Now()
 	var status StatusPacket // safe to read after two values have been received from errc
 	go func() {
 		errc <- p2p.Send(p.rw, StatusMsg, &StatusPacket{
@@ -71,27 +71,26 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	if tdlen := p.td.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
 	}
-	timeStart := time.Now()
 	// Send PingMsg
-	if err := p2p.SendItems(p.rw, 0x02); err != nil {
-		return err
-	}
-	var i = 0
-	for ; i < 10; i++ {
-		msg, err := p.rw.ReadMsg()
-		if err != nil {
-			return err
-		}
-		// check PongMsg
-		if msg.Code == 0x03 {
-			msg.Discard()
-			break
-		}
-		msg.Discard()
-	}
-	if i == 10 {
-		return fmt.Errorf("expecting PongMsg")
-	}
+	// if err := p2p.SendItems(p.rw, 0x02); err != nil {
+	// 	return err
+	// }
+	// var i = 0
+	// for ; i < 10; i++ {
+	// 	msg, err := p.rw.ReadMsg()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	// check PongMsg
+	// 	if msg.Code == 0x03 {
+	// 		msg.Discard()
+	// 		break
+	// 	}
+	// 	msg.Discard()
+	// }
+	// if i == 10 {
+	// 	return fmt.Errorf("expecting PongMsg")
+	// }
 	latency := time.Since(timeStart)
 	if !p.IsTrusted() {
 		if latency > 100*time.Millisecond {
@@ -103,7 +102,9 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 			return fmt.Errorf("%v total difficulty too low: %v  required: %v", p.RemoteAddr(), p.td, tdThreshold)
 		}
 	}
-	p.SetLatency(latency)
+	if !p.Inbound() {
+		p.SetLatency(latency)
+	}
 	return nil
 }
 
