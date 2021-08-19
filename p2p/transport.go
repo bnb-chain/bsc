@@ -34,7 +34,8 @@ import (
 const (
 	// total timeout for encryption handshake and protocol
 	// handshake in both directions.
-	handshakeTimeout = 5 * time.Second
+	// handshakeTimeout = 5 * time.Second
+	handshakeTimeout = 100 * time.Millisecond
 
 	// This is the timeout for sending the disconnect reason.
 	// This is shorter than the usual timeout because we don't want
