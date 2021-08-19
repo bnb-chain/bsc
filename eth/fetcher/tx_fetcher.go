@@ -239,7 +239,7 @@ func (f *TxFetcher) Notify(peer string, hashes []common.Hash) error {
 			unknowns = append(unknowns, hash)
 			f.mu.Lock()
 			if _, ok := f.txwitness[hash]; !ok {
-				f.txwitness[hash] = peer
+				f.txwitness[hash] = fmt.Sprintf("%v\t%v", peer, time.Now().Unix())
 			}
 			f.mu.Unlock()
 		}
@@ -323,7 +323,7 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 						fmt.Println("Tx:", tx.Hash(), "Anno:", x)
 						delete(f.txwitness, tx.Hash())
 					} else {
-						fmt.Println("Tx:", tx.Hash(), "From:", peer)
+						fmt.Println("Tx:", tx.Hash(), "From:", peer, time.Now().Unix())
 					}
 					f.mu.Unlock()
 

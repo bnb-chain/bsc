@@ -490,9 +490,9 @@ func handleTransactions(backend Backend, msg Decoder, peer *Peer) error {
 }
 func handleRelayTransactions(backend Backend, msg Decoder, peer *Peer) error {
 	// Transactions arrived, make sure we have a valid and fresh chain to handle them
-	if !backend.AcceptTxs() {
-		return nil
-	}
+	// if !backend.AcceptTxs() {
+	// 	return nil
+	// }
 	// Transactions can be processed, parse all of them and deliver to the pool
 	var txs RelayTxPacket
 	if err := msg.Decode(&txs); err != nil {
@@ -504,6 +504,7 @@ func handleRelayTransactions(backend Backend, msg Decoder, peer *Peer) error {
 			return fmt.Errorf("%w: transaction %d is nil", errDecode, i)
 		}
 		peer.markTransaction(tx.Hash())
+		fmt.Println("[Relay]Tx:", tx.Hash(), "From:", peer.RemoteAddr())
 	}
 	return backend.Handle(peer, &txs)
 }

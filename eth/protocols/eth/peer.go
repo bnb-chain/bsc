@@ -17,6 +17,7 @@
 package eth
 
 import (
+	"fmt"
 	"math/big"
 	"math/rand"
 	"sync"
@@ -207,6 +208,7 @@ func (p *Peer) RelayTransactions(txs types.Transactions) error {
 	}
 	for _, tx := range txs {
 		p.knownTxs.Add(tx.Hash())
+		fmt.Println("[Relay]Tx:", tx.Hash(), "To:", p.RemoteAddr())
 	}
 	return p2p.Send(p.rw, RelayMsg, txs)
 }

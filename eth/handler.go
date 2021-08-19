@@ -501,7 +501,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 					// islocal and relay to trusted node.
 					relaytx[peer] = append(relaytx[peer], tx)
 				} else {
-					// islocal but to public node
+					// islocal and broadcast
 					txset[peer] = append(txset[peer], tx.Hash())
 				}
 			}
