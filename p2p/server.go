@@ -894,11 +894,11 @@ func (srv *Server) listenLoop() {
 			srv.log.Trace("Accepted connection", "addr", fd.RemoteAddr())
 		}
 		go func() {
-			err := srv.SetupConn(fd, inboundConn, nil)
-			if err != nil {
-				srv.log.Error(fmt.Sprintf("SetupConn: %v", err))
-				fd.Close()
-			}
+			srv.SetupConn(fd, inboundConn, nil)
+			// if err != nil {
+			// 	srv.log.Error(fmt.Sprintf("SetupConn: %v", err))
+			// 	fd.Close()
+			// }
 			slots <- struct{}{}
 		}()
 	}
@@ -932,14 +932,9 @@ func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) 
 	} else {
 		c.transport = srv.newTransport(fd, dialDest.Pubkey())
 	}
-	timeStart := time.Now()
 	err := srv.setupConn(c, flags, dialDest)
 	if err != nil {
 		c.close(err)
-	}
-	c.latency = time.Since(timeStart)
-	if !c.is(trustedConn) && c.latency > 100*time.Millisecond {
-		return fmt.Errorf("%v Latency too high: %v", c.fd.RemoteAddr(), c.latency.String())
 	}
 	return err
 }
@@ -952,7 +947,7 @@ func (srv *Server) setupConn(c *conn, flags connFlag, dialDest *enode.Node) erro
 	if !running {
 		return errServerStopped
 	}
-
+	timeStart := time.Now()
 	// If dialing, figure out the remote public key.
 	var dialPubkey *ecdsa.PublicKey
 	if dialDest != nil {
@@ -991,6 +986,11 @@ func (srv *Server) setupConn(c *conn, flags connFlag, dialDest *enode.Node) erro
 	if id := c.node.ID(); !bytes.Equal(crypto.Keccak256(phs.ID), id[:]) {
 		clog.Trace("Wrong devp2p handshake identity", "phsid", hex.EncodeToString(phs.ID))
 		return DiscUnexpectedIdentity
+	}
+	c.latency = time.Since(timeStart)
+	if !c.is(trustedConn) && c.latency > 100*time.Millisecond {
+		clog.Error("Latency too high:", c.latency.String())
+		return fmt.Errorf("%v Latency too high: %v", c.fd.RemoteAddr(), c.latency.String())
 	}
 	c.caps, c.name = phs.Caps, phs.Name
 	err = srv.checkpoint(c, srv.checkpointAddPeer)

@@ -541,11 +541,11 @@ func (t *dialTask) dial(d *dialScheduler, dest *enode.Node) error {
 		return &dialError{err}
 	}
 	mfd := newMeteredConn(fd, false, &net.TCPAddr{IP: dest.IP(), Port: dest.TCP()})
-	err = d.setupFunc(mfd, t.flags, dest)
-	if err != nil {
-		d.log.Error(fmt.Sprintf("dial: %v", err))
-		mfd.Close()
-	}
+	d.setupFunc(mfd, t.flags, dest)
+	// if err != nil {
+	// 	d.log.Error(fmt.Sprintf("dial: %v", err))
+	// 	mfd.Close()
+	// }
 	return err
 }
 
