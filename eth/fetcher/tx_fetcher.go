@@ -320,10 +320,10 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 					// var x string
 					f.mu.Lock()
 					if x, ok := f.txwitness[tx.Hash()]; ok {
-						fmt.Println("Tx:", tx.Hash(), "Anno:", x)
+						fmt.Println("Tx:", tx.Hash(), "Anno:", x, "Time:", time.Now().UnixNano()/1e6)
 						delete(f.txwitness, tx.Hash())
 					} else {
-						fmt.Println("Tx:", tx.Hash(), "From:", peer, time.Now().UnixNano()/1e6)
+						fmt.Println("Tx:", tx.Hash(), "From:", peer, "Time:", time.Now().UnixNano()/1e6)
 					}
 					f.mu.Unlock()
 
