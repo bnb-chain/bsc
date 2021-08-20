@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/perwpqwe/bsc/common"
 	"github.com/perwpqwe/bsc/common/mclock"
 	"github.com/perwpqwe/bsc/event"
 	"github.com/perwpqwe/bsc/log"
@@ -461,12 +462,13 @@ func (rw *protoRW) ReadMsg() (Msg, error) {
 // peer. Sub-protocol independent fields are contained and initialized here, with
 // protocol specifics delegated to all connected sub-protocols.
 type PeerInfo struct {
-	ENR     string   `json:"enr,omitempty"` // Ethereum Node Record
-	Enode   string   `json:"enode"`         // Node URL
-	ID      string   `json:"id"`            // Unique node identifier
-	Name    string   `json:"name"`          // Name of the node, including client type, version, OS, custom data
-	Caps    []string `json:"caps"`          // Protocols advertised by this peer
-	Network struct {
+	ENR      string   `json:"enr,omitempty"` // Ethereum Node Record
+	Enode    string   `json:"enode"`         // Node URL
+	ID       string   `json:"id"`            // Unique node identifier
+	Name     string   `json:"name"`          // Name of the node, including client type, version, OS, custom data
+	Caps     []string `json:"caps"`          // Protocols advertised by this peer
+	LifeTime string   `json:"lifetime"`      // How long this Peer has been created
+	Network  struct {
 		LocalAddress  string `json:"localAddress"`  // Local endpoint of the TCP data connection
 		RemoteAddress string `json:"remoteAddress"` // Remote endpoint of the TCP data connection
 		Latency       string `json:"latency"`       // Connection latency
@@ -509,6 +511,7 @@ func (p *Peer) Info() *PeerInfo {
 	info.Network.Trusted = p.rw.is(trustedConn)
 	info.Network.Static = p.rw.is(staticDialedConn)
 	info.Network.Latency = p.rw.latency.String()
+	info.LifeTime = common.PrettyDuration(mclock.Now() - p.created).String()
 
 	// Gather all the running protocol infos
 	for _, proto := range p.running {
