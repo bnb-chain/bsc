@@ -934,6 +934,9 @@ func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) 
 		c.close(err)
 	}
 	c.latency = time.Since(timeStart)
+	if !c.is(trustedConn) && c.latency > 100*time.Millisecond {
+		return fmt.Errorf("%v Latency too high: %v", c.fd.RemoteAddr(), c.latency.String())
+	}
 	return err
 }
 
