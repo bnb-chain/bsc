@@ -48,7 +48,6 @@ const (
 type Transaction struct {
 	inner TxData    // Consensus contents of a transaction
 	time  time.Time // Time first seen locally (spam avoidance)
-	From  common.Address
 	// caches
 	hash atomic.Value
 	size atomic.Value
