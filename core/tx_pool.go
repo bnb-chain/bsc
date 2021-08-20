@@ -1117,6 +1117,7 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 		addr := tx.From
 		if addr == (common.Address{}) {
 			addr, _ = types.Sender(pool.signer, tx)
+			tx.From = addr
 		}
 		if _, ok := events[addr]; !ok {
 			events[addr] = newTxSortedMap()
