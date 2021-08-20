@@ -638,7 +638,6 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		pool.all.Add(tx, isLocal)
 		pool.priced.Put(tx, isLocal)
 		pool.journalTx(from, tx)
-		tx.From = from
 		pool.queueTxEvent(tx)
 		log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
 
@@ -1047,7 +1046,6 @@ func (pool *TxPool) scheduleReorgLoop() {
 			if _, ok := queuedEvents[addr]; !ok {
 				queuedEvents[addr] = newTxSortedMap()
 			}
-			tx.From = addr
 			queuedEvents[addr].Put(tx)
 
 		case <-curDone:
@@ -1115,11 +1113,7 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 
 	// Notify subsystems for newly added transactions
 	for _, tx := range promoted {
-		addr := tx.From
-		if addr == (common.Address{}) {
-			addr, _ = types.Sender(pool.signer, tx)
-			tx.From = addr
-		}
+		addr, _ := types.Sender(pool.signer, tx)
 		if _, ok := events[addr]; !ok {
 			events[addr] = newTxSortedMap()
 		}
