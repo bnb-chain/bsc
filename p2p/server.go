@@ -989,7 +989,7 @@ func (srv *Server) setupConn(c *conn, flags connFlag, dialDest *enode.Node) erro
 	}
 	c.latency = time.Since(timeStart)
 	if !c.is(trustedConn) && c.latency > 150*time.Millisecond {
-		clog.Error("Latency too high:", c.latency.String())
+		clog.Error("Latency too high", "err", c.latency.String())
 		return fmt.Errorf("%v Latency too high: %v", c.fd.RemoteAddr(), c.latency.String())
 	}
 	c.caps, c.name = phs.Caps, phs.Name
