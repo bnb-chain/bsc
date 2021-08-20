@@ -189,7 +189,7 @@ func (ps *peerSet) peersWithoutBlock(hash common.Hash) []*ethPeer {
 
 	list := make([]*ethPeer, 0, len(ps.peers))
 	for _, p := range ps.peers {
-		if p.Peer.IsTrusted() && !p.KnownBlock(hash) {
+		if p.IsTrusted() && !p.KnownBlock(hash) {
 			list = append(list, p)
 		}
 	}
