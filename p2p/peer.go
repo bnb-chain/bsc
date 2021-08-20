@@ -114,7 +114,7 @@ type Peer struct {
 	closed   chan struct{}
 	disc     chan DiscReason
 
-	latency time.Duration
+	// latency time.Duration
 	// events receives message send / receive events if set
 	events *event.Feed
 }

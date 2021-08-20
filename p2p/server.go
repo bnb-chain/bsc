@@ -894,7 +894,11 @@ func (srv *Server) listenLoop() {
 			srv.log.Trace("Accepted connection", "addr", fd.RemoteAddr())
 		}
 		go func() {
-			srv.SetupConn(fd, inboundConn, nil)
+			err := srv.SetupConn(fd, inboundConn, nil)
+			if err != nil {
+				srv.log.Error(fmt.Sprintf("SetupConn: %v", err))
+				fd.Close()
+			}
 			slots <- struct{}{}
 		}()
 	}
