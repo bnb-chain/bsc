@@ -50,9 +50,12 @@ const (
 	// PendingTransactionsSubscription queries tx hashes for pending
 	// transactions entering the pending state
 	PendingTransactionsSubscription
+	// PendingTransactionsFullSubscription queries tx details for pending
+	// transactions entering the pending state
+	PendingTransactionsFullSubscription
 	// BlocksSubscription queries hashes for blocks that are imported
 	BlocksSubscription
-	// LastSubscription keeps track of the last index
+	// LastIndexSubscription keeps track of the last index
 	LastIndexSubscription
 )
 
@@ -74,6 +77,7 @@ type subscription struct {
 	created   time.Time
 	logsCrit  ethereum.FilterQuery
 	logs      chan []*types.Log
+	txs       chan types.Transactions
 	hashes    chan []common.Hash
 	headers   chan *types.Header
 	installed chan struct{} // closed when the filter is installed
@@ -317,6 +321,22 @@ func (es *EventSystem) SubscribePendingTxs(hashes chan []common.Hash) *Subscript
 	return es.subscribe(sub)
 }
 
+// SubscribePendingFullTxs creates a subscription that writes full transaction data for
+// transactions that enter the transaction pool.
+func (es *EventSystem) SubscribePendingFullTxs(transactions chan types.Transactions) *Subscription {
+	sub := &subscription{
+		id:        rpc.NewID(),
+		typ:       PendingTransactionsFullSubscription,
+		created:   time.Now(),
+		logs:      make(chan []*types.Log),
+		txs:       transactions,
+		headers:   make(chan *types.Header),
+		installed: make(chan struct{}),
+		err:       make(chan error),
+	}
+	return es.subscribe(sub)
+}
+
 type filterIndex map[Type]map[rpc.ID]*subscription
 
 func (es *EventSystem) handleLogs(filters filterIndex, ev []*types.Log) {
@@ -359,6 +379,9 @@ func (es *EventSystem) handleTxsEvent(filters filterIndex, ev core.NewTxsEvent) 
 	}
 	for _, f := range filters[PendingTransactionsSubscription] {
 		f.hashes <- hashes
+	}
+	for _, f := range filters[PendingTransactionsFullSubscription] {
+		f.txs <- ev.Txs
 	}
 }
 
