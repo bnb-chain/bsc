@@ -237,11 +237,11 @@ func (f *TxFetcher) Notify(peer string, hashes []common.Hash) error {
 
 		default:
 			unknowns = append(unknowns, hash)
-			f.mu.Lock()
-			if _, ok := f.txwitness[hash]; !ok {
-				f.txwitness[hash] = fmt.Sprintf("%v\t%v", peer, time.Now().UnixNano()/1e6)
-			}
-			f.mu.Unlock()
+			// f.mu.Lock()
+			// if _, ok := f.txwitness[hash]; !ok {
+			// 	f.txwitness[hash] = fmt.Sprintf("%v\t%v", peer, time.Now().UnixNano()/1e6)
+			// }
+			// f.mu.Unlock()
 		}
 	}
 	txAnnounceKnownMeter.Mark(duplicate)
@@ -313,23 +313,24 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 			default:
 				otherreject++
 			}
-		} else {
-			tx := *(txs[i])
-			if tx.To() != nil && *(tx.To()) == common.HexToAddress("0x137924D7C36816E0DcAF016eB617Cc2C92C05782") {
-				if bytes.HasPrefix(tx.Data(), common.FromHex("0xc9807539")) {
-					// var x string
-					f.mu.Lock()
-					if x, ok := f.txwitness[tx.Hash()]; ok {
-						fmt.Println("Tx:", tx.Hash(), "Anno:", x, "Time:", time.Now().UnixNano()/1e6)
-						delete(f.txwitness, tx.Hash())
-					} else {
-						fmt.Println("Tx:", tx.Hash(), "From:", peer, "Time:", time.Now().UnixNano()/1e6)
-					}
-					f.mu.Unlock()
-
-				}
-			}
 		}
+		//  else {
+		// 	tx := *(txs[i])
+		// 	if tx.To() != nil && *(tx.To()) == common.HexToAddress("0x137924D7C36816E0DcAF016eB617Cc2C92C05782") {
+		// 		if bytes.HasPrefix(tx.Data(), common.FromHex("0xc9807539")) {
+		// 			// var x string
+		// 			f.mu.Lock()
+		// 			if x, ok := f.txwitness[tx.Hash()]; ok {
+		// 				fmt.Println("Tx:", tx.Hash(), "Anno:", x, "Time:", time.Now().UnixNano()/1e6)
+		// 				delete(f.txwitness, tx.Hash())
+		// 			} else {
+		// 				fmt.Println("Tx:", tx.Hash(), "From:", peer, "Time:", time.Now().UnixNano()/1e6)
+		// 			}
+		// 			f.mu.Unlock()
+
+		// 		}
+		// 	}
+		// }
 		added = append(added, txs[i].Hash())
 
 	}
