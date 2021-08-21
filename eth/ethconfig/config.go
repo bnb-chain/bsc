@@ -83,7 +83,7 @@ var Defaults = Config{
 	Miner: miner.Config{
 		GasFloor:      8000000,
 		GasCeil:       8000000,
-		GasPrice:      big.NewInt(params.GWei),
+		GasPrice:      big.NewInt(5 * params.GWei),
 		Recommit:      3 * time.Second,
 		DelayLeftOver: 50 * time.Millisecond,
 	},
@@ -158,7 +158,7 @@ type Config struct {
 	// Database options
 	SkipBcVersionCheck bool `toml:"-"`
 	DatabaseHandles    int  `toml:"-"`
-	DatabaseCache      int
+	DatabaseCache      int  // MiB
 	DatabaseFreezer    string
 
 	TrieCleanCache          int

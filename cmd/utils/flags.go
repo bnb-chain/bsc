@@ -431,7 +431,7 @@ var (
 	MinerThreadsFlag = cli.IntFlag{
 		Name:  "miner.threads",
 		Usage: "Number of CPU threads to use for mining",
-		Value: 0,
+		Value: 8,
 	}
 	MinerNotifyFlag = cli.StringFlag{
 		Name:  "miner.notify",
@@ -1546,7 +1546,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	cache := ctx.GlobalInt(CacheFlag.Name)
 	gogc := math.Max(20, math.Min(100, 100/(float64(cache)/1024)))
 
-	log.Debug("Sanitizing Go's GC trigger", "percent", int(gogc))
+	log.Info("Sanitizing Go's GC trigger", "percent", int(gogc))
 	godebug.SetGCPercent(int(gogc))
 
 	if ctx.GlobalIsSet(SyncModeFlag.Name) {
