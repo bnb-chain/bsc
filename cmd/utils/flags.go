@@ -125,6 +125,10 @@ var (
 		Name:  "datadir.ancient",
 		Usage: "Data directory for ancient chain segments (default = inside chaindata)",
 	}
+	DiffFlag = DirectoryFlag{
+		Name:  "datadir.diff",
+		Usage: "Data directory for difflayer segments (default = inside chaindata)",
+	}
 	MinFreeDiskSpaceFlag = DirectoryFlag{
 		Name:  "datadir.minfreedisk",
 		Usage: "Minimum free disk space in MB, once reached triggers auto shut down (default = --cache.gc converted to MB, 0 = disabled)",
@@ -424,6 +428,10 @@ var (
 	CachePreimagesFlag = cli.BoolFlag{
 		Name:  "cache.preimages",
 		Usage: "Enable recording the SHA3/keccak preimages of trie keys",
+	}
+	PersistDiffFlag = cli.BoolFlag{
+		Name:  "persistdiff",
+		Usage: "Enable persisting the diff layer",
 	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
@@ -1564,7 +1572,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.GlobalIsSet(AncientFlag.Name) {
 		cfg.DatabaseFreezer = ctx.GlobalString(AncientFlag.Name)
 	}
-
+	if ctx.GlobalIsSet(DiffFlag.Name) {
+		cfg.DatabaseDiff = ctx.GlobalString(DiffFlag.Name)
+	}
+	if ctx.GlobalIsSet(PersistDiffFlag.Name) {
+		cfg.PersistDiff = ctx.GlobalBool(PersistDiffFlag.Name)
+	}
 	if gcmode := ctx.GlobalString(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
 		Fatalf("--%s must be either 'full' or 'archive'", GCModeFlag.Name)
 	}

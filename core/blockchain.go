@@ -82,12 +82,15 @@ var (
 const (
 	bodyCacheLimit      = 256
 	blockCacheLimit     = 256
+	diffLayerCacheLimit = 1024
 	receiptsCacheLimit  = 10000
 	txLookupCacheLimit  = 1024
 	maxFutureBlocks     = 256
 	maxTimeFutureBlocks = 30
-	badBlockLimit       = 10
 	maxBeyondBlocks     = 2048
+
+	diffLayerfreezerRecheckInterval = 3 * time.Second
+	diffLayerfreezerBlockLimit      = 864000 // The number of blocks that should be kept in disk.
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -188,13 +191,15 @@ type BlockChain struct {
 	currentBlock     atomic.Value // Current head of the block chain
 	currentFastBlock atomic.Value // Current head of the fast-sync chain (may be above the block chain!)
 
-	stateCache    state.Database // State database to reuse between imports (contains state cache)
-	bodyCache     *lru.Cache     // Cache for the most recent block bodies
-	bodyRLPCache  *lru.Cache     // Cache for the most recent block bodies in RLP encoded format
-	receiptsCache *lru.Cache     // Cache for the most recent receipts per block
-	blockCache    *lru.Cache     // Cache for the most recent entire blocks
-	txLookupCache *lru.Cache     // Cache for the most recent transaction lookup data.
-	futureBlocks  *lru.Cache     // future blocks are blocks added for later processing
+	stateCache     state.Database // State database to reuse between imports (contains state cache)
+	bodyCache      *lru.Cache     // Cache for the most recent block bodies
+	bodyRLPCache   *lru.Cache     // Cache for the most recent block bodies in RLP encoded format
+	receiptsCache  *lru.Cache     // Cache for the most recent receipts per block
+	blockCache     *lru.Cache     // Cache for the most recent entire blocks
+	txLookupCache  *lru.Cache     // Cache for the most recent transaction lookup data.
+	futureBlocks   *lru.Cache     // future blocks are blocks added for later processing
+	diffLayerCache *lru.Cache     // Cache for the diffLayers
+	diffQueue      *prque.Prque   // A Priority queue to store recent diff layer
 
 	quit          chan struct{}  // blockchain quit channel
 	wg            sync.WaitGroup // chain processing wait group for shutting down
@@ -226,6 +231,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	blockCache, _ := lru.New(blockCacheLimit)
 	txLookupCache, _ := lru.New(txLookupCacheLimit)
 	futureBlocks, _ := lru.New(maxFutureBlocks)
+	diffLayerCache, _ := lru.New(diffLayerCacheLimit)
 
 	bc := &BlockChain{
 		chainConfig: chainConfig,
@@ -244,10 +250,12 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		bodyRLPCache:   bodyRLPCache,
 		receiptsCache:  receiptsCache,
 		blockCache:     blockCache,
+		diffLayerCache: diffLayerCache,
 		txLookupCache:  txLookupCache,
 		futureBlocks:   futureBlocks,
 		engine:         engine,
 		vmConfig:       vmConfig,
+		diffQueue:      prque.New(nil),
 	}
 	bc.validator = NewBlockValidator(chainConfig, bc, engine)
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
@@ -396,6 +404,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 			triedb.SaveCachePeriodically(bc.cacheConfig.TrieCleanJournal, bc.cacheConfig.TrieCleanRejournal, bc.quit)
 		}()
 	}
+	// Need persist and prune diff layer
+	if bc.db.DiffStore() != nil {
+		go bc.diffLayerFreeze()
+	}
 	return bc, nil
 }
 
@@ -406,6 +418,14 @@ func (bc *BlockChain) GetVMConfig() *vm.Config {
 
 func (bc *BlockChain) CacheReceipts(hash common.Hash, receipts types.Receipts) {
 	bc.receiptsCache.Add(hash, receipts)
+}
+
+func (bc *BlockChain) CacheDiffLayer(hash common.Hash, num uint64, diffLayer *types.DiffLayer) {
+	bc.diffLayerCache.Add(hash, diffLayer)
+	if bc.db.DiffStore() != nil {
+		// push to priority queue before persisting
+		bc.diffQueue.Push(diffLayer, -(int64(num)))
+	}
 }
 
 func (bc *BlockChain) CacheBlock(hash common.Hash, block *types.Block) {
@@ -1506,9 +1526,18 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		wg.Done()
 	}()
 	// Commit all cached state changes into underlying memory database.
-	root, err := state.Commit(bc.chainConfig.IsEIP158(block.Number()))
+	root, diffLayer, err := state.Commit(bc.chainConfig.IsEIP158(block.Number()))
 	if err != nil {
 		return NonStatTy, err
+	}
+
+	// Ensure no empty block body
+	if diffLayer != nil && block.Header().TxHash != types.EmptyRootHash {
+		// Filling necessary field
+		diffLayer.Receipts = receipts
+		diffLayer.StateRoot = root
+		diffLayer.Hash = block.Hash()
+		bc.CacheDiffLayer(diffLayer.Hash, block.Number().Uint64(), diffLayer)
 	}
 	triedb := bc.stateCache.TrieDB()
 
@@ -1895,8 +1924,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			bc.reportBlock(block, receipts, err)
 			return it.index, err
 		}
-		bc.CacheReceipts(block.Hash(), receipts)
-		bc.CacheBlock(block.Hash(), block)
 		// Update the metrics touched during block processing
 		accountReadTimer.Update(statedb.AccountReads)                 // Account reads are complete, we can mark them
 		storageReadTimer.Update(statedb.StorageReads)                 // Storage reads are complete, we can mark them
@@ -1916,6 +1943,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			log.Error("validate state failed", "error", err)
 			return it.index, err
 		}
+		bc.CacheReceipts(block.Hash(), receipts)
+		bc.CacheBlock(block.Hash(), block)
 		proctime := time.Since(start)
 
 		// Update the metrics touched during block validation
@@ -2288,6 +2317,77 @@ func (bc *BlockChain) update() {
 			bc.procFutureBlocks()
 		case <-bc.quit:
 			return
+		}
+	}
+}
+
+func (bc *BlockChain) diffLayerFreeze() {
+	recheck := time.Tick(diffLayerfreezerRecheckInterval)
+	for {
+		select {
+		case <-bc.quit:
+			// Persist all diffLayers when shutdown, it will introduce redundant storage, but it is acceptable.
+			// If the client been ungracefully shutdown, it will missing all cached diff layers, it is acceptable as well.
+			var batch ethdb.Batch
+			for !bc.diffQueue.Empty() {
+				diff, _ := bc.diffQueue.Pop()
+				diffLayer := diff.(*types.DiffLayer)
+				if batch == nil {
+					batch = bc.db.DiffStore().NewBatch()
+				}
+				rawdb.WriteDiffLayer(batch, diffLayer.Hash, diffLayer)
+				if batch.ValueSize() > ethdb.IdealBatchSize {
+					if err := batch.Write(); err != nil {
+						log.Error("Failed to write diff layer", "err", err)
+						return
+					}
+					batch.Reset()
+				}
+			}
+			if batch != nil {
+				if err := batch.Write(); err != nil {
+					log.Error("Failed to write diff layer", "err", err)
+					return
+				}
+				batch.Reset()
+			}
+			return
+		case <-recheck:
+			currentHeight := bc.CurrentBlock().NumberU64()
+			var batch ethdb.Batch
+			for !bc.diffQueue.Empty() {
+				diff, prio := bc.diffQueue.Pop()
+				diffLayer := diff.(*types.DiffLayer)
+
+				// if the block old enough
+				if int64(currentHeight)+prio > int64(bc.triesInMemory) {
+					canonicalHash := bc.GetCanonicalHash(uint64(-prio))
+					// on the canonical chain
+					if canonicalHash == diffLayer.Hash {
+						if batch == nil {
+							batch = bc.db.DiffStore().NewBatch()
+						}
+						rawdb.WriteDiffLayer(batch, diffLayer.Hash, diffLayer)
+						staleHash := bc.GetCanonicalHash(uint64(-prio) - diffLayerfreezerBlockLimit)
+						rawdb.DeleteDiffLayer(batch, staleHash)
+					}
+				} else {
+					bc.diffQueue.Push(diffLayer, prio)
+					break
+				}
+				if batch != nil && batch.ValueSize() > ethdb.IdealBatchSize {
+					if err := batch.Write(); err != nil {
+						panic(fmt.Sprintf("Failed to write diff layer, error %v", err))
+					}
+					batch.Reset()
+				}
+			}
+			if batch != nil {
+				if err := batch.Write(); err != nil {
+					panic(fmt.Sprintf("Failed to write diff layer, error %v", err))
+				}
+				batch.Reset()
+			}
 		}
 	}
 }

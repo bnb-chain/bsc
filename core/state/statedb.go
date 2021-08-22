@@ -77,13 +77,17 @@ type StateDB struct {
 	originalRoot common.Hash // The pre-state root, before any changes were made
 	trie         Trie
 	hasher       crypto.KeccakState
+	diffLayer    *types.DiffLayer
+	diffTries    map[common.Address]Trie
+	diffCode     map[common.Hash][]byte
+	diffEnabled  bool
 
 	snapMux       sync.Mutex
 	snaps         *snapshot.Tree
 	snap          snapshot.Snapshot
-	snapDestructs map[common.Hash]struct{}
-	snapAccounts  map[common.Hash][]byte
-	snapStorage   map[common.Hash]map[common.Hash][]byte
+	snapDestructs map[common.Address]struct{}
+	snapAccounts  map[common.Address][]byte
+	snapStorage   map[common.Address]map[string][]byte
 
 	// This map holds 'live' objects, which will get modified while processing a state transition.
 	stateObjects        map[common.Address]*StateObject
@@ -156,9 +160,9 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 	sdb.trie = tr
 	if sdb.snaps != nil {
 		if sdb.snap = sdb.snaps.Snapshot(root); sdb.snap != nil {
-			sdb.snapDestructs = make(map[common.Hash]struct{})
-			sdb.snapAccounts = make(map[common.Hash][]byte)
-			sdb.snapStorage = make(map[common.Hash]map[common.Hash][]byte)
+			sdb.snapDestructs = make(map[common.Address]struct{})
+			sdb.snapAccounts = make(map[common.Address][]byte)
+			sdb.snapStorage = make(map[common.Address]map[string][]byte)
 		}
 	}
 	return sdb, nil
@@ -186,6 +190,11 @@ func (s *StateDB) StopPrefetcher() {
 	}
 }
 
+// Mark that the block is processed by diff layer
+func (s *StateDB) MarkDiffEnabled() {
+	s.diffEnabled = true
+}
+
 // setError remembers the first non-nil error it is called with.
 func (s *StateDB) setError(err error) {
 	if s.dbErr == nil {
@@ -195,6 +204,19 @@ func (s *StateDB) setError(err error) {
 
 func (s *StateDB) Error() error {
 	return s.dbErr
+}
+
+func (s *StateDB) Trie() Trie {
+	return s.trie
+}
+
+func (s *StateDB) SetDiff(diffLayer *types.DiffLayer, diffTries map[common.Address]Trie, diffCode map[common.Hash][]byte) {
+	s.diffLayer, s.diffTries, s.diffCode = diffLayer, diffTries, diffCode
+}
+
+func (s *StateDB) SetSnapData(snapDestructs map[common.Address]struct{}, snapAccounts map[common.Address][]byte,
+	snapStorage map[common.Address]map[string][]byte) {
+	s.snapDestructs, s.snapAccounts, s.snapStorage = snapDestructs, snapAccounts, snapStorage
 }
 
 func (s *StateDB) AddLog(log *types.Log) {
@@ -683,9 +705,9 @@ func (s *StateDB) createObject(addr common.Address) (newobj, prev *StateObject) 
 
 	var prevdestruct bool
 	if s.snap != nil && prev != nil {
-		_, prevdestruct = s.snapDestructs[prev.addrHash]
+		_, prevdestruct = s.snapDestructs[prev.address]
 		if !prevdestruct {
-			s.snapDestructs[prev.addrHash] = struct{}{}
+			s.snapDestructs[prev.address] = struct{}{}
 		}
 	}
 	newobj = newObject(s, addr, Account{})
@@ -830,17 +852,17 @@ func (s *StateDB) Copy() *StateDB {
 		state.snaps = s.snaps
 		state.snap = s.snap
 		// deep copy needed
-		state.snapDestructs = make(map[common.Hash]struct{})
+		state.snapDestructs = make(map[common.Address]struct{})
 		for k, v := range s.snapDestructs {
 			state.snapDestructs[k] = v
 		}
-		state.snapAccounts = make(map[common.Hash][]byte)
+		state.snapAccounts = make(map[common.Address][]byte)
 		for k, v := range s.snapAccounts {
 			state.snapAccounts[k] = v
 		}
-		state.snapStorage = make(map[common.Hash]map[common.Hash][]byte)
+		state.snapStorage = make(map[common.Address]map[string][]byte)
 		for k, v := range s.snapStorage {
-			temp := make(map[common.Hash][]byte)
+			temp := make(map[string][]byte)
 			for kk, vv := range v {
 				temp[kk] = vv
 			}
@@ -903,9 +925,9 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			// transactions within the same block might self destruct and then
 			// ressurrect an account; but the snapshotter needs both events.
 			if s.snap != nil {
-				s.snapDestructs[obj.addrHash] = struct{}{} // We need to maintain account deletions explicitly (will remain set indefinitely)
-				delete(s.snapAccounts, obj.addrHash)       // Clear out any previously updated account data (may be recreated via a ressurrect)
-				delete(s.snapStorage, obj.addrHash)        // Clear out any previously updated storage data (may be recreated via a ressurrect)
+				s.snapDestructs[obj.address] = struct{}{} // We need to maintain account deletions explicitly (will remain set indefinitely)
+				delete(s.snapAccounts, obj.address)       // Clear out any previously updated account data (may be recreated via a ressurrect)
+				delete(s.snapStorage, obj.address)        // Clear out any previously updated storage data (may be recreated via a ressurrect)
 			}
 		} else {
 			obj.finalise(true) // Prefetch slots in the background
@@ -932,6 +954,9 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
+	if s.diffEnabled {
+		return s.trie.Hash()
+	}
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 
@@ -983,7 +1008,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 				// at transaction boundary level to ensure we capture state clearing.
 				if s.snap != nil && !obj.deleted {
 					s.snapMux.Lock()
-					s.snapAccounts[obj.addrHash] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
+					s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
 					s.snapMux.Unlock()
 				}
 				data, err := rlp.EncodeToBytes(obj)
@@ -1051,14 +1076,71 @@ func (s *StateDB) clearJournalAndRefund() {
 	s.validRevisions = s.validRevisions[:0] // Snapshots can be created without journal entires
 }
 
+func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
+	codeWriter := s.db.TrieDB().DiskDB().NewBatch()
+
+	// Step1 write code
+	for codeHash, code := range s.diffCode {
+		rawdb.WriteCode(codeWriter, codeHash, code)
+		if codeWriter.ValueSize() >= ethdb.IdealBatchSize {
+			if err := codeWriter.Write(); err != nil {
+				return common.Hash{}, nil, err
+			}
+			codeWriter.Reset()
+		}
+	}
+	if codeWriter.ValueSize() > 0 {
+		if err := codeWriter.Write(); err != nil {
+			return common.Hash{}, nil, err
+		}
+	}
+
+	// Step2 commit account storage
+	for account, diff := range s.diffTries {
+		root, err := diff.Commit(nil)
+		if err != nil {
+			return common.Hash{}, nil, err
+		}
+		s.db.CacheStorage(crypto.Keccak256Hash(account[:]), root, diff)
+	}
+
+	// Step3 commit account trie
+	var account Account
+	root, err := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash) error {
+		if err := rlp.DecodeBytes(leaf, &account); err != nil {
+			return nil
+		}
+		if account.Root != emptyRoot {
+			s.db.TrieDB().Reference(account.Root, parent)
+		}
+		return nil
+	})
+	if err != nil {
+		return common.Hash{}, nil, err
+	}
+	if root != emptyRoot {
+		s.db.CacheAccount(root, s.trie)
+	}
+
+	s.snap, s.snapDestructs, s.snapAccounts, s.snapStorage = nil, nil, nil, nil
+	s.diffTries, s.diffCode = nil, nil
+	return root, s.diffLayer, nil
+}
+
 // Commit writes the state to the underlying in-memory trie database.
-func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
+func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer, error) {
 	if s.dbErr != nil {
-		return common.Hash{}, fmt.Errorf("commit aborted due to earlier error: %v", s.dbErr)
+		return common.Hash{}, nil, fmt.Errorf("commit aborted due to earlier error: %v", s.dbErr)
 	}
 	// Finalize any pending changes and merge everything into the tries
 	root := s.IntermediateRoot(deleteEmptyObjects)
-
+	if s.diffEnabled {
+		return s.LightCommit()
+	}
+	var diffLayer *types.DiffLayer
+	if s.snap != nil {
+		diffLayer = &types.DiffLayer{}
+	}
 	commitFuncs := []func() error{
 		func() error {
 			// Commit objects to the trie, measuring the elapsed time
@@ -1084,6 +1166,19 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 						}
 					}
 				}()
+			}
+
+			if s.snap != nil {
+				for addr := range s.stateObjectsDirty {
+					if obj := s.stateObjects[addr]; !obj.deleted {
+						if obj.code != nil && obj.dirtyCode {
+							diffLayer.Codes = append(diffLayer.Codes, types.DiffCode{
+								Hash: common.BytesToHash(obj.CodeHash()),
+								Code: obj.code,
+							})
+						}
+					}
+				}
 			}
 
 			for addr := range s.stateObjectsDirty {
@@ -1161,7 +1256,12 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 						log.Warn("Failed to cap snapshot tree", "root", root, "layers", s.snaps.CapLimit(), "err", err)
 					}
 				}
-				s.snap, s.snapDestructs, s.snapAccounts, s.snapStorage = nil, nil, nil, nil
+			}
+			return nil
+		},
+		func() error {
+			if s.snap != nil {
+				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 			}
 			return nil
 		},
@@ -1176,11 +1276,64 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 	for i := 0; i < len(commitFuncs); i++ {
 		r := <-commitRes
 		if r != nil {
-			return common.Hash{}, r
+			return common.Hash{}, nil, r
 		}
 	}
+	s.snap, s.snapDestructs, s.snapAccounts, s.snapStorage = nil, nil, nil, nil
+	return root, diffLayer, nil
+}
 
-	return root, nil
+func (s *StateDB) DiffLayerToSnap(diffLayer *types.DiffLayer) (map[common.Address]struct{}, map[common.Address][]byte, map[common.Address]map[string][]byte, error) {
+	snapDestructs := make(map[common.Address]struct{})
+	snapAccounts := make(map[common.Address][]byte)
+	snapStorage := make(map[common.Address]map[string][]byte)
+
+	for _, des := range diffLayer.Destructs {
+		snapDestructs[des] = struct{}{}
+	}
+	for _, account := range diffLayer.Accounts {
+		snapAccounts[account.Account] = account.Blob
+	}
+	for _, storage := range diffLayer.Storages {
+		if len(storage.Keys) != len(storage.Vals) {
+			return nil, nil, nil, errors.New("invalid diffLayer: length of keys and values mismatch")
+		}
+		snapStorage[storage.Account] = make(map[string][]byte, len(storage.Keys))
+		n := len(storage.Keys)
+		for i := 0; i < n; i++ {
+			snapStorage[storage.Account][storage.Keys[i]] = storage.Vals[i]
+		}
+	}
+	return snapDestructs, snapAccounts, snapStorage, nil
+}
+
+func (s *StateDB) SnapToDiffLayer() ([]common.Address, []types.DiffAccount, []types.DiffStorage) {
+	destructs := make([]common.Address, 0, len(s.snapDestructs))
+	for account := range s.snapDestructs {
+		destructs = append(destructs, account)
+	}
+	accounts := make([]types.DiffAccount, 0, len(s.snapAccounts))
+	for accountHash, account := range s.snapAccounts {
+		accounts = append(accounts, types.DiffAccount{
+			Account: accountHash,
+			Blob:    account,
+		})
+	}
+	storages := make([]types.DiffStorage, 0, len(s.snapStorage))
+	for accountHash, storage := range s.snapStorage {
+		keys := make([]string, 0, len(storage))
+		values := make([][]byte, 0, len(storage))
+		for k, v := range storage {
+			keys = append(keys, k)
+			values = append(values, v)
+		}
+		storages = append(storages, types.DiffStorage{
+			Account: accountHash,
+			Keys:    keys,
+			Vals:    values,
+		})
+	}
+	return destructs, accounts, storages
 }
 
 // PrepareAccessList handles the preparatory steps for executing a state transition with

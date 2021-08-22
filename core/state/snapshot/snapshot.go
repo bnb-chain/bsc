@@ -26,6 +26,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -324,7 +325,7 @@ func (t *Tree) Snapshots(root common.Hash, limits int, nodisk bool) []Snapshot {
 
 // Update adds a new snapshot into the tree, if that can be linked to an existing
 // old parent. It is disallowed to insert a disk layer (the origin of all).
-func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) error {
+func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Address]struct{}, accounts map[common.Address][]byte, storage map[common.Address]map[string][]byte) error {
 	// Reject noop updates to avoid self-loops in the snapshot tree. This is a
 	// special case that can only happen for Clique networks where empty blocks
 	// don't modify the state (0 block subsidy).
@@ -339,7 +340,9 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 	if parent == nil {
 		return fmt.Errorf("parent [%#x] snapshot missing", parentRoot)
 	}
-	snap := parent.(snapshot).Update(blockRoot, destructs, accounts, storage)
+
+	hashDestructs, hashAccounts, hashStorage := transformSnapData(destructs, accounts, storage)
+	snap := parent.(snapshot).Update(blockRoot, hashDestructs, hashAccounts, hashStorage)
 
 	// Save the new snapshot for later
 	t.lock.Lock()
@@ -835,4 +838,28 @@ func (t *Tree) DiskRoot() common.Hash {
 	defer t.lock.Unlock()
 
 	return t.diskRoot()
+}
+
+// TODO we can further improve it when the set is very large
+func transformSnapData(destructs map[common.Address]struct{}, accounts map[common.Address][]byte,
+	storage map[common.Address]map[string][]byte) (map[common.Hash]struct{}, map[common.Hash][]byte,
+	map[common.Hash]map[common.Hash][]byte) {
+	hasher := crypto.NewKeccakState()
+	hashDestructs := make(map[common.Hash]struct{}, len(destructs))
+	hashAccounts := make(map[common.Hash][]byte, len(accounts))
+	hashStorages := make(map[common.Hash]map[common.Hash][]byte, len(storage))
+	for addr := range destructs {
+		hashDestructs[crypto.Keccak256Hash(addr[:])] = struct{}{}
+	}
+	for addr, account := range accounts {
+		hashAccounts[crypto.Keccak256Hash(addr[:])] = account
+	}
+	for addr, accountStore := range storage {
+		hashStorage := make(map[common.Hash][]byte, len(accountStore))
+		for k, v := range accountStore {
+			hashStorage[crypto.HashData(hasher, []byte(k))] = v
+		}
+		hashStorages[crypto.Keccak256Hash(addr[:])] = hashStorage
+	}
+	return hashDestructs, hashAccounts, hashStorages
 }

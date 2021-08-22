@@ -447,6 +447,44 @@ func WriteBody(db ethdb.KeyValueWriter, hash common.Hash, number uint64, body *t
 	WriteBodyRLP(db, hash, number, data)
 }
 
+func WriteDiffLayer(db ethdb.KeyValueWriter, hash common.Hash, layer *types.DiffLayer) {
+	data, err := rlp.EncodeToBytes(layer)
+	if err != nil {
+		log.Crit("Failed to RLP encode diff layer", "err", err)
+	}
+	WriteDiffLayerRLP(db, hash, data)
+}
+
+func WriteDiffLayerRLP(db ethdb.KeyValueWriter, hash common.Hash, rlp rlp.RawValue) {
+	if err := db.Put(diffLayerKey(hash), rlp); err != nil {
+		log.Crit("Failed to store block body", "err", err)
+	}
+}
+
+func ReadDiffLayer(db ethdb.Reader, hash common.Hash) *types.DiffLayer {
+	data := ReadDiffLayerRLP(db, hash)
+	if len(data) == 0 {
+		return nil
+	}
+	diff := new(types.DiffLayer)
+	if err := rlp.Decode(bytes.NewReader(data), diff); err != nil {
+		log.Error("Invalid diff layer RLP", "hash", hash, "err", err)
+		return nil
+	}
+	return diff
+}
+
+func ReadDiffLayerRLP(db ethdb.Reader, hash common.Hash) rlp.RawValue {
+	data, _ := db.Get(diffLayerKey(hash))
+	return data
+}
+
+func DeleteDiffLayer(db ethdb.KeyValueWriter, hash common.Hash) {
+	if err := db.Delete(diffLayerKey(hash)); err != nil {
+		log.Crit("Failed to delete diffLayer", "err", err)
+	}
+}
+
 // DeleteBody removes all block body data associated with a hash.
 func DeleteBody(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	if err := db.Delete(blockBodyKey(number, hash)); err != nil {
