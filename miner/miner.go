@@ -147,10 +147,12 @@ func (miner *Miner) update() {
 
 func (miner *Miner) Start(coinbase common.Address) {
 	miner.startCh <- coinbase
+	log.Info("Miner Started.")
 }
 
 func (miner *Miner) Stop() {
 	miner.stopCh <- struct{}{}
+	log.Info("Miner Stopped.")
 }
 
 func (miner *Miner) Close() {
