@@ -542,8 +542,8 @@ func (w *worker) mainLoop() {
 			return
 		case <-w.chainHeadSub.Err():
 			return
-		case <-w.chainSideSub.Err():
-			return
+			// case <-w.chainSideSub.Err():
+			// 	return
 		}
 	}
 }
