@@ -427,7 +427,7 @@ var (
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
 		Name:  "mine",
-		Usage: "Enable mining",
+		Usage: "Disable mining",
 	}
 	MinerThreadsFlag = cli.IntFlag{
 		Name:  "miner.threads",
