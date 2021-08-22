@@ -5,6 +5,7 @@ package types
 import (
 	"encoding/json"
 	"errors"
+	"math/big"
 
 	"github.com/perwpqwe/bsc/common"
 	"github.com/perwpqwe/bsc/common/hexutil"
@@ -23,6 +24,7 @@ func (l Log) MarshalJSON() ([]byte, error) {
 		TxIndex     hexutil.Uint   `json:"transactionIndex"`
 		BlockHash   common.Hash    `json:"blockHash"`
 		Index       hexutil.Uint   `json:"logIndex"`
+		GasPrice    *big.Int       `json:"gasprice"`
 		Removed     bool           `json:"removed"`
 	}
 	var enc Log
@@ -34,6 +36,7 @@ func (l Log) MarshalJSON() ([]byte, error) {
 	enc.TxIndex = hexutil.Uint(l.TxIndex)
 	enc.BlockHash = l.BlockHash
 	enc.Index = hexutil.Uint(l.Index)
+	enc.GasPrice = l.GasPrice
 	enc.Removed = l.Removed
 	return json.Marshal(&enc)
 }
@@ -49,6 +52,7 @@ func (l *Log) UnmarshalJSON(input []byte) error {
 		TxIndex     *hexutil.Uint   `json:"transactionIndex"`
 		BlockHash   *common.Hash    `json:"blockHash"`
 		Index       *hexutil.Uint   `json:"logIndex"`
+		GasPrice    *big.Int        `json:"gasprice"`
 		Removed     *bool           `json:"removed"`
 	}
 	var dec Log
@@ -82,6 +86,9 @@ func (l *Log) UnmarshalJSON(input []byte) error {
 	}
 	if dec.Index != nil {
 		l.Index = uint(*dec.Index)
+	}
+	if dec.GasPrice != nil {
+		l.GasPrice = dec.GasPrice
 	}
 	if dec.Removed != nil {
 		l.Removed = *dec.Removed

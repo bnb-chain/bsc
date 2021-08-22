@@ -62,7 +62,7 @@ type logMarshaling struct {
 	BlockNumber hexutil.Uint64
 	TxIndex     hexutil.Uint
 	Index       hexutil.Uint
-	GasPrice    *hexutil.Big
+	GasPrice    *big.Int
 }
 
 type rlpLog struct {
