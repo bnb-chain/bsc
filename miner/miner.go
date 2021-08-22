@@ -62,7 +62,7 @@ type Miner struct {
 	eth      Backend
 	engine   consensus.Engine
 	exitCh   chan struct{}
-	startCh  chan common.Address
+	startCh  chan struct{}
 	stopCh   chan struct{}
 }
 
@@ -72,7 +72,7 @@ func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *even
 		mux:     mux,
 		engine:  engine,
 		exitCh:  make(chan struct{}),
-		startCh: make(chan common.Address),
+		startCh: make(chan struct{}),
 		stopCh:  make(chan struct{}),
 		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, false),
 	}
@@ -129,8 +129,8 @@ func (miner *Miner) update() {
 				// Stop reacting to downloader events
 				events.Unsubscribe()
 			}
-		case addr := <-miner.startCh:
-			miner.SetEtherbase(addr)
+		case <-miner.startCh:
+			// miner.SetEtherbase(addr)
 			if canStart {
 				miner.worker.start()
 			}
@@ -145,8 +145,8 @@ func (miner *Miner) update() {
 	}
 }
 
-func (miner *Miner) Start(coinbase common.Address) {
-	miner.startCh <- coinbase
+func (miner *Miner) Start() {
+	miner.startCh <- struct{}{}
 	log.Info("Miner Started.")
 }
 

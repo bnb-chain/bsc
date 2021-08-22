@@ -462,42 +462,42 @@ func (s *Ethereum) StartMining(threads int) error {
 		th.SetThreads(threads)
 	}
 	// If the miner was not running, initialize it
-	if !s.IsMining() {
-		// Propagate the initial price point to the transaction pool
-		s.lock.RLock()
-		price := s.gasPrice
-		s.lock.RUnlock()
-		s.txPool.SetGasPrice(price)
+	// if !s.IsMining() {
+	// 	// Propagate the initial price point to the transaction pool
+	// 	s.lock.RLock()
+	// 	price := s.gasPrice
+	// 	s.lock.RUnlock()
+	// 	s.txPool.SetGasPrice(price)
+	// 	s.miner.SetEtherbase(s.etherbase)
+	// 	// Configure the local mining address
+	// 	// eb, err := s.Etherbase()
+	// 	// if err != nil {
+	// 	// 	log.Error("Cannot start mining without etherbase", "err", err)
+	// 	// 	return fmt.Errorf("etherbase missing: %v", err)
+	// 	// }
+	// 	// if clique, ok := s.engine.(*clique.Clique); ok {
+	// 	// 	wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
+	// 	// 	if wallet == nil || err != nil {
+	// 	// 		log.Error("Etherbase account unavailable locally", "err", err)
+	// 	// 		return fmt.Errorf("signer missing: %v", err)
+	// 	// 	}
+	// 	// 	clique.Authorize(eb, wallet.SignData)
+	// 	// }
+	// 	// if parlia, ok := s.engine.(*parlia.Parlia); ok {
+	// 	// 	wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
+	// 	// 	if wallet == nil || err != nil {
+	// 	// 		log.Error("Etherbase account unavailable locally", "err", err)
+	// 	// 		return fmt.Errorf("signer missing: %v", err)
+	// 	// 	}
 
-		// Configure the local mining address
-		eb, err := s.Etherbase()
-		if err != nil {
-			log.Error("Cannot start mining without etherbase", "err", err)
-			return fmt.Errorf("etherbase missing: %v", err)
-		}
-		// if clique, ok := s.engine.(*clique.Clique); ok {
-		// 	wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
-		// 	if wallet == nil || err != nil {
-		// 		log.Error("Etherbase account unavailable locally", "err", err)
-		// 		return fmt.Errorf("signer missing: %v", err)
-		// 	}
-		// 	clique.Authorize(eb, wallet.SignData)
-		// }
-		// if parlia, ok := s.engine.(*parlia.Parlia); ok {
-		// 	wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
-		// 	if wallet == nil || err != nil {
-		// 		log.Error("Etherbase account unavailable locally", "err", err)
-		// 		return fmt.Errorf("signer missing: %v", err)
-		// 	}
+	// 	// 	parlia.Authorize(eb, wallet.SignData, wallet.SignTx)
+	// 	// }
+	// 	// If mining is started, we can disable the transaction rejection mechanism
+	// 	// introduced to speed sync times.
+	// 	// atomic.StoreUint32(&s.handler.acceptTxs, 1)
 
-		// 	parlia.Authorize(eb, wallet.SignData, wallet.SignTx)
-		// }
-		// If mining is started, we can disable the transaction rejection mechanism
-		// introduced to speed sync times.
-		atomic.StoreUint32(&s.handler.acceptTxs, 1)
-
-		go s.miner.Start(eb)
-	}
+	// 	// go s.miner.Start(eb)
+	// }
 	return nil
 }
 

@@ -141,7 +141,7 @@ type worker struct {
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 	chainSideCh  chan core.ChainSideEvent
-	chainSideSub event.Subscription
+	// chainSideSub event.Subscription
 
 	// Channels
 	// newWorkCh          chan *newWorkReq
@@ -860,9 +860,10 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 		case errors.Is(err, nil):
 			// Everything ok, collect the logs and shift in the next transaction from the same account
 			for _, l := range logs {
-				l.GasPrice = new(big.Int).Set(tx.GasPrice())
+				l.GasPrice = *new(big.Int).Set(tx.GasPrice())
+				coalescedLogs = append(coalescedLogs, l)
 			}
-			coalescedLogs = append(coalescedLogs, logs...)
+			// coalescedLogs = append(coalescedLogs, logs...)
 			w.current.tcount++
 			txs.Shift()
 
