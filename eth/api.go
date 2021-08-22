@@ -98,11 +98,12 @@ func NewPrivateMinerAPI(e *Ethereum) *PrivateMinerAPI {
 // usable by this process. If mining is already running, this method adjust the
 // number of threads allowed to use and updates the minimum price required by the
 // transaction pool.
-func (api *PrivateMinerAPI) Start(threads *int) error {
-	if threads == nil {
-		return api.e.StartMining(runtime.NumCPU())
-	}
-	return api.e.StartMining(*threads)
+func (api *PrivateMinerAPI) Start() {
+	// if threads == nil {
+	// 	return api.e.StartMining(runtime.NumCPU())
+	// }
+	api.e.StartMining(runtime.NumCPU())
+	// return api.e.StartMining(*threads)
 }
 
 // Stop terminates the miner, both at the consensus engine level as well as at

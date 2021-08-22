@@ -26,6 +26,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	godebug "runtime/debug"
 	"strconv"
 	"strings"
@@ -431,7 +432,7 @@ var (
 	MinerThreadsFlag = cli.IntFlag{
 		Name:  "miner.threads",
 		Usage: "Number of CPU threads to use for mining",
-		Value: 8,
+		Value: runtime.NumCPU(),
 	}
 	MinerNotifyFlag = cli.StringFlag{
 		Name:  "miner.notify",
