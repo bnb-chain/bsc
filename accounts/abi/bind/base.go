@@ -322,7 +322,7 @@ func (c *BoundContract) FilterLogs(opts *FilterOpts, name string, query ...[]int
 
 // WatchLogs filters subscribes to contract logs for future blocks, returning a
 // subscription object that can be used to tear down the watcher.
-func (c *BoundContract) WatchLogs(opts *WatchOpts, name string, query ...[]interface{}) (chan []types.Log, event.Subscription, error) {
+func (c *BoundContract) WatchLogs(opts *WatchOpts, name string, query ...[]interface{}) (chan []*types.Log, event.Subscription, error) {
 	// Don't crash on a lazy user
 	if opts == nil {
 		opts = new(WatchOpts)
@@ -335,7 +335,7 @@ func (c *BoundContract) WatchLogs(opts *WatchOpts, name string, query ...[]inter
 		return nil, nil, err
 	}
 	// Start the background filtering
-	logs := make(chan []types.Log, 128)
+	logs := make(chan []*types.Log, 128)
 
 	config := ethereum.FilterQuery{
 		Addresses: []common.Address{c.address},
