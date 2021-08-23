@@ -30,7 +30,8 @@ import (
 	"github.com/perwpqwe/bsc/common"
 	"github.com/perwpqwe/bsc/common/hexutil"
 	"github.com/perwpqwe/bsc/contracts/checkpointoracle"
-	"github.com/perwpqwe/bsc/contracts/checkpointoracle/contract"
+
+	// "github.com/perwpqwe/bsc/contracts/checkpointoracle/contract"
 	"github.com/perwpqwe/bsc/crypto"
 	"github.com/perwpqwe/bsc/ethclient"
 	"github.com/perwpqwe/bsc/log"
@@ -105,16 +106,16 @@ func deploy(ctx *cli.Context) error {
 	fmt.Printf("\nSignatures needed to publish: %d\n", needed)
 
 	// setup clef signer, create an abigen transactor and an RPC client
-	transactor, client := newClefSigner(ctx), newClient(ctx)
+	// transactor, client := newClefSigner(ctx), newClient(ctx)
 
 	// Deploy the checkpoint oracle
-	fmt.Println("Sending deploy request to Clef...")
-	oracle, tx, _, err := contract.DeployCheckpointOracle(transactor, client, addrs, big.NewInt(int64(params.CheckpointFrequency)),
-		big.NewInt(int64(params.CheckpointProcessConfirmations)), big.NewInt(int64(needed)))
-	if err != nil {
-		utils.Fatalf("Failed to deploy checkpoint oracle %v", err)
-	}
-	log.Info("Deployed checkpoint oracle", "address", oracle, "tx", tx.Hash().Hex())
+	// fmt.Println("Sending deploy request to Clef...")
+	// oracle, tx, _, err := contract.DeployCheckpointOracle(transactor, client, addrs, big.NewInt(int64(params.CheckpointFrequency)),
+	// 	big.NewInt(int64(params.CheckpointProcessConfirmations)), big.NewInt(int64(needed)))
+	// if err != nil {
+	// 	utils.Fatalf("Failed to deploy checkpoint oracle %v", err)
+	// }
+	// log.Info("Deployed checkpoint oracle", "address", oracle, "tx", tx.Hash().Hex())
 
 	return nil
 }

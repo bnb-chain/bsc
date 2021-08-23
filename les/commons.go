@@ -26,7 +26,8 @@ import (
 	"github.com/perwpqwe/bsc/core/rawdb"
 	"github.com/perwpqwe/bsc/core/types"
 	"github.com/perwpqwe/bsc/eth/ethconfig"
-	"github.com/perwpqwe/bsc/ethclient"
+
+	// "github.com/perwpqwe/bsc/ethclient"
 	"github.com/perwpqwe/bsc/ethdb"
 	"github.com/perwpqwe/bsc/les/checkpointoracle"
 	"github.com/perwpqwe/bsc/light"
@@ -153,9 +154,9 @@ func (c *lesCommons) setupOracle(node *node.Node, genesis common.Hash, ethconfig
 		return nil
 	}
 	oracle := checkpointoracle.New(config, c.localCheckpoint)
-	rpcClient, _ := node.Attach()
-	client := ethclient.NewClient(rpcClient)
-	oracle.Start(client)
+	// rpcClient, _ := node.Attach()
+	// client := ethclient.NewClient(rpcClient)
+	// oracle.Start(client)
 	log.Info("Configured checkpoint oracle", "address", config.Address, "signers", len(config.Signers), "threshold", config.Threshold)
 	return oracle
 }
