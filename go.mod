@@ -25,7 +25,6 @@ require (
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/etcd-io/bbolt v1.3.3 // indirect
 	github.com/fatih/color v1.7.0
-	github.com/fjl/gencodec v0.0.0-20191126094850-e283372f291f // indirect
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
 	github.com/fortytw2/leaktest v1.3.0 // indirect
 	github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff
