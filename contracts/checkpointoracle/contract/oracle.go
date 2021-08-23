@@ -392,13 +392,13 @@ func (_CheckpointOracle *CheckpointOracleFilterer) WatchNewCheckpointVote(opts *
 		defer sub.Unsubscribe()
 		for {
 			select {
-			case log := <-logs:
+			case <-logs:
 				// New log arrived, parse the event and forward to the user
 				event := new(CheckpointOracleNewCheckpointVote)
-				if err := _CheckpointOracle.contract.UnpackLog(event, "NewCheckpointVote", log); err != nil {
-					return err
-				}
-				event.Raw = log
+				// if err := _CheckpointOracle.contract.UnpackLog(event, "NewCheckpointVote", log); err != nil {
+				// 	return err
+				// }
+				// event.Raw = log
 
 				select {
 				case sink <- event:
