@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/eth/protocols/diff"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
@@ -81,6 +83,7 @@ type handlerConfig struct {
 	TxPool          txPool                    // Transaction pool to propagate from
 	Network         uint64                    // Network identifier to adfvertise
 	Sync            downloader.SyncMode       // Whether to fast or full sync
+	LightSync       bool                      // Whether to light sync
 	BloomCache      uint64                    // Megabytes to alloc for fast sync bloom
 	EventMux        *event.TypeMux            // Legacy event mux, deprecate for `feed`
 	Checkpoint      *params.TrustedCheckpoint // Hard coded checkpoint for sync challenges
@@ -96,6 +99,7 @@ type handler struct {
 	snapSync        uint32 // Flag whether fast sync should operate on top of the snap protocol
 	acceptTxs       uint32 // Flag whether we're considered synchronised (enables transaction processing)
 	directBroadcast bool
+	lightSync       bool // Flag whether light sync should operate on top of the diff protocol
 
 	checkpointNumber uint64      // Block number for the sync progress validator to cross reference
 	checkpointHash   common.Hash // Block hash for the sync progress validator to cross reference
@@ -143,6 +147,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		peers:           newPeerSet(),
 		whitelist:       config.Whitelist,
 		directBroadcast: config.DirectBroadcast,
+		lightSync:       config.LightSync,
 		txsyncCh:        make(chan *txsync),
 		quitSync:        make(chan struct{}),
 	}
@@ -246,6 +251,11 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Snapshot extension barrier failed", "err", err)
 		return err
 	}
+	diff, err := h.peers.waitDiffExtension(peer)
+	if err != nil {
+		peer.Log().Error("Diff extension barrier failed", "err", err)
+		return err
+	}
 	// TODO(karalabe): Not sure why this is needed
 	if !h.chainSync.handlePeerEvent(peer) {
 		return p2p.DiscQuitting
@@ -286,7 +296,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
 	// Register the peer locally
-	if err := h.peers.registerPeer(peer, snap); err != nil {
+	if err := h.peers.registerPeer(peer, snap, diff); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
@@ -352,6 +362,21 @@ func (h *handler) runSnapExtension(peer *snap.Peer, handler snap.Handler) error 
 
 	if err := h.peers.registerSnapExtension(peer); err != nil {
 		peer.Log().Error("Snapshot extension registration failed", "err", err)
+		return err
+	}
+	return handler(peer)
+}
+
+// runDiffExtension registers a `diff` peer into the joint eth/diff peerset and
+// starts handling inbound messages. As `diff` is only a satellite protocol to
+// `eth`, all subsystem registrations and lifecycle management will be done by
+// the main `eth` handler to prevent strange races.
+func (h *handler) runDiffExtension(peer *diff.Peer, handler diff.Handler) error {
+	h.peerWG.Add(1)
+	defer h.peerWG.Done()
+
+	if err := h.peers.registerDiffExtension(peer); err != nil {
+		peer.Log().Error("Diff extension registration failed", "err", err)
 		return err
 	}
 	return handler(peer)
@@ -453,8 +478,9 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		} else {
 			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
 		}
+		diff := h.chain.GetDiffLayerRLP(block.Hash())
 		for _, peer := range transfer {
-			peer.AsyncSendNewBlock(block, td)
+			peer.AsyncSendNewBlock(block, diff, td)
 		}
 		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return

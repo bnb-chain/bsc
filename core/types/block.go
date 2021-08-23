@@ -19,6 +19,7 @@ package types
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -373,6 +374,7 @@ type Blocks []*Block
 
 // journalDestruct is an account deletion entry in a diffLayer's disk journal.
 type DiffLayer struct {
+	DiffHash  common.Hash `rlp:"_"`
 	Hash      common.Hash
 	StateRoot common.Hash
 	Receipts  Receipts // Receipts are duplicated stored to simplify the logic
@@ -380,6 +382,18 @@ type DiffLayer struct {
 	Destructs []common.Address
 	Accounts  []DiffAccount
 	Storages  []DiffStorage
+}
+
+func (d *DiffLayer) Validate() error {
+	if d.Hash == (common.Hash{}) || d.StateRoot == (common.Hash{}) {
+		return errors.New("hash can't be empty")
+	}
+	for _, storage := range d.Storages {
+		if len(storage.Keys) != len(storage.Vals) {
+			return errors.New("the length of keys and values mismatch in storage")
+		}
+	}
+	return nil
 }
 
 type DiffCode struct {

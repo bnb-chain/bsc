@@ -80,14 +80,15 @@ var (
 )
 
 const (
-	bodyCacheLimit      = 256
-	blockCacheLimit     = 256
-	diffLayerCacheLimit = 1024
-	receiptsCacheLimit  = 10000
-	txLookupCacheLimit  = 1024
-	maxFutureBlocks     = 256
-	maxTimeFutureBlocks = 30
-	maxBeyondBlocks     = 2048
+	bodyCacheLimit         = 256
+	blockCacheLimit        = 256
+	diffLayerCacheLimit    = 1024
+	diffLayerRLPCacheLimit = 256
+	receiptsCacheLimit     = 10000
+	txLookupCacheLimit     = 1024
+	maxFutureBlocks        = 256
+	maxTimeFutureBlocks    = 30
+	maxBeyondBlocks        = 2048
 
 	diffLayerfreezerRecheckInterval = 3 * time.Second
 	diffLayerfreezerBlockLimit      = 864000 // The number of blocks that should be kept in disk.
@@ -191,15 +192,16 @@ type BlockChain struct {
 	currentBlock     atomic.Value // Current head of the block chain
 	currentFastBlock atomic.Value // Current head of the fast-sync chain (may be above the block chain!)
 
-	stateCache     state.Database // State database to reuse between imports (contains state cache)
-	bodyCache      *lru.Cache     // Cache for the most recent block bodies
-	bodyRLPCache   *lru.Cache     // Cache for the most recent block bodies in RLP encoded format
-	receiptsCache  *lru.Cache     // Cache for the most recent receipts per block
-	blockCache     *lru.Cache     // Cache for the most recent entire blocks
-	txLookupCache  *lru.Cache     // Cache for the most recent transaction lookup data.
-	futureBlocks   *lru.Cache     // future blocks are blocks added for later processing
-	diffLayerCache *lru.Cache     // Cache for the diffLayers
-	diffQueue      *prque.Prque   // A Priority queue to store recent diff layer
+	stateCache        state.Database // State database to reuse between imports (contains state cache)
+	bodyCache         *lru.Cache     // Cache for the most recent block bodies
+	bodyRLPCache      *lru.Cache     // Cache for the most recent block bodies in RLP encoded format
+	receiptsCache     *lru.Cache     // Cache for the most recent receipts per block
+	blockCache        *lru.Cache     // Cache for the most recent entire blocks
+	txLookupCache     *lru.Cache     // Cache for the most recent transaction lookup data.
+	futureBlocks      *lru.Cache     // future blocks are blocks added for later processing
+	diffLayerCache    *lru.Cache     // Cache for the diffLayers
+	diffLayerRLPCache *lru.Cache     // Cache for the rlp encoded diffLayers
+	diffQueue         *prque.Prque   // A Priority queue to store recent diff layer
 
 	quit          chan struct{}  // blockchain quit channel
 	wg            sync.WaitGroup // chain processing wait group for shutting down
@@ -232,6 +234,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	txLookupCache, _ := lru.New(txLookupCacheLimit)
 	futureBlocks, _ := lru.New(maxFutureBlocks)
 	diffLayerCache, _ := lru.New(diffLayerCacheLimit)
+	diffLayerRLPCache, _ := lru.New(diffLayerRLPCacheLimit)
 
 	bc := &BlockChain{
 		chainConfig: chainConfig,
@@ -243,19 +246,20 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 			Journal:   cacheConfig.TrieCleanJournal,
 			Preimages: cacheConfig.Preimages,
 		}),
-		triesInMemory:  cacheConfig.TriesInMemory,
-		quit:           make(chan struct{}),
-		shouldPreserve: shouldPreserve,
-		bodyCache:      bodyCache,
-		bodyRLPCache:   bodyRLPCache,
-		receiptsCache:  receiptsCache,
-		blockCache:     blockCache,
-		diffLayerCache: diffLayerCache,
-		txLookupCache:  txLookupCache,
-		futureBlocks:   futureBlocks,
-		engine:         engine,
-		vmConfig:       vmConfig,
-		diffQueue:      prque.New(nil),
+		triesInMemory:     cacheConfig.TriesInMemory,
+		quit:              make(chan struct{}),
+		shouldPreserve:    shouldPreserve,
+		bodyCache:         bodyCache,
+		bodyRLPCache:      bodyRLPCache,
+		receiptsCache:     receiptsCache,
+		blockCache:        blockCache,
+		diffLayerCache:    diffLayerCache,
+		diffLayerRLPCache: diffLayerRLPCache,
+		txLookupCache:     txLookupCache,
+		futureBlocks:      futureBlocks,
+		engine:            engine,
+		vmConfig:          vmConfig,
+		diffQueue:         prque.New(nil),
 	}
 	bc.validator = NewBlockValidator(chainConfig, bc, engine)
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
@@ -891,6 +895,33 @@ func (bc *BlockChain) GetBodyRLP(hash common.Hash) rlp.RawValue {
 	// Cache the found body for next time and return
 	bc.bodyRLPCache.Add(hash, body)
 	return body
+}
+
+// GetBodyRLP retrieves a diff layer in RLP encoding from the database by hash,
+// caching it if found.
+func (bc *BlockChain) GetDiffLayerRLP(hash common.Hash) rlp.RawValue {
+	// Short circuit if the diffLayer's already in the cache, retrieve otherwise
+	if cached, ok := bc.diffLayerRLPCache.Get(hash); ok {
+		return cached.(rlp.RawValue)
+	}
+	if cached, ok := bc.diffLayerCache.Get(hash); ok {
+		diff := cached.(*types.DiffLayer)
+		bz, err := rlp.EncodeToBytes(diff)
+		if err != nil {
+			return nil
+		}
+		bc.diffLayerRLPCache.Add(hash, bz)
+		return bz
+	}
+	diffStore := bc.db.DiffStore()
+	if diffStore == nil {
+		return nil
+	}
+	rawData := rawdb.ReadDiffLayerRLP(diffStore, hash)
+	if len(rawData) != 0 {
+		bc.diffLayerRLPCache.Add(hash, rawData)
+	}
+	return rawData
 }
 
 // HasBlock checks if a block is fully present in the database or not.

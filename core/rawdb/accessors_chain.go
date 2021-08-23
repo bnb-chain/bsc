@@ -461,7 +461,7 @@ func WriteDiffLayerRLP(db ethdb.KeyValueWriter, hash common.Hash, rlp rlp.RawVal
 	}
 }
 
-func ReadDiffLayer(db ethdb.Reader, hash common.Hash) *types.DiffLayer {
+func ReadDiffLayer(db ethdb.KeyValueReader, hash common.Hash) *types.DiffLayer {
 	data := ReadDiffLayerRLP(db, hash)
 	if len(data) == 0 {
 		return nil
@@ -474,7 +474,7 @@ func ReadDiffLayer(db ethdb.Reader, hash common.Hash) *types.DiffLayer {
 	return diff
 }
 
-func ReadDiffLayerRLP(db ethdb.Reader, hash common.Hash) rlp.RawValue {
+func ReadDiffLayerRLP(db ethdb.KeyValueReader, hash common.Hash) rlp.RawValue {
 	data, _ := db.Get(diffLayerKey(hash))
 	return data
 }

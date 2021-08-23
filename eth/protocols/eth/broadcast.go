@@ -19,6 +19,11 @@ package eth
 import (
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/eth/protocols/diff"
+	"github.com/ethereum/go-ethereum/p2p"
+
+	"github.com/ethereum/go-ethereum/rlp"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -33,8 +38,9 @@ const (
 // blockPropagation is a block propagation event, waiting for its turn in the
 // broadcast queue.
 type blockPropagation struct {
-	block *types.Block
-	td    *big.Int
+	block     *types.Block
+	diffLayer rlp.RawValue
+	td        *big.Int
 }
 
 // broadcastBlocks is a write loop that multiplexes blocks and block accouncements
@@ -46,6 +52,9 @@ func (p *Peer) broadcastBlocks() {
 		case prop := <-p.queuedBlocks:
 			if err := p.SendNewBlock(prop.block, prop.td); err != nil {
 				return
+			}
+			if len(prop.diffLayer) != 0 {
+				p2p.Send(p.rw, diff.DiffLayerMsg, &diff.DiffLayersPacket{prop.diffLayer})
 			}
 			p.Log().Trace("Propagated block", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td)
 
