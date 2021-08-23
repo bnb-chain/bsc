@@ -26,7 +26,8 @@ import (
 
 	ethereum "github.com/perwpqwe/bsc"
 	"github.com/perwpqwe/bsc/accounts/abi"
-	"github.com/perwpqwe/bsc/accounts/abi/bind"
+
+	// "github.com/perwpqwe/bsc/accounts/abi/bind"
 	"github.com/perwpqwe/bsc/common"
 	"github.com/perwpqwe/bsc/common/hexutil"
 	"github.com/perwpqwe/bsc/common/math"
@@ -46,7 +47,7 @@ import (
 )
 
 // This nil assignment ensures at compile time that SimulatedBackend implements bind.ContractBackend.
-var _ bind.ContractBackend = (*SimulatedBackend)(nil)
+// var _ bind.ContractBackend = (*SimulatedBackend)(nil)
 
 var (
 	errBlockNumberUnsupported  = errors.New("simulatedBackend cannot access blocks other than the latest block")
