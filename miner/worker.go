@@ -33,6 +33,7 @@ import (
 	"github.com/perwpqwe/bsc/event"
 	"github.com/perwpqwe/bsc/log"
 	"github.com/perwpqwe/bsc/params"
+	"github.com/perwpqwe/bsc/trie"
 )
 
 const (
@@ -516,13 +517,13 @@ func (w *worker) mainLoop() {
 					txs[acc] = append(txs[acc], tx)
 				}
 				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs)
-				// tcount := w.current.tcount
+				tcount := w.current.tcount
 				w.commitTransactions(txset, coinbase, nil)
 				// Only update the snapshot if any new transactons were added
 				// to the pending block
-				// if tcount != w.current.tcount {
-				// 	w.updateSnapshot()
-				// }
+				if tcount != w.current.tcount {
+					w.updateSnapshot()
+				}
 			}
 			//  else {
 			// 	// Special case, if the consensus engine is 0 period clique(dev mode),
@@ -720,36 +721,36 @@ func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
 
 // updateSnapshot updates pending snapshot block and state.
 // Note this function assumes the current variable is thread safe.
-// func (w *worker) updateSnapshot() {
-// 	w.snapshotMu.Lock()
-// 	defer w.snapshotMu.Unlock()
+func (w *worker) updateSnapshot() {
+	w.snapshotMu.Lock()
+	defer w.snapshotMu.Unlock()
 
-// 	var uncles []*types.Header
-// 	w.current.uncles.Each(func(item interface{}) bool {
-// 		hash, ok := item.(common.Hash)
-// 		if !ok {
-// 			return false
-// 		}
-// 		uncle, exist := w.localUncles[hash]
-// 		if !exist {
-// 			uncle, exist = w.remoteUncles[hash]
-// 		}
-// 		if !exist {
-// 			return false
-// 		}
-// 		uncles = append(uncles, uncle.Header())
-// 		return false
-// 	})
+	var uncles []*types.Header
+	w.current.uncles.Each(func(item interface{}) bool {
+		hash, ok := item.(common.Hash)
+		if !ok {
+			return false
+		}
+		uncle, exist := w.localUncles[hash]
+		if !exist {
+			uncle, exist = w.remoteUncles[hash]
+		}
+		if !exist {
+			return false
+		}
+		uncles = append(uncles, uncle.Header())
+		return false
+	})
 
-// 	w.snapshotBlock = types.NewBlock(
-// 		w.current.header,
-// 		w.current.txs,
-// 		uncles,
-// 		w.current.receipts,
-// 		trie.NewStackTrie(nil),
-// 	)
-// 	w.snapshotState = w.current.state.Copy()
-// }
+	w.snapshotBlock = types.NewBlock(
+		w.current.header,
+		w.current.txs,
+		uncles,
+		w.current.receipts,
+		trie.NewStackTrie(nil),
+	)
+	w.snapshotState = w.current.state.Copy()
+}
 
 func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
