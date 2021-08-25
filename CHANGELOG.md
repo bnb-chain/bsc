@@ -1,4 +1,8 @@
 # Changelog
+## v1.1.2
+Security
+* [\#379](https://github.com/binance-chain/bsc/pull/379) A pre-announced hotfix release to patch a vulnerability in the EVM (CVE-2021-39137).
+
 
 ## v1.1.1
 IMPROVEMENT
