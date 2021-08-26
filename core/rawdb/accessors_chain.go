@@ -34,16 +34,16 @@ import (
 // ReadCanonicalHash retrieves the hash assigned to a canonical block number.
 func ReadCanonicalHash(db ethdb.Reader, number uint64) common.Hash {
 	data, _ := db.Ancient(freezerHashTable, number)
-	if len(data) == 0 {
-		data, _ = db.Get(headerHashKey(number))
-		// In the background freezer is moving data from leveldb to flatten files.
-		// So during the first check for ancient db, the data is not yet in there,
-		// but when we reach into leveldb, the data was already moved. That would
-		// result in a not found error.
-		if len(data) == 0 {
-			data, _ = db.Ancient(freezerHashTable, number)
-		}
-	}
+	// if len(data) == 0 {
+	// 	data, _ = db.Get(headerHashKey(number))
+	// 	// In the background freezer is moving data from leveldb to flatten files.
+	// 	// So during the first check for ancient db, the data is not yet in there,
+	// 	// but when we reach into leveldb, the data was already moved. That would
+	// 	// result in a not found error.
+	// 	if len(data) == 0 {
+	// 		data, _ = db.Ancient(freezerHashTable, number)
+	// 	}
+	// }
 	if len(data) == 0 {
 		return common.Hash{}
 	}
