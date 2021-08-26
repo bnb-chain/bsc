@@ -90,8 +90,12 @@ const (
 	maxTimeFutureBlocks    = 30
 	maxBeyondBlocks        = 2048
 
-	diffLayerfreezerRecheckInterval = 3 * time.Second
-	diffLayerfreezerBlockLimit      = 864000 // The number of blocks that should be kept in disk.
+	diffLayerFreezerRecheckInterval = 3 * time.Second
+	diffLayerFreezerBlockLimit      = 864000          // The number of diff layers that should be kept in disk.
+	diffLayerPruneRecheckInterval   = 1 * time.Second // The interval to prune unverified diff layers
+	maxDiffQueueDist                = 64              // Maximum allowed distance from the chain head to queue diffLayers
+	maxDiffLimit                    = 128             // Maximum number of unique diff layers a peer may have delivered
+	maxDiffForkDist                 = 11              // Maximum allowed backward distance from the chain head
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -135,6 +139,11 @@ type CacheConfig struct {
 	SnapshotWait bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 }
 
+// To avoid cycle import
+type PeerIDer interface {
+	ID() string
+}
+
 // defaultCacheConfig are the default caching values if none are specified by the
 // user (also used during testing).
 var defaultCacheConfig = &CacheConfig{
@@ -145,6 +154,8 @@ var defaultCacheConfig = &CacheConfig{
 	TriesInMemory:  128,
 	SnapshotWait:   true,
 }
+
+type BlockChainOption func(*BlockChain) *BlockChain
 
 // BlockChain represents the canonical chain given a database with a genesis
 // block. The Blockchain manages chain imports, reverts, chain reorganisations.
@@ -192,16 +203,26 @@ type BlockChain struct {
 	currentBlock     atomic.Value // Current head of the block chain
 	currentFastBlock atomic.Value // Current head of the fast-sync chain (may be above the block chain!)
 
-	stateCache        state.Database // State database to reuse between imports (contains state cache)
-	bodyCache         *lru.Cache     // Cache for the most recent block bodies
-	bodyRLPCache      *lru.Cache     // Cache for the most recent block bodies in RLP encoded format
-	receiptsCache     *lru.Cache     // Cache for the most recent receipts per block
-	blockCache        *lru.Cache     // Cache for the most recent entire blocks
-	txLookupCache     *lru.Cache     // Cache for the most recent transaction lookup data.
-	futureBlocks      *lru.Cache     // future blocks are blocks added for later processing
-	diffLayerCache    *lru.Cache     // Cache for the diffLayers
-	diffLayerRLPCache *lru.Cache     // Cache for the rlp encoded diffLayers
-	diffQueue         *prque.Prque   // A Priority queue to store recent diff layer
+	stateCache    state.Database // State database to reuse between imports (contains state cache)
+	bodyCache     *lru.Cache     // Cache for the most recent block bodies
+	bodyRLPCache  *lru.Cache     // Cache for the most recent block bodies in RLP encoded format
+	receiptsCache *lru.Cache     // Cache for the most recent receipts per block
+	blockCache    *lru.Cache     // Cache for the most recent entire blocks
+	txLookupCache *lru.Cache     // Cache for the most recent transaction lookup data.
+	futureBlocks  *lru.Cache     // future blocks are blocks added for later processing
+
+	// trusted diff layers
+	diffLayerCache    *lru.Cache   // Cache for the diffLayers
+	diffLayerRLPCache *lru.Cache   // Cache for the rlp encoded diffLayers
+	diffQueue         *prque.Prque // A Priority queue to store recent diff layer
+
+	// untrusted diff layers
+	diffMux               sync.RWMutex
+	receivedDiffLayers    map[common.Hash]map[common.Hash]*types.DiffLayer // map[blockHash] map[DiffHash]Diff
+	diffHashToBlockHash   map[common.Hash]common.Hash                      // map[diffHash]blockHash
+	diffHashToPeers       map[common.Hash]map[string]struct{}              // map[diffHash]map[pid]
+	diffNumToBlockHashes  map[uint64]map[common.Hash]struct{}              // map[number]map[blockHash]
+	diffPeersToDiffHashes map[string]map[common.Hash]struct{}              // map[pid]map[diffHash]
 
 	quit          chan struct{}  // blockchain quit channel
 	wg            sync.WaitGroup // chain processing wait group for shutting down
@@ -220,12 +241,15 @@ type BlockChain struct {
 // NewBlockChain returns a fully initialised block chain using information
 // available in the database. It initialises the default Ethereum Validator and
 // Processor.
-func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(block *types.Block) bool, txLookupLimit *uint64) (*BlockChain, error) {
+func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine,
+	vmConfig vm.Config, shouldPreserve func(block *types.Block) bool, txLookupLimit *uint64,
+	options ...BlockChainOption) (*BlockChain, error) {
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
 	}
 	if cacheConfig.TriesInMemory != 128 {
-		log.Warn("TriesInMemory isn't the default value(128), you need specify exact same TriesInMemory when prune data", "triesInMemory", cacheConfig.TriesInMemory)
+		log.Warn("TriesInMemory isn't the default value(128), you need specify exact same TriesInMemory when prune data",
+			"triesInMemory", cacheConfig.TriesInMemory)
 	}
 	bodyCache, _ := lru.New(bodyCacheLimit)
 	bodyRLPCache, _ := lru.New(bodyCacheLimit)
@@ -246,20 +270,25 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 			Journal:   cacheConfig.TrieCleanJournal,
 			Preimages: cacheConfig.Preimages,
 		}),
-		triesInMemory:     cacheConfig.TriesInMemory,
-		quit:              make(chan struct{}),
-		shouldPreserve:    shouldPreserve,
-		bodyCache:         bodyCache,
-		bodyRLPCache:      bodyRLPCache,
-		receiptsCache:     receiptsCache,
-		blockCache:        blockCache,
-		diffLayerCache:    diffLayerCache,
-		diffLayerRLPCache: diffLayerRLPCache,
-		txLookupCache:     txLookupCache,
-		futureBlocks:      futureBlocks,
-		engine:            engine,
-		vmConfig:          vmConfig,
-		diffQueue:         prque.New(nil),
+		triesInMemory:         cacheConfig.TriesInMemory,
+		quit:                  make(chan struct{}),
+		shouldPreserve:        shouldPreserve,
+		bodyCache:             bodyCache,
+		bodyRLPCache:          bodyRLPCache,
+		receiptsCache:         receiptsCache,
+		blockCache:            blockCache,
+		diffLayerCache:        diffLayerCache,
+		diffLayerRLPCache:     diffLayerRLPCache,
+		txLookupCache:         txLookupCache,
+		futureBlocks:          futureBlocks,
+		engine:                engine,
+		vmConfig:              vmConfig,
+		diffQueue:             prque.New(nil),
+		receivedDiffLayers:    make(map[common.Hash]map[common.Hash]*types.DiffLayer),
+		diffHashToBlockHash:   make(map[common.Hash]common.Hash),
+		diffHashToPeers:       make(map[common.Hash]map[string]struct{}),
+		diffNumToBlockHashes:  make(map[uint64]map[common.Hash]struct{}),
+		diffPeersToDiffHashes: make(map[string]map[common.Hash]struct{}),
 	}
 	bc.validator = NewBlockValidator(chainConfig, bc, engine)
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
@@ -387,6 +416,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		}
 		bc.snaps, _ = snapshot.New(bc.db, bc.stateCache.TrieDB(), bc.cacheConfig.SnapshotLimit, int(bc.cacheConfig.TriesInMemory), head.Root(), !bc.cacheConfig.SnapshotWait, true, recover)
 	}
+	// do options before start any routine
+	for _, option := range options {
+		bc = option(bc)
+	}
 	// Take ownership of this particular state
 	go bc.update()
 	if txLookupLimit != nil {
@@ -410,8 +443,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	}
 	// Need persist and prune diff layer
 	if bc.db.DiffStore() != nil {
-		go bc.diffLayerFreeze()
+		go bc.trustedDiffLayerFreezeLoop()
 	}
+	go bc.untrustedDiffLayerPruneLoop()
+
 	return bc, nil
 }
 
@@ -420,19 +455,19 @@ func (bc *BlockChain) GetVMConfig() *vm.Config {
 	return &bc.vmConfig
 }
 
-func (bc *BlockChain) CacheReceipts(hash common.Hash, receipts types.Receipts) {
+func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts) {
 	bc.receiptsCache.Add(hash, receipts)
 }
 
-func (bc *BlockChain) CacheDiffLayer(hash common.Hash, num uint64, diffLayer *types.DiffLayer) {
-	bc.diffLayerCache.Add(hash, diffLayer)
+func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer) {
+	bc.diffLayerCache.Add(diffLayer.BlockHash, diffLayer)
 	if bc.db.DiffStore() != nil {
 		// push to priority queue before persisting
-		bc.diffQueue.Push(diffLayer, -(int64(num)))
+		bc.diffQueue.Push(diffLayer, -(int64(diffLayer.Number)))
 	}
 }
 
-func (bc *BlockChain) CacheBlock(hash common.Hash, block *types.Block) {
+func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
 	bc.blockCache.Add(hash, block)
 }
 
@@ -897,29 +932,41 @@ func (bc *BlockChain) GetBodyRLP(hash common.Hash) rlp.RawValue {
 	return body
 }
 
-// GetBodyRLP retrieves a diff layer in RLP encoding from the database by hash,
-// caching it if found.
-func (bc *BlockChain) GetDiffLayerRLP(hash common.Hash) rlp.RawValue {
+// GetDiffLayerRLP retrieves a diff layer in RLP encoding from the cache or database by blockHash
+func (bc *BlockChain) GetDiffLayerRLP(blockHash common.Hash) rlp.RawValue {
 	// Short circuit if the diffLayer's already in the cache, retrieve otherwise
-	if cached, ok := bc.diffLayerRLPCache.Get(hash); ok {
+	if cached, ok := bc.diffLayerRLPCache.Get(blockHash); ok {
 		return cached.(rlp.RawValue)
 	}
-	if cached, ok := bc.diffLayerCache.Get(hash); ok {
+	if cached, ok := bc.diffLayerCache.Get(blockHash); ok {
 		diff := cached.(*types.DiffLayer)
 		bz, err := rlp.EncodeToBytes(diff)
 		if err != nil {
 			return nil
 		}
-		bc.diffLayerRLPCache.Add(hash, bz)
+		bc.diffLayerRLPCache.Add(blockHash, bz)
 		return bz
 	}
+
+	// fallback to untrusted sources.
+	diff := bc.GetDiffLayer(blockHash, "")
+	if diff != nil {
+		bz, err := rlp.EncodeToBytes(diff)
+		if err != nil {
+			return nil
+		}
+		// No need to cache untrusted data
+		return bz
+	}
+
+	// fallback to disk
 	diffStore := bc.db.DiffStore()
 	if diffStore == nil {
 		return nil
 	}
-	rawData := rawdb.ReadDiffLayerRLP(diffStore, hash)
+	rawData := rawdb.ReadDiffLayerRLP(diffStore, blockHash)
 	if len(rawData) != 0 {
-		bc.diffLayerRLPCache.Add(hash, rawData)
+		bc.diffLayerRLPCache.Add(blockHash, rawData)
 	}
 	return rawData
 }
@@ -1566,9 +1613,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	if diffLayer != nil && block.Header().TxHash != types.EmptyRootHash {
 		// Filling necessary field
 		diffLayer.Receipts = receipts
-		diffLayer.StateRoot = root
-		diffLayer.Hash = block.Hash()
-		bc.CacheDiffLayer(diffLayer.Hash, block.Number().Uint64(), diffLayer)
+		diffLayer.BlockHash = block.Hash()
+		diffLayer.Number = block.NumberU64()
+		bc.cacheDiffLayer(diffLayer)
 	}
 	triedb := bc.stateCache.TrieDB()
 
@@ -1945,12 +1992,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		}
 		// Enable prefetching to pull in trie node paths while processing transactions
 		statedb.StartPrefetcher("chain")
-		activeState = statedb
-		statedb.TryPreload(block, signer)
 
 		//Process block using the parent state as reference point
 		substart := time.Now()
-		receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
+		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
+		activeState = statedb
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
 			return it.index, err
@@ -1969,13 +2015,15 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 
 		// Validate the state using the default validator
 		substart = time.Now()
-		if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
-			bc.reportBlock(block, receipts, err)
-			log.Error("validate state failed", "error", err)
-			return it.index, err
+		if !statedb.IsLightProcessed() {
+			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
+				log.Error("validate state failed", "error", err)
+				return it.index, err
+			}
 		}
-		bc.CacheReceipts(block.Hash(), receipts)
-		bc.CacheBlock(block.Hash(), block)
+		bc.reportBlock(block, receipts, err)
+		bc.cacheReceipts(block.Hash(), receipts)
+		bc.cacheBlock(block.Hash(), block)
 		proctime := time.Since(start)
 
 		// Update the metrics touched during block validation
@@ -2352,8 +2400,10 @@ func (bc *BlockChain) update() {
 	}
 }
 
-func (bc *BlockChain) diffLayerFreeze() {
-	recheck := time.Tick(diffLayerfreezerRecheckInterval)
+func (bc *BlockChain) trustedDiffLayerFreezeLoop() {
+	recheck := time.Tick(diffLayerFreezerRecheckInterval)
+	bc.wg.Add(1)
+	defer bc.wg.Done()
 	for {
 		select {
 		case <-bc.quit:
@@ -2366,7 +2416,7 @@ func (bc *BlockChain) diffLayerFreeze() {
 				if batch == nil {
 					batch = bc.db.DiffStore().NewBatch()
 				}
-				rawdb.WriteDiffLayer(batch, diffLayer.Hash, diffLayer)
+				rawdb.WriteDiffLayer(batch, diffLayer.BlockHash, diffLayer)
 				if batch.ValueSize() > ethdb.IdealBatchSize {
 					if err := batch.Write(); err != nil {
 						log.Error("Failed to write diff layer", "err", err)
@@ -2376,6 +2426,7 @@ func (bc *BlockChain) diffLayerFreeze() {
 				}
 			}
 			if batch != nil {
+				// flush data
 				if err := batch.Write(); err != nil {
 					log.Error("Failed to write diff layer", "err", err)
 					return
@@ -2394,12 +2445,12 @@ func (bc *BlockChain) diffLayerFreeze() {
 				if int64(currentHeight)+prio > int64(bc.triesInMemory) {
 					canonicalHash := bc.GetCanonicalHash(uint64(-prio))
 					// on the canonical chain
-					if canonicalHash == diffLayer.Hash {
+					if canonicalHash == diffLayer.BlockHash {
 						if batch == nil {
 							batch = bc.db.DiffStore().NewBatch()
 						}
-						rawdb.WriteDiffLayer(batch, diffLayer.Hash, diffLayer)
-						staleHash := bc.GetCanonicalHash(uint64(-prio) - diffLayerfreezerBlockLimit)
+						rawdb.WriteDiffLayer(batch, diffLayer.BlockHash, diffLayer)
+						staleHash := bc.GetCanonicalHash(uint64(-prio) - diffLayerFreezerBlockLimit)
 						rawdb.DeleteDiffLayer(batch, staleHash)
 					}
 				} else {
@@ -2421,6 +2472,170 @@ func (bc *BlockChain) diffLayerFreeze() {
 			}
 		}
 	}
+}
+
+func (bc *BlockChain) GetDiffLayer(blockHash common.Hash, pid string) *types.DiffLayer {
+	bc.diffMux.RLock()
+	defer bc.diffMux.RUnlock()
+	if diffs, exist := bc.receivedDiffLayers[blockHash]; exist && len(diffs) != 0 {
+		if len(diffs) == 1 {
+			// return the only one diff layer
+			for _, diff := range diffs {
+				return diff
+			}
+		} else {
+			// pick the one from exact same peer if we know where the block comes from
+			if pid != "" {
+				if diffHashes, exist := bc.diffPeersToDiffHashes[pid]; exist {
+					for diff := range diffs {
+						if _, overlap := diffHashes[diff]; overlap {
+							return bc.receivedDiffLayers[blockHash][diff]
+						}
+					}
+				}
+			}
+			// Do not find overlap, do random pick
+			for _, diff := range diffs {
+				return diff
+			}
+		}
+	}
+	return nil
+}
+
+func (bc *BlockChain) removeDiffLayers(diffHash common.Hash) {
+	bc.diffMux.Lock()
+	defer bc.diffMux.Unlock()
+
+	// Untrusted peers
+	pids := bc.diffHashToPeers[diffHash]
+	invalidDiffHashes := make(map[common.Hash]struct{})
+	if pids != nil {
+		for pid := range pids {
+			invaliDiffHashesPeer := bc.diffPeersToDiffHashes[pid]
+			if invaliDiffHashesPeer != nil {
+				for invaliDiffHash := range invaliDiffHashesPeer {
+					invalidDiffHashes[invaliDiffHash] = struct{}{}
+				}
+			}
+			delete(bc.diffPeersToDiffHashes, pid)
+		}
+	}
+	for invalidDiffHash := range invalidDiffHashes {
+		delete(bc.diffHashToPeers, invalidDiffHash)
+		affectedBlockHash := bc.diffHashToBlockHash[invalidDiffHash]
+		if diffs, exist := bc.receivedDiffLayers[affectedBlockHash]; exist {
+			delete(diffs, invalidDiffHash)
+			if len(diffs) == 0 {
+				delete(bc.receivedDiffLayers, affectedBlockHash)
+			}
+		}
+		delete(bc.diffHashToBlockHash, invalidDiffHash)
+	}
+}
+
+func (bc *BlockChain) untrustedDiffLayerPruneLoop() {
+	recheck := time.Tick(diffLayerPruneRecheckInterval)
+	bc.wg.Add(1)
+	defer bc.wg.Done()
+	for {
+		select {
+		case <-bc.quit:
+			return
+		case <-recheck:
+			bc.pruneDiffLayer()
+		}
+	}
+}
+
+func (bc *BlockChain) pruneDiffLayer() {
+	currentHeight := bc.CurrentBlock().NumberU64()
+	bc.diffMux.Lock()
+	defer bc.diffMux.Unlock()
+	sortNumbers := make([]uint64, 0, len(bc.diffNumToBlockHashes))
+	for number := range bc.diffNumToBlockHashes {
+		sortNumbers = append(sortNumbers, number)
+	}
+	sort.Slice(sortNumbers, func(i, j int) bool {
+		return sortNumbers[i] <= sortNumbers[j]
+	})
+	staleBlockHashes := make(map[common.Hash]struct{})
+	for _, number := range sortNumbers {
+		if number < currentHeight-maxDiffForkDist {
+			affectedHashes := bc.diffNumToBlockHashes[number]
+			if affectedHashes != nil {
+				for affectedHash := range affectedHashes {
+					staleBlockHashes[affectedHash] = struct{}{}
+				}
+				delete(bc.diffNumToBlockHashes, number)
+			}
+		} else {
+			break
+		}
+	}
+	staleDiffHashes := make(map[common.Hash]struct{}, 0)
+	for blockHash := range staleBlockHashes {
+		if diffHashes, exist := bc.receivedDiffLayers[blockHash]; exist {
+			for diffHash := range diffHashes {
+				staleDiffHashes[diffHash] = struct{}{}
+				delete(bc.diffHashToBlockHash, diffHash)
+				delete(bc.diffHashToPeers, diffHash)
+			}
+		}
+		delete(bc.receivedDiffLayers, blockHash)
+	}
+	for diffHash := range staleDiffHashes {
+		for p, diffHashes := range bc.diffPeersToDiffHashes {
+			delete(diffHashes, diffHash)
+			if len(diffHash) == 0 {
+				delete(bc.diffPeersToDiffHashes, p)
+			}
+		}
+	}
+}
+
+// Process received diff layers
+func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string) error {
+	// Basic check
+	currentHeight := bc.CurrentBlock().NumberU64()
+	if diffLayer.Number > currentHeight && diffLayer.Number-currentHeight > maxDiffQueueDist {
+		return errors.New("diff layers too new from current")
+	}
+	if diffLayer.Number < currentHeight && currentHeight-diffLayer.Number > maxDiffForkDist {
+		return errors.New("diff layers too old from current")
+	}
+
+	bc.diffMux.Lock()
+	defer bc.diffMux.Unlock()
+
+	if len(bc.diffPeersToDiffHashes[pid]) > maxDiffLimit {
+		return errors.New("too many accumulated diffLayers")
+	}
+	if _, exist := bc.diffPeersToDiffHashes[pid]; exist {
+		if _, alreadyHas := bc.diffPeersToDiffHashes[pid][diffLayer.DiffHash]; alreadyHas {
+			return nil
+		}
+	} else {
+		bc.diffPeersToDiffHashes[pid] = make(map[common.Hash]struct{})
+	}
+	bc.diffPeersToDiffHashes[pid][diffLayer.DiffHash] = struct{}{}
+	if _, exist := bc.diffNumToBlockHashes[diffLayer.Number]; !exist {
+		bc.diffNumToBlockHashes[diffLayer.Number] = make(map[common.Hash]struct{})
+	}
+	bc.diffNumToBlockHashes[diffLayer.Number][diffLayer.BlockHash] = struct{}{}
+
+	if _, exist := bc.diffHashToPeers[diffLayer.DiffHash]; !exist {
+		bc.diffHashToPeers[diffLayer.DiffHash] = make(map[string]struct{})
+	}
+	bc.diffHashToPeers[diffLayer.DiffHash][pid] = struct{}{}
+
+	if _, exist := bc.receivedDiffLayers[diffLayer.BlockHash]; !exist {
+		bc.receivedDiffLayers[diffLayer.BlockHash] = make(map[common.Hash]*types.DiffLayer)
+	}
+	bc.receivedDiffLayers[diffLayer.BlockHash][diffLayer.DiffHash] = diffLayer
+	bc.diffHashToBlockHash[diffLayer.DiffHash] = diffLayer.BlockHash
+
+	return nil
 }
 
 // maintainTxIndex is responsible for the construction and deletion of the
@@ -2671,4 +2886,10 @@ func (bc *BlockChain) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscript
 // block processing has started while false means it has stopped.
 func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscription {
 	return bc.scope.Track(bc.blockProcFeed.Subscribe(ch))
+}
+
+//Options
+func EnableLightProcessor(bc *BlockChain) *BlockChain {
+	bc.processor = NewLightStateProcessor(bc.Config(), bc, bc.engine)
+	return bc
 }

@@ -57,10 +57,6 @@ const (
 	// containing 200+ transactions nowadays, the practical limit will always
 	// be softResponseLimit.
 	maxReceiptsServe = 1024
-
-	// TODO this may exceed soft response limit? Please do test
-	// maxDiffLayerServe is the maximum number of diff layers to serve.
-	maxDiffLayerServe = 1024
 )
 
 // Handler is a callback to invoke from an outside runner after the boilerplate

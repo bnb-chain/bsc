@@ -118,8 +118,9 @@ var (
 		Usage: "Enable directly broadcast mined block to all peers",
 	}
 	LightSyncFlag = cli.BoolFlag{
-		Name:  "lightsync",
-		Usage: "Enable difflayer light sync ",
+		Name: "lightsync",
+		Usage: "Enable difflayer light sync, Please note that enable lightsync will improve the syncing speed, " +
+			"but will degrade the security to light client level",
 	}
 	RangeLimitFlag = cli.BoolFlag{
 		Name:  "rangelimit",
@@ -435,7 +436,7 @@ var (
 	}
 	PersistDiffFlag = cli.BoolFlag{
 		Name:  "persistdiff",
-		Usage: "Enable persisting the diff layer",
+		Usage: "Enable persistence of the diff layer",
 	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{

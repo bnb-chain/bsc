@@ -21,6 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -36,6 +38,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
+
+const fullProcessCheck = 21 // On light sync mode, will do full process every fullProcessCheck randomly
 
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
@@ -57,16 +61,50 @@ func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consen
 }
 
 type LightStateProcessor struct {
+	randomGenerator *rand.Rand
 	StateProcessor
 }
 
-func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (types.Receipts, []*types.Log, uint64, error) {
-	// TODO fetch differ from somewhere else
-	var diffLayer *types.DiffLayer
-	if diffLayer == nil {
-		return p.StateProcessor.Process(block, statedb, cfg)
+func NewLightStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consensus.Engine) *LightStateProcessor {
+	randomGenerator := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
+	return &LightStateProcessor{
+		randomGenerator: randomGenerator,
+		StateProcessor:  *NewStateProcessor(config, bc, engine),
 	}
-	statedb.MarkDiffEnabled()
+}
+
+func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
+	// random fallback to full process
+	if check := p.randomGenerator.Int63n(fullProcessCheck); check != 0 {
+		var pid string
+		if peer, ok := block.ReceivedFrom.(PeerIDer); ok {
+			pid = peer.ID()
+		}
+		diffLayer := p.bc.GetDiffLayer(block.Hash(), pid)
+		if diffLayer != nil {
+			receipts, logs, gasUsed, err := p.LightProcess(diffLayer, block, statedb, cfg)
+			if err == nil {
+				return statedb, receipts, logs, gasUsed, nil
+			} else {
+				p.bc.removeDiffLayers(diffLayer.DiffHash)
+				// prepare new statedb
+				statedb.StopPrefetcher()
+				parent := p.bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
+				statedb, err = state.New(parent.Root, p.bc.stateCache, p.bc.snaps)
+				if err != nil {
+					return statedb, nil, nil, 0, err
+				}
+				// Enable prefetching to pull in trie node paths while processing transactions
+				statedb.StartPrefetcher("chain")
+			}
+		}
+	}
+	// fallback to full process
+	return p.StateProcessor.Process(block, statedb, cfg)
+}
+
+func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *types.Block, statedb *state.StateDB, cfg vm.Config) (types.Receipts, []*types.Log, uint64, error) {
+	statedb.MarkLightProcessed()
 	fullDiffCode := make(map[common.Hash][]byte, len(diffLayer.Codes))
 	diffTries := make(map[common.Address]state.Trie)
 	diffCode := make(map[common.Hash][]byte)
@@ -132,7 +170,7 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 		if !bytes.Equal(latestAccount.CodeHash, previousAccount.CodeHash) &&
 			!bytes.Equal(latestAccount.CodeHash, types.EmptyCodeHash) {
 			if code, exist := fullDiffCode[codeHash]; exist {
-				if crypto.Keccak256Hash(code) == codeHash {
+				if crypto.Keccak256Hash(code) != codeHash {
 					return nil, nil, 0, errors.New("code and codeHash mismatch")
 				}
 				diffCode[codeHash] = code
@@ -188,6 +226,18 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 			return nil, nil, 0, err
 		}
 	}
+	var allLogs []*types.Log
+	var gasUsed uint64
+	for _, receipt := range diffLayer.Receipts {
+		allLogs = append(allLogs, receipt.Logs...)
+		gasUsed += receipt.GasUsed
+	}
+
+	// Do validate in advance so that we can fall back to full process
+	if err := p.bc.validator.ValidateState(block, statedb, diffLayer.Receipts, gasUsed); err != nil {
+		log.Error("validate state failed during light sync", "error", err)
+		return nil, nil, 0, err
+	}
 
 	// remove redundant storage change
 	for account, _ := range snapStorage {
@@ -207,18 +257,12 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 			})
 		}
 	}
+
+	statedb.SetSnapData(snapDestructs, snapAccounts, snapStorage)
 	if len(snapAccounts) != len(diffLayer.Accounts) || len(snapStorage) != len(diffLayer.Storages) {
 		diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = statedb.SnapToDiffLayer()
 	}
 	statedb.SetDiff(diffLayer, diffTries, diffCode)
-	statedb.SetSnapData(snapDestructs, snapAccounts, snapStorage)
-
-	var allLogs []*types.Log
-	var gasUsed uint64
-	for _, receipt := range diffLayer.Receipts {
-		allLogs = append(allLogs, receipt.Logs...)
-		gasUsed += receipt.GasUsed
-	}
 
 	return diffLayer.Receipts, allLogs, gasUsed, nil
 }
@@ -230,13 +274,15 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 // Process returns the receipts and logs accumulated during the process and
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
-func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (types.Receipts, []*types.Log, uint64, error) {
+func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
 	var (
 		usedGas = new(uint64)
 		header  = block.Header()
 		allLogs []*types.Log
 		gp      = new(GasPool).AddGas(block.GasLimit())
 	)
+	signer := types.MakeSigner(p.bc.chainConfig, block.Number())
+	statedb.TryPreload(block, signer)
 	var receipts = make([]*types.Receipt, 0)
 	// Mutate the block and state according to any hard-fork specs
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
@@ -253,11 +299,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	commonTxs := make([]*types.Transaction, 0, len(block.Transactions()))
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
-	signer := types.MakeSigner(p.config, header.Number)
 	for i, tx := range block.Transactions() {
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
-				return nil, nil, 0, err
+				return statedb, nil, nil, 0, err
 			} else if isSystemTx {
 				systemTxs = append(systemTxs, tx)
 				continue
@@ -266,12 +311,12 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 		msg, err := tx.AsMessage(signer)
 		if err != nil {
-			return nil, nil, 0, err
+			return statedb, nil, nil, 0, err
 		}
 		statedb.Prepare(tx.Hash(), block.Hash(), i)
 		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, header, tx, usedGas, vmenv)
 		if err != nil {
-			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 
 		commonTxs = append(commonTxs, tx)
@@ -281,13 +326,13 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), &receipts, &systemTxs, usedGas)
 	if err != nil {
-		return receipts, allLogs, *usedGas, err
+		return statedb, receipts, allLogs, *usedGas, err
 	}
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 
-	return receipts, allLogs, *usedGas, nil
+	return statedb, receipts, allLogs, *usedGas, nil
 }
 
 func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, error) {

@@ -73,28 +73,26 @@ type GetDiffLayersPacket struct {
 	BlockHashes []common.Hash
 }
 
-func (p *DiffLayersPacket) Unpack() ([]*types.DiffLayer, []common.Hash, error) {
+func (p *DiffLayersPacket) Unpack() ([]*types.DiffLayer, error) {
 	diffLayers := make([]*types.DiffLayer, 0, len(*p))
-	diffHashes := make([]common.Hash, 0, len(*p))
 	hasher := sha3.NewLegacyKeccak256()
 	for _, rawData := range *p {
 		var diff types.DiffLayer
 		err := rlp.DecodeBytes(rawData, &diff)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%w: diff layer %v", errDecode, err)
+			return nil, fmt.Errorf("%w: diff layer %v", errDecode, err)
 		}
 		diffLayers = append(diffLayers, &diff)
 		_, err = hasher.Write(rawData)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		var diffHash common.Hash
 		hasher.Sum(diffHash[:0])
 		hasher.Reset()
 		diff.DiffHash = diffHash
-		diffHashes = append(diffHashes)
 	}
-	return diffLayers, diffHashes, nil
+	return diffLayers, nil
 }
 
 type DiffCapPacket struct {

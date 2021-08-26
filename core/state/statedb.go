@@ -72,15 +72,15 @@ func (n *proofList) Delete(key []byte) error {
 // * Contracts
 // * Accounts
 type StateDB struct {
-	db           Database
-	prefetcher   *triePrefetcher
-	originalRoot common.Hash // The pre-state root, before any changes were made
-	trie         Trie
-	hasher       crypto.KeccakState
-	diffLayer    *types.DiffLayer
-	diffTries    map[common.Address]Trie
-	diffCode     map[common.Hash][]byte
-	diffEnabled  bool
+	db             Database
+	prefetcher     *triePrefetcher
+	originalRoot   common.Hash // The pre-state root, before any changes were made
+	trie           Trie
+	hasher         crypto.KeccakState
+	diffLayer      *types.DiffLayer
+	diffTries      map[common.Address]Trie
+	diffCode       map[common.Hash][]byte
+	lightProcessed bool
 
 	snapMux       sync.Mutex
 	snaps         *snapshot.Tree
@@ -191,8 +191,12 @@ func (s *StateDB) StopPrefetcher() {
 }
 
 // Mark that the block is processed by diff layer
-func (s *StateDB) MarkDiffEnabled() {
-	s.diffEnabled = true
+func (s *StateDB) MarkLightProcessed() {
+	s.lightProcessed = true
+}
+
+func (s *StateDB) IsLightProcessed() bool {
+	return s.lightProcessed
 }
 
 // setError remembers the first non-nil error it is called with.
@@ -954,7 +958,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
-	if s.diffEnabled {
+	if s.lightProcessed {
 		return s.trie.Hash()
 	}
 	// Finalise all the dirty storage states and write them into the tries
@@ -1134,7 +1138,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 	}
 	// Finalize any pending changes and merge everything into the tries
 	root := s.IntermediateRoot(deleteEmptyObjects)
-	if s.diffEnabled {
+	if s.lightProcessed {
 		return s.LightCommit()
 	}
 	var diffLayer *types.DiffLayer
@@ -1295,6 +1299,7 @@ func (s *StateDB) DiffLayerToSnap(diffLayer *types.DiffLayer) (map[common.Addres
 		snapAccounts[account.Account] = account.Blob
 	}
 	for _, storage := range diffLayer.Storages {
+		// should never happen
 		if len(storage.Keys) != len(storage.Vals) {
 			return nil, nil, nil, errors.New("invalid diffLayer: length of keys and values mismatch")
 		}

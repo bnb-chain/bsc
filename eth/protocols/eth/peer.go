@@ -337,9 +337,9 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 
 // AsyncSendNewBlock queues an entire block for propagation to a remote peer. If
 // the peer's broadcast queue is full, the event is silently dropped.
-func (p *Peer) AsyncSendNewBlock(block *types.Block, diff rlp.RawValue, td *big.Int) {
+func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 	select {
-	case p.queuedBlocks <- &blockPropagation{block: block, diffLayer: diff, td: td}:
+	case p.queuedBlocks <- &blockPropagation{block: block, td: td}:
 		// Mark all the block hash as known, but ensure we don't overflow our limits
 		for p.knownBlocks.Cardinality() >= maxKnownBlocks {
 			p.knownBlocks.Pop()

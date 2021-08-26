@@ -6,30 +6,53 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/ethereum/go-ethereum/rlp"
 )
+
+const maxQueuedDiffLayers = 12
 
 // Peer is a collection of relevant information we have about a `diff` peer.
 type Peer struct {
-	id        string // Unique ID for the peer, cached
-	lightSync bool   // whether the peer can light sync
+	id               string              // Unique ID for the peer, cached
+	lightSync        bool                // whether the peer can light sync
+	queuedDiffLayers chan []rlp.RawValue // Queue of diff layers to broadcast to the peer
 
 	*p2p.Peer                   // The embedded P2P package peer
 	rw        p2p.MsgReadWriter // Input/output streams for diff
 	version   uint              // Protocol version negotiated
 	logger    log.Logger        // Contextual logger with the peer id injected
+	term      chan struct{}     // Termination channel to stop the broadcasters
 }
 
 // newPeer create a wrapper for a network connection and negotiated  protocol
 // version.
 func newPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 	id := p.ID().String()
-	return &Peer{
-		id:        id,
-		Peer:      p,
-		rw:        rw,
-		lightSync: false,
-		version:   version,
-		logger:    log.New("peer", id[:8]),
+	peer := &Peer{
+		id:               id,
+		Peer:             p,
+		rw:               rw,
+		lightSync:        false,
+		version:          version,
+		logger:           log.New("peer", id[:8]),
+		queuedDiffLayers: make(chan []rlp.RawValue, maxQueuedDiffLayers),
+		term:             make(chan struct{}),
+	}
+	go peer.broadcastDiffLayers()
+	return peer
+}
+
+func (p *Peer) broadcastDiffLayers() {
+	for {
+		select {
+		case prop := <-p.queuedDiffLayers:
+			if err := p.SendDiffLayers(prop); err != nil {
+				p.Log().Error("Failed to propagated diff layer", "err", err)
+				return
+			}
+		case <-p.term:
+			return
+		}
 	}
 }
 
@@ -52,6 +75,13 @@ func (p *Peer) Log() log.Logger {
 	return p.logger
 }
 
+// Close signals the broadcast goroutine to terminate. Only ever call this if
+// you created the peer yourself via NewPeer. Otherwise let whoever created it
+// clean it up!
+func (p *Peer) Close() {
+	close(p.term)
+}
+
 // RequestDiffLayers fetches a batch of diff layers corresponding to the hashes
 // specified.
 func (p *Peer) RequestDiffLayers(hashes []common.Hash) error {
@@ -62,4 +92,16 @@ func (p *Peer) RequestDiffLayers(hashes []common.Hash) error {
 		RequestId:   id,
 		BlockHashes: hashes,
 	})
+}
+
+func (p *Peer) SendDiffLayers(diffs []rlp.RawValue) error {
+	return p2p.Send(p.rw, DiffLayerMsg, diffs)
+}
+
+func (p *Peer) AsyncSendDiffLayer(diffLayers []rlp.RawValue) {
+	select {
+	case p.queuedDiffLayers <- diffLayers:
+	default:
+		p.Log().Debug("Dropping diff layers propagation")
+	}
 }

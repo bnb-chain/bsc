@@ -27,10 +27,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -372,11 +371,10 @@ func (b *Block) Hash() common.Hash {
 
 type Blocks []*Block
 
-// journalDestruct is an account deletion entry in a diffLayer's disk journal.
 type DiffLayer struct {
 	DiffHash  common.Hash `rlp:"_"`
-	Hash      common.Hash
-	StateRoot common.Hash
+	BlockHash common.Hash
+	Number    uint64
 	Receipts  Receipts // Receipts are duplicated stored to simplify the logic
 	Codes     []DiffCode
 	Destructs []common.Address
@@ -385,8 +383,8 @@ type DiffLayer struct {
 }
 
 func (d *DiffLayer) Validate() error {
-	if d.Hash == (common.Hash{}) || d.StateRoot == (common.Hash{}) {
-		return errors.New("hash can't be empty")
+	if d.BlockHash == (common.Hash{}) || d.DiffHash == (common.Hash{}) {
+		return errors.New("both BlockHash and DiffHash can't be empty")
 	}
 	for _, storage := range d.Storages {
 		if len(storage.Keys) != len(storage.Vals) {
