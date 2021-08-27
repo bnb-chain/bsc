@@ -39,12 +39,8 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	// Send out own handshake in a new thread
 	errc := make(chan error, 2)
 	var status StatusPacket // safe to read after two values have been received from errc
-<<<<<<< HEAD
 
 	gopool.Submit(func() {
-=======
-	go func() {
->>>>>>> enhance
 		errc <- p2p.Send(p.rw, StatusMsg, &StatusPacket{
 			ProtocolVersion: uint32(p.version),
 			NetworkID:       network,
