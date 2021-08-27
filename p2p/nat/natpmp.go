@@ -22,8 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/gopool"
 	natpmp "github.com/jackpal/go-nat-pmp"
+	"github.com/perwpqwe/bsc/common/gopool"
 )
 
 // natPMPClient adapts the NAT-PMP protocol implementation so it conforms to
