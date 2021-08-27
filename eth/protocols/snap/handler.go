@@ -21,17 +21,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/light"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/state"
+	"github.com/perwpqwe/bsc/light"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/metrics"
+	"github.com/perwpqwe/bsc/p2p"
+	"github.com/perwpqwe/bsc/p2p/enode"
+	"github.com/perwpqwe/bsc/p2p/enr"
+	"github.com/perwpqwe/bsc/rlp"
+	"github.com/perwpqwe/bsc/trie"
 )
 
 const (

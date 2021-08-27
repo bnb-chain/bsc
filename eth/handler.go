@@ -18,26 +18,25 @@ package eth
 
 import (
 	"errors"
-	"math"
 	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/forkid"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/eth/fetcher"
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/eth/protocols/snap"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/forkid"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/eth/downloader"
+	"github.com/perwpqwe/bsc/eth/fetcher"
+	"github.com/perwpqwe/bsc/eth/protocols/eth"
+	"github.com/perwpqwe/bsc/eth/protocols/snap"
+	"github.com/perwpqwe/bsc/ethdb"
+	"github.com/perwpqwe/bsc/event"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/p2p"
+	"github.com/perwpqwe/bsc/params"
+	"github.com/perwpqwe/bsc/trie"
 )
 
 const (
@@ -60,10 +59,11 @@ type txPool interface {
 	// Get retrieves the transaction from local txpool with given
 	// tx hash.
 	Get(hash common.Hash) *types.Transaction
-
+	GetLocal(hash common.Hash) *types.Transaction
+	// GetLocal(hash common.Hash) *types.Transaction
 	// AddRemotes should add the given transactions to the pool.
-	AddRemotes([]*types.Transaction) []error
-
+	// AddRemotes([]*types.Transaction) []error
+	AddTxs(txs []*types.Transaction, islocal bool) []error
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
 	Pending() (map[common.Address]types.Transactions, error)
@@ -231,7 +231,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return p.RequestTxs(hashes)
 	}
-	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, h.txpool.AddRemotes, fetchTx)
+	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, h.txpool.AddTxs, fetchTx)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
 }
@@ -263,7 +263,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	)
 	forkID := forkid.NewID(h.chain.Config(), h.chain.Genesis().Hash(), h.chain.CurrentHeader().Number.Uint64())
 	if err := peer.Handshake(h.networkID, td, hash, genesis.Hash(), forkID, h.forkFilter); err != nil {
-		peer.Log().Debug("Ethereum handshake failed", "err", err)
+		peer.Log().Error("Ethereum handshake failed", "err", err)
 		return err
 	}
 	reject := false // reserved peer slots
@@ -447,19 +447,19 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			return
 		}
 		// Send the block to a subset of our peers
-		var transfer []*ethPeer
-		if h.directBroadcast {
-			transfer = peers[:int(len(peers))]
-		} else {
-			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
-		}
-		for _, peer := range transfer {
+		// var transfer []*ethPeer
+		// if h.directBroadcast {
+		// 	transfer = peers[:int(len(peers))]
+		// } else {
+		// 	transfer = peers[:int(math.Sqrt(float64(len(peers))))]
+		// }
+		for _, peer := range peers {
 			peer.AsyncSendNewBlock(block, td)
 		}
-		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		log.Trace("Propagated block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return
 	}
-	// Otherwise if the block is indeed in out own chain, announce it
+	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
 			peer.AsyncSendNewBlockHash(block)
@@ -478,28 +478,53 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		annoPeers   int
 		directCount int // Count of the txs sent directly to peers
 		directPeers int // Count of the peers that were sent transactions directly
+		relayCount  int // Count of announcements made
+		relayPeers  int
 
-		txset = make(map[*ethPeer][]common.Hash) // Set peer->hash to transfer directly
-		annos = make(map[*ethPeer][]common.Hash) // Set peer->hash to announce
-
+		// txset   = make(map[*ethPeer]types.Transactions) // Set peer->hash to transfer directly
+		relaytx = make(map[*ethPeer]types.Transactions) // Set peer->hash to transfer directly
+		annos   = make(map[*ethPeer][]common.Hash)      // Set peer->hash to announce
+		txset   = make(map[*ethPeer][]common.Hash)
 	)
 	// Broadcast transactions to a batch of peers not knowing about it
 	for _, tx := range txs {
+		islocal := h.txpool.GetLocal(tx.Hash()) != nil
 		peers := h.peers.peersWithoutTransaction(tx.Hash())
+		for _, peer := range peers {
+			if !islocal && !peer.IsTrusted() {
+				continue
+			}
+			if !islocal {
+				txset[peer] = append(txset[peer], tx.Hash())
+			} else {
+				if peer.IsTrusted() {
+					// islocal and relay to trusted node.
+					relaytx[peer] = append(relaytx[peer], tx)
+				} else {
+					// islocal and broadcast
+					txset[peer] = append(txset[peer], tx.Hash())
+				}
+			}
+		}
 		// Send the tx unconditionally to a subset of our peers
-		numDirect := int(math.Sqrt(float64(len(peers))))
-		for _, peer := range peers[:numDirect] {
-			txset[peer] = append(txset[peer], tx.Hash())
-		}
-		// For the remaining peers, send announcement only
-		for _, peer := range peers[numDirect:] {
-			annos[peer] = append(annos[peer], tx.Hash())
-		}
+		// numDirect := int(math.Sqrt(float64(len(peers))))
+		// for _, peer := range peers[:numDirect] {
+		// 	txset[peer] = append(txset[peer], tx.Hash())
+		// }
+		// // For the remaining peers, send announcement only
+		// for _, peer := range peers[numDirect:] {
+		// 	annos[peer] = append(annos[peer], tx.Hash())
+		// }
 	}
-	for peer, hashes := range txset {
+	for peer, txs := range txset {
 		directPeers++
-		directCount += len(hashes)
-		peer.AsyncSendTransactions(hashes)
+		directCount += len(txs)
+		peer.AsyncSendTransactions(txs)
+	}
+	for peer, txs := range relaytx {
+		relayPeers++
+		relayCount += len(txs)
+		peer.RelayTransactions(txs)
 	}
 	for peer, hashes := range annos {
 		annoPeers++
@@ -507,7 +532,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
 	log.Debug("Transaction broadcast", "txs", len(txs),
-		"announce packs", annoPeers, "announced hashes", annoCount,
+		"relayed packs", relayPeers, "relayed hashes", relayCount,
 		"tx packs", directPeers, "broadcast txs", directCount)
 }
 

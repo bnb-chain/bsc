@@ -23,15 +23,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/rawdb"
+	"github.com/perwpqwe/bsc/core/state"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/ethdb"
+	"github.com/perwpqwe/bsc/event"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/params"
 )
 
 const (
@@ -400,11 +400,14 @@ func (pool *TxPool) add(ctx context.Context, tx *types.Transaction) error {
 	if pool.pending[hash] != nil {
 		return fmt.Errorf("Known transaction (%x)", hash[:4])
 	}
+	// Notify the subscribers. This event is posted in a goroutine
+	// because it's possible that somewhere during the post "Remove transaction"
+	// gets called which will then wait for the global tx pool lock and deadlock.
+	go pool.txFeed.Send(core.NewTxsEvent{Txs: types.Transactions{tx}})
 	err := pool.validateTx(ctx, tx)
 	if err != nil {
 		return err
 	}
-
 	if _, ok := pool.pending[hash]; !ok {
 		pool.pending[hash] = tx
 
@@ -414,11 +417,6 @@ func (pool *TxPool) add(ctx context.Context, tx *types.Transaction) error {
 		if nonce > pool.nonce[addr] {
 			pool.nonce[addr] = nonce
 		}
-
-		// Notify the subscribers. This event is posted in a goroutine
-		// because it's possible that somewhere during the post "Remove transaction"
-		// gets called which will then wait for the global tx pool lock and deadlock.
-		go pool.txFeed.Send(core.NewTxsEvent{Txs: types.Transactions{tx}})
 	}
 
 	// Print a log message if low enough level is set

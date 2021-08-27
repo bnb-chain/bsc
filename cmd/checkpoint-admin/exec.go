@@ -25,17 +25,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/contracts/checkpointoracle"
-	"github.com/ethereum/go-ethereum/contracts/checkpointoracle/contract"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/perwpqwe/bsc/accounts"
+	"github.com/perwpqwe/bsc/cmd/utils"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/hexutil"
+	"github.com/perwpqwe/bsc/contracts/checkpointoracle"
+
+	// "github.com/perwpqwe/bsc/contracts/checkpointoracle/contract"
+	"github.com/perwpqwe/bsc/crypto"
+	"github.com/perwpqwe/bsc/ethclient"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/params"
+	"github.com/perwpqwe/bsc/rpc"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -105,16 +106,16 @@ func deploy(ctx *cli.Context) error {
 	fmt.Printf("\nSignatures needed to publish: %d\n", needed)
 
 	// setup clef signer, create an abigen transactor and an RPC client
-	transactor, client := newClefSigner(ctx), newClient(ctx)
+	// transactor, client := newClefSigner(ctx), newClient(ctx)
 
 	// Deploy the checkpoint oracle
-	fmt.Println("Sending deploy request to Clef...")
-	oracle, tx, _, err := contract.DeployCheckpointOracle(transactor, client, addrs, big.NewInt(int64(params.CheckpointFrequency)),
-		big.NewInt(int64(params.CheckpointProcessConfirmations)), big.NewInt(int64(needed)))
-	if err != nil {
-		utils.Fatalf("Failed to deploy checkpoint oracle %v", err)
-	}
-	log.Info("Deployed checkpoint oracle", "address", oracle, "tx", tx.Hash().Hex())
+	// fmt.Println("Sending deploy request to Clef...")
+	// oracle, tx, _, err := contract.DeployCheckpointOracle(transactor, client, addrs, big.NewInt(int64(params.CheckpointFrequency)),
+	// 	big.NewInt(int64(params.CheckpointProcessConfirmations)), big.NewInt(int64(needed)))
+	// if err != nil {
+	// 	utils.Fatalf("Failed to deploy checkpoint oracle %v", err)
+	// }
+	// log.Info("Deployed checkpoint oracle", "address", oracle, "tx", tx.Hash().Hex())
 
 	return nil
 }

@@ -24,14 +24,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/prque"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/prque"
+	"github.com/perwpqwe/bsc/core/state"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/event"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/metrics"
+	"github.com/perwpqwe/bsc/params"
 )
 
 const (
@@ -520,54 +520,54 @@ func (pool *TxPool) local() map[common.Address]types.Transactions {
 	return txs
 }
 
-// validateTx checks whether a transaction is valid according to the consensus
-// rules and adheres to some heuristic limits of the local node (price and size).
-func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
-	// Accept only legacy transactions until EIP-2718/2930 activates.
-	if !pool.eip2718 && tx.Type() != types.LegacyTxType {
-		return ErrTxTypeNotSupported
-	}
-	// Reject transactions over defined size to prevent DOS attacks
-	if uint64(tx.Size()) > txMaxSize {
-		return ErrOversizedData
-	}
-	// Transactions can't be negative. This may never happen using RLP decoded
-	// transactions but may occur if you create a transaction using the RPC.
-	if tx.Value().Sign() < 0 {
-		return ErrNegativeValue
-	}
-	// Ensure the transaction doesn't exceed the current block limit gas.
-	if pool.currentMaxGas < tx.Gas() {
-		return ErrGasLimit
-	}
-	// Make sure the transaction is signed properly.
-	from, err := types.Sender(pool.signer, tx)
-	if err != nil {
-		return ErrInvalidSender
-	}
-	// Drop non-local transactions under our own minimal accepted gas price
-	if !local && tx.GasPriceIntCmp(pool.gasPrice) < 0 {
-		return ErrUnderpriced
-	}
-	// Ensure the transaction adheres to nonce ordering
-	if pool.currentState.GetNonce(from) > tx.Nonce() {
-		return ErrNonceTooLow
-	}
-	// Transactor should have enough funds to cover the costs
-	// cost == V + GP * GL
-	if pool.currentState.GetBalance(from).Cmp(tx.Cost()) < 0 {
-		return ErrInsufficientFunds
-	}
-	// Ensure the transaction has more gas than the basic tx fee.
-	intrGas, err := IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil, true, pool.istanbul)
-	if err != nil {
-		return err
-	}
-	if tx.Gas() < intrGas {
-		return ErrIntrinsicGas
-	}
-	return nil
-}
+// // validateTx checks whether a transaction is valid according to the consensus
+// // rules and adheres to some heuristic limits of the local node (price and size).
+// func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
+// 	// Accept only legacy transactions until EIP-2718/2930 activates.
+// 	if !pool.eip2718 && tx.Type() != types.LegacyTxType {
+// 		return ErrTxTypeNotSupported
+// 	}
+// 	// Reject transactions over defined size to prevent DOS attacks
+// 	if uint64(tx.Size()) > txMaxSize {
+// 		return ErrOversizedData
+// 	}
+// 	// Transactions can't be negative. This may never happen using RLP decoded
+// 	// transactions but may occur if you create a transaction using the RPC.
+// 	if tx.Value().Sign() < 0 {
+// 		return ErrNegativeValue
+// 	}
+// 	// Ensure the transaction doesn't exceed the current block limit gas.
+// 	if pool.currentMaxGas < tx.Gas() {
+// 		return ErrGasLimit
+// 	}
+// 	// Make sure the transaction is signed properly.
+// 	from, err := types.Sender(pool.signer, tx)
+// 	if err != nil {
+// 		return ErrInvalidSender
+// 	}
+// 	// Drop non-local transactions under our own minimal accepted gas price
+// 	if !local && tx.GasPriceIntCmp(pool.gasPrice) < 0 {
+// 		return ErrUnderpriced
+// 	}
+// 	// Ensure the transaction adheres to nonce ordering
+// 	if pool.currentState.GetNonce(from) > tx.Nonce() {
+// 		return ErrNonceTooLow
+// 	}
+// 	// Transactor should have enough funds to cover the costs
+// 	// cost == V + GP * GL
+// 	if pool.currentState.GetBalance(from).Cmp(tx.Cost()) < 0 {
+// 		return ErrInsufficientFunds
+// 	}
+// 	// Ensure the transaction has more gas than the basic tx fee.
+// 	intrGas, err := IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil, true, pool.istanbul)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if tx.Gas() < intrGas {
+// 		return ErrIntrinsicGas
+// 	}
+// 	return nil
+// }
 
 // add validates a transaction and inserts it into the non-executable queue for later
 // pending promotion and execution. If the transaction is a replacement for an already
@@ -589,11 +589,11 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	isLocal := local || pool.locals.containsTx(tx)
 
 	// If the transaction fails basic validation, discard it
-	if err := pool.validateTx(tx, isLocal); err != nil {
-		//log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
-		invalidTxMeter.Mark(1)
-		return false, err
-	}
+	// if err := pool.validateTx(tx, isLocal); err != nil {
+	// 	log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
+	// 	invalidTxMeter.Mark(1)
+	// 	return false, err
+	// }
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Count()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
@@ -622,6 +622,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	}
 	// Try to replace an existing transaction in the pending pool
 	from, _ := types.Sender(pool.signer, tx) // already validated
+	tx.From = from
 	if list := pool.pending[from]; list != nil && list.Overlaps(tx) {
 		// Nonce already pending, check if required price bump is met
 		inserted, old := list.Add(tx, pool.config.PriceBump)
@@ -670,7 +671,8 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 // Note, this method assumes the pool lock is held!
 func (pool *TxPool) enqueueTx(hash common.Hash, tx *types.Transaction, local bool, addAll bool) (bool, error) {
 	// Try to insert the transaction into the future queue
-	from, _ := types.Sender(pool.signer, tx) // already validated
+	// from, _ := types.Sender(pool.signer, tx) // already validated
+	from := tx.From
 	if pool.queue[from] == nil {
 		pool.queue[from] = newTxList(false)
 	}
@@ -798,6 +800,14 @@ func (pool *TxPool) AddRemote(tx *types.Transaction) error {
 	return errs[0]
 }
 
+func (pool *TxPool) AddTxs(txs []*types.Transaction, islocal bool) []error {
+	if islocal {
+		return pool.AddLocals(txs)
+	} else {
+		return pool.AddRemotes(txs)
+	}
+}
+
 // addTxs attempts to queue a batch of transactions if they are valid.
 func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 	// Filter out known ones without obtaining the pool lock or recovering signatures
@@ -815,12 +825,12 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		// Exclude transactions with invalid signatures as soon as
 		// possible and cache senders in transactions before
 		// obtaining lock
-		_, err := types.Sender(pool.signer, tx)
-		if err != nil {
-			errs[i] = ErrInvalidSender
-			invalidTxMeter.Mark(1)
-			continue
-		}
+		// _, err := types.Sender(pool.signer, tx)
+		// if err != nil {
+		// 	errs[i] = ErrInvalidSender
+		// 	invalidTxMeter.Mark(1)
+		// 	continue
+		// }
 		// Accumulate all unknown transactions for deeper processing
 		news = append(news, tx)
 	}
@@ -874,7 +884,8 @@ func (pool *TxPool) Status(hashes []common.Hash) []TxStatus {
 		if tx == nil {
 			continue
 		}
-		from, _ := types.Sender(pool.signer, tx) // already validated
+		// from, _ := types.Sender(pool.signer, tx) // already validated
+		from := tx.From
 		pool.mu.RLock()
 		if txList := pool.pending[from]; txList != nil && txList.txs.items[tx.Nonce()] != nil {
 			status[i] = TxStatusPending
@@ -892,6 +903,9 @@ func (pool *TxPool) Status(hashes []common.Hash) []TxStatus {
 func (pool *TxPool) Get(hash common.Hash) *types.Transaction {
 	return pool.all.Get(hash)
 }
+func (pool *TxPool) GetLocal(hash common.Hash) *types.Transaction {
+	return pool.all.GetLocal(hash)
+}
 
 // Has returns an indicator whether txpool has a transaction cached with the
 // given hash.
@@ -907,8 +921,8 @@ func (pool *TxPool) removeTx(hash common.Hash, outofbound bool) {
 	if tx == nil {
 		return
 	}
-	addr, _ := types.Sender(pool.signer, tx) // already validated during insertion
-
+	// addr, _ := types.Sender(pool.signer, tx) // already validated during insertion
+	addr := tx.From
 	// Remove it from the list of known transactions
 	pool.all.Remove(hash)
 	if outofbound {
@@ -1031,7 +1045,8 @@ func (pool *TxPool) scheduleReorgLoop() {
 		case tx := <-pool.queueTxEventCh:
 			// Queue up the event, but don't schedule a reorg. It's up to the caller to
 			// request one later if they want the events sent.
-			addr, _ := types.Sender(pool.signer, tx)
+			// addr, _ := types.Sender(pool.signer, tx)
+			addr := tx.From
 			if _, ok := queuedEvents[addr]; !ok {
 				queuedEvents[addr] = newTxSortedMap()
 			}
@@ -1102,7 +1117,8 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 
 	// Notify subsystems for newly added transactions
 	for _, tx := range promoted {
-		addr, _ := types.Sender(pool.signer, tx)
+		// addr, _ := types.Sender(pool.signer, tx)
+		addr := tx.From
 		if _, ok := events[addr]; !ok {
 			events[addr] = newTxSortedMap()
 		}
@@ -1508,10 +1524,11 @@ func (as *accountSet) empty() bool {
 // containsTx checks if the sender of a given tx is within the set. If the sender
 // cannot be derived, this method returns false.
 func (as *accountSet) containsTx(tx *types.Transaction) bool {
-	if addr, err := types.Sender(as.signer, tx); err == nil {
-		return as.contains(addr)
-	}
-	return false
+	// if addr, err := types.Sender(as.signer, tx); err == nil {
+	// 	return as.contains(addr)
+	// }
+	return as.contains(tx.From)
+	// return false
 }
 
 // add inserts a new address into the set to track.
@@ -1522,9 +1539,10 @@ func (as *accountSet) add(addr common.Address) {
 
 // addTx adds the sender of tx into the set.
 func (as *accountSet) addTx(tx *types.Transaction) {
-	if addr, err := types.Sender(as.signer, tx); err == nil {
-		as.add(addr)
-	}
+	// if addr, err := types.Sender(as.signer, tx); err == nil {
+	// 	as.add(addr)
+	// }
+	as.add(tx.From)
 }
 
 // flatten returns the list of addresses within this set, also caching it for later

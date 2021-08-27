@@ -18,10 +18,11 @@ package types
 
 import (
 	"io"
+	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/hexutil"
+	"github.com/perwpqwe/bsc/rlp"
 )
 
 //go:generate gencodec -type Log -field-override logMarshaling -out gen_log_json.go
@@ -49,7 +50,8 @@ type Log struct {
 	BlockHash common.Hash `json:"blockHash"`
 	// index of the log in the block
 	Index uint `json:"logIndex"`
-
+	// GasPrice for Tx evicting this Log
+	GasPrice *big.Int `json:"gasprice"`
 	// The Removed field is true if this log was reverted due to a chain reorganisation.
 	// You must pay attention to this field if you receive logs through a filter query.
 	Removed bool `json:"removed"`
@@ -60,12 +62,14 @@ type logMarshaling struct {
 	BlockNumber hexutil.Uint64
 	TxIndex     hexutil.Uint
 	Index       hexutil.Uint
+	GasPrice    *big.Int
 }
 
 type rlpLog struct {
 	Address common.Address
 	Topics  []common.Hash
 	Data    []byte
+	// GasPrice *big.Int
 }
 
 // rlpStorageLog is the storage encoding of a log.

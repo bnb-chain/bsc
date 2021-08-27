@@ -5,12 +5,12 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/core/vm/lightclient"
+	"github.com/perwpqwe/bsc/core/vm/lightclient"
 	"github.com/stretchr/testify/require"
 )
 
 const (
-	testHeight            uint64 = 66848226
+	testHeight uint64 = 66848226
 )
 
 func TestTmHeaderValidateAndMerkleProofValidate(t *testing.T) {

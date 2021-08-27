@@ -21,10 +21,10 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/eth/protocols/snap"
-	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/eth/protocols/eth"
+	"github.com/perwpqwe/bsc/eth/protocols/snap"
+	"github.com/perwpqwe/bsc/p2p"
 )
 
 var (
@@ -189,7 +189,7 @@ func (ps *peerSet) peersWithoutBlock(hash common.Hash) []*ethPeer {
 
 	list := make([]*ethPeer, 0, len(ps.peers))
 	for _, p := range ps.peers {
-		if !p.KnownBlock(hash) {
+		if p.IsTrusted() && !p.KnownBlock(hash) {
 			list = append(list, p)
 		}
 	}

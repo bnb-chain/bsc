@@ -20,8 +20,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/gopool"
-	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/perwpqwe/bsc/common/gopool"
+	"github.com/perwpqwe/bsc/p2p/enode"
 )
 
 // lookup performs a network search for nodes close to the given target. It approaches the

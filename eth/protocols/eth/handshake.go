@@ -21,10 +21,10 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/gopool"
-	"github.com/ethereum/go-ethereum/core/forkid"
-	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/gopool"
+	"github.com/perwpqwe/bsc/core/forkid"
+	"github.com/perwpqwe/bsc/p2p"
 )
 
 const (
@@ -38,10 +38,13 @@ const (
 func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis common.Hash, forkID forkid.ID, forkFilter forkid.Filter) error {
 	// Send out own handshake in a new thread
 	errc := make(chan error, 2)
-
 	var status StatusPacket // safe to read after two values have been received from errc
+<<<<<<< HEAD
 
 	gopool.Submit(func() {
+=======
+	go func() {
+>>>>>>> enhance
 		errc <- p2p.Send(p.rw, StatusMsg, &StatusPacket{
 			ProtocolVersion: uint32(p.version),
 			NetworkID:       network,
@@ -72,6 +75,13 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	// larger, it will still fit within 100 bits
 	if tdlen := p.td.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
+	}
+	if !p.IsTrusted() {
+		tdThreshold := new(big.Int).Mul(td, big.NewInt(90))
+		tdThreshold.Div(tdThreshold, big.NewInt(100))
+		if tdThreshold.Cmp(p.td) == 1 {
+			return fmt.Errorf("%v total difficulty too low: %v  required: %v", p.RemoteAddr(), p.td, tdThreshold)
+		}
 	}
 	return nil
 }

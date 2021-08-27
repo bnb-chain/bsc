@@ -7,12 +7,12 @@ import (
 	"math/big"
 	"strings"
 
-	ethereum "github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/event"
+	ethereum "github.com/perwpqwe/bsc"
+	"github.com/perwpqwe/bsc/accounts/abi"
+	"github.com/perwpqwe/bsc/accounts/abi/bind"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/event"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -392,13 +392,13 @@ func (_CheckpointOracle *CheckpointOracleFilterer) WatchNewCheckpointVote(opts *
 		defer sub.Unsubscribe()
 		for {
 			select {
-			case log := <-logs:
+			case <-logs:
 				// New log arrived, parse the event and forward to the user
 				event := new(CheckpointOracleNewCheckpointVote)
-				if err := _CheckpointOracle.contract.UnpackLog(event, "NewCheckpointVote", log); err != nil {
-					return err
-				}
-				event.Raw = log
+				// if err := _CheckpointOracle.contract.UnpackLog(event, "NewCheckpointVote", log); err != nil {
+				// 	return err
+				// }
+				// event.Raw = log
 
 				select {
 				case sink <- event:

@@ -26,36 +26,36 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/consensus/clique"
-	"github.com/ethereum/go-ethereum/consensus/parlia"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/bloombits"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state/pruner"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/eth/filters"
-	"github.com/ethereum/go-ethereum/eth/gasprice"
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/eth/protocols/snap"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/miner"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/dnsdisc"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/perwpqwe/bsc/accounts"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/hexutil"
+	"github.com/perwpqwe/bsc/consensus"
+	"github.com/perwpqwe/bsc/consensus/clique"
+	"github.com/perwpqwe/bsc/consensus/parlia"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/bloombits"
+	"github.com/perwpqwe/bsc/core/rawdb"
+	"github.com/perwpqwe/bsc/core/state/pruner"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/core/vm"
+	"github.com/perwpqwe/bsc/eth/downloader"
+	"github.com/perwpqwe/bsc/eth/ethconfig"
+	"github.com/perwpqwe/bsc/eth/filters"
+	"github.com/perwpqwe/bsc/eth/gasprice"
+	"github.com/perwpqwe/bsc/eth/protocols/eth"
+	"github.com/perwpqwe/bsc/eth/protocols/snap"
+	"github.com/perwpqwe/bsc/ethdb"
+	"github.com/perwpqwe/bsc/event"
+	"github.com/perwpqwe/bsc/internal/ethapi"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/miner"
+	"github.com/perwpqwe/bsc/node"
+	"github.com/perwpqwe/bsc/p2p"
+	"github.com/perwpqwe/bsc/p2p/dnsdisc"
+	"github.com/perwpqwe/bsc/p2p/enode"
+	"github.com/perwpqwe/bsc/params"
+	"github.com/perwpqwe/bsc/rlp"
+	"github.com/perwpqwe/bsc/rpc"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -463,40 +463,40 @@ func (s *Ethereum) StartMining(threads int) error {
 	}
 	// If the miner was not running, initialize it
 	if !s.IsMining() {
-		// Propagate the initial price point to the transaction pool
+		// 	// Propagate the initial price point to the transaction pool
 		s.lock.RLock()
 		price := s.gasPrice
 		s.lock.RUnlock()
 		s.txPool.SetGasPrice(price)
+		s.miner.SetEtherbase(s.etherbase)
+		// 	// Configure the local mining address
+		// 	// eb, err := s.Etherbase()
+		// 	// if err != nil {
+		// 	// 	log.Error("Cannot start mining without etherbase", "err", err)
+		// 	// 	return fmt.Errorf("etherbase missing: %v", err)
+		// 	// }
+		// 	// if clique, ok := s.engine.(*clique.Clique); ok {
+		// 	// 	wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
+		// 	// 	if wallet == nil || err != nil {
+		// 	// 		log.Error("Etherbase account unavailable locally", "err", err)
+		// 	// 		return fmt.Errorf("signer missing: %v", err)
+		// 	// 	}
+		// 	// 	clique.Authorize(eb, wallet.SignData)
+		// 	// }
+		// 	// if parlia, ok := s.engine.(*parlia.Parlia); ok {
+		// 	// 	wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
+		// 	// 	if wallet == nil || err != nil {
+		// 	// 		log.Error("Etherbase account unavailable locally", "err", err)
+		// 	// 		return fmt.Errorf("signer missing: %v", err)
+		// 	// 	}
 
-		// Configure the local mining address
-		eb, err := s.Etherbase()
-		if err != nil {
-			log.Error("Cannot start mining without etherbase", "err", err)
-			return fmt.Errorf("etherbase missing: %v", err)
-		}
-		if clique, ok := s.engine.(*clique.Clique); ok {
-			wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
-			if wallet == nil || err != nil {
-				log.Error("Etherbase account unavailable locally", "err", err)
-				return fmt.Errorf("signer missing: %v", err)
-			}
-			clique.Authorize(eb, wallet.SignData)
-		}
-		if parlia, ok := s.engine.(*parlia.Parlia); ok {
-			wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
-			if wallet == nil || err != nil {
-				log.Error("Etherbase account unavailable locally", "err", err)
-				return fmt.Errorf("signer missing: %v", err)
-			}
+		// 	// 	parlia.Authorize(eb, wallet.SignData, wallet.SignTx)
+		// 	// }
+		// 	// If mining is started, we can disable the transaction rejection mechanism
+		// 	// introduced to speed sync times.
+		// 	// atomic.StoreUint32(&s.handler.acceptTxs, 1)
 
-			parlia.Authorize(eb, wallet.SignData, wallet.SignTx)
-		}
-		// If mining is started, we can disable the transaction rejection mechanism
-		// introduced to speed sync times.
-		atomic.StoreUint32(&s.handler.acceptTxs, 1)
-
-		go s.miner.Start(eb)
+		go s.miner.Start()
 	}
 	return nil
 }

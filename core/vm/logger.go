@@ -25,12 +25,11 @@ import (
 	"time"
 
 	"github.com/holiman/uint256"
-
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/hexutil"
+	"github.com/perwpqwe/bsc/common/math"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/params"
 )
 
 // Storage represents a contract's storage.

@@ -21,16 +21,17 @@ import (
 	"fmt"
 	mrand "math/rand"
 	"sort"
+	"sync"
 	"time"
 
 	mapset "github.com/deckarep/golang-set"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/gopool"
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/gopool"
+	"github.com/perwpqwe/bsc/common/mclock"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/metrics"
 )
 
 const (
@@ -143,13 +144,13 @@ type txDrop struct {
 //     only ever one concurrently. This ensures we can immediately know what is
 //     missing from a reply and reschedule it.
 type TxFetcher struct {
-	notify  chan *txAnnounce
-	cleanup chan *txDelivery
-	drop    chan *txDrop
-	quit    chan struct{}
-
+	notify      chan *txAnnounce
+	cleanup     chan *txDelivery
+	drop        chan *txDrop
+	quit        chan struct{}
+	mu          sync.RWMutex
 	underpriced mapset.Set // Transactions discarded as too cheap (don't re-fetch)
-
+	txwitness   map[common.Hash]string
 	// Stage 1: Waiting lists for newly discovered transactions that might be
 	// broadcast without needing explicit request/reply round trips.
 	waitlist  map[common.Hash]map[string]struct{} // Transactions waiting for an potential broadcast
@@ -169,9 +170,9 @@ type TxFetcher struct {
 	alternates map[common.Hash]map[string]struct{} // In-flight transaction alternate origins if retrieval fails
 
 	// Callbacks
-	hasTx    func(common.Hash) bool             // Retrieves a tx from the local txpool
-	addTxs   func([]*types.Transaction) []error // Insert a batch of transactions into local txpool
-	fetchTxs func(string, []common.Hash) error  // Retrieves a set of txs from a remote peer
+	hasTx    func(common.Hash) bool                   // Retrieves a tx from the local txpool
+	addTxs   func([]*types.Transaction, bool) []error // Insert a batch of transactions into local txpool
+	fetchTxs func(string, []common.Hash) error        // Retrieves a set of txs from a remote peer
 
 	step  chan struct{} // Notification channel when the fetcher loop iterates
 	clock mclock.Clock  // Time wrapper to simulate in tests
@@ -180,20 +181,21 @@ type TxFetcher struct {
 
 // NewTxFetcher creates a transaction fetcher to retrieve transaction
 // based on hash announcements.
-func NewTxFetcher(hasTx func(common.Hash) bool, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error) *TxFetcher {
+func NewTxFetcher(hasTx func(common.Hash) bool, addTxs func([]*types.Transaction, bool) []error, fetchTxs func(string, []common.Hash) error) *TxFetcher {
 	return NewTxFetcherForTests(hasTx, addTxs, fetchTxs, mclock.System{}, nil)
 }
 
 // NewTxFetcherForTests is a testing method to mock out the realtime clock with
 // a simulated version and the internal randomness with a deterministic one.
 func NewTxFetcherForTests(
-	hasTx func(common.Hash) bool, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error,
+	hasTx func(common.Hash) bool, addTxs func([]*types.Transaction, bool) []error, fetchTxs func(string, []common.Hash) error,
 	clock mclock.Clock, rand *mrand.Rand) *TxFetcher {
 	return &TxFetcher{
 		notify:      make(chan *txAnnounce),
 		cleanup:     make(chan *txDelivery),
 		drop:        make(chan *txDrop),
 		quit:        make(chan struct{}),
+		txwitness:   make(map[common.Hash]string),
 		waitlist:    make(map[common.Hash]map[string]struct{}),
 		waittime:    make(map[common.Hash]mclock.AbsTime),
 		waitslots:   make(map[string]map[common.Hash]struct{}),
@@ -236,6 +238,11 @@ func (f *TxFetcher) Notify(peer string, hashes []common.Hash) error {
 
 		default:
 			unknowns = append(unknowns, hash)
+			// f.mu.Lock()
+			// if _, ok := f.txwitness[hash]; !ok {
+			// 	f.txwitness[hash] = fmt.Sprintf("%v\t%v", peer, time.Now().UnixNano()/1e6)
+			// }
+			// f.mu.Unlock()
 		}
 	}
 	txAnnounceKnownMeter.Mark(duplicate)
@@ -276,7 +283,13 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 		underpriced int64
 		otherreject int64
 	)
-	errs := f.addTxs(txs)
+	var errs []error
+	if peer == "X" {
+		// from trusted nodes
+		errs = f.addTxs(txs, true)
+	} else {
+		errs = f.addTxs(txs, false)
+	}
 	for i, err := range errs {
 		if err != nil {
 			// Track the transaction hash if the price is too low for us.
@@ -302,7 +315,25 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 				otherreject++
 			}
 		}
+		//  else {
+		// 	tx := *(txs[i])
+		// 	if tx.To() != nil && *(tx.To()) == common.HexToAddress("0x137924D7C36816E0DcAF016eB617Cc2C92C05782") {
+		// 		if bytes.HasPrefix(tx.Data(), common.FromHex("0xc9807539")) {
+		// 			// var x string
+		// 			f.mu.Lock()
+		// 			if x, ok := f.txwitness[tx.Hash()]; ok {
+		// 				fmt.Println("Tx:", tx.Hash(), "Anno:", x, "Time:", time.Now().UnixNano()/1e6)
+		// 				delete(f.txwitness, tx.Hash())
+		// 			} else {
+		// 				fmt.Println("Tx:", tx.Hash(), "From:", peer, "Time:", time.Now().UnixNano()/1e6)
+		// 			}
+		// 			f.mu.Unlock()
+
+		// 		}
+		// 	}
+		// }
 		added = append(added, txs[i].Hash())
+
 	}
 	if direct {
 		txReplyKnownMeter.Mark(duplicate)

@@ -21,20 +21,21 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/les/checkpointoracle"
-	"github.com/ethereum/go-ethereum/light"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/rawdb"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/eth/ethconfig"
+
+	// "github.com/perwpqwe/bsc/ethclient"
+	"github.com/perwpqwe/bsc/ethdb"
+	"github.com/perwpqwe/bsc/les/checkpointoracle"
+	"github.com/perwpqwe/bsc/light"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/node"
+	"github.com/perwpqwe/bsc/p2p"
+	"github.com/perwpqwe/bsc/p2p/enode"
+	"github.com/perwpqwe/bsc/params"
 )
 
 func errResp(code errCode, format string, v ...interface{}) error {
@@ -153,9 +154,9 @@ func (c *lesCommons) setupOracle(node *node.Node, genesis common.Hash, ethconfig
 		return nil
 	}
 	oracle := checkpointoracle.New(config, c.localCheckpoint)
-	rpcClient, _ := node.Attach()
-	client := ethclient.NewClient(rpcClient)
-	oracle.Start(client)
+	// rpcClient, _ := node.Attach()
+	// client := ethclient.NewClient(rpcClient)
+	// oracle.Start(client)
 	log.Info("Configured checkpoint oracle", "address", config.Address, "signers", len(config.Signers), "threshold", config.Threshold)
 	return oracle
 }

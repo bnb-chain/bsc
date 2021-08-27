@@ -22,11 +22,11 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/ethdb"
+	"github.com/perwpqwe/bsc/params"
+	"github.com/perwpqwe/bsc/rlp"
 	"golang.org/x/crypto/sha3"
 )
 

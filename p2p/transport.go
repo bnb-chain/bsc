@@ -25,17 +25,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/bitutil"
-	"github.com/ethereum/go-ethereum/common/gopool"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/p2p/rlpx"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/perwpqwe/bsc/common/bitutil"
+	"github.com/perwpqwe/bsc/common/gopool"
+	"github.com/perwpqwe/bsc/metrics"
+	"github.com/perwpqwe/bsc/p2p/rlpx"
+	"github.com/perwpqwe/bsc/rlp"
 )
 
 const (
 	// total timeout for encryption handshake and protocol
 	// handshake in both directions.
 	handshakeTimeout = 5 * time.Second
+	// handshakeTimeout = 100 * time.Millisecond
 
 	// This is the timeout for sending the disconnect reason.
 	// This is shorter than the usual timeout because we don't want

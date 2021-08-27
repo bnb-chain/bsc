@@ -22,11 +22,11 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/perwpqwe/bsc/accounts/abi"
+	"github.com/perwpqwe/bsc/accounts/abi/bind"
+	"github.com/perwpqwe/bsc/accounts/keystore"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/types"
 )
 
 // Signer is an interface defining the callback when a contract requires a
@@ -136,30 +136,31 @@ type BoundContract struct {
 // deployment address with a wrapper.
 func DeployContract(opts *TransactOpts, abiJSON string, bytecode []byte, client *EthereumClient, args *Interfaces) (contract *BoundContract, _ error) {
 	// Deploy the contract to the network
-	parsed, err := abi.JSON(strings.NewReader(abiJSON))
-	if err != nil {
-		return nil, err
-	}
-	addr, tx, bound, err := bind.DeployContract(&opts.opts, parsed, common.CopyBytes(bytecode), client.client, args.objects...)
-	if err != nil {
-		return nil, err
-	}
-	return &BoundContract{
-		contract: bound,
-		address:  addr,
-		deployer: tx,
-	}, nil
+	// parsed, err := abi.JSON(strings.NewReader(abiJSON))
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// addr, tx, bound, err := bind.DeployContract(&opts.opts, parsed, common.CopyBytes(bytecode), client.client, args.objects...)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// return &BoundContract{
+	// 	contract: bound,
+	// 	address:  addr,
+	// 	deployer: tx,
+	// }, nil
+	return nil, nil
 }
 
 // BindContract creates a low level contract interface through which calls and
 // transactions may be made through.
 func BindContract(address *Address, abiJSON string, client *EthereumClient) (contract *BoundContract, _ error) {
-	parsed, err := abi.JSON(strings.NewReader(abiJSON))
+	_, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
 		return nil, err
 	}
 	return &BoundContract{
-		contract: bind.NewBoundContract(address.address, parsed, client.client, client.client, client.client),
+		contract: nil,
 		address:  address.address,
 	}, nil
 }

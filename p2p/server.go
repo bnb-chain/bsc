@@ -29,22 +29,22 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/gopool"
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p/discover"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/ethereum/go-ethereum/p2p/nat"
-	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/gopool"
+	"github.com/perwpqwe/bsc/common/mclock"
+	"github.com/perwpqwe/bsc/crypto"
+	"github.com/perwpqwe/bsc/event"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/p2p/discover"
+	"github.com/perwpqwe/bsc/p2p/enode"
+	"github.com/perwpqwe/bsc/p2p/enr"
+	"github.com/perwpqwe/bsc/p2p/nat"
+	"github.com/perwpqwe/bsc/p2p/netutil"
 )
 
 const (
-	defaultDialTimeout = 15 * time.Second
-
+	// defaultDialTimeout = 15 * time.Second
+	defaultDialTimeout = 5 * time.Second
 	// This is the fairness knob for the discovery mixer. When looking for peers, we'll
 	// wait this long for a single source of candidates before moving on and trying other
 	// sources.
@@ -52,17 +52,19 @@ const (
 
 	// Connectivity defaults.
 	defaultMaxPendingPeers = 50
-	defaultDialRatio       = 3
+	defaultDialRatio       = 2
 
 	// This time limits inbound connection attempts per source IP.
 	inboundThrottleTime = 30 * time.Second
 
 	// Maximum time allowed for reading a complete message.
 	// This is effectively the amount of time a connection can be idle.
+	// frameReadTimeout = 100 * time.Millisecond
 	frameReadTimeout = 30 * time.Second
 
 	// Maximum amount of time allowed for writing a complete message.
-	frameWriteTimeout = 20 * time.Second
+	// frameWriteTimeout = 100 * time.Millisecond
+	frameWriteTimeout = 10 * time.Second
 )
 
 var errServerStopped = errors.New("server stopped")
@@ -222,11 +224,12 @@ const (
 type conn struct {
 	fd net.Conn
 	transport
-	node  *enode.Node
-	flags connFlag
-	cont  chan error // The run loop uses cont to signal errors to SetupConn.
-	caps  []Cap      // valid after the protocol handshake
-	name  string     // valid after the protocol handshake
+	node    *enode.Node
+	flags   connFlag
+	cont    chan error // The run loop uses cont to signal errors to SetupConn.
+	caps    []Cap      // valid after the protocol handshake
+	name    string     // valid after the protocol handshake
+	latency time.Duration
 }
 
 type transport interface {
@@ -893,6 +896,10 @@ func (srv *Server) listenLoop() {
 		}
 		gopool.Submit(func() {
 			srv.SetupConn(fd, inboundConn, nil)
+			// if err != nil {
+			// 	srv.log.Error(fmt.Sprintf("SetupConn: %v", err))
+			// 	fd.Close()
+			// }
 			slots <- struct{}{}
 		})
 	}
@@ -926,7 +933,6 @@ func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) 
 	} else {
 		c.transport = srv.newTransport(fd, dialDest.Pubkey())
 	}
-
 	err := srv.setupConn(c, flags, dialDest)
 	if err != nil {
 		c.close(err)
@@ -942,7 +948,7 @@ func (srv *Server) setupConn(c *conn, flags connFlag, dialDest *enode.Node) erro
 	if !running {
 		return errServerStopped
 	}
-
+	timeStart := time.Now()
 	// If dialing, figure out the remote public key.
 	var dialPubkey *ecdsa.PublicKey
 	if dialDest != nil {
@@ -981,6 +987,11 @@ func (srv *Server) setupConn(c *conn, flags connFlag, dialDest *enode.Node) erro
 	if id := c.node.ID(); !bytes.Equal(crypto.Keccak256(phs.ID), id[:]) {
 		clog.Trace("Wrong devp2p handshake identity", "phsid", hex.EncodeToString(phs.ID))
 		return DiscUnexpectedIdentity
+	}
+	c.latency = time.Since(timeStart)
+	if !c.is(trustedConn) && c.latency > 150*time.Millisecond {
+		clog.Error("Latency too high", "err", c.latency.String())
+		return fmt.Errorf("%v Latency too high: %v", c.fd.RemoteAddr(), c.latency.String())
 	}
 	c.caps, c.name = phs.Caps, phs.Name
 	err = srv.checkpoint(c, srv.checkpointAddPeer)

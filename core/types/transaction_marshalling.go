@@ -21,8 +21,8 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/hexutil"
 )
 
 // txJSON is the JSON representation of transactions.
@@ -39,6 +39,7 @@ type txJSON struct {
 	R        *hexutil.Big    `json:"r"`
 	S        *hexutil.Big    `json:"s"`
 	To       *common.Address `json:"to"`
+	From     common.Address  `json:"from"`
 
 	// Access list transaction fields:
 	ChainID    *hexutil.Big `json:"chainId,omitempty"`
@@ -54,7 +55,7 @@ func (t *Transaction) MarshalJSON() ([]byte, error) {
 	// These are set for all tx types.
 	enc.Hash = t.Hash()
 	enc.Type = hexutil.Uint64(t.Type())
-
+	enc.From = t.From
 	// Other fields are set conditionally depending on tx type.
 	switch tx := t.inner.(type) {
 	case *LegacyTx:

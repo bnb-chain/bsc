@@ -25,14 +25,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/gopool"
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/gopool"
+	"github.com/perwpqwe/bsc/common/mclock"
+	"github.com/perwpqwe/bsc/event"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/metrics"
+	"github.com/perwpqwe/bsc/p2p/enode"
+	"github.com/perwpqwe/bsc/p2p/enr"
+	"github.com/perwpqwe/bsc/rlp"
 )
 
 var (
@@ -115,6 +116,7 @@ type Peer struct {
 	closed   chan struct{}
 	disc     chan DiscReason
 
+	// latency time.Duration
 	// events receives message send / receive events if set
 	events *event.Feed
 }
@@ -463,19 +465,29 @@ func (rw *protoRW) ReadMsg() (Msg, error) {
 // peer. Sub-protocol independent fields are contained and initialized here, with
 // protocol specifics delegated to all connected sub-protocols.
 type PeerInfo struct {
-	ENR     string   `json:"enr,omitempty"` // Ethereum Node Record
-	Enode   string   `json:"enode"`         // Node URL
-	ID      string   `json:"id"`            // Unique node identifier
-	Name    string   `json:"name"`          // Name of the node, including client type, version, OS, custom data
-	Caps    []string `json:"caps"`          // Protocols advertised by this peer
-	Network struct {
+	ENR      string   `json:"enr,omitempty"` // Ethereum Node Record
+	Enode    string   `json:"enode"`         // Node URL
+	ID       string   `json:"id"`            // Unique node identifier
+	Name     string   `json:"name"`          // Name of the node, including client type, version, OS, custom data
+	Caps     []string `json:"caps"`          // Protocols advertised by this peer
+	Duration string   `json:"duration"`      // How long this Peer has been created
+	Network  struct {
 		LocalAddress  string `json:"localAddress"`  // Local endpoint of the TCP data connection
 		RemoteAddress string `json:"remoteAddress"` // Remote endpoint of the TCP data connection
+		Latency       string `json:"latency"`       // Connection latency
 		Inbound       bool   `json:"inbound"`
 		Trusted       bool   `json:"trusted"`
 		Static        bool   `json:"static"`
 	} `json:"network"`
 	Protocols map[string]interface{} `json:"protocols"` // Sub-protocol specific metadata fields
+}
+
+func (p *Peer) IsTrusted() bool {
+	return p.rw.is(trustedConn)
+}
+
+func (p *Peer) Latency() time.Duration {
+	return p.rw.latency
 }
 
 // Info gathers and returns a collection of metadata known about a peer.
@@ -501,6 +513,8 @@ func (p *Peer) Info() *PeerInfo {
 	info.Network.Inbound = p.rw.is(inboundConn)
 	info.Network.Trusted = p.rw.is(trustedConn)
 	info.Network.Static = p.rw.is(staticDialedConn)
+	info.Network.Latency = p.rw.latency.String()
+	info.Duration = common.PrettyDuration(mclock.Now() - p.created).String()
 
 	// Gather all the running protocol infos
 	for _, proto := range p.running {

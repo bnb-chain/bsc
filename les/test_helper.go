@@ -29,27 +29,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/contracts/checkpointoracle/contract"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/forkid"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/les/checkpointoracle"
-	"github.com/ethereum/go-ethereum/les/flowcontrol"
-	vfs "github.com/ethereum/go-ethereum/les/vflux/server"
-	"github.com/ethereum/go-ethereum/light"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/params"
+	// "github.com/perwpqwe/bsc/accounts/abi/bind"
+	"github.com/perwpqwe/bsc/accounts/abi/bind/backends"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/common/mclock"
+	"github.com/perwpqwe/bsc/consensus/ethash"
+
+	// "github.com/perwpqwe/bsc/contracts/checkpointoracle/contract"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/forkid"
+	"github.com/perwpqwe/bsc/core/rawdb"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/crypto"
+	"github.com/perwpqwe/bsc/eth/ethconfig"
+	"github.com/perwpqwe/bsc/ethdb"
+	"github.com/perwpqwe/bsc/event"
+	"github.com/perwpqwe/bsc/les/checkpointoracle"
+	"github.com/perwpqwe/bsc/les/flowcontrol"
+	vfs "github.com/perwpqwe/bsc/les/vflux/server"
+	"github.com/perwpqwe/bsc/light"
+	"github.com/perwpqwe/bsc/p2p"
+	"github.com/perwpqwe/bsc/p2p/enode"
+	"github.com/perwpqwe/bsc/params"
 )
 
 var (
@@ -118,13 +119,13 @@ func prepare(n int, backend *backends.SimulatedBackend) {
 			//    txs:    2
 
 			// deploy checkpoint contract
-			auth, _ := bind.NewKeyedTransactorWithChainID(bankKey, big.NewInt(1337))
-			oracleAddr, _, _, _ = contract.DeployCheckpointOracle(auth, backend, []common.Address{signerAddr}, sectionSize, processConfirms, big.NewInt(1))
+			// auth, _ := bind.NewKeyedTransactorWithChainID(bankKey, big.NewInt(1337))
+			// oracleAddr, _, _, _ = contract.DeployCheckpointOracle(auth, backend, []common.Address{signerAddr}, sectionSize, processConfirms, big.NewInt(1))
 
-			// bankUser transfers some ether to user1
-			nonce, _ := backend.PendingNonceAt(ctx, bankAddr)
-			tx, _ := types.SignTx(types.NewTransaction(nonce, userAddr1, big.NewInt(10000), params.TxGas, nil, nil), signer, bankKey)
-			backend.SendTransaction(ctx, tx)
+			// // bankUser transfers some ether to user1
+			// nonce, _ := backend.PendingNonceAt(ctx, bankAddr)
+			// tx, _ := types.SignTx(types.NewTransaction(nonce, userAddr1, big.NewInt(10000), params.TxGas, nil, nil), signer, bankKey)
+			// backend.SendTransaction(ctx, tx)
 		case 1:
 			// Builtin-block
 			//    number: 2
@@ -241,9 +242,9 @@ func newTestClientHandler(backend *backends.SimulatedBackend, odr *LesOdr, index
 	}
 	client.handler = newClientHandler(ulcServers, ulcFraction, nil, client)
 
-	if client.oracle != nil {
-		client.oracle.Start(backend)
-	}
+	// if client.oracle != nil {
+	// 	client.oracle.Start(backend)
+	// }
 	client.handler.start()
 	return client.handler, func() {
 		client.handler.stop()
@@ -311,9 +312,9 @@ func newTestServerHandler(blocks int, indexers []*core.ChainIndexer, db ethdb.Da
 	server.clientPool.Start()
 	server.clientPool.SetLimits(10000, 10000) // Assign enough capacity for clientpool
 	server.handler = newServerHandler(server, simulation.Blockchain(), db, txpool, func() bool { return true })
-	if server.oracle != nil {
-		server.oracle.Start(simulation)
-	}
+	// if server.oracle != nil {
+	// 	server.oracle.Start(simulation)
+	// }
 	server.servingQueue.setThreads(4)
 	server.handler.start()
 	closer := func() { server.Stop() }

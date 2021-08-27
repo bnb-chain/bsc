@@ -25,9 +25,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/gopool"
+	"github.com/perwpqwe/bsc/common/gopool"
 
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/perwpqwe/bsc/log"
 )
 
 // handler handles JSON-RPC messages. There is one handler per connection. Note that

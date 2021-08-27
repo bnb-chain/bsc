@@ -19,15 +19,15 @@ package main
 import (
 	"strconv"
 
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/accounts/external"
-	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/contracts/checkpointoracle"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/perwpqwe/bsc/accounts"
+	"github.com/perwpqwe/bsc/accounts/abi/bind"
+	"github.com/perwpqwe/bsc/accounts/external"
+	"github.com/perwpqwe/bsc/cmd/utils"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/contracts/checkpointoracle"
+	"github.com/perwpqwe/bsc/ethclient"
+	"github.com/perwpqwe/bsc/params"
+	"github.com/perwpqwe/bsc/rpc"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -103,11 +103,11 @@ func newContract(client *rpc.Client) (common.Address, *checkpointoracle.Checkpoi
 	if addr == (common.Address{}) {
 		utils.Fatalf("No specified registrar contract address")
 	}
-	contract, err := checkpointoracle.NewCheckpointOracle(addr, ethclient.NewClient(client))
-	if err != nil {
-		utils.Fatalf("Failed to setup registrar contract %s: %v", addr, err)
-	}
-	return addr, contract
+	// contract, err := checkpointoracle.NewCheckpointOracle(addr, ethclient.NewClient(client))
+	// if err != nil {
+	// 	utils.Fatalf("Failed to setup registrar contract %s: %v", addr, err)
+	// }
+	return addr, nil
 }
 
 // newClefSigner sets up a clef backend and returns a clef transaction signer.

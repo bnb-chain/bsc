@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/perwpqwe/bsc/common"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -620,10 +620,10 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number
-			if lastFork.block == nil && cur.block != nil {
-				return fmt.Errorf("unsupported fork ordering: %v not enabled, but %v enabled at %v",
-					lastFork.name, cur.name, cur.block)
-			}
+			// if lastFork.block == nil && cur.block != nil {
+			// 	return fmt.Errorf("unsupported fork ordering: %v not enabled, but %v enabled at %v",
+			// 		lastFork.name, cur.name, cur.block)
+			// }
 			if lastFork.block != nil && cur.block != nil {
 				if lastFork.block.Cmp(cur.block) > 0 {
 					return fmt.Errorf("unsupported fork ordering: %v enabled at %v, but %v enabled at %v",

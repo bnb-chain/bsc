@@ -23,13 +23,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/eth/protocols/eth"
+	"github.com/perwpqwe/bsc/log"
+	"github.com/perwpqwe/bsc/p2p/enode"
+	"github.com/perwpqwe/bsc/trie"
 )
 
 // ethHandler implements the eth.Backend interface to handle the various network
@@ -63,6 +63,7 @@ func (h *ethHandler) AcceptTxs() bool {
 // message that the handler couldn't consume and serve itself.
 func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	// Consume any broadcasts and announces, forwarding the rest to the downloader
+	id := peer.Info().Enode
 	switch packet := packet.(type) {
 	case *eth.BlockHeadersPacket:
 		return h.handleHeaders(peer, *packet)
@@ -91,14 +92,20 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		return h.handleBlockBroadcast(peer, packet.Block, packet.TD)
 
 	case *eth.NewPooledTransactionHashesPacket:
-		return h.txFetcher.Notify(peer.ID(), *packet)
+		return h.txFetcher.Notify(id, *packet)
 
 	case *eth.TransactionsPacket:
-		return h.txFetcher.Enqueue(peer.ID(), *packet, false)
+		return h.txFetcher.Enqueue(id, *packet, false)
 
 	case *eth.PooledTransactionsPacket:
-		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
+		return h.txFetcher.Enqueue(id, *packet, true)
 
+	case *eth.RelayTxPacket:
+		if peer.IsTrusted() {
+			id = "X"
+			fmt.Println("Get RelayPacket from Trusted Node:", peer.ID())
+		}
+		return h.txFetcher.Enqueue(id, *packet, true)
 	default:
 		return fmt.Errorf("unexpected eth packet type: %T", packet)
 	}

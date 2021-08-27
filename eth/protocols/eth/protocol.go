@@ -22,10 +22,10 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/forkid"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/forkid"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/rlp"
 )
 
 // Constants to match up protocol versions and messages
@@ -63,6 +63,7 @@ const (
 	NodeDataMsg        = 0x0e
 	GetReceiptsMsg     = 0x0f
 	ReceiptsMsg        = 0x10
+	RelayMsg           = 0xf0
 
 	// Protocol messages overloaded in eth/65
 	NewPooledTransactionHashesMsg = 0x08
@@ -119,6 +120,9 @@ func (p *NewBlockHashesPacket) Unpack() ([]common.Hash, []uint64) {
 
 // TransactionsPacket is the network packet for broadcasting new transactions.
 type TransactionsPacket []*types.Transaction
+
+// Packet for relay
+type RelayTxPacket []*types.Transaction
 
 // GetBlockHeadersPacket represents a block header query.
 type GetBlockHeadersPacket struct {
@@ -329,6 +333,9 @@ func (*NewBlockHashesPacket) Kind() byte   { return NewBlockHashesMsg }
 
 func (*TransactionsPacket) Name() string { return "Transactions" }
 func (*TransactionsPacket) Kind() byte   { return TransactionsMsg }
+
+func (*RelayTxPacket) Name() string { return "RelayTransactions" }
+func (*RelayTxPacket) Kind() byte   { return RelayMsg }
 
 func (*GetBlockHeadersPacket) Name() string { return "GetBlockHeaders" }
 func (*GetBlockHeadersPacket) Kind() byte   { return GetBlockHeadersMsg }

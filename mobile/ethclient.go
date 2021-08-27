@@ -21,8 +21,8 @@ package geth
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/ethclient"
 )
 
 // EthereumClient provides access to the Ethereum APIs.
@@ -216,7 +216,7 @@ type FilterLogsHandler interface {
 // SubscribeFilterLogs subscribes to the results of a streaming filter query.
 func (ec *EthereumClient) SubscribeFilterLogs(ctx *Context, query *FilterQuery, handler FilterLogsHandler, buffer int) (sub *Subscription, _ error) {
 	// Subscribe to the event internally
-	ch := make(chan types.Log, buffer)
+	ch := make(chan []*types.Log, buffer)
 	rawSub, err := ec.client.SubscribeFilterLogs(ctx.context, query.query, ch)
 	if err != nil {
 		return nil, err
@@ -225,8 +225,8 @@ func (ec *EthereumClient) SubscribeFilterLogs(ctx *Context, query *FilterQuery, 
 	go func() {
 		for {
 			select {
-			case log := <-ch:
-				handler.OnFilterLogs(&Log{&log})
+			// case log := <-ch:
+			// handler.OnFilterLogs(&Log{&log})
 
 			case err := <-rawSub.Err():
 				if err != nil {

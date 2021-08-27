@@ -22,8 +22,8 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/types"
 )
 
 // NotFound is returned by API methods if the requested item does not exist.
@@ -159,7 +159,7 @@ type FilterQuery struct {
 // indicating that the log was reverted due to a chain reorganisation.
 type LogFilterer interface {
 	FilterLogs(ctx context.Context, q FilterQuery) ([]types.Log, error)
-	SubscribeFilterLogs(ctx context.Context, q FilterQuery, ch chan<- types.Log) (Subscription, error)
+	SubscribeFilterLogs(ctx context.Context, q FilterQuery, ch chan<- []*types.Log) (Subscription, error)
 }
 
 // TransactionSender wraps transaction sending. The SendTransaction method injects a

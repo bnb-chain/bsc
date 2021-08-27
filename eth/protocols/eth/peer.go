@@ -17,15 +17,16 @@
 package eth
 
 import (
+	"fmt"
 	"math/big"
 	"math/rand"
 	"sync"
 
 	mapset "github.com/deckarep/golang-set"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/perwpqwe/bsc/common"
+	"github.com/perwpqwe/bsc/core/types"
+	"github.com/perwpqwe/bsc/p2p"
+	"github.com/perwpqwe/bsc/rlp"
 )
 
 const (
@@ -197,6 +198,19 @@ func (p *Peer) SendTransactions(txs types.Transactions) error {
 		p.knownTxs.Add(tx.Hash())
 	}
 	return p2p.Send(p.rw, TransactionsMsg, txs)
+}
+
+// relay Tx directly to trusted node
+func (p *Peer) RelayTransactions(txs types.Transactions) error {
+	// Mark all the transactions as known, but ensure we don't overflow our limits
+	for p.knownTxs.Cardinality() > max(0, maxKnownTxs-len(txs)) {
+		p.knownTxs.Pop()
+	}
+	for _, tx := range txs {
+		p.knownTxs.Add(tx.Hash())
+		fmt.Println("[Relay]Tx:", tx.Hash(), "To:", p.RemoteAddr())
+	}
+	return p2p.Send(p.rw, RelayMsg, txs)
 }
 
 // AsyncSendTransactions queues a list of transactions (by hash) to eventually
