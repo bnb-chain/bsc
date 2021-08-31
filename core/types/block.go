@@ -372,7 +372,6 @@ func (b *Block) Hash() common.Hash {
 type Blocks []*Block
 
 type DiffLayer struct {
-	DiffHash  common.Hash `rlp:"_"`
 	BlockHash common.Hash
 	Number    uint64
 	Receipts  Receipts // Receipts are duplicated stored to simplify the logic
@@ -380,11 +379,56 @@ type DiffLayer struct {
 	Destructs []common.Address
 	Accounts  []DiffAccount
 	Storages  []DiffStorage
+
+	DiffHash common.Hash
+}
+
+type extDiffLayer struct {
+	BlockHash common.Hash
+	Number    uint64
+	Receipts  []*ReceiptForStorage // Receipts are duplicated stored to simplify the logic
+	Codes     []DiffCode
+	Destructs []common.Address
+	Accounts  []DiffAccount
+	Storages  []DiffStorage
+}
+
+// DecodeRLP decodes the Ethereum
+func (d *DiffLayer) DecodeRLP(s *rlp.Stream) error {
+	var ed extDiffLayer
+	if err := s.Decode(&ed); err != nil {
+		return err
+	}
+	d.BlockHash, d.Number, d.Codes, d.Destructs, d.Accounts, d.Storages =
+		ed.BlockHash, ed.Number, ed.Codes, ed.Destructs, ed.Accounts, ed.Storages
+
+	d.Receipts = make([]*Receipt, len(ed.Receipts))
+	for i, storageReceipt := range ed.Receipts {
+		d.Receipts[i] = (*Receipt)(storageReceipt)
+	}
+	return nil
+}
+
+// EncodeRLP serializes b into the Ethereum RLP block format.
+func (d *DiffLayer) EncodeRLP(w io.Writer) error {
+	storageReceipts := make([]*ReceiptForStorage, len(d.Receipts))
+	for i, receipt := range d.Receipts {
+		storageReceipts[i] = (*ReceiptForStorage)(receipt)
+	}
+	return rlp.Encode(w, extDiffLayer{
+		BlockHash: d.BlockHash,
+		Number:    d.Number,
+		Receipts:  storageReceipts,
+		Codes:     d.Codes,
+		Destructs: d.Destructs,
+		Accounts:  d.Accounts,
+		Storages:  d.Storages,
+	})
 }
 
 func (d *DiffLayer) Validate() error {
-	if d.BlockHash == (common.Hash{}) || d.DiffHash == (common.Hash{}) {
-		return errors.New("both BlockHash and DiffHash can't be empty")
+	if d.BlockHash == (common.Hash{}) {
+		return errors.New("blockHash can't be empty")
 	}
 	for _, storage := range d.Storages {
 		if len(storage.Keys) != len(storage.Vals) {

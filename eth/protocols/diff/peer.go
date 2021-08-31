@@ -24,9 +24,9 @@ type Peer struct {
 	term      chan struct{}     // Termination channel to stop the broadcasters
 }
 
-// newPeer create a wrapper for a network connection and negotiated  protocol
+// NewPeer create a wrapper for a network connection and negotiated  protocol
 // version.
-func newPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
+func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 	id := p.ID().String()
 	peer := &Peer{
 		id:               id,

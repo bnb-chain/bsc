@@ -80,12 +80,19 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 		if peer, ok := block.ReceivedFrom.(PeerIDer); ok {
 			pid = peer.ID()
 		}
-		diffLayer := p.bc.GetDiffLayer(block.Hash(), pid)
+		diffLayer := p.bc.GetUnTrustedDiffLayer(block.Hash(), pid)
 		if diffLayer != nil {
+			if err := diffLayer.Receipts.DeriveFields(p.bc.chainConfig, block.Hash(), block.NumberU64(), block.Transactions()); err != nil {
+				log.Error("Failed to derive block receipts fields", "hash", block.Hash(), "number", block.NumberU64(), "err", err)
+				// fallback to full process
+				return p.StateProcessor.Process(block, statedb, cfg)
+			}
 			receipts, logs, gasUsed, err := p.LightProcess(diffLayer, block, statedb, cfg)
 			if err == nil {
+				log.Info("do light process success at block", "num", block.NumberU64())
 				return statedb, receipts, logs, gasUsed, nil
 			} else {
+				log.Error("do light process err at block\n", "num", block.NumberU64(), "err", err)
 				p.bc.removeDiffLayers(diffLayer.DiffHash)
 				// prepare new statedb
 				statedb.StopPrefetcher()

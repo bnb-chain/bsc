@@ -94,6 +94,7 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
+	diffStore ethdb.KeyValueStore
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.
@@ -132,11 +133,11 @@ func (db *nofreezedb) Sync() error {
 }
 
 func (db *nofreezedb) DiffStore() ethdb.KeyValueStore {
-	return nil
+	return db.diffStore
 }
 
 func (db *nofreezedb) SetDiffStore(diff ethdb.KeyValueStore) {
-	panic("not implement")
+	db.diffStore = diff
 }
 
 // NewDatabase creates a high level database on top of a given key-value data

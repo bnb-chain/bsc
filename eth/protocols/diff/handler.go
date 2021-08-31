@@ -56,9 +56,9 @@ func MakeProtocols(backend Backend, dnsdisc enode.Iterator) []p2p.Protocol {
 			Version: version,
 			Length:  protocolLengths[version],
 			Run: func(p *p2p.Peer, rw p2p.MsgReadWriter) error {
-				return backend.RunPeer(newPeer(version, p, rw), func(peer *Peer) error {
+				return backend.RunPeer(NewPeer(version, p, rw), func(peer *Peer) error {
 					defer peer.Close()
-					return handle(backend, peer)
+					return Handle(backend, peer)
 				})
 			},
 			NodeInfo: func() interface{} {
@@ -74,9 +74,9 @@ func MakeProtocols(backend Backend, dnsdisc enode.Iterator) []p2p.Protocol {
 	return protocols
 }
 
-// handle is the callback invoked to manage the life cycle of a `diff` peer.
+// Handle is the callback invoked to manage the life cycle of a `diff` peer.
 // When this function terminates, the peer is disconnected.
-func handle(backend Backend, peer *Peer) error {
+func Handle(backend Backend, peer *Peer) error {
 	for {
 		if err := handleMessage(backend, peer); err != nil {
 			peer.Log().Debug("Message handling failed in `diff`", "err", err)

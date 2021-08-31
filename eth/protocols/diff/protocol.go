@@ -29,7 +29,7 @@ import (
 
 // Constants to match up protocol versions and messages
 const (
-	diff1 = 1
+	Diff1 = 1
 )
 
 // ProtocolName is the official short name of the `diff` protocol used during
@@ -38,11 +38,11 @@ const ProtocolName = "diff"
 
 // ProtocolVersions are the supported versions of the `diff` protocol (first
 // is primary).
-var ProtocolVersions = []uint{diff1}
+var ProtocolVersions = []uint{Diff1}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{diff1: 4}
+var protocolLengths = map[uint]uint64{Diff1: 4}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -98,6 +98,7 @@ func (p *DiffLayersPacket) Unpack() ([]*types.DiffLayer, error) {
 type DiffCapPacket struct {
 	LightSync bool
 }
+
 type DiffLayersPacket []rlp.RawValue
 
 type FullDiffLayersPacket struct {
