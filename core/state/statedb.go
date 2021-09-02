@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	preLoadLimit      = 64
+	preLoadLimit      = 128
 	defaultNumOfSlots = 100
 )
 

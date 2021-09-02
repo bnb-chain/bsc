@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -39,7 +41,10 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-const fullProcessCheck = 21 // On light sync mode, will do full process every fullProcessCheck randomly
+const (
+	fullProcessCheck          = 21 // On light sync mode, will do full process every fullProcessCheck randomly
+	minNumberOfAccountPerTask = 10
+)
 
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
@@ -128,111 +133,179 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	for des := range snapDestructs {
 		statedb.Trie().TryDelete(des[:])
 	}
+	threads := 1
+	if len(snapAccounts)/runtime.NumCPU() > minNumberOfAccountPerTask {
+		threads = runtime.NumCPU()
+	}
 
-	// TODO need improve, do it concurrently
-	for diffAccount, blob := range snapAccounts {
-		addrHash := crypto.Keccak256Hash(diffAccount[:])
-		latestAccount, err := snapshot.FullAccount(blob)
-		if err != nil {
-			return nil, nil, 0, err
-		}
+	iteAccounts := make([]common.Address, 0, len(snapAccounts))
+	for diffAccount, _ := range snapAccounts {
+		iteAccounts = append(iteAccounts, diffAccount)
+	}
 
-		// fetch previous state
-		var previousAccount state.Account
-		enc, err := statedb.Trie().TryGet(diffAccount[:])
-		if err != nil {
-			return nil, nil, 0, err
+	errChan := make(chan error, threads)
+	exitChan := make(chan struct{}, 0)
+	var snapMux sync.RWMutex
+	var stateMux, diffMux sync.Mutex
+	for i := 0; i < threads; i++ {
+		start := i * len(iteAccounts) / threads
+		end := (i + 1) * len(iteAccounts) / threads
+		if i+1 == threads {
+			end = len(iteAccounts)
 		}
-		if len(enc) != 0 {
-			if err := rlp.DecodeBytes(enc, &previousAccount); err != nil {
-				return nil, nil, 0, err
-			}
-		}
-		if latestAccount.Balance == nil {
-			latestAccount.Balance = new(big.Int)
-		}
-		if previousAccount.Balance == nil {
-			previousAccount.Balance = new(big.Int)
-		}
-		if previousAccount.Root == (common.Hash{}) {
-			previousAccount.Root = types.EmptyRootHash
-		}
-		if len(previousAccount.CodeHash) == 0 {
-			previousAccount.CodeHash = types.EmptyCodeHash
-		}
-
-		// skip no change account
-		if previousAccount.Nonce == latestAccount.Nonce &&
-			bytes.Equal(previousAccount.CodeHash, latestAccount.CodeHash) &&
-			previousAccount.Balance.Cmp(latestAccount.Balance) == 0 &&
-			previousAccount.Root == common.BytesToHash(latestAccount.Root) {
-			log.Warn("receive redundant account change in diff layer")
-			delete(snapAccounts, diffAccount)
-			delete(snapStorage, diffAccount)
-			continue
-		}
-
-		// update code
-		codeHash := common.BytesToHash(latestAccount.CodeHash)
-		if !bytes.Equal(latestAccount.CodeHash, previousAccount.CodeHash) &&
-			!bytes.Equal(latestAccount.CodeHash, types.EmptyCodeHash) {
-			if code, exist := fullDiffCode[codeHash]; exist {
-				if crypto.Keccak256Hash(code) != codeHash {
-					return nil, nil, 0, errors.New("code and codeHash mismatch")
+		go func(start, end int) {
+			for index := start; index < end; index++ {
+				select {
+				// fast fail
+				case <-exitChan:
+					return
+				default:
 				}
-				diffCode[codeHash] = code
-			} else {
-				rawCode := rawdb.ReadCode(p.bc.db, codeHash)
-				if len(rawCode) == 0 {
-					return nil, nil, 0, errors.New("missing code in difflayer")
+				diffAccount := iteAccounts[index]
+				snapMux.RLock()
+				blob := snapAccounts[diffAccount]
+				snapMux.RUnlock()
+				addrHash := crypto.Keccak256Hash(diffAccount[:])
+				latestAccount, err := snapshot.FullAccount(blob)
+				if err != nil {
+					errChan <- err
+					return
 				}
-			}
-		}
 
-		//update storage
-		latestRoot := common.BytesToHash(latestAccount.Root)
-		if latestRoot != previousAccount.Root && latestRoot != types.EmptyRootHash {
-			accountTrie, err := statedb.Database().OpenStorageTrie(addrHash, previousAccount.Root)
-			if err != nil {
-				return nil, nil, 0, err
-			}
-			if storageChange, exist := snapStorage[diffAccount]; exist {
-				for k, v := range storageChange {
-					if len(v) != 0 {
-						accountTrie.TryUpdate([]byte(k), v)
-					} else {
-						accountTrie.TryDelete([]byte(k))
+				// fetch previous state
+				var previousAccount state.Account
+				stateMux.Lock()
+				enc, err := statedb.Trie().TryGet(diffAccount[:])
+				stateMux.Unlock()
+				if err != nil {
+					errChan <- err
+					return
+				}
+				if len(enc) != 0 {
+					if err := rlp.DecodeBytes(enc, &previousAccount); err != nil {
+						errChan <- err
+						return
 					}
 				}
-			} else {
-				return nil, nil, 0, errors.New("missing storage change in difflayer")
-			}
-			// check storage root
-			accountRootHash := accountTrie.Hash()
-			if latestRoot != accountRootHash {
-				return nil, nil, 0, errors.New("account storage root mismatch")
-			}
-			diffTries[diffAccount] = accountTrie
-		} else {
-			delete(snapStorage, diffAccount)
-		}
+				if latestAccount.Balance == nil {
+					latestAccount.Balance = new(big.Int)
+				}
+				if previousAccount.Balance == nil {
+					previousAccount.Balance = new(big.Int)
+				}
+				if previousAccount.Root == (common.Hash{}) {
+					previousAccount.Root = types.EmptyRootHash
+				}
+				if len(previousAccount.CodeHash) == 0 {
+					previousAccount.CodeHash = types.EmptyCodeHash
+				}
 
-		// can't trust the blob, need encode by our-self.
-		latestStateAccount := state.Account{
-			Nonce:    latestAccount.Nonce,
-			Balance:  latestAccount.Balance,
-			Root:     common.BytesToHash(latestAccount.Root),
-			CodeHash: latestAccount.CodeHash,
-		}
-		bz, err := rlp.EncodeToBytes(&latestStateAccount)
+				// skip no change account
+				if previousAccount.Nonce == latestAccount.Nonce &&
+					bytes.Equal(previousAccount.CodeHash, latestAccount.CodeHash) &&
+					previousAccount.Balance.Cmp(latestAccount.Balance) == 0 &&
+					previousAccount.Root == common.BytesToHash(latestAccount.Root) {
+					log.Warn("receive redundant account change in diff layer", "account", diffAccount, "num", block.NumberU64())
+					snapMux.Lock()
+					delete(snapAccounts, diffAccount)
+					delete(snapStorage, diffAccount)
+					snapMux.Unlock()
+					continue
+				}
+
+				// update code
+				codeHash := common.BytesToHash(latestAccount.CodeHash)
+				if !bytes.Equal(latestAccount.CodeHash, previousAccount.CodeHash) &&
+					!bytes.Equal(latestAccount.CodeHash, types.EmptyCodeHash) {
+					if code, exist := fullDiffCode[codeHash]; exist {
+						if crypto.Keccak256Hash(code) != codeHash {
+							errChan <- err
+							return
+						}
+						diffMux.Lock()
+						diffCode[codeHash] = code
+						diffMux.Unlock()
+					} else {
+						rawCode := rawdb.ReadCode(p.bc.db, codeHash)
+						if len(rawCode) == 0 {
+							errChan <- err
+							return
+						}
+					}
+				}
+
+				//update storage
+				latestRoot := common.BytesToHash(latestAccount.Root)
+				if latestRoot != previousAccount.Root && latestRoot != types.EmptyRootHash {
+					accountTrie, err := statedb.Database().OpenStorageTrie(addrHash, previousAccount.Root)
+					if err != nil {
+						errChan <- err
+						return
+					}
+					snapMux.RLock()
+					storageChange, exist := snapStorage[diffAccount]
+					snapMux.RUnlock()
+
+					if exist {
+						for k, v := range storageChange {
+							if len(v) != 0 {
+								accountTrie.TryUpdate([]byte(k), v)
+							} else {
+								accountTrie.TryDelete([]byte(k))
+							}
+						}
+					} else {
+						errChan <- errors.New("missing storage change in difflayer")
+						return
+					}
+					// check storage root
+					accountRootHash := accountTrie.Hash()
+					if latestRoot != accountRootHash {
+						errChan <- errors.New("account storage root mismatch")
+						return
+					}
+					diffMux.Lock()
+					diffTries[diffAccount] = accountTrie
+					diffMux.Unlock()
+				} else {
+					snapMux.Lock()
+					delete(snapStorage, diffAccount)
+					snapMux.Unlock()
+				}
+
+				// can't trust the blob, need encode by our-self.
+				latestStateAccount := state.Account{
+					Nonce:    latestAccount.Nonce,
+					Balance:  latestAccount.Balance,
+					Root:     common.BytesToHash(latestAccount.Root),
+					CodeHash: latestAccount.CodeHash,
+				}
+				bz, err := rlp.EncodeToBytes(&latestStateAccount)
+				if err != nil {
+					errChan <- err
+					return
+				}
+				stateMux.Lock()
+				err = statedb.Trie().TryUpdate(diffAccount[:], bz)
+				stateMux.Unlock()
+				if err != nil {
+					errChan <- err
+					return
+				}
+			}
+			errChan <- nil
+			return
+		}(start, end)
+	}
+
+	for i := 0; i < threads; i++ {
+		err := <-errChan
 		if err != nil {
-			return nil, nil, 0, err
-		}
-		err = statedb.Trie().TryUpdate(diffAccount[:], bz)
-		if err != nil {
+			close(exitChan)
 			return nil, nil, 0, err
 		}
 	}
+
 	var allLogs []*types.Log
 	var gasUsed uint64
 	for _, receipt := range diffLayer.Receipts {
