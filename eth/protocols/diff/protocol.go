@@ -96,7 +96,7 @@ func (p *DiffLayersPacket) Unpack() ([]*types.DiffLayer, error) {
 }
 
 type DiffCapPacket struct {
-	LightSync bool
+	DiffSync bool
 }
 
 type DiffLayersPacket []rlp.RawValue

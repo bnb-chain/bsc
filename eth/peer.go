@@ -65,8 +65,8 @@ type snapPeerInfo struct {
 // diffPeerInfo represents a short summary of the `diff` sub-protocol metadata known
 // about a connected peer.
 type diffPeerInfo struct {
-	Version   uint `json:"version"` // diff protocol version negotiated
-	LightSync bool `json:"light_sync"`
+	Version  uint `json:"version"` // diff protocol version negotiated
+	DiffSync bool `json:"diff_sync"`
 }
 
 // snapPeer is a wrapper around snap.Peer to maintain a few extra metadata.
@@ -82,8 +82,8 @@ type diffPeer struct {
 // info gathers and returns some `diff` protocol metadata known about a peer.
 func (p *diffPeer) info() *diffPeerInfo {
 	return &diffPeerInfo{
-		Version:   p.Version(),
-		LightSync: p.LightSync(),
+		Version:  p.Version(),
+		DiffSync: p.DiffSync(),
 	}
 }
 

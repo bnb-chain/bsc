@@ -32,7 +32,7 @@ func (h *diffHandler) Chain() *core.BlockChain { return h.chain }
 
 // RunPeer is invoked when a peer joins on the `diff` protocol.
 func (h *diffHandler) RunPeer(peer *diff.Peer, hand diff.Handler) error {
-	if err := peer.Handshake(h.lightSync); err != nil {
+	if err := peer.Handshake(h.diffSync); err != nil {
 		return err
 	}
 	return (*handler)(h).runDiffExtension(peer, hand)

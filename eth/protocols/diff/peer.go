@@ -14,7 +14,7 @@ const maxQueuedDiffLayers = 12
 // Peer is a collection of relevant information we have about a `diff` peer.
 type Peer struct {
 	id               string              // Unique ID for the peer, cached
-	lightSync        bool                // whether the peer can light sync
+	diffSync         bool                // whether the peer can diff sync
 	queuedDiffLayers chan []rlp.RawValue // Queue of diff layers to broadcast to the peer
 
 	*p2p.Peer                   // The embedded P2P package peer
@@ -32,7 +32,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 		id:               id,
 		Peer:             p,
 		rw:               rw,
-		lightSync:        false,
+		diffSync:         false,
 		version:          version,
 		logger:           log.New("peer", id[:8]),
 		queuedDiffLayers: make(chan []rlp.RawValue, maxQueuedDiffLayers),
@@ -66,8 +66,8 @@ func (p *Peer) Version() uint {
 	return p.version
 }
 
-func (p *Peer) LightSync() bool {
-	return p.lightSync
+func (p *Peer) DiffSync() bool {
+	return p.diffSync
 }
 
 // Log overrides the P2P logget with the higher level one containing only the id.

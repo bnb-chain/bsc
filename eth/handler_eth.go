@@ -193,7 +193,7 @@ func (h *ethHandler) handleBlockAnnounces(peer *eth.Peer, hashes []common.Hash, 
 	}
 	// self support light sync
 	var diffFetcher fetcher.DiffRequesterFn
-	if h.lightSync {
+	if h.diffSync {
 		// the peer support diff protocol
 		if ep := h.peers.peer(peer.ID()); ep != nil && ep.diffExt != nil {
 			diffFetcher = ep.diffExt.RequestDiffLayers

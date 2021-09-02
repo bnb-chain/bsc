@@ -133,7 +133,7 @@ type Config struct {
 
 	NoPruning       bool // Whether to disable pruning and flush everything to disk
 	DirectBroadcast bool
-	LightSync       bool // Whether support light sync
+	DiffSync        bool // Whether support diff sync
 	RangeLimit      bool
 
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.

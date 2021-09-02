@@ -117,9 +117,9 @@ var (
 		Name:  "directbroadcast",
 		Usage: "Enable directly broadcast mined block to all peers",
 	}
-	LightSyncFlag = cli.BoolFlag{
-		Name: "lightsync",
-		Usage: "Enable difflayer light sync, Please note that enable lightsync will improve the syncing speed, " +
+	DiffSyncFlag = cli.BoolFlag{
+		Name: "diffsync",
+		Usage: "Enable difflayer light sync, Please note that enable diffsync will improve the syncing speed, " +
 			"but will degrade the security to light client level",
 	}
 	RangeLimitFlag = cli.BoolFlag{
@@ -1592,8 +1592,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.GlobalIsSet(DirectBroadcastFlag.Name) {
 		cfg.DirectBroadcast = ctx.GlobalBool(DirectBroadcastFlag.Name)
 	}
-	if ctx.GlobalIsSet(LightSyncFlag.Name) {
-		cfg.LightSync = ctx.GlobalBool(LightSyncFlag.Name)
+	if ctx.GlobalIsSet(DiffSyncFlag.Name) {
+		cfg.DiffSync = ctx.GlobalBool(DiffSyncFlag.Name)
 	}
 	if ctx.GlobalIsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.GlobalBool(RangeLimitFlag.Name)

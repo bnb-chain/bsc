@@ -39,7 +39,7 @@ func (p *Peer) Handshake(lightSync bool) error {
 
 	gopool.Submit(func() {
 		errc <- p2p.Send(p.rw, DiffCapMsg, &DiffCapPacket{
-			LightSync: lightSync,
+			DiffSync: lightSync,
 		})
 	})
 	gopool.Submit(func() {
@@ -57,7 +57,7 @@ func (p *Peer) Handshake(lightSync bool) error {
 			return p2p.DiscReadTimeout
 		}
 	}
-	p.lightSync = cap.LightSync
+	p.diffSync = cap.DiffSync
 	return nil
 }
 

@@ -200,7 +200,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
-	if config.LightSync {
+	if config.DiffSync {
 		bcOps = append(bcOps, core.EnableLightProcessor)
 	}
 	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve, &config.TxLookupLimit, bcOps...)
@@ -238,7 +238,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		Checkpoint:      checkpoint,
 		Whitelist:       config.Whitelist,
 		DirectBroadcast: config.DirectBroadcast,
-		LightSync:       config.LightSync,
+		DiffSync:        config.DiffSync,
 	}); err != nil {
 		return nil, err
 	}

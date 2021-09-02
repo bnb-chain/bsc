@@ -65,7 +65,7 @@ var (
 		utils.ExternalSignerFlag,
 		utils.NoUSBFlag,
 		utils.DirectBroadcastFlag,
-		utils.LightSyncFlag,
+		utils.DiffSyncFlag,
 		utils.RangeLimitFlag,
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,

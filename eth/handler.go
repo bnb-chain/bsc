@@ -83,7 +83,7 @@ type handlerConfig struct {
 	TxPool          txPool                    // Transaction pool to propagate from
 	Network         uint64                    // Network identifier to adfvertise
 	Sync            downloader.SyncMode       // Whether to fast or full sync
-	LightSync       bool                      // Whether to light sync
+	DiffSync        bool                      // Whether to diff sync
 	BloomCache      uint64                    // Megabytes to alloc for fast sync bloom
 	EventMux        *event.TypeMux            // Legacy event mux, deprecate for `feed`
 	Checkpoint      *params.TrustedCheckpoint // Hard coded checkpoint for sync challenges
@@ -99,7 +99,7 @@ type handler struct {
 	snapSync        uint32 // Flag whether fast sync should operate on top of the snap protocol
 	acceptTxs       uint32 // Flag whether we're considered synchronised (enables transaction processing)
 	directBroadcast bool
-	lightSync       bool // Flag whether light sync should operate on top of the diff protocol
+	diffSync        bool // Flag whether light sync should operate on top of the diff protocol
 
 	checkpointNumber uint64      // Block number for the sync progress validator to cross reference
 	checkpointHash   common.Hash // Block hash for the sync progress validator to cross reference
@@ -147,7 +147,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		peers:           newPeerSet(),
 		whitelist:       config.Whitelist,
 		directBroadcast: config.DirectBroadcast,
-		lightSync:       config.LightSync,
+		diffSync:        config.DiffSync,
 		txsyncCh:        make(chan *txsync),
 		quitSync:        make(chan struct{}),
 	}
