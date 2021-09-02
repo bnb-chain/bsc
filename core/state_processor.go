@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	fullProcessCheck          = 21 // On light sync mode, will do full process every fullProcessCheck randomly
+	fullProcessCheck          = 21 // On diff sync mode, will do full process every fullProcessCheck randomly
 	minNumberOfAccountPerTask = 10
 )
 
@@ -320,7 +320,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 
 	// Do validate in advance so that we can fall back to full process
 	if err := p.bc.validator.ValidateState(block, statedb, diffLayer.Receipts, gasUsed); err != nil {
-		log.Error("validate state failed during light sync", "error", err)
+		log.Error("validate state failed during diff sync", "error", err)
 		return nil, nil, 0, err
 	}
 

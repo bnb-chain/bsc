@@ -31,7 +31,7 @@ const (
 )
 
 // Handshake executes the diff protocol handshake,
-func (p *Peer) Handshake(lightSync bool) error {
+func (p *Peer) Handshake(diffSync bool) error {
 	// Send out own handshake in a new thread
 	errc := make(chan error, 2)
 
@@ -39,7 +39,7 @@ func (p *Peer) Handshake(lightSync bool) error {
 
 	gopool.Submit(func() {
 		errc <- p2p.Send(p.rw, DiffCapMsg, &DiffCapPacket{
-			DiffSync: lightSync,
+			DiffSync: diffSync,
 		})
 	})
 	gopool.Submit(func() {

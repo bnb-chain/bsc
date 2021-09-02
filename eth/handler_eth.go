@@ -191,7 +191,7 @@ func (h *ethHandler) handleBlockAnnounces(peer *eth.Peer, hashes []common.Hash, 
 			unknownNumbers = append(unknownNumbers, numbers[i])
 		}
 	}
-	// self support light sync
+	// self support diff sync
 	var diffFetcher fetcher.DiffRequesterFn
 	if h.diffSync {
 		// the peer support diff protocol

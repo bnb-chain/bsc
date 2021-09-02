@@ -99,7 +99,7 @@ type handler struct {
 	snapSync        uint32 // Flag whether fast sync should operate on top of the snap protocol
 	acceptTxs       uint32 // Flag whether we're considered synchronised (enables transaction processing)
 	directBroadcast bool
-	diffSync        bool // Flag whether light sync should operate on top of the diff protocol
+	diffSync        bool // Flag whether diff sync should operate on top of the diff protocol
 
 	checkpointNumber uint64      // Block number for the sync progress validator to cross reference
 	checkpointHash   common.Hash // Block hash for the sync progress validator to cross reference

@@ -54,10 +54,6 @@ const (
 	// dropping broadcasts. Similarly to block propagations, there's no point to queue
 	// above some healthy uncle limit, so use that.
 	maxQueuedBlockAnns = 4
-
-	// maxQueuedDiffLayers is the maximum number of diffLayers to queue up before
-	// dropping broadcasts.
-	maxQueuedDiffLayers = 4
 )
 
 // max is a helper function which returns the larger of the two given integers.
