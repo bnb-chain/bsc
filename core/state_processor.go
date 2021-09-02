@@ -79,8 +79,12 @@ func NewLightStateProcessor(config *params.ChainConfig, bc *BlockChain, engine c
 }
 
 func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
+	allowLightProcess := true
+	if posa, ok := p.engine.(consensus.PoSA); ok {
+		allowLightProcess = posa.AllowLightProcess(p.bc, block.Header())
+	}
 	// random fallback to full process
-	if check := p.randomGenerator.Int63n(fullProcessCheck); check != 0 {
+	if check := p.randomGenerator.Int63n(fullProcessCheck); allowLightProcess && check != 0 {
 		var pid string
 		if peer, ok := block.ReceivedFrom.(PeerIDer); ok {
 			pid = peer.ID()
@@ -139,7 +143,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	}
 
 	iteAccounts := make([]common.Address, 0, len(snapAccounts))
-	for diffAccount, _ := range snapAccounts {
+	for diffAccount := range snapAccounts {
 		iteAccounts = append(iteAccounts, diffAccount)
 	}
 
@@ -205,7 +209,8 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 					bytes.Equal(previousAccount.CodeHash, latestAccount.CodeHash) &&
 					previousAccount.Balance.Cmp(latestAccount.Balance) == 0 &&
 					previousAccount.Root == common.BytesToHash(latestAccount.Root) {
-					log.Warn("receive redundant account change in diff layer", "account", diffAccount, "num", block.NumberU64())
+					// It is normal to receive redundant message since the collected message is redundant.
+					log.Debug("receive redundant account change in diff layer", "account", diffAccount, "num", block.NumberU64())
 					snapMux.Lock()
 					delete(snapAccounts, diffAccount)
 					delete(snapStorage, diffAccount)
@@ -320,7 +325,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	}
 
 	// remove redundant storage change
-	for account, _ := range snapStorage {
+	for account := range snapStorage {
 		if _, exist := snapAccounts[account]; !exist {
 			log.Warn("receive redundant storage change in diff layer")
 			delete(snapStorage, account)

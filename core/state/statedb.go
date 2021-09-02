@@ -1012,6 +1012,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 				// at transaction boundary level to ensure we capture state clearing.
 				if s.snap != nil && !obj.deleted {
 					s.snapMux.Lock()
+					// It is possible to add unnecessary change, but it is fine.
 					s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
 					s.snapMux.Unlock()
 				}

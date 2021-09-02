@@ -882,6 +882,28 @@ func (p *Parlia) EnoughDistance(chain consensus.ChainReader, header *types.Heade
 	return snap.enoughDistance(p.val, header)
 }
 
+func (p *Parlia) AllowLightProcess(chain consensus.ChainReader, currentHeader *types.Header) bool {
+	snap, err := p.snapshot(chain, currentHeader.Number.Uint64()-1, currentHeader.ParentHash, nil)
+	if err != nil {
+		return true
+	}
+
+	idx := snap.indexOfVal(p.val)
+	if idx < 0 {
+		return true
+	}
+	validators := snap.validators()
+
+	validatorNum := int64(len(validators))
+	// It is not allowed if the only two validators
+	if validatorNum <= 2 {
+		return false
+	}
+
+	offset := (int64(snap.Number) + 2) % validatorNum
+	return validators[offset] == p.val
+}
+
 func (p *Parlia) IsLocalBlock(header *types.Header) bool {
 	return p.val == header.Coinbase
 }
