@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
@@ -203,6 +204,13 @@ func (ps *peerSet) waitDiffExtension(peer *eth.Peer) (*diff.Peer, error) {
 	ps.lock.Unlock()
 
 	return <-wait, nil
+}
+
+func (ps *peerSet) GetDiffPeer(pid string) downloader.IDiffPeer {
+	if p := ps.peer(pid); p != nil && p.diffExt != nil {
+		return p.diffExt
+	}
+	return nil
 }
 
 // registerPeer injects a new `eth` peer into the working set, or returns an error

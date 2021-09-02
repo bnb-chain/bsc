@@ -192,7 +192,11 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	if atomic.LoadUint32(&h.fastSync) == 1 && atomic.LoadUint32(&h.snapSync) == 0 {
 		h.stateBloom = trie.NewSyncBloom(config.BloomCache, config.Database)
 	}
-	h.downloader = downloader.New(h.checkpointNumber, config.Database, h.stateBloom, h.eventMux, h.chain, nil, h.removePeer)
+	var downloadOptions []downloader.DownloadOption
+	if h.diffSync {
+		downloadOptions = append(downloadOptions, downloader.DiffBodiesFetchOption(h.peers))
+	}
+	h.downloader = downloader.New(h.checkpointNumber, config.Database, h.stateBloom, h.eventMux, h.chain, nil, h.removePeer, downloadOptions...)
 
 	// Construct the fetcher (short sync)
 	validator := func(header *types.Header) error {
