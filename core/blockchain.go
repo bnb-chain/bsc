@@ -93,8 +93,8 @@ const (
 	diffLayerFreezerRecheckInterval = 3 * time.Second
 	diffLayerFreezerBlockLimit      = 864000          // The number of diff layers that should be kept in disk.
 	diffLayerPruneRecheckInterval   = 1 * time.Second // The interval to prune unverified diff layers
-	maxDiffQueueDist                = 128             // Maximum allowed distance from the chain head to queue diffLayers
-	maxDiffLimit                    = 128             // Maximum number of unique diff layers a peer may have delivered
+	maxDiffQueueDist                = 2048            // Maximum allowed distance from the chain head to queue diffLayers
+	maxDiffLimit                    = 2048            // Maximum number of unique diff layers a peer may have delivered
 	maxDiffForkDist                 = 11              // Maximum allowed backward distance from the chain head
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
