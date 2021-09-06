@@ -161,10 +161,10 @@ type Downloader struct {
 	quitLock sync.Mutex    // Lock to prevent double closes
 
 	// Testing hooks
-	syncInitHook     func(uint64, uint64)                    // Method to call upon initiating a new sync run
+	syncInitHook     func(uint64, uint64)                  // Method to call upon initiating a new sync run
 	bodyFetchHook    func([]*types.Header, ...interface{}) // Method to call upon starting a block body fetch
 	receiptFetchHook func([]*types.Header, ...interface{}) // Method to call upon starting a receipt fetch
-	chainInsertHook  func([]*fetchResult)                    // Method to call upon inserting a chain of blocks (possibly in multiple invocations)
+	chainInsertHook  func([]*fetchResult)                  // Method to call upon inserting a chain of blocks (possibly in multiple invocations)
 }
 
 // LightChain encapsulates functions required to synchronise a light chain.
@@ -230,7 +230,7 @@ type IPeerSet interface {
 	GetDiffPeer(string) IDiffPeer
 }
 
-func DiffBodiesFetchOption(peers IPeerSet) DownloadOption {
+func EnableDiffFetchOp(peers IPeerSet) DownloadOption {
 	return func(dl *Downloader) *Downloader {
 		var hook = func(headers []*types.Header, args ...interface{}) {
 			if len(args) < 2 {

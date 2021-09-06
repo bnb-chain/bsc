@@ -20,6 +20,8 @@ const (
 	maxDiffLayerServe = 1024
 )
 
+var requestTracker = NewTracker(time.Minute)
+
 // Handler is a callback to invoke from an outside runner after the boilerplate
 // exchanges have passed.
 type Handler func(peer *Peer) error
@@ -139,8 +141,11 @@ func handleMessage(backend Backend, peer *Peer) error {
 		if err := msg.Decode(res); err != nil {
 			return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 		}
-		requestTracker.Fulfil(peer.id, peer.version, FullDiffLayerMsg, res.RequestId)
-		return backend.Handle(peer, &res.DiffLayersPacket)
+		if fulfilled := requestTracker.Fulfil(peer.id, peer.version, FullDiffLayerMsg, res.RequestId); fulfilled {
+			return backend.Handle(peer, res)
+		} else {
+			return fmt.Errorf("%w: %v", errUnexpectedMsg, msg.Code)
+		}
 	default:
 		return fmt.Errorf("%w: %v", errInvalidMsgCode, msg.Code)
 	}

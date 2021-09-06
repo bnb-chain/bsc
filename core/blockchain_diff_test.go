@@ -143,7 +143,7 @@ func TestProcessDiffLayer(t *testing.T) {
 		if err != nil {
 			t.Errorf("failed to decode rawdata %v", err)
 		}
-		lightBackend.Chain().HandleDiffLayer(diff, "testpid")
+		lightBackend.Chain().HandleDiffLayer(diff, "testpid", true)
 		_, err = lightBackend.chain.insertChain([]*types.Block{block}, true)
 		if err != nil {
 			t.Errorf("failed to insert block %v", err)
@@ -158,7 +158,7 @@ func TestProcessDiffLayer(t *testing.T) {
 	bz, _ := rlp.EncodeToBytes(&latestAccount)
 	diff.Accounts[0].Blob = bz
 
-	lightBackend.Chain().HandleDiffLayer(diff, "testpid")
+	lightBackend.Chain().HandleDiffLayer(diff, "testpid", true)
 
 	_, err := lightBackend.chain.insertChain([]*types.Block{nextBlock}, true)
 	if err != nil {
@@ -216,8 +216,8 @@ func TestPruneDiffLayer(t *testing.T) {
 		header := fullBackend.chain.GetHeaderByNumber(num)
 		rawDiff := fullBackend.chain.GetDiffLayerRLP(header.Hash())
 		diff, _ := rawDataToDiffLayer(rawDiff)
-		fullBackend.Chain().HandleDiffLayer(diff, "testpid1")
-		fullBackend.Chain().HandleDiffLayer(diff, "testpid2")
+		fullBackend.Chain().HandleDiffLayer(diff, "testpid1", true)
+		fullBackend.Chain().HandleDiffLayer(diff, "testpid2", true)
 
 	}
 	fullBackend.chain.pruneDiffLayer()

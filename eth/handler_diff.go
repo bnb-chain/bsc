@@ -19,6 +19,8 @@ package eth
 import (
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/log"
+
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -35,6 +37,7 @@ func (h *diffHandler) RunPeer(peer *diff.Peer, hand diff.Handler) error {
 	if err := peer.Handshake(h.diffSync); err != nil {
 		return err
 	}
+	defer h.chain.RemoveDiffPeer(peer.ID())
 	return (*handler)(h).runDiffExtension(peer, hand)
 }
 
@@ -55,26 +58,42 @@ func (h *diffHandler) Handle(peer *diff.Peer, packet diff.Packet) error {
 	// data packet for the local node to consume.
 	switch packet := packet.(type) {
 	case *diff.DiffLayersPacket:
-		diffs, err := packet.Unpack()
-		if err != nil {
-			return err
-		}
-		for _, d := range diffs {
-			if d != nil {
-				if err := d.Validate(); err != nil {
-					return err
-				}
-			}
-		}
-		for _, diff := range diffs {
-			err := h.chain.HandleDiffLayer(diff, peer.ID())
-			if err != nil {
-				return err
-			}
-		}
+		return h.handleDiffLayerPackage(packet, peer.ID(), false)
+
+	case *diff.FullDiffLayersPacket:
+		return h.handleDiffLayerPackage(&packet.DiffLayersPacket, peer.ID(), true)
 
 	default:
 		return fmt.Errorf("unexpected diff packet type: %T", packet)
+	}
+	return nil
+}
+
+func (h *diffHandler) handleDiffLayerPackage(packet *diff.DiffLayersPacket, pid string, fulfilled bool) error {
+	diffs, err := packet.Unpack()
+
+	if err != nil {
+		log.Error("====unpack err", "number", diffs[0].Number, "hash", diffs[0].BlockHash, "err", err)
+		return err
+	}
+	if len(diffs) > 0 {
+		log.Error("====debug receive difflayer", "number", diffs[0].Number, "hash", diffs[0].BlockHash)
+
+	} else {
+		log.Error("====debug receive difflayer length 0")
+	}
+	for _, d := range diffs {
+		if d != nil {
+			if err := d.Validate(); err != nil {
+				return err
+			}
+		}
+	}
+	for _, diff := range diffs {
+		err := h.chain.HandleDiffLayer(diff, pid, fulfilled)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

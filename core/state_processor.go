@@ -44,6 +44,7 @@ import (
 const (
 	fullProcessCheck          = 21 // On diff sync mode, will do full process every fullProcessCheck randomly
 	minNumberOfAccountPerTask = 5
+	diffLayerTimeout          = 50
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning
@@ -82,14 +83,25 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 	allowLightProcess := true
 	if posa, ok := p.engine.(consensus.PoSA); ok {
 		allowLightProcess = posa.AllowLightProcess(p.bc, block.Header())
+		log.Error("===debug, allow to light process?", "allow", allowLightProcess)
 	}
 	// random fallback to full process
-	if check := p.randomGenerator.Int63n(fullProcessCheck); allowLightProcess && check != 0 {
+	if check := p.randomGenerator.Int63n(fullProcessCheck); allowLightProcess && check != 0 && len(block.Transactions()) != 0 {
 		var pid string
 		if peer, ok := block.ReceivedFrom.(PeerIDer); ok {
 			pid = peer.ID()
 		}
-		diffLayer := p.bc.GetUnTrustedDiffLayer(block.Hash(), pid)
+		var diffLayer *types.DiffLayer
+		//TODO This is just for debug
+		for tried := 0; tried < diffLayerTimeout; tried++ {
+			// wait a bit for the diff layer
+			diffLayer = p.bc.GetUnTrustedDiffLayer(block.Hash(), pid)
+			if diffLayer != nil {
+				log.Error("===debug find it", "idx", tried)
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
 		if diffLayer != nil {
 			if err := diffLayer.Receipts.DeriveFields(p.bc.chainConfig, block.Hash(), block.NumberU64(), block.Transactions()); err != nil {
 				log.Error("Failed to derive block receipts fields", "hash", block.Hash(), "number", block.NumberU64(), "err", err)

@@ -895,7 +895,7 @@ func (p *Parlia) AllowLightProcess(chain consensus.ChainReader, currentHeader *t
 	validators := snap.validators()
 
 	validatorNum := int64(len(validators))
-	// It is not allowed if the only two validators
+	// It is not allowed if only two validators
 	if validatorNum <= 2 {
 		return false
 	}

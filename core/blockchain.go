@@ -94,8 +94,9 @@ const (
 	diffLayerFreezerBlockLimit      = 864000          // The number of diff layers that should be kept in disk.
 	diffLayerPruneRecheckInterval   = 1 * time.Second // The interval to prune unverified diff layers
 	maxDiffQueueDist                = 2048            // Maximum allowed distance from the chain head to queue diffLayers
-	maxDiffLimit                    = 2048            // Maximum number of unique diff layers a peer may have delivered
+	maxDiffLimit                    = 2048            // Maximum number of unique diff layers a peer may have responded
 	maxDiffForkDist                 = 11              // Maximum allowed backward distance from the chain head
+	maxDiffLimitForBroadcast        = 128             // Maximum number of unique diff layers a peer may have broadcasted
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -2534,6 +2535,34 @@ func (bc *BlockChain) removeDiffLayers(diffHash common.Hash) {
 	}
 }
 
+func (bc *BlockChain) RemoveDiffPeer(pid string) {
+	bc.diffMux.Lock()
+	defer bc.diffMux.Unlock()
+	if invaliDiffHashes := bc.diffPeersToDiffHashes[pid]; invaliDiffHashes != nil {
+		for invalidDiffHash := range invaliDiffHashes {
+			lastDiffHash := false
+			if peers, ok := bc.diffHashToPeers[invalidDiffHash]; ok {
+				delete(peers, pid)
+				if len(peers) == 0 {
+					lastDiffHash = true
+					delete(bc.diffHashToPeers, invalidDiffHash)
+				}
+			}
+			if lastDiffHash {
+				affectedBlockHash := bc.diffHashToBlockHash[invalidDiffHash]
+				if diffs, exist := bc.blockHashToDiffLayers[affectedBlockHash]; exist {
+					delete(diffs, invalidDiffHash)
+					if len(diffs) == 0 {
+						delete(bc.blockHashToDiffLayers, affectedBlockHash)
+					}
+				}
+				delete(bc.diffHashToBlockHash, invalidDiffHash)
+			}
+		}
+		delete(bc.diffPeersToDiffHashes, pid)
+	}
+}
+
 func (bc *BlockChain) untrustedDiffLayerPruneLoop() {
 	recheck := time.Tick(diffLayerPruneRecheckInterval)
 	bc.wg.Add(1)
@@ -2595,7 +2624,7 @@ func (bc *BlockChain) pruneDiffLayer() {
 }
 
 // Process received diff layers
-func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string) error {
+func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string, fulfilled bool) error {
 	// Basic check
 	currentHeight := bc.CurrentBlock().NumberU64()
 	if diffLayer.Number > currentHeight && diffLayer.Number-currentHeight > maxDiffQueueDist {
@@ -2610,6 +2639,13 @@ func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string) er
 	bc.diffMux.Lock()
 	defer bc.diffMux.Unlock()
 
+	if !fulfilled {
+		if len(bc.diffPeersToDiffHashes[pid]) > maxDiffLimitForBroadcast {
+			log.Error("too many accumulated diffLayers", "pid", pid)
+			return nil
+		}
+	}
+
 	if len(bc.diffPeersToDiffHashes[pid]) > maxDiffLimit {
 		log.Error("too many accumulated diffLayers", "pid", pid)
 		return nil
@@ -2618,12 +2654,14 @@ func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string) er
 		if _, alreadyHas := bc.diffPeersToDiffHashes[pid][diffLayer.DiffHash]; alreadyHas {
 			return nil
 		}
-	} else {
-		bc.diffPeersToDiffHashes[pid] = make(map[common.Hash]struct{})
 	}
+	bc.diffPeersToDiffHashes[pid] = make(map[common.Hash]struct{})
 	bc.diffPeersToDiffHashes[pid][diffLayer.DiffHash] = struct{}{}
 	if _, exist := bc.diffNumToBlockHashes[diffLayer.Number]; !exist {
 		bc.diffNumToBlockHashes[diffLayer.Number] = make(map[common.Hash]struct{})
+	}
+	if len(bc.diffNumToBlockHashes[diffLayer.Number]) > 4 {
+
 	}
 	bc.diffNumToBlockHashes[diffLayer.Number][diffLayer.BlockHash] = struct{}{}
 

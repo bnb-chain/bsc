@@ -87,7 +87,7 @@ func (p *Peer) Close() {
 func (p *Peer) RequestDiffLayers(hashes []common.Hash) error {
 	id := rand.Uint64()
 
-	requestTracker.Track(p.id, p.version, GetDiffLayerMsg, DiffLayerMsg, id)
+	requestTracker.Track(p.id, p.version, GetDiffLayerMsg, FullDiffLayerMsg, id)
 	return p2p.Send(p.rw, GetDiffLayerMsg, GetDiffLayersPacket{
 		RequestId:   id,
 		BlockHashes: hashes,
