@@ -43,7 +43,7 @@ import (
 
 const (
 	fullProcessCheck          = 21 // On diff sync mode, will do full process every fullProcessCheck randomly
-	minNumberOfAccountPerTask = 10
+	minNumberOfAccountPerTask = 5
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning

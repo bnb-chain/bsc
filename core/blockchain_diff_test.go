@@ -117,15 +117,15 @@ func rawDataToDiffLayer(data rlp.RawValue) (*types.DiffLayer, error) {
 	hasher.Write(data)
 	var diffHash common.Hash
 	hasher.Sum(diffHash[:0])
-	hasher.Reset()
 	diff.DiffHash = diffHash
+	hasher.Reset()
 	return &diff, nil
 }
 
 func TestProcessDiffLayer(t *testing.T) {
 	t.Parallel()
 
-	blockNum := maxDiffLimit - 1
+	blockNum := 128
 	fullBackend := newTestBackend(blockNum, false)
 	falseDiff := 5
 	defer fullBackend.close()
