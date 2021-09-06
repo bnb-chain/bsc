@@ -65,6 +65,7 @@ var (
 		utils.ExternalSignerFlag,
 		utils.NoUSBFlag,
 		utils.DirectBroadcastFlag,
+		utils.DisableSnapProtocolFlag,
 		utils.DiffSyncFlag,
 		utils.RangeLimitFlag,
 		utils.USBFlag,

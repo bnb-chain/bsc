@@ -131,10 +131,11 @@ type Config struct {
 	EthDiscoveryURLs  []string
 	SnapDiscoveryURLs []string
 
-	NoPruning       bool // Whether to disable pruning and flush everything to disk
-	DirectBroadcast bool
-	DiffSync        bool // Whether support diff sync
-	RangeLimit      bool
+	NoPruning           bool // Whether to disable pruning and flush everything to disk
+	DirectBroadcast     bool
+	DisableSnapProtocol bool //Whether disable snap protocol
+	DiffSync            bool // Whether support diff sync
+	RangeLimit          bool
 
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 

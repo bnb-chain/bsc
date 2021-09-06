@@ -98,6 +98,9 @@ type Config struct {
 	// DirectBroadcast enable directly broadcast mined block to all peers
 	DirectBroadcast bool `toml:",omitempty"`
 
+	// DisableSnapProtocol disable the snap protocol
+	DisableSnapProtocol bool `toml:",omitempty"`
+
 	// RangeLimit enable 5000 blocks limit when handle range query
 	RangeLimit bool `toml:",omitempty"`
 
