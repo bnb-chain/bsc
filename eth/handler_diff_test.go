@@ -180,7 +180,7 @@ func TestHandleDiffLayer(t *testing.T) {
 		}, Valid: true},
 		{DiffLayer: &types.DiffLayer{
 			BlockHash: common.Hash{0x2},
-			Number:    2025,
+			Number:    3073,
 		}, Valid: false},
 		{DiffLayer: &types.DiffLayer{
 			BlockHash: common.Hash{0x3},
