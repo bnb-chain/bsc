@@ -55,7 +55,8 @@ const (
 
 	validatorBytesLength = common.AddressLength
 	wiggleTime           = uint64(1) // second, Random delay (per signer) to allow concurrent signers
-	initialBackOffTime   = uint64(1) // second
+	// TODO this is a hardfork change, just for tuning so far, recover it late
+	initialBackOffTime = uint64(2) // second
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
@@ -799,6 +800,10 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header) *time.
 		return nil
 	}
 	delay := p.delayForRamanujanFork(snap, header)
+	// The blocking time should be no more than half of epoch
+	if delay > time.Duration(p.config.Period)*time.Second*4/5 {
+		delay = time.Duration(p.config.Period) * time.Second * 4 / 5
+	}
 	return &delay
 }
 
