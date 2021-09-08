@@ -19,8 +19,6 @@ package eth
 import (
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/log"
-
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -73,14 +71,7 @@ func (h *diffHandler) handleDiffLayerPackage(packet *diff.DiffLayersPacket, pid 
 	diffs, err := packet.Unpack()
 
 	if err != nil {
-		log.Error("====unpack err", "number", diffs[0].Number, "hash", diffs[0].BlockHash, "err", err)
 		return err
-	}
-	if len(diffs) > 0 {
-		log.Error("====debug receive difflayer", "number", diffs[0].Number, "hash", diffs[0].BlockHash)
-
-	} else {
-		log.Error("====debug receive difflayer length 0")
 	}
 	for _, d := range diffs {
 		if d != nil {

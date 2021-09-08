@@ -123,7 +123,7 @@ var (
 	}
 	DiffSyncFlag = cli.BoolFlag{
 		Name: "diffsync",
-		Usage: "Enable difflayer sync, Please note that enable diffsync will improve the syncing speed, " +
+		Usage: "Enable diffy sync, Please note that enable diffsync will improve the syncing speed, " +
 			"but will degrade the security to light client level",
 	}
 	RangeLimitFlag = cli.BoolFlag{

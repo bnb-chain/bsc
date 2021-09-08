@@ -55,8 +55,7 @@ const (
 
 	validatorBytesLength = common.AddressLength
 	wiggleTime           = uint64(1) // second, Random delay (per signer) to allow concurrent signers
-	// TODO this is a hardfork change, just for tuning so far, recover it late
-	initialBackOffTime = uint64(2) // second
+	initialBackOffTime   = uint64(1) // second
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
@@ -800,9 +799,9 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header) *time.
 		return nil
 	}
 	delay := p.delayForRamanujanFork(snap, header)
-	// The blocking time should be no more than half of epoch
-	if delay > time.Duration(p.config.Period)*time.Second*4/5 {
-		delay = time.Duration(p.config.Period) * time.Second * 4 / 5
+	// The blocking time should be no more than half of period
+	if delay > time.Duration(p.config.Period)*time.Second/2 {
+		delay = time.Duration(p.config.Period) * time.Second / 2
 	}
 	return &delay
 }
@@ -894,19 +893,9 @@ func (p *Parlia) AllowLightProcess(chain consensus.ChainReader, currentHeader *t
 	}
 
 	idx := snap.indexOfVal(p.val)
-	if idx < 0 {
-		return true
-	}
-	validators := snap.validators()
+	// validator is not allowed to diff sync
+	return idx < 0
 
-	validatorNum := int64(len(validators))
-	// It is not allowed if only two validators
-	if validatorNum <= 2 {
-		return false
-	}
-
-	offset := (int64(snap.Number) + 2) % validatorNum
-	return validators[offset] == p.val
 }
 
 func (p *Parlia) IsLocalBlock(header *types.Header) bool {

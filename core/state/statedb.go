@@ -1109,9 +1109,11 @@ func (s *StateDB) LightCommit(root common.Hash) (common.Hash, *types.DiffLayer, 
 			tasksNum := 0
 			finishCh := make(chan struct{})
 			defer close(finishCh)
-			threads := 1
-			if len(s.diffTries)/runtime.NumCPU() > minNumberOfAccountPerTask {
+			threads := len(s.diffTries) / minNumberOfAccountPerTask
+			if threads > runtime.NumCPU() {
 				threads = runtime.NumCPU()
+			} else if threads == 0 {
+				threads = 1
 			}
 			for i := 0; i < threads; i++ {
 				go func() {
@@ -1230,7 +1232,15 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 			tasksNum := 0
 			finishCh := make(chan struct{})
 			defer close(finishCh)
-			for i := 0; i < runtime.NumCPU(); i++ {
+
+			threads := len(s.stateObjectsDirty) / minNumberOfAccountPerTask
+			if threads > runtime.NumCPU() {
+				threads = runtime.NumCPU()
+			} else if threads == 0 {
+				threads = 1
+			}
+
+			for i := 0; i < threads; i++ {
 				go func() {
 					codeWriter := s.db.TrieDB().DiskDB().NewBatch()
 					for {

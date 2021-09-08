@@ -486,7 +486,6 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		for _, peer := range transfer {
 			if len(diff) != 0 && peer.diffExt != nil {
 				// difflayer should send before block
-				log.Error("===debug Broadcast block", "number", block.Number(), "hash", hash)
 				peer.diffExt.SendDiffLayers([]rlp.RawValue{diff})
 			}
 			peer.AsyncSendNewBlock(block, td)

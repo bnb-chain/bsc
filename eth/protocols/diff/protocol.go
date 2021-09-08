@@ -98,6 +98,7 @@ func (p *DiffLayersPacket) Unpack() ([]*types.DiffLayer, error) {
 
 type DiffCapPacket struct {
 	DiffSync bool
+	Extra    rlp.RawValue // for extension
 }
 
 type DiffLayersPacket []rlp.RawValue

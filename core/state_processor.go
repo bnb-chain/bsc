@@ -44,7 +44,9 @@ import (
 const (
 	fullProcessCheck          = 21 // On diff sync mode, will do full process every fullProcessCheck randomly
 	minNumberOfAccountPerTask = 5
-	diffLayerTimeout          = 50
+	recentTime                = 2048 * 3
+	recentDiffLayerTimeout    = 20
+	farDiffLayerTimeout       = 2
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning
@@ -83,7 +85,6 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 	allowLightProcess := true
 	if posa, ok := p.engine.(consensus.PoSA); ok {
 		allowLightProcess = posa.AllowLightProcess(p.bc, block.Header())
-		log.Error("===debug, allow to light process?", "allow", allowLightProcess)
 	}
 	// random fallback to full process
 	if check := p.randomGenerator.Int63n(fullProcessCheck); allowLightProcess && check != 0 && len(block.Transactions()) != 0 {
@@ -92,12 +93,14 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 			pid = peer.ID()
 		}
 		var diffLayer *types.DiffLayer
-		//TODO This is just for debug
+		var diffLayerTimeout = recentDiffLayerTimeout
+		if time.Now().Unix()-int64(block.Time()) > recentTime {
+			diffLayerTimeout = farDiffLayerTimeout
+		}
 		for tried := 0; tried < diffLayerTimeout; tried++ {
 			// wait a bit for the diff layer
 			diffLayer = p.bc.GetUnTrustedDiffLayer(block.Hash(), pid)
 			if diffLayer != nil {
-				log.Error("===debug find it", "idx", tried)
 				break
 			}
 			time.Sleep(time.Millisecond)
@@ -108,12 +111,13 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 				// fallback to full process
 				return p.StateProcessor.Process(block, statedb, cfg)
 			}
-			receipts, logs, gasUsed, err := p.LightProcess(diffLayer, block, statedb, cfg)
+
+			receipts, logs, gasUsed, err := p.LightProcess(diffLayer, block, statedb)
 			if err == nil {
 				log.Info("do light process success at block", "num", block.NumberU64())
 				return statedb, receipts, logs, gasUsed, nil
 			} else {
-				log.Error("do light process err at block\n", "num", block.NumberU64(), "err", err)
+				log.Error("do light process err at block", "num", block.NumberU64(), "err", err)
 				p.bc.removeDiffLayers(diffLayer.DiffHash)
 				// prepare new statedb
 				statedb.StopPrefetcher()
@@ -131,7 +135,7 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 	return p.StateProcessor.Process(block, statedb, cfg)
 }
 
-func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *types.Block, statedb *state.StateDB, cfg vm.Config) (types.Receipts, []*types.Log, uint64, error) {
+func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *types.Block, statedb *state.StateDB) (types.Receipts, []*types.Log, uint64, error) {
 	statedb.MarkLightProcessed()
 	fullDiffCode := make(map[common.Hash][]byte, len(diffLayer.Codes))
 	diffTries := make(map[common.Address]state.Trie)
@@ -149,9 +153,11 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	for des := range snapDestructs {
 		statedb.Trie().TryDelete(des[:])
 	}
-	threads := 1
-	if len(snapAccounts)/runtime.NumCPU() > minNumberOfAccountPerTask {
+	threads := len(snapAccounts) / minNumberOfAccountPerTask
+	if threads > runtime.NumCPU() {
 		threads = runtime.NumCPU()
+	} else if threads == 0 {
+		threads = 1
 	}
 
 	iteAccounts := make([]common.Address, 0, len(snapAccounts))
@@ -236,7 +242,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 					!bytes.Equal(latestAccount.CodeHash, types.EmptyCodeHash) {
 					if code, exist := fullDiffCode[codeHash]; exist {
 						if crypto.Keccak256Hash(code) != codeHash {
-							errChan <- err
+							errChan <- fmt.Errorf("code and code hash mismatch, account %s", diffAccount.String())
 							return
 						}
 						diffMux.Lock()
@@ -245,7 +251,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 					} else {
 						rawCode := rawdb.ReadCode(p.bc.db, codeHash)
 						if len(rawCode) == 0 {
-							errChan <- err
+							errChan <- fmt.Errorf("missing code, account %s", diffAccount.String())
 							return
 						}
 					}

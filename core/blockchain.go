@@ -2654,14 +2654,12 @@ func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string, fu
 		if _, alreadyHas := bc.diffPeersToDiffHashes[pid][diffLayer.DiffHash]; alreadyHas {
 			return nil
 		}
+	} else {
+		bc.diffPeersToDiffHashes[pid] = make(map[common.Hash]struct{})
 	}
-	bc.diffPeersToDiffHashes[pid] = make(map[common.Hash]struct{})
 	bc.diffPeersToDiffHashes[pid][diffLayer.DiffHash] = struct{}{}
 	if _, exist := bc.diffNumToBlockHashes[diffLayer.Number]; !exist {
 		bc.diffNumToBlockHashes[diffLayer.Number] = make(map[common.Hash]struct{})
-	}
-	if len(bc.diffNumToBlockHashes[diffLayer.Number]) > 4 {
-
 	}
 	bc.diffNumToBlockHashes[diffLayer.Number][diffLayer.BlockHash] = struct{}{}
 
@@ -2929,7 +2927,7 @@ func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscr
 	return bc.scope.Track(bc.blockProcFeed.Subscribe(ch))
 }
 
-//Options
+// Options
 func EnableLightProcessor(bc *BlockChain) *BlockChain {
 	bc.processor = NewLightStateProcessor(bc.Config(), bc, bc.engine)
 	return bc
