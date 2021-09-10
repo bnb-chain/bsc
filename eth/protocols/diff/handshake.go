@@ -40,6 +40,7 @@ func (p *Peer) Handshake(diffSync bool) error {
 	gopool.Submit(func() {
 		errc <- p2p.Send(p.rw, DiffCapMsg, &DiffCapPacket{
 			DiffSync: diffSync,
+			Extra:    defaultExtra,
 		})
 	})
 	gopool.Submit(func() {

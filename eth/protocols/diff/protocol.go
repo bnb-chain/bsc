@@ -54,6 +54,8 @@ const (
 	FullDiffLayerMsg = 0x03
 )
 
+var defaultExtra = []byte{0x00}
+
 var (
 	errMsgTooLarge    = errors.New("message too long")
 	errDecode         = errors.New("invalid message")
