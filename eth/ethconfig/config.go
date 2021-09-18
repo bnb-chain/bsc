@@ -124,8 +124,9 @@ type Config struct {
 	Genesis *core.Genesis `toml:",omitempty"`
 
 	// Protocol options
-	NetworkId uint64 // Network ID to use for selecting peers to connect to
-	SyncMode  downloader.SyncMode
+	NetworkId              uint64 // Network ID to use for selecting peers to connect to
+	SyncMode               downloader.SyncMode
+	DisablePeerTxBroadcast bool
 
 	// This can be set to list of enrtree:// URLs which will be queried for
 	// for nodes to connect to.
