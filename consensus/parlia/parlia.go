@@ -865,7 +865,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		case <-time.After(delay):
 		}
 		if p.shouldWaitForCurrentBlockProcess(chain, header, snap) {
-			log.Info("not in turn and received current block, wait for current block process")
+			log.Info("Waiting for received in turn block to process")
 			select {
 			case <-stop:
 				return
