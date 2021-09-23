@@ -56,6 +56,7 @@ const (
 	validatorBytesLength = common.AddressLength
 	wiggleTime           = uint64(1) // second, Random delay (per signer) to allow concurrent signers
 	initialBackOffTime   = uint64(1) // second
+	processBackOffTime   = uint64(1) // second
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
@@ -863,6 +864,14 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 			return
 		case <-time.After(delay):
 		}
+		if p.shouldWaitForCurrentBlockProcess(chain, header, snap) {
+			log.Info("not in turn and received current block, wait for current block process")
+			select {
+			case <-stop:
+				return
+			case <-time.After(time.Duration(processBackOffTime) * time.Second):
+			}
+		}
 
 		select {
 		case results <- block.WithSeal(header):
@@ -872,6 +881,19 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	}()
 
 	return nil
+}
+
+func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot) bool {
+	highestVerifiedHeader := chain.GetHighestVerifiedHeader()
+	if highestVerifiedHeader == nil || highestVerifiedHeader.Number == nil {
+		return false
+	}
+
+	if !snap.inturn(p.val) && header.Number.Cmp(highestVerifiedHeader.Number) == 0 {
+		return true
+	}
+
+	return false
 }
 
 func (p *Parlia) EnoughDistance(chain consensus.ChainReader, header *types.Header) bool {
