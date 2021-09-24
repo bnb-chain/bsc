@@ -868,8 +868,10 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 			log.Info("Waiting for received in turn block to process")
 			select {
 			case <-stop:
+				log.Info("Received block process finished, abort block seal")
 				return
 			case <-time.After(time.Duration(processBackOffTime) * time.Second):
+				log.Info("Process backoff time exhausted, start to seal block")
 			}
 		}
 
