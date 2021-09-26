@@ -2001,7 +2001,15 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 		return
 	}
 	currentHeader := bc.highestVerifiedHeader.Load().(*types.Header)
-	if currentHeader == nil || currentHeader.Number == nil || currentHeader.Number.Cmp(header.Number) < 0 {
+	if currentHeader == nil {
+		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
+		return
+	}
+
+	newTD := big.NewInt(0).Add(bc.GetTdByHash(header.ParentHash), header.Difficulty)
+	oldTD := big.NewInt(0).Add(bc.GetTdByHash(currentHeader.ParentHash), currentHeader.Difficulty)
+
+	if newTD.Cmp(oldTD) > 0 {
 		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
 		return
 	}

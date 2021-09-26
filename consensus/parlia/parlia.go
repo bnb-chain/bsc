@@ -886,15 +886,18 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 }
 
 func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot) bool {
-	highestVerifiedHeader := chain.GetHighestVerifiedHeader()
-	if highestVerifiedHeader == nil || highestVerifiedHeader.Number == nil {
+	if snap.inturn(p.val) {
 		return false
 	}
 
-	if !snap.inturn(p.val) && header.Number.Cmp(highestVerifiedHeader.Number) == 0 {
-		return true
+	highestVerifiedHeader := chain.GetHighestVerifiedHeader()
+	if highestVerifiedHeader == nil {
+		return false
 	}
 
+	if header.ParentHash == highestVerifiedHeader.ParentHash && header.Difficulty.Cmp(highestVerifiedHeader.Difficulty) < 0 {
+		return true
+	}
 	return false
 }
 
