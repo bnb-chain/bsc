@@ -80,6 +80,7 @@ var Defaults = Config{
 	TrieTimeout:             60 * time.Minute,
 	TriesInMemory:           128,
 	SnapshotCache:           102,
+	DiffBlock:               uint64(864000),
 	Miner: miner.Config{
 		GasFloor:      8000000,
 		GasCeil:       8000000,
@@ -163,6 +164,7 @@ type Config struct {
 	DatabaseFreezer    string
 	DatabaseDiff       string
 	PersistDiff        bool
+	DiffBlock          uint64
 
 	TrieCleanCache          int
 	TrieCleanCacheJournal   string        `toml:",omitempty"` // Disk journal directory for trie cache to survive node restarts

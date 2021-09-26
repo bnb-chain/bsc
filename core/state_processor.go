@@ -166,7 +166,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	}
 
 	errChan := make(chan error, threads)
-	exitChan := make(chan struct{}, 0)
+	exitChan := make(chan struct{})
 	var snapMux sync.RWMutex
 	var stateMux, diffMux sync.Mutex
 	for i := 0; i < threads; i++ {
@@ -317,7 +317,6 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				}
 			}
 			errChan <- nil
-			return
 		}(start, end)
 	}
 

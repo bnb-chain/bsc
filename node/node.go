@@ -639,16 +639,16 @@ func (n *Node) OpenDiffDatabase(name string, handles int, diff, namespace string
 	var err error
 	if n.config.DataDir == "" {
 		panic("datadir is missing")
-	} else {
-		root := n.ResolvePath(name)
-		switch {
-		case diff == "":
-			diff = filepath.Join(root, "diff")
-		case !filepath.IsAbs(diff):
-			diff = n.ResolvePath(diff)
-		}
-		db, err = leveldb.New(diff, 0, handles, namespace, readonly)
 	}
+	root := n.ResolvePath(name)
+	switch {
+	case diff == "":
+		diff = filepath.Join(root, "diff")
+	case !filepath.IsAbs(diff):
+		diff = n.ResolvePath(diff)
+	}
+	db, err = leveldb.New(diff, 0, handles, namespace, readonly)
+
 	return db, err
 }
 

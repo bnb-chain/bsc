@@ -61,7 +61,6 @@ var (
 	errDecode         = errors.New("invalid message")
 	errInvalidMsgCode = errors.New("invalid message code")
 	errUnexpectedMsg  = errors.New("unexpected message code")
-	errBadRequest     = errors.New("bad request")
 	errNoCapMsg       = errors.New("miss cap message during handshake")
 )
 

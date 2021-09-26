@@ -1769,7 +1769,7 @@ func testSideImport(t *testing.T, numCanonBlocksInSidechain, blocksBetweenCommon
 	}
 
 	lastPrunedIndex := len(blocks) - TestTriesInMemory - 1
-	lastPrunedBlock := blocks[lastPrunedIndex]
+	lastPrunedBlock := blocks[lastPrunedIndex-1]
 	firstNonPrunedBlock := blocks[len(blocks)-TestTriesInMemory]
 
 	// Verify pruning of lastPrunedBlock
@@ -2420,7 +2420,7 @@ func TestSideImportPrunedBlocks(t *testing.T) {
 	}
 
 	lastPrunedIndex := len(blocks) - TestTriesInMemory - 1
-	lastPrunedBlock := blocks[lastPrunedIndex]
+	lastPrunedBlock := blocks[lastPrunedIndex-1]
 
 	// Verify pruning of lastPrunedBlock
 	if chain.HasBlockAndState(lastPrunedBlock.Hash(), lastPrunedBlock.NumberU64()) {

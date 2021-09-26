@@ -800,8 +800,9 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header) *time.
 	}
 	delay := p.delayForRamanujanFork(snap, header)
 	// The blocking time should be no more than half of period
-	if delay > time.Duration(p.config.Period)*time.Second/2 {
-		delay = time.Duration(p.config.Period) * time.Second / 2
+	half := time.Duration(p.config.Period) * time.Second / 2
+	if delay > half {
+		delay = half
 	}
 	return &delay
 }
@@ -895,7 +896,6 @@ func (p *Parlia) AllowLightProcess(chain consensus.ChainReader, currentHeader *t
 	idx := snap.indexOfVal(p.val)
 	// validator is not allowed to diff sync
 	return idx < 0
-
 }
 
 func (p *Parlia) IsLocalBlock(header *types.Header) bool {

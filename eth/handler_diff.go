@@ -41,10 +41,8 @@ func (h *diffHandler) RunPeer(peer *diff.Peer, hand diff.Handler) error {
 
 // PeerInfo retrieves all known `diff` information about a peer.
 func (h *diffHandler) PeerInfo(id enode.ID) interface{} {
-	if p := h.peers.peer(id.String()); p != nil {
-		if p.diffExt != nil {
-			return p.diffExt.info()
-		}
+	if p := h.peers.peer(id.String()); p != nil && p.diffExt != nil {
+		return p.diffExt.info()
 	}
 	return nil
 }
@@ -64,7 +62,6 @@ func (h *diffHandler) Handle(peer *diff.Peer, packet diff.Packet) error {
 	default:
 		return fmt.Errorf("unexpected diff packet type: %T", packet)
 	}
-	return nil
 }
 
 func (h *diffHandler) handleDiffLayerPackage(packet *diff.DiffLayersPacket, pid string, fulfilled bool) error {

@@ -91,7 +91,6 @@ const (
 	maxBeyondBlocks        = 2048
 
 	diffLayerFreezerRecheckInterval = 3 * time.Second
-	diffLayerFreezerBlockLimit      = 864000          // The number of diff layers that should be kept in disk.
 	diffLayerPruneRecheckInterval   = 1 * time.Second // The interval to prune unverified diff layers
 	maxDiffQueueDist                = 2048            // Maximum allowed distance from the chain head to queue diffLayers
 	maxDiffLimit                    = 2048            // Maximum number of unique diff layers a peer may have responded
@@ -213,9 +212,11 @@ type BlockChain struct {
 	futureBlocks  *lru.Cache     // future blocks are blocks added for later processing
 
 	// trusted diff layers
-	diffLayerCache    *lru.Cache   // Cache for the diffLayers
-	diffLayerRLPCache *lru.Cache   // Cache for the rlp encoded diffLayers
-	diffQueue         *prque.Prque // A Priority queue to store recent diff layer
+	diffLayerCache             *lru.Cache   // Cache for the diffLayers
+	diffLayerRLPCache          *lru.Cache   // Cache for the rlp encoded diffLayers
+	diffQueue                  *prque.Prque // A Priority queue to store recent diff layer
+	diffQueueBuffer            chan *types.DiffLayer
+	diffLayerFreezerBlockLimit uint64
 
 	// untrusted diff layers
 	diffMux               sync.RWMutex
@@ -285,6 +286,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		engine:                engine,
 		vmConfig:              vmConfig,
 		diffQueue:             prque.New(nil),
+		diffQueueBuffer:       make(chan *types.DiffLayer),
 		blockHashToDiffLayers: make(map[common.Hash]map[common.Hash]*types.DiffLayer),
 		diffHashToBlockHash:   make(map[common.Hash]common.Hash),
 		diffHashToPeers:       make(map[common.Hash]map[string]struct{}),
@@ -444,7 +446,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	}
 	// Need persist and prune diff layer
 	if bc.db.DiffStore() != nil {
-		go bc.trustedDiffLayerFreezeLoop()
+		go bc.trustedDiffLayerLoop()
 	}
 	go bc.untrustedDiffLayerPruneLoop()
 
@@ -464,7 +466,7 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer) {
 	bc.diffLayerCache.Add(diffLayer.BlockHash, diffLayer)
 	if bc.db.DiffStore() != nil {
 		// push to priority queue before persisting
-		bc.diffQueue.Push(diffLayer, -(int64(diffLayer.Number)))
+		bc.diffQueueBuffer <- diffLayer
 	}
 }
 
@@ -967,7 +969,7 @@ func (bc *BlockChain) GetDiffLayerRLP(blockHash common.Hash) rlp.RawValue {
 	}
 	rawData := rawdb.ReadDiffLayerRLP(diffStore, blockHash)
 	if len(rawData) != 0 {
-		bc.diffLayerRLPCache.Add(blockHash, rlp.RawValue(rawData))
+		bc.diffLayerRLPCache.Add(blockHash, rawData)
 	}
 	return rawData
 }
@@ -2009,8 +2011,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		storageUpdateTimer.Update(statedb.StorageUpdates)             // Storage updates are complete, we can mark them
 		snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads) // Account reads are complete, we can mark them
 		snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads) // Storage reads are complete, we can mark them
-		trieproc := statedb.SnapshotAccountReads + statedb.AccountReads + statedb.AccountUpdates
-		trieproc += statedb.SnapshotStorageReads + statedb.StorageReads + statedb.StorageUpdates
 
 		blockExecutionTimer.Update(time.Since(substart))
 
@@ -2401,12 +2401,14 @@ func (bc *BlockChain) update() {
 	}
 }
 
-func (bc *BlockChain) trustedDiffLayerFreezeLoop() {
+func (bc *BlockChain) trustedDiffLayerLoop() {
 	recheck := time.Tick(diffLayerFreezerRecheckInterval)
 	bc.wg.Add(1)
 	defer bc.wg.Done()
 	for {
 		select {
+		case diff := <-bc.diffQueueBuffer:
+			bc.diffQueue.Push(diff, -(int64(diff.Number)))
 		case <-bc.quit:
 			// Persist all diffLayers when shutdown, it will introduce redundant storage, but it is acceptable.
 			// If the client been ungracefully shutdown, it will missing all cached diff layers, it is acceptable as well.
@@ -2451,7 +2453,7 @@ func (bc *BlockChain) trustedDiffLayerFreezeLoop() {
 							batch = bc.db.DiffStore().NewBatch()
 						}
 						rawdb.WriteDiffLayer(batch, diffLayer.BlockHash, diffLayer)
-						staleHash := bc.GetCanonicalHash(uint64(-prio) - diffLayerFreezerBlockLimit)
+						staleHash := bc.GetCanonicalHash(uint64(-prio) - bc.diffLayerFreezerBlockLimit)
 						rawdb.DeleteDiffLayer(batch, staleHash)
 					}
 				} else {
@@ -2511,16 +2513,12 @@ func (bc *BlockChain) removeDiffLayers(diffHash common.Hash) {
 	// Untrusted peers
 	pids := bc.diffHashToPeers[diffHash]
 	invalidDiffHashes := make(map[common.Hash]struct{})
-	if pids != nil {
-		for pid := range pids {
-			invaliDiffHashesPeer := bc.diffPeersToDiffHashes[pid]
-			if invaliDiffHashesPeer != nil {
-				for invaliDiffHash := range invaliDiffHashesPeer {
-					invalidDiffHashes[invaliDiffHash] = struct{}{}
-				}
-			}
-			delete(bc.diffPeersToDiffHashes, pid)
+	for pid := range pids {
+		invaliDiffHashesPeer := bc.diffPeersToDiffHashes[pid]
+		for invaliDiffHash := range invaliDiffHashesPeer {
+			invalidDiffHashes[invaliDiffHash] = struct{}{}
 		}
+		delete(bc.diffPeersToDiffHashes, pid)
 	}
 	for invalidDiffHash := range invalidDiffHashes {
 		delete(bc.diffHashToPeers, invalidDiffHash)
@@ -2602,7 +2600,7 @@ func (bc *BlockChain) pruneDiffLayer() {
 			break
 		}
 	}
-	staleDiffHashes := make(map[common.Hash]struct{}, 0)
+	staleDiffHashes := make(map[common.Hash]struct{})
 	for blockHash := range staleBlockHashes {
 		if diffHashes, exist := bc.blockHashToDiffLayers[blockHash]; exist {
 			for diffHash := range diffHashes {
@@ -2931,4 +2929,11 @@ func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscr
 func EnableLightProcessor(bc *BlockChain) *BlockChain {
 	bc.processor = NewLightStateProcessor(bc.Config(), bc, bc.engine)
 	return bc
+}
+
+func EnablePersistDiff(limit uint64) BlockChainOption {
+	return func(chain *BlockChain) *BlockChain {
+		chain.diffLayerFreezerBlockLimit = limit
+		return chain
+	}
 }

@@ -577,10 +577,8 @@ func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
 		}
 		for i := 0; i < runtime.NumCPU(); i++ {
 			objs := <-objsChan
-			if objs != nil {
-				for _, obj := range objs {
-					s.SetStateObject(obj)
-				}
+			for _, obj := range objs {
+				s.SetStateObject(obj)
 			}
 		}
 	}
@@ -1038,7 +1036,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	if s.trie == nil {
 		tr, err := s.db.OpenTrie(s.originalRoot)
 		if err != nil {
-			panic(fmt.Sprintf("Failed to open trie tree"))
+			panic("Failed to open trie tree")
 		}
 		s.trie = tr
 	}
@@ -1139,7 +1137,6 @@ func (s *StateDB) LightCommit(root common.Hash) (common.Hash, *types.DiffLayer, 
 					}
 					s.db.CacheStorage(crypto.Keccak256Hash(tmpAccount[:]), root, tmpDiff)
 					taskResults <- nil
-					return
 				}
 				tasksNum++
 			}
@@ -1231,7 +1228,6 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 			taskResults := make(chan error, len(s.stateObjectsDirty))
 			tasksNum := 0
 			finishCh := make(chan struct{})
-			defer close(finishCh)
 
 			threads := len(s.stateObjectsDirty) / minNumberOfAccountPerTask
 			if threads > runtime.NumCPU() {
@@ -1239,8 +1235,9 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 			} else if threads == 0 {
 				threads = 1
 			}
-
+			wg := sync.WaitGroup{}
 			for i := 0; i < threads; i++ {
+				wg.Add(1)
 				go func() {
 					codeWriter := s.db.TrieDB().DiskDB().NewBatch()
 					for {
@@ -1253,6 +1250,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 									log.Crit("Failed to commit dirty codes", "error", err)
 								}
 							}
+							wg.Done()
 							return
 						}
 					}
@@ -1293,9 +1291,11 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 			for i := 0; i < tasksNum; i++ {
 				err := <-taskResults
 				if err != nil {
+					close(finishCh)
 					return err
 				}
 			}
+			close(finishCh)
 
 			if len(s.stateObjectsDirty) > 0 {
 				s.stateObjectsDirty = make(map[common.Address]struct{}, len(s.stateObjectsDirty)/2)
@@ -1326,6 +1326,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 			if root != emptyRoot {
 				s.db.CacheAccount(root, s.trie)
 			}
+			wg.Wait()
 			return nil
 		},
 		func() error {

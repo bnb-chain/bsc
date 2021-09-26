@@ -116,8 +116,8 @@ func TestDiffMessages(t *testing.T) {
 		want    []byte
 	}{
 		{
-			DiffCapPacket{true},
-			common.FromHex("c101"),
+			DiffCapPacket{true, defaultExtra},
+			common.FromHex("c20100"),
 		},
 		{
 			GetDiffLayersPacket{1111, []common.Hash{common.HexToHash("0xaece2dbf80a726206cf4df299afa09f9d8f3dcd85ff39bb4b3f0402a3a6af2f5")}},

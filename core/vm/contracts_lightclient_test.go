@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	testHeight            uint64 = 66848226
+	testHeight uint64 = 66848226
 )
 
 func TestTmHeaderValidateAndMerkleProofValidate(t *testing.T) {

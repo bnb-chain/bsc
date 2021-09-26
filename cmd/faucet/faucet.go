@@ -139,7 +139,7 @@ func main() {
 		log.Crit("Length of bep2eContracts, bep2eSymbols, bep2eAmounts mismatch")
 	}
 
-	bep2eInfos := make(map[string]bep2eInfo, 0)
+	bep2eInfos := make(map[string]bep2eInfo, len(symbols))
 	for idx, s := range symbols {
 		n, ok := big.NewInt(0).SetString(bep2eNumAmounts[idx], 10)
 		if !ok {
@@ -148,7 +148,7 @@ func main() {
 		amountStr := big.NewFloat(0).Quo(big.NewFloat(0).SetInt(n), big.NewFloat(0).SetInt64(params.Ether)).String()
 
 		bep2eInfos[s] = bep2eInfo{
-			Contract:  common.HexToAddress(contracts[idx]),
+			Contract:  common.HexToAddreparlia.goss(contracts[idx]),
 			Amount:    *n,
 			AmountStr: amountStr,
 		}

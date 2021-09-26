@@ -442,6 +442,11 @@ var (
 		Name:  "persistdiff",
 		Usage: "Enable persistence of the diff layer",
 	}
+	DiffBlockFlag = cli.Uint64Flag{
+		Name:  "diffblock",
+		Usage: "The number of blocks should be persisted in db (default = 864000 )",
+		Value: uint64(864000),
+	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
 		Name:  "mine",
@@ -1589,6 +1594,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(PersistDiffFlag.Name) {
 		cfg.PersistDiff = ctx.GlobalBool(PersistDiffFlag.Name)
+	}
+	if ctx.GlobalIsSet(DiffBlockFlag.Name) {
+		cfg.DiffBlock = ctx.GlobalUint64(DiffBlockFlag.Name)
 	}
 	if gcmode := ctx.GlobalString(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
 		Fatalf("--%s must be either 'full' or 'archive'", GCModeFlag.Name)

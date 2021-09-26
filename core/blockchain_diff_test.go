@@ -72,7 +72,7 @@ func newTestBackendWithGenerator(blocks int, lightProcess bool) *testBackend {
 		Alloc:  GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
 	}).MustCommit(db)
 
-	chain, _ := NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil)
+	chain, _ := NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil, EnablePersistDiff(860000))
 	generator := func(i int, block *BlockGen) {
 		// The chain maker doesn't have access to a chain, so the difficulty will be
 		// lets unset (nil). Set it here to the correct value.
