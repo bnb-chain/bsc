@@ -895,7 +895,7 @@ func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderRea
 		return false
 	}
 
-	if header.ParentHash == highestVerifiedHeader.ParentHash && header.Difficulty.Cmp(highestVerifiedHeader.Difficulty) < 0 {
+	if header.ParentHash == highestVerifiedHeader.ParentHash && header.Difficulty.Cmp(highestVerifiedHeader.Difficulty) <= 0 {
 		return true
 	}
 	return false
