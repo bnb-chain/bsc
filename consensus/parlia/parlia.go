@@ -886,7 +886,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 }
 
 func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot) bool {
-	if snap.inturn(p.val) {
+	if header.Difficulty.Cmp(diffInTurn) == 0 {
 		return false
 	}
 
@@ -895,7 +895,7 @@ func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderRea
 		return false
 	}
 
-	if header.ParentHash == highestVerifiedHeader.ParentHash && header.Difficulty.Cmp(highestVerifiedHeader.Difficulty) <= 0 {
+	if header.ParentHash == highestVerifiedHeader.ParentHash {
 		return true
 	}
 	return false
