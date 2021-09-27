@@ -148,7 +148,7 @@ func main() {
 		amountStr := big.NewFloat(0).Quo(big.NewFloat(0).SetInt(n), big.NewFloat(0).SetInt64(params.Ether)).String()
 
 		bep2eInfos[s] = bep2eInfo{
-			Contract:  common.HexToAddreparlia.goss(contracts[idx]),
+			Contract:  common.HexToAddress(contracts[idx]),
 			Amount:    *n,
 			AmountStr: amountStr,
 		}
