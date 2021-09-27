@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -39,9 +40,8 @@ import (
 )
 
 const (
-	preLoadLimit              = 128
-	defaultNumOfSlots         = 100
-	minNumberOfAccountPerTask = 5
+	preLoadLimit      = 128
+	defaultNumOfSlots = 100
 )
 
 type revision struct {
@@ -1107,12 +1107,8 @@ func (s *StateDB) LightCommit(root common.Hash) (common.Hash, *types.DiffLayer, 
 			tasksNum := 0
 			finishCh := make(chan struct{})
 			defer close(finishCh)
-			threads := len(s.diffTries) / minNumberOfAccountPerTask
-			if threads > runtime.NumCPU() {
-				threads = runtime.NumCPU()
-			} else if threads == 0 {
-				threads = 1
-			}
+			threads := gopool.Threads(len(s.diffTries))
+
 			for i := 0; i < threads; i++ {
 				go func() {
 					for {
@@ -1229,12 +1225,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 			tasksNum := 0
 			finishCh := make(chan struct{})
 
-			threads := len(s.stateObjectsDirty) / minNumberOfAccountPerTask
-			if threads > runtime.NumCPU() {
-				threads = runtime.NumCPU()
-			} else if threads == 0 {
-				threads = 1
-			}
+			threads := gopool.Threads(len(s.stateObjectsDirty))
 			wg := sync.WaitGroup{}
 			for i := 0; i < threads; i++ {
 				wg.Add(1)

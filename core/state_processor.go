@@ -22,11 +22,11 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
-	"runtime"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -152,12 +152,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	for des := range snapDestructs {
 		statedb.Trie().TryDelete(des[:])
 	}
-	threads := len(snapAccounts) / minNumberOfAccountPerTask
-	if threads > runtime.NumCPU() {
-		threads = runtime.NumCPU()
-	} else if threads == 0 {
-		threads = 1
-	}
+	threads := gopool.Threads(len(snapAccounts))
 
 	iteAccounts := make([]common.Address, 0, len(snapAccounts))
 	for diffAccount := range snapAccounts {
