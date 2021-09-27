@@ -116,19 +116,18 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 			if err == nil {
 				log.Info("do light process success at block", "num", block.NumberU64())
 				return statedb, receipts, logs, gasUsed, nil
-			} else {
-				log.Error("do light process err at block", "num", block.NumberU64(), "err", err)
-				p.bc.removeDiffLayers(diffLayer.DiffHash)
-				// prepare new statedb
-				statedb.StopPrefetcher()
-				parent := p.bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
-				statedb, err = state.New(parent.Root, p.bc.stateCache, p.bc.snaps)
-				if err != nil {
-					return statedb, nil, nil, 0, err
-				}
-				// Enable prefetching to pull in trie node paths while processing transactions
-				statedb.StartPrefetcher("chain")
 			}
+			log.Error("do light process err at block", "num", block.NumberU64(), "err", err)
+			p.bc.removeDiffLayers(diffLayer.DiffHash)
+			// prepare new statedb
+			statedb.StopPrefetcher()
+			parent := p.bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
+			statedb, err = state.New(parent.Root, p.bc.stateCache, p.bc.snaps)
+			if err != nil {
+				return statedb, nil, nil, 0, err
+			}
+			// Enable prefetching to pull in trie node paths while processing transactions
+			statedb.StartPrefetcher("chain")
 		}
 	}
 	// fallback to full process
