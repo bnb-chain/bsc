@@ -269,18 +269,18 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 					storageChange, exist := snapStorage[diffAccount]
 					snapMux.RUnlock()
 
-					if exist {
-						for k, v := range storageChange {
-							if len(v) != 0 {
-								accountTrie.TryUpdate([]byte(k), v)
-							} else {
-								accountTrie.TryDelete([]byte(k))
-							}
-						}
-					} else {
+					if !exist {
 						errChan <- errors.New("missing storage change in difflayer")
 						return
 					}
+					for k, v := range storageChange {
+						if len(v) != 0 {
+							accountTrie.TryUpdate([]byte(k), v)
+						} else {
+							accountTrie.TryDelete([]byte(k))
+						}
+					}
+
 					// check storage root
 					accountRootHash := accountTrie.Hash()
 					if latestRoot != accountRootHash {

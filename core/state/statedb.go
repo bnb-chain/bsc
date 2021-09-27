@@ -1239,6 +1239,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 			for i := 0; i < threads; i++ {
 				wg.Add(1)
 				go func() {
+					defer wg.Done()
 					codeWriter := s.db.TrieDB().DiskDB().NewBatch()
 					for {
 						select {
@@ -1250,7 +1251,6 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 									log.Crit("Failed to commit dirty codes", "error", err)
 								}
 							}
-							wg.Done()
 							return
 						}
 					}

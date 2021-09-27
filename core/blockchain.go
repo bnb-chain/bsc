@@ -2486,21 +2486,20 @@ func (bc *BlockChain) GetUnTrustedDiffLayer(blockHash common.Hash, pid string) *
 			for _, diff := range diffs {
 				return diff
 			}
-		} else {
-			// pick the one from exact same peer if we know where the block comes from
-			if pid != "" {
-				if diffHashes, exist := bc.diffPeersToDiffHashes[pid]; exist {
-					for diff := range diffs {
-						if _, overlap := diffHashes[diff]; overlap {
-							return bc.blockHashToDiffLayers[blockHash][diff]
-						}
+		}
+		// pick the one from exact same peer if we know where the block comes from
+		if pid != "" {
+			if diffHashes, exist := bc.diffPeersToDiffHashes[pid]; exist {
+				for diff := range diffs {
+					if _, overlap := diffHashes[diff]; overlap {
+						return bc.blockHashToDiffLayers[blockHash][diff]
 					}
 				}
 			}
-			// Do not find overlap, do random pick
-			for _, diff := range diffs {
-				return diff
-			}
+		}
+		// Do not find overlap, do random pick
+		for _, diff := range diffs {
+			return diff
 		}
 	}
 	return nil
@@ -2562,14 +2561,17 @@ func (bc *BlockChain) RemoveDiffPeer(pid string) {
 }
 
 func (bc *BlockChain) untrustedDiffLayerPruneLoop() {
-	recheck := time.Tick(diffLayerPruneRecheckInterval)
+	recheck := time.NewTicker(diffLayerPruneRecheckInterval)
 	bc.wg.Add(1)
-	defer bc.wg.Done()
+	defer func() {
+		bc.wg.Done()
+		recheck.Stop()
+	}()
 	for {
 		select {
 		case <-bc.quit:
 			return
-		case <-recheck:
+		case <-recheck.C:
 			bc.pruneDiffLayer()
 		}
 	}
@@ -2588,16 +2590,15 @@ func (bc *BlockChain) pruneDiffLayer() {
 	})
 	staleBlockHashes := make(map[common.Hash]struct{})
 	for _, number := range sortNumbers {
-		if number < currentHeight-maxDiffForkDist {
-			affectedHashes := bc.diffNumToBlockHashes[number]
-			if affectedHashes != nil {
-				for affectedHash := range affectedHashes {
-					staleBlockHashes[affectedHash] = struct{}{}
-				}
-				delete(bc.diffNumToBlockHashes, number)
-			}
-		} else {
+		if number >= currentHeight-maxDiffForkDist {
 			break
+		}
+		affectedHashes := bc.diffNumToBlockHashes[number]
+		if affectedHashes != nil {
+			for affectedHash := range affectedHashes {
+				staleBlockHashes[affectedHash] = struct{}{}
+			}
+			delete(bc.diffNumToBlockHashes, number)
 		}
 	}
 	staleDiffHashes := make(map[common.Hash]struct{})
@@ -2637,11 +2638,9 @@ func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string, fu
 	bc.diffMux.Lock()
 	defer bc.diffMux.Unlock()
 
-	if !fulfilled {
-		if len(bc.diffPeersToDiffHashes[pid]) > maxDiffLimitForBroadcast {
-			log.Error("too many accumulated diffLayers", "pid", pid)
-			return nil
-		}
+	if !fulfilled && len(bc.diffPeersToDiffHashes[pid]) > maxDiffLimitForBroadcast {
+		log.Error("too many accumulated diffLayers", "pid", pid)
+		return nil
 	}
 
 	if len(bc.diffPeersToDiffHashes[pid]) > maxDiffLimit {

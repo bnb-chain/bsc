@@ -236,18 +236,20 @@ func EnableDiffFetchOp(peers IPeerSet) DownloadOption {
 			if len(args) < 2 {
 				return
 			}
-			if mode, ok := args[0].(SyncMode); ok {
-				if mode == FullSync {
-					if peerID, ok := args[1].(string); ok {
-						if ep := peers.GetDiffPeer(peerID); ep != nil {
-							hashes := make([]common.Hash, 0, len(headers))
-							for _, header := range headers {
-								hashes = append(hashes, header.Hash())
-							}
-							ep.RequestDiffLayers(hashes)
-						}
-					}
+			peerID, ok := args[1].(string)
+			if !ok {
+				return
+			}
+			mode, ok := args[0].(SyncMode)
+			if !ok {
+				return
+			}
+			if ep := peers.GetDiffPeer(peerID); mode == FullSync && ep != nil {
+				hashes := make([]common.Hash, 0, len(headers))
+				for _, header := range headers {
+					hashes = append(hashes, header.Hash())
 				}
+				ep.RequestDiffLayers(hashes)
 			}
 		}
 		dl.bodyFetchHook = hook
