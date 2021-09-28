@@ -17,7 +17,6 @@
 package ethclient
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -262,9 +261,7 @@ func TestEthClient(t *testing.T) {
 		"TestCallContract": {
 			func(t *testing.T) { testCallContract(t, client) },
 		},
-		"TestAtFunctions": {
-			func(t *testing.T) { testAtFunctions(t, client) },
-		},
+		// DO not have TestAtFunctions now, because we do not have pending block now
 	}
 
 	t.Parallel()
@@ -490,69 +487,6 @@ func testCallContract(t *testing.T, client *rpc.Client) {
 	}
 }
 
-func testAtFunctions(t *testing.T, client *rpc.Client) {
-	ec := NewClient(client)
-	// send a transaction for some interesting pending status
-	sendTransaction(ec)
-	time.Sleep(100 * time.Millisecond)
-	// Check pending transaction count
-	pending, err := ec.PendingTransactionCount(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if pending != 1 {
-		t.Fatalf("unexpected pending, wanted 1 got: %v", pending)
-	}
-	// Query balance
-	balance, err := ec.BalanceAt(context.Background(), testAddr, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	penBalance, err := ec.PendingBalanceAt(context.Background(), testAddr)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if balance.Cmp(penBalance) == 0 {
-		t.Fatalf("unexpected balance: %v %v", balance, penBalance)
-	}
-	// NonceAt
-	nonce, err := ec.NonceAt(context.Background(), testAddr, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	penNonce, err := ec.PendingNonceAt(context.Background(), testAddr)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if penNonce != nonce+1 {
-		t.Fatalf("unexpected nonce: %v %v", nonce, penNonce)
-	}
-	// StorageAt
-	storage, err := ec.StorageAt(context.Background(), testAddr, common.Hash{}, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	penStorage, err := ec.PendingStorageAt(context.Background(), testAddr, common.Hash{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !bytes.Equal(storage, penStorage) {
-		t.Fatalf("unexpected storage: %v %v", storage, penStorage)
-	}
-	// CodeAt
-	code, err := ec.CodeAt(context.Background(), testAddr, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	penCode, err := ec.PendingCodeAt(context.Background(), testAddr)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !bytes.Equal(code, penCode) {
-		t.Fatalf("unexpected code: %v %v", code, penCode)
-	}
-}
-
 func sendTransaction(ec *Client) error {
 	// Retrieve chainID
 	chainID, err := ec.ChainID(context.Background())
@@ -560,7 +494,7 @@ func sendTransaction(ec *Client) error {
 		return err
 	}
 	// Create transaction
-	tx := types.NewTransaction(0, common.Address{1}, big.NewInt(1), 22000, big.NewInt(1), nil)
+	tx := types.NewTransaction(0, common.Address{1}, big.NewInt(1), 23000, big.NewInt(100000), nil)
 	signer := types.LatestSignerForChainID(chainID)
 	signature, err := crypto.Sign(signer.Hash(tx).Bytes(), testKey)
 	if err != nil {

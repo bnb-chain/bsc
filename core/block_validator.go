@@ -17,9 +17,7 @@
 package core
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -133,7 +131,6 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		},
 		func() error {
 			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
-				statedb.IterativeDump(true, true, true, json.NewEncoder(os.Stdout))
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", header.Root, root)
 			} else {
 				return nil

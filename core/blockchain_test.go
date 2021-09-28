@@ -151,7 +151,7 @@ func testBlockChainImport(chain types.Blocks, blockchain *BlockChain) error {
 		if err != nil {
 			return err
 		}
-		receipts, _, usedGas, err := blockchain.processor.Process(block, statedb, vm.Config{})
+		statedb, receipts, _, usedGas, err := blockchain.processor.Process(block, statedb, vm.Config{})
 		if err != nil {
 			blockchain.reportBlock(block, receipts, err)
 			return err
@@ -1769,7 +1769,7 @@ func testSideImport(t *testing.T, numCanonBlocksInSidechain, blocksBetweenCommon
 	}
 
 	lastPrunedIndex := len(blocks) - TestTriesInMemory - 1
-	lastPrunedBlock := blocks[lastPrunedIndex]
+	lastPrunedBlock := blocks[lastPrunedIndex-1]
 	firstNonPrunedBlock := blocks[len(blocks)-TestTriesInMemory]
 
 	// Verify pruning of lastPrunedBlock
@@ -2420,7 +2420,7 @@ func TestSideImportPrunedBlocks(t *testing.T) {
 	}
 
 	lastPrunedIndex := len(blocks) - TestTriesInMemory - 1
-	lastPrunedBlock := blocks[lastPrunedIndex]
+	lastPrunedBlock := blocks[lastPrunedIndex-1]
 
 	// Verify pruning of lastPrunedBlock
 	if chain.HasBlockAndState(lastPrunedBlock.Hash(), lastPrunedBlock.NumberU64()) {

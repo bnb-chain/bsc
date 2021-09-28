@@ -80,6 +80,7 @@ var Defaults = Config{
 	TrieTimeout:             60 * time.Minute,
 	TriesInMemory:           128,
 	SnapshotCache:           102,
+	DiffBlock:               uint64(864000),
 	Miner: miner.Config{
 		GasFloor:      8000000,
 		GasCeil:       8000000,
@@ -131,9 +132,11 @@ type Config struct {
 	EthDiscoveryURLs  []string
 	SnapDiscoveryURLs []string
 
-	NoPruning       bool // Whether to disable pruning and flush everything to disk
-	DirectBroadcast bool
-	RangeLimit      bool
+	NoPruning           bool // Whether to disable pruning and flush everything to disk
+	DirectBroadcast     bool
+	DisableSnapProtocol bool //Whether disable snap protocol
+	DiffSync            bool // Whether support diff sync
+	RangeLimit          bool
 
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 
@@ -159,6 +162,9 @@ type Config struct {
 	DatabaseHandles    int  `toml:"-"`
 	DatabaseCache      int
 	DatabaseFreezer    string
+	DatabaseDiff       string
+	PersistDiff        bool
+	DiffBlock          uint64
 
 	TrieCleanCache          int
 	TrieCleanCacheJournal   string        `toml:",omitempty"` // Disk journal directory for trie cache to survive node restarts

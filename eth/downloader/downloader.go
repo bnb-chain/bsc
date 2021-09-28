@@ -161,10 +161,10 @@ type Downloader struct {
 	quitLock sync.Mutex    // Lock to prevent double closes
 
 	// Testing hooks
-	syncInitHook     func(uint64, uint64)  // Method to call upon initiating a new sync run
-	bodyFetchHook    func([]*types.Header) // Method to call upon starting a block body fetch
-	receiptFetchHook func([]*types.Header) // Method to call upon starting a receipt fetch
-	chainInsertHook  func([]*fetchResult)  // Method to call upon inserting a chain of blocks (possibly in multiple invocations)
+	syncInitHook     func(uint64, uint64)                  // Method to call upon initiating a new sync run
+	bodyFetchHook    func([]*types.Header, ...interface{}) // Method to call upon starting a block body fetch
+	receiptFetchHook func([]*types.Header, ...interface{}) // Method to call upon starting a receipt fetch
+	chainInsertHook  func([]*fetchResult)                  // Method to call upon inserting a chain of blocks (possibly in multiple invocations)
 }
 
 // LightChain encapsulates functions required to synchronise a light chain.
@@ -220,8 +220,45 @@ type BlockChain interface {
 	Snapshots() *snapshot.Tree
 }
 
+type DownloadOption func(downloader *Downloader) *Downloader
+
+type IDiffPeer interface {
+	RequestDiffLayers([]common.Hash) error
+}
+
+type IPeerSet interface {
+	GetDiffPeer(string) IDiffPeer
+}
+
+func EnableDiffFetchOp(peers IPeerSet) DownloadOption {
+	return func(dl *Downloader) *Downloader {
+		var hook = func(headers []*types.Header, args ...interface{}) {
+			if len(args) < 2 {
+				return
+			}
+			peerID, ok := args[1].(string)
+			if !ok {
+				return
+			}
+			mode, ok := args[0].(SyncMode)
+			if !ok {
+				return
+			}
+			if ep := peers.GetDiffPeer(peerID); mode == FullSync && ep != nil {
+				hashes := make([]common.Hash, 0, len(headers))
+				for _, header := range headers {
+					hashes = append(hashes, header.Hash())
+				}
+				ep.RequestDiffLayers(hashes)
+			}
+		}
+		dl.bodyFetchHook = hook
+		return dl
+	}
+}
+
 // New creates a new downloader to fetch hashes and blocks from remote peers.
-func New(checkpoint uint64, stateDb ethdb.Database, stateBloom *trie.SyncBloom, mux *event.TypeMux, chain BlockChain, lightchain LightChain, dropPeer peerDropFn) *Downloader {
+func New(checkpoint uint64, stateDb ethdb.Database, stateBloom *trie.SyncBloom, mux *event.TypeMux, chain BlockChain, lightchain LightChain, dropPeer peerDropFn, options ...DownloadOption) *Downloader {
 	if lightchain == nil {
 		lightchain = chain
 	}
@@ -251,6 +288,11 @@ func New(checkpoint uint64, stateDb ethdb.Database, stateBloom *trie.SyncBloom, 
 			processed: rawdb.ReadFastTrieProgress(stateDb),
 		},
 		trackStateReq: make(chan *stateReq),
+	}
+	for _, option := range options {
+		if dl != nil {
+			dl = option(dl)
+		}
 	}
 	go dl.qosTuner()
 	go dl.stateFetcher()
@@ -1363,7 +1405,7 @@ func (d *Downloader) fetchReceipts(from uint64) error {
 //  - kind:        textual label of the type being downloaded to display in log messages
 func (d *Downloader) fetchParts(deliveryCh chan dataPack, deliver func(dataPack) (int, error), wakeCh chan bool,
 	expire func() map[string]int, pending func() int, inFlight func() bool, reserve func(*peerConnection, int) (*fetchRequest, bool, bool),
-	fetchHook func([]*types.Header), fetch func(*peerConnection, *fetchRequest) error, cancel func(*fetchRequest), capacity func(*peerConnection) int,
+	fetchHook func([]*types.Header, ...interface{}), fetch func(*peerConnection, *fetchRequest) error, cancel func(*fetchRequest), capacity func(*peerConnection) int,
 	idle func() ([]*peerConnection, int), setIdle func(*peerConnection, int, time.Time), kind string) error {
 
 	// Create a ticker to detect expired retrieval tasks
@@ -1512,7 +1554,7 @@ func (d *Downloader) fetchParts(deliveryCh chan dataPack, deliver func(dataPack)
 				}
 				// Fetch the chunk and make sure any errors return the hashes to the queue
 				if fetchHook != nil {
-					fetchHook(request.Headers)
+					fetchHook(request.Headers, d.getMode(), peer.id)
 				}
 				if err := fetch(peer, request); err != nil {
 					// Although we could try and make an attempt to fix this, this error really
