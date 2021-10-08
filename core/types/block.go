@@ -453,3 +453,14 @@ type DiffStorage struct {
 	Keys    []string
 	Vals    [][]byte
 }
+
+type DiffAccountsInTx struct {
+	TxHash   common.Hash
+	Accounts map[common.Address]*big.Int
+}
+
+type DiffAccountsInBlock struct {
+	Number       uint64
+	BlockHash    common.Hash
+	Transactions []DiffAccountsInTx
+}

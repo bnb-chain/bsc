@@ -45,7 +45,78 @@ var (
 	testKey, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	// testAddr is the Ethereum address of the tester account.
 	testAddr = crypto.PubkeyToAddress(testKey.PublicKey)
+	// testBlocks is the test parameters array for specific blocks.
+	testBlocks = []testBlockParam{
+		{
+			// This txs params also used to default block.
+			blockNr: 11,
+			txs: []testTransactionParam{
+				{
+					to:       common.Address{0x01},
+					value:    big.NewInt(1),
+					gasPrice: big.NewInt(1),
+					data:     nil,
+				},
+			},
+		},
+		{
+			blockNr: 12,
+			txs: []testTransactionParam{
+				{
+					to:       common.Address{0x01},
+					value:    big.NewInt(1),
+					gasPrice: big.NewInt(1),
+					data:     nil,
+				},
+				{
+					to:       common.Address{0x02},
+					value:    big.NewInt(2),
+					gasPrice: big.NewInt(2),
+					data:     nil,
+				},
+			},
+		},
+		{
+			blockNr: 13,
+			txs: []testTransactionParam{
+				{
+					to:       common.Address{0x01},
+					value:    big.NewInt(1),
+					gasPrice: big.NewInt(1),
+					data:     nil,
+				},
+				{
+					to:       common.Address{0x02},
+					value:    big.NewInt(2),
+					gasPrice: big.NewInt(2),
+					data:     nil,
+				},
+				{
+					to:       common.Address{0x03},
+					value:    big.NewInt(3),
+					gasPrice: big.NewInt(3),
+					data:     nil,
+				},
+			},
+		},
+		{
+			blockNr: 14,
+			txs:     []testTransactionParam{},
+		},
+	}
 )
+
+type testTransactionParam struct {
+	to       common.Address
+	value    *big.Int
+	gasPrice *big.Int
+	data     []byte
+}
+
+type testBlockParam struct {
+	blockNr int
+	txs     []testTransactionParam
+}
 
 // testBackend is a mock implementation of the live Ethereum message handler. Its
 // purpose is to allow testing the request/reply workflows and wire serialization
@@ -78,13 +149,35 @@ func newTestBackendWithGenerator(blocks int, lightProcess bool) *testBackend {
 		// lets unset (nil). Set it here to the correct value.
 		block.SetCoinbase(testAddr)
 
-		// We want to simulate an empty middle block, having the same state as the
-		// first one. The last is needs a state change again to force a reorg.
-		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), common.Address{0x01}, big.NewInt(1), params.TxGas, big.NewInt(1), nil), signer, testKey)
-		if err != nil {
-			panic(err)
+		for idx, testBlock := range testBlocks {
+			// Specific block setting, the index in this generator has 1 diff from specified blockNr.
+			if i+1 == testBlock.blockNr {
+				for _, testTransaction := range testBlock.txs {
+					tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), testTransaction.to,
+						testTransaction.value, params.TxGas, testTransaction.gasPrice, testTransaction.data), signer, testKey)
+					if err != nil {
+						panic(err)
+					}
+					block.AddTxWithChain(chain, tx)
+				}
+				break
+			}
+
+			// Default block setting.
+			if idx == len(testBlocks)-1 {
+				// We want to simulate an empty middle block, having the same state as the
+				// first one. The last is needs a state change again to force a reorg.
+				for _, testTransaction := range testBlocks[0].txs {
+					tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), testTransaction.to,
+						testTransaction.value, params.TxGas, testTransaction.gasPrice, testTransaction.data), signer, testKey)
+					if err != nil {
+						panic(err)
+					}
+					block.AddTxWithChain(chain, tx)
+				}
+			}
 		}
-		block.AddTxWithChain(chain, tx)
+
 	}
 	bs, _ := GenerateChain(params.TestChainConfig, chain.Genesis(), ethash.NewFaker(), db, blocks, generator)
 	if _, err := chain.InsertChain(bs); err != nil {
@@ -139,12 +232,17 @@ func TestProcessDiffLayer(t *testing.T) {
 		}
 		blockHash := block.Hash()
 		rawDiff := fullBackend.chain.GetDiffLayerRLP(blockHash)
-		diff, err := rawDataToDiffLayer(rawDiff)
-		if err != nil {
-			t.Errorf("failed to decode rawdata %v", err)
+		if len(rawDiff) != 0 {
+			diff, err := rawDataToDiffLayer(rawDiff)
+			if err != nil {
+				t.Errorf("failed to decode rawdata %v", err)
+			}
+			if diff == nil {
+				continue
+			}
+			lightBackend.Chain().HandleDiffLayer(diff, "testpid", true)
 		}
-		lightBackend.Chain().HandleDiffLayer(diff, "testpid", true)
-		_, err = lightBackend.chain.insertChain([]*types.Block{block}, true)
+		_, err := lightBackend.chain.insertChain([]*types.Block{block}, true)
 		if err != nil {
 			t.Errorf("failed to insert block %v", err)
 		}
@@ -186,7 +284,8 @@ func TestFreezeDiffLayer(t *testing.T) {
 	blockNum := 1024
 	fullBackend := newTestBackend(blockNum, true)
 	defer fullBackend.close()
-	if fullBackend.chain.diffQueue.Size() != blockNum {
+	// Minus one empty block.
+	if fullBackend.chain.diffQueue.Size() != blockNum-1 {
 		t.Errorf("size of diff queue is wrong, expected: %d, get: %d", blockNum, fullBackend.chain.diffQueue.Size())
 	}
 	time.Sleep(diffLayerFreezerRecheckInterval + 1*time.Second)
@@ -215,10 +314,11 @@ func TestPruneDiffLayer(t *testing.T) {
 	for num := uint64(1); num < uint64(blockNum); num++ {
 		header := fullBackend.chain.GetHeaderByNumber(num)
 		rawDiff := fullBackend.chain.GetDiffLayerRLP(header.Hash())
-		diff, _ := rawDataToDiffLayer(rawDiff)
-		fullBackend.Chain().HandleDiffLayer(diff, "testpid1", true)
-		fullBackend.Chain().HandleDiffLayer(diff, "testpid2", true)
-
+		if len(rawDiff) != 0 {
+			diff, _ := rawDataToDiffLayer(rawDiff)
+			fullBackend.Chain().HandleDiffLayer(diff, "testpid1", true)
+			fullBackend.Chain().HandleDiffLayer(diff, "testpid2", true)
+		}
 	}
 	fullBackend.chain.pruneDiffLayer()
 	if len(fullBackend.chain.diffNumToBlockHashes) != maxDiffForkDist {
@@ -260,4 +360,46 @@ func TestPruneDiffLayer(t *testing.T) {
 		t.Error("unexpected size of diffHashToPeers")
 	}
 
+}
+
+func TestGetDiffAccounts(t *testing.T) {
+	t.Parallel()
+
+	blockNum := 128
+	fullBackend := newTestBackend(blockNum, false)
+	defer fullBackend.close()
+
+	for _, testBlock := range testBlocks {
+		block := fullBackend.chain.GetBlockByNumber(uint64(testBlock.blockNr))
+		if block == nil {
+			t.Fatal("block should not be nil")
+		}
+		blockHash := block.Hash()
+		accounts, err := fullBackend.chain.GetDiffAccounts(blockHash)
+		if err != nil {
+			t.Errorf("get diff accounts eror for block number (%d): %v", testBlock.blockNr, err)
+		}
+
+		for idx, account := range accounts {
+			if testAddr == account {
+				break
+			}
+
+			if idx == len(accounts)-1 {
+				t.Errorf("the diff accounts does't include addr: %v", testAddr)
+			}
+		}
+
+		for _, transaction := range testBlock.txs {
+			for idx, account := range accounts {
+				if transaction.to == account {
+					break
+				}
+
+				if idx == len(accounts)-1 {
+					t.Errorf("the diff accounts does't include addr: %v", transaction.to)
+				}
+			}
+		}
+	}
 }
