@@ -234,7 +234,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		//   1) resurrect happened, and new slot values were set -- those should
 		//      have been handles via pendingStorage above.
 		//   2) we don't have new values, and can deliver empty response back
-		if _, destructed := s.db.snapDestructs[s.addrHash]; destructed {
+		if _, destructed := s.db.snapDestructs[s.address]; destructed {
 			return common.Hash{}
 		}
 		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
@@ -345,10 +345,9 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		}(time.Now())
 	}
 	// The snapshot storage map for the object
-	var storage map[common.Hash][]byte
+	var storage map[string][]byte
 	// Insert all the pending updates into the trie
 	tr := s.getTrie(db)
-	hasher := s.db.hasher
 
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
 	for key, value := range s.pendingStorage {
@@ -371,12 +370,12 @@ func (s *StateObject) updateTrie(db Database) Trie {
 			s.db.snapMux.Lock()
 			if storage == nil {
 				// Retrieve the old storage map, if available, create a new one otherwise
-				if storage = s.db.snapStorage[s.addrHash]; storage == nil {
-					storage = make(map[common.Hash][]byte)
-					s.db.snapStorage[s.addrHash] = storage
+				if storage = s.db.snapStorage[s.address]; storage == nil {
+					storage = make(map[string][]byte)
+					s.db.snapStorage[s.address] = storage
 				}
 			}
-			storage[crypto.HashData(hasher, key[:])] = v // v will be nil if value is 0x00
+			storage[string(key[:])] = v // v will be nil if value is 0x00
 			s.db.snapMux.Unlock()
 		}
 		usedStorage = append(usedStorage, common.CopyBytes(key[:])) // Copy needed for closure

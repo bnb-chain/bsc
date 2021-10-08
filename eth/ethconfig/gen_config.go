@@ -40,6 +40,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DatabaseHandles         int                    `toml:"-"`
 		DatabaseCache           int
 		DatabaseFreezer         string
+		DatabaseDiff            string
 		TrieCleanCache          int
 		TrieCleanCacheJournal   string        `toml:",omitempty"`
 		TrieCleanCacheRejournal time.Duration `toml:",omitempty"`
@@ -48,6 +49,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TriesInMemory           uint64 `toml:",omitempty"`
 		SnapshotCache           int
 		Preimages               bool
+		PersistDiff             bool
+		DiffBlock               uint64 `toml:",omitempty"`
 		Miner                   miner.Config
 		Ethash                  ethash.Config
 		TxPool                  core.TxPoolConfig
@@ -84,6 +87,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.DatabaseHandles = c.DatabaseHandles
 	enc.DatabaseCache = c.DatabaseCache
 	enc.DatabaseFreezer = c.DatabaseFreezer
+	enc.DatabaseDiff = c.DatabaseDiff
 	enc.TrieCleanCache = c.TrieCleanCache
 	enc.TrieCleanCacheJournal = c.TrieCleanCacheJournal
 	enc.TrieCleanCacheRejournal = c.TrieCleanCacheRejournal
@@ -92,6 +96,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TriesInMemory = c.TriesInMemory
 	enc.SnapshotCache = c.SnapshotCache
 	enc.Preimages = c.Preimages
+	enc.PersistDiff = c.PersistDiff
+	enc.DiffBlock = c.DiffBlock
 	enc.Miner = c.Miner
 	enc.Ethash = c.Ethash
 	enc.TxPool = c.TxPool
@@ -133,6 +139,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DatabaseHandles         *int                   `toml:"-"`
 		DatabaseCache           *int
 		DatabaseFreezer         *string
+		DatabaseDiff            *string
+		PersistDiff             *bool
+		DiffBlock               *uint64 `toml:",omitempty"`
 		TrieCleanCache          *int
 		TrieCleanCacheJournal   *string        `toml:",omitempty"`
 		TrieCleanCacheRejournal *time.Duration `toml:",omitempty"`
@@ -223,6 +232,15 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.DatabaseFreezer != nil {
 		c.DatabaseFreezer = *dec.DatabaseFreezer
+	}
+	if dec.DatabaseDiff != nil {
+		c.DatabaseDiff = *dec.DatabaseDiff
+	}
+	if dec.PersistDiff != nil {
+		c.PersistDiff = *dec.PersistDiff
+	}
+	if dec.DiffBlock != nil {
+		c.DiffBlock = *dec.DiffBlock
 	}
 	if dec.TrieCleanCache != nil {
 		c.TrieCleanCache = *dec.TrieCleanCache
