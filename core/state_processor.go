@@ -97,7 +97,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	numsWorker := math.Min(64.0, float64(cap(bloomJobs)))
 	for i := 0.0; i <= numsWorker; i++ {
         go bloomWorker(bloomJobs, bloomResults)
-    }
+	}
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
@@ -131,7 +131,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	bloomMap := make(map[common.Hash]types.Bloom)
 	for br := range bloomResults {
 		bloomMap[br.txhash] = br.bloom
-    }
+	}
 	for _, receipt := range receipts {
 		receipt.Bloom = bloomMap[receipt.TxHash]
 	}
