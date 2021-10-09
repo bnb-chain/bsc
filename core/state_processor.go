@@ -121,8 +121,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
 	}
+	
 	close(bloomJobs)
-
 	bloomMap := make(map[common.Hash]types.Bloom)
 	for br := range bloomResults {
 		bloomMap[br.txhash] = br.bloom
