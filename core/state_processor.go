@@ -18,6 +18,7 @@ package core
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -49,6 +50,18 @@ func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consen
 	}
 }
 
+// Use for Bloom value calculation on channel 
+type BloomPair struct {
+    txhash common.Hash
+    bloom types.Bloom
+}
+
+func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomPair) {
+    for receipt := range jobs {
+        results <- BloomPair{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
+    }
+}
+
 // Process processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb and applying any rewards to both
 // the processor (coinbase) and any included uncles.
@@ -77,6 +90,15 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Iterate over and process the individual transactions
 	posa, isPoSA := p.engine.(consensus.PoSA)
 	commonTxs := make([]*types.Transaction, 0, len(block.Transactions()))
+
+	// initilise bloom workers
+	bloomJobs := make(chan *types.Receipt, len(block.Transactions()))
+	bloomResults := make(chan BloomPair, cap(bloomJobs))
+	numsWorker := math.Min(64.0, float64(cap(bloomJobs)))
+	for i := 0.0; i <= numsWorker; i++ {
+        go bloomWorker(bloomJobs, bloomResults)
+    }
+
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
 	signer := types.MakeSigner(p.config, header.Number)
@@ -102,7 +124,18 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
+		bloomJobs <- receipt
 	}
+	close(bloomJobs)
+
+	bloomMap := make(map[common.Hash]types.Bloom)
+	for br := range bloomResults {
+		bloomMap[br.txhash] = br.bloom
+    }
+	for _, receipt := range receipts {
+		receipt.Bloom = bloomMap[receipt.TxHash]
+	}
+
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), &receipts, &systemTxs, usedGas)
@@ -154,7 +187,6 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 
 	// Set the receipt logs and create the bloom filter.
 	receipt.Logs = statedb.GetLogs(tx.Hash())
-	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 	receipt.BlockHash = statedb.BlockHash()
 	receipt.BlockNumber = header.Number
 	receipt.TransactionIndex = uint(statedb.TxIndex())
