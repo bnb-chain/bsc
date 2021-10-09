@@ -751,14 +751,14 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 }
 
 // Use for Bloom value calculation on channel 
-type BloomPair struct {
+type BloomHash struct {
     txhash common.Hash
     bloom types.Bloom
 }
 
-func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomPair) {
+func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomHash) {
     for receipt := range jobs {
-        results <- BloomPair{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
+        results <- BloomHash{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
     }
 	close(results)
 }
@@ -785,7 +785,7 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 
 	// initilise bloom workers
 	bloomJobs := make(chan *types.Receipt, txs.CurrentSize())
-	bloomResults := make(chan BloomPair, cap(bloomJobs))
+	bloomResults := make(chan BloomHash, cap(bloomJobs))
 	go bloomWorker(bloomJobs, bloomResults)
 
 LOOP:

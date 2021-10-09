@@ -50,14 +50,14 @@ func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consen
 }
 
 // Use for Bloom value calculation on channel 
-type BloomPair struct {
+type BloomHash struct {
     txhash common.Hash
     bloom types.Bloom
 }
 
-func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomPair) {
+func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomHash) {
     for receipt := range jobs {
-        results <- BloomPair{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
+        results <- BloomHash{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
     }
 	close(results)
 }
@@ -93,7 +93,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	// initilise bloom workers
 	bloomJobs := make(chan *types.Receipt, len(block.Transactions()))
-	bloomResults := make(chan BloomPair, cap(bloomJobs))
+	bloomResults := make(chan BloomHash, cap(bloomJobs))
 	go bloomWorker(bloomJobs, bloomResults)
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
