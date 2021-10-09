@@ -736,10 +736,10 @@ func (w *worker) updateSnapshot() {
 	w.snapshotState = w.current.state.Copy()
 }
 
-func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
+func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address, bloomJobs chan *types.Receipt) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig(), bloomJobs)
 	if err != nil {
 		w.current.state.RevertToSnapshot(snap)
 		return nil, err
@@ -748,6 +748,18 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	w.current.receipts = append(w.current.receipts, receipt)
 
 	return receipt.Logs, nil
+}
+
+// Use for Bloom value calculation on channel 
+type BloomPair struct {
+    txhash common.Hash
+    bloom types.Bloom
+}
+
+func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomPair) {
+    for receipt := range jobs {
+        results <- BloomPair{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
+    }
 }
 
 func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32) bool {
@@ -769,6 +781,12 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 		log.Debug("Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
 		defer stopTimer.Stop()
 	}
+
+	// initilise bloom workers
+	bloomJobs := make(chan *types.Receipt, txs.CurrentSize())
+	bloomResults := make(chan BloomPair, cap(bloomJobs))
+	go bloomWorker(bloomJobs, bloomResults)
+
 LOOP:
 	for {
 		// In the following three cases, we will interrupt the execution of the transaction.
@@ -824,7 +842,7 @@ LOOP:
 		// Start executing the transaction
 		w.current.state.Prepare(tx.Hash(), common.Hash{}, w.current.tcount)
 
-		logs, err := w.commitTransaction(tx, coinbase)
+		logs, err := w.commitTransaction(tx, coinbase, bloomJobs)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -858,6 +876,15 @@ LOOP:
 			//log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
 			txs.Shift()
 		}
+	}
+
+	close(bloomJobs)
+	bloomMap := make(map[common.Hash]types.Bloom)
+	for br := range bloomResults {
+		bloomMap[br.txhash] = br.bloom
+	}
+	for _, receipt := range w.current.receipts {
+		receipt.Bloom = bloomMap[receipt.TxHash]
 	}
 
 	if !w.isRunning() && len(coalescedLogs) > 0 {
