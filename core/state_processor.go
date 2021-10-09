@@ -59,6 +59,7 @@ func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomPair) {
     for receipt := range jobs {
         results <- BloomPair{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
     }
+	close(results)
 }
 
 // Process processes the state changes according to the Ethereum rules by running

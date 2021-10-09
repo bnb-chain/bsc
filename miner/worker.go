@@ -760,6 +760,7 @@ func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomPair) {
     for receipt := range jobs {
         results <- BloomPair{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
     }
+	close(results)
 }
 
 func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32) bool {
