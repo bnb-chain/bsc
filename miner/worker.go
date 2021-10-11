@@ -736,10 +736,10 @@ func (w *worker) updateSnapshot() {
 	w.snapshotState = w.current.state.Copy()
 }
 
-func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address, bloomJobs chan *types.Receipt) ([]*types.Log, error) {
+func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address, bloomProcessors chan *types.Receipt) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig(), bloomJobs)
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig(), bloomProcessors)
 	if err != nil {
 		w.current.state.RevertToSnapshot(snap)
 		return nil, err
@@ -771,9 +771,9 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	}
 
 	// initilise bloom workers
-	bloomJobs := make(chan *types.Receipt, txs.CurrentSize())
-	bloomResults := make(chan core.BloomTxMap, cap(bloomJobs))
-	go core.BloomGenerator(bloomJobs, bloomResults)
+	bloomProcessors := make(chan *types.Receipt, txs.CurrentSize())
+	bloomResults := make(chan core.BloomTxMap, cap(bloomProcessors))
+	go core.BloomGenerator(bloomProcessors, bloomResults)
 
 LOOP:
 	for {
@@ -830,7 +830,7 @@ LOOP:
 		// Start executing the transaction
 		w.current.state.Prepare(tx.Hash(), common.Hash{}, w.current.tcount)
 
-		logs, err := w.commitTransaction(tx, coinbase, bloomJobs)
+		logs, err := w.commitTransaction(tx, coinbase, bloomProcessors)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -866,8 +866,8 @@ LOOP:
 		}
 	}
 
-	close(bloomJobs)
-	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomJobs))
+	close(bloomProcessors)
+	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomProcessors))
 	for br := range bloomResults {
 		bloomMap[br.Txhash] = br.Bloom
 	}

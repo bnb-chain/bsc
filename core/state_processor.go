@@ -408,9 +408,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	commonTxs := make([]*types.Transaction, 0, len(block.Transactions()))
 
 	// initilise bloom workers
-	bloomJobs := make(chan *types.Receipt, len(block.Transactions()))
-	bloomResults := make(chan BloomTxMap, cap(bloomJobs))
-	go BloomGenerator(bloomJobs, bloomResults)
+	bloomProcessors := make(chan *types.Receipt, len(block.Transactions()))
+	bloomResults := make(chan BloomTxMap, cap(bloomProcessors))
+	go BloomGenerator(bloomProcessors, bloomResults)
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
@@ -429,7 +429,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			return statedb, nil, nil, 0, err
 		}
 		statedb.Prepare(tx.Hash(), block.Hash(), i)
-		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, header, tx, usedGas, vmenv, bloomJobs)
+		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, header, tx, usedGas, vmenv, bloomProcessors)
 		if err != nil {
 			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
@@ -438,8 +438,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		receipts = append(receipts, receipt)
 	}
 	
-	close(bloomJobs)
-	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomJobs))
+	close(bloomProcessors)
+	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomProcessors))
 	for br := range bloomResults {
 		bloomMap[br.Txhash] = br.Bloom
 	}
@@ -460,7 +460,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	return statedb, receipts, allLogs, *usedGas, nil
 }
 
-func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, bloomJobs chan *types.Receipt) (*types.Receipt, error) {
+func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, bloomProcessors chan *types.Receipt) (*types.Receipt, error) {
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
@@ -498,10 +498,10 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 
 	// Set the receipt logs and create the bloom filter.
 	receipt.Logs = statedb.GetLogs(tx.Hash())
-	if bloomJobs == nil {
+	if bloomProcessors == nil {
 		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 	} else {
-		bloomJobs <- receipt
+		bloomProcessors <- receipt
 	}
 	receipt.BlockHash = statedb.BlockHash()
 	receipt.BlockNumber = header.Number
@@ -513,7 +513,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, bloomJobs chan *types.Receipt) (*types.Receipt, error) {
+func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, bloomProcessors chan *types.Receipt) (*types.Receipt, error) {
 	msg, err := tx.AsMessage(types.MakeSigner(config, header.Number))
 	if err != nil {
 		return nil, err
@@ -526,5 +526,5 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 		vm.EVMInterpreterPool.Put(ite)
 		vm.EvmPool.Put(vmenv)
 	}()
-	return applyTransaction(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv, bloomJobs)
+	return applyTransaction(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv, bloomProcessors)
 }
