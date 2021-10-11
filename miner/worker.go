@@ -880,7 +880,7 @@ LOOP:
 	}
 
 	close(bloomJobs)
-	bloomMap := make(map[common.Hash]types.Bloom)
+	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomJobs))
 	for br := range bloomResults {
 		bloomMap[br.txhash] = br.bloom
 	}
