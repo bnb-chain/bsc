@@ -441,7 +441,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	close(bloomProcessors)
 	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomProcessors))
 	for br := range bloomResults {
-		bloomMap[br.Txhash] = br.Bloom
+		if _, ok := bloomMap[br.Txhash]; !ok {
+			bloomMap[br.Txhash] = br.Bloom
+		}
 	}
 	for _, receipt := range receipts {
 		receipt.Bloom = bloomMap[receipt.TxHash]
