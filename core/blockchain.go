@@ -459,6 +459,16 @@ func (bc *BlockChain) GetVMConfig() *vm.Config {
 }
 
 func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts) {
+	// TODO, This is a hot fix for the block hash of logs is `0x0000000000000000000000000000000000000000000000000000000000000000` for system tx
+	// Please check details in https://github.com/binance-chain/bsc/issues/443
+	// This is a temporary fix, the official fix should be a hard fork.
+	const possibleSystemReceipts = 3 // One slash tx, two reward distribute txs.
+	numOfReceipts := len(receipts)
+	for i := numOfReceipts - 1; i >= 0 && i >= numOfReceipts-possibleSystemReceipts; i-- {
+		for j := 0; j < len(receipts[i].Logs); j++ {
+			receipts[i].Logs[j].BlockHash = hash
+		}
+	}
 	bc.receiptsCache.Add(hash, receipts)
 }
 
