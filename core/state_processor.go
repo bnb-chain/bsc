@@ -446,7 +446,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 	}
 	for _, receipt := range receipts {
-		receipt.Bloom = bloomMap[receipt.TxHash]
+		if (receipt.Bloom == types.Bloom{}) {
+			receipt.Bloom = bloomMap[receipt.TxHash]
+		}
 	}
 
 

@@ -874,7 +874,9 @@ LOOP:
 		}
 	}
 	for _, receipt := range w.current.receipts {
-		receipt.Bloom = bloomMap[receipt.TxHash]
+		if (receipt.Bloom == types.Bloom{}) {
+			receipt.Bloom = bloomMap[receipt.TxHash]
+		}
 	}
 
 	if !w.isRunning() && len(coalescedLogs) > 0 {
