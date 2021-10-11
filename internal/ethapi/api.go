@@ -1185,7 +1185,10 @@ func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, bloc
 					delete(diffTx.Accounts, account)
 				}
 			}
-			result.Transactions = append(result.Transactions, diffTx)
+
+			if len(diffTx.Accounts) != 0 {
+				result.Transactions = append(result.Transactions, diffTx)
+			}
 		}
 	}
 
