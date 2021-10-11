@@ -68,19 +68,6 @@ func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consen
 	}
 }
 
-// Use for Bloom value calculation on channel 
-type BloomHash struct {
-    txhash common.Hash
-    bloom types.Bloom
-}
-
-func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomHash) {
-    for receipt := range jobs {
-        results <- BloomHash{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
-    }
-	close(results)
-}
-
 type LightStateProcessor struct {
 	randomGenerator *rand.Rand
 	StateProcessor
@@ -376,6 +363,19 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	return diffLayer.Receipts, allLogs, gasUsed, nil
 }
 
+// Use for Bloom value calculation on channel 
+type BloomTxMap struct {
+    Txhash common.Hash
+    Bloom types.Bloom
+}
+
+func BloomGenerator(jobs <-chan *types.Receipt, results chan<- BloomTxMap) {
+    for receipt := range jobs {
+        results <- BloomTxMap{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
+    }
+	close(results)
+}
+
 // Process processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb and applying any rewards to both
 // the processor (coinbase) and any included uncles.
@@ -409,8 +409,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	// initilise bloom workers
 	bloomJobs := make(chan *types.Receipt, len(block.Transactions()))
-	bloomResults := make(chan BloomHash, cap(bloomJobs))
-	go bloomWorker(bloomJobs, bloomResults)
+	bloomResults := make(chan BloomTxMap, cap(bloomJobs))
+	go BloomGenerator(bloomJobs, bloomResults)
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
@@ -441,7 +441,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	close(bloomJobs)
 	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomJobs))
 	for br := range bloomResults {
-		bloomMap[br.txhash] = br.bloom
+		bloomMap[br.Txhash] = br.Bloom
 	}
 	for _, receipt := range receipts {
 		receipt.Bloom = bloomMap[receipt.TxHash]

@@ -750,19 +750,6 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	return receipt.Logs, nil
 }
 
-// Use for Bloom value calculation on channel 
-type BloomHash struct {
-    txhash common.Hash
-    bloom types.Bloom
-}
-
-func bloomWorker(jobs <-chan *types.Receipt, results chan<- BloomHash) {
-    for receipt := range jobs {
-        results <- BloomHash{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
-    }
-	close(results)
-}
-
 func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32) bool {
 	// Short circuit if current is nil
 	if w.current == nil {
@@ -785,8 +772,8 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 
 	// initilise bloom workers
 	bloomJobs := make(chan *types.Receipt, txs.CurrentSize())
-	bloomResults := make(chan BloomHash, cap(bloomJobs))
-	go bloomWorker(bloomJobs, bloomResults)
+	bloomResults := make(chan core.BloomTxMap, cap(bloomJobs))
+	go core.BloomGenerator(bloomJobs, bloomResults)
 
 LOOP:
 	for {
@@ -882,7 +869,7 @@ LOOP:
 	close(bloomJobs)
 	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomJobs))
 	for br := range bloomResults {
-		bloomMap[br.txhash] = br.bloom
+		bloomMap[br.Txhash] = br.Bloom
 	}
 	for _, receipt := range w.current.receipts {
 		receipt.Bloom = bloomMap[receipt.TxHash]
