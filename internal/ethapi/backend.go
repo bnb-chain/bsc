@@ -42,6 +42,7 @@ type Backend interface {
 	// General Ethereum API
 	Downloader() *downloader.Downloader
 	SuggestPrice(ctx context.Context) (*big.Int, error)
+	Chain() *core.BlockChain
 	ChainDb() ethdb.Database
 	AccountManager() *accounts.Manager
 	ExtRPCEnabled() bool

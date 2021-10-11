@@ -82,6 +82,9 @@ type headerRequesterFn func(common.Hash) error
 // bodyRequesterFn is a callback type for sending a body retrieval request.
 type bodyRequesterFn func([]common.Hash) error
 
+// DiffRequesterFn is a callback type for sending a diff layer retrieval request.
+type DiffRequesterFn func([]common.Hash) error
+
 // headerVerifierFn is a callback type to verify a block's header for fast propagation.
 type headerVerifierFn func(header *types.Header) error
 
@@ -112,6 +115,8 @@ type blockAnnounce struct {
 
 	fetchHeader headerRequesterFn // Fetcher function to retrieve the header of an announced block
 	fetchBodies bodyRequesterFn   // Fetcher function to retrieve the body of an announced block
+	fetchDiffs  DiffRequesterFn   // Fetcher function to retrieve the diff layer of an announced block
+
 }
 
 // headerFilterTask represents a batch of headers needing fetcher filtering.
@@ -246,7 +251,7 @@ func (f *BlockFetcher) Stop() {
 // Notify announces the fetcher of the potential availability of a new block in
 // the network.
 func (f *BlockFetcher) Notify(peer string, hash common.Hash, number uint64, time time.Time,
-	headerFetcher headerRequesterFn, bodyFetcher bodyRequesterFn) error {
+	headerFetcher headerRequesterFn, bodyFetcher bodyRequesterFn, diffFetcher DiffRequesterFn) error {
 	block := &blockAnnounce{
 		hash:        hash,
 		number:      number,
@@ -254,6 +259,7 @@ func (f *BlockFetcher) Notify(peer string, hash common.Hash, number uint64, time
 		origin:      peer,
 		fetchHeader: headerFetcher,
 		fetchBodies: bodyFetcher,
+		fetchDiffs:  diffFetcher,
 	}
 	select {
 	case f.notify <- block:
@@ -481,9 +487,14 @@ func (f *BlockFetcher) loop() {
 
 				// Create a closure of the fetch and schedule in on a new thread
 				fetchHeader, hashes := f.fetching[hashes[0]].fetchHeader, hashes
+				fetchDiff := f.fetching[hashes[0]].fetchDiffs
+
 				gopool.Submit(func() {
 					if f.fetchingHook != nil {
 						f.fetchingHook(hashes)
+					}
+					if fetchDiff != nil {
+						fetchDiff(hashes)
 					}
 					for _, hash := range hashes {
 						headerFetchMeter.Mark(1)

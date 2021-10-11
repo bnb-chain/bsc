@@ -35,15 +35,6 @@ type statePrefetcher struct {
 	engine consensus.Engine    // Consensus engine used for block rewards
 }
 
-// newStatePrefetcher initialises a new statePrefetcher.
-func newStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine consensus.Engine) *statePrefetcher {
-	return &statePrefetcher{
-		config: config,
-		bc:     bc,
-		engine: engine,
-	}
-}
-
 // Prefetch processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to pre-cache transaction signatures and state trie nodes.

@@ -19,6 +19,7 @@ package types
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -28,11 +29,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
 var (
-	EmptyRootHash  = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
+	EmptyRootHash = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
+	EmptyCodeHash = crypto.Keccak256(nil)
+
 	EmptyUncleHash = rlpHash([]*Header(nil))
 )
 
@@ -366,3 +370,97 @@ func (b *Block) Hash() common.Hash {
 }
 
 type Blocks []*Block
+
+type DiffLayer struct {
+	BlockHash common.Hash
+	Number    uint64
+	Receipts  Receipts // Receipts are duplicated stored to simplify the logic
+	Codes     []DiffCode
+	Destructs []common.Address
+	Accounts  []DiffAccount
+	Storages  []DiffStorage
+
+	DiffHash common.Hash
+}
+
+type extDiffLayer struct {
+	BlockHash common.Hash
+	Number    uint64
+	Receipts  []*ReceiptForStorage // Receipts are duplicated stored to simplify the logic
+	Codes     []DiffCode
+	Destructs []common.Address
+	Accounts  []DiffAccount
+	Storages  []DiffStorage
+}
+
+// DecodeRLP decodes the Ethereum
+func (d *DiffLayer) DecodeRLP(s *rlp.Stream) error {
+	var ed extDiffLayer
+	if err := s.Decode(&ed); err != nil {
+		return err
+	}
+	d.BlockHash, d.Number, d.Codes, d.Destructs, d.Accounts, d.Storages =
+		ed.BlockHash, ed.Number, ed.Codes, ed.Destructs, ed.Accounts, ed.Storages
+
+	d.Receipts = make([]*Receipt, len(ed.Receipts))
+	for i, storageReceipt := range ed.Receipts {
+		d.Receipts[i] = (*Receipt)(storageReceipt)
+	}
+	return nil
+}
+
+// EncodeRLP serializes b into the Ethereum RLP block format.
+func (d *DiffLayer) EncodeRLP(w io.Writer) error {
+	storageReceipts := make([]*ReceiptForStorage, len(d.Receipts))
+	for i, receipt := range d.Receipts {
+		storageReceipts[i] = (*ReceiptForStorage)(receipt)
+	}
+	return rlp.Encode(w, extDiffLayer{
+		BlockHash: d.BlockHash,
+		Number:    d.Number,
+		Receipts:  storageReceipts,
+		Codes:     d.Codes,
+		Destructs: d.Destructs,
+		Accounts:  d.Accounts,
+		Storages:  d.Storages,
+	})
+}
+
+func (d *DiffLayer) Validate() error {
+	if d.BlockHash == (common.Hash{}) {
+		return errors.New("blockHash can't be empty")
+	}
+	for _, storage := range d.Storages {
+		if len(storage.Keys) != len(storage.Vals) {
+			return errors.New("the length of keys and values mismatch in storage")
+		}
+	}
+	return nil
+}
+
+type DiffCode struct {
+	Hash common.Hash
+	Code []byte
+}
+
+type DiffAccount struct {
+	Account common.Address
+	Blob    []byte
+}
+
+type DiffStorage struct {
+	Account common.Address
+	Keys    []string
+	Vals    [][]byte
+}
+
+type DiffAccountsInTx struct {
+	TxHash   common.Hash
+	Accounts map[common.Address]*big.Int
+}
+
+type DiffAccountsInBlock struct {
+	Number       uint64
+	BlockHash    common.Hash
+	Transactions []DiffAccountsInTx
+}

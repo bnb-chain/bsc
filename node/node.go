@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -578,6 +579,22 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 	return db, err
 }
 
+func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, diff, namespace string, readonly, persistDiff bool) (ethdb.Database, error) {
+	chainDB, err := n.OpenDatabaseWithFreezer(name, cache, handles, freezer, namespace, readonly)
+	if err != nil {
+		return nil, err
+	}
+	if persistDiff {
+		diffStore, err := n.OpenDiffDatabase(name, handles, diff, namespace, readonly)
+		if err != nil {
+			chainDB.Close()
+			return nil, err
+		}
+		chainDB.SetDiffStore(diffStore)
+	}
+	return chainDB, nil
+}
+
 // OpenDatabaseWithFreezer opens an existing database with the given name (or
 // creates one if no previous can be found) from within the node's data directory,
 // also attaching a chain freezer to it that moves ancient chain data from the
@@ -608,6 +625,30 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, freezer,
 	if err == nil {
 		db = n.wrapDatabase(db)
 	}
+	return db, err
+}
+
+func (n *Node) OpenDiffDatabase(name string, handles int, diff, namespace string, readonly bool) (*leveldb.Database, error) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	if n.state == closedState {
+		return nil, ErrNodeStopped
+	}
+
+	var db *leveldb.Database
+	var err error
+	if n.config.DataDir == "" {
+		panic("datadir is missing")
+	}
+	root := n.ResolvePath(name)
+	switch {
+	case diff == "":
+		diff = filepath.Join(root, "diff")
+	case !filepath.IsAbs(diff):
+		diff = n.ResolvePath(diff)
+	}
+	db, err = leveldb.New(diff, 0, handles, namespace, readonly)
+
 	return db, err
 }
 

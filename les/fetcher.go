@@ -339,7 +339,7 @@ func (f *lightFetcher) mainloop() {
 					log.Debug("Trigger light sync", "peer", peerid, "local", localHead.Number, "localhash", localHead.Hash(), "remote", data.Number, "remotehash", data.Hash)
 					continue
 				}
-				f.fetcher.Notify(peerid.String(), data.Hash, data.Number, time.Now(), f.requestHeaderByHash(peerid), nil)
+				f.fetcher.Notify(peerid.String(), data.Hash, data.Number, time.Now(), f.requestHeaderByHash(peerid), nil, nil)
 				log.Debug("Trigger header retrieval", "peer", peerid, "number", data.Number, "hash", data.Hash)
 			}
 			// Keep collecting announces from trusted server even we are syncing.
@@ -355,7 +355,7 @@ func (f *lightFetcher) mainloop() {
 						continue
 					}
 					p := agreed[rand.Intn(len(agreed))]
-					f.fetcher.Notify(p.String(), data.Hash, data.Number, time.Now(), f.requestHeaderByHash(p), nil)
+					f.fetcher.Notify(p.String(), data.Hash, data.Number, time.Now(), f.requestHeaderByHash(p), nil, nil)
 					log.Debug("Trigger trusted header retrieval", "number", data.Number, "hash", data.Hash)
 				}
 			}

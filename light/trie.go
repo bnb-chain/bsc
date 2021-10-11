@@ -95,17 +95,11 @@ func (db *odrDatabase) TrieDB() *trie.Database {
 	return nil
 }
 
-func (db *odrDatabase) CacheAccount(_ common.Hash, _ state.Trie) {
-	return
-}
+func (db *odrDatabase) CacheAccount(_ common.Hash, _ state.Trie) {}
 
-func (db *odrDatabase) CacheStorage(_ common.Hash, _ common.Hash, _ state.Trie) {
-	return
-}
+func (db *odrDatabase) CacheStorage(_ common.Hash, _ common.Hash, _ state.Trie) {}
 
-func (db *odrDatabase) Purge() {
-	return
-}
+func (db *odrDatabase) Purge() {}
 
 type odrTrie struct {
 	db   *odrDatabase

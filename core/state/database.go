@@ -243,7 +243,6 @@ func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie
 		triesArray := [3]*triePair{{root: root, trie: tr.ResetCopy()}, nil, nil}
 		db.storageTrieCache.Add(addrHash, triesArray)
 	}
-	return
 }
 
 func (db *cachingDB) Purge() {
