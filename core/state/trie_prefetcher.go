@@ -105,7 +105,7 @@ func (p *triePrefetcher) abortLoop() {
 func (p *triePrefetcher) close() {
 	for _, fetcher := range p.fetchers {
 		p.abortChan <- fetcher // safe to do multiple times
-
+		<-fetcher.term
 		if metrics.Enabled {
 			if fetcher.root == p.root {
 				p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
