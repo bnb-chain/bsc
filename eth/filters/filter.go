@@ -31,7 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const maxFilterBlockRange = 5000
+const maxFilterBlockRange = 500000
 
 type Backend interface {
 	ChainDb() ethdb.Database
