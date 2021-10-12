@@ -267,8 +267,8 @@ func (db *cachingDB) CopyTrie(t Trie) Trie {
 
 // ContractCode retrieves a particular contract's code.
 func (db *cachingDB) ContractCode(addrHash, codeHash common.Hash) ([]byte, error) {
-	if v, ok := db.codeCache.Get(codeHash.Bytes()); ok {
-		code := v.([]byte)
+	if cached, ok := db.codeCache.Get(codeHash.Bytes()); ok {
+		code := cached.([]byte)
 		if len(code) > 0 {
 			return code, nil
 		}
@@ -287,8 +287,8 @@ func (db *cachingDB) ContractCode(addrHash, codeHash common.Hash) ([]byte, error
 // code can't be found in the cache, then check the existence with **new**
 // db scheme.
 func (db *cachingDB) ContractCodeWithPrefix(addrHash, codeHash common.Hash) ([]byte, error) {
-	if v, ok := db.codeCache.Get(codeHash.Bytes()); ok {
-		code := v.([]byte)
+	if cached, ok := db.codeCache.Get(codeHash.Bytes()); ok {
+		code := cached.([]byte)
 		if len(code) >  0 {
 			return code, nil
 		}

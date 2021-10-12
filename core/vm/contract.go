@@ -19,9 +19,15 @@ package vm
 import (
 	"math/big"
 
+	lru "github.com/hashicorp/golang-lru"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
 )
+
+const codeBitmapCacheSize = 2000
+
+var codeBitmapCache, _ = lru.New(codeBitmapCacheSize)
 
 // ContractRef is a reference to the contract's backing object
 type ContractRef interface {
@@ -110,10 +116,15 @@ func (c *Contract) isCode(udest uint64) bool {
 		// Does parent context have the analysis?
 		analysis, exist := c.jumpdests[c.CodeHash]
 		if !exist {
-			// Do the analysis and save in parent context
-			// We do not need to store it in c.analysis
-			analysis = codeBitmap(c.Code)
-			c.jumpdests[c.CodeHash] = analysis
+			if cached, ok := codeBitmapCache.Get(c.CodeHash); ok {
+				analysis = cached.(bitvec)
+			} else {
+				// Do the analysis and save in parent context
+				// We do not need to store it in c.analysis
+				analysis = codeBitmap(c.Code)
+				c.jumpdests[c.CodeHash] = analysis
+				codeBitmapCache.Add(c.CodeHash, analysis)
+			}
 		}
 		// Also stash it in current contract for faster access
 		c.analysis = analysis
