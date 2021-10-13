@@ -121,7 +121,7 @@ type UpgradeStatusPacket struct {
 func (p *UpgradeStatusPacket) GetExtension() (*UpgradeStatusExtension, error) {
 	extension := &UpgradeStatusExtension{}
 	if p.Extension == nil {
-		return &UpgradeStatusExtension{}, nil
+		return extension, nil
 	}
 	err := rlp.DecodeBytes(*p.Extension, extension)
 	if err != nil {
