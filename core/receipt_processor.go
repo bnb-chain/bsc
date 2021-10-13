@@ -7,13 +7,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-type ReceiptProcesser interface {
+type ReceiptProcessor interface {
 	Apply(receipt *types.Receipt)
 }
 
 var (
-	_ ReceiptProcesser = (*ReceiptBloomGenertor)(nil)
-	_ ReceiptProcesser = (*AsyncReceiptBloomGenertor)(nil)
+	_ ReceiptProcessor = (*ReceiptBloomGenertor)(nil)
+	_ ReceiptProcessor = (*AsyncReceiptBloomGenertor)(nil)
 )
 
 func NewReceiptBloomGenertor() *ReceiptBloomGenertor {
