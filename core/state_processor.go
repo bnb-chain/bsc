@@ -363,19 +363,6 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	return diffLayer.Receipts, allLogs, gasUsed, nil
 }
 
-// Use for Bloom value calculation on channel 
-type BloomTxMap struct {
-    Txhash common.Hash
-    Bloom types.Bloom
-}
-
-func BloomGenerator(jobs <-chan *types.Receipt, results chan<- BloomTxMap) {
-    for receipt := range jobs {
-        results <- BloomTxMap{receipt.TxHash, types.CreateBloom(types.Receipts{receipt})}
-    }
-	close(results)
-}
-
 // Process processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb and applying any rewards to both
 // the processor (coinbase) and any included uncles.
@@ -403,14 +390,13 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	blockContext := NewEVMBlockContext(header, p.bc, nil)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
 
+	txNum := len(block.Transactions())
 	// Iterate over and process the individual transactions
 	posa, isPoSA := p.engine.(consensus.PoSA)
-	commonTxs := make([]*types.Transaction, 0, len(block.Transactions()))
+	commonTxs := make([]*types.Transaction, 0, txNum)
 
-	// initilise bloom workers
-	bloomProcessors := make(chan *types.Receipt, len(block.Transactions()))
-	bloomResults := make(chan BloomTxMap, cap(bloomProcessors))
-	go BloomGenerator(bloomProcessors, bloomResults)
+	// initilise bloom processors
+	bloomProcessors := NewAsyncReceiptBloomGenertor(txNum, gopool.Threads(txNum))
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
@@ -437,20 +423,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
 	}
-	
-	close(bloomProcessors)
-	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomProcessors))
-	for br := range bloomResults {
-		if _, ok := bloomMap[br.Txhash]; !ok {
-			bloomMap[br.Txhash] = br.Bloom
-		}
-	}
-	for _, receipt := range receipts {
-		if (receipt.Bloom == types.Bloom{}) {
-			receipt.Bloom = bloomMap[receipt.TxHash]
-		}
-	}
-
+	bloomProcessors.Close()
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), &receipts, &systemTxs, usedGas)
@@ -464,7 +437,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	return statedb, receipts, allLogs, *usedGas, nil
 }
 
-func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, bloomProcessors chan *types.Receipt) (*types.Receipt, error) {
+func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, receiptProcessers ...ReceiptProcesser) (*types.Receipt, error) {
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
@@ -502,14 +475,12 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 
 	// Set the receipt logs and create the bloom filter.
 	receipt.Logs = statedb.GetLogs(tx.Hash())
-	if bloomProcessors == nil {
-		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
-	} else {
-		bloomProcessors <- receipt
-	}
 	receipt.BlockHash = statedb.BlockHash()
 	receipt.BlockNumber = header.Number
 	receipt.TransactionIndex = uint(statedb.TxIndex())
+	for _, receiptProcesser := range receiptProcessers {
+		receiptProcesser.Apply(receipt)
+	}
 	return receipt, err
 }
 
@@ -517,7 +488,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, bloomProcessors chan *types.Receipt) (*types.Receipt, error) {
+func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, receiptProcessers ...ReceiptProcesser) (*types.Receipt, error) {
 	msg, err := tx.AsMessage(types.MakeSigner(config, header.Number))
 	if err != nil {
 		return nil, err
@@ -530,5 +501,5 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 		vm.EVMInterpreterPool.Put(ite)
 		vm.EvmPool.Put(vmenv)
 	}()
-	return applyTransaction(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv, bloomProcessors)
+	return applyTransaction(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv, receiptProcessers...)
 }

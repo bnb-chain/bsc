@@ -26,6 +26,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
@@ -736,10 +737,10 @@ func (w *worker) updateSnapshot() {
 	w.snapshotState = w.current.state.Copy()
 }
 
-func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address, bloomProcessors chan *types.Receipt) ([]*types.Log, error) {
+func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address, receiptProcessers ...core.ReceiptProcesser) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig(), bloomProcessors)
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig(), receiptProcessers...)
 	if err != nil {
 		w.current.state.RevertToSnapshot(snap)
 		return nil, err
@@ -770,10 +771,8 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 		defer stopTimer.Stop()
 	}
 
-	// initilise bloom workers
-	bloomProcessors := make(chan *types.Receipt, txs.CurrentSize())
-	bloomResults := make(chan core.BloomTxMap, cap(bloomProcessors))
-	go core.BloomGenerator(bloomProcessors, bloomResults)
+	// initilise bloom processors
+	bloomProcessors := core.NewAsyncReceiptBloomGenertor(txs.CurrentSize(), gopool.Threads(txs.CurrentSize()))
 
 LOOP:
 	for {
@@ -865,19 +864,7 @@ LOOP:
 			txs.Shift()
 		}
 	}
-
-	close(bloomProcessors)
-	bloomMap := make(map[common.Hash]types.Bloom, cap(bloomProcessors))
-	for br := range bloomResults {
-		if _, ok := bloomMap[br.Txhash]; !ok {
-			bloomMap[br.Txhash] = br.Bloom
-		}
-	}
-	for _, receipt := range w.current.receipts {
-		if (receipt.Bloom == types.Bloom{}) {
-			receipt.Bloom = bloomMap[receipt.TxHash]
-		}
-	}
+	bloomProcessors.Close()
 
 	if !w.isRunning() && len(coalescedLogs) > 0 {
 		// We don't push the pendingLogsEvent while we are mining. The reason is that
