@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	mapset "github.com/deckarep/golang-set"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -68,9 +69,10 @@ func max(a, b int) int {
 type Peer struct {
 	id string // Unique ID for the peer, cached
 
-	*p2p.Peer                   // The embedded P2P package peer
-	rw        p2p.MsgReadWriter // Input/output streams for snap
-	version   uint              // Protocol version negotiated
+	*p2p.Peer                         // The embedded P2P package peer
+	rw              p2p.MsgReadWriter // Input/output streams for snap
+	version         uint              // Protocol version negotiated
+	statusExtension *UpgradeStatusExtension
 
 	head common.Hash // Latest advertised head block hash
 	td   *big.Int    // Latest advertised head block total difficulty
@@ -84,8 +86,9 @@ type Peer struct {
 	txBroadcast chan []common.Hash // Channel used to queue transaction propagation requests
 	txAnnounce  chan []common.Hash // Channel used to queue transaction announcement requests
 
-	term chan struct{} // Termination channel to stop the broadcasters
-	lock sync.RWMutex  // Mutex protecting the internal fields
+	term   chan struct{} // Termination channel to stop the broadcasters
+	txTerm chan struct{} // Termination channel to stop the tx broadcasters
+	lock   sync.RWMutex  // Mutex protecting the internal fields
 }
 
 // NewPeer create a wrapper for a network connection and negotiated  protocol
@@ -104,6 +107,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Pe
 		txAnnounce:      make(chan []common.Hash),
 		txpool:          txpool,
 		term:            make(chan struct{}),
+		txTerm:          make(chan struct{}),
 	}
 	// Start up all the broadcasters
 	go peer.broadcastBlocks()
@@ -119,6 +123,17 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Pe
 // clean it up!
 func (p *Peer) Close() {
 	close(p.term)
+
+	p.CloseTxBroadcast()
+}
+
+// CloseTxBroadcast signals the tx broadcast goroutine to terminate.
+func (p *Peer) CloseTxBroadcast() {
+	select {
+	case <-p.txTerm:
+	default:
+		close(p.txTerm)
+	}
 }
 
 // ID retrieves the peer's unique identifier.
@@ -212,6 +227,10 @@ func (p *Peer) AsyncSendTransactions(hashes []common.Hash) {
 		for _, hash := range hashes {
 			p.knownTxs.Add(hash)
 		}
+
+	case <-p.txTerm:
+		p.Log().Debug("Dropping transaction propagation", "count", len(hashes))
+
 	case <-p.term:
 		p.Log().Debug("Dropping transaction propagation", "count", len(hashes))
 	}
@@ -247,6 +266,10 @@ func (p *Peer) AsyncSendPooledTransactionHashes(hashes []common.Hash) {
 		for _, hash := range hashes {
 			p.knownTxs.Add(hash)
 		}
+
+	case <-p.txTerm:
+		p.Log().Debug("Dropping transaction announcement", "count", len(hashes))
+
 	case <-p.term:
 		p.Log().Debug("Dropping transaction announcement", "count", len(hashes))
 	}

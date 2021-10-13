@@ -78,22 +78,24 @@ type txPool interface {
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	Database        ethdb.Database            // Database for direct sync insertions
-	Chain           *core.BlockChain          // Blockchain to serve data from
-	TxPool          txPool                    // Transaction pool to propagate from
-	Network         uint64                    // Network identifier to adfvertise
-	Sync            downloader.SyncMode       // Whether to fast or full sync
-	DiffSync        bool                      // Whether to diff sync
-	BloomCache      uint64                    // Megabytes to alloc for fast sync bloom
-	EventMux        *event.TypeMux            // Legacy event mux, deprecate for `feed`
-	Checkpoint      *params.TrustedCheckpoint // Hard coded checkpoint for sync challenges
-	Whitelist       map[uint64]common.Hash    // Hard coded whitelist for sync challenged
-	DirectBroadcast bool
+	Database               ethdb.Database            // Database for direct sync insertions
+	Chain                  *core.BlockChain          // Blockchain to serve data from
+	TxPool                 txPool                    // Transaction pool to propagate from
+	Network                uint64                    // Network identifier to adfvertise
+	Sync                   downloader.SyncMode       // Whether to fast or full sync
+	DiffSync               bool                      // Whether to diff sync
+	BloomCache             uint64                    // Megabytes to alloc for fast sync bloom
+	EventMux               *event.TypeMux            // Legacy event mux, deprecate for `feed`
+	Checkpoint             *params.TrustedCheckpoint // Hard coded checkpoint for sync challenges
+	Whitelist              map[uint64]common.Hash    // Hard coded whitelist for sync challenged
+	DirectBroadcast        bool
+	DisablePeerTxBroadcast bool
 }
 
 type handler struct {
-	networkID  uint64
-	forkFilter forkid.Filter // Fork ID filter, constant across the lifetime of the node
+	networkID              uint64
+	forkFilter             forkid.Filter // Fork ID filter, constant across the lifetime of the node
+	disablePeerTxBroadcast bool
 
 	fastSync        uint32 // Flag whether fast sync is enabled (gets disabled if we already have blocks)
 	snapSync        uint32 // Flag whether fast sync should operate on top of the snap protocol
@@ -138,18 +140,19 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		config.EventMux = new(event.TypeMux) // Nicety initialization for tests
 	}
 	h := &handler{
-		networkID:       config.Network,
-		forkFilter:      forkid.NewFilter(config.Chain),
-		eventMux:        config.EventMux,
-		database:        config.Database,
-		txpool:          config.TxPool,
-		chain:           config.Chain,
-		peers:           newPeerSet(),
-		whitelist:       config.Whitelist,
-		directBroadcast: config.DirectBroadcast,
-		diffSync:        config.DiffSync,
-		txsyncCh:        make(chan *txsync),
-		quitSync:        make(chan struct{}),
+		networkID:              config.Network,
+		forkFilter:             forkid.NewFilter(config.Chain),
+		disablePeerTxBroadcast: config.DisablePeerTxBroadcast,
+		eventMux:               config.EventMux,
+		database:               config.Database,
+		txpool:                 config.TxPool,
+		chain:                  config.Chain,
+		peers:                  newPeerSet(),
+		whitelist:              config.Whitelist,
+		directBroadcast:        config.DirectBroadcast,
+		diffSync:               config.DiffSync,
+		txsyncCh:               make(chan *txsync),
+		quitSync:               make(chan struct{}),
 	}
 	if config.Sync == downloader.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the fast
@@ -276,7 +279,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		td      = h.chain.GetTd(hash, number)
 	)
 	forkID := forkid.NewID(h.chain.Config(), h.chain.Genesis().Hash(), h.chain.CurrentHeader().Number.Uint64())
-	if err := peer.Handshake(h.networkID, td, hash, genesis.Hash(), forkID, h.forkFilter); err != nil {
+	if err := peer.Handshake(h.networkID, td, hash, genesis.Hash(), forkID, h.forkFilter, &eth.UpgradeStatusExtension{DisablePeerTxBroadcast: h.disablePeerTxBroadcast}); err != nil {
 		peer.Log().Debug("Ethereum handshake failed", "err", err)
 		return err
 	}
