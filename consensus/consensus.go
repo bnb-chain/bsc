@@ -49,6 +49,9 @@ type ChainHeaderReader interface {
 
 	// GetHeaderByHash retrieves a block header from the database by its hash.
 	GetHeaderByHash(hash common.Hash) *types.Header
+
+	// GetHighestVerifiedHeader retrieves the highest header verified.
+	GetHighestVerifiedHeader() *types.Header
 }
 
 // ChainReader defines a small collection of methods needed to access the local
