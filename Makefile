@@ -33,7 +33,7 @@ ios:
 	@echo "Import \"$(GOBIN)/Geth.framework\" to use the library."
 
 test: all
-	$(GORUN) build/ci.go test
+	$(GORUN) build/ci.go test -timeout 1h
 
 lint: ## Run linters.
 	$(GORUN) build/ci.go lint

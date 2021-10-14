@@ -599,27 +599,6 @@ func testCallContract(t *testing.T, client *rpc.Client) {
 	}
 }
 
-func sendTransaction(ec *Client) error {
-	// Retrieve chainID
-	chainID, err := ec.ChainID(context.Background())
-	if err != nil {
-		return err
-	}
-	// Create transaction
-	tx := types.NewTransaction(0, common.Address{1}, big.NewInt(1), 23000, big.NewInt(100000), nil)
-	signer := types.LatestSignerForChainID(chainID)
-	signature, err := crypto.Sign(signer.Hash(tx).Bytes(), testKey)
-	if err != nil {
-		return err
-	}
-	signedTx, err := tx.WithSignature(signer, signature)
-	if err != nil {
-		return err
-	}
-	// Send transaction
-	return ec.SendTransaction(context.Background(), signedTx)
-}
-
 func testDiffAccounts(t *testing.T, client *rpc.Client) {
 	ec := NewClient(client)
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)

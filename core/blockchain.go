@@ -2161,8 +2161,16 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 		return
 	}
 
-	newTD := big.NewInt(0).Add(bc.GetTdByHash(header.ParentHash), header.Difficulty)
-	oldTD := big.NewInt(0).Add(bc.GetTdByHash(currentHeader.ParentHash), currentHeader.Difficulty)
+	newParentTD := bc.GetTdByHash(header.ParentHash)
+	if newParentTD == nil {
+		newParentTD = big.NewInt(0)
+	}
+	oldParentTD := bc.GetTdByHash(currentHeader.ParentHash)
+	if oldParentTD == nil {
+		oldParentTD = big.NewInt(0)
+	}
+	newTD := big.NewInt(0).Add(newParentTD, header.Difficulty)
+	oldTD := big.NewInt(0).Add(oldParentTD, currentHeader.Difficulty)
 
 	if newTD.Cmp(oldTD) > 0 {
 		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
