@@ -31,7 +31,7 @@ func NewAsyncReceiptBloomGenerator(txNums int) *AsyncReceiptBloomGenerator {
 	generator := &AsyncReceiptBloomGenerator{
 		receipts: make(chan *types.Receipt, txNums),
 	}
-	generator.startWorker(1)
+	generator.startWorker()
 	return generator
 }
 
@@ -41,18 +41,16 @@ type AsyncReceiptBloomGenerator struct {
 	isClosed bool
 }
 
-func (p *AsyncReceiptBloomGenerator) startWorker(workerSize int) {
-	p.wg.Add(workerSize)
-	for i := 0; i < workerSize; i++ {
-		go func() {
-			defer p.wg.Done()
-			for receipt := range p.receipts {
-				if receipt != nil && bytes.Equal(receipt.Bloom[:], types.EmptyBloom[:]) {
-					receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
-				}
+func (p *AsyncReceiptBloomGenerator) startWorker() {
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		for receipt := range p.receipts {
+			if receipt != nil && bytes.Equal(receipt.Bloom[:], types.EmptyBloom[:]) {
+				receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 			}
-		}()
-	}
+		}
+	}()
 }
 
 func (p *AsyncReceiptBloomGenerator) Apply(receipt *types.Receipt) {
