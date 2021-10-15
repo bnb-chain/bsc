@@ -26,7 +26,6 @@ import (
 
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
@@ -772,7 +771,7 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	}
 
 	// initilise bloom processors
-	bloomProcessors := core.NewAsyncReceiptBloomGenerator(txs.CurrentSize(), gopool.Threads(1))
+	bloomProcessors := core.NewAsyncReceiptBloomGenerator(txs.CurrentSize(), 1)
 
 LOOP:
 	for {
