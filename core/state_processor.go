@@ -396,7 +396,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	commonTxs := make([]*types.Transaction, 0, txNum)
 
 	// initilise bloom processors
-	bloomProcessors := NewAsyncReceiptBloomGenertor(txNum, gopool.Threads(txNum))
+	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum, gopool.Threads(txNum))
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)

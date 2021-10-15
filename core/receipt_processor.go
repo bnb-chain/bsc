@@ -12,23 +12,23 @@ type ReceiptProcessor interface {
 }
 
 var (
-	_ ReceiptProcessor = (*ReceiptBloomGenertor)(nil)
-	_ ReceiptProcessor = (*AsyncReceiptBloomGenertor)(nil)
+	_ ReceiptProcessor = (*ReceiptBloomGenerator)(nil)
+	_ ReceiptProcessor = (*AsyncReceiptBloomGenerator)(nil)
 )
 
-func NewReceiptBloomGenertor() *ReceiptBloomGenertor {
-	return &ReceiptBloomGenertor{}
+func NewReceiptBloomGenerator() *ReceiptBloomGenerator {
+	return &ReceiptBloomGenerator{}
 }
 
-type ReceiptBloomGenertor struct {
+type ReceiptBloomGenerator struct {
 }
 
-func (p *ReceiptBloomGenertor) Apply(receipt *types.Receipt) {
+func (p *ReceiptBloomGenerator) Apply(receipt *types.Receipt) {
 	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 }
 
-func NewAsyncReceiptBloomGenertor(length, workerSize int) *AsyncReceiptBloomGenertor {
-	generator := &AsyncReceiptBloomGenertor{
+func NewAsyncReceiptBloomGenerator(length, workerSize int) *AsyncReceiptBloomGenerator {
+	generator := &AsyncReceiptBloomGenerator{
 		receipts: make(chan *types.Receipt, length),
 		wg:       sync.WaitGroup{},
 	}
@@ -36,12 +36,12 @@ func NewAsyncReceiptBloomGenertor(length, workerSize int) *AsyncReceiptBloomGene
 	return generator
 }
 
-type AsyncReceiptBloomGenertor struct {
+type AsyncReceiptBloomGenerator struct {
 	receipts chan *types.Receipt
 	wg       sync.WaitGroup
 }
 
-func (p *AsyncReceiptBloomGenertor) startWorker(workerSize int) {
+func (p *AsyncReceiptBloomGenerator) startWorker(workerSize int) {
 	p.wg.Add(workerSize)
 	for i := 0; i < workerSize; i++ {
 		go func() {
@@ -55,11 +55,11 @@ func (p *AsyncReceiptBloomGenertor) startWorker(workerSize int) {
 	}
 }
 
-func (p *AsyncReceiptBloomGenertor) Apply(receipt *types.Receipt) {
+func (p *AsyncReceiptBloomGenerator) Apply(receipt *types.Receipt) {
 	p.receipts <- receipt
 }
 
-func (p *AsyncReceiptBloomGenertor) Close() {
+func (p *AsyncReceiptBloomGenerator) Close() {
 	close(p.receipts)
 	p.wg.Wait()
 }
