@@ -38,6 +38,7 @@ func NewAsyncReceiptBloomGenerator(txNums, workerSize int) *AsyncReceiptBloomGen
 type AsyncReceiptBloomGenerator struct {
 	receipts chan *types.Receipt
 	wg       sync.WaitGroup
+	isClosed bool
 }
 
 func (p *AsyncReceiptBloomGenerator) startWorker(workerSize int) {
@@ -55,10 +56,13 @@ func (p *AsyncReceiptBloomGenerator) startWorker(workerSize int) {
 }
 
 func (p *AsyncReceiptBloomGenerator) Apply(receipt *types.Receipt) {
-	p.receipts <- receipt
+	if ! p.isClosed {
+		p.receipts <- receipt
+	}
 }
 
 func (p *AsyncReceiptBloomGenerator) Close() {
 	close(p.receipts)
+	p.isClosed = true
 	p.wg.Wait()
 }
