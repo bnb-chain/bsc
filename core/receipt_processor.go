@@ -27,11 +27,11 @@ func (p *ReceiptBloomGenerator) Apply(receipt *types.Receipt) {
 	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 }
 
-func NewAsyncReceiptBloomGenerator(txNums, workerSize int) *AsyncReceiptBloomGenerator {
+func NewAsyncReceiptBloomGenerator(txNums int) *AsyncReceiptBloomGenerator {
 	generator := &AsyncReceiptBloomGenerator{
 		receipts: make(chan *types.Receipt, txNums),
 	}
-	generator.startWorker(workerSize)
+	generator.startWorker(1)
 	return generator
 }
 

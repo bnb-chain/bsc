@@ -775,7 +775,7 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	if txs.CurrentSize() < processorCapacity {
 		processorCapacity = txs.CurrentSize()
 	}
-	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity, 1)
+	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
 
 LOOP:
 	for {
