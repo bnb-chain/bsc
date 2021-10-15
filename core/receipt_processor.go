@@ -56,7 +56,7 @@ func (p *AsyncReceiptBloomGenerator) startWorker(workerSize int) {
 }
 
 func (p *AsyncReceiptBloomGenerator) Apply(receipt *types.Receipt) {
-	if ! p.isClosed {
+	if !p.isClosed {
 		p.receipts <- receipt
 	}
 }
