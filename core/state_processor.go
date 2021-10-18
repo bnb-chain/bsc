@@ -42,11 +42,10 @@ import (
 )
 
 const (
-	fullProcessCheck          = 21 // On diff sync mode, will do full process every fullProcessCheck randomly
-	minNumberOfAccountPerTask = 5
-	recentTime                = 2048 * 3
-	recentDiffLayerTimeout    = 20
-	farDiffLayerTimeout       = 2
+	fullProcessCheck       = 21 // On diff sync mode, will do full process every fullProcessCheck randomly
+	recentTime             = 2048 * 3
+	recentDiffLayerTimeout = 20
+	farDiffLayerTimeout    = 2
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning

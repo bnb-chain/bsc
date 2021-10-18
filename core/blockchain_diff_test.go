@@ -216,8 +216,6 @@ func rawDataToDiffLayer(data rlp.RawValue) (*types.DiffLayer, error) {
 }
 
 func TestProcessDiffLayer(t *testing.T) {
-	t.Parallel()
-
 	blockNum := 128
 	fullBackend := newTestBackend(blockNum, false)
 	falseDiff := 5
@@ -279,8 +277,6 @@ func TestProcessDiffLayer(t *testing.T) {
 }
 
 func TestFreezeDiffLayer(t *testing.T) {
-	t.Parallel()
-
 	blockNum := 1024
 	fullBackend := newTestBackend(blockNum, true)
 	defer fullBackend.close()
@@ -302,8 +298,6 @@ func TestFreezeDiffLayer(t *testing.T) {
 }
 
 func TestPruneDiffLayer(t *testing.T) {
-	t.Parallel()
-
 	blockNum := 1024
 	fullBackend := newTestBackend(blockNum, true)
 	defer fullBackend.close()
@@ -363,8 +357,6 @@ func TestPruneDiffLayer(t *testing.T) {
 }
 
 func TestGetDiffAccounts(t *testing.T) {
-	t.Parallel()
-
 	blockNum := 128
 	fullBackend := newTestBackend(blockNum, false)
 	defer fullBackend.close()

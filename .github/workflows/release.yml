@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         go-version: [1.16.x]
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-18.04, macos-11, windows-2019]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install Go
@@ -22,6 +22,22 @@ jobs:
 
       - name: Checkout Code
         uses: actions/checkout@v2
+
+      - uses: actions/cache@v2
+        with:
+          # In order:
+          # * Module download cache
+          # * Build cache (Linux)
+          # * Build cache (Mac)
+          # * Build cache (Windows)
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+            %LocalAppData%\go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
       # ==============================
       #       Linux/Macos/Windows Build
@@ -36,21 +52,21 @@ jobs:
 
       - name: Upload Linux Build
         uses: actions/upload-artifact@v2
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-18.04'
         with:
           name: linux
           path: ./build/bin/geth
 
       - name: Upload MacOS Build
         uses: actions/upload-artifact@v2
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-11'
         with:
           name: macos
           path: ./build/bin/geth
       
       - name: Upload Windows Build
         uses: actions/upload-artifact@v2
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2019'
         with:
           name: windows
           path: ./build/bin/geth.exe
@@ -58,7 +74,7 @@ jobs:
   release:
     name: Release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     steps:
       - name: Set Env
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
