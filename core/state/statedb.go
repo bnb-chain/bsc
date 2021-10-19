@@ -1203,6 +1203,36 @@ func (s *StateDB) LightCommit(root common.Hash) (common.Hash, *types.DiffLayer, 
 	return root, s.diffLayer, nil
 }
 
+func commitTrieMTP(s *StateDB) error {
+	// Write the account trie changes, measuing the amount of wasted time
+	var start time.Time
+	if metrics.EnabledExpensive {
+		start = time.Now()
+	}
+	// The onleaf func is called _serially_, so we can reuse the same account
+	// for unmarshalling every time.
+	var account Account
+	root, err := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash) error {
+		if err := rlp.DecodeBytes(leaf, &account); err != nil {
+			return nil
+		}
+		if account.Root != emptyRoot {
+			s.db.TrieDB().Reference(account.Root, parent)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if metrics.EnabledExpensive {
+		s.AccountCommits += time.Since(start)
+	}
+	if root != emptyRoot {
+		s.db.CacheAccount(root, s.trie)
+	}
+	return nil
+}
+
 // Commit writes the state to the underlying in-memory trie database.
 func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer, error) {
 	if s.dbErr != nil {
@@ -1291,34 +1321,18 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 			if len(s.stateObjectsDirty) > 0 {
 				s.stateObjectsDirty = make(map[common.Address]struct{}, len(s.stateObjectsDirty)/2)
 			}
-			// Write the account trie changes, measuing the amount of wasted time
-			var start time.Time
-			if metrics.EnabledExpensive {
-				start = time.Now()
+
+			var err error = nil
+			if s.snap != nil {
+				// If have snap, commit the MPT tries into database async
+				go commitTrieMTP(s)
+			} else {
+				// if no snap,  wait for commit the MPT tries into database
+				err = commitTrieMTP(s)
 			}
-			// The onleaf func is called _serially_, so we can reuse the same account
-			// for unmarshalling every time.
-			var account Account
-			root, err := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash) error {
-				if err := rlp.DecodeBytes(leaf, &account); err != nil {
-					return nil
-				}
-				if account.Root != emptyRoot {
-					s.db.TrieDB().Reference(account.Root, parent)
-				}
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-			if metrics.EnabledExpensive {
-				s.AccountCommits += time.Since(start)
-			}
-			if root != emptyRoot {
-				s.db.CacheAccount(root, s.trie)
-			}
+
 			wg.Wait()
-			return nil
+			return err
 		},
 		func() error {
 			// If snapshotting is enabled, update the snapshot tree with this new version
