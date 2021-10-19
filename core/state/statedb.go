@@ -1324,10 +1324,10 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 
 			var err error = nil
 			if s.snap != nil {
-				// If have snap, commit the MPT tries into database async
+				// If have snap, wait for parent commit, then, commit the MPT tries into database async
 				go commitTrieMTP(s)
 			} else {
-				// if no snap,  wait for commit the MPT tries into database
+				// if no snap, commit the MPT tries into database
 				err = commitTrieMTP(s)
 			}
 
