@@ -40,6 +40,7 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			utils.KeyStoreDirFlag,
 			utils.NoUSBFlag,
 			utils.DirectBroadcastFlag,
+			utils.DisableSnapProtocolFlag,
 			utils.RangeLimitFlag,
 			utils.SmartCardDaemonPathFlag,
 			utils.NetworkIdFlag,

@@ -1,0 +1,49 @@
+[Eth]
+NetworkId = {{NetworkId}}
+SyncMode = "full"
+NoPruning = false
+NoPrefetch = false
+LightPeers = 100
+DatabaseCache = 512
+DatabaseFreezer = ""
+TrieCleanCache = 256
+TrieDirtyCache = 256
+TrieTimeout = 6000000000
+EnablePreimageRecording = false
+EWASMInterpreter = ""
+EVMInterpreter = ""
+
+[Eth.Ethash]
+CacheDir = ""
+CachesInMem = 0
+CachesOnDisk = 0
+CachesLockMmap = false
+DatasetDir = ""
+DatasetsInMem = 0
+DatasetsOnDisk = 0
+DatasetsLockMmap = false
+PowMode = 0
+
+[Eth.GPO]
+Blocks = 20
+Percentile = 60
+OracleThreshold = 100
+
+[Node]
+DataDir = ""
+InsecureUnlockAllowed = false
+NoUSB = true
+IPCPath = "geth.ipc"
+
+[Node.P2P]
+MaxPeers = 50
+NoDiscovery = false
+BootstrapNodes = []
+StaticNodes = []
+TrustedNodes = []
+ListenAddr = ":30311"
+EnableMsgEvents = false
+
+[Node.HTTPTimeouts]
+ReadTimeout = 30000000000
+WriteTimeout = 30000000000

@@ -49,6 +49,9 @@ type ChainHeaderReader interface {
 
 	// GetHeaderByHash retrieves a block header from the database by its hash.
 	GetHeaderByHash(hash common.Hash) *types.Header
+
+	// GetHighestVerifiedHeader retrieves the highest header verified.
+	GetHighestVerifiedHeader() *types.Header
 }
 
 // ChainReader defines a small collection of methods needed to access the local
@@ -141,4 +144,5 @@ type PoSA interface {
 	IsSystemContract(to *common.Address) bool
 	EnoughDistance(chain ChainReader, header *types.Header) bool
 	IsLocalBlock(header *types.Header) bool
+	AllowLightProcess(chain ChainReader, currentHeader *types.Header) bool
 }

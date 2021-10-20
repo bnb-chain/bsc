@@ -186,6 +186,20 @@ func (ec *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.H
 	return head, err
 }
 
+// GetDiffAccounts returns changed accounts in a specific block number.
+func (ec *Client) GetDiffAccounts(ctx context.Context, number *big.Int) ([]common.Address, error) {
+	accounts := make([]common.Address, 0)
+	err := ec.c.CallContext(ctx, &accounts, "eth_getDiffAccounts", toBlockNumArg(number))
+	return accounts, err
+}
+
+// GetDiffAccountsWithScope returns detailed changes of some interested accounts in a specific block number.
+func (ec *Client) GetDiffAccountsWithScope(ctx context.Context, number *big.Int, accounts []common.Address) (*types.DiffAccountsInBlock, error) {
+	var result types.DiffAccountsInBlock
+	err := ec.c.CallContext(ctx, &result, "eth_getDiffAccountsWithScope", toBlockNumArg(number), accounts)
+	return &result, err
+}
+
 type rpcTransaction struct {
 	tx *types.Transaction
 	txExtraInfo
