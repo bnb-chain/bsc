@@ -2486,9 +2486,12 @@ func (bc *BlockChain) update() {
 }
 
 func (bc *BlockChain) trustedDiffLayerLoop() {
-	recheck := time.Tick(diffLayerFreezerRecheckInterval)
+	recheck := time.NewTicker(diffLayerFreezerRecheckInterval)
 	bc.wg.Add(1)
-	defer bc.wg.Done()
+	defer func() {
+		bc.wg.Done()
+		recheck.Stop()
+	}()
 	for {
 		select {
 		case diff := <-bc.diffQueueBuffer:
@@ -2521,28 +2524,27 @@ func (bc *BlockChain) trustedDiffLayerLoop() {
 				batch.Reset()
 			}
 			return
-		case <-recheck:
+		case <-recheck.C:
 			currentHeight := bc.CurrentBlock().NumberU64()
 			var batch ethdb.Batch
 			for !bc.diffQueue.Empty() {
 				diff, prio := bc.diffQueue.Pop()
 				diffLayer := diff.(*types.DiffLayer)
 
-				// if the block old enough
-				if int64(currentHeight)+prio >= int64(bc.triesInMemory) {
-					canonicalHash := bc.GetCanonicalHash(uint64(-prio))
-					// on the canonical chain
-					if canonicalHash == diffLayer.BlockHash {
-						if batch == nil {
-							batch = bc.db.DiffStore().NewBatch()
-						}
-						rawdb.WriteDiffLayer(batch, diffLayer.BlockHash, diffLayer)
-						staleHash := bc.GetCanonicalHash(uint64(-prio) - bc.diffLayerFreezerBlockLimit)
-						rawdb.DeleteDiffLayer(batch, staleHash)
-					}
-				} else {
+				// if the block not old enough
+				if int64(currentHeight)+prio < int64(bc.triesInMemory) {
 					bc.diffQueue.Push(diffLayer, prio)
 					break
+				}
+				canonicalHash := bc.GetCanonicalHash(uint64(-prio))
+				// on the canonical chain
+				if canonicalHash == diffLayer.BlockHash {
+					if batch == nil {
+						batch = bc.db.DiffStore().NewBatch()
+					}
+					rawdb.WriteDiffLayer(batch, diffLayer.BlockHash, diffLayer)
+					staleHash := bc.GetCanonicalHash(uint64(-prio) - bc.diffLayerFreezerBlockLimit)
+					rawdb.DeleteDiffLayer(batch, staleHash)
 				}
 				if batch != nil && batch.ValueSize() > ethdb.IdealBatchSize {
 					if err := batch.Write(); err != nil {
