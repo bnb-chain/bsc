@@ -329,6 +329,8 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 	}
 
 	logger := log.New("system-contract-upgrade", network)
+	logger.Info("genesis", "genesis", GenesisHash.String(), "network", network, "number", blockNumber.String())
+
 	if config.IsOnRamanujan(blockNumber) {
 		applySystemContractUpgrade(ramanujanUpgrade[network], blockNumber, statedb, logger)
 	}
