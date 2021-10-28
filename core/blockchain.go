@@ -2069,6 +2069,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 
 		// Validate the state using the default validator
 		substart = time.Now()
+
+		root := statedb.IntermediateRoot(bc.Config().IsEIP158(block.Header().Number))
+		log.Info("header root", "root", root.String(), "header root", block.Header().Root.String())
+
 		if !statedb.IsLightProcessed() {
 			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
 				log.Error("validate state failed", "error", err)
