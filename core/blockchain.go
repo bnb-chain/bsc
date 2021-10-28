@@ -1659,6 +1659,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}()
 	// Commit all cached state changes into underlying memory database.
 	root, diffLayer, err := state.Commit(bc.chainConfig.IsEIP158(block.Number()))
+	log.Info("commit root", "root", root.String())
 	if err != nil {
 		return NonStatTy, err
 	}
