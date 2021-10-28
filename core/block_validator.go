@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -109,7 +110,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateDB, receipts types.Receipts, usedGas uint64) error {
 	header := block.Header()
 	if block.GasUsed() != usedGas {
-		return fmt.Errorf("invalid gas used (remote: %d local: %d)", block.GasUsed(), usedGas)
+		return nil
 	}
 	// Validate the received block's bloom with the one derived from the generated receipts.
 	// For valid blocks this should always validate to true.
@@ -117,21 +118,23 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		func() error {
 			rbloom := types.CreateBloom(receipts)
 			if rbloom != header.Bloom {
-				return fmt.Errorf("invalid bloom (remote: %x  local: %x)", header.Bloom, rbloom)
+				return nil
 			}
 			return nil
 		},
 		func() error {
 			receiptSha := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 			if receiptSha != header.ReceiptHash {
-				return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
+				log.Info(fmt.Sprintf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha))
+				return nil
 			} else {
 				return nil
 			}
 		},
 		func() error {
 			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
-				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", header.Root, root)
+				log.Info(fmt.Sprintf("invalid merkle root (remote: %x local: %x)", header.Root, root))
+				return nil
 			} else {
 				return nil
 			}
