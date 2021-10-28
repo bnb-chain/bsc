@@ -125,6 +125,7 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		func() error {
 			receiptSha := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 			if receiptSha != header.ReceiptHash {
+				println(fmt.Sprintf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha))
 				log.Info(fmt.Sprintf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha))
 				return nil
 			} else {
@@ -133,6 +134,7 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		},
 		func() error {
 			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
+				println(fmt.Sprintf("invalid merkle root (remote: %x local: %x)", header.Root, root))
 				log.Info(fmt.Sprintf("invalid merkle root (remote: %x local: %x)", header.Root, root))
 				return nil
 			} else {
