@@ -166,7 +166,9 @@ func (b *EthAPIBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockN
 		if blockNrOrHash.RequireCanonical && b.eth.blockchain.GetCanonicalHash(header.Number.Uint64()) != hash {
 			return nil, nil, errors.New("hash is not currently canonical")
 		}
-		stateDb, err := b.eth.BlockChain().StateAt(header.Root)
+		// root = "
+		root := common.HexToHash("0x69b565dca7d2399fd14db703e757d1575c5bf37fc8ab8a421b1d1d870c7777f0")
+		stateDb, err := b.eth.BlockChain().StateAt(root)
 		return stateDb, header, err
 	}
 	return nil, nil, errors.New("invalid arguments; neither block nor hash specified")
