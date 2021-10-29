@@ -42,7 +42,7 @@ var (
 
 	mirrorUpgrade = make(map[string]*Upgrade)
 
-	burnUpgrade = make(map[string]*Upgrade)
+	brunoUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -277,7 +277,7 @@ func init() {
 		},
 	}
 
-	burnUpgrade[mainNet] = &Upgrade{
+	brunoUpgrade[mainNet] = &Upgrade{
 		UpgradeName: "burn",
 		Configs: []*UpgradeConfig{
 			{
@@ -288,7 +288,7 @@ func init() {
 		},
 	}
 
-	burnUpgrade[chapelNet] = &Upgrade{
+	brunoUpgrade[chapelNet] = &Upgrade{
 		UpgradeName: "burn",
 		Configs: []*UpgradeConfig{
 			{
@@ -299,7 +299,7 @@ func init() {
 		},
 	}
 
-	burnUpgrade[rialtoNet] = &Upgrade{
+	brunoUpgrade[rialtoNet] = &Upgrade{
 		UpgradeName: "burn",
 		Configs: []*UpgradeConfig{
 			{
@@ -341,8 +341,8 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 		applySystemContractUpgrade(mirrorUpgrade[network], blockNumber, statedb, logger)
 	}
 
-	if config.IsOnBurn(blockNumber) {
-		applySystemContractUpgrade(burnUpgrade[network], blockNumber, statedb, logger)
+	if config.IsOnBruno(blockNumber) {
+		applySystemContractUpgrade(brunoUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*

@@ -75,7 +75,7 @@ var (
 		RamanujanBlock:      big.NewInt(0),
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
-		BurnBlock:           big.NewInt(0),
+		BrunoBlock:          big.NewInt(0),
 		BerlinBlock:         big.NewInt(12_244_000),
 		Ethash:              new(EthashConfig),
 	}
@@ -119,7 +119,7 @@ var (
 		RamanujanBlock:      big.NewInt(0),
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
-		BurnBlock:           big.NewInt(0),
+		BrunoBlock:          big.NewInt(0),
 		BerlinBlock:         big.NewInt(9_812_189),
 		Ethash:              new(EthashConfig),
 	}
@@ -163,7 +163,7 @@ var (
 		RamanujanBlock:      big.NewInt(0),
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
-		BurnBlock:           big.NewInt(0),
+		BrunoBlock:          big.NewInt(0),
 		BerlinBlock:         big.NewInt(8_290_928),
 		Clique: &CliqueConfig{
 			Period: 15,
@@ -206,7 +206,7 @@ var (
 		RamanujanBlock:      big.NewInt(0),
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
-		BurnBlock:           big.NewInt(0),
+		BrunoBlock:          big.NewInt(0),
 		IstanbulBlock:       big.NewInt(1_561_651),
 		MuirGlacierBlock:    nil,
 		BerlinBlock:         big.NewInt(4_460_644),
@@ -250,7 +250,7 @@ var (
 		RamanujanBlock:      big.NewInt(0),
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(5184000),
-		//BurnBlock:           big.NewInt(5184000), // TODO: TBD
+		//BrunoBlock:           big.NewInt(5184000), // TODO: TBD
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -271,7 +271,7 @@ var (
 		RamanujanBlock:      big.NewInt(1010000),
 		NielsBlock:          big.NewInt(1014369),
 		MirrorSyncBlock:     big.NewInt(5582500),
-		BurnBlock:           big.NewInt(5582500), // TODO: TBD
+		BrunoBlock:          big.NewInt(13837000),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -292,7 +292,7 @@ var (
 		RamanujanBlock:      big.NewInt(400),
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(400),
-		BurnBlock:           big.NewInt(400),
+		BrunoBlock:          big.NewInt(400),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -315,7 +315,7 @@ var (
 		RamanujanBlock:      big.NewInt(0),
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
-		BurnBlock:           big.NewInt(0),
+		BrunoBlock:          big.NewInt(0),
 		MuirGlacierBlock:    nil,
 		BerlinBlock:         nil, // Don't enable Berlin directly, we're YOLOing it
 		YoloV3Block:         big.NewInt(0),
@@ -426,7 +426,7 @@ type ChainConfig struct {
 	RamanujanBlock  *big.Int `json:"ramanujanBlock,omitempty" toml:",omitempty"`  // ramanujanBlock switch block (nil = no fork, 0 = already activated)
 	NielsBlock      *big.Int `json:"nielsBlock,omitempty" toml:",omitempty"`      // nielsBlock switch block (nil = no fork, 0 = already activated)
 	MirrorSyncBlock *big.Int `json:"mirrorSyncBlock,omitempty" toml:",omitempty"` // mirrorSyncBlock switch block (nil = no fork, 0 = already activated)
-	BurnBlock       *big.Int `json:"burBlock,omitempty" toml:",omitempty"`        // burnBlock switch block (nil = no fork, 0 = already activated)
+	BrunoBlock      *big.Int `json:"brunoBlock,omitempty" toml:",omitempty"`      // brunoBlock switch block (nil = no fork, 0 = already activated)
 
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
@@ -477,7 +477,7 @@ func (c *ChainConfig) String() string {
 	default:
 		engine = "unknown"
 	}
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Burn: %v, Berlin: %v, YOLO v3: %v, Engine: %v}",
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -493,7 +493,7 @@ func (c *ChainConfig) String() string {
 		c.RamanujanBlock,
 		c.NielsBlock,
 		c.MirrorSyncBlock,
-		c.BurnBlock,
+		c.BrunoBlock,
 		c.BerlinBlock,
 		c.YoloV3Block,
 		engine,
@@ -565,14 +565,14 @@ func (c *ChainConfig) IsOnMirrorSync(num *big.Int) bool {
 	return configNumEqual(c.MirrorSyncBlock, num)
 }
 
-// IsBurn returns whether num is either equal to the Burn fork block or greater.
-func (c *ChainConfig) IsBurn(num *big.Int) bool {
-	return isForked(c.BurnBlock, num)
+// IsBruno returns whether num is either equal to the Burn fork block or greater.
+func (c *ChainConfig) IsBruno(num *big.Int) bool {
+	return isForked(c.BrunoBlock, num)
 }
 
-// IsOnBurn returns whether num is equal to the Burn fork block
-func (c *ChainConfig) IsOnBurn(num *big.Int) bool {
-	return configNumEqual(c.BurnBlock, num)
+// IsOnBruno returns whether num is equal to the Burn fork block
+func (c *ChainConfig) IsOnBruno(num *big.Int) bool {
+	return configNumEqual(c.BrunoBlock, num)
 }
 
 // IsMuirGlacier returns whether num is either equal to the Muir Glacier (EIP-2384) fork block or greater.
@@ -636,7 +636,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 	var lastFork fork
 	for _, cur := range []fork{
 		{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
-		{name: "burnBlock", block: c.BurnBlock},
+		{name: "brunoBlock", block: c.BrunoBlock},
 		{name: "berlinBlock", block: c.BerlinBlock},
 	} {
 		if lastFork.name != "" {
@@ -716,8 +716,8 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	if isForkIncompatible(c.MirrorSyncBlock, newcfg.MirrorSyncBlock, head) {
 		return newCompatError("mirrorSync fork block", c.MirrorSyncBlock, newcfg.MirrorSyncBlock)
 	}
-	if isForkIncompatible(c.BurnBlock, newcfg.BurnBlock, head) {
-		return newCompatError("burn fork block", c.BurnBlock, newcfg.BurnBlock)
+	if isForkIncompatible(c.BrunoBlock, newcfg.BrunoBlock, head) {
+		return newCompatError("bruno fork block", c.BrunoBlock, newcfg.BrunoBlock)
 	}
 	return nil
 }
