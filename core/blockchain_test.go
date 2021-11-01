@@ -1568,8 +1568,8 @@ func TestLargeReorgTrieGC(t *testing.T) {
 		t.Fatalf("failed to finalize competitor chain: %v", err)
 	}
 	for i, block := range competitor[:len(competitor)-TestTriesInMemory] {
-		if node, _ := chain.stateCache.TrieDB().Node(block.Root()); node != nil {
-			t.Fatalf("competitor %d: competing chain state missing", i)
+		if node, err := chain.stateCache.TrieDB().Node(block.Root()); node != nil {
+			t.Fatalf("competitor %d: competing chain state missing, err: %v", i, err)
 		}
 	}
 }
