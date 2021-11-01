@@ -250,7 +250,7 @@ var (
 		RamanujanBlock:      big.NewInt(0),
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(5184000),
-		//BrunoBlock:           big.NewInt(5184000), // TODO: TBD
+		BrunoBlock:          nil,
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,

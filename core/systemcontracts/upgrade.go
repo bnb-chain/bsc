@@ -278,7 +278,7 @@ func init() {
 	}
 
 	brunoUpgrade[mainNet] = &Upgrade{
-		UpgradeName: "burn",
+		UpgradeName: "bruno",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
@@ -289,7 +289,7 @@ func init() {
 	}
 
 	brunoUpgrade[chapelNet] = &Upgrade{
-		UpgradeName: "burn",
+		UpgradeName: "bruno",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
@@ -300,7 +300,7 @@ func init() {
 	}
 
 	brunoUpgrade[rialtoNet] = &Upgrade{
-		UpgradeName: "burn",
+		UpgradeName: "bruno",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
