@@ -958,6 +958,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	if s.lightProcessed {
+		s.StopPrefetcher()
 		return s.trie.Hash()
 	}
 	// Finalise all the dirty storage states and write them into the tries

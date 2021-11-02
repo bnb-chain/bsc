@@ -144,13 +144,15 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			validateRes <- tmpFunc()
 		}()
 	}
+
+	var err error
 	for i := 0; i < len(validateFuns); i++ {
 		r := <-validateRes
-		if r != nil {
-			return r
+		if r != nil && err == nil {
+			err = r
 		}
 	}
-	return nil
+	return err
 }
 
 // CalcGasLimit computes the gas limit of the next block after parent. It aims

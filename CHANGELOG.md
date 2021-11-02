@@ -1,4 +1,16 @@
 # Changelog
+## v1.1.4
+Improvement
+* [\#472](https://github.com/binance-chain/bsc/pull/472) add metrics for contract code bitmap cache
+* [\#473](https://github.com/binance-chain/bsc/pull/473) fix ci test flow
+
+BUGFIX
+* [\#491](https://github.com/binance-chain/bsc/pull/491) fix prefetcher related bugs
+
+FEATURES
+* [\#480](https://github.com/binance-chain/bsc/pull/480) implement bep 95
+
+
 ## v1.1.3
 Improvement
 * [\#456](https://github.com/binance-chain/bsc/pull/456) git-flow support lint, unit test, and integration test

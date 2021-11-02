@@ -22,12 +22,18 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/holiman/uint256"
 )
 
 const codeBitmapCacheSize = 2000
 
-var codeBitmapCache, _ = lru.New(codeBitmapCacheSize)
+var (
+	codeBitmapCache, _ = lru.New(codeBitmapCacheSize)
+
+	contractCodeBitmapHitMeter  = metrics.NewRegisteredMeter("vm/contract/code/bitmap/hit", nil)
+	contractCodeBitmapMissMeter = metrics.NewRegisteredMeter("vm/contract/code/bitmap/miss", nil)
+)
 
 // ContractRef is a reference to the contract's backing object
 type ContractRef interface {
@@ -117,12 +123,14 @@ func (c *Contract) isCode(udest uint64) bool {
 		analysis, exist := c.jumpdests[c.CodeHash]
 		if !exist {
 			if cached, ok := codeBitmapCache.Get(c.CodeHash); ok {
+				contractCodeBitmapHitMeter.Mark(1)
 				analysis = cached.(bitvec)
 			} else {
 				// Do the analysis and save in parent context
 				// We do not need to store it in c.analysis
 				analysis = codeBitmap(c.Code)
 				c.jumpdests[c.CodeHash] = analysis
+				contractCodeBitmapMissMeter.Mark(1)
 				codeBitmapCache.Add(c.CodeHash, analysis)
 			}
 		}
