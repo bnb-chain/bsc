@@ -51,7 +51,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/tyler-smith/go-bip39"
-	"golang.org/x/crypto/sha3"
 )
 
 const UnHealthyTimeout = 5 * time.Second
@@ -2403,7 +2402,7 @@ func NewBundleAPI(b Backend, chain *core.BlockChain) *BundleAPI {
 
 // SendBundleArgs represents the arguments for a call.
 type CallBundleArgs struct {
-	Txs                    []hexutil.Bytes       `json:"txs"`
+	Txs                    []CallArgs            `json:"txs"`
 	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
 	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
 	Coinbase               *string               `json:"coinbase"`
@@ -2428,13 +2427,10 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		return nil, errors.New("bundle missing blockNumber")
 	}
 
-	var txs types.Transactions
+	var txs []types.Message
 
 	for _, encodedTx := range args.Txs {
-		tx := new(types.Transaction)
-		if err := tx.UnmarshalBinary(encodedTx); err != nil {
-			return nil, err
-		}
+		tx := encodedTx.ToMessage(25000000)
 		txs = append(txs, tx)
 	}
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
@@ -2500,33 +2496,35 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	results := []map[string]interface{}{}
 	coinbaseBalanceBefore := state.GetBalance(coinbase)
 
-	bundleHash := sha3.NewLegacyKeccak256()
-	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber)
+	// bundleHash := sha3.NewLegacyKeccak256()
+	// signer := types.MakeSigner(s.b.ChainConfig(), blockNumber)
 	var totalGasUsed uint64
 	gasFees := new(big.Int)
 	for i, tx := range txs {
+		nonce := state.GetNonce(tx.From())
+		expectedTx := types.NewTransaction(nonce, *tx.To(), tx.Value(), tx.Gas(), tx.GasPrice(), tx.Data())
 		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-		state.Prepare(tx.Hash(), common.Hash{}, i)
+		state.Prepare(expectedTx.Hash(), common.Hash{}, i)
 
-		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
+		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, expectedTx, &header.GasUsed, vmconfig)
 		if err != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+			return nil, fmt.Errorf("err: %w; txhash %s", err, expectedTx.Hash())
 		}
 
-		txHash := tx.Hash().String()
-		from, err := types.Sender(signer, tx)
-		if err != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-		to := "0x"
-		if tx.To() != nil {
-			to = tx.To().String()
-		}
+		// txHash := expectedTx.Hash().String()
+		// from, err := types.Sender(signer, expectedTx)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		// }
+		// to := "0x"
+		// if tx.To() != nil {
+		// 	to = tx.To().String()
+		// }
 		jsonResult := map[string]interface{}{
-			"txHash":      txHash,
+			// "txHash":      txHash,
 			"gasUsed":     receipt.GasUsed,
-			"fromAddress": from.String(),
-			"toAddress":   to,
+			// "fromAddress": from.String(),
+			// "toAddress":   to,
 		}
 		totalGasUsed += receipt.GasUsed
 		// gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
@@ -2535,7 +2533,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		// }
 		// gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
 		// gasFees.Add(gasFees, gasFeesTx)
-		bundleHash.Write(tx.Hash().Bytes())
+		// bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
 			jsonResult["error"] = result.Err.Error()
 			revert := result.Revert()
@@ -2569,6 +2567,6 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	ret["totalGasUsed"] = totalGasUsed
 	ret["stateBlockNumber"] = parent.Number.Int64()
 
-	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
+	// ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 	return ret, nil
 }

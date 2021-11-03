@@ -39,6 +39,8 @@ profile.cov
 # VS Code
 .vscode
 
+czejn
+
 # dashboard
 /dashboard/assets/flow-typed
 /dashboard/assets/node_modules
