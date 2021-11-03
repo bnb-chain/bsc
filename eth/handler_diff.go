@@ -33,6 +33,15 @@ func (h *diffHandler) Chain() *core.BlockChain { return h.chain }
 // RunPeer is invoked when a peer joins on the `diff` protocol.
 func (h *diffHandler) RunPeer(peer *diff.Peer, hand diff.Handler) error {
 	if err := peer.Handshake(h.diffSync); err != nil {
+		// ensure that waitDiffExtension receives the exit signal normally
+		// otherwise, can't graceful shutdown
+		ps := h.peers
+		id := peer.ID()
+
+		if wait, ok := ps.diffWait[id]; ok {
+			delete(ps.diffWait, id)
+			wait <- peer
+		}
 		return err
 	}
 	defer h.chain.RemoveDiffPeer(peer.ID())
