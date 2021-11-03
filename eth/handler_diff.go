@@ -38,10 +38,13 @@ func (h *diffHandler) RunPeer(peer *diff.Peer, hand diff.Handler) error {
 		ps := h.peers
 		id := peer.ID()
 
+		// Ensure nobody can double connect
+		ps.lock.Lock()
 		if wait, ok := ps.diffWait[id]; ok {
 			delete(ps.diffWait, id)
 			wait <- peer
 		}
+		ps.lock.Unlock()
 		return err
 	}
 	defer h.chain.RemoveDiffPeer(peer.ID())
