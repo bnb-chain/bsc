@@ -2423,10 +2423,11 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
 	}
+	blockHeader, _ := s.b.HeaderByNumber(context.Background(), rpc.LatestBlockNumber)
 	var blockNumber *big.Int;
 	// blockNumber = big.NewInt(int64(args.BlockNumber));
 	if args.BlockNumber == 0 {
-		blockNumber = big.NewInt(int64(rpc.EarliestBlockNumber));
+		blockNumber = blockHeader.Number;
 	} else {
 		blockNumber = big.NewInt(int64(args.BlockNumber));
 	}
@@ -2444,7 +2445,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		timeoutMilliSeconds = *args.Timeout
 	}
 	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
-	state, parent, err := s.b.StateAndHeaderByNumber(ctx, rpc.EarliestBlockNumber)
+	state, parent, err := s.b.StateAndHeaderByNumber(ctx, rpc.LatestBlockNumber)
 	if state == nil || err != nil {
 		return nil, err
 	}
