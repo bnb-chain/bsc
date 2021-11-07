@@ -279,7 +279,7 @@ func (b *EthAPIBackend) SuggestPrice(ctx context.Context) (*big.Int, error) {
 	return b.gpo.SuggestPrice(ctx)
 }
 
-func (b *EthAPIBackend) Chain() *core.BlockChain  {
+func (b *EthAPIBackend) Chain() *core.BlockChain {
 	return b.eth.BlockChain()
 }
 

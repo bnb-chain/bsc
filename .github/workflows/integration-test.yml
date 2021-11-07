@@ -1,0 +1,25 @@
+name: Integration Test
+
+on:
+  push:
+    branches: 
+      - master
+      - develop
+
+  pull_request:
+    branches: 
+      - master
+      - develop
+
+jobs:
+  truffle-test:
+    strategy:
+      matrix:
+        os: [ubuntu-18.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Truffle test
+      run: make truffle-test

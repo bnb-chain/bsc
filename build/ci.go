@@ -279,6 +279,7 @@ func doTest(cmdline []string) {
 		cc       = flag.String("cc", "", "Sets C compiler binary")
 		coverage = flag.Bool("coverage", false, "Whether to record code coverage")
 		verbose  = flag.Bool("v", false, "Whether to log verbosely")
+		timeout  = flag.String("timeout", "10m", `Timeout of runing tests`)
 	)
 	flag.CommandLine.Parse(cmdline)
 
@@ -298,6 +299,9 @@ func doTest(cmdline []string) {
 	}
 	if *verbose {
 		gotest.Args = append(gotest.Args, "-v")
+	}
+	if *timeout != "" {
+		gotest.Args = append(gotest.Args, []string{"-timeout", *timeout}...)
 	}
 
 	packages := []string{"./accounts/...", "./common/...", "./consensus/...", "./console/...", "./core/...",
