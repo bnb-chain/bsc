@@ -68,6 +68,8 @@ const (
 	closedState
 )
 
+const chainDataHandlesPercentage = 80
+
 // New creates a new P2P node, ready for protocol registration.
 func New(conf *Config) (*Node, error) {
 	// Copy config and resolve the datadir so future changes to the current
@@ -580,12 +582,16 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 }
 
 func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, diff, namespace string, readonly, persistDiff bool) (ethdb.Database, error) {
-	chainDB, err := n.OpenDatabaseWithFreezer(name, cache, handles, freezer, namespace, readonly)
+	chainDataHandles := handles
+	if persistDiff {
+		chainDataHandles = handles * chainDataHandlesPercentage / 100
+	}
+	chainDB, err := n.OpenDatabaseWithFreezer(name, cache, chainDataHandles, freezer, namespace, readonly)
 	if err != nil {
 		return nil, err
 	}
 	if persistDiff {
-		diffStore, err := n.OpenDiffDatabase(name, handles, diff, namespace, readonly)
+		diffStore, err := n.OpenDiffDatabase(name, handles-chainDataHandles, diff, namespace, readonly)
 		if err != nil {
 			chainDB.Close()
 			return nil, err

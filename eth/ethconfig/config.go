@@ -80,7 +80,7 @@ var Defaults = Config{
 	TrieTimeout:             60 * time.Minute,
 	TriesInMemory:           128,
 	SnapshotCache:           102,
-	DiffBlock:               uint64(864000),
+	DiffBlock:               uint64(86400),
 	Miner: miner.Config{
 		GasFloor:      8000000,
 		GasCeil:       8000000,

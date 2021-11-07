@@ -322,7 +322,7 @@ func TestPruneDiffLayer(t *testing.T) {
 	if len(fullBackend.chain.diffNumToBlockHashes) != maxDiffForkDist {
 		t.Error("unexpected size of diffNumToBlockHashes")
 	}
-	if len(fullBackend.chain.diffPeersToDiffHashes) != 2 {
+	if len(fullBackend.chain.diffPeersToDiffHashes) != 1 {
 		t.Error("unexpected size of diffPeersToDiffHashes")
 	}
 	if len(fullBackend.chain.blockHashToDiffLayers) != maxDiffForkDist {

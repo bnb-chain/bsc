@@ -47,7 +47,6 @@ func (h *diffHandler) RunPeer(peer *diff.Peer, hand diff.Handler) error {
 		ps.lock.Unlock()
 		return err
 	}
-	defer h.chain.RemoveDiffPeer(peer.ID())
 	return (*handler)(h).runDiffExtension(peer, hand)
 }
 
