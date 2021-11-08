@@ -818,12 +818,16 @@ func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	defer bc.chainmu.Unlock()
 
 	// Prepare the genesis block and reinitialise the chain
-	batch := bc.db.NewBatch()
-	rawdb.WriteTd(batch, genesis.Hash(), genesis.NumberU64(), genesis.Difficulty())
-	rawdb.WriteBlock(batch, genesis)
-	if err := batch.Write(); err != nil {
-		log.Crit("Failed to write genesis block", "err", err)
-	}
+	//batch := bc.db.NewBatch()
+	//rawdb.WriteTd(batch, genesis.Hash(), genesis.NumberU64(), genesis.Difficulty())
+	//rawdb.WriteBlock(batch, genesis)
+	//rawdb.WriteHeader(bc.db, genesis.Header())
+	rawdb.WriteHeaderNumber(bc.db, genesis.Header().Hash(), genesis.Header().Number.Uint64())
+
+	rawdb.WriteAncientBlock(bc.db, genesis, nil, genesis.Difficulty())
+	// if err := batch.Write(); err != nil {
+	// 	log.Crit("Failed to write genesis block", "err", err)
+	// }
 	bc.writeHeadBlock(genesis)
 
 	// Last update all in-memory chain markers
@@ -1497,7 +1501,8 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 				}
 			}
 			// Write all the data out into the database
-			rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
+			//rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
+			rawdb.WriteAncientBlock(bc.db, block, receiptChain[i], bc.GetTd(block.Hash(), block.NumberU64()))
 			rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
 			rawdb.WriteTxLookupEntriesByBlock(batch, block) // Always write tx indices for live blocks, we assume they are needed
 
@@ -1593,7 +1598,10 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 
 	batch := bc.db.NewBatch()
 	rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), td)
-	rawdb.WriteBlock(batch, block)
+	//rawdb.WriteBlock(batch, block)
+	//rawdb.WriteHeader(bc.db, block.Header())
+	rawdb.WriteHeaderNumber(bc.db, block.Header().Hash(), block.Header().Number.Uint64())
+	rawdb.WriteAncientBlock(bc.db, block, nil, block.Difficulty())
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
@@ -1647,10 +1655,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
+		rawdb.WriteAncientBlock(bc.db, block, receipts, externTd)
 		blockBatch := bc.db.NewBatch()
-		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
-		rawdb.WriteBlock(blockBatch, block)
-		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
+		//rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
+		//rawdb.WriteBlock(blockBatch, block)
+		//rawdb.WriteHeader(bc.db, block.Header())
+		//rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
+		rawdb.WriteHeaderNumber(bc.db, block.Header().Hash(), block.Header().Number.Uint64())
 		rawdb.WritePreimages(blockBatch, state.Preimages())
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)

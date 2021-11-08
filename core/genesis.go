@@ -318,9 +318,12 @@ func (g *Genesis) Commit(db ethdb.Database) (*types.Block, error) {
 	if err := config.CheckConfigForkOrder(); err != nil {
 		return nil, err
 	}
-	rawdb.WriteTd(db, block.Hash(), block.NumberU64(), g.Difficulty)
-	rawdb.WriteBlock(db, block)
-	rawdb.WriteReceipts(db, block.Hash(), block.NumberU64(), nil)
+	//rawdb.WriteTd(db, block.Hash(), block.NumberU64(), g.Difficulty)
+	//rawdb.WriteBlock(db, block)
+	//rawdb.WriteHeader(db, block.Header())
+	rawdb.WriteHeaderNumber(db, block.Header().Hash(), block.Header().Number.Uint64())
+	rawdb.WriteAncientBlock(db, block, nil, g.Difficulty)
+	//rawdb.WriteReceipts(db, block.Hash(), block.NumberU64(), nil)
 	rawdb.WriteCanonicalHash(db, block.Hash(), block.NumberU64())
 	rawdb.WriteHeadBlockHash(db, block.Hash())
 	rawdb.WriteHeadFastBlockHash(db, block.Hash())
