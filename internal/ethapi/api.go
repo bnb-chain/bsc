@@ -1098,7 +1098,21 @@ func (s *PublicBlockChainAPI) GetDiffAccounts(ctx context.Context, blockNr rpc.B
 		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
 	}
 
-	return s.b.Chain().GetDiffAccounts(header.Hash())
+	accounts, err := s.b.Chain().GetDiffAccounts(header.Hash())
+	if err == nil || !errors.Is(err, core.ErrDiffLayerNotFound) {
+		return accounts, err
+	}
+
+	// Replay the block when diff layer not found, it is very slow.
+	block, err := s.b.BlockByNumber(ctx, blockNr)
+	if err != nil {
+		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
+	}
+	_, statedb, err := s.replay(ctx, block, nil)
+	if err != nil {
+		return nil, err
+	}
+	return statedb.GetDirtyAccounts(), nil
 }
 
 func (s *PublicBlockChainAPI) needToReplay(ctx context.Context, block *types.Block, accounts []common.Address) (bool, error) {
@@ -1161,36 +1175,20 @@ func (s *PublicBlockChainAPI) needToReplay(ctx context.Context, block *types.Blo
 	return false, nil
 }
 
-// GetDiffAccountsWithScope returns detailed changes of some interested accounts in a specific block number.
-func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, blockNr rpc.BlockNumber, accounts []common.Address) (*types.DiffAccountsInBlock, error) {
-	if s.b.Chain() == nil {
-		return nil, fmt.Errorf("blockchain not support get diff accounts")
-	}
-
-	block, err := s.b.BlockByNumber(ctx, blockNr)
-	if err != nil {
-		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
-	}
-
+func (s *PublicBlockChainAPI) replay(ctx context.Context, block *types.Block, accounts []common.Address) (*types.DiffAccountsInBlock, *state.StateDB, error) {
 	result := &types.DiffAccountsInBlock{
-		Number:       uint64(blockNr),
+		Number:       block.NumberU64(),
 		BlockHash:    block.Hash(),
 		Transactions: make([]types.DiffAccountsInTx, 0),
 	}
 
-	if needReplay, err := s.needToReplay(ctx, block, accounts); err != nil {
-		return nil, err
-	} else if !needReplay {
-		return result, nil
-	}
-
 	parent, err := s.b.BlockByHash(ctx, block.ParentHash())
 	if err != nil {
-		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr-1, err)
+		return nil, nil, fmt.Errorf("block not found for block number (%d): %v", block.NumberU64()-1, err)
 	}
 	statedb, err := s.b.Chain().StateAt(parent.Root())
 	if err != nil {
-		return nil, fmt.Errorf("state not found for block number (%d): %v", blockNr-1, err)
+		return nil, nil, fmt.Errorf("state not found for block number (%d): %v", block.NumberU64()-1, err)
 	}
 
 	accountSet := make(map[common.Address]struct{}, len(accounts))
@@ -1240,7 +1238,7 @@ func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, bloc
 		}
 
 		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
-			return nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
+			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
 		statedb.Finalise(vmenv.ChainConfig().IsEIP158(block.Number()))
 
@@ -1259,7 +1257,34 @@ func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, bloc
 		}
 	}
 
-	return result, nil
+	return result, statedb, nil
+}
+
+// GetDiffAccountsWithScope returns detailed changes of some interested accounts in a specific block number.
+func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, blockNr rpc.BlockNumber, accounts []common.Address) (*types.DiffAccountsInBlock, error) {
+	if s.b.Chain() == nil {
+		return nil, fmt.Errorf("blockchain not support get diff accounts")
+	}
+
+	block, err := s.b.BlockByNumber(ctx, blockNr)
+	if err != nil {
+		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
+	}
+
+	needReplay, err := s.needToReplay(ctx, block, accounts)
+	if err != nil {
+		return nil, err
+	}
+	if !needReplay {
+		return &types.DiffAccountsInBlock{
+			Number:       uint64(blockNr),
+			BlockHash:    block.Hash(),
+			Transactions: make([]types.DiffAccountsInTx, 0),
+		}, nil
+	}
+
+	result, _, err := s.replay(ctx, block, accounts)
+	return result, err
 }
 
 // ExecutionResult groups all structured logs emitted by the EVM

@@ -1493,3 +1493,11 @@ func (s *StateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addre
 	}
 	return s.accessList.Contains(addr, slot)
 }
+
+func (s *StateDB) GetDirtyAccounts() []common.Address {
+	accounts := make([]common.Address, 0, len(s.stateObjectsDirty))
+	for account := range s.stateObjectsDirty {
+		accounts = append(accounts, account)
+	}
+	return accounts
+}

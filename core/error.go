@@ -31,6 +31,9 @@ var (
 
 	// ErrNoGenesis is returned when there is no Genesis Block.
 	ErrNoGenesis = errors.New("genesis not found in chain")
+
+	// ErrDiffLayerNotFound is returned when diff layer not found.
+	ErrDiffLayerNotFound = errors.New("diff layer not found")
 )
 
 // List of evm-call-message pre-checking errors. All state transition messages will
