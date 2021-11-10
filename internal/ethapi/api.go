@@ -1101,6 +1101,66 @@ func (s *PublicBlockChainAPI) GetDiffAccounts(ctx context.Context, blockNr rpc.B
 	return s.b.Chain().GetDiffAccounts(header.Hash())
 }
 
+func (s *PublicBlockChainAPI) needToReplay(ctx context.Context, block *types.Block, accounts []common.Address) (bool, error) {
+	receipts, err := s.b.GetReceipts(ctx, block.Hash())
+	if err != nil || len(receipts) != len(block.Transactions()) {
+		return false, fmt.Errorf("receipt incorrect for block number (%d): %v", block.NumberU64(), err)
+	}
+
+	accountSet := make(map[common.Address]struct{}, len(accounts))
+	for _, account := range accounts {
+		accountSet[account] = struct{}{}
+	}
+	spendValueMap := make(map[common.Address]int64, len(accounts))
+	receiveValueMap := make(map[common.Address]int64, len(accounts))
+
+	signer := types.MakeSigner(s.b.ChainConfig(), block.Number())
+	for index, tx := range block.Transactions() {
+		receipt := receipts[index]
+		from, err := types.Sender(signer, tx)
+		if err != nil {
+			return false, fmt.Errorf("get sender for tx failed: %v", err)
+		}
+
+		if _, exists := accountSet[from]; exists {
+			spendValueMap[from] += int64(receipt.GasUsed) * tx.GasPrice().Int64()
+			if receipt.Status == types.ReceiptStatusSuccessful {
+				spendValueMap[from] += tx.Value().Int64()
+			}
+		}
+
+		if tx.To() == nil {
+			continue
+		}
+
+		if _, exists := accountSet[*tx.To()]; exists && receipt.Status == types.ReceiptStatusSuccessful {
+			receiveValueMap[*tx.To()] += tx.Value().Int64()
+		}
+	}
+
+	parent, err := s.b.BlockByHash(ctx, block.ParentHash())
+	if err != nil {
+		return false, fmt.Errorf("block not found for block number (%d): %v", block.NumberU64()-1, err)
+	}
+	parentState, err := s.b.Chain().StateAt(parent.Root())
+	if err != nil {
+		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64()-1, err)
+	}
+	currentState, err := s.b.Chain().StateAt(block.Root())
+	if err != nil {
+		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64(), err)
+	}
+	for _, account := range accounts {
+		parentBalance := parentState.GetBalance(account).Int64()
+		currentBalance := currentState.GetBalance(account).Int64()
+		if receiveValueMap[account]-spendValueMap[account] != currentBalance-parentBalance {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // GetDiffAccountsWithScope returns detailed changes of some interested accounts in a specific block number.
 func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, blockNr rpc.BlockNumber, accounts []common.Address) (*types.DiffAccountsInBlock, error) {
 	if s.b.Chain() == nil {
@@ -1111,6 +1171,19 @@ func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, bloc
 	if err != nil {
 		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
 	}
+
+	result := &types.DiffAccountsInBlock{
+		Number:       uint64(blockNr),
+		BlockHash:    block.Hash(),
+		Transactions: make([]types.DiffAccountsInTx, 0),
+	}
+
+	if needReplay, err := s.needToReplay(ctx, block, accounts); err != nil {
+		return nil, err
+	} else if !needReplay {
+		return result, nil
+	}
+
 	parent, err := s.b.BlockByHash(ctx, block.ParentHash())
 	if err != nil {
 		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr-1, err)
@@ -1118,12 +1191,6 @@ func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, bloc
 	statedb, err := s.b.Chain().StateAt(parent.Root())
 	if err != nil {
 		return nil, fmt.Errorf("state not found for block number (%d): %v", blockNr-1, err)
-	}
-
-	result := &types.DiffAccountsInBlock{
-		Number:       uint64(blockNr),
-		BlockHash:    block.Hash(),
-		Transactions: make([]types.DiffAccountsInTx, 0),
 	}
 
 	accountSet := make(map[common.Address]struct{}, len(accounts))

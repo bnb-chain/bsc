@@ -17,7 +17,7 @@ const (
 	softResponseLimit = 2 * 1024 * 1024
 
 	// maxDiffLayerServe is the maximum number of diff layers to serve.
-	maxDiffLayerServe = 1024
+	maxDiffLayerServe = 128
 )
 
 var requestTracker = NewTracker(time.Minute)
