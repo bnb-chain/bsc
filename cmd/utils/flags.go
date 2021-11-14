@@ -134,6 +134,10 @@ var (
 		Name:  "datadir.ancient",
 		Usage: "Data directory for ancient chain segments (default = inside chaindata)",
 	}
+	AncientBackUpFlag = DirectoryFlag{
+		Name:  "datadir.ancient",
+		Usage: "Data directory for ancient directory backup (default = inside chaindata)",
+	}
 	DiffFlag = DirectoryFlag{
 		Name:  "datadir.diff",
 		Usage: "Data directory for difflayer segments (default = inside chaindata)",

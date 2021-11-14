@@ -22,12 +22,15 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -35,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -85,6 +89,15 @@ type Pruner struct {
 	triesInMemory uint64
 }
 
+type BlockPruner struct {
+	db           ethdb.Database
+	chaindbDir   string
+	ancientdbDir string
+	headHeader   *types.Header
+	n            *node.Node
+	genesis      *core.Genesis
+}
+
 // NewPruner creates the pruner instance.
 func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, triesInMemory uint64) (*Pruner, error) {
 	headBlock := rawdb.ReadHeadBlock(db)
@@ -112,6 +125,17 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 		triesInMemory: triesInMemory,
 		headHeader:    headBlock.Header(),
 		snaptree:      snaptree,
+	}, nil
+}
+
+func NewBlockPruner(db ethdb.Database, n *node.Node, chaindbDir, ancientdbDir string, genesis *core.Genesis) (*BlockPruner, error) {
+
+	return &BlockPruner{
+		db:           db,
+		chaindbDir:   chaindbDir,
+		ancientdbDir: ancientdbDir,
+		n:            n,
+		genesis:      genesis,
 	}, nil
 }
 
@@ -231,6 +255,111 @@ func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, sta
 	}
 	log.Info("State pruning successful", "pruned", size, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
+}
+
+// Prune block body data
+func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFreezer, namespace string, readonly bool) error {
+	//Back-up the necessary data within original ancient directory, create new freezer backup directory backFreezer
+	//db, err = rawdb.NewLevelDBDatabaseWithFreezer(root, cache, handles, backFreezer, namespace, readonly)
+	start := time.Now()
+	chainDb := p.db
+	chainDbBack, err := p.n.OpenDatabaseWithFreezer(name, cache, handles, backFreezer, namespace, readonly)
+	if err != nil {
+		log.Error("Failed to open ancient database: %v", err)
+		return err
+	}
+
+	//write back-up data to new chainDb
+	// Restore the last known head block
+
+	//write genesis block firstly
+	genesis := p.genesis
+	if _, _, err := core.SetupGenesisBlock(chainDbBack, genesis); err != nil {
+		log.Error("Failed to write genesis block: %v", err)
+		return err
+	}
+
+	//write most recent 128 blocks data
+	headBlock := rawdb.ReadHeadBlock(chainDb)
+	if headBlock == nil {
+		return errors.New("Failed to load head block")
+	}
+	lastBlockNumber := headBlock.NumberU64()
+
+	//For block number 1 to current block-128, only back-up receipts, difficulties, block number->hash but no body data anymore
+	for blockNumber := lastBlockNumber - 128; blockNumber >= 1; blockNumber-- {
+		blockHash := rawdb.ReadCanonicalHash(chainDb, blockNumber)
+		block := rawdb.ReadBlock(chainDb, blockHash, blockNumber)
+		receipts := rawdb.ReadRawReceipts(chainDb, blockHash, blockNumber)
+		// Calculate the total difficulty of the block
+		td := rawdb.ReadTd(chainDb, blockHash, blockNumber)
+		if td == nil {
+			return consensus.ErrUnknownAncestor
+		}
+		externTd := new(big.Int).Add(block.Difficulty(), td)
+		// Encode all block components to RLP format.
+		headerBlob, err := rlp.EncodeToBytes(block.Header())
+		if err != nil {
+			log.Crit("Failed to RLP encode block header", "err", err)
+		}
+
+		storageReceipts := make([]*types.ReceiptForStorage, len(receipts))
+		for i, receipt := range receipts {
+			storageReceipts[i] = (*types.ReceiptForStorage)(receipt)
+		}
+		receiptBlob, err := rlp.EncodeToBytes(storageReceipts)
+		if err != nil {
+			log.Crit("Failed to RLP encode block receipts", "err", err)
+		}
+		tdBlob, err := rlp.EncodeToBytes(externTd)
+		if err != nil {
+			log.Crit("Failed to RLP encode block total difficulty", "err", err)
+		}
+		// Write all blob to flatten files.
+		err = chainDbBack.AppendAncientNoBody(block.NumberU64(), block.Hash().Bytes(), headerBlob, receiptBlob, tdBlob)
+		if err != nil {
+			log.Crit("Failed to write block data to ancient store", "err", err)
+		}
+
+		return nil
+	}
+
+	//All ancient data within the most recent 128 blocks write into new ancient_back directory
+	for blockNumber := lastBlockNumber - 127; blockNumber <= lastBlockNumber; blockNumber++ {
+		blockHash := rawdb.ReadCanonicalHash(chainDb, blockNumber)
+		block := rawdb.ReadBlock(chainDb, blockHash, blockNumber)
+		receipts := rawdb.ReadRawReceipts(chainDb, blockHash, blockNumber)
+		// Calculate the total difficulty of the block
+		td := rawdb.ReadTd(chainDb, blockHash, blockNumber)
+		if td == nil {
+			return consensus.ErrUnknownAncestor
+		}
+		externTd := new(big.Int).Add(block.Difficulty(), td)
+		rawdb.WriteAncientBlock(chainDbBack, block, receipts, externTd)
+	}
+
+	chainDb.Close()
+	chainDbBack.Close()
+
+	log.Info("Block pruning BackUp successful", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+func BlockPrune(oldAncientPath, newAncientPath string) error {
+	//Delete directly for the old ancientdb, e.g.: path ../chaindb/ancient
+	if err := os.RemoveAll(oldAncientPath); err != nil {
+		log.Error("Failed to remove old ancient directory %v", err)
+
+		return err
+	}
+
+	//Rename the new ancientdb path same to the old
+	if err := os.Rename(newAncientPath, oldAncientPath); err != nil {
+		log.Error("Failed to rename new ancient directory %v", err)
+		return err
+	}
+	return nil
+
 }
 
 // Prune deletes all historical state nodes except the nodes belong to the
