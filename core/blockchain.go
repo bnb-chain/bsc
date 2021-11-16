@@ -1011,7 +1011,7 @@ func (bc *BlockChain) GetDiffAccounts(blockHash common.Hash) ([]common.Address, 
 
 	if diffLayer == nil {
 		if header.TxHash != types.EmptyRootHash {
-			return nil, fmt.Errorf("no diff layer found")
+			return nil, ErrDiffLayerNotFound
 		}
 
 		return nil, nil
