@@ -1,4 +1,13 @@
 # Changelog
+## v1.1.5
+BUGFIX
+* [\#509](https://github.com/binance-chain/bsc/pull/509) fix graceful shutdown bug
+
+IMPROVEMENT
+* [\#536](https://github.com/binance-chain/bsc/pull/536) get diff accounts by replaying block when diff layer not found
+* [\#527](https://github.com/binance-chain/bsc/pull/527) improve diffsync protocol in many aspects
+* [\#493](https://github.com/binance-chain/bsc/pull/493) implement fast getDiffAccountsWithScope API
+
 ## v1.1.4
 Improvement
 * [\#472](https://github.com/binance-chain/bsc/pull/472) add metrics for contract code bitmap cache
