@@ -518,11 +518,11 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 	)
 	for i, tx := range block.Transactions() {
 		var (
-			msg, _    = tx.AsMessage(signer, block.BaseFee())
+			msg, _    = tx.AsMessage(signer)
 			txContext = core.NewEVMTxContext(msg)
 			vmenv     = vm.NewEVM(vmctx, txContext, statedb, chainConfig, vm.Config{})
 		)
-		statedb.Prepare(tx.Hash(), i)
+		statedb.Prepare(tx.Hash(), block.Hash(), i)
 		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas())); err != nil {
 			log.Warn("Tracing intermediate roots did not complete", "txindex", i, "txhash", tx.Hash(), "err", err)
 			// We intentionally don't return the error here: if we do, then the RPC server will not
