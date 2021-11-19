@@ -1933,6 +1933,47 @@ func TestTransactionSlotCount(t *testing.T) {
 	}
 }
 
+// Tests the local pending transaction announced again correctly.
+func TestTransactionPendingReannouce(t *testing.T) {
+	t.Parallel()
+
+	// Create the pool to test the limit enforcement with
+	statedb, _ := state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
+	blockchain := &testBlockChain{statedb, 1000000, new(event.Feed)}
+
+	config := testTxPoolConfig
+	// This ReannounceTime will be modified to time.Minute when creating tx_pool.
+	config.ReannounceTime = time.Second
+	reannounceInterval = time.Second
+
+	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	// Modify ReannounceTime to trigger quicker.
+	pool.config.ReannounceTime = time.Second
+	defer pool.Stop()
+
+	key, _ := crypto.GenerateKey()
+	account := crypto.PubkeyToAddress(key.PublicKey)
+	pool.currentState.AddBalance(account, big.NewInt(1000000))
+
+	events := make(chan ReannoTxsEvent, testTxPoolConfig.AccountQueue)
+	sub := pool.reannoTxFeed.Subscribe(events)
+	defer sub.Unsubscribe()
+
+	// Generate a batch of transactions and add to tx_pool locally.
+	txs := make([]*types.Transaction, 0, testTxPoolConfig.AccountQueue)
+	for i := uint64(0); i < testTxPoolConfig.AccountQueue; i++ {
+		txs = append(txs, transaction(i, 100000, key))
+	}
+	pool.AddLocals(txs)
+
+	select {
+	case ev := <-events:
+		t.Logf("received reannouce event, txs length: %d", len(ev.Txs))
+	case <-time.After(5 * time.Second):
+		t.Errorf("reannouce event not fired")
+	}
+}
+
 // Benchmarks the speed of validating the contents of the pending queue of the
 // transaction pool.
 func BenchmarkPendingDemotion100(b *testing.B)   { benchmarkPendingDemotion(b, 100) }
