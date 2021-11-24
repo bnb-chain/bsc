@@ -34,7 +34,6 @@ import (
 	"golang.org/x/crypto/ripemd160"
 
 	//Needed for SHA3-256 FIPS202 implementation
-	"encoding/hex"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -83,10 +82,6 @@ var PrecompiledContractsIstanbul = map[common.Address]PrecompiledContract{
 
 	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
 	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidate{},
-
-	//Precompiled contracts for sha3-256 FIPS202 & recover uncompressed public key
-	common.BytesToAddress([]byte{102}): &sha3fips{},
-	common.BytesToAddress([]byte{103}): &ecrecoverPublicKey{},
 }
 
 // PrecompiledContractsBerlin contains the default set of pre-compiled Ethereum
@@ -115,6 +110,24 @@ var PrecompiledContractsBLS = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{16}): &bls12381Pairing{},
 	common.BytesToAddress([]byte{17}): &bls12381MapG1{},
 	common.BytesToAddress([]byte{18}): &bls12381MapG2{},
+}
+
+// PrecompiledContractsHilbert contains the default set of pre-compiled Ethereum
+// contracts used in the Hilbert release.
+var PrecompiledContractsHilbert = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{1}): &ecrecover{},
+	common.BytesToAddress([]byte{2}): &sha256hash{},
+	common.BytesToAddress([]byte{3}): &ripemd160hash{},
+	common.BytesToAddress([]byte{4}): &dataCopy{},
+	common.BytesToAddress([]byte{5}): &bigModExp{eip2565: true},
+	common.BytesToAddress([]byte{6}): &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{9}): &blake2F{},
+
+	//Precompiled contracts for sha3-256 FIPS202 & recover uncompressed public key
+	common.BytesToAddress([]byte{102}): &sha3fips{},
+	common.BytesToAddress([]byte{103}): &ecrecoverPublicKey{},
 }
 
 var (
@@ -1063,12 +1076,10 @@ type sha3fips struct{}
 // This method does not require any overflow checking as the input size gas costs
 // required for anything significant is so high it's impossible to pay for.
 func (c *sha3fips) RequiredGas(input []byte) uint64 {
-	return uint64(len(input)+31)/32*params.Sha256PerWordGas + params.Sha256BaseGas
+	return uint64(len(input)+31)/32*params.Sha3FipsWordGas + params.Sha3FipsBaseGas
 }
 func (c *sha3fips) Run(input []byte) ([]byte, error) {
-	hexStr := common.Bytes2Hex(input)
-	pub, _ := hex.DecodeString(hexStr)
-	h := sha3.Sum256(pub[:])
+	h := sha3.Sum256(input)
 	return h[:], nil
 }
 

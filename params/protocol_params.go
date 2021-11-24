@@ -126,6 +126,10 @@ const (
 	IdentityBaseGas     uint64 = 15   // Base price for a data copy operation
 	IdentityPerWordGas  uint64 = 3    // Per-work price for a data copy operation
 
+	//SHA3-FIPS Precompiled contracts gas price esstimation as per ethereum yellow paper appendix G
+	Sha3FipsBaseGas uint64 = 30 // Once per SHA3-256 operation.
+	Sha3FipsWordGas uint64 = 6  // Once per word of the SHA3-256 operation's data.
+
 	Bn256AddGasByzantium             uint64 = 500    // Byzantium gas needed for an elliptic curve addition
 	Bn256AddGasIstanbul              uint64 = 150    // Gas needed for an elliptic curve addition
 	Bn256ScalarMulGasByzantium       uint64 = 40000  // Byzantium gas needed for an elliptic curve scalar multiplication
