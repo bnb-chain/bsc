@@ -406,14 +406,6 @@ type Context struct {
 	TxHash    common.Hash // Hash of the transaction being traced (zero if dangling call)
 }
 
-// Context contains some contextual infos for a transaction execution that is not
-// available from within the EVM object.
-type Context struct {
-	BlockHash common.Hash // Hash of the block the tx is contained within (zero if dangling tx or call)
-	TxIndex   int         // Index of the transaction within a block (zero if dangling tx or call)
-	TxHash    common.Hash // Hash of the transaction being traced (zero if dangling call)
-}
-
 // New instantiates a new tracer instance. code specifies a Javascript snippet,
 // which must evaluate to an expression returning an object with 'step', 'fault'
 // and 'result' functions.
