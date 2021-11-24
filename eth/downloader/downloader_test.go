@@ -565,7 +565,7 @@ func testThrottling(t *testing.T, protocol uint, mode SyncMode) {
 
 	// Wrap the importer to allow stepping
 	blocked, proceed := uint32(0), make(chan struct{})
-	tester.downloader.chainInsertHook = func(results []*fetchResult) {
+	tester.downloader.chainInsertHook = func(results []*fetchResult, _ chan struct{}) {
 		atomic.StoreUint32(&blocked, uint32(len(results)))
 		<-proceed
 	}

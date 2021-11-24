@@ -22,6 +22,8 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/eth/downloader"
+	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -43,6 +45,10 @@ var (
 	// errSnapWithoutEth is returned if a peer attempts to connect only on the
 	// snap protocol without advertizing the eth main protocol.
 	errSnapWithoutEth = errors.New("peer connected on snap without compatible eth support")
+
+	// errDiffWithoutEth is returned if a peer attempts to connect only on the
+	// diff protocol without advertizing the eth main protocol.
+	errDiffWithoutEth = errors.New("peer connected on diff without compatible eth support")
 )
 
 // peerSet represents the collection of active peers currently participating in
@@ -54,6 +60,9 @@ type peerSet struct {
 	snapWait map[string]chan *snap.Peer // Peers connected on `eth` waiting for their snap extension
 	snapPend map[string]*snap.Peer      // Peers connected on the `snap` protocol, but not yet on `eth`
 
+	diffWait map[string]chan *diff.Peer // Peers connected on `eth` waiting for their diff extension
+	diffPend map[string]*diff.Peer      // Peers connected on the `diff` protocol, but not yet on `eth`
+
 	lock   sync.RWMutex
 	closed bool
 }
@@ -64,6 +73,8 @@ func newPeerSet() *peerSet {
 		peers:    make(map[string]*ethPeer),
 		snapWait: make(map[string]chan *snap.Peer),
 		snapPend: make(map[string]*snap.Peer),
+		diffWait: make(map[string]chan *diff.Peer),
+		diffPend: make(map[string]*diff.Peer),
 	}
 }
 
@@ -94,6 +105,36 @@ func (ps *peerSet) registerSnapExtension(peer *snap.Peer) error {
 		return nil
 	}
 	ps.snapPend[id] = peer
+	return nil
+}
+
+// registerDiffExtension unblocks an already connected `eth` peer waiting for its
+// `diff` extension, or if no such peer exists, tracks the extension for the time
+// being until the `eth` main protocol starts looking for it.
+func (ps *peerSet) registerDiffExtension(peer *diff.Peer) error {
+	// Reject the peer if it advertises `diff` without `eth` as `diff` is only a
+	// satellite protocol meaningful with the chain selection of `eth`
+	if !peer.RunningCap(eth.ProtocolName, eth.ProtocolVersions) {
+		return errDiffWithoutEth
+	}
+	// Ensure nobody can double connect
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
+
+	id := peer.ID()
+	if _, ok := ps.peers[id]; ok {
+		return errPeerAlreadyRegistered // avoid connections with the same id as existing ones
+	}
+	if _, ok := ps.diffPend[id]; ok {
+		return errPeerAlreadyRegistered // avoid connections with the same id as pending ones
+	}
+	// Inject the peer into an `eth` counterpart is available, otherwise save for later
+	if wait, ok := ps.diffWait[id]; ok {
+		delete(ps.diffWait, id)
+		wait <- peer
+		return nil
+	}
+	ps.diffPend[id] = peer
 	return nil
 }
 
@@ -131,9 +172,50 @@ func (ps *peerSet) waitSnapExtension(peer *eth.Peer) (*snap.Peer, error) {
 	return <-wait, nil
 }
 
+// waitDiffExtension blocks until all satellite protocols are connected and tracked
+// by the peerset.
+func (ps *peerSet) waitDiffExtension(peer *eth.Peer) (*diff.Peer, error) {
+	// If the peer does not support a compatible `diff`, don't wait
+	if !peer.RunningCap(diff.ProtocolName, diff.ProtocolVersions) {
+		return nil, nil
+	}
+	// Ensure nobody can double connect
+	ps.lock.Lock()
+
+	id := peer.ID()
+	if _, ok := ps.peers[id]; ok {
+		ps.lock.Unlock()
+		return nil, errPeerAlreadyRegistered // avoid connections with the same id as existing ones
+	}
+	if _, ok := ps.diffWait[id]; ok {
+		ps.lock.Unlock()
+		return nil, errPeerAlreadyRegistered // avoid connections with the same id as pending ones
+	}
+	// If `diff` already connected, retrieve the peer from the pending set
+	if diff, ok := ps.diffPend[id]; ok {
+		delete(ps.diffPend, id)
+
+		ps.lock.Unlock()
+		return diff, nil
+	}
+	// Otherwise wait for `diff` to connect concurrently
+	wait := make(chan *diff.Peer)
+	ps.diffWait[id] = wait
+	ps.lock.Unlock()
+
+	return <-wait, nil
+}
+
+func (ps *peerSet) GetDiffPeer(pid string) downloader.IDiffPeer {
+	if p := ps.peer(pid); p != nil && p.diffExt != nil {
+		return p.diffExt
+	}
+	return nil
+}
+
 // registerPeer injects a new `eth` peer into the working set, or returns an error
 // if the peer is already known.
-func (ps *peerSet) registerPeer(peer *eth.Peer, ext *snap.Peer) error {
+func (ps *peerSet) registerPeer(peer *eth.Peer, ext *snap.Peer, diffExt *diff.Peer) error {
 	// Start tracking the new peer
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
@@ -151,6 +233,9 @@ func (ps *peerSet) registerPeer(peer *eth.Peer, ext *snap.Peer) error {
 	if ext != nil {
 		eth.snapExt = &snapPeer{ext}
 		ps.snapPeers++
+	}
+	if diffExt != nil {
+		eth.diffExt = &diffPeer{diffExt}
 	}
 	ps.peers[id] = eth
 	return nil

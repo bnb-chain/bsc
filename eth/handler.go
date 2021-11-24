@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
+	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -37,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -76,26 +78,30 @@ type txPool interface {
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	Database        ethdb.Database            // Database for direct sync insertions
-	Chain           *core.BlockChain          // Blockchain to serve data from
-	TxPool          txPool                    // Transaction pool to propagate from
-	Network         uint64                    // Network identifier to adfvertise
-	Sync            downloader.SyncMode       // Whether to fast or full sync
-	BloomCache      uint64                    // Megabytes to alloc for fast sync bloom
-	EventMux        *event.TypeMux            // Legacy event mux, deprecate for `feed`
-	Checkpoint      *params.TrustedCheckpoint // Hard coded checkpoint for sync challenges
-	Whitelist       map[uint64]common.Hash    // Hard coded whitelist for sync challenged
-	DirectBroadcast bool
+	Database               ethdb.Database            // Database for direct sync insertions
+	Chain                  *core.BlockChain          // Blockchain to serve data from
+	TxPool                 txPool                    // Transaction pool to propagate from
+	Network                uint64                    // Network identifier to adfvertise
+	Sync                   downloader.SyncMode       // Whether to fast or full sync
+	DiffSync               bool                      // Whether to diff sync
+	BloomCache             uint64                    // Megabytes to alloc for fast sync bloom
+	EventMux               *event.TypeMux            // Legacy event mux, deprecate for `feed`
+	Checkpoint             *params.TrustedCheckpoint // Hard coded checkpoint for sync challenges
+	Whitelist              map[uint64]common.Hash    // Hard coded whitelist for sync challenged
+	DirectBroadcast        bool
+	DisablePeerTxBroadcast bool
 }
 
 type handler struct {
-	networkID  uint64
-	forkFilter forkid.Filter // Fork ID filter, constant across the lifetime of the node
+	networkID              uint64
+	forkFilter             forkid.Filter // Fork ID filter, constant across the lifetime of the node
+	disablePeerTxBroadcast bool
 
 	fastSync        uint32 // Flag whether fast sync is enabled (gets disabled if we already have blocks)
 	snapSync        uint32 // Flag whether fast sync should operate on top of the snap protocol
 	acceptTxs       uint32 // Flag whether we're considered synchronised (enables transaction processing)
 	directBroadcast bool
+	diffSync        bool // Flag whether diff sync should operate on top of the diff protocol
 
 	checkpointNumber uint64      // Block number for the sync progress validator to cross reference
 	checkpointHash   common.Hash // Block hash for the sync progress validator to cross reference
@@ -134,17 +140,19 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		config.EventMux = new(event.TypeMux) // Nicety initialization for tests
 	}
 	h := &handler{
-		networkID:       config.Network,
-		forkFilter:      forkid.NewFilter(config.Chain),
-		eventMux:        config.EventMux,
-		database:        config.Database,
-		txpool:          config.TxPool,
-		chain:           config.Chain,
-		peers:           newPeerSet(),
-		whitelist:       config.Whitelist,
-		directBroadcast: config.DirectBroadcast,
-		txsyncCh:        make(chan *txsync),
-		quitSync:        make(chan struct{}),
+		networkID:              config.Network,
+		forkFilter:             forkid.NewFilter(config.Chain),
+		disablePeerTxBroadcast: config.DisablePeerTxBroadcast,
+		eventMux:               config.EventMux,
+		database:               config.Database,
+		txpool:                 config.TxPool,
+		chain:                  config.Chain,
+		peers:                  newPeerSet(),
+		whitelist:              config.Whitelist,
+		directBroadcast:        config.DirectBroadcast,
+		diffSync:               config.DiffSync,
+		txsyncCh:               make(chan *txsync),
+		quitSync:               make(chan struct{}),
 	}
 	if config.Sync == downloader.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the fast
@@ -187,7 +195,11 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	if atomic.LoadUint32(&h.fastSync) == 1 && atomic.LoadUint32(&h.snapSync) == 0 {
 		h.stateBloom = trie.NewSyncBloom(config.BloomCache, config.Database)
 	}
-	h.downloader = downloader.New(h.checkpointNumber, config.Database, h.stateBloom, h.eventMux, h.chain, nil, h.removePeer)
+	var downloadOptions []downloader.DownloadOption
+	if h.diffSync {
+		downloadOptions = append(downloadOptions, downloader.EnableDiffFetchOp(h.peers))
+	}
+	h.downloader = downloader.New(h.checkpointNumber, config.Database, h.stateBloom, h.eventMux, h.chain, nil, h.removePeer, downloadOptions...)
 
 	// Construct the fetcher (short sync)
 	validator := func(header *types.Header) error {
@@ -246,6 +258,11 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Snapshot extension barrier failed", "err", err)
 		return err
 	}
+	diff, err := h.peers.waitDiffExtension(peer)
+	if err != nil {
+		peer.Log().Error("Diff extension barrier failed", "err", err)
+		return err
+	}
 	// TODO(karalabe): Not sure why this is needed
 	if !h.chainSync.handlePeerEvent(peer) {
 		return p2p.DiscQuitting
@@ -262,7 +279,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		td      = h.chain.GetTd(hash, number)
 	)
 	forkID := forkid.NewID(h.chain.Config(), h.chain.Genesis().Hash(), h.chain.CurrentHeader().Number.Uint64())
-	if err := peer.Handshake(h.networkID, td, hash, genesis.Hash(), forkID, h.forkFilter); err != nil {
+	if err := peer.Handshake(h.networkID, td, hash, genesis.Hash(), forkID, h.forkFilter, &eth.UpgradeStatusExtension{DisablePeerTxBroadcast: h.disablePeerTxBroadcast}); err != nil {
 		peer.Log().Debug("Ethereum handshake failed", "err", err)
 		return err
 	}
@@ -286,7 +303,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
 	// Register the peer locally
-	if err := h.peers.registerPeer(peer, snap); err != nil {
+	if err := h.peers.registerPeer(peer, snap, diff); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
@@ -352,6 +369,21 @@ func (h *handler) runSnapExtension(peer *snap.Peer, handler snap.Handler) error 
 
 	if err := h.peers.registerSnapExtension(peer); err != nil {
 		peer.Log().Error("Snapshot extension registration failed", "err", err)
+		return err
+	}
+	return handler(peer)
+}
+
+// runDiffExtension registers a `diff` peer into the joint eth/diff peerset and
+// starts handling inbound messages. As `diff` is only a satellite protocol to
+// `eth`, all subsystem registrations and lifecycle management will be done by
+// the main `eth` handler to prevent strange races.
+func (h *handler) runDiffExtension(peer *diff.Peer, handler diff.Handler) error {
+	h.peerWG.Add(1)
+	defer h.peerWG.Done()
+
+	if err := h.peers.registerDiffExtension(peer); err != nil {
+		peer.Log().Error("Diff extension registration failed", "err", err)
 		return err
 	}
 	return handler(peer)
@@ -449,13 +481,19 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		// Send the block to a subset of our peers
 		var transfer []*ethPeer
 		if h.directBroadcast {
-			transfer = peers[:int(len(peers))]
+			transfer = peers[:]
 		} else {
 			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
 		}
+		diff := h.chain.GetDiffLayerRLP(block.Hash())
 		for _, peer := range transfer {
+			if len(diff) != 0 && peer.diffExt != nil {
+				// difflayer should send before block
+				peer.diffExt.SendDiffLayers([]rlp.RawValue{diff})
+			}
 			peer.AsyncSendNewBlock(block, td)
 		}
+
 		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return
 	}

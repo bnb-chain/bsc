@@ -42,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
+	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -128,7 +129,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	ethashConfig.NotifyFull = config.Miner.NotifyFull
 
 	// Assemble the Ethereum object
-	chainDb, err := stack.OpenDatabaseWithFreezer("chaindata", config.DatabaseCache, config.DatabaseHandles, config.DatabaseFreezer, "eth/db/chaindata/", false)
+	chainDb, err := stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
+		config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +199,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			Preimages:          config.Preimages,
 		}
 	)
-	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve, &config.TxLookupLimit)
+	bcOps := make([]core.BlockChainOption, 0)
+	if config.DiffSync {
+		bcOps = append(bcOps, core.EnableLightProcessor)
+	}
+	if config.PersistDiff {
+		bcOps = append(bcOps, core.EnablePersistDiff(config.DiffBlock))
+	}
+	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve, &config.TxLookupLimit, bcOps...)
 	if err != nil {
 		return nil, err
 	}
@@ -222,16 +231,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	if eth.handler, err = newHandler(&handlerConfig{
-		Database:        chainDb,
-		Chain:           eth.blockchain,
-		TxPool:          eth.txPool,
-		Network:         config.NetworkId,
-		Sync:            config.SyncMode,
-		BloomCache:      uint64(cacheLimit),
-		EventMux:        eth.eventMux,
-		Checkpoint:      checkpoint,
-		Whitelist:       config.Whitelist,
-		DirectBroadcast: config.DirectBroadcast,
+		Database:               chainDb,
+		Chain:                  eth.blockchain,
+		TxPool:                 eth.txPool,
+		Network:                config.NetworkId,
+		Sync:                   config.SyncMode,
+		BloomCache:             uint64(cacheLimit),
+		EventMux:               eth.eventMux,
+		Checkpoint:             checkpoint,
+		Whitelist:              config.Whitelist,
+		DirectBroadcast:        config.DirectBroadcast,
+		DiffSync:               config.DiffSync,
+		DisablePeerTxBroadcast: config.DisablePeerTxBroadcast,
 	}); err != nil {
 		return nil, err
 	}
@@ -534,9 +545,11 @@ func (s *Ethereum) BloomIndexer() *core.ChainIndexer   { return s.bloomIndexer }
 // network protocols to start.
 func (s *Ethereum) Protocols() []p2p.Protocol {
 	protos := eth.MakeProtocols((*ethHandler)(s.handler), s.networkID, s.ethDialCandidates)
-	if s.config.SnapshotCache > 0 {
+	if !s.config.DisableSnapProtocol && s.config.SnapshotCache > 0 {
 		protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler), s.snapDialCandidates)...)
 	}
+	// diff protocol can still open without snap protocol
+	protos = append(protos, diff.MakeProtocols((*diffHandler)(s.handler), s.snapDialCandidates)...)
 	return protos
 }
 

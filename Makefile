@@ -2,7 +2,7 @@
 # with Go source code. If you know what GOPATH is then you probably
 # don't need to bother with make.
 
-.PHONY: geth android ios geth-cross evm all test clean
+.PHONY: geth android ios geth-cross evm all test truffle-test clean
 .PHONY: geth-linux geth-linux-386 geth-linux-amd64 geth-linux-mips64 geth-linux-mips64le
 .PHONY: geth-linux-arm geth-linux-arm-5 geth-linux-arm-6 geth-linux-arm-7 geth-linux-arm64
 .PHONY: geth-darwin geth-darwin-386 geth-darwin-amd64
@@ -33,7 +33,17 @@ ios:
 	@echo "Import \"$(GOBIN)/Geth.framework\" to use the library."
 
 test: all
-	$(GORUN) build/ci.go test
+	$(GORUN) build/ci.go test -timeout 1h
+
+truffle-test:
+	docker build . -f ./docker/Dockerfile --target bsc-genesis -t bsc-genesis
+	docker build . -f ./docker/Dockerfile --target bsc -t bsc
+	docker build . -f ./docker/Dockerfile.truffle -t truffle-test
+	docker-compose -f ./tests/truffle/docker-compose.yml up genesis
+	docker-compose -f ./tests/truffle/docker-compose.yml up -d bsc-rpc bsc-validator1
+	sleep 30
+	docker-compose -f ./tests/truffle/docker-compose.yml up --exit-code-from truffle-test truffle-test
+	docker-compose -f ./tests/truffle/docker-compose.yml down
 
 lint: ## Run linters.
 	$(GORUN) build/ci.go lint

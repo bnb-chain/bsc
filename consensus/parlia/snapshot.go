@@ -256,7 +256,7 @@ func (s *Snapshot) enoughDistance(validator common.Address, header *types.Header
 	if validator == header.Coinbase {
 		return false
 	}
-	offset := (int64(s.Number) + 1) % int64(validatorNum)
+	offset := (int64(s.Number) + 1) % validatorNum
 	if int64(idx) >= offset {
 		return int64(idx)-offset >= validatorNum-2
 	} else {

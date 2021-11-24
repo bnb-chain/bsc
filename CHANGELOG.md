@@ -1,17 +1,77 @@
 # Changelog
+## v1.1.5
+BUGFIX
+* [\#509](https://github.com/binance-chain/bsc/pull/509) fix graceful shutdown bug
+
+IMPROVEMENT
+* [\#536](https://github.com/binance-chain/bsc/pull/536) get diff accounts by replaying block when diff layer not found
+* [\#527](https://github.com/binance-chain/bsc/pull/527) improve diffsync protocol in many aspects
+* [\#493](https://github.com/binance-chain/bsc/pull/493) implement fast getDiffAccountsWithScope API
+
+## v1.1.4
+Improvement
+* [\#472](https://github.com/binance-chain/bsc/pull/472) add metrics for contract code bitmap cache
+* [\#473](https://github.com/binance-chain/bsc/pull/473) fix ci test flow
+
+BUGFIX
+* [\#491](https://github.com/binance-chain/bsc/pull/491) fix prefetcher related bugs
+
+FEATURES
+* [\#480](https://github.com/binance-chain/bsc/pull/480) implement bep 95
+
+
+## v1.1.3
+Improvement
+* [\#456](https://github.com/binance-chain/bsc/pull/456) git-flow support lint, unit test, and integration test
+* [\#449](https://github.com/binance-chain/bsc/pull/449) cache bitmap and change the cache type of GetCode
+* [\#454](https://github.com/binance-chain/bsc/pull/454) fix cache key do not have hash func
+* [\#446](https://github.com/binance-chain/bsc/pull/446) parallel bloom calculation
+* [\#442](https://github.com/binance-chain/bsc/pull/442) ignore empty tx in GetDiffAccountsWithScope 
+* [\#426](https://github.com/binance-chain/bsc/pull/426) add block proccess backoff time when validator is not in turn and received in turn block
+* [\#398](https://github.com/binance-chain/bsc/pull/398) ci pipeline for release page
+
+
+BUGFIX
+* [\#446](https://github.com/binance-chain/bsc/pull/446) fix concurrent write of subfetcher
+* [\#444](https://github.com/binance-chain/bsc/pull/444) fix blockhash not correct for the logs of system tx receipt
+* [\#409](https://github.com/binance-chain/bsc/pull/409) fix nil point in downloader
+* [\#408](https://github.com/binance-chain/bsc/pull/408) core/state/snapshot: fix typo
+
+
+FEATURES
+* [\#431](https://github.com/binance-chain/bsc/pull/431) Export get diff accounts in block api 
+* [\#412](https://github.com/binance-chain/bsc/pull/412) add extension in eth protocol handshake to disable tx broadcast
+* [\#376](https://github.com/binance-chain/bsc/pull/376) implement diff sync
+
+## v1.1.2
+Security
+* [\#379](https://github.com/binance-chain/bsc/pull/379) A pre-announced hotfix release to patch a vulnerability in the EVM (CVE-2021-39137).
+
+
+## v1.1.1
+IMPROVEMENT
+* [\#355](https://github.com/binance-chain/bsc/pull/355) miner should propose block on a proper fork
+
+BUGFIX
+* [\#350](https://github.com/binance-chain/bsc/pull/350) flag: fix TriesInmemory specified but not work
+* [\#358](https://github.com/binance-chain/bsc/pull/358) miner: fix null pending block
+* [\#360](https://github.com/binance-chain/bsc/pull/360) pruner: fix state bloom sync permission in Windows 
+* [\#366](https://github.com/binance-chain/bsc/pull/366) fix double close channel of subfetcher
+
+
 ## v1.1.1-beta
-*[\#333](https://github.com/binance-chain/bsc/pull/333) improve block fetcher efficiency
-*[\#326](https://github.com/binance-chain/bsc/pull/326) eth/tracers: improve tracing performance
-*[\#257](https://github.com/binance-chain/bsc/pull/257) performance improvement in many aspects
+* [\#333](https://github.com/binance-chain/bsc/pull/333) improve block fetcher efficiency
+* [\#326](https://github.com/binance-chain/bsc/pull/326) eth/tracers: improve tracing performance
+* [\#257](https://github.com/binance-chain/bsc/pull/257) performance improvement in many aspects
 
 
 ## v1.1.0
-*[\#282](https://github.com/binance-chain/bsc/pull/282) update discord link
-*[\#280](https://github.com/binance-chain/bsc/pull/280) update discord link
-*[\#227](https://github.com/binance-chain/bsc/pull/227) use more aggressive write cache policy
+* [\#282](https://github.com/binance-chain/bsc/pull/282) update discord link
+* [\#280](https://github.com/binance-chain/bsc/pull/280) update discord link
+* [\#227](https://github.com/binance-chain/bsc/pull/227) use more aggressive write cache policy
 
 ## v1.1.0-beta
-*[\#152](https://github.com/binance-chain/bsc/pull/152) upgrade to go-ethereum 1.10.3
+* [\#152](https://github.com/binance-chain/bsc/pull/152) upgrade to go-ethereum 1.10.3
 
 ## v1.0.7-hf.2
 BUGFIX

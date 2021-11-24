@@ -1,0 +1,62 @@
+version: "3"
+
+services:
+  genesis:
+    image: bsc-genesis
+    env_file: .env
+    environment:
+      INIT_HOLDER_BALANCE: "500000000000000000000"
+      NUMS_OF_VALIDATOR: 1
+    volumes:
+      - ./storage:/root/storage
+      - ./scripts:/root/scripts
+      - ./config:/root/config
+      - ./init-holders:/root/init-holders
+    command: /root/scripts/bootstrap.sh
+  
+  bsc-rpc:
+    image: bsc
+    healthcheck:
+      test: nc -z localhost 8545
+      interval: 3s
+      timeout: 5s
+      retries: 15
+    env_file: .env
+    environment:
+      NODE_ID: bsc-rpc
+    volumes:
+      - ./storage/bsc-rpc:/root/.ethereum
+      - ./scripts:/scripts
+      - ./config:/config
+    entrypoint: [ "sh", "-c", "/scripts/bsc-rpc.sh" ]
+
+  bsc-validator1:
+    image: bsc
+    env_file: .env
+    environment:
+      NODE_ID: bsc-validator1
+      BOOTSTRAP_HOST: bsc-rpc
+    volumes:
+      - ./storage/bsc-validator1:/root/.ethereum
+      - ./scripts:/scripts
+    entrypoint: [ "sh", "-c", "/scripts/bsc-validator.sh" ]
+  
+  truffle-test:
+    image: truffle-test
+    command: /scripts/truffle-test.sh
+    env_file: .env
+    environment:
+      RPC_HOST: bsc-rpc
+      RPC_PORT: 8545
+    volumes:
+      - ./scripts:/scripts
+    depends_on:
+      bsc-rpc:
+        condition: service_healthy
+
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: 99.1.0.0/16

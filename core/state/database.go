@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -134,22 +133,24 @@ func NewDatabase(db ethdb.Database) Database {
 // large memory cache.
 func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 	csc, _ := lru.New(codeSizeCacheSize)
+	cc, _ := lru.New(codeCacheSize)
 	return &cachingDB{
 		db:            trie.NewDatabaseWithConfig(db, config),
 		codeSizeCache: csc,
-		codeCache:     fastcache.New(codeCacheSize),
+		codeCache:     cc,
 	}
 }
 
 func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Database {
 	csc, _ := lru.New(codeSizeCacheSize)
+	cc, _ := lru.New(codeCacheSize)
 	atc, _ := lru.New(accountTrieCacheSize)
 	stc, _ := lru.New(storageTrieCacheSize)
 
 	database := &cachingDB{
 		db:               trie.NewDatabaseWithConfig(db, config),
 		codeSizeCache:    csc,
-		codeCache:        fastcache.New(codeCacheSize),
+		codeCache:        cc,
 		accountTrieCache: atc,
 		storageTrieCache: stc,
 	}
@@ -160,7 +161,7 @@ func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Datab
 type cachingDB struct {
 	db               *trie.Database
 	codeSizeCache    *lru.Cache
-	codeCache        *fastcache.Cache
+	codeCache        *lru.Cache
 	accountTrieCache *lru.Cache
 	storageTrieCache *lru.Cache
 }
@@ -243,7 +244,6 @@ func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie
 		triesArray := [3]*triePair{{root: root, trie: tr.ResetCopy()}, nil, nil}
 		db.storageTrieCache.Add(addrHash, triesArray)
 	}
-	return
 }
 
 func (db *cachingDB) Purge() {
@@ -267,12 +267,16 @@ func (db *cachingDB) CopyTrie(t Trie) Trie {
 
 // ContractCode retrieves a particular contract's code.
 func (db *cachingDB) ContractCode(addrHash, codeHash common.Hash) ([]byte, error) {
-	if code := db.codeCache.Get(nil, codeHash.Bytes()); len(code) > 0 {
-		return code, nil
+	if cached, ok := db.codeCache.Get(codeHash); ok {
+		code := cached.([]byte)
+		if len(code) > 0 {
+			return code, nil
+		}
 	}
 	code := rawdb.ReadCode(db.db.DiskDB(), codeHash)
 	if len(code) > 0 {
-		db.codeCache.Set(codeHash.Bytes(), code)
+
+		db.codeCache.Add(codeHash, code)
 		db.codeSizeCache.Add(codeHash, len(code))
 		return code, nil
 	}
@@ -283,12 +287,15 @@ func (db *cachingDB) ContractCode(addrHash, codeHash common.Hash) ([]byte, error
 // code can't be found in the cache, then check the existence with **new**
 // db scheme.
 func (db *cachingDB) ContractCodeWithPrefix(addrHash, codeHash common.Hash) ([]byte, error) {
-	if code := db.codeCache.Get(nil, codeHash.Bytes()); len(code) > 0 {
-		return code, nil
+	if cached, ok := db.codeCache.Get(codeHash); ok {
+		code := cached.([]byte)
+		if len(code) > 0 {
+			return code, nil
+		}
 	}
 	code := rawdb.ReadCodeWithPrefix(db.db.DiskDB(), codeHash)
 	if len(code) > 0 {
-		db.codeCache.Set(codeHash.Bytes(), code)
+		db.codeCache.Add(codeHash, code)
 		db.codeSizeCache.Add(codeHash, len(code))
 		return code, nil
 	}

@@ -19,8 +19,8 @@ package tests
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -108,7 +108,7 @@ func withTrace(t *testing.T, gasLimit uint64, test func(vm.Config) error) {
 	tracer := vm.NewJSONLogger(&vm.LogConfig{DisableMemory: true}, w)
 	config.Debug, config.Tracer = true, tracer
 	err2 := test(config)
-	if !reflect.DeepEqual(err, err2) {
+	if !errors.Is(err, err2) {
 		t.Errorf("different error for second run: %v", err2)
 	}
 	w.Flush()

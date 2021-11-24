@@ -122,6 +122,9 @@ func (p *Peer) broadcastTransactions() {
 		case <-fail:
 			failed = true
 
+		case <-p.txTerm:
+			return
+
 		case <-p.term:
 			return
 		}
@@ -188,6 +191,9 @@ func (p *Peer) announceTransactions() {
 
 		case <-fail:
 			failed = true
+
+		case <-p.txTerm:
+			return
 
 		case <-p.term:
 			return

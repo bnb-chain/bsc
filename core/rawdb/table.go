@@ -159,6 +159,14 @@ func (t *table) NewBatch() ethdb.Batch {
 	return &tableBatch{t.db.NewBatch(), t.prefix}
 }
 
+func (t *table) DiffStore() ethdb.KeyValueStore {
+	return nil
+}
+
+func (t *table) SetDiffStore(diff ethdb.KeyValueStore) {
+	panic("not implement")
+}
+
 // tableBatch is a wrapper around a database batch that prefixes each key access
 // with a pre-configured string.
 type tableBatch struct {

@@ -1,6 +1,7 @@
 package gopool
 
 import (
+	"runtime"
 	"time"
 
 	"github.com/panjf2000/ants/v2"
@@ -8,7 +9,8 @@ import (
 
 var (
 	// Init a instance pool when importing ants.
-	defaultPool, _ = ants.NewPool(ants.DefaultAntsPoolSize, ants.WithExpiryDuration(10*time.Second))
+	defaultPool, _   = ants.NewPool(ants.DefaultAntsPoolSize, ants.WithExpiryDuration(10*time.Second))
+	minNumberPerTask = 5
 )
 
 // Logger is used for logging formatted messages.
@@ -45,4 +47,14 @@ func Release() {
 // Reboot reboots the default pool.
 func Reboot() {
 	defaultPool.Reboot()
+}
+
+func Threads(tasks int) int {
+	threads := tasks / minNumberPerTask
+	if threads > runtime.NumCPU() {
+		threads = runtime.NumCPU()
+	} else if threads == 0 {
+		threads = 1
+	}
+	return threads
 }
