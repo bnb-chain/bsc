@@ -471,7 +471,7 @@ func TestTracingWithOverrides(t *testing.T) {
 				Value: (*hexutil.Big)(big.NewInt(1000)),
 			},
 			config:    &TraceCallConfig{},
-			expectErr: core.ErrInsufficientFunds,
+			expectErr: core.ErrInsufficientFundsForTransfer,
 		},
 		// Successful simple contract call
 		//
