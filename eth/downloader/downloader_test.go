@@ -565,7 +565,7 @@ func testThrottling(t *testing.T, protocol uint, mode SyncMode) {
 
 	// Wrap the importer to allow stepping
 	blocked, proceed := uint32(0), make(chan struct{})
-	tester.downloader.chainInsertHook = func(results []*fetchResult) {
+	tester.downloader.chainInsertHook = func(results []*fetchResult, _ chan struct{}) {
 		atomic.StoreUint32(&blocked, uint32(len(results)))
 		<-proceed
 	}
@@ -921,10 +921,10 @@ func testEmptyShortCircuit(t *testing.T, protocol uint, mode SyncMode) {
 
 	// Instrument the downloader to signal body requests
 	bodiesHave, receiptsHave := int32(0), int32(0)
-	tester.downloader.bodyFetchHook = func(headers []*types.Header, _ ...interface{}) {
+	tester.downloader.bodyFetchHook = func(headers []*types.Header) {
 		atomic.AddInt32(&bodiesHave, int32(len(headers)))
 	}
-	tester.downloader.receiptFetchHook = func(headers []*types.Header, _ ...interface{}) {
+	tester.downloader.receiptFetchHook = func(headers []*types.Header) {
 		atomic.AddInt32(&receiptsHave, int32(len(headers)))
 	}
 	// Synchronise with the peer and make sure all blocks were retrieved
