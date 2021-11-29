@@ -1,4 +1,15 @@
 # Changelog
+
+## v1.1.6
+BUGFIX
+* [\#582](https://github.com/binance-chain/bsc/pull/582) the DoS vulnerabilities fixed in go-ethereum v1.10.9
+
+IMPROVEMENT
+* [\#578](https://github.com/binance-chain/bsc/pull/578) reduce memory allocation and upgrade snappy version
+
+FEATURES
+* [\#570](https://github.com/binance-chain/bsc/pull/570) reannounce local pending transactions
+
 ## v1.1.5
 BUGFIX
 * [\#509](https://github.com/binance-chain/bsc/pull/509) fix graceful shutdown bug
