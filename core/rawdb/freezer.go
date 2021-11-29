@@ -171,6 +171,9 @@ func (f *freezer) HasAncient(kind string, number uint64) (bool, error) {
 
 // Ancient retrieves an ancient binary blob from the append-only immutable files.
 func (f *freezer) Ancient(kind string, number uint64) ([]byte, error) {
+	if number < 0 {
+		return nil, errors.New("redirect the query to statedb")
+	}
 	if table := f.tables[kind]; table != nil {
 		return table.Retrieve(number)
 	}
@@ -201,7 +204,7 @@ func (f *freezer) AppendAncient(number uint64, hash, header, body, receipts, td 
 		return errReadOnly
 	}
 	// Ensure the binary blobs we are appending is continuous with freezer.
-	if atomic.LoadUint64(&f.frozen) != number {
+	if atomic.LoadUint64(&f.frozen) != number-1 {
 		return errOutOrderInsertion
 	}
 	// Rollback all inserted data if any insertion below failed to ensure

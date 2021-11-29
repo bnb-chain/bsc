@@ -18,8 +18,10 @@ package gasprice
 
 import (
 	"context"
+	"io/ioutil"
 	"math"
 	"math/big"
+	"os"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -66,11 +68,20 @@ func newTestBackend(t *testing.T) *testBackend {
 		signer = types.LatestSigner(gspec.Config)
 	)
 	engine := ethash.NewFaker()
-	db := rawdb.NewMemoryDatabase()
-	genesis, _ := gspec.Commit(db)
+	//db := rawdb.NewMemoryDatabase()
+	frdir, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatalf("failed to create temp freezer dir: %v", err)
+	}
+	defer os.Remove(frdir)
+	ancientDb, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	if err != nil {
+		t.Fatalf("failed to create temp freezer db: %v", err)
+	}
+	genesis, _ := gspec.Commit(ancientDb)
 
 	// Generate testing blocks
-	blocks, _ := core.GenerateChain(params.TestChainConfig, genesis, engine, db, 32, func(i int, b *core.BlockGen) {
+	blocks, _ := core.GenerateChain(params.TestChainConfig, genesis, engine, ancientDb, 32, func(i int, b *core.BlockGen) {
 		b.SetCoinbase(common.Address{1})
 		tx, err := types.SignTx(types.NewTransaction(b.TxNonce(addr), common.HexToAddress("deadbeef"), big.NewInt(100), 21000, big.NewInt(int64(i+1)*params.GWei), nil), signer, key)
 		if err != nil {
@@ -79,9 +90,18 @@ func newTestBackend(t *testing.T) *testBackend {
 		b.AddTx(tx)
 	})
 	// Construct testing chain
-	diskdb := rawdb.NewMemoryDatabase()
-	gspec.Commit(diskdb)
-	chain, err := core.NewBlockChain(diskdb, nil, params.TestChainConfig, engine, vm.Config{}, nil, nil)
+	//diskdb := rawdb.NewMemoryDatabase()
+	frdir, err = ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatalf("failed to create temp freezer dir: %v", err)
+	}
+	defer os.Remove(frdir)
+	ancientDb, err = rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	if err != nil {
+		t.Fatalf("failed to create temp freezer db: %v", err)
+	}
+	gspec.Commit(ancientDb)
+	chain, err := core.NewBlockChain(ancientDb, nil, params.TestChainConfig, engine, vm.Config{}, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create local chain, %v", err)
 	}

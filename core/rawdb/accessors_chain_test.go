@@ -446,7 +446,7 @@ func TestAncientStorage(t *testing.T) {
 	}
 	// Create a test block
 	block := types.NewBlockWithHeader(&types.Header{
-		Number:      big.NewInt(0),
+		Number:      big.NewInt(1),
 		Extra:       []byte("test block"),
 		UncleHash:   types.EmptyUncleHash,
 		TxHash:      types.EmptyRootHash,

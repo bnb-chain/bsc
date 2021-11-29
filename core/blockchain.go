@@ -1500,8 +1500,9 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 				}
 			}
 			// Write all the data out into the database
-			rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
-			rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
+			// rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
+			// rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
+			rawdb.WriteAncientBlock(bc.db, block, receiptChain[i], rawdb.ReadTd(bc.db, block.Hash(), block.NumberU64()))
 			rawdb.WriteTxLookupEntriesByBlock(batch, block) // Always write tx indices for live blocks, we assume they are needed
 
 			// Write everything belongs to the blocks into the database. So that
@@ -1594,12 +1595,14 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	bc.wg.Add(1)
 	defer bc.wg.Done()
 
-	batch := bc.db.NewBatch()
-	rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), td)
-	rawdb.WriteBlock(batch, block)
-	if err := batch.Write(); err != nil {
-		log.Crit("Failed to write block into disk", "err", err)
-	}
+	//batch := bc.db.NewBatch()
+	//rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), td)
+	//rawdb.WriteBlock(batch, block)
+	rawdb.WriteHeaderNumber(bc.db, block.Header().Hash(), block.Header().Number.Uint64())
+	rawdb.WriteAncientBlock(bc.db, block, nil, td)
+	// if err := batch.Write(); err != nil {
+	// 	log.Crit("Failed to write block into disk", "err", err)
+	// }
 	return nil
 }
 
@@ -1650,10 +1653,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
+
 		blockBatch := bc.db.NewBatch()
-		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
-		rawdb.WriteBlock(blockBatch, block)
-		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
+		// rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
+		// rawdb.WriteBlock(blockBatch, block)
+		// rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
+		rawdb.WriteHeaderNumber(bc.db, block.Header().Hash(), block.Header().Number.Uint64())
+		rawdb.WriteAncientBlock(bc.db, block, receipts, externTd)
 		rawdb.WritePreimages(blockBatch, state.Preimages())
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
