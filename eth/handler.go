@@ -565,26 +565,19 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 // ReannounceTransactions will announce a batch of local pending transactions
 // to a square root of all peers.
 func (h *handler) ReannounceTransactions(txs types.Transactions) {
-	var (
-		annoCount int                                // Count of announcements made
-		annos     = make(map[*ethPeer][]common.Hash) // Set peer->hash to announce
-	)
+	hashes := make([]common.Hash, 0, txs.Len())
+	for _, tx := range txs {
+		hashes = append(hashes, tx.Hash())
+	}
 
 	// Announce transactions hash to a batch of peers
 	peersCount := uint(math.Sqrt(float64(h.peers.len())))
 	peers := h.peers.headPeers(peersCount)
-	for _, tx := range txs {
-		for _, peer := range peers {
-			annos[peer] = append(annos[peer], tx.Hash())
-		}
-	}
-
-	for peer, hashes := range annos {
-		annoCount += len(hashes)
+	for _, peer := range peers {
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
 	log.Debug("Transaction reannounce", "txs", len(txs),
-		"announce packs", peersCount, "announced hashes", annoCount)
+		"announce packs", peersCount, "announced hashes", peersCount*uint(len(hashes)))
 }
 
 // minedBroadcastLoop sends mined blocks to connected peers.
