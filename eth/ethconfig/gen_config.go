@@ -3,6 +3,7 @@
 package ethconfig
 
 import (
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -25,6 +26,10 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		SnapDiscoveryURLs       []string
 		NoPruning               bool
 		NoPrefetch              bool
+		DirectBroadcast         bool
+		DisableSnapProtocol     bool
+		DiffSync                bool
+		RangeLimit              bool
 		TxLookupLimit           uint64                 `toml:",omitempty"`
 		Whitelist               map[uint64]common.Hash `toml:"-"`
 		LightServ               int                    `toml:",omitempty"`
@@ -42,28 +47,30 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DatabaseCache           int
 		DatabaseFreezer         string
 		DatabaseDiff            string
+		PersistDiff             bool
+		DiffBlock               uint64
 		TrieCleanCache          int
 		TrieCleanCacheJournal   string        `toml:",omitempty"`
 		TrieCleanCacheRejournal time.Duration `toml:",omitempty"`
 		TrieDirtyCache          int
 		TrieTimeout             time.Duration
-		TriesInMemory           uint64 `toml:",omitempty"`
 		SnapshotCache           int
+		TriesInMemory           uint64
+		NoTries                 bool
 		Preimages               bool
-		PersistDiff             bool
-		DiffBlock               uint64 `toml:",omitempty"`
 		Miner                   miner.Config
-		Ethash                  ethash.Config
+		Ethash                  ethash.Config `toml:",omitempty"`
 		TxPool                  core.TxPoolConfig
 		GPO                     gasprice.Config
 		EnablePreimageRecording bool
 		DocRoot                 string `toml:"-"`
 		EWASMInterpreter        string
 		EVMInterpreter          string
-		RPCGasCap               uint64                         `toml:",omitempty"`
-		RPCTxFeeCap             float64                        `toml:",omitempty"`
+		RPCGasCap               uint64
+		RPCTxFeeCap             float64
 		Checkpoint              *params.TrustedCheckpoint      `toml:",omitempty"`
 		CheckpointOracle        *params.CheckpointOracleConfig `toml:",omitempty"`
+		OverrideBerlin          *big.Int                       `toml:",omitempty"`
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -73,6 +80,10 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.EthDiscoveryURLs = c.EthDiscoveryURLs
 	enc.SnapDiscoveryURLs = c.SnapDiscoveryURLs
 	enc.NoPruning = c.NoPruning
+	enc.DirectBroadcast = c.DirectBroadcast
+	enc.DisableSnapProtocol = c.DisableSnapProtocol
+	enc.DiffSync = c.DiffSync
+	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
 	enc.Whitelist = c.Whitelist
 	enc.LightServ = c.LightServ
@@ -90,16 +101,17 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.DatabaseCache = c.DatabaseCache
 	enc.DatabaseFreezer = c.DatabaseFreezer
 	enc.DatabaseDiff = c.DatabaseDiff
+	enc.PersistDiff = c.PersistDiff
+	enc.DiffBlock = c.DiffBlock
 	enc.TrieCleanCache = c.TrieCleanCache
 	enc.TrieCleanCacheJournal = c.TrieCleanCacheJournal
 	enc.TrieCleanCacheRejournal = c.TrieCleanCacheRejournal
 	enc.TrieDirtyCache = c.TrieDirtyCache
 	enc.TrieTimeout = c.TrieTimeout
-	enc.TriesInMemory = c.TriesInMemory
 	enc.SnapshotCache = c.SnapshotCache
+	enc.TriesInMemory = c.TriesInMemory
+	enc.NoTries = c.NoTries
 	enc.Preimages = c.Preimages
-	enc.PersistDiff = c.PersistDiff
-	enc.DiffBlock = c.DiffBlock
 	enc.Miner = c.Miner
 	enc.Ethash = c.Ethash
 	enc.TxPool = c.TxPool
@@ -112,6 +124,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
 	enc.Checkpoint = c.Checkpoint
 	enc.CheckpointOracle = c.CheckpointOracle
+	enc.OverrideBerlin = c.OverrideBerlin
 	return &enc, nil
 }
 
@@ -126,6 +139,10 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		SnapDiscoveryURLs       []string
 		NoPruning               *bool
 		NoPrefetch              *bool
+		DirectBroadcast         *bool
+		DisableSnapProtocol     *bool
+		DiffSync                *bool
+		RangeLimit              *bool
 		TxLookupLimit           *uint64                `toml:",omitempty"`
 		Whitelist               map[uint64]common.Hash `toml:"-"`
 		LightServ               *int                   `toml:",omitempty"`
@@ -144,27 +161,29 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DatabaseFreezer         *string
 		DatabaseDiff            *string
 		PersistDiff             *bool
-		DiffBlock               *uint64 `toml:",omitempty"`
+		DiffBlock               *uint64
 		TrieCleanCache          *int
 		TrieCleanCacheJournal   *string        `toml:",omitempty"`
 		TrieCleanCacheRejournal *time.Duration `toml:",omitempty"`
 		TrieDirtyCache          *int
 		TrieTimeout             *time.Duration
-		TriesInMemory           *uint64 `toml:",omitempty"`
 		SnapshotCache           *int
+		TriesInMemory           *uint64
+		NoTries                 *bool
 		Preimages               *bool
 		Miner                   *miner.Config
-		Ethash                  *ethash.Config
+		Ethash                  *ethash.Config `toml:",omitempty"`
 		TxPool                  *core.TxPoolConfig
 		GPO                     *gasprice.Config
 		EnablePreimageRecording *bool
 		DocRoot                 *string `toml:"-"`
 		EWASMInterpreter        *string
 		EVMInterpreter          *string
-		RPCGasCap               *uint64                        `toml:",omitempty"`
-		RPCTxFeeCap             *float64                       `toml:",omitempty"`
+		RPCGasCap               *uint64
+		RPCTxFeeCap             *float64
 		Checkpoint              *params.TrustedCheckpoint      `toml:",omitempty"`
 		CheckpointOracle        *params.CheckpointOracleConfig `toml:",omitempty"`
+		OverrideBerlin          *big.Int                       `toml:",omitempty"`
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -190,6 +209,18 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.NoPruning != nil {
 		c.NoPruning = *dec.NoPruning
+	}
+	if dec.DirectBroadcast != nil {
+		c.DirectBroadcast = *dec.DirectBroadcast
+	}
+	if dec.DisableSnapProtocol != nil {
+		c.DisableSnapProtocol = *dec.DisableSnapProtocol
+	}
+	if dec.DiffSync != nil {
+		c.DiffSync = *dec.DiffSync
+	}
+	if dec.RangeLimit != nil {
+		c.RangeLimit = *dec.RangeLimit
 	}
 	if dec.TxLookupLimit != nil {
 		c.TxLookupLimit = *dec.TxLookupLimit
@@ -263,11 +294,14 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.TrieTimeout != nil {
 		c.TrieTimeout = *dec.TrieTimeout
 	}
+	if dec.SnapshotCache != nil {
+		c.SnapshotCache = *dec.SnapshotCache
+	}
 	if dec.TriesInMemory != nil {
 		c.TriesInMemory = *dec.TriesInMemory
 	}
-	if dec.SnapshotCache != nil {
-		c.SnapshotCache = *dec.SnapshotCache
+	if dec.NoTries != nil {
+		c.NoTries = *dec.NoTries
 	}
 	if dec.Preimages != nil {
 		c.Preimages = *dec.Preimages
@@ -307,6 +341,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.CheckpointOracle != nil {
 		c.CheckpointOracle = dec.CheckpointOracle
+	}
+	if dec.OverrideBerlin != nil {
+		c.OverrideBerlin = dec.OverrideBerlin
 	}
 	return nil
 }

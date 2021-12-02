@@ -79,6 +79,7 @@ var Defaults = Config{
 	TrieDirtyCache:          256,
 	TrieTimeout:             60 * time.Minute,
 	TriesInMemory:           128,
+	NoTries:                 false,
 	SnapshotCache:           102,
 	DiffBlock:               uint64(86400),
 	Miner: miner.Config{
@@ -174,6 +175,7 @@ type Config struct {
 	TrieTimeout             time.Duration
 	SnapshotCache           int
 	TriesInMemory           uint64
+	NoTries                 bool
 	Preimages               bool
 
 	// Mining options
