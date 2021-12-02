@@ -194,13 +194,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TrieDirtyLimit:     config.TrieDirtyCache,
 			TrieDirtyDisabled:  config.NoPruning,
 			TrieTimeLimit:      config.TrieTimeout,
+			NoTries:            config.NoTries,
 			SnapshotLimit:      config.SnapshotCache,
 			TriesInMemory:      config.TriesInMemory,
 			Preimages:          config.Preimages,
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
-	if config.DiffSync {
+	if config.DiffSync && !config.NoTries {
 		bcOps = append(bcOps, core.EnableLightProcessor)
 	}
 	if config.PersistDiff {

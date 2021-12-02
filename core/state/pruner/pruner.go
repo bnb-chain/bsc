@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -91,7 +92,7 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 	if headBlock == nil {
 		return nil, errors.New("Failed to load head block")
 	}
-	snaptree, err := snapshot.New(db, trie.NewDatabase(db), 256, int(triesInMemory), headBlock.Root(), false, false, false)
+	snaptree, err := snapshot.New(db, trie.NewDatabase(db), 256, int(triesInMemory), headBlock.Root(), false, false, false, false)
 	if err != nil {
 		return nil, err // The relevant snapshot(s) might not exist
 	}
@@ -113,6 +114,105 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 		headHeader:    headBlock.Header(),
 		snaptree:      snaptree,
 	}, nil
+}
+
+func NewAllPruner(db ethdb.Database) (*Pruner, error) {
+	headBlock := rawdb.ReadHeadBlock(db)
+	if headBlock == nil {
+		return nil, errors.New("Failed to load head block")
+	}
+	return &Pruner{
+		db: db,
+	}, nil
+}
+
+func (p *Pruner) PruneAll(genesis *core.Genesis) error {
+	deleteCleanTrieCache(p.trieCachePath)
+	return pruneAll(p.db, genesis)
+}
+
+func pruneAll(maindb ethdb.Database, g *core.Genesis) error {
+	var (
+		count  int
+		size   common.StorageSize
+		pstart = time.Now()
+		logged = time.Now()
+		batch  = maindb.NewBatch()
+		iter   = maindb.NewIterator(nil, nil)
+	)
+	start := time.Now()
+	for iter.Next() {
+		key := iter.Key()
+		if len(key) == common.HashLength {
+			count += 1
+			size += common.StorageSize(len(key) + len(iter.Value()))
+			batch.Delete(key)
+
+			var eta time.Duration // Realistically will never remain uninited
+			if done := binary.BigEndian.Uint64(key[:8]); done > 0 {
+				var (
+					left  = math.MaxUint64 - binary.BigEndian.Uint64(key[:8])
+					speed = done/uint64(time.Since(pstart)/time.Millisecond+1) + 1 // +1s to avoid division by zero
+				)
+				eta = time.Duration(left/speed) * time.Millisecond
+			}
+			if time.Since(logged) > 8*time.Second {
+				log.Info("Pruning state data", "nodes", count, "size", size,
+					"elapsed", common.PrettyDuration(time.Since(pstart)), "eta", common.PrettyDuration(eta))
+				logged = time.Now()
+			}
+			// Recreate the iterator after every batch commit in order
+			// to allow the underlying compactor to delete the entries.
+			if batch.ValueSize() >= ethdb.IdealBatchSize {
+				batch.Write()
+				batch.Reset()
+
+				iter.Release()
+				iter = maindb.NewIterator(nil, key)
+			}
+		}
+	}
+	if batch.ValueSize() > 0 {
+		batch.Write()
+		batch.Reset()
+	}
+	iter.Release()
+	log.Info("Pruned state data", "nodes", count, "size", size, "elapsed", common.PrettyDuration(time.Since(pstart)))
+
+	// Start compactions, will remove the deleted data from the disk immediately.
+	// Note for small pruning, the compaction is skipped.
+	if count >= rangeCompactionThreshold {
+		cstart := time.Now()
+		for b := 0x00; b <= 0xf0; b += 0x10 {
+			var (
+				start = []byte{byte(b)}
+				end   = []byte{byte(b + 0x10)}
+			)
+			if b == 0xf0 {
+				end = nil
+			}
+			log.Info("Compacting database", "range", fmt.Sprintf("%#x-%#x", start, end), "elapsed", common.PrettyDuration(time.Since(cstart)))
+			if err := maindb.Compact(start, end); err != nil {
+				log.Error("Database compaction failed", "error", err)
+				return err
+			}
+		}
+		log.Info("Database compaction finished", "elapsed", common.PrettyDuration(time.Since(cstart)))
+	}
+	statedb, _ := state.New(common.Hash{}, state.NewDatabase(maindb), nil)
+	for addr, account := range g.Alloc {
+		statedb.AddBalance(addr, account.Balance)
+		statedb.SetCode(addr, account.Code)
+		statedb.SetNonce(addr, account.Nonce)
+		for key, value := range account.Storage {
+			statedb.SetState(addr, key, value)
+		}
+	}
+	root := statedb.IntermediateRoot(false)
+	statedb.Commit(false)
+	statedb.Database().TrieDB().Commit(root, true, nil)
+	log.Info("State pruning successful", "pruned", size, "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
 }
 
 func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, stateBloom *stateBloom, bloomPath string, middleStateRoots map[common.Hash]struct{}, start time.Time) error {
@@ -374,7 +474,7 @@ func RecoverPruning(datadir string, db ethdb.Database, trieCachePath string, tri
 	// - The state HEAD is rewound already because of multiple incomplete `prune-state`
 	// In this case, even the state HEAD is not exactly matched with snapshot, it
 	// still feasible to recover the pruning correctly.
-	snaptree, err := snapshot.New(db, trie.NewDatabase(db), 256, int(triesInMemory), headBlock.Root(), false, false, true)
+	snaptree, err := snapshot.New(db, trie.NewDatabase(db), 256, int(triesInMemory), headBlock.Root(), false, false, true, false)
 	if err != nil {
 		return err // The relevant snapshot(s) might not exist
 	}

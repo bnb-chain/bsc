@@ -259,6 +259,10 @@ var (
 		Usage: "The layer of tries trees that keep in memory",
 		Value: 128,
 	}
+	AllowInsecureNoTriesFlag = cli.BoolTFlag{
+		Name:  "allow-insecure-no-tries",
+		Usage: `Disable the tries state root verification, the state consistency is no longer 100% guaranteed, diffsync is not allowed if enabled. Do not enable it unless you know exactly what the consequence it will cause.`,
+	}
 	OverrideBerlinFlag = cli.Uint64Flag{
 		Name:  "override.berlin",
 		Usage: "Manually specify Berlin fork-block, overriding the bundled setting",
@@ -1647,6 +1651,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(TriesInMemoryFlag.Name) {
 		cfg.TriesInMemory = ctx.GlobalUint64(TriesInMemoryFlag.Name)
+	}
+	if ctx.GlobalIsSet(AllowInsecureNoTriesFlag.Name) {
+		cfg.NoTries = ctx.GlobalBool(AllowInsecureNoTriesFlag.Name)
 	}
 	if ctx.GlobalIsSet(CacheFlag.Name) || ctx.GlobalIsSet(CacheSnapshotFlag.Name) {
 		cfg.SnapshotCache = ctx.GlobalInt(CacheFlag.Name) * ctx.GlobalInt(CacheSnapshotFlag.Name) / 100

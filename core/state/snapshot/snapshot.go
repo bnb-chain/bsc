@@ -175,7 +175,7 @@ type Tree struct {
 // store, on a background thread. If the memory layers from the journal is not
 // continuous with disk layer or the journal is missing, all diffs will be discarded
 // iff it's in "recovery" mode, otherwise rebuild is mandatory.
-func New(diskdb ethdb.KeyValueStore, triedb *trie.Database, cache, cap int, root common.Hash, async bool, rebuild bool, recovery bool) (*Tree, error) {
+func New(diskdb ethdb.KeyValueStore, triedb *trie.Database, cache, cap int, root common.Hash, async bool, rebuild bool, recovery, withoutTrie bool) (*Tree, error) {
 	// Create a new, empty snapshot tree
 	snap := &Tree{
 		diskdb:   diskdb,
@@ -188,7 +188,7 @@ func New(diskdb ethdb.KeyValueStore, triedb *trie.Database, cache, cap int, root
 		defer snap.waitBuild()
 	}
 	// Attempt to load a previously persisted snapshot and rebuild one if failed
-	head, disabled, err := loadSnapshot(diskdb, triedb, cache, root, recovery)
+	head, disabled, err := loadSnapshot(diskdb, triedb, cache, root, recovery, withoutTrie)
 	if disabled {
 		log.Warn("Snapshot maintenance disabled (syncing)")
 		return snap, nil
