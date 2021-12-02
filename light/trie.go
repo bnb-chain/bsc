@@ -49,6 +49,10 @@ type odrDatabase struct {
 	backend OdrBackend
 }
 
+func (db *odrDatabase) NoTries() bool {
+	return false
+}
+
 func (db *odrDatabase) OpenTrie(root common.Hash) (state.Trie, error) {
 	return &odrTrie{db: db, id: db.id}, nil
 }
@@ -176,6 +180,10 @@ func (t *odrTrie) do(key []byte, fn func() error) error {
 			return err
 		}
 	}
+}
+
+func (db *odrTrie) NoTries() bool {
+	return false
 }
 
 type nodeIterator struct {
