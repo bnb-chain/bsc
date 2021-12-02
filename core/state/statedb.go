@@ -73,10 +73,13 @@ func (n *proofList) Delete(key []byte) error {
 // * Contracts
 // * Accounts
 type StateDB struct {
-	db             Database
-	prefetcher     *triePrefetcher
-	originalRoot   common.Hash // The pre-state root, before any changes were made
+	db           Database
+	prefetcher   *triePrefetcher
+	originalRoot common.Hash // The pre-state root, before any changes were made
+	currentRoot  common.Hash // only used when noTrie is true
+
 	trie           Trie
+	noTrie         bool
 	hasher         crypto.KeccakState
 	diffLayer      *types.DiffLayer
 	diffTries      map[common.Address]Trie
@@ -158,6 +161,7 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 	if err != nil {
 		return nil, err
 	}
+	_, sdb.noTrie = tr.(*trie.EmptyTrie)
 	sdb.trie = tr
 	if sdb.snaps != nil {
 		if sdb.snap = sdb.snaps.Snapshot(root); sdb.snap != nil {
@@ -173,6 +177,9 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 // state trie concurrently while the state is mutated so that when we reach the
 // commit phase, most of the needed data is already hot.
 func (s *StateDB) StartPrefetcher(namespace string) {
+	if s.noTrie {
+		return
+	}
 	if s.prefetcher != nil {
 		s.prefetcher.close()
 		s.prefetcher = nil
@@ -185,6 +192,9 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 // StopPrefetcher terminates a running prefetcher and reports any leftover stats
 // from the gathered metrics.
 func (s *StateDB) StopPrefetcher() {
+	if s.noTrie {
+		return
+	}
 	if s.prefetcher != nil {
 		s.prefetcher.close()
 		s.prefetcher = nil
@@ -205,6 +215,14 @@ func (s *StateDB) setError(err error) {
 	if s.dbErr == nil {
 		s.dbErr = err
 	}
+}
+
+func (s *StateDB) NoTrie() bool {
+	return s.noTrie
+}
+
+func (s *StateDB) SetCurrentRoot(root common.Hash) {
+	s.currentRoot = root
 }
 
 func (s *StateDB) Error() error {
@@ -504,6 +522,9 @@ func (s *StateDB) Suicide(addr common.Address) bool {
 
 // updateStateObject writes the given object to the trie.
 func (s *StateDB) updateStateObject(obj *StateObject) {
+	if s.noTrie {
+		return
+	}
 	// Track the amount of time wasted on updating the account from the trie
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.AccountUpdates += time.Since(start) }(time.Now())
@@ -525,6 +546,9 @@ func (s *StateDB) updateStateObject(obj *StateObject) {
 
 // deleteStateObject removes the given object from the state trie.
 func (s *StateDB) deleteStateObject(obj *StateObject) {
+	if s.noTrie {
+		return
+	}
 	// Track the amount of time wasted on deleting the account from the trie
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.AccountUpdates += time.Since(start) }(time.Now())
@@ -957,6 +981,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
+	// light process is not allowed when there is no trie
 	if s.lightProcessed {
 		s.StopPrefetcher()
 		return s.trie.Hash()
@@ -1042,16 +1067,18 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		s.trie = tr
 	}
 	usedAddrs := make([][]byte, 0, len(s.stateObjectsPending))
-	for addr := range s.stateObjectsPending {
-		if obj := s.stateObjects[addr]; obj.deleted {
-			s.deleteStateObject(obj)
-		} else {
-			s.updateStateObject(obj)
+	if !s.noTrie {
+		for addr := range s.stateObjectsPending {
+			if obj := s.stateObjects[addr]; obj.deleted {
+				s.deleteStateObject(obj)
+			} else {
+				s.updateStateObject(obj)
+			}
+			usedAddrs = append(usedAddrs, common.CopyBytes(addr[:])) // Copy needed for closure
 		}
-		usedAddrs = append(usedAddrs, common.CopyBytes(addr[:])) // Copy needed for closure
-	}
-	if prefetcher != nil {
-		prefetcher.used(s.originalRoot, usedAddrs)
+		if prefetcher != nil {
+			prefetcher.used(s.originalRoot, usedAddrs)
+		}
 	}
 	if len(s.stateObjectsPending) > 0 {
 		s.stateObjectsPending = make(map[common.Address]struct{})
@@ -1060,8 +1087,11 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.AccountHashes += time.Since(start) }(time.Now())
 	}
-	root := s.trie.Hash()
-	return root
+	if s.noTrie {
+		return s.currentRoot
+	} else {
+		return s.trie.Hash()
+	}
 }
 
 // Prepare sets the current transaction hash and index and block hash which is
@@ -1271,8 +1301,10 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 							obj.dirtyCode = false
 						}
 						// Write any storage changes in the state object to its storage trie
-						if err := obj.CommitTrie(s.db); err != nil {
-							taskResults <- err
+						if !s.noTrie {
+							if err := obj.CommitTrie(s.db); err != nil {
+								taskResults <- err
+							}
 						}
 						taskResults <- nil
 					}
@@ -1299,24 +1331,26 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, *types.DiffLayer
 			}
 			// The onleaf func is called _serially_, so we can reuse the same account
 			// for unmarshalling every time.
-			var account Account
-			root, err := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash) error {
-				if err := rlp.DecodeBytes(leaf, &account); err != nil {
+			if !s.noTrie {
+				var account Account
+				root, err := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash) error {
+					if err := rlp.DecodeBytes(leaf, &account); err != nil {
+						return nil
+					}
+					if account.Root != emptyRoot {
+						s.db.TrieDB().Reference(account.Root, parent)
+					}
 					return nil
+				})
+				if err != nil {
+					return err
 				}
-				if account.Root != emptyRoot {
-					s.db.TrieDB().Reference(account.Root, parent)
+				if metrics.EnabledExpensive {
+					s.AccountCommits += time.Since(start)
 				}
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-			if metrics.EnabledExpensive {
-				s.AccountCommits += time.Since(start)
-			}
-			if root != emptyRoot {
-				s.db.CacheAccount(root, s.trie)
+				if root != emptyRoot {
+					s.db.CacheAccount(root, s.trie)
+				}
 			}
 			wg.Wait()
 			return nil

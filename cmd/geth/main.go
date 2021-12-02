@@ -114,6 +114,7 @@ var (
 		utils.WhitelistFlag,
 		utils.BloomFilterSizeFlag,
 		utils.TriesInMemoryFlag,
+		utils.AllowInsecureNoTriesFlag,
 		utils.CacheFlag,
 		utils.CacheDatabaseFlag,
 		utils.CacheTrieFlag,
