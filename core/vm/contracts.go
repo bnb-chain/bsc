@@ -119,11 +119,14 @@ var PrecompiledContractsHilbert = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{2}): &sha256hash{},
 	common.BytesToAddress([]byte{3}): &ripemd160hash{},
 	common.BytesToAddress([]byte{4}): &dataCopy{},
-	common.BytesToAddress([]byte{5}): &bigModExp{eip2565: true},
+	common.BytesToAddress([]byte{5}): &bigModExp{},
 	common.BytesToAddress([]byte{6}): &bn256AddIstanbul{},
 	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
 	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
 	common.BytesToAddress([]byte{9}): &blake2F{},
+
+	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
+	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidate{},
 
 	//Precompiled contracts for sha3-256 FIPS202 & recover uncompressed public key
 	common.BytesToAddress([]byte{102}): &sha3fips{},
@@ -131,6 +134,7 @@ var PrecompiledContractsHilbert = map[common.Address]PrecompiledContract{
 }
 
 var (
+	PrecompiledAddressesHilbert   []common.Address
 	PrecompiledAddressesBerlin    []common.Address
 	PrecompiledAddressesIstanbul  []common.Address
 	PrecompiledAddressesByzantium []common.Address
@@ -150,11 +154,16 @@ func init() {
 	for k := range PrecompiledContractsBerlin {
 		PrecompiledAddressesBerlin = append(PrecompiledAddressesBerlin, k)
 	}
+	for k := range PrecompiledContractsHilbert {
+		PrecompiledAddressesHilbert = append(PrecompiledAddressesHilbert, k)
+	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	case rules.IsHilbert:
+		return PrecompiledAddressesHilbert
 	case rules.IsBerlin:
 		return PrecompiledAddressesBerlin
 	case rules.IsIstanbul:
