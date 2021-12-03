@@ -614,7 +614,6 @@ func (c *ChainConfig) IsCatalyst(num *big.Int) bool {
 
 // IsHilbert returns whether num is either equal to the Hilbert fork block or greater.
 func (c *ChainConfig) IsHilbert(num *big.Int) bool {
-	fmt.Sprintf("is hilbert fork:,", isForked(c.HilbertBlock, num))
 	return isForked(c.HilbertBlock, num)
 }
 
