@@ -240,53 +240,6 @@ func (f *freezer) AppendAncient(number uint64, hash, header, body, receipts, td 
 	return nil
 }
 
-// AppendAncient injects all binary blobs except for block body at the end of the
-// append-only immutable table files.
-//
-// Notably, this function is lock free but kind of thread-safe. All out-of-order
-// injection will be rejected. But if two injections with same number happen at
-// the same time, we can get into the trouble.
-func (f *freezer) AppendAncientNoBody(number uint64, hash, header, receipts, td []byte) (err error) {
-	if f.readonly {
-		return errReadOnly
-	}
-	// Ensure the binary blobs we are appending is continuous with freezer.
-	if atomic.LoadUint64(&f.frozen) != number {
-		return errOutOrderInsertion
-	}
-	// Rollback all inserted data if any insertion below failed to ensure
-	// the tables won't out of sync.
-	defer func() {
-		if err != nil {
-			rerr := f.repair()
-			if rerr != nil {
-				log.Crit("Failed to repair freezer", "err", rerr)
-			}
-			log.Info("Append ancient failed", "number", number, "err", err)
-		}
-	}()
-	// Inject all the components into the relevant data tables
-	if err := f.tables[freezerHashTable].Append(f.frozen, hash[:]); err != nil {
-		log.Error("Failed to append ancient hash", "number", f.frozen, "hash", hash, "err", err)
-		return err
-	}
-	if err := f.tables[freezerHeaderTable].Append(f.frozen, header); err != nil {
-		log.Error("Failed to append ancient header", "number", f.frozen, "hash", hash, "err", err)
-		return err
-	}
-
-	if err := f.tables[freezerReceiptTable].Append(f.frozen, receipts); err != nil {
-		log.Error("Failed to append ancient receipts", "number", f.frozen, "hash", hash, "err", err)
-		return err
-	}
-	if err := f.tables[freezerDifficultyTable].Append(f.frozen, td); err != nil {
-		log.Error("Failed to append ancient difficulty", "number", f.frozen, "hash", hash, "err", err)
-		return err
-	}
-	atomic.AddUint64(&f.frozen, 1) // Only modify atomically
-	return nil
-}
-
 // TruncateAncients discards any recent data above the provided threshold number.
 func (f *freezer) TruncateAncients(items uint64) error {
 	if f.readonly {

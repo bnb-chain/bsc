@@ -95,9 +95,6 @@ type AncientWriter interface {
 	// Sync flushes all in-memory ancient store data to disk.
 	Sync() error
 
-	// AppendAncient injects all binary blobs except for block body at the end of the
-	// append-only immutable table files.
-	AppendAncientNoBody(number uint64, hash, header, receipts, td []byte) error
 }
 
 // Reader contains the methods required to read data from both key-value as well as

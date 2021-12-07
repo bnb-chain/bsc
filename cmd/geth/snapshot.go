@@ -85,21 +85,6 @@ the trie clean cache with default directory will be deleted.
 `,
 			},
 			{
-				Name:      "prune-block-pre-backup",
-				Usage:     "Back up the ancient block data",
-				ArgsUsage: "<root>",
-				Action:    utils.MigrateFlags(pruneBlockPreBackUp),
-				Category:  "MISCELLANEOUS COMMANDS",
-				Flags: []cli.Flag{
-					utils.DataDirFlag,
-					utils.AncientFlag,
-					utils.AncientBackUpFlag,
-				},
-				Description: `
-Back up the ancient block data offline before prune block started.
-`,
-			},
-			{
 				Name:      "prune-block",
 				Usage:     "Prune block data offline",
 				ArgsUsage: "<root>",
@@ -109,6 +94,7 @@ Back up the ancient block data offline before prune block started.
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.AncientBackUpFlag,
+					utils.GenesisFlag,
 				},
 				Description: `
 Offline prune for block data.
@@ -183,9 +169,12 @@ It's also usable without snapshot enabled.
 	}
 )
 
-func pruneBlockPreBackUp(ctx *cli.Context) error {
+func pruneBlock(ctx *cli.Context) error {
+	stack, config := makeConfigNode(ctx)
+	//defer stack.Close()
+	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	// Make sure we have a valid genesis JSON
-	genesisPath := ctx.Args().First()
+	genesisPath := ctx.GlobalString(utils.GenesisFlag.Name)
 	if len(genesisPath) == 0 {
 		utils.Fatalf("Must supply path to genesis JSON file")
 	}
@@ -199,14 +188,10 @@ func pruneBlockPreBackUp(ctx *cli.Context) error {
 	if err := json.NewDecoder(file).Decode(genesis); err != nil {
 		utils.Fatalf("invalid genesis file: %v", err)
 	}
-
-	stack, config := makeConfigNode(ctx)
-	defer stack.Close()
-	freezer := config.Eth.DatabaseFreezer
-	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	if err != nil {
-		utils.Fatalf("Failed to open ancient database: %v", err)
+		utils.Fatalf("Failed to decode genesis: %v", err)
 	}
+	freezer := config.Eth.DatabaseFreezer
 
 	for _, name := range []string{"chaindata"} {
 		root := stack.ResolvePath(name) // /Users/user/storage/Private_BSC_Storage/build/bin/node/geth/chaindata
@@ -221,16 +206,12 @@ func pruneBlockPreBackUp(ctx *cli.Context) error {
 			utils.Fatalf("Failed to create block pruner", err)
 		}
 		backfreezer := filepath.Join(root, "ancient_back_up")
-		if err := pruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, config.Eth.DatabaseHandles, backfreezer, "eth/db/chaindata/", false); err != nil {
+		if err := pruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), backfreezer, "", false); err != nil {
 			log.Error("Failed to back up block", "err", err)
 			return err
 		}
 	}
 	log.Info("geth block offline pruning backup successfully")
-	return nil
-}
-
-func pruneBlock(ctx *cli.Context) error {
 	oldAncientPath := ctx.GlobalString(utils.AncientFlag.Name)
 	newAncientPath := ctx.GlobalString(utils.AncientBackUpFlag.Name)
 	if err := pruner.BlockPrune(oldAncientPath, newAncientPath); err != nil {

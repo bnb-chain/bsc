@@ -122,6 +122,11 @@ func (db *nofreezedb) AppendAncient(number uint64, hash, header, body, receipts,
 	return errNotSupported
 }
 
+// AppendAncientNoBody returns an error as we don't have a backing chain freezer.
+func (db *nofreezedb) AppendAncientNoBody(number uint64, hash, header, receipts, td []byte) error {
+	return errNotSupported
+}
+
 // TruncateAncients returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) TruncateAncients(items uint64) error {
 	return errNotSupported

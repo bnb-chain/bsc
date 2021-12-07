@@ -135,8 +135,12 @@ var (
 		Usage: "Data directory for ancient chain segments (default = inside chaindata)",
 	}
 	AncientBackUpFlag = DirectoryFlag{
-		Name:  "datadir.ancient",
-		Usage: "Data directory for ancient directory backup (default = inside chaindata)",
+		Name:  "datadir.backup",
+		Usage: "Data directory for ancient directory backup",
+	}
+	GenesisFlag = DirectoryFlag{
+		Name:  "datadir.genesis",
+		Usage: "Data directory for genesis file",
 	}
 	DiffFlag = DirectoryFlag{
 		Name:  "datadir.diff",

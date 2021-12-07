@@ -262,7 +262,6 @@ func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFree
 	//Back-up the necessary data within original ancient directory, create new freezer backup directory backFreezer
 	//db, err = rawdb.NewLevelDBDatabaseWithFreezer(root, cache, handles, backFreezer, namespace, readonly)
 	start := time.Now()
-	chainDb := p.db
 	chainDbBack, err := p.n.OpenDatabaseWithFreezer(name, cache, handles, backFreezer, namespace, readonly)
 	if err != nil {
 		log.Error("Failed to open ancient database: %v", err)
@@ -270,8 +269,6 @@ func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFree
 	}
 
 	//write back-up data to new chainDb
-	// Restore the last known head block
-
 	//write genesis block firstly
 	genesis := p.genesis
 	if _, _, err := core.SetupGenesisBlock(chainDbBack, genesis); err != nil {
@@ -279,53 +276,19 @@ func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFree
 		return err
 	}
 
-	//write most recent 128 blocks data
-	headBlock := rawdb.ReadHeadBlock(chainDb)
-	if headBlock == nil {
-		return errors.New("Failed to load head block")
+	//write the latest 128 blocks data of the ancient db
+	// If we can't access the freezer or it's empty, abort
+	frozen, err := p.db.Ancients()
+	if err != nil || frozen == 0 {
+		return errors.New("Can't access the freezer or it's empty, abort")
 	}
-	lastBlockNumber := headBlock.NumberU64()
-
-	//For block number 1 to current block-128, only back-up receipts, difficulties, block number->hash but no body data anymore
-	for blockNumber := lastBlockNumber - 128; blockNumber >= 1; blockNumber-- {
-		blockHash := rawdb.ReadCanonicalHash(chainDb, blockNumber)
-		block := rawdb.ReadBlock(chainDb, blockHash, blockNumber)
-		receipts := rawdb.ReadRawReceipts(chainDb, blockHash, blockNumber)
-		// Calculate the total difficulty of the block
-		td := rawdb.ReadTd(chainDb, blockHash, blockNumber)
-		if td == nil {
-			return consensus.ErrUnknownAncestor
-		}
-		externTd := new(big.Int).Add(block.Difficulty(), td)
-		// Encode all block components to RLP format.
-		headerBlob, err := rlp.EncodeToBytes(block.Header())
-		if err != nil {
-			log.Crit("Failed to RLP encode block header", "err", err)
-		}
-
-		storageReceipts := make([]*types.ReceiptForStorage, len(receipts))
-		for i, receipt := range receipts {
-			storageReceipts[i] = (*types.ReceiptForStorage)(receipt)
-		}
-		receiptBlob, err := rlp.EncodeToBytes(storageReceipts)
-		if err != nil {
-			log.Crit("Failed to RLP encode block receipts", "err", err)
-		}
-		tdBlob, err := rlp.EncodeToBytes(externTd)
-		if err != nil {
-			log.Crit("Failed to RLP encode block total difficulty", "err", err)
-		}
-		// Write all blob to flatten files.
-		err = chainDbBack.AppendAncientNoBody(block.NumberU64(), block.Hash().Bytes(), headerBlob, receiptBlob, tdBlob)
-		if err != nil {
-			log.Crit("Failed to write block data to ancient store", "err", err)
-		}
-
-		return nil
+	start_index := frozen - 128
+	if start_index < 0 {
+		start_index = 0
 	}
-
 	//All ancient data within the most recent 128 blocks write into new ancient_back directory
-	for blockNumber := lastBlockNumber - 127; blockNumber <= lastBlockNumber; blockNumber++ {
+	chainDb := p.db
+	for blockNumber := start_index; blockNumber < frozen; blockNumber++ {
 		blockHash := rawdb.ReadCanonicalHash(chainDb, blockNumber)
 		block := rawdb.ReadBlock(chainDb, blockHash, blockNumber)
 		receipts := rawdb.ReadRawReceipts(chainDb, blockHash, blockNumber)
@@ -337,6 +300,7 @@ func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFree
 		externTd := new(big.Int).Add(block.Difficulty(), td)
 		rawdb.WriteAncientBlock(chainDbBack, block, receipts, externTd)
 	}
+	//chainDb.TruncateAncients(start_index - 1)
 
 	chainDb.Close()
 	chainDbBack.Close()
@@ -359,7 +323,6 @@ func BlockPrune(oldAncientPath, newAncientPath string) error {
 		return err
 	}
 	return nil
-
 }
 
 // Prune deletes all historical state nodes except the nodes belong to the
