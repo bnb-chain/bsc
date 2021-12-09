@@ -58,7 +58,7 @@ var (
 const (
 	// extensionWaitTimeout is the maximum allowed time for the extension wait to
 	// complete before dropping the connection as malicious.
-	extensionWaitTimeout = 5 * time.Second
+	extensionWaitTimeout = 10 * time.Second
 )
 
 // peerSet represents the collection of active peers currently participating in
