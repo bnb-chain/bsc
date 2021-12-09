@@ -416,7 +416,7 @@ func (srv *Server) Stop() {
 	select {
 	case <-stopChan:
 	case <-time.After(stopTimeout):
-		log.Warn("stop p2p server timeout, forcing stop")
+		srv.log.Warn("stop p2p server timeout, forcing stop")
 	}
 }
 
