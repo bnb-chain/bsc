@@ -259,8 +259,8 @@ func TestWaitDiffExtensionTimout(t *testing.T) {
 
 	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
 		{
-			"diff",
-			1,
+			Name:    "diff",
+			Version: 1,
 		},
 	}), p2pSink, nil)
 	defer sink.Close()
@@ -294,8 +294,8 @@ func TestWaitSnapExtensionTimout(t *testing.T) {
 
 	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
 		{
-			"snap",
-			1,
+			Name:    "snap",
+			Version: 1,
 		},
 	}), p2pSink, nil)
 	defer sink.Close()
