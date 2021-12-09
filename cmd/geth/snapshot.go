@@ -18,15 +18,12 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
@@ -93,8 +90,6 @@ the trie clean cache with default directory will be deleted.
 				Flags: []cli.Flag{
 					utils.DataDirFlag,
 					utils.AncientFlag,
-					utils.AncientBackUpFlag,
-					utils.GenesisFlag,
 				},
 				Description: `
 Offline prune for block data.
@@ -171,54 +166,60 @@ It's also usable without snapshot enabled.
 
 func pruneBlock(ctx *cli.Context) error {
 	stack, config := makeConfigNode(ctx)
-	//defer stack.Close()
-	chaindb := utils.MakeChainDatabase(ctx, stack, false)
-	// Make sure we have a valid genesis JSON
-	genesisPath := ctx.GlobalString(utils.GenesisFlag.Name)
-	if len(genesisPath) == 0 {
-		utils.Fatalf("Must supply path to genesis JSON file")
-	}
-	file, err := os.Open(genesisPath)
-	if err != nil {
-		utils.Fatalf("Failed to read genesis file: %v", err)
-	}
-	defer file.Close()
+	defer stack.Close()
 
-	genesis := new(core.Genesis)
-	if err := json.NewDecoder(file).Decode(genesis); err != nil {
-		utils.Fatalf("invalid genesis file: %v", err)
-	}
-	if err != nil {
-		utils.Fatalf("Failed to decode genesis: %v", err)
-	}
-	freezer := config.Eth.DatabaseFreezer
+	chaindb := utils.MakeChainDatabaseForBlockPrune(ctx, stack, false)
+	chaindb.Close()
 
+	var oldAncientPath, newAncientPath string
+	if path := getAncientPath(ctx); path != "" {
+		oldAncientPath = path + "/ancient"
+		newAncientPath = path + "/ancient_back"
+	} else {
+		utils.Fatalf("Prune failed, did not specify the AncientPath %v")
+	}
+
+	//lock, _, err := fileutil.Flock(filepath.Join(oldAncientPath, "FLOCK"))
+	// lock, _, err := fileutil.Flock(oldAncientPath)
+	// if err != nil {
+	// 	return err
+	// }
+	// _, err = os.Open(oldAncientPath)
+	// if err != nil {
+	// 	utils.Fatalf("Failed to read genesis file: %v", err)
+	// }
 	for _, name := range []string{"chaindata"} {
-		root := stack.ResolvePath(name) // /Users/user/storage/Private_BSC_Storage/build/bin/node/geth/chaindata
+		root := stack.ResolvePath(name)
 		switch {
-		case freezer == "":
-			freezer = filepath.Join(root, "ancient")
-		case !filepath.IsAbs(freezer):
-			freezer = stack.ResolvePath(freezer)
+		case oldAncientPath == "":
+			oldAncientPath = filepath.Join(root, "ancient")
+		case !filepath.IsAbs(oldAncientPath):
+			oldAncientPath = stack.ResolvePath(oldAncientPath)
 		}
-		pruner, err := pruner.NewBlockPruner(chaindb, stack, stack.ResolvePath(""), freezer, genesis)
+		pruner, err := pruner.NewBlockPruner(chaindb, stack, stack.ResolvePath(""), oldAncientPath)
 		if err != nil {
 			utils.Fatalf("Failed to create block pruner", err)
 		}
-		backfreezer := filepath.Join(root, "ancient_back_up")
-		if err := pruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), backfreezer, "", false); err != nil {
+
+		if err := pruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), newAncientPath, oldAncientPath, "", false); err != nil {
 			log.Error("Failed to back up block", "err", err)
 			return err
 		}
 	}
+
 	log.Info("geth block offline pruning backup successfully")
-	oldAncientPath := ctx.GlobalString(utils.AncientFlag.Name)
-	newAncientPath := ctx.GlobalString(utils.AncientBackUpFlag.Name)
+
 	if err := pruner.BlockPrune(oldAncientPath, newAncientPath); err != nil {
 		utils.Fatalf("Failed to prune block", err)
 		return err
 	}
+	//lock.Release()
+	log.Info("Block prune successfully")
 	return nil
+}
+
+func getAncientPath(ctx *cli.Context) string {
+	return ctx.GlobalString(utils.AncientFlag.Name)
 }
 
 func pruneState(ctx *cli.Context) error {

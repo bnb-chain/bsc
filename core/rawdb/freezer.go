@@ -85,6 +85,8 @@ type freezer struct {
 
 	quit      chan struct{}
 	closeOnce sync.Once
+
+	offset uint64
 }
 
 // newFreezer creates a chain freezer that moves ancient chain data into
@@ -164,7 +166,7 @@ func (f *freezer) Close() error {
 // in the freezer.
 func (f *freezer) HasAncient(kind string, number uint64) (bool, error) {
 	if table := f.tables[kind]; table != nil {
-		return table.has(number), nil
+		return table.has(number - f.offset), nil
 	}
 	return false, nil
 }
@@ -172,7 +174,7 @@ func (f *freezer) HasAncient(kind string, number uint64) (bool, error) {
 // Ancient retrieves an ancient binary blob from the append-only immutable files.
 func (f *freezer) Ancient(kind string, number uint64) ([]byte, error) {
 	if table := f.tables[kind]; table != nil {
-		return table.Retrieve(number)
+		return table.Retrieve(number - f.offset)
 	}
 	return nil, errUnknownTable
 }
@@ -201,7 +203,7 @@ func (f *freezer) AppendAncient(number uint64, hash, header, body, receipts, td 
 		return errReadOnly
 	}
 	// Ensure the binary blobs we are appending is continuous with freezer.
-	if atomic.LoadUint64(&f.frozen) != number {
+	if atomic.LoadUint64(&f.frozen) != number-f.offset {
 		return errOutOrderInsertion
 	}
 	// Rollback all inserted data if any insertion below failed to ensure
@@ -313,6 +315,11 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 			continue
 		}
 		number := ReadHeaderNumber(nfdb, hash)
+
+		//minus the freezer offset
+		if number != nil {
+			*number = *number - f.offset
+		}
 		threshold := atomic.LoadUint64(&f.threshold)
 
 		switch {

@@ -122,11 +122,6 @@ func (db *nofreezedb) AppendAncient(number uint64, hash, header, body, receipts,
 	return errNotSupported
 }
 
-// AppendAncientNoBody returns an error as we don't have a backing chain freezer.
-func (db *nofreezedb) AppendAncientNoBody(number uint64, hash, header, receipts, td []byte) error {
-	return errNotSupported
-}
-
 // TruncateAncients returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) TruncateAncients(items uint64) error {
 	return errNotSupported
@@ -162,6 +157,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	if err != nil {
 		return nil, err
 	}
+	offset := ReadOffSetOfAncientFreezer(db)
 	// Since the freezer can be stored separately from the user's key-value database,
 	// there's a fairly high probability that the user requests invalid combinations
 	// of the freezer and database. Ensure that we don't shoot ourselves in the foot
@@ -184,52 +180,90 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	// If the genesis hash is empty, we have a new key-value store, so nothing to
 	// validate in this method. If, however, the genesis hash is not nil, compare
 	// it to the freezer content.
-	if kvgenesis, _ := db.Get(headerHashKey(0)); len(kvgenesis) > 0 {
-		if frozen, _ := frdb.Ancients(); frozen > 0 {
-			// If the freezer already contains something, ensure that the genesis blocks
-			// match, otherwise we might mix up freezers across chains and destroy both
-			// the freezer and the key-value store.
-			frgenesis, err := frdb.Ancient(freezerHashTable, 0)
-			if err != nil {
-				return nil, fmt.Errorf("failed to retrieve genesis from ancient %v", err)
-			} else if !bytes.Equal(kvgenesis, frgenesis) {
-				return nil, fmt.Errorf("genesis mismatch: %#x (leveldb) != %#x (ancients)", kvgenesis, frgenesis)
-			}
-			// Key-value store and freezer belong to the same network. Ensure that they
-			// are contiguous, otherwise we might end up with a non-functional freezer.
-			if kvhash, _ := db.Get(headerHashKey(frozen)); len(kvhash) == 0 {
-				// Subsequent header after the freezer limit is missing from the database.
-				// Reject startup is the database has a more recent head.
-				if *ReadHeaderNumber(db, ReadHeadHeaderHash(db)) > frozen-1 {
-					return nil, fmt.Errorf("gap (#%d) in the chain between ancients and leveldb", frozen)
+	if offset == 0 {
+		if kvgenesis, _ := db.Get(headerHashKey(0)); len(kvgenesis) > 0 {
+			if frozen, _ := frdb.Ancients(); frozen > 0 {
+				// If the freezer already contains something, ensure that the genesis blocks
+				// match, otherwise we might mix up freezers across chains and destroy both
+				// the freezer and the key-value store.
+				frgenesis, err := frdb.Ancient(freezerHashTable, 0)
+				if err != nil {
+					return nil, fmt.Errorf("failed to retrieve genesis from ancient %v", err)
+				} else if !bytes.Equal(kvgenesis, frgenesis) {
+					return nil, fmt.Errorf("genesis mismatch: %#x (leveldb) != %#x (ancients)", kvgenesis, frgenesis)
 				}
-				// Database contains only older data than the freezer, this happens if the
-				// state was wiped and reinited from an existing freezer.
-			}
-			// Otherwise, key-value store continues where the freezer left off, all is fine.
-			// We might have duplicate blocks (crash after freezer write but before key-value
-			// store deletion, but that's fine).
-		} else {
-			// If the freezer is empty, ensure nothing was moved yet from the key-value
-			// store, otherwise we'll end up missing data. We check block #1 to decide
-			// if we froze anything previously or not, but do take care of databases with
-			// only the genesis block.
-			if ReadHeadHeaderHash(db) != common.BytesToHash(kvgenesis) {
-				// Key-value store contains more data than the genesis block, make sure we
-				// didn't freeze anything yet.
-				if kvblob, _ := db.Get(headerHashKey(1)); len(kvblob) == 0 {
-					return nil, errors.New("ancient chain segments already extracted, please set --datadir.ancient to the correct path")
+				// Key-value store and freezer belong to the same network. Ensure that they
+				// are contiguous, otherwise we might end up with a non-functional freezer.
+				if kvhash, _ := db.Get(headerHashKey(frozen)); len(kvhash) == 0 {
+					// Subsequent header after the freezer limit is missing from the database.
+					// Reject startup is the database has a more recent head.
+					if *ReadHeaderNumber(db, ReadHeadHeaderHash(db)) > frozen-1 {
+						return nil, fmt.Errorf("gap (#%d) in the chain between ancients and leveldb", frozen)
+					}
+					// Database contains only older data than the freezer, this happens if the
+					// state was wiped and reinited from an existing freezer.
 				}
-				// Block #1 is still in the database, we're allowed to init a new feezer
+				// Otherwise, key-value store continues where the freezer left off, all is fine.
+				// We might have duplicate blocks (crash after freezer write but before key-value
+				// store deletion, but that's fine).
+			} else {
+				// If the freezer is empty, ensure nothing was moved yet from the key-value
+				// store, otherwise we'll end up missing data. We check block #1 to decide
+				// if we froze anything previously or not, but do take care of databases with
+				// only the genesis block.
+				if ReadHeadHeaderHash(db) != common.BytesToHash(kvgenesis) {
+					// Key-value store contains more data than the genesis block, make sure we
+					// didn't freeze anything yet.
+					if kvblob, _ := db.Get(headerHashKey(1)); len(kvblob) == 0 {
+						return nil, errors.New("ancient chain segments already extracted, please set --datadir.ancient to the correct path")
+					}
+					// Block #1 is still in the database, we're allowed to init a new feezer
+				}
+				// Otherwise, the head header is still the genesis, we're allowed to init a new
+				// feezer.
 			}
-			// Otherwise, the head header is still the genesis, we're allowed to init a new
-			// feezer.
 		}
 	}
 	// Freezer is consistent with the key-value database, permit combining the two
 	if !frdb.readonly {
 		go frdb.freeze(db)
 	}
+	return &freezerdb{
+		KeyValueStore: db,
+		AncientStore:  frdb,
+	}, nil
+}
+
+// NewDatabaseWithFreezer creates a high level database on top of a given key-
+// value data store with a freezer moving immutable chain segments into cold
+// storage.
+//Without goroutine of freeze running
+func NewDatabaseWithFreezerForPruneBlock(db ethdb.KeyValueStore, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
+	// Create the idle freezer instance
+	frdb, err := newFreezer(freezer, namespace, readonly)
+	if err != nil {
+		return nil, err
+	}
+
+	return &freezerdb{
+		KeyValueStore: db,
+		AncientStore:  frdb,
+	}, nil
+}
+
+// NewDatabaseWithFreezer creates a high level database on top of a given key-
+// value data store with a freezer moving immutable chain segments into cold
+// storage.
+func NewDatabaseWithFreezerBackup(offset uint64, db ethdb.KeyValueStore, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
+	// Create the idle freezer instance
+	frdb, err := newFreezer(freezer, namespace, readonly)
+	if err != nil {
+		return nil, err
+	}
+
+	//Assign the new offset to the new backup freezer while creating freezer
+	frdb.offset = offset
+
 	return &freezerdb{
 		KeyValueStore: db,
 		AncientStore:  frdb,
@@ -272,6 +306,37 @@ func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer 
 		return nil, err
 	}
 	return frdb, nil
+}
+
+// NewLevelDBDatabaseWithFreezer creates a persistent key-value database with a
+// freezer moving immutable chain segments into cold storage.
+func NewLevelDBDatabaseWithFreezerForPruneBlock(file string, cache int, handles int, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
+	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
+	if err != nil {
+		return nil, err
+	}
+	frdb, err := NewDatabaseWithFreezerForPruneBlock(kvdb, freezer, namespace, readonly)
+	if err != nil {
+		kvdb.Close()
+		return nil, err
+	}
+	return frdb, nil
+}
+
+// NewLevelDBDatabaseWithFreezer creates a persistent key-value database with a
+// freezer moving immutable chain segments into cold storage.
+func NewLevelDBDatabaseWithFreezerBackup(offset uint64, file string, cache int, handles int, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
+	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
+	if err != nil {
+		return nil, err
+	}
+	db, err := NewDatabaseWithFreezerBackup(offset, kvdb, freezer, namespace, readonly)
+	if err != nil {
+		kvdb.Close()
+		return nil, err
+	}
+
+	return db, nil
 }
 
 type counter uint64

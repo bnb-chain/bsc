@@ -30,7 +30,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -93,9 +92,7 @@ type BlockPruner struct {
 	db           ethdb.Database
 	chaindbDir   string
 	ancientdbDir string
-	headHeader   *types.Header
 	n            *node.Node
-	genesis      *core.Genesis
 }
 
 // NewPruner creates the pruner instance.
@@ -128,14 +125,13 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 	}, nil
 }
 
-func NewBlockPruner(db ethdb.Database, n *node.Node, chaindbDir, ancientdbDir string, genesis *core.Genesis) (*BlockPruner, error) {
+func NewBlockPruner(db ethdb.Database, n *node.Node, chaindbDir, ancientdbDir string) (*BlockPruner, error) {
 
 	return &BlockPruner{
 		db:           db,
 		chaindbDir:   chaindbDir,
 		ancientdbDir: ancientdbDir,
 		n:            n,
-		genesis:      genesis,
 	}, nil
 }
 
@@ -258,54 +254,65 @@ func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, sta
 }
 
 // Prune block body data
-func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFreezer, namespace string, readonly bool) error {
+func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFreezer, freezer, namespace string, readonly bool) error {
 	//Back-up the necessary data within original ancient directory, create new freezer backup directory backFreezer
-	//db, err = rawdb.NewLevelDBDatabaseWithFreezer(root, cache, handles, backFreezer, namespace, readonly)
 	start := time.Now()
-	chainDbBack, err := p.n.OpenDatabaseWithFreezer(name, cache, handles, backFreezer, namespace, readonly)
+
+	//write the latest 128 blocks data of the ancient db
+	// If we can't access the freezer or it's empty, abort
+	chainDb, err := p.n.OpenDatabaseWithFreezerForPruneBlock(name, cache, handles, freezer, namespace, readonly)
 	if err != nil {
 		log.Error("Failed to open ancient database: %v", err)
 		return err
 	}
 
-	//write back-up data to new chainDb
-	//write genesis block firstly
-	genesis := p.genesis
-	if _, _, err := core.SetupGenesisBlock(chainDbBack, genesis); err != nil {
-		log.Error("Failed to write genesis block: %v", err)
-		return err
-	}
+	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(chainDb)
+	frozen, err := chainDb.Ancients()
 
-	//write the latest 128 blocks data of the ancient db
-	// If we can't access the freezer or it's empty, abort
-	frozen, err := p.db.Ancients()
 	if err != nil || frozen == 0 {
-		return errors.New("Can't access the freezer or it's empty, abort")
+		return errors.New("can't access the freezer or it's empty, abort")
 	}
-	start_index := frozen - 128
-	if start_index < 0 {
-		start_index = 0
-	}
-	//All ancient data within the most recent 128 blocks write into new ancient_back directory
-	chainDb := p.db
-	for blockNumber := start_index; blockNumber < frozen; blockNumber++ {
+	startBlockNumber := frozen + oldOffSet - 128
+
+	newOffSet := oldOffSet + frozen - 128
+
+	//write the new offset into db for new freezer usage
+	rawdb.WriteOffSetOfAncientFreezer(chainDb, newOffSet)
+
+	blockList := make([]*types.Block, 0, 128)
+	receiptsList := make([]types.Receipts, 0, 128)
+	externTdList := make([]*big.Int, 0, 128)
+
+	//All ancient data within the most recent 128 blocks write into memory for future new ancient_back directory usage
+	for blockNumber := startBlockNumber; blockNumber < frozen+oldOffSet; blockNumber++ {
 		blockHash := rawdb.ReadCanonicalHash(chainDb, blockNumber)
 		block := rawdb.ReadBlock(chainDb, blockHash, blockNumber)
+		blockList = append(blockList, block)
 		receipts := rawdb.ReadRawReceipts(chainDb, blockHash, blockNumber)
+		receiptsList = append(receiptsList, receipts)
 		// Calculate the total difficulty of the block
 		td := rawdb.ReadTd(chainDb, blockHash, blockNumber)
 		if td == nil {
 			return consensus.ErrUnknownAncestor
 		}
 		externTd := new(big.Int).Add(block.Difficulty(), td)
-		rawdb.WriteAncientBlock(chainDbBack, block, receipts, externTd)
+		externTdList = append(externTdList, externTd)
 	}
-	//chainDb.TruncateAncients(start_index - 1)
 
 	chainDb.Close()
-	chainDbBack.Close()
 
-	log.Info("Block pruning BackUp successful", common.PrettyDuration(time.Since(start)))
+	chainDbBack, err := p.n.OpenDatabaseWithFreezerBackup(newOffSet, name, cache, handles, backFreezer, namespace, readonly)
+	if err != nil {
+		log.Error("Failed to open ancient database: %v", err)
+		return err
+	}
+	//Write into ancient_backup
+	for id := 0; id < len(blockList); id++ {
+		rawdb.WriteAncientBlock(chainDbBack, blockList[id], receiptsList[id], externTdList[id])
+	}
+
+	chainDbBack.Close()
+	log.Info("Block pruning BackUp successfully", common.PrettyDuration(time.Since(start)))
 	return nil
 }
 
@@ -313,13 +320,12 @@ func BlockPrune(oldAncientPath, newAncientPath string) error {
 	//Delete directly for the old ancientdb, e.g.: path ../chaindb/ancient
 	if err := os.RemoveAll(oldAncientPath); err != nil {
 		log.Error("Failed to remove old ancient directory %v", err)
-
 		return err
 	}
 
 	//Rename the new ancientdb path same to the old
 	if err := os.Rename(newAncientPath, oldAncientPath); err != nil {
-		log.Error("Failed to rename new ancient directory %v", err)
+		log.Error("Failed to rename new ancient directory")
 		return err
 	}
 	return nil

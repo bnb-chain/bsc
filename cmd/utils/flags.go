@@ -134,14 +134,6 @@ var (
 		Name:  "datadir.ancient",
 		Usage: "Data directory for ancient chain segments (default = inside chaindata)",
 	}
-	AncientBackUpFlag = DirectoryFlag{
-		Name:  "datadir.backup",
-		Usage: "Data directory for ancient directory backup",
-	}
-	GenesisFlag = DirectoryFlag{
-		Name:  "datadir.genesis",
-		Usage: "Data directory for genesis file",
-	}
 	DiffFlag = DirectoryFlag{
 		Name:  "datadir.diff",
 		Usage: "Data directory for difflayer segments (default = inside chaindata)",
@@ -1905,6 +1897,28 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.
 	} else {
 		name := "chaindata"
 		chainDb, err = stack.OpenDatabaseWithFreezer(name, cache, handles, ctx.GlobalString(AncientFlag.Name), "", readonly)
+	}
+	if err != nil {
+		Fatalf("Could not open database: %v", err)
+	}
+	return chainDb
+}
+
+// MakeChainDatabase open an LevelDB using the flags passed to the client and will hard crash if it fails.
+func MakeChainDatabaseForBlockPrune(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.Database {
+	var (
+		cache   = ctx.GlobalInt(CacheFlag.Name) * ctx.GlobalInt(CacheDatabaseFlag.Name) / 100
+		handles = MakeDatabaseHandles()
+
+		err     error
+		chainDb ethdb.Database
+	)
+	if ctx.GlobalString(SyncModeFlag.Name) == "light" {
+		name := "lightchaindata"
+		chainDb, err = stack.OpenDatabase(name, cache, handles, "", readonly)
+	} else {
+		name := "chaindata"
+		chainDb, err = stack.OpenDatabaseWithFreezerForPruneBlock(name, cache, handles, ctx.GlobalString(AncientFlag.Name), "", readonly)
 	}
 	if err != nil {
 		Fatalf("Could not open database: %v", err)

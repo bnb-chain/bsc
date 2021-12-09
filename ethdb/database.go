@@ -94,7 +94,6 @@ type AncientWriter interface {
 
 	// Sync flushes all in-memory ancient store data to disk.
 	Sync() error
-
 }
 
 // Reader contains the methods required to read data from both key-value as well as
