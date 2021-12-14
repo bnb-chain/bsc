@@ -398,6 +398,11 @@ var (
 		Usage: "Maximum amount of time non-executable transaction are queued",
 		Value: ethconfig.Defaults.TxPool.Lifetime,
 	}
+	TxPoolReannounceTimeFlag = cli.DurationFlag{
+		Name:  "txpool.reannouncetime",
+		Usage: "Duration for announcing local pending transactions again (default = 10 years, minimum = 1 minute)",
+		Value: ethconfig.Defaults.TxPool.ReannounceTime,
+	}
 	// Performance tuning settings
 	CacheFlag = cli.IntFlag{
 		Name:  "cache",
@@ -1409,6 +1414,9 @@ func setTxPool(ctx *cli.Context, cfg *core.TxPoolConfig) {
 	}
 	if ctx.GlobalIsSet(TxPoolLifetimeFlag.Name) {
 		cfg.Lifetime = ctx.GlobalDuration(TxPoolLifetimeFlag.Name)
+	}
+	if ctx.GlobalIsSet(TxPoolReannounceTimeFlag.Name) {
+		cfg.ReannounceTime = ctx.GlobalDuration(TxPoolReannounceTimeFlag.Name)
 	}
 }
 
