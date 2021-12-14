@@ -56,6 +56,12 @@ type StateProcessor struct {
 	config *params.ChainConfig // Chain configuration options
 	bc     *BlockChain         // Canonical block chain
 	engine consensus.Engine    // Consensus engine used for block rewards
+
+	// add for parallel execute
+	initialized      bool
+	paraTxReqChan    []chan *ParallelTxRequest // to notify the parallel slots to execute tx, each slot has a chan.
+	paraTxResultChan chan *ParallelTxResult    // to notify dispatcher that a tx is done
+	slotState        []SlotState               // idle, or pending messages
 }
 
 // NewStateProcessor initialises a new StateProcessor.
@@ -402,7 +408,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	posa, isPoSA := p.engine.(consensus.PoSA)
 	commonTxs := make([]*types.Transaction, 0, txNum)
 
-	// initilise bloom processors
+	// initialise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
 
@@ -445,7 +451,128 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	return statedb, receipts, allLogs, *usedGas, nil
 }
 
+type SlotState struct {
+	idle        bool
+	curExec     *ParallelTxRequest
+	pendingExec []*ParallelTxRequest
+}
+
+type ParallelTxResult struct {
+	txIndex   int
+	slotIndex int   // slot index
+	err       error // to describe error message?
+	tx        *types.Transaction
+	receipt   *types.Receipt
+}
+
+type ParallelTxRequest struct {
+	txIndex         int
+	tx              *types.Transaction
+	gp              *GasPool
+	statedb         *state.StateDB
+	msg             types.Message
+	header          *types.Header
+	vmenv           *vm.EVM
+	bloomProcessors *AsyncReceiptBloomGenerator
+	usedGas         *uint64
+}
+
+// for parallel execute, we put contracts of same address in a slot,
+// since these txs probably would have conflicts
+func (p *StateProcessor) queueToSameAddress(execMsg *ParallelTxRequest) bool {
+	txToAddr := execMsg.tx.To()
+	for _, slot := range p.slotState {
+		// skip idle slot
+		if slot.idle {
+			continue
+		}
+		if slot.curExec == nil {
+			log.Warn("Bug: active exec slot, curExec should not be none")
+			continue
+		}
+		// same to address, put it on slot's pending list.
+		if *txToAddr == *slot.curExec.tx.To() {
+			// do lock?
+			// todo: move pendingExec creation at start up?
+			if slot.pendingExec == nil {
+				slot.pendingExec = make([]*ParallelTxRequest, 0)
+			}
+			slot.pendingExec = append(slot.pendingExec, execMsg)
+			return true
+		}
+	}
+	return false
+}
+
+// if there is idle slot, dispatch the msg the first idle slot
+func (p *StateProcessor) dispatchToIdleSlot(txReq *ParallelTxRequest) bool {
+	for i, state := range p.slotState {
+		if state.idle {
+			// dispatch to slot index 1
+			p.paraTxReqChan[i] <- txReq
+			return true
+		}
+	}
+	return false
+}
+
+func (p *StateProcessor) execInParallelSlot(index int, txReq *ParallelTxRequest) *ParallelTxResult {
+	msg := txReq.msg
+	gp := txReq.gp
+	statedb := txReq.statedb
+	header := txReq.header
+	tx := txReq.tx
+	vmenv := txReq.vmenv
+	usedGas := txReq.usedGas
+	bloomProcessors := txReq.bloomProcessors
+
+	receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, header, tx, usedGas, vmenv, bloomProcessors)
+	// conflict detect
+	return &ParallelTxResult{
+		txIndex:   txReq.txIndex,
+		slotIndex: index,
+		tx:        tx,
+		receipt:   receipt,
+		err:       err,
+	}
+
+}
+
+func (p *StateProcessor) InitParallelOnce() {
+	if p.initialized {
+		return
+	}
+
+	p.paraTxReqChan = make([]chan *ParallelTxRequest, state.DefaultNumOfParallel)
+	p.paraTxResultChan = make(chan *ParallelTxResult, state.DefaultNumOfParallel) // fixme: use block chan?
+	p.slotState = make([]SlotState, state.DefaultNumOfParallel)
+
+	for i := 0; i < state.DefaultNumOfParallel; i++ {
+		go func(slotIndex int) {
+			// receive a dispatched message
+			exec := <-p.paraTxReqChan[slotIndex]
+			result := p.execInParallelSlot(slotIndex, exec)
+			p.paraTxResultChan <- result
+
+			// if pending queue is not empty
+			for {
+				slot := p.slotState[slotIndex] // use reference?
+				if len(slot.pendingExec) == 0 {
+					break
+				}
+				pendingMsg := slot.pendingExec[0]
+				slot.pendingExec = slot.pendingExec[1:]
+
+				result := p.execInParallelSlot(slotIndex, pendingMsg)
+				p.paraTxResultChan <- result
+			}
+		}(i)
+	}
+	p.initialized = true
+}
+
 func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
+	p.InitParallelOnce()
 	var (
 		usedGas = new(uint64)
 		header  = block.Header()
@@ -470,12 +597,13 @@ func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.Stat
 	posa, isPoSA := p.engine.(consensus.PoSA)
 	commonTxs := make([]*types.Transaction, 0, txNum)
 
-	// initilise bloom processors
+	// initialise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
+	var txReqCount, txResultCount int
 	for i, tx := range block.Transactions() {
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
@@ -490,15 +618,57 @@ func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.Stat
 		if err != nil {
 			return statedb, nil, nil, 0, err
 		}
-		statedb.Prepare(tx.Hash(), block.Hash(), i)
-		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, header, tx, usedGas, vmenv, bloomProcessors)
-		if err != nil {
-			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+
+		txReqCount++
+		// parallel start, wrap an exec message, which will be dispatched to a slot
+		txReq := &ParallelTxRequest{
+			txIndex:         i,
+			tx:              tx,
+			gp:              gp,
+			msg:             msg,
+			header:          header,
+			vmenv:           vmenv,
+			statedb:         statedb,
+			bloomProcessors: bloomProcessors,
+			usedGas:         usedGas, // atomic
 		}
 
-		commonTxs = append(commonTxs, tx)
-		receipts = append(receipts, receipt)
+		if p.queueToSameAddress(txReq) {
+			continue
+		}
+
+		for {
+			// if idle slot available, just dispatch and process next tx.
+			if p.dispatchToIdleSlot(txReq) {
+				break
+			}
+
+			// no idle slot, wait until there is idle slot
+			result := <-p.paraTxResultChan
+			txResultCount++
+
+			// update tx result
+			if result.err != nil {
+				return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", result.txIndex, result.tx.Hash().Hex(), result.err)
+			}
+			commonTxs = append(commonTxs, result.tx)
+			receipts = append(receipts, result.receipt)
+		}
 	}
+
+	// wait until all tx request are done
+	for txResultCount < txReqCount {
+		result := <-p.paraTxResultChan
+		txResultCount++
+
+		// update tx result
+		if result.err != nil {
+			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", result.txIndex, result.tx.Hash().Hex(), result.err)
+		}
+		commonTxs = append(commonTxs, result.tx)
+		receipts = append(receipts, result.receipt)
+	}
+
 	bloomProcessors.Close()
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)

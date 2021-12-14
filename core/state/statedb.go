@@ -40,8 +40,9 @@ import (
 )
 
 const (
-	preLoadLimit      = 128
-	defaultNumOfSlots = 100
+	preLoadLimit         = 128
+	defaultNumOfSlots    = 100
+	DefaultNumOfParallel = 8
 )
 
 type revision struct {
