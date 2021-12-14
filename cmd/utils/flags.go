@@ -860,6 +860,20 @@ var (
 		Usage: "InfluxDB bucket name to push reported metrics to (v2 only)",
 		Value: metrics.DefaultConfig.InfluxDBBucket,
 	}
+	ParallelTxFlag = cli.BoolFlag{
+		Name:  "parallel",
+		Usage: "Enable the experimental parallel transaction execution mode (default = false)",
+	}
+	ParallelTxNumFlag = cli.IntFlag{
+		Name:  "parallel.num",
+		Usage: "Number of slot for transaction execution, only valid in parallel mode (default = CPUNum - 1)",
+		Value: core.ParallelExecNum,
+	}
+	ParallelTxQueueSizeFlag = cli.IntFlag{
+		Name:  "parallel.queuesize",
+		Usage: "Max number of Tx that can be queued to a slot, only valid in parallel mode (default = 10)",
+		Value: core.MaxPendingQueueSize,
+	}
 
 	// Init network
 	InitNetworkSize = cli.IntFlag{
@@ -1361,6 +1375,16 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.GlobalIsSet(InsecureUnlockAllowedFlag.Name) {
 		cfg.InsecureUnlockAllowed = ctx.GlobalBool(InsecureUnlockAllowedFlag.Name)
 	}
+	if ctx.GlobalIsSet(ParallelTxFlag.Name) {
+		core.ParallelTxMode = true
+	}
+	if ctx.GlobalIsSet(ParallelTxNumFlag.Name) {
+		core.ParallelExecNum = ctx.GlobalInt(ParallelTxNumFlag.Name)
+	}
+	if ctx.GlobalIsSet(ParallelTxQueueSizeFlag.Name) {
+		core.MaxPendingQueueSize = ctx.GlobalInt(ParallelTxQueueSizeFlag.Name)
+	}
+
 }
 
 func setSmartCard(ctx *cli.Context, cfg *node.Config) {

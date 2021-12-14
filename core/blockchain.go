@@ -81,6 +81,7 @@ var (
 	errInsertionInterrupted        = errors.New("insertion is interrupted")
 	errStateRootVerificationFailed = errors.New("state root verification failed")
 	errChainStopped                = errors.New("blockchain is stopped")
+	ParallelTxMode                 = false // parallel transaction execution
 )
 
 const (
@@ -1897,8 +1898,17 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			statedb.EnablePipeCommit()
 		}
 		statedb.SetExpectedStateRoot(block.Root())
-		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
+
+		var receipts types.Receipts
+		var logs []*types.Log
+		var usedGas uint64
+		if ParallelTxMode {
+			statedb, receipts, logs, usedGas, err = bc.processor.ProcessParallel(block, statedb, bc.vmConfig)
+		} else {
+			statedb, receipts, logs, usedGas, err = bc.processor.Process(block, statedb, bc.vmConfig)
+		}
 		close(interruptCh) // state prefetch can be stopped
+
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
 			statedb.StopPrefetcher()

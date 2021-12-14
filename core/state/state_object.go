@@ -39,6 +39,8 @@ func (c Code) String() string {
 	return string(c) //strings.Join(Disassemble(c), " ")
 }
 
+type StorageKeys map[common.Hash]struct{}
+
 type Storage map[common.Hash]common.Hash
 
 func (s Storage) String() (str string) {
@@ -525,6 +527,14 @@ func (s *StateObject) deepCopy(db *StateDB) *StateObject {
 	stateObject.dirtyCode = s.dirtyCode
 	stateObject.deleted = s.deleted
 	return stateObject
+}
+
+func (s *StateObject) deepCopyForSlot(db *StateDB) *StateObject {
+	s.db = db
+	if s.trie != nil {
+		s.trie = db.db.CopyTrie(s.trie)
+	}
+	return s
 }
 
 //
