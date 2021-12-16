@@ -257,6 +257,9 @@ func (db *cachingDB) Purge() {
 
 // CopyTrie returns an independent copy of the given trie.
 func (db *cachingDB) CopyTrie(t Trie) Trie {
+	if t == nil {
+		return nil
+	}
 	switch t := t.(type) {
 	case *trie.SecureTrie:
 		return t.Copy()

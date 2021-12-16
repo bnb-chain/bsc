@@ -632,27 +632,35 @@ func (db *Database) Cap(limit common.StorageSize) error {
 	}
 	// Keep committing nodes from the flush-list until we're below allowance
 	oldest := db.oldest
-	for size > limit && oldest != (common.Hash{}) {
-		// Fetch the oldest referenced node and push into the batch
-		node := db.dirties[oldest]
-		rawdb.WriteTrieNode(batch, oldest, node.rlp())
+	err := func() error {
+		db.lock.RLock()
+		defer db.lock.RUnlock()
+		for size > limit && oldest != (common.Hash{}) {
+			// Fetch the oldest referenced node and push into the batch
+			node := db.dirties[oldest]
+			rawdb.WriteTrieNode(batch, oldest, node.rlp())
 
-		// If we exceeded the ideal batch size, commit and reset
-		if batch.ValueSize() >= ethdb.IdealBatchSize {
-			if err := batch.Write(); err != nil {
-				log.Error("Failed to write flush list to disk", "err", err)
-				return err
+			// If we exceeded the ideal batch size, commit and reset
+			if batch.ValueSize() >= ethdb.IdealBatchSize {
+				if err := batch.Write(); err != nil {
+					log.Error("Failed to write flush list to disk", "err", err)
+					return err
+				}
+				batch.Reset()
 			}
-			batch.Reset()
+			// Iterate to the next flush item, or abort if the size cap was achieved. Size
+			// is the total size, including the useful cached data (hash -> blob), the
+			// cache item metadata, as well as external children mappings.
+			size -= common.StorageSize(common.HashLength + int(node.size) + cachedNodeSize)
+			if node.children != nil {
+				size -= common.StorageSize(cachedNodeChildrenSize + len(node.children)*(common.HashLength+2))
+			}
+			oldest = node.flushNext
 		}
-		// Iterate to the next flush item, or abort if the size cap was achieved. Size
-		// is the total size, including the useful cached data (hash -> blob), the
-		// cache item metadata, as well as external children mappings.
-		size -= common.StorageSize(common.HashLength + int(node.size) + cachedNodeSize)
-		if node.children != nil {
-			size -= common.StorageSize(cachedNodeChildrenSize + len(node.children)*(common.HashLength+2))
-		}
-		oldest = node.flushNext
+		return nil
+	}()
+	if err != nil {
+		return err
 	}
 	// Flush out any remainder data from the last batch
 	if err := batch.Write(); err != nil {

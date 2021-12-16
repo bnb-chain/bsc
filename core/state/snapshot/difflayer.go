@@ -118,6 +118,10 @@ type diffLayer struct {
 	storageList map[common.Hash][]common.Hash          // List of storage slots for iterated retrievals, one per account. Any existing lists are sorted if non-nil
 	storageData map[common.Hash]map[common.Hash][]byte // Keyed storage slots for direct retrieval. one per account (nil means deleted)
 
+	// the difflayer is verified when verifiedCh is nil or closed
+	verifiedCh chan struct{}
+	verifyRes  bool
+
 	diffed *bloomfilter.Filter // Bloom filter tracking all the diffed items up to the disk layer
 
 	lock sync.RWMutex
@@ -168,7 +172,7 @@ func (h storageBloomHasher) Sum64() uint64 {
 
 // newDiffLayer creates a new diff on top of an existing snapshot, whether that's a low
 // level persistent database or a hierarchical diff already.
-func newDiffLayer(parent snapshot, root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) *diffLayer {
+func newDiffLayer(parent snapshot, root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer {
 	// Create the new layer with some pre-allocated data segments
 	dl := &diffLayer{
 		parent:      parent,
@@ -177,6 +181,7 @@ func newDiffLayer(parent snapshot, root common.Hash, destructs map[common.Hash]s
 		accountData: accounts,
 		storageData: storage,
 		storageList: make(map[common.Hash][]common.Hash),
+		verifiedCh:  verified,
 	}
 	switch parent := parent.(type) {
 	case *diskLayer:
@@ -254,6 +259,31 @@ func (dl *diffLayer) rebloom(origin *diskLayer) {
 // Root returns the root hash for which this snapshot was made.
 func (dl *diffLayer) Root() common.Hash {
 	return dl.root
+}
+
+// WaitVerified will wait until the diff layer been verified
+func (dl *diffLayer) WaitVerified() bool {
+	if dl.verifiedCh == nil {
+		return true
+	}
+	<-dl.verifiedCh
+	return dl.verifyRes
+}
+
+func (dl *diffLayer) MarkVerified() {
+	dl.verifyRes = true
+}
+
+func (dl *diffLayer) Verified() bool {
+	if dl.verifiedCh == nil {
+		return true
+	}
+	select {
+	case <-dl.verifiedCh:
+		return true
+	default:
+		return false
+	}
 }
 
 // Parent returns the subsequent layer of a diff layer.
@@ -423,8 +453,8 @@ func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int) ([
 
 // Update creates a new layer on top of the existing snapshot diff tree with
 // the specified data items.
-func (dl *diffLayer) Update(blockRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) *diffLayer {
-	return newDiffLayer(dl, blockRoot, destructs, accounts, storage)
+func (dl *diffLayer) Update(blockRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer {
+	return newDiffLayer(dl, blockRoot, destructs, accounts, storage, verified)
 }
 
 // flatten pushes all data from this point downwards, flattening everything into

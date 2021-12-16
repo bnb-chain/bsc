@@ -123,6 +123,10 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 			statedb.StopPrefetcher()
 			parent := p.bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 			statedb, err = state.New(parent.Root, p.bc.stateCache, p.bc.snaps)
+			statedb.SetExpectedStateRoot(block.Root())
+			if p.bc.pipeCommit {
+				statedb.EnablePipeCommit()
+			}
 			if err != nil {
 				return statedb, nil, nil, 0, err
 			}
@@ -330,7 +334,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	}
 
 	// Do validate in advance so that we can fall back to full process
-	if err := p.bc.validator.ValidateState(block, statedb, diffLayer.Receipts, gasUsed); err != nil {
+	if err := p.bc.validator.ValidateState(block, statedb, diffLayer.Receipts, gasUsed, false); err != nil {
 		log.Error("validate state failed during diff sync", "error", err)
 		return nil, nil, 0, err
 	}
@@ -396,6 +400,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	// initilise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
+	statedb.MarkFullProcessed()
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
