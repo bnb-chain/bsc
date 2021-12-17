@@ -68,6 +68,8 @@ func (n *proofList) Delete(key []byte) error {
 	panic("not supported")
 }
 
+type StateKeys map[common.Hash]struct{}
+
 // StateDB structs within the ethereum protocol are used to store anything
 // within the merkle trie. StateDBs take care of caching and storing
 // nested states. It's the general query interface to retrieve:
@@ -101,6 +103,14 @@ type StateDB struct {
 	stateObjects        map[common.Address]*StateObject
 	stateObjectsPending map[common.Address]struct{} // State objects finalized but not yet written to the trie
 	stateObjectsDirty   map[common.Address]struct{} // State objects modified in the current execution
+
+	// for parallel slot to do conflict check,
+	// each slot would have a stateObjects: map[common.Address]*StateObject
+	BaseTxIndex          int                        // slotDB is created base on this tx index.
+	StateChangedInSlot   map[common.Address]Storage // fixme no need record value?
+	StateReadsInSlot     map[common.Address]StateKeys
+	BalanceChangedInSlot map[common.Address]struct{} // the address's balance has been changed
+	BalanceReadsInSlot   map[common.Address]struct{} // the address's balance has been read and used.
 
 	// DB error.
 	// State objects are used by the consensus core and VM which are
@@ -148,18 +158,51 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 	return newStateDB(root, db, snaps)
 }
 
+// Parallel, each execute slot would have its own stateDB
+// NewSlotDB creates a new slot stateDB base on the block stateDB
+// Will do StateDB Copy
+func NewSlotDB(db *StateDB, validatorSetAddr common.Address, txIndex int) *StateDB {
+	slotDB := db.Copy()
+	slotDB.originalRoot = db.originalRoot
+	slotDB.BaseTxIndex = txIndex
+	// new slotDB should have no dirty or pending on created,
+	// stateObjectsPending will be use on merge
+	slotDB.stateObjectsPending = make(map[common.Address]struct{}, defaultNumOfSlots)
+	slotDB.stateObjectsDirty = make(map[common.Address]struct{}, defaultNumOfSlots)
+	slotDB.StateChangedInSlot = make(map[common.Address]Storage, defaultNumOfSlots)
+	slotDB.StateReadsInSlot = make(map[common.Address]StateKeys, defaultNumOfSlots)
+	slotDB.BalanceChangedInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
+	slotDB.BalanceReadsInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
+	// do not copy snapDestructs, snapAccounts, snapStorage, since slotDB only care its own changes
+	slotDB.snapDestructs = make(map[common.Address]struct{})
+	slotDB.snapAccounts = make(map[common.Address][]byte)
+	slotDB.snapStorage = make(map[common.Address]map[string][]byte)
+	// clear the slotDB's validator's balance first
+	// for slotDB, validatorSet's value is the tx's gas fee
+	slotDB.SetBalance(validatorSetAddr, big.NewInt(0))
+	// todo: Copy() without logs, slotDB should have no log on create
+	slotDB.logs = make(map[common.Hash][]*types.Log, defaultNumOfSlots)
+	slotDB.logSize = 0
+	slotDB.clearJournalAndRefund() // slotDB will maintain its own journal and snapshot revision...
+	return slotDB
+}
+
 func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	sdb := &StateDB{
-		db:                  db,
-		originalRoot:        root,
-		snaps:               snaps,
-		stateObjects:        make(map[common.Address]*StateObject, defaultNumOfSlots),
-		stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
-		logs:                make(map[common.Hash][]*types.Log, defaultNumOfSlots),
-		preimages:           make(map[common.Hash][]byte),
-		journal:             newJournal(),
-		hasher:              crypto.NewKeccakState(),
+		db:                   db,
+		originalRoot:         root,
+		snaps:                snaps,
+		stateObjects:         make(map[common.Address]*StateObject, defaultNumOfSlots),
+		StateChangedInSlot:   make(map[common.Address]Storage, defaultNumOfSlots),
+		StateReadsInSlot:     make(map[common.Address]StateKeys, defaultNumOfSlots),
+		BalanceChangedInSlot: make(map[common.Address]struct{}, defaultNumOfSlots),
+		BalanceReadsInSlot:   make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateObjectsPending:  make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateObjectsDirty:    make(map[common.Address]struct{}, defaultNumOfSlots),
+		logs:                 make(map[common.Hash][]*types.Log, defaultNumOfSlots),
+		preimages:            make(map[common.Hash][]byte),
+		journal:              newJournal(),
+		hasher:               crypto.NewKeccakState(),
 	}
 	if sdb.snaps != nil {
 		if sdb.snap = sdb.snaps.Snapshot(root); sdb.snap != nil {
@@ -177,6 +220,102 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 	}
 	sdb.trie = tr
 	return sdb, nil
+}
+
+// MergeSlotDB is for Parallel TX, when the TX is finalized(dirty -> pending)
+// A bit similar to StateDB.Copy(),
+// mainly copy stateObjects, since slotDB has been finalized.
+func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, validorSetAddr common.Address) {
+	// receipt.Logs with unified log Index within a block
+	// align slotDB's logs Index to the block stateDB's logSize
+	for _, l := range slotReceipt.Logs {
+		l.Index += s.logSize
+	}
+	s.logSize += slotDb.logSize
+
+	// before merge, do validator reward first: AddBalance to consensus.SystemAddress
+	// object of SystemAddress is take care specially
+	// log.Info("MergeSlotDB AddBalance to validorSetAddr", "balance value", slotDb.GetBalance(validorSetAddr))
+	s.AddBalance(validorSetAddr, slotDb.GetBalance(validorSetAddr))
+
+	// suppose validorSetAddr have no other change, execept TX fee reward?
+	validateObj := slotDb.stateObjects[validorSetAddr]
+	if validateObj == nil {
+		log.Warn("MergeSlotDB validateObj == nil")
+	} else {
+		if len(validateObj.dirtyStorage) > 0 {
+			log.Warn("MergeSlotDB validateObj", "len(validateObj.dirtyStorage)", len(validateObj.dirtyStorage))
+			panic("MergeSlotDB validateObj.dirtyStorage should be 0")
+		}
+		if len(validateObj.pendingStorage) > 0 {
+			log.Warn("MergeSlotDB validateObj", "len(validateObj.pendingStorage)", len(validateObj.pendingStorage))
+			panic("MergeSlotDB validateObj.pendingStorage should be 0")
+		}
+	}
+	delete(slotDb.stateObjects, validorSetAddr)
+
+	// only merge dirty objects
+	for addr := range slotDb.stateObjectsDirty {
+		// log.Info("MergeSlotDB stateObjectsDirty", "addr", addr)
+		if _, exist := s.stateObjectsDirty[addr]; !exist {
+			s.stateObjectsDirty[addr] = struct{}{} //
+		}
+		// stateObjects: KV, balance, nonce...
+		if obj, ok := slotDb.stateObjects[addr]; ok {
+			// s.stateObjects[addr] = obj
+			if s.stateObjects[addr] == nil {
+				// no need deep copy, since slotDb will not write obj anymore?
+				log.Info("MergeSlotDB stateObjects created", "obj addr", addr)
+				s.stateObjects[addr] = obj.deepCopy(s)
+				continue
+			}
+			log.Info("MergeSlotDB stateObjects changed", "obj addr", addr)
+			s.stateObjects[addr] = obj.deepCopy(s)
+		}
+	}
+
+	for addr := range slotDb.stateObjectsPending {
+		// log.Info("MergeSlotDB stateObjectsPending", "addr", addr)
+		if _, exist := s.stateObjectsPending[addr]; !exist {
+			s.stateObjectsPending[addr] = struct{}{}
+			continue
+		}
+	}
+
+	// todo: accessList
+	// journals should be cleared in Tx Apply Stage2, which will do StateDB.Finalise()
+	// log.Info("MergeSlotDB slotDb journal should be empty before merge", "len(slotDb.journal.dirties)", len(slotDb.journal.dirties))
+	for addr := range slotDb.journal.dirties {
+		log.Info("MergeSlotDB journal dirty", "addr", addr)
+	}
+	// slotDb.logs: logs will be kept in receipts, no need to do merge
+	// preimages
+	for hash, preimage := range slotDb.preimages {
+		s.preimages[hash] = preimage
+	}
+	// accessList
+	if s.accessList != nil {
+		s.accessList = slotDb.accessList.Copy()
+	}
+	if slotDb.snaps != nil {
+		// log.Info("MergeSlotDB slotDb.snaps != nil")
+		// slotDb.snapDestructs = make(map[common.Address]struct{})
+		for k, v := range slotDb.snapDestructs {
+			s.snapDestructs[k] = v
+		}
+		// slotDb.snapAccounts = make(map[common.Address][]byte)
+		for k, v := range slotDb.snapAccounts {
+			s.snapAccounts[k] = v
+		}
+		// slotDb.snapStorage = make(map[common.Address]map[string][]byte)
+		for k, v := range slotDb.snapStorage {
+			temp := make(map[string][]byte)
+			for kk, vv := range v {
+				temp[kk] = vv
+			}
+			s.snapStorage[k] = temp
+		}
+	}
 }
 
 // StartPrefetcher initializes a new trie prefetcher to pull in nodes from the
@@ -336,6 +475,7 @@ func (s *StateDB) Empty(addr common.Address) bool {
 
 // GetBalance retrieves the balance from the given address or 0 if object not found
 func (s *StateDB) GetBalance(addr common.Address) *big.Int {
+	s.BalanceReadsInSlot[addr] = struct{}{}
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Balance()
@@ -388,6 +528,11 @@ func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 
 // GetState retrieves a value from the given account's storage trie.
 func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
+	if s.StateReadsInSlot[addr] == nil {
+		s.StateReadsInSlot[addr] = make(map[common.Hash]struct{}, defaultNumOfSlots)
+	}
+	s.StateReadsInSlot[addr][hash] = struct{}{}
+
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.GetState(s.db, hash)
@@ -472,6 +617,8 @@ func (s *StateDB) HasSuicided(addr common.Address) bool {
 
 // AddBalance adds amount to the account associated with addr.
 func (s *StateDB) AddBalance(addr common.Address, amount *big.Int) {
+	s.BalanceChangedInSlot[addr] = struct{}{}
+	s.BalanceReadsInSlot[addr] = struct{}{} // add balance will perform a read operation first
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.AddBalance(amount)
@@ -480,6 +627,8 @@ func (s *StateDB) AddBalance(addr common.Address, amount *big.Int) {
 
 // SubBalance subtracts amount from the account associated with addr.
 func (s *StateDB) SubBalance(addr common.Address, amount *big.Int) {
+	s.BalanceChangedInSlot[addr] = struct{}{}
+	s.BalanceReadsInSlot[addr] = struct{}{} // sub balance will perform a read operation first
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SubBalance(amount)
@@ -487,6 +636,7 @@ func (s *StateDB) SubBalance(addr common.Address, amount *big.Int) {
 }
 
 func (s *StateDB) SetBalance(addr common.Address, amount *big.Int) {
+	s.BalanceChangedInSlot[addr] = struct{}{}
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SetBalance(amount)
@@ -512,6 +662,11 @@ func (s *StateDB) SetState(addr common.Address, key, value common.Hash) {
 	if stateObject != nil {
 		stateObject.SetState(s.db, key, value)
 	}
+	if s.StateChangedInSlot[addr] == nil {
+		s.StateChangedInSlot[addr] = make(Storage, defaultNumOfSlots)
+	}
+	s.StateChangedInSlot[addr][key] = value
+
 }
 
 // SetStorage replaces the entire storage for the specified account with given
