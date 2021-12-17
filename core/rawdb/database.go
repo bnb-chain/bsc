@@ -180,6 +180,8 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	// If the genesis hash is empty, we have a new key-value store, so nothing to
 	// validate in this method. If, however, the genesis hash is not nil, compare
 	// it to the freezer content.
+	// Only to check the followings when offset equal to 0, otherwise the block number
+	// in ancientdb did not start with 0, no genesis block in ancientdb as well.
 	if offset == 0 {
 		if kvgenesis, _ := db.Get(headerHashKey(0)); len(kvgenesis) > 0 {
 			if frozen, _ := frdb.Ancients(); frozen > 0 {
@@ -234,10 +236,9 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	}, nil
 }
 
-// NewDatabaseWithFreezer creates a high level database on top of a given key-
-// value data store with a freezer moving immutable chain segments into cold
-// storage.
-//Without goroutine of freeze running
+// NewDatabaseWithFreezerForPruneBlock creates or open if existed a high level database on top of a given key-
+// value data store with a freezer, but without goroutine of freezer running to avoid the uncertainty
+// between kvdb and freezer goroutine when open/close db.
 func NewDatabaseWithFreezerForPruneBlock(db ethdb.KeyValueStore, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
 	// Create the idle freezer instance
 	frdb, err := newFreezer(freezer, namespace, readonly)
@@ -251,9 +252,9 @@ func NewDatabaseWithFreezerForPruneBlock(db ethdb.KeyValueStore, freezer string,
 	}, nil
 }
 
-// NewDatabaseWithFreezer creates a high level database on top of a given key-
-// value data store with a freezer moving immutable chain segments into cold
-// storage.
+// NewDatabaseWithFreezerBackup creates or open if existed a high level database on top of a given key-
+// value data store with a freezer, passed the params of offset, without goroutine of freezer running
+//to avoid the uncertainty between kvdb and freezer goroutine when open/close db
 func NewDatabaseWithFreezerBackup(offset uint64, db ethdb.KeyValueStore, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
 	// Create the idle freezer instance
 	frdb, err := newFreezer(freezer, namespace, readonly)
@@ -308,8 +309,8 @@ func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer 
 	return frdb, nil
 }
 
-// NewLevelDBDatabaseWithFreezer creates a persistent key-value database with a
-// freezer moving immutable chain segments into cold storage.
+// NewLevelDBDatabaseWithFreezerForPruneBlock creates a persistent key-value database with a
+// freezer.
 func NewLevelDBDatabaseWithFreezerForPruneBlock(file string, cache int, handles int, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
 	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
 	if err != nil {
@@ -323,8 +324,8 @@ func NewLevelDBDatabaseWithFreezerForPruneBlock(file string, cache int, handles 
 	return frdb, nil
 }
 
-// NewLevelDBDatabaseWithFreezer creates a persistent key-value database with a
-// freezer moving immutable chain segments into cold storage.
+// NewLevelDBDatabaseWithFreezerBackup creates a persistent key-value database with a
+// freezer.
 func NewLevelDBDatabaseWithFreezerBackup(offset uint64, file string, cache int, handles int, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
 	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
 	if err != nil {

@@ -90,7 +90,6 @@ type Pruner struct {
 
 type BlockPruner struct {
 	db           ethdb.Database
-	chaindbDir   string
 	ancientdbDir string
 	n            *node.Node
 }
@@ -125,11 +124,10 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 	}, nil
 }
 
-func NewBlockPruner(db ethdb.Database, n *node.Node, chaindbDir, ancientdbDir string) (*BlockPruner, error) {
+func NewBlockPruner(db ethdb.Database, n *node.Node, ancientdbDir string) (*BlockPruner, error) {
 
 	return &BlockPruner{
 		db:           db,
-		chaindbDir:   chaindbDir,
 		ancientdbDir: ancientdbDir,
 		n:            n,
 	}, nil
@@ -253,37 +251,39 @@ func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, sta
 	return nil
 }
 
-// Prune block body data
+// Backup the ancient data for the old ancient db, i.e. the most recent 128 blocks in ancient db.
 func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFreezer, freezer, namespace string, readonly bool) error {
-	//Back-up the necessary data within original ancient directory, create new freezer backup directory backFreezer
+
 	start := time.Now()
 
-	//write the latest 128 blocks data of the ancient db
-	// If we can't access the freezer or it's empty, abort
 	chainDb, err := p.n.OpenDatabaseWithFreezerForPruneBlock(name, cache, handles, freezer, namespace, readonly)
 	if err != nil {
 		log.Error("Failed to open ancient database: %v", err)
 		return err
 	}
-
 	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(chainDb)
+	// Get the number of items in ancient db, frozen it is.
 	frozen, err := chainDb.Ancients()
 
+	// Write the latest 128 blocks data of the ancient db
+	// If we can't access the freezer or it's empty, abort.
 	if err != nil || frozen == 0 {
 		return errors.New("can't access the freezer or it's empty, abort")
 	}
-	startBlockNumber := frozen + oldOffSet - 128
-
+	// Get the actual start block number.
+	startBlockNumber := frozen - 128 + oldOffSet
+	// For every round, newoffset actually equals to the startBlockNumber in ancient db.
 	newOffSet := oldOffSet + frozen - 128
 
-	//write the new offset into db for new freezer usage
+	// Write the new offset into db for the future new freezer usage.
 	rawdb.WriteOffSetOfAncientFreezer(chainDb, newOffSet)
 
+	// Initialize the slice to buffer the 128 block data.
 	blockList := make([]*types.Block, 0, 128)
 	receiptsList := make([]types.Receipts, 0, 128)
 	externTdList := make([]*big.Int, 0, 128)
 
-	//All ancient data within the most recent 128 blocks write into memory for future new ancient_back directory usage
+	// All ancient data within the most recent 128 blocks write into memory buffer for future new ancient_back directory usage.
 	for blockNumber := startBlockNumber; blockNumber < frozen+oldOffSet; blockNumber++ {
 		blockHash := rawdb.ReadCanonicalHash(chainDb, blockNumber)
 		block := rawdb.ReadBlock(chainDb, blockHash, blockNumber)
@@ -298,15 +298,16 @@ func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFree
 		externTd := new(big.Int).Add(block.Difficulty(), td)
 		externTdList = append(externTdList, externTd)
 	}
-
 	chainDb.Close()
 
+	// Create new freezer backup directory backFreezer, in the db wrapper, using the same kv db but only change the ancient db, /chaindb/ancient_backup
 	chainDbBack, err := p.n.OpenDatabaseWithFreezerBackup(newOffSet, name, cache, handles, backFreezer, namespace, readonly)
 	if err != nil {
 		log.Error("Failed to open ancient database: %v", err)
 		return err
 	}
-	//Write into ancient_backup
+
+	// Write into ancient_backup
 	for id := 0; id < len(blockList); id++ {
 		rawdb.WriteAncientBlock(chainDbBack, blockList[id], receiptsList[id], externTdList[id])
 	}
@@ -317,13 +318,13 @@ func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, backFree
 }
 
 func BlockPrune(oldAncientPath, newAncientPath string) error {
-	//Delete directly for the old ancientdb, e.g.: path ../chaindb/ancient
+	// Delete directly for the old ancientdb, e.g.: path ../chaindb/ancient
 	if err := os.RemoveAll(oldAncientPath); err != nil {
 		log.Error("Failed to remove old ancient directory %v", err)
 		return err
 	}
 
-	//Rename the new ancientdb path same to the old
+	// Rename the new ancientdb path same to the old
 	if err := os.Rename(newAncientPath, oldAncientPath); err != nil {
 		log.Error("Failed to rename new ancient directory")
 		return err

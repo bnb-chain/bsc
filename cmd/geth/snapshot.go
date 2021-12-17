@@ -93,6 +93,7 @@ the trie clean cache with default directory will be deleted.
 				},
 				Description: `
 Offline prune for block data.
+For AncientFlag, please specify the absolute path of node/geth/chaindata.
 `,
 			},
 			{
@@ -177,8 +178,10 @@ func pruneBlock(ctx *cli.Context) error {
 		newAncientPath = path + "/ancient_back"
 	} else {
 		utils.Fatalf("Prune failed, did not specify the AncientPath %v")
+		return errors.New("Prune failed, did not specify the AncientPath")
 	}
 
+	//TODO for filelock
 	//lock, _, err := fileutil.Flock(filepath.Join(oldAncientPath, "FLOCK"))
 	// lock, _, err := fileutil.Flock(oldAncientPath)
 	// if err != nil {
@@ -196,9 +199,10 @@ func pruneBlock(ctx *cli.Context) error {
 		case !filepath.IsAbs(oldAncientPath):
 			oldAncientPath = stack.ResolvePath(oldAncientPath)
 		}
-		pruner, err := pruner.NewBlockPruner(chaindb, stack, stack.ResolvePath(""), oldAncientPath)
+		pruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath)
 		if err != nil {
 			utils.Fatalf("Failed to create block pruner", err)
+			return err
 		}
 
 		if err := pruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), newAncientPath, oldAncientPath, "", false); err != nil {
@@ -209,11 +213,12 @@ func pruneBlock(ctx *cli.Context) error {
 
 	log.Info("geth block offline pruning backup successfully")
 
+	//After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
 	if err := pruner.BlockPrune(oldAncientPath, newAncientPath); err != nil {
 		utils.Fatalf("Failed to prune block", err)
 		return err
 	}
-	//lock.Release()
+	//TODO lock.Release()
 	log.Info("Block prune successfully")
 	return nil
 }

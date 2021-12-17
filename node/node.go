@@ -634,11 +634,11 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, freezer,
 	return db, err
 }
 
-// OpenDatabaseWithFreezer opens an existing database with the given name (or
+// The big difference is that the freezer inside was not running to avoid the mess between kvdb and freezer
+// while opening/closing db.
+// OpenDatabaseWithFreezerForPruneBlock opens an existing database with the given name (or
 // creates one if no previous can be found) from within the node's data directory,
-// also attaching a chain freezer to it that moves ancient chain data from the
-// database to immutable append-only files. If the node is an ephemeral one, a
-// memory database is returned.
+// also attaching a chain freezer to it. If the node is an ephemeral one, a memory database is returned.
 func (n *Node) OpenDatabaseWithFreezerForPruneBlock(name string, cache, handles int, freezer, namespace string, readonly bool) (ethdb.Database, error) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
@@ -667,10 +667,11 @@ func (n *Node) OpenDatabaseWithFreezerForPruneBlock(name string, cache, handles 
 	return db, err
 }
 
-// OpenDatabaseWithFreezer opens an existing database with the given name (or
+// The big difference is that the freezer inside was not running to avoid the mess between kvdb and freezer
+// while opening/closing db.
+// OpenDatabaseWithFreezerBackup opens an existing database with the given name (or
 // creates one if no previous can be found) from within the node's data directory,
-// also attaching a chain freezer to it that moves ancient chain data from the
-// database to immutable append-only files. If the node is an ephemeral one, a
+// also attaching a chain freezer to it. If the node is an ephemeral one, a
 // memory database is returned.
 func (n *Node) OpenDatabaseWithFreezerBackup(offset uint64, name string, cache, handles int, freezer, namespace string, readonly bool) (ethdb.Database, error) {
 	n.lock.Lock()
