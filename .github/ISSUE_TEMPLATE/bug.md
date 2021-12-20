@@ -12,6 +12,14 @@ Geth version: `geth version`
 OS & Version: Windows/Linux/OSX
 Commit hash : (if `develop`)
 
+### Geth Starting Option
+```
+```
+
+### Your config.toml
+```
+```
+
 #### Expected behaviour
 
 
