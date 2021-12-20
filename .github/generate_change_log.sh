@@ -15,7 +15,7 @@ while read line; do
     if [[ $line == *"$version_prefix"* ]] && [ $start == 1 ]; then
         break;
     fi
-    if [ $start == 1 ] && [[ $line != "" ]]; then
+    if [ $start == 1 ]; then
         CHANGE_LOG+="$line\n"
     fi
 done < ${change_log_file}
