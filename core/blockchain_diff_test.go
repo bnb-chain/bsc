@@ -21,6 +21,8 @@
 package core
 
 import (
+	"bytes"
+	"encoding/hex"
 	"math/big"
 	"testing"
 	"time"
@@ -42,9 +44,43 @@ import (
 
 var (
 	// testKey is a private key to use for funding a tester account.
-	testKey, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	testKey, _       = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	contractCode, _  = hex.DecodeString("608060405260016000806101000a81548160ff02191690831515021790555034801561002a57600080fd5b506101688061003a6000396000f3fe608060405234801561001057600080fd5b50600436106100365760003560e01c806389a2d8011461003b578063b0483f4814610059575b600080fd5b610043610075565b60405161005091906100f4565b60405180910390f35b610073600480360381019061006e91906100bc565b61008b565b005b60008060009054906101000a900460ff16905090565b806000806101000a81548160ff02191690831515021790555050565b6000813590506100b68161011b565b92915050565b6000602082840312156100ce57600080fd5b60006100dc848285016100a7565b91505092915050565b6100ee8161010f565b82525050565b600060208201905061010960008301846100e5565b92915050565b60008115159050919050565b6101248161010f565b811461012f57600080fd5b5056fea264697066735822122092f788b569bfc3786e90601b5dbec01cfc3d76094164fd66ca7d599c4239fc5164736f6c63430008000033")
+	contractAddr     = common.HexToAddress("0xe74a3c7427cda785e0000d42a705b1f3fd371e09")
+	contractSlot     = common.HexToHash("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563")
+	contractData1, _ = hex.DecodeString("b0483f480000000000000000000000000000000000000000000000000000000000000000")
+	contractData2, _ = hex.DecodeString("b0483f480000000000000000000000000000000000000000000000000000000000000001")
+	commonGas        = 192138
 	// testAddr is the Ethereum address of the tester account.
 	testAddr = crypto.PubkeyToAddress(testKey.PublicKey)
+
+	checkBlocks = map[int]checkBlockParam{
+		12: {
+			txs: []checkTransactionParam{
+				{
+					to:    &contractAddr,
+					slot:  contractSlot,
+					value: []byte{01},
+				},
+			}},
+
+		13: {
+			txs: []checkTransactionParam{
+				{
+					to:    &contractAddr,
+					slot:  contractSlot,
+					value: []byte{},
+				},
+			}},
+		14: {
+			txs: []checkTransactionParam{
+				{
+					to:    &contractAddr,
+					slot:  contractSlot,
+					value: []byte{01},
+				},
+			}},
+	}
 	// testBlocks is the test parameters array for specific blocks.
 	testBlocks = []testBlockParam{
 		{
@@ -52,7 +88,7 @@ var (
 			blockNr: 11,
 			txs: []testTransactionParam{
 				{
-					to:       common.Address{0x01},
+					to:       &common.Address{0x01},
 					value:    big.NewInt(1),
 					gasPrice: big.NewInt(1),
 					data:     nil,
@@ -63,16 +99,22 @@ var (
 			blockNr: 12,
 			txs: []testTransactionParam{
 				{
-					to:       common.Address{0x01},
+					to:       &common.Address{0x01},
 					value:    big.NewInt(1),
 					gasPrice: big.NewInt(1),
 					data:     nil,
 				},
 				{
-					to:       common.Address{0x02},
+					to:       &common.Address{0x02},
 					value:    big.NewInt(2),
 					gasPrice: big.NewInt(2),
 					data:     nil,
+				},
+				{
+					to:       nil,
+					value:    big.NewInt(0),
+					gasPrice: big.NewInt(2),
+					data:     contractCode,
 				},
 			},
 		},
@@ -80,34 +122,51 @@ var (
 			blockNr: 13,
 			txs: []testTransactionParam{
 				{
-					to:       common.Address{0x01},
+					to:       &common.Address{0x01},
 					value:    big.NewInt(1),
 					gasPrice: big.NewInt(1),
 					data:     nil,
 				},
 				{
-					to:       common.Address{0x02},
+					to:       &common.Address{0x02},
 					value:    big.NewInt(2),
 					gasPrice: big.NewInt(2),
 					data:     nil,
 				},
 				{
-					to:       common.Address{0x03},
+					to:       &common.Address{0x03},
 					value:    big.NewInt(3),
 					gasPrice: big.NewInt(3),
 					data:     nil,
+				},
+				{
+					to:       &contractAddr,
+					value:    big.NewInt(0),
+					gasPrice: big.NewInt(3),
+					data:     contractData1,
 				},
 			},
 		},
 		{
 			blockNr: 14,
+			txs: []testTransactionParam{
+				{
+					to:       &contractAddr,
+					value:    big.NewInt(0),
+					gasPrice: big.NewInt(3),
+					data:     contractData2,
+				},
+			},
+		},
+		{
+			blockNr: 15,
 			txs:     []testTransactionParam{},
 		},
 	}
 )
 
 type testTransactionParam struct {
-	to       common.Address
+	to       *common.Address
 	value    *big.Int
 	gasPrice *big.Int
 	data     []byte
@@ -116,6 +175,16 @@ type testTransactionParam struct {
 type testBlockParam struct {
 	blockNr int
 	txs     []testTransactionParam
+}
+
+type checkTransactionParam struct {
+	to    *common.Address
+	slot  common.Hash
+	value []byte
+}
+
+type checkBlockParam struct {
+	txs []checkTransactionParam
 }
 
 // testBackend is a mock implementation of the live Ethereum message handler. Its
@@ -153,8 +222,15 @@ func newTestBackendWithGenerator(blocks int, lightProcess bool) *testBackend {
 			// Specific block setting, the index in this generator has 1 diff from specified blockNr.
 			if i+1 == testBlock.blockNr {
 				for _, testTransaction := range testBlock.txs {
-					tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), testTransaction.to,
-						testTransaction.value, params.TxGas, testTransaction.gasPrice, testTransaction.data), signer, testKey)
+					var transaction *types.Transaction
+					if testTransaction.to == nil {
+						transaction = types.NewContractCreation(block.TxNonce(testAddr),
+							testTransaction.value, uint64(commonGas), testTransaction.gasPrice, testTransaction.data)
+					} else {
+						transaction = types.NewTransaction(block.TxNonce(testAddr), *testTransaction.to,
+							testTransaction.value, uint64(commonGas), testTransaction.gasPrice, testTransaction.data)
+					}
+					tx, err := types.SignTx(transaction, signer, testKey)
 					if err != nil {
 						panic(err)
 					}
@@ -168,8 +244,8 @@ func newTestBackendWithGenerator(blocks int, lightProcess bool) *testBackend {
 				// We want to simulate an empty middle block, having the same state as the
 				// first one. The last is needs a state change again to force a reorg.
 				for _, testTransaction := range testBlocks[0].txs {
-					tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), testTransaction.to,
-						testTransaction.value, params.TxGas, testTransaction.gasPrice, testTransaction.data), signer, testKey)
+					tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), *testTransaction.to,
+						testTransaction.value, uint64(commonGas), testTransaction.gasPrice, testTransaction.data), signer, testKey)
 					if err != nil {
 						panic(err)
 					}
@@ -241,6 +317,14 @@ func TestProcessDiffLayer(t *testing.T) {
 			lightBackend.Chain().HandleDiffLayer(diff, "testpid", true)
 		}
 		_, err := lightBackend.chain.insertChain([]*types.Block{block}, true)
+		if checks, exist := checkBlocks[i]; exist {
+			for _, check := range checks.txs {
+				s, _ := lightBackend.Chain().Snapshots().Snapshot(block.Root()).Storage(crypto.Keccak256Hash((*check.to)[:]), check.slot)
+				if !bytes.Equal(s, check.value) {
+					t.Fatalf("Expected value %x, get %x", check.value, s)
+				}
+			}
+		}
 		if err != nil {
 			t.Errorf("failed to insert block %v", err)
 		}
@@ -385,13 +469,14 @@ func TestGetDiffAccounts(t *testing.T) {
 				t.Errorf("the diff accounts does't include addr: %v", testAddr)
 			}
 		}
-
 		for _, transaction := range testBlock.txs {
+			if transaction.to == nil || len(transaction.data) > 0 {
+				continue
+			}
 			for idx, account := range accounts {
-				if transaction.to == account {
+				if *transaction.to == account {
 					break
 				}
-
 				if idx == len(accounts)-1 {
 					t.Errorf("the diff accounts does't include addr: %v", transaction.to)
 				}

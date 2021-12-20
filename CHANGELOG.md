@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.7
+
+BUGFIX
+* [\#628](https://github.com/binance-chain/bsc/pull/628) fix state inconsistent when doing diffsync
+
 ## v1.1.6
 BUGFIX
 * [\#582](https://github.com/binance-chain/bsc/pull/582) the DoS vulnerabilities fixed in go-ethereum v1.10.9
