@@ -210,13 +210,17 @@ func initGenesis(ctx *cli.Context) error {
 		utils.Fatalf("invalid genesis file: %v", err)
 	}
 	// Open and initialise both full and light databases
-	stack, _ := makeConfigNode(ctx)
+	stack, cfg := makeConfigNode(ctx)
 	defer stack.Close()
 
 	for _, name := range []string{"chaindata", "lightchaindata"} {
-		chaindb, err := stack.OpenDatabase(name, 0, 0, "", false)
+		// chaindb, err := stack.OpenDatabase(name, 0, 0, "", false)
+		// if err != nil {
+		// 	utils.Fatalf("Failed to open database: %v", err)
+		// }
+		chaindb, err := stack.OpenDatabaseWithFreezer(name, cfg.Eth.DatabaseCache, cfg.Eth.DatabaseHandles, cfg.Eth.DatabaseFreezer, "eth/db/chaindata/", false)
 		if err != nil {
-			utils.Fatalf("Failed to open database: %v", err)
+			utils.Fatalf("Failed to open ancient database: %v", err)
 		}
 		_, hash, err := core.SetupGenesisBlock(chaindb, genesis)
 		if err != nil {
