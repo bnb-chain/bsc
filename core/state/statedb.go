@@ -958,6 +958,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	if s.lightProcessed {
+		s.StopPrefetcher()
 		return s.trie.Hash()
 	}
 	// Finalise all the dirty storage states and write them into the tries
@@ -1491,4 +1492,12 @@ func (s *StateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addre
 		return false, false
 	}
 	return s.accessList.Contains(addr, slot)
+}
+
+func (s *StateDB) GetDirtyAccounts() []common.Address {
+	accounts := make([]common.Address, 0, len(s.stateObjectsDirty))
+	for account := range s.stateObjectsDirty {
+		accounts = append(accounts, account)
+	}
+	return accounts
 }

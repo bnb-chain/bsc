@@ -1,4 +1,41 @@
 # Changelog
+
+## v1.1.7
+
+BUGFIX
+* [\#628](https://github.com/binance-chain/bsc/pull/628) fix state inconsistent when doing diffsync
+
+## v1.1.6
+BUGFIX
+* [\#582](https://github.com/binance-chain/bsc/pull/582) the DoS vulnerabilities fixed in go-ethereum v1.10.9
+
+IMPROVEMENT
+* [\#578](https://github.com/binance-chain/bsc/pull/578) reduce memory allocation and upgrade snappy version
+
+FEATURES
+* [\#570](https://github.com/binance-chain/bsc/pull/570) reannounce local pending transactions
+
+## v1.1.5
+BUGFIX
+* [\#509](https://github.com/binance-chain/bsc/pull/509) fix graceful shutdown bug
+
+IMPROVEMENT
+* [\#536](https://github.com/binance-chain/bsc/pull/536) get diff accounts by replaying block when diff layer not found
+* [\#527](https://github.com/binance-chain/bsc/pull/527) improve diffsync protocol in many aspects
+* [\#493](https://github.com/binance-chain/bsc/pull/493) implement fast getDiffAccountsWithScope API
+
+## v1.1.4
+Improvement
+* [\#472](https://github.com/binance-chain/bsc/pull/472) add metrics for contract code bitmap cache
+* [\#473](https://github.com/binance-chain/bsc/pull/473) fix ci test flow
+
+BUGFIX
+* [\#491](https://github.com/binance-chain/bsc/pull/491) fix prefetcher related bugs
+
+FEATURES
+* [\#480](https://github.com/binance-chain/bsc/pull/480) implement bep 95
+
+
 ## v1.1.3
 Improvement
 * [\#456](https://github.com/binance-chain/bsc/pull/456) git-flow support lint, unit test, and integration test

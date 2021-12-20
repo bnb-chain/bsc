@@ -450,6 +450,59 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 	}
 }
 
+// Tests that local pending transactions get propagated to peers.
+func TestTransactionPendingReannounce(t *testing.T) {
+	t.Parallel()
+
+	// Create a source handler to announce transactions from and a sink handler
+	// to receive them.
+	source := newTestHandler()
+	defer source.close()
+
+	sink := newTestHandler()
+	defer sink.close()
+	sink.handler.acceptTxs = 1 // mark synced to accept transactions
+
+	sourcePipe, sinkPipe := p2p.MsgPipe()
+	defer sourcePipe.Close()
+	defer sinkPipe.Close()
+
+	sourcePeer := eth.NewPeer(eth.ETH65, p2p.NewPeer(enode.ID{0}, "", nil), sourcePipe, source.txpool)
+	sinkPeer := eth.NewPeer(eth.ETH65, p2p.NewPeer(enode.ID{0}, "", nil), sinkPipe, sink.txpool)
+	defer sourcePeer.Close()
+	defer sinkPeer.Close()
+
+	go source.handler.runEthPeer(sourcePeer, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(source.handler), peer)
+	})
+	go sink.handler.runEthPeer(sinkPeer, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(sink.handler), peer)
+	})
+
+	// Subscribe transaction pools
+	txCh := make(chan core.NewTxsEvent, 1024)
+	sub := sink.txpool.SubscribeNewTxsEvent(txCh)
+	defer sub.Unsubscribe()
+
+	txs := make([]*types.Transaction, 64)
+	for nonce := range txs {
+		tx := types.NewTransaction(uint64(nonce), common.Address{}, big.NewInt(0), 100000, big.NewInt(0), nil)
+		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
+
+		txs[nonce] = tx
+	}
+	source.txpool.ReannouceTransactions(txs)
+
+	for arrived := 0; arrived < len(txs); {
+		select {
+		case event := <-txCh:
+			arrived += len(event.Txs)
+		case <-time.NewTimer(time.Second).C:
+			t.Errorf("sink: transaction propagation timed out: have %d, want %d", arrived, len(txs))
+		}
+	}
+}
+
 // Tests that post eth protocol handshake, clients perform a mutual checkpoint
 // challenge to validate each other's chains. Hash mismatches, or missing ones
 // during a fast sync should lead to the peer getting dropped.

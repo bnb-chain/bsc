@@ -1,10 +1,9 @@
-name: Release
+name: Pre Release
 
 on:
   push:
-    # Publish `v1.2.3` tags as releases.
     tags:
-      - v*
+      - 'pre-*'
 
 jobs:
   build:
@@ -115,15 +114,6 @@ jobs:
       # ==============================
       #       Create release
       # ==============================
-      - name: Generate Change Log
-        id: changelog
-        run: |
-          chmod 755 ./.github/generate_change_log.sh
-          CHANGELOG=$(./.github/generate_change_log.sh ${{ env.RELEASE_VERSION}})
-
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          echo "$CHANGELOG" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
       - name: Create Release
         id: create_release
@@ -134,9 +124,10 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            ${{ env.CHANGELOG }}
-          draft: false
-          prerelease: false
+            versing: ${{ env.RELEASE_VERSION}}
+            git commit: ${{ github.sha }}
+          draft: true
+          prerelease: true
 
       # Check downloaded files
       - run: ls
