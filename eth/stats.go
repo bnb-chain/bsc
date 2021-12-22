@@ -70,7 +70,7 @@ func (s *stats) Print(m map[string]map[string]int)  {
 
 func (s *stats) Cron()  {
 	log.Warn("start stats cron job, one minute")
-	d := time.Minute
+	d := time.Minute*5
 	t := time.NewTicker(d)
 	defer t.Stop()
 
