@@ -29,9 +29,12 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/prometheus/tsdb/fileutil"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -82,18 +85,16 @@ the trie clean cache with default directory will be deleted.
 `,
 			},
 			{
-				Name:      "prune-block",
-				Usage:     "Prune block data offline",
-				ArgsUsage: "<root>",
-				Action:    utils.MigrateFlags(pruneBlock),
-				Category:  "MISCELLANEOUS COMMANDS",
+				Name:     "prune-block",
+				Usage:    "Prune block data offline",
+				Action:   utils.MigrateFlags(pruneBlock),
+				Category: "MISCELLANEOUS COMMANDS",
 				Flags: []cli.Flag{
 					utils.DataDirFlag,
 					utils.AncientFlag,
 				},
 				Description: `
 Offline prune for block data.
-For AncientFlag, please specify the absolute path of node/geth/chaindata.
 `,
 			},
 			{
@@ -165,50 +166,61 @@ It's also usable without snapshot enabled.
 	}
 )
 
+func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
+	chaindb := utils.MakeChainDatabase(ctx, stack, false, true)
+	defer chaindb.Close()
+	headBlock := rawdb.ReadHeadBlock(chaindb)
+	if headBlock == nil {
+		return nil, errors.New("failed to load head block")
+	}
+	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
+	_, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, int(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)), headBlock.Root(), false, false, false)
+	if err != nil {
+		return nil, err // The relevant snapshot(s) might not exist
+	}
+	return chaindb, nil
+}
+
 func pruneBlock(ctx *cli.Context) error {
 	stack, config := makeConfigNode(ctx)
 	defer stack.Close()
-
-	chaindb := utils.MakeChainDatabaseForBlockPrune(ctx, stack, false)
-	chaindb.Close()
-
+	chaindb, err := accessDb(ctx, stack)
+	if err != nil {
+		utils.Fatalf("MPT and snapshot sanity check failed: %v", err)
+		return err
+	}
 	var oldAncientPath, newAncientPath string
-	if path := getAncientPath(ctx); path != "" {
-		oldAncientPath = path + "/ancient"
-		newAncientPath = path + "/ancient_back"
+	path, _ := filepath.Split(ctx.GlobalString(utils.AncientFlag.Name))
+	if path != "" {
+		if !filepath.IsAbs(path) {
+			path = stack.ResolvePath(path)
+		}
+		oldAncientPath = path + "ancient"
+		newAncientPath = path + "ancient_back"
 	} else {
-		utils.Fatalf("Prune failed, did not specify the AncientPath %v")
+		utils.Fatalf("Prune failed, did not specify the AncientPath")
 		return errors.New("Prune failed, did not specify the AncientPath")
 	}
 
-	//TODO for filelock
-	//lock, _, err := fileutil.Flock(filepath.Join(oldAncientPath, "FLOCK"))
-	// lock, _, err := fileutil.Flock(oldAncientPath)
-	// if err != nil {
-	// 	return err
-	// }
-	// _, err = os.Open(oldAncientPath)
-	// if err != nil {
-	// 	utils.Fatalf("Failed to read genesis file: %v", err)
-	// }
-	for _, name := range []string{"chaindata"} {
-		root := stack.ResolvePath(name)
-		switch {
-		case oldAncientPath == "":
-			oldAncientPath = filepath.Join(root, "ancient")
-		case !filepath.IsAbs(oldAncientPath):
-			oldAncientPath = stack.ResolvePath(oldAncientPath)
-		}
-		pruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath)
-		if err != nil {
-			utils.Fatalf("Failed to create block pruner", err)
-			return err
-		}
+	lock, _, err := fileutil.Flock(filepath.Join(oldAncientPath, "RPUNEFLOCK"))
+	if err != nil {
+		return err
+	}
 
-		if err := pruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), newAncientPath, oldAncientPath, "", false); err != nil {
-			log.Error("Failed to back up block", "err", err)
-			return err
-		}
+	name := "chaindata"
+	if !filepath.IsAbs(oldAncientPath) {
+		oldAncientPath = stack.ResolvePath(oldAncientPath)
+	}
+
+	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath)
+	if err != nil {
+		utils.Fatalf("Failed to create block pruner: %v", err)
+		return err
+	}
+
+	if err := blockpruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), "", false); err != nil {
+		log.Error("Failed to back up block", "err", err)
+		return err
 	}
 
 	log.Info("geth block offline pruning backup successfully")
@@ -218,13 +230,10 @@ func pruneBlock(ctx *cli.Context) error {
 		utils.Fatalf("Failed to prune block", err)
 		return err
 	}
-	//TODO lock.Release()
+
+	lock.Release()
 	log.Info("Block prune successfully")
 	return nil
-}
-
-func getAncientPath(ctx *cli.Context) string {
-	return ctx.GlobalString(utils.AncientFlag.Name)
 }
 
 func pruneState(ctx *cli.Context) error {

@@ -78,13 +78,13 @@ func testBlockPruneForOffSetZero(t *testing.T, full bool, db ethdb.Database, bac
 	}
 	defer blockchain.Stop()
 
-	testBlockPruner, err := pruner.NewBlockPruner(db, n, oldfreezer)
+	testBlockPruner, err := pruner.NewBlockPruner(db, n, oldfreezer, backFreezer)
 	if err != nil {
 		t.Fatalf("failed to make new blockpruner: %v", err)
 	}
 
 	db.Close()
-	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(), backFreezer, oldfreezer, "", false); err != nil {
+	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(), "", false); err != nil {
 		log.Error("Failed to back up block", "err", err)
 		return err
 	}
