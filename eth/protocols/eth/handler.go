@@ -99,15 +99,9 @@ type TxPool interface {
 	// Get retrieves the the transaction from the local txpool with the given hash.
 	Get(hash common.Hash) *types.Transaction
 }
-func closePeer(s *stats, p *Peer) {
-	s.ClosePeer(p)
-	p.Close()
-}
 // MakeProtocols constructs the P2P protocol definitions for `eth`.
 func MakeProtocols(backend Backend, network uint64, dnsdisc enode.Iterator) []p2p.Protocol {
 	protocols := make([]p2p.Protocol, len(ProtocolVersions))
-	stats := NewStats()
-	stats.Cron()
 	for i, version := range ProtocolVersions {
 		version := version // Closure
 
@@ -117,11 +111,10 @@ func MakeProtocols(backend Backend, network uint64, dnsdisc enode.Iterator) []p2
 			Length:  protocolLengths[version],
 			Run: func(p *p2p.Peer, rw p2p.MsgReadWriter) error {
 				peer := NewPeer(version, p, rw, backend.TxPool())
-				stats.AddPeer(peer)
-				defer closePeer(stats, peer)
+				defer peer.Close()
 
 				return backend.RunPeer(peer, func(peer *Peer) error {
-					return Handle(backend, peer, stats)
+					return Handle(backend, peer)
 				})
 			},
 			NodeInfo: func() interface{} {
@@ -162,9 +155,9 @@ func nodeInfo(chain *core.BlockChain, network uint64) *NodeInfo {
 // Handle is invoked whenever an `eth` connection is made that successfully passes
 // the protocol handshake. This method will keep processing messages until the
 // connection is torn down.
-func Handle(backend Backend, peer *Peer, s *stats) error {
+func Handle(backend Backend, peer *Peer) error {
 	for {
-		if err := handleMessage(backend, peer, s); err != nil {
+		if err := handleMessage(backend, peer); err != nil {
 			peer.Log().Debug("Message handling failed in `eth`", "err", err)
 			return err
 		}
@@ -214,7 +207,7 @@ var eth66 = map[uint64]msgHandler{
 
 // handleMessage is invoked whenever an inbound message is received from a remote
 // peer. The remote connection is torn down upon returning any error.
-func handleMessage(backend Backend, peer *Peer, s *stats) error {
+func handleMessage(backend Backend, peer *Peer) error {
 	// Read the next message from the remote peer, and ensure it's fully consumed
 	msg, err := peer.rw.ReadMsg()
 	if err != nil {
@@ -241,7 +234,6 @@ func handleMessage(backend Backend, peer *Peer, s *stats) error {
 			metrics.GetOrRegisterHistogramLazy(h, nil, sampler).Update(time.Since(start).Microseconds())
 		}(time.Now())
 	}
-	s.AddPacket(peer, msg.Code)
 	if handler := handlers[msg.Code]; handler != nil {
 		return handler(backend, msg, peer)
 	}
