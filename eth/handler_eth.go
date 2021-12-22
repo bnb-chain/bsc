@@ -65,6 +65,7 @@ func (h *ethHandler) AcceptTxs() bool {
 func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	// Consume any broadcasts and announces, forwarding the rest to the downloader
 	log.Warn("packet:", peer.ID(), ",", packet.Name())
+	h.stats.AddPacket(peer.ID(), packet.Name())
 	switch packet := packet.(type) {
 	case *eth.BlockHeadersPacket:
 		return h.handleHeaders(peer, *packet)

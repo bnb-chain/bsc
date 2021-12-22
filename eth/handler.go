@@ -131,6 +131,7 @@ type handler struct {
 	chainSync *chainSyncer
 	wg        sync.WaitGroup
 	peerWG    sync.WaitGroup
+	stats 	  *stats
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
@@ -153,7 +154,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		diffSync:               config.DiffSync,
 		txsyncCh:               make(chan *txsync),
 		quitSync:               make(chan struct{}),
+		stats: 					NewStats(),
 	}
+	go h.stats.Cron()
 	if config.Sync == downloader.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the fast
 		// block is ahead, so fast sync was enabled for this node at a certain point.
