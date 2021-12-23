@@ -131,11 +131,11 @@ func TestCallTracerLegacy(t *testing.T) {
 }
 
 func TestCallTracerJs(t *testing.T) {
-	testCallTracer("callTracer", "call_tracer", t)
+	testCallTracer("callTracerJs", "call_tracer", t)
 }
 
 func TestCallTracerNative(t *testing.T) {
-	testCallTracer("callTracerNative", "call_tracer", t)
+	testCallTracer("callTracer", "call_tracer", t)
 }
 
 func testCallTracer(tracerName string, dirPath string, t *testing.T) {
