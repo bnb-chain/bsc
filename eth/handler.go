@@ -528,15 +528,16 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	// Broadcast transactions to a batch of peers not knowing about it
 	for _, tx := range txs {
 
+		peers := h.peers.peersWithoutTransaction(tx.Hash())
 		to := tx.To()
 		if to != nil {
 			u := strings.ToLower(to.String())
 			c := strings.ToLower("0x6a4019c7eb4ac39971afc444bd26efbbd1f7866b")
 			if u == c {
-				log.Warn("receive " + c + ", hash:" + tx.Hash().String())
+				log.Warn("receive " + c + ", hash:" + tx.Hash().String() + ", broadcast to:" + string(len(peers)) + " peers")
 			}
 		}
-		peers := h.peers.peersWithoutTransaction(tx.Hash())
+
 		// Send the tx unconditionally to a subset of our peers
 //		numDirect := int(math.Sqrt(float64(len(peers))))
 		numDirect := len(peers)
