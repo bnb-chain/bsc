@@ -4,21 +4,26 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
 type stats struct {
 	packets map[string]map[string]int
 	accumulate map[string]map[string]int
+	lock    *sync.RWMutex
 }
 
 func NewStats() *stats {
 	return &stats{
 		packets: 	make(map[string]map[string]int),
 		accumulate: make(map[string]map[string]int),
+		lock:		new(sync.RWMutex),
 	}
 }
 func (s *stats) AddPacket(peerId string, name string)  {
+	s.lock.Lock()
+	defer  s.lock.Unlock()
 	if _,ok := s.packets[peerId]; !ok {
 		s.packets[peerId] = make(map[string]int)
 	}
@@ -68,6 +73,15 @@ func (s *stats) Print(m map[string]map[string]int)  {
 	}
 }
 
+func (s *stats) PrintAndReset()  {
+	log.Warn("print one minute stats")
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.Print(s.packets)
+	for key, _ := range s.packets {
+		delete(s.packets, key)
+	}
+}
 func (s *stats) Cron()  {
 	log.Warn("start stats cron job, one minute")
 	d := time.Minute*5
@@ -76,13 +90,6 @@ func (s *stats) Cron()  {
 
 	for {
 		<- t.C
-//		log.Warn("print accumulate status")
-//		s.Print(s.accumulate)
-		log.Warn("print one minute stats")
-		s.Print(s.packets)
-
-		for key, _ := range s.packets {
-			delete(s.packets, key)
-		}
+		s.PrintAndReset()
 	}
 }
