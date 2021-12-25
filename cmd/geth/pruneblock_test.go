@@ -17,10 +17,16 @@
 package main
 
 import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
 	"io/ioutil"
 	"math/big"
 	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,20 +39,28 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// So we can deterministically seed different blockchains
 var (
-	canonicalSeed = 1
-
-	testKey, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
-	// testAddr is the Ethereum address of the tester account.
-	testAddr = crypto.PubkeyToAddress(testKey.PublicKey)
+	canonicalSeed               = 1
+	blockPruneBackUpBlockNumber = 128
+	key, _                      = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	address                     = crypto.PubkeyToAddress(key.PublicKey)
+	balance                     = big.NewInt(10000000)
+	gspec                       = &core.Genesis{Config: params.TestChainConfig, Alloc: core.GenesisAlloc{address: {Balance: balance}}}
+	signer                      = types.LatestSigner(gspec.Config)
+	config                      = &core.CacheConfig{
+		TrieCleanLimit: 256,
+		TrieDirtyLimit: 256,
+		TrieTimeLimit:  5 * time.Minute,
+		SnapshotLimit:  0, // Disable snapshot
+		TriesInMemory:  128,
+	}
+	engine = ethash.NewFullFaker()
 )
 
 func TestOfflineBlockPrune(t *testing.T) {
@@ -56,96 +70,162 @@ func TestOfflineBlockPrune(t *testing.T) {
 	}
 	os.RemoveAll(datadir)
 
-	chaindbPath := datadir + "/chaindata"
-	oldAncientPath := chaindbPath + "/ancient"
-	newAncientPath := chaindbPath + "/ancient_back"
-	//create a database with ancient freezer
-	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 512, utils.MakeDatabaseHandles(), oldAncientPath, "", false)
+	chaindbPath := filepath.Join(datadir, "chaindata")
+	oldAncientPath := filepath.Join(chaindbPath, "ancient")
+	newAncientPath := filepath.Join(chaindbPath, "ancient_back")
 
-	if err != nil {
-		t.Fatalf("failed to create database with ancient backend")
-	}
+	db, blocks, blockList, receiptsList, externTdList, startBlockNumber, _ := BlockchainCreator(t, chaindbPath, oldAncientPath)
+	node, _ := startEthService(t, gspec, blocks, chaindbPath)
+	defer node.Close()
 
-	testBlockPruneForOffSetZero(t, true, db, newAncientPath, oldAncientPath, chaindbPath)
-
-}
-
-func testBlockPruneForOffSetZero(t *testing.T, full bool, db ethdb.Database, backFreezer, oldfreezer, chaindbPath string) error {
-	// Make chain starting from genesis
-	blockchain, n, err := newCanonical(t, db, ethash.NewFaker(), 92000, full, chaindbPath)
-	if err != nil {
-		t.Fatalf("failed to make new canonical chain: %v", err)
-	}
-	defer blockchain.Stop()
-
-	testBlockPruner, err := pruner.NewBlockPruner(db, n, oldfreezer, backFreezer)
+	testBlockPruner, err := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath)
 	if err != nil {
 		t.Fatalf("failed to make new blockpruner: %v", err)
 	}
-
-	db.Close()
 	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(), "", false); err != nil {
-		log.Error("Failed to back up block", "err", err)
-		return err
+		t.Fatalf("Failed to back up block: %v", err)
 	}
 
-	return nil
+	dbBack, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, newAncientPath, "", false)
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend")
+	}
+	defer dbBack.Close()
 
+	//check against if the backup data matched original one
+	for blockNumber := startBlockNumber; blockNumber < startBlockNumber+128; blockNumber++ {
+		blockHash := rawdb.ReadCanonicalHash(dbBack, blockNumber)
+		block := rawdb.ReadBlock(dbBack, blockHash, blockNumber)
+		if reflect.DeepEqual(block, blockList[blockNumber-startBlockNumber]) {
+			t.Fatalf("block data did not match between oldDb and backupDb")
+		}
+
+		receipts := rawdb.ReadRawReceipts(dbBack, blockHash, blockNumber)
+		if err := checkReceiptsRLP(receipts, receiptsList[blockNumber-startBlockNumber]); err != nil {
+			t.Fatalf("receipts did not match between oldDb and backupDb")
+		}
+		// // Calculate the total difficulty of the block
+		td := rawdb.ReadTd(dbBack, blockHash, blockNumber)
+		if td == nil {
+			t.Fatalf("Failed to ReadTd: %v", consensus.ErrUnknownAncestor)
+		}
+		externTd := new(big.Int).Add(block.Difficulty(), td)
+		if reflect.DeepEqual(externTd, externTdList[blockNumber-startBlockNumber]) {
+			t.Fatalf("externTd did not match between oldDb and backupDb")
+		}
+	}
+
+	//check if ancientDb freezer replaced successfully
+	testBlockPruner.AncientDbReplacer()
+	if _, err := os.Stat(newAncientPath); err != nil {
+		if !os.IsNotExist(err) {
+			t.Fatalf("ancientDb replaced unsuccessfully")
+		}
+	}
+	if _, err := os.Stat(oldAncientPath); err != nil {
+		t.Fatalf("ancientDb replaced unsuccessfully")
+	}
 }
 
-// newCanonical creates a chain database, and injects a deterministic canonical
-// chain. Depending on the full flag, if creates either a full block chain or a
-// header only chain.
-func newCanonical(t *testing.T, db ethdb.Database, engine consensus.Engine, height int, full bool, chaindbPath string) (*core.BlockChain, *node.Node, error) {
-
-	var (
-		key, _  = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
-		address = crypto.PubkeyToAddress(key.PublicKey)
-		funds   = big.NewInt(1000000000)
-		gspec   = &core.Genesis{Config: params.TestChainConfig, Alloc: core.GenesisAlloc{address: {Balance: funds}}}
-		genesis = gspec.MustCommit(db)
-	)
-
+func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string) (ethdb.Database, []*types.Block, []*types.Block, []types.Receipts, []*big.Int, uint64, *core.BlockChain) {
+	//create a database with ancient freezer
+	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false)
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend")
+	}
+	defer db.Close()
+	genesis := gspec.MustCommit(db)
 	// Initialize a fresh chain with only a genesis block
-	blockchain, _ := core.NewBlockChain(db, nil, params.AllEthashProtocolChanges, engine, vm.Config{}, nil, nil)
+	blockchain, err := core.NewBlockChain(db, config, gspec.Config, engine, vm.Config{}, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create chain: %v", err)
+	}
 
-	// Full block-chain requested, same to GenerateChain func
-	blocks := makeBlockChain(genesis, height, engine, db, canonicalSeed)
-	_, err := blockchain.InsertChain(blocks)
-	nd, _ := startEthService(t, gspec, blocks, chaindbPath)
-	return blockchain, nd, err
+	// Make chain starting from genesis
+
+	blocks, _ := core.GenerateChain(gspec.Config, genesis, ethash.NewFaker(), db, 200, func(i int, block *core.BlockGen) {
+		block.SetCoinbase(common.Address{0: byte(canonicalSeed), 19: byte(i)})
+		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(address), common.Address{0x00}, big.NewInt(1000), params.TxGas, nil, nil), signer, key)
+		if err != nil {
+			panic(err)
+		}
+		block.AddTx(tx)
+		block.SetDifficulty(big.NewInt(1000000))
+	})
+	if _, err := blockchain.InsertChain(blocks); err != nil {
+		t.Fatalf("Failed to import canonical chain start: %v", err)
+	}
+
+	// Force run a freeze cycle
+	type freezer interface {
+		Freeze(threshold uint64) error
+		Ancients() (uint64, error)
+	}
+	db.(freezer).Freeze(10)
+
+	frozen, err := db.Ancients()
+	//make sure there're frozen items
+	if err != nil || frozen == 0 {
+		t.Fatalf("Failed to import canonical chain start: %v", err)
+	}
+
+	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(db)
+	// Get the actual start block number.
+	startBlockNumber := frozen - 128 + oldOffSet
+	// Initialize the slice to buffer the 128 block data.
+	blockList := make([]*types.Block, 0, blockPruneBackUpBlockNumber)
+	receiptsList := make([]types.Receipts, 0, blockPruneBackUpBlockNumber)
+	externTdList := make([]*big.Int, 0, blockPruneBackUpBlockNumber)
+	// All ancient data within the most recent 128 blocks write into memory buffer for future new ancient_back directory usage.
+	for blockNumber := startBlockNumber; blockNumber < frozen+oldOffSet; blockNumber++ {
+		blockHash := rawdb.ReadCanonicalHash(db, blockNumber)
+		block := rawdb.ReadBlock(db, blockHash, blockNumber)
+		blockList = append(blockList, block)
+		receipts := rawdb.ReadRawReceipts(db, blockHash, blockNumber)
+		receiptsList = append(receiptsList, receipts)
+		// Calculate the total difficulty of the block
+		td := rawdb.ReadTd(db, blockHash, blockNumber)
+		if td == nil {
+			t.Fatalf("Failed to ReadTd: %v", consensus.ErrUnknownAncestor)
+		}
+		externTd := new(big.Int).Add(block.Difficulty(), td)
+		externTdList = append(externTdList, externTd)
+	}
+
+	return db, blocks, blockList, receiptsList, externTdList, startBlockNumber, blockchain
 }
 
-// makeBlockChain creates a deterministic chain of blocks rooted at parent.
-func makeBlockChain(parent *types.Block, n int, engine consensus.Engine, db ethdb.Database, seed int) []*types.Block {
-	blocks, _ := core.GenerateChain(params.TestChainConfig, parent, engine, db, n, func(i int, b *core.BlockGen) {
-		b.SetCoinbase(common.Address{0: byte(seed), 19: byte(i)})
-	})
-	return blocks
+func checkReceiptsRLP(have, want types.Receipts) error {
+	if len(have) != len(want) {
+		return fmt.Errorf("receipts sizes mismatch: have %d, want %d", len(have), len(want))
+	}
+	for i := 0; i < len(want); i++ {
+		rlpHave, err := rlp.EncodeToBytes(have[i])
+		if err != nil {
+			return err
+		}
+		rlpWant, err := rlp.EncodeToBytes(want[i])
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(rlpHave, rlpWant) {
+			return fmt.Errorf("receipt #%d: receipt mismatch: have %s, want %s", i, hex.EncodeToString(rlpHave), hex.EncodeToString(rlpWant))
+		}
+	}
+	return nil
 }
 
 // startEthService creates a full node instance for testing.
 func startEthService(t *testing.T, genesis *core.Genesis, blocks []*types.Block, chaindbPath string) (*node.Node, *eth.Ethereum) {
 	t.Helper()
-
 	n, err := node.New(&node.Config{DataDir: chaindbPath})
 	if err != nil {
 		t.Fatal("can't create node:", err)
 	}
 
-	ethcfg := &ethconfig.Config{Genesis: genesis, Ethash: ethash.Config{PowMode: ethash.ModeFake}}
-	ethservice, err := eth.New(n, ethcfg)
-	if err != nil {
-		t.Fatal("can't create eth service:", err)
-	}
 	if err := n.Start(); err != nil {
 		t.Fatal("can't start node:", err)
 	}
-	if _, err := ethservice.BlockChain().InsertChain(blocks); err != nil {
-		n.Close()
-		t.Fatal("can't import test blocks:", err)
-	}
-	ethservice.SetEtherbase(testAddr)
 
-	return n, ethservice
+	return n, nil
 }

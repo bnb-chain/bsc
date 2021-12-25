@@ -95,7 +95,7 @@ type BlockPruner struct {
 	db             ethdb.Database
 	oldAncientPath string
 	newAncientPath string
-	n              *node.Node
+	node           *node.Node
 }
 
 // NewPruner creates the pruner instance.
@@ -134,7 +134,7 @@ func NewBlockPruner(db ethdb.Database, n *node.Node, oldAncientPath, newAncientP
 		db:             db,
 		oldAncientPath: oldAncientPath,
 		newAncientPath: newAncientPath,
-		n:              n,
+		node:           n,
 	}, nil
 }
 
@@ -257,9 +257,9 @@ func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, sta
 }
 
 func (p *BlockPruner) backUpOldDb(name string, cache, handles int, freezer, namespace string, args ...bool) ([]*types.Block, []types.Receipts, []*big.Int, error) {
-	chainDb, err := p.n.OpenDatabaseWithFreezer(name, cache, handles, freezer, namespace, args...)
+	chainDb, err := p.node.OpenDatabaseWithFreezer(name, cache, handles, freezer, namespace, args...)
 	if err != nil {
-		log.Error("Failed to open ancient database: %v", err)
+		log.Error("Failed to open ancient database", "err=", err)
 		return nil, nil, nil, err
 	}
 	defer chainDb.Close()
@@ -308,15 +308,14 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, freezer, name
 func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, namespace string, readonly bool) error {
 
 	start := time.Now()
-	isBlockPruner := true
 
-	blockList, receiptsList, externTdList, err := p.backUpOldDb(name, cache, handles, p.oldAncientPath, namespace, readonly, isBlockPruner)
+	blockList, receiptsList, externTdList, err := p.backUpOldDb(name, cache, handles, p.oldAncientPath, namespace, readonly, true)
 	if err != nil {
 		return err
 	}
 
 	// Create new freezer backup directory backFreezer, in the db wrapper, using the same kv db but only change the ancient db, /chaindb/ancient_backup.
-	chainDbBack, err := p.n.OpenDatabaseWithFreezer(name, cache, handles, p.newAncientPath, namespace, readonly, isBlockPruner)
+	chainDbBack, err := p.node.OpenDatabaseWithFreezer(name, cache, handles, p.newAncientPath, namespace, readonly, true)
 	if err != nil {
 		return err
 	}
@@ -331,15 +330,15 @@ func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, namespac
 	return nil
 }
 
-func BlockPrune(oldAncientPath, newAncientPath string) error {
+func (p *BlockPruner) AncientDbReplacer() error {
 	// Delete directly for the old ancientdb, e.g.: path ../chaindb/ancient
-	if err := os.RemoveAll(oldAncientPath); err != nil {
+	if err := os.RemoveAll(p.oldAncientPath); err != nil {
 		log.Error("Failed to remove old ancient directory %v", err)
 		return err
 	}
 
 	// Rename the new ancientdb path same to the old
-	if err := os.Rename(newAncientPath, oldAncientPath); err != nil {
+	if err := os.Rename(p.newAncientPath, p.oldAncientPath); err != nil {
 		log.Error("Failed to rename new ancient directory")
 		return err
 	}
