@@ -253,7 +253,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 
 				//update storage
 				latestRoot := common.BytesToHash(latestAccount.Root)
-				if latestRoot != previousAccount.Root && latestRoot != types.EmptyRootHash {
+				if latestRoot != previousAccount.Root {
 					accountTrie, err := statedb.Database().OpenStorageTrie(addrHash, previousAccount.Root)
 					if err != nil {
 						errChan <- err
