@@ -49,3 +49,4 @@ profile.cov
 
 **/yarn-error.log
 cmd/geth/node/
+cmd/geth/__debug_bin

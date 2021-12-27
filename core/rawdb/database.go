@@ -148,6 +148,16 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 	}
 }
 
+//NewFreezerDb only create a freezer without statedb.
+func NewFreezerDb(freezer, namespace string, readonly bool) (*freezer, error) {
+	// Create the idle freezer instance
+	frdb, err := newFreezer(freezer, namespace, readonly)
+	if err != nil {
+		return nil, err
+	}
+	return frdb, nil
+}
+
 // NewDatabaseWithFreezer creates a high level database on top of a given key-
 // value data store with a freezer moving immutable chain segments into cold
 // storage.

@@ -142,6 +142,11 @@ func newFreezer(datadir string, namespace string, readonly bool) (*freezer, erro
 	return freezer, nil
 }
 
+func (f *freezer) SetOffSet(offset uint64) error {
+	f.offset = offset
+	return nil
+}
+
 // Close terminates the chain freezer, unmapping all the data files.
 func (f *freezer) Close() error {
 	var errs []error
@@ -316,10 +321,6 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 		}
 		number := ReadHeaderNumber(nfdb, hash)
 
-		//minus the freezer offset
-		if number != nil {
-			*number = *number - f.offset
-		}
 		threshold := atomic.LoadUint64(&f.threshold)
 
 		switch {
@@ -346,44 +347,44 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 		}
 		// Seems we have data ready to be frozen, process in usable batches
 		limit := *number - threshold
-		if limit-f.frozen > freezerBatchLimit {
-			limit = f.frozen + freezerBatchLimit
+		if limit-f.frozen-f.offset > freezerBatchLimit {
+			limit = f.frozen + f.offset + freezerBatchLimit
 		}
 		var (
 			start    = time.Now()
-			first    = f.frozen
-			ancients = make([]common.Hash, 0, limit-f.frozen)
+			first    = f.frozen + f.offset
+			ancients = make([]common.Hash, 0, limit-f.frozen-f.offset)
 		)
-		for f.frozen <= limit {
+		for f.frozen+f.offset <= limit {
 			// Retrieves all the components of the canonical block
-			hash := ReadCanonicalHash(nfdb, f.frozen)
+			hash := ReadCanonicalHash(nfdb, f.frozen+f.offset)
 			if hash == (common.Hash{}) {
 				log.Error("Canonical hash missing, can't freeze", "number", f.frozen)
 				break
 			}
-			header := ReadHeaderRLP(nfdb, hash, f.frozen)
+			header := ReadHeaderRLP(nfdb, hash, f.frozen+f.offset)
 			if len(header) == 0 {
 				log.Error("Block header missing, can't freeze", "number", f.frozen, "hash", hash)
 				break
 			}
-			body := ReadBodyRLP(nfdb, hash, f.frozen)
+			body := ReadBodyRLP(nfdb, hash, f.frozen+f.offset)
 			if len(body) == 0 {
 				log.Error("Block body missing, can't freeze", "number", f.frozen, "hash", hash)
 				break
 			}
-			receipts := ReadReceiptsRLP(nfdb, hash, f.frozen)
+			receipts := ReadReceiptsRLP(nfdb, hash, f.frozen+f.offset)
 			if len(receipts) == 0 {
 				log.Error("Block receipts missing, can't freeze", "number", f.frozen, "hash", hash)
 				break
 			}
-			td := ReadTdRLP(nfdb, hash, f.frozen)
+			td := ReadTdRLP(nfdb, hash, f.frozen+f.offset)
 			if len(td) == 0 {
 				log.Error("Total difficulty missing, can't freeze", "number", f.frozen, "hash", hash)
 				break
 			}
 			log.Trace("Deep froze ancient block", "number", f.frozen, "hash", hash)
 			// Inject all the components into the relevant data tables
-			if err := f.AppendAncient(f.frozen, hash[:], header, body, receipts, td); err != nil {
+			if err := f.AppendAncient(f.frozen+f.offset, hash[:], header, body, receipts, td); err != nil {
 				break
 			}
 			ancients = append(ancients, hash)
@@ -408,7 +409,7 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 
 		// Wipe out side chains also and track dangling side chians
 		var dangling []common.Hash
-		for number := first; number < f.frozen; number++ {
+		for number := first; number < f.frozen+f.offset; number++ {
 			// Always keep the genesis block in active database
 			if number != 0 {
 				dangling = ReadAllHashes(db, number)
@@ -424,8 +425,8 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 		batch.Reset()
 
 		// Step into the future and delete and dangling side chains
-		if f.frozen > 0 {
-			tip := f.frozen
+		if f.frozen+f.offset > 0 {
+			tip := f.frozen + f.offset
 			for len(dangling) > 0 {
 				drop := make(map[common.Hash]struct{})
 				for _, hash := range dangling {
@@ -466,7 +467,7 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 		log.Info("Deep froze chain segment", context...)
 
 		// Avoid database thrashing with tiny writes
-		if f.frozen-first < freezerBatchLimit {
+		if f.frozen+f.offset-first < freezerBatchLimit {
 			backoff = true
 		}
 	}

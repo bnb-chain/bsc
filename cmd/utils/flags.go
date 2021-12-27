@@ -827,6 +827,11 @@ var (
 		Name:  "catalyst",
 		Usage: "Catalyst mode (eth2 integration testing)",
 	}
+
+	BlockPruneQuantity = cli.Uint64Flag{
+		Name:  "blockprune-quantity",
+		Usage: "Sets the quantity of blocks for offline block prune",
+	}
 )
 
 // MakeDataDir retrieves the currently requested data directory, terminating

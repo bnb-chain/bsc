@@ -93,6 +93,7 @@ the trie clean cache with default directory will be deleted.
 				Flags: []cli.Flag{
 					utils.DataDirFlag,
 					utils.AncientFlag,
+					utils.BlockPruneQuantity,
 				},
 				Description: `
 geth offline prune-block for block data in ancientdb.
@@ -271,6 +272,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 func pruneBlock(ctx *cli.Context) error {
 	stack, config := makeConfigNode(ctx)
 	defer stack.Close()
+	BlockPruneQuantity := ctx.GlobalUint64(utils.BlockPruneQuantity.Name)
 	chaindb, err := accessDb(ctx, stack)
 	if err != nil {
 		return err
@@ -293,7 +295,7 @@ func pruneBlock(ctx *cli.Context) error {
 		return err
 	}
 
-	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath)
+	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, BlockPruneQuantity)
 	if err != nil {
 		return err
 	}

@@ -78,7 +78,8 @@ func TestOfflineBlockPrune(t *testing.T) {
 	node, _ := startEthService(t, gspec, blocks, chaindbPath)
 	defer node.Close()
 
-	testBlockPruner, err := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath)
+	//Initialize a block pruner for pruning amount of 328 blocks
+	testBlockPruner, err := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath, 328)
 	if err != nil {
 		t.Fatalf("failed to make new blockpruner: %v", err)
 	}
@@ -93,7 +94,7 @@ func TestOfflineBlockPrune(t *testing.T) {
 	defer dbBack.Close()
 
 	//check against if the backup data matched original one
-	for blockNumber := startBlockNumber; blockNumber < startBlockNumber+128; blockNumber++ {
+	for blockNumber := startBlockNumber; blockNumber < startBlockNumber+328; blockNumber++ {
 		blockHash := rawdb.ReadCanonicalHash(dbBack, blockNumber)
 		block := rawdb.ReadBlock(dbBack, blockHash, blockNumber)
 		if reflect.DeepEqual(block, blockList[blockNumber-startBlockNumber]) {
@@ -129,7 +130,7 @@ func TestOfflineBlockPrune(t *testing.T) {
 
 func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string) (ethdb.Database, []*types.Block, []*types.Block, []types.Receipts, []*big.Int, uint64, *core.BlockChain) {
 	//create a database with ancient freezer
-	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false, true)
+	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false, false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -142,8 +143,7 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string) (ethdb.Dat
 	}
 
 	// Make chain starting from genesis
-
-	blocks, _ := core.GenerateChain(gspec.Config, genesis, ethash.NewFaker(), db, 200, func(i int, block *core.BlockGen) {
+	blocks, _ := core.GenerateChain(gspec.Config, genesis, ethash.NewFaker(), db, 500, func(i int, block *core.BlockGen) {
 		block.SetCoinbase(common.Address{0: byte(canonicalSeed), 19: byte(i)})
 		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(address), common.Address{0x00}, big.NewInt(1000), params.TxGas, nil, nil), signer, key)
 		if err != nil {
@@ -168,11 +168,14 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string) (ethdb.Dat
 	if err != nil || frozen == 0 {
 		t.Fatalf("Failed to import canonical chain start: %v", err)
 	}
+	if frozen < 328 {
+		t.Fatalf("block amount is not enough for pruning: %v", err)
+	}
 
 	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(db)
 	// Get the actual start block number.
-	startBlockNumber := frozen - 128 + oldOffSet
-	// Initialize the slice to buffer the 128 block data.
+	startBlockNumber := frozen - 328 + oldOffSet
+	// Initialize the slice to buffer the block data left.
 	blockList := make([]*types.Block, 0, blockPruneBackUpBlockNumber)
 	receiptsList := make([]types.Receipts, 0, blockPruneBackUpBlockNumber)
 	externTdList := make([]*big.Int, 0, blockPruneBackUpBlockNumber)
