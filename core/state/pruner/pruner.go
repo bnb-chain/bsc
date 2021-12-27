@@ -255,8 +255,8 @@ func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, sta
 	return nil
 }
 
-func (p *BlockPruner) backUpOldDb(name string, cache, handles int, freezer, namespace string, args ...bool) ([]*types.Block, []types.Receipts, []*big.Int, error) {
-	chainDb, err := p.node.OpenDatabaseWithFreezer(name, cache, handles, freezer, namespace, args...)
+func (p *BlockPruner) backUpOldDb(name string, cache, handles int, freezer, namespace string, readonly bool) ([]*types.Block, []types.Receipts, []*big.Int, error) {
+	chainDb, err := p.node.OpenDatabaseWithFreezer(name, cache, handles, freezer, namespace, readonly, true)
 	if err != nil {
 		log.Error("Failed to open ancient database", "err=", err)
 		return nil, nil, nil, err
@@ -308,7 +308,7 @@ func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, namespac
 
 	start := time.Now()
 
-	blockList, receiptsList, externTdList, err := p.backUpOldDb(name, cache, handles, p.oldAncientPath, namespace, readonly, true)
+	blockList, receiptsList, externTdList, err := p.backUpOldDb(name, cache, handles, p.oldAncientPath, namespace, readonly)
 	if err != nil {
 		return err
 	}

@@ -86,7 +86,7 @@ func TestOfflineBlockPrune(t *testing.T) {
 		t.Fatalf("Failed to back up block: %v", err)
 	}
 
-	dbBack, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, newAncientPath, "", false)
+	dbBack, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, newAncientPath, "", false, true)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -129,7 +129,7 @@ func TestOfflineBlockPrune(t *testing.T) {
 
 func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string) (ethdb.Database, []*types.Block, []*types.Block, []types.Receipts, []*big.Int, uint64, *core.BlockChain) {
 	//create a database with ancient freezer
-	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false)
+	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false, true)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
