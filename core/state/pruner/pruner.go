@@ -129,7 +129,6 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 }
 
 func NewBlockPruner(db ethdb.Database, n *node.Node, oldAncientPath, newAncientPath string) (*BlockPruner, error) {
-
 	return &BlockPruner{
 		db:             db,
 		oldAncientPath: oldAncientPath,

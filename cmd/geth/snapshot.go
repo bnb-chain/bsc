@@ -19,6 +19,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -175,14 +176,94 @@ It's also usable without snapshot enabled.
 func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, true)
 	defer chaindb.Close()
+
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
 		return nil, errors.New("failed to load head block")
 	}
+	headHeader := headBlock.Header()
 	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
-	_, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, int(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)), headBlock.Root(), false, false, false)
+	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, int(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)), headBlock.Root(), false, false, false)
 	if err != nil {
 		return nil, err // The relevant snapshot(s) might not exist
+	}
+
+	var targetRoot common.Hash
+	if ctx.NArg() == 1 {
+		targetRoot, err = parseRoot(ctx.Args()[0])
+		if err != nil {
+			log.Error("Failed to resolve state root", "err", err)
+			return nil, err
+		}
+	}
+
+	triesInMemory := ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)
+	// If the target state root is not specified, use the HEAD-(n-1) as the
+	// target. The reason for picking it is:
+	// - in most of the normal cases, the related state is available
+	// - the probability of this layer being reorg is very low
+	var layers []snapshot.Snapshot
+	if targetRoot == (common.Hash{}) {
+		// Retrieve all snapshot layers from the current HEAD.
+		// In theory there are n difflayers + 1 disk layer present,
+		// so n diff layers are expected to be returned.
+		layers = snaptree.Snapshots(headHeader.Root, int(triesInMemory), true)
+		if len(layers) != int(triesInMemory) {
+			// Reject if the accumulated diff layers are less than n. It
+			// means in most of normal cases, there is no associated state
+			// with bottom-most diff layer.
+			return nil, fmt.Errorf("snapshot not old enough yet: need %d more blocks", int(triesInMemory)-len(layers))
+		}
+		// Use the bottom-most diff layer as the target
+		targetRoot = layers[len(layers)-1].Root()
+	}
+	// Ensure the root is really present. The weak assumption
+	// is the presence of root can indicate the presence of the
+	// entire trie.
+	if blob := rawdb.ReadTrieNode(chaindb, targetRoot); len(blob) == 0 {
+		// The special case is for clique based networks(rinkeby, goerli
+		// and some other private networks), it's possible that two
+		// consecutive blocks will have same root. In this case snapshot
+		// difflayer won't be created. So HEAD-(n-1) may not paired with
+		// head-(n-1) layer. Instead the paired layer is higher than the
+		// bottom-most diff layer. Try to find the bottom-most snapshot
+		// layer with state available.
+		//
+		// Note HEAD is ignored. Usually there is the associated
+		// state available, but we don't want to use the topmost state
+		// as the pruning target.
+		var found bool
+		for i := len(layers) - 2; i >= 1; i-- {
+			if blob := rawdb.ReadTrieNode(chaindb, layers[i].Root()); len(blob) != 0 {
+				targetRoot = layers[i].Root()
+				found = true
+				log.Info("Selecting middle-layer as the pruning target", "root", targetRoot, "depth", i)
+				break
+			}
+		}
+		if !found {
+			if blob := rawdb.ReadTrieNode(chaindb, snaptree.DiskRoot()); len(blob) != 0 {
+				targetRoot = snaptree.DiskRoot()
+				found = true
+				log.Info("Selecting disk-layer as the pruning target", "root", targetRoot)
+			}
+		}
+		if !found {
+			if len(layers) > 0 {
+				return nil, errors.New("no snapshot paired state")
+			}
+			return nil, fmt.Errorf("associated state[%x] is not present", targetRoot)
+		}
+	} else {
+		if len(layers) > 0 {
+			log.Info("Selecting bottom-most difflayer as the pruning target", "root", targetRoot, "height", headHeader.Number.Uint64()-127)
+		} else {
+			log.Info("Selecting user-specified state as the pruning target", "root", targetRoot)
+		}
+	}
+	if err := snaptree.Verify(targetRoot); err != nil {
+		log.Error("Failed to verfiy state", "root", targetRoot, "err", err)
+		return nil, err
 	}
 	return chaindb, nil
 }
