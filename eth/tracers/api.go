@@ -868,11 +868,12 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 		if len(result.Revert()) > 0 {
 			returnVal = fmt.Sprintf("%x", result.Revert())
 		}
+		var callLogs = tracer.CallLogs()
 		return &ethapi.ExecutionResult{
 			Gas:         result.UsedGas,
 			Failed:      result.Failed(),
 			ReturnValue: returnVal,
-			StructLogs:  ethapi.FormatLogs(tracer.StructLogs()),
+			StructLogs:  ethapi.FormatLogs(callLogs),
 		}, nil
 
 	case *Tracer:
