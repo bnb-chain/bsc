@@ -316,11 +316,29 @@ func (s *stat) Size() string {
 func (s *stat) Count() string {
 	return s.count.String()
 }
+func InspectBlockPrune(db ethdb.Database) error {
+	offset := counter(ReadOffSetOfAncientFreezer(db))
+	// Get number of ancient rows inside the freezer
+	ancients := counter(0)
+	if count, err := db.Ancients(); err == nil {
+		ancients = counter(count)
+	}
+	stats := [][]string{
+		{"Offset/StartBlockNumber", "Offset/StartBlockNumber after BlockPrune", offset.String()},
+		{"Amount of remained items in AncientStore", "remaining items after BlockPrune", ancients.String()},
+	}
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Database", "Category", "Items"})
+	table.SetFooter([]string{"", "AncientStore information after offline BlockPrune", ""})
+	table.AppendBulk(stats)
+	table.Render()
+
+	return nil
+}
 
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
 func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
-	offset := counter(ReadOffSetOfAncientFreezer(db))
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
 
@@ -480,7 +498,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Ancient store", "Block number->hash", ancientHashesSize.String(), ancients.String()},
 		{"Light client", "CHT trie nodes", chtTrieNodes.Size(), chtTrieNodes.Count()},
 		{"Light client", "Bloom trie nodes", bloomTrieNodes.Size(), bloomTrieNodes.Count()},
-		{"Offset/StartBlockNumber", "Offset of AncientStore", "", offset.String()},
 	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})

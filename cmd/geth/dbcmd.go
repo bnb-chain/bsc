@@ -62,6 +62,7 @@ Remove blockchain and state databases`,
 			dbPutCmd,
 			dbGetSlotsCmd,
 			dbDumpFreezerIndex,
+			blockPruneInspectCmd,
 		},
 	}
 	dbInspectCmd = cli.Command{
@@ -195,6 +196,16 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		},
 		Description: "This command displays information about the freezer index.",
 	}
+	blockPruneInspectCmd = cli.Command{
+		Action: utils.MigrateFlags(blockPruneInspect),
+		Name:   "inspect-reserved-oldest-blocks",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+		},
+		Usage: "Inspect the ancientStore information after block-prune",
+		Description: `This commands will read current offset from kvdb, which is the current offset and starting BlockNumber
+		of ancientStore, will also displays the reserved number of blocks in ancientStore `,
+	}
 )
 
 func removeDB(ctx *cli.Context) error {
@@ -282,10 +293,19 @@ func inspect(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, true)
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
 	return rawdb.InspectDatabase(db, prefix, start)
+}
+
+func blockPruneInspect(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, true, true)
+	defer db.Close()
+	return rawdb.InspectBlockPrune(db)
 }
 
 func showLeveldbStats(db ethdb.Stater) {

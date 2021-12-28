@@ -64,6 +64,13 @@ var (
 )
 
 func TestOfflineBlockPrune(t *testing.T) {
+	//Corner case for 0 remain in ancinetStore.
+	testOfflineBlockPruneWithAmountLeft(t, 0)
+	//General case.
+	testOfflineBlockPruneWithAmountLeft(t, 100)
+}
+
+func testOfflineBlockPruneWithAmountLeft(t *testing.T, amountLeft uint64) {
 	datadir, err := ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("Failed to create temporary datadir: %v", err)
@@ -74,12 +81,12 @@ func TestOfflineBlockPrune(t *testing.T) {
 	oldAncientPath := filepath.Join(chaindbPath, "ancient")
 	newAncientPath := filepath.Join(chaindbPath, "ancient_back")
 
-	db, blocks, blockList, receiptsList, externTdList, startBlockNumber, _ := BlockchainCreator(t, chaindbPath, oldAncientPath)
+	db, blocks, blockList, receiptsList, externTdList, startBlockNumber, _ := BlockchainCreator(t, chaindbPath, oldAncientPath, amountLeft)
 	node, _ := startEthService(t, gspec, blocks, chaindbPath)
 	defer node.Close()
 
-	//Initialize a block pruner for pruning amount of 328 blocks
-	testBlockPruner, err := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath, 328)
+	//Initialize a block pruner for pruning, only remain amountLeft blocks backward.
+	testBlockPruner, err := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath, amountLeft)
 	if err != nil {
 		t.Fatalf("failed to make new blockpruner: %v", err)
 	}
@@ -94,7 +101,7 @@ func TestOfflineBlockPrune(t *testing.T) {
 	defer dbBack.Close()
 
 	//check against if the backup data matched original one
-	for blockNumber := startBlockNumber; blockNumber < startBlockNumber+328; blockNumber++ {
+	for blockNumber := startBlockNumber; blockNumber < startBlockNumber+amountLeft; blockNumber++ {
 		blockHash := rawdb.ReadCanonicalHash(dbBack, blockNumber)
 		block := rawdb.ReadBlock(dbBack, blockHash, blockNumber)
 		if reflect.DeepEqual(block, blockList[blockNumber-startBlockNumber]) {
@@ -128,7 +135,7 @@ func TestOfflineBlockPrune(t *testing.T) {
 	}
 }
 
-func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string) (ethdb.Database, []*types.Block, []*types.Block, []types.Receipts, []*big.Int, uint64, *core.BlockChain) {
+func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemain uint64) (ethdb.Database, []*types.Block, []*types.Block, []types.Receipts, []*big.Int, uint64, *core.BlockChain) {
 	//create a database with ancient freezer
 	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false, false)
 	if err != nil {
@@ -168,13 +175,13 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string) (ethdb.Dat
 	if err != nil || frozen == 0 {
 		t.Fatalf("Failed to import canonical chain start: %v", err)
 	}
-	if frozen < 328 {
+	if frozen < blockRemain {
 		t.Fatalf("block amount is not enough for pruning: %v", err)
 	}
 
 	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(db)
 	// Get the actual start block number.
-	startBlockNumber := frozen - 328 + oldOffSet
+	startBlockNumber := frozen - blockRemain + oldOffSet
 	// Initialize the slice to buffer the block data left.
 	blockList := make([]*types.Block, 0, blockPruneBackUpBlockNumber)
 	receiptsList := make([]types.Receipts, 0, blockPruneBackUpBlockNumber)

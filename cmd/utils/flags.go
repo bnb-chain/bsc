@@ -829,7 +829,7 @@ var (
 	}
 
 	BlockPruneAmountLeft = cli.Uint64Flag{
-		Name:  "blockprune-amount",
+		Name:  "reserved-recent-blocks",
 		Usage: "Sets the expected remained amount of blocks for offline block prune",
 	}
 )

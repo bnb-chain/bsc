@@ -97,7 +97,7 @@ the trie clean cache with default directory will be deleted.
 				},
 				Description: `
 geth offline prune-block for block data in ancientdb.
-The amount of blocks expected for remaining after prune can be specified via blockprune-amount in this command,
+The amount of blocks expected for remaining after prune can be specified via reserved-recent-blocks in this command,
 will prune and only remain the specified amount of old block data in ancientdb.
 the brief workflow is to backup the the number of this specified amount blocks backward in original ancientdb 
 into new ancient_backup, then delete the original ancientdb dir and rename the ancient_backup to original one for replacement,
