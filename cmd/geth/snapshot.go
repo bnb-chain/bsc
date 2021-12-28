@@ -93,16 +93,18 @@ the trie clean cache with default directory will be deleted.
 				Flags: []cli.Flag{
 					utils.DataDirFlag,
 					utils.AncientFlag,
-					utils.BlockPruneQuantity,
+					utils.BlockPruneAmountLeft,
 				},
 				Description: `
 geth offline prune-block for block data in ancientdb.
-will prune all the old block data in ancientdb except for the the last 128 blocks in ancientdb.
-the brief workflow is to backup the last 128 blocks in original ancientdb into new ancient_backup,
-then delete the original ancientdb dir and rename the ancient_backup to original one for replacement.
+The amount of blocks expected for remaining after prune can be specified via blockprune-amount in this command,
+will prune and only remain the specified amount of old block data in ancientdb.
+the brief workflow is to backup the the number of this specified amount blocks backward in original ancientdb 
+into new ancient_backup, then delete the original ancientdb dir and rename the ancient_backup to original one for replacement,
+finally assemble the statedb and new ancientDb together.
 The purpose of doing it is because the block data will be moved into the ancient store when it
-becomes old enough(exceed the Threshold 90000), the disk usage will be very large over time, so it's very
-necessary to do block data prune, this feature takes very short time in even seconds level.
+becomes old enough(exceed the Threshold 90000), the disk usage will be very large over time, and is occupied mainly by ancientDb,
+so it's very necessary to do block data prune, this feature takes very short time in even seconds level.
 `,
 			},
 			{
@@ -272,7 +274,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 func pruneBlock(ctx *cli.Context) error {
 	stack, config := makeConfigNode(ctx)
 	defer stack.Close()
-	BlockPruneQuantity := ctx.GlobalUint64(utils.BlockPruneQuantity.Name)
+	BlockPruneAmountLeft := ctx.GlobalUint64(utils.BlockPruneAmountLeft.Name)
 	chaindb, err := accessDb(ctx, stack)
 	if err != nil {
 		return err
@@ -295,7 +297,7 @@ func pruneBlock(ctx *cli.Context) error {
 		return err
 	}
 
-	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, BlockPruneQuantity)
+	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, BlockPruneAmountLeft)
 	if err != nil {
 		return err
 	}

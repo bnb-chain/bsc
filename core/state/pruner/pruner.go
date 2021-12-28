@@ -89,11 +89,11 @@ type Pruner struct {
 }
 
 type BlockPruner struct {
-	db                 ethdb.Database
-	oldAncientPath     string
-	newAncientPath     string
-	node               *node.Node
-	BlockPruneQuantity uint64
+	db                   ethdb.Database
+	oldAncientPath       string
+	newAncientPath       string
+	node                 *node.Node
+	BlockPruneAmountLeft uint64
 }
 
 // NewPruner creates the pruner instance.
@@ -126,13 +126,13 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 	}, nil
 }
 
-func NewBlockPruner(db ethdb.Database, n *node.Node, oldAncientPath, newAncientPath string, BlockPruneQuantity uint64) (*BlockPruner, error) {
+func NewBlockPruner(db ethdb.Database, n *node.Node, oldAncientPath, newAncientPath string, BlockPruneAmountLeft uint64) (*BlockPruner, error) {
 	return &BlockPruner{
-		db:                 db,
-		oldAncientPath:     oldAncientPath,
-		newAncientPath:     newAncientPath,
-		node:               n,
-		BlockPruneQuantity: BlockPruneQuantity,
+		db:                   db,
+		oldAncientPath:       oldAncientPath,
+		newAncientPath:       newAncientPath,
+		node:                 n,
+		BlockPruneAmountLeft: BlockPruneAmountLeft,
 	}, nil
 }
 
@@ -279,14 +279,14 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 		return errors.New("can't access the freezer or it's empty, abort")
 	}
 	//If the items in freezer is less than the block amount that we want to prune, it is not enough, should stop.
-	if frozen < p.BlockPruneQuantity {
-		log.Error("the number of old blocks is not enough to prune, should specify lower BlockPruneQuantity")
+	if frozen < p.BlockPruneAmountLeft {
+		log.Error("the number of old blocks is not enough to prune, should specify larger BlockPruneAmountLeft for remaining more blocks and prune less blocks")
 		return errors.New("the number of old blocks is not enough to prune")
 	}
 
 	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(chainDb)
 	// Get the actual start block number.
-	startBlockNumber := oldOffSet + frozen - p.BlockPruneQuantity
+	startBlockNumber := oldOffSet + frozen - p.BlockPruneAmountLeft
 	// For every round, newoffset actually equals to the startBlockNumber in ancient backup db.
 	frdbBack.SetOffSet(startBlockNumber)
 	// Write the new offset into statedb for the future new freezer usage.

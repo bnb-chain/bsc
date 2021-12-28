@@ -828,9 +828,9 @@ var (
 		Usage: "Catalyst mode (eth2 integration testing)",
 	}
 
-	BlockPruneQuantity = cli.Uint64Flag{
-		Name:  "blockprune-quantity",
-		Usage: "Sets the quantity of blocks for offline block prune",
+	BlockPruneAmountLeft = cli.Uint64Flag{
+		Name:  "blockprune-amount",
+		Usage: "Sets the expected remained amount of blocks for offline block prune",
 	}
 )
 
