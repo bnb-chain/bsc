@@ -233,7 +233,9 @@ func (l *StructLogger) CallLogs() []StructLog {
 	var cLogs []StructLog
 
 	for _, log := range l.logs {
-		if log.Op.String() == "CALL" {
+		if log.Op.String() == "CALL" || log.Op.String() == "CALLCODE" ||
+			log.Op.String() == "DELEGATECALL" || log.Op.String() == "DELEGATECALL" ||
+			log.Op.String() == "STATICCALL"{
 			cLogs = append(cLogs, log)
 		}
 	}
