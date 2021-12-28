@@ -320,6 +320,7 @@ func (s *stat) Count() string {
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
 func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
+	offset := counter(ReadOffSetOfAncientFreezer(db))
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
 
@@ -452,6 +453,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	if count, err := db.Ancients(); err == nil {
 		ancients = counter(count)
 	}
+
 	// Display the database statistic.
 	stats := [][]string{
 		{"Key-Value store", "Headers", headers.Size(), headers.Count()},
@@ -478,6 +480,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Ancient store", "Block number->hash", ancientHashesSize.String(), ancients.String()},
 		{"Light client", "CHT trie nodes", chtTrieNodes.Size(), chtTrieNodes.Count()},
 		{"Light client", "Bloom trie nodes", bloomTrieNodes.Size(), bloomTrieNodes.Count()},
+		{"Offset/StartBlockNumber", "Offset of AncientStore", "", offset.String()},
 	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})

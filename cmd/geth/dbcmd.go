@@ -282,7 +282,7 @@ func inspect(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true, true)
 	defer db.Close()
 
 	return rawdb.InspectDatabase(db, prefix, start)

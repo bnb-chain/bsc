@@ -285,7 +285,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 	}
 
 	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(chainDb)
-	// Get the actual start block number.
+	// Get the start BlockNumber for pruning.
 	startBlockNumber := oldOffSet + frozen - p.BlockPruneAmountLeft
 	// For every round, newoffset actually equals to the startBlockNumber in ancient backup db.
 	frdbBack.SetOffSet(startBlockNumber)
