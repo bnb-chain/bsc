@@ -809,6 +809,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 		err       error
 		txContext = core.NewEVMTxContext(message)
 	)
+	log.Warn("ApplyMessage start traceTx, now:", time.Now())
 	switch {
 	case config != nil && config.Tracer != nil:
 		// Define a meaningful timeout of a single transaction trace
@@ -854,10 +855,11 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 	statedb.Prepare(txctx.hash, txctx.block, txctx.index)
 
 	result, err := core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
+	log.Warn("ApplyMessage end traceTx, now:", time.Now())
+
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
-
 	// Depending on the tracer type, format and return the output.
 	switch tracer := tracer.(type) {
 	case *vm.StructLogger:
