@@ -23,7 +23,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"reflect"
 	"sort"
@@ -638,23 +637,4 @@ func newStates(keys []common.Hash, vals []common.Hash) *map[common.Hash]common.H
 		m[keys[i]] = vals[i]
 	}
 	return &m
-}
-
-func TestConvert(t *testing.T)  {
-	addr := common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c")
-	topic := make([]common.Hash, 3)
-	hash1 := common.HexToHash("0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c")
-	hash2 := common.HexToHash("0x10ed43c718714eb63d5aa57b78b54704e256024e")
-	topic = append(topic, hash1)
-	topic = append(topic, hash2)
-	l := types.Log{
-		Address:  addr,
-		Topics: topic,
-
-	}
-
-	str, _ := json.Marshal(l)
-	log.Warn(string(str))
-
-	str = []byte("abc")
 }
