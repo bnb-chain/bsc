@@ -903,6 +903,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 			log.Warn("error:", err.Error())
 			continue
 		}
+		log.Warn("private log marshal str:" + string(str))
 		myLog :=  vm.StructLog{
 			Memory: str,
 		}

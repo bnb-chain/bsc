@@ -64,29 +64,14 @@ func (l *Log)Print(){
 	log.Warn("TxHash:" + l.TxHash.String())
 	log.Warn("data:" + string(l.Data))
 }
-/*
-   {
-       "address":"0xA46346bC9d110907b5ACE36B53263320baf1cD21",
-       "topics":[
-          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-          "0x0000000000000000000000005ce908a6ffb393e9cb88dd8d6e8594a6a14a0b60",
-          "0x000000000000000000000000ad64611b89d1e2d6387165eaae4253697f88be23"
-       ],
-       "data":"0x00000000000000000000000000000000000000000000083c4dfad821156809c0",
-       "blockNumber":13046286,
-       "transactionHash":"0x5817bd05cbaa89328b922b8c7d30b2d5de7314ba25df38956cda01366f64a4b6",
-       "transactionIndex":30,
-       "blockHash":"0x36c28ec7cf8a77ac9c3580ef8ff32de15b8ba1882f5232c73c381ce6541fa043",
-       "logIndex":82,
-       "removed":false,
-       "id":"log_9ad8e734"
-    }
-*/
+
 func (l *Log) Output()  map[string]interface{}{
 	fields := map[string]interface{}{
 //		"transactionHash":   l.TxHash,
 //		"transactionIndex":  hexutil.Uint64(l.TxIndex),
 		"address":              l.Address,
+		"topic_length":			len(l.Topics),
+		"topics":				l.Topics,
 		"data":                l.Data,
 	}
 	return fields
