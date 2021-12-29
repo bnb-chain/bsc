@@ -887,11 +887,10 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 	statedb.Prepare(txctx.hash, txctx.block, txctx.index)
 //	tx := api.toTransaction(message)
 	snapshot := statedb.Snapshot()
-	result, err := core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
+	result, err, ls := core.MyApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
 	log.Warn("ApplyMessage end traceTx, now:" + time.Now().String())
 //	hash := tx.Hash()
 //	logs := statedb.GetLogs(hash)
-	ls := statedb.Logs()
 
 	log.Warn("private log:" + strconv.Itoa(len(ls)) + ", ls_length=" + strconv.Itoa(len(ls)))
 //	myLogs := []vm.StructLog{}
