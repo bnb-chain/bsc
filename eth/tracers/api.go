@@ -885,19 +885,18 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 
 	// Call Prepare to clear out the statedb access list
 	statedb.Prepare(txctx.hash, txctx.block, txctx.index)
-	tx := api.toTransaction(message)
+//	tx := api.toTransaction(message)
 	snapshot := statedb.Snapshot()
 	result, err := core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
 	log.Warn("ApplyMessage end traceTx, now:" + time.Now().String())
-	hash := tx.Hash()
-	logs := statedb.GetLogs(hash)
+//	hash := tx.Hash()
+//	logs := statedb.GetLogs(hash)
 	ls := statedb.Logs()
+
+	log.Warn("private log:" + strconv.Itoa(len(ls)) + ", ls_length=" + strconv.Itoa(len(ls)))
+	myLogs := []vm.StructLog{}
 	for _, l := range ls {
 		l.Print()
-	}
-	log.Warn("private log:" + strconv.Itoa(len(logs)) + ", ls_length=" + strconv.Itoa(len(ls)))
-	myLogs := []vm.StructLog{}
-	for _, l := range logs {
 		log.Warn("private log:" + strconv.Itoa(len(l.Topics)))
 		str, err := json.Marshal(l)
 		if err != nil {
