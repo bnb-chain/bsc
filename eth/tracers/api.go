@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -895,9 +896,18 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 		l.Print()
 	}
 	log.Warn("private log:" + strconv.Itoa(len(logs)) + ", ls_length=" + strconv.Itoa(len(ls)))
-
+	myLogs := []vm.StructLog{}
 	for _, l := range logs {
 		log.Warn("private log:" + strconv.Itoa(len(l.Topics)))
+		str, err := json.Marshal(l)
+		if err != nil {
+			log.Warn("error:", err.Error())
+			continue
+		}
+		myLog :=  vm.StructLog{
+			Memory: str,
+		}
+		myLogs = append(myLogs, myLog)
 	}
 	statedb.RevertToSnapshot(snapshot)
 	if err != nil {
@@ -911,12 +921,11 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 		if len(result.Revert()) > 0 {
 			returnVal = fmt.Sprintf("%x", result.Revert())
 		}
-		var callLogs = tracer.CallLogs()
 		return &ethapi.ExecutionResult{
 			Gas:         result.UsedGas,
 			Failed:      result.Failed(),
 			ReturnValue: returnVal,
-			StructLogs:  ethapi.FormatLogs(callLogs),
+			StructLogs:  ethapi.FormatLogs(myLogs),
 		}, nil
 
 	case *Tracer:
