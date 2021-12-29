@@ -891,7 +891,9 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 	hash := tx.Hash()
 	logs := statedb.GetLogs(hash)
 	ls := statedb.Logs()
-
+	for _, l := range ls {
+		l.Print()
+	}
 	log.Warn("private log:" + strconv.Itoa(len(logs)) + ", ls_length=" + strconv.Itoa(len(ls)))
 
 	for _, l := range logs {

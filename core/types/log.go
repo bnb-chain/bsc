@@ -17,6 +17,7 @@
 package types
 
 import (
+	"github.com/ethereum/go-ethereum/log"
 	"io"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -54,7 +55,14 @@ type Log struct {
 	// You must pay attention to this field if you receive logs through a filter query.
 	Removed bool `json:"removed"`
 }
-
+func (l *Log)Print(){
+	log.Warn("------------")
+	log.Warn("addr:" + l.Address.String())
+	for _, t := range  l.Topics {
+		log.Warn("topic hash:" + t.String())
+	}
+	log.Warn("TxHash:" + l.TxHash.String())
+}
 type logMarshaling struct {
 	Data        hexutil.Bytes
 	BlockNumber hexutil.Uint64
