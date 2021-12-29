@@ -894,10 +894,10 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 	ls := statedb.Logs()
 
 	log.Warn("private log:" + strconv.Itoa(len(ls)) + ", ls_length=" + strconv.Itoa(len(ls)))
-	myLogs := []vm.StructLog{}
+//	myLogs := []vm.StructLog{}
 	for _, l := range ls {
 		l.Print()
-		log.Warn("private log:" + strconv.Itoa(len(l.Topics)))
+/*		log.Warn("private log:" + strconv.Itoa(len(l.Topics)))
 		str, err := json.Marshal(l)
 		if err != nil {
 			log.Warn("error:", err.Error())
@@ -907,7 +907,11 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 		myLog :=  vm.StructLog{
 			Memory: str,
 		}
-		myLogs = append(myLogs, myLog)
+		myLogs = append(myLogs, myLog)*/
+	}
+	logStr, err := json.Marshal(ls)
+	if err != nil {
+		log.Warn("error:", err.Error())
 	}
 	statedb.RevertToSnapshot(snapshot)
 	if err != nil {
@@ -917,15 +921,11 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 	switch tracer := tracer.(type) {
 	case *vm.StructLogger:
 		// If the result contains a revert reason, return it.
-		returnVal := fmt.Sprintf("%x", result.Return())
-		if len(result.Revert()) > 0 {
-			returnVal = fmt.Sprintf("%x", result.Revert())
-		}
+
 		return &ethapi.ExecutionResult{
 			Gas:         result.UsedGas,
 			Failed:      result.Failed(),
-			ReturnValue: returnVal,
-			StructLogs:  ethapi.FormatLogs(myLogs),
+			ReturnValue: string(logStr),
 		}, nil
 
 	case *Tracer:
