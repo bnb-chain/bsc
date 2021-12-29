@@ -347,7 +347,7 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 			}
 			// Prepare the statedb for tracing. Don't use the live database for
 			// tracing to avoid persisting state junks into the database.
-			statedb, err = api.backend.StateAtBlock(localctx, block, reexec, statedb, false)
+			statedb, err = api.backend.StateAtBlock(localctx, block, reexec, statedb, true)
 			if err != nil {
 				failed = err
 				break
