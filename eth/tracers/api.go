@@ -890,8 +890,9 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 	log.Warn("ApplyMessage end traceTx, now:" + time.Now().String())
 	hash := tx.Hash()
 	logs := statedb.GetLogs(hash)
+	ls := statedb.Logs()
 
-	log.Warn("private log:" + strconv.Itoa(len(logs)))
+	log.Warn("private log:" + strconv.Itoa(len(logs)) + ", ls_length=" + strconv.Itoa(len(ls)))
 
 	for _, l := range logs {
 		log.Warn("private log:" + strconv.Itoa(len(l.Topics)))
