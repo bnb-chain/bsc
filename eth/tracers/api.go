@@ -27,7 +27,6 @@ import (
 	"math/big"
 	"os"
 	"runtime"
-	"strconv"
 	"sync"
 	"time"
 
@@ -888,15 +887,15 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 //	tx := api.toTransaction(message)
 	snapshot := statedb.Snapshot()
 	result, err, ls := core.MyApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
-	log.Warn("ApplyMessage end traceTx, now:" + time.Now().String())
+//	log.Warn("ApplyMessage end traceTx, now:" + time.Now().String())
 //	hash := tx.Hash()
 //	logs := statedb.GetLogs(hash)
 
-	log.Warn("private log:" + strconv.Itoa(len(ls)) + ", ls_length=" + strconv.Itoa(len(ls)))
+//	log.Warn("private log:" + strconv.Itoa(len(ls)) + ", ls_length=" + strconv.Itoa(len(ls)))
 //	myLogs := []vm.StructLog{}
-	for _, l := range ls {
+/*	for _, l := range ls {
 		l.Print()
-/*		log.Warn("private log:" + strconv.Itoa(len(l.Topics)))
+		log.Warn("private log:" + strconv.Itoa(len(l.Topics)))
 		str, err := json.Marshal(l)
 		if err != nil {
 			log.Warn("error:", err.Error())
@@ -906,8 +905,8 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 		myLog :=  vm.StructLog{
 			Memory: str,
 		}
-		myLogs = append(myLogs, myLog)*/
-	}
+		myLogs = append(myLogs, myLog)
+	}*/
 	logStr, err := json.Marshal(ls)
 	if err != nil {
 		log.Warn("error:", err.Error())
