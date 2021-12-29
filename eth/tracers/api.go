@@ -26,6 +26,7 @@ import (
 	"math/big"
 	"os"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -798,6 +799,36 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.CallArgs, blockNrOrHa
 	}
 	return api.traceTx(ctx, msg, new(txTraceContext), vmctx, statedb, traceConfig)
 }
+// toTransaction converts the arguments to a transaction.
+// This assumes that setDefaults has been called.
+func (api *API) toTransaction(args core.Message) *types.Transaction {
+	var input []byte
+	input = args.Data()
+
+	var data types.TxData
+/*	if args.AccessList == nil {
+		data = &types.LegacyTx{
+			To:       args.To(),
+			Nonce:    args.Nonce(),
+			Gas:      args.Gas(),
+			GasPrice: args.GasPrice(),
+			Value:    args.Value(),
+			Data:     input,
+		}
+	} else {*/
+		data = &types.AccessListTx{
+			To:         args.To(),
+			ChainID:    big.NewInt(56),
+			Nonce:      args.Nonce(),
+			Gas:        args.Gas(),
+			GasPrice:   args.GasPrice(),
+			Value:      args.Value(),
+			Data:       input,
+			AccessList: args.AccessList(),
+		}
+//	}
+	return types.NewTx(data)
+}
 
 // traceTx configures a new tracer according to the provided configuration, and
 // executes the given message in the provided environment. The return value will
@@ -853,10 +884,19 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 
 	// Call Prepare to clear out the statedb access list
 	statedb.Prepare(txctx.hash, txctx.block, txctx.index)
-
+	tx := api.toTransaction(message)
+	snapshot := statedb.Snapshot()
 	result, err := core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
 	log.Warn("ApplyMessage end traceTx, now:" + time.Now().String())
+	hash := tx.Hash()
+	logs := statedb.GetLogs(hash)
 
+	log.Warn("private log:" + strconv.Itoa(len(logs)))
+
+	for _, l := range logs {
+		log.Warn("private log:" + strconv.Itoa(len(l.Topics)))
+	}
+	statedb.RevertToSnapshot(snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
