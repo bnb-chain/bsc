@@ -840,7 +840,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 		err       error
 		txContext = core.NewEVMTxContext(message)
 	)
-	log.Warn("ApplyMessage start traceTx, now:" + time.Now().String())
+//	log.Warn("ApplyMessage start traceTx, now:" + time.Now().String())
 	switch {
 	case config != nil && config.Tracer != nil:
 		// Define a meaningful timeout of a single transaction trace
