@@ -62,6 +62,7 @@ func (l *Log)Print(){
 		log.Warn("topic hash:" + t.String())
 	}
 	log.Warn("TxHash:" + l.TxHash.String())
+	log.Warn("data:" + string(l.Data))
 }
 type logMarshaling struct {
 	Data        hexutil.Bytes
