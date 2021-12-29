@@ -89,11 +89,11 @@ type Pruner struct {
 }
 
 type BlockPruner struct {
-	db                   ethdb.Database
-	oldAncientPath       string
-	newAncientPath       string
-	node                 *node.Node
-	BlockPruneAmountLeft uint64
+	db                  ethdb.Database
+	oldAncientPath      string
+	newAncientPath      string
+	node                *node.Node
+	BlockAmountReserved uint64
 }
 
 // NewPruner creates the pruner instance.
@@ -126,13 +126,13 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 	}, nil
 }
 
-func NewBlockPruner(db ethdb.Database, n *node.Node, oldAncientPath, newAncientPath string, BlockPruneAmountLeft uint64) (*BlockPruner, error) {
+func NewBlockPruner(db ethdb.Database, n *node.Node, oldAncientPath, newAncientPath string, BlockAmountReserved uint64) (*BlockPruner, error) {
 	return &BlockPruner{
-		db:                   db,
-		oldAncientPath:       oldAncientPath,
-		newAncientPath:       newAncientPath,
-		node:                 n,
-		BlockPruneAmountLeft: BlockPruneAmountLeft,
+		db:                  db,
+		oldAncientPath:      oldAncientPath,
+		newAncientPath:      newAncientPath,
+		node:                n,
+		BlockAmountReserved: BlockAmountReserved,
 	}, nil
 }
 
@@ -278,19 +278,22 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 		log.Error("can't access the freezer or it's empty, abort")
 		return errors.New("can't access the freezer or it's empty, abort")
 	}
-	//If the items in freezer is less than the block amount that we want to prune, it is not enough, should stop.
-	if frozen < p.BlockPruneAmountLeft {
-		log.Error("the number of old blocks is not enough to prune, should specify larger BlockPruneAmountLeft for remaining more blocks and prune less blocks")
-		return errors.New("the number of old blocks is not enough to prune")
+	//If the items in freezer is less than the block amount that we want to reserve, it is not enough, should stop.
+	if frozen < p.BlockAmountReserved {
+		log.Error("the number of old blocks is not enough to reserve,", "frozen items", frozen, "the amount specified", p.BlockAmountReserved)
+		return errors.New("the number of old blocks is not enough to reserve")
 	}
 
 	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(chainDb)
 	// Get the start BlockNumber for pruning.
-	startBlockNumber := oldOffSet + frozen - p.BlockPruneAmountLeft
+	startBlockNumber := oldOffSet + frozen - p.BlockAmountReserved
 	// For every round, newoffset actually equals to the startBlockNumber in ancient backup db.
 	frdbBack.SetOffSet(startBlockNumber)
 	// Write the new offset into statedb for the future new freezer usage.
 	rawdb.WriteOffSetOfAncientFreezer(chainDb, startBlockNumber)
+
+	log.Info("prune info", "old offset", oldOffSet, "frozen items number", frozen, "amount to reserver", p.BlockAmountReserved)
+	log.Info("new offset/new startBlockNumber recorded successfully ", "new offset", startBlockNumber)
 
 	// All ancient data after and including startBlockNumber should write into new ancient_back.
 	for blockNumber := startBlockNumber; blockNumber < frozen+oldOffSet; blockNumber++ {
@@ -306,6 +309,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 
 		//Write into new ancient_back db.
 		rawdb.WriteAncientBlock(frdbBack, block, receipts, externTd)
+		log.Info("backup blockNumber ", "blockNumber", blockNumber)
 	}
 
 	return nil

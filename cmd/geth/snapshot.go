@@ -45,6 +45,9 @@ var (
 
 	// emptyCode is the known hash of the empty EVM bytecode.
 	emptyCode = crypto.Keccak256(nil)
+
+	//the layer of tries trees that keep in memory
+	TriesInMemory = 128
 )
 
 var (
@@ -93,7 +96,7 @@ the trie clean cache with default directory will be deleted.
 				Flags: []cli.Flag{
 					utils.DataDirFlag,
 					utils.AncientFlag,
-					utils.BlockPruneAmountLeft,
+					utils.BlockAmountReserved,
 				},
 				Description: `
 geth offline prune-block for block data in ancientdb.
@@ -104,7 +107,7 @@ into new ancient_backup, then delete the original ancientdb dir and rename the a
 finally assemble the statedb and new ancientDb together.
 The purpose of doing it is because the block data will be moved into the ancient store when it
 becomes old enough(exceed the Threshold 90000), the disk usage will be very large over time, and is occupied mainly by ancientDb,
-so it's very necessary to do block data prune, this feature takes very short time in even seconds level.
+so it's very necessary to do block data prune, this feature will handle it.
 `,
 			},
 			{
@@ -186,40 +189,28 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	}
 	headHeader := headBlock.Header()
 	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
-	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, int(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)), headBlock.Root(), false, false, false)
+	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, TriesInMemory, headBlock.Root(), false, false, false)
 	if err != nil {
 		return nil, err // The relevant snapshot(s) might not exist
 	}
 
-	var targetRoot common.Hash
-	if ctx.NArg() == 1 {
-		targetRoot, err = parseRoot(ctx.Args()[0])
-		if err != nil {
-			log.Error("Failed to resolve state root", "err", err)
-			return nil, err
-		}
-	}
-
-	triesInMemory := ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)
-	// If the target state root is not specified, use the HEAD-(n-1) as the
-	// target. The reason for picking it is:
+	// Use the HEAD-(n-1) as the target root. The reason for picking it is:
 	// - in most of the normal cases, the related state is available
 	// - the probability of this layer being reorg is very low
-	var layers []snapshot.Snapshot
-	if targetRoot == (common.Hash{}) {
-		// Retrieve all snapshot layers from the current HEAD.
-		// In theory there are n difflayers + 1 disk layer present,
-		// so n diff layers are expected to be returned.
-		layers = snaptree.Snapshots(headHeader.Root, int(triesInMemory), true)
-		if len(layers) != int(triesInMemory) {
-			// Reject if the accumulated diff layers are less than n. It
-			// means in most of normal cases, there is no associated state
-			// with bottom-most diff layer.
-			return nil, fmt.Errorf("snapshot not old enough yet: need %d more blocks", int(triesInMemory)-len(layers))
-		}
-		// Use the bottom-most diff layer as the target
-		targetRoot = layers[len(layers)-1].Root()
+
+	// Retrieve all snapshot layers from the current HEAD.
+	// In theory there are n difflayers + 1 disk layer present,
+	// so n diff layers are expected to be returned.
+	layers := snaptree.Snapshots(headHeader.Root, TriesInMemory, true)
+	if len(layers) != TriesInMemory {
+		// Reject if the accumulated diff layers are less than n. It
+		// means in most of normal cases, there is no associated state
+		// with bottom-most diff layer.
+		return nil, fmt.Errorf("snapshot not old enough yet: need %d more blocks", TriesInMemory-len(layers))
 	}
+	// Use the bottom-most diff layer as the target
+	targetRoot := layers[len(layers)-1].Root()
+
 	// Ensure the root is really present. The weak assumption
 	// is the presence of root can indicate the presence of the
 	// entire trie.
@@ -274,7 +265,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 func pruneBlock(ctx *cli.Context) error {
 	stack, config := makeConfigNode(ctx)
 	defer stack.Close()
-	BlockPruneAmountLeft := ctx.GlobalUint64(utils.BlockPruneAmountLeft.Name)
+	BlockAmountReserved := ctx.GlobalUint64(utils.BlockAmountReserved.Name)
 	chaindb, err := accessDb(ctx, stack)
 	if err != nil {
 		return err
@@ -297,7 +288,7 @@ func pruneBlock(ctx *cli.Context) error {
 		return err
 	}
 
-	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, BlockPruneAmountLeft)
+	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, BlockAmountReserved)
 	if err != nil {
 		return err
 	}

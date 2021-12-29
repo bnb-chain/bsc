@@ -828,7 +828,7 @@ var (
 		Usage: "Catalyst mode (eth2 integration testing)",
 	}
 
-	BlockPruneAmountLeft = cli.Uint64Flag{
+	BlockAmountReserved = cli.Uint64Flag{
 		Name:  "block-amount-reserved",
 		Usage: "Sets the expected remained amount of blocks for offline block prune",
 	}
@@ -1888,7 +1888,7 @@ func SplitTagsFlag(tagsFlag string) map[string]string {
 }
 
 // MakeChainDatabase open an LevelDB using the flags passed to the client and will hard crash if it fails.
-func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, isPruneBlock bool) ethdb.Database {
+func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disablFreeze bool) ethdb.Database {
 	var (
 		cache   = ctx.GlobalInt(CacheFlag.Name) * ctx.GlobalInt(CacheDatabaseFlag.Name) / 100
 		handles = MakeDatabaseHandles()
@@ -1901,7 +1901,7 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, isPruneBloc
 		chainDb, err = stack.OpenDatabase(name, cache, handles, "", readonly)
 	} else {
 		name := "chaindata"
-		chainDb, err = stack.OpenDatabaseWithFreezer(name, cache, handles, ctx.GlobalString(AncientFlag.Name), "", readonly, isPruneBlock)
+		chainDb, err = stack.OpenDatabaseWithFreezer(name, cache, handles, ctx.GlobalString(AncientFlag.Name), "", readonly, disablFreeze)
 	}
 	if err != nil {
 		Fatalf("Could not open database: %v", err)

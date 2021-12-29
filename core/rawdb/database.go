@@ -161,7 +161,7 @@ func NewFreezerDb(freezer, namespace string, readonly bool) (*freezer, error) {
 // NewDatabaseWithFreezer creates a high level database on top of a given key-
 // value data store with a freezer moving immutable chain segments into cold
 // storage.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace string, readonly, isPruneBlock bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace string, readonly, disablFreeze bool) (ethdb.Database, error) {
 	// Create the idle freezer instance
 	frdb, err := newFreezer(freezer, namespace, readonly)
 	if err != nil {
@@ -240,7 +240,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	}
 
 	// Freezer is consistent with the key-value database, permit combining the two
-	if !isPruneBlock && !frdb.readonly {
+	if !disablFreeze && !frdb.readonly {
 		go frdb.freeze(db)
 	}
 	return &freezerdb{
@@ -274,12 +274,12 @@ func NewLevelDBDatabase(file string, cache int, handles int, namespace string, r
 
 // NewLevelDBDatabaseWithFreezer creates a persistent key-value database with a
 // freezer moving immutable chain segments into cold storage.
-func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer string, namespace string, readonly, isPruneBlock bool) (ethdb.Database, error) {
+func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer string, namespace string, readonly, disablFreeze bool) (ethdb.Database, error) {
 	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
 	if err != nil {
 		return nil, err
 	}
-	frdb, err := NewDatabaseWithFreezer(kvdb, freezer, namespace, readonly, isPruneBlock)
+	frdb, err := NewDatabaseWithFreezer(kvdb, freezer, namespace, readonly, disablFreeze)
 	if err != nil {
 		kvdb.Close()
 		return nil, err
@@ -316,7 +316,7 @@ func (s *stat) Size() string {
 func (s *stat) Count() string {
 	return s.count.String()
 }
-func InspectBlockPrune(db ethdb.Database) error {
+func AncientInspect(db ethdb.Database) error {
 	offset := counter(ReadOffSetOfAncientFreezer(db))
 	// Get number of ancient rows inside the freezer
 	ancients := counter(0)
@@ -329,7 +329,7 @@ func InspectBlockPrune(db ethdb.Database) error {
 	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Items"})
-	table.SetFooter([]string{"", "AncientStore information after offline BlockPrune", ""})
+	table.SetFooter([]string{"", "AncientStore information", ""})
 	table.AppendBulk(stats)
 	table.Render()
 

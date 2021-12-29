@@ -65,12 +65,12 @@ var (
 
 func TestOfflineBlockPrune(t *testing.T) {
 	//Corner case for 0 remain in ancinetStore.
-	testOfflineBlockPruneWithAmountLeft(t, 0)
+	testOfflineBlockPruneWithAmountReserved(t, 0)
 	//General case.
-	testOfflineBlockPruneWithAmountLeft(t, 100)
+	testOfflineBlockPruneWithAmountReserved(t, 100)
 }
 
-func testOfflineBlockPruneWithAmountLeft(t *testing.T, amountLeft uint64) {
+func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64) {
 	datadir, err := ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("Failed to create temporary datadir: %v", err)
@@ -81,12 +81,12 @@ func testOfflineBlockPruneWithAmountLeft(t *testing.T, amountLeft uint64) {
 	oldAncientPath := filepath.Join(chaindbPath, "ancient")
 	newAncientPath := filepath.Join(chaindbPath, "ancient_back")
 
-	db, blocks, blockList, receiptsList, externTdList, startBlockNumber, _ := BlockchainCreator(t, chaindbPath, oldAncientPath, amountLeft)
+	db, blocks, blockList, receiptsList, externTdList, startBlockNumber, _ := BlockchainCreator(t, chaindbPath, oldAncientPath, amountReserved)
 	node, _ := startEthService(t, gspec, blocks, chaindbPath)
 	defer node.Close()
 
-	//Initialize a block pruner for pruning, only remain amountLeft blocks backward.
-	testBlockPruner, err := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath, amountLeft)
+	//Initialize a block pruner for pruning, only remain amountReserved blocks backward.
+	testBlockPruner, err := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath, amountReserved)
 	if err != nil {
 		t.Fatalf("failed to make new blockpruner: %v", err)
 	}
@@ -101,7 +101,7 @@ func testOfflineBlockPruneWithAmountLeft(t *testing.T, amountLeft uint64) {
 	defer dbBack.Close()
 
 	//check against if the backup data matched original one
-	for blockNumber := startBlockNumber; blockNumber < startBlockNumber+amountLeft; blockNumber++ {
+	for blockNumber := startBlockNumber; blockNumber < startBlockNumber+amountReserved; blockNumber++ {
 		blockHash := rawdb.ReadCanonicalHash(dbBack, blockNumber)
 		block := rawdb.ReadBlock(dbBack, blockHash, blockNumber)
 		if reflect.DeepEqual(block, blockList[blockNumber-startBlockNumber]) {
