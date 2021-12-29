@@ -885,7 +885,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 	// Call Prepare to clear out the statedb access list
 	statedb.Prepare(txctx.hash, txctx.block, txctx.index)
 //	tx := api.toTransaction(message)
-	snapshot := statedb.Snapshot()
+//	snapshot := statedb.Snapshot()
 	result, err, ls := core.MyApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
 //	log.Warn("ApplyMessage end traceTx, now:" + time.Now().String())
 //	hash := tx.Hash()
@@ -911,7 +911,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 	if err != nil {
 		log.Warn("error:", err.Error())
 	}
-	statedb.RevertToSnapshot(snapshot)
+//	statedb.RevertToSnapshot(snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
