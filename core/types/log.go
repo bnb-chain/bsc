@@ -84,8 +84,8 @@ func (l *Log)Print(){
 */
 func (l *Log) Output()  map[string]interface{}{
 	fields := map[string]interface{}{
-		"transactionHash":   l.TxHash,
-		"transactionIndex":  hexutil.Uint64(l.TxIndex),
+//		"transactionHash":   l.TxHash,
+//		"transactionIndex":  hexutil.Uint64(l.TxIndex),
 		"address":              l.Address,
 		"data":                l.Data,
 	}
