@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -47,6 +48,7 @@ func DeleteSnapshotDisabled(db ethdb.KeyValueWriter) {
 // ReadSnapshotRoot retrieves the root of the block whose state is contained in
 // the persisted snapshot.
 func ReadSnapshotRoot(db ethdb.KeyValueReader) common.Hash {
+	defer debug.Handler.StartRegionAuto("ReadSnapshotRoot")()
 	data, _ := db.Get(SnapshotRootKey)
 	if len(data) != common.HashLength {
 		return common.Hash{}
@@ -57,6 +59,7 @@ func ReadSnapshotRoot(db ethdb.KeyValueReader) common.Hash {
 // WriteSnapshotRoot stores the root of the block whose state is contained in
 // the persisted snapshot.
 func WriteSnapshotRoot(db ethdb.KeyValueWriter, root common.Hash) {
+	defer debug.Handler.StartRegionAuto("WriteSnapshotRoot")()
 	if err := db.Put(SnapshotRootKey, root[:]); err != nil {
 		log.Crit("Failed to store snapshot root", "err", err)
 	}
@@ -94,12 +97,20 @@ func DeleteAccountSnapshot(db ethdb.KeyValueWriter, hash common.Hash) {
 
 // ReadStorageSnapshot retrieves the snapshot entry of a storage trie leaf.
 func ReadStorageSnapshot(db ethdb.KeyValueReader, accountHash, storageHash common.Hash) []byte {
+	// defer debug.Handler.StartRegionAuto("ReadStorageSnapshot")()
+	// debug.Handler.LogWhenTracing("ReadStorageSnapshot accountHash:" + accountHash.String() +
+	// 	" storageHash:" + storageHash.String())
+
 	data, _ := db.Get(storageSnapshotKey(accountHash, storageHash))
 	return data
 }
 
 // WriteStorageSnapshot stores the snapshot entry of a storage trie leaf.
 func WriteStorageSnapshot(db ethdb.KeyValueWriter, accountHash, storageHash common.Hash, entry []byte) {
+	defer debug.Handler.StartRegionAuto("WriteStorageSnapshot")()
+	debug.Handler.LogWhenTracing("WriteStorageSnapshot accountHash:" + accountHash.String() +
+		" storageHash:" + storageHash.String())
+
 	if err := db.Put(storageSnapshotKey(accountHash, storageHash), entry); err != nil {
 		log.Crit("Failed to store storage snapshot", "err", err)
 	}

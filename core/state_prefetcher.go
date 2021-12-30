@@ -17,9 +17,12 @@
 package core
 
 import (
+	"strconv"
+
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -46,6 +49,8 @@ func NewStatePrefetcher(config *params.ChainConfig, chain *HeaderChain) *statePr
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to warm the state caches.
 func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{}) {
+	traceMsg := "statePrefetcher " + header.Number.String()
+	defer debug.Handler.StartRegionAuto(traceMsg)()
 	var (
 		signer = types.MakeSigner(p.config, header.Number, header.Time)
 	)
@@ -53,6 +58,8 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 
 	for i := 0; i < prefetchThread; i++ {
 		go func() {
+			traceMsg := "prefetchThread " + strconv.Itoa(i)
+			defer debug.Handler.StartRegionAuto(traceMsg)()
 			newStatedb := statedb.CopyDoPrefetch()
 			gaspool := new(GasPool).AddGas(gasLimit)
 			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), newStatedb, p.config, *cfg)

@@ -22,6 +22,7 @@ package debug
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -31,6 +32,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"runtime/trace"
 	"strings"
 	"sync"
 	"time"
@@ -47,11 +49,20 @@ var Handler = new(HandlerT)
 // Do not create values of this type, use the one
 // in the Handler variable instead.
 type HandlerT struct {
-	mu        sync.Mutex
-	cpuW      io.WriteCloser
-	cpuFile   string
-	traceW    io.WriteCloser
-	traceFile string
+	mu                sync.Mutex
+	cpuW              io.WriteCloser
+	cpuFile           string
+	traceW            io.WriteCloser
+	traceFile         string
+	task              *trace.Task
+	ctx               context.Context
+	curBlockNum       uint64
+	startBlockNum     uint64
+	endBlockNum       uint64
+	traceBigBlock     bool
+	bigBlockThreshold uint64
+	traceBigNum       uint64
+	fileSubfix        string
 }
 
 // Verbosity sets the log verbosity ceiling. The verbosity of individual packages

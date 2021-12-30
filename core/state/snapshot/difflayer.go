@@ -28,6 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/rlp"
 	bloomfilter "github.com/holiman/bloomfilter/v2"
 	"golang.org/x/exp/maps"
@@ -320,6 +321,10 @@ func (dl *diffLayer) accountRLP(hash common.Hash, depth int) ([]byte, error) {
 //
 // Note the returned slot is not a copy, please don't modify it.
 func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	defer debug.Handler.StartRegionAuto("diffLayer.Storage")()
+	// debug.Handler.LogWhenTracing("diffLayer.Storage accountHash:" + accountHash.String() +
+	//	" storageHash:" + storageHash.String())
+
 	// Check the bloom filter first whether there's even a point in reaching into
 	// all the maps in all the layers below
 	dl.lock.RLock()

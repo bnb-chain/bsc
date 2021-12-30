@@ -19,6 +19,7 @@ package trie
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/triedb/database"
@@ -105,6 +106,7 @@ func (t *StateTrie) MustGet(key []byte) []byte {
 // If the specified storage slot is not in the trie, nil will be returned.
 // If a trie node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
+	defer debug.Handler.StartRegionAuto("StateTrie GetStorage")()
 	enc, err := t.trie.Get(t.hashKey(key))
 	if err != nil || len(enc) == 0 {
 		return nil, err
@@ -117,6 +119,7 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
 // If the specified account is not in the trie, nil will be returned.
 // If a trie node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) GetAccount(address common.Address) (*types.StateAccount, error) {
+	defer debug.Handler.StartRegionAuto("StateTrie GetAccount")()
 	res, err := t.trie.Get(t.hashKey(address.Bytes()))
 	if res == nil || err != nil {
 		return nil, err

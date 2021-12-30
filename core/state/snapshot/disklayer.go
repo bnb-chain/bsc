@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/triedb"
 )
@@ -146,6 +147,9 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 // Storage directly retrieves the storage data associated with a particular hash,
 // within a particular account.
 func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	defer debug.Handler.StartRegionAuto("diskLayer.Storage")()
+	// debug.Handler.LogWhenTracing("diskLayer.Storage accountHash:" + accountHash.String() +
+	// 	" storageHash:" + storageHash.String())
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
@@ -170,6 +174,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 		snapshotCleanStorageReadMeter.Mark(int64(len(blob)))
 		return blob, nil
 	}
+	defer debug.Handler.StartRegionAuto("diskLayer from DB")()
 	// Cache doesn't contain storage slot, pull from disk and cache for later
 	blob := rawdb.ReadStorageSnapshot(dl.diskdb, accountHash, storageHash)
 	dl.cache.Set(key, blob)
@@ -187,6 +192,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 // the specified data items. Note, the maps are retained by the method to avoid
 // copying everything.
 func (dl *diskLayer) Update(blockHash common.Hash, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) *diffLayer {
+	defer debug.Handler.StartRegionAuto("diskLayer.Update")()
 	return newDiffLayer(dl, blockHash, accounts, storage)
 }
 

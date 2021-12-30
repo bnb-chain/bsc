@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -144,6 +145,7 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	if res == nil {
 		return errors.New("nil ProcessResult value")
 	}
+	defer debug.Handler.StartRegionAuto("BlockValidator.ValidateState")()
 	header := block.Header()
 	if block.GasUsed() != res.GasUsed {
 		return fmt.Errorf("invalid gas used (remote: %d local: %d)", block.GasUsed(), res.GasUsed)
@@ -153,6 +155,7 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	validateFuns := []func() error{
 		func() error {
 			rbloom := types.CreateBloom(res.Receipts)
+			defer debug.Handler.StartRegionAuto("Create Receipt Bloom")()
 			if rbloom != header.Bloom {
 				return fmt.Errorf("invalid bloom (remote: %x  local: %x)", header.Bloom, rbloom)
 			}
@@ -165,7 +168,13 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		validateFuns = append(validateFuns, func() error {
 			// The receipt Trie's root (R = (Tr [[H1, R1], ... [Hn, Rn]]))
 			receiptSha := types.DeriveSha(res.Receipts, trie.NewStackTrie(nil))
+			defer debug.Handler.StartRegionAuto("Create Receipt Root Hash")()
 			if receiptSha != header.ReceiptHash {
+				// debug.Handler.LogWhenTracing("block " + block.Number().String() +
+				// 	" len(receipts):" + strconv.Itoa(len(receipts)))
+				// for index, r := range receipts {
+				// 	r.DumpWhenTrace(block.Number(), index)
+				// }
 				return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
 			}
 

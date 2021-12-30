@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/gasestimator"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -317,6 +318,37 @@ func NewBlockChainAPI(b Backend) *BlockChainAPI {
 // in CL clients.
 func (api *BlockChainAPI) ChainId() *hexutil.Big {
 	return (*hexutil.Big)(api.b.ChainConfig().ChainID)
+}
+
+// Larry add
+// start trace from number to number + length
+func (api *BlockChainAPI) EnableTraceCaptureWithBlockRange(number hexutil.Uint64, length hexutil.Uint64) {
+	if lengU64 := uint64(length); lengU64 > 1000 {
+		log.Warn("BlockChainAPI.EnableTraceCaptureWithBlockRange length not acceptable", "length", lengU64)
+	}
+	debug.Handler.RpcEnableTraceCaptureWithBlockRange(uint64(number), uint64(length))
+}
+
+func (api *BlockChainAPI) EnableTraceCaptureBigBlock(number hexutil.Uint64, threshold hexutil.Uint64, length hexutil.Uint64) {
+	if threshold < 100 {
+		log.Warn("BlockChainAPI.EnableTraceCaptureBigBlock threshold is small", "threshold", threshold)
+	}
+	if lengU64 := uint64(length); lengU64 > 1000 {
+		log.Warn("BlockChainAPI.EnableTraceCaptureBigBlock length too big", "length", lengU64)
+	}
+	debug.Handler.RpcEnableTraceCaptureBigBlock(uint64(number), uint64(threshold), uint64(length))
+}
+
+func (api *BlockChainAPI) EnableTraceCapture() {
+	log.Info("BlockChainAPI.EnableTraceCapture Enter")
+	debug.Handler.RpcEnableTraceCapture()
+	log.Info("BlockChainAPI.EnableTraceCapture")
+}
+
+func (api *BlockChainAPI) DisableTraceCapture() {
+	log.Info("BlockChainAPI.DisableTraceCapture Enter")
+	debug.Handler.RpcDisableTraceCapture()
+	log.Info("BlockChainAPI.DisableTraceCapture")
 }
 
 // BlockNumber returns the block number of the chain head.

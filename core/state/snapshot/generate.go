@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -56,6 +57,7 @@ var (
 // database and head block asynchronously. The snapshot is returned immediately
 // and generation is continued in the background until done.
 func generateSnapshot(diskdb ethdb.KeyValueStore, triedb *triedb.Database, cache int, root common.Hash) *diskLayer {
+	defer debug.Handler.StartRegionAuto("generateSnapshot")()
 	// Create a new disk layer with an initialized state marker at zero
 	var (
 		stats     = &generatorStats{start: time.Now()}
@@ -648,6 +650,7 @@ func generateAccounts(ctx *generatorContext, dl *diskLayer, accMarker []byte) er
 // gathering and logging, since the method surfs the blocks as they arrive, often
 // being restarted.
 func (dl *diskLayer) generate(stats *generatorStats) {
+	defer debug.Handler.StartRegionAuto("diskLayer.generate")()
 	var (
 		accMarker []byte
 		abort     chan *generatorStats

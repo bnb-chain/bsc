@@ -18,6 +18,7 @@ package types
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -121,6 +123,38 @@ func NewReceipt(root []byte, failed bool, cumulativeGasUsed uint64) *Receipt {
 		r.Status = ReceiptStatusSuccessful
 	}
 	return r
+}
+
+func (r *Receipt) DumpWhenTrace(blocknum *big.Int, index int) {
+
+	statusEncode := []byte{0x0}
+	if len(r.statusEncoding()) > 0 {
+		statusEncode = r.statusEncoding()
+	}
+	msg := fmt.Sprintf("block:%s, index:%d, TxHash:%s, Type:%d,"+
+		" len(r.Logs):%d, statusEncoding:%s,"+
+		" CumulativeGasUsed:%d,"+
+		" r.Bloom:%s",
+		blocknum.String(), index, r.TxHash.Hex(), r.Type,
+		len(r.Logs),
+		hex.EncodeToString(statusEncode),
+		r.CumulativeGasUsed,
+		hex.EncodeToString(r.Bloom.Bytes()))
+	debug.Handler.LogWhenTracing(msg)
+
+	for rIndex, l := range r.Logs {
+		for tIndex, t := range l.Topics {
+			msg = fmt.Sprintf("        log: %d, logIndex:%d, Address:%s,"+
+				" data:%s, topic-%d:%s",
+				rIndex,
+				l.Index,
+				l.Address.Hex(),
+				hex.EncodeToString(l.Data),
+				tIndex,
+				t.Hex())
+			debug.Handler.LogWhenTracing(msg)
+		}
+	}
 }
 
 // EncodeRLP implements rlp.Encoder, and flattens the consensus fields of a receipt
