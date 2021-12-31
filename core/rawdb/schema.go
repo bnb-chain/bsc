@@ -69,7 +69,12 @@ var (
 	// fastTxLookupLimitKey tracks the transaction lookup limit during fast sync.
 	fastTxLookupLimitKey = []byte("FastTransactionLookupLimit")
 
-	offSetOfAncientFreezer = []byte("OffSetOfAncientFreezer")
+	//offSet of new updated ancientDB.
+	offSetOfCurrentAncientFreezer = []byte("offSetOfCurrentAncientFreezer")
+
+	//offSet of the ancientDB before updated version.
+	offSetOfLastAncientFreezer = []byte("offSetOfLastAncientFreezer")
+
 	// badBlockKey tracks the list of bad blocks seen by local
 	badBlockKey = []byte("InvalidBlock")
 

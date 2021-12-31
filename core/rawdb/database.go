@@ -20,7 +20,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
+	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -148,13 +151,58 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 	}
 }
 
-//NewFreezerDb only create a freezer without statedb.
-func NewFreezerDb(freezer, namespace string, readonly bool) (*freezer, error) {
-	// Create the idle freezer instance
-	frdb, err := newFreezer(freezer, namespace, readonly)
-	if err != nil {
-		return nil, err
+func ReadOffSetOfCurrentAncientFreezer(db ethdb.KeyValueReader) uint64 {
+	offset, _ := db.Get(offSetOfCurrentAncientFreezer)
+	if offset == nil {
+		return 0
 	}
+	return new(big.Int).SetBytes(offset).Uint64()
+}
+
+func ReadOffSetOfLastAncientFreezer(db ethdb.KeyValueReader) uint64 {
+	offset, _ := db.Get(offSetOfLastAncientFreezer)
+	if offset == nil {
+		return 0
+	}
+	return new(big.Int).SetBytes(offset).Uint64()
+}
+
+func WriteOffSetOfCurrentAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
+	if err := db.Put(offSetOfCurrentAncientFreezer, new(big.Int).SetUint64(offset).Bytes()); err != nil {
+		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
+	}
+}
+func WriteOffSetOfLastAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
+	if err := db.Put(offSetOfLastAncientFreezer, new(big.Int).SetUint64(offset).Bytes()); err != nil {
+		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
+	}
+}
+
+//NewFreezerDb only create a freezer without statedb.
+func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, lastOffSet, newOffSet uint64) (*freezer, error) {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
+	var frdb *freezer
+	var errors error
+	go func() {
+		frdb, errors = newFreezer(frz, namespace, readonly)
+		if errors != nil {
+			return
+		}
+		frdb.offset = newOffSet
+		offsetBatch := db.NewBatch()
+		WriteOffSetOfCurrentAncientFreezer(offsetBatch, newOffSet)
+		WriteOffSetOfLastAncientFreezer(offsetBatch, lastOffSet)
+		if err := offsetBatch.Write(); err != nil {
+			log.Crit("Failed to write offset into disk", "err", err)
+		}
+		wg.Done()
+	}()
+	if errors != nil {
+		return nil, errors
+	}
+	wg.Wait()
 	return frdb, nil
 }
 
@@ -167,7 +215,22 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	if err != nil {
 		return nil, err
 	}
-	offset := ReadOffSetOfAncientFreezer(db)
+
+	var offset uint64
+	path, name := filepath.Split(freezer)
+	if _, err := os.Stat(filepath.Join(path, "ancient_back")); os.IsNotExist(err) {
+		offset = ReadOffSetOfCurrentAncientFreezer(db)
+	} else {
+		// Indicating the offline block prune process was interrupted in backup step,
+		// if in current context opening old ancinetDB, should use offset of last version, because new offset already record
+		// into kvdb
+		if name == "ancient" {
+			offset = ReadOffSetOfLastAncientFreezer(db)
+		} else {
+			offset = ReadOffSetOfCurrentAncientFreezer(db)
+		}
+
+	}
 
 	frdb.offset = offset
 
@@ -317,7 +380,7 @@ func (s *stat) Count() string {
 	return s.count.String()
 }
 func AncientInspect(db ethdb.Database) error {
-	offset := counter(ReadOffSetOfAncientFreezer(db))
+	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
 	// Get number of ancient rows inside the freezer
 	ancients := counter(0)
 	if count, err := db.Ancients(); err == nil {

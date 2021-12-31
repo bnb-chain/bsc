@@ -142,11 +142,6 @@ func newFreezer(datadir string, namespace string, readonly bool) (*freezer, erro
 	return freezer, nil
 }
 
-func (f *freezer) SetOffSet(offset uint64) error {
-	f.offset = offset
-	return nil
-}
-
 // Close terminates the chain freezer, unmapping all the data files.
 func (f *freezer) Close() error {
 	var errs []error

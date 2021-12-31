@@ -254,7 +254,9 @@ func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, sta
 	return nil
 }
 
-func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace string, readonly bool) error {
+func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace string, readonly, interrupt bool) error {
+
+	//Open old db wrapper.
 	chainDb, err := p.node.OpenDatabaseWithFreezer(name, cache, handles, p.oldAncientPath, namespace, readonly, true)
 	if err != nil {
 		log.Error("Failed to open ancient database", "err=", err)
@@ -262,15 +264,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 	}
 	defer chainDb.Close()
 
-	//Create new ancientdb backup.
-	frdbBack, err := rawdb.NewFreezerDb(p.newAncientPath, namespace, readonly)
-	if err != nil {
-		log.Error("Failed to create ancient freezer backup", "err=", err)
-		return err
-	}
-	defer frdbBack.Close()
-
-	// Get the number of items in ancient db, frozen it is.
+	// Get the number of items in old ancient db, i.e. frozen.
 	frozen, err := chainDb.Ancients()
 
 	// If we can't access the freezer or it's empty, abort.
@@ -278,25 +272,48 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 		log.Error("can't access the freezer or it's empty, abort")
 		return errors.New("can't access the freezer or it's empty, abort")
 	}
+
 	//If the items in freezer is less than the block amount that we want to reserve, it is not enough, should stop.
 	if frozen < p.BlockAmountReserved {
 		log.Error("the number of old blocks is not enough to reserve,", "frozen items", frozen, "the amount specified", p.BlockAmountReserved)
 		return errors.New("the number of old blocks is not enough to reserve")
 	}
 
-	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(chainDb)
+	var oldOffSet uint64
+	if interrupt {
+		//The interrupt scecario within this function is specific for old and new ancientDB exsisted concurrently,
+		//should use last version of offset for oldAncientDB, because current offset is
+		//acutally of the new ancientDB_Backup, but what we want is the offset of ancientDB being backup.
+		oldOffSet = rawdb.ReadOffSetOfLastAncientFreezer(chainDb)
+	} else {
+		//Using current version of ancientDB for oldOffSet because the db for backup is current version.
+		oldOffSet = rawdb.ReadOffSetOfCurrentAncientFreezer(chainDb)
+	}
+
 	// Get the start BlockNumber for pruning.
 	startBlockNumber := oldOffSet + frozen - p.BlockAmountReserved
+
+	// Create new ancientdb backup and record the new and last version of offset in kvDB as well.
 	// For every round, newoffset actually equals to the startBlockNumber in ancient backup db.
-	frdbBack.SetOffSet(startBlockNumber)
-	// Write the new offset into statedb for the future new freezer usage.
-	rawdb.WriteOffSetOfAncientFreezer(chainDb, startBlockNumber)
+	frdbBack, err := rawdb.NewFreezerDb(chainDb, p.newAncientPath, namespace, readonly, oldOffSet, startBlockNumber)
+	if err != nil {
+		log.Error("Failed to create ancient freezer backup", "err=", err)
+		return err
+	}
+	defer frdbBack.Close()
 
 	log.Info("prune info", "old offset", oldOffSet, "frozen items number", frozen, "amount to reserver", p.BlockAmountReserved)
 	log.Info("new offset/new startBlockNumber recorded successfully ", "new offset", startBlockNumber)
 
-	// All ancient data after and including startBlockNumber should write into new ancient_back.
-	for blockNumber := startBlockNumber; blockNumber < frozen+oldOffSet; blockNumber++ {
+	// Get the number of items in ancient db, frozen it is.
+	frdbBackFrozen, err := frdbBack.Ancients()
+	if err != nil {
+		log.Error("can't access the new freezer, abort")
+		return errors.New("can't access the new freezer, abort")
+	}
+
+	// All ancient data after and including startBlockNumber should write into new ancientDB ancient_back.
+	for blockNumber := frdbBackFrozen + startBlockNumber; blockNumber < frozen+oldOffSet; blockNumber++ {
 		blockHash := rawdb.ReadCanonicalHash(chainDb, blockNumber)
 		block := rawdb.ReadBlock(chainDb, blockHash, blockNumber)
 		receipts := rawdb.ReadRawReceipts(chainDb, blockHash, blockNumber)
@@ -309,31 +326,67 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 
 		//Write into new ancient_back db.
 		rawdb.WriteAncientBlock(frdbBack, block, receipts, externTd)
-		log.Info("backup blockNumber ", "blockNumber", blockNumber)
+		log.Info("backup blockNumber successfully", "blockNumber", blockNumber)
 	}
 
 	return nil
 }
 
 // Backup the ancient data for the old ancient db, i.e. the most recent 128 blocks in ancient db.
-func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, namespace string, readonly bool) error {
+func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, namespace string, readonly, interrupt bool) error {
 
 	start := time.Now()
 
-	if err := p.backUpOldDb(name, cache, handles, namespace, readonly); err != nil {
+	if err := p.backUpOldDb(name, cache, handles, namespace, readonly, interrupt); err != nil {
 		return err
 	}
-
-	// Open the new freezer backup directory backFreezer for assemble with statedb together,
-	//in the db wrapper, using the same kv db but only change the ancient db, /chaindb/ancient_backup.
-	chainDbBack, err := p.node.OpenDatabaseWithFreezer(name, cache, handles, p.newAncientPath, namespace, readonly, true)
-	if err != nil {
-		return err
-	}
-	defer chainDbBack.Close()
 
 	log.Info("Block pruning BackUp successfully", "time duration since start is", common.PrettyDuration(time.Since(start)))
 	return nil
+}
+
+func (p *BlockPruner) RecoverInterruption(name string, cache, handles int, namespace string, readonly bool) error {
+
+	newExist, err := CheckAncientDbExist(p.newAncientPath)
+	if err != nil {
+		log.Error("newAncientDb path error")
+		return err
+	}
+
+	if newExist {
+		//Indicating old and new ancientDB existed concurrently.
+		if err := p.BlockPruneBackUp(name, cache, handles, namespace, readonly, true); err != nil {
+			log.Error("Failed to prune")
+			return err
+		}
+		if err := p.AncientDbReplacer(); err != nil {
+			log.Error("Failed to replace ancientDB")
+			return err
+		}
+	} else {
+		//Indicating new ancientDB even did not be created, just prune starting from backup from startBlockNumber.
+		if err := p.BlockPruneBackUp(name, cache, handles, namespace, readonly, false); err != nil {
+			log.Error("Failed to prune")
+			return err
+		}
+		if err := p.AncientDbReplacer(); err != nil {
+			log.Error("Failed to replace ancientDB")
+			return err
+		}
+	}
+
+	return nil
+}
+
+func CheckAncientDbExist(path string) (bool, error) {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			//Indicating the file didn't exist.
+			return false, nil
+		}
+		return true, err
+	}
+	return true, nil
 }
 
 func (p *BlockPruner) AncientDbReplacer() error {

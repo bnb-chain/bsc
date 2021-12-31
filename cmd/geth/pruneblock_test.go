@@ -90,7 +90,7 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 	if err != nil {
 		t.Fatalf("failed to make new blockpruner: %v", err)
 	}
-	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(), "", false); err != nil {
+	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(), "", false, false); err != nil {
 		t.Fatalf("Failed to back up block: %v", err)
 	}
 
@@ -179,7 +179,7 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 		t.Fatalf("block amount is not enough for pruning: %v", err)
 	}
 
-	oldOffSet := rawdb.ReadOffSetOfAncientFreezer(db)
+	oldOffSet := rawdb.ReadOffSetOfCurrentAncientFreezer(db)
 	// Get the actual start block number.
 	startBlockNumber := frozen - blockRemain + oldOffSet
 	// Initialize the slice to buffer the block data left.

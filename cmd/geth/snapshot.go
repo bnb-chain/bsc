@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -265,7 +266,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 func pruneBlock(ctx *cli.Context) error {
 	stack, config := makeConfigNode(ctx)
 	defer stack.Close()
-	BlockAmountReserved := ctx.GlobalUint64(utils.BlockAmountReserved.Name)
+	blockAmountReserved := ctx.GlobalUint64(utils.BlockAmountReserved.Name)
 	chaindb, err := accessDb(ctx, stack)
 	if err != nil {
 		return err
@@ -282,19 +283,39 @@ func pruneBlock(ctx *cli.Context) error {
 		return errors.New("prune failed, did not specify the AncientPath")
 	}
 
-	lock, _, err := fileutil.Flock(filepath.Join(oldAncientPath, "RPUNEFLOCK"))
-	if err != nil {
-		log.Error("file lock existed, please wait for the lock release", "err", err)
-		return err
-	}
-
-	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, BlockAmountReserved)
+	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
 	if err != nil {
 		return err
 	}
 
+	lock, exist, err := fileutil.Flock(filepath.Join(oldAncientPath, "PRUNEFLOCK"))
+	if err != nil {
+		log.Error("file lock error", "err", err)
+		return err
+	}
+	if exist {
+		log.Debug("file lock existed, waiting for prune recovery and continue", "err", err)
+		if err := blockpruner.RecoverInterruption("chaindata", config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), "", false); err != nil {
+			log.Error("Pruning failed", "err", err)
+			return err
+		}
+		lock.Release()
+		log.Info("Block prune successfully")
+		return nil
+	}
+
+	if _, err := os.Stat(newAncientPath); err == nil {
+		// No file lock found for old ancientDB but new ancientDB exsisted, indicating the geth was interrupted
+		// after old ancientDB removal, this happened after backup successfully, so just rename the new ancientDB
+		if err := blockpruner.AncientDbReplacer(); err != nil {
+			log.Error("Failed to rename new ancient directory")
+			return err
+		}
+		log.Info("Block prune successfully")
+		return nil
+	}
 	name := "chaindata"
-	if err := blockpruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), "", false); err != nil {
+	if err := blockpruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), "", false, false); err != nil {
 		log.Error("Failed to back up block", "err", err)
 		return err
 	}

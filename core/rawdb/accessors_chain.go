@@ -294,20 +294,6 @@ func ReadHeaderRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValu
 	return nil // Can't find the data anywhere.
 }
 
-func ReadOffSetOfAncientFreezer(db ethdb.KeyValueStore) uint64 {
-	offset, _ := db.Get(offSetOfAncientFreezer)
-	if offset == nil {
-		return 0
-	}
-	return new(big.Int).SetBytes(offset).Uint64()
-}
-
-func WriteOffSetOfAncientFreezer(db ethdb.KeyValueStore, offset uint64) {
-	if err := db.Put(offSetOfAncientFreezer, new(big.Int).SetUint64(offset).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
-	}
-}
-
 // HasHeader verifies the existence of a block header corresponding to the hash.
 func HasHeader(db ethdb.Reader, hash common.Hash, number uint64) bool {
 	if has, err := db.Ancient(freezerHashTable, number); err == nil && common.BytesToHash(has) == hash {
