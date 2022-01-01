@@ -887,31 +887,11 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *txTrac
 //	tx := api.toTransaction(message)
 //	snapshot := statedb.Snapshot()
 	result, err, ls := core.MyApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
-//	log.Warn("ApplyMessage end traceTx, now:" + time.Now().String())
-//	hash := tx.Hash()
-//	logs := statedb.GetLogs(hash)
-
-//	log.Warn("private log:" + strconv.Itoa(len(ls)) + ", ls_length=" + strconv.Itoa(len(ls)))
-//	myLogs := []vm.StructLog{}
-/*	for _, l := range ls {
-		l.Print()
-		log.Warn("private log:" + strconv.Itoa(len(l.Topics)))
-		str, err := json.Marshal(l)
-		if err != nil {
-			log.Warn("error:", err.Error())
-			continue
-		}
-		log.Warn("private log marshal str:" + string(str))
-		myLog :=  vm.StructLog{
-			Memory: str,
-		}
-		myLogs = append(myLogs, myLog)
-	}*/
-	logStr, err := json.Marshal(ls)
 	if err != nil {
-		log.Warn("error:", err.Error())
+		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
-//	statedb.RevertToSnapshot(snapshot)
+
+	logStr, err := json.Marshal(ls)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
