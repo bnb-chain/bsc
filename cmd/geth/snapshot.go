@@ -24,6 +24,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/prometheus/tsdb/fileutil"
+	cli "gopkg.in/urfave/cli.v1"
+
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -36,8 +39,6 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/prometheus/tsdb/fileutil"
-	cli "gopkg.in/urfave/cli.v1"
 )
 
 var (
