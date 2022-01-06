@@ -27,6 +27,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/prometheus/tsdb/fileutil"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -35,7 +37,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/prometheus/tsdb/fileutil"
 )
 
 // Node is a container on which services can be registered.

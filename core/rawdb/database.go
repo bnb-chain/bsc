@@ -27,12 +27,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/olekukonko/tablewriter"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/olekukonko/tablewriter"
 )
 
 // freezerdb is a database wrapper that enabled freezer data retrievals.
@@ -183,25 +184,18 @@ func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
-	var frdb *freezer
-	var errors error
-	go func() {
-		frdb, errors = newFreezer(frz, namespace, readonly)
-		if errors != nil {
-			return
-		}
-		frdb.offset = newOffSet
-		offsetBatch := db.NewBatch()
-		WriteOffSetOfCurrentAncientFreezer(offsetBatch, newOffSet)
-		WriteOffSetOfLastAncientFreezer(offsetBatch, lastOffSet)
-		if err := offsetBatch.Write(); err != nil {
-			log.Crit("Failed to write offset into disk", "err", err)
-		}
-		wg.Done()
-	}()
+	frdb, errors := newFreezer(frz, namespace, readonly)
 	if errors != nil {
 		return nil, errors
 	}
+	frdb.offset = newOffSet
+	offsetBatch := db.NewBatch()
+	WriteOffSetOfCurrentAncientFreezer(offsetBatch, newOffSet)
+	WriteOffSetOfLastAncientFreezer(offsetBatch, lastOffSet)
+	if err := offsetBatch.Write(); err != nil {
+		log.Crit("Failed to write offset into disk", "err", err)
+	}
+	wg.Done()
 	wg.Wait()
 	return frdb, nil
 }
@@ -221,13 +215,13 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	if _, err := os.Stat(filepath.Join(path, "ancient_back")); os.IsNotExist(err) {
 		offset = ReadOffSetOfCurrentAncientFreezer(db)
 	} else {
-		// Indicating the offline block prune process was interrupted in backup step,
+		// "ancient_back" exists, indicating the offline block prune process was interrupted in backup step,
 		// if in current context opening old ancinetDB, should use offset of last version, because new offset already record
 		// into kvdb
-		if name == "ancient" {
-			offset = ReadOffSetOfLastAncientFreezer(db)
-		} else {
+		if name == "ancient_back" {
 			offset = ReadOffSetOfCurrentAncientFreezer(db)
+		} else {
+			offset = ReadOffSetOfLastAncientFreezer(db)
 		}
 
 	}

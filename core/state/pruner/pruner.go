@@ -112,6 +112,7 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 		bloomSize = 256
 	}
 	stateBloom, err := newStateBloomWithSize(bloomSize)
+
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +327,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 
 		//Write into new ancient_back db.
 		rawdb.WriteAncientBlock(frdbBack, block, receipts, externTd)
-		log.Info("backup blockNumber successfully", "blockNumber", blockNumber)
+		log.Info("backup block successfully", "blockNumber", blockNumber)
 	}
 
 	return nil

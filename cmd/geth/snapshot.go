@@ -47,9 +47,6 @@ var (
 
 	// emptyCode is the known hash of the empty EVM bytecode.
 	emptyCode = crypto.Keccak256(nil)
-
-	//the layer of tries trees that keep in memory
-	TriesInMemory = 128
 )
 
 var (
@@ -99,6 +96,7 @@ the trie clean cache with default directory will be deleted.
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.BlockAmountReserved,
+					utils.TriesInMemoryFlag,
 				},
 				Description: `
 geth offline prune-block for block data in ancientdb.
@@ -182,6 +180,8 @@ It's also usable without snapshot enabled.
 )
 
 func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
+	//The layer of tries trees that keep in memory.
+	TriesInMemory := int(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name))
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, true)
 	defer chaindb.Close()
 
@@ -193,6 +193,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
 	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, TriesInMemory, headBlock.Root(), false, false, false)
 	if err != nil {
+		log.Error("snaptree error", "err", err)
 		return nil, err // The relevant snapshot(s) might not exist
 	}
 
@@ -208,6 +209,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		// Reject if the accumulated diff layers are less than n. It
 		// means in most of normal cases, there is no associated state
 		// with bottom-most diff layer.
+		log.Error("snapshot layers != TriesInMemory", "err", err)
 		return nil, fmt.Errorf("snapshot not old enough yet: need %d more blocks", TriesInMemory-len(layers))
 	}
 	// Use the bottom-most diff layer as the target
@@ -246,6 +248,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		}
 		if !found {
 			if len(layers) > 0 {
+				log.Error("no snapshot paired state")
 				return nil, errors.New("no snapshot paired state")
 			}
 			return nil, fmt.Errorf("associated state[%x] is not present", targetRoot)
@@ -256,10 +259,6 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		} else {
 			log.Info("Selecting user-specified state as the pruning target", "root", targetRoot)
 		}
-	}
-	if err := snaptree.Verify(targetRoot); err != nil {
-		log.Error("Failed to verfiy state", "root", targetRoot, "err", err)
-		return nil, err
 	}
 	return chaindb, nil
 }
@@ -272,13 +271,14 @@ func pruneBlock(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	var oldAncientPath, newAncientPath string
-	path, _ := filepath.Split(ctx.GlobalString(utils.AncientFlag.Name))
+	var newAncientPath string
+	oldAncientPath := ctx.GlobalString(utils.AncientFlag.Name)
+	if !filepath.IsAbs(oldAncientPath) {
+		oldAncientPath = stack.ResolvePath(oldAncientPath)
+	}
+
+	path, _ := filepath.Split(oldAncientPath)
 	if path != "" {
-		if !filepath.IsAbs(path) {
-			path = stack.ResolvePath(path)
-		}
-		oldAncientPath = filepath.Join(path, "ancient")
 		newAncientPath = filepath.Join(path, "ancient_back")
 	} else {
 		return errors.New("prune failed, did not specify the AncientPath")
@@ -295,7 +295,7 @@ func pruneBlock(ctx *cli.Context) error {
 		return err
 	}
 	if exist {
-		log.Debug("file lock existed, waiting for prune recovery and continue", "err", err)
+		log.Warn("file lock existed, waiting for prune recovery and continue", "err", err)
 		if err := blockpruner.RecoverInterruption("chaindata", config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), "", false); err != nil {
 			log.Error("Pruning failed", "err", err)
 			return err
@@ -321,7 +321,7 @@ func pruneBlock(ctx *cli.Context) error {
 		return err
 	}
 
-	log.Info("geth block offline pruning backup successfully")
+	log.Info("backup block successfully")
 
 	//After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
 	if err := blockpruner.AncientDbReplacer(); err != nil {
