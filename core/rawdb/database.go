@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -203,7 +202,7 @@ func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, 
 // NewDatabaseWithFreezer creates a high level database on top of a given key-
 // value data store with a freezer moving immutable chain segments into cold
 // storage.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace string, readonly, disableFreeze bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace string, readonly, disableFreeze, isLastOffset bool) (ethdb.Database, error) {
 	// Create the idle freezer instance
 	frdb, err := newFreezer(freezer, namespace, readonly)
 	if err != nil {
@@ -211,19 +210,11 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	}
 
 	var offset uint64
-	path, name := filepath.Split(freezer)
-	if _, err := os.Stat(filepath.Join(path, "ancient_back")); os.IsNotExist(err) {
-		offset = ReadOffSetOfCurrentAncientFreezer(db)
+	//The offset of ancientDB should be handled differently in different scenarios
+	if isLastOffset {
+		offset = ReadOffSetOfLastAncientFreezer(db)
 	} else {
-		// "ancient_back" exists, indicating the offline block prune process was interrupted in backup step,
-		// if in current context opening old ancinetDB, should use offset of last version, because new offset already record
-		// into kvdb
-		if name == "ancient_back" {
-			offset = ReadOffSetOfCurrentAncientFreezer(db)
-		} else {
-			offset = ReadOffSetOfLastAncientFreezer(db)
-		}
-
+		offset = ReadOffSetOfCurrentAncientFreezer(db)
 	}
 
 	frdb.offset = offset
@@ -331,12 +322,12 @@ func NewLevelDBDatabase(file string, cache int, handles int, namespace string, r
 
 // NewLevelDBDatabaseWithFreezer creates a persistent key-value database with a
 // freezer moving immutable chain segments into cold storage.
-func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer string, namespace string, readonly, disableFreeze bool) (ethdb.Database, error) {
+func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer string, namespace string, readonly, disableFreeze, isLastOffset bool) (ethdb.Database, error) {
 	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
 	if err != nil {
 		return nil, err
 	}
-	frdb, err := NewDatabaseWithFreezer(kvdb, freezer, namespace, readonly, disableFreeze)
+	frdb, err := NewDatabaseWithFreezer(kvdb, freezer, namespace, readonly, disableFreeze, isLastOffset)
 	if err != nil {
 		kvdb.Close()
 		return nil, err

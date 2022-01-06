@@ -182,7 +182,7 @@ It's also usable without snapshot enabled.
 func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	//The layer of tries trees that keep in memory.
 	TriesInMemory := int(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name))
-	chaindb := utils.MakeChainDatabase(ctx, stack, false, true)
+	chaindb := utils.MakeChainDatabase(ctx, stack, false, true, false)
 	defer chaindb.Close()
 
 	headBlock := rawdb.ReadHeadBlock(chaindb)
@@ -295,7 +295,7 @@ func pruneBlock(ctx *cli.Context) error {
 		return err
 	}
 	if exist {
-		log.Warn("file lock existed, waiting for prune recovery and continue", "err", err)
+		log.Info("file lock existed, waiting for prune recovery and continue", "err", err)
 		if err := blockpruner.RecoverInterruption("chaindata", config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), "", false); err != nil {
 			log.Error("Pruning failed", "err", err)
 			return err
@@ -337,7 +337,7 @@ func pruneState(ctx *cli.Context) error {
 	stack, config := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, false, false, false)
 	pruner, err := pruner.NewPruner(chaindb, stack.ResolvePath(""), stack.ResolvePath(config.Eth.TrieCleanCacheJournal), ctx.GlobalUint64(utils.BloomFilterSizeFlag.Name), ctx.GlobalUint64(utils.TriesInMemoryFlag.Name))
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)
@@ -366,7 +366,7 @@ func verifyState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true, false, false)
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
 		log.Error("Failed to load head block")
@@ -404,7 +404,7 @@ func traverseState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true, false, false)
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
 		log.Error("Failed to load head block")
@@ -494,7 +494,7 @@ func traverseRawState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true, false, false)
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
 		log.Error("Failed to load head block")

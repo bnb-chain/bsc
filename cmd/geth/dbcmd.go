@@ -293,7 +293,7 @@ func inspect(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true, false, false)
 	defer db.Close()
 
 	return rawdb.InspectDatabase(db, prefix, start)
@@ -303,7 +303,7 @@ func ancientInspect(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, true)
+	db := utils.MakeChainDatabase(ctx, stack, true, true, false)
 	defer db.Close()
 	return rawdb.AncientInspect(db)
 }
@@ -325,7 +325,7 @@ func dbStats(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true, false, false)
 	defer db.Close()
 
 	showLeveldbStats(db)
@@ -336,7 +336,7 @@ func dbCompact(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	db := utils.MakeChainDatabase(ctx, stack, false, false, false)
 	defer db.Close()
 
 	log.Info("Stats before compaction")
@@ -360,7 +360,7 @@ func dbGet(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true, false, false)
 	defer db.Close()
 
 	key, err := hexutil.Decode(ctx.Args().Get(0))
@@ -385,7 +385,7 @@ func dbDelete(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	db := utils.MakeChainDatabase(ctx, stack, false, false, false)
 	defer db.Close()
 
 	key, err := hexutil.Decode(ctx.Args().Get(0))
@@ -412,7 +412,7 @@ func dbPut(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	db := utils.MakeChainDatabase(ctx, stack, false, false, false)
 	defer db.Close()
 
 	var (
@@ -446,7 +446,7 @@ func dbDumpTrie(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true, false, false)
 	defer db.Close()
 	var (
 		root  []byte
