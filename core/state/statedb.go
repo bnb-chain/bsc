@@ -162,28 +162,13 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 // NewSlotDB creates a new slot stateDB base on the block stateDB
 // Will do StateDB Copy
 func NewSlotDB(db *StateDB, validatorSetAddr common.Address, txIndex int) *StateDB {
-	slotDB := db.Copy()
+	log.Info("NewSlotDB", " txIndex:", txIndex)
+	slotDB := db.CopyForSlot()
 	slotDB.originalRoot = db.originalRoot
 	slotDB.BaseTxIndex = txIndex
-	// new slotDB should have no dirty or pending on created,
-	// stateObjectsPending will be use on merge
-	slotDB.stateObjectsPending = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.stateObjectsDirty = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.StateChangedInSlot = make(map[common.Address]Storage, defaultNumOfSlots)
-	slotDB.StateReadsInSlot = make(map[common.Address]StateKeys, defaultNumOfSlots)
-	slotDB.BalanceChangedInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.BalanceReadsInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	// do not copy snapDestructs, snapAccounts, snapStorage, since slotDB only care its own changes
-	slotDB.snapDestructs = make(map[common.Address]struct{})
-	slotDB.snapAccounts = make(map[common.Address][]byte)
-	slotDB.snapStorage = make(map[common.Address]map[string][]byte)
 	// clear the slotDB's validator's balance first
 	// for slotDB, validatorSet's value is the tx's gas fee
 	slotDB.SetBalance(validatorSetAddr, big.NewInt(0))
-	// todo: Copy() without logs, slotDB should have no log on create
-	slotDB.logs = make(map[common.Hash][]*types.Log, defaultNumOfSlots)
-	slotDB.logSize = 0
-	slotDB.clearJournalAndRefund() // slotDB will maintain its own journal and snapshot revision...
 	return slotDB
 }
 
@@ -1073,6 +1058,47 @@ func (s *StateDB) Copy() *StateDB {
 			state.snapStorage[k] = temp
 		}
 	}
+	return state
+}
+
+func (s *StateDB) CopyForSlot() *StateDB {
+	// Copy all the basic fields, initialize the memory ones
+	state := &StateDB{
+		db:                   s.db,
+		trie:                 s.db.CopyTrie(s.trie),
+		stateObjects:         make(map[common.Address]*StateObject, defaultNumOfSlots),
+		stateObjectsPending:  make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateObjectsDirty:    make(map[common.Address]struct{}, defaultNumOfSlots),
+		refund:               s.refund,
+		logs:                 make(map[common.Hash][]*types.Log, defaultNumOfSlots),
+		logSize:              s.logSize,
+		preimages:            make(map[common.Hash][]byte, len(s.preimages)),
+		journal:              newJournal(),
+		hasher:               crypto.NewKeccakState(),
+		snapDestructs:        make(map[common.Address]struct{}),
+		snapAccounts:         make(map[common.Address][]byte),
+		snapStorage:          make(map[common.Address]map[string][]byte),
+		StateChangedInSlot:   make(map[common.Address]Storage, defaultNumOfSlots),
+		StateReadsInSlot:     make(map[common.Address]StateKeys, defaultNumOfSlots),
+		BalanceChangedInSlot: make(map[common.Address]struct{}, defaultNumOfSlots),
+		BalanceReadsInSlot:   make(map[common.Address]struct{}, defaultNumOfSlots),
+	}
+
+	for hash, preimage := range s.preimages {
+		state.preimages[hash] = preimage
+	}
+
+	for addr := range s.stateObjectsPending {
+		if _, exist := state.stateObjects[addr]; !exist {
+			state.stateObjects[addr] = s.stateObjects[addr].deepCopy(state)
+		}
+	}
+	for addr := range s.stateObjectsDirty {
+		if _, exist := state.stateObjects[addr]; !exist {
+			state.stateObjects[addr] = s.stateObjects[addr].deepCopy(state)
+		}
+	}
+
 	return state
 }
 
