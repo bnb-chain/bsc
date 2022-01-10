@@ -56,7 +56,9 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	transactions := block.Transactions()
 	threads := runtime.NumCPU()
 	batch := len(transactions) / (threads + 1)
-
+	if batch == 0 {
+		return
+	}
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 1; i <= threads; i++ {
 		start := i * batch
