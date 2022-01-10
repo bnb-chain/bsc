@@ -2065,10 +2065,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		//Process block using the parent state as reference point
 		substart := time.Now()
 		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
+		atomic.StoreUint32(&followupInterrupt, 1)
 		activeState = statedb
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
-			atomic.StoreUint32(&followupInterrupt, 1)
 			return it.index, err
 		}
 		// Update the metrics touched during block processing
@@ -2087,7 +2087,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
 				log.Error("validate state failed", "error", err)
 				bc.reportBlock(block, receipts, err)
-				atomic.StoreUint32(&followupInterrupt, 1)
 				return it.index, err
 			}
 		}
@@ -2105,7 +2104,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		substart = time.Now()
 		status, err := bc.writeBlockWithState(block, receipts, logs, statedb, false)
 		if err != nil {
-			atomic.StoreUint32(&followupInterrupt, 1)
 			return it.index, err
 		}
 		// Update the metrics touched during block commit
