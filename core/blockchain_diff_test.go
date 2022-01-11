@@ -372,7 +372,7 @@ func TestFreezeDiffLayer(t *testing.T) {
 		t.Errorf("size of diff queue is wrong, expected: %d, get: %d", blockNum-1, fullBackend.chain.diffQueue.Size())
 	}
 
-	time.Sleep(diffLayerFreezerRecheckInterval + 1*time.Second)
+	time.Sleep(diffLayerFreezerRecheckInterval + 2*time.Second)
 	if fullBackend.chain.diffQueue.Size() != int(fullBackend.chain.triesInMemory) {
 		t.Errorf("size of diff queue is wrong, expected: %d, get: %d", blockNum, fullBackend.chain.diffQueue.Size())
 	}
