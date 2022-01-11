@@ -391,6 +391,13 @@ func (s *StateObject) updateTrie(db Database) Trie {
 
 // UpdateRoot sets the trie root to the current root hash of
 func (s *StateObject) updateRoot(db Database) {
+	// If node runs in no trie mode, set root to empty.
+	defer func() {
+		if db.NoTries() {
+			s.data.Root = common.Hash{}
+		}
+	}()
+
 	// If nothing changed, don't bother with hashing anything
 	if s.updateTrie(db) == nil {
 		return
