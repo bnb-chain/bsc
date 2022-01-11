@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/metrics/prometheus"
@@ -44,6 +46,7 @@ func Exp(r metrics.Registry) {
 	// http.HandleFunc("/debug/vars", e.expHandler)
 	// haven't found an elegant way, so just use a different endpoint
 	http.Handle("/debug/metrics", h)
+	http.Handle("/debug/metrics/go_prometheus", promhttp.Handler())
 	http.Handle("/debug/metrics/prometheus", prometheus.Handler(r))
 }
 
@@ -58,6 +61,7 @@ func ExpHandler(r metrics.Registry) http.Handler {
 func Setup(address string) {
 	m := http.NewServeMux()
 	m.Handle("/debug/metrics", ExpHandler(metrics.DefaultRegistry))
+	m.Handle("/debug/metrics/go_prometheus", promhttp.Handler())
 	m.Handle("/debug/metrics/prometheus", prometheus.Handler(metrics.DefaultRegistry))
 	log.Info("Starting metrics server", "addr", fmt.Sprintf("http://%s/debug/metrics", address))
 	go func() {

@@ -488,6 +488,14 @@ func (s *StateObject) deepCopy(db *StateDB) *StateObject {
 	return stateObject
 }
 
+func (s *StateObject) deepCopyForSlot(db *StateDB) *StateObject {
+	s.db = db
+	if s.trie != nil {
+		s.trie = db.db.CopyTrie(s.trie)
+	}
+	return s
+}
+
 //
 // Attribute accessors
 //
