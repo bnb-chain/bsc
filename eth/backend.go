@@ -26,6 +26,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/eth/protocols/trust"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -551,6 +553,7 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 	}
 	// diff protocol can still open without snap protocol
 	protos = append(protos, diff.MakeProtocols((*diffHandler)(s.handler), s.snapDialCandidates)...)
+	protos = append(protos, trust.MakeProtocols((*trustHandler)(s.handler), s.snapDialCandidates)...)
 	return protos
 }
 

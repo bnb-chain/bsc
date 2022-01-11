@@ -354,6 +354,21 @@ func (a *Address) UnmarshalGraphQL(input interface{}) error {
 	return err
 }
 
+// AddressSlice is used for sort
+type AddressSlice []Address
+
+func (s AddressSlice) Len() int {
+	return len(s)
+}
+
+func (s AddressSlice) Less(i, j int) bool {
+	return s[i].Hex() < s[j].Hex()
+}
+
+func (s AddressSlice) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
 // UnprefixedAddress allows marshaling an Address without 0x prefix.
 type UnprefixedAddress Address
 

@@ -1287,6 +1287,10 @@ func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, bloc
 	return result, err
 }
 
+func (s *PublicBlockChainAPI) GetRootByDiffHash(ctx context.Context, blockNr rpc.BlockNumber, blockHash common.Hash, diffHash common.Hash) (*types.VerifyResult, error) {
+	return s.b.Chain().GetRootByDiffHash(uint64(blockNr), blockHash, diffHash)
+}
+
 // ExecutionResult groups all structured logs emitted by the EVM
 // while replaying a transaction in debug mode as well as transaction
 // execution status, the amount of gas used and the return value

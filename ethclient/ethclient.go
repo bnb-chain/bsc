@@ -200,6 +200,12 @@ func (ec *Client) GetDiffAccountsWithScope(ctx context.Context, number *big.Int,
 	return &result, err
 }
 
+func (ec *Client) GetRootByDiffHash(ctx context.Context, blockNr *big.Int, blockHash common.Hash, diffHash common.Hash) (*types.VerifyResult, error) {
+	var result types.VerifyResult
+	err := ec.c.CallContext(ctx, &result, "eth_getRootByDiffHash", toBlockNumArg(blockNr), blockHash, diffHash)
+	return &result, err
+}
+
 type rpcTransaction struct {
 	tx *types.Transaction
 	txExtraInfo

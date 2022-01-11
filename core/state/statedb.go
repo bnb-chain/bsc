@@ -1442,8 +1442,12 @@ func (s *StateDB) SnapToDiffLayer() ([]common.Address, []types.DiffAccount, []ty
 	for accountHash, storage := range s.snapStorage {
 		keys := make([]string, 0, len(storage))
 		values := make([][]byte, 0, len(storage))
-		for k, v := range storage {
+		for k, _ := range storage {
 			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			v := storage[k]
 			values = append(values, v)
 		}
 		storages = append(storages, types.DiffStorage{
