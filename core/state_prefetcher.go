@@ -36,7 +36,7 @@ type statePrefetcher struct {
 	engine consensus.Engine    // Consensus engine used for block rewards
 }
 
-// newStatePrefetcher initialises a new statePrefetcher.
+// NewStatePrefetcher initialises a new statePrefetcher.
 func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine consensus.Engine) *statePrefetcher {
 	return &statePrefetcher{
 		config: config,
