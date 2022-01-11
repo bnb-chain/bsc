@@ -360,9 +360,11 @@ func AncientInspect(db ethdb.Database) error {
 	if count, err := db.Ancients(); err == nil {
 		ancients = counter(count)
 	}
+	endNumber := offset + ancients - 1
 	stats := [][]string{
-		{"Offset/StartBlockNumber", "Offset/StartBlockNumber after BlockPrune", offset.String()},
-		{"Amount of remained items in AncientStore", "remaining items after BlockPrune", ancients.String()},
+		{"Offset/StartBlockNumber", "Offset/StartBlockNumber of ancientDB", offset.String()},
+		{"Amount of remained items in AncientStore", "Remaining items of ancientDB", ancients.String()},
+		{"The last BlockNumber within ancientDB", "The last BlockNumber", endNumber.String()},
 	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Items"})

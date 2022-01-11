@@ -219,23 +219,23 @@ func (f *freezer) AppendAncient(number uint64, hash, header, body, receipts, td 
 	}()
 	// Inject all the components into the relevant data tables
 	if err := f.tables[freezerHashTable].Append(f.frozen, hash[:]); err != nil {
-		log.Error("Failed to append ancient hash", "number", f.frozen, "hash", hash, "err", err)
+		log.Error("Failed to append ancient hash", "number", f.frozen+f.offset, "hash", hash, "err", err)
 		return err
 	}
 	if err := f.tables[freezerHeaderTable].Append(f.frozen, header); err != nil {
-		log.Error("Failed to append ancient header", "number", f.frozen, "hash", hash, "err", err)
+		log.Error("Failed to append ancient header", "number", f.frozen+f.offset, "hash", hash, "err", err)
 		return err
 	}
 	if err := f.tables[freezerBodiesTable].Append(f.frozen, body); err != nil {
-		log.Error("Failed to append ancient body", "number", f.frozen, "hash", hash, "err", err)
+		log.Error("Failed to append ancient body", "number", f.frozen+f.offset, "hash", hash, "err", err)
 		return err
 	}
 	if err := f.tables[freezerReceiptTable].Append(f.frozen, receipts); err != nil {
-		log.Error("Failed to append ancient receipts", "number", f.frozen, "hash", hash, "err", err)
+		log.Error("Failed to append ancient receipts", "number", f.frozen+f.offset, "hash", hash, "err", err)
 		return err
 	}
 	if err := f.tables[freezerDifficultyTable].Append(f.frozen, td); err != nil {
-		log.Error("Failed to append ancient difficulty", "number", f.frozen, "hash", hash, "err", err)
+		log.Error("Failed to append ancient difficulty", "number", f.frozen+f.offset, "hash", hash, "err", err)
 		return err
 	}
 	atomic.AddUint64(&f.frozen, 1) // Only modify atomically
@@ -247,15 +247,15 @@ func (f *freezer) TruncateAncients(items uint64) error {
 	if f.readonly {
 		return errReadOnly
 	}
-	if atomic.LoadUint64(&f.frozen) <= items {
+	if atomic.LoadUint64(&f.frozen) <= items-f.offset {
 		return nil
 	}
 	for _, table := range f.tables {
-		if err := table.truncate(items); err != nil {
+		if err := table.truncate(items - f.offset); err != nil {
 			return err
 		}
 	}
-	atomic.StoreUint64(&f.frozen, items)
+	atomic.StoreUint64(&f.frozen, items-f.offset)
 	return nil
 }
 
@@ -329,8 +329,8 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 			backoff = true
 			continue
 
-		case *number-threshold <= f.frozen:
-			log.Debug("Ancient blocks frozen already", "number", *number, "hash", hash, "frozen", f.frozen)
+		case *number-threshold <= f.frozen+f.offset:
+			log.Debug("Ancient blocks frozen already", "number", *number, "hash", hash, "frozen", f.frozen+f.offset)
 			backoff = true
 			continue
 		}
@@ -354,30 +354,30 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 			// Retrieves all the components of the canonical block
 			hash := ReadCanonicalHash(nfdb, f.frozen+f.offset)
 			if hash == (common.Hash{}) {
-				log.Error("Canonical hash missing, can't freeze", "number", f.frozen)
+				log.Error("Canonical hash missing, can't freeze", "number", f.frozen+f.offset)
 				break
 			}
 			header := ReadHeaderRLP(nfdb, hash, f.frozen+f.offset)
 			if len(header) == 0 {
-				log.Error("Block header missing, can't freeze", "number", f.frozen, "hash", hash)
+				log.Error("Block header missing, can't freeze", "number", f.frozen+f.offset, "hash", hash)
 				break
 			}
 			body := ReadBodyRLP(nfdb, hash, f.frozen+f.offset)
 			if len(body) == 0 {
-				log.Error("Block body missing, can't freeze", "number", f.frozen, "hash", hash)
+				log.Error("Block body missing, can't freeze", "number", f.frozen+f.offset, "hash", hash)
 				break
 			}
 			receipts := ReadReceiptsRLP(nfdb, hash, f.frozen+f.offset)
 			if len(receipts) == 0 {
-				log.Error("Block receipts missing, can't freeze", "number", f.frozen, "hash", hash)
+				log.Error("Block receipts missing, can't freeze", "number", f.frozen+f.offset, "hash", hash)
 				break
 			}
 			td := ReadTdRLP(nfdb, hash, f.frozen+f.offset)
 			if len(td) == 0 {
-				log.Error("Total difficulty missing, can't freeze", "number", f.frozen, "hash", hash)
+				log.Error("Total difficulty missing, can't freeze", "number", f.frozen+f.offset, "hash", hash)
 				break
 			}
-			log.Trace("Deep froze ancient block", "number", f.frozen, "hash", hash)
+			log.Trace("Deep froze ancient block", "number", f.frozen+f.offset, "hash", hash)
 			// Inject all the components into the relevant data tables
 			if err := f.AppendAncient(f.frozen+f.offset, hash[:], header, body, receipts, td); err != nil {
 				break
@@ -454,7 +454,7 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 		}
 		// Log something friendly for the user
 		context := []interface{}{
-			"blocks", f.frozen - first, "elapsed", common.PrettyDuration(time.Since(start)), "number", f.frozen - 1,
+			"blocks", f.frozen + f.offset - first, "elapsed", common.PrettyDuration(time.Since(start)), "number", f.frozen + f.offset - 1,
 		}
 		if n := len(ancients); n > 0 {
 			context = append(context, []interface{}{"hash", ancients[n-1]}...)
