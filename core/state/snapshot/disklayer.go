@@ -53,7 +53,7 @@ func (dl *diskLayer) WaitVerified() bool {
 	return true
 }
 
-func (dl *diskLayer) MarkVerified() {}
+func (dl *diskLayer) MarkValid() {}
 
 func (dl *diskLayer) Verified() bool {
 	return true

@@ -58,7 +58,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 		return ErrKnownBlock
 	}
 	if v.bc.isCachedBadBlock(block) {
-		return errStateRootVerificationFailed
+		return ErrKnownBadBlock
 	}
 	// Header validity is known at this point, check the uncles and transactions
 	header := block.Header()
@@ -138,8 +138,8 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	}
 	if !skipHeavyVerify {
 		validateFuns = append(validateFuns, func() error {
-			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
-				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", header.Root, root)
+			if root, err := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root || err != nil {
+				return fmt.Errorf("invalid merkle root (remote: %x local: %x), err %v", header.Root, root, err)
 			} else {
 				return nil
 			}

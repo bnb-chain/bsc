@@ -769,7 +769,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		rootHash = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+		rootHash, err = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 		wg.Done()
 	}()
 	go func() {
@@ -779,7 +779,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	wg.Wait()
 	blk.SetRoot(rootHash)
 	// Assemble and return the final block for sealing
-	return blk, receipts, nil
+	return blk, receipts, err
 }
 
 // Authorize injects a private key into the consensus engine to mint new blocks
@@ -1211,7 +1211,11 @@ func (p *Parlia) applyTransaction(
 	if p.chainConfig.IsByzantium(header.Number) {
 		state.Finalise(true)
 	} else {
-		root = state.IntermediateRoot(p.chainConfig.IsEIP158(header.Number)).Bytes()
+		stateRoot, err := state.IntermediateRoot(p.chainConfig.IsEIP158(header.Number))
+		if err != nil {
+			return err
+		}
+		root = stateRoot.Bytes()
 	}
 	*usedGas += gasUsed
 	receipt := types.NewReceipt(root, false, *usedGas)

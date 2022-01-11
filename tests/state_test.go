@@ -75,7 +75,14 @@ func TestState(t *testing.T) {
 				t.Run(key+"/snap", func(t *testing.T) {
 					withTrace(t, test.gasLimit(subtest), func(vmconfig vm.Config) error {
 						snaps, statedb, err := test.Run(subtest, vmconfig, true)
-						if _, err := snaps.Journal(statedb.IntermediateRoot(false)); err != nil {
+						if err != nil {
+							return err
+						}
+						root, err := statedb.IntermediateRoot(false)
+						if err != nil {
+							return err
+						}
+						if _, err := snaps.Journal(root); err != nil {
 							return err
 						}
 						return st.checkFailure(t, name+"/snap", err)

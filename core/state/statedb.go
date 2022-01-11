@@ -140,8 +140,6 @@ type StateDB struct {
 	SnapshotAccountReads time.Duration
 	SnapshotStorageReads time.Duration
 	SnapshotCommits      time.Duration
-
-	AccountIntermediate time.Duration
 }
 
 // New creates a new state from a given trie.
@@ -174,7 +172,10 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 	tr, err := db.OpenTrie(root)
 	// return error when 1. failed to open trie and 2. the snap is not nil and done verification
 	if err != nil && (sdb.snap == nil || snapVerified) {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("no available state")
 	}
 	sdb.trie = tr
 	return sdb, nil
@@ -988,15 +989,18 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // IntermediateRoot computes the current root hash of the state trie.
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
-func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
+func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) (common.Hash, error) {
 	if s.lightProcessed {
 		s.StopPrefetcher()
-		return s.trie.Hash()
+		return s.trie.Hash(), nil
 	}
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
-	s.AccountsIntermediateRoot()
-	return s.StateIntermediateRoot()
+	err := s.AccountsIntermediateRoot()
+	if err != nil {
+		return common.Hash{}, err
+	}
+	return s.StateIntermediateRoot(), nil
 }
 
 func (s *StateDB) AccountsIntermediateRoot() error {
@@ -1019,8 +1023,8 @@ func (s *StateDB) AccountsIntermediateRoot() error {
 
 	// We need wait for the parent trie to commit
 	if s.snap != nil {
-		if verified := s.snap.WaitVerified(); !verified {
-			return fmt.Errorf("verification parent snap failed")
+		if valid := s.snap.WaitVerified(); !valid {
+			return fmt.Errorf("verification on parent snap failed")
 		}
 	}
 	// Although naively it makes sense to retrieve the account trie and then do
@@ -1224,7 +1228,7 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 				}
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != root {
-					// for light sync, always do sync commit
+					// for light commit, always do sync commit
 					if err := s.snaps.Update(root, parent, s.snapDestructs, s.snapAccounts, s.snapStorage, nil); err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", root, "err", err)
 					}
@@ -1259,13 +1263,23 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 }
 
 // Commit writes the state to the underlying in-memory trie database.
-func (s *StateDB) Commit(deleteEmptyObjects bool, postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
+func (s *StateDB) Commit(deleteEmptyObjects bool, failPostCommitFunc func(), postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
 	if s.dbErr != nil {
 		return common.Hash{}, nil, fmt.Errorf("commit aborted due to earlier error: %v", s.dbErr)
 	}
 	// Finalize any pending changes and merge everything into the tries
 	if s.lightProcessed {
-		return s.LightCommit()
+		root, diff, err := s.LightCommit()
+		if err != nil {
+			return root, diff, err
+		}
+		for _, postFunc := range postCommitFuncs {
+			err = postFunc()
+			if err != nil {
+				return root, diff, err
+			}
+		}
+		return root, diff, nil
 	}
 	var diffLayer *types.DiffLayer
 	var verified chan struct{}
@@ -1280,9 +1294,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool, postCommitFuncs ...func() erro
 	}
 
 	s.Finalise(deleteEmptyObjects)
-	start := time.Now()
 	err := s.AccountsIntermediateRoot()
-	s.AccountIntermediate = time.Since(start)
 
 	if err != nil {
 		return common.Hash{}, nil, err
@@ -1382,9 +1394,14 @@ func (s *StateDB) Commit(deleteEmptyObjects bool, postCommitFuncs ...func() erro
 		if s.pipeCommit {
 			if commitErr == nil {
 				<-snapUpdated
-				s.snaps.Snapshot(s.stateRoot).MarkVerified()
+				s.snaps.Snapshot(s.stateRoot).MarkValid()
 			} else {
-				// The blockchain will do the rewind
+				// The blockchain will do the further rewind if write block not finish yet
+				if failPostCommitFunc != nil {
+					<-snapUpdated
+					failPostCommitFunc()
+				}
+				log.Error("state verification failed", "err", commitErr)
 			}
 			close(verified)
 		}
@@ -1466,8 +1483,6 @@ func (s *StateDB) Commit(deleteEmptyObjects bool, postCommitFuncs ...func() erro
 			return common.Hash{}, nil, r
 		}
 	}
-	// TODO we should know what is the side effect
-	//s.snap, s.snapDestructs, s.snapAccounts, s.snapStorage = nil, nil, nil, nil
 	root := s.stateRoot
 	if s.pipeCommit {
 		root = s.expectedRoot

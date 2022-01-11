@@ -472,6 +472,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	}
 	go bc.untrustedDiffLayerPruneLoop()
 	if bc.pipeCommit {
+		// check current block and rewind invalid one
 		go bc.rewindInvalidHeaderBlockLoop()
 	}
 	return bc, nil
@@ -595,8 +596,10 @@ func (bc *BlockChain) tryRewindBadBlocks() {
 	block := bc.CurrentBlock()
 	snaps := bc.snaps
 	// Verified and Result is false
-	if snaps != nil && snaps.Snapshot(block.Root()).Verified() && !snaps.Snapshot(block.Root()).WaitVerified() {
+	if snaps != nil && snaps.Snapshot(block.Root()) != nil &&
+		snaps.Snapshot(block.Root()).Verified() && !snaps.Snapshot(block.Root()).WaitVerified() {
 		// Rewind by one block
+		log.Warn("current block verified failed, rewind to its parent", "height", block.NumberU64(), "hash", block.Hash())
 		bc.futureBlocks.Remove(block.Hash())
 		bc.badBlockCache.Add(block.Hash(), time.Now())
 		bc.reportBlock(block, nil, errStateRootVerificationFailed)
@@ -1086,8 +1089,8 @@ func (bc *BlockChain) HasFastBlock(hash common.Hash, number uint64) bool {
 
 // HasState checks if state trie is fully present in the database or not.
 func (bc *BlockChain) HasState(hash common.Hash) bool {
-	if bc.snaps != nil {
-		// If parent snap is pending on verified, treat it as state exist
+	if bc.pipeCommit && bc.snaps != nil {
+		// If parent snap is pending on verification, treat it as state exist
 		if s := bc.snaps.Snapshot(hash); s != nil && !s.Verified() {
 			return true
 		}
@@ -1774,7 +1777,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 
 	// Commit all cached state changes into underlying memory database.
-	_, diffLayer, err := state.Commit(bc.chainConfig.IsEIP158(block.Number()), tryCommitTrieDB)
+	_, diffLayer, err := state.Commit(bc.chainConfig.IsEIP158(block.Number()), bc.tryRewindBadBlocks, tryCommitTrieDB)
 	if err != nil {
 		return NonStatTy, err
 	}
@@ -2138,8 +2141,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		// Validate the state using the default validator
 		substart = time.Now()
 		if !statedb.IsLightProcessed() {
-			// Do the state root verification asynchronously
-			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas, true); err != nil {
+			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas, bc.pipeCommit); err != nil {
 				log.Error("validate state failed", "error", err)
 				bc.reportBlock(block, receipts, err)
 				return it.index, err

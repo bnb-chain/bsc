@@ -81,7 +81,7 @@ type vmExecMarshaling struct {
 func (t *VMTest) Run(vmconfig vm.Config, snapshotter bool) error {
 	snaps, statedb := MakePreState(rawdb.NewMemoryDatabase(), t.json.Pre, snapshotter)
 	if snapshotter {
-		preRoot := statedb.IntermediateRoot(false)
+		preRoot, _ := statedb.IntermediateRoot(false)
 		defer func() {
 			if _, err := snaps.Journal(preRoot); err != nil {
 				panic(err)

@@ -129,7 +129,7 @@ var (
 	}
 	PipeCommitFlag = cli.BoolFlag{
 		Name:  "pipecommit",
-		Usage: "Enable pipeline commit feature",
+		Usage: "Enable MPT pipeline commit, it will improve syncing performance. It is an experimental feature",
 	}
 	RangeLimitFlag = cli.BoolFlag{
 		Name:  "rangelimit",

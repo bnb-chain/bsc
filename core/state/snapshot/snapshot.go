@@ -108,7 +108,7 @@ type Snapshot interface {
 	Verified() bool
 
 	// Store the verification result
-	MarkVerified()
+	MarkValid()
 
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
@@ -296,14 +296,6 @@ func (t *Tree) Snapshot(blockRoot common.Hash) Snapshot {
 	defer t.lock.RUnlock()
 
 	return t.layers[blockRoot]
-}
-
-// try remove the invalid difflayer
-func (t *Tree) Remove(blockRoot common.Hash) {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-
-	delete(t.layers, blockRoot)
 }
 
 // Snapshots returns all visited layers from the topmost layer with specific

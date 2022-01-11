@@ -556,7 +556,11 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 		}
 		// calling IntermediateRoot will internally call Finalize on the state
 		// so any modifications are written to the trie
-		roots = append(roots, statedb.IntermediateRoot(deleteEmptyObjects))
+		root, err := statedb.IntermediateRoot(deleteEmptyObjects)
+		if err != nil {
+			return roots, err
+		}
+		roots = append(roots, root)
 	}
 	return roots, nil
 }

@@ -118,9 +118,8 @@ type diffLayer struct {
 	storageList map[common.Hash][]common.Hash          // List of storage slots for iterated retrievals, one per account. Any existing lists are sorted if non-nil
 	storageData map[common.Hash]map[common.Hash][]byte // Keyed storage slots for direct retrieval. one per account (nil means deleted)
 
-	// the difflayer is verified when verifiedCh is nil or closed
-	verifiedCh chan struct{}
-	verifyRes  bool
+	verifiedCh chan struct{} // the difflayer is verified when verifiedCh is nil or closed
+	valid      bool          // mark the difflayer is valid or not.
 
 	diffed *bloomfilter.Filter // Bloom filter tracking all the diffed items up to the disk layer
 
@@ -261,17 +260,17 @@ func (dl *diffLayer) Root() common.Hash {
 	return dl.root
 }
 
-// WaitVerified will wait until the diff layer been verified
+// WaitVerified will wait until the diff layer been verified and return the verification result
 func (dl *diffLayer) WaitVerified() bool {
 	if dl.verifiedCh == nil {
 		return true
 	}
 	<-dl.verifiedCh
-	return dl.verifyRes
+	return dl.valid
 }
 
-func (dl *diffLayer) MarkVerified() {
-	dl.verifyRes = true
+func (dl *diffLayer) MarkValid() {
+	dl.valid = true
 }
 
 func (dl *diffLayer) Verified() bool {
