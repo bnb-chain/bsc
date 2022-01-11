@@ -28,6 +28,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/crypto/sha3"
+
 	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -1798,6 +1800,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		diffLayer.Receipts = receipts
 		diffLayer.BlockHash = block.Hash()
 		diffLayer.Number = block.NumberU64()
+
+		sort.Sort(types.DiffCodeSlice(diffLayer.Codes))
+		sort.Sort(common.AddressSlice(diffLayer.Destructs))
+		sort.Sort(types.DiffAccountSlice(diffLayer.Accounts))
+		sort.Sort(types.DiffStorageSlice(diffLayer.Storages))
+
 		bc.cacheDiffLayer(diffLayer)
 	}
 
@@ -3110,4 +3118,110 @@ func EnablePersistDiff(limit uint64) BlockChainOption {
 		chain.diffLayerFreezerBlockLimit = limit
 		return chain
 	}
+}
+
+func (bc *BlockChain) GetRootByDiffHash(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) (*types.VerifyResult, error) {
+	var res types.VerifyResult
+	res.BlockNumber = blockNumber
+	res.BlockHash = blockHash
+
+	if blockNumber > bc.CurrentHeader().Number.Uint64()+11 {
+		res.Status = types.StatusBlockTooNew
+		return &res, nil
+	} else if blockNumber > bc.CurrentHeader().Number.Uint64() {
+		res.Status = types.StatusBlockNewer
+		return &res, nil
+	}
+
+	diff := bc.GetTrustedDiffLayer(blockHash)
+	if diff != nil {
+		if diff.DiffHash == (common.Hash{}) {
+			hash, err := GetTrustedDiffHash(diff)
+			if err != nil {
+				res.Status = types.StatusUnexpectedError
+				return &res, err
+			}
+
+			diff.DiffHash = hash
+		}
+
+		if diffHash != diff.DiffHash {
+			res.Status = types.StatusDiffHashMismatch
+			return &res, nil
+		}
+
+		header := bc.GetHeaderByHash(blockHash)
+		if header == nil {
+			res.Status = types.StatusUnexpectedError
+			return &res, fmt.Errorf("unexpected error, header not found")
+		}
+		res.Status = types.StatusFullVerified
+		res.Root = header.Root
+		return &res, nil
+	}
+
+	header := bc.GetHeaderByHash(blockHash)
+	if header == nil {
+		if blockNumber > bc.CurrentHeader().Number.Uint64()-11 {
+			res.Status = types.StatusPossibleFork
+			return &res, nil
+		}
+
+		res.Status = types.StatusImpossibleFork
+		return &res, nil
+	}
+
+	res.Status = types.StatusUntrustedVerified
+	res.Root = header.Root
+	return &res, nil
+}
+
+func (bc *BlockChain) GetTrustedDiffLayer(blockHash common.Hash) *types.DiffLayer {
+	var diff *types.DiffLayer
+	if cached, ok := bc.diffLayerCache.Get(blockHash); ok {
+		diff = cached.(*types.DiffLayer)
+		return diff
+	}
+
+	diffStore := bc.db.DiffStore()
+	if diffStore != nil {
+		diff = rawdb.ReadDiffLayer(diffStore, blockHash)
+	}
+	return diff
+}
+
+func GetTrustedDiffHash(d *types.DiffLayer) (common.Hash, error) {
+	diff := &types.ExtDiffLayer{
+		BlockHash: d.BlockHash,
+		Receipts:  make([]*types.ReceiptForStorage, 0),
+		Number:    d.Number,
+		Codes:     d.Codes,
+		Destructs: d.Destructs,
+		Accounts:  d.Accounts,
+		Storages:  d.Storages,
+	}
+
+	for index, account := range diff.Accounts {
+		full, err := snapshot.FullAccount(account.Blob)
+		if err != nil {
+			return common.Hash{}, fmt.Errorf("decode full account error: %v", err)
+		}
+		// set account root to empty root
+		diff.Accounts[index].Blob = snapshot.SlimAccountRLP(full.Nonce, full.Balance, common.Hash{}, full.CodeHash)
+	}
+
+	rawData, err := rlp.EncodeToBytes(diff)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("encode new diff error: %v", err)
+	}
+
+	hasher := sha3.NewLegacyKeccak256()
+	_, err = hasher.Write(rawData)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("hasher write error: %v", err)
+	}
+
+	var hash common.Hash
+	hasher.Sum(hash[:0])
+	return hash, nil
 }
