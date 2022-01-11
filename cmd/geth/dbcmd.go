@@ -204,7 +204,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		},
 		Usage: "Inspect the ancientStore information",
 		Description: `This commands will read current offset from kvdb, which is the current offset and starting BlockNumber
-		of ancientStore, will also displays the reserved number of blocks in ancientStore `,
+of ancientStore, will also displays the reserved number of blocks in ancientStore `,
 	}
 )
 

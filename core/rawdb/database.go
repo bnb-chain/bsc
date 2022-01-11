@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -178,24 +177,14 @@ func WriteOffSetOfLastAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
 	}
 }
 
-//NewFreezerDb only create a freezer without statedb.
-func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, lastOffSet, newOffSet uint64) (*freezer, error) {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+// NewFreezerDb only create a freezer without statedb.
+func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
 	frdb, errors := newFreezer(frz, namespace, readonly)
 	if errors != nil {
 		return nil, errors
 	}
 	frdb.offset = newOffSet
-	offsetBatch := db.NewBatch()
-	WriteOffSetOfCurrentAncientFreezer(offsetBatch, newOffSet)
-	WriteOffSetOfLastAncientFreezer(offsetBatch, lastOffSet)
-	if err := offsetBatch.Write(); err != nil {
-		log.Crit("Failed to write offset into disk", "err", err)
-	}
-	wg.Done()
-	wg.Wait()
 	return frdb, nil
 }
 

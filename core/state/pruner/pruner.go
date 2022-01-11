@@ -296,12 +296,19 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 
 	// Create new ancientdb backup and record the new and last version of offset in kvDB as well.
 	// For every round, newoffset actually equals to the startBlockNumber in ancient backup db.
-	frdbBack, err := rawdb.NewFreezerDb(chainDb, p.newAncientPath, namespace, readonly, oldOffSet, startBlockNumber)
+	frdbBack, err := rawdb.NewFreezerDb(chainDb, p.newAncientPath, namespace, readonly, startBlockNumber)
 	if err != nil {
 		log.Error("Failed to create ancient freezer backup", "err=", err)
 		return err
 	}
 	defer frdbBack.Close()
+
+	offsetBatch := chainDb.NewBatch()
+	rawdb.WriteOffSetOfCurrentAncientFreezer(offsetBatch, startBlockNumber)
+	rawdb.WriteOffSetOfLastAncientFreezer(offsetBatch, oldOffSet)
+	if err := offsetBatch.Write(); err != nil {
+		log.Crit("Failed to write offset into disk", "err", err)
+	}
 
 	log.Info("prune info", "old offset", oldOffSet, "frozen items number", frozen, "amount to reserver", p.BlockAmountReserved)
 	log.Info("new offset/new startBlockNumber recorded successfully ", "new offset", startBlockNumber)
@@ -319,8 +326,9 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 		}
 		externTd := new(big.Int).Add(block.Difficulty(), td)
 
-		//Write into new ancient_back db.
+		// Write into new ancient_back db.
 		rawdb.WriteAncientBlock(frdbBack, block, receipts, externTd)
+		// Print the log every 5s for better trace.
 		if common.PrettyDuration(time.Since(start)) > common.PrettyDuration(5*time.Second) {
 			log.Info("block backup process running successfully", "current blockNumber for backup", blockNumber)
 			start = time.Now()
