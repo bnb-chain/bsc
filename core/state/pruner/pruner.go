@@ -265,18 +265,18 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 	}
 	defer chainDb.Close()
 
-	// Get the number of items in old ancient db, i.e. frozen.
-	frozen, err := chainDb.Ancients()
+	// Get the number of items in old ancient db.
+	itemsOfAncient, err := chainDb.Ancients()
 
 	// If we can't access the freezer or it's empty, abort.
-	if err != nil || frozen == 0 {
+	if err != nil || itemsOfAncient == 0 {
 		log.Error("can't access the freezer or it's empty, abort")
 		return errors.New("can't access the freezer or it's empty, abort")
 	}
 
-	//If the items in freezer is less than the block amount that we want to reserve, it is not enough, should stop.
-	if frozen < p.BlockAmountReserved {
-		log.Error("the number of old blocks is not enough to reserve,", "frozen items", frozen, "the amount specified", p.BlockAmountReserved)
+	// If the items in freezer is less than the block amount that we want to reserve, it is not enough, should stop.
+	if itemsOfAncient < p.BlockAmountReserved {
+		log.Error("the number of old blocks is not enough to reserve,", "ancient items", itemsOfAncient, "the amount specified", p.BlockAmountReserved)
 		return errors.New("the number of old blocks is not enough to reserve")
 	}
 
@@ -292,7 +292,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 	}
 
 	// Get the start BlockNumber for pruning.
-	startBlockNumber := oldOffSet + frozen - p.BlockAmountReserved
+	startBlockNumber := oldOffSet + itemsOfAncient - p.BlockAmountReserved
 
 	// Create new ancientdb backup and record the new and last version of offset in kvDB as well.
 	// For every round, newoffset actually equals to the startBlockNumber in ancient backup db.
@@ -310,12 +310,12 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 		log.Crit("Failed to write offset into disk", "err", err)
 	}
 
-	log.Info("prune info", "old offset", oldOffSet, "frozen items number", frozen, "amount to reserver", p.BlockAmountReserved)
+	log.Info("prune info", "old offset", oldOffSet, "number of items in ancientDB", itemsOfAncient, "amount to reserve", p.BlockAmountReserved)
 	log.Info("new offset/new startBlockNumber recorded successfully ", "new offset", startBlockNumber)
 
 	start := time.Now()
 	// All ancient data after and including startBlockNumber should write into new ancientDB ancient_back.
-	for blockNumber := startBlockNumber; blockNumber < frozen+oldOffSet; blockNumber++ {
+	for blockNumber := startBlockNumber; blockNumber < itemsOfAncient+oldOffSet; blockNumber++ {
 		blockHash := rawdb.ReadCanonicalHash(chainDb, blockNumber)
 		block := rawdb.ReadBlock(chainDb, blockHash, blockNumber)
 		receipts := rawdb.ReadRawReceipts(chainDb, blockHash, blockNumber)

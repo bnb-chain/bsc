@@ -185,6 +185,7 @@ func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, 
 		return nil, errors
 	}
 	frdb.offset = newOffSet
+	frdb.frozen += newOffSet
 	return frdb, nil
 }
 
@@ -207,6 +208,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	}
 
 	frdb.offset = offset
+
+	// Some blocks in ancientDB may have already been frozen and been pruned, so adding the offset to
+	// reprensent the absolute number of blocks already frozen.
+	frdb.frozen += offset
 
 	// Since the freezer can be stored separately from the user's key-value database,
 	// there's a fairly high probability that the user requests invalid combinations
@@ -355,7 +360,7 @@ func (s *stat) Count() string {
 }
 func AncientInspect(db ethdb.Database) error {
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
-	// Get number of ancient rows inside the freezer
+	// Get number of ancient rows inside the freezer.
 	ancients := counter(0)
 	if count, err := db.Ancients(); err == nil {
 		ancients = counter(count)
