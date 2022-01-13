@@ -59,6 +59,7 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			utils.WhitelistFlag,
 			utils.TriesInMemoryFlag,
 			utils.BlockAmountReserved,
+			utils.CheckSnapshotWithMPT,
 		},
 	},
 	{

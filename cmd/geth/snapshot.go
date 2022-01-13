@@ -97,6 +97,7 @@ the trie clean cache with default directory will be deleted.
 					utils.AncientFlag,
 					utils.BlockAmountReserved,
 					utils.TriesInMemoryFlag,
+					utils.CheckSnapshotWithMPT,
 				},
 				Description: `
 geth offline prune-block for block data in ancientdb.
@@ -185,6 +186,9 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, true, false)
 	defer chaindb.Close()
 
+	if !ctx.GlobalBool(utils.CheckSnapshotWithMPT.Name) {
+		return chaindb, nil
+	}
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
 		return nil, errors.New("failed to load head block")

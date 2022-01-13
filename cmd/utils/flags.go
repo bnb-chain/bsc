@@ -833,6 +833,11 @@ var (
 		Name:  "block-amount-reserved",
 		Usage: "Sets the expected remained amount of blocks for offline block prune",
 	}
+
+	CheckSnapshotWithMPT = cli.BoolFlag{
+		Name:  "check-snapshot-with-mpt",
+		Usage: "Enable checking between snapshot and MPT ",
+	}
 )
 
 // MakeDataDir retrieves the currently requested data directory, terminating

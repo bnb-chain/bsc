@@ -166,6 +166,7 @@ var (
 		configFileFlag,
 		utils.CatalystFlag,
 		utils.BlockAmountReserved,
+		utils.CheckSnapshotWithMPT,
 	}
 
 	rpcFlags = []cli.Flag{
