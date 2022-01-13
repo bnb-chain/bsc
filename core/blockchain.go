@@ -79,6 +79,7 @@ var (
 
 	errInsertionInterrupted        = errors.New("insertion is interrupted")
 	errStateRootVerificationFailed = errors.New("state root verification failed")
+	ParallelTxMode                 = false // parallel transaction execution
 )
 
 const (
@@ -2123,7 +2124,16 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			statedb.EnablePipeCommit()
 		}
 		statedb.SetExpectedStateRoot(block.Root())
-		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
+
+		var receipts types.Receipts
+		var logs []*types.Log
+		var usedGas uint64
+		if ParallelTxMode {
+			statedb, receipts, logs, usedGas, err = bc.processor.ProcessParallel(block, statedb, bc.vmConfig)
+		} else {
+			statedb, receipts, logs, usedGas, err = bc.processor.Process(block, statedb, bc.vmConfig)
+		}
+
 		atomic.StoreUint32(&followupInterrupt, 1)
 		activeState = statedb
 		if err != nil {
