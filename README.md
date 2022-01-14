@@ -126,8 +126,8 @@ Steps:
 
 1. Download the binary, config and genesis files from [release](https://github.com/binance-chain/bsc/releases/download/v1.0.0-alpha.0/binary.zip), or compile the binary by `make geth`. 
 2. Init genesis state: `./geth --datadir node init genesis.json`.
-3. Start your fullnode: `./geth --config ./config.toml --datadir ./node`.
-4. Or start a validator node: `./geth --config ./config.toml --datadir ./node -unlock ${validatorAddr} --mine --allow-insecure-unlock`. The ${validatorAddr} is the wallet account address of your running validator node. 
+3. Start your fullnode: `./geth --config ./config.yaml --datadir ./node`.
+4. Or start a validator node: `./geth --config ./config.yaml --datadir ./node -unlock ${validatorAddr} --mine --allow-insecure-unlock`. The ${validatorAddr} is the wallet account address of your running validator node. 
 
 *Note: The default p2p port is 30311 and the RPC port is 8575 which is different from Ethereum.*
 
