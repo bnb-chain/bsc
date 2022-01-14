@@ -602,6 +602,8 @@ func (bc *BlockChain) tryRewindBadBlocks() {
 		log.Warn("current block verified failed, rewind to its parent", "height", block.NumberU64(), "hash", block.Hash())
 		bc.futureBlocks.Remove(block.Hash())
 		bc.badBlockCache.Add(block.Hash(), time.Now())
+		bc.diffLayerCache.Remove(block.Hash())
+		bc.diffLayerRLPCache.Remove(block.Hash())
 		bc.reportBlock(block, nil, errStateRootVerificationFailed)
 		bc.setHeadBeyondRoot(block.NumberU64()-1, common.Hash{})
 	}

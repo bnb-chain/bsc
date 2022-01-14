@@ -172,10 +172,7 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 	tr, err := db.OpenTrie(root)
 	// return error when 1. failed to open trie and 2. the snap is not nil and done verification
 	if err != nil && (sdb.snap == nil || snapVerified) {
-		if err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("no available state")
+		return nil, err
 	}
 	sdb.trie = tr
 	return sdb, nil
