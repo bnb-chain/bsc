@@ -28,6 +28,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/tsdb/fileutil"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -256,17 +258,18 @@ func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, sta
 }
 
 func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace string, readonly, interrupt bool) error {
-
-	//Open old db wrapper.
+	// Open old db wrapper.
 	chainDb, err := p.node.OpenDatabaseWithFreezer(name, cache, handles, p.oldAncientPath, namespace, readonly, true, interrupt)
 	if err != nil {
 		log.Error("Failed to open ancient database", "err=", err)
 		return err
 	}
 	defer chainDb.Close()
+	log.Info("chainDB opened successfully")
 
 	// Get the number of items in old ancient db.
-	itemsOfAncient, err := chainDb.Ancients()
+	itemsOfAncient, err := chainDb.ItemAmountInAncient()
+	log.Info("the number of items in ancientDB is ", "itemsOfAncient", itemsOfAncient)
 
 	// If we can't access the freezer or it's empty, abort.
 	if err != nil || itemsOfAncient == 0 {
@@ -282,17 +285,19 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 
 	var oldOffSet uint64
 	if interrupt {
-		//The interrupt scecario within this function is specific for old and new ancientDB exsisted concurrently,
-		//should use last version of offset for oldAncientDB, because current offset is
-		//acutally of the new ancientDB_Backup, but what we want is the offset of ancientDB being backup.
+		// The interrupt scecario within this function is specific for old and new ancientDB exsisted concurrently,
+		// should use last version of offset for oldAncientDB, because current offset is
+		// actually of the new ancientDB_Backup, but what we want is the offset of ancientDB being backup.
 		oldOffSet = rawdb.ReadOffSetOfLastAncientFreezer(chainDb)
 	} else {
-		//Using current version of ancientDB for oldOffSet because the db for backup is current version.
+		// Using current version of ancientDB for oldOffSet because the db for backup is current version.
 		oldOffSet = rawdb.ReadOffSetOfCurrentAncientFreezer(chainDb)
 	}
+	log.Info("the oldOffSet is ", "oldOffSet", oldOffSet)
 
 	// Get the start BlockNumber for pruning.
 	startBlockNumber := oldOffSet + itemsOfAncient - p.BlockAmountReserved
+	log.Info("new offset/new startBlockNumber is ", "new offset", startBlockNumber)
 
 	// Create new ancientdb backup and record the new and last version of offset in kvDB as well.
 	// For every round, newoffset actually equals to the startBlockNumber in ancient backup db.
@@ -308,6 +313,13 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 	rawdb.WriteOffSetOfLastAncientFreezer(offsetBatch, oldOffSet)
 	if err := offsetBatch.Write(); err != nil {
 		log.Crit("Failed to write offset into disk", "err", err)
+	}
+
+	// It's guaranteed that the old/new offsets are updated as well as the new ancientDB are created if this flock exist.
+	lock, _, err := fileutil.Flock(filepath.Join(p.newAncientPath, "PRUNEFLOCKBACK"))
+	if err != nil {
+		log.Error("file lock error", "err", err)
+		return err
 	}
 
 	log.Info("prune info", "old offset", oldOffSet, "number of items in ancientDB", itemsOfAncient, "amount to reserve", p.BlockAmountReserved)
@@ -334,6 +346,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 			start = time.Now()
 		}
 	}
+	lock.Release()
 	log.Info("block back up done", "current start blockNumber in ancientDB", startBlockNumber)
 	return nil
 }
@@ -352,29 +365,48 @@ func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, namespac
 }
 
 func (p *BlockPruner) RecoverInterruption(name string, cache, handles int, namespace string, readonly bool) error {
-
-	newExist, err := CheckAncientDbExist(p.newAncientPath)
+	log.Info("RecoverInterruption for block prune")
+	newExist, err := CheckFileExist(p.newAncientPath)
 	if err != nil {
 		log.Error("newAncientDb path error")
 		return err
 	}
 
 	if newExist {
-		// Indicating old and new ancientDB existed concurrently.
+		log.Info("New ancientDB_backup existed in interruption scenario")
+		var flockOfAncientBack bool
+		if exist, err := CheckFileExist(filepath.Join(p.newAncientPath, "PRUNEFLOCKBACK")); err != nil {
+			log.Error("Failed to check flock of ancientDB_Back %v", err)
+			return err
+		} else {
+			flockOfAncientBack = exist
+		}
+		// Indicating both old and new ancientDB existed concurrently.
 		// Delete directly for the new ancientdb to prune from start, e.g.: path ../chaindb/ancient_backup
 		if err := os.RemoveAll(p.newAncientPath); err != nil {
 			log.Error("Failed to remove old ancient directory %v", err)
 			return err
 		}
-		if err := p.BlockPruneBackUp(name, cache, handles, namespace, readonly, true); err != nil {
-			log.Error("Failed to prune")
-			return err
+		if flockOfAncientBack {
+			// Indicating the oldOffset/newOffset have already been updated.
+			if err := p.BlockPruneBackUp(name, cache, handles, namespace, readonly, true); err != nil {
+				log.Error("Failed to prune")
+				return err
+			}
+		} else {
+			// Indicating the flock did not exist and the new offset did not be updated, so just handle this case as usual.
+			if err := p.BlockPruneBackUp(name, cache, handles, namespace, readonly, false); err != nil {
+				log.Error("Failed to prune")
+				return err
+			}
 		}
+
 		if err := p.AncientDbReplacer(); err != nil {
 			log.Error("Failed to replace ancientDB")
 			return err
 		}
 	} else {
+		log.Info("New ancientDB_backup did not exist in interruption scenario")
 		// Indicating new ancientDB even did not be created, just prune starting at backup from startBlockNumber as usual,
 		// in this case, the new offset have not been written into kvDB.
 		if err := p.BlockPruneBackUp(name, cache, handles, namespace, readonly, false); err != nil {
@@ -390,7 +422,7 @@ func (p *BlockPruner) RecoverInterruption(name string, cache, handles int, names
 	return nil
 }
 
-func CheckAncientDbExist(path string) (bool, error) {
+func CheckFileExist(path string) (bool, error) {
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			//Indicating the file didn't exist.

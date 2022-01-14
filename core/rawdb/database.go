@@ -114,6 +114,11 @@ func (db *nofreezedb) Ancients() (uint64, error) {
 	return 0, errNotSupported
 }
 
+// Ancients returns an error as we don't have a backing chain freezer.
+func (db *nofreezedb) ItemAmountInAncient() (uint64, error) {
+	return 0, errNotSupported
+}
+
 // AncientSize returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) AncientSize(kind string) (uint64, error) {
 	return 0, errNotSupported
@@ -140,6 +145,10 @@ func (db *nofreezedb) DiffStore() ethdb.KeyValueStore {
 
 func (db *nofreezedb) SetDiffStore(diff ethdb.KeyValueStore) {
 	db.diffStore = diff
+}
+
+func (db *nofreezedb) AncientOffSet() (uint64, error) {
+	return 0, nil
 }
 
 // NewDatabase creates a high level database on top of a given key-value data
@@ -200,7 +209,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	}
 
 	var offset uint64
-	//The offset of ancientDB should be handled differently in different scenarios
+	// The offset of ancientDB should be handled differently in different scenarios.
 	if isLastOffset {
 		offset = ReadOffSetOfLastAncientFreezer(db)
 	} else {
@@ -362,10 +371,15 @@ func AncientInspect(db ethdb.Database) error {
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
 	// Get number of ancient rows inside the freezer.
 	ancients := counter(0)
-	if count, err := db.Ancients(); err == nil {
+	if count, err := db.ItemAmountInAncient(); err == nil {
 		ancients = counter(count)
 	}
-	endNumber := offset + ancients - 1
+	var endNumber counter
+	if offset+ancients <= 0 {
+		endNumber = 0
+	} else {
+		endNumber = offset + ancients - 1
+	}
 	stats := [][]string{
 		{"Offset/StartBlockNumber", "Offset/StartBlockNumber of ancientDB", offset.String()},
 		{"Amount of remained items in AncientStore", "Remaining items of ancientDB", ancients.String()},
@@ -512,7 +526,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	}
 	// Get number of ancient rows inside the freezer
 	ancients := counter(0)
-	if count, err := db.Ancients(); err == nil {
+	if count, err := db.ItemAmountInAncient(); err == nil {
 		ancients = counter(count)
 	}
 

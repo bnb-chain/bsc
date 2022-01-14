@@ -181,7 +181,17 @@ func (f *freezer) Ancient(kind string, number uint64) ([]byte, error) {
 
 // Ancients returns the length of the frozen items.
 func (f *freezer) Ancients() (uint64, error) {
+	return atomic.LoadUint64(&f.frozen), nil
+}
+
+// ItemAmountInAncient returns the actual length of current ancientDB.
+func (f *freezer) ItemAmountInAncient() (uint64, error) {
 	return atomic.LoadUint64(&f.frozen) - atomic.LoadUint64(&f.offset), nil
+}
+
+// AncientOffSet returns the offset of current ancientDB.
+func (f *freezer) AncientOffSet() (uint64, error) {
+	return atomic.LoadUint64(&f.offset), nil
 }
 
 // AncientSize returns the ancient size of the specified category.
@@ -251,7 +261,7 @@ func (f *freezer) TruncateAncients(items uint64) error {
 		return nil
 	}
 	for _, table := range f.tables {
-		if err := table.truncate(items); err != nil {
+		if err := table.truncate(items - f.offset); err != nil {
 			return err
 		}
 	}
