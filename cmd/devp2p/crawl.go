@@ -139,6 +139,8 @@ func (c *crawler) updateNode(n *enode.Node) {
 			node.FirstResponse = node.LastCheck
 		}
 		node.LastResponse = node.LastCheck
+		node.IPAddress = nn.IP().String()
+		node.EnodeURL = nn.URLv4()
 	}
 
 	// Store/update node in output set.
