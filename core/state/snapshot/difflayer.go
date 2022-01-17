@@ -260,8 +260,8 @@ func (dl *diffLayer) Root() common.Hash {
 	return dl.root
 }
 
-// WaitVerified will wait until the diff layer been verified and return the verification result
-func (dl *diffLayer) WaitVerified() bool {
+// WaitAndGetVerifyRes will wait until the diff layer been verified and return the verification result
+func (dl *diffLayer) WaitAndGetVerifyRes() bool {
 	if dl.verifiedCh == nil {
 		return true
 	}

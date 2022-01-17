@@ -101,8 +101,8 @@ type Snapshot interface {
 	// Root returns the root hash for which this snapshot was made.
 	Root() common.Hash
 
-	// WaitVerified will wait until the snapshot been verified
-	WaitVerified() bool
+	// WaitAndGetVerifyRes will wait until the snapshot been verified and return verification result
+	WaitAndGetVerifyRes() bool
 
 	// Verified returns whether the snapshot is verified
 	Verified() bool

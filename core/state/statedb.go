@@ -170,7 +170,7 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 
 	snapVerified := sdb.snap != nil && sdb.snap.Verified()
 	tr, err := db.OpenTrie(root)
-	// return error when 1. failed to open trie and 2. the snap is not nil and done verification
+	// return error when 1. failed to open trie and 2. the snap is nil or the snap is not nil and done verification
 	if err != nil && (sdb.snap == nil || snapVerified) {
 		return nil, err
 	}
@@ -1020,7 +1020,7 @@ func (s *StateDB) AccountsIntermediateRoot() error {
 
 	// We need wait for the parent trie to commit
 	if s.snap != nil {
-		if valid := s.snap.WaitVerified(); !valid {
+		if valid := s.snap.WaitAndGetVerifyRes(); !valid {
 			return fmt.Errorf("verification on parent snap failed")
 		}
 	}

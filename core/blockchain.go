@@ -597,7 +597,7 @@ func (bc *BlockChain) tryRewindBadBlocks() {
 	snaps := bc.snaps
 	// Verified and Result is false
 	if snaps != nil && snaps.Snapshot(block.Root()) != nil &&
-		snaps.Snapshot(block.Root()).Verified() && !snaps.Snapshot(block.Root()).WaitVerified() {
+		snaps.Snapshot(block.Root()).Verified() && !snaps.Snapshot(block.Root()).WaitAndGetVerifyRes() {
 		// Rewind by one block
 		log.Warn("current block verified failed, rewind to its parent", "height", block.NumberU64(), "hash", block.Hash())
 		bc.futureBlocks.Remove(block.Hash())

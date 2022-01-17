@@ -558,7 +558,7 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 		// so any modifications are written to the trie
 		root, err := statedb.IntermediateRoot(deleteEmptyObjects)
 		if err != nil {
-			return roots, err
+			return nil, err
 		}
 		roots = append(roots, root)
 	}

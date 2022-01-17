@@ -49,7 +49,7 @@ func (dl *diskLayer) Root() common.Hash {
 	return dl.root
 }
 
-func (dl *diskLayer) WaitVerified() bool {
+func (dl *diskLayer) WaitAndGetVerifyRes() bool {
 	return true
 }
 
