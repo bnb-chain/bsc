@@ -582,7 +582,7 @@ func (ethash *Ethash) Finalize(chain consensus.ChainHeaderReader, header *types.
 	receipts *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64) (err error) {
 	// Accumulate any block and uncle rewards and commit the final state root
 	accumulateRewards(chain.Config(), state, header, uncles)
-	header.Root, err = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 	return
 }
 

@@ -769,7 +769,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		rootHash, err = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+		rootHash = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 		wg.Done()
 	}()
 	go func() {
@@ -1211,11 +1211,7 @@ func (p *Parlia) applyTransaction(
 	if p.chainConfig.IsByzantium(header.Number) {
 		state.Finalise(true)
 	} else {
-		stateRoot, err := state.IntermediateRoot(p.chainConfig.IsEIP158(header.Number))
-		if err != nil {
-			return err
-		}
-		root = stateRoot.Bytes()
+		root = state.IntermediateRoot(p.chainConfig.IsEIP158(header.Number)).Bytes()
 	}
 	*usedGas += gasUsed
 	receipt := types.NewReceipt(root, false, *usedGas)

@@ -131,18 +131,25 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			receiptSha := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 			if receiptSha != header.ReceiptHash {
 				return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
-			} else {
-				return nil
 			}
+			return nil
 		},
 	}
-	if !skipHeavyVerify {
+	if skipHeavyVerify {
 		validateFuns = append(validateFuns, func() error {
-			if root, err := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root || err != nil {
-				return fmt.Errorf("invalid merkle root (remote: %x local: %x), err %v", header.Root, root, err)
-			} else {
-				return nil
+			if err := statedb.WaitPipeVerification(); err != nil {
+				return err
 			}
+			statedb.Finalise(v.config.IsEIP158(header.Number))
+			statedb.AccountsIntermediateRoot()
+			return nil
+		})
+	} else {
+		validateFuns = append(validateFuns, func() error {
+			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
+				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", header.Root, root)
+			}
+			return nil
 		})
 	}
 	validateRes := make(chan error, len(validateFuns))

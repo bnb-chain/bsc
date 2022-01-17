@@ -217,7 +217,9 @@ func testBlockChainImport(chain types.Blocks, pipelineCommit bool, blockchain *B
 		blockchain.chainmu.Lock()
 		rawdb.WriteTd(blockchain.db, block.Hash(), block.NumberU64(), new(big.Int).Add(block.Difficulty(), blockchain.GetTdByHash(block.ParentHash())))
 		rawdb.WriteBlock(blockchain.db, block)
-		statedb.Commit(false, nil)
+		statedb.Finalise(false)
+		statedb.AccountsIntermediateRoot()
+		statedb.Commit(nil)
 		blockchain.chainmu.Unlock()
 	}
 	return nil

@@ -382,6 +382,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		gp      = new(GasPool).AddGas(block.GasLimit())
 	)
 	signer := types.MakeSigner(p.bc.chainConfig, block.Number())
+	statedb.TryPreload(block, signer)
 	var receipts = make([]*types.Receipt, 0)
 	// Mutate the block and state according to any hard-fork specs
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
@@ -457,11 +458,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	if config.IsByzantium(header.Number) {
 		statedb.Finalise(true)
 	} else {
-		stateRoot, err := statedb.IntermediateRoot(config.IsEIP158(header.Number))
-		if err != nil {
-			return nil, err
-		}
-		root = stateRoot.Bytes()
+		root = statedb.IntermediateRoot(config.IsEIP158(header.Number)).Bytes()
 	}
 	*usedGas += result.UsedGas
 

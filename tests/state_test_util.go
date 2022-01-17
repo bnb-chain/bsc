@@ -198,7 +198,9 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	}
 
 	// Commit block
-	statedb.Commit(config.IsEIP158(block.Number()), nil)
+	statedb.Finalise(config.IsEIP158(block.Number()))
+	statedb.AccountsIntermediateRoot()
+	statedb.Commit(nil)
 	// Add 0-value mining reward. This only makes a difference in the cases
 	// where
 	// - the coinbase suicided, or
@@ -206,7 +208,7 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	//   the coinbase gets no txfee, so isn't created, and thus needs to be touched
 	statedb.AddBalance(block.Coinbase(), new(big.Int))
 	// And _now_ get the state root
-	root, err := statedb.IntermediateRoot(config.IsEIP158(block.Number()))
+	root := statedb.IntermediateRoot(config.IsEIP158(block.Number()))
 	return snaps, statedb, root, err
 }
 
@@ -226,7 +228,9 @@ func MakePreState(db ethdb.Database, accounts core.GenesisAlloc, snapshotter boo
 		}
 	}
 	// Commit and re-open to start with a clean state.
-	root, _, _ := statedb.Commit(false, nil)
+	statedb.Finalise(false)
+	statedb.AccountsIntermediateRoot()
+	root, _, _ := statedb.Commit(nil)
 
 	var snaps *snapshot.Tree
 	if snapshotter {

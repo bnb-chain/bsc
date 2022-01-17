@@ -934,6 +934,17 @@ func (s *StateDB) GetRefund() uint64 {
 	return s.refund
 }
 
+// GetRefund returns the current value of the refund counter.
+func (s *StateDB) WaitPipeVerification() error {
+	// We need wait for the parent trie to commit
+	if s.snap != nil {
+		if valid := s.snap.WaitAndGetVerifyRes(); !valid {
+			return fmt.Errorf("verification on parent snap failed")
+		}
+	}
+	return nil
+}
+
 // Finalise finalises the state by removing the s destructed objects and clears
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
@@ -986,21 +997,18 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // IntermediateRoot computes the current root hash of the state trie.
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
-func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) (common.Hash, error) {
+func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	if s.lightProcessed {
 		s.StopPrefetcher()
-		return s.trie.Hash(), nil
+		return s.trie.Hash()
 	}
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
-	err := s.AccountsIntermediateRoot()
-	if err != nil {
-		return common.Hash{}, err
-	}
-	return s.StateIntermediateRoot(), nil
+	s.AccountsIntermediateRoot()
+	return s.StateIntermediateRoot()
 }
 
-func (s *StateDB) AccountsIntermediateRoot() error {
+func (s *StateDB) AccountsIntermediateRoot() {
 	tasks := make(chan func())
 	finishCh := make(chan struct{})
 	defer close(finishCh)
@@ -1018,12 +1026,6 @@ func (s *StateDB) AccountsIntermediateRoot() error {
 		}()
 	}
 
-	// We need wait for the parent trie to commit
-	if s.snap != nil {
-		if valid := s.snap.WaitAndGetVerifyRes(); !valid {
-			return fmt.Errorf("verification on parent snap failed")
-		}
-	}
 	// Although naively it makes sense to retrieve the account trie and then do
 	// the contract storage and account updates sequentially, that short circuits
 	// the account prefetcher. Instead, let's process all the storage updates
@@ -1055,7 +1057,6 @@ func (s *StateDB) AccountsIntermediateRoot() error {
 		}
 	}
 	wg.Wait()
-	return nil
 }
 
 func (s *StateDB) StateIntermediateRoot() common.Hash {
@@ -1260,7 +1261,7 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 }
 
 // Commit writes the state to the underlying in-memory trie database.
-func (s *StateDB) Commit(deleteEmptyObjects bool, failPostCommitFunc func(), postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
+func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
 	if s.dbErr != nil {
 		return common.Hash{}, nil, fmt.Errorf("commit aborted due to earlier error: %v", s.dbErr)
 	}
@@ -1288,13 +1289,6 @@ func (s *StateDB) Commit(deleteEmptyObjects bool, failPostCommitFunc func(), pos
 		// async commit the MPT
 		verified = make(chan struct{})
 		snapUpdated = make(chan struct{})
-	}
-
-	s.Finalise(deleteEmptyObjects)
-	err := s.AccountsIntermediateRoot()
-
-	if err != nil {
-		return common.Hash{}, nil, err
 	}
 
 	commmitTrie := func() error {
@@ -1448,9 +1442,11 @@ func (s *StateDB) Commit(deleteEmptyObjects bool, failPostCommitFunc func(), pos
 					// - head layer is paired with HEAD state
 					// - head-1 layer is paired with HEAD-1 state
 					// - head-(n-1) layer(bottom-most diff layer) is paired with HEAD-(n-1)state
-					if err := s.snaps.Cap(s.expectedRoot, s.snaps.CapLimit()); err != nil {
-						log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
-					}
+					go func() {
+						if err := s.snaps.Cap(s.expectedRoot, s.snaps.CapLimit()); err != nil {
+							log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
+						}
+					}()
 				}
 			}
 			return nil

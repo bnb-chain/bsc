@@ -105,7 +105,7 @@ func (p *triePrefetcher) close() {
 	for _, fetcher := range p.fetchers {
 		p.abortChan <- fetcher // safe to do multiple times
 		<-fetcher.term
-		if metrics.Enabled {
+		if metrics.EnabledExpensive {
 			if fetcher.root == p.root {
 				p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
 				p.accountDupMeter.Mark(int64(fetcher.dups))

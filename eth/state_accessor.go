@@ -138,7 +138,9 @@ func (eth *Ethereum) stateAtBlock(block *types.Block, reexec uint64, base *state
 			return nil, fmt.Errorf("processing block %d failed: %v", current.NumberU64(), err)
 		}
 		// Finalize the state so any modifications are written to the trie
-		root, _, err := statedb.Commit(eth.blockchain.Config().IsEIP158(current.Number()), nil)
+		statedb.Finalise(eth.blockchain.Config().IsEIP158(current.Number()))
+		statedb.AccountsIntermediateRoot()
+		root, _, err := statedb.Commit(nil)
 		if err != nil {
 			return nil, fmt.Errorf("stateAtBlock commit failed, number %d root %v: %w",
 				current.NumberU64(), current.Root().Hex(), err)

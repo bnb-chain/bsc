@@ -166,7 +166,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 			if chainConfig.IsByzantium(vmContext.BlockNumber) {
 				statedb.Finalise(true)
 			} else {
-				stateRoot, err := statedb.IntermediateRoot(chainConfig.IsEIP158(vmContext.BlockNumber))
+				stateRoot := statedb.IntermediateRoot(chainConfig.IsEIP158(vmContext.BlockNumber))
 				if err != nil {
 					return nil, nil, err
 				}
@@ -202,10 +202,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		txIndex++
 	}
 
-	_, err := statedb.IntermediateRoot(chainConfig.IsEIP158(vmContext.BlockNumber))
-	if err != nil {
-		return nil, nil, err
-	}
+	statedb.IntermediateRoot(chainConfig.IsEIP158(vmContext.BlockNumber))
 	// Add mining reward?
 	if miningReward > 0 {
 		// Add mining reward. The mining reward may be `0`, which only makes a difference in the cases
@@ -231,7 +228,9 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		statedb.AddBalance(pre.Env.Coinbase, minerReward)
 	}
 	// Commit block
-	root, _, err := statedb.Commit(chainConfig.IsEIP158(vmContext.BlockNumber), nil)
+	statedb.Finalise(chainConfig.IsEIP158(vmContext.BlockNumber))
+	statedb.AccountsIntermediateRoot()
+	root, _, err := statedb.Commit(nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not commit state: %v", err)
 		return nil, nil, NewError(ErrorEVM, fmt.Errorf("could not commit state: %v", err))
@@ -260,7 +259,9 @@ func MakePreState(db ethdb.Database, accounts core.GenesisAlloc) *state.StateDB 
 		}
 	}
 	// Commit and re-open to start with a clean state.
-	root, _, _ := statedb.Commit(false, nil)
+	statedb.Finalise(false)
+	statedb.AccountsIntermediateRoot()
+	root, _, _ := statedb.Commit(nil)
 	statedb, _ = state.New(root, sdb, nil)
 	return statedb
 }

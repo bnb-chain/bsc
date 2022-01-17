@@ -135,6 +135,7 @@ type worker struct {
 	engine      consensus.Engine
 	eth         Backend
 	chain       *core.BlockChain
+	fetcher     core.Prefetcher
 
 	// Feeds
 	pendingLogsFeed event.Feed
@@ -200,6 +201,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		chainConfig:        chainConfig,
 		engine:             engine,
 		eth:                eth,
+		fetcher:            core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
 		mux:                mux,
 		chain:              eth.BlockChain(),
 		isLocalBlock:       isLocalBlock,
@@ -995,6 +997,10 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 // and commits new work if consensus engine is running.
 func (w *worker) commit(uncles []*types.Header, interval func(), update bool, start time.Time) error {
 	s := w.current.state
+	err := s.WaitPipeVerification()
+	if err != nil {
+		return err
+	}
 	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 	if err != nil {
 		return err

@@ -488,6 +488,23 @@ func (t *TransactionsByPriceAndNonce) CurrentSize() int {
 	return len(t.heads)
 }
 
+func (t *TransactionsByPriceAndNonce) Copy() *TransactionsByPriceAndNonce {
+	var newTransactions TransactionsByPriceAndNonce
+	newTransactions.signer = t.signer
+	newTransactions.heads = make([]*Transaction, len(t.heads))
+	for idx, tx := range t.heads {
+		newTransactions.heads[idx] = tx
+	}
+	newTransactions.txs = make(map[common.Address]Transactions, len(t.txs))
+	for account, txs := range t.txs {
+		newTransactions.txs[account] = make([]*Transaction, len(txs))
+		for idx, tx := range txs {
+			newTransactions.txs[account][idx] = tx
+		}
+	}
+	return &newTransactions
+}
+
 // Message is a fully derived transaction and implements core.Message
 //
 // NOTE: In a future PR this will be removed.

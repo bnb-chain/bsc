@@ -268,11 +268,10 @@ func runCmd(ctx *cli.Context) error {
 	output, leftOverGas, stats, err := timedExec(bench, execFunc)
 
 	if ctx.GlobalBool(DumpFlag.Name) {
-		statedb.Commit(true, nil)
-		_, err := statedb.IntermediateRoot(true)
-		if err != nil {
-			return err
-		}
+		statedb.Finalise(true)
+		statedb.AccountsIntermediateRoot()
+		statedb.Commit(nil)
+		statedb.IntermediateRoot(true)
 		fmt.Println(string(statedb.Dump(false, false, true)))
 	}
 
