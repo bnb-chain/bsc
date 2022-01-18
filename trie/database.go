@@ -103,7 +103,12 @@ type rawNode []byte
 
 func (n rawNode) cache() (hashNode, bool)   { panic("this should never end up in a live trie") }
 func (n rawNode) fstring(ind string) string { panic("this should never end up in a live trie") }
-
+/*
+func (n rawNode) flag() nodeFlag { panic("this should never end up in a live trie") }
+func (n rawNode) prefix() []byte { panic("this should never end up in a live trie") }
+func (n rawNode) lenPrefix() uint8 { panic("this should never end up in a live trie") }
+func (n rawNode) val() node { panic("this should never end up in a live trie") }
+*/
 func (n rawNode) EncodeRLP(w io.Writer) error {
 	_, err := w.Write(n)
 	return err

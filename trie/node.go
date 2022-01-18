@@ -30,6 +30,12 @@ var indices = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b
 type node interface {
 	fstring(string) string
 	cache() (hashNode, bool)
+	/*
+	prefix() []byte
+	lenPrefix() uint8
+	val() node
+	flag() nodeFlag
+	*/
 }
 
 type (
@@ -104,7 +110,71 @@ func (n hashNode) fstring(ind string) string {
 func (n valueNode) fstring(ind string) string {
 	return fmt.Sprintf("%x ", []byte(n))
 }
+/*
+func (n *fullNode) prefix() []byte {
+    return nil
+}
+*/
+func (n *shortNode) prefix() []byte {
+	return n.Key
+}
+/*
+func (n hashNode) prefix() []byte {
+	return nil
+}
 
+func (n valueNode) prefix() []byte {
+	return nil
+}
+
+func (n *fullNode) lenPrefix() uint8 {
+	return 0
+}
+*/
+func (n *shortNode) lenPrefix() uint8 {
+	return uint8(len(n.Key))
+}
+/*
+func (n hashNode) lenPrefix() uint8 {
+	return 0
+}
+
+func (n valueNode) lenPrefix() uint8 {
+	return 0
+}
+
+func (n *fullNode) val() node {
+	return nil
+}
+*/
+func (n *shortNode) val() node {
+	return n.Val
+}
+/*
+func (n hashNode) val() node {
+	return nil
+}
+
+func (n valueNode) val() node {
+	return nil
+}
+
+func (n *fullNode) flag() nodeFlag {
+	return n.flags
+}
+*/
+func (n *shortNode) flag() nodeFlag {
+	return n.flags
+}
+/*
+func (n hashNode) flag() nodeFlag {
+	return nodeFlag{}
+}
+
+func (n valueNode) flag() nodeFlag {
+	return nodeFlag{}
+}
+*/
 func mustDecodeNode(hash, buf []byte) node {
 	n, err := decodeNode(hash, buf)
 	if err != nil {
