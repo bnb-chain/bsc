@@ -129,14 +129,14 @@ func NewPruner(db ethdb.Database, datadir, trieCachePath string, bloomSize, trie
 	}, nil
 }
 
-func NewBlockPruner(db ethdb.Database, n *node.Node, oldAncientPath, newAncientPath string, BlockAmountReserved uint64) (*BlockPruner, error) {
+func NewBlockPruner(db ethdb.Database, n *node.Node, oldAncientPath, newAncientPath string, BlockAmountReserved uint64) *BlockPruner {
 	return &BlockPruner{
 		db:                  db,
 		oldAncientPath:      oldAncientPath,
 		newAncientPath:      newAncientPath,
 		node:                n,
 		BlockAmountReserved: BlockAmountReserved,
-	}, nil
+	}
 }
 
 func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, stateBloom *stateBloom, bloomPath string, middleStateRoots map[common.Hash]struct{}, start time.Time) error {
@@ -425,7 +425,7 @@ func (p *BlockPruner) RecoverInterruption(name string, cache, handles int, names
 func CheckFileExist(path string) (bool, error) {
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			//Indicating the file didn't exist.
+			// Indicating the file didn't exist.
 			return false, nil
 		}
 		return true, err

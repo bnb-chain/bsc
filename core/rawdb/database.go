@@ -189,9 +189,9 @@ func WriteOffSetOfLastAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
 // NewFreezerDb only create a freezer without statedb.
 func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
-	frdb, errors := newFreezer(frz, namespace, readonly)
-	if errors != nil {
-		return nil, errors
+	frdb, err := newFreezer(frz, namespace, readonly)
+	if err != nil {
+		return nil, err
 	}
 	frdb.offset = newOffSet
 	frdb.frozen += newOffSet
@@ -371,7 +371,10 @@ func AncientInspect(db ethdb.Database) error {
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
 	// Get number of ancient rows inside the freezer.
 	ancients := counter(0)
-	if count, err := db.ItemAmountInAncient(); err == nil {
+	if count, err := db.ItemAmountInAncient(); err != nil {
+		log.Error("failed to get the items amount in ancientDB", "err", err)
+		return err
+	} else {
 		ancients = counter(count)
 	}
 	var endNumber counter

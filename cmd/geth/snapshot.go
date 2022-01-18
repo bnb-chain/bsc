@@ -259,7 +259,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		}
 	} else {
 		if len(layers) > 0 {
-			log.Info("Selecting bottom-most difflayer as the pruning target", "root", targetRoot, "height", headHeader.Number.Uint64()-127)
+			log.Info("Selecting bottom-most difflayer as the pruning target", "root", targetRoot, "height", headHeader.Number.Uint64()-uint64(len(layers)-1))
 		} else {
 			log.Info("Selecting user-specified state as the pruning target", "root", targetRoot)
 		}
@@ -282,16 +282,12 @@ func pruneBlock(ctx *cli.Context) error {
 	}
 
 	path, _ := filepath.Split(oldAncientPath)
-	if path != "" {
-		newAncientPath = filepath.Join(path, "ancient_back")
-	} else {
+	if path == "" {
 		return errors.New("prune failed, did not specify the AncientPath")
 	}
+	newAncientPath = filepath.Join(path, "ancient_back")
 
-	blockpruner, err := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
-	if err != nil {
-		return err
-	}
+	blockpruner := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
 
 	lock, exist, err := fileutil.Flock(filepath.Join(oldAncientPath, "PRUNEFLOCK"))
 	if err != nil {
@@ -299,12 +295,12 @@ func pruneBlock(ctx *cli.Context) error {
 		return err
 	}
 	if exist {
+		defer lock.Release()
 		log.Info("file lock existed, waiting for prune recovery and continue", "err", err)
 		if err := blockpruner.RecoverInterruption("chaindata", config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), "", false); err != nil {
 			log.Error("Pruning failed", "err", err)
 			return err
 		}
-		lock.Release()
 		log.Info("Block prune successfully")
 		return nil
 	}

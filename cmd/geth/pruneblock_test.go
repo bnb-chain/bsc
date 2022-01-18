@@ -86,7 +86,7 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 	defer node.Close()
 
 	//Initialize a block pruner for pruning, only remain amountReserved blocks backward.
-	testBlockPruner, err := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath, amountReserved)
+	testBlockPruner := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath, amountReserved)
 	if err != nil {
 		t.Fatalf("failed to make new blockpruner: %v", err)
 	}
