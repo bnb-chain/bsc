@@ -104,7 +104,11 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 	for blockNumber := startBlockNumber; blockNumber < startBlockNumber+amountReserved; blockNumber++ {
 		blockHash := rawdb.ReadCanonicalHash(dbBack, blockNumber)
 		block := rawdb.ReadBlock(dbBack, blockHash, blockNumber)
-		if reflect.DeepEqual(block, blockList[blockNumber-startBlockNumber]) {
+
+		if block.Hash() != blockHash {
+			t.Fatalf("block data did not match between oldDb and backupDb")
+		}
+		if blockList[blockNumber-startBlockNumber].Hash() != blockHash {
 			t.Fatalf("block data did not match between oldDb and backupDb")
 		}
 
@@ -117,8 +121,7 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 		if td == nil {
 			t.Fatalf("Failed to ReadTd: %v", consensus.ErrUnknownAncestor)
 		}
-		externTd := new(big.Int).Add(block.Difficulty(), td)
-		if reflect.DeepEqual(externTd, externTdList[blockNumber-startBlockNumber]) {
+		if !reflect.DeepEqual(td, externTdList[blockNumber-startBlockNumber]) {
 			t.Fatalf("externTd did not match between oldDb and backupDb")
 		}
 	}
@@ -198,8 +201,7 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 		if td == nil {
 			t.Fatalf("Failed to ReadTd: %v", consensus.ErrUnknownAncestor)
 		}
-		externTd := new(big.Int).Add(block.Difficulty(), td)
-		externTdList = append(externTdList, externTd)
+		externTdList = append(externTdList, td)
 	}
 
 	return db, blocks, blockList, receiptsList, externTdList, startBlockNumber, blockchain
