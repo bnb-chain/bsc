@@ -190,8 +190,8 @@ func (f *freezer) ItemAmountInAncient() (uint64, error) {
 }
 
 // AncientOffSet returns the offset of current ancientDB.
-func (f *freezer) AncientOffSet() (uint64, error) {
-	return atomic.LoadUint64(&f.offset), nil
+func (f *freezer) AncientOffSet() uint64 {
+	return atomic.LoadUint64(&f.offset)
 }
 
 // AncientSize returns the ancient size of the specified category.

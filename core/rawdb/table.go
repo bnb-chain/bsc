@@ -74,7 +74,7 @@ func (t *table) ItemAmountInAncient() (uint64, error) {
 }
 
 // AncientOffSet returns the offset of current ancientDB.
-func (t *table) AncientOffSet() (uint64, error) {
+func (t *table) AncientOffSet() uint64 {
 	return t.db.AncientOffSet()
 }
 

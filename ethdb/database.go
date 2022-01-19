@@ -86,7 +86,7 @@ type AncientReader interface {
 	ItemAmountInAncient() (uint64, error)
 
 	// AncientOffSet returns the offset of current ancientDB.
-	AncientOffSet() (uint64, error)
+	AncientOffSet() uint64
 }
 
 // AncientWriter contains the methods required to write to immutable ancient data.

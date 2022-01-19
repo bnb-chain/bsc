@@ -40,11 +40,11 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 		return
 	}
 	var (
-		batch     = db.NewBatch()
-		start     = time.Now()
-		logged    = start.Add(-7 * time.Second) // Unindex during import is fast, don't double log
-		hash      common.Hash
-		offset, _ = db.AncientOffSet()
+		batch  = db.NewBatch()
+		start  = time.Now()
+		logged = start.Add(-7 * time.Second) // Unindex during import is fast, don't double log
+		hash   common.Hash
+		offset = db.AncientOffSet()
 	)
 	for i := uint64(0) + offset; i < frozen+offset; i++ {
 		// Since the freezer has all data in sequential order on a file,

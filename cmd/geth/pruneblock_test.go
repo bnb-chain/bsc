@@ -24,7 +24,6 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
@@ -121,7 +120,7 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 		if td == nil {
 			t.Fatalf("Failed to ReadTd: %v", consensus.ErrUnknownAncestor)
 		}
-		if !reflect.DeepEqual(td, externTdList[blockNumber-startBlockNumber]) {
+		if td.Cmp(externTdList[blockNumber-startBlockNumber]) != 0 {
 			t.Fatalf("externTd did not match between oldDb and backupDb")
 		}
 	}

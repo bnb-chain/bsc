@@ -371,13 +371,12 @@ func (p *BlockPruner) RecoverInterruption(name string, cache, handles int, names
 
 	if newExist {
 		log.Info("New ancientDB_backup existed in interruption scenario")
-		var flockOfAncientBack bool
-		if exist, err := CheckFileExist(filepath.Join(p.newAncientPath, "PRUNEFLOCKBACK")); err != nil {
+		flockOfAncientBack, err := CheckFileExist(filepath.Join(p.newAncientPath, "PRUNEFLOCKBACK"))
+		if err != nil {
 			log.Error("Failed to check flock of ancientDB_Back %v", err)
 			return err
-		} else {
-			flockOfAncientBack = exist
 		}
+
 		// Indicating both old and new ancientDB existed concurrently.
 		// Delete directly for the new ancientdb to prune from start, e.g.: path ../chaindb/ancient_backup
 		if err := os.RemoveAll(p.newAncientPath); err != nil {

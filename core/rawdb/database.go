@@ -147,8 +147,8 @@ func (db *nofreezedb) SetDiffStore(diff ethdb.KeyValueStore) {
 	db.diffStore = diff
 }
 
-func (db *nofreezedb) AncientOffSet() (uint64, error) {
-	return 0, nil
+func (db *nofreezedb) AncientOffSet() uint64 {
+	return 0
 }
 
 // NewDatabase creates a high level database on top of a given key-value data
