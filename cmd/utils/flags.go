@@ -33,6 +33,10 @@ import (
 	"text/template"
 	"time"
 
+	pcsclite "github.com/gballet/go-libpcsclite"
+	gopsutil "github.com/shirou/gopsutil/mem"
+	"gopkg.in/urfave/cli.v1"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -66,9 +70,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/go-ethereum/params"
-	pcsclite "github.com/gballet/go-libpcsclite"
-	gopsutil "github.com/shirou/gopsutil/mem"
-	"gopkg.in/urfave/cli.v1"
 )
 
 func init() {
@@ -826,6 +827,16 @@ var (
 	CatalystFlag = cli.BoolFlag{
 		Name:  "catalyst",
 		Usage: "Catalyst mode (eth2 integration testing)",
+	}
+
+	BlockAmountReserved = cli.Uint64Flag{
+		Name:  "block-amount-reserved",
+		Usage: "Sets the expected remained amount of blocks for offline block prune",
+	}
+
+	CheckSnapshotWithMPT = cli.BoolFlag{
+		Name:  "check-snapshot-with-mpt",
+		Usage: "Enable checking between snapshot and MPT ",
 	}
 )
 
@@ -1764,7 +1775,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if ctx.GlobalIsSet(DataDirFlag.Name) {
 			// Check if we have an already initialized chain and fall back to
 			// that if so. Otherwise we need to generate a new genesis spec.
-			chaindb := MakeChainDatabase(ctx, stack, false) // TODO (MariusVanDerWijden) make this read only
+			chaindb := MakeChainDatabase(ctx, stack, false, false) // TODO (MariusVanDerWijden) make this read only
 			if rawdb.ReadCanonicalHash(chaindb, 0) != (common.Hash{}) {
 				cfg.Genesis = nil // fallback to db content
 			}
@@ -1883,7 +1894,7 @@ func SplitTagsFlag(tagsFlag string) map[string]string {
 }
 
 // MakeChainDatabase open an LevelDB using the flags passed to the client and will hard crash if it fails.
-func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.Database {
+func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
 	var (
 		cache   = ctx.GlobalInt(CacheFlag.Name) * ctx.GlobalInt(CacheDatabaseFlag.Name) / 100
 		handles = MakeDatabaseHandles()
@@ -1896,7 +1907,7 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.
 		chainDb, err = stack.OpenDatabase(name, cache, handles, "", readonly)
 	} else {
 		name := "chaindata"
-		chainDb, err = stack.OpenDatabaseWithFreezer(name, cache, handles, ctx.GlobalString(AncientFlag.Name), "", readonly)
+		chainDb, err = stack.OpenDatabaseWithFreezer(name, cache, handles, ctx.GlobalString(AncientFlag.Name), "", readonly, disableFreeze, false)
 	}
 	if err != nil {
 		Fatalf("Could not open database: %v", err)
@@ -1926,7 +1937,7 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 // MakeChain creates a chain manager from set command line flags.
 func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chainDb ethdb.Database) {
 	var err error
-	chainDb = MakeChainDatabase(ctx, stack, false) // TODO(rjl493456442) support read-only database
+	chainDb = MakeChainDatabase(ctx, stack, false, false) // TODO(rjl493456442) support read-only database
 	config, _, err := core.SetupGenesisBlock(chainDb, MakeGenesis(ctx))
 	if err != nil {
 		Fatalf("%v", err)

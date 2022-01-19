@@ -325,9 +325,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		rawdb.InitDatabaseFromFreezer(bc.db)
 		// If ancient database is not empty, reconstruct all missing
 		// indices in the background.
-		frozen, _ := bc.db.Ancients()
+		frozen, _ := bc.db.ItemAmountInAncient()
 		if frozen > 0 {
-			txIndexBlock = frozen
+			txIndexBlock, _ = bc.db.Ancients()
 		}
 	}
 	if err := bc.loadLastState(); err != nil {
@@ -362,7 +362,11 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		}
 	}
 	// Ensure that a previous crash in SetHead doesn't leave extra ancients
-	if frozen, err := bc.db.Ancients(); err == nil && frozen > 0 {
+	if frozen, err := bc.db.ItemAmountInAncient(); err == nil && frozen > 0 {
+		frozen, err = bc.db.Ancients()
+		if err != nil {
+			return nil, err
+		}
 		var (
 			needRewind bool
 			low        uint64

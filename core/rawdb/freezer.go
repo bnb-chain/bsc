@@ -85,6 +85,8 @@ type freezer struct {
 
 	quit      chan struct{}
 	closeOnce sync.Once
+
+	offset uint64 // Starting BlockNumber in current freezer
 }
 
 // newFreezer creates a chain freezer that moves ancient chain data into
@@ -164,7 +166,7 @@ func (f *freezer) Close() error {
 // in the freezer.
 func (f *freezer) HasAncient(kind string, number uint64) (bool, error) {
 	if table := f.tables[kind]; table != nil {
-		return table.has(number), nil
+		return table.has(number - f.offset), nil
 	}
 	return false, nil
 }
@@ -172,7 +174,7 @@ func (f *freezer) HasAncient(kind string, number uint64) (bool, error) {
 // Ancient retrieves an ancient binary blob from the append-only immutable files.
 func (f *freezer) Ancient(kind string, number uint64) ([]byte, error) {
 	if table := f.tables[kind]; table != nil {
-		return table.Retrieve(number)
+		return table.Retrieve(number - f.offset)
 	}
 	return nil, errUnknownTable
 }
@@ -180,6 +182,16 @@ func (f *freezer) Ancient(kind string, number uint64) ([]byte, error) {
 // Ancients returns the length of the frozen items.
 func (f *freezer) Ancients() (uint64, error) {
 	return atomic.LoadUint64(&f.frozen), nil
+}
+
+// ItemAmountInAncient returns the actual length of current ancientDB.
+func (f *freezer) ItemAmountInAncient() (uint64, error) {
+	return atomic.LoadUint64(&f.frozen) - atomic.LoadUint64(&f.offset), nil
+}
+
+// AncientOffSet returns the offset of current ancientDB.
+func (f *freezer) AncientOffSet() uint64 {
+	return atomic.LoadUint64(&f.offset)
 }
 
 // AncientSize returns the ancient size of the specified category.
@@ -216,23 +228,23 @@ func (f *freezer) AppendAncient(number uint64, hash, header, body, receipts, td 
 		}
 	}()
 	// Inject all the components into the relevant data tables
-	if err := f.tables[freezerHashTable].Append(f.frozen, hash[:]); err != nil {
+	if err := f.tables[freezerHashTable].Append(f.frozen-f.offset, hash[:]); err != nil {
 		log.Error("Failed to append ancient hash", "number", f.frozen, "hash", hash, "err", err)
 		return err
 	}
-	if err := f.tables[freezerHeaderTable].Append(f.frozen, header); err != nil {
+	if err := f.tables[freezerHeaderTable].Append(f.frozen-f.offset, header); err != nil {
 		log.Error("Failed to append ancient header", "number", f.frozen, "hash", hash, "err", err)
 		return err
 	}
-	if err := f.tables[freezerBodiesTable].Append(f.frozen, body); err != nil {
+	if err := f.tables[freezerBodiesTable].Append(f.frozen-f.offset, body); err != nil {
 		log.Error("Failed to append ancient body", "number", f.frozen, "hash", hash, "err", err)
 		return err
 	}
-	if err := f.tables[freezerReceiptTable].Append(f.frozen, receipts); err != nil {
+	if err := f.tables[freezerReceiptTable].Append(f.frozen-f.offset, receipts); err != nil {
 		log.Error("Failed to append ancient receipts", "number", f.frozen, "hash", hash, "err", err)
 		return err
 	}
-	if err := f.tables[freezerDifficultyTable].Append(f.frozen, td); err != nil {
+	if err := f.tables[freezerDifficultyTable].Append(f.frozen-f.offset, td); err != nil {
 		log.Error("Failed to append ancient difficulty", "number", f.frozen, "hash", hash, "err", err)
 		return err
 	}
@@ -249,7 +261,7 @@ func (f *freezer) TruncateAncients(items uint64) error {
 		return nil
 	}
 	for _, table := range f.tables {
-		if err := table.truncate(items); err != nil {
+		if err := table.truncate(items - f.offset); err != nil {
 			return err
 		}
 	}
