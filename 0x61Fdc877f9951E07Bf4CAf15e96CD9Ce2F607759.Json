@@ -1,0 +1,35 @@
+{
+"symbol": "CYR",
+"name": "CYRUS",
+"type": "BEP20",
+"address": "0x61Fdc877f9951E07Bf4CAf15e96CD9Ce2F607759",
+"ens_address": "",
+"decimals": 18,
+"website": "https://cyrustoken.info",
+"logo": {
+"src": "https://ir22.uploadboy.com/d/pg8ni2owdhdc/xznimmpyjazwbdghiaux5smj4lsgd74gtpitjrsxloehlhx7g5f77i4f4tocymmy5sutmy6o/cyrus-the-great.png?cdn=3218936",
+"width": "32px",
+"height": "32px",
+"ipfs_hash": ""
+},
+"support": {
+"email": "cyrustokens@gmail.com",
+"url": "https://cyrustoken.info"
+},
+"social": {
+"blog": "https://cyrustoken.info/blog",
+"chat": "https://t.me/cyrus_tokens",
+"discord": "",
+"facebook": "https://www.facebook.com/cyrustokens/",
+"forum": "",
+"github": "https://github.com/cyrustoken",
+"gitter": "",
+"instagram": "https://www.instagram.com/cyrustoken",
+"linkedin": "https://www.linkedin.com/in/cyrus-token-a0422322b/",
+"reddit": "https://www.reddit.com/user/cyrustoken",
+"slack": "",
+"telegram": "https://t.me/cyrus_tokens",
+"twitter": "",
+"youtube": ""
+}
+}
