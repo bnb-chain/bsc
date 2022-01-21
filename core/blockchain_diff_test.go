@@ -27,6 +27,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/consensus/clique"
+
 	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -643,4 +645,119 @@ func TestGetRootByDiffHash(t *testing.T) {
 	testGetRootByDiffHash(t, chain1, chain2, 20, types.StatusPossibleFork)
 	testGetRootByDiffHash(t, chain1, chain2, 24, types.StatusBlockNewer)
 	testGetRootByDiffHash(t, chain1, chain2, 35, types.StatusBlockTooNew)
+}
+
+func newBlockChainWithCliqueEngine(blocks int) *BlockChain {
+	signer := types.HomesteadSigner{}
+	db := rawdb.NewMemoryDatabase()
+	engine := clique.New(params.AllCliqueProtocolChanges.Clique, db)
+	genspec := &Genesis{
+		//Config:    params.TestChainConfig,
+		ExtraData: make([]byte, 32+common.AddressLength+65),
+		Alloc:     GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
+	}
+	copy(genspec.ExtraData[32:], testAddr[:])
+	genesis := genspec.MustCommit(db)
+
+	chain, _ := NewBlockChain(db, nil, params.AllCliqueProtocolChanges, engine, vm.Config{}, nil, nil)
+	generator := func(i int, block *BlockGen) {
+		// The chain maker doesn't have access to a chain, so the difficulty will be
+		// lets unset (nil). Set it here to the correct value.
+		// block.SetCoinbase(testAddr)
+		block.SetDifficulty(big.NewInt(2))
+
+		for idx, testBlock := range testBlocks {
+			// Specific block setting, the index in this generator has 1 diff from specified blockNr.
+			if i+1 == testBlock.blockNr {
+				for _, testTransaction := range testBlock.txs {
+					var transaction *types.Transaction
+					if testTransaction.to == nil {
+						transaction = types.NewContractCreation(block.TxNonce(testAddr),
+							testTransaction.value, uint64(commonGas), nil, testTransaction.data)
+					} else {
+						transaction = types.NewTransaction(block.TxNonce(testAddr), *testTransaction.to,
+							testTransaction.value, uint64(commonGas), nil, testTransaction.data)
+					}
+					tx, err := types.SignTx(transaction, signer, testKey)
+					if err != nil {
+						panic(err)
+					}
+					block.AddTxWithChain(chain, tx)
+				}
+				break
+			}
+
+			// Default block setting.
+			if idx == len(testBlocks)-1 {
+				// We want to simulate an empty middle block, having the same state as the
+				// first one. The last is needs a state change again to force a reorg.
+				for _, testTransaction := range testBlocks[0].txs {
+					tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), *testTransaction.to,
+						testTransaction.value, uint64(commonGas), nil, testTransaction.data), signer, testKey)
+					if err != nil {
+						panic(err)
+					}
+					block.AddTxWithChain(chain, tx)
+				}
+			}
+		}
+
+	}
+	bs, _ := GenerateChain(params.AllCliqueProtocolChanges, genesis, engine, db, blocks, generator)
+	for i, block := range bs {
+		header := block.Header()
+		if i > 0 {
+			header.ParentHash = bs[i-1].Hash()
+		}
+		header.Extra = make([]byte, 32+65)
+		header.Difficulty = big.NewInt(2)
+
+		sig, _ := crypto.Sign(clique.SealHash(header).Bytes(), testKey)
+		copy(header.Extra[len(header.Extra)-65:], sig)
+		bs[i] = block.WithSeal(header)
+	}
+
+	if _, err := chain.InsertChain(bs); err != nil {
+		panic(err)
+	}
+
+	return chain
+}
+
+func TestGenerateDiffLayer(t *testing.T) {
+	blockNum := 32
+	chain := newBlockChainWithCliqueEngine(blockNum)
+	defer chain.Stop()
+
+	for blockNr := 1; blockNr <= blockNum; blockNr++ {
+		block := chain.GetBlockByNumber(uint64(blockNr))
+		if block == nil {
+			t.Fatal("block should not be nil")
+		}
+
+		expDiffLayer := chain.GetTrustedDiffLayer(block.Hash())
+		if expDiffLayer == nil {
+			// Skip empty block.
+			if blockNr == 15 {
+				continue
+			}
+			t.Fatalf("unexpected nil diff layer, block number: %v, block hash: %v", blockNr, block.Hash())
+		}
+		expDiffHash, err := GetTrustedDiffHash(expDiffLayer)
+		if err != nil {
+			t.Fatalf("compute diff hash failed: %v", err)
+		}
+
+		diffLayer, err := chain.GenerateDiffLayer(block.Hash())
+		if err != nil || diffLayer == nil {
+			t.Fatalf("generate diff layer failed: %v", err)
+		}
+		diffHash, err := GetTrustedDiffHash(diffLayer)
+		if err != nil {
+			t.Fatalf("compute diff hash failed: %v", err)
+		}
+		if expDiffHash != diffHash {
+			t.Fatalf("generated wrong diff layer for block: %d, expected hash: %v, real hash: %v", blockNr, expDiffHash, diffHash)
+		}
+	}
 }

@@ -3190,6 +3190,66 @@ func (bc *BlockChain) GetTrustedDiffLayer(blockHash common.Hash) *types.DiffLaye
 	return diff
 }
 
+// GenerateDiffLayer generates DiffLayer of a specified block by replaying the block's transactions.
+// If the block is an empty block, no DiffLayer will be generated.
+// The generated DiffLayer whose Receipts are empty, whose DiffAccounts' storage root is empty.
+func (bc *BlockChain) GenerateDiffLayer(blockHash common.Hash) (*types.DiffLayer, error) {
+	if bc.snaps == nil {
+		return nil, fmt.Errorf("snapshot disabled, can't generate difflayer")
+	}
+
+	block := bc.GetBlockByHash(blockHash)
+	if block == nil {
+		return nil, fmt.Errorf("block not found, block number: %d, blockhash: %v", block.NumberU64(), blockHash)
+	}
+
+	parent := bc.GetBlockByHash(block.ParentHash())
+	if parent == nil {
+		return nil, fmt.Errorf("block not found, block number: %d, blockhash: %v", block.NumberU64()-1, block.ParentHash())
+	}
+	statedb, err := bc.StateAt(parent.Root())
+	if err != nil {
+		return nil, fmt.Errorf("state not found for block number (%d): %v", parent.NumberU64(), err)
+	}
+
+	// Empty block, no DiffLayer would be generated.
+	if block.Header().TxHash == types.EmptyRootHash {
+		return nil, nil
+	}
+
+	// Replay transactions.
+	signer := types.MakeSigner(bc.Config(), block.Number())
+	for _, tx := range block.Transactions() {
+		msg, _ := tx.AsMessage(signer)
+		txContext := NewEVMTxContext(msg)
+		context := NewEVMBlockContext(block.Header(), bc, nil)
+		vmenv := vm.NewEVM(context, txContext, statedb, bc.Config(), vm.Config{})
+
+		if posa, ok := bc.Engine().(consensus.PoSA); ok {
+			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
+				balance := statedb.GetBalance(consensus.SystemAddress)
+				if balance.Cmp(common.Big0) > 0 {
+					statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
+					statedb.AddBalance(block.Header().Coinbase, balance)
+				}
+			}
+		}
+
+		if _, err := ApplyMessage(vmenv, msg, new(GasPool).AddGas(tx.Gas())); err != nil {
+			return nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
+		}
+		statedb.Finalise(vmenv.ChainConfig().IsEIP158(block.Number()))
+	}
+
+	diffLayer := statedb.GenerateDiffLayer()
+	if diffLayer != nil {
+		diffLayer.BlockHash = blockHash
+		diffLayer.Number = block.NumberU64()
+	}
+
+	return diffLayer, nil
+}
+
 func GetTrustedDiffHash(d *types.DiffLayer) (common.Hash, error) {
 	diff := &types.ExtDiffLayer{
 		BlockHash: d.BlockHash,
