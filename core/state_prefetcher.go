@@ -82,9 +82,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 					return // Also invalid block, bail out
 				}
 				newStatedb.Prepare(tx.Hash(), header.Hash(), i)
-				if err := precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm); err != nil {
-					return // Ugh, something went horribly wrong, bail out
-				}
+				precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 			}
 		}(i)
 	}
@@ -93,10 +91,9 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 // precacheTransaction attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment. The goal is not to execute
 // the transaction successfully, rather to warm up touched data slots.
-func precacheTransaction(msg types.Message, config *params.ChainConfig, gaspool *GasPool, statedb *state.StateDB, header *types.Header, evm *vm.EVM) error {
+func precacheTransaction(msg types.Message, config *params.ChainConfig, gaspool *GasPool, statedb *state.StateDB, header *types.Header, evm *vm.EVM) {
 	// Update the evm with the new transaction context.
 	evm.Reset(NewEVMTxContext(msg), statedb)
 	// Add addresses to access list if applicable
-	_, err := ApplyMessage(evm, msg, gaspool)
-	return err
+	ApplyMessage(evm, msg, gaspool)
 }
