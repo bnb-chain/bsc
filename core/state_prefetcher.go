@@ -59,7 +59,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	for i := 0; i < prefetchThread; i++ {
 		sortTransactions[i] = make([]*types.Transaction, 0, len(transactions)/prefetchThread)
 	}
-	for idx, _ := range transactions {
+	for idx := range transactions {
 		threadIdx := idx % prefetchThread
 		sortTransactions[threadIdx] = append(sortTransactions[threadIdx], transactions[idx])
 	}
