@@ -77,8 +77,8 @@ type StateDB struct {
 	prefetcherLock sync.Mutex
 	prefetcher     *triePrefetcher
 	originalRoot   common.Hash // The pre-state root, before any changes were made
-	expectedRoot   common.Hash
-	stateRoot      common.Hash
+	expectedRoot   common.Hash // The state root in the block header
+	stateRoot      common.Hash // The calculation result of IntermediateRoot
 
 	trie           Trie
 	hasher         crypto.KeccakState

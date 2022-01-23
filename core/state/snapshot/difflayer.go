@@ -273,6 +273,7 @@ func (dl *diffLayer) MarkValid() {
 	dl.valid = true
 }
 
+// Represent whether the difflayer is been verified, does not means it is a valid or invalid difflayer
 func (dl *diffLayer) Verified() bool {
 	if dl.verifiedCh == nil {
 		return true
