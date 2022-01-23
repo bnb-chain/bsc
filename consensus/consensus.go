@@ -137,6 +137,7 @@ type PoW interface {
 	Hashrate() float64
 }
 
+//PoSA is a hybrid between the Proof-of-Staking and Proof-of-Authority consensus mechanism
 type PoSA interface {
 	Engine
 
