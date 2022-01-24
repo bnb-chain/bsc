@@ -135,7 +135,6 @@ type worker struct {
 	engine      consensus.Engine
 	eth         Backend
 	chain       *core.BlockChain
-	fetcher     core.Prefetcher
 
 	// Feeds
 	pendingLogsFeed event.Feed
@@ -201,7 +200,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		chainConfig:        chainConfig,
 		engine:             engine,
 		eth:                eth,
-		fetcher:            core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
 		mux:                mux,
 		chain:              eth.BlockChain(),
 		isLocalBlock:       isLocalBlock,
