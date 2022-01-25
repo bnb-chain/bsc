@@ -126,8 +126,8 @@ func handleRootRequest(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 
-	res, err := backend.Chain().GetRootByDiffHash(req.BlockNumber, req.BlockHash, req.DiffHash)
-	p2p.Send(peer.rw, RespondRootMsg, RootResponsePacket{
+	res := backend.Chain().GetRootByDiffHash(req.BlockNumber, req.BlockHash, req.DiffHash)
+	return p2p.Send(peer.rw, RespondRootMsg, RootResponsePacket{
 		RequestId:   req.RequestId,
 		Status:      res.Status,
 		BlockNumber: req.BlockNumber,
@@ -135,8 +135,6 @@ func handleRootRequest(backend Backend, msg Decoder, peer *Peer) error {
 		Root:        res.Root,
 		Extra:       defaultExtra,
 	})
-
-	return err
 }
 
 func handleRootResponse(backend Backend, msg Decoder, peer *Peer) error {

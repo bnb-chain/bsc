@@ -49,7 +49,7 @@ var (
 	// StatusVerified means the processing of request going as expected and found the root correctly.
 	StatusVerified          = VerifyStatus{Code: 0x100}
 	StatusFullVerified      = VerifyStatus{Code: 0x101, Msg: "state root full verified"}
-	StatusUntrustedVerified = VerifyStatus{Code: 0x102, Msg: "state root untrusted verified, because of difflayer not found"}
+	StatusPartiallyVerified = VerifyStatus{Code: 0x102, Msg: "state root partially verified, because of difflayer not found"}
 
 	// StatusFailed means the request has something wrong.
 	StatusFailed           = VerifyStatus{Code: 0x200}
@@ -57,11 +57,10 @@ var (
 	StatusImpossibleFork   = VerifyStatus{Code: 0x202, Msg: "verify failed because of impossible fork detected"}
 
 	// StatusUncertain means verify node can't give a certain result of the request.
-	StatusUncertain      = VerifyStatus{Code: 0x300}
-	StatusBlockTooNew    = VerifyStatus{Code: 0x301, Msg: "can’t verify because of block number larger than current height more than 11"}
-	StatusBlockNewer     = VerifyStatus{Code: 0x302, Msg: "can’t verify because of block number larger than current height"}
-	StatusPossibleFork   = VerifyStatus{Code: 0x303, Msg: "can’t verify because of possible fork detected"}
-	StatusRequestTooBusy = VerifyStatus{Code: 0x304, Msg: "can’t verify because of request too busy"}
+	StatusUncertain    = VerifyStatus{Code: 0x300}
+	StatusBlockTooNew  = VerifyStatus{Code: 0x301, Msg: "can’t verify because of block number larger than current height more than 11"}
+	StatusBlockNewer   = VerifyStatus{Code: 0x302, Msg: "can’t verify because of block number larger than current height"}
+	StatusPossibleFork = VerifyStatus{Code: 0x303, Msg: "can’t verify because of possible fork detected"}
 
 	// StatusUnexpectedError is unexpected internal error.
 	StatusUnexpectedError = VerifyStatus{Code: 0x400, Msg: "can’t verify because of unexpected internal error"}
@@ -414,7 +413,7 @@ type DiffLayer struct {
 	Accounts  []DiffAccount
 	Storages  []DiffStorage
 
-	DiffHash common.Hash
+	DiffHash atomic.Value
 }
 
 type ExtDiffLayer struct {
@@ -477,64 +476,15 @@ type DiffCode struct {
 	Code []byte
 }
 
-// DiffCodeSlice is used for sort
-type DiffCodeSlice []DiffCode
-
-func (s DiffCodeSlice) Len() int {
-	return len(s)
-}
-
-func (s DiffCodeSlice) Less(i, j int) bool {
-	return s[i].Hash.Hex() < s[j].Hash.Hex()
-}
-
-func (s DiffCodeSlice) Swap(i, j int) {
-	s[i].Hash, s[j].Hash = s[j].Hash, s[i].Hash
-	s[i].Code, s[j].Code = s[j].Code, s[i].Code
-}
-
 type DiffAccount struct {
 	Account common.Address
 	Blob    []byte
-}
-
-// DiffAccountSlice is used for sort
-type DiffAccountSlice []DiffAccount
-
-func (s DiffAccountSlice) Len() int {
-	return len(s)
-}
-
-func (s DiffAccountSlice) Less(i, j int) bool {
-	return s[i].Account.Hex() < s[j].Account.Hex()
-}
-
-func (s DiffAccountSlice) Swap(i, j int) {
-	s[i].Account, s[j].Account = s[j].Account, s[i].Account
-	s[i].Blob, s[j].Blob = s[j].Blob, s[i].Blob
 }
 
 type DiffStorage struct {
 	Account common.Address
 	Keys    []string
 	Vals    [][]byte
-}
-
-// DiffStorageSlice is used for sort
-type DiffStorageSlice []DiffStorage
-
-func (s DiffStorageSlice) Len() int {
-	return len(s)
-}
-
-func (s DiffStorageSlice) Less(i, j int) bool {
-	return s[i].Account.Hex() < s[j].Account.Hex()
-}
-
-func (s DiffStorageSlice) Swap(i, j int) {
-	s[i].Account, s[j].Account = s[j].Account, s[i].Account
-	s[i].Keys, s[j].Keys = s[j].Keys, s[i].Keys
-	s[i].Vals, s[j].Vals = s[j].Vals, s[i].Vals
 }
 
 type DiffAccountsInTx struct {

@@ -335,6 +335,9 @@ func (ps *peerSet) GetDiffPeer(pid string) downloader.IDiffPeer {
 
 // GetVerifyPeers returns an array of verify nodes.
 func (ps *peerSet) GetVerifyPeers() []*trustPeer {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
 	res := make([]*trustPeer, 0)
 	for _, p := range ps.peers {
 		if p.trustExt != nil {
