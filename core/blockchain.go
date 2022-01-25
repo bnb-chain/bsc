@@ -488,7 +488,22 @@ func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts) {
 	bc.receiptsCache.Add(hash, receipts)
 }
 
-func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer) {
+func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, sorted bool) {
+	if !sorted {
+		sort.SliceStable(diffLayer.Codes, func(i, j int) bool {
+			return diffLayer.Codes[i].Hash.Hex() < diffLayer.Codes[j].Hash.Hex()
+		})
+		sort.SliceStable(diffLayer.Destructs, func(i, j int) bool {
+			return diffLayer.Destructs[i].Hex() < (diffLayer.Destructs[j].Hex())
+		})
+		sort.SliceStable(diffLayer.Accounts, func(i, j int) bool {
+			return diffLayer.Accounts[i].Account.Hex() < diffLayer.Accounts[j].Account.Hex()
+		})
+		sort.SliceStable(diffLayer.Storages, func(i, j int) bool {
+			return diffLayer.Storages[i].Account.Hex() < diffLayer.Storages[j].Account.Hex()
+		})
+	}
+
 	if bc.diffLayerCache.Len() >= diffLayerCacheLimit {
 		bc.diffLayerCache.RemoveOldest()
 	}
@@ -1690,12 +1705,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		diffLayer.BlockHash = block.Hash()
 		diffLayer.Number = block.NumberU64()
 
-		sort.Sort(types.DiffCodeSlice(diffLayer.Codes))
-		sort.Sort(common.AddressSlice(diffLayer.Destructs))
-		sort.Sort(types.DiffAccountSlice(diffLayer.Accounts))
-		sort.Sort(types.DiffStorageSlice(diffLayer.Storages))
-
-		bc.cacheDiffLayer(diffLayer)
+		go bc.cacheDiffLayer(diffLayer, false)
 	}
 	triedb := bc.stateCache.TrieDB()
 
@@ -2730,9 +2740,14 @@ func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string, fu
 		return nil
 	}
 
+	diffHash := common.Hash{}
+	if diffLayer.DiffHash.Load() != nil {
+		diffHash = diffLayer.DiffHash.Load().(common.Hash)
+	}
+
 	bc.diffMux.Lock()
 	defer bc.diffMux.Unlock()
-	if blockHash, exist := bc.diffHashToBlockHash[diffLayer.DiffHash]; exist && blockHash == diffLayer.BlockHash {
+	if blockHash, exist := bc.diffHashToBlockHash[diffHash]; exist && blockHash == diffLayer.BlockHash {
 		return nil
 	}
 
@@ -2746,28 +2761,28 @@ func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string, fu
 		return nil
 	}
 	if _, exist := bc.diffPeersToDiffHashes[pid]; exist {
-		if _, alreadyHas := bc.diffPeersToDiffHashes[pid][diffLayer.DiffHash]; alreadyHas {
+		if _, alreadyHas := bc.diffPeersToDiffHashes[pid][diffHash]; alreadyHas {
 			return nil
 		}
 	} else {
 		bc.diffPeersToDiffHashes[pid] = make(map[common.Hash]struct{})
 	}
-	bc.diffPeersToDiffHashes[pid][diffLayer.DiffHash] = struct{}{}
+	bc.diffPeersToDiffHashes[pid][diffHash] = struct{}{}
 	if _, exist := bc.diffNumToBlockHashes[diffLayer.Number]; !exist {
 		bc.diffNumToBlockHashes[diffLayer.Number] = make(map[common.Hash]struct{})
 	}
 	bc.diffNumToBlockHashes[diffLayer.Number][diffLayer.BlockHash] = struct{}{}
 
-	if _, exist := bc.diffHashToPeers[diffLayer.DiffHash]; !exist {
-		bc.diffHashToPeers[diffLayer.DiffHash] = make(map[string]struct{})
+	if _, exist := bc.diffHashToPeers[diffHash]; !exist {
+		bc.diffHashToPeers[diffHash] = make(map[string]struct{})
 	}
-	bc.diffHashToPeers[diffLayer.DiffHash][pid] = struct{}{}
+	bc.diffHashToPeers[diffHash][pid] = struct{}{}
 
 	if _, exist := bc.blockHashToDiffLayers[diffLayer.BlockHash]; !exist {
 		bc.blockHashToDiffLayers[diffLayer.BlockHash] = make(map[common.Hash]*types.DiffLayer)
 	}
-	bc.blockHashToDiffLayers[diffLayer.BlockHash][diffLayer.DiffHash] = diffLayer
-	bc.diffHashToBlockHash[diffLayer.DiffHash] = diffLayer.BlockHash
+	bc.blockHashToDiffLayers[diffLayer.BlockHash][diffHash] = diffLayer
+	bc.diffHashToBlockHash[diffHash] = diffLayer.BlockHash
 
 	return nil
 }
@@ -3035,60 +3050,55 @@ func EnablePersistDiff(limit uint64) BlockChainOption {
 	}
 }
 
-func (bc *BlockChain) GetRootByDiffHash(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) (*types.VerifyResult, error) {
+func (bc *BlockChain) GetRootByDiffHash(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) *types.VerifyResult {
 	var res types.VerifyResult
 	res.BlockNumber = blockNumber
 	res.BlockHash = blockHash
 
-	if blockNumber > bc.CurrentHeader().Number.Uint64()+11 {
+	if blockNumber > bc.CurrentHeader().Number.Uint64()+maxDiffForkDist {
 		res.Status = types.StatusBlockTooNew
-		return &res, nil
+		return &res
 	} else if blockNumber > bc.CurrentHeader().Number.Uint64() {
 		res.Status = types.StatusBlockNewer
-		return &res, nil
-	}
-
-	diff := bc.GetTrustedDiffLayer(blockHash)
-	if diff != nil {
-		if diff.DiffHash == (common.Hash{}) {
-			hash, err := GetTrustedDiffHash(diff)
-			if err != nil {
-				res.Status = types.StatusUnexpectedError
-				return &res, err
-			}
-
-			diff.DiffHash = hash
-		}
-
-		if diffHash != diff.DiffHash {
-			res.Status = types.StatusDiffHashMismatch
-			return &res, nil
-		}
-
-		header := bc.GetHeaderByHash(blockHash)
-		if header == nil {
-			res.Status = types.StatusUnexpectedError
-			return &res, fmt.Errorf("unexpected error, header not found")
-		}
-		res.Status = types.StatusFullVerified
-		res.Root = header.Root
-		return &res, nil
+		return &res
 	}
 
 	header := bc.GetHeaderByHash(blockHash)
 	if header == nil {
-		if blockNumber > bc.CurrentHeader().Number.Uint64()-11 {
+		if blockNumber > bc.CurrentHeader().Number.Uint64()-maxDiffForkDist {
 			res.Status = types.StatusPossibleFork
-			return &res, nil
+			return &res
 		}
 
 		res.Status = types.StatusImpossibleFork
-		return &res, nil
+		return &res
 	}
 
-	res.Status = types.StatusUntrustedVerified
+	diff := bc.GetTrustedDiffLayer(blockHash)
+	if diff != nil {
+		if diff.DiffHash.Load() == nil {
+			hash, err := CalculateDiffHash(diff)
+			if err != nil {
+				res.Status = types.StatusUnexpectedError
+				return &res
+			}
+
+			diff.DiffHash.Store(hash)
+		}
+
+		if diffHash != diff.DiffHash.Load().(common.Hash) {
+			res.Status = types.StatusDiffHashMismatch
+			return &res
+		}
+
+		res.Status = types.StatusFullVerified
+		res.Root = header.Root
+		return &res
+	}
+
+	res.Status = types.StatusPartiallyVerified
 	res.Root = header.Root
-	return &res, nil
+	return &res
 }
 
 func (bc *BlockChain) GetTrustedDiffLayer(blockHash common.Hash) *types.DiffLayer {
@@ -3160,12 +3170,18 @@ func (bc *BlockChain) GenerateDiffLayer(blockHash common.Hash) (*types.DiffLayer
 	if diffLayer != nil {
 		diffLayer.BlockHash = blockHash
 		diffLayer.Number = block.NumberU64()
+
+		bc.cacheDiffLayer(diffLayer, true)
 	}
 
 	return diffLayer, nil
 }
 
-func GetTrustedDiffHash(d *types.DiffLayer) (common.Hash, error) {
+func CalculateDiffHash(d *types.DiffLayer) (common.Hash, error) {
+	if d == nil {
+		return common.Hash{}, fmt.Errorf("nil diff layer")
+	}
+
 	diff := &types.ExtDiffLayer{
 		BlockHash: d.BlockHash,
 		Receipts:  make([]*types.ReceiptForStorage, 0),
