@@ -288,7 +288,7 @@ func rawDataToDiffLayer(data rlp.RawValue) (*types.DiffLayer, error) {
 	hasher.Write(data)
 	var diffHash common.Hash
 	hasher.Sum(diffHash[:0])
-	diff.DiffHash = diffHash
+	diff.DiffHash.Store(diffHash)
 	hasher.Reset()
 	return &diff, nil
 }
@@ -600,13 +600,13 @@ func testGetRootByDiffHash(t *testing.T, chain1, chain2 *BlockChain, blockNumber
 	diffHash2 := types.EmptyRootHash
 	if status != types.StatusDiffHashMismatch {
 		var err error
-		diffHash2, err = GetTrustedDiffHash(diffLayer2)
+		diffHash2, err = CalculateDiffHash(diffLayer2)
 		if err != nil {
 			t.Fatalf("failed to compute diff hash: %v", err)
 		}
 	}
 
-	if status == types.StatusUntrustedVerified {
+	if status == types.StatusPartiallyVerified {
 		block1 := chain1.GetBlockByNumber(blockNumber)
 		if block1 == nil {
 			t.Fatalf("failed to find block, number: %v", blockNumber)
@@ -614,7 +614,7 @@ func testGetRootByDiffHash(t *testing.T, chain1, chain2 *BlockChain, blockNumber
 		chain1.diffLayerCache.Remove(block1.Hash())
 	}
 
-	result, _ := chain1.GetRootByDiffHash(blockNumber, block2.Hash(), diffHash2)
+	result := chain1.GetRootByDiffHash(blockNumber, block2.Hash(), diffHash2)
 	if result.Status != expect.Status {
 		t.Fatalf("failed to verify block, number: %v, expect status: %v, real status: %v", blockNumber, expect.Status, result.Status)
 	}
@@ -639,7 +639,7 @@ func TestGetRootByDiffHash(t *testing.T) {
 	}
 
 	testGetRootByDiffHash(t, chain1, chain2, 10, types.StatusFullVerified)
-	testGetRootByDiffHash(t, chain1, chain2, 2, types.StatusUntrustedVerified)
+	testGetRootByDiffHash(t, chain1, chain2, 2, types.StatusPartiallyVerified)
 	testGetRootByDiffHash(t, chain1, chain2, 10, types.StatusDiffHashMismatch)
 	testGetRootByDiffHash(t, chain1, chain2, 12, types.StatusImpossibleFork)
 	testGetRootByDiffHash(t, chain1, chain2, 20, types.StatusPossibleFork)
@@ -743,7 +743,7 @@ func TestGenerateDiffLayer(t *testing.T) {
 			}
 			t.Fatalf("unexpected nil diff layer, block number: %v, block hash: %v", blockNr, block.Hash())
 		}
-		expDiffHash, err := GetTrustedDiffHash(expDiffLayer)
+		expDiffHash, err := CalculateDiffHash(expDiffLayer)
 		if err != nil {
 			t.Fatalf("compute diff hash failed: %v", err)
 		}
@@ -752,7 +752,7 @@ func TestGenerateDiffLayer(t *testing.T) {
 		if err != nil || diffLayer == nil {
 			t.Fatalf("generate diff layer failed: %v", err)
 		}
-		diffHash, err := GetTrustedDiffHash(diffLayer)
+		diffHash, err := CalculateDiffHash(diffLayer)
 		if err != nil {
 			t.Fatalf("compute diff hash failed: %v", err)
 		}

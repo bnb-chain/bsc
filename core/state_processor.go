@@ -118,7 +118,7 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 				return statedb, receipts, logs, gasUsed, nil
 			}
 			log.Error("do light process err at block", "num", block.NumberU64(), "err", err)
-			p.bc.removeDiffLayers(diffLayer.DiffHash)
+			p.bc.removeDiffLayers(diffLayer.DiffHash.Load().(common.Hash))
 			// prepare new statedb
 			statedb.StopPrefetcher()
 			parent := p.bc.GetHeader(block.ParentHash(), block.NumberU64()-1)

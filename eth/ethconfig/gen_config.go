@@ -24,6 +24,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DisablePeerTxBroadcast  bool
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
+		TrustDiscoveryURLs      []string
 		NoPruning               bool
 		NoPrefetch              bool
 		DirectBroadcast         bool
@@ -79,6 +80,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.DisablePeerTxBroadcast = c.DisablePeerTxBroadcast
 	enc.EthDiscoveryURLs = c.EthDiscoveryURLs
 	enc.SnapDiscoveryURLs = c.SnapDiscoveryURLs
+	enc.TrustDiscoveryURLs = c.TrustDiscoveryURLs
 	enc.NoPruning = c.NoPruning
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
@@ -137,6 +139,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DisablePeerTxBroadcast  *bool
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
+		TrustDiscoveryURLs      []string
 		NoPruning               *bool
 		NoPrefetch              *bool
 		DirectBroadcast         *bool
@@ -206,6 +209,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.SnapDiscoveryURLs != nil {
 		c.SnapDiscoveryURLs = dec.SnapDiscoveryURLs
+	}
+	if dec.TrustDiscoveryURLs != nil {
+		c.TrustDiscoveryURLs = dec.TrustDiscoveryURLs
 	}
 	if dec.NoPruning != nil {
 		c.NoPruning = *dec.NoPruning
