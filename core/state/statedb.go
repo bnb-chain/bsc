@@ -402,6 +402,9 @@ func (s *StateDB) GetProof(addr common.Address) ([][]byte, error) {
 // GetProofByHash returns the Merkle proof for a given account.
 func (s *StateDB) GetProofByHash(addrHash common.Hash) ([][]byte, error) {
 	var proof proofList
+	if _, err := s.Trie(); err != nil {
+		return nil, err
+	}
 	err := s.trie.Prove(addrHash[:], 0, &proof)
 	return proof, err
 }
