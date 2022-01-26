@@ -152,9 +152,12 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	for _, c := range diffLayer.Codes {
 		fullDiffCode[c.Hash] = c.Code
 	}
-
+	stateTrie, err := statedb.Trie()
+	if err != nil {
+		return nil, nil, 0, err
+	}
 	for des := range snapDestructs {
-		statedb.Trie().TryDelete(des[:])
+		stateTrie.TryDelete(des[:])
 	}
 	threads := gopool.Threads(len(snapAccounts))
 
@@ -195,7 +198,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				// fetch previous state
 				var previousAccount state.Account
 				stateMux.Lock()
-				enc, err := statedb.Trie().TryGet(diffAccount[:])
+				enc, err := stateTrie.TryGet(diffAccount[:])
 				stateMux.Unlock()
 				if err != nil {
 					errChan <- err
@@ -307,7 +310,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 					return
 				}
 				stateMux.Lock()
-				err = statedb.Trie().TryUpdate(diffAccount[:], bz)
+				err = stateTrie.TryUpdate(diffAccount[:], bz)
 				stateMux.Unlock()
 				if err != nil {
 					errChan <- err

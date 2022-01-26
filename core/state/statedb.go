@@ -241,8 +241,20 @@ func (s *StateDB) Error() error {
 	return s.dbErr
 }
 
-func (s *StateDB) Trie() Trie {
-	return s.trie
+// Not thread safe
+func (s *StateDB) Trie() (Trie, error) {
+	if s.trie == nil {
+		err := s.WaitPipeVerification()
+		if err != nil {
+			return nil, err
+		}
+		tr, err := s.db.OpenTrie(s.originalRoot)
+		if err != nil {
+			return nil, err
+		}
+		s.trie = tr
+	}
+	return s.trie, nil
 }
 
 func (s *StateDB) SetDiff(diffLayer *types.DiffLayer, diffTries map[common.Address]Trie, diffCode map[common.Hash][]byte) {
