@@ -18,6 +18,7 @@ package core
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -25,6 +26,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
+
+const badBlockCacheExpire = 30 * time.Second
 
 // BlockValidator is responsible for validating block headers, uncles and
 // processed state.
@@ -53,6 +56,9 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	// Check whether the block's known, and if not, that it's linkable
 	if v.bc.HasBlockAndState(block.Hash(), block.NumberU64()) {
 		return ErrKnownBlock
+	}
+	if v.bc.isCachedBadBlock(block) {
+		return ErrKnownBadBlock
 	}
 	// Header validity is known at this point, check the uncles and transactions
 	header := block.Header()
@@ -106,7 +112,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 // transition, such as amount of used gas, the receipt roots and the state root
 // itself. ValidateState returns a database batch if the validation was a success
 // otherwise nil and an error is returned.
-func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateDB, receipts types.Receipts, usedGas uint64) error {
+func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateDB, receipts types.Receipts, usedGas uint64, skipHeavyVerify bool) error {
 	header := block.Header()
 	if block.GasUsed() != usedGas {
 		return fmt.Errorf("invalid gas used (remote: %d local: %d)", block.GasUsed(), usedGas)
@@ -125,17 +131,26 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			receiptSha := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 			if receiptSha != header.ReceiptHash {
 				return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
-			} else {
-				return nil
 			}
+			return nil
 		},
-		func() error {
+	}
+	if skipHeavyVerify {
+		validateFuns = append(validateFuns, func() error {
+			if err := statedb.WaitPipeVerification(); err != nil {
+				return err
+			}
+			statedb.Finalise(v.config.IsEIP158(header.Number))
+			statedb.AccountsIntermediateRoot()
+			return nil
+		})
+	} else {
+		validateFuns = append(validateFuns, func() error {
 			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", header.Root, root)
-			} else {
-				return nil
 			}
-		},
+			return nil
+		})
 	}
 	validateRes := make(chan error, len(validateFuns))
 	for _, f := range validateFuns {

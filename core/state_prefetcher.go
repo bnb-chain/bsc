@@ -17,7 +17,6 @@
 package core
 
 import (
-	"runtime"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/consensus"
@@ -26,6 +25,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 )
+
+const prefetchThread = 2
 
 // statePrefetcher is a basic Prefetcher, which blindly executes a block on top
 // of an arbitrary state with the goal of prefetching potentially useful state
@@ -54,25 +55,23 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		signer = types.MakeSigner(p.config, header.Number)
 	)
 	transactions := block.Transactions()
-	threads := runtime.NumCPU()
-	batch := len(transactions) / (threads + 1)
-	if batch == 0 {
-		return
+	sortTransactions := make([][]*types.Transaction, prefetchThread)
+	for i := 0; i < prefetchThread; i++ {
+		sortTransactions[i] = make([]*types.Transaction, 0, len(transactions)/prefetchThread)
+	}
+	for idx := range transactions {
+		threadIdx := idx % prefetchThread
+		sortTransactions[threadIdx] = append(sortTransactions[threadIdx], transactions[idx])
 	}
 	// No need to execute the first batch, since the main processor will do it.
-	for i := 1; i <= threads; i++ {
-		start := i * batch
-		end := (i + 1) * batch
-		if i == threads {
-			end = len(transactions)
-		}
-		go func(start, end int) {
+	for i := 0; i < prefetchThread; i++ {
+		go func(idx int) {
 			newStatedb := statedb.Copy()
 			gaspool := new(GasPool).AddGas(block.GasLimit())
 			blockContext := NewEVMBlockContext(header, p.bc, nil)
 			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
 			// Iterate over and process the individual transactions
-			for i, tx := range transactions[start:end] {
+			for i, tx := range sortTransactions[idx] {
 				// If block precaching was interrupted, abort
 				if interrupt != nil && atomic.LoadUint32(interrupt) == 1 {
 					return
@@ -82,23 +81,19 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 				if err != nil {
 					return // Also invalid block, bail out
 				}
-				newStatedb.Prepare(tx.Hash(), block.Hash(), i)
-				if err := precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm); err != nil {
-					return // Ugh, something went horribly wrong, bail out
-				}
+				newStatedb.Prepare(tx.Hash(), header.Hash(), i)
+				precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 			}
-		}(start, end)
+		}(i)
 	}
-
 }
 
 // precacheTransaction attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment. The goal is not to execute
 // the transaction successfully, rather to warm up touched data slots.
-func precacheTransaction(msg types.Message, config *params.ChainConfig, gaspool *GasPool, statedb *state.StateDB, header *types.Header, evm *vm.EVM) error {
+func precacheTransaction(msg types.Message, config *params.ChainConfig, gaspool *GasPool, statedb *state.StateDB, header *types.Header, evm *vm.EVM) {
 	// Update the evm with the new transaction context.
 	evm.Reset(NewEVMTxContext(msg), statedb)
 	// Add addresses to access list if applicable
-	_, err := ApplyMessage(evm, msg, gaspool)
-	return err
+	ApplyMessage(evm, msg, gaspool)
 }

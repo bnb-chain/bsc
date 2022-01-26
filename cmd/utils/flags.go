@@ -127,6 +127,10 @@ var (
 		Usage: "Enable diffy sync, Please note that enable diffsync will improve the syncing speed, " +
 			"but will degrade the security to light client level",
 	}
+	PipeCommitFlag = cli.BoolFlag{
+		Name:  "pipecommit",
+		Usage: "Enable MPT pipeline commit, it will improve syncing performance. It is an experimental feature(default is false)",
+	}
 	RangeLimitFlag = cli.BoolFlag{
 		Name:  "rangelimit",
 		Usage: "Enable 5000 blocks limit for range query",
@@ -1631,6 +1635,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(DiffSyncFlag.Name) {
 		cfg.DiffSync = ctx.GlobalBool(DiffSyncFlag.Name)
+	}
+	if ctx.GlobalIsSet(PipeCommitFlag.Name) {
+		cfg.PipeCommit = ctx.GlobalBool(PipeCommitFlag.Name)
 	}
 	if ctx.GlobalIsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.GlobalBool(RangeLimitFlag.Name)
