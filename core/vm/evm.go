@@ -181,8 +181,9 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 
 	// vmConfig.EVMInterpreter will be used by EVM-C, it won't be checked here
 	// as we always want to have the built-in EVM as the failover option.
-	evm.interpreters = append(evm.interpreters, NewEVMInterpreter(evm, vmConfig))
-	evm.interpreter = evm.interpreters[0]
+	interpreter := NewEVMInterpreter(evm, vmConfig)
+	evm.interpreters = append(evm.interpreters, interpreter)
+	evm.interpreter = interpreter
 
 	return evm
 }
