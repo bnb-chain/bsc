@@ -40,9 +40,8 @@ import (
 )
 
 const (
-	preLoadLimit         = 128
-	defaultNumOfSlots    = 100
-	DefaultNumOfParallel = 8
+	preLoadLimit      = 128
+	defaultNumOfSlots = 100
 )
 
 type revision struct {
@@ -133,6 +132,13 @@ type StateDB struct {
 	stateReadsInSlot          map[common.Address]StateKeys
 	balanceChangedInSlot      map[common.Address]struct{} // the address's balance has been changed
 	balanceReadsInSlot        map[common.Address]struct{} // the address's balance has been read and used.
+	// Transaction will pay gas fee to system address.
+	// Parallel execution will clear system address's balance at first, in order to maintain transaction's
+	// gas fee value. Normal transaction will access system address twice, otherwise it means the transaction
+	// needs real system address's balance, the transaction will be marked redo with keepSystemAddressBalance = true
+	systemAddress            common.Address
+	systemAddressCount       int
+	keepSystemAddressBalance bool
 
 	// DB error.
 	// State objects are used by the consensus core and VM which are
@@ -182,21 +188,32 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 
 // With parallel, each execute slot would have its own stateDB.
 // NewSlotDB creates a new slot stateDB base on the provided stateDB.
-func NewSlotDB(db *StateDB, systemAddr common.Address, txIndex int) *StateDB {
+func NewSlotDB(db *StateDB, systemAddr common.Address, txIndex int, keepSystem bool) *StateDB {
 	slotDB := db.CopyForSlot()
 	slotDB.originalRoot = db.originalRoot
 	slotDB.baseTxIndex = txIndex
+	slotDB.systemAddress = systemAddr
+	slotDB.systemAddressCount = 0
+	slotDB.keepSystemAddressBalance = keepSystem
+
 	// clear the slotDB's validator's balance first
 	// for slotDB, systemAddr's value is the tx's gas fee
-	slotDB.SetBalance(systemAddr, big.NewInt(0))
+	if !keepSystem {
+		slotDB.SetBalance(systemAddr, big.NewInt(0))
+	}
+
 	return slotDB
 }
 
 // to avoid new slotDB for each Tx, slotDB should be valid and merged
-func ReUseSlotDB(slotDB *StateDB, systemAddr common.Address) *StateDB {
-	slotDB.SetBalance(systemAddr, big.NewInt(0))
+func ReUseSlotDB(slotDB *StateDB, keepSystem bool) *StateDB {
+	if !keepSystem {
+		slotDB.SetBalance(slotDB.systemAddress, big.NewInt(0))
+	}
 	slotDB.logs = make(map[common.Hash][]*types.Log, defaultNumOfSlots)
 	slotDB.logSize = 0
+	slotDB.systemAddressCount = 0
+	slotDB.keepSystemAddressBalance = keepSystem
 	slotDB.stateObjectSuicided = make(map[common.Address]struct{}, defaultNumOfSlots)
 	slotDB.codeReadInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
 	slotDB.codeChangeInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
@@ -262,7 +279,7 @@ func (s *StateDB) getStateObjectFromStateObjects(addr common.Address) (*StateObj
 // A bit similar to StateDB.Copy(),
 // mainly copy stateObjects, since slotDB has been finalized.
 // return: objSuicided, stateChanges, balanceChanges, codeChanges
-func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, systemAddr common.Address) (map[common.Address]struct{}, map[common.Address]StateKeys, map[common.Address]struct{}, map[common.Address]struct{}) {
+func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt) (map[common.Address]struct{}, map[common.Address]StateKeys, map[common.Address]struct{}, map[common.Address]struct{}) {
 	// receipt.Logs with unified log Index within a block
 	// align slotDB's logs Index to the block stateDB's logSize
 	for _, l := range slotReceipt.Logs {
@@ -272,7 +289,12 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, syste
 
 	// before merge, do validator reward first: AddBalance to consensus.SystemAddress
 	// object of SystemAddress is take care specially
-	s.AddBalance(systemAddr, slotDb.GetBalance(systemAddr))
+	systemAddress := slotDb.systemAddress
+	if slotDb.keepSystemAddressBalance {
+		s.SetBalance(systemAddress, slotDb.GetBalance(systemAddress))
+	} else {
+		s.AddBalance(systemAddress, slotDb.GetBalance(systemAddress))
+	}
 
 	// only merge dirty objects
 	for addr := range slotDb.stateObjectsDirty {
@@ -280,7 +302,7 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, syste
 			s.stateObjectsDirty[addr] = struct{}{}
 		}
 
-		if addr == systemAddr {
+		if addr == systemAddress {
 			continue
 		}
 
@@ -297,7 +319,7 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, syste
 	}
 
 	for addr, obj := range slotDb.dirtiedStateObjectsInSlot {
-		if addr == systemAddr {
+		if addr == systemAddress {
 			continue
 		}
 
@@ -510,6 +532,11 @@ func (s *StateDB) Empty(addr common.Address) bool {
 // GetBalance retrieves the balance from the given address or 0 if object not found
 func (s *StateDB) GetBalance(addr common.Address) *big.Int {
 	s.balanceReadsInSlot[addr] = struct{}{}
+	if s.isSlotDB {
+		if addr == s.systemAddress {
+			s.systemAddressCount++
+		}
+	}
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Balance()
@@ -551,6 +578,9 @@ func (s *StateDB) StateReadsInSlot() map[common.Address]StateKeys {
 
 func (s *StateDB) BalanceReadsInSlot() map[common.Address]struct{} {
 	return s.balanceReadsInSlot
+}
+func (s *StateDB) SystemAddressRedo() bool {
+	return s.systemAddressCount > 2
 }
 
 func (s *StateDB) GetCode(addr common.Address) []byte {
@@ -682,6 +712,9 @@ func (s *StateDB) AddBalance(addr common.Address, amount *big.Int) {
 		// just in case other tx creates this account, we will miss this if we only add this account when found
 		s.balanceChangedInSlot[addr] = struct{}{}
 		s.balanceReadsInSlot[addr] = struct{}{} // add balance will perform a read operation first
+		if addr == s.systemAddress {
+			s.systemAddressCount++
+		}
 	}
 
 	stateObject := s.GetOrNewStateObject(addr)
@@ -706,6 +739,9 @@ func (s *StateDB) SubBalance(addr common.Address, amount *big.Int) {
 		// just in case other tx creates this account, we will miss this if we only add this account when found
 		s.balanceChangedInSlot[addr] = struct{}{}
 		s.balanceReadsInSlot[addr] = struct{}{}
+		if addr == s.systemAddress {
+			s.systemAddressCount++
+		}
 	}
 
 	stateObject := s.GetOrNewStateObject(addr)
@@ -735,8 +771,10 @@ func (s *StateDB) SetBalance(addr common.Address, amount *big.Int) {
 			} else {
 				stateObject.SetBalance(amount)
 			}
-
 			s.balanceChangedInSlot[addr] = struct{}{}
+			if addr == s.systemAddress {
+				s.systemAddressCount++
+			}
 		} else {
 			stateObject.SetBalance(amount)
 		}
