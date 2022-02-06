@@ -18,8 +18,8 @@ package ethapi
 
 import (
 	"bytes"
-	"encoding/hex"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -2516,12 +2516,12 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		return nil, errors.New("bundle missing txs")
 	}
 	blockHeader, _ := s.b.HeaderByNumber(context.Background(), rpc.LatestBlockNumber)
-	var blockNumber *big.Int;
+	var blockNumber *big.Int
 	// blockNumber = big.NewInt(int64(args.BlockNumber));
 	if args.BlockNumber == 0 {
-		blockNumber = blockHeader.Number;
+		blockNumber = blockHeader.Number
 	} else {
-		blockNumber = big.NewInt(int64(args.BlockNumber));
+		blockNumber = big.NewInt(int64(args.BlockNumber))
 	}
 
 	var txs []types.Message
@@ -2604,53 +2604,62 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 
 		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, expectedTx, &header.GasUsed, vmconfig)
 		if err != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, expectedTx.Hash())
-		}
-
-		// txHash := expectedTx.Hash().String()
-		// from, err := types.Sender(signer, expectedTx)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		// }
-		// to := "0x"
-		// if tx.To() != nil {
-		// 	to = tx.To().String()
-		// }
-		jsonResult := map[string]interface{}{
-			// "txHash":      txHash,
-			"gasUsed":     receipt.GasUsed,
-			// "fromAddress": from.String(),
-			// "toAddress":   to,
-		}
-		totalGasUsed += receipt.GasUsed
-		// gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		// }
-		// gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
-		// gasFees.Add(gasFees, gasFeesTx)
-		// bundleHash.Write(tx.Hash().Bytes())
-		if result.Err != nil {
-			jsonResult["error"] = result.Err.Error()
-			revert := result.Revert()
-			if len(revert) > 0 {
-				jsonResult["revert"] = string(revert)
+			jsonResult := map[string]interface{}{
+				"error":   fmt.Sprintf("%s", err),
+				"gasUsed": 0,
 			}
+			coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
+			jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
+			jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(1))).String()
+
+			results = append(results, jsonResult)
 		} else {
-			dst := make([]byte, hex.EncodedLen(len(result.Return())))
-			hex.Encode(dst, result.Return())
-			jsonResult["value"] = "0x" + string(dst)
+			// txHash := expectedTx.Hash().String()
+			// from, err := types.Sender(signer, expectedTx)
+			// if err != nil {
+			// 	return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+			// }
+			// to := "0x"
+			// if tx.To() != nil {
+			// 	to = tx.To().String()
+			// }
+			jsonResult := map[string]interface{}{
+				// "txHash":      txHash,
+				"gasUsed": receipt.GasUsed,
+				// "fromAddress": from.String(),
+				// "toAddress":   to,
+			}
+			totalGasUsed += receipt.GasUsed
+			// gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
+			// if err != nil {
+			// 	return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+			// }
+			// gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
+			// gasFees.Add(gasFees, gasFeesTx)
+			// bundleHash.Write(tx.Hash().Bytes())
+			if result.Err != nil {
+				jsonResult["error"] = result.Err.Error()
+				revert := result.Revert()
+				if len(revert) > 0 {
+					jsonResult["revert"] = string(revert)
+				}
+			} else {
+				dst := make([]byte, hex.EncodedLen(len(result.Return())))
+				hex.Encode(dst, result.Return())
+				jsonResult["value"] = "0x" + string(dst)
+			}
+			// if args.SimulationLogs == true {
+			// 	jsonResult["logs"] = receipt.Logs
+			// }
+			coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
+			jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
+			// jsonResult["gasFees"] = gasFeesTx.String()
+			// jsonResult["ethSentToCoinbase"] = new(big.Int).Sub(coinbaseDiffTx, gasFeesTx).String()
+			jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String()
+			jsonResult["gasUsed"] = receipt.GasUsed
+
+			results = append(results, jsonResult)
 		}
-		// if args.SimulationLogs == true {
-		// 	jsonResult["logs"] = receipt.Logs
-		// }
-		coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
-		jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
-		// jsonResult["gasFees"] = gasFeesTx.String()
-		// jsonResult["ethSentToCoinbase"] = new(big.Int).Sub(coinbaseDiffTx, gasFeesTx).String()
-		jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String()
-		jsonResult["gasUsed"] = receipt.GasUsed
-		results = append(results, jsonResult)
 	}
 
 	ret := map[string]interface{}{}
