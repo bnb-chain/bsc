@@ -119,19 +119,23 @@ type StateDB struct {
 	stateObjectsPending map[common.Address]struct{} // State objects finalized but not yet written to the trie
 	stateObjectsDirty   map[common.Address]struct{} // State objects modified in the current execution
 
-	// for parallel slot to do conflict check,
-	// each slot would have a stateObjects: map[common.Address]*StateObject
+	// parallel start
 	isSlotDB                  bool
 	baseTxIndex               int // slotDB is created base on this tx index.
 	SlotIndex                 int // debug purpose, will be removed
-	stateObjectSuicided       map[common.Address]struct{}
-	codeReadInSlot            map[common.Address]struct{}
-	codeChangeInSlot          map[common.Address]struct{}
-	stateChangedInSlot        map[common.Address]StateKeys // no need record value
 	dirtiedStateObjectsInSlot map[common.Address]*StateObject
-	stateReadsInSlot          map[common.Address]StateKeys
-	balanceChangedInSlot      map[common.Address]struct{} // the address's balance has been changed
-	balanceReadsInSlot        map[common.Address]struct{} // the address's balance has been read and used.
+	// for conflict check
+	balanceChangedInSlot map[common.Address]struct{} // the address's balance has been changed
+	balanceReadsInSlot   map[common.Address]struct{} // the address's balance has been read and used.
+	codeReadInSlot       map[common.Address]struct{}
+	codeChangeInSlot     map[common.Address]struct{}
+	stateReadsInSlot     map[common.Address]StateKeys
+	stateChangedInSlot   map[common.Address]StateKeys // no need record value
+	// Actions such as SetCode, Suicide will change address's state.
+	// Later call like Exist(), Empty(), HasSuicided() depond on the address's state.
+	addrStateReadInSlot   map[common.Address]struct{}
+	addrStateChangeInSlot map[common.Address]struct{}
+	stateObjectSuicided   map[common.Address]struct{}
 	// Transaction will pay gas fee to system address.
 	// Parallel execution will clear system address's balance at first, in order to maintain transaction's
 	// gas fee value. Normal transaction will access system address twice, otherwise it means the transaction
@@ -221,6 +225,9 @@ func ReUseSlotDB(slotDB *StateDB, keepSystem bool) *StateDB {
 	slotDB.stateReadsInSlot = make(map[common.Address]StateKeys, defaultNumOfSlots)
 	slotDB.balanceChangedInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
 	slotDB.balanceReadsInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
+	slotDB.addrStateReadInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
+	slotDB.addrStateChangeInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
+
 	slotDB.stateObjectsDirty = make(map[common.Address]struct{}, defaultNumOfSlots)
 	slotDB.stateObjectsPending = make(map[common.Address]struct{}, defaultNumOfSlots)
 
@@ -229,23 +236,25 @@ func ReUseSlotDB(slotDB *StateDB, keepSystem bool) *StateDB {
 
 func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	sdb := &StateDB{
-		db:                   db,
-		originalRoot:         root,
-		snaps:                snaps,
-		stateObjects:         &StateObjectSyncMap{},
-		stateObjectSuicided:  make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeReadInSlot:       make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeChangeInSlot:     make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateChangedInSlot:   make(map[common.Address]StateKeys, defaultNumOfSlots),
-		stateReadsInSlot:     make(map[common.Address]StateKeys, defaultNumOfSlots),
-		balanceChangedInSlot: make(map[common.Address]struct{}, defaultNumOfSlots),
-		balanceReadsInSlot:   make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateObjectsPending:  make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateObjectsDirty:    make(map[common.Address]struct{}, defaultNumOfSlots),
-		logs:                 make(map[common.Hash][]*types.Log, defaultNumOfSlots),
-		preimages:            make(map[common.Hash][]byte),
-		journal:              newJournal(),
-		hasher:               crypto.NewKeccakState(),
+		db:                    db,
+		originalRoot:          root,
+		snaps:                 snaps,
+		stateObjects:          &StateObjectSyncMap{},
+		stateObjectSuicided:   make(map[common.Address]struct{}, defaultNumOfSlots),
+		codeReadInSlot:        make(map[common.Address]struct{}, defaultNumOfSlots),
+		codeChangeInSlot:      make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateChangedInSlot:    make(map[common.Address]StateKeys, defaultNumOfSlots),
+		stateReadsInSlot:      make(map[common.Address]StateKeys, defaultNumOfSlots),
+		balanceChangedInSlot:  make(map[common.Address]struct{}, defaultNumOfSlots),
+		balanceReadsInSlot:    make(map[common.Address]struct{}, defaultNumOfSlots),
+		addrStateReadInSlot:   make(map[common.Address]struct{}, defaultNumOfSlots),
+		addrStateChangeInSlot: make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateObjectsPending:   make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateObjectsDirty:     make(map[common.Address]struct{}, defaultNumOfSlots),
+		logs:                  make(map[common.Hash][]*types.Log, defaultNumOfSlots),
+		preimages:             make(map[common.Hash][]byte),
+		journal:               newJournal(),
+		hasher:                crypto.NewKeccakState(),
 	}
 	if sdb.snaps != nil {
 		if sdb.snap = sdb.snaps.Snapshot(root); sdb.snap != nil {
@@ -279,7 +288,7 @@ func (s *StateDB) getStateObjectFromStateObjects(addr common.Address) (*StateObj
 // A bit similar to StateDB.Copy(),
 // mainly copy stateObjects, since slotDB has been finalized.
 // return: objSuicided, stateChanges, balanceChanges, codeChanges
-func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt) (map[common.Address]struct{}, map[common.Address]StateKeys, map[common.Address]struct{}, map[common.Address]struct{}) {
+func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt) (map[common.Address]struct{}, map[common.Address]StateKeys, map[common.Address]struct{}, map[common.Address]struct{}, map[common.Address]struct{}) {
 	// receipt.Logs with unified log Index within a block
 	// align slotDB's logs Index to the block stateDB's logSize
 	for _, l := range slotReceipt.Logs {
@@ -370,8 +379,12 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt) (map[
 	for addr := range slotDb.codeChangeInSlot {
 		codeChanges[addr] = struct{}{}
 	}
+	addrStateChanges := make(map[common.Address]struct{}, len(slotDb.addrStateChangeInSlot))
+	for addr := range slotDb.addrStateChangeInSlot {
+		addrStateChanges[addr] = struct{}{}
+	}
 
-	return objectSuicided, stateChanges, balanceChanges, codeChanges
+	return objectSuicided, stateChanges, balanceChanges, codeChanges, addrStateChanges
 }
 
 // StartPrefetcher initializes a new trie prefetcher to pull in nodes from the
@@ -519,6 +532,9 @@ func (s *StateDB) SubRefund(gas uint64) {
 // Exist reports whether the given account address exists in the state.
 // Notably this also returns true for suicided accounts.
 func (s *StateDB) Exist(addr common.Address) bool {
+	if s.isSlotDB {
+		s.addrStateReadInSlot[addr] = struct{}{}
+	}
 	return s.getStateObject(addr) != nil
 }
 
@@ -526,6 +542,9 @@ func (s *StateDB) Exist(addr common.Address) bool {
 // or empty according to the EIP161 specification (balance = nonce = code = 0)
 func (s *StateDB) Empty(addr common.Address) bool {
 	so := s.getStateObject(addr)
+	if s.isSlotDB {
+		s.addrStateReadInSlot[addr] = struct{}{}
+	}
 	return so == nil || so.empty()
 }
 
@@ -570,6 +589,10 @@ func (s *StateDB) BaseTxIndex() int {
 
 func (s *StateDB) CodeReadInSlot() map[common.Address]struct{} {
 	return s.codeReadInSlot
+}
+
+func (s *StateDB) AddressReadInSlot() map[common.Address]struct{} {
+	return s.addrStateReadInSlot
 }
 
 func (s *StateDB) StateReadsInSlot() map[common.Address]StateKeys {
@@ -696,6 +719,10 @@ func (s *StateDB) StorageTrie(addr common.Address) Trie {
 
 func (s *StateDB) HasSuicided(addr common.Address) bool {
 	stateObject := s.getStateObject(addr)
+
+	if s.isSlotDB {
+		s.addrStateReadInSlot[addr] = struct{}{} // address suicided.
+	}
 	if stateObject != nil {
 		return stateObject.suicided
 	}
@@ -862,6 +889,7 @@ func (s *StateDB) Suicide(addr common.Address) bool {
 	}
 	if s.isSlotDB {
 		s.stateObjectSuicided[addr] = struct{}{}
+		s.addrStateChangeInSlot[addr] = struct{}{} // address suicided.
 	}
 
 	s.journal.append(suicideChange{
@@ -1078,6 +1106,9 @@ func (s *StateDB) GetOrNewStateObject(addr common.Address) *StateObject {
 	stateObject := s.getStateObject(addr)
 	if stateObject == nil {
 		stateObject, _ = s.createObject(addr)
+		if s.isSlotDB {
+			s.addrStateChangeInSlot[addr] = struct{}{} // address created.
+		}
 	}
 	return stateObject
 }
@@ -1122,7 +1153,10 @@ func (s *StateDB) CreateAccount(addr common.Address) {
 	newObj, prev := s.createObject(addr)
 	if prev != nil {
 		newObj.setBalance(prev.data.Balance)
+	} else if s.isSlotDB {
+		s.addrStateChangeInSlot[addr] = struct{}{} // new account created
 	}
+
 }
 
 func (s *StateDB) ForEachStorage(addr common.Address, cb func(key, value common.Hash) bool) error {
@@ -1261,27 +1295,29 @@ func (s *StateDB) Copy() *StateDB {
 func (s *StateDB) CopyForSlot() *StateDB {
 	// Copy all the basic fields, initialize the memory ones
 	state := &StateDB{
-		db:                   s.db,
-		trie:                 s.db.CopyTrie(s.trie),
-		stateObjects:         s.stateObjects,
-		stateObjectsPending:  make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateObjectsDirty:    make(map[common.Address]struct{}, defaultNumOfSlots),
-		refund:               s.refund,
-		logs:                 make(map[common.Hash][]*types.Log, defaultNumOfSlots),
-		logSize:              0,
-		preimages:            make(map[common.Hash][]byte, len(s.preimages)),
-		journal:              newJournal(),
-		hasher:               crypto.NewKeccakState(),
-		snapDestructs:        make(map[common.Address]struct{}),
-		snapAccounts:         make(map[common.Address][]byte),
-		snapStorage:          make(map[common.Address]map[string][]byte),
-		stateObjectSuicided:  make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeReadInSlot:       make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeChangeInSlot:     make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateChangedInSlot:   make(map[common.Address]StateKeys, defaultNumOfSlots),
-		stateReadsInSlot:     make(map[common.Address]StateKeys, defaultNumOfSlots),
-		balanceChangedInSlot: make(map[common.Address]struct{}, defaultNumOfSlots),
-		balanceReadsInSlot:   make(map[common.Address]struct{}, defaultNumOfSlots),
+		db:                    s.db,
+		trie:                  s.db.CopyTrie(s.trie),
+		stateObjects:          s.stateObjects,
+		stateObjectsPending:   make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateObjectsDirty:     make(map[common.Address]struct{}, defaultNumOfSlots),
+		refund:                s.refund,
+		logs:                  make(map[common.Hash][]*types.Log, defaultNumOfSlots),
+		logSize:               0,
+		preimages:             make(map[common.Hash][]byte, len(s.preimages)),
+		journal:               newJournal(),
+		hasher:                crypto.NewKeccakState(),
+		snapDestructs:         make(map[common.Address]struct{}),
+		snapAccounts:          make(map[common.Address][]byte),
+		snapStorage:           make(map[common.Address]map[string][]byte),
+		stateObjectSuicided:   make(map[common.Address]struct{}, defaultNumOfSlots),
+		codeReadInSlot:        make(map[common.Address]struct{}, defaultNumOfSlots),
+		codeChangeInSlot:      make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateChangedInSlot:    make(map[common.Address]StateKeys, defaultNumOfSlots),
+		stateReadsInSlot:      make(map[common.Address]StateKeys, defaultNumOfSlots),
+		balanceChangedInSlot:  make(map[common.Address]struct{}, defaultNumOfSlots),
+		balanceReadsInSlot:    make(map[common.Address]struct{}, defaultNumOfSlots),
+		addrStateReadInSlot:   make(map[common.Address]struct{}, defaultNumOfSlots),
+		addrStateChangeInSlot: make(map[common.Address]struct{}, defaultNumOfSlots),
 
 		isSlotDB:                  true,
 		dirtiedStateObjectsInSlot: make(map[common.Address]*StateObject, defaultNumOfSlots),

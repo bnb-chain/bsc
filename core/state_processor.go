@@ -462,6 +462,7 @@ type MergedTxInfo struct {
 	StateChangeSet      map[common.Address]state.StateKeys
 	BalanceChangeSet    map[common.Address]struct{}
 	CodeChangeSet       map[common.Address]struct{}
+	AddrStateChangeSet  map[common.Address]struct{}
 	txIndex             int
 }
 
@@ -563,6 +564,18 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, mergedInfo Merg
 		}
 	}
 
+	// check address state change: create, suicide...
+	addrReads := readDb.AddressReadInSlot()
+	addrWrite := mergedInfo.AddrStateChangeSet
+	if len(addrReads) != 0 && len(addrWrite) != 0 {
+		for readAddr := range addrReads {
+			if _, ok := addrWrite[readAddr]; ok {
+				log.Info("hasStateConflict address state conflict", "addr", readAddr)
+				return true
+			}
+		}
+	}
+
 	return false
 }
 
@@ -659,12 +672,12 @@ func (p *StateProcessor) waitUntilNextTxDone(statedb *state.StateDB) *ParallelTx
 	// merge slotDB to parent stateDB
 	log.Info("ProcessParallel a tx is done, merge to block stateDB",
 		"resultSlotIndex", resultSlotIndex, "resultTxIndex", resultTxIndex)
-	objSuicided, stateChanges, balanceChanges, codeChanges := statedb.MergeSlotDB(result.slotDB, result.receipt)
+	objSuicided, stateChanges, balanceChanges, codeChanges, addrChanges := statedb.MergeSlotDB(result.slotDB, result.receipt)
 	// slot's mergedTxInfo is updated by dispatcher, while consumed by slot.
 	// It is safe, since write and read is in sequential, do write -> notify -> read
 	// it is not good, but work right now.
 
-	resultSlotState.mergedTxInfo = append(resultSlotState.mergedTxInfo, MergedTxInfo{result.slotDB, objSuicided, stateChanges, balanceChanges, codeChanges, resultTxIndex})
+	resultSlotState.mergedTxInfo = append(resultSlotState.mergedTxInfo, MergedTxInfo{result.slotDB, objSuicided, stateChanges, balanceChanges, codeChanges, addrChanges, resultTxIndex})
 
 	if resultTxIndex != p.mergedTxIndex+1 {
 		log.Warn("ProcessParallel tx result out of order", "resultTxIndex", resultTxIndex,
