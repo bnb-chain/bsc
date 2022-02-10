@@ -703,12 +703,6 @@ func (db *Database) Commit(node common.Hash, report bool, callback func(common.H
 	// Move all of the accumulated preimages into a write batch
 	if db.preimages != nil {
 		rawdb.WritePreimages(batch, db.preimages)
-		if batch.ValueSize() > ethdb.IdealBatchSize {
-			if err := batch.Write(); err != nil {
-				return err
-			}
-			batch.Reset()
-		}
 		// Since we're going to replay trie node writes into the clean cache, flush out
 		// any batched pre-images before continuing.
 		if err := batch.Write(); err != nil {
@@ -800,8 +794,8 @@ type cleaner struct {
 // Put reacts to database writes and implements dirty data uncaching. This is the
 // post-processing step of a commit operation where the already persisted trie is
 // removed from the dirty cache and moved into the clean cache. The reason behind
-// the two-phase commit is to ensure ensure data availability while moving from
-// memory to disk.
+// the two-phase commit is to ensure data availability while moving from memory
+// to disk.
 func (c *cleaner) Put(key []byte, rlp []byte) error {
 	hash := common.BytesToHash(key)
 

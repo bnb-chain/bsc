@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
+//go:build gofuzz
 // +build gofuzz
 
 package bls
@@ -159,7 +160,7 @@ func FuzzCrossG1MultiExp(data []byte) int {
 		gethPoints = append(gethPoints, new(bls12381.PointG1).Set(kp1))
 		gnarkPoints = append(gnarkPoints, *cp1)
 	}
-	if len(gethScalars) == 0{
+	if len(gethScalars) == 0 {
 		return 0
 	}
 	// compute multi exponentiation

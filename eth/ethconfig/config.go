@@ -29,6 +29,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
@@ -45,20 +46,26 @@ import (
 var FullNodeGPO = gasprice.Config{
 	Blocks:          20,
 	Percentile:      60,
+	MaxHeaderHistory: 1024,
+	MaxBlockHistory:  1024,
 	MaxPrice:        gasprice.DefaultMaxPrice,
 	OracleThreshold: 1000,
+	IgnorePrice:      gasprice.DefaultIgnorePrice,
 }
 
 // LightClientGPO contains default gasprice oracle settings for light client.
 var LightClientGPO = gasprice.Config{
-	Blocks:     2,
-	Percentile: 60,
-	MaxPrice:   gasprice.DefaultMaxPrice,
+	Blocks:           2,
+	Percentile:       60,
+	MaxHeaderHistory: 300,
+	MaxBlockHistory:  5,
+	MaxPrice:         gasprice.DefaultMaxPrice,
+	IgnorePrice:      gasprice.DefaultIgnorePrice,
 }
 
 // Defaults contains default settings for use on the Ethereum main net.
 var Defaults = Config{
-	SyncMode: downloader.FastSync,
+	SyncMode: downloader.SnapSync,
 	Ethash: ethash.Config{
 		CacheDir:         "ethash",
 		CachesInMem:      2,
@@ -80,16 +87,16 @@ var Defaults = Config{
 	TrieTimeout:             60 * time.Minute,
 	SnapshotCache:           102,
 	Miner: miner.Config{
-		GasFloor:      8000000,
 		GasCeil:       8000000,
 		GasPrice:      big.NewInt(params.GWei),
 		Recommit:      3 * time.Second,
 		DelayLeftOver: 50 * time.Millisecond,
 	},
-	TxPool:      core.DefaultTxPoolConfig,
-	RPCGasCap:   25000000,
-	GPO:         FullNodeGPO,
-	RPCTxFeeCap: 1, // 1 ether
+	TxPool:        core.DefaultTxPoolConfig,
+	RPCGasCap:     50000000,
+	RPCEVMTimeout: 5 * time.Second,
+	GPO:           FullNodeGPO,
+	RPCTxFeeCap:   1, // 1 ether
 }
 
 func init() {
@@ -186,14 +193,11 @@ type Config struct {
 	// Miscellaneous options
 	DocRoot string `toml:"-"`
 
-	// Type of the EWASM interpreter ("" for default)
-	EWASMInterpreter string
-
-	// Type of the EVM interpreter ("" for default)
-	EVMInterpreter string
-
 	// RPCGasCap is the global gas cap for eth-call variants.
 	RPCGasCap uint64
+
+	// RPCEVMTimeout is the global timeout for eth-call.
+	RPCEVMTimeout time.Duration
 
 	// RPCTxFeeCap is the global transaction fee(price * gaslimit) cap for
 	// send-transction variants. The unit is ether.
@@ -205,40 +209,43 @@ type Config struct {
 	// CheckpointOracle is the configuration for checkpoint oracle.
 	CheckpointOracle *params.CheckpointOracleConfig `toml:",omitempty"`
 
-	// Berlin block override (TODO: remove after the fork)
-	OverrideBerlin *big.Int `toml:",omitempty"`
+	// Arrow Glacier block override (TODO: remove after the fork)
+	OverrideArrowGlacier *big.Int `toml:",omitempty"`
+
+	// OverrideTerminalTotalDifficulty (TODO: remove after the fork)
+	OverrideTerminalTotalDifficulty *big.Int `toml:",omitempty"`
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain configuration.
 func CreateConsensusEngine(stack *node.Node, chainConfig *params.ChainConfig, config *ethash.Config, notify []string, noverify bool, db ethdb.Database, ee *ethapi.PublicBlockChainAPI, genesisHash common.Hash) consensus.Engine {
 	// If proof-of-authority is requested, set it up
+	var engine consensus.Engine
 	if chainConfig.Clique != nil {
-		return clique.New(chainConfig.Clique, db)
+		engine = clique.New(chainConfig.Clique, db)
+	} else f chainConfig.Parlia != nil {
+		engine = parlia.New(chainConfig, db, ee, genesisHash)
+	} else{
+		switch config.PowMode {
+		case ethash.ModeFake:
+			log.Warn("Ethash used in fake mode")
+		case ethash.ModeTest:
+			log.Warn("Ethash used in test mode")
+		case ethash.ModeShared:
+			log.Warn("Ethash used in shared mode")
+		}
+		engine = ethash.New(ethash.Config{
+			PowMode:          config.PowMode,
+			CacheDir:         stack.ResolvePath(config.CacheDir),
+			CachesInMem:      config.CachesInMem,
+			CachesOnDisk:     config.CachesOnDisk,
+			CachesLockMmap:   config.CachesLockMmap,
+			DatasetDir:       config.DatasetDir,
+			DatasetsInMem:    config.DatasetsInMem,
+			DatasetsOnDisk:   config.DatasetsOnDisk,
+			DatasetsLockMmap: config.DatasetsLockMmap,
+			NotifyFull:       config.NotifyFull,
+		}, notify, noverify)
+		engine.(*ethash.Ethash).SetThreads(-1) // Disable CPU mining
 	}
-	if chainConfig.Parlia != nil {
-		return parlia.New(chainConfig, db, ee, genesisHash)
-	}
-	// Otherwise assume proof-of-work
-	switch config.PowMode {
-	case ethash.ModeFake:
-		log.Warn("Ethash used in fake mode")
-	case ethash.ModeTest:
-		log.Warn("Ethash used in test mode")
-	case ethash.ModeShared:
-		log.Warn("Ethash used in shared mode")
-	}
-	engine := ethash.New(ethash.Config{
-		PowMode:          config.PowMode,
-		CacheDir:         stack.ResolvePath(config.CacheDir),
-		CachesInMem:      config.CachesInMem,
-		CachesOnDisk:     config.CachesOnDisk,
-		CachesLockMmap:   config.CachesLockMmap,
-		DatasetDir:       config.DatasetDir,
-		DatasetsInMem:    config.DatasetsInMem,
-		DatasetsOnDisk:   config.DatasetsOnDisk,
-		DatasetsLockMmap: config.DatasetsLockMmap,
-		NotifyFull:       config.NotifyFull,
-	}, notify, noverify)
-	engine.SetThreads(-1) // Disable CPU mining
-	return engine
+	return beacon.New(engine)
 }
