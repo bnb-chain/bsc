@@ -1208,6 +1208,18 @@ func (s *StateDB) Copy() *StateDB {
 		preimages:           make(map[common.Hash][]byte, len(s.preimages)),
 		journal:             newJournal(),
 		hasher:              crypto.NewKeccakState(),
+
+		isSlotDB:                  false,
+		stateObjectSuicided:       make(map[common.Address]struct{}, defaultNumOfSlots),
+		codeReadInSlot:            make(map[common.Address]struct{}, defaultNumOfSlots),
+		codeChangeInSlot:          make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateChangedInSlot:        make(map[common.Address]StateKeys, defaultNumOfSlots),
+		stateReadsInSlot:          make(map[common.Address]StateKeys, defaultNumOfSlots),
+		balanceChangedInSlot:      make(map[common.Address]struct{}, defaultNumOfSlots),
+		balanceReadsInSlot:        make(map[common.Address]struct{}, defaultNumOfSlots),
+		addrStateReadInSlot:       make(map[common.Address]struct{}, defaultNumOfSlots),
+		addrStateChangeInSlot:     make(map[common.Address]struct{}, defaultNumOfSlots),
+		dirtiedStateObjectsInSlot: make(map[common.Address]*StateObject, defaultNumOfSlots),
 	}
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
