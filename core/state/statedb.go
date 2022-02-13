@@ -337,13 +337,13 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt) (map[
 		}
 	}
 
-	// todo: accessList
 	// slotDb.logs: logs will be kept in receipts, no need to do merge
-	// preimages
+
+	// Fixed: preimages should be merged not overwrite
 	for hash, preimage := range slotDb.preimages {
 		s.preimages[hash] = preimage
 	}
-	// accessList
+	// Fixed: accessList should be merged not overwrite
 	if s.accessList != nil {
 		s.accessList = slotDb.accessList.Copy()
 	}
@@ -1343,6 +1343,31 @@ func (s *StateDB) CopyForSlot() *StateDB {
 		state.preimages[hash] = preimage
 	}
 
+	if s.snaps != nil {
+		// In order for the miner to be able to use and make additions
+		// to the snapshot tree, we need to copy that aswell.
+		// Otherwise, any block mined by ourselves will cause gaps in the tree,
+		// and force the miner to operate trie-backed only
+		state.snaps = s.snaps
+		state.snap = s.snap
+		// deep copy needed
+		state.snapDestructs = make(map[common.Address]struct{})
+		for k, v := range s.snapDestructs {
+			state.snapDestructs[k] = v
+		}
+		state.snapAccounts = make(map[common.Address][]byte)
+		for k, v := range s.snapAccounts {
+			state.snapAccounts[k] = v
+		}
+		state.snapStorage = make(map[common.Address]map[string][]byte)
+		for k, v := range s.snapStorage {
+			temp := make(map[string][]byte)
+			for kk, vv := range v {
+				temp[kk] = vv
+			}
+			state.snapStorage[k] = temp
+		}
+	}
 	return state
 }
 
