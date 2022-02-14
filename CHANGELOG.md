@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.1.8
+FEATURES
+* [\#668](https://github.com/binance-chain/bsc/pull/668) implement State Verification && Snapshot Commit pipeline
+* [\#581](https://github.com/binance-chain/bsc/pull/581) implement geth native trace 
+* [\#543](https://github.com/binance-chain/bsc/pull/543) implement offline block prune tools
+
+IMPROVEMENT
+* [\#704](https://github.com/binance-chain/bsc/pull/704) prefetch state by applying the transactions within one block 
+* [\#713](https://github.com/binance-chain/bsc/pull/713) add ARM binaries for release pipeline
+
+BUGFIX
+* [\#667](https://github.com/binance-chain/bsc/pull/667) trie: reject deletions when verifying range proofs #667
+* [\#643](https://github.com/binance-chain/bsc/pull/643) add timeout for stopping p2p server to fix can not gracefully shutdown issue
+* [\#740](https://github.com/binance-chain/bsc/pull/740) update discord link which won't expire 
+
 ## v1.1.7
 
 BUGFIX
