@@ -232,7 +232,7 @@ func pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 		}
 	}
 	root := statedb.IntermediateRoot(false)
-	statedb.Commit(false)
+	statedb.Commit(nil)
 	statedb.Database().TrieDB().Commit(root, true, nil)
 	log.Info("State pruning successful", "pruned", size, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
