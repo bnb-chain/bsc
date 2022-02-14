@@ -1178,7 +1178,7 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 			tasksNum := 0
 			finishCh := make(chan struct{})
 			defer close(finishCh)
-			threads := gopool.Threads(len(s.diffTries))
+			threads := gopool.Threads(len(s.diffTries), false)
 
 			for i := 0; i < threads; i++ {
 				go func() {
@@ -1316,7 +1316,7 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 			tasksNum := 0
 			finishCh := make(chan struct{})
 
-			threads := gopool.Threads(len(s.stateObjectsDirty))
+			threads := gopool.Threads(len(s.stateObjectsDirty), false)
 			wg := sync.WaitGroup{}
 			for i := 0; i < threads; i++ {
 				wg.Add(1)

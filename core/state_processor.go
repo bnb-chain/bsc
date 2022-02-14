@@ -18,7 +18,6 @@ package core
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"math/big"
 	"math/rand"
@@ -159,7 +158,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	for des := range snapDestructs {
 		stateTrie.TryDelete(des[:])
 	}
-	threads := gopool.Threads(len(snapAccounts))
+	threads := gopool.Threads(len(snapAccounts), true)
 
 	iteAccounts := make([]common.Address, 0, len(snapAccounts))
 	for diffAccount := range snapAccounts {
@@ -259,19 +258,15 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				}
 
 				//update storage
-				latestRoot := common.BytesToHash(latestAccount.Root)
-				if latestRoot != previousAccount.Root {
+				accountRootHash := previousAccount.Root
+				snapMux.RLock()
+				storageChange, exist := snapStorage[diffAccount]
+				snapMux.RUnlock()
+
+				if exist {
 					accountTrie, err := statedb.Database().OpenStorageTrie(addrHash, previousAccount.Root)
 					if err != nil {
 						errChan <- err
-						return
-					}
-					snapMux.RLock()
-					storageChange, exist := snapStorage[diffAccount]
-					snapMux.RUnlock()
-
-					if !exist {
-						errChan <- errors.New("missing storage change in difflayer")
 						return
 					}
 					for k, v := range storageChange {
@@ -281,27 +276,22 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 							accountTrie.TryDelete([]byte(k))
 						}
 					}
-
-					// check storage root
-					accountRootHash := accountTrie.Hash()
-					if latestRoot != accountRootHash {
-						errChan <- errors.New("account storage root mismatch")
-						return
-					}
 					diffMux.Lock()
 					diffTries[diffAccount] = accountTrie
 					diffMux.Unlock()
-				} else {
-					snapMux.Lock()
-					delete(snapStorage, diffAccount)
-					snapMux.Unlock()
+					accountRootHash = accountTrie.Hash()
+					if previousAccount.Root == accountRootHash {
+						snapMux.Lock()
+						delete(snapStorage, diffAccount)
+						snapMux.Unlock()
+					}
 				}
 
 				// can't trust the blob, need encode by our-self.
 				latestStateAccount := state.Account{
 					Nonce:    latestAccount.Nonce,
 					Balance:  latestAccount.Balance,
-					Root:     common.BytesToHash(latestAccount.Root),
+					Root:     accountRootHash,
 					CodeHash: latestAccount.CodeHash,
 				}
 				bz, err := rlp.EncodeToBytes(&latestStateAccount)

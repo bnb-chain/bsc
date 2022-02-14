@@ -49,10 +49,14 @@ func Reboot() {
 	defaultPool.Reboot()
 }
 
-func Threads(tasks int) int {
+func Threads(tasks int, aggressive bool) int {
 	threads := tasks / minNumberPerTask
-	if threads > runtime.NumCPU() {
-		threads = runtime.NumCPU()
+	maxThread := runtime.NumCPU()
+	if aggressive {
+		maxThread *= 2
+	}
+	if threads > maxThread {
+		threads = maxThread
 	} else if threads == 0 {
 		threads = 1
 	}
