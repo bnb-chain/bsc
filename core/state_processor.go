@@ -381,81 +381,6 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	return diffLayer.Receipts, allLogs, gasUsed, nil
 }
 
-// Process processes the state changes according to the Ethereum rules by running
-// the transaction messages using the statedb and applying any rewards to both
-// the processor (coinbase) and any included uncles.
-//
-// Process returns the receipts and logs accumulated during the process and
-// returns the amount of gas that was used in the process. If any of the
-// transactions failed to execute due to insufficient gas it will return an error.
-func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
-	var (
-		usedGas = new(uint64)
-		header  = block.Header()
-		allLogs []*types.Log
-		gp      = new(GasPool).AddGas(block.GasLimit())
-	)
-	signer := types.MakeSigner(p.bc.chainConfig, block.Number())
-	statedb.TryPreload(block, signer)
-	var receipts = make([]*types.Receipt, 0)
-	// Mutate the block and state according to any hard-fork specs
-	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
-		misc.ApplyDAOHardFork(statedb)
-	}
-	// Handle upgrade build-in system contract code
-	systemcontracts.UpgradeBuildInSystemContract(p.config, block.Number(), statedb)
-
-	blockContext := NewEVMBlockContext(header, p.bc, nil)
-	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
-
-	txNum := len(block.Transactions())
-	// Iterate over and process the individual transactions
-	posa, isPoSA := p.engine.(consensus.PoSA)
-	commonTxs := make([]*types.Transaction, 0, txNum)
-
-	// initialise bloom processors
-	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
-	statedb.MarkFullProcessed()
-
-	// usually do have two tx, one for validator set contract, another for system reward contract.
-	systemTxs := make([]*types.Transaction, 0, 2)
-	for i, tx := range block.Transactions() {
-		if isPoSA {
-			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
-				return statedb, nil, nil, 0, err
-			} else if isSystemTx {
-				systemTxs = append(systemTxs, tx)
-				continue
-			}
-		}
-
-		msg, err := tx.AsMessage(signer)
-		if err != nil {
-			return statedb, nil, nil, 0, err
-		}
-		statedb.Prepare(tx.Hash(), block.Hash(), i)
-		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, header, tx, usedGas, vmenv, bloomProcessors)
-		if err != nil {
-			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
-		}
-
-		commonTxs = append(commonTxs, tx)
-		receipts = append(receipts, receipt)
-	}
-	bloomProcessors.Close()
-
-	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), &receipts, &systemTxs, usedGas)
-	if err != nil {
-		return statedb, receipts, allLogs, *usedGas, err
-	}
-	for _, receipt := range receipts {
-		allLogs = append(allLogs, receipt.Logs...)
-	}
-
-	return statedb, receipts, allLogs, *usedGas, nil
-}
-
 type MergedTxInfo struct {
 	slotDB              *state.StateDB // used for SlotDb reuse only, otherwise, it can be discarded
 	StateObjectSuicided map[common.Address]struct{}
@@ -931,6 +856,81 @@ func (p *StateProcessor) InitParallelOnce() {
 	}
 	wg.Wait()
 	p.paraInitialized = true
+}
+
+// Process processes the state changes according to the Ethereum rules by running
+// the transaction messages using the statedb and applying any rewards to both
+// the processor (coinbase) and any included uncles.
+//
+// Process returns the receipts and logs accumulated during the process and
+// returns the amount of gas that was used in the process. If any of the
+// transactions failed to execute due to insufficient gas it will return an error.
+func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
+	var (
+		usedGas = new(uint64)
+		header  = block.Header()
+		allLogs []*types.Log
+		gp      = new(GasPool).AddGas(block.GasLimit())
+	)
+	signer := types.MakeSigner(p.bc.chainConfig, block.Number())
+	statedb.TryPreload(block, signer)
+	var receipts = make([]*types.Receipt, 0)
+	// Mutate the block and state according to any hard-fork specs
+	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
+		misc.ApplyDAOHardFork(statedb)
+	}
+	// Handle upgrade build-in system contract code
+	systemcontracts.UpgradeBuildInSystemContract(p.config, block.Number(), statedb)
+
+	blockContext := NewEVMBlockContext(header, p.bc, nil)
+	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
+
+	txNum := len(block.Transactions())
+	// Iterate over and process the individual transactions
+	posa, isPoSA := p.engine.(consensus.PoSA)
+	commonTxs := make([]*types.Transaction, 0, txNum)
+
+	// initialise bloom processors
+	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
+	statedb.MarkFullProcessed()
+
+	// usually do have two tx, one for validator set contract, another for system reward contract.
+	systemTxs := make([]*types.Transaction, 0, 2)
+	for i, tx := range block.Transactions() {
+		if isPoSA {
+			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
+				return statedb, nil, nil, 0, err
+			} else if isSystemTx {
+				systemTxs = append(systemTxs, tx)
+				continue
+			}
+		}
+
+		msg, err := tx.AsMessage(signer)
+		if err != nil {
+			return statedb, nil, nil, 0, err
+		}
+		statedb.Prepare(tx.Hash(), block.Hash(), i)
+		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, header, tx, usedGas, vmenv, bloomProcessors)
+		if err != nil {
+			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+		}
+
+		commonTxs = append(commonTxs, tx)
+		receipts = append(receipts, receipt)
+	}
+	bloomProcessors.Close()
+
+	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
+	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), &receipts, &systemTxs, usedGas)
+	if err != nil {
+		return statedb, receipts, allLogs, *usedGas, err
+	}
+	for _, receipt := range receipts {
+		allLogs = append(allLogs, receipt.Logs...)
+	}
+
+	return statedb, receipts, allLogs, *usedGas, nil
 }
 
 func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
