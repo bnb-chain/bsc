@@ -18,6 +18,7 @@ package eth
 
 import (
 	"errors"
+	"github.com/ethereum/go-ethereum/perf"
 	"math"
 	"math/big"
 	"sync"
@@ -492,6 +493,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			return
 		}
 		// Send the block to a subset of our peers
+		start := time.Now()
 		var transfer []*ethPeer
 		if h.directBroadcast {
 			transfer = peers[:]
@@ -506,6 +508,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			}
 			peer.AsyncSendNewBlock(block, td)
 		}
+		perf.RecordMPMetrics(perf.MpPropagationTotal, start)
 
 		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return

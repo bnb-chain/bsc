@@ -19,6 +19,7 @@ package miner
 import (
 	"bytes"
 	"errors"
+	"github.com/ethereum/go-ethereum/perf"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -460,7 +461,9 @@ func (w *worker) mainLoop() {
 	for {
 		select {
 		case req := <-w.newWorkCh:
+			start := time.Now()
 			w.commitNewWork(req.interrupt, req.noempty, req.timestamp)
+			perf.RecordMPMetrics(perf.MpMiningTotal, start)
 
 		case ev := <-w.chainSideCh:
 			// Short circuit for duplicate side blocks
@@ -635,7 +638,11 @@ func (w *worker) resultLoop() {
 			}
 			// Commit block and state to database.
 			task.state.SetExpectedStateRoot(block.Root())
+
+			start := time.Now()
 			_, err := w.chain.WriteBlockWithState(block, receipts, logs, task.state, true)
+			perf.RecordMPMetrics(perf.MpMiningWrite, start)
+
 			if err != nil {
 				log.Error("Failed writing block to chain", "err", err)
 				continue
@@ -764,12 +771,14 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 
 	var coalescedLogs []*types.Log
 	var stopTimer *time.Timer
+	startDelay := time.Now()
 	delay := w.engine.Delay(w.chain, w.current.header)
 	if delay != nil {
 		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
 		log.Debug("Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
 		defer stopTimer.Stop()
 	}
+	perf.RecordMPMetrics(perf.MpMiningCommitDelay, startDelay)
 
 	// initilise bloom processors
 	processorCapacity := 100
@@ -778,6 +787,7 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	}
 	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
 
+	startProcess := time.Now()
 LOOP:
 	for {
 		// In the following three cases, we will interrupt the execution of the transaction.
@@ -868,6 +878,7 @@ LOOP:
 			txs.Shift()
 		}
 	}
+	perf.RecordMPMetrics(perf.MpMiningCommitProcess, startProcess)
 	bloomProcessors.Close()
 
 	if !w.isRunning() && len(coalescedLogs) > 0 {
@@ -920,10 +931,14 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		}
 		header.Coinbase = w.coinbase
 	}
+
+	start := time.Now()
 	if err := w.engine.Prepare(w.chain, header); err != nil {
 		log.Error("Failed to prepare header for mining", "err", err)
 		return
 	}
+	perf.RecordMPMetrics(perf.MpMiningPrepare, start)
+
 	// If we are care about TheDAO hard-fork check whether to override the extra-data or not
 	if daoBlock := w.chainConfig.DAOForkBlock; daoBlock != nil {
 		// Check whether the block is among the fork extra-override range
@@ -980,8 +995,15 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			}
 		}
 		if len(remoteTxs) > 0 {
+			startOrder := time.Now()
 			txs := types.NewTransactionsByPriceAndNonce(w.current.signer, remoteTxs)
-			if w.commitTransactions(txs, w.coinbase, interrupt) {
+			//only tracking remote txs, for our validators has no local txs in general
+			perf.RecordMPMetrics(perf.MpMiningOrder, startOrder)
+
+			startCommit := time.Now()
+			succeed := w.commitTransactions(txs, w.coinbase, interrupt)
+			perf.RecordMPMetrics(perf.MpMiningCommit, startCommit)
+			if succeed {
 				return
 			}
 		}
@@ -999,7 +1021,10 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 	if err != nil {
 		return err
 	}
+
+	startFinalize := time.Now()
 	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
+	perf.RecordMPMetrics(perf.MpMiningFinalize, startFinalize)
 	if err != nil {
 		return err
 	}

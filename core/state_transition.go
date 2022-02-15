@@ -18,6 +18,7 @@ package core
 
 import (
 	"fmt"
+	"github.com/ethereum/go-ethereum/perf"
 	"math"
 	"math/big"
 
@@ -275,6 +276,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 	st.refundGas()
+
+	//track top EOA/contract addresses
+	perf.UpdateTopEOAStats(sender.Address())
+	perf.UpdateTopContractStats(st.to())
 
 	// consensus engine is parlia
 	if st.evm.ChainConfig().Parlia != nil {

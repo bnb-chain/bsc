@@ -19,6 +19,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/ethereum/go-ethereum/perf"
 	"os"
 	"sort"
 	"strconv"
@@ -272,6 +273,14 @@ func init() {
 }
 
 func main() {
+
+	perf.StartGoGCMetrics()
+
+	perf.StartGoTraceMetrics()
+	defer perf.StopGoTraceMetrics()
+
+	go perf.StartTopAddrStats()
+
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

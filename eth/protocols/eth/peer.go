@@ -17,9 +17,11 @@
 package eth
 
 import (
+	"github.com/ethereum/go-ethereum/perf"
 	"math/big"
 	"math/rand"
 	"sync"
+	"time"
 
 	mapset "github.com/deckarep/golang-set"
 
@@ -348,10 +350,15 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 		p.knownBlocks.Pop()
 	}
 	p.knownBlocks.Add(block.Hash())
-	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
+
+	start := time.Now()
+	err := p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
 		Block: block,
 		TD:    td,
 	})
+	perf.RecordMPMetrics(perf.MpPropagationSend, start)
+
+	return err
 }
 
 // AsyncSendNewBlock queues an entire block for propagation to a remote peer. If
