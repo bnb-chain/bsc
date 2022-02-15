@@ -651,19 +651,19 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 
 	// fixme: to optimize, reuse the slotDB
 	slotDB.Prepare(tx.Hash(), block.Hash(), txIndex)
-	log.Debug("execInParallelSlot enter", "slotIndex", slotIndex, "txIndex", txIndex, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
+	log.Debug("exec In Slot", "slotIndex", slotIndex, "txIndex", txIndex, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
 
 	slotGasLimit := gp.Gas()
 	gpSlot := new(GasPool).AddGas(slotGasLimit) // each slot would use its own gas pool, and will do gaslimit check later
 	evm, result, err = applyTransactionStageExecution(msg, gpSlot, slotDB, vmenv)
-	log.Debug("execInParallelSlot Stage Execution done", "slotIndex", slotIndex, "txIndex", txIndex, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
+	log.Debug("Stage Execution done", "slotIndex", slotIndex, "txIndex", txIndex, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
 
 	// wait until the previous tx is finalized.
 	if txReq.waitTxChan != nil {
-		log.Debug("execInParallelSlot wait previous Tx done", "my slotIndex", slotIndex, "txIndex", txIndex)
+		log.Debug("Stage wait previous Tx done", "my slotIndex", slotIndex, "txIndex", txIndex)
 		waitTxIndex := <-txReq.waitTxChan
 		if waitTxIndex != txIndex-1 {
-			log.Error("execInParallelSlot wait tx index mismatch", "expect", txIndex-1, "actual", waitTxIndex)
+			log.Error("Stage wait tx index mismatch", "expect", txIndex-1, "actual", waitTxIndex)
 			panic(fmt.Sprintf("wait tx index mismatch expect:%d, actual:%d", txIndex-1, waitTxIndex))
 		}
 	}
@@ -709,7 +709,7 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 	hasConflict := false
 	systemAddrConflict := false
 
-	log.Debug("execInParallelSlot Tx Stage1 done, do conflict check", "slotIndex", slotIndex, "txIndex", txIndex)
+	log.Debug("Stage Execution done, do conflict check", "slotIndex", slotIndex, "txIndex", txIndex)
 	if slotDB.SystemAddressRedo() {
 		hasConflict = true
 		systemAddrConflict = true
@@ -729,7 +729,7 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 					continue
 				}
 				if p.hasStateConflict(slotDB, changeList) {
-					log.Debug("execInParallelSlot Stage Execution conflict", "slotIndex", slotIndex,
+					log.Debug("Stage Execution conflict", "slotIndex", slotIndex,
 						"txIndex", txIndex, " conflict slot", index, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
 					hasConflict = true
 					break
@@ -772,7 +772,7 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 	// goroutine unsafe operation will be handled from here for safety
 	gasConsumed := slotGasLimit - gpSlot.Gas()
 	if gasConsumed != result.UsedGas {
-		log.Error("execInParallelSlot gasConsumed != result.UsedGas mismatch",
+		log.Error("gasConsumed != result.UsedGas mismatch",
 			"gasConsumed", gasConsumed, "result.UsedGas", result.UsedGas)
 		panic(fmt.Sprintf("gas consume mismatch, consumed:%d, result.UsedGas:%d", gasConsumed, result.UsedGas))
 	}
@@ -782,14 +782,14 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 		panic(fmt.Sprintf("gas limit reached, gasConsumed:%d, gp.Gas():%d", gasConsumed, gp.Gas()))
 	}
 
-	log.Debug("execInParallelSlot ok to finalize this TX",
+	log.Debug("ok to finalize this TX",
 		"slotIndex", slotIndex, "txIndex", txIndex, "result.UsedGas", result.UsedGas, "txReq.usedGas", *txReq.usedGas)
 	// ok, time to do finalize, stage2 should not be parallel
 	receipt, err = applyTransactionStageFinalization(evm, result, msg, p.config, slotDB, header, tx, txReq.usedGas, bloomProcessors)
 
 	if result.Err != nil {
 		// if Tx is reverted, all its state change will be discarded
-		log.Debug("execInParallelSlot TX reverted?", "slotIndex", slotIndex, "txIndex", txIndex, "result.Err", result.Err)
+		log.Debug("TX reverted?", "slotIndex", slotIndex, "txIndex", txIndex, "result.Err", result.Err)
 	}
 	return &ParallelTxResult{
 		redo:         false,
@@ -998,10 +998,9 @@ func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.Stat
 
 		// fixme: to optimize the for { for {} } loop code style
 		for {
-			// if p.queueToSameAddress(txReq) {
-			// log.Info("ProcessParallel queue to same slot", "txIndex", txReq.txIndex)
-			// continue
-			// }
+			if p.queueToSameAddress(txReq) {
+				break
+			}
 
 			// if idle slot available, just dispatch and process next tx.
 			if p.dispatchToIdleSlot(statedb, txReq) {
