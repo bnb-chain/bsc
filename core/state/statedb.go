@@ -85,6 +85,17 @@ func (s *StateObjectSyncMap) StoreStateObject(addr common.Address, stateObject *
 	s.Store(addr, stateObject)
 }
 
+// For parallel mode only, keep the change list for later conflict detect
+type SlotChangeList struct {
+	SlotDB              *StateDB // used for SlotDb reuse only, otherwise, it can be discarded
+	TxIndex             int      // the tx index of change list
+	StateObjectSuicided map[common.Address]struct{}
+	StateChangeSet      map[common.Address]StateKeys
+	BalanceChangeSet    map[common.Address]struct{}
+	CodeChangeSet       map[common.Address]struct{}
+	AddrStateChangeSet  map[common.Address]struct{}
+}
+
 // StateDB structs within the ethereum protocol are used to store anything
 // within the merkle trie. StateDBs take care of caching and storing
 // nested states. It's the general query interface to retrieve:
@@ -287,8 +298,8 @@ func (s *StateDB) getStateObjectFromStateObjects(addr common.Address) (*StateObj
 // MergeSlotDB is for Parallel TX, when the TX is finalized(dirty -> pending)
 // A bit similar to StateDB.Copy(),
 // mainly copy stateObjects, since slotDB has been finalized.
-// return: objSuicided, stateChanges, balanceChanges, codeChanges
-func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt) (map[common.Address]struct{}, map[common.Address]StateKeys, map[common.Address]struct{}, map[common.Address]struct{}, map[common.Address]struct{}) {
+// return and keep the slot's change list for later conflict detect.
+func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txIndex int) SlotChangeList {
 	// receipt.Logs with unified log Index within a block
 	// align slotDB's logs Index to the block stateDB's logSize
 	for _, l := range slotReceipt.Logs {
@@ -363,28 +374,34 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt) (map[
 		}
 	}
 
-	objectSuicided := make(map[common.Address]struct{}, len(slotDb.stateObjectSuicided))
+	// we have to create a new object to store change list for conflict detect, since
+	// StateDB could be reused and its elements could be overwritten
+	changeList := SlotChangeList{
+		SlotDB:              slotDb,
+		TxIndex:             txIndex,
+		StateObjectSuicided: make(map[common.Address]struct{}, len(slotDb.stateObjectSuicided)),
+		StateChangeSet:      make(map[common.Address]StateKeys, len(slotDb.stateChangedInSlot)),
+		BalanceChangeSet:    make(map[common.Address]struct{}, len(slotDb.balanceChangedInSlot)),
+		CodeChangeSet:       make(map[common.Address]struct{}, len(slotDb.codeChangeInSlot)),
+		AddrStateChangeSet:  make(map[common.Address]struct{}, len(slotDb.addrStateChangeInSlot)),
+	}
 	for addr := range slotDb.stateObjectSuicided {
-		objectSuicided[addr] = struct{}{}
+		changeList.StateObjectSuicided[addr] = struct{}{}
 	}
-	stateChanges := make(map[common.Address]StateKeys, len(slotDb.stateChangedInSlot)) // must be a deep copy, since
 	for addr, storage := range slotDb.stateChangedInSlot {
-		stateChanges[addr] = storage
+		changeList.StateChangeSet[addr] = storage
 	}
-	balanceChanges := make(map[common.Address]struct{}, len(slotDb.balanceChangedInSlot)) // must be a deep copy, since
 	for addr := range slotDb.balanceChangedInSlot {
-		balanceChanges[addr] = struct{}{}
+		changeList.BalanceChangeSet[addr] = struct{}{}
 	}
-	codeChanges := make(map[common.Address]struct{}, len(slotDb.codeChangeInSlot))
 	for addr := range slotDb.codeChangeInSlot {
-		codeChanges[addr] = struct{}{}
+		changeList.CodeChangeSet[addr] = struct{}{}
 	}
-	addrStateChanges := make(map[common.Address]struct{}, len(slotDb.addrStateChangeInSlot))
 	for addr := range slotDb.addrStateChangeInSlot {
-		addrStateChanges[addr] = struct{}{}
+		changeList.AddrStateChangeSet[addr] = struct{}{}
 	}
 
-	return objectSuicided, stateChanges, balanceChanges, codeChanges, addrStateChanges
+	return changeList
 }
 
 // StartPrefetcher initializes a new trie prefetcher to pull in nodes from the

@@ -64,10 +64,12 @@ type StateProcessor struct {
 	engine consensus.Engine    // Consensus engine used for block rewards
 
 	// add for parallel execute
-	paraInitialized  int32
-	paraTxResultChan chan *ParallelTxResult // to notify dispatcher that a tx is done
-	slotState        []*SlotState           // idle, or pending messages
-	mergedTxIndex    int                    // the latest finalized tx index
+	paraInitialized      int32
+	paraTxResultChan     chan *ParallelTxResult // to notify dispatcher that a tx is done
+	slotState            []*SlotState           // idle, or pending messages
+	mergedTxIndex        int                    // the latest finalized tx index
+	debugErrorRedoNum    int
+	debugConflictRedoNum int
 }
 
 // NewStateProcessor initialises a new StateProcessor.
@@ -382,23 +384,11 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	return diffLayer.Receipts, allLogs, gasUsed, nil
 }
 
-type MergedTxInfo struct {
-	slotDB              *state.StateDB // used for SlotDb reuse only, otherwise, it can be discarded
-	StateObjectSuicided map[common.Address]struct{}
-	StateChangeSet      map[common.Address]state.StateKeys
-	BalanceChangeSet    map[common.Address]struct{}
-	CodeChangeSet       map[common.Address]struct{}
-	AddrStateChangeSet  map[common.Address]struct{}
-	txIndex             int
-}
-
 type SlotState struct {
-	tailTxReq   *ParallelTxRequest // tail pending Tx of the slot, should be accessed on dispatcher only.
-	pendingExec chan *ParallelTxRequest
-	// slot needs to keep the historical stateDB for conflict check
-	// each finalized DB should match a TX index
-	mergedTxInfo []MergedTxInfo
-	slotdbChan   chan *state.StateDB // dispatch will create and send this slotDB to slot
+	tailTxReq        *ParallelTxRequest // tail pending Tx of the slot, should be accessed on dispatcher only.
+	pendingExec      chan *ParallelTxRequest
+	mergedChangeList []state.SlotChangeList
+	slotdbChan       chan *state.StateDB // dispatch will create and send this slotDB to slot
 	// conflict check uses conflict window
 	// conflict check will check all state changes from (cfWindowStart + 1) to the previous Tx
 }
@@ -457,15 +447,15 @@ func (p *StateProcessor) InitParallelOnce() {
 	wg.Wait()
 }
 
-// if any state in readDb is updated in writeDb, then it has state conflict
-func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, mergedInfo MergedTxInfo) bool {
+// if any state in readDb is updated in changeList, then it has state conflict
+func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList state.SlotChangeList) bool {
 	// check KV change
 	reads := readDb.StateReadsInSlot()
-	writes := mergedInfo.StateChangeSet
+	writes := changeList.StateChangeSet
 	if len(reads) != 0 && len(writes) != 0 {
 		for readAddr, readKeys := range reads {
-			if _, exist := mergedInfo.StateObjectSuicided[readAddr]; exist {
-				log.Debug("hasStateConflict read suicide object", "addr", readAddr)
+			if _, exist := changeList.StateObjectSuicided[readAddr]; exist {
+				log.Debug("conflict: read suicide object", "addr", readAddr)
 				return true
 			}
 			if writeKeys, ok := writes[readAddr]; ok {
@@ -473,7 +463,7 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, mergedInfo Merg
 				for writeKey := range writeKeys {
 					// same addr and same key, mark conflicted
 					if _, ok := readKeys[writeKey]; ok {
-						log.Info("hasStateConflict state conflict", "addr", readAddr, "key", writeKey)
+						log.Debug("conflict: state conflict", "addr", readAddr, "key", writeKey)
 						return true
 					}
 				}
@@ -482,19 +472,19 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, mergedInfo Merg
 	}
 	// check balance change
 	balanceReads := readDb.BalanceReadsInSlot()
-	balanceWrite := mergedInfo.BalanceChangeSet
+	balanceWrite := changeList.BalanceChangeSet
 	if len(balanceReads) != 0 && len(balanceWrite) != 0 {
 		for readAddr := range balanceReads {
-			if _, exist := mergedInfo.StateObjectSuicided[readAddr]; exist {
-				log.Debug("hasStateConflict read suicide balance", "addr", readAddr)
+			if _, exist := changeList.StateObjectSuicided[readAddr]; exist {
+				log.Debug("conflict: read suicide balance", "addr", readAddr)
 				return true
 			}
 			if _, ok := balanceWrite[readAddr]; ok {
 				if readAddr == consensus.SystemAddress {
-					log.Info("hasStateConflict skip specical system address's balance check")
+					log.Debug("conflict: skip specical system address's balance check")
 					continue
 				}
-				log.Info("hasStateConflict balance conflict", "addr", readAddr)
+				log.Debug("conflict: balance conflict", "addr", readAddr)
 				return true
 			}
 		}
@@ -502,15 +492,15 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, mergedInfo Merg
 
 	// check code change
 	codeReads := readDb.CodeReadInSlot()
-	codeWrite := mergedInfo.CodeChangeSet
+	codeWrite := changeList.CodeChangeSet
 	if len(codeReads) != 0 && len(codeWrite) != 0 {
 		for readAddr := range codeReads {
-			if _, exist := mergedInfo.StateObjectSuicided[readAddr]; exist {
-				log.Debug("hasStateConflict read suicide code", "addr", readAddr)
+			if _, exist := changeList.StateObjectSuicided[readAddr]; exist {
+				log.Debug("conflict: read suicide code", "addr", readAddr)
 				return true
 			}
 			if _, ok := codeWrite[readAddr]; ok {
-				log.Debug("hasStateConflict code conflict", "addr", readAddr)
+				log.Debug("conflict: code conflict", "addr", readAddr)
 				return true
 			}
 		}
@@ -518,11 +508,11 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, mergedInfo Merg
 
 	// check address state change: create, suicide...
 	addrReads := readDb.AddressReadInSlot()
-	addrWrite := mergedInfo.AddrStateChangeSet
+	addrWrite := changeList.AddrStateChangeSet
 	if len(addrReads) != 0 && len(addrWrite) != 0 {
 		for readAddr := range addrReads {
 			if _, ok := addrWrite[readAddr]; ok {
-				log.Info("hasStateConflict address state conflict", "addr", readAddr)
+				log.Debug("conflict: address state conflict", "addr", readAddr)
 				return true
 			}
 		}
@@ -570,7 +560,7 @@ func (p *StateProcessor) dispatchToIdleSlot(statedb *state.StateDB, txReq *Paral
 	for i, slot := range p.slotState {
 		if slot.tailTxReq == nil {
 			// for idle slot, we have to create a SlotDB for it.
-			if len(slot.mergedTxInfo) == 0 {
+			if len(slot.mergedChangeList) == 0 {
 				txReq.slotDB = state.NewSlotDB(statedb, consensus.SystemAddress, p.mergedTxIndex, false)
 			}
 			log.Debug("dispatchToIdleSlot", "slotIndex", i, "txIndex", txReq.txIndex)
@@ -597,8 +587,8 @@ func (p *StateProcessor) waitUntilNextTxDone(statedb *state.StateDB) *ParallelTx
 			slotState := p.slotState[result.slotIndex]
 			var slotDB *state.StateDB
 			if result.reuseSlotDB {
-				// for reuse, len(slotState.mergedTxInfo) must >= 1
-				lastSlotDB := slotState.mergedTxInfo[len(slotState.mergedTxInfo)-1].slotDB
+				// for reuse, len(slotState.mergedChangeList) must >= 1
+				lastSlotDB := slotState.mergedChangeList[len(slotState.mergedChangeList)-1].SlotDB
 				slotDB = state.ReUseSlotDB(lastSlotDB, result.keepSystem)
 			} else {
 				slotDB = state.NewSlotDB(statedb, consensus.SystemAddress, p.mergedTxIndex, result.keepSystem)
@@ -621,15 +611,11 @@ func (p *StateProcessor) waitUntilNextTxDone(statedb *state.StateDB) *ParallelTx
 		resultSlotState.tailTxReq = nil
 	}
 
-	// merge slotDB to parent stateDB
-	log.Info("ProcessParallel a tx is done, merge to block stateDB",
-		"resultSlotIndex", resultSlotIndex, "resultTxIndex", resultTxIndex)
-	objSuicided, stateChanges, balanceChanges, codeChanges, addrChanges := statedb.MergeSlotDB(result.slotDB, result.receipt)
-	// slot's mergedTxInfo is updated by dispatcher, while consumed by slot.
+	// Slot's mergedChangeList is produced by dispatcher, while consumed by slot.
 	// It is safe, since write and read is in sequential, do write -> notify -> read
-	// it is not good, but work right now.
-
-	resultSlotState.mergedTxInfo = append(resultSlotState.mergedTxInfo, MergedTxInfo{result.slotDB, objSuicided, stateChanges, balanceChanges, codeChanges, addrChanges, resultTxIndex})
+	// It is not good, but work right now.
+	changeList := statedb.MergeSlotDB(result.slotDB, result.receipt, resultTxIndex)
+	resultSlotState.mergedChangeList = append(resultSlotState.mergedChangeList, changeList)
 
 	if resultTxIndex != p.mergedTxIndex+1 {
 		log.Warn("ProcessParallel tx result out of order", "resultTxIndex", resultTxIndex,
@@ -637,7 +623,8 @@ func (p *StateProcessor) waitUntilNextTxDone(statedb *state.StateDB) *ParallelTx
 		panic("ProcessParallel tx result out of order")
 	}
 	p.mergedTxIndex = resultTxIndex
-	// notify the following Tx, it is merged, what if no wait or next tx is in same slot?
+	// notify the following Tx, it is merged,
+	// fixme: what if no wait or next tx is in same slot?
 	result.txReq.curTxChan <- resultTxIndex
 	return result
 }
@@ -673,7 +660,7 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 
 	// wait until the previous tx is finalized.
 	if txReq.waitTxChan != nil {
-		log.Info("execInParallelSlot wait previous Tx done", "my slotIndex", slotIndex, "txIndex", txIndex)
+		log.Debug("execInParallelSlot wait previous Tx done", "my slotIndex", slotIndex, "txIndex", txIndex)
 		waitTxIndex := <-txReq.waitTxChan
 		if waitTxIndex != txIndex-1 {
 			log.Error("execInParallelSlot wait tx index mismatch", "expect", txIndex-1, "actual", waitTxIndex)
@@ -685,6 +672,7 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 	// for example: err="nonce too high"
 	// in this case, we will do re-run.
 	if err != nil {
+		p.debugErrorRedoNum++
 		log.Debug("Stage Execution err", "slotIndex", slotIndex, "txIndex", txIndex,
 			"current slotDB.baseTxIndex", slotDB.BaseTxIndex(), "err", err)
 		redoResult := &ParallelTxResult{
@@ -735,12 +723,12 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 			}
 
 			// check all finalizedDb from current slot's
-			for _, mergedInfo := range p.slotState[index].mergedTxInfo {
-				if mergedInfo.txIndex <= slotDB.BaseTxIndex() {
-					// log.Info("skip finalized DB which is out of the conflict window", "finDb.txIndex", finDb.txIndex, "slotDB.baseTxIndex", slotDB.baseTxIndex)
+			for _, changeList := range p.slotState[index].mergedChangeList {
+				if changeList.TxIndex <= slotDB.BaseTxIndex() {
+					// log.Debug("skip finalized DB which is out of the conflict window", "finDb.txIndex", finDb.txIndex, "slotDB.baseTxIndex", slotDB.baseTxIndex)
 					continue
 				}
-				if p.hasStateConflict(slotDB, mergedInfo) {
+				if p.hasStateConflict(slotDB, changeList) {
 					log.Debug("execInParallelSlot Stage Execution conflict", "slotIndex", slotIndex,
 						"txIndex", txIndex, " conflict slot", index, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
 					hasConflict = true
@@ -754,6 +742,7 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 	}
 
 	if hasConflict {
+		p.debugConflictRedoNum++
 		// re-run should not have conflict, since it has the latest world state.
 		redoResult := &ParallelTxResult{
 			redo:         true,
@@ -850,11 +839,17 @@ func (p *StateProcessor) runSlotLoop(slotIndex int) {
 }
 
 // clear slotState for each block.
-func (p *StateProcessor) resetSlotState() {
+func (p *StateProcessor) resetParallelState(txNum int) {
+	if txNum == 0 {
+		return
+	}
 	p.mergedTxIndex = -1
+	p.debugErrorRedoNum = 0
+	p.debugConflictRedoNum = 0
+
 	for _, slotState := range p.slotState {
 		slotState.tailTxReq = nil
-		slotState.mergedTxInfo = make([]MergedTxInfo, 0)
+		slotState.mergedChangeList = make([]state.SlotChangeList, 0)
 	}
 }
 
@@ -958,10 +953,8 @@ func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.Stat
 	)
 	var receipts = make([]*types.Receipt, 0)
 	txNum := len(block.Transactions())
-	if txNum > 0 {
-		log.Info("ProcessParallel", "block num", block.Number(), "txNum", txNum)
-		p.resetSlotState()
-	}
+	p.resetParallelState(txNum)
+
 	// Iterate over and process the individual transactions
 	posa, isPoSA := p.engine.(consensus.PoSA)
 	commonTxs := make([]*types.Transaction, 0, txNum)
@@ -1043,10 +1036,14 @@ func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.Stat
 		receipts = append(receipts, result.receipt)
 	}
 
-	if txNum > 0 {
+	// len(commonTxs) could be 0, such as: https://bscscan.com/block/14580486
+	if len(commonTxs) > 0 {
 		log.Info("ProcessParallel tx all done", "block", header.Number, "usedGas", *usedGas,
-			"len(commonTxs)", len(commonTxs), "len(receipts)", len(receipts),
-			"len(systemTxs)", len(systemTxs))
+			"txNum", txNum,
+			"len(commonTxs)", len(commonTxs),
+			"debugErrorRedoNum", p.debugErrorRedoNum,
+			"debugConflictRedoNum", p.debugConflictRedoNum,
+			"redo rate(%)", 100*(p.debugErrorRedoNum+p.debugConflictRedoNum)/len(commonTxs))
 	}
 	allLogs, err := p.postExecute(block, statedb, &commonTxs, &receipts, &systemTxs, usedGas, bloomProcessors)
 	return statedb, receipts, allLogs, *usedGas, err
