@@ -203,6 +203,12 @@ func applyMetricConfig(ctx *cli.Context, cfg *gethConfig) {
 	if ctx.GlobalIsSet(utils.MetricsEnabledExpensiveFlag.Name) {
 		cfg.Metrics.EnabledExpensive = ctx.GlobalBool(utils.MetricsEnabledExpensiveFlag.Name)
 	}
+	if ctx.GlobalIsSet(utils.MetricsEnabledRecordIOFlag.Name) {
+		cfg.Metrics.EnabledExpensive = ctx.GlobalBool(utils.MetricsEnabledRecordIOFlag.Name)
+	}
+	if ctx.GlobalIsSet(utils.MetricsDisablePrefetchFlag.Name) {
+		cfg.Metrics.EnabledExpensive = ctx.GlobalBool(utils.MetricsDisablePrefetchFlag.Name)
+	}
 	if ctx.GlobalIsSet(utils.MetricsHTTPFlag.Name) {
 		cfg.Metrics.HTTP = ctx.GlobalString(utils.MetricsHTTPFlag.Name)
 	}

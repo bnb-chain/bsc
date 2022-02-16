@@ -19,8 +19,6 @@ const (
 )
 
 var (
-	//cacheL1Counter     = metrics.NewRegisteredHistogram("state/cache/depth/account", nil, metrics.NewExpDecaySample(1028, 0.015))
-	//	StorageDepthHist    = metrics.NewRegisteredHistogram("state/cache/depth/storage", nil, metrics.NewExpDecaySample(1028, 0.015))
 	cacheL1AccountTimer   = metrics.NewRegisteredTimer("cache/cost/account/layer1", nil)
 	cacheL2AccountTimer   = metrics.NewRegisteredTimer("cache/cost/account/layer2", nil)
 	cacheL3AccountTimer   = metrics.NewRegisteredTimer("cache/cost/account/layer3", nil)
@@ -39,7 +37,7 @@ var (
 	diskL4StorageCounter  = metrics.NewRegisteredCounter("cache/count/storage/layer4", nil)
 )
 
-// mark the info of hit counts of each layers
+// mark the info of total hit counts of each layers
 func RecordCacheDepth(metricsName cacheLayerName) {
 	switch metricsName {
 	case CacheL1ACCOUNT:
@@ -63,9 +61,6 @@ func RecordCacheDepth(metricsName cacheLayerName) {
 
 // mark the dalays of each layers
 func RecordCacheMetrics(metricsName cacheLayerName, start time.Time) {
-	//	if !MetricsEnabled {
-	//		return
-	//	}
 	switch metricsName {
 	case CacheL1ACCOUNT:
 		recordCost(cacheL1AccountTimer, start)
@@ -76,13 +71,13 @@ func RecordCacheMetrics(metricsName cacheLayerName, start time.Time) {
 	case DiskL4ACCOUNT:
 		recordCost(diskL4AccountTimer, start)
 	case CacheL1STORAGE:
-		recordCost(cacheL1AccountTimer, start)
+		recordCost(cacheL1StorageTimer, start)
 	case CacheL2STORAGE:
-		recordCost(cacheL2AccountTimer, start)
+		recordCost(cacheL2StorageTimer, start)
 	case CacheL3STORAGE:
-		recordCost(cacheL3AccountTimer, start)
+		recordCost(cacheL3StorageTimer, start)
 	case DiskL4STORAGE:
-		recordCost(diskL4AccountTimer, start)
+		recordCost(diskL4StorageTimer, start)
 
 	}
 }
