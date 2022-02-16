@@ -19,6 +19,7 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"github.com/ethereum/go-ethereum/cachemetrics"
 	"io"
 	"math/big"
 	"time"
@@ -30,6 +31,11 @@ import (
 )
 
 var emptyCodeHash = crypto.Keccak256(nil)
+
+var (
+	cacheL1StorageHitMeter  = metrics.NewRegisteredMeter("state/cache/storage/hit", nil)
+	cacheL1StorageMissMeter = metrics.NewRegisteredMeter("state/cache/storage/miss", nil)
+)
 
 type Code []byte
 
@@ -188,6 +194,7 @@ func (s *StateObject) GetState(db Database, key common.Hash) common.Hash {
 	// If we have a dirty value for this state entry, return it
 	value, dirty := s.dirtyStorage[key]
 	if dirty {
+		cacheL1StorageHitMeter.Mark(1)
 		return value
 	}
 	// Otherwise return the entry's original value
@@ -197,16 +204,32 @@ func (s *StateObject) GetState(db Database, key common.Hash) common.Hash {
 // GetCommittedState retrieves a value from the committed account storage trie.
 func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Hash {
 	// If the fake storage is set, only lookup the state here(in the debugging mode)
+	start := time.Now()
+	hitInCache := false
+
+	defer func() {
+		if hitInCache {
+			cachemetrics.RecordCacheDepth("CACHE_L1_STORAGE")
+			cachemetrics.RecordCacheMetrics("CACHE_L1_STORAGE", start)
+		}
+	}()
 	if s.fakeStorage != nil {
 		return s.fakeStorage[key]
 	}
 	// If we have a pending write or clean cached, return that
 	if value, pending := s.pendingStorage[key]; pending {
+		hitInCache = true
+		cacheL1StorageHitMeter.Mark(1)
 		return value
 	}
+
 	if value, cached := s.originStorage[key]; cached {
+		hitInCache = true
+		cacheL1StorageHitMeter.Mark(1)
 		return value
 	}
+
+	cacheL1StorageMissMeter.Mark(1)
 	// If no live objects are available, attempt to use snapshots
 	var (
 		enc   []byte
