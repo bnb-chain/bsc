@@ -82,7 +82,11 @@ const (
 )
 
 var (
-	commitTxsTimer = metrics.NewRegisteredTimer("worker/committxs", nil)
+	commitTxsTimer        = metrics.NewRegisteredTimer("worker/committxs", nil)
+	totalAccountReadTimer = metrics.NewRegisteredTimer("worker/account/reads", nil)
+	totalStorageReadTimer = metrics.NewRegisteredTimer("worker/storage/reads", nil)
+	totalReadTimer        = metrics.NewRegisteredTimer("worker/total/reads", nil)
+	totalMiningTimer      = metrics.NewRegisteredTimer("worker/mine", nil)
 )
 
 // environment is the worker's current environment and holds all of the current state information.
@@ -1032,6 +1036,7 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 		if interval != nil {
 			interval()
 		}
+		start = time.Now()
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: s, block: block, createdAt: time.Now()}:
 			w.unconfirmed.Shift(block.NumberU64() - 1)
@@ -1040,6 +1045,17 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 				"gas", block.GasUsed(),
 				"elapsed", common.PrettyDuration(time.Since(start)))
 
+			// mark mingTime as a metrics
+			totalMiningTimer.Update(time.Since(start))
+
+			accountReadCost := s.SnapshotAccountReads + s.L1CacheAccountReads + s.AccountReads
+			storageReadCost := s.SnapshotStorageReads + s.L1CacheStorageReads + s.StorageReads
+			// mark the total io process cost in L1-L4 layers of account
+			totalAccountReadTimer.Update(accountReadCost)
+			// mark the total io process cost in L1-L4 layers of storage
+			totalStorageReadTimer.Update(storageReadCost)
+			// mark the total io process cost in L1-L4 layers
+			totalReadTimer.Update(accountReadCost + storageReadCost)
 		case <-w.exitCh:
 			log.Info("Worker has exited")
 		}

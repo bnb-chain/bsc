@@ -140,6 +140,8 @@ type StateDB struct {
 	StorageHashes        time.Duration
 	StorageUpdates       time.Duration
 	StorageCommits       time.Duration
+	L1CacheAccountReads  time.Duration
+	L1CacheStorageReads  time.Duration
 	SnapshotAccountReads time.Duration
 	SnapshotStorageReads time.Duration
 	SnapshotCommits      time.Duration
@@ -595,7 +597,8 @@ func (s *StateDB) getStateObject(addr common.Address) *StateObject {
 }
 
 func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
-	if !metrics.DisablePrefetch {
+	if metrics.DisablePrefetch {
+		log.Info("disable prefetch", "123")
 		return
 	}
 	accounts := make(map[common.Address]bool, block.Transactions().Len())
@@ -679,9 +682,13 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 	if obj := s.stateObjects[addr]; obj != nil {
 		cacheL1AccountHitMeter.Mark(1)
 		cachemetrics.RecordCacheDepth("CACHE_L1_ACCOUNT")
+		cachemetrics.RecordCacheMetrics("CACHE_L1_ACCOUNT", start)
+		if metrics.EnableIORecord {
+			s.L1CacheAccountReads += time.Since(start)
+		}
 		return obj
 	}
-	cachemetrics.RecordCacheMetrics("CACHE_L1_ACCOUNT", start)
+
 	cacheL1AccountMissMeter.Mark(1)
 	// If no live objects are available, attempt to use snapshots
 	var (
@@ -689,7 +696,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 		err  error
 	)
 	if s.snap != nil {
-		if metrics.EnabledExpensive {
+		if metrics.EnableIORecord {
 			defer func(start time.Time) { s.SnapshotAccountReads += time.Since(start) }(time.Now())
 		}
 		var acc *snapshot.Account
@@ -721,7 +728,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 			}
 			s.trie = tr
 		}
-		if metrics.EnabledExpensive {
+		if metrics.EnableIORecord {
 			defer func(start time.Time) { s.AccountReads += time.Since(start) }(time.Now())
 		}
 		enc, err := s.trie.TryGet(addr.Bytes())

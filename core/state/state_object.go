@@ -211,6 +211,9 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		if hitInCache {
 			cachemetrics.RecordCacheDepth("CACHE_L1_STORAGE")
 			cachemetrics.RecordCacheMetrics("CACHE_L1_STORAGE", start)
+			if metrics.EnableIORecord {
+				s.db.L1CacheStorageReads += time.Since(start)
+			}
 		}
 	}()
 	if s.fakeStorage != nil {
@@ -237,7 +240,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		meter *time.Duration
 	)
 	readStart := time.Now()
-	if metrics.EnabledExpensive {
+	if metrics.EnableIORecord {
 		// If the snap is 'under construction', the first lookup may fail. If that
 		// happens, we don't want to double-count the time elapsed. Thus this
 		// dance with the metering.
@@ -248,7 +251,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		}()
 	}
 	if s.db.snap != nil {
-		if metrics.EnabledExpensive {
+		if metrics.EnableIORecord {
 			meter = &s.db.SnapshotStorageReads
 		}
 		// If the object was destructed in *this* block (and potentially resurrected),
@@ -270,7 +273,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			*meter += time.Since(readStart)
 			readStart = time.Now()
 		}
-		if metrics.EnabledExpensive {
+		if metrics.EnableIORecord {
 			meter = &s.db.StorageReads
 		}
 		if enc, err = s.getTrie(db).TryGet(key.Bytes()); err != nil {
