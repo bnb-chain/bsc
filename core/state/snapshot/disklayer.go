@@ -18,7 +18,9 @@ package snapshot
 
 import (
 	"bytes"
+	"github.com/ethereum/go-ethereum/cachemetrics"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -95,7 +97,7 @@ func (dl *diskLayer) Account(hash common.Hash) (*Account, error) {
 func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
-
+	start := time.Now()
 	// If the layer was flattened into, consider it invalid (any live reference to
 	// the original should be marked as unusable).
 	if dl.stale {
@@ -113,11 +115,18 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	if blob, found := dl.cache.HasGet(nil, hash[:]); found {
 		snapshotCleanAccountHitMeter.Mark(1)
 		snapshotCleanAccountReadMeter.Mark(int64(len(blob)))
+		cachemetrics.RecordCacheDepth("CACHE_L3_ACCOUNT")
+		cachemetrics.RecordCacheMetrics("CACHE_L3_ACCOUNT", start)
 		return blob, nil
 	}
+
+	startGetInDisk := time.Now()
 	// Cache doesn't contain account, pull from disk and cache for later
 	blob := rawdb.ReadAccountSnapshot(dl.diskdb, hash)
 	dl.cache.Set(hash[:], blob)
+
+	cachemetrics.RecordCacheDepth("DISK_L4_ACCOUNT")
+	cachemetrics.RecordCacheMetrics("DISK_L4_ACCOUNT", startGetInDisk)
 
 	snapshotCleanAccountMissMeter.Mark(1)
 	if n := len(blob); n > 0 {
@@ -133,6 +142,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
+	start := time.Now()
 
 	// If the layer was flattened into, consider it invalid (any live reference to
 	// the original should be marked as unusable).
@@ -148,16 +158,21 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	}
 	// If we're in the disk layer, all diff layers missed
 	snapshotDirtyStorageMissMeter.Mark(1)
-
 	// Try to retrieve the storage slot from the memory cache
 	if blob, found := dl.cache.HasGet(nil, key); found {
 		snapshotCleanStorageHitMeter.Mark(1)
 		snapshotCleanStorageReadMeter.Mark(int64(len(blob)))
+		cachemetrics.RecordCacheDepth("CACHE_L3_STORAGE")
+		cachemetrics.RecordCacheMetrics("CACHE_L3_STORAGE", start)
 		return blob, nil
 	}
+	startGetInDisk := time.Now()
 	// Cache doesn't contain storage slot, pull from disk and cache for later
 	blob := rawdb.ReadStorageSnapshot(dl.diskdb, accountHash, storageHash)
 	dl.cache.Set(key, blob)
+
+	cachemetrics.RecordCacheDepth("DISK_L4_STORAGE")
+	cachemetrics.RecordCacheMetrics("DISK_L4_STORAGE", startGetInDisk)
 
 	snapshotCleanStorageMissMeter.Mark(1)
 	if n := len(blob); n > 0 {

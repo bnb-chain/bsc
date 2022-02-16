@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/cachemetrics"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -53,7 +54,9 @@ var (
 	// emptyRoot is the known root hash of an empty trie.
 	emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
-	emptyAddr = crypto.Keccak256Hash(common.Address{}.Bytes())
+	emptyAddr               = crypto.Keccak256Hash(common.Address{}.Bytes())
+	cacheL1AccountHitMeter  = metrics.NewRegisteredMeter("state/cache/account/hit", nil)
+	cacheL1AccountMissMeter = metrics.NewRegisteredMeter("state/cache/account/miss", nil)
 )
 
 type proofList [][]byte
@@ -669,9 +672,14 @@ func (s *StateDB) preloadStateObject(address []common.Address) []*StateObject {
 // destructed object instead of wiping all knowledge about the state object.
 func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 	// Prefer live objects if any is available
+	start := time.Now()
 	if obj := s.stateObjects[addr]; obj != nil {
+		cacheL1AccountHitMeter.Mark(1)
+		cachemetrics.RecordCacheDepth("CACHE_L1_ACCOUNT")
 		return obj
 	}
+	cachemetrics.RecordCacheMetrics("CACHE_L1_ACCOUNT", start)
+	cacheL1AccountMissMeter.Mark(1)
 	// If no live objects are available, attempt to use snapshots
 	var (
 		data *Account
