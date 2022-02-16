@@ -633,7 +633,6 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 	txIndex := txReq.txIndex
 	tx := txReq.tx
 	slotDB := txReq.slotDB
-	slotDB.SlotIndex = slotIndex
 	gp := txReq.gp // goroutine unsafe
 	msg := txReq.msg
 	block := txReq.block
@@ -688,7 +687,6 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 		}
 		p.paraTxResultChan <- redoResult
 		slotDB = <-p.slotState[slotIndex].slotdbChan
-		slotDB.SlotIndex = slotIndex
 		slotDB.Prepare(tx.Hash(), block.Hash(), txIndex)
 		// vmenv.Reset(vm.TxContext{}, slotDB)
 		log.Debug("Stage Execution get new slotdb to redo", "slotIndex", slotIndex,
@@ -758,7 +756,6 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 		}
 		p.paraTxResultChan <- redoResult
 		slotDB = <-p.slotState[slotIndex].slotdbChan
-		slotDB.SlotIndex = slotIndex
 		slotDB.Prepare(tx.Hash(), block.Hash(), txIndex)
 		// vmenv.Reset(vm.TxContext{}, slotDB)
 		slotGasLimit = gp.Gas()
