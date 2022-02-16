@@ -28,11 +28,8 @@ METRICS_TOP_ADDRESS_ENABLED=true geth ...
 ```
 ### Http Endpoints
 ```
-http://localhost:6002/trace/start
-http://localhost:6002/trace/stop
+http://localhost:6002/trace/start?duration={seconds}
 ```
-It will automatically start the trace, you can also call the endpoints to start or stop the trace.
-
 A file will be generated with name trace_{unixTimestamp}.out for analysis.
 
 

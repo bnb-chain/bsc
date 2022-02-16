@@ -1,6 +1,7 @@
 package perf
 
 import (
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"time"
 )
@@ -11,7 +12,7 @@ const (
 	MpMiningTotal         MpMetricsName = "MP_MINING_TOTAL"
 	MpMiningPrepare       MpMetricsName = "MP_MINING_PREPARE"
 	MpMiningOrder         MpMetricsName = "MP_MINING_ORDER"
-	MpMiningCommit        MpMetricsName = "MP_MINING_COMMIT"
+	MpMiningCommitTx      MpMetricsName = "MP_MINING_COMMIT_TX"
 	MpMiningCommitDelay   MpMetricsName = "MP_MINING_COMMIT_DELAY"
 	MpMiningCommitProcess MpMetricsName = "MP_MINING_COMMIT_PROCESS"
 	MpMiningFinalize      MpMetricsName = "MP_MINING_FINALIZE"
@@ -23,8 +24,10 @@ const (
 	MpImportingProcess      MpMetricsName = "MP_IMPORTING_PROCESS"
 	MpImportingCommit       MpMetricsName = "MP_IMPORTING_COMMIT"
 
-	MpPropagationTotal MpMetricsName = "MP_PROPAGATION_TOTAL"
-	MpPropagationSend  MpMetricsName = "MP_PROPAGATION_SEND"
+	MpPropagationTotal         MpMetricsName = "MP_PROPAGATION_TOTAL"
+	MpPropagationSend          MpMetricsName = "MP_PROPAGATION_SEND"
+	MpPropagationRequestHeader MpMetricsName = "MP_PROPAGATION_REQUEST_HEADER"
+	MpPropagationRequestBodies MpMetricsName = "MP_PROPAGATION_REQUEST_BODIES"
 )
 
 var mpMetricsEnabled, _ = getEnvBool("METRICS_MP_METRICS_ENABLED")
@@ -34,7 +37,7 @@ var (
 	miningTotalTimer         = metrics.NewRegisteredTimer("mp/mining/total", nil)
 	miningPrepareTimer       = metrics.NewRegisteredTimer("mp/mining/prepare", nil)
 	miningOrderTimer         = metrics.NewRegisteredTimer("mp/mining/order", nil)
-	miningCommitTimer        = metrics.NewRegisteredTimer("mp/mining/commit", nil)
+	miningCommitTxTimer      = metrics.NewRegisteredTimer("mp/mining/commit_tx", nil)
 	miningCommitDelayTimer   = metrics.NewRegisteredTimer("mp/mining/commit/delay", nil)
 	miningCommitProcessTimer = metrics.NewRegisteredTimer("mp/mining/commit/process", nil)
 	miningFinalizeTimer      = metrics.NewRegisteredTimer("mp/mining/finalize", nil)
@@ -50,7 +53,9 @@ var (
 	//block importing, block mining, p2p overall metrics
 	propagationTotalTimer = metrics.NewRegisteredTimer("mp/propagation/total", nil)
 	//total is less than send for async send is used
-	propagationSendTimer = metrics.NewRegisteredTimer("mp/propagation/send", nil)
+	propagationSendTimer          = metrics.NewRegisteredTimer("mp/propagation/send", nil)
+	propagationRequestHeaderTimer = metrics.NewRegisteredTimer("mp/propagation/request/header", nil)
+	propagationRequestBodiesTimer = metrics.NewRegisteredTimer("mp/propagation/request/bodies", nil)
 )
 
 func RecordMPMetrics(metricsName MpMetricsName, start time.Time) {
@@ -65,8 +70,8 @@ func RecordMPMetrics(metricsName MpMetricsName, start time.Time) {
 		recordTimer(miningPrepareTimer, start)
 	case MpMiningOrder:
 		recordTimer(miningOrderTimer, start)
-	case MpMiningCommit:
-		recordTimer(miningCommitTimer, start)
+	case MpMiningCommitTx:
+		recordTimer(miningCommitTxTimer, start)
 	case MpMiningCommitDelay:
 		recordTimer(miningCommitDelayTimer, start)
 	case MpMiningCommitProcess:
@@ -91,7 +96,19 @@ func RecordMPMetrics(metricsName MpMetricsName, start time.Time) {
 		recordTimer(propagationTotalTimer, start)
 	case MpPropagationSend:
 		recordTimer(propagationSendTimer, start)
+	case MpPropagationRequestHeader:
+		recordTimer(propagationRequestHeaderTimer, start)
+	case MpPropagationRequestBodies:
+		recordTimer(propagationRequestBodiesTimer, start)
 	}
+}
+
+func RecordMPLogs(logger log.Logger, msg string, ctx ...interface{}) {
+	if !mpMetricsEnabled {
+		return
+	}
+
+	logger.Info(msg, ctx...)
 }
 
 func recordTimer(timer metrics.Timer, start time.Time) {

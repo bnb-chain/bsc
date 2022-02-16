@@ -279,7 +279,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 
 	//track top EOA/contract addresses
 	perf.UpdateTopEOAStats(sender.Address())
-	perf.UpdateTopContractStats(st.to())
+	emptyAddress := common.Address{}
+	if st.to() != emptyAddress {
+		perf.UpdateTopContractStats(st.to())
+	}
 
 	// consensus engine is parlia
 	if st.evm.ChainConfig().Parlia != nil {

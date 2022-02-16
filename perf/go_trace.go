@@ -21,17 +21,20 @@ func StartGoTraceMetrics() {
 	if !traceMetricsEnabled {
 		return
 	}
-	startTrace()
+
 	go func() {
 		router := gin.Default()
 		router.GET("/trace/start", func(c *gin.Context) {
-			startTrace()
+			durationStr := c.Query("duration")
+			duration, err := strconv.Atoi(durationStr)
+			if err != nil {
+				c.String(http.StatusBadRequest, "Please pass duration in seconds, e.g., ?duration=300")
+				return
+			}
+			startTrace(duration)
 			c.String(http.StatusOK, "Trace running status: "+strconv.FormatBool(running))
 		})
-		router.GET("/trace/stop", func(c *gin.Context) {
-			stopTrace()
-			c.String(http.StatusOK, "Trace running status: "+strconv.FormatBool(running))
-		})
+
 		err := router.Run(":6002")
 		if err != nil {
 			fmt.Println("Failed to start gin server")
@@ -39,7 +42,7 @@ func StartGoTraceMetrics() {
 	}()
 }
 
-func startTrace() {
+func startTrace(duration int) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -49,7 +52,7 @@ func startTrace() {
 
 	timeUnix := time.Now().Unix()
 	fileName := "trace_" + strconv.FormatInt(timeUnix, 10) + ".out"
-	fmt.Println("Trace to fileName: " + fileName)
+	fmt.Println("Tracing to fileName: " + fileName)
 	file, err := os.Create(fileName)
 	if err != nil {
 		fmt.Println("Failed to create file: " + fileName)
@@ -61,6 +64,12 @@ func startTrace() {
 	} else {
 		running = true
 	}
+
+	go func(d int) {
+		timer := time.NewTimer(time.Duration(float64(d) * float64(time.Second)))
+		<-timer.C
+		stopTrace()
+	}(duration)
 }
 
 func StopGoTraceMetrics() {
@@ -75,6 +84,7 @@ func stopTrace() {
 	defer mutex.Unlock()
 
 	if running {
+		fmt.Println("Trace stopped")
 		trace.Stop()
 		file.Close()
 		running = false

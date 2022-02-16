@@ -21,6 +21,7 @@ package downloader
 
 import (
 	"errors"
+	"github.com/ethereum/go-ethereum/perf"
 	"math"
 	"math/big"
 	"sort"
@@ -151,7 +152,12 @@ func (p *peerConnection) FetchHeaders(from uint64, count int) error {
 
 	// Issue the header retrieval request (absolute upwards without gaps)
 
-	go p.peer.RequestHeadersByNumber(from, count, 0, false)
+	go func() {
+		start := time.Now()
+		p.peer.RequestHeadersByNumber(from, count, 0, false)
+		perf.RecordMPMetrics(perf.MpPropagationRequestHeader, start)
+		perf.RecordMPLogs(p.log, "P2P_REQUEST_HEADER", "peer", p.id, "from", from, "count", count, "used", time.Since(start).Nanoseconds())
+	}()
 	return nil
 }
 
@@ -164,12 +170,15 @@ func (p *peerConnection) FetchBodies(request *fetchRequest) error {
 	p.blockStarted = time.Now()
 
 	go func() {
+		start := time.Now()
 		// Convert the header set to a retrievable slice
 		hashes := make([]common.Hash, 0, len(request.Headers))
 		for _, header := range request.Headers {
 			hashes = append(hashes, header.Hash())
 		}
 		p.peer.RequestBodies(hashes)
+		perf.RecordMPMetrics(perf.MpPropagationRequestBodies, start)
+		perf.RecordMPLogs(p.log, "P2P_REQUEST_BODIES", "peer", p.id, "count", len(hashes), "used", time.Since(start).Nanoseconds())
 	}()
 
 	return nil
