@@ -595,6 +595,9 @@ func (s *StateDB) getStateObject(addr common.Address) *StateObject {
 }
 
 func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
+	if !metrics.DisablePrefetch {
+		return
+	}
 	accounts := make(map[common.Address]bool, block.Transactions().Len())
 	accountsSlice := make([]common.Address, 0, block.Transactions().Len())
 	for _, tx := range block.Transactions() {
