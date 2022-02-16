@@ -26,11 +26,14 @@ var Enabled = false
 // for health monitoring and debug metrics that might impact runtime performance.
 var EnabledExpensive = false
 
+var DisablePrefetch = false
+
 // enablerFlags is the CLI flag names to use to enable metrics collections.
 var enablerFlags = []string{"metrics"}
 
 // expensiveEnablerFlags is the CLI flag names to use to enable metrics collections.
 var expensiveEnablerFlags = []string{"metrics.expensive"}
+var PrefetchDisableFlags = []string{"metrics.noPrefetch"}
 
 // Init enables or disables the metrics system. Since we need this to run before
 // any other code gets to create meters and timers, we'll actually do an ugly hack
@@ -49,6 +52,13 @@ func init() {
 			if !EnabledExpensive && flag == enabler {
 				log.Info("Enabling expensive metrics collection")
 				EnabledExpensive = true
+			}
+		}
+
+		for _, enabler := range PrefetchDisableFlags {
+			if !DisablePrefetch && flag == enabler {
+				log.Info("disable prefetch when metrics collection")
+				DisablePrefetch = true
 			}
 		}
 	}

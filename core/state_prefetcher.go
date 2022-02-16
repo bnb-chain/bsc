@@ -17,6 +17,7 @@
 package core
 
 import (
+	"github.com/ethereum/go-ethereum/metrics"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/consensus"
@@ -50,6 +51,9 @@ func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine conse
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to pre-cache transaction signatures and snapshot clean state.
 func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, cfg vm.Config, interrupt *uint32) {
+	if !metrics.DisablePrefetch {
+		return
+	}
 	var (
 		header = block.Header()
 		signer = types.MakeSigner(p.config, header.Number)
