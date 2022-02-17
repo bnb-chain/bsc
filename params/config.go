@@ -663,8 +663,8 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 	for _, cur := range []fork{
 		{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
 		{name: "brunoBlock", block: c.BrunoBlock},
-		{name: "berlinBlock", block: c.BerlinBlock},
 		{name: "eulerBlock", block: c.EulerBlock},
+		{name: "berlinBlock", block: c.BerlinBlock},
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number
