@@ -303,6 +303,16 @@ func (s *StateDB) getStateObjectFromStateObjects(addr common.Address) (*StateObj
 	return s.stateObjects.LoadStateObject(addr)
 }
 
+// If the transaction execution is failed, keep its read list for conflict detect
+// and discard its state changed, execept its own balance change.
+func (s *StateDB) RevertSlotDB(from common.Address) {
+	s.parallel.stateObjectSuicided = make(map[common.Address]struct{})
+	s.parallel.stateChangedInSlot = make(map[common.Address]StateKeys)
+	s.parallel.balanceChangedInSlot = make(map[common.Address]struct{}, 1)
+	s.parallel.balanceChangedInSlot[from] = struct{}{}
+	s.parallel.addrStateChangeInSlot = make(map[common.Address]struct{})
+}
+
 // MergeSlotDB is for Parallel TX, when the TX is finalized(dirty -> pending)
 // A bit similar to StateDB.Copy(),
 // mainly copy stateObjects, since slotDB has been finalized.
