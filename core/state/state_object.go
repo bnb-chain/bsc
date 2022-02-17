@@ -211,6 +211,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		if hitInCache {
 			cachemetrics.RecordCacheDepth("CACHE_L1_STORAGE")
 			cachemetrics.RecordCacheMetrics("CACHE_L1_STORAGE", start)
+			cachemetrics.RecordTotalCosts("CACHE_L1_STORAGE", start)
 			if metrics.EnableIORecord {
 				s.db.L1CacheStorageReads += time.Since(start)
 			}

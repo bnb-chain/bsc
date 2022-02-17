@@ -19,14 +19,15 @@ const (
 )
 
 var (
-	cacheL1AccountTimer   = metrics.NewRegisteredTimer("cache/cost/account/layer1", nil)
-	cacheL2AccountTimer   = metrics.NewRegisteredTimer("cache/cost/account/layer2", nil)
-	cacheL3AccountTimer   = metrics.NewRegisteredTimer("cache/cost/account/layer3", nil)
-	diskL4AccountTimer    = metrics.NewRegisteredTimer("cache/cost/account/layer4", nil)
-	cacheL1StorageTimer   = metrics.NewRegisteredTimer("cache/cost/storage/layer1", nil)
-	cacheL2StorageTimer   = metrics.NewRegisteredTimer("cache/cost/storage/layer2", nil)
-	cacheL3StorageTimer   = metrics.NewRegisteredTimer("cache/cost/storage/layer3", nil)
-	diskL4StorageTimer    = metrics.NewRegisteredTimer("cache/cost/storage/layer4", nil)
+	cacheL1AccountTimer = metrics.NewRegisteredTimer("cache/cost/account/layer1", nil)
+	cacheL2AccountTimer = metrics.NewRegisteredTimer("cache/cost/account/layer2", nil)
+	cacheL3AccountTimer = metrics.NewRegisteredTimer("cache/cost/account/layer3", nil)
+	diskL4AccountTimer  = metrics.NewRegisteredTimer("cache/cost/account/layer4", nil)
+	cacheL1StorageTimer = metrics.NewRegisteredTimer("cache/cost/storage/layer1", nil)
+	cacheL2StorageTimer = metrics.NewRegisteredTimer("cache/cost/storage/layer2", nil)
+	cacheL3StorageTimer = metrics.NewRegisteredTimer("cache/cost/storage/layer3", nil)
+	diskL4StorageTimer  = metrics.NewRegisteredTimer("cache/cost/storage/layer4", nil)
+
 	cacheL1AccountCounter = metrics.NewRegisteredCounter("cache/count/account/layer1", nil)
 	cacheL2AccountCounter = metrics.NewRegisteredCounter("cache/count/account/layer2", nil)
 	cacheL3AccountCounter = metrics.NewRegisteredCounter("cache/count/account/layer3", nil)
@@ -35,6 +36,15 @@ var (
 	cacheL2StorageCounter = metrics.NewRegisteredCounter("cache/count/storage/layer2", nil)
 	cacheL3StorageCounter = metrics.NewRegisteredCounter("cache/count/storage/layer3", nil)
 	diskL4StorageCounter  = metrics.NewRegisteredCounter("cache/count/storage/layer4", nil)
+
+	cacheL1AccountCostCounter = metrics.NewRegisteredCounter("cache/totalcost/account/layer1", nil)
+	cacheL2AccountCostCounter = metrics.NewRegisteredCounter("cache/totalcost/account/layer2", nil)
+	cacheL3AccountCostCounter = metrics.NewRegisteredCounter("cache/totalcost/account/layer3", nil)
+	diskL4AccountCostCounter  = metrics.NewRegisteredCounter("cache/totalcost/account/layer4", nil)
+	cacheL1StorageCostCounter = metrics.NewRegisteredCounter("cache/totalcost/storage/layer1", nil)
+	cacheL2StorageCostCounter = metrics.NewRegisteredCounter("cache/totalcost/storage/layer2", nil)
+	cacheL3StorageCostCounter = metrics.NewRegisteredCounter("cache/totalcost/storage/layer3", nil)
+	diskL4StorageCostCounter  = metrics.NewRegisteredCounter("cache/totalcost/storage/layer4", nil)
 )
 
 // mark the info of total hit counts of each layers
@@ -82,6 +92,33 @@ func RecordCacheMetrics(metricsName cacheLayerName, start time.Time) {
 	}
 }
 
+// accumulate the total dalays of each layers
+func RecordTotalCosts(metricsName cacheLayerName, start time.Time) {
+	switch metricsName {
+	case CacheL1ACCOUNT:
+		accumulateCost(cacheL1AccountCostCounter, start)
+	case CacheL2ACCOUNT:
+		accumulateCost(cacheL2AccountCostCounter, start)
+	case CacheL3ACCOUNT:
+		accumulateCost(cacheL3AccountCostCounter, start)
+	case DiskL4ACCOUNT:
+		accumulateCost(diskL4AccountCostCounter, start)
+	case CacheL1STORAGE:
+		accumulateCost(cacheL1StorageCostCounter, start)
+	case CacheL2STORAGE:
+		accumulateCost(cacheL2StorageCostCounter, start)
+	case CacheL3STORAGE:
+		accumulateCost(cacheL3StorageCostCounter, start)
+	case DiskL4STORAGE:
+		accumulateCost(diskL4StorageCostCounter, start)
+
+	}
+}
+
 func recordCost(timer metrics.Timer, start time.Time) {
 	timer.Update(time.Since(start))
+}
+
+func accumulateCost(totalcost metrics.Counter, start time.Time) {
+	totalcost.Inc(time.Since(start).Nanoseconds())
 }
