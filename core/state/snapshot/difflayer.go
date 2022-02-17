@@ -334,6 +334,7 @@ func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 		if hitInDifflayer {
 			cachemetrics.RecordCacheDepth("CACHE_L2_ACCOUNT")
 			cachemetrics.RecordCacheMetrics("CACHE_L2_ACCOUNT", start)
+			cachemetrics.RecordTotalCosts("CACHE_L2_ACCOUNT", start)
 		}
 	}()
 	var origin *diskLayer
@@ -405,6 +406,7 @@ func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 		if hitInDifflayer {
 			cachemetrics.RecordCacheDepth("CACHE_L2_STORAGE")
 			cachemetrics.RecordCacheMetrics("CACHE_L2_STORAGE", start)
+			cachemetrics.RecordTotalCosts("CACHE_L2_STORAGE", start)
 		}
 	}()
 

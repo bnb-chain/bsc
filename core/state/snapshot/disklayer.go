@@ -117,6 +117,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 		snapshotCleanAccountReadMeter.Mark(int64(len(blob)))
 		cachemetrics.RecordCacheDepth("CACHE_L3_ACCOUNT")
 		cachemetrics.RecordCacheMetrics("CACHE_L3_ACCOUNT", start)
+		cachemetrics.RecordTotalCosts("CACHE_L3_ACCOUNT", start)
 		return blob, nil
 	}
 
@@ -127,7 +128,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 
 	cachemetrics.RecordCacheDepth("DISK_L4_ACCOUNT")
 	cachemetrics.RecordCacheMetrics("DISK_L4_ACCOUNT", startGetInDisk)
-
+	cachemetrics.RecordTotalCosts("DISK_L4_ACCOUNT", start)
 	snapshotCleanAccountMissMeter.Mark(1)
 	if n := len(blob); n > 0 {
 		snapshotCleanAccountWriteMeter.Mark(int64(n))
@@ -164,6 +165,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 		snapshotCleanStorageReadMeter.Mark(int64(len(blob)))
 		cachemetrics.RecordCacheDepth("CACHE_L3_STORAGE")
 		cachemetrics.RecordCacheMetrics("CACHE_L3_STORAGE", start)
+		cachemetrics.RecordTotalCosts("CACHE_L3_STORAGE", start)
 		return blob, nil
 	}
 	startGetInDisk := time.Now()
@@ -173,6 +175,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 
 	cachemetrics.RecordCacheDepth("DISK_L4_STORAGE")
 	cachemetrics.RecordCacheMetrics("DISK_L4_STORAGE", startGetInDisk)
+	cachemetrics.RecordTotalCosts("DISK_L4_STORAGE", start)
 
 	snapshotCleanStorageMissMeter.Mark(1)
 	if n := len(blob); n > 0 {

@@ -683,12 +683,12 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 		cacheL1AccountHitMeter.Mark(1)
 		cachemetrics.RecordCacheDepth("CACHE_L1_ACCOUNT")
 		cachemetrics.RecordCacheMetrics("CACHE_L1_ACCOUNT", start)
+		cachemetrics.RecordTotalCosts("CACHE_L1_ACCOUNT", start)
 		if metrics.EnableIORecord {
 			s.L1CacheAccountReads += time.Since(start)
 		}
 		return obj
 	}
-
 	cacheL1AccountMissMeter.Mark(1)
 	// If no live objects are available, attempt to use snapshots
 	var (
