@@ -866,12 +866,12 @@ var (
 	}
 	ParallelTxNumFlag = cli.IntFlag{
 		Name:  "parallel.num",
-		Usage: "Number of slot for transaction execution, only valid in parallel mode (default = CPUNum - 1)",
+		Usage: "Number of slot for transaction execution, only valid in parallel mode (default: CPUNum - 1)",
 		Value: core.ParallelExecNum,
 	}
 	ParallelTxQueueSizeFlag = cli.IntFlag{
 		Name:  "parallel.queuesize",
-		Usage: "Max number of Tx that can be queued to a slot, only valid in parallel mode (default = 10)",
+		Usage: "Max number of Tx that can be queued to a slot, only valid in parallel mode",
 		Value: core.MaxPendingQueueSize,
 	}
 

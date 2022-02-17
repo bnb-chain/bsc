@@ -451,6 +451,9 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 	if s.noTrie {
 		return
 	}
+	if s.parallel.isSlotDB {
+		log.Warn("StartPrefetcher should not be called by slot DB")
+	}
 	s.prefetcherLock.Lock()
 	defer s.prefetcherLock.Unlock()
 	if s.prefetcher != nil {
@@ -472,6 +475,9 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 func (s *StateDB) StopPrefetcher() {
 	if s.noTrie {
 		return
+	}
+	if s.parallel.isSlotDB {
+		log.Warn("StopPrefetcher should not be called by slot DB")
 	}
 	s.prefetcherLock.Lock()
 	if s.prefetcher != nil {
@@ -1402,6 +1408,8 @@ func (s *StateDB) CopyForSlot() *StateDB {
 			}
 			state.snapStorage[k] = temp
 		}
+		// slot will shared main stateDB's prefetcher
+		state.prefetcher = s.prefetcher
 	}
 	return state
 }
