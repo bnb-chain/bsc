@@ -426,6 +426,9 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 // state trie concurrently while the state is mutated so that when we reach the
 // commit phase, most of the needed data is already hot.
 func (s *StateDB) StartPrefetcher(namespace string) {
+	if s.parallel.isSlotDB {
+		log.Warn("StartPrefetcher should not be called by slot DB")
+	}
 	s.prefetcherLock.Lock()
 	defer s.prefetcherLock.Unlock()
 	if s.prefetcher != nil {
@@ -440,6 +443,9 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 // StopPrefetcher terminates a running prefetcher and reports any leftover stats
 // from the gathered metrics.
 func (s *StateDB) StopPrefetcher() {
+	if s.parallel.isSlotDB {
+		log.Warn("StopPrefetcher should not be called by slot DB")
+	}
 	s.prefetcherLock.Lock()
 	defer s.prefetcherLock.Unlock()
 	if s.prefetcher != nil {
@@ -1407,6 +1413,8 @@ func (s *StateDB) CopyForSlot() *StateDB {
 			}
 			state.snapStorage[k] = temp
 		}
+		// slot will shared main stateDB's prefetcher
+		state.prefetcher = s.prefetcher
 	}
 	return state
 }

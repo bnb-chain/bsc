@@ -51,7 +51,7 @@ const (
 	reuseSlotDB            = false // parallel slot's pending Txs will reuse the latest slotDB
 )
 
-var MaxPendingQueueSize = 10               // parallel slot's maximum number of pending Txs
+var MaxPendingQueueSize = 20               // parallel slot's maximum number of pending Txs
 var ParallelExecNum = runtime.NumCPU() - 1 // leave a CPU to dispatcher
 
 // StateProcessor is a basic Processor, which takes care of transitioning
