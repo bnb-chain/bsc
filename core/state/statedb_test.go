@@ -19,6 +19,7 @@ package state
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"math/big"
@@ -32,6 +33,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+)
+
+var (
+	systemAddress = common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE")
 )
 
 // Tests that updating a state trie does not leak any database writes prior to
@@ -930,5 +935,375 @@ func TestStateDBAccessList(t *testing.T) {
 	}
 	if got, exp := len(state.accessList.slots), 1; got != exp {
 		t.Fatalf("expected empty, got %d", got)
+	}
+}
+
+func TestSuicide(t *testing.T) {
+	// Create an initial state with a few accounts
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, false)
+
+	addr := common.BytesToAddress([]byte("so"))
+	slotDb.SetBalance(addr, big.NewInt(1))
+
+	result := slotDb.Suicide(addr)
+	if !result {
+		t.Fatalf("expected account suicide, got %v", result)
+	}
+
+	if _, ok := slotDb.parallel.stateObjectSuicided[addr]; !ok {
+		t.Fatalf("address should exist in stateObjectSuicided")
+	}
+
+	if _, ok := slotDb.parallel.addrStateChangeInSlot[addr]; !ok {
+		t.Fatalf("address should exist in addrStateChangeInSlot")
+	}
+
+	if _, ok := slotDb.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
+	}
+
+	hasSuicide := slotDb.HasSuicided(addr)
+	if !hasSuicide {
+		t.Fatalf("address should be suicided")
+	}
+
+	if _, ok := slotDb.parallel.addrStateReadInSlot[addr]; !ok {
+		t.Fatalf("address should exist in addrStateReadInSlot")
+	}
+}
+
+func TestSetAndGetState(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, false)
+
+	addr := common.BytesToAddress([]byte("so"))
+	state.SetBalance(addr, big.NewInt(1))
+
+	slotDb.SetState(addr, common.BytesToHash([]byte("test key")), common.BytesToHash([]byte("test store")))
+
+	if _, ok := slotDb.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
+	}
+
+	if _, ok := slotDb.parallel.stateChangedInSlot[addr]; !ok {
+		t.Fatalf("address should exist in stateChangedInSlot")
+	}
+
+	oldValueRead := state.GetState(addr, common.BytesToHash([]byte("test key")))
+	emptyHash := common.Hash{}
+	if oldValueRead != emptyHash {
+		t.Fatalf("value read in old state should be empty")
+	}
+
+	valueRead := slotDb.GetState(addr, common.BytesToHash([]byte("test key")))
+	if valueRead != common.BytesToHash([]byte("test store")) {
+		t.Fatalf("value read should be equal to the stored value")
+	}
+
+	if _, ok := slotDb.parallel.stateReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in stateReadsInSlot")
+	}
+}
+
+func TestSetAndGetCode(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, false)
+
+	addr := common.BytesToAddress([]byte("so"))
+	state.SetBalance(addr, big.NewInt(1))
+
+	if _, ok := slotDb.parallel.dirtiedStateObjectsInSlot[addr]; ok {
+		t.Fatalf("address should not exist in dirtiedStateObjectsInSlot")
+	}
+
+	slotDb.SetCode(addr, []byte("test code"))
+
+	if _, ok := slotDb.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
+	}
+
+	if _, ok := slotDb.parallel.codeChangeInSlot[addr]; !ok {
+		t.Fatalf("address should exist in codeChangeInSlot")
+	}
+
+	codeRead := slotDb.GetCode(addr)
+	if string(codeRead) != "test code" {
+		t.Fatalf("code read should be equal to the code stored")
+	}
+
+	if _, ok := slotDb.parallel.codeReadInSlot[addr]; !ok {
+		t.Fatalf("address should exist in codeReadInSlot")
+	}
+}
+
+func TestGetCodeSize(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, false)
+
+	addr := common.BytesToAddress([]byte("so"))
+	state.SetBalance(addr, big.NewInt(1))
+
+	slotDb.SetCode(addr, []byte("test code"))
+
+	codeSize := slotDb.GetCodeSize(addr)
+	if codeSize != 9 {
+		t.Fatalf("code size should be 9")
+	}
+
+	if _, ok := slotDb.parallel.codeReadInSlot[addr]; !ok {
+		t.Fatalf("address should exist in codeReadInSlot")
+	}
+}
+
+func TestGetCodeHash(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, false)
+
+	addr := common.BytesToAddress([]byte("so"))
+	state.SetBalance(addr, big.NewInt(1))
+
+	slotDb.SetCode(addr, []byte("test code"))
+
+	codeSize := slotDb.GetCodeHash(addr)
+	print(hex.EncodeToString(codeSize[:]))
+	if hex.EncodeToString(codeSize[:]) != "6e73fa02f7828b28608b078b007a4023fb40453c3e102b83828a3609a94d8cbb" {
+		t.Fatalf("code hash should be 6e73fa02f7828b28608b078b007a4023fb40453c3e102b83828a3609a94d8cbb")
+	}
+	if _, ok := slotDb.parallel.codeReadInSlot[addr]; !ok {
+		t.Fatalf("address should exist in codeReadInSlot")
+	}
+}
+
+func TestSetNonce(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, false)
+
+	addr := common.BytesToAddress([]byte("so"))
+	state.SetBalance(addr, big.NewInt(1))
+	state.SetNonce(addr, 1)
+
+	slotDb.SetNonce(addr, 2)
+
+	oldNonce := state.GetNonce(addr)
+	if oldNonce != 1 {
+		t.Fatalf("old nonce should be 1")
+	}
+
+	newNonce := slotDb.GetNonce(addr)
+	if newNonce != 2 {
+		t.Fatalf("new nonce should be 2")
+	}
+	if _, ok := slotDb.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
+	}
+}
+
+func TestSetAndGetBalance(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, true)
+
+	addr := systemAddress
+	state.SetBalance(addr, big.NewInt(1))
+
+	slotDb.SetBalance(addr, big.NewInt(2))
+
+	oldBalance := state.GetBalance(addr)
+	if oldBalance.Int64() != 1 {
+		t.Fatalf("old balance should be 1")
+	}
+
+	if _, ok := slotDb.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
+	}
+
+	if _, ok := slotDb.parallel.balanceChangedInSlot[addr]; !ok {
+		t.Fatalf("address should exist in balanceChangedInSlot")
+	}
+
+	if slotDb.parallel.systemAddressCount != 1 {
+		t.Fatalf("systemAddressCount should be 1")
+	}
+
+	newBalance := slotDb.GetBalance(addr)
+	if newBalance.Int64() != 2 {
+		t.Fatalf("new nonce should be 2")
+	}
+
+	if _, ok := slotDb.parallel.balanceReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in balanceReadsInSlot")
+	}
+
+	if slotDb.parallel.systemAddressCount != 2 {
+		t.Fatalf("systemAddressCount should be 1")
+	}
+}
+
+func TestSubBalance(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, true)
+
+	addr := systemAddress
+	state.SetBalance(addr, big.NewInt(2))
+
+	slotDb.SubBalance(addr, big.NewInt(1))
+
+	oldBalance := state.GetBalance(addr)
+	if oldBalance.Int64() != 2 {
+		t.Fatalf("old balance should be 1")
+	}
+
+	if _, ok := slotDb.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
+	}
+
+	if _, ok := slotDb.parallel.balanceChangedInSlot[addr]; !ok {
+		t.Fatalf("address should exist in balanceChangedInSlot")
+	}
+
+	if _, ok := slotDb.parallel.balanceReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in balanceReadsInSlot")
+	}
+
+	if slotDb.parallel.systemAddressCount != 1 {
+		t.Fatalf("systemAddressCount should be 1")
+	}
+
+	newBalance := slotDb.GetBalance(addr)
+	if newBalance.Int64() != 1 {
+		t.Fatalf("new nonce should be 2")
+	}
+}
+
+func TestAddBalance(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, true)
+
+	addr := systemAddress
+	state.SetBalance(addr, big.NewInt(2))
+
+	slotDb.AddBalance(addr, big.NewInt(1))
+
+	oldBalance := state.GetBalance(addr)
+	if oldBalance.Int64() != 2 {
+		t.Fatalf("old balance should be 1")
+	}
+
+	if _, ok := slotDb.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
+	}
+
+	if _, ok := slotDb.parallel.balanceChangedInSlot[addr]; !ok {
+		t.Fatalf("address should exist in balanceChangedInSlot")
+	}
+
+	if _, ok := slotDb.parallel.balanceReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in balanceReadsInSlot")
+	}
+
+	if slotDb.parallel.systemAddressCount != 1 {
+		t.Fatalf("systemAddressCount should be 1")
+	}
+
+	newBalance := slotDb.GetBalance(addr)
+	if newBalance.Int64() != 3 {
+		t.Fatalf("new nonce should be 2")
+	}
+}
+
+func TestEmpty(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, true)
+
+	addr := systemAddress
+	state.SetBalance(addr, big.NewInt(2))
+
+	empty := slotDb.Empty(addr)
+	if empty {
+		t.Fatalf("address should exist")
+	}
+
+	if _, ok := slotDb.parallel.addrStateReadInSlot[addr]; !ok {
+		t.Fatalf("address should exist in addrStateReadInSlot")
+	}
+}
+
+func TestExist(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	slotDb := NewSlotDB(state, systemAddress, 0, true)
+
+	addr := systemAddress
+	state.SetBalance(addr, big.NewInt(2))
+
+	exist := slotDb.Exist(addr)
+	if !exist {
+		t.Fatalf("address should exist")
+	}
+
+	if _, ok := slotDb.parallel.addrStateReadInSlot[addr]; !ok {
+		t.Fatalf("address should exist in addrStateReadInSlot")
+	}
+}
+
+func TestMergeSlotDB(t *testing.T) {
+	memDb := rawdb.NewMemoryDatabase()
+	db := NewDatabase(memDb)
+	state, _ := New(common.Hash{}, db, nil)
+	oldSlotDb := NewSlotDB(state, systemAddress, 0, true)
+
+	newSlotDb := NewSlotDB(state, systemAddress, 0, true)
+
+	addr := systemAddress
+	newSlotDb.SetBalance(addr, big.NewInt(2))
+	newSlotDb.SetState(addr, common.BytesToHash([]byte("test key")), common.BytesToHash([]byte("test store")))
+	newSlotDb.SetCode(addr, []byte("test code"))
+	newSlotDb.Suicide(addr)
+
+	changeList := oldSlotDb.MergeSlotDB(newSlotDb, &types.Receipt{}, 0)
+
+	if _, ok := changeList.StateObjectSuicided[addr]; !ok {
+		t.Fatalf("address should exist in StateObjectSuicided")
+	}
+
+	if _, ok := changeList.StateObjectSuicided[addr]; !ok {
+		t.Fatalf("address should exist in StateObjectSuicided")
+	}
+
+	if _, ok := changeList.StateChangeSet[addr]; !ok {
+		t.Fatalf("address should exist in StateChangeSet")
+	}
+
+	if _, ok := changeList.BalanceChangeSet[addr]; !ok {
+		t.Fatalf("address should exist in StateChangeSet")
+	}
+
+	if _, ok := changeList.CodeChangeSet[addr]; !ok {
+		t.Fatalf("address should exist in CodeChangeSet")
+	}
+
+	if _, ok := changeList.AddrStateChangeSet[addr]; !ok {
+		t.Fatalf("address should exist in AddrStateChangeSet")
 	}
 }
