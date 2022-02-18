@@ -526,31 +526,31 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 // since these txs probably would have conflicts
 func (p *StateProcessor) queueSameToAddress(txReq *ParallelTxRequest) bool {
 	txToAddr := txReq.tx.To()
+	// To() == nil means contract creation, no same To address
 	if txToAddr == nil {
 		return false
 	}
 	for i, slot := range p.slotState {
 		if slot.tailTxReq == nil { // this slot is idle
-			// log.Debug("queue same To address skip idle slot.")
 			continue
 		}
-
-		// To() == nil means contract creation, won't queue to such slot.
-		if slot.tailTxReq.tx.To() == nil {
-			// log.Debug("queue same To address, slot's To address is nil", "Slot", i)
-			continue
-		}
-		// same to address, put it on slot's pending list.
-		if *txToAddr == *slot.tailTxReq.tx.To() {
-			select {
-			case slot.pendingTxReqChan <- txReq:
-				slot.tailTxReq = txReq
-				slot.pendingTxReqList = append(slot.pendingTxReqList, txReq)
-				log.Debug("queue same To address", "Slot", i, "txIndex", txReq.txIndex)
-				return true
-			default:
-				log.Debug("queue same To address, but queue is full", "Slot", i, "txIndex", txReq.txIndex)
-				continue // try next slot
+		for _, pending := range slot.pendingTxReqList {
+			// To() == nil means contract creation, skip it.
+			if pending.tx.To() == nil {
+				continue
+			}
+			// same to address, put it on slot's pending list.
+			if *txToAddr == *pending.tx.To() {
+				select {
+				case slot.pendingTxReqChan <- txReq:
+					slot.tailTxReq = txReq
+					slot.pendingTxReqList = append(slot.pendingTxReqList, txReq)
+					log.Debug("queue same To address", "Slot", i, "txIndex", txReq.txIndex)
+					return true
+				default:
+					log.Debug("queue same To address, but queue is full", "Slot", i, "txIndex", txReq.txIndex)
+					break // try next slot
+				}
 			}
 		}
 	}
