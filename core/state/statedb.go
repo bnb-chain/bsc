@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/cachemetrics"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -53,7 +54,9 @@ var (
 	// emptyRoot is the known root hash of an empty trie.
 	emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
-	emptyAddr = crypto.Keccak256Hash(common.Address{}.Bytes())
+	emptyAddr               = crypto.Keccak256Hash(common.Address{}.Bytes())
+	cacheL1AccountHitMeter  = metrics.NewRegisteredMeter("state/cache/account/hit", nil)
+	cacheL1AccountMissMeter = metrics.NewRegisteredMeter("state/cache/account/miss", nil)
 )
 
 type proofList [][]byte
@@ -137,6 +140,8 @@ type StateDB struct {
 	StorageHashes        time.Duration
 	StorageUpdates       time.Duration
 	StorageCommits       time.Duration
+	L1CacheAccountReads  time.Duration
+	L1CacheStorageReads  time.Duration
 	SnapshotAccountReads time.Duration
 	SnapshotStorageReads time.Duration
 	SnapshotCommits      time.Duration
@@ -592,6 +597,10 @@ func (s *StateDB) getStateObject(addr common.Address) *StateObject {
 }
 
 func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
+	if metrics.DisablePrefetch {
+		log.Info("disable prefetch", "123")
+		return
+	}
 	accounts := make(map[common.Address]bool, block.Transactions().Len())
 	accountsSlice := make([]common.Address, 0, block.Transactions().Len())
 	for _, tx := range block.Transactions() {
@@ -669,16 +678,25 @@ func (s *StateDB) preloadStateObject(address []common.Address) []*StateObject {
 // destructed object instead of wiping all knowledge about the state object.
 func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 	// Prefer live objects if any is available
+	start := time.Now()
 	if obj := s.stateObjects[addr]; obj != nil {
+		cacheL1AccountHitMeter.Mark(1)
+		cachemetrics.RecordCacheDepth("CACHE_L1_ACCOUNT")
+		cachemetrics.RecordCacheMetrics("CACHE_L1_ACCOUNT", start)
+		cachemetrics.RecordTotalCosts("CACHE_L1_ACCOUNT", start)
+		if metrics.EnableIORecord {
+			s.L1CacheAccountReads += time.Since(start)
+		}
 		return obj
 	}
+	cacheL1AccountMissMeter.Mark(1)
 	// If no live objects are available, attempt to use snapshots
 	var (
 		data *Account
 		err  error
 	)
 	if s.snap != nil {
-		if metrics.EnabledExpensive {
+		if metrics.EnableIORecord {
 			defer func(start time.Time) { s.SnapshotAccountReads += time.Since(start) }(time.Now())
 		}
 		var acc *snapshot.Account
@@ -710,7 +728,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 			}
 			s.trie = tr
 		}
-		if metrics.EnabledExpensive {
+		if metrics.EnableIORecord {
 			defer func(start time.Time) { s.AccountReads += time.Since(start) }(time.Now())
 		}
 		enc, err := s.trie.TryGet(addr.Bytes())

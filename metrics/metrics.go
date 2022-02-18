@@ -26,11 +26,19 @@ var Enabled = false
 // for health monitoring and debug metrics that might impact runtime performance.
 var EnabledExpensive = false
 
+// EnableIORecord is flag to determine whether record of accumulated IO time statedb
+var EnableIORecord = false
+
+// DisablePrefetch is flag to determine whether disable prefetch in IO process
+var DisablePrefetch = false
+
 // enablerFlags is the CLI flag names to use to enable metrics collections.
 var enablerFlags = []string{"metrics"}
 
 // expensiveEnablerFlags is the CLI flag names to use to enable metrics collections.
 var expensiveEnablerFlags = []string{"metrics.expensive"}
+var prefetchDisablerFlags = []string{"metrics.noprefetch"}
+var ioRecordEnablerFlags = []string{"metrics.iorecord"}
 
 // Init enables or disables the metrics system. Since we need this to run before
 // any other code gets to create meters and timers, we'll actually do an ugly hack
@@ -49,6 +57,20 @@ func init() {
 			if !EnabledExpensive && flag == enabler {
 				log.Info("Enabling expensive metrics collection")
 				EnabledExpensive = true
+			}
+		}
+
+		for _, enabler := range prefetchDisablerFlags {
+			if !DisablePrefetch && flag == enabler {
+				log.Info("disable prefetch when metrics collection")
+				DisablePrefetch = true
+			}
+		}
+
+		for _, enabler := range ioRecordEnablerFlags {
+			if !EnableIORecord && flag == enabler {
+				log.Info("Enabling io record when metrics collection")
+				EnableIORecord = true
 			}
 		}
 	}

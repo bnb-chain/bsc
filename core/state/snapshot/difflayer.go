@@ -19,6 +19,7 @@ package snapshot
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/ethereum/go-ethereum/cachemetrics"
 	"math"
 	"math/rand"
 	"sort"
@@ -326,6 +327,16 @@ func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	if !hit {
 		hit = dl.diffed.Contains(destructBloomHasher(hash))
 	}
+
+	start := time.Now()
+	hitInDifflayer := false
+	defer func() {
+		if hitInDifflayer {
+			cachemetrics.RecordCacheDepth("CACHE_L2_ACCOUNT")
+			cachemetrics.RecordCacheMetrics("CACHE_L2_ACCOUNT", start)
+			cachemetrics.RecordTotalCosts("CACHE_L2_ACCOUNT", start)
+		}
+	}()
 	var origin *diskLayer
 	if !hit {
 		origin = dl.origin // extract origin while holding the lock
@@ -339,13 +350,13 @@ func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 		return origin.AccountRLP(hash)
 	}
 	// The bloom filter hit, start poking in the internal maps
-	return dl.accountRLP(hash, 0)
+	return dl.accountRLP(hash, 0, &hitInDifflayer)
 }
 
 // accountRLP is an internal version of AccountRLP that skips the bloom filter
 // checks and uses the internal maps to try and retrieve the data. It's meant
 // to be used if a higher layer's bloom filter hit already.
-func (dl *diffLayer) accountRLP(hash common.Hash, depth int) ([]byte, error) {
+func (dl *diffLayer) accountRLP(hash common.Hash, depth int, hit *bool) ([]byte, error) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
@@ -360,6 +371,7 @@ func (dl *diffLayer) accountRLP(hash common.Hash, depth int) ([]byte, error) {
 		snapshotDirtyAccountHitDepthHist.Update(int64(depth))
 		snapshotDirtyAccountReadMeter.Mark(int64(len(data)))
 		snapshotBloomAccountTrueHitMeter.Mark(1)
+		*hit = true
 		return data, nil
 	}
 	// If the account is known locally, but deleted, return it
@@ -368,11 +380,12 @@ func (dl *diffLayer) accountRLP(hash common.Hash, depth int) ([]byte, error) {
 		snapshotDirtyAccountHitDepthHist.Update(int64(depth))
 		snapshotDirtyAccountInexMeter.Mark(1)
 		snapshotBloomAccountTrueHitMeter.Mark(1)
+		*hit = true
 		return nil, nil
 	}
 	// Account unknown to this diff, resolve from parent
 	if diff, ok := dl.parent.(*diffLayer); ok {
-		return diff.accountRLP(hash, depth+1)
+		return diff.accountRLP(hash, depth+1, hit)
 	}
 	// Failed to resolve through diff layers, mark a bloom error and use the disk
 	snapshotBloomAccountFalseHitMeter.Mark(1)
@@ -387,6 +400,16 @@ func (dl *diffLayer) accountRLP(hash common.Hash, depth int) ([]byte, error) {
 func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
 	// Check the bloom filter first whether there's even a point in reaching into
 	// all the maps in all the layers below
+	start := time.Now()
+	hitInDifflayer := false
+	defer func() {
+		if hitInDifflayer {
+			cachemetrics.RecordCacheDepth("CACHE_L2_STORAGE")
+			cachemetrics.RecordCacheMetrics("CACHE_L2_STORAGE", start)
+			cachemetrics.RecordTotalCosts("CACHE_L2_STORAGE", start)
+		}
+	}()
+
 	dl.lock.RLock()
 	hit := dl.diffed.Contains(storageBloomHasher{accountHash, storageHash})
 	if !hit {
@@ -405,13 +428,13 @@ func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 		return origin.Storage(accountHash, storageHash)
 	}
 	// The bloom filter hit, start poking in the internal maps
-	return dl.storage(accountHash, storageHash, 0)
+	return dl.storage(accountHash, storageHash, 0, &hitInDifflayer)
 }
 
 // storage is an internal version of Storage that skips the bloom filter checks
 // and uses the internal maps to try and retrieve the data. It's meant  to be
 // used if a higher layer's bloom filter hit already.
-func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int) ([]byte, error) {
+func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int, hit *bool) ([]byte, error) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
@@ -423,6 +446,7 @@ func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int) ([
 	// If the account is known locally, try to resolve the slot locally
 	if storage, ok := dl.storageData[accountHash]; ok {
 		if data, ok := storage[storageHash]; ok {
+			*hit = true
 			snapshotDirtyStorageHitMeter.Mark(1)
 			//snapshotDirtyStorageHitDepthHist.Update(int64(depth))
 			if n := len(data); n > 0 {
@@ -436,6 +460,7 @@ func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int) ([
 	}
 	// If the account is known locally, but deleted, return an empty slot
 	if _, ok := dl.destructSet[accountHash]; ok {
+		*hit = true
 		snapshotDirtyStorageHitMeter.Mark(1)
 		//snapshotDirtyStorageHitDepthHist.Update(int64(depth))
 		snapshotDirtyStorageInexMeter.Mark(1)
@@ -444,7 +469,7 @@ func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int) ([
 	}
 	// Storage slot unknown to this diff, resolve from parent
 	if diff, ok := dl.parent.(*diffLayer); ok {
-		return diff.storage(accountHash, storageHash, depth+1)
+		return diff.storage(accountHash, storageHash, depth+1, hit)
 	}
 	// Failed to resolve through diff layers, mark a bloom error and use the disk
 	snapshotBloomStorageFalseHitMeter.Mark(1)

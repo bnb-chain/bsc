@@ -17,13 +17,19 @@
 package core
 
 import (
-	"sync/atomic"
-
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"sync/atomic"
+	"time"
+)
+
+var (
+	statePrefetchTimer   = metrics.NewRegisteredTimer("state/prefetch/delay", nil)
+	statePrefetchCounter = metrics.NewRegisteredCounter("state/prefetch/total", nil)
 )
 
 const prefetchThread = 2
@@ -50,6 +56,9 @@ func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine conse
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to pre-cache transaction signatures and snapshot clean state.
 func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, cfg vm.Config, interrupt *uint32) {
+	if metrics.DisablePrefetch {
+		return
+	}
 	var (
 		header = block.Header()
 		signer = types.MakeSigner(p.config, header.Number)
@@ -63,6 +72,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		threadIdx := idx % prefetchThread
 		sortTransactions[threadIdx] = append(sortTransactions[threadIdx], transactions[idx])
 	}
+	start := time.Now()
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func(idx int) {
@@ -74,6 +84,8 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 			for i, tx := range sortTransactions[idx] {
 				// If block precaching was interrupted, abort
 				if interrupt != nil && atomic.LoadUint32(interrupt) == 1 {
+					statePrefetchTimer.Update(time.Since(start))
+					statePrefetchCounter.Inc(int64(time.Since(start)))
 					return
 				}
 				// Convert the transaction into an executable message and pre-cache its sender
@@ -84,6 +96,8 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 				newStatedb.Prepare(tx.Hash(), header.Hash(), i)
 				precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 			}
+			statePrefetchTimer.Update(time.Since(start))
+			statePrefetchCounter.Inc(int64(time.Since(start)))
 		}(i)
 	}
 }

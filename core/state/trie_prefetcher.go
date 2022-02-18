@@ -18,6 +18,7 @@ package state
 
 import (
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
@@ -29,6 +30,9 @@ const abortChanSize = 64
 var (
 	// triePrefetchMetricsPrefix is the prefix under which to publis the metrics.
 	triePrefetchMetricsPrefix = "trie/prefetch/"
+	trieSubPrefetchTimer      = metrics.NewRegisteredTimer("trie/subprefetch/delay", nil)
+	trieSubPrefetchCounter    = metrics.NewRegisteredCounter("trie/prefetch/total", nil)
+	triePrefetchTimer         = metrics.NewRegisteredTimer("trie/prefetch/delay", nil)
 )
 
 // triePrefetcher is an active prefetcher, which receives accounts or storage
@@ -102,9 +106,12 @@ func (p *triePrefetcher) abortLoop() {
 // close iterates over all the subfetchers, aborts any that were left spinning
 // and reports the stats to the metrics subsystem.
 func (p *triePrefetcher) close() {
+	var duration time.Duration
 	for _, fetcher := range p.fetchers {
+		duration += fetcher.preDataRead
 		p.abortChan <- fetcher // safe to do multiple times
 		<-fetcher.term
+		trieSubPrefetchTimer.Update(fetcher.preDataRead)
 		if metrics.EnabledExpensive {
 			if fetcher.root == p.root {
 				p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
@@ -127,6 +134,8 @@ func (p *triePrefetcher) close() {
 			}
 		}
 	}
+	trieSubPrefetchCounter.Inc(duration.Nanoseconds())
+	triePrefetchTimer.Update(duration)
 	close(p.closeChan)
 	// Clear out all fetchers (will crash on a second call, deliberate)
 	p.fetchers = nil
@@ -241,11 +250,13 @@ type subfetcher struct {
 	used [][]byte            // Tracks the entries used in the end
 
 	accountHash common.Hash
+	preDataRead time.Duration
 }
 
 // newSubfetcher creates a goroutine to prefetch state items belonging to a
 // particular root hash.
 func newSubfetcher(db Database, root common.Hash, accountHash common.Hash) *subfetcher {
+	start := time.Now()
 	sf := &subfetcher{
 		db:          db,
 		root:        root,
@@ -255,7 +266,11 @@ func newSubfetcher(db Database, root common.Hash, accountHash common.Hash) *subf
 		copy:        make(chan chan Trie),
 		seen:        make(map[string]struct{}),
 		accountHash: accountHash,
+		preDataRead: 0,
 	}
+	defer func() {
+		sf.preDataRead += time.Since(start)
+	}()
 	go sf.loop()
 	return sf
 }
@@ -308,7 +323,10 @@ func (sf *subfetcher) abort() {
 func (sf *subfetcher) loop() {
 	// No matter how the loop stops, signal anyone waiting that it's terminated
 	defer close(sf.term)
-
+	start := time.Now()
+	defer func() {
+		sf.preDataRead += time.Since(start)
+	}()
 	// Start by opening the trie and stop processing if it fails
 	var trie Trie
 	var err error
