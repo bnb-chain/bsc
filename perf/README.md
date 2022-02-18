@@ -40,6 +40,7 @@ METRICS_GO_LOCK_ENABLED=true geth ...
 ```
 To analysis the mutex, you call download the profile and analysis it with pprof.
 ```
+//to look at the holders of contended mutexes
 go tool pprof http://localhost:6060/debug/pprof/mutex
 ```
 

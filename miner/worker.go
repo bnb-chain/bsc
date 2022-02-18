@@ -639,9 +639,7 @@ func (w *worker) resultLoop() {
 			// Commit block and state to database.
 			task.state.SetExpectedStateRoot(block.Root())
 
-			start := time.Now()
 			_, err := w.chain.WriteBlockWithState(block, receipts, logs, task.state, true)
-			perf.RecordMPMetrics(perf.MpMiningWrite, start)
 
 			if err != nil {
 				log.Error("Failed writing block to chain", "err", err)

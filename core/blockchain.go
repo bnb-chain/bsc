@@ -1671,7 +1671,11 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 // WriteBlockWithState writes the block and all associated state to the database.
 func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
 	bc.chainmu.Lock()
-	defer bc.chainmu.Unlock()
+	start := time.Now()
+	defer func() {
+		perf.RecordMPMetrics(perf.MpMiningWrite, start)
+		bc.chainmu.Unlock()
+	}()
 
 	return bc.writeBlockWithState(block, receipts, logs, state, emitHeadEvent)
 }
