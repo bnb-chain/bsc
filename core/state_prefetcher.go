@@ -59,7 +59,6 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	if metrics.DisablePrefetch {
 		return
 	}
-	start := time.Now()
 	var (
 		header = block.Header()
 		signer = types.MakeSigner(p.config, header.Number)
@@ -73,6 +72,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		threadIdx := idx % prefetchThread
 		sortTransactions[threadIdx] = append(sortTransactions[threadIdx], transactions[idx])
 	}
+	start := time.Now()
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func(idx int) {

@@ -105,11 +105,11 @@ func (p *triePrefetcher) abortLoop() {
 // close iterates over all the subfetchers, aborts any that were left spinning
 // and reports the stats to the metrics subsystem.
 func (p *triePrefetcher) close() {
-	var duration time.Duration
 	for _, fetcher := range p.fetchers {
 		p.abortChan <- fetcher // safe to do multiple times
 		<-fetcher.term
-		duration += fetcher.preDataRead
+		trieSubPrefetchTimer.Update(fetcher.preDataRead)
+		trielSubPrefetchCounter.Inc(int64(fetcher.preDataRead))
 		if metrics.EnabledExpensive {
 			if fetcher.root == p.root {
 				p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
@@ -266,8 +266,6 @@ func newSubfetcher(db Database, root common.Hash, accountHash common.Hash) *subf
 	}
 	defer func() {
 		sf.preDataRead += time.Since(start)
-		trieSubPrefetchTimer.Update(sf.preDataRead)
-		trielSubPrefetchCounter.Inc(int64(sf.preDataRead))
 	}()
 	go sf.loop()
 	return sf
