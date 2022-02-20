@@ -66,6 +66,8 @@ require (
 	github.com/tendermint/go-amino v0.14.1
 	github.com/tendermint/iavl v0.12.0
 	github.com/tendermint/tendermint v0.31.11
+	github.com/tidwall/gjson v1.14.0 // indirect
+	github.com/tidwall/wal v1.1.7 // indirect
 	github.com/tklauser/go-sysconf v0.3.5 // indirect
 	github.com/tyler-smith/go-bip39 v1.1.0
 	github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4 v1.1.3
