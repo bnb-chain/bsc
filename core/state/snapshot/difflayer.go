@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	bloomfilter "github.com/holiman/bloomfilter/v2"
 )
@@ -76,6 +77,10 @@ var (
 	bloomDestructHasherOffset = 0
 	bloomAccountHasherOffset  = 0
 	bloomStorageHasherOffset  = 0
+	syncL1MissAccountMeter    = metrics.NewRegisteredMeter("state/cache/account/miss", nil)
+	minerL1MissAccountMeter   = metrics.NewRegisteredMeter("state/minercache/account/miss", nil)
+	syncL1MissStorageMeter    = metrics.NewRegisteredMeter("state/cache/storage/miss", nil)
+	minerL1MissStorageMeter   = metrics.NewRegisteredMeter("state/minercache/storage/miss", nil)
 )
 
 func init() {
@@ -331,10 +336,26 @@ func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	start := time.Now()
 	hitInDifflayer := false
 	defer func() {
-		if hitInDifflayer {
-			cachemetrics.RecordCacheDepth("CACHE_L2_ACCOUNT")
-			cachemetrics.RecordCacheMetrics("CACHE_L2_ACCOUNT", start)
-			cachemetrics.RecordTotalCosts("CACHE_L2_ACCOUNT", start)
+		routeid := cachemetrics.Goid()
+		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(routeid)
+		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(routeid)
+		if isSyncMainProcess {
+			syncL1MissAccountMeter.Mark(1)
+			if hitInDifflayer {
+				syncL2AccountHitMeter.Mark(1)
+				cachemetrics.RecordCacheDepth("CACHE_L2_ACCOUNT")
+				cachemetrics.RecordCacheMetrics("CACHE_L2_ACCOUNT", start)
+				cachemetrics.RecordTotalCosts("CACHE_L2_ACCOUNT", start)
+			}
+		}
+		if isMinerMainProcess {
+			minerL1MissAccountMeter.Mark(1)
+			if hitInDifflayer {
+				minerL2AccountHitMeter.Mark(1)
+				cachemetrics.RecordMinerCacheDepth("MINER_L2_ACCOUNT")
+				cachemetrics.RecordMinerCacheMetrics("MINER_L2_ACCOUNT", start)
+				cachemetrics.RecordMinerTotalCosts("MINER_L2_ACCOUNT", start)
+			}
 		}
 	}()
 	var origin *diskLayer
@@ -401,15 +422,30 @@ func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	// Check the bloom filter first whether there's even a point in reaching into
 	// all the maps in all the layers below
 	start := time.Now()
+	routeid := cachemetrics.Goid()
 	hitInDifflayer := false
 	defer func() {
-		if hitInDifflayer {
-			cachemetrics.RecordCacheDepth("CACHE_L2_STORAGE")
-			cachemetrics.RecordCacheMetrics("CACHE_L2_STORAGE", start)
-			cachemetrics.RecordTotalCosts("CACHE_L2_STORAGE", start)
+		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(routeid)
+		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(routeid)
+		if isSyncMainProcess {
+			syncL1MissStorageMeter.Mark(1)
+			if hitInDifflayer {
+				syncL2StorageHitMeter.Mark(1)
+				cachemetrics.RecordCacheDepth("CACHE_L2_STORAGE")
+				cachemetrics.RecordCacheMetrics("CACHE_L2_STORAGE", start)
+				cachemetrics.RecordTotalCosts("CACHE_L2_STORAGE", start)
+			}
+		}
+		if isMinerMainProcess {
+			minerL1MissStorageMeter.Mark(1)
+			if hitInDifflayer {
+				minerL2StorageHitMeter.Mark(1)
+				cachemetrics.RecordMinerCacheDepth("MINER_L2_ACCOUNT")
+				cachemetrics.RecordMinerCacheMetrics("MINER_L2_STORAGE", start)
+				cachemetrics.RecordMinerTotalCosts("MINER_L2_STORAGE", start)
+			}
 		}
 	}()
-
 	dl.lock.RLock()
 	hit := dl.diffed.Contains(storageBloomHasher{accountHash, storageHash})
 	if !hit {

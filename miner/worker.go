@@ -21,9 +21,12 @@ import (
 	"errors"
 	"github.com/ethereum/go-ethereum/perf"
 	"math/big"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ethereum/go-ethereum/cachemetrics"
 
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
@@ -462,6 +465,9 @@ func (w *worker) mainLoop() {
 	defer w.chainHeadSub.Unsubscribe()
 	defer w.chainSideSub.Unsubscribe()
 
+	goid := cachemetrics.Goid()
+	str := strconv.FormatUint(uint64(goid), 10)
+	log.Info("mainLoop routine id:" + str)
 	for {
 		select {
 		case req := <-w.newWorkCh:
@@ -911,6 +917,9 @@ LOOP:
 func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
+
+	goid := cachemetrics.Goid()
+	cachemetrics.UpdateMiningRoutineID(goid)
 
 	tstart := time.Now()
 	parent := w.chain.CurrentBlock()

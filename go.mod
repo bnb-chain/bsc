@@ -28,7 +28,7 @@ require (
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
 	github.com/fortytw2/leaktest v1.3.0 // indirect
 	github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff
-	github.com/gin-gonic/gin v1.7.7 // indirect
+	github.com/gin-gonic/gin v1.7.7
 	github.com/go-ole/go-ole v1.2.1 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.2+incompatible // indirect
 	github.com/go-stack/stack v1.8.0
@@ -59,6 +59,7 @@ require (
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c
 	github.com/panjf2000/ants/v2 v2.4.5
 	github.com/peterh/liner v1.1.1-0.20190123174540-a2c9a5303de7
+	github.com/petermattis/goid v0.0.0-20220111183729-e033e1e0bdb5
 	github.com/prometheus/tsdb v0.7.1
 	github.com/rcrowley/go-metrics v0.0.0-20190826022208-cac0b30c2563 // indirect
 	github.com/rjeczalik/notify v0.9.1
