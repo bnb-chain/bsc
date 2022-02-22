@@ -17,6 +17,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"github.com/ethereum/go-ethereum/perf"
 	"math"
@@ -169,8 +170,8 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 // the gas used (which includes gas refunds) and an error if it failed. An error always
 // indicates a core error meaning that the message would always fail for that particular
 // state and would never be accepted within a block.
-func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool) (*ExecutionResult, error) {
-	return NewStateTransition(evm, msg, gp).TransitionDb()
+func ApplyMessage(ctx context.Context, evm *vm.EVM, msg Message, gp *GasPool) (*ExecutionResult, error) {
+	return NewStateTransition(evm, msg, gp).TransitionDb(ctx)
 }
 
 // to returns the recipient of the message.
@@ -224,7 +225,7 @@ func (st *StateTransition) preCheck() error {
 //
 // However if any consensus issue encountered, return the error directly with
 // nil evm execution result.
-func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
+func (st *StateTransition) TransitionDb(ctx context.Context) (*ExecutionResult, error) {
 	// First check this message satisfies all consensus rules before
 	// applying the message. The rules include these clauses
 	//
@@ -278,10 +279,13 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	st.refundGas()
 
 	//track top EOA/contract addresses
-	perf.UpdateTopEOAStats(sender.Address())
-	emptyAddress := common.Address{}
-	if st.to() != emptyAddress {
-		perf.UpdateTopContractStats(st.to())
+	mp := ctx.Value("mp")
+	if mp != nil { // main process for importing blocks
+		perf.UpdateTopEOAStats(sender.Address())
+		emptyAddress := common.Address{}
+		if st.to() != emptyAddress {
+			perf.UpdateTopContractStats(st.to())
+		}
 	}
 
 	// consensus engine is parlia

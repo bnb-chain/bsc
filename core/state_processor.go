@@ -18,6 +18,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -451,7 +452,8 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	evm.Reset(txContext, statedb)
 
 	// Apply the transaction to the current state (included in the env).
-	result, err := ApplyMessage(evm, msg, gp)
+	ctx := context.WithValue(context.TODO(), "mp", true)
+	result, err := ApplyMessage(ctx, evm, msg, gp)
 	if err != nil {
 		return nil, err
 	}

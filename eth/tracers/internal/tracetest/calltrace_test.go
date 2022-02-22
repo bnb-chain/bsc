@@ -17,6 +17,7 @@
 package tracetest
 
 import (
+	ctx "context"
 	"encoding/json"
 	"io/ioutil"
 	"math/big"
@@ -193,7 +194,7 @@ func testCallTracer(tracerName string, dirPath string, t *testing.T) {
 				t.Fatalf("failed to prepare transaction for tracing: %v", err)
 			}
 			st := core.NewStateTransition(evm, msg, new(core.GasPool).AddGas(tx.Gas()))
-			if _, err = st.TransitionDb(); err != nil {
+			if _, err = st.TransitionDb(ctx.TODO()); err != nil {
 				t.Fatalf("failed to execute transaction: %v", err)
 			}
 			// Retrieve the trace result and compare against the etalon
@@ -304,7 +305,7 @@ func benchTracer(tracerName string, test *callTracerTest, b *testing.B) {
 		evm := vm.NewEVM(context, txContext, statedb, test.Genesis.Config, vm.Config{Debug: true, Tracer: tracer})
 		snap := statedb.Snapshot()
 		st := core.NewStateTransition(evm, msg, new(core.GasPool).AddGas(tx.Gas()))
-		if _, err = st.TransitionDb(); err != nil {
+		if _, err = st.TransitionDb(ctx.TODO()); err != nil {
 			b.Fatalf("failed to execute transaction: %v", err)
 		}
 		if _, err = tracer.GetResult(); err != nil {
@@ -373,7 +374,7 @@ func TestZeroValueToNotExitCall(t *testing.T) {
 		t.Fatalf("failed to prepare transaction for tracing: %v", err)
 	}
 	st := core.NewStateTransition(evm, msg, new(core.GasPool).AddGas(tx.Gas()))
-	if _, err = st.TransitionDb(); err != nil {
+	if _, err = st.TransitionDb(ctx.TODO()); err != nil {
 		t.Fatalf("failed to execute transaction: %v", err)
 	}
 	// Retrieve the trace result and compare against the etalon

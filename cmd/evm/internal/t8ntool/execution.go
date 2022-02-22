@@ -17,6 +17,7 @@
 package t8ntool
 
 import (
+	ctx "context"
 	"fmt"
 	"math/big"
 	"os"
@@ -147,7 +148,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		evm := vm.NewEVM(vmContext, txContext, statedb, chainConfig, vmConfig)
 
 		// (ret []byte, usedGas uint64, failed bool, err error)
-		msgResult, err := core.ApplyMessage(evm, msg, gaspool)
+		msgResult, err := core.ApplyMessage(ctx.TODO(), evm, msg, gaspool)
 		if err != nil {
 			statedb.RevertToSnapshot(snapshot)
 			log.Info("rejected tx", "index", i, "hash", tx.Hash(), "from", msg.From(), "error", err)

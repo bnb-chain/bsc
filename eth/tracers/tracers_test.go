@@ -17,6 +17,7 @@
 package tracers
 
 import (
+	ctx "context"
 	"math/big"
 	"testing"
 
@@ -111,7 +112,7 @@ func BenchmarkTransactionTrace(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		snap := statedb.Snapshot()
 		st := core.NewStateTransition(evm, msg, new(core.GasPool).AddGas(tx.Gas()))
-		_, err = st.TransitionDb()
+		_, err = st.TransitionDb(ctx.TODO())
 		if err != nil {
 			b.Fatal(err)
 		}

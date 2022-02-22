@@ -17,6 +17,7 @@
 package core
 
 import (
+	"context"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/consensus"
@@ -95,5 +96,5 @@ func precacheTransaction(msg types.Message, config *params.ChainConfig, gaspool 
 	// Update the evm with the new transaction context.
 	evm.Reset(NewEVMTxContext(msg), statedb)
 	// Add addresses to access list if applicable
-	ApplyMessage(evm, msg, gaspool)
+	ApplyMessage(context.TODO(), evm, msg, gaspool)
 }

@@ -17,6 +17,7 @@
 package eth
 
 import (
+	ctx "context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -203,7 +204,7 @@ func (eth *Ethereum) stateAtTransaction(block *types.Block, txIndex int, reexec 
 			}
 		}
 		statedb.Prepare(tx.Hash(), block.Hash(), idx)
-		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
+		if _, err := core.ApplyMessage(ctx.TODO(), vmenv, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
 			return nil, vm.BlockContext{}, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
 		// Ensure any modifications are committed to the state

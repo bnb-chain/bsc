@@ -17,6 +17,7 @@
 package tests
 
 import (
+	ctx "context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -193,7 +194,7 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	snapshot := statedb.Snapshot()
 	gaspool := new(core.GasPool)
 	gaspool.AddGas(block.GasLimit())
-	if _, err := core.ApplyMessage(evm, msg, gaspool); err != nil {
+	if _, err := core.ApplyMessage(ctx.TODO(), evm, msg, gaspool); err != nil {
 		statedb.RevertToSnapshot(snapshot)
 	}
 
