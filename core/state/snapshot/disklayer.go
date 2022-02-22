@@ -109,26 +109,60 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 		return nil, ErrNotCoveredYet
 	}
 	// If we're in the disk layer, all diff layers missed
+	routeid := cachemetrics.Goid()
+	isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(routeid)
+	isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(routeid)
 	snapshotDirtyAccountMissMeter.Mark(1)
+
+	hitInL3 := false
+	hitInDisk := false
+	startGetInDisk := time.Now()
+	defer func() {
+		// if mainProcess
+		if isSyncMainProcess {
+			syncL2AccountMissMeter.Mark(1)
+			if hitInL3 {
+				syncL3AccountHitMeter.Mark(1)
+				cachemetrics.RecordCacheDepth("CACHE_L3_ACCOUNT")
+				cachemetrics.RecordCacheMetrics("CACHE_L3_ACCOUNT", start)
+				cachemetrics.RecordTotalCosts("CACHE_L3_ACCOUNT", start)
+			}
+			if hitInDisk {
+				cachemetrics.RecordCacheDepth("DISK_L4_ACCOUNT")
+				cachemetrics.RecordCacheMetrics("DISK_L4_ACCOUNT", startGetInDisk)
+				cachemetrics.RecordTotalCosts("DISK_L4_ACCOUNT", start)
+			}
+		}
+		if isMinerMainProcess {
+			minerL2AccountMissMeter.Mark(1)
+			if hitInL3 {
+				minerL3AccountHitMeter.Mark(1)
+				cachemetrics.RecordMinerCacheDepth("MINER_L3_ACCOUNT")
+				cachemetrics.RecordMinerCacheMetrics("MINER_L3_ACCOUNT", start)
+				cachemetrics.RecordMinerTotalCosts("MINER_L3_ACCOUNT", start)
+			}
+			if hitInDisk {
+				cachemetrics.RecordMinerCacheDepth("MINER_L4_ACCOUNT")
+				cachemetrics.RecordMinerCacheMetrics("MINER_L4_ACCOUNT", start)
+				cachemetrics.RecordMinerTotalCosts("MINER_L4_ACCOUNT", start)
+			}
+		}
+	}()
 
 	// Try to retrieve the account from the memory cache
 	if blob, found := dl.cache.HasGet(nil, hash[:]); found {
+		hitInL3 = true
 		snapshotCleanAccountHitMeter.Mark(1)
 		snapshotCleanAccountReadMeter.Mark(int64(len(blob)))
-		cachemetrics.RecordCacheDepth("CACHE_L3_ACCOUNT")
-		cachemetrics.RecordCacheMetrics("CACHE_L3_ACCOUNT", start)
-		cachemetrics.RecordTotalCosts("CACHE_L3_ACCOUNT", start)
 		return blob, nil
 	}
 
-	startGetInDisk := time.Now()
+	startGetInDisk = time.Now()
 	// Cache doesn't contain account, pull from disk and cache for later
 	blob := rawdb.ReadAccountSnapshot(dl.diskdb, hash)
 	dl.cache.Set(hash[:], blob)
+	hitInDisk = true
 
-	cachemetrics.RecordCacheDepth("DISK_L4_ACCOUNT")
-	cachemetrics.RecordCacheMetrics("DISK_L4_ACCOUNT", startGetInDisk)
-	cachemetrics.RecordTotalCosts("DISK_L4_ACCOUNT", start)
 	snapshotCleanAccountMissMeter.Mark(1)
 	if n := len(blob); n > 0 {
 		snapshotCleanAccountWriteMeter.Mark(int64(n))
@@ -144,6 +178,43 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 	start := time.Now()
+
+	routeid := cachemetrics.Goid()
+	hitInL3 := false
+	hitInDisk := false
+	var startGetInDisk time.Time
+	defer func() {
+		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(routeid)
+		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(routeid)
+		if isSyncMainProcess {
+			syncL2StorageMissMeter.Mark(1)
+			if hitInL3 {
+				syncL3StorageHitMeter.Mark(1)
+				cachemetrics.RecordCacheDepth("CACHE_L3_STORAGE")
+				cachemetrics.RecordCacheMetrics("CACHE_L3_STORAGE", start)
+				cachemetrics.RecordTotalCosts("CACHE_L3_STORAGE", start)
+			}
+			if hitInDisk {
+				cachemetrics.RecordCacheDepth("DISK_L4_STORAGE")
+				cachemetrics.RecordCacheMetrics("DISK_L4_STORAGE", startGetInDisk)
+				cachemetrics.RecordTotalCosts("DISK_L4_STORAGE", start)
+			}
+		}
+		if isMinerMainProcess {
+			minerL2StorageMissMeter.Mark(1)
+			if hitInL3 {
+				syncL3StorageHitMeter.Mark(1)
+				cachemetrics.RecordCacheDepth("MINER_L3_STORAGE")
+				cachemetrics.RecordCacheMetrics("MINER_L3_STORAGE", start)
+				cachemetrics.RecordTotalCosts("MINER_L3_STORAGE", start)
+			}
+			if hitInDisk {
+				cachemetrics.RecordCacheDepth("MINER_L4_STORAGE")
+				cachemetrics.RecordCacheMetrics("MINER_L4_STORAGE", startGetInDisk)
+				cachemetrics.RecordTotalCosts("MINER_L4_STORAGE", start)
+			}
+		}
+	}()
 
 	// If the layer was flattened into, consider it invalid (any live reference to
 	// the original should be marked as unusable).
@@ -163,20 +234,14 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	if blob, found := dl.cache.HasGet(nil, key); found {
 		snapshotCleanStorageHitMeter.Mark(1)
 		snapshotCleanStorageReadMeter.Mark(int64(len(blob)))
-		cachemetrics.RecordCacheDepth("CACHE_L3_STORAGE")
-		cachemetrics.RecordCacheMetrics("CACHE_L3_STORAGE", start)
-		cachemetrics.RecordTotalCosts("CACHE_L3_STORAGE", start)
+		hitInL3 = true
 		return blob, nil
 	}
-	startGetInDisk := time.Now()
+	startGetInDisk = time.Now()
 	// Cache doesn't contain storage slot, pull from disk and cache for later
 	blob := rawdb.ReadStorageSnapshot(dl.diskdb, accountHash, storageHash)
 	dl.cache.Set(key, blob)
-
-	cachemetrics.RecordCacheDepth("DISK_L4_STORAGE")
-	cachemetrics.RecordCacheMetrics("DISK_L4_STORAGE", startGetInDisk)
-	cachemetrics.RecordTotalCosts("DISK_L4_STORAGE", start)
-
+	hitInDisk = true
 	snapshotCleanStorageMissMeter.Mark(1)
 	if n := len(blob); n > 0 {
 		snapshotCleanStorageWriteMeter.Mark(int64(n))
