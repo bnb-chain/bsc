@@ -19,6 +19,7 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"github.com/ethereum/go-ethereum/cachemetrics"
 	"io"
 	"math/big"
 	"time"
@@ -30,6 +31,11 @@ import (
 )
 
 var emptyCodeHash = crypto.Keccak256(nil)
+
+var (
+	cacheL1StorageHitMeter  = metrics.NewRegisteredMeter("state/cache/storage/hit", nil)
+	cacheL1StorageMissMeter = metrics.NewRegisteredMeter("state/cache/storage/miss", nil)
+)
 
 type Code []byte
 
@@ -188,6 +194,7 @@ func (s *StateObject) GetState(db Database, key common.Hash) common.Hash {
 	// If we have a dirty value for this state entry, return it
 	value, dirty := s.dirtyStorage[key]
 	if dirty {
+		cacheL1StorageHitMeter.Mark(1)
 		return value
 	}
 	// Otherwise return the entry's original value
@@ -197,16 +204,36 @@ func (s *StateObject) GetState(db Database, key common.Hash) common.Hash {
 // GetCommittedState retrieves a value from the committed account storage trie.
 func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Hash {
 	// If the fake storage is set, only lookup the state here(in the debugging mode)
+	start := time.Now()
+	hitInCache := false
+
+	defer func() {
+		if hitInCache {
+			cachemetrics.RecordCacheDepth("CACHE_L1_STORAGE")
+			cachemetrics.RecordCacheMetrics("CACHE_L1_STORAGE", start)
+			cachemetrics.RecordTotalCosts("CACHE_L1_STORAGE", start)
+			if metrics.EnableIORecord {
+				s.db.L1CacheStorageReads += time.Since(start)
+			}
+		}
+	}()
 	if s.fakeStorage != nil {
 		return s.fakeStorage[key]
 	}
 	// If we have a pending write or clean cached, return that
 	if value, pending := s.pendingStorage[key]; pending {
+		hitInCache = true
+		cacheL1StorageHitMeter.Mark(1)
 		return value
 	}
+
 	if value, cached := s.originStorage[key]; cached {
+		hitInCache = true
+		cacheL1StorageHitMeter.Mark(1)
 		return value
 	}
+
+	cacheL1StorageMissMeter.Mark(1)
 	// If no live objects are available, attempt to use snapshots
 	var (
 		enc   []byte
@@ -214,7 +241,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		meter *time.Duration
 	)
 	readStart := time.Now()
-	if metrics.EnabledExpensive {
+	if metrics.EnableIORecord {
 		// If the snap is 'under construction', the first lookup may fail. If that
 		// happens, we don't want to double-count the time elapsed. Thus this
 		// dance with the metering.
@@ -225,7 +252,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		}()
 	}
 	if s.db.snap != nil {
-		if metrics.EnabledExpensive {
+		if metrics.EnableIORecord {
 			meter = &s.db.SnapshotStorageReads
 		}
 		// If the object was destructed in *this* block (and potentially resurrected),
@@ -247,7 +274,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			*meter += time.Since(readStart)
 			readStart = time.Now()
 		}
-		if metrics.EnabledExpensive {
+		if metrics.EnableIORecord {
 			meter = &s.db.StorageReads
 		}
 		if enc, err = s.getTrie(db).TryGet(key.Bytes()); err != nil {
