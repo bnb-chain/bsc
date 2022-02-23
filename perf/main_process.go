@@ -116,7 +116,12 @@ func RecordMPLogs(logger log.Logger, msg string, ctx ...interface{}) {
 		return
 	}
 
-	logger.Info(msg, ctx...)
+	if logger != nil {
+		logger.Info(msg, ctx...)
+	} else {
+		log.Info(msg, ctx...)
+	}
+
 }
 
 func recordTimer(timer metrics.Timer, start time.Time) {

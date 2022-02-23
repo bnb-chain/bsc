@@ -156,7 +156,7 @@ func (p *peerConnection) FetchHeaders(from uint64, count int) error {
 		start := time.Now()
 		p.peer.RequestHeadersByNumber(from, count, 0, false)
 		perf.RecordMPMetrics(perf.MpPropagationRequestHeader, start)
-		perf.RecordMPLogs(p.log, "P2P_REQUEST_HEADER", "peer", p.id, "from", from, "count", count, "used", time.Since(start).Nanoseconds())
+		//perf.RecordMPLogs(p.log, "P2P_REQUEST_HEADER", "peer", p.id, "from", from, "count", count, "used", time.Since(start).Nanoseconds())
 	}()
 	return nil
 }
@@ -178,7 +178,7 @@ func (p *peerConnection) FetchBodies(request *fetchRequest) error {
 		}
 		p.peer.RequestBodies(hashes)
 		perf.RecordMPMetrics(perf.MpPropagationRequestBodies, start)
-		perf.RecordMPLogs(p.log, "P2P_REQUEST_BODIES", "peer", p.id, "count", len(hashes), "used", time.Since(start).Nanoseconds())
+		//perf.RecordMPLogs(p.log, "P2P_REQUEST_BODIES", "peer", p.id, "count", len(hashes), "used", time.Since(start).Nanoseconds())
 	}()
 
 	return nil

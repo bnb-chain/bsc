@@ -357,7 +357,7 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 		TD:    td,
 	})
 	perf.RecordMPMetrics(perf.MpPropagationSend, start)
-	perf.RecordMPLogs(p.Log(), "P2P_SEND", "peer", p.id, "block", block.NumberU64(), "hash", block.Hash(), "used", time.Since(start).Nanoseconds())
+	perf.RecordMPLogs(p.Log(), "P2P_SEND", "peer", p.id, "block", block.NumberU64(), "hash", block.Hash(), "time", time.Now().UnixNano())
 	return err
 }
 

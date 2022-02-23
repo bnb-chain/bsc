@@ -1902,6 +1902,8 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 			return 0, fmt.Errorf("non contiguous insert: item %d is #%d [%x..], item %d is #%d [%x..] (parent [%x..])", i-1, prev.NumberU64(),
 				prev.Hash().Bytes()[:4], i, block.NumberU64(), block.Hash().Bytes()[:4], block.ParentHash().Bytes()[:4])
 		}
+		// match P2P_SEND logs to estimate the p2p propagation time
+		perf.RecordMPLogs(nil, "P2P_RECEIVE", "block", block.Number(), "hash", block.Hash(), "time", time.Now().UnixNano())
 	}
 	// Pre-checks passed, start the full block imports
 	bc.wg.Add(1)
