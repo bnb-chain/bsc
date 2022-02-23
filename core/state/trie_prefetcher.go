@@ -33,6 +33,10 @@ var (
 	trieSubPrefetchTimer      = metrics.NewRegisteredTimer("trie/subprefetch/delay", nil)
 	trieSubPrefetchCounter    = metrics.NewRegisteredCounter("trie/prefetch/total", nil)
 	triePrefetchTimer         = metrics.NewRegisteredTimer("trie/prefetch/delay", nil)
+	syncOverheadCopy          = metrics.NewRegisteredTimer("state/overhead/sync/copy", nil)
+	minerOverheadCopy         = metrics.NewRegisteredTimer("state/overhead/miner/copy", nil)
+	syncOverheadCopyCounter   = metrics.NewRegisteredCounter("state/overhead/sync/copycounter", nil)
+	minerOverheadCopyCounter  = metrics.NewRegisteredCounter("state/overhead/miner/copycounter", nil)
 )
 
 // triePrefetcher is an active prefetcher, which receives accounts or storage
