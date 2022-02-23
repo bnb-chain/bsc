@@ -28,6 +28,8 @@ const (
 	MpPropagationSend          MpMetricsName = "MP_PROPAGATION_SEND"
 	MpPropagationRequestHeader MpMetricsName = "MP_PROPAGATION_REQUEST_HEADER"
 	MpPropagationRequestBodies MpMetricsName = "MP_PROPAGATION_REQUEST_BODIES"
+
+	MpBadBlock MpMetricsName = "MP_BAD_BLOCK"
 )
 
 var mpMetricsEnabled, _ = getEnvBool("METRICS_MP_METRICS_ENABLED")
@@ -56,6 +58,9 @@ var (
 	propagationSendTimer          = metrics.NewRegisteredTimer("mp/propagation/send", nil)
 	propagationRequestHeaderTimer = metrics.NewRegisteredTimer("mp/propagation/request/header", nil)
 	propagationRequestBodiesTimer = metrics.NewRegisteredTimer("mp/propagation/request/bodies", nil)
+
+	//bad block counter
+	badBlockCounter = metrics.NewRegisteredCounter("mp/bad_block", nil)
 )
 
 func RecordMPMetrics(metricsName MpMetricsName, start time.Time) {
@@ -100,6 +105,9 @@ func RecordMPMetrics(metricsName MpMetricsName, start time.Time) {
 		recordTimer(propagationRequestHeaderTimer, start)
 	case MpPropagationRequestBodies:
 		recordTimer(propagationRequestBodiesTimer, start)
+
+	case MpBadBlock:
+		badBlockCounter.Inc(1)
 	}
 }
 
