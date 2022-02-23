@@ -1912,6 +1912,7 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	start := time.Now()
 	n, err := bc.insertChain(chain, true)
 	perf.RecordMPMetrics(perf.MpImportingTotal, start)
+	perf.RecordMPMetrics(perf.MpImportingTotalAll, start)
 
 	bc.chainmu.Unlock()
 	bc.wg.Done()

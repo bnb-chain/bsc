@@ -9,6 +9,7 @@ import (
 type MpMetricsName string
 
 const (
+	MpMiningTotalAll      MpMetricsName = "MP_MINING_TOTAL_ALL"
 	MpMiningTotal         MpMetricsName = "MP_MINING_TOTAL"
 	MpMiningPrepare       MpMetricsName = "MP_MINING_PREPARE"
 	MpMiningOrder         MpMetricsName = "MP_MINING_ORDER"
@@ -18,6 +19,7 @@ const (
 	MpMiningFinalize      MpMetricsName = "MP_MINING_FINALIZE"
 	MpMiningWrite         MpMetricsName = "MP_MINING_WRITE"
 
+	MpImportingTotalAll     MpMetricsName = "MP_IMPORTING_TOTAL_ALL"
 	MpImportingTotal        MpMetricsName = "MP_IMPORTING_TOTAL"
 	MpImportingVerifyHeader MpMetricsName = "MP_IMPORTING_VERIFY_HEADER"
 	MpImportingVerifyState  MpMetricsName = "MP_IMPORTING_VERIFY_STATE"
@@ -36,6 +38,7 @@ var mpMetricsEnabled, _ = getEnvBool("METRICS_MP_METRICS_ENABLED")
 
 var (
 	//block mining related metrics
+	miningTotalAllCounter    = metrics.NewRegisteredCounter("mp/mining/total/all", nil)
 	miningTotalTimer         = metrics.NewRegisteredTimer("mp/mining/total", nil)
 	miningPrepareTimer       = metrics.NewRegisteredTimer("mp/mining/prepare", nil)
 	miningOrderTimer         = metrics.NewRegisteredTimer("mp/mining/order", nil)
@@ -46,6 +49,7 @@ var (
 	miningWriteTimer         = metrics.NewRegisteredTimer("mp/mining/write", nil)
 
 	//block importing related metrics
+	importingTotalAllCounter   = metrics.NewRegisteredCounter("mp/importing/total/all", nil)
 	importingTotalTimer        = metrics.NewRegisteredTimer("mp/importing/total", nil)
 	importingVerifyHeaderTimer = metrics.NewRegisteredTimer("mp/importing/verify/header", nil)
 	importingVerifyStateTimer  = metrics.NewRegisteredTimer("mp/importing/verify/state", nil)
@@ -69,6 +73,8 @@ func RecordMPMetrics(metricsName MpMetricsName, start time.Time) {
 	}
 
 	switch metricsName {
+	case MpMiningTotalAll:
+		miningTotalAllCounter.Inc(time.Since(start).Nanoseconds())
 	case MpMiningTotal:
 		recordTimer(miningTotalTimer, start)
 	case MpMiningPrepare:
@@ -86,6 +92,8 @@ func RecordMPMetrics(metricsName MpMetricsName, start time.Time) {
 	case MpMiningWrite:
 		recordTimer(miningWriteTimer, start)
 
+	case MpImportingTotalAll:
+		importingTotalAllCounter.Inc(time.Since(start).Nanoseconds())
 	case MpImportingTotal:
 		recordTimer(importingTotalTimer, start)
 	case MpImportingVerifyHeader:
