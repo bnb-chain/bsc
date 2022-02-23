@@ -2165,14 +2165,16 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		blockExecutionTimer.Update(time.Since(substart))
 
 		// Validate the state using the default validator
-		substart = time.Now()
 		if !statedb.IsLightProcessed() {
-			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas, bc.pipeCommit); err != nil {
+			substart = time.Now()
+			err := bc.validator.ValidateState(block, statedb, receipts, usedGas, bc.pipeCommit)
+			perf.RecordMPMetrics(perf.MpImportingVerifyState, substart)
+
+			if err != nil {
 				log.Error("validate state failed", "error", err)
 				bc.reportBlock(block, receipts, err)
 				return it.index, err
 			}
-			perf.RecordMPMetrics(perf.MpImportingVerifyState, substart)
 		}
 		bc.cacheReceipts(block.Hash(), receipts)
 		bc.cacheBlock(block.Hash(), block)
@@ -2187,10 +2189,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		// Write the block to the chain and get the status.
 		substart = time.Now()
 		status, err := bc.writeBlockWithState(block, receipts, logs, statedb, false)
+		perf.RecordMPMetrics(perf.MpImportingCommit, substart)
 		if err != nil {
 			return it.index, err
 		}
-		perf.RecordMPMetrics(perf.MpImportingCommit, substart)
+
 		// Update the metrics touched during block commit
 		accountCommitTimer.Update(statedb.AccountCommits)   // Account commits are complete, we can mark them
 		storageCommitTimer.Update(statedb.StorageCommits)   // Storage commits are complete, we can mark them
