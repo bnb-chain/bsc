@@ -718,9 +718,9 @@ func (s *StateDB) preloadStateObject(address []common.Address) []*StateObject {
 func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 	// Prefer live objects if any is available
 	start := time.Now()
-	routeid := cachemetrics.Goid()
 	hit := false
 	defer func() {
+		routeid := cachemetrics.Goid()
 		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(routeid)
 		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(routeid)
 		if isSyncMainProcess && hit {
