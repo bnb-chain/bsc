@@ -30,7 +30,13 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-var emptyCodeHash = crypto.Keccak256(nil)
+var (
+	emptyCodeHash        = crypto.Keccak256(nil)
+	syncOverheadCost     = metrics.NewRegisteredTimer("state/overhead/sync/delay", nil)
+	minerOverheadCost    = metrics.NewRegisteredTimer("state/overhead/miner/delay", nil)
+	syncOverheadCounter  = metrics.NewRegisteredCounter("state/overhead/sync/counter", nil)
+	minerOverheadCounter = metrics.NewRegisteredCounter("state/overhead/miner/counter", nil)
+)
 
 type Code []byte
 
@@ -339,10 +345,29 @@ func (s *StateObject) setState(key, value common.Hash) {
 // committed later. It is invoked at the end of every transaction.
 func (s *StateObject) finalise(prefetch bool) {
 	slotsToPrefetch := make([][]byte, 0, len(s.dirtyStorage))
+	var overheadCost time.Duration
+	defer func() {
+		goid := cachemetrics.Goid()
+		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(goid)
+		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(goid)
+		// record metrics of syncing main process
+		if isSyncMainProcess {
+			syncOverheadCost.Update(overheadCost)
+			syncOverheadCounter.Inc(overheadCost.Nanoseconds())
+		}
+		// record metrics of mining main process
+		if isMinerMainProcess {
+			minerOverheadCost.Update(overheadCost)
+			minerOverheadCounter.Inc(overheadCost.Nanoseconds())
+		}
+	}()
+
 	for key, value := range s.dirtyStorage {
 		s.pendingStorage[key] = value
 		if value != s.originStorage[key] {
+			start := time.Now()
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
+			overheadCost += time.Since(start)
 		}
 	}
 	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
