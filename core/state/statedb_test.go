@@ -943,6 +943,8 @@ func TestSuicide(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, false)
 
 	addr := common.BytesToAddress([]byte("so"))
@@ -979,6 +981,8 @@ func TestSetAndGetState(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, false)
 
 	addr := common.BytesToAddress([]byte("so"))
@@ -1014,6 +1018,8 @@ func TestSetAndGetCode(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, false)
 
 	addr := common.BytesToAddress([]byte("so"))
@@ -1047,6 +1053,8 @@ func TestGetCodeSize(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, false)
 
 	addr := common.BytesToAddress([]byte("so"))
@@ -1068,6 +1076,8 @@ func TestGetCodeHash(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, false)
 
 	addr := common.BytesToAddress([]byte("so"))
@@ -1089,6 +1099,8 @@ func TestSetNonce(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, false)
 
 	addr := common.BytesToAddress([]byte("so"))
@@ -1115,6 +1127,8 @@ func TestSetAndGetBalance(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, true)
 
 	addr := systemAddress
@@ -1157,6 +1171,8 @@ func TestSubBalance(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, true)
 
 	addr := systemAddress
@@ -1195,6 +1211,8 @@ func TestAddBalance(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, true)
 
 	addr := systemAddress
@@ -1233,6 +1251,8 @@ func TestEmpty(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, true)
 
 	addr := systemAddress
@@ -1252,6 +1272,8 @@ func TestExist(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	slotDb := NewSlotDB(state, systemAddress, 0, true)
 
 	addr := systemAddress
@@ -1271,6 +1293,8 @@ func TestMergeSlotDB(t *testing.T) {
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)
 	state, _ := New(common.Hash{}, db, nil)
+	state.PrepareForParallel()
+
 	oldSlotDb := NewSlotDB(state, systemAddress, 0, true)
 
 	newSlotDb := NewSlotDB(state, systemAddress, 0, true)

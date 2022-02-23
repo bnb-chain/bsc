@@ -529,11 +529,10 @@ func (s *StateObject) deepCopy(db *StateDB) *StateObject {
 	return stateObject
 }
 
+// fixme: this is ownership transfer, to be optimized by state object merge.
+// we can leave the ownership to slot and it can be reused.
 func (s *StateObject) deepCopyForSlot(db *StateDB) *StateObject {
 	s.db = db
-	if s.trie != nil {
-		s.trie = db.db.CopyTrie(s.trie)
-	}
 	return s
 }
 

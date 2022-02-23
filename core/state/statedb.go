@@ -82,6 +82,34 @@ func (s *StateObjectSyncMap) StoreStateObject(addr common.Address, stateObject *
 	s.Store(addr, stateObject)
 }
 
+// loadStateObjectFromStateDB is the entry for loading state object from stateObjects in StateDB or stateObjects in parallel
+func (s *StateDB) loadStateObjectFromStateDB(addr common.Address) (*StateObject, bool) {
+	if s.isParallel {
+		return s.parallel.stateObjects.LoadStateObject(addr)
+	} else {
+		obj, ok := s.stateObjects[addr]
+		return obj, ok
+	}
+}
+
+// storeStateObjectToStateDB is the entry for storing state object to stateObjects in StateDB or stateObjects in parallel
+func (s *StateDB) storeStateObjectToStateDB(addr common.Address, stateObject *StateObject) {
+	if s.isParallel {
+		s.parallel.stateObjects.Store(addr, stateObject)
+	} else {
+		s.stateObjects[addr] = stateObject
+	}
+}
+
+// deleteStateObjectFromStateDB is the entry for deleting state object to stateObjects in StateDB or stateObjects in parallel
+func (s *StateDB) deleteStateObjectFromStateDB(addr common.Address) {
+	if s.isParallel {
+		s.parallel.stateObjects.Delete(addr)
+	} else {
+		delete(s.stateObjects, addr)
+	}
+}
+
 // For parallel mode only, keep the change list for later conflict detect
 type SlotChangeList struct {
 	SlotDB              *StateDB // used for SlotDb reuse only, otherwise, it can be discarded
@@ -95,7 +123,14 @@ type SlotChangeList struct {
 
 // For parallel mode only
 type ParallelState struct {
-	isSlotDB                  bool
+	isSlotDB bool // isSlotDB denotes StateDB is used in slot
+
+	// stateObjects holds the state objects in the base slot db
+	// the reason for using stateObjects instead of stateObjects on the outside is
+	// we need a thread safe map to hold state objects since there are many slots will read
+	// state objects from this and in the same time we will change this when merging slot db to the base slot db
+	stateObjects *StateObjectSyncMap
+
 	baseTxIndex               int // slotDB is created base on this tx index.
 	dirtiedStateObjectsInSlot map[common.Address]*StateObject
 	// for conflict check
@@ -151,12 +186,13 @@ type StateDB struct {
 	snapStorage    map[common.Address]map[string][]byte
 
 	// This map holds 'live' objects, which will get modified while processing a state transition.
-	stateObjects        *StateObjectSyncMap
+	stateObjects        map[common.Address]*StateObject
 	stateObjectsPending map[common.Address]struct{} // State objects finalized but not yet written to the trie
 	stateObjectsDirty   map[common.Address]struct{} // State objects modified in the current execution
 
-	storagePool          *StoragePool  // sharedPool to store L1 originStorage of stateObjects
-	writeOnSharedStorage bool          // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
+	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
+	writeOnSharedStorage bool         // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
+	isParallel           bool
 	parallel             ParallelState // to keep all the parallel execution elements
 
 	// DB error.
@@ -220,8 +256,8 @@ func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*St
 	return statedb, nil
 }
 
-// With parallel, each execute slot would have its own stateDB.
 // NewSlotDB creates a new slot stateDB base on the provided stateDB.
+// With parallel, each execute slot would have its own stateDB.
 func NewSlotDB(db *StateDB, systemAddr common.Address, txIndex int, keepSystem bool) *StateDB {
 	slotDB := db.CopyForSlot()
 	slotDB.originalRoot = db.originalRoot
@@ -241,9 +277,6 @@ func NewSlotDB(db *StateDB, systemAddr common.Address, txIndex int, keepSystem b
 
 // to avoid new slotDB for each Tx, slotDB should be valid and merged
 func ReUseSlotDB(slotDB *StateDB, keepSystem bool) *StateDB {
-	if !keepSystem {
-		slotDB.SetBalance(slotDB.parallel.systemAddress, big.NewInt(0))
-	}
 	slotDB.logs = make(map[common.Hash][]*types.Log, defaultNumOfSlots)
 	slotDB.logSize = 0
 	slotDB.parallel.systemAddressCount = 0
@@ -258,31 +291,28 @@ func ReUseSlotDB(slotDB *StateDB, keepSystem bool) *StateDB {
 	slotDB.parallel.addrStateReadInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
 	slotDB.parallel.addrStateChangeInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
 
+	// Previous *StateObject in slot db has been transfered to dispatcher now.
+	// Slot could no longer use these *StateObject, do clear.
+	slotDB.parallel.dirtiedStateObjectsInSlot = make(map[common.Address]*StateObject, defaultNumOfSlots)
+
 	slotDB.stateObjectsDirty = make(map[common.Address]struct{}, defaultNumOfSlots)
 	slotDB.stateObjectsPending = make(map[common.Address]struct{}, defaultNumOfSlots)
 
+	if !keepSystem {
+		slotDB.SetBalance(slotDB.parallel.systemAddress, big.NewInt(0))
+	}
 	return slotDB
 }
 
 func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-
 	parallel := ParallelState{
-		isSlotDB:              false,
-		stateObjectSuicided:   make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeReadInSlot:        make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeChangeInSlot:      make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateChangedInSlot:    make(map[common.Address]StateKeys, defaultNumOfSlots),
-		stateReadsInSlot:      make(map[common.Address]StateKeys, defaultNumOfSlots),
-		balanceChangedInSlot:  make(map[common.Address]struct{}, defaultNumOfSlots),
-		balanceReadsInSlot:    make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateReadInSlot:   make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateChangeInSlot: make(map[common.Address]struct{}, defaultNumOfSlots),
+		isSlotDB: false,
 	}
 	sdb := &StateDB{
 		db:                  db,
 		originalRoot:        root,
 		snaps:               snaps,
-		stateObjects:        &StateObjectSyncMap{},
+		stateObjects:        make(map[common.Address]*StateObject, defaultNumOfSlots),
 		parallel:            parallel,
 		stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
 		stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
@@ -322,7 +352,7 @@ func (s *StateDB) getStateObjectFromStateObjects(addr common.Address) (*StateObj
 			return obj, ok
 		}
 	}
-	return s.stateObjects.LoadStateObject(addr)
+	return s.loadStateObjectFromStateDB(addr)
 }
 
 // If the transaction execution is failed, keep its read list for conflict detect
@@ -333,6 +363,11 @@ func (s *StateDB) RevertSlotDB(from common.Address) {
 	s.parallel.balanceChangedInSlot = make(map[common.Address]struct{}, 1)
 	s.parallel.balanceChangedInSlot[from] = struct{}{}
 	s.parallel.addrStateChangeInSlot = make(map[common.Address]struct{})
+}
+
+func (s *StateDB) PrepareForParallel() {
+	s.isParallel = true
+	s.parallel.stateObjects = &StateObjectSyncMap{}
 }
 
 // MergeSlotDB is for Parallel TX, when the TX is finalized(dirty -> pending)
@@ -368,7 +403,7 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 
 		// stateObjects: KV, balance, nonce...
 		if obj, ok := slotDb.getStateObjectFromStateObjects(addr); ok {
-			s.stateObjects.StoreStateObject(addr, obj.deepCopyForSlot(s))
+			s.storeStateObjectToStateDB(addr, obj.deepCopyForSlot(s))
 		}
 	}
 
@@ -383,8 +418,8 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 			continue
 		}
 
-		if _, exist := s.stateObjects.LoadStateObject(addr); !exist {
-			s.stateObjects.StoreStateObject(addr, obj.deepCopyForSlot(s))
+		if _, exist := s.loadStateObjectFromStateDB(addr); !exist {
+			s.storeStateObjectToStateDB(addr, obj.deepCopyForSlot(s))
 		}
 	}
 
@@ -441,6 +476,8 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 		changeList.AddrStateChangeSet[addr] = struct{}{}
 	}
 
+	// the slot DB's is valid now, move baseTxIndex forward, since it could be reused.
+	slotDb.parallel.baseTxIndex = txIndex
 	return changeList
 }
 
@@ -1124,7 +1161,7 @@ func (s *StateDB) SetStateObject(object *StateObject) {
 	if s.parallel.isSlotDB {
 		s.parallel.dirtiedStateObjectsInSlot[object.Address()] = object
 	} else {
-		s.stateObjects.StoreStateObject(object.Address(), object)
+		s.storeStateObjectToStateDB(object.Address(), object)
 	}
 }
 
@@ -1230,23 +1267,13 @@ func (s *StateDB) CopyDoPrefetch() *StateDB {
 func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	// Copy all the basic fields, initialize the memory ones
 	parallel := ParallelState{
-		isSlotDB:                  false,
-		stateObjectSuicided:       make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeReadInSlot:            make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeChangeInSlot:          make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateChangedInSlot:        make(map[common.Address]StateKeys, defaultNumOfSlots),
-		stateReadsInSlot:          make(map[common.Address]StateKeys, defaultNumOfSlots),
-		balanceChangedInSlot:      make(map[common.Address]struct{}, defaultNumOfSlots),
-		balanceReadsInSlot:        make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateReadInSlot:       make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateChangeInSlot:     make(map[common.Address]struct{}, defaultNumOfSlots),
-		dirtiedStateObjectsInSlot: make(map[common.Address]*StateObject, defaultNumOfSlots),
+		isSlotDB: false,
 	}
 
 	state := &StateDB{
 		db:                  s.db,
 		trie:                s.db.CopyTrie(s.trie),
-		stateObjects:        &StateObjectSyncMap{},
+		stateObjects:        make(map[common.Address]*StateObject, len(s.journal.dirties)),
 		stateObjectsPending: make(map[common.Address]struct{}, len(s.stateObjectsPending)),
 		stateObjectsDirty:   make(map[common.Address]struct{}, len(s.journal.dirties)),
 		storagePool:         s.storagePool,
@@ -1268,7 +1295,7 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 			// Even though the original object is dirty, we are not copying the journal,
 			// so we need to make sure that anyside effect the journal would have caused
 			// during a commit (or similar op) is already applied to the copy.
-			state.stateObjects.StoreStateObject(addr, object.deepCopy(state))
+			state.storeStateObjectToStateDB(addr, object.deepCopy(state))
 
 			state.stateObjectsDirty[addr] = struct{}{}   // Mark the copy dirty to force internal (code/state) commits
 			state.stateObjectsPending[addr] = struct{}{} // Mark the copy pending to force external (account) commits
@@ -1280,14 +1307,14 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	for addr := range s.stateObjectsPending {
 		if _, exist := state.getStateObjectFromStateObjects(addr); !exist {
 			object, _ := s.getStateObjectFromStateObjects(addr)
-			state.stateObjects.StoreStateObject(addr, object.deepCopy(state))
+			state.storeStateObjectToStateDB(addr, object.deepCopy(state))
 		}
 		state.stateObjectsPending[addr] = struct{}{}
 	}
 	for addr := range s.stateObjectsDirty {
 		if _, exist := state.getStateObjectFromStateObjects(addr); !exist {
 			object, _ := s.getStateObjectFromStateObjects(addr)
-			state.stateObjects.StoreStateObject(addr, object.deepCopy(state))
+			state.storeStateObjectToStateDB(addr, object.deepCopy(state))
 		}
 		state.stateObjectsDirty[addr] = struct{}{}
 	}
@@ -1348,8 +1375,11 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 
 func (s *StateDB) CopyForSlot() *StateDB {
 	// Copy all the basic fields, initialize the memory ones
-
 	parallel := ParallelState{
+		isSlotDB: true,
+		// Share base slot db's stateObjects
+		// It is a SyncMap, only readable to slot, not writable
+		stateObjects:              s.parallel.stateObjects,
 		stateObjectSuicided:       make(map[common.Address]struct{}, defaultNumOfSlots),
 		codeReadInSlot:            make(map[common.Address]struct{}, defaultNumOfSlots),
 		codeChangeInSlot:          make(map[common.Address]struct{}, defaultNumOfSlots),
@@ -1359,13 +1389,12 @@ func (s *StateDB) CopyForSlot() *StateDB {
 		balanceReadsInSlot:        make(map[common.Address]struct{}, defaultNumOfSlots),
 		addrStateReadInSlot:       make(map[common.Address]struct{}, defaultNumOfSlots),
 		addrStateChangeInSlot:     make(map[common.Address]struct{}, defaultNumOfSlots),
-		isSlotDB:                  true,
 		dirtiedStateObjectsInSlot: make(map[common.Address]*StateObject, defaultNumOfSlots),
 	}
 	state := &StateDB{
 		db:                  s.db,
 		trie:                s.db.CopyTrie(s.trie),
-		stateObjects:        s.stateObjects,
+		stateObjects:        make(map[common.Address]*StateObject, defaultNumOfSlots),
 		stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
 		stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
 		refund:              s.refund,
@@ -1377,6 +1406,7 @@ func (s *StateDB) CopyForSlot() *StateDB {
 		snapDestructs:       make(map[common.Address]struct{}),
 		snapAccounts:        make(map[common.Address][]byte),
 		snapStorage:         make(map[common.Address]map[string][]byte),
+		isParallel:          true,
 		parallel:            parallel,
 	}
 
@@ -1536,8 +1566,7 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 		return
 	}
 	if accounts, err := snapshot.Accounts(); err == nil && accounts != nil {
-		s.stateObjects.Range(func(addr, objItf interface{}) bool {
-			obj := objItf.(*StateObject)
+		for _, obj := range s.stateObjects {
 			if !obj.deleted {
 				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist {
 					if len(account.Root) == 0 {
@@ -1548,9 +1577,7 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 					obj.rootCorrected = true
 				}
 			}
-			return true
-		})
-
+		}
 	}
 }
 
