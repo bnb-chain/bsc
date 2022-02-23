@@ -225,9 +225,6 @@ func NewSlotDB(db *StateDB, systemAddr common.Address, txIndex int, keepSystem b
 
 // to avoid new slotDB for each Tx, slotDB should be valid and merged
 func ReUseSlotDB(slotDB *StateDB, keepSystem bool) *StateDB {
-	if !keepSystem {
-		slotDB.SetBalance(slotDB.parallel.systemAddress, big.NewInt(0))
-	}
 	slotDB.logs = make(map[common.Hash][]*types.Log, defaultNumOfSlots)
 	slotDB.logSize = 0
 	slotDB.parallel.systemAddressCount = 0
@@ -242,25 +239,22 @@ func ReUseSlotDB(slotDB *StateDB, keepSystem bool) *StateDB {
 	slotDB.parallel.addrStateReadInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
 	slotDB.parallel.addrStateChangeInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
 
+	// Previous *StateObject in slot db has been transfered to dispatcher now.
+	// Slot could no longer use these *StateObject, do clear.
+	slotDB.parallel.dirtiedStateObjectsInSlot = make(map[common.Address]*StateObject, defaultNumOfSlots)
+
 	slotDB.stateObjectsDirty = make(map[common.Address]struct{}, defaultNumOfSlots)
 	slotDB.stateObjectsPending = make(map[common.Address]struct{}, defaultNumOfSlots)
 
+	if !keepSystem {
+		slotDB.SetBalance(slotDB.parallel.systemAddress, big.NewInt(0))
+	}
 	return slotDB
 }
 
 func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-
 	parallel := ParallelState{
-		isSlotDB:              false,
-		stateObjectSuicided:   make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeReadInSlot:        make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeChangeInSlot:      make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateChangedInSlot:    make(map[common.Address]StateKeys, defaultNumOfSlots),
-		stateReadsInSlot:      make(map[common.Address]StateKeys, defaultNumOfSlots),
-		balanceChangedInSlot:  make(map[common.Address]struct{}, defaultNumOfSlots),
-		balanceReadsInSlot:    make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateReadInSlot:   make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateChangeInSlot: make(map[common.Address]struct{}, defaultNumOfSlots),
+		isSlotDB: false,
 	}
 	sdb := &StateDB{
 		db:                  db,
@@ -419,6 +413,8 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 		changeList.AddrStateChangeSet[addr] = struct{}{}
 	}
 
+	// the slot DB's is valid now, move baseTxIndex forward, since it could be reused.
+	slotDb.parallel.baseTxIndex = txIndex
 	return changeList
 }
 
@@ -1237,17 +1233,7 @@ func (s *StateDB) ForEachStorage(addr common.Address, cb func(key, value common.
 func (s *StateDB) Copy() *StateDB {
 	// Copy all the basic fields, initialize the memory ones
 	parallel := ParallelState{
-		isSlotDB:                  false,
-		stateObjectSuicided:       make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeReadInSlot:            make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeChangeInSlot:          make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateChangedInSlot:        make(map[common.Address]StateKeys, defaultNumOfSlots),
-		stateReadsInSlot:          make(map[common.Address]StateKeys, defaultNumOfSlots),
-		balanceChangedInSlot:      make(map[common.Address]struct{}, defaultNumOfSlots),
-		balanceReadsInSlot:        make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateReadInSlot:       make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateChangeInSlot:     make(map[common.Address]struct{}, defaultNumOfSlots),
-		dirtiedStateObjectsInSlot: make(map[common.Address]*StateObject, defaultNumOfSlots),
+		isSlotDB: false,
 	}
 
 	state := &StateDB{
@@ -1353,7 +1339,6 @@ func (s *StateDB) Copy() *StateDB {
 
 func (s *StateDB) CopyForSlot() *StateDB {
 	// Copy all the basic fields, initialize the memory ones
-
 	parallel := ParallelState{
 		stateObjectSuicided:       make(map[common.Address]struct{}, defaultNumOfSlots),
 		codeReadInSlot:            make(map[common.Address]struct{}, defaultNumOfSlots),
@@ -1368,8 +1353,10 @@ func (s *StateDB) CopyForSlot() *StateDB {
 		dirtiedStateObjectsInSlot: make(map[common.Address]*StateObject, defaultNumOfSlots),
 	}
 	state := &StateDB{
-		db:                  s.db,
-		trie:                s.db.CopyTrie(s.trie),
+		db:   s.db,
+		trie: s.db.CopyTrie(s.trie),
+		// Share StateDB's stateObjects
+		// It is a SyncMap, only readable to slot, not writable
 		stateObjects:        s.stateObjects,
 		stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
 		stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
