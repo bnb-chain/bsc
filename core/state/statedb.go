@@ -54,9 +54,18 @@ var (
 	// emptyRoot is the known root hash of an empty trie.
 	emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
-	emptyAddr               = crypto.Keccak256Hash(common.Address{}.Bytes())
-	cacheL1AccountHitMeter  = metrics.NewRegisteredMeter("state/cache/account/hit", nil)
-	cacheL1AccountMissMeter = metrics.NewRegisteredMeter("state/cache/account/miss", nil)
+	emptyAddr = crypto.Keccak256Hash(common.Address{}.Bytes())
+
+	l1AccountMeter      = metrics.NewRegisteredMeter("state/cache/account/total", nil)
+	minerL1AccountMeter = metrics.NewRegisteredMeter("state/minercache/account/total", nil)
+	l1StorageMeter      = metrics.NewRegisteredMeter("state/cache/storage/total", nil)
+	minerL1StorageMeter = metrics.NewRegisteredMeter("state/minercache/storage/total", nil)
+
+	totalSyncIOCost     = metrics.NewRegisteredTimer("state/cache/sync/delay", nil)
+	totalMinerIOCost    = metrics.NewRegisteredTimer("state/cache/miner/delay", nil)
+	totalSyncIOCounter  = metrics.NewRegisteredCounter("state/cache/sync/counter", nil)
+	totalMinerIOCounter = metrics.NewRegisteredCounter("state/cache/miner/counter", nil)
+	//TotalAccountIOCost
 )
 
 type proofList [][]byte
@@ -392,8 +401,35 @@ func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 
 // GetState retrieves a value from the given account's storage trie.
 func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
+	start := time.Now()
+	goid := cachemetrics.Goid()
+
+	isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(goid)
+	isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(goid)
+	defer func() {
+		// record metrics of syncing main process
+		if isSyncMainProcess {
+			syncGetDelay := time.Since(start)
+			totalSyncIOCost.Update(syncGetDelay)
+			totalMinerIOCounter.Inc(syncGetDelay.Nanoseconds())
+			l1AccountMeter.Mark(1)
+		}
+		// record metrics of mining main process
+		if isMinerMainProcess {
+			minerIOCost := time.Since(start)
+			totalMinerIOCost.Update(minerIOCost)
+			totalSyncIOCounter.Inc(minerIOCost.Nanoseconds())
+			minerL1AccountMeter.Mark(1)
+		}
+	}()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
+		if isSyncMainProcess {
+			l1StorageMeter.Mark(1)
+		}
+		if isMinerMainProcess {
+			minerL1StorageMeter.Mark(1)
+		}
 		return stateObject.GetState(s.db, hash)
 	}
 	return common.Hash{}
@@ -597,10 +633,6 @@ func (s *StateDB) getStateObject(addr common.Address) *StateObject {
 }
 
 func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
-	if metrics.DisablePrefetch {
-		log.Info("disable prefetch", "123")
-		return
-	}
 	accounts := make(map[common.Address]bool, block.Transactions().Len())
 	accountsSlice := make([]common.Address, 0, block.Transactions().Len())
 	for _, tx := range block.Transactions() {
@@ -679,17 +711,29 @@ func (s *StateDB) preloadStateObject(address []common.Address) []*StateObject {
 func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 	// Prefer live objects if any is available
 	start := time.Now()
-	if obj := s.stateObjects[addr]; obj != nil {
-		cacheL1AccountHitMeter.Mark(1)
-		cachemetrics.RecordCacheDepth("CACHE_L1_ACCOUNT")
-		cachemetrics.RecordCacheMetrics("CACHE_L1_ACCOUNT", start)
-		cachemetrics.RecordTotalCosts("CACHE_L1_ACCOUNT", start)
-		if metrics.EnableIORecord {
-			s.L1CacheAccountReads += time.Since(start)
+	hit := false
+	defer func() {
+		routeid := cachemetrics.Goid()
+		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(routeid)
+		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(routeid)
+		if isSyncMainProcess && hit {
+			cachemetrics.RecordCacheDepth("CACHE_L1_ACCOUNT")
+			cachemetrics.RecordCacheMetrics("CACHE_L1_ACCOUNT", start)
+			cachemetrics.RecordTotalCosts("CACHE_L1_ACCOUNT", start)
 		}
+
+		if isMinerMainProcess && hit {
+			cachemetrics.RecordMinerCacheDepth("MINER_L1_ACCOUNT")
+			cachemetrics.RecordMinerCacheMetrics("MINER_L1_ACCOUNT", start)
+			cachemetrics.RecordMinerTotalCosts("MINER_L1_ACCOUNT", start)
+		}
+	}()
+
+	if obj := s.stateObjects[addr]; obj != nil {
+		hit = true
 		return obj
 	}
-	cacheL1AccountMissMeter.Mark(1)
+
 	// If no live objects are available, attempt to use snapshots
 	var (
 		data *Account

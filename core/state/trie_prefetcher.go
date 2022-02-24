@@ -17,6 +17,7 @@
 package state
 
 import (
+	"github.com/ethereum/go-ethereum/cachemetrics"
 	"sync"
 	"time"
 
@@ -33,6 +34,11 @@ var (
 	trieSubPrefetchTimer      = metrics.NewRegisteredTimer("trie/subprefetch/delay", nil)
 	trieSubPrefetchCounter    = metrics.NewRegisteredCounter("trie/prefetch/total", nil)
 	triePrefetchTimer         = metrics.NewRegisteredTimer("trie/prefetch/delay", nil)
+
+	syncNewPrefetchCost     = metrics.NewRegisteredTimer("state/newfetchoverhead/sync/delay", nil)
+	mineNewPrefetchCost     = metrics.NewRegisteredTimer("state/newfetchoverhead/miner/delay", nil)
+	syncNewPrefetchCounter  = metrics.NewRegisteredCounter("state/newfetchoverhead/sync/counter", nil)
+	minerNewPrefetchCounter = metrics.NewRegisteredCounter("state/newfetchoverhead/miner/counter", nil)
 )
 
 // triePrefetcher is an active prefetcher, which receives accounts or storage
@@ -181,11 +187,27 @@ func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte, accountHash c
 	if p.fetches != nil {
 		return
 	}
+	var overheadCost time.Duration
+	defer func() {
+		goid := cachemetrics.Goid()
+		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(goid)
+		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(goid)
+		if isSyncMainProcess {
+			syncNewPrefetchCost.Update(overheadCost)
+			syncNewPrefetchCounter.Inc(overheadCost.Nanoseconds())
+		}
+		if isMinerMainProcess {
+			mineNewPrefetchCost.Update(overheadCost)
+			minerNewPrefetchCounter.Inc(overheadCost.Nanoseconds())
+		}
+	}()
 	// Active fetcher, schedule the retrievals
 	fetcher := p.fetchers[root]
 	if fetcher == nil {
+		start := time.Now()
 		fetcher = newSubfetcher(p.db, root, accountHash)
 		p.fetchers[root] = fetcher
+		overheadCost = time.Since(start)
 	}
 	fetcher.schedule(keys)
 }
