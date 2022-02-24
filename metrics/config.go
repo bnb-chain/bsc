@@ -20,8 +20,6 @@ package metrics
 type Config struct {
 	Enabled          bool   `toml:",omitempty"`
 	EnabledExpensive bool   `toml:",omitempty"`
-	EnableIORecord   bool   `toml:",omitempty"`
-	DisablePrefetch  bool   `toml:",omitempty"`
 	HTTP             string `toml:",omitempty"`
 	Port             int    `toml:",omitempty"`
 	EnableInfluxDB   bool   `toml:",omitempty"`

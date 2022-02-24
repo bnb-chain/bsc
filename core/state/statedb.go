@@ -474,8 +474,9 @@ func (s *StateDB) GetStorageProofByHash(a common.Address, key common.Hash) ([][]
 // GetCommittedState retrieves a value from the given account's committed storage trie.
 func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) common.Hash {
 	stateObject := s.getStateObject(addr)
+	hit := false
 	if stateObject != nil {
-		return stateObject.GetCommittedState(s.db, hash)
+		return stateObject.GetCommittedState(s.db, hash, &hit)
 	}
 	return common.Hash{}
 }
@@ -666,7 +667,6 @@ func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
 	for account := range accounts {
 		accountsSlice = append(accountsSlice, account)
 	}
-	overheadCost = time.Since(start)
 
 	if len(accountsSlice) >= preLoadLimit && len(accountsSlice) > runtime.NumCPU() {
 		objsChan := make(chan []*StateObject, runtime.NumCPU())
@@ -688,6 +688,7 @@ func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
 			}
 		}
 	}
+	overheadCost = time.Since(start)
 }
 
 func (s *StateDB) preloadStateObject(address []common.Address) []*StateObject {
@@ -760,7 +761,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 		err  error
 	)
 	if s.snap != nil {
-		if metrics.EnableIORecord {
+		if metrics.EnabledExpensive {
 			defer func(start time.Time) { s.SnapshotAccountReads += time.Since(start) }(time.Now())
 		}
 		var acc *snapshot.Account
@@ -792,7 +793,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 			}
 			s.trie = tr
 		}
-		if metrics.EnableIORecord {
+		if metrics.EnabledExpensive {
 			defer func(start time.Time) { s.AccountReads += time.Since(start) }(time.Now())
 		}
 		enc, err := s.trie.TryGet(addr.Bytes())
