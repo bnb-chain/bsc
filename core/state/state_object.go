@@ -32,6 +32,10 @@ import (
 
 var (
 	emptyCodeHash        = crypto.Keccak256(nil)
+	syncPreloadCost      = metrics.NewRegisteredTimer("state/preload/sync/delay", nil)
+	minerPreloadCost     = metrics.NewRegisteredTimer("state/preload/miner/delay", nil)
+	syncPreloadCounter   = metrics.NewRegisteredCounter("state/preload/sync/counter", nil)
+	minerPreloadCounter  = metrics.NewRegisteredCounter("state/preload/miner/counter", nil)
 	syncOverheadCost     = metrics.NewRegisteredTimer("state/overhead/sync/delay", nil)
 	minerOverheadCost    = metrics.NewRegisteredTimer("state/overhead/miner/delay", nil)
 	syncOverheadCounter  = metrics.NewRegisteredCounter("state/overhead/sync/counter", nil)
@@ -361,15 +365,14 @@ func (s *StateObject) finalise(prefetch bool) {
 			minerOverheadCounter.Inc(overheadCost.Nanoseconds())
 		}
 	}()
-
+	start := time.Now()
 	for key, value := range s.dirtyStorage {
 		s.pendingStorage[key] = value
 		if value != s.originStorage[key] {
-			start := time.Now()
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
-			overheadCost += time.Since(start)
 		}
 	}
+	overheadCost = time.Since(start)
 	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
 		s.db.prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
 	}

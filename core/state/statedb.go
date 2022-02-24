@@ -65,7 +65,6 @@ var (
 	totalMinerIOCost    = metrics.NewRegisteredTimer("state/cache/miner/delay", nil)
 	totalSyncIOCounter  = metrics.NewRegisteredCounter("state/cache/sync/counter", nil)
 	totalMinerIOCounter = metrics.NewRegisteredCounter("state/cache/miner/counter", nil)
-	//TotalAccountIOCost
 )
 
 type proofList [][]byte
@@ -645,9 +644,30 @@ func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
 			accounts[*tx.To()] = true
 		}
 	}
+
+	var overheadCost time.Duration
+	defer func() {
+		goid := cachemetrics.Goid()
+		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(goid)
+		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(goid)
+		// record metrics of syncing main process
+		if isSyncMainProcess {
+			syncPreloadCost.Update(overheadCost)
+			syncPreloadCounter.Inc(overheadCost.Nanoseconds())
+		}
+		// record metrics of mining main process
+		if isMinerMainProcess {
+			minerPreloadCost.Update(overheadCost)
+			minerPreloadCounter.Inc(overheadCost.Nanoseconds())
+		}
+	}()
+
+	start := time.Now()
 	for account := range accounts {
 		accountsSlice = append(accountsSlice, account)
 	}
+	overheadCost = time.Since(start)
+
 	if len(accountsSlice) >= preLoadLimit && len(accountsSlice) > runtime.NumCPU() {
 		objsChan := make(chan []*StateObject, runtime.NumCPU())
 		for i := 0; i < runtime.NumCPU(); i++ {
