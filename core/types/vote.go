@@ -9,6 +9,8 @@ import (
 const (
 	BLSPublicKeyLength = 48
 	BLSSignatureLength = 96
+
+	MaxDiffForkDist = 11 // Maximum allowed backward distance from the chain head
 )
 
 type BLSPublicKey [BLSPublicKeyLength]byte
@@ -20,7 +22,7 @@ type VoteData struct {
 	BlockHash   common.Hash
 }
 
-type VoteEnvelope struct {
+type VoteRecord struct {
 	VoteAddress BLSPublicKey
 	Signature   BLSSignature
 	Data        *VoteData
