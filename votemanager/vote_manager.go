@@ -16,101 +16,178 @@
 package votemanager
 
 import (
-	"context"
 	"encoding/json"
+	"sync"
+	"time"
 
+	mapset "github.com/deckarep/golang-set"
 	"github.com/tidwall/wal"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
+)
+
+const (
+	BufferSizeForJournal = 256
 )
 
 type VoteManager struct {
-	mux    *event.TypeMux
-	client *ethclient.Client // Client connection to the Ethereum chain
-
+	mu            sync.RWMutex
+	mux           *event.TypeMux
+	chain         blockChain
+	chainconfig   *params.ChainConfig
+	chainHeadCh   chan core.ChainHeadEvent
+	chainHeadSub  event.Subscription
+	vp            *VotesPool
+	journalBuffer []*types.VoteRecord
+	voteSet       mapset.Set
+	isReady       chan bool
+	wg            sync.WaitGroup // tracks loop
+	voteConfig    *VoteManagerConfig
+	bls           BLS
 }
 
-//VoteMessage to broadcast
-type VoteMsg struct {
-	validatorIndex uint64
-	//TODO: blsSignature,
-	blockHeight uint64
-	blockHash   common.Hash
+type VoteManagerConfig struct {
+	VoteJournal string        // Disk journal for saving the vote
+	Rejournal   time.Duration // Time interval to regenerate the local votes journal
 }
 
-func NewVoteManager(mux *event.TypeMux) *VoteManager {
-	voteManager := &VoteManager{
-		mux: mux,
+var DefaultVoteConfig = VoteManagerConfig{
+	Rejournal: 1 * time.Hour,
+}
+
+// sanitize checks the provided user configurations and changes anything that's
+// unreasonable or unworkable.
+func (config *VoteManagerConfig) sanitize() VoteManagerConfig {
+	conf := *config
+	if conf.Rejournal < time.Second {
+		log.Warn("Sanitizing invalid votePool journal time", "provided", conf.Rejournal, "updated", time.Second)
+		conf.Rejournal = time.Second
 	}
-	isReady := make(chan bool, 1)
-	go voteManager.update(isReady)
-	go voteManager.produceVote(isReady)
+	return conf
+
+}
+
+func NewVoteManager(config *VoteManagerConfig, mux *event.TypeMux, chainconfig *params.ChainConfig, chain blockChain) *VoteManager {
+	voteManager := &VoteManager{
+		mux:           mux,
+		chain:         chain,
+		chainconfig:   chainconfig,
+		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
+		journalBuffer: make([]*types.VoteRecord, 0, BufferSizeForJournal),
+		voteSet:       mapset.NewSet(),
+		isReady:       make(chan bool, 1),
+		voteConfig:    config,
+	}
+
+	if config.VoteJournal != "" {
+		if err := voteManager.LoadVotesJournal(); err != nil {
+			log.Warn("Failed to load votes journal", "err", err)
+		}
+	}
+
+	voteManager.chainHeadSub = voteManager.chain.SubscribeChainHeadEvent(voteManager.chainHeadCh)
+
+	voteManager.wg.Add(1)
+	go voteManager.loop()
+
+	voteManager.wg.Add(1)
+	go voteManager.produceVote()
 
 	return voteManager
 }
-func (voteMgr *VoteManager) produceVote(isReady chan bool) {
-	if <-isReady {
-		go voteMgr.loop()
-	}
-}
 
-func (voteMgr *VoteManager) loop() {
-	heads := make(chan *types.Header, 11)
-	sub, err := voteMgr.client.SubscribeNewHead(context.Background(), heads)
-	if err != nil {
-		log.Crit("Failed to subscribe to head events", "err", err)
-	}
-	defer sub.Unsubscribe()
+func (vm *VoteManager) loop() {
+	defer vm.wg.Done()
 
-	for {
-		head, ok := <-heads
-		if !ok {
-			break
-		}
-		// Vote for head.
-		voteMessage := &VoteMsg{
-			blockHeight: head.Number.Uint64(),
-			blockHash:   head.Hash(),
-		}
-		// Put Vote into journal and VotesPool.
-		WriteVotesJournal(*voteMessage)
-	}
-
-}
-
-func (voteMgr *VoteManager) update(isReady chan bool) {
-	events := voteMgr.mux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
+	events := vm.mux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
 	defer func() {
 		if !events.Closed() {
 			events.Unsubscribe()
 		}
 	}()
+
 	dlEventCh := events.Chan()
 
-	for {
-		ev := <-dlEventCh
-		if ev == nil {
-			// Unsubscription done, stop listening
-			dlEventCh = nil
-			break
+	// cleanTicker is the ticker used to trigger the prune for journal in disk.
+	var cleanTicker = time.NewTicker(vm.voteConfig.Rejournal)
+	pruning := func() {
+		walLog, err := wal.Open(vm.voteConfig.VoteJournal, nil)
+		if err != nil {
+			log.Debug("Failed to prune journal in disk", "err", err)
+			return
 		}
-		switch ev.Data.(type) {
-		case downloader.DoneEvent:
-			isReady <- true
-			events.Unsubscribe()
+		defer walLog.Close()
+		lastIndex, _ := walLog.LastIndex()
+		walLog.TruncateFront(lastIndex - BufferSizeForJournal)
+	}
+
+	for {
+		select {
+		case ev := <-dlEventCh:
+			if ev == nil {
+				// Unsubscription done, stop listening
+				dlEventCh = nil
+				break
+			}
+			switch ev.Data.(type) {
+			case downloader.DoneEvent:
+				vm.isReady <- true
+				events.Unsubscribe()
+			}
+		case <-cleanTicker.C:
+			pruning()
 		}
 	}
 
 }
 
-func WriteVotesJournal(voteMessage VoteMsg) error {
-	//TODO: file path
-	log, err := wal.Open("voteslog", nil)
+func (vm *VoteManager) produceVote() {
+	defer vm.wg.Done()
+
+	if <-vm.isReady {
+		for {
+			// Handle ChainHeadEvent
+			ev := <-vm.chainHeadCh
+			if ev.Block != nil {
+				curBlock := ev.Block
+
+				// Vote for curBlock.
+				vote := &types.VoteData{
+					BlockNumber: curBlock.NumberU64(),
+					BlockHash:   curBlock.Hash(),
+				}
+				voteMessage := &types.VoteRecord{
+					Data: *vote,
+				}
+				// Put Vote into journal and VotesPool if verified by BLS.
+				if ok, err := vm.IsUnderRules(curBlock.Header()); err == nil {
+					if ok && vm.bls.Sign(voteMessage) && vm.bls.Verify(voteMessage) {
+						vm.WriteVotesJournal(voteMessage)
+						vm.vp.PutVote(voteMessage)
+					}
+				} else {
+					log.Error("is under rules error", "err", err)
+				}
+
+			}
+		}
+	}
+}
+
+func (vm *VoteManager) WriteVotesJournal(voteMessage *types.VoteRecord) error {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+	if len(vm.journalBuffer) == BufferSizeForJournal {
+		vm.journalBuffer = vm.journalBuffer[1:]
+	}
+	vm.journalBuffer = append(vm.journalBuffer, voteMessage)
+
+	log, err := wal.Open(vm.voteConfig.VoteJournal, nil)
 	if err != nil {
 		return err
 	}
@@ -131,91 +208,103 @@ func WriteVotesJournal(voteMessage VoteMsg) error {
 }
 
 // LoadVotesJournal in case of node restart.
-func LoadVotesJournal() ([]VoteMsg, error) {
-	log, err := wal.Open("voteslog", nil)
-	voteRes := make([]VoteMsg, 0, 256)
+func (vm *VoteManager) LoadVotesJournal() error {
+	vm.mu.RLock()
+	defer vm.mu.RUnlock()
+
+	log, err := wal.Open(vm.voteConfig.VoteJournal, nil)
+	voteRes := make([]*types.VoteRecord, 0, 256)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer log.Close()
 
 	lastIndex, err := log.LastIndex()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if lastIndex <= 256 {
+	if lastIndex <= BufferSizeForJournal {
 		for index := 1; index <= int(lastIndex); index++ {
 			voteMessage, err := log.Read(uint64(index))
 			if err != nil {
-				return nil, err
+				return err
 			}
-			vote := VoteMsg{}
+			vote := types.VoteRecord{}
 			if err := json.Unmarshal(voteMessage, &vote); err != nil {
-				return nil, err
+				return err
 			}
-			voteRes = append(voteRes, vote)
+			voteRes = append(voteRes, &vote)
 		}
 	} else {
-		for index := lastIndex - 255; index <= lastIndex; index++ {
+		for index := lastIndex - BufferSizeForJournal + 1; index <= lastIndex; index++ {
 			voteMessage, err := log.Read(uint64(index))
 			if err != nil {
-				return nil, err
+				return err
 			}
-			vote := VoteMsg{}
+			vote := types.VoteRecord{}
 			if err := json.Unmarshal(voteMessage, &vote); err != nil {
-				return nil, err
+				return err
 			}
-			voteRes = append(voteRes, vote)
+			voteRes = append(voteRes, &vote)
 		}
 	}
-	return voteRes, nil
+	vm.journalBuffer = voteRes
+	return nil
+}
+
+func (vm *VoteManager) Truncate(index uint64) error {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+
+	log, err := wal.Open(vm.voteConfig.VoteJournal, nil)
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+	if err := log.TruncateFront(index); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Check if the produced header under the Rule1: Validators always vote once and only once on one height,
 // Rule2: Validators always vote for the child of its previous vote within a predefined n blocks to avoid vote on two different
 // forks of chain.
-func isUnderRules(header *types.Header) (bool, error) {
-	//TODO: file path
-	log, err := wal.Open("voteslog", nil)
-	if err != nil {
-		return false, err
-	}
-	defer log.Close()
+func (vm *VoteManager) IsUnderRules(header *types.Header) (bool, error) {
+	vm.mu.RLock()
+	defer vm.mu.RUnlock()
 
-	lastIndex, err := log.LastIndex()
-	if err != nil {
-		return false, err
-	}
-
-	// Check for Rule
-	for index := lastIndex; index >= 1; index-- {
-		voteMessage, err := log.Read(uint64(index))
-		if err != nil {
-			return false, err
-		}
-		vote := VoteMsg{}
-		if err := json.Unmarshal(voteMessage, &vote); err != nil {
-			return false, err
-		}
-		if vote.blockHeight == header.Number.Uint64() {
+	journalBuffer := vm.journalBuffer
+	// Check for Rule1.
+	for index := len(journalBuffer) - 1; index >= 0; index-- {
+		vote := journalBuffer[index]
+		if vote.Data.BlockNumber == header.Number.Uint64() {
 			return false, nil
-		} else if vote.blockHeight < header.Number.Uint64() {
+		} else if vote.Data.BlockNumber < header.Number.Uint64() {
 			break
 		}
 	}
+	isValid := false
 
-	// Check for Rule2
-	voteMessage, err := log.Read(uint64(lastIndex))
-	if err != nil {
-		return false, err
-	}
-	vote := VoteMsg{}
-	if err := json.Unmarshal(voteMessage, &vote); err != nil {
-		return false, err
-	}
+	// Check for Rule2.
+	if len(journalBuffer) == 0 {
+		isValid = true
+	} else {
+		vote := journalBuffer[len(journalBuffer)-1]
+		blockNumber := vote.Data.BlockNumber
+		blockHash := vote.Data.BlockHash
+		curBlockHeader := header
 
-	if vote.blockHash != header.ParentHash {
-		return false, nil
+		for curBlockHeader.Number.Uint64() >= blockNumber {
+			if curBlockHeader.Number.Uint64() == blockNumber {
+				if curBlockHeader.Hash() == blockHash {
+					isValid = true
+				}
+				break
+			}
+			curBlockHeader = vm.chain.GetHeader(curBlockHeader.ParentHash, curBlockHeader.Number.Uint64()-1)
+		}
+
 	}
-	return true, nil
+	return isValid, nil
 }
