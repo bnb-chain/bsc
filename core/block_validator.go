@@ -34,17 +34,22 @@ const badBlockCacheExpire = 30 * time.Second
 //
 // BlockValidator implements Validator.
 type BlockValidator struct {
-	config *params.ChainConfig // Chain configuration options
-	bc     *BlockChain         // Canonical block chain
-	engine consensus.Engine    // Consensus engine used for validating
+	config          *params.ChainConfig // Chain configuration options
+	bc              *BlockChain         // Canonical block chain
+	engine          consensus.Engine    // Consensus engine used for validating
+	remoteValidator *remoteVerifyManager
 }
 
 // NewBlockValidator returns a new block validator which is safe for re-use
-func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain, engine consensus.Engine) *BlockValidator {
+func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain, engine consensus.Engine, mode VerifyMode, peers verifyPeers) *BlockValidator {
 	validator := &BlockValidator{
 		config: config,
 		engine: engine,
 		bc:     blockchain,
+	}
+	if mode.NeedRemoteVerify() {
+		validator.remoteValidator = NewVerifyManager(blockchain, peers, mode == InsecureVerify)
+		go validator.remoteValidator.mainLoop()
 	}
 	return validator
 }
@@ -82,6 +87,13 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 					return consensus.ErrUnknownAncestor
 				}
 				return consensus.ErrPrunedAncestor
+			}
+			return nil
+		},
+		// for fast node which verify trie from remote verify peers, a block's H-11 ancestor should have been verify.
+		func() error {
+			if v.remoteValidator != nil && !v.remoteValidator.AncestorVerified(v.bc.GetHeaderByNumber(header.Number.Uint64())) {
+				return fmt.Errorf("block's ancessor %x has not been verified", block.Hash())
 			}
 			return nil
 		},
@@ -162,6 +174,10 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		}
 	}
 	return err
+}
+
+func (v *BlockValidator) RemoteVerifyManager() *remoteVerifyManager {
+	return v.remoteValidator
 }
 
 // CalcGasLimit computes the gas limit of the next block after parent. It aims

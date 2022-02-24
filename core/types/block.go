@@ -66,13 +66,6 @@ var (
 	StatusUnexpectedError = VerifyStatus{Code: 0x400, Msg: "can’t verify because of unexpected internal error"}
 )
 
-type VerifyResult struct {
-	Status      VerifyStatus
-	BlockNumber uint64
-	BlockHash   common.Hash
-	Root        common.Hash
-}
-
 // A BlockNonce is a 64-bit hash which proves (combined with the
 // mix-hash) that a sufficient amount of computation has been carried
 // out on a block.

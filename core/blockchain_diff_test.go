@@ -584,7 +584,7 @@ func testGetRootByDiffHash(t *testing.T, chain1, chain2 *BlockChain, blockNumber
 	if block2 == nil {
 		t.Fatalf("failed to find block, number: %v", blockNumber)
 	}
-	expect := types.VerifyResult{
+	expect := VerifyResult{
 		Status:      status,
 		BlockNumber: blockNumber,
 		BlockHash:   block2.Hash(),

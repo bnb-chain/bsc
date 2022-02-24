@@ -96,6 +96,7 @@ type handlerConfig struct {
 	Whitelist              map[uint64]common.Hash    // Hard coded whitelist for sync challenged
 	DirectBroadcast        bool
 	DisablePeerTxBroadcast bool
+	PeerSet                *peerSet
 }
 
 type handler struct {
@@ -155,7 +156,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		database:               config.Database,
 		txpool:                 config.TxPool,
 		chain:                  config.Chain,
-		peers:                  newPeerSet(),
+		peers:                  config.PeerSet,
 		whitelist:              config.Whitelist,
 		directBroadcast:        config.DirectBroadcast,
 		diffSync:               config.DiffSync,

@@ -311,8 +311,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		diffNumToBlockHashes:  make(map[uint64]map[common.Hash]struct{}),
 		diffPeersToDiffHashes: make(map[string]map[common.Hash]struct{}),
 	}
+
 	bc.prefetcher = NewStatePrefetcher(chainConfig, bc, engine)
-	bc.validator = NewBlockValidator(chainConfig, bc, engine)
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
 
 	var err error
@@ -3135,8 +3135,15 @@ func EnablePersistDiff(limit uint64) BlockChainOption {
 	}
 }
 
-func (bc *BlockChain) GetRootByDiffHash(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) *types.VerifyResult {
-	var res types.VerifyResult
+func EnableBlockValidator(chainConfig *params.ChainConfig, engine consensus.Engine, mode VerifyMode, peers verifyPeers) BlockChainOption {
+	return func(bc *BlockChain) *BlockChain {
+		bc.validator = NewBlockValidator(chainConfig, bc, engine, mode, peers)
+		return bc
+	}
+}
+
+func (bc *BlockChain) GetRootByDiffHash(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) *VerifyResult {
+	var res VerifyResult
 	res.BlockNumber = blockNumber
 	res.BlockHash = blockHash
 

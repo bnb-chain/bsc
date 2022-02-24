@@ -29,6 +29,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		NoPrefetch              bool
 		DirectBroadcast         bool
 		DisableSnapProtocol     bool
+		DisableDiffProtocol     bool
+		EnableTrustProtocol     bool
 		DiffSync                bool
 		RangeLimit              bool
 		TxLookupLimit           uint64                 `toml:",omitempty"`
@@ -57,7 +59,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TrieTimeout             time.Duration
 		SnapshotCache           int
 		TriesInMemory           uint64
-		NoTries                 bool
+		TriesVerifyMode         core.VerifyMode
 		Preimages               bool
 		Miner                   miner.Config
 		Ethash                  ethash.Config `toml:",omitempty"`
@@ -84,6 +86,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.NoPruning = c.NoPruning
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
+	enc.DisableDiffProtocol = c.DisableDiffProtocol
+	enc.EnableTrustProtocol = c.EnableTrustProtocol
 	enc.DiffSync = c.DiffSync
 	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
@@ -112,7 +116,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TrieTimeout = c.TrieTimeout
 	enc.SnapshotCache = c.SnapshotCache
 	enc.TriesInMemory = c.TriesInMemory
-	enc.NoTries = c.NoTries
+	enc.TriesVerifyMode = c.TriesVerifyMode
 	enc.Preimages = c.Preimages
 	enc.Miner = c.Miner
 	enc.Ethash = c.Ethash
@@ -144,6 +148,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		NoPrefetch              *bool
 		DirectBroadcast         *bool
 		DisableSnapProtocol     *bool
+		DisableDiffProtocol     *bool
+		EnableTrustProtocol     *bool
 		DiffSync                *bool
 		RangeLimit              *bool
 		TxLookupLimit           *uint64                `toml:",omitempty"`
@@ -172,7 +178,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TrieTimeout             *time.Duration
 		SnapshotCache           *int
 		TriesInMemory           *uint64
-		NoTries                 *bool
+		TriesVerifyMode         *core.VerifyMode
 		Preimages               *bool
 		Miner                   *miner.Config
 		Ethash                  *ethash.Config `toml:",omitempty"`
@@ -221,6 +227,12 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.DisableSnapProtocol != nil {
 		c.DisableSnapProtocol = *dec.DisableSnapProtocol
+	}
+	if dec.DisableDiffProtocol != nil {
+		c.DisableDiffProtocol = *dec.DisableDiffProtocol
+	}
+	if dec.EnableTrustProtocol != nil {
+		c.EnableTrustProtocol = *dec.EnableTrustProtocol
 	}
 	if dec.DiffSync != nil {
 		c.DiffSync = *dec.DiffSync
@@ -306,8 +318,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.TriesInMemory != nil {
 		c.TriesInMemory = *dec.TriesInMemory
 	}
-	if dec.NoTries != nil {
-		c.NoTries = *dec.NoTries
+	if dec.TriesVerifyMode != nil {
+		c.TriesVerifyMode = *dec.TriesVerifyMode
 	}
 	if dec.Preimages != nil {
 		c.Preimages = *dec.Preimages

@@ -22,13 +22,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/eth/protocols/trust"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 	"github.com/ethereum/go-ethereum/p2p"
 )
 
@@ -334,14 +334,14 @@ func (ps *peerSet) GetDiffPeer(pid string) downloader.IDiffPeer {
 }
 
 // GetVerifyPeers returns an array of verify nodes.
-func (ps *peerSet) GetVerifyPeers() []*trustPeer {
+func (ps *peerSet) GetVerifyPeers() []core.VerifyPeer {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
 
-	res := make([]*trustPeer, 0)
+	res := make([]core.VerifyPeer, 0)
 	for _, p := range ps.peers {
-		if p.trustExt != nil {
-			res = append(res, p.trustExt)
+		if p.trustExt != nil && p.trustExt.Peer != nil {
+			res = append(res, p.trustExt.Peer)
 		}
 	}
 	return res
