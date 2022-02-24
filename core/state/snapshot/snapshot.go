@@ -44,6 +44,11 @@ var (
 	snapshotCleanStorageHitMeter  = metrics.NewRegisteredMeter("state/snapshot/clean/storage/hit", nil)
 	snapshotCleanStorageMissMeter = metrics.NewRegisteredMeter("state/snapshot/clean/storage/miss", nil)
 
+	syncL1MissAccountMeter  = metrics.NewRegisteredMeter("syncinfo/account/layer1/miss", nil)
+	minerL1MissAccountMeter = metrics.NewRegisteredMeter("minerinfo/account/layer1/miss", nil)
+	syncL1MissStorageMeter  = metrics.NewRegisteredMeter("syncinfo/storage/layer1/miss", nil)
+	minerL1MissStorageMeter = metrics.NewRegisteredMeter("minerinfo/storage/layer1/miss", nil)
+
 	syncL2AccountHitMeter  = metrics.NewRegisteredMeter("syncinfo/account/layer2/hit", nil)
 	syncL2AccountMissMeter = metrics.NewRegisteredMeter("syncinfo/account/layer2/miss", nil)
 	syncL2StorageHitMeter  = metrics.NewRegisteredMeter("syncinfo/storage/layer2/hit", nil)

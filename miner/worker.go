@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"errors"
 	"math/big"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -84,11 +83,8 @@ const (
 )
 
 var (
-	commitTxsTimer        = metrics.NewRegisteredTimer("worker/committxs", nil)
-	totalAccountReadTimer = metrics.NewRegisteredTimer("worker/account/reads", nil)
-	totalStorageReadTimer = metrics.NewRegisteredTimer("worker/storage/reads", nil)
-	totalReadTimer        = metrics.NewRegisteredTimer("worker/total/reads", nil)
-	totalMiningTimer      = metrics.NewRegisteredTimer("worker/mine", nil)
+	commitTxsTimer   = metrics.NewRegisteredTimer("worker/committxs", nil)
+	totalMiningTimer = metrics.NewRegisteredTimer("worker/mine", nil)
 )
 
 // environment is the worker's current environment and holds all of the current state information.
@@ -464,9 +460,6 @@ func (w *worker) mainLoop() {
 	defer w.chainHeadSub.Unsubscribe()
 	defer w.chainSideSub.Unsubscribe()
 
-	goid := cachemetrics.Goid()
-	str := strconv.FormatUint(uint64(goid), 10)
-	log.Info("mainLoop routine id:" + str)
 	for {
 		select {
 		case req := <-w.newWorkCh:
@@ -908,8 +901,8 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
-	goid := cachemetrics.Goid()
-	cachemetrics.UpdateMiningRoutineID(goid)
+	routeid := cachemetrics.Goid()
+	cachemetrics.UpdateMiningRoutineID(routeid)
 
 	tstart := time.Now()
 	parent := w.chain.CurrentBlock()
@@ -1032,14 +1025,6 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 			// mark mingTime as a metrics
 			totalMiningTimer.Update(time.Since(start))
 
-			accountReadCost := s.SnapshotAccountReads + s.L1CacheAccountReads + s.AccountReads
-			storageReadCost := s.SnapshotStorageReads + s.L1CacheStorageReads + s.StorageReads
-			// mark the total io process cost in L1-L4 layers of account
-			totalAccountReadTimer.Update(accountReadCost)
-			// mark the total io process cost in L1-L4 layers of storage
-			totalStorageReadTimer.Update(storageReadCost)
-			// mark the total io process cost in L1-L4 layers
-			totalReadTimer.Update(accountReadCost + storageReadCost)
 		case <-w.exitCh:
 			log.Info("Worker has exited")
 		}

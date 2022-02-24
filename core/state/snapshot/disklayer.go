@@ -128,12 +128,14 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 				cachemetrics.RecordTotalCosts("CACHE_L3_ACCOUNT", start)
 			}
 			if hitInDisk {
+				syncL3AccountMissMeter.Mark(1)
 				cachemetrics.RecordCacheDepth("DISK_L4_ACCOUNT")
 				cachemetrics.RecordCacheMetrics("DISK_L4_ACCOUNT", startGetInDisk)
 				cachemetrics.RecordTotalCosts("DISK_L4_ACCOUNT", start)
 			}
 		}
 		if isMinerMainProcess {
+			// layer 2 miss
 			minerL2AccountMissMeter.Mark(1)
 			if hitInL3 {
 				minerL3AccountHitMeter.Mark(1)
@@ -142,6 +144,8 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 				cachemetrics.RecordMinerTotalCosts("MINER_L3_ACCOUNT", start)
 			}
 			if hitInDisk {
+				// layer 3 miss
+				minerL3AccountMissMeter.Mark(1)
 				cachemetrics.RecordMinerCacheDepth("MINER_L4_ACCOUNT")
 				cachemetrics.RecordMinerCacheMetrics("MINER_L4_ACCOUNT", start)
 				cachemetrics.RecordMinerTotalCosts("MINER_L4_ACCOUNT", start)
@@ -187,6 +191,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(routeid)
 		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(routeid)
 		if isSyncMainProcess {
+			// layer 2 miss
 			syncL2StorageMissMeter.Mark(1)
 			if hitInL3 {
 				syncL3StorageHitMeter.Mark(1)
@@ -195,23 +200,28 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 				cachemetrics.RecordTotalCosts("CACHE_L3_STORAGE", start)
 			}
 			if hitInDisk {
+				// layer 3 miss
+				syncL3StorageMissMeter.Mark(1)
 				cachemetrics.RecordCacheDepth("DISK_L4_STORAGE")
 				cachemetrics.RecordCacheMetrics("DISK_L4_STORAGE", startGetInDisk)
 				cachemetrics.RecordTotalCosts("DISK_L4_STORAGE", start)
 			}
 		}
 		if isMinerMainProcess {
+			// layer 2 miss
 			minerL2StorageMissMeter.Mark(1)
 			if hitInL3 {
 				syncL3StorageHitMeter.Mark(1)
-				cachemetrics.RecordCacheDepth("MINER_L3_STORAGE")
-				cachemetrics.RecordCacheMetrics("MINER_L3_STORAGE", start)
-				cachemetrics.RecordTotalCosts("MINER_L3_STORAGE", start)
+				cachemetrics.RecordMinerCacheDepth("MINER_L3_STORAGE")
+				cachemetrics.RecordMinerCacheMetrics("MINER_L3_STORAGE", start)
+				cachemetrics.RecordMinerTotalCosts("MINER_L3_STORAGE", start)
 			}
 			if hitInDisk {
-				cachemetrics.RecordCacheDepth("MINER_L4_STORAGE")
-				cachemetrics.RecordCacheMetrics("MINER_L4_STORAGE", startGetInDisk)
-				cachemetrics.RecordTotalCosts("MINER_L4_STORAGE", start)
+				// layer 3 miss
+				syncL3StorageMissMeter.Mark(1)
+				cachemetrics.RecordMinerCacheDepth("MINER_L4_STORAGE")
+				cachemetrics.RecordMinerCacheMetrics("MINER_L4_STORAGE", startGetInDisk)
+				cachemetrics.RecordMinerTotalCosts("MINER_L4_STORAGE", start)
 			}
 		}
 	}()
