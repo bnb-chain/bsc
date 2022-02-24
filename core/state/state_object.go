@@ -19,10 +19,11 @@ package state
 import (
 	"bytes"
 	"fmt"
-	"github.com/ethereum/go-ethereum/cachemetrics"
 	"io"
 	"math/big"
 	"time"
+
+	"github.com/ethereum/go-ethereum/cachemetrics"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -192,24 +193,8 @@ func (s *StateObject) getTrie(db Database) Trie {
 
 // GetState retrieves a value from the account storage trie.
 func (s *StateObject) GetState(db Database, key common.Hash) common.Hash {
-	// If the fake storage is set, only lookup the state here(in the debugging mode)
-	if s.fakeStorage != nil {
-		return s.fakeStorage[key]
-	}
-	// If we have a dirty value for this state entry, return it
-	value, dirty := s.dirtyStorage[key]
-	if dirty {
-		return value
-	}
-	// Otherwise return the entry's original value
-	return s.GetCommittedState(db, key)
-}
-
-// GetCommittedState retrieves a value from the committed account storage trie.
-func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Hash {
-	// If the fake storage is set, only lookup the state here(in the debugging mode)
-	start := time.Now()
 	hitInCache := false
+	start := time.Now()
 
 	defer func() {
 		routeid := cachemetrics.Goid()
@@ -227,18 +212,36 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			cachemetrics.RecordMinerTotalCosts("MINER_L1_STORAGE", start)
 		}
 	}()
+	// If the fake storage is set, only lookup the state here(in the debugging mode)
+	if s.fakeStorage != nil {
+		hitInCache = true
+		return s.fakeStorage[key]
+	}
+	// If we have a dirty value for this state entry, return it
+	value, dirty := s.dirtyStorage[key]
+	if dirty {
+		hitInCache = true
+		return value
+	}
 
+	// Otherwise return the entry's original value
+	return s.GetCommittedState(db, key, &hitInCache)
+}
+
+// GetCommittedState retrieves a value from the committed account storage trie.
+func (s *StateObject) GetCommittedState(db Database, key common.Hash, hit *bool) common.Hash {
+	// If the fake storage is set, only lookup the state here(in the debugging mode)
 	if s.fakeStorage != nil {
 		return s.fakeStorage[key]
 	}
 	// If we have a pending write or clean cached, return that
 	if value, pending := s.pendingStorage[key]; pending {
-		hitInCache = true
+		*hit = true
 		return value
 	}
 
 	if value, cached := s.originStorage[key]; cached {
-		hitInCache = true
+		*hit = true
 		return value
 	}
 
@@ -249,7 +252,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		meter *time.Duration
 	)
 	readStart := time.Now()
-	if metrics.EnableIORecord {
+	if metrics.EnabledExpensive {
 		// If the snap is 'under construction', the first lookup may fail. If that
 		// happens, we don't want to double-count the time elapsed. Thus this
 		// dance with the metering.
@@ -260,7 +263,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		}()
 	}
 	if s.db.snap != nil {
-		if metrics.EnableIORecord {
+		if metrics.EnabledExpensive {
 			meter = &s.db.SnapshotStorageReads
 		}
 		// If the object was destructed in *this* block (and potentially resurrected),
@@ -282,7 +285,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			*meter += time.Since(readStart)
 			readStart = time.Now()
 		}
-		if metrics.EnableIORecord {
+		if metrics.EnabledExpensive {
 			meter = &s.db.StorageReads
 		}
 		if enc, err = s.getTrie(db).TryGet(key.Bytes()); err != nil {
@@ -372,10 +375,10 @@ func (s *StateObject) finalise(prefetch bool) {
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
 		}
 	}
-	overheadCost = time.Since(start)
 	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
 		s.db.prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
 	}
+	overheadCost = time.Since(start)
 	if len(s.dirtyStorage) > 0 {
 		s.dirtyStorage = make(Storage)
 	}
