@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	bloomfilter "github.com/holiman/bloomfilter/v2"
 )
@@ -77,10 +76,6 @@ var (
 	bloomDestructHasherOffset = 0
 	bloomAccountHasherOffset  = 0
 	bloomStorageHasherOffset  = 0
-	syncL1MissAccountMeter    = metrics.NewRegisteredMeter("state/cache/account/miss", nil)
-	minerL1MissAccountMeter   = metrics.NewRegisteredMeter("state/minercache/account/miss", nil)
-	syncL1MissStorageMeter    = metrics.NewRegisteredMeter("state/cache/storage/miss", nil)
-	minerL1MissStorageMeter   = metrics.NewRegisteredMeter("state/minercache/storage/miss", nil)
 )
 
 func init() {
@@ -340,6 +335,7 @@ func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(routeid)
 		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(routeid)
 		if isSyncMainProcess {
+			// l1 miss
 			syncL1MissAccountMeter.Mark(1)
 			if hitInDifflayer {
 				syncL2AccountHitMeter.Mark(1)
@@ -349,6 +345,7 @@ func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 			}
 		}
 		if isMinerMainProcess {
+			// l1 miss
 			minerL1MissAccountMeter.Mark(1)
 			if hitInDifflayer {
 				minerL2AccountHitMeter.Mark(1)
@@ -440,7 +437,7 @@ func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 			minerL1MissStorageMeter.Mark(1)
 			if hitInDifflayer {
 				minerL2StorageHitMeter.Mark(1)
-				cachemetrics.RecordMinerCacheDepth("MINER_L2_ACCOUNT")
+				cachemetrics.RecordMinerCacheDepth("MINER_L2_STORAGE")
 				cachemetrics.RecordMinerCacheMetrics("MINER_L2_STORAGE", start)
 				cachemetrics.RecordMinerTotalCosts("MINER_L2_STORAGE", start)
 			}

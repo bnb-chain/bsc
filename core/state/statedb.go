@@ -55,15 +55,12 @@ var (
 	emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
 	emptyAddr = crypto.Keccak256Hash(common.Address{}.Bytes())
-	//cacheL1AccountHitMeter  = metrics.NewRegisteredMeter("state/cache/account/hit", nil)
-	//	cacheL1AccountMissMeter = metrics.NewRegisteredMeter("state/cache/account/miss", nil)
-	l1AccountMeter      = metrics.NewRegisteredMeter("state/cache/total", nil)
-	minerL1AccountMeter = metrics.NewRegisteredMeter("state/minercache/total", nil)
-	l1StorageMeter      = metrics.NewRegisteredMeter("state/cache/total", nil)
-	minerL1StorageMeter = metrics.NewRegisteredMeter("state/minercache/total", nil)
 
-	MinerAccountMeter   = metrics.NewRegisteredMeter("state/minercache/account/total", nil)
-	minerStorageMeter   = metrics.NewRegisteredMeter("state/minercache/storage/total", nil)
+	l1AccountMeter      = metrics.NewRegisteredMeter("state/cache/account/total", nil)
+	minerL1AccountMeter = metrics.NewRegisteredMeter("state/minercache/account/total", nil)
+	l1StorageMeter      = metrics.NewRegisteredMeter("state/cache/storage/total", nil)
+	minerL1StorageMeter = metrics.NewRegisteredMeter("state/minercache/storage/total", nil)
+
 	totalSyncIOCost     = metrics.NewRegisteredTimer("state/cache/sync/delay", nil)
 	totalMinerIOCost    = metrics.NewRegisteredTimer("state/cache/miner/delay", nil)
 	totalSyncIOCounter  = metrics.NewRegisteredCounter("state/cache/sync/counter", nil)
@@ -636,10 +633,6 @@ func (s *StateDB) getStateObject(addr common.Address) *StateObject {
 }
 
 func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
-	if metrics.DisablePrefetch {
-		return
-	}
-
 	accounts := make(map[common.Address]bool, block.Transactions().Len())
 	accountsSlice := make([]common.Address, 0, block.Transactions().Len())
 	for _, tx := range block.Transactions() {
