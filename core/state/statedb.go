@@ -410,14 +410,14 @@ func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
 		if isSyncMainProcess {
 			syncGetDelay := time.Since(start)
 			totalSyncIOCost.Update(syncGetDelay)
-			totalMinerIOCounter.Inc(syncGetDelay.Nanoseconds())
+			totalSyncIOCounter.Inc(syncGetDelay.Nanoseconds())
 			l1AccountMeter.Mark(1)
 		}
 		// record metrics of mining main process
 		if isMinerMainProcess {
 			minerIOCost := time.Since(start)
 			totalMinerIOCost.Update(minerIOCost)
-			totalSyncIOCounter.Inc(minerIOCost.Nanoseconds())
+			totalMinerIOCounter.Inc(minerIOCost.Nanoseconds())
 			minerL1AccountMeter.Mark(1)
 		}
 	}()

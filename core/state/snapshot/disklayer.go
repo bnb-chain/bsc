@@ -211,14 +211,14 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 			// layer 2 miss
 			minerL2StorageMissMeter.Mark(1)
 			if hitInL3 {
-				syncL3StorageHitMeter.Mark(1)
+				minerL3StorageHitMeter.Mark(1)
 				cachemetrics.RecordMinerCacheDepth("MINER_L3_STORAGE")
 				cachemetrics.RecordMinerCacheMetrics("MINER_L3_STORAGE", start)
 				cachemetrics.RecordMinerTotalCosts("MINER_L3_STORAGE", start)
 			}
 			if hitInDisk {
 				// layer 3 miss
-				syncL3StorageMissMeter.Mark(1)
+				minerL3StorageMissMeter.Mark(1)
 				cachemetrics.RecordMinerCacheDepth("MINER_L4_STORAGE")
 				cachemetrics.RecordMinerCacheMetrics("MINER_L4_STORAGE", startGetInDisk)
 				cachemetrics.RecordMinerTotalCosts("MINER_L4_STORAGE", start)
