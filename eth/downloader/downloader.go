@@ -20,6 +20,7 @@ package downloader
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/perf"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -1801,6 +1802,8 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 	blocks := make([]*types.Block, len(results))
 	for i, result := range results {
 		blocks[i] = types.NewBlockWithHeader(result.Header).WithBody(result.Transactions, result.Uncles)
+		// match P2P_SEND logs to estimate the p2p propagation time
+		perf.RecordMPLogs(nil, "P2P_RECEIVE", "peer", result.pid, "block", blocks[i].Number(), "hash", blocks[i].Hash(), "time", time.Now().UnixNano())
 	}
 	if index, err := d.blockchain.InsertChain(blocks); err != nil {
 		if index < len(results) {
