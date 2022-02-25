@@ -27,14 +27,12 @@ func IsMinerMainRoutineID(id int64) bool {
 }
 
 func UpdateSyncingRoutineID(id int64) {
-	if SyncingRoutineId != id {
-		SyncingRoutineId = id
-	}
+	atomic.StoreInt64(&SyncingRoutineId, id)
 }
 
 // judge if it is main process of syncing
 func IsSyncMainRoutineID(id int64) bool {
-	if id == SyncingRoutineId {
+	if id == atomic.LoadInt64(&SyncingRoutineId) {
 		return true
 	}
 	return false

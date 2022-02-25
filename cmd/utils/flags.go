@@ -744,14 +744,6 @@ var (
 		Name:  "metrics.expensive",
 		Usage: "Enable expensive metrics collection and reporting",
 	}
-	MetricsDisablePrefetchFlag = cli.BoolFlag{
-		Name:  "metrics.noprefetch",
-		Usage: "disable prefetch when metrics collecting",
-	}
-	MetricsEnabledRecordIOFlag = cli.BoolFlag{
-		Name:  "metrics.iorecord",
-		Usage: "Enable recording io metrics",
-	}
 
 	// MetricsHTTPFlag defines the endpoint for a stand-alone metrics HTTP endpoint.
 	// Since the pprof service enables sensitive/vulnerable behavior, this allows a user
