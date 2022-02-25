@@ -79,12 +79,20 @@ type txPool interface {
 	SubscribeReannoTxsEvent(chan<- core.ReannoTxsEvent) event.Subscription
 }
 
+// votePool defines the methods needed from a votes pool implementation to
+// support all the operations needed by the Ethereum chain protocols.
+type votePool interface {
+	Put(hash common.Hash, vote types.VoteRecord) error
+	GetVotes() *types.VoteRecords
+}
+
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
 	Database               ethdb.Database            // Database for direct sync insertions
 	Chain                  *core.BlockChain          // Blockchain to serve data from
 	TxPool                 txPool                    // Transaction pool to propagate from
+	VotePool               votePool                  // Votes pool to propagate from
 	Network                uint64                    // Network identifier to adfvertise
 	Sync                   downloader.SyncMode       // Whether to fast or full sync
 	DiffSync               bool                      // Whether to diff sync
@@ -112,6 +120,7 @@ type handler struct {
 
 	database ethdb.Database
 	txpool   txPool
+	votepool votePool
 	chain    *core.BlockChain
 	maxPeers int
 
@@ -152,6 +161,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		eventMux:               config.EventMux,
 		database:               config.Database,
 		txpool:                 config.TxPool,
+		votepool:               config.VotePool,
 		chain:                  config.Chain,
 		peers:                  newPeerSet(),
 		whitelist:              config.Whitelist,
@@ -510,7 +520,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return
 	}
-	// Otherwise if the block is indeed in out own chain, announce it
+	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
 			peer.AsyncSendNewBlockHash(block)

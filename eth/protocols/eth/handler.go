@@ -79,6 +79,13 @@ type Backend interface {
 	// or if inbound transactions should simply be dropped.
 	AcceptTxs() bool
 
+	// VotePool retrieves the votes pool object to serve data.
+	VotePool() VotePool
+
+	// AcceptVotes retrieves whether votes processing is enabled on the node
+	// or if inbound votes should simply be dropped.
+	AcceptVotes() bool
+
 	// RunPeer is invoked when a peer joins on the `eth` protocol. The handler
 	// should do any peer maintenance work, handshakes and validations. If all
 	// is passed, control should be given back to the `handler` to process the
@@ -96,8 +103,13 @@ type Backend interface {
 
 // TxPool defines the methods needed by the protocol handler to serve transactions.
 type TxPool interface {
-	// Get retrieves the the transaction from the local txpool with the given hash.
+	// Get retrieves the transaction from the local txpool with the given hash.
 	Get(hash common.Hash) *types.Transaction
+}
+
+type VotePool interface {
+	// Get retrieves the vote from the local votepool with the given hash.
+	Get(hash common.Hash) *types.VoteRecord
 }
 
 // MakeProtocols constructs the P2P protocol definitions for `eth`.
@@ -111,7 +123,7 @@ func MakeProtocols(backend Backend, network uint64, dnsdisc enode.Iterator) []p2
 			Version: version,
 			Length:  protocolLengths[version],
 			Run: func(p *p2p.Peer, rw p2p.MsgReadWriter) error {
-				peer := NewPeer(version, p, rw, backend.TxPool())
+				peer := NewPeer(version, p, rw, backend.TxPool(), backend.VotePool())
 				defer peer.Close()
 
 				return backend.RunPeer(peer, func(peer *Peer) error {
@@ -206,6 +218,26 @@ var eth66 = map[uint64]msgHandler{
 	PooledTransactionsMsg:    handlePooledTransactions66,
 }
 
+var eth68 = map[uint64]msgHandler{
+	NewBlockHashesMsg:             handleNewBlockhashes,
+	NewBlockMsg:                   handleNewBlock,
+	TransactionsMsg:               handleTransactions,
+	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes,
+	// eth66 messages with request-id
+	GetBlockHeadersMsg:       handleGetBlockHeaders66,
+	BlockHeadersMsg:          handleBlockHeaders66,
+	GetBlockBodiesMsg:        handleGetBlockBodies66,
+	BlockBodiesMsg:           handleBlockBodies66,
+	GetNodeDataMsg:           handleGetNodeData66,
+	NodeDataMsg:              handleNodeData66,
+	GetReceiptsMsg:           handleGetReceipts66,
+	ReceiptsMsg:              handleReceipts66,
+	GetPooledTransactionsMsg: handleGetPooledTransactions66,
+	PooledTransactionsMsg:    handlePooledTransactions66,
+	// eth68 messages
+	VotesMsg: handleVotes,
+}
+
 // handleMessage is invoked whenever an inbound message is received from a remote
 // peer. The remote connection is torn down upon returning any error.
 func handleMessage(backend Backend, peer *Peer) error {
@@ -220,7 +252,9 @@ func handleMessage(backend Backend, peer *Peer) error {
 	defer msg.Discard()
 
 	var handlers = eth65
-	if peer.Version() >= ETH66 {
+	if peer.Version() >= ETH68 {
+		handlers = eth68
+	} else if peer.Version() >= ETH66 {
 		handlers = eth66
 	}
 	// Track the amount of time it takes to serve the request and run the handler
