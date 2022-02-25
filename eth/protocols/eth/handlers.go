@@ -410,7 +410,7 @@ func handleNewPooledTransactionHashes(backend Backend, msg Decoder, peer *Peer) 
 }
 
 func handleGetPooledTransactions(backend Backend, msg Decoder, peer *Peer) error {
-	// Decode the pooled transactions retrieval message
+	// Decode the pooled transactions' retrieval message
 	var query GetPooledTransactionsPacket
 	if err := msg.Decode(&query); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
@@ -420,7 +420,7 @@ func handleGetPooledTransactions(backend Backend, msg Decoder, peer *Peer) error
 }
 
 func handleGetPooledTransactions66(backend Backend, msg Decoder, peer *Peer) error {
-	// Decode the pooled transactions retrieval message
+	// Decode the pooled transactions' retrieval message
 	var query GetPooledTransactionsPacket66
 	if err := msg.Decode(&query); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
@@ -517,4 +517,16 @@ func handlePooledTransactions66(backend Backend, msg Decoder, peer *Peer) error 
 	requestTracker.Fulfil(peer.id, peer.version, PooledTransactionsMsg, txs.RequestId)
 
 	return backend.Handle(peer, &txs.PooledTransactionsPacket)
+}
+
+func handleVotes(backend Backend, msg Decoder, peer *Peer) error {
+	ann := new(VotesPacket)
+	if err := msg.Decode(ann); err != nil {
+		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
+	}
+	// Schedule all the unknown hashes for retrieval
+	for _, vote := range *ann {
+		peer.markVote(vote.Hash())
+	}
+	return backend.Handle(peer, ann)
 }
