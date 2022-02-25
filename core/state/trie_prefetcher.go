@@ -187,16 +187,19 @@ func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte, accountHash c
 	if p.fetches != nil {
 		return
 	}
-	var overheadCost time.Duration
+	start := time.Now()
 	defer func() {
 		goid := cachemetrics.Goid()
 		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(goid)
 		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(goid)
+
 		if isSyncMainProcess {
+			overheadCost := time.Since(start)
 			syncNewPrefetchCost.Update(overheadCost)
 			syncNewPrefetchCounter.Inc(overheadCost.Nanoseconds())
 		}
 		if isMinerMainProcess {
+			overheadCost := time.Since(start)
 			mineNewPrefetchCost.Update(overheadCost)
 			minerNewPrefetchCounter.Inc(overheadCost.Nanoseconds())
 		}
@@ -204,10 +207,8 @@ func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte, accountHash c
 	// Active fetcher, schedule the retrievals
 	fetcher := p.fetchers[root]
 	if fetcher == nil {
-		start := time.Now()
 		fetcher = newSubfetcher(p.db, root, accountHash)
 		p.fetchers[root] = fetcher
-		overheadCost = time.Since(start)
 	}
 	fetcher.schedule(keys)
 }

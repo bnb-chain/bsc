@@ -2,6 +2,7 @@ package cachemetrics
 
 import (
 	"github.com/petermattis/goid"
+	"sync/atomic"
 )
 
 var (
@@ -14,9 +15,15 @@ func Goid() int64 {
 }
 
 func UpdateMiningRoutineID(id int64) {
-	if MiningRoutineId != id {
-		MiningRoutineId = id
+	atomic.StoreInt64(&MiningRoutineId, id)
+}
+
+// judge if it is main process of mining
+func IsMinerMainRoutineID(id int64) bool {
+	if id == atomic.LoadInt64(&MiningRoutineId) {
+		return true
 	}
+	return false
 }
 
 func UpdateSyncingRoutineID(id int64) {
@@ -28,14 +35,6 @@ func UpdateSyncingRoutineID(id int64) {
 // judge if it is main process of syncing
 func IsSyncMainRoutineID(id int64) bool {
 	if id == SyncingRoutineId {
-		return true
-	}
-	return false
-}
-
-// judge if it is main process of mining
-func IsMinerMainRoutineID(id int64) bool {
-	if id == MiningRoutineId {
 		return true
 	}
 	return false
