@@ -29,6 +29,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/cachemetrics"
+
 	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -66,9 +68,6 @@ var (
 
 	snapshotAccountReadTimer = metrics.NewRegisteredTimer("chain/snapshot/account/reads", nil)
 	snapshotStorageReadTimer = metrics.NewRegisteredTimer("chain/snapshot/storage/reads", nil)
-	totalAccountReadTimer    = metrics.NewRegisteredTimer("chain/total/account/reads", nil)
-	totalStorageReadTimer    = metrics.NewRegisteredTimer("chain/total/storage/reads", nil)
-	totalReadTimer           = metrics.NewRegisteredTimer("chain/total/cost/reads", nil)
 	snapshotCommitTimer      = metrics.NewRegisteredTimer("chain/snapshot/commits", nil)
 
 	blockInsertTimer     = metrics.NewRegisteredTimer("chain/inserts", nil)
@@ -1951,6 +1950,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 	signer := types.MakeSigner(bc.chainConfig, chain[0].Number())
 	go senderCacher.recoverFromBlocks(signer, chain)
 
+	goid := cachemetrics.Goid()
+	cachemetrics.UpdateSyncingRoutineID(goid)
+
 	var (
 		stats     = insertStats{startTime: mclock.Now()}
 		lastCanon *types.Block
@@ -2155,14 +2157,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads) // Account reads are complete, we can mark them
 		snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads) // Storage reads are complete, we can mark them
 
-		accountReadCost := statedb.SnapshotAccountReads + statedb.L1CacheAccountReads + statedb.AccountReads
-		storageReadCost := statedb.SnapshotStorageReads + statedb.L1CacheStorageReads + statedb.StorageReads
-		// mark the total io process cost in L1-L4 layers of account
-		totalAccountReadTimer.Update(accountReadCost)
-		// mark the total io process cost in L1-L4 layers of storage
-		totalStorageReadTimer.Update(storageReadCost)
-		// mark the total io process cost in L1-L4 layers
-		totalReadTimer.Update(storageReadCost + accountReadCost)
 		blockExecutionTimer.Update(time.Since(substart))
 
 		// Validate the state using the default validator
