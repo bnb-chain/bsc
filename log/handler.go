@@ -82,7 +82,10 @@ func RotatingFileHandler(filePath string, limit uint, formatter Format) (Handler
 		}
 	}
 	fileWriter := NewAsyncFileWriter(filePath, int64(limit))
-	fileWriter.Start()
+	err := fileWriter.Start()
+	if err != nil {
+		return nil, fmt.Errorf("could not start filewrite %s, %v", path.Dir(filePath), err)
+	}
 	return StreamHandler(fileWriter, formatter), nil
 }
 
