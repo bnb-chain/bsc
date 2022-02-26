@@ -94,9 +94,13 @@ func (w *AsyncFileWriter) initLogFile() error {
 		}
 	}
 
-	err = os.Symlink(realFilePath, w.filePath)
-	if err != nil {
-		return err
+	if runtime.GOOS=="windows" {
+		w.filePath = realFilePath
+	}else{
+		err = os.Symlink(realFilePath, w.filePath)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
