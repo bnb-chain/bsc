@@ -40,6 +40,7 @@ type ethHandler handler
 func (h *ethHandler) Chain() *core.BlockChain     { return h.chain }
 func (h *ethHandler) StateBloom() *trie.SyncBloom { return h.stateBloom }
 func (h *ethHandler) TxPool() eth.TxPool          { return h.txpool }
+func (h *ethHandler) VotePool() eth.VotePool      { return h.votepool }
 
 // RunPeer is invoked when a peer joins on the `eth` protocol.
 func (h *ethHandler) RunPeer(peer *eth.Peer, hand eth.Handler) error {
@@ -234,7 +235,7 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 func (h *ethHandler) handleVotesBroadcast(peer *eth.Peer, votes []*types.VoteRecord) error {
 	// Try to put votes into votepool
 	for _, vote := range votes {
-		if err := h.votepool.Put(vote.Hash(), *vote); err != nil {
+		if err := h.votepool.PutVote(*vote); err != nil {
 			return err
 		}
 	}

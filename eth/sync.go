@@ -82,7 +82,7 @@ func (h *handler) syncTransactions(p *eth.Peer) {
 
 func (h *handler) syncVotes(p *eth.Peer) {
 	votes := h.votepool.GetVotes()
-	if len(*votes) == 0 {
+	if len(votes) == 0 {
 		return
 	}
 	// The eth/65 protocol introduces proper transaction announcements, so instead

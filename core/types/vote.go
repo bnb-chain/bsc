@@ -21,7 +21,7 @@ type VoteRecord struct {
 	Data        VoteData
 }
 
-type VoteRecords []VoteRecord
+type VoteRecords []*VoteRecord
 
 func (v *VoteRecord) Hash() common.Hash {
 	return rlpHash(v)

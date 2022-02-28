@@ -311,7 +311,7 @@ func (ps *peerSet) headPeers(num uint) []*ethPeer {
 }
 
 // peersWithoutBlock retrieves a list of peers that do not have a given block in
-// their set of known hashes so it might be propagated to them.
+// their set of known hashes, so it might be propagated to them.
 func (ps *peerSet) peersWithoutBlock(hash common.Hash) []*ethPeer {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
@@ -334,6 +334,21 @@ func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {
 	list := make([]*ethPeer, 0, len(ps.peers))
 	for _, p := range ps.peers {
 		if !p.KnownTransaction(hash) {
+			list = append(list, p)
+		}
+	}
+	return list
+}
+
+// peersWithoutVote retrieves a list of peers that do not have a given
+// vote in their set of known hashes.
+func (ps *peerSet) peersWithoutVote(hash common.Hash) []*ethPeer {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	list := make([]*ethPeer, 0, len(ps.peers))
+	for _, p := range ps.peers {
+		if !p.KnownVote(hash) {
 			list = append(list, p)
 		}
 	}

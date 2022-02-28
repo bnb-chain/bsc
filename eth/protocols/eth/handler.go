@@ -82,10 +82,6 @@ type Backend interface {
 	// VotePool retrieves the votes pool object to serve data.
 	VotePool() VotePool
 
-	// AcceptVotes retrieves whether votes processing is enabled on the node
-	// or if inbound votes should simply be dropped.
-	AcceptVotes() bool
-
 	// RunPeer is invoked when a peer joins on the `eth` protocol. The handler
 	// should do any peer maintenance work, handshakes and validations. If all
 	// is passed, control should be given back to the `handler` to process the
