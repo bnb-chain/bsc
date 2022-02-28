@@ -234,7 +234,7 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 func (h *ethHandler) handleVotesBroadcast(peer *eth.Peer, votes []*types.VoteRecord) error {
 	// Try to put votes into votepool
 	for _, vote := range votes {
-		if err := h.votepool.Put(vote.Hash(), *vote); err != nil {
+		if err := h.votepool.PutVote(*vote); err != nil {
 			return err
 		}
 	}
