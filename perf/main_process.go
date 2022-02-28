@@ -19,15 +19,16 @@ const (
 	MpMiningFinalize      MpMetricsName = "MP_MINING_FINALIZE"
 	MpMiningWrite         MpMetricsName = "MP_MINING_WRITE"
 
-	MpImportingTotalAll        MpMetricsName = "MP_IMPORTING_TOTAL_ALL"
-	MpImportingTotal           MpMetricsName = "MP_IMPORTING_TOTAL"
-	MpImportingVerifyHeader    MpMetricsName = "MP_IMPORTING_VERIFY_HEADER"
-	MpImportingVerifyState     MpMetricsName = "MP_IMPORTING_VERIFY_STATE"
-	MpImportingProcess         MpMetricsName = "MP_IMPORTING_PROCESS"
-	MpImportingProcessPreload  MpMetricsName = "MP_IMPORTING_PROCESS_PRELOAD"
-	MpImportingProcessExecute  MpMetricsName = "MP_IMPORTING_PROCESS_EXECUTE"
-	MpImportingProcessFinalize MpMetricsName = "MP_IMPORTING_PROCESS_FINALIZE"
-	MpImportingCommit          MpMetricsName = "MP_IMPORTING_COMMIT"
+	MpImportingTotalAll            MpMetricsName = "MP_IMPORTING_TOTAL_ALL"
+	MpImportingTotal               MpMetricsName = "MP_IMPORTING_TOTAL"
+	MpImportingVerifyHeader        MpMetricsName = "MP_IMPORTING_VERIFY_HEADER"
+	MpImportingVerifyState         MpMetricsName = "MP_IMPORTING_VERIFY_STATE"
+	MpImportingProcess             MpMetricsName = "MP_IMPORTING_PROCESS"
+	MpImportingProcessPreload      MpMetricsName = "MP_IMPORTING_PROCESS_PRELOAD"
+	MpImportingProcessExecute      MpMetricsName = "MP_IMPORTING_PROCESS_EXECUTE"
+	MpImportingProcessExecuteApply MpMetricsName = "MP_IMPORTING_PROCESS_EXECUTE_APPLY"
+	MpImportingProcessFinalize     MpMetricsName = "MP_IMPORTING_PROCESS_FINALIZE"
+	MpImportingCommit              MpMetricsName = "MP_IMPORTING_COMMIT"
 
 	MpPropagationTotal         MpMetricsName = "MP_PROPAGATION_TOTAL"
 	MpPropagationSend          MpMetricsName = "MP_PROPAGATION_SEND"
@@ -52,15 +53,16 @@ var (
 	miningWriteTimer         = metrics.NewRegisteredTimer("mp/mining/write", nil)
 
 	//block importing related metrics
-	importingTotalAllCounter      = metrics.NewRegisteredCounter("mp/importing/total/all", nil)
-	importingTotalTimer           = metrics.NewRegisteredTimer("mp/importing/total", nil)
-	importingVerifyHeaderTimer    = metrics.NewRegisteredTimer("mp/importing/verify/header", nil)
-	importingVerifyStateTimer     = metrics.NewRegisteredTimer("mp/importing/verify/state", nil)
-	importingProcessTimer         = metrics.NewRegisteredTimer("mp/importing/process", nil)
-	importingProcessPreloadTimer  = metrics.NewRegisteredTimer("mp/importing/process/preload", nil)
-	importingProcessExecuteTimer  = metrics.NewRegisteredTimer("mp/importing/process/execute", nil)
-	importingProcessFinalizeTimer = metrics.NewRegisteredTimer("mp/importing/process/finalize", nil)
-	importingCommitTimer          = metrics.NewRegisteredTimer("mp/importing/commit", nil)
+	importingTotalAllCounter          = metrics.NewRegisteredCounter("mp/importing/total/all", nil)
+	importingTotalTimer               = metrics.NewRegisteredTimer("mp/importing/total", nil)
+	importingVerifyHeaderTimer        = metrics.NewRegisteredTimer("mp/importing/verify/header", nil)
+	importingVerifyStateTimer         = metrics.NewRegisteredTimer("mp/importing/verify/state", nil)
+	importingProcessTimer             = metrics.NewRegisteredTimer("mp/importing/process", nil)
+	importingProcessPreloadTimer      = metrics.NewRegisteredTimer("mp/importing/process/preload", nil)
+	importingProcessExecuteTimer      = metrics.NewRegisteredTimer("mp/importing/process/execute", nil)
+	importingProcessExecuteApplyTimer = metrics.NewRegisteredTimer("mp/importing/process/execute/apply", nil)
+	importingProcessFinalizeTimer     = metrics.NewRegisteredTimer("mp/importing/process/finalize", nil)
+	importingCommitTimer              = metrics.NewRegisteredTimer("mp/importing/commit", nil)
 
 	//block importing, block mining, p2p overall metrics
 	propagationTotalTimer = metrics.NewRegisteredTimer("mp/propagation/total", nil)
@@ -112,6 +114,8 @@ func RecordMPMetrics(metricsName MpMetricsName, start time.Time) {
 		recordTimer(importingProcessPreloadTimer, start)
 	case MpImportingProcessExecute:
 		recordTimer(importingProcessExecuteTimer, start)
+	case MpImportingProcessExecuteApply:
+		recordTimer(importingProcessExecuteApplyTimer, start)
 	case MpImportingProcessFinalize:
 		recordTimer(importingProcessFinalizeTimer, start)
 	case MpImportingCommit:
