@@ -45,7 +45,8 @@ import (
 const (
 	// txChanSize is the size of channel listening to NewTxsEvent.
 	// The number is referenced from the size of tx pool.
-	txChanSize = 4096
+	txChanSize   = 4096
+	voteChanSize = 4096
 )
 
 var (
@@ -82,8 +83,13 @@ type txPool interface {
 // votePool defines the methods needed from a votes pool implementation to
 // support all the operations needed by the Ethereum chain protocols.
 type votePool interface {
-	Put(hash common.Hash, vote types.VoteRecord) error
-	GetVotes() *types.VoteRecords
+	PutVote(vote types.VoteRecord) error
+	Get(hash common.Hash) *types.VoteRecord
+	GetVotes() types.VoteRecords
+
+	// SubscribeNewVotesEvent should return an event subscription of
+	// NewVotesEvent and send events to the given channel.
+	SubscribeNewVotesEvent(chan<- core.NewVotesEvent) event.Subscription
 }
 
 // handlerConfig is the collection of initialization parameters to create a full
@@ -136,6 +142,8 @@ type handler struct {
 	reannoTxsCh   chan core.ReannoTxsEvent
 	reannoTxsSub  event.Subscription
 	minedBlockSub *event.TypeMuxSubscription
+	votesCh       chan core.NewVotesEvent
+	votesSub      event.Subscription
 
 	whitelist map[uint64]common.Hash
 
@@ -448,6 +456,12 @@ func (h *handler) Start(maxPeers int) {
 	h.txsSub = h.txpool.SubscribeNewTxsEvent(h.txsCh)
 	go h.txBroadcastLoop()
 
+	// broadcast votes
+	h.wg.Add(1)
+	h.votesCh = make(chan core.NewVotesEvent, voteChanSize)
+	h.votesSub = h.votepool.SubscribeNewVotesEvent(h.votesCh)
+	go h.voteBroadcastLoop()
+
 	// announce local pending transactions again
 	h.wg.Add(1)
 	h.reannoTxsCh = make(chan core.ReannoTxsEvent, txChanSize)
@@ -590,6 +604,34 @@ func (h *handler) ReannounceTransactions(txs types.Transactions) {
 		"announce packs", peersCount, "announced hashes", peersCount*uint(len(hashes)))
 }
 
+// BroadcastVotes will propagate a batch of votes to a square root of all peers
+// which are not known to already have the given vote.
+func (h *handler) BroadcastVotes(votes types.VoteRecords) {
+	var (
+		directCount int // Count of announcements made
+		directPeers int
+
+		voteset = make(map[*ethPeer][]*types.VoteRecord) // Set peer->hash to transfer directly
+	)
+
+	// Broadcast votes to a batch of peers not knowing about it
+	for _, vote := range votes {
+		peers := h.peers.peersWithoutVote(vote.Hash())
+		numDirect := int(math.Sqrt(float64(len(peers))))
+		for _, peer := range peers[:numDirect] {
+			voteset[peer] = append(voteset[peer], vote)
+		}
+	}
+
+	for peer, _votes := range voteset {
+		directPeers++
+		directCount += len(_votes)
+		peer.AsyncSendVotes(_votes)
+	}
+	log.Debug("Vote broadcast", "votes", len(votes),
+		"vote packs", directPeers, "broadcast votes", directCount)
+}
+
 // minedBroadcastLoop sends mined blocks to connected peers.
 func (h *handler) minedBroadcastLoop() {
 	defer h.wg.Done()
@@ -623,6 +665,19 @@ func (h *handler) txReannounceLoop() {
 		case event := <-h.reannoTxsCh:
 			h.ReannounceTransactions(event.Txs)
 		case <-h.reannoTxsSub.Err():
+			return
+		}
+	}
+}
+
+// voteBroadcastLoop announces new transactions to connected peers.
+func (h *handler) voteBroadcastLoop() {
+	defer h.wg.Done()
+	for {
+		select {
+		case event := <-h.votesCh:
+			h.BroadcastVotes(event.Votes)
+		case <-h.votesSub.Err():
 			return
 		}
 	}

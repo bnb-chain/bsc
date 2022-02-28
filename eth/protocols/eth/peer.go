@@ -90,9 +90,9 @@ type Peer struct {
 	txBroadcast chan []common.Hash // Channel used to queue transaction propagation requests
 	txAnnounce  chan []common.Hash // Channel used to queue transaction announcement requests
 
-	votepool      VotePool                // Votes pool used by the broadcasters
-	knownVotes    mapset.Set              // Set of vote hashes known to be known by this peer
-	voteBroadcast chan *types.VoteRecords // Channel used to queue votes propagation requests
+	votepool      VotePool               // Votes pool used by the broadcasters
+	knownVotes    mapset.Set             // Set of vote hashes known to be known by this peer
+	voteBroadcast chan types.VoteRecords // Channel used to queue votes propagation requests
 
 	term     chan struct{} // Termination channel to stop the broadcasters
 	txTerm   chan struct{} // Termination channel to stop the tx broadcasters
@@ -116,7 +116,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, vot
 		txBroadcast:     make(chan []common.Hash),
 		txAnnounce:      make(chan []common.Hash),
 		txpool:          txpool,
-		voteBroadcast:   make(chan *types.VoteRecords),
+		voteBroadcast:   make(chan types.VoteRecords),
 		votepool:        votepool,
 		term:            make(chan struct{}),
 		txTerm:          make(chan struct{}),
@@ -127,6 +127,9 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, vot
 	go peer.broadcastTransactions()
 	if version >= ETH65 {
 		go peer.announceTransactions()
+	}
+	if version >= ETH68 {
+		go peer.broadcastVotes()
 	}
 	return peer
 }
@@ -411,22 +414,22 @@ func (p *Peer) SendVotes(votes types.VoteRecords) error {
 
 // AsyncSendVotes queues a batch of vote hashes for propagation to a remote peer. If
 // the peer's broadcast queue is full, the event is silently dropped.
-func (p *Peer) AsyncSendVotes(votes *types.VoteRecords) {
+func (p *Peer) AsyncSendVotes(votes types.VoteRecords) {
 	select {
 	case p.voteBroadcast <- votes:
 		// Mark all the transactions as known, but ensure we don't overflow our limits
-		for p.knownVotes.Cardinality() > max(0, maxKnownVotes-len(*votes)) {
+		for p.knownVotes.Cardinality() > max(0, maxKnownVotes-len(votes)) {
 			p.knownVotes.Pop()
 		}
-		for _, vote := range *votes {
+		for _, vote := range votes {
 			p.knownVotes.Add(vote.Hash())
 		}
 
 	case <-p.voteTerm:
-		p.Log().Debug("Dropping vote propagation", "count", len(*votes))
+		p.Log().Debug("Dropping vote propagation", "count", len(votes))
 
 	case <-p.term:
-		p.Log().Debug("Dropping vote propagation", "count", len(*votes))
+		p.Log().Debug("Dropping vote propagation", "count", len(votes))
 	}
 }
 
