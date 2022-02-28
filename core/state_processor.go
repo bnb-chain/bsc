@@ -463,19 +463,21 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	// check KV change
 	reads := readDb.StateReadsInSlot()
 	writes := changeList.StateChangeSet
-	if len(reads) != 0 && len(writes) != 0 {
+	if len(reads) != 0 {
 		for readAddr, readKeys := range reads {
-			if _, exist := changeList.StateObjectSuicided[readAddr]; exist {
-				log.Debug("conflict: read suicide object", "addr", readAddr)
+			if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
+				log.Debug("conflict: read addr changed state", "addr", readAddr)
 				return true
 			}
-			if writeKeys, ok := writes[readAddr]; ok {
-				// readAddr exist
-				for writeKey := range writeKeys {
-					// same addr and same key, mark conflicted
-					if _, ok := readKeys[writeKey]; ok {
-						log.Debug("conflict: state conflict", "addr", readAddr, "key", writeKey)
-						return true
+			if len(writes) != 0 {
+				if writeKeys, ok := writes[readAddr]; ok {
+					// readAddr exist
+					for writeKey := range writeKeys {
+						// same addr and same key, mark conflicted
+						if _, ok := readKeys[writeKey]; ok {
+							log.Debug("conflict: state conflict", "addr", readAddr, "key", writeKey)
+							return true
+						}
 					}
 				}
 			}
@@ -484,19 +486,22 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	// check balance change
 	balanceReads := readDb.BalanceReadsInSlot()
 	balanceWrite := changeList.BalanceChangeSet
-	if len(balanceReads) != 0 && len(balanceWrite) != 0 {
+	if len(balanceReads) != 0 {
 		for readAddr := range balanceReads {
-			if _, exist := changeList.StateObjectSuicided[readAddr]; exist {
-				log.Debug("conflict: read suicide balance", "addr", readAddr)
+			if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
+				// txIndex = 0, would create StateObject for SystemAddress
+				log.Debug("conflict: read addr changed balance", "addr", readAddr)
 				return true
 			}
-			if _, ok := balanceWrite[readAddr]; ok {
-				if readAddr == consensus.SystemAddress {
-					log.Debug("conflict: skip specical system address's balance check")
-					continue
+			if len(balanceWrite) != 0 {
+				if _, ok := balanceWrite[readAddr]; ok {
+					if readAddr == consensus.SystemAddress {
+						// log.Debug("conflict: skip specical system address's balance check")
+						continue
+					}
+					log.Debug("conflict: balance conflict", "addr", readAddr)
+					return true
 				}
-				log.Debug("conflict: balance conflict", "addr", readAddr)
-				return true
 			}
 		}
 	}
@@ -504,15 +509,17 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	// check code change
 	codeReads := readDb.CodeReadInSlot()
 	codeWrite := changeList.CodeChangeSet
-	if len(codeReads) != 0 && len(codeWrite) != 0 {
+	if len(codeReads) != 0 {
 		for readAddr := range codeReads {
-			if _, exist := changeList.StateObjectSuicided[readAddr]; exist {
-				log.Debug("conflict: read suicide code", "addr", readAddr)
+			if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
+				log.Debug("conflict: read addr changed code", "addr", readAddr)
 				return true
 			}
-			if _, ok := codeWrite[readAddr]; ok {
-				log.Debug("conflict: code conflict", "addr", readAddr)
-				return true
+			if len(codeWrite) != 0 {
+				if _, ok := codeWrite[readAddr]; ok {
+					log.Debug("conflict: code conflict", "addr", readAddr)
+					return true
+				}
 			}
 		}
 	}
@@ -520,11 +527,22 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	// check address state change: create, suicide...
 	addrReads := readDb.AddressReadInSlot()
 	addrWrite := changeList.AddrStateChangeSet
-	if len(addrReads) != 0 && len(addrWrite) != 0 {
-		for readAddr := range addrReads {
-			if _, ok := addrWrite[readAddr]; ok {
-				log.Debug("conflict: address state conflict", "addr", readAddr)
-				return true
+	nonceWrite := changeList.NonceAdvancedSet
+	if len(addrReads) != 0 {
+		if len(addrWrite) != 0 {
+			for readAddr := range addrReads {
+				if _, ok := addrWrite[readAddr]; ok {
+					log.Debug("conflict: address state conflict", "addr", readAddr)
+					return true
+				}
+			}
+		}
+		if len(nonceWrite) != 0 {
+			for readAddr := range addrReads {
+				if _, ok := nonceWrite[readAddr]; ok {
+					log.Debug("conflict: address nonce conflict", "addr", readAddr)
+					return true
+				}
 			}
 		}
 	}
@@ -757,9 +775,11 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 			// can skip current slot now, since slotDB is always after current slot's merged DB
 			// ** idle: all previous Txs are merged, it will create a new SlotDB
 			// ** queued: it will request updateSlotDB, dispatcher will create or reuse a SlotDB after previous Tx results are merged
-			if index == slotIndex {
-				continue
-			}
+
+			// with copy-on-write, can not skip current slot
+			// if index == slotIndex {
+			//	continue
+			// }
 
 			// check all finalizedDb from current slot's
 			for _, changeList := range p.slotState[index].mergedChangeList {
@@ -769,7 +789,8 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 				}
 				if p.hasStateConflict(slotDB, changeList) {
 					log.Debug("Stage Execution conflict", "Slot", slotIndex,
-						"txIndex", txIndex, " conflict slot", index, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
+						"txIndex", txIndex, " conflict slot", index, "slotDB.baseTxIndex", slotDB.BaseTxIndex(),
+						"conflict txIndex", changeList.TxIndex)
 					hasConflict = true
 					break
 				}
@@ -1096,9 +1117,9 @@ func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.Stat
 		log.Info("ProcessParallel tx all done", "block", header.Number, "usedGas", *usedGas,
 			"txNum", txNum,
 			"len(commonTxs)", len(commonTxs),
-			"debugErrorRedoNum", p.debugErrorRedoNum,
-			"debugConflictRedoNum", p.debugConflictRedoNum,
-			"redo rate(%)", 100*(p.debugErrorRedoNum+p.debugConflictRedoNum)/len(commonTxs))
+			"errorNum", p.debugErrorRedoNum,
+			"conflictNum", p.debugConflictRedoNum,
+			"redoRate(%)", 100*(p.debugErrorRedoNum+p.debugConflictRedoNum)/len(commonTxs))
 	}
 	allLogs, err := p.postExecute(block, statedb, &commonTxs, &receipts, &systemTxs, usedGas, bloomProcessors)
 	return statedb, receipts, allLogs, *usedGas, err

@@ -529,11 +529,12 @@ func (s *StateObject) deepCopy(db *StateDB) *StateObject {
 	return stateObject
 }
 
-// fixme: this is ownership transfer, to be optimized by state object merge.
-// we can leave the ownership to slot and it can be reused.
-func (s *StateObject) deepCopyForSlot(db *StateDB) *StateObject {
-	s.db = db
-	return s
+func (s *StateObject) MergeSlotObject(db Database, dirtyObjs *StateObject, keys StateKeys) {
+	for key := range keys {
+		// better to do s.GetState(db, key) to load originStorage for this key?
+		// since originStorage was in dirtyObjs, but it works even originStorage miss the state object.
+		s.SetState(db, key, dirtyObjs.GetState(db, key))
+	}
 }
 
 //
