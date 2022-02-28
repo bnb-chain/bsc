@@ -885,9 +885,13 @@ func (s *StateDB) HasSuicided(addr common.Address) bool {
 // AddBalance adds amount to the account associated with addr.
 func (s *StateDB) AddBalance(addr common.Address, amount *big.Int) {
 	if s.parallel.isSlotDB {
-		// just in case other tx creates this account, we will miss this if we only add this account when found
-		s.parallel.balanceChangedInSlot[addr] = struct{}{}
-		s.parallel.balanceReadsInSlot[addr] = struct{}{} // add balance will perform a read operation first
+		// just in case other tx creates this account,
+		// we will miss this if we only add this account when found
+		if amount.Sign() != 0 {
+			s.parallel.balanceChangedInSlot[addr] = struct{}{}
+		}
+		// add balance will perform a read operation first, empty object will be deleted
+		s.parallel.balanceReadsInSlot[addr] = struct{}{}
 		if addr == s.parallel.systemAddress {
 			s.parallel.systemAddressCount++
 		}
@@ -912,9 +916,13 @@ func (s *StateDB) AddBalance(addr common.Address, amount *big.Int) {
 // SubBalance subtracts amount from the account associated with addr.
 func (s *StateDB) SubBalance(addr common.Address, amount *big.Int) {
 	if s.parallel.isSlotDB {
-		s.parallel.balanceChangedInSlot[addr] = struct{}{}
-		// just in case other tx creates this account, we will miss this if we only add this account when found
-		s.parallel.balanceReadsInSlot[addr] = struct{}{}
+		// just in case other tx creates this account,
+		// we will miss this if we only add this account when found
+		if amount.Sign() != 0 {
+			s.parallel.balanceChangedInSlot[addr] = struct{}{}
+			// unlike add, sub 0 balance will not touch empty object
+			s.parallel.balanceReadsInSlot[addr] = struct{}{}
+		}
 		if addr == s.parallel.systemAddress {
 			s.parallel.systemAddressCount++
 		}
@@ -997,6 +1005,16 @@ func (s *StateDB) SetState(addr common.Address, key, value common.Hash) {
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		if s.parallel.isSlotDB {
+			if s.parallel.baseTxIndex+1 == s.txIndex {
+				// we check if state is unchanged
+				// only when current transaction is the next transaction to be committed
+				if stateObject.GetState(s.db, key) == value {
+					log.Debug("Skip set same state", "baseTxIndex", s.parallel.baseTxIndex,
+						"txIndex", s.txIndex)
+					return
+				}
+			}
+
 			if _, ok := s.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
 				newStateObject := stateObject.deepCopy(s)
 				newStateObject.SetState(s.db, key, value)
