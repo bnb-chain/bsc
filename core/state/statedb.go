@@ -465,7 +465,7 @@ func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
 		if isSyncMainProcess {
 			l1StorageMeter.Mark(1)
 		}
-		if isSyncMainProcess {
+		if isMinerMainProcess {
 			minerL1StorageMeter.Mark(1)
 		}
 		return stateObject.GetState(s.db, hash)
