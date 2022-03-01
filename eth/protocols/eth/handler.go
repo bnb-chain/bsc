@@ -105,7 +105,7 @@ type TxPool interface {
 
 type VotePool interface {
 	// Get retrieves the vote from the local votepool with the given hash.
-	Get(hash common.Hash) *types.VoteRecord
+	Get(hash common.Hash) *types.VoteEnvelope
 }
 
 // MakeProtocols constructs the P2P protocol definitions for `eth`.

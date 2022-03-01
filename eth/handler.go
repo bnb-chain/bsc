@@ -45,7 +45,7 @@ import (
 const (
 	// txChanSize is the size of channel listening to NewTxsEvent.
 	// The number is referenced from the size of tx pool.
-	txChanSize   = 4096
+	txChanSize   = 256
 	voteChanSize = 4096
 )
 
@@ -83,9 +83,9 @@ type txPool interface {
 // votePool defines the methods needed from a votes pool implementation to
 // support all the operations needed by the Ethereum chain protocols.
 type votePool interface {
-	PutVote(vote types.VoteRecord) error
-	Get(hash common.Hash) *types.VoteRecord
-	GetVotes() types.VoteRecords
+	PutVote(vote *types.VoteEnvelope) error
+	Get(hash common.Hash) *types.VoteEnvelope
+	GetVotes() types.VoteEnvelopes
 
 	// SubscribeNewVotesEvent should return an event subscription of
 	// NewVotesEvent and send events to the given channel.
@@ -350,9 +350,10 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	}
 	h.chainSync.handlePeerEvent(peer)
 
-	// Propagate existing transactions. new transactions appearing
+	// Propagate existing transactions and votes. new transactions and votes appearing
 	// after this will be sent via broadcasts.
 	h.syncTransactions(peer)
+	h.syncVotes(peer)
 
 	// If we have a trusted CHT, reject all peers below that (avoid fast sync eclipse)
 	if h.checkpointHash != (common.Hash{}) {
@@ -604,21 +605,20 @@ func (h *handler) ReannounceTransactions(txs types.Transactions) {
 		"announce packs", peersCount, "announced hashes", peersCount*uint(len(hashes)))
 }
 
-// BroadcastVotes will propagate a batch of votes to a square root of all peers
+// BroadcastVotes will propagate a batch of votes to all peers
 // which are not known to already have the given vote.
-func (h *handler) BroadcastVotes(votes types.VoteRecords) {
+func (h *handler) BroadcastVotes(votes types.VoteEnvelopes) {
 	var (
 		directCount int // Count of announcements made
 		directPeers int
 
-		voteset = make(map[*ethPeer][]*types.VoteRecord) // Set peer->hash to transfer directly
+		voteset = make(map[*ethPeer][]*types.VoteEnvelope) // Set peer->hash to transfer directly
 	)
 
 	// Broadcast votes to a batch of peers not knowing about it
 	for _, vote := range votes {
 		peers := h.peers.peersWithoutVote(vote.Hash())
-		numDirect := int(math.Sqrt(float64(len(peers))))
-		for _, peer := range peers[:numDirect] {
+		for _, peer := range peers {
 			voteset[peer] = append(voteset[peer], vote)
 		}
 	}

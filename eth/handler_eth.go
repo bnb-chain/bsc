@@ -232,10 +232,10 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 
 // handleVotesBroadcast is invoked from a peer's message handler when it transmits a
 // votes broadcast for the local node to process.
-func (h *ethHandler) handleVotesBroadcast(peer *eth.Peer, votes []*types.VoteRecord) error {
+func (h *ethHandler) handleVotesBroadcast(peer *eth.Peer, votes []*types.VoteEnvelope) error {
 	// Try to put votes into votepool
 	for _, vote := range votes {
-		if err := h.votepool.PutVote(*vote); err != nil {
+		if err := h.votepool.PutVote(vote); err != nil {
 			return err
 		}
 	}
