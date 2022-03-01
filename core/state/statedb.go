@@ -61,6 +61,11 @@ var (
 	l1StorageMeter      = metrics.NewRegisteredMeter("state/cache/storage/total", nil)
 	minerL1StorageMeter = metrics.NewRegisteredMeter("state/minercache/storage/total", nil)
 
+	getStatetSyncIOCost     = metrics.NewRegisteredTimer("state/getcache/sync/delay", nil)
+	getStatetMinerIOCost    = metrics.NewRegisteredTimer("state/getcache/miner/delay", nil)
+	getStatetSyncIOCounter  = metrics.NewRegisteredCounter("state/getcache/sync/counter", nil)
+	getStatetMinerIOCounter = metrics.NewRegisteredCounter("state/getcache/miner/counter", nil)
+
 	totalSyncIOCost     = metrics.NewRegisteredTimer("state/cache/sync/delay", nil)
 	totalMinerIOCost    = metrics.NewRegisteredTimer("state/cache/miner/delay", nil)
 	totalSyncIOCounter  = metrics.NewRegisteredCounter("state/cache/sync/counter", nil)
@@ -348,6 +353,8 @@ func (s *StateDB) Empty(addr common.Address) bool {
 
 // GetBalance retrieves the balance from the given address or 0 if object not found
 func (s *StateDB) GetBalance(addr common.Address) *big.Int {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Balance()
@@ -356,11 +363,12 @@ func (s *StateDB) GetBalance(addr common.Address) *big.Int {
 }
 
 func (s *StateDB) GetNonce(addr common.Address) uint64 {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Nonce()
 	}
-
 	return 0
 }
 
@@ -375,6 +383,8 @@ func (s *StateDB) BlockHash() common.Hash {
 }
 
 func (s *StateDB) GetCode(addr common.Address) []byte {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Code(s.db)
@@ -383,6 +393,8 @@ func (s *StateDB) GetCode(addr common.Address) []byte {
 }
 
 func (s *StateDB) GetCodeSize(addr common.Address) int {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.CodeSize(s.db)
@@ -391,6 +403,8 @@ func (s *StateDB) GetCodeSize(addr common.Address) int {
 }
 
 func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.getStateObject(addr)
 	if stateObject == nil {
 		return common.Hash{}
@@ -398,35 +412,60 @@ func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 	return common.BytesToHash(stateObject.CodeHash())
 }
 
+func (s *StateDB) markMetrics(start time.Time, reachStorage bool) {
+	goid := cachemetrics.Goid()
+	isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(goid)
+	isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(goid)
+	// record metrics of syncing main process
+	if isSyncMainProcess {
+		totalSyncIOCounter.Inc(time.Since(start).Nanoseconds())
+		l1AccountMeter.Mark(1)
+		if reachStorage {
+			l1StorageMeter.Mark(1)
+		}
+	}
+	// record metrics of mining main process
+	if isMinerMainProcess {
+		totalMinerIOCounter.Inc(time.Since(start).Nanoseconds())
+		minerL1AccountMeter.Mark(1)
+		if reachStorage {
+			l1StorageMeter.Mark(1)
+		}
+	}
+
+}
+
 // GetState retrieves a value from the given account's storage trie.
 func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
 	start := time.Now()
 	goid := cachemetrics.Goid()
-
 	isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(goid)
 	isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(goid)
 	defer func() {
 		// record metrics of syncing main process
 		if isSyncMainProcess {
 			syncGetDelay := time.Since(start)
-			totalSyncIOCost.Update(syncGetDelay)
-			totalSyncIOCounter.Inc(syncGetDelay.Nanoseconds())
+			totalSyncIOCounter.Inc(time.Since(start).Nanoseconds())
+			getStatetSyncIOCost.Update(syncGetDelay)
+			getStatetSyncIOCounter.Inc(syncGetDelay.Nanoseconds())
 			l1AccountMeter.Mark(1)
 		}
 		// record metrics of mining main process
 		if isMinerMainProcess {
 			minerIOCost := time.Since(start)
-			totalMinerIOCost.Update(minerIOCost)
-			totalMinerIOCounter.Inc(minerIOCost.Nanoseconds())
+			totalMinerIOCounter.Inc(time.Since(start).Nanoseconds())
+			getStatetMinerIOCost.Update(minerIOCost)
+			getStatetMinerIOCounter.Inc(minerIOCost.Nanoseconds())
 			minerL1AccountMeter.Mark(1)
 		}
 	}()
+
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		if isSyncMainProcess {
 			l1StorageMeter.Mark(1)
 		}
-		if isMinerMainProcess {
+		if isSyncMainProcess {
 			minerL1StorageMeter.Mark(1)
 		}
 		return stateObject.GetState(s.db, hash)
@@ -473,9 +512,13 @@ func (s *StateDB) GetStorageProofByHash(a common.Address, key common.Hash) ([][]
 
 // GetCommittedState retrieves a value from the given account's committed storage trie.
 func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) common.Hash {
+	start := time.Now()
+	needStorage := false
+	defer s.markMetrics(start, needStorage)
 	stateObject := s.getStateObject(addr)
 	hit := false
 	if stateObject != nil {
+		needStorage = true
 		return stateObject.GetCommittedState(s.db, hash, &hit)
 	}
 	return common.Hash{}
@@ -512,6 +555,8 @@ func (s *StateDB) HasSuicided(addr common.Address) bool {
 
 // AddBalance adds amount to the account associated with addr.
 func (s *StateDB) AddBalance(addr common.Address, amount *big.Int) {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.AddBalance(amount)
@@ -520,6 +565,8 @@ func (s *StateDB) AddBalance(addr common.Address, amount *big.Int) {
 
 // SubBalance subtracts amount from the account associated with addr.
 func (s *StateDB) SubBalance(addr common.Address, amount *big.Int) {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SubBalance(amount)
@@ -527,6 +574,8 @@ func (s *StateDB) SubBalance(addr common.Address, amount *big.Int) {
 }
 
 func (s *StateDB) SetBalance(addr common.Address, amount *big.Int) {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SetBalance(amount)
@@ -534,6 +583,8 @@ func (s *StateDB) SetBalance(addr common.Address, amount *big.Int) {
 }
 
 func (s *StateDB) SetNonce(addr common.Address, nonce uint64) {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SetNonce(nonce)
@@ -541,6 +592,8 @@ func (s *StateDB) SetNonce(addr common.Address, nonce uint64) {
 }
 
 func (s *StateDB) SetCode(addr common.Address, code []byte) {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SetCode(crypto.Keccak256Hash(code), code)
@@ -548,8 +601,12 @@ func (s *StateDB) SetCode(addr common.Address, code []byte) {
 }
 
 func (s *StateDB) SetState(addr common.Address, key, value common.Hash) {
+	start := time.Now()
+	markStorage := false
+	defer s.markMetrics(start, markStorage)
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
+		markStorage = true
 		stateObject.SetState(s.db, key, value)
 	}
 }
@@ -866,6 +923,8 @@ func (s *StateDB) createObject(addr common.Address) (newobj, prev *StateObject) 
 //
 // Carrying over the balance ensures that Ether doesn't disappear.
 func (s *StateDB) CreateAccount(addr common.Address) {
+	start := time.Now()
+	defer s.markMetrics(start, false)
 	newObj, prev := s.createObject(addr)
 	if prev != nil {
 		newObj.setBalance(prev.data.Balance)
