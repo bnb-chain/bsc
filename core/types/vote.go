@@ -9,8 +9,6 @@ import (
 const (
 	BLSPublicKeyLength = 48
 	BLSSignatureLength = 96
-
-	MaxDiffForkDist = 11 // Maximum allowed backward distance from the chain head
 )
 
 type BLSPublicKey [BLSPublicKeyLength]byte
@@ -22,7 +20,7 @@ type VoteData struct {
 	BlockHash   common.Hash
 }
 
-type VoteRecord struct {
+type VoteEnvelope struct {
 	VoteAddress BLSPublicKey
 	Signature   BLSSignature
 	Data        *VoteData
@@ -36,6 +34,26 @@ type VoteAttestation struct {
 	AggSignature   BLSSignature
 	Data           *VoteData
 	Extra          []byte
+type VoteEnvelopes []*VoteEnvelope
+
+// Hash returns the vote hash.
+func (v *VoteEnvelope) Hash() common.Hash {
+	if hash := v.hash.Load(); hash != nil {
+		return hash.(common.Hash)
+	}
+
+	h := v.CalcVoteHash()
+	v.hash.Store(h)
+	return h
+}
+
+func (v *VoteEnvelope) CalcVoteHash() common.Hash {
+	voteData := struct {
+		VoteAddress BLSPublicKey
+		Signature   BLSSignature
+		Data        *VoteData
+	}{v.VoteAddress, v.Signature, v.Data}
+	return rlpHash(voteData)
 }
 
 // Hash returns the vote hash.
