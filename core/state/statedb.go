@@ -401,7 +401,7 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 			// can not do copy or ownership transfer directly, since dirtyObj could have outdated
 			// data(may be update within the conflict window)
 
-			// This is debug log for add balance with 0.
+			// This is debug log for add balance with 0, can be removed
 			if dirtyObj.deleted && dirtyObj.empty() && !mainObj.empty() {
 				if _, exist := slotDb.parallel.balanceChangedInSlot[addr]; !exist {
 					// add(0) could trigger empty delete
@@ -414,23 +414,33 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 			// Do deepCopy a temporary *StateObject for safety,
 			// since slot could read the address, dispatch should avoid overwrite the StateObject directly
 			// otherwise, it could crash for: concurrent map iteration and map write
-			newMainObj := mainObj.deepCopy(s)
+			var newMainObj *StateObject
 			if _, suicided := slotDb.parallel.stateObjectSuicided[addr]; suicided {
-				// fixme: what is suicide and
+				if !dirtyObj.suicided {
+					// debug purpose, can be removed
+					log.Warn("MergeSlotDB suicide and recreated", "txIndex", slotDb.txIndex, "addr", addr)
+				}
+			}
+
+			if dirtyObj.deleted {
 				log.Debug("MergeSlotDB state object merge: Suicide")
-				newMainObj.markSuicided()
-				newMainObj.data.Balance = new(big.Int)
-				newMainObj.deleted = true
+				if !dirtyObj.suicided && !dirtyObj.empty() {
+					// none suicide object, should be empty delete
+					log.Error("MergeSlotDB none suicide deleted, should be empty", "txIndex", slotDb.txIndex, "addr", addr)
+				}
+				// suicided object will keep its worldstate(useless), and will be deleted from trie on block commit
+				newMainObj = dirtyObj.deepCopy(s)
 			} else if _, created := slotDb.parallel.addrStateChangeInSlot[addr]; created {
 				log.Debug("MergeSlotDB state object merge: state change")
 				// there are 2 kinds of object creation:
 				//   1.createObject: AddBalance,SetState to an unexist or emptyDeleted address.
 				//   2.CreateAccount: like DAO the fork, regenerate a account carry its balance without KV
-				// It is not common, do ownership transafer
+				// can not merge, do ownership transafer
 				dirtyObj.db = s
-				s.storeStateObjectToStateDB(addr, dirtyObj)
+				newMainObj = dirtyObj
 				delete(slotDb.parallel.dirtiedStateObjectsInSlot, addr) // transfer ownership
 			} else {
+				newMainObj = mainObj.deepCopy(s)
 				// do merge: balance, KV, code...
 				if _, balanced := slotDb.parallel.balanceChangedInSlot[addr]; balanced {
 					newMainObj.SetBalance(dirtyObj.Balance())
@@ -444,8 +454,8 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 					newMainObj.MergeSlotObject(s.db, dirtyObj, keys)
 				}
 				newMainObj.setNonce(dirtyObj.Nonce())
-				newMainObj.finalise(true) // prefetch on dispatcher
 			}
+			newMainObj.finalise(true) // prefetch on dispatcher
 			// update the object
 			s.storeStateObjectToStateDB(addr, newMainObj)
 		}
