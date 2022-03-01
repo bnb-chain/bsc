@@ -116,7 +116,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 
 	hitInL3 := false
 	hitInDisk := false
-	startGetInDisk := time.Now()
+	var startGetInDisk time.Time
 	defer func() {
 		// if mainProcess
 		if isSyncMainProcess {
@@ -131,7 +131,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 				syncL3AccountMissMeter.Mark(1)
 				cachemetrics.RecordCacheDepth("DISK_L4_ACCOUNT")
 				cachemetrics.RecordCacheMetrics("DISK_L4_ACCOUNT", startGetInDisk)
-				cachemetrics.RecordTotalCosts("DISK_L4_ACCOUNT", start)
+				cachemetrics.RecordTotalCosts("DISK_L4_ACCOUNT", startGetInDisk)
 			}
 		}
 		if isMinerMainProcess {
@@ -147,8 +147,8 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 				// layer 3 miss
 				minerL3AccountMissMeter.Mark(1)
 				cachemetrics.RecordMinerCacheDepth("MINER_L4_ACCOUNT")
-				cachemetrics.RecordMinerCacheMetrics("MINER_L4_ACCOUNT", start)
-				cachemetrics.RecordMinerTotalCosts("MINER_L4_ACCOUNT", start)
+				cachemetrics.RecordMinerCacheMetrics("MINER_L4_ACCOUNT", startGetInDisk)
+				cachemetrics.RecordMinerTotalCosts("MINER_L4_ACCOUNT", startGetInDisk)
 			}
 		}
 	}()
@@ -204,7 +204,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 				syncL3StorageMissMeter.Mark(1)
 				cachemetrics.RecordCacheDepth("DISK_L4_STORAGE")
 				cachemetrics.RecordCacheMetrics("DISK_L4_STORAGE", startGetInDisk)
-				cachemetrics.RecordTotalCosts("DISK_L4_STORAGE", start)
+				cachemetrics.RecordTotalCosts("DISK_L4_STORAGE", startGetInDisk)
 			}
 		}
 		if isMinerMainProcess {
@@ -221,7 +221,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 				minerL3StorageMissMeter.Mark(1)
 				cachemetrics.RecordMinerCacheDepth("MINER_L4_STORAGE")
 				cachemetrics.RecordMinerCacheMetrics("MINER_L4_STORAGE", startGetInDisk)
-				cachemetrics.RecordMinerTotalCosts("MINER_L4_STORAGE", start)
+				cachemetrics.RecordMinerTotalCosts("MINER_L4_STORAGE", startGetInDisk)
 			}
 		}
 	}()
