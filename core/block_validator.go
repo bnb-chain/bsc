@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -48,6 +49,7 @@ func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain, engin
 		bc:     blockchain,
 	}
 	if mode.NeedRemoteVerify() {
+		log.Info("this node is a fast node with remote state verifier.")
 		validator.remoteValidator = NewVerifyManager(blockchain, peers, mode == InsecureVerify)
 		go validator.remoteValidator.mainLoop()
 	}

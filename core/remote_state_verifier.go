@@ -30,29 +30,11 @@ const (
 )
 
 var (
-	remoteVerifyTaskCounter = metrics.NewRegisteredCounter("remote/state/verify/task/total", nil)
+	remoteVerifyTaskCounter      = metrics.NewRegisteredCounter("remote/state/verify/task/total", nil)
+	succeedRemoteVerifyTaskMeter = metrics.NewRegisteredMeter("succeed/remote/verify/task", nil)
+	failedRemoteVerifyTaskMeter  = metrics.NewRegisteredMeter("failed/remote/verify/task", nil)
 
-	statusFullVerifiedMeter      = metrics.NewRegisteredMeter("status/full/verified/messages/total", nil)
-	statusUntrustedVerifiedMeter = metrics.NewRegisteredMeter("status/untrusted/verified/messages/total", nil)
-
-	statusDiffHashMismatchMeter = metrics.NewRegisteredMeter("status/diffhash/mismatch/messages/total", nil)
-	statusImpossibleForkMeter   = metrics.NewRegisteredMeter("status/impossible/fork/messages/total", nil)
-
-	statusBlockTooNewMeter     = metrics.NewRegisteredMeter("status/block/too/new/messages/total", nil)
-	statusBlockNewerMeter      = metrics.NewRegisteredMeter("status/block/newer/messages/total", nil)
-	statusPossibleForkMeter    = metrics.NewRegisteredMeter("status/possible/fork/messages/total", nil)
-	statusUnexpectedErrorMeter = metrics.NewRegisteredMeter("status/unexpected/error/total", nil)
-
-	codeMap = map[uint16]metrics.Meter{
-		0x101: statusFullVerifiedMeter,
-		0x102: statusUntrustedVerifiedMeter,
-		0x201: statusDiffHashMismatchMeter,
-		0x202: statusImpossibleForkMeter,
-		0x301: statusBlockTooNewMeter,
-		0x302: statusBlockNewerMeter,
-		0x303: statusPossibleForkMeter,
-		0x400: statusUnexpectedErrorMeter,
-	}
+	succeedTaskExecutionTimer = metrics.NewRegisteredTimer("succeed/task/execution", nil)
 )
 
 type remoteVerifyManager struct {
@@ -106,6 +88,8 @@ func (vm *remoteVerifyManager) mainLoop() {
 			if task, ok := vm.tasks[hash]; ok {
 				delete(vm.tasks, hash)
 				remoteVerifyTaskCounter.Dec(1)
+				succeedRemoteVerifyTaskMeter.Mark(1)
+				succeedTaskExecutionTimer.Update(time.Since(task.startAt))
 				close(task.terminalCh)
 			}
 		case <-pruneTicker.C:
@@ -114,6 +98,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 					vm.bc.CurrentHeader().Number.Uint64()-task.blockHeader.Number.Uint64() > pruneHeightDiff {
 					delete(vm.tasks, hash)
 					remoteVerifyTaskCounter.Dec(1)
+					failedRemoteVerifyTaskMeter.Mark(1)
 					close(task.terminalCh)
 				}
 			}
@@ -247,24 +232,41 @@ func (vt *verifyTask) Start(verifyCh chan common.Hash) {
 	for {
 		select {
 		case msg := <-vt.messageCh:
-			if metric, exist := codeMap[msg.verifyResult.Status.Code]; exist {
-				metric.Mark(1)
-			}
-			switch msg.verifyResult.Status {
-			case types.StatusFullVerified:
-				statusFullVerifiedMeter.Mark(1)
-				vt.compareRootHashAndWrite(msg, verifyCh)
-			case types.StatusPartiallyVerified:
-				statusUntrustedVerifiedMeter.Mark(1)
-				log.Warn("block %s , num= %s is untrusted verified", msg.verifyResult.BlockHash, msg.verifyResult.BlockNumber)
-				if vt.allowUntrusted {
+			switch msg.verifyResult.Status.Code / 100 {
+			case 1:
+				switch msg.verifyResult.Status {
+				case types.StatusFullVerified:
 					vt.compareRootHashAndWrite(msg, verifyCh)
+					newRecievedMsgTypeGauge("fullVerified", msg.peerId).Inc(1)
+				case types.StatusPartiallyVerified:
+					log.Warn("block %s , num= %s is untrusted verified", msg.verifyResult.BlockHash, msg.verifyResult.BlockNumber)
+					if vt.allowUntrusted {
+						vt.compareRootHashAndWrite(msg, verifyCh)
+					}
+					newRecievedMsgTypeGauge("partialVerified", msg.peerId).Inc(1)
 				}
-			case types.StatusUnexpectedError, types.StatusImpossibleFork, types.StatusDiffHashMismatch:
+
+			case 2, 4:
 				vt.BadPeers[msg.peerId] = struct{}{}
 				log.Info("peer %s is not available: code %d, msg %s,", msg.peerId, msg.verifyResult.Status.Code, msg.verifyResult.Status.Msg)
-			case types.StatusBlockTooNew, types.StatusBlockNewer, types.StatusPossibleFork:
+				switch msg.verifyResult.Status {
+				case types.StatusDiffHashMismatch:
+					newRecievedMsgTypeGauge("diffHashMismatch", msg.peerId).Inc(1)
+				case types.StatusImpossibleFork:
+					newRecievedMsgTypeGauge("impossibleFork", msg.peerId).Inc(1)
+				case types.StatusUnexpectedError:
+					newRecievedMsgTypeGauge("unexpectedError", msg.peerId).Inc(1)
+				}
+			case 3:
 				log.Info("return msg from peer %s for block %s is %s", msg.peerId, msg.verifyResult.BlockHash, msg.verifyResult.Status.Msg)
+				switch msg.verifyResult.Status {
+				case types.StatusBlockTooNew:
+					newRecievedMsgTypeGauge("blockTooNew", msg.peerId).Inc(1)
+				case types.StatusBlockNewer:
+					newRecievedMsgTypeGauge("blockNewer", msg.peerId).Inc(1)
+				case types.StatusPossibleFork:
+					newRecievedMsgTypeGauge("possibleFork", msg.peerId).Inc(1)
+				}
 			}
 		case <-resend.C:
 			// if a task has run over 15s, try all the vaild peers to verify.
@@ -389,4 +391,9 @@ func (mode *VerifyMode) UnmarshalText(text []byte) error {
 
 func (mode VerifyMode) NeedRemoteVerify() bool {
 	return mode == FullVerify || mode == InsecureVerify
+}
+
+func newRecievedMsgTypeGauge(msgType, peerId string) metrics.Gauge {
+	m := fmt.Sprintf("recieved/%s/message/from/%s", msgType, peerId)
+	return metrics.GetOrRegisterGauge(m, nil)
 }
