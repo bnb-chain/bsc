@@ -479,6 +479,7 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	if len(balanceReads) != 0 {
 		for readAddr := range balanceReads {
 			if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
+				// txIndex = 0, would create StateObject for SystemAddress
 				log.Debug("conflict: read addr changed balance", "addr", readAddr)
 				return true
 			}
@@ -516,11 +517,22 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	// check address state change: create, suicide...
 	addrReads := readDb.AddressReadInSlot()
 	addrWrite := changeList.AddrStateChangeSet
-	if len(addrReads) != 0 && len(addrWrite) != 0 {
-		for readAddr := range addrReads {
-			if _, ok := addrWrite[readAddr]; ok {
-				log.Debug("conflict: address state conflict", "addr", readAddr)
-				return true
+	nonceWrite := changeList.NonceAdvancedSet
+	if len(addrReads) != 0 {
+		if len(addrWrite) != 0 {
+			for readAddr := range addrReads {
+				if _, ok := addrWrite[readAddr]; ok {
+					log.Debug("conflict: address state conflict", "addr", readAddr)
+					return true
+				}
+			}
+		}
+		if len(nonceWrite) != 0 {
+			for readAddr := range addrReads {
+				if _, ok := nonceWrite[readAddr]; ok {
+					log.Debug("conflict: address nonce conflict", "addr", readAddr)
+					return true
+				}
 			}
 		}
 	}
@@ -767,7 +779,8 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 				}
 				if p.hasStateConflict(slotDB, changeList) {
 					log.Debug("Stage Execution conflict", "Slot", slotIndex,
-						"txIndex", txIndex, " conflict slot", index, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
+						"txIndex", txIndex, " conflict slot", index, "slotDB.baseTxIndex", slotDB.BaseTxIndex(),
+						"conflict txIndex", changeList.TxIndex)
 					hasConflict = true
 					break
 				}
