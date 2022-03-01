@@ -359,7 +359,7 @@ type PooledTransactionsRLPPacket66 struct {
 }
 
 // VotesPacket is the network packet for votes record.
-type VotesPacket []*types.VoteRecord
+type VotesPacket []*types.VoteEnvelope
 
 func (*VotesPacket) Name() string { return "Votes" }
 func (*VotesPacket) Kind() byte   { return VotesMsg }

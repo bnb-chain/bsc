@@ -34,7 +34,7 @@ type NewMinedBlockEvent struct{ Block *types.Block }
 type RemovedLogsEvent struct{ Logs []*types.Log }
 
 // NewVotesEvent is posted when a batch of votes enters the vote pool.
-type NewVotesEvent struct{ Votes []*types.VoteRecord }
+type NewVotesEvent struct{ Votes []*types.VoteEnvelope }
 
 type ChainEvent struct {
 	Block *types.Block

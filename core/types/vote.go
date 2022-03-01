@@ -1,6 +1,10 @@
 package types
 
-import "github.com/ethereum/go-ethereum/common"
+import (
+	"sync/atomic"
+
+	"github.com/ethereum/go-ethereum/common"
+)
 
 const (
 	BLSPublicKeyLength = 48
@@ -15,14 +19,33 @@ type VoteData struct {
 	BlockHash   common.Hash
 }
 
-type VoteRecord struct {
+type VoteEnvelope struct {
 	VoteAddress BLSPublicKey
 	Signature   BLSSignature
 	Data        VoteData
+
+	// caches
+	hash atomic.Value
 }
 
-type VoteRecords []*VoteRecord
+type VoteEnvelopes []*VoteEnvelope
 
-func (v *VoteRecord) Hash() common.Hash {
-	return rlpHash(v)
+// Hash returns the vote hash.
+func (v *VoteEnvelope) Hash() common.Hash {
+	if hash := v.hash.Load(); hash != nil {
+		return hash.(common.Hash)
+	}
+
+	h := v.calcVoteHash()
+	v.hash.Store(h)
+	return h
+}
+
+func (v *VoteEnvelope) calcVoteHash() common.Hash {
+	voteData := struct {
+		VoteAddress BLSPublicKey
+		Signature   BLSSignature
+		Data        VoteData
+	}{v.VoteAddress, v.Signature, v.Data}
+	return rlpHash(voteData)
 }
