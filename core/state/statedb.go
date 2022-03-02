@@ -1107,6 +1107,22 @@ func (s *StateDB) WaitPipeVerification() error {
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
+	var overheadCost time.Duration
+	defer func() {
+		goid := cachemetrics.Goid()
+		isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(goid)
+		isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(goid)
+		// record metrics of syncing main process
+		if isSyncMainProcess {
+			syncOverheadCost.Update(overheadCost)
+			syncOverheadCounter.Inc(overheadCost.Nanoseconds())
+		}
+		// record metrics of mining main process
+		if isMinerMainProcess {
+			minerOverheadCost.Update(overheadCost)
+			minerOverheadCounter.Inc(overheadCost.Nanoseconds())
+		}
+	}()
 	addressesToPrefetch := make([][]byte, 0, len(s.journal.dirties))
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]
@@ -1145,9 +1161,11 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
 		}
 	}
+	start := time.Now()
 	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
 		s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
 	}
+	overheadCost = time.Since(start)
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
 }
