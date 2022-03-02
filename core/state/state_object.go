@@ -223,13 +223,32 @@ func (s *StateObject) GetState(db Database, key common.Hash) common.Hash {
 		hitInCache = true
 		return value
 	}
-
 	// Otherwise return the entry's original value
-	return s.GetCommittedState(db, key, &hitInCache)
+	return s.GetCommittedState(db, key, &hitInCache, true)
 }
 
 // GetCommittedState retrieves a value from the committed account storage trie.
-func (s *StateObject) GetCommittedState(db Database, key common.Hash, hit *bool) common.Hash {
+func (s *StateObject) GetCommittedState(db Database, key common.Hash, hit *bool, calledByGetState bool) common.Hash {
+	start := time.Now()
+
+	defer func() {
+		if !calledByGetState {
+			routeid := cachemetrics.Goid()
+			isSyncMainProcess := cachemetrics.IsSyncMainRoutineID(routeid)
+			isMinerMainProcess := cachemetrics.IsMinerMainRoutineID(routeid)
+			if isSyncMainProcess && *hit {
+				cachemetrics.RecordCacheDepth("CACHE_L1_STORAGE")
+				cachemetrics.RecordCacheMetrics("CACHE_L1_STORAGE", start)
+				cachemetrics.RecordTotalCosts("CACHE_L1_STORAGE", start)
+			}
+
+			if isMinerMainProcess && *hit {
+				cachemetrics.RecordMinerCacheDepth("MINER_L1_STORAGE")
+				cachemetrics.RecordMinerCacheMetrics("MINER_L1_STORAGE", start)
+				cachemetrics.RecordMinerTotalCosts("MINER_L1_STORAGE", start)
+			}
+		}
+	}()
 	// If the fake storage is set, only lookup the state here(in the debugging mode)
 	if s.fakeStorage != nil {
 		return s.fakeStorage[key]
