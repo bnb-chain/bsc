@@ -517,9 +517,10 @@ func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) commo
 	defer s.markMetrics(start, needStorage)
 	stateObject := s.getStateObject(addr)
 	hit := false
+
 	if stateObject != nil {
 		needStorage = true
-		return stateObject.GetCommittedState(s.db, hash, &hit)
+		return stateObject.GetCommittedState(s.db, hash, &hit, false)
 	}
 	return common.Hash{}
 }
