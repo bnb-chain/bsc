@@ -387,13 +387,17 @@ func (s *StateObject) finalise(prefetch bool) {
 			minerOverheadCounter.Inc(overheadCost.Nanoseconds())
 		}
 	}()
-	start := time.Now()
+
 	for key, value := range s.dirtyStorage {
 		s.pendingStorage[key] = value
+	}
+	start := time.Now()
+	for key, value := range s.dirtyStorage {
 		if value != s.originStorage[key] {
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
 		}
 	}
+
 	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
 		s.db.prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
 	}
