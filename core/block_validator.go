@@ -94,7 +94,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 		},
 		// for fast node which verify trie from remote verify peers, a block's H-11 ancestor should have been verify.
 		func() error {
-			if v.remoteValidator != nil && !v.remoteValidator.AncestorVerified(v.bc.GetHeaderByNumber(header.Number.Uint64())) {
+			if v.remoteValidator != nil && !v.remoteValidator.AncestorVerified(header) {
 				return fmt.Errorf("block's ancessor %x has not been verified", block.Hash())
 			}
 			return nil
