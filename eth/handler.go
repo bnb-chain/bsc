@@ -619,7 +619,10 @@ func (h *handler) BroadcastVotes(votes types.VoteEnvelopes) {
 	for _, vote := range votes {
 		peers := h.peers.peersWithoutVote(vote.Hash())
 		for _, peer := range peers {
-			voteset[peer] = append(voteset[peer], vote)
+			_, peerTD := peer.Head()
+			if deltaTD := new(big.Int).Abs(peerTD.Sub(h.chain.CurrentBlock().Difficulty(), peerTD)); deltaTD.Cmp(big.NewInt(10)) != 1 {
+				voteset[peer] = append(voteset[peer], vote)
+			}
 		}
 	}
 
