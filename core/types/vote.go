@@ -35,3 +35,25 @@ type AggVoteEnvelope struct {
 	Data           VoteData
 	Extra          []byte
 }
+
+type VoteEnvelopes []*VoteEnvelope
+
+// Hash returns the vote hash.
+func (v *VoteEnvelope) Hash() common.Hash {
+	if hash := v.hash.Load(); hash != nil {
+		return hash.(common.Hash)
+	}
+
+	h := v.calcVoteHash()
+	v.hash.Store(h)
+	return h
+}
+
+func (v *VoteEnvelope) calcVoteHash() common.Hash {
+	voteData := struct {
+		VoteAddress BLSPublicKey
+		Signature   BLSSignature
+		Data        VoteData
+	}{v.VoteAddress, v.Signature, v.Data}
+	return rlpHash(voteData)
+}
