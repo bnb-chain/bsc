@@ -99,7 +99,7 @@ type handlerConfig struct {
 	Chain                  *core.BlockChain          // Blockchain to serve data from
 	TxPool                 txPool                    // Transaction pool to propagate from
 	VotePool               votePool                  // Votes pool to propagate from
-	Network                uint64                    // Network identifier to adfvertise
+	Network                uint64                    // Network identifier to advertise
 	Sync                   downloader.SyncMode       // Whether to fast or full sync
 	DiffSync               bool                      // Whether to diff sync
 	BloomCache             uint64                    // Megabytes to alloc for fast sync bloom
@@ -273,7 +273,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 }
 
 // runEthPeer registers an eth peer into the joint eth/snap peerset, adds it to
-// various subsistems and starts handling messages.
+// various subsystems and starts handling messages.
 func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// If the peer has a `snap` extension, wait for it to connect so we can have
 	// a uniform initialization/teardown mechanism
