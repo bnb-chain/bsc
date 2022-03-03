@@ -48,7 +48,7 @@ const (
 	recentTime             = 1024 * 3
 	recentDiffLayerTimeout = 5
 	farDiffLayerTimeout    = 2
-	reuseSlotDB            = true // reuse could save state object copy cost
+	reuseSlotDB            = false // reuse could save state object copy cost
 )
 
 var MaxPendingQueueSize = 20               // parallel slot's maximum number of pending Txs
