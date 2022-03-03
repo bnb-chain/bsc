@@ -4,6 +4,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/prysmaticlabs/prysm/crypto/bls"
 )
 
 const (
@@ -12,7 +13,7 @@ const (
 )
 
 type BLSPublicKey [BLSPublicKeyLength]byte
-type BLSSignature [BLSSignatureLength]byte
+type BLSSignature bls.Signature
 type ValidatorsBitSet uint64
 
 type VoteData struct {

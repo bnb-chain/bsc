@@ -33,6 +33,8 @@ type VoteManager struct {
 	mu  sync.RWMutex
 	mux *event.TypeMux
 
+	km *KeyManager
+
 	chain       blockChain
 	chainconfig *params.ChainConfig
 
@@ -45,8 +47,6 @@ type VoteManager struct {
 
 	voteSet mapset.Set
 	isReady chan bool
-
-	bls BLS
 }
 
 func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain blockChain, vp *VotePool, vj *VoteJournal) (*VoteManager, error) {
@@ -119,9 +119,9 @@ func (vm *VoteManager) loop() {
 				}
 				// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
 				if ok := vm.IsUnderRules(curBlock.Header()); ok {
-					hash := voteMessage.CalcVoteHash()
-					signature := vm.bls.Sign(hash)
-					voteMessage.Signature = signature
+					if err := vm.km.SignVote(voteMessage); err != nil {
+						log.Warn("Failed to sign vote", "err", err)
+					}
 
 					vm.vj.WriteVotesJournal(voteMessage)
 					vm.vp.PutVote(voteMessage)

@@ -40,7 +40,7 @@ type VoteJournal struct {
 }
 
 type VoteJournalConfig struct {
-	filePathForJournal string // Disk journal for saving the vote
+	filePath string // Disk journal for saving the vote
 
 }
 
@@ -49,7 +49,7 @@ func NewVoteJournal(config *VoteJournalConfig) (*VoteJournal, error) {
 		journalBuffer: make([]*types.VoteEnvelope, 0, BufferSizeForJournal),
 		config:        config,
 	}
-	log, err := wal.Open(voteJournal.config.filePathForJournal, nil)
+	log, err := wal.Open(voteJournal.config.filePath, nil)
 	if err != nil {
 		return nil, err
 	}
