@@ -51,11 +51,6 @@ type blockChain interface {
 	GetHeader(hash common.Hash, number uint64) *types.Header
 }
 
-type BLS interface {
-	Verify(vote *types.VoteEnvelope) bool
-	Sign(vote common.Hash) types.BLSSignature
-}
-
 type VoteBox struct {
 	blockNumber  uint64
 	voteMessages []*types.VoteEnvelope
@@ -65,6 +60,10 @@ type VotePool struct {
 	chain       blockChain
 	chainconfig *params.ChainConfig
 	mu          sync.RWMutex
+
+	vm *VoteManager
+
+	km *KeyManager
 
 	votesFeed event.Feed
 	scope     event.SubscriptionScope
@@ -79,8 +78,6 @@ type VotePool struct {
 
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
-
-	bls BLS
 }
 
 type blockPriorityQueue []*types.VoteData
@@ -144,7 +141,7 @@ func (vp *VotePool) PutVote(voteMessage *types.VoteEnvelope) (bool, error) {
 		vp.futureBlockPq.Push(voteData)
 
 	} else {
-		if !vp.bls.Verify(voteMessage) {
+		if err := vp.km.VerifyVote(voteMessage); err != nil {
 			return false, nil
 		}
 
@@ -187,7 +184,7 @@ func (vp *VotePool) transferVotesFromFutureToCur(curBlockNumber uint64) {
 		validVotes := make([]*types.VoteEnvelope, 0, len(vote.voteMessages))
 		for _, v := range vote.voteMessages {
 			// Verify the future vote.
-			if vp.bls.Verify(v) {
+			if err := vp.km.VerifyVote(v); err == nil {
 				validVotes = append(validVotes, v)
 			}
 		}
