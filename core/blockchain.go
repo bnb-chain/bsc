@@ -2105,17 +2105,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
-		var statedb *state.StateDB
-		if ParallelTxMode {
-			statedb, err = state.NewBaseSlotDB(parent.Root, bc.stateCache, bc.snaps)
-			if err != nil {
-				return it.index, err
-			}
-		} else {
-			statedb, err = state.New(parent.Root, bc.stateCache, bc.snaps)
-			if err != nil {
-				return it.index, err
-			}
+
+		statedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
+		if err != nil {
+			return it.index, err
 		}
 
 		bc.updateHighestVerifiedHeader(block.Header())

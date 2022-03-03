@@ -869,13 +869,15 @@ func (p *StateProcessor) runSlotLoop(slotIndex int) {
 }
 
 // clear slot state for each block.
-func (p *StateProcessor) resetParallelState(txNum int) {
+func (p *StateProcessor) resetParallelState(txNum int, statedb *state.StateDB) {
 	if txNum == 0 {
 		return
 	}
 	p.mergedTxIndex = -1
 	p.debugErrorRedoNum = 0
 	p.debugConflictRedoNum = 0
+
+	statedb.PrepareForParallel()
 
 	for _, slot := range p.slotState {
 		slot.tailTxReq = nil
@@ -984,7 +986,7 @@ func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.Stat
 	)
 	var receipts = make([]*types.Receipt, 0)
 	txNum := len(block.Transactions())
-	p.resetParallelState(txNum)
+	p.resetParallelState(txNum, statedb)
 
 	// Iterate over and process the individual transactions
 	posa, isPoSA := p.engine.(consensus.PoSA)

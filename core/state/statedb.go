@@ -87,7 +87,7 @@ func (s *StateObjectSyncMap) StoreStateObject(addr common.Address, stateObject *
 
 // loadStateObjectFromStateDB is the entry for loading state object from stateObjects in StateDB or stateObjects in parallel
 func (s *StateDB) loadStateObjectFromStateDB(addr common.Address) (*StateObject, bool) {
-	if s.parallel.isParallel {
+	if s.isParallel {
 		return s.parallel.stateObjects.LoadStateObject(addr)
 	} else {
 		obj, ok := s.stateObjects[addr]
@@ -97,7 +97,7 @@ func (s *StateDB) loadStateObjectFromStateDB(addr common.Address) (*StateObject,
 
 // storeStateObjectToStateDB is the entry for storing state object to stateObjects in StateDB or stateObjects in parallel
 func (s *StateDB) storeStateObjectToStateDB(addr common.Address, stateObject *StateObject) {
-	if s.parallel.isParallel {
+	if s.isParallel {
 		s.parallel.stateObjects.Store(addr, stateObject)
 	} else {
 		s.stateObjects[addr] = stateObject
@@ -106,7 +106,7 @@ func (s *StateDB) storeStateObjectToStateDB(addr common.Address, stateObject *St
 
 // deleteStateObjectFromStateDB is the entry for deleting state object to stateObjects in StateDB or stateObjects in parallel
 func (s *StateDB) deleteStateObjectFromStateDB(addr common.Address) {
-	if s.parallel.isParallel {
+	if s.isParallel {
 		s.parallel.stateObjects.Delete(addr)
 	} else {
 		delete(s.stateObjects, addr)
@@ -126,8 +126,7 @@ type SlotChangeList struct {
 
 // For parallel mode only
 type ParallelState struct {
-	isParallel bool // isParallel denotes StateDB is used in ProcessParallel
-	isSlotDB   bool // isSlotDB denotes StateDB is used in slot
+	isSlotDB bool // isSlotDB denotes StateDB is used in slot
 
 	// stateObjects holds the state objects in the base slot db
 	// the reason for using stateObjects instead of stateObjects on the outside is
@@ -192,7 +191,8 @@ type StateDB struct {
 	stateObjectsPending map[common.Address]struct{} // State objects finalized but not yet written to the trie
 	stateObjectsDirty   map[common.Address]struct{} // State objects modified in the current execution
 
-	parallel ParallelState // to keep all the parallel execution elements
+	isParallel bool
+	parallel   ParallelState // to keep all the parallel execution elements
 
 	// DB error.
 	// State objects are used by the consensus core and VM which are
@@ -238,18 +238,6 @@ type StateDB struct {
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	return newStateDB(root, db, snaps)
-}
-
-// NewBaseSlotDB creates a new base state for the parallel process, all slot db are created from the base slot db
-func NewBaseSlotDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	stateDB, err := newStateDB(root, db, snaps)
-	if err != nil {
-		return stateDB, err
-	}
-
-	stateDB.parallel.isParallel = true
-	stateDB.parallel.stateObjects = &StateObjectSyncMap{}
-	return stateDB, err
 }
 
 // NewSlotDB creates a new slot stateDB base on the provided stateDB.
@@ -353,6 +341,11 @@ func (s *StateDB) RevertSlotDB(from common.Address) {
 	s.parallel.balanceChangedInSlot = make(map[common.Address]struct{}, 1)
 	s.parallel.balanceChangedInSlot[from] = struct{}{}
 	s.parallel.addrStateChangeInSlot = make(map[common.Address]struct{})
+}
+
+func (s *StateDB) PrepareForParallel() {
+	s.isParallel = true
+	s.parallel.stateObjects = &StateObjectSyncMap{}
 }
 
 // MergeSlotDB is for Parallel TX, when the TX is finalized(dirty -> pending)
@@ -1388,8 +1381,7 @@ func (s *StateDB) Copy() *StateDB {
 func (s *StateDB) CopyForSlot() *StateDB {
 	// Copy all the basic fields, initialize the memory ones
 	parallel := ParallelState{
-		isSlotDB:   true,
-		isParallel: true,
+		isSlotDB: true,
 		// Share base slot db's stateObjects
 		// It is a SyncMap, only readable to slot, not writable
 		stateObjects:              s.parallel.stateObjects,
@@ -1419,6 +1411,7 @@ func (s *StateDB) CopyForSlot() *StateDB {
 		snapDestructs:       make(map[common.Address]struct{}),
 		snapAccounts:        make(map[common.Address][]byte),
 		snapStorage:         make(map[common.Address]map[string][]byte),
+		isParallel:          true,
 		parallel:            parallel,
 	}
 
