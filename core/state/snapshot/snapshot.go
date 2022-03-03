@@ -110,6 +110,15 @@ type Snapshot interface {
 	// Store the verification result
 	MarkValid()
 
+	// Update account data for storing the correct data
+	CorrectAccounts(map[common.Hash][]byte)
+
+	// Check whether the account data is holding the correct data
+	AccountCorrected() bool
+
+	// Wait until the account data is corrected
+	WaitAccountCorrected()
+
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*Account, error)

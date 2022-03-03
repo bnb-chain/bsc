@@ -1023,7 +1023,15 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	return s.StateIntermediateRoot()
 }
 
+func (s *StateDB) AccountsIntermediateWithoutRoot() {
+	s.accountsIntermediateRoot(false)
+}
+
 func (s *StateDB) AccountsIntermediateRoot() {
+	s.accountsIntermediateRoot(true)
+}
+
+func (s *StateDB) accountsIntermediateRoot(updateRoot bool) {
 	tasks := make(chan func())
 	finishCh := make(chan struct{})
 	defer close(finishCh)
@@ -1050,7 +1058,9 @@ func (s *StateDB) AccountsIntermediateRoot() {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			wg.Add(1)
 			tasks <- func() {
-				obj.updateRoot(s.db)
+				if updateRoot {
+					obj.updateRoot(s.db)
+				}
 
 				// If state snapshotting is active, cache the data til commit. Note, this
 				// update mechanism is not symmetric to the deletion, because whereas it is
@@ -1072,6 +1082,54 @@ func (s *StateDB) AccountsIntermediateRoot() {
 		}
 	}
 	wg.Wait()
+}
+
+func (s *StateDB) accountDataForDiffLayer() map[common.Hash][]byte {
+	tasks := make(chan func())
+	finishCh := make(chan struct{})
+	defer close(finishCh)
+	wg := sync.WaitGroup{}
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go func() {
+			for {
+				select {
+				case task := <-tasks:
+					task()
+				case <-finishCh:
+					return
+				}
+			}
+		}()
+	}
+	lock := sync.Mutex{}
+	accountData := make(map[common.Hash][]byte)
+	for addr := range s.stateObjectsPending {
+		if obj := s.stateObjects[addr]; !obj.deleted {
+			wg.Add(1)
+			tasks <- func() {
+				obj.updateRoot(s.db)
+				if s.snap != nil && !obj.deleted {
+					s.snapMux.Lock()
+					// It is possible to add unnecessary change, but it is fine.
+					s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
+					s.snapMux.Unlock()
+
+					lock.Lock()
+					accountData[obj.address.Hash()] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
+					lock.Unlock()
+				}
+				data, err := rlp.EncodeToBytes(obj)
+				if err != nil {
+					panic(fmt.Errorf("can't encode object at %x: %v", addr[:], err))
+				}
+				obj.encodeData = data
+
+				wg.Done()
+			}
+		}
+	}
+	wg.Wait()
+	return accountData
 }
 
 func (s *StateDB) StateIntermediateRoot() common.Hash {
@@ -1308,6 +1366,14 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 
 	commmitTrie := func() error {
 		commitErr := func() error {
+
+			if s.pipeCommit && s.snap != nil {
+				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct
+				// Fix the wrong data here
+				accountData := s.accountDataForDiffLayer()
+				s.snap.CorrectAccounts(accountData)
+			}
+
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
 			}

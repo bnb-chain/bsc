@@ -141,7 +141,8 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 				return err
 			}
 			statedb.Finalise(v.config.IsEIP158(header.Number))
-			statedb.AccountsIntermediateRoot()
+			//state verification pipeline - accounts root are not calculated here
+			statedb.AccountsIntermediateWithoutRoot()
 			return nil
 		})
 	} else {

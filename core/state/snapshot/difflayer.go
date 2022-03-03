@@ -121,6 +121,9 @@ type diffLayer struct {
 	verifiedCh chan struct{} // the difflayer is verified when verifiedCh is nil or closed
 	valid      bool          // mark the difflayer is valid or not.
 
+	accountCorrectedCh chan struct{} // To communicate whether the accountData has been corrected
+	accountCorrected   bool          // Mark whether the accountData of the difflayer is correct or not
+
 	diffed *bloomfilter.Filter // Bloom filter tracking all the diffed items up to the disk layer
 
 	lock sync.RWMutex
@@ -174,14 +177,20 @@ func (h storageBloomHasher) Sum64() uint64 {
 func newDiffLayer(parent snapshot, root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer {
 	// Create the new layer with some pre-allocated data segments
 	dl := &diffLayer{
-		parent:      parent,
-		root:        root,
-		destructSet: destructs,
-		accountData: accounts,
-		storageData: storage,
-		storageList: make(map[common.Hash][]common.Hash),
-		verifiedCh:  verified,
+		parent:             parent,
+		root:               root,
+		destructSet:        destructs,
+		accountData:        accounts,
+		storageData:        storage,
+		storageList:        make(map[common.Hash][]common.Hash),
+		verifiedCh:         verified,
 	}
+
+	// this snapshot is used in pipeline commit
+	if verified != nil {
+		dl.accountCorrectedCh = make(chan struct{})
+	}
+
 	switch parent := parent.(type) {
 	case *diskLayer:
 		dl.rebloom(parent)
@@ -284,6 +293,33 @@ func (dl *diffLayer) Verified() bool {
 	default:
 		return false
 	}
+}
+
+func (dl *diffLayer) CorrectAccounts(accounts map[common.Hash][]byte) {
+	dl.lock.Lock()
+	defer dl.lock.Unlock()
+
+	for k, v := range accounts {
+		dl.accountData[k] = v
+	}
+	dl.accountCorrected = true
+	if dl.accountCorrectedCh != nil {
+		dl.accountCorrectedCh <- struct{}{}
+	}
+}
+
+func (dl *diffLayer) AccountCorrected() bool {
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	return dl.accountCorrected
+}
+
+func (dl *diffLayer) WaitAccountCorrected() {
+	if dl.accountCorrectedCh == nil {
+		return
+	}
+	<-dl.accountCorrectedCh
 }
 
 // Parent returns the subsequent layer of a diff layer.

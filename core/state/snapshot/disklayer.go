@@ -59,6 +59,14 @@ func (dl *diskLayer) Verified() bool {
 	return true
 }
 
+func (dl *diskLayer) CorrectAccounts(map[common.Hash][]byte) {}
+
+func (dl *diskLayer) AccountCorrected() bool {
+	return true
+}
+
+func (dl *diskLayer) WaitAccountCorrected() {}
+
 // Parent always returns nil as there's no layer below the disk.
 func (dl *diskLayer) Parent() snapshot {
 	return nil
