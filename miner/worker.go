@@ -467,7 +467,6 @@ func (w *worker) mainLoop() {
 			start := time.Now()
 			w.commitNewWork(req.interrupt, req.noempty, req.timestamp)
 			perf.RecordMPMetrics(perf.MpMiningTotal, start)
-			perf.RecordMPMetrics(perf.MpMiningTotalAll, start)
 
 		case ev := <-w.chainSideCh:
 			// Short circuit for duplicate side blocks
