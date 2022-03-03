@@ -48,7 +48,6 @@ const (
 	recentTime             = 1024 * 3
 	recentDiffLayerTimeout = 5
 	farDiffLayerTimeout    = 2
-	reuseSlotDB            = true // reuse could save state object copy cost
 )
 
 var MaxPendingQueueSize = 20               // parallel slot's maximum number of pending Txs
@@ -407,7 +406,6 @@ type SlotState struct {
 type ParallelTxResult struct {
 	redo         bool // for redo, dispatch will wait new tx result
 	updateSlotDB bool // for redo and pending tx quest, slot needs new slotDB,
-	reuseSlotDB  bool // will try to reuse latest finalized slotDB
 	keepSystem   bool // for redo, should keep system address's balance
 	txIndex      int
 	slotIndex    int   // slot index
@@ -463,22 +461,18 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	// check KV change
 	reads := readDb.StateReadsInSlot()
 	writes := changeList.StateChangeSet
-	if len(reads) != 0 {
-		for readAddr, readKeys := range reads {
-			if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
-				log.Debug("conflict: read addr changed state", "addr", readAddr)
-				return true
-			}
-			if len(writes) != 0 {
-				if writeKeys, ok := writes[readAddr]; ok {
-					// readAddr exist
-					for writeKey := range writeKeys {
-						// same addr and same key, mark conflicted
-						if _, ok := readKeys[writeKey]; ok {
-							log.Debug("conflict: state conflict", "addr", readAddr, "key", writeKey)
-							return true
-						}
-					}
+	for readAddr, readKeys := range reads {
+		if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
+			log.Debug("conflict: read addr changed state", "addr", readAddr)
+			return true
+		}
+		if writeKeys, ok := writes[readAddr]; ok {
+			// readAddr exist
+			for writeKey := range writeKeys {
+				// same addr and same key, mark conflicted
+				if _, ok := readKeys[writeKey]; ok {
+					log.Debug("conflict: state conflict", "addr", readAddr, "key", writeKey)
+					return true
 				}
 			}
 		}
@@ -486,64 +480,53 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	// check balance change
 	balanceReads := readDb.BalanceReadsInSlot()
 	balanceWrite := changeList.BalanceChangeSet
-	if len(balanceReads) != 0 {
-		for readAddr := range balanceReads {
-			if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
-				// txIndex = 0, would create StateObject for SystemAddress
+	for readAddr := range balanceReads {
+		if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
+			// SystemAddress is special, SystemAddressRedo() is prepared for it.
+			// Since txIndex = 0 will create StateObject for SystemAddress, skip its state change check
+			if readAddr != consensus.SystemAddress {
 				log.Debug("conflict: read addr changed balance", "addr", readAddr)
 				return true
 			}
-			if len(balanceWrite) != 0 {
-				if _, ok := balanceWrite[readAddr]; ok {
-					if readAddr == consensus.SystemAddress {
-						// log.Debug("conflict: skip specical system address's balance check")
-						continue
-					}
-					log.Debug("conflict: balance conflict", "addr", readAddr)
-					return true
-				}
+		}
+		if _, ok := balanceWrite[readAddr]; ok {
+			if readAddr != consensus.SystemAddress {
+				log.Debug("conflict: balance conflict", "addr", readAddr)
+				return true
 			}
 		}
 	}
 
 	// check code change
-	codeReads := readDb.CodeReadInSlot()
+	codeReads := readDb.CodeReadsInSlot()
 	codeWrite := changeList.CodeChangeSet
-	if len(codeReads) != 0 {
-		for readAddr := range codeReads {
-			if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
-				log.Debug("conflict: read addr changed code", "addr", readAddr)
-				return true
-			}
-			if len(codeWrite) != 0 {
-				if _, ok := codeWrite[readAddr]; ok {
-					log.Debug("conflict: code conflict", "addr", readAddr)
-					return true
-				}
-			}
+	for readAddr := range codeReads {
+		if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
+			log.Debug("conflict: read addr changed code", "addr", readAddr)
+			return true
+		}
+		if _, ok := codeWrite[readAddr]; ok {
+			log.Debug("conflict: code conflict", "addr", readAddr)
+			return true
 		}
 	}
 
 	// check address state change: create, suicide...
-	addrReads := readDb.AddressReadInSlot()
+	addrReads := readDb.AddressReadsInSlot()
 	addrWrite := changeList.AddrStateChangeSet
-	nonceWrite := changeList.NonceAdvancedSet
-	if len(addrReads) != 0 {
-		if len(addrWrite) != 0 {
-			for readAddr := range addrReads {
-				if _, ok := addrWrite[readAddr]; ok {
-					log.Debug("conflict: address state conflict", "addr", readAddr)
-					return true
-				}
+	nonceWrite := changeList.NonceChangeSet
+	for readAddr := range addrReads {
+		if _, ok := addrWrite[readAddr]; ok {
+			// SystemAddress is special, SystemAddressRedo() is prepared for it.
+			// Since txIndex = 0 will create StateObject for SystemAddress, skip its state change check
+			if readAddr != consensus.SystemAddress {
+				log.Debug("conflict: address state conflict", "addr", readAddr)
+				return true
 			}
 		}
-		if len(nonceWrite) != 0 {
-			for readAddr := range addrReads {
-				if _, ok := nonceWrite[readAddr]; ok {
-					log.Debug("conflict: address nonce conflict", "addr", readAddr)
-					return true
-				}
-			}
+		if _, ok := nonceWrite[readAddr]; ok {
+			log.Debug("conflict: address nonce conflict", "addr", readAddr)
+			return true
 		}
 	}
 
@@ -643,14 +626,7 @@ func (p *StateProcessor) waitUntilNextTxDone(statedb *state.StateDB) *ParallelTx
 		if result.updateSlotDB {
 			// the target slot is waiting for new slotDB
 			slotState := p.slotState[result.slotIndex]
-			var slotDB *state.StateDB
-			if result.reuseSlotDB {
-				// for reuse, len(slotState.mergedChangeList) must >= 1
-				lastSlotDB := slotState.mergedChangeList[len(slotState.mergedChangeList)-1].SlotDB
-				slotDB = state.ReUseSlotDB(lastSlotDB, result.keepSystem)
-			} else {
-				slotDB = state.NewSlotDB(statedb, consensus.SystemAddress, p.mergedTxIndex, result.keepSystem)
-			}
+			slotDB := state.NewSlotDB(statedb, consensus.SystemAddress, p.mergedTxIndex, result.keepSystem)
 			slotState.slotdbChan <- slotDB
 			continue
 		}
@@ -707,7 +683,6 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 	var err error
 	var evm *vm.EVM
 
-	// fixme: to optimize, reuse the slotDB
 	slotDB.Prepare(tx.Hash(), txIndex)
 	log.Debug("exec In Slot", "Slot", slotIndex, "txIndex", txIndex, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
 
@@ -736,7 +711,6 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 		redoResult := &ParallelTxResult{
 			redo:         true,
 			updateSlotDB: true,
-			reuseSlotDB:  false,
 			txIndex:      txIndex,
 			slotIndex:    slotIndex,
 			tx:           tx,
@@ -772,14 +746,9 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 		systemAddrConflict = true
 	} else {
 		for index := 0; index < ParallelExecNum; index++ {
-			// can skip current slot now, since slotDB is always after current slot's merged DB
-			// ** idle: all previous Txs are merged, it will create a new SlotDB
-			// ** queued: it will request updateSlotDB, dispatcher will create or reuse a SlotDB after previous Tx results are merged
-
-			// with copy-on-write, can not skip current slot
-			// if index == slotIndex {
-			//	continue
-			// }
+			if index == slotIndex {
+				continue
+			}
 
 			// check all finalizedDb from current slot's
 			for _, changeList := range p.slotState[index].mergedChangeList {
@@ -807,7 +776,6 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 		redoResult := &ParallelTxResult{
 			redo:         true,
 			updateSlotDB: true,
-			reuseSlotDB:  false, // for conflict, we do not reuse
 			keepSystem:   systemAddrConflict,
 			txIndex:      txIndex,
 			slotIndex:    slotIndex,
@@ -878,15 +846,11 @@ func (p *StateProcessor) runSlotLoop(slotIndex int) {
 		// ** for a dispatched tx,
 		//    the slot should be idle, it is better to create a new SlotDB, since new Tx is not related to previous Tx
 		// ** for a queued tx,
-		//    the previous SlotDB could be reused, since it is likely can be used
-		//    reuse could avoid NewSlotDB cost, which could be costable when StateDB is full of state object
-		//    if the previous SlotDB is
+		//    it is better to create a new SlotDB, since COW is used.
 		if txReq.slotDB == nil {
-			// for queued Tx, txReq.slotDB is nil, reuse slot's latest merged SlotDB
 			result := &ParallelTxResult{
 				redo:         false,
 				updateSlotDB: true,
-				reuseSlotDB:  reuseSlotDB,
 				slotIndex:    slotIndex,
 				err:          nil,
 			}
@@ -1083,7 +1047,7 @@ func (p *StateProcessor) ProcessParallel(block *types.Block, statedb *state.Stat
 				// log.Info("ProcessParallel dispatch to idle slot", "txIndex", txReq.txIndex)
 				break
 			}
-			log.Debug("ProcessParallel no slot avaiable, wait", "txIndex", txReq.txIndex)
+			log.Debug("ProcessParallel no slot available, wait", "txIndex", txReq.txIndex)
 			// no idle slot, wait until a tx is executed and merged.
 			result := p.waitUntilNextTxDone(statedb)
 

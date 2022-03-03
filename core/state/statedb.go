@@ -112,14 +112,13 @@ func (s *StateDB) deleteStateObjectFromStateDB(addr common.Address) {
 
 // For parallel mode only, keep the change list for later conflict detect
 type SlotChangeList struct {
-	SlotDB              *StateDB // used for SlotDb reuse only, otherwise, it can be discarded
-	TxIndex             int      // the tx index of change list
+	TxIndex             int // the tx index of change list
 	StateObjectSuicided map[common.Address]struct{}
 	StateChangeSet      map[common.Address]StateKeys
 	BalanceChangeSet    map[common.Address]struct{}
 	CodeChangeSet       map[common.Address]struct{}
 	AddrStateChangeSet  map[common.Address]struct{}
-	NonceAdvancedSet    map[common.Address]struct{}
+	NonceChangeSet      map[common.Address]struct{}
 }
 
 // For parallel mode only
@@ -135,24 +134,24 @@ type ParallelState struct {
 	baseTxIndex               int // slotDB is created base on this tx index.
 	dirtiedStateObjectsInSlot map[common.Address]*StateObject
 	// for conflict check
-	balanceChangedInSlot map[common.Address]struct{} // the address's balance has been changed
+	balanceChangesInSlot map[common.Address]struct{} // the address's balance has been changed
 	balanceReadsInSlot   map[common.Address]struct{} // the address's balance has been read and used.
-	codeReadInSlot       map[common.Address]struct{}
-	codeChangeInSlot     map[common.Address]struct{}
+	codeReadsInSlot      map[common.Address]struct{}
+	codeChangesInSlot    map[common.Address]struct{}
 	stateReadsInSlot     map[common.Address]StateKeys
-	stateChangedInSlot   map[common.Address]StateKeys // no need record value
+	stateChangesInSlot   map[common.Address]StateKeys // no need record value
 	// Actions such as SetCode, Suicide will change address's state.
 	// Later call like Exist(), Empty(), HasSuicided() depond on the address's state.
-	addrStateReadInSlot   map[common.Address]struct{}
-	addrStateChangeInSlot map[common.Address]struct{}
-	stateObjectSuicided   map[common.Address]struct{}
-	nonceAdvanced         map[common.Address]struct{}
+	addrStateReadsInSlot       map[common.Address]struct{}
+	addrStateChangesInSlot     map[common.Address]struct{}
+	stateObjectsSuicidedInSlot map[common.Address]struct{}
+	nonceChangesInSlot         map[common.Address]struct{}
 	// Transaction will pay gas fee to system address.
 	// Parallel execution will clear system address's balance at first, in order to maintain transaction's
 	// gas fee value. Normal transaction will access system address twice, otherwise it means the transaction
 	// needs real system address's balance, the transaction will be marked redo with keepSystemAddressBalance = true
 	systemAddress            common.Address
-	systemAddressCount       int
+	systemAddressOpsCount    int
 	keepSystemAddressBalance bool
 }
 
@@ -266,7 +265,7 @@ func NewSlotDB(db *StateDB, systemAddr common.Address, baseTxIndex int, keepSyst
 	slotDB.originalRoot = db.originalRoot
 	slotDB.parallel.baseTxIndex = baseTxIndex
 	slotDB.parallel.systemAddress = systemAddr
-	slotDB.parallel.systemAddressCount = 0
+	slotDB.parallel.systemAddressOpsCount = 0
 	slotDB.parallel.keepSystemAddressBalance = keepSystem
 
 	// clear the slotDB's validator's balance first
@@ -278,53 +277,13 @@ func NewSlotDB(db *StateDB, systemAddr common.Address, baseTxIndex int, keepSyst
 	return slotDB
 }
 
-// to avoid new slotDB for each Tx, slotDB should be valid and merged
-func ReUseSlotDB(slotDB *StateDB, keepSystem bool) *StateDB {
-	log.Debug("ReUseSlotDB", "baseTxIndex", slotDB.parallel.baseTxIndex,
-		"keepSystem", keepSystem, "refund", slotDB.refund,
-		"len(journal.entries)", len(slotDB.journal.entries))
-	slotDB.logs = make(map[common.Hash][]*types.Log, defaultNumOfSlots)
-	slotDB.logSize = 0
-	slotDB.parallel.systemAddressCount = 0
-	slotDB.parallel.keepSystemAddressBalance = keepSystem
-	slotDB.parallel.stateObjectSuicided = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.codeReadInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.codeChangeInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.stateChangedInSlot = make(map[common.Address]StateKeys, defaultNumOfSlots)
-	slotDB.parallel.stateReadsInSlot = make(map[common.Address]StateKeys, defaultNumOfSlots)
-	slotDB.parallel.balanceChangedInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.balanceReadsInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.addrStateReadInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.addrStateChangeInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.nonceAdvanced = make(map[common.Address]struct{}, defaultNumOfSlots)
-
-	// Previous *StateObject in slot db has been transfered to dispatcher now.
-	// Slot could no longer use these *StateObject, do clear.
-	slotDB.parallel.dirtiedStateObjectsInSlot = make(map[common.Address]*StateObject, defaultNumOfSlots)
-
-	slotDB.stateObjectsDirty = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.stateObjectsPending = make(map[common.Address]struct{}, defaultNumOfSlots)
-
-	// slotDB.snapDestructs = make(map[common.Address]struct{})
-	// slotDB.snapAccounts = make(map[common.Address][]byte)
-	// slotDB.snapStorage = make(map[common.Address]map[string][]byte)
-
-	if !keepSystem {
-		slotDB.SetBalance(slotDB.parallel.systemAddress, big.NewInt(0))
-	}
-	return slotDB
-}
-
 func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	parallel := ParallelState{
-		isSlotDB: false,
-	}
 	sdb := &StateDB{
 		db:                  db,
 		originalRoot:        root,
 		snaps:               snaps,
 		stateObjects:        make(map[common.Address]*StateObject, defaultNumOfSlots),
-		parallel:            parallel,
+		parallel:            ParallelState{},
 		stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
 		stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
 		logs:                make(map[common.Hash][]*types.Log, defaultNumOfSlots),
@@ -370,15 +329,15 @@ func (s *StateDB) getStateObjectFromStateObjects(addr common.Address) (*StateObj
 // and discard its state changed, execept its own balance change.
 func (s *StateDB) RevertSlotDB(from common.Address) {
 	log.Debug("RevertSlotDB", "addr", from, "txIndex", s.txIndex)
-	s.parallel.stateObjectSuicided = make(map[common.Address]struct{})
-	s.parallel.stateChangedInSlot = make(map[common.Address]StateKeys)
-	s.parallel.balanceChangedInSlot = make(map[common.Address]struct{}, 1)
-	s.parallel.balanceChangedInSlot[from] = struct{}{}
-	s.parallel.addrStateChangeInSlot = make(map[common.Address]struct{})
-	s.parallel.nonceAdvanced = make(map[common.Address]struct{})
-
+	s.parallel.stateObjectsSuicidedInSlot = make(map[common.Address]struct{})
+	s.parallel.stateChangesInSlot = make(map[common.Address]StateKeys)
+	s.parallel.balanceChangesInSlot = make(map[common.Address]struct{}, 1)
+	s.parallel.balanceChangesInSlot[from] = struct{}{}
+	s.parallel.addrStateChangesInSlot = make(map[common.Address]struct{})
+	s.parallel.nonceChangesInSlot = make(map[common.Address]struct{})
 }
 
+// PrepareForParallel prepares for state db to be used in parallel process.
 func (s *StateDB) PrepareForParallel() {
 	s.isParallel = true
 	s.parallel.stateObjects = &StateObjectSyncMap{}
@@ -406,6 +365,7 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 	}
 
 	// only merge dirty objects
+	addressesToPrefetch := make([][]byte, 0, len(slotDb.stateObjectsDirty))
 	for addr := range slotDb.stateObjectsDirty {
 		if _, exist := s.stateObjectsDirty[addr]; !exist {
 			s.stateObjectsDirty[addr] = struct{}{}
@@ -427,7 +387,7 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 		if !exist {
 			// addr not exist on main DB, do ownership transfer
 			dirtyObj.db = s
-			dirtyObj.finalise(true) // prefetch on dispatcher
+			dirtyObj.finalise(true) // true: prefetch on dispatcher
 			s.storeStateObjectToStateDB(addr, dirtyObj)
 			delete(slotDb.parallel.dirtiedStateObjectsInSlot, addr) // transfer ownership
 		} else {
@@ -435,71 +395,59 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 			// can not do copy or ownership transfer directly, since dirtyObj could have outdated
 			// data(may be update within the conflict window)
 
-			// This is debug log for add balance with 0, can be removed
-			if dirtyObj.deleted && dirtyObj.empty() && !mainObj.empty() {
-				if _, exist := slotDb.parallel.balanceChangedInSlot[addr]; !exist {
-					// add(0) could trigger empty delete
-					// note: what if add/sub with 0 result, it is also a fake delete?
-					//       it is ok, since none-zero add will produce a read record, should conflict
-					log.Warn("MergeSlotDB empty deleted", "txIndex", slotDb.txIndex, "addr", addr)
-				}
-			}
-
 			// Do deepCopy a temporary *StateObject for safety,
 			// since slot could read the address, dispatch should avoid overwrite the StateObject directly
 			// otherwise, it could crash for: concurrent map iteration and map write
 			var newMainObj *StateObject
-			if _, suicided := slotDb.parallel.stateObjectSuicided[addr]; suicided {
-				if !dirtyObj.suicided {
-					// debug purpose, can be removed
-					log.Warn("MergeSlotDB suicide and recreated", "txIndex", slotDb.txIndex, "addr", addr)
-				}
-			}
-
-			if dirtyObj.deleted {
-				log.Debug("MergeSlotDB state object merge: Suicide")
-				if !dirtyObj.suicided && !dirtyObj.empty() {
-					// none suicide object, should be empty delete
-					log.Error("MergeSlotDB none suicide deleted, should be empty", "txIndex", slotDb.txIndex, "addr", addr)
-				}
-				// suicided object will keep its worldstate(useless), and will be deleted from trie on block commit
-				newMainObj = dirtyObj.deepCopy(s)
-				delete(s.snapAccounts, addr)
-				delete(s.snapStorage, addr)
-			} else if _, created := slotDb.parallel.addrStateChangeInSlot[addr]; created {
+			if _, created := slotDb.parallel.addrStateChangesInSlot[addr]; created {
+				// there are 3 kinds of state change:
+				// 1.Suicide
+				// 2.Empty Delete
+				// 3.createObject
+				//   a.AddBalance,SetState to an unexist or deleted(suicide, empty delete) address.
+				//   b.CreateAccount: like DAO the fork, regenerate a account carry its balance without KV
+				// For these state change, do ownership transafer for efficiency:
 				log.Debug("MergeSlotDB state object merge: addr state change")
-				// there are 2 kinds of object creation:
-				//   1.createObject: AddBalance,SetState to an unexist or emptyDeleted address.
-				//   2.CreateAccount: like DAO the fork, regenerate a account carry its balance without KV
-				// can not merge, do ownership transafer
 				dirtyObj.db = s
 				newMainObj = dirtyObj
 				delete(slotDb.parallel.dirtiedStateObjectsInSlot, addr) // transfer ownership
+				if dirtyObj.deleted {
+					// remove the addr from snapAccounts&snapStorage only when object is deleted.
+					// "deleted" is not equal to "snapDestructs", since createObject() will add an addr for
+					//  snapDestructs to destroy previous object, while it will keep the addr in snapAccounts & snapAccounts
+					delete(s.snapAccounts, addr)
+					delete(s.snapStorage, addr)
+				}
 			} else {
-				newMainObj = mainObj.deepCopy(s)
 				// do merge: balance, KV, code...
-				if _, balanced := slotDb.parallel.balanceChangedInSlot[addr]; balanced {
+				newMainObj = mainObj.deepCopy(s)
+				if _, balanced := slotDb.parallel.balanceChangesInSlot[addr]; balanced {
 					log.Debug("MergeSlotDB state object merge: state merge: balance",
 						"newMainObj.Balance()", newMainObj.Balance(),
 						"dirtyObj.Balance()", dirtyObj.Balance())
 					newMainObj.SetBalance(dirtyObj.Balance())
 				}
-				if _, coded := slotDb.parallel.codeChangeInSlot[addr]; coded {
+				if _, coded := slotDb.parallel.codeChangesInSlot[addr]; coded {
 					log.Debug("MergeSlotDB state object merge: state merge: code")
 					newMainObj.code = dirtyObj.code
 					newMainObj.data.CodeHash = dirtyObj.data.CodeHash
 					newMainObj.dirtyCode = true
 				}
-				if keys, stated := slotDb.parallel.stateChangedInSlot[addr]; stated {
+				if keys, stated := slotDb.parallel.stateChangesInSlot[addr]; stated {
 					newMainObj.MergeSlotObject(s.db, dirtyObj, keys)
 				}
 				// dirtyObj.Nonce() should not be less than newMainObj
 				newMainObj.setNonce(dirtyObj.Nonce())
 			}
-			newMainObj.finalise(true) // prefetch on dispatcher
+			newMainObj.finalise(true) // true: prefetch on dispatcher
 			// update the object
 			s.storeStateObjectToStateDB(addr, newMainObj)
 		}
+		addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
+	}
+
+	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
+		s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr) // prefetch for trie node of account
 	}
 
 	for addr := range slotDb.stateObjectsPending {
@@ -519,6 +467,13 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 	}
 
 	if slotDb.snaps != nil {
+		for k := range slotDb.snapDestructs {
+			// There could be a race condition for parallel transaction execution
+			// One add balance 0 to an empty address, it will delete it(delete empty is enabled,).
+			// While another concurrent transaction could add a none-zero balance to it, make it not empty
+			// We fixed it by add a addr state read record for add balance 0
+			s.snapDestructs[k] = struct{}{}
+		}
 		for k, v := range slotDb.snapAccounts {
 			s.snapAccounts[k] = v
 		}
@@ -529,49 +484,36 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 			}
 			s.snapStorage[k] = temp
 		}
-		for k := range slotDb.snapDestructs {
-			obj, _ := s.loadStateObjectFromStateDB(k)
-			if !obj.suicided && !obj.empty() {
-				// There could be a race condition for parallel transaction execution
-				// One add balance 0 to an empty address, it will delete it(delete empty is enabled,).
-				// While another concurrent transaction could add a none-zero balance to it, make it not empty
-				// Right now, we mark a read operation to avoid this race condition
-				// We hope to remove this read record, since it could reduce conflict rate.
-				log.Warn("MergeSlotDB state object to be deleted is not empty, ", "addr", k)
-			}
-			s.snapDestructs[k] = struct{}{}
-		}
 	}
 
 	// we have to create a new object to store change list for conflict detect, since
 	// StateDB could be reused and its elements could be overwritten
 	changeList := SlotChangeList{
-		SlotDB:              slotDb,
 		TxIndex:             txIndex,
-		StateObjectSuicided: make(map[common.Address]struct{}, len(slotDb.parallel.stateObjectSuicided)),
-		StateChangeSet:      make(map[common.Address]StateKeys, len(slotDb.parallel.stateChangedInSlot)),
-		BalanceChangeSet:    make(map[common.Address]struct{}, len(slotDb.parallel.balanceChangedInSlot)),
-		CodeChangeSet:       make(map[common.Address]struct{}, len(slotDb.parallel.codeChangeInSlot)),
-		AddrStateChangeSet:  make(map[common.Address]struct{}, len(slotDb.parallel.addrStateChangeInSlot)),
-		NonceAdvancedSet:    make(map[common.Address]struct{}, len(slotDb.parallel.nonceAdvanced)),
+		StateObjectSuicided: make(map[common.Address]struct{}, len(slotDb.parallel.stateObjectsSuicidedInSlot)),
+		StateChangeSet:      make(map[common.Address]StateKeys, len(slotDb.parallel.stateChangesInSlot)),
+		BalanceChangeSet:    make(map[common.Address]struct{}, len(slotDb.parallel.balanceChangesInSlot)),
+		CodeChangeSet:       make(map[common.Address]struct{}, len(slotDb.parallel.codeChangesInSlot)),
+		AddrStateChangeSet:  make(map[common.Address]struct{}, len(slotDb.parallel.addrStateChangesInSlot)),
+		NonceChangeSet:      make(map[common.Address]struct{}, len(slotDb.parallel.nonceChangesInSlot)),
 	}
-	for addr := range slotDb.parallel.stateObjectSuicided {
+	for addr := range slotDb.parallel.stateObjectsSuicidedInSlot {
 		changeList.StateObjectSuicided[addr] = struct{}{}
 	}
-	for addr, storage := range slotDb.parallel.stateChangedInSlot {
+	for addr, storage := range slotDb.parallel.stateChangesInSlot {
 		changeList.StateChangeSet[addr] = storage
 	}
-	for addr := range slotDb.parallel.balanceChangedInSlot {
+	for addr := range slotDb.parallel.balanceChangesInSlot {
 		changeList.BalanceChangeSet[addr] = struct{}{}
 	}
-	for addr := range slotDb.parallel.codeChangeInSlot {
+	for addr := range slotDb.parallel.codeChangesInSlot {
 		changeList.CodeChangeSet[addr] = struct{}{}
 	}
-	for addr := range slotDb.parallel.addrStateChangeInSlot {
+	for addr := range slotDb.parallel.addrStateChangesInSlot {
 		changeList.AddrStateChangeSet[addr] = struct{}{}
 	}
-	for addr := range slotDb.parallel.nonceAdvanced {
-		changeList.NonceAdvancedSet[addr] = struct{}{}
+	for addr := range slotDb.parallel.nonceChangesInSlot {
+		changeList.NonceChangeSet[addr] = struct{}{}
 	}
 
 	// the slot DB's is valid now, move baseTxIndex forward, since it could be reused.
@@ -796,7 +738,7 @@ func (s *StateDB) GetBalance(addr common.Address) *big.Int {
 	if s.parallel.isSlotDB {
 		s.parallel.balanceReadsInSlot[addr] = struct{}{}
 		if addr == s.parallel.systemAddress {
-			s.parallel.systemAddressCount++
+			s.parallel.systemAddressOpsCount++
 		}
 	}
 	stateObject := s.getStateObject(addr)
@@ -824,12 +766,12 @@ func (s *StateDB) BaseTxIndex() int {
 	return s.parallel.baseTxIndex
 }
 
-func (s *StateDB) CodeReadInSlot() map[common.Address]struct{} {
-	return s.parallel.codeReadInSlot
+func (s *StateDB) CodeReadsInSlot() map[common.Address]struct{} {
+	return s.parallel.codeReadsInSlot
 }
 
-func (s *StateDB) AddressReadInSlot() map[common.Address]struct{} {
-	return s.parallel.addrStateReadInSlot
+func (s *StateDB) AddressReadsInSlot() map[common.Address]struct{} {
+	return s.parallel.addrStateReadsInSlot
 }
 
 func (s *StateDB) StateReadsInSlot() map[common.Address]StateKeys {
@@ -840,12 +782,12 @@ func (s *StateDB) BalanceReadsInSlot() map[common.Address]struct{} {
 	return s.parallel.balanceReadsInSlot
 }
 func (s *StateDB) SystemAddressRedo() bool {
-	return s.parallel.systemAddressCount > 2
+	return s.parallel.systemAddressOpsCount > 2
 }
 
 func (s *StateDB) GetCode(addr common.Address) []byte {
 	if s.parallel.isSlotDB {
-		s.parallel.codeReadInSlot[addr] = struct{}{}
+		s.parallel.codeReadsInSlot[addr] = struct{}{}
 	}
 
 	stateObject := s.getStateObject(addr)
@@ -857,7 +799,7 @@ func (s *StateDB) GetCode(addr common.Address) []byte {
 
 func (s *StateDB) GetCodeSize(addr common.Address) int {
 	if s.parallel.isSlotDB {
-		s.parallel.codeReadInSlot[addr] = struct{}{} // code size is part of code
+		s.parallel.codeReadsInSlot[addr] = struct{}{} // code size is part of code
 	}
 
 	stateObject := s.getStateObject(addr)
@@ -869,7 +811,7 @@ func (s *StateDB) GetCodeSize(addr common.Address) int {
 
 func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 	if s.parallel.isSlotDB {
-		s.parallel.codeReadInSlot[addr] = struct{}{} // code hash is part of code
+		s.parallel.codeReadsInSlot[addr] = struct{}{} // code hash is part of code
 	}
 
 	stateObject := s.getStateObject(addr)
@@ -972,12 +914,16 @@ func (s *StateDB) AddBalance(addr common.Address, amount *big.Int) {
 		// just in case other tx creates this account,
 		// we will miss this if we only add this account when found
 		if amount.Sign() != 0 {
-			s.parallel.balanceChangedInSlot[addr] = struct{}{}
+			s.parallel.balanceChangesInSlot[addr] = struct{}{}
+			// add balance will perform a read operation first, empty object will be deleted
+			s.parallel.balanceReadsInSlot[addr] = struct{}{}
+		} else {
+			// if amount == 0, no balance change, but there is still an empty check.
+			// take this empty check as addr state read(create, suicide, empty delete)
+			s.parallel.addrStateReadsInSlot[addr] = struct{}{}
 		}
-		// add balance will perform a read operation first, empty object will be deleted
-		s.parallel.balanceReadsInSlot[addr] = struct{}{}
 		if addr == s.parallel.systemAddress {
-			s.parallel.systemAddressCount++
+			s.parallel.systemAddressOpsCount++
 		}
 	}
 
@@ -1003,12 +949,12 @@ func (s *StateDB) SubBalance(addr common.Address, amount *big.Int) {
 		// just in case other tx creates this account,
 		// we will miss this if we only add this account when found
 		if amount.Sign() != 0 {
-			s.parallel.balanceChangedInSlot[addr] = struct{}{}
+			s.parallel.balanceChangesInSlot[addr] = struct{}{}
 			// unlike add, sub 0 balance will not touch empty object
 			s.parallel.balanceReadsInSlot[addr] = struct{}{}
 		}
 		if addr == s.parallel.systemAddress {
-			s.parallel.systemAddressCount++
+			s.parallel.systemAddressOpsCount++
 		}
 	}
 
@@ -1039,9 +985,9 @@ func (s *StateDB) SetBalance(addr common.Address, amount *big.Int) {
 			} else {
 				stateObject.SetBalance(amount)
 			}
-			s.parallel.balanceChangedInSlot[addr] = struct{}{}
+			s.parallel.balanceChangesInSlot[addr] = struct{}{}
 			if addr == s.parallel.systemAddress {
-				s.parallel.systemAddressCount++
+				s.parallel.systemAddressOpsCount++
 			}
 		} else {
 			stateObject.SetBalance(amount)
@@ -1057,7 +1003,7 @@ func (s *StateDB) SetBalance(addr common.Address, amount *big.Int) {
 func (s *StateDB) NonceChanged(addr common.Address) {
 	if s.parallel.isSlotDB {
 		log.Debug("NonceChanged", "txIndex", s.txIndex, "addr", addr)
-		s.parallel.nonceAdvanced[addr] = struct{}{}
+		s.parallel.nonceChangesInSlot[addr] = struct{}{}
 	}
 }
 
@@ -1090,7 +1036,7 @@ func (s *StateDB) SetCode(addr common.Address, code []byte) {
 				stateObject.SetCode(crypto.Keccak256Hash(code), code)
 			}
 
-			s.parallel.codeChangeInSlot[addr] = struct{}{}
+			s.parallel.codeChangesInSlot[addr] = struct{}{}
 		} else {
 			stateObject.SetCode(crypto.Keccak256Hash(code), code)
 		}
@@ -1118,10 +1064,10 @@ func (s *StateDB) SetState(addr common.Address, key, value common.Hash) {
 				stateObject.SetState(s.db, key, value)
 			}
 
-			if s.parallel.stateChangedInSlot[addr] == nil {
-				s.parallel.stateChangedInSlot[addr] = make(StateKeys, defaultNumOfSlots)
+			if s.parallel.stateChangesInSlot[addr] == nil {
+				s.parallel.stateChangesInSlot[addr] = make(StateKeys, defaultNumOfSlots)
 			}
-			s.parallel.stateChangedInSlot[addr][key] = struct{}{}
+			s.parallel.stateChangesInSlot[addr][key] = struct{}{}
 		} else {
 			stateObject.SetState(s.db, key, value)
 		}
@@ -1146,7 +1092,7 @@ func (s *StateDB) Suicide(addr common.Address) bool {
 	stateObject := s.getStateObject(addr)
 
 	if s.parallel.isSlotDB {
-		s.parallel.addrStateReadInSlot[addr] = struct{}{}
+		s.parallel.addrStateReadsInSlot[addr] = struct{}{}
 	}
 	if stateObject == nil {
 		return false
@@ -1159,8 +1105,8 @@ func (s *StateDB) Suicide(addr common.Address) bool {
 	})
 
 	if s.parallel.isSlotDB {
-		s.parallel.stateObjectSuicided[addr] = struct{}{}
-		s.parallel.addrStateChangeInSlot[addr] = struct{}{}
+		s.parallel.stateObjectsSuicidedInSlot[addr] = struct{}{}
+		s.parallel.addrStateChangesInSlot[addr] = struct{}{}
 		if _, ok := s.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
 			// do copy-on-write for suicide "write"
 			newStateObject := stateObject.deepCopy(s)
@@ -1220,7 +1166,7 @@ func (s *StateDB) deleteStateObject(obj *StateObject) {
 // to differentiate between non-existent/just-deleted, use getDeletedStateObject.
 func (s *StateDB) getStateObject(addr common.Address) *StateObject {
 	if s.parallel.isSlotDB {
-		s.parallel.addrStateReadInSlot[addr] = struct{}{}
+		s.parallel.addrStateReadsInSlot[addr] = struct{}{}
 	}
 
 	if obj := s.getDeletedStateObject(addr); obj != nil && !obj.deleted {
@@ -1320,8 +1266,8 @@ func (s *StateDB) GetOrNewStateObject(addr common.Address) *StateObject {
 // the given address, it is overwritten and returned as the second return value.
 func (s *StateDB) createObject(addr common.Address) (newobj, prev *StateObject) {
 	if s.parallel.isSlotDB {
-		s.parallel.addrStateReadInSlot[addr] = struct{}{}   // fixme: may not necessary
-		s.parallel.addrStateChangeInSlot[addr] = struct{}{} // address created.
+		s.parallel.addrStateReadsInSlot[addr] = struct{}{}   // fixme: may not necessary
+		s.parallel.addrStateChangesInSlot[addr] = struct{}{} // address created.
 	}
 
 	prev = s.getDeletedStateObject(addr) // Note, prev might have been deleted, we need that!
@@ -1525,19 +1471,19 @@ func (s *StateDB) CopyForSlot() *StateDB {
 	parallel := ParallelState{
 		// Share base slot db's stateObjects
 		// It is a SyncMap, only readable to slot, not writable
-		stateObjects:              s.parallel.stateObjects,
-		stateObjectSuicided:       make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeReadInSlot:            make(map[common.Address]struct{}, defaultNumOfSlots),
-		codeChangeInSlot:          make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateChangedInSlot:        make(map[common.Address]StateKeys, defaultNumOfSlots),
-		stateReadsInSlot:          make(map[common.Address]StateKeys, defaultNumOfSlots),
-		balanceChangedInSlot:      make(map[common.Address]struct{}, defaultNumOfSlots),
-		balanceReadsInSlot:        make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateReadInSlot:       make(map[common.Address]struct{}, defaultNumOfSlots),
-		addrStateChangeInSlot:     make(map[common.Address]struct{}, defaultNumOfSlots),
-		nonceAdvanced:             make(map[common.Address]struct{}, defaultNumOfSlots),
-		isSlotDB:                  true,
-		dirtiedStateObjectsInSlot: make(map[common.Address]*StateObject, defaultNumOfSlots),
+		stateObjects:               s.parallel.stateObjects,
+		stateObjectsSuicidedInSlot: make(map[common.Address]struct{}, defaultNumOfSlots),
+		codeReadsInSlot:            make(map[common.Address]struct{}, defaultNumOfSlots),
+		codeChangesInSlot:          make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateChangesInSlot:         make(map[common.Address]StateKeys, defaultNumOfSlots),
+		stateReadsInSlot:           make(map[common.Address]StateKeys, defaultNumOfSlots),
+		balanceChangesInSlot:       make(map[common.Address]struct{}, defaultNumOfSlots),
+		balanceReadsInSlot:         make(map[common.Address]struct{}, defaultNumOfSlots),
+		addrStateReadsInSlot:       make(map[common.Address]struct{}, defaultNumOfSlots),
+		addrStateChangesInSlot:     make(map[common.Address]struct{}, defaultNumOfSlots),
+		nonceChangesInSlot:         make(map[common.Address]struct{}, defaultNumOfSlots),
+		isSlotDB:                   true,
+		dirtiedStateObjectsInSlot:  make(map[common.Address]*StateObject, defaultNumOfSlots),
 	}
 	state := &StateDB{
 		db:                  s.db,
@@ -1651,7 +1597,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		}
 		if obj.suicided || (deleteEmptyObjects && obj.empty()) {
 			if s.parallel.isSlotDB {
-				s.parallel.addrStateChangeInSlot[addr] = struct{}{} // empty an StateObject is a state change
+				s.parallel.addrStateChangesInSlot[addr] = struct{}{} // empty an StateObject is a state change
 			}
 			obj.deleted = true
 
@@ -1665,7 +1611,12 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 				delete(s.snapStorage, obj.address)        // Clear out any previously updated storage data (may be recreated via a ressurrect)
 			}
 		} else {
-			obj.finalise(true) // Prefetch slots in the background
+			// 1.none parallel mode, we do obj.finalise(true) as normal
+			// 2.with parallel mode, we do obj.finalise(true) on dispatcher, not on slot routine
+			//   obj.finalise(true) will clear its dirtyStorage, will make prefetch broken.
+			if !s.isParallel || !s.parallel.isSlotDB {
+				obj.finalise(true) // Prefetch slots in the background
+			}
 		}
 		if _, exist := s.stateObjectsPending[addr]; !exist {
 			s.stateObjectsPending[addr] = struct{}{}
