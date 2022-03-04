@@ -32,11 +32,14 @@ import (
 )
 
 var (
-	emptyCodeHash        = crypto.Keccak256(nil)
-	syncPreloadCost      = metrics.NewRegisteredTimer("state/preload/sync/delay", nil)
-	minerPreloadCost     = metrics.NewRegisteredTimer("state/preload/miner/delay", nil)
-	syncPreloadCounter   = metrics.NewRegisteredCounter("state/preload/sync/counter", nil)
-	minerPreloadCounter  = metrics.NewRegisteredCounter("state/preload/miner/counter", nil)
+	emptyCodeHash         = crypto.Keccak256(nil)
+	syncPreloadCost       = metrics.NewRegisteredTimer("state/preload/sync/delay", nil)
+	minerPreloadCost      = metrics.NewRegisteredTimer("state/preload/miner/delay", nil)
+	syncPreloadCounter    = metrics.NewRegisteredCounter("state/preload/sync/counter", nil)
+	minerPreloadCounter   = metrics.NewRegisteredCounter("state/preload/miner/counter", nil)
+	syncSignatureCounter  = metrics.NewRegisteredCounter("state/sign/sync/counter", nil)
+	minerSignatureCounter = metrics.NewRegisteredCounter("state/sign/miner/counter", nil)
+
 	syncOverheadCost     = metrics.NewRegisteredTimer("state/overhead/sync/delay", nil)
 	minerOverheadCost    = metrics.NewRegisteredTimer("state/overhead/miner/delay", nil)
 	syncOverheadCounter  = metrics.NewRegisteredCounter("state/overhead/sync/counter", nil)
