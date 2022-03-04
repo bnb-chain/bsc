@@ -289,8 +289,8 @@ func (dl *diffLayer) Journal(buffer *bytes.Buffer) (common.Hash, error) {
 		return common.Hash{}, ErrSnapshotStale
 	}
 
-	// Wait the accountData in the layer is corrected
-	dl.WaitAccountCorrected()
+	// TODO: Wait the accountData in the layer is corrected
+	dl.WaitAndGetVerifyRes()
 
 	// Everything below was journalled, persist this layer too
 	if err := rlp.Encode(buffer, dl.root); err != nil {
