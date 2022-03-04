@@ -916,9 +916,13 @@ func (s *StateDB) AddBalance(addr common.Address, amount *big.Int) {
 		// we will miss this if we only add this account when found
 		if amount.Sign() != 0 {
 			s.parallel.balanceChangedInSlot[addr] = struct{}{}
+			// add balance will perform a read operation first, empty object will be deleted
+			s.parallel.balanceReadsInSlot[addr] = struct{}{}
+		} else {
+			// if amount == 0, no balance change, but there is still an empty check.
+			// take this empty check as addr state read(create, suicide, empty delete)
+			s.parallel.addrStateReadInSlot[addr] = struct{}{}
 		}
-		// add balance will perform a read operation first, empty object will be deleted
-		s.parallel.balanceReadsInSlot[addr] = struct{}{}
 		if addr == s.parallel.systemAddress {
 			s.parallel.systemAddressCount++
 		}
