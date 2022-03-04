@@ -693,6 +693,7 @@ func (s *StateDB) getStateObject(addr common.Address) *StateObject {
 func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
 	accounts := make(map[common.Address]bool, block.Transactions().Len())
 	accountsSlice := make([]common.Address, 0, block.Transactions().Len())
+	startSign := time.Now()
 	for _, tx := range block.Transactions() {
 		from, err := types.Sender(signer, tx)
 		if err != nil {
@@ -703,7 +704,7 @@ func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
 			accounts[*tx.To()] = true
 		}
 	}
-
+	signOverhead := time.Since(startSign)
 	var overheadCost time.Duration
 	defer func() {
 		goid := cachemetrics.Goid()
@@ -713,11 +714,13 @@ func (s *StateDB) TryPreload(block *types.Block, signer types.Signer) {
 		if isSyncMainProcess {
 			syncPreloadCost.Update(overheadCost)
 			syncPreloadCounter.Inc(overheadCost.Nanoseconds())
+			syncSignatureCounter.Inc(signOverhead.Nanoseconds())
 		}
 		// record metrics of mining main process
 		if isMinerMainProcess {
 			minerPreloadCost.Update(overheadCost)
 			minerPreloadCounter.Inc(overheadCost.Nanoseconds())
+			minerSignatureCounter.Inc(signOverhead.Nanoseconds())
 		}
 	}()
 

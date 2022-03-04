@@ -60,6 +60,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		header = block.Header()
 		signer = types.MakeSigner(p.config, header.Number)
 	)
+	start := time.Now()
 	transactions := block.Transactions()
 	sortTransactions := make([][]*types.Transaction, prefetchThread)
 	for i := 0; i < prefetchThread; i++ {
@@ -69,7 +70,6 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		threadIdx := idx % prefetchThread
 		sortTransactions[threadIdx] = append(sortTransactions[threadIdx], transactions[idx])
 	}
-	start := time.Now()
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func(idx int) {
@@ -81,8 +81,6 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 			for i, tx := range sortTransactions[idx] {
 				// If block precaching was interrupted, abort
 				if interrupt != nil && atomic.LoadUint32(interrupt) == 1 {
-					statePrefetchTimer.Update(time.Since(start))
-					statePrefetchCounter.Inc(int64(time.Since(start)))
 					return
 				}
 				// Convert the transaction into an executable message and pre-cache its sender
@@ -93,10 +91,10 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 				newStatedb.Prepare(tx.Hash(), header.Hash(), i)
 				precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 			}
-			statePrefetchTimer.Update(time.Since(start))
-			statePrefetchCounter.Inc(int64(time.Since(start)))
 		}(i)
 	}
+	statePrefetchTimer.Update(time.Since(start))
+	statePrefetchCounter.Inc(int64(time.Since(start)))
 }
 
 // precacheTransaction attempts to apply a transaction to the given state database
