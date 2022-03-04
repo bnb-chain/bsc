@@ -479,9 +479,12 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	if len(balanceReads) != 0 {
 		for readAddr := range balanceReads {
 			if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
-				// txIndex = 0, would create StateObject for SystemAddress
-				log.Debug("conflict: read addr changed balance", "addr", readAddr)
-				return true
+				// SystemAddress is special, SystemAddressRedo() is prepared for it.
+				// Since txIndex = 0 will create StateObject for SystemAddress, skip its state change check
+				if readAddr != consensus.SystemAddress {
+					log.Debug("conflict: read addr changed balance", "addr", readAddr)
+					return true
+				}
 			}
 			if len(balanceWrite) != 0 {
 				if _, ok := balanceWrite[readAddr]; ok {
@@ -522,8 +525,10 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 		if len(addrWrite) != 0 {
 			for readAddr := range addrReads {
 				if _, ok := addrWrite[readAddr]; ok {
-					log.Debug("conflict: address state conflict", "addr", readAddr)
-					return true
+					if readAddr != consensus.SystemAddress {
+						log.Debug("conflict: address state conflict", "addr", readAddr)
+						return true
+					}
 				}
 			}
 		}
