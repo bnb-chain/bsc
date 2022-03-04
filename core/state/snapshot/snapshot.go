@@ -342,6 +342,10 @@ func (t *Tree) Snapshots(root common.Hash, limits int, nodisk bool) []Snapshot {
 
 func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Address]struct{}, accounts map[common.Address][]byte, storage map[common.Address]map[string][]byte, verified chan struct{}) error {
 	hashDestructs, hashAccounts, hashStorage := transformSnapData(destructs, accounts, storage)
+	fmt.Println("hashAccounts: ", len(hashAccounts))
+	for k, _ := range hashAccounts {
+		fmt.Println("key=", k)
+	}
 	return t.update(blockRoot, parentRoot, hashDestructs, hashAccounts, hashStorage, verified)
 }
 

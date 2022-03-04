@@ -1024,14 +1024,23 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 }
 
 func (s *StateDB) AccountsIntermediateWithoutRoot() {
-	s.accountsIntermediateRoot(false)
+	for addr := range s.stateObjectsPending {
+		if obj := s.stateObjects[addr]; !obj.deleted {
+			if s.snap != nil && !obj.deleted {
+				s.snapMux.Lock()
+				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
+				s.snapMux.Unlock()
+			}
+			data, err := rlp.EncodeToBytes(obj)
+			if err != nil {
+				panic(fmt.Errorf("can't encode object at %x: %v", addr[:], err))
+			}
+			obj.encodeData = data
+		}
+	}
 }
 
 func (s *StateDB) AccountsIntermediateRoot() {
-	s.accountsIntermediateRoot(true)
-}
-
-func (s *StateDB) accountsIntermediateRoot(updateRoot bool) {
 	tasks := make(chan func())
 	finishCh := make(chan struct{})
 	defer close(finishCh)
@@ -1058,9 +1067,7 @@ func (s *StateDB) accountsIntermediateRoot(updateRoot bool) {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			wg.Add(1)
 			tasks <- func() {
-				if updateRoot {
-					obj.updateRoot(s.db)
-				}
+				obj.updateRoot(s.db)
 
 				// If state snapshotting is active, cache the data til commit. Note, this
 				// update mechanism is not symmetric to the deletion, because whereas it is
@@ -1109,11 +1116,6 @@ func (s *StateDB) accountDataForDiffLayer() map[common.Hash][]byte {
 			tasks <- func() {
 				obj.updateRoot(s.db)
 				if s.snap != nil && !obj.deleted {
-					s.snapMux.Lock()
-					// It is possible to add unnecessary change, but it is fine.
-					s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
-					s.snapMux.Unlock()
-
 					lock.Lock()
 					accountData[obj.address.Hash()] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
 					lock.Unlock()
@@ -1166,6 +1168,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 		}
 		s.trie = tr
 	}
+	//TODO: stateObjectsPending here
 	usedAddrs := make([][]byte, 0, len(s.stateObjectsPending))
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; obj.deleted {
@@ -1178,6 +1181,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	if prefetcher != nil {
 		prefetcher.used(s.originalRoot, usedAddrs)
 	}
+	//TODO: stateObjectsPending here
 	if len(s.stateObjectsPending) > 0 {
 		s.stateObjectsPending = make(map[common.Address]struct{})
 	}
@@ -1367,15 +1371,23 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	commmitTrie := func() error {
 		commitErr := func() error {
 
+			accountData := make(map[common.Hash][]byte )
 			if s.pipeCommit && s.snap != nil {
 				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct
 				// Fix the wrong data here
-				accountData := s.accountDataForDiffLayer()
-				s.snap.CorrectAccounts(accountData)
+				accountData = s.accountDataForDiffLayer()
+				fmt.Println("accountData:", len(accountData))
+				for k, _ := range accountData {
+					fmt.Println("key=", k)
+				}
 			}
 
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
+			}
+
+			if s.pipeCommit && s.snap != nil {
+				s.snap.CorrectAccounts(accountData)
 			}
 			tasks := make(chan func())
 			taskResults := make(chan error, len(s.stateObjectsDirty))

@@ -299,9 +299,7 @@ func (dl *diffLayer) CorrectAccounts(accounts map[common.Hash][]byte) {
 	dl.lock.Lock()
 	defer dl.lock.Unlock()
 
-	for k, v := range accounts {
-		dl.accountData[k] = v
-	}
+	dl.accountData = accounts
 	dl.accountCorrected = true
 	if dl.accountCorrectedCh != nil {
 		dl.accountCorrectedCh <- struct{}{}
