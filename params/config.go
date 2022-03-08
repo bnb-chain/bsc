@@ -443,6 +443,7 @@ type ChainConfig struct {
 	MirrorSyncBlock *big.Int `json:"mirrorSyncBlock,omitempty" toml:",omitempty"` // mirrorSyncBlock switch block (nil = no fork, 0 = already activated)
 	BrunoBlock      *big.Int `json:"brunoBlock,omitempty" toml:",omitempty"`      // brunoBlock switch block (nil = no fork, 0 = already activated)
 	EulerBlock      *big.Int `json:"eulerBlock,omitempty" toml:",omitempty"`      // eulerBlock switch block (nil = no fork, 0 = already activated)
+	BonehBlock      *big.Int `json:"bonehBlock,omitempty" toml:",omitempty"`      // bonehBlock switch block (nil = no fork, 0 = already activated)
 
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
@@ -600,6 +601,14 @@ func (c *ChainConfig) IsEuler(num *big.Int) bool {
 // IsOnEuler returns whether num is equal to the euler fork block
 func (c *ChainConfig) IsOnEuler(num *big.Int) bool {
 	return configNumEqual(c.EulerBlock, num)
+// IsBoneh returns whether num is either equal to the fast finality fork block or greater.
+func (c *ChainConfig) IsBoneh(num *big.Int) bool {
+	return isForked(c.BonehBlock, num)
+}
+
+// IsOnBoneh returns whether num is equal to the fast finality fork block.
+func (c *ChainConfig) IsOnBoneh(num *big.Int) bool {
+	return configNumEqual(c.BonehBlock, num)
 }
 
 // IsMuirGlacier returns whether num is either equal to the Muir Glacier (EIP-2384) fork block or greater.
