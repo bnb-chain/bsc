@@ -115,8 +115,7 @@ func (s *StateDB) deleteStateObjectFromStateDB(addr common.Address) {
 
 // For parallel mode only, keep the change list for later conflict detect
 type SlotChangeList struct {
-	SlotDB              *StateDB // used for SlotDb reuse only, otherwise, it can be discarded
-	TxIndex             int      // the tx index of change list
+	TxIndex             int // the tx index of change list
 	StateObjectSuicided map[common.Address]struct{}
 	StateChangeSet      map[common.Address]StateKeys
 	BalanceChangeSet    map[common.Address]struct{}
@@ -259,39 +258,6 @@ func NewSlotDB(db *StateDB, systemAddr common.Address, baseTxIndex int, keepSyst
 		slotDB.SetBalance(systemAddr, big.NewInt(0))
 	}
 
-	return slotDB
-}
-
-// to avoid new slotDB for each Tx, slotDB should be valid and merged
-func ReUseSlotDB(slotDB *StateDB, keepSystem bool) *StateDB {
-	log.Debug("ReUseSlotDB", "baseTxIndex", slotDB.parallel.baseTxIndex,
-		"keepSystem", keepSystem, "refund", slotDB.refund,
-		"len(journal.entries)", len(slotDB.journal.entries))
-	slotDB.logs = make(map[common.Hash][]*types.Log, defaultNumOfSlots)
-	slotDB.logSize = 0
-	slotDB.parallel.systemAddressOpsCount = 0
-	slotDB.parallel.keepSystemAddressBalance = keepSystem
-	slotDB.parallel.stateObjectsSuicidedInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.codeReadsInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.codeChangesInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.stateChangesInSlot = make(map[common.Address]StateKeys, defaultNumOfSlots)
-	slotDB.parallel.stateReadsInSlot = make(map[common.Address]StateKeys, defaultNumOfSlots)
-	slotDB.parallel.balanceChangesInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.balanceReadsInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.addrStateReadsInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.addrStateChangesInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.parallel.nonceChangesInSlot = make(map[common.Address]struct{}, defaultNumOfSlots)
-
-	// Previous *StateObject in slot db has been transferred to dispatcher now.
-	// Slot could no longer use these *StateObject, do clear.
-	slotDB.parallel.dirtiedStateObjectsInSlot = make(map[common.Address]*StateObject, defaultNumOfSlots)
-
-	slotDB.stateObjectsDirty = make(map[common.Address]struct{}, defaultNumOfSlots)
-	slotDB.stateObjectsPending = make(map[common.Address]struct{}, defaultNumOfSlots)
-
-	if !keepSystem {
-		slotDB.SetBalance(slotDB.parallel.systemAddress, big.NewInt(0))
-	}
 	return slotDB
 }
 
@@ -495,7 +461,6 @@ func (s *StateDB) MergeSlotDB(slotDb *StateDB, slotReceipt *types.Receipt, txInd
 	// we have to create a new object to store change list for conflict detect, since
 	// StateDB could be reused and its elements could be overwritten
 	changeList := SlotChangeList{
-		SlotDB:              slotDb,
 		TxIndex:             txIndex,
 		StateObjectSuicided: make(map[common.Address]struct{}, len(slotDb.parallel.stateObjectsSuicidedInSlot)),
 		StateChangeSet:      make(map[common.Address]StateKeys, len(slotDb.parallel.stateChangesInSlot)),

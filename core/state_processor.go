@@ -48,7 +48,6 @@ const (
 	recentTime             = 1024 * 3
 	recentDiffLayerTimeout = 5
 	farDiffLayerTimeout    = 2
-	reuseSlotDB            = false // reuse could save state object copy cost
 )
 
 var MaxPendingQueueSize = 20               // parallel slot's maximum number of pending Txs
@@ -397,7 +396,6 @@ type SlotState struct {
 type ParallelTxResult struct {
 	redo         bool // for redo, dispatch will wait new tx result
 	updateSlotDB bool // for redo and pending tx quest, slot needs new slotDB,
-	reuseSlotDB  bool // will try to reuse latest finalized slotDB
 	keepSystem   bool // for redo, should keep system address's balance
 	txIndex      int
 	slotIndex    int   // slot index
@@ -618,14 +616,7 @@ func (p *StateProcessor) waitUntilNextTxDone(statedb *state.StateDB) *ParallelTx
 		if result.updateSlotDB {
 			// the target slot is waiting for new slotDB
 			slotState := p.slotState[result.slotIndex]
-			var slotDB *state.StateDB
-			if result.reuseSlotDB {
-				// for reuse, len(slotState.mergedChangeList) must >= 1
-				lastSlotDB := slotState.mergedChangeList[len(slotState.mergedChangeList)-1].SlotDB
-				slotDB = state.ReUseSlotDB(lastSlotDB, result.keepSystem)
-			} else {
-				slotDB = state.NewSlotDB(statedb, consensus.SystemAddress, p.mergedTxIndex, result.keepSystem)
-			}
+			slotDB := state.NewSlotDB(statedb, consensus.SystemAddress, p.mergedTxIndex, result.keepSystem)
 			slotState.slotdbChan <- slotDB
 			continue
 		}
@@ -682,7 +673,6 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 	var err error
 	var evm *vm.EVM
 
-	// fixme: to optimize, reuse the slotDB
 	slotDB.Prepare(tx.Hash(), block.Hash(), txIndex)
 	log.Debug("exec In Slot", "Slot", slotIndex, "txIndex", txIndex, "slotDB.baseTxIndex", slotDB.BaseTxIndex())
 
@@ -711,7 +701,6 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 		redoResult := &ParallelTxResult{
 			redo:         true,
 			updateSlotDB: true,
-			reuseSlotDB:  false,
 			txIndex:      txIndex,
 			slotIndex:    slotIndex,
 			tx:           tx,
@@ -747,9 +736,7 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 		systemAddrConflict = true
 	} else {
 		for index := 0; index < ParallelExecNum; index++ {
-
-			// skip current slot, when slot db reuse is not enabled
-			if index == slotIndex && !reuseSlotDB {
+			if index == slotIndex {
 				continue
 			}
 
@@ -779,7 +766,6 @@ func (p *StateProcessor) execInParallelSlot(slotIndex int, txReq *ParallelTxRequ
 		redoResult := &ParallelTxResult{
 			redo:         true,
 			updateSlotDB: true,
-			reuseSlotDB:  false, // for conflict, we do not reuse
 			keepSystem:   systemAddrConflict,
 			txIndex:      txIndex,
 			slotIndex:    slotIndex,
@@ -850,15 +836,11 @@ func (p *StateProcessor) runSlotLoop(slotIndex int) {
 		// ** for a dispatched tx,
 		//    the slot should be idle, it is better to create a new SlotDB, since new Tx is not related to previous Tx
 		// ** for a queued tx,
-		//    the previous SlotDB could be reused, since it is likely can be used
-		//    reuse could avoid NewSlotDB cost, which could be costable when StateDB is full of state object
-		//    if the previous SlotDB is
+		//    it is better to create a new SlotDB, since COW is used.
 		if txReq.slotDB == nil {
-			// for queued Tx, txReq.slotDB is nil, reuse slot's latest merged SlotDB
 			result := &ParallelTxResult{
 				redo:         false,
 				updateSlotDB: true,
-				reuseSlotDB:  reuseSlotDB,
 				slotIndex:    slotIndex,
 				err:          nil,
 			}
