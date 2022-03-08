@@ -1071,7 +1071,7 @@ func (c *finalitySignatureVerify) Run(input []byte) ([]byte, error) {
 		sigA    = getData(input, 64, 96)
 		numB    = new(big.Int).SetBytes(getData(input, 160, 32)).Uint64()
 		headerB = getData(input, 192, 32)
-		sigB    = getData(input, 224, 32)
+		sigB    = getData(input, 224, 96)
 		BLSKey  = getData(input, 320, 48)
 	)
 
