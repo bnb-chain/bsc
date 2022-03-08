@@ -13,6 +13,7 @@ const (
 
 type BLSPublicKey [BLSPublicKeyLength]byte
 type BLSSignature [BLSSignatureLength]byte
+type ValidatorsBitSet uint64
 
 type VoteData struct {
 	BlockNumber uint64
@@ -48,4 +49,11 @@ func (v *VoteEnvelope) calcVoteHash() common.Hash {
 		Data        VoteData
 	}{v.VoteAddress, v.Signature, v.Data}
 	return rlpHash(voteData)
+}
+
+type VoteAttestation struct {
+	VoteAddressSet ValidatorsBitSet
+	AggSignature   BLSSignature
+	Data           VoteData
+	Extra          []byte
 }
