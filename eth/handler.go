@@ -45,8 +45,12 @@ import (
 const (
 	// txChanSize is the size of channel listening to NewTxsEvent.
 	// The number is referenced from the size of tx pool.
-	txChanSize   = 256
-	voteChanSize = 4096
+	txChanSize = 4096
+
+	// voteChanSize is the size of channel listening to NewVotesEvent.
+	voteChanSize = 256
+
+	deltaTdThreshold = 20
 )
 
 var (
@@ -99,7 +103,7 @@ type handlerConfig struct {
 	Chain                  *core.BlockChain          // Blockchain to serve data from
 	TxPool                 txPool                    // Transaction pool to propagate from
 	VotePool               votePool                  // Votes pool to propagate from
-	Network                uint64                    // Network identifier to adfvertise
+	Network                uint64                    // Network identifier to advertise
 	Sync                   downloader.SyncMode       // Whether to fast or full sync
 	DiffSync               bool                      // Whether to diff sync
 	BloomCache             uint64                    // Megabytes to alloc for fast sync bloom
@@ -273,7 +277,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 }
 
 // runEthPeer registers an eth peer into the joint eth/snap peerset, adds it to
-// various subsistems and starts handling messages.
+// various subsystems and starts handling messages.
 func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// If the peer has a `snap` extension, wait for it to connect so we can have
 	// a uniform initialization/teardown mechanism
@@ -619,7 +623,10 @@ func (h *handler) BroadcastVotes(votes types.VoteEnvelopes) {
 	for _, vote := range votes {
 		peers := h.peers.peersWithoutVote(vote.Hash())
 		for _, peer := range peers {
-			voteset[peer] = append(voteset[peer], vote)
+			_, peerTD := peer.Head()
+			if deltaTD := new(big.Int).Abs(new(big.Int).Sub(h.chain.CurrentBlock().Difficulty(), peerTD)); deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 {
+				voteset[peer] = append(voteset[peer], vote)
+			}
 		}
 	}
 
