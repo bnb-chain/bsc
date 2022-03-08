@@ -252,6 +252,7 @@ func init() {
 		utils.ShowDeprecated,
 		// See snapshot.go
 		snapshotCommand,
+		blsCommand,
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
 

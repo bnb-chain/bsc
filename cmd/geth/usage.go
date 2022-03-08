@@ -245,6 +245,12 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			utils.CatalystFlag,
 		},
 	},
+	{
+		Name: "BLS ACCOUNT",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+		},
+	},
 }
 
 func init() {
