@@ -45,8 +45,12 @@ import (
 const (
 	// txChanSize is the size of channel listening to NewTxsEvent.
 	// The number is referenced from the size of tx pool.
-	txChanSize   = 256
-	voteChanSize = 4096
+	txChanSize = 4096
+
+	// voteChanSize is the size of channel listening to NewVotesEvent.
+	voteChanSize = 256
+
+	deltaTdThreshold = 20
 )
 
 var (
@@ -626,7 +630,7 @@ func (h *handler) BroadcastVotes(votes types.VoteEnvelopes) {
 		peers := h.peers.peersWithoutVote(vote.Hash())
 		for _, peer := range peers {
 			_, peerTD := peer.Head()
-			if deltaTD := new(big.Int).Abs(peerTD.Sub(h.chain.CurrentBlock().Difficulty(), peerTD)); deltaTD.Cmp(big.NewInt(20)) != 1 {
+			if deltaTD := new(big.Int).Abs(new(big.Int).Sub(h.chain.CurrentBlock().Difficulty(), peerTD)); deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 {
 				voteset[peer] = append(voteset[peer], vote)
 			}
 		}
