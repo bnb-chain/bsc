@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"reflect"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -191,6 +192,7 @@ func newDiffLayer(parent snapshot, root common.Hash, destructs map[common.Hash]s
 	default:
 		panic("unknown parent type")
 	}
+	fmt.Println("parent type:", reflect.TypeOf(parent))
 	// Sanity check that accounts or storage slots are never nil
 	for accountHash, blob := range accounts {
 		if blob == nil {
@@ -291,7 +293,20 @@ func (dl *diffLayer) CorrectAccounts(accounts map[common.Hash][]byte) {
 	dl.lock.Lock()
 	defer dl.lock.Unlock()
 
+	fmt.Println("diffLayer CorrectAccounts")
+	fmt.Println("diffLayer hash:", dl.root.Hex())
+	fmt.Println("------------")
+	fmt.Println("difflayer before:", len(dl.accountData))
+	for k, v := range dl.accountData {
+		fmt.Printf("key:= %s, v:= %x \n", k.Hex(), v)
+	}
+
 	dl.accountData = accounts
+	fmt.Println("difflayer after:", len(dl.accountData))
+	for k, v := range dl.accountData {
+		fmt.Printf("key:= %s, v:= %x \n", k.Hex(), v)
+	}
+	fmt.Println("------------")
 }
 
 // Parent returns the subsequent layer of a diff layer.
@@ -462,6 +477,7 @@ func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int) ([
 // Update creates a new layer on top of the existing snapshot diff tree with
 // the specified data items.
 func (dl *diffLayer) Update(blockRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer {
+	fmt.Println("diffLayer Update")
 	return newDiffLayer(dl, blockRoot, destructs, accounts, storage, verified)
 }
 

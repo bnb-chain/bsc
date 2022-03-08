@@ -1117,7 +1117,8 @@ func (s *StateDB) accountDataForDiffLayer() map[common.Hash][]byte {
 				obj.updateRoot(s.db)
 				if s.snap != nil && !obj.deleted {
 					lock.Lock()
-					accountData[obj.address.Hash()] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
+					s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
+					accountData[crypto.Keccak256Hash(obj.address[:])] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
 					lock.Unlock()
 				}
 				data, err := rlp.EncodeToBytes(obj)
@@ -1359,6 +1360,8 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	var diffLayer *types.DiffLayer
 	var verified chan struct{}
 	var snapUpdated chan struct{}
+	var snapCreated chan common.Hash
+	var accountRefreshed chan struct{}
 	if s.snap != nil {
 		diffLayer = &types.DiffLayer{}
 	}
@@ -1366,16 +1369,18 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		// async commit the MPT
 		verified = make(chan struct{})
 		snapUpdated = make(chan struct{})
+		snapCreated = make(chan common.Hash)
+		accountRefreshed = make(chan struct{})
 	}
 
 	commmitTrie := func() error {
 		commitErr := func() error {
-
-			accountData := make(map[common.Hash][]byte )
+			accountData := make(map[common.Hash][]byte)
 			if s.pipeCommit && s.snap != nil {
 				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct
 				// Fix the wrong data here
 				accountData = s.accountDataForDiffLayer()
+				close(accountRefreshed)
 				fmt.Println("accountData:", len(accountData))
 				for k, _ := range accountData {
 					fmt.Println("key=", k)
@@ -1386,9 +1391,16 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
 			}
 
-			if s.pipeCommit && s.snap != nil {
-				s.snap.CorrectAccounts(accountData)
+			if s.pipeCommit {
+				fmt.Println("s.stateRoot:", s.stateRoot.Hex())
+				root := <-snapCreated
+
+				empty := common.Hash{}
+				if root != empty {
+					s.snaps.Snapshot(root).CorrectAccounts(accountData)
+				}
 			}
+
 			tasks := make(chan func())
 			taskResults := make(chan error, len(s.stateObjectsDirty))
 			tasksNum := 0
@@ -1530,6 +1542,11 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				if parent := s.snap.Root(); parent != s.expectedRoot {
 					if err := s.snaps.Update(s.expectedRoot, parent, s.snapDestructs, s.snapAccounts, s.snapStorage, verified); err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
+						snapCreated <- common.Hash{}
+					}
+					if s.pipeCommit {
+						fmt.Println("s.expectedRoot", s.expectedRoot.Hex())
+						snapCreated <- s.expectedRoot
 					}
 					// Keep n diff layers in the memory
 					// - head layer is paired with HEAD state
@@ -1546,6 +1563,9 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		},
 		func() error {
 			if s.snap != nil {
+				if s.pipeCommit {
+					<-accountRefreshed
+				}
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 			}
 			return nil

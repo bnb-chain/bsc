@@ -18,6 +18,7 @@ package snapshot
 
 import (
 	"bytes"
+	"fmt"
 	"sync"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -59,7 +60,18 @@ func (dl *diskLayer) Verified() bool {
 	return true
 }
 
-func (dl *diskLayer) CorrectAccounts(map[common.Hash][]byte) {}
+func (dl *diskLayer) CorrectAccounts(accounts map[common.Hash][]byte) {
+	dl.lock.Lock()
+	defer dl.lock.Unlock()
+
+	fmt.Println("diskLayer CorrectAccounts")
+	fmt.Println("-----")
+	fmt.Println("diskLayer to use :", len(accounts))
+	for k, v := range accounts {
+		fmt.Printf("key:= %s, v:= %x \n", k.Hex(), v)
+	}
+	fmt.Println("-----")
+}
 
 // Parent always returns nil as there's no layer below the disk.
 func (dl *diskLayer) Parent() snapshot {
@@ -174,5 +186,6 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 // the specified data items. Note, the maps are retained by the method to avoid
 // copying everything.
 func (dl *diskLayer) Update(blockHash common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer {
+	fmt.Println("disklayer update")
 	return newDiffLayer(dl, blockHash, destructs, accounts, storage, verified)
 }
