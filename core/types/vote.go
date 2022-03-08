@@ -15,6 +15,9 @@ type BLSPublicKey [BLSPublicKeyLength]byte
 type BLSSignature [BLSSignatureLength]byte
 type ValidatorsBitSet uint64
 
+// Bytes gets the string representation of the underlying BLS public key.
+func (p BLSPublicKey) Bytes() []byte { return p[:] }
+
 type VoteData struct {
 	BlockNumber uint64
 	BlockHash   common.Hash
