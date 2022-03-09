@@ -16,8 +16,6 @@
 package vote
 
 import (
-	"sync"
-
 	mapset "github.com/deckarep/golang-set"
 
 	"github.com/ethereum/go-ethereum/core"
@@ -28,12 +26,17 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+const (
+	preDefinedBlocks = 15
+)
+
+type Rules interface {
+	UnderRules(header *types.Header) bool
+}
+
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {
-	mu  sync.RWMutex
 	mux *event.TypeMux
-
-	km *KeyManager
 
 	chain       blockChain
 	chainconfig *params.ChainConfig
@@ -41,15 +44,18 @@ type VoteManager struct {
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 
-	vp *VotePool // Pointer to VotesPool component
-
-	vj *VoteJournal // Pointer to VoteJournal component
+	signer  *VoteSigner
+	journal *VoteJournal
 
 	voteSet mapset.Set
-	isReady chan bool
+
+	votesFeed event.Feed
+	scope     event.SubscriptionScope
+
+	rules Rules
 }
 
-func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain blockChain, vp *VotePool, vj *VoteJournal) (*VoteManager, error) {
+func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain blockChain, journal *VoteJournal, signer *VoteSigner) (*VoteManager, error) {
 	voteManager := &VoteManager{
 		mux: mux,
 
@@ -57,16 +63,10 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain b
 		chainconfig: chainconfig,
 		chainHeadCh: make(chan core.ChainHeadEvent, chainHeadChanSize),
 
-		vp: vp,
-		vj: vj,
+		signer:  signer,
+		journal: journal,
 
 		voteSet: mapset.NewSet(),
-		isReady: make(chan bool, 1),
-	}
-
-	if err := voteManager.vj.LoadVotesJournal(); err != nil {
-		log.Warn("Failed to load votes journal", "err", err)
-		return voteManager, err
 	}
 
 	voteManager.chainHeadSub = voteManager.chain.SubscribeChainHeadEvent(voteManager.chainHeadCh)
@@ -76,9 +76,8 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain b
 	return voteManager, nil
 }
 
-func (vm *VoteManager) loop() {
-
-	events := vm.mux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
+func (voteManager *VoteManager) loop() {
+	events := voteManager.mux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
 	defer func() {
 		if !events.Closed() {
 			events.Unsubscribe()
@@ -102,68 +101,71 @@ func (vm *VoteManager) loop() {
 			case downloader.DoneEvent:
 				startVote = true
 			}
-		case cHead := <-vm.chainHeadCh:
-			if startVote {
-				if cHead.Block == nil {
+		case cHead := <-voteManager.chainHeadCh:
+			if !startVote || cHead.Block == nil {
+				continue
+			}
+
+			curBlock := cHead.Block
+			// Vote for curBlock.
+			vote := &types.VoteData{
+				BlockNumber: curBlock.NumberU64(),
+				BlockHash:   curBlock.Hash(),
+			}
+			voteMessage := &types.VoteEnvelope{
+				Data: vote,
+			}
+			// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
+			if ok := voteManager.rules.UnderRules(curBlock.Header()); ok {
+				if err := voteManager.signer.SignVote(voteMessage); err != nil {
+					log.Warn("Failed to sign vote", "err", err)
 					continue
 				}
-
-				curBlock := cHead.Block
-				// Vote for curBlock.
-				vote := &types.VoteData{
-					BlockNumber: curBlock.NumberU64(),
-					BlockHash:   curBlock.Hash(),
-				}
-				voteMessage := &types.VoteEnvelope{
-					Data: vote,
-				}
-				// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
-				if ok := vm.IsUnderRules(curBlock.Header()); ok {
-					if err := vm.km.SignVote(voteMessage); err != nil {
-						log.Warn("Failed to sign vote", "err", err)
-					}
-
-					vm.vj.WriteVotesJournal(voteMessage)
-					vm.vp.PutVote(voteMessage)
-
-				}
-
+				voteManager.journal.WriteVote(voteMessage)
+				voteManager.votesFeed.Send(voteMessage)
 			}
+
 		}
 
 	}
 
 }
 
+func (voteManager *VoteManager) SubscribeNewVotesForPut(ch chan<- *types.VoteEnvelope) event.Subscription {
+	return voteManager.scope.Track(voteManager.votesFeed.Subscribe(ch))
+}
+
 // Check if the produced header under the Rule1: Validators always vote once and only once on one height,
 // Rule2: Validators always vote for the child of its previous vote within a predefined n blocks to avoid vote on two different
 // forks of chain.
-func (vm *VoteManager) IsUnderRules(header *types.Header) bool {
-	vm.mu.RLock()
-	defer vm.mu.RUnlock()
+func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
 
-	journalBuffer := vm.vj.journalBuffer
-	// Check for Rule.
-	isValid := false
-
-	if len(journalBuffer) == 0 {
-		isValid = true
-	} else {
-		vote := journalBuffer[len(journalBuffer)-1]
-		blockNumber := vote.Data.BlockNumber
-		blockHash := vote.Data.BlockHash
-		curBlockHeader := header
-
-		for curBlockHeader.Number.Uint64() >= blockNumber {
-			if curBlockHeader.Number.Uint64() == blockNumber {
-				if curBlockHeader.Hash() == blockHash {
-					isValid = true
-				}
-				break
-			}
-			curBlockHeader = vm.chain.GetHeader(curBlockHeader.ParentHash, curBlockHeader.Number.Uint64()-1)
-		}
-
+	latestVote := voteManager.journal.latestVote
+	if latestVote == nil {
+		return true
 	}
-	return isValid
+
+	latestBlockNumber := latestVote.Data.BlockNumber
+	latestBlockHash := latestVote.Data.BlockHash
+
+	// Check for Rules.
+	if header.Number.Uint64()-latestBlockNumber > preDefinedBlocks {
+		return true
+	}
+
+	curBlockHeader := header
+	if curBlockHeader.Number.Uint64() <= latestBlockNumber {
+		return false
+	}
+	for curBlockHeader.Number.Uint64() >= latestBlockNumber {
+		if curBlockHeader.Number.Uint64() == latestBlockNumber {
+			if curBlockHeader.Hash() == latestBlockHash {
+				return true
+			}
+			break
+		}
+		curBlockHeader = voteManager.chain.GetHeader(curBlockHeader.ParentHash, curBlockHeader.Number.Uint64()-1)
+	}
+
+	return false
 }

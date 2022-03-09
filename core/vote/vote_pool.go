@@ -16,6 +16,7 @@
 package vote
 
 import (
+	"container/heap"
 	"errors"
 	"sync"
 
@@ -23,30 +24,27 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
-	maxVoteAmountForSingleBlock = 21
-	itemsAmountInPriorityQueue  = 1000
+	maxVoteAmountPerBlock       = 21
+	voteBufferForPut            = 256
 	lowerLimitOfVoteBlockNumber = 256
 	upperLimitOfVoteBlockNumber = 11
+	voteMaxSize                 = 128 * 1024 // Set the maxSize of vote as 128KB.
 
 	// chainHeadChanSize is the size of channel listening to ChainHeadEvent.
 	chainHeadChanSize = 10
 )
 
-var InvalidVote = errors.New("Invalid Vote")
+var invalidVote = errors.New("invalid Vote")
 
 type blockChain interface {
 	CurrentBlock() *types.Block
-	GetBlock(hash common.Hash, number uint64) *types.Block
-	StateAt(root common.Hash) (*state.StateDB, error)
 	SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription
 	GetHeader(hash common.Hash, number uint64) *types.Header
 }
@@ -61,245 +59,268 @@ type VotePool struct {
 	chainconfig *params.ChainConfig
 	mu          sync.RWMutex
 
-	vm *VoteManager
-
-	km *KeyManager
+	voteManager *VoteManager
 
 	votesFeed event.Feed
 	scope     event.SubscriptionScope
 
-	isDuplicateVote mapset.Set
+	receivedVotes mapset.Set
 
 	curVotes    map[common.Hash]*VoteBox
 	futureVotes map[common.Hash]*VoteBox
 
-	curBlockPq    blockPriorityQueue
-	futureBlockPq blockPriorityQueue
+	curVotesPq    *votesPriorityQueue
+	futureVotesPq *votesPriorityQueue
 
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
+
+	votesCh chan *types.VoteEnvelope
+	voteSub event.Subscription
 }
 
-type blockPriorityQueue []*types.VoteData
+type votesPriorityQueue []*types.VoteData
 
 func NewVotePool(chainconfig *params.ChainConfig, chain blockChain) *VotePool {
 
-	vp := &VotePool{
-		chain:           chain,
-		chainconfig:     chainconfig,
-		isDuplicateVote: mapset.NewSet(),
-		curVotes:        make(map[common.Hash]*VoteBox),
-		futureVotes:     make(map[common.Hash]*VoteBox),
-		curBlockPq:      make([]*types.VoteData, itemsAmountInPriorityQueue),
-		futureBlockPq:   make([]*types.VoteData, itemsAmountInPriorityQueue),
-		chainHeadCh:     make(chan core.ChainHeadEvent, chainHeadChanSize),
+	votePool := &VotePool{
+		chain:         chain,
+		chainconfig:   chainconfig,
+		receivedVotes: mapset.NewSet(),
+		curVotes:      make(map[common.Hash]*VoteBox),
+		futureVotes:   make(map[common.Hash]*VoteBox),
+		curVotesPq:    &votesPriorityQueue{},
+		futureVotesPq: &votesPriorityQueue{},
+		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
+		votesCh:       make(chan *types.VoteEnvelope, voteBufferForPut),
 	}
 
 	// Subscribe events from blockchain and start the main event loop.
-	vp.chainHeadSub = vp.chain.SubscribeChainHeadEvent(vp.chainHeadCh)
+	votePool.chainHeadSub = votePool.chain.SubscribeChainHeadEvent(votePool.chainHeadCh)
 
-	go vp.loop()
+	// Subscribe event from voteManager feed and put the votes to vote pool.
+	votePool.voteSub = votePool.voteManager.SubscribeNewVotesForPut(votePool.votesCh)
 
-	return vp
+	go votePool.loop()
+
+	return votePool
 }
 
 // loop is the vote pool's main even loop, waiting for and reacting to outside blockchain events.
-func (vp *VotePool) loop() {
+func (pool *VotePool) loop() {
 
 	for {
 		select {
 		// Handle ChainHeadEvent
-		case ev := <-vp.chainHeadCh:
+		case ev := <-pool.chainHeadCh:
 			if ev.Block != nil {
-				vp.votePoolPruner(ev.Block.NumberU64())
+				latestBlockNumber := ev.Block.NumberU64()
+				pool.prune(latestBlockNumber)
+				pool.transferVotesFromFutureToCur(latestBlockNumber)
 			}
-		case <-vp.chainHeadSub.Err():
+		case <-pool.chainHeadSub.Err():
+			return
+		case vote := <-pool.votesCh:
+			pool.PutVote(vote)
+		case <-pool.voteSub.Err():
 			return
 		}
 	}
 
 }
 
-func (vp *VotePool) PutVote(voteMessage *types.VoteEnvelope) (bool, error) {
+func (pool *VotePool) PutVote(vote *types.VoteEnvelope) bool {
 
-	voteBlockNumber := voteMessage.Data.BlockNumber
-	voteBlockHash := voteMessage.Data.BlockHash
-	headNumber := vp.chain.CurrentBlock().NumberU64()
+	voteBlockNumber := vote.Data.BlockNumber
+	voteBlockHash := vote.Data.BlockHash
+	headNumber := pool.chain.CurrentBlock().NumberU64()
 
 	voteData := &types.VoteData{
 		BlockNumber: voteBlockNumber,
 		BlockHash:   voteBlockHash,
 	}
 
-	vp.mu.Lock()
-	defer vp.mu.Unlock()
+	var votes map[common.Hash]*VoteBox
+	var votesPq *votesPriorityQueue
+	isFutureVote := false
+
 	if voteBlockNumber > headNumber {
-		if ok := vp.isValid(voteMessage, headNumber, voteBlockNumber, voteBlockHash, &vp.futureVotes); !ok {
-			return false, InvalidVote
-		}
-		vp.putInMap(&vp.futureVotes, voteBlockHash, voteBlockNumber, voteMessage)
-		vp.futureBlockPq.Push(voteData)
-
+		votes = pool.futureVotes
+		votesPq = pool.futureVotesPq
+		isFutureVote = true
 	} else {
-		if err := vp.km.VerifyVote(voteMessage); err != nil {
-			return false, nil
+		if err := VerifyVoteWithBLS(vote); err != nil {
+			log.Error("Failed to verify voteMessage", "err", err)
+			return false
 		}
-
-		if ok := vp.isValid(voteMessage, headNumber, voteBlockNumber, voteBlockHash, &vp.curVotes); !ok {
-			return false, InvalidVote
-		}
-
-		vp.putInMap(&vp.curVotes, voteBlockHash, voteBlockNumber, voteMessage)
-		vp.curBlockPq.Push(voteData)
-
+		votes = pool.curVotes
+		votesPq = pool.curVotesPq
 	}
-	vp.votesFeed.Send(voteMessage)
-	return true, nil
+
+	if ok := pool.basicVerify(vote, headNumber, votes, isFutureVote); !ok {
+		log.Error("voteMessage is invalid", "err", invalidVote)
+		return false
+	}
+
+	pool.putVote(votes, vote)
+	heap.Push(votesPq, voteData)
+
+	if !isFutureVote {
+		pool.votesFeed.Send(vote)
+	}
+
+	return true
 }
 
-func (vp *VotePool) SubscribeNewVotesEvent(ch chan<- []*types.VoteEnvelope) event.Subscription {
-	return vp.scope.Track(vp.votesFeed.Subscribe(ch))
+func (pool *VotePool) SubscribeNewVotesEvent(ch chan<- []*types.VoteEnvelope) event.Subscription {
+	return pool.scope.Track(pool.votesFeed.Subscribe(ch))
 }
 
-func (vp *VotePool) putInMap(m *map[common.Hash]*VoteBox, voteBlockHash common.Hash, voteBlockNumber uint64, voteMessage *types.VoteEnvelope) {
-	if VoteEnvelopes, ok := (*m)[voteBlockHash]; ok {
-		VoteEnvelopes.voteMessages = append(VoteEnvelopes.voteMessages, voteMessage)
-	} else {
-		vBox := &VoteBox{
+func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, vote *types.VoteEnvelope) {
+	voteBlockHash := vote.Data.BlockHash
+	voteBlockNumber := vote.Data.BlockNumber
+
+	if _, ok := m[voteBlockHash]; !ok {
+		voteBox := &VoteBox{
 			blockNumber:  voteBlockNumber,
-			voteMessages: make([]*types.VoteEnvelope, 0, maxVoteAmountForSingleBlock),
+			voteMessages: make([]*types.VoteEnvelope, 0, maxVoteAmountPerBlock),
 		}
-		(*m)[voteBlockHash] = vBox
+		m[voteBlockHash] = voteBox
 	}
+
+	m[voteBlockHash].voteMessages = append(m[voteBlockHash].voteMessages, vote)
 
 }
 
-func (vp *VotePool) transferVotesFromFutureToCur(curBlockNumber uint64) {
-	curPq, futurePq := vp.curBlockPq, vp.futureBlockPq
-	curVotes, futureVotes := vp.curVotes, vp.futureVotes
+func (pool *VotePool) transferVotesFromFutureToCur(latestBlockNumber uint64) {
+	curPq, futurePq := pool.curVotesPq, pool.futureVotesPq
+	curVotes, futureVotes := pool.curVotes, pool.futureVotes
 
-	for futurePq.Len() > 0 && futurePq[0].BlockNumber <= curBlockNumber {
-		blockHash := futurePq[0].BlockHash
-		vote := futureVotes[blockHash]
-		validVotes := make([]*types.VoteEnvelope, 0, len(vote.voteMessages))
-		for _, v := range vote.voteMessages {
-			// Verify the future vote.
-			if err := vp.km.VerifyVote(v); err == nil {
-				validVotes = append(validVotes, v)
+	for futurePq.Len() > 0 && (*futurePq)[0].BlockNumber <= latestBlockNumber {
+		blockHash := (*futurePq)[0].BlockHash
+		voteBox := futureVotes[blockHash]
+		validVotes := make([]*types.VoteEnvelope, 0, len(voteBox.voteMessages))
+		for _, vote := range voteBox.voteMessages {
+			// Verify the vote from futureVotes.
+			if err := VerifyVoteWithBLS(vote); err == nil {
+				// Send valid vote to votes channel in the process of transfer.
+				pool.votesFeed.Send(vote)
+				validVotes = append(validVotes, vote)
 			}
 		}
-		vote.voteMessages = validVotes
-		curVotes[blockHash] = vote
-		voteData := futurePq.Pop()
-		curPq.Push(voteData)
+
+		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
+
+		voteData := heap.Pop(futurePq)
+		heap.Push(curPq, voteData)
+
 		delete(futureVotes, blockHash)
 	}
 }
 
 // Prune duplicationSet, priorityQueue and Map of curVotes.
-func (vp *VotePool) votePoolPruner(curBlockNumber uint64) {
+func (pool *VotePool) prune(lastestBlockNumber uint64) {
 
-	vp.mu.Lock()
-	curBlockPq := vp.curBlockPq
-	curVotes := vp.curVotes
+	pool.mu.Lock()
 
-	for curBlockPq.Len() > 0 && curBlockPq[0].BlockNumber < curBlockNumber-lowerLimitOfVoteBlockNumber {
-		blockHash := curBlockPq[0].BlockHash
-		// Prune priorityQueue.
+	curVotes := pool.curVotes
+	curBlockPq := pool.curVotesPq
+
+	for curBlockPq.Len() > 0 && (*curBlockPq)[0].BlockNumber < lastestBlockNumber-lowerLimitOfVoteBlockNumber {
+		blockHash := (*curBlockPq)[0].BlockHash
+
+		// Prune curPriorityQueue.
 		curBlockPq.Pop()
-		VoteEnvelopes := curVotes[blockHash].voteMessages
+		voteMessages := curVotes[blockHash].voteMessages
 
 		// Prune duplicationSet.
-		for _, VoteEnvelope := range VoteEnvelopes {
-			vote, err := rlp.EncodeToBytes(VoteEnvelope)
-			if err != nil {
-				log.Warn("Failed to Encode VoteEnvelope", "err", err)
-			}
-			vp.isDuplicateVote.Remove(vote)
+		for _, voteMessage := range voteMessages {
+			voteHash := voteMessage.Hash()
+			pool.receivedVotes.Remove(voteHash)
 		}
+
 		// Prune curVotes Map.
 		delete(curVotes, blockHash)
 
 	}
-	vp.mu.Unlock()
-	vp.transferVotesFromFutureToCur(curBlockNumber)
+	pool.mu.Unlock()
 
 }
 
 // Get votes as batch.
-func (vp *VotePool) GetVotes() []*types.VoteEnvelope {
-	vp.mu.RLock()
-	defer vp.mu.Unlock()
+func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
+	pool.mu.RLock()
+	defer pool.mu.Unlock()
 
-	allVotes := make([]*types.VoteEnvelope, 0)
-	curVotes := vp.curVotes
-	for _, vBox := range curVotes {
-		allVotes = append(allVotes, vBox.voteMessages...)
+	votesRes := make([]*types.VoteEnvelope, 0)
+
+	curVotes := pool.curVotes
+	for _, voteBox := range curVotes {
+		votesRes = append(votesRes, voteBox.voteMessages...)
 	}
-	futureVotes := vp.futureVotes
-	for _, vBox := range futureVotes {
-		allVotes = append(allVotes, vBox.voteMessages...)
-	}
-	return allVotes
+
+	return votesRes
 }
 
-func (vp *VotePool) FetchAvailableVotes(blockHash common.Hash) ([]*types.VoteEnvelope, bool) {
-	vp.mu.RLock()
-	defer vp.mu.Unlock()
-	if vote, ok := vp.curVotes[blockHash]; ok && len(vote.voteMessages) >= maxVoteAmountForSingleBlock*3/4 {
-		return vote.voteMessages, true
+func (pool *VotePool) FetchAvailableVotes(blockHash common.Hash) (*VoteBox, bool) {
+	pool.mu.RLock()
+	defer pool.mu.Unlock()
+	if vote, ok := pool.curVotes[blockHash]; ok && len(vote.voteMessages) >= maxVoteAmountPerBlock*3/4 {
+		return vote, true
 	}
 	return nil, false
 }
 
-func (vp *VotePool) isValid(voteMessage *types.VoteEnvelope, headNumber, voteBlockNumber uint64, voteBlockHash common.Hash, m *map[common.Hash]*VoteBox) bool {
-	// Check duplicate voteMessage firstly.
-	vote, err := rlp.EncodeToBytes(voteMessage)
-	if err != nil {
-		log.Error("Failed EncodeToBytes for voteMessage", "err", err)
-		return false
-	}
+func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m map[common.Hash]*VoteBox, isFutureVote bool) bool {
 
-	vp.mu.Lock()
-	defer vp.mu.Unlock()
-	if vp.isDuplicateVote.Contains(vote) {
+	voteHash := vote.Hash()
+	voteBlockNumber := vote.Data.BlockNumber
+	voteBlockHash := vote.Data.BlockHash
+
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	// Check duplicate voteMessage firstly.
+	if !pool.receivedVotes.Add(voteHash) {
 		return false
 	}
-	vp.isDuplicateVote.Add(vote)
 
 	// Make sure in the range currentHeight-256~currentHeight+11.
 	if voteBlockNumber < headNumber-lowerLimitOfVoteBlockNumber || voteBlockNumber > headNumber+upperLimitOfVoteBlockNumber {
 		return false
 	}
 
-	// No more than 21 votes for the same blockHash.
-	if VoteEnvelopes, ok := (*m)[voteBlockHash]; ok {
-		if len(VoteEnvelopes.voteMessages) == maxVoteAmountForSingleBlock {
-			return false
-		}
+	// Reject votes over defined size to prevent DOS attacks.
+	if isFutureVote {
+		return vote.Size() <= voteMaxSize
+	}
+
+	// No more than 21 votes for the same blockHash if not futureVotes.
+	if voteBox, ok := m[voteBlockHash]; ok {
+		return len(voteBox.voteMessages) <= maxVoteAmountPerBlock
 	}
 
 	return true
 }
 
-func (pq blockPriorityQueue) Less(i, j int) bool {
+func (pq votesPriorityQueue) Less(i, j int) bool {
 	return pq[i].BlockNumber < pq[j].BlockNumber
 }
 
-func (pq blockPriorityQueue) Len() int {
+func (pq votesPriorityQueue) Len() int {
 	return len(pq)
 }
 
-func (pq blockPriorityQueue) Swap(i, j int) {
+func (pq votesPriorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 }
 
-func (pq *blockPriorityQueue) Push(vote interface{}) {
+func (pq *votesPriorityQueue) Push(vote interface{}) {
 	curVote := vote.(*types.VoteData)
 	*pq = append(*pq, curVote)
 }
 
-func (pq *blockPriorityQueue) Pop() interface{} {
+func (pq *votesPriorityQueue) Pop() interface{} {
 	tmp := *pq
 	l := len(tmp)
 	var res interface{} = tmp[l-1]

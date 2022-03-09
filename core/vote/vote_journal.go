@@ -17,108 +17,110 @@ package vote
 
 import (
 	"encoding/json"
-	"math"
-	"sync"
 
 	"github.com/tidwall/wal"
 
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 const (
-	BufferSizeForJournal = 256
+	maxSizeOfRecentEntry = 256
 )
 
 type VoteJournal struct {
-	mu sync.RWMutex
+	journalPath string // Disk journal for saving the vote.
 
-	journalBuffer []*types.VoteEnvelope // buffered journal in memory.
+	walLog *wal.Log
 
-	config *VoteJournalConfig
-
-	log *wal.Log
+	latestVote *types.VoteEnvelope // Maintain a variable to record the most recent vote of the local node.
 }
 
-type VoteJournalConfig struct {
-	filePath string // Disk journal for saving the vote
+func NewVoteJournal(filePath string) (*VoteJournal, error) {
 
-}
-
-func NewVoteJournal(config *VoteJournalConfig) (*VoteJournal, error) {
-	voteJournal := &VoteJournal{
-		journalBuffer: make([]*types.VoteEnvelope, 0, BufferSizeForJournal),
-		config:        config,
-	}
-	log, err := wal.Open(voteJournal.config.filePath, nil)
+	walLog, err := wal.Open(filePath, &wal.Options{
+		LogFormat:        wal.JSON,
+		SegmentCacheSize: maxSizeOfRecentEntry,
+	})
 	if err != nil {
 		return nil, err
 	}
-	voteJournal.log = log
+
+	voteJournal := &VoteJournal{
+		journalPath: filePath,
+		walLog:      walLog,
+	}
+
+	if err := voteJournal.LoadVotes(); err != nil {
+		log.Warn("Failed to load votes journal", "err", err)
+		return nil, err
+	}
+
 	return voteJournal, nil
 }
 
-func (vj *VoteJournal) WriteVotesJournal(voteMessage *types.VoteEnvelope) error {
-	vj.mu.Lock()
-	defer vj.mu.Unlock()
-	if len(vj.journalBuffer) == BufferSizeForJournal {
-		vj.journalBuffer = vj.journalBuffer[1:]
-	}
-	vj.journalBuffer = append(vj.journalBuffer, voteMessage)
+func (journal *VoteJournal) WriteVote(voteMessage *types.VoteEnvelope) error {
+	walLog := journal.walLog
 
-	log := vj.log
-
-	// Write vote message
 	vote, err := json.Marshal(voteMessage)
 	if err != nil {
 		return err
 	}
-	lastIndex, err := log.LastIndex()
+
+	lastIndex, err := walLog.LastIndex()
 	if err != nil {
 		return err
 	}
 
-	if err = log.Write(lastIndex+1, vote); err != nil {
+	lastIndex += 1
+	if err = walLog.Write(lastIndex, vote); err != nil {
 		return err
 	}
 
-	firstIndex, err := log.FirstIndex()
+	firstIndex, err := walLog.FirstIndex()
 	if err != nil {
-		return err
+		log.Warn("Failed to get first index of votes journal", "err", err)
 	}
-	if lastIndex-firstIndex+1 > BufferSizeForJournal {
-		if err := log.TruncateFront(lastIndex - BufferSizeForJournal); err != nil {
-			return err
+
+	if lastIndex-firstIndex+1 > maxSizeOfRecentEntry {
+		if err := walLog.TruncateFront(lastIndex - maxSizeOfRecentEntry); err != nil {
+			log.Warn("Failed to truncate votes journal", "err", err)
 		}
 	}
+	journal.latestVote = voteMessage
 
 	return nil
 }
 
 // LoadVotesJournal in case of node restart.
-func (vj *VoteJournal) LoadVotesJournal() error {
-	vj.mu.RLock()
-	defer vj.mu.RUnlock()
+func (journal *VoteJournal) LoadVotes() error {
+	walLog := journal.walLog
 
-	log := vj.log
-
-	voteRes := make([]*types.VoteEnvelope, 0, BufferSizeForJournal)
-	lastIndex, err := log.LastIndex()
+	lastIndex, err := walLog.LastIndex()
 	if err != nil {
 		return err
 	}
 
-	for index := math.Max(1, float64(lastIndex-BufferSizeForJournal+1)); index <= float64(lastIndex); index++ {
-		voteMessage, err := log.Read(uint64(index))
+	var startIndex uint64 = 1
+	if index := lastIndex - maxSizeOfRecentEntry + 1; index > 1 {
+		startIndex = index
+	}
+
+	for index := startIndex; index <= lastIndex; index++ {
+		voteMessage, err := walLog.Read(index)
 		if err != nil {
 			return err
 		}
+
 		vote := types.VoteEnvelope{}
 		if err := json.Unmarshal(voteMessage, &vote); err != nil {
 			return err
 		}
-		voteRes = append(voteRes, &vote)
+
+		if index == lastIndex {
+			journal.latestVote = &vote
+		}
 	}
 
-	vj.journalBuffer = voteRes
 	return nil
 }
