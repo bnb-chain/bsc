@@ -3,8 +3,10 @@ package types
 import (
 	"sync/atomic"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/prysmaticlabs/prysm/crypto/bls"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -35,6 +37,8 @@ type VoteAttestation struct {
 	AggSignature   BLSSignature
 	Data           *VoteData
 	Extra          []byte
+}
+
 type VoteEnvelopes []*VoteEnvelope
 
 // Hash returns the vote hash.
