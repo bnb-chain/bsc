@@ -490,7 +490,7 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	}
 
 	// check code change
-	codeReads := readDb.CodeReadInSlot()
+	codeReads := readDb.CodeReadsInSlot()
 	codeWrite := changeList.CodeChangeSet
 	for readAddr := range codeReads {
 		if _, exist := changeList.AddrStateChangeSet[readAddr]; exist {
@@ -504,7 +504,7 @@ func (p *StateProcessor) hasStateConflict(readDb *state.StateDB, changeList stat
 	}
 
 	// check address state change: create, suicide...
-	addrReads := readDb.AddressReadInSlot()
+	addrReads := readDb.AddressReadsInSlot()
 	addrWrite := changeList.AddrStateChangeSet
 	nonceWrite := changeList.NonceChangeSet
 	for readAddr := range addrReads {

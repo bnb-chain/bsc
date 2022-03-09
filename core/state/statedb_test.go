@@ -955,12 +955,12 @@ func TestSuicide(t *testing.T) {
 		t.Fatalf("expected account suicide, got %v", result)
 	}
 
-	if _, ok := slotDb.parallel.stateObjectSuicided[addr]; !ok {
-		t.Fatalf("address should exist in stateObjectSuicided")
+	if _, ok := slotDb.parallel.stateObjectsSuicidedInSlot[addr]; !ok {
+		t.Fatalf("address should exist in stateObjectsSuicidedInSlot")
 	}
 
-	if _, ok := slotDb.parallel.addrStateChangeInSlot[addr]; !ok {
-		t.Fatalf("address should exist in addrStateChangeInSlot")
+	if _, ok := slotDb.parallel.addrStateChangesInSlot[addr]; !ok {
+		t.Fatalf("address should exist in addrStateChangesInSlot")
 	}
 
 	if _, ok := slotDb.parallel.dirtiedStateObjectsInSlot[addr]; !ok {
@@ -972,8 +972,8 @@ func TestSuicide(t *testing.T) {
 		t.Fatalf("address should be suicided")
 	}
 
-	if _, ok := slotDb.parallel.addrStateReadInSlot[addr]; !ok {
-		t.Fatalf("address should exist in addrStateReadInSlot")
+	if _, ok := slotDb.parallel.addrStateReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in addrStateReadsInSlot")
 	}
 }
 
@@ -994,8 +994,8 @@ func TestSetAndGetState(t *testing.T) {
 		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
 	}
 
-	if _, ok := slotDb.parallel.stateChangedInSlot[addr]; !ok {
-		t.Fatalf("address should exist in stateChangedInSlot")
+	if _, ok := slotDb.parallel.stateChangesInSlot[addr]; !ok {
+		t.Fatalf("address should exist in stateChangesInSlot")
 	}
 
 	oldValueRead := state.GetState(addr, common.BytesToHash([]byte("test key")))
@@ -1035,8 +1035,8 @@ func TestSetAndGetCode(t *testing.T) {
 		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
 	}
 
-	if _, ok := slotDb.parallel.codeChangeInSlot[addr]; !ok {
-		t.Fatalf("address should exist in codeChangeInSlot")
+	if _, ok := slotDb.parallel.codeChangesInSlot[addr]; !ok {
+		t.Fatalf("address should exist in codeChangesInSlot")
 	}
 
 	codeRead := slotDb.GetCode(addr)
@@ -1044,8 +1044,8 @@ func TestSetAndGetCode(t *testing.T) {
 		t.Fatalf("code read should be equal to the code stored")
 	}
 
-	if _, ok := slotDb.parallel.codeReadInSlot[addr]; !ok {
-		t.Fatalf("address should exist in codeReadInSlot")
+	if _, ok := slotDb.parallel.codeReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in codeReadsInSlot")
 	}
 }
 
@@ -1067,8 +1067,8 @@ func TestGetCodeSize(t *testing.T) {
 		t.Fatalf("code size should be 9")
 	}
 
-	if _, ok := slotDb.parallel.codeReadInSlot[addr]; !ok {
-		t.Fatalf("address should exist in codeReadInSlot")
+	if _, ok := slotDb.parallel.codeReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in codeReadsInSlot")
 	}
 }
 
@@ -1090,8 +1090,8 @@ func TestGetCodeHash(t *testing.T) {
 	if hex.EncodeToString(codeSize[:]) != "6e73fa02f7828b28608b078b007a4023fb40453c3e102b83828a3609a94d8cbb" {
 		t.Fatalf("code hash should be 6e73fa02f7828b28608b078b007a4023fb40453c3e102b83828a3609a94d8cbb")
 	}
-	if _, ok := slotDb.parallel.codeReadInSlot[addr]; !ok {
-		t.Fatalf("address should exist in codeReadInSlot")
+	if _, ok := slotDb.parallel.codeReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in codeReadsInSlot")
 	}
 }
 
@@ -1145,12 +1145,12 @@ func TestSetAndGetBalance(t *testing.T) {
 		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
 	}
 
-	if _, ok := slotDb.parallel.balanceChangedInSlot[addr]; !ok {
-		t.Fatalf("address should exist in balanceChangedInSlot")
+	if _, ok := slotDb.parallel.balanceChangesInSlot[addr]; !ok {
+		t.Fatalf("address should exist in balanceChangesInSlot")
 	}
 
-	if slotDb.parallel.systemAddressCount != 1 {
-		t.Fatalf("systemAddressCount should be 1")
+	if slotDb.parallel.systemAddressOpsCount != 1 {
+		t.Fatalf("systemAddressOpsCount should be 1")
 	}
 
 	newBalance := slotDb.GetBalance(addr)
@@ -1162,8 +1162,8 @@ func TestSetAndGetBalance(t *testing.T) {
 		t.Fatalf("address should exist in balanceReadsInSlot")
 	}
 
-	if slotDb.parallel.systemAddressCount != 2 {
-		t.Fatalf("systemAddressCount should be 1")
+	if slotDb.parallel.systemAddressOpsCount != 2 {
+		t.Fatalf("systemAddressOpsCount should be 1")
 	}
 }
 
@@ -1189,16 +1189,16 @@ func TestSubBalance(t *testing.T) {
 		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
 	}
 
-	if _, ok := slotDb.parallel.balanceChangedInSlot[addr]; !ok {
-		t.Fatalf("address should exist in balanceChangedInSlot")
+	if _, ok := slotDb.parallel.balanceChangesInSlot[addr]; !ok {
+		t.Fatalf("address should exist in balanceChangesInSlot")
 	}
 
 	if _, ok := slotDb.parallel.balanceReadsInSlot[addr]; !ok {
 		t.Fatalf("address should exist in balanceReadsInSlot")
 	}
 
-	if slotDb.parallel.systemAddressCount != 1 {
-		t.Fatalf("systemAddressCount should be 1")
+	if slotDb.parallel.systemAddressOpsCount != 1 {
+		t.Fatalf("systemAddressOpsCount should be 1")
 	}
 
 	newBalance := slotDb.GetBalance(addr)
@@ -1229,16 +1229,16 @@ func TestAddBalance(t *testing.T) {
 		t.Fatalf("address should exist in dirtiedStateObjectsInSlot")
 	}
 
-	if _, ok := slotDb.parallel.balanceChangedInSlot[addr]; !ok {
-		t.Fatalf("address should exist in balanceChangedInSlot")
+	if _, ok := slotDb.parallel.balanceChangesInSlot[addr]; !ok {
+		t.Fatalf("address should exist in balanceChangesInSlot")
 	}
 
 	if _, ok := slotDb.parallel.balanceReadsInSlot[addr]; !ok {
 		t.Fatalf("address should exist in balanceReadsInSlot")
 	}
 
-	if slotDb.parallel.systemAddressCount != 1 {
-		t.Fatalf("systemAddressCount should be 1")
+	if slotDb.parallel.systemAddressOpsCount != 1 {
+		t.Fatalf("systemAddressOpsCount should be 1")
 	}
 
 	newBalance := slotDb.GetBalance(addr)
@@ -1263,8 +1263,8 @@ func TestEmpty(t *testing.T) {
 		t.Fatalf("address should exist")
 	}
 
-	if _, ok := slotDb.parallel.addrStateReadInSlot[addr]; !ok {
-		t.Fatalf("address should exist in addrStateReadInSlot")
+	if _, ok := slotDb.parallel.addrStateReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in addrStateReadsInSlot")
 	}
 }
 
@@ -1284,8 +1284,8 @@ func TestExist(t *testing.T) {
 		t.Fatalf("address should exist")
 	}
 
-	if _, ok := slotDb.parallel.addrStateReadInSlot[addr]; !ok {
-		t.Fatalf("address should exist in addrStateReadInSlot")
+	if _, ok := slotDb.parallel.addrStateReadsInSlot[addr]; !ok {
+		t.Fatalf("address should exist in addrStateReadsInSlot")
 	}
 }
 
