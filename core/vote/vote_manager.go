@@ -27,19 +27,25 @@ import (
 )
 
 const (
-	preDefinedBlocks = 15
+	voteWhiteList = 11
 )
 
 type Rules interface {
 	UnderRules(header *types.Header) bool
 }
 
+type votePool interface {
+	PutVote(vote *types.VoteEnvelope)
+}
+
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {
 	mux *event.TypeMux
 
-	chain       blockChain
+	chain       *core.BlockChain
 	chainconfig *params.ChainConfig
+
+	pool votePool
 
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
@@ -49,13 +55,10 @@ type VoteManager struct {
 
 	voteSet mapset.Set
 
-	votesFeed event.Feed
-	scope     event.SubscriptionScope
-
 	rules Rules
 }
 
-func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain blockChain, journal *VoteJournal, signer *VoteSigner) (*VoteManager, error) {
+func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, journal *VoteJournal, signer *VoteSigner) (*VoteManager, error) {
 	voteManager := &VoteManager{
 		mux: mux,
 
@@ -122,17 +125,14 @@ func (voteManager *VoteManager) loop() {
 					continue
 				}
 				voteManager.journal.WriteVote(voteMessage)
-				voteManager.votesFeed.Send(voteMessage)
+
+				voteManager.pool.PutVote(voteMessage)
 			}
 
 		}
 
 	}
 
-}
-
-func (voteManager *VoteManager) SubscribeNewVotesForPut(ch chan<- *types.VoteEnvelope) event.Subscription {
-	return voteManager.scope.Track(voteManager.votesFeed.Subscribe(ch))
 }
 
 // Check if the produced header under the Rule1: Validators always vote once and only once on one height,
@@ -149,7 +149,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
 	latestBlockHash := latestVote.Data.BlockHash
 
 	// Check for Rules.
-	if header.Number.Uint64()-latestBlockNumber > preDefinedBlocks {
+	if header.Number.Uint64()-latestBlockNumber > voteWhiteList {
 		return true
 	}
 
@@ -157,7 +157,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
 	if curBlockHeader.Number.Uint64() <= latestBlockNumber {
 		return false
 	}
-	for curBlockHeader.Number.Uint64() >= latestBlockNumber {
+	for curBlockHeader != nil && curBlockHeader.Number.Uint64() >= latestBlockNumber {
 		if curBlockHeader.Number.Uint64() == latestBlockNumber {
 			if curBlockHeader.Hash() == latestBlockHash {
 				return true

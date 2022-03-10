@@ -597,6 +597,11 @@ func (ethash *Ethash) FinalizeAndAssemble(chain consensus.ChainHeaderReader, hea
 	return types.NewBlock(header, txs, uncles, receipts, trie.NewStackTrie(nil)), receipts, nil
 }
 
+// VerifyVote will verify if the vote comes from valid validators, no verification if not parlia engine.
+func (ethash *Ethash) VerifyVote(chain consensus.ChainHeaderReader, header *types.Header, vote *types.VoteEnvelope) bool {
+	return true
+}
+
 func (ethash *Ethash) Delay(_ consensus.ChainReader, _ *types.Header) *time.Duration {
 	return nil
 }
