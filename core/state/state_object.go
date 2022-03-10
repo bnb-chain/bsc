@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -79,10 +80,10 @@ type StateObject struct {
 	trie Trie // storage trie, which becomes non-nil on first access
 	code Code // contract bytecode, which gets set when code is loaded
 
-	originStorage  Storage // Storage cache of original entries to dedup rewrites, reset for every transaction
-	pendingStorage Storage // Storage entries that need to be flushed to disk, at the end of an entire block
-	dirtyStorage   Storage // Storage entries that have been modified in the current transaction execution
-	fakeStorage    Storage // Fake storage which constructed by caller for debugging purpose.
+	originStorage  *sync.Map // Storage cache of original entries to dedup rewrites, reset for every transaction
+	pendingStorage Storage   // Storage entries that need to be flushed to disk, at the end of an entire block
+	dirtyStorage   Storage   // Storage entries that have been modified in the current transaction execution
+	fakeStorage    Storage   // Fake storage which constructed by caller for debugging purpose.
 
 	// Cache flags.
 	// When an object is marked suicided it will be delete from the trie
@@ -120,12 +121,15 @@ func newObject(db *StateDB, address common.Address, data Account) *StateObject {
 	if data.Root == (common.Hash{}) {
 		data.Root = emptyRoot
 	}
+	// Check whether the storage exist in pool, new originStorage if not exist
+	storageMap := db.sharedStorage.GetOrInsertStorage(address)
+
 	return &StateObject{
 		db:             db,
 		address:        address,
 		addrHash:       crypto.Keccak256Hash(address[:]),
 		data:           data,
-		originStorage:  make(Storage),
+		originStorage:  &storageMap,
 		pendingStorage: make(Storage),
 		dirtyStorage:   make(Storage),
 	}
@@ -204,8 +208,9 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 	if value, pending := s.pendingStorage[key]; pending {
 		return value
 	}
-	if value, cached := s.originStorage[key]; cached {
-		return value
+
+	if value, cached := s.originStorage.Load(key); cached {
+		return value.(common.Hash)
 	}
 	// If no live objects are available, attempt to use snapshots
 	var (
@@ -263,7 +268,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		}
 		value.SetBytes(content)
 	}
-	s.originStorage[key] = value
+	s.originStorage.Store(key, value)
 	return value
 }
 
@@ -316,7 +321,11 @@ func (s *StateObject) finalise(prefetch bool) {
 	slotsToPrefetch := make([][]byte, 0, len(s.dirtyStorage))
 	for key, value := range s.dirtyStorage {
 		s.pendingStorage[key] = value
-		if value != s.originStorage[key] {
+	}
+
+	for key, value := range s.dirtyStorage {
+		originValue, _ := s.originStorage.Load(key)
+		if value != originValue.(common.Hash) {
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
 		}
 	}
@@ -352,10 +361,11 @@ func (s *StateObject) updateTrie(db Database) Trie {
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
 	for key, value := range s.pendingStorage {
 		// Skip noop changes, persist actual changes
-		if value == s.originStorage[key] {
+		originValue, _ := s.originStorage.Load(key)
+		if value == originValue.(common.Hash) {
 			continue
 		}
-		s.originStorage[key] = value
+		s.originStorage.Store(key, value)
 
 		var v []byte
 		if (value == common.Hash{}) {
@@ -478,7 +488,6 @@ func (s *StateObject) deepCopy(db *StateDB) *StateObject {
 	}
 	stateObject.code = s.code
 	stateObject.dirtyStorage = s.dirtyStorage.Copy()
-	stateObject.originStorage = s.originStorage.Copy()
 	stateObject.pendingStorage = s.pendingStorage.Copy()
 	stateObject.suicided = s.suicided
 	stateObject.dirtyCode = s.dirtyCode
