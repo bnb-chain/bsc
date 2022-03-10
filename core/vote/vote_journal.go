@@ -109,7 +109,7 @@ func (journal *VoteJournal) LoadVotes() error {
 	for index := startIndex; index <= lastIndex; index++ {
 		voteMessage, err := walLog.Read(index)
 		if err != nil {
-			return err
+			log.Warn("Failed to get the entry of votes journal", "err", err)
 		}
 
 		vote := types.VoteEnvelope{}

@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/core/vote"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/filters"
@@ -97,6 +98,11 @@ type Ethereum struct {
 	p2pServer *p2p.Server
 
 	lock sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
+
+	voteJournal *vote.VoteJournal
+	voteSigner  *vote.VoteSigner
+	votePool    *vote.VotePool
+	voteManager *vote.VoteManager
 }
 
 // New creates a new Ethereum object (including the
@@ -226,6 +232,20 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		config.TxPool.Journal = stack.ResolvePath(config.TxPool.Journal)
 	}
 	eth.txPool = core.NewTxPool(config.TxPool, chainConfig, eth.blockchain)
+
+	//TODO:
+	// // Create vote related object.
+	// if journal, err := vote.NewVoteJournal(); err == nil {
+	// 	eth.voteJournal = journal
+	// }
+	// if signer, err := vote.NewVoteSigner(); err == nil {
+	// 	eth.voteSigner = signer
+	// }
+
+	// if voteManager, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, eth.voteJournal, eth.voteSigner); err == nil {
+	// 	eth.voteManager = voteManager
+	// }
+	// eth.votePool = vote.NewVotePool(chainConfig, eth.blockchain, eth.voteManager)
 
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit

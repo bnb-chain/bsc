@@ -6,7 +6,6 @@ import (
 	"github.com/prysmaticlabs/prysm/crypto/bls"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -47,12 +46,12 @@ func (v *VoteEnvelope) Hash() common.Hash {
 		return hash.(common.Hash)
 	}
 
-	h := v.CalcVoteHash()
+	h := v.calcVoteHash()
 	v.hash.Store(h)
 	return h
 }
 
-func (v *VoteEnvelope) CalcVoteHash() common.Hash {
+func (v *VoteEnvelope) calcVoteHash() common.Hash {
 	voteData := struct {
 		VoteAddress BLSPublicKey
 		Signature   BLSSignature
