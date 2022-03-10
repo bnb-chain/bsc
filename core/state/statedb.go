@@ -1023,13 +1023,12 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	return s.StateIntermediateRoot()
 }
 
-func (s *StateDB) AccountsIntermediateWithoutRoot() {
+func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			if s.snap != nil && !obj.deleted {
-				s.snapMux.Lock()
+				s.populateSnapStorage(obj)
 				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
-				s.snapMux.Unlock()
 			}
 			data, err := rlp.EncodeToBytes(obj)
 			if err != nil {
@@ -1117,7 +1116,6 @@ func (s *StateDB) accountDataForDiffLayer() map[common.Hash][]byte {
 				obj.updateRoot(s.db)
 				if s.snap != nil && !obj.deleted {
 					lock.Lock()
-					s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
 					accountData[crypto.Keccak256Hash(obj.address[:])] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
 					lock.Unlock()
 				}
@@ -1133,6 +1131,38 @@ func (s *StateDB) accountDataForDiffLayer() map[common.Hash][]byte {
 	}
 	wg.Wait()
 	return accountData
+}
+
+func (s *StateDB) populateSnapStorage(obj *StateObject) {
+	tr := obj.getTrie(s.db)
+	var storage map[string][]byte
+	for key, value := range obj.pendingStorage {
+		// Skip noop changes, persist actual changes
+		if value == obj.originStorage[key] {
+			continue
+		}
+		obj.originStorage[key] = value
+
+		var v []byte
+		if (value == common.Hash{}) {
+			obj.setError(tr.TryDelete(key[:]))
+		} else {
+			// Encoding []byte cannot fail, ok to ignore the error.
+			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
+			obj.setError(tr.TryUpdate(key[:], v))
+		}
+		// If state snapshotting is active, cache the data til commit
+		if obj.db.snap != nil {
+			if storage == nil {
+				// Retrieve the old storage map, if available, create a new one otherwise
+				if storage = obj.db.snapStorage[obj.address]; storage == nil {
+					storage = make(map[string][]byte)
+					obj.db.snapStorage[obj.address] = storage
+				}
+			}
+			storage[string(key[:])] = v // v will be nil if value is 0x00
+		}
+	}
 }
 
 func (s *StateDB) StateIntermediateRoot() common.Hash {
@@ -1169,7 +1199,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 		}
 		s.trie = tr
 	}
-	//TODO: stateObjectsPending here
+
 	usedAddrs := make([][]byte, 0, len(s.stateObjectsPending))
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; obj.deleted {
@@ -1182,7 +1212,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	if prefetcher != nil {
 		prefetcher.used(s.originalRoot, usedAddrs)
 	}
-	//TODO: stateObjectsPending here
+
 	if len(s.stateObjectsPending) > 0 {
 		s.stateObjectsPending = make(map[common.Address]struct{})
 	}
@@ -1361,7 +1391,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	var verified chan struct{}
 	var snapUpdated chan struct{}
 	var snapCreated chan common.Hash
-	var accountRefreshed chan struct{}
 	if s.snap != nil {
 		diffLayer = &types.DiffLayer{}
 	}
@@ -1370,21 +1399,15 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		verified = make(chan struct{})
 		snapUpdated = make(chan struct{})
 		snapCreated = make(chan common.Hash)
-		accountRefreshed = make(chan struct{})
 	}
 
 	commmitTrie := func() error {
 		commitErr := func() error {
 			accountData := make(map[common.Hash][]byte)
-			if s.pipeCommit && s.snap != nil {
+			if s.pipeCommit {
 				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct
 				// Fix the wrong data here
 				accountData = s.accountDataForDiffLayer()
-				close(accountRefreshed)
-				fmt.Println("accountData:", len(accountData))
-				for k, _ := range accountData {
-					fmt.Println("key=", k)
-				}
 			}
 
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
@@ -1392,11 +1415,8 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 			}
 
 			if s.pipeCommit {
-				fmt.Println("s.stateRoot:", s.stateRoot.Hex())
 				root := <-snapCreated
-
-				empty := common.Hash{}
-				if root != empty {
+				if root != (common.Hash{}) {
 					s.snaps.Snapshot(root).CorrectAccounts(accountData)
 				}
 			}
@@ -1545,7 +1565,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 						snapCreated <- common.Hash{}
 					}
 					if s.pipeCommit {
-						fmt.Println("s.expectedRoot", s.expectedRoot.Hex())
 						snapCreated <- s.expectedRoot
 					}
 					// Keep n diff layers in the memory
@@ -1557,15 +1576,16 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 							log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
 						}
 					}()
+				} else {
+					if s.pipeCommit { // If no snap created, still need to put data into the channel
+						snapCreated <- common.Hash{}
+					}
 				}
 			}
 			return nil
 		},
 		func() error {
 			if s.snap != nil {
-				if s.pipeCommit {
-					<-accountRefreshed
-				}
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 			}
 			return nil
