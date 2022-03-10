@@ -39,8 +39,6 @@ func (c Code) String() string {
 	return string(c) //strings.Join(Disassemble(c), " ")
 }
 
-type StorageKeys map[common.Hash]struct{}
-
 type Storage map[common.Hash]common.Hash
 
 func (s Storage) String() (str string) {

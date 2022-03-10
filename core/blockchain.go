@@ -249,13 +249,14 @@ type BlockChain struct {
 	running       int32          // 0 if chain is running, 1 when stopped
 	procInterrupt int32          // interrupt signaler for block processing
 
-	engine     consensus.Engine
-	prefetcher Prefetcher
-	validator  Validator // Block and state validator interface
-	processor  Processor // Block transaction processor interface
-	forker     *ForkChoice
-	vmConfig   vm.Config
-	pipeCommit bool
+	engine            consensus.Engine
+	prefetcher        Prefetcher
+	validator         Validator // Block and state validator interface
+	processor         Processor // Block transaction processor interface
+	forker            *ForkChoice
+	vmConfig          vm.Config
+	pipeCommit        bool
+	parallelExecution bool
 
 	shouldPreserve  func(*types.Block) bool        // Function used to determine whether should preserve the given block.
 	terminateInsert func(common.Hash, uint64) bool // Testing hook used to terminate ancient receipt chain insertion.
@@ -325,9 +326,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	bc.forker = NewForkChoice(bc, shouldPreserve)
 	bc.validator = NewBlockValidator(chainConfig, bc, engine)
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
-	if ParallelTxMode {
-		bc.processor.InitParallelOnce()
-	}
 
 	var err error
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
@@ -1876,7 +1874,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if err != nil {
 			return it.index, err
 		}
-
 		bc.updateHighestVerifiedHeader(block.Header())
 
 		// Enable prefetching to pull in trie node paths while processing transactions
@@ -1885,7 +1882,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		// For diff sync, it may fallback to full sync, so we still do prefetch
 
 		// parallel mode has a pipeline, similar to this prefetch, to save CPU we disable this prefetch for parallel
-		if !ParallelTxMode {
+		if !bc.parallelExecution {
 			if len(block.Transactions()) >= prefetchTxNumber {
 				// do Prefetch in a separate goroutine to avoid blocking the critical path
 
@@ -1906,14 +1903,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		}
 		statedb.SetExpectedStateRoot(block.Root())
 
-		var receipts types.Receipts
-		var logs []*types.Log
-		var usedGas uint64
-		if ParallelTxMode {
-			statedb, receipts, logs, usedGas, err = bc.processor.ProcessParallel(block, statedb, bc.vmConfig)
-		} else {
-			statedb, receipts, logs, usedGas, err = bc.processor.Process(block, statedb, bc.vmConfig)
-		}
+		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
 		close(interruptCh) // state prefetch can be stopped
 
 		if err != nil {
@@ -3080,4 +3070,17 @@ func CalculateDiffHash(d *types.DiffLayer) (common.Hash, error) {
 	var hash common.Hash
 	hasher.Sum(hash[:0])
 	return hash, nil
+}
+
+func EnableParallelProcessor(parallelNum int, queueSize int) BlockChainOption {
+	return func(chain *BlockChain) (*BlockChain, error) {
+		if chain.snaps == nil {
+			// disable parallel processor if snapshot is not enabled to avoid concurrent issue for SecureTrie
+			log.Info("parallel processor is not enabled since snapshot is not enabled")
+			return chain, nil
+		}
+		chain.parallelExecution = true
+		chain.processor = NewParallelStateProcessor(chain.Config(), chain, chain.engine, parallelNum, queueSize)
+		return chain, nil
+	}
 }

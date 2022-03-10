@@ -140,12 +140,15 @@ type Config struct {
 
 	NoPruning           bool // Whether to disable pruning and flush everything to disk
 	DirectBroadcast     bool
-	DisableSnapProtocol bool //Whether disable snap protocol
-	DisableDiffProtocol bool //Whether disable diff protocol
-	EnableTrustProtocol bool //Whether enable trust protocol
+	DisableSnapProtocol bool // Whether disable snap protocol
+	DisableDiffProtocol bool // Whether disable diff protocol
+	EnableTrustProtocol bool // Whether enable trust protocol
 	DiffSync            bool // Whether support diff sync
 	PipeCommit          bool
 	RangeLimit          bool
+	ParallelTxMode      bool // Whether to execute transaction in parallel mode when do full sync
+	ParallelTxNum       int  // Number of slot for transaction execution
+	ParallelTxQueueSize int  // Max number of Tx that can be queued to a slot
 
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 

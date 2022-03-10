@@ -26,6 +26,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	godebug "runtime/debug"
 	"strconv"
 	"strings"
@@ -862,17 +863,16 @@ var (
 	}
 	ParallelTxFlag = cli.BoolFlag{
 		Name:  "parallel",
-		Usage: "Enable the experimental parallel transaction execution mode (default = false)",
+		Usage: "Enable the experimental parallel transaction execution mode, only valid in full sync mode (default = false)",
 	}
 	ParallelTxNumFlag = cli.IntFlag{
 		Name:  "parallel.num",
-		Usage: "Number of slot for transaction execution, only valid in parallel mode (default: CPUNum - 1)",
-		Value: core.ParallelExecNum,
+		Usage: "Number of slot for transaction execution, only valid in parallel mode (runtime calculated, no fixed default value)",
 	}
 	ParallelTxQueueSizeFlag = cli.IntFlag{
 		Name:  "parallel.queuesize",
-		Usage: "Max number of Tx that can be queued to a slot, only valid in parallel mode",
-		Value: core.MaxPendingQueueSize,
+		Usage: "Max number of Tx that can be queued to a slot, only valid in parallel mode (advanced option)",
+		Value: 20,
 	}
 
 	// Init network
@@ -1375,16 +1375,6 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.GlobalIsSet(InsecureUnlockAllowedFlag.Name) {
 		cfg.InsecureUnlockAllowed = ctx.GlobalBool(InsecureUnlockAllowedFlag.Name)
 	}
-	if ctx.GlobalIsSet(ParallelTxFlag.Name) {
-		core.ParallelTxMode = true
-	}
-	if ctx.GlobalIsSet(ParallelTxNumFlag.Name) {
-		core.ParallelExecNum = ctx.GlobalInt(ParallelTxNumFlag.Name)
-	}
-	if ctx.GlobalIsSet(ParallelTxQueueSizeFlag.Name) {
-		core.MaxPendingQueueSize = ctx.GlobalInt(ParallelTxQueueSizeFlag.Name)
-	}
-
 }
 
 func setSmartCard(ctx *cli.Context, cfg *node.Config) {
@@ -1719,6 +1709,32 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.GlobalBool(RangeLimitFlag.Name)
+	}
+	if ctx.GlobalIsSet(ParallelTxFlag.Name) {
+		cfg.ParallelTxMode = ctx.GlobalBool(ParallelTxFlag.Name)
+		// The best prallel num will be tuned later, we do a simple parallel num set here
+		numCpu := runtime.NumCPU()
+		var parallelNum int
+		if ctx.GlobalIsSet(ParallelTxNumFlag.Name) {
+			// first of all, we use "--parallel.num", but "--parallel.num 0" is not allowed
+			parallelNum = ctx.GlobalInt(ParallelTxNumFlag.Name)
+			if parallelNum < 1 {
+				parallelNum = 1
+			}
+		} else if numCpu == 1 {
+			parallelNum = 1 // single CPU core
+		} else if numCpu < 10 {
+			parallelNum = numCpu - 1
+		} else {
+			parallelNum = 8 // we found concurrency 8 is slightly better than 15
+		}
+		cfg.ParallelTxNum = parallelNum
+		// set up queue size, it is an advanced option
+		if ctx.GlobalIsSet(ParallelTxQueueSizeFlag.Name) {
+			cfg.ParallelTxQueueSize = ctx.GlobalInt(ParallelTxQueueSizeFlag.Name)
+		} else {
+			cfg.ParallelTxQueueSize = 20 // default queue size, will be optimized
+		}
 	}
 	// Read the value from the flag no matter if it's set or not.
 	cfg.Preimages = ctx.GlobalBool(CachePreimagesFlag.Name)
