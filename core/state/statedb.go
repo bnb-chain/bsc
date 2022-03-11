@@ -1028,7 +1028,7 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			if s.snap != nil && !obj.deleted {
 				s.populateSnapStorage(obj)
-				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
+				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, emptyRoot, obj.data.CodeHash)
 			}
 			data, err := rlp.EncodeToBytes(obj)
 			if err != nil {
@@ -1090,66 +1090,20 @@ func (s *StateDB) AccountsIntermediateRoot() {
 	wg.Wait()
 }
 
-func (s *StateDB) accountDataForDiffLayer() map[common.Hash][]byte {
-	tasks := make(chan func())
-	finishCh := make(chan struct{})
-	defer close(finishCh)
-	wg := sync.WaitGroup{}
-	for i := 0; i < runtime.NumCPU(); i++ {
-		go func() {
-			for {
-				select {
-				case task := <-tasks:
-					task()
-				case <-finishCh:
-					return
-				}
-			}
-		}()
-	}
-	lock := sync.Mutex{}
-	accountData := make(map[common.Hash][]byte)
-	for addr := range s.stateObjectsPending {
-		if obj := s.stateObjects[addr]; !obj.deleted {
-			wg.Add(1)
-			tasks <- func() {
-				obj.updateRoot(s.db)
-				if s.snap != nil && !obj.deleted {
-					lock.Lock()
-					accountData[crypto.Keccak256Hash(obj.address[:])] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
-					lock.Unlock()
-				}
-				data, err := rlp.EncodeToBytes(obj)
-				if err != nil {
-					panic(fmt.Errorf("can't encode object at %x: %v", addr[:], err))
-				}
-				obj.encodeData = data
-
-				wg.Done()
-			}
-		}
-	}
-	wg.Wait()
-	return accountData
-}
-
 func (s *StateDB) populateSnapStorage(obj *StateObject) {
-	tr := obj.getTrie(s.db)
+	for key, value := range obj.dirtyStorage {
+		obj.pendingStorage[key] = value
+	}
+	if len(obj.pendingStorage) == 0 {
+		return
+	}
 	var storage map[string][]byte
 	for key, value := range obj.pendingStorage {
-		// Skip noop changes, persist actual changes
-		if value == obj.originStorage[key] {
-			continue
-		}
-		obj.originStorage[key] = value
-
 		var v []byte
 		if (value == common.Hash{}) {
-			obj.setError(tr.TryDelete(key[:]))
 		} else {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-			obj.setError(tr.TryUpdate(key[:], v))
 		}
 		// If state snapshotting is active, cache the data til commit
 		if obj.db.snap != nil {
@@ -1391,6 +1345,9 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	var verified chan struct{}
 	var snapUpdated chan struct{}
 	var snapCreated chan common.Hash
+
+	var snapAccountLock sync.Mutex // To protect snapAccount
+
 	if s.snap != nil {
 		diffLayer = &types.DiffLayer{}
 	}
@@ -1405,12 +1362,17 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		commitErr := func() error {
 			accountData := make(map[common.Hash][]byte)
 			if s.pipeCommit {
-				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct
-				// Fix the wrong data here
-				accountData = s.accountDataForDiffLayer()
+				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct, fix the wrong data here
+				snapAccountLock.Lock()
+				s.AccountsIntermediateRoot()
+				snapAccountLock.Unlock()
+				for k, v := range s.snapAccounts {
+					accountData[crypto.Keccak256Hash(k[:])] = v
+				}
 			}
 
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
+				fmt.Printf("StateIntermediateRoot - invalid merkle root (remote: %x local: %x)  \n", s.expectedRoot, s.stateRoot)
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
 			}
 
@@ -1560,7 +1522,11 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				}
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != s.expectedRoot {
-					if err := s.snaps.Update(s.expectedRoot, parent, s.snapDestructs, s.snapAccounts, s.snapStorage, verified); err != nil {
+					snapAccountLock.Lock()
+					err := s.snaps.Update(s.expectedRoot, parent, s.snapDestructs, s.snapAccounts, s.snapStorage, verified)
+					snapAccountLock.Unlock()
+
+					if err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
 						snapCreated <- common.Hash{}
 					}
@@ -1586,7 +1552,9 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		},
 		func() error {
 			if s.snap != nil {
+				snapAccountLock.Lock()
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
+				snapAccountLock.Unlock()
 			}
 			return nil
 		},
