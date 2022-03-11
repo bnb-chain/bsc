@@ -15,8 +15,12 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+// nodatafreezer is an empty freezer, only record 'frozen' , the next recycle block number form kvstore.
 type nodatafreezer struct {
 	db 			ethdb.KeyValueStore 	// Meta database
+	// WARNING: The `frozen` field is accessed atomically. On 32 bit platforms, only
+	// 64-bit aligned fields can be atomic. The struct is guaranteed to be so aligned,
+	// so take advantage of that (https://golang.org/pkg/sync/atomic/#pkg-note-BUG).
 	frozen    	uint64 					// Number of next frozen block
 	threshold 	uint64					// Number of recent blocks not to freeze (params.FullImmutabilityThreshold apart from tests)
 
@@ -25,6 +29,7 @@ type nodatafreezer struct {
 	closeOnce 		sync.Once
 }
 
+// newNoDataFreezer creates a chain freezer that deletes data enough ‘old’.
 func newNoDataFreezer(datadir string, db ethdb.KeyValueStore) (*nodatafreezer, error) {
 	if info, err := os.Lstat(datadir); !os.IsNotExist(err) {
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -53,7 +58,7 @@ func newNoDataFreezer(datadir string, db ethdb.KeyValueStore) (*nodatafreezer, e
 	return freezer, nil
 }
 
-
+// repair init frozen , compatible disk-ancientdb and pruner-block-tool.
 func (f *nodatafreezer) repair(datadir string) error {
 	if frozen := ReadFrozenOfAncientFreezer(f.db); frozen != 0 {
 		atomic.StoreUint64(&f.frozen, frozen)
@@ -93,6 +98,7 @@ func (f *nodatafreezer) repair(datadir string) error {
 	return nil
 }
 
+// Close terminates the chain nodatafreezer.
 func (f *nodatafreezer) Close() error {
 	var err error
 	f.closeOnce.Do(func() {
@@ -103,10 +109,12 @@ func (f *nodatafreezer) Close() error {
 	return err
 }
 
+// HasAncient returns an indicator whether the specified ancient data exists, return nil.
 func (f *nodatafreezer) HasAncient(kind string, number uint64) (bool, error) {
 	return false, nil
 }
 
+// Ancient retrieves an ancient binary blob from nodatafreezer, return nil.
 func (f *nodatafreezer) Ancient(kind string, number uint64) ([]byte, error) {
 	if _, ok := FreezerNoSnappy[kind]; ok {
 		if number >= atomic.LoadUint64(&f.frozen) {
@@ -117,18 +125,22 @@ func (f *nodatafreezer) Ancient(kind string, number uint64) ([]byte, error) {
 	return nil, errUnknownTable
 }
 
+// Ancients returns the last of the frozen items.
 func (f *nodatafreezer) Ancients() (uint64, error) {
 	return atomic.LoadUint64(&f.frozen), nil
 }
 
+// ItemAmountInAncient returns the actual length of current ancientDB, return 0.
 func (f *nodatafreezer) ItemAmountInAncient() (uint64, error) {
 	return 0, nil
 }
 
+// AncientOffSet returns the offset of current ancientDB, offset == frozen.
 func (f *nodatafreezer) AncientOffSet() uint64 {
 	return atomic.LoadUint64(&f.frozen)
 }
 
+// AncientSize returns the ancient size of the specified category, return 0.
 func (f *nodatafreezer) AncientSize(kind string) (uint64, error) {
 	if _, ok := FreezerNoSnappy[kind]; ok {
 		return 0, nil
@@ -136,6 +148,11 @@ func (f *nodatafreezer) AncientSize(kind string) (uint64, error) {
 	return 0, errUnknownTable
 }
 
+// AppendAncient update frozen.
+//
+// Notably, this function is lock free but kind of thread-safe. All out-of-order
+// injection will be rejected. But if two injections with same number happen at
+// the same time, we can get into the trouble.
 func (f *nodatafreezer) AppendAncient(number uint64, hash, header, body, receipts, td []byte) (err error) {
 	if atomic.LoadUint64(&f.frozen) != number {
 		return errOutOrderInsertion
@@ -144,15 +161,22 @@ func (f *nodatafreezer) AppendAncient(number uint64, hash, header, body, receipt
 	return nil
 }
 
+// TruncateAncients discards any recent data above the provided threshold number, always success.
 func (f *nodatafreezer) TruncateAncients(items uint64) error {
 	return nil
 }
 
+// Sync flushes meta data tables to disk.
 func (f *nodatafreezer) Sync() error {
 	WriteFrozenOfAncientFreezer(f.db, atomic.LoadUint64(&f.frozen))
 	return nil
 }
 
+// freeze is a background thread that periodically checks the blockchain for any
+// import progress and moves ancient data from the fast database into the freezer.
+//
+// This functionality is deliberately broken off from block importing to avoid
+// incurring additional data shuffling delays on block propagation.
 func (f *nodatafreezer) freeze() {
 	nfdb := &nofreezedb{KeyValueStore: f.db}
 
