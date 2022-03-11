@@ -457,6 +457,10 @@ var (
 		Usage: "The number of blocks should be persisted in db (default = 86400)",
 		Value: uint64(86400),
 	}
+	DelAncientDataFlag = cli.BoolFlag{
+		Name:  "keepfixedblocks",
+		Usage: "Keep a fixed number of blocks(9w) under full syncmode, enable release more os resources",
+	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
 		Name:  "mine",
@@ -1621,6 +1625,14 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.GlobalIsSet(DiffBlockFlag.Name) {
 		cfg.DiffBlock = ctx.GlobalUint64(DiffBlockFlag.Name)
 	}
+	if ctx.GlobalIsSet(DelAncientDataFlag.Name) {
+		cfg.DelAncientData = ctx.GlobalBool(DelAncientDataFlag.Name)
+		if cfg.SyncMode == downloader.FullSync {
+			cfg.DelAncientData = ctx.GlobalBool(DelAncientDataFlag.Name)
+		} else {
+			log.Crit("keepfixedblocks parameter take effect in full syncmode")
+		}
+	}
 	if gcmode := ctx.GlobalString(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
 		Fatalf("--%s must be either 'full' or 'archive'", GCModeFlag.Name)
 	}
@@ -1914,7 +1926,7 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 		chainDb, err = stack.OpenDatabase(name, cache, handles, "", readonly)
 	} else {
 		name := "chaindata"
-		chainDb, err = stack.OpenDatabaseWithFreezer(name, cache, handles, ctx.GlobalString(AncientFlag.Name), "", readonly, disableFreeze, false)
+		chainDb, err = stack.OpenDatabaseWithFreezer(name, cache, handles, ctx.GlobalString(AncientFlag.Name), "", readonly, disableFreeze, false, false)
 	}
 	if err != nil {
 		Fatalf("Could not open database: %v", err)

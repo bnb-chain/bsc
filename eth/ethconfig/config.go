@@ -167,6 +167,7 @@ type Config struct {
 	DatabaseDiff       string
 	PersistDiff        bool
 	DiffBlock          uint64
+	DelAncientData     bool
 
 	TrieCleanCache          int
 	TrieCleanCacheJournal   string        `toml:",omitempty"` // Disk journal directory for trie cache to survive node restarts
