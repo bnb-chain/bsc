@@ -305,7 +305,9 @@ var (
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(400),
 		BrunoBlock:          big.NewInt(400),
-		EulerBlock:          big.NewInt(114300),
+
+		// TODO
+		EulerBlock: big.NewInt(324800),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
