@@ -181,6 +181,9 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 // signal received.
 func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool) {
 	// short circuit for invalid range
+	if offset := db.AncientOffSet(); offset > from {
+		from = offset
+	}
 	if from >= to {
 		return
 	}
@@ -272,6 +275,9 @@ func indexTransactionsForTesting(db ethdb.Database, from uint64, to uint64, inte
 // signal received.
 func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool) {
 	// short circuit for invalid range
+	if offset := db.AncientOffSet(); offset > from {
+		from = offset
+	}
 	if from >= to {
 		return
 	}
