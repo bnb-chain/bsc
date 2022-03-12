@@ -34,7 +34,7 @@ var (
 
 	BSCGenesisHash    = common.HexToHash("0x0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b")
 	ChapelGenesisHash = common.HexToHash("0x6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe34")
-	RialtoGenesisHash = common.HexToHash("0xb1755a4fb19a4dd38a907ad32f6cf93f1830341989194bea22ca9797be322d70")
+	RialtoGenesisHash = common.HexToHash("0xcbcbff6fd7d3b9c7975a57edce897f8f9012e6f74cca069f3b48afcd6700d82d")
 	YoloV3GenesisHash = common.HexToHash("0xf1f2876e8500c77afcc03228757b39477eceffccf645b734967fe3c7e16967b7")
 )
 
