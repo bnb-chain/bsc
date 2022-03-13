@@ -222,12 +222,6 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 			return nil, err
 		}
 
-		if frozen, _ := frdb.Ancients(); frozen != 0 {
-			if kvhash, _ := db.Get(headerHashKey(frozen)); len(kvhash) == 0 {
-				return nil, fmt.Errorf("gap (#%d) in the chain between ancients(no data mode) and leveldb", frozen)
-			}
-		}
-
 		go frdb.freeze()
 		return &freezerdb{
 			KeyValueStore: db,
@@ -324,12 +318,6 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 			}
 			// Otherwise, the head header is still the genesis, we're allowed to init a new
 			// feezer.
-		}
-	}
-
-	if frozen, _ := frdb.Ancients(); frozen != 0 {
-		if kvhash, _ := db.Get(headerHashKey(frozen)); len(kvhash) == 0 {
-			return nil, fmt.Errorf("gap (#%d) in the chain between ancients and leveldb", frozen)
 		}
 	}
 
