@@ -38,7 +38,7 @@ func newNoDataFreezer(datadir string, db ethdb.KeyValueStore) (*nodatafreezer, e
 		}
 	}
 
-	lock, _, err := fileutil.Flock(filepath.Join(datadir, "NODATA_ANCIENT_FLOCK"))
+	lock, _, err := fileutil.Flock(filepath.Join(datadir, "../NODATA_ANCIENT_FLOCK"))
 	if err != nil {
 		return nil, err
 	} 
@@ -60,12 +60,6 @@ func newNoDataFreezer(datadir string, db ethdb.KeyValueStore) (*nodatafreezer, e
 
 // repair init frozen , compatible disk-ancientdb and pruner-block-tool.
 func (f *nodatafreezer) repair(datadir string) error {
-	if frozen := ReadFrozenOfAncientFreezer(f.db); frozen != 0 {
-		atomic.StoreUint64(&f.frozen, frozen)
-		return nil
-	}
-
-	
 	currentOffset := ReadOffSetOfCurrentAncientFreezer(f.db)
 	lastOffset := ReadOffSetOfLastAncientFreezer(f.db)
 
@@ -90,6 +84,10 @@ func (f *nodatafreezer) repair(datadir string) error {
 		table.Close()
 	}
 	offset += min
+
+	if frozen := ReadFrozenOfAncientFreezer(f.db); frozen > offset {
+		offset = frozen
+	}
 
 	atomic.StoreUint64(&f.frozen, offset)
 	if err := f.Sync(); err != nil {
@@ -163,6 +161,11 @@ func (f *nodatafreezer) AppendAncient(number uint64, hash, header, body, receipt
 
 // TruncateAncients discards any recent data above the provided threshold number, always success.
 func (f *nodatafreezer) TruncateAncients(items uint64) error {
+	if atomic.LoadUint64(&f.frozen) <= items {
+		return nil
+	}
+	atomic.StoreUint64(&f.frozen, items)
+	WriteFrozenOfAncientFreezer(f.db, atomic.LoadUint64(&f.frozen))
 	return nil
 }
 
