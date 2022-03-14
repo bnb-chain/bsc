@@ -292,20 +292,7 @@ func (dl *diffLayer) CorrectAccounts(accounts map[common.Hash][]byte) {
 	dl.lock.Lock()
 	defer dl.lock.Unlock()
 
-	fmt.Println("diffLayer CorrectAccounts")
-	fmt.Println("diffLayer hash:", dl.root.Hex())
-	fmt.Println("------------")
-	fmt.Println("difflayer before:", len(dl.accountData))
-	for k, v := range dl.accountData {
-		fmt.Printf("key:= %s, v:= %x \n", k.Hex(), v)
-	}
-
 	dl.accountData = accounts
-	fmt.Println("difflayer after:", len(dl.accountData))
-	for k, v := range dl.accountData {
-		fmt.Printf("key:= %s, v:= %x \n", k.Hex(), v)
-	}
-	fmt.Println("------------")
 }
 
 // Parent returns the subsequent layer of a diff layer.
