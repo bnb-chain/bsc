@@ -1362,7 +1362,7 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		commitErr := func() error {
 			accountData := make(map[common.Hash][]byte)
 			if s.pipeCommit {
-				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct, fix the wrong data here
+				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct, capture the correct data here
 				snapAccountLock.Lock()
 				s.AccountsIntermediateRoot()
 				snapAccountLock.Unlock()
@@ -1372,10 +1372,14 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 			}
 
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
+				if s.pipeCommit {
+					<-snapCreated
+				}
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
 			}
 
 			if s.pipeCommit {
+				//Fix the account data in difflayer here
 				root := <-snapCreated
 				if root != (common.Hash{}) {
 					s.snaps.Snapshot(root).CorrectAccounts(accountData)
