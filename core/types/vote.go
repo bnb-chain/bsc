@@ -23,7 +23,7 @@ type VoteData struct {
 type VoteEnvelope struct {
 	VoteAddress BLSPublicKey
 	Signature   BLSSignature
-	Data        VoteData
+	Data        *VoteData
 
 	// caches
 	hash atomic.Value
@@ -32,11 +32,9 @@ type VoteEnvelope struct {
 type VoteAttestation struct {
 	VoteAddressSet ValidatorsBitSet
 	AggSignature   BLSSignature
-	Data           VoteData
+	Data           *VoteData
 	Extra          []byte
 }
-
-type VoteEnvelopes []*VoteEnvelope
 
 // Hash returns the vote hash.
 func (v *VoteEnvelope) Hash() common.Hash {
@@ -53,7 +51,7 @@ func (v *VoteEnvelope) calcVoteHash() common.Hash {
 	voteData := struct {
 		VoteAddress BLSPublicKey
 		Signature   BLSSignature
-		Data        VoteData
+		Data        *VoteData
 	}{v.VoteAddress, v.Signature, v.Data}
 	return rlpHash(voteData)
 }

@@ -528,7 +528,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 					return nil, err
 				}
 
-				// new snap shot
+				// new snapshot
 				snap = newSnapshot(p.config, p.signatures, number, hash, validators, voteAddrs, p.ethAPI)
 				if err := snap.store(p.db); err != nil {
 					return nil, err

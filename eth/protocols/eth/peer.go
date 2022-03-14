@@ -90,9 +90,9 @@ type Peer struct {
 	txBroadcast chan []common.Hash // Channel used to queue transaction propagation requests
 	txAnnounce  chan []common.Hash // Channel used to queue transaction announcement requests
 
-	votepool      VotePool                 // Votes pool used by the broadcasters
-	knownVotes    mapset.Set               // Set of vote hashes known to be known by this peer
-	voteBroadcast chan types.VoteEnvelopes // Channel used to queue votes propagation requests
+	votepool      VotePool                   // Votes pool used by the broadcasters
+	knownVotes    mapset.Set                 // Set of vote hashes known to be known by this peer
+	voteBroadcast chan []*types.VoteEnvelope // Channel used to queue votes propagation requests
 
 	term     chan struct{} // Termination channel to stop the broadcasters
 	txTerm   chan struct{} // Termination channel to stop the tx broadcasters
@@ -116,7 +116,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, vot
 		txBroadcast:     make(chan []common.Hash),
 		txAnnounce:      make(chan []common.Hash),
 		txpool:          txpool,
-		voteBroadcast:   make(chan types.VoteEnvelopes),
+		voteBroadcast:   make(chan []*types.VoteEnvelope),
 		votepool:        votepool,
 		term:            make(chan struct{}),
 		txTerm:          make(chan struct{}),
@@ -401,7 +401,7 @@ func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 }
 
 // SendVotes propagates a batch of votes to the remote peer.
-func (p *Peer) SendVotes(votes types.VoteEnvelopes) error {
+func (p *Peer) SendVotes(votes []*types.VoteEnvelope) error {
 	// Mark all the transactions as known, but ensure we don't overflow our limits
 	for p.knownVotes.Cardinality() > max(0, maxKnownTxs-len(votes)) {
 		p.knownVotes.Pop()
@@ -414,7 +414,7 @@ func (p *Peer) SendVotes(votes types.VoteEnvelopes) error {
 
 // AsyncSendVotes queues a batch of vote hashes for propagation to a remote peer. If
 // the peer's broadcast queue is full, the event is silently dropped.
-func (p *Peer) AsyncSendVotes(votes types.VoteEnvelopes) {
+func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
 	select {
 	case p.voteBroadcast <- votes:
 		// Mark all the transactions as known, but ensure we don't overflow our limits

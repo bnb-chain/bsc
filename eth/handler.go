@@ -87,9 +87,9 @@ type txPool interface {
 // votePool defines the methods needed from a votes pool implementation to
 // support all the operations needed by the Ethereum chain protocols.
 type votePool interface {
-	PutVote(vote *types.VoteEnvelope) error
+	PutVote(vote *types.VoteEnvelope)
 	Get(hash common.Hash) *types.VoteEnvelope
-	GetVotes() types.VoteEnvelopes
+	GetVotes() []*types.VoteEnvelope
 
 	// SubscribeNewVotesEvent should return an event subscription of
 	// NewVotesEvent and send events to the given channel.
@@ -611,7 +611,7 @@ func (h *handler) ReannounceTransactions(txs types.Transactions) {
 
 // BroadcastVotes will propagate a batch of votes to all peers
 // which are not known to already have the given vote.
-func (h *handler) BroadcastVotes(votes types.VoteEnvelopes) {
+func (h *handler) BroadcastVotes(votes []*types.VoteEnvelope) {
 	var (
 		directCount int // Count of announcements made
 		directPeers int
