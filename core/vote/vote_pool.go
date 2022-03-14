@@ -18,6 +18,7 @@ package vote
 import (
 	"container/heap"
 	"errors"
+	"fmt"
 	"sync"
 
 	mapset "github.com/deckarep/golang-set"
@@ -45,11 +46,8 @@ const (
 	chainHeadChanSize = 10
 )
 
-var invalidVote = errors.New("invalid Vote")
+var errInvalidVote = errors.New("invalid Vote")
 
-type handler interface {
-	SubscribeNewVotesForPut(ch chan<- *types.VoteEnvelope) event.Subscription
-}
 type VoteBox struct {
 	blockNumber  uint64
 	voteMessages []*types.VoteEnvelope
@@ -78,13 +76,12 @@ type VotePool struct {
 
 	votesCh chan *types.VoteEnvelope
 
-	engine  consensus.Engine
-	handler *handler
+	engine consensus.Engine
 }
 
 type votesPriorityQueue []*types.VoteData
 
-func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, voteManager *VoteManager, engine consensus.Engine, handler *handler) *VotePool {
+func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, voteManager *VoteManager, engine consensus.Engine) *VotePool {
 
 	votePool := &VotePool{
 		chain:         chain,
@@ -98,7 +95,6 @@ func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, voteMa
 		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
 		votesCh:       make(chan *types.VoteEnvelope, voteBufferForPut),
 		engine:        engine,
-		handler:       handler,
 	}
 
 	// Subscribe events from blockchain and start the main event loop.
@@ -142,6 +138,9 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 	header := pool.chain.CurrentBlock().Header()
 	headNumber := header.Number.Uint64()
 
+	fmt.Println("votenumber:", voteBlockNumber)
+	fmt.Println("headernumber:", headNumber)
+
 	voteData := &types.VoteData{
 		BlockNumber: voteBlockNumber,
 		BlockHash:   voteBlockHash,
@@ -161,7 +160,7 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 			return false
 		}
 
-		//Verify with BLS.
+		// Verify bls signature.
 		if err := VerifyVoteWithBLS(vote); err != nil {
 			log.Error("Failed to verify voteMessage", "err", err)
 			return false
@@ -173,7 +172,7 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 
 	voteHash := vote.Hash()
 	if ok := pool.basicVerify(vote, headNumber, votes, isFutureVote, voteHash); !ok {
-		log.Error("voteMessage is invalid", "err", invalidVote)
+		log.Error("voteMessage is invalid", "err", errInvalidVote)
 		return false
 	}
 
@@ -245,7 +244,7 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockNumber uint64) {
 	}
 }
 
-// Prune duplicationSet, priorityQueue and Map of curVotes.
+// Prune old data of duplicationSet, priorityQueue and curVotesMap.
 func (pool *VotePool) prune(lastestBlockNumber uint64) {
 
 	pool.mu.Lock()
@@ -253,10 +252,10 @@ func (pool *VotePool) prune(lastestBlockNumber uint64) {
 	curVotes := pool.curVotes
 	curBlockPq := pool.curVotesPq
 
-	for curBlockPq.Len() > 0 && (*curBlockPq)[0].BlockNumber < lastestBlockNumber-lowerLimitOfVoteBlockNumber {
+	for curBlockPq.Len() > 0 && (*curBlockPq)[0].BlockNumber+lowerLimitOfVoteBlockNumber < lastestBlockNumber {
 
 		// Prune curPriorityQueue.
-		blockHash := heap.Pop(curBlockPq).(types.VoteData).BlockHash
+		blockHash := heap.Pop(curBlockPq).(*types.VoteData).BlockHash
 		voteMessages := curVotes[blockHash].voteMessages
 
 		// Prune duplicationSet.
@@ -311,7 +310,7 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 	}
 
 	// Make sure in the range currentHeight-256~currentHeight+11.
-	if voteBlockNumber < headNumber-lowerLimitOfVoteBlockNumber || voteBlockNumber > headNumber+upperLimitOfVoteBlockNumber {
+	if voteBlockNumber+lowerLimitOfVoteBlockNumber < headNumber || voteBlockNumber > headNumber+upperLimitOfVoteBlockNumber {
 		return false
 	}
 

@@ -16,8 +16,6 @@
 package vote
 
 import (
-	mapset "github.com/deckarep/golang-set"
-
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -27,7 +25,8 @@ import (
 )
 
 const (
-	voteWhiteList = 11
+	voteWhiteList         = 11
+	blockLimitForTraverse = 11
 )
 
 type Rules interface {
@@ -53,8 +52,6 @@ type VoteManager struct {
 	signer  *VoteSigner
 	journal *VoteJournal
 
-	voteSet mapset.Set
-
 	rules Rules
 }
 
@@ -68,8 +65,6 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 
 		signer:  signer,
 		journal: journal,
-
-		voteSet: mapset.NewSet(),
 	}
 
 	voteManager.chainHeadSub = voteManager.chain.SubscribeChainHeadEvent(voteManager.chainHeadCh)
@@ -108,31 +103,47 @@ func (voteManager *VoteManager) loop() {
 			if !startVote || cHead.Block == nil {
 				continue
 			}
+			curHead := cHead.Block.Header()
 
-			curBlock := cHead.Block
-			// Vote for curBlock.
-			vote := &types.VoteData{
-				BlockNumber: curBlock.NumberU64(),
-				BlockHash:   curBlock.Hash(),
+			var lastLatestVoteNumber uint64
+			lastLatestVote := voteManager.journal.latestVote
+			if lastLatestVote == nil {
+				lastLatestVoteNumber = 0
+			} else {
+				lastLatestVoteNumber = lastLatestVote.Data.BlockNumber
 			}
-			voteMessage := &types.VoteEnvelope{
-				Data: vote,
-			}
-			// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
-			if ok := voteManager.rules.UnderRules(curBlock.Header()); ok {
-				if err := voteManager.signer.SignVote(voteMessage); err != nil {
-					log.Warn("Failed to sign vote", "err", err)
-					continue
+
+			var newChainStack []*types.Header
+			for i := 0; i < blockLimitForTraverse; i++ {
+				if curHead == nil || curHead.Number.Uint64() <= lastLatestVoteNumber {
+					break
 				}
-				voteManager.journal.WriteVote(voteMessage)
-
-				voteManager.pool.PutVote(voteMessage)
+				newChainStack = append(newChainStack, curHead)
+				curHead = voteManager.chain.GetHeader(curHead.ParentHash, curHead.Number.Uint64()-1)
 			}
 
+			for i := len(newChainStack) - 1; i >= 0; i-- {
+				curBlockHeader := newChainStack[i]
+				// Vote for curBlockHeader block.
+				vote := &types.VoteData{
+					BlockNumber: curBlockHeader.Number.Uint64(),
+					BlockHash:   curBlockHeader.Hash(),
+				}
+				voteMessage := &types.VoteEnvelope{
+					Data: vote,
+				}
+				// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
+				if ok := voteManager.UnderRules(curBlockHeader); ok {
+					if err := voteManager.signer.SignVote(voteMessage); err != nil {
+						log.Warn("Failed to sign vote", "err", err)
+						continue
+					}
+					voteManager.journal.WriteVote(voteMessage)
+					voteManager.pool.PutVote(voteMessage)
+				}
+			}
 		}
-
 	}
-
 }
 
 // Check if the produced header under the Rule1: Validators always vote once and only once on one height,
@@ -149,7 +160,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
 	latestBlockHash := latestVote.Data.BlockHash
 
 	// Check for Rules.
-	if header.Number.Uint64()-latestBlockNumber > voteWhiteList {
+	if header.Number.Uint64() > latestBlockNumber+voteWhiteList {
 		return true
 	}
 
