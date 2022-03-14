@@ -781,14 +781,15 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 	usedGas *uint64, mining bool) error {
 	currentHeight := header.Number.Uint64()
 	epoch := p.config.Epoch
-	if currentHeight%epoch != 0 {
+	chainConfig := chain.Config()
+	if currentHeight%epoch != 0 || !chainConfig.IsBoneh(header.Number) {
 		return nil
 	}
 
 	accumulatedWeights := make(map[common.Address]uint64)
 	for height := currentHeight - epoch; height <= currentHeight; height++ {
 		head := chain.GetHeaderByNumber(height)
-		voteAttestation, err := getVoteAttestationFromHeader(head, chain.Config(), p.config)
+		voteAttestation, err := getVoteAttestationFromHeader(head, chainConfig, p.config)
 		if err != nil {
 			return err
 		}

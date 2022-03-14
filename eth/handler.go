@@ -88,7 +88,7 @@ type txPool interface {
 // support all the operations needed by the Ethereum chain protocols.
 type votePool interface {
 	PutVote(vote *types.VoteEnvelope)
-	Get(hash common.Hash) *types.VoteEnvelope
+	FetchAvailableVotes(blockHash common.Hash) []*types.VoteEnvelope
 	GetVotes() []*types.VoteEnvelope
 
 	// SubscribeNewVotesEvent should return an event subscription of
