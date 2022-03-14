@@ -2112,10 +2112,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		var followupInterrupt uint32
 		// For diff sync, it may fallback to full sync, so we still do prefetch
 		if len(block.Transactions()) >= prefetchTxNumber {
-			throwaway := statedb.Copy()
+			//throwaway := statedb.Copy()
 			go func(start time.Time, followup *types.Block, throwaway *state.StateDB, interrupt *uint32) {
 				bc.prefetcher.Prefetch(followup, throwaway, bc.vmConfig, &followupInterrupt)
-			}(time.Now(), block, throwaway, &followupInterrupt)
+			}(time.Now(), block, statedb, &followupInterrupt)
 		}
 		//Process block using the parent state as reference point
 		substart := time.Now()

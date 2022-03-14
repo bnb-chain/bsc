@@ -13,15 +13,15 @@ type SharedStorage struct {
 	shared_map map[common.Address]sync.Map
 }
 
-func NewSharedStorage() SharedStorage {
+func NewSharedStorage() *SharedStorage {
 	sharedMap := make(map[common.Address]sync.Map, 1000)
-	return SharedStorage{
+	return &SharedStorage{
 		poolLock:   &sync.RWMutex{},
 		shared_map: sharedMap,
 	}
 }
 
-func (storage *SharedStorage) GetStorage(address common.Address, key common.Hash) (interface{}, bool) {
+func (storage *SharedStorage) getStorage(address common.Address, key common.Hash) (interface{}, bool) {
 	storage.poolLock.RLock()
 	storageMap, ok := storage.shared_map[address]
 	storage.poolLock.RUnlock()

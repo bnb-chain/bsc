@@ -79,8 +79,6 @@ type StateObject struct {
 	trie Trie // storage trie, which becomes non-nil on first access
 	code Code // contract bytecode, which gets set when code is loaded
 
-	//originStorage  *sync.Map // Storage cache of original entries to dedup rewrites, reset for every transaction
-
 	pendingStorage Storage // Storage entries that need to be flushed to disk, at the end of an entire block
 	dirtyStorage   Storage // Storage entries that have been modified in the current transaction execution
 	fakeStorage    Storage // Fake storage which constructed by caller for debugging purpose.
@@ -122,15 +120,13 @@ func newObject(db *StateDB, address common.Address, data Account) *StateObject {
 		data.Root = emptyRoot
 	}
 	// Check whether the storage exist in pool, new originStorage if not exist
-
 	db.sharedStorage.checkSharedStorage(address)
 
 	return &StateObject{
-		db:       db,
-		address:  address,
-		addrHash: crypto.Keccak256Hash(address[:]),
-		data:     data,
-		//	originStorage:  &storageMap,
+		db:             db,
+		address:        address,
+		addrHash:       crypto.Keccak256Hash(address[:]),
+		data:           data,
 		pendingStorage: make(Storage),
 		dirtyStorage:   make(Storage),
 	}
@@ -325,8 +321,8 @@ func (s *StateObject) finalise(prefetch bool) {
 	}
 
 	for key, value := range s.dirtyStorage {
-		originValue, _ := s.db.getOriginStorage(s.address, key)
-		if value != originValue.(common.Hash) {
+		originValue, cached := s.db.getOriginStorage(s.address, key)
+		if cached && value != originValue.(common.Hash) {
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
 		}
 	}
@@ -362,8 +358,8 @@ func (s *StateObject) updateTrie(db Database) Trie {
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
 	for key, value := range s.pendingStorage {
 		// Skip noop changes, persist actual changes
-		originValue, _ := s.db.getOriginStorage(s.address, key)
-		if value == originValue.(common.Hash) {
+		originValue, cached := s.db.getOriginStorage(s.address, key)
+		if cached && value == originValue.(common.Hash) {
 			continue
 		}
 		s.db.setOriginStorage(s.address, key, value)

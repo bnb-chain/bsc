@@ -102,7 +102,7 @@ type StateDB struct {
 	stateObjectsDirty   map[common.Address]struct{} // State objects modified in the current execution
 
 	// shared_pool to store L1 originStorage of stateObjects
-	sharedStorage SharedStorage
+	sharedStorage *SharedStorage
 
 	// DB error.
 	// State objects are used by the consensus core and VM which are
@@ -1646,7 +1646,7 @@ func (s *StateDB) GetDirtyAccounts() []common.Address {
 }
 
 func (s *StateDB) getOriginStorage(address common.Address, key common.Hash) (interface{}, bool) {
-	return s.sharedStorage.GetStorage(address, key)
+	return s.sharedStorage.getStorage(address, key)
 }
 
 func (s *StateDB) setOriginStorage(address common.Address, key common.Hash, val common.Hash) {
