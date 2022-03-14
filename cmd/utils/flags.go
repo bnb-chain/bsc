@@ -458,8 +458,8 @@ var (
 		Value: uint64(86400),
 	}
 	DelAncientDataFlag = cli.BoolFlag{
-		Name:  "ancient.nodata",
-		Usage: "Enable ancientdb save no data, release more os resource",
+		Name:  "keepfixedblocks",
+		Usage: "Keep a fixed number of blocks(9w) under full syncmode, enable release more os resources",
 	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
@@ -1627,9 +1627,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(DelAncientDataFlag.Name) {
 		cfg.DelAncientData = ctx.GlobalBool(DelAncientDataFlag.Name)
-		if cfg.SyncMode == downloader.LightSync {
+		if cfg.SyncMode != downloader.FullSync {
 			cfg.DelAncientData = false 
-			log.Info("ancient.nodata not take effect, under light syncmode")
+			log.Crit("keepfixedblocks parameter take effect in full syncmode")
 		}
 	}
 	if gcmode := ctx.GlobalString(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {

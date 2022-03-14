@@ -59,18 +59,11 @@ func newNoDataFreezer(datadir string, db ethdb.KeyValueStore) (*nodatafreezer, e
 }
 
 // repair init frozen , compatible disk-ancientdb and pruner-block-tool.
-func (f *nodatafreezer) repair(datadir string) error {	
-	currentOffset := ReadOffSetOfCurrentAncientFreezer(f.db)
-	lastOffset := ReadOffSetOfLastAncientFreezer(f.db)
+func (f *nodatafreezer) repair(datadir string) error {
+	// compatible prune-block-tool
+	offset := ReadOffSetOfCurrentAncientFreezer(f.db)
 
-	var offset uint64
-	if currentOffset > lastOffset {
-		atomic.StoreUint64(&f.frozen, currentOffset)
-		offset = currentOffset
-	} else {
-		offset = lastOffset
-	}
-	
+	// compatible freezer
 	min := uint64(math.MaxUint64)
 	for name, disableSnappy := range FreezerNoSnappy {
 		table, err := NewFreezerTable(datadir, name, disableSnappy)
