@@ -221,6 +221,13 @@ func (s *StateDB) EnablePipeCommit() {
 	}
 }
 
+func (s *StateDB) IsPipeCommit() bool {
+	if s.snap != nil {
+		return s.pipeCommit
+	}
+	return false
+}
+
 // Mark that the block is full processed
 func (s *StateDB) MarkFullProcessed() {
 	s.fullProcessed = true
@@ -1362,7 +1369,7 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		commitErr := func() error {
 			accountData := make(map[common.Hash][]byte)
 			if s.pipeCommit {
-				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct, fix the wrong data here
+				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct, capture the correct data here
 				snapAccountLock.Lock()
 				s.AccountsIntermediateRoot()
 				snapAccountLock.Unlock()
@@ -1372,10 +1379,15 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 			}
 
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
+				if s.pipeCommit {
+					<-snapCreated
+				}
+				fmt.Printf("invalid merkle root (remote: %x local: %x) \n", s.expectedRoot, s.stateRoot)
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
 			}
 
 			if s.pipeCommit {
+				//Fix the account data in difflayer here
 				root := <-snapCreated
 				if root != (common.Hash{}) {
 					s.snaps.Snapshot(root).CorrectAccounts(accountData)
@@ -1525,12 +1537,12 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 					err := s.snaps.Update(s.expectedRoot, parent, s.snapDestructs, s.snapAccounts, s.snapStorage, verified)
 					snapAccountLock.Unlock()
 
+					hashToSend := s.expectedRoot
 					if err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
-						snapCreated <- common.Hash{}
 					}
 					if s.pipeCommit {
-						snapCreated <- s.expectedRoot
+						snapCreated <- hashToSend
 					}
 					// Keep n diff layers in the memory
 					// - head layer is paired with HEAD state
