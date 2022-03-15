@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vote"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
 	"github.com/ethereum/go-ethereum/eth/protocols/diff"
@@ -88,7 +89,11 @@ type txPool interface {
 // support all the operations needed by the Ethereum chain protocols.
 type votePool interface {
 	PutVote(vote *types.VoteEnvelope)
+<<<<<<< HEAD
 	FetchAvailableVotes(blockHash common.Hash) []*types.VoteEnvelope
+=======
+	FetchAvailableVotes(blockHash common.Hash) (*vote.VoteBox, bool)
+>>>>>>> a9ad48148 (update)
 	GetVotes() []*types.VoteEnvelope
 
 	// SubscribeNewVotesEvent should return an event subscription of

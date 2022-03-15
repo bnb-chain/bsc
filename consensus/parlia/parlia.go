@@ -973,6 +973,30 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	return blk, receipts, nil
 }
 
+// VerifyVote will verify if the vote comes from valid validators.
+func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) bool {
+	voteBlockNumber := vote.Data.BlockNumber
+	voteBlockHash := vote.Data.BlockHash
+	header := chain.GetHeader(voteBlockHash, voteBlockNumber)
+
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		log.Error("failed to get the snapshot from consensus", "error", err)
+		return false
+	}
+
+	validators := snap.Validators
+	voteAddress := vote.VoteAddress
+	for _, validator := range validators {
+		if validator.VoteAddress == voteAddress {
+			return true
+		}
+
+	}
+	return false
+}
+
 // Authorize injects a private key into the consensus engine to mint new blocks
 // with.
 func (p *Parlia) Authorize(val common.Address, signFn SignerFn, signTxFn SignerTxFn) {
