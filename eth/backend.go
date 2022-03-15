@@ -233,20 +233,21 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	eth.txPool = core.NewTxPool(config.TxPool, chainConfig, eth.blockchain)
 
-	//TODO:
+	// //TODO:
 	// // Create vote related object.
-	// if journal, err := vote.NewVoteJournal(); err == nil {
+	// if journal, err := vote.NewVoteJournal(""); err == nil {
 	// 	eth.voteJournal = journal
 	// }
-	// if signer, err := vote.NewVoteSigner(); err == nil {
+	// if signer, err := vote.NewVoteSigner(nil); err == nil {
 	// 	eth.voteSigner = signer
 	// }
 
 	// if voteManager, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, eth.voteJournal, eth.voteSigner); err == nil {
 	// 	eth.voteManager = voteManager
 	// }
-	// eth.votePool = vote.NewVotePool(chainConfig, eth.blockchain, eth.voteManager)
+	// votePool := vote.NewVotePool(chainConfig, eth.blockchain, eth.voteManager, nil)
 
+	
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit
 	checkpoint := config.Checkpoint

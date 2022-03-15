@@ -25,17 +25,8 @@ import (
 )
 
 const (
-	voteWhiteList         = 11
-	blockLimitForTraverse = 11
+	maxForkLength = 11
 )
-
-type Rules interface {
-	UnderRules(header *types.Header) bool
-}
-
-type votePool interface {
-	PutVote(vote *types.VoteEnvelope)
-}
 
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {
@@ -44,18 +35,15 @@ type VoteManager struct {
 	chain       *core.BlockChain
 	chainconfig *params.ChainConfig
 
-	pool votePool
-
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 
+	pool    *VotePool
 	signer  *VoteSigner
 	journal *VoteJournal
-
-	rules Rules
 }
 
-func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, journal *VoteJournal, signer *VoteSigner) (*VoteManager, error) {
+func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, journal *VoteJournal, signer *VoteSigner, pool *VotePool) (*VoteManager, error) {
 	voteManager := &VoteManager{
 		mux: mux,
 
@@ -65,6 +53,7 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 
 		signer:  signer,
 		journal: journal,
+		pool:    pool,
 	}
 
 	voteManager.chainHeadSub = voteManager.chain.SubscribeChainHeadEvent(voteManager.chainHeadCh)
@@ -114,7 +103,7 @@ func (voteManager *VoteManager) loop() {
 			}
 
 			var newChainStack []*types.Header
-			for i := 0; i < blockLimitForTraverse; i++ {
+			for i := 0; i < maxForkLength; i++ {
 				if curHead == nil || curHead.Number.Uint64() <= lastLatestVoteNumber {
 					break
 				}
@@ -138,9 +127,13 @@ func (voteManager *VoteManager) loop() {
 						log.Warn("Failed to sign vote", "err", err)
 						continue
 					}
-					voteManager.journal.WriteVote(voteMessage)
+					if err := voteManager.journal.WriteVote(voteMessage); err != nil {
+						log.Warn("Failed to write vote into journal", "err", err)
+						continue
+					}
 					voteManager.pool.PutVote(voteMessage)
 				}
+
 			}
 		}
 	}
@@ -150,7 +143,6 @@ func (voteManager *VoteManager) loop() {
 // Rule2: Validators always vote for the child of its previous vote within a predefined n blocks to avoid vote on two different
 // forks of chain.
 func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
-
 	latestVote := voteManager.journal.latestVote
 	if latestVote == nil {
 		return true
@@ -160,7 +152,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
 	latestBlockHash := latestVote.Data.BlockHash
 
 	// Check for Rules.
-	if header.Number.Uint64() > latestBlockNumber+voteWhiteList {
+	if header.Number.Uint64() > latestBlockNumber+maxForkLength {
 		return true
 	}
 
@@ -168,12 +160,10 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
 	if curBlockHeader.Number.Uint64() <= latestBlockNumber {
 		return false
 	}
+
 	for curBlockHeader != nil && curBlockHeader.Number.Uint64() >= latestBlockNumber {
 		if curBlockHeader.Number.Uint64() == latestBlockNumber {
-			if curBlockHeader.Hash() == latestBlockHash {
-				return true
-			}
-			break
+			return curBlockHeader.Hash() == latestBlockHash
 		}
 		curBlockHeader = voteManager.chain.GetHeader(curBlockHeader.ParentHash, curBlockHeader.Number.Uint64()-1)
 	}

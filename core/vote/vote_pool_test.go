@@ -33,7 +33,6 @@ import (
 	"github.com/prysmaticlabs/prysm/validator/accounts/iface"
 	"github.com/prysmaticlabs/prysm/validator/accounts/wallet"
 	"github.com/prysmaticlabs/prysm/validator/keymanager"
-	"github.com/prysmaticlabs/prysm/validator/keymanager/imported"
 	keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
 
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -55,19 +54,11 @@ var (
 	testAddr = crypto.PubkeyToAddress(testKey.PublicKey)
 
 	password = "secretPassword"
+
+	timeThreshold = 30
 )
 
-func setupVoteSigner(t *testing.T) *VoteSigner {
-	// Create keymanager
-	km := keymanager.IKeymanager(&imported.Keymanager{})
-	voteSigner, err := NewVoteSigner(&km)
-	if err != nil {
-		t.Fatalf("failed to create vote signer: %v", err)
-	}
-	return voteSigner
-}
-
-func setupVoteJournal(t *testing.T) *VoteJournal {
+func setUpVoteJournal(t *testing.T) *VoteJournal {
 	// Create a temporary file for the votes journal
 	file, err := ioutil.TempFile("", "")
 	if err != nil {
@@ -88,23 +79,31 @@ func setupVoteJournal(t *testing.T) *VoteJournal {
 	return voteJournal
 }
 
-func setupVoteManager(t *testing.T) *VoteManager {
-	db := rawdb.NewMemoryDatabase()
-	blockchain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFullFaker(), vm.Config{}, nil, nil)
-	// Create event Mux
-	mux := new(event.TypeMux)
-	voteJournal := setupVoteJournal(t)
-	voteSigner := setupVoteSigner(t)
-	voteManager, err := NewVoteManager(mux, params.TestChainConfig, blockchain, voteJournal, voteSigner)
-	if err != nil {
-		t.Fatalf("failed to create vote manager: %v", err)
+func (pool *VotePool) verifyStructureSizeOfVotePool(receivedVotes, curVotes, futureVotes, curVotesPq, futureVotesPq int) bool {
+	for i := 0; i < timeThreshold; i++ {
+		time.Sleep(1 * time.Second)
+		if pool.receivedVotes.Cardinality() == receivedVotes && len(pool.curVotes) == curVotes && len(pool.futureVotes) == futureVotes && pool.curVotesPq.Len() == curVotesPq && pool.futureVotesPq.Len() == futureVotesPq {
+			return true
+		}
 	}
-	return voteManager
+	return false
+
+}
+
+func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
+	for i := 0; i < timeThreshold; i++ {
+		time.Sleep(1 * time.Second)
+		lastIndex, _ := journal.walLog.LastIndex()
+		firstIndex, _ := journal.walLog.FirstIndex()
+		if journal.latestVote.Data.BlockNumber == uint64(lastLatestVoteNumber) && int(lastIndex)-int(firstIndex)+1 == size {
+			return true
+		}
+	}
+	return false
 
 }
 
 func TestVotePool(t *testing.T) {
-
 	km := setUpKeyManager(t)
 
 	// Create vote Signer
@@ -121,56 +120,48 @@ func TestVotePool(t *testing.T) {
 	mux := new(event.TypeMux)
 
 	// Create vote journal
-	voteJournal := setupVoteJournal(t)
-
-	// Create vote manager
-	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, voteJournal, voteSigner)
-	if err != nil {
-		t.Fatalf("failed to create vote manager: %v", err)
-	}
+	voteJournal := setUpVoteJournal(t)
 
 	// Create vote pool
-	votePool := NewVotePool(params.TestChainConfig, chain, voteManager, ethash.NewFaker())
-	voteManager.pool = votePool
+	votePool := NewVotePool(params.TestChainConfig, chain, ethash.NewFaker())
+
+	// Create vote manager
+	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, voteJournal, voteSigner, votePool)
+	if err != nil {
+		t.Fatalf("failed to create vote managers")
+	}
 
 	// Send the done event of downloader
 	time.Sleep(10 * time.Millisecond)
 	mux.Post(downloader.DoneEvent{})
 
 	bs, _ := core.GenerateChain(params.TestChainConfig, chain.Genesis(), ethash.NewFaker(), db, 16, nil)
+	// Insert a batch of 16 blocks in chain, expect only 11 amount of blocks: Block6 ~ Block16 be voted!
 	if _, err := chain.InsertChain(bs); err != nil {
 		panic(err)
 	}
 
-	// The scenario of no voting happened before, current block header is 1
-	receivedVotes, curVotes, futureVotes, curVotesPq, futureVotesPq := votePool.receivedVotes, votePool.curVotes, votePool.futureVotes, votePool.curVotesPq, votePool.futureVotesPq
-	flag := false
-	for i := 0; i < 60; i++ {
-		time.Sleep(1 * time.Second)
-		if receivedVotes.Cardinality() == 11 && len(curVotes) == 11 && len(futureVotes) == 0 && curVotesPq.Len() == 11 && futureVotesPq.Len() == 0 {
-			flag = true
-			break
-		}
+	if !votePool.verifyStructureSizeOfVotePool(11, 11, 0, 11, 0) {
+		t.Fatalf("put vote failed")
 	}
-	if !flag {
-		t.Fatalf("put vote failed: %v", err)
+
+	// Verify journal
+	if !voteJournal.verifyJournal(11, 16) {
+		t.Fatalf("journal failed")
 	}
 
 	bs, _ = core.GenerateChain(params.TestChainConfig, bs[len(bs)-1], ethash.NewFaker(), db, 1, nil)
 	if _, err := chain.InsertChain(bs); err != nil {
 		panic(err)
 	}
-	flag = false
 
-	for i := 0; i < 30; i++ {
-		time.Sleep(1 * time.Second)
-		if receivedVotes.Cardinality() == 12 && len(curVotes) == 12 && len(futureVotes) == 0 && curVotesPq.Len() == 12 && futureVotesPq.Len() == 0 {
-			flag = true
-			break
-		}
+	if !votePool.verifyStructureSizeOfVotePool(12, 12, 0, 12, 0) {
+		t.Fatalf("put vote failed")
 	}
-	if !flag {
-		t.Fatalf("put vote failed: %v", err)
+
+	// Verify journal
+	if !voteJournal.verifyJournal(12, 17) {
+		t.Fatalf("journal failed")
 	}
 
 	for i := 0; i < 256; i++ {
@@ -180,36 +171,99 @@ func TestVotePool(t *testing.T) {
 		}
 	}
 
-	// currently chain size is 273, and blockNumber before 17 in votePool should be pruned to 257
-	flag = false
-	for i := 0; i < 30; i++ {
-		time.Sleep(1 * time.Second)
-		if len(votePool.curVotes) == 257 && votePool.curVotesPq.Len() == 257 {
-			flag = true
-			break
-		}
+	// Verify journal
+	if !voteJournal.verifyJournal(256, 273) {
+		t.Fatalf("journal failed")
 	}
-	if !flag {
-		t.Fatalf("put vote failed: %v", err)
+
+	// currently chain size is 273, and blockNumber before 18 in votePool should be pruned, so vote pool size should be 256!
+	if !votePool.verifyStructureSizeOfVotePool(256, 256, 0, 256, 0) {
+		t.Fatalf("put vote failed")
 	}
-	invalidVoteData := &types.VoteData{
-		BlockNumber: 1000,
-	}
+
+	// Test invalid vote whose number larger than latestHeader + 11
 	invalidVote := &types.VoteEnvelope{
-		Data: invalidVoteData,
+		Data: &types.VoteData{
+			BlockNumber: 1000,
+		},
 	}
 	voteManager.pool.PutVote(invalidVote)
 
-	flag = false
-	for i := 0; i < 30; i++ {
-		time.Sleep(1 * time.Second)
-		if len(votePool.curVotes) == 257 && votePool.curVotesPq.Len() == 257 && len(votePool.futureVotes) == 0 && votePool.futureVotesPq.Len() == 0 {
-			flag = true
-			break
+	if !votePool.verifyStructureSizeOfVotePool(256, 256, 0, 256, 0) {
+		t.Fatalf("put vote failed")
+	}
+
+	votes := votePool.GetVotes()
+	if len(votes) != 256 {
+		t.Fatalf("get votes failed")
+	}
+
+	// Verify journal
+	if !voteJournal.verifyJournal(256, 273) {
+		t.Fatalf("journal failed")
+	}
+
+	// Test future votes scenario: votes number within latestBlockHeader ~ latestBlockHeader + 11
+	futureVote := &types.VoteEnvelope{
+		Data: &types.VoteData{
+			BlockNumber: 282,
+		},
+	}
+	voteManager.pool.PutVote(futureVote)
+
+	if !votePool.verifyStructureSizeOfVotePool(257, 256, 1, 256, 1) {
+		t.Fatalf("put vote failed")
+	}
+
+	// Verify journal
+	if !voteJournal.verifyJournal(256, 273) {
+		t.Fatalf("journal failed")
+	}
+
+	// Test duplicate vote case, shouldn'd be put into vote pool
+	duplicateVote := &types.VoteEnvelope{
+		Data: &types.VoteData{
+			BlockNumber: 282,
+		},
+	}
+	voteManager.pool.PutVote(duplicateVote)
+
+	if !votePool.verifyStructureSizeOfVotePool(257, 256, 1, 256, 1) {
+		t.Fatalf("put vote failed")
+	}
+
+	// Verify journal
+	if !voteJournal.verifyJournal(256, 273) {
+		t.Fatalf("journal failed")
+	}
+
+	// Test future votes larger than latestBlockNumber + 11 should be rejected
+	futureVote = &types.VoteEnvelope{
+		Data: &types.VoteData{
+			BlockNumber: 285,
+		},
+	}
+	voteManager.pool.PutVote(futureVote)
+	if !votePool.verifyStructureSizeOfVotePool(257, 256, 1, 256, 1) {
+		t.Fatalf("put vote failed")
+	}
+
+	// Test transfer votes from future to cur, latest block header is #293
+	for i := 0; i < 20; i++ {
+		bs, _ = core.GenerateChain(params.TestChainConfig, bs[len(bs)-1], ethash.NewFaker(), db, 1, nil)
+		if _, err := chain.InsertChain(bs); err != nil {
+			panic(err)
 		}
 	}
-	if !flag {
-		t.Fatalf("put vote failed: %v", err)
+
+	// Pruner will keep the size of votePool as latestBlockHeader-255~latestBlockHeader, plus one futureVote transfer, then final result should be 257!
+	if !votePool.verifyStructureSizeOfVotePool(257, 257, 0, 257, 0) {
+		t.Fatalf("put vote failed")
+	}
+
+	// Verify journal
+	if !voteJournal.verifyJournal(256, 293) {
+		t.Fatalf("journal failed")
 	}
 }
 

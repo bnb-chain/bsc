@@ -571,11 +571,6 @@ func (c *Clique) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	return types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil)), receipts, nil
 }
 
-// VerifyVote will verify if the vote comes from valid validators, no verification if not parlia engine.
-func (c *Clique) VerifyVote(chain consensus.ChainHeaderReader, header *types.Header, vote *types.VoteEnvelope) bool {
-	return true
-}
-
 // Authorize injects a private key into the consensus engine to mint new blocks
 // with.
 func (c *Clique) Authorize(signer common.Address, signFn SignerFn) {

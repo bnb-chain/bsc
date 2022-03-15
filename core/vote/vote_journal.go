@@ -29,7 +29,7 @@ const (
 )
 
 type VoteJournal struct {
-	journalPath string // Disk journal for saving the vote.
+	journalPath string // file path of disk journal for saving the vote.
 
 	walLog *wal.Log
 
@@ -37,26 +37,42 @@ type VoteJournal struct {
 }
 
 func NewVoteJournal(filePath string) (*VoteJournal, error) {
-
 	walLog, err := wal.Open(filePath, &wal.Options{
 		LogFormat:        wal.JSON,
 		SegmentCacheSize: maxSizeOfRecentEntry,
 	})
 	if err != nil {
+		log.Error("Failed to open vote journal", "err", err)
 		return nil, err
 	}
 
-	voteJournal := &VoteJournal{
+	lastIndex, err := walLog.LastIndex()
+	if err != nil {
+		log.Error("Failed to get lastIndex of vote journal", "err", err)
+		return nil, err
+	}
+
+	voteMessage, err := walLog.Read(lastIndex)
+	if err != nil && err != wal.ErrNotFound {
+		log.Error("Failed to read votes journal", "err", err)
+		return nil, err
+	}
+
+	var vote *types.VoteEnvelope
+
+	if voteMessage != nil {
+		vote = &types.VoteEnvelope{}
+		if err := json.Unmarshal(voteMessage, vote); err != nil {
+			log.Error("Failed to unmarshal vote in the proecss for intializing journal object", "err", err)
+			return nil, err
+		}
+	}
+
+	return &VoteJournal{
 		journalPath: filePath,
 		walLog:      walLog,
-	}
-
-	if err := voteJournal.LoadVotes(); err != nil {
-		log.Warn("Failed to load votes journal", "err", err)
-		return nil, err
-	}
-
-	return voteJournal, nil
+		latestVote:  vote,
+	}, nil
 }
 
 func (journal *VoteJournal) WriteVote(voteMessage *types.VoteEnvelope) error {
@@ -64,16 +80,19 @@ func (journal *VoteJournal) WriteVote(voteMessage *types.VoteEnvelope) error {
 
 	vote, err := json.Marshal(voteMessage)
 	if err != nil {
+		log.Error("Failed to unmarshal vote", "err", err)
 		return err
 	}
 
 	lastIndex, err := walLog.LastIndex()
 	if err != nil {
+		log.Error("Failed to get lastIndex of vote journal", "err", err)
 		return err
 	}
 
 	lastIndex += 1
 	if err = walLog.Write(lastIndex, vote); err != nil {
+		log.Error("Failed to write vote journal", "err", err)
 		return err
 	}
 
@@ -83,44 +102,11 @@ func (journal *VoteJournal) WriteVote(voteMessage *types.VoteEnvelope) error {
 	}
 
 	if lastIndex-firstIndex+1 > maxSizeOfRecentEntry {
-		if err := walLog.TruncateFront(lastIndex - maxSizeOfRecentEntry); err != nil {
+		if err := walLog.TruncateFront(lastIndex - maxSizeOfRecentEntry + 1); err != nil {
 			log.Warn("Failed to truncate votes journal", "err", err)
 		}
 	}
 	journal.latestVote = voteMessage
-
-	return nil
-}
-
-// LoadVotesJournal in case of node restart.
-func (journal *VoteJournal) LoadVotes() error {
-	walLog := journal.walLog
-
-	lastIndex, err := walLog.LastIndex()
-	if err != nil {
-		return err
-	}
-
-	var startIndex uint64 = 1
-	if index := lastIndex - maxSizeOfRecentEntry + 1; index > 1 {
-		startIndex = index
-	}
-
-	for index := startIndex; index <= lastIndex; index++ {
-		voteMessage, err := walLog.Read(index)
-		if err != nil {
-			log.Warn("Failed to get the entry of votes journal", "err", err)
-		}
-
-		vote := types.VoteEnvelope{}
-		if err := json.Unmarshal(voteMessage, &vote); err != nil {
-			return err
-		}
-
-		if index == lastIndex {
-			journal.latestVote = &vote
-		}
-	}
 
 	return nil
 }
