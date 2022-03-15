@@ -1382,7 +1382,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				if s.pipeCommit {
 					<-snapCreated
 				}
-				fmt.Printf("invalid merkle root (remote: %x local: %x) \n", s.expectedRoot, s.stateRoot)
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
 			}
 
