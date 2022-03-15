@@ -1645,10 +1645,6 @@ func (s *StateDB) GetDirtyAccounts() []common.Address {
 	return accounts
 }
 
-func (s *StateDB) getOriginStorage(address common.Address, key common.Hash) (interface{}, bool) {
-	return s.sharedStorage.getStorage(address, key)
-}
-
-func (s *StateDB) setOriginStorage(address common.Address, key common.Hash, val common.Hash) {
-	s.sharedStorage.setStorage(address, key, val)
+func (s *StateDB) GetOrInsertStorage(address common.Address) *sync.Map {
+	return s.sharedStorage.getOrInertStorage(address)
 }

@@ -1,10 +1,8 @@
 package state
 
 import (
-	"github.com/ethereum/go-ethereum/log"
-	"sync"
-
 	"github.com/ethereum/go-ethereum/common"
+	"sync"
 )
 
 // sharedStorage is used to store maps of originStorage of stateObjects
@@ -21,39 +19,18 @@ func NewSharedStorage() *SharedStorage {
 	}
 }
 
-// get val of key in originStorage of stateObject by specified address
-func (storage *SharedStorage) getStorage(address common.Address, key common.Hash) (interface{}, bool) {
-	storage.poolLock.RLock()
-	storageMap, ok := storage.shared_map[address]
-	storage.poolLock.RUnlock()
-	if !ok {
-		log.Error("can not find originStorage on:" + address.String())
-		return nil, false
-	}
-	return storageMap.Load(key)
-}
-
-// set key,val in originStorage of stateObject by specified address
-func (storage *SharedStorage) setStorage(address common.Address, key common.Hash, val common.Hash) {
-	storage.poolLock.RLock()
-	storageMap, ok := storage.shared_map[address]
-	storage.poolLock.RUnlock()
-	if !ok {
-		log.Error("can not find originStorage on:" + address.String())
-	}
-	storageMap.Store(key, val)
-}
-
 // Check whether the storage exist in pool,
 // new one if not exist, it will be fetched in stateObjects.GetCommittedState()
-func (storage *SharedStorage) checkSharedStorage(address common.Address) {
+func (storage *SharedStorage) getOrInertStorage(address common.Address) *sync.Map {
 	storage.poolLock.RLock()
-	_, ok := storage.shared_map[address]
+	storageMap, ok := storage.shared_map[address]
 	storage.poolLock.RUnlock()
 	if !ok {
 		m := new(sync.Map)
 		storage.poolLock.Lock()
 		storage.shared_map[address] = m
 		storage.poolLock.Unlock()
+		return m
 	}
+	return storageMap
 }
