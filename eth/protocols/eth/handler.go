@@ -103,10 +103,7 @@ type TxPool interface {
 	Get(hash common.Hash) *types.Transaction
 }
 
-type VotePool interface {
-	// Get retrieves the vote from the local votepool with the given hash.
-	Get(hash common.Hash) *types.VoteEnvelope
-}
+type VotePool interface{}
 
 // MakeProtocols constructs the P2P protocol definitions for `eth`.
 func MakeProtocols(backend Backend, network uint64, dnsdisc enode.Iterator) []p2p.Protocol {
