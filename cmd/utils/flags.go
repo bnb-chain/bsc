@@ -1627,8 +1627,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(DelAncientDataFlag.Name) {
 		cfg.DelAncientData = ctx.GlobalBool(DelAncientDataFlag.Name)
-		if cfg.SyncMode != downloader.FullSync {
-			cfg.DelAncientData = false 
+		if cfg.SyncMode == downloader.FullSync {
+			cfg.DelAncientData = ctx.GlobalBool(DelAncientDataFlag.Name)
+		} else {
 			log.Crit("keepfixedblocks parameter take effect in full syncmode")
 		}
 	}

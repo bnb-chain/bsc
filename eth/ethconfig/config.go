@@ -81,7 +81,6 @@ var Defaults = Config{
 	TriesInMemory:           128,
 	SnapshotCache:           102,
 	DiffBlock:               uint64(86400),
-	DelAncientData: 		 false,
 	Miner: miner.Config{
 		GasFloor:      8000000,
 		GasCeil:       8000000,
@@ -168,7 +167,7 @@ type Config struct {
 	DatabaseDiff       string
 	PersistDiff        bool
 	DiffBlock          uint64
-	DelAncientData 	   bool
+	DelAncientData     bool
 
 	TrieCleanCache          int
 	TrieCleanCacheJournal   string        `toml:",omitempty"` // Disk journal directory for trie cache to survive node restarts

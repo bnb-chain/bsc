@@ -1,32 +1,32 @@
 package rawdb
 
 import (
-	"os"
 	"math"
-	"sync"
-	"time"
-	"sync/atomic"
+	"os"
 	"path/filepath"
-	
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/prometheus/tsdb/fileutil"
-	"github.com/ethereum/go-ethereum/ethdb"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/prometheus/tsdb/fileutil"
 )
 
 // nodatafreezer is an empty freezer, only record 'frozen' , the next recycle block number form kvstore.
 type nodatafreezer struct {
-	db 			ethdb.KeyValueStore 	// Meta database
+	db ethdb.KeyValueStore // Meta database
 	// WARNING: The `frozen` field is accessed atomically. On 32 bit platforms, only
 	// 64-bit aligned fields can be atomic. The struct is guaranteed to be so aligned,
 	// so take advantage of that (https://golang.org/pkg/sync/atomic/#pkg-note-BUG).
-	frozen    	uint64 					// Number of next frozen block
-	threshold 	uint64					// Number of recent blocks not to freeze (params.FullImmutabilityThreshold apart from tests)
+	frozen    uint64 // Number of next frozen block
+	threshold uint64 // Number of recent blocks not to freeze (params.FullImmutabilityThreshold apart from tests)
 
-	instanceLock 	fileutil.Releaser        // File-system lock to prevent double opens
-	quit 			chan struct{}
-	closeOnce 		sync.Once
+	instanceLock fileutil.Releaser // File-system lock to prevent double opens
+	quit         chan struct{}
+	closeOnce    sync.Once
 }
 
 // newNoDataFreezer creates a chain freezer that deletes data enough ‘old’.
@@ -41,19 +41,19 @@ func newNoDataFreezer(datadir string, db ethdb.KeyValueStore) (*nodatafreezer, e
 	lock, _, err := fileutil.Flock(filepath.Join(datadir, "../NODATA_ANCIENT_FLOCK"))
 	if err != nil {
 		return nil, err
-	} 
-	
+	}
+
 	freezer := &nodatafreezer{
-		db 			: db,
-		threshold 	: params.FullImmutabilityThreshold,
+		db:           db,
+		threshold:    params.FullImmutabilityThreshold,
 		instanceLock: lock,
-		quit 		: make(chan struct{}),
+		quit:         make(chan struct{}),
 	}
 
 	if err := freezer.repair(datadir); err != nil {
 		return nil, err
 	}
-	
+
 	log.Info("Opened ancientdb with nodata mode", "database", datadir, "frozen", freezer.frozen)
 	return freezer, nil
 }
@@ -176,9 +176,7 @@ func (f *nodatafreezer) Sync() error {
 func (f *nodatafreezer) freeze() {
 	nfdb := &nofreezedb{KeyValueStore: f.db}
 
-	var (
-		backoff   bool
-	)
+	var backoff bool
 	for {
 		select {
 		case <-f.quit:
@@ -189,7 +187,6 @@ func (f *nodatafreezer) freeze() {
 		if backoff {
 			select {
 			case <-time.NewTimer(freezerRecheckInterval).C:
-				backoff = false
 			case <-f.quit:
 				return
 			}
@@ -254,6 +251,8 @@ func (f *nodatafreezer) freeze() {
 		if err := f.Sync(); err != nil {
 			log.Crit("Failed to flush frozen tables", "err", err)
 		}
-		backoff = gcKvStore(f.db, ancients, first, f.frozen, start)
+		// Batch of blocks have been frozen, flush them before wiping from leveldb
+		backoff = f.frozen-first >= freezerBatchLimit
+		gcKvStore(f.db, ancients, first, f.frozen, start)
 	}
 }

@@ -310,9 +310,7 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 			}
 			select {
 			case <-time.NewTimer(freezerRecheckInterval).C:
-				backoff = false
 			case triggered = <-f.trigger:
-				backoff = false
 			case <-f.quit:
 				return
 			}
@@ -398,7 +396,9 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 			log.Crit("Failed to flush frozen tables", "err", err)
 		}
 
-		backoff = gcKvStore(db, ancients, first, f.frozen, start)
+		// Batch of blocks have been frozen, flush them before wiping from leveldb
+		backoff = f.frozen-first >= freezerBatchLimit
+		gcKvStore(db, ancients, first, f.frozen, start)
 	}
 }
 
@@ -421,7 +421,7 @@ func (f *freezer) repair() error {
 }
 
 // delete leveldb data that save to ancientdb, split from func freeze
-func gcKvStore(db ethdb.KeyValueStore, ancients []common.Hash, first uint64, frozen uint64, start time.Time) bool {
+func gcKvStore(db ethdb.KeyValueStore, ancients []common.Hash, first uint64, frozen uint64, start time.Time) {
 	// Wipe out all data from the active database
 	batch := db.NewBatch()
 	for i := 0; i < len(ancients); i++ {
@@ -496,11 +496,4 @@ func gcKvStore(db ethdb.KeyValueStore, ancients []common.Hash, first uint64, fro
 		context = append(context, []interface{}{"hash", ancients[n-1]}...)
 	}
 	log.Info("Deep froze chain segment", context...)
-
-	// Avoid database thrashing with tiny writes
-	if frozen-first < freezerBatchLimit {
-		return true
-	}
-
-	return false
 }
