@@ -789,13 +789,19 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 	accumulatedWeights := make(map[common.Address]uint64)
 	for height := currentHeight - epoch; height <= currentHeight; height++ {
 		head := chain.GetHeaderByNumber(height)
+		if head == nil {
+			continue
+		}
 		voteAttestation, err := getVoteAttestationFromHeader(head, chainConfig, p.config)
 		if err != nil {
 			return err
 		}
-		targetBlock := chain.GetHeaderByHash(voteAttestation.Data.BlockHash)
+		justifiedBlock := chain.GetHeaderByHash(voteAttestation.Data.BlockHash)
+		if justifiedBlock == nil {
+			continue
+		}
 		rewardCoef := uint64(1)
-		switch height - targetBlock.Number.Uint64() {
+		switch height - justifiedBlock.Number.Uint64() {
 		case 1:
 			rewardCoef = 8
 		case 2:
