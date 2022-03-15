@@ -528,7 +528,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 					return nil, err
 				}
 
-				// new snap shot
+				// new snapshot
 				snap = newSnapshot(p.config, p.signatures, number, hash, validators, voteAddrs, p.ethAPI)
 				if err := snap.store(p.db); err != nil {
 					return nil, err
@@ -682,7 +682,7 @@ func (p *Parlia) PrepareVoteAttestation(chain consensus.ChainHeaderReader, heade
 		return nil
 	}
 
-	var attestation types.VoteAttestation
+	var attestation *types.VoteEnvelope
 	// TODO: Add a simple vote aggregation from votePool for test, I will modify this to match the new finality rules.
 
 	buf := new(bytes.Buffer)
@@ -776,6 +776,73 @@ func (p *Parlia) verifyValidators(header *types.Header) error {
 	return nil
 }
 
+func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header,
+	cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction,
+	usedGas *uint64, mining bool) error {
+	currentHeight := header.Number.Uint64()
+	epoch := p.config.Epoch
+	chainConfig := chain.Config()
+	if currentHeight%epoch != 0 || !chainConfig.IsBoneh(header.Number) {
+		return nil
+	}
+
+	accumulatedWeights := make(map[common.Address]uint64)
+	for height := currentHeight - epoch; height <= currentHeight; height++ {
+		head := chain.GetHeaderByNumber(height)
+		if head == nil {
+			continue
+		}
+		voteAttestation, err := getVoteAttestationFromHeader(head, chainConfig, p.config)
+		if err != nil {
+			return err
+		}
+		justifiedBlock := chain.GetHeaderByHash(voteAttestation.Data.BlockHash)
+		if justifiedBlock == nil {
+			continue
+		}
+		rewardCoef := uint64(1)
+		switch height - justifiedBlock.Number.Uint64() {
+		case 1:
+			rewardCoef = 8
+		case 2:
+			rewardCoef = 4
+		}
+		snap, err := p.snapshot(chain, height, head.Hash(), nil)
+		if err != nil {
+			return err
+		}
+		validators := snap.validators()
+		for j := 0; j < 64; j++ {
+			if ((uint64(voteAttestation.VoteAddressSet) >> j) & 1) == 1 {
+				accumulatedWeights[validators[j]] += rewardCoef
+			}
+		}
+	}
+	validators := make([]common.Address, 0, len(accumulatedWeights))
+	weights := make([]uint64, 0, len(accumulatedWeights))
+	for val, weight := range accumulatedWeights {
+		validators = append(validators, val)
+		weights = append(weights, weight)
+	}
+
+	// method
+	method := "distributeFinalityReward"
+
+	// get packed data
+	data, err := p.validatorSetABI.Pack(method,
+		validators,
+		weights,
+	)
+	if err != nil {
+		log.Error("Unable to pack tx for distributeFinalityReward", "error", err)
+		return err
+	}
+	// get system message
+	msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.ValidatorContract), data, common.Big0)
+	// apply message
+	return p.applyTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, mining)
+}
+
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs *[]*types.Transaction,
@@ -790,14 +857,20 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if !snap.isMajorityFork(hex.EncodeToString(nextForkHash[:])) {
 		log.Debug("there is a possible fork, and your client is not the majority. Please check...", "nextForkHash", hex.EncodeToString(nextForkHash[:]))
 	}
-	// If the block is a epoch end block, verify the validator list
+	// If the block is an epoch end block, verify the validator list
 	// The verification can only be done when the state is ready, it can't be done in VerifyHeader.
 	if err := p.verifyValidators(header); err != nil {
 		return err
 	}
 
-	// No block rewards in PoA, so the state remains as is and uncles are dropped
+	// If the block is an epoch end block, distribute the finality reward
+	// The distribution can only be done when the state is ready, it can't be done in VerifyHeader.
 	cx := chainContext{Chain: chain, parlia: p}
+	if err := p.distributeFinalityReward(chain, state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
+		return err
+	}
+
+	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	if header.Number.Cmp(common.Big1) == 0 {
 		err := p.initContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
 		if err != nil {
@@ -1120,14 +1193,14 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash) ([]common.Address, 
 	blockNr := rpc.BlockNumberOrHashWithHash(blockHash, false)
 
 	// method
-	method := "getValidators"
+	method := "getMiningValidators"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // cancel when we are finished consuming integers
 
 	data, err := p.validatorSetABI.Pack(method)
 	if err != nil {
-		log.Error("Unable to pack tx for getValidators", "error", err)
+		log.Error("Unable to pack tx for getMiningValidators", "error", err)
 		return nil, nil, err
 	}
 	// call
@@ -1145,20 +1218,24 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash) ([]common.Address, 
 
 	var (
 		ret0 = new([]common.Address)
+		ret1 = new([]types.BLSPublicKey)
 	)
-	out := ret0
+	out := struct {
+		consensusAddrs []common.Address
+		voteAddrs      []types.BLSPublicKey
+	}{*ret0, *ret1}
 
 	if err := p.validatorSetABI.UnpackIntoInterface(out, method, result); err != nil {
 		return nil, nil, err
 	}
 
 	valz := make([]common.Address, len(*ret0))
-	for i, a := range *ret0 {
-		valz[i] = a
+	voteAddrmap := make(map[common.Address]types.BLSPublicKey)
+	for i := 0; i < len(*ret0); i++ {
+		valz[i] = (*ret0)[i]
+		voteAddrmap[(*ret0)[i]] = (*ret1)[i]
 	}
-	return valz, nil, nil
-
-	// TODO: return vote address after boneh fork.
+	return valz, voteAddrmap, nil
 }
 
 // slash spoiled validators

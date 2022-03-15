@@ -21,17 +21,22 @@ import (
 	"encoding/binary"
 	"errors"
 	"math/big"
+	"sync"
+
+	//lint:ignore SA1019 Needed for precompile
+	"github.com/prysmaticlabs/prysm/crypto/bls"
+	"golang.org/x/crypto/ripemd160"
+	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 	"github.com/ethereum/go-ethereum/crypto/bls12381"
 	"github.com/ethereum/go-ethereum/crypto/bn256"
 	"github.com/ethereum/go-ethereum/params"
-
-	//lint:ignore SA1019 Needed for precompile
-	"golang.org/x/crypto/ripemd160"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // PrecompiledContract is the basic interface for native Go contracts. The implementation
@@ -93,6 +98,8 @@ var PrecompiledContractsBerlin = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
 	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
 	common.BytesToAddress([]byte{9}): &blake2F{},
+
+	common.BytesToAddress([]byte{100}): &finalitySignatureVerify{},
 }
 
 // PrecompiledContractsBLS contains the set of pre-compiled Ethereum
@@ -1045,4 +1052,64 @@ func (c *bls12381MapG2) Run(input []byte) ([]byte, error) {
 
 	// Encode the G2 point to 256 bytes
 	return g.EncodePoint(r), nil
+}
+
+var errFinalitySignatureVerify = errors.New("invalid signatures")
+
+// finalitySignatureVerify implements BEP-126 finality signature verification precompile.
+type finalitySignatureVerify struct{}
+
+// RequiredGas returns the gas required to execute the pre-compiled contract.
+func (c *finalitySignatureVerify) RequiredGas(input []byte) uint64 {
+	return params.SignatureVerifyGas
+}
+
+func (c *finalitySignatureVerify) Run(input []byte) ([]byte, error) {
+	var (
+		numA    = new(big.Int).SetBytes(getData(input, 0, 32)).Uint64()
+		headerA = getData(input, 32, 32)
+		sigA    = getData(input, 64, 96)
+		numB    = new(big.Int).SetBytes(getData(input, 160, 32)).Uint64()
+		headerB = getData(input, 192, 32)
+		sigB    = getData(input, 224, 96)
+		BLSKey  = getData(input, 320, 48)
+	)
+
+	sigs := make([][]byte, 2)
+	msgs := make([][32]byte, 2)
+	pubKeys := make([]bls.PublicKey, 2)
+
+	pubKey, err := bls.PublicKeyFromBytes(BLSKey)
+	if err != nil {
+		return nil, err
+	}
+	pubKeys[0] = pubKey
+	pubKeys[1] = pubKey
+
+	msgs[0] = rlpHash(types.VoteData{BlockNumber: numA, BlockHash: common.BytesToHash(headerA)})
+	msgs[1] = rlpHash(types.VoteData{BlockNumber: numB, BlockHash: common.BytesToHash(headerB)})
+	sigs[0] = sigA
+	sigs[1] = sigB
+
+	success, err := bls.VerifyMultipleSignatures(sigs, msgs, pubKeys)
+	if err != nil {
+		return nil, err
+	}
+	if !success {
+		return nil, errFinalitySignatureVerify
+	}
+	return big1.Bytes(), nil
+}
+
+// rlpHash encodes x and hashes the encoded bytes.
+func rlpHash(x interface{}) (h [32]byte) {
+	var hasherPool = sync.Pool{
+		New: func() interface{} { return sha3.NewLegacyKeccak256() },
+	}
+	sha := hasherPool.Get().(crypto.KeccakState)
+	defer hasherPool.Put(sha)
+	sha.Reset()
+	rlp.Encode(sha, x)
+	sha.Read(h[:])
+	return h
 }

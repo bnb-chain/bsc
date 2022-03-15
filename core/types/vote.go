@@ -15,9 +15,6 @@ type BLSPublicKey [BLSPublicKeyLength]byte
 type BLSSignature [BLSSignatureLength]byte
 type ValidatorsBitSet uint64
 
-// Bytes gets the string representation of the underlying BLS public key.
-func (p BLSPublicKey) Bytes() []byte { return p[:] }
-
 type VoteData struct {
 	BlockNumber uint64
 	BlockHash   common.Hash
@@ -26,13 +23,18 @@ type VoteData struct {
 type VoteEnvelope struct {
 	VoteAddress BLSPublicKey
 	Signature   BLSSignature
-	Data        VoteData
+	Data        *VoteData
 
 	// caches
 	hash atomic.Value
 }
 
-type VoteEnvelopes []*VoteEnvelope
+type VoteAttestation struct {
+	VoteAddressSet ValidatorsBitSet
+	AggSignature   BLSSignature
+	Data           *VoteData
+	Extra          []byte
+}
 
 // Hash returns the vote hash.
 func (v *VoteEnvelope) Hash() common.Hash {
@@ -49,14 +51,11 @@ func (v *VoteEnvelope) calcVoteHash() common.Hash {
 	voteData := struct {
 		VoteAddress BLSPublicKey
 		Signature   BLSSignature
-		Data        VoteData
+		Data        *VoteData
 	}{v.VoteAddress, v.Signature, v.Data}
 	return rlpHash(voteData)
 }
 
-type VoteAttestation struct {
-	VoteAddressSet ValidatorsBitSet
-	AggSignature   BLSSignature
-	Data           VoteData
-	Extra          []byte
-}
+func (b BLSPublicKey) Bytes() []byte { return b[:] }
+
+func (b BLSSignature) Bytes() []byte { return b[:] }
