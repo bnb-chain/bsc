@@ -256,7 +256,8 @@ var (
 		MirrorSyncBlock:     big.NewInt(5184000),
 		BrunoBlock:          big.NewInt(13082000),
 
-		// TODO modify blockNumber
+		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
+		// TODO Caution !!! it should be very careful !!!
 		EulerBlock: big.NewInt(15703576),
 
 		Parlia: &ParliaConfig{
@@ -281,7 +282,8 @@ var (
 		MirrorSyncBlock:     big.NewInt(5582500),
 		BrunoBlock:          big.NewInt(13837000),
 
-		// TODO modify blockNumber
+		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
+		// TODO Caution !!! it should be very careful !!!
 		EulerBlock: big.NewInt(15703576),
 
 		Parlia: &ParliaConfig{
