@@ -88,6 +88,63 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	}
 }
 
+// PrefetchMining processes the state changes according to the Ethereum rules by running
+// the transaction messages using the statedb, but any changes are discarded. The
+// only goal is to pre-cache transaction signatures and snapshot clean state. Only used for mining stage
+func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
+	var signer = types.MakeSigner(p.config, header.Number)
+
+	txCh := make(chan *types.Transaction, 2*prefetchThread)
+	for i := 0; i < prefetchThread; i++ {
+		go func(txCh <-chan *types.Transaction, stopCh <-chan struct{}) {
+			idx := 0
+			newStatedb := statedb.Copy()
+			gaspool := new(GasPool).AddGas(gasLimit)
+			blockContext := NewEVMBlockContext(header, p.bc, nil)
+			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
+			// Iterate over and process the individual transactions
+			for {
+				select {
+				case tx := <-txCh:
+					// Convert the transaction into an executable message and pre-cache its sender
+					msg, err := tx.AsMessage(signer)
+					if err != nil {
+						return // Also invalid block, bail out
+					}
+					idx++
+					newStatedb.Prepare(tx.Hash(), header.Hash(), idx)
+					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
+					gaspool.SetGas(gasLimit)
+				case <-stopCh:
+					return
+				}
+			}
+		}(txCh, interruptCh)
+	}
+	go func(txs *types.TransactionsByPriceAndNonce) {
+		count := 0
+		for {
+			tx := txs.Peek()
+			if tx == nil {
+				return
+			}
+			select {
+			case <-interruptCh:
+				return
+			default:
+			}
+			if count++; count%10 == 0 {
+				if *txCurr == nil {
+					return
+				}
+				txs.Forward(*txCurr)
+			}
+			txCh <- tx
+			txs.Shift()
+		}
+	}(txs)
+}
+
 // precacheTransaction attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment. The goal is not to execute
 // the transaction successfully, rather to warm up touched data slots.

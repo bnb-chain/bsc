@@ -458,6 +458,21 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 	}
 }
 
+// Copy copy a new TransactionsPriceAndNonce with the same *transaction
+func (t *TransactionsByPriceAndNonce) Copy() *TransactionsByPriceAndNonce {
+	heads := make([]*Transaction, len(t.heads))
+	copy(heads, t.heads)
+	txs := make(map[common.Address]Transactions, len(t.txs))
+	for acc, txsTmp := range t.txs {
+		txs[acc] = txsTmp
+	}
+	return &TransactionsByPriceAndNonce{
+		heads:  heads,
+		txs:    txs,
+		signer: t.signer,
+	}
+}
+
 // Peek returns the next transaction by price.
 func (t *TransactionsByPriceAndNonce) Peek() *Transaction {
 	if len(t.heads) == 0 {
@@ -486,6 +501,47 @@ func (t *TransactionsByPriceAndNonce) Pop() {
 
 func (t *TransactionsByPriceAndNonce) CurrentSize() int {
 	return len(t.heads)
+}
+
+//Forward move t to be one index behind tx, tx cant be nil
+func (t *TransactionsByPriceAndNonce) Forward(tx *Transaction) {
+	if tx == nil {
+		txTmp := t.Peek()
+		for txTmp != nil {
+			t.Shift()
+			txTmp = t.Peek()
+		}
+		return
+	}
+
+	l := len(t.heads)
+	acc, _ := Sender(t.signer, tx)
+	for i := 0; i < l; i++ {
+		accTmp, _ := Sender(t.signer, t.heads[i])
+		if acc == accTmp {
+			if tx == t.heads[i] {
+				txTmp := t.Peek()
+				for txTmp != tx {
+					t.Shift()
+					txTmp = t.Peek()
+				}
+				t.Shift()
+				return
+			}
+			for _, txTmp := range t.txs[accTmp] {
+				if txTmp == tx {
+					txTmp = t.Peek()
+					for txTmp != tx {
+						t.Shift()
+						txTmp = t.Peek()
+					}
+					t.Shift()
+					return
+				}
+			}
+			return
+		}
+	}
 }
 
 // Message is a fully derived transaction and implements core.Message

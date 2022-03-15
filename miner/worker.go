@@ -130,6 +130,7 @@ type intervalAdjust struct {
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
+	prefetcher  core.Prefetcher
 	config      *Config
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
@@ -196,6 +197,7 @@ type worker struct {
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool) *worker {
 	worker := &worker{
+		prefetcher:         core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
 		config:             config,
 		chainConfig:        chainConfig,
 		engine:             engine,
@@ -778,6 +780,13 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	}
 	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
 
+	//	var interruptPrefetch uint32
+	interruptCh := make(chan struct{})
+	var txCurr **types.Transaction
+	//prefetch txs from all pending txs
+	txsPrefetch := txs.Copy()
+	w.prefetcher.PrefetchMining(txsPrefetch, w.current.header, w.current.gasPool.Gas(), w.current.state.Copy(), *w.chain.GetVMConfig(), interruptCh, txCurr)
+
 LOOP:
 	for {
 		// In the following three cases, we will interrupt the execution of the transaction.
@@ -798,6 +807,7 @@ LOOP:
 					inc:   true,
 				}
 			}
+			close(interruptCh)
 			return atomic.LoadInt32(interrupt) == commitInterruptNewHead
 		}
 		// If we don't have enough gas for any further transactions then we're done
@@ -815,6 +825,7 @@ LOOP:
 		}
 		// Retrieve the next transaction and abort if all done
 		tx := txs.Peek()
+		txCurr = &tx
 		if tx == nil {
 			break
 		}
@@ -868,6 +879,7 @@ LOOP:
 			txs.Shift()
 		}
 	}
+	close(interruptCh)
 	bloomProcessors.Close()
 
 	if !w.isRunning() && len(coalescedLogs) > 0 {
