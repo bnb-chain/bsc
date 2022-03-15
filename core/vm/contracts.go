@@ -23,6 +23,11 @@ import (
 	"math/big"
 	"sync"
 
+	//lint:ignore SA1019 Needed for precompile
+	"github.com/prysmaticlabs/prysm/crypto/bls"
+	"golang.org/x/crypto/ripemd160"
+	"golang.org/x/crypto/sha3"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -32,11 +37,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/bn256"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/prysmaticlabs/prysm/crypto/bls"
-	"golang.org/x/crypto/sha3"
-
-	//lint:ignore SA1019 Needed for precompile
-	"golang.org/x/crypto/ripemd160"
 )
 
 // PrecompiledContract is the basic interface for native Go contracts. The implementation

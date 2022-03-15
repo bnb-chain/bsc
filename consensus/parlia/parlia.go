@@ -682,7 +682,7 @@ func (p *Parlia) PrepareVoteAttestation(chain consensus.ChainHeaderReader, heade
 		return nil
 	}
 
-	var attestation types.VoteEnvelope
+	var attestation *types.VoteEnvelope
 	// TODO: Add a simple vote aggregation from votePool for test, I will modify this to match the new finality rules.
 
 	buf := new(bytes.Buffer)
@@ -818,8 +818,8 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 			}
 		}
 	}
-	validators := make([]common.Address, len(accumulatedWeights))
-	weights := make([]uint64, len(accumulatedWeights))
+	validators := make([]common.Address, 0, len(accumulatedWeights))
+	weights := make([]uint64, 0, len(accumulatedWeights))
 	for val, weight := range accumulatedWeights {
 		validators = append(validators, val)
 		weights = append(weights, weight)
