@@ -974,9 +974,13 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 }
 
 // VerifyVote will verify if the vote comes from valid validators.
-func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, header *types.Header, vote *types.VoteEnvelope) bool {
+func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) bool {
+	voteBlockNumber := vote.Data.BlockNumber
+	voteBlockHash := vote.Data.BlockHash
+	header := chain.GetHeader(voteBlockHash, voteBlockNumber)
+
 	number := header.Number.Uint64()
-	snap, err := p.snapshot(chain, number, header.Hash(), nil)
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		log.Error("failed to get the snapshot from consensus", "error", err)
 		return false

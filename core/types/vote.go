@@ -10,7 +10,6 @@ import (
 
 const (
 	BLSPublicKeyLength = 48
-	BLSSignatureLength = 96
 )
 
 type BLSPublicKey [BLSPublicKeyLength]byte
@@ -38,28 +37,6 @@ type VoteAttestation struct {
 	Extra          []byte
 }
 
-type VoteEnvelopes []*VoteEnvelope
-
-// Hash returns the vote hash.
-func (v *VoteEnvelope) Hash() common.Hash {
-	if hash := v.hash.Load(); hash != nil {
-		return hash.(common.Hash)
-	}
-
-	h := v.calcVoteHash()
-	v.hash.Store(h)
-	return h
-}
-
-func (v *VoteEnvelope) calcVoteHash() common.Hash {
-	voteData := struct {
-		VoteAddress BLSPublicKey
-		Signature   BLSSignature
-		Data        *VoteData
-	}{v.VoteAddress, v.Signature, v.Data}
-	return rlpHash(voteData)
-}
-
 // Hash returns the vote hash.
 func (v *VoteEnvelope) Hash() common.Hash {
 	if hash := v.hash.Load(); hash != nil {
@@ -81,5 +58,3 @@ func (v *VoteEnvelope) calcVoteHash() common.Hash {
 }
 
 func (b BLSPublicKey) Bytes() []byte { return b[:] }
-
-func (b BLSSignature) Bytes() []byte { return b[:] }

@@ -22,7 +22,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/prysmaticlabs/prysm/crypto/bls"
-	"github.com/prysmaticlabs/prysm/crypto/bls/common"
 	validatorpb "github.com/prysmaticlabs/prysm/proto/prysm/v1alpha1/validator-client"
 	"github.com/prysmaticlabs/prysm/validator/keymanager"
 
@@ -45,7 +44,6 @@ func NewVoteSigner(km *keymanager.IKeymanager) (*VoteSigner, error) {
 }
 
 func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
-
 	// Sign the vote
 	ctx, cancel := context.WithTimeout(context.Background(), voteSignerTimeout)
 	defer cancel()
@@ -80,7 +78,7 @@ func VerifyVoteWithBLS(vote *types.VoteEnvelope) error {
 		return errors.Wrap(err, "convert public key from bytes to bls failed")
 	}
 
-	sig := vote.Signature.(common.Signature)
+	sig := vote.Signature.(bls.Signature)
 	voteHash := vote.Hash()
 
 	if !sig.Verify(blsPubKey, voteHash[:]) {
