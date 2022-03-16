@@ -782,7 +782,8 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 
 	//	var interruptPrefetch uint32
 	interruptCh := make(chan struct{})
-	var txCurr **types.Transaction
+	var tx *types.Transaction
+	txCurr := &tx
 	//prefetch txs from all pending txs
 	txsPrefetch := txs.Copy()
 	w.prefetcher.PrefetchMining(txsPrefetch, w.current.header, w.current.gasPool.Gas(), w.current.state.Copy(), *w.chain.GetVMConfig(), interruptCh, txCurr)
@@ -824,8 +825,7 @@ LOOP:
 			}
 		}
 		// Retrieve the next transaction and abort if all done
-		tx := txs.Peek()
-		txCurr = &tx
+		tx = txs.Peek()
 		if tx == nil {
 			break
 		}
