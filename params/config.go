@@ -18,6 +18,7 @@ package params
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -34,7 +35,7 @@ var (
 
 	BSCGenesisHash    = common.HexToHash("0x0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b")
 	ChapelGenesisHash = common.HexToHash("0x6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe34")
-	RialtoGenesisHash = common.HexToHash("0xaabe549bfa85c84f7aee9da7010b97453ad686f2c2d8ce00503d1a00c72cad54")
+	RialtoGenesisHash = common.HexToHash("0x6b5cf721c57dec67700d664c98c4f779b7bb980301b9a649842ba584fd72dd6c")
 	YoloV3GenesisHash = common.HexToHash("0xf1f2876e8500c77afcc03228757b39477eceffccf645b734967fe3c7e16967b7")
 )
 
@@ -76,6 +77,7 @@ var (
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
+		EulerBlock:          big.NewInt(0),
 		BerlinBlock:         big.NewInt(12_244_000),
 		Ethash:              new(EthashConfig),
 	}
@@ -120,6 +122,7 @@ var (
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
+		EulerBlock:          big.NewInt(0),
 		BerlinBlock:         big.NewInt(9_812_189),
 		Ethash:              new(EthashConfig),
 	}
@@ -164,6 +167,7 @@ var (
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
+		EulerBlock:          big.NewInt(0),
 		BerlinBlock:         big.NewInt(8_290_928),
 		Clique: &CliqueConfig{
 			Period: 15,
@@ -207,6 +211,7 @@ var (
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
+		EulerBlock:          big.NewInt(0),
 		IstanbulBlock:       big.NewInt(1_561_651),
 		MuirGlacierBlock:    nil,
 		BerlinBlock:         big.NewInt(4_460_644),
@@ -251,6 +256,11 @@ var (
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(5184000),
 		BrunoBlock:          big.NewInt(13082000),
+
+		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
+		// TODO Caution !!! it should be very careful !!!
+		EulerBlock: big.NewInt(15703576),
+
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -272,6 +282,11 @@ var (
 		NielsBlock:          big.NewInt(1014369),
 		MirrorSyncBlock:     big.NewInt(5582500),
 		BrunoBlock:          big.NewInt(13837000),
+
+		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
+		// TODO Caution !!! it should be very careful !!!
+		EulerBlock: big.NewInt(15703576),
+
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -293,6 +308,9 @@ var (
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(400),
 		BrunoBlock:          big.NewInt(400),
+
+		// TODO
+		EulerBlock: big.NewInt(324800),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -316,6 +334,7 @@ var (
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
+		EulerBlock:          big.NewInt(0),
 		MuirGlacierBlock:    nil,
 		BerlinBlock:         nil, // Don't enable Berlin directly, we're YOLOing it
 		YoloV3Block:         big.NewInt(0),
@@ -330,16 +349,16 @@ var (
 	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
-	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), new(EthashConfig), nil, nil}
+	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0),new(EthashConfig), nil, nil}
 
 	// AllCliqueProtocolChanges contains every protocol change (EIPs) introduced
 	// and accepted by the Ethereum core developers into the Clique consensus.
 	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
-	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil}
+	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0),nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil}
 
-	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), new(EthashConfig), nil, nil}
+	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0),new(EthashConfig), nil, nil}
 
 	TestRules = TestChainConfig.Rules(new(big.Int))
 )
@@ -427,6 +446,7 @@ type ChainConfig struct {
 	NielsBlock      *big.Int `json:"nielsBlock,omitempty" toml:",omitempty"`      // nielsBlock switch block (nil = no fork, 0 = already activated)
 	MirrorSyncBlock *big.Int `json:"mirrorSyncBlock,omitempty" toml:",omitempty"` // mirrorSyncBlock switch block (nil = no fork, 0 = already activated)
 	BrunoBlock      *big.Int `json:"brunoBlock,omitempty" toml:",omitempty"`      // brunoBlock switch block (nil = no fork, 0 = already activated)
+	EulerBlock      *big.Int `json:"eulerBlock,omitempty" toml:",omitempty"`      // eulerBlock switch block (nil = no fork, 0 = already activated)
 	BonehBlock      *big.Int `json:"bonehBlock,omitempty" toml:",omitempty"`      // bonehBlock switch block (nil = no fork, 0 = already activated)
 
 	// Various consensus engines
@@ -478,7 +498,7 @@ func (c *ChainConfig) String() string {
 	default:
 		engine = "unknown"
 	}
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, Engine: %v}",
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, Euler: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -497,6 +517,7 @@ func (c *ChainConfig) String() string {
 		c.BrunoBlock,
 		c.BerlinBlock,
 		c.YoloV3Block,
+		c.EulerBlock,
 		engine,
 	)
 }
@@ -576,6 +597,16 @@ func (c *ChainConfig) IsOnBruno(num *big.Int) bool {
 	return configNumEqual(c.BrunoBlock, num)
 }
 
+// IsEuler returns whether num is either equal to the euler fork block or greater.
+func (c *ChainConfig) IsEuler(num *big.Int) bool {
+	return isForked(c.EulerBlock, num)
+}
+
+// IsOnEuler returns whether num is equal to the euler fork block
+func (c *ChainConfig) IsOnEuler(num *big.Int) bool {
+	return configNumEqual(c.EulerBlock, num)
+}
+
 // IsBoneh returns whether num is either equal to the fast finality fork block or greater.
 func (c *ChainConfig) IsBoneh(num *big.Int) bool {
 	return isForked(c.BonehBlock, num)
@@ -648,6 +679,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 	for _, cur := range []fork{
 		{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
 		{name: "brunoBlock", block: c.BrunoBlock},
+		{name: "eulerBlock", block: c.EulerBlock},
 		{name: "berlinBlock", block: c.BerlinBlock},
 	} {
 		if lastFork.name != "" {
@@ -729,6 +761,18 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	}
 	if isForkIncompatible(c.BrunoBlock, newcfg.BrunoBlock, head) {
 		return newCompatError("bruno fork block", c.BrunoBlock, newcfg.BrunoBlock)
+	}
+	if isForkIncompatible(c.EulerBlock, newcfg.EulerBlock, head) {
+		return newCompatError("euler fork block", c.EulerBlock, newcfg.EulerBlock)
+	}
+	return nil
+}
+
+func (c *ChainConfig) VerifyForkConfig() error {
+	if c.EulerBlock != nil && c.EulerBlock.Cmp(common.Big0) != 0 {
+		if _, mod := new(big.Int).DivMod(c.EulerBlock, big.NewInt(200), new(big.Int)); mod.Cmp(common.Big0) == 0 {
+			return errors.New("euler height can't be multiple of 200")
+		}
 	}
 	return nil
 }

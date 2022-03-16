@@ -657,7 +657,7 @@ func (p *Parlia) PrepareValidators(chain consensus.ChainHeaderReader, header *ty
 		return nil
 	}
 
-	newValidators, voteAddressMap, err := p.getCurrentValidators(header.ParentHash)
+	newValidators, voteAddressMap, err := p.getCurrentValidators(header.ParentHash, new(big.Int).Sub(header.Number, big.NewInt(1)))
 	if err != nil {
 		return err
 	}
@@ -747,7 +747,7 @@ func (p *Parlia) verifyValidators(header *types.Header) error {
 		return nil
 	}
 
-	newValidators, voteAddressMap, err := p.getCurrentValidators(header.ParentHash)
+	newValidators, voteAddressMap, err := p.getCurrentValidators(header.ParentHash, new(big.Int).Sub(header.Number, big.NewInt(1)))
 	if err != nil {
 		return err
 	}
@@ -1212,12 +1212,15 @@ func (p *Parlia) Close() error {
 // ==========================  interaction with contract/account =========
 
 // getCurrentValidators get current validators
-func (p *Parlia) getCurrentValidators(blockHash common.Hash) ([]common.Address, map[common.Address]types.BLSPublicKey, error) {
+func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) ([]common.Address, map[common.Address]types.BLSPublicKey, error) {
 	// block
 	blockNr := rpc.BlockNumberOrHashWithHash(blockHash, false)
 
 	// method
-	method := "getMiningValidators"
+	method := "getValidators"
+	if p.chainConfig.IsEuler(blockNum) {
+		method = "getMiningValidators"
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // cancel when we are finished consuming integers
