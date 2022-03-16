@@ -3,17 +3,16 @@ package types
 import (
 	"sync/atomic"
 
-	"github.com/prysmaticlabs/prysm/crypto/bls"
-
 	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
 	BLSPublicKeyLength = 48
+	BLSSignatureLength = 96
 )
 
 type BLSPublicKey [BLSPublicKeyLength]byte
-type BLSSignature bls.Signature
+type BLSSignature [BLSSignatureLength]byte
 type ValidatorsBitSet uint64
 
 type VoteData struct {

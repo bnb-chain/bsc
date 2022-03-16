@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prysmaticlabs/prysm/crypto/bls"
+
 	lru "github.com/hashicorp/golang-lru"
 	"golang.org/x/crypto/sha3"
 
@@ -193,6 +195,10 @@ func ParliaRLP(header *types.Header, chainId *big.Int) []byte {
 	return b.Bytes()
 }
 
+type VotePool interface {
+	FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelope
+}
+
 // Parlia is the consensus engine of BSC
 type Parlia struct {
 	chainConfig *params.ChainConfig  // Chain config
@@ -212,6 +218,7 @@ type Parlia struct {
 	lock sync.RWMutex // Protects the signer fields
 
 	ethAPI          *ethapi.PublicBlockChainAPI
+	votePool        VotePool
 	validatorSetABI abi.ABI
 	slashABI        abi.ABI
 
@@ -682,15 +689,56 @@ func (p *Parlia) PrepareVoteAttestation(chain consensus.ChainHeaderReader, heade
 		return nil
 	}
 
-	var attestation *types.VoteEnvelope
 	// TODO: Add a simple vote aggregation from votePool for test, I will modify this to match the new finality rules.
-
-	buf := new(bytes.Buffer)
-	err := rlp.Encode(buf, &attestation)
-	if err != nil {
-		return err
+	// TODO temporary code
+	var forkDepth = 11
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	for i := 0; i < forkDepth && parent != nil; i++ {
+		votes := p.votePool.FetchVoteByHash(parent.Hash())
+		if len(votes) > 0 {
+			snap, err := p.snapshot(chain, parent.Number.Uint64()-1, parent.ParentHash, nil)
+			if err != nil {
+				return err
+			}
+			if len(votes) > len(snap.Validators)*3/4 {
+				attestation := &types.VoteAttestation{
+					Data: &types.VoteData{
+						BlockNumber: parent.Number.Uint64(),
+						BlockHash:   parent.Hash(),
+					},
+				}
+				// Prepare aggregated vote signature.
+				voteAddrSet := make(map[types.BLSPublicKey]struct{}, len(votes))
+				signatures := make([][]byte, 0, len(votes))
+				for _, vote := range votes {
+					voteAddrSet[vote.VoteAddress] = struct{}{}
+					signatures = append(signatures, vote.Signature[:])
+				}
+				sigs, err := bls.MultipleSignaturesFromBytes(signatures)
+				if err != nil {
+					return err
+				}
+				copy(attestation.AggSignature[:], bls.AggregateSignatures(sigs).Marshal())
+				// Prepare vote address bitset.
+				snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
+				if err != nil {
+					return err
+				}
+				for _, valInfo := range snap.Validators {
+					if _, ok := voteAddrSet[valInfo.VoteAddress]; ok {
+						attestation.VoteAddressSet |= 1 << (valInfo.Index - 1) //Index is offset by 1
+					}
+				}
+				buf := new(bytes.Buffer)
+				err = rlp.Encode(buf, &attestation)
+				if err != nil {
+					return err
+				}
+				header.Extra = append(header.Extra, buf.Bytes()...)
+				return nil
+			}
+		}
 	}
-	header.Extra = append(header.Extra, buf.Bytes()...)
 	return nil
 }
 
@@ -866,9 +914,6 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	// If the block is an epoch end block, distribute the finality reward
 	// The distribution can only be done when the state is ready, it can't be done in VerifyHeader.
 	cx := chainContext{Chain: chain, parlia: p}
-	if err := p.distributeFinalityReward(chain, state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
-		return err
-	}
 
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	if header.Number.Cmp(common.Big1) == 0 {
@@ -900,6 +945,12 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if err != nil {
 		return err
 	}
+	// TODO disable reward distribution in test phase1
+	//if p.chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
+	//	if err := p.distributeFinalityReward(chain, state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
+	//		return err
+	//	}
+	//}
 	if len(*systemTxs) > 0 {
 		return errors.New("the length of systemTxs do not match")
 	}
@@ -946,6 +997,12 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 			}
 		}
 	}
+	// TODO disable reward distribution in test phase1
+	//if p.chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
+	//	if err := p.distributeFinalityReward(chain, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
+	//		return nil, nil, err
+	//	}
+	//}
 	err := p.distributeIncoming(p.val, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
 	if err != nil {
 		return nil, nil, err
@@ -1212,15 +1269,17 @@ func (p *Parlia) Close() error {
 // ==========================  interaction with contract/account =========
 
 // getCurrentValidators get current validators
-func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) ([]common.Address, map[common.Address]types.BLSPublicKey, error) {
+func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) ([]common.Address, map[common.Address]*types.BLSPublicKey, error) {
 	// block
 	blockNr := rpc.BlockNumberOrHashWithHash(blockHash, false)
 
-	// method
-	method := "getValidators"
-	if p.chainConfig.IsEuler(blockNum) {
-		method = "getMiningValidators"
+	if !p.chainConfig.IsBoneh(blockNum) {
+		validators, err := p.getCurrentValidatorsBeforeBoneh(blockHash, blockNum)
+		return validators, nil, err
 	}
+
+	// method
+	method := "getMiningValidators"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // cancel when we are finished consuming integers
@@ -1257,10 +1316,10 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	}
 
 	valz := make([]common.Address, len(*ret0))
-	voteAddrmap := make(map[common.Address]types.BLSPublicKey)
+	voteAddrmap := make(map[common.Address]*types.BLSPublicKey)
 	for i := 0; i < len(*ret0); i++ {
 		valz[i] = (*ret0)[i]
-		voteAddrmap[(*ret0)[i]] = (*ret1)[i]
+		voteAddrmap[(*ret0)[i]] = &((*ret1)[i])
 	}
 	return valz, voteAddrmap, nil
 }

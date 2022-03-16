@@ -242,11 +242,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// }
 
 	// if voteManager, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, eth.voteJournal, eth.voteSigner); err == nil {
-	// 	eth.voteManager = voteManager
+	//	eth.voteManager = voteManager
 	// }
 	// votePool := vote.NewVotePool(chainConfig, eth.blockchain, eth.voteManager, nil)
 
-	
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit
 	checkpoint := config.Checkpoint
