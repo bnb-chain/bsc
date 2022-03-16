@@ -150,13 +150,11 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 				return false
 			}
 		}
-
 		// Verify bls signature.
 		if err := VerifyVoteWithBLS(vote); err != nil {
 			log.Error("Failed to verify voteMessage", "err", err)
 			return false
 		}
-
 		votes = pool.curVotes
 		votesPq = pool.curVotesPq
 	}
@@ -193,7 +191,6 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 		// Push into votes priorityQueue if not exist in corresponding votes Map.
 		// To be noted: will not put into priorityQueue if exists in map to avoid duplicate element with the same voteData.
 		heap.Push(votesPq, voteData)
-
 		voteBox := &VoteBox{
 			blockNumber:  voteBlockNumber,
 			voteMessages: make([]*types.VoteEnvelope, 0, maxCurVoteAmountPerBlock),
@@ -203,7 +200,6 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 
 	// Put into corresponding votes map.
 	m[voteBlockHash].voteMessages = append(m[voteBlockHash].voteMessages, vote)
-
 	// Add into received vote to avoid future duplicated vote comes.
 	pool.receivedVotes.Add(voteHash)
 
@@ -235,10 +231,8 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 		}
 
 		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
-
 		voteData := heap.Pop(futurePq)
 		heap.Push(curPq, voteData)
-
 		delete(futureVotes, blockHash)
 	}
 }
@@ -256,13 +250,11 @@ func (pool *VotePool) prune(lastestBlockNumber uint64) {
 		// Prune curPriorityQueue.
 		blockHash := heap.Pop(curBlockPq).(*types.VoteData).BlockHash
 		voteMessages := curVotes[blockHash].voteMessages
-
 		// Prune duplicationSet.
 		for _, voteMessage := range voteMessages {
 			voteHash := voteMessage.Hash()
 			pool.receivedVotes.Remove(voteHash)
 		}
-
 		// Prune curVotes Map.
 		delete(curVotes, blockHash)
 
@@ -276,16 +268,14 @@ func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 	defer pool.mu.RUnlock()
 
 	votesRes := make([]*types.VoteEnvelope, 0)
-
 	curVotes := pool.curVotes
 	for _, voteBox := range curVotes {
 		votesRes = append(votesRes, voteBox.voteMessages...)
 	}
-
 	return votesRes
 }
 
-func (pool *VotePool) FetchVoteFromHash(blockHash common.Hash) []*types.VoteEnvelope {
+func (pool *VotePool) FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelope {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 	return pool.curVotes[blockHash].voteMessages
@@ -304,23 +294,19 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 	if pool.receivedVotes.Contains(voteHash) {
 		return false
 	}
-
 	// Make sure in the range currentHeight-256~currentHeight+11.
 	if voteBlockNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || voteBlockNumber > headNumber+upperLimitOfVoteBlockNumber {
 		return false
 	}
-
 	// To prevent DOS attacks, make sure no more than 50 votes for the same blockHash if it's futureVotes
 	// No more than 21 votes per blockHash if not futureVotes and no more than 50 votes per blockHash if futureVotes
 	maxVoteAmountPerBlock := maxCurVoteAmountPerBlock
 	if isFutureVote {
 		maxVoteAmountPerBlock = maxFutureVoteAmountPerBlock
 	}
-
 	if voteBox, ok := m[voteBlockHash]; ok {
 		return len(voteBox.voteMessages) <= maxVoteAmountPerBlock
 	}
-
 	return true
 }
 
@@ -353,6 +339,5 @@ func (pq *votesPriorityQueue) Peek() *types.VoteData {
 	if pq.Len() == 0 {
 		return nil
 	}
-
 	return (*pq)[0]
 }
