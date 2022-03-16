@@ -221,11 +221,9 @@ func (s *StateDB) EnablePipeCommit() {
 	}
 }
 
+// IsPipeCommit checks whether pipecommit is enabled on the statedb or not
 func (s *StateDB) IsPipeCommit() bool {
-	if s.snap != nil {
-		return s.pipeCommit
-	}
-	return false
+	return s.pipeCommit
 }
 
 // Mark that the block is full processed
@@ -1030,6 +1028,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	return s.StateIntermediateRoot()
 }
 
+//PopulateSnapAccountAndStorage tries to populate required accounts and storages for pipecommit
 func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
@@ -1037,11 +1036,35 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 				s.populateSnapStorage(obj)
 				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, emptyRoot, obj.data.CodeHash)
 			}
-			data, err := rlp.EncodeToBytes(obj)
-			if err != nil {
-				panic(fmt.Errorf("can't encode object at %x: %v", addr[:], err))
+		}
+	}
+}
+
+//populateSnapStorage tries to populate required storages for pipecommit
+func (s *StateDB) populateSnapStorage(obj *StateObject) {
+	for key, value := range obj.dirtyStorage {
+		obj.pendingStorage[key] = value
+	}
+	if len(obj.pendingStorage) == 0 {
+		return
+	}
+	var storage map[string][]byte
+	for key, value := range obj.pendingStorage {
+		var v []byte
+		if (value != common.Hash{}) {
+			// Encoding []byte cannot fail, ok to ignore the error.
+			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
+		}
+		// If state snapshotting is active, cache the data til commit
+		if obj.db.snap != nil {
+			if storage == nil {
+				// Retrieve the old storage map, if available, create a new one otherwise
+				if storage = obj.db.snapStorage[obj.address]; storage == nil {
+					storage = make(map[string][]byte)
+					obj.db.snapStorage[obj.address] = storage
+				}
 			}
-			obj.encodeData = data
+			storage[string(key[:])] = v // v will be nil if value is 0x00
 		}
 	}
 }
@@ -1095,35 +1118,6 @@ func (s *StateDB) AccountsIntermediateRoot() {
 		}
 	}
 	wg.Wait()
-}
-
-func (s *StateDB) populateSnapStorage(obj *StateObject) {
-	for key, value := range obj.dirtyStorage {
-		obj.pendingStorage[key] = value
-	}
-	if len(obj.pendingStorage) == 0 {
-		return
-	}
-	var storage map[string][]byte
-	for key, value := range obj.pendingStorage {
-		var v []byte
-		if (value == common.Hash{}) {
-		} else {
-			// Encoding []byte cannot fail, ok to ignore the error.
-			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-		}
-		// If state snapshotting is active, cache the data til commit
-		if obj.db.snap != nil {
-			if storage == nil {
-				// Retrieve the old storage map, if available, create a new one otherwise
-				if storage = obj.db.snapStorage[obj.address]; storage == nil {
-					storage = make(map[string][]byte)
-					obj.db.snapStorage[obj.address] = storage
-				}
-			}
-			storage[string(key[:])] = v // v will be nil if value is 0x00
-		}
-	}
 }
 
 func (s *StateDB) StateIntermediateRoot() common.Hash {

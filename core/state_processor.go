@@ -337,7 +337,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	}
 
 	// Do validate in advance so that we can fall back to full process
-	if err := p.bc.validator.ValidateState(block, statedb, diffLayer.Receipts, gasUsed, false); err != nil {
+	if err := p.bc.validator.ValidateState(block, statedb, diffLayer.Receipts, gasUsed); err != nil {
 		log.Error("validate state failed during diff sync", "error", err)
 		return nil, nil, 0, err
 	}
