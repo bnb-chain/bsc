@@ -18,6 +18,7 @@ package params
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -752,6 +753,15 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	}
 	if isForkIncompatible(c.EulerBlock, newcfg.EulerBlock, head) {
 		return newCompatError("euler fork block", c.EulerBlock, newcfg.EulerBlock)
+	}
+	return nil
+}
+
+func (c *ChainConfig) VerifyForkConfig() error {
+	if c.EulerBlock != nil && c.EulerBlock.Cmp(common.Big0) != 0 {
+		if _, mod := new(big.Int).DivMod(c.EulerBlock, big.NewInt(200), new(big.Int)); mod.Cmp(common.Big0) == 0 {
+			return errors.New("euler height can't be multiple of 200")
+		}
 	}
 	return nil
 }
