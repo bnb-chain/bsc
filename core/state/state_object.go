@@ -124,7 +124,7 @@ func newObject(db *StateDB, address common.Address, data Account) *StateObject {
 	var storageMap *sync.Map
 	// Check whether the storage exist in pool, new originStorage if not exist
 	if db != nil {
-		storageMap = db.GetOrInsertStorage(address)
+		storageMap = db.GetOrInsertStorage(common.Address{})
 	}
 
 	return &StateObject{
