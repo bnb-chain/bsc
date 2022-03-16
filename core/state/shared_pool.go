@@ -11,22 +11,22 @@ type SharedStorage struct {
 	shared_map map[common.Address]*sync.Map
 }
 
-func (m *MutexMap) get(k common.Hash, v common.Hash) {
-	m.Lock()
-	defer m.Unlock()
-	m.m[k] = v
-}
-
-func (m *MutexMap) set(k common.Hash) (v common.Hash) {
-	m.RLock()
-	defer m.RUnlock()
-	v = m.m[k]
-	return v
-}
-
 type MutexMap struct {
 	*sync.RWMutex
-	m map[common.Hash]common.Hash
+	storage map[common.Hash]common.Hash
+}
+
+func (m *MutexMap) set(k common.Hash, v common.Hash) {
+	m.Lock()
+	defer m.Unlock()
+	m.storage[k] = v
+}
+
+func (m *MutexMap) get(k common.Hash) (common.Hash, bool) {
+	m.RLock()
+	defer m.RUnlock()
+	value, ok := m.storage[k]
+	return value, ok
 }
 
 func NewMap() *MutexMap {
@@ -41,11 +41,6 @@ type SharedRWStorage struct {
 
 func NewRWSharedStorage() *SharedRWStorage {
 	sharemap := make(map[common.Address]*MutexMap, 1500)
-	/*
-		for i, _ := range sharemap {
-			sharemap[i] = NewMap()
-		}
-	*/
 	return &SharedRWStorage{&sync.RWMutex{}, sharemap}
 }
 

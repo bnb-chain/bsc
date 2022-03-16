@@ -102,8 +102,8 @@ type StateDB struct {
 	stateObjectsDirty   map[common.Address]struct{} // State objects modified in the current execution
 
 	// shared_pool to store L1 originStorage of stateObjects
-	sharedStorage *SharedStorage
-
+	//sharedStorage *SharedStorage
+	sharedStorage *SharedRWStorage
 	// DB error.
 	// State objects are used by the consensus core and VM which are
 	// unable to deal with database-level errors. Any error that occurs
@@ -158,7 +158,7 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 		stateObjects:        make(map[common.Address]*StateObject, defaultNumOfSlots),
 		stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
 		stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
-		sharedStorage:       NewSharedStorage(),
+		sharedStorage:       NewRWSharedStorage(),
 		logs:                make(map[common.Hash][]*types.Log, defaultNumOfSlots),
 		preimages:           make(map[common.Hash][]byte),
 		journal:             newJournal(),
@@ -838,7 +838,7 @@ func (s *StateDB) Copy() *StateDB {
 		stateObjects:        make(map[common.Address]*StateObject, len(s.journal.dirties)),
 		stateObjectsPending: make(map[common.Address]struct{}, len(s.stateObjectsPending)),
 		stateObjectsDirty:   make(map[common.Address]struct{}, len(s.journal.dirties)),
-		sharedStorage:       NewSharedStorage(),
+		sharedStorage:       NewRWSharedStorage(),
 		refund:              s.refund,
 		logs:                make(map[common.Hash][]*types.Log, len(s.logs)),
 		logSize:             s.logSize,
@@ -1645,6 +1645,6 @@ func (s *StateDB) GetDirtyAccounts() []common.Address {
 	return accounts
 }
 
-func (s *StateDB) GetOrInsertStorage(address common.Address) *sync.Map {
-	return s.sharedStorage.getOrInertStorage(address)
+func (s *StateDB) GetOrInsertStorage(address common.Address) *MutexMap {
+	return s.sharedStorage.getOrInertRWStorage(address)
 }
