@@ -54,6 +54,10 @@ type ChainHeaderReader interface {
 	GetHighestVerifiedHeader() *types.Header
 }
 
+type VotePool interface {
+	FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelope
+}
+
 // ChainReader defines a small collection of methods needed to access the local
 // blockchain during header and/or uncle verification.
 type ChainReader interface {
@@ -145,7 +149,7 @@ type PoSA interface {
 	EnoughDistance(chain ChainReader, header *types.Header) bool
 	IsLocalBlock(header *types.Header) bool
 	AllowLightProcess(chain ChainReader, currentHeader *types.Header) bool
-
 	// VerifyVote will verify if the vote comes from valid validators based on voteAddress (BLSPublicKey).
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) bool
+	SetVotePool(votePool VotePool)
 }

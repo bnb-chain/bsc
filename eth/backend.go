@@ -99,10 +99,7 @@ type Ethereum struct {
 
 	lock sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
 
-	voteJournal *vote.VoteJournal
-	voteSigner  *vote.VoteSigner
-	votePool    *vote.VotePool
-	voteManager *vote.VoteManager
+	votePool *vote.VotePool
 }
 
 // New creates a new Ethereum object (including the
@@ -233,20 +230,19 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	eth.txPool = core.NewTxPool(config.TxPool, chainConfig, eth.blockchain)
 
-	// //TODO:
-	// // Create vote related object.
-	// if journal, err := vote.NewVoteJournal(""); err == nil {
-	// 	eth.voteJournal = journal
-	// }
-	// if signer, err := vote.NewVoteSigner(nil); err == nil {
-	// 	eth.voteSigner = signer
-	// }
+	conf := stack.Config()
+	bLSPassWordPath := stack.ResolvePath(conf.BLSPassWordDir)
+	bLSWalletPath := stack.ResolvePath(conf.BLSWalletDir)
+	voteJournalPath := stack.ResolvePath(conf.VoteJournalDir)
 
-	// if voteManager, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, eth.voteJournal, eth.voteSigner); err == nil {
-	//	eth.voteManager = voteManager
-	// }
-	// votePool := vote.NewVotePool(chainConfig, eth.blockchain, eth.voteManager, nil)
+	// Create votePool instance
+	votePool := vote.NewVotePool(chainConfig, eth.blockchain, eth.engine)
+	eth.votePool = votePool
 
+	// Create voteManager instance
+	if _, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, votePool, voteJournalPath, bLSPassWordPath, bLSWalletPath); err != nil {
+		log.Error("Failed to Initialize voteManager: %v.", err)
+	}
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit
 	checkpoint := config.Checkpoint

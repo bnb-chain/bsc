@@ -842,6 +842,21 @@ var (
 		Name:  "check-snapshot-with-mpt",
 		Usage: "Enable checking between snapshot and MPT ",
 	}
+
+	BLSPassWordDirFlag = DirectoryFlag{
+		Name:  "blspassword",
+		Usage: "Directory for the BLS password (default = inside the datadir)",
+	}
+
+	BLSWalletDirFlag = DirectoryFlag{
+		Name:  "blswallet",
+		Usage: "Directory for the bls wallet path of fast finality (default = inside the datadir)",
+	}
+
+	VoteJournalDirFlag = DirectoryFlag{
+		Name:  "vote-journal-path",
+		Usage: "Directory for the journal path of fast finality (default = inside the datadir)",
+	}
 )
 
 // MakeDataDir retrieves the currently requested data directory, terminating
@@ -1293,6 +1308,8 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	setNodeUserIdent(ctx, cfg)
 	setDataDir(ctx, cfg)
 	setSmartCard(ctx, cfg)
+	setBLSWalletDir(ctx, cfg)
+	setVoteJournalDir(ctx, cfg)
 
 	if ctx.GlobalIsSet(ExternalSignerFlag.Name) {
 		cfg.ExternalSigner = ctx.GlobalString(ExternalSignerFlag.Name)
@@ -1321,6 +1338,10 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	}
 	if ctx.GlobalIsSet(InsecureUnlockAllowedFlag.Name) {
 		cfg.InsecureUnlockAllowed = ctx.GlobalBool(InsecureUnlockAllowedFlag.Name)
+	}
+
+	if ctx.GlobalIsSet(BLSPassWordDirFlag.Name) {
+		cfg.BLSPassWordDir = ctx.GlobalString(BLSPassWordDirFlag.Name)
 	}
 }
 
@@ -1368,6 +1389,24 @@ func setDataDir(ctx *cli.Context, cfg *node.Config) {
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "goerli")
 	case ctx.GlobalBool(YoloV3Flag.Name) && cfg.DataDir == node.DefaultDataDir():
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "yolo-v3")
+	}
+}
+
+func setVoteJournalDir(ctx *cli.Context, cfg *node.Config) {
+	dataDir := cfg.DataDir
+	if ctx.GlobalIsSet(VoteJournalDirFlag.Name) {
+		cfg.VoteJournalDir = ctx.GlobalString(VoteJournalDirFlag.Name)
+	} else {
+		cfg.VoteJournalDir = filepath.Join(dataDir, "voteJournal")
+	}
+}
+
+func setBLSWalletDir(ctx *cli.Context, cfg *node.Config) {
+	dataDir := cfg.DataDir
+	if ctx.GlobalIsSet(BLSWalletDirFlag.Name) {
+		cfg.BLSWalletDir = ctx.GlobalString(BLSWalletDirFlag.Name)
+	} else {
+		cfg.BLSWalletDir = filepath.Join(dataDir, "bls/wallet")
 	}
 }
 

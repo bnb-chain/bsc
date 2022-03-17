@@ -168,6 +168,9 @@ var (
 		utils.CatalystFlag,
 		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
+		utils.BLSPassWordDirFlag,
+		utils.BLSWalletDirFlag,
+		utils.VoteJournalDirFlag,
 	}
 
 	rpcFlags = []cli.Flag{

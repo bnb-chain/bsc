@@ -93,9 +93,11 @@ func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, engine
 
 	// Subscribe events from blockchain and start the main event loop.
 	votePool.chainHeadSub = votePool.chain.SubscribeChainHeadEvent(votePool.chainHeadCh)
+	if posa, ok := engine.(consensus.PoSA); ok {
+		posa.SetVotePool(votePool)
+	}
 
 	go votePool.loop()
-
 	return votePool
 }
 

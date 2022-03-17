@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/google/uuid"
 	"github.com/logrusorgru/aurora"
 	"github.com/prysmaticlabs/prysm/crypto/bls"
@@ -25,6 +24,8 @@ import (
 	"github.com/prysmaticlabs/prysm/validator/keymanager/imported"
 	keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
 	"gopkg.in/urfave/cli.v1"
+
+	"github.com/ethereum/go-ethereum/cmd/utils"
 )
 
 const (

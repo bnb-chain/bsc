@@ -194,10 +194,6 @@ func ParliaRLP(header *types.Header, chainId *big.Int) []byte {
 	return b.Bytes()
 }
 
-type VotePool interface {
-	FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelope
-}
-
 // Parlia is the consensus engine of BSC
 type Parlia struct {
 	chainConfig *params.ChainConfig  // Chain config
@@ -217,7 +213,7 @@ type Parlia struct {
 	lock sync.RWMutex // Protects the signer fields
 
 	ethAPI          *ethapi.PublicBlockChainAPI
-	votePool        VotePool
+	votePool        consensus.VotePool
 	validatorSetABI abi.ABI
 	slashABI        abi.ABI
 
@@ -684,7 +680,7 @@ func (p *Parlia) PrepareValidators(chain consensus.ChainHeaderReader, header *ty
 }
 
 func (p *Parlia) PrepareVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header) error {
-	if !p.chainConfig.IsBoneh(header.Number) {
+	if !p.chainConfig.IsBoneh(header.Number) || p.votePool == nil {
 		return nil
 	}
 
@@ -1513,6 +1509,10 @@ func (p *Parlia) applyTransaction(
 	*receipts = append(*receipts, receipt)
 	state.SetNonce(msg.From(), nonce+1)
 	return nil
+}
+
+func (p *Parlia) SetVotePool(votePool consensus.VotePool) {
+	p.votePool = votePool
 }
 
 // ===========================     utility function        ==========================

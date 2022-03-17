@@ -58,27 +58,6 @@ var (
 	timeThreshold = 30
 )
 
-func setUpVoteJournal(t *testing.T) *VoteJournal {
-	// Create a temporary file for the votes journal
-	file, err := ioutil.TempFile("", "")
-	if err != nil {
-		t.Fatalf("failed to create temporary file path: %v", err)
-	}
-	journal := file.Name()
-	defer os.Remove(journal)
-
-	// Clean up the temporary file, we only need the path for now
-	file.Close()
-	os.Remove(journal)
-
-	voteJournal, err := NewVoteJournal(journal)
-	if err != nil {
-		t.Fatalf("failed to create temporary votes journal: %v", err)
-	}
-
-	return voteJournal
-}
-
 func (pool *VotePool) verifyStructureSizeOfVotePool(receivedVotes, curVotes, futureVotes, curVotesPq, futureVotesPq int) bool {
 	for i := 0; i < timeThreshold; i++ {
 		time.Sleep(1 * time.Second)
@@ -104,10 +83,7 @@ func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
 }
 
 func TestVotePool(t *testing.T) {
-	km := setUpKeyManager(t)
-
-	// Create vote Signer
-	voteSigner, _ := NewVoteSigner(km)
+	walletPasswordDir, walletDir := setUpKeyManager(t)
 
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
@@ -119,17 +95,28 @@ func TestVotePool(t *testing.T) {
 
 	mux := new(event.TypeMux)
 
-	// Create vote journal
-	voteJournal := setUpVoteJournal(t)
-
 	// Create vote pool
 	votePool := NewVotePool(params.TestChainConfig, chain, ethash.NewFaker())
 
 	// Create vote manager
-	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, voteJournal, voteSigner, votePool)
+	// Create a temporary file for the votes journal
+	file, err := ioutil.TempFile("", "")
+	if err != nil {
+		t.Fatalf("failed to create temporary file path: %v", err)
+	}
+	journal := file.Name()
+	defer os.Remove(journal)
+
+	// Clean up the temporary file, we only need the path for now
+	file.Close()
+	os.Remove(journal)
+
+	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir)
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}
+
+	voteJournal := voteManager.journal
 
 	// Send the done event of downloader
 	time.Sleep(10 * time.Millisecond)
@@ -267,15 +254,24 @@ func TestVotePool(t *testing.T) {
 	}
 }
 
-func setUpKeyManager(t *testing.T) *keymanager.IKeymanager {
+func setUpKeyManager(t *testing.T) (string, string) {
+	walletDir := filepath.Join(t.TempDir(), "wallet")
 	walletConfig := &accounts.CreateWalletConfig{
 		WalletCfg: &wallet.Config{
-			WalletDir:      filepath.Join(t.TempDir(), "wallet"),
+			WalletDir:      walletDir,
 			KeymanagerKind: keymanager.Imported,
 			WalletPassword: password,
 		},
 		SkipMnemonicConfirm: true,
 	}
+	walletPasswordDir := filepath.Join(t.TempDir(), "password")
+	if err := os.MkdirAll(filepath.Dir(walletPasswordDir), 0700); err != nil {
+		t.Fatalf("failed to create walletPassword dir: %v", err)
+	}
+	if err := ioutil.WriteFile(walletPasswordDir, []byte(password), 0600); err != nil {
+		t.Fatalf("failed to write wallet password dir: %v", err)
+	}
+
 	w, err := accounts.CreateWalletWithKeymanager(context.Background(), walletConfig)
 	if err != nil {
 		t.Fatalf("failed to create wallet: %v", err)
@@ -308,5 +304,5 @@ func setUpKeyManager(t *testing.T) *keymanager.IKeymanager {
 		Keystores:       []*keymanager.Keystore{keystore},
 		AccountPassword: password,
 	})
-	return &km
+	return walletPasswordDir, walletDir
 }

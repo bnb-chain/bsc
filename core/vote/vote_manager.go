@@ -16,6 +16,12 @@
 package vote
 
 import (
+	"context"
+	"io/ioutil"
+
+	"github.com/prysmaticlabs/prysm/validator/accounts/iface"
+	"github.com/prysmaticlabs/prysm/validator/accounts/wallet"
+
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -43,7 +49,7 @@ type VoteManager struct {
 	journal *VoteJournal
 }
 
-func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, journal *VoteJournal, signer *VoteSigner, pool *VotePool) (*VoteManager, error) {
+func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, bLSPassWordPath, bLSWalletPath string) (*VoteManager, error) {
 	voteManager := &VoteManager{
 		mux: mux,
 
@@ -51,11 +57,51 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 		chainconfig: chainconfig,
 		chainHeadCh: make(chan core.ChainHeadEvent, chainHeadChanSize),
 
-		signer:  signer,
-		journal: journal,
-		pool:    pool,
+		pool: pool,
 	}
 
+	dirExists, err := wallet.Exists(bLSWalletPath)
+	if err != nil {
+		log.Error("Check BLS wallet exists error: %v.", err)
+	}
+	if !dirExists {
+		log.Error("BLS wallet did not exists.")
+	}
+
+	walletPassword, err := ioutil.ReadFile(bLSPassWordPath)
+	if err != nil {
+		log.Error("Read BLS wallet password error: %v.", err)
+		return nil, err
+	}
+
+	w, err := wallet.OpenWallet(context.Background(), &wallet.Config{
+		WalletDir:      bLSWalletPath,
+		WalletPassword: string(walletPassword),
+	})
+	if err != nil {
+		log.Error("Open BLS wallet failed: %v.", err)
+		return nil, err
+	}
+
+	km, err := w.InitializeKeymanager(context.Background(), iface.InitKeymanagerConfig{ListenForChanges: false})
+	if err != nil {
+		log.Error("Initialize key manager failed: %v.", err)
+		return nil, err
+	}
+
+	voteJournal, err := NewVoteJournal(journalPath)
+	if err != nil {
+		return nil, err
+	}
+	voteManager.journal = voteJournal
+
+	voteSigner, err := NewVoteSigner(&km)
+	if err != nil {
+		return nil, err
+	}
+	voteManager.signer = voteSigner
+
+	// Subscribe to chain head event.
 	voteManager.chainHeadSub = voteManager.chain.SubscribeChainHeadEvent(voteManager.chainHeadCh)
 
 	go voteManager.loop()
