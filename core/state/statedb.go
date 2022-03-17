@@ -1363,19 +1363,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				}()
 			}
 
-			if s.snap != nil {
-				for addr := range s.stateObjectsDirty {
-					if obj := s.stateObjects[addr]; !obj.deleted {
-						if obj.code != nil && obj.dirtyCode {
-							diffLayer.Codes = append(diffLayer.Codes, types.DiffCode{
-								Hash: common.BytesToHash(obj.CodeHash()),
-								Code: obj.code,
-							})
-						}
-					}
-				}
-			}
-
 			for addr := range s.stateObjectsDirty {
 				if obj := s.stateObjects[addr]; !obj.deleted {
 					// Write any contract code associated with the state object
@@ -1457,6 +1444,12 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 					if obj.code != nil && obj.dirtyCode {
 						rawdb.WriteCode(codeWriter, common.BytesToHash(obj.CodeHash()), obj.code)
 						obj.dirtyCode = false
+						if s.snap != nil {
+							diffLayer.Codes = append(diffLayer.Codes, types.DiffCode{
+								Hash: common.BytesToHash(obj.CodeHash()),
+								Code: obj.code,
+							})
+						}
 						if codeWriter.ValueSize() > ethdb.IdealBatchSize {
 							if err := codeWriter.Write(); err != nil {
 								return err
