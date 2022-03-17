@@ -67,7 +67,7 @@ func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
 	}
 
 	vote.VoteAddress = pubKey
-	vote.Signature = signature
+	copy(vote.Signature[:], signature.Marshal()[:])
 	return nil
 }
 
@@ -77,8 +77,10 @@ func VerifyVoteWithBLS(vote *types.VoteEnvelope) error {
 	if err != nil {
 		return errors.Wrap(err, "convert public key from bytes to bls failed")
 	}
-
-	sig := vote.Signature.(bls.Signature)
+	sig, err := bls.SignatureFromBytes(vote.Signature[:])
+	if err != nil {
+		return errors.Wrap(err, "invalid signature")
+	}
 	voteHash := vote.Hash()
 
 	if !sig.Verify(blsPubKey, voteHash[:]) {
