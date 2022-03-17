@@ -264,7 +264,7 @@ func (pool *VotePool) prune(lastestBlockNumber uint64) {
 
 }
 
-// Get votes as batch.
+// GetVotes as batch.
 func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()

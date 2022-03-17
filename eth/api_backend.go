@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/core/vote"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -269,6 +270,14 @@ func (b *EthAPIBackend) TxPool() *core.TxPool {
 
 func (b *EthAPIBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
 	return b.eth.TxPool().SubscribeNewTxsEvent(ch)
+}
+
+func (b *EthAPIBackend) VotePool() *vote.VotePool {
+	return b.eth.VotePool()
+}
+
+func (b *EthAPIBackend) SubscribeNewVotesEvent(ch chan<- core.NewVotesEvent) event.Subscription {
+	return b.eth.VotePool().SubscribeNewVotesEvent(ch)
 }
 
 func (b *EthAPIBackend) Downloader() *downloader.Downloader {

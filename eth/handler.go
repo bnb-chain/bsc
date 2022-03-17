@@ -90,9 +90,10 @@ type votePool interface {
 	PutVote(vote *types.VoteEnvelope)
 	FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelope
 	GetVotes() []*types.VoteEnvelope
+
 	// SubscribeNewVotesEvent should return an event subscription of
 	// NewVotesEvent and send events to the given channel.
-	SubscribeNewVotesEvent(chan<- core.NewVotesEvent) event.Subscription
+	SubscribeNewVotesEvent(ch chan<- core.NewVotesEvent) event.Subscription
 }
 
 // handlerConfig is the collection of initialization parameters to create a full
@@ -492,6 +493,7 @@ func (h *handler) Start(maxPeers int) {
 func (h *handler) Stop() {
 	h.txsSub.Unsubscribe()        // quits txBroadcastLoop
 	h.reannoTxsSub.Unsubscribe()  // quits txReannounceLoop
+	h.votesSub.Unsubscribe()      // quits voteBroadcastLoop
 	h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
 
 	// Quit chainSync and txsync64.
