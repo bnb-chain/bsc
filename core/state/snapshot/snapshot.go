@@ -243,6 +243,10 @@ func (t *Tree) waitBuild() {
 	}
 }
 
+func (t *Tree) Layers() int {
+	return len(t.layers)
+}
+
 // Disable interrupts any pending snapshot generator, deletes all the snapshot
 // layers in memory and marks snapshots disabled globally. In order to resume
 // the snapshot functionality, the caller must invoke Rebuild.

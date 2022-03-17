@@ -216,7 +216,7 @@ func (s *StateDB) MarkLightProcessed() {
 
 // Enable the pipeline commit function of statedb
 func (s *StateDB) EnablePipeCommit() {
-	if s.snap != nil {
+	if s.snap != nil && s.snaps.Layers() > 1 {
 		s.pipeCommit = true
 	}
 }
@@ -1345,9 +1345,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	var diffLayer *types.DiffLayer
 	var verified chan struct{}
 	var snapUpdated chan struct{}
-	var snapCreated chan common.Hash
-
-	var snapAccountLock sync.Mutex // To protect snapAccount
 
 	if s.snap != nil {
 		diffLayer = &types.DiffLayer{}
@@ -1356,7 +1353,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		// async commit the MPT
 		verified = make(chan struct{})
 		snapUpdated = make(chan struct{})
-		snapCreated = make(chan common.Hash)
 	}
 
 	commmitTrie := func() error {
@@ -1364,26 +1360,21 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 			accountData := make(map[common.Hash][]byte)
 			if s.pipeCommit {
 				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct, capture the correct data here
-				snapAccountLock.Lock()
+				<-snapUpdated
 				s.AccountsIntermediateRoot()
-				snapAccountLock.Unlock()
 				for k, v := range s.snapAccounts {
 					accountData[crypto.Keccak256Hash(k[:])] = v
 				}
 			}
 
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
-				if s.pipeCommit {
-					<-snapCreated
-				}
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
 			}
 
 			if s.pipeCommit {
 				//Fix the account data in difflayer here
-				root := <-snapCreated
-				if root != (common.Hash{}) {
-					s.snaps.Snapshot(root).CorrectAccounts(accountData)
+				if parent := s.snap.Root(); parent != s.expectedRoot {
+					s.snaps.Snapshot(s.expectedRoot).CorrectAccounts(accountData)
 				}
 			}
 
@@ -1526,17 +1517,12 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				}
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != s.expectedRoot {
-					snapAccountLock.Lock()
 					err := s.snaps.Update(s.expectedRoot, parent, s.snapDestructs, s.snapAccounts, s.snapStorage, verified)
-					snapAccountLock.Unlock()
 
-					hashToSend := s.expectedRoot
 					if err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
 					}
-					if s.pipeCommit {
-						snapCreated <- hashToSend
-					}
+
 					// Keep n diff layers in the memory
 					// - head layer is paired with HEAD state
 					// - head-1 layer is paired with HEAD-1 state
@@ -1546,19 +1532,13 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 							log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
 						}
 					}()
-				} else {
-					if s.pipeCommit { // If no snap created, still need to put data into the channel
-						snapCreated <- common.Hash{}
-					}
 				}
 			}
 			return nil
 		},
 		func() error {
 			if s.snap != nil {
-				snapAccountLock.Lock()
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
-				snapAccountLock.Unlock()
 			}
 			return nil
 		},
