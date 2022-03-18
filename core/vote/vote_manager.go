@@ -18,7 +18,6 @@ package vote
 import (
 	"context"
 	"io/ioutil"
-	"strings"
 
 	"github.com/prysmaticlabs/prysm/validator/accounts/iface"
 	"github.com/prysmaticlabs/prysm/validator/accounts/wallet"
@@ -77,7 +76,7 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 
 	w, err := wallet.OpenWallet(context.Background(), &wallet.Config{
 		WalletDir:      bLSWalletPath,
-		WalletPassword: strings.TrimSpace(string(walletPassword)),
+		WalletPassword: string(walletPassword),
 	})
 	if err != nil {
 		log.Error("Open BLS wallet failed: %v.", err)

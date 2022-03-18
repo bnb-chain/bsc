@@ -39,8 +39,6 @@ const (
 	lowerLimitOfVoteBlockNumber = 256
 	upperLimitOfVoteBlockNumber = 11
 
-	voteMaxSize = 128 * 1024 // Set the maxSize of vote as 128KB.
-
 	chainHeadChanSize = 10 // chainHeadChanSize is the size of channel listening to ChainHeadEvent.
 )
 
