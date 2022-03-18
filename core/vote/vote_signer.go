@@ -71,7 +71,7 @@ func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
 	return nil
 }
 
-// VerifyVote using BLS.
+// VerifyVoteWithBLS using BLS.
 func VerifyVoteWithBLS(vote *types.VoteEnvelope) error {
 	blsPubKey, err := bls.PublicKeyFromBytes(vote.VoteAddress[:])
 	if err != nil {

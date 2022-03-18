@@ -278,9 +278,11 @@ func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 func (pool *VotePool) FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelope {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
-	return pool.curVotes[blockHash].voteMessages
+	if _, ok := pool.curVotes[blockHash]; ok {
+		return pool.curVotes[blockHash].voteMessages
+	}
+	return nil
 	//TODO: More strict condition is needed.
-
 }
 
 func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m map[common.Hash]*VoteBox, isFutureVote bool, voteHash common.Hash) bool {
