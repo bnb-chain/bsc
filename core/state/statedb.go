@@ -1345,7 +1345,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	var diffLayer *types.DiffLayer
 	var verified chan struct{}
 	var snapUpdated chan struct{}
-	var accountCorrected chan struct{}
 
 	if s.snap != nil {
 		diffLayer = &types.DiffLayer{}
@@ -1354,7 +1353,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		// async commit the MPT
 		verified = make(chan struct{})
 		snapUpdated = make(chan struct{})
-		accountCorrected = make(chan struct{})
 	}
 
 	commmitTrie := func() error {
@@ -1370,7 +1368,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				if parent := s.snap.Root(); parent != s.expectedRoot {
 					s.snaps.Snapshot(s.expectedRoot).CorrectAccounts(accountData)
 				}
-				close(accountCorrected)
 			}
 
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
@@ -1474,7 +1471,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				}
 				log.Error("state verification failed", "err", commitErr)
 			}
-			<-accountCorrected
 			close(verified)
 		}
 		return commitErr
