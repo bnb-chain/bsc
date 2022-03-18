@@ -103,7 +103,7 @@ type StateDB struct {
 
 	// shared_pool to store L1 originStorage of stateObjects
 	sharedStorage *SharedStorage
-
+	isPrefetchDb  bool
 	// DB error.
 	// State objects are used by the consensus core and VM which are
 	// unable to deal with database-level errors. Any error that occurs
@@ -159,6 +159,7 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 		stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
 		stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
 		sharedStorage:       NewSharedStorage(),
+		isPrefetchDb:        false,
 		logs:                make(map[common.Hash][]*types.Log, defaultNumOfSlots),
 		preimages:           make(map[common.Hash][]byte),
 		journal:             newJournal(),
@@ -822,14 +823,16 @@ func (db *StateDB) ForEachStorage(addr common.Address, cb func(key, value common
 	return nil
 }
 
-// Copy creates a deep, independent copy of the state.
-// Snapshots of the copied state cannot be applied to the copy.
+// Used by prefetcher
 func (s *StateDB) CopyWithSharedStorage() *StateDB {
 	state := s.Copy()
 	state.sharedStorage = s.sharedStorage
+	state.isPrefetchDb = true
 	return state
 }
 
+// Copy creates a deep, independent copy of the state.
+// Snapshots of the copied state cannot be applied to the copy.
 func (s *StateDB) Copy() *StateDB {
 	// Copy all the basic fields, initialize the memory ones
 	state := &StateDB{

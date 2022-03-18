@@ -80,10 +80,12 @@ type StateObject struct {
 	trie Trie // storage trie, which becomes non-nil on first access
 	code Code // contract bytecode, which gets set when code is loaded
 
-	originStorage  *sync.Map // Storage cache of original entries to dedup rewrites, reset for every transaction
-	pendingStorage Storage   // Storage entries that need to be flushed to disk, at the end of an entire block
-	dirtyStorage   Storage   // Storage entries that have been modified in the current transaction execution
-	fakeStorage    Storage   // Fake storage which constructed by caller for debugging purpose.
+	sharedOriginMap *sync.Map // Storage cache of original entries to dedup rewrites, reset for every transaction
+	originStorage   Storage
+
+	pendingStorage Storage // Storage entries that need to be flushed to disk, at the end of an entire block
+	dirtyStorage   Storage // Storage entries that have been modified in the current transaction execution
+	fakeStorage    Storage // Fake storage which constructed by caller for debugging purpose.
 
 	// Cache flags.
 	// When an object is marked suicided it will be delete from the trie
@@ -128,13 +130,14 @@ func newObject(db *StateDB, address common.Address, data Account) *StateObject {
 	}
 
 	return &StateObject{
-		db:             db,
-		address:        address,
-		addrHash:       crypto.Keccak256Hash(address[:]),
-		data:           data,
-		originStorage:  storageMap,
-		pendingStorage: make(Storage),
-		dirtyStorage:   make(Storage),
+		db:              db,
+		address:         address,
+		addrHash:        crypto.Keccak256Hash(address[:]),
+		data:            data,
+		sharedOriginMap: storageMap,
+		originStorage:   make(Storage),
+		pendingStorage:  make(Storage),
+		dirtyStorage:    make(Storage),
 	}
 }
 
@@ -201,6 +204,25 @@ func (s *StateObject) GetState(db Database, key common.Hash) common.Hash {
 	return s.GetCommittedState(db, key)
 }
 
+func (s *StateObject) getStorageKey(key common.Hash) (common.Hash, bool) {
+	if value, cached := s.originStorage[key]; cached {
+		return value, true
+	}
+	// if L1 cache miss, try to get it from shared pool
+	val, ok := s.sharedOriginMap.Load(key)
+	if !ok {
+		return common.HexToHash(""), false
+	}
+	return val.(common.Hash), ok
+}
+
+func (s *StateObject) setStorgeKey(key common.Hash, value common.Hash) {
+	if s.db.isPrefetchDb {
+		s.sharedOriginMap.Store(key, value)
+	}
+	s.originStorage[key] = value
+}
+
 // GetCommittedState retrieves a value from the committed account storage trie.
 func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Hash {
 	// If the fake storage is set, only lookup the state here(in the debugging mode)
@@ -212,8 +234,8 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		return value
 	}
 
-	if value, cached := s.originStorage.Load(key); cached {
-		return value.(common.Hash)
+	if value, cached := s.getStorageKey(key); cached {
+		return value
 	}
 	// If no live objects are available, attempt to use snapshots
 	var (
@@ -271,7 +293,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		}
 		value.SetBytes(content)
 	}
-	s.originStorage.Store(key, value)
+	s.setStorgeKey(key, value)
 	return value
 }
 
@@ -327,8 +349,8 @@ func (s *StateObject) finalise(prefetch bool) {
 	}
 
 	for key, value := range s.dirtyStorage {
-		originValue, cached := s.originStorage.Load(key)
-		if cached && value != originValue.(common.Hash) {
+		originValue, cached := s.getStorageKey(key)
+		if cached && value != originValue {
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
 		}
 	}
@@ -364,11 +386,11 @@ func (s *StateObject) updateTrie(db Database) Trie {
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
 	for key, value := range s.pendingStorage {
 		// Skip noop changes, persist actual changes
-		originValue, cached := s.originStorage.Load(key)
-		if cached && value == originValue.(common.Hash) {
+		originValue, cached := s.getStorageKey(key)
+		if cached && value == originValue {
 			continue
 		}
-		s.originStorage.Store(key, value)
+		s.setStorgeKey(key, value)
 
 		var v []byte
 		if (value == common.Hash{}) {
