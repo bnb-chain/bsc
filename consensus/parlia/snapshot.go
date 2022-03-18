@@ -306,8 +306,10 @@ func (s *Snapshot) enoughDistance(validator common.Address, header *types.Header
 }
 
 func (s *Snapshot) indexOfVal(validator common.Address) int {
-	if s.Validators[validator].Index > 0 {
-		return s.Validators[validator].Index - 1 // Index is offset by 1
+	if validator, ok := s.Validators[validator]; ok {
+		if validator.Index > 0 {
+			return validator.Index - 1 // Index is offset by 1
+		}
 	}
 
 	validators := s.validators()
