@@ -211,7 +211,7 @@ func (s *StateObject) getStorageKey(key common.Hash) (common.Hash, bool) {
 	// if L1 cache miss, try to get it from shared pool
 	val, ok := s.sharedOriginMap.Load(key)
 	if !ok {
-		return common.HexToHash(""), false
+		return common.Hash{}, false
 	}
 	return val.(common.Hash), ok
 }
@@ -346,14 +346,12 @@ func (s *StateObject) finalise(prefetch bool) {
 	slotsToPrefetch := make([][]byte, 0, len(s.dirtyStorage))
 	for key, value := range s.dirtyStorage {
 		s.pendingStorage[key] = value
-	}
-
-	for key, value := range s.dirtyStorage {
 		originValue, cached := s.getStorageKey(key)
 		if cached && value != originValue {
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
 		}
 	}
+
 	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
 		s.db.prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
 	}
