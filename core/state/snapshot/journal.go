@@ -289,11 +289,6 @@ func (dl *diffLayer) Journal(buffer *bytes.Buffer) (common.Hash, error) {
 		return common.Hash{}, ErrSnapshotStale
 	}
 
-	// Wait the snapshot(difflayer) is verified, it means the account data also been refreshed with the correct data
-	if !dl.WaitAndGetVerifyRes() {
-		return common.Hash{}, ErrSnapshotStale
-	}
-
 	// Everything below was journalled, persist this layer too
 	if err := rlp.Encode(buffer, dl.root); err != nil {
 		return common.Hash{}, err

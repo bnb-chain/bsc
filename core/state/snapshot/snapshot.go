@@ -673,6 +673,11 @@ func (t *Tree) Journal(root common.Hash) (common.Hash, error) {
 	if snap == nil {
 		return common.Hash{}, fmt.Errorf("snapshot [%#x] missing", root)
 	}
+	// Wait the snapshot(difflayer) is verified, it means the account data also been refreshed with the correct data
+	if !snap.WaitAndGetVerifyRes() {
+		return common.Hash{}, ErrSnapshotStale
+	}
+
 	// Run the journaling
 	t.lock.Lock()
 	defer t.lock.Unlock()
