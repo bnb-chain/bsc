@@ -160,7 +160,7 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 	return true
 }
 
-func (pool *VotePool) SubscribeNewVotesEvent(ch chan<- core.NewVotesEvent) event.Subscription {
+func (pool *VotePool) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {
 	return pool.scope.Track(pool.votesFeed.Subscribe(ch))
 }
 
