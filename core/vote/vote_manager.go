@@ -109,7 +109,7 @@ func (voteManager *VoteManager) loop() {
 
 	dlEventCh := events.Chan()
 
-	startVote := false
+	startVote := true
 	for {
 		select {
 		case ev := <-dlEventCh:
