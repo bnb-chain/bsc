@@ -150,6 +150,16 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 	return newStateDB(root, db, snaps)
 }
 
+// NewWithSharedPool creates a new state with sharedStorge on layer 1.5
+func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
+	statedb, err := newStateDB(root, db, snaps)
+	if err != nil {
+		return nil, err
+	}
+	statedb.sharedStorage = NewSharedStorage()
+	return statedb, nil
+}
+
 func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	sdb := &StateDB{
 		db:                  db,
@@ -158,7 +168,7 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 		stateObjects:        make(map[common.Address]*StateObject, defaultNumOfSlots),
 		stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
 		stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
-		sharedStorage:       NewSharedStorage(),
+		sharedStorage:       nil,
 		isPrefetchDb:        false,
 		logs:                make(map[common.Hash][]*types.Log, defaultNumOfSlots),
 		preimages:           make(map[common.Hash][]byte),

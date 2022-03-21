@@ -125,7 +125,7 @@ func newObject(db *StateDB, address common.Address, data Account) *StateObject {
 	}
 	var storageMap *sync.Map
 	// Check whether the storage exist in pool, new originStorage if not exist
-	if db != nil {
+	if db != nil && db.sharedStorage != nil {
 		storageMap = db.GetOrInsertStorage(address)
 	}
 
@@ -209,11 +209,14 @@ func (s *StateObject) getStorageKey(key common.Hash) (common.Hash, bool) {
 		return value, true
 	}
 	// if L1 cache miss, try to get it from shared pool
-	val, ok := s.sharedOriginMap.Load(key)
-	if !ok {
-		return common.Hash{}, false
+	if s.sharedOriginMap != nil {
+		val, ok := s.sharedOriginMap.Load(key)
+		if !ok {
+			return common.Hash{}, false
+		}
+		return val.(common.Hash), ok
 	}
-	return val.(common.Hash), ok
+	return common.Hash{}, false
 }
 
 func (s *StateObject) setStorgeKey(key common.Hash, value common.Hash) {
