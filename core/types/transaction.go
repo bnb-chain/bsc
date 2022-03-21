@@ -503,23 +503,13 @@ func (t *TransactionsByPriceAndNonce) CurrentSize() int {
 	return len(t.heads)
 }
 
-//Forward move t to be one index behind tx, tx cant be nil
+//Forward move t to be one index behind tx, param tx cant be nil
 func (t *TransactionsByPriceAndNonce) Forward(tx *Transaction) {
-	if tx == nil {
-		txTmp := t.Peek()
-		for txTmp != nil {
-			t.Shift()
-			txTmp = t.Peek()
-		}
-		return
-	}
-
-	l := len(t.heads)
 	acc, _ := Sender(t.signer, tx)
-	for i := 0; i < l; i++ {
-		accTmp, _ := Sender(t.signer, t.heads[i])
+	for _, head := range t.heads {
+		accTmp, _ := Sender(t.signer, head)
 		if acc == accTmp {
-			if tx == t.heads[i] {
+			if tx == head {
 				txTmp := t.Peek()
 				for txTmp != tx {
 					t.Shift()
