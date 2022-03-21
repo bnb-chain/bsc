@@ -58,6 +58,7 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 		log.Error("Read BLS wallet password error: %v.", err)
 		return nil, err
 	}
+	log.Info("Read BLS wallet password successfully")
 
 	w, err := wallet.OpenWallet(context.Background(), &wallet.Config{
 		WalletDir:      bLSWalletPath,
@@ -67,23 +68,27 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 		log.Error("Open BLS wallet failed: %v.", err)
 		return nil, err
 	}
+	log.Info("Open BLS wallet successfully")
 
 	km, err := w.InitializeKeymanager(context.Background(), iface.InitKeymanagerConfig{ListenForChanges: false})
 	if err != nil {
 		log.Error("Initialize key manager failed: %v.", err)
 		return nil, err
 	}
+	log.Info("Initialized keymanager successfully")
 
 	voteJournal, err := NewVoteJournal(journalPath)
 	if err != nil {
 		return nil, err
 	}
+	log.Info("Create voteJournal successfully")
 	voteManager.journal = voteJournal
 
 	voteSigner, err := NewVoteSigner(&km)
 	if err != nil {
 		return nil, err
 	}
+	log.Info("Create voteSigner successfully")
 	voteManager.signer = voteSigner
 
 	// Subscribe to chain head event.

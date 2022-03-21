@@ -1045,7 +1045,6 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 		if validator.VoteAddress == voteAddress {
 			return true
 		}
-
 	}
 	return false
 }

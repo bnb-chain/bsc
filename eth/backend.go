@@ -238,11 +238,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Create votePool instance
 	votePool := vote.NewVotePool(chainConfig, eth.blockchain, eth.engine)
 	eth.votePool = votePool
+	log.Info("Create votePool successfully")
 
 	// Create voteManager instance
 	if _, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, votePool, voteJournalPath, bLSPassWordPath, bLSWalletPath); err != nil {
 		log.Error("Failed to Initialize voteManager: %v.", err)
 	}
+	log.Info("Create voteManager successfully")
+
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit
 	checkpoint := config.Checkpoint
