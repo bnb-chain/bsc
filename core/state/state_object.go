@@ -220,7 +220,7 @@ func (s *StateObject) getOriginStorage(key common.Hash) (common.Hash, bool) {
 }
 
 func (s *StateObject) setOriginStorage(key common.Hash, value common.Hash) {
-	if s.db.dbForSpeedup && s.sharedOriginStorage != nil {
+	if s.db.writeOnSharedStorage && s.sharedOriginStorage != nil {
 		s.sharedOriginStorage.Store(key, value)
 	}
 	s.originStorage[key] = value

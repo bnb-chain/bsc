@@ -101,8 +101,8 @@ type StateDB struct {
 	stateObjectsPending map[common.Address]struct{} // State objects finalized but not yet written to the trie
 	stateObjectsDirty   map[common.Address]struct{} // State objects modified in the current execution
 
-	storagePool  *StoragePool // shared_pool to store L1 originStorage of stateObjects
-	dbForSpeedup bool
+	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
+	writeOnSharedStorage bool         // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
 	// DB error.
 	// State objects are used by the consensus core and VM which are
 	// unable to deal with database-level errors. Any error that occurs
@@ -167,8 +167,6 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 		stateObjects:        make(map[common.Address]*StateObject, defaultNumOfSlots),
 		stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
 		stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
-		storagePool:         nil,
-		dbForSpeedup:        false,
 		logs:                make(map[common.Hash][]*types.Log, defaultNumOfSlots),
 		preimages:           make(map[common.Hash][]byte),
 		journal:             newJournal(),
@@ -192,8 +190,8 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 	return sdb, nil
 }
 
-func (s *StateDB) SetPrefetchFlag() {
-	s.dbForSpeedup = true
+func (s *StateDB) EnableWriteOnSharedStorage() {
+	s.writeOnSharedStorage = true
 }
 
 // StartPrefetcher initializes a new trie prefetcher to pull in nodes from the

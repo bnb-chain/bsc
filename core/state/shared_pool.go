@@ -13,7 +13,7 @@ type StoragePool struct {
 }
 
 func NewStoragePool() *StoragePool {
-	sharedMap := make(map[common.Address]*sync.Map, 500)
+	sharedMap := make(map[common.Address]*sync.Map)
 	return &StoragePool{
 		sync.RWMutex{},
 		sharedMap,
