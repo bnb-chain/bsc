@@ -410,7 +410,7 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return errExtraValidators
 	}
 
-	if isEpoch && signersBytes%validatorBytesLength != 0 {
+	if isEpoch && (signersBytes-1)%validatorBytesLengthAfterBoneh != 0 {
 		return errInvalidSpanValidators
 	}
 
@@ -1301,23 +1301,20 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	}
 
 	var (
-		ret0 = new([]common.Address)
-		ret1 = new([]types.BLSPublicKey)
+		ret0 []common.Address
+		ret1 []types.BLSPublicKey
 	)
-	out := struct {
-		consensusAddrs []common.Address
-		voteAddrs      []types.BLSPublicKey
-	}{*ret0, *ret1}
+	out := []interface{}{ret0, ret1}
 
-	if err := p.validatorSetABI.UnpackIntoInterface(out, method, result); err != nil {
+	if err := p.validatorSetABI.UnpackIntoInterface(&out, method, result); err != nil {
 		return nil, nil, err
 	}
 
-	valz := make([]common.Address, len(*ret0))
+	valz := make([]common.Address, len(ret0))
 	voteAddrmap := make(map[common.Address]*types.BLSPublicKey)
-	for i := 0; i < len(*ret0); i++ {
-		valz[i] = (*ret0)[i]
-		voteAddrmap[(*ret0)[i]] = &((*ret1)[i])
+	for i := 0; i < len(ret0); i++ {
+		valz[i] = ret0[i]
+		voteAddrmap[ret0[i]] = &ret1[i]
 	}
 	return valz, voteAddrmap, nil
 }
