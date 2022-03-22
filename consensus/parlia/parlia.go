@@ -1300,10 +1300,6 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 		return nil, nil, err
 	}
 
-	//var (
-	//	ret0 [][20]byte
-	//	ret1 [][48]byte
-	//)
 	ret0, ret1 := new([]common.Address), new([]types.BLSPublicKey)
 	out := []interface{}{ret0, ret1}
 
