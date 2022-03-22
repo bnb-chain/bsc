@@ -1300,21 +1300,24 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 		return nil, nil, err
 	}
 
-	var (
-		ret0 []common.Address
-		ret1 []types.BLSPublicKey
-	)
+	//var (
+	//	ret0 [][20]byte
+	//	ret1 [][48]byte
+	//)
+	ret0, ret1 := new([]common.Address), new([]types.BLSPublicKey)
 	out := []interface{}{ret0, ret1}
 
 	if err := p.validatorSetABI.UnpackIntoInterface(&out, method, result); err != nil {
 		return nil, nil, err
 	}
 
-	valz := make([]common.Address, len(ret0))
+	valz := make([]common.Address, len(*ret0))
 	voteAddrmap := make(map[common.Address]*types.BLSPublicKey)
-	for i := 0; i < len(ret0); i++ {
-		valz[i] = ret0[i]
-		voteAddrmap[ret0[i]] = &ret1[i]
+	for i := 0; i < len(*ret0); i++ {
+		//var voteAddr types.BLSPublicKey
+		//voteAddr = ret1[i]
+		valz[i] = (*ret0)[i]
+		voteAddrmap[(*ret0)[i]] = &(*ret1)[i]
 	}
 	return valz, voteAddrmap, nil
 }
