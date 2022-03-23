@@ -39,10 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-const (
-	preLoadLimit      = 128
-	defaultNumOfSlots = 100
-)
+const defaultNumOfSlots = 100
 
 type revision struct {
 	id           int
