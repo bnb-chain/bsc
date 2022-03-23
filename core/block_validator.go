@@ -140,12 +140,6 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			if err := statedb.WaitPipeVerification(); err != nil {
 				return err
 			}
-			statedb.CorrectAccountsRoot()
-
-			diffLayer := &types.DiffLayer{}
-			diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = statedb.SnapToDiffLayer()
-			v.bc.finalisePendingDiffLayer(diffLayer)
-
 			statedb.Finalise(v.config.IsEIP158(header.Number))
 			//state verification pipeline - accounts root are not calculated here
 			statedb.PopulateSnapAccountAndStorage()

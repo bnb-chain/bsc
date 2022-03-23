@@ -226,7 +226,6 @@ type BlockChain struct {
 	diffQueue                  *prque.Prque // A Priority queue to store recent diff layer
 	diffQueueBuffer            chan *types.DiffLayer
 	diffLayerFreezerBlockLimit uint64
-	diffLayerPending           *types.DiffLayer //Diff layer pending to be corrected
 
 	// untrusted diff layers
 	diffMux               sync.RWMutex
@@ -1791,11 +1790,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		diffLayer.Receipts = receipts
 		diffLayer.BlockHash = block.Hash()
 		diffLayer.Number = block.NumberU64()
-		if state.IsPipeCommit() {
-			bc.diffLayerPending = diffLayer
-		} else {
-			bc.cacheDiffLayer(diffLayer)
-		}
+		bc.cacheDiffLayer(diffLayer)
 	}
 
 	wg.Wait()
@@ -2768,17 +2763,6 @@ func (bc *BlockChain) pruneDiffLayer() {
 				delete(bc.diffPeersToDiffHashes, p)
 			}
 		}
-	}
-}
-
-// finalisePendingDiffLayer finalises the pending diff layer and cache it in pipecommit mode
-func (bc *BlockChain) finalisePendingDiffLayer(diffLayer *types.DiffLayer) {
-	if bc.diffLayerPending != nil {
-		diffLayer.Receipts = bc.diffLayerPending.Receipts
-		diffLayer.BlockHash = bc.diffLayerPending.BlockHash
-		diffLayer.Number = bc.diffLayerPending.Number
-		bc.cacheDiffLayer(diffLayer)
-		bc.diffLayerPending = nil
 	}
 }
 
