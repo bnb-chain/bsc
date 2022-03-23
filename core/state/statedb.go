@@ -1033,20 +1033,24 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			if s.snap != nil && !obj.deleted {
-				s.populateSnapStorage(obj)
-				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, emptyRoot, obj.data.CodeHash)
+				root := obj.data.Root
+				storageChanged := s.populateSnapStorage(obj)
+				if storageChanged {
+					root = emptyRoot
+				}
+				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, root, obj.data.CodeHash)
 			}
 		}
 	}
 }
 
-//populateSnapStorage tries to populate required storages for pipecommit
-func (s *StateDB) populateSnapStorage(obj *StateObject) {
+//populateSnapStorage tries to populate required storages for pipecommit, and returns a flag to indicate whether the storage root changed or not
+func (s *StateDB) populateSnapStorage(obj *StateObject) bool {
 	for key, value := range obj.dirtyStorage {
 		obj.pendingStorage[key] = value
 	}
 	if len(obj.pendingStorage) == 0 {
-		return
+		return false
 	}
 	var storage map[string][]byte
 	for key, value := range obj.pendingStorage {
@@ -1067,6 +1071,7 @@ func (s *StateDB) populateSnapStorage(obj *StateObject) {
 			storage[string(key[:])] = v // v will be nil if value is 0x00
 		}
 	}
+	return true
 }
 
 func (s *StateDB) AccountsIntermediateRoot() {
