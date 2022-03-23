@@ -780,7 +780,6 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	}
 	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
 
-	//	var interruptPrefetch uint32
 	interruptCh := make(chan struct{})
 	defer close(interruptCh)
 	tx := &types.Transaction{}

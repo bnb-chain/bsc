@@ -27,9 +27,6 @@ type GasPool uint64
 
 // SetGas set an initial value for gaspool
 func (gp *GasPool) SetGas(amount uint64) *GasPool {
-	if amount > math.MaxUint64 {
-		panic("gas pool pushed above uint64")
-	}
 	*(*uint64)(gp) = amount
 	return gp
 }
