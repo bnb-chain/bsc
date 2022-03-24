@@ -1031,7 +1031,10 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 	voteBlockNumber := vote.Data.BlockNumber
 	voteBlockHash := vote.Data.BlockHash
 	header := chain.GetHeader(voteBlockHash, voteBlockNumber)
-
+	if header == nil {
+		log.Error("BlockHeader at current voteBlockNumber is nil", "blockNumber=", voteBlockNumber, "blockHash=", voteBlockHash)
+		return false
+	}
 	number := header.Number.Uint64()
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
