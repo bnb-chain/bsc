@@ -214,6 +214,7 @@ func (s *StateObject) getOriginStorage(key common.Hash) (common.Hash, bool) {
 		if !ok {
 			return common.Hash{}, false
 		}
+		s.originStorage[key] = val.(common.Hash)
 		return val.(common.Hash), true
 	}
 	return common.Hash{}, false

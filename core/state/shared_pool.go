@@ -27,11 +27,13 @@ func (s *StoragePool) getStorage(address common.Address) *sync.Map {
 	storageMap, ok := s.sharedMap[address]
 	s.RUnlock()
 	if !ok {
-		m := new(sync.Map)
 		s.Lock()
-		s.sharedMap[address] = m
-		s.Unlock()
-		return m
+		defer s.Unlock()
+		if storageMap, ok = s.sharedMap[address]; !ok {
+			m := new(sync.Map)
+			s.sharedMap[address] = m
+			return m
+		}
 	}
 	return storageMap
 }
