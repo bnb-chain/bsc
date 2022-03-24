@@ -44,11 +44,11 @@ func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
 		return errors.Wrap(err, "convert public key from bytes to bls failed")
 	}
 
-	voteHash := vote.Hash()
+	voteDataHash := vote.Data.VoteDataHash()
 
 	signature, err := (*signer.km).Sign(ctx, &validatorpb.SignRequest{
 		PublicKey:   pubKey[:],
-		SigningRoot: voteHash[:],
+		SigningRoot: voteDataHash[:],
 	})
 	if err != nil {
 		log.Error("Failed to sign vote", "err", err)
@@ -74,12 +74,8 @@ func VerifyVoteWithBLS(vote *types.VoteEnvelope) error {
 		return errors.Wrap(err, "invalid signature")
 	}
 
-	voteMessage := &types.VoteEnvelope{
-		Data: vote.Data,
-	}
-	voteHash := voteMessage.Hash()
-
-	if !sig.Verify(blsPubKey, voteHash[:]) {
+	voteDataHash := vote.Data.VoteDataHash()
+	if !sig.Verify(blsPubKey, voteDataHash[:]) {
 		log.Error("Failed to verify bls", "err", err, "voteBlockNumber=", vote.Data.BlockNumber, "voteBlockHash=", vote.Data.BlockHash)
 		return errors.New("verify bls signature failed.")
 	}

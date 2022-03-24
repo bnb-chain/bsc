@@ -167,9 +167,9 @@ func (voteManager *VoteManager) loop() {
 						log.Warn("Failed to write vote into journal", "err", err)
 						continue
 					}
+					log.Info("vote manager produced vote", "voteHash=", voteMessage.Hash())
 					voteManager.pool.PutVote(voteMessage)
 				}
-
 			}
 		}
 	}

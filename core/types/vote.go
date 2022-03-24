@@ -48,11 +48,25 @@ func (v *VoteEnvelope) Hash() common.Hash {
 }
 
 func (v *VoteEnvelope) calcVoteHash() common.Hash {
-	voteData := struct {
+	vote := struct {
 		VoteAddress BLSPublicKey
 		Signature   BLSSignature
 		Data        *VoteData
 	}{v.VoteAddress, v.Signature, v.Data}
+	return rlpHash(vote)
+}
+
+// Hash returns the voteData hash.
+func (v *VoteData) VoteDataHash() common.Hash {
+	h := v.calcVoteDataHash()
+	return h
+}
+
+func (v *VoteData) calcVoteDataHash() common.Hash {
+	voteData := struct {
+		BlockNumber uint64
+		BlockHash   common.Hash
+	}{v.BlockNumber, v.BlockHash}
 	return rlpHash(voteData)
 }
 
