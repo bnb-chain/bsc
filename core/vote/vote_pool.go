@@ -3,6 +3,7 @@ package vote
 import (
 	"container/heap"
 	"errors"
+	"fmt"
 	"sync"
 
 	mapset "github.com/deckarep/golang-set"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -28,6 +30,16 @@ const (
 )
 
 var errInvalidVote = errors.New("invalid Vote")
+
+var (
+	localCurVotesGauge    = metrics.NewRegisteredGauge("curVotes/local", nil)
+	localFutureVotesGauge = metrics.NewRegisteredGauge("futureVotes/local", nil)
+
+	localReceivedVotesGauge = metrics.NewRegisteredGauge("receivedVotes/local", nil)
+
+	localCurVotesPqGauge    = metrics.NewRegisteredGauge("curVotesPq/local", nil)
+	localFutureVotesPqGauge = metrics.NewRegisteredGauge("futureVotesPq/local", nil)
+)
 
 type VoteBox struct {
 	blockNumber  uint64
@@ -156,8 +168,15 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 		// Send vote for handler usage of broadcasting to peers.
 		voteEv := &core.NewVoteEvent{vote}
 		pool.votesFeed.Send(*voteEv)
+		localCurVotesGauge.Inc(1)
+		localCurVotesPqGauge.Inc(1)
+	} else {
+		localFutureVotesGauge.Inc(1)
+		localFutureVotesPqGauge.Inc(1)
 	}
 
+	votesPerBlockHashMetric(voteBlockHash).Inc(1)
+	localReceivedVotesGauge.Inc(1)
 	return true
 }
 
@@ -221,21 +240,25 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 		voteData := heap.Pop(futurePq)
 		heap.Push(curPq, voteData)
 		delete(futureVotes, blockHash)
+
+		localCurVotesGauge.Inc(1)
+		localCurVotesPqGauge.Inc(1)
+		localFutureVotesGauge.Dec(1)
+		localFutureVotesPqGauge.Dec(1)
 	}
 }
 
-// Prune old data of duplicationSet, priorityQueue and curVotesMap.
+// Prune old data of duplicationSet, curVotePq and curVotesMap.
 func (pool *VotePool) prune(lastestBlockNumber uint64) {
 
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 	curVotes := pool.curVotes
-	curBlockPq := pool.curVotesPq
+	curVotesPq := pool.curVotesPq
 
-	for curBlockPq.Len() > 0 && curBlockPq.Peek().BlockNumber+lowerLimitOfVoteBlockNumber-1 < lastestBlockNumber {
-
+	for curVotesPq.Len() > 0 && curVotesPq.Peek().BlockNumber+lowerLimitOfVoteBlockNumber-1 < lastestBlockNumber {
 		// Prune curPriorityQueue.
-		blockHash := heap.Pop(curBlockPq).(*types.VoteData).BlockHash
+		blockHash := heap.Pop(curVotesPq).(*types.VoteData).BlockHash
 		voteMessages := curVotes[blockHash].voteMessages
 		// Prune duplicationSet.
 		for _, voteMessage := range voteMessages {
@@ -245,8 +268,11 @@ func (pool *VotePool) prune(lastestBlockNumber uint64) {
 		// Prune curVotes Map.
 		delete(curVotes, blockHash)
 
+		localCurVotesGauge.Dec(1)
+		localCurVotesPqGauge.Dec(1)
+		localReceivedVotesGauge.Dec(1)
+		votesPerBlockHashMetric(blockHash).Dec(1)
 	}
-
 }
 
 // GetVotes as batch.
@@ -329,4 +355,8 @@ func (pq *votesPriorityQueue) Peek() *types.VoteData {
 		return nil
 	}
 	return (*pq)[0]
+}
+
+func votesPerBlockHashMetric(blockHash common.Hash) metrics.Gauge {
+	return metrics.GetOrRegisterGauge(fmt.Sprintf("blockHash/%s", blockHash), nil)
 }
