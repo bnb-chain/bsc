@@ -108,14 +108,14 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 				select {
 				case tx := <-txCh:
 					// Convert the transaction into an executable message and pre-cache its sender
-					msg, err := tx.AsMessage(signer)
+					msg, err := tx.AsMessagePrefetch(signer)
 					if err != nil {
 						return // Also invalid block, bail out
 					}
 					idx++
 					newStatedb.Prepare(tx.Hash(), header.Hash(), idx)
 					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
-					gaspool.SetGas(gasLimit)
+					gaspool = new(GasPool).AddGas(gasLimit)
 				case <-stopCh:
 					return
 				}

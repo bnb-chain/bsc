@@ -458,7 +458,7 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 	}
 }
 
-// Copy copy a new TransactionsPriceAndNonce with the same *transaction
+// Copy copys a new TransactionsPriceAndNonce with the same *transaction
 func (t *TransactionsByPriceAndNonce) Copy() *TransactionsByPriceAndNonce {
 	heads := make([]*Transaction, len(t.heads))
 	copy(heads, t.heads)
@@ -505,6 +505,10 @@ func (t *TransactionsByPriceAndNonce) CurrentSize() int {
 
 //Forward move t to be one index behind tx, param tx cant be nil
 func (t *TransactionsByPriceAndNonce) Forward(tx *Transaction) {
+	if tx == nil {
+		t.heads = t.heads[0:0]
+		return
+	}
 	//get the sender address of tx
 	acc, _ := Sender(t.signer, tx)
 	for _, head := range t.heads {
@@ -583,6 +587,24 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 	var err error
 	msg.from, err = Sender(s, tx)
 	return msg, err
+}
+
+func (tx *Transaction) AsMessagePrefetch(s Signer) (Message, error) {
+	msg := Message{
+		nonce:      tx.Nonce(),
+		gasLimit:   tx.Gas(),
+		gasPrice:   new(big.Int).Set(tx.GasPrice()),
+		to:         tx.To(),
+		amount:     tx.Value(),
+		data:       tx.Data(),
+		accessList: tx.AccessList(),
+		checkNonce: false,
+	}
+
+	var err error
+	msg.from, err = Sender(s, tx)
+	return msg, err
+
 }
 
 func (m Message) From() common.Address   { return m.from }
