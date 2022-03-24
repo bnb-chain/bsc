@@ -826,7 +826,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 	currentHeight := header.Number.Uint64()
 	epoch := p.config.Epoch
 	chainConfig := chain.Config()
-	if currentHeight%epoch != 0 || !chainConfig.IsBoneh(header.Number) {
+	if currentHeight%epoch != 0 || !chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
 		return nil
 	}
 
@@ -839,6 +839,9 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		voteAttestation, err := getVoteAttestationFromHeader(head, chainConfig, p.config)
 		if err != nil {
 			return err
+		}
+		if voteAttestation == nil {
+			continue
 		}
 		justifiedBlock := chain.GetHeaderByHash(voteAttestation.Data.BlockHash)
 		if justifiedBlock == nil {
@@ -863,20 +866,17 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		}
 	}
 	validators := make([]common.Address, 0, len(accumulatedWeights))
-	weights := make([]uint64, 0, len(accumulatedWeights))
+	weights := make([]*big.Int, 0, len(accumulatedWeights))
 	for val, weight := range accumulatedWeights {
 		validators = append(validators, val)
-		weights = append(weights, weight)
+		weights = append(weights, big.NewInt(int64(weight)))
 	}
 
 	// method
 	method := "distributeFinalityReward"
 
 	// get packed data
-	data, err := p.validatorSetABI.Pack(method,
-		validators,
-		weights,
-	)
+	data, err := p.validatorSetABI.Pack(method, validators, weights)
 	if err != nil {
 		log.Error("Unable to pack tx for distributeFinalityReward", "error", err)
 		return err
@@ -942,11 +942,11 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		return err
 	}
 	// TODO disable reward distribution in test phase1
-	//if p.chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
-	//	if err := p.distributeFinalityReward(chain, state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
-	//		return err
-	//	}
-	//}
+	if p.chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
+		if err := p.distributeFinalityReward(chain, state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
+			return err
+		}
+	}
 	if len(*systemTxs) > 0 {
 		return errors.New("the length of systemTxs do not match")
 	}
@@ -994,11 +994,11 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 	}
 	// TODO disable reward distribution in test phase1
-	//if p.chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
-	//	if err := p.distributeFinalityReward(chain, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
-	//		return nil, nil, err
-	//	}
-	//}
+	if p.chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
+		if err := p.distributeFinalityReward(chain, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
+			return nil, nil, err
+		}
+	}
 	err := p.distributeIncoming(p.val, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
 	if err != nil {
 		return nil, nil, err

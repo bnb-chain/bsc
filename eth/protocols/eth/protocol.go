@@ -46,7 +46,7 @@ var ProtocolVersions = []uint{ETH68, ETH67, ETH66, ETH65}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{ETH68: 19, ETH67: 18, ETH66: 17, ETH65: 17}
+var protocolLengths = map[uint]uint64{ETH68: 33, ETH67: 18, ETH66: 17, ETH65: 17}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -75,7 +75,7 @@ const (
 	UpgradeStatusMsg = 0x0b
 
 	// Protocol messages overloaded in eth/68
-	VotesMsg = 0x80
+	VotesMsg = 0x20
 )
 
 var (
@@ -359,7 +359,9 @@ type PooledTransactionsRLPPacket66 struct {
 }
 
 // VotesPacket is the network packet for votes record.
-type VotesPacket []*types.VoteEnvelope
+type VotesPacket struct {
+	Votes []*types.VoteEnvelope
+}
 
 func (*VotesPacket) Name() string { return "Votes" }
 func (*VotesPacket) Kind() byte   { return VotesMsg }

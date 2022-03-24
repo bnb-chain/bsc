@@ -630,7 +630,7 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 	peers := h.peers.peersWithoutVote(vote.Hash())
 	for _, peer := range peers {
 		_, peerTD := peer.Head()
-		if deltaTD := new(big.Int).Abs(new(big.Int).Sub(h.chain.CurrentBlock().Difficulty(), peerTD)); deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 {
+		if deltaTD := new(big.Int).Abs(new(big.Int).Sub(h.chain.GetTdByHash(h.chain.CurrentHeader().Hash()), peerTD)); deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 {
 			voteset[peer] = vote
 		}
 	}

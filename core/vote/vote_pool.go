@@ -166,8 +166,8 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 
 	if !isFutureVote {
 		// Send vote for handler usage of broadcasting to peers.
-		voteEv := &core.NewVoteEvent{vote}
-		pool.votesFeed.Send(*voteEv)
+		voteEv := core.NewVoteEvent{vote}
+		pool.votesFeed.Send(voteEv)
 		localCurVotesGauge.Inc(1)
 		localCurVotesPqGauge.Inc(1)
 	} else {
@@ -230,8 +230,8 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 			// Verify the vote from futureVotes.
 			if err := VerifyVoteWithBLS(vote); err == nil {
 				// In the process of transfer, send valid vote to votes channel for handler usage
-				voteEv := &core.NewVoteEvent{vote}
-				pool.votesFeed.Send(*voteEv)
+				voteEv := core.NewVoteEvent{vote}
+				pool.votesFeed.Send(voteEv)
 				validVotes = append(validVotes, vote)
 			}
 		}

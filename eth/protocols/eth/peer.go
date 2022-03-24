@@ -157,7 +157,7 @@ func (p *Peer) ID() string {
 	return p.id
 }
 
-// Version retrieves the peer's negoatiated `eth` protocol version.
+// Version retrieves the peer's negotiated `eth` protocol version.
 func (p *Peer) Version() uint {
 	return p.version
 }
@@ -409,7 +409,7 @@ func (p *Peer) SendVotes(votes []*types.VoteEnvelope) error {
 	for _, vote := range votes {
 		p.knownVotes.Add(vote.Hash())
 	}
-	return p2p.Send(p.rw, VotesMsg, votes)
+	return p2p.Send(p.rw, VotesMsg, &VotesPacket{votes})
 }
 
 // AsyncSendVotes queues a batch of vote hashes for propagation to a remote peer. If

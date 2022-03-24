@@ -175,7 +175,7 @@ func (voteManager *VoteManager) loop() {
 	}
 }
 
-// Check if the produced header under the Rule1: Validators always vote once and only once on one height,
+// UnderRules checks if the produced header under the Rule1: Validators always vote once and only once on one height,
 // Rule2: Validators always vote for the child of its previous vote within a predefined n blocks to avoid vote on two different
 // forks of chain.
 func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
