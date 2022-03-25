@@ -590,19 +590,8 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 
 // AsMessageNoNonceCheck returns the transaction with checkNonce field set to be false.
 func (tx *Transaction) AsMessageNoNonceCheck(s Signer) (Message, error) {
-	msg := Message{
-		nonce:      tx.Nonce(),
-		gasLimit:   tx.Gas(),
-		gasPrice:   new(big.Int).Set(tx.GasPrice()),
-		to:         tx.To(),
-		amount:     tx.Value(),
-		data:       tx.Data(),
-		accessList: tx.AccessList(),
-		checkNonce: false,
-	}
-
-	var err error
-	msg.from, err = Sender(s, tx)
+	msg, err := tx.AsMessage(s)
+	msg.checkNonce = false
 	return msg, err
 }
 
