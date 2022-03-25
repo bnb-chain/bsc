@@ -588,7 +588,8 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 	return msg, err
 }
 
-func (tx *Transaction) AsMessagePrefetch(s Signer) (Message, error) {
+// AsMessageNoNonceCheck returns the transaction with checkNonce field set to be false.
+func (tx *Transaction) AsMessageNoNonceCheck(s Signer) (Message, error) {
 	msg := Message{
 		nonce:      tx.Nonce(),
 		gasLimit:   tx.Gas(),
@@ -603,7 +604,6 @@ func (tx *Transaction) AsMessagePrefetch(s Signer) (Message, error) {
 	var err error
 	msg.from, err = Sender(s, tx)
 	return msg, err
-
 }
 
 func (m Message) From() common.Address   { return m.from }
