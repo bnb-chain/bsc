@@ -828,13 +828,14 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 	currentHeight := header.Number.Uint64()
 	epoch := p.config.Epoch
 	chainConfig := chain.Config()
+	headHash := header.Hash()
 	if currentHeight%epoch != 0 || !chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
 		return nil
 	}
 
 	accumulatedWeights := make(map[common.Address]uint64)
-	for height := currentHeight - epoch; height <= currentHeight; height++ {
-		head := chain.GetHeaderByNumber(height)
+	for height := currentHeight; height > currentHeight-epoch; height-- {
+		head := chain.GetHeaderByHash(headHash)
 		if head == nil {
 			continue
 		}
@@ -866,6 +867,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 				accumulatedWeights[validators[j]] += rewardCoef
 			}
 		}
+		headHash = head.ParentHash
 	}
 	validators := make([]common.Address, 0, len(accumulatedWeights))
 	weights := make([]*big.Int, 0, len(accumulatedWeights))
