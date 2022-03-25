@@ -503,21 +503,33 @@ func (t *TransactionsByPriceAndNonce) CurrentSize() int {
 	return len(t.heads)
 }
 
-//Forward move t to be one index behind tx, param tx cant be nil
+//Forward move t to be one index after tx
 func (t *TransactionsByPriceAndNonce) Forward(tx *Transaction) {
 	if tx == nil {
 		t.heads = t.heads[0:0]
 		return
 	}
+	//check whether target tx exists in t.heads
+	for _, head := range t.heads {
+		if tx == head {
+			//shift t to the position one after tx
+			txTmp := t.Peek()
+			for txTmp != tx {
+				t.Shift()
+				txTmp = t.Peek()
+			}
+			t.Shift()
+			return
+		}
+	}
 	//get the sender address of tx
 	acc, _ := Sender(t.signer, tx)
-	for _, head := range t.heads {
-		accTmp, _ := Sender(t.signer, head)
-		if acc == accTmp {
-			//found element in t.headers euqals to tx which means they point to the same transaction
-			if tx == head {
-				//shift t to the position one after tx
-				txTmp := t.Peek()
+	//check whether target tx exists in t.txs
+	if txs, ok := t.txs[acc]; ok {
+		for _, txTmp := range txs {
+			//found the same pointer in t.txs as tx and then shift t to the position one after tx
+			if txTmp == tx {
+				txTmp = t.Peek()
 				for txTmp != tx {
 					t.Shift()
 					txTmp = t.Peek()
@@ -525,19 +537,6 @@ func (t *TransactionsByPriceAndNonce) Forward(tx *Transaction) {
 				t.Shift()
 				return
 			}
-			for _, txTmp := range t.txs[accTmp] {
-				//found the same pointer in t.txs as tx and then shift t to the position one after tx
-				if txTmp == tx {
-					txTmp = t.Peek()
-					for txTmp != tx {
-						t.Shift()
-						txTmp = t.Peek()
-					}
-					t.Shift()
-					return
-				}
-			}
-			return
 		}
 	}
 }
