@@ -54,7 +54,6 @@ const (
 	extraSeal        = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
 	nextForkHashSize = 4  // Fixed number of extra-data suffix bytes reserved for nextForkHash.
 
-	voteAttestationLength          = 137
 	validatorBytesLength           = common.AddressLength
 	validatorBytesLengthAfterBoneh = common.AddressLength + types.BLSPublicKeyLength
 	validatorNumberSizeAfterBoneh  = 1 // Fixed number of extra prefix bytes reserved for validator number
@@ -401,19 +400,6 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	}
 	if len(header.Extra) < extraVanity+extraSeal {
 		return errMissingSignature
-	}
-	// check extra data
-	isEpoch := number%p.config.Epoch == 0
-
-	// Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
-	signersBytes := len(header.Extra) - extraVanity - extraSeal
-	if !isEpoch && !(signersBytes == 0 || signersBytes == voteAttestationLength) {
-		return errExtraValidators
-	}
-
-	if isEpoch && !((signersBytes-validatorNumberSizeAfterBoneh)%validatorBytesLengthAfterBoneh == 0 ||
-		(signersBytes-validatorNumberSizeAfterBoneh-voteAttestationLength)%validatorBytesLengthAfterBoneh == 0) {
-		return errInvalidSpanValidators
 	}
 
 	// Ensure that the mix digest is zero as we don't have fork protection currently
@@ -828,14 +814,14 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 	currentHeight := header.Number.Uint64()
 	epoch := p.config.Epoch
 	chainConfig := chain.Config()
-	headHash := header.Hash()
+	headhash := header.ParentHash
+	head := chain.GetHeaderByHash(headhash)
 	if currentHeight%epoch != 0 || !chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
 		return nil
 	}
 
 	accumulatedWeights := make(map[common.Address]uint64)
-	for height := currentHeight; height > currentHeight-epoch; height-- {
-		head := chain.GetHeaderByHash(headHash)
+	for height := currentHeight - 1; height >= currentHeight-epoch && height >= 1; height-- {
 		if head == nil {
 			continue
 		}
@@ -867,18 +853,21 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 				accumulatedWeights[validators[j]] += rewardCoef
 			}
 		}
-		headHash = head.ParentHash
+		head = chain.GetHeaderByHash(head.ParentHash)
 	}
+
 	validators := make([]common.Address, 0, len(accumulatedWeights))
 	weights := make([]*big.Int, 0, len(accumulatedWeights))
-	for val, weight := range accumulatedWeights {
+	for val := range accumulatedWeights {
 		validators = append(validators, val)
-		weights = append(weights, big.NewInt(int64(weight)))
+	}
+	sort.Sort(validatorsAscending(validators))
+	for _, val := range validators {
+		weights = append(weights, big.NewInt(int64(accumulatedWeights[val])))
 	}
 
 	// method
 	method := "distributeFinalityReward"
-
 	// get packed data
 	data, err := p.validatorSetABI.Pack(method, validators, weights)
 	if err != nil {
