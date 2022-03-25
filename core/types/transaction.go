@@ -591,7 +591,9 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 // AsMessageNoNonceCheck returns the transaction with checkNonce field set to be false.
 func (tx *Transaction) AsMessageNoNonceCheck(s Signer) (Message, error) {
 	msg, err := tx.AsMessage(s)
-	msg.checkNonce = false
+	if err == nil {
+		msg.checkNonce = false
+	}
 	return msg, err
 }
 
