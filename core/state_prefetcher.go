@@ -108,7 +108,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 				select {
 				case tx := <-startCh:
 					// Convert the transaction into an executable message and pre-cache its sender
-					msg, err := tx.AsMessagePrefetch(signer)
+					msg, err := tx.AsMessageNoNonceCheck(signer)
 					if err != nil {
 						return // Also invalid block, bail out
 					}
