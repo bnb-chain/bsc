@@ -18,6 +18,7 @@
 package state
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -52,6 +53,9 @@ type revision struct {
 var (
 	// emptyRoot is the known root hash of an empty trie.
 	emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
+
+	// dummyRoot is the dummy account root before corrected in pipecommit sync mode.
+	dummyRoot = common.HexToHash(hex.EncodeToString([]byte("dummy_account_root")))
 
 	emptyAddr = crypto.Keccak256Hash(common.Address{}.Bytes())
 )
@@ -1032,7 +1036,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 func (s *StateDB) CorrectAccountsRoot() {
 	if accounts, err := s.snap.Accounts(); err == nil {
 		for _, obj := range s.stateObjects {
-			if !obj.deleted && !obj.rootCorrected {
+			if !obj.deleted && !obj.rootCorrected && obj.data.Root == dummyRoot {
 				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist && len(account.Root) != 0 {
 					obj.data.Root = common.BytesToHash(account.Root)
 				}
@@ -1049,7 +1053,7 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 				root := obj.data.Root
 				storageChanged := s.populateSnapStorage(obj)
 				if storageChanged {
-					root = emptyRoot
+					root = dummyRoot
 				}
 				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, root, obj.data.CodeHash)
 			}
