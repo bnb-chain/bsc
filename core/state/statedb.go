@@ -18,7 +18,6 @@
 package state
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -54,8 +53,9 @@ var (
 	// emptyRoot is the known root hash of an empty trie.
 	emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
-	// dummyRoot is the dummy account root before corrected in pipecommit sync mode.
-	dummyRoot = common.HexToHash(hex.EncodeToString([]byte("dummy_account_root")))
+	// dummyRoot is the dummy account root before corrected in pipecommit sync mode,
+	// the value is 542e5fc2709de84248e9bce43a9c0c8943a608029001360f8ab55bf113b23d28
+	dummyRoot = crypto.Keccak256Hash([]byte("dummy_account_root"))
 
 	emptyAddr = crypto.Keccak256Hash(common.Address{}.Bytes())
 )
@@ -148,6 +148,8 @@ type StateDB struct {
 
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
+	fmt.Printf("empty root = %x\n", emptyRoot)
+	fmt.Printf("dummy root = %x\n", dummyRoot)
 	return newStateDB(root, db, snaps)
 }
 

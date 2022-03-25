@@ -250,6 +250,7 @@ func (t *Tree) waitBuild() {
 	}
 }
 
+// Layers returns the number of layers
 func (t *Tree) Layers() int {
 	return len(t.layers)
 }
