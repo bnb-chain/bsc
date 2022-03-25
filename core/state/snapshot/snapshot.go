@@ -120,6 +120,10 @@ type Snapshot interface {
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*Account, error)
 
+	// Accounts directly retrieves all accounts in current snapshot in
+	// the snapshot slim data format.
+	Accounts() (map[common.Hash]*Account, error)
+
 	// AccountRLP directly retrieves the account RLP associated with a particular
 	// hash in the snapshot slim data format.
 	AccountRLP(hash common.Hash) ([]byte, error)

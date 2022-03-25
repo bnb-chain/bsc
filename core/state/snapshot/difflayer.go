@@ -332,6 +332,24 @@ func (dl *diffLayer) Account(hash common.Hash) (*Account, error) {
 	return account, nil
 }
 
+// Accounts directly retrieves all accounts in current snapshot in
+// the snapshot slim data format.
+func (dl *diffLayer) Accounts() (map[common.Hash]*Account, error) {
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	accounts := make(map[common.Hash]*Account, len(dl.accountData))
+	for hash, data := range dl.accountData {
+		account := new(Account)
+		if err := rlp.DecodeBytes(data, account); err != nil {
+			return nil, err
+		}
+		accounts[hash] = account
+	}
+
+	return accounts, nil
+}
+
 // AccountRLP directly retrieves the account RLP associated with a particular
 // hash in the snapshot slim data format.
 //

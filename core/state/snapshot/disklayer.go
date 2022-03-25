@@ -80,6 +80,12 @@ func (dl *diskLayer) Stale() bool {
 	return dl.stale
 }
 
+// Accounts directly retrieves all accounts in current snapshot in
+// the snapshot slim data format.
+func (dl *diskLayer) Accounts() (map[common.Hash]*Account, error) {
+	return nil, nil
+}
+
 // Account directly retrieves the account associated with a particular hash in
 // the snapshot slim data format.
 func (dl *diskLayer) Account(hash common.Hash) (*Account, error) {
