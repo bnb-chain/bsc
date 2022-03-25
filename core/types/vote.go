@@ -36,7 +36,7 @@ type VoteAttestation struct {
 	Extra          []byte
 }
 
-// Hash returns the vote hash.
+// Hash returns the vote's hash.
 func (v *VoteEnvelope) Hash() common.Hash {
 	if hash := v.hash.Load(); hash != nil {
 		return hash.(common.Hash)
@@ -56,7 +56,7 @@ func (v *VoteEnvelope) calcVoteHash() common.Hash {
 	return rlpHash(vote)
 }
 
-// Hash returns the voteData hash.
+// VoteDataHash returns the voteData hash.
 func (v *VoteData) VoteDataHash() common.Hash {
 	h := v.calcVoteDataHash()
 	return h

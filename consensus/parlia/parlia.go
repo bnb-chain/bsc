@@ -54,6 +54,7 @@ const (
 	extraSeal        = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
 	nextForkHashSize = 4  // Fixed number of extra-data suffix bytes reserved for nextForkHash.
 
+	voteAttestationLength          = 137
 	validatorBytesLength           = common.AddressLength
 	validatorBytesLengthAfterBoneh = common.AddressLength + types.BLSPublicKeyLength
 	validatorNumberSizeAfterBoneh  = 1 // Fixed number of extra prefix bytes reserved for validator number
@@ -406,11 +407,12 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 
 	// Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
 	signersBytes := len(header.Extra) - extraVanity - extraSeal
-	if !isEpoch && signersBytes != 0 {
+	if !isEpoch && !(signersBytes == 0 || signersBytes == voteAttestationLength) {
 		return errExtraValidators
 	}
 
-	if isEpoch && (signersBytes-1)%validatorBytesLengthAfterBoneh != 0 {
+	if isEpoch && !((signersBytes-validatorNumberSizeAfterBoneh)%validatorBytesLengthAfterBoneh == 0 ||
+		(signersBytes-validatorNumberSizeAfterBoneh-voteAttestationLength)%validatorBytesLengthAfterBoneh == 0) {
 		return errInvalidSpanValidators
 	}
 
