@@ -1034,7 +1034,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 
 //CorrectAccountsRoot will fix account roots in pipecommit mode
 func (s *StateDB) CorrectAccountsRoot() {
-	if accounts, err := s.snap.Accounts(); err == nil {
+	if accounts, err := s.snap.Accounts(); err == nil && accounts != nil {
 		for _, obj := range s.stateObjects {
 			if !obj.deleted && !obj.rootCorrected && obj.data.Root == dummyRoot {
 				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist && len(account.Root) != 0 {
