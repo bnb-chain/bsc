@@ -20,8 +20,8 @@ func NewStoragePool() *StoragePool {
 	}
 }
 
-// Check whether the storage exist in pool,
-// new one if not exist, it will be fetched in stateObjects.GetCommittedState()
+// getStorage Check whether the storage exist in pool,
+// new one if not exist, the content of storage will be fetched in stateObjects.GetCommittedState()
 func (s *StoragePool) getStorage(address common.Address) *sync.Map {
 	s.RLock()
 	storageMap, ok := s.sharedMap[address]
