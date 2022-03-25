@@ -148,8 +148,6 @@ type StateDB struct {
 
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	fmt.Printf("empty root = %x\n", emptyRoot)
-	fmt.Printf("dummy root = %x\n", dummyRoot)
 	return newStateDB(root, db, snaps)
 }
 
