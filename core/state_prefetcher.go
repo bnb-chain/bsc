@@ -97,7 +97,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 
 	txCh := make(chan *types.Transaction, 2*prefetchThread)
 	for i := 0; i < prefetchThread; i++ {
-		go func(txCh <-chan *types.Transaction, stopCh <-chan struct{}) {
+		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
 			idx := 0
 			newStatedb := statedb.Copy()
 			gaspool := new(GasPool).AddGas(gasLimit)
@@ -106,7 +106,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 			// Iterate over and process the individual transactions
 			for {
 				select {
-				case tx := <-txCh:
+				case tx := <-startCh:
 					// Convert the transaction into an executable message and pre-cache its sender
 					msg, err := tx.AsMessagePrefetch(signer)
 					if err != nil {
@@ -122,10 +122,10 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 			}
 		}(txCh, interruptCh)
 	}
-	go func(txs *types.TransactionsByPriceAndNonce) {
+	go func(txset *types.TransactionsByPriceAndNonce) {
 		count := 0
 		for {
-			tx := txs.Peek()
+			tx := txset.Peek()
 			if tx == nil {
 				return
 			}
@@ -138,10 +138,10 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 				if *txCurr == nil {
 					return
 				}
-				txs.Forward(*txCurr)
+				txset.Forward(*txCurr)
 			}
 			txCh <- tx
-			txs.Shift()
+			txset.Shift()
 		}
 	}(txs)
 }
