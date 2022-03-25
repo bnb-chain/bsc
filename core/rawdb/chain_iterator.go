@@ -95,7 +95,10 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 		number uint64
 		rlp    rlp.RawValue
 	}
-	if to == from {
+	if offset := db.AncientOffSet(); offset > from {
+		from = offset
+	}
+	if to <= from {
 		return nil
 	}
 	threads := to - from
