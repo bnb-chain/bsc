@@ -236,27 +236,31 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 			}
 		}
 
-		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
 		voteData := heap.Pop(futurePq)
-		heap.Push(curPq, voteData)
+		if _, ok := curVotes[blockHash]; !ok {
+			heap.Push(curPq, voteData)
+			curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
+			localCurVotesPqGauge.Inc(1)
+		} else {
+			curVotes[blockHash].voteMessages = append(curVotes[blockHash].voteMessages, validVotes...)
+		}
+
 		delete(futureVotes, blockHash)
 
 		localCurVotesGauge.Inc(1)
-		localCurVotesPqGauge.Inc(1)
 		localFutureVotesGauge.Dec(1)
 		localFutureVotesPqGauge.Dec(1)
 	}
 }
 
 // Prune old data of duplicationSet, curVotePq and curVotesMap.
-func (pool *VotePool) prune(lastestBlockNumber uint64) {
-
+func (pool *VotePool) prune(latestBlockNumber uint64) {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 	curVotes := pool.curVotes
 	curVotesPq := pool.curVotesPq
 
-	for curVotesPq.Len() > 0 && curVotesPq.Peek().BlockNumber+lowerLimitOfVoteBlockNumber-1 < lastestBlockNumber {
+	for curVotesPq.Len() > 0 && curVotesPq.Peek().BlockNumber+lowerLimitOfVoteBlockNumber-1 < latestBlockNumber {
 		// Prune curPriorityQueue.
 		blockHash := heap.Pop(curVotesPq).(*types.VoteData).BlockHash
 		voteMessages := curVotes[blockHash].voteMessages
