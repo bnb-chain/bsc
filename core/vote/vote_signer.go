@@ -2,6 +2,7 @@ package vote
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -10,7 +11,9 @@ import (
 	validatorpb "github.com/prysmaticlabs/prysm/proto/prysm/v1alpha1/validator-client"
 	"github.com/prysmaticlabs/prysm/validator/keymanager"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/metrics"
 )
 
 const (
@@ -75,4 +78,9 @@ func VerifyVoteWithBLS(vote *types.VoteEnvelope) error {
 		return errors.New("verify bls signature failed.")
 	}
 	return nil
+}
+
+// Metrics to indicate if there's any failed signing.
+func votesSigningErrorMetric(blockNumber uint64, blockHash common.Hash) metrics.Gauge {
+	return metrics.GetOrRegisterGauge(fmt.Sprintf("voteSigning/blockNumber/%d/blockHash/%s", blockNumber, blockHash), nil)
 }

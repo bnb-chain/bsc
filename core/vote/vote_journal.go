@@ -2,11 +2,14 @@ package vote
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/tidwall/wal"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 )
 
 const (
@@ -94,4 +97,9 @@ func (journal *VoteJournal) WriteVote(voteMessage *types.VoteEnvelope) error {
 	journal.latestVote = voteMessage
 
 	return nil
+}
+
+// Metrics to monitor if there's any error for writing vote journal.
+func votesJournalErrorMetric(blockNumber uint64, blockHash common.Hash) metrics.Gauge {
+	return metrics.GetOrRegisterGauge(fmt.Sprintf("voteJournal/blockNumber/%d/blockHash/%s", blockNumber, blockHash), nil)
 }

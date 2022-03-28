@@ -164,10 +164,12 @@ func (voteManager *VoteManager) loop() {
 				if ok := voteManager.UnderRules(curBlockHeader); ok {
 					if err := voteManager.signer.SignVote(voteMessage); err != nil {
 						log.Debug("Failed to sign vote", "err", err)
+						votesSigningErrorMetric(vote.BlockNumber, vote.BlockHash).Inc(1)
 						continue
 					}
 					if err := voteManager.journal.WriteVote(voteMessage); err != nil {
 						log.Warn("Failed to write vote into journal", "err", err)
+						votesJournalErrorMetric(vote.BlockNumber, vote.BlockHash).Inc(1)
 						continue
 					}
 					log.Info("vote manager produced vote", "voteHash=", voteMessage.Hash())
@@ -211,6 +213,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
 	return false
 }
 
+// Metrics to monitor if voteManager worked in the expetected logic.
 func votesManagerMetric(blockNumber uint64, blockHash common.Hash) metrics.Gauge {
 	return metrics.GetOrRegisterGauge(fmt.Sprintf("voteManager/blockNumber/%d/blockHash/%s", blockNumber, blockHash), nil)
 }
