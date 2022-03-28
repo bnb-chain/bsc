@@ -68,6 +68,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	for i := 0; i < prefetchThread; i++ {
 		go func(idx int) {
 			newStatedb := statedb.Copy()
+			newStatedb.EnableWriteOnSharedStorage()
 			gaspool := new(GasPool).AddGas(block.GasLimit())
 			blockContext := NewEVMBlockContext(header, p.bc, nil)
 			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
