@@ -231,7 +231,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.txPool = core.NewTxPool(config.TxPool, chainConfig, eth.blockchain)
 
 	conf := stack.Config()
-	bLSPassWordPath := stack.ResolvePath(conf.BLSPassWordDir)
+	bLSPassWordPath := stack.ResolvePath(conf.BLSPassWordFile)
 	bLSWalletPath := stack.ResolvePath(conf.BLSWalletDir)
 	voteJournalPath := stack.ResolvePath(conf.VoteJournalDir)
 

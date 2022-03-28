@@ -843,9 +843,9 @@ var (
 		Usage: "Enable checking between snapshot and MPT ",
 	}
 
-	BLSPassWordDirFlag = DirectoryFlag{
+	BLSPassWordFileFlag = cli.StringFlag{
 		Name:  "blspassword",
-		Usage: "Directory for the BLS password (default = inside the datadir)",
+		Usage: "File for the BLS password",
 	}
 
 	BLSWalletDirFlag = DirectoryFlag{
@@ -1340,8 +1340,8 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 		cfg.InsecureUnlockAllowed = ctx.GlobalBool(InsecureUnlockAllowedFlag.Name)
 	}
 
-	if ctx.GlobalIsSet(BLSPassWordDirFlag.Name) {
-		cfg.BLSPassWordDir = ctx.GlobalString(BLSPassWordDirFlag.Name)
+	if ctx.GlobalIsSet(BLSPassWordFileFlag.Name) {
+		cfg.BLSPassWordFile = ctx.GlobalString(BLSPassWordFileFlag.Name)
 	}
 }
 

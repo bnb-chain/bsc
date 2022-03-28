@@ -206,10 +206,8 @@ type Config struct {
 	// AllowUnprotectedTxs allows non EIP-155 protected transactions to be send over RPC.
 	AllowUnprotectedTxs bool `toml:",omitempty"`
 
-	// BLSPasswordDir is the file system folder that contains BLS wallet password. The directory can
-	// be specified as a relative path, in which case it is resolved relative to the
-	// current directory.
-	BLSPassWordDir string `toml:",omitempty"`
+	// BLSPasswordFile is the file that contains BLS wallet password.
+	BLSPassWordFile string `toml:",omitempty"`
 
 	// BLSWalletDir is the file system folder of BLS wallet. The directory can
 	// be specified as a relative path, in which case it is resolved relative to the
