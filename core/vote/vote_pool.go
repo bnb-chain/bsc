@@ -161,21 +161,14 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 		return false
 	}
 
-	pool.putVote(votes, votesPq, vote, voteData, voteHash)
+	pool.putVote(votes, votesPq, vote, voteData, voteHash, isFutureVote)
 
 	if !isFutureVote {
 		// Send vote for handler usage of broadcasting to peers.
 		voteEv := core.NewVoteEvent{vote}
 		pool.votesFeed.Send(voteEv)
-		localCurVotesGauge.Inc(1)
-		localCurVotesPqGauge.Inc(1)
-	} else {
-		localFutureVotesGauge.Inc(1)
-		localFutureVotesPqGauge.Inc(1)
 	}
 
-	votesPerBlockHashMetric(voteBlockHash).Inc(1)
-	localReceivedVotesGauge.Inc(1)
 	return true
 }
 
@@ -183,7 +176,7 @@ func (pool *VotePool) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.S
 	return pool.scope.Track(pool.votesFeed.Subscribe(ch))
 }
 
-func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriorityQueue, vote *types.VoteEnvelope, voteData *types.VoteData, voteHash common.Hash) {
+func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriorityQueue, vote *types.VoteEnvelope, voteData *types.VoteData, voteHash common.Hash, isFutureVote bool) {
 	voteBlockHash := vote.Data.BlockHash
 	voteBlockNumber := vote.Data.BlockNumber
 
@@ -200,6 +193,12 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 			voteMessages: make([]*types.VoteEnvelope, 0, maxCurVoteAmountPerBlock),
 		}
 		m[voteBlockHash] = voteBox
+
+		if isFutureVote {
+			localFutureVotesPqGauge.Inc(1)
+		} else {
+			localCurVotesPqGauge.Inc(1)
+		}
 	}
 
 	// Put into corresponding votes map.
@@ -208,6 +207,13 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 	pool.receivedVotes.Add(voteHash)
 	log.Info("VoteHash put into votepool is:", "voteHash=", voteHash)
 
+	if isFutureVote {
+		localFutureVotesGauge.Inc(1)
+	} else {
+		localCurVotesGauge.Inc(1)
+	}
+	votesPerBlockHashMetric(voteBlockHash).Inc(1)
+	localReceivedVotesGauge.Inc(1)
 }
 
 func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Header) {
@@ -247,8 +253,8 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 
 		delete(futureVotes, blockHash)
 
-		localCurVotesGauge.Inc(1)
-		localFutureVotesGauge.Dec(1)
+		localCurVotesGauge.Inc(int64(len(validVotes)))
+		localFutureVotesGauge.Dec(int64(len(voteBox.voteMessages)))
 		localFutureVotesPqGauge.Dec(1)
 	}
 }
@@ -272,9 +278,9 @@ func (pool *VotePool) prune(latestBlockNumber uint64) {
 		// Prune curVotes Map.
 		delete(curVotes, blockHash)
 
-		localCurVotesGauge.Dec(1)
+		localCurVotesGauge.Dec(int64(len(voteMessages)))
 		localCurVotesPqGauge.Dec(1)
-		localReceivedVotesGauge.Dec(1)
+		localReceivedVotesGauge.Dec(int64(len(voteMessages)))
 		votesPerBlockHashMetric(blockHash).Dec(1)
 	}
 }
