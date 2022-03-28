@@ -142,7 +142,7 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			}
 			statedb.CorrectAccountsRoot()
 			statedb.Finalise(v.config.IsEIP158(header.Number))
-			//state verification pipeline - accounts root are not calculated here
+			// State verification pipeline - accounts root are not calculated here, just populate needed fields for process
 			statedb.PopulateSnapAccountAndStorage()
 			return nil
 		})
