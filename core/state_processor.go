@@ -18,7 +18,6 @@ package core
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"math/big"
 	"math/rand"
@@ -223,20 +222,6 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 					previousAccount.CodeHash = types.EmptyCodeHash
 				}
 
-				// skip no change account
-				if previousAccount.Nonce == latestAccount.Nonce &&
-					bytes.Equal(previousAccount.CodeHash, latestAccount.CodeHash) &&
-					previousAccount.Balance.Cmp(latestAccount.Balance) == 0 &&
-					previousAccount.Root == common.BytesToHash(latestAccount.Root) {
-					// It is normal to receive redundant message since the collected message is redundant.
-					log.Debug("receive redundant account change in diff layer", "account", diffAccount, "num", block.NumberU64())
-					snapMux.Lock()
-					delete(snapAccounts, diffAccount)
-					delete(snapStorage, diffAccount)
-					snapMux.Unlock()
-					continue
-				}
-
 				// update code
 				codeHash := common.BytesToHash(latestAccount.CodeHash)
 				if !bytes.Equal(latestAccount.CodeHash, previousAccount.CodeHash) &&
@@ -259,19 +244,15 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				}
 
 				//update storage
-				latestRoot := common.BytesToHash(latestAccount.Root)
-				if latestRoot != previousAccount.Root {
-					accountTrie, err := statedb.Database().OpenStorageTrie(addrHash, previousAccount.Root)
+				accountRootHash := previousAccount.Root
+				snapMux.RLock()
+				storageChange, exist := snapStorage[diffAccount]
+				snapMux.RUnlock()
+
+				if exist && len(storageChange) > 0 {
+					accountTrie, err := statedb.Database().OpenStorageTrie(addrHash, accountRootHash)
 					if err != nil {
 						errChan <- err
-						return
-					}
-					snapMux.RLock()
-					storageChange, exist := snapStorage[diffAccount]
-					snapMux.RUnlock()
-
-					if !exist {
-						errChan <- errors.New("missing storage change in difflayer")
 						return
 					}
 					for k, v := range storageChange {
@@ -282,26 +263,17 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 						}
 					}
 
-					// check storage root
-					accountRootHash := accountTrie.Hash()
-					if latestRoot != accountRootHash {
-						errChan <- errors.New("account storage root mismatch")
-						return
-					}
+					accountRootHash = accountTrie.Hash()
 					diffMux.Lock()
 					diffTries[diffAccount] = accountTrie
 					diffMux.Unlock()
-				} else {
-					snapMux.Lock()
-					delete(snapStorage, diffAccount)
-					snapMux.Unlock()
 				}
 
 				// can't trust the blob, need encode by our-self.
 				latestStateAccount := state.Account{
 					Nonce:    latestAccount.Nonce,
 					Balance:  latestAccount.Balance,
-					Root:     common.BytesToHash(latestAccount.Root),
+					Root:     accountRootHash,
 					CodeHash: latestAccount.CodeHash,
 				}
 				bz, err := rlp.EncodeToBytes(&latestStateAccount)
@@ -385,7 +357,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		gp      = new(GasPool).AddGas(block.GasLimit())
 	)
 	signer := types.MakeSigner(p.bc.chainConfig, block.Number())
-	statedb.TryPreload(block, signer)
 	var receipts = make([]*types.Receipt, 0)
 	// Mutate the block and state according to any hard-fork specs
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {

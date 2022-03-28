@@ -314,6 +314,11 @@ func TestProcessDiffLayer(t *testing.T) {
 			if diff == nil {
 				continue
 			}
+			// change the storage root into emptyRoot
+			for idx, account := range diff.Accounts {
+				latestAccount, _ := snapshot.FullAccount(account.Blob)
+				diff.Accounts[idx].Blob = snapshot.SlimAccountRLP(latestAccount.Nonce, latestAccount.Balance, types.EmptyRootHash, latestAccount.CodeHash)
+			}
 			lightBackend.Chain().HandleDiffLayer(diff, "testpid", true)
 		}
 		_, err := lightBackend.chain.insertChain([]*types.Block{block}, true)
