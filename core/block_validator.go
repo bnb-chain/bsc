@@ -112,7 +112,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 // transition, such as amount of used gas, the receipt roots and the state root
 // itself. ValidateState returns a database batch if the validation was a success
 // otherwise nil and an error is returned.
-func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateDB, receipts types.Receipts, usedGas uint64, skipHeavyVerify bool) error {
+func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateDB, receipts types.Receipts, usedGas uint64) error {
 	header := block.Header()
 	if block.GasUsed() != usedGas {
 		return fmt.Errorf("invalid gas used (remote: %d local: %d)", block.GasUsed(), usedGas)
@@ -135,13 +135,15 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			return nil
 		},
 	}
-	if skipHeavyVerify {
+	if statedb.IsPipeCommit() {
 		validateFuns = append(validateFuns, func() error {
 			if err := statedb.WaitPipeVerification(); err != nil {
 				return err
 			}
+			statedb.CorrectAccountsRoot()
 			statedb.Finalise(v.config.IsEIP158(header.Number))
-			statedb.AccountsIntermediateRoot()
+			// State verification pipeline - accounts root are not calculated here, just populate needed fields for process
+			statedb.PopulateSnapAccountAndStorage()
 			return nil
 		})
 	} else {
