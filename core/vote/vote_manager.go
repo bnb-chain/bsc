@@ -2,16 +2,19 @@ package vote
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 
 	"github.com/prysmaticlabs/prysm/validator/accounts/iface"
 	"github.com/prysmaticlabs/prysm/validator/accounts/wallet"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -160,7 +163,7 @@ func (voteManager *VoteManager) loop() {
 				// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
 				if ok := voteManager.UnderRules(curBlockHeader); ok {
 					if err := voteManager.signer.SignVote(voteMessage); err != nil {
-						log.Warn("Failed to sign vote", "err", err)
+						log.Debug("Failed to sign vote", "err", err)
 						continue
 					}
 					if err := voteManager.journal.WriteVote(voteMessage); err != nil {
@@ -169,6 +172,7 @@ func (voteManager *VoteManager) loop() {
 					}
 					log.Info("vote manager produced vote", "voteHash=", voteMessage.Hash())
 					voteManager.pool.PutVote(voteMessage)
+					votesManagerMetric(vote.BlockNumber, vote.BlockHash).Inc(1)
 				}
 			}
 		}
@@ -205,4 +209,8 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
 	}
 
 	return false
+}
+
+func votesManagerMetric(blockNumber uint64, blockHash common.Hash) metrics.Gauge {
+	return metrics.GetOrRegisterGauge(fmt.Sprintf("voteManager/blockNumber/%d/blockHash/%s", blockNumber, blockHash), nil)
 }

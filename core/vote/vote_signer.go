@@ -11,7 +11,6 @@ import (
 	"github.com/prysmaticlabs/prysm/validator/keymanager"
 
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 const (
@@ -51,7 +50,6 @@ func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
 		SigningRoot: voteDataHash[:],
 	})
 	if err != nil {
-		log.Error("Failed to sign vote", "err", err)
 		return err
 	}
 
@@ -64,19 +62,16 @@ func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
 func VerifyVoteWithBLS(vote *types.VoteEnvelope) error {
 	blsPubKey, err := bls.PublicKeyFromBytes(vote.VoteAddress[:])
 	if err != nil {
-		log.Error("Failed to get BLSpubkey from bytes", "err", err, "voteBlockNumber=", vote.Data.BlockNumber, "voteBlockHash=", vote.Data.BlockHash)
 		return errors.Wrap(err, "convert public key from bytes to bls failed")
 	}
 
 	sig, err := bls.SignatureFromBytes(vote.Signature[:])
 	if err != nil {
-		log.Error("Failed to get BLSsignature from bytes", "err", err, "voteBlockNumber=", vote.Data.BlockNumber, "voteBlockHash=", vote.Data.BlockHash)
 		return errors.Wrap(err, "invalid signature")
 	}
 
 	voteDataHash := vote.Data.VoteDataHash()
 	if !sig.Verify(blsPubKey, voteDataHash[:]) {
-		log.Error("Failed to verify bls", "err", err, "voteBlockNumber=", vote.Data.BlockNumber, "voteBlockHash=", vote.Data.BlockHash)
 		return errors.New("verify bls signature failed.")
 	}
 	return nil
