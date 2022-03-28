@@ -661,7 +661,7 @@ func (w *worker) resultLoop() {
 func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
-	state, err := w.chain.StateAt(parent.Root())
+	state, err := w.chain.StateAtWithSharedPool(parent.Root())
 	if err != nil {
 		return err
 	}
@@ -786,7 +786,9 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	txCurr := &tx
 	//prefetch txs from all pending txs
 	txsPrefetch := txs.Copy()
-	w.prefetcher.PrefetchMining(txsPrefetch, w.current.header, w.current.gasPool.Gas(), w.current.state.Copy(), *w.chain.GetVMConfig(), interruptCh, txCurr)
+	newStatedb := w.current.state.Copy()
+	newStatedb.EnableWriteOnSharedStorage()
+	w.prefetcher.PrefetchMining(txsPrefetch, w.current.header, w.current.gasPool.Gas(), newStatedb, *w.chain.GetVMConfig(), interruptCh, txCurr)
 
 LOOP:
 	for {

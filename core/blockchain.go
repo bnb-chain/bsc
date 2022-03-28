@@ -842,6 +842,11 @@ func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 	return state.New(root, bc.stateCache, bc.snaps)
 }
 
+// StateAtWithSharedPool returns a new mutable state based on a particular point in time with sharedStorage
+func (bc *BlockChain) StateAtWithSharedPool(root common.Hash) (*state.StateDB, error) {
+	return state.NewWithSharedPool(root, bc.stateCache, bc.snaps)
+}
+
 // StateCache returns the caching database underpinning the blockchain instance.
 func (bc *BlockChain) StateCache() state.Database {
 	return bc.stateCache
