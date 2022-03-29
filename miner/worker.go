@@ -786,9 +786,7 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	txCurr := &tx
 	//prefetch txs from all pending txs
 	txsPrefetch := txs.Copy()
-	newStatedb := w.current.state.Copy()
-	newStatedb.EnableWriteOnSharedStorage()
-	w.prefetcher.PrefetchMining(txsPrefetch, w.current.header, w.current.gasPool.Gas(), newStatedb, *w.chain.GetVMConfig(), interruptCh, txCurr)
+	w.prefetcher.PrefetchMining(txsPrefetch, w.current.header, w.current.gasPool.Gas(), w.current.state.Copy(), *w.chain.GetVMConfig(), interruptCh, txCurr)
 
 LOOP:
 	for {
