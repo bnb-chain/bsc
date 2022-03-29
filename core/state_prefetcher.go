@@ -101,6 +101,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
 			idx := 0
 			newStatedb := statedb.Copy()
+			newStatedb.EnableWriteOnSharedStorage()
 			gaspool := new(GasPool).AddGas(gasLimit)
 			blockContext := NewEVMBlockContext(header, p.bc, nil)
 			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
