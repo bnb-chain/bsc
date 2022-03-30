@@ -200,7 +200,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
-	if config.DiffSync {
+	// TODO diffsync performance is not as expected, disable it when pipecommit is enabled for now
+	if config.DiffSync && !config.PipeCommit {
 		bcOps = append(bcOps, core.EnableLightProcessor)
 	}
 	if config.PipeCommit {

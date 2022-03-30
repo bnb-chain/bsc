@@ -278,7 +278,8 @@ func pruneBlock(ctx *cli.Context) error {
 	var newAncientPath string
 	oldAncientPath := ctx.GlobalString(utils.AncientFlag.Name)
 	if !filepath.IsAbs(oldAncientPath) {
-		oldAncientPath = stack.ResolvePath(oldAncientPath)
+		// force absolute paths, which often fail due to the splicing of relative paths
+		return errors.New("datadir.ancient not abs path")
 	}
 
 	path, _ := filepath.Split(oldAncientPath)
