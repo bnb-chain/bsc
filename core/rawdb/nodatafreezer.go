@@ -198,6 +198,15 @@ func (f *nodatafreezer) freeze() {
 			backoff = true
 			continue
 		}
+
+		stableState := ReadStableStateBlockNumber(nfdb)
+		if stableState <= params.StableStateThreshold {
+			log.Debug("Stable state less threshold") // not enough state save to disk
+			backoff = true
+			continue
+		}
+		stableState -= params.StableStateThreshold
+
 		number := ReadHeaderNumber(nfdb, hash)
 		threshold := atomic.LoadUint64(&f.threshold)
 
@@ -234,6 +243,10 @@ func (f *nodatafreezer) freeze() {
 			ancients = make([]common.Hash, 0, limit-f.frozen)
 		)
 		for f.frozen <= limit {
+			if f.frozen >= stableState {
+				log.Debug("Block state not commit", "number", f.frozen) // not enough state save to disk
+				break
+			}
 			// Retrieves all the components of the canonical block
 			hash := ReadCanonicalHash(nfdb, f.frozen)
 			if hash == (common.Hash{}) {

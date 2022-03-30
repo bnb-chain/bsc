@@ -183,6 +183,14 @@ func ReadFrozenOfAncientFreezer(db ethdb.KeyValueReader) uint64 {
 	return new(big.Int).SetBytes(fozen).Uint64()
 }
 
+func ReadStableStateBlockNumber(db ethdb.KeyValueReader) uint64 {
+	num, _ := db.Get(stableStateBlockNumberKey)
+	if num == nil {
+		return 0
+	}
+	return new(big.Int).SetBytes(num).Uint64()
+}
+
 func WriteOffSetOfCurrentAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
 	if err := db.Put(offSetOfCurrentAncientFreezer, new(big.Int).SetUint64(offset).Bytes()); err != nil {
 		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
@@ -196,6 +204,12 @@ func WriteOffSetOfLastAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
 
 func WriteFrozenOfAncientFreezer(db ethdb.KeyValueWriter, frozen uint64) {
 	if err := db.Put(frozenOfAncientDBKey, new(big.Int).SetUint64(frozen).Bytes()); err != nil {
+		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
+	}
+}
+
+func WriteStableStateBlockNumber(db ethdb.KeyValueWriter, number uint64) {
+	if err := db.Put(stableStateBlockNumberKey, new(big.Int).SetUint64(number).Bytes()); err != nil {
 		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
 	}
 }

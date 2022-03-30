@@ -78,6 +78,9 @@ var (
 	//frozenOfAncientDBKey tracks the block number for ancientDB to save.
 	frozenOfAncientDBKey = []byte("FrozenOfAncientDB")
 
+	//stableStateBlockNumberKey tracks the block number for block state that write disk
+	stableStateBlockNumberKey = []byte("StableStateBlockNumber")
+
 	// badBlockKey tracks the list of bad blocks seen by local
 	badBlockKey = []byte("InvalidBlock")
 
