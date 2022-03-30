@@ -96,7 +96,7 @@ func (b *testBackend) StateBloom() *trie.SyncBloom { return nil }
 func (b *testBackend) TxPool() TxPool              { return b.txpool }
 func (b *testBackend) VotePool() VotePool          { return nil }
 func (b *testBackend) RunPeer(peer *Peer, handler Handler) error {
-	// Normally the backend would do peer mainentance and handshakes. All that
+	// Normally the backend would do peer maintenance and handshakes. All that
 	// is omitted and we will just give control back to the handler.
 	return handler(peer)
 }

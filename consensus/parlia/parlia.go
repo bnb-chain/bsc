@@ -848,7 +848,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 			return err
 		}
 		validators := snap.validators()
-		for j := 0; j < 64; j++ {
+		for j := 0; j < len(validators); j++ {
 			if ((uint64(voteAttestation.VoteAddressSet) >> j) & 1) == 1 {
 				accumulatedWeights[validators[j]] += rewardCoef
 			}
