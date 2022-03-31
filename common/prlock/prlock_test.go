@@ -30,6 +30,6 @@ func TestPrlock(t *testing.T) {
 	prlock.LockRead()
 	defer prlock.UnlockRead()
 	if data != 1 {
-		t.Fatal("priority lock does not work correctly ")
+		t.Fatal("priority lock does not work correctly")
 	}
 }
