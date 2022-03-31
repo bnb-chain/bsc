@@ -154,8 +154,8 @@ func (s *Snapshot) copy() *Snapshot {
 	}
 	if s.Attestation != nil {
 		cpy.Attestation = &types.VoteData{
-			BlockNumber: s.Attestation.BlockNumber,
-			BlockHash:   s.Attestation.BlockHash,
+			TargetNumber: s.Attestation.TargetNumber,
+			TargetHash:   s.Attestation.TargetHash,
 		}
 	}
 	return cpy

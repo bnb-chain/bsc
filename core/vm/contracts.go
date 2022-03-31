@@ -1086,8 +1086,8 @@ func (c *finalitySignatureVerify) Run(input []byte) ([]byte, error) {
 	pubKeys[0] = pubKey
 	pubKeys[1] = pubKey
 
-	msgs[0] = rlpHash(types.VoteData{BlockNumber: numA, BlockHash: common.BytesToHash(headerA)})
-	msgs[1] = rlpHash(types.VoteData{BlockNumber: numB, BlockHash: common.BytesToHash(headerB)})
+	msgs[0] = rlpHash(types.VoteData{TargetNumber: numA, TargetHash: common.BytesToHash(headerA)})
+	msgs[1] = rlpHash(types.VoteData{TargetNumber: numB, TargetHash: common.BytesToHash(headerB)})
 	sigs[0] = sigA
 	sigs[1] = sigB
 

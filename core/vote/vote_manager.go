@@ -138,7 +138,7 @@ func (voteManager *VoteManager) loop() {
 			if lastLatestVote == nil {
 				lastLatestVoteNumber = 0
 			} else {
-				lastLatestVoteNumber = lastLatestVote.Data.BlockNumber
+				lastLatestVoteNumber = lastLatestVote.Data.TargetNumber
 			}
 
 			var newChainStack []*types.Header
@@ -154,8 +154,8 @@ func (voteManager *VoteManager) loop() {
 				curBlockHeader := newChainStack[i]
 				// Vote for curBlockHeader block.
 				vote := &types.VoteData{
-					BlockNumber: curBlockHeader.Number.Uint64(),
-					BlockHash:   curBlockHeader.Hash(),
+					TargetNumber: curBlockHeader.Number.Uint64(),
+					TargetHash:   curBlockHeader.Hash(),
 				}
 				voteMessage := &types.VoteEnvelope{
 					Data: vote,
@@ -164,17 +164,17 @@ func (voteManager *VoteManager) loop() {
 				if ok := voteManager.UnderRules(curBlockHeader); ok {
 					if err := voteManager.signer.SignVote(voteMessage); err != nil {
 						log.Debug("Failed to sign vote", "err", err)
-						votesSigningErrorMetric(vote.BlockNumber, vote.BlockHash).Inc(1)
+						votesSigningErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 						continue
 					}
 					if err := voteManager.journal.WriteVote(voteMessage); err != nil {
 						log.Warn("Failed to write vote into journal", "err", err)
-						votesJournalErrorMetric(vote.BlockNumber, vote.BlockHash).Inc(1)
+						votesJournalErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 						continue
 					}
 					log.Info("vote manager produced vote", "voteHash=", voteMessage.Hash())
 					voteManager.pool.PutVote(voteMessage)
-					votesManagerMetric(vote.BlockNumber, vote.BlockHash).Inc(1)
+					votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 				}
 			}
 		}
@@ -190,8 +190,8 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) bool {
 		return true
 	}
 
-	latestBlockNumber := latestVote.Data.BlockNumber
-	latestBlockHash := latestVote.Data.BlockHash
+	latestBlockNumber := latestVote.Data.TargetNumber
+	latestBlockHash := latestVote.Data.TargetHash
 
 	// Check for Rules.
 	if header.Number.Uint64() > latestBlockNumber+maxForkLength {

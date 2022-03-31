@@ -122,14 +122,14 @@ func (pool *VotePool) PutVote(vote *types.VoteEnvelope) {
 }
 
 func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
-	voteBlockNumber := vote.Data.BlockNumber
-	voteBlockHash := vote.Data.BlockHash
+	voteBlockNumber := vote.Data.TargetNumber
+	voteBlockHash := vote.Data.TargetHash
 	header := pool.chain.CurrentBlock().Header()
 	headNumber := header.Number.Uint64()
 
 	voteData := &types.VoteData{
-		BlockNumber: voteBlockNumber,
-		BlockHash:   voteBlockHash,
+		TargetNumber: voteBlockNumber,
+		TargetHash:   voteBlockHash,
 	}
 
 	var votes map[common.Hash]*VoteBox
@@ -177,8 +177,8 @@ func (pool *VotePool) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.S
 }
 
 func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriorityQueue, vote *types.VoteEnvelope, voteData *types.VoteData, voteHash common.Hash, isFutureVote bool) {
-	voteBlockHash := vote.Data.BlockHash
-	voteBlockNumber := vote.Data.BlockNumber
+	voteBlockHash := vote.Data.TargetHash
+	voteBlockNumber := vote.Data.TargetNumber
 
 	log.Info("The vote info to put is:", "voteBlockNumber=", voteBlockNumber, "voteBlockHash=", voteBlockHash)
 
@@ -222,8 +222,8 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 	curPq, futurePq := pool.curVotesPq, pool.futureVotesPq
 	curVotes, futureVotes := pool.curVotes, pool.futureVotes
 
-	for futurePq.Len() > 0 && futurePq.Peek().BlockNumber <= latestBlockHeader.Number.Uint64() {
-		blockHash := futurePq.Peek().BlockHash
+	for futurePq.Len() > 0 && futurePq.Peek().TargetNumber <= latestBlockHeader.Number.Uint64() {
+		blockHash := futurePq.Peek().TargetHash
 		voteBox := futureVotes[blockHash]
 		validVotes := make([]*types.VoteEnvelope, 0, len(voteBox.voteMessages))
 		for _, vote := range voteBox.voteMessages {
@@ -266,9 +266,9 @@ func (pool *VotePool) prune(latestBlockNumber uint64) {
 	curVotes := pool.curVotes
 	curVotesPq := pool.curVotesPq
 
-	for curVotesPq.Len() > 0 && curVotesPq.Peek().BlockNumber+lowerLimitOfVoteBlockNumber-1 < latestBlockNumber {
+	for curVotesPq.Len() > 0 && curVotesPq.Peek().TargetNumber+lowerLimitOfVoteBlockNumber-1 < latestBlockNumber {
 		// Prune curPriorityQueue.
-		blockHash := heap.Pop(curVotesPq).(*types.VoteData).BlockHash
+		blockHash := heap.Pop(curVotesPq).(*types.VoteData).TargetHash
 		voteMessages := curVotes[blockHash].voteMessages
 		// Prune duplicationSet.
 		for _, voteMessage := range voteMessages {
@@ -309,8 +309,8 @@ func (pool *VotePool) FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelo
 }
 
 func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m map[common.Hash]*VoteBox, isFutureVote bool, voteHash common.Hash) bool {
-	voteBlockNumber := vote.Data.BlockNumber
-	voteBlockHash := vote.Data.BlockHash
+	voteBlockNumber := vote.Data.TargetNumber
+	voteBlockHash := vote.Data.TargetHash
 
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
@@ -338,7 +338,7 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 }
 
 func (pq votesPriorityQueue) Less(i, j int) bool {
-	return pq[i].BlockNumber < pq[j].BlockNumber
+	return pq[i].TargetNumber < pq[j].TargetNumber
 }
 
 func (pq votesPriorityQueue) Len() int {

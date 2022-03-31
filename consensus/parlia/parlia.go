@@ -686,8 +686,8 @@ func (p *Parlia) PrepareVoteAttestation(chain consensus.ChainHeaderReader, heade
 			if len(votes) > len(snap.Validators)*3/4 {
 				attestation := &types.VoteAttestation{
 					Data: &types.VoteData{
-						BlockNumber: parent.Number.Uint64(),
-						BlockHash:   parent.Hash(),
+						TargetNumber: parent.Number.Uint64(),
+						TargetHash:   parent.Hash(),
 					},
 				}
 				// Prepare aggregated vote signature.
@@ -831,7 +831,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		if voteAttestation == nil {
 			continue
 		}
-		justifiedBlock := chain.GetHeaderByHash(voteAttestation.Data.BlockHash)
+		justifiedBlock := chain.GetHeaderByHash(voteAttestation.Data.TargetHash)
 		if justifiedBlock == nil {
 			continue
 		}
@@ -1019,8 +1019,8 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 
 // VerifyVote will verify if the vote comes from valid validators.
 func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) bool {
-	voteBlockNumber := vote.Data.BlockNumber
-	voteBlockHash := vote.Data.BlockHash
+	voteBlockNumber := vote.Data.TargetNumber
+	voteBlockHash := vote.Data.TargetHash
 	header := chain.GetHeader(voteBlockHash, voteBlockNumber)
 	if header == nil {
 		log.Error("BlockHeader at current voteBlockNumber is nil", "blockNumber=", voteBlockNumber, "blockHash=", voteBlockHash)
@@ -1497,6 +1497,10 @@ func (p *Parlia) applyTransaction(
 	receipt.TransactionIndex = uint(state.TxIndex())
 	*receipts = append(*receipts, receipt)
 	state.SetNonce(msg.From(), nonce+1)
+	return nil
+}
+
+func (p *Parlia) GetHighestJustifiedHeader(chain consensus.ChainReader, header *types.Header) *types.Header {
 	return nil
 }
 

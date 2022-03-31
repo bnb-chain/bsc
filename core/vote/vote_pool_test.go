@@ -74,7 +74,7 @@ func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
 		time.Sleep(1 * time.Second)
 		lastIndex, _ := journal.walLog.LastIndex()
 		firstIndex, _ := journal.walLog.FirstIndex()
-		if journal.latestVote.Data.BlockNumber == uint64(lastLatestVoteNumber) && int(lastIndex)-int(firstIndex)+1 == size {
+		if journal.latestVote.Data.TargetNumber == uint64(lastLatestVoteNumber) && int(lastIndex)-int(firstIndex)+1 == size {
 			return true
 		}
 	}
@@ -171,7 +171,7 @@ func TestVotePool(t *testing.T) {
 	// Test invalid vote whose number larger than latestHeader + 11
 	invalidVote := &types.VoteEnvelope{
 		Data: &types.VoteData{
-			BlockNumber: 1000,
+			TargetNumber: 1000,
 		},
 	}
 	voteManager.pool.PutVote(invalidVote)
@@ -193,7 +193,7 @@ func TestVotePool(t *testing.T) {
 	// Test future votes scenario: votes number within latestBlockHeader ~ latestBlockHeader + 11
 	futureVote := &types.VoteEnvelope{
 		Data: &types.VoteData{
-			BlockNumber: 282,
+			TargetNumber: 282,
 		},
 	}
 	voteManager.pool.PutVote(futureVote)
@@ -210,7 +210,7 @@ func TestVotePool(t *testing.T) {
 	// Test duplicate vote case, shouldn'd be put into vote pool
 	duplicateVote := &types.VoteEnvelope{
 		Data: &types.VoteData{
-			BlockNumber: 282,
+			TargetNumber: 282,
 		},
 	}
 	voteManager.pool.PutVote(duplicateVote)
@@ -227,7 +227,7 @@ func TestVotePool(t *testing.T) {
 	// Test future votes larger than latestBlockNumber + 11 should be rejected
 	futureVote = &types.VoteEnvelope{
 		Data: &types.VoteData{
-			BlockNumber: 285,
+			TargetNumber: 285,
 		},
 	}
 	voteManager.pool.PutVote(futureVote)

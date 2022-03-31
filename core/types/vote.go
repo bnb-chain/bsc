@@ -16,8 +16,10 @@ type BLSSignature [BLSSignatureLength]byte
 type ValidatorsBitSet uint64
 
 type VoteData struct {
-	BlockNumber uint64
-	BlockHash   common.Hash
+	SourceNumber uint64
+	SourceHash   common.Hash
+	TargetNumber uint64
+	TargetHash   common.Hash
 }
 
 type VoteEnvelope struct {
@@ -58,16 +60,7 @@ func (v *VoteEnvelope) calcVoteHash() common.Hash {
 
 // VoteDataHash returns the voteData hash.
 func (v *VoteData) VoteDataHash() common.Hash {
-	h := v.calcVoteDataHash()
-	return h
-}
-
-func (v *VoteData) calcVoteDataHash() common.Hash {
-	voteData := struct {
-		BlockNumber uint64
-		BlockHash   common.Hash
-	}{v.BlockNumber, v.BlockHash}
-	return rlpHash(voteData)
+	return rlpHash(*v)
 }
 
 func (b BLSPublicKey) Bytes() []byte { return b[:] }
