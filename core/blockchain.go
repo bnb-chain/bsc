@@ -20,6 +20,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common/prlock"
 	"io"
 	"math/big"
 	mrand "math/rand"
@@ -205,7 +206,7 @@ type BlockChain struct {
 	scope         event.SubscriptionScope
 	genesisBlock  *types.Block
 
-	chainmu sync.RWMutex // blockchain insertion lock
+	chainLock *prlock.Prlock // blockchain insertion lock
 
 	currentBlock          atomic.Value // Current head of the block chain
 	currentFastBlock      atomic.Value // Current head of the fast-sync chain (may be above the block chain!)
@@ -280,6 +281,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		cacheConfig: cacheConfig,
 		db:          db,
 		triegc:      prque.New(nil),
+		chainLock:   prlock.New(),
 		stateCache: state.NewDatabaseWithConfigAndCache(db, &trie.Config{
 			Cache:     cacheConfig.TrieCleanLimit,
 			Journal:   cacheConfig.TrieCleanJournal,
@@ -591,15 +593,17 @@ func (bc *BlockChain) SetHead(head uint64) error {
 }
 
 func (bc *BlockChain) tryRewindBadBlocks() {
-	bc.chainmu.Lock()
-	defer bc.chainmu.Unlock()
+	bc.chainLock.LockRead()
 	block := bc.CurrentBlock()
 	snaps := bc.snaps
+	bc.chainLock.UnlockRead()
 	// Verified and Result is false
 	if snaps != nil && snaps.Snapshot(block.Root()) != nil &&
 		snaps.Snapshot(block.Root()).Verified() && !snaps.Snapshot(block.Root()).WaitAndGetVerifyRes() {
 		// Rewind by one block
 		log.Warn("current block verified failed, rewind to its parent", "height", block.NumberU64(), "hash", block.Hash())
+		bc.chainLock.LockHigh()
+		defer bc.chainLock.UnlockHigh()
 		bc.futureBlocks.Remove(block.Hash())
 		bc.badBlockCache.Add(block.Hash(), time.Now())
 		bc.diffLayerCache.Remove(block.Hash())
@@ -618,8 +622,8 @@ func (bc *BlockChain) tryRewindBadBlocks() {
 //
 // The method returns the block number where the requested root cap was found.
 func (bc *BlockChain) SetHeadBeyondRoot(head uint64, root common.Hash) (uint64, error) {
-	bc.chainmu.Lock()
-	defer bc.chainmu.Unlock()
+	bc.chainLock.LockHigh()
+	defer bc.chainLock.UnlockHigh()
 	return bc.setHeadBeyondRoot(head, root)
 }
 
@@ -786,10 +790,10 @@ func (bc *BlockChain) FastSyncCommitHead(hash common.Hash) error {
 		return err
 	}
 	// If all checks out, manually set the head block
-	bc.chainmu.Lock()
+	bc.chainLock.LockHigh()
 	bc.currentBlock.Store(block)
 	headBlockGauge.Update(int64(block.NumberU64()))
-	bc.chainmu.Unlock()
+	bc.chainLock.UnlockHigh()
 
 	// Destroy any existing state snapshot and regenerate it in the background,
 	// also resuming the normal maintenance of any previously paused snapshot.
@@ -859,8 +863,8 @@ func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	if err := bc.SetHead(0); err != nil {
 		return err
 	}
-	bc.chainmu.Lock()
-	defer bc.chainmu.Unlock()
+	bc.chainLock.LockHigh()
+	defer bc.chainLock.UnlockHigh()
 
 	// Prepare the genesis block and reinitialise the chain
 	batch := bc.db.NewBatch()
@@ -889,8 +893,8 @@ func (bc *BlockChain) Export(w io.Writer) error {
 
 // ExportN writes a subset of the active chain to the given writer.
 func (bc *BlockChain) ExportN(w io.Writer, first uint64, last uint64) error {
-	bc.chainmu.RLock()
-	defer bc.chainmu.RUnlock()
+	bc.chainLock.LockRead()
+	defer bc.chainLock.UnlockRead()
 
 	if first > last {
 		return fmt.Errorf("export failed: first (%d) is greater than last (%d)", first, last)
@@ -1392,7 +1396,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 	// updateHead updates the head fast sync block if the inserted blocks are better
 	// and returns an indicator whether the inserted blocks are canonical.
 	updateHead := func(head *types.Block) bool {
-		bc.chainmu.Lock()
+		bc.chainLock.LockLow()
 
 		// Rewind may have occurred, skip in that case.
 		if bc.CurrentHeader().Number.Cmp(head.Number()) >= 0 {
@@ -1401,11 +1405,11 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 				rawdb.WriteHeadFastBlockHash(bc.db, head.Hash())
 				bc.currentFastBlock.Store(head)
 				headFastBlockGauge.Update(int64(head.NumberU64()))
-				bc.chainmu.Unlock()
+				bc.chainLock.UnlockLow()
 				return true
 			}
 		}
-		bc.chainmu.Unlock()
+		bc.chainLock.UnlockLow()
 		return false
 	}
 	// writeAncient writes blockchain and corresponding receipt chain into ancient store.
@@ -1669,8 +1673,8 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 
 // WriteBlockWithState writes the block and all associated state to the database.
 func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
-	bc.chainmu.Lock()
-	defer bc.chainmu.Unlock()
+	bc.chainLock.LockLow()
+	defer bc.chainLock.UnlockLow()
 
 	return bc.writeBlockWithState(block, receipts, logs, state, emitHeadEvent)
 }
@@ -1897,9 +1901,9 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	}
 	// Pre-checks passed, start the full block imports
 	bc.wg.Add(1)
-	bc.chainmu.Lock()
+	bc.chainLock.LockHigh()
 	n, err := bc.insertChain(chain, true)
-	bc.chainmu.Unlock()
+	bc.chainLock.UnlockHigh()
 	bc.wg.Done()
 
 	return n, err
@@ -1913,9 +1917,9 @@ func (bc *BlockChain) InsertChainWithoutSealVerification(block *types.Block) (in
 
 	// Pre-checks passed, start the full block imports
 	bc.wg.Add(1)
-	bc.chainmu.Lock()
+	bc.chainLock.LockLow()
 	n, err := bc.insertChain(types.Blocks([]*types.Block{block}), false)
-	bc.chainmu.Unlock()
+	bc.chainLock.UnlockLow()
 	bc.wg.Done()
 
 	return n, err
@@ -2957,8 +2961,8 @@ func (bc *BlockChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 	}
 
 	// Make sure only one thread manipulates the chain at once
-	bc.chainmu.Lock()
-	defer bc.chainmu.Unlock()
+	bc.chainLock.LockLow()
+	defer bc.chainLock.UnlockLow()
 
 	bc.wg.Add(1)
 	defer bc.wg.Done()
