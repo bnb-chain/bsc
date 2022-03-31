@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math/big"
 	"os"
 	"sync/atomic"
 	"time"
@@ -159,61 +158,6 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 	}
 }
 
-func ReadOffSetOfCurrentAncientFreezer(db ethdb.KeyValueReader) uint64 {
-	offset, _ := db.Get(offSetOfCurrentAncientFreezer)
-	if offset == nil {
-		return 0
-	}
-	return new(big.Int).SetBytes(offset).Uint64()
-}
-
-func ReadOffSetOfLastAncientFreezer(db ethdb.KeyValueReader) uint64 {
-	offset, _ := db.Get(offSetOfLastAncientFreezer)
-	if offset == nil {
-		return 0
-	}
-	return new(big.Int).SetBytes(offset).Uint64()
-}
-
-func ReadFrozenOfAncientFreezer(db ethdb.KeyValueReader) uint64 {
-	fozen, _ := db.Get(frozenOfAncientDBKey)
-	if fozen == nil {
-		return 0
-	}
-	return new(big.Int).SetBytes(fozen).Uint64()
-}
-
-func ReadStableStateBlockNumber(db ethdb.KeyValueReader) uint64 {
-	num, _ := db.Get(stableStateBlockNumberKey)
-	if num == nil {
-		return 0
-	}
-	return new(big.Int).SetBytes(num).Uint64()
-}
-
-func WriteOffSetOfCurrentAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
-	if err := db.Put(offSetOfCurrentAncientFreezer, new(big.Int).SetUint64(offset).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
-	}
-}
-func WriteOffSetOfLastAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
-	if err := db.Put(offSetOfLastAncientFreezer, new(big.Int).SetUint64(offset).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
-	}
-}
-
-func WriteFrozenOfAncientFreezer(db ethdb.KeyValueWriter, frozen uint64) {
-	if err := db.Put(frozenOfAncientDBKey, new(big.Int).SetUint64(frozen).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
-	}
-}
-
-func WriteStableStateBlockNumber(db ethdb.KeyValueWriter, number uint64) {
-	if err := db.Put(stableStateBlockNumberKey, new(big.Int).SetUint64(number).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
-	}
-}
-
 // NewFreezerDb only create a freezer without statedb.
 func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
@@ -237,6 +181,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 		}
 
 		go frdb.freeze()
+		WriteAncientType(db, PruneFreezerType)
 		return &freezerdb{
 			KeyValueStore: db,
 			AncientStore:  frdb,
@@ -244,7 +189,11 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	}
 
 	if pruneAncientData {
-		log.Error("ancient.nodata not take effect, disableFreezer or readonly be set")
+		log.Error("pruneancient not take effect, disableFreezer or readonly be set")
+	}
+
+	if ReadAncientType(db) == PruneFreezerType {
+		log.Warn("prune ancinet flag is set, may start fail, can add pruneancient parameter resolve")
 	}
 
 	// Create the idle freezer instance
@@ -334,7 +283,8 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 			// feezer.
 		}
 	}
-
+	// no prune ancinet start success
+	WriteAncientType(db, EntireFreezerType)
 	// Freezer is consistent with the key-value database, permit combining the two
 	if !disableFreeze && !frdb.readonly {
 		go frdb.freeze(db)

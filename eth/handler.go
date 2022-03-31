@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
@@ -160,7 +161,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		txsyncCh:               make(chan *txsync),
 		quitSync:               make(chan struct{}),
 	}
-	if config.Sync == downloader.FullSync {
+	if config.Sync == downloader.FullSync && rawdb.ReadAncientType(h.database) != rawdb.PruneFreezerType {
 		// The database seems empty as the current block is the genesis. Yet the fast
 		// block is ahead, so fast sync was enabled for this node at a certain point.
 		// The scenarios where this can happen is

@@ -284,11 +284,17 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 	// fast sync pivot, check if we should reenable
 	if pivot := rawdb.ReadLastPivotNumber(cs.handler.database); pivot != nil {
 		if head := cs.handler.chain.CurrentBlock(); head.NumberU64() < *pivot {
+			if rawdb.ReadAncientType(cs.handler.database) == rawdb.PruneFreezerType {
+				log.Warn("Switch full sync to fast sync fail", "current block number", head.NumberU64(), "pivot", *pivot)
+				goto fullsync
+			}
 			block := cs.handler.chain.CurrentFastBlock()
 			td := cs.handler.chain.GetTdByHash(block.Hash())
+			log.Warn("Switch full sync to fast sync", "current block number", head.NumberU64(), "pivot", *pivot)
 			return downloader.FastSync, td
 		}
 	}
+fullsync:
 	// Nope, we're really full syncing
 	head := cs.handler.chain.CurrentBlock()
 	td := cs.handler.chain.GetTd(head.Hash(), head.NumberU64())
