@@ -161,7 +161,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		txsyncCh:               make(chan *txsync),
 		quitSync:               make(chan struct{}),
 	}
-	if config.Sync == downloader.FullSync && rawdb.ReadAncientType(h.database) != rawdb.PruneFreezerType {
+	if config.Sync == downloader.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the fast
 		// block is ahead, so fast sync was enabled for this node at a certain point.
 		// The scenarios where this can happen is
@@ -171,7 +171,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		//   time. But we don't have any recent state for full sync.
 		// In these cases however it's safe to reenable fast sync.
 		fullBlock, fastBlock := h.chain.CurrentBlock(), h.chain.CurrentFastBlock()
-		if fullBlock.NumberU64() == 0 && fastBlock.NumberU64() > 0 {
+		if fullBlock.NumberU64() == 0 && fastBlock.NumberU64() > 0 && rawdb.ReadAncientType(h.database) != rawdb.PruneFreezerType {
 			h.fastSync = uint32(1)
 			log.Warn("Switch sync mode from full sync to fast sync")
 		}
