@@ -46,6 +46,7 @@ type testEthHandler struct {
 	blockBroadcasts event.Feed
 	txAnnounces     event.Feed
 	txBroadcasts    event.Feed
+	voteBroadcasts  event.Feed
 }
 
 func (h *testEthHandler) Chain() *core.BlockChain              { panic("no backing chain") }
@@ -54,7 +55,7 @@ func (h *testEthHandler) TxPool() eth.TxPool                   { panic("no backi
 func (h *testEthHandler) AcceptTxs() bool                      { return true }
 func (h *testEthHandler) RunPeer(*eth.Peer, eth.Handler) error { panic("not used in tests") }
 func (h *testEthHandler) PeerInfo(enode.ID) interface{}        { panic("not used in tests") }
-func (h *testEthHandler) VotePool() eth.VotePool               { return nil }
+func (h *testEthHandler) VotePool() eth.VotePool               { panic("no backing vote pool") }
 
 func (h *testEthHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	switch packet := packet.(type) {
@@ -74,6 +75,10 @@ func (h *testEthHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		h.txBroadcasts.Send(([]*types.Transaction)(*packet))
 		return nil
 
+	case *eth.VotesPacket:
+		h.voteBroadcasts.Send(packet.Votes)
+		return nil
+
 	default:
 		panic(fmt.Sprintf("unexpected eth packet type in tests: %T", packet))
 	}
@@ -83,6 +88,7 @@ func (h *testEthHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 // fork IDs in the protocol handshake.
 func TestForkIDSplit65(t *testing.T) { testForkIDSplit(t, eth.ETH65) }
 func TestForkIDSplit66(t *testing.T) { testForkIDSplit(t, eth.ETH66) }
+func TestForkIDSplit68(t *testing.T) { testForkIDSplit(t, eth.ETH68) }
 
 func testForkIDSplit(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -97,6 +103,16 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 			EIP155Block:    big.NewInt(2),
 			EIP158Block:    big.NewInt(2),
 			ByzantiumBlock: big.NewInt(3),
+			//ConstantinopleBlock: big.NewInt(4),
+			//PetersburgBlock:     big.NewInt(4),
+			//IstanbulBlock:       big.NewInt(4),
+			//MuirGlacierBlock:    big.NewInt(4),
+			//RamanujanBlock:      big.NewInt(4),
+			//NielsBlock:          big.NewInt(4),
+			//MirrorSyncBlock:     big.NewInt(4),
+			//BrunoBlock:          big.NewInt(4),
+			//EulerBlock:          big.NewInt(4),
+			//BonehBlock:          big.NewInt(4),
 		}
 		dbNoFork  = rawdb.NewMemoryDatabase()
 		dbProFork = rawdb.NewMemoryDatabase()
@@ -117,6 +133,7 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 			Database:   dbNoFork,
 			Chain:      chainNoFork,
 			TxPool:     newTestTxPool(),
+			VotePool:   newTestVotePool(),
 			Network:    1,
 			Sync:       downloader.FullSync,
 			BloomCache: 1,
@@ -125,6 +142,7 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 			Database:   dbProFork,
 			Chain:      chainProFork,
 			TxPool:     newTestTxPool(),
+			VotePool:   newTestVotePool(),
 			Network:    1,
 			Sync:       downloader.FullSync,
 			BloomCache: 1,
@@ -230,7 +248,7 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 					t.Fatalf("fork ID rejection didn't happen")
 				}
 			}
-		case <-time.After(250 * time.Millisecond):
+		case <-time.After(10000 * time.Millisecond):
 			t.Fatalf("split peers not rejected")
 		}
 	}
@@ -239,76 +257,7 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 // Tests that received transactions are added to the local pool.
 func TestRecvTransactions65(t *testing.T) { testRecvTransactions(t, eth.ETH65) }
 func TestRecvTransactions66(t *testing.T) { testRecvTransactions(t, eth.ETH66) }
-
-func TestWaitDiffExtensionTimout(t *testing.T) {
-	t.Parallel()
-
-	// Create a message handler, configure it to accept transactions and watch them
-	handler := newTestHandler()
-	defer handler.close()
-
-	// Create a source peer to send messages through and a sink handler to receive them
-	_, p2pSink := p2p.MsgPipe()
-	defer p2pSink.Close()
-
-	protos := []p2p.Protocol{
-		{
-			Name:    "diff",
-			Version: 1,
-		},
-	}
-
-	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
-		{
-			Name:    "diff",
-			Version: 1,
-		},
-	}), p2pSink, nil, nil)
-	defer sink.Close()
-
-	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
-		return eth.Handle((*ethHandler)(handler.handler), peer)
-	})
-
-	if err == nil || err.Error() != "peer wait timeout" {
-		t.Fatalf("error should be `peer wait timeout`")
-	}
-}
-
-func TestWaitSnapExtensionTimout(t *testing.T) {
-	t.Parallel()
-
-	// Create a message handler, configure it to accept transactions and watch them
-	handler := newTestHandler()
-	defer handler.close()
-
-	// Create a source peer to send messages through and a sink handler to receive them
-	_, p2pSink := p2p.MsgPipe()
-	defer p2pSink.Close()
-
-	protos := []p2p.Protocol{
-		{
-			Name:    "snap",
-			Version: 1,
-		},
-	}
-
-	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
-		{
-			Name:    "snap",
-			Version: 1,
-		},
-	}), p2pSink, nil, nil)
-	defer sink.Close()
-
-	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
-		return eth.Handle((*ethHandler)(handler.handler), peer)
-	})
-
-	if err == nil || err.Error() != "peer wait timeout" {
-		t.Fatalf("error should be `peer wait timeout`")
-	}
-}
+func TestRecvTransactions68(t *testing.T) { testRecvTransactions(t, eth.ETH68) }
 
 func testRecvTransactions(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -364,9 +313,86 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 	}
 }
 
+func TestWaitDiffExtensionTimout67(t *testing.T) { testWaitDiffExtensionTimout(t, eth.ETH67) }
+func TestWaitDiffExtensionTimout68(t *testing.T) { testWaitDiffExtensionTimout(t, eth.ETH68) }
+
+func testWaitDiffExtensionTimout(t *testing.T, protocol uint) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	_, p2pSink := p2p.MsgPipe()
+	defer p2pSink.Close()
+
+	protos := []p2p.Protocol{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}
+
+	sink := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}), p2pSink, nil, nil)
+	defer sink.Close()
+
+	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+
+	if err == nil || err.Error() != "peer wait timeout" {
+		t.Fatalf("error should be `peer wait timeout`")
+	}
+}
+
+func TestWaitSnapExtensionTimout67(t *testing.T) { testWaitSnapExtensionTimout(t, eth.ETH67) }
+func TestWaitSnapExtensionTimout68(t *testing.T) { testWaitDiffExtensionTimout(t, eth.ETH68) }
+
+func testWaitSnapExtensionTimout(t *testing.T, protocol uint) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	_, p2pSink := p2p.MsgPipe()
+	defer p2pSink.Close()
+
+	protos := []p2p.Protocol{
+		{
+			Name:    "snap",
+			Version: 1,
+		},
+	}
+
+	sink := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
+		{
+			Name:    "snap",
+			Version: 1,
+		},
+	}), p2pSink, nil, nil)
+	defer sink.Close()
+
+	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+
+	if err == nil || err.Error() != "peer wait timeout" {
+		t.Fatalf("error should be `peer wait timeout`")
+	}
+}
+
 // This test checks that pending transactions are sent.
 func TestSendTransactions65(t *testing.T) { testSendTransactions(t, eth.ETH65) }
 func TestSendTransactions66(t *testing.T) { testSendTransactions(t, eth.ETH66) }
+func TestSendTransactions68(t *testing.T) { testSendTransactions(t, eth.ETH68) }
 
 func testSendTransactions(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -425,7 +451,7 @@ func testSendTransactions(t *testing.T, protocol uint) {
 	seen := make(map[common.Hash]struct{})
 	for len(seen) < len(insert) {
 		switch protocol {
-		case 65, 66:
+		case 65, 66, 68:
 			select {
 			case hashes := <-anns:
 				for _, hash := range hashes {
@@ -453,6 +479,7 @@ func testSendTransactions(t *testing.T, protocol uint) {
 // broadcasts or via announcements/retrievals.
 func TestTransactionPropagation65(t *testing.T) { testTransactionPropagation(t, eth.ETH65) }
 func TestTransactionPropagation66(t *testing.T) { testTransactionPropagation(t, eth.ETH66) }
+func TestTransactionPropagation68(t *testing.T) { testTransactionPropagation(t, eth.ETH68) }
 
 func testTransactionPropagation(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -793,6 +820,7 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 // with the hashes in the header) gets discarded and not broadcast forward.
 func TestBroadcastMalformedBlock65(t *testing.T) { testBroadcastMalformedBlock(t, eth.ETH65) }
 func TestBroadcastMalformedBlock66(t *testing.T) { testBroadcastMalformedBlock(t, eth.ETH66) }
+func TestBroadcastMalformedBlock68(t *testing.T) { testBroadcastMalformedBlock(t, eth.ETH68) }
 
 func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -855,5 +883,143 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 			t.Fatalf("malformed block forwarded")
 		case <-time.After(100 * time.Millisecond):
 		}
+	}
+}
+
+func TestSendVotes68(t *testing.T) { testSendVotes(t, eth.ETH68) }
+
+func testSendVotes(t *testing.T, protocol uint) {
+	t.Parallel()
+
+	// Create a message handler and fill the pool with big votes
+	handler := newTestHandler()
+	defer handler.close()
+
+	insert := make([]*types.VoteEnvelope, 100)
+	for index := range insert {
+		vote := types.VoteEnvelope{
+			VoteAddress: types.BLSPublicKey{},
+			Signature:   types.BLSSignature{},
+			Data: &types.VoteData{
+				BlockNumber: uint64(index),
+				BlockHash:   common.BytesToHash(common.Hex2Bytes(string(rune(index)))),
+			},
+		}
+		insert[index] = &vote
+		go handler.votepool.PutVote(&vote)
+	}
+	time.Sleep(250 * time.Millisecond) // Wait until vote events get out of the system (can't use events, vote broadcaster races with peer join)
+
+	// Create a source handler to send messages through and a sink peer to receive them
+	p2pSrc, p2pSink := p2p.MsgPipe()
+	defer p2pSrc.Close()
+	defer p2pSink.Close()
+
+	src := eth.NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "", nil), p2pSrc, nil, handler.votepool)
+	sink := eth.NewPeer(protocol, p2p.NewPeer(enode.ID{2}, "", nil), p2pSink, nil, handler.votepool)
+	defer src.Close()
+	defer sink.Close()
+
+	go handler.handler.runEthPeer(src, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+	// Run the handshake locally to avoid spinning up a source handler
+	var (
+		genesis = handler.chain.Genesis()
+		head    = handler.chain.CurrentBlock()
+		td      = handler.chain.GetTd(head.Hash(), head.NumberU64())
+	)
+	if err := sink.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
+		t.Fatalf("failed to run protocol handshake")
+	}
+	// After the handshake completes, the source handler should stream the sink
+	// the transactions, subscribe to all inbound network events
+	backend := new(testEthHandler)
+
+	bcasts := make(chan []*types.VoteEnvelope)
+	bcastSub := backend.voteBroadcasts.Subscribe(bcasts)
+	defer bcastSub.Unsubscribe()
+
+	go eth.Handle(backend, sink)
+
+	// Make sure we get all the transactions on the correct channels
+	seen := make(map[common.Hash]struct{})
+	for len(seen) < len(insert) {
+		switch protocol {
+		case 65, 66, 68:
+			select {
+			case votes := <-bcasts:
+				for _, vote := range votes {
+					if _, ok := seen[vote.Hash()]; ok {
+						t.Errorf("duplicate vote broadcast: %x", vote.Hash())
+					}
+					seen[vote.Hash()] = struct{}{}
+				}
+			}
+
+		default:
+			panic("unsupported protocol, please extend test")
+		}
+	}
+	for _, vote := range insert {
+		if _, ok := seen[vote.Hash()]; !ok {
+			t.Errorf("missing vote: %x", vote.Hash())
+		}
+	}
+}
+
+func TestRecvVotes68(t *testing.T) { testRecvVotes(t, eth.ETH68) }
+
+func testRecvVotes(t *testing.T, protocol uint) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	votesCh := make(chan core.NewVoteEvent)
+	sub := handler.votepool.SubscribeNewVoteEvent(votesCh)
+	defer sub.Unsubscribe()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	p2pSrc, p2pSink := p2p.MsgPipe()
+	defer p2pSrc.Close()
+	defer p2pSink.Close()
+
+	src := eth.NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "", nil), p2pSrc, nil, handler.votepool)
+	sink := eth.NewPeer(protocol, p2p.NewPeer(enode.ID{2}, "", nil), p2pSink, nil, handler.votepool)
+	defer src.Close()
+	defer sink.Close()
+
+	go handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+	// Run the handshake locally to avoid spinning up a source handler
+	var (
+		genesis = handler.chain.Genesis()
+		head    = handler.chain.CurrentBlock()
+		td      = handler.chain.GetTd(head.Hash(), head.NumberU64())
+	)
+	if err := src.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
+		t.Fatalf("failed to run protocol handshake")
+	}
+	// Send the vote to the sink and verify that it's added to the vote pool
+	vote := types.VoteEnvelope{
+		Data: &types.VoteData{
+			BlockNumber: uint64(1),
+			BlockHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
+		},
+	}
+
+	if err := src.SendVotes([]*types.VoteEnvelope{&vote}); err != nil {
+		t.Fatalf("failed to send vote: %v", err)
+	}
+	select {
+	case event := <-votesCh:
+		if event.Vote.Hash() != vote.Hash() {
+			t.Errorf("added wrong vote hash: got %v, want %v", event.Vote.Hash(), vote.Hash())
+		}
+	case <-time.After(2 * time.Second):
+		t.Errorf("no NewVotesEvent received within 2 seconds")
 	}
 }

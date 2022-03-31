@@ -83,11 +83,13 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 		panic(err)
 	}
 	txpool := newTestTxPool()
+	votepool := newTestVotePool()
 
 	handler, _ := newHandler(&handlerConfig{
 		Database:   db,
 		Chain:      chain,
 		TxPool:     txpool,
+		VotePool:   votepool,
 		Network:    1,
 		Sync:       downloader.FullSync,
 		BloomCache: 1,

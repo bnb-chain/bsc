@@ -709,12 +709,11 @@ func (p *Parlia) PrepareVoteAttestation(chain consensus.ChainHeaderReader, heade
 				}
 				for _, valInfo := range snap.Validators {
 					if _, ok := voteAddrSet[valInfo.VoteAddress]; ok {
-						attestation.VoteAddressSet |= 1 << (valInfo.Index - 1) //Index is offset by 1
+						attestation.VoteAddressSet |= 1 << (valInfo.Index - 1) // Index is offset by 1
 					}
 				}
 				buf := new(bytes.Buffer)
-				err = rlp.Encode(buf, &attestation)
-				if err != nil {
+				if err := rlp.Encode(buf, &attestation); err != nil {
 					return err
 				}
 				header.Extra = append(header.Extra, buf.Bytes()...)
@@ -847,10 +846,9 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		if err != nil {
 			return err
 		}
-		validators := snap.validators()
-		for j := 0; j < len(validators); j++ {
-			if ((uint64(voteAttestation.VoteAddressSet) >> j) & 1) == 1 {
-				accumulatedWeights[validators[j]] += rewardCoef
+		for val, valInfo := range snap.Validators {
+			if ((uint64(voteAttestation.VoteAddressSet) >> (valInfo.Index - 1)) & 1) == 1 {
+				accumulatedWeights[val] += rewardCoef
 			}
 		}
 		head = chain.GetHeaderByHash(head.ParentHash)
