@@ -59,6 +59,13 @@ func (dl *diskLayer) Verified() bool {
 	return true
 }
 
+func (dl *diskLayer) CorrectAccounts(map[common.Hash][]byte) {
+}
+
+func (dl *diskLayer) AccountsCorrected() bool {
+	return true
+}
+
 // Parent always returns nil as there's no layer below the disk.
 func (dl *diskLayer) Parent() snapshot {
 	return nil
@@ -71,6 +78,12 @@ func (dl *diskLayer) Stale() bool {
 	defer dl.lock.RUnlock()
 
 	return dl.stale
+}
+
+// Accounts directly retrieves all accounts in current snapshot in
+// the snapshot slim data format.
+func (dl *diskLayer) Accounts() (map[common.Hash]*Account, error) {
+	return nil, nil
 }
 
 // Account directly retrieves the account associated with a particular hash in
