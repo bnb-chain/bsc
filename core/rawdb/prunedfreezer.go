@@ -191,49 +191,41 @@ func (f *prunedfreezer) freeze() {
 				return
 			}
 		}
-		// Retrieve the freezing threshold.
-		hash := ReadHeadBlockHash(nfdb)
-		if hash == (common.Hash{}) {
-			log.Debug("Current full block hash unavailable") // new chain, empty database
-			backoff = true
-			continue
-		}
 
-		stableState := ReadStableStateBlockNumber(nfdb)
-		if stableState <= params.StableStateThreshold {
+		number := ReadStableStateBlockNumber(nfdb)
+		if number < params.StableStateThreshold {
 			log.Debug("Stable state less threshold") // not enough state save to disk
 			backoff = true
 			continue
 		}
-		stableState -= params.StableStateThreshold
-
-		number := ReadHeaderNumber(nfdb, hash)
-		threshold := atomic.LoadUint64(&f.threshold)
-
-		switch {
-		case number == nil:
-			log.Error("Current full block number unavailable", "hash", hash)
-			backoff = true
-			continue
-
-		case *number < threshold:
-			log.Debug("Current full block not old enough", "number", *number, "hash", hash, "delay", threshold)
-			backoff = true
-			continue
-
-		case *number-threshold <= f.frozen:
-			log.Debug("Ancient blocks frozen already", "number", *number, "hash", hash, "frozen", f.frozen)
+		number -= params.StableStateThreshold
+		hash := ReadCanonicalHash(nfdb, number)
+		if hash == (common.Hash{}) {
+			log.Debug("Stable state block hash unavailable") // new chain, empty database
 			backoff = true
 			continue
 		}
-		head := ReadHeader(nfdb, hash, *number)
+		threshold := atomic.LoadUint64(&f.threshold)
+
+		switch {
+		case number < threshold:
+			log.Debug("Stable state block not old enough", "number", number, "hash", hash, "delay", threshold)
+			backoff = true
+			continue
+
+		case number-threshold <= f.frozen:
+			log.Debug("Ancient blocks frozen already", "number", number, "hash", hash, "frozen", f.frozen)
+			backoff = true
+			continue
+		}
+		head := ReadHeader(nfdb, hash, number)
 		if head == nil {
-			log.Error("Current full block unavailable", "number", *number, "hash", hash)
+			log.Error("Stable state block unavailable", "number", number, "hash", hash)
 			backoff = true
 			continue
 		}
 		// Seems we have data ready to be frozen, process in usable batches
-		limit := *number - threshold
+		limit := number - threshold
 		if limit-f.frozen > freezerBatchLimit {
 			limit = f.frozen + freezerBatchLimit
 		}
@@ -243,23 +235,20 @@ func (f *prunedfreezer) freeze() {
 			ancients = make([]common.Hash, 0, limit-f.frozen)
 		)
 		for f.frozen <= limit {
-			if f.frozen >= stableState {
-				log.Debug("Block state not commit", "number", f.frozen) // not enough state save to disk
-				break
-			}
 			// Retrieves all the components of the canonical block
 			hash := ReadCanonicalHash(nfdb, f.frozen)
 			if hash == (common.Hash{}) {
 				log.Error("Canonical hash missing, can't freeze", "number", f.frozen)
-				break
 			}
 			log.Trace("Deep froze ancient block", "number", f.frozen, "hash", hash)
 			// Inject all the components into the relevant data tables
 			if err := f.AppendAncient(f.frozen, nil, nil, nil, nil, nil); err != nil {
-				log.Error("Append ancient err", "number", *number, "hash", hash, "err", err)
+				log.Error("Append ancient err", "number", f.frozen, "hash", hash, "err", err)
 				break
 			}
-			ancients = append(ancients, hash)
+			if hash != (common.Hash{}) {
+				ancients = append(ancients, hash)
+			}
 		}
 		// Batch of blocks have been frozen, flush them before wiping from leveldb
 		if err := f.Sync(); err != nil {
