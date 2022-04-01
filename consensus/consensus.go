@@ -149,8 +149,8 @@ type PoSA interface {
 	EnoughDistance(chain ChainReader, header *types.Header) bool
 	IsLocalBlock(header *types.Header) bool
 	AllowLightProcess(chain ChainReader, currentHeader *types.Header) bool
-	// VerifyVote will verify if the vote comes from valid validators based on voteAddress (BLSPublicKey).
-	GetHighestJustifiedHeader(chain ChainReader, header *types.Header) *types.Header
+	GetHighestJustifiedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
+	// VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) bool
 	SetVotePool(votePool VotePool)
 }

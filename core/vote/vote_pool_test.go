@@ -111,7 +111,7 @@ func TestVotePool(t *testing.T) {
 	file.Close()
 	os.Remove(journal)
 
-	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir)
+	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir, ethash.NewFaker())
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}
@@ -159,7 +159,7 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(256, 273) {
+	if !voteJournal.verifyJournal(268, 273) {
 		t.Fatalf("journal failed")
 	}
 
@@ -186,7 +186,7 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(256, 273) {
+	if !voteJournal.verifyJournal(268, 273) {
 		t.Fatalf("journal failed")
 	}
 
@@ -203,7 +203,7 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(256, 273) {
+	if !voteJournal.verifyJournal(268, 273) {
 		t.Fatalf("journal failed")
 	}
 
@@ -220,7 +220,7 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(256, 273) {
+	if !voteJournal.verifyJournal(268, 273) {
 		t.Fatalf("journal failed")
 	}
 
@@ -249,7 +249,7 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(256, 293) {
+	if !voteJournal.verifyJournal(288, 293) {
 		t.Fatalf("journal failed")
 	}
 }

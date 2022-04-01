@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	maxSizeOfRecentEntry = 256
+	maxSizeOfRecentEntry = 512
 )
 
 type VoteJournal struct {
@@ -34,33 +34,23 @@ func NewVoteJournal(filePath string) (*VoteJournal, error) {
 		return nil, err
 	}
 
+	voteJournal := &VoteJournal{
+		journalPath: filePath,
+		walLog:      walLog,
+	}
+
 	lastIndex, err := walLog.LastIndex()
 	if err != nil {
 		log.Error("Failed to get lastIndex of vote journal", "err", err)
 		return nil, err
 	}
-
-	voteMessage, err := walLog.Read(lastIndex)
-	if err != nil && err != wal.ErrNotFound {
-		log.Error("Failed to read votes journal", "err", err)
+	vote, err := voteJournal.ReadVote(lastIndex)
+	if err != nil {
 		return nil, err
 	}
+	voteJournal.latestVote = vote
 
-	var vote *types.VoteEnvelope
-
-	if voteMessage != nil {
-		vote = &types.VoteEnvelope{}
-		if err := json.Unmarshal(voteMessage, vote); err != nil {
-			log.Error("Failed to unmarshal vote in the proecss for intializing journal object", "err", err)
-			return nil, err
-		}
-	}
-
-	return &VoteJournal{
-		journalPath: filePath,
-		walLog:      walLog,
-		latestVote:  vote,
-	}, nil
+	return voteJournal, nil
 }
 
 func (journal *VoteJournal) WriteVote(voteMessage *types.VoteEnvelope) error {
@@ -97,6 +87,25 @@ func (journal *VoteJournal) WriteVote(voteMessage *types.VoteEnvelope) error {
 	journal.latestVote = voteMessage
 
 	return nil
+}
+
+func (journal *VoteJournal) ReadVote(index uint64) (*types.VoteEnvelope, error) {
+	voteMessage, err := journal.walLog.Read(index)
+	if err != nil && err != wal.ErrNotFound {
+		log.Error("Failed to read votes journal", "err", err)
+		return nil, err
+	}
+
+	var vote *types.VoteEnvelope
+	if voteMessage != nil {
+		vote = &types.VoteEnvelope{}
+		if err := json.Unmarshal(voteMessage, vote); err != nil {
+			log.Error("Failed to unmarshal vote in the proecss for intializing journal object", "err", err)
+			return nil, err
+		}
+	}
+
+	return vote, nil
 }
 
 // Metrics to monitor if there's any error for writing vote journal.
