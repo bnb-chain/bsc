@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-const prefetchThread = 2
+const prefetchThread = 3
 const checkInterval = 10
 
 // statePrefetcher is a basic Prefetcher, which blindly executes a block on top
