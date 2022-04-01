@@ -192,40 +192,65 @@ func (f *prunedfreezer) freeze() {
 			}
 		}
 
-		number := ReadStableStateBlockNumber(nfdb)
-		if number < params.StableStateThreshold {
-			log.Debug("Stable state less threshold") // not enough state save to disk
-			backoff = true
-			continue
-		}
-		number -= params.StableStateThreshold
-		hash := ReadCanonicalHash(nfdb, number)
+		// Retrieve the freezing threshold.
+		hash := ReadHeadBlockHash(nfdb)
 		if hash == (common.Hash{}) {
-			log.Debug("Stable state block hash unavailable") // new chain, empty database
+			log.Debug("Current full block hash unavailable") // new chain, empty database
 			backoff = true
 			continue
 		}
+		number := ReadHeaderNumber(nfdb, hash)
 		threshold := atomic.LoadUint64(&f.threshold)
 
 		switch {
-		case number < threshold:
-			log.Debug("Stable state block not old enough", "number", number, "hash", hash, "delay", threshold)
+		case number == nil:
+			log.Error("Current full block number unavailable", "hash", hash)
 			backoff = true
 			continue
 
-		case number-threshold <= f.frozen:
-			log.Debug("Ancient blocks frozen already", "number", number, "hash", hash, "frozen", f.frozen)
+		case *number < threshold:
+			log.Debug("Current full block not old enough", "number", *number, "hash", hash, "delay", threshold)
+			backoff = true
+			continue
+
+		case *number-threshold <= f.frozen:
+			log.Debug("Ancient blocks frozen already", "number", *number, "hash", hash, "frozen", f.frozen)
 			backoff = true
 			continue
 		}
-		head := ReadHeader(nfdb, hash, number)
+		head := ReadHeader(nfdb, hash, *number)
 		if head == nil {
-			log.Error("Stable state block unavailable", "number", number, "hash", hash)
+			log.Error("Stable state block unavailable", "number", *number, "hash", hash)
 			backoff = true
 			continue
 		}
+
+		stableStabeNumber := ReadStableStateBlockNumber(nfdb)
+		switch {
+		case stableStabeNumber < params.StableStateThreshold:
+			log.Debug("Stable state block not old enough", "number", stableStabeNumber)
+			backoff = true
+			continue
+
+		case stableStabeNumber > *number:
+			log.Warn("Stable state block biger current full block", "number", stableStabeNumber, "number", *number)
+			backoff = true
+			continue
+		}
+		stableStabeNumber -= params.StableStateThreshold
+
 		// Seems we have data ready to be frozen, process in usable batches
-		limit := number - threshold
+		limit := *number - threshold
+		if limit > stableStabeNumber {
+			limit = stableStabeNumber
+		}
+
+		if limit < f.frozen {
+			log.Debug("Stable state block has prune", "limit", limit, "frozen", f.frozen)
+			backoff = true
+			continue
+		}
+
 		if limit-f.frozen > freezerBatchLimit {
 			limit = f.frozen + freezerBatchLimit
 		}
