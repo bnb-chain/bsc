@@ -38,7 +38,7 @@ To combine DPoS and PoA for consensus, Binance Smart Chain implement a novel con
 4. The validator set change is relayed via a cross-chain communication mechanism.
 5. Parlia consensus engine will interact with a set of [system contracts](https://github.com/binance-chain/docs-site/blob/add-bsc/docs/smart-chain/guides/concepts/system-contract.md) to achieve liveness slash, revenue distributing and validator set renewing func.
 
- 
+
 ### Light Client of Binance Chain  
 
 To achieve the cross-chain communication from Binance Chain to Binance Smart Chain, need introduce a on-chain light client verification algorithm.
@@ -124,7 +124,7 @@ This command will:
 
 Steps:
 
-1. Download the binary, config and genesis files from [release](https://github.com/binance-chain/bsc/releases/download/v1.0.0-alpha.0/binary.zip), or compile the binary by `make geth`. 
+1. Download the binary, config and genesis files from [release](https://github.com/bnb-chain/bsc/releases/download/v1.1.8/mainnet.zip), or compile the binary by `make geth`. 
 2. Init genesis state: `./geth --datadir node init genesis.json`.
 3. Start your fullnode: `./geth --config ./config.toml --datadir ./node`.
 4. Or start a validator node: `./geth --config ./config.toml --datadir ./node -unlock ${validatorAddr} --mine --allow-insecure-unlock`. The ${validatorAddr} is the wallet account address of your running validator node. 
