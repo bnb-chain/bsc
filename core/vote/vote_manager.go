@@ -166,8 +166,10 @@ func (voteManager *VoteManager) loop() {
 				}
 				// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
 				if ok, sourceNumber, sourceHash := voteManager.UnderRules(curBlockHeader); ok {
-					voteMessage.Data.SourceNumber = sourceNumber
-					voteMessage.Data.SourceHash = sourceHash
+					if sourceHash != (common.Hash{}) {
+						voteMessage.Data.SourceNumber = sourceNumber
+						voteMessage.Data.SourceHash = sourceHash
+					}
 
 					if err := voteManager.signer.SignVote(voteMessage); err != nil {
 						log.Debug("Failed to sign vote", "err", err)
@@ -200,6 +202,12 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 	}
 
 	curHighestJustifiedHeader := posa.GetHighestJustifiedHeader(voteManager.chain, header)
+	if curHighestJustifiedHeader == nil {
+		//return true, 0, common.Hash{}
+		//For Integration Test only!:
+		return true, header.Number.Uint64() - 1, header.ParentHash
+	}
+
 	sourceBlockNumber := curHighestJustifiedHeader.Number.Uint64()
 	sourceBlockHash := curHighestJustifiedHeader.Hash()
 	targetBlockNumber := header.Number.Uint64()
