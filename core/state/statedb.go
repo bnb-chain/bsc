@@ -1366,10 +1366,8 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 					// Write any contract code associated with the state object
 					tasks <- func() {
 						// Write any storage changes in the state object to its storage trie
-						if err := obj.CommitTrie(s.db); err != nil {
-							taskResults <- err
-						}
-						taskResults <- nil
+						err := obj.CommitTrie(s.db)
+						taskResults <- err
 					}
 					tasksNum++
 				}
