@@ -123,12 +123,12 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 			statedb.StopPrefetcher()
 			parent := p.bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 			statedb, err = state.New(parent.Root, p.bc.stateCache, p.bc.snaps)
+			if err != nil {
+				return statedb, nil, nil, 0, err
+			}
 			statedb.SetExpectedStateRoot(block.Root())
 			if p.bc.pipeCommit {
 				statedb.EnablePipeCommit()
-			}
-			if err != nil {
-				return statedb, nil, nil, 0, err
 			}
 			// Enable prefetching to pull in trie node paths while processing transactions
 			statedb.StartPrefetcher("chain")
