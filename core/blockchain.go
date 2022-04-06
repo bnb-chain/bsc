@@ -203,6 +203,7 @@ type BlockChain struct {
 	chainFeed     event.Feed
 	chainSideFeed event.Feed
 	chainHeadFeed event.Feed
+	chainBlockFeed event.Feed
 	logsFeed      event.Feed
 	blockProcFeed event.Feed
 	scope         event.SubscriptionScope
@@ -226,6 +227,7 @@ type BlockChain struct {
 	// trusted diff layers
 	diffLayerCache             *lru.Cache   // Cache for the diffLayers
 	diffLayerRLPCache          *lru.Cache   // Cache for the rlp encoded diffLayers
+	diffLayerChanCache         *lru.Cache   // Cache for
 	diffQueue                  *prque.Prque // A Priority queue to store recent diff layer
 	diffQueueBuffer            chan *types.DiffLayer
 	diffLayerFreezerBlockLimit uint64
@@ -277,6 +279,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	futureBlocks, _ := lru.New(maxFutureBlocks)
 	diffLayerCache, _ := lru.New(diffLayerCacheLimit)
 	diffLayerRLPCache, _ := lru.New(diffLayerRLPCacheLimit)
+	diffLayerChanCache, _ := lru.New(diffLayerCacheLimit)
 
 	bc := &BlockChain{
 		chainConfig: chainConfig,
@@ -299,6 +302,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		badBlockCache:         badBlockCache,
 		diffLayerCache:        diffLayerCache,
 		diffLayerRLPCache:     diffLayerRLPCache,
+		diffLayerChanCache:    diffLayerChanCache,
 		txLookupCache:         txLookupCache,
 		futureBlocks:          futureBlocks,
 		engine:                engine,
@@ -520,7 +524,13 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, sorted bool) {
 	if bc.diffLayerCache.Len() >= diffLayerCacheLimit {
 		bc.diffLayerCache.RemoveOldest()
 	}
+
+	//json.MarshalIndent()
 	bc.diffLayerCache.Add(diffLayer.BlockHash, diffLayer)
+	if cached, ok := bc.diffLayerChanCache.Get(diffLayer.BlockHash); ok {
+		diffLayerCh := cached.(chan struct{})
+		close(diffLayerCh)
+	}
 	if bc.db.DiffStore() != nil {
 		// push to priority queue before persisting
 		bc.diffQueueBuffer <- diffLayer
@@ -1816,6 +1826,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		diffLayer.BlockHash = block.Hash()
 		diffLayer.Number = block.NumberU64()
 
+		diffLayerCh := make(chan struct{})
+		bc.diffLayerChanCache.Add(diffLayer.BlockHash, diffLayerCh)
+
 		go bc.cacheDiffLayer(diffLayer, false)
 	}
 
@@ -2072,6 +2085,15 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 	}()
 
 	for ; block != nil && err == nil || err == ErrKnownBlock; block, err = it.next() {
+		if bc.validator.RemoteVerifyManager() != nil {
+			for !bc.Validator().RemoteVerifyManager().AncestorVerified(block.Header()) {
+				if bc.insertStopped() {
+					break
+				}
+				log.Info("block ancestor has not been verified", "number", block.Number(), "hash", block.Hash())
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
 			log.Debug("Abort during block processing")
@@ -2231,6 +2253,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		stats.processed++
 		stats.usedGas += usedGas
 
+		bc.chainBlockFeed.Send(ChainHeadEvent{block})
 		dirty, _ := bc.stateCache.TrieDB().Size()
 		stats.report(chain, it.index, dirty)
 	}
@@ -3101,6 +3124,10 @@ func (bc *BlockChain) SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Su
 	return bc.scope.Track(bc.chainHeadFeed.Subscribe(ch))
 }
 
+func (bc *BlockChain) SubscribeChainBlockEvent(ch chan<- ChainHeadEvent) event.Subscription {
+	return bc.scope.Track(bc.chainBlockFeed.Subscribe(ch))
+}
+
 // SubscribeChainSideEvent registers a subscription of ChainSideEvent.
 func (bc *BlockChain) SubscribeChainSideEvent(ch chan<- ChainSideEvent) event.Subscription {
 	return bc.scope.Track(bc.chainSideFeed.Subscribe(ch))
@@ -3278,7 +3305,7 @@ func CalculateDiffHash(d *types.DiffLayer) (common.Hash, error) {
 		BlockHash: d.BlockHash,
 		Receipts:  make([]*types.ReceiptForStorage, 0),
 		Number:    d.Number,
-		Codes:     d.Codes,
+		//Codes:     d.Codes,
 		Destructs: d.Destructs,
 		Accounts:  d.Accounts,
 		Storages:  d.Storages,

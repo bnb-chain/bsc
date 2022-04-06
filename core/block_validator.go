@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -49,7 +48,6 @@ func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain, engin
 		bc:     blockchain,
 	}
 	if mode.NeedRemoteVerify() {
-		log.Info("this node is a fast node with remote state verifier.")
 		validator.remoteValidator = NewVerifyManager(blockchain, peers, mode == InsecureVerify)
 		go validator.remoteValidator.mainLoop()
 	}
@@ -89,13 +87,6 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 					return consensus.ErrUnknownAncestor
 				}
 				return consensus.ErrPrunedAncestor
-			}
-			return nil
-		},
-		// for fast node which verify trie from remote verify peers, a block's H-11 ancestor should have been verify.
-		func() error {
-			if v.remoteValidator != nil && !v.remoteValidator.AncestorVerified(header) {
-				return fmt.Errorf("block's ancessor %x has not been verified", block.Hash())
 			}
 			return nil
 		},

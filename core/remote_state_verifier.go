@@ -45,7 +45,7 @@ type remoteVerifyManager struct {
 	allowInsecure bool
 
 	// Subscription
-	chainHeadCh  chan ChainHeadEvent
+	chainBlockCh  chan ChainHeadEvent
 	chainHeadSub event.Subscription
 
 	// Channels
@@ -62,11 +62,11 @@ func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure b
 		verifiedCache: verifiedCache,
 		allowInsecure: allowInsecure,
 
-		chainHeadCh: make(chan ChainHeadEvent, chainHeadChanSize),
+		chainBlockCh: make(chan ChainHeadEvent, chainHeadChanSize),
 		verifyCh:    make(chan common.Hash, maxForkHeight),
 		messageCh:   make(chan verifyMessage),
 	}
-	vm.chainHeadSub = blockchain.SubscribeChainHeadEvent(vm.chainHeadCh)
+	vm.chainHeadSub = blockchain.SubscribeChainBlockEvent(vm.chainBlockCh)
 	return vm
 }
 
@@ -81,7 +81,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 	defer pruneTicker.Stop()
 	for {
 		select {
-		case h := <-vm.chainHeadCh:
+		case h := <-vm.chainBlockCh:
 			vm.NewBlockVerifyTask(h.Block.Header())
 		case hash := <-vm.verifyCh:
 			vm.cacheBlockVerified(hash)
@@ -121,6 +121,11 @@ func (vm *remoteVerifyManager) mainLoop() {
 
 func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 	for i := 0; header != nil && i <= maxForkHeight; i++ {
+		// if is genesis block, mark it as verified and break.
+		if header.Number.Uint64() == 0 {
+			vm.cacheBlockVerified(header.Hash())
+			break
+		}
 		func(hash common.Hash) {
 			// if verified cache record that this block has been verified, skip.
 			if _, ok := vm.verifiedCache.Get(hash); ok {
@@ -130,17 +135,32 @@ func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 			if _, ok := vm.tasks[hash]; ok {
 				return
 			}
-			diffLayer := vm.bc.GetTrustedDiffLayer(hash)
+
+			if header.TxHash == types.EmptyRootHash {
+				log.Debug("this is an empty block:", "block", hash, "number", header.Number)
+				vm.cacheBlockVerified(hash)
+				return
+			}
+
+			var diffLayer *types.DiffLayer
+			if cached, ok := vm.bc.diffLayerChanCache.Get(hash); ok {
+				diffLayerCh := cached.(chan struct{})
+				<-diffLayerCh
+				vm.bc.diffLayerChanCache.Remove(hash)
+				diffLayer = vm.bc.GetTrustedDiffLayer(hash)
+			}
 			// if this block has no diff, there is no need to verify it.
 			var err error
 			if diffLayer == nil {
-				if diffLayer, err = vm.bc.GenerateDiffLayer(hash); err != nil {
-					log.Error("failed to get diff layer", "block", hash, "number", header.Number, "error", err)
-					return
-				} else if diffLayer == nil {
-					log.Info("this is an empty block:", "block", hash, "number", header.Number)
-					return
-				}
+				log.Info("block's trusted diffLayer is nil", "hash", hash, "number", header.Number)
+				//if diffLayer, err = vm.bc.GenerateDiffLayer(hash); err != nil {
+				//	log.Error("failed to get diff layer", "block", hash, "number", header.Number, "error", err)
+				//	return
+				//} else if diffLayer == nil {
+				//	log.Info("this is an empty block:", "block", hash, "number", header.Number)
+				//	vm.cacheBlockVerified(hash)
+				//	return
+				//}
 			}
 			diffHash, err := CalculateDiffHash(diffLayer)
 			if err != nil {
@@ -170,11 +190,7 @@ func (vm *remoteVerifyManager) AncestorVerified(header *types.Header) bool {
 	if header == nil {
 		return true
 	}
-	// check whether H-11 block is a empty block.
-	if header.TxHash == types.EmptyRootHash {
-		parent := vm.bc.GetHeaderByHash(header.ParentHash)
-		return parent == nil || header.Root == parent.Root
-	}
+
 	hash := header.Hash()
 	_, exist := vm.verifiedCache.Get(hash)
 	return exist
@@ -203,7 +219,7 @@ type verifyTask struct {
 	candidatePeers verifyPeers
 	badPeers       map[string]struct{}
 	startAt        time.Time
-	allowInsecure  bool
+	allowInsecure bool
 
 	messageCh  chan verifyMessage
 	terminalCh chan struct{}
@@ -236,13 +252,13 @@ func (vt *verifyTask) Start(verifyCh chan common.Hash) {
 			case types.StatusFullVerified:
 				vt.compareRootHashAndMark(msg, verifyCh)
 			case types.StatusPartiallyVerified:
-				log.Warn("block %s , num= %s is insecure verified", msg.verifyResult.BlockHash, msg.verifyResult.BlockNumber)
+				log.Warn("block is insecure verified", "hash", msg.verifyResult.BlockHash, "number", msg.verifyResult.BlockNumber)
 				if vt.allowInsecure {
 					vt.compareRootHashAndMark(msg, verifyCh)
 				}
 			case types.StatusDiffHashMismatch, types.StatusImpossibleFork, types.StatusUnexpectedError:
 				vt.badPeers[msg.peerId] = struct{}{}
-				log.Info("peer %s is not available: code %d, msg %s,", msg.peerId, msg.verifyResult.Status.Code, msg.verifyResult.Status.Msg)
+				log.Info("peer is not available", "hash", msg.verifyResult.BlockHash, "number", msg.verifyResult.BlockNumber, "peer", msg.peerId, "reason", msg.verifyResult.Status.Msg)
 			case types.StatusBlockTooNew, types.StatusBlockNewer, types.StatusPossibleFork:
 				log.Info("return msg from peer %s for block %s is %s", msg.peerId, msg.verifyResult.BlockHash, msg.verifyResult.Status.Msg)
 			}
