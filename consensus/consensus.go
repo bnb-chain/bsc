@@ -150,7 +150,6 @@ type PoSA interface {
 	IsLocalBlock(header *types.Header) bool
 	AllowLightProcess(chain ChainReader, currentHeader *types.Header) bool
 	GetHighestJustifiedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
-	// VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) bool
 	SetVotePool(votePool VotePool)
 }

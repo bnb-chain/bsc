@@ -137,17 +137,17 @@ func (voteManager *VoteManager) loop() {
 			}
 			curHead := cHead.Block.Header()
 
-			var lastLatestVoteNumber uint64
+			var lastLatestVoteHash common.Hash
 			lastLatestVote := voteManager.journal.latestVote
 			if lastLatestVote == nil {
-				lastLatestVoteNumber = 0
+				lastLatestVoteHash = common.Hash{}
 			} else {
-				lastLatestVoteNumber = lastLatestVote.Data.TargetNumber
+				lastLatestVoteHash = lastLatestVote.Data.TargetHash
 			}
 
 			var newChainStack []*types.Header
 			for i := 0; i < maxForkLength; i++ {
-				if curHead == nil || curHead.Number.Uint64() <= lastLatestVoteNumber {
+				if curHead == nil || curHead.Hash() == lastLatestVoteHash {
 					break
 				}
 				newChainStack = append(newChainStack, curHead)
@@ -204,7 +204,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 	curHighestJustifiedHeader := posa.GetHighestJustifiedHeader(voteManager.chain, header)
 	if curHighestJustifiedHeader == nil {
 		//return true, 0, common.Hash{}
-		//For Integration Test only!:
+		//TODO, For Integration Test only!:
 		return true, header.Number.Uint64() - 1, header.ParentHash
 	}
 
@@ -225,19 +225,10 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 		return false, 0, common.Hash{}
 	}
 
-	journalFirstVote, err := journal.ReadVote(firstIndex)
-	if err != nil {
-		return false, 0, common.Hash{}
-	}
-
 	lastIndex, err := walLog.LastIndex()
 	if err != nil {
 		log.Error("Failed to get lastIndex of vote journal", "err", err)
 		return false, 0, common.Hash{}
-	}
-
-	if sourceBlockNumber >= journalLatestVote.Data.TargetNumber || targetBlockNumber <= journalFirstVote.Data.SourceNumber {
-		return true, sourceBlockNumber, sourceBlockHash
 	}
 
 	for index := lastIndex; index >= firstIndex; index-- {
@@ -248,12 +239,6 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 		if vote == nil {
 			log.Error("vote is nil")
 			return false, 0, common.Hash{}
-		}
-
-		if sourceBlockNumber >= vote.Data.TargetNumber {
-			// No need to iterate later, since the blockNumber in journal is in ascending order,
-			// so there'll never be any overlap for all the later iterations
-			break
 		}
 
 		if vote.Data.SourceNumber > sourceBlockNumber && vote.Data.TargetNumber < targetBlockNumber {

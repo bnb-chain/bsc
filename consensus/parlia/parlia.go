@@ -1030,10 +1030,12 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 	}
 
 	curHighestJustifiedHeader := p.GetHighestJustifiedHeader(chain, header)
-	if curHighestJustifiedHeader != nil {
-		if vote.Data.SourceNumber != curHighestJustifiedHeader.Number.Uint64() || vote.Data.SourceHash != curHighestJustifiedHeader.Hash() {
-			return false
-		}
+	if curHighestJustifiedHeader == nil {
+		log.Error("failed to get the highest justified header", "headerNumber=", header.Number, "headerHash=", header.Hash())
+		return false
+	}
+	if vote.Data.SourceNumber != curHighestJustifiedHeader.Number.Uint64() || vote.Data.SourceHash != curHighestJustifiedHeader.Hash() {
+		return false
 	}
 
 	number := header.Number.Uint64()
