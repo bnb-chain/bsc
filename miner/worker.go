@@ -782,10 +782,10 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 
 	interruptCh := make(chan struct{})
 	defer close(interruptCh)
-	tx := &types.Transaction{}
-	txCurr := &tx
 	//prefetch txs from all pending txs
 	txsPrefetch := txs.Copy()
+	tx := txsPrefetch.Peek()
+	txCurr := &tx
 	w.prefetcher.PrefetchMining(txsPrefetch, w.current.header, w.current.gasPool.Gas(), w.current.state.Copy(), *w.chain.GetVMConfig(), interruptCh, txCurr)
 
 LOOP:
