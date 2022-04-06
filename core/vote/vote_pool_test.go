@@ -74,7 +74,7 @@ func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
 		time.Sleep(1 * time.Second)
 		lastIndex, _ := journal.walLog.LastIndex()
 		firstIndex, _ := journal.walLog.FirstIndex()
-		if journal.latestVote.Data.TargetNumber == uint64(lastLatestVoteNumber) && int(lastIndex)-int(firstIndex)+1 == size {
+		if int(lastIndex)-int(firstIndex)+1 == size {
 			return true
 		}
 	}

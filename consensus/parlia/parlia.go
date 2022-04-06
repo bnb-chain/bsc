@@ -1023,7 +1023,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) bool {
 	voteBlockNumber := vote.Data.TargetNumber
 	voteBlockHash := vote.Data.TargetHash
-	header := chain.GetHeader(voteBlockHash, voteBlockNumber)
+	header := chain.GetHeaderByHash(voteBlockHash)
 	if header == nil {
 		log.Error("BlockHeader at current voteBlockNumber is nil", "blockNumber=", voteBlockNumber, "blockHash=", voteBlockHash)
 		return false
@@ -1031,7 +1031,7 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 
 	curHighestJustifiedHeader := p.GetHighestJustifiedHeader(chain, header)
 	if curHighestJustifiedHeader == nil {
-		log.Error("failed to get the highest justified header", "headerNumber=", header.Number, "headerHash=", header.Hash())
+		log.Error("failed to get the highest justified header", "headerNumber", header.Number, "headerHash", header.Hash())
 		return false
 	}
 	if vote.Data.SourceNumber != curHighestJustifiedHeader.Number.Uint64() || vote.Data.SourceHash != curHighestJustifiedHeader.Hash() {

@@ -20,8 +20,6 @@ type VoteJournal struct {
 	journalPath string // file path of disk journal for saving the vote.
 
 	walLog *wal.Log
-
-	latestVote *types.VoteEnvelope // Maintain a variable to record the most recent vote of the local node.
 }
 
 func NewVoteJournal(filePath string) (*VoteJournal, error) {
@@ -38,17 +36,6 @@ func NewVoteJournal(filePath string) (*VoteJournal, error) {
 		journalPath: filePath,
 		walLog:      walLog,
 	}
-
-	lastIndex, err := walLog.LastIndex()
-	if err != nil {
-		log.Error("Failed to get lastIndex of vote journal", "err", err)
-		return nil, err
-	}
-	vote, err := voteJournal.ReadVote(lastIndex)
-	if err != nil {
-		return nil, err
-	}
-	voteJournal.latestVote = vote
 
 	return voteJournal, nil
 }
@@ -84,7 +71,6 @@ func (journal *VoteJournal) WriteVote(voteMessage *types.VoteEnvelope) error {
 			log.Warn("Failed to truncate votes journal", "err", err)
 		}
 	}
-	journal.latestVote = voteMessage
 
 	return nil
 }

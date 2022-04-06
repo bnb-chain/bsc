@@ -137,56 +137,39 @@ func (voteManager *VoteManager) loop() {
 			}
 			curHead := cHead.Block.Header()
 
-			var lastLatestVoteHash common.Hash
-			lastLatestVote := voteManager.journal.latestVote
-			if lastLatestVote == nil {
-				lastLatestVoteHash = common.Hash{}
-			} else {
-				lastLatestVoteHash = lastLatestVote.Data.TargetHash
+			// Vote for curBlockHeader block.
+			vote := &types.VoteData{
+				TargetNumber: curHead.Number.Uint64(),
+				TargetHash:   curHead.Hash(),
+			}
+			voteMessage := &types.VoteEnvelope{
+				Data: vote,
+			}
+			// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
+			if ok, sourceNumber, sourceHash := voteManager.UnderRules(curHead); ok {
+				if sourceHash == (common.Hash{}) {
+					continue
+				}
+
+				voteMessage.Data.SourceNumber = sourceNumber
+				voteMessage.Data.SourceHash = sourceHash
+
+				if err := voteManager.signer.SignVote(voteMessage); err != nil {
+					log.Debug("Failed to sign vote", "err", err)
+					votesSigningErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
+					continue
+				}
+				if err := voteManager.journal.WriteVote(voteMessage); err != nil {
+					log.Warn("Failed to write vote into journal", "err", err)
+					votesJournalErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
+					continue
+				}
+
+				log.Info("vote manager produced vote", "voteHash=", voteMessage.Hash())
+				voteManager.pool.PutVote(voteMessage)
+				votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 			}
 
-			var newChainStack []*types.Header
-			for i := 0; i < maxForkLength; i++ {
-				if curHead == nil || curHead.Hash() == lastLatestVoteHash {
-					break
-				}
-				newChainStack = append(newChainStack, curHead)
-				curHead = voteManager.chain.GetHeader(curHead.ParentHash, curHead.Number.Uint64()-1)
-			}
-
-			for i := len(newChainStack) - 1; i >= 0; i-- {
-				curBlockHeader := newChainStack[i]
-				// Vote for curBlockHeader block.
-				vote := &types.VoteData{
-					TargetNumber: curBlockHeader.Number.Uint64(),
-					TargetHash:   curBlockHeader.Hash(),
-				}
-				voteMessage := &types.VoteEnvelope{
-					Data: vote,
-				}
-				// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
-				if ok, sourceNumber, sourceHash := voteManager.UnderRules(curBlockHeader); ok {
-					if sourceHash != (common.Hash{}) {
-						voteMessage.Data.SourceNumber = sourceNumber
-						voteMessage.Data.SourceHash = sourceHash
-					}
-
-					if err := voteManager.signer.SignVote(voteMessage); err != nil {
-						log.Debug("Failed to sign vote", "err", err)
-						votesSigningErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
-						continue
-					}
-					if err := voteManager.journal.WriteVote(voteMessage); err != nil {
-						log.Warn("Failed to write vote into journal", "err", err)
-						votesJournalErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
-						continue
-					}
-
-					log.Info("vote manager produced vote", "voteHash=", voteMessage.Hash())
-					voteManager.pool.PutVote(voteMessage)
-					votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
-				}
-			}
 		}
 	}
 }
@@ -213,12 +196,8 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 	targetBlockNumber := header.Number.Uint64()
 
 	journal := voteManager.journal
-	journalLatestVote := journal.latestVote
-	if journalLatestVote == nil {
-		return true, sourceBlockNumber, sourceBlockHash
-	}
-
 	walLog := journal.walLog
+
 	firstIndex, err := walLog.FirstIndex()
 	if err != nil {
 		log.Error("Failed to get firstIndex of vote journal", "err", err)
@@ -231,6 +210,15 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 		return false, 0, common.Hash{}
 	}
 
+	journalLatestVote, err := journal.ReadVote(lastIndex)
+	if err != nil {
+		return false, 0, common.Hash{}
+	}
+	if journalLatestVote == nil {
+		// Indicate there's no vote before in local node, so it must be under rules.
+		return true, sourceBlockNumber, sourceBlockHash
+	}
+
 	for index := lastIndex; index >= firstIndex; index-- {
 		vote, err := journal.ReadVote(index)
 		if err != nil {
@@ -238,6 +226,10 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 		}
 		if vote == nil {
 			log.Error("vote is nil")
+			return false, 0, common.Hash{}
+		}
+
+		if targetBlockNumber == vote.Data.TargetNumber {
 			return false, 0, common.Hash{}
 		}
 
