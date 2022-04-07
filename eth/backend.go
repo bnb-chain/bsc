@@ -137,6 +137,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		if err != nil {
 			return nil, err
 		}
+		log.Info("Open remotedb", "addrs", config.RemoteDB.Addrs, "persistcache", config.EnablePersistCache)
 	} else {
 		chainDb, err = stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
 			config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff)

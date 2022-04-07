@@ -58,8 +58,10 @@ func NewRocksDB(cfg *Config, cache ethdb.KeyValueStore, readonly bool) (*RocksDB
 // Close closes all io accesses to the underlying key-value store.
 func (db *RocksDB) Close() error {
 	close(db.quitChan)
-	if err := db.persistCache.Close(); err != nil {
-		return err
+	if db.persistCache != nil {
+		if err := db.persistCache.Close(); err != nil {
+			return err
+		}
 	}
 	if err := db.client.Close(); err != nil {
 		return err
