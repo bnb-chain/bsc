@@ -1019,13 +1019,27 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	return blk, receipts, nil
 }
 
+func (p *Parlia) IsWithInSnapShot(chain consensus.ChainHeaderReader, header *types.Header) bool {
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		log.Error("failed to get the snapshot from consensus", "error", err)
+		return false
+	}
+	validators := snap.Validators
+	if _, ok := validators[p.val]; ok {
+		return true
+	}
+	return false
+}
+
 // VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
 func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) bool {
 	voteBlockNumber := vote.Data.TargetNumber
 	voteBlockHash := vote.Data.TargetHash
 	header := chain.GetHeaderByHash(voteBlockHash)
 	if header == nil {
-		log.Error("BlockHeader at current voteBlockNumber is nil", "blockNumber=", voteBlockNumber, "blockHash=", voteBlockHash)
+		log.Error("BlockHeader at current voteBlockNumber is nil", "blockNumber", voteBlockNumber, "blockHash", voteBlockHash)
 		return false
 	}
 

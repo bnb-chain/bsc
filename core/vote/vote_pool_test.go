@@ -35,6 +35,7 @@ import (
 	"github.com/prysmaticlabs/prysm/validator/keymanager"
 	keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
 
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -55,8 +56,53 @@ var (
 
 	password = "secretPassword"
 
-	timeThreshold = 30
+	timeThreshold = 20
 )
+
+type mockPOSA struct {
+	consensus.PoSA
+}
+
+func getHighestJustifiedHeaderForValid(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
+	return chain.GetHeaderByHash(header.ParentHash)
+}
+
+func getHighestJustifiedHeaderForInvalid(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
+	cur := header
+	for i := 0; i < 3; i++ {
+		parent := chain.GetHeaderByHash(cur.ParentHash)
+		if parent == nil {
+			return cur
+		}
+		cur = parent
+	}
+
+	parent := cur
+	for i := 0; i < 5; i++ {
+		if parent != nil {
+			parent = chain.GetHeaderByHash(parent.ParentHash)
+		}
+	}
+
+	// Iterate into the first block to simulate the invalid rules of range overlap
+	for parent != nil {
+		cur = parent
+		parent = chain.GetHeaderByHash(parent.ParentHash)
+	}
+	return cur
+}
+
+func (m *mockPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) bool {
+	return true
+}
+
+func (m *mockPOSA) SetVotePool(votePool consensus.VotePool) {
+	return
+}
+
+func (m *mockPOSA) IsWithInSnapShot(chain consensus.ChainHeaderReader, header *types.Header) bool {
+	return true
+}
 
 func (pool *VotePool) verifyStructureSizeOfVotePool(receivedVotes, curVotes, futureVotes, curVotesPq, futureVotesPq int) bool {
 	for i := 0; i < timeThreshold; i++ {
@@ -77,12 +123,24 @@ func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
 		if int(lastIndex)-int(firstIndex)+1 == size {
 			return true
 		}
+		lastVote, _ := journal.ReadVote(lastIndex)
+		if lastVote != nil && lastVote.Data.TargetNumber == uint64(lastLatestVoteNumber) {
+			return true
+		}
 	}
 	return false
+}
+
+func TestValidVotePool(t *testing.T) {
+	testVotePool(t, true)
 
 }
 
-func TestVotePool(t *testing.T) {
+func TestInvalidVotePool(t *testing.T) {
+	testVotePool(t, false)
+}
+
+func testVotePool(t *testing.T, inValidRules bool) {
 	walletPasswordDir, walletDir := setUpKeyManager(t)
 
 	// Create a database pre-initialize with a genesis block
@@ -91,12 +149,14 @@ func TestVotePool(t *testing.T) {
 		Config: params.TestChainConfig,
 		Alloc:  core.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
 	}).MustCommit(db)
+
 	chain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFullFaker(), vm.Config{}, nil, nil)
 
 	mux := new(event.TypeMux)
+	mockEngine := &mockPOSA{}
 
 	// Create vote pool
-	votePool := NewVotePool(params.TestChainConfig, chain, ethash.NewFaker())
+	votePool := NewVotePool(params.TestChainConfig, chain, mockEngine)
 
 	// Create vote manager
 	// Create a temporary file for the votes journal
@@ -111,7 +171,14 @@ func TestVotePool(t *testing.T) {
 	file.Close()
 	os.Remove(journal)
 
-	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir, ethash.NewFaker())
+	var ruleFunc getHighestJustifiedHeader
+	if inValidRules {
+		ruleFunc = getHighestJustifiedHeaderForValid
+	} else {
+		ruleFunc = getHighestJustifiedHeaderForInvalid
+	}
+
+	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir, mockEngine, ruleFunc)
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}
@@ -122,10 +189,22 @@ func TestVotePool(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	mux.Post(downloader.DoneEvent{})
 
-	bs, _ := core.GenerateChain(params.TestChainConfig, chain.Genesis(), ethash.NewFaker(), db, 16, nil)
-	// Insert a batch of 16 blocks in chain, expect only 11 amount of blocks: Block6 ~ Block16 be voted!
+	bs, _ := core.GenerateChain(params.TestChainConfig, chain.Genesis(), ethash.NewFaker(), db, 1, nil)
 	if _, err := chain.InsertChain(bs); err != nil {
 		panic(err)
+	}
+	for i := 0; i < 10; i++ {
+		bs, _ = core.GenerateChain(params.TestChainConfig, bs[len(bs)-1], ethash.NewFaker(), db, 1, nil)
+		if _, err := chain.InsertChain(bs); err != nil {
+			panic(err)
+		}
+	}
+	if !inValidRules {
+		if votePool.verifyStructureSizeOfVotePool(11, 11, 0, 11, 0) {
+			fmt.Println("bug666")
+			t.Fatalf("put vote failed")
+		}
+		return
 	}
 
 	if !votePool.verifyStructureSizeOfVotePool(11, 11, 0, 11, 0) {
@@ -133,7 +212,7 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(11, 16) {
+	if !voteJournal.verifyJournal(11, 11) {
 		t.Fatalf("journal failed")
 	}
 
@@ -147,7 +226,7 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(12, 17) {
+	if !voteJournal.verifyJournal(12, 12) {
 		t.Fatalf("journal failed")
 	}
 
@@ -159,11 +238,11 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(268, 273) {
+	if !voteJournal.verifyJournal(268, 268) {
 		t.Fatalf("journal failed")
 	}
 
-	// currently chain size is 273, and blockNumber before 18 in votePool should be pruned, so vote pool size should be 256!
+	// currently chain size is 268, and blockNumber before 13 in votePool should be pruned, so vote pool size should be 256!
 	if !votePool.verifyStructureSizeOfVotePool(256, 256, 0, 256, 0) {
 		t.Fatalf("put vote failed")
 	}
@@ -186,14 +265,14 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(268, 273) {
+	if !voteJournal.verifyJournal(268, 268) {
 		t.Fatalf("journal failed")
 	}
 
 	// Test future votes scenario: votes number within latestBlockHeader ~ latestBlockHeader + 11
 	futureVote := &types.VoteEnvelope{
 		Data: &types.VoteData{
-			TargetNumber: 282,
+			TargetNumber: 279,
 		},
 	}
 	voteManager.pool.PutVote(futureVote)
@@ -203,14 +282,14 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(268, 273) {
+	if !voteJournal.verifyJournal(268, 268) {
 		t.Fatalf("journal failed")
 	}
 
 	// Test duplicate vote case, shouldn'd be put into vote pool
 	duplicateVote := &types.VoteEnvelope{
 		Data: &types.VoteData{
-			TargetNumber: 282,
+			TargetNumber: 279,
 		},
 	}
 	voteManager.pool.PutVote(duplicateVote)
@@ -220,14 +299,14 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(268, 273) {
+	if !voteJournal.verifyJournal(268, 268) {
 		t.Fatalf("journal failed")
 	}
 
 	// Test future votes larger than latestBlockNumber + 11 should be rejected
 	futureVote = &types.VoteEnvelope{
 		Data: &types.VoteData{
-			TargetNumber: 285,
+			TargetNumber: 280,
 		},
 	}
 	voteManager.pool.PutVote(futureVote)
@@ -235,7 +314,7 @@ func TestVotePool(t *testing.T) {
 		t.Fatalf("put vote failed")
 	}
 
-	// Test transfer votes from future to cur, latest block header is #293
+	// Test transfer votes from future to cur, latest block header is #288
 	for i := 0; i < 20; i++ {
 		bs, _ = core.GenerateChain(params.TestChainConfig, bs[len(bs)-1], ethash.NewFaker(), db, 1, nil)
 		if _, err := chain.InsertChain(bs); err != nil {
@@ -249,7 +328,29 @@ func TestVotePool(t *testing.T) {
 	}
 
 	// Verify journal
-	if !voteJournal.verifyJournal(288, 293) {
+	if !voteJournal.verifyJournal(288, 288) {
+		t.Fatalf("journal failed")
+	}
+
+	for i := 0; i < 224; i++ {
+		bs, _ = core.GenerateChain(params.TestChainConfig, bs[len(bs)-1], ethash.NewFaker(), db, 1, nil)
+		if _, err := chain.InsertChain(bs); err != nil {
+			panic(err)
+		}
+	}
+
+	// Verify journal
+	if !voteJournal.verifyJournal(512, 512) {
+		t.Fatalf("journal failed")
+	}
+
+	bs, _ = core.GenerateChain(params.TestChainConfig, bs[len(bs)-1], ethash.NewFaker(), db, 1, nil)
+	if _, err := chain.InsertChain(bs); err != nil {
+		panic(err)
+	}
+
+	// Verify if journal no longer than 512
+	if !voteJournal.verifyJournal(512, 513) {
 		t.Fatalf("journal failed")
 	}
 }

@@ -235,16 +235,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	bLSWalletPath := stack.ResolvePath(conf.BLSWalletDir)
 	voteJournalPath := stack.ResolvePath(conf.VoteJournalDir)
 
-	// Create votePool instance
-	votePool := vote.NewVotePool(chainConfig, eth.blockchain, eth.engine)
-	eth.votePool = votePool
-	log.Info("Create votePool successfully")
-
 	// Create voteManager instance
-	if _, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, votePool, voteJournalPath, bLSPassWordPath, bLSWalletPath, eth.engine); err != nil {
-		log.Error("Failed to Initialize voteManager: %v.", err)
+	if posa, ok := eth.engine.(consensus.PoSA); ok {
+		// Create votePool instance
+		votePool := vote.NewVotePool(chainConfig, eth.blockchain, posa)
+		eth.votePool = votePool
+		log.Info("Create votePool successfully")
+
+		if _, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, votePool, voteJournalPath, bLSPassWordPath, bLSWalletPath, posa, posa.GetHighestJustifiedHeader); err != nil {
+			log.Error("Failed to Initialize voteManager: %v.", err)
+		}
+		log.Info("Create voteManager successfully")
 	}
-	log.Info("Create voteManager successfully")
 
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit

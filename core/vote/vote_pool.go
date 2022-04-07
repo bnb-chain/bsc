@@ -67,12 +67,12 @@ type VotePool struct {
 
 	votesCh chan *types.VoteEnvelope
 
-	engine consensus.Engine
+	engine consensus.PoSA
 }
 
 type votesPriorityQueue []*types.VoteData
 
-func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, engine consensus.Engine) *VotePool {
+func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, engine consensus.PoSA) *VotePool {
 	votePool := &VotePool{
 		chain:         chain,
 		chainconfig:   chainconfig,
@@ -180,7 +180,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 	voteBlockHash := vote.Data.TargetHash
 	voteBlockNumber := vote.Data.TargetNumber
 
-	log.Info("The vote info to put is:", "voteBlockNumber=", voteBlockNumber, "voteBlockHash=", voteBlockHash)
+	log.Info("The vote info to put is:", "voteBlockNumber", voteBlockNumber, "voteBlockHash", voteBlockHash)
 
 	pool.mu.Lock()
 	defer pool.mu.Unlock()

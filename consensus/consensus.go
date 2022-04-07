@@ -152,4 +152,5 @@ type PoSA interface {
 	GetHighestJustifiedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) bool
 	SetVotePool(votePool VotePool)
+	IsWithInSnapShot(chain ChainHeaderReader, header *types.Header) bool
 }

@@ -23,6 +23,10 @@ const (
 	maxForkLength = 11
 )
 
+type (
+	getHighestJustifiedHeader func(chain consensus.ChainHeaderReader, header *types.Header) *types.Header
+)
+
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {
 	mux *event.TypeMux
@@ -37,10 +41,12 @@ type VoteManager struct {
 	signer  *VoteSigner
 	journal *VoteJournal
 
-	engine consensus.Engine
+	engine consensus.PoSA
+
+	get getHighestJustifiedHeader
 }
 
-func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, bLSPassWordPath, bLSWalletPath string, engine consensus.Engine) (*VoteManager, error) {
+func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, bLSPassWordPath, bLSWalletPath string, engine consensus.PoSA, get getHighestJustifiedHeader) (*VoteManager, error) {
 	voteManager := &VoteManager{
 		mux: mux,
 
@@ -50,6 +56,8 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 
 		pool:   pool,
 		engine: engine,
+
+		get: get,
 	}
 
 	dirExists, err := wallet.Exists(bLSWalletPath)
@@ -135,7 +143,12 @@ func (voteManager *VoteManager) loop() {
 			if !startVote || cHead.Block == nil {
 				continue
 			}
+
 			curHead := cHead.Block.Header()
+			// Check if cur validator is within the validatorSet at curHead
+			if !voteManager.engine.IsWithInSnapShot(voteManager.chain, curHead) {
+				continue
+			}
 
 			// Vote for curBlockHeader block.
 			vote := &types.VoteData{
@@ -145,6 +158,7 @@ func (voteManager *VoteManager) loop() {
 			voteMessage := &types.VoteEnvelope{
 				Data: vote,
 			}
+
 			// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
 			if ok, sourceNumber, sourceHash := voteManager.UnderRules(curHead); ok {
 				if sourceHash == (common.Hash{}) {
@@ -169,7 +183,6 @@ func (voteManager *VoteManager) loop() {
 				voteManager.pool.PutVote(voteMessage)
 				votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 			}
-
 		}
 	}
 }
@@ -179,12 +192,7 @@ func (voteManager *VoteManager) loop() {
 // A validator must not vote within the span of its other votes . (Rule 2)
 // Validators always vote for their canonical chain’s latest block. (Rule 3)
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
-	posa, ok := voteManager.engine.(consensus.PoSA)
-	if !ok {
-		return true, 0, common.Hash{}
-	}
-
-	curHighestJustifiedHeader := posa.GetHighestJustifiedHeader(voteManager.chain, header)
+	curHighestJustifiedHeader := voteManager.get(voteManager.chain, header)
 	if curHighestJustifiedHeader == nil {
 		//return true, 0, common.Hash{}
 		//TODO, For Integration Test only!:
