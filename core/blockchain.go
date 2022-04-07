@@ -546,12 +546,6 @@ func (bc *BlockChain) loadLastState() error {
 		return bc.Reset()
 	}
 
-	if stableBlockNumber := rawdb.ReadStableStateBlockNumber(bc.db); stableBlockNumber > currentBlock.NumberU64() {
-		if stableBlock := bc.GetBlockByNumber(stableBlockNumber); stableBlock != nil {
-			currentBlock = stableBlock
-		}
-	}
-
 	// Everything seems to be fine, set as the head block
 	bc.currentBlock.Store(currentBlock)
 	headBlockGauge.Update(int64(currentBlock.NumberU64()))
