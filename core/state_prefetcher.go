@@ -67,7 +67,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func(idx int) {
-			newStatedb := statedb.Copy()
+			newStatedb := statedb.CopyWithSyncPool()
 			newStatedb.EnableWriteOnSharedStorage()
 			gaspool := new(GasPool).AddGas(block.GasLimit())
 			blockContext := NewEVMBlockContext(header, p.bc, nil)
@@ -86,6 +86,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 				newStatedb.Prepare(tx.Hash(), header.Hash(), i)
 				precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 			}
+			newStatedb.ResetSyncPool()
 		}(i)
 	}
 }
@@ -100,7 +101,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 	for i := 0; i < prefetchThread; i++ {
 		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
 			idx := 0
-			newStatedb := statedb.Copy()
+			newStatedb := statedb.CopyWithSyncPool()
 			newStatedb.EnableWriteOnSharedStorage()
 			gaspool := new(GasPool).AddGas(gasLimit)
 			blockContext := NewEVMBlockContext(header, p.bc, nil)
@@ -119,6 +120,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 					gaspool = new(GasPool).AddGas(gasLimit)
 				case <-stopCh:
+					newStatedb.ResetSyncPool()
 					return
 				}
 			}
