@@ -1,13 +1,13 @@
 package remotedb
 
 import (
-	"time"
 	"errors"
+	"time"
 	"context"
 
-    rocks "github.com/go-redis/redis/v8"
-    "github.com/ethereum/go-ethereum/ethdb"
-    "github.com/ethereum/go-ethereum/log"
+	rocks "github.com/go-redis/redis/v8"
+	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 var (

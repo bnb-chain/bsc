@@ -168,6 +168,14 @@ var (
 		utils.CatalystFlag,
 		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
+		utils.EnableRemoteDB,
+		utils.RemoteDBPersistCache,
+		utils.RemoteDBAddr,
+		utils.RemoteDBReadTimeout,
+		utils.RemoteDBWriteTimeout,
+		utils.RemoteDBRetryMinTimeout,
+		utils.RemoteDBRetryMaxTimeout,
+		utils.RemoteDBIdleConns,
 	}
 
 	rpcFlags = []cli.Flag{

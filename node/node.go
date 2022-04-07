@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
+	"github.com/ethereum/go-ethereum/ethdb/remotedb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -580,6 +581,23 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 		db = n.wrapDatabase(db)
 	}
 	return db, err
+}
+
+// OpenRemoteDB opens an existing remotedb database
+func (n *Node) OpenRemoteDB(cfg *remotedb.Config, persist bool, name string, cache, handles int, namespace string, readonly bool) (ethdb.Database, error) {
+	var persistCache ethdb.KeyValueStore
+	var err error
+	if persist {
+		persistCache, err = leveldb.New(n.ResolvePath(name), cache, handles, namespace, readonly)
+		if err != nil {
+			return nil, err
+		}
+	}
+	rdb, err := remotedb.NewRocksDB(cfg, persistCache, readonly)
+	if err != nil {
+		return nil, err
+	}
+	return rawdb.NewDatabase(rdb), nil
 }
 
 func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, diff, namespace string, readonly, persistDiff bool) (ethdb.Database, error) {

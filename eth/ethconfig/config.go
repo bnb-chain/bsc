@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/remotedb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
@@ -92,6 +93,7 @@ var Defaults = Config{
 	RPCGasCap:   25000000,
 	GPO:         FullNodeGPO,
 	RPCTxFeeCap: 1, // 1 ether
+	RemoteDB:    *remotedb.DefaultConfig(),
 }
 
 func init() {
@@ -167,6 +169,8 @@ type Config struct {
 	DatabaseDiff       string
 	PersistDiff        bool
 	DiffBlock          uint64
+	EnableRemoteDB     bool
+	EnablePersistCache bool
 
 	TrieCleanCache          int
 	TrieCleanCacheJournal   string        `toml:",omitempty"` // Disk journal directory for trie cache to survive node restarts
@@ -216,6 +220,9 @@ type Config struct {
 
 	// Berlin block override (TODO: remove after the fork)
 	OverrideBerlin *big.Int `toml:",omitempty"`
+
+	// RemoteDB Options
+	RemoteDB remotedb.Config
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain configuration.

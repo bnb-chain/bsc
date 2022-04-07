@@ -842,6 +842,47 @@ var (
 		Name:  "check-snapshot-with-mpt",
 		Usage: "Enable checking between snapshot and MPT ",
 	}
+
+	EnableRemoteDB = cli.BoolFlag{
+		Name:  "remotedb",
+		Usage: "Enable remotedb store cluster replace local disk ",
+	}
+
+	RemoteDBAddr = cli.StringFlag{
+		Name:  "remotedb.addrs",
+		Usage: "Remotedb hosts ",
+	}
+
+	RemoteDBReadTimeout = cli.IntFlag{
+		Name:  "remotedb.readtimeout",
+		Usage: "Remotedb read request timeout ",
+	}
+
+	RemoteDBWriteTimeout = cli.IntFlag{
+		Name:  "remotedb.writetimeout",
+		Usage: "Remotedb write request timeout ",
+	}
+
+	RemoteDBRetryMinTimeout = cli.IntFlag{
+		Name:  "remotedb.retrymintimeout",
+		Usage: "Remotedb retry request min timeout ",
+	}
+
+	RemoteDBRetryMaxTimeout = cli.IntFlag{
+		Name:  "remotedb.retrymaxtimeout",
+		Usage: "Remotedb retry request max timeout ",
+	}
+
+	RemoteDBIdleConns = cli.IntFlag{
+		Name:  "remotedb.idleconns",
+		Usage: "Remotedb idle connections for save time establishing conns ",
+	}
+
+	RemoteDBPersistCache = cli.BoolFlag{
+		Name:  "remotedb.persistcache",
+		Usage: "Remotedb enable local persist cache ",
+	}
+
 )
 
 // MakeDataDir retrieves the currently requested data directory, terminating
@@ -1713,6 +1754,30 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		} else {
 			cfg.EthDiscoveryURLs = SplitAndTrim(urls)
 		}
+	}
+	if ctx.GlobalIsSet(EnableRemoteDB.Name) {
+		cfg.EnableRemoteDB = ctx.GlobalBool(EnableRemoteDB.Name)
+	}
+	if ctx.GlobalIsSet(RemoteDBPersistCache.Name) {
+		cfg.EnablePersistCache = ctx.GlobalBool(RemoteDBPersistCache.Name)
+	}
+	if ctx.GlobalIsSet(RemoteDBAddr.Name) {
+		cfg.RemoteDB.Addrs = strings.Split(ctx.GlobalString(RemoteDBAddr.Name), ",")
+	}
+	if ctx.GlobalIsSet(RemoteDBReadTimeout.Name) {
+		cfg.RemoteDB.ReadTimeout = ctx.GlobalInt(RemoteDBReadTimeout.Name)
+	}
+	if ctx.GlobalIsSet(RemoteDBWriteTimeout.Name) {
+		cfg.RemoteDB.WriteTimeout = ctx.GlobalInt(RemoteDBWriteTimeout.Name)
+	}
+	if ctx.GlobalIsSet(RemoteDBRetryMinTimeout.Name) {
+		cfg.RemoteDB.MinRetryBackoff = ctx.GlobalInt(RemoteDBRetryMinTimeout.Name)
+	}
+	if ctx.GlobalIsSet(RemoteDBRetryMaxTimeout.Name) {
+		cfg.RemoteDB.MaxRetryBackoff = ctx.GlobalInt(RemoteDBRetryMaxTimeout.Name)
+	}
+	if ctx.GlobalIsSet(RemoteDBIdleConns.Name) {
+		cfg.RemoteDB.MinIdleConns = ctx.GlobalInt(RemoteDBIdleConns.Name)
 	}
 	// Override any default configs for hard coded networks.
 	switch {
