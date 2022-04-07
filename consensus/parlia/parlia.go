@@ -17,6 +17,7 @@ import (
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/prysmaticlabs/prysm/crypto/bls"
+	"github.com/willf/bitset"
 	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum"
@@ -835,20 +836,21 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		if justifiedBlock == nil {
 			continue
 		}
-		rewardCoef := uint64(1)
-		switch height - justifiedBlock.Number.Uint64() {
-		case 1:
-			rewardCoef = 8
-		case 2:
-			rewardCoef = 4
-		}
+
 		snap, err := p.snapshot(chain, height, head.Hash(), nil)
 		if err != nil {
 			return err
 		}
-		for val, valInfo := range snap.Validators {
-			if ((uint64(voteAttestation.VoteAddressSet) >> (valInfo.Index - 1)) & 1) == 1 {
-				accumulatedWeights[val] += rewardCoef
+		validators := snap.validators()
+		validatorsBitSet := bitset.From([]uint64{uint64(voteAttestation.VoteAddressSet)})
+		if validatorsBitSet.Count() > uint(len(validators)) {
+			//log.Error("invalid attestation, vote number larger than validators number")
+			//continue
+			return errors.New("invalid attestation, vote number larger than validators number")
+		}
+		for index, val := range validators {
+			if validatorsBitSet.Test(uint(index)) {
+				accumulatedWeights[val] += 1
 			}
 		}
 		head = chain.GetHeaderByHash(head.ParentHash)
