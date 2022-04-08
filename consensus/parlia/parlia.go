@@ -396,7 +396,7 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	// Get parent block
 	number := header.Number.Uint64()
 	var parent *types.Header
-	if parents != nil {
+	if len(parents) > 0 {
 		parent = parents[0]
 	} else {
 		parent = chain.GetHeader(header.ParentHash, number-1)
