@@ -13,7 +13,7 @@ IMPROVEMENT
 
 BUGFIX
 * [\#797](https://github.com/bnb-chain/bsc/pull/797) fix race condition on preimage in pipecommit
-* [\#808](https://github.com/bnb-chain/bsc/pull/808) fix code of difflayer not assgin when new smart contract created
+* [\#808](https://github.com/bnb-chain/bsc/pull/808) fix code of difflayer not assign when new smart contract created
 * [\#817](https://github.com/bnb-chain/bsc/pull/817) fix bugs of prune block tool
 * [\#834](https://github.com/bnb-chain/bsc/pull/834) fix deadlock when failed to verify state root in pipecommit
 * [\#835](https://github.com/bnb-chain/bsc/pull/835) fix deadlock on miner module when failed to commit trie
