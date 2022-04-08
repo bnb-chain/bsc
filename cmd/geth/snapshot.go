@@ -225,7 +225,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	}
 	headHeader := headBlock.Header()
 	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
-	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, TriesInMemory, headBlock.Root(), false, false, false)
+	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, TriesInMemory, headBlock.Root(), false, false, false, false)
 	if err != nil {
 		log.Error("snaptree error", "err", err)
 		return nil, err // The relevant snapshot(s) might not exist
@@ -422,7 +422,7 @@ func pruneAllState(ctx *cli.Context) error {
 		g = cfg.Eth.Genesis
 	}
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
 	pruner, err := pruner.NewAllPruner(chaindb)
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)

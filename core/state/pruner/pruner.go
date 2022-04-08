@@ -30,12 +30,8 @@ import (
 	"github.com/prometheus/tsdb/fileutil"
 
 	"github.com/ethereum/go-ethereum/common"
-<<<<<<< HEAD
-	"github.com/ethereum/go-ethereum/core"
-||||||| 74f6b613a
-=======
 	"github.com/ethereum/go-ethereum/consensus"
->>>>>>> develop
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -226,7 +222,7 @@ func pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 		}
 	}
 	root := statedb.IntermediateRoot(false)
-	statedb.Commit(false)
+	statedb.Commit(nil)
 	statedb.Database().TrieDB().Commit(root, true, nil)
 	log.Info("State pruning successful", "pruned", size, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
