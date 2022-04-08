@@ -105,7 +105,7 @@ func TestDiskLayerExternalInvalidationFullFlatten(t *testing.T) {
 	accounts := map[common.Hash][]byte{
 		common.HexToHash("0xa1"): randomAccount(),
 	}
-	if err := snaps.update(common.HexToHash("0x02"), common.HexToHash("0x01"), nil, accounts, nil); err != nil {
+	if err := snaps.update(common.HexToHash("0x02"), common.HexToHash("0x01"), nil, accounts, nil, nil); err != nil {
 		t.Fatalf("failed to create a diff layer: %v", err)
 	}
 	if n := len(snaps.layers); n != 2 {
@@ -149,10 +149,10 @@ func TestDiskLayerExternalInvalidationPartialFlatten(t *testing.T) {
 	accounts := map[common.Hash][]byte{
 		common.HexToHash("0xa1"): randomAccount(),
 	}
-	if err := snaps.update(common.HexToHash("0x02"), common.HexToHash("0x01"), nil, accounts, nil); err != nil {
+	if err := snaps.update(common.HexToHash("0x02"), common.HexToHash("0x01"), nil, accounts, nil, nil); err != nil {
 		t.Fatalf("failed to create a diff layer: %v", err)
 	}
-	if err := snaps.update(common.HexToHash("0x03"), common.HexToHash("0x02"), nil, accounts, nil); err != nil {
+	if err := snaps.update(common.HexToHash("0x03"), common.HexToHash("0x02"), nil, accounts, nil, nil); err != nil {
 		t.Fatalf("failed to create a diff layer: %v", err)
 	}
 	if n := len(snaps.layers); n != 3 {
@@ -197,13 +197,13 @@ func TestDiffLayerExternalInvalidationPartialFlatten(t *testing.T) {
 	accounts := map[common.Hash][]byte{
 		common.HexToHash("0xa1"): randomAccount(),
 	}
-	if err := snaps.update(common.HexToHash("0x02"), common.HexToHash("0x01"), nil, accounts, nil); err != nil {
+	if err := snaps.update(common.HexToHash("0x02"), common.HexToHash("0x01"), nil, accounts, nil, nil); err != nil {
 		t.Fatalf("failed to create a diff layer: %v", err)
 	}
-	if err := snaps.update(common.HexToHash("0x03"), common.HexToHash("0x02"), nil, accounts, nil); err != nil {
+	if err := snaps.update(common.HexToHash("0x03"), common.HexToHash("0x02"), nil, accounts, nil, nil); err != nil {
 		t.Fatalf("failed to create a diff layer: %v", err)
 	}
-	if err := snaps.update(common.HexToHash("0x04"), common.HexToHash("0x03"), nil, accounts, nil); err != nil {
+	if err := snaps.update(common.HexToHash("0x04"), common.HexToHash("0x03"), nil, accounts, nil, nil); err != nil {
 		t.Fatalf("failed to create a diff layer: %v", err)
 	}
 	if n := len(snaps.layers); n != 4 {
@@ -257,12 +257,12 @@ func TestPostCapBasicDataAccess(t *testing.T) {
 		},
 	}
 	// The lowest difflayer
-	snaps.update(common.HexToHash("0xa1"), common.HexToHash("0x01"), nil, setAccount("0xa1"), nil)
-	snaps.update(common.HexToHash("0xa2"), common.HexToHash("0xa1"), nil, setAccount("0xa2"), nil)
-	snaps.update(common.HexToHash("0xb2"), common.HexToHash("0xa1"), nil, setAccount("0xb2"), nil)
+	snaps.update(common.HexToHash("0xa1"), common.HexToHash("0x01"), nil, setAccount("0xa1"), nil, nil)
+	snaps.update(common.HexToHash("0xa2"), common.HexToHash("0xa1"), nil, setAccount("0xa2"), nil, nil)
+	snaps.update(common.HexToHash("0xb2"), common.HexToHash("0xa1"), nil, setAccount("0xb2"), nil, nil)
 
-	snaps.update(common.HexToHash("0xa3"), common.HexToHash("0xa2"), nil, setAccount("0xa3"), nil)
-	snaps.update(common.HexToHash("0xb3"), common.HexToHash("0xb2"), nil, setAccount("0xb3"), nil)
+	snaps.update(common.HexToHash("0xa3"), common.HexToHash("0xa2"), nil, setAccount("0xa3"), nil, nil)
+	snaps.update(common.HexToHash("0xb3"), common.HexToHash("0xb2"), nil, setAccount("0xb3"), nil, nil)
 
 	// checkExist verifies if an account exiss in a snapshot
 	checkExist := func(layer *diffLayer, key string) error {
@@ -357,7 +357,7 @@ func TestSnaphots(t *testing.T) {
 	)
 	for i := 0; i < 129; i++ {
 		head = makeRoot(uint64(i + 2))
-		snaps.update(head, last, nil, setAccount(fmt.Sprintf("%d", i+2)), nil)
+		snaps.update(head, last, nil, setAccount(fmt.Sprintf("%d", i+2)), nil, nil)
 		last = head
 		snaps.Cap(head, 128) // 130 layers (128 diffs + 1 accumulator + 1 disk)
 	}

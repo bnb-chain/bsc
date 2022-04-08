@@ -250,6 +250,9 @@ func (hc *HeaderChain) writeHeaders(headers []*types.Header) (result *headerWrit
 				headHeader = hc.GetHeader(headHash, headNumber)
 			)
 			for rawdb.ReadCanonicalHash(hc.chainDb, headNumber) != headHash {
+				if frozen, _ := hc.chainDb.Ancients(); frozen == headNumber {
+					break
+				}
 				rawdb.WriteCanonicalHash(markerBatch, headHash, headNumber)
 				headHash = headHeader.ParentHash
 				headNumber = headHeader.Number.Uint64() - 1

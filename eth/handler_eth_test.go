@@ -239,6 +239,76 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 func TestRecvTransactions65(t *testing.T) { testRecvTransactions(t, eth.ETH65) }
 func TestRecvTransactions66(t *testing.T) { testRecvTransactions(t, eth.ETH66) }
 
+func TestWaitDiffExtensionTimout(t *testing.T) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	_, p2pSink := p2p.MsgPipe()
+	defer p2pSink.Close()
+
+	protos := []p2p.Protocol{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}
+
+	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}), p2pSink, nil)
+	defer sink.Close()
+
+	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+
+	if err == nil || err.Error() != "peer wait timeout" {
+		t.Fatalf("error should be `peer wait timeout`")
+	}
+}
+
+func TestWaitSnapExtensionTimout(t *testing.T) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	_, p2pSink := p2p.MsgPipe()
+	defer p2pSink.Close()
+
+	protos := []p2p.Protocol{
+		{
+			Name:    "snap",
+			Version: 1,
+		},
+	}
+
+	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
+		{
+			Name:    "snap",
+			Version: 1,
+		},
+	}), p2pSink, nil)
+	defer sink.Close()
+
+	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+
+	if err == nil || err.Error() != "peer wait timeout" {
+		t.Fatalf("error should be `peer wait timeout`")
+	}
+}
+
 func testRecvTransactions(t *testing.T, protocol uint) {
 	t.Parallel()
 

@@ -201,8 +201,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
-	if config.DiffSync && !config.NoTries {
+	if config.DiffSync && !config.NoTries && !config.PipeCommit {
 		bcOps = append(bcOps, core.EnableLightProcessor)
+	}
+	if config.PipeCommit {
+		bcOps = append(bcOps, core.EnablePipelineCommit)
 	}
 	if config.PersistDiff {
 		bcOps = append(bcOps, core.EnablePersistDiff(config.DiffBlock))

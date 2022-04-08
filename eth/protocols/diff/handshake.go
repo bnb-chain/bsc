@@ -26,7 +26,7 @@ import (
 
 const (
 	// handshakeTimeout is the maximum allowed time for the `diff` handshake to
-	// complete before dropping the connection.= as malicious.
+	// complete before dropping the connection as malicious.
 	handshakeTimeout = 5 * time.Second
 )
 
