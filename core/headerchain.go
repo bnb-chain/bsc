@@ -216,6 +216,10 @@ func (hc *HeaderChain) writeHeaders(headers []*types.Header) (result *headerWrit
 	// Second clause in the if statement reduces the vulnerability to selfish mining.
 	// Please refer to http://www.cs.cornell.edu/~ie53/publications/btcProcFC.pdf
 	reorg := newTD.Cmp(localTD) > 0
+	if p, ok := hc.engine.(consensus.PoSA); ok &&
+		p.GetHighestFinalizedNumber(hc, lastHeader) > p.GetHighestFinalizedNumber(hc, hc.CurrentHeader()) {
+		reorg = true
+	}
 	if !reorg && newTD.Cmp(localTD) == 0 {
 		if lastNumber < head {
 			reorg = true

@@ -42,7 +42,7 @@ const (
 )
 
 const (
-	maxUncleDist = 11  // Maximum allowed backward distance from the chain head
+	maxUncleDist = 13  // Maximum allowed backward distance from the chain head
 	maxQueueDist = 32  // Maximum allowed distance from the chain head to queue
 	hashLimit    = 256 // Maximum number of unique blocks or headers a peer may have announced
 	blockLimit   = 64  // Maximum number of unique blocks a peer may have delivered

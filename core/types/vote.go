@@ -22,6 +22,8 @@ type VoteData struct {
 	TargetHash   common.Hash
 }
 
+func (d *VoteData) Hash() common.Hash { return rlpHash(d) }
+
 type VoteEnvelope struct {
 	VoteAddress BLSPublicKey
 	Signature   BLSSignature
@@ -56,11 +58,6 @@ func (v *VoteEnvelope) calcVoteHash() common.Hash {
 		Data        *VoteData
 	}{v.VoteAddress, v.Signature, v.Data}
 	return rlpHash(vote)
-}
-
-// VoteDataHash returns the voteData hash.
-func (v *VoteData) VoteDataHash() common.Hash {
-	return rlpHash(*v)
 }
 
 func (b BLSPublicKey) Bytes() []byte { return b[:] }

@@ -1114,7 +1114,7 @@ func (c *finalitySignatureVerify) Run(input []byte) ([]byte, error) {
 
 // rlpHash encodes x and hashes the encoded bytes.
 func rlpHash(x *types.VoteData) (h [32]byte) {
-	bytes := x.VoteDataHash().Bytes()
+	bytes := x.Hash().Bytes()
 	copy(h[:], bytes)
 	return h
 }

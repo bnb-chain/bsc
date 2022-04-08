@@ -331,7 +331,7 @@ func TestEth68Messages(t *testing.T) {
 			voteAddress := new(types.BLSPublicKey)
 			signature := new(types.BLSSignature)
 			copy(voteAddress[:], secretKey.PublicKey().Marshal()[:])
-			copy(signature[:], secretKey.Sign(voteData.VoteDataHash().Bytes()).Marshal()[:])
+			copy(signature[:], secretKey.Sign(voteData.Hash().Bytes()).Marshal()[:])
 			votes.VoteAddress = *voteAddress
 			votes.Signature = *signature
 			votes.Data = &voteData

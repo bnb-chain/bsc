@@ -150,6 +150,7 @@ type PoSA interface {
 	IsLocalBlock(header *types.Header) bool
 	AllowLightProcess(chain ChainReader, currentHeader *types.Header) bool
 	GetHighestJustifiedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
+	GetHighestFinalizedNumber(chain ChainHeaderReader, header *types.Header) uint64
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) bool
 	SetVotePool(votePool VotePool)
 	IsWithInSnapShot(chain ChainHeaderReader, header *types.Header) bool

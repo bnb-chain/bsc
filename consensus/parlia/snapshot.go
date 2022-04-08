@@ -154,6 +154,8 @@ func (s *Snapshot) copy() *Snapshot {
 	}
 	if s.Attestation != nil {
 		cpy.Attestation = &types.VoteData{
+			SourceNumber: s.Attestation.SourceNumber,
+			SourceHash:   s.Attestation.SourceHash,
 			TargetNumber: s.Attestation.TargetNumber,
 			TargetHash:   s.Attestation.TargetHash,
 		}
@@ -169,6 +171,26 @@ func (s *Snapshot) isMajorityFork(forkHash string) bool {
 		}
 	}
 	return ally > len(s.RecentForkHashes)/2
+}
+
+func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) {
+	if !chainConfig.IsBoneh(header.Number) {
+		return
+	}
+
+	// The attestation should have been checked in verify header, update directly
+	attestation, _ := getVoteAttestationFromHeader(header, chainConfig, parliaConfig)
+	if attestation == nil {
+		return
+	}
+
+	// Update attestation
+	s.Attestation = &types.VoteData{
+		SourceNumber: attestation.Data.SourceNumber,
+		SourceHash:   attestation.Data.SourceHash,
+		TargetNumber: attestation.Data.TargetNumber,
+		TargetHash:   attestation.Data.TargetHash,
+	}
 }
 
 func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig) (*Snapshot, error) {
@@ -197,8 +219,8 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 	for _, header := range headers {
 		number := header.Number.Uint64()
 		// Delete the oldest validator from the recent list to allow it signing again
-		if limit := uint64(len(snap.Validators)/2 + 1); number >= limit {
-			delete(snap.Recents, number-limit)
+		if limit := getSignRecentlyLimit(number, len(snap.Validators), chainConfig); number >= uint64(limit) {
+			delete(snap.Recents, number-uint64(limit))
 		}
 		if limit := uint64(len(snap.Validators)); number >= limit {
 			delete(snap.RecentForkHashes, number-limit)
@@ -225,7 +247,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			}
 
 			// get validators from headers and use that for new validator set
-			newValArr, voteAddrArr, err := ParseValidators(checkpointHeader, chainConfig, s.config)
+			newValArr, voteAddrs, err := ParseValidators(checkpointHeader, chainConfig, s.config)
 			if err != nil {
 				return nil, err
 			}
@@ -235,12 +257,12 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 					newVals[val] = &ValidatorInfo{}
 				} else {
 					newVals[val] = &ValidatorInfo{
-						VoteAddress: voteAddrArr[idx],
+						VoteAddress: voteAddrs[idx],
 					}
 				}
 			}
-			oldLimit := len(snap.Validators)/2 + 1
-			newLimit := len(newVals)/2 + 1
+			oldLimit := getSignRecentlyLimit(number, len(snap.Validators), chainConfig)
+			newLimit := getSignRecentlyLimit(number, len(newVals), chainConfig)
 			if newLimit < oldLimit {
 				for i := 0; i < oldLimit-newLimit; i++ {
 					delete(snap.Recents, number-uint64(newLimit)-uint64(i))
@@ -261,6 +283,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				}
 			}
 		}
+		snap.updateAttestation(header, chainConfig, s.config)
 		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
 	}
 	snap.Number += uint64(len(headers))
