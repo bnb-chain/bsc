@@ -205,7 +205,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 	m[voteBlockHash].voteMessages = append(m[voteBlockHash].voteMessages, vote)
 	// Add into received vote to avoid future duplicated vote comes.
 	pool.receivedVotes.Add(voteHash)
-	log.Info("VoteHash put into votepool is:", "voteHash=", voteHash)
+	log.Info("VoteHash put into votepool is:", "voteHash", voteHash)
 
 	if isFutureVote {
 		localFutureVotesGauge.Inc(1)
@@ -317,7 +317,7 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 
 	// Check duplicate voteMessage firstly.
 	if pool.receivedVotes.Contains(voteHash) {
-		log.Debug("Vote pool already contained the same vote", "voteHash=", voteHash)
+		log.Debug("Vote pool already contained the same vote", "voteHash", voteHash)
 		return false
 	}
 	// Make sure in the range currentHeight-256~currentHeight+11.

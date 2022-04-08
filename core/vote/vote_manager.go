@@ -179,7 +179,7 @@ func (voteManager *VoteManager) loop() {
 					continue
 				}
 
-				log.Info("vote manager produced vote", "voteHash=", voteMessage.Hash())
+				log.Info("vote manager produced vote", "voteHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
 				votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 			}
