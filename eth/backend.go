@@ -201,10 +201,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
-	if config.DiffSync && !config.NoTries {
+	// TODO diffsync performance is not as expected, disable it when pipecommit is enabled for now
+	if config.DiffSync && !config.PipeCommit && !config.NoTries {
 		bcOps = append(bcOps, core.EnableLightProcessor)
 	}
-	if config.PersistDiff {
+	if config.PipeCommit && !config.NoTries {
+		bcOps = append(bcOps, core.EnablePipelineCommit)
+	}
+	if config.PersistDiff && !config.NoTries {
 		bcOps = append(bcOps, core.EnablePersistDiff(config.DiffBlock))
 	}
 	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve, &config.TxLookupLimit, bcOps...)
