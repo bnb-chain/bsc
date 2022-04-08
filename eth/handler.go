@@ -171,7 +171,10 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		//   time. But we don't have any recent state for full sync.
 		// In these cases however it's safe to reenable fast sync.
 		fullBlock, fastBlock := h.chain.CurrentBlock(), h.chain.CurrentFastBlock()
-		if fullBlock.NumberU64() == 0 && fastBlock.NumberU64() > 0 && rawdb.ReadAncientType(h.database) != rawdb.PruneFreezerType {
+		if fullBlock.NumberU64() == 0 && fastBlock.NumberU64() > 0 {
+			if rawdb.ReadAncientType(h.database) == rawdb.PruneFreezerType {
+				log.Crit("Fast Sync not finish, can't enable pruneancient mode")
+			}
 			h.fastSync = uint32(1)
 			log.Warn("Switch sync mode from full sync to fast sync")
 		}

@@ -285,8 +285,7 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 	if pivot := rawdb.ReadLastPivotNumber(cs.handler.database); pivot != nil {
 		if head := cs.handler.chain.CurrentBlock(); head.NumberU64() < *pivot {
 			if rawdb.ReadAncientType(cs.handler.database) == rawdb.PruneFreezerType {
-				log.Warn("Switch full sync to fast sync fail", "current block number", head.NumberU64(), "pivot", *pivot)
-				goto fullsync
+				log.Crit("Current rewound to before the fast sync pivot, can't enable pruneancient mode", "current block number", head.NumberU64(), "pivot", *pivot)
 			}
 			block := cs.handler.chain.CurrentFastBlock()
 			td := cs.handler.chain.GetTdByHash(block.Hash())
@@ -294,7 +293,7 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 			return downloader.FastSync, td
 		}
 	}
-fullsync:
+
 	// Nope, we're really full syncing
 	head := cs.handler.chain.CurrentBlock()
 	td := cs.handler.chain.GetTd(head.Hash(), head.NumberU64())
