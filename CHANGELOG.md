@@ -6,7 +6,7 @@ IMPROVEMENT
 * [\#792](https://github.com/binance-chain/bsc/pull/792) add shared storage for prefetching state data
 * [\#795](https://github.com/binance-chain/bsc/pull/795) implement state verification pipeline in pipecommit
 * [\#803](https://github.com/binance-chain/bsc/pull/803) prefetch state data during the mining process
-* [\#812](https://github.com/bnb-chain/bsc/pull/818) skip verification on account storage root to tolerate with fastnode when doing diffsync
+* [\#812](https://github.com/bnb-chain/bsc/pull/812) skip verification on account storage root to tolerate with fastnode when doing diffsync
 * [\#818](https://github.com/bnb-chain/bsc/pull/818) add shared storage to the prefetcher of miner
 * [\#820](https://github.com/bnb-chain/bsc/pull/820) disable diffsync when pipecommit is enabled
 * [\#830](https://github.com/bnb-chain/bsc/pull/830) change the number of prefetch threads
