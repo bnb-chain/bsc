@@ -26,7 +26,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-const prefetchThread = 2
+const prefetchThread = 3
+const checkInterval = 10
 
 // statePrefetcher is a basic Prefetcher, which blindly executes a block on top
 // of an arbitrary state with the goal of prefetching potentially useful state
@@ -67,6 +68,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	for i := 0; i < prefetchThread; i++ {
 		go func(idx int) {
 			newStatedb := statedb.Copy()
+			newStatedb.EnableWriteOnSharedStorage()
 			gaspool := new(GasPool).AddGas(block.GasLimit())
 			blockContext := NewEVMBlockContext(header, p.bc, nil)
 			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
@@ -86,6 +88,64 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 			}
 		}(i)
 	}
+}
+
+// PrefetchMining processes the state changes according to the Ethereum rules by running
+// the transaction messages using the statedb, but any changes are discarded. The
+// only goal is to pre-cache transaction signatures and snapshot clean state. Only used for mining stage
+func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
+	var signer = types.MakeSigner(p.config, header.Number)
+
+	txCh := make(chan *types.Transaction, 2*prefetchThread)
+	for i := 0; i < prefetchThread; i++ {
+		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
+			idx := 0
+			newStatedb := statedb.Copy()
+			newStatedb.EnableWriteOnSharedStorage()
+			gaspool := new(GasPool).AddGas(gasLimit)
+			blockContext := NewEVMBlockContext(header, p.bc, nil)
+			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
+			// Iterate over and process the individual transactions
+			for {
+				select {
+				case tx := <-startCh:
+					// Convert the transaction into an executable message and pre-cache its sender
+					msg, err := tx.AsMessageNoNonceCheck(signer)
+					if err != nil {
+						return // Also invalid block, bail out
+					}
+					idx++
+					newStatedb.Prepare(tx.Hash(), header.Hash(), idx)
+					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
+					gaspool = new(GasPool).AddGas(gasLimit)
+				case <-stopCh:
+					return
+				}
+			}
+		}(txCh, interruptCh)
+	}
+	go func(txset *types.TransactionsByPriceAndNonce) {
+		count := 0
+		for {
+			tx := txset.Peek()
+			if tx == nil {
+				return
+			}
+			select {
+			case <-interruptCh:
+				return
+			default:
+			}
+			if count++; count%checkInterval == 0 {
+				if *txCurr == nil {
+					return
+				}
+				txset.Forward(*txCurr)
+			}
+			txCh <- tx
+			txset.Shift()
+		}
+	}(txs)
 }
 
 // precacheTransaction attempts to apply a transaction to the given state database

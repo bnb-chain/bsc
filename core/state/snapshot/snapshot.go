@@ -107,12 +107,22 @@ type Snapshot interface {
 	// Verified returns whether the snapshot is verified
 	Verified() bool
 
-	// Store the verification result
+	// MarkValid stores the verification result
 	MarkValid()
+
+	// CorrectAccounts updates account data for storing the correct data during pipecommit
+	CorrectAccounts(map[common.Hash][]byte)
+
+	// AccountsCorrected checks whether the account data has been corrected during pipecommit
+	AccountsCorrected() bool
 
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*Account, error)
+
+	// Accounts directly retrieves all accounts in current snapshot in
+	// the snapshot slim data format.
+	Accounts() (map[common.Hash]*Account, error)
 
 	// AccountRLP directly retrieves the account RLP associated with a particular
 	// hash in the snapshot slim data format.
@@ -238,6 +248,11 @@ func (t *Tree) waitBuild() {
 	if done != nil {
 		<-done
 	}
+}
+
+// Layers returns the number of layers
+func (t *Tree) Layers() int {
+	return len(t.layers)
 }
 
 // Disable interrupts any pending snapshot generator, deletes all the snapshot
@@ -666,6 +681,11 @@ func (t *Tree) Journal(root common.Hash) (common.Hash, error) {
 	if snap == nil {
 		return common.Hash{}, fmt.Errorf("snapshot [%#x] missing", root)
 	}
+	// Wait the snapshot(difflayer) is verified, it means the account data also been refreshed with the correct data
+	if !snap.WaitAndGetVerifyRes() {
+		return common.Hash{}, ErrSnapshotStale
+	}
+
 	// Run the journaling
 	t.lock.Lock()
 	defer t.lock.Unlock()
