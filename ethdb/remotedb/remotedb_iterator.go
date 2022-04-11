@@ -119,8 +119,12 @@ func (db *RocksDB) newRemoteIterator(prefix []byte, start []byte) ethdb.Iterator
                 go func (addr string, keys []string) {
                     wg.Add(1)
                     defer wg.Done()
-                    nodeClient := rocks.NewClient(db.config.GetIteratorOption(addr))
-                    vals, err := nodeClient.MGet(context.Background(), keys[:]...).Result()
+                    ctx := context.Background()
+                    pipe := db.client.Pipeline()
+                    for _, key := range keys {
+                        pipe.Get(ctx, key)
+                    }
+                    vals, err := pipe.Exec(ctx)
                     if err != nil {
                         log.Error("remotedb iterator mget error", "node", addr, "err", err)
                         it.err = err
@@ -128,7 +132,8 @@ func (db *RocksDB) newRemoteIterator(prefix []byte, start []byte) ethdb.Iterator
                     }
                     batch := db.persistCache.NewBatch()
                     for idx, key := range keys {
-                        batch.Put([]byte(key), []byte(vals[idx].(string)))
+                        val := vals[idx].(*rocks.StringCmd).Val()
+                        batch.Put([]byte(key), []byte(val))
                     }
                     if err := batch.Write(); err != nil {
                         log.Error("remotedb iterator batch write persist cache error", "err", err)
