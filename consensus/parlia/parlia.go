@@ -1706,7 +1706,7 @@ func (p *Parlia) GetHighestFinalizedNumber(chain consensus.ChainHeaderReader, he
 			return snap.Attestation.SourceNumber
 		}
 
-		snap, err := p.snapshot(chain, snap.Attestation.SourceNumber, snap.Attestation.SourceHash, nil)
+		snap, err = p.snapshot(chain, snap.Attestation.SourceNumber, snap.Attestation.SourceHash, nil)
 		if err != nil || snap == nil {
 			return 0
 		}
