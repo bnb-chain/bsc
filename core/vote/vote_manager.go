@@ -194,9 +194,7 @@ func (voteManager *VoteManager) loop() {
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
 	curHighestJustifiedHeader := voteManager.get(voteManager.chain, header)
 	if curHighestJustifiedHeader == nil {
-		//return true, 0, common.Hash{}
-		//TODO, For Integration Test only!:
-		return true, header.Number.Uint64() - 1, header.ParentHash
+		return true, 0, common.Hash{}
 	}
 
 	sourceBlockNumber := curHighestJustifiedHeader.Number.Uint64()
