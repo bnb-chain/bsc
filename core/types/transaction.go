@@ -690,8 +690,13 @@ func (tx *Transaction) AsMessage(s Signer, baseFee *big.Int) (Message, error) {
 }
 
 // AsMessageNoNonceCheck returns the transaction with checkNonce field set to be false.
-func (tx *Transaction) AsMessageNoNonceCheck(s Signer) (Message, error) {
+func (tx *Transaction) AsMessageNoNonceCheck(s Signer, baseFee *big.Int) (Message, error) {
 	msg, err := tx.AsMessage(s, nil)
+	// If baseFee provided, set gasPrice to effectiveGasPrice.
+	if baseFee != nil {
+		msg.gasPrice = math.BigMin(msg.gasPrice.Add(msg.gasTipCap, baseFee), msg.gasFeeCap)
+	}
+
 	if err == nil {
 		msg.isFake = true
 	}

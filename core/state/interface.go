@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package state
 
 import (
 	"math/big"
@@ -23,14 +23,18 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// StateDB is an EVM database for full state querying.
-type StateDB interface {
+// StateDBer is copied from vm/interface.go
+// It is used by StateObject & Journal right now, to abstract StateDB & ParallelStateDB
+type StateDBer interface {
+	getBaseStateDB() *StateDB
+	getStateObject(common.Address) *StateObject // only accessible for journal
+	storeStateObj(common.Address, *StateObject) // only accessible for journal
+
 	CreateAccount(common.Address)
 
 	SubBalance(common.Address, *big.Int)
 	AddBalance(common.Address, *big.Int)
 	GetBalance(common.Address) *big.Int
-	GetBalanceOpCode(common.Address) *big.Int
 
 	GetNonce(common.Address) uint64
 	SetNonce(common.Address, uint64)
@@ -75,18 +79,4 @@ type StateDB interface {
 	AddPreimage(common.Hash, []byte)
 
 	ForEachStorage(common.Address, func(common.Hash, common.Hash) bool) error
-	ParallelMakeUp(addr common.Address, input []byte)
-}
-
-// CallContext provides a basic interface for the EVM calling conventions. The EVM
-// depends on this context being implemented for doing subcalls and initialising new EVM contracts.
-type CallContext interface {
-	// Call another contract
-	Call(env *EVM, me ContractRef, addr common.Address, data []byte, gas, value *big.Int) ([]byte, error)
-	// Take another's contract code and execute within our own context
-	CallCode(env *EVM, me ContractRef, addr common.Address, data []byte, gas, value *big.Int) ([]byte, error)
-	// Same as CallCode except sender and value is propagated from parent to child scope
-	DelegateCall(env *EVM, me ContractRef, addr common.Address, data []byte, gas *big.Int) ([]byte, error)
-	// Create a new contract
-	Create(env *EVM, me ContractRef, data []byte, gas, value *big.Int) ([]byte, common.Address, error)
 }
