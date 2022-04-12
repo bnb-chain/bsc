@@ -29,10 +29,9 @@ type Memory struct {
 	lastGasCost uint64
 }
 
-var bufPool = &sync.Pool{
+var bytesPool = sync.Pool{
 	New: func() interface{} {
-		b := make([]byte, 2048)
-		return b
+		return make([]byte, 1024)
 	},
 }
 
@@ -72,15 +71,15 @@ func (m *Memory) Set32(offset uint64, val *uint256.Int) {
 // Resize resizes the memory to size
 func (m *Memory) Resize(size uint64) []byte {
 	if uint64(m.Len()) < size {
-		expend := size - uint64(m.Len())
-		bytes := bufPool.Get().([]byte)
-		if uint64(cap(bytes)) >= expend {
-			m.store = append(m.store, bytes[0:expend]...)
+		bytes := bytesPool.Get().([]byte)
+		if uint64(cap(bytes)) >= size {
+			bytes = bytes[0:size]
+			copy(bytes, m.store)
+			m.store = bytes
 			return bytes
-		} else {
-			m.store = append(m.store, make([]byte, expend)...)
-			return nil
 		}
+		m.store = append(m.store, make([]byte, size-uint64(m.Len()))...)
+		return nil
 	}
 	return nil
 }
@@ -141,5 +140,10 @@ func (m *Memory) Print() {
 
 // putPool puts the buffer into the pool.
 func putPool(buf []byte) {
-	bufPool.Put(buf[:0])
+	buf = buf[0:cap(buf)]
+	l := len(buf)
+	for i := 0; i < l; i++ {
+		buf[i] = 0
+	}
+	bytesPool.Put(buf[:0])
 }
