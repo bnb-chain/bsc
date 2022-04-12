@@ -842,7 +842,12 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	if err != nil {
 		return err
 	}
-	header.Extra = append(header.Extra, buf.Bytes()...)
+
+	// Insert vote attestation into header extra ahead extra seal.
+	extraSealStart := len(header.Extra) - extraSeal
+	extraSealBytes := header.Extra[extraSealStart:]
+	header.Extra = append(header.Extra[0:extraSealStart], buf.Bytes()...)
+	header.Extra = append(header.Extra, extraSealBytes...)
 
 	return nil
 }
@@ -1260,13 +1265,6 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 	log.Info("Sealing block with", "number", number, "delay", delay, "headerDifficulty", header.Difficulty, "val", val.Hex())
 
-	// Sign all the things!
-	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, ParliaRLP(header, p.chainConfig.ChainID))
-	if err != nil {
-		return err
-	}
-	copy(header.Extra[len(header.Extra)-extraSeal:], sig)
-
 	// Wait until sealing is terminated or delay timeout.
 	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
 	go func() {
@@ -1278,9 +1276,17 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 		err := p.assembleVoteAttestation(chain, header)
 		if err != nil {
-			log.Error("Assemble vote attestation failed", "err", err)
+			log.Error("Assemble vote attestation failed when sealing", "err", err)
 			return
 		}
+
+		// Sign all the things!
+		sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, ParliaRLP(header, p.chainConfig.ChainID))
+		if err != nil {
+			log.Error("Sign for the block header failed when sealing", "err", err)
+			return
+		}
+		copy(header.Extra[len(header.Extra)-extraSeal:], sig)
 
 		if p.shouldWaitForCurrentBlockProcess(chain, header, snap) {
 			log.Info("Waiting for received in turn block to process")
@@ -1391,8 +1397,11 @@ func CalcDifficulty(snap *Snapshot, signer common.Address) *big.Int {
 }
 
 // SealHash returns the hash of a block prior to it being sealed.
-func (p *Parlia) SealHash(header *types.Header) common.Hash {
-	return SealHash(header, p.chainConfig.ChainID)
+func (p *Parlia) SealHash(header *types.Header) (hash common.Hash) {
+	hasher := sha3.NewLegacyKeccak256()
+	encodeSigHeaderWithoutVoteAttestation(hasher, header, p.chainConfig.ChainID)
+	hasher.Sum(hash[:0])
+	return hash
 }
 
 // APIs implements consensus.Engine, returning the user facing RPC API to query snapshot.
@@ -1744,6 +1753,30 @@ func encodeSigHeader(w io.Writer, header *types.Header, chainId *big.Int) {
 		header.GasUsed,
 		header.Time,
 		header.Extra[:len(header.Extra)-65], // this will panic if extra is too short, should check before calling encodeSigHeader
+		header.MixDigest,
+		header.Nonce,
+	})
+	if err != nil {
+		panic("can't encode: " + err.Error())
+	}
+}
+
+func encodeSigHeaderWithoutVoteAttestation(w io.Writer, header *types.Header, chainId *big.Int) {
+	err := rlp.Encode(w, []interface{}{
+		chainId,
+		header.ParentHash,
+		header.UncleHash,
+		header.Coinbase,
+		header.Root,
+		header.TxHash,
+		header.ReceiptHash,
+		header.Bloom,
+		header.Difficulty,
+		header.Number,
+		header.GasLimit,
+		header.GasUsed,
+		header.Time,
+		header.Extra[:extraVanity], // this will panic if extra is too short, should check before calling encodeSigHeader
 		header.MixDigest,
 		header.Nonce,
 	})
