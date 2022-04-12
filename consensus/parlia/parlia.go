@@ -1104,9 +1104,6 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 			}
 		}
 	}
-	if err := p.assembleVoteAttestation(chain, header); err != nil {
-		return nil, nil, err
-	}
 	// TODO disable reward distribution in test phase1
 	if p.chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
 		if err := p.distributeFinalityReward(chain, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
@@ -1278,6 +1275,13 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 			return
 		case <-time.After(delay):
 		}
+
+		err := p.assembleVoteAttestation(chain, header)
+		if err != nil {
+			log.Error("Assemble vote attestation failed", "err", err)
+			return
+		}
+
 		if p.shouldWaitForCurrentBlockProcess(chain, header, snap) {
 			log.Info("Waiting for received in turn block to process")
 			select {
