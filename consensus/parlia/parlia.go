@@ -774,7 +774,7 @@ func (p *Parlia) PrepareValidators(chain consensus.ChainHeaderReader, header *ty
 	return nil
 }
 
-func (p *Parlia) PrepareVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header) error {
+func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header) error {
 	if !p.chainConfig.IsBoneh(header.Number) || header.Number.Uint64() < 2 {
 		return nil
 	}
@@ -871,9 +871,6 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	header.Extra = append(header.Extra, nextForkHash[:]...)
 
 	if err := p.PrepareValidators(chain, header); err != nil {
-		return err
-	}
-	if err := p.PrepareVoteAttestation(chain, header); err != nil {
 		return err
 	}
 
@@ -1106,6 +1103,9 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
 			}
 		}
+	}
+	if err := p.assembleVoteAttestation(chain, header); err != nil {
+		return nil, nil, err
 	}
 	// TODO disable reward distribution in test phase1
 	if p.chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
