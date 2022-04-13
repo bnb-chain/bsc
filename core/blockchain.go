@@ -3315,7 +3315,7 @@ func CalculateDiffHash(d *types.DiffLayer) (common.Hash, error) {
 		BlockHash: d.BlockHash,
 		Receipts:  make([]*types.ReceiptForStorage, 0),
 		Number:    d.Number,
-		//Codes:     d.Codes,
+		Codes:     d.Codes,
 		Destructs: d.Destructs,
 		Accounts:  d.Accounts,
 		Storages:  d.Storages,
