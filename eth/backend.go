@@ -206,7 +206,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
-	if config.DiffSync && config.TriesVerifyMode == core.LocalVerify {
+	if config.DiffSync && !config.PipeCommit && config.TriesVerifyMode == core.LocalVerify {
 		bcOps = append(bcOps, core.EnableLightProcessor)
 	}
 	if config.PipeCommit {

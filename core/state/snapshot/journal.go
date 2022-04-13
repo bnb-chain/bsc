@@ -293,6 +293,7 @@ func (dl *diffLayer) Journal(buffer *bytes.Buffer) (common.Hash, error) {
 	if dl.Stale() {
 		return common.Hash{}, ErrSnapshotStale
 	}
+
 	// Everything below was journalled, persist this layer too
 	if err := rlp.Encode(buffer, dl.root); err != nil {
 		return common.Hash{}, err
