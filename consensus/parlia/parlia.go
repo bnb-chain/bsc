@@ -1162,7 +1162,7 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 	voteBlockHash := vote.Data.TargetHash
 	header := chain.GetHeaderByHash(voteBlockHash)
 	if header == nil {
-		log.Error("BlockHeader at current voteBlockNumber is nil", "blockNumber", voteBlockNumber, "blockHash", voteBlockHash)
+		log.Warn("BlockHeader at current voteBlockNumber is nil", "blockNumber", voteBlockNumber, "blockHash", voteBlockHash)
 		return false
 	}
 

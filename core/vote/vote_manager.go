@@ -194,6 +194,7 @@ func (voteManager *VoteManager) loop() {
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
 	curHighestJustifiedHeader := voteManager.get(voteManager.chain, header)
 	if curHighestJustifiedHeader == nil {
+		log.Error("curHighestJustifiedHeader is nil")
 		return true, 0, common.Hash{}
 	}
 
