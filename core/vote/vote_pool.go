@@ -24,7 +24,7 @@ const (
 
 	voteBufferForPut            = 256
 	lowerLimitOfVoteBlockNumber = 256
-	upperLimitOfVoteBlockNumber = 11
+	upperLimitOfVoteBlockNumber = 13
 
 	chainHeadChanSize = 10 // chainHeadChanSize is the size of channel listening to ChainHeadEvent.
 )
@@ -136,7 +136,8 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 	var votesPq *votesPriorityQueue
 	isFutureVote := false
 
-	if voteBlockNumber > headNumber {
+	voteBlock := pool.chain.GetHeaderByHash(voteBlockHash)
+	if voteBlock == nil {
 		votes = pool.futureVotes
 		votesPq = pool.futureVotesPq
 		isFutureVote = true
@@ -224,7 +225,24 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 
 	for futurePq.Len() > 0 && futurePq.Peek().TargetNumber <= latestBlockHeader.Number.Uint64() {
 		blockHash := futurePq.Peek().TargetHash
+		blockNumber := futurePq.Peek().TargetNumber
 		voteBox := futureVotes[blockHash]
+
+		if blockNumber+upperLimitOfVoteBlockNumber < latestBlockHeader.Number.Uint64() {
+			// Prune directly if fall behind 13 blocks of header
+			heap.Pop(futurePq)
+			delete(futureVotes, blockHash)
+			localFutureVotesGauge.Dec(int64(len(voteBox.voteMessages)))
+			localFutureVotesPqGauge.Dec(1)
+			log.Info("Prune future votes behind 13 blocks of header")
+			continue
+		}
+
+		header := pool.chain.GetHeaderByHash(blockHash)
+		if header == nil {
+			break
+		}
+
 		validVotes := make([]*types.VoteEnvelope, 0, len(voteBox.voteMessages))
 		for _, vote := range voteBox.voteMessages {
 			// Verify if the vote comes from valid validators based on voteAddress (BLSPublicKey).
