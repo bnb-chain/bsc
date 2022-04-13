@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"math/big"
 	"math/rand"
 	"time"
 
@@ -45,7 +46,7 @@ type remoteVerifyManager struct {
 	allowInsecure bool
 
 	// Subscription
-	chainBlockCh  chan ChainHeadEvent
+	chainBlockCh chan ChainHeadEvent
 	chainHeadSub event.Subscription
 
 	// Channels
@@ -53,8 +54,27 @@ type remoteVerifyManager struct {
 	messageCh chan verifyMessage
 }
 
-func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure bool) *remoteVerifyManager {
+func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure bool) (*remoteVerifyManager, error) {
 	verifiedCache, _ := lru.New(verifiedCacheSize)
+	block := blockchain.CurrentBlock()
+	if block == nil {
+		return nil, ErrCurrentBlockNotFound
+	}
+	number := block.Number()
+	for i := maxForkHeight; i >= 0; i-- {
+		if new(big.Int).Sub(number, big.NewInt(int64(i))).Cmp(common.Big0) <= 0 {
+			continue
+		}
+		oldBlock := blockchain.GetBlockByNumber(number.Uint64() - uint64(i))
+		if oldBlock == nil {
+			return nil, fmt.Errorf("block is nil, number: %d", number)
+		}
+		_, err := blockchain.GenerateDiffLayer(oldBlock.Hash())
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	vm := &remoteVerifyManager{
 		bc:            blockchain,
 		tasks:         make(map[common.Hash]*verifyTask),
@@ -63,11 +83,11 @@ func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure b
 		allowInsecure: allowInsecure,
 
 		chainBlockCh: make(chan ChainHeadEvent, chainHeadChanSize),
-		verifyCh:    make(chan common.Hash, maxForkHeight),
-		messageCh:   make(chan verifyMessage),
+		verifyCh:     make(chan common.Hash, maxForkHeight),
+		messageCh:    make(chan verifyMessage),
 	}
 	vm.chainHeadSub = blockchain.SubscribeChainBlockEvent(vm.chainBlockCh)
-	return vm
+	return vm, nil
 }
 
 func (vm *remoteVerifyManager) mainLoop() {
@@ -219,7 +239,7 @@ type verifyTask struct {
 	candidatePeers verifyPeers
 	badPeers       map[string]struct{}
 	startAt        time.Time
-	allowInsecure bool
+	allowInsecure  bool
 
 	messageCh  chan verifyMessage
 	terminalCh chan struct{}
@@ -288,7 +308,7 @@ func (vt *verifyTask) sendVerifyRequest(n int) {
 	}
 	// if has not valid peer, log warning.
 	if len(validPeers) == 0 {
-		log.Warn("there is no valid peer for block", vt.blockHeader.Number)
+		log.Warn("there is no valid peer for block", "number", vt.blockHeader.Number)
 		return
 	}
 

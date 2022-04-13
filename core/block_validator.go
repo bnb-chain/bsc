@@ -41,17 +41,21 @@ type BlockValidator struct {
 }
 
 // NewBlockValidator returns a new block validator which is safe for re-use
-func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain, engine consensus.Engine, mode VerifyMode, peers verifyPeers) *BlockValidator {
+func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain, engine consensus.Engine, mode VerifyMode, peers verifyPeers) (*BlockValidator, error) {
 	validator := &BlockValidator{
 		config: config,
 		engine: engine,
 		bc:     blockchain,
 	}
 	if mode.NeedRemoteVerify() {
-		validator.remoteValidator = NewVerifyManager(blockchain, peers, mode == InsecureVerify)
+		remoteValidator, err := NewVerifyManager(blockchain, peers, mode == InsecureVerify)
+		if err != nil {
+			return nil, err
+		}
+		validator.remoteValidator = remoteValidator
 		go validator.remoteValidator.mainLoop()
 	}
-	return validator
+	return validator, nil
 }
 
 // ValidateBody validates the given block's uncles and verifies the block

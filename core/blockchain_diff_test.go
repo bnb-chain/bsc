@@ -499,8 +499,8 @@ func newTwoForkedBlockchains(len1, len2 int) (chain1 *BlockChain, chain2 *BlockC
 		Config: params.TestChainConfig,
 		Alloc:  GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
 	}).MustCommit(db1)
-
-	chain1, _ = NewBlockChain(db1, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil, EnablePersistDiff(860000))
+	engine1 := ethash.NewFaker()
+	chain1, _ = NewBlockChain(db1, nil, params.TestChainConfig, engine1, vm.Config{}, nil, nil, EnablePersistDiff(860000), EnableBlockValidator(params.TestChainConfig, engine1, 0, nil))
 	generator1 := func(i int, block *BlockGen) {
 		// The chain maker doesn't have access to a chain, so the difficulty will be
 		// lets unset (nil). Set it here to the correct value.
@@ -555,7 +555,8 @@ func newTwoForkedBlockchains(len1, len2 int) (chain1 *BlockChain, chain2 *BlockC
 		Config: params.TestChainConfig,
 		Alloc:  GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
 	}).MustCommit(db2)
-	chain2, _ = NewBlockChain(db2, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil, EnablePersistDiff(860000))
+	engine2 := ethash.NewFaker()
+	chain2, _ = NewBlockChain(db2, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil, EnablePersistDiff(860000), EnableBlockValidator(params.TestChainConfig, engine2, 0, nil))
 	generator2 := func(i int, block *BlockGen) {
 		// The chain maker doesn't have access to a chain, so the difficulty will be
 		// lets unset (nil). Set it here to the correct value.
@@ -659,7 +660,7 @@ func newBlockChainWithCliqueEngine(blocks int) *BlockChain {
 	copy(genspec.ExtraData[32:], testAddr[:])
 	genesis := genspec.MustCommit(db)
 
-	chain, _ := NewBlockChain(db, nil, params.AllCliqueProtocolChanges, engine, vm.Config{}, nil, nil)
+	chain, _ := NewBlockChain(db, nil, params.AllCliqueProtocolChanges, engine, vm.Config{}, nil, nil, EnableBlockValidator(params.AllCliqueProtocolChanges, engine, 0 /*LocalVerify*/, nil))
 	generator := func(i int, block *BlockGen) {
 		// The chain maker doesn't have access to a chain, so the difficulty will be
 		// lets unset (nil). Set it here to the correct value.

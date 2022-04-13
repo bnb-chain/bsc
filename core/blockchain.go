@@ -164,7 +164,7 @@ var defaultCacheConfig = &CacheConfig{
 	SnapshotWait:   true,
 }
 
-type BlockChainOption func(*BlockChain) *BlockChain
+type BlockChainOption func(*BlockChain) (*BlockChain, error)
 
 // BlockChain represents the canonical chain given a database with a genesis
 // block. The Blockchain manages chain imports, reverts, chain reorganisations.
@@ -198,16 +198,16 @@ type BlockChain struct {
 	txLookupLimit uint64
 	triesInMemory uint64
 
-	hc            *HeaderChain
-	rmLogsFeed    event.Feed
-	chainFeed     event.Feed
-	chainSideFeed event.Feed
-	chainHeadFeed event.Feed
+	hc             *HeaderChain
+	rmLogsFeed     event.Feed
+	chainFeed      event.Feed
+	chainSideFeed  event.Feed
+	chainHeadFeed  event.Feed
 	chainBlockFeed event.Feed
-	logsFeed      event.Feed
-	blockProcFeed event.Feed
-	scope         event.SubscriptionScope
-	genesisBlock  *types.Block
+	logsFeed       event.Feed
+	blockProcFeed  event.Feed
+	scope          event.SubscriptionScope
+	genesisBlock   *types.Block
 
 	chainmu sync.RWMutex // blockchain insertion lock
 
@@ -451,7 +451,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	}
 	// do options before start any routine
 	for _, option := range options {
-		bc = option(bc)
+		bc, err = option(bc)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// Take ownership of this particular state
 	go bc.update()
@@ -525,7 +528,6 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, sorted bool) {
 		bc.diffLayerCache.RemoveOldest()
 	}
 
-	//json.MarshalIndent()
 	bc.diffLayerCache.Add(diffLayer.BlockHash, diffLayer)
 	if cached, ok := bc.diffLayerChanCache.Get(diffLayer.BlockHash); ok {
 		diffLayerCh := cached.(chan struct{})
@@ -3145,27 +3147,31 @@ func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscr
 }
 
 // Options
-func EnableLightProcessor(bc *BlockChain) *BlockChain {
+func EnableLightProcessor(bc *BlockChain) (*BlockChain, error) {
 	bc.processor = NewLightStateProcessor(bc.Config(), bc, bc.engine)
-	return bc
+	return bc, nil
 }
 
-func EnablePipelineCommit(bc *BlockChain) *BlockChain {
+func EnablePipelineCommit(bc *BlockChain) (*BlockChain, error) {
 	bc.pipeCommit = true
-	return bc
+	return bc, nil
 }
 
 func EnablePersistDiff(limit uint64) BlockChainOption {
-	return func(chain *BlockChain) *BlockChain {
+	return func(chain *BlockChain) (*BlockChain, error) {
 		chain.diffLayerFreezerBlockLimit = limit
-		return chain
+		return chain, nil
 	}
 }
 
 func EnableBlockValidator(chainConfig *params.ChainConfig, engine consensus.Engine, mode VerifyMode, peers verifyPeers) BlockChainOption {
-	return func(bc *BlockChain) *BlockChain {
-		bc.validator = NewBlockValidator(chainConfig, bc, engine, mode, peers)
-		return bc
+	return func(bc *BlockChain) (*BlockChain, error) {
+		validator, err := NewBlockValidator(chainConfig, bc, engine, mode, peers)
+		if err != nil {
+			return bc, err
+		}
+		bc.validator = validator
+		return bc, nil
 	}
 }
 
@@ -3289,7 +3295,6 @@ func (bc *BlockChain) GenerateDiffLayer(blockHash common.Hash) (*types.DiffLayer
 	if diffLayer != nil {
 		diffLayer.BlockHash = blockHash
 		diffLayer.Number = block.NumberU64()
-
 		bc.cacheDiffLayer(diffLayer, true)
 	}
 

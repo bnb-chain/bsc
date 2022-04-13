@@ -35,6 +35,9 @@ var (
 	// ErrDiffLayerNotFound is returned when diff layer not found.
 	ErrDiffLayerNotFound = errors.New("diff layer not found")
 
+	// ErrCurrentBlockNotFound is returned when current block not found.
+	ErrCurrentBlockNotFound = errors.New("current block not found")
+
 	// ErrKnownBadBlock is return when the block is a known bad block
 	ErrKnownBadBlock = errors.New("already known bad block")
 )

@@ -252,7 +252,7 @@ func TestBlockImportVerification(t *testing.T) {
 	}
 	defer processor.Stop()
 	// Start fork from current height
-	processor = EnablePipelineCommit(processor)
+	processor, _ = EnablePipelineCommit(processor)
 	testInvalidStateRootBlockImport(t, processor, length, 10, true)
 }
 
