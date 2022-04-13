@@ -69,10 +69,14 @@ func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure b
 		if oldBlock == nil {
 			return nil, fmt.Errorf("block is nil, number: %d", number)
 		}
-		_, err := blockchain.GenerateDiffLayer(oldBlock.Hash())
+		blockHash := oldBlock.Hash()
+		_, err := blockchain.GenerateDiffLayer(blockHash)
 		if err != nil {
 			return nil, err
 		}
+		diffLayerCh := make(chan struct{})
+		close(diffLayerCh)
+		blockchain.diffLayerChanCache.Add(blockHash, diffLayerCh)
 	}
 
 	vm := &remoteVerifyManager{
