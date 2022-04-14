@@ -220,61 +220,73 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Header) {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
+
+	futurePq := pool.futureVotesPq
+	latestBlockNumber := latestBlockHeader.Number.Uint64()
+
+	// For vote before latestBlockHeader-13, transfer to cur if valid.
+	for futurePq.Len() > 0 && futurePq.Peek().TargetNumber+upperLimitOfVoteBlockNumber < latestBlockNumber {
+		blockHash := futurePq.Peek().TargetHash
+		pool.transfer(blockHash)
+	}
+
+	// For vote within latestBlockHeader-13 ~ latestBlockHeader, only transfer the the vote inside the local fork.
+	futurePqBuffer := make([]*types.VoteData, 0)
+	for futurePq.Len() > 0 && futurePq.Peek().TargetNumber <= latestBlockNumber {
+		blockHash := futurePq.Peek().TargetHash
+		header := pool.chain.GetHeaderByHash(blockHash)
+		if header == nil {
+			// Put into pq buffer used for later put again into futurePq
+			futurePqBuffer = append(futurePqBuffer, heap.Pop(futurePq).(*types.VoteData))
+			continue
+		}
+		pool.transfer(blockHash)
+	}
+
+	for _, voteData := range futurePqBuffer {
+		heap.Push(futurePq, voteData)
+	}
+	// Release underlying allocated memory.
+	futurePqBuffer = nil
+}
+
+func (pool *VotePool) transfer(blockHash common.Hash) {
 	curPq, futurePq := pool.curVotesPq, pool.futureVotesPq
 	curVotes, futureVotes := pool.curVotes, pool.futureVotes
 
-	for futurePq.Len() > 0 && futurePq.Peek().TargetNumber <= latestBlockHeader.Number.Uint64() {
-		blockHash := futurePq.Peek().TargetHash
-		blockNumber := futurePq.Peek().TargetNumber
-		voteBox := futureVotes[blockHash]
+	voteBox := futureVotes[blockHash]
 
-		if blockNumber+upperLimitOfVoteBlockNumber < latestBlockHeader.Number.Uint64() {
-			// Prune directly if fall behind 13 blocks of header
-			heap.Pop(futurePq)
-			delete(futureVotes, blockHash)
-			localFutureVotesGauge.Dec(int64(len(voteBox.voteMessages)))
-			localFutureVotesPqGauge.Dec(1)
-			log.Info("Prune future votes behind 13 blocks of header")
-			continue
-		}
-
-		header := pool.chain.GetHeaderByHash(blockHash)
-		if header == nil {
-			break
-		}
-
-		validVotes := make([]*types.VoteEnvelope, 0, len(voteBox.voteMessages))
-		for _, vote := range voteBox.voteMessages {
-			// Verify if the vote comes from valid validators based on voteAddress (BLSPublicKey).
-			if posa, ok := pool.engine.(consensus.PoSA); ok {
-				if !posa.VerifyVote(pool.chain, vote) {
-					continue
-				}
-			}
-			// Verify the vote from futureVotes.
-			if err := VerifyVoteWithBLS(vote); err == nil {
-				// In the process of transfer, send valid vote to votes channel for handler usage
-				voteEv := core.NewVoteEvent{vote}
-				pool.votesFeed.Send(voteEv)
-				validVotes = append(validVotes, vote)
+	validVotes := make([]*types.VoteEnvelope, 0, len(voteBox.voteMessages))
+	for _, vote := range voteBox.voteMessages {
+		// Verify if the vote comes from valid validators based on voteAddress (BLSPublicKey).
+		if posa, ok := pool.engine.(consensus.PoSA); ok {
+			if !posa.VerifyVote(pool.chain, vote) {
+				continue
 			}
 		}
-
-		voteData := heap.Pop(futurePq)
-		if _, ok := curVotes[blockHash]; !ok {
-			heap.Push(curPq, voteData)
-			curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
-			localCurVotesPqGauge.Inc(1)
-		} else {
-			curVotes[blockHash].voteMessages = append(curVotes[blockHash].voteMessages, validVotes...)
+		// Verify the vote from futureVotes.
+		if err := VerifyVoteWithBLS(vote); err == nil {
+			// In the process of transfer, send valid vote to votes channel for handler usage
+			voteEv := core.NewVoteEvent{vote}
+			pool.votesFeed.Send(voteEv)
+			validVotes = append(validVotes, vote)
 		}
-
-		delete(futureVotes, blockHash)
-
-		localCurVotesGauge.Inc(int64(len(validVotes)))
-		localFutureVotesGauge.Dec(int64(len(voteBox.voteMessages)))
-		localFutureVotesPqGauge.Dec(1)
 	}
+
+	voteData := heap.Pop(futurePq)
+	if _, ok := curVotes[blockHash]; !ok {
+		heap.Push(curPq, voteData)
+		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
+		localCurVotesPqGauge.Inc(1)
+	} else {
+		curVotes[blockHash].voteMessages = append(curVotes[blockHash].voteMessages, validVotes...)
+	}
+
+	delete(futureVotes, blockHash)
+
+	localCurVotesGauge.Inc(int64(len(validVotes)))
+	localFutureVotesGauge.Dec(int64(len(voteBox.voteMessages)))
+	localFutureVotesPqGauge.Dec(1)
 }
 
 // Prune old data of duplicationSet, curVotePq and curVotesMap.
