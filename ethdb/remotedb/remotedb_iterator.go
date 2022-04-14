@@ -191,7 +191,7 @@ func (it *remoteIterator) Key() []byte {
 // caller should not modify the contents of the returned slice, and its contents
 // may change on the next call to Next.
 func (it *remoteIterator) Value() []byte {
-     if it.cacheIt == nil {
+    if it.cacheIt == nil {
         return nil
     }
     return it.cacheIt.Value()
@@ -202,5 +202,7 @@ func (it *remoteIterator) Value() []byte {
 func (it *remoteIterator) Release() {
     it.prefix = it.prefix[:0]
     it.start = it.start[:0]
-    it.cacheIt.Release()
+    if it.cacheIt != nil {
+        it.cacheIt.Release()
+    }
 }
