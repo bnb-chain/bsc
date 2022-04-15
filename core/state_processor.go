@@ -403,6 +403,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	// initilise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
+	defer bloomProcessors.Close()
 	statedb.MarkFullProcessed()
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
