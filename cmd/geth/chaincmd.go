@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/ethdb/remotedb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -49,6 +50,8 @@ var (
 		ArgsUsage: "<genesisPath>",
 		Flags: []cli.Flag{
 			utils.DataDirFlag,
+			utils.EnableRemoteDB,
+			utils.RemoteDBAddr,
 		},
 		Category: "BLOCKCHAIN COMMANDS",
 		Description: `
@@ -213,17 +216,37 @@ func initGenesis(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	for _, name := range []string{"chaindata", "lightchaindata"} {
-		chaindb, err := stack.OpenDatabase(name, 0, 0, "", false)
-		if err != nil {
-			utils.Fatalf("Failed to open database: %v", err)
+	if ctx.GlobalIsSet(utils.EnableRemoteDB.Name) {
+		cfg := remotedb.DefaultConfig()
+		if ctx.GlobalIsSet(utils.RemoteDBAddr.Name) {
+			cfg.Addrs = strings.Split(ctx.GlobalString(utils.RemoteDBAddr.Name), ",")
+		} else {
+			utils.Fatalf("Open remotedb must addrs(remotedb.addrs) params")
 		}
+		chaindb, err := stack.OpenRemoteDB(cfg, false, "chaindata", 0, 0, "eth/db/chaindata/", false)
+		if err != nil {
+			utils.Fatalf("Failed to open remotedb: %v", err)
+		}
+		log.Info("Open remotedb", "addrs", cfg.Addrs)
 		_, hash, err := core.SetupGenesisBlock(chaindb, genesis)
 		if err != nil {
 			utils.Fatalf("Failed to write genesis block: %v", err)
 		}
 		chaindb.Close()
-		log.Info("Successfully wrote genesis state", "database", name, "hash", hash)
+		log.Info("Successfully wrote genesis state to remotedb", "hash", hash)
+	} else {
+		for _, name := range []string{"chaindata", "lightchaindata"} {
+			chaindb, err := stack.OpenDatabase(name, 0, 0, "", false)
+			if err != nil {
+				utils.Fatalf("Failed to open database: %v", err)
+			}
+			_, hash, err := core.SetupGenesisBlock(chaindb, genesis)
+			if err != nil {
+				utils.Fatalf("Failed to write genesis block: %v", err)
+			}
+			chaindb.Close()
+			log.Info("Successfully wrote genesis state", "database", name, "hash", hash)
+		}
 	}
 	return nil
 }
