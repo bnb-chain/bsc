@@ -14,7 +14,7 @@ import (
 
 var (
     // max batch count
-    REMOTE_BATCH_COUNT int64 = 100
+    REMOTE_BATCH_COUNT = string("100")
 )
 
 // not support iterator, for archive-compute node
@@ -100,29 +100,37 @@ func (db *RocksDB) newRemoteIterator(prefix []byte, start []byte) ethdb.Iterator
     for _, shard := range shards {
         r := rand.New(rand.NewSource(time.Now().UnixNano()))
         node := shard.Nodes[r.Intn(len(shard.Nodes))]
+        wg.Add(1)
         go func(addr string) {
-            wg.Add(1)
             defer wg.Done()
-            var cursor uint64
+            cursor := "0"
             ctx := context.Background()
             prefix := string(append(append(prefix, start...), []byte("*")...))
             nodeClient := rocks.NewClient(db.config.GetIteratorOption(addr))
 
             for {
-                keys, cursor, err := nodeClient.Scan(ctx, cursor, prefix, REMOTE_BATCH_COUNT).Result()
+                res, err := nodeClient.Do(ctx, "scan", cursor, "match", prefix, "count", REMOTE_BATCH_COUNT).Slice()
                 if err != nil {
                     log.Error("remotedb iterator scan error", "node", addr, "err", err)
                     it.err = err
                     return 
                 }
- 
-                go func (addr string, keys []string) {
-                    wg.Add(1)
+                if len(res) != 2 {
+                    log.Error("remotedb iterator scan result format error", "node", addr)
+                    it.err = errors.New("remotedb iterator scan result format error")
+                    return 
+                }
+                cursor = res[0].(string)
+                wg.Add(1)
+                go func (addr string, keys []interface {}) {
                     defer wg.Done()
+                    if len(keys) == 0 {
+                        return 
+                    }
                     ctx := context.Background()
                     pipe := db.client.Pipeline()
                     for _, key := range keys {
-                        pipe.Get(ctx, key)
+                        pipe.Get(ctx, key.(string))
                     }
                     vals, err := pipe.Exec(ctx)
                     if err != nil {
@@ -133,16 +141,16 @@ func (db *RocksDB) newRemoteIterator(prefix []byte, start []byte) ethdb.Iterator
                     batch := db.persistCache.NewBatch()
                     for idx, key := range keys {
                         val := vals[idx].(*rocks.StringCmd).Val()
-                        batch.Put([]byte(key), []byte(val))
+                        batch.Put([]byte(key.(string)), []byte(val))
                     }
                     if err := batch.Write(); err != nil {
                         log.Error("remotedb iterator batch write persist cache error", "err", err)
                         it.err = err
                         return
                     }
-                }(addr, keys)
+                }(addr, res[1].([]interface {}))
 
-                if cursor == 0 {
+                if cursor == "0" {
                     break
                 }
             }
