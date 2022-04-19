@@ -299,7 +299,7 @@ func generateTestChain() (*core.Genesis, []*types.Block) {
 		Timestamp: 9000,
 	}
 	genesis.MustCommit(db)
-	chain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil, core.EnablePersistDiff(860000))
+	chain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil, false, core.EnablePersistDiff(860000))
 	generate := func(i int, block *core.BlockGen) {
 		block.OffsetTime(5)
 		block.SetExtra([]byte("test"))

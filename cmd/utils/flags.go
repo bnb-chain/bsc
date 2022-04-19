@@ -848,6 +848,11 @@ var (
 		Usage: "Enable remotedb store cluster replace local disk ",
 	}
 
+	RemoteDBReadOnly = cli.BoolFlag{
+		Name:  "remotedb.readonly",
+		Usage: "Set remotedb readonly ",
+	}
+
 	RemoteDBAddr = cli.StringFlag{
 		Name:  "remotedb.addrs",
 		Usage: "Remotedb hosts ",
@@ -1757,6 +1762,17 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(EnableRemoteDB.Name) {
 		cfg.EnableRemoteDB = ctx.GlobalBool(EnableRemoteDB.Name)
+		if cfg.EnableRemoteDB {
+			if cfg.SyncMode == downloader.LightSync {
+				log.Crit("remotedb not support lightSync")
+			}
+			if cfg.LightServ > 0 {
+				log.Crit("remotedb not support lightServ")
+			}
+		}
+	}
+	if ctx.GlobalIsSet(RemoteDBReadOnly.Name) {
+		cfg.RemoteDBReadOnly = ctx.GlobalBool(RemoteDBReadOnly.Name)
 	}
 	if ctx.GlobalIsSet(RemoteDBPersistCache.Name) {
 		cfg.EnablePersistCache = ctx.GlobalBool(RemoteDBPersistCache.Name)
@@ -1883,6 +1899,14 @@ func SetDNSDiscoveryDefaults(cfg *ethconfig.Config, genesis common.Hash) {
 // The second return value is the full node instance, which may be nil if the
 // node is running as a light client.
 func RegisterEthService(stack *node.Node, cfg *ethconfig.Config) (ethapi.Backend, *eth.Ethereum) {
+	if cfg.EnableRemoteDB && cfg.RemoteDBReadOnly {
+		backend, err := eth.NewArchiveServiceNode(stack, cfg)
+		if err != nil {
+			Fatalf("Failed to register the Ethereum service: %v", err)
+		}
+		return backend.APIBackend, backend
+	}
+
 	if cfg.SyncMode == downloader.LightSync {
 		backend, err := les.New(stack, cfg)
 		if err != nil {
@@ -2064,7 +2088,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chai
 
 	// TODO(rjl493456442) disable snapshot generation/wiping if the chain is read only.
 	// Disable transaction indexing/unindexing by default.
-	chain, err = core.NewBlockChain(chainDb, cache, config, engine, vmcfg, nil, nil)
+	chain, err = core.NewBlockChain(chainDb, cache, config, engine, vmcfg, nil, nil, false)
 	if err != nil {
 		Fatalf("Can't create BlockChain: %v", err)
 	}

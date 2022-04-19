@@ -170,6 +170,7 @@ type Config struct {
 	PersistDiff        bool
 	DiffBlock          uint64
 	EnableRemoteDB     bool
+	RemoteDBReadOnly   bool
 	EnablePersistCache bool
 
 	TrieCleanCache          int

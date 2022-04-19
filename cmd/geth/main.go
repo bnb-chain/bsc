@@ -169,6 +169,7 @@ var (
 		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
 		utils.EnableRemoteDB,
+		utils.RemoteDBReadOnly,
 		utils.RemoteDBPersistCache,
 		utils.RemoteDBAddr,
 		utils.RemoteDBReadTimeout,

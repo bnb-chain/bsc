@@ -96,6 +96,8 @@ const (
 
 	diffLayerFreezerRecheckInterval = 3 * time.Second
 	diffLayerPruneRecheckInterval   = 1 * time.Second // The interval to prune unverified diff layers
+	loadStatesFromRemoteDBInterval  = 2 * time.Second // The interval to load states from remotedb
+	reportStatesFromRemoteDBInterval= 10 * time.Second// The interval to report states from remotedb
 	maxDiffQueueDist                = 2048            // Maximum allowed distance from the chain head to queue diffLayers
 	maxDiffLimit                    = 2048            // Maximum number of unique diff layers a peer may have responded
 	maxDiffForkDist                 = 11              // Maximum allowed backward distance from the chain head
@@ -186,6 +188,7 @@ type BlockChain struct {
 	triegc     *prque.Prque   // Priority queue mapping block numbers to tries to gc
 	gcproc     time.Duration  // Accumulates canonical block processing for trie dumping
 	commitLock sync.Mutex     // CommitLock is used to protect above field from being modified concurrently
+	readonly   bool           // Readonly for archive service, read data from remotedb
 
 	// txLookupLimit is the maximum number of blocks from head whose tx indices
 	// are reserved:
@@ -255,7 +258,7 @@ type BlockChain struct {
 // available in the database. It initialises the default Ethereum Validator and
 // Processor.
 func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine,
-	vmConfig vm.Config, shouldPreserve func(block *types.Block) bool, txLookupLimit *uint64,
+	vmConfig vm.Config, shouldPreserve func(block *types.Block) bool, txLookupLimit *uint64, readonly bool,
 	options ...BlockChainOption) (*BlockChain, error) {
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
@@ -279,6 +282,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		chainConfig: chainConfig,
 		cacheConfig: cacheConfig,
 		db:          db,
+		readonly:    readonly,
 		triegc:      prque.New(nil),
 		stateCache: state.NewDatabaseWithConfigAndCache(db, &trie.Config{
 			Cache:     cacheConfig.TrieCleanLimit,
@@ -327,6 +331,55 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 
 	var nilHeader *types.Header
 	bc.highestVerifiedHeader.Store(nilHeader)
+
+	if bc.readonly {
+		if err := bc.loadLastState(); err != nil {
+			return nil, err
+		}
+		go func () {
+			for {
+				select {
+				case <-time.NewTimer(loadStatesFromRemoteDBInterval).C:
+					head := rawdb.ReadHeadBlockHash(bc.db)
+					if head == (common.Hash{}) {
+						continue
+					}
+					currentBlock := bc.GetBlockByHash(head)
+
+					if currentBlock == nil {
+						continue
+					}
+					bc.currentBlock.Store(currentBlock)
+
+					currentHeader := currentBlock.Header()
+					if head := rawdb.ReadHeadHeaderHash(bc.db); head != (common.Hash{}) {
+						if header := bc.GetHeaderByHash(head); header != nil {
+							currentHeader = header
+						}
+					}
+					bc.hc.SetCurrentHeader(currentHeader)
+					bc.highestVerifiedHeader.Store(currentHeader)
+
+					bc.currentFastBlock.Store(currentBlock)
+					if head := rawdb.ReadHeadFastBlockHash(bc.db); head != (common.Hash{}) {
+						if block := bc.GetBlockByHash(head); block != nil {
+							bc.currentFastBlock.Store(block)
+						}
+					}
+				case <-time.NewTimer(reportStatesFromRemoteDBInterval).C:
+					currentHeader := bc.hc.CurrentHeader()
+					currentBlock := bc.CurrentBlock()
+					currentFastBlock := bc.CurrentFastBlock()
+					log.Info("Loaded most recent local header", "number", currentHeader.Number, "hash", currentHeader.Hash(), "age", common.PrettyAge(time.Unix(int64(currentHeader.Time), 0)))
+					log.Info("Loaded most recent local full block", "number", currentBlock.Number(), "hash", currentBlock.Hash(), "age", common.PrettyAge(time.Unix(int64(currentBlock.Time()), 0)))
+					log.Info("Loaded most recent local fast block", "number", currentFastBlock.Number(), "hash", currentFastBlock.Hash(), "age", common.PrettyAge(time.Unix(int64(currentFastBlock.Time()), 0)))
+				case <-bc.quit:
+					return
+				}
+			}
+		}()
+		return bc, nil
+	}
 
 	// Initialize the chain with ancient data if it isn't empty.
 	var txIndexBlock uint64
@@ -624,6 +677,10 @@ func (bc *BlockChain) SetHeadBeyondRoot(head uint64, root common.Hash) (uint64, 
 }
 
 func (bc *BlockChain) setHeadBeyondRoot(head uint64, root common.Hash) (uint64, error) {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support setHeadBeyondRoot", "number", head, "hash", root)
+		return 0, errors.New("BlockChain is readonly, not support setHeadBeyondRoot")
+	}
 	// Track the block number of the requested root hash
 	var rootNumber uint64 // (no root == always 0)
 
@@ -777,6 +834,10 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, root common.Hash) (uint64, 
 // FastSyncCommitHead sets the current head block to the one defined by the hash
 // irrelevant what the chain contents were prior.
 func (bc *BlockChain) FastSyncCommitHead(hash common.Hash) error {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support FastSyncCommitHead", "hash", hash)
+		return errors.New("BlockChain is readonly, not support FastSyncCommitHead")
+	}
 	// Make sure that both the block as well at its state trie exists
 	block := bc.GetBlockByHash(hash)
 	if block == nil {
@@ -855,6 +916,10 @@ func (bc *BlockChain) Reset() error {
 // ResetWithGenesisBlock purges the entire blockchain, restoring it to the
 // specified genesis state.
 func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support ResetWithGenesisBlock")
+		return errors.New("BlockChain is readonly, not support ResetWithGenesisBlock")
+	}
 	// Dump the entire block chain and purge the caches
 	if err := bc.SetHead(0); err != nil {
 		return err
@@ -921,6 +986,10 @@ func (bc *BlockChain) ExportN(w io.Writer, first uint64, last uint64) error {
 //
 // Note, this function assumes that the `mu` mutex is held!
 func (bc *BlockChain) writeHeadBlock(block *types.Block) {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support writeHeadBlock")
+		return 
+	}
 	// If the block is on a side chain or an unknown one, force other heads onto it too
 	updateHeads := rawdb.ReadCanonicalHash(bc.db, block.NumberU64()) != block.Hash()
 
@@ -1320,6 +1389,10 @@ const (
 // truncateAncient rewinds the blockchain to the specified header and deletes all
 // data in the ancient store that exceeds the specified header.
 func (bc *BlockChain) truncateAncient(head uint64) error {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support truncateAncient")
+		return errors.New("BlockChain is readonly, not support truncateAncient")
+	}
 	frozen, err := bc.db.Ancients()
 	if err != nil {
 		return err
@@ -1362,6 +1435,11 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 	// concurrency of header insertion and receipt insertion.
 	bc.wg.Add(1)
 	defer bc.wg.Done()
+
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support InsertReceiptChain")
+		return 0, errors.New("BlockChain is readonly, not support InsertReceiptChain")
+	}
 
 	var (
 		ancientBlocks, liveBlocks     types.Blocks
@@ -1641,6 +1719,10 @@ var lastWrite uint64
 func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (err error) {
 	bc.wg.Add(1)
 	defer bc.wg.Done()
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support writeBlockWithoutState")
+		return errors.New("BlockChain is readonly, not support writeBlockWithoutState")
+	}
 
 	batch := bc.db.NewBatch()
 	rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), td)
@@ -1656,6 +1738,10 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 	bc.wg.Add(1)
 	defer bc.wg.Done()
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support writeKnownBlock")
+		return errors.New("BlockChain is readonly, not support writeKnownBlock")
+	}
 
 	current := bc.CurrentBlock()
 	if block.ParentHash() != current.Hash() {
@@ -1671,6 +1757,10 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
 	bc.chainmu.Lock()
 	defer bc.chainmu.Unlock()
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support WriteBlockWithState")
+		return CanonStatTy, errors.New("BlockChain is readonly, not support WriteBlockWithState")
+	}
 
 	return bc.writeBlockWithState(block, receipts, logs, state, emitHeadEvent)
 }
@@ -1680,6 +1770,10 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
 	bc.wg.Add(1)
 	defer bc.wg.Done()
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support writeBlockWithState")
+		return CanonStatTy, errors.New("BlockChain is readonly, not support writeBlockWithState")
+	}
 
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
@@ -1855,6 +1949,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 // accepted for future processing, and returns an error if the block is too far
 // ahead and was not added.
 func (bc *BlockChain) addFutureBlock(block *types.Block) error {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support addFutureBlock")
+		return errors.New("BlockChain is readonly, not support addFutureBlock")
+	}
 	max := uint64(time.Now().Unix() + maxTimeFutureBlocks)
 	if block.Time() > max {
 		return fmt.Errorf("future block timestamp %v > allowed %v", block.Time(), max)
@@ -1873,6 +1971,10 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	// Sanity check that we have something meaningful to import
 	if len(chain) == 0 {
 		return 0, nil
+	}
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support InsertChain")
+		return 0, errors.New("BlockChain is readonly, not support InsertChain")
 	}
 
 	bc.blockProcFeed.Send(true)
@@ -1908,6 +2010,10 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 // InsertChainWithoutSealVerification works exactly the same
 // except for seal verification, seal verification is omitted
 func (bc *BlockChain) InsertChainWithoutSealVerification(block *types.Block) (int, error) {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support InsertChainWithoutSealVerification")
+		return 0, errors.New("BlockChain is readonly, not support InsertChainWithoutSealVerification")
+	}
 	bc.blockProcFeed.Send(true)
 	defer bc.blockProcFeed.Send(false)
 
@@ -1930,6 +2036,10 @@ func (bc *BlockChain) InsertChainWithoutSealVerification(block *types.Block) (in
 // is imported, but then new canon-head is added before the actual sidechain
 // completes, then the historic state could be pruned again
 func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, error) {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support insertChain")
+		return 0, errors.New("BlockChain is readonly, not support insertChain")
+	}
 	// If the chain is terminating, don't even bother starting up
 	if atomic.LoadInt32(&bc.procInterrupt) == 1 {
 		return 0, nil
@@ -2225,6 +2335,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 }
 
 func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support updateHighestVerifiedHeader")
+		return 
+	}
 	if header == nil || header.Number == nil {
 		return
 	}
@@ -2262,6 +2376,10 @@ func (bc *BlockChain) GetHighestVerifiedHeader() *types.Header {
 // The method writes all (header-and-body-valid) blocks to disk, then tries to
 // switch over to the new chain if the TD exceeded the current chain.
 func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (int, error) {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support insertSideChain")
+		return 0, errors.New("BlockChain is readonly, not support insertSideChain")
+	}
 	var (
 		externTd *big.Int
 		current  = bc.CurrentBlock()
@@ -2382,6 +2500,10 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 // blocks and inserts them to be part of the new canonical chain and accumulates
 // potential missing transactions and post an event about them.
 func (bc *BlockChain) reorg(oldBlock, newBlock *types.Block) error {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support reorg")
+		return errors.New("BlockChain is readonly, not support reorg")
+	}
 	var (
 		newChain    types.Blocks
 		oldChain    types.Blocks
@@ -2951,6 +3073,10 @@ Error: %v
 // of the header retrieval mechanisms already need to verify nonces, as well as
 // because nonces can be verified sparsely, not needing to check each.
 func (bc *BlockChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (int, error) {
+	if bc.readonly {
+		log.Error("BlockChain is readonly, not support InsertHeaderChain")
+		return 0, errors.New("BlockChain is readonly, not support InsertHeaderChain")
+	}
 	start := time.Now()
 	if i, err := bc.hc.ValidateHeaderChain(chain, checkFreq); err != nil {
 		return i, err
