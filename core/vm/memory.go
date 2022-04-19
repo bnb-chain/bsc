@@ -18,7 +18,6 @@ package vm
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/holiman/uint256"
 )
@@ -27,12 +26,6 @@ import (
 type Memory struct {
 	store       []byte
 	lastGasCost uint64
-}
-
-var bytesPool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, 1024)
-	},
 }
 
 // NewMemory returns a new memory model.
@@ -69,19 +62,10 @@ func (m *Memory) Set32(offset uint64, val *uint256.Int) {
 }
 
 // Resize resizes the memory to size
-func (m *Memory) Resize(size uint64) []byte {
+func (m *Memory) Resize(size uint64) {
 	if uint64(m.Len()) < size {
-		bytes := bytesPool.Get().([]byte)
-		if uint64(cap(bytes)) >= size {
-			bytes = bytes[0:size]
-			copy(bytes, m.store)
-			m.store = bytes
-			return bytes
-		}
 		m.store = append(m.store, make([]byte, size-uint64(m.Len()))...)
-		return nil
 	}
-	return nil
 }
 
 // Get returns offset + size as a new slice
@@ -136,14 +120,4 @@ func (m *Memory) Print() {
 		fmt.Println("-- empty --")
 	}
 	fmt.Println("####################")
-}
-
-// putPool puts the buffer into the pool.
-func putPool(buf []byte) {
-	buf = buf[0:cap(buf)]
-	l := len(buf)
-	for i := 0; i < l; i++ {
-		buf[i] = 0
-	}
-	bytesPool.Put(buf[:0])
 }

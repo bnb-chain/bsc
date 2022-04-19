@@ -279,9 +279,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				return nil, ErrOutOfGas
 			}
 		}
-		var buf []byte
 		if memorySize > 0 {
-			buf = mem.Resize(memorySize)
+			mem.Resize(memorySize)
 		}
 
 		if in.cfg.Debug {
@@ -295,10 +294,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// set the last return to the result of the operation.
 		if operation.returns {
 			in.returnData = res
-		}
-
-		if buf != nil {
-			putPool(buf)
 		}
 
 		switch {
