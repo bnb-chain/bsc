@@ -35,6 +35,9 @@ var (
 	// ErrDiffLayerNotFound is returned when diff layer not found.
 	ErrDiffLayerNotFound = errors.New("diff layer not found")
 
+	// ErrDiffLayerNotFound is returned when block - 11 has not been verified by the remote verifier.
+	ErrAncestorHasNotBeenVerified = errors.New("block ancestor has not been verified")
+
 	// ErrCurrentBlockNotFound is returned when current block not found.
 	ErrCurrentBlockNotFound = errors.New("current block not found")
 

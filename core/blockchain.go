@@ -2092,15 +2092,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 	}()
 
 	for ; block != nil && err == nil || err == ErrKnownBlock; block, err = it.next() {
-		if bc.validator.RemoteVerifyManager() != nil {
-			for !bc.Validator().RemoteVerifyManager().AncestorVerified(block.Header()) {
-				if bc.insertStopped() {
-					break
-				}
-				log.Info("block ancestor has not been verified", "number", block.Number(), "hash", block.Hash())
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
 			log.Debug("Abort during block processing")

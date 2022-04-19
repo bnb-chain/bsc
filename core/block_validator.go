@@ -94,6 +94,13 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 			}
 			return nil
 		},
+		func() error {
+			if v.remoteValidator != nil && !v.remoteValidator.AncestorVerified(block.Header()) {
+				return fmt.Errorf("%w, number: %s, hash: %s", ErrAncestorHasNotBeenVerified, block.Number(), block.Hash())
+			}
+
+			return nil
+		},
 	}
 	validateRes := make(chan error, len(validateFuns))
 	for _, f := range validateFuns {

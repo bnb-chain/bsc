@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -40,6 +41,7 @@ var (
 
 type remoteVerifyManager struct {
 	bc            *BlockChain
+	taskLock      sync.RWMutex
 	tasks         map[common.Hash]*verifyTask
 	peers         verifyPeers
 	verifiedCache *lru.Cache
@@ -109,6 +111,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 			vm.NewBlockVerifyTask(h.Block.Header())
 		case hash := <-vm.verifyCh:
 			vm.cacheBlockVerified(hash)
+			vm.taskLock.Lock()
 			if task, ok := vm.tasks[hash]; ok {
 				delete(vm.tasks, hash)
 				verifyTaskCounter.Dec(1)
@@ -116,7 +119,9 @@ func (vm *remoteVerifyManager) mainLoop() {
 				verifyTaskExecutionTimer.Update(time.Since(task.startAt))
 				close(task.terminalCh)
 			}
+			vm.taskLock.Unlock()
 		case <-pruneTicker.C:
+			vm.taskLock.Lock()
 			for hash, task := range vm.tasks {
 				if vm.bc.CurrentHeader().Number.Cmp(task.blockHeader.Number) == 1 &&
 					vm.bc.CurrentHeader().Number.Uint64()-task.blockHeader.Number.Uint64() > pruneHeightDiff {
@@ -126,16 +131,21 @@ func (vm *remoteVerifyManager) mainLoop() {
 					close(task.terminalCh)
 				}
 			}
+			vm.taskLock.Unlock()
 		case message := <-vm.messageCh:
+			vm.taskLock.RLock()
 			if vt, ok := vm.tasks[message.verifyResult.BlockHash]; ok {
 				vt.messageCh <- message
 			}
+			vm.taskLock.RUnlock()
 
 		// System stopped
 		case <-vm.bc.quit:
+			vm.taskLock.RLock()
 			for _, task := range vm.tasks {
 				close(task.terminalCh)
 			}
+			vm.taskLock.RUnlock()
 			return
 		case <-vm.chainHeadSub.Err():
 			return
@@ -156,7 +166,10 @@ func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 				return
 			}
 			// if there already has a verify task for this block, skip.
-			if _, ok := vm.tasks[hash]; ok {
+			vm.taskLock.RLock()
+			_, ok := vm.tasks[hash]
+			vm.taskLock.RUnlock()
+			if ok {
 				return
 			}
 
@@ -184,7 +197,9 @@ func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 				return
 			}
 			verifyTask := NewVerifyTask(diffHash, header, vm.peers, vm.verifyCh, vm.allowInsecure)
+			vm.taskLock.Lock()
 			vm.tasks[hash] = verifyTask
+			vm.taskLock.Unlock()
 			verifyTaskCounter.Inc(1)
 		}(header.Hash())
 		header = vm.bc.GetHeaderByHash(header.ParentHash)
@@ -208,7 +223,16 @@ func (vm *remoteVerifyManager) AncestorVerified(header *types.Header) bool {
 	}
 
 	hash := header.Hash()
-	_, exist := vm.verifiedCache.Get(hash)
+
+	// Check if the task is complete
+	vm.taskLock.RLock()
+	task, exist := vm.tasks[hash]
+	vm.taskLock.RUnlock()
+	if exist {
+		<-task.terminalCh
+	}
+
+	_, exist = vm.verifiedCache.Get(hash)
 	return exist
 }
 
