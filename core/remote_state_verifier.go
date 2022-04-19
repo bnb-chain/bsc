@@ -71,14 +71,26 @@ func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure b
 		if oldBlock == nil {
 			return nil, fmt.Errorf("block is nil, number: %d", number)
 		}
-		blockHash := oldBlock.Hash()
-		_, err := blockchain.GenerateDiffLayer(blockHash)
-		if err != nil {
-			return nil, err
+
+		// rewind to last non verified block
+		blockchain.SetHead(oldBlock.NumberU64())
+		block = oldBlock
+		break
+	}
+
+	number = block.Number()
+	for i := maxForkHeight; i >= 0; i-- {
+		if new(big.Int).Sub(number, big.NewInt(int64(i))).Cmp(common.Big0) <= 0 {
+			continue
 		}
-		diffLayerCh := make(chan struct{})
-		close(diffLayerCh)
-		blockchain.diffLayerChanCache.Store(blockHash, diffLayerCh)
+		oldBlock := blockchain.GetBlockByNumber(number.Uint64() - uint64(i))
+		if oldBlock == nil {
+			return nil, fmt.Errorf("block is nil, number: %d", number)
+		}
+		// When inserting a block,
+		// the block before 11 blocks will be verified,
+		// so the parent block of 11-22 will directly write the verification information.
+		verifiedCache.Add(oldBlock.Hash(), true)
 	}
 
 	vm := &remoteVerifyManager{
