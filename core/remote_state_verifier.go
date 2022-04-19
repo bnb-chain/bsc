@@ -62,35 +62,25 @@ func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure b
 	if block == nil {
 		return nil, ErrCurrentBlockNotFound
 	}
-	number := block.Number()
-	for i := maxForkHeight; i >= 0; i-- {
-		if new(big.Int).Sub(number, big.NewInt(int64(i))).Cmp(common.Big0) <= 0 {
-			continue
-		}
-		oldBlock := blockchain.GetBlockByNumber(number.Uint64() - uint64(i))
-		if oldBlock == nil {
-			return nil, fmt.Errorf("block is nil, number: %d", number)
-		}
 
-		// rewind to last non verified block
-		blockchain.SetHead(oldBlock.NumberU64())
-		block = oldBlock
-		break
-	}
-
-	number = block.Number()
-	for i := maxForkHeight; i >= 0; i-- {
-		if new(big.Int).Sub(number, big.NewInt(int64(i))).Cmp(common.Big0) <= 0 {
-			continue
+	// rewind to last non verified block
+	number := new(big.Int).Sub(block.Number(), big.NewInt(int64(maxForkHeight)))
+	if number.Cmp(common.Big0) < 0 {
+		blockchain.SetHead(0)
+	} else {
+		numberU64 := number.Uint64()
+		blockchain.SetHead(numberU64)
+		block := blockchain.GetBlockByNumber(numberU64)
+		for i := 0; i < maxForkHeight; i++ {
+			// When inserting a block,
+			// the block before 11 blocks will be verified,
+			// so the parent block of 11-22 will directly write the verification information.
+			verifiedCache.Add(block.Hash(), true)
+			block = blockchain.GetBlockByHash(block.ParentHash())
+			if block == nil {
+				return nil, fmt.Errorf("block is nil, number: %d", number)
+			}
 		}
-		oldBlock := blockchain.GetBlockByNumber(number.Uint64() - uint64(i))
-		if oldBlock == nil {
-			return nil, fmt.Errorf("block is nil, number: %d", number)
-		}
-		// When inserting a block,
-		// the block before 11 blocks will be verified,
-		// so the parent block of 11-22 will directly write the verification information.
-		verifiedCache.Add(oldBlock.Hash(), true)
 	}
 
 	vm := &remoteVerifyManager{
