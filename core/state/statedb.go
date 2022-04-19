@@ -876,19 +876,19 @@ func (s *StateDB) doCopy(state *StateDB) *StateDB {
 	return state
 }
 
-var objPendingPool = sync.Pool{
-	New: func() interface{} { return make(map[common.Address]struct{}, defaultNumOfSlots) },
-}
-
-var objDirtyPool = sync.Pool{
-	New: func() interface{} { return make(map[common.Address]struct{}, defaultNumOfSlots) },
-}
-
-var journalPool = sync.Pool{
+var statePool = sync.Pool{
 	New: func() interface{} {
-		return &journal{
-			dirties: make(map[common.Address]int, defaultNumOfSlots),
-			entries: make([]journalEntry, 0, defaultNumOfSlots),
+		return &StateDB{
+			hasher:              crypto.NewKeccakState(),
+			stateObjects:        make(map[common.Address]*StateObject, defaultNumOfSlots),
+			stateObjectsPending: make(map[common.Address]struct{}, defaultNumOfSlots),
+			stateObjectsDirty:   make(map[common.Address]struct{}, defaultNumOfSlots),
+			logs:                make(map[common.Hash][]*types.Log, defaultNumOfSlots),
+			preimages:           make(map[common.Hash][]byte, defaultNumOfSlots),
+			journal: &journal{
+				dirties: make(map[common.Address]int, defaultNumOfSlots),
+				entries: make([]journalEntry, 0, defaultNumOfSlots),
+			},
 		}
 	},
 }
@@ -896,41 +896,39 @@ var journalPool = sync.Pool{
 // CopyWithSyncPool creates a deep, independent copy of the state.
 // Snapshots of the copied state cannot be applied to the copy.
 func (s *StateDB) CopyWithSyncPool() *StateDB {
-	// Copy all the basic fields, initialize the memory ones
-	state := &StateDB{
-		db:                  s.db,
-		trie:                s.db.CopyTrie(s.trie),
-		stateObjects:        make(map[common.Address]*StateObject, len(s.journal.dirties)),
-		stateObjectsPending: objPendingPool.Get().(map[common.Address]struct{}),
-		stateObjectsDirty:   objDirtyPool.Get().(map[common.Address]struct{}),
-		storagePool:         s.storagePool,
-		refund:              s.refund,
-		logs:                make(map[common.Hash][]*types.Log, len(s.logs)),
-		logSize:             s.logSize,
-		preimages:           make(map[common.Hash][]byte, len(s.preimages)),
-		journal:             journalPool.Get().(*journal),
-		hasher:              crypto.NewKeccakState(),
-	}
+	state := statePool.Get().(*StateDB)
+
+	state.db = s.db
+	state.trie = s.db.CopyTrie(s.trie)
+	state.storagePool = s.storagePool
+	state.refund = s.refund
+	state.logSize = s.logSize
+
 	return s.doCopy(state)
 }
 
 // ResetSyncPool puts the data back to the sync pools.
 func (s *StateDB) ResetSyncPool() {
+	for key := range s.stateObjects {
+		delete(s.stateObjects, key)
+	}
 	for key := range s.stateObjectsPending {
 		delete(s.stateObjectsPending, key)
 	}
-	objPendingPool.Put(s.stateObjectsPending)
-
 	for key := range s.stateObjectsDirty {
 		delete(s.stateObjectsDirty, key)
 	}
-	objDirtyPool.Put(s.stateObjectsDirty)
-
+	for key := range s.logs {
+		delete(s.logs, key)
+	}
+	for key := range s.preimages {
+		delete(s.preimages, key)
+	}
 	for key := range s.journal.dirties {
 		delete(s.journal.dirties, key)
 	}
 	s.journal.entries = s.journal.entries[:0]
-	journalPool.Put(s.journal)
+	statePool.Put(s)
 }
 
 // Snapshot returns an identifier for the current revision of the state.
@@ -1216,7 +1214,10 @@ func (s *StateDB) Prepare(thash, bhash common.Hash, ti int) {
 
 func (s *StateDB) clearJournalAndRefund() {
 	if len(s.journal.entries) > 0 {
-		s.journal = newJournal()
+		for key := range s.journal.dirties {
+			delete(s.journal.dirties, key)
+		}
+		s.journal.entries = s.journal.entries[:0]
 		s.refund = 0
 	}
 	s.validRevisions = s.validRevisions[:0] // Snapshots can be created without journal entires
