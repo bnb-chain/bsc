@@ -71,7 +71,7 @@ func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure b
 		numberU64 := number.Uint64()
 		blockchain.SetHead(numberU64)
 		block := blockchain.GetBlockByNumber(numberU64)
-		for i := 0; i < maxForkHeight; i++ {
+		for i := 0; i < maxForkHeight && block.NumberU64() > 0; i++ {
 			// When inserting a block,
 			// the block before 11 blocks will be verified,
 			// so the parent block of 11-22 will directly write the verification information.
