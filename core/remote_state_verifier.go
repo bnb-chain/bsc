@@ -101,10 +101,6 @@ func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure b
 func (vm *remoteVerifyManager) mainLoop() {
 	defer vm.chainHeadSub.Unsubscribe()
 
-	// load unverified blocks in a normalized chain and start a batch of verify task
-	header := vm.bc.CurrentHeader()
-	// Start verify task from H to H-11 if need.
-	vm.NewBlockVerifyTask(header)
 	pruneTicker := time.NewTicker(pruneInterval)
 	defer pruneTicker.Stop()
 	for {
