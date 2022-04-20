@@ -133,7 +133,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	var err error
 	if config.EnableRemoteDB {
 		chainDb, err = stack.OpenRemoteDB(&config.RemoteDB, config.EnablePersistCache, "chaindata", 
-			config.DatabaseCache, config.DatabaseHandles, "eth/db/chaindata/", false)
+			config.DatabaseCache, config.DatabaseHandles, "eth/db/chaindata/", false, config.PersistDiff)
 		if err != nil {
 			return nil, err
 		}
@@ -335,7 +335,7 @@ func NewArchiveServiceNode(stack *node.Node, config *ethconfig.Config) (*Ethereu
 
 	// Assemble the Ethereum object
 	chainDb, err := stack.OpenRemoteDB(&config.RemoteDB, config.EnablePersistCache, "chaindata", 
-		config.DatabaseCache, config.DatabaseHandles, "eth/db/chaindata/", false)
+		config.DatabaseCache, config.DatabaseHandles, "eth/db/chaindata/", true, config.PersistDiff)
 	if err != nil {
 		return nil, err
 	}

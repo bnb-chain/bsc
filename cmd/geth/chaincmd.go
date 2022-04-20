@@ -223,7 +223,7 @@ func initGenesis(ctx *cli.Context) error {
 		} else {
 			utils.Fatalf("Open remotedb must addrs(remotedb.addrs) params")
 		}
-		chaindb, err := stack.OpenRemoteDB(cfg, false, "chaindata", 0, 0, "eth/db/chaindata/", false)
+		chaindb, err := stack.OpenRemoteDB(cfg, false, "chaindata", 0, 0, "eth/db/chaindata/", false, false)
 		if err != nil {
 			utils.Fatalf("Failed to open remotedb: %v", err)
 		}
