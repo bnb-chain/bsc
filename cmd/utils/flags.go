@@ -853,6 +853,11 @@ var (
 		Usage: "Set remotedb readonly ",
 	}
 
+	RemoteDBWriteForce = cli.BoolFlag{
+		Name:  "remotedb.writeforce",
+		Usage: "Open remotedb with write permission cover write marker ",
+	}
+
 	RemoteDBAddr = cli.StringFlag{
 		Name:  "remotedb.addrs",
 		Usage: "Remotedb hosts ",
@@ -1773,6 +1778,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(RemoteDBReadOnly.Name) {
 		cfg.RemoteDBReadOnly = ctx.GlobalBool(RemoteDBReadOnly.Name)
+	}
+	if ctx.GlobalIsSet(RemoteDBWriteForce.Name) {
+		cfg.RemoteDBWriteForce = ctx.GlobalBool(RemoteDBWriteForce.Name)
 	}
 	if ctx.GlobalIsSet(RemoteDBPersistCache.Name) {
 		cfg.EnablePersistCache = ctx.GlobalBool(RemoteDBPersistCache.Name)

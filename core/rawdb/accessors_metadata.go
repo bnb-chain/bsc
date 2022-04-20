@@ -138,3 +138,18 @@ func PopUncleanShutdownMarker(db ethdb.KeyValueStore) {
 		log.Warn("Failed to clear unclean-shutdown marker", "err", err)
 	}
 }
+
+// ReadRemoteDBWriteMarker retrieves archive producer marker.
+func ReadRemoteDBWriteMarker(db ethdb.KeyValueReader) ([]byte, error) {
+	return db.Get(remoteDbWriteMarker)
+}
+
+// WritehRemoteDBWriteMarker write archive producer marker.
+func WriteRemoteDBWriteMarker(db ethdb.KeyValueWriter, val []byte) error {
+	return db.Put(remoteDbWriteMarker, val)
+}
+
+// DeleteRemoteDBWriteMarker delete archive producer marker.
+func DeleteRemoteDBWriteMarker(db ethdb.KeyValueWriter) error {
+	return db.Delete(remoteDbWriteMarker)
+}

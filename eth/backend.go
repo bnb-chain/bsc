@@ -137,6 +137,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		if err != nil {
 			return nil, err
 		}
+		marker, err := rawdb.ReadRemoteDBWriteMarker(chainDb)
+		if err != nil {
+			return nil, err
+		}
+		if len(marker) != 0 && !config.RemoteDBWriteForce{
+			log.Info("other node wirte remotedb", "node", string(marker))
+			return nil, errors.New("other node opened remotedb with wirte ermission")
+		}
+		if err := rawdb.WriteRemoteDBWriteMarker(chainDb, []byte(time.Now().Format("2022-04-20 15:04:05"))); err != nil{
+			return nil, err
+		}
+		
 		log.Info("Open remotedb", "addrs", config.RemoteDB.Addrs, "persistcache", config.EnablePersistCache)
 	} else {
 		chainDb, err = stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
@@ -763,6 +775,7 @@ func (s *Ethereum) Stop() error {
 	if !s.config.RemoteDBReadOnly {
 		rawdb.PopUncleanShutdownMarker(s.chainDb)
 	}
+	rawdb.DeleteRemoteDBWriteMarker(s.chainDb)
 	s.chainDb.Close()
 	s.eventMux.Stop()
 

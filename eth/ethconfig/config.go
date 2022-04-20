@@ -171,6 +171,7 @@ type Config struct {
 	DiffBlock          uint64
 	EnableRemoteDB     bool
 	RemoteDBReadOnly   bool
+	RemoteDBWriteForce bool
 	EnablePersistCache bool
 
 	TrieCleanCache          int
