@@ -97,7 +97,7 @@ const (
 	diffLayerFreezerRecheckInterval = 3 * time.Second
 	diffLayerPruneRecheckInterval   = 1 * time.Second // The interval to prune unverified diff layers
 	loadStatesFromRemoteDBInterval  = 2 * time.Second // The interval to load states from remotedb
-	reportStatesFromRemoteDBInterval= 10 * time.Second// The interval to report states from remotedb
+	reportStatesFromRemoteDBInterval= 10   	          // The interval to report states from remotedb
 	maxDiffQueueDist                = 2048            // Maximum allowed distance from the chain head to queue diffLayers
 	maxDiffLimit                    = 2048            // Maximum number of unique diff layers a peer may have responded
 	maxDiffForkDist                 = 11              // Maximum allowed backward distance from the chain head
@@ -337,6 +337,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 			return nil, err
 		}
 		go func () {
+			var reportCount int
 			for {
 				select {
 				case <-time.NewTimer(loadStatesFromRemoteDBInterval).C:
@@ -361,23 +362,27 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 					bc.highestVerifiedHeader.Store(currentHeader)
 
 					bc.currentFastBlock.Store(currentBlock)
+					currentFastBlock ：= currentBlock
 					if head := rawdb.ReadHeadFastBlockHash(bc.db); head != (common.Hash{}) {
 						if block := bc.GetBlockByHash(head); block != nil {
-							bc.currentFastBlock.Store(block)
+							currentFastBlock ：= block
 						}
 					}
-				case <-time.NewTimer(reportStatesFromRemoteDBInterval).C:
-					currentHeader := bc.hc.CurrentHeader()
-					currentBlock := bc.CurrentBlock()
-					currentFastBlock := bc.CurrentFastBlock()
-					log.Info("Loaded most recent local header", "number", currentHeader.Number, "hash", currentHeader.Hash(), "age", common.PrettyAge(time.Unix(int64(currentHeader.Time), 0)))
-					log.Info("Loaded most recent local full block", "number", currentBlock.Number(), "hash", currentBlock.Hash(), "age", common.PrettyAge(time.Unix(int64(currentBlock.Time()), 0)))
-					log.Info("Loaded most recent local fast block", "number", currentFastBlock.Number(), "hash", currentFastBlock.Hash(), "age", common.PrettyAge(time.Unix(int64(currentFastBlock.Time()), 0)))
+					bc.currentFastBlock.Store(currentFastBlock)
+					reportCount++
+				
+					if reportCount == reportStatesFromRemoteDBInterval {
+						reportCount = 0
+						log.Info("Loaded most recent local header", "number", currentHeader.Number, "hash", currentHeader.Hash(), "age", common.PrettyAge(time.Unix(int64(currentHeader.Time), 0)))
+						log.Info("Loaded most recent local full block", "number", currentBlock.Number(), "hash", currentBlock.Hash(), "age", common.PrettyAge(time.Unix(int64(currentBlock.Time()), 0)))
+						log.Info("Loaded most recent local fast block", "number", currentFastBlock.Number(), "hash", currentFastBlock.Hash(), "age", common.PrettyAge(time.Unix(int64(currentFastBlock.Time()), 0)))
+					}
 				case <-bc.quit:
 					return
 				}
 			}
 		}()
+		log.Info("Initialising readonly block chain finished")
 		return bc, nil
 	}
 
