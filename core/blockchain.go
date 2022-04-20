@@ -362,10 +362,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 					bc.highestVerifiedHeader.Store(currentHeader)
 
 					bc.currentFastBlock.Store(currentBlock)
-					currentFastBlock ：= currentBlock
+					currentFastBlock := currentBlock
 					if head := rawdb.ReadHeadFastBlockHash(bc.db); head != (common.Hash{}) {
 						if block := bc.GetBlockByHash(head); block != nil {
-							currentFastBlock ：= block
+							currentFastBlock = block
 						}
 					}
 					bc.currentFastBlock.Store(currentFastBlock)
