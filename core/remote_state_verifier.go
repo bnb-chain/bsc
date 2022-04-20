@@ -189,17 +189,9 @@ func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 				diffLayer = vm.bc.GetTrustedDiffLayer(hash)
 			}
 			// if this block has no diff, there is no need to verify it.
-			var err error
 			if diffLayer == nil {
 				log.Info("block's trusted diffLayer is nil", "hash", hash, "number", header.Number)
-				//if diffLayer, err = vm.bc.GenerateDiffLayer(hash); err != nil {
-				//	log.Error("failed to get diff layer", "block", hash, "number", header.Number, "error", err)
-				//	return
-				//} else if diffLayer == nil {
-				//	log.Info("this is an empty block:", "block", hash, "number", header.Number)
-				//	vm.cacheBlockVerified(hash)
-				//	return
-				//}
+				return
 			}
 			diffHash, err := CalculateDiffHash(diffLayer)
 			if err != nil {
