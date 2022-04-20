@@ -227,7 +227,7 @@ type BlockChain struct {
 	// trusted diff layers
 	diffLayerCache             *lru.Cache   // Cache for the diffLayers
 	diffLayerRLPCache          *lru.Cache   // Cache for the rlp encoded diffLayers
-	diffLayerChanCache         *sync.Map    // Cache for
+	diffLayerChanCache         *lru.Cache   // Cache for
 	diffQueue                  *prque.Prque // A Priority queue to store recent diff layer
 	diffQueueBuffer            chan *types.DiffLayer
 	diffLayerFreezerBlockLimit uint64
@@ -279,7 +279,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	futureBlocks, _ := lru.New(maxFutureBlocks)
 	diffLayerCache, _ := lru.New(diffLayerCacheLimit)
 	diffLayerRLPCache, _ := lru.New(diffLayerRLPCacheLimit)
-	diffLayerChanCache := new(sync.Map)
+	diffLayerChanCache, _ := lru.New(diffLayerCacheLimit)
 
 	bc := &BlockChain{
 		chainConfig: chainConfig,
@@ -529,7 +529,7 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, sorted bool) {
 	}
 
 	bc.diffLayerCache.Add(diffLayer.BlockHash, diffLayer)
-	if cached, ok := bc.diffLayerChanCache.Load(diffLayer.BlockHash); ok {
+	if cached, ok := bc.diffLayerChanCache.Get(diffLayer.BlockHash); ok {
 		diffLayerCh := cached.(chan struct{})
 		close(diffLayerCh)
 	}
@@ -1834,7 +1834,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		diffLayer.Number = block.NumberU64()
 
 		diffLayerCh := make(chan struct{})
-		bc.diffLayerChanCache.Store(diffLayer.BlockHash, diffLayerCh)
+		bc.diffLayerChanCache.Add(diffLayer.BlockHash, diffLayerCh)
 
 		go bc.cacheDiffLayer(diffLayer, false)
 	}
