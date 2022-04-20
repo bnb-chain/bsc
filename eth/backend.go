@@ -760,7 +760,9 @@ func (s *Ethereum) Stop() error {
 	time.Sleep(5 * time.Second)
 	s.blockchain.Stop()
 	s.engine.Close()
-	rawdb.PopUncleanShutdownMarker(s.chainDb)
+	if !s.config.RemoteDBReadOnly {
+		rawdb.PopUncleanShutdownMarker(s.chainDb)
+	}
 	s.chainDb.Close()
 	s.eventMux.Stop()
 
