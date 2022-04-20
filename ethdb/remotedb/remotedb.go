@@ -3,12 +3,12 @@ package remotedb
 import (
 	"errors"
 	"time"
+	"bytes"
 	"context"
 
 	rocks "github.com/go-redis/redis/v8"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/log"
-)
+	"github.com/ethereum/go-ethereum/log")
 
 var (
 	// reWriteKeyPrefix tracks keys to write remotedb again, before write failed
@@ -19,6 +19,13 @@ var (
 	reDeleteKeyContent = []byte("ReDeleteKeyContent")
 	// handleExceptionKeyInterval is a timer that handler operate remotedb fail request
 	handleExceptionKeyInterval = time.Minute
+
+	// headBlockKey tracks the latest known full block's hash.
+	headBlockKey = []byte("LastBlock")
+	// headHeaderKey tracks the latest known header's hash.
+	headHeaderKey = []byte("LastHeader")
+	// headFastBlockKey tracks the latest known incomplete block's hash during fast sync.
+	headFastBlockKey = []byte("LastFast")
 )
 
 // reWriteKey return key-prefix that rewrite to remotedb from local persist cache
@@ -98,9 +105,23 @@ func (db *RocksDB) Has(key []byte) (bool, error) {
 	return int64(exist) == 1, nil
 }
 
+// excludeKeys helper func , Get whether cross persist cache
+func excludeKeys(key []byte) bool {
+	if bytes.Equal(key, headBlockKey) {
+		return true
+	}
+	if bytes.Equal(key, headHeaderKey) {
+		return true
+	}
+	if bytes.Equal(key, headFastBlockKey) {
+		return true
+	}
+	return false
+}
+
 // Get retrieves the given key if it's present in the key-value store.
 func (db *RocksDB) Get(key []byte) ([]byte, error) {
-	if db.persistCache != nil {
+	if db.persistCache != nil && !excludeKeys(key) {
 		if data, _ := db.persistCache.Get(key); len(data) != 0 {
 			return data, nil
 		}
