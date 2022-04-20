@@ -227,7 +227,7 @@ type BlockChain struct {
 	// trusted diff layers
 	diffLayerCache             *lru.Cache   // Cache for the diffLayers
 	diffLayerRLPCache          *lru.Cache   // Cache for the rlp encoded diffLayers
-	diffLayerChanCache         *lru.Cache   // Cache for
+	diffLayerChanCache         *lru.Cache   // Cache for the difflayer channel
 	diffQueue                  *prque.Prque // A Priority queue to store recent diff layer
 	diffQueueBuffer            chan *types.DiffLayer
 	diffLayerFreezerBlockLimit uint64
@@ -1834,6 +1834,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		diffLayer.Number = block.NumberU64()
 
 		diffLayerCh := make(chan struct{})
+		if bc.diffLayerChanCache.Len() >= diffLayerCacheLimit {
+			bc.diffLayerChanCache.RemoveOldest()
+		}
 		bc.diffLayerChanCache.Add(diffLayer.BlockHash, diffLayerCh)
 
 		go bc.cacheDiffLayer(diffLayer, false)
