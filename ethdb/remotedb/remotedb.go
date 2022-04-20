@@ -26,6 +26,8 @@ var (
 	headHeaderKey = []byte("LastHeader")
 	// headFastBlockKey tracks the latest known incomplete block's hash during fast sync.
 	headFastBlockKey = []byte("LastFast")
+	// remoteKeys is collection for get remotedb
+	remoteKeys = [][]byte{headBlockKey, headHeaderKey, headFastBlockKey}
 )
 
 // reWriteKey return key-prefix that rewrite to remotedb from local persist cache
@@ -105,16 +107,12 @@ func (db *RocksDB) Has(key []byte) (bool, error) {
 	return int64(exist) == 1, nil
 }
 
-// excludeKeys helper func , Get whether cross persist cache
+// excludeKeys helper func , Get whether omit persist cache
 func excludeKeys(key []byte) bool {
-	if bytes.Equal(key, headBlockKey) {
-		return true
-	}
-	if bytes.Equal(key, headHeaderKey) {
-		return true
-	}
-	if bytes.Equal(key, headFastBlockKey) {
-		return true
+	for _, rkey :=range remoteKeys {
+		if bytes.Equal(key, rkey) {
+			return true
+		}
 	}
 	return false
 }
