@@ -1673,8 +1673,8 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 
 // WriteBlockWithState writes the block and all associated state to the database.
 func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
-	bc.chainLock.LockLow()
-	defer bc.chainLock.UnlockLow()
+	bc.chainLock.LockHigh()
+	defer bc.chainLock.UnlockHigh()
 
 	return bc.writeBlockWithState(block, receipts, logs, state, emitHeadEvent)
 }
