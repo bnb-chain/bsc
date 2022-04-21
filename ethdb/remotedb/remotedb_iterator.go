@@ -121,9 +121,8 @@ func (db *RocksDB) newRemoteIterator(prefix []byte, start []byte) ethdb.Iterator
                     return 
                 }
                 cursor = res[0].(string)
-                wg.Add(1)
-                go func (addr string, keys []interface {}) {
-                    defer wg.Done()
+
+                func (addr string, keys []interface {}) {
                     if len(keys) == 0 {
                         return 
                     }

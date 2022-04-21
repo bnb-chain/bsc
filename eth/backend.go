@@ -140,7 +140,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		marker, _ := rawdb.ReadRemoteDBWriteMarker(chainDb)
 		if len(marker) != 0 && !config.RemoteDBWriteForce {
 			log.Info("other node wirte remotedb", "node", string(marker))
-			return nil, errors.New("other node opened remotedb with wirte ermission")
+			return nil, errors.New("other node opened remotedb with wirte permission")
 		}
 		if err := rawdb.WriteRemoteDBWriteMarker(chainDb, []byte(time.Now().Format("2022-04-20 15:04:05"))); err != nil{
 			return nil, err

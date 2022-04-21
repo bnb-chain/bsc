@@ -8,7 +8,8 @@ import (
 
 	rocks "github.com/go-redis/redis/v8"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/log")
+	"github.com/ethereum/go-ethereum/log"
+)
 
 var (
 	// reWriteKeyPrefix tracks keys to write remotedb again, before write failed
