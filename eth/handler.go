@@ -357,7 +357,9 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// Propagate existing transactions and votes. new transactions and votes appearing
 	// after this will be sent via broadcasts.
 	h.syncTransactions(peer)
-	h.syncVotes(peer)
+	if h.votepool != nil {
+		h.syncVotes(peer)
+	}
 
 	// If we have a trusted CHT, reject all peers below that (avoid fast sync eclipse)
 	if h.checkpointHash != (common.Hash{}) {
@@ -468,10 +470,12 @@ func (h *handler) Start(maxPeers int) {
 	go h.txBroadcastLoop()
 
 	// broadcast votes
-	h.wg.Add(1)
-	h.voteCh = make(chan core.NewVoteEvent, voteChanSize)
-	h.votesSub = h.votepool.SubscribeNewVoteEvent(h.voteCh)
-	go h.voteBroadcastLoop()
+	if h.votepool != nil {
+		h.wg.Add(1)
+		h.voteCh = make(chan core.NewVoteEvent, voteChanSize)
+		h.votesSub = h.votepool.SubscribeNewVoteEvent(h.voteCh)
+		go h.voteBroadcastLoop()
+	}
 
 	// announce local pending transactions again
 	h.wg.Add(1)
