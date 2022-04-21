@@ -130,10 +130,10 @@ func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
 	return false
 }
 
-func TestValidVotePool(t *testing.T) {
-	testVotePool(t, true)
-
-}
+//func TestValidVotePool(t *testing.T) {
+//	testVotePool(t, true)
+//
+//}
 
 func TestInvalidVotePool(t *testing.T) {
 	testVotePool(t, false)
