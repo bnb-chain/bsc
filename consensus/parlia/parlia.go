@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -779,7 +780,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		return nil
 	}
 
-	if p.votePool == nil {
+	if reflect.ValueOf(p.votePool).IsNil() {
 		return errors.New("vote pool is nil")
 	}
 

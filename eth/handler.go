@@ -20,6 +20,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -357,7 +358,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// Propagate existing transactions and votes. new transactions and votes appearing
 	// after this will be sent via broadcasts.
 	h.syncTransactions(peer)
-	if h.votepool != nil {
+	if !reflect.ValueOf(h.votepool).IsNil() {
 		h.syncVotes(peer)
 	}
 
@@ -470,7 +471,7 @@ func (h *handler) Start(maxPeers int) {
 	go h.txBroadcastLoop()
 
 	// broadcast votes
-	if h.votepool != nil {
+	if !reflect.ValueOf(h.votepool).IsNil() {
 		h.wg.Add(1)
 		h.voteCh = make(chan core.NewVoteEvent, voteChanSize)
 		h.votesSub = h.votepool.SubscribeNewVoteEvent(h.voteCh)
@@ -497,8 +498,10 @@ func (h *handler) Start(maxPeers int) {
 func (h *handler) Stop() {
 	h.txsSub.Unsubscribe()        // quits txBroadcastLoop
 	h.reannoTxsSub.Unsubscribe()  // quits txReannounceLoop
-	h.votesSub.Unsubscribe()      // quits voteBroadcastLoop
 	h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
+	if !reflect.ValueOf(h.votepool).IsNil() {
+		h.votesSub.Unsubscribe() // quits voteBroadcastLoop
+	}
 
 	// Quit chainSync and txsync64.
 	// After this is done, no new peers will be accepted.
