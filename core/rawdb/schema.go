@@ -109,7 +109,7 @@ var (
 	preimageHitCounter = metrics.NewRegisteredCounter("db/preimage/hits", nil)
 
 	// remoteDbWriteMarker flag if has eth node write remotedb
-	remoteDbWriteMarker = []byte("remotedbwritermarker") // diffLayerPrefix + hash  -> diffLayer
+	remoteDbWriteMarker = []byte("remotedbwritermarker") 
 )
 
 const (

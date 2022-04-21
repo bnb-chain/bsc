@@ -26,8 +26,10 @@ var (
 	headHeaderKey = []byte("LastHeader")
 	// headFastBlockKey tracks the latest known incomplete block's hash during fast sync.
 	headFastBlockKey = []byte("LastFast")
+	// remoteDbWriteMarker flag if has eth node write remotedb
+	remoteDbWriteMarker = []byte("remotedbwritermarker") 
 	// remoteKeys is collection for get remotedb
-	remoteKeys = [][]byte{headBlockKey, headHeaderKey, headFastBlockKey}
+	remoteKeys = [][]byte{headBlockKey, headHeaderKey, headFastBlockKey, remoteDbWriteMarker}
 )
 
 // reWriteKey return key-prefix that rewrite to remotedb from local persist cache
@@ -91,7 +93,7 @@ func (db *RocksDB) Compact(start []byte, limit []byte) error {
 
 // Has retrieves if a key is present in the key-value store.
 func (db *RocksDB) Has(key []byte) (bool, error) {
-	if db.persistCache != nil {
+	if db.persistCache != nil && !excludeKeys(key) {
 		if exist, _ := db.persistCache.Has(key); exist {
 			return true, nil
 		}

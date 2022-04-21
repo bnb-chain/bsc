@@ -137,11 +137,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		if err != nil {
 			return nil, err
 		}
-		marker, err := rawdb.ReadRemoteDBWriteMarker(chainDb)
-		if err != nil {
-			return nil, err
-		}
-		if len(marker) != 0 && !config.RemoteDBWriteForce{
+		marker, _ := rawdb.ReadRemoteDBWriteMarker(chainDb)
+		if len(marker) != 0 && !config.RemoteDBWriteForce {
 			log.Info("other node wirte remotedb", "node", string(marker))
 			return nil, errors.New("other node opened remotedb with wirte ermission")
 		}
