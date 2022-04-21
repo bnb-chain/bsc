@@ -107,6 +107,7 @@ func (db *RocksDB) newRemoteIterator(prefix []byte, start []byte) ethdb.Iterator
             ctx := context.Background()
             prefix := string(append(append(prefix, start...), []byte("*")...))
             nodeClient := rocks.NewClient(db.config.GetIteratorOption(addr))
+            defer nodeClient.Close()
 
             for {
                 res, err := nodeClient.Do(ctx, "scan", cursor, "match", prefix, "count", REMOTE_BATCH_COUNT).Slice()
@@ -121,7 +122,6 @@ func (db *RocksDB) newRemoteIterator(prefix []byte, start []byte) ethdb.Iterator
                     return 
                 }
                 cursor = res[0].(string)
-
                 func (addr string, keys []interface {}) {
                     if len(keys) == 0 {
                         return 
@@ -147,6 +147,7 @@ func (db *RocksDB) newRemoteIterator(prefix []byte, start []byte) ethdb.Iterator
                         it.err = err
                         return
                     }
+                    batch.Reset()
                 }(addr, res[1].([]interface {}))
 
                 if cursor == "0" {
