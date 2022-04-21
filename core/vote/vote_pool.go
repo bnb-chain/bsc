@@ -2,7 +2,6 @@ package vote
 
 import (
 	"container/heap"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -28,8 +27,6 @@ const (
 
 	chainHeadChanSize = 10 // chainHeadChanSize is the size of channel listening to ChainHeadEvent.
 )
-
-var errInvalidVote = errors.New("invalid Vote")
 
 var (
 	localCurVotesGauge    = metrics.NewRegisteredGauge("curVotes/local", nil)
@@ -166,7 +163,7 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 
 	if !isFutureVote {
 		// Send vote for handler usage of broadcasting to peers.
-		voteEv := core.NewVoteEvent{vote}
+		voteEv := core.NewVoteEvent{Vote: vote}
 		pool.votesFeed.Send(voteEv)
 	}
 
@@ -246,8 +243,6 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 	for _, voteData := range futurePqBuffer {
 		heap.Push(futurePq, voteData)
 	}
-	// Release underlying allocated memory.
-	futurePqBuffer = nil
 }
 
 func (pool *VotePool) transfer(blockHash common.Hash) {
@@ -267,7 +262,7 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 		// Verify the vote from futureVotes.
 		if err := VerifyVoteWithBLS(vote); err == nil {
 			// In the process of transfer, send valid vote to votes channel for handler usage
-			voteEv := core.NewVoteEvent{vote}
+			voteEv := core.NewVoteEvent{Vote: vote}
 			pool.votesFeed.Send(voteEv)
 			validVotes = append(validVotes, vote)
 		}

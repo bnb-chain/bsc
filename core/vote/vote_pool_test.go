@@ -97,7 +97,6 @@ func (m *mockPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.Vot
 }
 
 func (m *mockPOSA) SetVotePool(votePool consensus.VotePool) {
-	return
 }
 
 func (m *mockPOSA) IsWithInSnapShot(chain consensus.ChainHeaderReader, header *types.Header) bool {
@@ -377,9 +376,9 @@ func setUpKeyManager(t *testing.T) (string, string) {
 	if err != nil {
 		t.Fatalf("failed to create wallet: %v", err)
 	}
-	km, err := w.InitializeKeymanager(context.Background(), iface.InitKeymanagerConfig{ListenForChanges: false})
+	km, _ := w.InitializeKeymanager(context.Background(), iface.InitKeymanagerConfig{ListenForChanges: false})
 	k, _ := km.(keymanager.Importer)
-	secretKey, err := bls.RandKey()
+	secretKey, _ := bls.RandKey()
 	encryptor := keystorev4.New()
 	pubKeyBytes := secretKey.PublicKey().Marshal()
 	cryptoFields, err := encryptor.Encrypt(secretKey.Marshal(), password)
@@ -400,7 +399,7 @@ func setUpKeyManager(t *testing.T) (string, string) {
 	keyStoreDir := filepath.Join(t.TempDir(), "keystore")
 	keystoreFile, _ := os.Create(fmt.Sprintf("%s/keystore-%s.json", keyStoreDir, "publichh"))
 	keystoreFile.Write(encodedFile)
-	_, err = accounts.ImportAccounts(context.Background(), &accounts.ImportAccountsConfig{
+	accounts.ImportAccounts(context.Background(), &accounts.ImportAccountsConfig{
 		Importer:        k,
 		Keystores:       []*keymanager.Keystore{keystore},
 		AccountPassword: password,

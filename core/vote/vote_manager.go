@@ -19,10 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-const (
-	maxForkLength = 11
-)
-
 type (
 	getHighestJustifiedHeader func(chain consensus.ChainHeaderReader, header *types.Header) *types.Header
 )

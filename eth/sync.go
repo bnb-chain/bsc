@@ -89,7 +89,6 @@ func (h *handler) syncVotes(p *eth.Peer) {
 		}
 		p.AsyncSendVotes(votes)
 	}
-	return
 }
 
 // txsyncLoop64 takes care of the initial transaction sync for each new

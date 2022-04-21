@@ -338,7 +338,7 @@ func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.Chain
 	if header.Number.Uint64()%parliaConfig.Epoch != 0 {
 		return nil
 	}
-	num := int(uint8(header.Extra[extraVanity]))
+	num := int(header.Extra[extraVanity])
 	if num == 0 || len(header.Extra) <= extraVanity+extraSeal+num*validatorBytesLengthAfterBoneh {
 		return nil
 	}
@@ -360,7 +360,7 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 	if header.Number.Uint64()%parliaConfig.Epoch != 0 {
 		attestationBytes = header.Extra[extraVanity : len(header.Extra)-extraSeal]
 	} else {
-		num := int(uint8(header.Extra[extraVanity]))
+		num := int(header.Extra[extraVanity])
 		if len(header.Extra) <= extraVanity+extraSeal+validatorNumberSizeAfterBoneh+num*validatorBytesLengthAfterBoneh {
 			return nil, nil
 		}
@@ -765,7 +765,7 @@ func (p *Parlia) PrepareValidators(chain consensus.ChainHeaderReader, header *ty
 			header.Extra = append(header.Extra, validator.Bytes()...)
 		}
 	} else {
-		header.Extra = append(header.Extra, byte(uint8(len(newValidators))))
+		header.Extra = append(header.Extra, byte(len(newValidators)))
 		for _, validator := range newValidators {
 			header.Extra = append(header.Extra, validator.Bytes()...)
 			header.Extra = append(header.Extra, voteAddressMap[validator].Bytes()...)
@@ -916,7 +916,7 @@ func (p *Parlia) verifyValidators(header *types.Header) error {
 			copy(validatorsBytes[i*validatorBytesLength:], validator.Bytes())
 		}
 	} else {
-		if uint8(validatorsNumber) != uint8(header.Extra[extraVanity]) {
+		if uint8(validatorsNumber) != header.Extra[extraVanity] {
 			return errMismatchingEpochValidators
 		}
 		validatorsBytes = make([]byte, validatorsNumber*validatorBytesLengthAfterBoneh)

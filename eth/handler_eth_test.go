@@ -947,14 +947,12 @@ func testSendVotes(t *testing.T, protocol uint) {
 	for len(seen) < len(insert) {
 		switch protocol {
 		case 65, 66, 68:
-			select {
-			case votes := <-bcasts:
-				for _, vote := range votes {
-					if _, ok := seen[vote.Hash()]; ok {
-						t.Errorf("duplicate vote broadcast: %x", vote.Hash())
-					}
-					seen[vote.Hash()] = struct{}{}
+			votes := <-bcasts
+			for _, vote := range votes {
+				if _, ok := seen[vote.Hash()]; ok {
+					t.Errorf("duplicate vote broadcast: %x", vote.Hash())
 				}
+				seen[vote.Hash()] = struct{}{}
 			}
 
 		default:

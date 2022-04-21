@@ -20,8 +20,6 @@ import (
 	"math/big"
 	"reflect"
 	"testing"
-
-	"github.com/ethereum/go-ethereum/common"
 )
 
 func TestCheckCompatible(t *testing.T) {
@@ -96,108 +94,5 @@ func TestCheckCompatible(t *testing.T) {
 		if !reflect.DeepEqual(err, test.wantErr) {
 			t.Errorf("error mismatch:\nstored: %v\nnew: %v\nhead: %v\nerr: %v\nwant: %v", test.stored, test.new, test.head, err, test.wantErr)
 		}
-	}
-}
-
-func TestChainConfig_VerifyForkConfig(t *testing.T) {
-	type fields struct {
-		ChainID             *big.Int
-		HomesteadBlock      *big.Int
-		DAOForkBlock        *big.Int
-		DAOForkSupport      bool
-		EIP150Block         *big.Int
-		EIP150Hash          common.Hash
-		EIP155Block         *big.Int
-		EIP158Block         *big.Int
-		ByzantiumBlock      *big.Int
-		ConstantinopleBlock *big.Int
-		PetersburgBlock     *big.Int
-		IstanbulBlock       *big.Int
-		MuirGlacierBlock    *big.Int
-		BerlinBlock         *big.Int
-		YoloV3Block         *big.Int
-		EWASMBlock          *big.Int
-		CatalystBlock       *big.Int
-		RamanujanBlock      *big.Int
-		NielsBlock          *big.Int
-		MirrorSyncBlock     *big.Int
-		BrunoBlock          *big.Int
-		EulerBlock          *big.Int
-		Ethash              *EthashConfig
-		Clique              *CliqueConfig
-		Parlia              *ParliaConfig
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		wantErr bool
-	}{
-		{
-			name:    "Test VerifyForkConfig Case 1",
-			fields:  fields{},
-			wantErr: false,
-		},
-		{
-			name: "Test VerifyForkConfig Case 2",
-			fields: fields{
-				EulerBlock: big.NewInt(0),
-			},
-			wantErr: false,
-		},
-		{
-			name: "Test VerifyForkConfig Case 3",
-			fields: fields{
-				EulerBlock: big.NewInt(200),
-			},
-			wantErr: true,
-		},
-		{
-			name: "Test VerifyForkConfig Case 4",
-			fields: fields{
-				EulerBlock: big.NewInt(19231208),
-			},
-			wantErr: false,
-		},
-		{
-			name: "Test VerifyForkConfig Case 5",
-			fields: fields{
-				EulerBlock: big.NewInt(1998200),
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &ChainConfig{
-				ChainID:             tt.fields.ChainID,
-				HomesteadBlock:      tt.fields.HomesteadBlock,
-				DAOForkBlock:        tt.fields.DAOForkBlock,
-				DAOForkSupport:      tt.fields.DAOForkSupport,
-				EIP150Block:         tt.fields.EIP150Block,
-				EIP150Hash:          tt.fields.EIP150Hash,
-				EIP155Block:         tt.fields.EIP155Block,
-				EIP158Block:         tt.fields.EIP158Block,
-				ByzantiumBlock:      tt.fields.ByzantiumBlock,
-				ConstantinopleBlock: tt.fields.ConstantinopleBlock,
-				PetersburgBlock:     tt.fields.PetersburgBlock,
-				IstanbulBlock:       tt.fields.IstanbulBlock,
-				MuirGlacierBlock:    tt.fields.MuirGlacierBlock,
-				BerlinBlock:         tt.fields.BerlinBlock,
-				YoloV3Block:         tt.fields.YoloV3Block,
-				EWASMBlock:          tt.fields.EWASMBlock,
-				CatalystBlock:       tt.fields.CatalystBlock,
-				RamanujanBlock:      tt.fields.RamanujanBlock,
-				NielsBlock:          tt.fields.NielsBlock,
-				MirrorSyncBlock:     tt.fields.MirrorSyncBlock,
-				BrunoBlock:          tt.fields.BrunoBlock,
-				EulerBlock:          tt.fields.EulerBlock,
-				Ethash:              tt.fields.Ethash,
-				Clique:              tt.fields.Clique,
-				Parlia:              tt.fields.Parlia,
-			}
-			if err := c.VerifyForkConfig(); (err != nil) != tt.wantErr {
-				t.Errorf("ChainConfig.VerifyForkConfig() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
 	}
 }

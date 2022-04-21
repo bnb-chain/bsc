@@ -21,5 +21,8 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v2
 
+    - name: Install build essential
+      uses: apt install build-essential -y
+
     - name: Truffle test
       run: make truffle-test
