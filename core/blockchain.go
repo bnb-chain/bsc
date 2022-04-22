@@ -195,15 +195,16 @@ type BlockChain struct {
 	txLookupLimit uint64
 	triesInMemory uint64
 
-	hc            *HeaderChain
-	rmLogsFeed    event.Feed
-	chainFeed     event.Feed
-	chainSideFeed event.Feed
-	chainHeadFeed event.Feed
-	logsFeed      event.Feed
-	blockProcFeed event.Feed
-	scope         event.SubscriptionScope
-	genesisBlock  *types.Block
+	hc              *HeaderChain
+	rmLogsFeed      event.Feed
+	chainFeed       event.Feed
+	chainSideFeed   event.Feed
+	chainHeadFeed   event.Feed
+	chainInsertFeed event.Feed
+	logsFeed        event.Feed
+	blockProcFeed   event.Feed
+	scope           event.SubscriptionScope
+	genesisBlock    *types.Block
 
 	chainmu sync.RWMutex // blockchain insertion lock
 
@@ -2112,6 +2113,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
 
+		bc.chainInsertFeed.Send(struct{}{})
+
 		// Enable prefetching to pull in trie node paths while processing transactions
 		statedb.StartPrefetcher("chain")
 		var followupInterrupt uint32
@@ -3075,6 +3078,10 @@ func (bc *BlockChain) SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Su
 // SubscribeChainSideEvent registers a subscription of ChainSideEvent.
 func (bc *BlockChain) SubscribeChainSideEvent(ch chan<- ChainSideEvent) event.Subscription {
 	return bc.scope.Track(bc.chainSideFeed.Subscribe(ch))
+}
+
+func (bc *BlockChain) SubscribeChainInsertEvent(ch chan<- struct{}) event.Subscription {
+	return bc.scope.Track(bc.chainInsertFeed.Subscribe(ch))
 }
 
 // SubscribeLogsEvent registers a subscription of []*types.Log.
