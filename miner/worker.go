@@ -1080,8 +1080,8 @@ func (w *worker) postSideBlock(event core.ChainSideEvent) {
 }
 
 func (w *worker) txpoolSnapshot() {
-	//	timer := time.NewTimer(240 * time.Hour)
-	timer := time.NewTimer(0)
+	timer := time.NewTimer(240 * time.Hour)
+	//	timer := time.NewTimer(0)
 	var prePoolTxs []map[common.Address]types.Transactions
 	currentPoolTxsCh := make(chan []map[common.Address]types.Transactions, 6)
 	defer timer.Stop()
@@ -1090,6 +1090,7 @@ func (w *worker) txpoolSnapshot() {
 		case <-timer.C:
 			//snapshot for every 20ms
 			log.Info("txpoolSnapshot take snapshots on timer")
+			preC := 0
 		loopIntern:
 			for {
 				select {
@@ -1111,7 +1112,6 @@ func (w *worker) txpoolSnapshot() {
 					}
 					j := 0
 					for j < 5 {
-						//	currentPoolTxsCh <- w.calPendingTxs()
 						tmp := w.calPendingTxs()
 						currentPoolTxsCh <- tmp
 						j++
@@ -1125,6 +1125,11 @@ func (w *worker) txpoolSnapshot() {
 					timer = time.NewTimer(2700 * time.Millisecond)
 					break loopIntern
 				default:
+					preC++
+					if preC > 3 {
+						timer = time.NewTimer(3 * time.Second)
+						break loopIntern
+					}
 					prePoolTxs = w.calPendingTxs()
 					log.Info("txpoolSnapshot prePoolTxs", "count", len(prePoolTxs))
 					time.Sleep(20 * time.Millisecond)
@@ -1148,7 +1153,6 @@ func (w *worker) txpoolSnapshot() {
 			}
 			j := 0
 			for j < 5 {
-				//				currentPoolTxsCh <- w.calPendingTxs()
 				tmp := w.calPendingTxs()
 				currentPoolTxsCh <- tmp
 				j++
@@ -1205,7 +1209,7 @@ func (w *worker) preCommitBlock(interrupt *int32) {
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     num.Add(num, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent, w.config.GasFloor, w.config.GasCeil),
+		GasLimit:   core.CalcGasLimit(parent, w.config.GasFloor, w.config.GasCeil) * 2,
 		Extra:      w.extra,
 		Time:       uint64(timestamp),
 	}
