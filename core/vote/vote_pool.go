@@ -345,9 +345,9 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 		log.Debug("Vote pool already contained the same vote", "voteHash", voteHash)
 		return false
 	}
-	// Make sure in the range currentHeight-256~currentHeight+11.
+	// Make sure in the range currentHeight-256~currentHeight+13.
 	if voteBlockNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || voteBlockNumber > headNumber+upperLimitOfVoteBlockNumber {
-		log.Warn("BlockNumber of vote is outside the range of header-256~header+11")
+		log.Warn("BlockNumber of vote is outside the range of header-256~header+13")
 		return false
 	}
 	// To prevent DOS attacks, make sure no more than 50 votes for the same blockHash if it's futureVotes

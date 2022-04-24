@@ -35,6 +35,7 @@ import (
 	"github.com/prysmaticlabs/prysm/validator/keymanager"
 	keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
@@ -56,7 +57,7 @@ var (
 
 	password = "secretPassword"
 
-	timeThreshold = 20
+	timeThreshold = 30
 )
 
 type mockPOSA struct {
@@ -130,10 +131,9 @@ func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
 	return false
 }
 
-//func TestValidVotePool(t *testing.T) {
-//	testVotePool(t, true)
-//
-//}
+func TestValidVotePool(t *testing.T) {
+	testVotePool(t, true)
+}
 
 func TestInvalidVotePool(t *testing.T) {
 	testVotePool(t, false)
@@ -200,7 +200,6 @@ func testVotePool(t *testing.T, inValidRules bool) {
 	}
 	if !inValidRules {
 		if votePool.verifyStructureSizeOfVotePool(11, 11, 0, 11, 0) {
-			fmt.Println("bug666")
 			t.Fatalf("put vote failed")
 		}
 		return
@@ -241,12 +240,12 @@ func testVotePool(t *testing.T, inValidRules bool) {
 		t.Fatalf("journal failed")
 	}
 
-	// currently chain size is 268, and blockNumber before 13 in votePool should be pruned, so vote pool size should be 256!
+	// currently chain size is 268, and votePool should be pruned, so vote pool size should be 256!
 	if !votePool.verifyStructureSizeOfVotePool(256, 256, 0, 256, 0) {
 		t.Fatalf("put vote failed")
 	}
 
-	// Test invalid vote whose number larger than latestHeader + 11
+	// Test invalid vote whose number larger than latestHeader + 13
 	invalidVote := &types.VoteEnvelope{
 		Data: &types.VoteData{
 			TargetNumber: 1000,
@@ -268,11 +267,14 @@ func testVotePool(t *testing.T, inValidRules bool) {
 		t.Fatalf("journal failed")
 	}
 
-	// Test future votes scenario: votes number within latestBlockHeader ~ latestBlockHeader + 11
+	// Test future votes scenario: votes number within latestBlockHeader ~ latestBlockHeader + 13
 	futureVote := &types.VoteEnvelope{
 		Data: &types.VoteData{
 			TargetNumber: 279,
 		},
+	}
+	if err := voteManager.signer.SignVote(futureVote); err != nil {
+		t.Fatalf("sign vote failed")
 	}
 	voteManager.pool.PutVote(futureVote)
 
@@ -291,6 +293,9 @@ func testVotePool(t *testing.T, inValidRules bool) {
 			TargetNumber: 279,
 		},
 	}
+	if err := voteManager.signer.SignVote(duplicateVote); err != nil {
+		t.Fatalf("sign vote failed")
+	}
 	voteManager.pool.PutVote(duplicateVote)
 
 	if !votePool.verifyStructureSizeOfVotePool(257, 256, 1, 256, 1) {
@@ -302,10 +307,11 @@ func testVotePool(t *testing.T, inValidRules bool) {
 		t.Fatalf("journal failed")
 	}
 
-	// Test future votes larger than latestBlockNumber + 11 should be rejected
+	// Test future votes larger than latestBlockNumber + 13 should be rejected
 	futureVote = &types.VoteEnvelope{
 		Data: &types.VoteData{
-			TargetNumber: 280,
+			TargetNumber: 282,
+			TargetHash:   common.Hash{},
 		},
 	}
 	voteManager.pool.PutVote(futureVote)
@@ -313,16 +319,40 @@ func testVotePool(t *testing.T, inValidRules bool) {
 		t.Fatalf("put vote failed")
 	}
 
-	// Test transfer votes from future to cur, latest block header is #288
+	// Test transfer votes from future to cur, latest block header is #288 after the following generation
+	// For the above BlockNumber 279, it did not have blockHash, should be assigned as well below.
+	curNumber := 268
+	var futureBlockHash common.Hash
 	for i := 0; i < 20; i++ {
 		bs, _ = core.GenerateChain(params.TestChainConfig, bs[len(bs)-1], ethash.NewFaker(), db, 1, nil)
+		curNumber += 1
+		if curNumber == 279 {
+			futureBlockHash = bs[0].Hash()
+			futureVotesMap := votePool.futureVotes
+			voteBox := futureVotesMap[common.Hash{}]
+			futureVotesMap[futureBlockHash] = voteBox
+			delete(futureVotesMap, common.Hash{})
+			futureVotesPq := votePool.futureVotesPq
+			futureVotesPq.Peek().TargetHash = futureBlockHash
+		}
 		if _, err := chain.InsertChain(bs); err != nil {
 			panic(err)
 		}
 	}
 
-	// Pruner will keep the size of votePool as latestBlockHeader-255~latestBlockHeader, plus one futureVote transfer, then final result should be 257!
-	if !votePool.verifyStructureSizeOfVotePool(257, 257, 0, 257, 0) {
+	for i := 0; i < timeThreshold; i++ {
+		time.Sleep(1 * time.Second)
+		_, ok := votePool.curVotes[futureBlockHash]
+		if ok && len(votePool.curVotes[futureBlockHash].voteMessages) == 2 {
+			break
+		}
+	}
+	if votePool.curVotes[futureBlockHash] == nil || len(votePool.curVotes[futureBlockHash].voteMessages) != 2 {
+		t.Fatalf("transfer vote failed")
+	}
+
+	// Pruner will keep the size of votePool as latestBlockHeader-255~latestBlockHeader, then final result should be 256!
+	if !votePool.verifyStructureSizeOfVotePool(257, 256, 0, 256, 0) {
 		t.Fatalf("put vote failed")
 	}
 
