@@ -1205,7 +1205,7 @@ func (w *worker) preCommitBlock(interrupt *int32) {
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     num.Add(num, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent, w.config.GasFloor, w.config.GasCeil),
+		GasLimit:   core.CalcGasLimit(parent, w.config.GasFloor, w.config.GasCeil) * 2,
 		Extra:      w.extra,
 		Time:       uint64(timestamp),
 	}
