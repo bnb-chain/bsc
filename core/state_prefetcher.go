@@ -127,6 +127,13 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 	go func(txset *types.TransactionsByPriceAndNonce) {
 		count := 0
 		for {
+			if count++; count%checkInterval == 0 {
+				txTmp := *txCurr
+				if txTmp == nil {
+					return
+				}
+				txset.Forward(txTmp)
+			}
 			tx := txset.Peek()
 			if tx == nil {
 				return
@@ -135,13 +142,6 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 			case <-interruptCh:
 				return
 			default:
-			}
-			if count++; count%checkInterval == 0 {
-				txTmp := *txCurr
-				if txTmp == nil {
-					return
-				}
-				txset.Forward(txTmp)
 			}
 			txCh <- tx
 			txset.Shift()
