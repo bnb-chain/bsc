@@ -128,11 +128,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 		count := 0
 		for {
 			if count++; count%checkInterval == 0 {
-				txTmp := *txCurr
-				if txTmp == nil {
-					return
-				}
-				txset.Forward(txTmp)
+				txset.Forward(*txCurr)
 			}
 			tx := txset.Peek()
 			if tx == nil {
