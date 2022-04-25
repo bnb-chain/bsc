@@ -473,19 +473,6 @@ const validatorSetABI = `
   },
   {
     "inputs": [],
-    "name": "FINALITY_REWARD_RATIO",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "GOV_CHANNELID",
     "outputs": [
       {
@@ -526,6 +513,19 @@ const validatorSetABI = `
   {
     "inputs": [],
     "name": "INIT_BURN_RATIO",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "INIT_FINALITY_REWARD_RATIO",
     "outputs": [
       {
         "internalType": "uint256",
@@ -1542,32 +1542,6 @@ const slashABI = `
   },
   {
     "inputs": [],
-    "name": "FINALITY_DISTANCE",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "FINALITY_SLASH_REWARD_RATIO",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "GOV_CHANNELID",
     "outputs": [
       {
@@ -1600,6 +1574,19 @@ const slashABI = `
         "internalType": "address",
         "name": "",
         "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "INIT_FINALITY_SLASH_REWARD_RATIO",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -1802,19 +1789,6 @@ const slashABI = `
   },
   {
     "inputs": [],
-    "name": "finalityDistance",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "finalitySlashRewardRatio",
     "outputs": [
       {
@@ -1992,34 +1966,68 @@ const slashABI = `
       {
         "components": [
           {
-            "internalType": "uint256",
-            "name": "numA",
-            "type": "uint256"
+            "components": [
+              {
+                "internalType": "uint256",
+                "name": "srcNum",
+                "type": "uint256"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "srcHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256",
+                "name": "tarNum",
+                "type": "uint256"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "tarHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "bytes",
+                "name": "sig",
+                "type": "bytes"
+              }
+            ],
+            "internalType": "struct SlashIndicator.VoteData",
+            "name": "voteA",
+            "type": "tuple"
           },
           {
-            "internalType": "bytes32",
-            "name": "headerA",
-            "type": "bytes32"
-          },
-          {
-            "internalType": "bytes",
-            "name": "sigA",
-            "type": "bytes"
-          },
-          {
-            "internalType": "uint256",
-            "name": "numB",
-            "type": "uint256"
-          },
-          {
-            "internalType": "bytes32",
-            "name": "headerB",
-            "type": "bytes32"
-          },
-          {
-            "internalType": "bytes",
-            "name": "sigB",
-            "type": "bytes"
+            "components": [
+              {
+                "internalType": "uint256",
+                "name": "srcNum",
+                "type": "uint256"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "srcHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256",
+                "name": "tarNum",
+                "type": "uint256"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "tarHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "bytes",
+                "name": "sig",
+                "type": "bytes"
+              }
+            ],
+            "internalType": "struct SlashIndicator.VoteData",
+            "name": "voteB",
+            "type": "tuple"
           },
           {
             "internalType": "address",
