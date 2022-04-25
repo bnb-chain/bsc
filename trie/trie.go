@@ -110,7 +110,7 @@ func (t *Trie) UpdateShardInfo() error {
 	}
 	for i := 0; i < 16; i++ {
 		if t.subroot[i] != nil {
-			fmt.Println("subroot:", i, t.subroot[i])
+			// fmt.Println("subroot:", i, t.subroot[i])
 		}
 	}
 	return nil
@@ -293,10 +293,10 @@ func (t *Trie) tryGetNode(origNode node, path []byte, pos int) (item []byte, new
 // type KvMap map[common.Hash][]byte
 
 // getShardNum return shard number based on the input hex key
-func getShardNum(hexStr []byte) uint8 {
+func getShardNum(hexStr []byte) int {
 	val := hexStr[0]
 
-	return uint8(val)
+	return int(val)
 }
 
 func shardIndexToByte(index uint8) byte {
@@ -377,6 +377,10 @@ type KvPair struct {
 	del bool
 }
 
+func NewKvPair(key []byte, value []byte, del bool) KvPair {
+	return KvPair{keybytesToHex(key), value, del}
+}
+
 func (k *KvPair) getDelFlag() bool {
 	return k.del
 }
@@ -387,10 +391,6 @@ func (k *KvPair) getKey() []byte {
 
 func (k *KvPair) getValue() []byte {
 	return k.val
-}
-
-func NewKvPair(key []byte, value []byte, del bool) KvPair {
-	return KvPair{key, value, del}
 }
 
 func (t *Trie) UpdateBatch(pKvBatch *[]KvPair) error {
@@ -410,6 +410,7 @@ func (t *Trie) tryUpdateBatch(pKvBatch *[]KvPair) error {
 	for i := 0; i < lenKvBatch; i++ {
 		//k := keybytesToHex(kvBatch[i].key)
 		shardIndex := getShardNum((*pKvBatch)[i].key)
+		fmt.Println("shardIndex", shardIndex)
 		shard[shardIndex] = append(shard[shardIndex], &((*pKvBatch)[i]))
 	}
 

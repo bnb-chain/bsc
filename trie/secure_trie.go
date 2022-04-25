@@ -121,7 +121,7 @@ func (t *SecureTrie) UpdateBatch(pKvBatch *[]KvPair) error {
 	}
 
 	for i := 0; i < len(*pKvBatch); i++ {
-		if (*pKvBatch)[i].getDelFlag() == true {
+		if (*pKvBatch)[i].getDelFlag() == false {
 			key := (*pKvBatch)[i].getKey()
 			hk := t.hashKey(key)
 			t.getSecKeyCache()[string(hk)] = common.CopyBytes(key)
