@@ -533,37 +533,37 @@ func (w *worker) mainLoop() {
 			// Note all transactions received may not be continuous with transactions
 			// already included in the current mining block. These transactions will
 			// be automatically eliminated.
-			if !w.isRunning() && w.current != nil {
-				// If block is already full, abort
-				if gp := w.current.gasPool; gp != nil && gp.Gas() < params.TxGas {
-					continue
-				}
-				w.mu.RLock()
-				coinbase := w.coinbase
-				w.mu.RUnlock()
-
-				txs := make(map[common.Address]types.Transactions)
-				for _, tx := range ev.Txs {
-					acc, _ := types.Sender(w.current.signer, tx)
-					txs[acc] = append(txs[acc], tx)
-				}
-				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs)
-				tcount := w.current.tcount
-				w.commitTransactions(txset, coinbase, nil)
-				// Only update the snapshot if any new transactons were added
-				// to the pending block
-				if tcount != w.current.tcount {
-					w.updateSnapshot()
-				}
-			} else {
-				// Special case, if the consensus engine is 0 period clique(dev mode),
-				// submit mining work here since all empty submission will be rejected
-				// by clique. Of course the advance sealing(empty submission) is disabled.
-				if (w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0) ||
-					(w.chainConfig.Parlia != nil && w.chainConfig.Parlia.Period == 0) {
-					w.commitNewWork(nil, true, time.Now().Unix())
-				}
+			//			if !w.isRunning() && w.current != nil {
+			//				// If block is already full, abort
+			//				if gp := w.current.gasPool; gp != nil && gp.Gas() < params.TxGas {
+			//					continue
+			//				}
+			//				w.mu.RLock()
+			//				coinbase := w.coinbase
+			//				w.mu.RUnlock()
+			//
+			//				txs := make(map[common.Address]types.Transactions)
+			//				for _, tx := range ev.Txs {
+			//					acc, _ := types.Sender(w.current.signer, tx)
+			//					txs[acc] = append(txs[acc], tx)
+			//				}
+			//				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs)
+			//				tcount := w.current.tcount
+			//				w.commitTransactions(txset, coinbase, nil)
+			//				// Only update the snapshot if any new transactons were added
+			//				// to the pending block
+			//				if tcount != w.current.tcount {
+			//					w.updateSnapshot()
+			//				}
+			//} else {
+			// Special case, if the consensus engine is 0 period clique(dev mode),
+			// submit mining work here since all empty submission will be rejected
+			// by clique. Of course the advance sealing(empty submission) is disabled.
+			if (w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0) ||
+				(w.chainConfig.Parlia != nil && w.chainConfig.Parlia.Period == 0) {
+				w.commitNewWork(nil, true, time.Now().Unix())
 			}
+			//			}
 			atomic.AddInt32(&w.newTxs, int32(len(ev.Txs)))
 
 			// System stopped
@@ -1279,21 +1279,21 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 	if len(pendingTxs[0]) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[0])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Info("preCommitBlock-preExecute", "blockNum", num, "commit local txs interrupted and return", "ctxs", ctxs+1)
+			log.Info("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "ctxs", ctxs+1)
 			return
 		}
 	}
 	if len(pendingTxs[1]) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[1])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Info("preCommitBlock-preExecute", "blockNum", num, "commit remote txs interrupted and return", "ctxs", ctxs+1)
+			log.Info("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "ctxs", ctxs+1)
 			return
 		}
 	}
 	s := w.current.state
 	if err := s.WaitPipeVerification(); err == nil {
 		w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
-		log.Info("preCommitBlock-preExecute", "blockNum", num, "finalizeAndAssemble done", "ctxs", ctxs+1)
+		log.Info("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "ctxs", ctxs+1)
 	}
 }
 
