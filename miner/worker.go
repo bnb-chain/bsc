@@ -1217,12 +1217,14 @@ func (w *worker) preCommitBlock(interrupt *int32) {
 	if w.isRunning() {
 		if w.coinbase == (common.Address{}) {
 			log.Error("preCommitBlock: Refusing to mine without etherbase")
+			log.Info("preCommitBlock: Refusing to mine without etherbase")
 			return
 		}
 		header.Coinbase = w.coinbase
 	}
 	if err := w.engine.Prepare(w.chain, header); err != nil {
 		log.Error("preCommitBlock: Failed to prepare header for mining", "err", err)
+		log.Info("preCommitBlock: Failed to prepare header for mining", "err", err)
 		return
 	}
 	// If we are care about TheDAO hard-fork check whether to override the extra-data or not
@@ -1242,6 +1244,7 @@ func (w *worker) preCommitBlock(interrupt *int32) {
 	err := w.makeCurrent(parent, header)
 	if err != nil {
 		log.Error("preCommitBlock: Failed to create mining context", "err", err)
+		log.Info("preCommitBlock: Failed to create mining context", "err", err)
 		return
 	}
 	// Create the current work task and check any fork transitions needed
@@ -1279,9 +1282,12 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 	if len(pendingTxs[0]) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[0])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Info("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "ctxs", ctxs+1)
+			log.Info("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "ctxs", ctxs+1, "len(localtxs)", len(pendingTxs[0]))
 			return
 		}
+		log.Info("preCommitBlock-preExecute finish exec local txs", "blockNum", num, "ctxs", ctxs+1, "len(localTxs)-1", len(pendingTxs[0]))
+	} else {
+		log.Info("preCommitBlock-preExecute finish exec local txs", "blockNum", num, "ctxs", ctxs+1, "len(localtxs)", 0)
 	}
 	if len(pendingTxs[1]) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[1])
@@ -1289,9 +1295,13 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 			log.Info("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "ctxs", ctxs+1)
 			return
 		}
+		log.Info("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "ctxs", ctxs+1, "len(remoteTxs)-1", len(pendingTxs[1]))
+	} else {
+		log.Info("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "ctxs", ctxs+1, "len(remoteTxs)", 0)
 	}
 	s := w.current.state
 	if err := s.WaitPipeVerification(); err == nil {
+		log.Info("preCommitBlock-preExecute", "txs", w.current.txs, "len(txs)", len(w.current.txs), "uncles", uncles, "receipts", w.current.receipts, "len(receipts)", w.current.receipts)
 		w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 		log.Info("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "ctxs", ctxs+1)
 	}
@@ -1314,6 +1324,7 @@ func (w *worker) preCommitTransactions(txs *types.TransactionsByPriceAndNonce, c
 	if delay != nil {
 		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
 		log.Debug("preCommitTransactions: Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
+		log.Info("preCommitTransactions: Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
 		defer stopTimer.Stop()
 	}
 
@@ -1333,17 +1344,19 @@ LOOP:
 		// For the first two cases, the semi-finished work will be discarded.
 		// For the third case, the semi-finished work will be submitted to the consensus engine.
 		if interrupt != nil && atomic.LoadInt32(interrupt) != commitInterruptNone {
+			log.Info("preCommitTransactions: interrupted")
 			return true
 		}
 		// If we don't have enough gas for any further transactions then we're done
 		if w.current.gasPool.Gas() < params.TxGas {
-			log.Trace("preCommitTransaciotns: Not enough gas for further transactions", "have", w.current.gasPool, "want", params.TxGas)
+			log.Trace("preCommitTransactions: Not enough gas for further transactions", "have", w.current.gasPool, "want", params.TxGas)
+			log.Info("preCommitTransactions: Not enough gas for further transactions", "have", w.current.gasPool, "want", params.TxGas)
 			break
 		}
 		if stopTimer != nil {
 			select {
 			case <-stopTimer.C:
-				log.Info("preCommitTransaciotns: Not enough time for further transactions", "txs", len(w.current.txs))
+				log.Info("preCommitTransactions: Not enough time for further transactions", "txs", len(w.current.txs))
 				break LOOP
 			default:
 			}
