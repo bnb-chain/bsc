@@ -430,7 +430,7 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		usedStorage = append(usedStorage, common.CopyBytes(key[:])) // Copy needed for closure
 	}
 
-	trieInstance.UpdateBatch(&updateBatch)
+	s.setError(trieInstance.UpdateBatch(&updateBatch))
 
 	if s.db.prefetcher != nil {
 		s.db.prefetcher.used(s.data.Root, usedStorage)
