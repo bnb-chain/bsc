@@ -121,12 +121,8 @@ func (vm *remoteVerifyManager) mainLoop() {
 		case <-pruneTicker.C:
 			vm.taskLock.Lock()
 			for hash, task := range vm.tasks {
-				if vm.bc.insertStopped() {
-					close(task.terminalCh)
-					continue
-				}
-				if vm.bc.CurrentHeader().Number.Cmp(task.blockHeader.Number) == 1 &&
-					vm.bc.CurrentHeader().Number.Uint64()-task.blockHeader.Number.Uint64() > pruneHeightDiff {
+				if vm.bc.insertStopped() || (vm.bc.CurrentHeader().Number.Cmp(task.blockHeader.Number) == 1 &&
+					vm.bc.CurrentHeader().Number.Uint64()-task.blockHeader.Number.Uint64() > pruneHeightDiff) {
 					delete(vm.tasks, hash)
 					verifyTaskCounter.Dec(1)
 					verifyTaskFailedMeter.Mark(1)
