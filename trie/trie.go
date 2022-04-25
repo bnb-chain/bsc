@@ -40,6 +40,7 @@ const (
 	// default shard number
 	defaultShardNumber uint8 = 16
 )
+
 // LeafCallback is a callback type invoked when a trie operation reaches a leaf
 // node.
 //
@@ -62,13 +63,13 @@ type LeafCallback func(paths [][]byte, hexpath []byte, leaf []byte, parent commo
 //
 // Trie is not safe for concurrent use.
 type Trie struct {
-	db   *Database
-	root node
+	db      *Database
+	root    node
 	subroot []node // root node of each sub MPT
 	// Keep track of the number leafs which have been inserted since the last
 	// hashing operation. This number will not directly map to the number of
 	// actually unhashed nodes
-	unhashed int
+	unhashed     int
 	shardEnabled bool
 }
 
@@ -107,7 +108,7 @@ func (t *Trie) UpdateShardInfo() error {
 	default:
 		panic("trie.root with impossible type")
 	}
-	for i := 0; i<16; i++ {
+	for i := 0; i < 16; i++ {
 		if t.subroot[i] != nil {
 			fmt.Println("subroot:", i, t.subroot[i])
 		}
@@ -126,7 +127,7 @@ func New(root common.Hash, db *Database) (*Trie, error) {
 		panic("trie.New called without a database")
 	}
 	trie := &Trie{
-		db: db,
+		db:           db,
 		shardEnabled: false,
 	}
 	if root != (common.Hash{}) && root != emptyRoot {
@@ -299,19 +300,19 @@ func getShardNum(hexStr []byte) uint8 {
 }
 
 func shardIndexToByte(index uint8) byte {
-	if index>=0 && index<=9 {
+	if index >= 0 && index <= 9 {
 		return byte('0' + index)
 	} else {
 		return byte('A' + index - 10)
 	}
 }
 
-func (t *Trie)updateRootNodeWithShards(shards []node) node {
+func (t *Trie) updateRootNodeWithShards(shards []node) node {
 	var (
-		nilNum uint8
+		nilNum      uint8
 		notNilIndex uint8
 	)
-	for i:=uint8(0); i<defaultShardNumber; i++ {
+	for i := uint8(0); i < defaultShardNumber; i++ {
 		if shards[i] == nil {
 			nilNum++
 		} else {
@@ -326,7 +327,7 @@ func (t *Trie)updateRootNodeWithShards(shards []node) node {
 	if nilNum == defaultShardNumber-1 {
 		switch n := shards[notNilIndex].(type) {
 		case *shortNode:
-		//	fmt.Println(n.flag())
+			//	fmt.Println(n.flag())
 			return shards[notNilIndex]
 		// Each sub branch has the same	prefix,
 		// it is impossible to other node type
@@ -343,7 +344,7 @@ func (t *Trie)updateRootNodeWithShards(shards []node) node {
 	// There are more than 2 sub roots.
 	// Create one fullNode
 	newFullNode := &fullNode{flags: t.newFlag()}
-	for i:=uint8(0); i<defaultShardNumber; i++ {
+	for i := uint8(0); i < defaultShardNumber; i++ {
 		if shards[i] != nil {
 			switch n := shards[i].(type) {
 			case *shortNode:
@@ -376,10 +377,28 @@ type KvPair struct {
 	del bool
 }
 
-func (t *Trie) UpdateBatch(pKvBatch *[]KvPair) {
+func (k *KvPair) getDelFlag() bool {
+	return k.del
+}
+
+func (k *KvPair) getKey() []byte {
+	return k.key
+}
+
+func (k *KvPair) getValue() []byte {
+	return k.val
+}
+
+func NewKvPair(key []byte, value []byte, del bool) KvPair {
+	return KvPair{key, value, del}
+}
+
+func (t *Trie) UpdateBatch(pKvBatch *[]KvPair) error {
 	if err := t.tryUpdateBatch(pKvBatch); err != nil {
 		log.Error(fmt.Sprintf("Unhandled trie error: %v", err))
+		return err
 	}
+	return nil
 }
 
 func (t *Trie) tryUpdateBatch(pKvBatch *[]KvPair) error {
@@ -388,7 +407,7 @@ func (t *Trie) tryUpdateBatch(pKvBatch *[]KvPair) error {
 
 	shard := make([][]*KvPair, 16)
 
-	for i :=0; i<lenKvBatch; i++ {
+	for i := 0; i < lenKvBatch; i++ {
 		//k := keybytesToHex(kvBatch[i].key)
 		shardIndex := getShardNum((*pKvBatch)[i].key)
 		shard[shardIndex] = append(shard[shardIndex], &((*pKvBatch)[i]))
@@ -397,14 +416,14 @@ func (t *Trie) tryUpdateBatch(pKvBatch *[]KvPair) error {
 	taskResults := make(chan error, 16)
 	wg := sync.WaitGroup{}
 	wg.Add(16)
-	for i:=0; i<16; i++ {
+	for i := 0; i < 16; i++ {
 		// fmt.Println("i =====", i)
 		index := i
 		go func() {
 			// fmt.Println("shard has elements", index, len(shard[index]))
 
 			var (
-				n node
+				n   node
 				err error
 			)
 
