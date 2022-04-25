@@ -2051,6 +2051,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		}
 	}()
 
+	interruptOnce := true
 	for ; block != nil && err == nil || err == ErrKnownBlock; block, err = it.next() {
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
@@ -2113,7 +2114,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
 
-		bc.chainInsertFeed.Send(struct{}{})
+		if interruptOnce {
+			bc.chainInsertFeed.Send(struct{}{})
+			interruptOnce = false
+		}
 
 		// Enable prefetching to pull in trie node paths while processing transactions
 		statedb.StartPrefetcher("chain")
