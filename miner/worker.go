@@ -1273,6 +1273,9 @@ func (w *worker) preCommitBlock(interrupt *int32) {
 }
 
 func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, interrupt *int32, uncles []*types.Header, num *big.Int, ctxs int) {
+	if len(pendingTxs) == 0 {
+		return
+	}
 	if len(pendingTxs[0]) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[0])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
