@@ -105,6 +105,7 @@ func (t *SecureTrie) Update(key, value []byte) {
 //
 // If a node was not found in the database, a MissingNodeError is returned.
 func (t *SecureTrie) TryUpdate(key, value []byte) error {
+	// fmt.Println("called updated in SecureTrie")
 	hk := t.hashKey(key)
 	err := t.trie.TryUpdate(hk, value)
 	if err != nil {
@@ -117,14 +118,15 @@ func (t *SecureTrie) TryUpdate(key, value []byte) error {
 func (t *SecureTrie) UpdateBatch(pKvBatch *[]KvPair) error {
 	err := t.trie.UpdateBatch(pKvBatch)
 	if err != nil {
+		panic("bath error")
 		return err
 	}
 
 	for i := 0; i < len(*pKvBatch); i++ {
 		if (*pKvBatch)[i].getDelFlag() == false {
 			key := (*pKvBatch)[i].getKey()
-			hk := t.hashKey(key)
-			t.getSecKeyCache()[string(hk)] = common.CopyBytes(key)
+			//	hk := t.hashKey(key)
+			t.getSecKeyCache()[string(key)] = common.CopyBytes(key)
 		}
 	}
 	return nil
@@ -132,6 +134,7 @@ func (t *SecureTrie) UpdateBatch(pKvBatch *[]KvPair) error {
 
 // Delete removes any existing value for key from the trie.
 func (t *SecureTrie) Delete(key []byte) {
+	// fmt.Println("called deleted in SecureTrie")
 	if err := t.TryDelete(key); err != nil {
 		log.Error(fmt.Sprintf("Unhandled trie error: %v", err))
 	}

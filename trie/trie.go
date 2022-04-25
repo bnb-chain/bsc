@@ -377,8 +377,8 @@ type KvPair struct {
 	del bool
 }
 
-func NewKvPair(key []byte, value []byte, del bool) KvPair {
-	return KvPair{keybytesToHex(key), value, del}
+func NewKvPair(key []byte, value []byte, del bool, t *SecureTrie) KvPair {
+	return KvPair{keybytesToHex(t.hashKey(key)), value, del}
 }
 
 func (k *KvPair) getDelFlag() bool {
@@ -494,6 +494,7 @@ func (t *Trie) Update(key, value []byte) {
 func (t *Trie) TryUpdate(key, value []byte) error {
 	t.unhashed++
 	k := keybytesToHex(key)
+
 	if len(value) != 0 {
 		_, n, err := t.insert(t.root, nil, k, valueNode(value))
 		if err != nil {
@@ -509,6 +510,7 @@ func (t *Trie) TryUpdate(key, value []byte) error {
 		}
 		t.root = n
 	}
+
 	return nil
 }
 

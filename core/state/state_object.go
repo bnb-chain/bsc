@@ -395,6 +395,7 @@ func (s *StateObject) updateTrie(db Database) Trie {
 	var storage map[string][]byte
 	// Insert all the pending updates into the trie
 	tr := s.getTrie(db)
+
 	trieInstance := tr.(*trie.SecureTrie)
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
 
@@ -408,11 +409,15 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		s.originStorage[key] = value
 		var v []byte
 		if (value == common.Hash{}) {
-			updateBatch = append(updateBatch, trie.NewKvPair(key[:], common.Hash{}.Bytes(), true))
+			updateBatch = append(updateBatch, trie.NewKvPair(key[:], common.Hash{}.Bytes(), true, trieInstance))
+			// fmt.Println("called deleted in SecureTrie")
+			//s.setError(tr.TryDelete(key[:]))
 		} else {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-			updateBatch = append(updateBatch, trie.NewKvPair(key[:], v, false))
+			// fmt.Println("called deleted in SecureTrie")
+			//s.setError(tr.TryUpdate(key[:], v))
+			updateBatch = append(updateBatch, trie.NewKvPair(key[:], v, false, trieInstance))
 		}
 		// If state snapshotting is active, cache the data til commit
 		if s.db.snap != nil {
