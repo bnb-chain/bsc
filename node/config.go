@@ -207,7 +207,7 @@ type Config struct {
 	AllowUnprotectedTxs bool `toml:",omitempty"`
 
 	// BLSPasswordFile is the file that contains BLS wallet password.
-	BLSPassWordFile string `toml:",omitempty"`
+	BLSPasswordFile string `toml:",omitempty"`
 
 	// BLSWalletDir is the file system folder of BLS wallet. The directory can
 	// be specified as a relative path, in which case it is resolved relative to the

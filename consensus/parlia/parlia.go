@@ -1143,7 +1143,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	return blk, receipts, nil
 }
 
-func (p *Parlia) IsWithInSnapShot(chain consensus.ChainHeaderReader, header *types.Header) bool {
+func (p *Parlia) WithinValidatorSet(chain consensus.ChainHeaderReader, header *types.Header) bool {
 	number := header.Number.Uint64()
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
@@ -1159,20 +1159,20 @@ func (p *Parlia) IsWithInSnapShot(chain consensus.ChainHeaderReader, header *typ
 
 // VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
 func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) bool {
-	voteBlockNumber := vote.Data.TargetNumber
-	voteBlockHash := vote.Data.TargetHash
-	header := chain.GetHeaderByHash(voteBlockHash)
+	targetNumber := vote.Data.TargetNumber
+	targetHash := vote.Data.TargetHash
+	header := chain.GetHeaderByHash(targetHash)
 	if header == nil {
-		log.Warn("BlockHeader at current voteBlockNumber is nil", "blockNumber", voteBlockNumber, "blockHash", voteBlockHash)
+		log.Warn("BlockHeader at current voteBlockNumber is nil", "targetNumber", targetNumber, "targetHash", targetHash)
 		return false
 	}
 
-	curHighestJustifiedHeader := p.GetHighestJustifiedHeader(chain, header)
-	if curHighestJustifiedHeader == nil {
+	justifiedHeader := p.GetHighestJustifiedHeader(chain, header)
+	if justifiedHeader == nil {
 		log.Error("failed to get the highest justified header", "headerNumber", header.Number, "headerHash", header.Hash())
 		return false
 	}
-	if vote.Data.SourceNumber != curHighestJustifiedHeader.Number.Uint64() || vote.Data.SourceHash != curHighestJustifiedHeader.Hash() {
+	if vote.Data.SourceNumber != justifiedHeader.Number.Uint64() || vote.Data.SourceHash != justifiedHeader.Hash() {
 		return false
 	}
 

@@ -100,7 +100,7 @@ func (m *mockPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.Vot
 func (m *mockPOSA) SetVotePool(votePool consensus.VotePool) {
 }
 
-func (m *mockPOSA) IsWithInSnapShot(chain consensus.ChainHeaderReader, header *types.Header) bool {
+func (m *mockPOSA) WithinValidatorSet(chain consensus.ChainHeaderReader, header *types.Header) bool {
 	return true
 }
 

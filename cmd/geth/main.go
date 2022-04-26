@@ -168,7 +168,7 @@ var (
 		utils.CatalystFlag,
 		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
-		utils.BLSPassWordFileFlag,
+		utils.BLSPasswordFileFlag,
 		utils.BLSWalletDirFlag,
 		utils.VoteJournalDirFlag,
 	}

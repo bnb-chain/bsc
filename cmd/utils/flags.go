@@ -843,7 +843,7 @@ var (
 		Usage: "Enable checking between snapshot and MPT ",
 	}
 
-	BLSPassWordFileFlag = cli.StringFlag{
+	BLSPasswordFileFlag = cli.StringFlag{
 		Name:  "blspassword",
 		Usage: "File for the BLS password",
 	}
@@ -1340,8 +1340,8 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 		cfg.InsecureUnlockAllowed = ctx.GlobalBool(InsecureUnlockAllowedFlag.Name)
 	}
 
-	if ctx.GlobalIsSet(BLSPassWordFileFlag.Name) {
-		cfg.BLSPassWordFile = ctx.GlobalString(BLSPassWordFileFlag.Name)
+	if ctx.GlobalIsSet(BLSPasswordFileFlag.Name) {
+		cfg.BLSPasswordFile = ctx.GlobalString(BLSPasswordFileFlag.Name)
 	}
 }
 

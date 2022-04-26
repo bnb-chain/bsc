@@ -60,7 +60,7 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			utils.TriesInMemoryFlag,
 			utils.BlockAmountReserved,
 			utils.CheckSnapshotWithMPT,
-			utils.BLSPassWordFileFlag,
+			utils.BLSPasswordFileFlag,
 			utils.BLSWalletDirFlag,
 			utils.VoteJournalDirFlag,
 		},

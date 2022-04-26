@@ -153,5 +153,5 @@ type PoSA interface {
 	GetHighestFinalizedNumber(chain ChainHeaderReader, header *types.Header) uint64
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) bool
 	SetVotePool(votePool VotePool)
-	IsWithInSnapShot(chain ChainHeaderReader, header *types.Header) bool
+	WithinValidatorSet(chain ChainHeaderReader, header *types.Header) bool
 }

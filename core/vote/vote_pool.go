@@ -119,21 +119,21 @@ func (pool *VotePool) PutVote(vote *types.VoteEnvelope) {
 }
 
 func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
-	voteBlockNumber := vote.Data.TargetNumber
-	voteBlockHash := vote.Data.TargetHash
+	targetNumber := vote.Data.TargetNumber
+	targetHash := vote.Data.TargetHash
 	header := pool.chain.CurrentBlock().Header()
 	headNumber := header.Number.Uint64()
 
 	voteData := &types.VoteData{
-		TargetNumber: voteBlockNumber,
-		TargetHash:   voteBlockHash,
+		TargetNumber: targetNumber,
+		TargetHash:   targetHash,
 	}
 
 	var votes map[common.Hash]*VoteBox
 	var votesPq *votesPriorityQueue
 	isFutureVote := false
 
-	voteBlock := pool.chain.GetHeaderByHash(voteBlockHash)
+	voteBlock := pool.chain.GetHeaderByHash(targetHash)
 	if voteBlock == nil {
 		votes = pool.futureVotes
 		votesPq = pool.futureVotesPq
@@ -175,22 +175,22 @@ func (pool *VotePool) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.S
 }
 
 func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriorityQueue, vote *types.VoteEnvelope, voteData *types.VoteData, voteHash common.Hash, isFutureVote bool) {
-	voteBlockHash := vote.Data.TargetHash
-	voteBlockNumber := vote.Data.TargetNumber
+	targetHash := vote.Data.TargetHash
+	targetNumber := vote.Data.TargetNumber
 
-	log.Info("The vote info to put is:", "voteBlockNumber", voteBlockNumber, "voteBlockHash", voteBlockHash)
+	log.Info("The vote info to put is:", "voteBlockNumber", targetNumber, "voteBlockHash", targetHash)
 
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
-	if _, ok := m[voteBlockHash]; !ok {
+	if _, ok := m[targetHash]; !ok {
 		// Push into votes priorityQueue if not exist in corresponding votes Map.
 		// To be noted: will not put into priorityQueue if exists in map to avoid duplicate element with the same voteData.
 		heap.Push(votesPq, voteData)
 		voteBox := &VoteBox{
-			blockNumber:  voteBlockNumber,
+			blockNumber:  targetNumber,
 			voteMessages: make([]*types.VoteEnvelope, 0, maxCurVoteAmountPerBlock),
 		}
-		m[voteBlockHash] = voteBox
+		m[targetHash] = voteBox
 
 		if isFutureVote {
 			localFutureVotesPqGauge.Inc(1)
@@ -200,7 +200,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 	}
 
 	// Put into corresponding votes map.
-	m[voteBlockHash].voteMessages = append(m[voteBlockHash].voteMessages, vote)
+	m[targetHash].voteMessages = append(m[targetHash].voteMessages, vote)
 	// Add into received vote to avoid future duplicated vote comes.
 	pool.receivedVotes.Add(voteHash)
 	log.Info("VoteHash put into votepool is:", "voteHash", voteHash)
@@ -210,7 +210,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 	} else {
 		localCurVotesGauge.Inc(1)
 	}
-	votesPerBlockHashMetric(voteBlockHash).Inc(1)
+	votesPerBlockHashMetric(targetHash).Inc(1)
 	localReceivedVotesGauge.Inc(1)
 }
 
@@ -330,12 +330,11 @@ func (pool *VotePool) FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelo
 		return pool.curVotes[blockHash].voteMessages
 	}
 	return nil
-	//TODO: More strict condition is needed.
 }
 
 func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m map[common.Hash]*VoteBox, isFutureVote bool, voteHash common.Hash) bool {
-	voteBlockNumber := vote.Data.TargetNumber
-	voteBlockHash := vote.Data.TargetHash
+	targetNumber := vote.Data.TargetNumber
+	targetHash := vote.Data.TargetHash
 
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
@@ -346,7 +345,7 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 		return false
 	}
 	// Make sure in the range currentHeight-256~currentHeight+13.
-	if voteBlockNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || voteBlockNumber > headNumber+upperLimitOfVoteBlockNumber {
+	if targetNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || targetNumber > headNumber+upperLimitOfVoteBlockNumber {
 		log.Warn("BlockNumber of vote is outside the range of header-256~header+13")
 		return false
 	}
@@ -356,7 +355,7 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 	if isFutureVote {
 		maxVoteAmountPerBlock = maxFutureVoteAmountPerBlock
 	}
-	if voteBox, ok := m[voteBlockHash]; ok {
+	if voteBox, ok := m[targetHash]; ok {
 		return len(voteBox.voteMessages) <= maxVoteAmountPerBlock
 	}
 	return true

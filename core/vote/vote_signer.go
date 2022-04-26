@@ -21,32 +21,36 @@ const (
 )
 
 type VoteSigner struct {
-	km *keymanager.IKeymanager
+	km     *keymanager.IKeymanager
+	pubKey [48]byte
 }
 
 func NewVoteSigner(km *keymanager.IKeymanager) (*VoteSigner, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), voteSignerTimeout)
+	defer cancel()
+
+	pubKeys, err := (*km).FetchValidatingPublicKeys(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not fetch validating public keys")
+	}
 	return &VoteSigner{
-		km: km,
+		km:     km,
+		pubKey: pubKeys[0],
 	}, nil
 }
 
 func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
-	// Sign the vote
-	ctx, cancel := context.WithTimeout(context.Background(), voteSignerTimeout)
-	defer cancel()
-
-	pubKeys, err := (*signer.km).FetchValidatingPublicKeys(ctx)
-	if err != nil {
-		return errors.Wrap(err, "could not fetch validating public keys")
-	}
-	// Fetch the first pubKey as validator's bls public key.
-	pubKey := pubKeys[0]
+	// Sign the vote, fetch the first pubKey as validator's bls public key.
+	pubKey := signer.pubKey
 	blsPubKey, err := bls.PublicKeyFromBytes(pubKey[:])
 	if err != nil {
 		return errors.Wrap(err, "convert public key from bytes to bls failed")
 	}
 
 	voteDataHash := vote.Data.Hash()
+
+	ctx, cancel := context.WithTimeout(context.Background(), voteSignerTimeout)
+	defer cancel()
 
 	signature, err := (*signer.km).Sign(ctx, &validatorpb.SignRequest{
 		PublicKey:   pubKey[:],

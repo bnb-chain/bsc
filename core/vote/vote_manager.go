@@ -42,7 +42,7 @@ type VoteManager struct {
 	get getHighestJustifiedHeader
 }
 
-func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, bLSPassWordPath, bLSWalletPath string, engine consensus.PoSA, get getHighestJustifiedHeader) (*VoteManager, error) {
+func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA, get getHighestJustifiedHeader) (*VoteManager, error) {
 	voteManager := &VoteManager{
 		mux: mux,
 
@@ -56,15 +56,17 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 		get: get,
 	}
 
-	dirExists, err := wallet.Exists(bLSWalletPath)
+	dirExists, err := wallet.Exists(blsWalletPath)
 	if err != nil {
 		log.Error("Check BLS wallet exists error: %v.", err)
+		return nil, err
 	}
 	if !dirExists {
 		log.Error("BLS wallet did not exists.")
+		return nil, fmt.Errorf("BLS wallet did not exists.")
 	}
 
-	walletPassword, err := ioutil.ReadFile(bLSPassWordPath)
+	walletPassword, err := ioutil.ReadFile(blsPasswordPath)
 	if err != nil {
 		log.Error("Read BLS wallet password error: %v.", err)
 		return nil, err
@@ -72,7 +74,7 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 	log.Info("Read BLS wallet password successfully")
 
 	w, err := wallet.OpenWallet(context.Background(), &wallet.Config{
-		WalletDir:      bLSWalletPath,
+		WalletDir:      blsWalletPath,
 		WalletPassword: string(walletPassword),
 	})
 	if err != nil {
@@ -88,19 +90,21 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 	}
 	log.Info("Initialized keymanager successfully")
 
-	voteJournal, err := NewVoteJournal(journalPath)
-	if err != nil {
-		return nil, err
-	}
-	log.Info("Create voteJournal successfully")
-	voteManager.journal = voteJournal
-
+	// Create voteSigner
 	voteSigner, err := NewVoteSigner(&km)
 	if err != nil {
 		return nil, err
 	}
 	log.Info("Create voteSigner successfully")
 	voteManager.signer = voteSigner
+
+	// Create voteJournal
+	voteJournal, err := NewVoteJournal(journalPath)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("Create voteJournal successfully")
+	voteManager.journal = voteJournal
 
 	// Subscribe to chain head event.
 	voteManager.chainHeadSub = voteManager.chain.SubscribeChainHeadEvent(voteManager.chainHeadCh)
@@ -142,7 +146,7 @@ func (voteManager *VoteManager) loop() {
 
 			curHead := cHead.Block.Header()
 			// Check if cur validator is within the validatorSet at curHead
-			if !voteManager.engine.IsWithInSnapShot(voteManager.chain, curHead) {
+			if !voteManager.engine.WithinValidatorSet(voteManager.chain, curHead) {
 				continue
 			}
 
@@ -179,6 +183,8 @@ func (voteManager *VoteManager) loop() {
 				voteManager.pool.PutVote(voteMessage)
 				votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 			}
+		case <-voteManager.chainHeadSub.Err():
+			return
 		}
 	}
 }
@@ -188,15 +194,15 @@ func (voteManager *VoteManager) loop() {
 // A validator must not vote within the span of its other votes . (Rule 2)
 // Validators always vote for their canonical chain’s latest block. (Rule 3)
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
-	curHighestJustifiedHeader := voteManager.get(voteManager.chain, header)
-	if curHighestJustifiedHeader == nil {
-		log.Error("curHighestJustifiedHeader is nil")
-		return true, 0, common.Hash{}
+	justifiedHeader := voteManager.get(voteManager.chain, header)
+	if justifiedHeader == nil {
+		log.Error("highestJustifiedHeader is nil")
+		return false, 0, common.Hash{}
 	}
 
-	sourceBlockNumber := curHighestJustifiedHeader.Number.Uint64()
-	sourceBlockHash := curHighestJustifiedHeader.Hash()
-	targetBlockNumber := header.Number.Uint64()
+	sourceNumber := justifiedHeader.Number.Uint64()
+	sourceHash := justifiedHeader.Hash()
+	targetNumber := header.Number.Uint64()
 
 	journal := voteManager.journal
 	walLog := journal.walLog
@@ -219,7 +225,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 	}
 	if journalLatestVote == nil {
 		// Indicate there's no vote before in local node, so it must be under rules.
-		return true, sourceBlockNumber, sourceBlockHash
+		return true, sourceNumber, sourceHash
 	}
 
 	for index := lastIndex; index >= firstIndex; index-- {
@@ -232,21 +238,21 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 			return false, 0, common.Hash{}
 		}
 
-		if targetBlockNumber == vote.Data.TargetNumber {
+		if targetNumber == vote.Data.TargetNumber {
 			return false, 0, common.Hash{}
 		}
 
-		if vote.Data.SourceNumber > sourceBlockNumber && vote.Data.TargetNumber < targetBlockNumber {
+		if vote.Data.SourceNumber > sourceNumber && vote.Data.TargetNumber < targetNumber {
 			log.Warn("curHeader's vote source and target are within its other votes")
 			return false, 0, common.Hash{}
 		}
-		if vote.Data.SourceNumber < sourceBlockNumber && vote.Data.TargetNumber > targetBlockNumber {
+		if vote.Data.SourceNumber < sourceNumber && vote.Data.TargetNumber > targetNumber {
 			log.Warn("Other votes source and target are within curHeader's")
 			return false, 0, common.Hash{}
 		}
 	}
 
-	return true, sourceBlockNumber, sourceBlockHash
+	return true, sourceNumber, sourceHash
 }
 
 // Metrics to monitor if voteManager worked in the expetected logic.
