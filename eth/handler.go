@@ -630,23 +630,23 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 		directCount int // Count of announcements made
 		directPeers int
 
-		voteset = make(map[*ethPeer]*types.VoteEnvelope) // Set peer->hash to transfer directly
+		voteMap = make(map[*ethPeer]*types.VoteEnvelope) // Set peer->hash to transfer directly
 	)
 
 	// Broadcast vote to a batch of peers not knowing about it
 	peers := h.peers.peersWithoutVote(vote.Hash())
 	for _, peer := range peers {
 		_, peerTD := peer.Head()
-		if deltaTD := new(big.Int).Abs(new(big.Int).Sub(h.chain.GetTdByHash(h.chain.CurrentHeader().Hash()), peerTD)); deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 {
-			voteset[peer] = vote
+		deltaTD := new(big.Int).Abs(new(big.Int).Sub(h.chain.GetTdByHash(h.chain.CurrentHeader().Hash()), peerTD))
+		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 {
+			voteMap[peer] = vote
 		}
 	}
 
-	for peer, _vote := range voteset {
+	for peer, _vote := range voteMap {
 		directPeers++
 		directCount += 1
-		votes := make([]*types.VoteEnvelope, 1)
-		votes[0] = _vote
+		votes := []*types.VoteEnvelope{_vote}
 		peer.AsyncSendVotes(votes)
 	}
 	log.Debug("Vote broadcast", "vote packs", directPeers, "broadcast vote", directCount)

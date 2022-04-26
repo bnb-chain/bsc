@@ -96,7 +96,7 @@ var PrecompiledContractsBerlin = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
 	common.BytesToAddress([]byte{9}): &blake2F{},
 
-	common.BytesToAddress([]byte{100}): &finalitySignatureVerify{},
+	common.BytesToAddress([]byte{100}): &voteSignatureVerify{},
 }
 
 // PrecompiledContractsBLS contains the set of pre-compiled Ethereum
@@ -1051,63 +1051,50 @@ func (c *bls12381MapG2) Run(input []byte) ([]byte, error) {
 	return g.EncodePoint(r), nil
 }
 
-var errFinalitySignatureVerify = errors.New("invalid signatures")
+var errVoteSignatureVerify = errors.New("invalid signatures")
 
-// finalitySignatureVerify implements BEP-126 finality signature verification precompile.
-type finalitySignatureVerify struct{}
+// voteSignatureVerify implements BEP-126 finality signature verification precompile.
+type voteSignatureVerify struct{}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
-func (c *finalitySignatureVerify) RequiredGas(input []byte) uint64 {
-	return params.SignatureVerifyGas
+func (c *voteSignatureVerify) RequiredGas(input []byte) uint64 {
+	return params.VoteSignatureVerifyGas
 }
 
-func (c *finalitySignatureVerify) Run(input []byte) ([]byte, error) {
+func (c *voteSignatureVerify) Run(input []byte) ([]byte, error) {
 	var (
-		srcNumA  = new(big.Int).SetBytes(getData(input, 0, 32)).Uint64()
-		tarNumA  = new(big.Int).SetBytes(getData(input, 32, 32)).Uint64()
-		srcHashA = getData(input, 64, 32)
-		tarHashA = getData(input, 96, 32)
-		sigA     = getData(input, 128, 96)
-		srcNumB  = new(big.Int).SetBytes(getData(input, 224, 32)).Uint64()
-		tarNumB  = new(big.Int).SetBytes(getData(input, 256, 32)).Uint64()
-		srcHashB = getData(input, 288, 32)
-		tarHashB = getData(input, 320, 32)
-		sigB     = getData(input, 352, 96)
-		BLSKey   = getData(input, 448, 48)
+		srcNum  = new(big.Int).SetBytes(getData(input, 0, 32)).Uint64()
+		tarNum  = new(big.Int).SetBytes(getData(input, 32, 32)).Uint64()
+		srcHash = getData(input, 64, 32)
+		tarHash = getData(input, 96, 32)
+		sig     = getData(input, 128, 96)
+		BLSKey  = getData(input, 224, 48)
 	)
 
-	sigs := make([][]byte, 2)
-	msgs := make([][32]byte, 2)
-	pubKeys := make([]bls.PublicKey, 2)
+	sigs := make([][]byte, 1)
+	msgs := make([][32]byte, 1)
+	pubKeys := make([]bls.PublicKey, 1)
 
 	pubKey, err := bls.PublicKeyFromBytes(BLSKey)
 	if err != nil {
 		return nil, err
 	}
 	pubKeys[0] = pubKey
-	pubKeys[1] = pubKey
 
 	msgs[0] = rlpHash(&types.VoteData{
-		SourceNumber: srcNumA,
-		SourceHash:   common.BytesToHash(srcHashA),
-		TargetNumber: tarNumA,
-		TargetHash:   common.BytesToHash(tarHashA),
+		SourceNumber: srcNum,
+		SourceHash:   common.BytesToHash(srcHash),
+		TargetNumber: tarNum,
+		TargetHash:   common.BytesToHash(tarHash),
 	})
-	msgs[1] = rlpHash(&types.VoteData{
-		SourceNumber: srcNumB,
-		SourceHash:   common.BytesToHash(srcHashB),
-		TargetNumber: tarNumB,
-		TargetHash:   common.BytesToHash(tarHashB),
-	})
-	sigs[0] = sigA
-	sigs[1] = sigB
+	sigs[0] = sig
 
 	success, err := bls.VerifyMultipleSignatures(sigs, msgs, pubKeys)
 	if err != nil {
 		return nil, err
 	}
 	if !success {
-		return nil, errFinalitySignatureVerify
+		return nil, errVoteSignatureVerify
 	}
 	return big1.Bytes(), nil
 }

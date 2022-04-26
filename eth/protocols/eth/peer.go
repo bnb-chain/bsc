@@ -402,7 +402,7 @@ func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 
 // SendVotes propagates a batch of votes to the remote peer.
 func (p *Peer) SendVotes(votes []*types.VoteEnvelope) error {
-	// Mark all the transactions as known, but ensure we don't overflow our limits
+	// Mark all the votes as known, but ensure we don't overflow our limits
 	for p.knownVotes.Cardinality() > max(0, maxKnownTxs-len(votes)) {
 		p.knownVotes.Pop()
 	}
@@ -417,7 +417,7 @@ func (p *Peer) SendVotes(votes []*types.VoteEnvelope) error {
 func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
 	select {
 	case p.voteBroadcast <- votes:
-		// Mark all the transactions as known, but ensure we don't overflow our limits
+		// Mark all the votes as known, but ensure we don't overflow our limits
 		for p.knownVotes.Cardinality() > max(0, maxKnownVotes-len(votes)) {
 			p.knownVotes.Pop()
 		}
