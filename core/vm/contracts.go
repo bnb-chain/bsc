@@ -1075,18 +1075,19 @@ func (c *voteSignatureVerify) Run(input []byte) ([]byte, error) {
 	msgs := make([][32]byte, 1)
 	pubKeys := make([]bls.PublicKey, 1)
 
+	voteData := &types.VoteData{
+		SourceNumber: srcNum,
+		SourceHash:   common.BytesToHash(srcHash),
+		TargetNumber: tarNum,
+		TargetHash:   common.BytesToHash(tarHash),
+	}
+	copy(msgs[0][:], voteData.Hash().Bytes())
+
 	pubKey, err := bls.PublicKeyFromBytes(BLSKey)
 	if err != nil {
 		return nil, err
 	}
 	pubKeys[0] = pubKey
-
-	msgs[0] = rlpHash(&types.VoteData{
-		SourceNumber: srcNum,
-		SourceHash:   common.BytesToHash(srcHash),
-		TargetNumber: tarNum,
-		TargetHash:   common.BytesToHash(tarHash),
-	})
 	sigs[0] = sig
 
 	success, err := bls.VerifyMultipleSignatures(sigs, msgs, pubKeys)
@@ -1097,11 +1098,4 @@ func (c *voteSignatureVerify) Run(input []byte) ([]byte, error) {
 		return nil, errVoteSignatureVerify
 	}
 	return big1.Bytes(), nil
-}
-
-// rlpHash encodes x and hashes the encoded bytes.
-func rlpHash(x *types.VoteData) (h [32]byte) {
-	bytes := x.Hash().Bytes()
-	copy(h[:], bytes)
-	return h
 }
