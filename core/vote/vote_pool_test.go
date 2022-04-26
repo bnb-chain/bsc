@@ -170,7 +170,7 @@ func testVotePool(t *testing.T, inValidRules bool) {
 	file.Close()
 	os.Remove(journal)
 
-	var ruleFunc getHighestJustifiedHeader
+	var ruleFunc getHighestJustifiedHeaderFunc
 	if inValidRules {
 		ruleFunc = getHighestJustifiedHeaderForValid
 	} else {

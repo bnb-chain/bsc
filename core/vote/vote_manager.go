@@ -1,12 +1,7 @@
 package vote
 
 import (
-	"context"
 	"fmt"
-	"io/ioutil"
-
-	"github.com/prysmaticlabs/prysm/validator/accounts/iface"
-	"github.com/prysmaticlabs/prysm/validator/accounts/wallet"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -20,7 +15,7 @@ import (
 )
 
 type (
-	getHighestJustifiedHeader func(chain consensus.ChainHeaderReader, header *types.Header) *types.Header
+	getHighestJustifiedHeaderFunc func(chain consensus.ChainHeaderReader, header *types.Header) *types.Header
 )
 
 // VoteManager will handle the vote produced by self.
@@ -39,10 +34,10 @@ type VoteManager struct {
 
 	engine consensus.PoSA
 
-	get getHighestJustifiedHeader
+	getHighestJustifiedHeader getHighestJustifiedHeaderFunc
 }
 
-func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA, get getHighestJustifiedHeader) (*VoteManager, error) {
+func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA, getHighestJustifiedHeader getHighestJustifiedHeaderFunc) (*VoteManager, error) {
 	voteManager := &VoteManager{
 		mux: mux,
 
@@ -53,45 +48,11 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 		pool:   pool,
 		engine: engine,
 
-		get: get,
+		getHighestJustifiedHeader: getHighestJustifiedHeader,
 	}
 
-	dirExists, err := wallet.Exists(blsWalletPath)
-	if err != nil {
-		log.Error("Check BLS wallet exists error: %v.", err)
-		return nil, err
-	}
-	if !dirExists {
-		log.Error("BLS wallet did not exists.")
-		return nil, fmt.Errorf("BLS wallet did not exists.")
-	}
-
-	walletPassword, err := ioutil.ReadFile(blsPasswordPath)
-	if err != nil {
-		log.Error("Read BLS wallet password error: %v.", err)
-		return nil, err
-	}
-	log.Info("Read BLS wallet password successfully")
-
-	w, err := wallet.OpenWallet(context.Background(), &wallet.Config{
-		WalletDir:      blsWalletPath,
-		WalletPassword: string(walletPassword),
-	})
-	if err != nil {
-		log.Error("Open BLS wallet failed: %v.", err)
-		return nil, err
-	}
-	log.Info("Open BLS wallet successfully")
-
-	km, err := w.InitializeKeymanager(context.Background(), iface.InitKeymanagerConfig{ListenForChanges: false})
-	if err != nil {
-		log.Error("Initialize key manager failed: %v.", err)
-		return nil, err
-	}
-	log.Info("Initialized keymanager successfully")
-
-	// Create voteSigner
-	voteSigner, err := NewVoteSigner(&km)
+	// Create voteSigner.
+	voteSigner, err := NewVoteSigner(blsPasswordPath, blsWalletPath)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +155,7 @@ func (voteManager *VoteManager) loop() {
 // A validator must not vote within the span of its other votes . (Rule 2)
 // Validators always vote for their canonical chain’s latest block. (Rule 3)
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
-	justifiedHeader := voteManager.get(voteManager.chain, header)
+	justifiedHeader := voteManager.getHighestJustifiedHeader(voteManager.chain, header)
 	if justifiedHeader == nil {
 		log.Error("highestJustifiedHeader is nil")
 		return false, 0, common.Hash{}
@@ -219,21 +180,16 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 		return false, 0, common.Hash{}
 	}
 
-	journalLatestVote, err := journal.ReadVote(lastIndex)
-	if err != nil {
-		return false, 0, common.Hash{}
-	}
-	if journalLatestVote == nil {
-		// Indicate there's no vote before in local node, so it must be under rules.
-		return true, sourceNumber, sourceHash
-	}
-
 	for index := lastIndex; index >= firstIndex; index-- {
 		vote, err := journal.ReadVote(index)
 		if err != nil {
 			return false, 0, common.Hash{}
 		}
 		if vote == nil {
+			// Indicate there's no vote in local journal, so it must be under rules.
+			if index == 0 {
+				return true, sourceNumber, sourceHash
+			}
 			log.Error("vote is nil")
 			return false, 0, common.Hash{}
 		}

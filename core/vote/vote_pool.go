@@ -139,17 +139,6 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 		votesPq = pool.futureVotesPq
 		isFutureVote = true
 	} else {
-		// Verify if the vote comes from valid validators based on voteAddress (BLSPublicKey).
-		if posa, ok := pool.engine.(consensus.PoSA); ok {
-			if !posa.VerifyVote(pool.chain, vote) {
-				return false
-			}
-		}
-		// Verify bls signature.
-		if err := VerifyVoteWithBLS(vote); err != nil {
-			log.Error("Failed to verify voteMessage", "err", err)
-			return false
-		}
 		votes = pool.curVotes
 		votesPq = pool.curVotesPq
 	}
@@ -159,13 +148,19 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 		return false
 	}
 
-	pool.putVote(votes, votesPq, vote, voteData, voteHash, isFutureVote)
-
 	if !isFutureVote {
+		// Verify if the vote comes from valid validators based on voteAddress (BLSPublicKey), only verify curVotes here, will verify futureVotes in transfer process.
+		if posa, ok := pool.engine.(consensus.PoSA); ok {
+			if !posa.VerifyVote(pool.chain, vote) {
+				return false
+			}
+		}
 		// Send vote for handler usage of broadcasting to peers.
 		voteEv := core.NewVoteEvent{Vote: vote}
 		pool.votesFeed.Send(voteEv)
 	}
+
+	pool.putVote(votes, votesPq, vote, voteData, voteHash, isFutureVote)
 
 	return true
 }
@@ -259,13 +254,11 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 				continue
 			}
 		}
-		// Verify the vote from futureVotes.
-		if err := VerifyVoteWithBLS(vote); err == nil {
-			// In the process of transfer, send valid vote to votes channel for handler usage
-			voteEv := core.NewVoteEvent{Vote: vote}
-			pool.votesFeed.Send(voteEv)
-			validVotes = append(validVotes, vote)
-		}
+
+		// In the process of transfer, send valid vote to votes channel for handler usage
+		voteEv := core.NewVoteEvent{Vote: vote}
+		pool.votesFeed.Send(voteEv)
+		validVotes = append(validVotes, vote)
 	}
 
 	voteData := heap.Pop(futurePq)
@@ -349,15 +342,25 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 		log.Warn("BlockNumber of vote is outside the range of header-256~header+13")
 		return false
 	}
-	// To prevent DOS attacks, make sure no more than 50 votes for the same blockHash if it's futureVotes
-	// No more than 21 votes per blockHash if not futureVotes and no more than 50 votes per blockHash if futureVotes
+
+	// To prevent DOS attacks, make sure no more than 21 votes per blockHash if not futureVotes
+	// and no more than 50 votes per blockHash if futureVotes.
 	maxVoteAmountPerBlock := maxCurVoteAmountPerBlock
 	if isFutureVote {
 		maxVoteAmountPerBlock = maxFutureVoteAmountPerBlock
 	}
 	if voteBox, ok := m[targetHash]; ok {
-		return len(voteBox.voteMessages) <= maxVoteAmountPerBlock
+		if len(voteBox.voteMessages) > maxVoteAmountPerBlock {
+			return false
+		}
 	}
+
+	// Verify bls signature.
+	if err := vote.Verify(); err != nil {
+		log.Error("Failed to verify voteMessage", "err", err)
+		return false
+	}
+
 	return true
 }
 
