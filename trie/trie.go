@@ -378,7 +378,7 @@ type KvPair struct {
 }
 
 func NewKvPair(key []byte, value []byte, del bool, t *SecureTrie) KvPair {
-	return KvPair{keybytesToHex(t.hashKey(key)), value, del}
+	return KvPair{t.hashKey(key), value, del}
 }
 
 func (k *KvPair) getDelFlag() bool {
@@ -408,10 +408,20 @@ func (t *Trie) tryUpdateBatch(pKvBatch *[]KvPair) error {
 	shard := make([][]*KvPair, 16)
 
 	for i := 0; i < lenKvBatch; i++ {
-		//k := keybytesToHex(kvBatch[i].key)
-		shardIndex := getShardNum((*pKvBatch)[i].key)
-		fmt.Println("shardIndex", shardIndex)
-		shard[shardIndex] = append(shard[shardIndex], &((*pKvBatch)[i]))
+		k := keybytesToHex((*pKvBatch)[i].key)
+		shardIndex := getShardNum(k)
+		// fmt.Println("shardIndex", shardIndex)
+		//	shard[shardIndex] = append(shard[shardIndex], &((*pKvBatch)[i]))
+		v := (*pKvBatch)[i].val
+		shard[shardIndex] = append(shard[shardIndex], &KvPair{k, v, (*pKvBatch)[i].del})
+		/*
+			if (*pKvBatch)[i].del == false {
+				fmt.Println("batch update key", common.Bytes2Hex(k), "value:", v)
+			} else {
+				fmt.Println("batch del key", common.Bytes2Hex(k), "value:", v)
+			}
+		*/
+
 	}
 
 	taskResults := make(chan error, 16)

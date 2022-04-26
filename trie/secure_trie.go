@@ -118,14 +118,13 @@ func (t *SecureTrie) TryUpdate(key, value []byte) error {
 func (t *SecureTrie) UpdateBatch(pKvBatch *[]KvPair) error {
 	err := t.trie.UpdateBatch(pKvBatch)
 	if err != nil {
-		panic("bath error")
+		panic("update batcth error")
 		return err
 	}
 
 	for i := 0; i < len(*pKvBatch); i++ {
 		if (*pKvBatch)[i].getDelFlag() == false {
 			key := (*pKvBatch)[i].getKey()
-			//	hk := t.hashKey(key)
 			t.getSecKeyCache()[string(key)] = common.CopyBytes(key)
 		}
 	}

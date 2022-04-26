@@ -19,11 +19,12 @@ package state
 import (
 	"bytes"
 	"fmt"
-	"github.com/ethereum/go-ethereum/trie"
 	"io"
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/trie"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -410,13 +411,13 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		var v []byte
 		if (value == common.Hash{}) {
 			updateBatch = append(updateBatch, trie.NewKvPair(key[:], common.Hash{}.Bytes(), true, trieInstance))
-			// fmt.Println("called deleted in SecureTrie")
-			//s.setError(tr.TryDelete(key[:]))
+			// tr.TryDelete(key[:])
+			// trieInstance.PrintKey(key[:], common.Hash{}.Bytes(), true)
 		} else {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-			// fmt.Println("called deleted in SecureTrie")
-			//s.setError(tr.TryUpdate(key[:], v))
+			// s.setError(tr.TryUpdate(key[:], v))
+			// tr.TryUpdate(key[:], v)
 			updateBatch = append(updateBatch, trie.NewKvPair(key[:], v, false, trieInstance))
 		}
 		// If state snapshotting is active, cache the data til commit

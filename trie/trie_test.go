@@ -27,6 +27,7 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/quick"
 	"time"
@@ -50,6 +51,18 @@ func init() {
 func newEmpty() *Trie {
 	trie, _ := New(common.Hash{}, NewDatabase(memorydb.New()))
 	return trie
+}
+
+func newSecEmpty() *SecureTrie {
+	trie, _ := NewSecure(common.Hash{}, NewDatabase(memorydb.New()))
+	return trie
+}
+
+func newSecTrie(dirName string) *SecureTrie {
+	// db ethdb.KeyValueStore
+	db := tempDBWithDir(dirName)
+	sectrie, _ := NewSecure(common.Hash{}, db)
+	return sectrie
 }
 
 func TestEmptyTrie(t *testing.T) {
@@ -160,74 +173,86 @@ func testMissingNode(t *testing.T, memonly bool) {
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 func randomBytes(n int) []byte {
-    b := make([]byte, n)
-    for i := range b {
-    	b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
-    return b
+	return b
 }
 
-func createInsertKvPair() KvPair{
-	return KvPair{randomBytes(32), randomBytes(50), false}
+func createInsertKvPair() KvPair {
+	address := randomBytes(20)
+	return KvPair{address, randomBytes(50), false}
+}
+
+func createInsertSecKvPair(t *SecureTrie) KvPair {
+	address := randomBytes(20)
+	return NewKvPair(address, randomBytes(50), false, t)
 }
 
 func TestCompareInsertPerformance(t *testing.T) {
-    // Create 4196 kv pair batch
-    // includes 4096 to insert, 100 to delete
-    old_batch := []KvPair{}
-    // Create 4096 kv pair to insert
-    for i:=0; i<4096; i++ {
-    	// batch[i] = createInsertKvPair()
-    	old_batch = append(old_batch, createInsertKvPair())
+	// Create 4196 kv pair batch
+	// includes 4096 to insert, 100 to delete
+	old_batch := []KvPair{}
+	testnum := 500960
+	// Create 4096 kv pair to insert
+	for i := 0; i < testnum; i++ {
+		// batch[i] = createInsertKvPair()
+		old_batch = append(old_batch, createInsertKvPair())
 	}
 
-    new_batch := []KvPair{}
-    for i:=0; i<len(old_batch); i++ {
-    	new_batch = append(new_batch, KvPair{keybytesToHex(old_batch[i].key), old_batch[i].val, false})
+	delMap := make(map[int]bool, testnum)
+
+	for i := 0; i < testnum; i++ {
+		// batch[i] = createInsertKvPair()
+		delMap[i] = false
 	}
-    /*
-    // Create 100 kv pair to del
-	for i:=0; i<100; i++ {
-    	// batch[4096+i] = KvPair{batch[i*10+5].key, []byte(""), true}
-    	batch = append(batch, KvPair{batch[i+5].key, []byte(""), true})
+
+	for index := 0; index < 5000; index++ {
+		delMap[rand.Intn(testnum)] = true
 	}
-	*/
+
+	batchTrie := newSecEmpty()
+	new_batch := []KvPair{}
+	for i := 0; i < len(old_batch); i++ {
+		//	new_batch = append(new_batch, KvPair{keybytesToHex(old_batch[i].key), old_batch[i].val, false})
+		if delMap[i] == false {
+			new_batch = append(new_batch, NewKvPair(old_batch[i].key, old_batch[i].val, false, batchTrie))
+		} else {
+			new_batch = append(new_batch, NewKvPair(old_batch[i].key, old_batch[i].val, true, batchTrie))
+		}
+	}
 
 	t.Logf("batch size ==: %d", len(old_batch))
 
-    // Single insert&del test
-    trie := newEmpty()
+	// Single insert&del test
+	trie := newSecEmpty()
 
-    oldStartTime := time.Now()
-    // 1. insert
-    for i:=0; i<4096; i++ {
-		//for i:=0; i<4096; i++ {
-    	updateString(trie, string(old_batch[i].key), string(old_batch[i].val))
+	oldStartTime := time.Now()
+	// 1. insert
+	for i := 0; i < testnum; i++ {
+		if delMap[i] == false {
+			secureTrieUpdate(trie, string(old_batch[i].key), string(old_batch[i].val), false)
+		} else {
+			secureTrieUpdate(trie, string(old_batch[i].key), string(old_batch[i].val), true)
+		}
 	}
-    oldTc := time.Since(oldStartTime)
-    t.Logf("oldTc = %v", oldTc)
-/*
-    // 2. delete
-	for i:=0; i<5; i++ {
-		//for i:=4096; i<4196; i++ {
-		deleteString(trie, string(batch[i+10].key))
-	}
-*/
+	oldTc := time.Since(oldStartTime)
+	t.Logf("oldTc = %v", oldTc)
 
-	exp := trie.Hash()
-	t.Logf("exp root ==: %x", exp)
 	// trie.UpdateShardInfo()
 	//fmt.Println("rootnode ==:", trie.root)
 
 	// Batch test
-    trie = newEmpty()
-    newStartTime := time.Now()
-	updateStringBatchWithHexKey(trie, &new_batch)
-    newTc := time.Since(newStartTime)
-    t.Logf("newTc = %v", newTc)
-
-	root := trie.Hash()
+	newStartTime := time.Now()
+	secureTrieUpdateBatch(batchTrie, &new_batch)
+	newTc := time.Since(newStartTime)
+	t.Logf("newTc = %v", newTc)
+	t.Logf("oldTc = %v", oldTc)
+	root := batchTrie.Hash()
 	t.Logf("newroot ==: %x", root)
+	exp := trie.Hash()
+	t.Logf("exp root ==: %x", exp)
 	// trie.UpdateShardInfo()
 	//fmt.Println("newrootnode ==:", trie.root)
 
@@ -235,6 +260,146 @@ func TestCompareInsertPerformance(t *testing.T) {
 		t.Errorf("case 1: exp %x got %x", exp, root)
 	}
 }
+
+func TestCompareInsertPerformanceInDb(t *testing.T) {
+	// Create 4196 kv pair batch
+	// includes 4096 to insert, 100 to delete
+	old_batch := []KvPair{}
+	testnum := 100000
+	delNum := 2000
+	// Create 4096 kv pair to insert
+	for i := 0; i < testnum; i++ {
+		// batch[i] = createInsertKvPair()
+		old_batch = append(old_batch, createInsertKvPair())
+	}
+
+	delMap := make(map[int]bool, testnum)
+
+	for i := 0; i < testnum; i++ {
+		delMap[i] = false
+	}
+
+	for index := 0; index < delNum; index++ {
+		delMap[rand.Intn(testnum)] = true
+	}
+
+	db1 := tempDBWithDir("batch_trie")
+	batchTrie, _ := NewSecure(common.Hash{}, db1)
+
+	// batchTrie := newSecTrie("batch_trie")
+	new_batch := []KvPair{}
+	for i := 0; i < len(old_batch); i++ {
+		//	new_batch = append(new_batch, KvPair{keybytesToHex(old_batch[i].key), old_batch[i].val, false})
+		if delMap[i] == false {
+			new_batch = append(new_batch, NewKvPair(old_batch[i].key, old_batch[i].val, false, batchTrie))
+		} else {
+			new_batch = append(new_batch, NewKvPair(old_batch[i].key, old_batch[i].val, true, batchTrie))
+		}
+	}
+
+	t.Logf("batch size ==: %d", len(old_batch))
+
+	// Single insert&del test
+	db2 := tempDBWithDir("sec_trie")
+	trie, _ := NewSecure(common.Hash{}, db2)
+
+	oldStartTime := time.Now()
+	// 1. insert
+	for i := 0; i < testnum; i++ {
+		if delMap[i] == false {
+			secureTrieUpdate(trie, string(old_batch[i].key), string(old_batch[i].val), false)
+		} else {
+			secureTrieUpdate(trie, string(old_batch[i].key), string(old_batch[i].val), true)
+		}
+	}
+	oldTc := time.Since(oldStartTime)
+	t.Logf("oldTc = %v", oldTc)
+
+	// trie.UpdateShardInfo()
+	//fmt.Println("rootnode ==:", trie.root)
+
+	// Batch test
+	newStartTime := time.Now()
+	secureTrieUpdateBatch(batchTrie, &new_batch)
+	newTc := time.Since(newStartTime)
+	t.Logf("newTc = %v", newTc)
+	t.Logf("oldTc = %v", oldTc)
+	root := batchTrie.Hash()
+	t.Logf("newroot ==: %x", root)
+	exp := trie.Hash()
+	t.Logf("exp root ==: %x", exp)
+	// trie.UpdateShardInfo()
+	//fmt.Println("newrootnode ==:", trie.root)
+
+	if root != exp {
+		t.Errorf("case 1: exp %x got %x", exp, root)
+	}
+
+	old_batch2 := []KvPair{}
+
+	// Create 4096 kv pair to insert
+	for i := 0; i < testnum; i++ {
+		// batch[i] = createInsertKvPair()
+		old_batch2 = append(old_batch, createInsertKvPair())
+	}
+
+	for i := 0; i < testnum; i++ {
+		delMap[i] = false
+	}
+
+	for index := 0; index < delNum; index++ {
+		delMap[rand.Intn(testnum)] = true
+	}
+
+	new_batch2 := []KvPair{}
+	for i := 0; i < len(old_batch2); i++ {
+		if delMap[i] == false {
+			new_batch2 = append(new_batch2, NewKvPair(old_batch2[i].key, old_batch2[i].val, false, batchTrie))
+		} else {
+			new_batch2 = append(new_batch2, NewKvPair(old_batch2[i].key, old_batch2[i].val, true, batchTrie))
+		}
+	}
+
+	t.Logf("batch size ==: %d", len(old_batch))
+
+	// Batch test
+	newStartTime = time.Now()
+	secureTrieUpdateBatch(batchTrie, &new_batch2)
+	newTc = time.Since(newStartTime)
+	t.Logf("newTc = %v", newTc)
+
+	// Single insert&del test
+	// trie, _ = NewSecure(trie.Hash(), db2)
+
+	oldStartTime = time.Now()
+	// 1. insert
+	for i := 0; i < testnum; i++ {
+		if delMap[i] == false {
+			secureTrieUpdate(trie, string(old_batch2[i].key), string(old_batch2[i].val), false)
+		} else {
+			secureTrieUpdate(trie, string(old_batch2[i].key), string(old_batch2[i].val), true)
+		}
+	}
+	oldTc = time.Since(oldStartTime)
+	t.Logf("oldTc = %v", oldTc)
+
+	// trie.UpdateShardInfo()
+	//fmt.Println("rootnode ==:", trie.root)
+
+	// batchTrie, _ = NewSecure(root, db1)
+	// Batch test
+	newStartTime = time.Now()
+	secureTrieUpdateBatch(batchTrie, &new_batch2)
+	newTc = time.Since(newStartTime)
+	t.Logf("newTc = %v", newTc)
+	t.Logf("oldTc = %v", oldTc)
+	root = batchTrie.Hash()
+	t.Logf("newroot ==: %x", root)
+	exp = trie.Hash()
+	t.Logf("exp root ==: %x", exp)
+
+}
+
 /*
 func TestInsertBatch(t *testing.T) {
 	trie := newEmpty()
@@ -291,8 +456,8 @@ func TestInsertBatchWithHexKey(t *testing.T) {
 	updateString(trie, "doe", "reindeer")
 	updateString(trie, "dog", "puppy")
 	updateString(trie, "dogglesworth", "cat")
-	updateString(trie,"renchonghui", "renchonghuival")
-	updateString(trie,"renjie", "renjieval")
+	updateString(trie, "renchonghui", "renchonghuival")
+	updateString(trie, "renjie", "renjieval")
 	// updateString(trie, "djgglesworth", "jcat")
 	updateString(trie, "mjgglesworth", "jcat")
 	updateString(trie, "kdjgglesworth", "jcat")
@@ -301,16 +466,16 @@ func TestInsertBatchWithHexKey(t *testing.T) {
 	//deleteString(trie, "dog")
 
 	strBatch := []KvPair{
-		{keybytesToHex([]byte("doe")), []byte("reindeer"), false},
-		{keybytesToHex([]byte("dog")), []byte("puppy"), false},
-		{keybytesToHex([]byte("kdjgglesworth")),[]byte("jcat"), false},
-		{keybytesToHex([]byte("dogglesworth")), []byte("cat"),false},
-		{keybytesToHex([]byte("renchonghui")),[]byte("renchonghuival"),false},
-		{keybytesToHex([]byte("renjie")),[]byte("renjieval"),false},
-		{keybytesToHex([]byte("djgglesworth")),[]byte("jcat"),false},
-		{keybytesToHex([]byte("mjgglesworth")),[]byte("jcat"),false},
+		{[]byte("doe"), []byte("reindeer"), false},
+		{[]byte("dog"), []byte("puppy"), false},
+		{[]byte("kdjgglesworth"), []byte("jcat"), false},
+		{[]byte("dogglesworth"), []byte("cat"), false},
+		{[]byte("renchonghui"), []byte("renchonghuival"), false},
+		{[]byte("renjie"), []byte("renjieval"), false},
+		{[]byte("djgglesworth"), []byte("jcat"), false},
+		{[]byte("mjgglesworth"), []byte("jcat"), false},
 		//{[]byte("kdjgglesworth"),[]byte("jcat")},
-		{keybytesToHex([]byte("jgglesworth")),[]byte("jcat"),false},
+		{[]byte("jgglesworth"), []byte("jcat"), false},
 		//{keybytesToHex([]byte("dog")), []byte(""), true},
 	}
 
@@ -318,7 +483,6 @@ func TestInsertBatchWithHexKey(t *testing.T) {
 	exp := trie.Hash()
 	t.Logf("exp root ==: %x", exp)
 	fmt.Println("rootnode ==:", trie.root)
-
 
 	println("Start batch test")
 	// test batch update
@@ -1246,6 +1410,43 @@ func tempDB() (string, *Database) {
 	return dir, NewDatabase(diskdb)
 }
 
+func Exists(path string) bool {
+	_, err := os.Stat(path) //os.Stat获取文件信息
+	if err != nil {
+		if os.IsExist(err) {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
+func tempDBWithDir(dirName string) *Database {
+	if !Exists(dirName) {
+		dir, err := ioutil.TempDir("", dirName)
+		fmt.Println("dir is:", dir)
+		dirName = dir
+		if err != nil {
+			panic(fmt.Sprintf("can't create temporary directory: %v", err))
+		}
+	}
+
+	diskdb, err := leveldb.New(dirName, 0, 0, "", false)
+	if err != nil {
+		panic(fmt.Sprintf("can't create temporary database: %v", err))
+	}
+
+	property := ""
+	if property == "" {
+		property = "leveldb.stats"
+	} else if !strings.HasPrefix(property, "leveldb.") {
+		property = "leveldb." + property
+	}
+	stat, err := diskdb.Stat(property)
+	fmt.Println("leveldb stat is :", stat)
+	return NewDatabase(diskdb)
+}
+
 func getString(trie *Trie, k string) []byte {
 	return trie.Get([]byte(k))
 }
@@ -1254,7 +1455,19 @@ func updateString(trie *Trie, k, v string) {
 	trie.Update([]byte(k), []byte(v))
 }
 
+func secureTrieUpdate(trie *SecureTrie, k, v string, del bool) {
+	if del == false {
+		trie.Update([]byte(k), []byte(v))
+	} else {
+		trie.Delete([]byte(k))
+	}
+}
+
 func updateStringBatchWithHexKey(trie *Trie, pKvBatch *[]KvPair) {
+	trie.UpdateBatch(pKvBatch)
+}
+
+func secureTrieUpdateBatch(trie *SecureTrie, pKvBatch *[]KvPair) {
 	trie.UpdateBatch(pKvBatch)
 }
 
