@@ -85,6 +85,7 @@ func generateTestChainWithFork(n int, fork int) (*core.Genesis, []*types.Block, 
 		BrunoBlock:          big.NewInt(0),
 		EulerBlock:          big.NewInt(0),
 		BonehBlock:          big.NewInt(0),
+		LynnBlock:           big.NewInt(0),
 
 		Ethash: new(params.EthashConfig),
 	}

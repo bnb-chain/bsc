@@ -98,21 +98,22 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 
 		configNoFork  = &params.ChainConfig{HomesteadBlock: big.NewInt(1)}
 		configProFork = &params.ChainConfig{
-			HomesteadBlock: big.NewInt(1),
-			EIP150Block:    big.NewInt(2),
-			EIP155Block:    big.NewInt(2),
-			EIP158Block:    big.NewInt(2),
-			ByzantiumBlock: big.NewInt(3),
-			//ConstantinopleBlock: big.NewInt(4),
-			//PetersburgBlock:     big.NewInt(4),
-			//IstanbulBlock:       big.NewInt(4),
-			//MuirGlacierBlock:    big.NewInt(4),
-			//RamanujanBlock:      big.NewInt(4),
-			//NielsBlock:          big.NewInt(4),
-			//MirrorSyncBlock:     big.NewInt(4),
-			//BrunoBlock:          big.NewInt(4),
-			//EulerBlock:          big.NewInt(4),
-			//BonehBlock:          big.NewInt(4),
+			HomesteadBlock:      big.NewInt(1),
+			EIP150Block:         big.NewInt(2),
+			EIP155Block:         big.NewInt(2),
+			EIP158Block:         big.NewInt(2),
+			ByzantiumBlock:      big.NewInt(3),
+			ConstantinopleBlock: big.NewInt(4),
+			PetersburgBlock:     big.NewInt(4),
+			IstanbulBlock:       big.NewInt(4),
+			MuirGlacierBlock:    big.NewInt(4),
+			RamanujanBlock:      big.NewInt(4),
+			NielsBlock:          big.NewInt(4),
+			MirrorSyncBlock:     big.NewInt(4),
+			BrunoBlock:          big.NewInt(4),
+			EulerBlock:          big.NewInt(5),
+			BonehBlock:          big.NewInt(5),
+			LynnBlock:           big.NewInt(5),
 		}
 		dbNoFork  = rawdb.NewMemoryDatabase()
 		dbProFork = rawdb.NewMemoryDatabase()
