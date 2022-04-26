@@ -18,6 +18,7 @@ package state
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -273,6 +275,10 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			return common.Hash{}
 		}
 		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
+	}
+	// ErrSnapshotStale may occur due to diff layers in the update, so we should try again in noTrie mode.
+	if s.db.NoTrie() && err != nil && errors.Is(err, snapshot.ErrSnapshotStale) {
+		return s.GetCommittedState(db, key)
 	}
 	// If snapshot unavailable or reading from it failed, load from the database
 	if s.db.snap == nil || err != nil {

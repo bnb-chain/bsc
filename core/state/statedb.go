@@ -674,6 +674,12 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 			}
 		}
 	}
+
+	// ErrSnapshotStale may occur due to diff layers in the update, so we should try again in noTrie mode.
+	if s.NoTrie() && err != nil && errors.Is(err, snapshot.ErrSnapshotStale) {
+		return s.getDeletedStateObject(addr)
+	}
+
 	// If snapshot unavailable or reading from it failed, load from the database
 	if s.snap == nil || err != nil {
 		if s.trie == nil {
@@ -1517,9 +1523,11 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 					// - head layer is paired with HEAD state
 					// - head-1 layer is paired with HEAD-1 state
 					// - head-(n-1) layer(bottom-most diff layer) is paired with HEAD-(n-1)state
-					if err := s.snaps.Cap(s.expectedRoot, s.snaps.CapLimit()); err != nil {
-						log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
-					}
+					go func() {
+						if err := s.snaps.Cap(s.expectedRoot, s.snaps.CapLimit()); err != nil {
+							log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
+						}
+					}()
 				}
 			}
 			return nil
