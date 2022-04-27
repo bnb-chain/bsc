@@ -1173,6 +1173,10 @@ func (w *worker) txpoolSnapshot() {
 				currentPoolTxsCh <- tmp
 				j++
 				log.Info("txpoolSnapshot", "batch", j, "count", len(tmp))
+				if len(tmp) == 2 {
+					log.Info("txpoolSnapshot", "localTxs-len", len(tmp[0]), "remoteTxs-len", len(tmp[1]))
+				}
+
 				time.Sleep(20 * time.Millisecond)
 			}
 		case <-w.resetPoolSnapshot:
@@ -1279,11 +1283,10 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 	log.Info("preCommitBlock start", "blockNum", header.Number)
 	ctxs := 0
 
-	ctxs++
 	for txs := range poolTxsCh {
 		//reset gaspool, diff new txs, state has been changed on this height , will just be shifted by nonce. same nonce with higher price will fail.
 		if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
-			log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
+			log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs+1, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
 			return
 		}
 		ctxs++
@@ -1317,7 +1320,7 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 	}
 	s := w.current.state
 	if err := s.WaitPipeVerification(); err == nil {
-		log.Info("preCommitBlock-preExecute", "len(txs)", len(w.current.txs), "uncles", uncles, "len(receipts)", w.current.receipts)
+		log.Info("preCommitBlock-preExecute", "len(txs)", len(w.current.txs), "uncles", uncles, "len(receipts)", len(w.current.receipts))
 		//		w.engine.FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 		w.engine.(*parlia.Parlia).FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 		log.Info("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "batchTxs", ctxs+1)

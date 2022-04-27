@@ -25,6 +25,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+var totalGasUsed = 0.0
+var totalElapsed = 0.0
+var totalBlocks = 0
+
 // insertStats tracks and reports on block insertion.
 type insertStats struct {
 	queued, processed, ignored int
@@ -54,11 +58,15 @@ func (st *insertStats) report(chain []*types.Block, index int, dirty common.Stor
 		}
 		end := chain[index]
 
+		totalGasUsed += float64(st.usedGas)
+		totalElapsed += float64(elapsed)
+		totalBlocks += st.processed
 		// Assemble the log context and send it to the logger
 		context := []interface{}{
 			"blocks", st.processed, "txs", txs, "mgas", float64(st.usedGas) / 1000000,
 			"elapsed", common.PrettyDuration(elapsed), "mgasps", float64(st.usedGas) * 1000 / float64(elapsed),
 			"number", end.Number(), "hash", end.Hash(),
+			"t_mgasps", totalGasUsed * 1000 / totalElapsed, "t_blocks", totalBlocks,
 		}
 		if timestamp := time.Unix(int64(end.Time()), 0); time.Since(timestamp) > time.Minute {
 			context = append(context, []interface{}{"age", common.PrettyAge(timestamp)}...)
