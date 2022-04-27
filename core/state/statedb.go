@@ -980,7 +980,10 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 	if blockRoot == (common.Hash{}) {
 		snapshot = s.snap
 	} else {
-		if snapshot = s.snaps.Snapshot(blockRoot); snapshot == nil {
+		if s.snaps != nil {
+			snapshot = s.snaps.Snapshot(blockRoot)
+		}
+		if snapshot == nil {
 			return
 		}
 	}
