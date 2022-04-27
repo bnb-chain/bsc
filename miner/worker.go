@@ -156,16 +156,18 @@ type worker struct {
 	//	txpoolChainHeadSub    event.Subscription
 
 	// Channels
-	newWorkCh          chan *newWorkReq
-	taskCh             chan *task
-	resultCh           chan *types.Block
-	startCh            chan struct{}
-	exitCh             chan struct{}
-	resubmitIntervalCh chan time.Duration
-	resubmitAdjustCh   chan *intervalAdjust
-	pendingTxsCh       chan chan []map[common.Address]types.Transactions
-	resetPoolSnapshot  chan struct{}
-	headNewCh          chan int
+	newWorkCh            chan *newWorkReq
+	taskCh               chan *task
+	resultCh             chan *types.Block
+	startCh              chan struct{}
+	exitCh               chan struct{}
+	resubmitIntervalCh   chan time.Duration
+	resubmitAdjustCh     chan *intervalAdjust
+	pendingTxsCh         chan chan []map[common.Address]types.Transactions
+	resetPoolSnapshot    chan struct{}
+	headNewCh            chan int
+	preCommitChainHeadCh chan struct{}
+	txpoolChainHeadCh    chan struct{}
 
 	current      *environment                 // An environment for current running cycle.
 	localUncles  map[common.Hash]*types.Block // A set of side blocks generated locally as the possible uncle blocks.
@@ -232,6 +234,8 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		pendingTxsCh:         make(chan chan []map[common.Address]types.Transactions, 2),
 		resetPoolSnapshot:    make(chan struct{}, 2),
 		headNewCh:            make(chan int, 2),
+		preCommitChainHeadCh: make(chan struct{}, 2),
+		txpoolChainHeadCh:    make(chan struct{}, 2),
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
@@ -404,7 +408,8 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 		case head := <-w.chainHeadCh:
 			if !w.isRunning() {
 				select {
-				case w.headNewCh <- 1:
+				case w.txpoolChainHeadCh <- struct{}{}:
+					w.preCommitChainHeadCh <- struct{}{}
 				default:
 				}
 				continue
@@ -416,7 +421,8 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				if err != nil {
 					log.Info("Not allowed to propose block", "err", err)
 					select {
-					case w.headNewCh <- 1:
+					case w.txpoolChainHeadCh <- struct{}{}:
+						w.preCommitChainHeadCh <- struct{}{}
 					default:
 					}
 					continue
@@ -424,7 +430,8 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				if signedRecent {
 					log.Info("Signed recently, must wait")
 					select {
-					case w.headNewCh <- 1:
+					case w.txpoolChainHeadCh <- struct{}{}:
+						w.preCommitChainHeadCh <- struct{}{}
 					default:
 					}
 					continue
@@ -1094,13 +1101,7 @@ func (w *worker) txpoolSnapshot() {
 		loopIntern:
 			for {
 				select {
-				case n := <-w.headNewCh:
-					if n == 1 {
-						select {
-						case w.headNewCh <- 2:
-						default:
-						}
-					}
+				case <-w.txpoolChainHeadCh:
 					log.Info("txpoolSnapshot start 5 snapshots on new head arrived")
 					close(currentPoolTxsCh)
 					currentPoolTxsCh = make(chan []map[common.Address]types.Transactions, 6)
@@ -1135,13 +1136,7 @@ func (w *worker) txpoolSnapshot() {
 					time.Sleep(20 * time.Millisecond)
 				}
 			}
-		case n := <-w.headNewCh:
-			if n == 1 {
-				select {
-				case w.headNewCh <- 2:
-				default:
-				}
-			}
+		case <-w.txpoolChainHeadCh:
 			log.Info("txpoolSnapshot take snapshots on new head arrived")
 			close(currentPoolTxsCh)
 			currentPoolTxsCh = make(chan []map[common.Address]types.Transactions, 6)
@@ -1174,13 +1169,7 @@ func (w *worker) preCommitLoop() {
 
 	for {
 		select {
-		case n := <-w.headNewCh:
-			if n == 1 {
-				select {
-				case w.headNewCh <- 2:
-				default:
-				}
-			}
+		case <-w.preCommitChainHeadCh:
 			log.Info("preCommitLoop start on new head arrived interrupt current preCommitBlock and start a new one")
 			atomic.StoreInt32(interrupt, commitInterruptNewHead)
 			interrupt = new(int32)
@@ -1265,25 +1254,32 @@ func (w *worker) preCommitBlock(interrupt *int32) {
 	tstart := time.Now()
 	log.Info("preCommitBlock start", "blockNum", header.Number)
 	ctxs := 0
-	w.preExecute(txs, interrupt, uncles, header.Number, ctxs)
+	if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
+		log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
+		return
+	}
+
 	ctxs++
 	for txs := range poolTxsCh {
 		//reset gaspool, diff new txs, state has been changed on this height , will just be shifted by nonce. same nonce with higher price will fail.
-		w.preExecute(txs, interrupt, uncles, header.Number, ctxs)
+		if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
+			log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
+			return
+		}
 		ctxs++
 	}
 	log.Info("preCommitBlock end", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
 }
 
-func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, interrupt *int32, uncles []*types.Header, num *big.Int, ctxs int) {
+func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, interrupt *int32, uncles []*types.Header, num *big.Int, ctxs int) bool {
 	if len(pendingTxs) == 0 {
-		return
+		return false
 	}
 	if len(pendingTxs[0]) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[0])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
 			log.Info("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "ctxs", ctxs+1, "len(localtxs)", len(pendingTxs[0]))
-			return
+			return true
 		}
 		log.Info("preCommitBlock-preExecute finish exec local txs", "blockNum", num, "ctxs", ctxs+1, "len(localTxs)-1", len(pendingTxs[0]))
 	} else {
@@ -1293,7 +1289,7 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[1])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
 			log.Info("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "ctxs", ctxs+1)
-			return
+			return true
 		}
 		log.Info("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "ctxs", ctxs+1, "len(remoteTxs)-1", len(pendingTxs[1]))
 	} else {
@@ -1305,6 +1301,7 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 		w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 		log.Info("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "ctxs", ctxs+1)
 	}
+	return false
 }
 
 func (w *worker) preCommitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32) bool {
