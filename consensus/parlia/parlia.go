@@ -624,7 +624,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				hash := checkpoint.Hash()
 
 				// get validators from headers
-				validators, voteAddrs, err := ParseValidators(checkpoint, p.chainConfig, p.config)
+				validators, voteAddrs, err := parseValidators(checkpoint, p.chainConfig, p.config)
 				if err != nil {
 					return nil, err
 				}
@@ -753,7 +753,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	return nil
 }
 
-func (p *Parlia) PrepareValidators(chain consensus.ChainHeaderReader, header *types.Header) error {
+func (p *Parlia) prepareValidators(chain consensus.ChainHeaderReader, header *types.Header) error {
 	if header.Number.Uint64()%p.config.Epoch != 0 {
 		return nil
 	}
@@ -879,7 +879,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, number)
 	header.Extra = append(header.Extra, nextForkHash[:]...)
 
-	if err := p.PrepareValidators(chain, header); err != nil {
+	if err := p.prepareValidators(chain, header); err != nil {
 		return err
 	}
 
@@ -1685,7 +1685,9 @@ func (p *Parlia) GetHighestJustifiedHeader(chain consensus.ChainHeaderReader, he
 		return nil
 	}
 	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
-	if err != nil || snap == nil {
+	if err != nil {
+		log.Error("Unexpected error when getting snapshot",
+			"error", err, "blockNumber", parent.Number.Uint64(), "blockHash", parent.Hash())
 		return nil
 	}
 
@@ -1715,7 +1717,9 @@ func (p *Parlia) GetHighestFinalizedNumber(chain consensus.ChainHeaderReader, he
 	}
 
 	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
-	if err != nil || snap == nil {
+	if err != nil {
+		log.Error("Unexpected error when getting snapshot",
+			"error", err, "blockNumber", parent.Number.Uint64(), "blockHash", parent.Hash())
 		return 0
 	}
 
@@ -1725,7 +1729,9 @@ func (p *Parlia) GetHighestFinalizedNumber(chain consensus.ChainHeaderReader, he
 		}
 
 		snap, err = p.snapshot(chain, snap.Attestation.SourceNumber, snap.Attestation.SourceHash, nil)
-		if err != nil || snap == nil {
+		if err != nil {
+			log.Error("Unexpected error when getting snapshot",
+				"error", err, "blockNumber", snap.Attestation.SourceNumber, "blockHash", snap.Attestation.SourceHash)
 			return 0
 		}
 	}

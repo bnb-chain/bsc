@@ -221,7 +221,10 @@ func openOrCreateBLSWallet(ctx *cli.Context, cfg *gethConfig) (*wallet.Wallet, e
 	var w *wallet.Wallet
 	walletDir := filepath.Join(cfg.Node.DataDir, BLSWalletPath)
 	dirExists, err := wallet.Exists(walletDir)
-	if err != nil || !dirExists {
+	if err != nil {
+		utils.Fatalf("Check dir %s failed: %v.", walletDir, err)
+	}
+	if !dirExists {
 		fmt.Println("BLS wallet not exists, creating BLS wallet...")
 		password := utils.GetPassPhrase("Your new BLS wallet will be locked with a password. Please give a password. Do not forget this password.", true)
 		walletConfig := &accounts.CreateWalletConfig{

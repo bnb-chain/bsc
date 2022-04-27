@@ -247,7 +247,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			}
 
 			// get validators from headers and use that for new validator set
-			newValArr, voteAddrs, err := ParseValidators(checkpointHeader, chainConfig, s.config)
+			newValArr, voteAddrs, err := parseValidators(checkpointHeader, chainConfig, s.config)
 			if err != nil {
 				return nil, err
 			}
@@ -329,10 +329,8 @@ func (s *Snapshot) enoughDistance(validator common.Address, header *types.Header
 }
 
 func (s *Snapshot) indexOfVal(validator common.Address) int {
-	if validator, ok := s.Validators[validator]; ok {
-		if validator.Index > 0 {
-			return validator.Index - 1 // Index is offset by 1
-		}
+	if validator, ok := s.Validators[validator]; ok && validator.Index > 0 {
+		return validator.Index - 1 // Index is offset by 1
 	}
 
 	validators := s.validators()
@@ -350,7 +348,7 @@ func (s *Snapshot) supposeValidator() common.Address {
 	return validators[index]
 }
 
-func ParseValidators(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) ([]common.Address, []types.BLSPublicKey, error) {
+func parseValidators(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) ([]common.Address, []types.BLSPublicKey, error) {
 	validatorsBytes := getValidatorBytesFromHeader(header, chainConfig, parliaConfig)
 	if len(validatorsBytes) == 0 {
 		return nil, nil, errors.New("invalid validators bytes")
