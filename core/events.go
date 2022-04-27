@@ -44,3 +44,7 @@ type ChainSideEvent struct {
 }
 
 type ChainHeadEvent struct{ Block *types.Block }
+
+type ChainInsertEvent struct {
+	Block *types.Block
+}

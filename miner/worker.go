@@ -40,6 +40,12 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
+var (
+	blockCount   = uint64(0)
+	preFlag      = false
+	routineCount = 0
+)
+
 const (
 	// resultQueueSize is the size of channel listening to sealing result.
 	resultQueueSize = 10
@@ -150,7 +156,7 @@ type worker struct {
 	chainHeadSub          event.Subscription
 	chainSideCh           chan core.ChainSideEvent
 	chainSideSub          event.Subscription
-	preCommitInterruptCh  chan struct{}
+	preCommitInterruptCh  chan core.ChainInsertEvent
 	preCommitInterruptSub event.Subscription
 	//	txpoolChainHeadCh     chan core.ChainHeadEvent
 	//	txpoolChainHeadSub    event.Subscription
@@ -204,6 +210,9 @@ type worker struct {
 	skipSealHook func(*task) bool                   // Method to decide whether skipping the sealing.
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
+
+	stopTxpoolSnapshotCh chan struct{}
+	stopPreCommitCh      chan struct{}
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool) *worker {
@@ -223,7 +232,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		txsCh:                make(chan core.NewTxsEvent, txChanSize),
 		chainHeadCh:          make(chan core.ChainHeadEvent, chainHeadChanSize),
 		chainSideCh:          make(chan core.ChainSideEvent, chainSideChanSize),
-		preCommitInterruptCh: make(chan struct{}, preCommitInterruptChanSize),
+		preCommitInterruptCh: make(chan core.ChainInsertEvent, preCommitInterruptChanSize),
 		newWorkCh:            make(chan *newWorkReq),
 		taskCh:               make(chan *task),
 		resultCh:             make(chan *types.Block, resultQueueSize),
@@ -235,6 +244,8 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resetPoolSnapshot:    make(chan struct{}, 2),
 		headNewCh:            make(chan int, 2),
 		txpoolChainHeadCh:    make(chan struct{}, 2),
+		stopTxpoolSnapshotCh: make(chan struct{}),
+		stopPreCommitCh:      make(chan struct{}),
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
@@ -254,7 +265,8 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
-	go worker.txpoolSnapshot()
+
+	go worker.txpoolSnapshotLoop()
 	go worker.preCommitLoop()
 
 	// Submit first work to initialize pending state.
@@ -405,15 +417,41 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(true, commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
-			log.Info("miner/worker receive chainHeadCh")
+			nTmp := head.Block.NumberU64() % 1000
+			if nTmp > blockCount {
+				blockCount = nTmp
+				if blockCount%2 == 0 {
+					core.PreCommitFlag = true
+					preFlag = true
+					log.Info("Start preCommit for about 1000 blocks", "blockNumber", head.Block.NumberU64())
+					go w.txpoolSnapshotLoop()
+					go w.preCommitLoop()
+				} else {
+					core.PreCommitFlag = false
+					preFlag = false
+					log.Info("Stop snapshotloop and precommitloop", "blockNumber", head.Block.NumberU64())
+					w.stopTxpoolSnapshotCh <- struct{}{}
+					w.stopPreCommitCh <- struct{}{}
+				}
+			}
+			log.Info("miner/worker receive chainHeadCh", "blockNumber", head.Block.NumberU64())
 			if !w.isRunning() {
 				log.Info("miner/worker not mining")
-				select {
-				case w.txpoolChainHeadCh <- struct{}{}:
-					log.Info("miner/worker set txpoolChainHeadCh")
-				default:
-					log.Info("miner/worker fail to set txpoolChainHeadCh")
+
+				if preFlag {
+					select {
+					case w.txpoolChainHeadCh <- struct{}{}:
+						log.Info("miner/worker set txpoolChainHeadCh")
+					default:
+						log.Info("miner/worker fail to set txpoolChainHeadCh")
+					}
 				}
+				//select {
+				//case w.txpoolChainHeadCh <- struct{}{}:
+				//	log.Info("miner/worker set txpoolChainHeadCh")
+				//default:
+				//	log.Info("miner/worker fail to set txpoolChainHeadCh")
+				//}
 				continue
 			}
 			clearPending(head.Block.NumberU64())
@@ -422,21 +460,25 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				signedRecent, err := p.SignRecently(w.chain, head.Block.Header())
 				if err != nil {
 					log.Info("Not allowed to propose block", "err", err)
-					select {
-					case w.txpoolChainHeadCh <- struct{}{}:
-						log.Info("miner/worker-signedcheckerr set txpoolChainHeadCh")
-					default:
-						log.Info("miner/worker-signedcheckerr fail to set txpoolChainHeadCh")
+					if preFlag {
+						select {
+						case w.txpoolChainHeadCh <- struct{}{}:
+							log.Info("miner/worker-signedcheckerr set txpoolChainHeadCh")
+						default:
+							log.Info("miner/worker-signedcheckerr fail to set txpoolChainHeadCh")
+						}
 					}
 					continue
 				}
 				if signedRecent {
 					log.Info("Signed recently, must wait")
-					select {
-					case w.txpoolChainHeadCh <- struct{}{}:
-						log.Info("miner/worker-signedrecent set txpoolChainHeadCh")
-					default:
-						log.Info("miner/worker-signedrecent fail to set txpoolChainHeadCh")
+					if preFlag {
+						select {
+						case w.txpoolChainHeadCh <- struct{}{}:
+							log.Info("miner/worker-signedrecent set txpoolChainHeadCh")
+						default:
+							log.Info("miner/worker-signedrecent fail to set txpoolChainHeadCh")
+						}
 					}
 					continue
 				}
@@ -1090,7 +1132,7 @@ func (w *worker) postSideBlock(event core.ChainSideEvent) {
 	}
 }
 
-func (w *worker) txpoolSnapshot() {
+func (w *worker) txpoolSnapshotLoop() {
 	timer := time.NewTimer(240 * time.Hour)
 	//	timer := time.NewTimer(0)
 	var prePoolTxs []map[common.Address]types.Transactions
@@ -1116,7 +1158,7 @@ func (w *worker) txpoolSnapshot() {
 						close(currentPoolTxsCh)
 					}
 					currentPoolTxsCh = make(chan []map[common.Address]types.Transactions, 6)
-					timer = time.NewTimer(1800 * time.Millisecond)
+					timer = time.NewTimer(2000 * time.Millisecond)
 					w.pendingTxsCh <- currentPoolTxsCh
 					if prePoolTxs != nil {
 						currentPoolTxsCh <- prePoolTxs
@@ -1190,6 +1232,16 @@ func (w *worker) txpoolSnapshot() {
 			}
 			log.Info("txpoolSnapshot resetPoolSnapshot on mining locally with 2700ms duration")
 			timer = time.NewTimer(2700 * time.Millisecond)
+		case <-w.stopTxpoolSnapshotCh:
+			select {
+			case _, b := <-currentPoolTxsCh:
+				if b {
+					close(currentPoolTxsCh)
+				}
+			default:
+				close(currentPoolTxsCh)
+			}
+			return
 		}
 	}
 }
@@ -1199,22 +1251,27 @@ func (w *worker) preCommitLoop() {
 	interrupt := new(int32)
 	//	timer := time.NewTimer(0)
 	defer w.preCommitInterruptSub.Unsubscribe()
-
+	defer atomic.StoreInt32(interrupt, commitInterruptNewHead)
 	for {
 		select {
 		case poolTxsCh := <-w.pendingTxsCh:
 			log.Info("preCommitLoop start on new head arrived interrupt current preCommitBlock and start a new one")
 			atomic.StoreInt32(interrupt, commitInterruptNewHead)
 			interrupt = new(int32)
+			routineCount++
 			go w.preCommitBlock(poolTxsCh, interrupt)
+			log.Info("preCommitLoop open preCommitBlock routine", "total", routineCount)
 		case <-w.preCommitInterruptCh:
 			log.Info("preCommitLoop interrupt current preCommitBlock on insert event")
 			atomic.StoreInt32(interrupt, commitInterruptNewHead)
 		case <-w.exitCh:
 			log.Info("preCommitLoop return on exitch")
 			return
-		case <-w.preCommitInterruptSub.Err():
-			log.Info("preCommitLoop return on preCommitInterruptSubERR")
+		case err := <-w.preCommitInterruptSub.Err():
+			log.Info("preCommitLoop return on preCommitInterruptSubERR", "err", err)
+			return
+		case <-w.stopPreCommitCh:
+			log.Info("preCommitLoop return on stopPreCommitCh")
 			return
 		}
 	}
@@ -1290,7 +1347,11 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 			return
 		}
 		ctxs++
+		if ctxs > 5 {
+			break
+		}
 	}
+	routineCount--
 	log.Info("preCommitBlock end", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
 }
 
