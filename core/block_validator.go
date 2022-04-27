@@ -18,6 +18,7 @@ package core
 
 import (
 	"fmt"
+	"github.com/ethereum/go-ethereum/common"
 	"time"
 
 	"github.com/ethereum/go-ethereum/consensus"
@@ -140,10 +141,8 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			if err := statedb.WaitPipeVerification(); err != nil {
 				return err
 			}
-			statedb.CorrectAccountsRoot()
+			statedb.CorrectAccountsRoot(common.Hash{})
 			statedb.Finalise(v.config.IsEIP158(header.Number))
-			// State verification pipeline - accounts root are not calculated here, just populate needed fields for process
-			statedb.PopulateSnapAccountAndStorage()
 			return nil
 		})
 	} else {
