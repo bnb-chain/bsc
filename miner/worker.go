@@ -439,7 +439,9 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			}
 			select {
 			case w.resetPoolSnapshot <- struct{}{}:
+				log.Info("resetPoolSnapshot")
 			default:
+				log.Info("default to commit")
 			}
 			commit(true, commitInterruptNewHead)
 
@@ -1117,6 +1119,9 @@ func (w *worker) txpoolSnapshot() {
 						currentPoolTxsCh <- tmp
 						j++
 						log.Info("txpoolSnapshot", "batch", j, "count", len(tmp))
+						if len(tmp) == 2 {
+							log.Info("txpoolSnapshot", "localTxs-len", len(tmp[0]), "remoteTxs-len", len(tmp[1]))
+						}
 						time.Sleep(20 * time.Millisecond)
 					}
 					log.Info("txpoolSnapshot 5-6 snapshots done, wait for timer or next head arrived.")
@@ -1155,6 +1160,7 @@ func (w *worker) txpoolSnapshot() {
 				time.Sleep(20 * time.Millisecond)
 			}
 		case <-w.resetPoolSnapshot:
+			close(currentPoolTxsCh)
 			log.Info("txpoolSnapshot resetPoolSnapshot on mining locally with 2700ms duration")
 			timer = time.NewTimer(2700 * time.Millisecond)
 		}
@@ -1278,12 +1284,12 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 	if len(pendingTxs[0]) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[0])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Info("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "ctxs", ctxs+1, "len(localtxs)", len(pendingTxs[0]))
+			log.Info("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1, "len(localtxs)", len(pendingTxs[0]))
 			return true
 		}
-		log.Info("preCommitBlock-preExecute finish exec local txs", "blockNum", num, "ctxs", ctxs+1, "len(localTxs)-1", len(pendingTxs[0]))
+		log.Info("preCommitBlock-preExecute finish exec local txs", "blockNum", num, "batchTxs", ctxs+1, "len(localTxs)-1", len(pendingTxs[0]))
 	} else {
-		log.Info("preCommitBlock-preExecute finish exec local txs", "blockNum", num, "ctxs", ctxs+1, "len(localtxs)", 0)
+		log.Info("preCommitBlock-preExecute finish exec local txs", "blockNum", num, "batchTxs", ctxs+1, "len(localtxs)", 0)
 	}
 	if len(pendingTxs[1]) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[1])
@@ -1291,15 +1297,15 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 			log.Info("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "ctxs", ctxs+1)
 			return true
 		}
-		log.Info("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "ctxs", ctxs+1, "len(remoteTxs)-1", len(pendingTxs[1]))
+		log.Info("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "batchTxs", ctxs+1, "len(remoteTxs)-1", len(pendingTxs[1]))
 	} else {
-		log.Info("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "ctxs", ctxs+1, "len(remoteTxs)", 0)
+		log.Info("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "batchTxs", ctxs+1, "len(remoteTxs)", 0)
 	}
 	s := w.current.state
 	if err := s.WaitPipeVerification(); err == nil {
 		log.Info("preCommitBlock-preExecute", "txs", w.current.txs, "len(txs)", len(w.current.txs), "uncles", uncles, "receipts", w.current.receipts, "len(receipts)", w.current.receipts)
 		w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
-		log.Info("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "ctxs", ctxs+1)
+		log.Info("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "batchTxs", ctxs+1)
 	}
 	return false
 }
