@@ -156,18 +156,18 @@ type worker struct {
 	//	txpoolChainHeadSub    event.Subscription
 
 	// Channels
-	newWorkCh            chan *newWorkReq
-	taskCh               chan *task
-	resultCh             chan *types.Block
-	startCh              chan struct{}
-	exitCh               chan struct{}
-	resubmitIntervalCh   chan time.Duration
-	resubmitAdjustCh     chan *intervalAdjust
-	pendingTxsCh         chan chan []map[common.Address]types.Transactions
-	resetPoolSnapshot    chan struct{}
-	headNewCh            chan int
-	preCommitChainHeadCh chan struct{}
-	txpoolChainHeadCh    chan struct{}
+	newWorkCh          chan *newWorkReq
+	taskCh             chan *task
+	resultCh           chan *types.Block
+	startCh            chan struct{}
+	exitCh             chan struct{}
+	resubmitIntervalCh chan time.Duration
+	resubmitAdjustCh   chan *intervalAdjust
+	pendingTxsCh       chan chan []map[common.Address]types.Transactions
+	resetPoolSnapshot  chan struct{}
+	headNewCh          chan int
+	//preCommitChainHeadCh chan struct{}
+	txpoolChainHeadCh chan struct{}
 
 	current      *environment                 // An environment for current running cycle.
 	localUncles  map[common.Hash]*types.Block // A set of side blocks generated locally as the possible uncle blocks.
@@ -234,7 +234,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		pendingTxsCh:         make(chan chan []map[common.Address]types.Transactions, 2),
 		resetPoolSnapshot:    make(chan struct{}, 2),
 		headNewCh:            make(chan int, 2),
-		preCommitChainHeadCh: make(chan struct{}, 2),
 		txpoolChainHeadCh:    make(chan struct{}, 2),
 	}
 	// Subscribe NewTxsEvent for tx pool
@@ -409,7 +408,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if !w.isRunning() {
 				select {
 				case w.txpoolChainHeadCh <- struct{}{}:
-					w.preCommitChainHeadCh <- struct{}{}
 				default:
 				}
 				continue
@@ -422,7 +420,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					log.Info("Not allowed to propose block", "err", err)
 					select {
 					case w.txpoolChainHeadCh <- struct{}{}:
-						w.preCommitChainHeadCh <- struct{}{}
 					default:
 					}
 					continue
@@ -431,7 +428,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					log.Info("Signed recently, must wait")
 					select {
 					case w.txpoolChainHeadCh <- struct{}{}:
-						w.preCommitChainHeadCh <- struct{}{}
 					default:
 					}
 					continue
@@ -440,8 +436,8 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			select {
 			case w.resetPoolSnapshot <- struct{}{}:
 				log.Info("resetPoolSnapshot")
-			default:
-				log.Info("default to commit")
+				//			default:
+				//				log.Info("default to commit")
 			}
 			commit(true, commitInterruptNewHead)
 
@@ -1160,7 +1156,14 @@ func (w *worker) txpoolSnapshot() {
 				time.Sleep(20 * time.Millisecond)
 			}
 		case <-w.resetPoolSnapshot:
-			close(currentPoolTxsCh)
+			select {
+			case _, b := <-currentPoolTxsCh:
+				if b {
+					close(currentPoolTxsCh)
+				}
+			default:
+				close(currentPoolTxsCh)
+			}
 			log.Info("txpoolSnapshot resetPoolSnapshot on mining locally with 2700ms duration")
 			timer = time.NewTimer(2700 * time.Millisecond)
 		}
@@ -1175,12 +1178,11 @@ func (w *worker) preCommitLoop() {
 
 	for {
 		select {
-		case <-w.preCommitChainHeadCh:
+		case poolTxsCh := <-w.pendingTxsCh:
 			log.Info("preCommitLoop start on new head arrived interrupt current preCommitBlock and start a new one")
 			atomic.StoreInt32(interrupt, commitInterruptNewHead)
 			interrupt = new(int32)
-			go w.preCommitBlock(interrupt)
-			//		case <-timer.C:
+			go w.preCommitBlock(poolTxsCh, interrupt)
 		case <-w.preCommitInterruptCh:
 			log.Info("preCommitLoop interrupt current preCommitBlock on insert event")
 			atomic.StoreInt32(interrupt, commitInterruptNewHead)
@@ -1192,7 +1194,7 @@ func (w *worker) preCommitLoop() {
 	}
 }
 
-func (w *worker) preCommitBlock(interrupt *int32) {
+func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transactions, interrupt *int32) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
@@ -1251,19 +1253,19 @@ func (w *worker) preCommitBlock(interrupt *int32) {
 	// Accumulate the uncles for the current block
 	uncles := make([]*types.Header, 0)
 
-	poolTxsCh := <-w.pendingTxsCh
-	txs, ok := <-poolTxsCh
-	for !ok {
-		poolTxsCh = <-w.pendingTxsCh
-		txs, ok = <-poolTxsCh
-	}
+	//	poolTxsCh := <-w.pendingTxsCh
+	//	txs, ok := <-poolTxsCh
+	//	for !ok {
+	//		poolTxsCh = <-w.pendingTxsCh
+	//		txs, ok = <-poolTxsCh
+	//	}
 	tstart := time.Now()
 	log.Info("preCommitBlock start", "blockNum", header.Number)
 	ctxs := 0
-	if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
-		log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
-		return
-	}
+	//	if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
+	//		log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
+	//		return
+	//	}
 
 	ctxs++
 	for txs := range poolTxsCh {
@@ -1304,7 +1306,8 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 	s := w.current.state
 	if err := s.WaitPipeVerification(); err == nil {
 		log.Info("preCommitBlock-preExecute", "txs", w.current.txs, "len(txs)", len(w.current.txs), "uncles", uncles, "receipts", w.current.receipts, "len(receipts)", w.current.receipts)
-		w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
+		//		w.engine.FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
+		w.engine.(*parlia.Parlia).FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 		log.Info("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "batchTxs", ctxs+1)
 	}
 	return false

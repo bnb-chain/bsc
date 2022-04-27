@@ -781,6 +781,70 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	// Assemble and return the final block for sealing
 	return blk, receipts, nil
 }
+func (p *Parlia) FinalizeAndAssemble4preCommit(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
+	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) error {
+	// No block rewards in PoA, so the state remains as is and uncles are dropped
+	cx := chainContext{Chain: chain, parlia: p}
+	if txs == nil {
+		txs = make([]*types.Transaction, 0)
+	}
+	if receipts == nil {
+		receipts = make([]*types.Receipt, 0)
+	}
+	if header.Number.Cmp(common.Big1) == 0 {
+		err := p.initContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
+		if err != nil {
+			log.Error("init contract failed")
+		}
+	}
+	//	if header.Difficulty.Cmp(diffInTurn) != 0 {
+	//		number := header.Number.Uint64()
+	//		snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	//		if err != nil {
+	//			return nil, nil, err
+	//		}
+	//		spoiledVal := snap.supposeValidator()
+	//		signedRecently := false
+	//		for _, recent := range snap.Recents {
+	//			if recent == spoiledVal {
+	//				signedRecently = true
+	//				break
+	//			}
+	//		}
+	//		if !signedRecently {
+	//			err = p.slash(spoiledVal, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
+	//			if err != nil {
+	//				// it is possible that slash validator failed because of the slash channel is disabled.
+	//				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
+	//			}
+	//		}
+	//	}
+	err := p.distributeIncoming(p.val, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
+	if err != nil {
+		return err
+	}
+	// should not happen. Once happen, stop the node is better than broadcast the block
+	if header.GasLimit < header.GasUsed {
+		return errors.New("gas consumption of system txs exceed the gas limit")
+	}
+	header.UncleHash = types.CalcUncleHash(nil)
+	//	var blk *types.Block
+	//	var rootHash common.Hash
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+		wg.Done()
+	}()
+	//	go func() {
+	//		blk = types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil))
+	//		wg.Done()
+	//	}()
+	wg.Wait()
+	//	blk.SetRoot(rootHash)
+	// Assemble and return the final block for sealing
+	return nil
+}
 
 // Authorize injects a private key into the consensus engine to mint new blocks
 // with.
