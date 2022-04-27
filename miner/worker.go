@@ -405,10 +405,14 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(true, commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
+			log.Info("miner/worker receive chainHeadCh")
 			if !w.isRunning() {
+				log.Info("miner/worker not mining")
 				select {
 				case w.txpoolChainHeadCh <- struct{}{}:
+					log.Info("miner/worker set txpoolChainHeadCh")
 				default:
+					log.Info("miner/worker fail to set txpoolChainHeadCh")
 				}
 				continue
 			}
@@ -420,7 +424,9 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					log.Info("Not allowed to propose block", "err", err)
 					select {
 					case w.txpoolChainHeadCh <- struct{}{}:
+						log.Info("miner/worker-signedcheckerr set txpoolChainHeadCh")
 					default:
+						log.Info("miner/worker-signedcheckerr fail to set txpoolChainHeadCh")
 					}
 					continue
 				}
@@ -428,7 +434,9 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					log.Info("Signed recently, must wait")
 					select {
 					case w.txpoolChainHeadCh <- struct{}{}:
+						log.Info("miner/worker-signedrecent set txpoolChainHeadCh")
 					default:
+						log.Info("miner/worker-signedrecent fail to set txpoolChainHeadCh")
 					}
 					continue
 				}
@@ -1201,8 +1209,10 @@ func (w *worker) preCommitLoop() {
 			log.Info("preCommitLoop interrupt current preCommitBlock on insert event")
 			atomic.StoreInt32(interrupt, commitInterruptNewHead)
 		case <-w.exitCh:
+			log.Info("preCommitLoop return on exitch")
 			return
 		case <-w.preCommitInterruptSub.Err():
+			log.Info("preCommitLoop return on preCommitInterruptSubERR")
 			return
 		}
 	}
@@ -1319,7 +1329,7 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 	}
 	s := w.current.state
 	if err := s.WaitPipeVerification(); err == nil {
-		log.Info("preCommitBlock-preExecute", "txs", w.current.txs, "len(txs)", len(w.current.txs), "uncles", uncles, "receipts", w.current.receipts, "len(receipts)", w.current.receipts)
+		log.Info("preCommitBlock-preExecute", "len(txs)", len(w.current.txs), "uncles", uncles, "len(receipts)", w.current.receipts)
 		//		w.engine.FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 		w.engine.(*parlia.Parlia).FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 		log.Info("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "batchTxs", ctxs+1)
