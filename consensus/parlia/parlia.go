@@ -797,28 +797,6 @@ func (p *Parlia) FinalizeAndAssemble4preCommit(chain consensus.ChainHeaderReader
 			log.Error("init contract failed")
 		}
 	}
-	//	if header.Difficulty.Cmp(diffInTurn) != 0 {
-	//		number := header.Number.Uint64()
-	//		snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
-	//		if err != nil {
-	//			return nil, nil, err
-	//		}
-	//		spoiledVal := snap.supposeValidator()
-	//		signedRecently := false
-	//		for _, recent := range snap.Recents {
-	//			if recent == spoiledVal {
-	//				signedRecently = true
-	//				break
-	//			}
-	//		}
-	//		if !signedRecently {
-	//			err = p.slash(spoiledVal, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
-	//			if err != nil {
-	//				// it is possible that slash validator failed because of the slash channel is disabled.
-	//				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
-	//			}
-	//		}
-	//	}
 	err := p.distributeIncoming(p.val, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
 	if err != nil {
 		return err
@@ -836,13 +814,7 @@ func (p *Parlia) FinalizeAndAssemble4preCommit(chain consensus.ChainHeaderReader
 		state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 		wg.Done()
 	}()
-	//	go func() {
-	//		blk = types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil))
-	//		wg.Done()
-	//	}()
 	wg.Wait()
-	//	blk.SetRoot(rootHash)
-	// Assemble and return the final block for sealing
 	return nil
 }
 

@@ -441,13 +441,11 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					continue
 				}
 			}
-			select {
-			case w.resetPoolSnapshot <- struct{}{}:
-				log.Info("resetPoolSnapshot")
-				//			default:
-				//				log.Info("default to commit")
-			}
-			commit(true, commitInterruptNewHead)
+			//select {
+			//case w.resetPoolSnapshot <- struct{}{}:
+			//	log.Info("resetPoolSnapshot")
+			//}
+			//commit(true, commitInterruptNewHead)
 
 		case <-timer.C:
 			// If mining is running resubmit a new work cycle periodically to pull in
@@ -459,11 +457,11 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					timer.Reset(recommit)
 					continue
 				}
-				select {
-				case w.resetPoolSnapshot <- struct{}{}:
-				default:
-				}
-				commit(true, commitInterruptResubmit)
+				//	select {
+				//	case w.resetPoolSnapshot <- struct{}{}:
+				//	default:
+				//	}
+				//	commit(true, commitInterruptResubmit)
 			}
 
 		case interval := <-w.resubmitIntervalCh:
@@ -1277,19 +1275,9 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 	// Accumulate the uncles for the current block
 	uncles := make([]*types.Header, 0)
 
-	//	poolTxsCh := <-w.pendingTxsCh
-	//	txs, ok := <-poolTxsCh
-	//	for !ok {
-	//		poolTxsCh = <-w.pendingTxsCh
-	//		txs, ok = <-poolTxsCh
-	//	}
 	tstart := time.Now()
 	log.Info("preCommitBlock start", "blockNum", header.Number)
 	ctxs := 0
-	//	if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
-	//		log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
-	//		return
-	//	}
 
 	ctxs++
 	for txs := range poolTxsCh {
@@ -1320,7 +1308,7 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 	if len(pendingTxs[1]) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[1])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Info("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "ctxs", ctxs+1)
+			log.Info("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1)
 			return true
 		}
 		log.Info("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "batchTxs", ctxs+1, "len(remoteTxs)-1", len(pendingTxs[1]))
