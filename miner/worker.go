@@ -1101,7 +1101,14 @@ func (w *worker) txpoolSnapshot() {
 				select {
 				case <-w.txpoolChainHeadCh:
 					log.Info("txpoolSnapshot start 5 snapshots on new head arrived")
-					close(currentPoolTxsCh)
+					select {
+					case _, b := <-currentPoolTxsCh:
+						if b {
+							close(currentPoolTxsCh)
+						}
+					default:
+						close(currentPoolTxsCh)
+					}
 					currentPoolTxsCh = make(chan []map[common.Address]types.Transactions, 6)
 					timer = time.NewTimer(1800 * time.Millisecond)
 					w.pendingTxsCh <- currentPoolTxsCh
@@ -1139,7 +1146,14 @@ func (w *worker) txpoolSnapshot() {
 			}
 		case <-w.txpoolChainHeadCh:
 			log.Info("txpoolSnapshot take snapshots on new head arrived")
-			close(currentPoolTxsCh)
+			select {
+			case _, b := <-currentPoolTxsCh:
+				if b {
+					close(currentPoolTxsCh)
+				}
+			default:
+				close(currentPoolTxsCh)
+			}
 			currentPoolTxsCh = make(chan []map[common.Address]types.Transactions, 6)
 			timer = time.NewTimer(1800 * time.Millisecond)
 			w.pendingTxsCh <- currentPoolTxsCh
