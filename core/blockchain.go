@@ -2115,7 +2115,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		bc.updateHighestVerifiedHeader(block.Header())
 
 		if interruptOnce {
-			bc.chainInsertFeed.Send(struct{}{})
+			bc.chainInsertFeed.Send(ChainInsertEvent{block})
 			interruptOnce = false
 		}
 
@@ -3084,7 +3084,7 @@ func (bc *BlockChain) SubscribeChainSideEvent(ch chan<- ChainSideEvent) event.Su
 	return bc.scope.Track(bc.chainSideFeed.Subscribe(ch))
 }
 
-func (bc *BlockChain) SubscribeChainInsertEvent(ch chan<- struct{}) event.Subscription {
+func (bc *BlockChain) SubscribeChainInsertEvent(ch chan<- ChainInsertEvent) event.Subscription {
 	return bc.scope.Track(bc.chainInsertFeed.Subscribe(ch))
 }
 

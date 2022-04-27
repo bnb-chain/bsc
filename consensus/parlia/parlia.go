@@ -808,13 +808,14 @@ func (p *Parlia) FinalizeAndAssemble4preCommit(chain consensus.ChainHeaderReader
 	header.UncleHash = types.CalcUncleHash(nil)
 	//	var blk *types.Block
 	//	var rootHash common.Hash
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-		wg.Done()
-	}()
-	wg.Wait()
+	//	wg := sync.WaitGroup{}
+	//	wg.Add(1)
+	//	go func() {
+	//		state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+	//		wg.Done()
+	//	}()
+	state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+	//	wg.Wait()
 	return nil
 }
 
