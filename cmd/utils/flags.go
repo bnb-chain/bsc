@@ -123,11 +123,11 @@ var (
 		Usage: "Disable snap protocol",
 	}
 	DisableDiffProtocolFlag = cli.BoolFlag{
-		Name: "disablediffprotocol",
+		Name:  "disablediffprotocol",
 		Usage: "Disable diff protocol",
 	}
 	EnableTrustProtocolFlag = cli.BoolFlag{
-		Name: "enabletrustprotocol",
+		Name:  "enabletrustprotocol",
 		Usage: "Enable trust protocol",
 	}
 	DiffSyncFlag = cli.BoolFlag{
@@ -272,9 +272,9 @@ var (
 		Usage: "The layer of tries trees that keep in memory",
 		Value: 128,
 	}
-	defaultVerifyMode = ethconfig.Defaults.TriesVerifyMode
+	defaultVerifyMode   = ethconfig.Defaults.TriesVerifyMode
 	TriesVerifyModeFlag = TextMarshalerFlag{
-		Name: "tries-verify-mode",
+		Name:  "tries-verify-mode",
 		Usage: `tries verify mode: "local", "full", "insecure", "none"`,
 		Value: &defaultVerifyMode,
 	}

@@ -40,7 +40,6 @@ var (
 	errMsgTooLarge    = errors.New("message too long")
 	errDecode         = errors.New("invalid message")
 	errInvalidMsgCode = errors.New("invalid message code")
-	errUnexpectedMsg  = errors.New("unexpected message code")
 )
 
 // Packet represents a p2p message in the `trust` protocol.

@@ -2,6 +2,7 @@ package eth
 
 import (
 	"fmt"
+
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 	"github.com/ethereum/go-ethereum/p2p/enode"
