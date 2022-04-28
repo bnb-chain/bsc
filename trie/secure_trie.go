@@ -118,7 +118,7 @@ func (t *SecureTrie) TryUpdate(key, value []byte) error {
 func (t *SecureTrie) UpdateBatch(pKvBatch *[]KvPair) error {
 	err := t.trie.UpdateBatch(pKvBatch)
 	if err != nil {
-		panic("update batcth error")
+		log.Error(fmt.Sprintf("Unhandled trie updatebatch error: %v", err))
 		return err
 	}
 

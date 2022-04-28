@@ -90,15 +90,11 @@ func (t *Trie) UpdateShardInfo() error {
 		}
 		break
 	case *fullNode:
-		fmt.Println("full....root")
 		for i = 0; i < defaultShardNumber; i++ {
 			if n.Children[i] == nil {
 				t.subroot[i] = nil
 			} else {
-				a := byte(i)
-				var b []byte
-				c := append(b, a)
-				sNode := &shortNode{c, n.Children[i], t.newFlag()}
+				sNode := &shortNode{[]byte{i}, n.Children[i], t.newFlag()}
 				t.subroot[i] = sNode
 			}
 		}
@@ -117,11 +113,13 @@ func (t *Trie) UpdateShardInfo() error {
 	default:
 		panic("trie.root with impossible type")
 	}
-	for i := 0; i < 16; i++ {
-		if t.subroot[i] != nil {
-			// fmt.Println("subroot:", i, t.subroot[i])
+	/*
+		for i := 0; i < 16; i++ {
+			if t.subroot[i] != nil {
+				fmt.Println("subroot:", i, t.subroot[i])
+			}
 		}
-	}
+	*/
 	return nil
 }
 
