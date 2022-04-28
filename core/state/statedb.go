@@ -983,9 +983,9 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 		if s.snaps != nil {
 			snapshot = s.snaps.Snapshot(blockRoot)
 		}
-		if snapshot == nil {
-			return
-		}
+	}
+	if snapshot == nil {
+		return
 	}
 	if accounts, err := snapshot.Accounts(); err == nil && accounts != nil {
 		for _, obj := range s.stateObjects {
