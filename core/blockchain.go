@@ -317,6 +317,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	}
 
 	bc.prefetcher = NewStatePrefetcher(chainConfig, bc, engine)
+	bc.validator = NewBlockValidator(chainConfig, bc, engine)
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
 
 	var err error
@@ -3165,11 +3166,14 @@ func EnablePersistDiff(limit uint64) BlockChainOption {
 
 func EnableBlockValidator(chainConfig *params.ChainConfig, engine consensus.Engine, mode VerifyMode, peers verifyPeers) BlockChainOption {
 	return func(bc *BlockChain) (*BlockChain, error) {
-		validator, err := NewBlockValidator(chainConfig, bc, engine, mode, peers)
-		if err != nil {
-			return bc, err
+		if mode.NeedRemoteVerify() {
+			vm, err := NewVerifyManager(bc, peers, mode == InsecureVerify)
+			if err != nil {
+				return nil, err
+			}
+			go vm.mainLoop()
+			bc.validator = NewBlockValidator(chainConfig, bc, engine, EnableRemoteVerifyManager(vm))
 		}
-		bc.validator = validator
 		return bc, nil
 	}
 }
