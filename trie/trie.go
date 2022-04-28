@@ -88,15 +88,21 @@ func (t *Trie) UpdateShardInfo() error {
 		for i = 0; i < defaultShardNumber; i++ {
 			t.subroot[i] = nil
 		}
-	case valueNode:
-	case hashNode:
-		for i = 0; i < defaultShardNumber; i++ {
-			t.subroot[i] = nil
-		}
+		break
 	case *fullNode:
+		fmt.Println("full....root")
 		for i = 0; i < defaultShardNumber; i++ {
-			t.subroot[i] = n.Children[i]
+			if n.Children[i] == nil {
+				t.subroot[i] = nil
+			} else {
+				a := byte(i)
+				var b []byte
+				c := append(b, a)
+				sNode := &shortNode{c, n.Children[i], t.newFlag()}
+				t.subroot[i] = sNode
+			}
 		}
+		break
 	case *shortNode:
 		for i = 0; i < defaultShardNumber; i++ {
 			if i == n.Key[0] {
@@ -105,6 +111,9 @@ func (t *Trie) UpdateShardInfo() error {
 				t.subroot[i] = nil
 			}
 		}
+		break
+	case valueNode:
+	case hashNode:
 	default:
 		panic("trie.root with impossible type")
 	}
@@ -475,7 +484,6 @@ func (t *Trie) tryUpdateBatch(pKvBatch *[]KvPair) error {
 		}
 		// fmt.Println("-------------")
 	}
-
 	// Set trie root
 	t.root = t.updateRootNodeWithShards(t.subroot)
 	return nil
