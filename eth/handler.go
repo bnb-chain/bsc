@@ -148,6 +148,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	if config.EventMux == nil {
 		config.EventMux = new(event.TypeMux) // Nicety initialization for tests
 	}
+	if config.PeerSet == nil {
+		config.PeerSet = newPeerSet() // Nicety initialization for tests
+	}
 	h := &handler{
 		networkID:              config.Network,
 		forkFilter:             forkid.NewFilter(config.Chain),
