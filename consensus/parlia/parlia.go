@@ -733,7 +733,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	for seen, recent := range snap.Recents {
 		if recent == signer {
 			// Signer is among recents, only fail if the current block doesn't shift it out
-			if limit := uint64(len(snap.Validators)/2 + 1); seen > number-limit {
+			if limit := getSignRecentlyLimit(number, len(snap.Validators), p.chainConfig); seen > number-uint64(limit) {
 				return errRecentlySigned
 			}
 		}
