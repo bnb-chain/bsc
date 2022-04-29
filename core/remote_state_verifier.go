@@ -115,7 +115,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 				verifyTaskCounter.Dec(1)
 				verifyTaskSucceedMeter.Mark(1)
 				verifyTaskExecutionTimer.Update(time.Since(task.startAt))
-				close(task.terminalCh)
+				task.Close()
 			}
 			vm.taskLock.Unlock()
 		case <-pruneTicker.C:
@@ -126,7 +126,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 					delete(vm.tasks, hash)
 					verifyTaskCounter.Dec(1)
 					verifyTaskFailedMeter.Mark(1)
-					close(task.terminalCh)
+					task.Close()
 				}
 			}
 			vm.taskLock.Unlock()
@@ -140,7 +140,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 		case <-vm.bc.quit:
 			vm.taskLock.RLock()
 			for _, task := range vm.tasks {
-				close(task.terminalCh)
+				task.Close()
 			}
 			vm.taskLock.RUnlock()
 			return
@@ -276,6 +276,15 @@ func NewVerifyTask(diffhash common.Hash, header *types.Header, peers verifyPeers
 	return vt
 }
 
+func (vt *verifyTask) Close() {
+	// It is safe to call close multiple
+	select {
+	case <-vt.terminalCh:
+	default:
+		close(vt.terminalCh)
+	}
+}
+
 func (vt *verifyTask) Start(verifyCh chan common.Hash) {
 	vt.startAt = time.Now()
 
@@ -326,7 +335,7 @@ func (vt *verifyTask) sendVerifyRequest(n int) {
 	// if has not valid peer, log warning.
 	if len(validPeers) == 0 {
 		log.Warn("there is no valid peer for block", "number", vt.blockHeader.Number)
-		return
+		vt.Close()
 	}
 
 	if n < len(validPeers) && n > 0 {
