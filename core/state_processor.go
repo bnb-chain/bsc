@@ -126,6 +126,10 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 			if err != nil {
 				return statedb, nil, nil, 0, err
 			}
+			statedb.SetExpectedStateRoot(block.Root())
+			if p.bc.pipeCommit {
+				statedb.EnablePipeCommit()
+			}
 			// Enable prefetching to pull in trie node paths while processing transactions
 			statedb.StartPrefetcher("chain")
 		}
@@ -148,9 +152,12 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 	for _, c := range diffLayer.Codes {
 		fullDiffCode[c.Hash] = c.Code
 	}
-
+	stateTrie, err := statedb.Trie()
+	if err != nil {
+		return nil, nil, 0, err
+	}
 	for des := range snapDestructs {
-		statedb.Trie().TryDelete(des[:])
+		stateTrie.TryDelete(des[:])
 	}
 	threads := gopool.Threads(len(snapAccounts))
 
@@ -191,7 +198,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				// fetch previous state
 				var previousAccount state.Account
 				stateMux.Lock()
-				enc, err := statedb.Trie().TryGet(diffAccount[:])
+				enc, err := stateTrie.TryGet(diffAccount[:])
 				stateMux.Unlock()
 				if err != nil {
 					errChan <- err
@@ -303,7 +310,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 					return
 				}
 				stateMux.Lock()
-				err = statedb.Trie().TryUpdate(diffAccount[:], bz)
+				err = stateTrie.TryUpdate(diffAccount[:], bz)
 				stateMux.Unlock()
 				if err != nil {
 					errChan <- err
@@ -378,7 +385,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		gp      = new(GasPool).AddGas(block.GasLimit())
 	)
 	signer := types.MakeSigner(p.bc.chainConfig, block.Number())
-	statedb.TryPreload(block, signer)
 	var receipts = make([]*types.Receipt, 0)
 	// Mutate the block and state according to any hard-fork specs
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
@@ -397,6 +403,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	// initilise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
+	statedb.MarkFullProcessed()
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)

@@ -77,7 +77,8 @@ var (
 	blockReorgDropMeter     = metrics.NewRegisteredMeter("chain/reorg/drop", nil)
 	blockReorgInvalidatedTx = metrics.NewRegisteredMeter("chain/reorg/invalidTx", nil)
 
-	errInsertionInterrupted = errors.New("insertion is interrupted")
+	errInsertionInterrupted        = errors.New("insertion is interrupted")
+	errStateRootVerificationFailed = errors.New("state root verification failed")
 )
 
 const (
@@ -87,9 +88,11 @@ const (
 	diffLayerRLPCacheLimit = 256
 	receiptsCacheLimit     = 10000
 	txLookupCacheLimit     = 1024
+	maxBadBlockLimit       = 16
 	maxFutureBlocks        = 256
 	maxTimeFutureBlocks    = 30
 	maxBeyondBlocks        = 2048
+	prefetchTxNumber       = 100
 
 	diffLayerFreezerRecheckInterval = 3 * time.Second
 	diffLayerPruneRecheckInterval   = 1 * time.Second // The interval to prune unverified diff layers
@@ -97,6 +100,8 @@ const (
 	maxDiffLimit                    = 2048            // Maximum number of unique diff layers a peer may have responded
 	maxDiffForkDist                 = 11              // Maximum allowed backward distance from the chain head
 	maxDiffLimitForBroadcast        = 128             // Maximum number of unique diff layers a peer may have broadcasted
+
+	rewindBadBlockInterval = 1 * time.Second
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -176,10 +181,11 @@ type BlockChain struct {
 	chainConfig *params.ChainConfig // Chain & network configuration
 	cacheConfig *CacheConfig        // Cache configuration for pruning
 
-	db     ethdb.Database // Low level persistent database to store final content in
-	snaps  *snapshot.Tree // Snapshot tree for fast trie leaf access
-	triegc *prque.Prque   // Priority queue mapping block numbers to tries to gc
-	gcproc time.Duration  // Accumulates canonical block processing for trie dumping
+	db         ethdb.Database // Low level persistent database to store final content in
+	snaps      *snapshot.Tree // Snapshot tree for fast trie leaf access
+	triegc     *prque.Prque   // Priority queue mapping block numbers to tries to gc
+	gcproc     time.Duration  // Accumulates canonical block processing for trie dumping
+	commitLock sync.Mutex     // CommitLock is used to protect above field from being modified concurrently
 
 	// txLookupLimit is the maximum number of blocks from head whose tx indices
 	// are reserved:
@@ -212,6 +218,7 @@ type BlockChain struct {
 	blockCache    *lru.Cache     // Cache for the most recent entire blocks
 	txLookupCache *lru.Cache     // Cache for the most recent transaction lookup data.
 	futureBlocks  *lru.Cache     // future blocks are blocks added for later processing
+	badBlockCache *lru.Cache     // Cache for the blocks that failed to pass MPT root verification
 
 	// trusted diff layers
 	diffLayerCache             *lru.Cache   // Cache for the diffLayers
@@ -233,10 +240,12 @@ type BlockChain struct {
 	running       int32          // 0 if chain is running, 1 when stopped
 	procInterrupt int32          // interrupt signaler for block processing
 
-	engine    consensus.Engine
-	validator Validator // Block and state validator interface
-	processor Processor // Block transaction processor interface
-	vmConfig  vm.Config
+	engine     consensus.Engine
+	prefetcher Prefetcher
+	validator  Validator // Block and state validator interface
+	processor  Processor // Block transaction processor interface
+	vmConfig   vm.Config
+	pipeCommit bool
 
 	shouldPreserve  func(*types.Block) bool        // Function used to determine whether should preserve the given block.
 	terminateInsert func(common.Hash, uint64) bool // Testing hook used to terminate ancient receipt chain insertion.
@@ -260,6 +269,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	receiptsCache, _ := lru.New(receiptsCacheLimit)
 	blockCache, _ := lru.New(blockCacheLimit)
 	txLookupCache, _ := lru.New(txLookupCacheLimit)
+	badBlockCache, _ := lru.New(maxBadBlockLimit)
+
 	futureBlocks, _ := lru.New(maxFutureBlocks)
 	diffLayerCache, _ := lru.New(diffLayerCacheLimit)
 	diffLayerRLPCache, _ := lru.New(diffLayerRLPCacheLimit)
@@ -281,6 +292,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		bodyRLPCache:          bodyRLPCache,
 		receiptsCache:         receiptsCache,
 		blockCache:            blockCache,
+		badBlockCache:         badBlockCache,
 		diffLayerCache:        diffLayerCache,
 		diffLayerRLPCache:     diffLayerRLPCache,
 		txLookupCache:         txLookupCache,
@@ -295,6 +307,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		diffNumToBlockHashes:  make(map[uint64]map[common.Hash]struct{}),
 		diffPeersToDiffHashes: make(map[string]map[common.Hash]struct{}),
 	}
+	bc.prefetcher = NewStatePrefetcher(chainConfig, bc, engine)
 	bc.validator = NewBlockValidator(chainConfig, bc, engine)
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
 
@@ -322,9 +335,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		rawdb.InitDatabaseFromFreezer(bc.db)
 		// If ancient database is not empty, reconstruct all missing
 		// indices in the background.
-		frozen, _ := bc.db.Ancients()
+		frozen, _ := bc.db.ItemAmountInAncient()
 		if frozen > 0 {
-			txIndexBlock = frozen
+			txIndexBlock, _ = bc.db.Ancients()
 		}
 	}
 	if err := bc.loadLastState(); err != nil {
@@ -359,7 +372,11 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		}
 	}
 	// Ensure that a previous crash in SetHead doesn't leave extra ancients
-	if frozen, err := bc.db.Ancients(); err == nil && frozen > 0 {
+	if frozen, err := bc.db.ItemAmountInAncient(); err == nil && frozen > 0 {
+		frozen, err = bc.db.Ancients()
+		if err != nil {
+			return nil, err
+		}
 		var (
 			needRewind bool
 			low        uint64
@@ -454,7 +471,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		go bc.trustedDiffLayerLoop()
 	}
 	go bc.untrustedDiffLayerPruneLoop()
-
+	if bc.pipeCommit {
+		// check current block and rewind invalid one
+		go bc.rewindInvalidHeaderBlockLoop()
+	}
 	return bc, nil
 }
 
@@ -570,6 +590,25 @@ func (bc *BlockChain) SetHead(head uint64) error {
 	return err
 }
 
+func (bc *BlockChain) tryRewindBadBlocks() {
+	bc.chainmu.Lock()
+	defer bc.chainmu.Unlock()
+	block := bc.CurrentBlock()
+	snaps := bc.snaps
+	// Verified and Result is false
+	if snaps != nil && snaps.Snapshot(block.Root()) != nil &&
+		snaps.Snapshot(block.Root()).Verified() && !snaps.Snapshot(block.Root()).WaitAndGetVerifyRes() {
+		// Rewind by one block
+		log.Warn("current block verified failed, rewind to its parent", "height", block.NumberU64(), "hash", block.Hash())
+		bc.futureBlocks.Remove(block.Hash())
+		bc.badBlockCache.Add(block.Hash(), time.Now())
+		bc.diffLayerCache.Remove(block.Hash())
+		bc.diffLayerRLPCache.Remove(block.Hash())
+		bc.reportBlock(block, nil, errStateRootVerificationFailed)
+		bc.setHeadBeyondRoot(block.NumberU64()-1, common.Hash{})
+	}
+}
+
 // SetHeadBeyondRoot rewinds the local chain to a new head with the extra condition
 // that the rewind must pass the specified state root. This method is meant to be
 // used when rewinding with snapshots enabled to ensure that we go back further than
@@ -581,7 +620,10 @@ func (bc *BlockChain) SetHead(head uint64) error {
 func (bc *BlockChain) SetHeadBeyondRoot(head uint64, root common.Hash) (uint64, error) {
 	bc.chainmu.Lock()
 	defer bc.chainmu.Unlock()
+	return bc.setHeadBeyondRoot(head, root)
+}
 
+func (bc *BlockChain) setHeadBeyondRoot(head uint64, root common.Hash) (uint64, error) {
 	// Track the block number of the requested root hash
 	var rootNumber uint64 // (no root == always 0)
 
@@ -798,6 +840,11 @@ func (bc *BlockChain) State() (*state.StateDB, error) {
 // StateAt returns a new mutable state based on a particular point in time.
 func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 	return state.New(root, bc.stateCache, bc.snaps)
+}
+
+// StateAtWithSharedPool returns a new mutable state based on a particular point in time with sharedStorage
+func (bc *BlockChain) StateAtWithSharedPool(root common.Hash) (*state.StateDB, error) {
+	return state.NewWithSharedPool(root, bc.stateCache, bc.snaps)
 }
 
 // StateCache returns the caching database underpinning the blockchain instance.
@@ -1049,6 +1096,12 @@ func (bc *BlockChain) HasFastBlock(hash common.Hash, number uint64) bool {
 
 // HasState checks if state trie is fully present in the database or not.
 func (bc *BlockChain) HasState(hash common.Hash) bool {
+	if bc.pipeCommit && bc.snaps != nil {
+		// If parent snap is pending on verification, treat it as state exist
+		if s := bc.snaps.Snapshot(hash); s != nil && !s.Verified() {
+			return true
+		}
+	}
 	_, err := bc.stateCache.OpenTrie(hash)
 	return err == nil
 }
@@ -1660,8 +1713,78 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		}
 		wg.Done()
 	}()
+
+	tryCommitTrieDB := func() error {
+		bc.commitLock.Lock()
+		defer bc.commitLock.Unlock()
+
+		triedb := bc.stateCache.TrieDB()
+		// If we're running an archive node, always flush
+		if bc.cacheConfig.TrieDirtyDisabled {
+			err := triedb.Commit(block.Root(), false, nil)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Full but not archive node, do proper garbage collection
+			triedb.Reference(block.Root(), common.Hash{}) // metadata reference to keep trie alive
+			bc.triegc.Push(block.Root(), -int64(block.NumberU64()))
+
+			if current := block.NumberU64(); current > bc.triesInMemory {
+				// If we exceeded our memory allowance, flush matured singleton nodes to disk
+				var (
+					nodes, imgs = triedb.Size()
+					limit       = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
+				)
+				if nodes > limit || imgs > 4*1024*1024 {
+					triedb.Cap(limit - ethdb.IdealBatchSize)
+				}
+				// Find the next state trie we need to commit
+				chosen := current - bc.triesInMemory
+
+				// If we exceeded out time allowance, flush an entire trie to disk
+				if bc.gcproc > bc.cacheConfig.TrieTimeLimit {
+					canWrite := true
+					if posa, ok := bc.engine.(consensus.PoSA); ok {
+						if !posa.EnoughDistance(bc, block.Header()) {
+							canWrite = false
+						}
+					}
+					if canWrite {
+						// If the header is missing (canonical chain behind), we're reorging a low
+						// diff sidechain. Suspend committing until this operation is completed.
+						header := bc.GetHeaderByNumber(chosen)
+						if header == nil {
+							log.Warn("Reorg in progress, trie commit postponed", "number", chosen)
+						} else {
+							// If we're exceeding limits but haven't reached a large enough memory gap,
+							// warn the user that the system is becoming unstable.
+							if chosen < lastWrite+bc.triesInMemory && bc.gcproc >= 2*bc.cacheConfig.TrieTimeLimit {
+								log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", bc.cacheConfig.TrieTimeLimit, "optimum", float64(chosen-lastWrite)/float64(bc.triesInMemory))
+							}
+							// Flush an entire trie and restart the counters
+							triedb.Commit(header.Root, true, nil)
+							lastWrite = chosen
+							bc.gcproc = 0
+						}
+					}
+				}
+				// Garbage collect anything below our required write retention
+				for !bc.triegc.Empty() {
+					root, number := bc.triegc.Pop()
+					if uint64(-number) > chosen {
+						bc.triegc.Push(root, number)
+						break
+					}
+					go triedb.Dereference(root.(common.Hash))
+				}
+			}
+		}
+		return nil
+	}
+
 	// Commit all cached state changes into underlying memory database.
-	root, diffLayer, err := state.Commit(bc.chainConfig.IsEIP158(block.Number()))
+	_, diffLayer, err := state.Commit(bc.tryRewindBadBlocks, tryCommitTrieDB)
 	if err != nil {
 		return NonStatTy, err
 	}
@@ -1674,69 +1797,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		diffLayer.Number = block.NumberU64()
 		bc.cacheDiffLayer(diffLayer)
 	}
-	triedb := bc.stateCache.TrieDB()
 
-	// If we're running an archive node, always flush
-	if bc.cacheConfig.TrieDirtyDisabled {
-		if err := triedb.Commit(root, false, nil); err != nil {
-			return NonStatTy, err
-		}
-	} else {
-		// Full but not archive node, do proper garbage collection
-		triedb.Reference(root, common.Hash{}) // metadata reference to keep trie alive
-		bc.triegc.Push(root, -int64(block.NumberU64()))
-
-		if current := block.NumberU64(); current > bc.triesInMemory {
-			// If we exceeded our memory allowance, flush matured singleton nodes to disk
-			var (
-				nodes, imgs = triedb.Size()
-				limit       = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
-			)
-			if nodes > limit || imgs > 4*1024*1024 {
-				triedb.Cap(limit - ethdb.IdealBatchSize)
-			}
-			// Find the next state trie we need to commit
-			chosen := current - bc.triesInMemory
-
-			// If we exceeded out time allowance, flush an entire trie to disk
-			if bc.gcproc > bc.cacheConfig.TrieTimeLimit {
-				canWrite := true
-				if posa, ok := bc.engine.(consensus.PoSA); ok {
-					if !posa.EnoughDistance(bc, block.Header()) {
-						canWrite = false
-					}
-				}
-				if canWrite {
-					// If the header is missing (canonical chain behind), we're reorging a low
-					// diff sidechain. Suspend committing until this operation is completed.
-					header := bc.GetHeaderByNumber(chosen)
-					if header == nil {
-						log.Warn("Reorg in progress, trie commit postponed", "number", chosen)
-					} else {
-						// If we're exceeding limits but haven't reached a large enough memory gap,
-						// warn the user that the system is becoming unstable.
-						if chosen < lastWrite+bc.triesInMemory && bc.gcproc >= 2*bc.cacheConfig.TrieTimeLimit {
-							log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", bc.cacheConfig.TrieTimeLimit, "optimum", float64(chosen-lastWrite)/float64(bc.triesInMemory))
-						}
-						// Flush an entire trie and restart the counters
-						triedb.Commit(header.Root, true, nil)
-						lastWrite = chosen
-						bc.gcproc = 0
-					}
-				}
-			}
-			// Garbage collect anything below our required write retention
-			for !bc.triegc.Empty() {
-				root, number := bc.triegc.Pop()
-				if uint64(-number) > chosen {
-					bc.triegc.Push(root, number)
-					break
-				}
-				go triedb.Dereference(root.(common.Hash))
-			}
-		}
-	}
 	wg.Wait()
+
 	// If the total difficulty is higher than our known, add it to the canonical chain
 	// Second clause in the if statement reduces the vulnerability to selfish mining.
 	// Please refer to http://www.cs.cornell.edu/~ie53/publications/btcProcFC.pdf
@@ -2043,7 +2106,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
-		statedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
+		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err
 		}
@@ -2051,10 +2114,22 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 
 		// Enable prefetching to pull in trie node paths while processing transactions
 		statedb.StartPrefetcher("chain")
-
+		var followupInterrupt uint32
+		// For diff sync, it may fallback to full sync, so we still do prefetch
+		if len(block.Transactions()) >= prefetchTxNumber {
+			throwaway := statedb.Copy()
+			go func(start time.Time, followup *types.Block, throwaway *state.StateDB, interrupt *uint32) {
+				bc.prefetcher.Prefetch(followup, throwaway, bc.vmConfig, &followupInterrupt)
+			}(time.Now(), block, throwaway, &followupInterrupt)
+		}
 		//Process block using the parent state as reference point
 		substart := time.Now()
+		if bc.pipeCommit {
+			statedb.EnablePipeCommit()
+		}
+		statedb.SetExpectedStateRoot(block.Root())
 		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
+		atomic.StoreUint32(&followupInterrupt, 1)
 		activeState = statedb
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
@@ -2488,6 +2563,19 @@ func (bc *BlockChain) update() {
 	}
 }
 
+func (bc *BlockChain) rewindInvalidHeaderBlockLoop() {
+	recheck := time.NewTicker(rewindBadBlockInterval)
+	defer recheck.Stop()
+	for {
+		select {
+		case <-recheck.C:
+			bc.tryRewindBadBlocks()
+		case <-bc.quit:
+			return
+		}
+	}
+}
+
 func (bc *BlockChain) trustedDiffLayerLoop() {
 	recheck := time.NewTicker(diffLayerFreezerRecheckInterval)
 	bc.wg.Add(1)
@@ -2824,6 +2912,18 @@ func (bc *BlockChain) maintainTxIndex(ancients uint64) {
 	}
 }
 
+func (bc *BlockChain) isCachedBadBlock(block *types.Block) bool {
+	if timeAt, exist := bc.badBlockCache.Get(block.Hash()); exist {
+		putAt := timeAt.(time.Time)
+		if time.Since(putAt) >= badBlockCacheExpire {
+			bc.badBlockCache.Remove(block.Hash())
+			return false
+		}
+		return true
+	}
+	return false
+}
+
 // reportBlock logs a bad block error.
 func (bc *BlockChain) reportBlock(block *types.Block, receipts types.Receipts, err error) {
 	rawdb.WriteBadBlock(bc.db, block)
@@ -2991,6 +3091,11 @@ func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscr
 // Options
 func EnableLightProcessor(bc *BlockChain) *BlockChain {
 	bc.processor = NewLightStateProcessor(bc.Config(), bc, bc.engine)
+	return bc
+}
+
+func EnablePipelineCommit(bc *BlockChain) *BlockChain {
+	bc.pipeCommit = true
 	return bc
 }
 

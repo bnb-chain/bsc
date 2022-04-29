@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.1.9
+
+IMPROVEMENT
+* [\#792](https://github.com/binance-chain/bsc/pull/792) add shared storage for prefetching state data
+* [\#795](https://github.com/binance-chain/bsc/pull/795) implement state verification pipeline in pipecommit
+* [\#803](https://github.com/binance-chain/bsc/pull/803) prefetch state data during the mining process
+* [\#812](https://github.com/bnb-chain/bsc/pull/812) skip verification on account storage root to tolerate with fastnode when doing diffsync
+* [\#818](https://github.com/bnb-chain/bsc/pull/818) add shared storage to the prefetcher of miner
+* [\#820](https://github.com/bnb-chain/bsc/pull/820) disable diffsync when pipecommit is enabled
+* [\#830](https://github.com/bnb-chain/bsc/pull/830) change the number of prefetch threads
+
+BUGFIX
+* [\#797](https://github.com/bnb-chain/bsc/pull/797) fix race condition on preimage in pipecommit
+* [\#808](https://github.com/bnb-chain/bsc/pull/808) fix code of difflayer not assign when new smart contract created
+* [\#817](https://github.com/bnb-chain/bsc/pull/817) fix bugs of prune block tool
+* [\#834](https://github.com/bnb-chain/bsc/pull/834) fix deadlock when failed to verify state root in pipecommit
+* [\#835](https://github.com/bnb-chain/bsc/pull/835) fix deadlock on miner module when failed to commit trie
+* [\#842](https://github.com/bnb-chain/bsc/pull/842) fix invalid nil check of statedb in diffsync
+
+## v1.1.8
+FEATURES
+* [\#668](https://github.com/binance-chain/bsc/pull/668) implement State Verification && Snapshot Commit pipeline
+* [\#581](https://github.com/binance-chain/bsc/pull/581) implement geth native trace 
+* [\#543](https://github.com/binance-chain/bsc/pull/543) implement offline block prune tools
+
+IMPROVEMENT
+* [\#704](https://github.com/binance-chain/bsc/pull/704) prefetch state by applying the transactions within one block 
+* [\#713](https://github.com/binance-chain/bsc/pull/713) add ARM binaries for release pipeline
+
+BUGFIX
+* [\#667](https://github.com/binance-chain/bsc/pull/667) trie: reject deletions when verifying range proofs #667
+* [\#643](https://github.com/binance-chain/bsc/pull/643) add timeout for stopping p2p server to fix can not gracefully shutdown issue
+* [\#740](https://github.com/binance-chain/bsc/pull/740) update discord link which won't expire 
+
 ## v1.1.7
 
 BUGFIX

@@ -28,6 +28,7 @@ import (
 	gnark "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fp"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
+
 	"github.com/ethereum/go-ethereum/crypto/bls12381"
 )
 
@@ -159,7 +160,7 @@ func FuzzCrossG1MultiExp(data []byte) int {
 		gethPoints = append(gethPoints, new(bls12381.PointG1).Set(kp1))
 		gnarkPoints = append(gnarkPoints, *cp1)
 	}
-	if len(gethScalars) == 0{
+	if len(gethScalars) == 0 {
 		return 0
 	}
 	// compute multi exponentiation

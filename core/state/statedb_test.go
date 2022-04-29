@@ -102,7 +102,9 @@ func TestIntermediateLeaks(t *testing.T) {
 	}
 
 	// Commit and cross check the databases.
-	transRoot, _, err := transState.Commit(false)
+	transState.Finalise(false)
+	transState.AccountsIntermediateRoot()
+	transRoot, _, err := transState.Commit(nil)
 	if err != nil {
 		t.Fatalf("failed to commit transition state: %v", err)
 	}
@@ -110,7 +112,9 @@ func TestIntermediateLeaks(t *testing.T) {
 		t.Errorf("can not commit trie %v to persistent database", transRoot.Hex())
 	}
 
-	finalRoot, _, err := finalState.Commit(false)
+	finalState.Finalise(false)
+	finalState.AccountsIntermediateRoot()
+	finalRoot, _, err := finalState.Commit(nil)
 	if err != nil {
 		t.Fatalf("failed to commit final state: %v", err)
 	}
@@ -473,7 +477,7 @@ func (test *snapshotTest) checkEqual(state, checkstate *StateDB) error {
 func TestTouchDelete(t *testing.T) {
 	s := newStateTest()
 	s.state.GetOrNewStateObject(common.Address{})
-	root, _, _ := s.state.Commit(false)
+	root, _, _ := s.state.Commit(nil)
 	s.state, _ = New(root, s.state.db, s.state.snaps)
 
 	snapshot := s.state.Snapshot()
@@ -546,7 +550,9 @@ func TestCopyCommitCopy(t *testing.T) {
 		t.Fatalf("first copy pre-commit committed storage slot mismatch: have %x, want %x", val, common.Hash{})
 	}
 
-	copyOne.Commit(false)
+	copyOne.Finalise(false)
+	copyOne.AccountsIntermediateRoot()
+	copyOne.Commit(nil)
 	if balance := copyOne.GetBalance(addr); balance.Cmp(big.NewInt(42)) != 0 {
 		t.Fatalf("first copy post-commit balance mismatch: have %v, want %v", balance, 42)
 	}
@@ -631,7 +637,10 @@ func TestCopyCopyCommitCopy(t *testing.T) {
 	if val := copyTwo.GetCommittedState(addr, skey); val != (common.Hash{}) {
 		t.Fatalf("second copy pre-commit committed storage slot mismatch: have %x, want %x", val, common.Hash{})
 	}
-	copyTwo.Commit(false)
+
+	copyTwo.Finalise(false)
+	copyTwo.AccountsIntermediateRoot()
+	copyTwo.Commit(nil)
 	if balance := copyTwo.GetBalance(addr); balance.Cmp(big.NewInt(42)) != 0 {
 		t.Fatalf("second copy post-commit balance mismatch: have %v, want %v", balance, 42)
 	}
@@ -675,7 +684,9 @@ func TestDeleteCreateRevert(t *testing.T) {
 	addr := common.BytesToAddress([]byte("so"))
 	state.SetBalance(addr, big.NewInt(1))
 
-	root, _, _ := state.Commit(false)
+	state.Finalise(false)
+	state.AccountsIntermediateRoot()
+	root, _, _ := state.Commit(nil)
 	state, _ = New(root, state.db, state.snaps)
 
 	// Simulate self-destructing in one transaction, then create-reverting in another
@@ -686,8 +697,10 @@ func TestDeleteCreateRevert(t *testing.T) {
 	state.SetBalance(addr, big.NewInt(2))
 	state.RevertToSnapshot(id)
 
+	state.Finalise(true)
+	state.AccountsIntermediateRoot()
 	// Commit the entire state and make sure we don't crash and have the correct state
-	root, _, _ = state.Commit(true)
+	root, _, _ = state.Commit(nil)
 	state, _ = New(root, state.db, state.snaps)
 
 	if state.getStateObject(addr) != nil {
@@ -712,7 +725,9 @@ func TestMissingTrieNodes(t *testing.T) {
 		a2 := common.BytesToAddress([]byte("another"))
 		state.SetBalance(a2, big.NewInt(100))
 		state.SetCode(a2, []byte{1, 2, 4})
-		root, _, _ = state.Commit(false)
+		state.Finalise(false)
+		state.AccountsIntermediateRoot()
+		root, _, _ = state.Commit(nil)
 		t.Logf("root: %x", root)
 		// force-flush
 		state.Database().TrieDB().Cap(0)
@@ -736,7 +751,9 @@ func TestMissingTrieNodes(t *testing.T) {
 	}
 	// Modify the state
 	state.SetBalance(addr, big.NewInt(2))
-	root, _, err := state.Commit(false)
+	state.Finalise(false)
+	state.AccountsIntermediateRoot()
+	root, _, err := state.Commit(nil)
 	if err == nil {
 		t.Fatalf("expected error, got root :%x", root)
 	}
