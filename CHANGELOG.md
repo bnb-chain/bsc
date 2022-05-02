@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.10
+
+FEATURE
+* [\#885](https://github.com/binance-chain/bsc/pull/885) add Euler Hardfork, including BEP-127 and BEP-131
+
+
+BUGFIX
+* [\#856](https://github.com/binance-chain/bsc/pull/856) fix logic issue: handlers.removePeer() is called twice
+* [\#860](https://github.com/binance-chain/bsc/pull/860) fix:defer bloomprocessor close
+* [\#877](https://github.com/binance-chain/bsc/pull/877) fix validator pipecommit issue
+* [\#870](https://github.com/binance-chain/bsc/pull/870) fix:Shift panic for zero length of heads
+
 ## v1.1.9
 
 IMPROVEMENT
