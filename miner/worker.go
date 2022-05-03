@@ -266,8 +266,8 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	go worker.resultLoop()
 	go worker.taskLoop()
 
-	go worker.txpoolSnapshotLoop()
-	go worker.preCommitLoop()
+	//	go worker.txpoolSnapshotLoop()
+	//	go worker.preCommitLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -417,13 +417,14 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(true, commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
-			nTmp := head.Block.NumberU64() % 1000
+			nTmp := head.Block.NumberU64() / 1000
 			if nTmp > blockCount {
 				blockCount = nTmp
 				if blockCount%2 == 0 {
 					core.PreCommitFlag = true
 					preFlag = true
 					log.Info("Start preCommit for about 1000 blocks", "blockNumber", head.Block.NumberU64())
+					//					w.preCommitInterruptSub = w.eth.BlockChain().SubscribeChainInsertEvent(w.preCommitInterruptCh)
 					go w.txpoolSnapshotLoop()
 					go w.preCommitLoop()
 				} else {
@@ -547,6 +548,7 @@ func (w *worker) mainLoop() {
 	defer w.txsSub.Unsubscribe()
 	defer w.chainHeadSub.Unsubscribe()
 	defer w.chainSideSub.Unsubscribe()
+	defer w.preCommitInterruptSub.Unsubscribe()
 
 	for {
 		select {
@@ -1159,7 +1161,9 @@ func (w *worker) txpoolSnapshotLoop() {
 					}
 					currentPoolTxsCh = make(chan []map[common.Address]types.Transactions, 6)
 					timer = time.NewTimer(2000 * time.Millisecond)
+					log.Info("txpoolSnapshot pendingTxsCh<-currentPoolTxsCh")
 					w.pendingTxsCh <- currentPoolTxsCh
+					log.Info("txpoolSnapshot pendingTxsCh<-currentPoolTxsCh done")
 					if prePoolTxs != nil {
 						currentPoolTxsCh <- prePoolTxs
 						prePoolTxs = nil
@@ -1250,7 +1254,7 @@ func (w *worker) preCommitLoop() {
 	//	preNum := 0
 	interrupt := new(int32)
 	//	timer := time.NewTimer(0)
-	defer w.preCommitInterruptSub.Unsubscribe()
+	//	defer w.preCommitInterruptSub.Unsubscribe()
 	defer atomic.StoreInt32(interrupt, commitInterruptNewHead)
 	for {
 		select {
@@ -1269,7 +1273,7 @@ func (w *worker) preCommitLoop() {
 			return
 		case err := <-w.preCommitInterruptSub.Err():
 			log.Info("preCommitLoop return on preCommitInterruptSubERR", "err", err)
-			return
+			//			return
 		case <-w.stopPreCommitCh:
 			log.Info("preCommitLoop return on stopPreCommitCh")
 			return
@@ -1283,7 +1287,7 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 
 	parent := w.chain.CurrentBlock()
 
-	timestamp := int64(parent.Time() + 1)
+	timestamp := int64(parent.Time() + 2)
 
 	num := parent.Number()
 	header := &types.Header{
@@ -1352,7 +1356,7 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 		}
 	}
 	routineCount--
-	log.Info("preCommitBlock end", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart))
+	log.Info("preCommitBlock end", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart), "routineCount", routineCount)
 }
 
 func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, interrupt *int32, uncles []*types.Header, num *big.Int, ctxs int) bool {
