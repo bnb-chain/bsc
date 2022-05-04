@@ -43,6 +43,11 @@ type requestRoot struct {
 	diffHash    common.Hash
 }
 
+type verifFailedStatus struct {
+	status      types.VerifyStatus
+	blockNumber uint64
+}
+
 // mockVerifyPeer is a mocking struct that simulates p2p signals for verification tasks.
 type mockVerifyPeer struct {
 	callback func(*requestRoot)
@@ -75,7 +80,7 @@ func newMockRemoteVerifyPeer(peers []VerifyPeer) *mockVerifyPeers {
 	return &mockVerifyPeers{peers}
 }
 
-func makeTestBackendWithRemoteValidator(blocks int) (*testBackend, *testBackend, []*types.Block, error) {
+func makeTestBackendWithRemoteValidator(blocks int, mode VerifyMode, failed *verifFailedStatus) (*testBackend, *testBackend, []*types.Block, error) {
 	signer := types.HomesteadSigner{}
 
 	// Create a database pre-initialize with a genesis block
@@ -105,7 +110,7 @@ func makeTestBackendWithRemoteValidator(blocks int) (*testBackend, *testBackend,
 	}
 
 	fastnode, err := NewBlockChain(db2, nil, params.TestChainConfig, engine2, vm.Config{},
-		nil, nil, EnableBlockValidator(params.TestChainConfig, engine2, FullVerify, newMockRemoteVerifyPeer(peers)))
+		nil, nil, EnableBlockValidator(params.TestChainConfig, engine2, mode, newMockRemoteVerifyPeer(peers)))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -156,9 +161,15 @@ func makeTestBackendWithRemoteValidator(blocks int) (*testBackend, *testBackend,
 
 	peer.setCallBack(func(req *requestRoot) {
 		if fastnode.validator != nil && fastnode.validator.RemoteVerifyManager() != nil {
+			resp := verifier.GetRootByDiffHash(req.blockNumber, req.blockHash, req.diffHash)
+			if failed != nil && req.blockNumber == failed.blockNumber {
+				resp.Status = failed.status
+			} else {
+				resp.Status = types.StatusFullVerified
+			}
 			fastnode.validator.RemoteVerifyManager().
 				HandleRootResponse(
-					verifier.GetRootByDiffHash(req.blockNumber, req.blockHash, req.diffHash), "mock")
+					resp, peer.ID())
 		}
 	})
 	if _, err := verifier.InsertChain(bs); err != nil {
@@ -176,12 +187,42 @@ func makeTestBackendWithRemoteValidator(blocks int) (*testBackend, *testBackend,
 }
 
 func TestFastNode(t *testing.T) {
-	_, fastnode, blocks, err := makeTestBackendWithRemoteValidator(10240)
+	// test full mode and succeed
+	_, fastnode, blocks, err := makeTestBackendWithRemoteValidator(10240, FullVerify, nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
 	_, err = fastnode.chain.InsertChain(blocks)
 	if err != nil {
 		t.Fatalf(err.Error())
+	}
+	// test full mode and failed
+	failed := &verifFailedStatus{status: types.StatusDiffHashMismatch, blockNumber: 2048}
+	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(10240, FullVerify, failed)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	_, err = fastnode.chain.InsertChain(blocks)
+	if err == nil || fastnode.chain.CurrentBlock().NumberU64() != failed.blockNumber+10 {
+		t.Fatalf("blocks insert should be failed at height %d", failed.blockNumber+11)
+	}
+	// test insecure mode and succeed
+	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(10240, InsecureVerify, nil)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	_, err = fastnode.chain.InsertChain(blocks)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	// test insecure mode and failed
+	failed = &verifFailedStatus{status: types.StatusImpossibleFork, blockNumber: 2048}
+	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(10240, FullVerify, failed)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	_, err = fastnode.chain.InsertChain(blocks)
+	if err == nil || fastnode.chain.CurrentBlock().NumberU64() != failed.blockNumber+10 {
+		t.Fatalf("blocks insert should be failed at height %d", failed.blockNumber+11)
 	}
 }
