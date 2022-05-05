@@ -177,8 +177,7 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context) (*rpc.Su
 	return rpcSub, nil
 }
 
-// NewVotes creates a subscription that is triggered each time a transaction
-// enters the transaction pool and was signed from one of the transactions this nodes manages.
+// NewVotes creates a subscription that is triggered each time a vote enters the vote pool.
 func (api *PublicFilterAPI) NewVotes(ctx context.Context) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
@@ -188,16 +187,13 @@ func (api *PublicFilterAPI) NewVotes(ctx context.Context) (*rpc.Subscription, er
 	rpcSub := notifier.CreateSubscription()
 
 	gopool.Submit(func() {
-		voteHashes := make(chan []common.Hash, 128)
-		voteSub := api.events.SubscribePendingTxs(voteHashes)
+		votes := make(chan *types.VoteEnvelope, 128)
+		voteSub := api.events.SubscribeNewVotes(votes)
 
 		for {
 			select {
-			case hashes := <-voteHashes:
-				// To keep the original behaviour, send a single vote hash in one notification.
-				for _, h := range hashes {
-					notifier.Notify(rpcSub.ID, h)
-				}
+			case vote := <-votes:
+				notifier.Notify(rpcSub.ID, vote)
 			case <-rpcSub.Err():
 				voteSub.Unsubscribe()
 				return
