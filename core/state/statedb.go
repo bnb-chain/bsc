@@ -975,12 +975,23 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 }
 
 //CorrectAccountsRoot will fix account roots in pipecommit mode
-func (s *StateDB) CorrectAccountsRoot() {
-	if accounts, err := s.snap.Accounts(); err == nil && accounts != nil {
+func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
+	var snapshot snapshot.Snapshot
+	if blockRoot == (common.Hash{}) {
+		snapshot = s.snap
+	} else if s.snaps != nil {
+		snapshot = s.snaps.Snapshot(blockRoot)
+	}
+
+	if snapshot == nil {
+		return
+	}
+	if accounts, err := snapshot.Accounts(); err == nil && accounts != nil {
 		for _, obj := range s.stateObjects {
 			if !obj.deleted && !obj.rootCorrected && obj.data.Root == dummyRoot {
 				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist && len(account.Root) != 0 {
 					obj.data.Root = common.BytesToHash(account.Root)
+					obj.rootCorrected = true
 				}
 			}
 		}
@@ -1465,6 +1476,8 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				}
 				if s.pipeCommit {
 					defer close(snapUpdated)
+					// State verification pipeline - accounts root are not calculated here, just populate needed fields for process
+					s.PopulateSnapAccountAndStorage()
 				}
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
