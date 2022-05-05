@@ -164,8 +164,6 @@ func makeTestBackendWithRemoteValidator(blocks int, mode VerifyMode, failed *ver
 			resp := verifier.GetVerifyResult(req.blockNumber, req.blockHash, req.diffHash)
 			if failed != nil && req.blockNumber == failed.blockNumber {
 				resp.Status = failed.status
-			} else {
-				resp.Status = types.StatusFullVerified
 			}
 			fastnode.validator.RemoteVerifyManager().
 				HandleRootResponse(
