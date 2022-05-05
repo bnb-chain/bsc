@@ -161,7 +161,7 @@ func makeTestBackendWithRemoteValidator(blocks int, mode VerifyMode, failed *ver
 
 	peer.setCallBack(func(req *requestRoot) {
 		if fastnode.validator != nil && fastnode.validator.RemoteVerifyManager() != nil {
-			resp := verifier.GetRootByDiffHash(req.blockNumber, req.blockHash, req.diffHash)
+			resp := verifier.GetVerifyResult(req.blockNumber, req.blockHash, req.diffHash)
 			if failed != nil && req.blockNumber == failed.blockNumber {
 				resp.Status = failed.status
 			} else {

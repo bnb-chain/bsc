@@ -28,9 +28,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/crypto/sha3"
-
 	lru "github.com/hashicorp/golang-lru"
+	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -509,31 +508,27 @@ func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts) {
 	bc.receiptsCache.Add(hash, receipts)
 }
 
-func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, sorted bool) {
-	if !sorted {
-		sort.SliceStable(diffLayer.Codes, func(i, j int) bool {
-			return diffLayer.Codes[i].Hash.Hex() < diffLayer.Codes[j].Hash.Hex()
-		})
-		sort.SliceStable(diffLayer.Destructs, func(i, j int) bool {
-			return diffLayer.Destructs[i].Hex() < (diffLayer.Destructs[j].Hex())
-		})
-		sort.SliceStable(diffLayer.Accounts, func(i, j int) bool {
-			return diffLayer.Accounts[i].Account.Hex() < diffLayer.Accounts[j].Account.Hex()
-		})
-		sort.SliceStable(diffLayer.Storages, func(i, j int) bool {
-			return diffLayer.Storages[i].Account.Hex() < diffLayer.Storages[j].Account.Hex()
-		})
-	}
+func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh chan struct{}) {
+	sort.SliceStable(diffLayer.Codes, func(i, j int) bool {
+		return diffLayer.Codes[i].Hash.Hex() < diffLayer.Codes[j].Hash.Hex()
+	})
+	sort.SliceStable(diffLayer.Destructs, func(i, j int) bool {
+		return diffLayer.Destructs[i].Hex() < (diffLayer.Destructs[j].Hex())
+	})
+	sort.SliceStable(diffLayer.Accounts, func(i, j int) bool {
+		return diffLayer.Accounts[i].Account.Hex() < diffLayer.Accounts[j].Account.Hex()
+	})
+	sort.SliceStable(diffLayer.Storages, func(i, j int) bool {
+		return diffLayer.Storages[i].Account.Hex() < diffLayer.Storages[j].Account.Hex()
+	})
 
 	if bc.diffLayerCache.Len() >= diffLayerCacheLimit {
 		bc.diffLayerCache.RemoveOldest()
 	}
 
 	bc.diffLayerCache.Add(diffLayer.BlockHash, diffLayer)
-	if cached, ok := bc.diffLayerChanCache.Get(diffLayer.BlockHash); ok {
-		diffLayerCh := cached.(chan struct{})
-		close(diffLayerCh)
-	}
+	close(diffLayerCh)
+
 	if bc.db.DiffStore() != nil {
 		// push to priority queue before persisting
 		bc.diffQueueBuffer <- diffLayer
@@ -1840,7 +1835,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		}
 		bc.diffLayerChanCache.Add(diffLayer.BlockHash, diffLayerCh)
 
-		go bc.cacheDiffLayer(diffLayer, false)
+		go bc.cacheDiffLayer(diffLayer, diffLayerCh)
 	}
 
 	wg.Wait()
@@ -2156,7 +2151,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			return it.index, err
 		}
 		if statedb.NoTrie() {
-			statedb.SetCurrentRoot(block.Root())
+			statedb.SetExpectedStateRoot(block.Root())
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
 
@@ -2833,10 +2828,10 @@ func (bc *BlockChain) HandleDiffLayer(diffLayer *types.DiffLayer, pid string, fu
 		return nil
 	}
 
-	diffHash := common.Hash{}
-	if diffLayer.DiffHash.Load() != nil {
-		diffHash = diffLayer.DiffHash.Load().(common.Hash)
+	if diffLayer.DiffHash.Load() == nil {
+		return fmt.Errorf("unexpected difflayer which diffHash is nil from peeer %s", pid)
 	}
+	diffHash := diffLayer.DiffHash.Load().(common.Hash)
 
 	bc.diffMux.Lock()
 	defer bc.diffMux.Unlock()
@@ -3178,7 +3173,7 @@ func EnableBlockValidator(chainConfig *params.ChainConfig, engine consensus.Engi
 	}
 }
 
-func (bc *BlockChain) GetRootByDiffHash(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) *VerifyResult {
+func (bc *BlockChain) GetVerifyResult(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) *VerifyResult {
 	var res VerifyResult
 	res.BlockNumber = blockNumber
 	res.BlockHash = blockHash

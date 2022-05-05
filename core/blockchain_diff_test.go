@@ -613,7 +613,7 @@ func testGetRootByDiffHash(t *testing.T, chain1, chain2 *BlockChain, blockNumber
 		chain1.diffLayerCache.Remove(block1.Hash())
 	}
 
-	result := chain1.GetRootByDiffHash(blockNumber, block2.Hash(), diffHash2)
+	result := chain1.GetVerifyResult(blockNumber, block2.Hash(), diffHash2)
 	if result.Status != expect.Status {
 		t.Fatalf("failed to verify block, number: %v, expect status: %v, real status: %v", blockNumber, expect.Status, result.Status)
 	}

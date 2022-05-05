@@ -39,10 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-const (
-	defaultNumOfSlots          = 100
-	snapshotStaleRetryInterval = time.Millisecond * 100
-)
+const defaultNumOfSlots = 100
 
 type revision struct {
 	id           int
@@ -81,7 +78,6 @@ type StateDB struct {
 	prefetcherLock sync.Mutex
 	prefetcher     *triePrefetcher
 	originalRoot   common.Hash // The pre-state root, before any changes were made
-	currentRoot    common.Hash // only used when noTrie is true
 	expectedRoot   common.Hash // The state root in the block header
 	stateRoot      common.Hash // The calculation result of IntermediateRoot
 
@@ -274,10 +270,6 @@ func (s *StateDB) setError(err error) {
 
 func (s *StateDB) NoTrie() bool {
 	return s.noTrie
-}
-
-func (s *StateDB) SetCurrentRoot(root common.Hash) {
-	s.currentRoot = root
 }
 
 func (s *StateDB) Error() error {
@@ -1184,7 +1176,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 		defer func(start time.Time) { s.AccountHashes += time.Since(start) }(time.Now())
 	}
 	if s.noTrie {
-		return s.currentRoot
+		return s.expectedRoot
 	} else {
 		return s.trie.Hash()
 	}

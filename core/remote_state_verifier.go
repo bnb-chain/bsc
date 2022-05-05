@@ -29,6 +29,8 @@ const (
 	resendInterval  = 2 * time.Second
 	// tryAllPeersTime is the time that a block has not been verified and then try all the valid verify peers.
 	tryAllPeersTime = 15 * time.Second
+	// maxWaitVerifyResultTime is the max time of waiting for ancestor's verify result.
+	maxWaitVerifyResultTime = 30 * time.Second
 )
 
 var (
@@ -111,22 +113,18 @@ func (vm *remoteVerifyManager) mainLoop() {
 			vm.cacheBlockVerified(hash)
 			vm.taskLock.Lock()
 			if task, ok := vm.tasks[hash]; ok {
-				delete(vm.tasks, hash)
-				verifyTaskCounter.Dec(1)
+				vm.CloseTask(task)
 				verifyTaskSucceedMeter.Mark(1)
 				verifyTaskExecutionTimer.Update(time.Since(task.startAt))
-				task.Close()
 			}
 			vm.taskLock.Unlock()
 		case <-pruneTicker.C:
 			vm.taskLock.Lock()
-			for hash, task := range vm.tasks {
+			for _, task := range vm.tasks {
 				if vm.bc.insertStopped() || (vm.bc.CurrentHeader().Number.Cmp(task.blockHeader.Number) == 1 &&
 					vm.bc.CurrentHeader().Number.Uint64()-task.blockHeader.Number.Uint64() > pruneHeightDiff) {
-					delete(vm.tasks, hash)
-					verifyTaskCounter.Dec(1)
+					vm.CloseTask(task)
 					verifyTaskFailedMeter.Mark(1)
-					task.Close()
 				}
 			}
 			vm.taskLock.Unlock()
@@ -180,7 +178,6 @@ func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 			if cached, ok := vm.bc.diffLayerChanCache.Get(hash); ok {
 				diffLayerCh := cached.(chan struct{})
 				<-diffLayerCh
-				vm.bc.diffLayerChanCache.Remove(hash)
 				diffLayer = vm.bc.GetTrustedDiffLayer(hash)
 			}
 			// if this block has no diff, there is no need to verify it.
@@ -225,8 +222,13 @@ func (vm *remoteVerifyManager) AncestorVerified(header *types.Header) bool {
 	vm.taskLock.RLock()
 	task, exist := vm.tasks[hash]
 	vm.taskLock.RUnlock()
+	timeout := time.After(maxWaitVerifyResultTime)
 	if exist {
-		<-task.terminalCh
+		select {
+		case <-task.terminalCh:
+		case <-timeout:
+			return false
+		}
 	}
 
 	_, exist = vm.verifiedCache.Get(hash)
@@ -236,6 +238,12 @@ func (vm *remoteVerifyManager) AncestorVerified(header *types.Header) bool {
 func (vm *remoteVerifyManager) HandleRootResponse(vr *VerifyResult, pid string) error {
 	vm.messageCh <- verifyMessage{verifyResult: vr, peerId: pid}
 	return nil
+}
+
+func (vm *remoteVerifyManager) CloseTask(task *verifyTask) {
+	delete(vm.tasks, task.blockHeader.Hash())
+	task.Close()
+	verifyTaskCounter.Dec(1)
 }
 
 type VerifyResult struct {
@@ -335,7 +343,7 @@ func (vt *verifyTask) sendVerifyRequest(n int) {
 	// if has not valid peer, log warning.
 	if len(validPeers) == 0 {
 		log.Warn("there is no valid peer for block", "number", vt.blockHeader.Number)
-		vt.Close()
+		return
 	}
 
 	if n < len(validPeers) && n > 0 {
@@ -352,9 +360,8 @@ func (vt *verifyTask) sendVerifyRequest(n int) {
 
 func (vt *verifyTask) compareRootHashAndMark(msg verifyMessage, verifyCh chan common.Hash) {
 	if msg.verifyResult.Root == vt.blockHeader.Root {
-		blockhash := msg.verifyResult.BlockHash
 		// write back to manager so that manager can cache the result and delete this task.
-		verifyCh <- blockhash
+		verifyCh <- msg.verifyResult.BlockHash
 	} else {
 		vt.badPeers[msg.peerId] = struct{}{}
 	}

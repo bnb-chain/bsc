@@ -110,7 +110,6 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 			if v.remoteValidator != nil && !v.remoteValidator.AncestorVerified(block.Header()) {
 				return fmt.Errorf("%w, number: %s, hash: %s", ErrAncestorHasNotBeenVerified, block.Number(), block.Hash())
 			}
-
 			return nil
 		},
 	}

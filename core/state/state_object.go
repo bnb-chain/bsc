@@ -32,6 +32,8 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+const snapshotStaleRetryInterval = time.Millisecond * 10
+
 var emptyCodeHash = crypto.Keccak256(nil)
 
 type Code []byte
@@ -284,7 +286,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		// there is a small chance that the difflayer of the stale will be read while reading,
 		// resulting in an empty array being returned here.
 		// Therefore, noTrie mode must retry here,
-		// and add a time interval when retrying to avoid stacking too much and causing OOM.
+		// and add a time interval when retrying to avoid stacking too much and causing stack overflow.
 		time.Sleep(snapshotStaleRetryInterval)
 		return s.GetCommittedState(db, key)
 	}

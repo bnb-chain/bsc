@@ -126,7 +126,7 @@ func handleRootRequest(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 
-	res := backend.Chain().GetRootByDiffHash(req.BlockNumber, req.BlockHash, req.DiffHash)
+	res := backend.Chain().GetVerifyResult(req.BlockNumber, req.BlockHash, req.DiffHash)
 	return p2p.Send(peer.rw, RespondRootMsg, RootResponsePacket{
 		RequestId:   req.RequestId,
 		Status:      res.Status,
