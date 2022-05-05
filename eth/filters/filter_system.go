@@ -52,7 +52,9 @@ const (
 	PendingTransactionsSubscription
 	// BlocksSubscription queries hashes for blocks that are imported
 	BlocksSubscription
-	// LastSubscription keeps track of the last index
+	// VotesSubscription queries vote hashes for votes entering the vote pool
+	VotesSubscription
+	// LastIndexSubscription keeps track of the last index
 	LastIndexSubscription
 )
 
@@ -66,6 +68,9 @@ const (
 	logsChanSize = 10
 	// chainEvChanSize is the size of channel listening to ChainEvent.
 	chainEvChanSize = 10
+	// voteChanSize is the size of channel listening to NewVoteEvent.
+	// The number is referenced from the size of vote pool.
+	voteChanSize = 256
 )
 
 type subscription struct {
@@ -76,6 +81,7 @@ type subscription struct {
 	logs      chan []*types.Log
 	hashes    chan []common.Hash
 	headers   chan *types.Header
+	votes     chan *types.VoteEnvelope
 	installed chan struct{} // closed when the filter is installed
 	err       chan error    // closed when the filter is uninstalled
 }
@@ -93,6 +99,7 @@ type EventSystem struct {
 	rmLogsSub      event.Subscription // Subscription for removed log event
 	pendingLogsSub event.Subscription // Subscription for pending log event
 	chainSub       event.Subscription // Subscription for new chain event
+	voteSub        event.Subscription // Subscription for new vote event
 
 	// Channels
 	install       chan *subscription         // install filter for event notification
@@ -102,6 +109,7 @@ type EventSystem struct {
 	pendingLogsCh chan []*types.Log          // Channel to receive new log event
 	rmLogsCh      chan core.RemovedLogsEvent // Channel to receive removed log event
 	chainCh       chan core.ChainEvent       // Channel to receive new chain event
+	voteCh        chan core.NewVoteEvent     // Channel to receive new vote event
 }
 
 // NewEventSystem creates a new manager that listens for event on the given mux,
@@ -121,6 +129,7 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 		rmLogsCh:      make(chan core.RemovedLogsEvent, rmLogsChanSize),
 		pendingLogsCh: make(chan []*types.Log, logsChanSize),
 		chainCh:       make(chan core.ChainEvent, chainEvChanSize),
+		voteCh:        make(chan core.NewVoteEvent, voteChanSize),
 	}
 
 	// Subscribe events
@@ -129,9 +138,11 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 	m.rmLogsSub = m.backend.SubscribeRemovedLogsEvent(m.rmLogsCh)
 	m.chainSub = m.backend.SubscribeChainEvent(m.chainCh)
 	m.pendingLogsSub = m.backend.SubscribePendingLogsEvent(m.pendingLogsCh)
+	m.voteSub = m.backend.SubscribeNewVoteEvent(m.voteCh)
 
 	// Make sure none of the subscriptions are empty
-	if m.txsSub == nil || m.logsSub == nil || m.rmLogsSub == nil || m.chainSub == nil || m.pendingLogsSub == nil {
+	if m.txsSub == nil || m.logsSub == nil || m.rmLogsSub == nil || m.chainSub == nil || m.pendingLogsSub == nil ||
+		m.voteSub == nil {
 		log.Crit("Subscribe for event system failed")
 	}
 
@@ -167,6 +178,7 @@ func (sub *Subscription) Unsubscribe() {
 			case <-sub.f.logs:
 			case <-sub.f.hashes:
 			case <-sub.f.headers:
+			case <-sub.f.votes:
 			}
 		}
 
@@ -234,6 +246,7 @@ func (es *EventSystem) subscribeMinedPendingLogs(crit ethereum.FilterQuery, logs
 		logs:      logs,
 		hashes:    make(chan []common.Hash),
 		headers:   make(chan *types.Header),
+		votes:     make(chan *types.VoteEnvelope),
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}
@@ -251,6 +264,7 @@ func (es *EventSystem) subscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 		logs:      logs,
 		hashes:    make(chan []common.Hash),
 		headers:   make(chan *types.Header),
+		votes:     make(chan *types.VoteEnvelope),
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}
@@ -268,6 +282,7 @@ func (es *EventSystem) subscribePendingLogs(crit ethereum.FilterQuery, logs chan
 		logs:      logs,
 		hashes:    make(chan []common.Hash),
 		headers:   make(chan *types.Header),
+		votes:     make(chan *types.VoteEnvelope),
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}
@@ -284,6 +299,7 @@ func (es *EventSystem) SubscribeNewHeads(headers chan *types.Header) *Subscripti
 		logs:      make(chan []*types.Log),
 		hashes:    make(chan []common.Hash),
 		headers:   headers,
+		votes:     make(chan *types.VoteEnvelope),
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}
@@ -300,6 +316,24 @@ func (es *EventSystem) SubscribePendingTxs(hashes chan []common.Hash) *Subscript
 		logs:      make(chan []*types.Log),
 		hashes:    hashes,
 		headers:   make(chan *types.Header),
+		votes:     make(chan *types.VoteEnvelope),
+		installed: make(chan struct{}),
+		err:       make(chan error),
+	}
+	return es.subscribe(sub)
+}
+
+// SubscribeNewVotes creates a subscription that writes transaction hashes for
+// transactions that enter the transaction pool.
+func (es *EventSystem) SubscribeNewVotes(votes chan *types.VoteEnvelope) *Subscription {
+	sub := &subscription{
+		id:        rpc.NewID(),
+		typ:       VotesSubscription,
+		created:   time.Now(),
+		logs:      make(chan []*types.Log),
+		hashes:    make(chan []common.Hash),
+		headers:   make(chan *types.Header),
+		votes:     votes,
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}
@@ -348,6 +382,12 @@ func (es *EventSystem) handleTxsEvent(filters filterIndex, ev core.NewTxsEvent) 
 	}
 	for _, f := range filters[PendingTransactionsSubscription] {
 		f.hashes <- hashes
+	}
+}
+
+func (es *EventSystem) handleVoteEvent(filters filterIndex, ev core.NewVoteEvent) {
+	for _, f := range filters[VotesSubscription] {
+		f.votes <- ev.Vote
 	}
 }
 
@@ -448,6 +488,7 @@ func (es *EventSystem) eventLoop() {
 		es.rmLogsSub.Unsubscribe()
 		es.pendingLogsSub.Unsubscribe()
 		es.chainSub.Unsubscribe()
+		es.voteSub.Unsubscribe()
 	}()
 
 	index := make(filterIndex)
@@ -467,6 +508,8 @@ func (es *EventSystem) eventLoop() {
 			es.handlePendingLogs(index, ev)
 		case ev := <-es.chainCh:
 			es.handleChainEvent(index, ev)
+		case ev := <-es.voteCh:
+			es.handleVoteEvent(index, ev)
 
 		case f := <-es.install:
 			if f.typ == MinedAndPendingLogsSubscription {

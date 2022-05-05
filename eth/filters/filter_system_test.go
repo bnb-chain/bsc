@@ -52,6 +52,7 @@ type testBackend struct {
 	rmLogsFeed      event.Feed
 	pendingLogsFeed event.Feed
 	chainFeed       event.Feed
+	voteFeed        event.Feed
 }
 
 func (b *testBackend) ChainDb() ethdb.Database {
@@ -124,6 +125,10 @@ func (b *testBackend) SubscribePendingLogsEvent(ch chan<- []*types.Log) event.Su
 
 func (b *testBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription {
 	return b.chainFeed.Subscribe(ch)
+}
+
+func (b *testBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {
+	return b.voteFeed.Subscribe(ch)
 }
 
 func (b *testBackend) BloomStatus() (uint64, uint64) {
@@ -679,4 +684,74 @@ func flattenLogs(pl [][]*types.Log) []*types.Log {
 		logs = append(logs, l...)
 	}
 	return logs
+}
+
+func TestVoteSubscription(t *testing.T) {
+	t.Parallel()
+
+	var (
+		db      = rawdb.NewMemoryDatabase()
+		backend = &testBackend{db: db}
+		api     = NewPublicFilterAPI(backend, false, deadline, false)
+		votes   = []*types.VoteEnvelope{
+			&types.VoteEnvelope{
+				VoteAddress: types.BLSPublicKey{},
+				Signature:   types.BLSSignature{},
+				Data: &types.VoteData{
+					TargetNumber: uint64(1),
+					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
+				},
+			},
+			&types.VoteEnvelope{
+				VoteAddress: types.BLSPublicKey{},
+				Signature:   types.BLSSignature{},
+				Data: &types.VoteData{
+					TargetNumber: uint64(2),
+					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
+				},
+			},
+			&types.VoteEnvelope{
+				VoteAddress: types.BLSPublicKey{},
+				Signature:   types.BLSSignature{},
+				Data: &types.VoteData{
+					TargetNumber: uint64(3),
+					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(3)))),
+				},
+			},
+			&types.VoteEnvelope{
+				VoteAddress: types.BLSPublicKey{},
+				Signature:   types.BLSSignature{},
+				Data: &types.VoteData{
+					TargetNumber: uint64(4),
+					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(4)))),
+				},
+			},
+		}
+	)
+
+	chan0 := make(chan *types.VoteEnvelope)
+	sub0 := api.events.SubscribeNewVotes(chan0)
+
+	go func() { // simulate client
+		i := 0
+		for i != len(votes) {
+			select {
+			case vote := <-chan0:
+				if votes[i].Hash() != vote.Hash() {
+					t.Errorf("sub received invalid hash on index %d, want %x, got %x", i, votes[i].Hash(), vote.Hash())
+				}
+				i++
+			}
+		}
+
+		sub0.Unsubscribe()
+	}()
+
+	time.Sleep(1 * time.Second)
+	for _, v := range votes {
+		ev := core.NewVoteEvent{v}
+		backend.voteFeed.Send(ev)
+	}
+
+	<-sub0.Err()
 }
