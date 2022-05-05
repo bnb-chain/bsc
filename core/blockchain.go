@@ -521,14 +521,9 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 	sort.SliceStable(diffLayer.Storages, func(i, j int) bool {
 		return diffLayer.Storages[i].Account.Hex() < diffLayer.Storages[j].Account.Hex()
 	})
-	for _, storage := range diffLayer.Storages {
+	for index := range diffLayer.Storages {
 		// Sort keys and vals by key.
-		sort.SliceStable(storage.Keys, func(i, j int) bool {
-			return storage.Keys[i] < storage.Keys[j]
-		})
-		sort.SliceStable(storage.Vals, func(i, j int) bool {
-			return storage.Keys[i] < storage.Keys[j]
-		})
+		sort.Sort(&diffLayer.Storages[index])
 	}
 
 	if bc.diffLayerCache.Len() >= diffLayerCacheLimit {
