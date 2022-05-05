@@ -1287,6 +1287,54 @@ func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, bloc
 	return result, err
 }
 
+// GetHighestJustifiedHeader returns the highest justified block before the input block.
+func (s *PublicBlockChainAPI) GetHighestJustifiedHeader(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (*types.Header, error) {
+	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	if blockNrOrHash != nil {
+		bNrOrHash = *blockNrOrHash
+	}
+
+	// Retrieve the block to act as the gas ceiling
+	header, err := s.b.HeaderByNumberOrHash(ctx, bNrOrHash)
+	if err != nil {
+		return nil, err
+	}
+	if header == nil {
+		return nil, errors.New("block header not found")
+	}
+
+	if posa, ok := s.b.Engine().(consensus.PoSA); ok {
+		return posa.GetHighestJustifiedHeader(s.b.Chain(), header), nil
+	}
+
+	// Not support.
+	return nil, nil
+}
+
+// GetHighestFinalizedNumber returns the highest finalized block number before the input block.
+func (s *PublicBlockChainAPI) GetHighestFinalizedNumber(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (hexutil.Uint64, error) {
+	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	if blockNrOrHash != nil {
+		bNrOrHash = *blockNrOrHash
+	}
+
+	// Retrieve the block to act as the gas ceiling
+	header, err := s.b.HeaderByNumberOrHash(ctx, bNrOrHash)
+	if err != nil {
+		return 0, err
+	}
+	if header == nil {
+		return 0, errors.New("block header not found")
+	}
+
+	if posa, ok := s.b.Engine().(consensus.PoSA); ok {
+		return hexutil.Uint64(posa.GetHighestFinalizedNumber(s.b.Chain(), header)), nil
+	}
+
+	// Not support.
+	return 0, nil
+}
+
 // ExecutionResult groups all structured logs emitted by the EVM
 // while replaying a transaction in debug mode as well as transaction
 // execution status, the amount of gas used and the return value

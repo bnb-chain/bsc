@@ -200,6 +200,25 @@ func (ec *Client) GetDiffAccountsWithScope(ctx context.Context, number *big.Int,
 	return &result, err
 }
 
+// GetHighestJustifiedHeader returns the highest justified header before a specific block number. If number is nil, the
+// latest justified block header is returned.
+func (ec *Client) GetHighestJustifiedHeader(ctx context.Context, blockNumber *big.Int) (*types.Header, error) {
+	var head *types.Header
+	err := ec.c.CallContext(ctx, &head, "eth_getHighestJustifiedHeader", toBlockNumArg(blockNumber))
+	if err == nil && head == nil {
+		err = ethereum.NotFound
+	}
+	return head, err
+}
+
+// GetHighestFinalizedNumber returns the highest finalized number before a specific block number. If number is nil, the
+// latest finalized block number is returned.
+func (ec *Client) GetHighestFinalizedNumber(ctx context.Context, blockNumber *big.Int) (uint64, error) {
+	var result hexutil.Uint64
+	err := ec.c.CallContext(ctx, &result, "eth_getHighestFinalizedNumber", toBlockNumArg(blockNumber))
+	return uint64(result), err
+}
+
 type rpcTransaction struct {
 	tx *types.Transaction
 	txExtraInfo
