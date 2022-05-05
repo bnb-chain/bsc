@@ -222,11 +222,12 @@ func (vm *remoteVerifyManager) AncestorVerified(header *types.Header) bool {
 	vm.taskLock.RLock()
 	task, exist := vm.tasks[hash]
 	vm.taskLock.RUnlock()
-	timeout := time.After(maxWaitVerifyResultTime)
+	timeout := time.NewTimer(maxWaitVerifyResultTime)
+	defer timeout.Stop()
 	if exist {
 		select {
 		case <-task.terminalCh:
-		case <-timeout:
+		case <-timeout.C:
 			return false
 		}
 	}
