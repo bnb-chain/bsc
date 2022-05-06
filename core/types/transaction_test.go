@@ -392,7 +392,7 @@ func TestTransactionForward(t *testing.T) {
 	}
 
 	tmp := txset.Copy()
-	for j := 0; j < 10; j++ {
+	for j := 0; j < 11; j++ {
 		txset = tmp.Copy()
 		txsetCpy = tmp.Copy()
 		i := 0
@@ -400,6 +400,9 @@ func TestTransactionForward(t *testing.T) {
 			txset.Shift()
 		}
 		tx := txset.Peek()
+		if tx == nil {
+			continue
+		}
 		txsetCpy.Forward(tx)
 		txCpy := txsetCpy.Peek()
 		if txCpy == nil {

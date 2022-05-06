@@ -761,7 +761,12 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 
 	if w.current.gasPool == nil {
 		w.current.gasPool = new(core.GasPool).AddGas(w.current.header.GasLimit)
-		w.current.gasPool.SubGas(params.SystemTxsGas)
+		if w.chain.Config().IsEuler(w.current.header.Number) {
+			w.current.gasPool.SubGas(params.SystemTxsGas * 3)
+		} else {
+			w.current.gasPool.SubGas(params.SystemTxsGas)
+		}
+
 	}
 
 	var coalescedLogs []*types.Log
@@ -1009,6 +1014,9 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 	if err != nil {
 		return err
 	}
+
+	s.CorrectAccountsRoot(w.chain.CurrentBlock().Root())
+
 	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 	if err != nil {
 		return err
