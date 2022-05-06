@@ -297,6 +297,9 @@ func (dl *diffLayer) CorrectAccounts(accounts map[common.Hash][]byte) {
 
 // Parent returns the subsequent layer of a diff layer.
 func (dl *diffLayer) Parent() snapshot {
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
 	return dl.parent
 }
 
