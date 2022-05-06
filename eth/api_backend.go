@@ -272,6 +272,9 @@ func (b *EthAPIBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.S
 }
 
 func (b *EthAPIBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {
+	if b.eth.VotePool() == nil {
+		return nil
+	}
 	return b.eth.VotePool().SubscribeNewVoteEvent(ch)
 }
 

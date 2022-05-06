@@ -743,13 +743,11 @@ func TestVoteSubscription(t *testing.T) {
 	go func() { // simulate client
 		i := 0
 		for i != len(votes) {
-			select {
-			case vote := <-chan0:
-				if votes[i].Hash() != vote.Hash() {
-					t.Errorf("sub received invalid hash on index %d, want %x, got %x", i, votes[i].Hash(), vote.Hash())
-				}
-				i++
+			vote := <-chan0
+			if votes[i].Hash() != vote.Hash() {
+				t.Errorf("sub received invalid hash on index %d, want %x, got %x", i, votes[i].Hash(), vote.Hash())
 			}
+			i++
 		}
 
 		sub0.Unsubscribe()
@@ -757,7 +755,7 @@ func TestVoteSubscription(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 	for _, v := range votes {
-		ev := core.NewVoteEvent{v}
+		ev := core.NewVoteEvent{Vote: v}
 		backend.voteFeed.Send(ev)
 	}
 

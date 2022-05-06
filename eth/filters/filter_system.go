@@ -141,9 +141,11 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 	m.voteSub = m.backend.SubscribeNewVoteEvent(m.voteCh)
 
 	// Make sure none of the subscriptions are empty
-	if m.txsSub == nil || m.logsSub == nil || m.rmLogsSub == nil || m.chainSub == nil || m.pendingLogsSub == nil ||
-		m.voteSub == nil {
+	if m.txsSub == nil || m.logsSub == nil || m.rmLogsSub == nil || m.chainSub == nil || m.pendingLogsSub == nil {
 		log.Crit("Subscribe for event system failed")
+	}
+	if m.voteSub == nil {
+		log.Warn("Subscribe for vote event failed")
 	}
 
 	go m.eventLoop()
@@ -488,7 +490,9 @@ func (es *EventSystem) eventLoop() {
 		es.rmLogsSub.Unsubscribe()
 		es.pendingLogsSub.Unsubscribe()
 		es.chainSub.Unsubscribe()
-		es.voteSub.Unsubscribe()
+		if es.voteSub != nil {
+			es.voteSub.Unsubscribe()
+		}
 	}()
 
 	index := make(filterIndex)
