@@ -53,6 +53,9 @@ var (
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
 	headFastBlockGauge = metrics.NewRegisteredGauge("chain/head/receipt", nil)
 
+	highestJustifiedBlockGauge = metrics.NewRegisteredGauge("chain/head/justified", nil)
+	highestFinalizedBlockGauge = metrics.NewRegisteredGauge("chain/head/finalized", nil)
+
 	accountReadTimer   = metrics.NewRegisteredTimer("chain/account/reads", nil)
 	accountHashTimer   = metrics.NewRegisteredTimer("chain/account/hashes", nil)
 	accountUpdateTimer = metrics.NewRegisteredTimer("chain/account/updates", nil)
@@ -526,6 +529,27 @@ func (bc *BlockChain) empty() bool {
 	return true
 }
 
+// getHighestJustifiedNumber returns the highest justified number before the specific block.
+func (bc *BlockChain) getHighestJustifiedNumber(header *types.Header) uint64 {
+	if p, ok := bc.engine.(consensus.PoSA); ok {
+		justifiedHeader := p.GetHighestJustifiedHeader(bc, header)
+		if justifiedHeader != nil {
+			return justifiedHeader.Number.Uint64()
+		}
+	}
+
+	return 0
+}
+
+// getHighestFinalizedNumber returns the highest finalized number before the specific block.
+func (bc *BlockChain) getHighestFinalizedNumber(header *types.Header) uint64 {
+	if p, ok := bc.engine.(consensus.PoSA); ok {
+		return p.GetHighestFinalizedNumber(bc, header)
+	}
+
+	return 0
+}
+
 // loadLastState loads the last known chain state from the database. This method
 // assumes that the chain manager mutex is held.
 func (bc *BlockChain) loadLastState() error {
@@ -546,6 +570,8 @@ func (bc *BlockChain) loadLastState() error {
 	// Everything seems to be fine, set as the head block
 	bc.currentBlock.Store(currentBlock)
 	headBlockGauge.Update(int64(currentBlock.NumberU64()))
+	highestJustifiedBlockGauge.Update(int64(bc.getHighestJustifiedNumber(currentBlock.Header())))
+	highestFinalizedBlockGauge.Update(int64(bc.getHighestFinalizedNumber(currentBlock.Header())))
 
 	// Restore the last known head header
 	currentHeader := currentBlock.Header()
@@ -702,6 +728,8 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, root common.Hash) (uint64, 
 			// to low, so it's safe the update in-memory markers directly.
 			bc.currentBlock.Store(newHeadBlock)
 			headBlockGauge.Update(int64(newHeadBlock.NumberU64()))
+			highestJustifiedBlockGauge.Update(int64(bc.getHighestJustifiedNumber(newHeadBlock.Header())))
+			highestFinalizedBlockGauge.Update(int64(bc.getHighestFinalizedNumber(newHeadBlock.Header())))
 		}
 		// Rewind the fast block in a simpleton way to the target head
 		if currentFastBlock := bc.CurrentFastBlock(); currentFastBlock != nil && header.Number.Uint64() < currentFastBlock.NumberU64() {
@@ -789,6 +817,8 @@ func (bc *BlockChain) FastSyncCommitHead(hash common.Hash) error {
 	bc.chainmu.Lock()
 	bc.currentBlock.Store(block)
 	headBlockGauge.Update(int64(block.NumberU64()))
+	highestJustifiedBlockGauge.Update(int64(bc.getHighestJustifiedNumber(block.Header())))
+	highestFinalizedBlockGauge.Update(int64(bc.getHighestFinalizedNumber(block.Header())))
 	bc.chainmu.Unlock()
 
 	// Destroy any existing state snapshot and regenerate it in the background,
@@ -880,6 +910,8 @@ func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	bc.genesisBlock = genesis
 	bc.currentBlock.Store(bc.genesisBlock)
 	headBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
+	highestJustifiedBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
+	highestFinalizedBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
 	bc.hc.SetGenesis(bc.genesisBlock.Header())
 	bc.hc.SetCurrentHeader(bc.genesisBlock.Header())
 	bc.currentFastBlock.Store(bc.genesisBlock)
@@ -952,6 +984,8 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	}
 	bc.currentBlock.Store(block)
 	headBlockGauge.Update(int64(block.NumberU64()))
+	highestJustifiedBlockGauge.Update(int64(bc.getHighestJustifiedNumber(block.Header())))
+	highestFinalizedBlockGauge.Update(int64(bc.getHighestFinalizedNumber(block.Header())))
 }
 
 // Genesis retrieves the chain's genesis block.
@@ -1805,8 +1839,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// Please refer to http://www.cs.cornell.edu/~ie53/publications/btcProcFC.pdf
 	reorg := externTd.Cmp(localTd) > 0
 	currentBlock = bc.CurrentBlock()
-	if p, ok := bc.engine.(consensus.PoSA); ok &&
-		p.GetHighestFinalizedNumber(bc, block.Header()) > p.GetHighestFinalizedNumber(bc, currentBlock.Header()) {
+	if bc.getHighestFinalizedNumber(block.Header()) > bc.getHighestFinalizedNumber(currentBlock.Header()) {
 		reorg = true
 	}
 	if !reorg && externTd.Cmp(localTd) == 0 {
