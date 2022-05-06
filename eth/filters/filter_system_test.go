@@ -698,6 +698,8 @@ func TestVoteSubscription(t *testing.T) {
 				VoteAddress: types.BLSPublicKey{},
 				Signature:   types.BLSSignature{},
 				Data: &types.VoteData{
+					SourceNumber: uint64(0),
+					SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
 					TargetNumber: uint64(1),
 					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
 				},
@@ -706,6 +708,8 @@ func TestVoteSubscription(t *testing.T) {
 				VoteAddress: types.BLSPublicKey{},
 				Signature:   types.BLSSignature{},
 				Data: &types.VoteData{
+					SourceNumber: uint64(0),
+					SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
 					TargetNumber: uint64(2),
 					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
 				},
@@ -714,6 +718,8 @@ func TestVoteSubscription(t *testing.T) {
 				VoteAddress: types.BLSPublicKey{},
 				Signature:   types.BLSSignature{},
 				Data: &types.VoteData{
+					SourceNumber: uint64(0),
+					SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
 					TargetNumber: uint64(3),
 					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(3)))),
 				},
@@ -722,6 +728,8 @@ func TestVoteSubscription(t *testing.T) {
 				VoteAddress: types.BLSPublicKey{},
 				Signature:   types.BLSSignature{},
 				Data: &types.VoteData{
+					SourceNumber: uint64(0),
+					SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
 					TargetNumber: uint64(4),
 					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(4)))),
 				},
