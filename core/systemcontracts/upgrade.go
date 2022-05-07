@@ -466,7 +466,7 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 	}
 
 	if config.IsOnBoneh(blockNumber) {
-		applySystemContractUpgrade(eulerUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(bonehUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*
