@@ -390,12 +390,11 @@ func (s *StateObject) updateTrie(db Database) Trie {
 			s.db.MetricsMux.Unlock()
 		}(time.Now())
 	}
-	// The snapshot storage map for the object
-	var storage map[string][]byte
 	// Insert all the pending updates into the trie
 	tr := s.getTrie(db)
 
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
+	dirtyStorage := make(map[common.Hash][]byte)
 	for key, value := range s.pendingStorage {
 		// Skip noop changes, persist actual changes
 		if value == s.originStorage[key] {
@@ -403,28 +402,45 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		}
 		s.originStorage[key] = value
 		var v []byte
-		if (value == common.Hash{}) {
-			s.setError(tr.TryDelete(key[:]))
-		} else {
+		if (value != common.Hash{}) {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-			s.setError(tr.TryUpdate(key[:], v))
 		}
-		// If state snapshotting is active, cache the data til commit
-		if s.db.snap != nil {
-			s.db.snapStorageMux.Lock()
-			if storage == nil {
-				// Retrieve the old storage map, if available, create a new one otherwise
-				if storage = s.db.snapStorage[s.address]; storage == nil {
-					storage = make(map[string][]byte)
-					s.db.snapStorage[s.address] = storage
-				}
-			}
-			storage[string(key[:])] = v // v will be nil if value is 0x00
-			s.db.snapStorageMux.Unlock()
-		}
-		usedStorage = append(usedStorage, common.CopyBytes(key[:])) // Copy needed for closure
+		dirtyStorage[key] = v
 	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for key, value := range dirtyStorage {
+			if len(value) == 0 {
+				s.setError(tr.TryDelete(key[:]))
+			} else {
+				s.setError(tr.TryUpdate(key[:], value))
+			}
+			usedStorage = append(usedStorage, common.CopyBytes(key[:]))
+		}
+	}()
+	if s.db.snap != nil {
+		// If state snapshotting is active, cache the data til commit
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.db.snapStorageMux.Lock()
+			// The snapshot storage map for the object
+			storage := s.db.snapStorage[s.address]
+			if storage == nil {
+				storage = make(map[string][]byte, len(dirtyStorage))
+				s.db.snapStorage[s.address] = storage
+			}
+			for key, value := range dirtyStorage {
+				storage[string(key[:])] = value
+			}
+			s.db.snapStorageMux.Unlock()
+		}()
+	}
+	wg.Wait()
+
 	if s.db.prefetcher != nil {
 		s.db.prefetcher.used(s.data.Root, usedStorage)
 	}
