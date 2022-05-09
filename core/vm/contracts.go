@@ -22,6 +22,7 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -109,7 +110,24 @@ var PrecompiledContractsBLS = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{18}): &bls12381MapG2{},
 }
 
+// PrecompiledContractsMiMC contains the default set of pre-compiled Ethereum
+// contracts used in the Berlin release.
+// TODO: rename to align the real fork name
+var PrecompiledContractsMiMC = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{1}):  &ecrecover{},
+	common.BytesToAddress([]byte{2}):  &sha256hash{},
+	common.BytesToAddress([]byte{3}):  &ripemd160hash{},
+	common.BytesToAddress([]byte{4}):  &dataCopy{},
+	common.BytesToAddress([]byte{5}):  &bigModExp{eip2565: true},
+	common.BytesToAddress([]byte{6}):  &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{7}):  &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{8}):  &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{9}):  &blake2F{},
+	common.BytesToAddress([]byte{19}): &mimcbn254hash{},
+}
+
 var (
+	PrecompiledAddressesMiMC      []common.Address
 	PrecompiledAddressesBerlin    []common.Address
 	PrecompiledAddressesIstanbul  []common.Address
 	PrecompiledAddressesByzantium []common.Address
@@ -128,6 +146,9 @@ func init() {
 	}
 	for k := range PrecompiledContractsBerlin {
 		PrecompiledAddressesBerlin = append(PrecompiledAddressesBerlin, k)
+	}
+	for k := range PrecompiledContractsMiMC {
+		PrecompiledAddressesMiMC = append(PrecompiledAddressesMiMC, k)
 	}
 }
 
@@ -1045,4 +1066,19 @@ func (c *bls12381MapG2) Run(input []byte) ([]byte, error) {
 
 	// Encode the G2 point to 256 bytes
 	return g.EncodePoint(r), nil
+}
+
+// MiMC hash implemented as a native contract.
+type mimcbn254hash struct{}
+
+// RequiredGas returns the gas required to execute the pre-compiled contract.
+//
+// This method does not require any overflow checking as the input size gas costs
+// required for anything significant is so high it's impossible to pay for.
+func (c *mimcbn254hash) RequiredGas(input []byte) uint64 {
+	return uint64(len(input)+31)/32*params.Mimcbn254WordGas + params.Mimcbn254BaseGas
+}
+func (c *mimcbn254hash) Run(input []byte) ([]byte, error) {
+	h, err := mimc.Sum(input)
+	return h[:], err
 }

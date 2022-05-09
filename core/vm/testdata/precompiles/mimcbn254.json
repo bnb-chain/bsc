@@ -1,0 +1,14 @@
+[
+  {
+    "Input": "1b3c3bd07dc251ee6530e9d4e542874f60b3451f1aabb1cc3200b157e712700e1b3c3bd07dc251ee6530e9d4e542874f60b3451f1aabb1cc3200b157e712700e",
+    "Expected": "2eda80045baff6a4bb74e6a0d9dff4c3541f731bfd83024e5088b80ad53d6a45",
+    "Name": "mimcbn254",
+    "Gas": 84
+  },
+  {
+    "Input": "01234789",
+    "Expected": "1b3c3bd07dc251ee6530e9d4e542874f60b3451f1aabb1cc3200b157e712700e",
+    "Name": "mimcbn254",
+    "Gas": 72
+  }
+]

@@ -142,6 +142,9 @@ const (
 	Bls12381PairingPerPairGas uint64 = 23000  // Per-point pair gas price for BLS12-381 elliptic curve pairing check
 	Bls12381MapG1Gas          uint64 = 5500   // Gas price for BLS12-381 mapping field element to G1 operation
 	Bls12381MapG2Gas          uint64 = 110000 // Gas price for BLS12-381 mapping field element to G2 operation
+
+	Mimcbn254BaseGas uint64 = 60 // Base price for a MiMC operation
+	Mimcbn254WordGas uint64 = 12 // Per-word price for a MiMC operation
 )
 
 // Gas discount table for BLS12-381 G1 and G2 multi exponentiation operations
