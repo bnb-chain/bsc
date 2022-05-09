@@ -214,10 +214,11 @@ type Parlia struct {
 
 	lock sync.RWMutex // Protects the signer fields
 
-	ethAPI          *ethapi.PublicBlockChainAPI
-	votePool        consensus.VotePool
-	validatorSetABI abi.ABI
-	slashABI        abi.ABI
+	ethAPI                     *ethapi.PublicBlockChainAPI
+	votePool                   consensus.VotePool
+	validatorSetABIBeforeBoneh abi.ABI
+	validatorSetABI            abi.ABI
+	slashABI                   abi.ABI
 
 	// The fields below are for testing only
 	fakeDiff bool // Skip difficulty verifications
@@ -247,6 +248,10 @@ func New(
 	if err != nil {
 		panic(err)
 	}
+	vABIBeforeBoneh, err := abi.JSON(strings.NewReader(validatorSetABIBeforeBoneh))
+	if err != nil {
+		panic(err)
+	}
 	vABI, err := abi.JSON(strings.NewReader(validatorSetABI))
 	if err != nil {
 		panic(err)
@@ -256,16 +261,17 @@ func New(
 		panic(err)
 	}
 	c := &Parlia{
-		chainConfig:     chainConfig,
-		config:          parliaConfig,
-		genesisHash:     genesisHash,
-		db:              db,
-		ethAPI:          ethAPI,
-		recentSnaps:     recentSnaps,
-		signatures:      signatures,
-		validatorSetABI: vABI,
-		slashABI:        sABI,
-		signer:          types.NewEIP155Signer(chainConfig.ChainID),
+		chainConfig:                chainConfig,
+		config:                     parliaConfig,
+		genesisHash:                genesisHash,
+		db:                         db,
+		ethAPI:                     ethAPI,
+		recentSnaps:                recentSnaps,
+		signatures:                 signatures,
+		validatorSetABIBeforeBoneh: vABIBeforeBoneh,
+		validatorSetABI:            vABI,
+		slashABI:                   sABI,
+		signer:                     types.NewEIP155Signer(chainConfig.ChainID),
 	}
 
 	return c

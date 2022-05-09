@@ -25,7 +25,7 @@ func (p *Parlia) getCurrentValidatorsBeforeBoneh(blockHash common.Hash, blockNum
 	ctx, cancel := context.WithCancel(context.Background())
 	// cancel when we are finished consuming integers
 	defer cancel()
-	data, err := p.validatorSetABI.Pack(method)
+	data, err := p.validatorSetABIBeforeBoneh.Pack(method)
 	if err != nil {
 		log.Error("Unable to pack tx for getValidators", "error", err)
 		return nil, err
@@ -46,7 +46,7 @@ func (p *Parlia) getCurrentValidatorsBeforeBoneh(blockHash common.Hash, blockNum
 		ret0 = new([]common.Address)
 	)
 	out := ret0
-	if err := p.validatorSetABI.UnpackIntoInterface(out, method, result); err != nil {
+	if err := p.validatorSetABIBeforeBoneh.UnpackIntoInterface(out, method, result); err != nil {
 		return nil, err
 	}
 	valz := make([]common.Address, len(*ret0))
