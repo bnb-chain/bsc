@@ -177,6 +177,38 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context) (*rpc.Su
 	return rpcSub, nil
 }
 
+// NewVotesFilter creates a filter that fetches votes that entered the vote pool.
+// It is part of the filter package since polling goes with eth_getFilterChanges.
+func (api *PublicFilterAPI) NewVotesFilter() rpc.ID {
+	var (
+		votes   = make(chan *types.VoteEnvelope)
+		voteSub = api.events.SubscribeNewVotes(votes)
+	)
+	api.filtersMu.Lock()
+	api.filters[voteSub.ID] = &filter{typ: VotesSubscription, deadline: time.NewTimer(api.timeout), hashes: make([]common.Hash, 0), s: voteSub}
+	api.filtersMu.Unlock()
+
+	gopool.Submit(func() {
+		for {
+			select {
+			case vote := <-votes:
+				api.filtersMu.Lock()
+				if f, found := api.filters[voteSub.ID]; found {
+					f.hashes = append(f.hashes, vote.Hash())
+				}
+				api.filtersMu.Unlock()
+			case <-voteSub.Err():
+				api.filtersMu.Lock()
+				delete(api.filters, voteSub.ID)
+				api.filtersMu.Unlock()
+				return
+			}
+		}
+	})
+
+	return voteSub.ID
+}
+
 // NewVotes creates a subscription that is triggered each time a vote enters the vote pool.
 func (api *PublicFilterAPI) NewVotes(ctx context.Context) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
@@ -463,7 +495,7 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 		f.deadline.Reset(api.timeout)
 
 		switch f.typ {
-		case PendingTransactionsSubscription, BlocksSubscription:
+		case PendingTransactionsSubscription, BlocksSubscription, VotesSubscription:
 			hashes := f.hashes
 			f.hashes = nil
 			return returnHashes(hashes), nil
