@@ -41,8 +41,11 @@ import (
 )
 
 var (
-	blockCount = uint64(0)
-	preFlag    = false
+	blockCount         = uint64(0)
+	preFlag            = false
+	txpoolSnapshotFlag = false
+	precommitFlag      = false
+	preNewWorkFlag     = false
 	//routineCount = 0
 )
 
@@ -441,9 +444,12 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					core.PreCommitFlag = false
 					preFlag = false
 					log.Info("Stop snapshotloop and precommitloop", "blockNumber", head.Block.NumberU64())
-					w.stopTxpoolSnapshotCh <- struct{}{}
-					w.stopPreCommitCh <- struct{}{}
-					w.stopPreNewWorkCh <- struct{}{}
+					close(w.stopTxpoolSnapshotCh)
+					close(w.stopPreCommitCh)
+					close(w.stopPreNewWorkCh)
+					//w.stopTxpoolSnapshotCh <- struct{}{}
+					//w.stopPreCommitCh <- struct{}{}
+					//w.stopPreNewWorkCh <- struct{}{}
 				}
 			}
 			log.Debug("miner/worker receive chainHeadCh", "blockNumber", head.Block.NumberU64())
@@ -1246,6 +1252,7 @@ func (w *worker) txpoolSnapshotLoop() {
 			default:
 				close(currentPoolTxsCh)
 			}
+			w.stopTxpoolSnapshotCh = make(chan struct{})
 			return
 		}
 	}
@@ -1278,6 +1285,7 @@ func (w *worker) preCommitLoop() {
 			//			return
 		case <-w.stopPreCommitCh:
 			log.Info("preCommitLoop return on stopPreCommitCh")
+			w.stopPreCommitCh = make(chan struct{})
 			return
 		}
 	}
@@ -1290,6 +1298,7 @@ func (w *worker) preNewWorkLoop() {
 			w.preCommitBlock(req.txpoolCh, req.interrupt)
 		case <-w.stopPreNewWorkCh:
 			log.Info("preNewWorkLoop return on stopPreNewWorkCh")
+			w.stopPreNewWorkCh = make(chan struct{})
 			return
 		}
 	}
