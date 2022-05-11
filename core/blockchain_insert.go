@@ -81,7 +81,7 @@ func (st *insertStats) report(chain []*types.Block, index int, dirty common.Stor
 			totalGasUsedPre += float64(st.usedGas)
 			totalElapsedPre += float64(elapsed)
 			totalBlocksPre += st.processed
-			context = append(context, []interface{}{"t_mgasps", totalGasUsedPre * 1000 / totalElapsedPre, "t_blocks", totalBlocksPre}...)
+			context = append(context, []interface{}{"t_mgasps_pre", totalGasUsedPre * 1000 / totalElapsedPre, "t_blocks_pre", totalBlocksPre}...)
 
 		} else {
 			totalGasUsed += float64(st.usedGas)
