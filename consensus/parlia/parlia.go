@@ -644,6 +644,28 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 	return nil
 }
+func (p *Parlia) Prepare4PreMining(chain consensus.ChainHeaderReader, header *types.Header) error {
+	//	header.Coinbase = p.val
+	//	header.Nonce = types.BlockNonce{}
+
+	// Set the correct difficulty
+	//	header.Difficulty = new(big.Int).Set(diffNoTurn)
+
+	// Mix digest is reserved for now, set to empty
+	//	header.MixDigest = common.Hash{}
+
+	number := header.Number.Uint64()
+	// Ensure the timestamp has the correct delay
+	parent := chain.GetHeader(header.ParentHash, number-1)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+	header.Time = parent.Time + p.config.Period
+	if header.Time < uint64(time.Now().Unix()) {
+		header.Time = uint64(time.Now().Unix())
+	}
+	return nil
+}
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
@@ -797,10 +819,10 @@ func (p *Parlia) FinalizeAndAssemble4preCommit(chain consensus.ChainHeaderReader
 			log.Error("init contract failed")
 		}
 	}
-	err := p.distributeIncoming(p.val, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
-	if err != nil {
-		return err
-	}
+	//	err := p.distributeIncoming(p.val, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
+	//	if err != nil {
+	//		return err
+	//	}
 	// should not happen. Once happen, stop the node is better than broadcast the block
 	if header.GasLimit < header.GasUsed {
 		return errors.New("gas consumption of system txs exceed the gas limit")

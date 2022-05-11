@@ -42,7 +42,6 @@ import (
 
 var (
 	blockCount         = uint64(0)
-	preFlag            = false
 	txpoolSnapshotFlag = false
 	precommitFlag      = false
 	preNewWorkFlag     = false
@@ -184,7 +183,8 @@ type worker struct {
 	txpoolChainHeadCh chan struct{}
 	preNewWorkCh      chan *preNewWorkReq
 
-	current      *environment                 // An environment for current running cycle.
+	current      *environment // An environment for current running cycle.
+	currentPre   *environment
 	localUncles  map[common.Hash]*types.Block // A set of side blocks generated locally as the possible uncle blocks.
 	remoteUncles map[common.Hash]*types.Block // A set of side blocks as the possible uncle blocks.
 	unconfirmed  *unconfirmedBlocks           // A set of locally mined blocks pending canonicalness confirmations.
@@ -278,9 +278,9 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	go worker.resultLoop()
 	go worker.taskLoop()
 
-	//go worker.txpoolSnapshotLoop()
-	//go worker.preCommitLoop()
-	//go worker.preNewWorkLoop()
+	go worker.txpoolSnapshotLoop()
+	go worker.preCommitLoop()
+	go worker.preNewWorkLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -430,39 +430,11 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(true, commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
-			nTmp := head.Block.NumberU64() / 1000
-			if nTmp > blockCount {
-				blockCount = nTmp
-				if blockCount%2 == 0 {
-					core.PreCommitFlag = true
-					preFlag = true
-					log.Info("Start preCommit for about 1000 blocks", "blockNumber", head.Block.NumberU64())
-					go w.txpoolSnapshotLoop()
-					go w.preCommitLoop()
-					go w.preNewWorkLoop()
-				} else {
-					core.PreCommitFlag = false
-					preFlag = false
-					log.Info("Stop snapshotloop and precommitloop", "blockNumber", head.Block.NumberU64())
-					close(w.stopTxpoolSnapshotCh)
-					close(w.stopPreCommitCh)
-					close(w.stopPreNewWorkCh)
-					//w.stopTxpoolSnapshotCh <- struct{}{}
-					//w.stopPreCommitCh <- struct{}{}
-					//w.stopPreNewWorkCh <- struct{}{}
-				}
-			}
-			log.Debug("miner/worker receive chainHeadCh", "blockNumber", head.Block.NumberU64())
 			if !w.isRunning() {
 				log.Debug("miner/worker not mining")
-
-				if preFlag {
-					select {
-					case w.txpoolChainHeadCh <- struct{}{}:
-						log.Debug("miner/worker set txpoolChainHeadCh")
-					default:
-						log.Debug("miner/worker fail to set txpoolChainHeadCh")
-					}
+				select {
+				case w.txpoolChainHeadCh <- struct{}{}:
+				default:
 				}
 				continue
 			}
@@ -472,30 +444,22 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				signedRecent, err := p.SignRecently(w.chain, head.Block.Header())
 				if err != nil {
 					log.Info("Not allowed to propose block", "err", err)
-					if preFlag {
-						select {
-						case w.txpoolChainHeadCh <- struct{}{}:
-							log.Debug("miner/worker-signedcheckerr set txpoolChainHeadCh")
-						default:
-							log.Debug("miner/worker-signedcheckerr fail to set txpoolChainHeadCh")
-						}
+					select {
+					case w.txpoolChainHeadCh <- struct{}{}:
+					default:
 					}
 					continue
 				}
 				if signedRecent {
 					log.Info("Signed recently, must wait")
-					if preFlag {
-						select {
-						case w.txpoolChainHeadCh <- struct{}{}:
-							log.Debug("miner/worker-signedrecent set txpoolChainHeadCh")
-						default:
-							log.Debug("miner/worker-signedrecent fail to set txpoolChainHeadCh")
-						}
+					select {
+					case w.txpoolChainHeadCh <- struct{}{}:
+					default:
 					}
 					continue
 				}
 			}
-			//commit(true, commitInterruptNewHead)
+			commit(true, commitInterruptNewHead)
 
 		case <-timer.C:
 			// If mining is running resubmit a new work cycle periodically to pull in
@@ -507,11 +471,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					timer.Reset(recommit)
 					continue
 				}
-				//	select {
-				//	case w.resetPoolSnapshot <- struct{}{}:
-				//	default:
-				//	}
-				//	commit(true, commitInterruptResubmit)
+				commit(true, commitInterruptResubmit)
 			}
 
 		case interval := <-w.resubmitIntervalCh:
@@ -595,37 +555,37 @@ func (w *worker) mainLoop() {
 			// Note all transactions received may not be continuous with transactions
 			// already included in the current mining block. These transactions will
 			// be automatically eliminated.
-			//			if !w.isRunning() && w.current != nil {
-			//				// If block is already full, abort
-			//				if gp := w.current.gasPool; gp != nil && gp.Gas() < params.TxGas {
-			//					continue
-			//				}
-			//				w.mu.RLock()
-			//				coinbase := w.coinbase
-			//				w.mu.RUnlock()
-			//
-			//				txs := make(map[common.Address]types.Transactions)
-			//				for _, tx := range ev.Txs {
-			//					acc, _ := types.Sender(w.current.signer, tx)
-			//					txs[acc] = append(txs[acc], tx)
-			//				}
-			//				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs)
-			//				tcount := w.current.tcount
-			//				w.commitTransactions(txset, coinbase, nil)
-			//				// Only update the snapshot if any new transactons were added
-			//				// to the pending block
-			//				if tcount != w.current.tcount {
-			//					w.updateSnapshot()
-			//				}
-			//} else {
-			// Special case, if the consensus engine is 0 period clique(dev mode),
-			// submit mining work here since all empty submission will be rejected
-			// by clique. Of course the advance sealing(empty submission) is disabled.
-			if (w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0) ||
-				(w.chainConfig.Parlia != nil && w.chainConfig.Parlia.Period == 0) {
-				w.commitNewWork(nil, true, time.Now().Unix())
+			if !w.isRunning() && w.current != nil {
+				// If block is already full, abort
+				if gp := w.current.gasPool; gp != nil && gp.Gas() < params.TxGas {
+					continue
+				}
+				w.mu.RLock()
+				coinbase := w.coinbase
+				w.mu.RUnlock()
+
+				txs := make(map[common.Address]types.Transactions)
+				for _, tx := range ev.Txs {
+					acc, _ := types.Sender(w.current.signer, tx)
+					txs[acc] = append(txs[acc], tx)
+				}
+				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs)
+				tcount := w.current.tcount
+				w.commitTransactions(txset, coinbase, nil)
+				// Only update the snapshot if any new transactons were added
+				// to the pending block
+				if tcount != w.current.tcount {
+					w.updateSnapshot()
+				}
+			} else {
+				// Special case, if the consensus engine is 0 period clique(dev mode),
+				// submit mining work here since all empty submission will be rejected
+				// by clique. Of course the advance sealing(empty submission) is disabled.
+				if (w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0) ||
+					(w.chainConfig.Parlia != nil && w.chainConfig.Parlia.Period == 0) {
+					w.commitNewWork(nil, true, time.Now().Unix())
+				}
 			}
-			//			}
 			atomic.AddInt32(&w.newTxs, int32(len(ev.Txs)))
 
 			// System stopped
@@ -1319,16 +1279,11 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 		GasLimit:   core.CalcGasLimit(parent, w.config.GasFloor, w.config.GasCeil) * 2,
 		Extra:      w.extra,
 		Time:       uint64(timestamp),
+		Nonce:      types.BlockNonce{},
+		Difficulty: big.NewInt(2),
 	}
-	// Only set the coinbase if our consensus engine is running (avoid spurious block rewards)
-	if w.isRunning() {
-		if w.coinbase == (common.Address{}) {
-			log.Error("preCommitBlock: Refusing to mine without etherbase")
-			return
-		}
-		header.Coinbase = w.coinbase
-	}
-	if err := w.engine.Prepare(w.chain, header); err != nil {
+
+	if err := w.engine.(*parlia.Parlia).Prepare4PreMining(w.chain, header); err != nil {
 		log.Error("preCommitBlock: Failed to prepare header for mining", "err", err)
 		return
 	}
@@ -1346,13 +1301,13 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 		}
 	}
 	// Could potentially happen if starting to mine in an odd state.
-	err := w.makeCurrent(parent, header)
+	err := w.makePreCurrent(parent, header)
 	if err != nil {
 		log.Error("preCommitBlock: Failed to create mining context", "err", err)
 		return
 	}
 	// Create the current work task and check any fork transitions needed
-	env := w.current
+	env := w.currentPre
 	if w.chainConfig.DAOForkSupport && w.chainConfig.DAOForkBlock != nil && w.chainConfig.DAOForkBlock.Cmp(header.Number) == 0 {
 		misc.ApplyDAOHardFork(env.state)
 	}
@@ -1363,11 +1318,10 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 	tstart := time.Now()
 	log.Info("preCommitBlock start", "blockNum", header.Number)
 	ctxs := 0
-
 	for txs := range poolTxsCh {
 		//reset gaspool, diff new txs, state has been changed on this height , will just be shifted by nonce. same nonce with higher price will fail.
 		if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
-			log.Debug("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs+1, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart), "w.tcount", w.current.tcount)
+			log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs+1, "countOfTxs", w.currentPre.tcount, "elapsed", time.Now().Sub(tstart), "w.tcount", w.currentPre.tcount)
 			return
 		}
 		ctxs++
@@ -1375,8 +1329,7 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 			break
 		}
 	}
-	//routineCount--
-	log.Info("preCommitBlock end", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.current.tcount, "elapsed", time.Now().Sub(tstart), "w.tcount", w.current.tcount) //, "routineCount", routineCount)
+	log.Info("preCommitBlock end", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.currentPre.tcount, "elapsed", time.Now().Sub(tstart), "w.tcount", w.currentPre.tcount)
 }
 
 func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, interrupt *int32, uncles []*types.Header, num *big.Int, ctxs int) bool {
@@ -1384,51 +1337,48 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 		return false
 	}
 	if len(pendingTxs[0]) > 0 {
-		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[0])
+		txs := types.NewTransactionsByPriceAndNonce(w.currentPre.signer, pendingTxs[0])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
 			log.Debug("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1, "len(localtxs)", len(pendingTxs[0]))
 			return true
 		}
-		log.Debug("preCommitBlock-preExecute finish exec local txs", "blockNum", num, "batchTxs", ctxs+1, "len(localTxs)-1", len(pendingTxs[0]))
-	} else {
-		log.Debug("preCommitBlock-preExecute finish exec local txs", "blockNum", num, "batchTxs", ctxs+1, "len(localtxs)", 0)
 	}
 	if len(pendingTxs[1]) > 0 {
-		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, pendingTxs[1])
+		txs := types.NewTransactionsByPriceAndNonce(w.currentPre.signer, pendingTxs[1])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
 			log.Debug("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1)
 			return true
 		}
-		log.Debug("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "batchTxs", ctxs+1, "len(remoteTxs)-1", len(pendingTxs[1]))
-	} else {
-		log.Debug("preCommitBlock-preExecute finish exec remote txs", "blockNum", num, "batchTxs", ctxs+1, "len(remoteTxs)", 0)
 	}
-	s := w.current.state
+	s := w.currentPre.state
 	if err := s.WaitPipeVerification(); err == nil {
-		//		log.Info("preCommitBlock-preExecute", "len(txs)", len(w.current.txs), "uncles", uncles, "len(receipts)", len(w.current.receipts))
-		//		w.engine.FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
-		w.engine.(*parlia.Parlia).FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
-		log.Info("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "batchTxs", ctxs+1, "len(txs)", len(w.current.txs), "len(receipts)", len(w.current.receipts), "w.current.tcount", w.current.tcount)
+		w.engine.(*parlia.Parlia).FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.currentPre.header), s, w.currentPre.txs, uncles, w.currentPre.receipts)
+		log.Debug("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "batchTxs", ctxs+1, "len(txs)", len(w.currentPre.txs), "len(receipts)", len(w.currentPre.receipts), "w.current.tcount", w.currentPre.tcount)
 	}
 	return false
 }
 
 func (w *worker) preCommitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32) bool {
 	// Short circuit if current is nil
-	if w.current == nil {
+	if w.currentPre == nil {
 		return true
 	}
 
-	if w.current.gasPool == nil {
-		w.current.gasPool = new(core.GasPool).AddGas(w.current.header.GasLimit)
-		w.current.gasPool.SubGas(params.SystemTxsGas)
+	if w.currentPre.gasPool == nil {
+		w.currentPre.gasPool = new(core.GasPool).AddGas(w.currentPre.header.GasLimit)
+		w.currentPre.gasPool.SubGas(params.SystemTxsGas)
 	}
 
 	var coalescedLogs []*types.Log
 	var stopTimer *time.Timer
-	delay := w.engine.Delay(w.chain, w.current.header)
+	delay := w.engine.Delay(w.chain, w.currentPre.header)
 	if delay != nil {
-		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
+		tmpD := *delay - w.config.DelayLeftOver
+		if tmpD <= 100*time.Millisecond {
+			tmpD = time.Duration(time.Second)
+		}
+		//		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
+		stopTimer = time.NewTimer(tmpD)
 		log.Debug("preCommitTransactions: Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
 		defer stopTimer.Stop()
 	}
@@ -1453,14 +1403,14 @@ LOOP:
 			return true
 		}
 		// If we don't have enough gas for any further transactions then we're done
-		if w.current.gasPool.Gas() < params.TxGas {
-			log.Trace("preCommitTransactions: Not enough gas for further transactions", "have", w.current.gasPool, "want", params.TxGas)
+		if w.currentPre.gasPool.Gas() < params.TxGas {
+			log.Trace("preCommitTransactions: Not enough gas for further transactions", "have", w.currentPre.gasPool, "want", params.TxGas)
 			break
 		}
 		if stopTimer != nil {
 			select {
 			case <-stopTimer.C:
-				log.Info("preCommitTransactions: Not enough time for further transactions", "txs", len(w.current.txs))
+				log.Info("preCommitTransactions: Not enough time for further transactions", "txs", len(w.currentPre.txs))
 				break LOOP
 			default:
 			}
@@ -1477,15 +1427,15 @@ LOOP:
 		//from, _ := types.Sender(w.current.signer, tx)
 		// Check whether the tx is replay protected. If we're not in the EIP155 hf
 		// phase, start ignoring the sender until we do.
-		if tx.Protected() && !w.chainConfig.IsEIP155(w.current.header.Number) {
+		if tx.Protected() && !w.chainConfig.IsEIP155(w.currentPre.header.Number) {
 			//log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eip155", w.chainConfig.EIP155Block)
 			txs.Pop()
 			continue
 		}
 		// Start executing the transaction
-		w.current.state.Prepare(tx.Hash(), common.Hash{}, w.current.tcount)
+		w.currentPre.state.Prepare(tx.Hash(), common.Hash{}, w.currentPre.tcount)
 
-		logs, err := w.commitTransaction(tx, coinbase, bloomProcessors)
+		logs, err := w.preCommitTransaction(tx, coinbase, bloomProcessors)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -1505,7 +1455,7 @@ LOOP:
 		case errors.Is(err, nil):
 			// Everything ok, collect the logs and shift in the next transaction from the same account
 			coalescedLogs = append(coalescedLogs, logs...)
-			w.current.tcount++
+			w.currentPre.tcount++
 			txs.Shift()
 
 		case errors.Is(err, core.ErrTxTypeNotSupported):
@@ -1521,23 +1471,20 @@ LOOP:
 		}
 	}
 	bloomProcessors.Close()
-
-	//	if !w.isRunning() && len(coalescedLogs) > 0 {
-	//		// We don't push the pendingLogsEvent while we are mining. The reason is that
-	//		// when we are mining, the worker will regenerate a mining block every 3 seconds.
-	//		// In order to avoid pushing the repeated pendingLog, we disable the pending log pushing.
-	//
-	//		// make a copy, the state caches the logs and these logs get "upgraded" from pending to mined
-	//		// logs by filling in the block hash when the block was mined by the local miner. This can
-	//		// cause a race condition if a log was "upgraded" before the PendingLogsEvent is processed.
-	//		cpy := make([]*types.Log, len(coalescedLogs))
-	//		for i, l := range coalescedLogs {
-	//			cpy[i] = new(types.Log)
-	//			*cpy[i] = *l
-	//		}
-	//		w.pendingLogsFeed.Send(cpy)
-	//	}
 	return false
+}
+func (w *worker) preCommitTransaction(tx *types.Transaction, coinbase common.Address, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
+	snap := w.currentPre.state.Snapshot()
+
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.currentPre.gasPool, w.currentPre.state, w.currentPre.header, tx, &w.currentPre.header.GasUsed, *w.chain.GetVMConfig(), receiptProcessors...)
+	if err != nil {
+		w.currentPre.state.RevertToSnapshot(snap)
+		return nil, err
+	}
+	w.currentPre.txs = append(w.currentPre.txs, tx)
+	w.currentPre.receipts = append(w.currentPre.receipts, receipt)
+
+	return receipt.Logs, nil
 }
 
 func (w *worker) calPendingTxs() []map[common.Address]types.Transactions {
@@ -1557,5 +1504,34 @@ func (w *worker) calPendingTxs() []map[common.Address]types.Transactions {
 		}
 		return []map[common.Address]types.Transactions{localTxs, remoteTxs}
 	}
+	return nil
+}
+
+func (w *worker) makePreCurrent(parent *types.Block, header *types.Header) error {
+	// Retrieve the parent state to execute on top and start a prefetcher for
+	// the miner to speed block sealing up a bit
+	state, err := w.chain.StateAtWithSharedPool(parent.Root())
+	if err != nil {
+		return err
+	}
+	state.StartPrefetcher("miner")
+
+	env := &environment{
+		signer:    types.MakeSigner(w.chainConfig, header.Number),
+		state:     state,
+		ancestors: mapset.NewSet(),
+		family:    mapset.NewSet(),
+		uncles:    mapset.NewSet(),
+		header:    header,
+	}
+	// Keep track of transactions which return errors so they can be removed
+	env.tcount = 0
+
+	// Swap out the old work with the new one, terminating any leftover prefetcher
+	// processes in the mean time and starting a new one.
+	if w.currentPre != nil && w.currentPre.state != nil {
+		w.currentPre.state.StopPrefetcher()
+	}
+	w.currentPre = env
 	return nil
 }
