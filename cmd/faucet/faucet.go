@@ -110,7 +110,7 @@ func main() {
 	for i := 0; i < *tiersFlag; i++ {
 		// Calculate the amount for the next tier and format it
 		amount := float64(*payoutFlag) * math.Pow(2.5, float64(i))
-		amounts[i] = fmt.Sprintf("%s BNBs", strconv.FormatFloat(amount, 'f', -1, 64))
+		amounts[i] = fmt.Sprintf("0.%s BNBs", strconv.FormatFloat(amount, 'f', -1, 64))
 		if amount == 1 {
 			amounts[i] = strings.TrimSuffix(amounts[i], "s")
 		}
@@ -458,7 +458,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			form.Add("secret", *captchaSecret)
 			form.Add("response", msg.Captcha)
 
-			res, err := http.PostForm("https://www.google.com/recaptcha/api/siteverify", form)
+			res, err := http.PostForm("https://hcaptcha.com/siteverify", form)
 			if err != nil {
 				if err = sendError(conn, err); err != nil {
 					log.Warn("Failed to send captcha post error to client", "err", err)
@@ -547,7 +547,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			var tx *types.Transaction
 			if msg.Symbol == "BNB" {
 				// User wasn't funded recently, create the funding transaction
-				amount := new(big.Int).Mul(big.NewInt(int64(*payoutFlag)), ether)
+				amount := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(*payoutFlag)), ether), big.NewInt(10))
 				amount = new(big.Int).Mul(amount, new(big.Int).Exp(big.NewInt(5), big.NewInt(int64(msg.Tier)), nil))
 				amount = new(big.Int).Div(amount, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(msg.Tier)), nil))
 
