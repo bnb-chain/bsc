@@ -20,6 +20,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"github.com/panjf2000/ants/v2"
 	"math/big"
 	"runtime"
 	"sort"
@@ -77,6 +78,7 @@ type StateDB struct {
 	db             Database
 	prefetcherLock sync.Mutex
 	prefetcher     *triePrefetcher
+	triePool       *ants.PoolWithFunc
 	originalRoot   common.Hash // The pre-state root, before any changes were made
 	expectedRoot   common.Hash // The state root in the block header
 	stateRoot      common.Hash // The calculation result of IntermediateRoot
@@ -208,6 +210,10 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 	if s.snap != nil {
 		s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, namespace)
 	}
+}
+
+func (s *StateDB) SetTriePool(triePool *ants.PoolWithFunc) {
+	s.triePool = triePool
 }
 
 // StopPrefetcher terminates a running prefetcher and reports any leftover stats
@@ -954,7 +960,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		}
 	}
 	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
-		s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+		s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr, s.triePool)
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
