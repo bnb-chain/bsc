@@ -3421,9 +3421,9 @@ const slashABI = `
             "type": "tuple"
           },
           {
-            "internalType": "address",
-            "name": "valAddr",
-            "type": "address"
+            "internalType": "bytes",
+            "name": "voteAddr",
+            "type": "bytes"
           }
         ],
         "internalType": "struct SlashIndicator.FinalityEvidence",
