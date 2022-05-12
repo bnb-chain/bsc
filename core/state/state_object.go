@@ -412,7 +412,7 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		}
 		// If state snapshotting is active, cache the data til commit
 		if s.db.snap != nil {
-			s.db.snapMux.Lock()
+			s.db.snapStorageMux.Lock()
 			if storage == nil {
 				// Retrieve the old storage map, if available, create a new one otherwise
 				if storage = s.db.snapStorage[s.address]; storage == nil {
@@ -421,7 +421,7 @@ func (s *StateObject) updateTrie(db Database) Trie {
 				}
 			}
 			storage[string(key[:])] = v // v will be nil if value is 0x00
-			s.db.snapMux.Unlock()
+			s.db.snapStorageMux.Unlock()
 		}
 		usedStorage = append(usedStorage, common.CopyBytes(key[:])) // Copy needed for closure
 	}
