@@ -973,7 +973,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 			continue
 		}
 
-		snap, err := p.snapshot(chain, height, head.Hash(), nil)
+		snap, err := p.snapshot(chain, justifiedBlock.Number.Uint64()-1, justifiedBlock.ParentHash, nil)
 		if err != nil {
 			return err
 		}
