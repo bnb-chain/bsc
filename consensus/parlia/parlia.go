@@ -1150,7 +1150,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	return blk, receipts, nil
 }
 
-func (p *Parlia) WithinValidatorSet(chain consensus.ChainHeaderReader, header *types.Header) bool {
+func (p *Parlia) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header) bool {
 	number := header.Number.Uint64()
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
@@ -1159,46 +1159,46 @@ func (p *Parlia) WithinValidatorSet(chain consensus.ChainHeaderReader, header *t
 	}
 	validators := snap.Validators
 	if _, ok := validators[p.val]; ok {
-		return true
+		return ok
 	}
 	return false
 }
 
 // VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
-func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) bool {
+func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
 	targetNumber := vote.Data.TargetNumber
 	targetHash := vote.Data.TargetHash
 	header := chain.GetHeaderByHash(targetHash)
 	if header == nil {
 		log.Warn("BlockHeader at current voteBlockNumber is nil", "targetNumber", targetNumber, "targetHash", targetHash)
-		return false
+		return fmt.Errorf("BlockHeader at current voteBlockNumber is nil")
 	}
 
 	justifiedHeader := p.GetHighestJustifiedHeader(chain, header)
 	if justifiedHeader == nil {
 		log.Error("failed to get the highest justified header", "headerNumber", header.Number, "headerHash", header.Hash())
-		return false
+		return fmt.Errorf("BlockHeader at current voteBlockNumber is nil")
 	}
 	if vote.Data.SourceNumber != justifiedHeader.Number.Uint64() || vote.Data.SourceHash != justifiedHeader.Hash() {
-		return false
+		return fmt.Errorf("vote source block mismatch")
 	}
 
 	number := header.Number.Uint64()
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		log.Error("failed to get the snapshot from consensus", "error", err)
-		return false
+		return fmt.Errorf("failed to get the snapshot from consensus")
 	}
 
 	validators := snap.Validators
 	voteAddress := vote.VoteAddress
 	for _, validator := range validators {
 		if validator.VoteAddress == voteAddress {
-			return true
+			return nil
 		}
 	}
 
-	return false
+	return fmt.Errorf("vote verification failed")
 }
 
 // Authorize injects a private key into the consensus engine to mint new blocks

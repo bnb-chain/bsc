@@ -2,7 +2,6 @@ package vote
 
 import (
 	"container/heap"
-	"fmt"
 	"sync"
 
 	mapset "github.com/deckarep/golang-set"
@@ -124,6 +123,12 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 	header := pool.chain.CurrentBlock().Header()
 	headNumber := header.Number.Uint64()
 
+	// Make sure in the range currentHeight-256~currentHeight+13.
+	if targetNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || targetNumber > headNumber+upperLimitOfVoteBlockNumber {
+		log.Warn("BlockNumber of vote is outside the range of header-256~header+13")
+		return false
+	}
+
 	voteData := &types.VoteData{
 		TargetNumber: targetNumber,
 		TargetHash:   targetHash,
@@ -150,11 +155,10 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 
 	if !isFutureVote {
 		// Verify if the vote comes from valid validators based on voteAddress (BLSPublicKey), only verify curVotes here, will verify futureVotes in transfer process.
-		if posa, ok := pool.engine.(consensus.PoSA); ok {
-			if !posa.VerifyVote(pool.chain, vote) {
-				return false
-			}
+		if pool.engine.VerifyVote(pool.chain, vote) != nil {
+			return false
 		}
+
 		// Send vote for handler usage of broadcasting to peers.
 		voteEv := core.NewVoteEvent{Vote: vote}
 		pool.votesFeed.Send(voteEv)
@@ -188,9 +192,9 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 		m[targetHash] = voteBox
 
 		if isFutureVote {
-			localFutureVotesPqGauge.Inc(1)
+			localFutureVotesPqGauge.Update(int64(votesPq.Len()))
 		} else {
-			localCurVotesPqGauge.Inc(1)
+			localCurVotesPqGauge.Update(int64(votesPq.Len()))
 		}
 	}
 
@@ -205,8 +209,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 	} else {
 		localCurVotesGauge.Inc(1)
 	}
-	votesPerBlockHashMetric(targetHash).Inc(1)
-	localReceivedVotesGauge.Inc(1)
+	localReceivedVotesGauge.Update(int64(pool.receivedVotes.Cardinality()))
 }
 
 func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Header) {
@@ -249,10 +252,8 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 	validVotes := make([]*types.VoteEnvelope, 0, len(voteBox.voteMessages))
 	for _, vote := range voteBox.voteMessages {
 		// Verify if the vote comes from valid validators based on voteAddress (BLSPublicKey).
-		if posa, ok := pool.engine.(consensus.PoSA); ok {
-			if !posa.VerifyVote(pool.chain, vote) {
-				continue
-			}
+		if pool.engine.VerifyVote(pool.chain, vote) != nil {
+			continue
 		}
 
 		// In the process of transfer, send valid vote to votes channel for handler usage
@@ -265,7 +266,7 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 	if _, ok := curVotes[blockHash]; !ok {
 		heap.Push(curPq, voteData)
 		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
-		localCurVotesPqGauge.Inc(1)
+		localCurVotesPqGauge.Update(int64(curPq.Len()))
 	} else {
 		curVotes[blockHash].voteMessages = append(curVotes[blockHash].voteMessages, validVotes...)
 	}
@@ -274,7 +275,7 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 
 	localCurVotesGauge.Inc(int64(len(validVotes)))
 	localFutureVotesGauge.Dec(int64(len(voteBox.voteMessages)))
-	localFutureVotesPqGauge.Dec(1)
+	localFutureVotesPqGauge.Update(int64(futurePq.Len()))
 }
 
 // Prune old data of duplicationSet, curVotePq and curVotesMap.
@@ -287,19 +288,20 @@ func (pool *VotePool) prune(latestBlockNumber uint64) {
 	for curVotesPq.Len() > 0 && curVotesPq.Peek().TargetNumber+lowerLimitOfVoteBlockNumber-1 < latestBlockNumber {
 		// Prune curPriorityQueue.
 		blockHash := heap.Pop(curVotesPq).(*types.VoteData).TargetHash
-		voteMessages := curVotes[blockHash].voteMessages
-		// Prune duplicationSet.
-		for _, voteMessage := range voteMessages {
-			voteHash := voteMessage.Hash()
-			pool.receivedVotes.Remove(voteHash)
-		}
-		// Prune curVotes Map.
-		delete(curVotes, blockHash)
+		localCurVotesPqGauge.Update(int64(curVotesPq.Len()))
+		if voteBox, ok := curVotes[blockHash]; ok {
+			voteMessages := voteBox.voteMessages
+			// Prune duplicationSet.
+			for _, voteMessage := range voteMessages {
+				voteHash := voteMessage.Hash()
+				pool.receivedVotes.Remove(voteHash)
+			}
+			// Prune curVotes Map.
+			delete(curVotes, blockHash)
 
-		localCurVotesGauge.Dec(int64(len(voteMessages)))
-		localCurVotesPqGauge.Dec(1)
-		localReceivedVotesGauge.Dec(int64(len(voteMessages)))
-		votesPerBlockHashMetric(blockHash).Dec(1)
+			localCurVotesGauge.Dec(int64(len(voteMessages)))
+			localReceivedVotesGauge.Update(int64(pool.receivedVotes.Cardinality()))
+		}
 	}
 }
 
@@ -326,20 +328,13 @@ func (pool *VotePool) FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelo
 }
 
 func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m map[common.Hash]*VoteBox, isFutureVote bool, voteHash common.Hash) bool {
-	targetNumber := vote.Data.TargetNumber
 	targetHash := vote.Data.TargetHash
-
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
 	// Check duplicate voteMessage firstly.
 	if pool.receivedVotes.Contains(voteHash) {
 		log.Debug("Vote pool already contained the same vote", "voteHash", voteHash)
-		return false
-	}
-	// Make sure in the range currentHeight-256~currentHeight+13.
-	if targetNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || targetNumber > headNumber+upperLimitOfVoteBlockNumber {
-		log.Warn("BlockNumber of vote is outside the range of header-256~header+13")
 		return false
 	}
 
@@ -394,8 +389,4 @@ func (pq *votesPriorityQueue) Peek() *types.VoteData {
 		return nil
 	}
 	return (*pq)[0]
-}
-
-func votesPerBlockHashMetric(blockHash common.Hash) metrics.Gauge {
-	return metrics.GetOrRegisterGauge(fmt.Sprintf("blockHash/%s", blockHash), nil)
 }

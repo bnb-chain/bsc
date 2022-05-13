@@ -2,11 +2,9 @@ package vote
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/tidwall/wal"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -86,7 +84,7 @@ func (journal *VoteJournal) ReadVote(index uint64) (*types.VoteEnvelope, error) 
 	if voteMessage != nil {
 		vote = &types.VoteEnvelope{}
 		if err := json.Unmarshal(voteMessage, vote); err != nil {
-			log.Error("Failed to unmarshal vote in the proecss for intializing journal object", "err", err)
+			log.Error("Failed to read vote from voteJournal", "err", err)
 			return nil, err
 		}
 	}
@@ -95,6 +93,6 @@ func (journal *VoteJournal) ReadVote(index uint64) (*types.VoteEnvelope, error) 
 }
 
 // Metrics to monitor if there's any error for writing vote journal.
-func votesJournalErrorMetric(blockNumber uint64, blockHash common.Hash) metrics.Gauge {
-	return metrics.GetOrRegisterGauge(fmt.Sprintf("voteJournal/blockNumber/%d/blockHash/%s", blockNumber, blockHash), nil)
+func votesJournalErrorMetric() metrics.Gauge {
+	return metrics.GetOrRegisterGauge(("voteJournal"), nil)
 }

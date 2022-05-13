@@ -37,7 +37,7 @@ type VoteManager struct {
 	getHighestJustifiedHeader getHighestJustifiedHeaderFunc
 }
 
-func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA, getHighestJustifiedHeader getHighestJustifiedHeaderFunc) (*VoteManager, error) {
+func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
 	voteManager := &VoteManager{
 		mux: mux,
 
@@ -48,7 +48,7 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 		pool:   pool,
 		engine: engine,
 
-		getHighestJustifiedHeader: getHighestJustifiedHeader,
+		getHighestJustifiedHeader: engine.GetHighestJustifiedHeader,
 	}
 
 	// Create voteSigner.
@@ -107,7 +107,7 @@ func (voteManager *VoteManager) loop() {
 
 			curHead := cHead.Block.Header()
 			// Check if cur validator is within the validatorSet at curHead
-			if !voteManager.engine.WithinValidatorSet(voteManager.chain, curHead) {
+			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead) {
 				continue
 			}
 
@@ -136,11 +136,11 @@ func (voteManager *VoteManager) loop() {
 				}
 				if err := voteManager.journal.WriteVote(voteMessage); err != nil {
 					log.Warn("Failed to write vote into journal", "err", err)
-					votesJournalErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
+					votesJournalErrorMetric().Inc(1)
 					continue
 				}
 
-				log.Info("vote manager produced vote", "voteHash", voteMessage.Hash())
+				log.Info("vote manager produced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
 				votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 			}
@@ -157,7 +157,7 @@ func (voteManager *VoteManager) loop() {
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
 	justifiedHeader := voteManager.getHighestJustifiedHeader(voteManager.chain, header)
 	if justifiedHeader == nil {
-		log.Error("highestJustifiedHeader is nil")
+		log.Error("highestJustifiedHeader at cur header is nil", "curHeader's BlockNumber", header.Number.Uint64(), "curHeader's BlockHash", header.Hash())
 		return false, 0, common.Hash{}
 	}
 

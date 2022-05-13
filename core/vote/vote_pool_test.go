@@ -17,6 +17,7 @@
 package vote
 
 import (
+	"container/heap"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -93,14 +94,14 @@ func getHighestJustifiedHeaderForInvalid(chain consensus.ChainHeaderReader, head
 	return cur
 }
 
-func (m *mockPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) bool {
-	return true
+func (m *mockPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
+	return nil
 }
 
 func (m *mockPOSA) SetVotePool(votePool consensus.VotePool) {
 }
 
-func (m *mockPOSA) WithinValidatorSet(chain consensus.ChainHeaderReader, header *types.Header) bool {
+func (m *mockPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header) bool {
 	return true
 }
 
@@ -177,11 +178,11 @@ func testVotePool(t *testing.T, inValidRules bool) {
 		ruleFunc = getHighestJustifiedHeaderForInvalid
 	}
 
-	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir, mockEngine, ruleFunc)
+	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir, mockEngine)
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}
-
+	voteManager.getHighestJustifiedHeader = ruleFunc
 	voteJournal := voteManager.journal
 
 	// Send the done event of downloader
@@ -207,6 +208,22 @@ func testVotePool(t *testing.T, inValidRules bool) {
 
 	if !votePool.verifyStructureSizeOfVotePool(11, 11, 0, 11, 0) {
 		t.Fatalf("put vote failed")
+	}
+
+	// Verify if votesPq is min heap
+	votesPq := votePool.curVotesPq
+	pqBuffer := make([]*types.VoteData, 0)
+	lastVotedBlockNumber := uint64(0)
+	for votesPq.Len() > 0 {
+		voteData := heap.Pop(votesPq).(*types.VoteData)
+		if voteData.TargetNumber < uint64(lastVotedBlockNumber) {
+			t.Fatalf("votesPq verification failed")
+		}
+		lastVotedBlockNumber = voteData.TargetNumber
+		pqBuffer = append(pqBuffer, voteData)
+	}
+	for _, voteData := range pqBuffer {
+		heap.Push(votesPq, voteData)
 	}
 
 	// Verify journal

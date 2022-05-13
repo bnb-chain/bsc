@@ -151,7 +151,7 @@ type PoSA interface {
 	AllowLightProcess(chain ChainReader, currentHeader *types.Header) bool
 	GetHighestJustifiedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	GetHighestFinalizedNumber(chain ChainHeaderReader, header *types.Header) uint64
-	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) bool
+	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
 	SetVotePool(votePool VotePool)
-	WithinValidatorSet(chain ChainHeaderReader, header *types.Header) bool
+	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header) bool
 }
