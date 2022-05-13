@@ -171,7 +171,7 @@ func testVotePool(t *testing.T, inValidRules bool) {
 	file.Close()
 	os.Remove(journal)
 
-	var ruleFunc getHighestJustifiedHeaderFunc
+	var ruleFunc getJustifiedHeaderFunc
 	if inValidRules {
 		ruleFunc = getHighestJustifiedHeaderForValid
 	} else {
@@ -182,7 +182,7 @@ func testVotePool(t *testing.T, inValidRules bool) {
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}
-	voteManager.getHighestJustifiedHeader = ruleFunc
+	voteManager.getJustifiedHeader = ruleFunc
 	voteJournal := voteManager.journal
 
 	// Send the done event of downloader

@@ -15,7 +15,7 @@ import (
 )
 
 type (
-	getHighestJustifiedHeaderFunc func(chain consensus.ChainHeaderReader, header *types.Header) *types.Header
+	getJustifiedHeaderFunc func(chain consensus.ChainHeaderReader, header *types.Header) *types.Header
 )
 
 // VoteManager will handle the vote produced by self.
@@ -34,7 +34,7 @@ type VoteManager struct {
 
 	engine consensus.PoSA
 
-	getHighestJustifiedHeader getHighestJustifiedHeaderFunc
+	getJustifiedHeader getJustifiedHeaderFunc
 }
 
 func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
@@ -48,7 +48,7 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 		pool:   pool,
 		engine: engine,
 
-		getHighestJustifiedHeader: engine.GetHighestJustifiedHeader,
+		getJustifiedHeader: engine.GetJustifiedHeader,
 	}
 
 	// Create voteSigner.
@@ -155,7 +155,7 @@ func (voteManager *VoteManager) loop() {
 // A validator must not vote within the span of its other votes . (Rule 2)
 // Validators always vote for their canonical chain’s latest block. (Rule 3)
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
-	justifiedHeader := voteManager.getHighestJustifiedHeader(voteManager.chain, header)
+	justifiedHeader := voteManager.getJustifiedHeader(voteManager.chain, header)
 	if justifiedHeader == nil {
 		log.Error("highestJustifiedHeader at cur header is nil", "curHeader's BlockNumber", header.Number.Uint64(), "curHeader's BlockHash", header.Hash())
 		return false, 0, common.Hash{}

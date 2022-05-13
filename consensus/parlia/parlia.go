@@ -330,6 +330,11 @@ func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 	return abort, results
 }
 
+// getValidatorBytesFromHeader returns the validators bytes extracted from the header's extra field if exists.
+// The validators bytes would be contained only in the epoch block's header, and its each validator bytes length is fixed.
+// On boneh fork, we introduce vote attestation into the header's extra field, so extra format is different from before.
+// Before boneh fork: |---Extra Vanity---|---Validators Bytes (or Empty)---|---Extra Seal---|
+// After boneh fork:  |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
 func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) []byte {
 	if len(header.Extra) <= extraVanity+extraSeal {
 		return nil
@@ -354,6 +359,7 @@ func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.Chain
 	return header.Extra[start:end]
 }
 
+// getVoteAttestationFromHeader returns the vote attestation extracted from the header's extra field if exists.
 func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) (*types.VoteAttestation, error) {
 	if len(header.Extra) <= extraVanity+extraSeal {
 		return nil, nil
@@ -378,19 +384,20 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 
 	var attestation types.VoteAttestation
 	if err := rlp.Decode(bytes.NewReader(attestationBytes), &attestation); err != nil {
-		return nil, fmt.Errorf("block %d has finality info, decode err: %s", header.Number.Uint64(), err)
+		return nil, fmt.Errorf("block %d has vote attestation info, decode err: %s", header.Number.Uint64(), err)
 	}
 	return &attestation, nil
 }
 
-func getSignRecentlyLimit(blockNumber uint64, validatorsNumber int, chainConfig *params.ChainConfig) int {
+func getSignRecentlyLimit(blockNumber *big.Int, validatorsNumber int, chainConfig *params.ChainConfig) int {
 	limit := validatorsNumber/2 + 1
-	if chainConfig.IsBoneh(big.NewInt(1).SetUint64(blockNumber)) {
+	if chainConfig.IsBoneh(blockNumber) {
 		limit = validatorsNumber*2/3 + 1
 	}
 	return limit
 }
 
+// verifyVoteAttestation checks whether the vote attestation in the header is valid.
 func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
 	attestation, err := getVoteAttestationFromHeader(header, p.chainConfig, p.config)
 	if err != nil {
@@ -398,6 +405,12 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	}
 	if attestation == nil {
 		return nil
+	}
+	if attestation.Data == nil {
+		return fmt.Errorf("invalid attestation, vote data is nil")
+	}
+	if len(attestation.Extra) > types.MaxAttestationExtraLength {
+		return fmt.Errorf("invalid attestation, too large extra length: %d", len(attestation.Extra))
 	}
 
 	// Get parent block
@@ -408,31 +421,33 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	} else {
 		parent = chain.GetHeader(header.ParentHash, number-1)
 	}
-	if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
+	if parent == nil || parent.Hash() != header.ParentHash {
 		return consensus.ErrUnknownAncestor
 	}
 
-	// The target block should be direct parent
+	// The target block should be direct parent.
 	targetNumber := attestation.Data.TargetNumber
 	targetHash := attestation.Data.TargetHash
 	if targetNumber != parent.Number.Uint64() || targetHash != parent.Hash() {
-		return fmt.Errorf("invalid attestation, target mismatch, block: %d, target block: %d", number, targetNumber)
+		return fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
+			parent.Number.Uint64(), parent.Hash(), targetNumber, targetHash)
 	}
 
-	// The source block should be the highest justified block
+	// The source block should be the highest justified block.
 	sourceNumber := attestation.Data.SourceNumber
 	sourceHash := attestation.Data.SourceHash
-	justified := p.GetHighestJustifiedHeader(chain, parent)
+	justified := p.GetJustifiedHeader(chain, parent)
 	if justified == nil {
 		return fmt.Errorf("no justified block found")
 	}
 	if sourceNumber != justified.Number.Uint64() || sourceHash != justified.Hash() {
-		return fmt.Errorf("invalid attestation, source mismatch, block: %d, source block: %d", number, sourceNumber)
+		return fmt.Errorf("invalid attestation, source mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
+			justified.Number.Uint64(), justified.Hash(), sourceNumber, sourceHash)
 	}
 
 	// The snapshot should be the targetNumber-1 block's snapshot.
 	if len(parents) > 2 {
-		parents = parents[2:]
+		parents = parents[:len(parents)-2]
 	} else {
 		parents = nil
 	}
@@ -441,7 +456,7 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 		return err
 	}
 
-	// Filter out valid validator from attestation
+	// Filter out valid validator from attestation.
 	validators := snap.validators()
 	validatorsBitSet := bitset.From([]uint64{uint64(attestation.VoteAddressSet)})
 	if validatorsBitSet.Count() > uint(len(validators)) {
@@ -460,12 +475,12 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 		votedAddrs = append(votedAddrs, voteAddr)
 	}
 
-	// The valid voted validators should be no less than 2/3 validators
+	// The valid voted validators should be no less than 2/3 validators.
 	if len(votedAddrs) <= len(snap.Validators)*2/3 {
 		return fmt.Errorf("invalid attestation, not enough validators voted")
 	}
 
-	// Verify the aggregated signature
+	// Verify the aggregated signature.
 	aggSig, err := bls.SignatureFromBytes(attestation.AggSignature[:])
 	if err != nil {
 		return fmt.Errorf("BLS signature converts failed: %v", err)
@@ -591,7 +606,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		if chain.Config().IsLynn(header.Number) {
 			return err
 		}
-		log.Warn("invalid vote attestation", "error", err)
+		log.Warn("Verify vote attestation failed", "block", header.Number.Uint64(), "block hash", header.Hash(), "error", err)
 	}
 
 	// All basic checks passed, verify the seal and return
@@ -739,7 +754,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	for seen, recent := range snap.Recents {
 		if recent == signer {
 			// Signer is among recents, only fail if the current block doesn't shift it out
-			if limit := getSignRecentlyLimit(number, len(snap.Validators), p.chainConfig); seen > number-uint64(limit) {
+			if limit := getSignRecentlyLimit(header.Number, len(snap.Validators), p.chainConfig); seen > number-uint64(limit) {
 				return errRecentlySigned
 			}
 		}
@@ -809,7 +824,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 
 	// Prepare vote attestation
 	// Prepare vote data
-	justified := p.GetHighestJustifiedHeader(chain, parent)
+	justified := p.GetJustifiedHeader(chain, parent)
 	if justified == nil {
 		return errors.New("highest justified block not found")
 	}
@@ -1173,7 +1188,7 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 		return fmt.Errorf("BlockHeader at current voteBlockNumber is nil")
 	}
 
-	justifiedHeader := p.GetHighestJustifiedHeader(chain, header)
+	justifiedHeader := p.GetJustifiedHeader(chain, header)
 	if justifiedHeader == nil {
 		log.Error("failed to get the highest justified header", "headerNumber", header.Number, "headerHash", header.Hash())
 		return fmt.Errorf("BlockHeader at current voteBlockNumber is nil")
@@ -1260,7 +1275,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	for seen, recent := range snap.Recents {
 		if recent == val {
 			// Signer is among recents, only wait if the current block doesn't shift it out
-			if limit := getSignRecentlyLimit(number, len(snap.Validators), p.chainConfig); number < uint64(limit) || seen > number-uint64(limit) {
+			if limit := getSignRecentlyLimit(header.Number, len(snap.Validators), p.chainConfig); number < uint64(limit) || seen > number-uint64(limit) {
 				log.Info("Signed recently, must wait for others")
 				return nil
 			}
@@ -1374,7 +1389,7 @@ func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Header)
 		}
 
 		// Signer is among recents, only wait if the current block doesn't shift it out
-		limit := getSignRecentlyLimit(parent.Number.Uint64(), len(snap.Validators), p.chainConfig)
+		limit := getSignRecentlyLimit(parent.Number, len(snap.Validators), p.chainConfig)
 		if number < uint64(limit) || seen > number-uint64(limit) {
 			return true, nil
 		}
@@ -1675,9 +1690,9 @@ func (p *Parlia) SetVotePool(votePool consensus.VotePool) {
 	p.votePool = votePool
 }
 
-// GetHighestJustifiedHeader returns highest justified block's header before the specific block,
+// GetJustifiedHeader returns highest justified block's header before the specific block,
 // the attestation within the specific block will be taken into account.
-func (p *Parlia) GetHighestJustifiedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
+func (p *Parlia) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
 	if chain == nil || header == nil {
 		return nil
 	}
@@ -1706,9 +1721,9 @@ func (p *Parlia) GetHighestJustifiedHeader(chain consensus.ChainHeaderReader, he
 	return chain.GetHeaderByHash(snap.Attestation.TargetHash)
 }
 
-// GetHighestFinalizedNumber returns highest finalized block number before the specific block,
+// GetFinalizedNumber returns highest finalized block number before the specific block,
 // the attestation within the specific block will be taken into account.
-func (p *Parlia) GetHighestFinalizedNumber(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
+func (p *Parlia) GetFinalizedNumber(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
 	if !chain.Config().IsLynn(header.Number) {
 		return 0
 	}

@@ -43,12 +43,12 @@ type Snapshot struct {
 	Validators       map[common.Address]*ValidatorInfo `json:"validators"`            // Set of authorized validators at this moment
 	Recents          map[uint64]common.Address         `json:"recents"`               // Set of recent validators for spam protections
 	RecentForkHashes map[uint64]string                 `json:"recent_fork_hashes"`    // Set of recent forkHash
-	Attestation      *types.VoteData                   `json:"Attestation:omitempty"` // Attestation for fast finality
+	Attestation      *types.VoteData                   `json:"attestation:omitempty"` // Attestation for fast finality
 }
 
 type ValidatorInfo struct {
 	Index       int                `json:"index:omitempty"` // The index should offset by 1
-	VoteAddress types.BLSPublicKey `json:"voteAddress,omitempty"`
+	VoteAddress types.BLSPublicKey `json:"vote_address,omitempty"`
 }
 
 // newSnapshot creates a new snapshot with the specified startup parameters. This
@@ -219,7 +219,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 	for _, header := range headers {
 		number := header.Number.Uint64()
 		// Delete the oldest validator from the recent list to allow it signing again
-		if limit := getSignRecentlyLimit(number, len(snap.Validators), chainConfig); number >= uint64(limit) {
+		if limit := getSignRecentlyLimit(header.Number, len(snap.Validators), chainConfig); number >= uint64(limit) {
 			delete(snap.Recents, number-uint64(limit))
 		}
 		if limit := uint64(len(snap.Validators)); number >= limit {
@@ -261,8 +261,8 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 					}
 				}
 			}
-			oldLimit := getSignRecentlyLimit(number, len(snap.Validators), chainConfig)
-			newLimit := getSignRecentlyLimit(number, len(newVals), chainConfig)
+			oldLimit := getSignRecentlyLimit(header.Number, len(snap.Validators), chainConfig)
+			newLimit := getSignRecentlyLimit(header.Number, len(newVals), chainConfig)
 			if newLimit < oldLimit {
 				for i := 0; i < oldLimit-newLimit; i++ {
 					delete(snap.Recents, number-uint64(newLimit)-uint64(i))

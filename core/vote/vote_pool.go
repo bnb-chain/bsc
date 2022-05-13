@@ -22,7 +22,7 @@ const (
 
 	voteBufferForPut            = 256
 	lowerLimitOfVoteBlockNumber = 256
-	upperLimitOfVoteBlockNumber = 13
+	upperLimitOfVoteBlockNumber = 11
 
 	chainHeadChanSize = 10 // chainHeadChanSize is the size of channel listening to ChainHeadEvent.
 )
@@ -123,7 +123,7 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 	header := pool.chain.CurrentBlock().Header()
 	headNumber := header.Number.Uint64()
 
-	// Make sure in the range currentHeight-256~currentHeight+13.
+	// Make sure in the range currentHeight-256~currentHeight+11.
 	if targetNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || targetNumber > headNumber+upperLimitOfVoteBlockNumber {
 		log.Warn("BlockNumber of vote is outside the range of header-256~header+13")
 		return false

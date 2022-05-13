@@ -149,8 +149,8 @@ type PoSA interface {
 	EnoughDistance(chain ChainReader, header *types.Header) bool
 	IsLocalBlock(header *types.Header) bool
 	AllowLightProcess(chain ChainReader, currentHeader *types.Header) bool
-	GetHighestJustifiedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
-	GetHighestFinalizedNumber(chain ChainHeaderReader, header *types.Header) uint64
+	GetJustifiedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
+	GetFinalizedNumber(chain ChainHeaderReader, header *types.Header) uint64
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
 	SetVotePool(votePool VotePool)
 	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header) bool

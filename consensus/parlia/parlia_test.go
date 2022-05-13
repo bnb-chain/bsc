@@ -205,9 +205,9 @@ func (b *MockBlock) IsConflicted(a *MockBlock) bool {
 	return a.blockHash != b.blockHash
 }
 
-// GetHighestJustifiedBlock returns highest justified block,
+// GetJustifiedBlock returns highest justified block,
 // not include current block's attestation.
-func (b *MockBlock) GetHighestJustifiedBlock() *MockBlock {
+func (b *MockBlock) GetJustifiedBlock() *MockBlock {
 	if b.blockNumber < 3 {
 		return GenesisBlock
 	}
@@ -226,9 +226,9 @@ func (b *MockBlock) GetHighestJustifiedBlock() *MockBlock {
 	return parent
 }
 
-// GetHighestFinalizedBlock returns highest finalized block,
+// GetFinalizedBlock returns highest finalized block,
 // include current block's attestation.
-func (b *MockBlock) GetHighestFinalizedBlock() *MockBlock {
+func (b *MockBlock) GetFinalizedBlock() *MockBlock {
 	if b.blockNumber < 3 {
 		return GenesisBlock
 	}
@@ -237,7 +237,7 @@ func (b *MockBlock) GetHighestFinalizedBlock() *MockBlock {
 		return b.parent
 	}
 
-	return b.parent.GetHighestFinalizedBlock()
+	return b.parent.GetFinalizedBlock()
 }
 
 type MockValidator struct {
@@ -307,7 +307,7 @@ func (v *MockValidator) Vote(block *MockBlock) bool {
 	}
 
 	// Rule 2: No surround vote
-	justified := block.GetHighestJustifiedBlock()
+	justified := block.GetJustifiedBlock()
 	for targetNumber := justified.blockNumber + 1; targetNumber < block.blockNumber; targetNumber++ {
 		if vote, ok := v.voteRecords[targetNumber]; ok {
 			if vote.SourceNumber > justified.blockNumber {
@@ -339,10 +339,10 @@ func (v *MockValidator) InsertBlock(block *MockBlock) {
 	}
 
 	// The higher finalized block is the longest chain.
-	if block.GetHighestFinalizedBlock().blockNumber < v.head.GetHighestFinalizedBlock().blockNumber {
+	if block.GetFinalizedBlock().blockNumber < v.head.GetFinalizedBlock().blockNumber {
 		return
 	}
-	if block.GetHighestFinalizedBlock().blockNumber > v.head.GetHighestFinalizedBlock().blockNumber {
+	if block.GetFinalizedBlock().blockNumber > v.head.GetFinalizedBlock().blockNumber {
 		v.head = block
 		return
 	}
@@ -456,7 +456,7 @@ func (c *Coordinator) CheckChain() bool {
 	// All validators highest finalized block should not be conflicted
 	finalizedBlocks := make([]*MockBlock, len(c.validators))
 	for index, val := range c.validators {
-		finalizedBlocks[index] = val.head.GetHighestFinalizedBlock()
+		finalizedBlocks[index] = val.head.GetFinalizedBlock()
 	}
 
 	for i := 0; i < len(finalizedBlocks)-1; i++ {
@@ -585,9 +585,9 @@ func TestSimulateP2P(t *testing.T) {
 			t.Logf("[Testcase %d] validator(%d) head block: %d",
 				index, val.index, val.head.blockNumber)
 			t.Logf("[Testcase %d] validator(%d) highest justified block: %d",
-				index, val.index, val.head.GetHighestJustifiedBlock().blockNumber)
+				index, val.index, val.head.GetJustifiedBlock().blockNumber)
 			t.Logf("[Testcase %d] validator(%d) highest finalized block: %d",
-				index, val.index, val.head.GetHighestFinalizedBlock().blockNumber)
+				index, val.index, val.head.GetFinalizedBlock().blockNumber)
 		}
 
 		if c.CheckChain() == false {

@@ -112,16 +112,16 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 	}
 	hc.currentHeaderHash = hc.CurrentHeader().Hash()
 	headHeaderGauge.Update(hc.CurrentHeader().Number.Int64())
-	highestJustifiedBlockGauge.Update(int64(hc.getHighestJustifiedNumber(hc.CurrentHeader())))
-	highestFinalizedBlockGauge.Update(int64(hc.getHighestFinalizedNumber(hc.CurrentHeader())))
+	justifiedBlockGauge.Update(int64(hc.getJustifiedNumber(hc.CurrentHeader())))
+	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(hc.CurrentHeader())))
 
 	return hc, nil
 }
 
-// getHighestJustifiedNumber returns the highest justified number before the specific block.
-func (hc *HeaderChain) getHighestJustifiedNumber(header *types.Header) uint64 {
+// getJustifiedNumber returns the highest justified number before the specific block.
+func (hc *HeaderChain) getJustifiedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
-		justifiedHeader := p.GetHighestJustifiedHeader(hc, header)
+		justifiedHeader := p.GetJustifiedHeader(hc, header)
 		if justifiedHeader != nil {
 			return justifiedHeader.Number.Uint64()
 		}
@@ -130,10 +130,10 @@ func (hc *HeaderChain) getHighestJustifiedNumber(header *types.Header) uint64 {
 	return 0
 }
 
-// getHighestFinalizedNumber returns the highest finalized number before the specific block.
-func (hc *HeaderChain) getHighestFinalizedNumber(header *types.Header) uint64 {
+// getFinalizedNumber returns the highest finalized number before the specific block.
+func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
-		return p.GetHighestFinalizedNumber(hc, header)
+		return p.GetFinalizedNumber(hc, header)
 	}
 
 	return 0
@@ -239,7 +239,7 @@ func (hc *HeaderChain) writeHeaders(headers []*types.Header) (result *headerWrit
 	// Second clause in the if statement reduces the vulnerability to selfish mining.
 	// Please refer to http://www.cs.cornell.edu/~ie53/publications/btcProcFC.pdf
 	reorg := newTD.Cmp(localTD) > 0
-	if hc.getHighestFinalizedNumber(lastHeader) > hc.getHighestFinalizedNumber(hc.CurrentHeader()) {
+	if hc.getFinalizedNumber(lastHeader) > hc.getFinalizedNumber(hc.CurrentHeader()) {
 		reorg = true
 	}
 	if !reorg && newTD.Cmp(localTD) == 0 {
@@ -308,8 +308,8 @@ func (hc *HeaderChain) writeHeaders(headers []*types.Header) (result *headerWrit
 		hc.currentHeaderHash = lastHash
 		hc.currentHeader.Store(types.CopyHeader(lastHeader))
 		headHeaderGauge.Update(lastHeader.Number.Int64())
-		highestJustifiedBlockGauge.Update(int64(hc.getHighestJustifiedNumber(lastHeader)))
-		highestFinalizedBlockGauge.Update(int64(hc.getHighestFinalizedNumber(lastHeader)))
+		justifiedBlockGauge.Update(int64(hc.getJustifiedNumber(lastHeader)))
+		finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(lastHeader)))
 
 		// Chain status is canonical since this insert was a reorg.
 		// Note that all inserts which have higher TD than existing are 'reorg'.
@@ -576,8 +576,8 @@ func (hc *HeaderChain) SetCurrentHeader(head *types.Header) {
 	hc.currentHeader.Store(head)
 	hc.currentHeaderHash = head.Hash()
 	headHeaderGauge.Update(head.Number.Int64())
-	highestJustifiedBlockGauge.Update(int64(hc.getHighestJustifiedNumber(head)))
-	highestFinalizedBlockGauge.Update(int64(hc.getHighestFinalizedNumber(head)))
+	justifiedBlockGauge.Update(int64(hc.getJustifiedNumber(head)))
+	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(head)))
 }
 
 type (
@@ -633,8 +633,8 @@ func (hc *HeaderChain) SetHead(head uint64, updateFn UpdateHeadBlocksCallback, d
 		hc.currentHeader.Store(parent)
 		hc.currentHeaderHash = parentHash
 		headHeaderGauge.Update(parent.Number.Int64())
-		highestJustifiedBlockGauge.Update(int64(hc.getHighestJustifiedNumber(parent)))
-		highestFinalizedBlockGauge.Update(int64(hc.getHighestFinalizedNumber(parent)))
+		justifiedBlockGauge.Update(int64(hc.getJustifiedNumber(parent)))
+		finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(parent)))
 
 		// If this is the first iteration, wipe any leftover data upwards too so
 		// we don't end up with dangling daps in the database

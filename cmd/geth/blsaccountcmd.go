@@ -50,7 +50,7 @@ BLS wallet first. One BLS wallet is enough for all BLS accounts, the first BLS
 account in the wallet will be used to vote for fast finality now.
 
 It only supports interactive mode now, when you are prompted for password, please
-input your password, and take care the wallet password is different from accounts'
+input your password, and take care the wallet password which is different from accounts'
 password.
 
 There are generally two steps to manage a BLS account:

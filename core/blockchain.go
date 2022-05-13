@@ -53,8 +53,8 @@ var (
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
 	headFastBlockGauge = metrics.NewRegisteredGauge("chain/head/receipt", nil)
 
-	highestJustifiedBlockGauge = metrics.NewRegisteredGauge("chain/head/justified", nil)
-	highestFinalizedBlockGauge = metrics.NewRegisteredGauge("chain/head/finalized", nil)
+	justifiedBlockGauge = metrics.NewRegisteredGauge("chain/head/justified", nil)
+	finalizedBlockGauge = metrics.NewRegisteredGauge("chain/head/finalized", nil)
 
 	accountReadTimer   = metrics.NewRegisteredTimer("chain/account/reads", nil)
 	accountHashTimer   = metrics.NewRegisteredTimer("chain/account/hashes", nil)
@@ -101,7 +101,7 @@ const (
 	diffLayerPruneRecheckInterval   = 1 * time.Second // The interval to prune unverified diff layers
 	maxDiffQueueDist                = 2048            // Maximum allowed distance from the chain head to queue diffLayers
 	maxDiffLimit                    = 2048            // Maximum number of unique diff layers a peer may have responded
-	maxDiffForkDist                 = 13              // Maximum allowed backward distance from the chain head
+	maxDiffForkDist                 = 11              // Maximum allowed backward distance from the chain head
 	maxDiffLimitForBroadcast        = 128             // Maximum number of unique diff layers a peer may have broadcasted
 
 	rewindBadBlockInterval = 1 * time.Second
@@ -529,10 +529,10 @@ func (bc *BlockChain) empty() bool {
 	return true
 }
 
-// getHighestJustifiedNumber returns the highest justified number before the specific block.
-func (bc *BlockChain) getHighestJustifiedNumber(header *types.Header) uint64 {
+// getJustifiedNumber returns the highest justified number before the specific block.
+func (bc *BlockChain) getJustifiedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		justifiedHeader := p.GetHighestJustifiedHeader(bc, header)
+		justifiedHeader := p.GetJustifiedHeader(bc, header)
 		if justifiedHeader != nil {
 			return justifiedHeader.Number.Uint64()
 		}
@@ -541,10 +541,10 @@ func (bc *BlockChain) getHighestJustifiedNumber(header *types.Header) uint64 {
 	return 0
 }
 
-// getHighestFinalizedNumber returns the highest finalized number before the specific block.
-func (bc *BlockChain) getHighestFinalizedNumber(header *types.Header) uint64 {
+// getFinalizedNumber returns the highest finalized number before the specific block.
+func (bc *BlockChain) getFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		return p.GetHighestFinalizedNumber(bc, header)
+		return p.GetFinalizedNumber(bc, header)
 	}
 
 	return 0
@@ -570,8 +570,8 @@ func (bc *BlockChain) loadLastState() error {
 	// Everything seems to be fine, set as the head block
 	bc.currentBlock.Store(currentBlock)
 	headBlockGauge.Update(int64(currentBlock.NumberU64()))
-	highestJustifiedBlockGauge.Update(int64(bc.getHighestJustifiedNumber(currentBlock.Header())))
-	highestFinalizedBlockGauge.Update(int64(bc.getHighestFinalizedNumber(currentBlock.Header())))
+	justifiedBlockGauge.Update(int64(bc.getJustifiedNumber(currentBlock.Header())))
+	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(currentBlock.Header())))
 
 	// Restore the last known head header
 	currentHeader := currentBlock.Header()
@@ -728,8 +728,8 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, root common.Hash) (uint64, 
 			// to low, so it's safe the update in-memory markers directly.
 			bc.currentBlock.Store(newHeadBlock)
 			headBlockGauge.Update(int64(newHeadBlock.NumberU64()))
-			highestJustifiedBlockGauge.Update(int64(bc.getHighestJustifiedNumber(newHeadBlock.Header())))
-			highestFinalizedBlockGauge.Update(int64(bc.getHighestFinalizedNumber(newHeadBlock.Header())))
+			justifiedBlockGauge.Update(int64(bc.getJustifiedNumber(newHeadBlock.Header())))
+			finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(newHeadBlock.Header())))
 		}
 		// Rewind the fast block in a simpleton way to the target head
 		if currentFastBlock := bc.CurrentFastBlock(); currentFastBlock != nil && header.Number.Uint64() < currentFastBlock.NumberU64() {
@@ -817,8 +817,8 @@ func (bc *BlockChain) FastSyncCommitHead(hash common.Hash) error {
 	bc.chainmu.Lock()
 	bc.currentBlock.Store(block)
 	headBlockGauge.Update(int64(block.NumberU64()))
-	highestJustifiedBlockGauge.Update(int64(bc.getHighestJustifiedNumber(block.Header())))
-	highestFinalizedBlockGauge.Update(int64(bc.getHighestFinalizedNumber(block.Header())))
+	justifiedBlockGauge.Update(int64(bc.getJustifiedNumber(block.Header())))
+	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
 	bc.chainmu.Unlock()
 
 	// Destroy any existing state snapshot and regenerate it in the background,
@@ -910,8 +910,8 @@ func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	bc.genesisBlock = genesis
 	bc.currentBlock.Store(bc.genesisBlock)
 	headBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
-	highestJustifiedBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
-	highestFinalizedBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
+	justifiedBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
+	finalizedBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
 	bc.hc.SetGenesis(bc.genesisBlock.Header())
 	bc.hc.SetCurrentHeader(bc.genesisBlock.Header())
 	bc.currentFastBlock.Store(bc.genesisBlock)
@@ -984,8 +984,8 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	}
 	bc.currentBlock.Store(block)
 	headBlockGauge.Update(int64(block.NumberU64()))
-	highestJustifiedBlockGauge.Update(int64(bc.getHighestJustifiedNumber(block.Header())))
-	highestFinalizedBlockGauge.Update(int64(bc.getHighestFinalizedNumber(block.Header())))
+	justifiedBlockGauge.Update(int64(bc.getJustifiedNumber(block.Header())))
+	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
 }
 
 // Genesis retrieves the chain's genesis block.
@@ -1839,7 +1839,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// Please refer to http://www.cs.cornell.edu/~ie53/publications/btcProcFC.pdf
 	reorg := externTd.Cmp(localTd) > 0
 	currentBlock = bc.CurrentBlock()
-	if bc.getHighestFinalizedNumber(block.Header()) > bc.getHighestFinalizedNumber(currentBlock.Header()) {
+	if bc.getFinalizedNumber(block.Header()) > bc.getFinalizedNumber(currentBlock.Header()) {
 		reorg = true
 	}
 	if !reorg && externTd.Cmp(localTd) == 0 {

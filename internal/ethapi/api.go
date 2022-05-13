@@ -1287,8 +1287,8 @@ func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, bloc
 	return result, err
 }
 
-// GetHighestJustifiedHeader returns the highest justified block before the input block.
-func (s *PublicBlockChainAPI) GetHighestJustifiedHeader(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (*types.Header, error) {
+// GetJustifiedHeader returns the highest justified block before the input block.
+func (s *PublicBlockChainAPI) GetJustifiedHeader(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (*types.Header, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
@@ -1304,15 +1304,15 @@ func (s *PublicBlockChainAPI) GetHighestJustifiedHeader(ctx context.Context, blo
 	}
 
 	if posa, ok := s.b.Engine().(consensus.PoSA); ok {
-		return posa.GetHighestJustifiedHeader(s.b.Chain(), header), nil
+		return posa.GetJustifiedHeader(s.b.Chain(), header), nil
 	}
 
 	// Not support.
 	return nil, nil
 }
 
-// GetHighestFinalizedNumber returns the highest finalized block number before the input block.
-func (s *PublicBlockChainAPI) GetHighestFinalizedNumber(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (hexutil.Uint64, error) {
+// GetFinalizedNumber returns the highest finalized block number before the input block.
+func (s *PublicBlockChainAPI) GetFinalizedNumber(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (hexutil.Uint64, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
@@ -1328,7 +1328,7 @@ func (s *PublicBlockChainAPI) GetHighestFinalizedNumber(ctx context.Context, blo
 	}
 
 	if posa, ok := s.b.Engine().(consensus.PoSA); ok {
-		return hexutil.Uint64(posa.GetHighestFinalizedNumber(s.b.Chain(), header)), nil
+		return hexutil.Uint64(posa.GetFinalizedNumber(s.b.Chain(), header)), nil
 	}
 
 	// Not support.
