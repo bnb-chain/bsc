@@ -216,7 +216,7 @@ func testVotePool(t *testing.T, inValidRules bool) {
 	lastVotedBlockNumber := uint64(0)
 	for votesPq.Len() > 0 {
 		voteData := heap.Pop(votesPq).(*types.VoteData)
-		if voteData.TargetNumber < uint64(lastVotedBlockNumber) {
+		if voteData.TargetNumber < lastVotedBlockNumber {
 			t.Fatalf("votesPq verification failed")
 		}
 		lastVotedBlockNumber = voteData.TargetNumber
