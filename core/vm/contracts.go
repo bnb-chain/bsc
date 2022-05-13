@@ -95,6 +95,20 @@ var PrecompiledContractsBerlin = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
 	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
 	common.BytesToAddress([]byte{9}): &blake2F{},
+}
+
+// PrecompiledContractsBoneh contains the default set of pre-compiled Ethereum
+// contracts used in the Berlin release.
+var PrecompiledContractsBoneh = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{1}): &ecrecover{},
+	common.BytesToAddress([]byte{2}): &sha256hash{},
+	common.BytesToAddress([]byte{3}): &ripemd160hash{},
+	common.BytesToAddress([]byte{4}): &dataCopy{},
+	common.BytesToAddress([]byte{5}): &bigModExp{eip2565: true},
+	common.BytesToAddress([]byte{6}): &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{9}): &blake2F{},
 
 	common.BytesToAddress([]byte{100}): &voteSignatureVerify{},
 }
@@ -114,6 +128,7 @@ var PrecompiledContractsBLS = map[common.Address]PrecompiledContract{
 }
 
 var (
+	PrecompiledAddressesBoneh     []common.Address
 	PrecompiledAddressesBerlin    []common.Address
 	PrecompiledAddressesIstanbul  []common.Address
 	PrecompiledAddressesByzantium []common.Address
@@ -133,11 +148,16 @@ func init() {
 	for k := range PrecompiledContractsBerlin {
 		PrecompiledAddressesBerlin = append(PrecompiledAddressesBerlin, k)
 	}
+	for k := range PrecompiledContractsBoneh {
+		PrecompiledAddressesBoneh = append(PrecompiledAddressesBoneh, k)
+	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	case rules.IsBoneh:
+		return PrecompiledAddressesBoneh
 	case rules.IsBerlin:
 		return PrecompiledAddressesBerlin
 	case rules.IsIstanbul:

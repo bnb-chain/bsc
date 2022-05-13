@@ -947,7 +947,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 	currentHeight := header.Number.Uint64()
 	epoch := p.config.Epoch
 	chainConfig := chain.Config()
-	if currentHeight%epoch != 0 || !chainConfig.IsBoneh(new(big.Int).Sub(header.Number, big.NewInt(1))) {
+	if currentHeight%epoch != 0 {
 		return nil
 	}
 
