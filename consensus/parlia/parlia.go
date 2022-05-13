@@ -1158,10 +1158,9 @@ func (p *Parlia) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *
 		return false
 	}
 	validators := snap.Validators
-	if _, ok := validators[p.val]; ok {
-		return ok
-	}
-	return false
+	_, ok := validators[p.val]
+	return ok
+
 }
 
 // VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
