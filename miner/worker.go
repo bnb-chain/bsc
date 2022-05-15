@@ -1318,10 +1318,12 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 	tstart := time.Now()
 	log.Info("preCommitBlock start", "blockNum", header.Number)
 	ctxs := 0
+	totalTxs := 0
 	for txs := range poolTxsCh {
+		totalTxs += len(txs[0]) + len(txs[1])
 		//reset gaspool, diff new txs, state has been changed on this height , will just be shifted by nonce. same nonce with higher price will fail.
 		if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
-			log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs+1, "countOfTxs", w.currentPre.tcount, "elapsed", time.Now().Sub(tstart), "w.tcount", w.currentPre.tcount)
+			log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs+1, "countOfTxs", totalTxs, "elapsed", time.Now().Sub(tstart), "w.tcount", w.currentPre.tcount)
 			return
 		}
 		ctxs++
@@ -1329,7 +1331,7 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 			break
 		}
 	}
-	log.Info("preCommitBlock end", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", w.currentPre.tcount, "elapsed", time.Now().Sub(tstart), "w.tcount", w.currentPre.tcount)
+	log.Info("preCommitBlock end", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", totalTxs, "elapsed", time.Now().Sub(tstart), "w.tcount", w.currentPre.tcount)
 }
 
 func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, interrupt *int32, uncles []*types.Header, num *big.Int, ctxs int) bool {
@@ -1365,7 +1367,7 @@ func (w *worker) preCommitTransactions(txs *types.TransactionsByPriceAndNonce, c
 	}
 
 	if w.currentPre.gasPool == nil {
-		w.currentPre.gasPool = new(core.GasPool).AddGas(w.currentPre.header.GasLimit)
+		w.currentPre.gasPool = new(core.GasPool).AddGas(w.currentPre.header.GasLimit * 2)
 		w.currentPre.gasPool.SubGas(params.SystemTxsGas)
 	}
 
