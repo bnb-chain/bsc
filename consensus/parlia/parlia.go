@@ -806,19 +806,19 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 func (p *Parlia) FinalizeAndAssemble4preCommit(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) error {
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
-	cx := chainContext{Chain: chain, parlia: p}
+	//	cx := chainContext{Chain: chain, parlia: p}
 	if txs == nil {
 		txs = make([]*types.Transaction, 0)
 	}
 	if receipts == nil {
 		receipts = make([]*types.Receipt, 0)
 	}
-	if header.Number.Cmp(common.Big1) == 0 {
-		err := p.initContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
-		if err != nil {
-			log.Error("init contract failed")
-		}
-	}
+	//	if header.Number.Cmp(common.Big1) == 0 {
+	//		err := p.initContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
+	//		if err != nil {
+	//			log.Error("init contract failed")
+	//		}
+	//	}
 	//	err := p.distributeIncoming(p.val, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
 	//	if err != nil {
 	//		return err
@@ -828,16 +828,7 @@ func (p *Parlia) FinalizeAndAssemble4preCommit(chain consensus.ChainHeaderReader
 		return errors.New("gas consumption of system txs exceed the gas limit")
 	}
 	header.UncleHash = types.CalcUncleHash(nil)
-	//	var blk *types.Block
-	//	var rootHash common.Hash
-	//	wg := sync.WaitGroup{}
-	//	wg.Add(1)
-	//	go func() {
-	//		state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-	//		wg.Done()
-	//	}()
 	state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-	//	wg.Wait()
 	return nil
 }
 

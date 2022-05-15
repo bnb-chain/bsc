@@ -1320,7 +1320,9 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 	ctxs := 0
 	totalTxs := 0
 	for txs := range poolTxsCh {
-		totalTxs += len(txs[0]) + len(txs[1])
+		if len(txs) == 2 {
+			totalTxs += len(txs[0]) + len(txs[1])
+		}
 		//reset gaspool, diff new txs, state has been changed on this height , will just be shifted by nonce. same nonce with higher price will fail.
 		if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
 			log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs+1, "countOfTxs", totalTxs, "elapsed", time.Now().Sub(tstart), "w.tcount", w.currentPre.tcount)
@@ -1338,7 +1340,10 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 	if len(pendingTxs) == 0 {
 		return false
 	}
+	totalTxs := 0
+	tmp := w.currentPre.tcount
 	if len(pendingTxs[0]) > 0 {
+		totalTxs += len(pendingTxs[0])
 		txs := types.NewTransactionsByPriceAndNonce(w.currentPre.signer, pendingTxs[0])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
 			log.Debug("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1, "len(localtxs)", len(pendingTxs[0]))
@@ -1346,16 +1351,17 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 		}
 	}
 	if len(pendingTxs[1]) > 0 {
+		totalTxs += len(pendingTxs[1])
 		txs := types.NewTransactionsByPriceAndNonce(w.currentPre.signer, pendingTxs[1])
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Debug("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1)
+			log.Debug("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1, "len(remotetxs)", len(pendingTxs[1]))
 			return true
 		}
 	}
 	s := w.currentPre.state
 	if err := s.WaitPipeVerification(); err == nil {
 		w.engine.(*parlia.Parlia).FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.currentPre.header), s, w.currentPre.txs, uncles, w.currentPre.receipts)
-		log.Debug("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "batchTxs", ctxs+1, "len(txs)", len(w.currentPre.txs), "len(receipts)", len(w.currentPre.receipts), "w.current.tcount", w.currentPre.tcount)
+		log.Debug("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "batchTxs", ctxs+1, "len(txs)", len(w.currentPre.txs), "len(receipts)", len(w.currentPre.receipts), "w.current.tcount", w.currentPre.tcount, "totalTxs", totalTxs, "tcounBefore", tmp)
 	}
 	return false
 }
