@@ -1480,22 +1480,18 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 		return nil, nil, err
 	}
 
-	ret0, ret1 := new([]common.Address), new([]types.BLSPublicKey)
-	out := []interface{}{ret0, ret1}
+	var valSet []common.Address
+	var voteAddrSet []types.BLSPublicKey
 
-	if err := p.validatorSetABI.UnpackIntoInterface(&out, method, result); err != nil {
+	if err := p.validatorSetABI.UnpackIntoInterface(&[]interface{}{valSet, voteAddrSet}, method, result); err != nil {
 		return nil, nil, err
 	}
 
-	valz := make([]common.Address, len(*ret0))
-	voteAddrmap := make(map[common.Address]*types.BLSPublicKey)
-	for i := 0; i < len(*ret0); i++ {
-		//var voteAddr types.BLSPublicKey
-		//voteAddr = ret1[i]
-		valz[i] = (*ret0)[i]
-		voteAddrmap[(*ret0)[i]] = &(*ret1)[i]
+	voteAddrmap := make(map[common.Address]*types.BLSPublicKey, len(valSet))
+	for i := 0; i < len(valSet); i++ {
+		voteAddrmap[valSet[i]] = &(voteAddrSet)[i]
 	}
-	return valz, voteAddrmap, nil
+	return valSet, voteAddrmap, nil
 }
 
 // slash spoiled validators
