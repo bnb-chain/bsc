@@ -55,7 +55,7 @@ type ChainHeaderReader interface {
 }
 
 type VotePool interface {
-	FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelope
+	FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope
 }
 
 // ChainReader defines a small collection of methods needed to access the local

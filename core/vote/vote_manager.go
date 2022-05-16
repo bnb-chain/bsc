@@ -130,12 +130,12 @@ func (voteManager *VoteManager) loop() {
 				voteMessage.Data.SourceHash = sourceHash
 
 				if err := voteManager.signer.SignVote(voteMessage); err != nil {
-					log.Debug("Failed to sign vote", "err", err)
+					log.Error("Failed to sign vote", "err", err)
 					votesSigningErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 					continue
 				}
 				if err := voteManager.journal.WriteVote(voteMessage); err != nil {
-					log.Warn("Failed to write vote into journal", "err", err)
+					log.Error("Failed to write vote into journal", "err", err)
 					votesJournalErrorMetric().Inc(1)
 					continue
 				}
@@ -198,12 +198,17 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 			return false, 0, common.Hash{}
 		}
 
+		if vote.Data.TargetNumber <= sourceNumber || vote.Data.TargetNumber < targetNumber && vote.Data.SourceNumber < sourceNumber {
+			// In this scenario, there'll never be any subset relation in the later iteration, so just break here.
+			break
+		}
+
 		if vote.Data.SourceNumber > sourceNumber && vote.Data.TargetNumber < targetNumber {
-			log.Warn("curHeader's vote source and target are within its other votes")
+			log.Debug("curHeader's vote source and target are within its other votes")
 			return false, 0, common.Hash{}
 		}
 		if vote.Data.SourceNumber < sourceNumber && vote.Data.TargetNumber > targetNumber {
-			log.Warn("Other votes source and target are within curHeader's")
+			log.Debug("Other votes source and target are within curHeader's")
 			return false, 0, common.Hash{}
 		}
 	}

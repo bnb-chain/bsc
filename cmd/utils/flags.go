@@ -845,17 +845,17 @@ var (
 
 	BLSPasswordFileFlag = cli.StringFlag{
 		Name:  "blspassword",
-		Usage: "File for the BLS password",
+		Usage: "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
 	}
 
 	BLSWalletDirFlag = DirectoryFlag{
 		Name:  "blswallet",
-		Usage: "Directory for the bls wallet path of fast finality (default = inside the datadir)",
+		Usage: "Path for the blsWallet dir in fast finality feature (default = inside the datadir)",
 	}
 
 	VoteJournalDirFlag = DirectoryFlag{
 		Name:  "vote-journal-path",
-		Usage: "Directory for the journal path of fast finality (default = inside the datadir)",
+		Usage: "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
 	}
 )
 

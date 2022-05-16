@@ -125,7 +125,7 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 
 	// Make sure in the range currentHeight-256~currentHeight+11.
 	if targetNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || targetNumber > headNumber+upperLimitOfVoteBlockNumber {
-		log.Warn("BlockNumber of vote is outside the range of header-256~header+13")
+		log.Debug("BlockNumber of vote is outside the range of header-256~header+13, will be discarded")
 		return false
 	}
 
@@ -202,7 +202,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 	m[targetHash].voteMessages = append(m[targetHash].voteMessages, vote)
 	// Add into received vote to avoid future duplicated vote comes.
 	pool.receivedVotes.Add(voteHash)
-	log.Info("VoteHash put into votepool is:", "voteHash", voteHash)
+	log.Debug("VoteHash put into votepool is:", "voteHash", voteHash)
 
 	if isFutureVote {
 		localFutureVotesGauge.Inc(1)
@@ -246,8 +246,14 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 func (pool *VotePool) transfer(blockHash common.Hash) {
 	curPq, futurePq := pool.curVotesPq, pool.futureVotesPq
 	curVotes, futureVotes := pool.curVotes, pool.futureVotes
+	voteData := heap.Pop(futurePq)
 
-	voteBox := futureVotes[blockHash]
+	defer localFutureVotesPqGauge.Update(int64(futurePq.Len()))
+
+	voteBox, ok := futureVotes[blockHash]
+	if !ok {
+		return
+	}
 
 	validVotes := make([]*types.VoteEnvelope, 0, len(voteBox.voteMessages))
 	for _, vote := range voteBox.voteMessages {
@@ -262,7 +268,6 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 		validVotes = append(validVotes, vote)
 	}
 
-	voteData := heap.Pop(futurePq)
 	if _, ok := curVotes[blockHash]; !ok {
 		heap.Push(curPq, voteData)
 		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
@@ -275,7 +280,6 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 
 	localCurVotesGauge.Inc(int64(len(validVotes)))
 	localFutureVotesGauge.Dec(int64(len(voteBox.voteMessages)))
-	localFutureVotesPqGauge.Update(int64(futurePq.Len()))
 }
 
 // Prune old data of duplicationSet, curVotePq and curVotesMap.
@@ -318,7 +322,7 @@ func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 	return votesRes
 }
 
-func (pool *VotePool) FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelope {
+func (pool *VotePool) FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 	if _, ok := pool.curVotes[blockHash]; ok {

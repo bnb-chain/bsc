@@ -215,7 +215,7 @@ func (t *testVotePool) PutVote(vote *types.VoteEnvelope) {
 	t.voteFeed.Send(core.NewVoteEvent{Vote: vote})
 }
 
-func (t *testVotePool) FetchVoteByHash(blockHash common.Hash) []*types.VoteEnvelope {
+func (t *testVotePool) FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {
 	panic("implement me")
 }
 

@@ -817,7 +817,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	if err != nil {
 		return err
 	}
-	votes := p.votePool.FetchVoteByHash(parent.Hash())
+	votes := p.votePool.FetchVoteByBlockHash(parent.Hash())
 	if len(votes) <= len(snap.Validators)*2/3 {
 		return nil
 	}
