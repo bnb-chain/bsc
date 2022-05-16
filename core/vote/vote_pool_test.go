@@ -65,43 +65,37 @@ type mockPOSA struct {
 	consensus.PoSA
 }
 
-func getHighestJustifiedHeaderForValid(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
+type mockInvalidPOSA struct {
+	consensus.PoSA
+}
+
+func (p *mockPOSA) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
 	return chain.GetHeaderByHash(header.ParentHash)
 }
 
-func getHighestJustifiedHeaderForInvalid(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
-	cur := header
-	for i := 0; i < 3; i++ {
-		parent := chain.GetHeaderByHash(cur.ParentHash)
-		if parent == nil {
-			return cur
-		}
-		cur = parent
-	}
-
-	parent := cur
-	for i := 0; i < 5; i++ {
-		if parent != nil {
-			parent = chain.GetHeaderByHash(parent.ParentHash)
-		}
-	}
-
-	// Iterate into the first block to simulate the invalid rules of range overlap
-	for parent != nil {
-		cur = parent
-		parent = chain.GetHeaderByHash(parent.ParentHash)
-	}
-	return cur
+func (p *mockInvalidPOSA) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
+	return nil
 }
 
 func (m *mockPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
 	return nil
 }
 
+func (m *mockInvalidPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
+	return nil
+}
+
 func (m *mockPOSA) SetVotePool(votePool consensus.VotePool) {
 }
 
+func (m *mockInvalidPOSA) SetVotePool(votePool consensus.VotePool) {
+}
+
 func (m *mockPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header) bool {
+	return true
+}
+
+func (m *mockInvalidPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header) bool {
 	return true
 }
 
@@ -113,7 +107,6 @@ func (pool *VotePool) verifyStructureSizeOfVotePool(receivedVotes, curVotes, fut
 		}
 	}
 	return false
-
 }
 
 func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
@@ -140,7 +133,7 @@ func TestInvalidVotePool(t *testing.T) {
 	testVotePool(t, false)
 }
 
-func testVotePool(t *testing.T, inValidRules bool) {
+func testVotePool(t *testing.T, isValidRules bool) {
 	walletPasswordDir, walletDir := setUpKeyManager(t)
 
 	// Create a database pre-initialize with a genesis block
@@ -153,7 +146,13 @@ func testVotePool(t *testing.T, inValidRules bool) {
 	chain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFullFaker(), vm.Config{}, nil, nil)
 
 	mux := new(event.TypeMux)
-	mockEngine := &mockPOSA{}
+
+	var mockEngine consensus.PoSA
+	if isValidRules {
+		mockEngine = &mockPOSA{}
+	} else {
+		mockEngine = &mockInvalidPOSA{}
+	}
 
 	// Create vote pool
 	votePool := NewVotePool(params.TestChainConfig, chain, mockEngine)
@@ -171,18 +170,11 @@ func testVotePool(t *testing.T, inValidRules bool) {
 	file.Close()
 	os.Remove(journal)
 
-	var ruleFunc getJustifiedHeaderFunc
-	if inValidRules {
-		ruleFunc = getHighestJustifiedHeaderForValid
-	} else {
-		ruleFunc = getHighestJustifiedHeaderForInvalid
-	}
-
 	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir, mockEngine)
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}
-	voteManager.getJustifiedHeader = ruleFunc
+
 	voteJournal := voteManager.journal
 
 	// Send the done event of downloader
@@ -199,7 +191,8 @@ func testVotePool(t *testing.T, inValidRules bool) {
 			panic(err)
 		}
 	}
-	if !inValidRules {
+
+	if !isValidRules {
 		if votePool.verifyStructureSizeOfVotePool(11, 11, 0, 11, 0) {
 			t.Fatalf("put vote failed")
 		}

@@ -20,6 +20,8 @@ type VoteJournal struct {
 	walLog *wal.Log
 }
 
+var voteJournalError = metrics.NewRegisteredGauge("voteJournal/local", nil)
+
 func NewVoteJournal(filePath string) (*VoteJournal, error) {
 	walLog, err := wal.Open(filePath, &wal.Options{
 		LogFormat:        wal.JSON,
@@ -90,9 +92,4 @@ func (journal *VoteJournal) ReadVote(index uint64) (*types.VoteEnvelope, error) 
 	}
 
 	return vote, nil
-}
-
-// Metrics to monitor if there's any error for writing vote journal.
-func votesJournalErrorMetric() metrics.Gauge {
-	return metrics.GetOrRegisterGauge(("voteJournal"), nil)
 }
