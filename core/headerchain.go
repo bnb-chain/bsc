@@ -133,7 +133,9 @@ func (hc *HeaderChain) getJustifiedNumber(header *types.Header) uint64 {
 // getFinalizedNumber returns the highest finalized number before the specific block.
 func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
-		return p.GetFinalizedHeader(hc, header).Number.Uint64()
+		if finalizedHeader := p.GetFinalizedHeader(hc, header); finalizedHeader != nil {
+			return finalizedHeader.Number.Uint64()
+		}
 	}
 
 	return 0

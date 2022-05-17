@@ -545,7 +545,9 @@ func (bc *BlockChain) getJustifiedNumber(header *types.Header) uint64 {
 // getFinalizedNumber returns the highest finalized number before the specific block.
 func (bc *BlockChain) getFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		return p.GetFinalizedHeader(bc, header).Number.Uint64()
+		if finalizedHeader := p.GetFinalizedHeader(bc, header); finalizedHeader != nil {
+			return finalizedHeader.Number.Uint64()
+		}
 	}
 
 	return 0
@@ -1888,7 +1890,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if emitHeadEvent {
 			bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
-				bc.finalizedHeaderFeed.Send(posa.GetFinalizedHeader(bc, block.Header()))
+				if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header()); finalizedHeader != nil {
+					bc.finalizedHeaderFeed.Send(finalizedHeader)
+				}
 			}
 		}
 	} else {
@@ -1993,7 +1997,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		if lastCanon != nil && bc.CurrentBlock().Hash() == lastCanon.Hash() {
 			bc.chainHeadFeed.Send(ChainHeadEvent{lastCanon})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
-				bc.finalizedHeaderFeed.Send(posa.GetFinalizedHeader(bc, lastCanon.Header()))
+				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header()); finalizedHeader != nil {
+					bc.finalizedHeaderFeed.Send(finalizedHeader)
+				}
 			}
 		}
 	}()
