@@ -31,39 +31,6 @@ type VoteManager struct {
 	journal *VoteJournal
 
 	engine consensus.PoSA
-
-	voteDataBuffer *voteDataBuffer
-}
-
-type voteDataBuffer struct {
-	voteDataMap map[uint64]*types.VoteData
-	cache       []uint64
-}
-
-func newVoteDataBuffer() *voteDataBuffer {
-	return &voteDataBuffer{
-		voteDataMap: make(map[uint64]*types.VoteData, maxSizeOfRecentEntry),
-		cache:       make([]uint64, 0, maxSizeOfRecentEntry),
-	}
-}
-
-func (voteDataBuffer *voteDataBuffer) add(voteData *types.VoteData) {
-	cache := voteDataBuffer.cache
-	voteDataMap := voteDataBuffer.voteDataMap
-	var targetNumber uint64
-
-	for len(cache) >= maxSizeOfRecentEntry {
-		targetNumber, cache = cache[0], cache[1:]
-		delete(voteDataMap, targetNumber)
-	}
-
-	voteDataMap[voteData.TargetNumber] = voteData
-	cache = append(cache, voteData.TargetNumber)
-}
-
-func (voteDataBuffer *voteDataBuffer) contains(targetNumber uint64) (*types.VoteData, bool) {
-	voteData, ok := voteDataBuffer.voteDataMap[targetNumber]
-	return voteData, ok
 }
 
 func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
@@ -93,8 +60,6 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 	}
 	log.Info("Create voteJournal successfully")
 	voteManager.journal = voteJournal
-
-	voteManager.voteDataBuffer = newVoteDataBuffer()
 
 	// Subscribe to chain head event.
 	voteManager.chainHeadSub = voteManager.chain.SubscribeChainHeadEvent(voteManager.chainHeadCh)
@@ -171,7 +136,6 @@ func (voteManager *VoteManager) loop() {
 
 				log.Debug("vote manager produced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
-				voteManager.voteDataBuffer.add(voteMessage.Data)
 				votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 			}
 		case <-voteManager.chainHeadSub.Err():
@@ -195,23 +159,33 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 	sourceHash := justifiedHeader.Hash()
 	targetNumber := header.Number.Uint64()
 
-	voteDataBuffer := voteManager.voteDataBuffer
+	voteDataBuffer := voteManager.journal.voteDataBuffer
 	//Rule 1:  A validator must not publish two distinct votes for the same height.
-	if _, ok := voteDataBuffer.contains(header.Number.Uint64()); ok {
+	if voteDataBuffer.Contains(header.Number.Uint64()) {
 		return false, 0, common.Hash{}
 	}
 
 	//Rule 2: A validator must not vote within the span of its other votes.
 	for blockNumber := sourceNumber + 1; blockNumber < targetNumber; blockNumber++ {
-		if voteData, ok := voteDataBuffer.contains(blockNumber); ok {
-			if voteData.SourceNumber > sourceNumber {
+		if voteDataBuffer.Contains(blockNumber) {
+			voteData, ok := voteDataBuffer.Get(blockNumber)
+			if !ok {
+				log.Error("Failed to get voteData info from LRU cache.")
+				continue
+			}
+			if voteData.(*types.VoteData).SourceNumber > sourceNumber {
 				return false, 0, common.Hash{}
 			}
 		}
 	}
 	for blockNumber := targetNumber; blockNumber <= targetNumber+naturallyJustifiedDist; blockNumber++ {
-		if voteData, ok := voteDataBuffer.contains(blockNumber); ok {
-			if voteData.SourceNumber < sourceNumber {
+		if voteDataBuffer.Contains(blockNumber) {
+			voteData, ok := voteDataBuffer.Get(blockNumber)
+			if !ok {
+				log.Error("Failed to get voteData info from LRU cache.")
+				continue
+			}
+			if voteData.(*types.VoteData).SourceNumber < sourceNumber {
 				return false, 0, common.Hash{}
 			}
 		}

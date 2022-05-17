@@ -3,6 +3,7 @@ package vote
 import (
 	"encoding/json"
 
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/tidwall/wal"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -18,6 +19,8 @@ type VoteJournal struct {
 	journalPath string // file path of disk journal for saving the vote.
 
 	walLog *wal.Log
+
+	voteDataBuffer *lru.Cache
 }
 
 var voteJournalError = metrics.NewRegisteredGauge("voteJournal/local", nil)
@@ -32,10 +35,35 @@ func NewVoteJournal(filePath string) (*VoteJournal, error) {
 		return nil, err
 	}
 
+	voteDataBuffer, err := lru.New(maxSizeOfRecentEntry)
+	if err != nil {
+		return nil, err
+	}
+
+	firstIndex, err := walLog.FirstIndex()
+	if err != nil {
+		log.Error("Failed to get first index of votes journal", "err", err)
+	}
+
+	lastIndex, err := walLog.LastIndex()
+	if err != nil {
+		log.Error("Failed to get lastIndex of vote journal", "err", err)
+		return nil, err
+	}
+
 	voteJournal := &VoteJournal{
 		journalPath: filePath,
 		walLog:      walLog,
 	}
+
+	// Reload all voteData from journal to lru memory everytime node reboot.
+	for index := firstIndex; index <= lastIndex; index++ {
+		if voteEnvelop, err := voteJournal.ReadVote(index); err == nil {
+			voteData := voteEnvelop.Data
+			voteDataBuffer.Add(voteData.TargetNumber, voteData)
+		}
+	}
+	voteJournal.voteDataBuffer = voteDataBuffer
 
 	return voteJournal, nil
 }
@@ -63,15 +91,16 @@ func (journal *VoteJournal) WriteVote(voteMessage *types.VoteEnvelope) error {
 
 	firstIndex, err := walLog.FirstIndex()
 	if err != nil {
-		log.Warn("Failed to get first index of votes journal", "err", err)
+		log.Error("Failed to get first index of votes journal", "err", err)
 	}
 
 	if lastIndex-firstIndex+1 > maxSizeOfRecentEntry {
 		if err := walLog.TruncateFront(lastIndex - maxSizeOfRecentEntry + 1); err != nil {
-			log.Warn("Failed to truncate votes journal", "err", err)
+			log.Error("Failed to truncate votes journal", "err", err)
 		}
 	}
 
+	journal.voteDataBuffer.Add(voteMessage.Data.TargetNumber, voteMessage.Data)
 	return nil
 }
 
