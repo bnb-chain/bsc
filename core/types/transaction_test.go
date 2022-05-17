@@ -310,11 +310,11 @@ func TestTransactionPriceNonceSort(t *testing.T) {
 	}
 }
 
-// Tests that if multiple transactions have the same price, the ones seen earlier
-// are prioritized to avoid network spam attacks aiming for a specific ordering.
-func TestTransactionTimeSort(t *testing.T) {
+// Tests if transactions with the same gas price are lexicographical sorted by hash
+// to prevent network spam attacks and to make the transaction sorting traceable
+func TestTransactionHashSort(t *testing.T) {
 	// Generate a batch of accounts to start with
-	keys := make([]*ecdsa.PrivateKey, 5)
+	keys := make([]*ecdsa.PrivateKey, 10)
 	for i := 0; i < len(keys); i++ {
 		keys[i], _ = crypto.GenerateKey()
 	}
@@ -350,9 +350,9 @@ func TestTransactionTimeSort(t *testing.T) {
 			if txi.GasPrice().Cmp(next.GasPrice()) < 0 {
 				t.Errorf("invalid gasprice ordering: tx #%d (A=%x P=%v) < tx #%d (A=%x P=%v)", i, fromi[:4], txi.GasPrice(), i+1, fromNext[:4], next.GasPrice())
 			}
-			// Make sure time order is ascending if the txs have the same gas price
-			if txi.GasPrice().Cmp(next.GasPrice()) == 0 && txi.time.After(next.time) {
-				t.Errorf("invalid received time ordering: tx #%d (A=%x T=%v) > tx #%d (A=%x T=%v)", i, fromi[:4], txi.time, i+1, fromNext[:4], next.time)
+			// Make sure hash order is lexicographical if the txs have the same gas price
+			if txi.GasPrice().Cmp(next.GasPrice()) == 0 && bytes.Compare(txi.Hash().Bytes(), next.Hash().Bytes()) > 0 {
+				t.Errorf("invalid hash ordering: tx #%d (H=%x) > tx #%d (H=%x)", i, txi.Hash().Bytes()[:4], i+1, next.Hash().Bytes()[:4])
 			}
 		}
 	}
