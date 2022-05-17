@@ -422,12 +422,42 @@ func (s *TxByPriceAndTime) Pop() interface{} {
 	return x
 }
 
+type TxByPriceAndHash Transactions
+
+func (s TxByPriceAndHash) Len() int { return len(s) }
+func (s TxByPriceAndHash) Less(i, j int) bool {
+	// If the prices are equal, use the transaction hash for
+	// deterministic sorting
+	cmp := s[i].ImmutableGasPrice().Cmp(s[j].ImmutableGasPrice())
+	if cmp == 0 {
+	    hi := s[i].Hash()
+	    hj := s[j].Hash()
+		return bytes.Compare(hi[:], hj[:]) == -1
+	}
+	return cmp > 0
+}
+func (s TxByPriceAndHash) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+
+func (s *TxByPriceAndHash) Push(x interface{}) {
+	*s = append(*s, x.(*Transaction))
+}
+
+func (s *TxByPriceAndHash) Pop() interface{} {
+	old := *s
+	n := len(old)
+	x := old[n-1]
+	*s = old[0 : n-1]
+	return x
+}
+
+
+
 // TransactionsByPriceAndNonce represents a set of transactions that can return
 // transactions in a profit-maximizing sorted order, while supporting removing
 // entire batches of transactions for non-executable accounts.
 type TransactionsByPriceAndNonce struct {
 	txs    map[common.Address]Transactions // Per account nonce-sorted list of transactions
-	heads  TxByPriceAndTime                // Next transaction for each unique account (price heap)
+	heads  TxByPriceAndHash                // Next transaction for each unique account (price heap)
 	signer Signer                          // Signer for the set of transactions
 }
 
@@ -437,8 +467,8 @@ type TransactionsByPriceAndNonce struct {
 // Note, the input map is reowned so the caller should not interact any more with
 // if after providing it to the constructor.
 func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions) *TransactionsByPriceAndNonce {
-	// Initialize a price and received time based heap with the head transactions
-	heads := make(TxByPriceAndTime, 0, len(txs))
+	// Initialize a price and transaction hash based heap with the head transactions
+	heads := make(TxByPriceAndHash, 0, len(txs))
 	for from, accTxs := range txs {
 		// Ensure the sender address is from the signer
 		if acc, _ := Sender(signer, accTxs[0]); acc != from {
