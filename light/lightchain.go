@@ -50,16 +50,17 @@ var (
 // headers, downloading block bodies and receipts on demand through an ODR
 // interface. It only does header validation during chain insertion.
 type LightChain struct {
-	hc            *core.HeaderChain
-	indexerConfig *IndexerConfig
-	chainDb       ethdb.Database
-	engine        consensus.Engine
-	odr           OdrBackend
-	chainFeed     event.Feed
-	chainSideFeed event.Feed
-	chainHeadFeed event.Feed
-	scope         event.SubscriptionScope
-	genesisBlock  *types.Block
+	hc                  *core.HeaderChain
+	indexerConfig       *IndexerConfig
+	chainDb             ethdb.Database
+	engine              consensus.Engine
+	odr                 OdrBackend
+	chainFeed           event.Feed
+	chainSideFeed       event.Feed
+	chainHeadFeed       event.Feed
+	finalizedHeaderFeed event.Feed
+	scope               event.SubscriptionScope
+	genesisBlock        *types.Block
 
 	bodyCache    *lru.Cache // Cache for the most recent block bodies
 	bodyRLPCache *lru.Cache // Cache for the most recent block bodies in RLP encoded format
@@ -368,6 +369,8 @@ func (lc *LightChain) postChainEvents(events []interface{}) {
 				lc.chainHeadFeed.Send(core.ChainHeadEvent{Block: ev.Block})
 			}
 			lc.chainFeed.Send(ev)
+		case core.FinalizedHeaderEvent:
+			lc.finalizedHeaderFeed.Send(ev)
 		case core.ChainSideEvent:
 			lc.chainSideFeed.Send(ev)
 		}
@@ -415,6 +418,9 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 	switch status {
 	case core.CanonStatTy:
 		events = append(events, core.ChainEvent{Block: block, Hash: block.Hash()})
+		if posa, ok := lc.Engine().(consensus.PoSA); ok {
+			events = append(events, core.FinalizedHeaderEvent{Header: posa.GetFinalizedHeader(lc, block.Header())})
+		}
 	case core.SideStatTy:
 		events = append(events, core.ChainSideEvent{Block: block})
 	}
@@ -559,6 +565,11 @@ func (lc *LightChain) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subsc
 // SubscribeChainHeadEvent registers a subscription of ChainHeadEvent.
 func (lc *LightChain) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription {
 	return lc.scope.Track(lc.chainHeadFeed.Subscribe(ch))
+}
+
+// SubscribeFinalizedHeaderEvent registers a subscription of FinalizedHeaderEvent.
+func (lc *LightChain) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeaderEvent) event.Subscription {
+	return lc.scope.Track(lc.finalizedHeaderFeed.Subscribe(ch))
 }
 
 // SubscribeChainSideEvent registers a subscription of ChainSideEvent.

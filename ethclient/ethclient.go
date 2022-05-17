@@ -211,12 +211,15 @@ func (ec *Client) GetJustifiedHeader(ctx context.Context, blockNumber *big.Int) 
 	return head, err
 }
 
-// GetFinalizedNumber returns the highest finalized number before a specific block number. If number is nil, the
-// latest finalized block number is returned.
-func (ec *Client) GetFinalizedNumber(ctx context.Context, blockNumber *big.Int) (uint64, error) {
-	var result hexutil.Uint64
-	err := ec.c.CallContext(ctx, &result, "eth_getFinalizedNumber", toBlockNumArg(blockNumber))
-	return uint64(result), err
+// GetFinalizedHeader returns the highest finalized block header before a specific block number. If header is nil, the
+// latest finalized block header is returned.
+func (ec *Client) GetFinalizedHeader(ctx context.Context, blockNumber *big.Int) (*types.Header, error) {
+	var head *types.Header
+	err := ec.c.CallContext(ctx, &head, "eth_getFinalizedHeader", toBlockNumArg(blockNumber))
+	if err == nil && head == nil {
+		err = ethereum.NotFound
+	}
+	return head, err
 }
 
 type rpcTransaction struct {
@@ -403,6 +406,17 @@ func (ec *Client) SyncProgress(ctx context.Context) (*ethereum.SyncProgress, err
 // on the given channel.
 func (ec *Client) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
 	return ec.c.EthSubscribe(ctx, ch, "newHeads")
+}
+
+// SubscribeNewFinalizedHeader subscribes to notifications about the current blockchain finalized header
+// on the given channel.
+func (ec *Client) SubscribeNewFinalizedHeader(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
+	return ec.c.EthSubscribe(ctx, ch, "newFinalizedHeaders")
+}
+
+// SubscribeNewVotes subscribes to notifications about the new votes into vote pool
+func (ec *Client) SubscribeNewVotes(ctx context.Context, ch chan<- *types.VoteEnvelope) (ethereum.Subscription, error) {
+	return ec.c.EthSubscribe(ctx, ch, "newVotes")
 }
 
 // State Access

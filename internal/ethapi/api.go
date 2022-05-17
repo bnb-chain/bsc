@@ -1311,8 +1311,8 @@ func (s *PublicBlockChainAPI) GetJustifiedHeader(ctx context.Context, blockNrOrH
 	return nil, nil
 }
 
-// GetFinalizedNumber returns the highest finalized block number before the input block.
-func (s *PublicBlockChainAPI) GetFinalizedNumber(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (hexutil.Uint64, error) {
+// GetFinalizedHeader returns the highest finalized block header before the input block.
+func (s *PublicBlockChainAPI) GetFinalizedHeader(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (*types.Header, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
@@ -1321,18 +1321,18 @@ func (s *PublicBlockChainAPI) GetFinalizedNumber(ctx context.Context, blockNrOrH
 	// Retrieve the block to act as the gas ceiling
 	header, err := s.b.HeaderByNumberOrHash(ctx, bNrOrHash)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if header == nil {
-		return 0, errors.New("block header not found")
+		return nil, errors.New("block header not found")
 	}
 
 	if posa, ok := s.b.Engine().(consensus.PoSA); ok {
-		return hexutil.Uint64(posa.GetFinalizedNumber(s.b.Chain(), header)), nil
+		return posa.GetFinalizedHeader(s.b.Chain(), header), nil
 	}
 
 	// Not support.
-	return 0, nil
+	return nil, nil
 }
 
 // ExecutionResult groups all structured logs emitted by the EVM

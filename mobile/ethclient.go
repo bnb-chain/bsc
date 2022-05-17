@@ -148,6 +148,74 @@ func (ec *EthereumClient) SubscribeNewHead(ctx *Context, handler NewHeadHandler,
 	return &Subscription{rawSub}, nil
 }
 
+// NewFinalizedHeaderHandler is a client-side subscription callback to invoke on events and
+// subscription failure.
+type NewFinalizedHeaderHandler interface {
+	OnNewFinalizedHeader(header *Header)
+	OnError(failure string)
+}
+
+// SubscribeNewFinalizedHeader subscribes to notifications about the current blockchain finalized header
+// on the given channel.
+func (ec *EthereumClient) SubscribeNewFinalizedHeader(ctx *Context, handler NewFinalizedHeaderHandler, buffer int) (sub *Subscription, _ error) {
+	// Subscribe to the event internally
+	ch := make(chan *types.Header, buffer)
+	rawSub, err := ec.client.SubscribeNewFinalizedHeader(ctx.context, ch)
+	if err != nil {
+		return nil, err
+	}
+	// Start up a dispatcher to feed into the callback
+	go func() {
+		for {
+			select {
+			case header := <-ch:
+				handler.OnNewFinalizedHeader(&Header{header})
+
+			case err := <-rawSub.Err():
+				if err != nil {
+					handler.OnError(err.Error())
+				}
+				return
+			}
+		}
+	}()
+	return &Subscription{rawSub}, nil
+}
+
+// NewVoteHandler is a client-side subscription callback to invoke on events and
+// subscription failure.
+type NewVoteHandler interface {
+	OnNewVote(vote *types.VoteEnvelope)
+	OnError(failure string)
+}
+
+// SubscribeNewVotes subscribes to notifications about the new votes into the vote pool
+// on the given channel.
+func (ec *EthereumClient) SubscribeNewVotes(ctx *Context, handler NewVoteHandler, buffer int) (sub *Subscription, _ error) {
+	// Subscribe to the event internally
+	ch := make(chan *types.VoteEnvelope, buffer)
+	rawSub, err := ec.client.SubscribeNewVotes(ctx.context, ch)
+	if err != nil {
+		return nil, err
+	}
+	// Start up a dispatcher to feed into the callback
+	go func() {
+		for {
+			select {
+			case vote := <-ch:
+				handler.OnNewVote(vote)
+
+			case err := <-rawSub.Err():
+				if err != nil {
+					handler.OnError(err.Error())
+				}
+				return
+			}
+		}
+	}()
+	return &Subscription{rawSub}, nil
+}
+
 // State Access
 
 // GetBalanceAt returns the wei balance of the given account.

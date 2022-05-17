@@ -44,15 +44,16 @@ var (
 )
 
 type testBackend struct {
-	mux             *event.TypeMux
-	db              ethdb.Database
-	sections        uint64
-	txFeed          event.Feed
-	logsFeed        event.Feed
-	rmLogsFeed      event.Feed
-	pendingLogsFeed event.Feed
-	chainFeed       event.Feed
-	voteFeed        event.Feed
+	mux                 *event.TypeMux
+	db                  ethdb.Database
+	sections            uint64
+	txFeed              event.Feed
+	logsFeed            event.Feed
+	rmLogsFeed          event.Feed
+	pendingLogsFeed     event.Feed
+	chainFeed           event.Feed
+	finalizedHeaderFeed event.Feed
+	voteFeed            event.Feed
 }
 
 func (b *testBackend) ChainDb() ethdb.Database {
@@ -125,6 +126,10 @@ func (b *testBackend) SubscribePendingLogsEvent(ch chan<- []*types.Log) event.Su
 
 func (b *testBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription {
 	return b.chainFeed.Subscribe(ch)
+}
+
+func (b *testBackend) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeaderEvent) event.Subscription {
+	return b.finalizedHeaderFeed.Subscribe(ch)
 }
 
 func (b *testBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {

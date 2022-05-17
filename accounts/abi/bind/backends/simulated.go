@@ -778,6 +778,10 @@ func (fb *filterBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Su
 	return fb.bc.SubscribeChainEvent(ch)
 }
 
+func (fb *filterBackend) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeaderEvent) event.Subscription {
+	return fb.bc.SubscribeFinalizedHeaderEvent(ch)
+}
+
 func (fb *filterBackend) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent) event.Subscription {
 	return fb.bc.SubscribeRemovedLogsEvent(ch)
 }

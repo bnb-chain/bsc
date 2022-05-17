@@ -1717,37 +1717,37 @@ func (p *Parlia) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *t
 	return chain.GetHeaderByHash(snap.Attestation.TargetHash)
 }
 
-// GetFinalizedNumber returns highest finalized block number before the specific block,
+// GetFinalizedHeader returns highest finalized block header before the specific block,
 // the attestation within the specific block will be taken into account.
-func (p *Parlia) GetFinalizedNumber(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
+func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
 	if !chain.Config().IsLynn(header.Number) {
-		return 0
+		return nil
 	}
 	if chain == nil || header == nil || header.Number.Uint64() < 2 {
-		return 0
+		return nil
 	}
 
 	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
 	if err != nil {
 		log.Error("Unexpected error when getting snapshot",
 			"error", err, "blockNumber", header.Number.Uint64(), "blockHash", header.Hash())
-		return 0
+		return nil
 	}
 
 	for snap.Attestation != nil {
 		if snap.Attestation.TargetNumber == snap.Attestation.SourceNumber+1 {
-			return snap.Attestation.SourceNumber
+			return chain.GetHeaderByHash(snap.Attestation.SourceHash)
 		}
 
 		snap, err = p.snapshot(chain, snap.Attestation.SourceNumber, snap.Attestation.SourceHash, nil)
 		if err != nil {
 			log.Error("Unexpected error when getting snapshot",
 				"error", err, "blockNumber", snap.Attestation.SourceNumber, "blockHash", snap.Attestation.SourceHash)
-			return 0
+			return nil
 		}
 	}
 
-	return 0
+	return nil
 }
 
 // ===========================     utility function        ==========================
