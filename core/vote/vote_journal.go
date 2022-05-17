@@ -58,7 +58,7 @@ func NewVoteJournal(filePath string) (*VoteJournal, error) {
 
 	// Reload all voteData from journal to lru memory everytime node reboot.
 	for index := firstIndex; index <= lastIndex; index++ {
-		if voteEnvelop, err := voteJournal.ReadVote(index); err == nil {
+		if voteEnvelop, err := voteJournal.ReadVote(index); err == nil && voteEnvelop != nil {
 			voteData := voteEnvelop.Data
 			voteDataBuffer.Add(voteData.TargetNumber, voteData)
 		}
