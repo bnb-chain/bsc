@@ -15,8 +15,9 @@ require (
 	github.com/consensys/gnark-crypto v0.4.1-0.20210426202927-39ac3d4b3f1f
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
+	github.com/deepmap/oapi-codegen v1.8.2 // indirect
 	github.com/docker/docker v1.6.1
-	github.com/dop251/goja v0.0.0-20200721192441-a695b0cdd498
+	github.com/dop251/goja v0.0.0-20220405120441-9037c2b61cbf
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/fatih/color v1.7.0
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
@@ -64,6 +65,7 @@ require (
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 	golang.org/x/tools v0.1.5
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
+	gopkg.in/olebedev/go-duktape.v3 v3.0.0-20210326210528-650f7c854440
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
 
@@ -79,8 +81,7 @@ require (
 	github.com/aws/smithy-go v1.1.0 // indirect
 	github.com/beorn7/perks v1.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
-	github.com/deepmap/oapi-codegen v1.8.2 // indirect
-	github.com/dlclark/regexp2 v1.2.0 // indirect
+	github.com/dlclark/regexp2 v1.4.1-0.20201116162257-a2a8dda75c91 // indirect
 	github.com/etcd-io/bbolt v1.3.3 // indirect
 	github.com/fortytw2/leaktest v1.3.0 // indirect
 	github.com/go-kit/kit v0.8.0 // indirect
@@ -117,7 +118,7 @@ require (
 	google.golang.org/genproto v0.0.0-20200108215221-bd8f9a0ef82f // indirect
 	google.golang.org/grpc v1.26.0 // indirect
 	google.golang.org/protobuf v1.23.0 // indirect
-	gopkg.in/yaml.v2 v2.3.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )
 
