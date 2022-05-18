@@ -1482,7 +1482,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	var valSet []common.Address
 	var voteAddrSet []types.BLSPublicKey
 
-	if err := p.validatorSetABI.UnpackIntoInterface(&[]interface{}{valSet, voteAddrSet}, method, result); err != nil {
+	if err := p.validatorSetABI.UnpackIntoInterface(&[]interface{}{&valSet, &voteAddrSet}, method, result); err != nil {
 		return nil, nil, err
 	}
 
