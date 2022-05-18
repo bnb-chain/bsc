@@ -244,6 +244,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 		if _, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, votePool, voteJournalPath, blsPasswordPath, blsWalletPath, posa); err != nil {
 			log.Error("Failed to Initialize voteManager: %v.", err)
+			return nil, err
 		}
 		log.Info("Create voteManager successfully")
 	}
