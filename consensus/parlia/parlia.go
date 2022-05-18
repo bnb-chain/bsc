@@ -1685,11 +1685,6 @@ func (p *Parlia) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *t
 		return nil
 	}
 
-	// There won't any attestation in first two blocks, return root.
-	if header.Number.Uint64() < 2 {
-		return chain.GetHeaderByNumber(0)
-	}
-
 	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
 	if err != nil {
 		log.Error("Unexpected error when getting snapshot",
@@ -1697,11 +1692,16 @@ func (p *Parlia) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *t
 		return nil
 	}
 
-	// If there is no vote justified block, then return root.
+	// If there is no vote justified block, then return root or naturally justified block.
 	if snap.Attestation == nil {
-		return chain.GetHeaderByNumber(0)
+		if header.Number.Uint64() <= naturallyJustifiedDist {
+			return chain.GetHeaderByNumber(0)
+		}
+		// Return naturally justified block.
+		return FindAncientHeader(header, naturallyJustifiedDist, chain, nil)
 	}
-	// Return naturally justified block.
+
+	// If the latest vote justified block is too far, return naturally justified block.
 	if snap.Number-snap.Attestation.TargetNumber > naturallyJustifiedDist {
 		return FindAncientHeader(header, naturallyJustifiedDist, chain, nil)
 	}

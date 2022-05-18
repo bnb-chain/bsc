@@ -20,7 +20,7 @@ type BLSPublicKey [BLSPublicKeyLength]byte
 type BLSSignature [BLSSignatureLength]byte
 type ValidatorsBitSet uint64
 
-// VoteData represents the vote data that validator voted for fast finality.
+// VoteData represents the vote range that validator voted for fast finality.
 type VoteData struct {
 	SourceNumber uint64      // The source block number should be the latest justified block number.
 	SourceHash   common.Hash // The block hash of the source block.
