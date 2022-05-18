@@ -240,6 +240,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		// Create votePool instance
 		votePool := vote.NewVotePool(chainConfig, eth.blockchain, posa)
 		eth.votePool = votePool
+		if parlia, ok := eth.engine.(*parlia.Parlia); ok {
+			parlia.VotePool = votePool
+		} else {
+			return nil, fmt.Errorf("Engine is not Parlia type")
+		}
 		log.Info("Create votePool successfully")
 
 		if _, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, votePool, voteJournalPath, blsPasswordPath, blsWalletPath, posa); err != nil {

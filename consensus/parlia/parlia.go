@@ -10,7 +10,6 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -215,7 +214,7 @@ type Parlia struct {
 	lock sync.RWMutex // Protects the signer fields
 
 	ethAPI                     *ethapi.PublicBlockChainAPI
-	votePool                   consensus.VotePool
+	VotePool                   consensus.VotePool
 	validatorSetABIBeforeBoneh abi.ABI
 	validatorSetABI            abi.ABI
 	slashABI                   abi.ABI
@@ -804,7 +803,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		return nil
 	}
 
-	if reflect.ValueOf(p.votePool).IsNil() {
+	if p.VotePool == nil {
 		return errors.New("vote pool is nil")
 	}
 
@@ -817,7 +816,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	if err != nil {
 		return err
 	}
-	votes := p.votePool.FetchVoteByBlockHash(parent.Hash())
+	votes := p.VotePool.FetchVoteByBlockHash(parent.Hash())
 	if len(votes) <= len(snap.Validators)*2/3 {
 		return nil
 	}
