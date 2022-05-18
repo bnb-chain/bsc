@@ -1328,7 +1328,7 @@ func (s *PublicBlockChainAPI) GetFinalizedHeader(ctx context.Context, blockNrOrH
 	}
 
 	if posa, ok := s.b.Engine().(consensus.PoSA); ok {
-		return posa.GetFinalizedHeader(s.b.Chain(), header), nil
+		return posa.GetFinalizedHeader(s.b.Chain(), header, types.NaturallyFinalizedDist), nil
 	}
 
 	// Not support.

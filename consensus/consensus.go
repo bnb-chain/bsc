@@ -150,7 +150,7 @@ type PoSA interface {
 	IsLocalBlock(header *types.Header) bool
 	AllowLightProcess(chain ChainReader, currentHeader *types.Header) bool
 	GetJustifiedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
-	GetFinalizedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
+	GetFinalizedHeader(chain ChainHeaderReader, header *types.Header, backward uint64) *types.Header
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
 	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header) bool
 }

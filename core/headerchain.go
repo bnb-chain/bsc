@@ -133,12 +133,43 @@ func (hc *HeaderChain) getJustifiedNumber(header *types.Header) uint64 {
 // getFinalizedNumber returns the highest finalized number before the specific block.
 func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
-		if finalizedHeader := p.GetFinalizedHeader(hc, header); finalizedHeader != nil {
+		if finalizedHeader := p.GetFinalizedHeader(hc, header, types.NaturallyFinalizedDist); finalizedHeader != nil {
 			return finalizedHeader.Number.Uint64()
 		}
 	}
 
 	return 0
+}
+
+// isFinalizedBlockHigher returns true when the new block's finalized block is higher than current block.
+func (hc *HeaderChain) isFinalizedBlockHigher(header *types.Header, curHeader *types.Header) bool {
+	p, ok := hc.engine.(consensus.PoSA)
+	if !ok {
+		return false
+	}
+
+	// The distance between the two blocks is too far, not expected, return false default.
+	if header.Number.Uint64() > curHeader.Number.Uint64()+types.NaturallyFinalizedDist {
+		return false
+	}
+	if curHeader.Number.Uint64() > header.Number.Uint64()+types.NaturallyFinalizedDist {
+		return false
+	}
+
+	ancestor := rawdb.FindCommonAncestor(hc.chainDb, header, curHeader)
+	if ancestor == nil ||
+		header.Number.Uint64()-ancestor.Number.Uint64() > types.NaturallyFinalizedDist ||
+		curHeader.Number.Uint64()-ancestor.Number.Uint64() > types.NaturallyFinalizedDist {
+		return false
+	}
+
+	finalized := p.GetFinalizedHeader(hc, header, header.Number.Uint64()-ancestor.Number.Uint64())
+	curFinalized := p.GetFinalizedHeader(hc, curHeader, curHeader.Number.Uint64()-ancestor.Number.Uint64())
+	if finalized == nil || curFinalized == nil {
+		return false
+	}
+
+	return finalized.Number.Uint64() > curFinalized.Number.Uint64()
 }
 
 // GetBlockNumber retrieves the block number belonging to the given hash
@@ -241,7 +272,7 @@ func (hc *HeaderChain) writeHeaders(headers []*types.Header) (result *headerWrit
 	// Second clause in the if statement reduces the vulnerability to selfish mining.
 	// Please refer to http://www.cs.cornell.edu/~ie53/publications/btcProcFC.pdf
 	reorg := newTD.Cmp(localTD) > 0
-	if hc.getFinalizedNumber(lastHeader) > hc.getFinalizedNumber(hc.CurrentHeader()) {
+	if hc.isFinalizedBlockHigher(lastHeader, hc.CurrentHeader()) {
 		reorg = true
 	}
 	if !reorg && newTD.Cmp(localTD) == 0 {

@@ -1709,14 +1709,21 @@ func (p *Parlia) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *t
 	return chain.GetHeaderByHash(snap.Attestation.TargetHash)
 }
 
-// GetFinalizedHeader returns highest finalized block header before the specific block,
-// the attestation within the specific block will be taken into account.
-func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
+// GetFinalizedHeader returns highest finalized block header before the specific block.
+// It will first to find vote finalized block within the specific backward blocks, the maximum backward blocks is 21.
+// If the vote finalized block not found, return its previous backward block.
+func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header, backward uint64) *types.Header {
 	if !chain.Config().IsLynn(header.Number) {
 		return chain.GetHeaderByNumber(0)
 	}
-	if chain == nil || header == nil || header.Number.Uint64() < 2 {
-		return chain.GetHeaderByNumber(0)
+	if chain == nil || header == nil {
+		return nil
+	}
+	if backward > types.NaturallyFinalizedDist {
+		backward = types.NaturallyFinalizedDist
+	}
+	if header.Number.Uint64() < backward {
+		backward = header.Number.Uint64()
 	}
 
 	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
@@ -1726,7 +1733,7 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		return nil
 	}
 
-	for snap.Attestation != nil {
+	for snap.Attestation != nil && snap.Attestation.SourceNumber >= header.Number.Uint64()-backward {
 		if snap.Attestation.TargetNumber == snap.Attestation.SourceNumber+1 {
 			return chain.GetHeaderByHash(snap.Attestation.SourceHash)
 		}
@@ -1739,7 +1746,7 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		}
 	}
 
-	return chain.GetHeaderByNumber(0)
+	return FindAncientHeader(header, backward, chain, nil)
 }
 
 // ===========================     utility function        ==========================

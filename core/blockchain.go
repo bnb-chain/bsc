@@ -545,12 +545,43 @@ func (bc *BlockChain) getJustifiedNumber(header *types.Header) uint64 {
 // getFinalizedNumber returns the highest finalized number before the specific block.
 func (bc *BlockChain) getFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		if finalizedHeader := p.GetFinalizedHeader(bc, header); finalizedHeader != nil {
+		if finalizedHeader := p.GetFinalizedHeader(bc, header, types.NaturallyFinalizedDist); finalizedHeader != nil {
 			return finalizedHeader.Number.Uint64()
 		}
 	}
 
 	return 0
+}
+
+// isFinalizedBlockHigher returns true when the new block's finalized block is higher than current block.
+func (bc *BlockChain) isFinalizedBlockHigher(header *types.Header, curHeader *types.Header) bool {
+	p, ok := bc.engine.(consensus.PoSA)
+	if !ok {
+		return false
+	}
+
+	// The distance between the two blocks is too far, not expected, return false default.
+	if header.Number.Uint64() > curHeader.Number.Uint64()+types.NaturallyFinalizedDist {
+		return false
+	}
+	if curHeader.Number.Uint64() > header.Number.Uint64()+types.NaturallyFinalizedDist {
+		return false
+	}
+
+	ancestor := rawdb.FindCommonAncestor(bc.db, header, curHeader)
+	if ancestor == nil ||
+		header.Number.Uint64()-ancestor.Number.Uint64() > types.NaturallyFinalizedDist ||
+		curHeader.Number.Uint64()-ancestor.Number.Uint64() > types.NaturallyFinalizedDist {
+		return false
+	}
+
+	finalized := p.GetFinalizedHeader(bc, header, header.Number.Uint64()-ancestor.Number.Uint64())
+	curFinalized := p.GetFinalizedHeader(bc, curHeader, curHeader.Number.Uint64()-ancestor.Number.Uint64())
+	if finalized == nil || curFinalized == nil {
+		return false
+	}
+
+	return finalized.Number.Uint64() > curFinalized.Number.Uint64()
 }
 
 // loadLastState loads the last known chain state from the database. This method
@@ -1842,7 +1873,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// Please refer to http://www.cs.cornell.edu/~ie53/publications/btcProcFC.pdf
 	reorg := externTd.Cmp(localTd) > 0
 	currentBlock = bc.CurrentBlock()
-	if bc.getFinalizedNumber(block.Header()) > bc.getFinalizedNumber(currentBlock.Header()) {
+	if bc.isFinalizedBlockHigher(block.Header(), currentBlock.Header()) {
 		reorg = true
 	}
 	if !reorg && externTd.Cmp(localTd) == 0 {
@@ -1890,7 +1921,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if emitHeadEvent {
 			bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
-				if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header()); finalizedHeader != nil {
+				if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header(), types.NaturallyFinalizedDist); finalizedHeader != nil {
 					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
 				}
 			}
@@ -1997,7 +2028,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		if lastCanon != nil && bc.CurrentBlock().Hash() == lastCanon.Hash() {
 			bc.chainHeadFeed.Send(ChainHeadEvent{lastCanon})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
-				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header()); finalizedHeader != nil {
+				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header(), types.NaturallyFinalizedDist); finalizedHeader != nil {
 					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
 				}
 			}
