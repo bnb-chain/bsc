@@ -1891,7 +1891,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
 				if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header()); finalizedHeader != nil {
-					bc.finalizedHeaderFeed.Send(finalizedHeader)
+					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
 				}
 			}
 		}
@@ -1998,7 +1998,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			bc.chainHeadFeed.Send(ChainHeadEvent{lastCanon})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
 				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header()); finalizedHeader != nil {
-					bc.finalizedHeaderFeed.Send(finalizedHeader)
+					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
 				}
 			}
 		}
