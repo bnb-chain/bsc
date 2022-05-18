@@ -1682,10 +1682,6 @@ func (p *Parlia) applyTransaction(
 	return nil
 }
 
-func (p *Parlia) SetVotePool(votePool consensus.VotePool) {
-	p.votePool = votePool
-}
-
 // GetJustifiedHeader returns highest justified block's header before the specific block,
 // the attestation within the specific block will be taken into account.
 func (p *Parlia) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {

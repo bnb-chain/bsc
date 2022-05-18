@@ -85,12 +85,6 @@ func (m *mockInvalidPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *ty
 	return nil
 }
 
-func (m *mockPOSA) SetVotePool(votePool consensus.VotePool) {
-}
-
-func (m *mockInvalidPOSA) SetVotePool(votePool consensus.VotePool) {
-}
-
 func (m *mockPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header) bool {
 	return true
 }

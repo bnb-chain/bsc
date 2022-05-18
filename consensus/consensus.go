@@ -152,6 +152,5 @@ type PoSA interface {
 	GetJustifiedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	GetFinalizedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
-	SetVotePool(votePool VotePool)
 	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header) bool
 }
