@@ -450,8 +450,6 @@ func (s *TxByPriceAndHash) Pop() interface{} {
 	return x
 }
 
-
-
 // TransactionsByPriceAndNonce represents a set of transactions that can return
 // transactions in a profit-maximizing sorted order, while supporting removing
 // entire batches of transactions for non-executable accounts.
