@@ -265,7 +265,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		Database:               chainDb,
 		Chain:                  eth.blockchain,
 		TxPool:                 eth.txPool,
-		VotePool:               eth.votePool,
 		Network:                config.NetworkId,
 		Sync:                   config.SyncMode,
 		BloomCache:             uint64(cacheLimit),
@@ -277,6 +276,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		DisablePeerTxBroadcast: config.DisablePeerTxBroadcast,
 	}); err != nil {
 		return nil, err
+	}
+	if eth.votePool != nil {
+		eth.handler.votepool = eth.votePool
 	}
 
 	eth.miner = miner.New(eth, &config.Miner, chainConfig, eth.EventMux(), eth.engine, eth.isLocalBlock)
