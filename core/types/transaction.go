@@ -430,9 +430,7 @@ func (s TxByPriceAndHash) Less(i, j int) bool {
 	// deterministic sorting
 	cmp := s[i].ImmutableGasPrice().Cmp(s[j].ImmutableGasPrice())
 	if cmp == 0 {
-		hi := s[i].Hash()
-		hj := s[j].Hash()
-		return bytes.Compare(hi[:], hj[:]) == -1
+		return bytes.Compare(s[i].Hash().Bytes(), s[j].Hash().Bytes()) == -1
 	}
 	return cmp > 0
 }
