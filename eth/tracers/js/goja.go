@@ -602,6 +602,7 @@ func (m *memoryObj) setupObject() *goja.Object {
 	o := m.vm.NewObject()
 	o.Set("slice", m.vm.ToValue(m.Slice))
 	o.Set("getUint", m.vm.ToValue(m.GetUint))
+	o.Set("length", m.vm.ToValue(m.Length))
 	return o
 }
 
