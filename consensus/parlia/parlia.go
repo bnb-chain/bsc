@@ -1453,10 +1453,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	}
 
 	// method
-	method := "getValidators"
-	if p.chainConfig.IsEuler(blockNum) {
-		method = "getMiningValidators"
-	}
+	method := "getMiningValidators"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // cancel when we are finished consuming integers
