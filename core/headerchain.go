@@ -148,18 +148,8 @@ func (hc *HeaderChain) isFinalizedBlockHigher(header *types.Header, curHeader *t
 		return false
 	}
 
-	// The distance between the two blocks is too far, not expected, return false default.
-	if header.Number.Uint64() > curHeader.Number.Uint64()+types.NaturallyFinalizedDist {
-		return false
-	}
-	if curHeader.Number.Uint64() > header.Number.Uint64()+types.NaturallyFinalizedDist {
-		return false
-	}
-
 	ancestor := rawdb.FindCommonAncestor(hc.chainDb, header, curHeader)
-	if ancestor == nil ||
-		header.Number.Uint64()-ancestor.Number.Uint64() > types.NaturallyFinalizedDist ||
-		curHeader.Number.Uint64()-ancestor.Number.Uint64() > types.NaturallyFinalizedDist {
+	if ancestor == nil {
 		return false
 	}
 

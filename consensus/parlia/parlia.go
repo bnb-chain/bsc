@@ -1710,17 +1710,14 @@ func (p *Parlia) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *t
 }
 
 // GetFinalizedHeader returns highest finalized block header before the specific block.
-// It will first to find vote finalized block within the specific backward blocks, the maximum backward blocks is 21.
+// It will first to find vote finalized block within the specific backward blocks, the suggested backward blocks is 21.
 // If the vote finalized block not found, return its previous backward block.
 func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header, backward uint64) *types.Header {
-	if !chain.Config().IsLynn(header.Number) {
-		return chain.GetHeaderByNumber(0)
-	}
 	if chain == nil || header == nil {
 		return nil
 	}
-	if backward > types.NaturallyFinalizedDist {
-		backward = types.NaturallyFinalizedDist
+	if !chain.Config().IsLynn(header.Number) {
+		return chain.GetHeaderByNumber(0)
 	}
 	if header.Number.Uint64() < backward {
 		backward = header.Number.Uint64()
