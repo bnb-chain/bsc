@@ -1453,8 +1453,8 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	}
 
 	// method
-	method := "getMiningValidators"
-	if p.chainConfig.IsEuler(blockNumber) {
+	method := "getValidators"
+	if p.chainConfig.IsEuler(blockNum) {
 		method = "getMiningValidators"
 	}
 
