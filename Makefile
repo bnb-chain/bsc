@@ -2,17 +2,21 @@
 # with Go source code. If you know what GOPATH is then you probably
 # don't need to bother with make.
 
-.PHONY: geth android ios geth-cross evm all test truffle-test clean
+.PHONY: geth android ios geth-linux-arm64 evm all test truffle-test clean
 .PHONY: docker
 
 GOBIN = ./build/bin
 GO ?= latest
 GORUN = env GO111MODULE=on go run
+CROSSGOBUILD = env GO111MODULE=on GOARCH=arm go build
 
 geth:
 	$(GORUN) build/ci.go install ./cmd/geth
 	@echo "Done building."
 	@echo "Run \"$(GOBIN)/geth\" to launch geth."
+
+geth-linux-arm:
+	$(CROSSGOBUILD) -o build/bin/geth-linux-arm64  ./cmd/geth
 
 all:
 	$(GORUN) build/ci.go install
