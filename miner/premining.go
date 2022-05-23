@@ -1,7 +1,6 @@
 package miner
 
 import (
-	"bytes"
 	"errors"
 	"math/big"
 	"sync/atomic"
@@ -9,7 +8,6 @@ import (
 
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
@@ -18,21 +16,20 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+//commit block for pre-mining
 func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transactions, interrupt *int32) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
 	parent := w.chain.CurrentBlock()
 
-	timestamp := int64(parent.Time() + 3)
-
 	num := parent.Number()
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     num.Add(num, common.Big1),
+		//bigger gaslimit for more transactions to be executed
 		GasLimit:   core.CalcGasLimit(parent, w.config.GasFloor, w.config.GasCeil) * 4,
 		Extra:      w.extra,
-		Time:       uint64(timestamp),
 		Nonce:      types.BlockNonce{},
 		Difficulty: big.NewInt(2),
 	}
@@ -40,19 +37,6 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 	if err := w.engine.(*parlia.Parlia).Prepare4PreMining(w.chain, header); err != nil {
 		log.Error("preCommitBlock: Failed to prepare header for mining", "err", err)
 		return
-	}
-	// If we are care about TheDAO hard-fork check whether to override the extra-data or not
-	if daoBlock := w.chainConfig.DAOForkBlock; daoBlock != nil {
-		// Check whether the block is among the fork extra-override range
-		limit := new(big.Int).Add(daoBlock, params.DAOForkExtraRange)
-		if header.Number.Cmp(daoBlock) >= 0 && header.Number.Cmp(limit) < 0 {
-			// Depending whether we support or oppose the fork, override differently
-			if w.chainConfig.DAOForkSupport {
-				header.Extra = common.CopyBytes(params.DAOForkBlockExtra)
-			} else if bytes.Equal(header.Extra, params.DAOForkBlockExtra) {
-				header.Extra = []byte{} // If miner opposes, don't let it use the reserved extra-data
-			}
-		}
 	}
 	// Could potentially happen if starting to mine in an odd state.
 	err := w.makePreCurrent(parent, header)
@@ -62,9 +46,6 @@ func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transa
 	}
 	// Create the current work task and check any fork transitions needed
 	env := w.currentPre
-	if w.chainConfig.DAOForkSupport && w.chainConfig.DAOForkBlock != nil && w.chainConfig.DAOForkBlock.Cmp(header.Number) == 0 {
-		misc.ApplyDAOHardFork(env.state)
-	}
 	systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, env.state)
 	// Accumulate the uncles for the current block
 	uncles := make([]*types.Header, 0)
@@ -99,16 +80,16 @@ func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, 
 	if len(pendingTxs[0]) > 0 {
 		totalTxs += len(pendingTxs[0])
 		txs := types.NewTransactionsByPriceAndNonce(w.currentPre.signer, pendingTxs[0])
+		//preCommitBlock-preExecute, commit local txs interrupted and return
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Debug("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1, "len(localtxs)", len(pendingTxs[0]))
 			return true
 		}
 	}
 	if len(pendingTxs[1]) > 0 {
 		totalTxs += len(pendingTxs[1])
 		txs := types.NewTransactionsByPriceAndNonce(w.currentPre.signer, pendingTxs[1])
+		//preCommitBlock-preExecute, commit remote txs interrupted and return
 		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Debug("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1, "len(remotetxs)", len(pendingTxs[1]))
 			return true
 		}
 	}
@@ -139,18 +120,17 @@ func (w *worker) preCommitTransactions(txs *types.TransactionsByPriceAndNonce, c
 		if tmpD <= 100*time.Millisecond {
 			tmpD = time.Duration(time.Second)
 		}
-		//		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
 		stopTimer = time.NewTimer(tmpD)
 		log.Debug("preCommitTransactions: Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
 		defer stopTimer.Stop()
 	}
 
 	// initilise bloom processors
-	processorCapacity := 100
-	if txs.CurrentSize() < processorCapacity {
-		processorCapacity = txs.CurrentSize()
-	}
-	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
+	//processorCapacity := 100
+	//if txs.CurrentSize() < processorCapacity {
+	//	processorCapacity = txs.CurrentSize()
+	//}
+	//bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
 
 LOOP:
 	for {
@@ -197,7 +177,7 @@ LOOP:
 		// Start executing the transaction
 		w.currentPre.state.Prepare(tx.Hash(), common.Hash{}, w.currentPre.tcount)
 
-		logs, err := w.preCommitTransaction(tx, coinbase, bloomProcessors)
+		logs, err := w.preCommitTransaction(tx, coinbase)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -232,14 +212,13 @@ LOOP:
 			txs.Shift()
 		}
 	}
-	bloomProcessors.Close()
 	return false
 }
 
 //preCommitTransaction would execute transactions on pre-mining environment currentPre
-func (w *worker) preCommitTransaction(tx *types.Transaction, coinbase common.Address, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
+func (w *worker) preCommitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
 	snap := w.currentPre.state.Snapshot()
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.currentPre.gasPool, w.currentPre.state, w.currentPre.header, tx, &w.currentPre.header.GasUsed, *w.chain.GetVMConfig(), receiptProcessors...)
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.currentPre.gasPool, w.currentPre.state, w.currentPre.header, tx, &w.currentPre.header.GasUsed, *w.chain.GetVMConfig())
 	if err != nil {
 		w.currentPre.state.RevertToSnapshot(snap)
 		return nil, err
