@@ -40,10 +40,6 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-var (
-	txpoolSnapshotFlag = false
-)
-
 const (
 	// resultQueueSize is the size of channel listening to sealing result.
 	resultQueueSize = 10
@@ -1265,12 +1261,8 @@ func (w *worker) preMiningLoop() {
 }
 
 func (w *worker) preNewWorkLoop() {
-	for {
-		select {
-		//only one preCommitBlock work running at a time
-		case req := <-w.preNewWorkCh:
-			w.preCommitBlock(req.txpoolCh, req.interrupt)
-		}
+	for req := range w.preNewWorkCh {
+		w.preCommitBlock(req.txpoolCh, req.interrupt)
 	}
 }
 
