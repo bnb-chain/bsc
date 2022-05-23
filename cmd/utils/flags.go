@@ -869,11 +869,6 @@ var (
 		Name:  "parallel.num",
 		Usage: "Number of slot for transaction execution, only valid in parallel mode (runtime calculated, no fixed default value)",
 	}
-	ParallelTxQueueSizeFlag = cli.IntFlag{
-		Name:  "parallel.queuesize",
-		Usage: "Max number of Tx that can be queued to a slot, only valid in parallel mode (advanced option)",
-		Value: 20,
-	}
 
 	// Init network
 	InitNetworkSize = cli.IntFlag{
@@ -1729,12 +1724,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			parallelNum = 8 // we found concurrency 8 is slightly better than 15
 		}
 		cfg.ParallelTxNum = parallelNum
-		// set up queue size, it is an advanced option
-		if ctx.GlobalIsSet(ParallelTxQueueSizeFlag.Name) {
-			cfg.ParallelTxQueueSize = ctx.GlobalInt(ParallelTxQueueSizeFlag.Name)
-		} else {
-			cfg.ParallelTxQueueSize = 20 // default queue size, will be optimized
-		}
 	}
 	// Read the value from the flag no matter if it's set or not.
 	cfg.Preimages = ctx.GlobalBool(CachePreimagesFlag.Name)

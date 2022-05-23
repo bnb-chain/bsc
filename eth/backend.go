@@ -215,7 +215,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.DiffSync && !config.PipeCommit && config.TriesVerifyMode == core.LocalVerify {
 		bcOps = append(bcOps, core.EnableLightProcessor)
 	} else if config.ParallelTxMode {
-		bcOps = append(bcOps, core.EnableParallelProcessor(config.ParallelTxNum, config.ParallelTxQueueSize))
+		bcOps = append(bcOps, core.EnableParallelProcessor(config.ParallelTxNum))
 	}
 	if config.PipeCommit {
 		bcOps = append(bcOps, core.EnablePipelineCommit)

@@ -148,7 +148,6 @@ type Config struct {
 	RangeLimit          bool
 	ParallelTxMode      bool // Whether to execute transaction in parallel mode when do full sync
 	ParallelTxNum       int  // Number of slot for transaction execution
-	ParallelTxQueueSize int  // Max number of Tx that can be queued to a slot
 
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 

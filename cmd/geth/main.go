@@ -170,7 +170,6 @@ var (
 		utils.GpoIgnoreGasPriceFlag,
 		utils.ParallelTxFlag,
 		utils.ParallelTxNumFlag,
-		utils.ParallelTxQueueSizeFlag,
 		utils.MinerNotifyFullFlag,
 		configFileFlag,
 		utils.BlockAmountReserved,
