@@ -41,11 +41,7 @@ import (
 )
 
 var (
-	blockCount         = uint64(0)
 	txpoolSnapshotFlag = false
-	precommitFlag      = false
-	preNewWorkFlag     = false
-	//routineCount = 0
 )
 
 const (
@@ -131,6 +127,7 @@ type newWorkReq struct {
 	timestamp int64
 }
 
+//preNewWorkReq represents a request for new pre-mining work with relative interrupt notifier and txpool snapshots channel for this round to send transactions to be executed.
 type preNewWorkReq struct {
 	interrupt *int32
 	txpoolCh  chan []map[common.Address]types.Transactions
@@ -163,28 +160,25 @@ type worker struct {
 	chainHeadSub          event.Subscription
 	chainSideCh           chan core.ChainSideEvent
 	chainSideSub          event.Subscription
-	preCommitInterruptCh  chan core.ChainInsertEvent
-	preCommitInterruptSub event.Subscription
-	//	txpoolChainHeadCh     chan core.ChainHeadEvent
-	//	txpoolChainHeadSub    event.Subscription
+	preMiningInterruptCh  chan core.ChainInsertEvent
+	preMiningInterruptSub event.Subscription
 
 	// Channels
-	newWorkCh          chan *newWorkReq
-	taskCh             chan *task
-	resultCh           chan *types.Block
-	startCh            chan struct{}
-	exitCh             chan struct{}
-	resubmitIntervalCh chan time.Duration
-	resubmitAdjustCh   chan *intervalAdjust
-	pendingTxsCh       chan chan []map[common.Address]types.Transactions
-	resetPoolSnapshot  chan struct{}
-	headNewCh          chan int
-	//preCommitChainHeadCh chan struct{}
-	txpoolChainHeadCh chan struct{}
-	preNewWorkCh      chan *preNewWorkReq
+	newWorkCh                  chan *newWorkReq
+	taskCh                     chan *task
+	resultCh                   chan *types.Block
+	startCh                    chan struct{}
+	exitCh                     chan struct{}
+	resubmitIntervalCh         chan time.Duration
+	resubmitAdjustCh           chan *intervalAdjust
+	pendingTxsCh               chan chan []map[common.Address]types.Transactions
+	resetPoolSnapshot          chan struct{}
+	txpoolChainHeadCh          chan struct{}
+	preNewWorkCh               chan *preNewWorkReq
+	preMiningInterruptOnMining chan struct{}
 
-	current      *environment // An environment for current running cycle.
-	currentPre   *environment
+	current      *environment                 // An environment for current running cycle.
+	currentPre   *environment                 // An environment for premining cycle.
 	localUncles  map[common.Hash]*types.Block // A set of side blocks generated locally as the possible uncle blocks.
 	remoteUncles map[common.Hash]*types.Block // A set of side blocks as the possible uncle blocks.
 	unconfirmed  *unconfirmedBlocks           // A set of locally mined blocks pending canonicalness confirmations.
@@ -219,52 +213,45 @@ type worker struct {
 	skipSealHook func(*task) bool                   // Method to decide whether skipping the sealing.
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
-
-	stopTxpoolSnapshotCh chan struct{}
-	stopPreCommitCh      chan struct{}
-	stopPreNewWorkCh     chan struct{}
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool) *worker {
 	worker := &worker{
-		prefetcher:           core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
-		config:               config,
-		chainConfig:          chainConfig,
-		engine:               engine,
-		eth:                  eth,
-		mux:                  mux,
-		chain:                eth.BlockChain(),
-		isLocalBlock:         isLocalBlock,
-		localUncles:          make(map[common.Hash]*types.Block),
-		remoteUncles:         make(map[common.Hash]*types.Block),
-		unconfirmed:          newUnconfirmedBlocks(eth.BlockChain(), miningLogAtDepth),
-		pendingTasks:         make(map[common.Hash]*task),
-		txsCh:                make(chan core.NewTxsEvent, txChanSize),
-		chainHeadCh:          make(chan core.ChainHeadEvent, chainHeadChanSize),
-		chainSideCh:          make(chan core.ChainSideEvent, chainSideChanSize),
-		preCommitInterruptCh: make(chan core.ChainInsertEvent, preCommitInterruptChanSize),
-		newWorkCh:            make(chan *newWorkReq),
-		taskCh:               make(chan *task),
-		resultCh:             make(chan *types.Block, resultQueueSize),
-		exitCh:               make(chan struct{}),
-		startCh:              make(chan struct{}, 1),
-		resubmitIntervalCh:   make(chan time.Duration),
-		resubmitAdjustCh:     make(chan *intervalAdjust, resubmitAdjustChanSize),
-		pendingTxsCh:         make(chan chan []map[common.Address]types.Transactions, 2),
-		resetPoolSnapshot:    make(chan struct{}, 2),
-		headNewCh:            make(chan int, 2),
-		txpoolChainHeadCh:    make(chan struct{}, 2),
-		stopTxpoolSnapshotCh: make(chan struct{}),
-		stopPreCommitCh:      make(chan struct{}),
-		preNewWorkCh:         make(chan *preNewWorkReq),
-		stopPreNewWorkCh:     make(chan struct{}),
+		prefetcher:                 core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
+		config:                     config,
+		chainConfig:                chainConfig,
+		engine:                     engine,
+		eth:                        eth,
+		mux:                        mux,
+		chain:                      eth.BlockChain(),
+		isLocalBlock:               isLocalBlock,
+		localUncles:                make(map[common.Hash]*types.Block),
+		remoteUncles:               make(map[common.Hash]*types.Block),
+		unconfirmed:                newUnconfirmedBlocks(eth.BlockChain(), miningLogAtDepth),
+		pendingTasks:               make(map[common.Hash]*task),
+		txsCh:                      make(chan core.NewTxsEvent, txChanSize),
+		chainHeadCh:                make(chan core.ChainHeadEvent, chainHeadChanSize),
+		chainSideCh:                make(chan core.ChainSideEvent, chainSideChanSize),
+		newWorkCh:                  make(chan *newWorkReq),
+		taskCh:                     make(chan *task),
+		resultCh:                   make(chan *types.Block, resultQueueSize),
+		exitCh:                     make(chan struct{}),
+		startCh:                    make(chan struct{}, 1),
+		resubmitIntervalCh:         make(chan time.Duration),
+		resubmitAdjustCh:           make(chan *intervalAdjust, resubmitAdjustChanSize),
+		preMiningInterruptCh:       make(chan core.ChainInsertEvent, preCommitInterruptChanSize),
+		pendingTxsCh:               make(chan chan []map[common.Address]types.Transactions, 2),
+		resetPoolSnapshot:          make(chan struct{}, 2),
+		txpoolChainHeadCh:          make(chan struct{}, 2),
+		preNewWorkCh:               make(chan *preNewWorkReq),
+		preMiningInterruptOnMining: make(chan struct{}),
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 	worker.chainSideSub = eth.BlockChain().SubscribeChainSideEvent(worker.chainSideCh)
-	worker.preCommitInterruptSub = eth.BlockChain().SubscribeChainInsertEvent(worker.preCommitInterruptCh)
+	worker.preMiningInterruptSub = eth.BlockChain().SubscribeChainInsertEvent(worker.preMiningInterruptCh)
 
 	// Sanitize recommit interval if the user-specified one is too short.
 	recommit := worker.config.Recommit
@@ -279,7 +266,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	go worker.taskLoop()
 
 	go worker.txpoolSnapshotLoop()
-	go worker.preCommitLoop()
+	go worker.preMiningLoop()
 	go worker.preNewWorkLoop()
 
 	// Submit first work to initialize pending state.
@@ -427,11 +414,19 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 		case <-w.startCh:
 			clearPending(w.chain.CurrentBlock().NumberU64())
 			timestamp = time.Now().Unix()
+			//reset txpoolsnapshot and interrupt current pre-mining
+			select {
+			case w.resetPoolSnapshot <- struct{}{}:
+			default:
+			}
+			select {
+			case w.preMiningInterruptOnMining <- struct{}{}:
+			default:
+			}
 			commit(true, commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
 			if !w.isRunning() {
-				log.Debug("miner/worker not mining")
 				select {
 				case w.txpoolChainHeadCh <- struct{}{}:
 				default:
@@ -444,6 +439,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				signedRecent, err := p.SignRecently(w.chain, head.Block.Header())
 				if err != nil {
 					log.Info("Not allowed to propose block", "err", err)
+					//invoke pre-mining by notify txpoolsnapshotloop without blocking if not available
 					select {
 					case w.txpoolChainHeadCh <- struct{}{}:
 					default:
@@ -452,12 +448,22 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				}
 				if signedRecent {
 					log.Info("Signed recently, must wait")
+					//invoke pre-mining by notify txpoolsnapshotloop without blocking if not available
 					select {
 					case w.txpoolChainHeadCh <- struct{}{}:
 					default:
 					}
 					continue
 				}
+			}
+			//reset txpoolsnapshot and interrupt current pre-mining
+			select {
+			case w.resetPoolSnapshot <- struct{}{}:
+			default:
+			}
+			select {
+			case w.preMiningInterruptOnMining <- struct{}{}:
+			default:
 			}
 			commit(true, commitInterruptNewHead)
 
@@ -470,6 +476,15 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				if atomic.LoadInt32(&w.newTxs) == 0 {
 					timer.Reset(recommit)
 					continue
+				}
+				//reset txpoolsnapshot and interrupt current pre-mining
+				select {
+				case w.resetPoolSnapshot <- struct{}{}:
+				default:
+				}
+				select {
+				case w.preMiningInterruptOnMining <- struct{}{}:
+				default:
 				}
 				commit(true, commitInterruptResubmit)
 			}
@@ -515,7 +530,7 @@ func (w *worker) mainLoop() {
 	defer w.txsSub.Unsubscribe()
 	defer w.chainHeadSub.Unsubscribe()
 	defer w.chainSideSub.Unsubscribe()
-	defer w.preCommitInterruptSub.Unsubscribe()
+	defer w.preMiningInterruptSub.Unsubscribe()
 
 	for {
 		select {
@@ -1101,23 +1116,25 @@ func (w *worker) postSideBlock(event core.ChainSideEvent) {
 	}
 }
 
+// txpoolSnapshotLoop takes snapshots on txpool with interval
 func (w *worker) txpoolSnapshotLoop() {
-	timer := time.NewTimer(240 * time.Hour)
-	//	timer := time.NewTimer(0)
+	timer := time.NewTimer(0)
+	//discard initial timer
+	<-timer.C
 	var prePoolTxs []map[common.Address]types.Transactions
 	currentPoolTxsCh := make(chan []map[common.Address]types.Transactions, 6)
 	defer timer.Stop()
 	for {
 		select {
 		case <-timer.C:
-			//snapshot for every 20ms
-			log.Debug("txpoolSnapshot take snapshots on timer")
 			preC := 0
 		loopIntern:
 			for {
 				select {
+				//new block imported and takes 5 snapshots for pre-mining on current highest block
 				case <-w.txpoolChainHeadCh:
-					log.Info("txpoolSnapshot start 5 snapshots on new head arrived")
+					log.Debug("txpoolSnapshot start 5 snapshots on new head arrived")
+					//close previous currentPoolTxsch which would notify the possible running precommitBlock process to quit
 					select {
 					case _, b := <-currentPoolTxsCh:
 						if b {
@@ -1126,44 +1143,53 @@ func (w *worker) txpoolSnapshotLoop() {
 					default:
 						close(currentPoolTxsCh)
 					}
+					//make a new currrentPoolTxsCh for the new round of pre-mining
 					currentPoolTxsCh = make(chan []map[common.Address]types.Transactions, 6)
-					timer = time.NewTimer(2000 * time.Millisecond)
-					log.Debug("txpoolSnapshot pendingTxsCh<-currentPoolTxsCh")
+					timer.Reset(2000 * time.Millisecond)
 					w.pendingTxsCh <- currentPoolTxsCh
-					log.Debug("txpoolSnapshot pendingTxsCh<-currentPoolTxsCh done")
+					//take snapshot of txpool before the new block imported if exists
 					if prePoolTxs != nil {
 						currentPoolTxsCh <- prePoolTxs
 						prePoolTxs = nil
 					}
 					j := 0
 					for j < 5 {
+						//take snapshot on txpool every 20ms up to 5 for pre-mining process to execute of this round on the current highest block
 						tmp := w.calPendingTxs()
 						currentPoolTxsCh <- tmp
 						j++
-						log.Debug("txpoolSnapshot", "batch", j, "count", len(tmp))
-						if len(tmp) == 2 {
-							log.Debug("txpoolSnapshot", "localTxs-len", len(tmp[0]), "remoteTxs-len", len(tmp[1]))
-						}
 						time.Sleep(20 * time.Millisecond)
 					}
-					log.Debug("txpoolSnapshot 5-6 snapshots done, wait for timer or next head arrived.")
 					break loopIntern
 				case <-w.resetPoolSnapshot:
-					log.Info("txpoolSnapshot resetPoolSnapshot on mining locally with 2700ms duration")
+					//signal from resetPoolSnapshot is used to interrupt snapshot process on txpool and reset the timer to wait for next round caused by locally mining
+					log.Debug("txpoolSnapshot resetPoolSnapshot on mining locally with 2700ms duration")
 					timer = time.NewTimer(2700 * time.Millisecond)
+					//close currentPoolTxch which would notify the possible running precommitBlock process to quit
+					select {
+					case _, b := <-currentPoolTxsCh:
+						if b {
+							close(currentPoolTxsCh)
+						}
+					default:
+						close(currentPoolTxsCh)
+					}
 					break loopIntern
 				default:
+					//snapshot every 20ms
 					preC++
 					if preC > 3 {
-						timer = time.NewTimer(3 * time.Second)
+						//limit number of snapshots before block imported to save runtime resources
+						timer.Reset(3 * time.Second)
 						break loopIntern
 					}
+					//take a snapshot
 					prePoolTxs = w.calPendingTxs()
-					log.Debug("txpoolSnapshot prePoolTxs", "count", len(prePoolTxs))
 					time.Sleep(20 * time.Millisecond)
 				}
 			}
 		case <-w.txpoolChainHeadCh:
+			//take snapshot on txpool every 20ms up to 5 for pre-mining process to execute of this round on the current highest block
 			log.Info("txpoolSnapshot take snapshots on new head arrived")
 			select {
 			case _, b := <-currentPoolTxsCh:
@@ -1174,7 +1200,7 @@ func (w *worker) txpoolSnapshotLoop() {
 				close(currentPoolTxsCh)
 			}
 			currentPoolTxsCh = make(chan []map[common.Address]types.Transactions, 6)
-			timer = time.NewTimer(1800 * time.Millisecond)
+			timer.Reset(1800 * time.Millisecond)
 			w.pendingTxsCh <- currentPoolTxsCh
 			if prePoolTxs != nil {
 				currentPoolTxsCh <- prePoolTxs
@@ -1182,6 +1208,7 @@ func (w *worker) txpoolSnapshotLoop() {
 			}
 			j := 0
 			for j < 5 {
+				//take snapshot every 20ms up to 5
 				tmp := w.calPendingTxs()
 				currentPoolTxsCh <- tmp
 				j++
@@ -1189,7 +1216,6 @@ func (w *worker) txpoolSnapshotLoop() {
 				if len(tmp) == 2 {
 					log.Debug("txpoolSnapshot", "localTxs-len", len(tmp[0]), "remoteTxs-len", len(tmp[1]))
 				}
-
 				time.Sleep(20 * time.Millisecond)
 			}
 		case <-w.resetPoolSnapshot:
@@ -1202,50 +1228,29 @@ func (w *worker) txpoolSnapshotLoop() {
 				close(currentPoolTxsCh)
 			}
 			log.Info("txpoolSnapshot resetPoolSnapshot on mining locally with 2700ms duration")
-			timer = time.NewTimer(2700 * time.Millisecond)
-		case <-w.stopTxpoolSnapshotCh:
-			select {
-			case _, b := <-currentPoolTxsCh:
-				if b {
-					close(currentPoolTxsCh)
-				}
-			default:
-				close(currentPoolTxsCh)
-			}
-			w.stopTxpoolSnapshotCh = make(chan struct{})
-			return
+			//reset timer for next round of txpool-snapshot
+			timer.Reset(2700 * time.Millisecond)
 		}
 	}
 }
 
-func (w *worker) preCommitLoop() {
-	//	preNum := 0
+func (w *worker) preMiningLoop() {
 	interrupt := new(int32)
-	//	timer := time.NewTimer(0)
-	//	defer w.preCommitInterruptSub.Unsubscribe()
 	defer atomic.StoreInt32(interrupt, commitInterruptNewHead)
 	for {
 		select {
 		case poolTxsCh := <-w.pendingTxsCh:
-			log.Info("preCommitLoop start on new head arrived interrupt current preCommitBlock and start a new one")
+			//start a new pre-mining work preCommitLoop start on new head arrived interrupt current preCommitBlock and start a new one
 			atomic.StoreInt32(interrupt, commitInterruptNewHead)
 			interrupt = new(int32)
-			//routineCount++
 			w.preNewWorkCh <- &preNewWorkReq{interrupt, poolTxsCh}
-			//log.Info("preCommitLoop open preCommitBlock routine", "total", routineCount)
-		case <-w.preCommitInterruptCh:
-			log.Info("preCommitLoop interrupt current preCommitBlock on insert event")
+		case <-w.preMiningInterruptOnMining:
+			//interrupt current pre-mining work by locally mining worker
 			atomic.StoreInt32(interrupt, commitInterruptNewHead)
-		case <-w.exitCh:
-			log.Info("preCommitLoop return on exitch")
-			return
-		case err := <-w.preCommitInterruptSub.Err():
-			log.Info("preCommitLoop return on preCommitInterruptSubERR", "err", err)
-			panic("preCommitInterruptSubErr")
-			//			return
-		case <-w.stopPreCommitCh:
-			log.Info("preCommitLoop return on stopPreCommitCh")
-			w.stopPreCommitCh = make(chan struct{})
+		case <-w.preMiningInterruptCh:
+			//preCommitLoop interrupt current preCommitBlock on insert event
+			atomic.StoreInt32(interrupt, commitInterruptNewHead)
+		case <-w.preMiningInterruptSub.Err():
 			return
 		}
 	}
@@ -1254,247 +1259,14 @@ func (w *worker) preCommitLoop() {
 func (w *worker) preNewWorkLoop() {
 	for {
 		select {
+		//only one preCommitBlock work running at a time
 		case req := <-w.preNewWorkCh:
 			w.preCommitBlock(req.txpoolCh, req.interrupt)
-		case <-w.stopPreNewWorkCh:
-			log.Info("preNewWorkLoop return on stopPreNewWorkCh")
-			w.stopPreNewWorkCh = make(chan struct{})
-			return
 		}
 	}
 }
 
-func (w *worker) preCommitBlock(poolTxsCh chan []map[common.Address]types.Transactions, interrupt *int32) {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-
-	parent := w.chain.CurrentBlock()
-
-	timestamp := int64(parent.Time() + 3)
-
-	num := parent.Number()
-	header := &types.Header{
-		ParentHash: parent.Hash(),
-		Number:     num.Add(num, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent, w.config.GasFloor, w.config.GasCeil) * 2,
-		Extra:      w.extra,
-		Time:       uint64(timestamp),
-		Nonce:      types.BlockNonce{},
-		Difficulty: big.NewInt(2),
-	}
-
-	if err := w.engine.(*parlia.Parlia).Prepare4PreMining(w.chain, header); err != nil {
-		log.Error("preCommitBlock: Failed to prepare header for mining", "err", err)
-		return
-	}
-	// If we are care about TheDAO hard-fork check whether to override the extra-data or not
-	if daoBlock := w.chainConfig.DAOForkBlock; daoBlock != nil {
-		// Check whether the block is among the fork extra-override range
-		limit := new(big.Int).Add(daoBlock, params.DAOForkExtraRange)
-		if header.Number.Cmp(daoBlock) >= 0 && header.Number.Cmp(limit) < 0 {
-			// Depending whether we support or oppose the fork, override differently
-			if w.chainConfig.DAOForkSupport {
-				header.Extra = common.CopyBytes(params.DAOForkBlockExtra)
-			} else if bytes.Equal(header.Extra, params.DAOForkBlockExtra) {
-				header.Extra = []byte{} // If miner opposes, don't let it use the reserved extra-data
-			}
-		}
-	}
-	// Could potentially happen if starting to mine in an odd state.
-	err := w.makePreCurrent(parent, header)
-	if err != nil {
-		log.Error("preCommitBlock: Failed to create mining context", "err", err)
-		return
-	}
-	// Create the current work task and check any fork transitions needed
-	env := w.currentPre
-	if w.chainConfig.DAOForkSupport && w.chainConfig.DAOForkBlock != nil && w.chainConfig.DAOForkBlock.Cmp(header.Number) == 0 {
-		misc.ApplyDAOHardFork(env.state)
-	}
-	systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, env.state)
-	// Accumulate the uncles for the current block
-	uncles := make([]*types.Header, 0)
-
-	tstart := time.Now()
-	log.Info("preCommitBlock start", "blockNum", header.Number)
-	ctxs := 0
-	totalTxs := 0
-	for txs := range poolTxsCh {
-		if len(txs) == 2 {
-			totalTxs += len(txs[0]) + len(txs[1])
-		}
-		//reset gaspool, diff new txs, state has been changed on this height , will just be shifted by nonce. same nonce with higher price will fail.
-		if w.preExecute(txs, interrupt, uncles, header.Number, ctxs) {
-			log.Info("preCommitBlock end-interrupted", "blockNum", header.Number, "batchTxs", ctxs+1, "countOfTxs", totalTxs, "elapsed", time.Now().Sub(tstart), "w.tcount", w.currentPre.tcount)
-			return
-		}
-		ctxs++
-		if ctxs > 5 {
-			break
-		}
-	}
-	log.Info("preCommitBlock end", "blockNum", header.Number, "batchTxs", ctxs, "countOfTxs", totalTxs, "elapsed", time.Now().Sub(tstart), "w.tcount", w.currentPre.tcount)
-}
-
-func (w *worker) preExecute(pendingTxs []map[common.Address]types.Transactions, interrupt *int32, uncles []*types.Header, num *big.Int, ctxs int) bool {
-	if len(pendingTxs) == 0 {
-		return false
-	}
-	totalTxs := 0
-	tmp := w.currentPre.tcount
-	if len(pendingTxs[0]) > 0 {
-		totalTxs += len(pendingTxs[0])
-		txs := types.NewTransactionsByPriceAndNonce(w.currentPre.signer, pendingTxs[0])
-		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Debug("preCommitBlock-preExecute, commit local txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1, "len(localtxs)", len(pendingTxs[0]))
-			return true
-		}
-	}
-	if len(pendingTxs[1]) > 0 {
-		totalTxs += len(pendingTxs[1])
-		txs := types.NewTransactionsByPriceAndNonce(w.currentPre.signer, pendingTxs[1])
-		if w.preCommitTransactions(txs, w.coinbase, interrupt) {
-			log.Debug("preCommitBlock-preExecute, commit remote txs interrupted and return", "blockNum", num, "batchTxs", ctxs+1, "len(remotetxs)", len(pendingTxs[1]))
-			return true
-		}
-	}
-	s := w.currentPre.state
-	if err := s.WaitPipeVerification(); err == nil {
-		w.engine.(*parlia.Parlia).FinalizeAndAssemble4preCommit(w.chain, types.CopyHeader(w.currentPre.header), s, w.currentPre.txs, uncles, w.currentPre.receipts)
-		log.Debug("preCommitBlock-preExecute, FinalizeAndAssemble done", "blockNum", num, "batchTxs", ctxs+1, "len(txs)", len(w.currentPre.txs), "len(receipts)", len(w.currentPre.receipts), "w.current.tcount", w.currentPre.tcount, "totalTxs", totalTxs, "tcounBefore", tmp)
-	}
-	return false
-}
-
-func (w *worker) preCommitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32) bool {
-	// Short circuit if current is nil
-	if w.currentPre == nil {
-		return true
-	}
-
-	if w.currentPre.gasPool == nil {
-		w.currentPre.gasPool = new(core.GasPool).AddGas(w.currentPre.header.GasLimit * 2)
-		w.currentPre.gasPool.SubGas(params.SystemTxsGas)
-	}
-
-	var coalescedLogs []*types.Log
-	var stopTimer *time.Timer
-	delay := w.engine.Delay(w.chain, w.currentPre.header)
-	if delay != nil {
-		tmpD := *delay - w.config.DelayLeftOver
-		if tmpD <= 100*time.Millisecond {
-			tmpD = time.Duration(time.Second)
-		}
-		//		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
-		stopTimer = time.NewTimer(tmpD)
-		log.Debug("preCommitTransactions: Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
-		defer stopTimer.Stop()
-	}
-
-	// initilise bloom processors
-	processorCapacity := 100
-	if txs.CurrentSize() < processorCapacity {
-		processorCapacity = txs.CurrentSize()
-	}
-	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
-
-LOOP:
-	for {
-		// In the following three cases, we will interrupt the execution of the transaction.
-		// (1) new head block event arrival, the interrupt signal is 1
-		// (2) worker start or restart, the interrupt signal is 1
-		// (3) worker recreate the mining block with any newly arrived transactions, the interrupt signal is 2.
-		// For the first two cases, the semi-finished work will be discarded.
-		// For the third case, the semi-finished work will be submitted to the consensus engine.
-		if interrupt != nil && atomic.LoadInt32(interrupt) != commitInterruptNone {
-			log.Debug("preCommitTransactions: interrupted")
-			return true
-		}
-		// If we don't have enough gas for any further transactions then we're done
-		if w.currentPre.gasPool.Gas() < params.TxGas {
-			log.Trace("preCommitTransactions: Not enough gas for further transactions", "have", w.currentPre.gasPool, "want", params.TxGas)
-			break
-		}
-		if stopTimer != nil {
-			select {
-			case <-stopTimer.C:
-				log.Info("preCommitTransactions: Not enough time for further transactions", "txs", len(w.currentPre.txs))
-				break LOOP
-			default:
-			}
-		}
-		// Retrieve the next transaction and abort if all done
-		tx := txs.Peek()
-		if tx == nil {
-			break
-		}
-		// Error may be ignored here. The error has already been checked
-		// during transaction acceptance is the transaction pool.
-		//
-		// We use the eip155 signer regardless of the current hf.
-		//from, _ := types.Sender(w.current.signer, tx)
-		// Check whether the tx is replay protected. If we're not in the EIP155 hf
-		// phase, start ignoring the sender until we do.
-		if tx.Protected() && !w.chainConfig.IsEIP155(w.currentPre.header.Number) {
-			//log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eip155", w.chainConfig.EIP155Block)
-			txs.Pop()
-			continue
-		}
-		// Start executing the transaction
-		w.currentPre.state.Prepare(tx.Hash(), common.Hash{}, w.currentPre.tcount)
-
-		logs, err := w.preCommitTransaction(tx, coinbase, bloomProcessors)
-		switch {
-		case errors.Is(err, core.ErrGasLimitReached):
-			// Pop the current out-of-gas transaction without shifting in the next from the account
-			//log.Trace("Gas limit exceeded for current block", "sender", from)
-			txs.Pop()
-
-		case errors.Is(err, core.ErrNonceTooLow):
-			// New head notification data race between the transaction pool and miner, shift
-			//log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
-			txs.Shift()
-
-		case errors.Is(err, core.ErrNonceTooHigh):
-			// Reorg notification data race between the transaction pool and miner, skip account =
-			//log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
-			txs.Pop()
-
-		case errors.Is(err, nil):
-			// Everything ok, collect the logs and shift in the next transaction from the same account
-			coalescedLogs = append(coalescedLogs, logs...)
-			w.currentPre.tcount++
-			txs.Shift()
-
-		case errors.Is(err, core.ErrTxTypeNotSupported):
-			// Pop the unsupported transaction without shifting in the next from the account
-			//log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
-			txs.Pop()
-
-		default:
-			// Strange error, discard the transaction and get the next in line (note, the
-			// nonce-too-high clause will prevent us from executing in vain).
-			//log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
-			txs.Shift()
-		}
-	}
-	bloomProcessors.Close()
-	return false
-}
-func (w *worker) preCommitTransaction(tx *types.Transaction, coinbase common.Address, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
-	snap := w.currentPre.state.Snapshot()
-
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.currentPre.gasPool, w.currentPre.state, w.currentPre.header, tx, &w.currentPre.header.GasUsed, *w.chain.GetVMConfig(), receiptProcessors...)
-	if err != nil {
-		w.currentPre.state.RevertToSnapshot(snap)
-		return nil, err
-	}
-	w.currentPre.txs = append(w.currentPre.txs, tx)
-	w.currentPre.receipts = append(w.currentPre.receipts, receipt)
-
-	return receipt.Logs, nil
-}
-
+//calPendingTxs takes a snapshot on txpool which return map of address:transactions as local and remote
 func (w *worker) calPendingTxs() []map[common.Address]types.Transactions {
 	pending, err := w.eth.TxPool().Pending()
 	if err != nil {
@@ -1512,34 +1284,5 @@ func (w *worker) calPendingTxs() []map[common.Address]types.Transactions {
 		}
 		return []map[common.Address]types.Transactions{localTxs, remoteTxs}
 	}
-	return nil
-}
-
-func (w *worker) makePreCurrent(parent *types.Block, header *types.Header) error {
-	// Retrieve the parent state to execute on top and start a prefetcher for
-	// the miner to speed block sealing up a bit
-	state, err := w.chain.StateAtWithSharedPool(parent.Root())
-	if err != nil {
-		return err
-	}
-	state.StartPrefetcher("miner")
-
-	env := &environment{
-		signer:    types.MakeSigner(w.chainConfig, header.Number),
-		state:     state,
-		ancestors: mapset.NewSet(),
-		family:    mapset.NewSet(),
-		uncles:    mapset.NewSet(),
-		header:    header,
-	}
-	// Keep track of transactions which return errors so they can be removed
-	env.tcount = 0
-
-	// Swap out the old work with the new one, terminating any leftover prefetcher
-	// processes in the mean time and starting a new one.
-	if w.currentPre != nil && w.currentPre.state != nil {
-		w.currentPre.state.StopPrefetcher()
-	}
-	w.currentPre = env
 	return nil
 }

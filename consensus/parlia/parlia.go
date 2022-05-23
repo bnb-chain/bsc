@@ -645,15 +645,6 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	return nil
 }
 func (p *Parlia) Prepare4PreMining(chain consensus.ChainHeaderReader, header *types.Header) error {
-	//	header.Coinbase = p.val
-	//	header.Nonce = types.BlockNonce{}
-
-	// Set the correct difficulty
-	//	header.Difficulty = new(big.Int).Set(diffNoTurn)
-
-	// Mix digest is reserved for now, set to empty
-	//	header.MixDigest = common.Hash{}
-
 	number := header.Number.Uint64()
 	// Ensure the timestamp has the correct delay
 	parent := chain.GetHeader(header.ParentHash, number-1)
@@ -803,26 +794,10 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	// Assemble and return the final block for sealing
 	return blk, receipts, nil
 }
-func (p *Parlia) FinalizeAndAssemble4preCommit(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) error {
-	// No block rewards in PoA, so the state remains as is and uncles are dropped
-	//	cx := chainContext{Chain: chain, parlia: p}
-	if txs == nil {
-		txs = make([]*types.Transaction, 0)
-	}
-	if receipts == nil {
-		receipts = make([]*types.Receipt, 0)
-	}
-	//	if header.Number.Cmp(common.Big1) == 0 {
-	//		err := p.initContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
-	//		if err != nil {
-	//			log.Error("init contract failed")
-	//		}
-	//	}
-	//	err := p.distributeIncoming(p.val, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
-	//	if err != nil {
-	//		return err
-	//	}
+
+// FinalizeAndAssemble4preMining used for pre-mining stage for trie node preload
+func (p *Parlia) FinalizeAndAssemble4preMining(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
+) error {
 	// should not happen. Once happen, stop the node is better than broadcast the block
 	if header.GasLimit < header.GasUsed {
 		return errors.New("gas consumption of system txs exceed the gas limit")
