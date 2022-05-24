@@ -146,62 +146,6 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 	}(txs)
 }
 
-//
-func (p *statePrefetcher) PrefetchMiningV2(txs *types.TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
-	var signer = types.MakeSigner(p.config, header.Number)
-
-	txCh := make(chan *types.Transaction, 2*prefetchThread)
-	for i := 0; i < prefetchThread; i++ {
-		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
-			idx := 0
-			newStatedb := statedb.Copy()
-			newStatedb.EnableWriteOnSharedStorage()
-			gaspool := new(GasPool).AddGas(gasLimit)
-			blockContext := NewEVMBlockContext(header, p.bc, nil)
-			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
-			// Iterate over and process the individual transactions
-			for {
-				select {
-				case tx := <-startCh:
-					// Convert the transaction into an executable message and pre-cache its sender
-					msg, err := tx.AsMessageNoNonceCheck(signer)
-					if err != nil {
-						return // Also invalid block, bail out
-					}
-					idx++
-					newStatedb.Prepare(tx.Hash(), header.Hash(), idx)
-					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
-					gaspool = new(GasPool).AddGas(gasLimit)
-				case <-stopCh:
-					return
-				}
-			}
-		}(txCh, interruptCh)
-	}
-	go func(txset *types.TransactionsByPriceAndNonce) {
-		count := 0
-		for {
-			tx := txset.Peek()
-			if tx == nil {
-				return
-			}
-			select {
-			case <-interruptCh:
-				return
-			default:
-			}
-			if count++; count%checkInterval == 0 {
-				if *txCurr == nil {
-					return
-				}
-				txset.Forward(*txCurr)
-			}
-			txCh <- tx
-			txset.Shift()
-		}
-	}(txs)
-}
-
 // precacheTransaction attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment. The goal is not to execute
 // the transaction successfully, rather to warm up touched data slots.
