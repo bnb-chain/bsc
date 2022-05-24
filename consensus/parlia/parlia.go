@@ -795,18 +795,6 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	return blk, receipts, nil
 }
 
-// FinalizeAndAssemble4preMining used for pre-mining stage for trie node preload
-func (p *Parlia) FinalizeAndAssemble4preMining(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-) error {
-	// should not happen. Once happen, stop the node is better than broadcast the block
-	if header.GasLimit < header.GasUsed {
-		return errors.New("gas consumption of system txs exceed the gas limit")
-	}
-	header.UncleHash = types.CalcUncleHash(nil)
-	state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-	return nil
-}
-
 // Authorize injects a private key into the consensus engine to mint new blocks
 // with.
 func (p *Parlia) Authorize(val common.Address, signFn SignerFn, signTxFn SignerTxFn) {
