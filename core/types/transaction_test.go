@@ -314,7 +314,7 @@ func TestTransactionPriceNonceSort(t *testing.T) {
 // to prevent network spam attacks and to make the transaction sorting traceable
 func TestTransactionHashSort(t *testing.T) {
 	// Generate a batch of accounts to start with
-	keys := make([]*ecdsa.PrivateKey, 10)
+	keys := make([]*ecdsa.PrivateKey, 5)
 	for i := 0; i < len(keys); i++ {
 		keys[i], _ = crypto.GenerateKey()
 	}
