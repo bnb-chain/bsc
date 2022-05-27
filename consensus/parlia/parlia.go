@@ -1855,7 +1855,13 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		r.Shuffle(len(backOffSteps), func(i, j int) {
 			backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
 		})
-		delay := initialBackOffTime + backOffSteps[backOffIndex]*2*wiggleTime
+		delay := initialBackOffTime + backOffSteps[backOffIndex]*wiggleTime
+
+		// If the in turn validator has recently signed, no initial delay.
+		inTurnVal := validators[(snap.Number+1)%uint64(len(validators))]
+		if isRecent, ok := recentVals[inTurnVal]; ok && isRecent {
+			delay -= initialBackOffTime
+		}
 		return delay
 	}
 }
