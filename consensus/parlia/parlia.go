@@ -1816,8 +1816,8 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		s := rand.NewSource(int64(snap.Number))
 		r := rand.New(s)
 		n := len(snap.Validators)
+		backOffSteps := make([]uint64, 0, n)
 		if !p.chainConfig.IsBoneh(header.Number) {
-			backOffSteps := make([]uint64, 0, n)
 			for i := uint64(0); i < uint64(n); i++ {
 				backOffSteps = append(backOffSteps, i)
 			}
@@ -1830,14 +1830,17 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 
 		// Exclude the recently signed validators first, and then compute the backOffTime.
 		recentVals := make(map[common.Address]bool, len(snap.Recents))
-		for _, recent := range snap.Recents {
-			if val == recent {
-				// The backOffTime does not matter when a validator has signed recently.
-				return 0
+		limit := getSignRecentlyLimit(header.Number, len(snap.Validators), p.chainConfig)
+		for seen, recent := range snap.Recents {
+			if header.Number.Uint64() < uint64(limit) || seen > header.Number.Uint64()-uint64(limit) {
+				if val == recent {
+					// The backOffTime does not matter when a validator has signed recently.
+					return 0
+				}
+				recentVals[recent] = true
 			}
-			recentVals[recent] = true
 		}
-		backOffSteps := make([]uint64, 0, n-len(snap.Recents))
+
 		backOffIndex := idx
 		validators := snap.validators()
 		for i := 0; i < n; i++ {
@@ -1852,7 +1855,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		r.Shuffle(len(backOffSteps), func(i, j int) {
 			backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
 		})
-		delay := initialBackOffTime + backOffSteps[backOffIndex]*wiggleTime
+		delay := initialBackOffTime + backOffSteps[backOffIndex]*2*wiggleTime
 		return delay
 	}
 }
