@@ -70,9 +70,12 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 }
 
 func (voteManager *VoteManager) loop() {
+	log.Debug("vote manager routine loop started")
 	events := voteManager.mux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
 	defer func() {
+		log.Debug("vote manager loop defer func occur")
 		if !events.Closed() {
+			log.Debug("event not closed, unsubscribed by vote manager loop")
 			events.Unsubscribe()
 		}
 	}()
@@ -84,24 +87,35 @@ func (voteManager *VoteManager) loop() {
 		select {
 		case ev := <-dlEventCh:
 			if ev == nil {
+				log.Debug("dlEvent is nil, continue")
 				continue
 			}
 			switch ev.Data.(type) {
 			case downloader.StartEvent:
+				log.Debug("downloader is in startEvent mode, will not startVote")
 				startVote = false
 			case downloader.FailedEvent:
+				log.Debug("downloader is in FailedEvent mode, will not startVote")
 				startVote = false
 			case downloader.DoneEvent:
+				log.Debug("downloader is in DoneEvent mode, set the startVote flag to true")
 				startVote = true
 			}
 		case cHead := <-voteManager.chainHeadCh:
-			if !startVote || cHead.Block == nil {
+			if !startVote {
+				log.Debug("startVote flag is false, continue")
+				continue
+			}
+
+			if cHead.Block == nil {
+				log.Debug("cHead.Block is nil, continue")
 				continue
 			}
 
 			curHead := cHead.Block.Header()
 			// Check if cur validator is within the validatorSet at curHead
 			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead) {
+				log.Debug("cur validator is not within the validatorSet at curHead")
 				continue
 			}
 
@@ -116,7 +130,9 @@ func (voteManager *VoteManager) loop() {
 
 			// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
 			if ok, sourceNumber, sourceHash := voteManager.UnderRules(curHead); ok {
+				log.Debug("curHead is underRules for voting")
 				if sourceHash == (common.Hash{}) {
+					log.Debug("sourceHash is empty")
 					continue
 				}
 
@@ -139,6 +155,7 @@ func (voteManager *VoteManager) loop() {
 				votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
 			}
 		case <-voteManager.chainHeadSub.Err():
+			log.Debug("voteManager subscribed chainHead failed")
 			return
 		}
 	}
@@ -162,6 +179,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 	voteDataBuffer := voteManager.journal.voteDataBuffer
 	//Rule 1:  A validator must not publish two distinct votes for the same height.
 	if voteDataBuffer.Contains(header.Number.Uint64()) {
+		log.Debug("err: A validator must not publish two distinct votes for the same height.")
 		return false, 0, common.Hash{}
 	}
 
@@ -174,6 +192,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				continue
 			}
 			if voteData.(*types.VoteData).SourceNumber > sourceNumber {
+				log.Debug("error: cur vote is within the span of other votes")
 				return false, 0, common.Hash{}
 			}
 		}
@@ -186,6 +205,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				continue
 			}
 			if voteData.(*types.VoteData).SourceNumber < sourceNumber {
+				log.Debug("error: other votes are within span of cur vote")
 				return false, 0, common.Hash{}
 			}
 		}
@@ -193,6 +213,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 
 	// Rule 3: Validators always vote for their canonical chain’s latest block.
 	// Since the header subscribed to is the canonical chain, so this rule is satisified by default.
+	log.Debug("All three rules check passed")
 	return true, sourceNumber, sourceHash
 }
 
