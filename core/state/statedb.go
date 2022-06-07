@@ -90,12 +90,13 @@ type StateDB struct {
 	fullProcessed  bool
 	pipeCommit     bool
 
-	snapMux       sync.Mutex
-	snaps         *snapshot.Tree
-	snap          snapshot.Snapshot
-	snapDestructs map[common.Address]struct{}
-	snapAccounts  map[common.Address][]byte
-	snapStorage   map[common.Address]map[string][]byte
+	snaps          *snapshot.Tree
+	snap           snapshot.Snapshot
+	snapAccountMux sync.Mutex // Mutex for snap account access
+	snapStorageMux sync.Mutex // Mutex for snap storage access
+	snapDestructs  map[common.Address]struct{}
+	snapAccounts   map[common.Address][]byte
+	snapStorage    map[common.Address]map[string][]byte
 
 	// This map holds 'live' objects, which will get modified while processing a state transition.
 	stateObjects        map[common.Address]*StateObject
@@ -1078,10 +1079,10 @@ func (s *StateDB) AccountsIntermediateRoot() {
 				// enough to track account updates at commit time, deletions need tracking
 				// at transaction boundary level to ensure we capture state clearing.
 				if s.snap != nil && !obj.deleted {
-					s.snapMux.Lock()
+					s.snapAccountMux.Lock()
 					// It is possible to add unnecessary change, but it is fine.
 					s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
-					s.snapMux.Unlock()
+					s.snapAccountMux.Unlock()
 				}
 				data, err := rlp.EncodeToBytes(obj)
 				if err != nil {
