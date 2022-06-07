@@ -124,7 +124,7 @@ This command will:
 
 Steps:
 
-1. Download the binary, config and genesis files from [release](https://github.com/bnb-chain/bsc/releases/tag/v1.1.10), or compile the binary by `make geth`. 
+1. Download the binary, config and genesis files from [release](https://github.com/bnb-chain/bsc/releases/tag/v1.1.11), or compile the binary by `make geth`. 
 2. Init genesis state: `./geth --datadir node init genesis.json`.
 3. Start your fullnode: `./geth --config ./config.toml --datadir ./node`.
 4. Or start a validator node: `./geth --config ./config.toml --datadir ./node -unlock ${validatorAddr} --mine --allow-insecure-unlock`. The ${validatorAddr} is the wallet account address of your running validator node. 
