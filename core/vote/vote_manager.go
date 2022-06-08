@@ -95,7 +95,7 @@ func (voteManager *VoteManager) loop() {
 				log.Debug("downloader is in startEvent mode, will not startVote")
 				startVote = false
 			case downloader.FailedEvent:
-				log.Debug("downloader is in FailedEvent mode, set startVote flag as true to match miner logic")
+				log.Debug("downloader is in FailedEvent mode, set startVote flag as true")
 				startVote = true
 			case downloader.DoneEvent:
 				log.Debug("downloader is in DoneEvent mode, set the startVote flag to true")
