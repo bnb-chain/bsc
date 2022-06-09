@@ -98,7 +98,7 @@ var PrecompiledContractsBerlin = map[common.Address]PrecompiledContract{
 }
 
 // PrecompiledContractsBoneh contains the default set of pre-compiled Ethereum
-// contracts used in the Berlin release.
+// contracts used in the Boneh release.
 var PrecompiledContractsBoneh = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{1}): &ecrecover{},
 	common.BytesToAddress([]byte{2}): &sha256hash{},
