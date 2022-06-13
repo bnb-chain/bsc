@@ -1,8 +1,8 @@
-## Binance Smart Chain
+## BNB Smart Chain
 
-The goal of Binance Smart Chain is to bring programmability and interoperability to Binance Chain. In order to embrace the existing popular community and advanced technology, it will bring huge benefits by staying compatible with all the existing smart contracts on Ethereum and Ethereum tooling. And to achieve that, the easiest solution is to develop based on go-ethereum fork, as we respect the great work of Ethereum very much.
+The goal of BNB Smart Chain is to bring programmability and interoperability to Binance Chain. In order to embrace the existing popular community and advanced technology, it will bring huge benefits by staying compatible with all the existing smart contracts on Ethereum and Ethereum tooling. And to achieve that, the easiest solution is to develop based on go-ethereum fork, as we respect the great work of Ethereum very much.
 
-Binance Smart Chain starts its development based on go-ethereum fork. So you may see many toolings, binaries and also docs are based on Ethereum ones, such as the name “geth”.
+BNB Smart Chain starts its development based on go-ethereum fork. So you may see many toolings, binaries and also docs are based on Ethereum ones, such as the name “geth”.
 
 [![API Reference](
 https://camo.githubusercontent.com/915b7be44ada53c290eb157634330494ebe3e30a/68747470733a2f2f676f646f632e6f72672f6769746875622e636f6d2f676f6c616e672f6764646f3f7374617475732e737667
@@ -18,7 +18,7 @@ Cross-chain transfer and other communication are possible due to native support 
 - **Interoperable**: Comes with efficient native dual chain communication; Optimized for scaling high-performance dApps that require fast and smooth user experience.
 - **Distributed with on-chain governance**: Proof of Staked Authority brings in decentralization and community participants. As the native token, BNB will serve as both the gas of smart contract execution and tokens for staking.
 
-More details in [White Paper](http://binance.org/en#smartChain).
+More details in [White Paper](https://www.bnbchain.org/en#smartChain).
 
 ## Key features
 
@@ -36,7 +36,7 @@ To combine DPoS and PoA for consensus, Binance Smart Chain implement a novel con
 2. Validators take turns to produce blocks in a PoA manner, similar to Ethereum's Clique consensus engine.
 3. Validator set are elected in and out based on a staking based governance on Binance Chain.
 4. The validator set change is relayed via a cross-chain communication mechanism.
-5. Parlia consensus engine will interact with a set of [system contracts](https://github.com/binance-chain/docs-site/blob/add-bsc/docs/smart-chain/guides/concepts/system-contract.md) to achieve liveness slash, revenue distributing and validator set renewing func.
+5. Parlia consensus engine will interact with a set of [system contracts](https://docs.bnbchain.org/docs/learn/system-contract) to achieve liveness slash, revenue distributing and validator set renewing func.
 
  
 ### Light Client of Binance Chain  
@@ -44,8 +44,8 @@ To combine DPoS and PoA for consensus, Binance Smart Chain implement a novel con
 To achieve the cross-chain communication from Binance Chain to Binance Smart Chain, need introduce a on-chain light client verification algorithm.
 It contains two parts:
 
-1. [Stateless Precompiled contracts](https://github.com/binance-chain/bsc/blob/master/core/vm/contracts_lightclient.go) to do tendermint header verification and Merkle Proof verification.
-2. [Stateful solidity contracts](https://github.com/binance-chain/bsc-genesis-contract/blob/master/contracts/TendermintLightClient.sol) to store validator set and trusted appHash.  
+1. [Stateless Precompiled contracts](https://github.com/bnb-chain/bsc/blob/master/core/vm/contracts_lightclient.go) to do tendermint header verification and Merkle Proof verification.
+2. [Stateful solidity contracts](https://github.com/bnb-chain/bsc-genesis-contract/blob/master/contracts/TendermintLightClient.sol) to store validator set and trusted appHash.  
 
 ## Native Token
 
@@ -131,7 +131,9 @@ Steps:
 
 *Note: The default p2p port is 30311 and the RPC port is 8575 which is different from Ethereum.*
 
-More details about [running a node](https://docs.binance.org/smart-chain/developer/fullnode.html) and [becoming a validator](https://docs.binance.org/smart-chain/validator/candidate.html).
+More details about [running a node](https://docs.bnbchain.org/docs/validator/fullnode) and [becoming a validator](https://docs.bnbchain.org/docs/validator/testnet/)
+
+<!--https://docs.binance.org/smart-chain/validator/candidate.html NO SUCH FILE-->
 
 *Note: Although there are some internal protective measures to prevent transactions from
 crossing over between the main network and test network, you should make sure to always
