@@ -901,9 +901,9 @@ func (s *StateDB) GetRefund() uint64 {
 	return s.refund
 }
 
-// GetRefund returns the current value of the refund counter.
+// WaitPipeVerification waits until the snapshot been verified
 func (s *StateDB) WaitPipeVerification() error {
-	// We need wait for the parent trie to commit
+	// Need to wait for the parent trie to commit
 	if s.snap != nil {
 		if valid := s.snap.WaitAndGetVerifyRes(); !valid {
 			return fmt.Errorf("verification on parent snap failed")
@@ -990,7 +990,7 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 	if accounts, err := snapshot.Accounts(); err == nil && accounts != nil {
 		for _, obj := range s.stateObjects {
 			if !obj.deleted && !obj.rootCorrected && obj.data.Root == dummyRoot {
-				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist && len(account.Root) != 0 {
+				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist {
 					obj.data.Root = common.BytesToHash(account.Root)
 					obj.rootCorrected = true
 				}
@@ -1003,7 +1003,7 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
-			if s.snap != nil && !obj.deleted {
+			if s.snap != nil {
 				root := obj.data.Root
 				storageChanged := s.populateSnapStorage(obj)
 				if storageChanged {
@@ -1078,7 +1078,7 @@ func (s *StateDB) AccountsIntermediateRoot() {
 				// update mechanism is not symmetric to the deletion, because whereas it is
 				// enough to track account updates at commit time, deletions need tracking
 				// at transaction boundary level to ensure we capture state clearing.
-				if s.snap != nil && !obj.deleted {
+				if s.snap != nil {
 					s.snapAccountMux.Lock()
 					// It is possible to add unnecessary change, but it is fine.
 					s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
