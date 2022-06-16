@@ -441,7 +441,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		}
 		bc.snaps, _ = snapshot.New(bc.db, bc.stateCache.TrieDB(), bc.cacheConfig.SnapshotLimit, int(bc.cacheConfig.TriesInMemory), head.Root(), !bc.cacheConfig.SnapshotWait, true, recover)
 	}
-	// wirte stable state block number
+	// write stable state block number
 	rawdb.WriteStableStateBlockNumber(bc.db, bc.CurrentBlock().NumberU64())
 	// do options before start any routine
 	for _, option := range options {

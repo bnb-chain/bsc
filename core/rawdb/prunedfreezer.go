@@ -21,7 +21,7 @@ type prunedfreezer struct {
 	// WARNING: The `frozen` field is accessed atomically. On 32 bit platforms, only
 	// 64-bit aligned fields can be atomic. The struct is guaranteed to be so aligned,
 	// so take advantage of that (https://golang.org/pkg/sync/atomic/#pkg-note-BUG).
-	frozen    uint64 // Number of next frozen block
+	frozen    uint64 // BlockNumber of next frozen block
 	threshold uint64 // Number of recent blocks not to freeze (params.FullImmutabilityThreshold apart from tests)
 
 	instanceLock fileutil.Releaser // File-system lock to prevent double opens

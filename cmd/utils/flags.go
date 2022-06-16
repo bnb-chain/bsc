@@ -1629,7 +1629,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if cfg.SyncMode == downloader.FullSync {
 			cfg.PruneAncientData = ctx.GlobalBool(PruneAncientDataFlag.Name)
 		} else {
-			log.Crit("pruneancient parameter take effect in full syncmode")
+			log.Crit("pruneancient parameter didn't take effect for current syncmode")
 		}
 	}
 	if gcmode := ctx.GlobalString(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
