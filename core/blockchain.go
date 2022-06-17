@@ -2114,13 +2114,12 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 
 		// Enable prefetching to pull in trie node paths while processing transactions
 		statedb.StartPrefetcher("chain")
-		var followupInterrupt uint32
+		interruptCh := make(chan struct{})
 		// For diff sync, it may fallback to full sync, so we still do prefetch
 		if len(block.Transactions()) >= prefetchTxNumber {
 			throwaway := statedb.Copy()
-			go func(start time.Time, followup *types.Block, throwaway *state.StateDB, interrupt *uint32) {
-				bc.prefetcher.Prefetch(followup, throwaway, bc.vmConfig, &followupInterrupt)
-			}(time.Now(), block, throwaway, &followupInterrupt)
+			// do Prefetch in a separate goroutine to avoid blocking the critical path
+			go bc.prefetcher.Prefetch(block, throwaway, &bc.vmConfig, interruptCh)
 		}
 		//Process block using the parent state as reference point
 		substart := time.Now()
@@ -2129,7 +2128,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		}
 		statedb.SetExpectedStateRoot(block.Root())
 		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
-		atomic.StoreUint32(&followupInterrupt, 1)
+		close(interruptCh) // state prefetch can be stopped
 		activeState = statedb
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
