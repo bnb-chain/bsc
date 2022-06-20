@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/tsdb/fileutil"
 )
 
-// nodatafreezer is an empty freezer, only record 'frozen' , the next recycle block number form kvstore.
+// prunedfreezer not contain ancient data, only record 'frozen' , the next recycle block number form kvstore.
 type prunedfreezer struct {
 	db ethdb.KeyValueStore // Meta database
 	// WARNING: The `frozen` field is accessed atomically. On 32 bit platforms, only
@@ -225,7 +225,7 @@ func (f *prunedfreezer) freeze() {
 			continue
 		}
 
-		stableStabeNumber := ReadStableStateBlockNumber(nfdb)
+		stableStabeNumber := ReadSafePointBlockNumber(nfdb)
 		switch {
 		case stableStabeNumber < params.StableStateThreshold:
 			log.Debug("Stable state block not old enough", "number", stableStabeNumber)
@@ -279,7 +279,6 @@ func (f *prunedfreezer) freeze() {
 		if err := f.Sync(); err != nil {
 			log.Crit("Failed to flush frozen tables", "err", err)
 		}
-		// Batch of blocks have been frozen, flush them before wiping from leveldb
 		backoff = f.frozen-first >= freezerBatchLimit
 		gcKvStore(f.db, ancients, first, f.frozen, start)
 	}

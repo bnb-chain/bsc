@@ -78,8 +78,8 @@ var (
 	//frozenOfAncientDBKey tracks the block number for ancientDB to save.
 	frozenOfAncientDBKey = []byte("FrozenOfAncientDB")
 
-	//stableStateBlockNumberKey tracks the block number for block state that write disk
-	stableStateBlockNumberKey = []byte("StableStateBlockNumber")
+	//LastSafePointBlockKey tracks the block number for block state that write disk
+	LastSafePointBlockKey = []byte("LastSafePointBlockNumber")
 
 	//PruneAncientFlag flag whether prune ancient
 	pruneAncientKey = []byte("PruneAncientFlag")

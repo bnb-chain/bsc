@@ -459,7 +459,7 @@ var (
 	}
 	PruneAncientDataFlag = cli.BoolFlag{
 		Name:  "pruneancient",
-		Usage: "Keep a fixed number of blocks(9w) in kvstore under full syncmode, enable release more os resources",
+		Usage: "Prune ancient data, recommends to the user who don't care about the ancient data. Note that once be turned on, the ancient data will not be recovered",
 	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
