@@ -403,9 +403,12 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	posa, isPoSA := p.engine.(consensus.PoSA)
 	commonTxs := make([]*types.Transaction, 0, txNum)
 
-	// initilise bloom processors
+	// initialise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
+
+	// do trie prefetch for the big state trie tree in advance based transaction's From/To address.
+	statedb.TriePrefetchInAdvance(block, signer)
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
