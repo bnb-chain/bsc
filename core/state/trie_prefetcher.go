@@ -26,8 +26,10 @@ import (
 )
 
 const (
-	abortChanSize      = 64
-	concurrentChanSize = 10
+	abortChanSize                 = 64
+	concurrentChanSize            = 10
+	parallelTriePrefetchThreshold = 50
+	parallelTriePrefetchCapacity  = 100
 )
 
 var (
@@ -113,6 +115,10 @@ func (p *triePrefetcher) mainLoop() {
 				p.fetchersMutex.Unlock()
 			}
 			fetcher.schedule(pMsg.keys)
+			// no need to run parallel trie prefetch if threshold is not reached.
+			if fetcher.pendingSize() > parallelTriePrefetchThreshold {
+				fetcher.scheduleParallel(pMsg.keys)
+			}
 
 		case <-p.closeMainChan:
 			for _, fetcher := range p.fetchers {
@@ -166,6 +172,14 @@ func (p *triePrefetcher) abortLoop() {
 		select {
 		case fetcher := <-p.abortChan:
 			fetcher.abort()
+			// stop fetcher's parallel children
+			fetcher.childrenLock.Lock()
+			children := fetcher.children
+			fetcher.children = nil
+			fetcher.childrenLock.Unlock()
+			for _, child := range children {
+				child.abort()
+			}
 		case <-p.closeAbortChan:
 			return
 		}
@@ -310,8 +324,10 @@ type subfetcher struct {
 	root common.Hash // Root hash of the trie to prefetch
 	trie Trie        // Trie being populated with nodes
 
-	tasks [][]byte   // Items queued up for retrieval
-	lock  sync.Mutex // Lock protecting the task queue
+	tasks          [][]byte   // Items queued up for retrieval
+	lock           sync.Mutex // Lock protecting the task queue
+	totalSize      uint32
+	processedIndex uint32
 
 	wake chan struct{}  // Wake channel if a new task is scheduled
 	stop chan struct{}  // Channel to interrupt processing
@@ -322,7 +338,9 @@ type subfetcher struct {
 	dups int                 // Number of duplicate preload tasks
 	used [][]byte            // Tracks the entries used in the end
 
-	accountHash common.Hash
+	accountHash  common.Hash
+	children     []*subfetcher
+	childrenLock sync.Mutex
 }
 
 // newSubfetcher creates a goroutine to prefetch state items belonging to a
@@ -342,18 +360,60 @@ func newSubfetcher(db Database, root common.Hash, accountHash common.Hash) *subf
 	return sf
 }
 
+func (sf *subfetcher) pendingSize() uint32 {
+	return sf.totalSize - atomic.LoadUint32(&sf.processedIndex)
+}
+
 // schedule adds a batch of trie keys to the queue to prefetch.
 func (sf *subfetcher) schedule(keys [][]byte) {
 	// Append the tasks to the current queue
 	sf.lock.Lock()
 	sf.tasks = append(sf.tasks, keys...)
 	sf.lock.Unlock()
-
 	// Notify the prefetcher, it's fine if it's already terminated
 	select {
 	case sf.wake <- struct{}{}:
 	default:
 	}
+	sf.totalSize += uint32(len(keys))
+}
+
+func (sf *subfetcher) scheduleParallel(keys [][]byte) {
+	// To feed the children first, if they are hungry.
+	// A child can handle keys with capacity of parallelTriePrefetchCapacity.
+	var curKeyIndex uint32 = 0
+	for _, child := range sf.children {
+		feedNum := parallelTriePrefetchCapacity - child.pendingSize()
+		if feedNum == 0 { // the child is full, can't process more tasks
+			continue
+		}
+		if curKeyIndex+feedNum > uint32(len(keys)) {
+			feedNum = uint32(len(keys)) - curKeyIndex
+		}
+		child.schedule(keys[curKeyIndex : curKeyIndex+feedNum])
+		curKeyIndex += feedNum
+		if curKeyIndex == uint32(len(keys)) {
+			return // the new arrived keys were all consumed by children.
+		}
+	}
+	// Children did not comsume all the keys, to create new subfetch to handle left keys.
+	keysLeft := keys[curKeyIndex:]
+
+	// the pending tasks exceed the threshold and have not been consumed up by its children
+	dispatchSize := len(keysLeft)
+	children := []*subfetcher{}
+	for i := 0; i*parallelTriePrefetchCapacity < dispatchSize; i++ {
+		child := newSubfetcher(sf.db, sf.root, sf.accountHash)
+		endIndex := (i + 1) * parallelTriePrefetchCapacity
+		if endIndex > dispatchSize {
+			endIndex = dispatchSize
+		}
+		child.schedule(keysLeft[i*parallelTriePrefetchCapacity : endIndex])
+		children = append(children, child)
+	}
+	sf.childrenLock.Lock()
+	sf.children = append(sf.children, children...)
+	sf.childrenLock.Unlock()
 }
 
 // peek tries to retrieve a deep copy of the fetcher's trie in whatever form it
@@ -450,6 +510,7 @@ func (sf *subfetcher) loop() {
 						sf.trie.TryGet(task)
 						sf.seen[string(task)] = struct{}{}
 					}
+					atomic.AddUint32(&sf.processedIndex, 1)
 				}
 			}
 
