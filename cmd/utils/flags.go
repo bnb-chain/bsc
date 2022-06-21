@@ -459,7 +459,7 @@ var (
 	}
 	PruneAncientDataFlag = cli.BoolFlag{
 		Name:  "pruneancient",
-		Usage: "Prune ancient data, recommends to the user who don't care about the ancient data. Note that once be turned on, the ancient data will not be recovered",
+		Usage: "Prune ancient data, recommends to the user who don't care about the ancient data. Note that once be turned on, the ancient data will not be recovered again",
 	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
