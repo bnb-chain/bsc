@@ -82,3 +82,8 @@ require (
 	gopkg.in/olebedev/go-duktape.v3 v3.0.0-20200619000410-60c24ae608a6
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
+
+replace (
+	github.com/gogo/protobuf v1.1.1 => github.com/gogo/protobuf v1.3.2
+	github.com/gogo/protobuf v1.3.1 => github.com/gogo/protobuf v1.3.2
+)
