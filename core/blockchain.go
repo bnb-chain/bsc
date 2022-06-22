@@ -2117,7 +2117,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		interruptCh := make(chan struct{})
 		// For diff sync, it may fallback to full sync, so we still do prefetch
 		if len(block.Transactions()) >= prefetchTxNumber {
-			throwaway := statedb.Copy()
+			throwaway := statedb.Cpy4Prefetcher()
 			// do Prefetch in a separate goroutine to avoid blocking the critical path
 			go bc.prefetcher.Prefetch(block, throwaway, &bc.vmConfig, interruptCh)
 		}

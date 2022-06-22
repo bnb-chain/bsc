@@ -54,6 +54,8 @@ type triePrefetcher struct {
 	storageDupMeter   metrics.Meter
 	storageSkipMeter  metrics.Meter
 	storageWasteMeter metrics.Meter
+
+	prefetchChan chan *prefetchVal
 }
 
 // newTriePrefetcher
@@ -75,8 +77,11 @@ func newTriePrefetcher(db Database, root common.Hash, namespace string) *triePre
 		storageDupMeter:   metrics.GetOrRegisterMeter(prefix+"/storage/dup", nil),
 		storageSkipMeter:  metrics.GetOrRegisterMeter(prefix+"/storage/skip", nil),
 		storageWasteMeter: metrics.GetOrRegisterMeter(prefix+"/storage/waste", nil),
+
+		prefetchChan: make(chan *prefetchVal, 4),
 	}
 	go p.abortLoop()
+	go p.prefetchLoop()
 	return p
 }
 
@@ -129,7 +134,7 @@ func (p *triePrefetcher) close() {
 	}
 	close(p.closeChan)
 	// Clear out all fetchers (will crash on a second call, deliberate)
-	p.fetchers = nil
+	//	p.fetchers = nil
 }
 
 // copy creates a deep-but-inactive copy of the trie prefetcher. Any trie data
@@ -165,20 +170,77 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 	}
 	return copy
 }
+func (p *triePrefetcher) cpy4Prefetcher() *triePrefetcher {
+	cpy := &triePrefetcher{
+		db:   p.db,
+		root: p.root,
+		//	fetches: make(map[common.Hash]Trie), // Active prefetchers use the fetches map
+		fetchers: p.fetchers,
+
+		deliveryMissMeter: p.deliveryMissMeter,
+		accountLoadMeter:  p.accountLoadMeter,
+		accountDupMeter:   p.accountDupMeter,
+		accountSkipMeter:  p.accountSkipMeter,
+		accountWasteMeter: p.accountWasteMeter,
+		storageLoadMeter:  p.storageLoadMeter,
+		storageDupMeter:   p.storageDupMeter,
+		storageSkipMeter:  p.storageSkipMeter,
+		storageWasteMeter: p.storageWasteMeter,
+	}
+	// If the prefetcher is already a copy, duplicate the data
+	//	if p.fetches != nil {
+	//		for root, fetch := range p.fetches {
+	//			cpy.fetches[root] = p.db.CopyTrie(fetch)
+	//		}
+	//		return cpy
+	//	}
+	// Otherwise we're copying an active fetcher, retrieve the current states
+	//	for root, fetcher := range p.fetchers {
+	//		cpy.fetches[root] = fetcher.peek()
+	//	}
+	return cpy
+}
 
 // prefetch schedules a batch of trie items to prefetch.
 func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte, accountHash common.Hash) {
-	// If the prefetcher is an inactive one, bail out
+	//	// If the prefetcher is an inactive one, bail out
+	//	if p.fetches != nil {
+	//		return
+	//	}
+	//	// Active fetcher, schedule the retrievals
+	//	fetcher := p.fetchers[root]
+	//	if fetcher == nil {
+	//		fetcher = newSubfetcher(p.db, root, accountHash)
+	//		p.fetchers[root] = fetcher
+	//	}
+	//	fetcher.schedule(keys)
 	if p.fetches != nil {
 		return
 	}
-	// Active fetcher, schedule the retrievals
-	fetcher := p.fetchers[root]
-	if fetcher == nil {
-		fetcher = newSubfetcher(p.db, root, accountHash)
-		p.fetchers[root] = fetcher
+	p.prefetchChan <- &prefetchVal{root, accountHash, keys}
+}
+
+type prefetchVal struct {
+	root        common.Hash
+	accountHash common.Hash
+	keys        [][]byte
+}
+
+func (p *triePrefetcher) prefetchLoop() {
+	for {
+		select {
+		case pv := <-p.prefetchChan:
+			fetcher := p.fetchers[pv.root]
+			if fetcher == nil {
+				fetcher = newSubfetcher(p.db, pv.root, pv.accountHash)
+				p.fetchers[pv.root] = fetcher
+			}
+			fetcher.schedule(pv.keys)
+		case <-p.closeChan:
+			p.fetchers = nil
+			return
+		}
 	}
-	fetcher.schedule(keys)
 }
 
 // trie returns the trie matching the root hash, or nil if the prefetcher doesn't
