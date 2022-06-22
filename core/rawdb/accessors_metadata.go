@@ -30,7 +30,7 @@ import (
 
 // FreezerType enumerator
 const (
-	EntireFreezerType uint64 = iota // classic ancient tpe
+	EntireFreezerType uint64 = iota // classic ancient type
 	PruneFreezerType                // prune ancient type
 )
 
