@@ -133,8 +133,6 @@ func (p *triePrefetcher) close() {
 		}
 	}
 	close(p.closeChan)
-	// Clear out all fetchers (will crash on a second call, deliberate)
-	//	p.fetchers = nil
 }
 
 // copy creates a deep-but-inactive copy of the trie prefetcher. Any trie data
@@ -172,11 +170,9 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 }
 func (p *triePrefetcher) cpy4Prefetcher() *triePrefetcher {
 	cpy := &triePrefetcher{
-		db:   p.db,
-		root: p.root,
-		//	fetches: make(map[common.Hash]Trie), // Active prefetchers use the fetches map
-		fetchers: p.fetchers,
-
+		db:                p.db,
+		root:              p.root,
+		fetchers:          p.fetchers,
 		deliveryMissMeter: p.deliveryMissMeter,
 		accountLoadMeter:  p.accountLoadMeter,
 		accountDupMeter:   p.accountDupMeter,
@@ -187,33 +183,17 @@ func (p *triePrefetcher) cpy4Prefetcher() *triePrefetcher {
 		storageSkipMeter:  p.storageSkipMeter,
 		storageWasteMeter: p.storageWasteMeter,
 	}
-	// If the prefetcher is already a copy, duplicate the data
-	//	if p.fetches != nil {
-	//		for root, fetch := range p.fetches {
-	//			cpy.fetches[root] = p.db.CopyTrie(fetch)
-	//		}
-	//		return cpy
-	//	}
-	// Otherwise we're copying an active fetcher, retrieve the current states
-	//	for root, fetcher := range p.fetchers {
-	//		cpy.fetches[root] = fetcher.peek()
-	//	}
+	if p.fetches != nil {
+		cpy.fetches = make(map[common.Hash]Trie)
+		for root, fetch := range p.fetches {
+			cpy.fetches[root] = p.db.CopyTrie(fetch)
+		}
+	}
 	return cpy
 }
 
 // prefetch schedules a batch of trie items to prefetch.
 func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte, accountHash common.Hash) {
-	//	// If the prefetcher is an inactive one, bail out
-	//	if p.fetches != nil {
-	//		return
-	//	}
-	//	// Active fetcher, schedule the retrievals
-	//	fetcher := p.fetchers[root]
-	//	if fetcher == nil {
-	//		fetcher = newSubfetcher(p.db, root, accountHash)
-	//		p.fetchers[root] = fetcher
-	//	}
-	//	fetcher.schedule(keys)
 	if p.fetches != nil {
 		return
 	}
