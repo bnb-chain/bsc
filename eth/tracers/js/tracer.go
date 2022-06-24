@@ -36,7 +36,7 @@ import (
 	tracers2 "github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/eth/tracers/js/internal/tracers"
 	"github.com/ethereum/go-ethereum/log"
-	"gopkg.in/olebedev/go-duktape.v3"
+	"gopkg.in/freaker2k7/go-duktape.v3"
 )
 
 // camel converts a snake cased input string into a camel cased output.
