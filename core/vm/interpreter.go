@@ -122,13 +122,16 @@ func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
 		default:
 			jt = frontierInstructionSet
 		}
-		for i, eip := range cfg.ExtraEips {
+		var extraEips []int
+		for _, eip := range cfg.ExtraEips {
 			if err := EnableEIP(eip, &jt); err != nil {
 				// Disable it, so caller can check if it's activated or not
-				cfg.ExtraEips = append(cfg.ExtraEips[:i], cfg.ExtraEips[i+1:]...)
 				log.Error("EIP activation failed", "eip", eip, "error", err)
+			} else {
+				extraEips = append(extraEips, eip)
 			}
 		}
+		cfg.ExtraEips = extraEips
 		cfg.JumpTable = jt
 	}
 	evmInterpreter := EVMInterpreterPool.Get().(*EVMInterpreter)
