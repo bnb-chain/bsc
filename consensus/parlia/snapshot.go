@@ -207,14 +207,14 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			oldLimit := len(snap.Validators)/2 + 1
 			newLimit := len(newVals)/2 + 1
 			if newLimit < oldLimit {
-				for i := 0; i < oldLimit-newLimit; i++ {
+				for i := 0; i < oldLimit-newLimit+1; i++ {
 					delete(snap.Recents, number-uint64(newLimit)-uint64(i))
 				}
 			}
 			oldLimit = len(snap.Validators)
 			newLimit = len(newVals)
 			if newLimit < oldLimit {
-				for i := 0; i < oldLimit-newLimit; i++ {
+				for i := 0; i < oldLimit-newLimit+1; i++ {
 					delete(snap.RecentForkHashes, number-uint64(newLimit)-uint64(i))
 				}
 			}

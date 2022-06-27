@@ -839,13 +839,11 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	}
 
 	// If we're amongst the recent signers, wait for the next block
-	for seen, recent := range snap.Recents {
+	for _, recent := range snap.Recents {
 		if recent == val {
 			// Signer is among recents, only wait if the current block doesn't shift it out
-			if limit := uint64(len(snap.Validators)/2 + 1); number < limit || seen > number-limit {
-				log.Info("Signed recently, must wait for others")
-				return nil
-			}
+			log.Info("Signed recently, must wait for others")
+			return nil
 		}
 	}
 
