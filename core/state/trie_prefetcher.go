@@ -170,9 +170,11 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 }
 func (p *triePrefetcher) cpy4Prefetcher() *triePrefetcher {
 	cpy := &triePrefetcher{
-		db:                p.db,
-		root:              p.root,
-		fetchers:          p.fetchers,
+		db:           p.db,
+		root:         p.root,
+		fetchers:     p.fetchers,
+		prefetchChan: p.prefetchChan,
+
 		deliveryMissMeter: p.deliveryMissMeter,
 		accountLoadMeter:  p.accountLoadMeter,
 		accountDupMeter:   p.accountDupMeter,
