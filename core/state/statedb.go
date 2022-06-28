@@ -237,6 +237,9 @@ func (s *StateDB) StopPrefetcher() {
 }
 
 func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
+	if s.prefetcher == nil {
+		return
+	}
 	accounts := make(map[common.Address]struct{}, block.Transactions().Len()<<1)
 	for _, tx := range block.Transactions() {
 		from, err := types.Sender(signer, tx)
@@ -254,7 +257,7 @@ func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer)
 		addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
 	}
 
-	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
+	if len(addressesToPrefetch) > 0 {
 		s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
 	}
 }

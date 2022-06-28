@@ -408,7 +408,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	statedb.MarkFullProcessed()
 
 	// do trie prefetch for the big state trie tree in advance based transaction's From/To address.
-	statedb.TriePrefetchInAdvance(block, signer)
+	go func() {
+		// trie prefetcher is thread safe now, ok now to prefetch in a separate routine
+		statedb.TriePrefetchInAdvance(block, signer)
+	}()
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
