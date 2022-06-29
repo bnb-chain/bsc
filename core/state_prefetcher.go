@@ -153,9 +153,7 @@ func precacheTransaction(msg types.Message, config *params.ChainConfig, gaspool 
 	// Update the evm with the new transaction context.
 	evm.Reset(NewEVMTxContext(msg), statedb)
 	// Add addresses to access list if applicable
-	if _, err := ApplyMessage(evm, msg, gaspool); err != nil {
-		return
-	}
+	ApplyMessage(evm, msg, gaspool)
 	if config.IsByzantium(header.Number) {
 		statedb.Finalise4Prefetcher(true)
 	}
