@@ -52,6 +52,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		Preimages               bool
 		PersistDiff             bool
 		DiffBlock               uint64 `toml:",omitempty"`
+		PruneAncientData        bool
 		Miner                   miner.Config
 		Ethash                  ethash.Config
 		TxPool                  core.TxPoolConfig
@@ -100,6 +101,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.Preimages = c.Preimages
 	enc.PersistDiff = c.PersistDiff
 	enc.DiffBlock = c.DiffBlock
+	enc.PruneAncientData = c.PruneAncientData
 	enc.Miner = c.Miner
 	enc.Ethash = c.Ethash
 	enc.TxPool = c.TxPool
@@ -145,6 +147,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DatabaseDiff            *string
 		PersistDiff             *bool
 		DiffBlock               *uint64 `toml:",omitempty"`
+		PruneAncientData        *bool
 		TrieCleanCache          *int
 		TrieCleanCacheJournal   *string        `toml:",omitempty"`
 		TrieCleanCacheRejournal *time.Duration `toml:",omitempty"`
@@ -247,6 +250,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.DiffBlock != nil {
 		c.DiffBlock = *dec.DiffBlock
+	}
+	if dec.PruneAncientData != nil {
+		c.PruneAncientData = *dec.PruneAncientData
 	}
 	if dec.TrieCleanCache != nil {
 		c.TrieCleanCache = *dec.TrieCleanCache

@@ -310,9 +310,7 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 			}
 			select {
 			case <-time.NewTimer(freezerRecheckInterval).C:
-				backoff = false
 			case triggered = <-f.trigger:
-				backoff = false
 			case <-f.quit:
 				return
 			}
@@ -397,83 +395,10 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 		if err := f.Sync(); err != nil {
 			log.Crit("Failed to flush frozen tables", "err", err)
 		}
-		// Wipe out all data from the active database
-		batch := db.NewBatch()
-		for i := 0; i < len(ancients); i++ {
-			// Always keep the genesis block in active database
-			if first+uint64(i) != 0 {
-				DeleteBlockWithoutNumber(batch, ancients[i], first+uint64(i))
-				DeleteCanonicalHash(batch, first+uint64(i))
-			}
-		}
-		if err := batch.Write(); err != nil {
-			log.Crit("Failed to delete frozen canonical blocks", "err", err)
-		}
-		batch.Reset()
 
-		// Wipe out side chains also and track dangling side chians
-		var dangling []common.Hash
-		for number := first; number < f.frozen; number++ {
-			// Always keep the genesis block in active database
-			if number != 0 {
-				dangling = ReadAllHashes(db, number)
-				for _, hash := range dangling {
-					log.Trace("Deleting side chain", "number", number, "hash", hash)
-					DeleteBlock(batch, hash, number)
-				}
-			}
-		}
-		if err := batch.Write(); err != nil {
-			log.Crit("Failed to delete frozen side blocks", "err", err)
-		}
-		batch.Reset()
-
-		// Step into the future and delete and dangling side chains
-		if f.frozen > 0 {
-			tip := f.frozen
-			for len(dangling) > 0 {
-				drop := make(map[common.Hash]struct{})
-				for _, hash := range dangling {
-					log.Debug("Dangling parent from freezer", "number", tip-1, "hash", hash)
-					drop[hash] = struct{}{}
-				}
-				children := ReadAllHashes(db, tip)
-				for i := 0; i < len(children); i++ {
-					// Dig up the child and ensure it's dangling
-					child := ReadHeader(nfdb, children[i], tip)
-					if child == nil {
-						log.Error("Missing dangling header", "number", tip, "hash", children[i])
-						continue
-					}
-					if _, ok := drop[child.ParentHash]; !ok {
-						children = append(children[:i], children[i+1:]...)
-						i--
-						continue
-					}
-					// Delete all block data associated with the child
-					log.Debug("Deleting dangling block", "number", tip, "hash", children[i], "parent", child.ParentHash)
-					DeleteBlock(batch, children[i], tip)
-				}
-				dangling = children
-				tip++
-			}
-			if err := batch.Write(); err != nil {
-				log.Crit("Failed to delete dangling side blocks", "err", err)
-			}
-		}
-		// Log something friendly for the user
-		context := []interface{}{
-			"blocks", f.frozen - first, "elapsed", common.PrettyDuration(time.Since(start)), "number", f.frozen - 1,
-		}
-		if n := len(ancients); n > 0 {
-			context = append(context, []interface{}{"hash", ancients[n-1]}...)
-		}
-		log.Info("Deep froze chain segment", context...)
-
-		// Avoid database thrashing with tiny writes
-		if f.frozen-first < freezerBatchLimit {
-			backoff = true
-		}
+		// Batch of blocks have been frozen, flush them before wiping from leveldb
+		backoff = f.frozen-first >= freezerBatchLimit
+		gcKvStore(db, ancients, first, f.frozen, start)
 	}
 }
 
@@ -493,4 +418,82 @@ func (f *freezer) repair() error {
 	}
 	atomic.StoreUint64(&f.frozen, min)
 	return nil
+}
+
+// delete leveldb data that save to ancientdb, split from func freeze
+func gcKvStore(db ethdb.KeyValueStore, ancients []common.Hash, first uint64, frozen uint64, start time.Time) {
+	// Wipe out all data from the active database
+	batch := db.NewBatch()
+	for i := 0; i < len(ancients); i++ {
+		// Always keep the genesis block in active database
+		if blockNumber := first + uint64(i); blockNumber != 0 {
+			DeleteBlockWithoutNumber(batch, ancients[i], blockNumber)
+			DeleteCanonicalHash(batch, blockNumber)
+		}
+	}
+	if err := batch.Write(); err != nil {
+		log.Crit("Failed to delete frozen canonical blocks", "err", err)
+	}
+	batch.Reset()
+
+	// Wipe out side chains also and track dangling side chians
+	var dangling []common.Hash
+	for number := first; number < frozen; number++ {
+		// Always keep the genesis block in active database
+		if number != 0 {
+			dangling = ReadAllHashes(db, number)
+			for _, hash := range dangling {
+				log.Trace("Deleting side chain", "number", number, "hash", hash)
+				DeleteBlock(batch, hash, number)
+			}
+		}
+	}
+	if err := batch.Write(); err != nil {
+		log.Crit("Failed to delete frozen side blocks", "err", err)
+	}
+	batch.Reset()
+
+	// Step into the future and delete and dangling side chains
+	if frozen > 0 {
+		tip := frozen
+		nfdb := &nofreezedb{KeyValueStore: db}
+		for len(dangling) > 0 {
+			drop := make(map[common.Hash]struct{})
+			for _, hash := range dangling {
+				log.Debug("Dangling parent from freezer", "number", tip-1, "hash", hash)
+				drop[hash] = struct{}{}
+			}
+			children := ReadAllHashes(db, tip)
+			for i := 0; i < len(children); i++ {
+				// Dig up the child and ensure it's dangling
+				child := ReadHeader(nfdb, children[i], tip)
+				if child == nil {
+					log.Error("Missing dangling header", "number", tip, "hash", children[i])
+					continue
+				}
+				if _, ok := drop[child.ParentHash]; !ok {
+					children = append(children[:i], children[i+1:]...)
+					i--
+					continue
+				}
+				// Delete all block data associated with the child
+				log.Debug("Deleting dangling block", "number", tip, "hash", children[i], "parent", child.ParentHash)
+				DeleteBlock(batch, children[i], tip)
+			}
+			dangling = children
+			tip++
+		}
+		if err := batch.Write(); err != nil {
+			log.Crit("Failed to delete dangling side blocks", "err", err)
+		}
+	}
+
+	// Log something friendly for the user
+	context := []interface{}{
+		"blocks", frozen - first, "elapsed", common.PrettyDuration(time.Since(start)), "number", frozen - 1,
+	}
+	if n := len(ancients); n > 0 {
+		context = append(context, []interface{}{"hash", ancients[n-1]}...)
+	}
+	log.Info("Deep froze chain segment", context...)
 }

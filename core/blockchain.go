@@ -441,6 +441,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		}
 		bc.snaps, _ = snapshot.New(bc.db, bc.stateCache.TrieDB(), bc.cacheConfig.SnapshotLimit, int(bc.cacheConfig.TriesInMemory), head.Root(), !bc.cacheConfig.SnapshotWait, true, recover)
 	}
+	// write safe point block number
+	rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().NumberU64())
 	// do options before start any routine
 	for _, option := range options {
 		bc = option(bc)
@@ -543,6 +545,7 @@ func (bc *BlockChain) loadLastState() error {
 		log.Warn("Head block missing, resetting chain", "hash", head)
 		return bc.Reset()
 	}
+
 	// Everything seems to be fine, set as the head block
 	bc.currentBlock.Store(currentBlock)
 	headBlockGauge.Update(int64(currentBlock.NumberU64()))
@@ -927,6 +930,7 @@ func (bc *BlockChain) ExportN(w io.Writer, first uint64, last uint64) error {
 // Note, this function assumes that the `mu` mutex is held!
 func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	// If the block is on a side chain or an unknown one, force other heads onto it too
+	// read from kvdb, has nothing to do with ancientdb type
 	updateHeads := rawdb.ReadCanonicalHash(bc.db, block.NumberU64()) != block.Hash()
 
 	// Add the block to the canonical chain number scheme and mark as the head
@@ -1258,6 +1262,8 @@ func (bc *BlockChain) Stop() {
 				log.Info("Writing cached state to disk", "block", recent.Number(), "hash", recent.Hash(), "root", recent.Root())
 				if err := triedb.Commit(recent.Root(), true, nil); err != nil {
 					log.Error("Failed to commit recent state trie", "err", err)
+				} else {
+					rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
 				}
 			}
 		}
@@ -1265,6 +1271,8 @@ func (bc *BlockChain) Stop() {
 			log.Info("Writing snapshot state to disk", "root", snapBase)
 			if err := triedb.Commit(snapBase, true, nil); err != nil {
 				log.Error("Failed to commit recent state trie", "err", err)
+			} else {
+				rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().NumberU64())
 			}
 		}
 		for !bc.triegc.Empty() {
@@ -1764,6 +1772,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 							}
 							// Flush an entire trie and restart the counters
 							triedb.Commit(header.Root, true, nil)
+							rawdb.WriteSafePointBlockNumber(bc.db, chosen)
 							lastWrite = chosen
 							bc.gcproc = 0
 						}
@@ -2354,6 +2363,9 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 	for i := len(hashes) - 1; i >= 0; i-- {
 		// Append the next block to our batch
 		block := bc.GetBlock(hashes[i], numbers[i])
+		if block == nil {
+			log.Crit("Importing heavy sidechain block is nil", "hash", hashes[i], "number", numbers[i])
+		}
 
 		blocks = append(blocks, block)
 		memory += block.Size()
