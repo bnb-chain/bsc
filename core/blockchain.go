@@ -1772,7 +1772,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 							}
 							// Flush an entire trie and restart the counters
 							triedb.Commit(header.Root, true, nil)
-							rawdb.WriteSafePointBlockNumber(bc.db, current)
+							rawdb.WriteSafePointBlockNumber(bc.db, chosen)
 							lastWrite = chosen
 							bc.gcproc = 0
 						}
