@@ -250,6 +250,7 @@ func (hc *HeaderChain) writeHeaders(headers []*types.Header) (result *headerWrit
 				headHeader = hc.GetHeader(headHash, headNumber)
 			)
 			for rawdb.ReadCanonicalHash(hc.chainDb, headNumber) != headHash {
+				// backtracking to ancientdb
 				if frozen, _ := hc.chainDb.Ancients(); frozen == headNumber {
 					break
 				}

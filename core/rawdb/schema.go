@@ -75,6 +75,15 @@ var (
 	//offSet of the ancientDB before updated version.
 	offSetOfLastAncientFreezer = []byte("offSetOfLastAncientFreezer")
 
+	//frozenOfAncientDBKey tracks the block number for ancientDB to save.
+	frozenOfAncientDBKey = []byte("FrozenOfAncientDB")
+
+	//LastSafePointBlockKey tracks the block number for block state that write disk
+	LastSafePointBlockKey = []byte("LastSafePointBlockNumber")
+
+	//PruneAncientFlag flag whether prune ancient
+	pruneAncientKey = []byte("PruneAncientFlag")
+
 	// badBlockKey tracks the list of bad blocks seen by local
 	badBlockKey = []byte("InvalidBlock")
 

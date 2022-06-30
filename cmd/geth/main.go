@@ -128,6 +128,7 @@ var (
 		utils.CachePreimagesFlag,
 		utils.PersistDiffFlag,
 		utils.DiffBlockFlag,
+		utils.PruneAncientDataFlag,
 		utils.ListenPortFlag,
 		utils.MaxPeersFlag,
 		utils.MaxPendingPeersFlag,

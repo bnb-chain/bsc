@@ -50,8 +50,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DatabaseCache           int
 		DatabaseFreezer         string
 		DatabaseDiff            string
-		PersistDiff             bool
-		DiffBlock               uint64
 		TrieCleanCache          int
 		TrieCleanCacheJournal   string        `toml:",omitempty"`
 		TrieCleanCacheRejournal time.Duration `toml:",omitempty"`
@@ -61,6 +59,9 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TriesInMemory           uint64
 		TriesVerifyMode         core.VerifyMode
 		Preimages               bool
+		PersistDiff             bool
+		DiffBlock               uint64 `toml:",omitempty"`
+		PruneAncientData        bool
 		Miner                   miner.Config
 		Ethash                  ethash.Config `toml:",omitempty"`
 		TxPool                  core.TxPoolConfig
@@ -118,6 +119,9 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TriesInMemory = c.TriesInMemory
 	enc.TriesVerifyMode = c.TriesVerifyMode
 	enc.Preimages = c.Preimages
+	enc.PersistDiff = c.PersistDiff
+	enc.DiffBlock = c.DiffBlock
+	enc.PruneAncientData = c.PruneAncientData
 	enc.Miner = c.Miner
 	enc.Ethash = c.Ethash
 	enc.TxPool = c.TxPool
@@ -170,7 +174,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DatabaseFreezer         *string
 		DatabaseDiff            *string
 		PersistDiff             *bool
-		DiffBlock               *uint64
+		DiffBlock               *uint64 `toml:",omitempty"`
+		PruneAncientData        *bool
 		TrieCleanCache          *int
 		TrieCleanCacheJournal   *string        `toml:",omitempty"`
 		TrieCleanCacheRejournal *time.Duration `toml:",omitempty"`
@@ -296,6 +301,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.DiffBlock != nil {
 		c.DiffBlock = *dec.DiffBlock
+	}
+	if dec.PruneAncientData != nil {
+		c.PruneAncientData = *dec.PruneAncientData
 	}
 	if dec.TrieCleanCache != nil {
 		c.TrieCleanCache = *dec.TrieCleanCache
