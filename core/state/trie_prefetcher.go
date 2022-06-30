@@ -45,6 +45,11 @@ type usedMsg struct {
 	used [][]byte
 }
 
+type trieMsg struct {
+	root       common.Hash
+	resultChan chan *subfetcher
+}
+
 // triePrefetcher is an active prefetcher, which receives accounts or storage
 // items and does trie-loading of them. The goal is to get as much useful content
 // into the caches as possible.
@@ -61,8 +66,7 @@ type triePrefetcher struct {
 	copyChan          chan struct{}
 	copyDoneChan      chan *triePrefetcher
 	prefetchChan      chan *prefetchMsg // no need to wait for return
-	trieChan          chan *common.Hash
-	trieDoneChan      chan *subfetcher
+	trieChan          chan *trieMsg
 	usedChan          chan *usedMsg // no need to wait for return
 
 	abortChan      chan *subfetcher
@@ -92,8 +96,7 @@ func newTriePrefetcher(db Database, root common.Hash, namespace string) *triePre
 		closeMainChan:     make(chan struct{}),
 		closeMainDoneChan: make(chan struct{}),
 		prefetchChan:      make(chan *prefetchMsg, concurrentChanSize),
-		trieChan:          make(chan *common.Hash, concurrentChanSize),
-		trieDoneChan:      make(chan *subfetcher, concurrentChanSize),
+		trieChan:          make(chan *trieMsg, concurrentChanSize),
 		usedChan:          make(chan *usedMsg, concurrentChanSize),
 		copyChan:          make(chan struct{}, concurrentChanSize),
 		copyDoneChan:      make(chan *triePrefetcher, concurrentChanSize),
@@ -136,13 +139,13 @@ func (p *triePrefetcher) mainLoop() {
 			}
 			fetcher.schedule(pMsg.keys)
 
-		case tireHash := <-p.trieChan:
-			fetcher := p.fetchers[*tireHash]
+		case tireMsg := <-p.trieChan:
+			fetcher := p.fetchers[tireMsg.root]
 			// bail if no trie was prefetched for this root
 			if fetcher == nil {
 				p.deliveryMissMeter.Mark(1)
 			}
-			p.trieDoneChan <- fetcher
+			tireMsg.resultChan <- fetcher
 
 		case uMsg := <-p.usedChan:
 			if fetcher := p.fetchers[uMsg.root]; fetcher != nil {
@@ -264,8 +267,10 @@ func (p *triePrefetcher) trie(root common.Hash) Trie {
 		return p.db.CopyTrie(trie)
 	}
 
-	p.trieChan <- &root
-	fetcher := <-p.trieDoneChan
+	trieChan := make(chan *subfetcher)
+	defer func() { close(trieChan) }()
+	p.trieChan <- &trieMsg{root, trieChan}
+	fetcher := <-trieChan
 	if fetcher == nil {
 		return nil
 	}
