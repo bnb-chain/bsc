@@ -24,12 +24,26 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 )
 
-const abortChanSize = 64
+const (
+	abortChanSize      = 64
+	concurrentChanSize = 10
+)
 
 var (
 	// triePrefetchMetricsPrefix is the prefix under which to publis the metrics.
 	triePrefetchMetricsPrefix = "trie/prefetch/"
 )
+
+type prefetchMsg struct {
+	root        common.Hash
+	accountHash common.Hash
+	keys        [][]byte
+}
+
+type usedMsg struct {
+	root common.Hash
+	used [][]byte
+}
 
 // triePrefetcher is an active prefetcher, which receives accounts or storage
 // items and does trie-loading of them. The goal is to get as much useful content
@@ -42,8 +56,17 @@ type triePrefetcher struct {
 	fetches  map[common.Hash]Trie        // Partially or fully fetcher tries
 	fetchers map[common.Hash]*subfetcher // Subfetchers for each trie
 
-	abortChan chan *subfetcher
-	closeChan chan struct{}
+	closeMainChan     chan struct{} // it is to inform the mainLoop
+	closeMainDoneChan chan struct{}
+	copyChan          chan struct{}
+	copyDoneChan      chan *triePrefetcher
+	prefetchChan      chan *prefetchMsg // no need to wait for return
+	trieChan          chan *common.Hash
+	trieDoneChan      chan *subfetcher
+	usedChan          chan *usedMsg // no need to wait for return
+
+	abortChan      chan *subfetcher
+	closeAbortChan chan struct{} // it is used to inform abortLoop
 
 	deliveryMissMeter metrics.Meter
 	accountLoadMeter  metrics.Meter
@@ -60,11 +83,21 @@ type triePrefetcher struct {
 func newTriePrefetcher(db Database, root common.Hash, namespace string) *triePrefetcher {
 	prefix := triePrefetchMetricsPrefix + namespace
 	p := &triePrefetcher{
-		db:        db,
-		root:      root,
-		fetchers:  make(map[common.Hash]*subfetcher), // Active prefetchers use the fetchers map
-		abortChan: make(chan *subfetcher, abortChanSize),
-		closeChan: make(chan struct{}),
+		db:       db,
+		root:     root,
+		fetchers: make(map[common.Hash]*subfetcher), // Active prefetchers use the fetchers map
+
+		abortChan:      make(chan *subfetcher, abortChanSize),
+		closeAbortChan: make(chan struct{}),
+
+		closeMainChan:     make(chan struct{}),
+		closeMainDoneChan: make(chan struct{}),
+		prefetchChan:      make(chan *prefetchMsg, concurrentChanSize),
+		trieChan:          make(chan *common.Hash, concurrentChanSize),
+		trieDoneChan:      make(chan *subfetcher, concurrentChanSize),
+		usedChan:          make(chan *usedMsg, concurrentChanSize),
+		copyChan:          make(chan struct{}, concurrentChanSize),
+		copyDoneChan:      make(chan *triePrefetcher, concurrentChanSize),
 
 		deliveryMissMeter: metrics.GetOrRegisterMeter(prefix+"/deliverymiss", nil),
 		accountLoadMeter:  metrics.GetOrRegisterMeter(prefix+"/account/load", nil),
@@ -77,7 +110,101 @@ func newTriePrefetcher(db Database, root common.Hash, namespace string) *triePre
 		storageWasteMeter: metrics.GetOrRegisterMeter(prefix+"/storage/waste", nil),
 	}
 	go p.abortLoop()
+	go p.mainLoop()
 	return p
+}
+
+func (p *triePrefetcher) mainLoop() {
+	// a series of anonymous functions which are concurrent unsafe,
+	// to avoid being accessed outside of the mainloop
+	copyFunc := func() *triePrefetcher {
+		copy := &triePrefetcher{
+			db:             p.db,
+			root:           p.root,
+			fetches:        make(map[common.Hash]Trie, len(p.fetches)),
+			abortChan:      make(chan *subfetcher),
+			closeAbortChan: make(chan struct{}),
+		}
+		// we're copying an active fetcher, retrieve the current states
+		for root, fetcher := range p.fetchers {
+			copy.fetches[root] = fetcher.peek()
+		}
+		return copy
+	}
+
+	closeFunc := func() {
+		for _, fetcher := range p.fetchers {
+			p.abortChan <- fetcher // safe to do multiple times
+			<-fetcher.term
+			if metrics.EnabledExpensive {
+				if fetcher.root == p.root {
+					p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
+					p.accountDupMeter.Mark(int64(fetcher.dups))
+					p.accountSkipMeter.Mark(int64(len(fetcher.tasks)))
+
+					for _, key := range fetcher.used {
+						delete(fetcher.seen, string(key))
+					}
+					p.accountWasteMeter.Mark(int64(len(fetcher.seen)))
+				} else {
+					p.storageLoadMeter.Mark(int64(len(fetcher.seen)))
+					p.storageDupMeter.Mark(int64(fetcher.dups))
+					p.storageSkipMeter.Mark(int64(len(fetcher.tasks)))
+
+					for _, key := range fetcher.used {
+						delete(fetcher.seen, string(key))
+					}
+					p.storageWasteMeter.Mark(int64(len(fetcher.seen)))
+				}
+			}
+		}
+		close(p.closeAbortChan)
+		// Clear out all fetchers (will crash on a second call, deliberate)
+		p.fetchers = nil
+	}
+
+	prefetchFunc := func(root common.Hash, keys [][]byte, accountHash common.Hash) {
+		fetcher := p.fetchers[root]
+		if fetcher == nil {
+			fetcher = newSubfetcher(p.db, root, accountHash)
+			p.fetchers[root] = fetcher
+		}
+		fetcher.schedule(keys)
+	}
+
+	trieFunc := func(root common.Hash) *subfetcher {
+		// Otherwise the prefetcher is active, bail if no trie was prefetched for this root
+		fetcher := p.fetchers[root]
+		if fetcher == nil {
+			p.deliveryMissMeter.Mark(1)
+			return nil
+		}
+		return fetcher
+	}
+
+	usedFunc := func(root common.Hash, used [][]byte) {
+		if fetcher := p.fetchers[root]; fetcher != nil {
+			fetcher.used = used
+		}
+	}
+
+	// the main loop is executed from here
+	for {
+		select {
+		case <-p.copyChan:
+			p.copyDoneChan <- copyFunc()
+		case pMsg := <-p.prefetchChan:
+			prefetchFunc(pMsg.root, pMsg.keys, pMsg.accountHash)
+		case tireHash := <-p.trieChan:
+			p.trieDoneChan <- trieFunc(*tireHash)
+		case used := <-p.usedChan:
+			usedFunc(used.root, used.used)
+		case <-p.closeMainChan:
+			closeFunc()
+			close(p.closeMainDoneChan)
+			return
+		}
+	}
 }
 
 func (p *triePrefetcher) abortLoop() {
@@ -85,7 +212,7 @@ func (p *triePrefetcher) abortLoop() {
 		select {
 		case fetcher := <-p.abortChan:
 			fetcher.abort()
-		case <-p.closeChan:
+		case <-p.closeAbortChan:
 			// drain fetcher channel
 			for {
 				select {
@@ -99,73 +226,45 @@ func (p *triePrefetcher) abortLoop() {
 	}
 }
 
-// close iterates over all the subfetchers, aborts any that were left spinning
-// and reports the stats to the metrics subsystem.
-func (p *triePrefetcher) close() {
-	for _, fetcher := range p.fetchers {
-		p.abortChan <- fetcher // safe to do multiple times
-		<-fetcher.term
-		if metrics.EnabledExpensive {
-			if fetcher.root == p.root {
-				p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
-				p.accountDupMeter.Mark(int64(fetcher.dups))
-				p.accountSkipMeter.Mark(int64(len(fetcher.tasks)))
-
-				for _, key := range fetcher.used {
-					delete(fetcher.seen, string(key))
-				}
-				p.accountWasteMeter.Mark(int64(len(fetcher.seen)))
-			} else {
-				p.storageLoadMeter.Mark(int64(len(fetcher.seen)))
-				p.storageDupMeter.Mark(int64(fetcher.dups))
-				p.storageSkipMeter.Mark(int64(len(fetcher.tasks)))
-
-				for _, key := range fetcher.used {
-					delete(fetcher.seen, string(key))
-				}
-				p.storageWasteMeter.Mark(int64(len(fetcher.seen)))
-			}
-		}
-	}
-	close(p.closeChan)
-	// Clear out all fetchers (will crash on a second call, deliberate)
-	p.fetchers = nil
-}
-
 // copy creates a deep-but-inactive copy of the trie prefetcher. Any trie data
 // already loaded will be copied over, but no goroutines will be started. This
 // is mostly used in the miner which creates a copy of it's actively mutated
 // state to be sealed while it may further mutate the state.
 func (p *triePrefetcher) copy() *triePrefetcher {
-	copy := &triePrefetcher{
-		db:      p.db,
-		root:    p.root,
-		fetches: make(map[common.Hash]Trie), // Active prefetchers use the fetches map
-
-		abortChan:         make(chan *subfetcher),
-		closeChan:         make(chan struct{}),
-		deliveryMissMeter: p.deliveryMissMeter,
-		accountLoadMeter:  p.accountLoadMeter,
-		accountDupMeter:   p.accountDupMeter,
-		accountSkipMeter:  p.accountSkipMeter,
-		accountWasteMeter: p.accountWasteMeter,
-		storageLoadMeter:  p.storageLoadMeter,
-		storageDupMeter:   p.storageDupMeter,
-		storageSkipMeter:  p.storageSkipMeter,
-		storageWasteMeter: p.storageWasteMeter,
-	}
 	// If the prefetcher is already a copy, duplicate the data
 	if p.fetches != nil {
+		copy := &triePrefetcher{
+			db:             p.db,
+			root:           p.root,
+			fetches:        make(map[common.Hash]Trie, len(p.fetches)),
+			abortChan:      make(chan *subfetcher),
+			closeAbortChan: make(chan struct{}),
+		}
+		// p.fetches is safe to be accessed outside of mainloop
+		// if the triePrefetcher is a active, fetches is not will in mainLoop
+		// otherwise, inactive triePrefetcher is readonly, it has no loop
 		for root, fetch := range p.fetches {
 			copy.fetches[root] = p.db.CopyTrie(fetch)
 		}
 		return copy
 	}
-	// Otherwise we're copying an active fetcher, retrieve the current states
-	for root, fetcher := range p.fetchers {
-		copy.fetches[root] = fetcher.peek()
+
+	p.copyChan <- struct{}{}
+	return <-p.copyDoneChan
+}
+
+// close iterates over all the subfetchers, aborts any that were left spinning
+// and reports the stats to the metrics subsystem.
+// Attention, this API is not thread safe: double close()
+func (p *triePrefetcher) close() {
+	select {
+	case <-p.closeMainChan: // already closed
+		return
+	default:
+		close(p.closeMainChan)
+		// wait until all subfetcher are stopped
+		<-p.closeMainDoneChan
 	}
-	return copy
 }
 
 // prefetch schedules a batch of trie items to prefetch.
@@ -174,13 +273,7 @@ func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte, accountHash c
 	if p.fetches != nil {
 		return
 	}
-	// Active fetcher, schedule the retrievals
-	fetcher := p.fetchers[root]
-	if fetcher == nil {
-		fetcher = newSubfetcher(p.db, root, accountHash)
-		p.fetchers[root] = fetcher
-	}
-	fetcher.schedule(keys)
+	p.prefetchChan <- &prefetchMsg{root, accountHash, keys}
 }
 
 // trie returns the trie matching the root hash, or nil if the prefetcher doesn't
@@ -195,12 +288,10 @@ func (p *triePrefetcher) trie(root common.Hash) Trie {
 		}
 		return p.db.CopyTrie(trie)
 	}
-	// Otherwise the prefetcher is active, bail if no trie was prefetched for this root
-	fetcher := p.fetchers[root]
-	if fetcher == nil {
-		p.deliveryMissMeter.Mark(1)
-		return nil
-	}
+
+	p.trieChan <- &root
+	fetcher := <-p.trieDoneChan
+
 	// Interrupt the prefetcher if it's by any chance still running and return
 	// a copy of any pre-loaded trie.
 	p.abortChan <- fetcher // safe to do multiple times
@@ -216,9 +307,7 @@ func (p *triePrefetcher) trie(root common.Hash) Trie {
 // used marks a batch of state items used to allow creating statistics as to
 // how useful or wasteful the prefetcher is.
 func (p *triePrefetcher) used(root common.Hash, used [][]byte) {
-	if fetcher := p.fetchers[root]; fetcher != nil {
-		fetcher.used = used
-	}
+	p.usedChan <- &usedMsg{root, used}
 }
 
 // subfetcher is a trie fetcher goroutine responsible for pulling entries for a
