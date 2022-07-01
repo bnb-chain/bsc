@@ -511,6 +511,10 @@ func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts) {
 }
 
 func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh chan struct{}) {
+	// The difflayer in the system is stored by the map structure,
+	// so it will be out of order.
+	// It must be sorted first and then cached,
+	// otherwise the DiffHash calculated by different nodes will be inconsistent
 	sort.SliceStable(diffLayer.Codes, func(i, j int) bool {
 		return diffLayer.Codes[i].Hash.Hex() < diffLayer.Codes[j].Hash.Hex()
 	})
@@ -2162,9 +2166,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err
-		}
-		if statedb.NoTrie() {
-			statedb.SetExpectedStateRoot(block.Root())
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
 
