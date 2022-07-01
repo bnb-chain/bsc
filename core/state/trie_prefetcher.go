@@ -120,16 +120,16 @@ func (p *triePrefetcher) mainLoop() {
 	for {
 		select {
 		case <-p.copyChan:
-			copy := &triePrefetcher{
+			fetcherCopied := &triePrefetcher{
 				db:      p.db,
 				root:    p.root,
 				fetches: make(map[common.Hash]Trie, len(p.fetchers)),
 			}
 			// we're copying an active fetcher, retrieve the current states
 			for root, fetcher := range p.fetchers {
-				copy.fetches[root] = fetcher.peek()
+				fetcherCopied.fetches[root] = fetcher.peek()
 			}
-			p.copyDoneChan <- copy
+			p.copyDoneChan <- fetcherCopied
 
 		case pMsg := <-p.prefetchChan:
 			fetcher := p.fetchers[pMsg.root]
@@ -140,12 +140,7 @@ func (p *triePrefetcher) mainLoop() {
 			fetcher.schedule(pMsg.keys)
 
 		case tireMsg := <-p.trieChan:
-			fetcher := p.fetchers[tireMsg.root]
-			// bail if no trie was prefetched for this root
-			if fetcher == nil {
-				p.deliveryMissMeter.Mark(1)
-			}
-			tireMsg.resultChan <- fetcher
+			tireMsg.resultChan <- p.fetchers[tireMsg.root]
 
 		case uMsg := <-p.usedChan:
 			if fetcher := p.fetchers[uMsg.root]; fetcher != nil {
@@ -181,7 +176,17 @@ func (p *triePrefetcher) mainLoop() {
 			close(p.closeAbortChan)
 			close(p.closeMainDoneChan)
 			p.fetchers = nil
-			return
+			// drain all the channels before quit the loop
+			for {
+				select {
+				case <-p.copyChan:
+				case <-p.prefetchChan:
+				case <-p.trieChan:
+				case <-p.usedChan:
+				default:
+					return
+				}
+			}
 		}
 	}
 }
@@ -209,13 +214,16 @@ func (p *triePrefetcher) abortLoop() {
 // and reports the stats to the metrics subsystem.
 // Attention, this API is not thread safe: double close()
 func (p *triePrefetcher) close() {
+	// If the prefetcher is an inactive one, bail out
+	if p.fetches != nil {
+		return
+	}
 	select {
-	case <-p.closeMainChan: // already closed
+	case <-p.closeMainChan: // skip if already closed
 		return
 	default:
 		close(p.closeMainChan)
-		// wait until all subfetcher are stopped
-		<-p.closeMainDoneChan
+		<-p.closeMainDoneChan // wait until all subfetcher are stopped
 	}
 }
 
@@ -226,7 +234,7 @@ func (p *triePrefetcher) close() {
 func (p *triePrefetcher) copy() *triePrefetcher {
 	// If the prefetcher is already a copy, duplicate the data
 	if p.fetches != nil {
-		copy := &triePrefetcher{
+		fetcherCopied := &triePrefetcher{
 			db:             p.db,
 			root:           p.root,
 			fetches:        make(map[common.Hash]Trie, len(p.fetches)),
@@ -237,9 +245,9 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 		// if the triePrefetcher is active, fetches will not be used in mainLoop
 		// otherwise, inactive triePrefetcher is readonly, it won't modify fetches
 		for root, fetch := range p.fetches {
-			copy.fetches[root] = p.db.CopyTrie(fetch)
+			fetcherCopied.fetches[root] = p.db.CopyTrie(fetch)
 		}
-		return copy
+		return fetcherCopied
 	}
 
 	p.copyChan <- struct{}{}
@@ -272,6 +280,7 @@ func (p *triePrefetcher) trie(root common.Hash) Trie {
 	p.trieChan <- &trieMsg{root, trieChan}
 	fetcher := <-trieChan
 	if fetcher == nil {
+		p.deliveryMissMeter.Mark(1)
 		return nil
 	}
 	// Interrupt the prefetcher if it's by any chance still running and return
@@ -289,6 +298,13 @@ func (p *triePrefetcher) trie(root common.Hash) Trie {
 // used marks a batch of state items used to allow creating statistics as to
 // how useful or wasteful the prefetcher is.
 func (p *triePrefetcher) used(root common.Hash, used [][]byte) {
+	if !metrics.EnabledExpensive {
+		return
+	}
+	// If the prefetcher is an inactive one, bail out
+	if p.fetches != nil {
+		return
+	}
 	p.usedChan <- &usedMsg{root, used}
 }
 
