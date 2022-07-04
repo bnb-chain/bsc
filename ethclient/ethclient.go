@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -197,6 +198,12 @@ func (ec *Client) GetDiffAccounts(ctx context.Context, number *big.Int) ([]commo
 func (ec *Client) GetDiffAccountsWithScope(ctx context.Context, number *big.Int, accounts []common.Address) (*types.DiffAccountsInBlock, error) {
 	var result types.DiffAccountsInBlock
 	err := ec.c.CallContext(ctx, &result, "eth_getDiffAccountsWithScope", toBlockNumArg(number), accounts)
+	return &result, err
+}
+
+func (ec *Client) GetRootByDiffHash(ctx context.Context, blockNr *big.Int, blockHash common.Hash, diffHash common.Hash) (*core.VerifyResult, error) {
+	var result core.VerifyResult
+	err := ec.c.CallContext(ctx, &result, "eth_getRootByDiffHash", toBlockNumArg(blockNr), blockHash, diffHash)
 	return &result, err
 }
 

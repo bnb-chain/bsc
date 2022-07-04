@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -95,6 +96,7 @@ type handlerConfig struct {
 	Whitelist              map[uint64]common.Hash    // Hard coded whitelist for sync challenged
 	DirectBroadcast        bool
 	DisablePeerTxBroadcast bool
+	PeerSet                *peerSet
 }
 
 type handler struct {
@@ -146,6 +148,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	if config.EventMux == nil {
 		config.EventMux = new(event.TypeMux) // Nicety initialization for tests
 	}
+	if config.PeerSet == nil {
+		config.PeerSet = newPeerSet() // Nicety initialization for tests
+	}
 	h := &handler{
 		networkID:              config.Network,
 		forkFilter:             forkid.NewFilter(config.Chain),
@@ -154,7 +159,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		database:               config.Database,
 		txpool:                 config.TxPool,
 		chain:                  config.Chain,
-		peers:                  newPeerSet(),
+		peers:                  config.PeerSet,
 		whitelist:              config.Whitelist,
 		directBroadcast:        config.DirectBroadcast,
 		diffSync:               config.DiffSync,
@@ -273,6 +278,11 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Diff extension barrier failed", "err", err)
 		return err
 	}
+	trust, err := h.peers.waitTrustExtension(peer)
+	if err != nil {
+		peer.Log().Error("Trust extension barrier failed", "err", err)
+		return err
+	}
 	// TODO(karalabe): Not sure why this is needed
 	if !h.chainSync.handlePeerEvent(peer) {
 		return p2p.DiscQuitting
@@ -313,7 +323,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
 	// Register the peer locally
-	if err := h.peers.registerPeer(peer, snap, diff); err != nil {
+	if err := h.peers.registerPeer(peer, snap, diff, trust); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
@@ -394,6 +404,21 @@ func (h *handler) runDiffExtension(peer *diff.Peer, handler diff.Handler) error 
 
 	if err := h.peers.registerDiffExtension(peer); err != nil {
 		peer.Log().Error("Diff extension registration failed", "err", err)
+		return err
+	}
+	return handler(peer)
+}
+
+// runTrustExtension registers a `trust` peer into the joint eth/trust peerset and
+// starts handling inbound messages. As `trust` is only a satellite protocol to
+// `eth`, all subsystem registrations and lifecycle management will be done by
+// the main `eth` handler to prevent strange races.
+func (h *handler) runTrustExtension(peer *trust.Peer, handler trust.Handler) error {
+	h.peerWG.Add(1)
+	defer h.peerWG.Done()
+
+	if err := h.peers.registerTrustExtension(peer); err != nil {
+		peer.Log().Error("Trust extension registration failed", "err", err)
 		return err
 	}
 	return handler(peer)
