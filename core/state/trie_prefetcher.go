@@ -18,6 +18,7 @@ package state
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
@@ -61,6 +62,7 @@ type triePrefetcher struct {
 	fetches  map[common.Hash]Trie        // Partially or fully fetcher tries
 	fetchers map[common.Hash]*subfetcher // Subfetchers for each trie
 
+	closed            int32
 	closeMainChan     chan struct{} // it is to inform the mainLoop
 	closeMainDoneChan chan struct{}
 	copyChan          chan struct{}
@@ -95,11 +97,11 @@ func newTriePrefetcher(db Database, root common.Hash, namespace string) *triePre
 
 		closeMainChan:     make(chan struct{}),
 		closeMainDoneChan: make(chan struct{}),
+		copyChan:          make(chan struct{}, concurrentChanSize),
+		copyDoneChan:      make(chan *triePrefetcher, concurrentChanSize),
 		prefetchChan:      make(chan *prefetchMsg, concurrentChanSize),
 		trieChan:          make(chan *trieMsg, concurrentChanSize),
 		usedChan:          make(chan *usedMsg, concurrentChanSize),
-		copyChan:          make(chan struct{}, concurrentChanSize),
-		copyDoneChan:      make(chan *triePrefetcher, concurrentChanSize),
 
 		deliveryMissMeter: metrics.GetOrRegisterMeter(prefix+"/deliverymiss", nil),
 		accountLoadMeter:  metrics.GetOrRegisterMeter(prefix+"/account/load", nil),
@@ -197,15 +199,7 @@ func (p *triePrefetcher) abortLoop() {
 		case fetcher := <-p.abortChan:
 			fetcher.abort()
 		case <-p.closeAbortChan:
-			// drain fetcher channel
-			for {
-				select {
-				case fetcher := <-p.abortChan:
-					fetcher.abort()
-				default:
-					return
-				}
-			}
+			return
 		}
 	}
 }
@@ -218,10 +212,7 @@ func (p *triePrefetcher) close() {
 	if p.fetches != nil {
 		return
 	}
-	select {
-	case <-p.closeMainChan: // skip if already closed
-		return
-	default:
+	if atomic.CompareAndSwapInt32(&p.closed, 0, 1) {
 		close(p.closeMainChan)
 		<-p.closeMainDoneChan // wait until all subfetcher are stopped
 	}
@@ -249,9 +240,13 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 		}
 		return fetcherCopied
 	}
-
+	p.copyChan <- struct{}{}
 	select {
 	case <-p.closeMainChan:
+		select {
+		case <-p.copyChan: // to discard the message sent
+		default:
+		}
 		fetcherCopied := &triePrefetcher{
 			db:      p.db,
 			root:    p.root,
@@ -262,9 +257,8 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 			fetcherCopied.fetches[root] = fetcher.peek()
 		}
 		return fetcherCopied
-	default:
-		p.copyChan <- struct{}{}
-		return <-p.copyDoneChan
+	case fetcherCopied := <-p.copyDoneChan:
+		return fetcherCopied
 	}
 }
 
@@ -277,8 +271,7 @@ func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte, accountHash c
 	select {
 	case <-p.closeMainChan: // skip closed trie prefetcher
 		return
-	default:
-		p.prefetchChan <- &prefetchMsg{root, accountHash, keys}
+	case p.prefetchChan <- &prefetchMsg{root, accountHash, keys}:
 	}
 }
 
@@ -295,27 +288,28 @@ func (p *triePrefetcher) trie(root common.Hash) Trie {
 	}
 
 	var fetcher *subfetcher
+	// currentTrieChan is to make sure we receive root's fetcher in concurrency mode.
+	currentTrieChan := make(chan *subfetcher)
+	p.trieChan <- &trieMsg{root, currentTrieChan}
 	select {
 	case <-p.closeMainChan:
+		select {
+		case <-p.trieChan:
+		default:
+		}
 		fetcher = p.fetchers[root]
-	default:
-		// currentTrieChan is to make sure we receive root's fetcher in concurrency mode.
-		currentTrieChan := make(chan *subfetcher)
-		defer func() { close(currentTrieChan) }()
-		p.trieChan <- &trieMsg{root, currentTrieChan}
-		fetcher = <-currentTrieChan
+	case fetcher = <-currentTrieChan:
 	}
 	if fetcher == nil {
 		p.deliveryMissMeter.Mark(1)
 		return nil
 	}
 
+	// Interrupt the prefetcher if it's by any chance still running and return
+	// a copy of any pre-loaded trie.
 	select {
 	case <-p.closeAbortChan:
-	default:
-		// Interrupt the prefetcher if it's by any chance still running and return
-		// a copy of any pre-loaded trie.
-		p.abortChan <- fetcher // safe to do multiple times
+	case p.abortChan <- fetcher: // safe to do multiple times
 	}
 
 	trie := fetcher.peek()
@@ -338,8 +332,11 @@ func (p *triePrefetcher) used(root common.Hash, used [][]byte) {
 	}
 	select {
 	case <-p.closeAbortChan:
-	default:
-		p.usedChan <- &usedMsg{root, used}
+		select {
+		case <-p.usedChan:
+		default:
+		}
+	case p.usedChan <- &usedMsg{root, used}:
 	}
 }
 
