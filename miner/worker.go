@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -75,6 +76,12 @@ const (
 
 	// staleThreshold is the maximum depth of the acceptable stale block.
 	staleThreshold = 11
+)
+
+var (
+	commitTxsTimer     = metrics.NewRegisteredTimer("worker/committxs", nil)
+	writeBlockTimer    = metrics.NewRegisteredTimer("worker/writeblock", nil)
+	finalizeBlockTimer = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
 )
 
 // environment is the worker's current environment and holds all
@@ -601,6 +608,7 @@ func (w *worker) mainLoop() {
 			// already included in the current sealing block. These transactions will
 			// be automatically eliminated.
 			if !w.isRunning() && w.current != nil {
+				start := time.Now()
 				// If block is already full, abort
 				if gp := w.current.gasPool; gp != nil && gp.Gas() < params.TxGas {
 					continue
@@ -613,6 +621,7 @@ func (w *worker) mainLoop() {
 				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs, w.current.header.BaseFee)
 				tcount := w.current.tcount
 				w.commitTransactions(w.current, txset, nil)
+				commitTxsTimer.UpdateSince(start)
 
 				// Only update the snapshot if any new transactions were added
 				// to the pending block
@@ -746,18 +755,21 @@ func (w *worker) resultLoop() {
 				}
 				logs = append(logs, receipt.Logs...)
 			}
+
+			// Broadcast the block and announce chain insertion event
+			w.mux.Post(core.NewMinedBlockEvent{Block: block})
+
 			// Commit block and state to database.
 			task.state.SetExpectedStateRoot(block.Root())
+			start := time.Now()
 			_, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, true)
 			if err != nil {
 				log.Error("Failed writing block to chain", "err", err)
 				continue
 			}
+			writeBlockTimer.UpdateSince(start)
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
-
-			// Broadcast the block and announce chain insertion event
-			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
 			// Insert the block into the set of pending ones to resultLoop for confirmations
 			w.unconfirmed.Insert(block.NumberU64(), block.Hash())
@@ -1195,10 +1207,12 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		}
 		s.CorrectAccountsRoot(w.chain.CurrentBlock().Root())
 
+		finalizeStart := time.Now()
 		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), s, env.txs, env.unclelist(), env.receipts)
 		if err != nil {
 			return err
 		}
+		finalizeBlockTimer.UpdateSince(finalizeStart)
 		// If we're post merge, just ignore
 		if !w.isTTDReached(block.Header()) {
 			select {
