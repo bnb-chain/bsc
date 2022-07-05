@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
@@ -62,6 +63,9 @@ const (
 
 	// Maximum amount of time allowed for writing a complete message.
 	frameWriteTimeout = 20 * time.Second
+
+	// Maximum time to wait before stop the p2p server
+	stopTimeout = 5 * time.Second
 )
 
 var errServerStopped = errors.New("server stopped")
@@ -109,6 +113,10 @@ type Config struct {
 	// Static nodes are used as pre-configured connections which are always
 	// maintained and re-connected on disconnects.
 	StaticNodes []*enode.Node
+
+	// Verify nodes are used as pre-configured connections which are always
+	// maintained and re-connected on disconnects.
+	VerifyNodes []*enode.Node
 
 	// Trusted nodes are used as pre-configured connections which are always
 	// allowed to connect, even above the peer limit.
@@ -214,6 +222,7 @@ const (
 	staticDialedConn
 	inboundConn
 	trustedConn
+	verifyConn
 )
 
 // conn wraps a network connection with information gathered
@@ -264,6 +273,9 @@ func (f connFlag) String() string {
 	}
 	if f&inboundConn != 0 {
 		s += "-inbound"
+	}
+	if f&verifyConn != 0 {
+		s += "-verify"
 	}
 	if s != "" {
 		s = s[1:]
@@ -402,7 +414,18 @@ func (srv *Server) Stop() {
 	}
 	close(srv.quit)
 	srv.lock.Unlock()
-	srv.loopWG.Wait()
+
+	stopChan := make(chan struct{})
+	go func() {
+		srv.loopWG.Wait()
+		close(stopChan)
+	}()
+
+	select {
+	case <-stopChan:
+	case <-time.After(stopTimeout):
+		srv.log.Warn("stop p2p server timeout, forcing stop")
+	}
 }
 
 // sharedUDPConn implements a shared connection. Write sends messages to the underlying connection while read returns
@@ -562,10 +585,10 @@ func (srv *Server) setupDiscovery() error {
 	if srv.NAT != nil {
 		if !realaddr.IP.IsLoopback() {
 			srv.loopWG.Add(1)
-			go func() {
+			gopool.Submit(func() {
 				nat.Map(srv.NAT, srv.quit, "udp", realaddr.Port, realaddr.Port, "ethereum discovery")
 				srv.loopWG.Done()
-			}()
+			})
 		}
 	}
 	srv.localnode.SetFallbackUDP(realaddr.Port)
@@ -634,6 +657,9 @@ func (srv *Server) setupDialScheduler() {
 	for _, n := range srv.StaticNodes {
 		srv.dialsched.addStatic(n)
 	}
+	for _, n := range srv.VerifyNodes {
+		srv.dialsched.addStatic(n)
+	}
 }
 
 func (srv *Server) maxInboundConns() int {
@@ -669,10 +695,10 @@ func (srv *Server) setupListening() error {
 		srv.localnode.Set(enr.TCP(tcp.Port))
 		if !tcp.IP.IsLoopback() && srv.NAT != nil {
 			srv.loopWG.Add(1)
-			go func() {
+			gopool.Submit(func() {
 				nat.Map(srv.NAT, srv.quit, "tcp", tcp.Port, tcp.Port, "ethereum p2p")
 				srv.loopWG.Done()
-			}()
+			})
 		}
 	}
 
@@ -890,10 +916,10 @@ func (srv *Server) listenLoop() {
 			fd = newMeteredConn(fd, true, addr)
 			srv.log.Trace("Accepted connection", "addr", fd.RemoteAddr())
 		}
-		go func() {
+		gopool.Submit(func() {
 			srv.SetupConn(fd, inboundConn, nil)
 			slots <- struct{}{}
-		}()
+		})
 	}
 }
 
@@ -919,6 +945,13 @@ func (srv *Server) checkInboundConn(remoteIP net.IP) error {
 // as a peer. It returns when the connection has been added as a peer
 // or the handshakes have failed.
 func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) error {
+	// If dialDest is verify node, set verifyConn flags.
+	for _, n := range srv.VerifyNodes {
+		if dialDest == n {
+			flags |= verifyConn
+		}
+	}
+
 	c := &conn{fd: fd, flags: flags, cont: make(chan error)}
 	if dialDest == nil {
 		c.transport = srv.newTransport(fd, nil)
@@ -1019,7 +1052,9 @@ func (srv *Server) launchPeer(c *conn) *Peer {
 		// to the peer.
 		p.events = &srv.peerFeed
 	}
-	go srv.runPeer(p)
+	gopool.Submit(func() {
+		srv.runPeer(p)
+	})
 	return p
 }
 

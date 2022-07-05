@@ -18,7 +18,11 @@ package eth
 
 import (
 	"math/big"
+	"time"
 
+	"github.com/ethereum/go-ethereum/eth/protocols/trust"
+
+	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 )
@@ -34,7 +38,11 @@ type ethPeerInfo struct {
 // ethPeer is a wrapper around eth.Peer to maintain a few extra metadata.
 type ethPeer struct {
 	*eth.Peer
-	snapExt  *snapPeer     // Satellite `snap` connection
+	snapExt  *snapPeer // Satellite `snap` connection
+	diffExt  *diffPeer
+	trustExt *trustPeer
+
+	syncDrop *time.Timer   // Connection dropper if `eth` sync progress isn't validated in time
 	snapWait chan struct{} // Notification channel for snap connections
 }
 
@@ -55,14 +63,52 @@ type snapPeerInfo struct {
 	Version uint `json:"version"` // Snapshot protocol version negotiated
 }
 
+// diffPeerInfo represents a short summary of the `diff` sub-protocol metadata known
+// about a connected peer.
+type diffPeerInfo struct {
+	Version  uint `json:"version"` // diff protocol version negotiated
+	DiffSync bool `json:"diff_sync"`
+}
+
+// trustPeerInfo represents a short summary of the `trust` sub-protocol metadata known
+// about a connected peer.
+type trustPeerInfo struct {
+	Version uint `json:"version"` // Trust protocol version negotiated
+}
+
 // snapPeer is a wrapper around snap.Peer to maintain a few extra metadata.
 type snapPeer struct {
 	*snap.Peer
 }
 
+// diffPeer is a wrapper around diff.Peer to maintain a few extra metadata.
+type diffPeer struct {
+	*diff.Peer
+}
+
+// trustPeer is a wrapper around trust.Peer to maintain a few extra metadata.
+type trustPeer struct {
+	*trust.Peer
+}
+
+// info gathers and returns some `diff` protocol metadata known about a peer.
+func (p *diffPeer) info() *diffPeerInfo {
+	return &diffPeerInfo{
+		Version:  p.Version(),
+		DiffSync: p.DiffSync(),
+	}
+}
+
 // info gathers and returns some `snap` protocol metadata known about a peer.
 func (p *snapPeer) info() *snapPeerInfo {
 	return &snapPeerInfo{
+		Version: p.Version(),
+	}
+}
+
+// info gathers and returns some `trust` protocol metadata known about a peer.
+func (p *trustPeer) info() *trustPeerInfo {
+	return &trustPeerInfo{
 		Version: p.Version(),
 	}
 }

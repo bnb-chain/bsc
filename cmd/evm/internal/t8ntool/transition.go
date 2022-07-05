@@ -90,12 +90,13 @@ func Transition(ctx *cli.Context) error {
 	log.Root().SetHandler(glogger)
 
 	var (
-		err    error
-		tracer vm.EVMLogger
+		err     error
+		tracer  vm.EVMLogger
+		baseDir string
 	)
 	var getTracer func(txIndex int, txHash common.Hash) (vm.EVMLogger, error)
 
-	baseDir, err := createBasedir(ctx)
+	baseDir, err = createBasedir(ctx)
 	if err != nil {
 		return NewError(ErrorIO, fmt.Errorf("failed creating output basedir: %v", err))
 	}

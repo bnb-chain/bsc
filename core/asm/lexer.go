@@ -22,6 +22,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/ethereum/go-ethereum/common/gopool"
 )
 
 // stateFn is used through the lifetime of the
@@ -103,14 +105,14 @@ func Lex(source []byte, debug bool) <-chan token {
 		state:  lexLine,
 		debug:  debug,
 	}
-	go func() {
+	gopool.Submit(func() {
 		l.emit(lineStart)
 		for l.state != nil {
 			l.state = l.state(l)
 		}
 		l.emit(eof)
 		close(l.tokens)
-	}()
+	})
 
 	return ch
 }

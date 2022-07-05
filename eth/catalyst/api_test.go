@@ -49,11 +49,12 @@ func generatePreMergeChain(n int) (*core.Genesis, []*types.Block) {
 	db := rawdb.NewMemoryDatabase()
 	config := params.AllEthashProtocolChanges
 	genesis := &core.Genesis{
-		Config:    config,
-		Alloc:     core.GenesisAlloc{testAddr: {Balance: testBalance}},
-		ExtraData: []byte("test genesis"),
-		Timestamp: 9000,
-		BaseFee:   big.NewInt(params.InitialBaseFee),
+		Config:     config,
+		Alloc:      core.GenesisAlloc{testAddr: {Balance: testBalance}},
+		ExtraData:  []byte("test genesis"),
+		Timestamp:  9000,
+		BaseFee:    big.NewInt(params.InitialBaseFee),
+		Difficulty: big.NewInt(0),
 	}
 	testNonce := uint64(0)
 	generate := func(i int, g *core.BlockGen) {
@@ -389,7 +390,7 @@ func startEthService(t *testing.T, genesis *core.Genesis, blocks []*types.Block)
 		t.Fatal("can't create node:", err)
 	}
 
-	ethcfg := &ethconfig.Config{Genesis: genesis, Ethash: ethash.Config{PowMode: ethash.ModeFake}, TrieTimeout: time.Minute, TrieDirtyCache: 256, TrieCleanCache: 256}
+	ethcfg := &ethconfig.Config{Genesis: genesis, Ethash: ethash.Config{PowMode: ethash.ModeFake}, TrieTimeout: time.Minute, TrieDirtyCache: 256, TrieCleanCache: 256, TriesInMemory: 128}
 	ethservice, err := eth.New(n, ethcfg)
 	if err != nil {
 		t.Fatal("can't create eth service:", err)

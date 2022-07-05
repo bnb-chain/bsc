@@ -24,6 +24,8 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 )
 
+const abortChanSize = 64
+
 var (
 	// triePrefetchMetricsPrefix is the prefix under which to publis the metrics.
 	triePrefetchMetricsPrefix = "trie/prefetch/"
@@ -40,6 +42,9 @@ type triePrefetcher struct {
 	fetches  map[common.Hash]Trie        // Partially or fully fetcher tries
 	fetchers map[common.Hash]*subfetcher // Subfetchers for each trie
 
+	abortChan chan *subfetcher
+	closeChan chan struct{}
+
 	deliveryMissMeter metrics.Meter
 	accountLoadMeter  metrics.Meter
 	accountDupMeter   metrics.Meter
@@ -55,9 +60,11 @@ type triePrefetcher struct {
 func newTriePrefetcher(db Database, root common.Hash, namespace string) *triePrefetcher {
 	prefix := triePrefetchMetricsPrefix + namespace
 	p := &triePrefetcher{
-		db:       db,
-		root:     root,
-		fetchers: make(map[common.Hash]*subfetcher), // Active prefetchers use the fetchers map
+		db:        db,
+		root:      root,
+		fetchers:  make(map[common.Hash]*subfetcher), // Active prefetchers use the fetchers map
+		abortChan: make(chan *subfetcher, abortChanSize),
+		closeChan: make(chan struct{}),
 
 		deliveryMissMeter: metrics.GetOrRegisterMeter(prefix+"/deliverymiss", nil),
 		accountLoadMeter:  metrics.GetOrRegisterMeter(prefix+"/account/load", nil),
@@ -69,16 +76,36 @@ func newTriePrefetcher(db Database, root common.Hash, namespace string) *triePre
 		storageSkipMeter:  metrics.GetOrRegisterMeter(prefix+"/storage/skip", nil),
 		storageWasteMeter: metrics.GetOrRegisterMeter(prefix+"/storage/waste", nil),
 	}
+	go p.abortLoop()
 	return p
+}
+
+func (p *triePrefetcher) abortLoop() {
+	for {
+		select {
+		case fetcher := <-p.abortChan:
+			fetcher.abort()
+		case <-p.closeChan:
+			// drain fetcher channel
+			for {
+				select {
+				case fetcher := <-p.abortChan:
+					fetcher.abort()
+				default:
+					return
+				}
+			}
+		}
+	}
 }
 
 // close iterates over all the subfetchers, aborts any that were left spinning
 // and reports the stats to the metrics subsystem.
 func (p *triePrefetcher) close() {
 	for _, fetcher := range p.fetchers {
-		fetcher.abort() // safe to do multiple times
-
-		if metrics.Enabled {
+		p.abortChan <- fetcher // safe to do multiple times
+		<-fetcher.term
+		if metrics.EnabledExpensive {
 			if fetcher.root == p.root {
 				p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
 				p.accountDupMeter.Mark(int64(fetcher.dups))
@@ -100,6 +127,7 @@ func (p *triePrefetcher) close() {
 			}
 		}
 	}
+	close(p.closeChan)
 	// Clear out all fetchers (will crash on a second call, deliberate)
 	p.fetchers = nil
 }
@@ -114,6 +142,8 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 		root:    p.root,
 		fetches: make(map[common.Hash]Trie), // Active prefetchers use the fetches map
 
+		abortChan:         make(chan *subfetcher),
+		closeChan:         make(chan struct{}),
 		deliveryMissMeter: p.deliveryMissMeter,
 		accountLoadMeter:  p.accountLoadMeter,
 		accountDupMeter:   p.accountDupMeter,
@@ -139,7 +169,7 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 }
 
 // prefetch schedules a batch of trie items to prefetch.
-func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte) {
+func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte, accountHash common.Hash) {
 	// If the prefetcher is an inactive one, bail out
 	if p.fetches != nil {
 		return
@@ -147,7 +177,7 @@ func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte) {
 	// Active fetcher, schedule the retrievals
 	fetcher := p.fetchers[root]
 	if fetcher == nil {
-		fetcher = newSubfetcher(p.db, root)
+		fetcher = newSubfetcher(p.db, root, accountHash)
 		p.fetchers[root] = fetcher
 	}
 	fetcher.schedule(keys)
@@ -173,7 +203,7 @@ func (p *triePrefetcher) trie(root common.Hash) Trie {
 	}
 	// Interrupt the prefetcher if it's by any chance still running and return
 	// a copy of any pre-loaded trie.
-	fetcher.abort() // safe to do multiple times
+	p.abortChan <- fetcher // safe to do multiple times
 
 	trie := fetcher.peek()
 	if trie == nil {
@@ -211,19 +241,22 @@ type subfetcher struct {
 	seen map[string]struct{} // Tracks the entries already loaded
 	dups int                 // Number of duplicate preload tasks
 	used [][]byte            // Tracks the entries used in the end
+
+	accountHash common.Hash
 }
 
 // newSubfetcher creates a goroutine to prefetch state items belonging to a
 // particular root hash.
-func newSubfetcher(db Database, root common.Hash) *subfetcher {
+func newSubfetcher(db Database, root common.Hash, accountHash common.Hash) *subfetcher {
 	sf := &subfetcher{
-		db:   db,
-		root: root,
-		wake: make(chan struct{}, 1),
-		stop: make(chan struct{}),
-		term: make(chan struct{}),
-		copy: make(chan chan Trie),
-		seen: make(map[string]struct{}),
+		db:          db,
+		root:        root,
+		wake:        make(chan struct{}, 1),
+		stop:        make(chan struct{}),
+		term:        make(chan struct{}),
+		copy:        make(chan chan Trie),
+		seen:        make(map[string]struct{}),
+		accountHash: accountHash,
 	}
 	go sf.loop()
 	return sf
@@ -279,9 +312,16 @@ func (sf *subfetcher) loop() {
 	defer close(sf.term)
 
 	// Start by opening the trie and stop processing if it fails
-	trie, err := sf.db.OpenTrie(sf.root)
+	var trie Trie
+	var err error
+	if sf.accountHash == emptyAddr {
+		trie, err = sf.db.OpenTrie(sf.root)
+	} else {
+		// address is useless
+		trie, err = sf.db.OpenStorageTrie(sf.accountHash, sf.root)
+	}
 	if err != nil {
-		log.Warn("Trie prefetcher failed opening trie", "root", sf.root, "err", err)
+		log.Debug("Trie prefetcher failed opening trie", "root", sf.root, "err", err)
 		return
 	}
 	sf.trie = trie
@@ -291,6 +331,18 @@ func (sf *subfetcher) loop() {
 		select {
 		case <-sf.wake:
 			// Subfetcher was woken up, retrieve any tasks to avoid spinning the lock
+			if sf.trie == nil {
+				if sf.accountHash == emptyAddr {
+					sf.trie, err = sf.db.OpenTrie(sf.root)
+				} else {
+					// address is useless
+					sf.trie, err = sf.db.OpenStorageTrie(sf.accountHash, sf.root)
+				}
+				if err != nil {
+					continue
+				}
+			}
+
 			sf.lock.Lock()
 			tasks := sf.tasks
 			sf.tasks = nil

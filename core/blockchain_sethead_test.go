@@ -1961,7 +1961,7 @@ func testSetHead(t *testing.T, tt *rewindTest, snapshots bool) {
 	}
 	os.RemoveAll(datadir)
 
-	db, err := rawdb.NewLevelDBDatabaseWithFreezer(datadir, 0, 0, datadir, "", false)
+	db, err := rawdb.NewLevelDBDatabaseWithFreezer(datadir, 0, 0, datadir, "", false, false, false, false)
 	if err != nil {
 		t.Fatalf("Failed to create persistent database: %v", err)
 	}
@@ -1982,6 +1982,7 @@ func testSetHead(t *testing.T, tt *rewindTest, snapshots bool) {
 		config.SnapshotLimit = 256
 		config.SnapshotWait = true
 	}
+	config.TriesInMemory = 128
 	chain, err := NewBlockChain(db, config, params.AllEthashProtocolChanges, engine, vm.Config{}, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create chain: %v", err)
@@ -2021,6 +2022,7 @@ func testSetHead(t *testing.T, tt *rewindTest, snapshots bool) {
 	for _, block := range canonblocks {
 		chain.stateCache.TrieDB().Dereference(block.Root())
 	}
+	chain.stateCache.Purge()
 	// Force run a freeze cycle
 	type freezer interface {
 		Freeze(threshold uint64) error

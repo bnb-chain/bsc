@@ -293,6 +293,10 @@ func (b *EthAPIBackend) FeeHistory(ctx context.Context, blockCount int, lastBloc
 	return b.gpo.FeeHistory(ctx, blockCount, lastBlock, rewardPercentiles)
 }
 
+func (b *EthAPIBackend) Chain() *core.BlockChain {
+	return b.eth.BlockChain()
+}
+
 func (b *EthAPIBackend) ChainDb() ethdb.Database {
 	return b.eth.ChainDb()
 }

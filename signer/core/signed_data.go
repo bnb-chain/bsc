@@ -171,10 +171,10 @@ func (api *SignerAPI) determineSignatureFormat(ctx context.Context, contentType 
 		// Clique uses V on the form 0 or 1
 		useEthereumV = false
 		req = &SignDataRequest{ContentType: mediaType, Rawdata: cliqueRlp, Messages: messages, Hash: sighash}
-	case ApplicationParlia.Mime:
+	case apitypes.ApplicationParlia.Mime:
 		stringData, ok := data.(string)
 		if !ok {
-			return nil, useEthereumV, fmt.Errorf("input for %v must be an hex-encoded string", ApplicationParlia.Mime)
+			return nil, useEthereumV, fmt.Errorf("input for %v must be an hex-encoded string", apitypes.ApplicationParlia.Mime)
 		}
 		parliaData, err := hexutil.Decode(stringData)
 		if err != nil {
@@ -196,7 +196,7 @@ func (api *SignerAPI) determineSignatureFormat(ctx context.Context, contentType 
 		if err != nil {
 			return nil, useEthereumV, err
 		}
-		messages := []*NameValueType{
+		messages := []*apitypes.NameValueType{
 			{
 				Name:  "Parlia header",
 				Typ:   "parlia",

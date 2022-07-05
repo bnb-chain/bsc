@@ -1,0 +1,67 @@
+[Eth]
+NetworkId = {{NetworkId}}
+LightPeers = 100
+TrieTimeout = 360000000000
+EnablePreimageRecording = false
+
+[Eth.Miner]
+GasFloor = 30000000
+GasCeil = 40000000
+GasPrice = 5000000000
+Recommit = 10000000000
+Noverify = false
+
+[Eth.Ethash]
+CacheDir = ""
+CachesInMem = 0
+CachesOnDisk = 0
+CachesLockMmap = false
+DatasetDir = ""
+DatasetsInMem = 0
+DatasetsOnDisk = 0
+DatasetsLockMmap = false
+PowMode = 0
+
+[Eth.TxPool]
+Locals = []
+NoLocals = true
+Journal = "transactions.rlp"
+Rejournal = 3600000000000
+PriceLimit = 5000000000
+PriceBump = 10
+AccountSlots = 128
+GlobalSlots = 10000
+AccountQueue = 64
+GlobalQueue = 5000
+Lifetime = 600000000000
+
+[Eth.GPO]
+Blocks = 20
+Percentile = 60
+OracleThreshold = 20
+Default = 5000000000
+
+[Node]
+DataDir = "node"
+InsecureUnlockAllowed = true
+NoUSB = true
+IPCPath = "geth.ipc"
+HTTPHost = "0.0.0.0"
+HTTPPort = 8545
+HTTPVirtualHosts = ["*"]
+HTTPModules = ["eth", "net", "web3", "txpool", "parlia"]
+WSPort = 8547
+WSModules = ["net", "web3", "eth"]
+
+[Node.P2P]
+MaxPeers = 30
+NoDiscovery = false
+BootstrapNodes = []
+StaticNodes = []
+ListenAddr = ":30311"
+EnableMsgEvents = false
+
+[Node.HTTPTimeouts]
+ReadTimeout = 30000000000
+WriteTimeout = 30000000000
+IdleTimeout = 120000000000

@@ -26,6 +26,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -59,7 +60,6 @@ var (
 	snapshotDirtyStorageWriteMeter = metrics.NewRegisteredMeter("state/snapshot/dirty/storage/write", nil)
 
 	snapshotDirtyAccountHitDepthHist = metrics.NewRegisteredHistogram("state/snapshot/dirty/account/hit/depth", nil, metrics.NewExpDecaySample(1028, 0.015))
-	snapshotDirtyStorageHitDepthHist = metrics.NewRegisteredHistogram("state/snapshot/dirty/storage/hit/depth", nil, metrics.NewExpDecaySample(1028, 0.015))
 
 	snapshotFlushAccountItemMeter = metrics.NewRegisteredMeter("state/snapshot/flush/account/item", nil)
 	snapshotFlushAccountSizeMeter = metrics.NewRegisteredMeter("state/snapshot/flush/account/size", nil)
@@ -101,9 +101,28 @@ type Snapshot interface {
 	// Root returns the root hash for which this snapshot was made.
 	Root() common.Hash
 
+	// WaitAndGetVerifyRes will wait until the snapshot been verified and return verification result
+	WaitAndGetVerifyRes() bool
+
+	// Verified returns whether the snapshot is verified
+	Verified() bool
+
+	// MarkValid stores the verification result
+	MarkValid()
+
+	// CorrectAccounts updates account data for storing the correct data during pipecommit
+	CorrectAccounts(map[common.Hash][]byte)
+
+	// AccountsCorrected checks whether the account data has been corrected during pipecommit
+	AccountsCorrected() bool
+
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*Account, error)
+
+	// Accounts directly retrieves all accounts in current snapshot in
+	// the snapshot slim data format.
+	Accounts() (map[common.Hash]*Account, error)
 
 	// AccountRLP directly retrieves the account RLP associated with a particular
 	// hash in the snapshot slim data format.
@@ -130,7 +149,7 @@ type snapshot interface {
 	// the specified data items.
 	//
 	// Note, the maps are retained by the method to avoid copying everything.
-	Update(blockRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) *diffLayer
+	Update(blockRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer
 
 	// Journal commits an entire diff hierarchy to disk into a single journal entry.
 	// This is meant to be used during shutdown to persist the snapshot without
@@ -158,11 +177,12 @@ type snapshot interface {
 // storage data to avoid expensive multi-level trie lookups; and to allow sorted,
 // cheap iteration of the account/storage tries for sync aid.
 type Tree struct {
-	diskdb ethdb.KeyValueStore      // Persistent database to store the snapshot
-	triedb *trie.Database           // In-memory cache to access the trie through
-	cache  int                      // Megabytes permitted to use for read caches
-	layers map[common.Hash]snapshot // Collection of all known layers
-	lock   sync.RWMutex
+	diskdb   ethdb.KeyValueStore      // Persistent database to store the snapshot
+	triedb   *trie.Database           // In-memory cache to access the trie through
+	cache    int                      // Megabytes permitted to use for read caches
+	layers   map[common.Hash]snapshot // Collection of all known layers
+	lock     sync.RWMutex
+	capLimit int
 
 	// Test hooks
 	onFlatten func() // Hook invoked when the bottom most diff layers are flattened
@@ -172,30 +192,25 @@ type Tree struct {
 // store (with a number of memory layers from a journal), ensuring that the head
 // of the snapshot matches the expected one.
 //
-// If the snapshot is missing or the disk layer is broken, the snapshot will be
-// reconstructed using both the existing data and the state trie.
-// The repair happens on a background thread.
-//
-// If the memory layers in the journal do not match the disk layer (e.g. there is
-// a gap) or the journal is missing, there are two repair cases:
-//
-// - if the 'recovery' parameter is true, all memory diff-layers will be discarded.
-//   This case happens when the snapshot is 'ahead' of the state trie.
-// - otherwise, the entire snapshot is considered invalid and will be recreated on
-//   a background thread.
-func New(diskdb ethdb.KeyValueStore, triedb *trie.Database, cache int, root common.Hash, async bool, rebuild bool, recovery bool) (*Tree, error) {
+// If the snapshot is missing or the disk layer is broken, the entire is deleted
+// and will be reconstructed from scratch based on the tries in the key-value
+// store, on a background thread. If the memory layers from the journal is not
+// continuous with disk layer or the journal is missing, all diffs will be discarded
+// iff it's in "recovery" mode, otherwise rebuild is mandatory.
+func New(diskdb ethdb.KeyValueStore, triedb *trie.Database, cache, cap int, root common.Hash, async bool, rebuild bool, recovery, withoutTrie bool) (*Tree, error) {
 	// Create a new, empty snapshot tree
 	snap := &Tree{
-		diskdb: diskdb,
-		triedb: triedb,
-		cache:  cache,
-		layers: make(map[common.Hash]snapshot),
+		diskdb:   diskdb,
+		triedb:   triedb,
+		cache:    cache,
+		capLimit: cap,
+		layers:   make(map[common.Hash]snapshot),
 	}
 	if !async {
 		defer snap.waitBuild()
 	}
 	// Attempt to load a previously persisted snapshot and rebuild one if failed
-	head, disabled, err := loadSnapshot(diskdb, triedb, cache, root, recovery)
+	head, disabled, err := loadSnapshot(diskdb, triedb, cache, root, recovery, withoutTrie)
 	if disabled {
 		log.Warn("Snapshot maintenance disabled (syncing)")
 		return snap, nil
@@ -236,6 +251,11 @@ func (t *Tree) waitBuild() {
 	if done != nil {
 		<-done
 	}
+}
+
+// Layers returns the number of layers
+func (t *Tree) Layers() int {
+	return len(t.layers)
 }
 
 // Disable interrupts any pending snapshot generator, deletes all the snapshot
@@ -329,9 +349,14 @@ func (t *Tree) Snapshots(root common.Hash, limits int, nodisk bool) []Snapshot {
 	return ret
 }
 
+func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Address]struct{}, accounts map[common.Address][]byte, storage map[common.Address]map[string][]byte, verified chan struct{}) error {
+	hashDestructs, hashAccounts, hashStorage := transformSnapData(destructs, accounts, storage)
+	return t.update(blockRoot, parentRoot, hashDestructs, hashAccounts, hashStorage, verified)
+}
+
 // Update adds a new snapshot into the tree, if that can be linked to an existing
 // old parent. It is disallowed to insert a disk layer (the origin of all).
-func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) error {
+func (t *Tree) update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) error {
 	// Reject noop updates to avoid self-loops in the snapshot tree. This is a
 	// special case that can only happen for Clique networks where empty blocks
 	// don't modify the state (0 block subsidy).
@@ -346,7 +371,7 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 	if parent == nil {
 		return fmt.Errorf("parent [%#x] snapshot missing", parentRoot)
 	}
-	snap := parent.(snapshot).Update(blockRoot, destructs, accounts, storage)
+	snap := parent.(snapshot).Update(blockRoot, destructs, accounts, storage, verified)
 
 	// Save the new snapshot for later
 	t.lock.Lock()
@@ -355,6 +380,10 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 	t.layers[snap.root] = snap
 	log.Debug("Snapshot updated", "blockRoot", blockRoot)
 	return nil
+}
+
+func (t *Tree) CapLimit() int {
+	return t.capLimit
 }
 
 // Cap traverses downwards the snapshot tree from a head block hash until the
@@ -662,6 +691,11 @@ func (t *Tree) Journal(root common.Hash) (common.Hash, error) {
 	if snap == nil {
 		return common.Hash{}, fmt.Errorf("snapshot [%#x] missing", root)
 	}
+	// Wait the snapshot(difflayer) is verified, it means the account data also been refreshed with the correct data
+	if !snap.WaitAndGetVerifyRes() {
+		return common.Hash{}, ErrSnapshotStale
+	}
+
 	// Run the journaling
 	t.lock.Lock()
 	defer t.lock.Unlock()
@@ -845,4 +879,28 @@ func (t *Tree) DiskRoot() common.Hash {
 	defer t.lock.Unlock()
 
 	return t.diskRoot()
+}
+
+// TODO we can further improve it when the set is very large
+func transformSnapData(destructs map[common.Address]struct{}, accounts map[common.Address][]byte,
+	storage map[common.Address]map[string][]byte) (map[common.Hash]struct{}, map[common.Hash][]byte,
+	map[common.Hash]map[common.Hash][]byte) {
+	hasher := crypto.NewKeccakState()
+	hashDestructs := make(map[common.Hash]struct{}, len(destructs))
+	hashAccounts := make(map[common.Hash][]byte, len(accounts))
+	hashStorages := make(map[common.Hash]map[common.Hash][]byte, len(storage))
+	for addr := range destructs {
+		hashDestructs[crypto.Keccak256Hash(addr[:])] = struct{}{}
+	}
+	for addr, account := range accounts {
+		hashAccounts[crypto.Keccak256Hash(addr[:])] = account
+	}
+	for addr, accountStore := range storage {
+		hashStorage := make(map[common.Hash][]byte, len(accountStore))
+		for k, v := range accountStore {
+			hashStorage[crypto.HashData(hasher, []byte(k))] = v
+		}
+		hashStorages[crypto.Keccak256Hash(addr[:])] = hashStorage
+	}
+	return hashDestructs, hashAccounts, hashStorages
 }

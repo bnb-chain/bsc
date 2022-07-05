@@ -239,6 +239,76 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 // Tests that received transactions are added to the local pool.
 func TestRecvTransactions66(t *testing.T) { testRecvTransactions(t, eth.ETH66) }
 
+func TestWaitDiffExtensionTimout(t *testing.T) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	_, p2pSink := p2p.MsgPipe()
+	defer p2pSink.Close()
+
+	protos := []p2p.Protocol{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}
+
+	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}), p2pSink, nil)
+	defer sink.Close()
+
+	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+
+	if err == nil || err.Error() != "peer wait timeout" {
+		t.Fatalf("error should be `peer wait timeout`")
+	}
+}
+
+func TestWaitSnapExtensionTimout(t *testing.T) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	_, p2pSink := p2p.MsgPipe()
+	defer p2pSink.Close()
+
+	protos := []p2p.Protocol{
+		{
+			Name:    "snap",
+			Version: 1,
+		},
+	}
+
+	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
+		{
+			Name:    "snap",
+			Version: 1,
+		},
+	}), p2pSink, nil)
+	defer sink.Close()
+
+	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+
+	if err == nil || err.Error() != "peer wait timeout" {
+		t.Fatalf("error should be `peer wait timeout`")
+	}
+}
+
 func testRecvTransactions(t *testing.T, protocol uint) {
 	t.Parallel()
 
@@ -271,7 +341,7 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 		head    = handler.chain.CurrentBlock()
 		td      = handler.chain.GetTd(head.Hash(), head.NumberU64())
 	)
-	if err := src.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain)); err != nil {
+	if err := src.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
 		t.Fatalf("failed to run protocol handshake")
 	}
 	// Send the transaction to the sink and verify that it's added to the tx pool
@@ -332,7 +402,7 @@ func testSendTransactions(t *testing.T, protocol uint) {
 		head    = handler.chain.CurrentBlock()
 		td      = handler.chain.GetTd(head.Hash(), head.NumberU64())
 	)
-	if err := sink.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain)); err != nil {
+	if err := sink.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
 		t.Fatalf("failed to run protocol handshake")
 	}
 	// After the handshake completes, the source handler should stream the sink
@@ -450,6 +520,59 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 	}
 }
 
+// Tests that local pending transactions get propagated to peers.
+func TestTransactionPendingReannounce(t *testing.T) {
+	t.Parallel()
+
+	// Create a source handler to announce transactions from and a sink handler
+	// to receive them.
+	source := newTestHandler()
+	defer source.close()
+
+	sink := newTestHandler()
+	defer sink.close()
+	sink.handler.acceptTxs = 1 // mark synced to accept transactions
+
+	sourcePipe, sinkPipe := p2p.MsgPipe()
+	defer sourcePipe.Close()
+	defer sinkPipe.Close()
+
+	sourcePeer := eth.NewPeer(eth.ETH66, p2p.NewPeer(enode.ID{0}, "", nil), sourcePipe, source.txpool)
+	sinkPeer := eth.NewPeer(eth.ETH66, p2p.NewPeer(enode.ID{0}, "", nil), sinkPipe, sink.txpool)
+	defer sourcePeer.Close()
+	defer sinkPeer.Close()
+
+	go source.handler.runEthPeer(sourcePeer, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(source.handler), peer)
+	})
+	go sink.handler.runEthPeer(sinkPeer, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(sink.handler), peer)
+	})
+
+	// Subscribe transaction pools
+	txCh := make(chan core.NewTxsEvent, 1024)
+	sub := sink.txpool.SubscribeNewTxsEvent(txCh)
+	defer sub.Unsubscribe()
+
+	txs := make([]*types.Transaction, 64)
+	for nonce := range txs {
+		tx := types.NewTransaction(uint64(nonce), common.Address{}, big.NewInt(0), 100000, big.NewInt(0), nil)
+		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
+
+		txs[nonce] = tx
+	}
+	source.txpool.ReannouceTransactions(txs)
+
+	for arrived := 0; arrived < len(txs); {
+		select {
+		case event := <-txCh:
+			arrived += len(event.Txs)
+		case <-time.NewTimer(time.Second).C:
+			t.Errorf("sink: transaction propagation timed out: have %d, want %d", arrived, len(txs))
+		}
+	}
+}
+
 // Tests that post eth protocol handshake, clients perform a mutual checkpoint
 // challenge to validate each other's chains. Hash mismatches, or missing ones
 // during a fast sync should lead to the peer getting dropped.
@@ -533,13 +656,13 @@ func testCheckpointChallenge(t *testing.T, syncmode downloader.SyncMode, checkpo
 		})
 	}()
 
-	// Run the handshake locally to avoid spinning up a remote handler.
+	// Run the handshake locally to avoid spinning up a remote handler
 	var (
 		genesis = handler.chain.Genesis()
 		head    = handler.chain.CurrentBlock()
 		td      = handler.chain.GetTd(head.Hash(), head.NumberU64())
 	)
-	if err := remote.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain)); err != nil {
+	if err := remote.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
 		t.Fatalf("failed to run protocol handshake")
 	}
 	// Connect a new peer and check that we receive the checkpoint challenge.
@@ -637,7 +760,7 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 		go source.handler.runEthPeer(sourcePeer, func(peer *eth.Peer) error {
 			return eth.Handle((*ethHandler)(source.handler), peer)
 		})
-		if err := sinkPeer.Handshake(1, td, genesis.Hash(), genesis.Hash(), forkid.NewIDWithChain(source.chain), forkid.NewFilter(source.chain)); err != nil {
+		if err := sinkPeer.Handshake(1, td, genesis.Hash(), genesis.Hash(), forkid.NewIDWithChain(source.chain), forkid.NewFilter(source.chain), nil); err != nil {
 			t.Fatalf("failed to run protocol handshake")
 		}
 		go eth.Handle(sink, sinkPeer)
@@ -709,7 +832,7 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 		genesis = source.chain.Genesis()
 		td      = source.chain.GetTd(genesis.Hash(), genesis.NumberU64())
 	)
-	if err := sink.Handshake(1, td, genesis.Hash(), genesis.Hash(), forkid.NewIDWithChain(source.chain), forkid.NewFilter(source.chain)); err != nil {
+	if err := sink.Handshake(1, td, genesis.Hash(), genesis.Hash(), forkid.NewIDWithChain(source.chain), forkid.NewFilter(source.chain), nil); err != nil {
 		t.Fatalf("failed to run protocol handshake")
 	}
 	// After the handshake completes, the source handler should stream the sink

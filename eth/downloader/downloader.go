@@ -27,6 +27,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -43,6 +44,10 @@ var (
 	MaxHeaderFetch  = 192 // Amount of block headers to be fetched per retrieval request
 	MaxSkeletonSize = 128 // Number of header fetches to need for a skeleton assembly
 	MaxReceiptFetch = 256 // Amount of transaction receipts to allow fetching per request
+	MaxStateFetch   = 384 // Amount of node state values to allow fetching per request
+
+	diffFetchTick  = 10 * time.Millisecond
+	diffFetchLimit = 5
 
 	maxQueuedHeaders            = 32 * 1024                         // [eth/62] Maximum number of headers to queue for import (DOS protection)
 	maxHeadersProcess           = 2048                              // Number of header download results to import at once into the chain
@@ -141,10 +146,10 @@ type Downloader struct {
 	quitLock sync.Mutex    // Lock to prevent double closes
 
 	// Testing hooks
-	syncInitHook     func(uint64, uint64)  // Method to call upon initiating a new sync run
-	bodyFetchHook    func([]*types.Header) // Method to call upon starting a block body fetch
-	receiptFetchHook func([]*types.Header) // Method to call upon starting a receipt fetch
-	chainInsertHook  func([]*fetchResult)  // Method to call upon inserting a chain of blocks (possibly in multiple invocations)
+	syncInitHook     func(uint64, uint64)                // Method to call upon initiating a new sync run
+	bodyFetchHook    func([]*types.Header)               // Method to call upon starting a block body fetch
+	receiptFetchHook func([]*types.Header)               // Method to call upon starting a receipt fetch
+	chainInsertHook  func([]*fetchResult, chan struct{}) // Method to call upon inserting a chain of blocks (possibly in multiple invocations)
 }
 
 // LightChain encapsulates functions required to synchronise a light chain.
@@ -200,8 +205,53 @@ type BlockChain interface {
 	Snapshots() *snapshot.Tree
 }
 
+type DownloadOption func(downloader *Downloader) *Downloader
+
+type IDiffPeer interface {
+	RequestDiffLayers([]common.Hash) error
+}
+
+type IPeerSet interface {
+	GetDiffPeer(string) IDiffPeer
+}
+
+func EnableDiffFetchOp(peers IPeerSet) DownloadOption {
+	return func(dl *Downloader) *Downloader {
+		var hook = func(results []*fetchResult, stop chan struct{}) {
+			if dl.getMode() == FullSync {
+				go func() {
+					ticker := time.NewTicker(diffFetchTick)
+					defer ticker.Stop()
+					for _, r := range results {
+					Wait:
+						for {
+							select {
+							case <-stop:
+								return
+							case <-ticker.C:
+								if dl.blockchain.CurrentHeader().Number.Int64()+int64(diffFetchLimit) > r.Header.Number.Int64() {
+									break Wait
+								}
+							}
+						}
+						if ep := peers.GetDiffPeer(r.pid); ep != nil {
+							// It turns out a diff layer is 5x larger than block, we just request one diffLayer each time
+							err := ep.RequestDiffLayers([]common.Hash{r.Header.Hash()})
+							if err != nil {
+								return
+							}
+						}
+					}
+				}()
+			}
+		}
+		dl.chainInsertHook = hook
+		return dl
+	}
+}
+
 // New creates a new downloader to fetch hashes and blocks from remote peers.
-func New(checkpoint uint64, stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchain LightChain, dropPeer peerDropFn) *Downloader {
+func New(checkpoint uint64, stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchain LightChain, dropPeer peerDropFn, options ...DownloadOption) *Downloader {
 	if lightchain == nil {
 		lightchain = chain
 	}
@@ -218,6 +268,11 @@ func New(checkpoint uint64, stateDb ethdb.Database, mux *event.TypeMux, chain Bl
 		quitCh:         make(chan struct{}),
 		SnapSyncer:     snap.NewSyncer(stateDb),
 		stateSyncStart: make(chan *stateSync),
+	}
+	for _, option := range options {
+		if dl != nil {
+			dl = option(dl)
+		}
 	}
 	go dl.stateFetcher()
 	return dl
@@ -502,10 +557,10 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 			d.ancientLimit = 0
 		}
 		frozen, _ := d.stateDB.Ancients() // Ignore the error here since light client can also hit here.
-
+		itemAmountInAncient, _ := d.stateDB.ItemAmountInAncient()
 		// If a part of blockchain data has already been written into active store,
 		// disable the ancient style insertion explicitly.
-		if origin >= frozen && frozen != 0 {
+		if origin >= frozen && itemAmountInAncient != 0 {
 			d.ancientLimit = 0
 			log.Info("Disabling direct-ancient mode", "origin", origin, "ancient", frozen-1)
 		} else if d.ancientLimit > 0 {
@@ -876,6 +931,10 @@ func (d *Downloader) findAncestorBinarySearch(p *peerConnection, mode SyncMode, 
 			continue
 		}
 		header := d.lightchain.GetHeaderByHash(h) // Independent of sync mode, header surely exists
+		if header == nil {
+			p.log.Error("header not found", "hash", h, "request", check)
+			return 0, fmt.Errorf("%w: header no found (%s)", errBadPeer, h)
+		}
 		if header.Number.Uint64() != check {
 			p.log.Warn("Received non requested header", "number", header.Number, "hash", header.Hash(), "request", check)
 			return 0, fmt.Errorf("%w: non-requested header (%d)", errBadPeer, header.Number)
@@ -1348,12 +1407,15 @@ func (d *Downloader) processFullSyncContent() error {
 		if len(results) == 0 {
 			return nil
 		}
+		stop := make(chan struct{})
 		if d.chainInsertHook != nil {
-			d.chainInsertHook(results)
+			d.chainInsertHook(results, stop)
 		}
 		if err := d.importBlockResults(results); err != nil {
+			close(stop)
 			return err
 		}
+		close(stop)
 	}
 }
 
@@ -1389,6 +1451,9 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 			// The importer will put together a new list of blocks to import, which is a superset
 			// of the blocks delivered from the downloader, and the indexing will be off.
 			log.Debug("Downloaded item processing failed on sidechain import", "index", index, "err", err)
+		}
+		if errors.Is(err, core.ErrAncestorHasNotBeenVerified) {
+			return err
 		}
 		return fmt.Errorf("%w: %v", errInvalidChain, err)
 	}
@@ -1442,7 +1507,7 @@ func (d *Downloader) processSnapSyncContent() error {
 			}
 		}
 		if d.chainInsertHook != nil {
-			d.chainInsertHook(results)
+			d.chainInsertHook(results, nil)
 		}
 		// If we haven't downloaded the pivot block yet, check pivot staleness
 		// notifications from the header downloader

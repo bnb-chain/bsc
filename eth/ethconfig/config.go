@@ -18,8 +18,6 @@
 package ethconfig
 
 import (
-	"github.com/ethereum/go-ethereum/consensus/parlia"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"math/big"
 	"os"
 	"os/user"
@@ -32,10 +30,12 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
@@ -46,21 +46,17 @@ import (
 var FullNodeGPO = gasprice.Config{
 	Blocks:          20,
 	Percentile:      60,
-	MaxHeaderHistory: 1024,
-	MaxBlockHistory:  1024,
 	MaxPrice:        gasprice.DefaultMaxPrice,
 	OracleThreshold: 1000,
-	IgnorePrice:      gasprice.DefaultIgnorePrice,
+	IgnorePrice:     gasprice.DefaultIgnorePrice,
 }
 
 // LightClientGPO contains default gasprice oracle settings for light client.
 var LightClientGPO = gasprice.Config{
-	Blocks:           2,
-	Percentile:       60,
-	MaxHeaderHistory: 300,
-	MaxBlockHistory:  5,
-	MaxPrice:         gasprice.DefaultMaxPrice,
-	IgnorePrice:      gasprice.DefaultIgnorePrice,
+	Blocks:      2,
+	Percentile:  60,
+	MaxPrice:    gasprice.DefaultMaxPrice,
+	IgnorePrice: gasprice.DefaultIgnorePrice,
 }
 
 // Defaults contains default settings for use on the Ethereum main net.
@@ -85,7 +81,10 @@ var Defaults = Config{
 	TrieCleanCacheRejournal: 60 * time.Minute,
 	TrieDirtyCache:          256,
 	TrieTimeout:             60 * time.Minute,
+	TriesInMemory:           128,
+	TriesVerifyMode:         core.LocalVerify,
 	SnapshotCache:           102,
+	DiffBlock:               uint64(86400),
 	Miner: miner.Config{
 		GasCeil:       8000000,
 		GasPrice:      big.NewInt(params.GWei),
@@ -129,18 +128,24 @@ type Config struct {
 	Genesis *core.Genesis `toml:",omitempty"`
 
 	// Protocol options
-	NetworkId uint64 // Network ID to use for selecting peers to connect to
-	SyncMode  downloader.SyncMode
+	NetworkId              uint64 // Network ID to use for selecting peers to connect to
+	SyncMode               downloader.SyncMode
+	DisablePeerTxBroadcast bool
 
 	// This can be set to list of enrtree:// URLs which will be queried for
 	// for nodes to connect to.
-	EthDiscoveryURLs  []string
-	SnapDiscoveryURLs []string
+	EthDiscoveryURLs   []string
+	SnapDiscoveryURLs  []string
+	TrustDiscoveryURLs []string
 
-	NoPruning       bool // Whether to disable pruning and flush everything to disk
-	NoPrefetch      bool // Whether to disable prefetching and only load state on demand
-	DirectBroadcast bool
-	RangeLimit      bool
+	NoPruning           bool // Whether to disable pruning and flush everything to disk
+	DirectBroadcast     bool
+	DisableSnapProtocol bool //Whether disable snap protocol
+	DisableDiffProtocol bool //Whether disable diff protocol
+	EnableTrustProtocol bool //Whether enable trust protocol
+	DiffSync            bool // Whether support diff sync
+	PipeCommit          bool
+	RangeLimit          bool
 
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 
@@ -166,6 +171,10 @@ type Config struct {
 	DatabaseHandles    int  `toml:"-"`
 	DatabaseCache      int
 	DatabaseFreezer    string
+	DatabaseDiff       string
+	PersistDiff        bool
+	DiffBlock          uint64
+	PruneAncientData   bool
 
 	TrieCleanCache          int
 	TrieCleanCacheJournal   string        `toml:",omitempty"` // Disk journal directory for trie cache to survive node restarts
@@ -173,6 +182,8 @@ type Config struct {
 	TrieDirtyCache          int
 	TrieTimeout             time.Duration
 	SnapshotCache           int
+	TriesInMemory           uint64
+	TriesVerifyMode         core.VerifyMode
 	Preimages               bool
 
 	// Mining options
@@ -209,6 +220,9 @@ type Config struct {
 	// CheckpointOracle is the configuration for checkpoint oracle.
 	CheckpointOracle *params.CheckpointOracleConfig `toml:",omitempty"`
 
+	// Berlin block override (TODO: remove after the fork)
+	OverrideBerlin *big.Int `toml:",omitempty"`
+
 	// Arrow Glacier block override (TODO: remove after the fork)
 	OverrideArrowGlacier *big.Int `toml:",omitempty"`
 
@@ -218,13 +232,14 @@ type Config struct {
 
 // CreateConsensusEngine creates a consensus engine for the given chain configuration.
 func CreateConsensusEngine(stack *node.Node, chainConfig *params.ChainConfig, config *ethash.Config, notify []string, noverify bool, db ethdb.Database, ee *ethapi.PublicBlockChainAPI, genesisHash common.Hash) consensus.Engine {
+	if chainConfig.Parlia != nil {
+		return parlia.New(chainConfig, db, ee, genesisHash)
+	}
 	// If proof-of-authority is requested, set it up
 	var engine consensus.Engine
 	if chainConfig.Clique != nil {
 		engine = clique.New(chainConfig.Clique, db)
-	} else f chainConfig.Parlia != nil {
-		engine = parlia.New(chainConfig, db, ee, genesisHash)
-	} else{
+	} else {
 		switch config.PowMode {
 		case ethash.ModeFake:
 			log.Warn("Ethash used in fake mode")

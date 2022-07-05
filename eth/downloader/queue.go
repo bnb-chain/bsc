@@ -62,6 +62,7 @@ type fetchRequest struct {
 // all outstanding pieces complete and the result as a whole can be processed.
 type fetchResult struct {
 	pending int32 // Flag telling what deliveries are outstanding
+	pid     string
 
 	Header       *types.Header
 	Uncles       []*types.Header
@@ -69,9 +70,10 @@ type fetchResult struct {
 	Receipts     types.Receipts
 }
 
-func newFetchResult(header *types.Header, fastSync bool) *fetchResult {
+func newFetchResult(header *types.Header, fastSync bool, pid string) *fetchResult {
 	item := &fetchResult{
 		Header: header,
+		pid:    pid,
 	}
 	if !header.EmptyBody() {
 		item.pending |= (1 << bodyType)
@@ -506,7 +508,7 @@ func (q *queue) reserveHeaders(p *peerConnection, count int, taskPool map[common
 		// we can ask the resultcache if this header is within the
 		// "prioritized" segment of blocks. If it is not, we need to throttle
 
-		stale, throttle, item, err := q.resultCache.AddFetch(header, q.mode == SnapSync)
+		stale, throttle, item, err := q.resultCache.AddFetch(header, q.mode == SnapSync, p.id)
 		if stale {
 			// Don't put back in the task queue, this item has already been
 			// delivered upstream

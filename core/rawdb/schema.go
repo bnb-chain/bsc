@@ -69,6 +69,21 @@ var (
 	// fastTxLookupLimitKey tracks the transaction lookup limit during fast sync.
 	fastTxLookupLimitKey = []byte("FastTransactionLookupLimit")
 
+	//offSet of new updated ancientDB.
+	offSetOfCurrentAncientFreezer = []byte("offSetOfCurrentAncientFreezer")
+
+	//offSet of the ancientDB before updated version.
+	offSetOfLastAncientFreezer = []byte("offSetOfLastAncientFreezer")
+
+	//frozenOfAncientDBKey tracks the block number for ancientDB to save.
+	frozenOfAncientDBKey = []byte("FrozenOfAncientDB")
+
+	//LastSafePointBlockKey tracks the block number for block state that write disk
+	LastSafePointBlockKey = []byte("LastSafePointBlockNumber")
+
+	//PruneAncientFlag flag whether prune ancient
+	pruneAncientKey = []byte("PruneAncientFlag")
+
 	// badBlockKey tracks the list of bad blocks seen by local
 	badBlockKey = []byte("InvalidBlock")
 
@@ -93,7 +108,10 @@ var (
 	SnapshotStoragePrefix = []byte("o") // SnapshotStoragePrefix + account hash + storage hash -> storage trie value
 	CodePrefix            = []byte("c") // CodePrefix + code hash -> account code
 
-	PreimagePrefix = []byte("secure-key-")      // PreimagePrefix + hash -> preimage
+	// difflayer database
+	diffLayerPrefix = []byte("d") // diffLayerPrefix + hash  -> diffLayer
+
+	PreimagePrefix = []byte("secure-key-")      // preimagePrefix + hash -> preimage
 	configPrefix   = []byte("ethereum-config-") // config prefix for the db
 
 	// Chain index prefixes (use `i` + single byte to avoid mixing data types).
@@ -178,6 +196,11 @@ func blockBodyKey(number uint64, hash common.Hash) []byte {
 // blockReceiptsKey = blockReceiptsPrefix + num (uint64 big endian) + hash
 func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 	return append(append(blockReceiptsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
+}
+
+// diffLayerKey = diffLayerKeyPrefix + hash
+func diffLayerKey(hash common.Hash) []byte {
+	return append(append(diffLayerPrefix, hash.Bytes()...))
 }
 
 // txLookupKey = txLookupPrefix + hash

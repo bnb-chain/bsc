@@ -148,7 +148,10 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, pending bool) *testBacke
 	if err != nil {
 		t.Fatalf("Failed to create local chain, %v", err)
 	}
-	chain.InsertChain(blocks)
+	_, err = chain.InsertChain(blocks)
+	if err != nil {
+		t.Fatalf("Failed to insert blocks, %v", err)
+	}
 	return &testBackend{chain: chain, pending: pending}
 }
 

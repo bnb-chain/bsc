@@ -24,18 +24,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/olekukonko/tablewriter"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/olekukonko/tablewriter"
 )
 
 // freezerdb is a database wrapper that enabled freezer data retrievals.
 type freezerdb struct {
 	ethdb.KeyValueStore
 	ethdb.AncientStore
+	diffStore ethdb.KeyValueStore
 }
 
 // Close implements io.Closer, closing both the fast key-value store as well as
@@ -48,10 +50,26 @@ func (frdb *freezerdb) Close() error {
 	if err := frdb.KeyValueStore.Close(); err != nil {
 		errs = append(errs, err)
 	}
+	if frdb.diffStore != nil {
+		if err := frdb.diffStore.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if len(errs) != 0 {
 		return fmt.Errorf("%v", errs)
 	}
 	return nil
+}
+
+func (frdb *freezerdb) DiffStore() ethdb.KeyValueStore {
+	return frdb.diffStore
+}
+
+func (frdb *freezerdb) SetDiffStore(diff ethdb.KeyValueStore) {
+	if frdb.diffStore != nil {
+		frdb.diffStore.Close()
+	}
+	frdb.diffStore = diff
 }
 
 // Freeze is a helper method used for external testing to trigger and block until
@@ -77,6 +95,7 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
+	diffStore ethdb.KeyValueStore
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.
@@ -96,6 +115,11 @@ func (db *nofreezedb) AncientRange(kind string, start, max, maxByteSize uint64) 
 
 // Ancients returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) Ancients() (uint64, error) {
+	return 0, errNotSupported
+}
+
+// Ancients returns an error as we don't have a backing chain freezer.
+func (db *nofreezedb) ItemAmountInAncient() (uint64, error) {
 	return 0, errNotSupported
 }
 
@@ -119,6 +143,14 @@ func (db *nofreezedb) Sync() error {
 	return errNotSupported
 }
 
+func (db *nofreezedb) DiffStore() ethdb.KeyValueStore {
+	return db.diffStore
+}
+
+func (db *nofreezedb) SetDiffStore(diff ethdb.KeyValueStore) {
+	db.diffStore = diff
+}
+
 func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReader) error) (err error) {
 	// Unlike other ancient-related methods, this method does not return
 	// errNotSupported when invoked.
@@ -135,21 +167,74 @@ func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReader) error) (e
 	return fn(db)
 }
 
+func (db *nofreezedb) AncientOffSet() uint64 {
+	return 0
+}
+
 // NewDatabase creates a high level database on top of a given key-value data
 // store without a freezer moving immutable chain segments into cold storage.
 func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 	return &nofreezedb{KeyValueStore: db}
 }
 
+// NewFreezerDb only create a freezer without statedb.
+func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*freezer, error) {
+	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
+	frdb, err := newFreezer(frz, namespace, readonly, freezerTableSize, FreezerNoSnappy)
+	if err != nil {
+		return nil, err
+	}
+	frdb.offset = newOffSet
+	frdb.frozen += newOffSet
+	return frdb, nil
+}
+
 // NewDatabaseWithFreezer creates a high level database on top of a given key-
 // value data store with a freezer moving immutable chain segments into cold
 // storage.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
+	if pruneAncientData && !disableFreeze && !readonly {
+		frdb, err := newPrunedFreezer(freezer, db)
+		if err != nil {
+			return nil, err
+		}
+
+		go frdb.freeze()
+		WriteAncientType(db, PruneFreezerType)
+		return &freezerdb{
+			KeyValueStore: db,
+			AncientStore:  frdb,
+		}, nil
+	}
+
+	if pruneAncientData {
+		log.Error("pruneancient not take effect, disableFreezer or readonly be set")
+	}
+
+	if ReadAncientType(db) == PruneFreezerType {
+		log.Warn("prune ancinet flag is set, may start fail, can add pruneancient parameter resolve")
+	}
+
 	// Create the idle freezer instance
 	frdb, err := newFreezer(freezer, namespace, readonly, freezerTableSize, FreezerNoSnappy)
 	if err != nil {
 		return nil, err
 	}
+
+	var offset uint64
+	// The offset of ancientDB should be handled differently in different scenarios.
+	if isLastOffset {
+		offset = ReadOffSetOfLastAncientFreezer(db)
+	} else {
+		offset = ReadOffSetOfCurrentAncientFreezer(db)
+	}
+
+	frdb.offset = offset
+
+	// Some blocks in ancientDB may have already been frozen and been pruned, so adding the offset to
+	// reprensent the absolute number of blocks already frozen.
+	frdb.frozen += offset
+
 	// Since the freezer can be stored separately from the user's key-value database,
 	// there's a fairly high probability that the user requests invalid combinations
 	// of the freezer and database. Ensure that we don't shoot ourselves in the foot
@@ -172,7 +257,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 	// If the genesis hash is empty, we have a new key-value store, so nothing to
 	// validate in this method. If, however, the genesis hash is not nil, compare
 	// it to the freezer content.
-	if kvgenesis, _ := db.Get(headerHashKey(0)); len(kvgenesis) > 0 {
+	// Only to check the followings when offset equal to 0, otherwise the block number
+	// in ancientdb did not start with 0, no genesis block in ancientdb as well.
+
+	if kvgenesis, _ := db.Get(headerHashKey(0)); offset == 0 && len(kvgenesis) > 0 {
 		if frozen, _ := frdb.Ancients(); frozen > 0 {
 			// If the freezer already contains something, ensure that the genesis blocks
 			// match, otherwise we might mix up freezers across chains and destroy both
@@ -214,8 +302,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 			// feezer.
 		}
 	}
+	// no prune ancinet start success
+	WriteAncientType(db, EntireFreezerType)
 	// Freezer is consistent with the key-value database, permit combining the two
-	if !frdb.readonly {
+	if !disableFreeze && !frdb.readonly {
 		frdb.wg.Add(1)
 		go func() {
 			frdb.freeze(db)
@@ -253,12 +343,12 @@ func NewLevelDBDatabase(file string, cache int, handles int, namespace string, r
 
 // NewLevelDBDatabaseWithFreezer creates a persistent key-value database with a
 // freezer moving immutable chain segments into cold storage.
-func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
+func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
 	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
 	if err != nil {
 		return nil, err
 	}
-	frdb, err := NewDatabaseWithFreezer(kvdb, freezer, namespace, readonly)
+	frdb, err := NewDatabaseWithFreezer(kvdb, freezer, namespace, readonly, disableFreeze, isLastOffset, pruneAncientData)
 	if err != nil {
 		kvdb.Close()
 		return nil, err
@@ -294,6 +384,35 @@ func (s *stat) Size() string {
 
 func (s *stat) Count() string {
 	return s.count.String()
+}
+func AncientInspect(db ethdb.Database) error {
+	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
+	// Get number of ancient rows inside the freezer.
+	ancients := counter(0)
+	if count, err := db.ItemAmountInAncient(); err != nil {
+		log.Error("failed to get the items amount in ancientDB", "err", err)
+		return err
+	} else {
+		ancients = counter(count)
+	}
+	var endNumber counter
+	if offset+ancients <= 0 {
+		endNumber = 0
+	} else {
+		endNumber = offset + ancients - 1
+	}
+	stats := [][]string{
+		{"Offset/StartBlockNumber", "Offset/StartBlockNumber of ancientDB", offset.String()},
+		{"Amount of remained items in AncientStore", "Remaining items of ancientDB", ancients.String()},
+		{"The last BlockNumber within ancientDB", "The last BlockNumber", endNumber.String()},
+	}
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Database", "Category", "Items"})
+	table.SetFooter([]string{"", "AncientStore information", ""})
+	table.AppendBulk(stats)
+	table.Render()
+
+	return nil
 }
 
 // InspectDatabase traverses the entire database and checks the size
@@ -427,9 +546,10 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	}
 	// Get number of ancient rows inside the freezer
 	ancients := counter(0)
-	if count, err := db.Ancients(); err == nil {
+	if count, err := db.ItemAmountInAncient(); err == nil {
 		ancients = counter(count)
 	}
+
 	// Display the database statistic.
 	stats := [][]string{
 		{"Key-Value store", "Headers", headers.Size(), headers.Count()},

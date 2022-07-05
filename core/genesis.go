@@ -156,10 +156,10 @@ func (e *GenesisMismatchError) Error() string {
 //
 // The returned chain configuration is never nil.
 func SetupGenesisBlock(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, common.Hash, error) {
-	return SetupGenesisBlockWithOverride(db, genesis, nil, nil)
+	return SetupGenesisBlockWithOverride(db, genesis, nil, nil, nil)
 }
 
-func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, overrideArrowGlacier, overrideTerminalTotalDifficulty *big.Int) (*params.ChainConfig, common.Hash, error) {
+func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, overrideBerlin, overrideArrowGlacier, overrideTerminalTotalDifficulty *big.Int) (*params.ChainConfig, common.Hash, error) {
 	if genesis != nil && genesis.Config == nil {
 		return params.AllEthashProtocolChanges, common.Hash{}, errGenesisNoConfig
 	}
@@ -182,7 +182,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	// We have the genesis block in database(perhaps in ancient database)
 	// but the corresponding state is missing.
 	header := rawdb.ReadHeader(db, stored, 0)
-	if _, err := state.New(header.Root, state.NewDatabaseWithConfig(db, nil), nil); err != nil {
+	if _, err := state.New(header.Root, state.NewDatabaseWithConfigAndCache(db, nil), nil); err != nil {
 		if genesis == nil {
 			genesis = DefaultGenesisBlock()
 		}
@@ -206,6 +206,9 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	}
 	// Get the existing chain configuration.
 	newcfg := genesis.configOrDefault(stored)
+	if overrideBerlin != nil {
+		newcfg.BerlinBlock = overrideBerlin
+	}
 	if overrideArrowGlacier != nil {
 		newcfg.ArrowGlacierBlock = overrideArrowGlacier
 	}
@@ -263,8 +266,6 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		return params.ChapelChainConfig
 	case ghash == params.RialtoGenesisHash:
 		return params.RialtoChainConfig
-	case ghash == params.YoloV3GenesisHash:
-		return params.YoloV3ChainConfig
 	default:
 		return params.AllEthashProtocolChanges
 	}
@@ -316,7 +317,7 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 			head.BaseFee = new(big.Int).SetUint64(params.InitialBaseFee)
 		}
 	}
-	statedb.Commit(false)
+	statedb.Commit(nil)
 	statedb.Database().TrieDB().Commit(root, true, nil)
 
 	return types.NewBlock(head, nil, nil, nil, trie.NewStackTrie(nil))

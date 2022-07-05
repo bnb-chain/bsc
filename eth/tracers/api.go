@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
@@ -267,7 +268,7 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 	)
 	for th := 0; th < threads; th++ {
 		pend.Add(1)
-		go func() {
+		gopool.Submit(func() {
 			defer pend.Done()
 
 			// Fetch and execute the next block trace tasks
@@ -299,7 +300,7 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 					return
 				}
 			}
-		}()
+		})
 	}
 	// Start a goroutine to feed all the blocks into the tracers
 	var (
@@ -308,7 +309,7 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 		derefsMu  sync.Mutex    // mutex for the derefs
 	)
 
-	go func() {
+	gopool.Submit(func() {
 		var (
 			logged  time.Time
 			number  uint64
@@ -398,10 +399,10 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 			}
 			traced += uint64(len(txs))
 		}
-	}()
+	})
 
 	// Keep reading the trace results and stream the to the user
-	go func() {
+	gopool.Submit(func() {
 		var (
 			done = make(map[uint64]*blockTraceResult)
 			next = start.NumberU64() + 1
@@ -427,7 +428,7 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 				next++
 			}
 		}
-	}()
+	})
 	return sub, nil
 }
 
@@ -532,6 +533,17 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 			txContext = core.NewEVMTxContext(msg)
 			vmenv     = vm.NewEVM(vmctx, txContext, statedb, chainConfig, vm.Config{})
 		)
+
+		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
+			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
+				balance := statedb.GetBalance(consensus.SystemAddress)
+				if balance.Cmp(common.Big0) > 0 {
+					statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
+					statedb.AddBalance(vmctx.Coinbase, balance)
+				}
+			}
+		}
+
 		statedb.Prepare(tx.Hash(), i)
 		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas())); err != nil {
 			log.Warn("Tracing intermediate roots did not complete", "txindex", i, "txhash", tx.Hash(), "err", err)
@@ -545,7 +557,9 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 		}
 		// calling IntermediateRoot will internally call Finalize on the state
 		// so any modifications are written to the trie
-		roots = append(roots, statedb.IntermediateRoot(deleteEmptyObjects))
+		root := statedb.IntermediateRoot(deleteEmptyObjects)
+
+		roots = append(roots, root)
 	}
 	return roots, nil
 }
@@ -596,7 +610,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	blockHash := block.Hash()
 	for th := 0; th < threads; th++ {
 		pend.Add(1)
-		go func() {
+		gopool.Submit(func() {
 			blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 			defer pend.Done()
 			// Fetch and execute the next transaction trace tasks
@@ -614,7 +628,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 				}
 				results[task.index] = &txTraceResult{Result: res}
 			}
-		}()
+		})
 	}
 	// Feed the transactions into the tracers and return
 	var failed error
@@ -748,6 +762,15 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		}
 		// Execute the transaction and flush any traces to disk
 		vmenv := vm.NewEVM(vmctx, txContext, statedb, chainConfig, vmConf)
+		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
+			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
+				balance := statedb.GetBalance(consensus.SystemAddress)
+				if balance.Cmp(common.Big0) > 0 {
+					statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
+					statedb.AddBalance(vmctx.Coinbase, balance)
+				}
+			}
+		}
 		statedb.Prepare(tx.Hash(), i)
 		_, err = core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas()))
 		if writer != nil {
@@ -893,12 +916,12 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 			return nil, err
 		} else {
 			deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
-			go func() {
+			gopool.Submit(func() {
 				<-deadlineCtx.Done()
 				if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
 					t.Stop(errors.New("execution timeout"))
 				}
-			}()
+			})
 			defer cancel()
 			tracer = t
 		}

@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
@@ -229,8 +230,9 @@ func (tab *Table) loop() {
 	defer copyNodes.Stop()
 
 	// Start initial refresh.
-	go tab.doRefresh(refreshDone)
-
+	gopool.Submit(func() {
+		tab.doRefresh(refreshDone)
+	})
 loop:
 	for {
 		select {
@@ -238,13 +240,18 @@ loop:
 			tab.seedRand()
 			if refreshDone == nil {
 				refreshDone = make(chan struct{})
-				go tab.doRefresh(refreshDone)
+				gopool.Submit(func() {
+					tab.doRefresh(refreshDone)
+				})
 			}
 		case req := <-tab.refreshReq:
 			waiting = append(waiting, req)
 			if refreshDone == nil {
 				refreshDone = make(chan struct{})
-				go tab.doRefresh(refreshDone)
+				gopool.Submit(
+					func() {
+						tab.doRefresh(refreshDone)
+					})
 			}
 		case <-refreshDone:
 			for _, ch := range waiting {
@@ -253,12 +260,17 @@ loop:
 			waiting, refreshDone = nil, nil
 		case <-revalidate.C:
 			revalidateDone = make(chan struct{})
-			go tab.doRevalidate(revalidateDone)
+			gopool.Submit(func() {
+				tab.doRevalidate(revalidateDone)
+			})
 		case <-revalidateDone:
 			revalidate.Reset(tab.nextRevalidateTime())
 			revalidateDone = nil
 		case <-copyNodes.C:
-			go tab.copyLiveNodes()
+			gopool.Submit(func() {
+				tab.copyLiveNodes()
+			})
+
 		case <-tab.closeReq:
 			break loop
 		}

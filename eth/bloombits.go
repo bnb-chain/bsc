@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/bitutil"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 )
 
@@ -45,7 +46,7 @@ const (
 // retrievals from possibly a range of filters and serving the data to satisfy.
 func (eth *Ethereum) startBloomHandlers(sectionSize uint64) {
 	for i := 0; i < bloomServiceThreads; i++ {
-		go func() {
+		gopool.Submit(func() {
 			for {
 				select {
 				case <-eth.closeBloomHandler:
@@ -69,6 +70,6 @@ func (eth *Ethereum) startBloomHandlers(sectionSize uint64) {
 					request <- task
 				}
 			}
-		}()
+		})
 	}
 }

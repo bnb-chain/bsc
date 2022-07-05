@@ -316,7 +316,7 @@ func TestGetStaleCodeLes4(t *testing.T) { testGetStaleCode(t, 4) }
 
 func testGetStaleCode(t *testing.T, protocol int) {
 	netconfig := testnetConfig{
-		blocks:    core.TriesInMemory + 4,
+		blocks:    128 + 4,
 		protocol:  protocol,
 		nopruning: true,
 	}
@@ -430,7 +430,7 @@ func TestGetStaleProofLes4(t *testing.T) { testGetStaleProof(t, 4) }
 
 func testGetStaleProof(t *testing.T, protocol int) {
 	netconfig := testnetConfig{
-		blocks:    core.TriesInMemory + 4,
+		blocks:    128 + 4,
 		protocol:  protocol,
 		nopruning: true,
 	}

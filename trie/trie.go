@@ -587,3 +587,7 @@ func (t *Trie) Reset() {
 	t.root = nil
 	t.unhashed = 0
 }
+
+func (t *Trie) Size() int {
+	return estimateSize(t.root)
+}

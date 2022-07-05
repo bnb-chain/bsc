@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -100,7 +101,7 @@ func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.Block
 		}(i, uint64(ethash.rand.Int63()))
 	}
 	// Wait until sealing is terminated or a nonce is found
-	go func() {
+	gopool.Submit(func() {
 		var result *types.Block
 		select {
 		case <-stop:
@@ -123,7 +124,7 @@ func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.Block
 		}
 		// Wait for all miners to terminate and return the block
 		pend.Wait()
-	}()
+	})
 	return nil
 }
 

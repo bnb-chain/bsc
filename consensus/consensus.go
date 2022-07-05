@@ -52,6 +52,9 @@ type ChainHeaderReader interface {
 
 	// GetTd retrieves the total difficulty from the database by hash and number.
 	GetTd(hash common.Hash, number uint64) *big.Int
+
+	// GetHighestVerifiedHeader retrieves the highest header verified.
+	GetHighestVerifiedHeader() *types.Header
 }
 
 // ChainReader defines a small collection of methods needed to access the local
@@ -143,4 +146,6 @@ type PoSA interface {
 	IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error)
 	IsSystemContract(to *common.Address) bool
 	EnoughDistance(chain ChainReader, header *types.Header) bool
+	IsLocalBlock(header *types.Header) bool
+	AllowLightProcess(chain ChainReader, currentHeader *types.Header) bool
 }

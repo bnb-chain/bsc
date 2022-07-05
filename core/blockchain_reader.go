@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -259,6 +258,12 @@ func (bc *BlockChain) GetTd(hash common.Hash, number uint64) *big.Int {
 
 // HasState checks if state trie is fully present in the database or not.
 func (bc *BlockChain) HasState(hash common.Hash) bool {
+	if bc.pipeCommit && bc.snaps != nil {
+		// If parent snap is pending on verification, treat it as state exist
+		if s := bc.snaps.Snapshot(hash); s != nil && !s.Verified() {
+			return true
+		}
+	}
 	_, err := bc.stateCache.OpenTrie(hash)
 	return err == nil
 }
@@ -344,11 +349,6 @@ func (bc *BlockChain) Genesis() *types.Block {
 	return bc.genesisBlock
 }
 
-// GetVMConfig returns the block chain VM config.
-func (bc *BlockChain) GetVMConfig() *vm.Config {
-	return &bc.vmConfig
-}
-
 // SetTxLookupLimit is responsible for updating the txlookup limit to the
 // original one stored in db if the new mismatches with the old one.
 func (bc *BlockChain) SetTxLookupLimit(limit uint64) {
@@ -374,6 +374,11 @@ func (bc *BlockChain) SubscribeChainEvent(ch chan<- ChainEvent) event.Subscripti
 // SubscribeChainHeadEvent registers a subscription of ChainHeadEvent.
 func (bc *BlockChain) SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Subscription {
 	return bc.scope.Track(bc.chainHeadFeed.Subscribe(ch))
+}
+
+// SubscribeChainBlockEvent registers a subscription of ChainBlockEvent.
+func (bc *BlockChain) SubscribeChainBlockEvent(ch chan<- ChainHeadEvent) event.Subscription {
+	return bc.scope.Track(bc.chainBlockFeed.Subscribe(ch))
 }
 
 // SubscribeChainSideEvent registers a subscription of ChainSideEvent.

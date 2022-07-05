@@ -139,7 +139,7 @@ func main() {
 		log.Crit("Length of bep2eContracts, bep2eSymbols, bep2eAmounts mismatch")
 	}
 
-	bep2eInfos := make(map[string]bep2eInfo, 0)
+	bep2eInfos := make(map[string]bep2eInfo, len(symbols))
 	for idx, s := range symbols {
 		n, ok := big.NewInt(0).SetString(bep2eNumAmounts[idx], 10)
 		if !ok {

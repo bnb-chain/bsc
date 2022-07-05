@@ -65,7 +65,7 @@ func (basic *snapshotTestBasic) prepare(t *testing.T) (*BlockChain, []*types.Blo
 	}
 	os.RemoveAll(datadir)
 
-	db, err := rawdb.NewLevelDBDatabaseWithFreezer(datadir, 0, 0, datadir, "", false)
+	db, err := rawdb.NewLevelDBDatabaseWithFreezer(datadir, 0, 0, datadir, "", false, false, false, false)
 	if err != nil {
 		t.Fatalf("Failed to create persistent database: %v", err)
 	}
@@ -249,7 +249,7 @@ func (snaptest *crashSnapshotTest) test(t *testing.T) {
 	db.Close()
 
 	// Start a new blockchain back up and see where the repair leads us
-	newdb, err := rawdb.NewLevelDBDatabaseWithFreezer(snaptest.datadir, 0, 0, snaptest.datadir, "", false)
+	newdb, err := rawdb.NewLevelDBDatabaseWithFreezer(snaptest.datadir, 0, 0, snaptest.datadir, "", false, false, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen persistent database: %v", err)
 	}
@@ -299,6 +299,7 @@ func (snaptest *gappedSnapshotTest) test(t *testing.T) {
 		TrieCleanLimit: 256,
 		TrieDirtyLimit: 256,
 		TrieTimeLimit:  5 * time.Minute,
+		TriesInMemory:  128,
 		SnapshotLimit:  0,
 	}
 	newchain, err := NewBlockChain(snaptest.db, cacheConfig, params.AllEthashProtocolChanges, snaptest.engine, vm.Config{}, nil, nil)
@@ -419,6 +420,7 @@ func (snaptest *wipeCrashSnapshotTest) test(t *testing.T) {
 		TrieDirtyLimit: 256,
 		TrieTimeLimit:  5 * time.Minute,
 		SnapshotLimit:  0,
+		TriesInMemory:  128,
 	}
 	newchain, err := NewBlockChain(snaptest.db, config, params.AllEthashProtocolChanges, snaptest.engine, vm.Config{}, nil, nil)
 	if err != nil {
@@ -435,6 +437,7 @@ func (snaptest *wipeCrashSnapshotTest) test(t *testing.T) {
 		TrieTimeLimit:  5 * time.Minute,
 		SnapshotLimit:  256,
 		SnapshotWait:   false, // Don't wait rebuild
+		TriesInMemory:  128,
 	}
 	newchain, err = NewBlockChain(snaptest.db, config, params.AllEthashProtocolChanges, snaptest.engine, vm.Config{}, nil, nil)
 	if err != nil {

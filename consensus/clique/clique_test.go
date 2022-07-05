@@ -17,6 +17,7 @@
 package clique
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -84,6 +85,11 @@ func TestReimportMirroredState(t *testing.T) {
 		sig, _ := crypto.Sign(SealHash(header).Bytes(), key)
 		copy(header.Extra[len(header.Extra)-extraSeal:], sig)
 		blocks[i] = block.WithSeal(header)
+		txHash := common.Hash{}
+		if block.Transactions().Len() > 0 {
+			txHash = block.Transactions()[0].Hash()
+		}
+		fmt.Println("check", block.Number(), block.Hash(), block.Root(), fmt.Sprintf("%+v", txHash))
 	}
 	// Insert the first two blocks and make sure the chain is valid
 	db = rawdb.NewMemoryDatabase()

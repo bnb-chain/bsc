@@ -27,6 +27,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
@@ -113,16 +114,19 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter() rpc.ID {
 		pendingTxs   = make(chan []common.Hash)
 		pendingTxSub = api.events.SubscribePendingTxs(pendingTxs)
 	)
-	f := &filter{typ: PendingTransactionsSubscription, deadline: time.NewTimer(api.timeout), hashes: make([]common.Hash, 0), s: pendingTxSub}
 	api.filtersMu.Lock()
-	api.filters[pendingTxSub.ID] = f
+	api.filters[pendingTxSub.ID] = &filter{typ: PendingTransactionsSubscription, deadline: time.NewTimer(api.timeout), hashes: make([]common.Hash, 0), s: pendingTxSub}
 	api.filtersMu.Unlock()
 
-	go func() {
+	gopool.Submit(func() {
 		for {
 			select {
 			case ph := <-pendingTxs:
-				f.hashes = append(f.hashes, ph...)
+				api.filtersMu.Lock()
+				if f, found := api.filters[pendingTxSub.ID]; found {
+					f.hashes = append(f.hashes, ph...)
+				}
+				api.filtersMu.Unlock()
 			case <-pendingTxSub.Err():
 				api.filtersMu.Lock()
 				delete(api.filters, pendingTxSub.ID)
@@ -130,7 +134,7 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter() rpc.ID {
 				return
 			}
 		}
-	}()
+	})
 
 	return pendingTxSub.ID
 }
@@ -145,7 +149,7 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context) (*rpc.Su
 
 	rpcSub := notifier.CreateSubscription()
 
-	go func() {
+	gopool.Submit(func() {
 		txHashes := make(chan []common.Hash, 128)
 		pendingTxSub := api.events.SubscribePendingTxs(txHashes)
 
@@ -165,7 +169,7 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context) (*rpc.Su
 				return
 			}
 		}
-	}()
+	})
 
 	return rpcSub, nil
 }
@@ -184,7 +188,7 @@ func (api *PublicFilterAPI) NewBlockFilter() rpc.ID {
 	api.filters[headerSub.ID] = &filter{typ: BlocksSubscription, deadline: time.NewTimer(api.timeout), hashes: make([]common.Hash, 0), s: headerSub}
 	api.filtersMu.Unlock()
 
-	go func() {
+	gopool.Submit(func() {
 		for {
 			select {
 			case h := <-headers:
@@ -200,7 +204,7 @@ func (api *PublicFilterAPI) NewBlockFilter() rpc.ID {
 				return
 			}
 		}
-	}()
+	})
 
 	return headerSub.ID
 }
@@ -214,7 +218,7 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 
 	rpcSub := notifier.CreateSubscription()
 
-	go func() {
+	gopool.Submit(func() {
 		headers := make(chan *types.Header)
 		headersSub := api.events.SubscribeNewHeads(headers)
 
@@ -230,7 +234,7 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 				return
 			}
 		}
-	}()
+	})
 
 	return rpcSub, nil
 }
@@ -252,7 +256,7 @@ func (api *PublicFilterAPI) Logs(ctx context.Context, crit FilterCriteria) (*rpc
 		return nil, err
 	}
 
-	go func() {
+	gopool.Submit(func() {
 
 		for {
 			select {
@@ -268,7 +272,7 @@ func (api *PublicFilterAPI) Logs(ctx context.Context, crit FilterCriteria) (*rpc
 				return
 			}
 		}
-	}()
+	})
 
 	return rpcSub, nil
 }
@@ -301,7 +305,7 @@ func (api *PublicFilterAPI) NewFilter(crit FilterCriteria) (rpc.ID, error) {
 	api.filters[logsSub.ID] = &filter{typ: LogsSubscription, crit: crit, deadline: time.NewTimer(api.timeout), logs: make([]*types.Log, 0), s: logsSub}
 	api.filtersMu.Unlock()
 
-	go func() {
+	gopool.Submit(func() {
 		for {
 			select {
 			case l := <-logs:
@@ -317,7 +321,7 @@ func (api *PublicFilterAPI) NewFilter(crit FilterCriteria) (rpc.ID, error) {
 				return
 			}
 		}
-	}()
+	})
 
 	return logsSub.ID, nil
 }

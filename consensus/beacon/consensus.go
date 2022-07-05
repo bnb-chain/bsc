@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -263,30 +264,35 @@ func (beacon *Beacon) Prepare(chain consensus.ChainHeaderReader, header *types.H
 	return nil
 }
 
+func (beacon *Beacon) Delay(_ consensus.ChainReader, _ *types.Header) *time.Duration {
+	return nil
+}
+
 // Finalize implements consensus.Engine, setting the final state on the header
-func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
+func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs *[]*types.Transaction, uncles []*types.Header, _ *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64) error {
 	// Finalize is different with Prepare, it can be used in both block generation
 	// and verification. So determine the consensus rules by header type.
 	if !beacon.IsPoSHeader(header) {
-		beacon.ethone.Finalize(chain, header, state, txs, uncles)
-		return
+		beacon.ethone.Finalize(chain, header, state, txs, uncles, nil, nil, nil)
+		return nil
 	}
 	// The block reward is no longer handled here. It's done by the
 	// external consensus engine.
 	header.Root = state.IntermediateRoot(true)
+	return nil
 }
 
 // FinalizeAndAssemble implements consensus.Engine, setting the final state and
 // assembling the block.
-func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
+func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
 	// FinalizeAndAssemble is different with Prepare, it can be used in both block
 	// generation and verification. So determine the consensus rules by header type.
 	if !beacon.IsPoSHeader(header) {
 		return beacon.ethone.FinalizeAndAssemble(chain, header, state, txs, uncles, receipts)
 	}
 	// Finalize and assemble the block
-	beacon.Finalize(chain, header, state, txs, uncles)
-	return types.NewBlock(header, txs, uncles, receipts, trie.NewStackTrie(nil)), nil
+	beacon.Finalize(chain, header, state, &txs, uncles, nil, nil, nil)
+	return types.NewBlock(header, txs, uncles, receipts, trie.NewStackTrie(nil)), receipts, nil
 }
 
 // Seal generates a new sealing request for the given input block and pushes

@@ -19,7 +19,6 @@ package miner
 import (
 	"errors"
 	"fmt"
-	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,11 +30,9 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -78,10 +75,6 @@ const (
 
 	// staleThreshold is the maximum depth of the acceptable stale block.
 	staleThreshold = 11
-)
-
-var (
-	commitTxsTimer = metrics.NewRegisteredTimer("worker/committxs", nil)
 )
 
 // environment is the worker's current environment and holds all
@@ -185,6 +178,7 @@ type intervalAdjust struct {
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
+	prefetcher  core.Prefetcher
 	config      *Config
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
@@ -255,6 +249,7 @@ type worker struct {
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
 	worker := &worker{
+		prefetcher:         core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
 		config:             config,
 		chainConfig:        chainConfig,
 		engine:             engine,
@@ -466,6 +461,17 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			}
 			clearPending(head.Block.NumberU64())
 			timestamp = time.Now().Unix()
+			if p, ok := w.engine.(*parlia.Parlia); ok {
+				signedRecent, err := p.SignRecently(w.chain, head.Block.Header())
+				if err != nil {
+					log.Info("Not allowed to propose block", "err", err)
+					continue
+				}
+				if signedRecent {
+					log.Info("Signed recently, must wait")
+					continue
+				}
+			}
 			commit(true, commitInterruptNewHead)
 
 		case <-timer.C:
@@ -571,7 +577,7 @@ func (w *worker) mainLoop() {
 			if w.isRunning() && w.current != nil && len(w.current.uncles) < 2 {
 				start := time.Now()
 				if err := w.commitUncle(w.current, ev.Block.Header()); err == nil {
-					w.commit(w.current.copy(), nil, true, start)
+					w.commit(w.current.copy(), nil, false, start)
 				}
 			}
 
@@ -741,6 +747,7 @@ func (w *worker) resultLoop() {
 				logs = append(logs, receipt.Logs...)
 			}
 			// Commit block and state to database.
+			task.state.SetExpectedStateRoot(block.Root())
 			_, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, true)
 			if err != nil {
 				log.Error("Failed writing block to chain", "err", err)
@@ -764,8 +771,8 @@ func (w *worker) resultLoop() {
 // makeEnv creates a new environment for the sealing block.
 func (w *worker) makeEnv(parent *types.Block, header *types.Header, coinbase common.Address) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
-	// the miner to speed block sealing up a bit.
-	state, err := w.chain.StateAt(parent.Root())
+	// the miner to speed block sealing up a bit
+	state, err := w.chain.StateAtWithSharedPool(parent.Root())
 	if err != nil {
 		// Note since the sealing block can be created upon the arbitrary parent
 		// block, but the state of parent block may already be pruned, so the necessary
@@ -790,14 +797,6 @@ func (w *worker) makeEnv(parent *types.Block, header *types.Header, coinbase com
 		family:    mapset.NewSet(),
 		header:    header,
 		uncles:    make(map[common.Hash]*types.Header),
-	}
-	// when 08 is processed ancestors contain 07 (quick block)
-	for _, ancestor := range w.chain.GetBlocksFromHash(parent.Hash(), 7) {
-		for _, uncle := range ancestor.Uncles() {
-			env.family.Add(uncle.Hash())
-		}
-		env.family.Add(ancestor.Hash())
-		env.ancestors.Add(ancestor.Hash())
 	}
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
@@ -842,10 +841,10 @@ func (w *worker) updateSnapshot(env *environment) {
 	w.snapshotState = env.state.Copy()
 }
 
-func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
+func (w *worker) commitTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
 	snap := env.state.Snapshot()
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, *w.chain.GetVMConfig())
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, *w.chain.GetVMConfig(), receiptProcessors...)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		return nil, err
@@ -860,21 +859,36 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-	}
-
-	if w.current.gasPool == nil {
-		w.current.gasPool = new(core.GasPool).AddGas(w.current.header.GasLimit)
-		w.current.gasPool.SubGas(params.SystemTxsGas)
+		if w.chain.Config().IsEuler(env.header.Number) {
+			env.gasPool.SubGas(params.SystemTxsGas * 3)
+		} else {
+			env.gasPool.SubGas(params.SystemTxsGas)
+		}
 	}
 
 	var coalescedLogs []*types.Log
 	var stopTimer *time.Timer
-	delay := w.engine.Delay(w.chain, w.current.header)
+	delay := w.engine.Delay(w.chain, env.header)
 	if delay != nil {
 		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
 		log.Debug("Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
 		defer stopTimer.Stop()
 	}
+	// initilise bloom processors
+	processorCapacity := 100
+	if txs.CurrentSize() < processorCapacity {
+		processorCapacity = txs.CurrentSize()
+	}
+	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
+
+	interruptCh := make(chan struct{})
+	defer close(interruptCh)
+	//prefetch txs from all pending txs
+	txsPrefetch := txs.Copy()
+	tx := txsPrefetch.Peek()
+	txCurr := &tx
+	w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.Copy(), *w.chain.GetVMConfig(), interruptCh, txCurr)
+
 LOOP:
 	for {
 		// In the following three cases, we will interrupt the execution of the transaction.
@@ -911,7 +925,7 @@ LOOP:
 			}
 		}
 		// Retrieve the next transaction and abort if all done
-		tx := txs.Peek()
+		tx = txs.Peek()
 		if tx == nil {
 			break
 		}
@@ -919,33 +933,32 @@ LOOP:
 		// during transaction acceptance is the transaction pool.
 		//
 		// We use the eip155 signer regardless of the current hf.
-		from, _ := types.Sender(env.signer, tx)
+		//from, _ := types.Sender(env.signer, tx)
 		// Check whether the tx is replay protected. If we're not in the EIP155 hf
 		// phase, start ignoring the sender until we do.
 		if tx.Protected() && !w.chainConfig.IsEIP155(env.header.Number) {
-			log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eip155", w.chainConfig.EIP155Block)
-
+			//log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eip155", w.chainConfig.EIP155Block)
 			txs.Pop()
 			continue
 		}
 		// Start executing the transaction
 		env.state.Prepare(tx.Hash(), env.tcount)
 
-		logs, err := w.commitTransaction(env, tx)
+		logs, err := w.commitTransaction(env, tx, bloomProcessors)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
-			log.Trace("Gas limit exceeded for current block", "sender", from)
+			//log.Trace("Gas limit exceeded for current block", "sender", from)
 			txs.Pop()
 
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift
-			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
+			//log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
 			txs.Shift()
 
 		case errors.Is(err, core.ErrNonceTooHigh):
 			// Reorg notification data race between the transaction pool and miner, skip account =
-			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
+			//log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
 			txs.Pop()
 
 		case errors.Is(err, nil):
@@ -956,17 +969,17 @@ LOOP:
 
 		case errors.Is(err, core.ErrTxTypeNotSupported):
 			// Pop the unsupported transaction without shifting in the next from the account
-			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
+			//log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
 			txs.Pop()
 
 		default:
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).
-			log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
+			//log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
 			txs.Shift()
 		}
 	}
-
+	bloomProcessors.Close()
 	if !w.isRunning() && len(coalescedLogs) > 0 {
 		// We don't push the pendingLogsEvent while we are sealing. The reason is that
 		// when we are sealing, the worker will regenerate a sealing block every 3 seconds.
@@ -1062,12 +1075,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
 	}
-	// Create the current work task and check any fork transitions needed
-	if w.chainConfig.DAOForkSupport && w.chainConfig.DAOForkBlock != nil && w.chainConfig.DAOForkBlock.Cmp(header.Number) == 0 {
-		misc.ApplyDAOHardFork(env.state)
-	}
-	systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, env.state)
-	// Accumulate the uncles for the current block
+	// Accumulate the uncles for the sealing work only if it's allowed.
 	if !genParams.noUncle {
 		commitUncles := func(blocks map[common.Hash]*types.Block) {
 			for hash, uncle := range blocks {
@@ -1086,8 +1094,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		commitUncles(w.remoteUncles)
 	}
 	return env, nil
-	}
-
+}
 
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
@@ -1115,9 +1122,6 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 			return
 		}
 	}
-	commitTxsTimer.UpdateSince(start)
-	log.Info("Gas pool", "height", header.Number.String(), "pool", w.current.gasPool.String())
-}
 }
 
 // generateWork generates a sealing block based on the given parameters.
@@ -1129,7 +1133,8 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	defer work.discard()
 
 	w.fillTransactions(nil, work)
-	return w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
+	block, _, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
+	return block, err
 }
 
 // commitWork generates several new sealing tasks based on the parent block
@@ -1153,6 +1158,7 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 	if err != nil {
 		return
 	}
+
 	// Create an empty block based on temporary copied state for
 	// sealing in advance without waiting block execution finished.
 	if !noempty && atomic.LoadUint32(&w.noempty) == 0 {
@@ -1169,6 +1175,7 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 	}
 	w.current = work
 }
+
 // commit runs any post-transaction state modifications, assembles the final block
 // and commits new work if consensus engine is running.
 // Note the assumption is held that the mutation is allowed to the passed env, do
@@ -1181,19 +1188,25 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		// Create a local environment copy, avoid the data race with snapshot state.
 		// https://github.com/ethereum/go-ethereum/issues/24299
 		env := env.copy()
-		s := w.current.state.Copy()
-		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
+		s := env.state
+		err := s.WaitPipeVerification()
+		if err != nil {
+			return err
+		}
+		s.CorrectAccountsRoot(w.chain.CurrentBlock().Root())
+
+		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), s, env.txs, env.unclelist(), env.receipts)
 		if err != nil {
 			return err
 		}
 		// If we're post merge, just ignore
 		if !w.isTTDReached(block.Header()) {
 			select {
-			case w.taskCh <- &task{receipts: env.receipts, state: env.state, block: block, createdAt: time.Now()}:
+			case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now()}:
 				w.unconfirmed.Shift(block.NumberU64() - 1)
-				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
+				log.Info("Commit new mining work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 					"uncles", len(env.uncles), "txs", env.tcount,
-					"gas", block.GasUsed(), "fees", totalFees(block, env.receipts),
+					"gas", block.GasUsed(),
 					"elapsed", common.PrettyDuration(time.Since(start)))
 
 			case <-w.exitCh:
@@ -1256,14 +1269,4 @@ func (w *worker) postSideBlock(event core.ChainSideEvent) {
 	case w.chainSideCh <- event:
 	case <-w.exitCh:
 	}
-}
-
-// totalFees computes total consumed miner fees in ETH. Block transactions and receipts have to have the same order.
-func totalFees(block *types.Block, receipts []*types.Receipt) *big.Float {
-	feesWei := new(big.Int)
-	for i, tx := range block.Transactions() {
-		minerFee, _ := tx.EffectiveGasTip(block.BaseFee())
-		feesWei.Add(feesWei, new(big.Int).Mul(new(big.Int).SetUint64(receipts[i].GasUsed), minerFee))
-	}
-	return new(big.Float).Quo(new(big.Float).SetInt(feesWei), new(big.Float).SetInt(big.NewInt(params.Ether)))
 }

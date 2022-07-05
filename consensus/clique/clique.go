@@ -29,6 +29,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
@@ -225,7 +226,7 @@ func (c *Clique) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
-	go func() {
+	gopool.Submit(func() {
 		for i, header := range headers {
 			err := c.verifyHeader(chain, header, headers[:i])
 
@@ -235,7 +236,7 @@ func (c *Clique) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 			case results <- err:
 			}
 		}
-	}()
+	})
 	return abort, results
 }
 
@@ -573,9 +574,8 @@ func (c *Clique) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 // nor block rewards given, and returns the final block.
 func (c *Clique) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
-	// No block rewards in PoA, so the state remains as is and uncles are dropped
-	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-	header.UncleHash = types.CalcUncleHash(nil)
+	// Finalize block
+	c.Finalize(chain, header, state, &txs, uncles, nil, nil, nil)
 
 	// Assemble and return the final block for sealing
 	return types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil)), receipts, nil
@@ -648,7 +648,7 @@ func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
 	// Wait until sealing is terminated or delay timeout.
 	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
-	go func() {
+	gopool.Submit(func() {
 		select {
 		case <-stop:
 			return
@@ -660,7 +660,7 @@ func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		default:
 			log.Warn("Sealing result is not read by miner", "sealhash", SealHash(header))
 		}
-	}()
+	})
 
 	return nil
 }

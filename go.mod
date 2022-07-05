@@ -8,6 +8,7 @@ require (
 	github.com/Azure/go-autorest/autorest/adal v0.8.0 // indirect
 	github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6 // indirect
 	github.com/VictoriaMetrics/fastcache v1.6.0
+	github.com/VividCortex/gohistogram v1.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.2.0
 	github.com/aws/aws-sdk-go-v2/config v1.1.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.1.1
@@ -19,8 +20,9 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
 	github.com/deepmap/oapi-codegen v1.8.2 // indirect
-	github.com/docker/docker v1.4.2-0.20180625184442-8e610b2b55bf
-	github.com/dop251/goja v0.0.0-20211011172007-d99e4b8cbf48
+	github.com/dlclark/regexp2 v1.2.0 // indirect
+	github.com/docker/docker v1.6.1
+	github.com/dop251/goja v0.0.0-20200721192441-a695b0cdd498
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/etcd-io/bbolt v1.3.3 // indirect
 	github.com/fatih/color v1.7.0
@@ -28,6 +30,7 @@ require (
 	github.com/fortytw2/leaktest v1.3.0 // indirect
 	github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff
 	github.com/go-ole/go-ole v1.2.1 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-stack/stack v1.8.0
 	github.com/golang/protobuf v1.4.3
 	github.com/golang/snappy v0.0.4
@@ -49,11 +52,13 @@ require (
 	github.com/julienschmidt/httprouter v1.2.0
 	github.com/karalabe/usb v0.0.2
 	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/mattn/go-colorable v0.1.8
 	github.com/mattn/go-isatty v0.0.12
 	github.com/naoina/go-stringutil v0.1.0 // indirect
 	github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416
 	github.com/olekukonko/tablewriter v0.0.5
+	github.com/panjf2000/ants/v2 v2.4.5
 	github.com/peterh/liner v1.1.1-0.20190123174540-a2c9a5303de7
 	github.com/prometheus/tsdb v0.7.1
 	github.com/rcrowley/go-metrics v0.0.0-20190826022208-cac0b30c2563 // indirect
@@ -62,11 +67,10 @@ require (
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible
 	github.com/status-im/keycard-go v0.0.0-20190316090335-8537d3370df4
 	github.com/stretchr/testify v1.7.0
-	github.com/syndtr/goleveldb v1.0.1-0.20210305035536-64b5b1c73954
+	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tendermint/go-amino v0.14.1
 	github.com/tendermint/iavl v0.12.0
 	github.com/tendermint/tendermint v0.31.11
-	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tklauser/go-sysconf v0.3.5 // indirect
 	github.com/tyler-smith/go-bip39 v1.0.1-0.20181017060643-dbb3b84ba2ef
 	go.etcd.io/bbolt v1.3.5 // indirect
@@ -79,5 +83,9 @@ require (
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 	gopkg.in/olebedev/go-duktape.v3 v3.0.0-20200619000410-60c24ae608a6
 	gopkg.in/urfave/cli.v1 v1.20.0
-	gotest.tools v2.2.0+incompatible // indirect
+)
+
+replace (
+	github.com/gogo/protobuf v1.1.1 => github.com/gogo/protobuf v1.3.2
+	github.com/gogo/protobuf v1.3.1 => github.com/gogo/protobuf v1.3.2
 )

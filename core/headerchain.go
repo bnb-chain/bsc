@@ -26,6 +26,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -34,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	lru "github.com/hashicorp/golang-lru"
 )
 
 const (
@@ -293,7 +294,7 @@ func (hc *HeaderChain) writeHeadersAndSetHead(headers []*types.Header, forker *F
 		return result, nil
 	}
 	// Special case, all the inserted headers are already on the canonical
-	// header chain, skip the reorg operation.
+	// heaeder chain, skip the reorg operation.
 	if hc.GetCanonicalHash(lastHeader.Number.Uint64()) == lastHash && lastHeader.Number.Uint64() <= hc.CurrentHeader().Number.Uint64() {
 		return result, nil
 	}
@@ -396,6 +397,33 @@ func (hc *HeaderChain) InsertHeaderChain(chain []*types.Header, start time.Time,
 	}
 	log.Info("Imported new block headers", context...)
 	return res.status, err
+}
+
+// GetBlockHashesFromHash retrieves a number of block hashes starting at a given
+// hash, fetching towards the genesis block.
+func (hc *HeaderChain) GetBlockHashesFromHash(hash common.Hash, max uint64) []common.Hash {
+	// Get the origin header from which to fetch
+	header := hc.GetHeaderByHash(hash)
+	if header == nil {
+		return nil
+	}
+	// Iterate the headers until enough is collected or the genesis reached
+	chain := make([]common.Hash, 0, max)
+	for i := uint64(0); i < max; i++ {
+		next := header.ParentHash
+		if header = hc.GetHeader(next, header.Number.Uint64()-1); header == nil {
+			break
+		}
+		chain = append(chain, next)
+		if header.Number.Sign() == 0 {
+			break
+		}
+	}
+	return chain
+}
+
+func (hc *HeaderChain) GetHighestVerifiedHeader() *types.Header {
+	return nil
 }
 
 // GetAncestor retrieves the Nth ancestor of a given block. It assumes that either the given block or

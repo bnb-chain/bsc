@@ -43,8 +43,10 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
+	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -69,12 +71,13 @@ type Ethereum struct {
 	config *ethconfig.Config
 
 	// Handlers
-	txPool             *core.TxPool
-	blockchain         *core.BlockChain
-	handler            *handler
-	ethDialCandidates  enode.Iterator
-	snapDialCandidates enode.Iterator
-	merger             *consensus.Merger
+	txPool              *core.TxPool
+	blockchain          *core.BlockChain
+	handler             *handler
+	ethDialCandidates   enode.Iterator
+	snapDialCandidates  enode.Iterator
+	trustDialCandidates enode.Iterator
+	merger              *consensus.Merger
 
 	// DB interfaces
 	chainDb ethdb.Database // Block chain database
@@ -113,6 +116,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if !config.SyncMode.IsValid() {
 		return nil, fmt.Errorf("invalid sync mode %d", config.SyncMode)
 	}
+	if !config.TriesVerifyMode.IsValid() {
+		return nil, fmt.Errorf("invalid tries verify mode %d", config.TriesVerifyMode)
+	}
 	if config.Miner.GasPrice == nil || config.Miner.GasPrice.Cmp(common.Big0) <= 0 {
 		log.Warn("Sanitizing invalid miner gas price", "provided", config.Miner.GasPrice, "updated", ethconfig.Defaults.Miner.GasPrice)
 		config.Miner.GasPrice = new(big.Int).Set(ethconfig.Defaults.Miner.GasPrice)
@@ -133,17 +139,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	ethashConfig.NotifyFull = config.Miner.NotifyFull
 
 	// Assemble the Ethereum object
-	chainDb, err := stack.OpenDatabaseWithFreezer("chaindata", config.DatabaseCache, config.DatabaseHandles, config.DatabaseFreezer, "eth/db/chaindata/", false)
+	chainDb, err := stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
+		config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff, config.PruneAncientData)
 	if err != nil {
 		return nil, err
 	}
-	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, config.Genesis, config.OverrideArrowGlacier, config.OverrideTerminalTotalDifficulty)
+	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, config.Genesis, config.OverrideBerlin, config.OverrideArrowGlacier, config.OverrideTerminalTotalDifficulty)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
 	log.Info("Initialised chain configuration", "config", chainConfig)
 
-	if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, stack.ResolvePath(config.TrieCleanCacheJournal)); err != nil {
+	if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, stack.ResolvePath(config.TrieCleanCacheJournal), config.TriesInMemory); err != nil {
 		log.Error("Failed to recover state", "error", err)
 	}
 	merger := consensus.NewMerger(chainDb)
@@ -192,18 +199,32 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			EnablePreimageRecording: config.EnablePreimageRecording,
 		}
 		cacheConfig = &core.CacheConfig{
-			TrieCleanLimit:      config.TrieCleanCache,
-			TrieCleanJournal:    stack.ResolvePath(config.TrieCleanCacheJournal),
-			TrieCleanRejournal:  config.TrieCleanCacheRejournal,
-			TrieCleanNoPrefetch: config.NoPrefetch,
-			TrieDirtyLimit:      config.TrieDirtyCache,
-			TrieDirtyDisabled:   config.NoPruning,
-			TrieTimeLimit:       config.TrieTimeout,
-			SnapshotLimit:       config.SnapshotCache,
-			Preimages:           config.Preimages,
+			TrieCleanLimit:     config.TrieCleanCache,
+			TrieCleanJournal:   stack.ResolvePath(config.TrieCleanCacheJournal),
+			TrieCleanRejournal: config.TrieCleanCacheRejournal,
+			TrieDirtyLimit:     config.TrieDirtyCache,
+			TrieDirtyDisabled:  config.NoPruning,
+			TrieTimeLimit:      config.TrieTimeout,
+			NoTries:            config.TriesVerifyMode != core.LocalVerify,
+			SnapshotLimit:      config.SnapshotCache,
+			TriesInMemory:      config.TriesInMemory,
+			Preimages:          config.Preimages,
 		}
 	)
-	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve, &config.TxLookupLimit)
+	bcOps := make([]core.BlockChainOption, 0)
+	if config.DiffSync && !config.PipeCommit && config.TriesVerifyMode == core.LocalVerify {
+		bcOps = append(bcOps, core.EnableLightProcessor)
+	}
+	if config.PipeCommit {
+		bcOps = append(bcOps, core.EnablePipelineCommit)
+	}
+	if config.PersistDiff {
+		bcOps = append(bcOps, core.EnablePersistDiff(config.DiffBlock))
+	}
+
+	peers := newPeerSet()
+	bcOps = append(bcOps, core.EnableBlockValidator(chainConfig, eth.engine, config.TriesVerifyMode, peers))
+	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve, &config.TxLookupLimit, bcOps...)
 	if err != nil {
 		return nil, err
 	}
@@ -228,17 +249,20 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	if eth.handler, err = newHandler(&handlerConfig{
-		Database:        chainDb,
-		Chain:           eth.blockchain,
-		TxPool:          eth.txPool,
-		Merger:          merger,
-		Network:         config.NetworkId,
-		Sync:            config.SyncMode,
-		BloomCache:      uint64(cacheLimit),
-		EventMux:        eth.eventMux,
-		Checkpoint:      checkpoint,
-		Whitelist:       config.Whitelist,
-		DirectBroadcast: config.DirectBroadcast,
+		Database:               chainDb,
+		Chain:                  eth.blockchain,
+		TxPool:                 eth.txPool,
+		Merger:                 merger,
+		Network:                config.NetworkId,
+		Sync:                   config.SyncMode,
+		BloomCache:             uint64(cacheLimit),
+		EventMux:               eth.eventMux,
+		Checkpoint:             checkpoint,
+		Whitelist:              config.Whitelist,
+		DirectBroadcast:        config.DirectBroadcast,
+		DiffSync:               config.DiffSync,
+		DisablePeerTxBroadcast: config.DisablePeerTxBroadcast,
+		PeerSet:                peers,
 	}); err != nil {
 		return nil, err
 	}
@@ -259,6 +283,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 	eth.snapDialCandidates, err = dnsclient.NewIterator(eth.config.SnapDiscoveryURLs...)
+	if err != nil {
+		return nil, err
+	}
+	eth.trustDialCandidates, err = dnsclient.NewIterator(eth.config.TrustDiscoveryURLs...)
 	if err != nil {
 		return nil, err
 	}
@@ -546,8 +574,15 @@ func (s *Ethereum) SyncMode() downloader.SyncMode {
 // network protocols to start.
 func (s *Ethereum) Protocols() []p2p.Protocol {
 	protos := eth.MakeProtocols((*ethHandler)(s.handler), s.networkID, s.ethDialCandidates)
-	if s.config.SnapshotCache > 0 {
+	if !s.config.DisableSnapProtocol && s.config.SnapshotCache > 0 {
 		protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler), s.snapDialCandidates)...)
+	}
+	// diff protocol can still open without snap protocol
+	if !s.config.DisableDiffProtocol {
+		protos = append(protos, diff.MakeProtocols((*diffHandler)(s.handler), s.snapDialCandidates)...)
+	}
+	if s.config.EnableTrustProtocol {
+		protos = append(protos, trust.MakeProtocols((*trustHandler)(s.handler), s.snapDialCandidates)...)
 	}
 	return protos
 }
@@ -582,6 +617,7 @@ func (s *Ethereum) Stop() error {
 	// Stop all the peer-related stuff first.
 	s.ethDialCandidates.Close()
 	s.snapDialCandidates.Close()
+	s.trustDialCandidates.Close()
 	s.handler.Stop()
 
 	// Then stop everything else.

@@ -83,7 +83,9 @@ func TestAccountRange(t *testing.T) {
 			m[addr] = true
 		}
 	}
-	state.Commit(true)
+	state.Finalise(true)
+	state.AccountsIntermediateRoot()
+	state.Commit(nil)
 	root := state.IntermediateRoot(true)
 
 	trie, err := statedb.OpenTrie(root)
@@ -140,7 +142,7 @@ func TestEmptyAccountRange(t *testing.T) {
 		statedb = state.NewDatabase(rawdb.NewMemoryDatabase())
 		st, _   = state.New(common.Hash{}, statedb, nil)
 	)
-	st.Commit(true)
+	st.Commit(nil)
 	st.IntermediateRoot(true)
 	results := st.IteratorDump(&state.DumpConfig{
 		SkipCode:          true,

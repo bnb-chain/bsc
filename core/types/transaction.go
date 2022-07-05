@@ -87,6 +87,11 @@ type TxData interface {
 	setSignatureValues(chainID, v, r, s *big.Int)
 }
 
+// Time returns transaction's time
+func (tx *Transaction) Time() time.Time {
+	return tx.time
+}
+
 // EncodeRLP implements rlp.Encoder
 func (tx *Transaction) EncodeRLP(w io.Writer) error {
 	if tx.Type() == LegacyTxType {
@@ -298,6 +303,16 @@ func (tx *Transaction) Cost() *big.Int {
 // The return values should not be modified by the caller.
 func (tx *Transaction) RawSignatureValues() (v, r, s *big.Int) {
 	return tx.inner.rawSignatureValues()
+}
+
+// GasPriceCmp compares the gas prices of two transactions.
+func (tx *Transaction) GasPriceCmp(other *Transaction) int {
+	return tx.inner.gasPrice().Cmp(other.inner.gasPrice())
+}
+
+// GasPriceIntCmp compares the gas price of the transaction against the given price.
+func (tx *Transaction) GasPriceIntCmp(other *big.Int) int {
+	return tx.inner.gasPrice().Cmp(other)
 }
 
 // GasFeeCapCmp compares the fee cap of two transactions.
@@ -531,6 +546,21 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 	}
 }
 
+// Copy copys a new TransactionsPriceAndNonce with the same *transaction
+func (t *TransactionsByPriceAndNonce) Copy() *TransactionsByPriceAndNonce {
+	heads := make([]*TxWithMinerFee, len(t.heads))
+	copy(heads, t.heads)
+	txs := make(map[common.Address]Transactions, len(t.txs))
+	for acc, txsTmp := range t.txs {
+		txs[acc] = txsTmp
+	}
+	return &TransactionsByPriceAndNonce{
+		heads:  heads,
+		txs:    txs,
+		signer: t.signer,
+	}
+}
+
 // Peek returns the next transaction by price.
 func (t *TransactionsByPriceAndNonce) Peek() *Transaction {
 	if len(t.heads) == 0 {
@@ -557,6 +587,50 @@ func (t *TransactionsByPriceAndNonce) Shift() {
 // and hence all subsequent ones should be discarded from the same account.
 func (t *TransactionsByPriceAndNonce) Pop() {
 	heap.Pop(&t.heads)
+}
+
+func (t *TransactionsByPriceAndNonce) CurrentSize() int {
+	return len(t.heads)
+}
+
+//Forward moves current transaction to be the one which is one index after tx
+func (t *TransactionsByPriceAndNonce) Forward(tx *Transaction) {
+	if tx == nil {
+		if len(t.heads) > 0 {
+			t.heads = t.heads[0:0]
+		}
+		return
+	}
+	//check whether target tx exists in t.heads
+	for _, head := range t.heads {
+		if tx == head.tx {
+			//shift t to the position one after tx
+			txTmp := t.Peek()
+			for txTmp != tx {
+				t.Shift()
+				txTmp = t.Peek()
+			}
+			t.Shift()
+			return
+		}
+	}
+	//get the sender address of tx
+	acc, _ := Sender(t.signer, tx)
+	//check whether target tx exists in t.txs
+	if txs, ok := t.txs[acc]; ok {
+		for _, txTmp := range txs {
+			//found the same pointer in t.txs as tx and then shift t to the position one after tx
+			if txTmp == tx {
+				txTmp = t.Peek()
+				for txTmp != tx {
+					t.Shift()
+					txTmp = t.Peek()
+				}
+				t.Shift()
+				return
+			}
+		}
+	}
 }
 
 // Message is a fully derived transaction and implements core.Message
@@ -612,6 +686,15 @@ func (tx *Transaction) AsMessage(s Signer, baseFee *big.Int) (Message, error) {
 	}
 	var err error
 	msg.from, err = Sender(s, tx)
+	return msg, err
+}
+
+// AsMessageNoNonceCheck returns the transaction with checkNonce field set to be false.
+func (tx *Transaction) AsMessageNoNonceCheck(s Signer) (Message, error) {
+	msg, err := tx.AsMessage(s, nil)
+	if err == nil {
+		msg.isFake = true
+	}
 	return msg, err
 }
 

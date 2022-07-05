@@ -50,6 +50,10 @@ type odrDatabase struct {
 	backend OdrBackend
 }
 
+func (db *odrDatabase) NoTries() bool {
+	return false
+}
+
 func (db *odrDatabase) OpenTrie(root common.Hash) (state.Trie, error) {
 	return &odrTrie{db: db, id: db.id}, nil
 }
@@ -95,6 +99,12 @@ func (db *odrDatabase) ContractCodeSize(addrHash, codeHash common.Hash) (int, er
 func (db *odrDatabase) TrieDB() *trie.Database {
 	return nil
 }
+
+func (db *odrDatabase) CacheAccount(_ common.Hash, _ state.Trie) {}
+
+func (db *odrDatabase) CacheStorage(_ common.Hash, _ common.Hash, _ state.Trie) {}
+
+func (db *odrDatabase) Purge() {}
 
 type odrTrie struct {
 	db   *odrDatabase
@@ -182,6 +192,10 @@ func (t *odrTrie) do(key []byte, fn func() error) error {
 			return err
 		}
 	}
+}
+
+func (db *odrTrie) NoTries() bool {
+	return false
 }
 
 type nodeIterator struct {
