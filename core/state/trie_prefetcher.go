@@ -123,19 +123,22 @@ func (p *triePrefetcher) mainLoop() {
 						p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
 						p.accountDupMeter.Mark(int64(fetcher.dups))
 						p.accountSkipMeter.Mark(int64(len(fetcher.tasks)))
-
+						fetcher.lock.Lock()
 						for _, key := range fetcher.used {
 							delete(fetcher.seen, string(key))
 						}
+						fetcher.lock.Unlock()
 						p.accountWasteMeter.Mark(int64(len(fetcher.seen)))
 					} else {
 						p.storageLoadMeter.Mark(int64(len(fetcher.seen)))
 						p.storageDupMeter.Mark(int64(fetcher.dups))
 						p.storageSkipMeter.Mark(int64(len(fetcher.tasks)))
 
+						fetcher.lock.Lock()
 						for _, key := range fetcher.used {
 							delete(fetcher.seen, string(key))
 						}
+						fetcher.lock.Unlock()
 						p.storageWasteMeter.Mark(int64(len(fetcher.seen)))
 					}
 				}
@@ -171,7 +174,6 @@ func (p *triePrefetcher) abortLoop() {
 
 // close iterates over all the subfetchers, aborts any that were left spinning
 // and reports the stats to the metrics subsystem.
-// Attention, this API is not thread safe: double close()
 func (p *triePrefetcher) close() {
 	// If the prefetcher is an inactive one, bail out
 	if p.fetches != nil {
@@ -293,7 +295,9 @@ func (p *triePrefetcher) used(root common.Hash, used [][]byte) {
 	default:
 		p.fetchersMutex.RLock()
 		if fetcher := p.fetchers[root]; fetcher != nil {
+			fetcher.lock.Lock()
 			fetcher.used = used
+			fetcher.lock.Unlock()
 		}
 		p.fetchersMutex.RUnlock()
 	}
