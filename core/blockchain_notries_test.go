@@ -156,9 +156,6 @@ func makeTestBackendWithRemoteValidator(blocks int, mode VerifyMode, failed *ver
 			}
 		}
 	}
-
-	bs, _ := GenerateChain(params.TestChainConfig, verifier.Genesis(), ethash.NewFaker(), db, blocks, generator)
-
 	peer.setCallBack(func(req *requestRoot) {
 		if fastnode.validator != nil && fastnode.validator.RemoteVerifyManager() != nil {
 			resp := verifier.GetVerifyResult(req.blockNumber, req.blockHash, req.diffHash)
@@ -170,9 +167,12 @@ func makeTestBackendWithRemoteValidator(blocks int, mode VerifyMode, failed *ver
 					resp, peer.ID())
 		}
 	})
+
+	bs, _ := GenerateChain(params.TestChainConfig, verifier.Genesis(), ethash.NewFaker(), db, blocks, generator)
 	if _, err := verifier.InsertChain(bs); err != nil {
 		return nil, nil, nil, err
 	}
+	waitDifflayerCached(verifier, bs)
 
 	return &testBackend{
 			db:    db,
@@ -186,7 +186,7 @@ func makeTestBackendWithRemoteValidator(blocks int, mode VerifyMode, failed *ver
 
 func TestFastNode(t *testing.T) {
 	// test full mode and succeed
-	_, fastnode, blocks, err := makeTestBackendWithRemoteValidator(10240, FullVerify, nil)
+	_, fastnode, blocks, err := makeTestBackendWithRemoteValidator(2048, FullVerify, nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -195,8 +195,8 @@ func TestFastNode(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 	// test full mode and failed
-	failed := &verifFailedStatus{status: types.StatusDiffHashMismatch, blockNumber: 2048}
-	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(10240, FullVerify, failed)
+	failed := &verifFailedStatus{status: types.StatusDiffHashMismatch, blockNumber: 204}
+	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(2048, FullVerify, failed)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -205,7 +205,7 @@ func TestFastNode(t *testing.T) {
 		t.Fatalf("blocks insert should be failed at height %d", failed.blockNumber+11)
 	}
 	// test insecure mode and succeed
-	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(10240, InsecureVerify, nil)
+	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(2048, InsecureVerify, nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -214,8 +214,8 @@ func TestFastNode(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 	// test insecure mode and failed
-	failed = &verifFailedStatus{status: types.StatusImpossibleFork, blockNumber: 2048}
-	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(10240, FullVerify, failed)
+	failed = &verifFailedStatus{status: types.StatusImpossibleFork, blockNumber: 204}
+	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(2048, FullVerify, failed)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
