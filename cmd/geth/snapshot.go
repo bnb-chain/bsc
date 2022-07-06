@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -70,6 +71,7 @@ var (
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.RopstenFlag,
+					utils.SepoliaFlag,
 					utils.RinkebyFlag,
 					utils.GoerliFlag,
 					utils.CacheTrieJournalFlag,
@@ -125,6 +127,7 @@ so it's very necessary to do block data prune, this feature will handle it.
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.RopstenFlag,
+					utils.SepoliaFlag,
 					utils.RinkebyFlag,
 					utils.GoerliFlag,
 				},
@@ -171,6 +174,7 @@ the trie clean cache with default directory will be deleted.
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.RopstenFlag,
+					utils.SepoliaFlag,
 					utils.RinkebyFlag,
 					utils.GoerliFlag,
 				},
@@ -193,6 +197,7 @@ It's also usable without snapshot enabled.
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.RopstenFlag,
+					utils.SepoliaFlag,
 					utils.RinkebyFlag,
 					utils.GoerliFlag,
 				},
@@ -204,6 +209,33 @@ verification. The default checking target is the HEAD state. It's basically iden
 to traverse-state, but the check granularity is smaller. 
 
 It's also usable without snapshot enabled.
+`,
+			},
+			{
+				Name:      "dump",
+				Usage:     "Dump a specific block from storage (same as 'geth dump' but using snapshots)",
+				ArgsUsage: "[? <blockHash> | <blockNum>]",
+				Action:    utils.MigrateFlags(dumpState),
+				Category:  "MISCELLANEOUS COMMANDS",
+				Flags: []cli.Flag{
+					utils.DataDirFlag,
+					utils.AncientFlag,
+					utils.RopstenFlag,
+					utils.SepoliaFlag,
+					utils.RinkebyFlag,
+					utils.GoerliFlag,
+					utils.ExcludeCodeFlag,
+					utils.ExcludeStorageFlag,
+					utils.StartKeyFlag,
+					utils.DumpLimitFlag,
+					utils.TriesInMemoryFlag,
+				},
+				Description: `
+This command is semantically equivalent to 'geth dump', but uses the snapshots
+as the backend data source, making this command a lot faster. 
+
+The argument is interpreted as block number or hash. If none is provided, the latest
+block is used.
 `,
 			},
 		},
@@ -463,7 +495,7 @@ func verifyState(ctx *cli.Context) error {
 		}
 	}
 	if err := snaptree.Verify(root); err != nil {
-		log.Error("Failed to verfiy state", "root", root, "err", err)
+		log.Error("Failed to verify state", "root", root, "err", err)
 		return err
 	}
 	log.Info("Verified the state", "root", root)
@@ -518,7 +550,7 @@ func traverseState(ctx *cli.Context) error {
 	accIter := trie.NewIterator(t.NodeIterator(nil))
 	for accIter.Next() {
 		accounts += 1
-		var acc state.Account
+		var acc types.StateAccount
 		if err := rlp.DecodeBytes(accIter.Value, &acc); err != nil {
 			log.Error("Invalid account encountered during traversal", "err", err)
 			return err
@@ -624,7 +656,7 @@ func traverseRawState(ctx *cli.Context) error {
 		// dig into the storage trie further.
 		if accIter.Leaf() {
 			accounts += 1
-			var acc state.Account
+			var acc types.StateAccount
 			if err := rlp.DecodeBytes(accIter.LeafBlob(), &acc); err != nil {
 				log.Error("Invalid account encountered during traversal", "err", err)
 				return errors.New("invalid account")
@@ -643,8 +675,7 @@ func traverseRawState(ctx *cli.Context) error {
 					// Check the present for non-empty hash node(embedded node doesn't
 					// have their own hash).
 					if node != (common.Hash{}) {
-						blob := rawdb.ReadTrieNode(chaindb, node)
-						if len(blob) == 0 {
+						if !rawdb.HasTrieNode(chaindb, node) {
 							log.Error("Missing trie node(storage)", "hash", node)
 							return errors.New("missing storage")
 						}
@@ -687,4 +718,75 @@ func parseRoot(input string) (common.Hash, error) {
 		return h, err
 	}
 	return h, nil
+}
+
+func dumpState(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	conf, db, root, err := parseDumpConfig(ctx, stack)
+	if err != nil {
+		return err
+	}
+	triesInMemory := ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)
+	snaptree, err := snapshot.New(db, trie.NewDatabase(db), int(triesInMemory), 256, root, false, false, false, false)
+	if err != nil {
+		return err
+	}
+	accIt, err := snaptree.AccountIterator(root, common.BytesToHash(conf.Start))
+	if err != nil {
+		return err
+	}
+	defer accIt.Release()
+
+	log.Info("Snapshot dumping started", "root", root)
+	var (
+		start    = time.Now()
+		logged   = time.Now()
+		accounts uint64
+	)
+	enc := json.NewEncoder(os.Stdout)
+	enc.Encode(struct {
+		Root common.Hash `json:"root"`
+	}{root})
+	for accIt.Next() {
+		account, err := snapshot.FullAccount(accIt.Account())
+		if err != nil {
+			return err
+		}
+		da := &state.DumpAccount{
+			Balance:   account.Balance.String(),
+			Nonce:     account.Nonce,
+			Root:      account.Root,
+			CodeHash:  account.CodeHash,
+			SecureKey: accIt.Hash().Bytes(),
+		}
+		if !conf.SkipCode && !bytes.Equal(account.CodeHash, emptyCode) {
+			da.Code = rawdb.ReadCode(db, common.BytesToHash(account.CodeHash))
+		}
+		if !conf.SkipStorage {
+			da.Storage = make(map[common.Hash]string)
+
+			stIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
+			if err != nil {
+				return err
+			}
+			for stIt.Next() {
+				da.Storage[stIt.Hash()] = common.Bytes2Hex(stIt.Slot())
+			}
+		}
+		enc.Encode(da)
+		accounts++
+		if time.Since(logged) > 8*time.Second {
+			log.Info("Snapshot dumping in progress", "at", accIt.Hash(), "accounts", accounts,
+				"elapsed", common.PrettyDuration(time.Since(start)))
+			logged = time.Now()
+		}
+		if conf.Max > 0 && accounts >= conf.Max {
+			break
+		}
+	}
+	log.Info("Snapshot dumping complete", "accounts", accounts,
+		"elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
 }

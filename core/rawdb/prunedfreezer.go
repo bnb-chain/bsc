@@ -66,7 +66,7 @@ func (f *prunedfreezer) repair(datadir string) error {
 	// compatible freezer
 	min := uint64(math.MaxUint64)
 	for name, disableSnappy := range FreezerNoSnappy {
-		table, err := NewFreezerTable(datadir, name, disableSnappy)
+		table, err := NewFreezerTable(datadir, name, disableSnappy, true)
 		if err != nil {
 			return err
 		}
@@ -282,4 +282,16 @@ func (f *prunedfreezer) freeze() {
 		backoff = f.frozen-first >= freezerBatchLimit
 		gcKvStore(f.db, ancients, first, f.frozen, start)
 	}
+}
+
+func (f *prunedfreezer) ReadAncients(fn func(ethdb.AncientReader) error) (err error) {
+	return fn(f)
+}
+
+func (f *prunedfreezer) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
+	return nil, errNotSupported
+}
+
+func (f *prunedfreezer) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, error) {
+	return 0, errNotSupported
 }

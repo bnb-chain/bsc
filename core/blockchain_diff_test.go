@@ -90,7 +90,7 @@ var (
 				{
 					to:       &common.Address{0x01},
 					value:    big.NewInt(1),
-					gasPrice: big.NewInt(1),
+					gasPrice: big.NewInt(params.InitialBaseFee),
 					data:     nil,
 				},
 			},
@@ -101,19 +101,19 @@ var (
 				{
 					to:       &common.Address{0x01},
 					value:    big.NewInt(1),
-					gasPrice: big.NewInt(1),
+					gasPrice: big.NewInt(params.InitialBaseFee),
 					data:     nil,
 				},
 				{
 					to:       &common.Address{0x02},
 					value:    big.NewInt(2),
-					gasPrice: big.NewInt(2),
+					gasPrice: big.NewInt(params.InitialBaseFee + 1),
 					data:     nil,
 				},
 				{
 					to:       nil,
 					value:    big.NewInt(0),
-					gasPrice: big.NewInt(2),
+					gasPrice: big.NewInt(params.InitialBaseFee + 1),
 					data:     contractCode,
 				},
 			},
@@ -124,25 +124,25 @@ var (
 				{
 					to:       &common.Address{0x01},
 					value:    big.NewInt(1),
-					gasPrice: big.NewInt(1),
+					gasPrice: big.NewInt(params.InitialBaseFee),
 					data:     nil,
 				},
 				{
 					to:       &common.Address{0x02},
 					value:    big.NewInt(2),
-					gasPrice: big.NewInt(2),
+					gasPrice: big.NewInt(params.InitialBaseFee + 1),
 					data:     nil,
 				},
 				{
 					to:       &common.Address{0x03},
 					value:    big.NewInt(3),
-					gasPrice: big.NewInt(3),
+					gasPrice: big.NewInt(params.InitialBaseFee + 2),
 					data:     nil,
 				},
 				{
 					to:       &contractAddr,
 					value:    big.NewInt(0),
-					gasPrice: big.NewInt(3),
+					gasPrice: big.NewInt(params.InitialBaseFee + 2),
 					data:     contractData1,
 				},
 			},
@@ -153,7 +153,7 @@ var (
 				{
 					to:       &contractAddr,
 					value:    big.NewInt(0),
-					gasPrice: big.NewInt(3),
+					gasPrice: big.NewInt(params.InitialBaseFee + 2),
 					data:     contractData2,
 				},
 			},
@@ -316,7 +316,7 @@ func TestProcessDiffLayer(t *testing.T) {
 			}
 			lightBackend.Chain().HandleDiffLayer(diff, "testpid", true)
 		}
-		_, err := lightBackend.chain.insertChain([]*types.Block{block}, true)
+		_, err := lightBackend.chain.insertChain([]*types.Block{block}, true, true)
 		if err != nil {
 			t.Errorf("failed to insert block %v", err)
 		}
@@ -340,7 +340,7 @@ func TestProcessDiffLayer(t *testing.T) {
 
 	lightBackend.Chain().HandleDiffLayer(diff, "testpid", true)
 
-	_, err := lightBackend.chain.insertChain([]*types.Block{nextBlock}, true)
+	_, err := lightBackend.chain.insertChain([]*types.Block{nextBlock}, true, true)
 	if err != nil {
 		t.Errorf("failed to process block %v", err)
 	}
@@ -424,7 +424,7 @@ func TestPruneDiffLayer(t *testing.T) {
 		b := anotherFullBackend.chain.GetBlockByNumber(uint64(i))
 		blocks = append(blocks, b)
 	}
-	fullBackend.chain.insertChain(blocks, true)
+	fullBackend.chain.insertChain(blocks, true, true)
 	fullBackend.chain.pruneDiffLayer()
 	if len(fullBackend.chain.diffNumToBlockHashes) != 0 {
 		t.Error("unexpected size of diffNumToBlockHashes")

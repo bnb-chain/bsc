@@ -183,6 +183,9 @@ type Tree struct {
 	layers   map[common.Hash]snapshot // Collection of all known layers
 	lock     sync.RWMutex
 	capLimit int
+
+	// Test hooks
+	onFlatten func() // Hook invoked when the bottom most diff layers are flattened
 }
 
 // New attempts to load an already existing snapshot from a persistent key-value
@@ -495,19 +498,26 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		return nil
 
 	case *diffLayer:
+		// Hold the write lock until the flattened parent is linked correctly.
+		// Otherwise, the stale layer may be accessed by external reads in the
+		// meantime.
+		diff.lock.Lock()
+		defer diff.lock.Unlock()
+
 		// Flatten the parent into the grandparent. The flattening internally obtains a
 		// write lock on grandparent.
 		flattened := parent.flatten().(*diffLayer)
 		t.layers[flattened.root] = flattened
 
-		diff.lock.Lock()
-		defer diff.lock.Unlock()
-
+		// Invoke the hook if it's registered. Ugly hack.
+		if t.onFlatten != nil {
+			t.onFlatten()
+		}
 		diff.parent = flattened
 		if flattened.memory < aggregatorMemoryLimit {
 			// Accumulator layer is smaller than the limit, so we can abort, unless
 			// there's a snapshot being generated currently. In that case, the trie
-			// will move fron underneath the generator so we **must** merge all the
+			// will move from underneath the generator so we **must** merge all the
 			// partial data down into the snapshot and restart the generation.
 			if flattened.parent.(*diskLayer).genAbort == nil {
 				return nil

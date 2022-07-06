@@ -73,7 +73,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 					if err != nil {
 						return // Also invalid block, bail out
 					}
-					newStatedb.Prepare(tx.Hash(), header.Hash(), txIndex)
+					newStatedb.Prepare(tx.Hash(), txIndex)
 					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 
 				case <-interruptCh:
@@ -115,7 +115,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 						return // Also invalid block, bail out
 					}
 					idx++
-					newStatedb.Prepare(tx.Hash(), header.Hash(), idx)
+					newStatedb.Prepare(tx.Hash(), idx)
 					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 					gaspool = new(GasPool).AddGas(gasLimit)
 				case <-stopCh:

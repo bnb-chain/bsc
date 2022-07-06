@@ -436,7 +436,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 			return consensus.ErrUnknownAncestor
 		}
 		// Write into new ancient_back db.
-		rawdb.WriteAncientBlock(frdbBack, block, receipts, td)
+		rawdb.WriteAncientBlocks(frdbBack, []*types.Block{block}, []types.Receipts{receipts}, td)
 		// Print the log every 5s for better trace.
 		if common.PrettyDuration(time.Since(start)) > common.PrettyDuration(5*time.Second) {
 			log.Info("block backup process running successfully", "current blockNumber for backup", blockNumber)
@@ -748,7 +748,7 @@ func extractGenesis(db ethdb.Database, stateBloom *stateBloom) error {
 		// If it's a leaf node, yes we are touching an account,
 		// dig into the storage trie further.
 		if accIter.Leaf() {
-			var acc state.Account
+			var acc types.StateAccount
 			if err := rlp.DecodeBytes(accIter.LeafBlob(), &acc); err != nil {
 				return err
 			}

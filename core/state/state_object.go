@@ -27,6 +27,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -70,7 +71,7 @@ func (s Storage) Copy() Storage {
 type StateObject struct {
 	address       common.Address
 	addrHash      common.Hash // hash of ethereum address of the account
-	data          Account
+	data          types.StateAccount
 	db            *StateDB
 	rootCorrected bool // To indicate whether the root has been corrected in pipecommit mode
 
@@ -108,17 +109,8 @@ func (s *StateObject) empty() bool {
 	return s.data.Nonce == 0 && s.data.Balance.Sign() == 0 && bytes.Equal(s.data.CodeHash, emptyCodeHash)
 }
 
-// Account is the Ethereum consensus representation of accounts.
-// These objects are stored in the main account trie.
-type Account struct {
-	Nonce    uint64
-	Balance  *big.Int
-	Root     common.Hash // merkle root of the storage trie
-	CodeHash []byte
-}
-
 // newObject creates a state object.
-func newObject(db *StateDB, address common.Address, data Account) *StateObject {
+func newObject(db *StateDB, address common.Address, data types.StateAccount) *StateObject {
 	if data.Balance == nil {
 		data.Balance = new(big.Int)
 	}
@@ -148,7 +140,7 @@ func newObject(db *StateDB, address common.Address, data Account) *StateObject {
 
 // EncodeRLP implements rlp.Encoder.
 func (s *StateObject) EncodeRLP(w io.Writer) error {
-	return rlp.Encode(w, s.data)
+	return rlp.Encode(w, &s.data)
 }
 
 // setError remembers the first non-nil error it is called with.
@@ -219,8 +211,9 @@ func (s *StateObject) getOriginStorage(key common.Hash) (common.Hash, bool) {
 		if !ok {
 			return common.Hash{}, false
 		}
-		s.originStorage[key] = val.(common.Hash)
-		return val.(common.Hash), true
+		storage := val.(common.Hash)
+		s.originStorage[key] = storage
+		return storage, true
 	}
 	return common.Hash{}, false
 }
@@ -394,7 +387,7 @@ func (s *StateObject) finalise(prefetch bool) {
 // It will return nil if the trie has not been loaded and no changes have been made
 func (s *StateObject) updateTrie(db Database) Trie {
 	// Make sure all dirty slots are finalized into the pending storage area
-	s.finalise(false) // Don't prefetch any more, pull directly if need be
+	s.finalise(false) // Don't prefetch anymore, pull directly if need be
 	if len(s.pendingStorage) == 0 {
 		return s.trie
 	}
@@ -418,9 +411,14 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		}
 		s.originStorage[key] = value
 		var v []byte
-		if (value != common.Hash{}) {
+		if (value == common.Hash{}) {
+			s.setError(tr.TryDelete(key[:]))
+			s.db.StorageDeleted += 1
+		} else {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
+			s.setError(tr.TryUpdate(key[:], v))
+			s.db.StorageUpdated += 1
 		}
 		dirtyStorage[key] = v
 	}
@@ -492,29 +490,29 @@ func (s *StateObject) updateRoot(db Database) {
 
 // CommitTrie the storage trie of the object to db.
 // This updates the trie root.
-func (s *StateObject) CommitTrie(db Database) error {
+func (s *StateObject) CommitTrie(db Database) (int, error) {
 	// If nothing changed, don't bother with hashing anything
 	if s.updateTrie(db) == nil {
 		if s.trie != nil && s.data.Root != emptyRoot {
 			db.CacheStorage(s.addrHash, s.data.Root, s.trie)
 		}
-		return nil
+		return 0, nil
 	}
 	if s.dbErr != nil {
-		return s.dbErr
+		return 0, s.dbErr
 	}
 	// Track the amount of time wasted on committing the storage trie
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.db.StorageCommits += time.Since(start) }(time.Now())
 	}
-	root, err := s.trie.Commit(nil)
+	root, committed, err := s.trie.Commit(nil)
 	if err == nil {
 		s.data.Root = root
 	}
 	if s.data.Root != emptyRoot {
 		db.CacheStorage(s.addrHash, s.data.Root, s.trie)
 	}
-	return err
+	return committed, err
 }
 
 // AddBalance adds amount to s's balance.
@@ -551,9 +549,6 @@ func (s *StateObject) SetBalance(amount *big.Int) {
 func (s *StateObject) setBalance(amount *big.Int) {
 	s.data.Balance = amount
 }
-
-// Return the gas back to the origin. Used by the Virtual machine or Closures
-func (s *StateObject) ReturnGas(gas *big.Int) {}
 
 func (s *StateObject) deepCopy(db *StateDB) *StateObject {
 	stateObject := newObject(db, s.address, s.data)

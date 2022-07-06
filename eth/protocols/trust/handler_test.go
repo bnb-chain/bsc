@@ -49,6 +49,7 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 		//Config:    params.TestChainConfig,
 		ExtraData: make([]byte, 32+common.AddressLength+65),
 		Alloc:     core.GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
+		BaseFee:   big.NewInt(0),
 	}
 	copy(genspec.ExtraData[32:], testAddr[:])
 	genesis := genspec.MustCommit(db)

@@ -142,6 +142,8 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 		root:    p.root,
 		fetches: make(map[common.Hash]Trie), // Active prefetchers use the fetches map
 
+		abortChan:         make(chan *subfetcher),
+		closeChan:         make(chan struct{}),
 		deliveryMissMeter: p.deliveryMissMeter,
 		accountLoadMeter:  p.accountLoadMeter,
 		accountDupMeter:   p.accountDupMeter,
@@ -320,6 +322,7 @@ func (sf *subfetcher) loop() {
 	}
 	if err != nil {
 		log.Debug("Trie prefetcher failed opening trie", "root", sf.root, "err", err)
+		return
 	}
 	sf.trie = trie
 
@@ -361,12 +364,11 @@ func (sf *subfetcher) loop() {
 
 				default:
 					// No termination request yet, prefetch the next entry
-					taskid := string(task)
-					if _, ok := sf.seen[taskid]; ok {
+					if _, ok := sf.seen[string(task)]; ok {
 						sf.dups++
 					} else {
 						sf.trie.TryGet(task)
-						sf.seen[taskid] = struct{}{}
+						sf.seen[string(task)] = struct{}{}
 					}
 				}
 			}

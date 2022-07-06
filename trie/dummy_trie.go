@@ -19,6 +19,7 @@ package trie
 import (
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -69,9 +70,8 @@ func (t *EmptyTrie) GetKey(shaKey []byte) []byte {
 	return nil
 }
 
-func (t *EmptyTrie) Commit(onleaf LeafCallback) (root common.Hash, err error) {
-
-	return common.Hash{}, nil
+func (t *EmptyTrie) Commit(onleaf LeafCallback) (root common.Hash, committed int, err error) {
+	return common.Hash{}, 0, nil
 }
 
 func (t *EmptyTrie) Hash() common.Hash {
@@ -92,5 +92,10 @@ func (t *EmptyTrie) ResetCopy() *EmptyTrie {
 // NodeIterator returns an iterator that returns nodes of the underlying trie. Iteration
 // starts at the key after the given start key.
 func (t *EmptyTrie) NodeIterator(start []byte) NodeIterator {
+	return nil
+}
+
+// TryUpdateAccount abstract an account write in the trie.
+func (t *EmptyTrie) TryUpdateAccount(key []byte, account *types.StateAccount) error {
 	return nil
 }
