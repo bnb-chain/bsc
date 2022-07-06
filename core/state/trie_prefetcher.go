@@ -193,11 +193,9 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 	// If the prefetcher is already a copy, duplicate the data
 	if p.fetches != nil {
 		fetcherCopied := &triePrefetcher{
-			db:             p.db,
-			root:           p.root,
-			fetches:        make(map[common.Hash]Trie, len(p.fetches)),
-			abortChan:      make(chan *subfetcher),
-			closeAbortChan: make(chan struct{}),
+			db:      p.db,
+			root:    p.root,
+			fetches: make(map[common.Hash]Trie, len(p.fetches)),
 		}
 		// p.fetches is safe to be accessed outside of mainloop
 		// if the triePrefetcher is active, fetches will not be used in mainLoop
