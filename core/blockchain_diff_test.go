@@ -545,6 +545,7 @@ func newTwoForkedBlockchains(len1, len2 int) (chain1 *BlockChain, chain2 *BlockC
 	if _, err := chain1.InsertChain(bs1); err != nil {
 		panic(err)
 	}
+	waitDifflayerCached(chain1, bs1)
 
 	// Create a database pre-initialize with a genesis block
 	db2 := rawdb.NewMemoryDatabase()
@@ -574,8 +575,19 @@ func newTwoForkedBlockchains(len1, len2 int) (chain1 *BlockChain, chain2 *BlockC
 	if _, err := chain2.InsertChain(bs2); err != nil {
 		panic(err)
 	}
+	waitDifflayerCached(chain2, bs2)
 
 	return chain1, chain2
+}
+
+func waitDifflayerCached(chain *BlockChain, bs types.Blocks) {
+	for _, block := range bs {
+		// wait for all difflayers to be cached
+		for block.Header().TxHash != types.EmptyRootHash &&
+			chain.GetTrustedDiffLayer(block.Hash()) == nil {
+			time.Sleep(time.Second)
+		}
+	}
 }
 
 func testGetRootByDiffHash(t *testing.T, chain1, chain2 *BlockChain, blockNumber uint64, status types.VerifyStatus) {
