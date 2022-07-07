@@ -116,18 +116,17 @@ func (p *triePrefetcher) mainLoop() {
 			}
 			fetcher.schedule(pMsg.keys)
 
-			// fecther could be interrupted by call to trie() or close()
-			if fetcher.interrupted {
-				continue
-			}
-			// no need to run parallel trie prefetch if threshold is not reached.
-			if atomic.LoadUint32(&fetcher.pendingSize) > parallelTriePrefetchThreshold {
-				fetcher.scheduleParallel(pMsg.keys)
+			select {
+			case <-fetcher.term:
+			default:
+				// no need to run parallel trie prefetch if threshold is not reached.
+				if atomic.LoadUint32(&fetcher.pendingSize) > parallelTriePrefetchThreshold {
+					fetcher.scheduleParallel(pMsg.keys)
+				}
 			}
 
 		case <-p.closeMainChan:
 			for _, fetcher := range p.fetchers {
-				fetcher.interrupted = true
 				p.abortChan <- fetcher // safe to do multiple times
 				<-fetcher.term
 				if metrics.EnabledExpensive {
@@ -279,7 +278,6 @@ func (p *triePrefetcher) trie(root common.Hash) Trie {
 		p.deliveryMissMeter.Mark(1)
 		return nil
 	}
-	fetcher.interrupted = true
 
 	// Interrupt the prefetcher if it's by any chance still running and return
 	// a copy of any pre-loaded trie.
@@ -342,7 +340,6 @@ type subfetcher struct {
 
 	accountHash common.Hash
 
-	interrupted  bool
 	pendingSize  uint32
 	paraChildren []*subfetcher // Parallel trie prefetch for address of massive change
 }
