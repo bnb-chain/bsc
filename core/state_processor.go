@@ -406,7 +406,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// initialise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
-
+	signer := types.MakeSigner(p.config, header.Number)
 	// do trie prefetch for the big state trie tree in advance based transaction's From/To address.
 	go func() {
 		// trie prefetcher is thread safe now, ok now to prefetch in a separate routine
@@ -427,7 +427,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			}
 		}
 
-		msg, err := tx.AsMessage(types.MakeSigner(p.config, header.Number), header.BaseFee)
+		msg, err := tx.AsMessage(signer, header.BaseFee)
 		if err != nil {
 			bloomProcessors.Close()
 			return statedb, nil, nil, 0, err
