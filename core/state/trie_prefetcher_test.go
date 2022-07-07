@@ -43,23 +43,33 @@ func filledStateDB() *StateDB {
 	return state
 }
 
+func prefetchGuaranteed(prefetcher *triePrefetcher, root common.Hash, keys [][]byte, accountHash common.Hash) {
+	prefetcher.prefetch(root, keys, accountHash)
+	for {
+		if len(prefetcher.prefetchChan) == 0 {
+			return
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+}
+
 func TestCopyAndClose(t *testing.T) {
 	db := filledStateDB()
 	prefetcher := newTriePrefetcher(db.db, db.originalRoot, "")
 	skey := common.HexToHash("aaa")
-	prefetcher.prefetch(db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
-	prefetcher.prefetch(db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
+	prefetchGuaranteed(prefetcher, db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
+	prefetchGuaranteed(prefetcher, db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
 	time.Sleep(1 * time.Second)
 	a := prefetcher.trie(db.originalRoot)
-	prefetcher.prefetch(db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
+	prefetchGuaranteed(prefetcher, db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
 	b := prefetcher.trie(db.originalRoot)
 	cpy := prefetcher.copy()
-	cpy.prefetch(db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
-	cpy.prefetch(db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
+	prefetchGuaranteed(cpy, db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
+	prefetchGuaranteed(cpy, db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
 	c := cpy.trie(db.originalRoot)
 	prefetcher.close()
 	cpy2 := cpy.copy()
-	cpy2.prefetch(db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
+	prefetchGuaranteed(cpy2, db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
 	d := cpy2.trie(db.originalRoot)
 	cpy.close()
 	cpy2.close()
@@ -72,7 +82,7 @@ func TestUseAfterClose(t *testing.T) {
 	db := filledStateDB()
 	prefetcher := newTriePrefetcher(db.db, db.originalRoot, "")
 	skey := common.HexToHash("aaa")
-	prefetcher.prefetch(db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
+	prefetchGuaranteed(prefetcher, db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
 	a := prefetcher.trie(db.originalRoot)
 	prefetcher.close()
 	b := prefetcher.trie(db.originalRoot)
@@ -88,7 +98,7 @@ func TestCopyClose(t *testing.T) {
 	db := filledStateDB()
 	prefetcher := newTriePrefetcher(db.db, db.originalRoot, "")
 	skey := common.HexToHash("aaa")
-	prefetcher.prefetch(db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
+	prefetchGuaranteed(prefetcher, db.originalRoot, [][]byte{skey.Bytes()}, common.Hash{})
 	cpy := prefetcher.copy()
 	a := prefetcher.trie(db.originalRoot)
 	b := cpy.trie(db.originalRoot)
