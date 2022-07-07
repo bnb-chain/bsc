@@ -307,7 +307,7 @@ var (
 			if err != nil {
 				return *outstruct, err
 			}
-			{{range $i, $t := .Normalized.Outputs}} 
+			{{range $i, $t := .Normalized.Outputs}}
 			outstruct.{{.Name}} = *abi.ConvertType(out[{{$i}}], new({{bindtype .Type $structs}})).(*{{bindtype .Type $structs}}){{end}}
 
 			return *outstruct, err
@@ -317,7 +317,7 @@ var (
 			}
 			{{range $i, $t := .Normalized.Outputs}}
 			out{{$i}} := *abi.ConvertType(out[{{$i}}], new({{bindtype .Type $structs}})).(*{{bindtype .Type $structs}}){{end}}
-			
+
 			return {{range $i, $t := .Normalized.Outputs}}out{{$i}}, {{end}} err
 			{{end}}
 		}
@@ -360,7 +360,7 @@ var (
 		}
 	{{end}}
 
-	{{if .Fallback}} 
+	{{if .Fallback}}
 		// Fallback is a paid mutator transaction binding the contract fallback function.
 		//
 		// Solidity: {{.Fallback.Original.String}}
@@ -374,16 +374,16 @@ var (
 		func (_{{$contract.Type}} *{{$contract.Type}}Session) Fallback(calldata []byte) (*types.Transaction, error) {
 		  return _{{$contract.Type}}.Contract.Fallback(&_{{$contract.Type}}.TransactOpts, calldata)
 		}
-	
+
 		// Fallback is a paid mutator transaction binding the contract fallback function.
-		// 
+		//
 		// Solidity: {{.Fallback.Original.String}}
 		func (_{{$contract.Type}} *{{$contract.Type}}TransactorSession) Fallback(calldata []byte) (*types.Transaction, error) {
 		  return _{{$contract.Type}}.Contract.Fallback(&_{{$contract.Type}}.TransactOpts, calldata)
 		}
 	{{end}}
 
-	{{if .Receive}} 
+	{{if .Receive}}
 		// Receive is a paid mutator transaction binding the contract receive function.
 		//
 		// Solidity: {{.Receive.Original.String}}
@@ -397,9 +397,9 @@ var (
 		func (_{{$contract.Type}} *{{$contract.Type}}Session) Receive() (*types.Transaction, error) {
 		  return _{{$contract.Type}}.Contract.Receive(&_{{$contract.Type}}.TransactOpts)
 		}
-	
+
 		// Receive is a paid mutator transaction binding the contract receive function.
-		// 
+		//
 		// Solidity: {{.Receive.Original.String}}
 		func (_{{$contract.Type}} *{{$contract.Type}}TransactorSession) Receive() (*types.Transaction, error) {
 		  return _{{$contract.Type}}.Contract.Receive(&_{{$contract.Type}}.TransactOpts)
@@ -672,7 +672,7 @@ import java.util.*;
 	// Fallback is a paid mutator transaction binding the contract fallback function.
 	//
 	// Solidity: {{.Fallback.Original.String}}
-	public Transaction Fallback(TransactOpts opts, byte[] calldata) throws Exception { 
+	public Transaction Fallback(TransactOpts opts, byte[] calldata) throws Exception {
 		return this.Contract.rawTransact(opts, calldata);
 	}
     {{end}}
@@ -681,7 +681,7 @@ import java.util.*;
 	// Receive is a paid mutator transaction binding the contract receive function.
 	//
 	// Solidity: {{.Receive.Original.String}}
-	public Transaction Receive(TransactOpts opts) throws Exception { 
+	public Transaction Receive(TransactOpts opts) throws Exception {
 		return this.Contract.rawTransact(opts, null);
 	}
     {{end}}

@@ -69,7 +69,7 @@ const schema string = `
         transaction: Transaction!
     }
 
-    #EIP-2718 
+    #EIP-2718
     type AccessTuple{
         address: Address!
         storageKeys : [Bytes32!]

@@ -103,7 +103,7 @@ the trie clean cache with default directory will be deleted.
 geth offline prune-block for block data in ancientdb.
 The amount of blocks expected for remaining after prune can be specified via block-amount-reserved in this command,
 will prune and only remain the specified amount of old block data in ancientdb.
-the brief workflow is to backup the the number of this specified amount blocks backward in original ancientdb 
+the brief workflow is to backup the the number of this specified amount blocks backward in original ancientdb
 into new ancient_backup, then delete the original ancientdb dir and rename the ancient_backup to original one for replacement,
 finally assemble the statedb and new ancientDb together.
 The purpose of doing it is because the block data will be moved into the ancient store when it
@@ -171,7 +171,7 @@ geth snapshot traverse-rawstate <state-root>
 will traverse the whole state from the given root and will abort if any referenced
 trie node or contract code is missing. This command can be used for state integrity
 verification. The default checking target is the HEAD state. It's basically identical
-to traverse-state, but the check granularity is smaller. 
+to traverse-state, but the check granularity is smaller.
 
 It's also usable without snapshot enabled.
 `,
