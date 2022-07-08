@@ -237,7 +237,11 @@ func (s *StateDB) StopPrefetcher() {
 }
 
 func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
-	if s.prefetcher == nil {
+	s.prefetcherLock.Lock()
+	prefetcher := s.prefetcher // s.prefetcher could be resetted to nil
+	s.prefetcherLock.Unlock()
+
+	if prefetcher == nil {
 		return
 	}
 	accounts := make(map[common.Address]struct{}, block.Transactions().Len()<<1)
@@ -258,7 +262,7 @@ func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer)
 	}
 
 	if len(addressesToPrefetch) > 0 {
-		s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+		prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
 	}
 }
 
