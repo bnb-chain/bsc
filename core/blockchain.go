@@ -351,7 +351,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 						continue
 					}
 					bc.currentBlock.Store(currentBlock)
-
+                                        headBlockGauge.Update(int64(currentBlock.NumberU64()))                                       
 					currentHeader := currentBlock.Header()
 					if head := rawdb.ReadHeadHeaderHash(bc.db); head != (common.Hash{}) {
 						if header := bc.GetHeaderByHash(head); header != nil {
