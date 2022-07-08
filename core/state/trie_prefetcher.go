@@ -380,37 +380,36 @@ func (sf *subfetcher) scheduleParallel(keys [][]byte) {
 	if childrenNum > 0 {
 		// To feed the children first, if they are hungry.
 		// A child can handle keys with capacity of parallelTriePrefetchCapacity.
-		startIndex := len(keys) % childrenNum // randomly select the start child to avoid always feed the first one
+		childIndex := len(keys) % childrenNum // randomly select the start child to avoid always feed the first one
 		for i := 0; i < childrenNum; i++ {
-			child := sf.paraChildren[startIndex]
-			startIndex = (startIndex + 1) % childrenNum
-			feedNum := parallelTriePrefetchCapacity - atomic.LoadUint32(&child.pendingSize)
-			if feedNum == 0 { // the child is full, can't process more tasks
+			child := sf.paraChildren[childIndex]
+			childIndex = (childIndex + 1) % childrenNum
+			if atomic.LoadUint32(&child.pendingSize) >= parallelTriePrefetchCapacity {
+				// the child is already full, skip it
 				continue
 			}
-			if keyIndex+feedNum > uint32(len(keys)) {
-				feedNum = uint32(len(keys)) - keyIndex
+			feedNum := parallelTriePrefetchCapacity - atomic.LoadUint32(&child.pendingSize)
+			if keyIndex+feedNum >= uint32(len(keys)) {
+				// the new arrived keys are all consumed by children.
+				child.schedule(keys[keyIndex:])
+				return
 			}
 			child.schedule(keys[keyIndex : keyIndex+feedNum])
 			keyIndex += feedNum
-			if keyIndex == uint32(len(keys)) {
-				return // the new arrived keys were all consumed by children.
-			}
 		}
 	}
 	// Children did not comsume all the keys, to create new subfetch to handle left keys.
 	keysLeft := keys[keyIndex:]
-
-	// the pending tasks exceed the threshold and have not been consumed up by its children
-	dispatchSize := len(keysLeft)
-	for i := 0; i*parallelTriePrefetchCapacity < dispatchSize; i++ {
+	keysLeftSize := len(keysLeft)
+	for i := 0; i*parallelTriePrefetchCapacity < keysLeftSize; i++ {
 		child := newSubfetcher(sf.db, sf.root, sf.accountHash)
+		sf.paraChildren = append(sf.paraChildren, child)
 		endIndex := (i + 1) * parallelTriePrefetchCapacity
-		if endIndex > dispatchSize {
-			endIndex = dispatchSize
+		if endIndex >= keysLeftSize {
+			child.schedule(keysLeft[i*parallelTriePrefetchCapacity:])
+			return
 		}
 		child.schedule(keysLeft[i*parallelTriePrefetchCapacity : endIndex])
-		sf.paraChildren = append(sf.paraChildren, child)
 	}
 }
 
