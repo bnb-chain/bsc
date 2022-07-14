@@ -375,7 +375,7 @@ func (s *StateObject) finalise(prefetch bool) {
 	//		}
 	//	}
 
-	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot && s.data.Root != dummyRoot {
+	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
 		s.db.prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
 	}
 	if len(s.dirtyStorage) > 0 {
