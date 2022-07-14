@@ -50,10 +50,6 @@ var (
 	// emptyRoot is the known root hash of an empty trie.
 	emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
-	// dummyRoot is the dummy account root before corrected in pipecommit sync mode,
-	// the value is 542e5fc2709de84248e9bce43a9c0c8943a608029001360f8ab55bf113b23d28
-	dummyRoot = crypto.Keccak256Hash([]byte("dummy_account_root"))
-
 	emptyAddr = crypto.Keccak256Hash(common.Address{}.Bytes())
 )
 
@@ -1036,7 +1032,6 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 	}
 	if accounts, err := snapshot.Accounts(); err == nil && accounts != nil {
 		for _, obj := range s.stateObjects {
-			//			if !obj.deleted && !obj.rootCorrected && obj.data.Root == dummyRoot {
 			if !obj.deleted {
 				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist {
 					obj.data.Root = common.BytesToHash(account.Root)
@@ -1052,12 +1047,7 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			if s.snap != nil {
-				//root := obj.data.Root
 				s.populateSnapStorage(obj)
-				//storageChanged := s.populateSnapStorage(obj)
-				//if storageChanged {
-				//	root = dummyRoot
-				//}
 				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
 			}
 		}
