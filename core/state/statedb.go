@@ -1036,7 +1036,8 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 	}
 	if accounts, err := snapshot.Accounts(); err == nil && accounts != nil {
 		for _, obj := range s.stateObjects {
-			if !obj.deleted && !obj.rootCorrected && obj.data.Root == dummyRoot {
+			//			if !obj.deleted && !obj.rootCorrected && obj.data.Root == dummyRoot {
+			if !obj.deleted {
 				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist {
 					obj.data.Root = common.BytesToHash(account.Root)
 					obj.rootCorrected = true
@@ -1051,12 +1052,13 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			if s.snap != nil {
-				root := obj.data.Root
-				storageChanged := s.populateSnapStorage(obj)
-				if storageChanged {
-					root = dummyRoot
-				}
-				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, root, obj.data.CodeHash)
+				//root := obj.data.Root
+				s.populateSnapStorage(obj)
+				//storageChanged := s.populateSnapStorage(obj)
+				//if storageChanged {
+				//	root = dummyRoot
+				//}
+				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
 			}
 		}
 	}
