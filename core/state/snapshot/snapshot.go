@@ -113,9 +113,6 @@ type Snapshot interface {
 	// CorrectAccounts updates account data for storing the correct data during pipecommit
 	CorrectAccounts(map[common.Hash][]byte)
 
-	// AccountsCorrected checks whether the account data has been corrected during pipecommit
-	AccountsCorrected() bool
-
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*Account, error)
