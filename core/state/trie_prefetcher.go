@@ -398,7 +398,7 @@ func (sf *subfetcher) scheduleParallel(keys [][]byte) {
 			keyIndex += feedNum
 		}
 	}
-	// Children did not comsume all the keys, to create new subfetch to handle left keys.
+	// Children did not consume all the keys, to create new subfetch to handle left keys.
 	keysLeft := keys[keyIndex:]
 	keysLeftSize := len(keysLeft)
 	for i := 0; i*parallelTriePrefetchCapacity < keysLeftSize; i++ {

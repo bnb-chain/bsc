@@ -407,11 +407,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
 	signer := types.MakeSigner(p.config, header.Number)
-	// do trie prefetch for the big state trie tree in advance based transaction's From/To address.
-	go func() {
-		// trie prefetcher is thread safe now, ok now to prefetch in a separate routine
-		statedb.TriePrefetchInAdvance(block, signer)
-	}()
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
