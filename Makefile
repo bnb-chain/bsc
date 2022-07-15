@@ -160,4 +160,6 @@ geth-windows-amd64:
 	@ls -ld $(GOBIN)/geth-windows-* | grep amd64
 
 docker:
-	docker build --pull -t bnb-chain/bsc:$(BSC_VERSION) -t bnb-chain/bsc:latest -f Dockerfile .
+	docker build --pull -t bnb-chain/bsc:$(BSC_VERSION) -t bnb-chain/bsc:latest \
+		--build-arg BSC_VERSION=$(BSC_VERSION) \
+		-f Dockerfile .

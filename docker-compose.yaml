@@ -15,7 +15,7 @@ services:
   bsc:
     build:
       context: .
-      dockerfile: Dockerfile.debug
+      dockerfile: Dockerfile
     command: ["--http.addr", "0.0.0.0", "--http.port", "8545", "--http.vhosts", "*", "--verbosity", "3"]
     environment:
       - BSC_NETWORK=mainnet
