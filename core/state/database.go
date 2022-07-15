@@ -23,6 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
 	lru "github.com/hashicorp/golang-lru"
@@ -74,6 +75,9 @@ type Database interface {
 
 	// Purge cache
 	Purge()
+
+	// NoTries returns whether the database has tries storage.
+	NoTries() bool
 }
 
 // Trie is a Ethereum Merkle Patricia trie.
@@ -88,6 +92,9 @@ type Trie interface {
 	// not be modified by the caller. If a node was not found in the database, a
 	// trie.MissingNodeError is returned.
 	TryGet(key []byte) ([]byte, error)
+
+	// TryUpdateAccount abstract an account write in the trie.
+	TryUpdateAccount(key []byte, account *types.StateAccount) error
 
 	// TryUpdate associates key with value in the trie. If value has length zero, any
 	// existing value is deleted from the trie. The value bytes must not be modified
@@ -105,7 +112,7 @@ type Trie interface {
 
 	// Commit writes all nodes to the trie's memory database, tracking the internal
 	// and external (for account tries) references.
-	Commit(onleaf trie.LeafCallback) (common.Hash, error)
+	Commit(onleaf trie.LeafCallback) (common.Hash, int, error)
 
 	// NodeIterator returns an iterator that returns nodes of the trie. Iteration
 	// starts at the key after the given start key.
@@ -134,10 +141,12 @@ func NewDatabase(db ethdb.Database) Database {
 func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 	csc, _ := lru.New(codeSizeCacheSize)
 	cc, _ := lru.New(codeCacheSize)
+	noTries := config != nil && config.NoTries
 	return &cachingDB{
 		db:            trie.NewDatabaseWithConfig(db, config),
 		codeSizeCache: csc,
 		codeCache:     cc,
+		noTries:       noTries,
 	}
 }
 
@@ -146,6 +155,7 @@ func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Datab
 	cc, _ := lru.New(codeCacheSize)
 	atc, _ := lru.New(accountTrieCacheSize)
 	stc, _ := lru.New(storageTrieCacheSize)
+	noTries := config != nil && config.NoTries
 
 	database := &cachingDB{
 		db:               trie.NewDatabaseWithConfig(db, config),
@@ -153,8 +163,11 @@ func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Datab
 		codeCache:        cc,
 		accountTrieCache: atc,
 		storageTrieCache: stc,
+		noTries:          noTries,
 	}
-	go database.purgeLoop()
+	if !noTries {
+		go database.purgeLoop()
+	}
 	return database
 }
 
@@ -164,6 +177,7 @@ type cachingDB struct {
 	codeCache        *lru.Cache
 	accountTrieCache *lru.Cache
 	storageTrieCache *lru.Cache
+	noTries          bool
 }
 
 type triePair struct {
@@ -187,6 +201,9 @@ func (db *cachingDB) purgeLoop() {
 
 // OpenTrie opens the main account trie at a specific root hash.
 func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
+	if db.noTries {
+		return trie.NewEmptyTrie(), nil
+	}
 	if db.accountTrieCache != nil {
 		if tr, exist := db.accountTrieCache.Get(root); exist {
 			return tr.(Trie).(*trie.SecureTrie).Copy(), nil
@@ -201,6 +218,9 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 
 // OpenStorageTrie opens the storage trie of an account.
 func (db *cachingDB) OpenStorageTrie(addrHash, root common.Hash) (Trie, error) {
+	if db.noTries {
+		return trie.NewEmptyTrie(), nil
+	}
 	if db.storageTrieCache != nil {
 		if tries, exist := db.storageTrieCache.Get(addrHash); exist {
 			triesPairs := tries.([3]*triePair)
@@ -246,6 +266,10 @@ func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie
 	}
 }
 
+func (db *cachingDB) NoTries() bool {
+	return db.noTries
+}
+
 func (db *cachingDB) Purge() {
 	if db.storageTrieCache != nil {
 		db.storageTrieCache.Purge()
@@ -262,6 +286,8 @@ func (db *cachingDB) CopyTrie(t Trie) Trie {
 	}
 	switch t := t.(type) {
 	case *trie.SecureTrie:
+		return t.Copy()
+	case *trie.EmptyTrie:
 		return t.Copy()
 	default:
 		panic(fmt.Errorf("unknown trie type %T", t))

@@ -26,6 +26,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -39,28 +40,39 @@ type Chain struct {
 	chainConfig *params.ChainConfig
 }
 
-func (c *Chain) WriteTo(writer io.Writer) error {
-	for _, block := range c.blocks {
-		if err := rlp.Encode(writer, block); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // Len returns the length of the chain.
 func (c *Chain) Len() int {
 	return len(c.blocks)
 }
 
-// TD calculates the total difficulty of the chain.
-func (c *Chain) TD(height int) *big.Int { // TODO later on channge scheme so that the height is included in range
+// TD calculates the total difficulty of the chain at the
+// chain head.
+func (c *Chain) TD() *big.Int {
 	sum := big.NewInt(0)
-	for _, block := range c.blocks[:height] {
+	for _, block := range c.blocks[:c.Len()] {
 		sum.Add(sum, block.Difficulty())
 	}
 	return sum
+}
+
+// TotalDifficultyAt calculates the total difficulty of the chain
+// at the given block height.
+func (c *Chain) TotalDifficultyAt(height int) *big.Int {
+	sum := big.NewInt(0)
+	if height >= c.Len() {
+		return sum
+	}
+	for _, block := range c.blocks[:height+1] {
+		sum.Add(sum, block.Difficulty())
+	}
+	return sum
+}
+
+func (c *Chain) RootAt(height int) common.Hash {
+	if height < c.Len() {
+		return c.blocks[height].Root()
+	}
+	return common.Hash{}
 }
 
 // ForkID gets the fork id of the chain.

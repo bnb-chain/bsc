@@ -40,6 +40,32 @@ var (
 	EmptyUncleHash = rlpHash([]*Header(nil))
 )
 
+type VerifyStatus struct {
+	Code uint16
+	Msg  string
+}
+
+var (
+	// StatusVerified means the processing of request going as expected and found the root correctly.
+	StatusVerified          = VerifyStatus{Code: 0x100}
+	StatusFullVerified      = VerifyStatus{Code: 0x101, Msg: "state root full verified"}
+	StatusPartiallyVerified = VerifyStatus{Code: 0x102, Msg: "state root partially verified, because of difflayer not found"}
+
+	// StatusFailed means the request has something wrong.
+	StatusFailed           = VerifyStatus{Code: 0x200}
+	StatusDiffHashMismatch = VerifyStatus{Code: 0x201, Msg: "verify failed because of blockhash mismatch with diffhash"}
+	StatusImpossibleFork   = VerifyStatus{Code: 0x202, Msg: "verify failed because of impossible fork detected"}
+
+	// StatusUncertain means verify node can't give a certain result of the request.
+	StatusUncertain    = VerifyStatus{Code: 0x300}
+	StatusBlockTooNew  = VerifyStatus{Code: 0x301, Msg: "can’t verify because of block number larger than current height more than 11"}
+	StatusBlockNewer   = VerifyStatus{Code: 0x302, Msg: "can’t verify because of block number larger than current height"}
+	StatusPossibleFork = VerifyStatus{Code: 0x303, Msg: "can’t verify because of possible fork detected"}
+
+	// StatusUnexpectedError is unexpected internal error.
+	StatusUnexpectedError = VerifyStatus{Code: 0x400, Msg: "can’t verify because of unexpected internal error"}
+)
+
 // A BlockNonce is a 64-bit hash which proves (combined with the
 // mix-hash) that a sufficient amount of computation has been carried
 // out on a block.
@@ -86,6 +112,15 @@ type Header struct {
 	Extra       []byte         `json:"extraData"        gencodec:"required"`
 	MixDigest   common.Hash    `json:"mixHash"`
 	Nonce       BlockNonce     `json:"nonce"`
+
+	// BaseFee was added by EIP-1559 and is ignored in legacy headers.
+	BaseFee *big.Int `json:"baseFeePerGas" rlp:"optional"`
+
+	/*
+		TODO (MariusVanDerWijden) Add this field once needed
+		// Random was added during the merge and contains the BeaconState randomness
+		Random common.Hash `json:"random" rlp:"optional"`
+	*/
 }
 
 // field type overrides for gencodec
@@ -96,6 +131,7 @@ type headerMarshaling struct {
 	GasUsed    hexutil.Uint64
 	Time       hexutil.Uint64
 	Extra      hexutil.Bytes
+	BaseFee    *hexutil.Big
 	Hash       common.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
 }
 
@@ -128,6 +164,11 @@ func (h *Header) SanityCheck() error {
 	}
 	if eLen := len(h.Extra); eLen > 100*1024 {
 		return fmt.Errorf("too large block extradata: size %d", eLen)
+	}
+	if h.BaseFee != nil {
+		if bfLen := h.BaseFee.BitLen(); bfLen > 256 {
+			return fmt.Errorf("too large base fee: bitlen %d", bfLen)
+		}
 	}
 	return nil
 }
@@ -233,6 +274,9 @@ func CopyHeader(h *Header) *Header {
 	if cpy.Number = new(big.Int); h.Number != nil {
 		cpy.Number.Set(h.Number)
 	}
+	if h.BaseFee != nil {
+		cpy.BaseFee = new(big.Int).Set(h.BaseFee)
+	}
 	if len(h.Extra) > 0 {
 		cpy.Extra = make([]byte, len(h.Extra))
 		copy(cpy.Extra, h.Extra)
@@ -292,6 +336,13 @@ func (b *Block) TxHash() common.Hash      { return b.header.TxHash }
 func (b *Block) ReceiptHash() common.Hash { return b.header.ReceiptHash }
 func (b *Block) UncleHash() common.Hash   { return b.header.UncleHash }
 func (b *Block) Extra() []byte            { return common.CopyBytes(b.header.Extra) }
+
+func (b *Block) BaseFee() *big.Int {
+	if b.header.BaseFee == nil {
+		return nil
+	}
+	return new(big.Int).Set(b.header.BaseFee)
+}
 
 func (b *Block) Header() *Header { return CopyHeader(b.header) }
 
@@ -371,6 +422,24 @@ func (b *Block) Hash() common.Hash {
 
 type Blocks []*Block
 
+// HeaderParentHashFromRLP returns the parentHash of an RLP-encoded
+// header. If 'header' is invalid, the zero hash is returned.
+func HeaderParentHashFromRLP(header []byte) common.Hash {
+	// parentHash is the first list element.
+	listContent, _, err := rlp.SplitList(header)
+	if err != nil {
+		return common.Hash{}
+	}
+	parentHash, _, err := rlp.SplitString(listContent)
+	if err != nil {
+		return common.Hash{}
+	}
+	if len(parentHash) != 32 {
+		return common.Hash{}
+	}
+	return common.BytesToHash(parentHash)
+}
+
 type DiffLayer struct {
 	BlockHash common.Hash
 	Number    uint64
@@ -380,10 +449,10 @@ type DiffLayer struct {
 	Accounts  []DiffAccount
 	Storages  []DiffStorage
 
-	DiffHash common.Hash
+	DiffHash atomic.Value
 }
 
-type extDiffLayer struct {
+type ExtDiffLayer struct {
 	BlockHash common.Hash
 	Number    uint64
 	Receipts  []*ReceiptForStorage // Receipts are duplicated stored to simplify the logic
@@ -395,7 +464,7 @@ type extDiffLayer struct {
 
 // DecodeRLP decodes the Ethereum
 func (d *DiffLayer) DecodeRLP(s *rlp.Stream) error {
-	var ed extDiffLayer
+	var ed ExtDiffLayer
 	if err := s.Decode(&ed); err != nil {
 		return err
 	}
@@ -415,7 +484,7 @@ func (d *DiffLayer) EncodeRLP(w io.Writer) error {
 	for i, receipt := range d.Receipts {
 		storageReceipts[i] = (*ReceiptForStorage)(receipt)
 	}
-	return rlp.Encode(w, extDiffLayer{
+	return rlp.Encode(w, ExtDiffLayer{
 		BlockHash: d.BlockHash,
 		Number:    d.Number,
 		Receipts:  storageReceipts,
@@ -453,6 +522,13 @@ type DiffStorage struct {
 	Keys    []string
 	Vals    [][]byte
 }
+
+func (storage *DiffStorage) Len() int { return len(storage.Keys) }
+func (storage *DiffStorage) Swap(i, j int) {
+	storage.Keys[i], storage.Keys[j] = storage.Keys[j], storage.Keys[i]
+	storage.Vals[i], storage.Vals[j] = storage.Vals[j], storage.Vals[i]
+}
+func (storage *DiffStorage) Less(i, j int) bool { return storage.Keys[i] < storage.Keys[j] }
 
 type DiffAccountsInTx struct {
 	TxHash   common.Hash

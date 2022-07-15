@@ -26,14 +26,22 @@ var (
 	// ErrKnownBlock is returned when a block to import is already known locally.
 	ErrKnownBlock = errors.New("block already known")
 
-	// ErrBlacklistedHash is returned if a block to import is on the blacklist.
-	ErrBlacklistedHash = errors.New("blacklisted hash")
+	// ErrBannedHash is returned if a block to import is on the banned list.
+	ErrBannedHash = errors.New("banned hash")
 
 	// ErrNoGenesis is returned when there is no Genesis Block.
 	ErrNoGenesis = errors.New("genesis not found in chain")
 
+	errSideChainReceipts = errors.New("side blocks can't be accepted as ancient chain data")
+
 	// ErrDiffLayerNotFound is returned when diff layer not found.
 	ErrDiffLayerNotFound = errors.New("diff layer not found")
+
+	// ErrDiffLayerNotFound is returned when block - 11 has not been verified by the remote verifier.
+	ErrAncestorHasNotBeenVerified = errors.New("block ancestor has not been verified")
+
+	// ErrCurrentBlockNotFound is returned when current block not found.
+	ErrCurrentBlockNotFound = errors.New("current block not found")
 
 	// ErrKnownBadBlock is return when the block is a known bad block
 	ErrKnownBadBlock = errors.New("already known bad block")
@@ -54,6 +62,10 @@ var (
 	// ErrNonceTooHigh is returned if the nonce of a transaction is higher than the
 	// next one expected based on the local chain.
 	ErrNonceTooHigh = errors.New("nonce too high")
+
+	// ErrNonceMax is returned if the nonce of a transaction sender account has
+	// maximum allowed value and would become invalid if incremented.
+	ErrNonceMax = errors.New("nonce has max value")
 
 	// ErrGasLimitReached is returned by the gas pool if the amount of gas required
 	// by a transaction is higher than what's left in the block.
@@ -77,4 +89,23 @@ var (
 	// ErrTxTypeNotSupported is returned if a transaction is not supported in the
 	// current network configuration.
 	ErrTxTypeNotSupported = types.ErrTxTypeNotSupported
+
+	// ErrTipAboveFeeCap is a sanity error to ensure no one is able to specify a
+	// transaction with a tip higher than the total fee cap.
+	ErrTipAboveFeeCap = errors.New("max priority fee per gas higher than max fee per gas")
+
+	// ErrTipVeryHigh is a sanity error to avoid extremely big numbers specified
+	// in the tip field.
+	ErrTipVeryHigh = errors.New("max priority fee per gas higher than 2^256-1")
+
+	// ErrFeeCapVeryHigh is a sanity error to avoid extremely big numbers specified
+	// in the fee cap field.
+	ErrFeeCapVeryHigh = errors.New("max fee per gas higher than 2^256-1")
+
+	// ErrFeeCapTooLow is returned if the transaction fee cap is less than the
+	// the base fee of the block.
+	ErrFeeCapTooLow = errors.New("max fee per gas less than block base fee")
+
+	// ErrSenderNoEOA is returned if the sender of a transaction is a contract.
+	ErrSenderNoEOA = errors.New("sender not an eoa")
 )

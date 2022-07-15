@@ -162,7 +162,7 @@ func (b *testBackend) StateAtTransaction(ctx context.Context, block *types.Block
 	// Recompute transactions up to the target index.
 	signer := types.MakeSigner(b.chainConfig, block.Number())
 	for idx, tx := range block.Transactions() {
-		msg, _ := tx.AsMessage(signer)
+		msg, _ := tx.AsMessage(signer, block.BaseFee())
 		txContext := core.NewEVMTxContext(msg)
 		context := core.NewEVMBlockContext(block.Header(), b.chain, nil)
 		if idx == txIndex {
@@ -193,13 +193,13 @@ func TestTraceCall(t *testing.T) {
 		// Transfer from account[0] to account[1]
 		//    value: 1000 wei
 		//    fee:   0 wei
-		tx, _ := types.SignTx(types.NewTransaction(uint64(i), accounts[1].addr, big.NewInt(1000), params.TxGas, big.NewInt(0), nil), signer, accounts[0].key)
+		tx, _ := types.SignTx(types.NewTransaction(uint64(i), accounts[1].addr, big.NewInt(1000), params.TxGas, b.BaseFee(), nil), signer, accounts[0].key)
 		b.AddTx(tx)
 	}))
 
 	var testSuite = []struct {
 		blockNumber rpc.BlockNumber
-		call        ethapi.CallArgs
+		call        ethapi.TransactionArgs
 		config      *TraceCallConfig
 		expectErr   error
 		expect      interface{}
@@ -207,7 +207,7 @@ func TestTraceCall(t *testing.T) {
 		// Standard JSON trace upon the genesis, plain transfer.
 		{
 			blockNumber: rpc.BlockNumber(0),
-			call: ethapi.CallArgs{
+			call: ethapi.TransactionArgs{
 				From:  &accounts[0].addr,
 				To:    &accounts[1].addr,
 				Value: (*hexutil.Big)(big.NewInt(1000)),
@@ -224,7 +224,7 @@ func TestTraceCall(t *testing.T) {
 		// Standard JSON trace upon the head, plain transfer.
 		{
 			blockNumber: rpc.BlockNumber(genBlocks),
-			call: ethapi.CallArgs{
+			call: ethapi.TransactionArgs{
 				From:  &accounts[0].addr,
 				To:    &accounts[1].addr,
 				Value: (*hexutil.Big)(big.NewInt(1000)),
@@ -241,7 +241,7 @@ func TestTraceCall(t *testing.T) {
 		// Standard JSON trace upon the non-existent block, error expects
 		{
 			blockNumber: rpc.BlockNumber(genBlocks + 1),
-			call: ethapi.CallArgs{
+			call: ethapi.TransactionArgs{
 				From:  &accounts[0].addr,
 				To:    &accounts[1].addr,
 				Value: (*hexutil.Big)(big.NewInt(1000)),
@@ -253,7 +253,7 @@ func TestTraceCall(t *testing.T) {
 		// Standard JSON trace upon the latest block
 		{
 			blockNumber: rpc.LatestBlockNumber,
-			call: ethapi.CallArgs{
+			call: ethapi.TransactionArgs{
 				From:  &accounts[0].addr,
 				To:    &accounts[1].addr,
 				Value: (*hexutil.Big)(big.NewInt(1000)),
@@ -270,7 +270,7 @@ func TestTraceCall(t *testing.T) {
 		// Standard JSON trace upon the pending block
 		{
 			blockNumber: rpc.PendingBlockNumber,
-			call: ethapi.CallArgs{
+			call: ethapi.TransactionArgs{
 				From:  &accounts[0].addr,
 				To:    &accounts[1].addr,
 				Value: (*hexutil.Big)(big.NewInt(1000)),
@@ -322,7 +322,7 @@ func TestTraceTransaction(t *testing.T) {
 		// Transfer from account[0] to account[1]
 		//    value: 1000 wei
 		//    fee:   0 wei
-		tx, _ := types.SignTx(types.NewTransaction(uint64(i), accounts[1].addr, big.NewInt(1000), params.TxGas, big.NewInt(0), nil), signer, accounts[0].key)
+		tx, _ := types.SignTx(types.NewTransaction(uint64(i), accounts[1].addr, big.NewInt(1000), params.TxGas, b.BaseFee(), nil), signer, accounts[0].key)
 		b.AddTx(tx)
 		target = tx.Hash()
 	}))
@@ -356,7 +356,7 @@ func TestTraceBlock(t *testing.T) {
 		// Transfer from account[0] to account[1]
 		//    value: 1000 wei
 		//    fee:   0 wei
-		tx, _ := types.SignTx(types.NewTransaction(uint64(i), accounts[1].addr, big.NewInt(1000), params.TxGas, big.NewInt(0), nil), signer, accounts[0].key)
+		tx, _ := types.SignTx(types.NewTransaction(uint64(i), accounts[1].addr, big.NewInt(1000), params.TxGas, b.BaseFee(), nil), signer, accounts[0].key)
 		b.AddTx(tx)
 	}))
 
@@ -431,7 +431,7 @@ func TestTracingWithOverrides(t *testing.T) {
 		// Transfer from account[0] to account[1]
 		//    value: 1000 wei
 		//    fee:   0 wei
-		tx, _ := types.SignTx(types.NewTransaction(uint64(i), accounts[1].addr, big.NewInt(1000), params.TxGas, big.NewInt(0), nil), signer, accounts[0].key)
+		tx, _ := types.SignTx(types.NewTransaction(uint64(i), accounts[1].addr, big.NewInt(1000), params.TxGas, b.BaseFee(), nil), signer, accounts[0].key)
 		b.AddTx(tx)
 	}))
 	randomAccounts := newAccounts(3)
@@ -442,7 +442,7 @@ func TestTracingWithOverrides(t *testing.T) {
 	}
 	var testSuite = []struct {
 		blockNumber rpc.BlockNumber
-		call        ethapi.CallArgs
+		call        ethapi.TransactionArgs
 		config      *TraceCallConfig
 		expectErr   error
 		want        string
@@ -450,7 +450,7 @@ func TestTracingWithOverrides(t *testing.T) {
 		// Call which can only succeed if state is state overridden
 		{
 			blockNumber: rpc.PendingBlockNumber,
-			call: ethapi.CallArgs{
+			call: ethapi.TransactionArgs{
 				From:  &randomAccounts[0].addr,
 				To:    &randomAccounts[1].addr,
 				Value: (*hexutil.Big)(big.NewInt(1000)),
@@ -465,13 +465,13 @@ func TestTracingWithOverrides(t *testing.T) {
 		// Invalid call without state overriding
 		{
 			blockNumber: rpc.PendingBlockNumber,
-			call: ethapi.CallArgs{
+			call: ethapi.TransactionArgs{
 				From:  &randomAccounts[0].addr,
 				To:    &randomAccounts[1].addr,
 				Value: (*hexutil.Big)(big.NewInt(1000)),
 			},
 			config:    &TraceCallConfig{},
-			expectErr: core.ErrInsufficientFundsForTransfer,
+			expectErr: core.ErrInsufficientFunds,
 		},
 		// Successful simple contract call
 		//
@@ -491,7 +491,7 @@ func TestTracingWithOverrides(t *testing.T) {
 		//  }
 		{
 			blockNumber: rpc.PendingBlockNumber,
-			call: ethapi.CallArgs{
+			call: ethapi.TransactionArgs{
 				From: &randomAccounts[0].addr,
 				To:   &randomAccounts[2].addr,
 				Data: newRPCBytes(common.Hex2Bytes("8381f58a")), // call number()
