@@ -1001,7 +1001,11 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		}
 	}
 	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
-		s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+		if !s.snap.AccountsCorrected() {
+			s.prefetcher.prefetch(s.snap.Parent().Root(), addressesToPrefetch, emptyAddr)
+		} else {
+			s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+		}
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()

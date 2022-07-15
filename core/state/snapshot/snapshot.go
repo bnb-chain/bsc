@@ -131,6 +131,8 @@ type Snapshot interface {
 	// Storage directly retrieves the storage data associated with a particular hash,
 	// within a particular account.
 	Storage(accountHash, storageHash common.Hash) ([]byte, error)
+
+	Parent() snapshot
 }
 
 // snapshot is the internal version of the snapshot data layer that supports some
@@ -143,7 +145,7 @@ type snapshot interface {
 	//
 	// Note, the method is an internal helper to avoid type switching between the
 	// disk and diff layers. There is no locking involved.
-	Parent() snapshot
+	//	Parent() snapshot
 
 	// Update creates a new layer on top of the existing snapshot diff tree with
 	// the specified data items.
