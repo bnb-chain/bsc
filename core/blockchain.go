@@ -1898,7 +1898,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			// 2.do trie prefetch for MPT trie node cache
 			// it is for the big state trie tree, prefetch based on transaction's From/To address.
 			// trie prefetcher is thread safe now, ok to prefetch in a separate routine
-			go statedb.TriePrefetchInAdvance(block, signer)
+			go throwaway.TriePrefetchInAdvance(block, signer)
 		}
 
 		//Process block using the parent state as reference point

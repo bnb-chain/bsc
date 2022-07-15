@@ -237,10 +237,9 @@ func (s *StateDB) StopPrefetcher() {
 }
 
 func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
-	s.prefetcherLock.Lock()
-	prefetcher := s.prefetcher // s.prefetcher could be resetted to nil
-	s.prefetcherLock.Unlock()
-
+	// s is a temporary throw away StateDB, s.prefetcher won't be resetted to nil
+	// so no need to add lock for s.prefetcher
+	prefetcher := s.prefetcher
 	if prefetcher == nil {
 		return
 	}
