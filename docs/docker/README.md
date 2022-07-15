@@ -7,9 +7,9 @@ You can build the docker image with the following commands:
 make docker
 ```
 
-To build a specific release versiob, e.g. v1.1.9, with the following commands:
+To build a specific release version, e.g. v1.1.9, with the following commands:
 ```bash
-BSC_VERSION=v1.1.10 make docker
+BSC_VERSION=v1.1.9 make docker
 ```
 
 If your build machine has an ARM-based chip, like Apple silicon (M1), the image is built for `linux/arm64` by default. To build for `x86_64`, apply the --platform arg:
