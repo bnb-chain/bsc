@@ -1,14 +1,24 @@
 version: '3.6'
 services:
+  init:
+    image: alpine
+    command:
+      - /bin/sh
+      - -c
+      - |
+        chown -R 1000:1000 /data
+
+        echo "done grany data directory permission"
+    volumes:
+      - data:/data
+
   bsc:
     build:
       context: .
-      dockerfile: Dockerfile
-    command: ["--http.addr", "0.0.0.0", "--ws.addr", "0.0.0.0"]
+      dockerfile: Dockerfile.debug
+    command: ["--http.addr", "0.0.0.0", "--http.port", "8545", "--http.vhosts", "*", "--verbosity", "3"]
     environment:
-      - LOG_LEVEL=3
-      - DIFF_SYNC=true
-      - CACHE=4096
+      - BSC_NETWORK=mainnet
     restart: unless-stopped
     ports:
       - 30311:30311
@@ -21,3 +31,13 @@ services:
       retries: 5
       start_period: 10s
       timeout: 3s
+    volumes:
+      - data:/data
+
+volumes:
+  data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/tmp/bsc/data'

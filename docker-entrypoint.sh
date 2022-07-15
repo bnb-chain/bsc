@@ -12,7 +12,14 @@ ln -sf ./${NETWORK}/genesis.json genesis.json
 # Default log to console
 sed -i '/Node\.LogConfig/,/^$/d' ./${NETWORK}/config.toml
 
-# Init genesis state:
-geth --datadir ${DATA_DIR} init genesis.json
+# TO-DO: remove after the default value in config.toml updated to empty
+# Issue: https://github.com/bnb-chain/bsc/issues/994
+sed -i 's/^HTTPHost.*/HTTPHost = "0.0.0.0"/'  ./${NETWORK}/config.toml
 
-exec "/usr/local/bin/geth" "--config" ${BSC_CONFIG} "--datadir" ${DATA_DIR} "$@" 
+# Init genesis state if geth not exist
+GETH_DIR=${DATA_DIR}/geth
+if [ ! -d "$GETH_DIR" ]; then
+  geth --datadir ${DATA_DIR} init genesis.json
+fi
+
+exec "geth" "--config" ${BSC_CONFIG} "--datadir" ${DATA_DIR} "$@"
