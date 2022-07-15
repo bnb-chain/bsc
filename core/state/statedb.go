@@ -224,7 +224,6 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 		} else {
 			s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, common.Hash{}, namespace)
 		}
-		//		s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, namespace)
 	}
 }
 

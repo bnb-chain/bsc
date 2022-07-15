@@ -132,6 +132,7 @@ type Snapshot interface {
 	// within a particular account.
 	Storage(accountHash, storageHash common.Hash) ([]byte, error)
 
+	//Parent used to get parent layer
 	Parent() snapshot
 }
 
@@ -139,13 +140,6 @@ type Snapshot interface {
 // additional methods compared to the public API.
 type snapshot interface {
 	Snapshot
-
-	// Parent returns the subsequent layer of a snapshot, or nil if the base was
-	// reached.
-	//
-	// Note, the method is an internal helper to avoid type switching between the
-	// disk and diff layers. There is no locking involved.
-	//	Parent() snapshot
 
 	// Update creates a new layer on top of the existing snapshot diff tree with
 	// the specified data items.
