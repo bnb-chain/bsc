@@ -80,6 +80,7 @@ type StateDB struct {
 	originalRoot   common.Hash // The pre-state root, before any changes were made
 	expectedRoot   common.Hash // The state root in the block header
 	stateRoot      common.Hash // The calculation result of IntermediateRoot
+	prefetchRoot   common.Hash
 
 	trie           Trie
 	noTrie         bool
@@ -1002,7 +1003,15 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 	}
 	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
 		if !s.snap.AccountsCorrected() {
-			s.prefetcher.prefetch(s.snap.Parent().Root(), addressesToPrefetch, emptyAddr)
+			if s.prefetchRoot == (common.Hash{}) {
+				parent := s.snap.Parent()
+				if parent != nil {
+					s.prefetchRoot = parent.Root()
+					s.prefetcher.prefetch(s.prefetchRoot, addressesToPrefetch, emptyAddr)
+				}
+			} else {
+				s.prefetcher.prefetch(s.prefetchRoot, addressesToPrefetch, emptyAddr)
+			}
 		} else {
 			s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
 		}
