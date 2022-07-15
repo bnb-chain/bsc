@@ -32,11 +32,11 @@ WORKDIR ${BSC_HOME}
 
 COPY --from=builder /go-ethereum/build/bin/geth /usr/local/bin/
 
-COPY docker-entrypoint.sh ./
+COPY docker-entrypoint.sh .github/release.env ./
 
-RUN curl -LO https://github.com/bnb-chain/bsc/releases/download/${BSC_VERSION}/mainnet.zip \
+RUN curl -LO $(cat release.env | cut -d'=' -f2 | head -n 1) \
     && unzip mainnet.zip -d mainnet && rm mainnet.zip \
-    && curl -LO https://github.com/bnb-chain/bsc/releases/download/${BSC_VERSION}/testnet.zip \
+    && curl -LO $(cat release.env | cut -d'=' -f2 | sed -n 2p) \
     && unzip testnet.zip -d testnet && rm testnet.zip
 
 RUN chmod +x docker-entrypoint.sh \
