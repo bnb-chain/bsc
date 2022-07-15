@@ -13,7 +13,7 @@ GOBIN = ./build/bin
 GO ?= latest
 GORUN = env GO111MODULE=on go run
 
-BSC_VERSION ?= 1.1.11
+BSC_VERSION ?= v1.1.11
 
 geth:
 	$(GORUN) build/ci.go install ./cmd/geth
