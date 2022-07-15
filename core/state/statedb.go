@@ -236,6 +236,36 @@ func (s *StateDB) StopPrefetcher() {
 	}
 }
 
+func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
+	s.prefetcherLock.Lock()
+	prefetcher := s.prefetcher // s.prefetcher could be resetted to nil
+	s.prefetcherLock.Unlock()
+
+	if prefetcher == nil {
+		return
+	}
+	accounts := make(map[common.Address]struct{}, block.Transactions().Len()<<1)
+	for _, tx := range block.Transactions() {
+		from, err := types.Sender(signer, tx)
+		if err != nil {
+			// invalid block, skip prefetch
+			return
+		}
+		accounts[from] = struct{}{}
+		if tx.To() != nil {
+			accounts[*tx.To()] = struct{}{}
+		}
+	}
+	addressesToPrefetch := make([][]byte, 0, len(accounts))
+	for addr := range accounts {
+		addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
+	}
+
+	if len(addressesToPrefetch) > 0 {
+		prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+	}
+}
+
 // Mark that the block is processed by diff layer
 func (s *StateDB) SetExpectedStateRoot(root common.Hash) {
 	s.expectedRoot = root
