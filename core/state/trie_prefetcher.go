@@ -192,28 +192,6 @@ func (p *triePrefetcher) mainLoop() {
 						p.storageWasteMeter.Mark(int64(len(fetcher.seen)))
 
 					}
-					//					if fetcher.root == p.root {
-					//						p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
-					//						p.accountDupMeter.Mark(int64(fetcher.dups))
-					//						p.accountSkipMeter.Mark(int64(len(fetcher.tasks)))
-					//						fetcher.lock.Lock()
-					//						for _, key := range fetcher.used {
-					//							delete(fetcher.seen, string(key))
-					//						}
-					//						fetcher.lock.Unlock()
-					//						p.accountWasteMeter.Mark(int64(len(fetcher.seen)))
-					//					} else {
-					//						p.storageLoadMeter.Mark(int64(len(fetcher.seen)))
-					//						p.storageDupMeter.Mark(int64(fetcher.dups))
-					//						p.storageSkipMeter.Mark(int64(len(fetcher.tasks)))
-					//
-					//						fetcher.lock.Lock()
-					//						for _, key := range fetcher.used {
-					//							delete(fetcher.seen, string(key))
-					//						}
-					//						fetcher.lock.Unlock()
-					//						p.storageWasteMeter.Mark(int64(len(fetcher.seen)))
-					//					}
 				}
 			}
 			close(p.closeMainDoneChan)
