@@ -72,6 +72,7 @@ type StateObject struct {
 	address       common.Address
 	addrHash      common.Hash // hash of ethereum address of the account
 	data          types.StateAccount
+	rootPrefetch  common.Hash
 	db            *StateDB
 	rootCorrected bool // To indicate whether the root has been corrected in pipecommit mode
 
@@ -375,8 +376,19 @@ func (s *StateObject) finalise(prefetch bool) {
 		}
 	}
 
-	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot && s.data.Root != dummyRoot {
-		s.db.prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
+	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
+		if s.data.Root == dummyRoot {
+			if s.rootPrefetch == (common.Hash{}) {
+				if account, err := s.db.snap.Account(s.addrHash); err == nil && account != nil {
+					s.rootPrefetch = common.BytesToHash(account.Root)
+					s.db.prefetcher.prefetch(s.rootPrefetch, slotsToPrefetch, s.addrHash)
+				}
+			} else {
+				s.db.prefetcher.prefetch(s.rootPrefetch, slotsToPrefetch, s.addrHash)
+			}
+		} else {
+			s.db.prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
+		}
 	}
 	if len(s.dirtyStorage) > 0 {
 		s.dirtyStorage = make(Storage)
