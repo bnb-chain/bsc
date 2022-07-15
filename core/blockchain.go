@@ -1892,7 +1892,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			// do Prefetch in a separate goroutine to avoid blocking the critical path
 
 			// 1.do state prefetch for snapshot cache
-			throwaway := statedb.Copy()
+			throwaway := statedb.CopyDoPrefetch()
 			go bc.prefetcher.Prefetch(block, throwaway, &bc.vmConfig, interruptCh)
 
 			// 2.do trie prefetch for MPT trie node cache
