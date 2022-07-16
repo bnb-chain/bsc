@@ -37,7 +37,7 @@ WORKDIR ${BSC_HOME}
 
 COPY --from=builder /go-ethereum/build/bin/geth /usr/local/bin/
 
-COPY docker-entrypoint.sh .github/release.env ./
+COPY docker-entrypoint.sh ./
 
 RUN curl -LO https://github.com/bnb-chain/bsc/releases/download/${BSC_VERSION}/mainnet.zip \
     && unzip mainnet.zip -d mainnet && rm mainnet.zip \
