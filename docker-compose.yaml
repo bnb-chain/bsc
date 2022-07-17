@@ -16,28 +16,39 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["--http.addr", "0.0.0.0", "--http.port", "8545", "--http.vhosts", "*", "--verbosity", "3"]
     environment:
-      - BSC_NETWORK=mainnet
+      - NETWORK=mainnet
     restart: unless-stopped
     ports:
+      - 30303:30303
       - 30311:30311
-      - 6060:6060
       - 8545:8545
       - 8546:8546
+      - 8575:8575
+      - 8576:8576
     healthcheck:
-      test: netstat -tunlp | grep 8545 > /dev/null; if [ 0 != $$? ]; then exit 1; else exit 0; fi;
+      test: |
+        [[ "$NETWORK" == "testnet" ]] && PORT=8575 || PORT=8545;
+        netstat -tunlp | grep $PORT > /dev/null; if [ 0 != $$? ]; then exit 1; else exit 0; fi;
+
       interval: 5s
       retries: 5
       start_period: 10s
       timeout: 3s
     volumes:
       - data:/data
+      - config:/bsc/config
 
 volumes:
+  config:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/tmp/bsc/config/mainnet'
   data:
     driver: local
     driver_opts:
       type: 'none'
       o: 'bind'
-      device: '/tmp/bsc/data'
+      device: '/tmp/bsc/data/mainnet'

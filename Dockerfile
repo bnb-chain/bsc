@@ -14,7 +14,6 @@ RUN cd /go-ethereum && go run build/ci.go install ./cmd/geth
 # Pull Geth into a second stage deploy alpine container
 FROM alpine:3.16.0
 
-ARG BSC_VERSION=v1.1.11
 ARG BSC_USER=bsc
 ARG BSC_USER_UID=1000
 ARG BSC_USER_GID=1000
@@ -23,26 +22,24 @@ ENV BSC_HOME=/bsc
 ENV HOME=${BSC_HOME}
 ENV DATA_DIR=/data
 
-RUN apk add --no-cache ca-certificates~=20211220 jq~=1.6 bash~=5.1.16-r2 bind-tools~=9.16.29-r0 tini~=0.19.0 curl==7.83.1-r2 sed~=4.8-r0 \
+ENV PACKAGES ca-certificates~=20211220 jq~=1.6 \
+  bash~=5.1.16-r2 bind-tools~=9.16.29-r0 tini~=0.19.0 \
+  grep~=3.7 curl==7.83.1-r2 sed~=4.8-r0
+
+RUN apk add --no-cache $PACKAGES \
   && rm -rf /var/cache/apk/* \
   && addgroup -g ${BSC_USER_GID} ${BSC_USER} \
   && adduser -u ${BSC_USER_UID} -G ${BSC_USER} --shell /sbin/nologin --no-create-home -D ${BSC_USER} \
   && addgroup ${BSC_USER} tty \
   && sed -i -e "s/bin\/sh/bin\/bash/" /etc/passwd  
 
-RUN echo "[ ! -z \"\$TERM\" -a -r /etc/motd ] && cat /etc/motd" >> /etc/bash/bashrc \
-    && echo "Version: ${BSC_VERSION}" > /etc/motd
+RUN echo "[ ! -z \"\$TERM\" -a -r /etc/motd ] && cat /etc/motd" >> /etc/bash/bashrc
 
 WORKDIR ${BSC_HOME}
 
 COPY --from=builder /go-ethereum/build/bin/geth /usr/local/bin/
 
 COPY docker-entrypoint.sh ./
-
-RUN curl -LO https://github.com/bnb-chain/bsc/releases/download/${BSC_VERSION}/mainnet.zip \
-    && unzip mainnet.zip -d mainnet && rm mainnet.zip \
-    && curl -LO https://github.com/bnb-chain/bsc/releases/download/${BSC_VERSION}/testnet.zip \
-    && unzip testnet.zip -d testnet && rm testnet.zip
 
 RUN chmod +x docker-entrypoint.sh \
     && mkdir -p ${DATA_DIR} \

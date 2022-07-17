@@ -9,8 +9,6 @@ GOBIN = ./build/bin
 GO ?= latest
 GORUN = env GO111MODULE=on go run
 
-BSC_VERSION ?= v1.1.11
-
 geth:
 	$(GORUN) build/ci.go install ./cmd/geth
 	@echo "Done building."
@@ -64,6 +62,4 @@ devtools:
 	@type "protoc" 2> /dev/null || echo 'Please install protoc'
 
 docker:
-	docker build --pull -t bnb-chain/bsc:$(BSC_VERSION) -t bnb-chain/bsc:latest \
-		--build-arg BSC_VERSION=$(BSC_VERSION) \
-		-f Dockerfile .
+	docker build --pull -t bnb-chain/bsc:latest -f Dockerfile .
