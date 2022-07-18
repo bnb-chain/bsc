@@ -49,10 +49,7 @@ VOLUME ${DATA_DIR}
 
 USER ${BSC_USER_UID}:${BSC_USER_GID}
 
-# mainnet rpc ws p2p
-EXPOSE 8545 8546 30311
-
-# testnet rpc ws p2p
-EXPOSE 8575 8576 30303
+# rpc ws graphql
+EXPOSE 8545 8546 8547
 
 ENTRYPOINT ["/sbin/tini", "--", "./docker-entrypoint.sh"]
