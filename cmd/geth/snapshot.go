@@ -337,18 +337,37 @@ func pruneBlock(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	var newAncientPath string
-	oldAncientPath := ctx.GlobalString(utils.AncientFlag.Name)
-	if !filepath.IsAbs(oldAncientPath) {
-		// force absolute paths, which often fail due to the splicing of relative paths
-		return errors.New("datadir.ancient not abs path")
+
+	// Most of the problems reported by many users when using the prune-block tool are due to 
+	// incorrect directory settings. Here, the default directory and relative directory are 
+	// canceled, and the user is forced to formulate an absolute path to guide the user to run 
+	// the prune-block command correctly.
+	if !ctx.GlobalIsSet(utils.DataDirFlag.Name) {
+		return errors.New("datadir must be set")
+	} else {
+		datadir := ctx.GlobalString(utils.DataDirFlag.Name)
+		if !filepath.IsAbs(datadir) {
+			// force absolute paths, which often fail due to the splicing of relative paths
+			return errors.New("datadir not abs path")
+		}
+	}
+
+	var oldAncientPath string
+	if !ctx.GlobalIsSet(utils.AncientFlag.Name) {
+		return errors.New("datadir.ancient must be set")
+	} else {
+		oldAncientPath = ctx.GlobalString(utils.AncientFlag.Name)
+		if !filepath.IsAbs(oldAncientPath) {
+			// force absolute paths, which often fail due to the splicing of relative paths
+			return errors.New("datadir.ancient not abs path")
+		}
 	}
 
 	path, _ := filepath.Split(oldAncientPath)
 	if path == "" {
 		return errors.New("prune failed, did not specify the AncientPath")
 	}
-	newAncientPath = filepath.Join(path, "ancient_back")
+	newAncientPath := filepath.Join(path, "ancient_back")
 
 	blockpruner := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
 

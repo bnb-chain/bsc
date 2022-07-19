@@ -103,7 +103,7 @@ type freezer struct {
 //
 // The 'tables' argument defines the data tables. If the value of a map
 // entry is true, snappy compression is disabled for the table.
-func newFreezer(datadir string, namespace string, readonly bool, maxTableSize uint32, tables map[string]bool) (*freezer, error) {
+func newFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32, tables map[string]bool) (*freezer, error) {
 	// Create the initial freezer object
 	var (
 		readMeter  = metrics.NewRegisteredMeter(namespace+"ancient/read", nil)
@@ -131,6 +131,7 @@ func newFreezer(datadir string, namespace string, readonly bool, maxTableSize ui
 		instanceLock: lock,
 		trigger:      make(chan chan struct{}),
 		quit:         make(chan struct{}),
+		offset:       offset,
 	}
 
 	// Create the tables.
@@ -162,10 +163,14 @@ func newFreezer(datadir string, namespace string, readonly bool, maxTableSize ui
 		return nil, err
 	}
 
+	// Some blocks in ancientDB may have already been frozen and been pruned, so adding the offset to
+	// reprensent the absolute number of blocks already frozen.
+	freezer.frozen += offset
+
 	// Create the write batch.
 	freezer.writeBatch = newFreezerBatch(freezer)
 
-	log.Info("Opened ancient database", "database", datadir, "readonly", readonly)
+	log.Info("Opened ancient database", "database", datadir, "readonly", readonly, "frozen", freezer.frozen)
 	return freezer, nil
 }
 
@@ -368,6 +373,7 @@ func (f *freezer) repair() error {
 			return err
 		}
 	}
+	log.Info("AncientDB item count", "items", min)
 	atomic.StoreUint64(&f.frozen, min)
 	return nil
 }
