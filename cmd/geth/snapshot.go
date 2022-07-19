@@ -338,10 +338,10 @@ func pruneBlock(ctx *cli.Context) error {
 		return err
 	}
 
-	// Most of the problems reported by many users when using the prune-block tool are due to 
-	// incorrect directory settings. Here, the default directory and relative directory are 
-	// canceled, and the user is forced to formulate an absolute path to guide the user to run 
-	// the prune-block command correctly.
+	// Most of the problems reported by many users when using the prune-block
+	// tool are due to incorrect directory settings. Here, the default directory
+	// and relative directory are canceled, and the user is forced to formulate
+	// an absolute path to guide the user to run the prune-block command correctly.
 	if !ctx.GlobalIsSet(utils.DataDirFlag.Name) {
 		return errors.New("datadir must be set")
 	} else {
