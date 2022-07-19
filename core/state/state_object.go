@@ -455,9 +455,11 @@ func (s *StateObject) updateTrie(db Database) Trie {
 	}
 	wg.Wait()
 
-	if s.db.prefetcher != nil {
-		s.db.prefetcher.used(s.data.Root, usedStorage)
+	prefetcher := s.db.prefetcher
+	if prefetcher != nil {
+		prefetcher.used(s.data.Root, usedStorage)
 	}
+
 	if len(s.pendingStorage) > 0 {
 		s.pendingStorage = make(Storage)
 	}

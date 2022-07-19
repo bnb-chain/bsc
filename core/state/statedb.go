@@ -857,8 +857,9 @@ func (s *StateDB) Copy() *StateDB {
 	// If there's a prefetcher running, make an inactive copy of it that can
 	// only access data but does not actively preload (since the user will not
 	// know that they need to explicitly terminate an active copy).
-	if s.prefetcher != nil {
-		state.prefetcher = s.prefetcher.copy()
+	prefetcher := s.prefetcher
+	if prefetcher != nil {
+		state.prefetcher = prefetcher.copy()
 	}
 	if s.snaps != nil {
 		// In order for the miner to be able to use and make additions
@@ -970,8 +971,9 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
 		}
 	}
-	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
-		s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+	prefetcher := s.prefetcher
+	if prefetcher != nil && len(addressesToPrefetch) > 0 {
+		prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
