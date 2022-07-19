@@ -147,7 +147,7 @@ var (
 	}
 	AncientFlag = DirectoryFlag{
 		Name:  "datadir.ancient",
-		Usage: "Data directory for ancient chain segments (default = inside chaindata)",
+		Usage: "Data directory for ancient chain segments (default = inside chaindata, '${datadir}/geth/chaindata/ancient/')",
 	}
 	DiffFlag = DirectoryFlag{
 		Name:  "datadir.diff",
