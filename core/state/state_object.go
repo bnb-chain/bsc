@@ -412,12 +412,10 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		s.originStorage[key] = value
 		var v []byte
 		if (value == common.Hash{}) {
-			s.setError(tr.TryDelete(key[:]))
 			s.db.StorageDeleted += 1
 		} else {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-			s.setError(tr.TryUpdate(key[:], v))
 			s.db.StorageUpdated += 1
 		}
 		dirtyStorage[key] = v
@@ -447,10 +445,10 @@ func (s *StateObject) updateTrie(db Database) Trie {
 				storage = make(map[string][]byte, len(dirtyStorage))
 				s.db.snapStorage[s.address] = storage
 			}
+			s.db.snapStorageMux.Unlock()
 			for key, value := range dirtyStorage {
 				storage[string(key[:])] = value
 			}
-			s.db.snapStorageMux.Unlock()
 		}()
 	}
 	wg.Wait()
