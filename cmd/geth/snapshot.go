@@ -330,10 +330,22 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 }
 
 func pruneBlock(ctx *cli.Context) error {
-	stack, config := makeConfigNode(ctx)
+	var (
+		stack   *node.Node
+		config  gethConfig
+		chaindb ethdb.Database
+		err     error
+
+		oldAncientPath      string
+		newAncientPath      string
+		blockAmountReserved uint64
+		blockpruner         *pruner.BlockPruner
+	)
+
+	stack, config = makeConfigNode(ctx)
 	defer stack.Close()
-	blockAmountReserved := ctx.GlobalUint64(utils.BlockAmountReserved.Name)
-	chaindb, err := accessDb(ctx, stack)
+	blockAmountReserved = ctx.GlobalUint64(utils.BlockAmountReserved.Name)
+	chaindb, err = accessDb(ctx, stack)
 	if err != nil {
 		return err
 	}
@@ -352,7 +364,6 @@ func pruneBlock(ctx *cli.Context) error {
 		}
 	}
 
-	var oldAncientPath string
 	if !ctx.GlobalIsSet(utils.AncientFlag.Name) {
 		return errors.New("datadir.ancient must be set")
 	} else {
@@ -367,9 +378,9 @@ func pruneBlock(ctx *cli.Context) error {
 	if path == "" {
 		return errors.New("prune failed, did not specify the AncientPath")
 	}
-	newAncientPath := filepath.Join(path, "ancient_back")
+	newAncientPath = filepath.Join(path, "ancient_back")
 
-	blockpruner := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
+	blockpruner = pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
 
 	lock, exist, err := fileutil.Flock(filepath.Join(oldAncientPath, "PRUNEFLOCK"))
 	if err != nil {

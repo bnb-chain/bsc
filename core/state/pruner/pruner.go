@@ -437,7 +437,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 		}
 		// Write into new ancient_back db.
 		if _, err := rawdb.WriteAncientBlocks(frdbBack, []*types.Block{block}, []types.Receipts{receipts}, td); err != nil {
-			log.Error("write new ancient error", "error", err)
+			log.Error("failed to write new ancient", "error", err)
 			return err
 		}
 		// Print the log every 5s for better trace.
