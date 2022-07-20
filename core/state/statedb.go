@@ -229,7 +229,11 @@ func (s *StateDB) StopPrefetcher() {
 	if s.noTrie {
 		return
 	}
-	s.prefetcher.close()
+	s.prefetcherLock.Lock()
+	if s.prefetcher != nil {
+		s.prefetcher.close()
+	}
+	s.prefetcherLock.Unlock()
 }
 
 func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
