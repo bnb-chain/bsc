@@ -1356,19 +1356,17 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	}
 	// Finalize any pending changes and merge everything into the tries
 	if s.lightProcessed {
+		defer s.StopPrefetcher()
 		root, diff, err := s.LightCommit()
 		if err != nil {
-			s.StopPrefetcher()
 			return root, diff, err
 		}
 		for _, postFunc := range postCommitFuncs {
 			err = postFunc()
 			if err != nil {
-				s.StopPrefetcher()
 				return root, diff, err
 			}
 		}
-		s.StopPrefetcher()
 		return root, diff, nil
 	}
 	var diffLayer *types.DiffLayer
