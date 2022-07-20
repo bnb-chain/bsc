@@ -436,8 +436,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 			return consensus.ErrUnknownAncestor
 		}
 		// Write into new ancient_back db.
-		_, err := rawdb.WriteAncientBlocks(frdbBack, []*types.Block{block}, []types.Receipts{receipts}, td)
-		if err != nil {
+		if _, err := rawdb.WriteAncientBlocks(frdbBack, []*types.Block{block}, []types.Receipts{receipts}, td); err != nil {
 			log.Error("write new ancient error", "error", err)
 			return err
 		}
