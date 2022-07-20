@@ -1,0 +1,54 @@
+version: '3.6'
+services:
+  init:
+    image: alpine
+    command:
+      - /bin/sh
+      - -c
+      - |
+        chown -R 1000:1000 /data
+
+        echo "done grany data directory permission"
+    volumes:
+      - data:/data
+
+  bsc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NETWORK=mainnet
+    restart: unless-stopped
+    ports:
+      - 30303:30303
+      - 30311:30311
+      - 8545:8545
+      - 8546:8546
+      - 8575:8575
+      - 8576:8576
+    healthcheck:
+      test: |
+        [[ "$NETWORK" == "testnet" ]] && PORT=8575 || PORT=8545;
+        netstat -tunlp | grep $PORT > /dev/null; if [ 0 != $$? ]; then exit 1; else exit 0; fi;
+
+      interval: 5s
+      retries: 5
+      start_period: 10s
+      timeout: 3s
+    volumes:
+      - data:/data
+      - config:/bsc/config
+
+volumes:
+  config:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/tmp/bsc/config/mainnet'
+  data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/tmp/bsc/data/mainnet'
