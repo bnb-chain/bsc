@@ -229,12 +229,7 @@ func (s *StateDB) StopPrefetcher() {
 	if s.noTrie {
 		return
 	}
-	s.prefetcherLock.Lock()
-	defer s.prefetcherLock.Unlock()
-	if s.prefetcher != nil {
-		s.prefetcher.close()
-		s.prefetcher = nil
-	}
+	s.prefetcher.close()
 }
 
 func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
@@ -1356,20 +1351,24 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 // Commit writes the state to the underlying in-memory trie database.
 func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
 	if s.dbErr != nil {
+		s.StopPrefetcher()
 		return common.Hash{}, nil, fmt.Errorf("commit aborted due to earlier error: %v", s.dbErr)
 	}
 	// Finalize any pending changes and merge everything into the tries
 	if s.lightProcessed {
 		root, diff, err := s.LightCommit()
 		if err != nil {
+			s.StopPrefetcher()
 			return root, diff, err
 		}
 		for _, postFunc := range postCommitFuncs {
 			err = postFunc()
 			if err != nil {
+				s.StopPrefetcher()
 				return root, diff, err
 			}
 		}
+		s.StopPrefetcher()
 		return root, diff, nil
 	}
 	var diffLayer *types.DiffLayer
@@ -1568,6 +1567,7 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	if s.pipeCommit {
 		go commmitTrie()
 	} else {
+		defer s.StopPrefetcher()
 		commitFuncs = append(commitFuncs, commmitTrie)
 	}
 	commitRes := make(chan error, len(commitFuncs))
