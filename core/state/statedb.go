@@ -1018,7 +1018,15 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 					} else {
 						obj.data.Root = common.BytesToHash(account.Root)
 					}
-					//		obj.rootCorrected = true
+				} else {
+					if account, err := s.snap.Account(crypto.Keccak256Hash(obj.address[:])); err == nil && account != nil {
+						if len(account.Root) == 0 {
+							obj.data.Root = emptyRoot
+						} else {
+							obj.data.Root = common.BytesToHash(account.Root)
+						}
+
+					}
 				}
 			}
 		}
@@ -1516,7 +1524,7 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 					defer close(snapUpdated)
 					// State verification pipeline - accounts root are not calculated here, just populate needed fields for process
 					s.PopulateSnapAccountAndStorage()
-					if err := s.snaps.WaitPreviousVerified(s.expectedRoot, 3); err != nil {
+					if err := s.snaps.WaitPreviousVerified(s.originalRoot, 3); err != nil {
 						return err
 					}
 				}
