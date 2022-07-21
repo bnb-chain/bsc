@@ -379,6 +379,56 @@ func (t *Tree) update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 	return nil
 }
 
+func (t *Tree) WaitPreviousVerified(root common.Hash, layers int) error {
+	snap := t.Snapshot(root)
+	if snap == nil {
+		return fmt.Errorf("snapshot [%#x] missing", root)
+	}
+	diff, ok := snap.(*diffLayer)
+	if !ok {
+		return fmt.Errorf("snapshot [%#x] is disk layer", root)
+	}
+	// If the generator is still running, use a more aggressive cap
+	diff.origin.lock.RLock()
+	if diff.origin.genMarker != nil && layers > 8 {
+		layers = 8
+	}
+	diff.origin.lock.RUnlock()
+
+	// Flattening the bottom-most diff layer requires special casing since there's
+	// no child to rewire to the grandparent. In that case we can fake a temporary
+	// child for the capping and then remove it.
+	if layers == 0 {
+		if !snap.WaitAndGetVerifyRes() {
+			return fmt.Errorf("snapshot [%#x] is not valid", root)
+		}
+		return nil
+	}
+
+	for i := 0; i < layers-1; i++ {
+		// If we still have diff layers below, continue down
+		if parent, ok := diff.parent.(*diffLayer); ok {
+			diff = parent
+		} else {
+			// Diff stack too shallow, return without modifications
+			return nil
+		}
+	}
+	// We're out of layers, flatten anything below, stopping if it's the disk or if
+	// the memory limit is not yet exceeded.
+	switch parent := diff.parent.(type) {
+	case *diskLayer:
+		return nil
+	case *diffLayer:
+		if !parent.WaitAndGetVerifyRes() {
+			return fmt.Errorf("snapshot [%#x] is not valid", root)
+		}
+		return nil
+	default:
+		panic(fmt.Sprintf("unknown data layer: %T", parent))
+	}
+}
+
 func (t *Tree) CapLimit() int {
 	return t.capLimit
 }

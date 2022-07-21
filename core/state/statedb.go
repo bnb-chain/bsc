@@ -923,6 +923,15 @@ func (s *StateDB) WaitPipeVerification() error {
 	}
 	return nil
 }
+func (s *StateDB) WaitPipeVerificationOnHash(block common.Hash) error {
+	snap := s.snaps.Snapshot(block)
+	if snap != nil {
+		if valid := snap.WaitAndGetVerifyRes(); !valid {
+			return fmt.Errorf("verification on parent snap failed")
+		}
+	}
+	return nil
+}
 
 // Finalise finalises the state by removing the s destructed objects and clears
 // the journal as well as the refunds. Finalise, however, will not push any updates
@@ -1009,7 +1018,7 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 					} else {
 						obj.data.Root = common.BytesToHash(account.Root)
 					}
-					obj.rootCorrected = true
+					//		obj.rootCorrected = true
 				}
 			}
 		}
@@ -1348,10 +1357,13 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		snapUpdated = make(chan struct{})
 	}
 
-	commmitTrie := func() error {
+	commitTrie := func() error {
 		commitErr := func() error {
 			if s.pipeCommit {
 				<-snapUpdated
+				if s.WaitPipeVerificationOnHash(s.originalRoot) == nil {
+					s.CorrectAccountsRoot(s.originalRoot)
+				}
 				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct, capture the correct data here
 				s.AccountsIntermediateRoot()
 				if parent := s.snap.Root(); parent != s.expectedRoot {
@@ -1504,6 +1516,9 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 					defer close(snapUpdated)
 					// State verification pipeline - accounts root are not calculated here, just populate needed fields for process
 					s.PopulateSnapAccountAndStorage()
+					if err := s.snaps.WaitPreviousVerified(s.expectedRoot, 3); err != nil {
+						return err
+					}
 				}
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
@@ -1529,9 +1544,9 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		},
 	}
 	if s.pipeCommit {
-		go commmitTrie()
+		go commitTrie()
 	} else {
-		commitFuncs = append(commitFuncs, commmitTrie)
+		commitFuncs = append(commitFuncs, commitTrie)
 	}
 	commitRes := make(chan error, len(commitFuncs))
 	for _, f := range commitFuncs {
