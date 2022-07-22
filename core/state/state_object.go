@@ -411,12 +411,9 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		}
 		s.originStorage[key] = value
 		var v []byte
-		if (value == common.Hash{}) {
-			s.db.StorageDeleted += 1
-		} else {
+		if value != (common.Hash{}) {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-			s.db.StorageUpdated += 1
 		}
 		dirtyStorage[key] = v
 	}
