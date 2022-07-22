@@ -214,7 +214,12 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 		s.prefetcher = nil
 	}
 	if s.snap != nil {
-		s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, namespace)
+		parent := s.snap.Parent()
+		if parent != nil {
+			s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, parent.Root(), namespace)
+		} else {
+			s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, common.Hash{}, namespace)
+		}
 	}
 }
 
@@ -997,7 +1002,11 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		}
 	}
 	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
-		s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+		if s.snap.Verified() {
+			s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+		} else if s.prefetcher.rootPrefetch != (common.Hash{}) {
+			s.prefetcher.prefetch(s.prefetcher.rootPrefetch, addressesToPrefetch, emptyAddr)
+		}
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
