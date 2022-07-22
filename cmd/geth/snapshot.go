@@ -330,18 +330,48 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 }
 
 func pruneBlock(ctx *cli.Context) error {
-	stack, config := makeConfigNode(ctx)
+	var (
+		stack   *node.Node
+		config  gethConfig
+		chaindb ethdb.Database
+		err     error
+
+		oldAncientPath      string
+		newAncientPath      string
+		blockAmountReserved uint64
+		blockpruner         *pruner.BlockPruner
+	)
+
+	stack, config = makeConfigNode(ctx)
 	defer stack.Close()
-	blockAmountReserved := ctx.GlobalUint64(utils.BlockAmountReserved.Name)
-	chaindb, err := accessDb(ctx, stack)
+	blockAmountReserved = ctx.GlobalUint64(utils.BlockAmountReserved.Name)
+	chaindb, err = accessDb(ctx, stack)
 	if err != nil {
 		return err
 	}
-	var newAncientPath string
-	oldAncientPath := ctx.GlobalString(utils.AncientFlag.Name)
-	if !filepath.IsAbs(oldAncientPath) {
-		// force absolute paths, which often fail due to the splicing of relative paths
-		return errors.New("datadir.ancient not abs path")
+
+	// Most of the problems reported by users when first using the prune-block
+	// tool are due to incorrect directory settings.Here, the default directory
+	// and relative directory are canceled, and the user is forced to formulate
+	// an absolute path to guide users to run the prune-block command correctly.
+	if !ctx.GlobalIsSet(utils.DataDirFlag.Name) {
+		return errors.New("datadir must be set")
+	} else {
+		datadir := ctx.GlobalString(utils.DataDirFlag.Name)
+		if !filepath.IsAbs(datadir) {
+			// force absolute paths, which often fail due to the splicing of relative paths
+			return errors.New("datadir not abs path")
+		}
+	}
+
+	if !ctx.GlobalIsSet(utils.AncientFlag.Name) {
+		return errors.New("datadir.ancient must be set")
+	} else {
+		oldAncientPath = ctx.GlobalString(utils.AncientFlag.Name)
+		if !filepath.IsAbs(oldAncientPath) {
+			// force absolute paths, which often fail due to the splicing of relative paths
+			return errors.New("datadir.ancient not abs path")
+		}
 	}
 
 	path, _ := filepath.Split(oldAncientPath)
@@ -350,7 +380,7 @@ func pruneBlock(ctx *cli.Context) error {
 	}
 	newAncientPath = filepath.Join(path, "ancient_back")
 
-	blockpruner := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
+	blockpruner = pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
 
 	lock, exist, err := fileutil.Flock(filepath.Join(oldAncientPath, "PRUNEFLOCK"))
 	if err != nil {
