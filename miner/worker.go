@@ -1197,14 +1197,15 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		}
 		env.state.CorrectAccountsRoot(w.chain.CurrentBlock().Root())
 
-		// Create a local environment copy, avoid the data race with snapshot state.
-		// https://github.com/ethereum/go-ethereum/issues/24299
-		env := env.copy()
-		s := env.state
-		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), s, env.txs, env.unclelist(), env.receipts)
+		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, env.txs, env.unclelist(), env.receipts)
 		if err != nil {
 			return err
 		}
+
+		// Create a local environment copy, avoid the data race with snapshot state.
+		// https://github.com/ethereum/go-ethereum/issues/24299
+		env := env.copy()
+
 		// If we're post merge, just ignore
 		if !w.isTTDReached(block.Header()) {
 			select {
