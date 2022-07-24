@@ -193,7 +193,7 @@ func ReadOffSetOfCurrentAncientFreezer(db ethdb.KeyValueReader) uint64 {
 // WriteOffSetOfCurrentAncientFreezer write prune block start
 func WriteOffSetOfCurrentAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
 	if err := db.Put(offSetOfCurrentAncientFreezer, new(big.Int).SetUint64(offset).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
+		log.Crit("Failed to store the current offset of ancient", "err", err)
 	}
 }
 
@@ -209,7 +209,7 @@ func ReadOffSetOfLastAncientFreezer(db ethdb.KeyValueReader) uint64 {
 // WriteOffSetOfLastAncientFreezer wirte before prune block start
 func WriteOffSetOfLastAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
 	if err := db.Put(offSetOfLastAncientFreezer, new(big.Int).SetUint64(offset).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
+		log.Crit("Failed to store the old offset of ancient", "err", err)
 	}
 }
 
@@ -225,7 +225,7 @@ func ReadFrozenOfAncientFreezer(db ethdb.KeyValueReader) uint64 {
 // WriteFrozenOfAncientFreezer write freezer block number
 func WriteFrozenOfAncientFreezer(db ethdb.KeyValueWriter, frozen uint64) {
 	if err := db.Put(frozenOfAncientDBKey, new(big.Int).SetUint64(frozen).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
+		log.Crit("Failed to store the ancient frozen number", "err", err)
 	}
 }
 
@@ -241,7 +241,7 @@ func ReadSafePointBlockNumber(db ethdb.KeyValueReader) uint64 {
 // WriteSafePointBlockNumber write the number of block that roothash save to disk
 func WriteSafePointBlockNumber(db ethdb.KeyValueWriter, number uint64) {
 	if err := db.Put(LastSafePointBlockKey, new(big.Int).SetUint64(number).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
+		log.Crit("Failed to store safe point of block number", "err", err)
 	}
 }
 
@@ -257,6 +257,6 @@ func ReadAncientType(db ethdb.KeyValueReader) uint64 {
 // WriteAncientType write freezer type
 func WriteAncientType(db ethdb.KeyValueWriter, flag uint64) {
 	if err := db.Put(pruneAncientKey, new(big.Int).SetUint64(flag).Bytes()); err != nil {
-		log.Crit("Failed to store offSetOfAncientFreezer", "err", err)
+		log.Crit("Failed to store prune ancient type", "err", err)
 	}
 }
