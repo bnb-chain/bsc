@@ -1009,6 +1009,9 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 			if !obj.deleted && !obj.rootCorrected && obj.data.Root == dummyRoot {
 				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist {
 					obj.data.Root = common.BytesToHash(account.Root)
+					if obj.data.Root == (common.Hash{}) {
+						obj.data.Root = emptyRoot
+					}
 					obj.rootCorrected = true
 				}
 			}

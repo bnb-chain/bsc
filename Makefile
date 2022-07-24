@@ -3,6 +3,7 @@
 # don't need to bother with make.
 
 .PHONY: geth android ios geth-cross evm all test truffle-test clean
+.PHONY: docker
 
 GOBIN = ./build/bin
 GO ?= latest
@@ -59,3 +60,6 @@ devtools:
 	env GOBIN= go install ./cmd/abigen
 	@type "solc" 2> /dev/null || echo 'Please install solc'
 	@type "protoc" 2> /dev/null || echo 'Please install protoc'
+
+docker:
+	docker build --pull -t bnb-chain/bsc:latest -f Dockerfile .
