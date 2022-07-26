@@ -82,10 +82,11 @@ type triePrefetcher struct {
 func newTriePrefetcher(db Database, root, rootPrefetch common.Hash, namespace string) *triePrefetcher {
 	prefix := triePrefetchMetricsPrefix + namespace
 	p := &triePrefetcher{
-		db:        db,
-		root:      root,
-		fetchers:  make(map[common.Hash]*subfetcher), // Active prefetchers use the fetchers map
-		abortChan: make(chan *subfetcher, abortChanSize),
+		db:           db,
+		root:         root,
+		rootPrefetch: rootPrefetch,
+		fetchers:     make(map[common.Hash]*subfetcher), // Active prefetchers use the fetchers map
+		abortChan:    make(chan *subfetcher, abortChanSize),
 
 		closeMainChan:     make(chan struct{}),
 		closeMainDoneChan: make(chan struct{}),
