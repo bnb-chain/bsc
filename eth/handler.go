@@ -509,6 +509,7 @@ func (h *handler) runDiffExtension(peer *diff.Peer, handler diff.Handler) error 
 
 	if err := h.peers.registerDiffExtension(peer); err != nil {
 		peer.Log().Error("Diff extension registration failed", "err", err)
+		peer.Close()
 		return err
 	}
 	return handler(peer)
