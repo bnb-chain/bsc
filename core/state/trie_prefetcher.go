@@ -49,9 +49,9 @@ type prefetchMsg struct {
 //
 // Note, the prefetcher's API is not thread safe.
 type triePrefetcher struct {
-	db         Database    // Database to fetch trie nodes through
-	root       common.Hash // Root hash of theaccount trie for metrics
-	rootParent common.Hash
+	db         Database                    // Database to fetch trie nodes through
+	root       common.Hash                 // Root hash of theaccount trie for metrics
+	rootParent common.Hash                 //Root has of the account trie from block before the prvious one, designed for pipecommit mode
 	fetches    map[common.Hash]Trie        // Partially or fully fetcher tries
 	fetchers   map[common.Hash]*subfetcher // Subfetchers for each trie
 
