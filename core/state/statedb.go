@@ -237,10 +237,9 @@ func (s *StateDB) StopPrefetcher() {
 }
 
 func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
-	s.prefetcherLock.Lock()
-	prefetcher := s.prefetcher // s.prefetcher could be resetted to nil
-	s.prefetcherLock.Unlock()
-
+	// s is a temporary throw away StateDB, s.prefetcher won't be resetted to nil
+	// so no need to add lock for s.prefetcher
+	prefetcher := s.prefetcher
 	if prefetcher == nil {
 		return
 	}
@@ -805,6 +804,17 @@ func (db *StateDB) ForEachStorage(addr common.Address, cb func(key, value common
 // Copy creates a deep, independent copy of the state.
 // Snapshots of the copied state cannot be applied to the copy.
 func (s *StateDB) Copy() *StateDB {
+	return s.copyInternal(false)
+}
+
+// It is mainly for state prefetcher to do trie prefetch right now.
+func (s *StateDB) CopyDoPrefetch() *StateDB {
+	return s.copyInternal(true)
+}
+
+// If doPrefetch is true, it tries to reuse the prefetcher, the copied StateDB will do active trie prefetch.
+// otherwise, just do inactive copy trie prefetcher.
+func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	// Copy all the basic fields, initialize the memory ones
 	state := &StateDB{
 		db:                  s.db,
@@ -871,12 +881,12 @@ func (s *StateDB) Copy() *StateDB {
 		state.accessList = s.accessList.Copy()
 	}
 
-	// If there's a prefetcher running, make an inactive copy of it that can
-	// only access data but does not actively preload (since the user will not
-	// know that they need to explicitly terminate an active copy).
-	prefetcher := s.prefetcher
-	if prefetcher != nil {
-		state.prefetcher = prefetcher.copy()
+	state.prefetcher = s.prefetcher
+	if s.prefetcher != nil && !doPrefetch {
+		// If there's a prefetcher running, make an inactive copy of it that can
+		// only access data but does not actively preload (since the user will not
+		// know that they need to explicitly terminate an active copy).
+		state.prefetcher = state.prefetcher.copy()
 	}
 	if s.snaps != nil {
 		// In order for the miner to be able to use and make additions

@@ -172,15 +172,7 @@ func (p *triePrefetcher) mainLoop() {
 			p.fetchersMutex.Lock()
 			p.fetchers = nil
 			p.fetchersMutex.Unlock()
-
-			// drain all the channels before quit the loop
-			for {
-				select {
-				case <-p.prefetchChan:
-				default:
-					return
-				}
-			}
+			return
 		}
 	}
 }
@@ -362,6 +354,7 @@ func newSubfetcher(db Database, root common.Hash, accountHash common.Hash) *subf
 
 // schedule adds a batch of trie keys to the queue to prefetch.
 func (sf *subfetcher) schedule(keys [][]byte) {
+	atomic.AddUint32(&sf.pendingSize, uint32(len(keys)))
 	// Append the tasks to the current queue
 	sf.lock.Lock()
 	sf.tasks = append(sf.tasks, keys...)
@@ -371,7 +364,6 @@ func (sf *subfetcher) schedule(keys [][]byte) {
 	case sf.wake <- struct{}{}:
 	default:
 	}
-	atomic.AddUint32(&sf.pendingSize, uint32(len(keys)))
 }
 
 func (sf *subfetcher) scheduleParallel(keys [][]byte) {
