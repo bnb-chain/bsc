@@ -183,7 +183,10 @@ func WriteTransitionStatus(db ethdb.KeyValueWriter, data []byte) {
 
 // ReadOffSetOfCurrentAncientFreezer return prune block start
 func ReadOffSetOfCurrentAncientFreezer(db ethdb.KeyValueReader) uint64 {
-	offset, _ := db.Get(offSetOfCurrentAncientFreezer)
+	offset, err := db.Get(offSetOfCurrentAncientFreezer)
+	if err != nil {
+		log.Crit("Failed to read current ancient freezer offset", "err", err)
+	}
 	if offset == nil {
 		return 0
 	}
@@ -199,7 +202,10 @@ func WriteOffSetOfCurrentAncientFreezer(db ethdb.KeyValueWriter, offset uint64) 
 
 // ReadOffSetOfLastAncientFreezer return last prune block start
 func ReadOffSetOfLastAncientFreezer(db ethdb.KeyValueReader) uint64 {
-	offset, _ := db.Get(offSetOfLastAncientFreezer)
+	offset, err := db.Get(offSetOfLastAncientFreezer)
+	if err != nil {
+		log.Crit("Failed to read last ancient freezer offset", "err", err)
+	}
 	if offset == nil {
 		return 0
 	}
@@ -215,7 +221,10 @@ func WriteOffSetOfLastAncientFreezer(db ethdb.KeyValueWriter, offset uint64) {
 
 // ReadFrozenOfAncientFreezer return freezer block number
 func ReadFrozenOfAncientFreezer(db ethdb.KeyValueReader) uint64 {
-	fozen, _ := db.Get(frozenOfAncientDBKey)
+	fozen, err := db.Get(frozenOfAncientDBKey)
+	if err != nil {
+		log.Crit("Failed to ancient frozen number", "err", err)
+	}
 	if fozen == nil {
 		return 0
 	}
@@ -231,7 +240,10 @@ func WriteFrozenOfAncientFreezer(db ethdb.KeyValueWriter, frozen uint64) {
 
 // ReadSafePointBlockNumber return the number of block that roothash save to disk
 func ReadSafePointBlockNumber(db ethdb.KeyValueReader) uint64 {
-	num, _ := db.Get(LastSafePointBlockKey)
+	num, err := db.Get(LastSafePointBlockKey)
+	if err != nil {
+		log.Error("Failed to read safe point block number", "err", err)
+	}
 	if num == nil {
 		return 0
 	}
@@ -241,13 +253,16 @@ func ReadSafePointBlockNumber(db ethdb.KeyValueReader) uint64 {
 // WriteSafePointBlockNumber write the number of block that roothash save to disk
 func WriteSafePointBlockNumber(db ethdb.KeyValueWriter, number uint64) {
 	if err := db.Put(LastSafePointBlockKey, new(big.Int).SetUint64(number).Bytes()); err != nil {
-		log.Crit("Failed to store safe point of block number", "err", err)
+		log.Error("Failed to store safe point of block number", "err", err)
 	}
 }
 
 // ReadAncientType return freezer type
 func ReadAncientType(db ethdb.KeyValueReader) uint64 {
-	data, _ := db.Get(pruneAncientKey)
+	data, err := db.Get(pruneAncientKey)
+	if err != nil {
+		log.Crit("Failed to read ancient type", "err", err)
+	}
 	if data == nil {
 		return EntireFreezerType
 	}

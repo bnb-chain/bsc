@@ -407,13 +407,6 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 	}
 	defer frdbBack.Close()
 
-	offsetBatch := chainDb.NewBatch()
-	rawdb.WriteOffSetOfCurrentAncientFreezer(offsetBatch, startBlockNumber)
-	rawdb.WriteOffSetOfLastAncientFreezer(offsetBatch, oldOffSet)
-	if err := offsetBatch.Write(); err != nil {
-		log.Crit("Failed to write offset into disk", "err", err)
-	}
-
 	// It's guaranteed that the old/new offsets are updated as well as the new ancientDB are created if this flock exist.
 	lock, _, err := fileutil.Flock(filepath.Join(p.newAncientPath, "PRUNEFLOCKBACK"))
 	if err != nil {
@@ -446,6 +439,14 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 			start = time.Now()
 		}
 	}
+
+	offsetBatch := chainDb.NewBatch()
+	rawdb.WriteOffSetOfCurrentAncientFreezer(offsetBatch, startBlockNumber)
+	rawdb.WriteOffSetOfLastAncientFreezer(offsetBatch, oldOffSet)
+	if err := offsetBatch.Write(); err != nil {
+		log.Crit("Failed to write offset into disk", "err", err)
+	}
+
 	lock.Release()
 	log.Info("block back up done", "current start blockNumber in ancientDB", startBlockNumber)
 	return nil
