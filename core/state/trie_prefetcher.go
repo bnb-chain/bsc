@@ -49,11 +49,11 @@ type prefetchMsg struct {
 //
 // Note, the prefetcher's API is not thread safe.
 type triePrefetcher struct {
-	db           Database    // Database to fetch trie nodes through
-	root         common.Hash // Root hash of theaccount trie for metrics
-	rootPrefetch common.Hash
-	fetches      map[common.Hash]Trie        // Partially or fully fetcher tries
-	fetchers     map[common.Hash]*subfetcher // Subfetchers for each trie
+	db         Database    // Database to fetch trie nodes through
+	root       common.Hash // Root hash of theaccount trie for metrics
+	rootParent common.Hash
+	fetches    map[common.Hash]Trie        // Partially or fully fetcher tries
+	fetchers   map[common.Hash]*subfetcher // Subfetchers for each trie
 
 	abortChan         chan *subfetcher // to abort a single subfetcher and its children
 	closed            int32
@@ -79,14 +79,14 @@ type triePrefetcher struct {
 }
 
 // newTriePrefetcher
-func newTriePrefetcher(db Database, root, rootPrefetch common.Hash, namespace string) *triePrefetcher {
+func newTriePrefetcher(db Database, root, rootParent common.Hash, namespace string) *triePrefetcher {
 	prefix := triePrefetchMetricsPrefix + namespace
 	p := &triePrefetcher{
-		db:           db,
-		root:         root,
-		rootPrefetch: rootPrefetch,
-		fetchers:     make(map[common.Hash]*subfetcher), // Active prefetchers use the fetchers map
-		abortChan:    make(chan *subfetcher, abortChanSize),
+		db:         db,
+		root:       root,
+		rootParent: rootParent,
+		fetchers:   make(map[common.Hash]*subfetcher), // Active prefetchers use the fetchers map
+		abortChan:  make(chan *subfetcher, abortChanSize),
 
 		closeMainChan:     make(chan struct{}),
 		closeMainDoneChan: make(chan struct{}),
@@ -168,7 +168,7 @@ func (p *triePrefetcher) mainLoop() {
 						fetcher.lock.Unlock()
 						p.accountWasteMeter.Mark(int64(len(fetcher.seen)))
 
-					case p.rootPrefetch:
+					case p.rootParent:
 						p.accountStaleLoadMeter.Mark(int64(len(fetcher.seen)))
 						p.accountStaleDupMeter.Mark(int64(fetcher.dups))
 						p.accountStaleSkipMeter.Mark(int64(len(fetcher.tasks)))

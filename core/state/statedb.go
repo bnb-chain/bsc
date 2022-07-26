@@ -1004,8 +1004,8 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
 		if s.snap.Verified() {
 			s.prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
-		} else if s.prefetcher.rootPrefetch != (common.Hash{}) {
-			s.prefetcher.prefetch(s.prefetcher.rootPrefetch, addressesToPrefetch, emptyAddr)
+		} else if s.prefetcher.rootParent != (common.Hash{}) {
+			s.prefetcher.prefetch(s.prefetcher.rootParent, addressesToPrefetch, emptyAddr)
 		}
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
