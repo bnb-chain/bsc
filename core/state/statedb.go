@@ -655,19 +655,6 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 		}
 	}
 
-	// ErrSnapshotStale may occur due to diff layers in the update, so we should try again in noTrie mode.
-	if s.NoTrie() && err != nil && errors.Is(err, snapshot.ErrSnapshotStale) {
-		// This error occurs when statedb.snaps.Cap changes the state of the merged difflayer
-		// to stale during the refresh of the difflayer, indicating that it is about to be discarded.
-		// Since the difflayer is refreshed in parallel,
-		// there is a small chance that the difflayer of the stale will be read while reading,
-		// resulting in an empty array being returned here.
-		// Therefore, noTrie mode must retry here,
-		// and add a time interval when retrying to avoid stacking too much and causing OOM.
-		time.Sleep(snapshotStaleRetryInterval)
-		return s.getDeletedStateObject(addr)
-	}
-
 	// If snapshot unavailable or reading from it failed, load from the database
 	if s.snap == nil || err != nil {
 		if s.trie == nil {

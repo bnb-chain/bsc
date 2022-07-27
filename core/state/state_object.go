@@ -18,7 +18,6 @@ package state
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -26,14 +25,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 )
-
-const snapshotStaleRetryInterval = time.Millisecond * 10
 
 var emptyCodeHash = crypto.Keccak256(nil)
 
@@ -271,18 +267,7 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		}
 		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
 	}
-	// ErrSnapshotStale may occur due to diff layers in the update, so we should try again in noTrie mode.
-	if s.db.NoTrie() && err != nil && errors.Is(err, snapshot.ErrSnapshotStale) {
-		// This error occurs when statedb.snaps.Cap changes the state of the merged difflayer
-		// to stale during the refresh of the difflayer, indicating that it is about to be discarded.
-		// Since the difflayer is refreshed in parallel,
-		// there is a small chance that the difflayer of the stale will be read while reading,
-		// resulting in an empty array being returned here.
-		// Therefore, noTrie mode must retry here,
-		// and add a time interval when retrying to avoid stacking too much and causing stack overflow.
-		time.Sleep(snapshotStaleRetryInterval)
-		return s.GetCommittedState(db, key)
-	}
+
 	// If snapshot unavailable or reading from it failed, load from the database
 	if s.db.snap == nil || err != nil {
 		if meter != nil {
