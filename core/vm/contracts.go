@@ -110,7 +110,9 @@ var PrecompiledContractsBoneh = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
 	common.BytesToAddress([]byte{9}): &blake2F{},
 
-	common.BytesToAddress([]byte{100}): &voteSignatureVerify{},
+	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
+	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidate{},
+	common.BytesToAddress([]byte{102}): &voteSignatureVerify{},
 }
 
 // PrecompiledContractsBLS contains the set of pre-compiled Ethereum
