@@ -185,7 +185,7 @@ func TestToFilterArg(t *testing.T) {
 var (
 	testKey, _   = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	testAddr     = crypto.PubkeyToAddress(testKey.PublicKey)
-	testBalance  = big.NewInt(2e10)
+	testBalance  = big.NewInt(2e15)
 	testBlockNum = 128
 	testBlocks   = []testBlockParam{
 		{
@@ -199,7 +199,7 @@ var (
 				{
 					to:       common.Address{0x01},
 					value:    big.NewInt(1),
-					gasPrice: big.NewInt(1),
+					gasPrice: big.NewInt(params.InitialBaseFee),
 					data:     nil,
 				},
 			},
@@ -210,13 +210,13 @@ var (
 				{
 					to:       common.Address{0x01},
 					value:    big.NewInt(1),
-					gasPrice: big.NewInt(1),
+					gasPrice: big.NewInt(params.InitialBaseFee),
 					data:     nil,
 				},
 				{
 					to:       common.Address{0x02},
 					value:    big.NewInt(2),
-					gasPrice: big.NewInt(2),
+					gasPrice: big.NewInt(params.InitialBaseFee),
 					data:     nil,
 				},
 			},
@@ -227,25 +227,33 @@ var (
 				{
 					to:       common.Address{0x01},
 					value:    big.NewInt(1),
-					gasPrice: big.NewInt(1),
+					gasPrice: big.NewInt(params.InitialBaseFee),
 					data:     nil,
 				},
 				{
 					to:       common.Address{0x02},
 					value:    big.NewInt(2),
-					gasPrice: big.NewInt(2),
+					gasPrice: big.NewInt(params.InitialBaseFee),
 					data:     nil,
 				},
 				{
 					to:       common.Address{0x03},
 					value:    big.NewInt(3),
-					gasPrice: big.NewInt(3),
+					gasPrice: big.NewInt(params.InitialBaseFee),
 					data:     nil,
 				},
 			},
 		},
 	}
 )
+
+var genesis = &core.Genesis{
+	Config:    params.AllEthashProtocolChanges,
+	Alloc:     core.GenesisAlloc{testAddr: {Balance: testBalance}},
+	ExtraData: []byte("test genesis"),
+	Timestamp: 9000,
+	BaseFee:   big.NewInt(params.InitialBaseFee),
+}
 
 type testTransactionParam struct {
 	to       common.Address
@@ -261,7 +269,8 @@ type testBlockParam struct {
 
 func newTestBackend(t *testing.T) (*node.Node, []*types.Block) {
 	// Generate test chain.
-	genesis, blocks := generateTestChain()
+	blocks := generateTestChain()
+
 	// Create node
 	n, err := node.New(&node.Config{})
 	if err != nil {
@@ -286,18 +295,11 @@ func newTestBackend(t *testing.T) (*node.Node, []*types.Block) {
 	return n, blocks
 }
 
-func generateTestChain() (*core.Genesis, []*types.Block) {
+func generateTestChain() []*types.Block {
 	signer := types.HomesteadSigner{}
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
 	db.SetDiffStore(memorydb.New())
-	config := params.AllEthashProtocolChanges
-	genesis := &core.Genesis{
-		Config:    config,
-		Alloc:     core.GenesisAlloc{testAddr: {Balance: testBalance}},
-		ExtraData: []byte("test genesis"),
-		Timestamp: 9000,
-	}
 	genesis.MustCommit(db)
 	chain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil, core.EnablePersistDiff(860000))
 	generate := func(i int, block *core.BlockGen) {
@@ -336,9 +338,9 @@ func generateTestChain() (*core.Genesis, []*types.Block) {
 	}
 	gblock := genesis.ToBlock(db)
 	engine := ethash.NewFaker()
-	blocks, _ := core.GenerateChain(config, gblock, engine, db, testBlockNum, generate)
+	blocks, _ := core.GenerateChain(genesis.Config, gblock, engine, db, testBlockNum, generate)
 	blocks = append([]*types.Block{gblock}, blocks...)
-	return genesis, blocks
+	return blocks
 }
 
 func TestEthClient(t *testing.T) {
@@ -350,25 +352,25 @@ func TestEthClient(t *testing.T) {
 	tests := map[string]struct {
 		test func(t *testing.T)
 	}{
-		"TestHeader": {
+		"Header": {
 			func(t *testing.T) { testHeader(t, chain, client) },
 		},
-		"TestBalanceAt": {
+		"BalanceAt": {
 			func(t *testing.T) { testBalanceAt(t, client) },
 		},
-		"TestTxInBlockInterrupted": {
+		"TxInBlockInterrupted": {
 			func(t *testing.T) { testTransactionInBlockInterrupted(t, client) },
 		},
-		"TestChainID": {
+		"ChainID": {
 			func(t *testing.T) { testChainID(t, client) },
 		},
-		"TestGetBlock": {
+		"GetBlock": {
 			func(t *testing.T) { testGetBlock(t, client) },
 		},
-		"TestStatusFunctions": {
+		"StatusFunctions": {
 			func(t *testing.T) { testStatusFunctions(t, client) },
 		},
-		"TestCallContract": {
+		"CallContract": {
 			func(t *testing.T) { testCallContract(t, client) },
 		},
 		"TestDiffAccounts": {
@@ -430,6 +432,11 @@ func testBalanceAt(t *testing.T, client *rpc.Client) {
 		want    *big.Int
 		wantErr error
 	}{
+		"valid_account_genesis": {
+			account: testAddr,
+			block:   big.NewInt(0),
+			want:    testBalance,
+		},
 		"valid_account": {
 			account: testAddr,
 			block:   big.NewInt(1),
@@ -467,23 +474,25 @@ func testBalanceAt(t *testing.T, client *rpc.Client) {
 func testTransactionInBlockInterrupted(t *testing.T, client *rpc.Client) {
 	ec := NewClient(client)
 
-	// Get current block by number
+	// Get current block by number.
 	block, err := ec.BlockByNumber(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Test tx in block interupted
+
+	// Test tx in block interupted.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	tx, err := ec.TransactionInBlock(ctx, block.Hash(), 1)
+	tx, err := ec.TransactionInBlock(ctx, block.Hash(), 0)
 	if tx != nil {
 		t.Fatal("transaction should be nil")
 	}
 	if err == nil || err == ethereum.NotFound {
 		t.Fatal("error should not be nil/notfound")
 	}
-	// Test tx in block not found
-	if _, err := ec.TransactionInBlock(context.Background(), block.Hash(), 1); err != ethereum.NotFound {
+
+	// Test tx in block not found.
+	if _, err := ec.TransactionInBlock(context.Background(), block.Hash(), 20); err != ethereum.NotFound {
 		t.Fatal("error should be ethereum.NotFound")
 	}
 }
@@ -501,6 +510,7 @@ func testChainID(t *testing.T, client *rpc.Client) {
 
 func testGetBlock(t *testing.T, client *rpc.Client) {
 	ec := NewClient(client)
+
 	// Get current block number
 	blockNumber, err := ec.BlockNumber(context.Background())
 	if err != nil {
@@ -554,6 +564,7 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 	if progress != nil {
 		t.Fatalf("unexpected progress: %v", progress)
 	}
+
 	// NetworkID
 	networkID, err := ec.NetworkID(context.Background())
 	if err != nil {
@@ -562,13 +573,23 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 	if networkID.Cmp(big.NewInt(0)) != 0 {
 		t.Fatalf("unexpected networkID: %v", networkID)
 	}
-	// SuggestGasPrice (should suggest 1 Gwei)
+
+	// SuggestGasPrice
 	gasPrice, err := ec.SuggestGasPrice(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gasPrice.Cmp(big.NewInt(1000000000)) != 0 {
+	if gasPrice.Cmp(big.NewInt(1000000042)) != 0 {
 		t.Fatalf("unexpected gas price: %v", gasPrice)
+	}
+
+	// SuggestGasTipCap
+	gasTipCap, err := ec.SuggestGasTipCap(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gasTipCap.Cmp(big.NewInt(1000000000)) != 0 {
+		t.Fatalf("unexpected gas tip cap: %v", gasTipCap)
 	}
 }
 
@@ -577,11 +598,10 @@ func testCallContract(t *testing.T, client *rpc.Client) {
 
 	// EstimateGas
 	msg := ethereum.CallMsg{
-		From:     testAddr,
-		To:       &common.Address{},
-		Gas:      21000,
-		GasPrice: big.NewInt(1),
-		Value:    big.NewInt(1),
+		From:  testAddr,
+		To:    &common.Address{},
+		Gas:   21000,
+		Value: big.NewInt(1),
 	}
 	gas, err := ec.EstimateGas(context.Background(), msg)
 	if err != nil {

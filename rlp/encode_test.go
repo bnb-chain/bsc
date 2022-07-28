@@ -266,12 +266,30 @@ var encTests = []encTest{
 	{val: simplestruct{A: 3, B: "foo"}, output: "C50383666F6F"},
 	{val: &recstruct{5, nil}, output: "C205C0"},
 	{val: &recstruct{5, &recstruct{4, &recstruct{3, nil}}}, output: "C605C404C203C0"},
+	{val: &intField{X: 3}, error: "rlp: type int is not RLP-serializable (struct field rlp.intField.X)"},
+
+	// struct tag "-"
+	{val: &ignoredField{A: 1, B: 2, C: 3}, output: "C20103"},
+
+	// struct tag "tail"
 	{val: &tailRaw{A: 1, Tail: []RawValue{unhex("02"), unhex("03")}}, output: "C3010203"},
 	{val: &tailRaw{A: 1, Tail: []RawValue{unhex("02")}}, output: "C20102"},
 	{val: &tailRaw{A: 1, Tail: []RawValue{}}, output: "C101"},
 	{val: &tailRaw{A: 1, Tail: nil}, output: "C101"},
-	{val: &hasIgnoredField{A: 1, B: 2, C: 3}, output: "C20103"},
-	{val: &intField{X: 3}, error: "rlp: type int is not RLP-serializable (struct field rlp.intField.X)"},
+
+	// struct tag "optional"
+	{val: &optionalFields{}, output: "C180"},
+	{val: &optionalFields{A: 1}, output: "C101"},
+	{val: &optionalFields{A: 1, B: 2}, output: "C20102"},
+	{val: &optionalFields{A: 1, B: 2, C: 3}, output: "C3010203"},
+	{val: &optionalFields{A: 1, B: 0, C: 3}, output: "C3018003"},
+	{val: &optionalAndTailField{A: 1}, output: "C101"},
+	{val: &optionalAndTailField{A: 1, B: 2}, output: "C20102"},
+	{val: &optionalAndTailField{A: 1, Tail: []uint{5, 6}}, output: "C401800506"},
+	{val: &optionalAndTailField{A: 1, Tail: []uint{5, 6}}, output: "C401800506"},
+	{val: &optionalBigIntField{A: 1}, output: "C101"},
+	{val: &optionalPtrField{A: 1}, output: "C101"},
+	{val: &optionalPtrFieldNil{A: 1}, output: "C101"},
 
 	// nil
 	{val: (*uint)(nil), output: "80"},
@@ -513,6 +531,34 @@ type byteArrayStruct struct {
 func BenchmarkEncodeByteArrayStruct(b *testing.B) {
 	var out bytes.Buffer
 	var value byteArrayStruct
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		out.Reset()
+		if err := Encode(&out, &value); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+type structSliceElem struct {
+	X uint64
+	Y uint64
+	Z uint64
+}
+
+type structPtrSlice []*structSliceElem
+
+func BenchmarkEncodeStructPtrSlice(b *testing.B) {
+	var out bytes.Buffer
+	var value = structPtrSlice{
+		&structSliceElem{1, 1, 1},
+		&structSliceElem{2, 2, 2},
+		&structSliceElem{3, 3, 3},
+		&structSliceElem{5, 5, 5},
+		&structSliceElem{6, 6, 6},
+		&structSliceElem{7, 7, 7},
+	}
 
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

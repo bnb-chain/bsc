@@ -76,7 +76,7 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 
 		// We want to simulate an empty middle block, having the same state as the
 		// first one. The last is needs a state change again to force a reorg.
-		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), common.Address{0x01}, big.NewInt(1), params.TxGas, big.NewInt(1), nil), signer, testKey)
+		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), common.Address{0x01}, big.NewInt(1), params.TxGas, big.NewInt(params.InitialBaseFee), nil), signer, testKey)
 		if err != nil {
 			panic(err)
 		}

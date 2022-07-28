@@ -114,6 +114,10 @@ type Config struct {
 	// maintained and re-connected on disconnects.
 	StaticNodes []*enode.Node
 
+	// Verify nodes are used as pre-configured connections which are always
+	// maintained and re-connected on disconnects.
+	VerifyNodes []*enode.Node
+
 	// Trusted nodes are used as pre-configured connections which are always
 	// allowed to connect, even above the peer limit.
 	TrustedNodes []*enode.Node
@@ -218,6 +222,7 @@ const (
 	staticDialedConn
 	inboundConn
 	trustedConn
+	verifyConn
 )
 
 // conn wraps a network connection with information gathered
@@ -268,6 +273,9 @@ func (f connFlag) String() string {
 	}
 	if f&inboundConn != 0 {
 		s += "-inbound"
+	}
+	if f&verifyConn != 0 {
+		s += "-verify"
 	}
 	if s != "" {
 		s = s[1:]
@@ -357,7 +365,7 @@ func (srv *Server) RemovePeer(node *enode.Node) {
 	}
 }
 
-// AddTrustedPeer adds the given node to a reserved whitelist which allows the
+// AddTrustedPeer adds the given node to a reserved trusted list which allows the
 // node to always connect, even if the slot are full.
 func (srv *Server) AddTrustedPeer(node *enode.Node) {
 	select {
@@ -374,7 +382,7 @@ func (srv *Server) RemoveTrustedPeer(node *enode.Node) {
 	}
 }
 
-// SubscribePeers subscribes the given channel to peer events
+// SubscribeEvents subscribes the given channel to peer events
 func (srv *Server) SubscribeEvents(ch chan *PeerEvent) event.Subscription {
 	return srv.peerFeed.Subscribe(ch)
 }
@@ -649,6 +657,9 @@ func (srv *Server) setupDialScheduler() {
 	for _, n := range srv.StaticNodes {
 		srv.dialsched.addStatic(n)
 	}
+	for _, n := range srv.VerifyNodes {
+		srv.dialsched.addStatic(n)
+	}
 }
 
 func (srv *Server) maxInboundConns() int {
@@ -918,7 +929,7 @@ func (srv *Server) checkInboundConn(remoteIP net.IP) error {
 	}
 	// Reject connections that do not match NetRestrict.
 	if srv.NetRestrict != nil && !srv.NetRestrict.Contains(remoteIP) {
-		return fmt.Errorf("not whitelisted in NetRestrict")
+		return fmt.Errorf("not in netrestrict list")
 	}
 	// Reject Internet peers that try too often.
 	now := srv.clock.Now()
@@ -934,6 +945,13 @@ func (srv *Server) checkInboundConn(remoteIP net.IP) error {
 // as a peer. It returns when the connection has been added as a peer
 // or the handshakes have failed.
 func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) error {
+	// If dialDest is verify node, set verifyConn flags.
+	for _, n := range srv.VerifyNodes {
+		if dialDest.ID() == n.ID() {
+			flags |= verifyConn
+		}
+	}
+
 	c := &conn{fd: fd, flags: flags, cont: make(chan error)}
 	if dialDest == nil {
 		c.transport = srv.newTransport(fd, nil)
