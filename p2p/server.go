@@ -947,7 +947,7 @@ func (srv *Server) checkInboundConn(remoteIP net.IP) error {
 func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) error {
 	// If dialDest is verify node, set verifyConn flags.
 	for _, n := range srv.VerifyNodes {
-		if dialDest == n {
+		if dialDest.ID() == n.ID() {
 			flags |= verifyConn
 		}
 	}
