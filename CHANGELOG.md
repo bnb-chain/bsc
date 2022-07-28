@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.1.12
+
+FEATURE
+* [\#862](https://github.com/bnb-chain/bsc/pull/862) Pruning AncientDB inline at runtime
+* [\#926](https://github.com/bnb-chain/bsc/pull/926) Separate Processing and State Verification on BSC
+
+IMPROVEMENT
+* [\#816](https://github.com/bnb-chain/bsc/pull/816) merge go-ethereum v1.10.15
+* [\#950](https://github.com/bnb-chain/bsc/pull/950) code optimizations for state prefetcher
+* [\#972](https://github.com/bnb-chain/bsc/pull/972) redesign triePrefetcher to make it thread safe
+* [\#998](https://github.com/bnb-chain/bsc/pull/998) update dockerfile with a few enhancement
+* [\#1015](https://github.com/bnb-chain/bsc/pull/1015) disable noisy logs since system transaction will cause gas capping
+
+BUGFIX
+* [\#932](https://github.com/bnb-chain/bsc/pull/932) fix account root was not set correctly when committing mpt during pipeline commit
+* [\#953](https://github.com/bnb-chain/bsc/pull/953) correct logic for eip check of NewEVMInterpreter
+* [\#958](https://github.com/bnb-chain/bsc/pull/958) define DiscReason as uint8
+* [\#959](https://github.com/bnb-chain/bsc/pull/959) update some packages' version
+* [\#983](https://github.com/bnb-chain/bsc/pull/983) fix nil pointer issue when stopping mining new block
+* [\#1002](https://github.com/bnb-chain/bsc/pull/1002) Fix pipecommit active statedb
+* [\#1005](https://github.com/bnb-chain/bsc/pull/1005) freezer batch compatible offline prunblock command
+* [\#1007](https://github.com/bnb-chain/bsc/pull/1007) missing contract upgrades and incorrect behavior when miners enable pipecommit
+* [\#1009](https://github.com/bnb-chain/bsc/pull/1009) resolve the concurrent cache read and write issue for fast node
+* [\#1011](https://github.com/bnb-chain/bsc/pull/1011) Incorrect merkle root issue when enabling pipecommit with miner
+* [\#1013](https://github.com/bnb-chain/bsc/pull/1013) tools broken because of writting metadata when open a readyonly db
+* [\#1014](https://github.com/bnb-chain/bsc/pull/1014) fast node can not recover from force kill or panic
+* [\#1019](https://github.com/bnb-chain/bsc/pull/1019) memory leak issue with diff protocol
+* [\#1020](https://github.com/bnb-chain/bsc/pull/1020) remove diffhash patch introduced from separate node
+* [\#1024](https://github.com/bnb-chain/bsc/pull/1024) verify node is not treated as verify node
+
 ## v1.1.11
 
 UPGRADE
