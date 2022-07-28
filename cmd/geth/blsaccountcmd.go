@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/signer/core"
 	"github.com/google/uuid"
 	"github.com/logrusorgru/aurora"
 	"github.com/prysmaticlabs/prysm/crypto/bls"
@@ -26,6 +25,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/signer/core"
 )
 
 const (
