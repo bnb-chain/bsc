@@ -351,18 +351,8 @@ func (s *StateObject) finalise(prefetch bool) {
 		}
 	}
 
-	// The account root need to be updated before prefetch, otherwise the account root is empty
-	if s.db.pipeCommit && s.data.Root == dummyRoot && !s.rootCorrected && s.db.snap.AccountsCorrected() {
-		if acc, err := s.db.snap.Account(crypto.HashData(s.db.hasher, s.address.Bytes())); err == nil {
-			if acc != nil && len(acc.Root) != 0 {
-				s.data.Root = common.BytesToHash(acc.Root)
-				s.rootCorrected = true
-			}
-		}
-	}
-
 	prefetcher := s.db.prefetcher
-	if prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot && s.data.Root != dummyRoot {
+	if prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
 		prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
 	}
 	if len(s.dirtyStorage) > 0 {
