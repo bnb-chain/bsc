@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -429,7 +430,7 @@ func pruneBlock(ctx *cli.Context) error {
 
 func pruneState(ctx *cli.Context) error {
 	if ctx.GlobalIsSet(utils.PruneAncientDataFlag.Name) { // prune ancient only take effect on full sync.
-		if err := ctx.GlobalSet(utils.SyncModeFlag.Name, "full"); err != nil {
+		if err := ctx.GlobalSet(utils.SyncModeFlag.Name, downloader.FullSync.String()); err != nil {
 			return err
 		}
 	}
