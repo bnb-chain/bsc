@@ -70,6 +70,7 @@ var (
 				Flags: []cli.Flag{
 					utils.DataDirFlag,
 					utils.AncientFlag,
+					utils.PruneAncientDataFlag,
 					utils.RopstenFlag,
 					utils.SepoliaFlag,
 					utils.RinkebyFlag,
@@ -243,7 +244,7 @@ block is used.
 )
 
 func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
-	//The layer of tries trees that keep in memory.
+	// The layer of tries trees that keep in memory.
 	TriesInMemory := int(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name))
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, true)
 	defer chaindb.Close()
@@ -256,7 +257,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		return nil, errors.New("failed to load head block")
 	}
 	headHeader := headBlock.Header()
-	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
+	// Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
 	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, TriesInMemory, headBlock.Root(), false, false, false, false)
 	if err != nil {
 		log.Error("snaptree error", "err", err)
@@ -416,7 +417,7 @@ func pruneBlock(ctx *cli.Context) error {
 
 	log.Info("backup block successfully")
 
-	//After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
+	// After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
 	if err := blockpruner.AncientDbReplacer(); err != nil {
 		return err
 	}
@@ -427,6 +428,12 @@ func pruneBlock(ctx *cli.Context) error {
 }
 
 func pruneState(ctx *cli.Context) error {
+	if ctx.GlobalIsSet(utils.PruneAncientDataFlag.Name) { // prune ancient only take effect on full sync.
+		if err := ctx.GlobalSet(utils.SyncModeFlag.Name, "full"); err != nil {
+			return err
+		}
+	}
+
 	stack, config := makeConfigNode(ctx)
 	defer stack.Close()
 
