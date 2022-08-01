@@ -29,7 +29,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/light"
@@ -796,12 +796,6 @@ func TestMultiSyncManyUseless(t *testing.T) {
 
 // TestMultiSyncManyUseless contains one good peer, and many which doesn't return anything valuable at all
 func TestMultiSyncManyUselessWithLowTimeout(t *testing.T) {
-	// We're setting the timeout to very low, to increase the chance of the timeout
-	// being triggered. This was previously a cause of panic, when a response
-	// arrived simultaneously as a timeout was triggered.
-	defer func(old time.Duration) { requestTimeout = old }(requestTimeout)
-	requestTimeout = time.Millisecond
-
 	var (
 		once   sync.Once
 		cancel = make(chan struct{})
@@ -838,6 +832,11 @@ func TestMultiSyncManyUselessWithLowTimeout(t *testing.T) {
 		mkSource("noStorage", true, false, true),
 		mkSource("noTrie", true, true, false),
 	)
+	// We're setting the timeout to very low, to increase the chance of the timeout
+	// being triggered. This was previously a cause of panic, when a response
+	// arrived simultaneously as a timeout was triggered.
+	syncer.rates.OverrideTTLLimit = time.Millisecond
+
 	done := checkStall(t, term)
 	if err := syncer.Sync(sourceAccountTrie.Hash(), cancel); err != nil {
 		t.Fatalf("sync failed: %v", err)
@@ -848,10 +847,6 @@ func TestMultiSyncManyUselessWithLowTimeout(t *testing.T) {
 
 // TestMultiSyncManyUnresponsive contains one good peer, and many which doesn't respond at all
 func TestMultiSyncManyUnresponsive(t *testing.T) {
-	// We're setting the timeout to very low, to make the test run a bit faster
-	defer func(old time.Duration) { requestTimeout = old }(requestTimeout)
-	requestTimeout = time.Millisecond
-
 	var (
 		once   sync.Once
 		cancel = make(chan struct{})
@@ -888,6 +883,9 @@ func TestMultiSyncManyUnresponsive(t *testing.T) {
 		mkSource("noStorage", true, false, true),
 		mkSource("noTrie", true, true, false),
 	)
+	// We're setting the timeout to very low, to make the test run a bit faster
+	syncer.rates.OverrideTTLLimit = time.Millisecond
+
 	done := checkStall(t, term)
 	if err := syncer.Sync(sourceAccountTrie.Hash(), cancel); err != nil {
 		t.Fatalf("sync failed: %v", err)
@@ -1351,7 +1349,7 @@ func makeAccountTrieNoStorage(n int) (*trie.Trie, entrySlice) {
 	accTrie, _ := trie.New(common.Hash{}, db)
 	var entries entrySlice
 	for i := uint64(1); i <= uint64(n); i++ {
-		value, _ := rlp.EncodeToBytes(state.Account{
+		value, _ := rlp.EncodeToBytes(types.StateAccount{
 			Nonce:    i,
 			Balance:  big.NewInt(int64(i)),
 			Root:     emptyRoot,
@@ -1396,7 +1394,7 @@ func makeBoundaryAccountTrie(n int) (*trie.Trie, entrySlice) {
 	}
 	// Fill boundary accounts
 	for i := 0; i < len(boundaries); i++ {
-		value, _ := rlp.EncodeToBytes(state.Account{
+		value, _ := rlp.EncodeToBytes(types.StateAccount{
 			Nonce:    uint64(0),
 			Balance:  big.NewInt(int64(i)),
 			Root:     emptyRoot,
@@ -1408,7 +1406,7 @@ func makeBoundaryAccountTrie(n int) (*trie.Trie, entrySlice) {
 	}
 	// Fill other accounts if required
 	for i := uint64(1); i <= uint64(n); i++ {
-		value, _ := rlp.EncodeToBytes(state.Account{
+		value, _ := rlp.EncodeToBytes(types.StateAccount{
 			Nonce:    i,
 			Balance:  big.NewInt(int64(i)),
 			Root:     emptyRoot,
@@ -1444,7 +1442,7 @@ func makeAccountTrieWithStorageWithUniqueStorage(accounts, slots int, code bool)
 		stTrie, stEntries := makeStorageTrieWithSeed(uint64(slots), i, db)
 		stRoot := stTrie.Hash()
 		stTrie.Commit(nil)
-		value, _ := rlp.EncodeToBytes(state.Account{
+		value, _ := rlp.EncodeToBytes(types.StateAccount{
 			Nonce:    i,
 			Balance:  big.NewInt(int64(i)),
 			Root:     stRoot,
@@ -1491,7 +1489,7 @@ func makeAccountTrieWithStorage(accounts, slots int, code, boundary bool) (*trie
 		if code {
 			codehash = getCodeHash(i)
 		}
-		value, _ := rlp.EncodeToBytes(state.Account{
+		value, _ := rlp.EncodeToBytes(types.StateAccount{
 			Nonce:    i,
 			Balance:  big.NewInt(int64(i)),
 			Root:     stRoot,

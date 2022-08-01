@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -72,7 +73,7 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 
 		// We want to simulate an empty middle block, having the same state as the
 		// first one. The last is needs a state change again to force a reorg.
-		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), common.Address{0x01}, big.NewInt(1), params.TxGas, big.NewInt(1), nil), signer, testKey)
+		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddr), common.Address{0x01}, big.NewInt(1), params.TxGas, big.NewInt(params.InitialBaseFee), nil), signer, testKey)
 		if err != nil {
 			panic(err)
 		}
@@ -91,6 +92,7 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 		Network:    1,
 		Sync:       downloader.FullSync,
 		BloomCache: 1,
+		Merger:     consensus.NewMerger(rawdb.NewMemoryDatabase()),
 	})
 	handler.Start(100)
 

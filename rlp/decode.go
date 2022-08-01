@@ -379,7 +379,7 @@ func decodeByteArray(s *Stream, val reflect.Value) error {
 	if err != nil {
 		return err
 	}
-	slice := byteArrayBytes(val)
+	slice := byteArrayBytes(val, val.Len())
 	switch kind {
 	case Byte:
 		if len(slice) == 0 {
@@ -423,9 +423,16 @@ func makeStructDecoder(typ reflect.Type) (decoder, error) {
 		if _, err := s.List(); err != nil {
 			return wrapStreamError(err, typ)
 		}
-		for _, f := range fields {
+		for i, f := range fields {
 			err := f.info.decoder(s, val.Field(f.index))
 			if err == EOL {
+				if f.optional {
+					// The field is optional, so reaching the end of the list before
+					// reaching the last field is acceptable. All remaining undecoded
+					// fields are zeroed.
+					zeroFields(val, fields[i:])
+					break
+				}
 				return &decodeError{msg: "too few elements", typ: typ}
 			} else if err != nil {
 				return addErrorContext(err, "."+typ.Field(f.index).Name)
@@ -434,6 +441,13 @@ func makeStructDecoder(typ reflect.Type) (decoder, error) {
 		return wrapStreamError(s.ListEnd(), typ)
 	}
 	return dec, nil
+}
+
+func zeroFields(structval reflect.Value, fields []field) {
+	for _, f := range fields {
+		fv := structval.Field(f.index)
+		fv.Set(reflect.Zero(fv.Type()))
+	}
 }
 
 // makePtrDecoder creates a decoder that decodes into the pointer's element type.

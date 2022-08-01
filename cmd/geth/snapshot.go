@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -29,13 +30,17 @@ import (
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -66,6 +71,7 @@ var (
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.RopstenFlag,
+					utils.SepoliaFlag,
 					utils.RinkebyFlag,
 					utils.GoerliFlag,
 					utils.CacheTrieJournalFlag,
@@ -121,6 +127,7 @@ so it's very necessary to do block data prune, this feature will handle it.
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.RopstenFlag,
+					utils.SepoliaFlag,
 					utils.RinkebyFlag,
 					utils.GoerliFlag,
 				},
@@ -129,6 +136,32 @@ geth snapshot verify-state <state-root>
 will traverse the whole accounts and storages set based on the specified
 snapshot and recalculate the root hash of state for verification.
 In other words, this command does the snapshot to trie conversion.
+`,
+			},
+			{
+				Name: "insecure-prune-all",
+				Usage: "Prune all trie state data except genesis block, it will break storage for fullnode, only suitable for fast node " +
+					"who do not need trie storage at all",
+				ArgsUsage: "<genesisPath>",
+				Action:    utils.MigrateFlags(pruneAllState),
+				Category:  "MISCELLANEOUS COMMANDS",
+				Flags: []cli.Flag{
+					utils.DataDirFlag,
+					utils.AncientFlag,
+					utils.RopstenFlag,
+					utils.RinkebyFlag,
+					utils.GoerliFlag,
+				},
+				Description: `
+will prune all historical trie state data except genesis block.
+All trie nodes will be deleted from the database. 
+
+It expects the genesis file as argument.
+
+WARNING: It's necessary to delete the trie clean cache after the pruning.
+If you specify another directory for the trie clean cache via "--cache.trie.journal"
+during the use of Geth, please also specify it here for correct deletion. Otherwise
+the trie clean cache with default directory will be deleted.
 `,
 			},
 			{
@@ -141,6 +174,7 @@ In other words, this command does the snapshot to trie conversion.
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.RopstenFlag,
+					utils.SepoliaFlag,
 					utils.RinkebyFlag,
 					utils.GoerliFlag,
 				},
@@ -163,6 +197,7 @@ It's also usable without snapshot enabled.
 					utils.DataDirFlag,
 					utils.AncientFlag,
 					utils.RopstenFlag,
+					utils.SepoliaFlag,
 					utils.RinkebyFlag,
 					utils.GoerliFlag,
 				},
@@ -174,6 +209,33 @@ verification. The default checking target is the HEAD state. It's basically iden
 to traverse-state, but the check granularity is smaller. 
 
 It's also usable without snapshot enabled.
+`,
+			},
+			{
+				Name:      "dump",
+				Usage:     "Dump a specific block from storage (same as 'geth dump' but using snapshots)",
+				ArgsUsage: "[? <blockHash> | <blockNum>]",
+				Action:    utils.MigrateFlags(dumpState),
+				Category:  "MISCELLANEOUS COMMANDS",
+				Flags: []cli.Flag{
+					utils.DataDirFlag,
+					utils.AncientFlag,
+					utils.RopstenFlag,
+					utils.SepoliaFlag,
+					utils.RinkebyFlag,
+					utils.GoerliFlag,
+					utils.ExcludeCodeFlag,
+					utils.ExcludeStorageFlag,
+					utils.StartKeyFlag,
+					utils.DumpLimitFlag,
+					utils.TriesInMemoryFlag,
+				},
+				Description: `
+This command is semantically equivalent to 'geth dump', but uses the snapshots
+as the backend data source, making this command a lot faster. 
+
+The argument is interpreted as block number or hash. If none is provided, the latest
+block is used.
 `,
 			},
 		},
@@ -195,7 +257,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	}
 	headHeader := headBlock.Header()
 	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
-	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, TriesInMemory, headBlock.Root(), false, false, false)
+	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, TriesInMemory, headBlock.Root(), false, false, false, false)
 	if err != nil {
 		log.Error("snaptree error", "err", err)
 		return nil, err // The relevant snapshot(s) might not exist
@@ -268,18 +330,48 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 }
 
 func pruneBlock(ctx *cli.Context) error {
-	stack, config := makeConfigNode(ctx)
+	var (
+		stack   *node.Node
+		config  gethConfig
+		chaindb ethdb.Database
+		err     error
+
+		oldAncientPath      string
+		newAncientPath      string
+		blockAmountReserved uint64
+		blockpruner         *pruner.BlockPruner
+	)
+
+	stack, config = makeConfigNode(ctx)
 	defer stack.Close()
-	blockAmountReserved := ctx.GlobalUint64(utils.BlockAmountReserved.Name)
-	chaindb, err := accessDb(ctx, stack)
+	blockAmountReserved = ctx.GlobalUint64(utils.BlockAmountReserved.Name)
+	chaindb, err = accessDb(ctx, stack)
 	if err != nil {
 		return err
 	}
-	var newAncientPath string
-	oldAncientPath := ctx.GlobalString(utils.AncientFlag.Name)
-	if !filepath.IsAbs(oldAncientPath) {
-		// force absolute paths, which often fail due to the splicing of relative paths
-		return errors.New("datadir.ancient not abs path")
+
+	// Most of the problems reported by users when first using the prune-block
+	// tool are due to incorrect directory settings.Here, the default directory
+	// and relative directory are canceled, and the user is forced to formulate
+	// an absolute path to guide users to run the prune-block command correctly.
+	if !ctx.GlobalIsSet(utils.DataDirFlag.Name) {
+		return errors.New("datadir must be set")
+	} else {
+		datadir := ctx.GlobalString(utils.DataDirFlag.Name)
+		if !filepath.IsAbs(datadir) {
+			// force absolute paths, which often fail due to the splicing of relative paths
+			return errors.New("datadir not abs path")
+		}
+	}
+
+	if !ctx.GlobalIsSet(utils.AncientFlag.Name) {
+		return errors.New("datadir.ancient must be set")
+	} else {
+		oldAncientPath = ctx.GlobalString(utils.AncientFlag.Name)
+		if !filepath.IsAbs(oldAncientPath) {
+			// force absolute paths, which often fail due to the splicing of relative paths
+			return errors.New("datadir.ancient not abs path")
+		}
 	}
 
 	path, _ := filepath.Split(oldAncientPath)
@@ -288,7 +380,7 @@ func pruneBlock(ctx *cli.Context) error {
 	}
 	newAncientPath = filepath.Join(path, "ancient_back")
 
-	blockpruner := pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
+	blockpruner = pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
 
 	lock, exist, err := fileutil.Flock(filepath.Join(oldAncientPath, "PRUNEFLOCK"))
 	if err != nil {
@@ -363,6 +455,48 @@ func pruneState(ctx *cli.Context) error {
 	return nil
 }
 
+func pruneAllState(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	genesisPath := ctx.Args().First()
+	if len(genesisPath) == 0 {
+		utils.Fatalf("Must supply path to genesis JSON file")
+	}
+	file, err := os.Open(genesisPath)
+	if err != nil {
+		utils.Fatalf("Failed to read genesis file: %v", err)
+	}
+	defer file.Close()
+
+	g := new(core.Genesis)
+	if err := json.NewDecoder(file).Decode(g); err != nil {
+		cfg := gethConfig{
+			Eth:     ethconfig.Defaults,
+			Node:    defaultNodeConfig(),
+			Metrics: metrics.DefaultConfig,
+		}
+
+		// Load config file.
+		if err := loadConfig(genesisPath, &cfg); err != nil {
+			utils.Fatalf("%v", err)
+		}
+		g = cfg.Eth.Genesis
+	}
+
+	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
+	pruner, err := pruner.NewAllPruner(chaindb)
+	if err != nil {
+		log.Error("Failed to open snapshot tree", "err", err)
+		return err
+	}
+	if err = pruner.PruneAll(g); err != nil {
+		log.Error("Failed to prune state", "err", err)
+		return err
+	}
+	return nil
+}
+
 func verifyState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
@@ -373,7 +507,7 @@ func verifyState(ctx *cli.Context) error {
 		log.Error("Failed to load head block")
 		return errors.New("no head block")
 	}
-	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, 128, headBlock.Root(), false, false, false)
+	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, 128, headBlock.Root(), false, false, false, false)
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)
 		return err
@@ -391,7 +525,7 @@ func verifyState(ctx *cli.Context) error {
 		}
 	}
 	if err := snaptree.Verify(root); err != nil {
-		log.Error("Failed to verfiy state", "root", root, "err", err)
+		log.Error("Failed to verify state", "root", root, "err", err)
 		return err
 	}
 	log.Info("Verified the state", "root", root)
@@ -446,7 +580,7 @@ func traverseState(ctx *cli.Context) error {
 	accIter := trie.NewIterator(t.NodeIterator(nil))
 	for accIter.Next() {
 		accounts += 1
-		var acc state.Account
+		var acc types.StateAccount
 		if err := rlp.DecodeBytes(accIter.Value, &acc); err != nil {
 			log.Error("Invalid account encountered during traversal", "err", err)
 			return err
@@ -552,7 +686,7 @@ func traverseRawState(ctx *cli.Context) error {
 		// dig into the storage trie further.
 		if accIter.Leaf() {
 			accounts += 1
-			var acc state.Account
+			var acc types.StateAccount
 			if err := rlp.DecodeBytes(accIter.LeafBlob(), &acc); err != nil {
 				log.Error("Invalid account encountered during traversal", "err", err)
 				return errors.New("invalid account")
@@ -571,8 +705,7 @@ func traverseRawState(ctx *cli.Context) error {
 					// Check the present for non-empty hash node(embedded node doesn't
 					// have their own hash).
 					if node != (common.Hash{}) {
-						blob := rawdb.ReadTrieNode(chaindb, node)
-						if len(blob) == 0 {
+						if !rawdb.HasTrieNode(chaindb, node) {
 							log.Error("Missing trie node(storage)", "hash", node)
 							return errors.New("missing storage")
 						}
@@ -615,4 +748,75 @@ func parseRoot(input string) (common.Hash, error) {
 		return h, err
 	}
 	return h, nil
+}
+
+func dumpState(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	conf, db, root, err := parseDumpConfig(ctx, stack)
+	if err != nil {
+		return err
+	}
+	triesInMemory := ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)
+	snaptree, err := snapshot.New(db, trie.NewDatabase(db), int(triesInMemory), 256, root, false, false, false, false)
+	if err != nil {
+		return err
+	}
+	accIt, err := snaptree.AccountIterator(root, common.BytesToHash(conf.Start))
+	if err != nil {
+		return err
+	}
+	defer accIt.Release()
+
+	log.Info("Snapshot dumping started", "root", root)
+	var (
+		start    = time.Now()
+		logged   = time.Now()
+		accounts uint64
+	)
+	enc := json.NewEncoder(os.Stdout)
+	enc.Encode(struct {
+		Root common.Hash `json:"root"`
+	}{root})
+	for accIt.Next() {
+		account, err := snapshot.FullAccount(accIt.Account())
+		if err != nil {
+			return err
+		}
+		da := &state.DumpAccount{
+			Balance:   account.Balance.String(),
+			Nonce:     account.Nonce,
+			Root:      account.Root,
+			CodeHash:  account.CodeHash,
+			SecureKey: accIt.Hash().Bytes(),
+		}
+		if !conf.SkipCode && !bytes.Equal(account.CodeHash, emptyCode) {
+			da.Code = rawdb.ReadCode(db, common.BytesToHash(account.CodeHash))
+		}
+		if !conf.SkipStorage {
+			da.Storage = make(map[common.Hash]string)
+
+			stIt, err := snaptree.StorageIterator(root, accIt.Hash(), common.Hash{})
+			if err != nil {
+				return err
+			}
+			for stIt.Next() {
+				da.Storage[stIt.Hash()] = common.Bytes2Hex(stIt.Slot())
+			}
+		}
+		enc.Encode(da)
+		accounts++
+		if time.Since(logged) > 8*time.Second {
+			log.Info("Snapshot dumping in progress", "at", accIt.Hash(), "accounts", accounts,
+				"elapsed", common.PrettyDuration(time.Since(start)))
+			logged = time.Now()
+		}
+		if conf.Max > 0 && accounts >= conf.Max {
+			break
+		}
+	}
+	log.Info("Snapshot dumping complete", "accounts", accounts,
+		"elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
 }
