@@ -61,7 +61,7 @@ type LightChain struct {
 	finalizedHeaderFeed event.Feed
 	scope               event.SubscriptionScope
 	genesisBlock        *types.Block
-	forker        *core.ForkChoice
+	forker              *core.ForkChoice
 
 	bodyCache    *lru.Cache // Cache for the most recent block bodies
 	bodyRLPCache *lru.Cache // Cache for the most recent block bodies in RLP encoded format
@@ -457,7 +457,7 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 		lc.chainFeed.Send(core.ChainEvent{Block: block, Hash: block.Hash()})
 		lc.chainHeadFeed.Send(core.ChainHeadEvent{Block: block})
 		if posa, ok := lc.Engine().(consensus.PoSA); ok {
-			lc.finalizedHeaderFeed.send(core.FinalizedHeaderEvent{Header: posa.GetFinalizedHeader(lc, block.Header(), types.NaturallyFinalizedDist)})
+			lc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: posa.GetFinalizedHeader(lc, block.Header(), types.NaturallyFinalizedDist)})
 		}
 	case core.SideStatTy:
 		lc.chainSideFeed.Send(core.ChainSideEvent{Block: block})

@@ -102,9 +102,9 @@ type votePool interface {
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	Database               ethdb.Database            // Database for direct sync insertions
-	Chain                  *core.BlockChain          // Blockchain to serve data from
-	TxPool                 txPool                    // Transaction pool to propagate from
+	Database               ethdb.Database   // Database for direct sync insertions
+	Chain                  *core.BlockChain // Blockchain to serve data from
+	TxPool                 txPool           // Transaction pool to propagate from
 	VotePool               votePool
 	Merger                 *consensus.Merger         // The manager for eth1/2 transition
 	Network                uint64                    // Network identifier to adfvertise
@@ -780,7 +780,7 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 	peers := h.peers.peersWithoutVote(vote.Hash())
 	for _, peer := range peers {
 		_, peerTD := peer.Head()
-		deltaTD := new(big.Int).Abs(new(big.Int).Sub(h.chain.GetTdByHash(h.chain.CurrentHeader().Hash()), peerTD))
+		deltaTD := new(big.Int).Abs(new(big.Int).Sub(h.chain.GetTd(h.chain.CurrentHeader().Hash(), h.chain.CurrentBlock().NumberU64()), peerTD))
 		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 {
 			voteMap[peer] = vote
 		}

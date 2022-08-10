@@ -95,7 +95,7 @@ type Peer struct {
 	resDispatch chan *response // Dispatch channel to fulfil pending requests and untrack them
 
 	votepool      VotePool                   // Votes pool used by the broadcasters
-	knownVotes    mapset.Set                 // Set of vote hashes known to be known by this peer
+	knownVotes    *knownCache                // Set of vote hashes known to be known by this peer
 	voteBroadcast chan []*types.VoteEnvelope // Channel used to queue votes propagation requests
 
 	term     chan struct{} // Termination channel to stop the broadcasters
@@ -219,9 +219,6 @@ func (p *Peer) markTransaction(hash common.Hash) {
 // will never be propagated to this particular peer.
 func (p *Peer) markVote(hash common.Hash) {
 	// If we reached the memory allowance, drop a previously known vote hash
-	for p.knownVotes.Cardinality() >= maxKnownVotes {
-		p.knownVotes.Pop()
-	}
 	p.knownVotes.Add(hash)
 }
 
@@ -348,9 +345,6 @@ func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 // SendVotes propagates a batch of votes to the remote peer.
 func (p *Peer) SendVotes(votes []*types.VoteEnvelope) error {
 	// Mark all the votes as known, but ensure we don't overflow our limits
-	for p.knownVotes.Cardinality() > max(0, maxKnownTxs-len(votes)) {
-		p.knownVotes.Pop()
-	}
 	for _, vote := range votes {
 		p.knownVotes.Add(vote.Hash())
 	}
@@ -363,9 +357,6 @@ func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
 	select {
 	case p.voteBroadcast <- votes:
 		// Mark all the votes as known, but ensure we don't overflow our limits
-		for p.knownVotes.Cardinality() > max(0, maxKnownVotes-len(votes)) {
-			p.knownVotes.Pop()
-		}
 		for _, vote := range votes {
 			p.knownVotes.Add(vote.Hash())
 		}
