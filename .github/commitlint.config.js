@@ -1,14 +1,16 @@
-const maxTypeNumber = 3
-
 const validateTypeNums = (parsedCommit) => {
     if (!parsedCommit.type) {
         return [false, 'invalid commit message']
     }
 
-    return [
-        parsedCommit.type.split(' ').length <= maxTypeNumber,
-      `type must not be more than ${maxTypeNumber}`,
-    ]
+    const types = parsedCommit.type.split(' ')
+    for (var i=0;i<types.length;i++){
+        if ((types[i].toLowerCase() == "wip") || (types[i].toLowerCase() == "r4r")) {
+            return [false, 'R4R  or WIP is not acceptable, no matter upper case or lower case']
+        }
+    }
+
+    return [true,'']
   }
 
 
@@ -25,7 +27,6 @@ module.exports = {
     'scope-empty':[2, 'always'],
     'type-enum': [2, 'never'],
     'function-rules/type-case': [2, 'always', validateTypeNums],
-    'type-max-length': [2, 'always', 20],
     'header-max-length': [
       2,
       'always',
