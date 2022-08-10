@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.11
+
+UPGRADE
+* [\#927](https://github.com/bnb-chain/bsc/pull/927) add readme for validators about how to enter/exit maintenance
+* [\#942](https://github.com/bnb-chain/bsc/pull/942) update the blockNumber of Euler Fork upgrade on BSC Mainnet
+
+
 ## v1.1.10
 
 FEATURE
