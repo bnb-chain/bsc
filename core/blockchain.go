@@ -207,7 +207,7 @@ type BlockChain struct {
 	chainFeed           event.Feed
 	chainSideFeed       event.Feed
 	chainHeadFeed       event.Feed
-	chainBlockFeed 		event.Feed
+	chainBlockFeed      event.Feed
 	logsFeed            event.Feed
 	blockProcFeed       event.Feed
 	finalizedHeaderFeed event.Feed
