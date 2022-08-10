@@ -153,8 +153,8 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 	if m.txsSub == nil || m.logsSub == nil || m.rmLogsSub == nil || m.chainSub == nil || m.pendingLogsSub == nil {
 		log.Crit("Subscribe for event system failed")
 	}
-	if m.voteSub == nil {
-		log.Warn("Subscribe for vote event failed")
+	if m.voteSub == nil || m.finalizedHeaderSub == nil {
+		log.Warn("Subscribe for vote or finalized header event failed")
 	}
 
 	go m.eventLoop()

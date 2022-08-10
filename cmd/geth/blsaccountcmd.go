@@ -14,7 +14,6 @@ import (
 	"github.com/logrusorgru/aurora"
 	"github.com/prysmaticlabs/prysm/crypto/bls"
 	"github.com/prysmaticlabs/prysm/encoding/bytesutil"
-	"github.com/prysmaticlabs/prysm/io/file"
 	"github.com/prysmaticlabs/prysm/io/prompt"
 	"github.com/prysmaticlabs/prysm/validator/accounts"
 	"github.com/prysmaticlabs/prysm/validator/accounts/iface"
@@ -26,6 +25,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/signer/core"
 )
 
 const (
@@ -282,10 +282,13 @@ func blsAccountCreate(ctx *cli.Context) error {
 	}
 
 	keystoreDir := filepath.Join(cfg.Node.DataDir, BLSKeystorePath)
-	if err := file.MkdirAll(keystoreDir); err != nil {
+	if err := os.MkdirAll(keystoreDir, 0755); err != nil {
 		utils.Fatalf("Could not access keystore dir: %v.", err)
 	}
 	accountPassword := utils.GetPassPhrase("Your new BLS account will be encrypted with a password. Please give a password. Do not forget this password.", true)
+	if err := core.ValidatePasswordFormat(accountPassword); err != nil {
+		utils.Fatalf("Password invalid: %v.", err)
+	}
 
 	encryptor := keystorev4.New()
 	secretKey, err := bls.RandKey()

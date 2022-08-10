@@ -122,7 +122,7 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 
 	// Make sure in the range currentHeight-256~currentHeight+11.
 	if targetNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || targetNumber > headNumber+upperLimitOfVoteBlockNumber {
-		log.Debug("BlockNumber of vote is outside the range of header-256~header+13, will be discarded")
+		log.Debug("BlockNumber of vote is outside the range of header-256~header+11, will be discarded")
 		return false
 	}
 
@@ -184,7 +184,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 		heap.Push(votesPq, voteData)
 		voteBox := &VoteBox{
 			blockNumber:  targetNumber,
-			voteMessages: make([]*types.VoteEnvelope, 0, maxCurVoteAmountPerBlock),
+			voteMessages: make([]*types.VoteEnvelope, 0, maxFutureVoteAmountPerBlock),
 		}
 		m[targetHash] = voteBox
 
