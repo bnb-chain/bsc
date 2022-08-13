@@ -517,7 +517,9 @@ func (s *StateDB) SubRefund(gas uint64) {
 // Exist reports whether the given account address exists in the state.
 // Notably this also returns true for suicided accounts.
 func (s *StateDB) Exist(addr common.Address) bool {
-	return s.getStateObject(addr) != nil
+	exist := s.getStateObject(addr) != nil
+	log.Info("StateDB Exist", "exist", exist)
+	return exist
 }
 
 // Empty returns whether the state object is either non-existent
@@ -2853,10 +2855,15 @@ func (s *ParallelStateDB) GetState(addr common.Address, hash common.Hash) common
 	// 1.Try to get from dirty
 	if exist, ok := s.parallel.addrStateChangesInSlot[addr]; ok {
 		if !exist {
-			return common.Hash{}
+			// it could be suicided within this SlotDB?
+			// it should be able to get state from suicided address within a Tx:
+			// e.g. within a transaction: call addr:suicide -> get state: should be ok
+			// return common.Hash{}
+			log.Info("ParallelStateDB GetState suicided", "addr", addr, "hash", hash)
+		} else {
+			obj := s.parallel.dirtiedStateObjectsInSlot[addr] // addr must exist in dirtiedStateObjectsInSlot
+			return obj.GetState(s.db, hash)
 		}
-		obj := s.parallel.dirtiedStateObjectsInSlot[addr] // addr must exist in dirtiedStateObjectsInSlot
-		return obj.GetState(s.db, hash)
 	}
 	if keys, ok := s.parallel.kvChangesInSlot[addr]; ok {
 		if _, ok := keys[hash]; ok {
