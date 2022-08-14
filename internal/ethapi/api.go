@@ -2691,7 +2691,7 @@ func (s *PublicBlockChainAPI) GetStorages(
 	if state == nil || err != nil {
 		return nil, err
 	}
-	result := make([]hexutil.Bytes, 30)
+	result := make([]hexutil.Bytes, 31)
 	for i := 0; i <= 30; i++ {
 		res := state.GetState(address, common.BigToHash(big.NewInt(int64(i))))
 		result[i] = res[:]
