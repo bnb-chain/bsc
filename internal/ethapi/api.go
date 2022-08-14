@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -2692,15 +2691,10 @@ func (s *PublicBlockChainAPI) GetStorages(
 	if state == nil || err != nil {
 		return nil, err
 	}
-	var wg sync.WaitGroup
 	result := make([]hexutil.Bytes, 30)
 	for i := 0; i <= 30; i++ {
-		wg.Add(1)
-		go func(i int) {
-			res := state.GetState(address, common.BigToHash(big.NewInt(int64(i))))
-			result[i] = res[:]
-		}(i)
+		res := state.GetState(address, common.BigToHash(big.NewInt(int64(i))))
+		result[i] = res[:]
 	}
-	wg.Wait()
 	return result, state.Error()
 }
