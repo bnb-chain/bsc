@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -2674,4 +2675,26 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 
 	// ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 	return ret, nil
+}
+
+func (s *PublicBlockChainAPI) GetStorages(
+	ctx context.Context,
+	address common.Address,
+	blockNrOrHash rpc.BlockNumberOrHash,
+) ([]hexutil.Bytes, error) {
+	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	var wg sync.WaitGroup
+	result := make([]hexutil.Bytes, 30)
+	for i := 0; i <= 30; i++ {
+		wg.Add(1)
+		go func(i int) {
+			res := state.GetState(address, common.BigToHash(big.NewInt(int64(i))))
+			result[i] = res[:]
+		}(i)
+	}
+	wg.Wait()
+	return result, state.Error()
 }
