@@ -101,9 +101,28 @@ type Snapshot interface {
 	// Root returns the root hash for which this snapshot was made.
 	Root() common.Hash
 
+	// WaitAndGetVerifyRes will wait until the snapshot been verified and return verification result
+	WaitAndGetVerifyRes() bool
+
+	// Verified returns whether the snapshot is verified
+	Verified() bool
+
+	// MarkValid stores the verification result
+	MarkValid()
+
+	// CorrectAccounts updates account data for storing the correct data during pipecommit
+	CorrectAccounts(map[common.Hash][]byte)
+
+	// AccountsCorrected checks whether the account data has been corrected during pipecommit
+	AccountsCorrected() bool
+
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*Account, error)
+
+	// Accounts directly retrieves all accounts in current snapshot in
+	// the snapshot slim data format.
+	Accounts() (map[common.Hash]*Account, error)
 
 	// AccountRLP directly retrieves the account RLP associated with a particular
 	// hash in the snapshot slim data format.
@@ -130,7 +149,7 @@ type snapshot interface {
 	// the specified data items.
 	//
 	// Note, the maps are retained by the method to avoid copying everything.
-	Update(blockRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) *diffLayer
+	Update(blockRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer
 
 	// Journal commits an entire diff hierarchy to disk into a single journal entry.
 	// This is meant to be used during shutdown to persist the snapshot without
@@ -231,6 +250,11 @@ func (t *Tree) waitBuild() {
 	}
 }
 
+// Layers returns the number of layers
+func (t *Tree) Layers() int {
+	return len(t.layers)
+}
+
 // Disable interrupts any pending snapshot generator, deletes all the snapshot
 // layers in memory and marks snapshots disabled globally. In order to resume
 // the snapshot functionality, the caller must invoke Rebuild.
@@ -322,14 +346,14 @@ func (t *Tree) Snapshots(root common.Hash, limits int, nodisk bool) []Snapshot {
 	return ret
 }
 
-func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Address]struct{}, accounts map[common.Address][]byte, storage map[common.Address]map[string][]byte) error {
+func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Address]struct{}, accounts map[common.Address][]byte, storage map[common.Address]map[string][]byte, verified chan struct{}) error {
 	hashDestructs, hashAccounts, hashStorage := transformSnapData(destructs, accounts, storage)
-	return t.update(blockRoot, parentRoot, hashDestructs, hashAccounts, hashStorage)
+	return t.update(blockRoot, parentRoot, hashDestructs, hashAccounts, hashStorage, verified)
 }
 
 // Update adds a new snapshot into the tree, if that can be linked to an existing
 // old parent. It is disallowed to insert a disk layer (the origin of all).
-func (t *Tree) update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) error {
+func (t *Tree) update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) error {
 	// Reject noop updates to avoid self-loops in the snapshot tree. This is a
 	// special case that can only happen for Clique networks where empty blocks
 	// don't modify the state (0 block subsidy).
@@ -344,7 +368,7 @@ func (t *Tree) update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 	if parent == nil {
 		return fmt.Errorf("parent [%#x] snapshot missing", parentRoot)
 	}
-	snap := parent.(snapshot).Update(blockRoot, destructs, accounts, storage)
+	snap := parent.(snapshot).Update(blockRoot, destructs, accounts, storage, verified)
 
 	// Save the new snapshot for later
 	t.lock.Lock()
@@ -657,6 +681,11 @@ func (t *Tree) Journal(root common.Hash) (common.Hash, error) {
 	if snap == nil {
 		return common.Hash{}, fmt.Errorf("snapshot [%#x] missing", root)
 	}
+	// Wait the snapshot(difflayer) is verified, it means the account data also been refreshed with the correct data
+	if !snap.WaitAndGetVerifyRes() {
+		return common.Hash{}, ErrSnapshotStale
+	}
+
 	// Run the journaling
 	t.lock.Lock()
 	defer t.lock.Unlock()

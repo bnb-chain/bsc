@@ -313,7 +313,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
-	defer h.removePeer(peer.ID())
+	defer h.unregisterPeer(peer.ID())
 
 	p := h.peers.peer(peer.ID())
 	if p == nil {
@@ -395,9 +395,17 @@ func (h *handler) runDiffExtension(peer *diff.Peer, handler diff.Handler) error 
 	return handler(peer)
 }
 
-// removePeer unregisters a peer from the downloader and fetchers, removes it from
-// the set of tracked peers and closes the network connection to it.
+// removePeer requests disconnection of a peer.
 func (h *handler) removePeer(id string) {
+	peer := h.peers.peer(id)
+	if peer != nil {
+		// Hard disconnect at the networking layer. Handler will get an EOF and terminate the peer. defer unregisterPeer will do the cleanup task after then.
+		peer.Peer.Disconnect(p2p.DiscUselessPeer)
+	}
+}
+
+// unregisterPeer removes a peer from the downloader, fetchers and main peer set.
+func (h *handler) unregisterPeer(id string) {
 	// Create a custom logger to avoid printing the entire id
 	var logger log.Logger
 	if len(id) < 16 {
@@ -425,8 +433,6 @@ func (h *handler) removePeer(id string) {
 	if err := h.peers.unregisterPeer(id); err != nil {
 		logger.Error("Ethereum peer removal failed", "err", err)
 	}
-	// Hard disconnect at the networking layer
-	peer.Peer.Disconnect(p2p.DiscUselessPeer)
 }
 
 func (h *handler) Start(maxPeers int) {
@@ -565,26 +571,19 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 // ReannounceTransactions will announce a batch of local pending transactions
 // to a square root of all peers.
 func (h *handler) ReannounceTransactions(txs types.Transactions) {
-	var (
-		annoCount int                                // Count of announcements made
-		annos     = make(map[*ethPeer][]common.Hash) // Set peer->hash to announce
-	)
+	hashes := make([]common.Hash, 0, txs.Len())
+	for _, tx := range txs {
+		hashes = append(hashes, tx.Hash())
+	}
 
 	// Announce transactions hash to a batch of peers
 	peersCount := uint(math.Sqrt(float64(h.peers.len())))
 	peers := h.peers.headPeers(peersCount)
-	for _, tx := range txs {
-		for _, peer := range peers {
-			annos[peer] = append(annos[peer], tx.Hash())
-		}
-	}
-
-	for peer, hashes := range annos {
-		annoCount += len(hashes)
+	for _, peer := range peers {
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
 	log.Debug("Transaction reannounce", "txs", len(txs),
-		"announce packs", peersCount, "announced hashes", annoCount)
+		"announce packs", peersCount, "announced hashes", peersCount*uint(len(hashes)))
 }
 
 // minedBroadcastLoop sends mined blocks to connected peers.

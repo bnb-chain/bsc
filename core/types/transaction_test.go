@@ -358,6 +358,78 @@ func TestTransactionTimeSort(t *testing.T) {
 	}
 }
 
+func TestTransactionForward(t *testing.T) {
+	// Generate a batch of accounts to start with
+	keys := make([]*ecdsa.PrivateKey, 5)
+	for i := 0; i < len(keys); i++ {
+		keys[i], _ = crypto.GenerateKey()
+	}
+	signer := HomesteadSigner{}
+
+	// Generate a batch of transactions with overlapping prices, but different creation times
+	groups := map[common.Address]Transactions{}
+	for start, key := range keys {
+		addr := crypto.PubkeyToAddress(key.PublicKey)
+
+		tx, _ := SignTx(NewTransaction(0, common.Address{}, big.NewInt(100), 100, big.NewInt(1), nil), signer, key)
+		tx2, _ := SignTx(NewTransaction(1, common.Address{}, big.NewInt(100), 100, big.NewInt(1), nil), signer, key)
+
+		tx.time = time.Unix(0, int64(len(keys)-start))
+		tx2.time = time.Unix(1, int64(len(keys)-start))
+
+		groups[addr] = append(groups[addr], tx)
+		groups[addr] = append(groups[addr], tx2)
+
+	}
+	// Sort the transactions
+	txset := NewTransactionsByPriceAndNonce(signer, groups)
+	txsetCpy := txset.Copy()
+
+	txs := Transactions{}
+	for tx := txsetCpy.Peek(); tx != nil; tx = txsetCpy.Peek() {
+		txs = append(txs, tx)
+		txsetCpy.Shift()
+	}
+
+	tmp := txset.Copy()
+	for j := 0; j < 11; j++ {
+		txset = tmp.Copy()
+		txsetCpy = tmp.Copy()
+		i := 0
+		for ; i < j; i++ {
+			txset.Shift()
+		}
+		tx := txset.Peek()
+		if tx == nil {
+			continue
+		}
+		txsetCpy.Forward(tx)
+		txCpy := txsetCpy.Peek()
+		if txCpy == nil {
+			if tx == nil {
+				continue
+			}
+			txset.Shift()
+			if txset.Peek() != nil {
+				t.Errorf("forward got an incorrect result, got %v, want %v", txCpy, tx)
+			} else {
+				continue
+			}
+		}
+		txset.Shift()
+		for ; i < len(txs)-1; i++ {
+			tx = txset.Peek()
+			txCpy = txsetCpy.Peek()
+			if txCpy != tx {
+				t.Errorf("forward got an incorrect result, got %v, want %v", txCpy, tx)
+			}
+			txsetCpy.Shift()
+			txset.Shift()
+		}
+
+	}
+}
+
 // TestTransactionCoding tests serializing/de-serializing to/from rlp and JSON.
 func TestTransactionCoding(t *testing.T) {
 	key, err := crypto.GenerateKey()

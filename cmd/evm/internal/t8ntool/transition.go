@@ -81,10 +81,10 @@ func Main(ctx *cli.Context) error {
 
 	var (
 		err     error
-		tracer  vm.Tracer
+		tracer  vm.EVMLogger
 		baseDir = ""
 	)
-	var getTracer func(txIndex int, txHash common.Hash) (vm.Tracer, error)
+	var getTracer func(txIndex int, txHash common.Hash) (vm.EVMLogger, error)
 
 	// If user specified a basedir, make sure it exists
 	if ctx.IsSet(OutputBasedir.Name) {
@@ -99,10 +99,10 @@ func Main(ctx *cli.Context) error {
 	if ctx.Bool(TraceFlag.Name) {
 		// Configure the EVM logger
 		logConfig := &vm.LogConfig{
-			DisableStack:      ctx.Bool(TraceDisableStackFlag.Name),
-			DisableMemory:     ctx.Bool(TraceDisableMemoryFlag.Name),
-			DisableReturnData: ctx.Bool(TraceDisableReturnDataFlag.Name),
-			Debug:             true,
+			DisableStack:     ctx.Bool(TraceDisableStackFlag.Name),
+			EnableMemory:     !ctx.Bool(TraceDisableMemoryFlag.Name),
+			EnableReturnData: !ctx.Bool(TraceDisableReturnDataFlag.Name),
+			Debug:            true,
 		}
 		var prevFile *os.File
 		// This one closes the last file
@@ -111,7 +111,7 @@ func Main(ctx *cli.Context) error {
 				prevFile.Close()
 			}
 		}()
-		getTracer = func(txIndex int, txHash common.Hash) (vm.Tracer, error) {
+		getTracer = func(txIndex int, txHash common.Hash) (vm.EVMLogger, error) {
 			if prevFile != nil {
 				prevFile.Close()
 			}
@@ -123,7 +123,7 @@ func Main(ctx *cli.Context) error {
 			return vm.NewJSONLogger(logConfig, traceFile), nil
 		}
 	} else {
-		getTracer = func(txIndex int, txHash common.Hash) (tracer vm.Tracer, err error) {
+		getTracer = func(txIndex int, txHash common.Hash) (tracer vm.EVMLogger, err error) {
 			return nil, nil
 		}
 	}

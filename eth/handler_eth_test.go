@@ -239,6 +239,76 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 func TestRecvTransactions65(t *testing.T) { testRecvTransactions(t, eth.ETH65) }
 func TestRecvTransactions66(t *testing.T) { testRecvTransactions(t, eth.ETH66) }
 
+func TestWaitDiffExtensionTimout(t *testing.T) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	_, p2pSink := p2p.MsgPipe()
+	defer p2pSink.Close()
+
+	protos := []p2p.Protocol{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}
+
+	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}), p2pSink, nil)
+	defer sink.Close()
+
+	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+
+	if err == nil || err.Error() != "peer wait timeout" {
+		t.Fatalf("error should be `peer wait timeout`")
+	}
+}
+
+func TestWaitSnapExtensionTimout(t *testing.T) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	_, p2pSink := p2p.MsgPipe()
+	defer p2pSink.Close()
+
+	protos := []p2p.Protocol{
+		{
+			Name:    "snap",
+			Version: 1,
+		},
+	}
+
+	sink := eth.NewPeer(eth.ETH67, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
+		{
+			Name:    "snap",
+			Version: 1,
+		},
+	}), p2pSink, nil)
+	defer sink.Close()
+
+	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+
+	if err == nil || err.Error() != "peer wait timeout" {
+		t.Fatalf("error should be `peer wait timeout`")
+	}
+}
+
 func testRecvTransactions(t *testing.T, protocol uint) {
 	t.Parallel()
 
@@ -571,14 +641,20 @@ func testCheckpointChallenge(t *testing.T, syncmode downloader.SyncMode, checkpo
 	defer p2pLocal.Close()
 	defer p2pRemote.Close()
 
-	local := eth.NewPeer(eth.ETH65, p2p.NewPeer(enode.ID{1}, "", nil), p2pLocal, handler.txpool)
-	remote := eth.NewPeer(eth.ETH65, p2p.NewPeer(enode.ID{2}, "", nil), p2pRemote, handler.txpool)
+	local := eth.NewPeer(eth.ETH65, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pLocal), p2pLocal, handler.txpool)
+	remote := eth.NewPeer(eth.ETH65, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pRemote), p2pRemote, handler.txpool)
 	defer local.Close()
 	defer remote.Close()
 
-	go handler.handler.runEthPeer(local, func(peer *eth.Peer) error {
-		return eth.Handle((*ethHandler)(handler.handler), peer)
-	})
+	handlerDone := make(chan struct{})
+	go func() {
+		defer close(handlerDone)
+		handler.handler.runEthPeer(local, func(peer *eth.Peer) error {
+			err := eth.Handle((*ethHandler)(handler.handler), peer)
+			return err
+		})
+	}()
+
 	// Run the handshake locally to avoid spinning up a remote handler
 	var (
 		genesis = handler.chain.Genesis()
@@ -615,6 +691,7 @@ func testCheckpointChallenge(t *testing.T, syncmode downloader.SyncMode, checkpo
 
 	// Verify that the remote peer is maintained or dropped
 	if drop {
+		<-handlerDone
 		if peers := handler.handler.peers.len(); peers != 0 {
 			t.Fatalf("peer count mismatch: have %d, want %d", peers, 0)
 		}

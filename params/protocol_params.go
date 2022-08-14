@@ -114,7 +114,6 @@ const (
 
 	// Precompiled contract gas prices
 
-	//TODO need further discussion
 	TendermintHeaderValidateGas uint64 = 3000 // Gas for validate tendermiint consensus state
 	IAVLMerkleProofValidateGas  uint64 = 3000 // Gas for validate merkle proof
 

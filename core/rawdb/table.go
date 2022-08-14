@@ -68,6 +68,16 @@ func (t *table) Ancients() (uint64, error) {
 	return t.db.Ancients()
 }
 
+// ItemAmountInAncient returns the actual length of current ancientDB.
+func (t *table) ItemAmountInAncient() (uint64, error) {
+	return t.db.ItemAmountInAncient()
+}
+
+// AncientOffSet returns the offset of current ancientDB.
+func (t *table) AncientOffSet() uint64 {
+	return t.db.AncientOffSet()
+}
+
 // AncientSize is a noop passthrough that just forwards the request to the underlying
 // database.
 func (t *table) AncientSize(kind string) (uint64, error) {

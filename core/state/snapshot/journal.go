@@ -243,7 +243,7 @@ func loadDiffLayer(parent snapshot, r *rlp.Stream) (snapshot, error) {
 		}
 		storageData[entry.Hash] = slots
 	}
-	return loadDiffLayer(newDiffLayer(parent, root, destructSet, accountData, storageData), r)
+	return loadDiffLayer(newDiffLayer(parent, root, destructSet, accountData, storageData, nil), r)
 }
 
 // Journal terminates any in-progress snapshot generation, also implicitly pushing
@@ -288,6 +288,7 @@ func (dl *diffLayer) Journal(buffer *bytes.Buffer) (common.Hash, error) {
 	if dl.Stale() {
 		return common.Hash{}, ErrSnapshotStale
 	}
+
 	// Everything below was journalled, persist this layer too
 	if err := rlp.Encode(buffer, dl.root); err != nil {
 		return common.Hash{}, err

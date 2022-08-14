@@ -50,3 +50,5 @@ czejn
 /dashboard/assets/package-lock.json
 
 **/yarn-error.log
+cmd/geth/node/
+cmd/geth/__debug_bin

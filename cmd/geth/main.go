@@ -39,6 +39,11 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
+
+	// Force-load the tracer engines to trigger registration
+	_ "github.com/ethereum/go-ethereum/eth/tracers/js"
+	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
+
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -67,6 +72,7 @@ var (
 		utils.DirectBroadcastFlag,
 		utils.DisableSnapProtocolFlag,
 		utils.DiffSyncFlag,
+		utils.PipeCommitFlag,
 		utils.RangeLimitFlag,
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
@@ -160,6 +166,8 @@ var (
 		utils.MinerNotifyFullFlag,
 		configFileFlag,
 		utils.CatalystFlag,
+		utils.BlockAmountReserved,
+		utils.CheckSnapshotWithMPT,
 	}
 
 	rpcFlags = []cli.Flag{

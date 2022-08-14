@@ -54,7 +54,9 @@ func TestDump(t *testing.T) {
 	// write some of them to the trie
 	s.state.updateStateObject(obj1)
 	s.state.updateStateObject(obj2)
-	s.state.Commit(false)
+	s.state.Finalise(false)
+	s.state.AccountsIntermediateRoot()
+	s.state.Commit(nil)
 
 	// check that DumpToCollector contains the state objects that are in trie
 	got := string(s.state.Dump(false, false, true))
@@ -95,7 +97,9 @@ func TestNull(t *testing.T) {
 	var value common.Hash
 
 	s.state.SetState(address, common.Hash{}, value)
-	s.state.Commit(false)
+	s.state.Finalise(false)
+	s.state.AccountsIntermediateRoot()
+	s.state.Commit(nil)
 
 	if value := s.state.GetState(address, common.Hash{}); value != (common.Hash{}) {
 		t.Errorf("expected empty current value, got %x", value)
@@ -167,7 +171,9 @@ func TestSnapshot2(t *testing.T) {
 	so0.deleted = false
 	state.SetStateObject(so0)
 
-	root, _, _ := state.Commit(false)
+	state.Finalise(false)
+	state.AccountsIntermediateRoot()
+	root, _, _ := state.Commit(nil)
 	state, _ = New(root, state.db, state.snaps)
 
 	// and one with deleted == true

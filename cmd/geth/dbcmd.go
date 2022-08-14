@@ -62,6 +62,7 @@ Remove blockchain and state databases`,
 			dbPutCmd,
 			dbGetSlotsCmd,
 			dbDumpFreezerIndex,
+			ancientInspectCmd,
 		},
 	}
 	dbInspectCmd = cli.Command{
@@ -195,6 +196,16 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		},
 		Description: "This command displays information about the freezer index.",
 	}
+	ancientInspectCmd = cli.Command{
+		Action: utils.MigrateFlags(ancientInspect),
+		Name:   "inspect-reserved-oldest-blocks",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+		},
+		Usage: "Inspect the ancientStore information",
+		Description: `This commands will read current offset from kvdb, which is the current offset and starting BlockNumber
+of ancientStore, will also displays the reserved number of blocks in ancientStore `,
+	}
 )
 
 func removeDB(ctx *cli.Context) error {
@@ -282,10 +293,19 @@ func inspect(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
 	return rawdb.InspectDatabase(db, prefix, start)
+}
+
+func ancientInspect(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, true, true)
+	defer db.Close()
+	return rawdb.AncientInspect(db)
 }
 
 func showLeveldbStats(db ethdb.Stater) {
@@ -305,7 +325,7 @@ func dbStats(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
 	showLeveldbStats(db)
@@ -316,7 +336,7 @@ func dbCompact(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false)
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
 	defer db.Close()
 
 	log.Info("Stats before compaction")
@@ -340,7 +360,7 @@ func dbGet(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
 	key, err := hexutil.Decode(ctx.Args().Get(0))
@@ -365,7 +385,7 @@ func dbDelete(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false)
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
 	defer db.Close()
 
 	key, err := hexutil.Decode(ctx.Args().Get(0))
@@ -392,7 +412,7 @@ func dbPut(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false)
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
 	defer db.Close()
 
 	var (
@@ -426,7 +446,7 @@ func dbDumpTrie(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 	var (
 		root  []byte

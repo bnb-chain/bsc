@@ -203,6 +203,29 @@ func TestServerDial(t *testing.T) {
 	}
 }
 
+func TestServerStopTimeout(t *testing.T) {
+	srv := &Server{Config: Config{
+		PrivateKey:  newkey(),
+		MaxPeers:    1,
+		NoDiscovery: true,
+		Logger:      testlog.Logger(t, log.LvlTrace).New("server", "1"),
+	}}
+	srv.Start()
+	srv.loopWG.Add(1)
+
+	stopChan := make(chan struct{})
+	go func() {
+		srv.Stop()
+		close(stopChan)
+	}()
+
+	select {
+	case <-stopChan:
+	case <-time.After(10 * time.Second):
+		t.Error("server should be shutdown in 10 seconds")
+	}
+}
+
 // This test checks that RemovePeer disconnects the peer if it is connected.
 func TestServerRemovePeerDisconnect(t *testing.T) {
 	srv1 := &Server{Config: Config{

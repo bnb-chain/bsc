@@ -15,17 +15,3 @@ add an example CLI or API response...
 Notable changes: 
 * add each change in a bullet point here
 * ...
-
-### Preflight checks
-
-- [ ] build passed (`make build`)
-- [ ] tests passed (`make test`)
-- [ ] manual transaction test passed
-
-### Already reviewed by
-
-...
-
-### Related issues
-
-... reference related issue #'s here ...

@@ -81,6 +81,12 @@ type AncientReader interface {
 
 	// AncientSize returns the ancient size of the specified category.
 	AncientSize(kind string) (uint64, error)
+
+	// ItemAmountInAncient returns the actual length of current ancientDB.
+	ItemAmountInAncient() (uint64, error)
+
+	// AncientOffSet returns the offset of current ancientDB.
+	AncientOffSet() uint64
 }
 
 // AncientWriter contains the methods required to write to immutable ancient data.
