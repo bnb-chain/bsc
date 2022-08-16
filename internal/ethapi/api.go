@@ -2794,7 +2794,7 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 		if bundle.BlockNumber == 0 {
 			bundleBlockNumber = blockHeader.Number
 		} else {
-			bundleBlockNumber = big.NewInt(int64(args.BlockNumber))
+			bundleBlockNumber = big.NewInt(int64(bundle.BlockNumber))
 		}
 
 		if bundle.Timestamp != nil {
