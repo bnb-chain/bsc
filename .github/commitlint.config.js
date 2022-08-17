@@ -26,6 +26,7 @@ module.exports = {
     'subject-empty':[2, 'always'],
     'scope-empty':[2, 'always'],
     'type-enum': [2, 'never'],
+    'type-case': [0, 'always'],
     'function-rules/type-case': [2, 'always', validateTypeNums],
     'header-max-length': [
       2,
