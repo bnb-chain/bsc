@@ -1,6 +1,12 @@
 const validateTypeNums = (parsedCommit) => {
+    const mergePrefix = "Merge pull request"
+    if (parsedCommit.raw.startsWith(mergePrefix)) {
+        console.log('this is a merge commit:' + parsedCommit.raw) 
+        return [true,'']
+    }
+
     if (!parsedCommit.type) {
-        return [false, 'invalid commit message']
+        return [false, 'invalid commit message, should be like "name: descriptions.", yours: "' + parsedCommit.raw + '"']
     }
 
     const types = parsedCommit.type.split(' ')
@@ -9,8 +15,7 @@ const validateTypeNums = (parsedCommit) => {
             return [false, 'R4R  or WIP is not acceptable, no matter upper case or lower case']
         }
     }
-
-    return [true,'']
+     return [true,'']
   }
 
 
