@@ -420,7 +420,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	if diff < 0 {
 		diff *= -1
 	}
-	limit := parent.GasLimit / params.ParliaGasLimitBoundDivisor
+	limit := parent.GasLimit / params.GasLimitBoundDivisor
 
 	if uint64(diff) >= limit || header.GasLimit < params.MinGasLimit {
 		return fmt.Errorf("invalid gas limit: have %d, want %d += %d", header.GasLimit, parent.GasLimit, limit)
