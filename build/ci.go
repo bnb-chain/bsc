@@ -311,7 +311,7 @@ func doTest(cmdline []string) {
 	packages := []string{"./accounts/...", "./common/...", "./consensus/...", "./console/...", "./core/...",
 		"./crypto/...", "./eth/...", "./ethclient/...", "./ethdb/...", "./event/...", "./graphql/...", "./les/...",
 		"./light/...", "./log/...", "./metrics/...", "./miner/...", "./mobile/...", "./node/...",
-		"./p2p/...", "./params/...", "./rlp/...", "./rpc/...", "./tests/...", "./trie/..."}
+		"./p2p/...", "./params/...", "./rlp/...", "./rpc/...", "./tests/...", "./trie/...", "./cmd/geth/..."}
 	if len(flag.CommandLine.Args()) > 0 {
 		packages = flag.CommandLine.Args()
 	}
