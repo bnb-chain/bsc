@@ -49,8 +49,8 @@ var (
 	blockPruneBackUpBlockNumber = 128
 	key, _                      = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	address                     = crypto.PubkeyToAddress(key.PublicKey)
-	balance                     = big.NewInt(10000000)
-	gspec                       = &core.Genesis{Config: params.TestChainConfig, Alloc: core.GenesisAlloc{address: {Balance: balance}}}
+	balance                     = big.NewInt(100000000000000000)
+	gspec                       = &core.Genesis{Config: params.TestChainConfig, Alloc: core.GenesisAlloc{address: {Balance: balance}}, BaseFee: big.NewInt(params.InitialBaseFee)}
 	signer                      = types.LatestSigner(gspec.Config)
 	config                      = &core.CacheConfig{
 		TrieCleanLimit: 256,
@@ -154,7 +154,7 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 	// Make chain starting from genesis
 	blocks, _ := core.GenerateChain(gspec.Config, genesis, ethash.NewFaker(), db, 500, func(i int, block *core.BlockGen) {
 		block.SetCoinbase(common.Address{0: byte(canonicalSeed), 19: byte(i)})
-		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(address), common.Address{0x00}, big.NewInt(1000), params.TxGas, nil, nil), signer, key)
+		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(address), common.Address{0x00}, big.NewInt(1000), params.TxGas, big.NewInt(params.InitialBaseFee), nil), signer, key)
 		if err != nil {
 			panic(err)
 		}
