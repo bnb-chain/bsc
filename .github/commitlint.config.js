@@ -22,7 +22,7 @@ const validateTypeNums = (parsedCommit) => {
 module.exports = {
   parserPreset: {
     parserOpts: {
-      headerPattern: /^(.*): .*/,
+      headerPattern: /^(.*):.*/,
     }
   },
   extends: ['@commitlint/config-conventional'],
