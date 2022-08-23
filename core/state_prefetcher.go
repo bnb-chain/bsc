@@ -138,9 +138,14 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 				if tx == nil {
 					return
 				}
-				txCh <- tx
-				txset.Shift()
 
+				select {
+				case <-interruptCh:
+					return
+				case txCh <- tx:
+				}
+
+				txset.Shift()
 			}
 		}
 	}(txs)
