@@ -735,11 +735,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
 		{name: "brunoBlock", block: c.BrunoBlock},
 		{name: "eulerBlock", block: c.EulerBlock},
-		{name: "berlinBlock", block: c.BerlinBlock},
-		{name: "londonBlock", block: c.LondonBlock},
-		{name: "arrowGlacierBlock", block: c.ArrowGlacierBlock, optional: true},
 		{name: "gibbsBlock", block: c.GibbsBlock},
-		{name: "mergeStartBlock", block: c.MergeForkBlock, optional: true},
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number
