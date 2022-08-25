@@ -1154,15 +1154,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	// the remainder without, but pre-byzantium even the initial prefetcher is
 	// useless, so no sleep lost.
 	prefetcher := s.prefetcher
-	defer func() {
-		s.prefetcherLock.Lock()
-		if s.prefetcher != nil {
-			s.prefetcher.close()
-			s.prefetcher = nil
-		}
-		// try not use defer inside defer
-		s.prefetcherLock.Unlock()
-	}()
+	defer s.StopPrefetcher()
 
 	// Now we're about to start to write changes to the trie. The trie is so far
 	// _untouched_. We can check with the prefetcher, if it can give us a trie
