@@ -392,7 +392,7 @@ func (pool *TxPool) loop() {
 
 			pricedUrgentGauge.Update(int64(len(pool.priced.urgent.list)))
 			pricedFloatingGauge.Update(int64(len(pool.priced.floating.list)))
-			pricedStalesGauge.Update(int64(pool.priced.stales))
+			pricedStalesGauge.Update(pool.priced.stales)
 			pendingGaugeTotal.Update(int64(pending))
 			queuedGaugeTotal.Update(int64(queued))
 
