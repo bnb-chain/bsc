@@ -417,7 +417,7 @@ func (s *Sync) children(req *request, object node) ([]*request, error) {
 				missing <- &request{
 					path:     child.path,
 					hash:     chash,
-					parents:   []*request{req},
+					parents:  []*request{req},
 					callback: req.callback,
 				}
 			}(child)
