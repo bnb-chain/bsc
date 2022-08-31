@@ -322,9 +322,7 @@ var (
 		MirrorSyncBlock:     big.NewInt(5582500),
 		BrunoBlock:          big.NewInt(13837000),
 		EulerBlock:          big.NewInt(19203503),
-
-		//TODO
-		GibbsBlock: nil,
+		GibbsBlock:          big.NewInt(22800220),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -737,11 +735,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
 		{name: "brunoBlock", block: c.BrunoBlock},
 		{name: "eulerBlock", block: c.EulerBlock},
-		{name: "berlinBlock", block: c.BerlinBlock},
-		{name: "londonBlock", block: c.LondonBlock},
-		{name: "arrowGlacierBlock", block: c.ArrowGlacierBlock, optional: true},
 		{name: "gibbsBlock", block: c.GibbsBlock},
-		{name: "mergeStartBlock", block: c.MergeForkBlock, optional: true},
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number
