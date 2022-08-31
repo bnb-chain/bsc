@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1.13
+
+FEATURE
+* [\#1051](https://github.com/bnb-chain/bsc/pull/1051) Implement BEP153: Native Staking
+* [\#1066](https://github.com/bnb-chain/bsc/pull/1066) Upgrade cross chain logic of native staking
+
+IMPROVEMENT
+* [\#952](https://github.com/bnb-chain/bsc/pull/952) Improve trie prefetch
+* [\#975](https://github.com/bnb-chain/bsc/pull/975) broadcast block before commit block and add metrics
+* [\#992](https://github.com/bnb-chain/bsc/pull/992) Pipecommit enable trie prefetcher
+* [\#996](https://github.com/bnb-chain/bsc/pull/996) Trie prefetch on state pretch
+
+BUGFIX
+* [\#1053](https://github.com/bnb-chain/bsc/pull/1053) state: fix offline tool start failed when start with pruneancient
+* [\#1060](https://github.com/bnb-chain/bsc/pull/1060) consensus: fix the GasLimitBoundDivisor
+* [\#1061](https://github.com/bnb-chain/bsc/pull/1061) fix: upstream patches from go-ethereum
+* [\#1067](https://github.com/bnb-chain/bsc/pull/1067) fix:fix potential goroutine leak
+* [\#1068](https://github.com/bnb-chain/bsc/pull/1068) core trie rlp: patches from go-ethereum
+* [\#1070](https://github.com/bnb-chain/bsc/pull/1070) txpool: reheap the priced list if london fork not enabled
+
 ## v1.1.12
 
 FEATURE
