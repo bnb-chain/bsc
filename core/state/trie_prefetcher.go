@@ -232,6 +232,9 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 		// if the triePrefetcher is active, fetches will not be used in mainLoop
 		// otherwise, inactive triePrefetcher is readonly, it won't modify fetches
 		for root, fetch := range p.fetches {
+			if fetch == nil {
+				continue
+			}
 			fetcherCopied.fetches[root] = p.db.CopyTrie(fetch)
 		}
 		return fetcherCopied
