@@ -17,8 +17,6 @@
 package trie
 
 import (
-	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -68,7 +66,7 @@ func NewSecure(root common.Hash, db *Database) (*SecureTrie, error) {
 func (t *SecureTrie) Get(key []byte) []byte {
 	res, err := t.TryGet(key)
 	if err != nil {
-		log.Error(fmt.Sprintf("Unhandled trie error: %v", err))
+		log.Error("Unhandled trie error in StateTrie.Get", "err", err)
 	}
 	return res
 }
@@ -109,7 +107,7 @@ func (t *SecureTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error
 // stored in the trie.
 func (t *SecureTrie) Update(key, value []byte) {
 	if err := t.TryUpdate(key, value); err != nil {
-		log.Error(fmt.Sprintf("Unhandled trie error: %v", err))
+		log.Error("Unhandled trie error in StateTrie.Update", "err", err)
 	}
 }
 
@@ -134,7 +132,7 @@ func (t *SecureTrie) TryUpdate(key, value []byte) error {
 // Delete removes any existing value for key from the trie.
 func (t *SecureTrie) Delete(key []byte) {
 	if err := t.TryDelete(key); err != nil {
-		log.Error(fmt.Sprintf("Unhandled trie error: %v", err))
+		log.Error("Unhandled trie error in StateTrie.Delete", "err", err)
 	}
 }
 
