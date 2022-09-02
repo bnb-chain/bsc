@@ -441,7 +441,7 @@ func TestAncientStorage(t *testing.T) {
 	}
 	defer os.RemoveAll(frdir)
 
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false)
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, true)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -582,7 +582,7 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 		b.Fatalf("failed to create temp freezer dir: %v", err)
 	}
 	defer os.RemoveAll(frdir)
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false)
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, true)
 	if err != nil {
 		b.Fatalf("failed to create database with ancient backend")
 	}
@@ -892,7 +892,7 @@ func TestHeadersRLPStorage(t *testing.T) {
 	}
 	defer os.Remove(frdir)
 
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false)
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, true)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}

@@ -50,10 +50,6 @@ var (
 	// emptyRoot is the known root hash of an empty trie.
 	emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
-	// dummyRoot is the dummy account root before corrected in pipecommit sync mode,
-	// the value is 542e5fc2709de84248e9bce43a9c0c8943a608029001360f8ab55bf113b23d28
-	dummyRoot = crypto.Keccak256Hash([]byte("dummy_account_root"))
-
 	emptyAddr = crypto.Keccak256Hash(common.Address{}.Bytes())
 )
 
@@ -218,7 +214,12 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 		s.prefetcher = nil
 	}
 	if s.snap != nil {
-		s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, namespace)
+		parent := s.snap.Parent()
+		if parent != nil {
+			s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, parent.Root(), namespace)
+		} else {
+			s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, common.Hash{}, namespace)
+		}
 	}
 }
 
@@ -229,10 +230,38 @@ func (s *StateDB) StopPrefetcher() {
 		return
 	}
 	s.prefetcherLock.Lock()
-	defer s.prefetcherLock.Unlock()
 	if s.prefetcher != nil {
 		s.prefetcher.close()
-		s.prefetcher = nil
+	}
+	s.prefetcherLock.Unlock()
+}
+
+func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
+	// s is a temporary throw away StateDB, s.prefetcher won't be resetted to nil
+	// so no need to add lock for s.prefetcher
+	prefetcher := s.prefetcher
+	if prefetcher == nil {
+		return
+	}
+	accounts := make(map[common.Address]struct{}, block.Transactions().Len()<<1)
+	for _, tx := range block.Transactions() {
+		from, err := types.Sender(signer, tx)
+		if err != nil {
+			// invalid block, skip prefetch
+			return
+		}
+		accounts[from] = struct{}{}
+		if tx.To() != nil {
+			accounts[*tx.To()] = struct{}{}
+		}
+	}
+	addressesToPrefetch := make([][]byte, 0, len(accounts))
+	for addr := range accounts {
+		addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
+	}
+
+	if len(addressesToPrefetch) > 0 {
+		prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
 	}
 }
 
@@ -627,16 +656,14 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 		return obj
 	}
 	// If no live objects are available, attempt to use snapshots
-	var (
-		data *types.StateAccount
-		err  error
-	)
+	var data *types.StateAccount
 	if s.snap != nil {
+		start := time.Now()
+		acc, err := s.snap.Account(crypto.HashData(s.hasher, addr.Bytes()))
 		if metrics.EnabledExpensive {
-			defer func(start time.Time) { s.SnapshotAccountReads += time.Since(start) }(time.Now())
+			s.SnapshotAccountReads += time.Since(start)
 		}
-		var acc *snapshot.Account
-		if acc, err = s.snap.Account(crypto.HashData(s.hasher, addr.Bytes())); err == nil {
+		if err == nil {
 			if acc == nil {
 				return nil
 			}
@@ -656,7 +683,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 	}
 
 	// If snapshot unavailable or reading from it failed, load from the database
-	if s.snap == nil || err != nil {
+	if data == nil {
 		if s.trie == nil {
 			tr, err := s.db.OpenTrie(s.originalRoot)
 			if err != nil {
@@ -665,10 +692,11 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 			}
 			s.trie = tr
 		}
-		if metrics.EnabledExpensive {
-			defer func(start time.Time) { s.AccountReads += time.Since(start) }(time.Now())
-		}
+		start := time.Now()
 		enc, err := s.trie.TryGet(addr.Bytes())
+		if metrics.EnabledExpensive {
+			s.AccountReads += time.Since(start)
+		}
 		if err != nil {
 			s.setError(fmt.Errorf("getDeleteStateObject (%x) error: %v", addr.Bytes(), err))
 			return nil
@@ -775,6 +803,17 @@ func (db *StateDB) ForEachStorage(addr common.Address, cb func(key, value common
 // Copy creates a deep, independent copy of the state.
 // Snapshots of the copied state cannot be applied to the copy.
 func (s *StateDB) Copy() *StateDB {
+	return s.copyInternal(false)
+}
+
+// It is mainly for state prefetcher to do trie prefetch right now.
+func (s *StateDB) CopyDoPrefetch() *StateDB {
+	return s.copyInternal(true)
+}
+
+// If doPrefetch is true, it tries to reuse the prefetcher, the copied StateDB will do active trie prefetch.
+// otherwise, just do inactive copy trie prefetcher.
+func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	// Copy all the basic fields, initialize the memory ones
 	state := &StateDB{
 		db:                  s.db,
@@ -841,12 +880,12 @@ func (s *StateDB) Copy() *StateDB {
 		state.accessList = s.accessList.Copy()
 	}
 
-	// If there's a prefetcher running, make an inactive copy of it that can
-	// only access data but does not actively preload (since the user will not
-	// know that they need to explicitly terminate an active copy).
-	prefetcher := s.prefetcher
-	if prefetcher != nil {
-		state.prefetcher = prefetcher.copy()
+	state.prefetcher = s.prefetcher
+	if s.prefetcher != nil && !doPrefetch {
+		// If there's a prefetcher running, make an inactive copy of it that can
+		// only access data but does not actively preload (since the user will not
+		// know that they need to explicitly terminate an active copy).
+		state.prefetcher = state.prefetcher.copy()
 	}
 	if s.snaps != nil {
 		// In order for the miner to be able to use and make additions
@@ -960,7 +999,11 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 	}
 	prefetcher := s.prefetcher
 	if prefetcher != nil && len(addressesToPrefetch) > 0 {
-		prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+		if s.snap.Verified() {
+			prefetcher.prefetch(s.originalRoot, addressesToPrefetch, emptyAddr)
+		} else if prefetcher.rootParent != (common.Hash{}) {
+			prefetcher.prefetch(prefetcher.rootParent, addressesToPrefetch, emptyAddr)
+		}
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
@@ -995,11 +1038,12 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 	}
 	if accounts, err := snapshot.Accounts(); err == nil && accounts != nil {
 		for _, obj := range s.stateObjects {
-			if !obj.deleted && !obj.rootCorrected && obj.data.Root == dummyRoot {
+			if !obj.deleted {
 				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist {
-					obj.data.Root = common.BytesToHash(account.Root)
-					if obj.data.Root == (common.Hash{}) {
+					if len(account.Root) == 0 {
 						obj.data.Root = emptyRoot
+					} else {
+						obj.data.Root = common.BytesToHash(account.Root)
 					}
 					obj.rootCorrected = true
 				}
@@ -1013,12 +1057,8 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			if s.snap != nil {
-				root := obj.data.Root
-				storageChanged := s.populateSnapStorage(obj)
-				if storageChanged {
-					root = dummyRoot
-				}
-				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, root, obj.data.CodeHash)
+				s.populateSnapStorage(obj)
+				s.snapAccounts[obj.address] = snapshot.SlimAccountRLP(obj.data.Nonce, obj.data.Balance, obj.data.Root, obj.data.CodeHash)
 			}
 		}
 	}
@@ -1114,15 +1154,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	// the remainder without, but pre-byzantium even the initial prefetcher is
 	// useless, so no sleep lost.
 	prefetcher := s.prefetcher
-	defer func() {
-		s.prefetcherLock.Lock()
-		if s.prefetcher != nil {
-			s.prefetcher.close()
-			s.prefetcher = nil
-		}
-		// try not use defer inside defer
-		s.prefetcherLock.Unlock()
-	}()
+	defer s.StopPrefetcher()
 
 	// Now we're about to start to write changes to the trie. The trie is so far
 	// _untouched_. We can check with the prefetcher, if it can give us a trie
@@ -1315,10 +1347,12 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 // Commit writes the state to the underlying in-memory trie database.
 func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
 	if s.dbErr != nil {
+		s.StopPrefetcher()
 		return common.Hash{}, nil, fmt.Errorf("commit aborted due to earlier error: %v", s.dbErr)
 	}
 	// Finalize any pending changes and merge everything into the tries
 	if s.lightProcessed {
+		defer s.StopPrefetcher()
 		root, diff, err := s.LightCommit()
 		if err != nil {
 			return root, diff, err
@@ -1527,6 +1561,7 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	if s.pipeCommit {
 		go commmitTrie()
 	} else {
+		defer s.StopPrefetcher()
 		commitFuncs = append(commitFuncs, commmitTrie)
 	}
 	commitRes := make(chan error, len(commitFuncs))

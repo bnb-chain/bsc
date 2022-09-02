@@ -377,8 +377,8 @@ func TestCalcGasLimit(t *testing.T) {
 		max       uint64
 		min       uint64
 	}{
-		{20000000, 20019530, 19980470},
-		{40000000, 40039061, 39960939},
+		{20000000, 20078124, 19921876},
+		{40000000, 40156249, 39843751},
 	} {
 		// Increase
 		if have, want := CalcGasLimit(tc.pGasLimit, 2*tc.pGasLimit), tc.max; have != want {
