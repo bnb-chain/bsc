@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// PublicDownloaderAPI provides an API which gives information about the current synchronisation status.
+// PublicDownloaderAPI provides an API which gives information about the current synchronization status.
 // It offers only methods that operates on data that can be available to anyone without security risks.
 type PublicDownloaderAPI struct {
 	d                         *Downloader
@@ -120,7 +120,7 @@ func (api *PublicDownloaderAPI) Syncing(ctx context.Context) (*rpc.Subscription,
 	return rpcSub, nil
 }
 
-// SyncingResult provides information about the current synchronisation status for this node.
+// SyncingResult provides information about the current synchronization status for this node.
 type SyncingResult struct {
 	Syncing bool                  `json:"syncing"`
 	Status  ethereum.SyncProgress `json:"status"`
@@ -159,7 +159,7 @@ func (s *SyncStatusSubscription) Unsubscribe() {
 	})
 }
 
-// SubscribeSyncStatus creates a subscription that will broadcast new synchronisation updates.
+// SubscribeSyncStatus creates a subscription that will broadcast new synchronization updates.
 // The given channel must receive interface values, the result can either
 func (api *PublicDownloaderAPI) SubscribeSyncStatus(status chan interface{}) *SyncStatusSubscription {
 	api.installSyncSubscription <- status

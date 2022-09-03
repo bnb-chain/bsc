@@ -514,7 +514,7 @@ func (f *lightFetcher) requestHeaderByHash(peerid enode.ID) func(common.Hash) er
 	}
 }
 
-// requestResync invokes synchronisation callback to start syncing.
+// requestResync invokes synchronization callback to start syncing.
 func (f *lightFetcher) startSync(id enode.ID) {
 	defer func(header *types.Header) {
 		f.syncDone <- header

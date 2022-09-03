@@ -219,7 +219,7 @@ var (
 	}
 	ExitWhenSyncedFlag = cli.BoolFlag{
 		Name:  "exitwhensynced",
-		Usage: "Exits after block synchronisation completes",
+		Usage: "Exits after block synchronization completes",
 	}
 	IterativeOutputFlag = cli.BoolTFlag{
 		Name:  "iterative",
