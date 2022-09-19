@@ -86,7 +86,11 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 
 	// it should be in a separate goroutine, to avoid blocking the critical path.
 	for i := 0; i < len(transactions); i++ {
-		txChan <- i
+		select {
+		case txChan <- i:
+		case <-interruptCh:
+			return
+		}
 	}
 }
 
