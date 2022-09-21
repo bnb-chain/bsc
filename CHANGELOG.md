@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.14
+IMPROVEMENT
+* [\#1057](https://github.com/bnb-chain/bsc/pull/1057) ci: allow merge pull request
+* [\#1063](https://github.com/bnb-chain/bsc/pull/1063) ci: fix the pattern of commit lint
+
+BUGFIX
+* [\#1062](https://github.com/bnb-chain/bsc/pull/1062) test: fix TestOfflineBlockPrune failed randomly
+* [\#1076](https://github.com/bnb-chain/bsc/pull/1076) bug: pick some patches from go-ethereum on v1.10.18
+* [\#1079](https://github.com/bnb-chain/bsc/pull/1079) core: fix potential goroutine leak
+
 ## v1.1.13
 
 FEATURE
