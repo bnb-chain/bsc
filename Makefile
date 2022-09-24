@@ -8,7 +8,7 @@
 GOBIN = ./build/bin
 GO ?= latest
 GORUN = env GO111MODULE=on go run
-CROSSGOBUILD = env GO111MODULE=on GOARCH=arm go build
+CROSSGOBUILD = env GO111MODULE=on GOARCH=arm GOOS=linux go build
 
 geth:
 	$(GORUN) build/ci.go install ./cmd/geth
