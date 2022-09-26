@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core"
@@ -1131,6 +1132,271 @@ func (s *PublicBlockChainAPI) EstimateGas(ctx context.Context, args TransactionA
 		bNrOrHash = *blockNrOrHash
 	}
 	return DoEstimateGas(ctx, s.b, args, bNrOrHash, s.b.RPCGasCap())
+}
+
+// GetDiffAccounts returns changed accounts in a specific block number.
+func (s *PublicBlockChainAPI) GetDiffAccounts(ctx context.Context, blockNr rpc.BlockNumber) ([]common.Address, error) {
+	if s.b.Chain() == nil {
+		return nil, fmt.Errorf("blockchain not support get diff accounts")
+	}
+
+	header, err := s.b.HeaderByNumber(ctx, blockNr)
+	if err != nil {
+		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
+	}
+
+	accounts, err := s.b.Chain().GetDiffAccounts(header.Hash())
+	if err == nil || !errors.Is(err, core.ErrDiffLayerNotFound) {
+		return accounts, err
+	}
+
+	// Replay the block when diff layer not found, it is very slow.
+	block, err := s.b.BlockByNumber(ctx, blockNr)
+	if err != nil {
+		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
+	}
+	_, statedb, err := s.replay(ctx, block, nil)
+	if err != nil {
+		return nil, err
+	}
+	return statedb.GetDirtyAccounts(), nil
+}
+
+func (s *PublicBlockChainAPI) needToReplay(ctx context.Context, block *types.Block, accounts []common.Address) (bool, error) {
+	receipts, err := s.b.GetReceipts(ctx, block.Hash())
+	if err != nil || len(receipts) != len(block.Transactions()) {
+		return false, fmt.Errorf("receipt incorrect for block number (%d): %v", block.NumberU64(), err)
+	}
+
+	accountSet := make(map[common.Address]struct{}, len(accounts))
+	for _, account := range accounts {
+		accountSet[account] = struct{}{}
+	}
+	spendValueMap := make(map[common.Address]int64, len(accounts))
+	receiveValueMap := make(map[common.Address]int64, len(accounts))
+
+	signer := types.MakeSigner(s.b.ChainConfig(), block.Number())
+	for index, tx := range block.Transactions() {
+		receipt := receipts[index]
+		from, err := types.Sender(signer, tx)
+		if err != nil {
+			return false, fmt.Errorf("get sender for tx failed: %v", err)
+		}
+
+		if _, exists := accountSet[from]; exists {
+			spendValueMap[from] += int64(receipt.GasUsed) * tx.GasPrice().Int64()
+			if receipt.Status == types.ReceiptStatusSuccessful {
+				spendValueMap[from] += tx.Value().Int64()
+			}
+		}
+
+		if tx.To() == nil {
+			continue
+		}
+
+		if _, exists := accountSet[*tx.To()]; exists && receipt.Status == types.ReceiptStatusSuccessful {
+			receiveValueMap[*tx.To()] += tx.Value().Int64()
+		}
+	}
+
+	parent, err := s.b.BlockByHash(ctx, block.ParentHash())
+	if err != nil {
+		return false, fmt.Errorf("block not found for block number (%d): %v", block.NumberU64()-1, err)
+	}
+	parentState, err := s.b.Chain().StateAt(parent.Root())
+	if err != nil {
+		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64()-1, err)
+	}
+	currentState, err := s.b.Chain().StateAt(block.Root())
+	if err != nil {
+		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64(), err)
+	}
+	for _, account := range accounts {
+		parentBalance := parentState.GetBalance(account).Int64()
+		currentBalance := currentState.GetBalance(account).Int64()
+		if receiveValueMap[account]-spendValueMap[account] != currentBalance-parentBalance {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (s *PublicBlockChainAPI) replay(ctx context.Context, block *types.Block, accounts []common.Address) (*types.DiffAccountsInBlock, *state.StateDB, error) {
+	result := &types.DiffAccountsInBlock{
+		Number:       block.NumberU64(),
+		BlockHash:    block.Hash(),
+		Transactions: make([]types.DiffAccountsInTx, 0),
+	}
+
+	parent, err := s.b.BlockByHash(ctx, block.ParentHash())
+	if err != nil {
+		return nil, nil, fmt.Errorf("block not found for block number (%d): %v", block.NumberU64()-1, err)
+	}
+	statedb, err := s.b.Chain().StateAt(parent.Root())
+	if err != nil {
+		return nil, nil, fmt.Errorf("state not found for block number (%d): %v", block.NumberU64()-1, err)
+	}
+
+	accountSet := make(map[common.Address]struct{}, len(accounts))
+	for _, account := range accounts {
+		accountSet[account] = struct{}{}
+	}
+
+	// Recompute transactions.
+	signer := types.MakeSigner(s.b.ChainConfig(), block.Number())
+	for _, tx := range block.Transactions() {
+		// Skip data empty tx and to is one of the interested accounts tx.
+		skip := false
+		if len(tx.Data()) == 0 {
+			skip = true
+		} else if to := tx.To(); to != nil {
+			if _, exists := accountSet[*to]; exists {
+				skip = true
+			}
+		}
+
+		diffTx := types.DiffAccountsInTx{
+			TxHash:   tx.Hash(),
+			Accounts: make(map[common.Address]*big.Int, len(accounts)),
+		}
+
+		if !skip {
+			// Record account balance
+			for _, account := range accounts {
+				diffTx.Accounts[account] = statedb.GetBalance(account)
+			}
+		}
+
+		// Apply transaction
+		msg, _ := tx.AsMessage(signer, parent.Header().BaseFee)
+		txContext := core.NewEVMTxContext(msg)
+		context := core.NewEVMBlockContext(block.Header(), s.b.Chain(), nil)
+		vmenv := vm.NewEVM(context, txContext, statedb, s.b.ChainConfig(), vm.Config{})
+
+		if posa, ok := s.b.Engine().(consensus.PoSA); ok {
+			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
+				balance := statedb.GetBalance(consensus.SystemAddress)
+				if balance.Cmp(common.Big0) > 0 {
+					statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
+					statedb.AddBalance(block.Header().Coinbase, balance)
+				}
+			}
+		}
+
+		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
+			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
+		}
+		statedb.Finalise(vmenv.ChainConfig().IsEIP158(block.Number()))
+
+		if !skip {
+			// Compute account balance diff.
+			for _, account := range accounts {
+				diffTx.Accounts[account] = new(big.Int).Sub(statedb.GetBalance(account), diffTx.Accounts[account])
+				if diffTx.Accounts[account].Cmp(big.NewInt(0)) == 0 {
+					delete(diffTx.Accounts, account)
+				}
+			}
+
+			if len(diffTx.Accounts) != 0 {
+				result.Transactions = append(result.Transactions, diffTx)
+			}
+		}
+	}
+
+	return result, statedb, nil
+}
+
+// GetDiffAccountsWithScope returns detailed changes of some interested accounts in a specific block number.
+func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, blockNr rpc.BlockNumber, accounts []common.Address) (*types.DiffAccountsInBlock, error) {
+	if s.b.Chain() == nil {
+		return nil, fmt.Errorf("blockchain not support get diff accounts")
+	}
+
+	block, err := s.b.BlockByNumber(ctx, blockNr)
+	if err != nil {
+		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
+	}
+
+	needReplay, err := s.needToReplay(ctx, block, accounts)
+	if err != nil {
+		return nil, err
+	}
+	if !needReplay {
+		return &types.DiffAccountsInBlock{
+			Number:       uint64(blockNr),
+			BlockHash:    block.Hash(),
+			Transactions: make([]types.DiffAccountsInTx, 0),
+		}, nil
+	}
+
+	result, _, err := s.replay(ctx, block, accounts)
+	return result, err
+}
+
+func (s *PublicBlockChainAPI) GetVerifyResult(ctx context.Context, blockNr rpc.BlockNumber, blockHash common.Hash, diffHash common.Hash) *core.VerifyResult {
+	return s.b.Chain().GetVerifyResult(uint64(blockNr), blockHash, diffHash)
+}
+
+// ExecutionResult groups all structured logs emitted by the EVM
+// while replaying a transaction in debug mode as well as transaction
+// execution status, the amount of gas used and the return value
+type ExecutionResult struct {
+	Gas         uint64         `json:"gas"`
+	Failed      bool           `json:"failed"`
+	ReturnValue string         `json:"returnValue"`
+	StructLogs  []StructLogRes `json:"structLogs"`
+}
+
+// StructLogRes stores a structured log emitted by the EVM while replaying a
+// transaction in debug mode
+type StructLogRes struct {
+	Pc      uint64             `json:"pc"`
+	Op      string             `json:"op"`
+	Gas     uint64             `json:"gas"`
+	GasCost uint64             `json:"gasCost"`
+	Depth   int                `json:"depth"`
+	Error   string             `json:"error,omitempty"`
+	Stack   *[]string          `json:"stack,omitempty"`
+	Memory  *[]string          `json:"memory,omitempty"`
+	Storage *map[string]string `json:"storage,omitempty"`
+}
+
+// FormatLogs formats EVM returned structured logs for json output
+func FormatLogs(logs []logger.StructLog) []StructLogRes {
+	formatted := make([]StructLogRes, len(logs))
+	for index, trace := range logs {
+		formatted[index] = StructLogRes{
+			Pc:      trace.Pc,
+			Op:      trace.Op.String(),
+			Gas:     trace.Gas,
+			GasCost: trace.GasCost,
+			Depth:   trace.Depth,
+			Error:   trace.ErrorString(),
+		}
+		if trace.Stack != nil {
+			stack := make([]string, len(trace.Stack))
+			for i, stackValue := range trace.Stack {
+				stack[i] = stackValue.Hex()
+			}
+			formatted[index].Stack = &stack
+		}
+		if trace.Memory != nil {
+			memory := make([]string, 0, (len(trace.Memory)+31)/32)
+			for i := 0; i+32 <= len(trace.Memory); i += 32 {
+				memory = append(memory, fmt.Sprintf("%x", trace.Memory[i:i+32]))
+			}
+			formatted[index].Memory = &memory
+		}
+		if trace.Storage != nil {
+			storage := make(map[string]string)
+			for i, storageValue := range trace.Storage {
+				storage[fmt.Sprintf("%x", i)] = fmt.Sprintf("%x", storageValue)
+			}
+			formatted[index].Storage = &storage
+		}
+	}
+	return formatted
 }
 
 // RPCMarshalHeader converts the given header to the RPC output .
