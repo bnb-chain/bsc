@@ -189,7 +189,6 @@ type StateDB struct {
 	fullProcessed  bool
 	pipeCommit     bool
 
-	snapMux           sync.Mutex
 	snaps             *snapshot.Tree
 	snap              snapshot.Snapshot
 	snapAccountMux    sync.Mutex // Mutex for snap account access
@@ -358,7 +357,7 @@ func (s *StateDB) StopPrefetcher() {
 }
 
 func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
-	// s is a temporary throw away StateDB, s.prefetcher won't be resetted to nil
+	// s is a temporary throw away StateDB, s.prefetcher won't be reset to nil
 	// so no need to add lock for s.prefetcher
 	prefetcher := s.prefetcher
 	if prefetcher == nil {

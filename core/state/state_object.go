@@ -165,8 +165,10 @@ type StateObject struct {
 	trie Trie // storage trie, which becomes non-nil on first access
 	code Code // contract bytecode, which gets set when code is loaded
 
-	isParallel          bool      // isParallel indicates this state object is used in parallel mode
-	sharedOriginStorage *sync.Map // Storage cache of original entries to dedup rewrites, reset for every transaction
+	// isParallel indicates this state object is used in parallel mode, in which mode the
+	// storage would be sync.Map instead of map
+	isParallel          bool
+	sharedOriginStorage *sync.Map // Point to the entry of the stateObject in sharedPool
 	originStorage       Storage   // Storage cache of original entries to dedup rewrites, reset for every transaction
 	pendingStorage      Storage   // Storage entries that need to be flushed to disk, at the end of an entire block
 	dirtyStorage        Storage   // Storage entries that have been modified in the current transaction execution
@@ -382,8 +384,8 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			s.db.snapParallelLock.RUnlock()
 			return common.Hash{}
 		}
-		start := time.Now()
 		s.db.snapParallelLock.RUnlock()
+		start := time.Now()
 		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
 		if metrics.EnabledExpensive {
 			s.db.SnapshotStorageReads += time.Since(start)
