@@ -18,54 +18,19 @@
 package web3ext
 
 var Modules = map[string]string{
-	"accounting": AccountingJs,
-	"admin":      AdminJs,
-	"chequebook": ChequebookJs,
-	"clique":     CliqueJs,
-	"ethash":     EthashJs,
-	"debug":      DebugJs,
-	"eth":        EthJs,
-	"miner":      MinerJs,
-	"net":        NetJs,
-	"personal":   PersonalJs,
-	"rpc":        RpcJs,
-	"shh":        ShhJs,
-	"swarmfs":    SwarmfsJs,
-	"txpool":     TxpoolJs,
-	"les":        LESJs,
-	"vflux":      VfluxJs,
+	"admin":    AdminJs,
+	"clique":   CliqueJs,
+	"ethash":   EthashJs,
+	"debug":    DebugJs,
+	"eth":      EthJs,
+	"miner":    MinerJs,
+	"net":      NetJs,
+	"personal": PersonalJs,
+	"rpc":      RpcJs,
+	"txpool":   TxpoolJs,
+	"les":      LESJs,
+	"vflux":    VfluxJs,
 }
-
-const ChequebookJs = `
-web3._extend({
-	property: 'chequebook',
-	methods: [
-		new web3._extend.Method({
-			name: 'deposit',
-			call: 'chequebook_deposit',
-			params: 1,
-			inputFormatter: [null]
-		}),
-		new web3._extend.Property({
-			name: 'balance',
-			getter: 'chequebook_balance',
-			outputFormatter: web3._extend.utils.toDecimal
-		}),
-		new web3._extend.Method({
-			name: 'cash',
-			call: 'chequebook_cash',
-			params: 1,
-			inputFormatter: [null]
-		}),
-		new web3._extend.Method({
-			name: 'issue',
-			call: 'chequebook_issue',
-			params: 2,
-			inputFormatter: [null, null]
-		}),
-	]
-});
-`
 
 const CliqueJs = `
 web3._extend({
@@ -107,6 +72,12 @@ web3._extend({
 			name: 'status',
 			call: 'clique_status',
 			params: 0
+		}),
+		new web3._extend.Method({
+			name: 'getSigner',
+			call: 'clique_getSigner',
+			params: 1,
+			inputFormatter: [null]
 		}),
 	],
 	properties: [
@@ -253,15 +224,14 @@ web3._extend({
 			outputFormatter: console.log
 		}),
 		new web3._extend.Method({
-			name: 'getBlockRlp',
-			call: 'debug_getBlockRlp',
+			name: 'getHeaderRlp',
+			call: 'debug_getHeaderRlp',
 			params: 1
 		}),
 		new web3._extend.Method({
-			name: 'testSignCliqueBlock',
-			call: 'debug_testSignCliqueBlock',
-			params: 2,
-			inputFormatter: [web3._extend.formatters.inputAddressFormatter, null],
+			name: 'getBlockRlp',
+			call: 'debug_getBlockRlp',
+			params: 1
 		}),
 		new web3._extend.Method({
 			name: 'setHead',
@@ -307,7 +277,8 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'stacks',
 			call: 'debug_stacks',
-			params: 0,
+			params: 1,
+			inputFormatter: [null],
 			outputFormatter: console.log
 		}),
 		new web3._extend.Method({
@@ -488,6 +459,12 @@ web3._extend({
 			call: 'debug_freezeClient',
 			params: 1,
 		}),
+		new web3._extend.Method({
+			name: 'getAccessibleState',
+			call: 'debug_getAccessibleState',
+			params: 2,
+			inputFormatter:[web3._extend.formatters.inputBlockNumberFormatter, web3._extend.formatters.inputBlockNumberFormatter],
+		}),
 	],
 	properties: []
 });
@@ -587,6 +564,11 @@ web3._extend({
 			params: 2,
 			inputFormatter: [null, web3._extend.formatters.inputBlockNumberFormatter],
 		}),
+		new web3._extend.Method({
+			name: 'getLogs',
+			call: 'eth_getLogs',
+			params: 1,
+		}),
 	],
 	properties: [
 		new web3._extend.Property({
@@ -600,6 +582,11 @@ web3._extend({
 				}
 				return formatted;
 			}
+		}),
+		new web3._extend.Property({
+			name: 'maxPriorityFeePerGas',
+			getter: 'eth_maxPriorityFeePerGas',
+			outputFormatter: web3._extend.utils.toBigNumber
 		}),
 	]
 });
@@ -633,6 +620,12 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'setGasPrice',
 			call: 'miner_setGasPrice',
+			params: 1,
+			inputFormatter: [web3._extend.utils.fromDecimal]
+		}),
+		new web3._extend.Method({
+			name: 'setGasLimit',
+			call: 'miner_setGasLimit',
 			params: 1,
 			inputFormatter: [web3._extend.utils.fromDecimal]
 		}),
@@ -732,50 +725,6 @@ web3._extend({
 });
 `
 
-const ShhJs = `
-web3._extend({
-	property: 'shh',
-	methods: [
-	],
-	properties:
-	[
-		new web3._extend.Property({
-			name: 'version',
-			getter: 'shh_version',
-			outputFormatter: web3._extend.utils.toDecimal
-		}),
-		new web3._extend.Property({
-			name: 'info',
-			getter: 'shh_info'
-		}),
-	]
-});
-`
-
-const SwarmfsJs = `
-web3._extend({
-	property: 'swarmfs',
-	methods:
-	[
-		new web3._extend.Method({
-			name: 'mount',
-			call: 'swarmfs_mount',
-			params: 2
-		}),
-		new web3._extend.Method({
-			name: 'unmount',
-			call: 'swarmfs_unmount',
-			params: 1
-		}),
-		new web3._extend.Method({
-			name: 'listmounts',
-			call: 'swarmfs_listmounts',
-			params: 0
-		}),
-	]
-});
-`
-
 const TxpoolJs = `
 web3._extend({
 	property: 'txpool',
@@ -799,49 +748,10 @@ web3._extend({
 				return status;
 			}
 		}),
-	]
-});
-`
-
-const AccountingJs = `
-web3._extend({
-	property: 'accounting',
-	methods: [
-		new web3._extend.Property({
-			name: 'balance',
-			getter: 'account_balance'
-		}),
-		new web3._extend.Property({
-			name: 'balanceCredit',
-			getter: 'account_balanceCredit'
-		}),
-		new web3._extend.Property({
-			name: 'balanceDebit',
-			getter: 'account_balanceDebit'
-		}),
-		new web3._extend.Property({
-			name: 'bytesCredit',
-			getter: 'account_bytesCredit'
-		}),
-		new web3._extend.Property({
-			name: 'bytesDebit',
-			getter: 'account_bytesDebit'
-		}),
-		new web3._extend.Property({
-			name: 'msgCredit',
-			getter: 'account_msgCredit'
-		}),
-		new web3._extend.Property({
-			name: 'msgDebit',
-			getter: 'account_msgDebit'
-		}),
-		new web3._extend.Property({
-			name: 'peerDrops',
-			getter: 'account_peerDrops'
-		}),
-		new web3._extend.Property({
-			name: 'selfDrops',
-			getter: 'account_selfDrops'
+		new web3._extend.Method({
+			name: 'contentFrom',
+			call: 'txpool_contentFrom',
+			params: 1,
 		}),
 	]
 });

@@ -92,7 +92,7 @@ func (p *DiffLayersPacket) Unpack() ([]*types.DiffLayer, error) {
 		var diffHash common.Hash
 		hasher.Sum(diffHash[:0])
 		hasher.Reset()
-		diff.DiffHash = diffHash
+		diff.DiffHash.Store(diffHash)
 	}
 	return diffLayers, nil
 }

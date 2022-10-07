@@ -22,10 +22,12 @@ import (
 	"math/big"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -324,7 +326,7 @@ func TestPostCapBasicDataAccess(t *testing.T) {
 	}
 }
 
-// TestSnaphots tests the functionality for retrieveing the snapshot
+// TestSnaphots tests the functionality for retrieving the snapshot
 // with given head root and the desired depth.
 func TestSnaphots(t *testing.T) {
 	// setAccount is a helper to construct a random account entry and assign it to
@@ -421,5 +423,72 @@ func TestSnaphots(t *testing.T) {
 		if bottommost.Root() != c.expectBottom {
 			t.Errorf("overflow test %d: snapshot mismatch, want %v, get %v", i, c.expectBottom, bottommost.Root())
 		}
+	}
+}
+
+// TestReadStateDuringFlattening tests the scenario that, during the
+// bottom diff layers are merging which tags these as stale, the read
+// happens via a pre-created top snapshot layer which tries to access
+// the state in these stale layers. Ensure this read can retrieve the
+// right state back(block until the flattening is finished) instead of
+// an unexpected error(snapshot layer is stale).
+func TestReadStateDuringFlattening(t *testing.T) {
+	// setAccount is a helper to construct a random account entry and assign it to
+	// an account slot in a snapshot
+	testAccounts := []common.Address{
+		common.HexToAddress("0xa1"),
+		common.HexToAddress("0xa2"),
+		common.HexToAddress("0xa3"),
+	}
+
+	setAccount := func(accKey common.Address) map[common.Address][]byte {
+		return map[common.Address][]byte{
+			accKey: randomAccount(),
+		}
+	}
+	// Create a starting base layer and a snapshot tree out of it
+	base := &diskLayer{
+		diskdb: rawdb.NewMemoryDatabase(),
+		root:   common.HexToHash("0x01"),
+		cache:  fastcache.New(1024 * 500),
+	}
+	snaps := &Tree{
+		layers: map[common.Hash]snapshot{
+			base.root: base,
+		},
+	}
+	// 4 layers in total, 3 diff layers and 1 disk layers
+	snaps.Update(common.HexToHash("0xa1"), common.HexToHash("0x01"), nil, setAccount(testAccounts[0]), nil, nil)
+	snaps.Update(common.HexToHash("0xa2"), common.HexToHash("0xa1"), nil, setAccount(testAccounts[1]), nil, nil)
+	snaps.Update(common.HexToHash("0xa3"), common.HexToHash("0xa2"), nil, setAccount(testAccounts[2]), nil, nil)
+
+	// Obtain the topmost snapshot handler for state accessing
+	snap := snaps.Snapshot(common.HexToHash("0xa3"))
+
+	// Register the testing hook to access the state after flattening
+	var result = make(chan *Account)
+	snaps.onFlatten = func() {
+		// Spin up a thread to read the account from the pre-created
+		// snapshot handler. It's expected to be blocked.
+		go func() {
+			account, _ := snap.Account(crypto.Keccak256Hash(testAccounts[0][:]))
+			result <- account
+		}()
+		select {
+		case res := <-result:
+			t.Fatalf("Unexpected return %v", res)
+		case <-time.NewTimer(time.Millisecond * 300).C:
+		}
+	}
+
+	// Cap the snap tree, which will mark the bottom-most layer as stale.
+	snaps.Cap(common.HexToHash("0xa3"), 1)
+	select {
+	case account := <-result:
+		if account == nil {
+			t.Fatal("Failed to retrieve account")
+		}
+	case <-time.NewTimer(time.Millisecond * 300).C:
+		t.Fatal("Unexpected blocker")
 	}
 }

@@ -34,7 +34,7 @@ import (
 var (
 	ErrNotConnected    = errors.New("client not connected")
 	ErrNoPriority      = errors.New("priority too low to raise capacity")
-	ErrCantFindMaximum = errors.New("Unable to find maximum allowed capacity")
+	ErrCantFindMaximum = errors.New("unable to find maximum allowed capacity")
 )
 
 // ClientPool implements a client database that assigns a priority to each client
@@ -143,8 +143,10 @@ func NewClientPool(balanceDb ethdb.KeyValueStore, minCap uint64, connectedBias t
 		if oldState.HasAll(cp.setup.activeFlag) && oldState.HasNone(cp.setup.activeFlag) {
 			clientDeactivatedMeter.Mark(1)
 		}
-		_, connected := cp.Active()
-		totalConnectedGauge.Update(int64(connected))
+		activeCount, activeCap := cp.Active()
+		totalActiveCountGauge.Update(int64(activeCount))
+		totalActiveCapacityGauge.Update(int64(activeCap))
+		totalInactiveCountGauge.Update(int64(cp.Inactive()))
 	})
 	return cp
 }
@@ -175,7 +177,7 @@ func (cp *ClientPool) Unregister(peer clientPeer) {
 	cp.ns.SetField(peer.Node(), cp.setup.clientField, nil)
 }
 
-// setConnectedBias sets the connection bias, which is applied to already connected clients
+// SetConnectedBias sets the connection bias, which is applied to already connected clients
 // So that already connected client won't be kicked out very soon and we can ensure all
 // connected clients can have enough time to request or sync some data.
 func (cp *ClientPool) SetConnectedBias(bias time.Duration) {
