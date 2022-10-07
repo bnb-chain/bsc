@@ -2436,7 +2436,7 @@ func NewBundleAPI(b Backend, chain *core.BlockChain) *BundleAPI {
 
 // SendBundleArgs represents the arguments for a call.
 type CallBundleArgs struct {
-	Txs                    []CallArgs            `json:"txs"`
+	Txs                    []TransactionArgs     `json:"txs"`
 	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
 	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
 	Coinbase               *string               `json:"coinbase"`
@@ -2465,14 +2465,6 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	} else {
 		blockNumber = big.NewInt(int64(args.BlockNumber))
 	}
-
-	var txs []types.Message
-
-	for _, encodedTx := range args.Txs {
-		tx := encodedTx.ToMessage(25000000)
-		txs = append(txs, tx)
-	}
-	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
 	timeoutMilliSeconds := int64(5000)
 	if args.Timeout != nil {
@@ -2513,6 +2505,14 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		Coinbase:   coinbase,
 	}
 
+	var txs []types.Message
+
+	for _, encodedTx := range args.Txs {
+		tx, _ := encodedTx.ToMessage(25000000, header.BaseFee)
+		txs = append(txs, tx)
+	}
+	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+
 	// Setup context so it may be cancelled the call has completed
 	// or, in case of unmetered gas, setup a context with a timeout.
 	var cancel context.CancelFunc
@@ -2542,7 +2542,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		nonce := state.GetNonce(tx.From())
 		expectedTx := types.NewTransaction(nonce, *tx.To(), tx.Value(), tx.Gas(), tx.GasPrice(), tx.Data())
 		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-		state.Prepare(expectedTx.Hash(), common.Hash{}, i)
+		state.Prepare(expectedTx.Hash(), i)
 
 		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, expectedTx, &header.GasUsed, vmconfig)
 		if err != nil {
@@ -2619,7 +2619,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 }
 
 type SimulatedTx struct {
-	CallArgs
+	TransactionArgs
 	Id string `json:"id"`
 }
 
@@ -2748,7 +2748,7 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 		bundleJsonResult["timestamp"] = bundleTimestamp
 
 		for _, encodedTx := range bundle.Txs {
-			tx := encodedTx.ToMessage(25000000)
+			tx, _ := encodedTx.ToMessage(25000000, header.BaseFee)
 			txs = append(txs, tx)
 		}
 
@@ -2756,7 +2756,7 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 			nonce := state.GetNonce(tx.From())
 			expectedTx := types.NewTransaction(nonce, *tx.To(), tx.Value(), tx.Gas(), tx.GasPrice(), tx.Data())
 			coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-			state.Prepare(expectedTx.Hash(), common.Hash{}, txCounter)
+			state.Prepare(expectedTx.Hash(), txCounter)
 
 			receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, expectedTx, &header.GasUsed, vmconfig)
 			if err != nil {
