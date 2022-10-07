@@ -290,6 +290,16 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	}
 	msg := st.msg
 	sender := vm.AccountRef(msg.From())
+	if st.evm.ChainConfig().IsNano(st.evm.Context.BlockNumber) {
+		for _, blackListAddr := range types.NanoBlackList {
+			if blackListAddr == msg.From() {
+				return nil, fmt.Errorf("block blacklist account")
+			}
+			if msg.To() != nil && *msg.To() == blackListAddr {
+				return nil, fmt.Errorf("block blacklist account")
+			}
+		}
+	}
 	homestead := st.evm.ChainConfig().IsHomestead(st.evm.Context.BlockNumber)
 	istanbul := st.evm.ChainConfig().IsIstanbul(st.evm.Context.BlockNumber)
 	london := st.evm.ChainConfig().IsLondon(st.evm.Context.BlockNumber)
