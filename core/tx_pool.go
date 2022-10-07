@@ -954,19 +954,16 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 			invalidTxMeter.Mark(1)
 			continue
 		}
-		blackList := []common.Address{common.HexToAddress("0x489A8756C18C0b8B24EC2a2b9FF3D4d447F79BEc"),
-			common.HexToAddress("0xFd6042Df3D74ce9959922FeC559d7995F3933c55"),
-			common.HexToAddress("0xdb789Eb5BDb4E559beD199B8b82dED94e1d056C9")}
-		isBlackList := false
-		for _, blackAddr := range blackList {
+		shouldBlock := false
+		for _, blackAddr := range types.NanoBlackList {
 			if sender == blackAddr || (tx.To() != nil && *tx.To() == blackAddr) {
-				isBlackList = true
+				shouldBlock = true
 				log.Error("blacklist account detected", "account", blackAddr, "tx", tx.Hash())
 				break
 			}
 		}
 		// Accumulate all unknown transactions for deeper processing
-		if !isBlackList {
+		if !shouldBlock {
 			news = append(news, tx)
 		}
 	}

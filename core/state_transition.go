@@ -291,10 +291,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	msg := st.msg
 	sender := vm.AccountRef(msg.From())
 	if st.evm.ChainConfig().IsNano(st.evm.Context.BlockNumber) {
-		blackList := []common.Address{common.HexToAddress("0x489A8756C18C0b8B24EC2a2b9FF3D4d447F79BEc"),
-			common.HexToAddress("0xFd6042Df3D74ce9959922FeC559d7995F3933c55"),
-			common.HexToAddress("0xdb789Eb5BDb4E559beD199B8b82dED94e1d056C9")}
-		for _, blackListAddr := range blackList {
+		for _, blackListAddr := range types.NanoBlackList {
 			if blackListAddr == msg.From() {
 				return nil, fmt.Errorf("block blacklist account")
 			}
