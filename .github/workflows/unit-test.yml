@@ -43,7 +43,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Uint Test
+    - name: Unit Test
       env:
         ANDROID_HOME: "" # Skip android test
       run: |
