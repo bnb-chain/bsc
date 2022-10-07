@@ -840,7 +840,7 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 		return newCompatError("gibbs fork block", c.GibbsBlock, newcfg.GibbsBlock)
 	}
 	if isForkIncompatible(c.NanoBlock, newcfg.NanoBlock, head) {
-		return newCompatError("gibbs fork block", c.NanoBlock, newcfg.NanoBlock)
+		return newCompatError("nano fork block", c.NanoBlock, newcfg.NanoBlock)
 	}
 	return nil
 }
