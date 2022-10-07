@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.1.15
+* [\#1109](https://github.com/bnb-chain/bsc/pull/1109) nanofork: block exploitation accounts and suspend cross chain bridge related precompile contracts
+
 ## v1.1.14
 IMPROVEMENT
 * [\#1057](https://github.com/bnb-chain/bsc/pull/1057) ci: allow merge pull request
