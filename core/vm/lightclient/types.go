@@ -216,7 +216,11 @@ type KeyValueMerkleProof struct {
 	AppHash   []byte
 	Proof     *merkle.Proof
 
-	Verifiers []merkle.ProofOpVerifier
+	verifiers []merkle.ProofOpVerifier
+}
+
+func (kvmp *KeyValueMerkleProof) SetVerifiers(verifiers []merkle.ProofOpVerifier) {
+	kvmp.verifiers = verifiers
 }
 
 func (kvmp *KeyValueMerkleProof) Validate() bool {
@@ -227,11 +231,11 @@ func (kvmp *KeyValueMerkleProof) Validate() bool {
 	kp = kp.AppendKey(kvmp.Key, merkle.KeyEncodingURL)
 
 	if len(kvmp.Value) == 0 {
-		err := prt.VerifyAbsence(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.Verifiers...)
+		err := prt.VerifyAbsence(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.verifiers...)
 		return err == nil
 	}
 
-	err := prt.VerifyValue(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.Value, kvmp.Verifiers...)
+	err := prt.VerifyValue(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.Value, kvmp.verifiers...)
 	return err == nil
 }
 
