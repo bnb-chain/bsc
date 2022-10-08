@@ -90,4 +90,5 @@ require (
 replace (
 	github.com/gogo/protobuf v1.1.1 => github.com/gogo/protobuf v1.3.2
 	github.com/gogo/protobuf v1.3.1 => github.com/gogo/protobuf v1.3.2
+	github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.12-0.20221008074753-6fa739f145d5
 )
