@@ -204,8 +204,8 @@ func singleValueOpVerifier(op merkle.ProofOperator) error {
 		if len(valueOp.Proof.Leaves) != 1 {
 			return cmn.NewError("range proof suspended")
 		}
-		for _, innerNodde := range valueOp.Proof.LeftPath {
-			if len(innerNodde.Right) > 0 && len(innerNodde.Left) > 0 {
+		for _, innerNode := range valueOp.Proof.LeftPath {
+			if len(innerNode.Right) > 0 && len(innerNode.Left) > 0 {
 				return cmn.NewError("both right and left hash exit!")
 			}
 		}
