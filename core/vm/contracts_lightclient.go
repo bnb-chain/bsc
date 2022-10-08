@@ -124,7 +124,6 @@ func (c *tmHeaderValidateNano) Run(input []byte) (result []byte, err error) {
 	return nil, fmt.Errorf("suspend")
 }
 
-//------------------------------------------------------------------------------------------------------------------------------------------------
 type iavlMerkleProofValidateNano struct{}
 
 func (c *iavlMerkleProofValidateNano) RequiredGas(_ []byte) uint64 {
@@ -176,7 +175,7 @@ func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err err
 	if err != nil {
 		return nil, err
 	}
-	kvmp.Verifiers = c.verifiers
+	kvmp.SetVerifiers(c.verifiers)
 	valid := kvmp.Validate()
 	if !valid {
 		return nil, fmt.Errorf("invalid merkle proof")
