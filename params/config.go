@@ -728,7 +728,7 @@ func (c *ChainConfig) IsMoran(num *big.Int) bool {
 	return isForked(c.MoranBlock, num)
 }
 
-func (c *ChainConfig) IsOnMora(num *big.Int) bool {
+func (c *ChainConfig) IsOnMoran(num *big.Int) bool {
 	return configNumEqual(c.MoranBlock, num)
 }
 
