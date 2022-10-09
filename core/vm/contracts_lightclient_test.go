@@ -140,3 +140,58 @@ func TestAbsenceMerkleProofValidateMoran(t *testing.T) {
 	assert.Errorf(t, err, "invalid merkle proof")
 	assert.Nil(t, res)
 }
+
+func TestMultiStore(t *testing.T) {
+	goodProof := lightclient.NewMultiStoreProofOp([]byte("legit"), &lightclient.MultiStoreProof{
+		StoreInfos: []lightclient.StoreInfo{
+			{
+				Name: "legit",
+				Core: lightclient.StoreCore{
+					CommitID: lightclient.CommitID{
+						Version: 1,
+						Hash:    []byte("legithash"),
+					},
+				},
+			},
+		},
+	})
+
+	result1, err := goodProof.Run([][]byte{[]byte("legithash")})
+	assert.NoError(t, err)
+
+	_, err = goodProof.Run([][]byte{[]byte("evilhash")})
+	assert.Error(t, err, "hash mismatch for substore")
+
+	badProof := lightclient.NewMultiStoreProofOp([]byte("legit"), &lightclient.MultiStoreProof{
+		StoreInfos: []lightclient.StoreInfo{
+			{
+				Name: "legit",
+				Core: lightclient.StoreCore{
+					CommitID: lightclient.CommitID{
+						Version: 1,
+						Hash:    []byte("evilhash"),
+					},
+				},
+			},
+			{
+				Name: "legit",
+				Core: lightclient.StoreCore{
+					CommitID: lightclient.CommitID{
+						Version: 1,
+						Hash:    []byte("legithash"),
+					},
+				},
+			},
+		},
+	})
+
+	_, err = badProof.Run([][]byte{[]byte("legithash")})
+	assert.Error(t, err, "hash mismatch for substore")
+
+	result2, err := badProof.Run([][]byte{[]byte("evilhash")})
+	assert.NoError(t, err)
+	assert.Equal(t, result1, result2)
+
+	err = multiStoreOpVerifier(badProof)
+	assert.Error(t, err, "duplicated store")
+}

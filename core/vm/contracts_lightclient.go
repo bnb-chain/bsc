@@ -147,6 +147,7 @@ func (c *iavlMerkleProofValidateMoran) Run(input []byte) (result []byte, err err
 	c.basicIavlMerkleProofValidate.verifiers = []merkle.ProofOpVerifier{
 		forbiddenAbsenceOpVerifier,
 		singleValueOpVerifier,
+		multiStoreOpVerifier,
 	}
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
@@ -192,6 +193,23 @@ func forbiddenAbsenceOpVerifier(op merkle.ProofOperator) error {
 	}
 	if _, ok := op.(iavl.IAVLAbsenceOp); ok {
 		return cmn.NewError("absence proof suspend")
+	}
+	return nil
+}
+
+func multiStoreOpVerifier(op merkle.ProofOperator) error {
+	if op == nil {
+		return nil
+	}
+	if mop, ok := op.(lightclient.MultiStoreProofOp); ok {
+		storeNames := make(map[string]bool, len(mop.Proof.StoreInfos))
+		for _, store := range mop.Proof.StoreInfos {
+			if exist := storeNames[store.Name]; exist {
+				return cmn.NewError("duplicated store")
+			} else {
+				storeNames[store.Name] = true
+			}
+		}
 	}
 	return nil
 }
