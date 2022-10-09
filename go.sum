@@ -79,8 +79,8 @@ github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24
 github.com/beorn7/perks v1.0.0 h1:HWo1m869IqiPhD389kmkxeTalrjNbbJTC8LXupb+sl0=
 github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
 github.com/bmizerany/pat v0.0.0-20170815010413-6226ea591a40/go.mod h1:8rLXio+WjiTceGBHIoTvn60HIbs7Hm7bcHjyrSqYB9c=
-github.com/bnb-chain/tendermint v0.31.12-0.20221008074753-6fa739f145d5 h1:g4Mjrbvohx7m7A0Kj9kZl4EgxK6D+oTkDQAFHedVMGc=
-github.com/bnb-chain/tendermint v0.31.12-0.20221008074753-6fa739f145d5/go.mod h1:j6XU7CArrhQ+9XBMRwdIz63iUxdVwSrZ8f7vP7gcCqg=
+github.com/bnb-chain/tendermint v0.31.12 h1:g+blWaXkRw6iHa56lcRfRzPXHgURCWPmgIvaGBSV7Zc=
+github.com/bnb-chain/tendermint v0.31.12/go.mod h1:j6XU7CArrhQ+9XBMRwdIz63iUxdVwSrZ8f7vP7gcCqg=
 github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
 github.com/btcsuite/btcd v0.20.1-beta h1:Ik4hyJqN8Jfyv3S4AGBOmyouMsYE3EdYODkMbQjwPGw=
 github.com/btcsuite/btcd v0.20.1-beta/go.mod h1:wVuoA8VJLEcwgqHBwHmzLRazpKxTv13Px/pDuV7OomQ=

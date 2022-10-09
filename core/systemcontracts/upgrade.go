@@ -47,6 +47,8 @@ var (
 	eulerUpgrade = make(map[string]*Upgrade)
 
 	gibbsUpgrade = make(map[string]*Upgrade)
+
+	moranUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -435,6 +437,10 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	if config.IsOnGibbs(blockNumber) {
 		applySystemContractUpgrade(gibbsUpgrade[network], blockNumber, statedb, logger)
+	}
+
+	if config.IsOnMoran(blockNumber) {
+		applySystemContractUpgrade(moranUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*
