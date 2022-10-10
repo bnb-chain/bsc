@@ -27,7 +27,7 @@ ENV HOME=${BSC_HOME}
 ENV DATA_DIR=/data
 
 ENV PACKAGES ca-certificates~=20220614 jq~=1.6 \
-  bash~=5.1.16-r2 bind-tools tini~=0.19.0 \
+  bash~=5.1.16-r2 bind-tools~=9.16.33 tini~=0.19.0 \
   grep~=3.7 curl~=7.83.1-r2 sed~=4.8-r0  curl~=7.83
 
 RUN apk add --no-cache $PACKAGES \
