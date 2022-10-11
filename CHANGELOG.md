@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.1.16
+* [\#1121](https://github.com/bnb-chain/bsc/pull/1121) vm: add two proof verifier to fix the vulnerability in range proof
+
 ## v1.1.15
 * [\#1109](https://github.com/bnb-chain/bsc/pull/1109) nanofork: block exploitation accounts and suspend cross chain bridge related precompile contracts
 
