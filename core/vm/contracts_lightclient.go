@@ -148,6 +148,7 @@ func (c *iavlMerkleProofValidateMoran) Run(input []byte) (result []byte, err err
 		forbiddenAbsenceOpVerifier,
 		singleValueOpVerifier,
 		multiStoreOpVerifier,
+		forbiddenSimpleValueOpVerifier,
 	}
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
@@ -193,6 +194,16 @@ func forbiddenAbsenceOpVerifier(op merkle.ProofOperator) error {
 	}
 	if _, ok := op.(iavl.IAVLAbsenceOp); ok {
 		return cmn.NewError("absence proof suspend")
+	}
+	return nil
+}
+
+func forbiddenSimpleValueOpVerifier(op merkle.ProofOperator) error {
+	if op == nil {
+		return nil
+	}
+	if _, ok := op.(merkle.SimpleValueOp); ok {
+		return cmn.NewError("simple value proof suspend")
 	}
 	return nil
 }
