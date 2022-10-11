@@ -300,8 +300,7 @@ var (
 		//TODO
 		GibbsBlock: nil,
 		NanoBlock:  big.NewInt(21962149),
-		// TODO to be decided
-		MoranBlock: nil,
+		MoranBlock: big.NewInt(22107423),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -327,7 +326,7 @@ var (
 		EulerBlock:          big.NewInt(19203503),
 		GibbsBlock:          big.NewInt(22800220),
 		NanoBlock:           big.NewInt(23482428),
-		MoranBlock:          nil,
+		MoranBlock:          big.NewInt(23603940),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
