@@ -517,7 +517,6 @@ func (s *StateDB) SubRefund(gas uint64) {
 // Notably this also returns true for suicided accounts.
 func (s *StateDB) Exist(addr common.Address) bool {
 	exist := s.getStateObject(addr) != nil
-	log.Info("StateDB Exist", "exist", exist)
 	return exist
 }
 
@@ -1144,7 +1143,7 @@ func (s *StateDB) PutSyncPool() {
 	for key := range s.parallel.codeReadsInSlot {
 		delete(s.parallel.codeReadsInSlot, key)
 	}
-	addressToStructPool.Put(s.parallel.codeReadsInSlot)
+	addressToBytesPool.Put(s.parallel.codeReadsInSlot)
 
 	for key := range s.parallel.codeHashReadsInSlot {
 		delete(s.parallel.codeHashReadsInSlot, key)
