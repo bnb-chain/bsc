@@ -929,8 +929,8 @@ func (p *Parlia) IsLocalBlock(header *types.Header) bool {
 	return p.val == header.Coinbase
 }
 
-func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Header) (bool, error) {
-	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.ParentHash, nil)
+func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Block) (bool, error) {
+	snap, err := p.snapshot(chain, parent.NumberU64(), parent.Hash(), nil)
 	if err != nil {
 		return true, err
 	}
@@ -941,7 +941,7 @@ func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Header)
 	}
 
 	// If we're amongst the recent signers, wait for the next block
-	number := parent.Number.Uint64() + 1
+	number := parent.NumberU64() + 1
 	for seen, recent := range snap.Recents {
 		if recent == p.val {
 			// Signer is among recents, only wait if the current block doesn't shift it out
