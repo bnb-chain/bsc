@@ -239,6 +239,23 @@ func (kvmp *KeyValueMerkleProof) Validate() bool {
 	return err == nil
 }
 
+func (kvmp *KeyValueMerkleProof) ValidateIcs23(version int64) bool {
+	kp := merkle.KeyPath{}
+	kp = kp.AppendKey([]byte(kvmp.StoreName), merkle.KeyEncodingURL)
+	kp = kp.AppendKey(kvmp.Key, merkle.KeyEncodingURL)
+
+	// does not support absence
+	if len(kvmp.Value) == 0 {
+		return false
+	}
+
+	err := VerifyValue(kvmp.AppHash, version, kvmp.Proof, kp.String(), kvmp.Value)
+	if err != nil {
+		println(err.Error())
+	}
+	return err == nil
+}
+
 // input:
 // | storeName | key length | key | value length | value | appHash  | proof |
 // | 32 bytes  | 32 bytes   |     | 32 bytes     |       | 32 bytes |       |

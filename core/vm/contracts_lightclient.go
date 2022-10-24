@@ -3,6 +3,7 @@ package vm
 import (
 	"encoding/binary"
 	"fmt"
+	"math/big"
 
 	"github.com/tendermint/iavl"
 	"github.com/tendermint/tendermint/crypto/merkle"
@@ -151,6 +152,48 @@ func (c *iavlMerkleProofValidateMoran) Run(input []byte) (result []byte, err err
 		forbiddenSimpleValueOpVerifier,
 	}
 	return c.basicIavlMerkleProofValidate.Run(input)
+}
+
+// todo: update upgrade name
+type iavlMerkleProofValidateNext struct{}
+
+func (c *iavlMerkleProofValidateNext) RequiredGas(_ []byte) uint64 {
+	return params.IAVLMerkleProofValidateGas
+}
+
+// input:
+// | version   | proof |
+// | 4 bytes   |       |
+func (c *iavlMerkleProofValidateNext) Run(input []byte) (result []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("internal error: %v\n", r)
+		}
+	}()
+
+	if uint64(len(input)) <= precompileContractInputMetaDataLength {
+		return nil, fmt.Errorf("invalid input: input should include %d bytes payload length and payload", precompileContractInputMetaDataLength)
+	}
+
+	payloadLength := binary.BigEndian.Uint64(input[precompileContractInputMetaDataLength-uint64TypeLength : precompileContractInputMetaDataLength])
+	if uint64(len(input)) != payloadLength+precompileContractInputMetaDataLength+uint64TypeLength {
+		return nil, fmt.Errorf("invalid input: input size should be %d, actual the size is %d", payloadLength+precompileContractInputMetaDataLength, len(input))
+	}
+
+	version := big.NewInt(0).SetBytes(input[precompileContractInputMetaDataLength : precompileContractInputMetaDataLength+uint64TypeLength]).Int64()
+
+	kvmp, err := lightclient.DecodeKeyValueMerkleProof(input[precompileContractInputMetaDataLength+uint64TypeLength:])
+	if err != nil {
+		return
+	}
+	valid := kvmp.ValidateIcs23(version)
+	if !valid {
+		return nil, fmt.Errorf("invalid merkle proof")
+	}
+
+	result = make([]byte, merkleProofValidateResultLength)
+	binary.BigEndian.PutUint64(result[merkleProofValidateResultLength-uint64TypeLength:], 0x01)
+	return result, nil
 }
 
 type basicIavlMerkleProofValidate struct {
