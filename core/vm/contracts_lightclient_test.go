@@ -115,11 +115,6 @@ func TestTmHeaderValidateAndMerkleProofValidate(t *testing.T) {
 	require.Equal(t, expectedResult, success)
 }
 
-/*
-height:  2
-key:  77696e64
-value:  626c6f7773
-*/
 func TestIcs23Proof(t *testing.T) {
 	appHash, err := hex.DecodeString("9e29c388c7fa0a27fd22c447d671da114261fa668ccbbc073731e570bf189c92")
 	require.NoError(t, err)
@@ -153,7 +148,7 @@ func TestIcs23Proof(t *testing.T) {
 
 	input := append(totalLengthPrefix, merkleProofInput...)
 
-	validator := iavlMerkleProofValidateNext{}
+	validator := iavlMerkleProofValidateBohr{}
 	success, err := validator.Run(input)
 	require.NoError(t, err)
 	expectedResult := make([]byte, 32)

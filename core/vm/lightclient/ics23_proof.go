@@ -30,24 +30,6 @@ type CommitmentOp struct {
 
 var _ merkle.ProofOperator = CommitmentOp{}
 
-func NewIavlCommitmentOp(key []byte, proof *ics23.CommitmentProof) CommitmentOp {
-	return CommitmentOp{
-		Type:  ProofOpIAVLCommitment,
-		Spec:  ics23.IavlSpec,
-		Key:   key,
-		Proof: proof,
-	}
-}
-
-func NewSimpleMerkleCommitmentOp(key []byte, proof *ics23.CommitmentProof) CommitmentOp {
-	return CommitmentOp{
-		Type:  ProofOpSimpleMerkleCommitment,
-		Spec:  ics23.TendermintSpec,
-		Key:   key,
-		Proof: proof,
-	}
-}
-
 // CommitmentOpDecoder takes a merkle.ProofOp and attempts to decode it into a CommitmentOp ProofOperator
 // The proofOp.Data is just a marshalled CommitmentProof. The Key of the CommitmentOp is extracted
 // from the unmarshalled proof.
@@ -96,22 +78,13 @@ func (op CommitmentOp) Run(args [][]byte) ([][]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not calculate root for proof: %v", err)
 	}
-	// Only support an existence proof or nonexistence proof (batch proofs currently unsupported)
-	switch len(args) {
-	case 0:
-		// Args are nil, so we verify the absence of the key.
-		absent := ics23.VerifyNonMembership(op.Spec, root, op.Proof, op.Key)
-		if !absent {
-			return nil, fmt.Errorf("proof did not verify absence of key: %s", string(op.Key))
-		}
+	if len(args) != 1 {
+		return nil, fmt.Errorf("args must be length 1, got: %d", len(args))
+	}
 
-	case 1:
-		// Args is length 1, verify existence of key with value args[0]
-		if !ics23.VerifyMembership(op.Spec, root, op.Proof, op.Key, args[0]) {
-			return nil, fmt.Errorf("proof did not verify existence of key %s with given value %x", op.Key, args[0])
-		}
-	default:
-		return nil, fmt.Errorf("args must be length 0 or 1, got: %d", len(args))
+	// Args is length 1, verify existence of key with value args[0]
+	if !ics23.VerifyMembership(op.Spec, root, op.Proof, op.Key, args[0]) {
+		return nil, fmt.Errorf("proof did not verify existence of key %s with given value %x", op.Key, args[0])
 	}
 
 	return [][]byte{root}, nil
@@ -142,7 +115,7 @@ func Ics23ProofRuntime() (prt *merkle.ProofRuntime) {
 func VerifyValue(root []byte, version int64, proof *merkle.Proof, keyPath string, value []byte) error {
 	poz, err := Ics23ProofRuntime().DecodeProof(proof)
 	if err != nil {
-		return errors.Wrap(err, "decoding proof")
+		return fmt.Errorf("decoding proof erorr, err=%s", err.Error())
 	}
 
 	if len(poz) != 2 {
@@ -162,7 +135,7 @@ func VerifyValue(root []byte, version int64, proof *merkle.Proof, keyPath string
 
 	iavlPo := poz[0]
 	if iavlPo.ProofOp().Type != ProofOpIAVLCommitment {
-		return fmt.Errorf("invalid proof op type, should be  %s", ProofOpIAVLCommitment)
+		return fmt.Errorf("invalid proof op type, should be %s", ProofOpIAVLCommitment)
 	}
 
 	if !bytes.Equal(valueKey, iavlPo.GetKey()) {
@@ -188,10 +161,12 @@ func VerifyValue(root []byte, version int64, proof *merkle.Proof, keyPath string
 			},
 		},
 	}
-
 	storeHash := storeInfo.Hash()
 
 	simplePo := poz[1]
+	if simplePo.ProofOp().Type != ProofOpSimpleMerkleCommitment {
+		return fmt.Errorf("invalid proof op type, should be %s", ProofOpSimpleMerkleCommitment)
+	}
 	if !bytes.Equal(storeKey, simplePo.GetKey()) {
 		return fmt.Errorf("invalid proof of key, require %X, got %X", simplePo.GetKey(), storeKey)
 	}
@@ -204,7 +179,7 @@ func VerifyValue(root []byte, version int64, proof *merkle.Proof, keyPath string
 	}
 
 	if !bytes.Equal(root, storeRoot[0]) {
-		return errors.Errorf("Calculated root hash is invalid: expected %+v but got %+v", root, storeRoot[0])
+		return errors.Errorf("calculated root hash is invalid: expected %+v but got %+v", root, storeRoot[0])
 	}
 	return nil
 }

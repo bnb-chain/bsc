@@ -154,17 +154,16 @@ func (c *iavlMerkleProofValidateMoran) Run(input []byte) (result []byte, err err
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
 
-// todo: update upgrade name
-type iavlMerkleProofValidateNext struct{}
+type iavlMerkleProofValidateBohr struct{}
 
-func (c *iavlMerkleProofValidateNext) RequiredGas(_ []byte) uint64 {
+func (c *iavlMerkleProofValidateBohr) RequiredGas(_ []byte) uint64 {
 	return params.IAVLMerkleProofValidateGas
 }
 
 // input:
 // | version   | proof |
-// | 4 bytes   |       |
-func (c *iavlMerkleProofValidateNext) Run(input []byte) (result []byte, err error) {
+// | 8 bytes   |       |
+func (c *iavlMerkleProofValidateBohr) Run(input []byte) (result []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("internal error: %v\n", r)

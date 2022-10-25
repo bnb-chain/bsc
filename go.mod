@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.1.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.1.1
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.1.1
-	github.com/bnb-chain/ics23 v0.0.0-20221021082321-d0a365dd9898
+	github.com/bnb-chain/ics23 v0.1.0
 	github.com/btcsuite/btcd v0.20.1-beta // indirect
 	github.com/cespare/cp v0.1.0
 	github.com/cloudflare/cloudflare-go v0.14.0
