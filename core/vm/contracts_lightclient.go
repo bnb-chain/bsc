@@ -3,7 +3,6 @@ package vm
 import (
 	"encoding/binary"
 	"fmt"
-	"math/big"
 
 	"github.com/tendermint/iavl"
 	"github.com/tendermint/tendermint/crypto/merkle"
@@ -176,23 +175,27 @@ func (c *iavlMerkleProofValidateBohr) Run(input []byte) (result []byte, err erro
 
 	payloadLength := binary.BigEndian.Uint64(input[precompileContractInputMetaDataLength-uint64TypeLength : precompileContractInputMetaDataLength])
 	if uint64(len(input)) != payloadLength+precompileContractInputMetaDataLength+uint64TypeLength {
-		return nil, fmt.Errorf("invalid input: input size should be %d, actual the size is %d", payloadLength+precompileContractInputMetaDataLength, len(input))
+		return nil, fmt.Errorf("invalid input: input size should be %d, actual the size is %d", payloadLength+precompileContractInputMetaDataLength+uint64TypeLength, len(input))
 	}
 
-	version := big.NewInt(0).SetBytes(input[precompileContractInputMetaDataLength : precompileContractInputMetaDataLength+uint64TypeLength]).Int64()
+	version := binary.BigEndian.Uint64(input[precompileContractInputMetaDataLength : precompileContractInputMetaDataLength+uint64TypeLength])
 
 	kvmp, err := lightclient.DecodeKeyValueMerkleProof(input[precompileContractInputMetaDataLength+uint64TypeLength:])
 	if err != nil {
 		return
 	}
-	valid := kvmp.ValidateIcs23(version)
+	valid := kvmp.ValidateIcs23(int64(version))
 	if !valid {
 		return nil, fmt.Errorf("invalid merkle proof")
 	}
 
-	result = make([]byte, merkleProofValidateResultLength)
+	return successfulMerkleResult(), nil
+}
+
+func successfulMerkleResult() []byte {
+	result := make([]byte, merkleProofValidateResultLength)
 	binary.BigEndian.PutUint64(result[merkleProofValidateResultLength-uint64TypeLength:], 0x01)
-	return result, nil
+	return result
 }
 
 type basicIavlMerkleProofValidate struct {
@@ -225,9 +228,7 @@ func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err err
 		return nil, fmt.Errorf("invalid merkle proof")
 	}
 
-	result = make([]byte, merkleProofValidateResultLength)
-	binary.BigEndian.PutUint64(result[merkleProofValidateResultLength-uint64TypeLength:], 0x01)
-	return result, nil
+	return successfulMerkleResult(), nil
 }
 
 func forbiddenAbsenceOpVerifier(op merkle.ProofOperator) error {

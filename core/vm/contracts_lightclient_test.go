@@ -3,7 +3,6 @@ package vm
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -143,7 +142,8 @@ func TestIcs23Proof(t *testing.T) {
 	binary.BigEndian.PutUint64(totalLengthPrefix[24:], uint64(len(merkleProofInput)))
 
 	versionBytes := make([]byte, uint64TypeLength)
-	big.NewInt(2).FillBytes(versionBytes)
+	binary.BigEndian.PutUint64(versionBytes, 2)
+
 	merkleProofInput = append(versionBytes, merkleProofInput...)
 
 	input := append(totalLengthPrefix, merkleProofInput...)
