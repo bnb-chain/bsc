@@ -115,13 +115,13 @@ func TestTmHeaderValidateAndMerkleProofValidate(t *testing.T) {
 }
 
 func TestIcs23Proof(t *testing.T) {
-	appHash, err := hex.DecodeString("9e29c388c7fa0a27fd22c447d671da114261fa668ccbbc073731e570bf189c92")
+	appHash, err := hex.DecodeString("ae6d1123fc362b3297bfb19c9f9fabbcbd1e2555b923dead261905b8a2ff6db6")
 	require.NoError(t, err)
 	key, err := hex.DecodeString("77696e64")
 	require.NoError(t, err)
 	value, err := hex.DecodeString("626c6f7773")
 	require.NoError(t, err)
-	proofBytes, err := hex.DecodeString("0a300a0a69637332333a6961766c120477696e641a1c0a1a0a0477696e641205626c6f77731a0b0801180120012a030002040a9d010a0c69637332333a73696d706c6512036962631a87010a84010a036962631220fb110273d89f0fd5620a0133bdac38249b8d0a2f1ce29d2fc08c3708a24240bd1a090801180120012a0100222708011201011a209db623f0b6cc658e2fb36b66282625a13c51aaa2a7c5e77dec3f8d49fba5cf2f222708011201011a207893b6019c4768f1e82e4e5809ba59e300ee48c0d3ceaafb082d6ca44614ab4e")
+	proofBytes, err := hex.DecodeString("0a300a0a69637332333a6961766c120477696e641a1c0a1a0a0477696e641205626c6f77731a0b0801180120012a030002040a9d010a0c69637332333a73696d706c6512036962631a87010a84010a036962631220141acb8632cfb808f293f2649cb9aabaca74fc18640900ffd0d48e2994b2a1521a090801180120012a0100222708011201011a205f0ba08283de309300409486e978a3ea59d82bccc838b07c7d39bd87c16a5034222708011201011a20455b81ef5591150bd24d3e57a769f65518b16de93487f0fab02271b3d69e2852")
 	require.NoError(t, err)
 
 	merkleProofInput := make([]byte, 32+32+len(key)+32+len(value)+32+len(proofBytes))
@@ -140,11 +140,6 @@ func TestIcs23Proof(t *testing.T) {
 	binary.BigEndian.PutUint64(totalLengthPrefix[8:16], 0)
 	binary.BigEndian.PutUint64(totalLengthPrefix[16:24], 0)
 	binary.BigEndian.PutUint64(totalLengthPrefix[24:], uint64(len(merkleProofInput)))
-
-	versionBytes := make([]byte, uint64TypeLength)
-	binary.BigEndian.PutUint64(versionBytes, 2)
-
-	merkleProofInput = append(versionBytes, merkleProofInput...)
 
 	input := append(totalLengthPrefix, merkleProofInput...)
 

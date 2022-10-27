@@ -153,43 +153,23 @@ func (c *iavlMerkleProofValidateMoran) Run(input []byte) (result []byte, err err
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
 
-type iavlMerkleProofValidateBohr struct{}
+type iavlMerkleProofValidateBohr struct {
+	basicIavlMerkleProofValidate
+}
 
 func (c *iavlMerkleProofValidateBohr) RequiredGas(_ []byte) uint64 {
 	return params.IAVLMerkleProofValidateGas
 }
 
-// input:
-// | version   | proof |
-// | 8 bytes   |       |
 func (c *iavlMerkleProofValidateBohr) Run(input []byte) (result []byte, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("internal error: %v\n", r)
-		}
-	}()
-
-	if uint64(len(input)) <= precompileContractInputMetaDataLength {
-		return nil, fmt.Errorf("invalid input: input should include %d bytes payload length and payload", precompileContractInputMetaDataLength)
+	c.basicIavlMerkleProofValidate.proofRuntime = lightclient.Ics23CompatibleProofRuntime()
+	c.basicIavlMerkleProofValidate.verifiers = []merkle.ProofOpVerifier{
+		forbiddenAbsenceOpVerifier,
+		singleValueOpVerifier,
+		multiStoreOpVerifier,
+		forbiddenSimpleValueOpVerifier,
 	}
-
-	payloadLength := binary.BigEndian.Uint64(input[precompileContractInputMetaDataLength-uint64TypeLength : precompileContractInputMetaDataLength])
-	if uint64(len(input)) != payloadLength+precompileContractInputMetaDataLength+uint64TypeLength {
-		return nil, fmt.Errorf("invalid input: input size should be %d, actual the size is %d", payloadLength+precompileContractInputMetaDataLength+uint64TypeLength, len(input))
-	}
-
-	version := binary.BigEndian.Uint64(input[precompileContractInputMetaDataLength : precompileContractInputMetaDataLength+uint64TypeLength])
-
-	kvmp, err := lightclient.DecodeKeyValueMerkleProof(input[precompileContractInputMetaDataLength+uint64TypeLength:])
-	if err != nil {
-		return
-	}
-	valid := kvmp.ValidateIcs23(int64(version))
-	if !valid {
-		return nil, fmt.Errorf("invalid merkle proof")
-	}
-
-	return successfulMerkleResult(), nil
+	return c.basicIavlMerkleProofValidate.Run(input)
 }
 
 func successfulMerkleResult() []byte {
@@ -199,7 +179,8 @@ func successfulMerkleResult() []byte {
 }
 
 type basicIavlMerkleProofValidate struct {
-	verifiers []merkle.ProofOpVerifier
+	verifiers    []merkle.ProofOpVerifier
+	proofRuntime *merkle.ProofRuntime
 }
 
 func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err error) {
@@ -221,6 +202,11 @@ func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err err
 	kvmp, err := lightclient.DecodeKeyValueMerkleProof(input[precompileContractInputMetaDataLength:])
 	if err != nil {
 		return nil, err
+	}
+	if c.proofRuntime == nil {
+		kvmp.SetProofRuntime(lightclient.DefaultProofRuntime())
+	} else {
+		kvmp.SetProofRuntime(c.proofRuntime)
 	}
 	kvmp.SetVerifiers(c.verifiers)
 	valid := kvmp.Validate()
