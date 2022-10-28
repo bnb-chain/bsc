@@ -200,6 +200,8 @@ type worker struct {
 	mux          *event.TypeMux
 	txsCh        chan core.NewTxsEvent
 	txsSub       event.Subscription
+	txs2Ch       chan core.NewTxsEvent // a hotfix for validator to keep packing when new txs arrive
+	txs2Sub      event.Subscription
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 	chainSideCh  chan core.ChainSideEvent
@@ -237,6 +239,7 @@ type worker struct {
 	// atomic status counters
 	running int32 // The indicator whether the consensus engine is running or not.
 	newTxs  int32 // New arrival transaction count since last sealing work submitting.
+	newTxs2 int32 // hotfix, will be removed
 
 	// noempty is the flag used to control whether the feature of pre-seal empty
 	// block is enabled. The default value is false(pre-seal is enabled by default).
@@ -283,6 +286,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
+	worker.txs2Sub = eth.TxPool().SubscribeNewTxsEvent(worker.txs2Ch)
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 	worker.chainSideSub = eth.BlockChain().SubscribeChainSideEvent(worker.chainSideCh)
@@ -294,11 +298,12 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		recommit = minRecommitInterval
 	}
 
-	worker.wg.Add(4)
+	worker.wg.Add(5)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
+	go worker.txs2Loop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -537,6 +542,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 func (w *worker) mainLoop() {
 	defer w.wg.Done()
 	defer w.txsSub.Unsubscribe()
+	defer w.txs2Sub.Unsubscribe()
 	defer w.chainHeadSub.Unsubscribe()
 	defer w.chainSideSub.Unsubscribe()
 	defer func() {
@@ -699,6 +705,19 @@ func (w *worker) taskLoop() {
 			}
 		case <-w.exitCh:
 			interrupt()
+			return
+		}
+	}
+}
+
+func (w *worker) txs2Loop() {
+	defer w.wg.Done()
+	for {
+		select {
+		case ev := <-w.txsCh:
+			atomic.AddInt32(&w.newTxs, int32(len(ev.Txs)))
+			continue
+		case <-w.exitCh:
 			return
 		}
 	}
@@ -884,7 +903,7 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 	delay := w.engine.Delay(w.chain, env.header)
 	if delay != nil {
 		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
-		log.Debug("Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
+		log.Debug("Time left for commitTransactions", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
 		defer stopTimer.Stop()
 	}
 	// initilise bloom processors
@@ -1117,26 +1136,62 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 func (w *worker) fillTransactions(interrupt *int32, env *environment) {
-	// Split the pending transactions into locals and remotes
-	// Fill the block with all available pending transactions.
-	pending := w.eth.TxPool().Pending(true)
-	localTxs, remoteTxs := make(map[common.Address]types.Transactions), pending
-	for _, account := range w.eth.TxPool().Locals() {
-		if txs := remoteTxs[account]; len(txs) > 0 {
-			delete(remoteTxs, account)
-			localTxs[account] = txs
-		}
+	atomic.StoreInt32(&w.newTxs2, 0)
+	//
+	var stopTimer *time.Timer
+	delay := w.engine.Delay(w.chain, env.header)
+	if delay != nil {
+		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
+		log.Debug("Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
+		defer stopTimer.Stop()
 	}
-	if len(localTxs) > 0 {
-		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
-		if w.commitTransactions(env, txs, interrupt) {
+
+	for {
+		for {
+			// clear first
+			cleared := false
+			select {
+			case <-w.txs2Ch:
+			default:
+				cleared = true
+			}
+			if cleared {
+				break
+			}
+		}
+		// ToDo: drop duplicated transactions, which were already committed.
+
+		// Split the pending transactions into locals and remotes
+		// Fill the block with all available pending transactions.
+		pending := w.eth.TxPool().Pending(true)
+		localTxs, remoteTxs := make(map[common.Address]types.Transactions), pending
+		for _, account := range w.eth.TxPool().Locals() {
+			if txs := remoteTxs[account]; len(txs) > 0 {
+				delete(remoteTxs, account)
+				localTxs[account] = txs
+			}
+		}
+		if len(localTxs) > 0 {
+			txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
+			if w.commitTransactions(env, txs, interrupt) {
+				return
+			}
+		}
+		if len(remoteTxs) > 0 {
+			txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
+			if w.commitTransactions(env, txs, interrupt) {
+				return
+			}
+		}
+		if stopTimer == nil {
 			return
 		}
-	}
-	if len(remoteTxs) > 0 {
-		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
-		if w.commitTransactions(env, txs, interrupt) {
+		select {
+		case <-stopTimer.C:
+			log.Info("Not enough time for further transactions", "txs", len(env.txs))
 			return
+		case <-w.txs2Ch:
+			continue
 		}
 	}
 }
