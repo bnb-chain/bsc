@@ -649,6 +649,8 @@ func (w *worker) mainLoop() {
 			return
 		case <-w.txsSub.Err():
 			return
+		case <-w.txs2Sub.Err():
+			return
 		case <-w.chainHeadSub.Err():
 			return
 		case <-w.chainSideSub.Err():
