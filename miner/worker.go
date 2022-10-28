@@ -200,9 +200,6 @@ type worker struct {
 	mux          *event.TypeMux
 	txsCh        chan core.NewTxsEvent
 	txsSub       event.Subscription
-	txs2Ch       chan core.NewTxsEvent // a hotfix for validator to keep packing when new txs arrive
-	txs2Sub      event.Subscription
-	txs2NewCh    chan struct{}
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 	chainSideCh  chan core.ChainSideEvent
@@ -240,7 +237,6 @@ type worker struct {
 	// atomic status counters
 	running int32 // The indicator whether the consensus engine is running or not.
 	newTxs  int32 // New arrival transaction count since last sealing work submitting.
-	newTxs2 int32 // hotfix, to be removed later
 
 	// noempty is the flag used to control whether the feature of pre-seal empty
 	// block is enabled. The default value is false(pre-seal is enabled by default).
@@ -274,8 +270,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		unconfirmed:        newUnconfirmedBlocks(eth.BlockChain(), sealingLogAtDepth),
 		pendingTasks:       make(map[common.Hash]*task),
 		txsCh:              make(chan core.NewTxsEvent, txChanSize),
-		txs2Ch:             make(chan core.NewTxsEvent, txChanSize),
-		txs2NewCh:          make(chan struct{}, 1),
 		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
 		chainSideCh:        make(chan core.ChainSideEvent, chainSideChanSize),
 		newWorkCh:          make(chan *newWorkReq),
@@ -289,7 +283,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
-	worker.txs2Sub = eth.TxPool().SubscribeNewTxsEvent(worker.txs2Ch)
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 	worker.chainSideSub = eth.BlockChain().SubscribeChainSideEvent(worker.chainSideCh)
@@ -301,12 +294,11 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		recommit = minRecommitInterval
 	}
 
-	worker.wg.Add(5)
+	worker.wg.Add(4)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
-	go worker.txs2HotfixLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -545,7 +537,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 func (w *worker) mainLoop() {
 	defer w.wg.Done()
 	defer w.txsSub.Unsubscribe()
-	defer w.txs2Sub.Unsubscribe()
 	defer w.chainHeadSub.Unsubscribe()
 	defer w.chainSideSub.Unsubscribe()
 	defer func() {
@@ -654,8 +645,6 @@ func (w *worker) mainLoop() {
 			return
 		case <-w.txsSub.Err():
 			return
-		case <-w.txs2Sub.Err():
-			return
 		case <-w.chainHeadSub.Err():
 			return
 		case <-w.chainSideSub.Err():
@@ -710,27 +699,6 @@ func (w *worker) taskLoop() {
 			}
 		case <-w.exitCh:
 			interrupt()
-			return
-		}
-	}
-}
-
-// a dedicated routine to monitor on new arrival transaction,
-// and notify mainLoop to include more transactions when it is capable of filling more transactions.
-func (w *worker) txs2HotfixLoop() {
-	defer w.wg.Done()
-	for {
-		select {
-		case ev := <-w.txs2Ch:
-			if atomic.LoadInt32(&w.newTxs2) == 0 {
-				select {
-				case w.txs2NewCh <- struct{}{}:
-				default:
-				}
-			}
-			atomic.AddInt32(&w.newTxs2, int32(len(ev.Txs)))
-			continue
-		case <-w.exitCh:
 			return
 		}
 	}
@@ -1167,40 +1135,51 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 		defer stopTimer.Stop()
 	}
 
-	for {
-		atomic.StoreInt32(&w.newTxs2, 0)
-		// ToDo: drop duplicated transactions, which were already committed.
+	txsCh := make(chan core.NewTxsEvent, txChanSize)
+	sub := w.eth.TxPool().SubscribeNewTxsEvent(txsCh)
+	defer sub.Unsubscribe()
 
-		// Split the pending transactions into locals and remotes
-		// Fill the block with all available pending transactions.
-		pending := w.eth.TxPool().Pending(true)
-		localTxs, remoteTxs := make(map[common.Address]types.Transactions), pending
-		for _, account := range w.eth.TxPool().Locals() {
-			if txs := remoteTxs[account]; len(txs) > 0 {
-				delete(remoteTxs, account)
-				localTxs[account] = txs
-			}
+	// Split the pending transactions into locals and remotes
+	// Fill the block with all available pending transactions.
+	pending := w.eth.TxPool().Pending(true)
+	localTxs, remoteTxs := make(map[common.Address]types.Transactions), pending
+	for _, account := range w.eth.TxPool().Locals() {
+		if txs := remoteTxs[account]; len(txs) > 0 {
+			delete(remoteTxs, account)
+			localTxs[account] = txs
 		}
-		if len(localTxs) > 0 {
-			txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
-			if w.commitTransactions(env, txs, interrupt) {
-				return
-			}
-		}
-		if len(remoteTxs) > 0 {
-			txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
-			if w.commitTransactions(env, txs, interrupt) {
-				return
-			}
-		}
-		if stopTimer == nil {
+	}
+	if len(localTxs) > 0 {
+		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
+		if w.commitTransactions(env, txs, interrupt) {
 			return
 		}
+	}
+	if len(remoteTxs) > 0 {
+		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
+		if w.commitTransactions(env, txs, interrupt) {
+			return
+		}
+	}
+
+	if stopTimer == nil {
+		return
+	}
+	for {
 		select {
 		case <-stopTimer.C:
 			log.Info("Not enough time for further transactions", "txs", len(env.txs))
 			return
-		case <-w.txs2NewCh:
+		case txEv := <-txsCh:
+			newTxs := make(map[common.Address]types.Transactions)
+			for _, tx := range txEv.Txs {
+				acc, _ := types.Sender(w.current.signer, tx)
+				newTxs[acc] = append(newTxs[acc], tx)
+			}
+			newTxSet := types.NewTransactionsByPriceAndNonce(env.signer, newTxs, env.header.BaseFee)
+			if w.commitTransactions(env, newTxSet, interrupt) {
+				return
+			}
 			continue
 		}
 	}
