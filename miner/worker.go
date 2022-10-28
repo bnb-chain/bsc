@@ -209,7 +209,6 @@ type worker struct {
 	newWorkCh          chan *newWorkReq
 	getWorkCh          chan *getWorkReq
 	taskCh             chan *task
-	taskinterruptCh    chan struct{}
 	resultCh           chan *types.Block
 	startCh            chan struct{}
 	exitCh             chan struct{}
@@ -276,7 +275,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		newWorkCh:          make(chan *newWorkReq),
 		getWorkCh:          make(chan *getWorkReq),
 		taskCh:             make(chan *task),
-		taskinterruptCh:    make(chan struct{}, 1),
 		resultCh:           make(chan *types.Block, resultQueueSize),
 		exitCh:             make(chan struct{}),
 		startCh:            make(chan struct{}, 1),
@@ -470,10 +468,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				continue
 			}
 			clearPending(head.Block.NumberU64())
-			select {
-			case w.taskinterruptCh <- struct{}{}: // cancel sealing task if any
-			default:
-			}
 			timestamp = time.Now().Unix()
 			if p, ok := w.engine.(*parlia.Parlia); ok {
 				signedRecent, err := p.SignRecently(w.chain, head.Block)
@@ -677,8 +671,6 @@ func (w *worker) taskLoop() {
 	}
 	for {
 		select {
-		case <-w.taskinterruptCh:
-			interrupt()
 		case task := <-w.taskCh:
 			if w.newTaskHook != nil {
 				w.newTaskHook(task)
