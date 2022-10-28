@@ -869,12 +869,16 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 		}
 	}
 
-	var coalescedLogs []*types.Log
 	var stopTimer *time.Timer
 	delay := w.engine.Delay(w.chain, env.header)
 	if delay != nil {
-		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
-		log.Debug("Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
+		left := *delay - w.config.DelayLeftOver
+		if left <= 0 {
+			log.Info("Not enough time for further commitTransactions", "delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)
+			return true
+		}
+		stopTimer = time.NewTimer(left)
+		log.Debug("Time left for commitTransactions", "left", left.String(), "leftover", w.config.DelayLeftOver)
 		defer stopTimer.Stop()
 	}
 	// initilise bloom processors
@@ -892,6 +896,7 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 	txCurr := &tx
 	w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.CopyDoPrefetch(), *w.chain.GetVMConfig(), interruptCh, txCurr)
 
+	var coalescedLogs []*types.Log
 LOOP:
 	for {
 		// In the following three cases, we will interrupt the execution of the transaction.
@@ -1107,6 +1112,23 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 func (w *worker) fillTransactions(interrupt *int32, env *environment) {
+	var stopTimer *time.Timer
+	delay := w.engine.Delay(w.chain, env.header)
+	if delay != nil {
+		left := *delay - w.config.DelayLeftOver
+		if left <= 0 {
+			log.Info("Not enough time for fillTransactions", "delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)
+			return
+		}
+		stopTimer = time.NewTimer(left)
+		log.Debug("Time left for mining work", "left", left.String(), "leftover", w.config.DelayLeftOver)
+		defer stopTimer.Stop()
+	}
+
+	txsCh := make(chan core.NewTxsEvent, txChanSize)
+	sub := w.eth.TxPool().SubscribeNewTxsEvent(txsCh)
+	defer sub.Unsubscribe()
+
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
@@ -1127,6 +1149,28 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
 		if w.commitTransactions(env, txs, interrupt) {
 			return
+		}
+	}
+
+	if stopTimer == nil {
+		return
+	}
+	for {
+		select {
+		case <-stopTimer.C:
+			log.Info("Not enough time for further transactions", "txs", len(env.txs))
+			return
+		case txEv := <-txsCh:
+			newTxs := make(map[common.Address]types.Transactions)
+			for _, tx := range txEv.Txs {
+				acc, _ := types.Sender(w.current.signer, tx)
+				newTxs[acc] = append(newTxs[acc], tx)
+			}
+			newTxSet := types.NewTransactionsByPriceAndNonce(env.signer, newTxs, env.header.BaseFee)
+			if w.commitTransactions(env, newTxSet, interrupt) {
+				return
+			}
+			continue
 		}
 	}
 }
