@@ -363,6 +363,10 @@ func (beacon *Beacon) SetThreads(threads int) {
 	}
 }
 
+func (p *Beacon) DropOnNewBlock(*types.Header) bool {
+	return true
+}
+
 // IsTTDReached checks if the TotalTerminalDifficulty has been surpassed on the `parentHash` block.
 // It depends on the parentHash already being stored in the database.
 // If the parentHash is not stored in the database a UnknownAncestor error is returned.

@@ -959,6 +959,11 @@ func (p *Parlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, 
 	return CalcDifficulty(snap, p.val)
 }
 
+func (p *Parlia) DropOnNewBlock(header *types.Header) bool {
+	// drop the block if it is not in turn.
+	return header.Difficulty.Cmp(diffNoTurn) == 0
+}
+
 // CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 // that a new block should have based on the previous blocks in the chain and the
 // current signer.

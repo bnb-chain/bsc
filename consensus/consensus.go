@@ -130,6 +130,12 @@ type Engine interface {
 
 	// Close terminates any background threads maintained by the consensus engine.
 	Close() error
+
+	// DropOnNewBlock determine the action of mining when it is interrupted by new imported block.
+	// Return
+	//   true: the mining result will be dropped
+	//   false: the mining result will be kept and move on to the next mine step.
+	DropOnNewBlock(header *types.Header) bool
 }
 
 // PoW is a consensus engine based on proof-of-work.

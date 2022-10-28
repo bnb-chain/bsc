@@ -1217,6 +1217,10 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 	}
 	// Fill pending transactions from the txpool
 	w.fillTransactions(interrupt, work)
+	if atomic.LoadInt32(interrupt) == commitInterruptNewHead && w.engine.DropOnNewBlock(work.header) {
+		log.Info("drop the block, when new block is imported")
+		return
+	}
 	w.commit(work, w.fullTaskHook, true, start)
 
 	// Swap out the old work with the new one, terminating any leftover
