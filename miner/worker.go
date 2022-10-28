@@ -1127,7 +1127,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 	if delay != nil {
 		left := *delay - w.config.DelayLeftOver
 		if left <= 0 {
-			log.Info("Not enough time for further fillTransactions", "delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)
+			log.Info("Not enough time for fillTransactions", "delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)
 			return
 		}
 		stopTimer = time.NewTimer(left)
