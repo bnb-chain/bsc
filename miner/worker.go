@@ -239,7 +239,6 @@ type worker struct {
 	// atomic status counters
 	running int32 // The indicator whether the consensus engine is running or not.
 	newTxs  int32 // New arrival transaction count since last sealing work submitting.
-	newTxs2 int32 // hotfix, will be removed
 
 	// noempty is the flag used to control whether the feature of pre-seal empty
 	// block is enabled. The default value is false(pre-seal is enabled by default).
@@ -298,12 +297,11 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		recommit = minRecommitInterval
 	}
 
-	worker.wg.Add(5)
+	worker.wg.Add(4)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
-	go worker.txs2Loop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -705,19 +703,6 @@ func (w *worker) taskLoop() {
 			}
 		case <-w.exitCh:
 			interrupt()
-			return
-		}
-	}
-}
-
-func (w *worker) txs2Loop() {
-	defer w.wg.Done()
-	for {
-		select {
-		case ev := <-w.txsCh:
-			atomic.AddInt32(&w.newTxs, int32(len(ev.Txs)))
-			continue
-		case <-w.exitCh:
 			return
 		}
 	}
@@ -1136,8 +1121,6 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 func (w *worker) fillTransactions(interrupt *int32, env *environment) {
-	atomic.StoreInt32(&w.newTxs2, 0)
-	//
 	var stopTimer *time.Timer
 	delay := w.engine.Delay(w.chain, env.header)
 	if delay != nil {
