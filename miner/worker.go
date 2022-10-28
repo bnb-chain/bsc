@@ -202,6 +202,7 @@ type worker struct {
 	txsSub       event.Subscription
 	txs2Ch       chan core.NewTxsEvent // a hotfix for validator to keep packing when new txs arrive
 	txs2Sub      event.Subscription
+	txs2NewCh    chan struct{}
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 	chainSideCh  chan core.ChainSideEvent
@@ -239,6 +240,7 @@ type worker struct {
 	// atomic status counters
 	running int32 // The indicator whether the consensus engine is running or not.
 	newTxs  int32 // New arrival transaction count since last sealing work submitting.
+	newTxs2 int32 // hotfix, to be removed later
 
 	// noempty is the flag used to control whether the feature of pre-seal empty
 	// block is enabled. The default value is false(pre-seal is enabled by default).
@@ -273,6 +275,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		pendingTasks:       make(map[common.Hash]*task),
 		txsCh:              make(chan core.NewTxsEvent, txChanSize),
 		txs2Ch:             make(chan core.NewTxsEvent, txChanSize),
+		txs2NewCh:          make(chan struct{}, 1),
 		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
 		chainSideCh:        make(chan core.ChainSideEvent, chainSideChanSize),
 		newWorkCh:          make(chan *newWorkReq),
@@ -298,11 +301,12 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		recommit = minRecommitInterval
 	}
 
-	worker.wg.Add(4)
+	worker.wg.Add(5)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
+	go worker.txs2HotfixLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -706,6 +710,27 @@ func (w *worker) taskLoop() {
 			}
 		case <-w.exitCh:
 			interrupt()
+			return
+		}
+	}
+}
+
+// a dedicated routine to monitor on new arrival transaction,
+// and notify mainLoop to include more transactions when it is capable of filling more transactions.
+func (w *worker) txs2HotfixLoop() {
+	defer w.wg.Done()
+	for {
+		select {
+		case ev := <-w.txs2Ch:
+			if atomic.LoadInt32(&w.newTxs2) == 0 {
+				select {
+				case w.txs2NewCh <- struct{}{}:
+				default:
+				}
+			}
+			atomic.AddInt32(&w.newTxs2, int32(len(ev.Txs)))
+			continue
+		case <-w.exitCh:
 			return
 		}
 	}
@@ -1143,18 +1168,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 	}
 
 	for {
-		for {
-			// clear first
-			cleared := false
-			select {
-			case <-w.txs2Ch:
-			default:
-				cleared = true
-			}
-			if cleared {
-				break
-			}
-		}
+		atomic.StoreInt32(&w.newTxs2, 0)
 		// ToDo: drop duplicated transactions, which were already committed.
 
 		// Split the pending transactions into locals and remotes
@@ -1186,7 +1200,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 		case <-stopTimer.C:
 			log.Info("Not enough time for further transactions", "txs", len(env.txs))
 			return
-		case <-w.txs2Ch:
+		case <-w.txs2NewCh:
 			continue
 		}
 	}
