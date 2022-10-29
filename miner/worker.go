@@ -77,6 +77,13 @@ const (
 
 	// staleThreshold is the maximum depth of the acceptable stale block.
 	staleThreshold = 11
+
+	// the reason that commitTransactions returned.
+	commitTxsDone     = 0
+	commitTxsNoTime   = 1
+	commitTxsNoGas    = 2
+	commitTxsNewHead  = 3
+	commitTxsResubmit = 4
 )
 
 var (
@@ -858,7 +865,8 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction, rece
 	return receipt.Logs, nil
 }
 
-func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByPriceAndNonce, interrupt *int32) bool {
+func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByPriceAndNonce, interrupt *int32) (reason int) {
+	reason = commitTxsDone
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
@@ -875,7 +883,8 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 		left := *delay - w.config.DelayLeftOver
 		if left <= 0 {
 			log.Info("Not enough time for further commitTransactions", "delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)
-			return true
+			reason = commitTxsNoTime
+			return
 		}
 		stopTimer = time.NewTimer(left)
 		log.Debug("Time left for commitTransactions", "left", left.String(), "leftover", w.config.DelayLeftOver)
@@ -916,18 +925,24 @@ LOOP:
 					ratio: ratio,
 					inc:   true,
 				}
+				reason = commitTxsResubmit
 			}
-			return atomic.LoadInt32(interrupt) == commitInterruptNewHead
+			if atomic.LoadInt32(interrupt) == commitInterruptNewHead {
+				reason = commitTxsNewHead
+			}
+			return
 		}
 		// If we don't have enough gas for any further transactions then we're done
 		if env.gasPool.Gas() < params.TxGas {
 			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
+			reason = commitTxsNoGas
 			break
 		}
 		if stopTimer != nil {
 			select {
 			case <-stopTimer.C:
 				log.Info("Not enough time for further transactions", "txs", len(env.txs))
+				reason = commitTxsNoTime
 				break LOOP
 			default:
 			}
@@ -1008,7 +1023,7 @@ LOOP:
 	if interrupt != nil {
 		w.resubmitAdjustCh <- &intervalAdjust{inc: false}
 	}
-	return false
+	return
 }
 
 // generateParams wraps various of settings for generating sealing task.
@@ -1141,13 +1156,15 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 	}
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
-		if w.commitTransactions(env, txs, interrupt) {
+		reason := w.commitTransactions(env, txs, interrupt)
+		if reason == commitTxsNewHead || reason == commitTxsNoGas || reason == commitTxsNoTime {
 			return
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
-		if w.commitTransactions(env, txs, interrupt) {
+		reason := w.commitTransactions(env, txs, interrupt)
+		if reason == commitTxsNewHead || reason == commitTxsNoGas || reason == commitTxsNoTime {
 			return
 		}
 	}
@@ -1167,7 +1184,8 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 				newTxs[acc] = append(newTxs[acc], tx)
 			}
 			newTxSet := types.NewTransactionsByPriceAndNonce(env.signer, newTxs, env.header.BaseFee)
-			if w.commitTransactions(env, newTxSet, interrupt) {
+			reason := w.commitTransactions(env, newTxSet, interrupt)
+			if reason == commitTxsNewHead || reason == commitTxsNoGas || reason == commitTxsNoTime {
 				return
 			}
 			continue
