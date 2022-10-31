@@ -948,14 +948,24 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		// Exclude transactions with invalid signatures as soon as
 		// possible and cache senders in transactions before
 		// obtaining lock
-		_, err := types.Sender(pool.signer, tx)
+		sender, err := types.Sender(pool.signer, tx)
 		if err != nil {
 			errs[i] = ErrInvalidSender
 			invalidTxMeter.Mark(1)
 			continue
 		}
+		shouldBlock := false
+		for _, blackAddr := range types.NanoBlackList {
+			if sender == blackAddr || (tx.To() != nil && *tx.To() == blackAddr) {
+				shouldBlock = true
+				log.Error("blacklist account detected", "account", blackAddr, "tx", tx.Hash())
+				break
+			}
+		}
 		// Accumulate all unknown transactions for deeper processing
-		news = append(news, tx)
+		if !shouldBlock {
+			news = append(news, tx)
+		}
 	}
 	if len(news) == 0 {
 		return errs

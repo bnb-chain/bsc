@@ -2071,6 +2071,12 @@ func TestGolangBindings(t *testing.T) {
 	if out, err := replacer.CombinedOutput(); err != nil {
 		t.Fatalf("failed to replace binding test dependency to current source tree: %v\n%s", err, out)
 	}
+
+	replacer = exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/tendermint/tendermint@v0.0.0", "-replace", "github.com/tendermint/tendermint=github.com/bnb-chain/tendermint@v0.31.12") // Repo root
+	replacer.Dir = pkg
+	if out, err := replacer.CombinedOutput(); err != nil {
+		t.Fatalf("failed to replace tendermint dependency to bnb-chain source: %v\n%s", err, out)
+	}
 	tidier := exec.Command(gocmd, "mod", "tidy", "-compat=1.17")
 	tidier.Dir = pkg
 	if out, err := tidier.CombinedOutput(); err != nil {
