@@ -1,6 +1,23 @@
 # Changelog
 
+## v1.1.17
+IMPROVEMENT
+
+* [\#1114](https://github.com/bnb-chain/bsc/pull/1114) typo: .github fix job name
+* [\#1126](https://github.com/bnb-chain/bsc/pull/1126) ci: specify bind-tools version
+* [\#1140](https://github.com/bnb-chain/bsc/pull/1140) p2p: upstream go-ethereum: use errors.Is for error comparison
+* [\#1141](https://github.com/bnb-chain/bsc/pull/1141) all: prefer new(big.Int) over big.NewInt(0)
+* [\#1159](https://github.com/bnb-chain/bsc/pull/1159) core: remove redundant func
+
+BUGFIX
+
+* [\#1138](https://github.com/bnb-chain/bsc/pull/1138) fix: upstream patches from go-ethereum 1.10.19
+* [\#1139](https://github.com/bnb-chain/bsc/pull/1139) fix: upstream go-ethereum: fix duplicate fields names in the generted go struct
+* [\#1145](https://github.com/bnb-chain/bsc/pull/1145) consensus: the newChainHead mights not be imported to Parlia.Snapshot
+* [\#1146](https://github.com/bnb-chain/bsc/pull/1146) fix: upstream patches from go-ethereum 1.10.20
+
 ## v1.1.16
+
 * [\#1121](https://github.com/bnb-chain/bsc/pull/1121) vm: add two proof verifier to fix the vulnerability in range proof
 
 ## v1.1.15
