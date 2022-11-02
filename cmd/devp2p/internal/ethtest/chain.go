@@ -48,7 +48,7 @@ func (c *Chain) Len() int {
 // TD calculates the total difficulty of the chain at the
 // chain head.
 func (c *Chain) TD() *big.Int {
-	sum := big.NewInt(0)
+	sum := new(big.Int)
 	for _, block := range c.blocks[:c.Len()] {
 		sum.Add(sum, block.Difficulty())
 	}
@@ -58,7 +58,7 @@ func (c *Chain) TD() *big.Int {
 // TotalDifficultyAt calculates the total difficulty of the chain
 // at the given block height.
 func (c *Chain) TotalDifficultyAt(height int) *big.Int {
-	sum := big.NewInt(0)
+	sum := new(big.Int)
 	if height >= c.Len() {
 		return sum
 	}
