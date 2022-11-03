@@ -70,6 +70,10 @@ func (op CommitmentOp) GetKey() []byte {
 // If length 0 args is passed in, then CommitmentOp will attempt to prove the absence of the key
 // in the CommitmentOp and return the CommitmentRoot of the proof.
 func (op CommitmentOp) Run(args [][]byte) ([][]byte, error) {
+	if _, ok := op.Proof.Proof.(*ics23.CommitmentProof_Exist); !ok {
+		return nil, fmt.Errorf("only exist proof supported")
+	}
+
 	// calculate root from proof
 	root, err := op.Proof.Calculate()
 	if err != nil {
