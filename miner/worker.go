@@ -1180,7 +1180,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 		case txEv := <-txsCh:
 			newTxs := make(map[common.Address]types.Transactions)
 			for _, tx := range txEv.Txs {
-				acc, _ := types.Sender(w.current.signer, tx)
+				acc, _ := types.Sender(env.signer, tx)
 				newTxs[acc] = append(newTxs[acc], tx)
 			}
 			newTxSet := types.NewTransactionsByPriceAndNonce(env.signer, newTxs, env.header.BaseFee)
