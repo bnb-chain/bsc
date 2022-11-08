@@ -19,6 +19,7 @@ package miner
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1126,24 +1127,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
-func (w *worker) fillTransactions(interrupt *int32, env *environment) {
-	var stopTimer *time.Timer
-	delay := w.engine.Delay(w.chain, env.header)
-	if delay != nil {
-		left := *delay - w.config.DelayLeftOver
-		if left <= 0 {
-			log.Info("Not enough time for fillTransactions", "delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)
-			return
-		}
-		stopTimer = time.NewTimer(left)
-		log.Debug("Time left for mining work", "left", left.String(), "leftover", w.config.DelayLeftOver)
-		defer stopTimer.Stop()
-	}
-
-	txsCh := make(chan core.NewTxsEvent, txChanSize)
-	sub := w.eth.TxPool().SubscribeNewTxsEvent(txsCh)
-	defer sub.Unsubscribe()
-
+func (w *worker) fillTransactions(interrupt *int32, env *environment) (reason int) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
@@ -1156,41 +1140,21 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) {
 	}
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
-		reason := w.commitTransactions(env, txs, interrupt)
+		reason = w.commitTransactions(env, txs, interrupt)
 		if reason == commitTxsNewHead || reason == commitTxsNoGas || reason == commitTxsNoTime {
 			return
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
-		reason := w.commitTransactions(env, txs, interrupt)
+		reason = w.commitTransactions(env, txs, interrupt)
 		if reason == commitTxsNewHead || reason == commitTxsNoGas || reason == commitTxsNoTime {
 			return
 		}
 	}
 
-	if stopTimer == nil {
-		return
-	}
-	for {
-		select {
-		case <-stopTimer.C:
-			log.Info("Not enough time for further transactions", "txs", len(env.txs))
-			return
-		case txEv := <-txsCh:
-			newTxs := make(map[common.Address]types.Transactions)
-			for _, tx := range txEv.Txs {
-				acc, _ := types.Sender(env.signer, tx)
-				newTxs[acc] = append(newTxs[acc], tx)
-			}
-			newTxSet := types.NewTransactionsByPriceAndNonce(env.signer, newTxs, env.header.BaseFee)
-			reason := w.commitTransactions(env, newTxSet, interrupt)
-			if reason == commitTxsNewHead || reason == commitTxsNoGas || reason == commitTxsNoTime {
-				return
-			}
-			continue
-		}
-	}
+	reason = commitTxsDone
+	return
 }
 
 // generateWork generates a sealing block based on the given parameters.
@@ -1220,33 +1184,87 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 		}
 		coinbase = w.coinbase // Use the preset address as the fee recipient
 	}
-	work, err := w.prepareWork(&generateParams{
-		timestamp: uint64(timestamp),
-		coinbase:  coinbase,
-	})
-	if err != nil {
-		return
+
+	var stopTimer *time.Timer
+	doPreSeal := !noempty && atomic.LoadUint32(&w.noempty) == 0
+	// validator can try several times to get the most profitable block,
+	// as long as the timestamp is not reached.
+	workList := make([]*environment, 0, 10)
+	for {
+		work, err := w.prepareWork(&generateParams{
+			timestamp: uint64(timestamp),
+			coinbase:  coinbase,
+		})
+		if err != nil {
+			return
+		}
+		// Create an empty block based on temporary copied state for
+		// sealing in advance without waiting block execution finished.
+		if doPreSeal {
+			doPreSeal = false
+			w.commit(work, nil, false, start)
+		}
+		workList = append(workList, work)
+
+		if stopTimer == nil {
+			delay := w.engine.Delay(w.chain, work.header)
+			if delay != nil {
+				left := *delay - w.config.DelayLeftOver
+				if left <= 0 {
+					log.Info("Not enough time for commitWork", "delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)
+					break
+				}
+				stopTimer = time.NewTimer(left)
+				defer stopTimer.Stop()
+			}
+		}
+		// subscribe before fillTransactions
+		txsCh := make(chan core.NewTxsEvent, txChanSize)
+		sub := w.eth.TxPool().SubscribeNewTxsEvent(txsCh)
+
+		// Fill pending transactions from the txpool
+		reason := w.fillTransactions(interrupt, work)
+		if reason == commitTxsNewHead && w.engine.DropOnNewBlock(work.header) {
+			log.Info("drop the block, when new block is imported")
+			sub.Unsubscribe()
+			return
+		}
+		if reason == commitTxsNoGas || reason == commitTxsNoTime {
+			log.Info("commitWork, filled reason", reason)
+			sub.Unsubscribe()
+			break
+		}
+		done := false
+		select {
+		case <-stopTimer.C:
+			done = true
+		case <-txsCh:
+		}
+		sub.Unsubscribe() // not prefer to `defer sub.Unsubscribe()`
+		if done {
+			break
+		}
+	}
+	// get the most profitable work
+	bestWork := workList[0]
+	bestReward := new(big.Int)
+	for i, w := range workList {
+		balance := w.state.GetBalance(consensus.SystemAddress)
+		log.Info("commitWork", "work", i, "balance", balance, "bestReward", bestReward)
+		if balance.Cmp(bestReward) > 0 {
+			bestWork = w
+			bestReward = balance
+		}
 	}
 
-	// Create an empty block based on temporary copied state for
-	// sealing in advance without waiting block execution finished.
-	if !noempty && atomic.LoadUint32(&w.noempty) == 0 {
-		w.commit(work, nil, false, start)
-	}
-	// Fill pending transactions from the txpool
-	w.fillTransactions(interrupt, work)
-	if atomic.LoadInt32(interrupt) == commitInterruptNewHead && w.engine.DropOnNewBlock(work.header) {
-		log.Info("drop the block, when new block is imported")
-		return
-	}
-	w.commit(work, w.fullTaskHook, true, start)
+	w.commit(bestWork, w.fullTaskHook, true, start)
 
 	// Swap out the old work with the new one, terminating any leftover
 	// prefetcher processes in the mean time and starting a new one.
 	if w.current != nil {
 		w.current.discard()
 	}
-	w.current = work
+	w.current = bestWork
 }
 
 // commit runs any post-transaction state modifications, assembles the final block
