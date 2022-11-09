@@ -1203,7 +1203,7 @@ func (w *worker) commitWork(interrupt *int32, interruptChan chan struct{}, noemp
 		if err != nil {
 			return
 		}
-		log.Info("commitWork for", "block", work.header.Number, "timestamp", time.Unix(int64(timestamp), 0).Second())
+		// log.Info("commitWork for", "block", work.header.Number, "timestamp", time.Unix(int64(timestamp), 0).Second())
 		// Create an empty block based on temporary copied state for
 		// sealing in advance without waiting block execution finished.
 		if doPreSeal {
@@ -1249,10 +1249,10 @@ func (w *worker) commitWork(interrupt *int32, interruptChan chan struct{}, noemp
 		done := false
 		select {
 		case <-stopTimer.C:
-			log.Info("commitWork stopTimer expired")
+			// log.Info("commitWork stopTimer expired")
 			done = true
 		case <-txsCh:
-			log.Info("commitWork txsCh arrived")
+			// log.Info("commitWork txsCh arrived")
 		case <-interruptChan:
 			log.Info("commitWork interruptChan closed, new block imported")
 			sub.Unsubscribe() // not prefer to `defer sub.Unsubscribe()`
@@ -1268,7 +1268,7 @@ func (w *worker) commitWork(interrupt *int32, interruptChan chan struct{}, noemp
 	bestReward := new(big.Int)
 	for i, w := range workList {
 		balance := w.state.GetBalance(consensus.SystemAddress)
-		log.Info("Get the best work", "index", i, "balance", balance, "bestReward", bestReward)
+		log.Debug("Get the best work", "index", i, "balance", balance, "bestReward", bestReward)
 		if balance.Cmp(bestReward) > 0 {
 			bestWork = w
 			bestReward = balance
