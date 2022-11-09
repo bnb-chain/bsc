@@ -847,7 +847,9 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	// Sweet, the protocol permits us to sign the block, wait for our time
 	delay := p.delayForRamanujanFork(snap, header)
 
-	log.Info("Sealing block with", "number", number, "delay", delay, "headerDifficulty", header.Difficulty, "val", val.Hex())
+	log.Info("Sealing block with", "number", number, "delay", delay,
+		"header.Time Second", time.Unix(int64(header.Time), 0).Second(),
+		"headerDifficulty", header.Difficulty, "val", val.Hex())
 
 	// Sign all the things!
 	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, ParliaRLP(header, p.chainConfig.ChainID))

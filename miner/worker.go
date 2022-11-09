@@ -472,6 +472,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(true, commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
+			log.Info("newWorkLoop chainHeadCh", "block number", head.Block.NumberU64())
 			if !w.isRunning() {
 				continue
 			}
@@ -559,6 +560,7 @@ func (w *worker) mainLoop() {
 	for {
 		select {
 		case req := <-w.newWorkCh:
+			log.Info("mainLoop newWorkCh")
 			w.commitWork(req.interrupt, req.noempty, req.timestamp)
 
 		case req := <-w.getWorkCh:
@@ -1230,7 +1232,7 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 			return
 		}
 		if reason == commitTxsNoGas || reason == commitTxsNoTime {
-			log.Info("commitWork, filled reason", reason)
+			log.Info("commitWork", "fill done, reason", reason)
 			sub.Unsubscribe()
 			break
 		}
