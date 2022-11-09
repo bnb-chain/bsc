@@ -173,9 +173,10 @@ const (
 
 // newWorkReq represents a request for new sealing work submitting with relative interrupt notifier.
 type newWorkReq struct {
-	interrupt *int32
-	noempty   bool
-	timestamp int64
+	interrupt     *int32
+	interruptChan chan struct{}
+	noempty       bool
+	timestamp     int64
 }
 
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
@@ -430,9 +431,10 @@ func recalcRecommit(minRecommit, prev time.Duration, target float64, inc bool) t
 func (w *worker) newWorkLoop(recommit time.Duration) {
 	defer w.wg.Done()
 	var (
-		interrupt   *int32
-		minRecommit = recommit // minimal resubmit interval specified by user.
-		timestamp   int64      // timestamp for each round of sealing.
+		interrupt     *int32
+		interruptChan = make(chan struct{})
+		minRecommit   = recommit // minimal resubmit interval specified by user.
+		timestamp     int64      // timestamp for each round of sealing.
 	)
 
 	timer := time.NewTimer(0)
@@ -443,10 +445,12 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 	commit := func(noempty bool, s int32) {
 		if interrupt != nil {
 			atomic.StoreInt32(interrupt, s)
+			close(interruptChan)
 		}
 		interrupt = new(int32)
+		interruptChan = make(chan struct{})
 		select {
-		case w.newWorkCh <- &newWorkReq{interrupt: interrupt, noempty: noempty, timestamp: timestamp}:
+		case w.newWorkCh <- &newWorkReq{interrupt: interrupt, interruptChan: interruptChan, noempty: noempty, timestamp: timestamp}:
 		case <-w.exitCh:
 			return
 		}
@@ -561,7 +565,7 @@ func (w *worker) mainLoop() {
 		select {
 		case req := <-w.newWorkCh:
 			log.Info("mainLoop newWorkCh")
-			w.commitWork(req.interrupt, req.noempty, req.timestamp)
+			w.commitWork(req.interrupt, req.interruptChan, req.noempty, req.timestamp)
 
 		case req := <-w.getWorkCh:
 			block, err := w.generateWork(req.params)
@@ -645,7 +649,7 @@ func (w *worker) mainLoop() {
 				// by clique. Of course the advance sealing(empty submission) is disabled.
 				if (w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0) ||
 					(w.chainConfig.Parlia != nil && w.chainConfig.Parlia.Period == 0) {
-					w.commitWork(nil, true, time.Now().Unix())
+					w.commitWork(nil, nil, true, time.Now().Unix())
 				}
 			}
 			atomic.AddInt32(&w.newTxs, int32(len(ev.Txs)))
@@ -1174,7 +1178,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 
 // commitWork generates several new sealing tasks based on the parent block
 // and submit them to the sealer.
-func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
+func (w *worker) commitWork(interrupt *int32, interruptChan chan struct{}, noempty bool, timestamp int64) {
 	start := time.Now()
 
 	// Set the coinbase if the worker is running or it's required
@@ -1199,7 +1203,7 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 		if err != nil {
 			return
 		}
-		log.Info("commitWork for", "block", work.header.Number, "timestamp", time.Unix(int64(timestamp), 0).Second)
+		log.Info("commitWork for", "block", work.header.Number, "timestamp", time.Unix(int64(timestamp), 0).Second())
 		// Create an empty block based on temporary copied state for
 		// sealing in advance without waiting block execution finished.
 		if doPreSeal {
@@ -1237,6 +1241,11 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 			sub.Unsubscribe()
 			break
 		}
+		if interruptChan == nil {
+			log.Info("commitWork interruptChan is nil")
+			sub.Unsubscribe() // not prefer to `defer sub.Unsubscribe()`
+			break
+		}
 		done := false
 		select {
 		case <-stopTimer.C:
@@ -1244,6 +1253,10 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 			done = true
 		case <-txsCh:
 			log.Info("commitWork txsCh arrived")
+		case <-interruptChan:
+			log.Info("commitWork interruptChan closed, new block imported")
+			sub.Unsubscribe() // not prefer to `defer sub.Unsubscribe()`
+			return
 		}
 		sub.Unsubscribe() // not prefer to `defer sub.Unsubscribe()`
 		if done {
