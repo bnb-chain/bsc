@@ -20,7 +20,6 @@ import (
 	"errors"
 	"math/big"
 	"math/rand"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -267,100 +266,6 @@ func testGenerateBlockAndImport(t *testing.T, isClique bool) {
 		case <-time.After(3 * time.Second): // Worker needs 1s to include new changes.
 			t.Fatalf("timeout")
 		}
-	}
-}
-
-func TestAdjustIntervalEthash(t *testing.T) {
-	testAdjustInterval(t, ethashChainConfig, ethash.NewFaker())
-}
-
-func TestAdjustIntervalClique(t *testing.T) {
-	testAdjustInterval(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
-}
-
-func testAdjustInterval(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine) {
-	defer engine.Close()
-
-	w, _ := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), 0)
-	defer w.close()
-
-	w.skipSealHook = func(task *task) bool {
-		return true
-	}
-	w.fullTaskHook = func() {
-		time.Sleep(100 * time.Millisecond)
-	}
-	var (
-		progress = make(chan struct{}, 10)
-		result   = make([]float64, 0, 10)
-		index    = 0
-		start    uint32
-	)
-	w.resubmitHook = func(minInterval time.Duration, recommitInterval time.Duration) {
-		// Short circuit if interval checking hasn't started.
-		if atomic.LoadUint32(&start) == 0 {
-			return
-		}
-		var wantMinInterval, wantRecommitInterval time.Duration
-
-		switch index {
-		case 0:
-			wantMinInterval, wantRecommitInterval = 3*time.Second, 3*time.Second
-		case 1:
-			origin := float64(3 * time.Second.Nanoseconds())
-			estimate := origin*(1-intervalAdjustRatio) + intervalAdjustRatio*(origin/0.8+intervalAdjustBias)
-			wantMinInterval, wantRecommitInterval = 3*time.Second, time.Duration(estimate)*time.Nanosecond
-		case 2:
-			estimate := result[index-1]
-			min := float64(3 * time.Second.Nanoseconds())
-			estimate = estimate*(1-intervalAdjustRatio) + intervalAdjustRatio*(min-intervalAdjustBias)
-			wantMinInterval, wantRecommitInterval = 3*time.Second, time.Duration(estimate)*time.Nanosecond
-		case 3:
-			wantMinInterval, wantRecommitInterval = time.Second, time.Second
-		}
-
-		// Check interval
-		if minInterval != wantMinInterval {
-			t.Errorf("resubmit min interval mismatch: have %v, want %v ", minInterval, wantMinInterval)
-		}
-		if recommitInterval != wantRecommitInterval {
-			t.Errorf("resubmit interval mismatch: have %v, want %v", recommitInterval, wantRecommitInterval)
-		}
-		result = append(result, float64(recommitInterval.Nanoseconds()))
-		index += 1
-		progress <- struct{}{}
-	}
-	w.start()
-
-	time.Sleep(time.Second) // Ensure two tasks have been summitted due to start opt
-	atomic.StoreUint32(&start, 1)
-
-	w.setRecommitInterval(3 * time.Second)
-	select {
-	case <-progress:
-	case <-time.NewTimer(time.Second).C:
-		t.Error("interval reset timeout")
-	}
-
-	w.resubmitAdjustCh <- &intervalAdjust{inc: true, ratio: 0.8}
-	select {
-	case <-progress:
-	case <-time.NewTimer(time.Second).C:
-		t.Error("interval reset timeout")
-	}
-
-	w.resubmitAdjustCh <- &intervalAdjust{inc: false}
-	select {
-	case <-progress:
-	case <-time.NewTimer(time.Second).C:
-		t.Error("interval reset timeout")
-	}
-
-	w.setRecommitInterval(500 * time.Millisecond)
-	select {
-	case <-progress:
-	case <-time.NewTimer(time.Second).C:
-		t.Error("interval reset timeout")
 	}
 }
 
