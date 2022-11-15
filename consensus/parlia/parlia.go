@@ -793,13 +793,25 @@ func (p *Parlia) Authorize(val common.Address, signFn SignerFn, signTxFn SignerT
 	p.signTxFn = signTxFn
 }
 
-func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header) *time.Duration {
+// Argument leftOver is the time reserved for block finalize(calculate root, distribute income...)
+func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOver *time.Duration) *time.Duration {
 	number := header.Number.Uint64()
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		return nil
 	}
 	delay := p.delayForRamanujanFork(snap, header)
+
+	if *leftOver >= time.Duration(p.config.Period)*time.Second {
+		// ignore invalid leftOver
+		log.Error("Delay invalid argument", "leftOver", leftOver.String(), "Period", p.config.Period)
+	} else if *leftOver >= delay {
+		delay = time.Duration(0)
+		return &delay
+	} else {
+		delay = delay - *leftOver
+	}
+
 	// The blocking time should be no more than half of period
 	half := time.Duration(p.config.Period) * time.Second / 2
 	if delay > half {

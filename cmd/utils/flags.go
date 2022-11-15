@@ -548,7 +548,7 @@ var (
 	}
 	MinerDelayLeftoverFlag = cli.DurationFlag{
 		Name:  "miner.delayleftover",
-		Usage: "Time interval to for broadcast block",
+		Usage: "Time reserved to finalize a block",
 		Value: ethconfig.Defaults.Miner.DelayLeftOver,
 	}
 	MinerNoVerfiyFlag = cli.BoolFlag{

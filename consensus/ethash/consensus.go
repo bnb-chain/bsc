@@ -610,7 +610,7 @@ func (ethash *Ethash) FinalizeAndAssemble(chain consensus.ChainHeaderReader, hea
 	return types.NewBlock(header, txs, uncles, receipts, trie.NewStackTrie(nil)), receipts, nil
 }
 
-func (ethash *Ethash) Delay(_ consensus.ChainReader, _ *types.Header) *time.Duration {
+func (ethash *Ethash) Delay(_ consensus.ChainReader, _ *types.Header, _ *time.Duration) *time.Duration {
 	return nil
 }
 

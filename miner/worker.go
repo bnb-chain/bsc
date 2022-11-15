@@ -560,7 +560,7 @@ func (w *worker) mainLoop() {
 				}
 				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs, w.current.header.BaseFee)
 				tcount := w.current.tcount
-				w.commitTransactions(w.current, txset, nil)
+				w.commitTransactions(w.current, txset, nil, nil)
 				commitTxsTimer.UpdateSince(start)
 
 				// Only update the snapshot if any new transactions were added
@@ -797,7 +797,8 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction, rece
 	return receipt.Logs, nil
 }
 
-func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByPriceAndNonce, interruptCh chan int32) bool {
+func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByPriceAndNonce,
+	interruptCh chan int32, stopTimer *time.Timer) bool {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
@@ -809,13 +810,6 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 	}
 
 	var coalescedLogs []*types.Log
-	var stopTimer *time.Timer
-	delay := w.engine.Delay(w.chain, env.header)
-	if delay != nil {
-		stopTimer = time.NewTimer(*delay - w.config.DelayLeftOver)
-		log.Debug("Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
-		defer stopTimer.Stop()
-	}
 	// initilise bloom processors
 	processorCapacity := 100
 	if txs.CurrentSize() < processorCapacity {
@@ -1048,15 +1042,24 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment) {
 			localTxs[account] = txs
 		}
 	}
+
+	var stopTimer *time.Timer
+	delay := w.engine.Delay(w.chain, env.header, &w.config.DelayLeftOver)
+	if delay != nil {
+		stopTimer = time.NewTimer(*delay)
+		log.Debug("Time left for mining work", "delay", delay.String())
+		defer stopTimer.Stop()
+	}
+
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
-		if w.commitTransactions(env, txs, interruptCh) {
+		if w.commitTransactions(env, txs, interruptCh, stopTimer) {
 			return
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
-		if w.commitTransactions(env, txs, interruptCh) {
+		if w.commitTransactions(env, txs, interruptCh, stopTimer) {
 			return
 		}
 	}
