@@ -809,6 +809,7 @@ LOOP:
 			select {
 			case <-stopTimer.C:
 				log.Info("Not enough time for further transactions", "txs", len(env.txs))
+				stopTimer.Reset(0) // re-active the timer, in case it will be used later.
 				break LOOP
 			default:
 			}
