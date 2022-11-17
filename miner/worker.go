@@ -1063,6 +1063,10 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	defer stopTimer.Stop()
 	<-stopTimer.C // discard the initial tick
 
+	stopWaitTimer := time.NewTimer(0)
+	defer stopWaitTimer.Stop()
+	<-stopWaitTimer.C // discard the initial tick
+
 	// validator can try several times to get the most profitable block,
 	// as long as the timestamp is not reached.
 	workList := make([]*environment, 0, 10)
@@ -1134,20 +1138,49 @@ LOOP:
 			break
 		}
 
-		select {
-		case <-txsCh:
-			delay := w.engine.Delay(w.chain, work.header, &w.config.DelayLeftOver)
-			log.Debug("commitWork txsCh arrived", "fillDuration", fillDuration.String(), "delay", delay.String())
-			if fillDuration > *delay {
-				// there may not have enough time for another fillTransactions
+		newTxsNum := 0
+		// stopTimer was the maximum delay for each fillTransactions
+		// but now it is used to wait until (head.Time - DelayLeftOver) is reached.
+		stopTimer.Reset(time.Until(time.Unix(int64(work.header.Time), 0)) - w.config.DelayLeftOver)
+	LOOP_WAIT:
+		for {
+			select {
+			case <-stopTimer.C:
+				log.Debug("commitWork stopTimer expired")
 				break LOOP
+			case <-interruptCh:
+				log.Debug("commitWork interruptCh closed, new block imported or resubmit triggered")
+				return
+			case ev := <-txsCh:
+				delay := w.engine.Delay(w.chain, work.header, &w.config.DelayLeftOver)
+				log.Debug("commitWork txsCh arrived", "fillDuration", fillDuration.String(),
+					"delay", delay.String(), "work.tcount", work.tcount,
+					"newTxsNum", newTxsNum, "len(ev.Txs)", len(ev.Txs))
+				if *delay < fillDuration {
+					// There may not have enough time for another fillTransactions.
+					break LOOP
+				} else if *delay < fillDuration*2 {
+					// We can schedule another fillTransactions, but the time is limited,
+					// probably it is the last chance, schedule it immediately.
+					break LOOP_WAIT
+				} else {
+					// There is still plenty of time left.
+					// We can wait a while to collect more transactions before
+					// schedule another fillTransaction to reduce CPU cost.
+					// There will be 2 cases to schedule another fillTransactions:
+					//   1.newTxsNum >= work.tcount
+					//   2.no much time left, have to schedule it immediately.
+					newTxsNum = newTxsNum + len(ev.Txs)
+					if newTxsNum >= work.tcount {
+						break LOOP_WAIT
+					}
+					stopWaitTimer.Reset(*delay - fillDuration*2)
+				}
+			case <-stopWaitTimer.C:
+				if newTxsNum > 0 {
+					break LOOP_WAIT
+				}
 			}
-		case <-stopTimer.C:
-			log.Debug("commitWork stopTimer expired")
-			break LOOP
-		case <-interruptCh:
-			log.Debug("commitWork interruptCh closed, new block imported or resubmit triggered")
-			return
 		}
 	}
 	// get the most profitable work
