@@ -1118,17 +1118,12 @@ LOOP:
 		fillDuration := time.Since(fillStart)
 		switch {
 		case errors.Is(err, errBlockInterruptedByNewHead):
-			// For Parlia, it will drop the work on receiving new block if it is not inturn.
-			if w.engine.DropOnNewBlock(work.header) {
-				log.Debug("drop the block, when new block is imported")
-				return
-			}
+			log.Debug("commitWork abort", "err", err)
+			return
 		case errors.Is(err, errBlockInterruptedByTimeout):
-			// break the loop to get the best work
-			log.Debug("commitWork timeout")
-			break LOOP
 		case errors.Is(err, errBlockInterruptedByOutOfGas):
-			log.Debug("commitWork out of gas")
+			// break the loop to get the best work
+			log.Debug("commitWork finish", "reason", err)
 			break LOOP
 		}
 
