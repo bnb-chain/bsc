@@ -647,10 +647,6 @@ var (
 	big32 = big.NewInt(32)
 )
 
-func (p *Ethash) DropOnNewBlock(*types.Header) bool {
-	return true
-}
-
 // AccumulateRewards credits the coinbase of the given block with the mining
 // reward. The total reward consists of the static block reward and rewards for
 // included uncles. The coinbase of each uncle block is also rewarded.

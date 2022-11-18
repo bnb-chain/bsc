@@ -705,11 +705,6 @@ func (c *Clique) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 	}}
 }
 
-func (p *Clique) DropOnNewBlock(header *types.Header) bool {
-	// drop the block if it is not in turn.
-	return header.Difficulty.Cmp(diffNoTurn) == 0
-}
-
 // SealHash returns the hash of a block prior to it being sealed.
 func SealHash(header *types.Header) (hash common.Hash) {
 	hasher := sha3.NewLegacyKeccak256()
