@@ -1016,16 +1016,19 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
 		err = w.commitTransactions(env, txs, interruptCh, stopTimer)
-		if err == errBlockInterruptedByNewHead || err == errBlockInterruptedByOutOfGas || err == errBlockInterruptedByTimeout {
+		// we will abort here when:
+		//   1.new block was imported
+		//   2.out of Gas, no more transaction can be added.
+		//   3.the mining timer has expired, stop adding transactions.
+		//   4.interrupted resubmit timer, which is by default 10s.
+		//     resubmit is for PoW only, can be deleted for PoS consensus later
+		if err != nil {
 			return
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
 		err = w.commitTransactions(env, txs, interruptCh, stopTimer)
-		if err == errBlockInterruptedByNewHead || err == errBlockInterruptedByOutOfGas || err == errBlockInterruptedByTimeout {
-			return
-		}
 	}
 
 	return
@@ -1120,6 +1123,7 @@ LOOP:
 		case errors.Is(err, errBlockInterruptedByNewHead):
 			log.Debug("commitWork abort", "err", err)
 			return
+		case errors.Is(err, errBlockInterruptedByRecommit):
 		case errors.Is(err, errBlockInterruptedByTimeout):
 		case errors.Is(err, errBlockInterruptedByOutOfGas):
 			// break the loop to get the best work
