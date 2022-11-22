@@ -296,11 +296,9 @@ var (
 		MirrorSyncBlock:     big.NewInt(5184000),
 		BrunoBlock:          big.NewInt(13082000),
 		EulerBlock:          big.NewInt(18907621),
-
-		//TODO
-		GibbsBlock: nil,
-		NanoBlock:  big.NewInt(21962149),
-		MoranBlock: big.NewInt(22107423),
+		NanoBlock:           big.NewInt(21962149),
+		MoranBlock:          big.NewInt(22107423),
+		GibbsBlock:          big.NewInt(23846001),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
