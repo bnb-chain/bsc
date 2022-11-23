@@ -614,6 +614,11 @@ func (ethash *Ethash) Delay(_ consensus.ChainReader, _ *types.Header, _ *time.Du
 	return nil
 }
 
+// ExtraSeal returns fixed number of extra-data suffix bytes reserved for signer seal
+func (ethash *Ethash) ExtraSeal() int {
+	return 0
+}
+
 // SealHash returns the hash of a block prior to it being sealed.
 func (ethash *Ethash) SealHash(header *types.Header) (hash common.Hash) {
 	hasher := sha3.NewLegacyKeccak256()

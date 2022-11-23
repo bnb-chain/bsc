@@ -902,6 +902,11 @@ var (
 		Name:  "check-snapshot-with-mpt",
 		Usage: "Enable checking between snapshot and MPT ",
 	}
+
+	EnableDoubleSignMonitorFlag = cli.BoolFlag{
+		Name:  "monitor.doublesign",
+		Usage: "Enable double sign monitor to check whether any validator signs multiple blocks",
+	}
 )
 
 // MakeDataDir retrieves the currently requested data directory, terminating
@@ -1168,6 +1173,14 @@ func setLes(ctx *cli.Context, cfg *ethconfig.Config) {
 	}
 }
 
+// setMonitor creates the monitor from the set
+// command line flags, returning empty if the monitor is disabled.
+func setMonitor(ctx *cli.Context, cfg *node.Config) {
+	if ctx.GlobalBool(EnableDoubleSignMonitorFlag.Name) {
+		cfg.EnableDoubleSignMonitor = true
+	}
+}
+
 // MakeDatabaseHandles raises out the number of allowed file handles per process
 // for Geth and returns half of the allowance to assign to the database.
 func MakeDatabaseHandles() int {
@@ -1330,6 +1343,7 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	setNodeUserIdent(ctx, cfg)
 	setDataDir(ctx, cfg)
 	setSmartCard(ctx, cfg)
+	setMonitor(ctx, cfg)
 
 	if ctx.GlobalIsSet(ExternalSignerFlag.Name) {
 		cfg.ExternalSigner = ctx.GlobalString(ExternalSignerFlag.Name)

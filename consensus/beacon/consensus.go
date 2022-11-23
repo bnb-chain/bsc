@@ -338,6 +338,11 @@ func (beacon *Beacon) Close() error {
 	return beacon.ethone.Close()
 }
 
+// ExtraSeal returns fixed number of extra-data suffix bytes reserved for signer seal
+func (beacon *Beacon) ExtraSeal() int {
+	return 0
+}
+
 // IsPoSHeader reports the header belongs to the PoS-stage with some special fields.
 // This function is not suitable for a part of APIs like Prepare or CalcDifficulty
 // because the header difficulty is not set yet.
