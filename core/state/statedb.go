@@ -1423,11 +1423,8 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 			finishCh := make(chan struct{})
 
 			threads := gopool.Threads(len(s.stateObjectsDirty))
-			wg := sync.WaitGroup{}
 			for i := 0; i < threads; i++ {
-				wg.Add(1)
 				go func() {
-					defer wg.Done()
 					for {
 						select {
 						case task := <-tasks:
@@ -1492,7 +1489,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 					return err
 				}
 			}
-			wg.Wait()
 			return nil
 		}()
 
