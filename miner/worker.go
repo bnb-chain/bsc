@@ -670,17 +670,28 @@ func (w *worker) resultLoop() {
 			}
 
 			if prev, ok := w.recentMinedBlocks.Get(block.NumberU64()); ok {
-				prevParent, _ := prev.(common.Hash)
-				if prevParent == block.ParentHash() {
-					log.Error("Reject Double Sign!!", "block", block.NumberU64(),
-						"hash", block.Hash(), "root", block.Root(),
-						"ParentHash", block.ParentHash(), "prevParent", prevParent)
+				doubleSign := false
+				prevParents, _ := prev.([]common.Hash)
+				for _, prevParent := range prevParents {
+					if prevParent == block.ParentHash() {
+						log.Error("Reject Double Sign!!", "block", block.NumberU64(),
+							"hash", block.Hash(),
+							"root", block.Root(),
+							"ParentHash", block.ParentHash())
+						doubleSign = true
+						break
+					}
+				}
+				if doubleSign {
 					continue
 				}
+				prevParents = append(prevParents, block.ParentHash())
+				w.recentMinedBlocks.Add(block.NumberU64(), prevParents)
+			} else {
+				// Add() will call removeOldest internally to remove the oldest element
+				// if the LRU Cache is full
+				w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
 			}
-			// Add() will call removeOldest internally to remove the oldest element
-			// if the LRU Cache is full
-			w.recentMinedBlocks.Add(block.NumberU64(), block.ParentHash())
 
 			// Broadcast the block and announce chain insertion event
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
