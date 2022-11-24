@@ -65,7 +65,7 @@ func (m *DoubleSignMonitor) isDoubleSignHeaders(h1, h2 *types.Header) (bool, []b
 	if h1.Number.Cmp(h2.Number) != 0 {
 		return false, nil, nil, nil
 	}
-	if bytes.Equal(h1.ParentHash[:], h2.ParentHash[:]) {
+	if !bytes.Equal(h1.ParentHash[:], h2.ParentHash[:]) {
 		return false, nil, nil, nil
 	}
 	signature1, err := m.getSignature(h1)
