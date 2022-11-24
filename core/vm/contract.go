@@ -142,9 +142,7 @@ func (c *Contract) isCode(udest uint64) bool {
 	// in state trie. In that case, we do an analysis, and save it locally, so
 	// we don't have to recalculate it for every JUMP instruction in the execution
 	// However, we don't save it within the parent context
-	if c.analysis == nil {
-		c.analysis = codeBitmap(c.Code)
-	}
+	c.analysis = codeBitmap(c.Code)
 	return c.analysis.codeSegment(udest)
 }
 
