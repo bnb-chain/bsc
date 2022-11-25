@@ -7,8 +7,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -45,19 +43,6 @@ func (m *DoubleSignMonitor) getSignature(h *types.Header) ([]byte, error) {
 	return signature, nil
 }
 
-func (m *DoubleSignMonitor) extractSignerFromHeader(h *types.Header) (signer common.Address, err error) {
-	signature, err := m.getSignature(h)
-	if err != nil {
-		return
-	}
-	pubKey, err := secp256k1.RecoverPubkey(m.sealHash(h).Bytes(), signature)
-	if err != nil {
-		return
-	}
-	copy(signer[:], crypto.Keccak256(pubKey[1:])[12:])
-	return
-}
-
 func (m *DoubleSignMonitor) isDoubleSignHeaders(h1, h2 *types.Header) (bool, []byte, []byte, error) {
 	if h1 == nil || h2 == nil {
 		return false, nil, nil, nil
@@ -79,16 +64,8 @@ func (m *DoubleSignMonitor) isDoubleSignHeaders(h1, h2 *types.Header) (bool, []b
 	if bytes.Equal(signature1, signature2) {
 		return false, signature1, signature2, nil
 	}
-
-	signer1, err := m.extractSignerFromHeader(h1)
-	if err != nil {
-		return false, signature1, signature2, err
-	}
-	signer2, err := m.extractSignerFromHeader(h2)
-	if err != nil {
-		return false, signature1, signature2, err
-	}
-	if !bytes.Equal(signer1.Bytes(), signer2.Bytes()) {
+	// signer is already verified in sync program, we can trust coinbase.
+	if !bytes.Equal(h1.Coinbase.Bytes(), h2.Coinbase.Bytes()) {
 		return false, signature1, signature2, nil
 	}
 

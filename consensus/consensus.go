@@ -118,6 +118,7 @@ type Engine interface {
 	// SealHash returns the hash of a block prior to it being sealed.
 	SealHash(header *types.Header) common.Hash
 
+	// ExtraSeal returns fixed number of extra-data suffix bytes reserved for signer seal
 	ExtraSeal() int
 
 	// CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
