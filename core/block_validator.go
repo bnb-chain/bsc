@@ -87,12 +87,6 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 
 	validateFuns := []func() error{
 		func() error {
-			if v.bc.HasBlockAndState(block.Hash(), block.NumberU64()) {
-				return ErrKnownBlock
-			}
-			return nil
-		},
-		func() error {
 			if hash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil)); hash != header.TxHash {
 				return fmt.Errorf("transaction root hash mismatch: have %x, want %x", hash, header.TxHash)
 			}
