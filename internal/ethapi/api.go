@@ -2786,6 +2786,7 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 				jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
 				jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String()
 				jsonResult["gasUsed"] = receipt.GasUsed
+				jsonResult["logs"] = receipt.Logs
 
 				bundleResults = append(bundleResults, jsonResult)
 			}
