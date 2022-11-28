@@ -2748,7 +2748,8 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 		}
 
 		for i, tx := range txs {
-			expectedTx := bundle.Txs[i].ToTransaction()
+			bundle.Txs[i].setDefaults(ctx, s.b)
+			expectedTx := bundle.Txs[i].toTransaction()
 			//nonce := state.GetNonce(tx.From())
 			//expectedTx := types.NewTransaction(nonce, *tx.To(), tx.Value(), tx.Gas(), tx.GasPrice(), tx.Data())
 			//coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
