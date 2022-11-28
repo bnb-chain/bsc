@@ -16,14 +16,12 @@ func NewDoubleSignMonitor() *DoubleSignMonitor {
 	return &DoubleSignMonitor{
 		headerNumbers: prque.New(nil),
 		headers:       make(map[uint64]*types.Header, MaxCacheHeader),
-		quit:          make(chan struct{}),
 	}
 }
 
 type DoubleSignMonitor struct {
 	headerNumbers *prque.Prque
 	headers       map[uint64]*types.Header
-	quit          chan struct{}
 }
 
 func (m *DoubleSignMonitor) isDoubleSignHeaders(h1, h2 *types.Header) (bool, error) {
@@ -37,11 +35,12 @@ func (m *DoubleSignMonitor) isDoubleSignHeaders(h1, h2 *types.Header) (bool, err
 		return false, nil
 	}
 	// if the Hash is different the signature should not be equal
-	if bytes.Equal(h1.Hash().Bytes(), h2.Hash().Bytes()) {
+	hash1, hash2 := h1.Hash(), h2.Hash()
+	if bytes.Equal(hash1[:], hash2[:]) {
 		return false, nil
 	}
 	// signer is already verified in sync program, we can trust coinbase.
-	if !bytes.Equal(h1.Coinbase.Bytes(), h2.Coinbase.Bytes()) {
+	if !bytes.Equal(h1.Coinbase[:], h2.Coinbase[:]) {
 		return false, nil
 	}
 
@@ -76,27 +75,16 @@ func (m *DoubleSignMonitor) checkHeader(h *types.Header) (bool, *types.Header, e
 	return false, nil, nil
 }
 
-func (m *DoubleSignMonitor) Start(ch <-chan *types.Header) {
-	for {
-		select {
-		case h := <-ch:
-			isDoubleSign, h2, err := m.checkHeader(h)
-			if err != nil {
-				log.Error("check double sign header error", "err", err)
-				continue
-			}
-			if isDoubleSign {
-				// found a double sign header
-				log.Error("found a double sign header", "number", h.Number.Uint64(),
-					"first_hash", h.Hash(), "first_miner", h.Coinbase,
-					"second_hash", h2.Hash(), "second_miner", h2.Coinbase)
-			}
-		case <-m.quit:
-			return
-		}
+func (m *DoubleSignMonitor) Verify(h *types.Header) {
+	isDoubleSign, h2, err := m.checkHeader(h)
+	if err != nil {
+		log.Error("check double sign header error", "err", err)
+		return
 	}
-}
-
-func (m *DoubleSignMonitor) Close() {
-	close(m.quit)
+	if isDoubleSign {
+		// found a double sign header
+		log.Error("found a double sign header", "number", h.Number.Uint64(),
+			"first_hash", h.Hash(), "first_miner", h.Coinbase,
+			"second_hash", h2.Hash(), "second_miner", h2.Coinbase)
+	}
 }

@@ -2583,20 +2583,18 @@ func (bc *BlockChain) trustedDiffLayerLoop() {
 func (bc *BlockChain) startDoubleSignMonitor() {
 	eventChan := make(chan ChainHeadEvent, monitor.MaxCacheHeader)
 	sub := bc.SubscribeChainHeadEvent(eventChan)
-	headerChan := make(chan *types.Header, monitor.MaxCacheHeader)
 	defer func() {
 		sub.Unsubscribe()
-		bc.doubleSignMonitor.Close()
 		close(eventChan)
-		close(headerChan)
 		bc.wg.Done()
 	}()
 
-	go bc.doubleSignMonitor.Start(headerChan)
 	for {
 		select {
 		case event := <-eventChan:
-			headerChan <- event.Block.Header()
+			if bc.doubleSignMonitor != nil {
+				bc.doubleSignMonitor.Verify(event.Block.Header())
+			}
 		case <-bc.quit:
 			return
 		}
