@@ -2710,12 +2710,12 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 
 	results := []map[string]interface{}{}
-	coinbaseBalanceBefore := state.GetBalance(coinbase)
+	//coinbaseBalanceBefore := state.GetBalance(coinbase)
 
 	// bundleHash := sha3.NewLegacyKeccak256()
 	// signer := types.MakeSigner(s.b.ChainConfig(), blockNumber)
 	var totalGasUsed uint64
-	gasFees := new(big.Int)
+	//gasFees := new(big.Int)
 
 	for _, bundle := range args.Bundles {
 		txCounter := 0
@@ -2748,9 +2748,10 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 		}
 
 		for i, tx := range txs {
-			nonce := state.GetNonce(tx.From())
-			expectedTx := types.NewTransaction(nonce, *tx.To(), tx.Value(), tx.Gas(), tx.GasPrice(), tx.Data())
-			coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
+			expectedTx := bundle.Txs[i].ToTransaction()
+			//nonce := state.GetNonce(tx.From())
+			//expectedTx := types.NewTransaction(nonce, *tx.To(), tx.Value(), tx.Gas(), tx.GasPrice(), tx.Data())
+			//coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
 			state.Prepare(expectedTx.Hash(), txCounter)
 
 			receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, expectedTx, &header.GasUsed, vmconfig)
@@ -2760,9 +2761,9 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 					"error":   fmt.Sprintf("%s", err),
 					"gasUsed": 0,
 				}
-				coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
-				jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
-				jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(1))).String()
+				//coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
+				//jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
+				//jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(1))).String()
 
 				bundleResults = append(bundleResults, jsonResult)
 			} else {
@@ -2782,9 +2783,9 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 					hex.Encode(dst, result.Return())
 					jsonResult["value"] = "0x" + string(dst)
 				}
-				coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
-				jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
-				jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String()
+				//coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
+				//jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
+				//jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String()
 				jsonResult["gasUsed"] = receipt.GasUsed
 				jsonResult["logs"] = receipt.Logs
 
@@ -2799,12 +2800,12 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 
 	ret := map[string]interface{}{}
 	ret["results"] = results
-	coinbaseDiff := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBefore)
-	ret["coinbaseDiff"] = coinbaseDiff.String()
-	ret["gasFees"] = gasFees.String()
-	ret["ethSentToCoinbase"] = new(big.Int).Sub(coinbaseDiff, gasFees).String()
-	ret["bundleGasPrice"] = new(big.Int).Div(coinbaseDiff, big.NewInt(int64(totalGasUsed))).String()
-	ret["totalGasUsed"] = totalGasUsed
+	//coinbaseDiff := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBefore)
+	//ret["coinbaseDiff"] = coinbaseDiff.String()
+	//ret["gasFees"] = gasFees.String()
+	//ret["ethSentToCoinbase"] = new(big.Int).Sub(coinbaseDiff, gasFees).String()
+	//ret["bundleGasPrice"] = new(big.Int).Div(coinbaseDiff, big.NewInt(int64(totalGasUsed))).String()
+	//ret["totalGasUsed"] = totalGasUsed
 	ret["stateBlockNumber"] = parent.Number.Int64()
 
 	return ret, nil
