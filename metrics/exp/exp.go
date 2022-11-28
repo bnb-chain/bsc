@@ -95,6 +95,20 @@ func (exp *exp) getFloat(name string) *expvar.Float {
 	return v
 }
 
+func (exp *exp) getMap(name string) *expvar.Map {
+	var v *expvar.Map
+	exp.expvarLock.Lock()
+	p := expvar.Get(name)
+	if p != nil {
+		v = p.(*expvar.Map)
+	} else {
+		v = new(expvar.Map)
+		expvar.Publish(name, v)
+	}
+	exp.expvarLock.Unlock()
+	return v
+}
+
 func (exp *exp) publishCounter(name string, metric metrics.Counter) {
 	v := exp.getInt(name)
 	v.Set(metric.Count())
@@ -162,6 +176,60 @@ func (exp *exp) publishResettingTimer(name string, metric metrics.ResettingTimer
 	exp.getInt(name + ".99-percentile").Set(ps[3])
 }
 
+func (exp *exp) publishLabel(name string, metric metrics.Label) {
+	labels := metric.Value()
+	for k, v := range labels {
+		exp.getMap(name).Set(k, exp.interfaceToExpVal(v))
+	}
+}
+
+func (exp *exp) interfaceToExpVal(v interface{}) expvar.Var {
+	switch i := v.(type) {
+	case string:
+		newV := new(expvar.String)
+		newV.Set(i)
+		return newV
+	case int64:
+		newV := new(expvar.Int)
+		newV.Set(i)
+		return newV
+	case int32:
+		newV := new(expvar.Int)
+		newV.Set(int64(i))
+		return newV
+	case int16:
+		newV := new(expvar.Int)
+		newV.Set(int64(i))
+		return newV
+	case int8:
+		newV := new(expvar.Int)
+		newV.Set(int64(i))
+		return newV
+	case int:
+		newV := new(expvar.Int)
+		newV.Set(int64(i))
+		return newV
+	case float32:
+		newV := new(expvar.Float)
+		newV.Set(float64(i))
+		return newV
+	case float64:
+		newV := new(expvar.Float)
+		newV.Set(i)
+		return newV
+	case map[string]interface{}:
+		newV := new(expvar.Map)
+		for k, v := range i {
+			newV.Set(k, exp.interfaceToExpVal(v))
+		}
+		return newV
+	default:
+		newV := new(expvar.String)
+		newV.Set(fmt.Sprint(v))
+		return newV
+	}
+}
+
 func (exp *exp) syncToExpvar() {
 	exp.registry.Each(func(name string, i interface{}) {
 		switch i := i.(type) {
@@ -179,6 +247,8 @@ func (exp *exp) syncToExpvar() {
 			exp.publishTimer(name, i)
 		case metrics.ResettingTimer:
 			exp.publishResettingTimer(name, i)
+		case metrics.Label:
+			exp.publishLabel(name, i)
 		default:
 			panic(fmt.Sprintf("unsupported type for '%s': %T", name, i))
 		}

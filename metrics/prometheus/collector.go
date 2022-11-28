@@ -31,6 +31,7 @@ var (
 	typeSummaryTpl         = "# TYPE %s summary\n"
 	keyValueTpl            = "%s %v\n\n"
 	keyQuantileTagValueTpl = "%s {quantile=\"%s\"} %v\n"
+	keyLabelValueTpl       = "%s%s %v\n\n"
 )
 
 // collector is a collection of byte buffers that aggregate Prometheus reports
@@ -96,6 +97,15 @@ func (c *collector) addResettingTimer(name string, m metrics.ResettingTimer) {
 	c.writeSummaryPercentile(name, "0.95", ps[1])
 	c.writeSummaryPercentile(name, "0.99", ps[2])
 	c.buff.WriteRune('\n')
+}
+
+func (c *collector) addLabel(name string, m metrics.Label) {
+	c.writeLabel(mutateKey(name), m.String())
+}
+
+func (c *collector) writeLabel(name string, value interface{}) {
+	c.buff.WriteString(fmt.Sprintf(typeGaugeTpl, name))
+	c.buff.WriteString(fmt.Sprintf(keyLabelValueTpl, name, value, 1))
 }
 
 func (c *collector) writeGaugeCounter(name string, value interface{}) {
