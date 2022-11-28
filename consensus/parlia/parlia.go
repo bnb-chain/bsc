@@ -823,11 +823,6 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 	return &delay
 }
 
-// ExtraSeal returns fixed number of extra-data suffix bytes reserved for signer seal
-func (p *Parlia) ExtraSeal() int {
-	return extraSeal
-}
-
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {

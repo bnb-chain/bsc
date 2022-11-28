@@ -595,11 +595,6 @@ func (c *Clique) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 	return nil
 }
 
-// ExtraSeal returns fixed number of extra-data suffix bytes reserved for signer seal
-func (c *Clique) ExtraSeal() int {
-	return extraSeal
-}
-
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
