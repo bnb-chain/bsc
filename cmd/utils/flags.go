@@ -1965,16 +1965,13 @@ func EnableMinerInfo(ctx *cli.Context, minerConfig miner.Config) SetupMetricsOpt
 
 func EnableDeviceInfo() {
 	hostStat, _ := host.Info()
-	cpuStats, _ := cpu.Info()
+	metrics.NewRegisteredLabel("host-state", nil).Mark(structs.Map(hostStat))
 	vmStat, _ := mem.VirtualMemory()
-	deviceInfo := map[string]interface{}{
-		"host-state":   structs.Map(hostStat),
-		"memory-state": structs.Map(vmStat),
-	}
+	metrics.NewRegisteredLabel("memory-state", nil).Mark(structs.Map(vmStat))
+	cpuStats, _ := cpu.Info()
 	for i, cpuState := range cpuStats {
-		deviceInfo[fmt.Sprintf("cpu%d-state", i)] = structs.Map(cpuState)
+		metrics.NewRegisteredLabel(fmt.Sprintf("cpu%d-state", i), nil).Mark(structs.Map(cpuState))
 	}
-	metrics.NewRegisteredLabel("device-info", nil).Mark(deviceInfo)
 }
 
 func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
