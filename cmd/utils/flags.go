@@ -1948,6 +1948,17 @@ func EnableBuildInfo(gitCommit, gitDate string) SetupMetricsOption {
 	}
 }
 
+func EnableMinerInfo(ctx *cli.Context) SetupMetricsOption {
+	return func() {
+		if ctx.GlobalBool(MiningEnabledFlag.Name) {
+			// register miner info into metrics
+			metrics.NewRegisteredLabel("miner-info", nil).Mark(map[string]interface{}{
+				UnlockedAccountFlag.Name: ctx.GlobalString(UnlockedAccountFlag.Name),
+			})
+		}
+	}
+}
+
 func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
 	if metrics.Enabled {
 		log.Info("Enabling metrics collection")
