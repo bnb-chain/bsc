@@ -324,7 +324,7 @@ func prepare(ctx *cli.Context) {
 	}
 
 	// Start metrics export if enabled
-	utils.SetupMetrics(ctx)
+	utils.SetupMetrics(ctx, utils.EnableBuildInfo(gitCommit, gitDate))
 
 	// Start system runtime metrics collection
 	go metrics.CollectProcessMetrics(3 * time.Second)
