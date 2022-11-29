@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.1.18
+IMPROVEMENT
+
+* [\#1209](https://github.com/bnb-chain/bsc/pull/1209) metrics: add build info into metrics server
+* [\#1204](https://github.com/bnb-chain/bsc/pull/1204) worker: NewTxsEvent and triePrefetch reuse in mining task
+* [\#1195](https://github.com/bnb-chain/bsc/pull/1195) hardfork: update Gibbs fork height and system contract code
+* [\#1192](https://github.com/bnb-chain/bsc/pull/1192) all: sync with upstream v1.10.22
+* [\#1186](https://github.com/bnb-chain/bsc/pull/1186) worker: improvement of the current block generation logic to get more rewards
+* [\#1184](https://github.com/bnb-chain/bsc/pull/1184) worker: remove pre-seal empty block
+* [\#1182](https://github.com/bnb-chain/bsc/pull/1182) Parlia: Some updates of the miner worker
+* [\#1181](https://github.com/bnb-chain/bsc/pull/1181) all: sync with upstream v1.10.21
+* [\#1177](https://github.com/bnb-chain/bsc/pull/1177) core/forkid: refactor nextForkHash function
+* [\#1174](https://github.com/bnb-chain/bsc/pull/1174) worker: some code enhancement on work.go
+* [\#1166](https://github.com/bnb-chain/bsc/pull/1166) miner: disable enforceTip when get txs from txpool
+
+BUGFIX
+* [\#1201](https://github.com/bnb-chain/bsc/pull/1201) worker: add double sign check for safety
+* [\#1185](https://github.com/bnb-chain/bsc/pull/1185) worker: fix a bug of the delay timer
+
 ## v1.1.17
 IMPROVEMENT
 
