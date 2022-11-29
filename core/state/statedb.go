@@ -200,6 +200,25 @@ func (s *StateDB) EnableWriteOnSharedStorage() {
 	s.writeOnSharedStorage = true
 }
 
+// In mining mode, we will try multi-fillTransactions to get the most profitable one.
+// StateDB will be created for each fillTransactions with same block height.
+// Share a single triePrefetcher to avoid too much prefetch routines.
+func (s *StateDB) TransferPrefetcher(prev *StateDB) {
+	if prev == nil {
+		return
+	}
+	var fetcher *triePrefetcher
+
+	prev.prefetcherLock.Lock()
+	fetcher = prev.prefetcher
+	prev.prefetcher = nil
+	prev.prefetcherLock.Unlock()
+
+	s.prefetcherLock.Lock()
+	s.prefetcher = fetcher
+	s.prefetcherLock.Unlock()
+}
+
 // StartPrefetcher initializes a new trie prefetcher to pull in nodes from the
 // state trie concurrently while the state is mutated so that when we reach the
 // commit phase, most of the needed data is already hot.

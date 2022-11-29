@@ -26,6 +26,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	godebug "runtime/debug"
 	"strconv"
 	"strings"
@@ -548,7 +549,7 @@ var (
 	}
 	MinerDelayLeftoverFlag = cli.DurationFlag{
 		Name:  "miner.delayleftover",
-		Usage: "Time interval to for broadcast block",
+		Usage: "Time reserved to finalize a block",
 		Value: ethconfig.Defaults.Miner.DelayLeftOver,
 	}
 	MinerNoVerfiyFlag = cli.BoolFlag{
@@ -1931,7 +1932,23 @@ func RegisterGraphQLService(stack *node.Node, backend ethapi.Backend, cfg node.C
 	}
 }
 
-func SetupMetrics(ctx *cli.Context) {
+type SetupMetricsOption func()
+
+func EnableBuildInfo(gitCommit, gitDate string) SetupMetricsOption {
+	return func() {
+		// register build info into metrics
+		metrics.NewRegisteredLabel("build-info", nil).Mark(map[string]interface{}{
+			"version":          params.VersionWithMeta,
+			"git-commit":       gitCommit,
+			"git-commit-date":  gitDate,
+			"go-version":       runtime.Version(),
+			"operating-system": runtime.GOOS,
+			"architecture":     runtime.GOARCH,
+		})
+	}
+}
+
+func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
 	if metrics.Enabled {
 		log.Info("Enabling metrics collection")
 
@@ -1986,6 +2003,10 @@ func SetupMetrics(ctx *cli.Context) {
 			address := fmt.Sprintf("%s:%d", ctx.GlobalString(MetricsHTTPFlag.Name), ctx.GlobalInt(MetricsPortFlag.Name))
 			log.Info("Enabling stand-alone metrics HTTP endpoint", "address", address)
 			exp.Setup(address)
+		}
+
+		for _, opt := range options {
+			opt()
 		}
 	}
 }

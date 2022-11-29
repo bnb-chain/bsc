@@ -126,7 +126,7 @@ type Engine interface {
 	APIs(chain ChainHeaderReader) []rpc.API
 
 	// Delay returns the max duration the miner can commit txs
-	Delay(chain ChainReader, header *types.Header) *time.Duration
+	Delay(chain ChainReader, header *types.Header, leftOver *time.Duration) *time.Duration
 
 	// Close terminates any background threads maintained by the consensus engine.
 	Close() error

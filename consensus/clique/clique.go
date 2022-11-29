@@ -591,7 +591,7 @@ func (c *Clique) Authorize(signer common.Address, signFn SignerFn) {
 	c.signFn = signFn
 }
 
-func (c *Clique) Delay(chain consensus.ChainReader, header *types.Header) *time.Duration {
+func (c *Clique) Delay(chain consensus.ChainReader, header *types.Header, leftOver *time.Duration) *time.Duration {
 	return nil
 }
 

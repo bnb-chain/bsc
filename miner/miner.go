@@ -48,7 +48,7 @@ type Config struct {
 	Notify        []string       `toml:",omitempty"` // HTTP URL list to be notified of new work packages (only useful in ethash).
 	NotifyFull    bool           `toml:",omitempty"` // Notify with pending block headers instead of work packages
 	ExtraData     hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
-	DelayLeftOver time.Duration  // Time for broadcast block
+	DelayLeftOver time.Duration  // Time reserved to finalize a block(calculate root, distribute income...)
 	GasFloor      uint64         // Target gas floor for mined blocks.
 	GasCeil       uint64         // Target gas ceiling for mined blocks.
 	GasPrice      *big.Int       // Minimum gas price for mining a transaction
@@ -238,23 +238,6 @@ func (miner *Miner) SetEtherbase(addr common.Address) {
 // For pre-1559 blocks, it sets the ceiling.
 func (miner *Miner) SetGasCeil(ceil uint64) {
 	miner.worker.setGasCeil(ceil)
-}
-
-// EnablePreseal turns on the preseal mining feature. It's enabled by default.
-// Note this function shouldn't be exposed to API, it's unnecessary for users
-// (miners) to actually know the underlying detail. It's only for outside project
-// which uses this library.
-func (miner *Miner) EnablePreseal() {
-	miner.worker.enablePreseal()
-}
-
-// DisablePreseal turns off the preseal mining feature. It's necessary for some
-// fake consensus engine which can seal blocks instantaneously.
-// Note this function shouldn't be exposed to API, it's unnecessary for users
-// (miners) to actually know the underlying detail. It's only for outside project
-// which uses this library.
-func (miner *Miner) DisablePreseal() {
-	miner.worker.disablePreseal()
 }
 
 // GetSealingBlock retrieves a sealing block based on the given parameters.
