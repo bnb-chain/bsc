@@ -1,11 +1,8 @@
 package metrics
 
-import "encoding/json"
-
 // Label hold an map[string]interface{} value that can be set arbitrarily.
 type Label interface {
 	Value() map[string]interface{}
-	String() string
 	Mark(map[string]interface{})
 }
 
@@ -26,8 +23,7 @@ func NewStandardLabel() *StandardLabel {
 
 // StandardLabel is the standard implementation of a Label.
 type StandardLabel struct {
-	value   map[string]interface{}
-	jsonStr string
+	value map[string]interface{}
 }
 
 // Value returns label values.
@@ -37,12 +33,5 @@ func (l *StandardLabel) Value() map[string]interface{} {
 
 // Mark records the label.
 func (l *StandardLabel) Mark(value map[string]interface{}) {
-	buf, _ := json.Marshal(value)
-	l.jsonStr = string(buf)
 	l.value = value
-}
-
-// String returns label by JSON format.
-func (l *StandardLabel) String() string {
-	return l.jsonStr
 }
