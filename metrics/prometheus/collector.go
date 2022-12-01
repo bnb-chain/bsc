@@ -126,5 +126,7 @@ func (c *collector) writeSummaryPercentile(name, p string, value interface{}) {
 }
 
 func mutateKey(key string) string {
-	return strings.Replace(key, "/", "_", -1)
+	key = strings.Replace(key, "/", "_", -1)
+	key = strings.Replace(key, "-", "_", -1)
+	return key
 }
