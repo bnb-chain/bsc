@@ -100,7 +100,11 @@ func (c *collector) addResettingTimer(name string, m metrics.ResettingTimer) {
 }
 
 func (c *collector) addLabel(name string, m metrics.Label) {
-	c.writeLabel(mutateKey(name), m.String())
+	labels := make([]string, 0, len(m.Value()))
+	for k, v := range m.Value() {
+		labels = append(labels, fmt.Sprintf(`%s="%s"`, mutateKey(k), fmt.Sprint(v)))
+	}
+	c.writeLabel(mutateKey(name), "{"+strings.Join(labels, ", ")+"}")
 }
 
 func (c *collector) writeLabel(name string, value interface{}) {
