@@ -1062,6 +1062,10 @@ func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, he
 	coinbase := header.Coinbase
 	balance := state.GetBalance(consensus.SystemAddress)
 	if balance.Cmp(common.Big0) <= 0 {
+		if p.chainConfig.IsFourier(header.Number) {
+			// BEP-176, if reward = 0, just trigger reward block count
+			return p.distributeToValidator(common.Big0, val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
+		}
 		return nil
 	}
 	state.SetBalance(consensus.SystemAddress, big.NewInt(0))
