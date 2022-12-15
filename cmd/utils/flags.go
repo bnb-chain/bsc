@@ -36,9 +36,6 @@ import (
 
 	"github.com/fatih/structs"
 	pcsclite "github.com/gballet/go-libpcsclite"
-	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/host"
-	"github.com/shirou/gopsutil/mem"
 	gopsutil "github.com/shirou/gopsutil/mem"
 	"gopkg.in/urfave/cli.v1"
 
@@ -1960,17 +1957,6 @@ func EnableMinerInfo(ctx *cli.Context, minerConfig miner.Config) SetupMetricsOpt
 			minerInfo[UnlockedAccountFlag.Name] = ctx.GlobalString(UnlockedAccountFlag.Name)
 			metrics.NewRegisteredLabel("miner-info", nil).Mark(minerInfo)
 		}
-	}
-}
-
-func EnableDeviceInfo() {
-	hostStat, _ := host.Info()
-	metrics.NewRegisteredLabel("host-state", nil).Mark(structs.Map(hostStat))
-	vmStat, _ := mem.VirtualMemory()
-	metrics.NewRegisteredLabel("memory-state", nil).Mark(structs.Map(vmStat))
-	cpuStats, _ := cpu.Info()
-	for i, cpuState := range cpuStats {
-		metrics.NewRegisteredLabel(fmt.Sprintf("cpu%d-state", i), nil).Mark(structs.Map(cpuState))
 	}
 }
 
