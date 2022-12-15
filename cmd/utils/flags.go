@@ -34,6 +34,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/fatih/structs"
 	pcsclite "github.com/gballet/go-libpcsclite"
 	gopsutil "github.com/shirou/gopsutil/mem"
 	"gopkg.in/urfave/cli.v1"
@@ -1948,6 +1949,17 @@ func EnableBuildInfo(gitCommit, gitDate string) SetupMetricsOption {
 	}
 }
 
+func EnableMinerInfo(ctx *cli.Context, minerConfig miner.Config) SetupMetricsOption {
+	return func() {
+		if ctx.GlobalBool(MiningEnabledFlag.Name) {
+			// register miner info into metrics
+			minerInfo := structs.Map(minerConfig)
+			minerInfo[UnlockedAccountFlag.Name] = ctx.GlobalString(UnlockedAccountFlag.Name)
+			metrics.NewRegisteredLabel("miner-info", nil).Mark(minerInfo)
+		}
+	}
+}
+
 func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
 	if metrics.Enabled {
 		log.Info("Enabling metrics collection")
@@ -2008,6 +2020,9 @@ func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
 		for _, opt := range options {
 			opt()
 		}
+
+		// Start system runtime metrics collection
+		go metrics.CollectProcessMetrics(3 * time.Second)
 	}
 }
 

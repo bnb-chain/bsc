@@ -37,7 +37,6 @@ import (
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 
 	// Force-load the tracer engines to trigger registration
@@ -322,12 +321,6 @@ func prepare(ctx *cli.Context) {
 		log.Info("Dropping default light client cache", "provided", ctx.GlobalInt(utils.CacheFlag.Name), "updated", 128)
 		ctx.GlobalSet(utils.CacheFlag.Name, strconv.Itoa(128))
 	}
-
-	// Start metrics export if enabled
-	utils.SetupMetrics(ctx, utils.EnableBuildInfo(gitCommit, gitDate))
-
-	// Start system runtime metrics collection
-	go metrics.CollectProcessMetrics(3 * time.Second)
 }
 
 // geth is the main entry point into the system if no special subcommand is ran.
