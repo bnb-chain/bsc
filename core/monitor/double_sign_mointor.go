@@ -3,9 +3,11 @@ package monitor
 import (
 	"bytes"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -83,8 +85,19 @@ func (m *DoubleSignMonitor) Verify(h *types.Header) {
 	}
 	if isDoubleSign {
 		// found a double sign header
-		log.Error("found a double sign header", "number", h.Number.Uint64(),
+		log.Warn("found a double sign header", "number", h.Number.Uint64(),
 			"first_hash", h.Hash(), "first_miner", h.Coinbase,
 			"second_hash", h2.Hash(), "second_miner", h2.Coinbase)
+		h1Bytes, err := rlp.EncodeToBytes(h)
+		if err != nil {
+			log.Error("encode header error", "err", err, "hash", h.Hash())
+		}
+		h2Bytes, err := rlp.EncodeToBytes(h2)
+		if err != nil {
+			log.Error("encode header error", "err", err, "hash", h.Hash())
+		}
+		log.Warn("double sign header content",
+			"header1", hexutil.Encode(h1Bytes),
+			"header2", hexutil.Encode(h2Bytes))
 	}
 }
