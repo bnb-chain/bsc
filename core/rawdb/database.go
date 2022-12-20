@@ -224,6 +224,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace st
 		offset = ReadOffSetOfCurrentAncientFreezer(db)
 	}
 
+	if prunedFrozen := ReadFrozenOfAncientFreezer(db); prunedFrozen > offset {
+		offset = prunedFrozen
+	}
+
 	// Create the idle freezer instance
 	frdb, err := newFreezer(freezer, namespace, readonly, offset, freezerTableSize, FreezerNoSnappy)
 	if err != nil {
