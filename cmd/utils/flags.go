@@ -34,11 +34,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/fatih/structs"
-	pcsclite "github.com/gballet/go-libpcsclite"
-	gopsutil "github.com/shirou/gopsutil/mem"
-	"gopkg.in/urfave/cli.v1"
-
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -74,6 +69,9 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/fatih/structs"
+	pcsclite "github.com/gballet/go-libpcsclite"
+	gopsutil "github.com/shirou/gopsutil/mem"
 )
 
 func init() {
@@ -503,8 +501,10 @@ var (
 		Value: uint64(86400),
 	}
 	PruneAncientDataFlag = cli.BoolFlag{
-		Name:  "pruneancient",
-		Usage: "Prune ancient data, recommends to the user who don't care about the ancient data. Note that once be turned on, the ancient data will not be recovered again",
+		Name: "pruneancient",
+		Usage: "Prune ancient data, is an optional config and disabled by default." +
+			"only keep the latest 9w blocks' data, the older blocks' data will be permanently pruned." +
+			"recommends to the user who don't care about the ancient data.",
 	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
