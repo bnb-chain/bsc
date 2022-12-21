@@ -178,8 +178,8 @@ type Config struct {
 	// When this flag is enabled, only keep the latest 9w blocks' data, the older blocks' data will be
 	// pruned instead of being dumped to freezerdb, the pruned data includes CanonicalHash, Header, Block,
 	// Receipt and TotalDifficulty.
-	// Notice: the PruneAncientData once be turned on, the get/chaindata/ancient dir will be removed, if 
-	// restart without the pruneancient flag, the ancient data will start with the previous point that 
+	// Notice: the PruneAncientData once be turned on, the get/chaindata/ancient dir will be removed,
+	// if restart without the pruneancient flag, the ancient data will start with the previous point that
 	// the oldest unpruned block number.
 	PruneAncientData bool
 
