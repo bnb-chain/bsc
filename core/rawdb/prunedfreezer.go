@@ -30,7 +30,7 @@ type prunedfreezer struct {
 }
 
 // newNoDataFreezer creates a chain freezer that deletes data enough ‘old’.
-func newPrunedFreezer(datadir string, db ethdb.KeyValueStore) (*prunedfreezer, error) {
+func newPrunedFreezer(datadir string, db ethdb.KeyValueStore, offset uint64) (*prunedfreezer, error) {
 	if info, err := os.Lstat(datadir); !os.IsNotExist(err) {
 		if info.Mode()&os.ModeSymlink != 0 {
 			log.Warn("Symbolic link ancient database is not supported", "path", datadir)
@@ -45,6 +45,7 @@ func newPrunedFreezer(datadir string, db ethdb.KeyValueStore) (*prunedfreezer, e
 
 	freezer := &prunedfreezer{
 		db:           db,
+		frozen:       offset,
 		threshold:    params.FullImmutabilityThreshold,
 		instanceLock: lock,
 		quit:         make(chan struct{}),
@@ -55,7 +56,7 @@ func newPrunedFreezer(datadir string, db ethdb.KeyValueStore) (*prunedfreezer, e
 	}
 
 	// delete ancient dir
-	if err := os.RemoveAll(datadir); !os.IsNotExist(err) {
+	if err := os.RemoveAll(datadir); err != nil && !os.IsNotExist(err) {
 		log.Warn("remove the ancient dir failed.", "path", datadir, "error", err)
 		return nil, err
 	}
@@ -65,10 +66,7 @@ func newPrunedFreezer(datadir string, db ethdb.KeyValueStore) (*prunedfreezer, e
 
 // repair init frozen , compatible disk-ancientdb and pruner-block-tool.
 func (f *prunedfreezer) repair(datadir string) error {
-	// compatible prune-block-tool
-	offset := ReadOffSetOfCurrentAncientFreezer(f.db)
-	log.Info("Read last offline prune-block start block number", "offset", offset)
-
+	offset := atomic.LoadUint64(&f.frozen)
 	// compatible freezer
 	min := uint64(math.MaxUint64)
 	for name, disableSnappy := range FreezerNoSnappy {
