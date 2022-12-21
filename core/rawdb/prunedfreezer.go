@@ -170,6 +170,8 @@ func (f *prunedfreezer) TruncateAncients(items uint64) error {
 // Sync flushes meta data tables to disk.
 func (f *prunedfreezer) Sync() error {
 	WriteFrozenOfAncientFreezer(f.db, atomic.LoadUint64(&f.frozen))
+	// compatible offline prune blocks tool
+	WriteOffSetOfCurrentAncientFreezer(f.db, atomic.LoadUint64(&f.frozen))
 	return nil
 }
 
