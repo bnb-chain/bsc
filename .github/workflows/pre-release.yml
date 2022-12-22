@@ -2,6 +2,7 @@ name: Pre Release
 
 on:
   push:
+    # Publish `pre-v1.2.3` tags as releases.
     tags:
       - 'pre-*'
 
@@ -11,18 +12,18 @@ jobs:
     strategy:
       matrix:
         go-version: [1.17.x]
-        os: [ubuntu-18.04, macos-11, windows-2019]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
 
-      - uses: actions/cache@v2
+      - uses: actions/cache@v3
         with:
           # In order:
           # * Module download cache
@@ -33,10 +34,11 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
             ~/Library/Caches/go-build
-            %LocalAppData%\go-build
+            ~\AppData\Local\go-build
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
+
       # ==============================
       #       Linux/Macos/Windows Build
       # ==============================
@@ -49,7 +51,7 @@ jobs:
       # ==============================
 
       - name: Build Binary for ARM
-        if: matrix.os == 'ubuntu-18.04'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           make geth-linux-arm
       # ==============================
@@ -57,50 +59,50 @@ jobs:
       # ==============================
 
       - name: Upload Linux Build
-        uses: actions/upload-artifact@v2
-        if: matrix.os == 'ubuntu-18.04'
+        uses: actions/upload-artifact@v3
+        if: matrix.os == 'ubuntu-latest'
         with:
           name: linux
           path: ./build/bin/geth
 
       - name: Upload MacOS Build
-        uses: actions/upload-artifact@v2
-        if: matrix.os == 'macos-11'
+        uses: actions/upload-artifact@v3
+        if: matrix.os == 'macos-latest'
         with:
           name: macos
           path: ./build/bin/geth
       
       - name: Upload Windows Build
-        uses: actions/upload-artifact@v2
-        if: matrix.os == 'windows-2019'
+        uses: actions/upload-artifact@v3
+        if: matrix.os == 'windows-latest'
         with:
           name: windows
           path: ./build/bin/geth.exe
 
       - name: Upload ARM-5 Build
-        uses: actions/upload-artifact@v2
-        if: matrix.os == 'ubuntu-18.04'
+        uses: actions/upload-artifact@v3
+        if: matrix.os == 'ubuntu-latest'
         with:
           name: arm5
           path: ./build/bin/geth-linux-arm-5
       
       - name: Upload ARM-6 Build
-        uses: actions/upload-artifact@v2
-        if: matrix.os == 'ubuntu-18.04'
+        uses: actions/upload-artifact@v3
+        if: matrix.os == 'ubuntu-latest'
         with:
           name: arm6
           path: ./build/bin/geth-linux-arm-6
 
       - name: Upload ARM-7 Build
-        uses: actions/upload-artifact@v2
-        if: matrix.os == 'ubuntu-18.04'
+        uses: actions/upload-artifact@v3
+        if: matrix.os == 'ubuntu-latest'
         with:
           name: arm7
           path: ./build/bin/geth-linux-arm-7
 
       - name: Upload ARM-64 Build
-        uses: actions/upload-artifact@v2
-        if: matrix.os == 'ubuntu-18.04'
+        uses: actions/upload-artifact@v3
+        if: matrix.os == 'ubuntu-latest'
         with:
           name: arm64
           path: ./build/bin/geth-linux-arm64
@@ -108,56 +110,56 @@ jobs:
   release:
     name: Release
     needs: build
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
       - name: Set Env
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       # ==============================
       #       Download artifacts
       # ==============================
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: linux
           path: ./linux
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: macos
           path: ./macos
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: windows
           path: ./windows
-
+      
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: arm5
           path: ./arm5
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: arm6
           path: ./arm6
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: arm7
           path: ./arm7
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: arm64
           path: ./arm64
@@ -173,109 +175,31 @@ jobs:
       #       Create release
       # ==============================
 
+      # Rename assets
+      - run: |
+          mv ./linux/geth ./linux/geth_linux
+          mv ./macos/geth ./macos/geth_macos
+          mv ./windows/geth.exe ./windows/geth_windows.exe
+
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@latest
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
+          tag_name: ${{ env.RELEASE_VERSION}}
+          release_name: ${{ env.RELEASE_VERSION}}
           body: |
             versing: ${{ env.RELEASE_VERSION}}
             git commit: ${{ github.sha }}
           draft: true
           prerelease: true
-
-      # Check downloaded files
-      - run: ls
-
-      - name: Upload Release Asset - Linux
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./linux/geth
-          asset_name: geth_linux
-          asset_content_type: application/octet-stream
-      
-      - name: Upload Release Asset - MacOS
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./macos/geth
-          asset_name: geth_mac
-          asset_content_type: application/octet-stream
-      
-      - name: Upload Release Asset - Windows
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./windows/geth.exe
-          asset_name: geth_windows.exe
-          asset_content_type: application/octet-stream
-
-      - name: Upload Release Asset - Linux ARM 5
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./arm5/geth-linux-arm-5
-          asset_name: geth-linux-arm-5
-          asset_content_type: application/octet-stream
-      
-      - name: Upload Release Asset - Linux ARM 6
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./arm6/geth-linux-arm-6
-          asset_name: geth-linux-arm-6
-          asset_content_type: application/octet-stream
-
-      - name: Upload Release Asset - Linux ARM 7
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./arm7/geth-linux-arm-7
-          asset_name: geth-linux-arm-7
-          asset_content_type: application/octet-stream
-
-      - name: Upload Release Asset - Linux ARM 64
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./arm64/geth-linux-arm64
-          asset_name: geth-linux-arm64
-          asset_content_type: application/octet-stream
-      
-      - name: Upload Release Asset - MAINNET.ZIP
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./mainnet.zip
-          asset_name: mainnet.zip
-          asset_content_type: application/zip
-      
-      - name: Upload Release Asset - TESTNET.ZIP
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./testnet.zip
-          asset_name: testnet.zip
-          asset_content_type: application/zip
+          files: |
+            ./mainnet.zip
+            ./testnet.zip
+            ./linux/geth_linux
+            ./macos/geth_macos
+            ./windows/geth_windows.exe
+            ./arm5/geth-linux-arm-5
+            ./arm6/geth-linux-arm-6
+            ./arm7/geth-linux-arm-7
+            ./arm64/geth-linux-arm64
