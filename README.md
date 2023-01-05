@@ -98,42 +98,70 @@ on how you can run your own `geth` instance.
 
 ### Hardware Requirements
 
-The hardware must meet certain requirements to run a full node.
-- VPS running recent versions of Mac OS X or Linux.
-- 2T of SSD storage for mainnet, 500G of SSD storage for testnet.
-- 8 cores of CPU and 32 gigabytes of memory (RAM) for mainnet.
-- 4 cores of CPU and 8 gigabytes of memory (RAM) for testnet.
-- A broadband Internet connection with upload/download speeds of at least 10 megabyte per second
+The hardware must meet certain requirements to run a full node on mainnet:
+- VPS running recent versions of Mac OS X, Linux, or Windows.
+- IMPORTANT 2 TB of free disk space, solid-state drive(SSD), gp3, 8k IOPS, 250 MB/S throughput, read latency <1ms. (if node is started with snap sync, it will need NVMe SSD)
+- 16 cores of CPU and 64 GB of memory (RAM)
+- Suggest m5zn.3xlarge instance type on AWS, c2-standard-16 on Google cloud.
+- A broadband Internet connection with upload/download speeds of 5 MB/S
 
+The requirement for testnet:
+- VPS running recent versions of Mac OS X, Linux, or Windows.
+- 500G of storage for testnet.
+- 4 cores of CPU and 8 gigabytes of memory (RAM).
+
+### Steps to Run a Fullnode
+
+#### 1. Download the pre-build binaries
 ```shell
-$ geth console
+# Linux
+wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep geth_linux |cut -d\" -f4)
+mv geth_linux geth
+chmod -v u+x geth
+
+# MacOS
+wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep geth_mac |cut -d\" -f4)
+mv geth_mac geth
+chmod -v u+x geth
 ```
 
-This command will:
- * Start `geth` in fast sync mode (default, can be changed with the `--syncmode` flag),
-   causing it to download more data in exchange for avoiding processing the entire history
-   of the BNB Smart Chain network, which is very CPU intensive.
- * Start up `geth`'s built-in interactive [JavaScript console](https://geth.ethereum.org/docs/interface/javascript-console),
-   (via the trailing `console` subcommand) through which you can interact using [`web3` methods](https://web3js.readthedocs.io/en/) 
-   (note: the `web3` version bundled within `geth` is very old, and not up to date with official docs),
-   as well as `geth`'s own [management APIs](https://geth.ethereum.org/docs/rpc/server).
-   This tool is optional and if you leave it out you can always attach to an already running
-   `geth` instance with `geth attach`.
+#### 2. Download the config files
+```shell
+wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep mainnet |cut -d\" -f4)
+unzip mainnet.zip
+```
 
-### A Full node on the Chapel test network
+#### 3. Download snapshot
+Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-snapshots). Follow the guide to structure your files.
 
-Steps:
+#### 4. Start a full node
+```shell
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0
 
-1. Download the binary, testnet.zip(config.toml and genesis.json) files from a [latest release](https://github.com/bnb-chain/bsc/releases), or compile the binary by `make geth`.
-2. Init genesis state: `./geth --datadir node init genesis.json`.
-3. Start your fullnode: `./geth --config ./config.toml --datadir ./node`.
-4. Or start a validator node: `./geth --config ./config.toml --datadir ./node -unlock ${validatorAddr} --mine --allow-insecure-unlock`. The ${validatorAddr} is the wallet account address of your running validator node. 
+## It is recommand to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0 --tries-verify-mode none
+```
 
-*Note: The default p2p port is 30311 and the RPC port is 8575 which is different from Ethereum.*
+#### 5. Monitor node status
 
-More details about [running a node](https://docs.bnbchain.org/docs/validator/fullnode) and [becoming a validator](https://docs.bnbchain.org/docs/validator/testnet/)
+Monitor the log from **./node/bsc.log** by default. When the node has started syncing, should be able to see the following output:
+```shell
+t=2022-09-08T13:00:27+0000 lvl=info msg="Imported new chain segment"             blocks=1    txs=177   mgas=17.317   elapsed=31.131ms    mgasps=556.259  number=21,153,429 hash=0x42e6b54ba7106387f0650defc62c9ace3160b427702dab7bd1c5abb83a32d8db dirty="0.00 B"
+t=2022-09-08T13:00:29+0000 lvl=info msg="Imported new chain segment"             blocks=1    txs=251   mgas=39.638   elapsed=68.827ms    mgasps=575.900  number=21,153,430 hash=0xa3397b273b31b013e43487689782f20c03f47525b4cd4107c1715af45a88796e dirty="0.00 B"
+t=2022-09-08T13:00:33+0000 lvl=info msg="Imported new chain segment"             blocks=1    txs=197   mgas=19.364   elapsed=34.663ms    mgasps=558.632  number=21,153,431 hash=0x0c7872b698f28cb5c36a8a3e1e315b1d31bda6109b15467a9735a12380e2ad14 dirty="0.00 B"
+```
 
-<!--https://docs.binance.org/smart-chain/validator/candidate.html NO SUCH FILE-->
+#### 6. Interact with fullnode
+Start up `geth`'s built-in interactive [JavaScript console](https://geth.ethereum.org/docs/interface/javascript-console),
+(via the trailing `console` subcommand) through which you can interact using [`web3` methods](https://web3js.readthedocs.io/en/) 
+(note: the `web3` version bundled within `geth` is very old, and not up to date with official docs),
+as well as `geth`'s own [management APIs](https://geth.ethereum.org/docs/rpc/server).
+This tool is optional and if you leave it out you can always attach to an already running
+`geth` instance with `geth attach`.
+
+#### 7. More
+
+More details about [running a node](https://docs.bnbchain.org/docs/validator/fullnode) and [becoming a validator](https://docs.bnbchain.org/docs/validator/create-val)
 
 *Note: Although there are some internal protective measures to prevent transactions from
 crossing over between the main network and test network, you should make sure to always
@@ -160,8 +188,8 @@ $ geth --your-favourite-flags dumpconfig
 ### Programmatically interfacing `geth` nodes
 
 As a developer, sooner rather than later you'll want to start interacting with `geth` and the
-BNB Smart Chain network via your own programs and not manually through the console. To aid
-this, `geth` has built-in support for a JSON-RPC based APIs ([standard APIs](https://eth.wiki/json-rpc/API)
+BSC network via your own programs and not manually through the console. To aid
+this, `geth` has built-in support for a JSON-RPC based APIs ([standard APIs](https://ethereum.github.io/execution-apis/api-documentation/)
 and [`geth` specific APIs](https://geth.ethereum.org/docs/rpc/server)).
 These can be exposed via HTTP, WebSockets and IPC (UNIX sockets on UNIX based
 platforms, and named pipes on Windows).
@@ -173,19 +201,19 @@ you'd expect.
 
 HTTP based JSON-RPC API options:
 
-  * `--http` Enable the HTTP-RPC server
-  * `--http.addr` HTTP-RPC server listening interface (default: `localhost`)
-  * `--http.port` HTTP-RPC server listening port (default: `8545`)
-  * `--http.api` API's offered over the HTTP-RPC interface (default: `eth,net,web3`)
-  * `--http.corsdomain` Comma separated list of domains from which to accept cross origin requests (browser enforced)
-  * `--ws` Enable the WS-RPC server
-  * `--ws.addr` WS-RPC server listening interface (default: `localhost`)
-  * `--ws.port` WS-RPC server listening port (default: `8546`)
-  * `--ws.api` API's offered over the WS-RPC interface (default: `eth,net,web3`)
-  * `--ws.origins` Origins from which to accept websockets requests
-  * `--ipcdisable` Disable the IPC-RPC server
-  * `--ipcapi` API's offered over the IPC-RPC interface (default: `admin,debug,eth,miner,net,personal,txpool,web3`)
-  * `--ipcpath` Filename for IPC socket/pipe within the datadir (explicit paths escape it)
+* `--http` Enable the HTTP-RPC server
+* `--http.addr` HTTP-RPC server listening interface (default: `localhost`)
+* `--http.port` HTTP-RPC server listening port (default: `8545`)
+* `--http.api` API's offered over the HTTP-RPC interface (default: `eth,net,web3`)
+* `--http.corsdomain` Comma separated list of domains from which to accept cross origin requests (browser enforced)
+* `--ws` Enable the WS-RPC server
+* `--ws.addr` WS-RPC server listening interface (default: `localhost`)
+* `--ws.port` WS-RPC server listening port (default: `8546`)
+* `--ws.api` API's offered over the WS-RPC interface (default: `eth,net,web3`)
+* `--ws.origins` Origins from which to accept WebSocket requests
+* `--ipcdisable` Disable the IPC-RPC server
+* `--ipcapi` API's offered over the IPC-RPC interface (default: `admin,debug,eth,miner,net,personal,txpool,web3`)
+* `--ipcpath` Filename for IPC socket/pipe within the datadir (explicit paths escape it)
 
 You'll need to use your own programming environments' capabilities (libraries, tools, etc) to
 connect via HTTP, WS or IPC to a `geth` node configured with the above flags and you'll
@@ -197,6 +225,10 @@ transport before doing so! Hackers on the internet are actively trying to subver
 BSC nodes with exposed APIs! Further, all browser tabs can access locally
 running web servers, so malicious web pages could try to subvert locally available
 APIs!**
+
+### Operating a private network
+- [BSC-Deploy](https://github.com/bnb-chain/bsc-deploy): deploy tool for setting up both BNB Beacon Chain, BNB Smart Chain and the cross chain infrastructure between them.
+- [BSC-Docker](https://github.com/bnb-chain/bsc-docker): deploy tool for setting up local BSC cluster in container.
 
 ## Contribution
 
