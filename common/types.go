@@ -136,8 +136,7 @@ func (h *Hash) SetBytes(b []byte) {
 	if len(b) > len(h) {
 		b = b[len(b)-HashLength:]
 	}
-
-	copy(h[HashLength-len(b):], b)
+	copy(h[:], b)
 }
 
 // Generate implements testing/quick.Generator.
