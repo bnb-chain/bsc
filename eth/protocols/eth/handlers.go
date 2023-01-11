@@ -526,15 +526,3 @@ func handlePooledTransactions66(backend Backend, msg Decoder, peer *Peer) error 
 
 	return backend.Handle(peer, &txs.PooledTransactionsPacket)
 }
-
-func handleVotes(backend Backend, msg Decoder, peer *Peer) error {
-	ann := new(VotesPacket)
-	if err := msg.Decode(ann); err != nil {
-		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
-	}
-	// Schedule all the unknown hashes for retrieval
-	for _, vote := range ann.Votes {
-		peer.markVote(vote.Hash())
-	}
-	return backend.Handle(peer, ann)
-}

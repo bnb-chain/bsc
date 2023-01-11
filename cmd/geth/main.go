@@ -73,6 +73,7 @@ var (
 		utils.DisableSnapProtocolFlag,
 		utils.DisableDiffProtocolFlag,
 		utils.EnableTrustProtocolFlag,
+		utils.DisableBscProtocolFlag,
 		utils.DiffSyncFlag,
 		utils.PipeCommitFlag,
 		utils.RangeLimitFlag,

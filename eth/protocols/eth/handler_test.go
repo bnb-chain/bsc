@@ -92,7 +92,6 @@ func (b *testBackend) close() {
 
 func (b *testBackend) Chain() *core.BlockChain { return b.chain }
 func (b *testBackend) TxPool() TxPool          { return b.txpool }
-func (b *testBackend) VotePool() VotePool      { return nil }
 
 func (b *testBackend) RunPeer(peer *Peer, handler Handler) error {
 	// Normally the backend would do peer maintenance and handshakes. All that
@@ -110,7 +109,6 @@ func (b *testBackend) Handle(*Peer, Packet) error {
 
 // Tests that block headers can be retrieved from a remote chain based on user queries.
 func TestGetBlockHeaders66(t *testing.T) { testGetBlockHeaders(t, ETH66) }
-func TestGetBlockHeaders68(t *testing.T) { testGetBlockHeaders(t, ETH68) }
 
 func testGetBlockHeaders(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -296,7 +294,6 @@ func testGetBlockHeaders(t *testing.T, protocol uint) {
 
 // Tests that block contents can be retrieved from a remote chain based on their hashes.
 func TestGetBlockBodies66(t *testing.T) { testGetBlockBodies(t, ETH66) }
-func TestGetBlockBodies68(t *testing.T) { testGetBlockBodies(t, ETH68) }
 
 func testGetBlockBodies(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -380,7 +377,6 @@ func testGetBlockBodies(t *testing.T, protocol uint) {
 
 // Tests that the state trie nodes can be retrieved based on hashes.
 func TestGetNodeData66(t *testing.T) { testGetNodeData(t, ETH66) }
-func TestGetNodeData68(t *testing.T) { testGetNodeData(t, ETH68) }
 
 func testGetNodeData(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -490,7 +486,6 @@ func testGetNodeData(t *testing.T, protocol uint) {
 
 // Tests that the transaction receipts can be retrieved based on hashes.
 func TestGetBlockReceipts66(t *testing.T) { testGetBlockReceipts(t, ETH66) }
-func TestGetBlockReceipts68(t *testing.T) { testGetBlockReceipts(t, ETH68) }
 
 func testGetBlockReceipts(t *testing.T, protocol uint) {
 	t.Parallel()

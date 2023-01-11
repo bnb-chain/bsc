@@ -36,7 +36,6 @@ type ethHandler handler
 
 func (h *ethHandler) Chain() *core.BlockChain { return h.chain }
 func (h *ethHandler) TxPool() eth.TxPool      { return h.txpool }
-func (h *ethHandler) VotePool() eth.VotePool  { return h.votepool }
 
 // RunPeer is invoked when a peer joins on the `eth` protocol.
 func (h *ethHandler) RunPeer(peer *eth.Peer, hand eth.Handler) error {
@@ -78,8 +77,6 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	case *eth.PooledTransactionsPacket:
 		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
 
-	case *eth.VotesPacket:
-		return h.handleVotesBroadcast(peer, packet.Votes)
 	default:
 		return fmt.Errorf("unexpected eth packet type: %T", packet)
 	}
@@ -146,16 +143,6 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 	if _, td := peer.Head(); trueTD.Cmp(td) > 0 {
 		peer.SetHead(trueHead, trueTD)
 		h.chainSync.handlePeerEvent(peer)
-	}
-	return nil
-}
-
-// handleVotesBroadcast is invoked from a peer's message handler when it transmits a
-// votes broadcast for the local node to process.
-func (h *ethHandler) handleVotesBroadcast(peer *eth.Peer, votes []*types.VoteEnvelope) error {
-	// Try to put votes into votepool
-	for _, vote := range votes {
-		h.votepool.PutVote(vote)
 	}
 	return nil
 }

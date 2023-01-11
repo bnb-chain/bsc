@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
+	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
@@ -91,7 +92,6 @@ type txPool interface {
 // support all the operations needed by the Ethereum chain protocols.
 type votePool interface {
 	PutVote(vote *types.VoteEnvelope)
-	FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope
 	GetVotes() []*types.VoteEnvelope
 
 	// SubscribeNewVoteEvent should return an event subscription of
@@ -347,6 +347,11 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Trust extension barrier failed", "err", err)
 		return err
 	}
+	bsc, err := h.peers.waitBscExtension(peer)
+	if err != nil {
+		peer.Log().Error("Bsc extension barrier failed", "err", err)
+		return err
+	}
 	// TODO(karalabe): Not sure why this is needed
 	if !h.chainSync.handlePeerEvent(peer) {
 		return p2p.DiscQuitting
@@ -387,7 +392,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
 	// Register the peer locally
-	if err := h.peers.registerPeer(peer, snap, diff, trust); err != nil {
+	if err := h.peers.registerPeer(peer, snap, diff, trust, bsc); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
@@ -413,8 +418,8 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// Propagate existing transactions and votes. new transactions and votes appearing
 	// after this will be sent via broadcasts.
 	h.syncTransactions(peer)
-	if h.votepool != nil {
-		h.syncVotes(peer)
+	if h.votepool != nil && p.bscExt != nil {
+		h.syncVotes(p.bscExt)
 	}
 
 	// Create a notification channel for pending requests if the peer goes down
@@ -550,6 +555,21 @@ func (h *handler) runTrustExtension(peer *trust.Peer, handler trust.Handler) err
 
 	if err := h.peers.registerTrustExtension(peer); err != nil {
 		peer.Log().Error("Trust extension registration failed", "err", err)
+		return err
+	}
+	return handler(peer)
+}
+
+// runBscExtension registers a `bsc` peer into the joint eth/bsc peerset and
+// starts handling inbound messages. As `bsc` is only a satellite protocol to
+// `eth`, all subsystem registrations and lifecycle management will be done by
+// the main `eth` handler to prevent strange races.
+func (h *handler) runBscExtension(peer *bsc.Peer, handler bsc.Handler) error {
+	h.peerWG.Add(1)
+	defer h.peerWG.Done()
+
+	if err := h.peers.registerBscExtension(peer); err != nil {
+		peer.Log().Error("Bsc extension registration failed", "err", err)
 		return err
 	}
 	return handler(peer)
@@ -791,7 +811,9 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 		directPeers++
 		directCount += 1
 		votes := []*types.VoteEnvelope{_vote}
-		peer.AsyncSendVotes(votes)
+		if peer.bscExt != nil {
+			peer.bscExt.AsyncSendVotes(votes)
+		}
 	}
 	log.Debug("Vote broadcast", "vote packs", directPeers, "broadcast vote", directCount)
 }

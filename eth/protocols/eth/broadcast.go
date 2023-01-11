@@ -200,24 +200,3 @@ func (p *Peer) announceTransactions() {
 		}
 	}
 }
-
-// broadcastVotes is a write loop that schedules votes broadcasts
-// to the remote peer. The goal is to have an async writer that does not lock up
-// node internals and at the same time rate limits queued data.
-func (p *Peer) broadcastVotes() {
-	for {
-		select {
-		case votes := <-p.voteBroadcast:
-			if err := p.SendVotes(votes); err != nil {
-				return
-			}
-			p.Log().Trace("Sent votes", "count", len(votes))
-
-		case <-p.voteTerm:
-			return
-
-		case <-p.term:
-			return
-		}
-	}
-}

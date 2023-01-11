@@ -6,7 +6,7 @@ ARG BUILDNUM=""
 # Build Geth in a stock Go builder container
 FROM golang:1.17-alpine as builder
 
-RUN apk add --no-cache make gcc musl-dev linux-headers git bash
+RUN apk add --no-cache make cmake gcc musl-dev linux-headers git bash build-base libc-dev
 # Get dependencies - will also be cached if we won't change go.mod/go.sum
 COPY go.mod /go-ethereum/
 COPY go.sum /go-ethereum/
@@ -26,9 +26,10 @@ ENV BSC_HOME=/bsc
 ENV HOME=${BSC_HOME}
 ENV DATA_DIR=/data
 
+ARG VERSION_GCC=11.2.1_git20220219-r2
 ENV PACKAGES ca-certificates~=20220614-r0 jq~=1.6 \
-  bash~=5.1.16-r2 bind-tools~=9.16.33 tini~=0.19.0 \
-  grep~=3.7 curl~=7.83.1 sed~=4.8-r0
+  bash~=5.1.16-r2 bind-tools~=9.16.36-r0 tini~=0.19.0 \
+  grep~=3.7 curl~=7.83.1 sed~=4.8-r0 gcc==${VERSION_GCC}
 
 RUN apk add --no-cache $PACKAGES \
   && rm -rf /var/cache/apk/* \

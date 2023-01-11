@@ -34,10 +34,6 @@ const (
 	// before starting to randomly evict them.
 	maxKnownTxs = 32768
 
-	// maxKnownVotes is the maximum vote hashes to keep in the known list
-	// before starting to randomly evict them.
-	maxKnownVotes = 5376
-
 	// maxKnownBlocks is the maximum block hashes to keep in the known list
 	// before starting to randomly evict them.
 	maxKnownBlocks = 1024
@@ -94,19 +90,14 @@ type Peer struct {
 	reqCancel   chan *cancel   // Dispatch channel to cancel pending requests and untrack them
 	resDispatch chan *response // Dispatch channel to fulfil pending requests and untrack them
 
-	votepool      VotePool                   // Votes pool used by the broadcasters
-	knownVotes    *knownCache                // Set of vote hashes known to be known by this peer
-	voteBroadcast chan []*types.VoteEnvelope // Channel used to queue votes propagation requests
-
-	term     chan struct{} // Termination channel to stop the broadcasters
-	txTerm   chan struct{} // Termination channel to stop the tx broadcasters
-	voteTerm chan struct{} // Termination channel to stop the votes broadcasters
-	lock     sync.RWMutex  // Mutex protecting the internal fields
+	term   chan struct{} // Termination channel to stop the broadcasters
+	txTerm chan struct{} // Termination channel to stop the tx broadcasters
+	lock   sync.RWMutex  // Mutex protecting the internal fields
 }
 
 // NewPeer create a wrapper for a network connection and negotiated  protocol
 // version.
-func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, votepool VotePool) *Peer {
+func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Peer {
 	peer := &Peer{
 		id:              p.ID().String(),
 		Peer:            p,
@@ -114,7 +105,6 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, vot
 		version:         version,
 		knownTxs:        newKnownCache(maxKnownTxs),
 		knownBlocks:     newKnownCache(maxKnownBlocks),
-		knownVotes:      newKnownCache(maxKnownVotes),
 		queuedBlocks:    make(chan *blockPropagation, maxQueuedBlocks),
 		queuedBlockAnns: make(chan *types.Block, maxQueuedBlockAnns),
 		txBroadcast:     make(chan []common.Hash),
@@ -123,20 +113,14 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, vot
 		reqCancel:       make(chan *cancel),
 		resDispatch:     make(chan *response),
 		txpool:          txpool,
-		voteBroadcast:   make(chan []*types.VoteEnvelope),
-		votepool:        votepool,
 		term:            make(chan struct{}),
 		txTerm:          make(chan struct{}),
-		voteTerm:        make(chan struct{}),
 	}
 	// Start up all the broadcasters
 	go peer.broadcastBlocks()
 	go peer.broadcastTransactions()
 	go peer.announceTransactions()
 	go peer.dispatcher()
-	if version >= ETH68 {
-		go peer.broadcastVotes()
-	}
 	return peer
 }
 
@@ -196,11 +180,6 @@ func (p *Peer) KnownTransaction(hash common.Hash) bool {
 	return p.knownTxs.Contains(hash)
 }
 
-// KnownVote returns whether peer is known to already have a vote.
-func (p *Peer) KnownVote(hash common.Hash) bool {
-	return p.knownVotes.Contains(hash)
-}
-
 // markBlock marks a block as known for the peer, ensuring that the block will
 // never be propagated to this particular peer.
 func (p *Peer) markBlock(hash common.Hash) {
@@ -213,13 +192,6 @@ func (p *Peer) markBlock(hash common.Hash) {
 func (p *Peer) markTransaction(hash common.Hash) {
 	// If we reached the memory allowance, drop a previously known transaction hash
 	p.knownTxs.Add(hash)
-}
-
-// markVote marks a vote as known for the peer, ensuring that it
-// will never be propagated to this particular peer.
-func (p *Peer) markVote(hash common.Hash) {
-	// If we reached the memory allowance, drop a previously known vote hash
-	p.knownVotes.Add(hash)
 }
 
 // SendTransactions sends transactions to the peer and includes the hashes
@@ -339,33 +311,6 @@ func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 		p.knownBlocks.Add(block.Hash())
 	default:
 		p.Log().Debug("Dropping block propagation", "number", block.NumberU64(), "hash", block.Hash())
-	}
-}
-
-// SendVotes propagates a batch of votes to the remote peer.
-func (p *Peer) SendVotes(votes []*types.VoteEnvelope) error {
-	// Mark all the votes as known, but ensure we don't overflow our limits
-	for _, vote := range votes {
-		p.knownVotes.Add(vote.Hash())
-	}
-	return p2p.Send(p.rw, VotesMsg, &VotesPacket{votes})
-}
-
-// AsyncSendVotes queues a batch of vote hashes for propagation to a remote peer. If
-// the peer's broadcast queue is full, the event is silently dropped.
-func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
-	select {
-	case p.voteBroadcast <- votes:
-		// Mark all the votes as known, but ensure we don't overflow our limits
-		for _, vote := range votes {
-			p.knownVotes.Add(vote.Hash())
-		}
-
-	case <-p.voteTerm:
-		p.Log().Debug("Dropping vote propagation", "count", len(votes))
-
-	case <-p.term:
-		p.Log().Debug("Dropping vote propagation", "count", len(votes))
 	}
 }
 

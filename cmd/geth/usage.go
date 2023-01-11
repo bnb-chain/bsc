@@ -43,6 +43,7 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			utils.DisableSnapProtocolFlag,
 			utils.DisableDiffProtocolFlag,
 			utils.EnableTrustProtocolFlag,
+			utils.DisableBscProtocolFlag,
 			utils.RangeLimitFlag,
 			utils.SmartCardDaemonPathFlag,
 			utils.NetworkIdFlag,
