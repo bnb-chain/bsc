@@ -765,12 +765,12 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
 		{name: "brunoBlock", block: c.BrunoBlock},
 		{name: "eulerBlock", block: c.EulerBlock},
+		{name: "bonehBlock", block: c.BonehBlock},
+		{name: "lynnBlock", block: c.LynnBlock},
 		{name: "berlinBlock", block: c.BerlinBlock},
 		{name: "londonBlock", block: c.LondonBlock},
 		{name: "arrowGlacierBlock", block: c.ArrowGlacierBlock, optional: true},
 		{name: "mergeStartBlock", block: c.MergeForkBlock, optional: true},
-		{name: "bonehBlock", block: c.BonehBlock},
-		{name: "lynnBlock", block: c.LynnBlock},
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number

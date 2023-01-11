@@ -138,25 +138,32 @@ func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 	return 0
 }
 
-// isFinalizedBlockHigher returns true when the new block's finalized block is higher than current block.
-func (hc *HeaderChain) isFinalizedBlockHigher(header *types.Header, curHeader *types.Header) bool {
+// reorgNeededWithFastFinality returns true when the finalized block is higher, otherwise backoff to compare the td.
+func (hc *HeaderChain) reorgNeededWithFastFinality(forker *ForkChoice, current *types.Header, header *types.Header) (bool, error) {
 	p, ok := hc.engine.(consensus.PoSA)
 	if !ok {
-		return false
+		return forker.ReorgNeeded(current, header)
 	}
 
-	ancestor := rawdb.FindCommonAncestor(hc.chainDb, header, curHeader)
+	ancestor := rawdb.FindCommonAncestor(hc.chainDb, current, header)
 	if ancestor == nil {
-		return false
+		return forker.ReorgNeeded(current, header)
 	}
 
 	finalized := p.GetFinalizedHeader(hc, header, header.Number.Uint64()-ancestor.Number.Uint64())
-	curFinalized := p.GetFinalizedHeader(hc, curHeader, curHeader.Number.Uint64()-ancestor.Number.Uint64())
+	curFinalized := p.GetFinalizedHeader(hc, current, current.Number.Uint64()-ancestor.Number.Uint64())
 	if finalized == nil || curFinalized == nil {
-		return false
+		return forker.ReorgNeeded(current, header)
+	} else if finalized.Number.Uint64() > ancestor.Number.Uint64() && curFinalized.Number.Uint64() > ancestor.Number.Uint64() {
+		log.Crit("find two conflict finalized headers", "header1", finalized, "header2", curFinalized)
+		return false, nil
+	} else if finalized.Number.Uint64() == curFinalized.Number.Uint64() {
+		return forker.ReorgNeeded(current, header)
+	} else if finalized.Number.Uint64() > curFinalized.Number.Uint64() {
+		return true, nil
+	} else {
+		return false, nil
 	}
-
-	return finalized.Number.Uint64() > curFinalized.Number.Uint64()
 }
 
 // GetBlockNumber retrieves the block number belonging to the given hash
@@ -332,9 +339,9 @@ func (hc *HeaderChain) writeHeadersAndSetHead(headers []*types.Header, forker *F
 		}
 	)
 	// Ask the fork choicer if the reorg is necessary
-	if reorg, err := forker.ReorgNeeded(hc.CurrentHeader(), lastHeader); err != nil {
+	if reorg, err := hc.reorgNeededWithFastFinality(forker, hc.CurrentHeader(), lastHeader); err != nil {
 		return nil, err
-	} else if !reorg && !hc.isFinalizedBlockHigher(lastHeader, hc.CurrentHeader()) {
+	} else if !reorg {
 		if inserted != 0 {
 			result.status = SideStatTy
 		}

@@ -606,25 +606,32 @@ func (bc *BlockChain) getFinalizedNumber(header *types.Header) uint64 {
 	return 0
 }
 
-// isFinalizedBlockHigher returns true when the new block's finalized block is higher than current block.
-func (bc *BlockChain) isFinalizedBlockHigher(header *types.Header, curHeader *types.Header) bool {
+// reorgNeededWithFastFinality returns true when the finalized block is higher, otherwise backoff to compare the td.
+func (bc *BlockChain) reorgNeededWithFastFinality(current *types.Header, header *types.Header) (bool, error) {
 	p, ok := bc.engine.(consensus.PoSA)
 	if !ok {
-		return false
+		return bc.forker.ReorgNeeded(current, header)
 	}
 
-	ancestor := rawdb.FindCommonAncestor(bc.db, header, curHeader)
+	ancestor := rawdb.FindCommonAncestor(bc.db, current, header)
 	if ancestor == nil {
-		return false
+		return bc.forker.ReorgNeeded(current, header)
 	}
 
 	finalized := p.GetFinalizedHeader(bc, header, header.Number.Uint64()-ancestor.Number.Uint64())
-	curFinalized := p.GetFinalizedHeader(bc, curHeader, curHeader.Number.Uint64()-ancestor.Number.Uint64())
+	curFinalized := p.GetFinalizedHeader(bc, current, current.Number.Uint64()-ancestor.Number.Uint64())
 	if finalized == nil || curFinalized == nil {
-		return false
+		return bc.forker.ReorgNeeded(current, header)
+	} else if finalized.Number.Uint64() > ancestor.Number.Uint64() && curFinalized.Number.Uint64() > ancestor.Number.Uint64() {
+		log.Crit("find two conflict finalized headers", "header1", finalized, "header2", curFinalized)
+		return false, nil
+	} else if finalized.Number.Uint64() == curFinalized.Number.Uint64() {
+		return bc.forker.ReorgNeeded(current, header)
+	} else if finalized.Number.Uint64() > curFinalized.Number.Uint64() {
+		return true, nil
+	} else {
+		return false, nil
 	}
-
-	return finalized.Number.Uint64() > curFinalized.Number.Uint64()
 }
 
 // loadLastState loads the last known chain state from the database. This method
@@ -1247,7 +1254,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Rewind may have occurred, skip in that case.
 		if bc.CurrentHeader().Number.Cmp(head.Number()) >= 0 {
-			reorg, err := bc.forker.ReorgNeeded(bc.CurrentFastBlock().Header(), head.Header())
+			reorg, err := bc.reorgNeededWithFastFinality(bc.CurrentFastBlock().Header(), head.Header())
 			if err != nil {
 				log.Warn("Reorg failed", "err", err)
 				return false
@@ -1644,12 +1651,9 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		return NonStatTy, err
 	}
 	currentBlock := bc.CurrentBlock()
-	reorg, err := bc.forker.ReorgNeeded(currentBlock.Header(), block.Header())
+	reorg, err := bc.reorgNeededWithFastFinality(currentBlock.Header(), block.Header())
 	if err != nil {
 		return NonStatTy, err
-	}
-	if bc.isFinalizedBlockHigher(block.Header(), currentBlock.Header()) {
-		reorg = true
 	}
 	if reorg {
 		// Reorganise the chain if the parent is not the head block
@@ -1806,7 +1810,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			current = bc.CurrentBlock()
 		)
 		for block != nil && bc.skipBlock(err, it) {
-			reorg, err = bc.forker.ReorgNeeded(current.Header(), block.Header())
+			reorg, err = bc.reorgNeededWithFastFinality(current.Header(), block.Header())
 			if err != nil {
 				return it.index, err
 			}
@@ -2186,7 +2190,7 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 	//
 	// If the externTd was larger than our local TD, we now need to reimport the previous
 	// blocks to regenerate the required state
-	reorg, err := bc.forker.ReorgNeeded(current.Header(), lastBlock.Header())
+	reorg, err := bc.reorgNeededWithFastFinality(current.Header(), lastBlock.Header())
 	if err != nil {
 		return it.index, err
 	}

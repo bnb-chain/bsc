@@ -378,7 +378,7 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 			return nil, nil
 		}
 		start := extraVanity + validatorNumberSizeAfterBoneh + num*validatorBytesLengthAfterBoneh
-		end := len(header.Extra) - extraVanity
+		end := len(header.Extra) - extraSeal
 		attestationBytes = header.Extra[start:end]
 	}
 
@@ -1187,6 +1187,10 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 		log.Warn("BlockHeader at current voteBlockNumber is nil", "targetNumber", targetNumber, "targetHash", targetHash)
 		return fmt.Errorf("BlockHeader at current voteBlockNumber is nil")
 	}
+	if header.Number.Uint64() != targetNumber {
+		log.Warn("unexpected target number", "expect", header.Number.Uint64(), "real", targetNumber)
+		return fmt.Errorf("target number mismatch")
+	}
 
 	justifiedHeader := p.GetJustifiedHeader(chain, header)
 	if justifiedHeader == nil {
@@ -1298,8 +1302,9 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 		err := p.assembleVoteAttestation(chain, header)
 		if err != nil {
+			/* If the vote attestation can't be assembled successfully, the blockchain won't get
+			   fast finalized, but it can be tolerated, so just report this error here. */
 			log.Error("Assemble vote attestation failed when sealing", "err", err)
-			return
 		}
 
 		// Sign all the things!
