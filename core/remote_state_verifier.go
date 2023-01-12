@@ -211,8 +211,9 @@ func (vm *remoteVerifyManager) cacheBlockVerified(hash common.Hash) {
 func (vm *remoteVerifyManager) AncestorVerified(header *types.Header) bool {
 	// find header of H-11 block.
 	header = vm.bc.GetHeaderByNumber(header.Number.Uint64() - maxForkHeight)
-	// If start from genesis block, there has not a H-11 block.
-	if header == nil {
+	// If start from genesis block, there has not a H-11 block,return true.
+	// Either if the block is an empty block, return true.
+	if header == nil || header.TxHash == types.EmptyRootHash {
 		return true
 	}
 

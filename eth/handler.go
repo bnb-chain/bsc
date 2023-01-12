@@ -518,7 +518,7 @@ func (h *handler) runSnapExtension(peer *snap.Peer, handler snap.Handler) error 
 	defer h.peerWG.Done()
 
 	if err := h.peers.registerSnapExtension(peer); err != nil {
-		peer.Log().Error("Snapshot extension registration failed", "err", err)
+		peer.Log().Warn("Snapshot extension registration failed", "err", err)
 		return err
 	}
 	return handler(peer)
@@ -534,6 +534,7 @@ func (h *handler) runDiffExtension(peer *diff.Peer, handler diff.Handler) error 
 
 	if err := h.peers.registerDiffExtension(peer); err != nil {
 		peer.Log().Error("Diff extension registration failed", "err", err)
+		peer.Close()
 		return err
 	}
 	return handler(peer)

@@ -53,6 +53,10 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	switch {
 	case evm.chainRules.IsBoneh:
 		precompiles = PrecompiledContractsBoneh
+	case evm.chainRules.IsMoran:
+		precompiles = PrecompiledContractsIsMoran
+	case evm.chainRules.IsNano:
+		precompiles = PrecompiledContractsIsNano
 	case evm.chainRules.IsBerlin:
 		precompiles = PrecompiledContractsBerlin
 	case evm.chainRules.IsIstanbul:

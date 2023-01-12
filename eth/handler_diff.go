@@ -45,6 +45,7 @@ func (h *diffHandler) RunPeer(peer *diff.Peer, hand diff.Handler) error {
 			wait <- peer
 		}
 		ps.lock.Unlock()
+		peer.Close()
 		return err
 	}
 	return (*handler)(h).runDiffExtension(peer, hand)

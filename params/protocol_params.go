@@ -19,11 +19,10 @@ package params
 import "math/big"
 
 const (
-	GasLimitBoundDivisor       uint64 = 1024               // The bound divisor of the gas limit, used in update calculations.
-	ParliaGasLimitBoundDivisor uint64 = 256                // The bound divisor of the gas limit, used in update calculations.
-	MinGasLimit                uint64 = 5000               // Minimum the gas limit may ever be.
-	MaxGasLimit                uint64 = 0x7fffffffffffffff // Maximum the gas limit (2^63-1).
-	GenesisGasLimit            uint64 = 4712388            // Gas limit of the Genesis block.
+	GasLimitBoundDivisor uint64 = 256                // The bound divisor of the gas limit, used in update calculations.
+	MinGasLimit          uint64 = 5000               // Minimum the gas limit may ever be.
+	MaxGasLimit          uint64 = 0x7fffffffffffffff // Maximum the gas limit (2^63-1).
+	GenesisGasLimit      uint64 = 4712388            // Gas limit of the Genesis block.
 
 	MaximumExtraDataSize  uint64 = 32     // Maximum size extra data may be after Genesis.
 	ForkIDSize            uint64 = 4      // The length of fork id

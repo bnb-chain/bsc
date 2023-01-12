@@ -18,7 +18,6 @@ package state
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -26,14 +25,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 )
-
-const snapshotStaleRetryInterval = time.Millisecond * 10
 
 var emptyCodeHash = crypto.Keccak256(nil)
 
@@ -54,7 +50,7 @@ func (s Storage) String() (str string) {
 }
 
 func (s Storage) Copy() Storage {
-	cpy := make(Storage)
+	cpy := make(Storage, len(s))
 	for key, value := range s {
 		cpy[key] = value
 	}
@@ -169,10 +165,11 @@ func (s *StateObject) getTrie(db Database) Trie {
 	if s.trie == nil {
 		// Try fetching from prefetcher first
 		// We don't prefetch empty tries
-		if s.data.Root != emptyRoot && s.db.prefetcher != nil {
+		prefetcher := s.db.prefetcher
+		if s.data.Root != emptyRoot && prefetcher != nil {
 			// When the miner is creating the pending state, there is no
 			// prefetcher
-			s.trie = s.db.prefetcher.trie(s.data.Root)
+			s.trie = prefetcher.trie(s.data.Root)
 		}
 		if s.trie == nil {
 			var err error
@@ -241,25 +238,10 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 	}
 	// If no live objects are available, attempt to use snapshots
 	var (
-		enc   []byte
-		err   error
-		meter *time.Duration
+		enc []byte
+		err error
 	)
-	readStart := time.Now()
-	if metrics.EnabledExpensive {
-		// If the snap is 'under construction', the first lookup may fail. If that
-		// happens, we don't want to double-count the time elapsed. Thus this
-		// dance with the metering.
-		defer func() {
-			if meter != nil {
-				*meter += time.Since(readStart)
-			}
-		}()
-	}
 	if s.db.snap != nil {
-		if metrics.EnabledExpensive {
-			meter = &s.db.SnapshotStorageReads
-		}
 		// If the object was destructed in *this* block (and potentially resurrected),
 		// the storage has been cleared out, and we should *not* consult the previous
 		// snapshot about any storage values. The only possible alternatives are:
@@ -269,32 +251,24 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		if _, destructed := s.db.snapDestructs[s.address]; destructed {
 			return common.Hash{}
 		}
+		start := time.Now()
 		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
+		if metrics.EnabledExpensive {
+			s.db.SnapshotStorageReads += time.Since(start)
+		}
 	}
-	// ErrSnapshotStale may occur due to diff layers in the update, so we should try again in noTrie mode.
-	if s.db.NoTrie() && err != nil && errors.Is(err, snapshot.ErrSnapshotStale) {
-		// This error occurs when statedb.snaps.Cap changes the state of the merged difflayer
-		// to stale during the refresh of the difflayer, indicating that it is about to be discarded.
-		// Since the difflayer is refreshed in parallel,
-		// there is a small chance that the difflayer of the stale will be read while reading,
-		// resulting in an empty array being returned here.
-		// Therefore, noTrie mode must retry here,
-		// and add a time interval when retrying to avoid stacking too much and causing stack overflow.
-		time.Sleep(snapshotStaleRetryInterval)
-		return s.GetCommittedState(db, key)
-	}
+
 	// If snapshot unavailable or reading from it failed, load from the database
 	if s.db.snap == nil || err != nil {
-		if meter != nil {
-			// If we already spent time checking the snapshot, account for it
-			// and reset the readStart
-			*meter += time.Since(readStart)
-			readStart = time.Now()
-		}
+		start := time.Now()
+		//		if metrics.EnabledExpensive {
+		//			meter = &s.db.StorageReads
+		//		}
+		enc, err = s.getTrie(db).TryGet(key.Bytes())
 		if metrics.EnabledExpensive {
-			meter = &s.db.StorageReads
+			s.db.StorageReads += time.Since(start)
 		}
-		if enc, err = s.getTrie(db).TryGet(key.Bytes()); err != nil {
+		if err != nil {
 			s.setError(err)
 			return common.Hash{}
 		}
@@ -365,18 +339,9 @@ func (s *StateObject) finalise(prefetch bool) {
 		}
 	}
 
-	// The account root need to be updated before prefetch, otherwise the account root is empty
-	if s.db.pipeCommit && s.data.Root == dummyRoot && !s.rootCorrected && s.db.snap.AccountsCorrected() {
-		if acc, err := s.db.snap.Account(crypto.HashData(s.db.hasher, s.address.Bytes())); err == nil {
-			if acc != nil && len(acc.Root) != 0 {
-				s.data.Root = common.BytesToHash(acc.Root)
-				s.rootCorrected = true
-			}
-		}
-	}
-
-	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot && s.data.Root != dummyRoot {
-		s.db.prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
+	prefetcher := s.db.prefetcher
+	if prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
+		prefetcher.prefetch(s.data.Root, slotsToPrefetch, s.addrHash)
 	}
 	if len(s.dirtyStorage) > 0 {
 		s.dirtyStorage = make(Storage)
@@ -411,14 +376,9 @@ func (s *StateObject) updateTrie(db Database) Trie {
 		}
 		s.originStorage[key] = value
 		var v []byte
-		if (value == common.Hash{}) {
-			s.setError(tr.TryDelete(key[:]))
-			s.db.StorageDeleted += 1
-		} else {
+		if value != (common.Hash{}) {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-			s.setError(tr.TryUpdate(key[:], v))
-			s.db.StorageUpdated += 1
 		}
 		dirtyStorage[key] = v
 	}
@@ -447,17 +407,19 @@ func (s *StateObject) updateTrie(db Database) Trie {
 				storage = make(map[string][]byte, len(dirtyStorage))
 				s.db.snapStorage[s.address] = storage
 			}
+			s.db.snapStorageMux.Unlock()
 			for key, value := range dirtyStorage {
 				storage[string(key[:])] = value
 			}
-			s.db.snapStorageMux.Unlock()
 		}()
 	}
 	wg.Wait()
 
-	if s.db.prefetcher != nil {
-		s.db.prefetcher.used(s.data.Root, usedStorage)
+	prefetcher := s.db.prefetcher
+	if prefetcher != nil {
+		prefetcher.used(s.data.Root, usedStorage)
 	}
+
 	if len(s.pendingStorage) > 0 {
 		s.pendingStorage = make(Storage)
 	}

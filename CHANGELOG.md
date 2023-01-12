@@ -1,5 +1,107 @@
 # Changelog
 
+## v1.1.18
+IMPROVEMENT
+
+* [\#1209](https://github.com/bnb-chain/bsc/pull/1209) metrics: add build info into metrics server
+* [\#1204](https://github.com/bnb-chain/bsc/pull/1204) worker: NewTxsEvent and triePrefetch reuse in mining task
+* [\#1195](https://github.com/bnb-chain/bsc/pull/1195) hardfork: update Gibbs fork height and system contract code
+* [\#1192](https://github.com/bnb-chain/bsc/pull/1192) all: sync with upstream v1.10.22
+* [\#1186](https://github.com/bnb-chain/bsc/pull/1186) worker: improvement of the current block generation logic to get more rewards
+* [\#1184](https://github.com/bnb-chain/bsc/pull/1184) worker: remove pre-seal empty block
+* [\#1182](https://github.com/bnb-chain/bsc/pull/1182) Parlia: Some updates of the miner worker
+* [\#1181](https://github.com/bnb-chain/bsc/pull/1181) all: sync with upstream v1.10.21
+* [\#1177](https://github.com/bnb-chain/bsc/pull/1177) core/forkid: refactor nextForkHash function
+* [\#1174](https://github.com/bnb-chain/bsc/pull/1174) worker: some code enhancement on work.go
+* [\#1166](https://github.com/bnb-chain/bsc/pull/1166) miner: disable enforceTip when get txs from txpool
+
+BUGFIX
+* [\#1201](https://github.com/bnb-chain/bsc/pull/1201) worker: add double sign check for safety
+* [\#1185](https://github.com/bnb-chain/bsc/pull/1185) worker: fix a bug of the delay timer
+
+## v1.1.17
+IMPROVEMENT
+
+* [\#1114](https://github.com/bnb-chain/bsc/pull/1114) typo: .github fix job name
+* [\#1126](https://github.com/bnb-chain/bsc/pull/1126) ci: specify bind-tools version
+* [\#1140](https://github.com/bnb-chain/bsc/pull/1140) p2p: upstream go-ethereum: use errors.Is for error comparison
+* [\#1141](https://github.com/bnb-chain/bsc/pull/1141) all: prefer new(big.Int) over big.NewInt(0)
+* [\#1159](https://github.com/bnb-chain/bsc/pull/1159) core: remove redundant func
+
+BUGFIX
+
+* [\#1138](https://github.com/bnb-chain/bsc/pull/1138) fix: upstream patches from go-ethereum 1.10.19
+* [\#1139](https://github.com/bnb-chain/bsc/pull/1139) fix: upstream go-ethereum: fix duplicate fields names in the generted go struct
+* [\#1145](https://github.com/bnb-chain/bsc/pull/1145) consensus: the newChainHead mights not be imported to Parlia.Snapshot
+* [\#1146](https://github.com/bnb-chain/bsc/pull/1146) fix: upstream patches from go-ethereum 1.10.20
+
+## v1.1.16
+
+* [\#1121](https://github.com/bnb-chain/bsc/pull/1121) vm: add two proof verifier to fix the vulnerability in range proof
+
+## v1.1.15
+* [\#1109](https://github.com/bnb-chain/bsc/pull/1109) nanofork: block exploitation accounts and suspend cross chain bridge related precompile contracts
+
+## v1.1.14
+IMPROVEMENT
+* [\#1057](https://github.com/bnb-chain/bsc/pull/1057) ci: allow merge pull request
+* [\#1063](https://github.com/bnb-chain/bsc/pull/1063) ci: fix the pattern of commit lint
+
+BUGFIX
+* [\#1062](https://github.com/bnb-chain/bsc/pull/1062) test: fix TestOfflineBlockPrune failed randomly
+* [\#1076](https://github.com/bnb-chain/bsc/pull/1076) bug: pick some patches from go-ethereum on v1.10.18
+* [\#1079](https://github.com/bnb-chain/bsc/pull/1079) core: fix potential goroutine leak
+
+## v1.1.13
+
+FEATURE
+* [\#1051](https://github.com/bnb-chain/bsc/pull/1051) Implement BEP153: Native Staking
+* [\#1066](https://github.com/bnb-chain/bsc/pull/1066) Upgrade cross chain logic of native staking
+
+IMPROVEMENT
+* [\#952](https://github.com/bnb-chain/bsc/pull/952) Improve trie prefetch
+* [\#975](https://github.com/bnb-chain/bsc/pull/975) broadcast block before commit block and add metrics
+* [\#992](https://github.com/bnb-chain/bsc/pull/992) Pipecommit enable trie prefetcher
+* [\#996](https://github.com/bnb-chain/bsc/pull/996) Trie prefetch on state pretch
+
+BUGFIX
+* [\#1053](https://github.com/bnb-chain/bsc/pull/1053) state: fix offline tool start failed when start with pruneancient
+* [\#1060](https://github.com/bnb-chain/bsc/pull/1060) consensus: fix the GasLimitBoundDivisor
+* [\#1061](https://github.com/bnb-chain/bsc/pull/1061) fix: upstream patches from go-ethereum
+* [\#1067](https://github.com/bnb-chain/bsc/pull/1067) fix:fix potential goroutine leak
+* [\#1068](https://github.com/bnb-chain/bsc/pull/1068) core trie rlp: patches from go-ethereum
+* [\#1070](https://github.com/bnb-chain/bsc/pull/1070) txpool: reheap the priced list if london fork not enabled
+
+## v1.1.12
+
+FEATURE
+* [\#862](https://github.com/bnb-chain/bsc/pull/862) Pruning AncientDB inline at runtime
+* [\#926](https://github.com/bnb-chain/bsc/pull/926) Separate Processing and State Verification on BSC
+
+IMPROVEMENT
+* [\#816](https://github.com/bnb-chain/bsc/pull/816) merge go-ethereum v1.10.15
+* [\#950](https://github.com/bnb-chain/bsc/pull/950) code optimizations for state prefetcher
+* [\#972](https://github.com/bnb-chain/bsc/pull/972) redesign triePrefetcher to make it thread safe
+* [\#998](https://github.com/bnb-chain/bsc/pull/998) update dockerfile with a few enhancement
+* [\#1015](https://github.com/bnb-chain/bsc/pull/1015) disable noisy logs since system transaction will cause gas capping
+
+BUGFIX
+* [\#932](https://github.com/bnb-chain/bsc/pull/932) fix account root was not set correctly when committing mpt during pipeline commit
+* [\#953](https://github.com/bnb-chain/bsc/pull/953) correct logic for eip check of NewEVMInterpreter
+* [\#958](https://github.com/bnb-chain/bsc/pull/958) define DiscReason as uint8
+* [\#959](https://github.com/bnb-chain/bsc/pull/959) update some packages' version
+* [\#983](https://github.com/bnb-chain/bsc/pull/983) fix nil pointer issue when stopping mining new block
+* [\#1002](https://github.com/bnb-chain/bsc/pull/1002) Fix pipecommit active statedb
+* [\#1005](https://github.com/bnb-chain/bsc/pull/1005) freezer batch compatible offline prunblock command
+* [\#1007](https://github.com/bnb-chain/bsc/pull/1007) missing contract upgrades and incorrect behavior when miners enable pipecommit
+* [\#1009](https://github.com/bnb-chain/bsc/pull/1009) resolve the concurrent cache read and write issue for fast node
+* [\#1011](https://github.com/bnb-chain/bsc/pull/1011) Incorrect merkle root issue when enabling pipecommit with miner
+* [\#1013](https://github.com/bnb-chain/bsc/pull/1013) tools broken because of writting metadata when open a readyonly db
+* [\#1014](https://github.com/bnb-chain/bsc/pull/1014) fast node can not recover from force kill or panic
+* [\#1019](https://github.com/bnb-chain/bsc/pull/1019) memory leak issue with diff protocol
+* [\#1020](https://github.com/bnb-chain/bsc/pull/1020) remove diffhash patch introduced from separate node
+* [\#1024](https://github.com/bnb-chain/bsc/pull/1024) verify node is not treated as verify node
+
 ## v1.1.11
 
 UPGRADE

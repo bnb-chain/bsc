@@ -84,26 +84,20 @@ func NewID(config *params.ChainConfig, genesis common.Hash, head uint64) ID {
 	return ID{Hash: checksumToBytes(hash), Next: next}
 }
 
+//NextForkHash calculates the forkHash from genesis to the next fork block number
 func NextForkHash(config *params.ChainConfig, genesis common.Hash, head uint64) [4]byte {
 	// Calculate the starting checksum from the genesis hash
 	hash := crc32.ChecksumIEEE(genesis[:])
-
 	// Calculate the current fork checksum and the next fork block
-	var next uint64
 	for _, fork := range gatherForks(config) {
-		if fork <= head {
-			// Fork already passed, checksum the previous hash and the fork number
-			hash = checksumUpdate(hash, fork)
-			continue
+		if fork > head {
+			// Checksum the previous hash and nextFokr number and return
+			return checksumToBytes(checksumUpdate(hash, fork))
 		}
-		next = fork
-		break
+		// Fork already passed, checksum the previous hash and the fork number
+		hash = checksumUpdate(hash, fork)
 	}
-	if next == 0 {
-		return checksumToBytes(hash)
-	} else {
-		return checksumToBytes(checksumUpdate(hash, next))
-	}
+	return checksumToBytes(hash)
 }
 
 // NewIDWithChain calculates the Ethereum fork ID from an existing chain instance.
