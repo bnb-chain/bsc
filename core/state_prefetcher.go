@@ -58,7 +58,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func() {
-			newStatedb := statedb.Copy()
+			newStatedb := statedb.CopyDoPrefetch()
 			newStatedb.EnableWriteOnSharedStorage()
 			gaspool := new(GasPool).AddGas(block.GasLimit())
 			blockContext := NewEVMBlockContext(header, p.bc, nil)
@@ -86,7 +86,11 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 
 	// it should be in a separate goroutine, to avoid blocking the critical path.
 	for i := 0; i < len(transactions); i++ {
-		txChan <- i
+		select {
+		case txChan <- i:
+		case <-interruptCh:
+			return
+		}
 	}
 }
 
@@ -100,7 +104,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 	for i := 0; i < prefetchThread; i++ {
 		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
 			idx := 0
-			newStatedb := statedb.Copy()
+			newStatedb := statedb.CopyDoPrefetch()
 			newStatedb.EnableWriteOnSharedStorage()
 			gaspool := new(GasPool).AddGas(gasLimit)
 			blockContext := NewEVMBlockContext(header, p.bc, nil)
@@ -138,9 +142,14 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 				if tx == nil {
 					return
 				}
-				txCh <- tx
-				txset.Shift()
 
+				select {
+				case <-interruptCh:
+					return
+				case txCh <- tx:
+				}
+
+				txset.Shift()
 			}
 		}
 	}(txs)
@@ -153,5 +162,8 @@ func precacheTransaction(msg types.Message, config *params.ChainConfig, gaspool 
 	// Update the evm with the new transaction context.
 	evm.Reset(NewEVMTxContext(msg), statedb)
 	// Add addresses to access list if applicable
-	ApplyMessage(evm, msg, gaspool)
+	if _, err := ApplyMessage(evm, msg, gaspool); err == nil {
+		statedb.Finalise(true)
+	}
+
 }

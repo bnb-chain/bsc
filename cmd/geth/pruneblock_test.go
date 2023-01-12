@@ -49,8 +49,8 @@ var (
 	blockPruneBackUpBlockNumber = 128
 	key, _                      = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	address                     = crypto.PubkeyToAddress(key.PublicKey)
-	balance                     = big.NewInt(10000000)
-	gspec                       = &core.Genesis{Config: params.TestChainConfig, Alloc: core.GenesisAlloc{address: {Balance: balance}}}
+	balance                     = big.NewInt(100000000000000000)
+	gspec                       = &core.Genesis{Config: params.TestChainConfig, Alloc: core.GenesisAlloc{address: {Balance: balance}}, BaseFee: big.NewInt(params.InitialBaseFee)}
 	signer                      = types.LatestSigner(gspec.Config)
 	config                      = &core.CacheConfig{
 		TrieCleanLimit: 256,
@@ -93,7 +93,7 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 		t.Fatalf("Failed to back up block: %v", err)
 	}
 
-	dbBack, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, newAncientPath, "", false, true, false, false)
+	dbBack, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, newAncientPath, "", false, true, false, false, true)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -139,7 +139,7 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 
 func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemain uint64) (ethdb.Database, []*types.Block, []*types.Block, []types.Receipts, []*big.Int, uint64, *core.BlockChain) {
 	//create a database with ancient freezer
-	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false, false, false, false)
+	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false, false, false, false, true)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -154,7 +154,7 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 	// Make chain starting from genesis
 	blocks, _ := core.GenerateChain(gspec.Config, genesis, ethash.NewFaker(), db, 500, func(i int, block *core.BlockGen) {
 		block.SetCoinbase(common.Address{0: byte(canonicalSeed), 19: byte(i)})
-		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(address), common.Address{0x00}, big.NewInt(1000), params.TxGas, nil, nil), signer, key)
+		tx, err := types.SignTx(types.NewTransaction(block.TxNonce(address), common.Address{0x00}, big.NewInt(1000), params.TxGas, big.NewInt(params.InitialBaseFee), nil), signer, key)
 		if err != nil {
 			panic(err)
 		}

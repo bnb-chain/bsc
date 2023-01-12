@@ -62,11 +62,12 @@ func newPrunedFreezer(datadir string, db ethdb.KeyValueStore) (*prunedfreezer, e
 func (f *prunedfreezer) repair(datadir string) error {
 	// compatible prune-block-tool
 	offset := ReadOffSetOfCurrentAncientFreezer(f.db)
+	log.Info("Read last offline prune-block start block number", "offset", offset)
 
 	// compatible freezer
 	min := uint64(math.MaxUint64)
 	for name, disableSnappy := range FreezerNoSnappy {
-		table, err := NewFreezerTable(datadir, name, disableSnappy, true)
+		table, err := NewFreezerTable(datadir, name, disableSnappy, false)
 		if err != nil {
 			return err
 		}
@@ -76,6 +77,7 @@ func (f *prunedfreezer) repair(datadir string) error {
 		}
 		table.Close()
 	}
+	log.Info("Read ancientdb item counts", "items", min)
 	offset += min
 
 	if frozen := ReadFrozenOfAncientFreezer(f.db); frozen > offset {

@@ -264,7 +264,7 @@ func (beacon *Beacon) Prepare(chain consensus.ChainHeaderReader, header *types.H
 	return nil
 }
 
-func (beacon *Beacon) Delay(_ consensus.ChainReader, _ *types.Header) *time.Duration {
+func (beacon *Beacon) Delay(_ consensus.ChainReader, _ *types.Header, _ *time.Duration) *time.Duration {
 	return nil
 }
 

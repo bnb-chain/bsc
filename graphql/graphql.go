@@ -64,6 +64,8 @@ func (b *Long) UnmarshalGraphQL(input interface{}) error {
 		*b = Long(input)
 	case int64:
 		*b = Long(input)
+	case float64:
+		*b = Long(input)
 	default:
 		err = fmt.Errorf("unexpected type %T for Long", input)
 	}
@@ -100,6 +102,14 @@ func (a *Account) Balance(ctx context.Context) (hexutil.Big, error) {
 }
 
 func (a *Account) TransactionCount(ctx context.Context) (hexutil.Uint64, error) {
+	// Ask transaction pool for the nonce which includes pending transactions
+	if blockNr, ok := a.blockNrOrHash.Number(); ok && blockNr == rpc.PendingBlockNumber {
+		nonce, err := a.backend.GetPoolNonce(ctx, a.address)
+		if err != nil {
+			return 0, err
+		}
+		return hexutil.Uint64(nonce), nil
+	}
 	state, err := a.getState(ctx)
 	if err != nil {
 		return 0, err

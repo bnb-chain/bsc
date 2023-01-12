@@ -113,9 +113,6 @@ type Snapshot interface {
 	// CorrectAccounts updates account data for storing the correct data during pipecommit
 	CorrectAccounts(map[common.Hash][]byte)
 
-	// AccountsCorrected checks whether the account data has been corrected during pipecommit
-	AccountsCorrected() bool
-
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*Account, error)
@@ -131,19 +128,16 @@ type Snapshot interface {
 	// Storage directly retrieves the storage data associated with a particular hash,
 	// within a particular account.
 	Storage(accountHash, storageHash common.Hash) ([]byte, error)
+
+	// Parent returns the subsequent layer of a snapshot, or nil if the base was
+	// reached.
+	Parent() snapshot
 }
 
 // snapshot is the internal version of the snapshot data layer that supports some
 // additional methods compared to the public API.
 type snapshot interface {
 	Snapshot
-
-	// Parent returns the subsequent layer of a snapshot, or nil if the base was
-	// reached.
-	//
-	// Note, the method is an internal helper to avoid type switching between the
-	// disk and diff layers. There is no locking involved.
-	Parent() snapshot
 
 	// Update creates a new layer on top of the existing snapshot diff tree with
 	// the specified data items.

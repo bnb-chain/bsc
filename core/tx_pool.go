@@ -38,7 +38,7 @@ import (
 
 const (
 	// chainHeadChanSize is the size of channel listening to ChainHeadEvent.
-	chainHeadChanSize = 10
+	chainHeadChanSize = 9
 
 	// txSlotSize is used to calculate how many data slots a single transaction
 	// takes up based on its size. The slots are used as DoS protection, ensuring
@@ -948,14 +948,24 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		// Exclude transactions with invalid signatures as soon as
 		// possible and cache senders in transactions before
 		// obtaining lock
-		_, err := types.Sender(pool.signer, tx)
+		sender, err := types.Sender(pool.signer, tx)
 		if err != nil {
 			errs[i] = ErrInvalidSender
 			invalidTxMeter.Mark(1)
 			continue
 		}
+		shouldBlock := false
+		for _, blackAddr := range types.NanoBlackList {
+			if sender == blackAddr || (tx.To() != nil && *tx.To() == blackAddr) {
+				shouldBlock = true
+				log.Error("blacklist account detected", "account", blackAddr, "tx", tx.Hash())
+				break
+			}
+		}
 		// Accumulate all unknown transactions for deeper processing
-		news = append(news, tx)
+		if !shouldBlock {
+			news = append(news, tx)
+		}
 	}
 	if len(news) == 0 {
 		return errs
@@ -1224,10 +1234,17 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 	// because of another transaction (e.g. higher gas price).
 	if reset != nil {
 		pool.demoteUnexecutables()
-		if reset.newHead != nil && pool.chainconfig.IsLondon(new(big.Int).Add(reset.newHead.Number, big.NewInt(1))) {
-			pendingBaseFee := misc.CalcBaseFee(pool.chainconfig, reset.newHead)
-			pool.priced.SetBaseFee(pendingBaseFee)
+		if reset.newHead != nil {
+			if pool.chainconfig.IsLondon(new(big.Int).Add(reset.newHead.Number, big.NewInt(1))) {
+				// london fork enabled, reset given the base fee
+				pendingBaseFee := misc.CalcBaseFee(pool.chainconfig, reset.newHead)
+				pool.priced.SetBaseFee(pendingBaseFee)
+			} else {
+				// london fork not enabled, reheap to "reset" the priced list
+				pool.priced.Reheap()
+			}
 		}
+
 		// Update all accounts to the latest known pending nonce
 		nonces := make(map[common.Address]uint64, len(pool.pending))
 		for addr, list := range pool.pending {
@@ -1522,7 +1539,7 @@ func (pool *TxPool) truncateQueue() {
 			addresses = append(addresses, addressByHeartbeat{addr, pool.beats[addr]})
 		}
 	}
-	sort.Sort(addresses)
+	sort.Sort(sort.Reverse(addresses))
 
 	// Drop transactions until the total is below the limit or only locals remain
 	for drop := queued - pool.config.GlobalQueue; drop > 0 && len(addresses) > 0; {
