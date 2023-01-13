@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-const naturallyJustifiedDist = 15 // The distance to naturally justify a block
+const naturallyJustifiedDist = 14 // The distance to naturally justify a block
 
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {

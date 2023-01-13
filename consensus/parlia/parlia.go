@@ -59,7 +59,7 @@ const (
 	validatorBytesLength           = common.AddressLength
 	validatorBytesLengthAfterBoneh = common.AddressLength + types.BLSPublicKeyLength
 	validatorNumberSizeAfterBoneh  = 1  // Fixed number of extra prefix bytes reserved for validator number
-	naturallyJustifiedDist         = 15 // The distance to naturally justify a block
+	naturallyJustifiedDist         = 14 // The distance to naturally justify a block
 
 	wiggleTime         = uint64(1) // second, Random delay (per signer) to allow concurrent signers
 	initialBackOffTime = uint64(1) // second

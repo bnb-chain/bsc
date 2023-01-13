@@ -156,8 +156,8 @@ func (hc *HeaderChain) reorgNeededWithFastFinality(forker *ForkChoice, current *
 		return forker.ReorgNeeded(current, header)
 	} else if finalized.Number.Uint64() > ancestor.Number.Uint64() && curFinalized.Number.Uint64() > ancestor.Number.Uint64() {
 		log.Crit("find two conflict finalized headers", "header1", finalized, "header2", curFinalized)
-		return false, nil
-	} else if finalized.Number.Uint64() == curFinalized.Number.Uint64() {
+	}
+	if finalized.Number.Uint64() == curFinalized.Number.Uint64() {
 		return forker.ReorgNeeded(current, header)
 	} else if finalized.Number.Uint64() > curFinalized.Number.Uint64() {
 		return true, nil
