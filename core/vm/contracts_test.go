@@ -65,7 +65,7 @@ var allPrecompiles = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{16}):   &bls12381Pairing{},
 	common.BytesToAddress([]byte{17}):   &bls12381MapG1{},
 	common.BytesToAddress([]byte{18}):   &bls12381MapG2{},
-	common.BytesToAddress([]byte{102}):  &voteSignatureVerify{},
+	common.BytesToAddress([]byte{102}):  &blsSignatureVerify{},
 }
 
 // EIP-152 test vectors
@@ -180,7 +180,7 @@ func benchmarkPrecompiled(addr string, test precompiledTest, bench *testing.B) {
 		// Keep it as uint64, multiply 100 to get two digit float later
 		mgasps := (100 * 1000 * gasUsed) / elapsed
 		bench.ReportMetric(float64(mgasps)/100, "mgas/s")
-		//Check if it is correct
+		// Check if it is correct
 		if err != nil {
 			bench.Error(err)
 			return
@@ -232,10 +232,10 @@ func BenchmarkPrecompiledIdentity(bench *testing.B) {
 	benchmarkPrecompiled("04", t, bench)
 }
 
-// Benchmarks the sample inputs from the voteSignatureVerify precompile.
-func BenchmarkPrecompiledVoteSignatureVerify(bench *testing.B) {
+// Benchmarks the sample inputs from the blsSignatureVerify precompile.
+func BenchmarkPrecompiledBlsSignatureVerify(bench *testing.B) {
 	t := precompiledTest{
-		Input:    "000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000c555d45d77921e0f26487706179f73c5f8539744b55147c73a3621366bf809c066c8781959ce3621f67c9345da9b5e01ce5113d7b5ae3c6dcd3ca88ad4ed9023fa55c8188060c74f1791eefc78e8aacf0c044e3f6317fe5eadce8ba9db2d19da83e41364c3d6802175acaa392d576a95206d83e5bbfc6022b53c288dc5b60cfe1722298007f1a4b97f47383a9fe1cb7bb5250783e89f3720b7a37bec026ece0b6b32d4d46a7127dcc865f0d30f2ee3dcd5983b686f4e3a9202afc8b608652001c9938906ae1ff1417486096e32511f1bc",
+		Input:    "f2d8e8e5bf354429e3ce8b97c4e88f7a0bf7bc917e856de762ed6d70dd8ec2d289a04d63285e4b45309e7c180ea82565e375dd62c7b80d957aea4c9b7e16bdb28a0f910036bd3220fe3d7614fb137a8f0a68b3c564ddd214b5041d8f7a124e6e7285ac42635e75eeb9051a052fb500b1c2bc23bd4290db59fc02be11f2b80896b6e22d5b8dd31ba2e49b13cd6be19fcd01c1e23af3e5165d88d8b9deaf38baa77770fa6a358e2eebdffd1bd8a1eb7386",
 		Expected: "01",
 		Name:     "",
 	}

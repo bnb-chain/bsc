@@ -54,9 +54,9 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	case evm.chainRules.IsBoneh:
 		precompiles = PrecompiledContractsBoneh
 	case evm.chainRules.IsMoran:
-		precompiles = PrecompiledContractsIsMoran
+		precompiles = PrecompiledContractsMoran
 	case evm.chainRules.IsNano:
-		precompiles = PrecompiledContractsIsNano
+		precompiles = PrecompiledContractsNano
 	case evm.chainRules.IsBerlin:
 		precompiles = PrecompiledContractsBerlin
 	case evm.chainRules.IsIstanbul:
@@ -255,7 +255,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			gas = 0
 		}
 		// TODO: consider clearing up unused snapshots:
-		//} else {
+		// } else {
 		//	evm.StateDB.DiscardSnapshot(snapshot)
 	}
 	return ret, gas, err

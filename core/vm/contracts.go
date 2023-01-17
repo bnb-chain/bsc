@@ -20,15 +20,14 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math/big"
 
-	//lint:ignore SA1019 Needed for precompile
 	"github.com/prysmaticlabs/prysm/crypto/bls"
 	"golang.org/x/crypto/ripemd160"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 	"github.com/ethereum/go-ethereum/crypto/bls12381"
@@ -83,7 +82,7 @@ var PrecompiledContractsIstanbul = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidate{},
 }
 
-var PrecompiledContractsIsNano = map[common.Address]PrecompiledContract{
+var PrecompiledContractsNano = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{1}): &ecrecover{},
 	common.BytesToAddress([]byte{2}): &sha256hash{},
 	common.BytesToAddress([]byte{3}): &ripemd160hash{},
@@ -98,7 +97,7 @@ var PrecompiledContractsIsNano = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidateNano{},
 }
 
-var PrecompiledContractsIsMoran = map[common.Address]PrecompiledContract{
+var PrecompiledContractsMoran = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{1}): &ecrecover{},
 	common.BytesToAddress([]byte{2}): &sha256hash{},
 	common.BytesToAddress([]byte{3}): &ripemd160hash{},
@@ -142,7 +141,7 @@ var PrecompiledContractsBoneh = map[common.Address]PrecompiledContract{
 
 	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
 	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidate{},
-	common.BytesToAddress([]byte{102}): &voteSignatureVerify{},
+	common.BytesToAddress([]byte{102}): &blsSignatureVerify{},
 }
 
 // PrecompiledContractsBLS contains the set of pre-compiled Ethereum
@@ -182,10 +181,10 @@ func init() {
 	for k := range PrecompiledContractsBerlin {
 		PrecompiledAddressesBerlin = append(PrecompiledAddressesBerlin, k)
 	}
-	for k := range PrecompiledContractsIsNano {
+	for k := range PrecompiledContractsNano {
 		PrecompiledAddressesNano = append(PrecompiledAddressesNano, k)
 	}
-	for k := range PrecompiledContractsIsMoran {
+	for k := range PrecompiledContractsMoran {
 		PrecompiledAddressesMoran = append(PrecompiledAddressesMoran, k)
 	}
 	for k := range PrecompiledContractsBoneh {
@@ -276,6 +275,7 @@ type sha256hash struct{}
 func (c *sha256hash) RequiredGas(input []byte) uint64 {
 	return uint64(len(input)+31)/32*params.Sha256PerWordGas + params.Sha256BaseGas
 }
+
 func (c *sha256hash) Run(input []byte) ([]byte, error) {
 	h := sha256.Sum256(input)
 	return h[:], nil
@@ -291,6 +291,7 @@ type ripemd160hash struct{}
 func (c *ripemd160hash) RequiredGas(input []byte) uint64 {
 	return uint64(len(input)+31)/32*params.Ripemd160PerWordGas + params.Ripemd160BaseGas
 }
+
 func (c *ripemd160hash) Run(input []byte) ([]byte, error) {
 	ripemd := ripemd160.New()
 	ripemd.Write(input)
@@ -307,6 +308,7 @@ type dataCopy struct{}
 func (c *dataCopy) RequiredGas(input []byte) uint64 {
 	return uint64(len(input)+31)/32*params.IdentityPerWordGas + params.IdentityBaseGas
 }
+
 func (c *dataCopy) Run(in []byte) ([]byte, error) {
 	return in, nil
 }
@@ -337,9 +339,10 @@ var (
 // modexpMultComplexity implements bigModexp multComplexity formula, as defined in EIP-198
 //
 // def mult_complexity(x):
-//    if x <= 64: return x ** 2
-//    elif x <= 1024: return x ** 2 // 4 + 96 * x - 3072
-//    else: return x ** 2 // 16 + 480 * x - 199680
+//
+//	if x <= 64: return x ** 2
+//	elif x <= 1024: return x ** 2 // 4 + 96 * x - 3072
+//	else: return x ** 2 // 16 + 480 * x - 199680
 //
 // where is x is max(length_of_MODULUS, length_of_BASE)
 func modexpMultComplexity(x *big.Int) *big.Int {
@@ -406,7 +409,7 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 		// def mult_complexity(x):
 		//    ceiling(x/8)^2
 		//
-		//where is x is max(length_of_MODULUS, length_of_BASE)
+		// where is x is max(length_of_MODULUS, length_of_BASE)
 		gas = gas.Add(gas, big7)
 		gas = gas.Div(gas, big8)
 		gas.Mul(gas, gas)
@@ -1115,51 +1118,61 @@ func (c *bls12381MapG2) Run(input []byte) ([]byte, error) {
 	return g.EncodePoint(r), nil
 }
 
-var errVoteSignatureVerify = errors.New("invalid signatures")
-
-// voteSignatureVerify implements BEP-126 finality signature verification precompile.
-type voteSignatureVerify struct{}
+// blsSignatureVerify implements bls signature verification precompile.
+type blsSignatureVerify struct{}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
-func (c *voteSignatureVerify) RequiredGas(input []byte) uint64 {
-	return params.VoteSignatureVerifyGas
+func (c *blsSignatureVerify) RequiredGas(input []byte) uint64 {
+	return params.BlsSignatureVerifyGas
 }
 
-func (c *voteSignatureVerify) Run(input []byte) ([]byte, error) {
-	var (
-		srcNum  = new(big.Int).SetBytes(getData(input, 0, 32)).Uint64()
-		tarNum  = new(big.Int).SetBytes(getData(input, 32, 32)).Uint64()
-		srcHash = getData(input, 64, 32)
-		tarHash = getData(input, 96, 32)
-		sig     = getData(input, 128, 96)
-		BLSKey  = getData(input, 224, 48)
-	)
+const (
+	msgHashLength         = uint64(32)
+	signatureLength       = uint64(96)
+	singleBlsPubkeyLength = uint64(48)
+)
 
-	sigs := make([][]byte, 1)
-	msgs := make([][32]byte, 1)
-	pubKeys := make([]bls.PublicKey, 1)
-
-	voteData := &types.VoteData{
-		SourceNumber: srcNum,
-		SourceHash:   common.BytesToHash(srcHash),
-		TargetNumber: tarNum,
-		TargetHash:   common.BytesToHash(tarHash),
+// Run input:
+// msg      | signature | [{bls pubkey}] |
+// 32 bytes | 96 bytes  | [{48 bytes}]   |
+func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
+	minimumLength := msgHashLength + signatureLength
+	inputLen := uint64(len(input))
+	if inputLen <= minimumLength ||
+		(inputLen-minimumLength)%singleBlsPubkeyLength != 0 {
+		return nil, fmt.Errorf("expected input size %d+%d*N, actual input size: %d", minimumLength, singleBlsPubkeyLength, inputLen)
 	}
-	copy(msgs[0][:], voteData.Hash().Bytes())
 
-	pubKey, err := bls.PublicKeyFromBytes(BLSKey)
+	var msg [32]byte
+	msgBytes := getData(input, 0, msgHashLength)
+	copy(msg[:], msgBytes)
+
+	signatureBytes := getData(input, msgHashLength, signatureLength)
+	sig, err := bls.SignatureFromBytes(signatureBytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid signature: %v", err)
 	}
-	pubKeys[0] = pubKey
-	sigs[0] = sig
 
-	success, err := bls.VerifyMultipleSignatures(sigs, msgs, pubKeys)
-	if err != nil {
-		return nil, err
+	pubKeyNumber := (inputLen - minimumLength) / singleBlsPubkeyLength
+	pubKeys := make([]bls.PublicKey, pubKeyNumber)
+	for i := uint64(0); i < pubKeyNumber; i++ {
+		pubKeyBytes := getData(input, minimumLength+i*singleBlsPubkeyLength, singleBlsPubkeyLength)
+		pubKey, err := bls.PublicKeyFromBytes(pubKeyBytes)
+		if err != nil {
+			return nil, err
+		}
+		pubKeys[i] = pubKey
 	}
-	if !success {
-		return nil, errVoteSignatureVerify
+
+	if pubKeyNumber > 1 {
+		if !sig.FastAggregateVerify(pubKeys, msg) {
+			return nil, fmt.Errorf("signature verify failed")
+		}
+	} else {
+		if !sig.Verify(pubKeys[0], msgBytes) {
+			return nil, fmt.Errorf("signature verify failed")
+		}
 	}
+
 	return big1.Bytes(), nil
 }
