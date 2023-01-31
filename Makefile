@@ -49,8 +49,10 @@ ios:
 	@echo "Done building."
 	@echo "Import \"$(GOBIN)/Geth.framework\" to use the library."
 
-test: all
-	$(GORUN) build/ci.go test -timeout 1h
+
+test:
+	go test -p 1 -timeout 1h ./mamoru-tracer/... ./accounts/... ./common/... ./consensus/... ./console/... ./core/... ./crypto/... ./eth/... ./ethclient/... ./ethdb/... ./event/... ./graphql/... ./les/... ./light/... ./log/... ./metrics/... ./miner/... ./mobile/... ./node/... ./p2p/... ./params/... ./rlp/... ./rpc/... ./tests/... ./trie/... ./cmd/geth/...
+
 
 truffle-test:
 	docker build . -f ./docker/Dockerfile --target bsc-genesis -t bsc-genesis
