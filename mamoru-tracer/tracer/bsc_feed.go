@@ -48,10 +48,9 @@ func (f *BSCFeed) FeedBlock(block *types.Block) evm_types.Block {
 	return blockData
 }
 
-func (f *BSCFeed) FeedTransactions(block *types.Block, receipts types.Receipts) ([]evm_types.Transaction, []evm_types.TransactionArg) {
+func (f *BSCFeed) FeedTransactions(block *types.Block, receipts types.Receipts) []evm_types.Transaction {
 	signer := types.MakeSigner(f.chainConfig, block.Number())
 	var transactions []evm_types.Transaction
-	var transactionArgs []evm_types.TransactionArg
 
 	for i, tx := range block.Transactions() {
 		var transaction evm_types.Transaction
@@ -61,7 +60,7 @@ func (f *BSCFeed) FeedTransactions(block *types.Block, receipts types.Receipts) 
 		transaction.Nonce = tx.Nonce()
 		transaction.Status = receipts[i].Status
 		transaction.BlockIndex = block.NumberU64()
-		transaction.Timestamp = uint64(tx.Time().Unix())
+		//transaction.Timestamp = uint64(tx.Time().Unix()) // todo remove field Timestamp in evm_type
 		address, err := types.Sender(signer, tx)
 		if err != nil {
 			fmt.Println("Sender error", err)
@@ -76,12 +75,12 @@ func (f *BSCFeed) FeedTransactions(block *types.Block, receipts types.Receipts) 
 		transaction.GasLimit = tx.Gas()
 		transaction.GasUsed = tx.Cost().Uint64() // Cost returns gas * gasPrice + value.
 		transaction.Size = float64(tx.Size())
-		transaction.Method = "" // TBD
+		//transaction.Imput = tx.Data() //todo  implement field Input to evm_type
 
 		transactions = append(transactions, transaction)
 	}
 
-	return transactions, transactionArgs
+	return transactions
 }
 
 func (f *BSCFeed) FeedCalTraces(callFrames []*TxTraceResult, blockNumber uint64) ([]evm_types.CallTrace, []evm_types.CallTraceArg) {
