@@ -59,7 +59,7 @@ BNB will be used to:
 
 Many of the below are the same as or similar to go-ethereum.
 
-For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/install-and-build/installing-geth).
+For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
 
 Building `geth` requires both a Go (version 1.18 or later) and a C compiler. You can install
 them using your favourite package manager. Once the dependencies are installed, run
@@ -92,7 +92,7 @@ directory.
 ## Running `geth`
 
 Going through all the possible command line flags is out of scope here (please consult our
-[CLI Wiki page](https://geth.ethereum.org/docs/interface/command-line-options)),
+[CLI Wiki page](https://geth.ethereum.org/docs/fundamentals/command-line-options)),
 but we've enumerated a few common parameter combos to get you up to speed quickly
 on how you can run your own `geth` instance.
 
@@ -252,7 +252,7 @@ Please make sure your contributions adhere to our coding guidelines:
  * Commit messages should be prefixed with the package(s) they modify.
    * E.g. "eth, rpc: make trace configs optional"
 
-Please see the [Developers' Guide](https://geth.ethereum.org/docs/developers/devguide)
+Please see the [Developers' Guide](https://geth.ethereum.org/docs/developers)
 for more details on configuring your environment, managing project dependencies, and
 testing procedures.
 
