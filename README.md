@@ -60,7 +60,6 @@ BNB will be used to:
 Many of the below are the same as or similar to go-ethereum.
 
 For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
-For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
 
 Building `geth` requires both a Go (version 1.18 or later) and a C compiler. You can install
 them using your favourite package manager. Once the dependencies are installed, run
@@ -93,7 +92,6 @@ directory.
 ## Running `geth`
 
 Going through all the possible command line flags is out of scope here (please consult our
-[CLI Wiki page](https://geth.ethereum.org/docs/fundamentals/command-line-options)),
 [CLI Wiki page](https://geth.ethereum.org/docs/fundamentals/command-line-options)),
 but we've enumerated a few common parameter combos to get you up to speed quickly
 on how you can run your own `geth` instance.
@@ -153,16 +151,13 @@ t=2022-09-08T13:00:29+0000 lvl=info msg="Imported new chain segment"            
 t=2022-09-08T13:00:33+0000 lvl=info msg="Imported new chain segment"             blocks=1    txs=197   mgas=19.364   elapsed=34.663ms    mgasps=558.632  number=21,153,431 hash=0x0c7872b698f28cb5c36a8a3e1e315b1d31bda6109b15467a9735a12380e2ad14 dirty="0.00 B"
 ```
 
-This command will:
- * Start `geth` in fast sync mode (default, can be changed with the `--syncmode` flag),
-   causing it to download more data in exchange for avoiding processing the entire history
-   of the Binance Smart Chain network, which is very CPU intensive.
- * Start up `geth`'s built-in interactive [JavaScript console](https://geth.ethereum.org/docs/interacting-with-geth/javascript-console),
-   (via the trailing `console` subcommand) through which you can interact using [`web3` methods](https://web3js.readthedocs.io/) 
-   (note: the `web3` version bundled within `geth` is very old, and not up to date with official docs),
-   as well as `geth`'s own [management APIs](https://geth.ethereum.org/docs/interacting-with-geth/rpc).
-   This tool is optional and if you leave it out you can always attach to an already running
-   `geth` instance with `geth attach`.
+#### 6. Interact with fullnode
+Start up `geth`'s built-in interactive [JavaScript console](https://geth.ethereum.org/docs/interface/javascript-console),
+(via the trailing `console` subcommand) through which you can interact using [`web3` methods](https://web3js.readthedocs.io/en/) 
+(note: the `web3` version bundled within `geth` is very old, and not up to date with official docs),
+as well as `geth`'s own [management APIs](https://geth.ethereum.org/docs/rpc/server).
+This tool is optional and if you leave it out you can always attach to an already running
+`geth` instance with `geth attach`.
 
 #### 7. More
 
@@ -193,12 +188,9 @@ $ geth --your-favourite-flags dumpconfig
 ### Programmatically interfacing `geth` nodes
 
 As a developer, sooner rather than later you'll want to start interacting with `geth` and the
-Binance Smart Chain network via your own programs and not manually through the console. To aid
-this, `geth` has built-in support for a JSON-RPC based APIs ([standard APIs](https://eth.wiki/json-rpc/API)
-and [`geth` specific APIs](https://geth.ethereum.org/docs/interacting-with-geth/rpc)).
 BSC network via your own programs and not manually through the console. To aid
 this, `geth` has built-in support for a JSON-RPC based APIs ([standard APIs](https://ethereum.github.io/execution-apis/api-documentation/)
-and [`geth` specific APIs](https://geth.ethereum.org/docs/rpc/server)).
+and [`geth` specific APIs](https://geth.ethereum.org/docs/interacting-with-geth/rpc)).
 These can be exposed via HTTP, WebSockets and IPC (UNIX sockets on UNIX based
 platforms, and named pipes on Windows).
 
@@ -260,7 +252,6 @@ Please make sure your contributions adhere to our coding guidelines:
  * Commit messages should be prefixed with the package(s) they modify.
    * E.g. "eth, rpc: make trace configs optional"
 
-Please see the [Developers' Guide](https://geth.ethereum.org/docs/developers)
 Please see the [Developers' Guide](https://geth.ethereum.org/docs/developers)
 for more details on configuring your environment, managing project dependencies, and
 testing procedures.
