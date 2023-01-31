@@ -50,7 +50,7 @@ ios:
 	@echo "Import \"$(GOBIN)/Geth.framework\" to use the library."
 
 test: all
-	$(GORUN) build/ci.go test -timeout 1h -v
+	$(GORUN) build/ci.go test -timeout 1h
 
 truffle-test:
 	docker build . -f ./docker/Dockerfile --target bsc-genesis -t bsc-genesis
