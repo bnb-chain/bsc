@@ -461,6 +461,12 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				// get checkpoint data
 				hash := checkpoint.Hash()
 
+				if len(checkpoint.Extra) < extraVanity {
+					return nil, errMissingVanity
+				}
+				if len(checkpoint.Extra) < extraVanity+extraSeal {
+					return nil, errMissingSignature
+				}
 				validatorBytes := checkpoint.Extra[extraVanity : len(checkpoint.Extra)-extraSeal]
 				// get validators from headers
 				validators, err := ParseValidators(validatorBytes)
