@@ -20,13 +20,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Echo
-        env:
-            TEST_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            TEST_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      - name: Prepare git and ssh config for build context
         run: |
-            echo ${#TEST_GITHUB_TOKEN}
-            echo ${#TEST_USERNAME}
+          mkdir root-config
+          cp -r ~/.gitconfig  ~/.ssh root-config/
 
       - name: Login to Docker Hub
         uses: docker/login-action@v2
