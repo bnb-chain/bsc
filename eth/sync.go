@@ -60,15 +60,12 @@ func (h *handler) syncTransactions(p *eth.Peer) {
 	p.AsyncSendPooledTransactionHashes(hashes)
 }
 
-func (h *handler) syncVotes(p *eth.Peer) {
-	// Vote is introduces since the eth/68 protocol.
-	if p.Version() >= eth.ETH68 {
-		votes := h.votepool.GetVotes()
-		if len(votes) == 0 {
-			return
-		}
-		p.AsyncSendVotes(votes)
+func (h *handler) syncVotes(p *bscPeer) {
+	votes := h.votepool.GetVotes()
+	if len(votes) == 0 {
+		return
 	}
+	p.AsyncSendVotes(votes)
 }
 
 // chainSyncer coordinates blockchain sync components.

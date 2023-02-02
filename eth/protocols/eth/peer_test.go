@@ -45,7 +45,7 @@ func newTestPeer(name string, version uint, backend Backend) (*testPeer, <-chan 
 	var id enode.ID
 	rand.Read(id[:])
 
-	peer := NewPeer(version, p2p.NewPeer(id, name, nil), net, backend.TxPool(), nil)
+	peer := NewPeer(version, p2p.NewPeer(id, name, nil), net, backend.TxPool())
 	errc := make(chan error, 1)
 	go func() {
 		errc <- backend.RunPeer(peer, func(peer *Peer) error {

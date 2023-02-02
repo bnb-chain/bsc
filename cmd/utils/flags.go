@@ -133,6 +133,11 @@ var (
 		Name:  "enabletrustprotocol",
 		Usage: "Enable trust protocol",
 	}
+	DisableBscProtocolFlag = cli.BoolFlag{
+		Name:  "disablebscprotocol",
+		Usage: "Disable bsc protocol",
+	}
+
 	DiffSyncFlag = cli.BoolFlag{
 		Name: "diffsync",
 		Usage: "Enable diffy sync, Please note that enable diffsync will improve the syncing speed, " +
@@ -1726,6 +1731,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.GlobalIsSet(EnableTrustProtocolFlag.Name) {
 		cfg.EnableTrustProtocol = ctx.GlobalIsSet(EnableTrustProtocolFlag.Name)
 	}
+	if ctx.GlobalIsSet(DisableBscProtocolFlag.Name) {
+		cfg.DisableBscProtocol = ctx.GlobalIsSet(DisableBscProtocolFlag.Name)
+	}
 	if ctx.GlobalIsSet(DiffSyncFlag.Name) {
 		cfg.DiffSync = ctx.GlobalBool(DiffSyncFlag.Name)
 	}
@@ -1802,7 +1810,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.RPCTxFeeCap = ctx.GlobalFloat64(RPCGlobalTxFeeCapFlag.Name)
 	}
 	if ctx.GlobalIsSet(NoDiscoverFlag.Name) {
-		cfg.EthDiscoveryURLs, cfg.SnapDiscoveryURLs, cfg.TrustDiscoveryURLs = []string{}, []string{}, []string{}
+		cfg.EthDiscoveryURLs, cfg.SnapDiscoveryURLs, cfg.TrustDiscoveryURLs, cfg.BscDiscoveryURLs = []string{}, []string{}, []string{}, []string{}
 	} else if ctx.GlobalIsSet(DNSDiscoveryFlag.Name) {
 		urls := ctx.GlobalString(DNSDiscoveryFlag.Name)
 		if urls == "" {
@@ -1917,6 +1925,7 @@ func SetDNSDiscoveryDefaults(cfg *ethconfig.Config, genesis common.Hash) {
 		cfg.EthDiscoveryURLs = []string{url}
 		cfg.SnapDiscoveryURLs = cfg.EthDiscoveryURLs
 		cfg.TrustDiscoveryURLs = cfg.EthDiscoveryURLs
+		cfg.BscDiscoveryURLs = cfg.EthDiscoveryURLs
 	}
 }
 

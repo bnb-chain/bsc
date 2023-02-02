@@ -25,12 +25,14 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		EthDiscoveryURLs                []string
 		SnapDiscoveryURLs               []string
 		TrustDiscoveryURLs              []string
+		BscDiscoveryURLs               []string
 		NoPruning                       bool
 		NoPrefetch                      bool
 		DirectBroadcast                 bool
 		DisableSnapProtocol             bool
 		DisableDiffProtocol             bool
 		EnableTrustProtocol             bool
+		DisableBscProtocol             bool
 		DiffSync                        bool
 		RangeLimit                      bool
 		TxLookupLimit                   uint64                 `toml:",omitempty"`
@@ -87,11 +89,13 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.EthDiscoveryURLs = c.EthDiscoveryURLs
 	enc.SnapDiscoveryURLs = c.SnapDiscoveryURLs
 	enc.TrustDiscoveryURLs = c.TrustDiscoveryURLs
+	enc.BscDiscoveryURLs = c.BscDiscoveryURLs
 	enc.NoPruning = c.NoPruning
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
 	enc.DisableDiffProtocol = c.DisableDiffProtocol
 	enc.EnableTrustProtocol = c.EnableTrustProtocol
+	enc.DisableBscProtocol = c.DisableBscProtocol
 	enc.DiffSync = c.DiffSync
 	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
@@ -152,12 +156,14 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		EthDiscoveryURLs                []string
 		SnapDiscoveryURLs               []string
 		TrustDiscoveryURLs              []string
+		BscDiscoveryURLs               []string
 		NoPruning                       *bool
 		NoPrefetch                      *bool
 		DirectBroadcast                 *bool
 		DisableSnapProtocol             *bool
 		DisableDiffProtocol             *bool
 		EnableTrustProtocol             *bool
+		DisableBscProtocol             *bool
 		DiffSync                        *bool
 		RangeLimit                      *bool
 		TxLookupLimit                   *uint64                `toml:",omitempty"`
@@ -231,6 +237,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.TrustDiscoveryURLs != nil {
 		c.TrustDiscoveryURLs = dec.TrustDiscoveryURLs
 	}
+	if dec.BscDiscoveryURLs != nil {
+		c.BscDiscoveryURLs = dec.BscDiscoveryURLs
+	}
 	if dec.NoPruning != nil {
 		c.NoPruning = *dec.NoPruning
 	}
@@ -245,6 +254,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.EnableTrustProtocol != nil {
 		c.EnableTrustProtocol = *dec.EnableTrustProtocol
+	}
+	if dec.DisableBscProtocol != nil {
+		c.DisableBscProtocol = *dec.DisableBscProtocol
 	}
 	if dec.DiffSync != nil {
 		c.DiffSync = *dec.DiffSync

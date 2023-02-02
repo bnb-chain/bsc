@@ -44,6 +44,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
+	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
@@ -78,6 +79,7 @@ type Ethereum struct {
 	ethDialCandidates   enode.Iterator
 	snapDialCandidates  enode.Iterator
 	trustDialCandidates enode.Iterator
+	bscDialCandidates   enode.Iterator
 	merger              *consensus.Merger
 
 	// DB interfaces
@@ -317,6 +319,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 	eth.trustDialCandidates, err = dnsclient.NewIterator(eth.config.TrustDiscoveryURLs...)
+	if err != nil {
+		return nil, err
+	}
+	eth.bscDialCandidates, err = dnsclient.NewIterator(eth.config.BscDiscoveryURLs...)
 	if err != nil {
 		return nil, err
 	}
@@ -615,6 +621,9 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 	if s.config.EnableTrustProtocol {
 		protos = append(protos, trust.MakeProtocols((*trustHandler)(s.handler), s.snapDialCandidates)...)
 	}
+	if !s.config.DisableBscProtocol {
+		protos = append(protos, bsc.MakeProtocols((*bscHandler)(s.handler), s.bscDialCandidates)...)
+	}
 	return protos
 }
 
@@ -649,6 +658,7 @@ func (s *Ethereum) Stop() error {
 	s.ethDialCandidates.Close()
 	s.snapDialCandidates.Close()
 	s.trustDialCandidates.Close()
+	s.bscDialCandidates.Close()
 	s.handler.Stop()
 
 	// Then stop everything else.
