@@ -4,10 +4,6 @@ on:
     branches:
       - master
       - develop
-  pull_request:
-    branches:
-      - master
-      - develop
 
 env:
   REPOSITORY: mamorufoundation/bsc-sniffer
