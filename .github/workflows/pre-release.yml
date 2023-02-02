@@ -6,12 +6,15 @@ on:
     tags:
       - 'pre-*'
 
+env:
+  GOPROXY: direct
+
 jobs:
   build:
     name: Build Release
     strategy:
       matrix:
-        go-version: [1.17.x]
+        go-version: [1.19.x]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -46,7 +49,9 @@ jobs:
       - name: Build Binary for ${{matrix.os}}
         env:
           CGO_ENABLED: "0"
-        run: make geth
+        run: |
+          go mod download
+          make geth
 
       # ==============================
       #       Cross Compile for ARM
@@ -55,6 +60,7 @@ jobs:
       - name: Build Binary for ARM
         if: matrix.os == 'ubuntu-latest'
         run: |
+          go mod download
           make geth-linux-arm
       # ==============================
       #       Upload artifacts

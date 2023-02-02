@@ -611,7 +611,7 @@ func (t *TransactionsByPriceAndNonce) CurrentSize() int {
 	return len(t.heads)
 }
 
-//Forward moves current transaction to be the one which is one index after tx
+// Forward moves current transaction to be the one which is one index after tx
 func (t *TransactionsByPriceAndNonce) Forward(tx *Transaction) {
 	if tx == nil {
 		if len(t.heads) > 0 {

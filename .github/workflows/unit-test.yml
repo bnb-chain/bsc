@@ -15,7 +15,7 @@ jobs:
   unit-test:
     strategy:
       matrix:
-        go-version: [1.17.x]
+        go-version: [1.19.x]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -47,5 +47,6 @@ jobs:
       env:
         ANDROID_HOME: "" # Skip android test
       run: |
+        GOPROXY=direct go mod download
         make test
 

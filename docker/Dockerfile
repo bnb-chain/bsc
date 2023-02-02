@@ -1,10 +1,10 @@
-FROM golang:1.16-alpine as bsc
+FROM golang:1.19-alpine as bsc
 
 RUN apk add --no-cache make gcc musl-dev linux-headers git bash
 
 ADD . /bsc
 WORKDIR /bsc
-RUN make geth
+RUN GOPROXY=direct go mod download && make geth
 RUN mv /bsc/build/bin/geth /usr/local/bin/geth
 
 EXPOSE 8545 8547 30303 30303/udp
