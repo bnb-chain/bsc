@@ -1050,6 +1050,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNumber *big.In
 	}
 
 	valz := make([]common.Address, len(*ret0))
+	// nolint: gosimple
 	for i, a := range *ret0 {
 		valz[i] = a
 	}
