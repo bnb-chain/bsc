@@ -122,4 +122,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.13-0.20230201033643-6b32134908ea
+replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.13
