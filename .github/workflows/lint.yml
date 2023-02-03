@@ -44,7 +44,7 @@ jobs:
           ${{ runner.os }}-go-
     
     - run: |
-        GOPROXY=direct go mod download
+        go mod download
 
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v3

@@ -47,6 +47,6 @@ jobs:
       env:
         ANDROID_HOME: "" # Skip android test
       run: |
-        GOPROXY=direct go mod download
+        go mod download
         make test
 
