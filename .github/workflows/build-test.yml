@@ -45,7 +45,7 @@ jobs:
 
     - name: Test Build
       run: |
-        GOPROXY=direct go mod download
+        go mod download
         make geth
 
 

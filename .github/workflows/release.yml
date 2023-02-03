@@ -6,9 +6,6 @@ on:
     tags:
       - v*
 
-env:
-  GOPROXY: direct
-
 jobs:
   build:
     name: Build Release

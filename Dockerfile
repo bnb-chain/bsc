@@ -10,7 +10,6 @@ RUN apk add --no-cache make gcc musl-dev linux-headers git bash
 # Get dependencies - will also be cached if we won't change go.mod/go.sum
 COPY go.mod /go-ethereum/
 COPY go.sum /go-ethereum/
-ENV GOPROXY=direct
 RUN cd /go-ethereum && go mod download
 
 ADD . /go-ethereum

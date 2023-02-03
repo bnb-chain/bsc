@@ -4,7 +4,7 @@ RUN apk add --no-cache make gcc musl-dev linux-headers git bash
 
 ADD . /bsc
 WORKDIR /bsc
-RUN GOPROXY=direct go mod download && make geth
+RUN make geth
 RUN mv /bsc/build/bin/geth /usr/local/bin/geth
 
 EXPOSE 8545 8547 30303 30303/udp
