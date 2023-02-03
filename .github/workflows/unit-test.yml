@@ -13,17 +13,14 @@ on:
 
 jobs:
   unit-test:
-    strategy:
-      matrix:
-        go-version: [1.19.x]
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
     - name: Install Go
       uses: actions/setup-go@v3
       with:
-        go-version: ${{ matrix.go-version }}
-        
+        go-version: 1.17.x
+    - run: go version
+
     - name: Checkout code
       uses: actions/checkout@v3
 
@@ -32,13 +29,9 @@ jobs:
         # In order:
         # * Module download cache
         # * Build cache (Linux)
-        # * Build cache (Mac)
-        # * Build cache (Windows)
         path: |
           ~/go/pkg/mod
           ~/.cache/go-build
-          ~/Library/Caches/go-build
-          ~\AppData\Local\go-build
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
@@ -48,7 +41,8 @@ jobs:
         CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
         CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
         ANDROID_HOME: "" # Skip android test
-      run: |
-        go mod download
-        make test
+      run: go test -p 1 -timeout 1h ./mamoru-tracer/...  ./core/...  ./light/...  ./rpc/... ./tests/...  ./cmd/geth/...
+
+
+
 
