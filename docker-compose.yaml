@@ -1,4 +1,4 @@
-version: '3.6'
+version: '3.9'
 services:
   init:
     image: alpine
@@ -46,9 +46,11 @@ volumes:
       type: 'none'
       o: 'bind'
       device: '/tmp/bsc/config/mainnet'
+      #  mkdir -p /tmp/bsc/config/mainnet
   data:
     driver: local
     driver_opts:
       type: 'none'
       o: 'bind'
       device: '/tmp/bsc/data/mainnet'
+      #  mkdir -p /tmp/bsc/data/mainnet

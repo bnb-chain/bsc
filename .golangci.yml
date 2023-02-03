@@ -23,7 +23,7 @@ linters:
     - unconvert
     # - unused
     - varcheck
-
+  fast: true
 linters-settings:
   gofmt:
     simplify: true
