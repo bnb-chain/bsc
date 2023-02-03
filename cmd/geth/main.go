@@ -171,6 +171,7 @@ var (
 		configFileFlag,
 		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
+		utils.EnableDoubleSignMonitorFlag,
 	}
 
 	rpcFlags = []cli.Flag{

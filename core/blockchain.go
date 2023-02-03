@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core/monitor"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -258,6 +259,9 @@ type BlockChain struct {
 
 	shouldPreserve  func(*types.Block) bool        // Function used to determine whether should preserve the given block.
 	terminateInsert func(common.Hash, uint64) bool // Testing hook used to terminate ancient receipt chain insertion.
+
+	// monitor
+	doubleSignMonitor *monitor.DoubleSignMonitor
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -504,6 +508,13 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		bc.wg.Add(1)
 		go bc.rewindInvalidHeaderBlockLoop()
 	}
+
+	if bc.doubleSignMonitor != nil {
+		bc.wg.Add(1)
+		go bc.startDoubleSignMonitor()
+
+	}
+
 	return bc, nil
 }
 
@@ -2569,6 +2580,27 @@ func (bc *BlockChain) trustedDiffLayerLoop() {
 	}
 }
 
+func (bc *BlockChain) startDoubleSignMonitor() {
+	eventChan := make(chan ChainHeadEvent, monitor.MaxCacheHeader)
+	sub := bc.SubscribeChainHeadEvent(eventChan)
+	defer func() {
+		sub.Unsubscribe()
+		close(eventChan)
+		bc.wg.Done()
+	}()
+
+	for {
+		select {
+		case event := <-eventChan:
+			if bc.doubleSignMonitor != nil {
+				bc.doubleSignMonitor.Verify(event.Block.Header())
+			}
+		case <-bc.quit:
+			return
+		}
+	}
+}
+
 func (bc *BlockChain) GetUnTrustedDiffLayer(blockHash common.Hash, pid string) *types.DiffLayer {
 	bc.diffMux.RLock()
 	defer bc.diffMux.RUnlock()
@@ -2973,6 +3005,11 @@ func EnableBlockValidator(chainConfig *params.ChainConfig, engine consensus.Engi
 		}
 		return bc, nil
 	}
+}
+
+func EnableDoubleSignChecker(bc *BlockChain) (*BlockChain, error) {
+	bc.doubleSignMonitor = monitor.NewDoubleSignMonitor()
+	return bc, nil
 }
 
 func (bc *BlockChain) GetVerifyResult(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) *VerifyResult {
