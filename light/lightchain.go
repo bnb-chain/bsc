@@ -39,6 +39,9 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+
+	mamorutracer "github.com/ethereum/go-ethereum/mamoru-tracer"
+	"github.com/ethereum/go-ethereum/mamoru-tracer/tracer"
 )
 
 var (
@@ -459,6 +462,37 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 	case core.SideStatTy:
 		lc.chainSideFeed.Send(core.ChainSideEvent{Block: block})
 	}
+	////////////////////////////////////////////////////////////////////////////
+	if !mamorutracer.IsSnifferEnable() {
+		return 0, nil
+	}
+	ctx := context.Background()
+
+	lastBlock, err := lc.GetBlockByNumber(ctx, block.NumberU64())
+	if err != nil {
+		return 0, err
+	}
+
+	parentBlock, err := lc.GetBlockByHash(ctx, block.ParentHash())
+	if err != nil {
+		return 0, err
+	}
+
+	log.Info("Sniffer start", "number", lastBlock.NumberU64())
+
+	stateDb := NewState(ctx, parentBlock.Header(), lc.Odr())
+	receipts, err := GetBlockReceipts(ctx, lc.Odr(), lastBlock.Hash(), lastBlock.Number().Uint64())
+	if err != nil {
+		return 0, err
+	}
+
+	mamorutracer.Trace(ctx,
+		tracer.NewTracerConfig(stateDb.Copy(), lc.Config(), lc),
+		lastBlock,
+		receipts,
+	)
+
+	////////////////////////////////////////////////////////////////////////////
 	return 0, err
 }
 
