@@ -147,6 +147,9 @@ type downloadTesterPeer struct {
 	withholdHeaders map[common.Hash]struct{}
 }
 
+func (dlp *downloadTesterPeer) SetLagging(bool) {
+}
+
 // Head constructs a function to retrieve a peer's current head hash
 // and total difficulty.
 func (dlp *downloadTesterPeer) Head() (common.Hash, *big.Int) {
