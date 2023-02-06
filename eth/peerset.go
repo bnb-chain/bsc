@@ -478,6 +478,9 @@ func (ps *peerSet) peerWithHighestTD() *eth.Peer {
 		bestTd   *big.Int
 	)
 	for _, p := range ps.peers {
+		if p.Lagging() {
+			continue
+		}
 		if _, td := p.Head(); bestPeer == nil || td.Cmp(bestTd) > 0 {
 			bestPeer, bestTd = p.Peer, td
 		}

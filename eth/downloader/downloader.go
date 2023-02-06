@@ -516,15 +516,19 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 	default:
 		localHeight = d.lightchain.CurrentHeader().Number.Uint64()
 	}
-	if localHeight >= remoteHeight {
-		if d.blockchain.GetBlockByHash(remoteHeader.Hash()) != nil {
-			p.log.Warn("syncWithPeer", "local", localHeight, "remote", remoteHeight, "mode", mode, "err", errLaggingPeer)
-			return errLaggingPeer
-		}
-	}
+
 	origin, err := d.findAncestor(p, localHeight, remoteHeader)
 	if err != nil {
 		return err
+	}
+
+	if localHeight >= remoteHeight {
+		// if remoteHeader does not exist in local chain, will move on to insert it as a side chain.
+		if d.blockchain.GetBlockByHash(remoteHeader.Hash()) != nil {
+			p.log.Warn("syncWithPeer", "local", localHeight, "remote", remoteHeight, "mode", mode, "err", errLaggingPeer)
+			p.peer.SetLagging(true)
+			return errLaggingPeer
+		}
 	}
 	d.syncStatsLock.Lock()
 	if d.syncStatsChainHeight <= origin || d.syncStatsChainOrigin > origin {
