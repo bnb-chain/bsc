@@ -396,7 +396,7 @@ func (d *Downloader) Synchronise(id string, head common.Hash, td *big.Int, mode 
 		}
 		return err
 	}
-	log.Warn("Synchronisation failed, retrying", "err", err)
+	log.Warn("Synchronisation failed, retrying", "peer", id, "err", err)
 	return err
 }
 
@@ -526,7 +526,7 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 		// if remoteHeader does not exist in local chain, will move on to insert it as a side chain.
 		if d.blockchain.GetBlockByHash(remoteHeader.Hash()) != nil {
 			p.log.Warn("syncWithPeer", "local", localHeight, "remote", remoteHeight, "mode", mode, "err", errLaggingPeer)
-			p.peer.SetLagging(true)
+			p.peer.MarkLagging()
 			return errLaggingPeer
 		}
 	}

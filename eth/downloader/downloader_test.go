@@ -147,7 +147,7 @@ type downloadTesterPeer struct {
 	withholdHeaders map[common.Hash]struct{}
 }
 
-func (dlp *downloadTesterPeer) SetLagging(bool) {
+func (dlp *downloadTesterPeer) MarkLagging() {
 }
 
 // Head constructs a function to retrieve a peer's current head hash

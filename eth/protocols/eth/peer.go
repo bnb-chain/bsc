@@ -158,8 +158,8 @@ func (p *Peer) Lagging() bool {
 	return p.lagging
 }
 
-func (p *Peer) SetLagging(lagging bool) {
-	p.lagging = lagging
+func (p *Peer) MarkLagging() {
+	p.lagging = true
 }
 
 // Head retrieves the current head hash and total difficulty of the peer.
