@@ -524,7 +524,8 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 
 	if localHeight >= remoteHeight {
 		// if remoteHeader does not exist in local chain, will move on to insert it as a side chain.
-		if d.blockchain.GetBlockByHash(remoteHeader.Hash()) != nil {
+		if d.blockchain.GetBlockByHash(remoteHeader.Hash()) != nil ||
+			(mode == LightSync && d.blockchain.GetHeaderByHash(remoteHeader.Hash()) != nil) {
 			p.log.Warn("syncWithPeer", "local", localHeight, "remote", remoteHeight, "mode", mode, "err", errLaggingPeer)
 			p.peer.MarkLagging()
 			return errLaggingPeer
