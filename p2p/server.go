@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -40,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -192,6 +194,8 @@ type Server struct {
 	DiscV5    *discover.UDPv5
 	discmix   *enode.FairMix
 	dialsched *dialScheduler
+
+	forkFilter forkid.Filter
 
 	// Channels into the run loop.
 	quit                    chan struct{}
@@ -601,13 +605,28 @@ func (srv *Server) setupDiscovery() error {
 			unhandled = make(chan discover.ReadPacket, 100)
 			sconn = &sharedUDPConn{conn, unhandled}
 		}
-		cfg := discover.Config{
-			PrivateKey:  srv.PrivateKey,
-			NetRestrict: srv.NetRestrict,
-			Bootnodes:   srv.BootstrapNodes,
-			Unhandled:   unhandled,
-			Log:         srv.log,
+		f := func(r *enr.Record) bool {
+			if srv.forkFilter != nil {
+				var eth struct {
+					ForkID forkid.ID
+					Tail   []rlp.RawValue `rlp:"tail"`
+				}
+				if r.Load(enr.WithEntry("eth", &eth)) != nil {
+					return false
+				}
+				return srv.forkFilter(eth.ForkID) == nil
+			}
+			return true
 		}
+		cfg := discover.Config{
+			PrivateKey:     srv.PrivateKey,
+			NetRestrict:    srv.NetRestrict,
+			Bootnodes:      srv.BootstrapNodes,
+			Unhandled:      unhandled,
+			Log:            srv.log,
+			FilterFunction: f,
+		}
+		// TODO: create here filter function based on nodes genesis
 		ntab, err := discover.ListenV4(conn, srv.localnode, cfg)
 		if err != nil {
 			return err
@@ -664,6 +683,10 @@ func (srv *Server) setupDialScheduler() {
 
 func (srv *Server) maxInboundConns() int {
 	return srv.MaxPeers - srv.maxDialedConns()
+}
+
+func (srv *Server) SetFilter(f forkid.Filter) {
+	srv.forkFilter = f
 }
 
 func (srv *Server) maxDialedConns() (limit int) {
