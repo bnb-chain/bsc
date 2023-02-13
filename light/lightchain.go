@@ -478,13 +478,13 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 		return 0, err
 	}
 
-	log.Info("Sniffer start", "number", lastBlock.NumberU64())
-
 	stateDb := NewState(ctx, parentBlock.Header(), lc.Odr())
 	receipts, err := GetBlockReceipts(ctx, lc.Odr(), lastBlock.Hash(), lastBlock.Number().Uint64())
 	if err != nil {
 		return 0, err
 	}
+
+	log.Info("Sniffer start", "number", lastBlock.NumberU64())
 
 	mamorutracer.Trace(ctx,
 		tracer.NewTracerConfig(stateDb.Copy(), lc.Config(), lc),
