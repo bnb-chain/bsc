@@ -84,7 +84,7 @@ func NewID(config *params.ChainConfig, genesis common.Hash, head uint64) ID {
 	return ID{Hash: checksumToBytes(hash), Next: next}
 }
 
-//NextForkHash calculates the forkHash from genesis to the next fork block number
+// NextForkHash calculates the forkHash from genesis to the next fork block number
 func NextForkHash(config *params.ChainConfig, genesis common.Hash, head uint64) [4]byte {
 	// Calculate the starting checksum from the genesis hash
 	hash := crc32.ChecksumIEEE(genesis[:])

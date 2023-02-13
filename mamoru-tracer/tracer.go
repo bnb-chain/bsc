@@ -2,15 +2,16 @@ package mamoru_tracer
 
 import (
 	"context"
+	"math/big"
+	"os"
+	"time"
+
 	"github.com/Mamoru-Foundation/mamoru-sniffer-go/evm_types"
 	"github.com/Mamoru-Foundation/mamoru-sniffer-go/mamoru_sniffer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/mamoru-tracer/tracer"
-	"math/big"
-	"os"
-	"time"
 )
 
 var sniffer *mamoru_sniffer.Sniffer

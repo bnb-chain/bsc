@@ -201,6 +201,9 @@ type Config struct {
 
 	// AllowUnprotectedTxs allows non EIP-155 protected transactions to be send over RPC.
 	AllowUnprotectedTxs bool `toml:",omitempty"`
+
+	// EnableDoubleSignMonitor is a flag that whether to enable the double signature checker
+	EnableDoubleSignMonitor bool `toml:",omitempty"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into

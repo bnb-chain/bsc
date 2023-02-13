@@ -128,8 +128,15 @@ type Config struct {
 	Genesis *core.Genesis `toml:",omitempty"`
 
 	// Protocol options
-	NetworkId              uint64 // Network ID to use for selecting peers to connect to
-	SyncMode               downloader.SyncMode
+	NetworkId uint64 // Network ID to use for selecting peers to connect to
+	SyncMode  downloader.SyncMode
+
+	// DisablePeerTxBroadcast is an optional config and disabled by default, and usually you do not need it.
+	// When this flag is enabled, you are requesting remote peers to stop broadcasting new transactions to you, and
+	// it does not mean that your node will stop broadcasting transactions to remote peers.
+	// If your node does care about new mempool transactions (e.g., running rpc services without the need of mempool
+	// transactions) or is continuously under high pressure (e.g., mempool is always full), then you can consider
+	// to turn it on.
 	DisablePeerTxBroadcast bool
 
 	// This can be set to list of enrtree:// URLs which will be queried for
@@ -174,7 +181,14 @@ type Config struct {
 	DatabaseDiff       string
 	PersistDiff        bool
 	DiffBlock          uint64
-	PruneAncientData   bool
+	// PruneAncientData is an optional config and disabled by default, and usually you do not need it.
+	// When this flag is enabled, only keep the latest 9w blocks' data, the older blocks' data will be
+	// pruned instead of being dumped to freezerdb, the pruned data includes CanonicalHash, Header, Block,
+	// Receipt and TotalDifficulty.
+	// Notice: the PruneAncientData once be turned on, the get/chaindata/ancient dir will be removed,
+	// if restart without the pruneancient flag, the ancient data will start with the previous point that
+	// the oldest unpruned block number.
+	PruneAncientData bool
 
 	TrieCleanCache          int
 	TrieCleanCacheJournal   string        `toml:",omitempty"` // Disk journal directory for trie cache to survive node restarts

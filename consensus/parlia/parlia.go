@@ -461,6 +461,9 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				// get checkpoint data
 				hash := checkpoint.Hash()
 
+				if len(checkpoint.Extra) <= extraVanity+extraSeal {
+					return nil, errors.New("invalid extra-data for genesis block, check the genesis.json file")
+				}
 				validatorBytes := checkpoint.Extra[extraVanity : len(checkpoint.Extra)-extraSeal]
 				// get validators from headers
 				validators, err := ParseValidators(validatorBytes)
@@ -1050,6 +1053,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNumber *big.In
 	}
 
 	valz := make([]common.Address, len(*ret0))
+	// nolint: gosimple
 	for i, a := range *ret0 {
 		valz[i] = a
 	}

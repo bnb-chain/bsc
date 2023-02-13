@@ -1,7 +1,6 @@
 package tracer
 
 import (
-	"fmt"
 	"github.com/Mamoru-Foundation/mamoru-sniffer-go/evm_types"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -52,7 +51,7 @@ func (f *EthFeed) FeedTransactions(block *types.Block, receipts types.Receipts) 
 		transaction.BlockIndex = block.NumberU64()
 		address, err := types.Sender(signer, tx)
 		if err != nil {
-			fmt.Println("Sender error", err)
+			log.Error("Sender error", "err", err, "mamoru-tracer", "bsc_feed")
 		}
 		transaction.From = address.String()
 		if tx.To() != nil {
