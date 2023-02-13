@@ -15,11 +15,12 @@ jobs:
   truffle-test:
     strategy:
       matrix:
-        os: [ubuntu-18.04]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Truffle test
-      run: make truffle-test
+      run: |
+        make truffle-test

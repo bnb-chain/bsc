@@ -1,4 +1,4 @@
-FROM golang:1.16-alpine as bsc
+FROM golang:1.19-alpine as bsc
 
 RUN apk add --no-cache make gcc musl-dev linux-headers git bash
 

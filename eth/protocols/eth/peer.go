@@ -74,8 +74,9 @@ type Peer struct {
 	version         uint              // Protocol version negotiated
 	statusExtension *UpgradeStatusExtension
 
-	head common.Hash // Latest advertised head block hash
-	td   *big.Int    // Latest advertised head block total difficulty
+	lagging bool        // lagging peer is still connected, but won't be used to sync.
+	head    common.Hash // Latest advertised head block hash
+	td      *big.Int    // Latest advertised head block total difficulty
 
 	knownBlocks     *knownCache            // Set of block hashes known to be known by this peer
 	queuedBlocks    chan *blockPropagation // Queue of blocks to broadcast to the peer
@@ -153,6 +154,14 @@ func (p *Peer) Version() uint {
 	return p.version
 }
 
+func (p *Peer) Lagging() bool {
+	return p.lagging
+}
+
+func (p *Peer) MarkLagging() {
+	p.lagging = true
+}
+
 // Head retrieves the current head hash and total difficulty of the peer.
 func (p *Peer) Head() (hash common.Hash, td *big.Int) {
 	p.lock.RLock()
@@ -166,7 +175,7 @@ func (p *Peer) Head() (hash common.Hash, td *big.Int) {
 func (p *Peer) SetHead(hash common.Hash, td *big.Int) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-
+	p.lagging = false
 	copy(p.head[:], hash[:])
 	p.td.Set(td)
 }

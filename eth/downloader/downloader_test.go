@@ -147,6 +147,9 @@ type downloadTesterPeer struct {
 	withholdHeaders map[common.Hash]struct{}
 }
 
+func (dlp *downloadTesterPeer) MarkLagging() {
+}
+
 // Head constructs a function to retrieve a peer's current head hash
 // and total difficulty.
 func (dlp *downloadTesterPeer) Head() (common.Hash, *big.Int) {
@@ -926,8 +929,8 @@ func testHighTDStarvationAttack(t *testing.T, protocol uint, mode SyncMode) {
 
 	chain := testChainBase.shorten(1)
 	tester.newPeer("attack", protocol, chain.blocks[1:])
-	if err := tester.sync("attack", big.NewInt(1000000), mode); err != errStallingPeer {
-		t.Fatalf("synchronisation error mismatch: have %v, want %v", err, errStallingPeer)
+	if err := tester.sync("attack", big.NewInt(1000000), mode); err != errLaggingPeer {
+		t.Fatalf("synchronisation error mismatch: have %v, want %v", err, errLaggingPeer)
 	}
 }
 
@@ -1235,9 +1238,26 @@ func testFakedSyncProgress(t *testing.T, protocol uint, mode SyncMode) {
 	pending.Wait()
 	afterFailedSync := tester.downloader.Progress()
 
-	// Synchronise with a good peer and check that the progress height has been reduced to
+	// it is no longer valid to sync to a lagging peer
+	laggingChain := chain.shorten(800 / 2)
+	tester.newPeer("lagging", protocol, laggingChain.blocks[1:])
+	pending.Add(1)
+	go func() {
+		defer pending.Done()
+		if err := tester.sync("lagging", nil, mode); err != errLaggingPeer {
+			panic(fmt.Sprintf("unexpected lagging synchronisation err:%v", err))
+		}
+	}()
+	// lagging peer will return before syncInitHook, skip <-starting and progress <- struct{}{}
+	checkProgress(t, tester.downloader, "lagging", ethereum.SyncProgress{
+		CurrentBlock: afterFailedSync.CurrentBlock,
+		HighestBlock: uint64(len(chain.blocks) - 1),
+	})
+	pending.Wait()
+
+	// Synchronise with a good peer and check that the progress height has been increased to
 	// the true value.
-	validChain := chain.shorten(len(chain.blocks) - numMissing)
+	validChain := chain.shorten(len(chain.blocks))
 	tester.newPeer("valid", protocol, validChain.blocks[1:])
 	pending.Add(1)
 
