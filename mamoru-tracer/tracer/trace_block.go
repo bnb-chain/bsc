@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -13,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/panjf2000/ants/v2"
-	"math/big"
 	"runtime"
 	"sync"
 	"time"
@@ -89,7 +87,7 @@ func TraceBlock(ctx context.Context,
 					TxIndex:   task.index,
 					TxHash:    txs[task.index].Hash(),
 				}
-				res, err := traceTx(ctx, config.chainConfig, msg, txctx, blockCtx, task.statedb, config.engin)
+				res, err := traceTx(ctx, config.chainConfig, msg, txctx, blockCtx, task.statedb)
 				if err != nil {
 					results[task.index] = &TxTraceResult{Error: err.Error()}
 					continue
@@ -107,15 +105,7 @@ func TraceBlock(ctx context.Context,
 
 		// Generate the next state snapshot fast without tracing
 		msg, _ := tx.AsMessage(signer, block.BaseFee())
-		if posa, ok := config.engin.(PoSA); ok {
-			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
-				balance := stateDB.GetBalance(SystemAddress)
-				if balance.Cmp(common.Big0) > 0 {
-					stateDB.SetBalance(SystemAddress, big.NewInt(0))
-					stateDB.AddBalance(block.Header().Coinbase, balance)
-				}
-			}
-		}
+
 		stateDB.Prepare(tx.Hash(), i)
 		vmenv := vm.NewEVM(blockCtx, core.NewEVMTxContext(msg), stateDB, config.chainConfig, vm.Config{})
 		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas())); err != nil {
@@ -144,8 +134,7 @@ func traceTx(ctx context.Context,
 	message core.Message,
 	txctx *tracers.Context,
 	vmctx vm.BlockContext,
-	statedb *state.StateDB,
-	engine consensus.Engine) ([]*CallFrame, error) {
+	statedb *state.StateDB) ([]*CallFrame, error) {
 	var (
 		err       error
 		timeout   = 15 * time.Second
@@ -168,15 +157,6 @@ func traceTx(ctx context.Context,
 
 	// Run the transaction with tracing enabled.
 	vmenv := vm.NewEVM(vmctx, txContext, statedb, chainConfig, vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
-
-	if posa, ok := engine.(PoSA); ok && message.From() == vmctx.Coinbase &&
-		posa.IsSystemContract(message.To()) && message.GasPrice().Cmp(big.NewInt(0)) == 0 {
-		balance := statedb.GetBalance(SystemAddress)
-		if balance.Cmp(common.Big0) > 0 {
-			statedb.SetBalance(SystemAddress, big.NewInt(0))
-			statedb.AddBalance(vmctx.Coinbase, balance)
-		}
-	}
 
 	// Call Prepare to clear out the statedb access list
 	statedb.Prepare(txctx.TxHash, txctx.TxIndex)
