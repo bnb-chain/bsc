@@ -1,4 +1,4 @@
-package tracer
+package mamoru
 
 import (
 	"fmt"
@@ -20,7 +20,6 @@ func NewFeed(chainConfig *params.ChainConfig) Feeder {
 
 func (f *EthFeed) FeedBlock(block *types.Block) evm_types.Block {
 	var blockData evm_types.Block
-
 	blockData.BlockIndex = block.NumberU64()
 	blockData.Hash = block.Hash().String()
 	blockData.ParentHash = block.ParentHash().String()
@@ -72,32 +71,21 @@ func (f *EthFeed) FeedTransactions(block *types.Block, receipts types.Receipts) 
 	return transactions
 }
 
-func (f *EthFeed) FeedCalTraces(callFrames []*TxTraceResult, blockNumber uint64) []evm_types.CallTrace {
+func (f *EthFeed) FeedCallTraces(callFrames []*CallFrame, blockNumber uint64) []evm_types.CallTrace {
 	var callTraces []evm_types.CallTrace
 	for i, frame := range callFrames {
-		if frame != nil && frame.Error != "" {
-			log.Error("call frame error", "err", frame.Error, "mamoru-tracer", "bsc_feed")
-			continue
-		}
-		if frame == nil {
-			log.Error("call frame is empty", "number", blockNumber, "callFrame", i, "mamoru-tracer", "bsc_feed")
-			continue
-		}
-		for seq, call := range frame.Result {
-			var callTrace evm_types.CallTrace
-			callTrace.Seq = uint32(seq)
-			callTrace.TxIndex = uint32(i)
-			callTrace.BlockIndex = blockNumber
-			callTrace.Type = call.Type
-			callTrace.To = call.To
-			callTrace.From = call.From
-			callTrace.Value = call.Value
-			callTrace.GasLimit = call.Gas
-			callTrace.GasUsed = call.GasUsed
-			callTrace.Input = call.Input
+		var callTrace evm_types.CallTrace
+		callTrace.TxIndex = uint32(i)
+		callTrace.BlockIndex = blockNumber
+		callTrace.Type = frame.Type
+		callTrace.To = frame.To
+		callTrace.From = frame.From
+		callTrace.Value = frame.Value
+		callTrace.GasLimit = frame.Gas
+		callTrace.GasUsed = frame.GasUsed
+		callTrace.Input = frame.Input
 
-			callTraces = append(callTraces, callTrace)
-		}
+		callTraces = append(callTraces, callTrace)
 	}
 
 	return callTraces
@@ -115,7 +103,20 @@ func (f *EthFeed) FeedEvents(receipts types.Receipts) []evm_types.Event {
 			event.TxHash = rlog.TxHash.String()
 			event.Address = rlog.Address.String()
 			event.Data = rlog.Data
-
+			for i, topic := range rlog.Topics {
+				switch i {
+				case 0:
+					event.Topic0 = topic.Bytes()
+				case 1:
+					event.Topic1 = topic.Bytes()
+				case 2:
+					event.Topic2 = topic.Bytes()
+				case 3:
+					event.Topic3 = topic.Bytes()
+				case 4:
+					event.Topic4 = topic.Bytes()
+				}
+			}
 			events = append(events, event)
 		}
 	}
