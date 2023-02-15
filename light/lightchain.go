@@ -40,8 +40,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 
-	mamorutracer "github.com/ethereum/go-ethereum/mamoru-tracer"
-	"github.com/ethereum/go-ethereum/mamoru-tracer/tracer"
+	"github.com/ethereum/go-ethereum/mamoru"
+	"github.com/ethereum/go-ethereum/mamoru/call_tracer"
 )
 
 var (
@@ -463,7 +463,7 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 		lc.chainSideFeed.Send(core.ChainSideEvent{Block: block})
 	}
 	////////////////////////////////////////////////////////////////////////////
-	if !mamorutracer.IsSnifferEnable() {
+	if !mamoru.IsSnifferEnable() {
 		return 0, nil
 	}
 	ctx := context.Background()
@@ -484,14 +484,26 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 		return 0, err
 	}
 
-	log.Info("Sniffer start", "number", lastBlock.NumberU64())
+	startTime := time.Now()
+	log.Info("Mamoru Sniffer start", "number", block.NumberU64())
+	tracer := mamoru.NewTracer(mamoru.NewFeed(lc.Config()))
 
-	mamorutracer.Trace(ctx,
-		tracer.NewTracerConfig(stateDb.Copy(), lc.Config(), lc),
-		lastBlock,
-		receipts,
-	)
+	tracer.FeedBlock(block)
+	tracer.FeedTransactions(block, receipts)
+	tracer.FeedEvents(receipts)
 
+	//Launch EVM and Collect Call Trace data
+	callFrames, err := call_tracer.TraceBlock(ctx, call_tracer.NewTracerConfig(stateDb.Copy(), lc.Config(), lc), lastBlock)
+	if err != nil {
+		log.Error("Mamoru Sniffer Tracer Error", "err", err)
+		return 0, err
+	}
+	for _, call := range callFrames {
+		result := call.Result
+		tracer.FeedCalTraces(result, block.NumberU64())
+	}
+
+	tracer.Send(startTime, block.Number(), block.Hash())
 	////////////////////////////////////////////////////////////////////////////
 	return 0, err
 }
