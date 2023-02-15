@@ -26,7 +26,7 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/google/gofuzz v1.2.0
 	github.com/google/pprof v0.0.0-20220829040838-70bd9ae97f40
-	github.com/google/uuid v1.1.5
+	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/graph-gophers/graphql-go v1.3.0
 	github.com/hashicorp/go-bexpr v0.1.10
@@ -68,6 +68,8 @@ require (
 )
 
 require github.com/Mamoru-Foundation/mamoru-sniffer-go v0.1.3
+
+require github.com/Mamoru-Foundation/geth-mamoru-core-sdk v1.0.0 // indirect
 
 require (
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect

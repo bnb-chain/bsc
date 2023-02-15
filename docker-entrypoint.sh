@@ -19,6 +19,8 @@ if [ ! -f ${BSC_CONFIG} ]; then
 
   # Enable RPC access
   sed -i 's%HTTPHost = "127.0.0.1"%HTTPHost = "0.0.0.0"%g' ${BSC_CONFIG}
+  # Delete log config for login in stdout
+  sed -i '/Node.LogConfig/,$d' ${BSC_CONFIG}
 fi
 
 # Init genesis state if geth not exist

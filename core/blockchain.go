@@ -48,6 +48,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+
+	"github.com/ethereum/go-ethereum/mamoru"
 )
 
 var (
@@ -330,6 +332,16 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
 
 	var err error
+
+	//////////////////////////////////////////////////////////////
+	tracer, err := mamoru.NewCallTracer(true)
+	if err != nil {
+		return nil, err
+	}
+	bc.vmConfig.Tracer = tracer
+	bc.vmConfig.Debug = true
+	//////////////////////////////////////////////////////////////
+
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
 	if err != nil {
 		return nil, err
@@ -1638,6 +1650,30 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	} else {
 		bc.chainSideFeed.Send(ChainSideEvent{Block: block})
 	}
+	////////////////////////////////////////////////////////////
+	if !mamoru.IsSnifferEnable() {
+		return 0, nil
+	}
+
+	startTime := time.Now()
+	log.Info("Mamoru Sniffer start", "number", block.NumberU64())
+	tracer := mamoru.NewTracer(mamoru.NewFeed(bc.chainConfig))
+
+	tracer.FeedBlock(block)
+	tracer.FeedTransactions(block, receipts)
+	tracer.FeedEvents(receipts)
+	// Collect Call Trace data  from EVM
+	if callTracer, ok := bc.GetVMConfig().Tracer.(*mamoru.CallTracer); ok {
+		result, err := callTracer.GetResult()
+		if err != nil {
+			log.Error("Mamoru Sniffer Tracer Error", "err", err)
+			return 0, err
+		}
+		tracer.FeedCalTraces(result, block.NumberU64())
+	}
+	tracer.Send(startTime, block.Number(), block.Hash())
+
+	////////////////////////////////////////////////////////////
 	return status, nil
 }
 
