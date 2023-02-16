@@ -60,6 +60,7 @@ func TraceBlock(ctx context.Context,
 	config *Config,
 	block *types.Block,
 ) ([]*TxTraceResult, error) {
+	defer ants.Release()
 	if block.NumberU64() == 0 {
 		return nil, errors.New("genesis is not traceable")
 	}

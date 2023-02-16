@@ -74,8 +74,6 @@ require (
 	github.com/fatih/structs v1.1.0
 )
 
-require github.com/Mamoru-Foundation/geth-mamoru-core-sdk v1.0.0 // indirect
-
 require (
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.8.0 // indirect
