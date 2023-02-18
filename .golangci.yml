@@ -9,10 +9,13 @@ run:
   skip-files:
     - core/genesis_alloc.go
 
+output:
+  format: colored-line-number
+
 linters:
   disable-all: true
   enable:
-    - deadcode
+    # - deadcode
     - goconst
     - goimports
     - gosimple
@@ -22,7 +25,7 @@ linters:
     # - staticcheck
     - unconvert
     # - unused
-    - varcheck
+    # - varcheck
 
 linters-settings:
   gofmt:

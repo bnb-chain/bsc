@@ -221,6 +221,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.PersistDiff {
 		bcOps = append(bcOps, core.EnablePersistDiff(config.DiffBlock))
 	}
+	if stack.Config().EnableDoubleSignMonitor {
+		bcOps = append(bcOps, core.EnableDoubleSignChecker)
+	}
 
 	peers := newPeerSet()
 	bcOps = append(bcOps, core.EnableBlockValidator(chainConfig, eth.engine, config.TriesVerifyMode, peers))

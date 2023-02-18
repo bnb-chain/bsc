@@ -34,6 +34,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/fatih/structs"
 	pcsclite "github.com/gballet/go-libpcsclite"
 	gopsutil "github.com/shirou/gopsutil/mem"
 	"gopkg.in/urfave/cli.v1"
@@ -503,7 +504,7 @@ var (
 	}
 	PruneAncientDataFlag = cli.BoolFlag{
 		Name:  "pruneancient",
-		Usage: "Prune ancient data, recommends to the user who don't care about the ancient data. Note that once be turned on, the ancient data will not be recovered again",
+		Usage: "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
 	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
@@ -901,6 +902,11 @@ var (
 		Name:  "check-snapshot-with-mpt",
 		Usage: "Enable checking between snapshot and MPT ",
 	}
+
+	EnableDoubleSignMonitorFlag = cli.BoolFlag{
+		Name:  "monitor.doublesign",
+		Usage: "Enable double sign monitor to check whether any validator signs multiple blocks",
+	}
 )
 
 // MakeDataDir retrieves the currently requested data directory, terminating
@@ -1167,6 +1173,14 @@ func setLes(ctx *cli.Context, cfg *ethconfig.Config) {
 	}
 }
 
+// setMonitor creates the monitor from the set
+// command line flags, returning empty if the monitor is disabled.
+func setMonitor(ctx *cli.Context, cfg *node.Config) {
+	if ctx.GlobalBool(EnableDoubleSignMonitorFlag.Name) {
+		cfg.EnableDoubleSignMonitor = true
+	}
+}
+
 // MakeDatabaseHandles raises out the number of allowed file handles per process
 // for Geth and returns half of the allowance to assign to the database.
 func MakeDatabaseHandles() int {
@@ -1329,6 +1343,7 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	setNodeUserIdent(ctx, cfg)
 	setDataDir(ctx, cfg)
 	setSmartCard(ctx, cfg)
+	setMonitor(ctx, cfg)
 
 	if ctx.GlobalIsSet(ExternalSignerFlag.Name) {
 		cfg.ExternalSigner = ctx.GlobalString(ExternalSignerFlag.Name)
@@ -1948,6 +1963,17 @@ func EnableBuildInfo(gitCommit, gitDate string) SetupMetricsOption {
 	}
 }
 
+func EnableMinerInfo(ctx *cli.Context, minerConfig miner.Config) SetupMetricsOption {
+	return func() {
+		if ctx.GlobalBool(MiningEnabledFlag.Name) {
+			// register miner info into metrics
+			minerInfo := structs.Map(minerConfig)
+			minerInfo[UnlockedAccountFlag.Name] = ctx.GlobalString(UnlockedAccountFlag.Name)
+			metrics.NewRegisteredLabel("miner-info", nil).Mark(minerInfo)
+		}
+	}
+}
+
 func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
 	if metrics.Enabled {
 		log.Info("Enabling metrics collection")
@@ -2008,6 +2034,9 @@ func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
 		for _, opt := range options {
 			opt()
 		}
+
+		// Start system runtime metrics collection
+		go metrics.CollectProcessMetrics(3 * time.Second)
 	}
 }
 

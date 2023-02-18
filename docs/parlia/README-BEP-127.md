@@ -19,10 +19,10 @@ $ geth attach geth.ipc
 ```
 
 This command will:
-* Start up `geth`'s built-in interactive [JavaScript console](https://geth.ethereum.org/docs/interface/javascript-console),
+* Start up `geth`'s built-in interactive [JavaScript console](https://geth.ethereum.org/docs/interacting-with-geth/javascript-console),
   (via the trailing `console` subcommand) through which you can interact using [`web3` methods](https://web3js.readthedocs.io/en/)
   (note: the `web3` version bundled within `geth` is very old, and not up to date with official docs),
-  as well as `geth`'s own [management APIs](https://geth.ethereum.org/docs/rpc/server).
+  as well as `geth`'s own [management APIs](https://geth.ethereum.org/docs/interacting-with-geth/rpc).
 
 
 ### enter maintenance

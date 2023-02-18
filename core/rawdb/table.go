@@ -190,6 +190,11 @@ func (t *table) SetDiffStore(diff ethdb.KeyValueStore) {
 	panic("not implement")
 }
 
+// NewBatchWithSize creates a write-only database batch with pre-allocated buffer.
+func (t *table) NewBatchWithSize(size int) ethdb.Batch {
+	return &tableBatch{t.db.NewBatchWithSize(size), t.prefix}
+}
+
 // tableBatch is a wrapper around a database batch that prefixes each key access
 // with a pre-configured string.
 type tableBatch struct {

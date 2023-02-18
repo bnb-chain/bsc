@@ -779,8 +779,8 @@ func (s *StateDB) createObject(addr common.Address) (newobj, prev *StateObject) 
 // CreateAccount is called during the EVM CREATE operation. The situation might arise that
 // a contract does the following:
 //
-//   1. sends funds to sha(account ++ (nonce + 1))
-//   2. tx_create(sha(account ++ nonce)) (note that this gets the address of 1)
+//  1. sends funds to sha(account ++ (nonce + 1))
+//  2. tx_create(sha(account ++ nonce)) (note that this gets the address of 1)
 //
 // Carrying over the balance ensures that Ether doesn't disappear.
 func (s *StateDB) CreateAccount(addr common.Address) {
@@ -1043,7 +1043,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	return s.StateIntermediateRoot()
 }
 
-//CorrectAccountsRoot will fix account roots in pipecommit mode
+// CorrectAccountsRoot will fix account roots in pipecommit mode
 func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 	var snapshot snapshot.Snapshot
 	if blockRoot == (common.Hash{}) {
@@ -1071,7 +1071,7 @@ func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
 	}
 }
 
-//PopulateSnapAccountAndStorage tries to populate required accounts and storages for pipecommit
+// PopulateSnapAccountAndStorage tries to populate required accounts and storages for pipecommit
 func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
@@ -1083,7 +1083,7 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 	}
 }
 
-//populateSnapStorage tries to populate required storages for pipecommit, and returns a flag to indicate whether the storage root changed or not
+// populateSnapStorage tries to populate required storages for pipecommit, and returns a flag to indicate whether the storage root changed or not
 func (s *StateDB) populateSnapStorage(obj *StateObject) bool {
 	for key, value := range obj.dirtyStorage {
 		obj.pendingStorage[key] = value
