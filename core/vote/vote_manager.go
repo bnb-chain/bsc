@@ -178,7 +178,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 
 	voteDataBuffer := voteManager.journal.voteDataBuffer
 	//Rule 1:  A validator must not publish two distinct votes for the same height.
-	if voteDataBuffer.Contains(header.Number.Uint64()) {
+	if voteDataBuffer.Contains(targetNumber) {
 		log.Debug("err: A validator must not publish two distinct votes for the same height.")
 		return false, 0, common.Hash{}
 	}
@@ -197,7 +197,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 			}
 		}
 	}
-	for blockNumber := targetNumber; blockNumber <= targetNumber+naturallyJustifiedDist; blockNumber++ {
+	for blockNumber := targetNumber + 1; blockNumber <= targetNumber+naturallyJustifiedDist; blockNumber++ {
 		if voteDataBuffer.Contains(blockNumber) {
 			voteData, ok := voteDataBuffer.Get(blockNumber)
 			if !ok {
