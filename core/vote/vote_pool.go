@@ -20,7 +20,8 @@ const (
 	maxCurVoteAmountPerBlock    = 21
 	maxFutureVoteAmountPerBlock = 50
 
-	voteBufferForPut            = 256
+	voteBufferForPut = 256
+	// for simplicity, both boundary will be included, so votes in the range [currentBlockNum-256,currentBlockNum+11] will be stored
 	lowerLimitOfVoteBlockNumber = 256
 	upperLimitOfVoteBlockNumber = 11
 
@@ -120,8 +121,8 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 	header := pool.chain.CurrentBlock().Header()
 	headNumber := header.Number.Uint64()
 
-	// Make sure in the range currentHeight-256~currentHeight+11.
-	if targetNumber+lowerLimitOfVoteBlockNumber-1 < headNumber || targetNumber > headNumber+upperLimitOfVoteBlockNumber {
+	// Make sure in the range [currentHeight-lowerLimitOfVoteBlockNumber, currentHeight+upperLimitOfVoteBlockNumber].
+	if targetNumber+lowerLimitOfVoteBlockNumber < headNumber || targetNumber > headNumber+upperLimitOfVoteBlockNumber {
 		log.Debug("BlockNumber of vote is outside the range of header-256~header+11, will be discarded")
 		return false
 	}
@@ -216,13 +217,13 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 	futurePq := pool.futureVotesPq
 	latestBlockNumber := latestBlockHeader.Number.Uint64()
 
-	// For vote before latestBlockHeader-13, transfer to cur if valid.
+	// For vote in the range [,latestBlockNumber-11), transfer to cur if valid.
 	for futurePq.Len() > 0 && futurePq.Peek().TargetNumber+upperLimitOfVoteBlockNumber < latestBlockNumber {
 		blockHash := futurePq.Peek().TargetHash
 		pool.transfer(blockHash)
 	}
 
-	// For vote within latestBlockHeader-13 ~ latestBlockHeader, only transfer the the vote inside the local fork.
+	// For vote in the range [latestBlockNumber-11,latestBlockNumber], only transfer the vote inside the local fork.
 	futurePqBuffer := make([]*types.VoteData, 0)
 	for futurePq.Len() > 0 && futurePq.Peek().TargetNumber <= latestBlockNumber {
 		blockHash := futurePq.Peek().TargetHash
@@ -265,6 +266,7 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 		validVotes = append(validVotes, vote)
 	}
 
+	// may len(curVotes[blockHash].voteMessages) extra maxCurVoteAmountPerBlock, but it doesn't matter
 	if _, ok := curVotes[blockHash]; !ok {
 		heap.Push(curPq, voteData)
 		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
@@ -286,7 +288,8 @@ func (pool *VotePool) prune(latestBlockNumber uint64) {
 	curVotes := pool.curVotes
 	curVotesPq := pool.curVotesPq
 
-	for curVotesPq.Len() > 0 && curVotesPq.Peek().TargetNumber+lowerLimitOfVoteBlockNumber-1 < latestBlockNumber {
+	// delete votes in the range [,latestBlockNumber-lowerLimitOfVoteBlockNumber)
+	for curVotesPq.Len() > 0 && curVotesPq.Peek().TargetNumber+lowerLimitOfVoteBlockNumber < latestBlockNumber {
 		// Prune curPriorityQueue.
 		blockHash := heap.Pop(curVotesPq).(*types.VoteData).TargetHash
 		localCurVotesPqGauge.Update(int64(curVotesPq.Len()))
@@ -346,7 +349,7 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 		maxVoteAmountPerBlock = maxFutureVoteAmountPerBlock
 	}
 	if voteBox, ok := m[targetHash]; ok {
-		if len(voteBox.voteMessages) > maxVoteAmountPerBlock {
+		if len(voteBox.voteMessages) >= maxVoteAmountPerBlock {
 			return false
 		}
 	}
