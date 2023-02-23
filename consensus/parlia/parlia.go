@@ -446,8 +446,8 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	}
 
 	// The snapshot should be the targetNumber-1 block's snapshot.
-	if len(parents) > 2 {
-		parents = parents[:len(parents)-2]
+	if len(parents) > 1 {
+		parents = parents[:len(parents)-1]
 	} else {
 		parents = nil
 	}
@@ -614,6 +614,9 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 }
 
 // snapshot retrieves the authorization snapshot at a given point in time.
+// !!! be carefull
+// the block with `number` and `hash` is just the last element of `parents`,
+// unlike other interfaces such as verifyCascadingFields, `parents` are real parents
 func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash common.Hash, parents []*types.Header) (*Snapshot, error) {
 	// Search for a snapshot in memory or on disk for checkpoints
 	var (
