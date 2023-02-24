@@ -66,25 +66,24 @@ func TraceBlock(ctx context.Context,
 	}
 	// Execute all the transaction contained within the block concurrently
 	var (
-		signer  = types.MakeSigner(config.chainConfig, block.Number())
-		txs     = block.Transactions()
-		results = make([]*TxTraceResult, len(txs))
-		stateDB = config.stateDB
-
-		pend = new(sync.WaitGroup)
-		jobs = make(chan *txTraceTask, len(txs))
+		signer         = types.MakeSigner(config.chainConfig, block.Number())
+		txs            = block.Transactions()
+		results        = make([]*TxTraceResult, len(txs))
+		stateDB        = config.stateDB
+		blockHash      = block.Hash()
+		pend           = new(sync.WaitGroup)
+		jobs           = make(chan *txTraceTask, len(txs))
+		blockCtx       = core.NewEVMBlockContext(block.Header(), config.chainContext, nil)
+		defaultPool, _ = ants.NewPool(ants.DefaultAntsPoolSize, ants.WithExpiryDuration(10*time.Second))
 	)
 	threads := runtime.NumCPU()
 	if threads > len(txs) {
 		threads = len(txs)
 	}
-	blockHash := block.Hash()
-	var defaultPool, _ = ants.NewPool(ants.DefaultAntsPoolSize, ants.WithExpiryDuration(10*time.Second))
-	//defer defaultPool.Release()
+
 	for th := 0; th < threads; th++ {
 		pend.Add(1)
 		_ = defaultPool.Submit(func() {
-			blockCtx := core.NewEVMBlockContext(block.Header(), config.chainContext, nil)
 			defer pend.Done()
 			// Fetch and execute the next transaction trace tasks
 			for task := range jobs {
@@ -105,13 +104,11 @@ func TraceBlock(ctx context.Context,
 	}
 	// EthFeed the transactions into the tracers and return
 	var failed error
-	blockCtx := core.NewEVMBlockContext(block.Header(), config.chainContext, nil)
+	//blockCtx := core.NewEVMBlockContext(block.Header(), config.chainContext, nil)
 	for i, tx := range txs {
 		// Send the trace task over for execution
 		jobs <- &txTraceTask{statedb: stateDB.Copy(), index: i}
 
-		// Generate the next state snapshot fast without tracing
-		msg, _ := tx.AsMessage(signer, block.BaseFee())
 		if posa, ok := config.engin.(consensus.PoSA); ok {
 			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
 				balance := stateDB.GetBalance(consensus.SystemAddress)
@@ -121,6 +118,8 @@ func TraceBlock(ctx context.Context,
 				}
 			}
 		}
+		// Generate the next state snapshot fast without tracing
+		msg, _ := tx.AsMessage(signer, block.BaseFee())
 		stateDB.Prepare(tx.Hash(), i)
 		vmenv := vm.NewEVM(blockCtx, core.NewEVMTxContext(msg), stateDB, config.chainConfig, vm.Config{})
 		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas())); err != nil {
@@ -162,17 +161,18 @@ func traceTx(ctx context.Context,
 		return nil, err
 	}
 
+	// Run the transaction with tracing enabled.
+	vmenv := vm.NewEVM(vmctx, txContext, statedb, chainConfig, vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
+
 	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
 	go func() {
 		<-deadlineCtx.Done()
 		if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
 			tracer.Stop(errors.New("execution timeout"))
+			vmenv.Cancel()
 		}
 	}()
 	defer cancel()
-
-	// Run the transaction with tracing enabled.
-	vmenv := vm.NewEVM(vmctx, txContext, statedb, chainConfig, vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
 
 	if posa, ok := engine.(consensus.PoSA); ok && message.From() == vmctx.Coinbase &&
 		posa.IsSystemContract(message.To()) && message.GasPrice().Cmp(big.NewInt(0)) == 0 {
