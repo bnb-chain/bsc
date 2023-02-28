@@ -1703,7 +1703,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.EnableTrustProtocol = ctx.GlobalIsSet(EnableTrustProtocolFlag.Name)
 	}
 	if ctx.GlobalIsSet(DiffSyncFlag.Name) {
-		cfg.DiffSync = ctx.GlobalBool(DiffSyncFlag.Name)
+		log.Warn("The --diffsync flag is deprecated and will be removed in the future!")
 	}
 	if ctx.GlobalIsSet(PipeCommitFlag.Name) {
 		cfg.PipeCommit = ctx.GlobalBool(PipeCommitFlag.Name)
