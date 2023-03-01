@@ -60,6 +60,7 @@ const (
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
+	gasUsedRateDemarcation = 75 // Demarcation point of low and high gas used rate
 )
 
 var (
@@ -881,8 +882,26 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		}
 	}
 
-	// Sweet, the protocol permits us to sign the block, wait for our time
-	delay := p.delayForRamanujanFork(snap, header)
+	// BEP-188 allows an in-turn validator to broadcast the mined block earlier
+	// but not earlier than its parent's timestamp after Bohr fork.
+	// At the same time, small block which means gas used rate is less than
+	// gasUsedRateDemarcation does not broadcast early to avoid an upcoming fat block.
+	delay := time.Duration(0)
+	gasUsedRate := uint64(0)
+	if header.GasLimit != 0 {
+		gasUsedRate = header.GasUsed * 100 / header.GasLimit
+	}
+	if p.chainConfig.IsBohr(header.Number) && header.Difficulty.Cmp(diffInTurn) == 0 && gasUsedRate >= gasUsedRateDemarcation {
+		parent := chain.GetHeader(header.ParentHash, number-1)
+		if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
+			return consensus.ErrUnknownAncestor
+		}
+		if parent.Time > uint64(time.Now().Unix()) {
+			delay = time.Until(time.Unix(int64(parent.Time), 0))
+		}
+	} else {
+		delay = p.delayForRamanujanFork(snap, header)
+	}
 
 	log.Info("Sealing block with", "number", number, "delay", delay, "headerDifficulty", header.Difficulty, "val", val.Hex())
 
