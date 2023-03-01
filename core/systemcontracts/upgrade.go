@@ -483,6 +483,7 @@ func init() {
 		},
 	}
 
+	// TODO: update the commit url of bohr upgrade
 	bohrUpgrade[mainNet] = &Upgrade{
 		UpgradeName: "bohr",
 		Configs: []*UpgradeConfig{
