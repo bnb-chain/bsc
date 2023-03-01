@@ -153,8 +153,34 @@ func (c *iavlMerkleProofValidateMoran) Run(input []byte) (result []byte, err err
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
 
+type iavlMerkleProofValidateBohr struct {
+	basicIavlMerkleProofValidate
+}
+
+func (c *iavlMerkleProofValidateBohr) RequiredGas(_ []byte) uint64 {
+	return params.IAVLMerkleProofValidateGas
+}
+
+func (c *iavlMerkleProofValidateBohr) Run(input []byte) (result []byte, err error) {
+	c.basicIavlMerkleProofValidate.proofRuntime = lightclient.Ics23CompatibleProofRuntime()
+	c.basicIavlMerkleProofValidate.verifiers = []merkle.ProofOpVerifier{
+		forbiddenAbsenceOpVerifier,
+		singleValueOpVerifier,
+		multiStoreOpVerifier,
+		forbiddenSimpleValueOpVerifier,
+	}
+	return c.basicIavlMerkleProofValidate.Run(input)
+}
+
+func successfulMerkleResult() []byte {
+	result := make([]byte, merkleProofValidateResultLength)
+	binary.BigEndian.PutUint64(result[merkleProofValidateResultLength-uint64TypeLength:], 0x01)
+	return result
+}
+
 type basicIavlMerkleProofValidate struct {
-	verifiers []merkle.ProofOpVerifier
+	verifiers    []merkle.ProofOpVerifier
+	proofRuntime *merkle.ProofRuntime
 }
 
 func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err error) {
@@ -177,15 +203,18 @@ func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err err
 	if err != nil {
 		return nil, err
 	}
+	if c.proofRuntime == nil {
+		kvmp.SetProofRuntime(lightclient.DefaultProofRuntime())
+	} else {
+		kvmp.SetProofRuntime(c.proofRuntime)
+	}
 	kvmp.SetVerifiers(c.verifiers)
 	valid := kvmp.Validate()
 	if !valid {
 		return nil, fmt.Errorf("invalid merkle proof")
 	}
 
-	result = make([]byte, merkleProofValidateResultLength)
-	binary.BigEndian.PutUint64(result[merkleProofValidateResultLength-uint64TypeLength:], 0x01)
-	return result, nil
+	return successfulMerkleResult(), nil
 }
 
 func forbiddenAbsenceOpVerifier(op merkle.ProofOperator) error {
