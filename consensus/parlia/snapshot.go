@@ -358,9 +358,7 @@ func parseValidators(header *types.Header, chainConfig *params.ChainConfig, parl
 		n := len(validatorsBytes) / validatorBytesLength
 		result := make([]common.Address, n)
 		for i := 0; i < n; i++ {
-			address := make([]byte, validatorBytesLength)
-			copy(address, validatorsBytes[i*validatorBytesLength:(i+1)*validatorBytesLength])
-			result[i] = common.BytesToAddress(address)
+			result[i] = common.BytesToAddress(validatorsBytes[i*validatorBytesLength : (i+1)*validatorBytesLength])
 		}
 		return result, nil, nil
 	}

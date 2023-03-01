@@ -969,12 +969,10 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		return nil
 	}
 
-	head := chain.GetHeaderByHash(header.ParentHash)
+	head := header
 	accumulatedWeights := make(map[common.Address]uint64)
 	for height := currentHeight - 1; height+epoch >= currentHeight && height >= 1; height-- {
-		if height != currentHeight-1 {
-			head = chain.GetHeaderByHash(head.ParentHash)
-		}
+		head = chain.GetHeaderByHash(head.ParentHash)
 		if head == nil {
 			return fmt.Errorf("header is nil at height %d", height)
 		}
@@ -1178,7 +1176,6 @@ func (p *Parlia) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *
 	validators := snap.Validators
 	_, ok := validators[p.val]
 	return ok
-
 }
 
 // VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
@@ -1438,7 +1435,8 @@ func CalcDifficulty(snap *Snapshot, signer common.Address) *big.Int {
 	return new(big.Int).Set(diffNoTurn)
 }
 
-// SealHash returns the hash of a block prior to it being sealed.
+// SealHash returns the hash of a block without vote attestation prior to it being sealed.
+// So it's not the real hash of a block, just used as unique id to distinguish task
 func (p *Parlia) SealHash(header *types.Header) (hash common.Hash) {
 	hasher := sha3.NewLegacyKeccak256()
 	encodeSigHeaderWithoutVoteAttestation(hasher, header, p.chainConfig.ChainID)
@@ -1815,7 +1813,7 @@ func encodeSigHeaderWithoutVoteAttestation(w io.Writer, header *types.Header, ch
 		header.GasLimit,
 		header.GasUsed,
 		header.Time,
-		header.Extra[:extraVanity], // this will panic if extra is too short, should check before calling encodeSigHeader
+		header.Extra[:extraVanity], // this will panic if extra is too short, should check before calling encodeSigHeaderWithoutVoteAttestation
 		header.MixDigest,
 		header.Nonce,
 	})
@@ -1850,7 +1848,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		}
 
 		// Exclude the recently signed validators first, and then compute the backOffTime.
-		recentVals := make(map[common.Address]bool, len(snap.Recents))
+		recentVals := make(map[common.Address]struct{}, len(snap.Recents))
 		limit := getSignRecentlyLimit(header.Number, len(snap.Validators), p.chainConfig)
 		for seen, recent := range snap.Recents {
 			if header.Number.Uint64() < uint64(limit) || seen > header.Number.Uint64()-uint64(limit) {
@@ -1858,14 +1856,14 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 					// The backOffTime does not matter when a validator has signed recently.
 					return 0
 				}
-				recentVals[recent] = true
+				recentVals[recent] = struct{}{}
 			}
 		}
 
 		backOffIndex := idx
 		validators := snap.validators()
 		for i := 0; i < n; i++ {
-			if isRecent, ok := recentVals[validators[i]]; ok && isRecent {
+			if _, ok := recentVals[validators[i]]; ok {
 				if i < idx {
 					backOffIndex--
 				}
@@ -1880,7 +1878,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 
 		// If the in turn validator has recently signed, no initial delay.
 		inTurnVal := validators[(snap.Number+1)%uint64(len(validators))]
-		if isRecent, ok := recentVals[inTurnVal]; ok && isRecent {
+		if _, ok := recentVals[inTurnVal]; ok {
 			delay -= initialBackOffTime
 		}
 		return delay

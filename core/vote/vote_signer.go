@@ -32,7 +32,7 @@ type VoteSigner struct {
 func NewVoteSigner(blsPasswordPath, blsWalletPath string) (*VoteSigner, error) {
 	dirExists, err := wallet.Exists(blsWalletPath)
 	if err != nil {
-		log.Error("Check BLS wallet exists error: %v.", err)
+		log.Error("Check BLS wallet exists", "err", err)
 		return nil, err
 	}
 	if !dirExists {
@@ -42,7 +42,7 @@ func NewVoteSigner(blsPasswordPath, blsWalletPath string) (*VoteSigner, error) {
 
 	walletPassword, err := ioutil.ReadFile(blsPasswordPath)
 	if err != nil {
-		log.Error("Read BLS wallet password error: %v.", err)
+		log.Error("Read BLS wallet password", "err", err)
 		return nil, err
 	}
 	log.Info("Read BLS wallet password successfully")
@@ -52,14 +52,14 @@ func NewVoteSigner(blsPasswordPath, blsWalletPath string) (*VoteSigner, error) {
 		WalletPassword: string(walletPassword),
 	})
 	if err != nil {
-		log.Error("Open BLS wallet failed: %v.", err)
+		log.Error("Open BLS wallet failed", "err", err)
 		return nil, err
 	}
 	log.Info("Open BLS wallet successfully")
 
 	km, err := w.InitializeKeymanager(context.Background(), iface.InitKeymanagerConfig{ListenForChanges: false})
 	if err != nil {
-		log.Error("Initialize key manager failed: %v.", err)
+		log.Error("Initialize key manager failed", "err", err)
 		return nil, err
 	}
 	log.Info("Initialized keymanager successfully")
