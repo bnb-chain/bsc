@@ -1321,58 +1321,60 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 	if snap.inturn(val) {
 		return 0
 	} else {
-		idx := snap.indexOfVal(val)
+		validators := snap.validators()
+		inturnSigned := false
+		if p.chainConfig.IsBohr(header.Number) {
+			// Exclude the recently signed validators first
+			for seen, recent := range snap.Recents {
+				if val == recent {
+					log.Error("unreachable code, validator signed recently",
+						"block", header.Number, "address", val,
+						"seen", seen, "len(snap.Recents)", len(snap.Recents))
+					return 0
+				}
+				if snap.inturn(recent) {
+					log.Info("in turn validator has recently signed, no initialBackOffTime",
+						"addr", recent)
+					inturnSigned = true
+				}
+				// recently signed validator can not sign, remove it
+				for index, addr := range validators {
+					if addr == recent {
+						validators = append(validators[:index], validators[index+1:]...)
+						break
+					}
+				}
+			}
+		}
+
+		idx := -1
+		for index, value := range validators {
+			if val == value {
+				idx = index
+			}
+		}
 		if idx < 0 {
-			// The backOffTime does not matter when a validator is not authorized.
+			log.Info("The validator is not authorized", "addr", val)
 			return 0
 		}
+
 		s := rand.NewSource(int64(snap.Number))
 		r := rand.New(s)
-		n := len(snap.Validators)
+		n := len(validators)
 		backOffSteps := make([]uint64, 0, n)
 
-		if !p.chainConfig.IsBohr(header.Number) {
-			for i := uint64(0); i < uint64(n); i++ {
-				backOffSteps = append(backOffSteps, i)
-			}
-			r.Shuffle(n, func(i, j int) {
-				backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
-			})
-			delay := initialBackOffTime + backOffSteps[idx]*wiggleTime
-			return delay
+		for i := uint64(0); i < uint64(n); i++ {
+			backOffSteps = append(backOffSteps, i)
 		}
 
-		// Exclude the recently signed validators first, and then compute the backOffTime.
-		recentVals := make(map[common.Address]bool, len(snap.Recents))
-		//for seen, recent := range snap.Recents {
-		for _, recent := range snap.Recents {
-			if val == recent {
-				// The backOffTime does not matter when a validator has signed recently.
-				return 0
-			}
-			recentVals[recent] = true
-		}
-
-		backOffIndex := idx
-		validators := snap.validators()
-		for i := 0; i < n; i++ {
-			if isRecent, ok := recentVals[validators[i]]; ok && isRecent {
-				if i < idx {
-					backOffIndex--
-				}
-				continue
-			}
-			backOffSteps = append(backOffSteps, uint64(len(backOffSteps)))
-		}
-		r.Shuffle(len(backOffSteps), func(i, j int) {
+		r.Shuffle(n, func(i, j int) {
 			backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
 		})
-		delay := initialBackOffTime + backOffSteps[backOffIndex]*wiggleTime
 
-		// If the in turn validator has recently signed, no initial delay.
-		inTurnVal := validators[(snap.Number+1)%uint64(len(validators))]
-		if isRecent, ok := recentVals[inTurnVal]; ok && isRecent {
-			delay -= initialBackOffTime
+		delay := backOffSteps[idx] * wiggleTime
+		if !inturnSigned {
+			// inturn validator does not sign recently, delay extra initialBackOffTime.
+			delay += initialBackOffTime
 		}
 		return delay
 	}
