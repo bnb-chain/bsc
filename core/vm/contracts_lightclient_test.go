@@ -293,21 +293,21 @@ func TestProofOpsVerifier(t *testing.T) {
 
 func TestKeyVerifier(t *testing.T) {
 	tests := []struct {
-		key    string
-		result bool
+		key string
+		err error
 	}{
 		{
 			"x:sdfdfdsd",
-			false,
+			cmn.NewError("key should not start with x:"),
 		},
 		{
 			"sdfxdfxs",
-			true,
+			nil,
 		},
 	}
 
 	for _, testCase := range tests {
 		err := keyVerifier(testCase.key)
-		assert.Equal(t, err, testCase.result)
+		assert.Equal(t, err, testCase.err)
 	}
 }
