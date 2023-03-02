@@ -1346,12 +1346,14 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 			}
 
 			// Exclude the recently signed validators
-			for index, addr := range validators {
+			temp := make([]common.Address, 0, len(validators))
+			for _, addr := range validators {
 				if _, ok := recentsMap[addr]; ok {
-					validators = append(validators[:index], validators[index+1:]...)
-					break
+					continue
 				}
+				temp = append(temp, addr)
 			}
+			validators = temp
 		}
 
 		// get the index of current validator and its shuffled backoff time.
