@@ -130,8 +130,8 @@ func (cs ConsensusState) EncodeConsensusState() ([]byte, error) {
 }
 
 func (cs *ConsensusState) ApplyHeader(header *Header) (bool, error) {
-	if uint64(header.Height) < cs.Height {
-		return false, fmt.Errorf("header height < consensus height (%d < %d)", header.Height, cs.Height)
+	if uint64(header.Height) <= cs.Height {
+		return false, fmt.Errorf("header height <= consensus height (%d <= %d)", header.Height, cs.Height)
 	}
 
 	if err := header.Validate(cs.ChainID); err != nil {
@@ -209,6 +209,8 @@ func DecodeHeader(input []byte) (*Header, error) {
 	return &header, nil
 }
 
+type KeyChecker func(string) bool
+
 type KeyValueMerkleProof struct {
 	Key       []byte
 	Value     []byte
@@ -216,8 +218,10 @@ type KeyValueMerkleProof struct {
 	AppHash   []byte
 	Proof     *merkle.Proof
 
-	verifiers    []merkle.ProofOpVerifier
-	proofRuntime *merkle.ProofRuntime
+	keyChecker       KeyChecker
+	proofOpsVerifier merkle.ProofOpsVerifier
+	verifiers        []merkle.ProofOpVerifier
+	proofRuntime     *merkle.ProofRuntime
 }
 
 func (kvmp *KeyValueMerkleProof) SetProofRuntime(prt *merkle.ProofRuntime) {
@@ -228,17 +232,29 @@ func (kvmp *KeyValueMerkleProof) SetVerifiers(verifiers []merkle.ProofOpVerifier
 	kvmp.verifiers = verifiers
 }
 
+func (kvmp *KeyValueMerkleProof) SetOpsVerifier(verifier merkle.ProofOpsVerifier) {
+	kvmp.proofOpsVerifier = verifier
+}
+
+func (kvmp *KeyValueMerkleProof) SetKeyChecker(keyChecker KeyChecker) {
+	kvmp.keyChecker = keyChecker
+}
+
 func (kvmp *KeyValueMerkleProof) Validate() bool {
 	kp := merkle.KeyPath{}
 	kp = kp.AppendKey([]byte(kvmp.StoreName), merkle.KeyEncodingURL)
 	kp = kp.AppendKey(kvmp.Key, merkle.KeyEncodingURL)
+
+	if kvmp.keyChecker != nil && !kvmp.keyChecker(string(kvmp.Key)) {
+		return false
+	}
 
 	if len(kvmp.Value) == 0 {
 		err := kvmp.proofRuntime.VerifyAbsence(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.verifiers...)
 		return err == nil
 	}
 
-	err := kvmp.proofRuntime.VerifyValue(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.Value, kvmp.verifiers...)
+	err := kvmp.proofRuntime.VerifyValue(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.Value, kvmp.proofOpsVerifier, kvmp.verifiers...)
 	return err == nil
 }
 
