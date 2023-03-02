@@ -183,7 +183,7 @@ func successfulMerkleResult() []byte {
 }
 
 type basicIavlMerkleProofValidate struct {
-	keyChecker   lightclient.KeyChecker
+	keyChecker   lightclient.KeyVerifier
 	opsVerifier  merkle.ProofOpsVerifier
 	verifiers    []merkle.ProofOpVerifier
 	proofRuntime *merkle.ProofRuntime
@@ -216,7 +216,7 @@ func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err err
 	}
 	kvmp.SetVerifiers(c.verifiers)
 	kvmp.SetOpsVerifier(c.opsVerifier)
-	kvmp.SetKeyChecker(c.keyChecker)
+	kvmp.SetKeyVerifier(c.keyChecker)
 
 	valid := kvmp.Validate()
 	if !valid {
@@ -317,8 +317,5 @@ func keyChecker(key string) bool {
 	// https://github.com/bnb-chain/tendermint/blob/72375a6f3d4a72831cc65e73363db89a0073db38/crypto/merkle/proof_key_path.go#L88
 	// since the upper function is ambiguous, `x:00` can be decoded to both kind of key type
 	// we check the key here to make sure the key will not start from `x:`
-	if strings.HasPrefix(url.PathEscape(key), "x:") {
-		return false
-	}
-	return true
+	return !strings.HasPrefix(url.PathEscape(key), "x:")
 }

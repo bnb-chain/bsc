@@ -209,7 +209,7 @@ func DecodeHeader(input []byte) (*Header, error) {
 	return &header, nil
 }
 
-type KeyChecker func(string) bool
+type KeyVerifier func(string) bool
 
 type KeyValueMerkleProof struct {
 	Key       []byte
@@ -218,7 +218,7 @@ type KeyValueMerkleProof struct {
 	AppHash   []byte
 	Proof     *merkle.Proof
 
-	keyChecker       KeyChecker
+	keyVerifier      KeyVerifier
 	proofOpsVerifier merkle.ProofOpsVerifier
 	verifiers        []merkle.ProofOpVerifier
 	proofRuntime     *merkle.ProofRuntime
@@ -236,16 +236,25 @@ func (kvmp *KeyValueMerkleProof) SetOpsVerifier(verifier merkle.ProofOpsVerifier
 	kvmp.proofOpsVerifier = verifier
 }
 
-func (kvmp *KeyValueMerkleProof) SetKeyChecker(keyChecker KeyChecker) {
-	kvmp.keyChecker = keyChecker
+func (kvmp *KeyValueMerkleProof) SetKeyVerifier(keyChecker KeyVerifier) {
+	kvmp.keyVerifier = keyChecker
 }
 
 func (kvmp *KeyValueMerkleProof) Validate() bool {
+	if kvmp.keyVerifier != nil {
+		if !kvmp.keyVerifier(kvmp.StoreName) {
+			return false
+		}
+		if !kvmp.keyVerifier(string(kvmp.Key)) {
+			return false
+		}
+	}
+
 	kp := merkle.KeyPath{}
 	kp = kp.AppendKey([]byte(kvmp.StoreName), merkle.KeyEncodingURL)
 	kp = kp.AppendKey(kvmp.Key, merkle.KeyEncodingURL)
 
-	if kvmp.keyChecker != nil && !kvmp.keyChecker(string(kvmp.Key)) {
+	if kvmp.keyVerifier != nil && !kvmp.keyVerifier(string(kvmp.Key)) {
 		return false
 	}
 
