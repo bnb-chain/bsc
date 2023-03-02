@@ -1321,35 +1321,43 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 	if snap.inturn(val) {
 		return 0
 	} else {
+		delay := initialBackOffTime
 		validators := snap.validators()
-		inturnSigned := false
 		if p.chainConfig.IsBohr(header.Number) {
-			// Exclude the recently signed validators first
+			// reverse the key/value of snap.Recents to get recentsMap
+			recentsMap := make(map[common.Address]uint64, len(snap.Recents))
 			for seen, recent := range snap.Recents {
-				if val == recent {
-					log.Error("unreachable code, validator signed recently",
-						"block", header.Number, "address", val,
-						"seen", seen, "len(snap.Recents)", len(snap.Recents))
-					return 0
-				}
-				if snap.inturn(recent) {
-					log.Info("in turn validator has recently signed, no initialBackOffTime",
-						"addr", recent)
-					inturnSigned = true
-				}
-				// recently signed validator can not sign, remove it
-				for index, addr := range validators {
-					if addr == recent {
-						validators = append(validators[:index], validators[index+1:]...)
-						break
-					}
+				recentsMap[recent] = seen
+			}
+
+			// if the validator has recently signed, it is unexpected, stop here.
+			if seen, ok := recentsMap[val]; ok {
+				log.Error("unreachable code, validator signed recently",
+					"block", header.Number, "address", val,
+					"seen", seen, "len(snap.Recents)", len(snap.Recents))
+				return 0
+			}
+
+			inTurnAddr := validators[(snap.Number+1)%uint64(len(validators))]
+			if _, ok := recentsMap[inTurnAddr]; ok {
+				log.Info("in turn validator has recently signed, skip initialBackOffTime",
+					"inTurnAddr", inTurnAddr)
+				delay = 0
+			}
+
+			// Exclude the recently signed validators
+			for index, addr := range validators {
+				if _, ok := recentsMap[addr]; ok {
+					validators = append(validators[:index], validators[index+1:]...)
+					break
 				}
 			}
 		}
 
+		// get the index of current validator and its shuffled backoff time.
 		idx := -1
-		for index, value := range validators {
-			if val == value {
+		for index, itemAddr := range validators {
+			if val == itemAddr {
 				idx = index
 			}
 		}
@@ -1371,11 +1379,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 			backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
 		})
 
-		delay := backOffSteps[idx] * wiggleTime
-		if !inturnSigned {
-			// inturn validator does not sign recently, delay extra initialBackOffTime.
-			delay += initialBackOffTime
-		}
+		delay += backOffSteps[idx] * wiggleTime
 		return delay
 	}
 }
