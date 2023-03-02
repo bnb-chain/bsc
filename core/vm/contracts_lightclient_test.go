@@ -291,7 +291,7 @@ func TestProofOpsVerifier(t *testing.T) {
 	}
 }
 
-func TestKeyChecker(t *testing.T) {
+func TestKeyVerifier(t *testing.T) {
 	tests := []struct {
 		key    string
 		result bool
@@ -307,7 +307,7 @@ func TestKeyChecker(t *testing.T) {
 	}
 
 	for _, testCase := range tests {
-		err := keyChecker(testCase.key)
+		err := keyVerifier(testCase.key)
 		assert.Equal(t, err, testCase.result)
 	}
 }

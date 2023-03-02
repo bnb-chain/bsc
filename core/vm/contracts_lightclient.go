@@ -171,7 +171,7 @@ func (c *iavlMerkleProofValidateBohr) Run(input []byte) (result []byte, err erro
 		multiStoreOpVerifier,
 		forbiddenSimpleValueOpVerifier,
 	}
-	c.basicIavlMerkleProofValidate.keyChecker = keyChecker
+	c.basicIavlMerkleProofValidate.keyVerifier = keyVerifier
 	c.basicIavlMerkleProofValidate.opsVerifier = proofOpsVerifier
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
@@ -183,7 +183,7 @@ func successfulMerkleResult() []byte {
 }
 
 type basicIavlMerkleProofValidate struct {
-	keyChecker   lightclient.KeyVerifier
+	keyVerifier  lightclient.KeyVerifier
 	opsVerifier  merkle.ProofOpsVerifier
 	verifiers    []merkle.ProofOpVerifier
 	proofRuntime *merkle.ProofRuntime
@@ -216,7 +216,7 @@ func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err err
 	}
 	kvmp.SetVerifiers(c.verifiers)
 	kvmp.SetOpsVerifier(c.opsVerifier)
-	kvmp.SetKeyVerifier(c.keyChecker)
+	kvmp.SetKeyVerifier(c.keyVerifier)
 
 	valid := kvmp.Validate()
 	if !valid {
@@ -313,7 +313,7 @@ func proofOpsVerifier(poz merkle.ProofOperators) error {
 	return cmn.NewError("invalid proof type")
 }
 
-func keyChecker(key string) bool {
+func keyVerifier(key string) bool {
 	// https://github.com/bnb-chain/tendermint/blob/72375a6f3d4a72831cc65e73363db89a0073db38/crypto/merkle/proof_key_path.go#L88
 	// since the upper function is ambiguous, `x:00` can be decoded to both kind of key type
 	// we check the key here to make sure the key will not start from `x:`
