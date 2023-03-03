@@ -58,8 +58,7 @@ const (
 
 	validatorBytesLength           = common.AddressLength
 	validatorBytesLengthAfterBoneh = common.AddressLength + types.BLSPublicKeyLength
-	validatorNumberSizeAfterBoneh  = 1  // Fixed number of extra prefix bytes reserved for validator number
-	naturallyJustifiedDist         = 14 // The distance to naturally justify a block
+	validatorNumberSizeAfterBoneh  = 1 // Fixed number of extra prefix bytes reserved for validator number
 
 	wiggleTime         = uint64(1) // second, Random delay (per signer) to allow concurrent signers
 	initialBackOffTime = uint64(1) // second
@@ -436,13 +435,13 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	// The source block should be the highest justified block.
 	sourceNumber := attestation.Data.SourceNumber
 	sourceHash := attestation.Data.SourceHash
-	justified := p.GetJustifiedHeader(chain, parent)
-	if justified == nil {
-		return fmt.Errorf("no justified block found")
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, parent)
+	if err != nil {
+		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
 	}
-	if sourceNumber != justified.Number.Uint64() || sourceHash != justified.Hash() {
+	if sourceNumber != justifiedBlockNumber || sourceHash != justifiedBlockHash {
 		return fmt.Errorf("invalid attestation, source mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
-			justified.Number.Uint64(), justified.Hash(), sourceNumber, sourceHash)
+			justifiedBlockNumber, justifiedBlockHash, sourceNumber, sourceHash)
 	}
 
 	// The snapshot should be the targetNumber-1 block's snapshot.
@@ -827,14 +826,14 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 
 	// Prepare vote attestation
 	// Prepare vote data
-	justified := p.GetJustifiedHeader(chain, parent)
-	if justified == nil {
-		return errors.New("highest justified block not found")
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, parent)
+	if err != nil {
+		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
 	}
 	attestation := &types.VoteAttestation{
 		Data: &types.VoteData{
-			SourceNumber: justified.Number.Uint64(),
-			SourceHash:   justified.Hash(),
+			SourceNumber: justifiedBlockNumber,
+			SourceHash:   justifiedBlockHash,
 			TargetNumber: parent.Number.Uint64(),
 			TargetHash:   parent.Hash(),
 		},
@@ -1192,12 +1191,12 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 		return fmt.Errorf("target number mismatch")
 	}
 
-	justifiedHeader := p.GetJustifiedHeader(chain, header)
-	if justifiedHeader == nil {
-		log.Error("failed to get the highest justified header", "headerNumber", header.Number, "headerHash", header.Hash())
-		return fmt.Errorf("BlockHeader at current voteBlockNumber is nil")
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, header)
+	if err != nil {
+		log.Error("failed to get the highest justified number and hash", "headerNumber", header.Number, "headerHash", header.Hash())
+		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
 	}
-	if vote.Data.SourceNumber != justifiedHeader.Number.Uint64() || vote.Data.SourceHash != justifiedHeader.Hash() {
+	if vote.Data.SourceNumber != justifiedBlockNumber || vote.Data.SourceHash != justifiedBlockHash {
 		return fmt.Errorf("vote source block mismatch")
 	}
 
@@ -1697,41 +1696,32 @@ func (p *Parlia) applyTransaction(
 	return nil
 }
 
-// GetJustifiedHeader returns highest justified block's header before the specific block,
-// the attestation within the specific block will be taken into account.
-func (p *Parlia) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
+// GetJustifiedNumberAndHash returns the highest justified block's number and hash on the branch including and before `header`
+func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, header *types.Header) (uint64, common.Hash, error) {
 	if chain == nil || header == nil {
-		return nil
+		return 0, common.Hash{}, fmt.Errorf("illegal chain or header")
 	}
-
 	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
 	if err != nil {
 		log.Error("Unexpected error when getting snapshot",
 			"error", err, "blockNumber", header.Number.Uint64(), "blockHash", header.Hash())
-		return nil
+		return 0, common.Hash{}, err
 	}
 
-	// If there is no vote justified block, then return root or naturally justified block.
 	if snap.Attestation == nil {
-		if header.Number.Uint64() <= naturallyJustifiedDist {
-			return chain.GetHeaderByNumber(0)
+		if p.chainConfig.IsBoneh(header.Number) {
+			log.Debug("once one attestation generated, attestation of snap would not be nil forever basically")
 		}
-		// Return naturally justified block.
-		return FindAncientHeader(header, naturallyJustifiedDist, chain, nil)
+		return 0, chain.GetHeaderByNumber(0).Hash(), nil
 	}
-
-	// If the latest vote justified block is too far, return naturally justified block.
-	if snap.Number-snap.Attestation.TargetNumber > naturallyJustifiedDist {
-		return FindAncientHeader(header, naturallyJustifiedDist, chain, nil)
-	}
-	//Return latest vote justified block.
-	return chain.GetHeaderByHash(snap.Attestation.TargetHash)
+	return snap.Attestation.TargetNumber, snap.Attestation.TargetHash, nil
 }
 
-// GetFinalizedHeader returns highest finalized block header before the specific block.
-// It will first to find vote finalized block within the specific backward blocks, the suggested backward blocks is 21.
-// If the vote finalized block not found, return its previous backward block.
-func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header, backward uint64) *types.Header {
+// GetFinalizedHeader returns highest finalized block header.
+// It will find vote finalized block within NaturallyFinalizedDist blocks firstly,
+// If the vote finalized block not found, return its naturally finalized block.
+func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
+	backward := uint64(types.NaturallyFinalizedDist)
 	if chain == nil || header == nil {
 		return nil
 	}

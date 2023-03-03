@@ -69,12 +69,16 @@ type mockInvalidPOSA struct {
 	consensus.PoSA
 }
 
-func (p *mockPOSA) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
-	return chain.GetHeaderByHash(header.ParentHash)
+func (p *mockPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, header *types.Header) (uint64, common.Hash, error) {
+	parentHeader := chain.GetHeaderByHash(header.ParentHash)
+	if parentHeader == nil {
+		return 0, common.Hash{}, fmt.Errorf("unexpected error")
+	}
+	return parentHeader.Number.Uint64(), parentHeader.Hash(), nil
 }
 
-func (p *mockInvalidPOSA) GetJustifiedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
-	return nil
+func (p *mockInvalidPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, header *types.Header) (uint64, common.Hash, error) {
+	return 0, common.Hash{}, fmt.Errorf("not supported")
 }
 
 func (m *mockPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {

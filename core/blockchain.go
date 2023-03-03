@@ -583,55 +583,28 @@ func (bc *BlockChain) empty() bool {
 	return true
 }
 
-// getJustifiedNumber returns the highest justified number before the specific block.
-func (bc *BlockChain) getJustifiedNumber(header *types.Header) uint64 {
+// GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`.
+func (bc *BlockChain) GetJustifiedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		justifiedHeader := p.GetJustifiedHeader(bc, header)
-		if justifiedHeader != nil {
-			return justifiedHeader.Number.Uint64()
+		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(bc, header)
+		if err == nil {
+			return justifiedBlockNumber
 		}
 	}
-
+	// return 0 when err!=nil
+	// so the input `header` will at a disadvantage during reorg
 	return 0
 }
 
 // getFinalizedNumber returns the highest finalized number before the specific block.
 func (bc *BlockChain) getFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		if finalizedHeader := p.GetFinalizedHeader(bc, header, types.NaturallyFinalizedDist); finalizedHeader != nil {
+		if finalizedHeader := p.GetFinalizedHeader(bc, header); finalizedHeader != nil {
 			return finalizedHeader.Number.Uint64()
 		}
 	}
 
 	return 0
-}
-
-// reorgNeededWithFastFinality returns true when the finalized block is higher, otherwise backoff to compare the td.
-func (bc *BlockChain) reorgNeededWithFastFinality(current *types.Header, header *types.Header) (bool, error) {
-	p, ok := bc.engine.(consensus.PoSA)
-	if !ok {
-		return bc.forker.ReorgNeeded(current, header)
-	}
-
-	ancestor := rawdb.FindCommonAncestor(bc.db, current, header)
-	if ancestor == nil {
-		return bc.forker.ReorgNeeded(current, header)
-	}
-
-	finalized := p.GetFinalizedHeader(bc, header, header.Number.Uint64()-ancestor.Number.Uint64())
-	curFinalized := p.GetFinalizedHeader(bc, current, current.Number.Uint64()-ancestor.Number.Uint64())
-	if finalized == nil || curFinalized == nil {
-		return bc.forker.ReorgNeeded(current, header)
-	} else if finalized.Number.Uint64() > ancestor.Number.Uint64() && curFinalized.Number.Uint64() > ancestor.Number.Uint64() {
-		log.Crit("find two conflict finalized headers", "header1", finalized, "header2", curFinalized)
-	}
-	if finalized.Number.Uint64() == curFinalized.Number.Uint64() {
-		return bc.forker.ReorgNeeded(current, header)
-	} else if finalized.Number.Uint64() > curFinalized.Number.Uint64() {
-		return true, nil
-	} else {
-		return false, nil
-	}
 }
 
 // loadLastState loads the last known chain state from the database. This method
@@ -655,7 +628,7 @@ func (bc *BlockChain) loadLastState() error {
 	// Everything seems to be fine, set as the head block
 	bc.currentBlock.Store(currentBlock)
 	headBlockGauge.Update(int64(currentBlock.NumberU64()))
-	justifiedBlockGauge.Update(int64(bc.getJustifiedNumber(currentBlock.Header())))
+	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(currentBlock.Header())))
 	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(currentBlock.Header())))
 
 	// Restore the last known head header
@@ -805,7 +778,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bo
 			// to low, so it's safe to update in-memory markers directly.
 			bc.currentBlock.Store(newHeadBlock)
 			headBlockGauge.Update(int64(newHeadBlock.NumberU64()))
-			justifiedBlockGauge.Update(int64(bc.getJustifiedNumber(newHeadBlock.Header())))
+			justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(newHeadBlock.Header())))
 			finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(newHeadBlock.Header())))
 		}
 		// Rewind the fast block in a simpleton way to the target head
@@ -897,7 +870,7 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 	}
 	bc.currentBlock.Store(block)
 	headBlockGauge.Update(int64(block.NumberU64()))
-	justifiedBlockGauge.Update(int64(bc.getJustifiedNumber(block.Header())))
+	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(block.Header())))
 	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
 	bc.chainmu.Unlock()
 
@@ -1018,7 +991,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 
 	bc.currentBlock.Store(block)
 	headBlockGauge.Update(int64(block.NumberU64()))
-	justifiedBlockGauge.Update(int64(bc.getJustifiedNumber(block.Header())))
+	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(block.Header())))
 	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
 }
 
@@ -1257,7 +1230,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Rewind may have occurred, skip in that case.
 		if bc.CurrentHeader().Number.Cmp(head.Number()) >= 0 {
-			reorg, err := bc.reorgNeededWithFastFinality(bc.CurrentFastBlock().Header(), head.Header())
+			reorg, err := bc.forker.reorgNeededWithFastFinality(bc.CurrentFastBlock().Header(), head.Header())
 			if err != nil {
 				log.Warn("Reorg failed", "err", err)
 				return false
@@ -1655,7 +1628,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		return NonStatTy, err
 	}
 	currentBlock := bc.CurrentBlock()
-	reorg, err := bc.reorgNeededWithFastFinality(currentBlock.Header(), block.Header())
+	reorg, err := bc.forker.reorgNeededWithFastFinality(currentBlock.Header(), block.Header())
 	if err != nil {
 		return NonStatTy, err
 	}
@@ -1689,7 +1662,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		if emitHeadEvent {
 			bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
-				if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header(), types.NaturallyFinalizedDist); finalizedHeader != nil {
+				if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header()); finalizedHeader != nil {
 					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
 				}
 			}
@@ -1781,7 +1754,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if lastCanon != nil && bc.CurrentBlock().Hash() == lastCanon.Hash() {
 			bc.chainHeadFeed.Send(ChainHeadEvent{lastCanon})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
-				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header(), types.NaturallyFinalizedDist); finalizedHeader != nil {
+				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header()); finalizedHeader != nil {
 					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
 				}
 			}
@@ -1814,7 +1787,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			current = bc.CurrentBlock()
 		)
 		for block != nil && bc.skipBlock(err, it) {
-			reorg, err = bc.reorgNeededWithFastFinality(current.Header(), block.Header())
+			reorg, err = bc.forker.reorgNeededWithFastFinality(current.Header(), block.Header())
 			if err != nil {
 				return it.index, err
 			}
@@ -2192,7 +2165,7 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 	//
 	// If the externTd was larger than our local TD, we now need to reimport the previous
 	// blocks to regenerate the required state
-	reorg, err := bc.reorgNeededWithFastFinality(current.Header(), lastBlock.Header())
+	reorg, err := bc.forker.reorgNeededWithFastFinality(current.Header(), lastBlock.Header())
 	if err != nil {
 		return it.index, err
 	}

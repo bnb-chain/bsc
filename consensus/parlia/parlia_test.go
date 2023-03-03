@@ -8,8 +8,13 @@ import (
 	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/common"
+	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+)
+
+const (
+	upperLimitOfVoteBlockNumber = 11
 )
 
 func TestImpactOfValidatorOutOfService(t *testing.T) {
@@ -205,25 +210,25 @@ func (b *MockBlock) IsConflicted(a *MockBlock) bool {
 	return a.blockHash != b.blockHash
 }
 
-// GetJustifiedBlock returns highest justified block,
-// not include current block's attestation.
-func (b *MockBlock) GetJustifiedBlock() *MockBlock {
-	if b.blockNumber < 3 {
-		return GenesisBlock
-	}
-
-	parent := b.parent
-	for i := 0; i < naturallyJustifiedDist && parent.blockNumber > 0; i++ {
-		// vote justified
-		if parent.attestation != 0 {
-			return parent
+// GetJustifiedNumberAndHash returns number and hash of the highest justified block,
+// keep same func signature with consensus even if `error` will be nil definitely
+func (b *MockBlock) GetJustifiedNumberAndHash() (uint64, common.Hash, error) {
+	justifiedBlock := GenesisBlock
+	for curBlock := b; curBlock.blockNumber > 1; curBlock = curBlock.parent {
+		// justified
+		if curBlock.attestation != 0 {
+			justifiedBlock = curBlock.parent
+			break
 		}
 
-		parent = parent.parent
 	}
 
-	// naturally justified
-	return parent
+	return justifiedBlock.blockNumber, justifiedBlock.blockHash, nil
+}
+
+func (b *MockBlock) GetJustifiedNumber() uint64 {
+	justifiedBlockNumber, _, _ := b.GetJustifiedNumberAndHash()
+	return justifiedBlockNumber
 }
 
 // GetFinalizedBlock returns highest finalized block,
@@ -234,7 +239,7 @@ func (b *MockBlock) GetFinalizedBlock() *MockBlock {
 	}
 
 	if b.attestation != 0 && b.parent.attestation != 0 {
-		return b.parent
+		return b.parent.parent
 	}
 
 	return b.parent.GetFinalizedBlock()
@@ -307,25 +312,25 @@ func (v *MockValidator) Vote(block *MockBlock) bool {
 	}
 
 	// Rule 2: No surround vote
-	justified := block.GetJustifiedBlock()
-	for targetNumber := justified.blockNumber + 1; targetNumber < block.blockNumber; targetNumber++ {
+	justifiedBlockNumber, justifiedBlockHash, _ := block.GetJustifiedNumberAndHash()
+	for targetNumber := justifiedBlockNumber + 1; targetNumber < block.blockNumber; targetNumber++ {
 		if vote, ok := v.voteRecords[targetNumber]; ok {
-			if vote.SourceNumber > justified.blockNumber {
+			if vote.SourceNumber > justifiedBlockNumber {
 				return false
 			}
 		}
 	}
-	for targetNumber := block.blockNumber; targetNumber <= block.blockNumber+naturallyJustifiedDist; targetNumber++ {
+	for targetNumber := block.blockNumber; targetNumber <= block.blockNumber+upperLimitOfVoteBlockNumber; targetNumber++ {
 		if vote, ok := v.voteRecords[targetNumber]; ok {
-			if vote.SourceNumber < justified.blockNumber {
+			if vote.SourceNumber < justifiedBlockNumber {
 				return false
 			}
 		}
 	}
 
 	v.voteRecords[block.blockNumber] = &types.VoteData{
-		SourceNumber: justified.blockNumber,
-		SourceHash:   justified.blockHash,
+		SourceNumber: justifiedBlockNumber,
+		SourceHash:   justifiedBlockHash,
 		TargetNumber: block.blockNumber,
 		TargetHash:   block.blockHash,
 	}
@@ -338,11 +343,11 @@ func (v *MockValidator) InsertBlock(block *MockBlock) {
 		return
 	}
 
-	// The higher finalized block is the longest chain.
-	if block.GetFinalizedBlock().blockNumber < v.head.GetFinalizedBlock().blockNumber {
+	// The higher justified block is the longest chain.
+	if block.GetJustifiedNumber() < v.head.GetJustifiedNumber() {
 		return
 	}
-	if block.GetFinalizedBlock().blockNumber > v.head.GetFinalizedBlock().blockNumber {
+	if block.GetJustifiedNumber() > v.head.GetJustifiedNumber() {
 		v.head = block
 		return
 	}
@@ -435,7 +440,7 @@ func (c *Coordinator) AggregateVotes(bs *BlockSimulator, block *MockBlock) error
 		count++
 	}
 
-	if count > len(c.validators)*2/3 {
+	if count >= cmath.CeilDiv(len(c.validators)*2, 3) {
 		c.attestations[block.blockHash] = attestation
 	}
 
@@ -535,7 +540,7 @@ var simulatorTestcases = []*TestSimulatorParam{
 			{3, 17, 0x1f0001, 0x1ffff1},
 			{4, 18, 0x1f0001, 0x1ffff1},
 			{5, 19, 0x1f0001, 0x1ffff1},
-			{3, 3, 0x00fffe, 0x00fffe}, // justify block2 and finalize block 1
+			{3, 3, 0x00fffe, 0x00fffe}, // justify block 2 and finalize block 1
 			{6, 20, 0x1f0001, 0x1fffff},
 			{4, 4, 0x00fffe, 0x1fffff},
 			{5, 5, 0x00fffe, 0x1fffff},
@@ -545,14 +550,14 @@ var simulatorTestcases = []*TestSimulatorParam{
 		},
 	},
 	{
-		// 21 validators, all active, naturally justified keep finalized block grow
+		// 21 validators, all active, the finalized fork can keep grow
 		validatorsNumber: 21,
 		cs: []*BlockSimulator{
-			{1, 1, 0x00fffe, 0x00fffe},
-			{2, 2, 0x00fffe, 0x00fffe}, // The block 3 will never produce
+			{1, 14, 0x00fffe, 0x00fffe},
+			{2, 15, 0x00fffe, 0x00fffe}, // The block 3 will never produce
 			{1, 0, 0x1f0001, 0x1fffff},
 			{2, 16, 0x1f0001, 0x1fffff},
-			{3, 1, 0x1f0001, 0x1fffff},
+			{3, 1, 0x1f0001, 0x1fffff}, // based block produced by 15
 			{4, 2, 0x1f0001, 0x1fffff},
 			{5, 3, 0x1f0001, 0x1fffff},
 			{6, 4, 0x1f0001, 0x1fffff},
@@ -580,12 +585,11 @@ func TestSimulateP2P(t *testing.T) {
 		if err != nil {
 			t.Fatalf("[Testcase %d] simulate P2P error: %v", index, err)
 		}
-
 		for _, val := range c.validators {
 			t.Logf("[Testcase %d] validator(%d) head block: %d",
 				index, val.index, val.head.blockNumber)
 			t.Logf("[Testcase %d] validator(%d) highest justified block: %d",
-				index, val.index, val.head.GetJustifiedBlock().blockNumber)
+				index, val.index, val.head.GetJustifiedNumber())
 			t.Logf("[Testcase %d] validator(%d) highest finalized block: %d",
 				index, val.index, val.head.GetFinalizedBlock().blockNumber)
 		}

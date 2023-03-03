@@ -460,7 +460,7 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 		lc.chainFeed.Send(core.ChainEvent{Block: block, Hash: block.Hash()})
 		lc.chainHeadFeed.Send(core.ChainHeadEvent{Block: block})
 		if posa, ok := lc.Engine().(consensus.PoSA); ok {
-			lc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: posa.GetFinalizedHeader(lc, block.Header(), types.NaturallyFinalizedDist)})
+			lc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: posa.GetFinalizedHeader(lc, block.Header())})
 		}
 	case core.SideStatTy:
 		lc.chainSideFeed.Send(core.ChainSideEvent{Block: block})
@@ -472,6 +472,19 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 // header is retrieved from the HeaderChain's internal cache.
 func (lc *LightChain) CurrentHeader() *types.Header {
 	return lc.hc.CurrentHeader()
+}
+
+// GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`
+func (lc *LightChain) GetJustifiedNumber(header *types.Header) uint64 {
+	if p, ok := lc.engine.(consensus.PoSA); ok {
+		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(lc.hc, header)
+		if err == nil {
+			return justifiedBlockNumber
+		}
+	}
+	// return 0 when err!=nil
+	// so the input `header` will at a disadvantage during reorg
+	return 0
 }
 
 // GetTd retrieves a block's total difficulty in the canonical chain from the

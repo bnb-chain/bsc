@@ -740,7 +740,7 @@ func (s *PublicBlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.H
 // * When blockNr is -1 the chain head is returned.
 // * When blockNr is -2 the pending chain head is returned.
 // * When fullTx is true all transactions in the block are returned, otherwise
-//   only the transaction hash is returned.
+// only the transaction hash is returned.
 func (s *PublicBlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (map[string]interface{}, error) {
 	block, err := s.b.BlockByNumber(ctx, number)
 	if block != nil && err == nil {
@@ -1328,8 +1328,8 @@ func (s *PublicBlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, bloc
 	return result, err
 }
 
-// GetJustifiedHeader returns the highest justified block before the input block.
-func (s *PublicBlockChainAPI) GetJustifiedHeader(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (*types.Header, error) {
+// GetJustifiedNumberAndHash returns the highest justified block's number and hash on the branch including and before the input block.
+func (s *PublicBlockChainAPI) GetJustifiedNumberAndHash(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash) (uint64, common.Hash, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
@@ -1338,18 +1338,17 @@ func (s *PublicBlockChainAPI) GetJustifiedHeader(ctx context.Context, blockNrOrH
 	// Retrieve the block to act as the gas ceiling
 	header, err := s.b.HeaderByNumberOrHash(ctx, bNrOrHash)
 	if err != nil {
-		return nil, err
+		return 0, common.Hash{}, err
 	}
 	if header == nil {
-		return nil, errors.New("block header not found")
+		return 0, common.Hash{}, errors.New("block header not found")
 	}
 
 	if posa, ok := s.b.Engine().(consensus.PoSA); ok {
-		return posa.GetJustifiedHeader(s.b.Chain(), header), nil
+		return posa.GetJustifiedNumberAndHash(s.b.Chain(), header)
 	}
 
-	// Not support.
-	return nil, nil
+	return 0, common.Hash{}, errors.New("consensus engine not support")
 }
 
 // GetFinalizedHeader returns the highest finalized block header before the input block.
@@ -1369,7 +1368,7 @@ func (s *PublicBlockChainAPI) GetFinalizedHeader(ctx context.Context, blockNrOrH
 	}
 
 	if posa, ok := s.b.Engine().(consensus.PoSA); ok {
-		return posa.GetFinalizedHeader(s.b.Chain(), header, types.NaturallyFinalizedDist), nil
+		return posa.GetFinalizedHeader(s.b.Chain(), header), nil
 	}
 
 	// Not support.
