@@ -18,8 +18,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
@@ -124,24 +122,6 @@ func remoteConsole(ctx *cli.Context) error {
 		path := node.DefaultDataDir()
 		if ctx.GlobalIsSet(utils.DataDirFlag.Name) {
 			path = ctx.GlobalString(utils.DataDirFlag.Name)
-		}
-		if path != "" {
-			if ctx.GlobalBool(utils.RopstenFlag.Name) {
-				// Maintain compatibility with older Geth configurations storing the
-				// Ropsten database in `testnet` instead of `ropsten`.
-				legacyPath := filepath.Join(path, "testnet")
-				if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
-					path = legacyPath
-				} else {
-					path = filepath.Join(path, "ropsten")
-				}
-			} else if ctx.GlobalBool(utils.RinkebyFlag.Name) {
-				path = filepath.Join(path, "rinkeby")
-			} else if ctx.GlobalBool(utils.GoerliFlag.Name) {
-				path = filepath.Join(path, "goerli")
-			} else if ctx.GlobalBool(utils.SepoliaFlag.Name) {
-				path = filepath.Join(path, "sepolia")
-			}
 		}
 		endpoint = fmt.Sprintf("%s/geth.ipc", path)
 	}
