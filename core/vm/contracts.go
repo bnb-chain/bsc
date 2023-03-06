@@ -155,7 +155,7 @@ var PrecompiledContractsBLS = map[common.Address]PrecompiledContract{
 }
 
 var (
-	PrecompiledAddressesPlanck     []common.Address
+	PrecompiledAddressesPlanck    []common.Address
 	PrecompiledAddressesMoran     []common.Address
 	PrecompiledAddressesNano      []common.Address
 	PrecompiledAddressesBerlin    []common.Address
