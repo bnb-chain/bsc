@@ -50,7 +50,7 @@ var (
 
 	moranUpgrade = make(map[string]*Upgrade)
 
-	bohrUpgrade = make(map[string]*Upgrade)
+	planckUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -483,9 +483,9 @@ func init() {
 		},
 	}
 
-	// TODO: update the commit url of bohr upgrade
-	bohrUpgrade[mainNet] = &Upgrade{
-		UpgradeName: "bohr",
+	// TODO: update the commit url of planck upgrade
+	planckUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "planck",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(SlashContract),
@@ -505,8 +505,8 @@ func init() {
 		},
 	}
 
-	bohrUpgrade[chapelNet] = &Upgrade{
-		UpgradeName: "bohr",
+	planckUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "planck",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(SlashContract),
@@ -531,8 +531,8 @@ func init() {
 		},
 	}
 
-	bohrUpgrade[rialtoNet] = &Upgrade{
-		UpgradeName: "bohr",
+	planckUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "planck",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(SlashContract),
@@ -600,8 +600,8 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 		applySystemContractUpgrade(moranUpgrade[network], blockNumber, statedb, logger)
 	}
 
-	if config.IsOnBohr(blockNumber) {
-		applySystemContractUpgrade(bohrUpgrade[network], blockNumber, statedb, logger)
+	if config.IsOnPlanck(blockNumber) {
+		applySystemContractUpgrade(planckUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*
