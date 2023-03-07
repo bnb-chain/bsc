@@ -52,8 +52,8 @@ type (
 func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	var precompiles map[common.Address]PrecompiledContract
 	switch {
-	case evm.chainRules.IsBohr:
-		precompiles = PrecompiledContractsBohr
+	case evm.chainRules.IsPlanck:
+		precompiles = PrecompiledContractsPlanck
 	case evm.chainRules.IsMoran:
 		precompiles = PrecompiledContractsMoran
 	case evm.chainRules.IsNano:

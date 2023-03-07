@@ -328,10 +328,10 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	}
 	number := header.Number.Uint64()
 
-	// According to BEP188, after Bohr fork, an in-turn validator is allowed to broadcast
+	// According to BEP188, after Planck fork, an in-turn validator is allowed to broadcast
 	// a mined block earlier but not earlier than its parent's timestamp when the block is ready .
 	if header.Time > uint64(time.Now().Unix()) {
-		if !chain.Config().IsBohr(header.Number) || header.Difficulty.Cmp(diffInTurn) != 0 {
+		if !chain.Config().IsPlanck(header.Number) || header.Difficulty.Cmp(diffInTurn) != 0 {
 			return consensus.ErrFutureBlock
 		}
 		var parent *types.Header
@@ -883,7 +883,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	}
 
 	// BEP-188 allows an in-turn validator to broadcast the mined block earlier
-	// but not earlier than its parent's timestamp after Bohr fork.
+	// but not earlier than its parent's timestamp after Planck fork.
 	// At the same time, small block which means gas used rate is less than
 	// gasUsedRateDemarcation does not broadcast early to avoid an upcoming fat block.
 	delay := time.Duration(0)
@@ -891,7 +891,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	if header.GasLimit != 0 {
 		gasUsedRate = header.GasUsed * 100 / header.GasLimit
 	}
-	if p.chainConfig.IsBohr(header.Number) && header.Difficulty.Cmp(diffInTurn) == 0 && gasUsedRate >= gasUsedRateDemarcation {
+	if p.chainConfig.IsPlanck(header.Number) && header.Difficulty.Cmp(diffInTurn) == 0 && gasUsedRate >= gasUsedRateDemarcation {
 		parent := chain.GetHeader(header.ParentHash, number-1)
 		if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
 			return consensus.ErrUnknownAncestor
@@ -1323,7 +1323,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 	} else {
 		delay := initialBackOffTime
 		validators := snap.validators()
-		if p.chainConfig.IsBohr(header.Number) {
+		if p.chainConfig.IsPlanck(header.Number) {
 			// reverse the key/value of snap.Recents to get recentsMap
 			recentsMap := make(map[common.Address]uint64, len(snap.Recents))
 			for seen, recent := range snap.Recents {

@@ -114,7 +114,7 @@ var (
 		NanoBlock:           big.NewInt(21962149),
 		MoranBlock:          big.NewInt(22107423),
 		GibbsBlock:          big.NewInt(23846001),
-		BohrBlock:           nil, // todo: TBD
+		PlanckBlock:         nil, // todo: TBD
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -141,7 +141,7 @@ var (
 		GibbsBlock:          big.NewInt(22800220),
 		NanoBlock:           big.NewInt(23482428),
 		MoranBlock:          big.NewInt(23603940),
-		BohrBlock:           nil, // todo: TBD
+		PlanckBlock:         nil, // todo: TBD
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -167,7 +167,7 @@ var (
 		GibbsBlock:          big.NewInt(400),
 		NanoBlock:           nil,
 		MoranBlock:          nil,
-		BohrBlock:           nil,
+		PlanckBlock:         nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -285,7 +285,7 @@ type ChainConfig struct {
 	GibbsBlock      *big.Int `json:"gibbsBlock,omitempty" toml:",omitempty"`      // gibbsBlock switch block (nil = no fork, 0 = already activated)
 	NanoBlock       *big.Int `json:"nanoBlock,omitempty" toml:",omitempty"`       // nanoBlock switch block (nil = no fork, 0 = already activated)
 	MoranBlock      *big.Int `json:"moranBlock,omitempty" toml:",omitempty"`      // moranBlock switch block (nil = no fork, 0 = already activated)
-	BohrBlock       *big.Int `json:"bohrBlock,omitempty" toml:",omitempty"`       // bohrBlock switch block (nil = no fork, 0 = already activated)
+	PlanckBlock     *big.Int `json:"planckBlock,omitempty" toml:",omitempty"`     // planckBlock switch block (nil = no fork, 0 = already activated)
 
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
@@ -336,7 +336,7 @@ func (c *ChainConfig) String() string {
 	default:
 		engine = "unknown"
 	}
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Bohr: %v, Engine: %v}",
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -363,7 +363,7 @@ func (c *ChainConfig) String() string {
 		c.GibbsBlock,
 		c.NanoBlock,
 		c.MoranBlock,
-		c.BohrBlock,
+		c.PlanckBlock,
 		engine,
 	)
 }
@@ -519,12 +519,12 @@ func (c *ChainConfig) IsOnMoran(num *big.Int) bool {
 	return configNumEqual(c.MoranBlock, num)
 }
 
-func (c *ChainConfig) IsBohr(num *big.Int) bool {
-	return isForked(c.BohrBlock, num)
+func (c *ChainConfig) IsPlanck(num *big.Int) bool {
+	return isForked(c.PlanckBlock, num)
 }
 
-func (c *ChainConfig) IsOnBohr(num *big.Int) bool {
-	return configNumEqual(c.BohrBlock, num)
+func (c *ChainConfig) IsOnPlanck(num *big.Int) bool {
+	return configNumEqual(c.PlanckBlock, num)
 }
 
 // CheckCompatible checks whether scheduled fork transitions have been imported
@@ -655,8 +655,8 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	if isForkIncompatible(c.MoranBlock, newcfg.MoranBlock, head) {
 		return newCompatError("moran fork block", c.MoranBlock, newcfg.MoranBlock)
 	}
-	if isForkIncompatible(c.BohrBlock, newcfg.BohrBlock, head) {
-		return newCompatError("bohr fork block", c.BohrBlock, newcfg.BohrBlock)
+	if isForkIncompatible(c.PlanckBlock, newcfg.PlanckBlock, head) {
+		return newCompatError("planck fork block", c.PlanckBlock, newcfg.PlanckBlock)
 	}
 	return nil
 }
@@ -729,7 +729,7 @@ type Rules struct {
 	IsMerge                                                 bool
 	IsNano                                                  bool
 	IsMoran                                                 bool
-	IsBohr                                                  bool
+	IsPlanck                                                bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -753,6 +753,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		IsMerge:          isMerge,
 		IsNano:           c.IsNano(num),
 		IsMoran:          c.IsMoran(num),
-		IsBohr:           c.IsBohr(num),
+		IsPlanck:         c.IsPlanck(num),
 	}
 }

@@ -111,7 +111,7 @@ var PrecompiledContractsMoran = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidateMoran{},
 }
 
-var PrecompiledContractsBohr = map[common.Address]PrecompiledContract{
+var PrecompiledContractsPlanck = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{1}): &ecrecover{},
 	common.BytesToAddress([]byte{2}): &sha256hash{},
 	common.BytesToAddress([]byte{3}): &ripemd160hash{},
@@ -123,7 +123,7 @@ var PrecompiledContractsBohr = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{9}): &blake2F{},
 
 	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
-	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidateBohr{},
+	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidatePlanck{},
 }
 
 // PrecompiledContractsBerlin contains the default set of pre-compiled Ethereum
@@ -155,7 +155,7 @@ var PrecompiledContractsBLS = map[common.Address]PrecompiledContract{
 }
 
 var (
-	PrecompiledAddressesBohr      []common.Address
+	PrecompiledAddressesPlanck    []common.Address
 	PrecompiledAddressesMoran     []common.Address
 	PrecompiledAddressesNano      []common.Address
 	PrecompiledAddressesBerlin    []common.Address
@@ -183,16 +183,16 @@ func init() {
 	for k := range PrecompiledContractsMoran {
 		PrecompiledAddressesMoran = append(PrecompiledAddressesMoran, k)
 	}
-	for k := range PrecompiledContractsBohr {
-		PrecompiledAddressesBohr = append(PrecompiledAddressesBohr, k)
+	for k := range PrecompiledContractsPlanck {
+		PrecompiledAddressesPlanck = append(PrecompiledAddressesPlanck, k)
 	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
-	case rules.IsBohr:
-		return PrecompiledAddressesBohr
+	case rules.IsPlanck:
+		return PrecompiledAddressesPlanck
 	case rules.IsMoran:
 		return PrecompiledAddressesMoran
 	case rules.IsNano:
