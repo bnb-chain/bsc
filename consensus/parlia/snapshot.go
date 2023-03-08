@@ -219,8 +219,8 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 	for _, header := range headers {
 		number := header.Number.Uint64()
 		// Delete the oldest validator from the recent list to allow it signing again
-		if limit := getSignRecentlyLimit(header.Number, len(snap.Validators), chainConfig); number >= uint64(limit) {
-			delete(snap.Recents, number-uint64(limit))
+		if limit := uint64(len(snap.Validators)/2 + 1); number >= limit {
+			delete(snap.Recents, number-limit)
 		}
 		if limit := uint64(len(snap.Validators)); number >= limit {
 			delete(snap.RecentForkHashes, number-limit)
@@ -261,8 +261,8 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 					}
 				}
 			}
-			oldLimit := getSignRecentlyLimit(header.Number, len(snap.Validators), chainConfig)
-			newLimit := getSignRecentlyLimit(header.Number, len(newVals), chainConfig)
+			oldLimit := len(snap.Validators)/2 + 1
+			newLimit := len(newVals)/2 + 1
 			if newLimit < oldLimit {
 				for i := 0; i < oldLimit-newLimit; i++ {
 					delete(snap.Recents, number-uint64(newLimit)-uint64(i))
