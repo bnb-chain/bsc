@@ -389,14 +389,6 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 	return &attestation, nil
 }
 
-func getSignRecentlyLimit(blockNumber *big.Int, validatorsNumber int, chainConfig *params.ChainConfig) int {
-	limit := validatorsNumber/2 + 1
-	if chainConfig.IsBoneh(blockNumber) {
-		limit = cmath.CeilDiv(validatorsNumber*2, 3)
-	}
-	return limit
-}
-
 // verifyVoteAttestation checks whether the vote attestation in the header is valid.
 func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
 	attestation, err := getVoteAttestationFromHeader(header, p.chainConfig, p.config)
@@ -757,7 +749,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	for seen, recent := range snap.Recents {
 		if recent == signer {
 			// Signer is among recents, only fail if the current block doesn't shift it out
-			if limit := getSignRecentlyLimit(header.Number, len(snap.Validators), p.chainConfig); seen > number-uint64(limit) {
+			if limit := uint64(len(snap.Validators)/2 + 1); seen > number-limit {
 				return errRecentlySigned
 			}
 		}
@@ -1291,7 +1283,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	for seen, recent := range snap.Recents {
 		if recent == val {
 			// Signer is among recents, only wait if the current block doesn't shift it out
-			if limit := getSignRecentlyLimit(header.Number, len(snap.Validators), p.chainConfig); number < uint64(limit) || seen > number-uint64(limit) {
+			if limit := uint64(len(snap.Validators)/2 + 1); number < limit || seen > number-limit {
 				log.Info("Signed recently, must wait for others")
 				return nil
 			}
@@ -1406,8 +1398,7 @@ func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Block) 
 		}
 
 		// Signer is among recents, only wait if the current block doesn't shift it out
-		limit := getSignRecentlyLimit(parent.Number(), len(snap.Validators), p.chainConfig)
-		if number < uint64(limit) || seen > number-uint64(limit) {
+		if limit := uint64(len(snap.Validators)/2 + 1); number < limit || seen > number-limit {
 			return true, nil
 		}
 	}
@@ -1849,7 +1840,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 
 		// Exclude the recently signed validators first, and then compute the backOffTime.
 		recentVals := make(map[common.Address]struct{}, len(snap.Recents))
-		limit := getSignRecentlyLimit(header.Number, len(snap.Validators), p.chainConfig)
+		limit := len(snap.Validators)/2 + 1
 		for seen, recent := range snap.Recents {
 			if header.Number.Uint64() < uint64(limit) || seen > header.Number.Uint64()-uint64(limit) {
 				if val == recent {
