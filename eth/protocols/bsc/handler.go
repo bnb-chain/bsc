@@ -1,6 +1,7 @@
 package bsc
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,17 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+)
+
+const (
+	// handshakeWaitTimeout is the maximum allowed time for the extension waiting to
+	// complete handshake before dropping the connection as malicious.
+	handshakeWaitTimeout = 20 * time.Second
+)
+
+var (
+	// errHandshakeWaitTimeout is returned if a peer waits handshake for too long
+	errHandshakeWaitTimeout = errors.New("peer handshake wait timeout")
 )
 
 // Handler is a callback to invoke from an outside runner after the boilerplate
@@ -74,6 +86,11 @@ func MakeProtocols(backend Backend, dnsdisc enode.Iterator) []p2p.Protocol {
 // Handle is the callback invoked to manage the life cycle of a `bsc` peer.
 // When this function terminates, the peer is disconnected.
 func Handle(backend Backend, peer *Peer) error {
+	select {
+	case <-peer.handshaked:
+	case <-time.After(handshakeWaitTimeout):
+		return errHandshakeWaitTimeout
+	}
 	for {
 		if err := handleMessage(backend, peer); err != nil {
 			peer.Log().Debug("Message handling failed in `bsc`", "err", err)

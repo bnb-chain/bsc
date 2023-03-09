@@ -34,6 +34,8 @@ type Peer struct {
 	version   uint              // Protocol version negotiated
 	logger    log.Logger        // Contextual logger with the peer id injected
 	term      chan struct{}     // Termination channel to stop the broadcasters
+
+	handshaked chan struct{} // channel to start handleMessage after handshake
 }
 
 // NewPeer create a wrapper for a network connection and negotiated protocol
@@ -49,6 +51,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 		version:       version,
 		logger:        log.New("peer", id[:8]),
 		term:          make(chan struct{}),
+		handshaked:    make(chan struct{}, 1), //asynchronous for handshake only once
 	}
 	go peer.broadcastVotes()
 	return peer

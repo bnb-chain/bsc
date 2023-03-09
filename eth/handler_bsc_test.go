@@ -110,21 +110,18 @@ func testSendVotes(t *testing.T, protocol uint) {
 	defer localBsc.Close()
 	defer remoteBsc.Close()
 
-	go func(p *bsc.Peer) {
-		(*bscHandler)(handler.handler).RunPeer(p, func(peer *bsc.Peer) error {
-			return bsc.Handle((*bscHandler)(handler.handler), peer)
-		})
-	}(localBsc)
-
-	time.Sleep(200 * time.Millisecond)
-	remoteBsc.Handshake()
-
-	time.Sleep(200 * time.Millisecond)
 	go func(p *eth.Peer) {
 		handler.handler.runEthPeer(p, func(peer *eth.Peer) error {
 			return eth.Handle((*ethHandler)(handler.handler), peer)
 		})
 	}(localEth)
+
+	time.Sleep(200 * time.Millisecond)
+	go func(p *bsc.Peer) {
+		(*bscHandler)(handler.handler).RunPeer(p, func(peer *bsc.Peer) error {
+			return bsc.Handle((*bscHandler)(handler.handler), peer)
+		})
+	}(localBsc)
 
 	// Run the handshake locally to avoid spinning up a source handler
 	var (
@@ -132,10 +129,13 @@ func testSendVotes(t *testing.T, protocol uint) {
 		head    = handler.chain.CurrentBlock()
 		td      = handler.chain.GetTd(head.Hash(), head.NumberU64())
 	)
-	time.Sleep(200 * time.Millisecond)
 	if err := remoteEth.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
-		t.Fatalf("failed to run protocol handshake: %d", err)
+		t.Fatalf("failed to run eth protocol handshake: %d", err)
 	}
+	if err := remoteBsc.Handshake(); err != nil {
+		t.Fatalf("failed to run bsc protocol handshake: %d", err)
+	}
+
 	// After the handshake completes, the source handler should stream the sink
 	// the votes, subscribe to all inbound network events
 	backend := new(testBscHandler)
@@ -221,21 +221,18 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	defer localBsc.Close()
 	defer remoteBsc.Close()
 
-	go func(p *bsc.Peer) {
-		(*bscHandler)(handler.handler).RunPeer(p, func(peer *bsc.Peer) error {
-			return bsc.Handle((*bscHandler)(handler.handler), peer)
-		})
-	}(localBsc)
-
-	time.Sleep(200 * time.Millisecond)
-	remoteBsc.Handshake()
-
-	time.Sleep(200 * time.Millisecond)
 	go func(p *eth.Peer) {
 		handler.handler.runEthPeer(p, func(peer *eth.Peer) error {
 			return eth.Handle((*ethHandler)(handler.handler), peer)
 		})
 	}(localEth)
+
+	time.Sleep(200 * time.Millisecond)
+	go func(p *bsc.Peer) {
+		(*bscHandler)(handler.handler).RunPeer(p, func(peer *bsc.Peer) error {
+			return bsc.Handle((*bscHandler)(handler.handler), peer)
+		})
+	}(localBsc)
 
 	// Run the handshake locally to avoid spinning up a source handler
 	var (
@@ -243,9 +240,11 @@ func testRecvVotes(t *testing.T, protocol uint) {
 		head    = handler.chain.CurrentBlock()
 		td      = handler.chain.GetTd(head.Hash(), head.NumberU64())
 	)
-	time.Sleep(200 * time.Millisecond)
 	if err := remoteEth.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
-		t.Fatalf("failed to run protocol handshake: %d", err)
+		t.Fatalf("failed to run eth protocol handshake: %d", err)
+	}
+	if err := remoteBsc.Handshake(); err != nil {
+		t.Fatalf("failed to run bsc protocol handshake: %d", err)
 	}
 
 	votesCh := make(chan core.NewVoteEvent)

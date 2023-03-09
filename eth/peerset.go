@@ -458,7 +458,12 @@ func (ps *peerSet) registerPeer(peer *eth.Peer, ext *snap.Peer, diffExt *diff.Pe
 		eth.trustExt = &trustPeer{trustExt}
 	}
 	if bscExt != nil {
-		eth.bscExt = &bscPeer{bscExt}
+		if err := bscExt.Handshake(); err == nil {
+			eth.bscExt = &bscPeer{bscExt}
+		} else {
+			peer.Log().Debug("bsc protocol handshake failed", "err", err)
+			return err
+		}
 	}
 	ps.peers[id] = eth
 	return nil

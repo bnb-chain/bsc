@@ -42,6 +42,7 @@ func (p *Peer) Handshake() error {
 			return p2p.DiscReadTimeout
 		}
 	}
+	p.handshaked <- struct{}{}
 	return nil
 }
 
