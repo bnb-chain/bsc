@@ -28,7 +28,7 @@ func (p *Peer) Handshake() error {
 		})
 	})
 	gopool.Submit(func() {
-		errc <- p.readBscCap(&cap)
+		errc <- p.readCap(&cap)
 	})
 	timeout := time.NewTimer(handshakeTimeout)
 	defer timeout.Stop()
@@ -45,8 +45,8 @@ func (p *Peer) Handshake() error {
 	return nil
 }
 
-// readBscCap reads the remote handshake message.
-func (p *Peer) readBscCap(cap *BscCapPacket) error {
+// readCap reads the remote handshake message.
+func (p *Peer) readCap(cap *BscCapPacket) error {
 	msg, err := p.rw.ReadMsg()
 	if err != nil {
 		return err

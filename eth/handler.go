@@ -54,6 +54,7 @@ const (
 	// voteChanSize is the size of channel listening to NewVotesEvent.
 	voteChanSize = 256
 
+	// deltaTdThreshold is the threshold of TD difference for peers to broadcast votes.
 	deltaTdThreshold = 20
 )
 
@@ -804,7 +805,7 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 	for _, peer := range peers {
 		_, peerTD := peer.Head()
 		deltaTD := new(big.Int).Abs(new(big.Int).Sub(currentTD, peerTD))
-		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 {
+		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 && peer.bscExt != nil {
 			voteMap[peer] = vote
 		}
 	}
@@ -813,9 +814,7 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 		directPeers++
 		directCount += 1
 		votes := []*types.VoteEnvelope{_vote}
-		if peer.bscExt != nil {
-			peer.bscExt.AsyncSendVotes(votes)
-		}
+		peer.bscExt.AsyncSendVotes(votes)
 	}
 	log.Debug("Vote broadcast", "vote packs", directPeers, "broadcast vote", directCount)
 }

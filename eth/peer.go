@@ -42,7 +42,7 @@ type ethPeer struct {
 	snapExt  *snapPeer // Satellite `snap` connection
 	diffExt  *diffPeer
 	trustExt *trustPeer
-	bscExt   *bscPeer
+	bscExt   *bscPeer // Satellite `bsc` connection
 
 	syncDrop *time.Timer   // Connection dropper if `eth` sync progress isn't validated in time
 	snapWait chan struct{} // Notification channel for snap connections

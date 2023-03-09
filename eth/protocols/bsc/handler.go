@@ -131,9 +131,7 @@ func handleVotes(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 	// Schedule all the unknown hashes for retrieval
-	for _, vote := range ann.Votes {
-		peer.markVote(vote.Hash())
-	}
+	peer.markVotes(ann.Votes)
 	return backend.Handle(peer, ann)
 }
 
