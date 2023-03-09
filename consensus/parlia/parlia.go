@@ -590,12 +590,10 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 		return errUnauthorizedValidator
 	}
 
-	for seen, recent := range snap.Recents {
+	for _, recent := range snap.Recents {
 		if recent == signer {
 			// Signer is among recents, only fail if the current block doesn't shift it out
-			if limit := uint64(len(snap.Validators)/2 + 1); seen > number-limit {
-				return errRecentlySigned
-			}
+			return errRecentlySigned
 		}
 	}
 
@@ -872,13 +870,11 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	}
 
 	// If we're amongst the recent signers, wait for the next block
-	for seen, recent := range snap.Recents {
+	for _, recent := range snap.Recents {
 		if recent == val {
 			// Signer is among recents, only wait if the current block doesn't shift it out
-			if limit := uint64(len(snap.Validators)/2 + 1); number < limit || seen > number-limit {
-				log.Info("Signed recently, must wait for others")
-				return nil
-			}
+			log.Info("Signed recently, must wait for others")
+			return nil
 		}
 	}
 
@@ -992,13 +988,10 @@ func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Block) 
 	}
 
 	// If we're amongst the recent signers, wait for the next block
-	number := parent.NumberU64() + 1
-	for seen, recent := range snap.Recents {
+	for _, recent := range snap.Recents {
 		if recent == p.val {
 			// Signer is among recents, only wait if the current block doesn't shift it out
-			if limit := uint64(len(snap.Validators)/2 + 1); number < limit || seen > number-limit {
-				return true, nil
-			}
+			return true, nil
 		}
 	}
 	return false, nil
