@@ -207,19 +207,20 @@ func (ec *Client) GetRootByDiffHash(ctx context.Context, blockNr *big.Int, block
 	return &result, err
 }
 
-// GetJustifiedHeader returns the highest justified header before a specific block number. If number is nil, the
-// latest justified block header is returned.
-func (ec *Client) GetJustifiedHeader(ctx context.Context, blockNumber *big.Int) (*types.Header, error) {
-	var head *types.Header
-	err := ec.c.CallContext(ctx, &head, "eth_getJustifiedHeader", toBlockNumArg(blockNumber))
-	if err == nil && head == nil {
-		err = ethereum.NotFound
+// GetJustifiedNumberAndHash returns the highest justified block's number and hash on the branch including and before the input block.
+// If number is nil, the latest justified block header is returned.
+func (ec *Client) GetJustifiedNumberAndHash(ctx context.Context, blockNumber *big.Int) (uint64, common.Hash, error) {
+	var justifiedBlockNumber uint64
+	var justifiedBlockHash common.Hash
+	err := ec.c.CallContext(ctx, &[]interface{}{&justifiedBlockNumber, &justifiedBlockHash}, "eth_getJustifiedNumberAndHash", toBlockNumArg(blockNumber))
+	if err == nil && justifiedBlockHash == (common.Hash{}) {
+		err = errors.New("unexpected error")
 	}
-	return head, err
+	return justifiedBlockNumber, justifiedBlockHash, err
 }
 
-// GetFinalizedHeader returns the highest finalized block header before a specific block number. If header is nil, the
-// latest finalized block header is returned.
+// GetFinalizedHeader returns the highest finalized block header.
+// If header is nil, the latest finalized block header is returned.
 func (ec *Client) GetFinalizedHeader(ctx context.Context, blockNumber *big.Int) (*types.Header, error) {
 	var head *types.Header
 	err := ec.c.CallContext(ctx, &head, "eth_getFinalizedHeader", toBlockNumArg(blockNumber))

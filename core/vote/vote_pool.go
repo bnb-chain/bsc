@@ -23,7 +23,7 @@ const (
 	voteBufferForPut = 256
 	// for simplicity, both boundary will be included, so votes in the range [currentBlockNum-256,currentBlockNum+11] will be stored
 	lowerLimitOfVoteBlockNumber = 256
-	upperLimitOfVoteBlockNumber = 11
+	upperLimitOfVoteBlockNumber = 11 // refer to fetcher.maxUncleDist
 
 	chainHeadChanSize = 10 // chainHeadChanSize is the size of channel listening to ChainHeadEvent.
 )

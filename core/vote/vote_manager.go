@@ -14,8 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-const naturallyJustifiedDist = 14 // The distance to naturally justify a block
-
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {
 	mux *event.TypeMux
@@ -166,14 +164,12 @@ func (voteManager *VoteManager) loop() {
 // A validator must not vote within the span of its other votes . (Rule 2)
 // Validators always vote for their canonical chain’s latest block. (Rule 3)
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
-	justifiedHeader := voteManager.engine.GetJustifiedHeader(voteManager.chain, header)
-	if justifiedHeader == nil {
-		log.Error("highestJustifiedHeader at cur header is nil", "curHeader's BlockNumber", header.Number.Uint64(), "curHeader's BlockHash", header.Hash())
+	sourceNumber, sourceHash, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, header)
+	if err != nil {
+		log.Error("failed to get the highest justified number and hash at cur header", "curHeader's BlockNumber", header.Number, "curHeader's BlockHash", header.Hash())
 		return false, 0, common.Hash{}
 	}
 
-	sourceNumber := justifiedHeader.Number.Uint64()
-	sourceHash := justifiedHeader.Hash()
 	targetNumber := header.Number.Uint64()
 
 	voteDataBuffer := voteManager.journal.voteDataBuffer
@@ -197,7 +193,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 			}
 		}
 	}
-	for blockNumber := targetNumber + 1; blockNumber <= targetNumber+naturallyJustifiedDist; blockNumber++ {
+	for blockNumber := targetNumber + 1; blockNumber <= targetNumber+upperLimitOfVoteBlockNumber; blockNumber++ {
 		if voteDataBuffer.Contains(blockNumber) {
 			voteData, ok := voteDataBuffer.Get(blockNumber)
 			if !ok {

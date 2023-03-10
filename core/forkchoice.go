@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -35,6 +36,12 @@ import (
 type ChainReader interface {
 	// Config retrieves the header chain's chain configuration.
 	Config() *params.ChainConfig
+
+	// Engine retrieves the blockchain's consensus engine.
+	Engine() consensus.Engine
+
+	// GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`
+	GetJustifiedNumber(header *types.Header) uint64
 
 	// GetTd returns the total difficulty of a local block.
 	GetTd(common.Hash, uint64) *big.Int
@@ -105,4 +112,16 @@ func (f *ForkChoice) ReorgNeeded(current *types.Header, header *types.Header) (b
 		}
 	}
 	return reorg, nil
+}
+
+// reorgNeededWithFastFinality compares justified block numbers firstly, backoff to compare tds when equal
+func (f *ForkChoice) reorgNeededWithFastFinality(current *types.Header, header *types.Header) (bool, error) {
+	_, ok := f.chain.Engine().(consensus.PoSA)
+	justifiedNumber := f.chain.GetJustifiedNumber(header)
+	curJustifiedNumber := f.chain.GetJustifiedNumber(current)
+	if !ok || justifiedNumber == curJustifiedNumber {
+		return f.ReorgNeeded(current, header)
+	}
+
+	return justifiedNumber > curJustifiedNumber, nil
 }

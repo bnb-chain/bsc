@@ -109,61 +109,34 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 	}
 	hc.currentHeaderHash = hc.CurrentHeader().Hash()
 	headHeaderGauge.Update(hc.CurrentHeader().Number.Int64())
-	justifiedBlockGauge.Update(int64(hc.getJustifiedNumber(hc.CurrentHeader())))
+	justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(hc.CurrentHeader())))
 	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(hc.CurrentHeader())))
 
 	return hc, nil
 }
 
-// getJustifiedNumber returns the highest justified number before the specific block.
-func (hc *HeaderChain) getJustifiedNumber(header *types.Header) uint64 {
+// GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`.
+func (hc *HeaderChain) GetJustifiedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
-		justifiedHeader := p.GetJustifiedHeader(hc, header)
-		if justifiedHeader != nil {
-			return justifiedHeader.Number.Uint64()
+		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(hc, header)
+		if err == nil {
+			return justifiedBlockNumber
 		}
 	}
-
+	// return 0 when err!=nil
+	// so the input `header` will at a disadvantage during reorg
 	return 0
 }
 
 // getFinalizedNumber returns the highest finalized number before the specific block.
 func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
-		if finalizedHeader := p.GetFinalizedHeader(hc, header, types.NaturallyFinalizedDist); finalizedHeader != nil {
+		if finalizedHeader := p.GetFinalizedHeader(hc, header); finalizedHeader != nil {
 			return finalizedHeader.Number.Uint64()
 		}
 	}
 
 	return 0
-}
-
-// reorgNeededWithFastFinality returns true when the finalized block is higher, otherwise backoff to compare the td.
-func (hc *HeaderChain) reorgNeededWithFastFinality(forker *ForkChoice, current *types.Header, header *types.Header) (bool, error) {
-	p, ok := hc.engine.(consensus.PoSA)
-	if !ok {
-		return forker.ReorgNeeded(current, header)
-	}
-
-	ancestor := rawdb.FindCommonAncestor(hc.chainDb, current, header)
-	if ancestor == nil {
-		return forker.ReorgNeeded(current, header)
-	}
-
-	finalized := p.GetFinalizedHeader(hc, header, header.Number.Uint64()-ancestor.Number.Uint64())
-	curFinalized := p.GetFinalizedHeader(hc, current, current.Number.Uint64()-ancestor.Number.Uint64())
-	if finalized == nil || curFinalized == nil {
-		return forker.ReorgNeeded(current, header)
-	} else if finalized.Number.Uint64() > ancestor.Number.Uint64() && curFinalized.Number.Uint64() > ancestor.Number.Uint64() {
-		log.Crit("find two conflict finalized headers", "header1", finalized, "header2", curFinalized)
-	}
-	if finalized.Number.Uint64() == curFinalized.Number.Uint64() {
-		return forker.ReorgNeeded(current, header)
-	} else if finalized.Number.Uint64() > curFinalized.Number.Uint64() {
-		return true, nil
-	} else {
-		return false, nil
-	}
 }
 
 // GetBlockNumber retrieves the block number belonging to the given hash
@@ -339,7 +312,7 @@ func (hc *HeaderChain) writeHeadersAndSetHead(headers []*types.Header, forker *F
 		}
 	)
 	// Ask the fork choicer if the reorg is necessary
-	if reorg, err := hc.reorgNeededWithFastFinality(forker, hc.CurrentHeader(), lastHeader); err != nil {
+	if reorg, err := forker.reorgNeededWithFastFinality(hc.CurrentHeader(), lastHeader); err != nil {
 		return nil, err
 	} else if !reorg {
 		if inserted != 0 {
@@ -637,7 +610,7 @@ func (hc *HeaderChain) SetCurrentHeader(head *types.Header) {
 	hc.currentHeader.Store(head)
 	hc.currentHeaderHash = head.Hash()
 	headHeaderGauge.Update(head.Number.Int64())
-	justifiedBlockGauge.Update(int64(hc.getJustifiedNumber(head)))
+	justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(head)))
 	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(head)))
 }
 
@@ -694,7 +667,7 @@ func (hc *HeaderChain) SetHead(head uint64, updateFn UpdateHeadBlocksCallback, d
 		hc.currentHeader.Store(parent)
 		hc.currentHeaderHash = parentHash
 		headHeaderGauge.Update(parent.Number.Int64())
-		justifiedBlockGauge.Update(int64(hc.getJustifiedNumber(parent)))
+		justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(parent)))
 		finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(parent)))
 
 		// If this is the first iteration, wipe any leftover data upwards too so
