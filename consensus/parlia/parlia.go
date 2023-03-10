@@ -1326,7 +1326,11 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		if p.chainConfig.IsPlanck(header.Number) {
 			// reverse the key/value of snap.Recents to get recentsMap
 			recentsMap := make(map[common.Address]uint64, len(snap.Recents))
+			bound := header.Number.Uint64() - uint64(len(validators)/2+1)
 			for seen, recent := range snap.Recents {
+				if seen <= bound {
+					continue
+				}
 				recentsMap[recent] = seen
 			}
 
