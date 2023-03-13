@@ -799,9 +799,11 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 
 	// Broadcast vote to a batch of peers not knowing about it
 	peers := h.peers.peersWithoutVote(vote.Hash())
+	headBlock := h.chain.CurrentBlock()
+	currentTD := h.chain.GetTd(headBlock.Hash(), headBlock.NumberU64())
 	for _, peer := range peers {
 		_, peerTD := peer.Head()
-		deltaTD := new(big.Int).Abs(new(big.Int).Sub(h.chain.GetTd(h.chain.CurrentHeader().Hash(), h.chain.CurrentBlock().NumberU64()), peerTD))
+		deltaTD := new(big.Int).Abs(new(big.Int).Sub(currentTD, peerTD))
 		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 {
 			voteMap[peer] = vote
 		}
