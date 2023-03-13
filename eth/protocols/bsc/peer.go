@@ -30,13 +30,13 @@ type Peer struct {
 	voteBroadcast chan []*types.VoteEnvelope // Channel used to queue votes propagation requests
 
 	*p2p.Peer                   // The embedded P2P package peer
-	rw        p2p.MsgReadWriter // Input/output streams for diff
+	rw        p2p.MsgReadWriter // Input/output streams for bsc
 	version   uint              // Protocol version negotiated
 	logger    log.Logger        // Contextual logger with the peer id injected
 	term      chan struct{}     // Termination channel to stop the broadcasters
 }
 
-// NewPeer create a wrapper for a network connection and negotiated  protocol
+// NewPeer create a wrapper for a network connection and negotiated protocol
 // version.
 func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 	id := p.ID().String()
@@ -78,22 +78,22 @@ func (p *Peer) Close() {
 
 // KnownVote returns whether peer is known to already have a vote.
 func (p *Peer) KnownVote(hash common.Hash) bool {
-	return p.knownVotes.Contains(hash)
+	return p.knownVotes.contains(hash)
 }
 
-// markVote marks a vote as known for the peer, ensuring that it
-// will never be propagated to this particular peer.
-func (p *Peer) markVote(hash common.Hash) {
-	// If we reached the memory allowance, drop a previously known vote hash
-	p.knownVotes.Add(hash)
+// markVotes marks votes as known for the peer, ensuring that they
+// will never be repropagated to this particular peer.
+func (p *Peer) markVotes(votes []*types.VoteEnvelope) {
+	for _, vote := range votes {
+		// If we reached the memory allowance, drop a previously known vote hash
+		p.knownVotes.add(vote.Hash())
+	}
 }
 
 // SendVotes propagates a batch of votes to the remote peer.
 func (p *Peer) SendVotes(votes []*types.VoteEnvelope) error {
 	// Mark all the votes as known, but ensure we don't overflow our limits
-	for _, vote := range votes {
-		p.knownVotes.Add(vote.Hash())
-	}
+	p.markVotes(votes)
 	return p2p.Send(p.rw, VotesMsg, &VotesPacket{votes})
 }
 
@@ -103,9 +103,7 @@ func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
 	select {
 	case p.voteBroadcast <- votes:
 		// Mark all the votes as known, but ensure we don't overflow our limits
-		for _, vote := range votes {
-			p.knownVotes.Add(vote.Hash())
-		}
+		p.markVotes(votes)
 
 	case <-p.term:
 		p.Log().Debug("Dropping vote propagation", "count", len(votes))
@@ -144,8 +142,8 @@ func newKnownCache(max int) *knownCache {
 	}
 }
 
-// Add adds a list of elements to the set.
-func (k *knownCache) Add(hashes ...common.Hash) {
+// add adds a list of elements to the set.
+func (k *knownCache) add(hashes ...common.Hash) {
 	for k.hashes.Cardinality() > max(0, k.max-len(hashes)) {
 		k.hashes.Pop()
 	}
@@ -154,12 +152,7 @@ func (k *knownCache) Add(hashes ...common.Hash) {
 	}
 }
 
-// Contains returns whether the given item is in the set.
-func (k *knownCache) Contains(hash common.Hash) bool {
+// contains returns whether the given item is in the set.
+func (k *knownCache) contains(hash common.Hash) bool {
 	return k.hashes.Contains(hash)
-}
-
-// Cardinality returns the number of elements in the set.
-func (k *knownCache) Cardinality() int {
-	return k.hashes.Cardinality()
 }
