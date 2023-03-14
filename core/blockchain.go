@@ -1230,7 +1230,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Rewind may have occurred, skip in that case.
 		if bc.CurrentHeader().Number.Cmp(head.Number()) >= 0 {
-			reorg, err := bc.forker.reorgNeededWithFastFinality(bc.CurrentFastBlock().Header(), head.Header())
+			reorg, err := bc.forker.ReorgNeededWithFastFinality(bc.CurrentFastBlock().Header(), head.Header())
 			if err != nil {
 				log.Warn("Reorg failed", "err", err)
 				return false
@@ -1628,7 +1628,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		return NonStatTy, err
 	}
 	currentBlock := bc.CurrentBlock()
-	reorg, err := bc.forker.reorgNeededWithFastFinality(currentBlock.Header(), block.Header())
+	reorg, err := bc.forker.ReorgNeededWithFastFinality(currentBlock.Header(), block.Header())
 	if err != nil {
 		return NonStatTy, err
 	}
@@ -1787,7 +1787,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			current = bc.CurrentBlock()
 		)
 		for block != nil && bc.skipBlock(err, it) {
-			reorg, err = bc.forker.reorgNeededWithFastFinality(current.Header(), block.Header())
+			reorg, err = bc.forker.ReorgNeededWithFastFinality(current.Header(), block.Header())
 			if err != nil {
 				return it.index, err
 			}
@@ -2165,7 +2165,7 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 	//
 	// If the externTd was larger than our local TD, we now need to reimport the previous
 	// blocks to regenerate the required state
-	reorg, err := bc.forker.reorgNeededWithFastFinality(current.Header(), lastBlock.Header())
+	reorg, err := bc.forker.ReorgNeededWithFastFinality(current.Header(), lastBlock.Header())
 	if err != nil {
 		return it.index, err
 	}

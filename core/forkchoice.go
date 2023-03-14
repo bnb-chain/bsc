@@ -76,12 +76,12 @@ func NewForkChoice(chainReader ChainReader, preserve func(header *types.Header) 
 	}
 }
 
-// ReorgNeeded returns whether the reorg should be applied
+// reorgNeeded returns whether the reorg should be applied
 // based on the given external header and local canonical chain.
 // In the td mode, the new head is chosen if the corresponding
 // total difficulty is higher. In the extern mode, the trusted
 // header is always selected as the head.
-func (f *ForkChoice) ReorgNeeded(current *types.Header, header *types.Header) (bool, error) {
+func (f *ForkChoice) reorgNeeded(current *types.Header, header *types.Header) (bool, error) {
 	var (
 		localTD  = f.chain.GetTd(current.Hash(), current.Number.Uint64())
 		externTd = f.chain.GetTd(header.Hash(), header.Number.Uint64())
@@ -114,13 +114,13 @@ func (f *ForkChoice) ReorgNeeded(current *types.Header, header *types.Header) (b
 	return reorg, nil
 }
 
-// reorgNeededWithFastFinality compares justified block numbers firstly, backoff to compare tds when equal
-func (f *ForkChoice) reorgNeededWithFastFinality(current *types.Header, header *types.Header) (bool, error) {
+// ReorgNeededWithFastFinality compares justified block numbers firstly, backoff to compare tds when equal
+func (f *ForkChoice) ReorgNeededWithFastFinality(current *types.Header, header *types.Header) (bool, error) {
 	_, ok := f.chain.Engine().(consensus.PoSA)
 	justifiedNumber := f.chain.GetJustifiedNumber(header)
 	curJustifiedNumber := f.chain.GetJustifiedNumber(current)
 	if !ok || justifiedNumber == curJustifiedNumber {
-		return f.ReorgNeeded(current, header)
+		return f.reorgNeeded(current, header)
 	}
 
 	return justifiedNumber > curJustifiedNumber, nil
