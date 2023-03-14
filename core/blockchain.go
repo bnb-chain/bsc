@@ -1650,6 +1650,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	} else {
 		bc.chainSideFeed.Send(ChainSideEvent{Block: block})
 	}
+	return 0, err
 	////////////////////////////////////////////////////////////
 	if !mamoru.IsSnifferEnable() || !mamoru.Connect() {
 		return 0, nil

@@ -47,7 +47,9 @@ func (f *EthFeed) FeedTransactions(block *types.Block, receipts types.Receipts) 
 		transaction.TxHash = tx.Hash().String()
 		transaction.Type = tx.Type()
 		transaction.Nonce = tx.Nonce()
-		transaction.Status = receipts[i].Status
+		if receipt := receipts[i]; receipt != nil {
+			transaction.Status = receipt.Status
+		}
 		transaction.BlockIndex = block.NumberU64()
 		address, err := types.Sender(signer, tx)
 		if err != nil {

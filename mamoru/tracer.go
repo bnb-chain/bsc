@@ -80,7 +80,7 @@ func Connect() bool {
 	var err error
 	sniffer, err = mamoru_sniffer.Connect()
 	if err != nil {
-		log.Error("Mamoru Sniffer connect error", err)
+		log.Error("Mamoru Sniffer connect", "err", err)
 		return false
 	}
 	return true
