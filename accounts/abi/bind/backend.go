@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 )
 
 var (
@@ -96,6 +97,9 @@ type ContractTransactor interface {
 
 	// SendTransaction injects the transaction into the pending pool for execution.
 	SendTransaction(ctx context.Context, tx *types.Transaction) error
+
+	// SendTransactionConditional injects the conditional transaction into the pending pool for execution after verification.
+	SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts ethapi.TransactionOpts) error
 }
 
 // ContractFilterer defines the methods needed to access log events using one-off
