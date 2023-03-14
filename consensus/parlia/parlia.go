@@ -327,26 +327,9 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	}
 	number := header.Number.Uint64()
 
-	// According to BEP188, after Planck fork, an in-turn validator is allowed to broadcast
-	// a mined block earlier but not earlier than its parent's timestamp when the block is ready .
+	// Don't waste time checking blocks from the future
 	if header.Time > uint64(time.Now().Unix()) {
-		if !chain.Config().IsPlanck(header.Number) || header.Difficulty.Cmp(diffInTurn) != 0 {
-			return consensus.ErrFutureBlock
-		}
-		var parent *types.Header
-		if len(parents) > 0 {
-			parent = parents[len(parents)-1]
-		} else {
-			parent = chain.GetHeader(header.ParentHash, number-1)
-		}
-
-		if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
-			return consensus.ErrUnknownAncestor
-		}
-
-		if parent.Time > uint64(time.Now().Unix()) {
-			return consensus.ErrFutureParentBlock
-		}
+		return consensus.ErrFutureBlock
 	}
 	// Check that the extra-data contains the vanity, validators and signature.
 	if len(header.Extra) < extraVanity {
