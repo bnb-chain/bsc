@@ -11,8 +11,6 @@ IMPROVEMENT
 * [\#1328](https://github.com/bnb-chain/bsc/pull/1328) upgrade: update system contracts' code of testnet
 * [\#1162](https://github.com/bnb-chain/bsc/pull/1162) consensus: fix slash bug when validator set changing
 * [\#1344](https://github.com/bnb-chain/bsc/pull/1344) consensus: fix delete the 1st validator from snapshot.recents list
-* [\#1269](https://github.com/bnb-chain/bsc/pull/1269) parlia: miner changes for BEP-188 of Early Broadcast
-* [\#1268](https://github.com/bnb-chain/bsc/pull/1268) parlia: consensus changes according to BEP of Early Broadcast
 * [\#1149](https://github.com/bnb-chain/bsc/pull/1149) feats: add ics23 proof support for cross chain packages
 * [\#1333](https://github.com/bnb-chain/bsc/pull/1333) sec: add proof ops check and key checker
 
