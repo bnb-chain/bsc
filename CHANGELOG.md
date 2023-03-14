@@ -1,4 +1,23 @@
 # Changelog
+## v1.1.20
+FEATURE
+* [\#1322](https://github.com/bnb-chain/bsc/pull/1322) cmd/utils/flags.go: --diffsync flag is deprecate
+* [\#1261](https://github.com/bnb-chain/bsc/pull/1261) tracer: port call tracer `withLog` to bsc
+
+IMPROVEMENT
+* [\#1337](https://github.com/bnb-chain/bsc/pull/1337) clean: Remove support for Ethereum testnet
+* [\#1347](https://github.com/bnb-chain/bsc/pull/1347) upgrade: update the fork height of planck upgrade on testnet
+* [\#1343](https://github.com/bnb-chain/bsc/pull/1343) upgrade: update system contracts' code of planck upgrade
+* [\#1328](https://github.com/bnb-chain/bsc/pull/1328) upgrade: update system contracts' code of testnet
+* [\#1162](https://github.com/bnb-chain/bsc/pull/1162) consensus: fix slash bug when validator set changing
+* [\#1344](https://github.com/bnb-chain/bsc/pull/1344) consensus: fix delete the 1st validator from snapshot.recents list
+* [\#1269](https://github.com/bnb-chain/bsc/pull/1269) parlia: miner changes for BEP-188 of Early Broadcast
+* [\#1268](https://github.com/bnb-chain/bsc/pull/1268) parlia: consensus changes according to BEP of Early Broadcast
+* [\#1149](https://github.com/bnb-chain/bsc/pull/1149) feats: add ics23 proof support for cross chain packages
+* [\#1333](https://github.com/bnb-chain/bsc/pull/1333) sec: add proof ops check and key checker
+
+BUGFIX
+* [\#1348](https://github.com/bnb-chain/bsc/pull/1348) (HEAD, bnb-chain/develop) core/txpool: implement additional DoS defenses
 
 ## v1.1.19
 FEATURE
