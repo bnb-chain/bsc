@@ -60,6 +60,7 @@ const (
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
+	gasUsedRateDemarcation = 75 // Demarcation point of low and high gas used rate
 )
 
 var (
@@ -327,9 +328,26 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	}
 	number := header.Number.Uint64()
 
-	// Don't waste time checking blocks from the future
+	// According to BEP188, after Planck fork, an in-turn validator is allowed to broadcast
+	// a mined block earlier but not earlier than its parent's timestamp when the block is ready .
 	if header.Time > uint64(time.Now().Unix()) {
-		return consensus.ErrFutureBlock
+		if !chain.Config().IsPlanck(header.Number) || header.Difficulty.Cmp(diffInTurn) != 0 {
+			return consensus.ErrFutureBlock
+		}
+		var parent *types.Header
+		if len(parents) > 0 {
+			parent = parents[len(parents)-1]
+		} else {
+			parent = chain.GetHeader(header.ParentHash, number-1)
+		}
+
+		if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
+			return consensus.ErrUnknownAncestor
+		}
+
+		if parent.Time > uint64(time.Now().Unix()) {
+			return consensus.ErrFutureParentBlock
+		}
 	}
 	// Check that the extra-data contains the vanity, validators and signature.
 	if len(header.Extra) < extraVanity {
@@ -864,8 +882,26 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		}
 	}
 
-	// Sweet, the protocol permits us to sign the block, wait for our time
-	delay := p.delayForRamanujanFork(snap, header)
+	// BEP-188 allows an in-turn validator to broadcast the mined block earlier
+	// but not earlier than its parent's timestamp after Planck fork.
+	// At the same time, small block which means gas used rate is less than
+	// gasUsedRateDemarcation does not broadcast early to avoid an upcoming fat block.
+	delay := time.Duration(0)
+	gasUsedRate := uint64(0)
+	if header.GasLimit != 0 {
+		gasUsedRate = header.GasUsed * 100 / header.GasLimit
+	}
+	if p.chainConfig.IsPlanck(header.Number) && header.Difficulty.Cmp(diffInTurn) == 0 && gasUsedRate >= gasUsedRateDemarcation {
+		parent := chain.GetHeader(header.ParentHash, number-1)
+		if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
+			return consensus.ErrUnknownAncestor
+		}
+		if parent.Time > uint64(time.Now().Unix()) {
+			delay = time.Until(time.Unix(int64(parent.Time), 0))
+		}
+	} else {
+		delay = p.delayForRamanujanFork(snap, header)
+	}
 
 	log.Info("Sealing block with", "number", number, "delay", delay, "headerDifficulty", header.Difficulty, "val", val.Hex())
 
@@ -1281,26 +1317,78 @@ func encodeSigHeader(w io.Writer, header *types.Header, chainId *big.Int) {
 	}
 }
 
-func backOffTime(snap *Snapshot, val common.Address) uint64 {
+func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Address) uint64 {
 	if snap.inturn(val) {
 		return 0
 	} else {
-		idx := snap.indexOfVal(val)
+		delay := initialBackOffTime
+		validators := snap.validators()
+		if p.chainConfig.IsPlanck(header.Number) {
+			// reverse the key/value of snap.Recents to get recentsMap
+			recentsMap := make(map[common.Address]uint64, len(snap.Recents))
+			bound := uint64(0)
+			if n, limit := header.Number.Uint64(), uint64(len(validators)/2+1); n > limit {
+				bound = n - limit
+			}
+			for seen, recent := range snap.Recents {
+				if seen <= bound {
+					continue
+				}
+				recentsMap[recent] = seen
+			}
+
+			// if the validator has recently signed, it is unexpected, stop here.
+			if seen, ok := recentsMap[val]; ok {
+				log.Error("unreachable code, validator signed recently",
+					"block", header.Number, "address", val,
+					"seen", seen, "len(snap.Recents)", len(snap.Recents))
+				return 0
+			}
+
+			inTurnAddr := validators[(snap.Number+1)%uint64(len(validators))]
+			if _, ok := recentsMap[inTurnAddr]; ok {
+				log.Info("in turn validator has recently signed, skip initialBackOffTime",
+					"inTurnAddr", inTurnAddr)
+				delay = 0
+			}
+
+			// Exclude the recently signed validators
+			temp := make([]common.Address, 0, len(validators))
+			for _, addr := range validators {
+				if _, ok := recentsMap[addr]; ok {
+					continue
+				}
+				temp = append(temp, addr)
+			}
+			validators = temp
+		}
+
+		// get the index of current validator and its shuffled backoff time.
+		idx := -1
+		for index, itemAddr := range validators {
+			if val == itemAddr {
+				idx = index
+			}
+		}
 		if idx < 0 {
-			// The backOffTime does not matter when a validator is not authorized.
+			log.Info("The validator is not authorized", "addr", val)
 			return 0
 		}
+
 		s := rand.NewSource(int64(snap.Number))
 		r := rand.New(s)
-		n := len(snap.Validators)
+		n := len(validators)
 		backOffSteps := make([]uint64, 0, n)
-		for idx := uint64(0); idx < uint64(n); idx++ {
-			backOffSteps = append(backOffSteps, idx)
+
+		for i := uint64(0); i < uint64(n); i++ {
+			backOffSteps = append(backOffSteps, i)
 		}
+
 		r.Shuffle(n, func(i, j int) {
 			backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
 		})
-		delay := initialBackOffTime + backOffSteps[idx]*wiggleTime
+
+		delay += backOffSteps[idx] * wiggleTime
 		return delay
 	}
 }
