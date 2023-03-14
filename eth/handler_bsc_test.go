@@ -263,9 +263,8 @@ func testRecvVotes(t *testing.T, protocol uint) {
 		},
 	}
 
-	if err := remoteBsc.SendVotes([]*types.VoteEnvelope{&vote}); err != nil {
-		t.Fatalf("failed to send vote: %v", err)
-	}
+	remoteBsc.AsyncSendVotes([]*types.VoteEnvelope{&vote})
+	time.Sleep(100 * time.Millisecond)
 	select {
 	case event := <-votesCh:
 		if event.Vote.Hash() != vote.Hash() {

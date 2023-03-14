@@ -85,13 +85,15 @@ func (p *Peer) KnownVote(hash common.Hash) bool {
 // will never be repropagated to this particular peer.
 func (p *Peer) markVotes(votes []*types.VoteEnvelope) {
 	for _, vote := range votes {
-		// If we reached the memory allowance, drop a previously known vote hash
-		p.knownVotes.add(vote.Hash())
+		if !p.knownVotes.contains(vote.Hash()) {
+			// If we reached the memory allowance, drop a previously known vote hash
+			p.knownVotes.add(vote.Hash())
+		}
 	}
 }
 
-// SendVotes propagates a batch of votes to the remote peer.
-func (p *Peer) SendVotes(votes []*types.VoteEnvelope) error {
+// sendVotes propagates a batch of votes to the remote peer.
+func (p *Peer) sendVotes(votes []*types.VoteEnvelope) error {
 	// Mark all the votes as known, but ensure we don't overflow our limits
 	p.markVotes(votes)
 	return p2p.Send(p.rw, VotesMsg, &VotesPacket{votes})
@@ -102,9 +104,6 @@ func (p *Peer) SendVotes(votes []*types.VoteEnvelope) error {
 func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
 	select {
 	case p.voteBroadcast <- votes:
-		// Mark all the votes as known, but ensure we don't overflow our limits
-		p.markVotes(votes)
-
 	case <-p.term:
 		p.Log().Debug("Dropping vote propagation", "count", len(votes))
 	}
@@ -117,7 +116,7 @@ func (p *Peer) broadcastVotes() {
 	for {
 		select {
 		case votes := <-p.voteBroadcast:
-			if err := p.SendVotes(votes); err != nil {
+			if err := p.sendVotes(votes); err != nil {
 				return
 			}
 			p.Log().Trace("Sent votes", "count", len(votes))
