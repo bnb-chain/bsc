@@ -293,7 +293,7 @@ func DecodeKeyValueMerkleProof(input []byte) (*KeyValueMerkleProof, error) {
 	fixedSize = storeNameLengthBytesLength + keyLengthBytesLength + valueLengthBytesLength + appHashLength
 	if inputLength <= fixedSize+keyLength+valueLength ||
 		fixedSize+keyLength < fixedSize ||
-		fixedSize+keyLength+valueLength < fixedSize {
+		fixedSize+keyLength+valueLength < valueLength {
 		return nil, fmt.Errorf("invalid input, valueLength %d is too long", valueLength)
 	}
 	value := input[pos : pos+valueLength]
