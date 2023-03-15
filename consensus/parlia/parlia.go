@@ -209,7 +209,7 @@ type Parlia struct {
 
 	lock sync.RWMutex // Protects the signer fields
 
-	ethAPI          *ethapi.PublicBlockChainAPI
+	ethAPI          *ethapi.BlockChainAPI
 	validatorSetABI abi.ABI
 	slashABI        abi.ABI
 
@@ -221,7 +221,7 @@ type Parlia struct {
 func New(
 	chainConfig *params.ChainConfig,
 	db ethdb.Database,
-	ethAPI *ethapi.PublicBlockChainAPI,
+	ethAPI *ethapi.BlockChainAPI,
 	genesisHash common.Hash,
 ) *Parlia {
 	// get parlia config
