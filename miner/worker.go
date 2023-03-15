@@ -1126,7 +1126,7 @@ LOOP:
 		// subscribe before fillTransactions
 		txsCh := make(chan core.NewTxsEvent, txChanSize)
 		sub := w.eth.TxPool().SubscribeNewTxsEvent(txsCh)
-		// if TxPool is stopped, `sub`` would be nil, it could happen on blockchain shutdown.
+		// if TxPool has been stopped, `sub` would be nil, it could happen on shutdown.
 		if sub == nil {
 			log.Info("commitWork SubscribeNewTxsEvent return nil")
 		} else {
