@@ -74,6 +74,8 @@ require (
 	github.com/fatih/structs v1.1.0
 )
 
+require github.com/yusufpapurcu/wmi v1.2.2 // indirect
+
 require (
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.8.0 // indirect
@@ -83,6 +85,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.1.1 // indirect
 	github.com/aws/smithy-go v1.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/btcsuite/btcd v0.20.1-beta // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/dlclark/regexp2 v1.4.1-0.20201116162257-a2a8dda75c91 // indirect
@@ -111,7 +114,6 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20190826022208-cac0b30c2563 // indirect
 	github.com/tklauser/go-sysconf v0.3.5 // indirect
 	github.com/tklauser/numcpus v0.2.2 // indirect
-	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
 	golang.org/x/net v0.5.0 // indirect
