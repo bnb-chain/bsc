@@ -174,10 +174,6 @@ func (s *Snapshot) isMajorityFork(forkHash string) bool {
 }
 
 func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) {
-	if !chainConfig.IsBoneh(header.Number) {
-		return
-	}
-
 	// The attestation should have been checked in verify header, update directly
 	attestation, _ := getVoteAttestationFromHeader(header, chainConfig, parliaConfig)
 	if attestation == nil {
@@ -193,7 +189,7 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 	}
 }
 
-func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig) (*Snapshot, error) {
+func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig, verifiedAttestations map[common.Hash]struct{}) (*Snapshot, error) {
 	// Allow passing in no headers for cleaner code
 	if len(headers) == 0 {
 		return s, nil
@@ -283,7 +279,12 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				}
 			}
 		}
-		snap.updateAttestation(header, chainConfig, s.config)
+
+		_, voteAssestationNoErr := verifiedAttestations[header.Hash()]
+		if chainConfig.IsLynn(header.Number) || (chainConfig.IsBoneh(header.Number) && voteAssestationNoErr) {
+			snap.updateAttestation(header, chainConfig, s.config)
+		}
+
 		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
 	}
 	snap.Number += uint64(len(headers))
