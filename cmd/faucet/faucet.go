@@ -185,7 +185,7 @@ func main() {
 		}
 	}
 	// Load up the account key and decrypt its password
-	blob, err := ioutil.ReadFile(*accPassFlag)
+	blob, err = ioutil.ReadFile(*accPassFlag)
 	if err != nil {
 		log.Crit("Failed to read account password contents", "file", *accPassFlag, "err", err)
 	}
@@ -506,20 +506,20 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		switch {
 		case strings.HasPrefix(msg.URL, "https://gist.github.com/"):
-			if err = sendError(conn, errors.New("GitHub authentication discontinued at the official request of GitHub")); err != nil {
+			if err = sendError(wsconn, errors.New("GitHub authentication discontinued at the official request of GitHub")); err != nil {
 				log.Warn("Failed to send GitHub deprecation to client", "err", err)
 				return
 			}
 			continue
 		case strings.HasPrefix(msg.URL, "https://plus.google.com/"):
 			//lint:ignore ST1005 Google is a company name and should be capitalized.
-			if err = sendError(conn, errors.New("Google+ authentication discontinued as the service was sunset")); err != nil {
+			if err = sendError(wsconn, errors.New("Google+ authentication discontinued as the service was sunset")); err != nil {
 				log.Warn("Failed to send Google+ deprecation to client", "err", err)
 				return
 			}
 			continue
 		case strings.HasPrefix(msg.URL, "https://twitter.com/"):
-			id, username, avatar, address, err = authTwitter(msg.URL)
+			id, username, avatar, address, err = authTwitter(msg.URL, *twitterTokenV1Flag, *twitterTokenFlag)
 		case strings.HasPrefix(msg.URL, "https://www.facebook.com/"):
 			username, avatar, address, err = authFacebook(msg.URL)
 			id = username
@@ -547,7 +547,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		)
 
 		if ipTimeout := f.timeouts[ips[len(ips)-2]]; time.Now().Before(ipTimeout) {
-			if err = sendError(conn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(ipTimeout)))); err != nil { // nolint: gosimple
+			if err = sendError(wsconn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(ipTimeout)))); err != nil { // nolint: gosimple
 				log.Warn("Failed to send funding error to client", "err", err)
 			}
 			f.lock.Unlock()
