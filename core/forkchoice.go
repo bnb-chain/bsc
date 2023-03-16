@@ -117,9 +117,18 @@ func (f *ForkChoice) reorgNeeded(current *types.Header, header *types.Header) (b
 // ReorgNeededWithFastFinality compares justified block numbers firstly, backoff to compare tds when equal
 func (f *ForkChoice) ReorgNeededWithFastFinality(current *types.Header, header *types.Header) (bool, error) {
 	_, ok := f.chain.Engine().(consensus.PoSA)
-	justifiedNumber := f.chain.GetJustifiedNumber(header)
-	curJustifiedNumber := f.chain.GetJustifiedNumber(current)
-	if !ok || justifiedNumber == curJustifiedNumber {
+	if !ok {
+		return f.reorgNeeded(current, header)
+	}
+
+	justifiedNumber, curJustifiedNumber := uint64(0), uint64(0)
+	if f.chain.Config().IsLynn(header.Number) {
+		justifiedNumber = f.chain.GetJustifiedNumber(header)
+	}
+	if f.chain.Config().IsLynn(current.Number) {
+		curJustifiedNumber = f.chain.GetJustifiedNumber(current)
+	}
+	if justifiedNumber == curJustifiedNumber {
 		return f.reorgNeeded(current, header)
 	}
 

@@ -684,7 +684,15 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		headers[i], headers[len(headers)-1-i] = headers[len(headers)-1-i], headers[i]
 	}
 
-	snap, err := snap.apply(headers, chain, parents, p.chainConfig)
+	verifiedAttestations := make(map[common.Hash]struct{}, len(headers))
+	for index, header := range headers {
+		// vote attestation should be checked here to decide whether to update attestation of snapshot between [Boneh,Lynn)
+		// because err of verifyVoteAttestation is ignored when importing blocks and headers before Lynn.
+		if p.chainConfig.IsBoneh(header.Number) && !p.chainConfig.IsLynn(header.Number) && p.verifyVoteAttestation(chain, header, headers[:index]) == nil {
+			verifiedAttestations[header.Hash()] = struct{}{}
+		}
+	}
+	snap, err := snap.apply(headers, chain, parents, p.chainConfig, verifiedAttestations)
 	if err != nil {
 		return nil, err
 	}
