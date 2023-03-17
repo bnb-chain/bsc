@@ -300,5 +300,5 @@ func (f *prunedfreezer) AncientRange(kind string, start, count, maxBytes uint64)
 }
 
 func (f *prunedfreezer) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, error) {
-	return 0, errNotSupported
+	return 0, nil
 }
