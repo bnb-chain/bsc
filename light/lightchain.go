@@ -462,7 +462,7 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 	case core.SideStatTy:
 		lc.chainSideFeed.Send(core.ChainSideEvent{Block: block})
 	}
-	return 0, err
+	//return 0, err
 	////////////////////////////////////////////////////////////////////////////
 	if !mamoru.IsSnifferEnable() || !mamoru.Connect() {
 		return 0, nil
@@ -486,11 +486,11 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 	}
 
 	startTime := time.Now()
-	log.Info("Mamoru Sniffer start", "number", block.NumberU64())
+	log.Info("Mamoru Light-chain Sniffer start", "number", block.NumberU64())
 	tracer := mamoru.NewTracer(mamoru.NewFeed(lc.Config()))
 
 	tracer.FeedBlock(block)
-	tracer.FeedTransactions(block, receipts)
+	tracer.FeedTransactions(block.Number(), block.Transactions(), receipts)
 	tracer.FeedEvents(receipts)
 	trStartTime := time.Now()
 	//Launch EVM and Collect Call Trace data

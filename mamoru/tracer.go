@@ -12,7 +12,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-var sniffer *mamoru_sniffer.Sniffer
+var (
+	sniffer            *mamoru_sniffer.Sniffer
+	SnifferConnectFunc = mamoru_sniffer.Connect
+)
 
 func init() {
 	if IsSnifferEnable() {
@@ -37,9 +40,9 @@ func (t *Tracer) FeedBlock(block *types.Block) {
 	}))
 }
 
-func (t *Tracer) FeedTransactions(block *types.Block, receipts types.Receipts) {
+func (t *Tracer) FeedTransactions(blockNumber *big.Int, txs types.Transactions, receipts types.Receipts) {
 	t.builder.AddData(evm_types.NewTransactionData(
-		t.feeder.FeedTransactions(block, receipts),
+		t.feeder.FeedTransactions(blockNumber, txs, receipts),
 	))
 }
 
@@ -78,7 +81,7 @@ func Connect() bool {
 		return true
 	}
 	var err error
-	sniffer, err = mamoru_sniffer.Connect()
+	sniffer, err = SnifferConnectFunc()
 	if err != nil {
 		log.Error("Mamoru Sniffer connect", "err", err)
 		return false

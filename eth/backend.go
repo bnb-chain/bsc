@@ -18,6 +18,7 @@
 package eth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -61,6 +62,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/ethereum/go-ethereum/mamoru"
 	"github.com/ethereum/go-ethereum/mamoru/mempool"
 )
 
@@ -247,7 +249,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.txPool = core.NewTxPool(config.TxPool, chainConfig, eth.blockchain)
 
 	////////////////////////////////////////////////////////
-	sniffer := mempool.NewSniffer(eth.txPool, eth.blockchain, chainConfig, eth.blockchain.CurrentBlock())
+	tracer := mamoru.NewTracer(mamoru.NewFeed(chainConfig))
+	sniffer := mempool.NewSniffer(context.Background(), eth.txPool, eth.blockchain, chainConfig, tracer)
 
 	go sniffer.SnifferLoop()
 	////////////////////////////////////////////////////////

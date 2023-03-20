@@ -1,9 +1,13 @@
 package mempool
 
 import (
-	"fmt"
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -12,30 +16,17 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/mamoru"
 	"github.com/ethereum/go-ethereum/params"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 type blockChain interface {
+	core.ChainContext
 	CurrentBlock() *types.Block
 	GetBlock(hash common.Hash, number uint64) *types.Block
 	StateAt(root common.Hash) (*state.StateDB, error)
+	State() (*state.StateDB, error)
 
 	SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription
-}
-
-type SnifferChainContext struct {
-	chain *core.BlockChain
-}
-
-func (c *SnifferChainContext) Engine() consensus.Engine {
-	return c.chain.Engine()
-}
-
-func (c *SnifferChainContext) GetHeader(hash common.Hash, number uint64) *types.Header {
-	return c.chain.GetHeader(hash, number)
+	SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription
 }
 
 type SnifferBackend struct {
@@ -43,136 +34,154 @@ type SnifferBackend struct {
 	chain        blockChain
 	chainConfig  *params.ChainConfig
 	currentBlock *types.Block
+	tracer       *mamoru.Tracer
 
-	chCtx *SnifferChainContext
+	feed      event.Feed
+	chainFeed event.Feed
 
-	chainHeadFeed event.Feed
-	newHeadEvent  chan core.ChainHeadEvent
-	newTxsEvent   chan core.NewTxsEvent
-	txSub         event.Subscription
-	headSub       event.Subscription
+	newHeadEvent chan core.ChainHeadEvent
+	newTxsEvent  chan core.NewTxsEvent
+	chainEvent   chan core.ChainEvent
+
+	TxSub    event.Subscription
+	headSub  event.Subscription
+	chainSub event.Subscription
+
+	scope event.SubscriptionScope
+
+	ctx context.Context
 }
 
-func NewSniffer(txPool *core.TxPool, chain *core.BlockChain, chainConfig *params.ChainConfig, currentBlock *types.Block) *SnifferBackend {
+func NewSniffer(ctx context.Context, txPool *core.TxPool, chain blockChain, chainConfig *params.ChainConfig, tracer *mamoru.Tracer) *SnifferBackend {
 	sb := &SnifferBackend{
 		txPool:       txPool,
 		chain:        chain,
 		chainConfig:  chainConfig,
-		currentBlock: currentBlock,
 		newTxsEvent:  make(chan core.NewTxsEvent, core.DefaultTxPoolConfig.GlobalQueue),
 		newHeadEvent: make(chan core.ChainHeadEvent, 10),
-		chCtx:        &SnifferChainContext{chain: chain},
+		tracer:       tracer,
+
+		chainEvent: make(chan core.ChainEvent, 10),
+		ctx:        ctx,
 	}
-	sb.txSub = sb.subscribeNewTxsEvent(sb.newTxsEvent)
-	sb.headSub = sb.subscribeNewHeadEvent(sb.newHeadEvent)
+	sb.TxSub = sb.SubscribeNewTxsEvent(sb.newTxsEvent)
+	sb.chainSub = sb.SubscribeChainEvent(sb.chainEvent)
+	sb.headSub = sb.SubscribeChainHeadEvent(sb.newHeadEvent)
+
 	return sb
 }
 
-func (b *SnifferBackend) subscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
-	return b.txPool.SubscribeNewTxsEvent(ch)
+func (bc *SnifferBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
+	return bc.txPool.SubscribeNewTxsEvent(ch)
+	//return b.scope.Track(b.feed.Subscribe(ch))
 }
 
-func (b *SnifferBackend) subscribeNewHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription {
-	return b.chain.SubscribeChainHeadEvent(ch)
+// SubscribeChainEvent registers a subscription of ChainEvent.
+func (bc *SnifferBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription {
+	return bc.scope.Track(bc.chainFeed.Subscribe(ch)) //delete
 }
 
-func (b *SnifferBackend) SnifferLoop() {
+// SubscribeChainHeadEvent registers a subscription of ChainHeadEvent.
+func (bc *SnifferBackend) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription {
+	return bc.chain.SubscribeChainHeadEvent(ch)
+}
 
+func (bc *SnifferBackend) SnifferLoop() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	defer b.txSub.Unsubscribe()
-	// Track the previous block headers for transaction reorgs
-	var block = b.currentBlock
+	defer func() {
+		bc.TxSub.Unsubscribe()
+		bc.headSub.Unsubscribe()
+		bc.chainSub.Unsubscribe()
+		bc.scope.Close()
+	}()
+
+	var block = bc.chain.CurrentBlock()
 
 	for {
 		select {
-		// System shutdown.
-		case <-b.txSub.Err():
+		case <-bc.ctx.Done():
+			return
+		case <-bc.TxSub.Err():
 			return
 		case sig := <-sigs:
 			log.Info("Signal", "sig", sig)
 			return
-		case newTx := <-b.newTxsEvent:
-			log.Info("Mamoru Sniffer start", "number", block.NumberU64())
+		case newTx := <-bc.newTxsEvent: //work
+			if !mamoru.IsSnifferEnable() || !mamoru.Connect() {
+				continue
+			}
+			log.Info("Mamoru TxPool Sniffer start", "number", block.NumberU64())
 			log.Info("NewTx Event", "txs", len(newTx.Txs))
 			startTime := time.Now()
-			tracer := mamoru.NewTracer(mamoru.NewFeed(b.chainConfig))
-			log.Info("Tracer Block", "number", block.NumberU64())
-			//tracer.FeedBlock(block)
 
-			var receipts []*types.Receipt
+			var receipts types.Receipts
+			//wg := new(sync.WaitGroup)
 
-			for index, tx := range newTx.Txs {
-				msg, err := tx.AsMessage(types.LatestSigner(b.chainConfig), block.BaseFee()) //big.NewInt(params.InitialBaseFee)
-				if err != nil {
-					log.Error("AsMessage", "err", err)
-				}
-				txContext := core.NewEVMTxContext(msg)
-				// Creating CallTracer
+			// todo Need to do parallel processing of transactions
+			for _, tx := range newTx.Txs {
+
 				trac, err := mamoru.NewCallTracer(true)
 				if err != nil {
 					log.Error("mamoru.NewCallTracer", "err", err)
 				}
-				stateDb, err := b.chain.StateAt(block.Root())
+				//wg.Add(1)
+				//_ = gopool.Submit(func() {
+				//	defer wg.Done()
+				//})
+
+				stateDb, err := bc.chain.StateAt(block.Root())
 				if err != nil {
-					log.Error("b.chain.StateAt(block.Root())", "err", err)
+					log.Error("SetState", "err", err)
 				}
-				chCtx := core.ChainContext(b.chCtx)
+				chCtx := core.ChainContext(bc.chain)
 				header := block.Header()
-				blockCtx := core.NewEVMBlockContext(header, chCtx, nil)
-				vmConfig := vm.Config{Debug: true, Tracer: trac, NoBaseFee: true}
-				vmenv := vm.NewEVM(blockCtx, txContext, stateDb, b.chainConfig, vmConfig)
-				stateDb.Prepare(tx.Hash(), index)
-				exResult, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas()))
-				if err != nil {
-					log.Error("ApplyMessage", "err", err)
-					break
-				}
-				exResult.UsedGas += msg.Gas()
-				//receipt := &types.Receipt{Type: tx.Type(), PostState: stateDb, CumulativeGasUsed: exResult.UsedGas}
-				callFrames, err := trac.GetResult()
-				if err != nil {
-					log.Error("trac.GetResult()", "err", err)
-					break
-				}
-				tracer.FeedCalTraces(callFrames, block.NumberU64())
 
-				authot, _ := types.LatestSigner(b.chainConfig).Sender(tx)
-				gasPool := new(core.GasPool).AddGas(msg.Gas())
+				author, _ := types.LatestSigner(bc.chainConfig).Sender(tx)
+				gasPool := new(core.GasPool).AddGas(tx.Gas())
 
-				receipt, err := core.ApplyTransaction(b.chainConfig, chCtx, &authot, gasPool, stateDb, header, tx, &exResult.UsedGas, vmConfig)
+				var gasUsed = new(uint64)
+				*gasUsed = header.GasUsed
+
+				stateDb.Prepare(tx.Hash(), len(newTx.Txs))
+				receipt, err := core.ApplyTransaction(bc.chainConfig, chCtx, &author, gasPool, stateDb, header, tx,
+					gasUsed, vm.Config{Debug: true, Tracer: trac, NoBaseFee: true})
 				if err != nil {
-					log.Error("ApplyTransaction", "err", err)
+					log.Error("ApplyTransaction", "err", err, "number", block.NumberU64(), "tx.hash", tx.Hash().String())
 					break
 				}
 				receipts = append(receipts, receipt)
-			}
-			log.Info("Tracer Transactions", "number", block.NumberU64(), "txs", block.Transactions().Len(), "receipts", len(receipts))
-			tracer.FeedTransactions(block, receipts)
-			log.Info("Tracer Events", "receipts", len(receipts))
-			tracer.FeedEvents(receipts)
-			log.Info("Tracer Send", "number", block.NumberU64(), "hash", block.Hash())
-			tracer.Send(startTime, block.Number(), block.Hash())
+				log.Info("receipts", "number", block.NumberU64(), "len", len(receipts))
 
-		case newHead := <-b.newHeadEvent:
-			log.Trace("New Head Event", "block.number", newHead.Block.NumberU64())
-			log.Trace("Current Head", "block.number", b.chain.CurrentBlock().NumberU64())
+				callFrames, err := trac.GetResult()
+				if err != nil {
+					log.Error("Mamoru tracer result", "err", err, "number", block.NumberU64(), "tx.hash", tx.Hash().String())
+					break
+				}
+				log.Info("callFrames", "len", len(callFrames))
+				bc.tracer.FeedCalTraces(callFrames, block.NumberU64())
+			}
+			//wg.Wait()
+
+			bc.tracer.FeedBlock(block)
+			log.Info("Tracer Transactions", "number", block.NumberU64(), "txs", block.Transactions().Len(), "receipts", len(receipts))
+			bc.tracer.FeedTransactions(block.Number(), newTx.Txs, receipts)
+			log.Info("Tracer Events", "receipts", len(receipts))
+			bc.tracer.FeedEvents(receipts)
+			log.Info("Tracer Send", "number", block.NumberU64(), "hash", block.Hash())
+			bc.tracer.Send(startTime, block.Number(), block.Hash())
+
+		case newHead := <-bc.chainEvent:
 			if newHead.Block != nil {
+				log.Info("New Chain Event", "number", bc.chain.CurrentBlock().NumberU64())
+				block = newHead.Block
+			}
+		case newHead := <-bc.newHeadEvent:
+			if newHead.Block != nil {
+				log.Info("New Header Event", "number", newHead.Block.NumberU64())
 				block = newHead.Block
 			}
 		}
 	}
-}
-
-func (b *SnifferBackend) buildBlock(tx *types.Transaction) {
-	//block := b.chain.CurrentBlock()
-	//fmt.Printf("Block num=%d txs=%d\n", block.NumberU64(), block.Transactions().Len())
-	//fmt.Println("Block Start")
-	//for _, btx := range block.Transactions() {
-	//	fmt.Printf("Block transaction nonce=%d, tx.hash=%s\n", btx.Nonce(), btx.Hash())
-	//}
-	//fmt.Println("Block stop")
-	fmt.Printf("Transaction tx.hash=%s, tx.to=%s\n", tx.Hash(), tx.To())
-
 }

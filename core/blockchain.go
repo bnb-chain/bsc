@@ -1650,18 +1650,18 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	} else {
 		bc.chainSideFeed.Send(ChainSideEvent{Block: block})
 	}
-	return 0, err
+	//return 0, err
 	////////////////////////////////////////////////////////////
 	if !mamoru.IsSnifferEnable() || !mamoru.Connect() {
 		return 0, nil
 	}
 
 	startTime := time.Now()
-	log.Info("Mamoru Sniffer start", "number", block.NumberU64())
+	log.Info("Mamoru Blockchain Sniffer start", "number", block.NumberU64())
 	tracer := mamoru.NewTracer(mamoru.NewFeed(bc.chainConfig))
 
 	tracer.FeedBlock(block)
-	tracer.FeedTransactions(block, receipts)
+	tracer.FeedTransactions(block.Number(), block.Transactions(), receipts)
 	tracer.FeedEvents(receipts)
 	// Collect Call Trace data  from EVM
 	if callTracer, ok := bc.GetVMConfig().Tracer.(*mamoru.CallTracer); ok {
