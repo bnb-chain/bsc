@@ -136,11 +136,6 @@ func (f *testFeeder) FeedCallTraces(callFrames []*mamoru.CallFrame, bn uint64) [
 	f.callFrames = append(f.callFrames, callFrames...)
 	return []evm_types.CallTrace{}
 }
-func (f *testFeeder) Block() *types.Block {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.block
-}
 
 func (f *testFeeder) Txs() types.Transactions {
 	f.mu.Lock()
@@ -248,13 +243,14 @@ func TestMempoolSniffer(t *testing.T) {
 	assert.Equal(t, txsPending.Len(), pending)
 	assert.Equal(t, txsQueued.Len(), queued)
 
+	assert.Equal(t, n, len(blocks))
 	assert.Equal(t, txsPending.Len(), feeder.Txs().Len(), "pending transaction len must be equals feeder transaction len")
-	assert.Equal(t, txsPending.Len(), feeder.Receipts().Len(), "")
-	assert.Equal(t, txsPending.Len(), len(feeder.CallFrames()), "")
+	assert.Equal(t, txsPending.Len(), feeder.Receipts().Len(), "receipts len must be equal")
+	assert.Equal(t, txsPending.Len(), len(feeder.CallFrames()), "CallFrames len must be equal")
 
 	for _, r := range feeder.Receipts() {
-		assert.Equal(t, feeder.Block().Number(), r.BlockNumber, "block number must be equals")
-		assert.Equal(t, feeder.Block().Hash(), r.BlockHash, "block number must be equals")
+		assert.Equal(t, blocks[len(blocks)-1].Number(), r.BlockNumber, "block number must be equals")
+		assert.Equal(t, blocks[len(blocks)-1].Hash(), r.BlockHash, "block number must be equals")
 	}
 	for _, call := range feeder.CallFrames() {
 		assert.Empty(t, call.Error, "error must be empty")
