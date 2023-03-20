@@ -164,7 +164,6 @@ func (bc *SnifferBackend) SnifferLoop() {
 			}
 			//wg.Wait()
 
-			bc.tracer.FeedBlock(block)
 			log.Info("Tracer Transactions", "number", block.NumberU64(), "txs", block.Transactions().Len(), "receipts", len(receipts))
 			bc.tracer.FeedTransactions(block.Number(), newTx.Txs, receipts)
 			log.Info("Tracer Events", "receipts", len(receipts))

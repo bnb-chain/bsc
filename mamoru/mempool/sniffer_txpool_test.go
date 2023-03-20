@@ -189,12 +189,12 @@ func TestMempoolSniffer(t *testing.T) {
 		//mu         = sync.RWMutex{}
 	)
 
-	//	mu.Lock()
 	statedb.SetBalance(address, new(big.Int).SetUint64(params.Ether))
-	//	mu.Unlock()
+
 	bChain := &testBlockChain{gasLimit: 100000, statedb: statedb, chainHeadFeed: new(event.Feed), chainEventFeed: new(event.Feed), engine: engine}
 	db := rawdb.NewMemoryDatabase()
 	chainConfig := params.TestChainConfig
+
 	var gspec = core.Genesis{
 		Config: chainConfig,
 		Alloc:  core.GenesisAlloc{testBankAddress: {Balance: testBankFunds}},
@@ -251,8 +251,7 @@ func TestMempoolSniffer(t *testing.T) {
 	assert.Equal(t, txsPending.Len(), feeder.Txs().Len(), "pending transaction len must be equals feeder transaction len")
 	assert.Equal(t, txsPending.Len(), feeder.Receipts().Len(), "")
 	assert.Equal(t, txsPending.Len(), len(feeder.CallFrames()), "")
-	//assert.Equal(t, blocks[len(blocks)-1].Hash(), feeder.Block().Hash(), "block hash must be equals")
-	//assert.Equal(t, blocks[len(blocks)-1].Number(), feeder.Block().Number(), "block number must be equals")
+
 	for _, r := range feeder.Receipts() {
 		assert.Equal(t, feeder.Block().Number(), r.BlockNumber, "block number must be equals")
 		assert.Equal(t, feeder.Block().Hash(), r.BlockHash, "block number must be equals")
