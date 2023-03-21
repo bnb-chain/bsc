@@ -78,6 +78,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.1.1 // indirect
 	github.com/aws/smithy-go v1.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/bnb-chain/ics23 v0.1.0
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
@@ -121,4 +122,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.14
+replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.15

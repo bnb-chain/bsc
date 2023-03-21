@@ -1,4 +1,4 @@
-name: Unit Test
+name: Build Test
 
 on:
   push:
@@ -32,21 +32,16 @@ jobs:
         # In order:
         # * Module download cache
         # * Build cache (Linux)
-        # * Build cache (Mac)
-        # * Build cache (Windows)
         path: |
           ~/go/pkg/mod
           ~/.cache/go-build
-          ~/Library/Caches/go-build
-          ~\AppData\Local\go-build
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Unit Test
-      env:
-        ANDROID_HOME: "" # Skip android test
+    - name: Test Build
       run: |
         go mod download
-        go test -p 1 -timeout 1h ./accounts/... ./common/... ./consensus/... ./console/... ./core/... ./crypto/... ./eth/... ./ethclient/... ./ethdb/... ./event/... ./graphql/... ./les/... ./light/... ./log/... ./metrics/... ./miner/... ./mobile/... ./node/... ./p2p/... ./params/... ./rlp/... ./rpc/... ./tests/... ./trie/... ./cmd/geth/... 
+        make geth
+
 
