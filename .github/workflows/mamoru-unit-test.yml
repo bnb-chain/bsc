@@ -1,4 +1,4 @@
-name: Build Test
+name: Unit Test
 
 on:
   push:
@@ -13,12 +13,16 @@ on:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [1.19.x]
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
     - name: Install Go
       uses: actions/setup-go@v3
       with:
-        go-version: 1.17.x
+        go-version: ${{ matrix.go-version }}
         
     - name: Checkout code
       uses: actions/checkout@v3
@@ -35,8 +39,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Test Build
+    - name: Unit Test
+      env:
+        CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
+        CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
+        ANDROID_HOME: "" # Skip android test
       run: |
-        make geth
-
+        go mod download
+        go test -p 1 -timeout 1h ./mamoru/... ./common/... ./core/...  ./light/... ./log/...  ./params/... 
 

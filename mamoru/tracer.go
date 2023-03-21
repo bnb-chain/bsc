@@ -60,7 +60,7 @@ func (t *Tracer) FeedCalTraces(callFrames []*CallFrame, blockNumber uint64) {
 
 func (t *Tracer) Send(start time.Time, blockNumber *big.Int, blockHash common.Hash) {
 	if sniffer != nil {
-		sniffer.ObserveData(t.builder.Finish(blockNumber.String(), blockHash.String(), time.Now()))
+		sniffer.ObserveData(t.builder.Finish(blockNumber.String(), blockHash.String()))
 	}
 	logCtx := []interface{}{
 		"elapsed", common.PrettyDuration(time.Since(start)),

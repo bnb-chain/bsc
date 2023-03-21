@@ -1,4 +1,4 @@
-name: Unit Test
+name: Lint
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
       - develop
 
 jobs:
-  unit-test:
+  golang-lint:
     strategy:
       matrix:
         go-version: [1.19.x]
@@ -38,13 +38,17 @@ jobs:
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
-
-    - name: Unit Test
-      env:
-        CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
-        CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
-        ANDROID_HOME: "" # Skip android test
-      run: |
+    
+    - run: |
         go mod download
-        go test -p 1 -timeout 1h ./accounts/... ./common/... ./consensus/... ./console/... ./core/... ./crypto/... ./eth/... ./ethclient/... ./ethdb/... ./event/... ./graphql/... ./les/... ./light/... ./log/... ./metrics/... ./miner/... ./mobile/... ./node/... ./p2p/... ./params/... ./rlp/... ./rpc/... ./tests/... ./trie/... ./cmd/geth/... 
 
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
+        version: v1.50
+        working-directory: ./
+        skip-pkg-cache: true
+        skip-cache: true
+        skip-build-cache: true
+        args: --timeout=99m --config ./.golangci.yml
