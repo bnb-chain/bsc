@@ -52,7 +52,15 @@ func (o *TransactionOpts) Check(blockNumber uint64, timeStamp uint64, statedb *s
 	if o.TimestampMax != nil && timeStamp > uint64(*o.TimestampMax) {
 		return errors.New("TimestampMax condition not met")
 	}
-	if len(o.KnownAccounts) > 1000 {
+	counter := 0
+	for _, account := range o.KnownAccounts {
+		if account.RootHash != nil {
+			counter += 1
+		} else if account.SlotValue != nil {
+			counter += len(account.SlotValue)
+		}
+	}
+	if counter > 1000 {
 		return errors.New("knownAccounts too large")
 	}
 	return o.CheckOnlyStorage(statedb)
