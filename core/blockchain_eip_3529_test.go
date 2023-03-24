@@ -81,7 +81,7 @@ func TestSstoreModifyGasPostEIP3529(t *testing.T) {
 		byte(vm.PUSH1), 0x1, // location
 		byte(vm.SSTORE), // Set slot[1] = 3
 	}
-	// initalize contract storage
+	// initialize contract storage
 	initialStorage := make(map[common.Hash]common.Hash)
 	// Populate two slots
 	initialStorage[common.HexToHash("01")] = common.HexToHash("01")
@@ -97,7 +97,7 @@ func TestSstoreClearGasPostEIP3529(t *testing.T) {
 		byte(vm.PUSH1), 0x1, // location
 		byte(vm.SSTORE), // Set slot[1] = 0
 	}
-	// initalize contract storage
+	// initialize contract storage
 	initialStorage := make(map[common.Hash]common.Hash)
 	// Populate two slots
 	initialStorage[common.HexToHash("01")] = common.HexToHash("01")
