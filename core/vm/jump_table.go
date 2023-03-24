@@ -55,6 +55,7 @@ var (
 	berlinInstructionSet           = newBerlinInstructionSet()
 	londonInstructionSet           = newLondonInstructionSet()
 	mergeInstructionSet            = newMergeInstructionSet()
+	bonehInstructionSet            = newBonehInstructionSet()
 )
 
 // JumpTable contains the EVM opcodes supported at a given fork.
@@ -86,6 +87,13 @@ func newMergeInstructionSet() JumpTable {
 		minStack:    minStack(0, 1),
 		maxStack:    maxStack(0, 1),
 	}
+	return validate(instructionSet)
+}
+
+// newBonehInstructionSet returns the instruction set with EIP-3529 enabled
+func newBonehInstructionSet() JumpTable {
+	instructionSet := newBerlinInstructionSet()
+	enable3529(&instructionSet)
 	return validate(instructionSet)
 }
 

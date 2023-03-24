@@ -345,7 +345,8 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 
-	if !rules.IsLondon {
+	// combined if-else for Ethereum and BSC determining the amount of gas refund
+	if !rules.IsLondon && !rules.IsBoneh {
 		// Before EIP-3529: refunds were capped to gasUsed / 2
 		st.refundGas(params.RefundQuotient)
 	} else {
