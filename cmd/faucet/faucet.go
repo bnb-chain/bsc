@@ -953,10 +953,6 @@ func getGenesis(genesisFlag *string, goerliFlag bool, rinkebyFlag bool) (*core.G
 		var genesis core.Genesis
 		err := common.LoadJSON(*genesisFlag, &genesis)
 		return &genesis, err
-	case goerliFlag:
-		return core.DefaultGoerliGenesisBlock(), nil
-	case rinkebyFlag:
-		return core.DefaultRinkebyGenesisBlock(), nil
 	default:
 		return nil, fmt.Errorf("no genesis flag provided")
 	}
