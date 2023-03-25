@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -39,6 +40,8 @@ type filter struct {
 	typ      Type
 	deadline *time.Timer // filter is inactiv when deadline triggers
 	hashes   []common.Hash
+	fullTx   bool
+	txs      []*types.Transaction
 	crit     FilterCriteria
 	logs     []*types.Log
 	s        *Subscription // associated subscription in event system
@@ -106,22 +109,22 @@ func (api *PublicFilterAPI) timeoutLoop(timeout time.Duration) {
 // `eth_getFilterChanges` polling method that is also used for log filters.
 //
 // https://eth.wiki/json-rpc/API#eth_newpendingtransactionfilter
-func (api *PublicFilterAPI) NewPendingTransactionFilter() rpc.ID {
+func (api *PublicFilterAPI) NewPendingTransactionFilter(fullTx *bool) rpc.ID {
 	var (
-		pendingTxs   = make(chan []common.Hash)
+		pendingTxs   = make(chan []*types.Transaction)
 		pendingTxSub = api.events.SubscribePendingTxs(pendingTxs)
 	)
 	api.filtersMu.Lock()
-	api.filters[pendingTxSub.ID] = &filter{typ: PendingTransactionsSubscription, deadline: time.NewTimer(api.timeout), hashes: make([]common.Hash, 0), s: pendingTxSub}
+	api.filters[pendingTxSub.ID] = &filter{typ: PendingTransactionsSubscription, fullTx: fullTx != nil && *fullTx, deadline: time.NewTimer(api.timeout), txs: make([]*types.Transaction, 0), s: pendingTxSub}
 	api.filtersMu.Unlock()
 
 	gopool.Submit(func() {
 		for {
 			select {
-			case ph := <-pendingTxs:
+			case pTx := <-pendingTxs:
 				api.filtersMu.Lock()
 				if f, found := api.filters[pendingTxSub.ID]; found {
-					f.hashes = append(f.hashes, ph...)
+					f.txs = append(f.txs, pTx...)
 				}
 				api.filtersMu.Unlock()
 			case <-pendingTxSub.Err():
@@ -136,9 +139,10 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter() rpc.ID {
 	return pendingTxSub.ID
 }
 
-// NewPendingTransactions creates a subscription that is triggered each time a transaction
-// enters the transaction pool and was signed from one of the transactions this nodes manages.
-func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context) (*rpc.Subscription, error) {
+// NewPendingTransactions creates a subscription that is triggered each time a
+// transaction enters the transaction pool. If fullTx is true the full tx is
+// sent to the client, otherwise the hash is sent.
+func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
@@ -146,17 +150,26 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context) (*rpc.Su
 
 	rpcSub := notifier.CreateSubscription()
 
+	isFullTX := fullTx != nil && *fullTx
+
 	gopool.Submit(func() {
-		txHashes := make(chan []common.Hash, 128)
-		pendingTxSub := api.events.SubscribePendingTxs(txHashes)
+		txs := make(chan []*types.Transaction, 128)
+		pendingTxSub := api.events.SubscribePendingTxs(txs)
+		chainConfig := api.backend.ChainConfig()
 
 		for {
 			select {
-			case hashes := <-txHashes:
+			case txs := <-txs:
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
-				for _, h := range hashes {
-					notifier.Notify(rpcSub.ID, h)
+				latest := api.backend.CurrentHeader()
+				for _, tx := range txs {
+					if isFullTX {
+						rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig)
+						notifier.Notify(rpcSub.ID, rpcTx)
+					} else {
+						notifier.Notify(rpcSub.ID, tx.Hash())
+					}
 				}
 			case <-rpcSub.Err():
 				pendingTxSub.Unsubscribe()
@@ -551,10 +564,14 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 		f.deadline.Reset(api.timeout)
 
 		switch f.typ {
-		case PendingTransactionsSubscription, BlocksSubscription, VotesSubscription:
+		case BlocksSubscription, VotesSubscription:
 			hashes := f.hashes
 			f.hashes = nil
 			return returnHashes(hashes), nil
+		case PendingTransactionsSubscription:
+			txs := f.txs
+			f.txs = nil
+			return txs, nil
 		case LogsSubscription, MinedAndPendingLogsSubscription:
 			logs := f.logs
 			f.logs = nil
