@@ -1,4 +1,13 @@
 # Changelog
+## v1.1.21
+FEATURE
+* [\#1389](https://github.com/bnb-chain/bsc/pull/1389) upgrade: update the fork height of planck upgrade on mainnet
+
+BUGFIX
+* [\#1354](https://github.com/bnb-chain/bsc/pull/1354) fix: add some boundary check for security
+* [\#1373](https://github.com/bnb-chain/bsc/pull/1373) tracer: enable withLog for TraceCall
+* [\#1377](https://github.com/bnb-chain/bsc/pull/1377) miner: add fallthrough for switch cases
+
 ## v1.1.20
 FEATURE
 * [\#1322](https://github.com/bnb-chain/bsc/pull/1322) cmd/utils/flags.go: --diffsync flag is deprecate
@@ -15,7 +24,7 @@ IMPROVEMENT
 * [\#1333](https://github.com/bnb-chain/bsc/pull/1333) sec: add proof ops check and key checker
 
 BUGFIX
-* [\#1348](https://github.com/bnb-chain/bsc/pull/1348) (HEAD, bnb-chain/develop) core/txpool: implement additional DoS defenses
+* [\#1348](https://github.com/bnb-chain/bsc/pull/1348) core/txpool: implement additional DoS defenses
 
 ## v1.1.19
 FEATURE
