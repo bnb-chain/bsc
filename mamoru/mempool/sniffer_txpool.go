@@ -30,7 +30,7 @@ type blockChain interface {
 }
 
 type SnifferBackend struct {
-	txPool       *core.TxPool
+	txPool       BcTxPool
 	chain        blockChain
 	chainConfig  *params.ChainConfig
 	currentBlock *types.Block
@@ -52,7 +52,7 @@ type SnifferBackend struct {
 	ctx context.Context
 }
 
-func NewSniffer(ctx context.Context, txPool *core.TxPool, chain blockChain, chainConfig *params.ChainConfig, tracer *mamoru.Tracer) *SnifferBackend {
+func NewSniffer(ctx context.Context, txPool BcTxPool, chain blockChain, chainConfig *params.ChainConfig, tracer *mamoru.Tracer) *SnifferBackend {
 	sb := &SnifferBackend{
 		txPool:       txPool,
 		chain:        chain,
@@ -118,11 +118,15 @@ func (bc *SnifferBackend) SnifferLoop() {
 
 			var receipts types.Receipts
 			//wg := new(sync.WaitGroup)
-
+			stateDb, err := bc.chain.StateAt(block.Root())
+			if err != nil {
+				log.Error("SetState", "err", err)
+			}
+			stateDb = stateDb.Copy()
 			// todo Need to do parallel processing of transactions
 			for _, tx := range newTx.Txs {
 
-				trac, err := mamoru.NewCallTracer(true)
+				trac, err := mamoru.NewCallTracer(false)
 				if err != nil {
 					log.Error("mamoru.NewCallTracer", "err", err)
 				}
@@ -131,10 +135,6 @@ func (bc *SnifferBackend) SnifferLoop() {
 				//	defer wg.Done()
 				//})
 
-				stateDb, err := bc.chain.StateAt(block.Root())
-				if err != nil {
-					log.Error("SetState", "err", err)
-				}
 				chCtx := core.ChainContext(bc.chain)
 				header := block.Header()
 

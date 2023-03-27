@@ -77,6 +77,10 @@ func (f *EthFeed) FeedTransactions(blockNumber *big.Int, txs types.Transactions,
 func (f *EthFeed) FeedCallTraces(callFrames []*CallFrame, blockNumber uint64) []evm_types.CallTrace {
 	var callTraces []evm_types.CallTrace
 	for i, frame := range callFrames {
+		if frame == nil {
+			log.Error("Mamoru FeedCallTraces", "err", "frame is empty")
+			continue
+		}
 		var callTrace evm_types.CallTrace
 		callTrace.TxIndex = uint32(i)
 		callTrace.BlockIndex = blockNumber

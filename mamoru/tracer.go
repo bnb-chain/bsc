@@ -3,6 +3,7 @@ package mamoru
 import (
 	"math/big"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Mamoru-Foundation/mamoru-sniffer-go/evm_types"
@@ -83,7 +84,10 @@ func Connect() bool {
 	var err error
 	sniffer, err = SnifferConnectFunc()
 	if err != nil {
-		log.Error("Mamoru Sniffer connect", "err", err)
+		erst := strings.Replace(err.Error(), "\t", "", -1)
+		erst = strings.Replace(erst, "\n", "", -1)
+		erst = strings.Replace(erst, " ", "", -1)
+		log.Error("Mamoru Sniffer connect", "err", erst)
 		return false
 	}
 	return true
