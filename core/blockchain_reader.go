@@ -42,6 +42,36 @@ func (bc *BlockChain) CurrentBlock() *types.Block {
 	return bc.currentBlock.Load().(*types.Block)
 }
 
+// CurrentFinalBlock retrieves the current finalized block of the canonical
+// chain. The block is retrieved from the blockchain's internal cache.
+func (bc *BlockChain) CurrentFinalBlock() *types.Header {
+	if p, ok := bc.engine.(consensus.PoSA); ok {
+		currentHeader := bc.CurrentHeader()
+		if currentHeader == nil {
+			return nil
+		}
+		return p.GetFinalizedHeader(bc, currentHeader)
+	}
+
+	return nil
+}
+
+// CurrentSafeBlock retrieves the current safe block of the canonical
+// chain. The block is retrieved from the blockchain's internal cache.
+func (bc *BlockChain) CurrentSafeBlock() *types.Header {
+	if p, ok := bc.engine.(consensus.PoSA); ok {
+		currentHeader := bc.CurrentHeader()
+		if currentHeader == nil {
+			return nil
+		}
+		_, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(bc, currentHeader)
+		if err == nil {
+			return bc.GetHeaderByHash(justifiedBlockHash)
+		}
+	}
+	return nil
+}
+
 // CurrentFastBlock retrieves the current fast-sync head block of the canonical
 // chain. The block is retrieved from the blockchain's internal cache.
 func (bc *BlockChain) CurrentFastBlock() *types.Block {
