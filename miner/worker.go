@@ -671,7 +671,11 @@ func (w *worker) resultLoop() {
 			start := time.Now()
 			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, true)
 			if status != core.CanonStatTy {
-				log.Error("Failed writing block to chain", "err", err, "status", status)
+				if err != nil {
+					log.Error("Failed writing block to chain", "err", err, "status", status)
+				} else {
+					log.Info("Writen block as SideChain and avoid broadcasting", "status", status)
+				}
 				continue
 			}
 			writeBlockTimer.UpdateSince(start)
