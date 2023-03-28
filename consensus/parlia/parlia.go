@@ -891,7 +891,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 				log.Info("Received block process finished, abort block seal")
 				return
 			case <-time.After(time.Duration(processBackOffTime) * time.Second):
-				if chain.CurrentHeader().Number.Uint64() == header.Number.Uint64() {
+				if number := header.Number.Uint64(); chain.CurrentHeader().Number.Uint64() >= number && chain.GetHeaderByNumber(number-1).Hash() == (header.ParentHash) {
 					log.Info("Process backoff time exhausted, and current header has updated to abort this seal")
 					return
 				}
