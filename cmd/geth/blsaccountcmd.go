@@ -12,15 +12,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/logrusorgru/aurora"
-	"github.com/prysmaticlabs/prysm/crypto/bls"
-	"github.com/prysmaticlabs/prysm/encoding/bytesutil"
-	"github.com/prysmaticlabs/prysm/io/prompt"
-	"github.com/prysmaticlabs/prysm/validator/accounts"
-	"github.com/prysmaticlabs/prysm/validator/accounts/iface"
-	"github.com/prysmaticlabs/prysm/validator/accounts/petnames"
-	"github.com/prysmaticlabs/prysm/validator/accounts/wallet"
-	"github.com/prysmaticlabs/prysm/validator/keymanager"
-	"github.com/prysmaticlabs/prysm/validator/keymanager/imported"
+	"github.com/prysmaticlabs/prysm/v3/crypto/bls"
+	"github.com/prysmaticlabs/prysm/v3/encoding/bytesutil"
+	"github.com/prysmaticlabs/prysm/v3/io/prompt"
+	"github.com/prysmaticlabs/prysm/v3/validator/accounts"
+	"github.com/prysmaticlabs/prysm/v3/validator/accounts/iface"
+	"github.com/prysmaticlabs/prysm/v3/validator/accounts/petnames"
+	"github.com/prysmaticlabs/prysm/v3/validator/accounts/wallet"
+	"github.com/prysmaticlabs/prysm/v3/validator/keymanager"
+	"github.com/prysmaticlabs/prysm/v3/validator/keymanager/local"
 	keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
 	"gopkg.in/urfave/cli.v1"
 
@@ -197,17 +197,17 @@ func blsWalletCreate(ctx *cli.Context) error {
 	}
 
 	password := utils.GetPassPhrase("Your new BLS wallet will be locked with a password. Please give a password. Do not forget this password.", true)
-	walletConfig := &accounts.CreateWalletConfig{
-		WalletCfg: &wallet.Config{
-			WalletDir:      dir,
-			KeymanagerKind: keymanager.Imported,
-			WalletPassword: password,
-		},
-		SkipMnemonicConfirm: true,
-	}
 
-	_, err = accounts.CreateWalletWithKeymanager(context.Background(), walletConfig)
+	opts := []accounts.Option{}
+	opts = append(opts, accounts.WithWalletDir(dir))
+	opts = append(opts, accounts.WithWalletPassword(password))
+	opts = append(opts, accounts.WithKeymanagerType(keymanager.Local))
+	opts = append(opts, accounts.WithSkipMnemonicConfirm(true))
+	acc, err := accounts.NewCLIManager(opts...)
 	if err != nil {
+		utils.Fatalf("New Accounts CLI Manager failed: %v.", err)
+	}
+	if _, err := acc.WalletCreate(context.Background()); err != nil {
 		utils.Fatalf("Create BLS wallet failed: %v.", err)
 	}
 
@@ -227,16 +227,17 @@ func openOrCreateBLSWallet(ctx *cli.Context, cfg *gethConfig) (*wallet.Wallet, e
 	if !dirExists {
 		fmt.Println("BLS wallet not exists, creating BLS wallet...")
 		password := utils.GetPassPhrase("Your new BLS wallet will be locked with a password. Please give a password. Do not forget this password.", true)
-		walletConfig := &accounts.CreateWalletConfig{
-			WalletCfg: &wallet.Config{
-				WalletDir:      walletDir,
-				KeymanagerKind: keymanager.Imported,
-				WalletPassword: password,
-			},
-			SkipMnemonicConfirm: true,
-		}
 
-		w, err = accounts.CreateWalletWithKeymanager(context.Background(), walletConfig)
+		opts := []accounts.Option{}
+		opts = append(opts, accounts.WithWalletDir(walletDir))
+		opts = append(opts, accounts.WithWalletPassword(password))
+		opts = append(opts, accounts.WithKeymanagerType(keymanager.Local))
+		opts = append(opts, accounts.WithSkipMnemonicConfirm(true))
+		acc, err := accounts.NewCLIManager(opts...)
+		if err != nil {
+			utils.Fatalf("New Accounts CLI Manager failed: %v.", err)
+		}
+		w, err := acc.WalletCreate(context.Background())
 		if err != nil {
 			utils.Fatalf("Create BLS wallet failed: %v.", err)
 		}
@@ -269,7 +270,7 @@ func blsAccountCreate(ctx *cli.Context) error {
 	utils.SetNodeConfig(ctx, &cfg.Node)
 
 	w, _ := openOrCreateBLSWallet(ctx, &cfg)
-	if w.KeymanagerKind() != keymanager.Imported {
+	if w.KeymanagerKind() != keymanager.Local {
 		utils.Fatalf("BLS wallet has wrong key manager kind.")
 	}
 	km, err := w.InitializeKeymanager(context.Background(), iface.InitKeymanagerConfig{ListenForChanges: false})
@@ -366,7 +367,7 @@ func blsAccountImport(ctx *cli.Context) error {
 	utils.SetNodeConfig(ctx, &cfg.Node)
 
 	w, _ := openOrCreateBLSWallet(ctx, &cfg)
-	if w.KeymanagerKind() != keymanager.Imported {
+	if w.KeymanagerKind() != keymanager.Local {
 		utils.Fatalf("BLS wallet has wrong key manager kind.")
 	}
 	km, err := w.InitializeKeymanager(context.Background(), iface.InitKeymanagerConfig{ListenForChanges: false})
@@ -422,7 +423,7 @@ func blsAccountList(ctx *cli.Context) error {
 		utils.Fatalf("Initialize key manager failed: %v.", err)
 	}
 
-	ikm, ok := km.(*imported.Keymanager)
+	ikm, ok := km.(*local.Keymanager)
 	if !ok {
 		utils.Fatalf("Could not assert keymanager interface to concrete type.")
 	}
@@ -540,8 +541,7 @@ func blsAccountDelete(ctx *cli.Context) error {
 		}
 	}
 
-	if err := accounts.DeleteAccount(context.Background(), &accounts.Config{
-		Wallet:           w,
+	if err := accounts.DeleteAccount(context.Background(), &accounts.DeleteConfig{
 		Keymanager:       km,
 		DeletePublicKeys: rawPublicKeys,
 	}); err != nil {

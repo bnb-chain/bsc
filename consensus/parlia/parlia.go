@@ -16,7 +16,7 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
-	"github.com/prysmaticlabs/prysm/crypto/bls"
+	"github.com/prysmaticlabs/prysm/v3/crypto/bls"
 	"github.com/willf/bitset"
 	"golang.org/x/crypto/sha3"
 
