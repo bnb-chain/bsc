@@ -492,26 +492,25 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 	}
 
 	startTime := time.Now()
-	log.Info("Mamoru Light-chain Sniffer start", "number", block.NumberU64())
+	log.Info("Mamoru Light-chain Sniffer start", "number", block.NumberU64(), "ctx", "blockchain")
 	tracer := mamoru.NewTracer(mamoru.NewFeed(lc.Config()))
 
 	tracer.FeedBlock(block)
 	tracer.FeedTransactions(block.Number(), block.Transactions(), receipts)
 	tracer.FeedEvents(receipts)
-	trStartTime := time.Now()
+
 	//Launch EVM and Collect Call Trace data
 	callFrames, err := call_tracer.TraceBlock(ctx, call_tracer.NewTracerConfig(stateDb.Copy(), lc.Config(), lc), lastBlock)
 	if err != nil {
-		log.Error("Mamoru Sniffer Tracer Error", "err", err)
+		log.Error("Mamoru Sniffer Tracer Error", "err", err, "ctx", "blockchain")
 		return 0, err
 	}
-	log.Info("TraceBlock finish", "elapsed", common.PrettyDuration(time.Since(trStartTime)))
 	for _, call := range callFrames {
 		result := call.Result
 		tracer.FeedCalTraces(result, block.NumberU64())
 	}
 
-	tracer.Send(startTime, block.Number(), block.Hash())
+	tracer.Send(startTime, block.Number(), block.Hash(), "blockchain")
 	////////////////////////////////////////////////////////////////////////////
 	return 0, err
 }

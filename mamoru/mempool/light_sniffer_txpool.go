@@ -2,9 +2,6 @@ package mempool
 
 import (
 	"context"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -29,42 +26,39 @@ type lightBlockChain interface {
 }
 
 type LightSnifferBackend struct {
-	txPool       LightTxPool
-	chain        lightBlockChain
-	chainConfig  *params.ChainConfig
-	currentBlock *types.Block
-	tracer       *mamoru.Tracer
+	txPool      LightTxPool
+	chain       lightBlockChain
+	chainConfig *params.ChainConfig
 
 	newHeadEvent chan core.ChainHeadEvent
+	newTxsEvent  chan core.NewTxsEvent
 
-	TxSub       event.Subscription
-	headSub     event.Subscription
-	newTxsEvent chan core.NewTxsEvent
-
-	scope event.SubscriptionScope
+	TxSub   event.Subscription
+	headSub event.Subscription
 
 	ctx context.Context
 }
 
-func NewLightSniffer(ctx context.Context, txPool LightTxPool, chain lightBlockChain, chainConfig *params.ChainConfig, tracer *mamoru.Tracer) *LightSnifferBackend {
+func NewLightSniffer(ctx context.Context, txPool LightTxPool, chain lightBlockChain, chainConfig *params.ChainConfig) *LightSnifferBackend {
 	sb := &LightSnifferBackend{
 		txPool:       txPool,
 		chain:        chain,
 		chainConfig:  chainConfig,
 		newHeadEvent: make(chan core.ChainHeadEvent, 10),
 		newTxsEvent:  make(chan core.NewTxsEvent, 1024),
-		tracer:       tracer,
 
 		ctx: ctx,
 	}
 	sb.headSub = sb.SubscribeChainHeadEvent(sb.newHeadEvent)
 	sb.TxSub = sb.SubscribeNewTxsEvent(sb.newTxsEvent)
+
+	go sb.SnifferLoop()
+
 	return sb
 }
 
 func (bc *LightSnifferBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
 	return bc.txPool.SubscribeNewTxsEvent(ch)
-	//return b.scope.Track(b.feed.Subscribe(ch))
 }
 
 // SubscribeChainHeadEvent registers a subscription of ChainHeadEvent.
@@ -73,77 +67,75 @@ func (bc *LightSnifferBackend) SubscribeChainHeadEvent(ch chan<- core.ChainHeadE
 }
 
 func (bc *LightSnifferBackend) SnifferLoop() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(bc.ctx)
 
 	defer func() {
 		bc.headSub.Unsubscribe()
+		bc.TxSub.Unsubscribe()
 	}()
-
-	var head = bc.chain.CurrentHeader()
 
 	for {
 		select {
 		case <-bc.ctx.Done():
-			return
 		case <-bc.headSub.Err():
+		case <-bc.TxSub.Err():
+			cancel()
 			return
-		case sig := <-sigs:
-			log.Info("Signal", "sig", sig)
-			return
-		case newTx := <-bc.newTxsEvent: //work
-			log.Info("Mamoru LightTxPool Sniffer start", "number", head.Number.Uint64())
-			log.Info("NewTx Event", "txs", len(newTx.Txs))
-			bc.process(ctx, head, newTx.Txs)
 
 		case newHead := <-bc.newHeadEvent:
-			if newHead.Block != nil { //work
-				head = newHead.Block.Header()
-				bc.process(ctx, head, newHead.Block.Transactions())
+			if newHead.Block != nil {
+				go bc.processHead(ctx, newHead.Block.Header())
 			}
 		}
 	}
 }
 
-func (bc *LightSnifferBackend) process(ctx context.Context, head *types.Header, txs types.Transactions) {
-	log.Info("Mamoru LightTxPool Sniffer start", "number", head.Number.Uint64())
-	log.Info("New Header Event receive", "number", head.Number.Uint64())
-
-	if !mamoru.IsSnifferEnable() || !mamoru.Connect() {
+func (bc *LightSnifferBackend) processHead(ctx context.Context, head *types.Header) {
+	if !mamoru.IsSnifferEnable() || !mamoru.Connect() || ctx.Err() != nil {
 		return
 	}
 
+	log.Info("Mamoru LightTxPool Sniffer start", "number", head.Number.Uint64(), "ctx", "light txpool")
 	startTime := time.Now()
-	stateDb := light.NewState(ctx, head, bc.chain.Odr())
 
-	lastBlock, err := bc.chain.GetBlockByHash(ctx, head.Hash())
+	// Create tracer context
+	tracer := mamoru.NewTracer(mamoru.NewFeed(bc.chainConfig))
+
+	parentBlock, err := bc.chain.GetBlockByHash(ctx, head.ParentHash)
 	if err != nil {
-		log.Error("GetBlockByHash", "err", err)
+		log.Error("Mamoru parent block", "number", head.Number.Uint64(), "err", err, "ctx", "light txpool")
 		return
 	}
-	callFrames, err := call_tracer.TraceBlock(ctx, call_tracer.NewTracerConfig(stateDb.Copy(), bc.chainConfig, bc.chain), lastBlock)
+
+	stateDb := light.NewState(ctx, parentBlock.Header(), bc.chain.Odr())
+
+	newBlock, err := bc.chain.GetBlockByHash(ctx, head.Hash())
 	if err != nil {
-		log.Error("Mamoru Sniffer Tracer Error", "err", err)
+		log.Error("Mamoru current block", "number", head.Number.Uint64(), "err", err, "ctx", "light txpool")
 		return
 	}
+	tracer.FeedBlock(newBlock)
+
+	callFrames, err := call_tracer.TraceBlock(ctx, call_tracer.NewTracerConfig(stateDb.Copy(), bc.chainConfig, bc.chain), newBlock)
+	if err != nil {
+		log.Error("Mamoru block trace", "number", head.Number.Uint64(), "err", err, "ctx", "light txpool")
+		return
+	}
+
 	for _, call := range callFrames {
 		result := call.Result
-		bc.tracer.FeedCalTraces(result, head.Number.Uint64())
+		tracer.FeedCalTraces(result, head.Number.Uint64())
 	}
 
-	receipts, err := light.GetBlockReceipts(ctx, bc.chain.Odr(), head.Hash(), head.Number.Uint64())
+	receipts, err := light.GetBlockReceipts(ctx, bc.chain.Odr(), newBlock.Hash(), newBlock.NumberU64())
 	if err != nil {
-		log.Error("Mamoru tracer result", "err", err, "number", head.Number.Uint64())
+		log.Error("Mamoru block receipt", "number", head.Number.Uint64(), "err", err, "ctx", "light txpool")
 		return
 	}
-	log.Info("receipts", "number", head.Number.Uint64(), "len", len(receipts))
 
-	log.Info("Last Block", "number", lastBlock.NumberU64(), "txs", lastBlock.Transactions().Len())
-	log.Info("Tracer Transactions", "number", head.Number.Uint64(), "head.txs", len(txs), "receipts", len(receipts))
-	bc.tracer.FeedTransactions(head.Number, txs, receipts)
-	log.Info("Tracer Events", "receipts", len(receipts))
-	bc.tracer.FeedEvents(receipts)
-	log.Info("Tracer Send", "number", head.Number.Uint64(), "hash", head.Hash())
-	bc.tracer.Send(startTime, head.Number, head.Hash())
+	tracer.FeedTransactions(newBlock.Number(), newBlock.Transactions(), receipts)
+	tracer.FeedEvents(receipts)
+
+	// finish tracer context
+	tracer.Send(startTime, newBlock.Number(), newBlock.Hash(), "light txpool")
 }

@@ -1706,7 +1706,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	}
 
 	startTime := time.Now()
-	log.Info("Mamoru Blockchain Sniffer start", "number", block.NumberU64())
+	log.Info("Mamoru Blockchain Sniffer start", "number", block.NumberU64(), "ctx", "blockchain")
 	tracer := mamoru.NewTracer(mamoru.NewFeed(bc.chainConfig))
 
 	tracer.FeedBlock(block)
@@ -1716,12 +1716,13 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	if callTracer, ok := bc.GetVMConfig().Tracer.(*mamoru.CallTracer); ok {
 		result, err := callTracer.GetResult()
 		if err != nil {
-			log.Error("Mamoru Sniffer Tracer Error", "err", err)
+			log.Error("Mamoru Tracer", "err", err, "ctx", "blockchain")
 			return 0, err
 		}
 		tracer.FeedCalTraces(result, block.NumberU64())
 	}
-	tracer.Send(startTime, block.Number(), block.Hash())
+
+	tracer.Send(startTime, block.Number(), block.Hash(), "blockchain")
 
 	////////////////////////////////////////////////////////////
 	return status, nil

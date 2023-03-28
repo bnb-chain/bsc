@@ -50,7 +50,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/ethereum/go-ethereum/mamoru"
 	"github.com/ethereum/go-ethereum/mamoru/mempool"
 )
 
@@ -156,10 +155,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*LightEthereum, error) {
 	leth.txPool = light.NewTxPool(leth.chainConfig, leth.blockchain, leth.relay)
 
 	////////////////////////////////////////////////////////
-	tracer := mamoru.NewTracer(mamoru.NewFeed(chainConfig))
-	sniffer := mempool.NewLightSniffer(context.Background(), leth.txPool, leth.blockchain, chainConfig, tracer)
-
-	go sniffer.SnifferLoop()
+	mempool.NewLightSniffer(context.Background(), leth.txPool, leth.blockchain, chainConfig)
 	////////////////////////////////////////////////////////
 	// Set up checkpoint oracle.
 	leth.oracle = leth.setupOracle(stack, genesisHash, config)

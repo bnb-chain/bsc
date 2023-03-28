@@ -43,6 +43,9 @@ func (f *EthFeed) FeedTransactions(blockNumber *big.Int, txs types.Transactions,
 	var transactions []evm_types.Transaction
 
 	for i, tx := range txs {
+		if tx == nil {
+			continue
+		}
 		var transaction evm_types.Transaction
 		transaction.TxIndex = uint32(i)
 		transaction.TxHash = tx.Hash().String()
@@ -101,7 +104,15 @@ func (f *EthFeed) FeedCallTraces(callFrames []*CallFrame, blockNumber uint64) []
 func (f *EthFeed) FeedEvents(receipts types.Receipts) []evm_types.Event {
 	var events []evm_types.Event
 	for _, receipt := range receipts {
+		if receipt == nil {
+			log.Error("Mamoru FeedEvents", "err", "Receipt is empty")
+			continue
+		}
 		for _, rlog := range receipt.Logs {
+			if rlog == nil {
+				log.Error("Mamoru FeedEvents", "err", "Logs is empty")
+				continue
+			}
 			var event evm_types.Event
 			event.Index = uint32(rlog.Index)
 			event.BlockNumber = rlog.BlockNumber

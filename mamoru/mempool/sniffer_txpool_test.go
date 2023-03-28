@@ -59,7 +59,7 @@ type testBlockChain struct {
 	engine         consensus.Engine
 }
 
-func (bc *testBlockChain) GetHeader(hash common.Hash, u uint64) *types.Header {
+func (bc *testBlockChain) GetHeader(common.Hash, uint64) *types.Header {
 	return &types.Header{}
 }
 
@@ -77,7 +77,7 @@ func (bc *testBlockChain) CurrentBlock() *types.Block {
 	}, nil, nil, nil, trie.NewStackTrie(nil))
 }
 
-func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *types.Block {
+func (bc *testBlockChain) GetBlock(common.Hash, uint64) *types.Block {
 	return bc.CurrentBlock()
 }
 
@@ -116,7 +116,7 @@ func (f *testFeeder) FeedBlock(block *types.Block) evm_types.Block {
 	return evm_types.Block{}
 }
 
-func (f *testFeeder) FeedTransactions(blockNumber *big.Int, txs types.Transactions, receipts types.Receipts) []evm_types.Transaction {
+func (f *testFeeder) FeedTransactions(_ *big.Int, txs types.Transactions, _ types.Receipts) []evm_types.Transaction {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	f.txs = append(f.txs, txs...)
@@ -130,7 +130,7 @@ func (f *testFeeder) FeedEvents(receipts types.Receipts) []evm_types.Event {
 	return []evm_types.Event{}
 }
 
-func (f *testFeeder) FeedCallTraces(callFrames []*mamoru.CallFrame, bn uint64) []evm_types.CallTrace {
+func (f *testFeeder) FeedCallTraces(callFrames []*mamoru.CallFrame, _ uint64) []evm_types.CallTrace {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	f.callFrames = append(f.callFrames, callFrames...)
@@ -165,10 +165,10 @@ func pricedTransaction(nonce uint64, gaslimit uint64, gasprice *big.Int, key *ec
 }
 
 func TestMempoolSniffer(t *testing.T) {
-	os.Setenv("MAMORU_SNIFFER_ENABLE", "true")
+	_ = os.Setenv("MAMORU_SNIFFER_ENABLE", "true")
 
 	defer func() {
-		os.Unsetenv("MAMORU_SNIFFER_ENABLE")
+		_ = os.Unsetenv("MAMORU_SNIFFER_ENABLE")
 	}()
 	actual := os.Getenv("MAMORU_SNIFFER_ENABLE")
 	assert.Equal(t, "true", actual)
@@ -181,7 +181,6 @@ func TestMempoolSniffer(t *testing.T) {
 		address    = crypto.PubkeyToAddress(key.PublicKey)
 		statedb, _ = state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
 		engine     = ethash.NewFaker()
-		//mu         = sync.RWMutex{}
 	)
 
 	statedb.SetBalance(address, new(big.Int).SetUint64(params.Ether))
@@ -216,7 +215,7 @@ func TestMempoolSniffer(t *testing.T) {
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	feeder := &testFeeder{}
-	memSniffer := NewSniffer(ctx, pool, bChain, params.TestChainConfig, mamoru.NewTracer(feeder))
+	memSniffer := NewSniffer(ctx, pool, bChain, params.TestChainConfig, feeder)
 
 	newTxsEvent := make(chan core.NewTxsEvent, 10)
 	sub := memSniffer.txPool.SubscribeNewTxsEvent(newTxsEvent)
