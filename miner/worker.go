@@ -674,7 +674,7 @@ func (w *worker) resultLoop() {
 				if err != nil {
 					log.Error("Failed writing block to chain", "err", err, "status", status)
 				} else {
-					log.Info("Writen block as SideChain and avoid broadcasting", "status", status)
+					log.Info("Written block as SideChain and avoid broadcasting", "status", status)
 				}
 				continue
 			}
