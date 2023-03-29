@@ -207,29 +207,6 @@ func (ec *Client) GetRootByDiffHash(ctx context.Context, blockNr *big.Int, block
 	return &result, err
 }
 
-// GetJustifiedNumberAndHash returns the highest justified block's number and hash on the branch including and before the input block.
-// If number is nil, the latest justified block header is returned.
-func (ec *Client) GetJustifiedNumberAndHash(ctx context.Context, blockNumber *big.Int) (uint64, common.Hash, error) {
-	var justifiedBlockNumber uint64
-	var justifiedBlockHash common.Hash
-	err := ec.c.CallContext(ctx, &[]interface{}{&justifiedBlockNumber, &justifiedBlockHash}, "eth_getJustifiedNumberAndHash", toBlockNumArg(blockNumber))
-	if err == nil && justifiedBlockHash == (common.Hash{}) {
-		err = errors.New("unexpected error")
-	}
-	return justifiedBlockNumber, justifiedBlockHash, err
-}
-
-// GetFinalizedHeader returns the highest finalized block header.
-// If header is nil, the latest finalized block header is returned.
-func (ec *Client) GetFinalizedHeader(ctx context.Context, blockNumber *big.Int) (*types.Header, error) {
-	var head *types.Header
-	err := ec.c.CallContext(ctx, &head, "eth_getFinalizedHeader", toBlockNumArg(blockNumber))
-	if err == nil && head == nil {
-		err = ethereum.NotFound
-	}
-	return head, err
-}
-
 type rpcTransaction struct {
 	tx *types.Transaction
 	txExtraInfo
@@ -612,6 +589,14 @@ func toBlockNumArg(number *big.Int) string {
 	pending := big.NewInt(-1)
 	if number.Cmp(pending) == 0 {
 		return "pending"
+	}
+	finalized := big.NewInt(int64(rpc.FinalizedBlockNumber))
+	if number.Cmp(finalized) == 0 {
+		return "finalized"
+	}
+	safe := big.NewInt(int64(rpc.SafeBlockNumber))
+	if number.Cmp(safe) == 0 {
+		return "safe"
 	}
 	return hexutil.EncodeBig(number)
 }
