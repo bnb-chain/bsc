@@ -680,7 +680,14 @@ func (b *SimulatedBackend) SendTransaction(ctx context.Context, tx *types.Transa
 
 // SendTransaction updates the pending block to include the given transaction.
 func (b *SimulatedBackend) SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts ethapi.TransactionOpts) error {
-	return nil
+	state, err := b.blockchain.State()
+	if err != nil {
+		return err
+	}
+	if err := opts.Check(b.pendingBlock.NumberU64(), b.pendingBlock.Time(), state); err != nil {
+		return err
+	}
+	return b.SendTransaction(ctx, tx)
 }
 
 // FilterLogs executes a log filter operation, blocking during execution and

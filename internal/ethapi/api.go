@@ -2144,11 +2144,12 @@ func (s *PublicTransactionPoolAPI) SendRawTransactionConditional(ctx context.Con
 	if err := tx.UnmarshalBinary(input); err != nil {
 		return common.Hash{}, err
 	}
-	state, _, err := s.b.StateAndHeaderByNumber(ctx, rpc.BlockNumber(s.b.CurrentBlock().Number().Int64()))
+	header := s.b.CurrentHeader()
+	state, _, err := s.b.StateAndHeaderByNumber(ctx, rpc.BlockNumber(header.Number.Int64()))
 	if state == nil || err != nil {
 		return common.Hash{}, err
 	}
-	if err := opts.Check(s.b.CurrentBlock().NumberU64(), s.b.CurrentBlock().Time(), state); err != nil {
+	if err := opts.Check(header.Number.Uint64(), header.Time, state); err != nil {
 		return common.Hash{}, err
 	}
 	return SubmitTransaction(ctx, s.b, tx)
