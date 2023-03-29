@@ -130,8 +130,8 @@ func (cs ConsensusState) EncodeConsensusState() ([]byte, error) {
 }
 
 func (cs *ConsensusState) ApplyHeader(header *Header) (bool, error) {
-	if uint64(header.Height) < cs.Height {
-		return false, fmt.Errorf("header height < consensus height (%d < %d)", header.Height, cs.Height)
+	if uint64(header.Height) <= cs.Height {
+		return false, fmt.Errorf("header height <= consensus height (%d <= %d)", header.Height, cs.Height)
 	}
 
 	if err := header.Validate(cs.ChainID); err != nil {
@@ -209,6 +209,8 @@ func DecodeHeader(input []byte) (*Header, error) {
 	return &header, nil
 }
 
+type KeyVerifier func(string) error
+
 type KeyValueMerkleProof struct {
 	Key       []byte
 	Value     []byte
@@ -216,26 +218,48 @@ type KeyValueMerkleProof struct {
 	AppHash   []byte
 	Proof     *merkle.Proof
 
-	verifiers []merkle.ProofOpVerifier
+	keyVerifier      KeyVerifier
+	proofOpsVerifier merkle.ProofOpsVerifier
+	verifiers        []merkle.ProofOpVerifier
+	proofRuntime     *merkle.ProofRuntime
+}
+
+func (kvmp *KeyValueMerkleProof) SetProofRuntime(prt *merkle.ProofRuntime) {
+	kvmp.proofRuntime = prt
 }
 
 func (kvmp *KeyValueMerkleProof) SetVerifiers(verifiers []merkle.ProofOpVerifier) {
 	kvmp.verifiers = verifiers
 }
 
+func (kvmp *KeyValueMerkleProof) SetOpsVerifier(verifier merkle.ProofOpsVerifier) {
+	kvmp.proofOpsVerifier = verifier
+}
+
+func (kvmp *KeyValueMerkleProof) SetKeyVerifier(keyChecker KeyVerifier) {
+	kvmp.keyVerifier = keyChecker
+}
+
 func (kvmp *KeyValueMerkleProof) Validate() bool {
-	prt := DefaultProofRuntime()
+	if kvmp.keyVerifier != nil {
+		if err := kvmp.keyVerifier(kvmp.StoreName); err != nil {
+			return false
+		}
+		if err := kvmp.keyVerifier(string(kvmp.Key)); err != nil {
+			return false
+		}
+	}
 
 	kp := merkle.KeyPath{}
 	kp = kp.AppendKey([]byte(kvmp.StoreName), merkle.KeyEncodingURL)
 	kp = kp.AppendKey(kvmp.Key, merkle.KeyEncodingURL)
 
 	if len(kvmp.Value) == 0 {
-		err := prt.VerifyAbsence(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.verifiers...)
+		err := kvmp.proofRuntime.VerifyAbsence(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.verifiers...)
 		return err == nil
 	}
 
-	err := prt.VerifyValue(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.Value, kvmp.verifiers...)
+	err := kvmp.proofRuntime.VerifyValue(kvmp.Proof, kvmp.AppHash, kp.String(), kvmp.Value, kvmp.proofOpsVerifier, kvmp.verifiers...)
 	return err == nil
 }
 
@@ -246,8 +270,9 @@ func DecodeKeyValueMerkleProof(input []byte) (*KeyValueMerkleProof, error) {
 	inputLength := uint64(len(input))
 	pos := uint64(0)
 
-	if inputLength <= storeNameLengthBytesLength+keyLengthBytesLength+valueLengthBytesLength+appHashLength {
-		return nil, fmt.Errorf("input length should be no less than %d", storeNameLengthBytesLength+keyLengthBytesLength+valueLengthBytesLength+appHashLength)
+	fixedSize := storeNameLengthBytesLength + keyLengthBytesLength + valueLengthBytesLength + appHashLength
+	if inputLength <= fixedSize {
+		return nil, fmt.Errorf("input length should be no less than %d", fixedSize)
 	}
 	storeName := string(bytes.Trim(input[pos:pos+storeNameLengthBytesLength], "\x00"))
 	pos += storeNameLengthBytesLength
@@ -255,7 +280,8 @@ func DecodeKeyValueMerkleProof(input []byte) (*KeyValueMerkleProof, error) {
 	keyLength := binary.BigEndian.Uint64(input[pos+keyLengthBytesLength-8 : pos+keyLengthBytesLength])
 	pos += keyLengthBytesLength
 
-	if inputLength <= storeNameLengthBytesLength+keyLengthBytesLength+keyLength+valueLengthBytesLength {
+	fixedSize = storeNameLengthBytesLength + keyLengthBytesLength + valueLengthBytesLength
+	if inputLength <= fixedSize+keyLength || fixedSize+keyLength < fixedSize {
 		return nil, fmt.Errorf("invalid input, keyLength %d is too long", keyLength)
 	}
 	key := input[pos : pos+keyLength]
@@ -264,7 +290,10 @@ func DecodeKeyValueMerkleProof(input []byte) (*KeyValueMerkleProof, error) {
 	valueLength := binary.BigEndian.Uint64(input[pos+valueLengthBytesLength-8 : pos+valueLengthBytesLength])
 	pos += valueLengthBytesLength
 
-	if inputLength <= storeNameLengthBytesLength+keyLengthBytesLength+keyLength+valueLengthBytesLength+valueLength+appHashLength {
+	fixedSize = storeNameLengthBytesLength + keyLengthBytesLength + valueLengthBytesLength + appHashLength
+	if inputLength <= fixedSize+keyLength+valueLength ||
+		fixedSize+keyLength < fixedSize ||
+		fixedSize+keyLength+valueLength < valueLength {
 		return nil, fmt.Errorf("invalid input, valueLength %d is too long", valueLength)
 	}
 	value := input[pos : pos+valueLength]

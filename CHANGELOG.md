@@ -1,4 +1,57 @@
 # Changelog
+## v1.1.21
+FEATURE
+* [\#1389](https://github.com/bnb-chain/bsc/pull/1389) upgrade: update the fork height of planck upgrade on mainnet
+
+BUGFIX
+* [\#1354](https://github.com/bnb-chain/bsc/pull/1354) fix: add some boundary check for security
+* [\#1373](https://github.com/bnb-chain/bsc/pull/1373) tracer: enable withLog for TraceCall
+* [\#1377](https://github.com/bnb-chain/bsc/pull/1377) miner: add fallthrough for switch cases
+
+## v1.1.20
+FEATURE
+* [\#1322](https://github.com/bnb-chain/bsc/pull/1322) cmd/utils/flags.go: --diffsync flag is deprecate
+* [\#1261](https://github.com/bnb-chain/bsc/pull/1261) tracer: port call tracer `withLog` to bsc
+
+IMPROVEMENT
+* [\#1337](https://github.com/bnb-chain/bsc/pull/1337) clean: Remove support for Ethereum testnet
+* [\#1347](https://github.com/bnb-chain/bsc/pull/1347) upgrade: update the fork height of planck upgrade on testnet
+* [\#1343](https://github.com/bnb-chain/bsc/pull/1343) upgrade: update system contracts' code of planck upgrade
+* [\#1328](https://github.com/bnb-chain/bsc/pull/1328) upgrade: update system contracts' code of testnet
+* [\#1162](https://github.com/bnb-chain/bsc/pull/1162) consensus: fix slash bug when validator set changing
+* [\#1344](https://github.com/bnb-chain/bsc/pull/1344) consensus: fix delete the 1st validator from snapshot.recents list
+* [\#1149](https://github.com/bnb-chain/bsc/pull/1149) feats: add ics23 proof support for cross chain packages
+* [\#1333](https://github.com/bnb-chain/bsc/pull/1333) sec: add proof ops check and key checker
+
+BUGFIX
+* [\#1348](https://github.com/bnb-chain/bsc/pull/1348) core/txpool: implement additional DoS defenses
+
+## v1.1.19
+FEATURE
+* [\#1199](https://github.com/bnb-chain/bsc/pull/1199) mointor: implement double sign monitor
+
+IMPROVEMENT
+* [\#1226](https://github.com/bnb-chain/bsc/pull/1226) eth, trie: sync with upstream v1.10.26 to solve snap sync issues
+* [\#1212](https://github.com/bnb-chain/bsc/pull/1212) metrics: add miner info into metrics server
+* [\#1240](https://github.com/bnb-chain/bsc/pull/1240) Add NewBatchWithSize API for db and use this API for BloomIndexer.Commit()
+* [\#1254](https://github.com/bnb-chain/bsc/pull/1254) ci: update unmaintained tools to use maintained tools
+* [\#1256](https://github.com/bnb-chain/bsc/pull/1256) ci: disable CGO_ENABLED when building binary
+* [\#1274](https://github.com/bnb-chain/bsc/pull/1274) dep: bump the version of several important library
+* [\#1294](https://github.com/bnb-chain/bsc/pull/1294) parlia : add a check for the length of extraData.
+* [\#1298](https://github.com/bnb-chain/bsc/pull/1298) dep: update tendermint to v0.31.14
+
+Document
+* [\#1233](https://github.com/bnb-chain/bsc/pull/1233) doc: update readme
+* [\#1245](https://github.com/bnb-chain/bsc/pull/1245) comments: add comments to clarify flags and byte codes
+* [\#1266](https://github.com/bnb-chain/bsc/pull/1266) docs: update the readme to latest
+* [\#1267](https://github.com/bnb-chain/bsc/pull/1267) docs: minor fix about the readme
+* [\#1287](https://github.com/bnb-chain/bsc/pull/1287) docs: minor fix on geth links
+
+BUGFIX
+* [\#1233](https://github.com/bnb-chain/bsc/pull/1233) doc: update readme
+* [\#1253](https://github.com/bnb-chain/bsc/pull/1253) fix comments: prune ancient compatibility, add prune ancient comments
+* [\#1301](https://github.com/bnb-chain/bsc/pull/1301) fix: p2p sync with lagging peer
+* [\#1302](https://github.com/bnb-chain/bsc/pull/1302) fix: eth fetcher re-queue issue
 
 ## v1.1.18
 IMPROVEMENT

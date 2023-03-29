@@ -842,15 +842,18 @@ func (f *BlockFetcher) importHeaders(op *blockOrHeaderInject) {
 	log.Debug("Importing propagated header", "peer", peer, "number", header.Number, "hash", hash)
 
 	go func() {
-		defer func() { f.done <- hash }()
 		// If the parent's unknown, abort insertion
 		parent := f.getHeader(header.ParentHash)
 		if parent == nil {
 			log.Debug("Unknown parent of propagated header", "peer", peer, "number", header.Number, "hash", hash, "parent", header.ParentHash)
 			time.Sleep(reQueueBlockTimeout)
+			// forget block first, then re-queue
+			f.done <- hash
 			f.requeue <- op
 			return
 		}
+
+		defer func() { f.done <- hash }()
 		// Validate the header and if something went wrong, drop the peer
 		if err := f.verifyHeader(header); err != nil && err != consensus.ErrFutureBlock {
 			log.Debug("Propagated header verification failed", "peer", peer, "number", header.Number, "hash", hash, "err", err)
@@ -880,16 +883,18 @@ func (f *BlockFetcher) importBlocks(op *blockOrHeaderInject) {
 	// Run the import on a new thread
 	log.Debug("Importing propagated block", "peer", peer, "number", block.Number(), "hash", hash)
 	go func() {
-		defer func() { f.done <- hash }()
-
 		// If the parent's unknown, abort insertion
 		parent := f.getBlock(block.ParentHash())
 		if parent == nil {
 			log.Debug("Unknown parent of propagated block", "peer", peer, "number", block.Number(), "hash", hash, "parent", block.ParentHash())
 			time.Sleep(reQueueBlockTimeout)
+			// forget block first, then re-queue
+			f.done <- hash
 			f.requeue <- op
 			return
 		}
+
+		defer func() { f.done <- hash }()
 		// Quickly validate the header and propagate the block if it passes
 		switch err := f.verifyHeader(block.Header()); err {
 		case nil:
