@@ -454,8 +454,10 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 			}
 		}
 
-		// If we're at the genesis, snapshot the initial state.
-		if number == 0 {
+		// If we're at the genesis, snapshot the initial state. Alternatively if we have
+		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
+		// consider the checkpoint trusted and snapshot it.
+		if number == 0 || (number%p.config.Epoch == 0 && (len(headers) > params.FullImmutabilityThreshold)) {
 			checkpoint := chain.GetHeaderByNumber(number)
 			if checkpoint != nil {
 				// get checkpoint data
