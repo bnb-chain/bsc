@@ -32,7 +32,6 @@ import (
 	"github.com/prysmaticlabs/prysm/v3/crypto/bls"
 	"github.com/prysmaticlabs/prysm/v3/validator/accounts"
 	"github.com/prysmaticlabs/prysm/v3/validator/accounts/iface"
-	"github.com/prysmaticlabs/prysm/v3/validator/accounts/wallet"
 	"github.com/prysmaticlabs/prysm/v3/validator/keymanager"
 	keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
 
@@ -394,13 +393,14 @@ func testVotePool(t *testing.T, isValidRules bool) {
 
 func setUpKeyManager(t *testing.T) (string, string) {
 	walletDir := filepath.Join(t.TempDir(), "wallet")
-	walletConfig := &accounts.CreateWalletConfig{
-		WalletCfg: &wallet.Config{
-			WalletDir:      walletDir,
-			KeymanagerKind: keymanager.Imported,
-			WalletPassword: password,
-		},
-		SkipMnemonicConfirm: true,
+	opts := []accounts.Option{}
+	opts = append(opts, accounts.WithWalletDir(walletDir))
+	opts = append(opts, accounts.WithWalletPassword(password))
+	opts = append(opts, accounts.WithKeymanagerType(keymanager.Local))
+	opts = append(opts, accounts.WithSkipMnemonicConfirm(true))
+	acc, err := accounts.NewCLIManager(opts...)
+	if err != nil {
+		t.Fatalf("New Accounts CLI Manager failed: %v.", err)
 	}
 	walletPasswordDir := filepath.Join(t.TempDir(), "password")
 	if err := os.MkdirAll(filepath.Dir(walletPasswordDir), 0700); err != nil {
@@ -410,7 +410,7 @@ func setUpKeyManager(t *testing.T) (string, string) {
 		t.Fatalf("failed to write wallet password dir: %v", err)
 	}
 
-	w, err := accounts.CreateWalletWithKeymanager(context.Background(), walletConfig)
+	w, err := acc.WalletCreate(context.Background())
 	if err != nil {
 		t.Fatalf("failed to create wallet: %v", err)
 	}
