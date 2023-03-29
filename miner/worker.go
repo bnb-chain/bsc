@@ -666,20 +666,23 @@ func (w *worker) resultLoop() {
 				w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
 			}
 
-			// Broadcast the block and announce chain insertion event
-			w.mux.Post(core.NewMinedBlockEvent{Block: block})
-
 			// Commit block and state to database.
 			task.state.SetExpectedStateRoot(block.Root())
 			start := time.Now()
-			_, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, true)
-			if err != nil {
-				log.Error("Failed writing block to chain", "err", err)
+			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, true)
+			if status != core.CanonStatTy {
+				if err != nil {
+					log.Error("Failed writing block to chain", "err", err, "status", status)
+				} else {
+					log.Info("Written block as SideChain and avoid broadcasting", "status", status)
+				}
 				continue
 			}
 			writeBlockTimer.UpdateSince(start)
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
+			// Broadcast the block and announce chain insertion event
+			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
 			// Insert the block into the set of pending ones to resultLoop for confirmations
 			w.unconfirmed.Insert(block.NumberU64(), block.Hash())
@@ -1126,7 +1129,12 @@ LOOP:
 		// subscribe before fillTransactions
 		txsCh := make(chan core.NewTxsEvent, txChanSize)
 		sub := w.eth.TxPool().SubscribeNewTxsEvent(txsCh)
-		defer sub.Unsubscribe()
+		// if TxPool has been stopped, `sub` would be nil, it could happen on shutdown.
+		if sub == nil {
+			log.Info("commitWork SubscribeNewTxsEvent return nil")
+		} else {
+			defer sub.Unsubscribe()
+		}
 
 		// Fill pending transactions from the txpool
 		fillStart := time.Now()
@@ -1137,7 +1145,9 @@ LOOP:
 			log.Debug("commitWork abort", "err", err)
 			return
 		case errors.Is(err, errBlockInterruptedByRecommit):
+			fallthrough
 		case errors.Is(err, errBlockInterruptedByTimeout):
+			fallthrough
 		case errors.Is(err, errBlockInterruptedByOutOfGas):
 			// break the loop to get the best work
 			log.Debug("commitWork finish", "reason", err)
@@ -1196,7 +1206,9 @@ LOOP:
 		}
 		// if sub's channel if full, it will block other NewTxsEvent subscribers,
 		// so unsubscribe ASAP and Unsubscribe() is re-enterable, safe to call several time.
-		sub.Unsubscribe()
+		if sub != nil {
+			sub.Unsubscribe()
+		}
 	}
 	// get the most profitable work
 	bestWork := workList[0]

@@ -19,6 +19,7 @@ package trie
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
@@ -345,11 +346,11 @@ func (s *Sync) schedule(req *request) {
 // retrieval scheduling.
 func (s *Sync) children(req *request, object node) ([]*request, error) {
 	// Gather all the children of the node, irrelevant whether known or not
-	type child struct {
+	type childNode struct {
 		path []byte
 		node node
 	}
-	var children []child
+	var children []childNode
 
 	switch node := (object).(type) {
 	case *shortNode:
@@ -357,14 +358,14 @@ func (s *Sync) children(req *request, object node) ([]*request, error) {
 		if hasTerm(key) {
 			key = key[:len(key)-1]
 		}
-		children = []child{{
+		children = []childNode{{
 			node: node.Val,
 			path: append(append([]byte(nil), req.path...), key...),
 		}}
 	case *fullNode:
 		for i := 0; i < 17; i++ {
 			if node.Children[i] != nil {
-				children = append(children, child{
+				children = append(children, childNode{
 					node: node.Children[i],
 					path: append(append([]byte(nil), req.path...), byte(i)),
 				})
@@ -374,7 +375,10 @@ func (s *Sync) children(req *request, object node) ([]*request, error) {
 		panic(fmt.Sprintf("unknown node: %+v", node))
 	}
 	// Iterate over the children, and request all unknown ones
-	requests := make([]*request, 0, len(children))
+	var (
+		missing = make(chan *request, len(children))
+		pending sync.WaitGroup
+	)
 	for _, child := range children {
 		// Notify any external watcher of a new key/value node
 		if req.callback != nil {
@@ -398,18 +402,36 @@ func (s *Sync) children(req *request, object node) ([]*request, error) {
 			if s.membatch.hasNode(hash) {
 				continue
 			}
-			// If database says duplicate, then at least the trie node is present
-			// and we hold the assumption that it's NOT legacy contract code.
-			if rawdb.HasTrieNode(s.database, hash) {
-				continue
-			}
-			// Locally unknown node, schedule for retrieval
-			requests = append(requests, &request{
-				path:     child.path,
-				hash:     hash,
-				parents:  []*request{req},
-				callback: req.callback,
-			})
+			// Check the presence of children concurrently
+			pending.Add(1)
+			go func(child childNode) {
+				defer pending.Done()
+
+				// If database says duplicate, then at least the trie node is present
+				// and we hold the assumption that it's NOT legacy contract code.
+				chash := common.BytesToHash(node)
+				if rawdb.HasTrieNode(s.database, chash) {
+					return
+				}
+				// Locally unknown node, schedule for retrieval
+				missing <- &request{
+					path:     child.path,
+					hash:     chash,
+					parents:  []*request{req},
+					callback: req.callback,
+				}
+			}(child)
+		}
+	}
+	pending.Wait()
+
+	requests := make([]*request, 0, len(children))
+	for done := false; !done; {
+		select {
+		case miss := <-missing:
+			requests = append(requests, miss)
+		default:
+			done = true
 		}
 	}
 	return requests, nil

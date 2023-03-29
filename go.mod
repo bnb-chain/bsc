@@ -61,7 +61,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/tendermint/go-amino v0.14.1
 	github.com/tendermint/iavl v0.12.0
-	github.com/tendermint/tendermint v0.31.14
+	github.com/tendermint/tendermint v0.31.15
 	github.com/tidwall/wal v1.1.7
 	github.com/tyler-smith/go-bip39 v1.1.0
 	github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4 v1.1.3
@@ -74,6 +74,11 @@ require (
 	golang.org/x/tools v0.6.0
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 	gopkg.in/urfave/cli.v1 v1.20.0
+)
+
+require (
+	github.com/bnb-chain/ics23 v0.1.0
+	github.com/fatih/structs v1.1.0
 )
 
 require (
@@ -230,7 +235,7 @@ require (
 	github.com/whyrusleeping/timecache v0.0.0-20160911033111-cfcb2f1abfee // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	go.etcd.io/bbolt v1.3.6 // indirect
+	go.etcd.io/bbolt v1.3.7 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/dig v1.15.0 // indirect
@@ -263,5 +268,5 @@ require (
 
 replace (
 	github.com/grpc-ecosystem/grpc-gateway/v2 => github.com/prysmaticlabs/grpc-gateway/v2 v2.3.1-0.20210702154020-550e1cd83ec1
-	github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.14
+	github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.15
 )
