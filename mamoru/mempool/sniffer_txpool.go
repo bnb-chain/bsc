@@ -25,6 +25,7 @@ type blockChain interface {
 
 	SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription
 	SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription
+	SubscribeChainSideEvent(ch chan<- core.ChainSideEvent) event.Subscription
 }
 
 type SnifferBackend struct {
@@ -36,8 +37,14 @@ type SnifferBackend struct {
 	newHeadEvent chan core.ChainHeadEvent
 	newTxsEvent  chan core.NewTxsEvent
 
+	chEv     chan core.ChainEvent
+	chSideEv chan core.ChainSideEvent
+
 	TxSub   event.Subscription
 	headSub event.Subscription
+
+	chEvSub     event.Subscription
+	chSideEvSub event.Subscription
 
 	ctx context.Context
 	mu  sync.RWMutex
@@ -51,13 +58,19 @@ func NewSniffer(ctx context.Context, txPool BcTxPool, chain blockChain, chainCon
 
 		newTxsEvent:  make(chan core.NewTxsEvent, core.DefaultTxPoolConfig.GlobalQueue),
 		newHeadEvent: make(chan core.ChainHeadEvent, 10),
-		feeder:       feeder,
+
+		chEv:     make(chan core.ChainEvent, 10),
+		chSideEv: make(chan core.ChainSideEvent, 10),
+
+		feeder: feeder,
 
 		ctx: ctx,
 		mu:  sync.RWMutex{},
 	}
 	sb.TxSub = sb.SubscribeNewTxsEvent(sb.newTxsEvent)
 	sb.headSub = sb.SubscribeChainHeadEvent(sb.newHeadEvent)
+	sb.chEvSub = sb.SubscribeChainEvent(sb.chEv)
+	sb.chSideEvSub = sb.SubscribeChainSideEvent(sb.chSideEv)
 
 	return sb
 }
@@ -71,10 +84,20 @@ func (bc *SnifferBackend) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent)
 	return bc.chain.SubscribeChainHeadEvent(ch)
 }
 
+func (bc *SnifferBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription {
+	return bc.chain.SubscribeChainEvent(ch)
+}
+
+func (bc *SnifferBackend) SubscribeChainSideEvent(ch chan<- core.ChainSideEvent) event.Subscription {
+	return bc.chain.SubscribeChainSideEvent(ch)
+}
+
 func (bc *SnifferBackend) SnifferLoop() {
 	defer func() {
 		bc.TxSub.Unsubscribe()
 		bc.headSub.Unsubscribe()
+		bc.chEvSub.Unsubscribe()
+		bc.chSideEvSub.Unsubscribe()
 	}()
 
 	ctx, cancel := context.WithCancel(bc.ctx)
@@ -85,6 +108,7 @@ func (bc *SnifferBackend) SnifferLoop() {
 		case <-bc.ctx.Done():
 		case <-bc.TxSub.Err():
 		case <-bc.headSub.Err():
+		case <-bc.chEvSub.Err():
 			cancel()
 			return
 
@@ -92,12 +116,29 @@ func (bc *SnifferBackend) SnifferLoop() {
 			go bc.process(ctx, block, newTx.Txs)
 
 		case newHead := <-bc.newHeadEvent:
-			if newHead.Block != nil {
-				log.Info("New Header Event", "number", newHead.Block.NumberU64())
+			if newHead.Block != nil && newHead.Block.NumberU64() > block.NumberU64() {
+				log.Info("New core.ChainHeadEvent", "number", newHead.Block.NumberU64(), "ctx", "txpool")
 				bc.mu.RLock()
 				block = newHead.Block
 				bc.mu.RUnlock()
 			}
+
+		case newChEv := <-bc.chEv:
+			if newChEv.Block != nil && newChEv.Block.NumberU64() > block.NumberU64() {
+				log.Info("New core.ChainEvent", "number", newChEv.Block.NumberU64(), "ctx", "txpool")
+				bc.mu.RLock()
+				block = newChEv.Block
+				bc.mu.RUnlock()
+			}
+
+		case newChSideEv := <-bc.chSideEv:
+			if newChSideEv.Block != nil && newChSideEv.Block.NumberU64() > block.NumberU64() {
+				log.Info("New core.ChainSideEvent", "number", newChSideEv.Block.NumberU64(), "ctx", "txpool")
+				bc.mu.RLock()
+				block = newChSideEv.Block
+				bc.mu.RUnlock()
+			}
+
 		}
 	}
 }
@@ -107,7 +148,7 @@ func (bc *SnifferBackend) process(ctx context.Context, block *types.Block, txs t
 		return
 	}
 
-	log.Info("Mamoru LightTxPool Sniffer start", "number", block.NumberU64())
+	log.Info("Mamoru TxPool Sniffer start", "txs", txs.Len(), "number", block.NumberU64(), "ctx", "txpool")
 	startTime := time.Now()
 
 	// Create tracer context
@@ -121,7 +162,8 @@ func (bc *SnifferBackend) process(ctx context.Context, block *types.Block, txs t
 	}
 
 	stateDb = stateDb.Copy()
-	for _, tx := range txs {
+
+	for index, tx := range txs {
 		calltracer, err := mamoru.NewCallTracer(false)
 		if err != nil {
 			log.Error("Mamoru Call tracer", "err", err, "ctx", "txpool")
@@ -135,7 +177,16 @@ func (bc *SnifferBackend) process(ctx context.Context, block *types.Block, txs t
 		var gasUsed = new(uint64)
 		*gasUsed = header.GasUsed
 
-		stateDb.Prepare(tx.Hash(), len(txs))
+		stateDb.Prepare(tx.Hash(), index)
+		from, err := types.Sender(types.LatestSigner(bc.chainConfig), tx)
+		if err != nil {
+			log.Error("types.Sender", "err", err, "number", block.NumberU64(), "ctx", "txpool")
+		}
+		if tx.Nonce() > stateDb.GetNonce(from) {
+			stateDb.SetNonce(from, tx.Nonce())
+		}
+		log.Info("ApplyTransaction", "tx.hash", tx.Hash().String(), "tx.nonce", tx.Nonce(), "stNonce", stateDb.GetNonce(from), "number", block.NumberU64(), "ctx", "txpool")
+
 		receipt, err := core.ApplyTransaction(bc.chainConfig, chCtx, &author, gasPool, stateDb, header, tx,
 			gasUsed, vm.Config{Debug: true, Tracer: calltracer, NoBaseFee: true})
 		if err != nil {
@@ -156,7 +207,7 @@ func (bc *SnifferBackend) process(ctx context.Context, block *types.Block, txs t
 		tracer.FeedCalTraces(callFrames, block.NumberU64())
 	}
 
-	tracer.FeedBlock(block)
+	//tracer.FeedBlock(block)
 	tracer.FeedTransactions(block.Number(), txs, receipts)
 	tracer.FeedEvents(receipts)
 	tracer.Send(startTime, block.Number(), block.Hash(), "txpool")

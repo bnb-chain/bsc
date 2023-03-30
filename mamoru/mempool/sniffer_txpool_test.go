@@ -52,11 +52,12 @@ func init() {
 }
 
 type testBlockChain struct {
-	gasLimit       uint64 // must be first field for 64 bit alignment (atomic access)
-	statedb        *state.StateDB
-	chainHeadFeed  *event.Feed
-	chainEventFeed *event.Feed
-	engine         consensus.Engine
+	gasLimit           uint64 // must be first field for 64 bit alignment (atomic access)
+	statedb            *state.StateDB
+	chainHeadFeed      *event.Feed
+	chainEventFeed     *event.Feed
+	chainSideEventFeed *event.Feed
+	engine             consensus.Engine
 }
 
 func (bc *testBlockChain) GetHeader(common.Hash, uint64) *types.Header {
@@ -87,6 +88,10 @@ func (bc *testBlockChain) StateAt(common.Hash) (*state.StateDB, error) {
 
 func (bc *testBlockChain) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription {
 	return bc.chainHeadFeed.Subscribe(ch)
+}
+
+func (bc *testBlockChain) SubscribeChainSideEvent(ch chan<- core.ChainSideEvent) event.Subscription {
+	return bc.chainSideEventFeed.Subscribe(ch)
 }
 
 func (bc *testBlockChain) Engine() consensus.Engine {
@@ -185,7 +190,7 @@ func TestMempoolSniffer(t *testing.T) {
 
 	statedb.SetBalance(address, new(big.Int).SetUint64(params.Ether))
 
-	bChain := &testBlockChain{gasLimit: 100000, statedb: statedb, chainHeadFeed: new(event.Feed), chainEventFeed: new(event.Feed), engine: engine}
+	bChain := &testBlockChain{gasLimit: 100000, statedb: statedb, chainHeadFeed: new(event.Feed), chainEventFeed: new(event.Feed), chainSideEventFeed: new(event.Feed), engine: engine}
 	db := rawdb.NewMemoryDatabase()
 	chainConfig := params.TestChainConfig
 

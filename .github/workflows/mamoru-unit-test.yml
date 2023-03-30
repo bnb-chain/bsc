@@ -46,5 +46,5 @@ jobs:
         ANDROID_HOME: "" # Skip android test
       run: |
         go mod download
-        go test -p 1 -timeout 1h ./mamoru/... ./common/... ./core/...  ./light/... ./log/...  ./params/... 
+        go test -p 1 -timeout 1h ./mamoru/...
 

@@ -95,7 +95,7 @@ func (bc *LightSnifferBackend) processHead(ctx context.Context, head *types.Head
 		return
 	}
 
-	log.Info("Mamoru LightTxPool Sniffer start", "number", head.Number.Uint64(), "ctx", "light txpool")
+	log.Info("Mamoru LightTxPool Sniffer start", "number", head.Number.Uint64(), "ctx", "lighttxpool")
 	startTime := time.Now()
 
 	// Create tracer context
@@ -103,7 +103,7 @@ func (bc *LightSnifferBackend) processHead(ctx context.Context, head *types.Head
 
 	parentBlock, err := bc.chain.GetBlockByHash(ctx, head.ParentHash)
 	if err != nil {
-		log.Error("Mamoru parent block", "number", head.Number.Uint64(), "err", err, "ctx", "light txpool")
+		log.Error("Mamoru parent block", "number", head.Number.Uint64(), "err", err, "ctx", "lighttxpool")
 		return
 	}
 
@@ -111,14 +111,14 @@ func (bc *LightSnifferBackend) processHead(ctx context.Context, head *types.Head
 
 	newBlock, err := bc.chain.GetBlockByHash(ctx, head.Hash())
 	if err != nil {
-		log.Error("Mamoru current block", "number", head.Number.Uint64(), "err", err, "ctx", "light txpool")
+		log.Error("Mamoru current block", "number", head.Number.Uint64(), "err", err, "ctx", "lighttxpool")
 		return
 	}
 	tracer.FeedBlock(newBlock)
 
 	callFrames, err := call_tracer.TraceBlock(ctx, call_tracer.NewTracerConfig(stateDb.Copy(), bc.chainConfig, bc.chain), newBlock)
 	if err != nil {
-		log.Error("Mamoru block trace", "number", head.Number.Uint64(), "err", err, "ctx", "light txpool")
+		log.Error("Mamoru block trace", "number", head.Number.Uint64(), "err", err, "ctx", "lighttxpool")
 		return
 	}
 
@@ -129,7 +129,7 @@ func (bc *LightSnifferBackend) processHead(ctx context.Context, head *types.Head
 
 	receipts, err := light.GetBlockReceipts(ctx, bc.chain.Odr(), newBlock.Hash(), newBlock.NumberU64())
 	if err != nil {
-		log.Error("Mamoru block receipt", "number", head.Number.Uint64(), "err", err, "ctx", "light txpool")
+		log.Error("Mamoru block receipt", "number", head.Number.Uint64(), "err", err, "ctx", "lighttxpool")
 		return
 	}
 
@@ -137,5 +137,5 @@ func (bc *LightSnifferBackend) processHead(ctx context.Context, head *types.Head
 	tracer.FeedEvents(receipts)
 
 	// finish tracer context
-	tracer.Send(startTime, newBlock.Number(), newBlock.Hash(), "light txpool")
+	tracer.Send(startTime, newBlock.Number(), newBlock.Hash(), "lighttxpool")
 }
