@@ -42,19 +42,38 @@ function init_genesis_data() {
      fi
 }
 
+function prepareBLSWallet(){
+     node_id=$1
+     echo "123456" > ${workspace}/storage/${node_id}/blspassword.txt
+     expect ${workspace}/scripts/create_bls_key.sh ${workspace}/storage/${node_id}
+
+     sed -i -e 's/DataDir/BLSPasswordFile = \"{{BLSPasswordFile}}\"\nBLSWalletDir = \"{{BLSWalletDir}}\"\nDataDir/g' ${workspace}/storage/${node_id}/config.toml
+     PassWordPath="/root/.ethereum/blspassword.txt"
+     sed -i -e "s:{{BLSPasswordFile}}:${PassWordPath}:g" ${workspace}/storage/${node_id}/config.toml
+     WalletPath="/root/.ethereum/bls/wallet"
+     sed -i -e "s:{{BLSWalletDir}}:${WalletPath}:g" ${workspace}/storage/${node_id}/config.toml
+}
+
 prepare
 
-# First, generate config for each validator
+# Step 1, generate config for each validator
 for((i=1;i<=${NUMS_OF_VALIDATOR};i++)); do
      init_validator "bsc-validator${i}"
 done
 
-# Then, use validator configs to generate genesis file
+# Step 2, use validator configs to generate genesis file
 generate_genesis
 
-# Finally, use genesis file to init cluster data
+# Step 3, use genesis file to init cluster data
 init_genesis_data bsc-rpc bsc-rpc
 
 for((i=1;i<=${NUMS_OF_VALIDATOR};i++)); do
      init_genesis_data validator "bsc-validator${i}"
+done
+
+#Step 4, prepare bls wallet, used by fast finality vote
+prepareBLSWallet bsc-rpc
+
+for((i=1;i<=${NUMS_OF_VALIDATOR};i++)); do
+     prepareBLSWallet "bsc-validator${i}"
 done
