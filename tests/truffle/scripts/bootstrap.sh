@@ -57,8 +57,6 @@ function prepareBLSWallet(){
 prepare
 
 # Step 1, generate config for each validator
-init_validator bsc-rpc
-
 for((i=1;i<=${NUMS_OF_VALIDATOR};i++)); do
      init_validator "bsc-validator${i}"
 done
