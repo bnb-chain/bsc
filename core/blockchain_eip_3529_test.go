@@ -86,7 +86,7 @@ func TestSstoreModifyGasPostEIP3529(t *testing.T) {
 	// Populate two slots
 	initialStorage[common.HexToHash("01")] = common.HexToHash("01")
 	initialStorage[common.HexToHash("02")] = common.HexToHash("02")
-	// Expected gas is intrinsic +  2*pushGas + cold load (due to legacy tx) + SstoreReset (a->b such that a,b!=0)
+	// Expected gas is intrinsic +  2*pushGas + cold load (due to legacy tx) + SstoreReset (a->b such that a!=0)
 	expectedGasUsed := params.TxGas + 2*vm.GasFastestStep + params.ColdSloadCostEIP2929 + (params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929)
 	testGasUsage(t, bonehConfig(), ethash.NewFaker(), bytecode, initialStorage, 60_000, expectedGasUsed)
 }
@@ -103,7 +103,7 @@ func TestSstoreClearGasPostEIP3529(t *testing.T) {
 	initialStorage[common.HexToHash("01")] = common.HexToHash("01")
 	initialStorage[common.HexToHash("02")] = common.HexToHash("02")
 
-	// Expected gas is intrinsic +  2*pushGas + cold load (due to legacy tx) + SstoreReset (a->b such that a,b!=0) - sstoreClearGasRefund
+	// Expected gas is intrinsic +  2*pushGas + cold load (due to legacy tx) + SstoreReset (a->b such that a!=0) - sstoreClearGasRefund
 	expectedGasUsage := params.TxGas + 2*vm.GasFastestStep + params.ColdSloadCostEIP2929 + (params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929) - params.SstoreClearsScheduleRefundEIP3529
 	testGasUsage(t, bonehConfig(), ethash.NewFaker(), bytecode, initialStorage, 60_000, expectedGasUsage)
 }
