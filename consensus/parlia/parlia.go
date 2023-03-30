@@ -605,7 +605,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 }
 
 // snapshot retrieves the authorization snapshot at a given point in time.
-// !!! be carefull
+// !!! be careful
 // the block with `number` and `hash` is just the last element of `parents`,
 // unlike other interfaces such as verifyCascadingFields, `parents` are real parents
 func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash common.Hash, parents []*types.Header) (*Snapshot, error) {
