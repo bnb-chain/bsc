@@ -23,7 +23,7 @@ jobs:
 
     - name: Install build essential
       run: |
-        apt install build-essential -y
+        apt sudo install build-essential -y
 
     - name: Truffle test
       run: |
