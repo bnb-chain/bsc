@@ -5438,7 +5438,7 @@ var methods = function () {
         inputFormatter: [null]
     });
 
-    var sendRawTransaction = new Method({
+    var sendRawTransactionConditional = new Method({
         name: 'sendRawTransactionConditional',
         call: 'eth_sendRawTransactionConditional',
         params: 2,

@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -376,6 +377,9 @@ func TestEthClient(t *testing.T) {
 		"TestDiffAccounts": {
 			func(t *testing.T) { testDiffAccounts(t, client) },
 		},
+		"TestSendTransactionConditional": {
+			func(t *testing.T) { testSendTransactionConditional(t, client) },
+		},
 		// DO not have TestAtFunctions now, because we do not have pending block now
 	}
 
@@ -659,4 +663,46 @@ func testDiffAccounts(t *testing.T, client *rpc.Client) {
 			t.Fatalf("expect ignore all transactions, but some transaction has recorded")
 		}
 	}
+}
+
+func testSendTransactionConditional(t *testing.T, client *rpc.Client) {
+	ec := NewClient(client)
+
+	if err := sendTransactionConditional(ec); err != nil {
+		t.Fatalf("error: %v", err)
+	}
+}
+
+func sendTransactionConditional(ec *Client) error {
+	chainID, err := ec.ChainID(context.Background())
+	if err != nil {
+		return err
+	}
+
+	nonce, err := ec.PendingNonceAt(context.Background(), testAddr)
+	if err != nil {
+		return err
+	}
+
+	signer := types.LatestSignerForChainID(chainID)
+
+	tx, err := types.SignNewTx(testKey, signer, &types.LegacyTx{
+		Nonce:    nonce,
+		To:       &common.Address{2},
+		Value:    big.NewInt(1),
+		Gas:      22000,
+		GasPrice: big.NewInt(params.InitialBaseFee),
+	})
+	if err != nil {
+		return err
+	}
+
+	root := common.HexToHash("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
+	return ec.SendTransactionConditional(context.Background(), tx, ethapi.TransactionOpts{
+		KnownAccounts: map[common.Address]ethapi.AccountStorage{
+			testAddr: ethapi.AccountStorage{
+				StorageRoot: &root,
+			},
+		},
+	})
 }
