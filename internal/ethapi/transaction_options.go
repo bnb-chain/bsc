@@ -45,6 +45,8 @@ type TransactionOpts struct {
 	TimestampMax   *hexutil.Uint64 `json:"timestampMax,omitempty"`
 }
 
+const MaxNumberOfEntries = 1000
+
 func (o *TransactionOpts) Check(blockNumber uint64, timeStamp uint64, statedb *state.StateDB) error {
 	if o.BlockNumberMin != nil && blockNumber < uint64(*o.BlockNumberMin) {
 		return errors.New("BlockNumberMin condition not met")
@@ -66,7 +68,7 @@ func (o *TransactionOpts) Check(blockNumber uint64, timeStamp uint64, statedb *s
 			counter += len(account.StorageSlots)
 		}
 	}
-	if counter > 1000 {
+	if counter > MaxNumberOfEntries {
 		return errors.New("knownAccounts too large")
 	}
 	return o.CheckStorage(statedb)
@@ -75,11 +77,8 @@ func (o *TransactionOpts) Check(blockNumber uint64, timeStamp uint64, statedb *s
 func (o *TransactionOpts) CheckStorage(statedb *state.StateDB) error {
 	for address, accountStorage := range o.KnownAccounts {
 		if accountStorage.StorageRoot != nil {
-			trie := statedb.StorageTrie(address)
-			if trie == nil {
-				return errors.New("storage trie not found for address key in knownAccounts option")
-			}
-			if trie.Hash() != *accountStorage.StorageRoot {
+			rootHash := statedb.GetRoot(address)
+			if rootHash != *accountStorage.StorageRoot {
 				return errors.New("storage root hash condition not met")
 			}
 		} else if len(accountStorage.StorageSlots) > 0 {
