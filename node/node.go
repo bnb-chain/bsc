@@ -86,25 +86,21 @@ func New(conf *Config) (*Node, error) {
 		conf.DataDir = absdatadir
 	}
 	if conf.LogConfig != nil {
-		if conf.LogConfig.TermTimeFormat != nil && *conf.LogConfig.TermTimeFormat != "" {
-			log.SetTermTimeFormat(*conf.LogConfig.TermTimeFormat)
+		if conf.LogConfig.TermTimeFormat != "" {
+			log.SetTermTimeFormat(conf.LogConfig.TermTimeFormat)
 		}
 
-		if conf.LogConfig.TimeFormat != nil && *conf.LogConfig.TimeFormat != "" {
-			log.SetTimeFormat(*conf.LogConfig.TimeFormat)
+		if conf.LogConfig.TimeFormat != "" {
+			log.SetTimeFormat(conf.LogConfig.TimeFormat)
 		}
 
-		if conf.LogConfig.FileRoot != nil && conf.LogConfig.FilePath != nil &&
-			conf.LogConfig.MaxBytesSize != nil && conf.LogConfig.Level != nil {
-			// log to file
-			logFilePath := ""
-			if *conf.LogConfig.FileRoot == "" {
-				logFilePath = path.Join(conf.DataDir, *conf.LogConfig.FilePath)
-			} else {
-				logFilePath = path.Join(*conf.LogConfig.FileRoot, *conf.LogConfig.FilePath)
-			}
-			log.Root().SetHandler(log.NewFileLvlHandler(logFilePath, *conf.LogConfig.MaxBytesSize, *conf.LogConfig.Level))
+		logFilePath := ""
+		if conf.LogConfig.FileRoot == "" {
+			logFilePath = path.Join(conf.DataDir, conf.LogConfig.FilePath)
+		} else {
+			logFilePath = path.Join(conf.LogConfig.FileRoot, conf.LogConfig.FilePath)
 		}
+		log.Root().SetHandler(log.NewFileLvlHandler(logFilePath, conf.LogConfig.MaxBytesSize, conf.LogConfig.Level))
 	}
 	if conf.Logger == nil {
 		conf.Logger = log.New()
