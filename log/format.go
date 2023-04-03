@@ -14,9 +14,12 @@ import (
 	"unicode/utf8"
 )
 
+var (
+	timeFormat     = "2006-01-02T15:04:05-0700"
+	termTimeFormat = "01-02|15:04:05.000"
+)
+
 const (
-	timeFormat        = "2006-01-02T15:04:05-0700"
-	termTimeFormat    = "01-02|15:04:05.000"
 	floatFormat       = 'f'
 	termMsgJust       = 40
 	termCtxMaxPadding = 40
@@ -481,4 +484,12 @@ func escapeString(s string) string {
 		return s
 	}
 	return strconv.Quote(s)
+}
+
+func SetTermTimeFormat(format string) {
+	termTimeFormat = format
+}
+
+func SetTimeFormat(format string) {
+	timeFormat = format
 }
