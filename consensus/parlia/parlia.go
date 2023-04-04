@@ -65,6 +65,8 @@ const (
 	processBackOffTime = uint64(1) // second
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
+
+	collectAdditionalVotesRewardRatio = float64(1) // ratio of additional reward for collecting more votes than needed
 )
 
 var (
@@ -999,10 +1001,16 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 			log.Error("invalid attestation, vote number larger than validators number")
 			continue
 		}
+		validVoteCount := 0
 		for index, val := range validators {
 			if validatorsBitSet.Test(uint(index)) {
 				accumulatedWeights[val] += 1
+				validVoteCount += 1
 			}
+		}
+		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
+		if validVoteCount > quorum {
+			accumulatedWeights[head.Coinbase] += uint64(float64(validVoteCount-quorum) * collectAdditionalVotesRewardRatio)
 		}
 	}
 
