@@ -98,5 +98,8 @@ func SafeMul(x, y uint64) (uint64, bool) {
 }
 
 func CeilDiv(x, y int) int {
+	if y == 0 {
+		return 0
+	}
 	return (x + y - 1) / y
 }

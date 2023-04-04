@@ -264,7 +264,7 @@ func NewMockValidator(index int, validatorSet int) *MockValidator {
 
 func (v *MockValidator) SignRecently() bool {
 	parent := v.head
-	for i := 0; i < v.validatorSet*2/3; i++ {
+	for i := 0; i < v.validatorSet*1/2; i++ {
 		if parent.blockNumber == 0 {
 			return false
 		}

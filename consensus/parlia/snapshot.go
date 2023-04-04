@@ -356,20 +356,20 @@ func parseValidators(header *types.Header, chainConfig *params.ChainConfig, parl
 	}
 
 	if !chainConfig.IsBoneh(header.Number) {
-		n := len(validatorsBytes) / validatorBytesLength
+		n := len(validatorsBytes) / validatorBytesLengthBeforeBoneh
 		result := make([]common.Address, n)
 		for i := 0; i < n; i++ {
-			result[i] = common.BytesToAddress(validatorsBytes[i*validatorBytesLength : (i+1)*validatorBytesLength])
+			result[i] = common.BytesToAddress(validatorsBytes[i*validatorBytesLengthBeforeBoneh : (i+1)*validatorBytesLengthBeforeBoneh])
 		}
 		return result, nil, nil
 	}
 
-	n := len(validatorsBytes) / validatorBytesLengthAfterBoneh
+	n := len(validatorsBytes) / validatorBytesLength
 	cnsAddrs := make([]common.Address, n)
 	voteAddrs := make([]types.BLSPublicKey, n)
 	for i := 0; i < n; i++ {
-		cnsAddrs[i] = common.BytesToAddress(validatorsBytes[i*validatorBytesLengthAfterBoneh : i*validatorBytesLengthAfterBoneh+common.AddressLength])
-		copy(voteAddrs[i][:], validatorsBytes[i*validatorBytesLengthAfterBoneh+common.AddressLength:(i+1)*validatorBytesLengthAfterBoneh])
+		cnsAddrs[i] = common.BytesToAddress(validatorsBytes[i*validatorBytesLength : i*validatorBytesLength+common.AddressLength])
+		copy(voteAddrs[i][:], validatorsBytes[i*validatorBytesLength+common.AddressLength:(i+1)*validatorBytesLength])
 	}
 	return cnsAddrs, voteAddrs, nil
 }

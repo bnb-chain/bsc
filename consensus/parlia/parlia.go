@@ -56,9 +56,9 @@ const (
 	extraSeal        = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
 	nextForkHashSize = 4  // Fixed number of extra-data suffix bytes reserved for nextForkHash.
 
-	validatorBytesLength           = common.AddressLength
-	validatorBytesLengthAfterBoneh = common.AddressLength + types.BLSPublicKeyLength
-	validatorNumberSizeAfterBoneh  = 1 // Fixed number of extra prefix bytes reserved for validator number
+	validatorBytesLengthBeforeBoneh = common.AddressLength
+	validatorBytesLength            = common.AddressLength + types.BLSPublicKeyLength
+	validatorNumberSize             = 1 // Fixed number of extra prefix bytes reserved for validator number after Boneh
 
 	wiggleTime         = uint64(1) // second, Random delay (per signer) to allow concurrent signers
 	initialBackOffTime = uint64(1) // second
@@ -340,7 +340,7 @@ func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.Chain
 	}
 
 	if !chainConfig.IsBoneh(header.Number) {
-		if header.Number.Uint64()%parliaConfig.Epoch == 0 && (len(header.Extra)-extraSeal-extraVanity)%validatorBytesLength != 0 {
+		if header.Number.Uint64()%parliaConfig.Epoch == 0 && (len(header.Extra)-extraSeal-extraVanity)%validatorBytesLengthBeforeBoneh != 0 {
 			return nil
 		}
 		return header.Extra[extraVanity : len(header.Extra)-extraSeal]
@@ -350,11 +350,11 @@ func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.Chain
 		return nil
 	}
 	num := int(header.Extra[extraVanity])
-	if num == 0 || len(header.Extra) <= extraVanity+extraSeal+num*validatorBytesLengthAfterBoneh {
+	if num == 0 || len(header.Extra) <= extraVanity+extraSeal+num*validatorBytesLength {
 		return nil
 	}
-	start := extraVanity + validatorNumberSizeAfterBoneh
-	end := start + num*validatorBytesLengthAfterBoneh
+	start := extraVanity + validatorNumberSize
+	end := start + num*validatorBytesLength
 	return header.Extra[start:end]
 }
 
@@ -373,10 +373,10 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 		attestationBytes = header.Extra[extraVanity : len(header.Extra)-extraSeal]
 	} else {
 		num := int(header.Extra[extraVanity])
-		if len(header.Extra) <= extraVanity+extraSeal+validatorNumberSizeAfterBoneh+num*validatorBytesLengthAfterBoneh {
+		if len(header.Extra) <= extraVanity+extraSeal+validatorNumberSize+num*validatorBytesLength {
 			return nil, nil
 		}
-		start := extraVanity + validatorNumberSizeAfterBoneh + num*validatorBytesLengthAfterBoneh
+		start := extraVanity + validatorNumberSize + num*validatorBytesLength
 		end := len(header.Extra) - extraSeal
 		attestationBytes = header.Extra[start:end]
 	}
@@ -597,7 +597,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		if chain.Config().IsLynn(header.Number) {
 			return err
 		}
-		log.Warn("Verify vote attestation failed", "block", header.Number.Uint64(), "block hash", header.Hash(), "error", err)
+		log.Warn("Verify vote attestation failed", "error", err, "block", header)
 	}
 
 	// All basic checks passed, verify the seal and return
@@ -776,7 +776,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	return nil
 }
 
-func (p *Parlia) prepareValidators(chain consensus.ChainHeaderReader, header *types.Header) error {
+func (p *Parlia) prepareValidators(header *types.Header) error {
 	if header.Number.Uint64()%p.config.Epoch != 0 {
 		return nil
 	}
@@ -902,7 +902,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, number)
 	header.Extra = append(header.Extra, nextForkHash[:]...)
 
-	if err := p.prepareValidators(chain, header); err != nil {
+	if err := p.prepareValidators(header); err != nil {
 		return err
 	}
 
@@ -938,18 +938,18 @@ func (p *Parlia) verifyValidators(header *types.Header) error {
 	var validatorsBytes []byte
 	validatorsNumber := len(newValidators)
 	if !p.chainConfig.IsBoneh(header.Number) {
-		validatorsBytes = make([]byte, validatorsNumber*validatorBytesLength)
+		validatorsBytes = make([]byte, validatorsNumber*validatorBytesLengthBeforeBoneh)
 		for i, validator := range newValidators {
-			copy(validatorsBytes[i*validatorBytesLength:], validator.Bytes())
+			copy(validatorsBytes[i*validatorBytesLengthBeforeBoneh:], validator.Bytes())
 		}
 	} else {
 		if uint8(validatorsNumber) != header.Extra[extraVanity] {
 			return errMismatchingEpochValidators
 		}
-		validatorsBytes = make([]byte, validatorsNumber*validatorBytesLengthAfterBoneh)
+		validatorsBytes = make([]byte, validatorsNumber*validatorBytesLength)
 		for i, validator := range newValidators {
-			copy(validatorsBytes[i*validatorBytesLengthAfterBoneh:], validator.Bytes())
-			copy(validatorsBytes[i*validatorBytesLengthAfterBoneh+common.AddressLength:], voteAddressMap[validator].Bytes())
+			copy(validatorsBytes[i*validatorBytesLength:], validator.Bytes())
+			copy(validatorsBytes[i*validatorBytesLength+common.AddressLength:], voteAddressMap[validator].Bytes())
 		}
 	}
 	if !bytes.Equal(getValidatorBytesFromHeader(header, p.chainConfig, p.config), validatorsBytes) {
