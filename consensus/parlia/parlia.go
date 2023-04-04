@@ -597,7 +597,8 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		if chain.Config().IsLynn(header.Number) {
 			return err
 		}
-		log.Warn("Verify vote attestation failed", "error", err, "block", header)
+		log.Warn("Verify vote attestation failed", "error", err, "hash", header.Hash(), "number", header.Number,
+			"parent", header.ParentHash, "coinbase", header.Coinbase, "extra", common.Bytes2Hex(header.Extra))
 	}
 
 	// All basic checks passed, verify the seal and return
