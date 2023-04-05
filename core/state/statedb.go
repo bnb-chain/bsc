@@ -1173,7 +1173,10 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	// the remainder without, but pre-byzantium even the initial prefetcher is
 	// useless, so no sleep lost.
 	prefetcher := s.prefetcher
-	defer s.StopPrefetcher()
+	defer func() {
+		s.StopPrefetcher()
+		s.prefetcher = nil
+	}()
 
 	// Now we're about to start to write changes to the trie. The trie is so far
 	// _untouched_. We can check with the prefetcher, if it can give us a trie
@@ -1371,7 +1374,10 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	}
 	// Finalize any pending changes and merge everything into the tries
 	if s.lightProcessed {
-		defer s.StopPrefetcher()
+		defer func() {
+			s.StopPrefetcher()
+			s.prefetcher = nil
+		}()
 		root, diff, err := s.LightCommit()
 		if err != nil {
 			return root, diff, err
@@ -1580,7 +1586,10 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 	if s.pipeCommit {
 		go commmitTrie()
 	} else {
-		defer s.StopPrefetcher()
+		defer func() {
+			s.StopPrefetcher()
+			s.prefetcher = nil
+		}()
 		commitFuncs = append(commitFuncs, commmitTrie)
 	}
 	commitRes := make(chan error, len(commitFuncs))
