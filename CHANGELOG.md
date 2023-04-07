@@ -1,4 +1,19 @@
 # Changelog
+## v1.1.22
+FEATURE
+* [\#1361](https://github.com/bnb-chain/bsc/pull/1361) cmd/faucet: merge ipfaucet2 branch to develop
+
+IMPROVEMENT
+* [\#1412](https://github.com/bnb-chain/bsc/pull/1412) fix: init-network with config.toml without setting TimeFormat
+* [\#1401](https://github.com/bnb-chain/bsc/pull/1401) log: support custom time format configuration
+* [\#1382](https://github.com/bnb-chain/bsc/pull/1382) consnesus/parlia: abort sealing when block in the same height has updated
+* [\#1383](https://github.com/bnb-chain/bsc/pull/1383) miner: no need to broadcast sidechain header mined by this validator
+
+BUGFIX
+* [\#1379](https://github.com/bnb-chain/bsc/pull/1379) UT: fix some flaky tests
+* [\#1403](https://github.com/bnb-chain/bsc/pull/1403) Makefile: fix devtools install error
+* [\#1381](https://github.com/bnb-chain/bsc/pull/1381) fix: snapshot generation issue after chain reinit from a freezer
+
 ## v1.1.21
 FEATURE
 * [\#1389](https://github.com/bnb-chain/bsc/pull/1389) upgrade: update the fork height of planck upgrade on mainnet
