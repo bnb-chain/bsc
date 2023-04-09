@@ -114,7 +114,7 @@ var (
 		NanoBlock:           big.NewInt(21962149),
 		MoranBlock:          big.NewInt(22107423),
 		GibbsBlock:          big.NewInt(23846001),
-		PlanckBlock:         nil,
+		PlanckBlock:         big.NewInt(27281024),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
