@@ -1552,7 +1552,11 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 						bc.triegc.Push(root, number)
 						break
 					}
-					go triedb.Dereference(root.(common.Hash))
+					wg.Add(1)
+					go func() {
+						triedb.Dereference(root.(common.Hash))
+						wg.Done()
+					}()
 				}
 			}
 		}
