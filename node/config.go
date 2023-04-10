@@ -513,8 +513,13 @@ func (c *Config) warnOnce(w *bool, format string, args ...interface{}) {
 }
 
 type LogConfig struct {
-	FileRoot     string
-	FilePath     string
-	MaxBytesSize uint
-	Level        string
+	FileRoot     *string `toml:",omitempty"`
+	FilePath     *string `toml:",omitempty"`
+	MaxBytesSize *uint   `toml:",omitempty"`
+	Level        *string `toml:",omitempty"`
+
+	// TermTimeFormat is the time format used for console logging.
+	TermTimeFormat *string `toml:",omitempty"`
+	// TimeFormat is the time format used for file logging.
+	TimeFormat *string `toml:",omitempty"`
 }

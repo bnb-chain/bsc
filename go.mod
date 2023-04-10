@@ -81,6 +81,8 @@ require (
 	github.com/fatih/structs v1.1.0
 )
 
+require github.com/yusufpapurcu/wmi v1.2.2 // indirect
+
 require (
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1 // indirect
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
@@ -234,7 +236,6 @@ require (
 	github.com/wealdtech/go-eth2-util v1.6.3 // indirect
 	github.com/whyrusleeping/timecache v0.0.0-20160911033111-cfcb2f1abfee // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
-	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect

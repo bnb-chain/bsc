@@ -16,7 +16,7 @@ ADD . /go-ethereum
 RUN cd /go-ethereum && go run build/ci.go install ./cmd/geth
 
 # Pull Geth into a second stage deploy alpine container
-FROM alpine:3.16.0
+FROM alpine:3.17
 
 ARG BSC_USER=bsc
 ARG BSC_USER_UID=1000
@@ -27,9 +27,9 @@ ENV HOME=${BSC_HOME}
 ENV DATA_DIR=/data
 
 ARG VERSION_GCC=11.2.1_git20220219-r2
-ENV PACKAGES ca-certificates~=20220614-r0 jq~=1.6 \
-  bash~=5.1.16-r2 bind-tools~=9.16.36 tini~=0.19.0 \
-  grep~=3.7 curl~=7.83.1 sed~=4.8-r0 gcc==${VERSION_GCC}
+ENV PACKAGES ca-certificates jq \
+  bash bind-tools tini \
+  grep curl sed gcc==${VERSION_GCC}
 
 RUN apk add --no-cache $PACKAGES \
   && rm -rf /var/cache/apk/* \
