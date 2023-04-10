@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 
 	"github.com/ethereum/go-ethereum/eth/protocols/diff"
@@ -41,6 +42,7 @@ type ethPeer struct {
 	snapExt  *snapPeer // Satellite `snap` connection
 	diffExt  *diffPeer
 	trustExt *trustPeer
+	bscExt   *bscPeer // Satellite `bsc` connection
 
 	syncDrop *time.Timer   // Connection dropper if `eth` sync progress isn't validated in time
 	snapWait chan struct{} // Notification channel for snap connections
@@ -76,6 +78,12 @@ type trustPeerInfo struct {
 	Version uint `json:"version"` // Trust protocol version negotiated
 }
 
+// bscPeerInfo represents a short summary of the `bsc` sub-protocol metadata known
+// about a connected peer.
+type bscPeerInfo struct {
+	Version uint `json:"version"` // bsc protocol version negotiated
+}
+
 // snapPeer is a wrapper around snap.Peer to maintain a few extra metadata.
 type snapPeer struct {
 	*snap.Peer
@@ -89,6 +97,11 @@ type diffPeer struct {
 // trustPeer is a wrapper around trust.Peer to maintain a few extra metadata.
 type trustPeer struct {
 	*trust.Peer
+}
+
+// bscPeer is a wrapper around bsc.Peer to maintain a few extra metadata.
+type bscPeer struct {
+	*bsc.Peer
 }
 
 // info gathers and returns some `diff` protocol metadata known about a peer.
@@ -109,6 +122,13 @@ func (p *snapPeer) info() *snapPeerInfo {
 // info gathers and returns some `trust` protocol metadata known about a peer.
 func (p *trustPeer) info() *trustPeerInfo {
 	return &trustPeerInfo{
+		Version: p.Version(),
+	}
+}
+
+// info gathers and returns some `bsc` protocol metadata known about a peer.
+func (p *bscPeer) info() *bscPeerInfo {
+	return &bscPeerInfo{
 		Version: p.Version(),
 	}
 }

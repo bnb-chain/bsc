@@ -1,6 +1,6 @@
 FROM ethereum/solc:0.6.4-alpine
 
-RUN apk add --d --no-cache ca-certificates npm nodejs bash alpine-sdk git
+RUN apk add --no-cache ca-certificates npm nodejs bash alpine-sdk git
 
 RUN git clone https://github.com/binance-chain/canonical-upgradeable-bep20.git /usr/app/canonical-upgradeable-bep20
 

@@ -94,8 +94,8 @@ func (b *testBackend) Chain() *core.BlockChain { return b.chain }
 func (b *testBackend) TxPool() TxPool          { return b.txpool }
 
 func (b *testBackend) RunPeer(peer *Peer, handler Handler) error {
-	// Normally the backend would do peer mainentance and handshakes. All that
-	// is omitted and we will just give control back to the handler.
+	// Normally the backend would do peer maintenance and handshakes. All that
+	// is omitted, and we will just give control back to the handler.
 	return handler(peer)
 }
 func (b *testBackend) PeerInfo(enode.ID) interface{} { panic("not implemented") }
@@ -247,7 +247,7 @@ func testGetBlockHeaders(t *testing.T, protocol uint) {
 				backend.chain.GetBlockByNumber(1).Hash(),
 			},
 		},
-		// Check that non existing headers aren't returned
+		// Check that non-existing headers aren't returned
 		{
 			&GetBlockHeadersPacket{Origin: HashOrNumber{Hash: unknown}, Amount: 1},
 			[]common.Hash{},

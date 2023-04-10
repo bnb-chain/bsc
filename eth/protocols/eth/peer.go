@@ -122,7 +122,6 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Pe
 	go peer.broadcastTransactions()
 	go peer.announceTransactions()
 	go peer.dispatcher()
-
 	return peer
 }
 
@@ -149,7 +148,7 @@ func (p *Peer) ID() string {
 	return p.id
 }
 
-// Version retrieves the peer's negoatiated `eth` protocol version.
+// Version retrieves the peer's negotiated `eth` protocol version.
 func (p *Peer) Version() uint {
 	return p.version
 }
@@ -322,6 +321,11 @@ func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 	default:
 		p.Log().Debug("Dropping block propagation", "number", block.NumberU64(), "hash", block.Hash())
 	}
+}
+
+// SendBlockHeaders sends a batch of block headers to the remote peer.
+func (p *Peer) SendBlockHeaders(headers []*types.Header) error {
+	return p2p.Send(p.rw, BlockHeadersMsg, BlockHeadersPacket(headers))
 }
 
 // ReplyBlockHeaders is the eth/66 version of SendBlockHeaders.
