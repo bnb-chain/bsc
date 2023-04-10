@@ -258,7 +258,7 @@ var (
 	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), nil, nil, nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil}
 
 	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), nil, nil, new(EthashConfig), nil, nil}
-	TestRules       = TestChainConfig.Rules(new(big.Int), false)
+	TestRules       = TestChainConfig.Rules(new(big.Int), false, new(big.Int))
 )
 
 // TrustedCheckpoint represents a set of post-processed trie roots (CHT and
@@ -356,7 +356,7 @@ type ChainConfig struct {
 	PlanckBlock     *big.Int `json:"planckBlock,omitempty" toml:",omitempty"`     // planckBlock switch block (nil = no fork, 0 = already activated)
 	BonehBlock      *big.Int `json:"bonehBlock,omitempty" toml:",omitempty"`      // bonehBlock switch block (nil = no fork, 0 = already activated)
 	LynnBlock       *big.Int `json:"lynnBlock,omitempty" toml:",omitempty"`       // lynnBlock switch block (nil = no fork, 0 = already activated)
-	ShanghaiBlock   *big.Int `json:"shanghaiBlock,omitempty"`                     // Shanghai switch block (nil = no fork, 0 = already on shanghai)
+	ShanghaiTime    *big.Int `json:"shanghaiBlock,omitempty"`                     // Shanghai switch time (nil = no fork, 0 = already on shanghai)
 	CancunBlock     *big.Int `json:"cancunBlock,omitempty"`                       // Cancun switch block (nil = no fork, 0 = already on cancun)
 
 	// Various consensus engines
@@ -439,7 +439,7 @@ func (c *ChainConfig) String() string {
 		c.PlanckBlock,
 		c.BonehBlock,
 		c.LynnBlock,
-		c.ShanghaiBlock,
+		c.ShanghaiTime,
 		c.CancunBlock,
 		engine,
 	)
@@ -624,9 +624,9 @@ func (c *ChainConfig) IsOnPlanck(num *big.Int) bool {
 	return configNumEqual(c.PlanckBlock, num)
 }
 
-// IsShanghai returns whether num is either equal to the Shanghai fork block or greater.
-func (c *ChainConfig) IsShanghai(num *big.Int) bool {
-	return isForked(c.ShanghaiBlock, num)
+// IsShanghai returns whether time is either equal to the Shanghai fork time or greater.
+func (c *ChainConfig) IsShanghai(time *big.Int) bool {
+	return isForked(c.ShanghaiTime, time)
 }
 
 // IsCancun returns whether num is either equal to the Cancun fork block or greater.
@@ -668,7 +668,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "gibbsBlock", block: c.GibbsBlock},
 		{name: "bonehBlock", block: c.BonehBlock},
 		{name: "lynnBlock", block: c.LynnBlock},
-		{name: "shanghaiBlock", block: c.ShanghaiBlock},
+		//{name: "shanghaiBlock", block: c.ShanghaiTime},
 		{name: "cancunBlock", block: c.CancunBlock},
 	} {
 		if lastFork.name != "" {
@@ -775,9 +775,11 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	if isForkIncompatible(c.LynnBlock, newcfg.LynnBlock, head) {
 		return newCompatError("lynn fork block", c.LynnBlock, newcfg.LynnBlock)
 	}
-	if isForkIncompatible(c.ShanghaiBlock, newcfg.ShanghaiBlock, head) {
-		return newCompatError("Shanghai fork block", c.ShanghaiBlock, newcfg.ShanghaiBlock)
-	}
+	/*
+		if isForkIncompatible(c.ShanghaiBlock, newcfg.ShanghaiBlock, head) {
+			return newCompatError("Shanghai fork block", c.ShanghaiBlock, newcfg.ShanghaiBlock)
+		}
+	*/
 	if isForkIncompatible(c.CancunBlock, newcfg.CancunBlock, head) {
 		return newCompatError("Cancun fork block", c.CancunBlock, newcfg.CancunBlock)
 	}
@@ -859,7 +861,7 @@ type Rules struct {
 }
 
 // Rules ensures c's ChainID is not nil.
-func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
+func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp *big.Int) Rules {
 	chainID := c.ChainID
 	if chainID == nil {
 		chainID = new(big.Int)
@@ -881,7 +883,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		IsMoran:          c.IsMoran(num),
 		IsPlanck:         c.IsPlanck(num),
 		IsBoneh:          c.IsBoneh(num),
-		IsShanghai:       c.IsShanghai(num),
+		IsShanghai:       c.IsShanghai(timestamp),
 		IsCancun:         c.IsCancun(num),
 	}
 }
