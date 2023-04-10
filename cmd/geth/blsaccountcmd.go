@@ -15,6 +15,7 @@ import (
 	"github.com/prysmaticlabs/prysm/v3/crypto/bls"
 	"github.com/prysmaticlabs/prysm/v3/encoding/bytesutil"
 	"github.com/prysmaticlabs/prysm/v3/io/prompt"
+	"github.com/prysmaticlabs/prysm/v3/proto/eth/service"
 	"github.com/prysmaticlabs/prysm/v3/validator/accounts"
 	"github.com/prysmaticlabs/prysm/v3/validator/accounts/iface"
 	"github.com/prysmaticlabs/prysm/v3/validator/accounts/petnames"
@@ -381,7 +382,7 @@ func blsAccountImport(ctx *cli.Context) error {
 
 	password := utils.GetPassPhrase("Enter the password for your imported account.", false)
 	fmt.Println("Importing BLS account, this may take a while...")
-	_, err = accounts.ImportAccounts(context.Background(), &accounts.ImportAccountsConfig{
+	statuses, err := accounts.ImportAccounts(context.Background(), &accounts.ImportAccountsConfig{
 		Importer:        k,
 		Keystores:       []*keymanager.Keystore{keystore},
 		AccountPassword: password,
@@ -389,7 +390,12 @@ func blsAccountImport(ctx *cli.Context) error {
 	if err != nil {
 		utils.Fatalf("Import BLS account failed: %v.", err)
 	}
-	fmt.Println("Successfully import BLS account.")
+	// len(statuses)==len(Keystores) when err==nil
+	if statuses[0].Status == service.ImportedKeystoreStatus_ERROR {
+		fmt.Printf("Could not import keystore: %v.", statuses[0].Message)
+	} else {
+		fmt.Println("Successfully import BLS account.")
+	}
 	return nil
 }
 
