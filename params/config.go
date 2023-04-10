@@ -248,16 +248,16 @@ var (
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
 
-	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), new(EthashConfig), nil, nil}
+	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, new(EthashConfig), nil, nil}
 
 	// AllCliqueProtocolChanges contains every protocol change (EIPs) introduced
 	// and accepted by the Ethereum core developers into the Clique consensus.
 	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
-	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil}
+	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), nil, nil, nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil}
 
-	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), new(EthashConfig), nil, nil}
+	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), nil, nil, new(EthashConfig), nil, nil}
 	TestRules       = TestChainConfig.Rules(new(big.Int), false)
 )
 
@@ -356,6 +356,8 @@ type ChainConfig struct {
 	PlanckBlock     *big.Int `json:"planckBlock,omitempty" toml:",omitempty"`     // planckBlock switch block (nil = no fork, 0 = already activated)
 	BonehBlock      *big.Int `json:"bonehBlock,omitempty" toml:",omitempty"`      // bonehBlock switch block (nil = no fork, 0 = already activated)
 	LynnBlock       *big.Int `json:"lynnBlock,omitempty" toml:",omitempty"`       // lynnBlock switch block (nil = no fork, 0 = already activated)
+	ShanghaiBlock   *big.Int `json:"shanghaiBlock,omitempty"`                     // Shanghai switch block (nil = no fork, 0 = already on shanghai)
+	CancunBlock     *big.Int `json:"cancunBlock,omitempty"`                       // Cancun switch block (nil = no fork, 0 = already on cancun)
 
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
@@ -407,7 +409,7 @@ func (c *ChainConfig) String() string {
 		engine = "unknown"
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Boneh: %v, Lynn: %v, Engine: %v}",
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Boneh: %v, Lynn: %v, Shanghai: %v, Cancun: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -437,6 +439,8 @@ func (c *ChainConfig) String() string {
 		c.PlanckBlock,
 		c.BonehBlock,
 		c.LynnBlock,
+		c.ShanghaiBlock,
+		c.CancunBlock,
 		engine,
 	)
 }
@@ -620,6 +624,16 @@ func (c *ChainConfig) IsOnPlanck(num *big.Int) bool {
 	return configNumEqual(c.PlanckBlock, num)
 }
 
+// IsShanghai returns whether num is either equal to the Shanghai fork block or greater.
+func (c *ChainConfig) IsShanghai(num *big.Int) bool {
+	return isForked(c.ShanghaiBlock, num)
+}
+
+// IsCancun returns whether num is either equal to the Cancun fork block or greater.
+func (c *ChainConfig) IsCancun(num *big.Int) bool {
+	return isForked(c.CancunBlock, num)
+}
+
 // CheckCompatible checks whether scheduled fork transitions have been imported
 // with a mismatching chain configuration.
 func (c *ChainConfig) CheckCompatible(newcfg *ChainConfig, height uint64) *ConfigCompatError {
@@ -654,6 +668,8 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "gibbsBlock", block: c.GibbsBlock},
 		{name: "bonehBlock", block: c.BonehBlock},
 		{name: "lynnBlock", block: c.LynnBlock},
+		{name: "shanghaiBlock", block: c.ShanghaiBlock},
+		{name: "cancunBlock", block: c.CancunBlock},
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number
@@ -759,6 +775,12 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	if isForkIncompatible(c.LynnBlock, newcfg.LynnBlock, head) {
 		return newCompatError("lynn fork block", c.LynnBlock, newcfg.LynnBlock)
 	}
+	if isForkIncompatible(c.ShanghaiBlock, newcfg.ShanghaiBlock, head) {
+		return newCompatError("Shanghai fork block", c.ShanghaiBlock, newcfg.ShanghaiBlock)
+	}
+	if isForkIncompatible(c.CancunBlock, newcfg.CancunBlock, head) {
+		return newCompatError("Cancun fork block", c.CancunBlock, newcfg.CancunBlock)
+	}
 	return nil
 }
 
@@ -832,6 +854,8 @@ type Rules struct {
 	IsMoran                                                 bool
 	IsPlanck                                                bool
 	IsBoneh                                                 bool
+	IsShanghai                                              bool
+	IsCancun                                                bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -857,5 +881,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		IsMoran:          c.IsMoran(num),
 		IsPlanck:         c.IsPlanck(num),
 		IsBoneh:          c.IsBoneh(num),
+		IsShanghai:       c.IsShanghai(num),
+		IsCancun:         c.IsCancun(num),
 	}
 }
