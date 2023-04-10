@@ -13,6 +13,8 @@ COPY go.sum /go-ethereum/
 RUN cd /go-ethereum && go mod download
 
 ADD . /go-ethereum
+ENV CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
+ENV CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
 RUN cd /go-ethereum && go run build/ci.go install ./cmd/geth
 
 # Pull Geth into a second stage deploy alpine container

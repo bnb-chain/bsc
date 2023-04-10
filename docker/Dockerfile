@@ -4,6 +4,8 @@ RUN apk add --no-cache make cmake gcc musl-dev linux-headers git bash build-base
 
 ADD . /bsc
 WORKDIR /bsc
+ENV CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
+ENV CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
 RUN make geth
 RUN mv /bsc/build/bin/geth /usr/local/bin/geth
 
