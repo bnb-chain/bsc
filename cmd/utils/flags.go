@@ -1507,6 +1507,9 @@ func setEthash(ctx *cli.Context, cfg *ethconfig.Config) {
 }
 
 func setMiner(ctx *cli.Context, cfg *miner.Config) {
+	if ctx.GlobalBool(MiningEnabledFlag.Name) || ctx.GlobalBool(DeveloperFlag.Name) {
+		cfg.Enable = true
+	}
 	if ctx.GlobalIsSet(MinerNotifyFlag.Name) {
 		cfg.Notify = strings.Split(ctx.GlobalString(MinerNotifyFlag.Name), ",")
 	}

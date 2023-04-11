@@ -44,6 +44,7 @@ type Backend interface {
 
 // Config is the configuration parameters of mining.
 type Config struct {
+	Enable        bool           `toml:"-"`          // whether enable mining
 	Etherbase     common.Address `toml:",omitempty"` // Public address for block mining rewards (default = first account)
 	Notify        []string       `toml:",omitempty"` // HTTP URL list to be notified of new work packages (only useful in ethash).
 	NotifyFull    bool           `toml:",omitempty"` // Notify with pending block headers instead of work packages
