@@ -20,6 +20,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -140,6 +141,8 @@ type handler struct {
 	maliciousVoteMonitor *monitor.MaliciousVoteMonitor
 	chain                *core.BlockChain
 	maxPeers             int
+	maxPeersPerIp        int
+	peersPerIp           map[string]int
 
 	downloader   *downloader.Downloader
 	blockFetcher *fetcher.BlockFetcher
@@ -186,6 +189,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		chain:                  config.Chain,
 		peers:                  config.PeerSet,
 		merger:                 config.Merger,
+		peersPerIp:             make(map[string]int),
 		whitelist:              config.Whitelist,
 		directBroadcast:        config.DirectBroadcast,
 		diffSync:               config.DiffSync,
@@ -387,10 +391,27 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		}
 	}
 	// Ignore maxPeers if this is a trusted peer
-	if !peer.Peer.Info().Network.Trusted {
+	peerInfo := peer.Peer.Info()
+	if !peerInfo.Network.Trusted {
 		if reject || h.peers.len() >= h.maxPeers {
 			return p2p.DiscTooManyPeers
 		}
+	}
+
+	remoteAddr := peerInfo.Network.RemoteAddress
+	indexIp := strings.LastIndex(remoteAddr, ":")
+	if indexIp == -1 {
+		// there could be no IP address, such as a pipe
+		peer.Log().Debug("runEthPeer", "no ip address, remoteAddress", remoteAddr)
+	} else if !peerInfo.Network.Trusted {
+		remoteIp := remoteAddr[:indexIp]
+		if num, ok := h.peersPerIp[remoteIp]; ok && num >= h.maxPeersPerIp {
+			peer.Log().Info("The IP has too many peers", "ip", remoteIp, "maxPeersPerIp", h.maxPeersPerIp,
+				"name", peerInfo.Name, "Enode", peerInfo.Enode)
+			return p2p.DiscTooManyPeers
+		}
+
+		h.peersPerIp[remoteIp] = h.peersPerIp[remoteIp] + 1
 	}
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
@@ -626,11 +647,30 @@ func (h *handler) unregisterPeer(id string) {
 	if err := h.peers.unregisterPeer(id); err != nil {
 		logger.Error("Ethereum peer removal failed", "err", err)
 	}
+
+	peerInfo := peer.Peer.Info()
+	remoteAddr := peerInfo.Network.RemoteAddress
+	indexIp := strings.LastIndex(remoteAddr, ":")
+	if indexIp == -1 {
+		// there could be no IP address, such as a pipe
+		peer.Log().Debug("unregisterPeer", "name", peerInfo.Name, "no ip address, remoteAddress", remoteAddr)
+	} else if !peerInfo.Network.Trusted {
+		remoteIp := remoteAddr[:indexIp]
+		if h.peersPerIp[remoteIp] <= 0 {
+			peer.Log().Error("unregisterPeer without record", "name", peerInfo.Name, "remoteAddress", remoteAddr)
+		} else {
+			h.peersPerIp[remoteIp] = h.peersPerIp[remoteIp] - 1
+			logger.Debug("unregisterPeer", "name", peerInfo.Name, "connectNum", h.peersPerIp[remoteIp])
+			if h.peersPerIp[remoteIp] == 0 {
+				delete(h.peersPerIp, remoteIp)
+			}
+		}
+	}
 }
 
-func (h *handler) Start(maxPeers int) {
+func (h *handler) Start(maxPeers int, maxPeersPerIp int) {
 	h.maxPeers = maxPeers
-
+	h.maxPeersPerIp = maxPeersPerIp
 	// broadcast transactions
 	h.wg.Add(1)
 	h.txsCh = make(chan core.NewTxsEvent, txChanSize)

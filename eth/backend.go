@@ -656,7 +656,7 @@ func (s *Ethereum) Start() error {
 		maxPeers -= s.config.LightPeers
 	}
 	// Start the networking layer and the light server if requested
-	s.handler.Start(maxPeers)
+	s.handler.Start(maxPeers, s.p2pServer.MaxPeersPerIp)
 	return nil
 }
 

@@ -81,6 +81,10 @@ type Config struct {
 	// connected. It must be greater than zero.
 	MaxPeers int
 
+	// MaxPeersPerIp is the maximum number of peers that can be
+	// connected from a single IP. It must be greater than zero.
+	MaxPeersPerIp int `toml:",omitempty"`
+
 	// MaxPendingPeers is the maximum number of peers that can be pending in the
 	// handshake phase, counted separately for inbound and outbound connections.
 	// Zero defaults to preset values.
