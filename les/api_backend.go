@@ -245,6 +245,10 @@ func (b *LesApiBackend) SetProbNoVote(prob int) {
 	log.Error("light ethereum does not support SetProbNoVote")
 }
 
+func (b *LesApiBackend) SetBackOffDelay(flag bool) {
+	log.Error("light ethereum does not support SetBackOffDelay")
+}
+
 func (b *LesApiBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription {
 	return b.eth.blockchain.SubscribeChainEvent(ch)
 }

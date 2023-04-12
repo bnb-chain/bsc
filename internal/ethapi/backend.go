@@ -101,6 +101,7 @@ type Backend interface {
 
 	SetProbNoVote(prob int)
 	SetProbBreakVoteRules(prob int)
+	SetBackOffDelay(b bool)
 }
 
 func GetAPIs(apiBackend Backend) []rpc.API {

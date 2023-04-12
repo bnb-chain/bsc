@@ -336,6 +336,13 @@ func (b *EthAPIBackend) SetProbBreakVoteRules(prob int) {
 	b.eth.VotePool().SetProbBreakVoteRules(prob)
 }
 
+func (b *EthAPIBackend) SetBackOffDelay(flag bool) {
+	if b.eth.VotePool() == nil {
+		return
+	}
+	b.eth.VotePool().SetBackOffDelay(flag)
+}
+
 func (b *EthAPIBackend) Downloader() *downloader.Downloader {
 	return b.eth.Downloader()
 }

@@ -642,12 +642,15 @@ func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Add
 	return (*hexutil.Big)(state.GetBalance(address)), state.Error()
 }
 
-func (s *PublicBlockChainAPI) SetValidatorBehavior(ctx context.Context, noVoteProb, badVoteProb int) (bool, error) {
+func (s *PublicBlockChainAPI) SetValidatorBehavior(ctx context.Context, noVoteProb, badVoteProb, blockDelay int) (bool, error) {
 	if noVoteProb > 0 {
 		s.b.SetProbNoVote(noVoteProb)
 	}
 	if badVoteProb > 0 {
 		s.b.SetProbBreakVoteRules(badVoteProb)
+	}
+	if blockDelay == 1 {
+		s.b.SetBackOffDelay(true)
 	}
 	return true, nil
 }

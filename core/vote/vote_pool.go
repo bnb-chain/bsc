@@ -103,6 +103,12 @@ func (pool *VotePool) SetProbBreakVoteRules(prob int) {
 	pool.probBreakVoteRule = prob
 }
 
+func (pool *VotePool) SetBackOffDelay(b bool) {
+	if posa, ok := pool.engine.(consensus.PoSA); ok {
+		posa.SetBackOffDelay(b)
+	}
+}
+
 // loop is the vote pool's main even loop, waiting for and reacting to outside blockchain events and votes channel event.
 func (pool *VotePool) loop() {
 	for {
