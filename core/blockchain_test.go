@@ -3587,6 +3587,9 @@ func TestInitThenFailCreateContract(t *testing.T) {
 // checking that the gas usage of a hot SLOAD and a cold SLOAD are calculated
 // correctly.
 func TestEIP2718Transition(t *testing.T) {
+	customConfig := params.AllEthashProtocolChanges
+	customConfig.BonehBlock = big.NewInt(100)
+	customConfig.LynnBlock = big.NewInt(200)
 	var (
 		aa = common.HexToAddress("0x000000000000000000000000000000000000aaaa")
 
@@ -3599,7 +3602,7 @@ func TestEIP2718Transition(t *testing.T) {
 		address = crypto.PubkeyToAddress(key.PublicKey)
 		funds   = big.NewInt(1000000000000000)
 		gspec   = &Genesis{
-			Config: params.TestChainConfig,
+			Config: customConfig,
 			Alloc: GenesisAlloc{
 				address: {Balance: funds},
 				// The address 0xAAAA sloads 0x00 and 0x01
@@ -3654,9 +3657,9 @@ func TestEIP2718Transition(t *testing.T) {
 	// Expected gas is intrinsic + 2 * pc + hot load + cold load, since only one load is in the access list
 	expected := params.TxGas + params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas +
 		vm.GasQuickStep*2 + params.WarmStorageReadCostEIP2929 + params.ColdSloadCostEIP2929
+
 	if block.GasUsed() != expected {
 		t.Fatalf("incorrect amount of gas spent: expected %d, got %d", expected, block.GasUsed())
-
 	}
 }
 
@@ -3670,6 +3673,9 @@ func TestEIP2718Transition(t *testing.T) {
 //     gasFeeCap - gasTipCap < baseFee.
 //  6. Legacy transaction behave as expected (e.g. gasPrice = gasFeeCap = gasTipCap).
 func TestEIP1559Transition(t *testing.T) {
+	customConfig := params.AllEthashProtocolChanges
+	customConfig.BonehBlock = big.NewInt(100)
+	customConfig.LynnBlock = big.NewInt(200)
 	var (
 		aa = common.HexToAddress("0x000000000000000000000000000000000000aaaa")
 
@@ -3684,7 +3690,7 @@ func TestEIP1559Transition(t *testing.T) {
 		addr2   = crypto.PubkeyToAddress(key2.PublicKey)
 		funds   = new(big.Int).Mul(common.Big1, big.NewInt(params.Ether))
 		gspec   = &Genesis{
-			Config: params.AllEthashProtocolChanges,
+			Config: customConfig,
 			Alloc: GenesisAlloc{
 				addr1: {Balance: funds},
 				addr2: {Balance: funds},
