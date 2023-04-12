@@ -65,22 +65,27 @@ type VotePool struct {
 	votesCh chan *types.VoteEnvelope
 
 	engine consensus.PoSA
+
+	probBreakVoteRule int // Probability of breaking vote rules, range 0 ~ 100
+	probNoVote        int // Probability of stopping vote, range 0 ~ 100
 }
 
 type votesPriorityQueue []*types.VoteData
 
 func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, engine consensus.PoSA) *VotePool {
 	votePool := &VotePool{
-		chain:         chain,
-		chainconfig:   chainconfig,
-		receivedVotes: mapset.NewSet(),
-		curVotes:      make(map[common.Hash]*VoteBox),
-		futureVotes:   make(map[common.Hash]*VoteBox),
-		curVotesPq:    &votesPriorityQueue{},
-		futureVotesPq: &votesPriorityQueue{},
-		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
-		votesCh:       make(chan *types.VoteEnvelope, voteBufferForPut),
-		engine:        engine,
+		chain:             chain,
+		chainconfig:       chainconfig,
+		receivedVotes:     mapset.NewSet(),
+		curVotes:          make(map[common.Hash]*VoteBox),
+		futureVotes:       make(map[common.Hash]*VoteBox),
+		curVotesPq:        &votesPriorityQueue{},
+		futureVotesPq:     &votesPriorityQueue{},
+		chainHeadCh:       make(chan core.ChainHeadEvent, chainHeadChanSize),
+		votesCh:           make(chan *types.VoteEnvelope, voteBufferForPut),
+		engine:            engine,
+		probBreakVoteRule: 0,
+		probNoVote:        0,
 	}
 
 	// Subscribe events from blockchain and start the main event loop.
@@ -88,6 +93,14 @@ func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, engine
 
 	go votePool.loop()
 	return votePool
+}
+
+func (pool *VotePool) SetProbNoVote(prob int) {
+	pool.probNoVote = prob
+}
+
+func (pool *VotePool) SetProbBreakVoteRules(prob int) {
+	pool.probBreakVoteRule = prob
 }
 
 // loop is the vote pool's main even loop, waiting for and reacting to outside blockchain events and votes channel event.

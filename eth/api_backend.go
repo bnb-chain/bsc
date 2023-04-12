@@ -322,6 +322,20 @@ func (b *EthAPIBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event
 	return b.eth.VotePool().SubscribeNewVoteEvent(ch)
 }
 
+func (b *EthAPIBackend) SetProbNoVote(prob int) {
+	if b.eth.VotePool() == nil {
+		return
+	}
+	b.eth.VotePool().SetProbNoVote(prob)
+}
+
+func (b *EthAPIBackend) SetProbBreakVoteRules(prob int) {
+	if b.eth.VotePool() == nil {
+		return
+	}
+	b.eth.VotePool().SetProbBreakVoteRules(prob)
+}
+
 func (b *EthAPIBackend) Downloader() *downloader.Downloader {
 	return b.eth.Downloader()
 }

@@ -2,6 +2,8 @@ package vote
 
 import (
 	"fmt"
+	"math/rand"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -100,6 +102,10 @@ func (voteManager *VoteManager) loop() {
 				startVote = true
 			}
 		case cHead := <-voteManager.chainHeadCh:
+			rand.Seed(time.Now().UnixNano())
+			if rand.Intn(100) < voteManager.pool.probNoVote {
+				continue
+			}
 			if !startVote {
 				log.Debug("startVote flag is false, continue")
 				continue
@@ -127,7 +133,7 @@ func (voteManager *VoteManager) loop() {
 			}
 
 			// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
-			if ok, sourceNumber, sourceHash := voteManager.UnderRules(curHead); ok {
+			if ok, sourceNumber, sourceHash := voteManager.UnderRules(curHead); ok || rand.Intn(100) < voteManager.pool.probBreakVoteRule {
 				log.Debug("curHead is underRules for voting")
 				if sourceHash == (common.Hash{}) {
 					log.Debug("sourceHash is empty")

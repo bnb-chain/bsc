@@ -237,6 +237,14 @@ func (b *LesApiBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event
 	return nil
 }
 
+func (b *LesApiBackend) SetProbBreakVoteRules(prob int) {
+	log.Error("light ethereum does not support SetProbBreakVoteRules")
+}
+
+func (b *LesApiBackend) SetProbNoVote(prob int) {
+	log.Error("light ethereum does not support SetProbNoVote")
+}
+
 func (b *LesApiBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription {
 	return b.eth.blockchain.SubscribeChainEvent(ch)
 }
