@@ -615,6 +615,8 @@ func init() {
 			},
 		},
 	}
+
+	bonehUpgrade[defaultNet] = bonehUpgrade[rialtoNet]
 }
 
 func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, statedb *state.StateDB) {
