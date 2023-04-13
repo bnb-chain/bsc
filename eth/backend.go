@@ -249,11 +249,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	eth.txPool = core.NewTxPool(config.TxPool, chainConfig, eth.blockchain)
 
-	conf := stack.Config()
-	blsPasswordPath := stack.ResolvePath(conf.BLSPasswordFile)
-	blsWalletPath := stack.ResolvePath(conf.BLSWalletDir)
-	voteJournalPath := stack.ResolvePath(conf.VoteJournalDir)
-
 	// Create voteManager instance
 	if posa, ok := eth.engine.(consensus.PoSA); ok {
 		// Create votePool instance
@@ -266,11 +261,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 		log.Info("Create votePool successfully")
 
-		if _, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, votePool, voteJournalPath, blsPasswordPath, blsWalletPath, posa); err != nil {
-			log.Error("Failed to Initialize voteManager", "err", err)
-			return nil, err
+		if config.Miner.VoteEnable {
+			conf := stack.Config()
+			blsPasswordPath := stack.ResolvePath(conf.BLSPasswordFile)
+			blsWalletPath := stack.ResolvePath(conf.BLSWalletDir)
+			voteJournalPath := stack.ResolvePath(conf.VoteJournalDir)
+			if _, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, votePool, voteJournalPath, blsPasswordPath, blsWalletPath, posa); err != nil {
+				log.Error("Failed to Initialize voteManager", "err", err)
+				return nil, err
+			}
+			log.Info("Create voteManager successfully")
 		}
-		log.Info("Create voteManager successfully")
 	}
 
 	// Permit the downloader to use the trie cache allowance during fast sync
