@@ -173,7 +173,7 @@ func Transaction(ctx *cli.Context) error {
 		}
 		// Check whether the init code size has been exceeded.
 		if chainConfig.IsBoneh(new(big.Int)) && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
-			r.Error = errors.New("max initcode size exceeded")
+			r.Error = core.ErrMaxInitCodeSizeExceeded
 		}
 		results = append(results, r)
 	}
