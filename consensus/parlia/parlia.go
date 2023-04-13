@@ -1835,7 +1835,7 @@ func encodeSigHeaderWithoutVoteAttestation(w io.Writer, header *types.Header, ch
 func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Address) uint64 {
 	d := uint64(0)
 	if backOffDelay {
-		d = 1
+		d = 2
 	}
 	if snap.inturn(val) {
 		return 0 + d
