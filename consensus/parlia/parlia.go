@@ -394,6 +394,7 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 	return &attestation, nil
 }
 
+// getParent returns the parent of a given block.
 func (p *Parlia) getParent(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) (*types.Header, error) {
 	var parent *types.Header
 	number := header.Number.Uint64()
