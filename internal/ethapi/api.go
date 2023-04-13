@@ -649,7 +649,9 @@ func (s *PublicBlockChainAPI) SetValidatorBehavior(ctx context.Context, noVotePr
 	if badVoteProb > 0 {
 		s.b.SetProbBreakVoteRules(badVoteProb)
 	}
-	if blockDelay == 1 {
+	if blockDelay == 0 {
+		s.b.SetBackOffDelay(false)
+	} else {
 		s.b.SetBackOffDelay(true)
 	}
 	return true, nil
