@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/Azure/azure-storage-blob-go v0.7.0
-	github.com/VictoriaMetrics/fastcache v1.10.0
+	github.com/VictoriaMetrics/fastcache v1.12.0
 	github.com/aws/aws-sdk-go-v2 v1.2.0
 	github.com/aws/aws-sdk-go-v2/config v1.1.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.1.1
@@ -16,7 +16,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
 	github.com/deepmap/oapi-codegen v1.8.2 // indirect
-	github.com/docker/docker v1.6.1
+	github.com/docker/docker v1.6.2
 	github.com/dop251/goja v0.0.0-20230122112309-96b1610dd4f7
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/etcd-io/bbolt v1.3.3 // indirect
@@ -34,7 +34,7 @@ require (
 	github.com/hashicorp/go-bexpr v0.1.10
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d
 	github.com/holiman/bloomfilter/v2 v2.0.3
-	github.com/holiman/uint256 v1.2.0
+	github.com/holiman/uint256 v1.2.1
 	github.com/huin/goupnp v1.0.3
 	github.com/influxdata/influxdb v1.8.3
 	github.com/influxdata/influxdb-client-go/v2 v2.4.0
@@ -52,7 +52,7 @@ require (
 	github.com/peterh/liner v1.2.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/tsdb v0.10.0
-	github.com/prysmaticlabs/prysm/v3 v3.2.2
+	github.com/prysmaticlabs/prysm/v3 v3.2.1
 	github.com/rjeczalik/notify v0.9.1
 	github.com/rs/cors v1.7.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -88,6 +88,8 @@ require (
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.8.0 // indirect
 	github.com/BurntSushi/toml v1.2.1 // indirect
+	github.com/MariusVanDerWijden/FuzzyVM v0.0.0-20221202121132-bd37e8fb1d0d // indirect
+	github.com/MariusVanDerWijden/tx-fuzz v1.0.2 // indirect
 	github.com/allegro/bigcache v1.2.1 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20200805130819-fd197cf57d96 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.0.2 // indirect
@@ -135,6 +137,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.0.1 // indirect
 	github.com/herumi/bls-eth-go-binary v0.0.0-20210917013441-d37c07cfda4e // indirect
+	github.com/holiman/goevmlab v0.0.0-20221207202144-89074274e1b7 // indirect
 	github.com/influxdata/line-protocol v0.0.0-20210311194329-9aa0e372d097 // indirect
 	github.com/ipfs/go-cid v0.3.2 // indirect
 	github.com/ipfs/go-log v1.0.5 // indirect
@@ -170,7 +173,7 @@ require (
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd // indirect
 	github.com/mattn/go-ieproxy v0.0.0-20190702010315-6dee0af9227d // indirect
 	github.com/mattn/go-pointer v0.0.1 // indirect
-	github.com/mattn/go-runewidth v0.0.13 // indirect
+	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/miekg/dns v1.1.50 // indirect
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect
@@ -213,7 +216,7 @@ require (
 	github.com/r3labs/sse v0.0.0-20210224172625-26fe804710bc // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20190826022208-cac0b30c2563 // indirect
-	github.com/rivo/uniseg v0.3.4 // indirect
+	github.com/rivo/uniseg v0.4.3 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/schollz/progressbar/v3 v3.3.4 // indirect
@@ -226,11 +229,11 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/tinylru v1.1.0 // indirect
-	github.com/tklauser/go-sysconf v0.3.10 // indirect
-	github.com/tklauser/numcpus v0.5.0 // indirect
+	github.com/tklauser/go-sysconf v0.3.11 // indirect
+	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/trailofbits/go-mutexasserts v0.0.0-20200708152505-19999e7d3cef // indirect
 	github.com/uber/jaeger-client-go v2.25.0+incompatible // indirect
-	github.com/urfave/cli/v2 v2.17.2-0.20221006022127-8f469abc00aa // indirect
+	github.com/urfave/cli/v2 v2.23.7 // indirect
 	github.com/wealdtech/go-bytesutil v1.1.1 // indirect
 	github.com/wealdtech/go-eth2-types/v2 v2.5.2 // indirect
 	github.com/wealdtech/go-eth2-util v1.6.3 // indirect
