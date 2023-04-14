@@ -1,8 +1,7 @@
-package lightclient
+package v1
 
 import (
 	"fmt"
-
 	rpcclient "github.com/tendermint/tendermint/rpc/client"
 	tmtypes "github.com/tendermint/tendermint/types"
 )

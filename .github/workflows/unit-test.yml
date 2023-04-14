@@ -45,6 +45,8 @@ jobs:
 
     - name: Unit Test
       env:
+        CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
+        CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
         ANDROID_HOME: "" # Skip android test
       run: |
         go mod download

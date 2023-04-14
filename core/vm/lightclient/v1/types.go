@@ -1,10 +1,9 @@
-package lightclient
+package v1
 
 import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	lerr "github.com/tendermint/tendermint/lite/errors"
