@@ -11,7 +11,7 @@ import (
 	"github.com/tendermint/tendermint/crypto/merkle"
 	cmn "github.com/tendermint/tendermint/libs/common"
 
-	"github.com/ethereum/go-ethereum/core/vm/lightclient/v1"
+	v1 "github.com/ethereum/go-ethereum/core/vm/lightclient/v1"
 )
 
 const (

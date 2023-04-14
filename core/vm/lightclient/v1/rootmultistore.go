@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 )
