@@ -153,7 +153,7 @@ func DecodeConsensusState(input []byte) (ConsensusState, error) {
 
 	validatorSetLength := (inputLen - minimumLength) / singleValidatorBytesLength
 	validatorSetBytes := input[pos:]
-	var validatorSet []*types.Validator
+	validatorSet := make([]*types.Validator, 0, validatorSetLength)
 	for index := uint64(0); index < validatorSetLength; index++ {
 		validatorBytes := validatorSetBytes[singleValidatorBytesLength*index : singleValidatorBytesLength*(index+1)]
 

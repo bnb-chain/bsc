@@ -330,8 +330,9 @@ func keyVerifier(key string) error {
 	return nil
 }
 
-// cometBFTLightBlockValidate implemented as a native contract. Used to validate the light
-// blocks for CometBFT and its compatible version.
+// cometBFTLightBlockValidate implemented as a native contract. Used to validate the light  blocks for CometBFT v0.37.0
+// and its compatible version. Besides, in order to support the BLS cross-chain infrastructure, the SetRelayerAddress
+// and SetBlsKey methods should be implemented for the validator.
 type cometBFTLightBlockValidate struct{}
 
 func (c *cometBFTLightBlockValidate) RequiredGas(input []byte) uint64 {
