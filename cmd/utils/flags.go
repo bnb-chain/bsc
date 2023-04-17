@@ -897,6 +897,11 @@ var (
 		Usage: "Enable double sign monitor to check whether any validator signs multiple blocks",
 	}
 
+	VotingEnabledFlag = cli.BoolFlag{
+		Name:  "vote",
+		Usage: "Enable voting",
+	}
+
 	BLSPasswordFileFlag = cli.StringFlag{
 		Name:  "blspassword",
 		Usage: "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
@@ -1531,6 +1536,9 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	}
 	if ctx.GlobalIsSet(LegacyMinerGasTargetFlag.Name) {
 		log.Warn("The generic --miner.gastarget flag is deprecated and will be removed in the future!")
+	}
+	if ctx.GlobalBool(VotingEnabledFlag.Name) {
+		cfg.VoteEnable = true
 	}
 }
 

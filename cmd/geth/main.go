@@ -169,6 +169,7 @@ var (
 		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
 		utils.EnableDoubleSignMonitorFlag,
+		utils.VotingEnabledFlag,
 		utils.BLSPasswordFileFlag,
 		utils.BLSWalletDirFlag,
 		utils.VoteJournalDirFlag,
