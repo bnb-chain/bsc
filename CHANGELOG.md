@@ -1,4 +1,8 @@
 # Changelog
+## v1.1.23
+BUGFIX
+* [\#1464](https://github.com/bnb-chain/bsc/pull/1464) fix: panic on using WaitGroup after it is freed
+
 ## v1.1.22
 FEATURE
 * [\#1361](https://github.com/bnb-chain/bsc/pull/1361) cmd/faucet: merge ipfaucet2 branch to develop
