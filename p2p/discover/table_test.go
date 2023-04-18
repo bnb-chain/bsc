@@ -415,6 +415,7 @@ func TestTable_filterNode(t *testing.T) {
 	if enrFilter(&r1) {
 		t.Fatalf("filterNode doesn't work correctly for entry")
 	}
+	t.Logf("Check test ENR record - passed")
 
 	// Check wrong genesis ENR record
 	var r2 enr.Record
@@ -422,6 +423,7 @@ func TestTable_filterNode(t *testing.T) {
 	if enrFilter(&r2) {
 		t.Fatalf("filterNode doesn't work correctly for wrong genesis entry")
 	}
+	t.Logf("Check wrong genesis ENR record - passed")
 
 	// Check correct genesis ENR record
 	var r3 enr.Record
@@ -429,6 +431,7 @@ func TestTable_filterNode(t *testing.T) {
 	if !enrFilter(&r3) {
 		t.Fatalf("filterNode doesn't work correctly for correct genesis entry")
 	}
+	t.Logf("Check correct genesis ENR record - passed")
 }
 
 // gen wraps quick.Value so it's easier to use.

@@ -48,7 +48,7 @@ func main() {
 		networkFilter = flag.String("network", "", "<bsc/chapel/rialto/yolo> filters nodes by eth ENR entry")
 
 		nodeKey        *ecdsa.PrivateKey
-		filterFunction discover.NodeFilter
+		filterFunction discover.NodeFilterFunc
 		err            error
 	)
 	flag.Parse()

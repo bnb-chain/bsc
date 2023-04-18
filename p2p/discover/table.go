@@ -80,7 +80,7 @@ type Table struct {
 	closeReq   chan struct{}
 	closed     chan struct{}
 
-	enrFilter NodeFilter
+	enrFilter NodeFilterFunc
 
 	nodeAddedHook func(*node) // for testing
 }
@@ -102,7 +102,7 @@ type bucket struct {
 	ips          netutil.DistinctNetSet
 }
 
-func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger, filter NodeFilter) (*Table, error) {
+func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger, filter NodeFilterFunc) (*Table, error) {
 	tab := &Table{
 		net:        t,
 		db:         db,
@@ -522,17 +522,15 @@ func (tab *Table) addSeenNodeSync(n *node) {
 }
 
 func (tab *Table) filterNode(n *node) bool {
-	if tab.enrFilter != nil {
-		node, err := tab.net.RequestENR(unwrapNode(n))
-		if err != nil {
-			tab.log.Debug("ENR request failed", "id", n.ID(), "addr", n.addr(), "err", err)
-			return false
-		} else {
-			if !tab.enrFilter(node.Record()) {
-				tab.log.Trace("ENR record filter out", "id", n.ID(), "addr", n.addr())
-				return true
-			}
-		}
+	if tab.enrFilter == nil {
+		return false
+	}
+	if node, err := tab.net.RequestENR(unwrapNode(n)); err != nil {
+		tab.log.Debug("ENR request failed", "id", n.ID(), "addr", n.addr(), "err", err)
+		return false
+	} else if !tab.enrFilter(node.Record()) {
+		tab.log.Trace("ENR record filter out", "id", n.ID(), "addr", n.addr())
+		return true
 	}
 	return false
 }
