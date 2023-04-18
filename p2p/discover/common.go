@@ -39,9 +39,9 @@ type UDPConn interface {
 	LocalAddr() net.Addr
 }
 
-type NodeFilter func(*enr.Record) bool
+type NodeFilterFunc func(*enr.Record) bool
 
-func ParseEthFilter(chain string) (NodeFilter, error) {
+func ParseEthFilter(chain string) (NodeFilterFunc, error) {
 	var filter forkid.Filter
 	switch chain {
 	case "bsc":
@@ -50,8 +50,6 @@ func ParseEthFilter(chain string) (NodeFilter, error) {
 		filter = forkid.NewStaticFilter(params.ChapelChainConfig, params.ChapelGenesisHash)
 	case "rialto":
 		filter = forkid.NewStaticFilter(params.RialtoChainConfig, params.RialtoGenesisHash)
-	case "yolo":
-		filter = forkid.NewStaticFilter(params.YoloV3ChainConfig, params.YoloV3GenesisHash)
 	default:
 		return nil, fmt.Errorf("unknown network %q", chain)
 	}
@@ -81,7 +79,7 @@ type Config struct {
 	Log            log.Logger         // if set, log messages go here
 	ValidSchemes   enr.IdentityScheme // allowed identity schemes
 	Clock          mclock.Clock
-	FilterFunction NodeFilter // function for filtering ENR entries
+	FilterFunction NodeFilterFunc // function for filtering ENR entries
 }
 
 func (cfg Config) withDefaults() Config {

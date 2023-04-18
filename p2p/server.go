@@ -597,6 +597,21 @@ func (srv *Server) setupDiscovery() error {
 	}
 	srv.localnode.SetFallbackUDP(realaddr.Port)
 
+	// ENR filter function
+	f := func(r *enr.Record) bool {
+		if srv.forkFilter == nil {
+			return true
+		}
+		var eth struct {
+			ForkID forkid.ID
+			Tail   []rlp.RawValue `rlp:"tail"`
+		}
+		if r.Load(enr.WithEntry("eth", &eth)) != nil {
+			return false
+		}
+		return srv.forkFilter(eth.ForkID) == nil
+	}
+
 	// Discovery V4
 	var unhandled chan discover.ReadPacket
 	var sconn *sharedUDPConn
@@ -604,19 +619,6 @@ func (srv *Server) setupDiscovery() error {
 		if srv.DiscoveryV5 {
 			unhandled = make(chan discover.ReadPacket, 100)
 			sconn = &sharedUDPConn{conn, unhandled}
-		}
-		f := func(r *enr.Record) bool {
-			if srv.forkFilter != nil {
-				var eth struct {
-					ForkID forkid.ID
-					Tail   []rlp.RawValue `rlp:"tail"`
-				}
-				if r.Load(enr.WithEntry("eth", &eth)) != nil {
-					return false
-				}
-				return srv.forkFilter(eth.ForkID) == nil
-			}
-			return true
 		}
 		cfg := discover.Config{
 			PrivateKey:     srv.PrivateKey,
@@ -626,7 +628,6 @@ func (srv *Server) setupDiscovery() error {
 			Log:            srv.log,
 			FilterFunction: f,
 		}
-		// TODO: create here filter function based on nodes genesis
 		ntab, err := discover.ListenV4(conn, srv.localnode, cfg)
 		if err != nil {
 			return err
@@ -638,10 +639,11 @@ func (srv *Server) setupDiscovery() error {
 	// Discovery V5
 	if srv.DiscoveryV5 {
 		cfg := discover.Config{
-			PrivateKey:  srv.PrivateKey,
-			NetRestrict: srv.NetRestrict,
-			Bootnodes:   srv.BootstrapNodesV5,
-			Log:         srv.log,
+			PrivateKey:     srv.PrivateKey,
+			NetRestrict:    srv.NetRestrict,
+			Bootnodes:      srv.BootstrapNodesV5,
+			Log:            srv.log,
+			FilterFunction: f,
 		}
 		var err error
 		if sconn != nil {
