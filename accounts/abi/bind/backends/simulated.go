@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -675,6 +676,18 @@ func (b *SimulatedBackend) SendTransaction(ctx context.Context, tx *types.Transa
 	b.pendingState, _ = state.New(b.pendingBlock.Root(), stateDB.Database(), nil)
 	b.pendingReceipts = receipts[0]
 	return nil
+}
+
+// SendTransaction updates the pending block to include the given transaction.
+func (b *SimulatedBackend) SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts ethapi.TransactionOpts) error {
+	state, err := b.blockchain.State()
+	if err != nil {
+		return err
+	}
+	if err := opts.Check(b.pendingBlock.NumberU64(), b.pendingBlock.Time(), state); err != nil {
+		return err
+	}
+	return b.SendTransaction(ctx, tx)
 }
 
 // FilterLogs executes a log filter operation, blocking during execution and
