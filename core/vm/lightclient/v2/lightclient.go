@@ -118,17 +118,12 @@ func (cs *ConsensusState) ApplyLightBlock(block *types.LightBlock) (bool, error)
 		}
 	}
 
-	validatorSetChanged := false
-	if !bytes.Equal(cs.ValidatorSet.Hash(), block.ValidatorsHash) {
-		validatorSetChanged = true
-	}
-
 	// update consensus state
 	cs.Height = uint64(block.Height)
 	cs.NextValidatorSetHash = block.NextValidatorsHash
 	cs.ValidatorSet = block.ValidatorSet
 
-	return validatorSetChanged, nil
+	return !(bytes.Equal(cs.ValidatorSet.Hash(), block.ValidatorsHash)), nil
 }
 
 // input:
