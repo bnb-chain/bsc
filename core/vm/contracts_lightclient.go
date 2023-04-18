@@ -10,7 +10,8 @@ import (
 	"github.com/tendermint/tendermint/crypto/merkle"
 	cmn "github.com/tendermint/tendermint/libs/common"
 
-	"github.com/ethereum/go-ethereum/core/vm/lightclient"
+	v1 "github.com/ethereum/go-ethereum/core/vm/lightclient/v1"
+	v2 "github.com/ethereum/go-ethereum/core/vm/lightclient/v2"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -26,7 +27,7 @@ const (
 // input:
 // consensus state length | consensus state | tendermint header |
 // 32 bytes               |                 |                   |
-func decodeTendermintHeaderValidationInput(input []byte) (*lightclient.ConsensusState, *lightclient.Header, error) {
+func decodeTendermintHeaderValidationInput(input []byte) (*v1.ConsensusState, *v1.Header, error) {
 	csLen := binary.BigEndian.Uint64(input[consensusStateLengthBytesLength-uint64TypeLength : consensusStateLengthBytesLength])
 
 	if consensusStateLengthBytesLength+csLen < consensusStateLengthBytesLength {
@@ -37,11 +38,11 @@ func decodeTendermintHeaderValidationInput(input []byte) (*lightclient.Consensus
 		return nil, nil, fmt.Errorf("expected payload size %d, actual size: %d", consensusStateLengthBytesLength+csLen, len(input))
 	}
 
-	cs, err := lightclient.DecodeConsensusState(input[consensusStateLengthBytesLength : consensusStateLengthBytesLength+csLen])
+	cs, err := v1.DecodeConsensusState(input[consensusStateLengthBytesLength : consensusStateLengthBytesLength+csLen])
 	if err != nil {
 		return nil, nil, err
 	}
-	header, err := lightclient.DecodeHeader(input[consensusStateLengthBytesLength+csLen:])
+	header, err := v1.DecodeHeader(input[consensusStateLengthBytesLength+csLen:])
 	if err != nil {
 		return nil, nil, err
 	}
@@ -49,7 +50,8 @@ func decodeTendermintHeaderValidationInput(input []byte) (*lightclient.Consensus
 	return &cs, header, nil
 }
 
-// tmHeaderValidate implemented as a native contract.
+// tmHeaderValidate implemented as a native contract. Used to validate the light
+// client's new header for tendermint v0.31.12 and its compatible version.
 type tmHeaderValidate struct{}
 
 func (c *tmHeaderValidate) RequiredGas(input []byte) uint64 {
@@ -169,7 +171,7 @@ func (c *iavlMerkleProofValidatePlanck) RequiredGas(_ []byte) uint64 {
 }
 
 func (c *iavlMerkleProofValidatePlanck) Run(input []byte) (result []byte, err error) {
-	c.basicIavlMerkleProofValidate.proofRuntime = lightclient.Ics23CompatibleProofRuntime()
+	c.basicIavlMerkleProofValidate.proofRuntime = v1.Ics23CompatibleProofRuntime()
 	c.basicIavlMerkleProofValidate.verifiers = []merkle.ProofOpVerifier{
 		forbiddenAbsenceOpVerifier,
 		singleValueOpVerifier,
@@ -188,7 +190,7 @@ func successfulMerkleResult() []byte {
 }
 
 type basicIavlMerkleProofValidate struct {
-	keyVerifier  lightclient.KeyVerifier
+	keyVerifier  v1.KeyVerifier
 	opsVerifier  merkle.ProofOpsVerifier
 	verifiers    []merkle.ProofOpVerifier
 	proofRuntime *merkle.ProofRuntime
@@ -210,12 +212,12 @@ func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err err
 		return nil, fmt.Errorf("invalid input: input size should be %d, actual the size is %d", payloadLength+precompileContractInputMetaDataLength, len(input))
 	}
 
-	kvmp, err := lightclient.DecodeKeyValueMerkleProof(input[precompileContractInputMetaDataLength:])
+	kvmp, err := v1.DecodeKeyValueMerkleProof(input[precompileContractInputMetaDataLength:])
 	if err != nil {
 		return nil, err
 	}
 	if c.proofRuntime == nil {
-		kvmp.SetProofRuntime(lightclient.DefaultProofRuntime())
+		kvmp.SetProofRuntime(v1.DefaultProofRuntime())
 	} else {
 		kvmp.SetProofRuntime(c.proofRuntime)
 	}
@@ -255,7 +257,7 @@ func multiStoreOpVerifier(op merkle.ProofOperator) error {
 	if op == nil {
 		return nil
 	}
-	if mop, ok := op.(lightclient.MultiStoreProofOp); ok {
+	if mop, ok := op.(v1.MultiStoreProofOp); ok {
 		storeNames := make(map[string]bool, len(mop.Proof.StoreInfos))
 		for _, store := range mop.Proof.StoreInfos {
 			if exist := storeNames[store.Name]; exist {
@@ -291,7 +293,7 @@ func proofOpsVerifier(poz merkle.ProofOperators) error {
 	}
 
 	// for legacy proof type
-	if _, ok := poz[1].(lightclient.MultiStoreProofOp); ok {
+	if _, ok := poz[1].(v1.MultiStoreProofOp); ok {
 		if _, ok := poz[0].(iavl.IAVLValueOp); !ok {
 			return cmn.NewError("invalid proof op")
 		}
@@ -299,17 +301,17 @@ func proofOpsVerifier(poz merkle.ProofOperators) error {
 	}
 
 	// for ics23 proof type
-	if op2, ok := poz[1].(lightclient.CommitmentOp); ok {
-		if op2.Type != lightclient.ProofOpSimpleMerkleCommitment {
+	if op2, ok := poz[1].(v1.CommitmentOp); ok {
+		if op2.Type != v1.ProofOpSimpleMerkleCommitment {
 			return cmn.NewError("invalid proof op")
 		}
 
-		op1, ok := poz[0].(lightclient.CommitmentOp)
+		op1, ok := poz[0].(v1.CommitmentOp)
 		if !ok {
 			return cmn.NewError("invalid proof op")
 		}
 
-		if op1.Type != lightclient.ProofOpIAVLCommitment {
+		if op1.Type != v1.ProofOpIAVLCommitment {
 			return cmn.NewError("invalid proof op")
 		}
 		return nil
@@ -326,4 +328,39 @@ func keyVerifier(key string) error {
 		return cmn.NewError("key should not start with x:")
 	}
 	return nil
+}
+
+// cometBFTLightBlockValidate implemented as a native contract. Used to validate the light  blocks for CometBFT v0.37.0
+// and its compatible version. Besides, in order to support the BLS cross-chain infrastructure, the SetRelayerAddress
+// and SetBlsKey methods should be implemented for the validator.
+type cometBFTLightBlockValidate struct{}
+
+func (c *cometBFTLightBlockValidate) RequiredGas(input []byte) uint64 {
+	return params.CometBFTLightBlockValidateGas
+}
+
+func (c *cometBFTLightBlockValidate) Run(input []byte) (result []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("internal error: %v\n", r)
+		}
+	}()
+
+	cs, block, err := v2.DecodeLightBlockValidationInput(input)
+	if err != nil {
+		return nil, err
+	}
+
+	validatorSetChanged, err := cs.ApplyLightBlock(block)
+	if err != nil {
+		return nil, err
+	}
+
+	consensusStateBytes, err := cs.EncodeConsensusState()
+	if err != nil {
+		return nil, err
+	}
+
+	result = v2.EncodeLightBlockValidationResult(validatorSetChanged, consensusStateBytes)
+	return result, nil
 }
