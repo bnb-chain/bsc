@@ -514,7 +514,7 @@ func TestTracingWithOverrides(t *testing.T) {
 					},
 				},
 			},
-			want: `{"gas":22047,"failed":false,"returnValue":"000000000000000000000000000000000000000000000000000000000000007b"}`,
+			want: `{"gas":23347,"failed":false,"returnValue":"000000000000000000000000000000000000000000000000000000000000007b"}`,
 		},
 	}
 	for i, tc := range testSuite {
