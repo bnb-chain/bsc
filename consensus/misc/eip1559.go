@@ -28,22 +28,12 @@ import (
 // - gas limit check
 // - basefee check
 func VerifyEip1559Header(config *params.ChainConfig, parent, header *types.Header) error {
-	// Verify that the gas limit remains within allowed bounds
-	parentGasLimit := parent.GasLimit
-	if !config.IsLondon(parent.Number) {
-		parentGasLimit = parent.GasLimit * params.ElasticityMultiplier
-	}
-	if err := VerifyGaslimit(parentGasLimit, header.GasLimit); err != nil {
-		return err
-	}
+
 	// Verify the header is not malformed
 	if header.BaseFee == nil {
 		return fmt.Errorf("header is missing baseFee")
 	}
 
-	if header.BaseFee.Cmp(big.NewInt(params.InitialBaseFee)) != 0 {
-		return fmt.Errorf("header has a non-zero baseFee of %v", header.BaseFee)
-	}
 	// Verify the baseFee is correct based on the parent header.
 	expectedBaseFee := CalcBaseFee(config, parent)
 	if header.BaseFee.Cmp(expectedBaseFee) != 0 {
