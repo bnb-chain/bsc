@@ -140,9 +140,8 @@ var (
 	}
 
 	DiffSyncFlag = cli.BoolFlag{
-		Name: "diffsync",
-		Usage: "Enable diffy sync, Please note that enable diffsync will improve the syncing speed, " +
-			"but will degrade the security to light client level",
+		Name:  "diffsync",
+		Usage: "warn: diff sync has been deprecated, the flag will be removed in the future",
 	}
 	PipeCommitFlag = cli.BoolFlag{
 		Name:  "pipecommit",
