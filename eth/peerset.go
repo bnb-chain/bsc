@@ -30,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 )
 
@@ -404,8 +403,6 @@ func (ps *peerSet) waitBscExtension(peer *eth.Peer) (*bsc.Peer, error) {
 		return peer, nil
 
 	case <-time.After(extensionWaitTimeout):
-		// once timeout is reached, bsc protocol won't be enabled on this peer.
-		log.Warn("waitBscExtension", "peer", id, "bsc protocol timeout, it won't be enabled.")
 		// could be deadlock, so we use TryLock to avoid it.
 		if ps.lock.TryLock() {
 			delete(ps.bscWait, id)
@@ -416,6 +413,7 @@ func (ps *peerSet) waitBscExtension(peer *eth.Peer) (*bsc.Peer, error) {
 		for {
 			select {
 			case <-wait:
+				// discard the peer, even though the peer arrived.
 				return nil, errPeerWaitTimeout
 			case <-time.After(tryWaitTimeout):
 				if ps.lock.TryLock() {
