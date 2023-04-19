@@ -71,7 +71,7 @@ const (
 	// extensionWaitTimeout is the maximum allowed time for the extension wait to
 	// complete before dropping the connection as malicious.
 	extensionWaitTimeout = 10 * time.Second
-	tryWaitTimeout       = 200 * time.Millisecond
+	tryWaitTimeout       = 100 * time.Millisecond
 )
 
 // peerSet represents the collection of active peers currently participating in
@@ -404,18 +404,27 @@ func (ps *peerSet) waitBscExtension(peer *eth.Peer) (*bsc.Peer, error) {
 		return peer, nil
 
 	case <-time.After(extensionWaitTimeout):
-		// once timeout is reached, we won't wait for the peer any more, bsc protocol won't be enabled on it.
+		// once timeout is reached, bsc protocol won't be enabled on this peer.
 		log.Warn("waitBscExtension", "peer", id, "bsc protocol timeout, it won't be enabled.")
-		for {
-			// it is potential deadlock, so we use TryLock to avoid it.
-			if ps.lock.TryLock() {
-				break
-			}
-			time.Sleep(tryWaitTimeout)
+		// could be deadlock, so we use TryLock to avoid it.
+		if ps.lock.TryLock() {
+			delete(ps.bscWait, id)
+			ps.lock.Unlock()
+			return nil, errPeerWaitTimeout
 		}
-		delete(ps.bscWait, id)
-		ps.lock.Unlock()
-		return nil, errPeerWaitTimeout
+		// if TryLock failed, we wait for a while and try again.
+		for {
+			select {
+			case <-wait:
+				return nil, errPeerWaitTimeout
+			case <-time.After(tryWaitTimeout):
+				if ps.lock.TryLock() {
+					delete(ps.bscWait, id)
+					ps.lock.Unlock()
+					return nil, errPeerWaitTimeout
+				}
+			}
+		}
 	}
 }
 
