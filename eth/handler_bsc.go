@@ -27,7 +27,7 @@ func (h *bscHandler) RunPeer(peer *bsc.Peer, hand bsc.Handler) error {
 		ps.lock.Lock()
 		if wait, ok := ps.bscWait[id]; ok {
 			delete(ps.bscWait, id)
-			wait <- peer
+			wait <- nil
 		}
 		ps.lock.Unlock()
 		return err

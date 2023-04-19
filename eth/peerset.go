@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 )
 
@@ -70,6 +71,7 @@ const (
 	// extensionWaitTimeout is the maximum allowed time for the extension wait to
 	// complete before dropping the connection as malicious.
 	extensionWaitTimeout = 10 * time.Second
+	tryWaitTimeout       = 200 * time.Millisecond
 )
 
 // peerSet represents the collection of active peers currently participating in
@@ -402,7 +404,15 @@ func (ps *peerSet) waitBscExtension(peer *eth.Peer) (*bsc.Peer, error) {
 		return peer, nil
 
 	case <-time.After(extensionWaitTimeout):
-		ps.lock.Lock()
+		// once timeout is reached, we won't wait for the peer any more, bsc protocol won't be enabled on it.
+		log.Warn("waitBscExtension", "peer", id, "bsc protocol timeout, it won't be enabled.")
+		for {
+			// it is potential deadlock, so we use TryLock to avoid it.
+			if ps.lock.TryLock() {
+				break
+			}
+			time.Sleep(tryWaitTimeout)
+		}
 		delete(ps.bscWait, id)
 		ps.lock.Unlock()
 		return nil, errPeerWaitTimeout
