@@ -224,7 +224,7 @@ var (
 
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
-		BonehBlock: nil,
+		BonehBlock: big.NewInt(29295050),
 		LynnBlock:  nil,
 
 		Parlia: &ParliaConfig{
