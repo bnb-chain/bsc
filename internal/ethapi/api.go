@@ -2775,9 +2775,11 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 				totalGasUsed += receipt.GasUsed
 				if result.Err != nil {
 					jsonResult["error"] = result.Err.Error()
-					revert := result.Revert()
-					if len(revert) > 0 {
-						jsonResult["revert"] = string(revert)
+					reason, errUnpack := abi.UnpackRevert(result.Revert())
+					if errUnpack == nil {
+						jsonResult["revert"] = reason
+					} else {
+						jsonResult["revert"] = "unpack error"
 					}
 				} else {
 					dst := make([]byte, hex.EncodedLen(len(result.Return())))
