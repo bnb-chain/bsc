@@ -5,7 +5,7 @@ FEATURE
 * [\#1325](https://github.com/bnb-chain/bsc/pull/1325) genesis: add BEP174 changes to relayer contract
 * [\#1357](https://github.com/bnb-chain/bsc/pull/1357) Integration API for EIP-4337 bundler with an L2 validator/sequencer
 * [\#1463](https://github.com/bnb-chain/bsc/pull/1463) BEP-221: implement cometBFT light block validation
-* [\#1493](https://github.com/bnb-chain/bsc/pull/1493) bep: update the bytecode of boneh fork after the contract release
+* [\#1493](https://github.com/bnb-chain/bsc/pull/1493) bep: update the bytecode of luban fork after the contract release
 
 IMPROVEMENT
 * [\#1486](https://github.com/bnb-chain/bsc/pull/1486) feature: remove diff protocol registration
@@ -91,7 +91,6 @@ BUGFIX
 
 ## v1.1.18
 IMPROVEMENT
-
 * [\#1209](https://github.com/bnb-chain/bsc/pull/1209) metrics: add build info into metrics server
 * [\#1204](https://github.com/bnb-chain/bsc/pull/1204) worker: NewTxsEvent and triePrefetch reuse in mining task
 * [\#1195](https://github.com/bnb-chain/bsc/pull/1195) hardfork: update Gibbs fork height and system contract code

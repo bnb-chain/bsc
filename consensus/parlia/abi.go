@@ -1,6 +1,6 @@
 package parlia
 
-const validatorSetABIBeforeBoneh = `
+const validatorSetABIBeforeLuban = `
 [
     {
       "anonymous": false,

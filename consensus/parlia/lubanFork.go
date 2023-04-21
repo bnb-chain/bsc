@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-func (p *Parlia) getCurrentValidatorsBeforeBoneh(blockHash common.Hash, blockNumber *big.Int) ([]common.Address, error) {
+func (p *Parlia) getCurrentValidatorsBeforeLuban(blockHash common.Hash, blockNumber *big.Int) ([]common.Address, error) {
 	blockNr := rpc.BlockNumberOrHashWithHash(blockHash, false)
 
 	// prepare different method
@@ -25,7 +25,7 @@ func (p *Parlia) getCurrentValidatorsBeforeBoneh(blockHash common.Hash, blockNum
 	ctx, cancel := context.WithCancel(context.Background())
 	// cancel when we are finished consuming integers
 	defer cancel()
-	data, err := p.validatorSetABIBeforeBoneh.Pack(method)
+	data, err := p.validatorSetABIBeforeLuban.Pack(method)
 	if err != nil {
 		log.Error("Unable to pack tx for getValidators", "error", err)
 		return nil, err
@@ -44,6 +44,6 @@ func (p *Parlia) getCurrentValidatorsBeforeBoneh(blockHash common.Hash, blockNum
 	}
 
 	var valSet []common.Address
-	err = p.validatorSetABIBeforeBoneh.UnpackIntoInterface(&valSet, method, result)
+	err = p.validatorSetABIBeforeLuban.UnpackIntoInterface(&valSet, method, result)
 	return valSet, err
 }
