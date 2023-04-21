@@ -697,7 +697,7 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 		applySystemContractUpgrade(planckUpgrade[network], blockNumber, statedb, logger)
 	}
 
-	if config.IsOnBoneh(blockNumber) {
+	if config.IsOnLuban(blockNumber) {
 		applySystemContractUpgrade(bonehUpgrade[network], blockNumber, statedb, logger)
 	}
 

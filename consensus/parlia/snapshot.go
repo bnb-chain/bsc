@@ -249,7 +249,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			}
 			newVals := make(map[common.Address]*ValidatorInfo, len(newValArr))
 			for idx, val := range newValArr {
-				if !chainConfig.IsBoneh(header.Number) {
+				if !chainConfig.IsLuban(header.Number) {
 					newVals[val] = &ValidatorInfo{}
 				} else {
 					newVals[val] = &ValidatorInfo{
@@ -272,7 +272,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				}
 			}
 			snap.Validators = newVals
-			if chainConfig.IsBoneh(header.Number) {
+			if chainConfig.IsLuban(header.Number) {
 				validators := snap.validators()
 				for idx, val := range validators {
 					snap.Validators[val].Index = idx + 1 // offset by 1
@@ -281,7 +281,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 		}
 
 		_, voteAssestationNoErr := verifiedAttestations[header.Hash()]
-		if chainConfig.IsLynn(header.Number) || (chainConfig.IsBoneh(header.Number) && voteAssestationNoErr) {
+		if chainConfig.IsLynn(header.Number) || (chainConfig.IsLuban(header.Number) && voteAssestationNoErr) {
 			snap.updateAttestation(header, chainConfig, s.config)
 		}
 
@@ -355,11 +355,11 @@ func parseValidators(header *types.Header, chainConfig *params.ChainConfig, parl
 		return nil, nil, errors.New("invalid validators bytes")
 	}
 
-	if !chainConfig.IsBoneh(header.Number) {
-		n := len(validatorsBytes) / validatorBytesLengthBeforeBoneh
+	if !chainConfig.IsLuban(header.Number) {
+		n := len(validatorsBytes) / validatorBytesLengthBeforeLuban
 		result := make([]common.Address, n)
 		for i := 0; i < n; i++ {
-			result[i] = common.BytesToAddress(validatorsBytes[i*validatorBytesLengthBeforeBoneh : (i+1)*validatorBytesLengthBeforeBoneh])
+			result[i] = common.BytesToAddress(validatorsBytes[i*validatorBytesLengthBeforeLuban : (i+1)*validatorBytesLengthBeforeLuban])
 		}
 		return result, nil, nil
 	}

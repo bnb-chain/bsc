@@ -192,7 +192,7 @@ var (
 
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
-		BonehBlock: nil,
+		LubanBlock: nil,
 		LynnBlock:  nil,
 
 		Parlia: &ParliaConfig{
@@ -224,7 +224,7 @@ var (
 
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
-		BonehBlock: big.NewInt(29295050),
+		LubanBlock: big.NewInt(29295050),
 		LynnBlock:  nil,
 
 		Parlia: &ParliaConfig{
@@ -255,7 +255,7 @@ var (
 		PlanckBlock:         nil,
 
 		// TODO
-		BonehBlock: nil,
+		LubanBlock: nil,
 		LynnBlock:  nil,
 
 		Parlia: &ParliaConfig{
@@ -376,7 +376,7 @@ type ChainConfig struct {
 	NanoBlock       *big.Int `json:"nanoBlock,omitempty" toml:",omitempty"`       // nanoBlock switch block (nil = no fork, 0 = already activated)
 	MoranBlock      *big.Int `json:"moranBlock,omitempty" toml:",omitempty"`      // moranBlock switch block (nil = no fork, 0 = already activated)
 	PlanckBlock     *big.Int `json:"planckBlock,omitempty" toml:",omitempty"`     // planckBlock switch block (nil = no fork, 0 = already activated)
-	BonehBlock      *big.Int `json:"bonehBlock,omitempty" toml:",omitempty"`      // bonehBlock switch block (nil = no fork, 0 = already activated)
+	LubanBlock      *big.Int `json:"bonehBlock,omitempty" toml:",omitempty"`      // bonehBlock switch block (nil = no fork, 0 = already activated)
 	LynnBlock       *big.Int `json:"lynnBlock,omitempty" toml:",omitempty"`       // lynnBlock switch block (nil = no fork, 0 = already activated)
 
 	// Various consensus engines
@@ -429,7 +429,7 @@ func (c *ChainConfig) String() string {
 		engine = "unknown"
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Boneh: %v, Lynn: %v, Engine: %v}",
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Lynn: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -457,7 +457,7 @@ func (c *ChainConfig) String() string {
 		c.NanoBlock,
 		c.MoranBlock,
 		c.PlanckBlock,
-		c.BonehBlock,
+		c.LubanBlock,
 		c.LynnBlock,
 		engine,
 	)
@@ -548,14 +548,14 @@ func (c *ChainConfig) IsOnEuler(num *big.Int) bool {
 	return configNumEqual(c.EulerBlock, num)
 }
 
-// IsBoneh returns whether num is either equal to the first fast finality fork block or greater.
-func (c *ChainConfig) IsBoneh(num *big.Int) bool {
-	return isForked(c.BonehBlock, num)
+// IsLuban returns whether num is either equal to the first fast finality fork block or greater.
+func (c *ChainConfig) IsLuban(num *big.Int) bool {
+	return isForked(c.LubanBlock, num)
 }
 
-// IsOnBoneh returns whether num is equal to the first fast finality fork block.
-func (c *ChainConfig) IsOnBoneh(num *big.Int) bool {
-	return configNumEqual(c.BonehBlock, num)
+// IsOnLuban returns whether num is equal to the first fast finality fork block.
+func (c *ChainConfig) IsOnLuban(num *big.Int) bool {
+	return configNumEqual(c.LubanBlock, num)
 }
 
 // IsLynn returns whether num is either equal to the second fast finality fork block or greater.
@@ -674,7 +674,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "brunoBlock", block: c.BrunoBlock},
 		{name: "eulerBlock", block: c.EulerBlock},
 		{name: "gibbsBlock", block: c.GibbsBlock},
-		{name: "bonehBlock", block: c.BonehBlock},
+		{name: "bonehBlock", block: c.LubanBlock},
 		{name: "lynnBlock", block: c.LynnBlock},
 	} {
 		if lastFork.name != "" {
@@ -775,8 +775,8 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	if isForkIncompatible(c.PlanckBlock, newcfg.PlanckBlock, head) {
 		return newCompatError("planck fork block", c.PlanckBlock, newcfg.PlanckBlock)
 	}
-	if isForkIncompatible(c.BonehBlock, newcfg.BonehBlock, head) {
-		return newCompatError("boneh fork block", c.BonehBlock, newcfg.BonehBlock)
+	if isForkIncompatible(c.LubanBlock, newcfg.LubanBlock, head) {
+		return newCompatError("boneh fork block", c.LubanBlock, newcfg.LubanBlock)
 	}
 	if isForkIncompatible(c.LynnBlock, newcfg.LynnBlock, head) {
 		return newCompatError("lynn fork block", c.LynnBlock, newcfg.LynnBlock)
@@ -853,7 +853,7 @@ type Rules struct {
 	IsNano                                                  bool
 	IsMoran                                                 bool
 	IsPlanck                                                bool
-	IsBoneh                                                 bool
+	IsLuban                                                 bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -878,6 +878,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		IsNano:           c.IsNano(num),
 		IsMoran:          c.IsMoran(num),
 		IsPlanck:         c.IsPlanck(num),
-		IsBoneh:          c.IsBoneh(num),
+		IsLuban:          c.IsLuban(num),
 	}
 }

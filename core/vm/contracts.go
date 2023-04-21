@@ -141,9 +141,9 @@ var PrecompiledContractsBerlin = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{9}): &blake2F{},
 }
 
-// PrecompiledContractsBoneh contains the default set of pre-compiled Ethereum
-// contracts used in the Boneh release.
-var PrecompiledContractsBoneh = map[common.Address]PrecompiledContract{
+// PrecompiledContractsLuban contains the default set of pre-compiled Ethereum
+// contracts used in the Luban release.
+var PrecompiledContractsLuban = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{1}): &ecrecover{},
 	common.BytesToAddress([]byte{2}): &sha256hash{},
 	common.BytesToAddress([]byte{3}): &ripemd160hash{},
@@ -175,7 +175,7 @@ var PrecompiledContractsBLS = map[common.Address]PrecompiledContract{
 }
 
 var (
-	PrecompiledAddressesBoneh     []common.Address
+	PrecompiledAddressesLuban     []common.Address
 	PrecompiledAddressesPlanck    []common.Address
 	PrecompiledAddressesMoran     []common.Address
 	PrecompiledAddressesNano      []common.Address
@@ -207,16 +207,16 @@ func init() {
 	for k := range PrecompiledContractsPlanck {
 		PrecompiledAddressesPlanck = append(PrecompiledAddressesPlanck, k)
 	}
-	for k := range PrecompiledContractsBoneh {
-		PrecompiledAddressesBoneh = append(PrecompiledAddressesBoneh, k)
+	for k := range PrecompiledContractsLuban {
+		PrecompiledAddressesLuban = append(PrecompiledAddressesLuban, k)
 	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
-	case rules.IsBoneh:
-		return PrecompiledAddressesBoneh
+	case rules.IsLuban:
+		return PrecompiledAddressesLuban
 	case rules.IsPlanck:
 		return PrecompiledAddressesPlanck
 	case rules.IsMoran:
