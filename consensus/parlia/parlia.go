@@ -596,7 +596,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 
 	// Verify vote attestation for fast finality.
 	if err := p.verifyVoteAttestation(chain, header, parents); err != nil {
-		if chain.Config().IsLynn(header.Number) {
+		if chain.Config().IsPlato(header.Number) {
 			return err
 		}
 		log.Warn("Verify vote attestation failed", "error", err, "hash", header.Hash(), "number", header.Number,
@@ -691,9 +691,9 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 
 	verifiedAttestations := make(map[common.Hash]struct{}, len(headers))
 	for index, header := range headers {
-		// vote attestation should be checked here to decide whether to update attestation of snapshot between [Luban,Lynn)
-		// because err of verifyVoteAttestation is ignored when importing blocks and headers before Lynn.
-		if p.chainConfig.IsLuban(header.Number) && !p.chainConfig.IsLynn(header.Number) && p.verifyVoteAttestation(chain, header, headers[:index]) == nil {
+		// vote attestation should be checked here to decide whether to update attestation of snapshot between [Luban,Plato)
+		// because err of verifyVoteAttestation is ignored when importing blocks and headers before Plato.
+		if p.chainConfig.IsLuban(header.Number) && !p.chainConfig.IsPlato(header.Number) && p.verifyVoteAttestation(chain, header, headers[:index]) == nil {
 			verifiedAttestations[header.Hash()] = struct{}{}
 		}
 	}
@@ -1090,7 +1090,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		return err
 	}
 
-	if p.chainConfig.IsLynn(header.Number) {
+	if p.chainConfig.IsPlato(header.Number) {
 		if err := p.distributeFinalityReward(chain, state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
 			return err
 		}
@@ -1147,7 +1147,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		return nil, nil, err
 	}
 
-	if p.chainConfig.IsLynn(header.Number) {
+	if p.chainConfig.IsPlato(header.Number) {
 		if err := p.distributeFinalityReward(chain, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
 			return nil, nil, err
 		}
@@ -1739,7 +1739,7 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 	if chain == nil || header == nil {
 		return nil
 	}
-	if !chain.Config().IsLynn(header.Number) {
+	if !chain.Config().IsPlato(header.Number) {
 		return chain.GetHeaderByNumber(0)
 	}
 	if header.Number.Uint64() < backward {

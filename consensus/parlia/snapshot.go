@@ -281,7 +281,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 		}
 
 		_, voteAssestationNoErr := verifiedAttestations[header.Hash()]
-		if chainConfig.IsLynn(header.Number) || (chainConfig.IsLuban(header.Number) && voteAssestationNoErr) {
+		if chainConfig.IsPlato(header.Number) || (chainConfig.IsLuban(header.Number) && voteAssestationNoErr) {
 			snap.updateAttestation(header, chainConfig, s.config)
 		}
 

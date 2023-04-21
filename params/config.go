@@ -193,7 +193,7 @@ var (
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
 		LubanBlock: nil,
-		LynnBlock:  nil,
+		PlatoBlock:  nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -225,7 +225,7 @@ var (
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
 		LubanBlock: big.NewInt(29295050),
-		LynnBlock:  nil,
+		PlatoBlock:  nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -256,7 +256,7 @@ var (
 
 		// TODO
 		LubanBlock: nil,
-		LynnBlock:  nil,
+		PlatoBlock:  nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -377,7 +377,7 @@ type ChainConfig struct {
 	MoranBlock      *big.Int `json:"moranBlock,omitempty" toml:",omitempty"`      // moranBlock switch block (nil = no fork, 0 = already activated)
 	PlanckBlock     *big.Int `json:"planckBlock,omitempty" toml:",omitempty"`     // planckBlock switch block (nil = no fork, 0 = already activated)
 	LubanBlock      *big.Int `json:"lubanBlock,omitempty" toml:",omitempty"`      // lubanBlock switch block (nil = no fork, 0 = already activated)
-	LynnBlock       *big.Int `json:"lynnBlock,omitempty" toml:",omitempty"`       // lynnBlock switch block (nil = no fork, 0 = already activated)
+	PlatoBlock       *big.Int `json:"platoBlock,omitempty" toml:",omitempty"`       // platoBlock switch block (nil = no fork, 0 = already activated)
 
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
@@ -429,7 +429,7 @@ func (c *ChainConfig) String() string {
 		engine = "unknown"
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Lynn: %v, Engine: %v}",
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -458,7 +458,7 @@ func (c *ChainConfig) String() string {
 		c.MoranBlock,
 		c.PlanckBlock,
 		c.LubanBlock,
-		c.LynnBlock,
+		c.PlatoBlock,
 		engine,
 	)
 }
@@ -558,14 +558,14 @@ func (c *ChainConfig) IsOnLuban(num *big.Int) bool {
 	return configNumEqual(c.LubanBlock, num)
 }
 
-// IsLynn returns whether num is either equal to the second fast finality fork block or greater.
-func (c *ChainConfig) IsLynn(num *big.Int) bool {
-	return isForked(c.LynnBlock, num)
+// IsPlato returns whether num is either equal to the second fast finality fork block or greater.
+func (c *ChainConfig) IsPlato(num *big.Int) bool {
+	return isForked(c.PlatoBlock, num)
 }
 
-// IsOnLynn returns whether num is equal to the second fast finality fork block.
-func (c *ChainConfig) IsOnLynn(num *big.Int) bool {
-	return configNumEqual(c.LynnBlock, num)
+// IsOnPlato returns whether num is equal to the second fast finality fork block.
+func (c *ChainConfig) IsOnPlato(num *big.Int) bool {
+	return configNumEqual(c.PlatoBlock, num)
 }
 
 // IsMuirGlacier returns whether num is either equal to the Muir Glacier (EIP-2384) fork block or greater.
@@ -675,7 +675,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "eulerBlock", block: c.EulerBlock},
 		{name: "gibbsBlock", block: c.GibbsBlock},
 		{name: "lubanBlock", block: c.LubanBlock},
-		{name: "lynnBlock", block: c.LynnBlock},
+		{name: "platoBlock", block: c.PlatoBlock},
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number
@@ -778,8 +778,8 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	if isForkIncompatible(c.LubanBlock, newcfg.LubanBlock, head) {
 		return newCompatError("luban fork block", c.LubanBlock, newcfg.LubanBlock)
 	}
-	if isForkIncompatible(c.LynnBlock, newcfg.LynnBlock, head) {
-		return newCompatError("lynn fork block", c.LynnBlock, newcfg.LynnBlock)
+	if isForkIncompatible(c.PlatoBlock, newcfg.PlatoBlock, head) {
+		return newCompatError("plato fork block", c.PlatoBlock, newcfg.PlatoBlock)
 	}
 	return nil
 }

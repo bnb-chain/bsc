@@ -137,7 +137,7 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, pending bool) *testBacke
 	config.ArrowGlacierBlock = londonBlock
 	config.GibbsBlock = nil
 	config.LubanBlock = nil
-	config.LynnBlock = nil
+	config.PlatoBlock = nil
 	engine := ethash.NewFaker()
 	db := rawdb.NewMemoryDatabase()
 	genesis, err := gspec.Commit(db)
