@@ -333,9 +333,9 @@ func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 
 // getValidatorBytesFromHeader returns the validators bytes extracted from the header's extra field if exists.
 // The validators bytes would be contained only in the epoch block's header, and its each validator bytes length is fixed.
-// On boneh fork, we introduce vote attestation into the header's extra field, so extra format is different from before.
-// Before boneh fork: |---Extra Vanity---|---Validators Bytes (or Empty)---|---Extra Seal---|
-// After boneh fork:  |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
+// On luban fork, we introduce vote attestation into the header's extra field, so extra format is different from before.
+// Before luban fork: |---Extra Vanity---|---Validators Bytes (or Empty)---|---Extra Seal---|
+// After luban fork:  |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
 func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) []byte {
 	if len(header.Extra) <= extraVanity+extraSeal {
 		return nil

@@ -376,7 +376,7 @@ type ChainConfig struct {
 	NanoBlock       *big.Int `json:"nanoBlock,omitempty" toml:",omitempty"`       // nanoBlock switch block (nil = no fork, 0 = already activated)
 	MoranBlock      *big.Int `json:"moranBlock,omitempty" toml:",omitempty"`      // moranBlock switch block (nil = no fork, 0 = already activated)
 	PlanckBlock     *big.Int `json:"planckBlock,omitempty" toml:",omitempty"`     // planckBlock switch block (nil = no fork, 0 = already activated)
-	LubanBlock      *big.Int `json:"bonehBlock,omitempty" toml:",omitempty"`      // bonehBlock switch block (nil = no fork, 0 = already activated)
+	LubanBlock      *big.Int `json:"lubanBlock,omitempty" toml:",omitempty"`      // lubanBlock switch block (nil = no fork, 0 = already activated)
 	LynnBlock       *big.Int `json:"lynnBlock,omitempty" toml:",omitempty"`       // lynnBlock switch block (nil = no fork, 0 = already activated)
 
 	// Various consensus engines
@@ -674,7 +674,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "brunoBlock", block: c.BrunoBlock},
 		{name: "eulerBlock", block: c.EulerBlock},
 		{name: "gibbsBlock", block: c.GibbsBlock},
-		{name: "bonehBlock", block: c.LubanBlock},
+		{name: "lubanBlock", block: c.LubanBlock},
 		{name: "lynnBlock", block: c.LynnBlock},
 	} {
 		if lastFork.name != "" {
@@ -776,7 +776,7 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 		return newCompatError("planck fork block", c.PlanckBlock, newcfg.PlanckBlock)
 	}
 	if isForkIncompatible(c.LubanBlock, newcfg.LubanBlock, head) {
-		return newCompatError("boneh fork block", c.LubanBlock, newcfg.LubanBlock)
+		return newCompatError("luban fork block", c.LubanBlock, newcfg.LubanBlock)
 	}
 	if isForkIncompatible(c.LynnBlock, newcfg.LynnBlock, head) {
 		return newCompatError("lynn fork block", c.LynnBlock, newcfg.LynnBlock)

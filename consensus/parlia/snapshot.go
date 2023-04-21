@@ -74,7 +74,7 @@ func newSnapshot(
 		Validators:       make(map[common.Address]*ValidatorInfo),
 	}
 	for idx, v := range validators {
-		// The boneh fork from the genesis block
+		// The luban fork from the genesis block
 		if len(voteAddrs) == len(validators) {
 			snap.Validators[v] = &ValidatorInfo{
 				VoteAddress: voteAddrs[idx],
@@ -84,7 +84,7 @@ func newSnapshot(
 		}
 	}
 
-	// The boneh fork from the genesis block
+	// The luban fork from the genesis block
 	if len(voteAddrs) == len(validators) {
 		validators := snap.validators()
 		for idx, v := range validators {

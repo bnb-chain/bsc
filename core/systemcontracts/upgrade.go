@@ -52,7 +52,7 @@ var (
 
 	planckUpgrade = make(map[string]*Upgrade)
 
-	bonehUpgrade = make(map[string]*Upgrade)
+	lubanUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -553,8 +553,8 @@ func init() {
 		},
 	}
 
-	bonehUpgrade[mainNet] = &Upgrade{
-		UpgradeName: "boneh",
+	lubanUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "luban",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
@@ -584,8 +584,8 @@ func init() {
 		},
 	}
 
-	bonehUpgrade[chapelNet] = &Upgrade{
-		UpgradeName: "boneh",
+	lubanUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "luban",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
@@ -615,8 +615,8 @@ func init() {
 		},
 	}
 
-	bonehUpgrade[rialtoNet] = &Upgrade{
-		UpgradeName: "boneh",
+	lubanUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "luban",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
@@ -698,7 +698,7 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 	}
 
 	if config.IsOnLuban(blockNumber) {
-		applySystemContractUpgrade(bonehUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(lubanUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*
