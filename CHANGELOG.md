@@ -91,7 +91,6 @@ BUGFIX
 
 ## v1.1.18
 IMPROVEMENT
-
 * [\#1209](https://github.com/bnb-chain/bsc/pull/1209) metrics: add build info into metrics server
 * [\#1204](https://github.com/bnb-chain/bsc/pull/1204) worker: NewTxsEvent and triePrefetch reuse in mining task
 * [\#1195](https://github.com/bnb-chain/bsc/pull/1195) hardfork: update Gibbs fork height and system contract code
