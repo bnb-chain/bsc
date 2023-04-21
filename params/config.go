@@ -193,7 +193,7 @@ var (
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
 		LubanBlock: nil,
-		PlatoBlock:  nil,
+		PlatoBlock: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -225,7 +225,7 @@ var (
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
 		LubanBlock: big.NewInt(29295050),
-		PlatoBlock:  nil,
+		PlatoBlock: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -256,7 +256,7 @@ var (
 
 		// TODO
 		LubanBlock: nil,
-		PlatoBlock:  nil,
+		PlatoBlock: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -377,7 +377,7 @@ type ChainConfig struct {
 	MoranBlock      *big.Int `json:"moranBlock,omitempty" toml:",omitempty"`      // moranBlock switch block (nil = no fork, 0 = already activated)
 	PlanckBlock     *big.Int `json:"planckBlock,omitempty" toml:",omitempty"`     // planckBlock switch block (nil = no fork, 0 = already activated)
 	LubanBlock      *big.Int `json:"lubanBlock,omitempty" toml:",omitempty"`      // lubanBlock switch block (nil = no fork, 0 = already activated)
-	PlatoBlock       *big.Int `json:"platoBlock,omitempty" toml:",omitempty"`       // platoBlock switch block (nil = no fork, 0 = already activated)
+	PlatoBlock      *big.Int `json:"platoBlock,omitempty" toml:",omitempty"`      // platoBlock switch block (nil = no fork, 0 = already activated)
 
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
