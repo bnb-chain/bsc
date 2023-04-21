@@ -1,4 +1,21 @@
 # Changelog
+## v1.2.0
+FEATURE
+* [\#936](https://github.com/bnb-chain/bsc/pull/936) BEP-126: Introduce Fast Finality Mechanism
+* [\#1325](https://github.com/bnb-chain/bsc/pull/1325) genesis: add BEP174 changes to relayer contract
+* [\#1357](https://github.com/bnb-chain/bsc/pull/1357) Integration API for EIP-4337 bundler with an L2 validator/sequencer
+* [\#1463](https://github.com/bnb-chain/bsc/pull/1463) BEP-221: implement cometBFT light block validation
+* [\#1493](https://github.com/bnb-chain/bsc/pull/1493) bep: update the bytecode of boneh fork after the contract release
+
+IMPROVEMENT
+* [\#1486](https://github.com/bnb-chain/bsc/pull/1486) feature: remove diff protocol registration
+* [\#1434](https://github.com/bnb-chain/bsc/pull/1434) fix: improvements after testing fast finality
+
+BUGFIX
+* [\#1430](https://github.com/bnb-chain/bsc/pull/1430) docker: upgrade alpine version & remove apks version
+* [\#1458](https://github.com/bnb-chain/bsc/pull/1458) cmd/faucet: clear reqs list when reorg to lower nonce
+* [\#1484](https://github.com/bnb-chain/bsc/pull/1484) fix: a deadlock caused by bsc protocol handeshake timeout
+
 ## v1.1.23
 BUGFIX
 * [\#1464](https://github.com/bnb-chain/bsc/pull/1464) fix: panic on using WaitGroup after it is freed

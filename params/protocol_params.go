@@ -129,16 +129,19 @@ const (
 
 	// Precompiled contract gas prices
 
-	TendermintHeaderValidateGas uint64 = 3000 // Gas for validate tendermiint consensus state
-	IAVLMerkleProofValidateGas  uint64 = 3000 // Gas for validate merkle proof
+	TendermintHeaderValidateGas   uint64 = 3000 // Gas for validate tendermiint consensus state
+	IAVLMerkleProofValidateGas    uint64 = 3000 // Gas for validate merkle proof
+	CometBFTLightBlockValidateGas uint64 = 3000 // Gas for validate cometBFT light block
 
-	EcrecoverGas        uint64 = 3000 // Elliptic curve sender recovery gas price
-	Sha256BaseGas       uint64 = 60   // Base price for a SHA256 operation
-	Sha256PerWordGas    uint64 = 12   // Per-word price for a SHA256 operation
-	Ripemd160BaseGas    uint64 = 600  // Base price for a RIPEMD160 operation
-	Ripemd160PerWordGas uint64 = 120  // Per-word price for a RIPEMD160 operation
-	IdentityBaseGas     uint64 = 15   // Base price for a data copy operation
-	IdentityPerWordGas  uint64 = 3    // Per-work price for a data copy operation
+	EcrecoverGas                uint64 = 3000 // Elliptic curve sender recovery gas price
+	Sha256BaseGas               uint64 = 60   // Base price for a SHA256 operation
+	Sha256PerWordGas            uint64 = 12   // Per-word price for a SHA256 operation
+	Ripemd160BaseGas            uint64 = 600  // Base price for a RIPEMD160 operation
+	Ripemd160PerWordGas         uint64 = 120  // Per-word price for a RIPEMD160 operation
+	IdentityBaseGas             uint64 = 15   // Base price for a data copy operation
+	IdentityPerWordGas          uint64 = 3    // Per-work price for a data copy operation
+	BlsSignatureVerifyBaseGas   uint64 = 1000 // base price for a BLS signature verify operation
+	BlsSignatureVerifyPerKeyGas uint64 = 3500 // Per-key price for a BLS signature verify operation
 
 	Bn256AddGasByzantium             uint64 = 500    // Byzantium gas needed for an elliptic curve addition
 	Bn256AddGasIstanbul              uint64 = 150    // Gas needed for an elliptic curve addition

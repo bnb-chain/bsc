@@ -25,6 +25,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"path/filepath"
 	"runtime"
 	godebug "runtime/debug"
 	"strconv"
@@ -133,10 +134,14 @@ var (
 		Name:  "enabletrustprotocol",
 		Usage: "Enable trust protocol",
 	}
+	DisableBscProtocolFlag = cli.BoolFlag{
+		Name:  "disablebscprotocol",
+		Usage: "Disable bsc protocol",
+	}
+
 	DiffSyncFlag = cli.BoolFlag{
-		Name: "diffsync",
-		Usage: "Enable diffy sync, Please note that enable diffsync will improve the syncing speed, " +
-			"but will degrade the security to light client level",
+		Name:  "diffsync",
+		Usage: "warn: diff sync has been deprecated, the flag will be removed in the future",
 	}
 	PipeCommitFlag = cli.BoolFlag{
 		Name:  "pipecommit",
@@ -890,6 +895,26 @@ var (
 		Name:  "monitor.doublesign",
 		Usage: "Enable double sign monitor to check whether any validator signs multiple blocks",
 	}
+
+	VotingEnabledFlag = cli.BoolFlag{
+		Name:  "vote",
+		Usage: "Enable voting",
+	}
+
+	BLSPasswordFileFlag = cli.StringFlag{
+		Name:  "blspassword",
+		Usage: "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
+	}
+
+	BLSWalletDirFlag = DirectoryFlag{
+		Name:  "blswallet",
+		Usage: "Path for the blsWallet dir in fast finality feature (default = inside the datadir)",
+	}
+
+	VoteJournalDirFlag = DirectoryFlag{
+		Name:  "vote-journal-path",
+		Usage: "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
+	}
 )
 
 // MakeDataDir retrieves the currently requested data directory, terminating
@@ -1305,6 +1330,8 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	setDataDir(ctx, cfg)
 	setSmartCard(ctx, cfg)
 	setMonitor(ctx, cfg)
+	setBLSWalletDir(ctx, cfg)
+	setVoteJournalDir(ctx, cfg)
 
 	if ctx.GlobalIsSet(ExternalSignerFlag.Name) {
 		cfg.ExternalSigner = ctx.GlobalString(ExternalSignerFlag.Name)
@@ -1337,6 +1364,10 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.GlobalIsSet(InsecureUnlockAllowedFlag.Name) {
 		cfg.InsecureUnlockAllowed = ctx.GlobalBool(InsecureUnlockAllowedFlag.Name)
 	}
+
+	if ctx.GlobalIsSet(BLSPasswordFileFlag.Name) {
+		cfg.BLSPasswordFile = ctx.GlobalString(BLSPasswordFileFlag.Name)
+	}
 }
 
 func setSmartCard(ctx *cli.Context, cfg *node.Config) {
@@ -1365,6 +1396,24 @@ func setDataDir(ctx *cli.Context, cfg *node.Config) {
 		cfg.DataDir = ctx.GlobalString(DataDirFlag.Name)
 	case ctx.GlobalBool(DeveloperFlag.Name):
 		cfg.DataDir = "" // unless explicitly requested, use memory databases
+	}
+}
+
+func setVoteJournalDir(ctx *cli.Context, cfg *node.Config) {
+	dataDir := cfg.DataDir
+	if ctx.GlobalIsSet(VoteJournalDirFlag.Name) {
+		cfg.VoteJournalDir = ctx.GlobalString(VoteJournalDirFlag.Name)
+	} else {
+		cfg.VoteJournalDir = filepath.Join(dataDir, "voteJournal")
+	}
+}
+
+func setBLSWalletDir(ctx *cli.Context, cfg *node.Config) {
+	dataDir := cfg.DataDir
+	if ctx.GlobalIsSet(BLSWalletDirFlag.Name) {
+		cfg.BLSWalletDir = ctx.GlobalString(BLSWalletDirFlag.Name)
+	} else {
+		cfg.BLSWalletDir = filepath.Join(dataDir, "bls/wallet")
 	}
 }
 
@@ -1486,6 +1535,9 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	}
 	if ctx.GlobalIsSet(LegacyMinerGasTargetFlag.Name) {
 		log.Warn("The generic --miner.gastarget flag is deprecated and will be removed in the future!")
+	}
+	if ctx.GlobalBool(VotingEnabledFlag.Name) {
+		cfg.VoteEnable = true
 	}
 }
 
@@ -1645,6 +1697,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.GlobalIsSet(EnableTrustProtocolFlag.Name) {
 		cfg.EnableTrustProtocol = ctx.GlobalIsSet(EnableTrustProtocolFlag.Name)
 	}
+	if ctx.GlobalIsSet(DisableBscProtocolFlag.Name) {
+		cfg.DisableBscProtocol = ctx.GlobalIsSet(DisableBscProtocolFlag.Name)
+	}
 	if ctx.GlobalIsSet(DiffSyncFlag.Name) {
 		log.Warn("The --diffsync flag is deprecated and will be removed in the future!")
 	}
@@ -1721,7 +1776,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.RPCTxFeeCap = ctx.GlobalFloat64(RPCGlobalTxFeeCapFlag.Name)
 	}
 	if ctx.GlobalIsSet(NoDiscoverFlag.Name) {
-		cfg.EthDiscoveryURLs, cfg.SnapDiscoveryURLs, cfg.TrustDiscoveryURLs = []string{}, []string{}, []string{}
+		cfg.EthDiscoveryURLs, cfg.SnapDiscoveryURLs, cfg.TrustDiscoveryURLs, cfg.BscDiscoveryURLs = []string{}, []string{}, []string{}, []string{}
 	} else if ctx.GlobalIsSet(DNSDiscoveryFlag.Name) {
 		urls := ctx.GlobalString(DNSDiscoveryFlag.Name)
 		if urls == "" {
@@ -1812,6 +1867,7 @@ func SetDNSDiscoveryDefaults(cfg *ethconfig.Config, genesis common.Hash) {
 		cfg.EthDiscoveryURLs = []string{url}
 		cfg.SnapDiscoveryURLs = cfg.EthDiscoveryURLs
 		cfg.TrustDiscoveryURLs = cfg.EthDiscoveryURLs
+		cfg.BscDiscoveryURLs = cfg.EthDiscoveryURLs
 	}
 }
 

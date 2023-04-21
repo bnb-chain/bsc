@@ -2137,6 +2137,24 @@ func (s *PublicTransactionPoolAPI) SendRawTransaction(ctx context.Context, input
 	return SubmitTransaction(ctx, s.b, tx)
 }
 
+// SendRawTransactionConditional will add the signed transaction to the transaction pool.
+// The sender/bundler is responsible for signing the transaction
+func (s *PublicTransactionPoolAPI) SendRawTransactionConditional(ctx context.Context, input hexutil.Bytes, opts TransactionOpts) (common.Hash, error) {
+	tx := new(types.Transaction)
+	if err := tx.UnmarshalBinary(input); err != nil {
+		return common.Hash{}, err
+	}
+	header := s.b.CurrentHeader()
+	state, _, err := s.b.StateAndHeaderByNumber(ctx, rpc.BlockNumber(header.Number.Int64()))
+	if state == nil || err != nil {
+		return common.Hash{}, err
+	}
+	if err := opts.Check(header.Number.Uint64(), header.Time, state); err != nil {
+		return common.Hash{}, err
+	}
+	return SubmitTransaction(ctx, s.b, tx)
+}
+
 // Sign calculates an ECDSA signature for:
 // keccack256("\x19Ethereum Signed Message:\n" + len(message) + message).
 //

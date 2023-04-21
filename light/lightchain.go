@@ -50,17 +50,18 @@ var (
 // headers, downloading block bodies and receipts on demand through an ODR
 // interface. It only does header validation during chain insertion.
 type LightChain struct {
-	hc            *core.HeaderChain
-	indexerConfig *IndexerConfig
-	chainDb       ethdb.Database
-	engine        consensus.Engine
-	odr           OdrBackend
-	chainFeed     event.Feed
-	chainSideFeed event.Feed
-	chainHeadFeed event.Feed
-	scope         event.SubscriptionScope
-	genesisBlock  *types.Block
-	forker        *core.ForkChoice
+	hc                  *core.HeaderChain
+	indexerConfig       *IndexerConfig
+	chainDb             ethdb.Database
+	engine              consensus.Engine
+	odr                 OdrBackend
+	chainFeed           event.Feed
+	chainSideFeed       event.Feed
+	chainHeadFeed       event.Feed
+	finalizedHeaderFeed event.Feed
+	scope               event.SubscriptionScope
+	genesisBlock        *types.Block
+	forker              *core.ForkChoice
 
 	bodyCache    *lru.Cache // Cache for the most recent block bodies
 	bodyRLPCache *lru.Cache // Cache for the most recent block bodies in RLP encoded format
@@ -370,6 +371,8 @@ func (lc *LightChain) postChainEvents(events []interface{}) {
 				lc.chainHeadFeed.Send(core.ChainHeadEvent{Block: ev.Block})
 			}
 			lc.chainFeed.Send(ev)
+		case core.FinalizedHeaderEvent:
+			lc.finalizedHeaderFeed.Send(ev)
 		case core.ChainSideEvent:
 			lc.chainSideFeed.Send(ev)
 		}
@@ -456,6 +459,9 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 	case core.CanonStatTy:
 		lc.chainFeed.Send(core.ChainEvent{Block: block, Hash: block.Hash()})
 		lc.chainHeadFeed.Send(core.ChainHeadEvent{Block: block})
+		if posa, ok := lc.Engine().(consensus.PoSA); ok {
+			lc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: posa.GetFinalizedHeader(lc, block.Header())})
+		}
 	case core.SideStatTy:
 		lc.chainSideFeed.Send(core.ChainSideEvent{Block: block})
 	}
@@ -466,6 +472,19 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 // header is retrieved from the HeaderChain's internal cache.
 func (lc *LightChain) CurrentHeader() *types.Header {
 	return lc.hc.CurrentHeader()
+}
+
+// GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`
+func (lc *LightChain) GetJustifiedNumber(header *types.Header) uint64 {
+	if p, ok := lc.engine.(consensus.PoSA); ok {
+		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(lc.hc, header)
+		if err == nil {
+			return justifiedBlockNumber
+		}
+	}
+	// return 0 when err!=nil
+	// so the input `header` will at a disadvantage during reorg
+	return 0
 }
 
 // GetTd retrieves a block's total difficulty in the canonical chain from the
@@ -586,6 +605,11 @@ func (lc *LightChain) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subsc
 // SubscribeChainHeadEvent registers a subscription of ChainHeadEvent.
 func (lc *LightChain) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription {
 	return lc.scope.Track(lc.chainHeadFeed.Subscribe(ch))
+}
+
+// SubscribeFinalizedHeaderEvent registers a subscription of FinalizedHeaderEvent.
+func (lc *LightChain) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeaderEvent) event.Subscription {
+	return lc.scope.Track(lc.finalizedHeaderFeed.Subscribe(ch))
 }
 
 // SubscribeChainSideEvent registers a subscription of ChainSideEvent.
