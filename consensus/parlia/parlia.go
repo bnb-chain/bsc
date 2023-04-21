@@ -1016,6 +1016,10 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		}
 	}
 
+	if len(accumulatedWeights) == 0 {
+		return nil
+	}
+
 	validators := make([]common.Address, 0, len(accumulatedWeights))
 	weights := make([]*big.Int, 0, len(accumulatedWeights))
 	for val := range accumulatedWeights {
