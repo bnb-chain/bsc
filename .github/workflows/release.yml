@@ -56,7 +56,9 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod download
-          make geth-linux-arm
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          make CC=aarch64-linux-gnu-gcc geth-linux-arm
+          
       # ==============================
       #       Upload artifacts
       # ==============================

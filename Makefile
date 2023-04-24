@@ -4,7 +4,7 @@
 
 .PHONY: geth android ios evm all test truffle-test clean
 .PHONY: docker
-.PHONY: geth-linux-arm geth-linux-arm64 geth-linux-arm5 geth-linux-arm6 geth-linux-arm7
+.PHONY: geth-linux-arm geth-linux-arm64
 
 GOBIN = ./build/bin
 GO ?= latest
@@ -12,15 +12,20 @@ GORUN = env GO111MODULE=on go run
 GIT_COMMIT=$(shell git rev-parse HEAD)
 GIT_COMMIT_DATE=$(shell git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
 
+
 geth:
 	$(GORUN) build/ci.go install ./cmd/geth
 	@echo "Done building."
 	@echo "Run \"$(GOBIN)/geth\" to launch geth."
 
+CC = gcc
+ifdef CC
+	CFLAGS = -cc=$(CC)
+endif
 geth-linux-arm: geth-linux-arm64
 
-geth-linux-arm64:
-	$(GORUN) build/ci.go install -arch=arm64 -o=build/bin/geth-linux-arm64 ./cmd/geth
+geth-linux-arm64:  
+	$(GORUN) build/ci.go install -arch=arm64 $(CFLAGS) -o=build/bin/geth-linux-arm64 ./cmd/geth 
 
 all:
 	$(GORUN) build/ci.go install
