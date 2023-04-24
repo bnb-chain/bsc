@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -74,7 +75,9 @@ var (
 	diffInTurn = big.NewInt(2)            // Block difficulty for in-turn signatures
 	diffNoTurn = big.NewInt(1)            // Block difficulty for out-of-turn signatures
 	// 100 native token
-	maxSystemBalance = new(big.Int).Mul(big.NewInt(100), big.NewInt(params.Ether))
+	maxSystemBalance                 = new(big.Int).Mul(big.NewInt(100), big.NewInt(params.Ether))
+	verifyVoteAttestationFailedGauge = metrics.NewRegisteredGauge("parlia/verifyVoteAttestationFailed", nil)
+	updateAttestationFailedGauge     = metrics.NewRegisteredGauge("parlia/updateAttestationFailed", nil)
 
 	systemContracts = map[common.Address]bool{
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
@@ -596,6 +599,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 
 	// Verify vote attestation for fast finality.
 	if err := p.verifyVoteAttestation(chain, header, parents); err != nil {
+		verifyVoteAttestationFailedGauge.Inc(1)
 		if chain.Config().IsPlato(header.Number) {
 			return err
 		}
@@ -689,15 +693,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		headers[i], headers[len(headers)-1-i] = headers[len(headers)-1-i], headers[i]
 	}
 
-	verifiedAttestations := make(map[common.Hash]struct{}, len(headers))
-	for index, header := range headers {
-		// vote attestation should be checked here to decide whether to update attestation of snapshot between [Luban,Plato)
-		// because err of verifyVoteAttestation is ignored when importing blocks and headers before Plato.
-		if p.chainConfig.IsLuban(header.Number) && !p.chainConfig.IsPlato(header.Number) && p.verifyVoteAttestation(chain, header, headers[:index]) == nil {
-			verifiedAttestations[header.Hash()] = struct{}{}
-		}
-	}
-	snap, err := snap.apply(headers, chain, parents, p.chainConfig, verifiedAttestations)
+	snap, err := snap.apply(headers, chain, parents, p.chainConfig)
 	if err != nil {
 		return nil, err
 	}
