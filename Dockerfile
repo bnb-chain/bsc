@@ -13,8 +13,6 @@ COPY go.sum /go-ethereum/
 RUN cd /go-ethereum && go mod download
 
 ADD . /go-ethereum
-ENV CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
-ENV CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
 RUN cd /go-ethereum && go run build/ci.go install ./cmd/geth
 
 # Pull Geth into a second stage deploy alpine container
@@ -28,10 +26,9 @@ ENV BSC_HOME=/bsc
 ENV HOME=${BSC_HOME}
 ENV DATA_DIR=/data
 
-ARG VERSION_GCC=11.2.1_git20220219-r2
 ENV PACKAGES ca-certificates jq \
   bash bind-tools tini \
-  grep curl sed gcc==${VERSION_GCC}
+  grep curl sed gcc
 
 RUN apk add --no-cache $PACKAGES \
   && rm -rf /var/cache/apk/* \
@@ -59,4 +56,7 @@ USER ${BSC_USER_UID}:${BSC_USER_GID}
 # rpc ws graphql
 EXPOSE 8545 8546 8547 30303 30303/udp
 
+# For blst runtime env
+ENV CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
+ENV CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
 ENTRYPOINT ["/sbin/tini", "--", "./docker-entrypoint.sh"]

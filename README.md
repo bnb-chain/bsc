@@ -142,6 +142,16 @@ Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-
 ./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0 --tries-verify-mode none
 ```
 
+if you get such error:
+```shell
+Caught SIGILL in blst_cgo_init, consult <blst>/bindinds/go/README.md.
+```
+please try to add the following environment variables:
+```shell
+export CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
+export CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
+```
+
 #### 5. Monitor node status
 
 Monitor the log from **./node/bsc.log** by default. When the node has started syncing, should be able to see the following output:
