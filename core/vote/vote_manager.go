@@ -181,8 +181,8 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 
 	//Rule 2: A validator must not vote within the span of its other votes.
 	blockNumber := sourceNumber + 1
-	if blockNumber+maxSizeOfRecentEntry < targetNumber {
-		blockNumber = targetNumber - maxSizeOfRecentEntry
+	if blockNumber+maliciousVoteSlashScope < targetNumber {
+		blockNumber = targetNumber - maliciousVoteSlashScope
 	}
 	for ; blockNumber < targetNumber; blockNumber++ {
 		if voteDataBuffer.Contains(blockNumber) {
