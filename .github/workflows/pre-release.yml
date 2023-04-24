@@ -44,8 +44,17 @@ jobs:
       # ==============================
 
       - name: Build Binary for ${{matrix.os}}
-        env:
-          CGO_ENABLED: "0"
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          go mod download
+          wget https://musl.cc/x86_64-linux-musl-cross.tgz
+          tar -xvf ./x86_64-linux-musl-cross.tgz
+          GIT_COMMIT=$(git rev-parse HEAD)
+          GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC=$(pwd)/x86_64-linux-musl-cross/bin/x86_64-linux-musl-gcc go build -ldflags "-X main.gitCommit=$GIT_COMMIT -X main.gitDate=$GIT_COMMIT_DATE -extldflags=-static" -o ./build/bin/geth -a ./cmd/geth
+      
+      - name: Build Binary for ${{matrix.os}}
+        if: matrix.os != 'ubuntu-latest'
         run: |
           go mod download
           make geth
@@ -58,7 +67,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod download
-          make geth-linux-arm
+          wget https://musl.cc/aarch64-linux-musl-cross.tgz
+          tar -xvf ./aarch64-linux-musl-cross.tgz
+          GIT_COMMIT=$(git rev-parse HEAD)
+          GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=$(pwd)/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc go build -ldflags "-X main.gitCommit=$GIT_COMMIT -X main.gitDate=$GIT_COMMIT_DATE -extldflags=-static" -o ./build/bin/geth-linux-arm64 -a ./cmd/geth
+
       # ==============================
       #       Upload artifacts
       # ==============================

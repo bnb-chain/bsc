@@ -4,7 +4,6 @@
 
 .PHONY: geth android ios evm all test truffle-test clean
 .PHONY: docker
-.PHONY: geth-linux-arm geth-linux-arm64
 
 GOBIN = ./build/bin
 GO ?= latest

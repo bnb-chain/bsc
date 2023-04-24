@@ -136,6 +136,10 @@ Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-
 
 #### 4. Start a full node
 ```shell
+## This two environment variables are required for blst library to work after v1.2.0
+export CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
+export CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
+
 ./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0
 
 ## It is recommand to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency
