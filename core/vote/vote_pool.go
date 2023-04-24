@@ -257,6 +257,7 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 	for _, vote := range voteBox.voteMessages {
 		// Verify if the vote comes from valid validators based on voteAddress (BLSPublicKey).
 		if pool.engine.VerifyVote(pool.chain, vote) != nil {
+			pool.receivedVotes.Remove(vote.Hash())
 			continue
 		}
 
