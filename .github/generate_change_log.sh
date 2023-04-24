@@ -29,13 +29,13 @@ OUTPUT=$(cat <<-END
 ## Changelog\n
 ${CHANGE_LOG}\n
 ## Assets\n
-|    Assets    | Sha256 Checksum  |\n
-| :-----------: |------------|\n
-| mainnet.zip | ${MAINNET_ZIP_SUM} |\n
-| testnet.zip | ${TESTNET_ZIP_SUM} |\n
-| geth_linux | ${LINUX_BIN_SUM} |\n
-| geth_mac  | ${MAC_BIN_SUM} |\n
-| geth_windows  | ${WINDOWS_BIN_SUM} |\n
+|    Assets    | Sha256 Checksum  |
+| :-----------: |------------|
+| mainnet.zip | ${MAINNET_ZIP_SUM} |
+| testnet.zip | ${TESTNET_ZIP_SUM} |
+| geth_linux | ${LINUX_BIN_SUM} |
+| geth_mac  | ${MAC_BIN_SUM} |
+| geth_windows  | ${WINDOWS_BIN_SUM} |
 | geth_linux_arm64  | ${ARM64_BIN_SUM} |\n
 END
 )
