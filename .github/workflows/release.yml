@@ -56,8 +56,9 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod download
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-          make CC=aarch64-linux-gnu-gcc CC_FOR_TARGET=gcc-aarch64-linux-gnu geth-linux-arm
+          wget https://musl.cc/aarch64-linux-musl-cross.tgz
+          tar -xvf ./aarch64-linux-musl-cross.tgz
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=$(pwd)/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc go build -o ./build/bin/geth-linux-arm64 -a -ldflags=-extldflags=-static ./cmd/geth
 
       # ==============================
       #       Upload artifacts
