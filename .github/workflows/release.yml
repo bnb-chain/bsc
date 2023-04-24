@@ -57,8 +57,8 @@ jobs:
         run: |
           go mod download
           sudo apt-get install -y gcc-aarch64-linux-gnu
-          make CC=aarch64-linux-gnu-gcc geth-linux-arm
-          
+          make CC=aarch64-linux-gnu-gcc CC_FOR_TARGET=gcc-aarch64-linux-gnu geth-linux-arm
+
       # ==============================
       #       Upload artifacts
       # ==============================

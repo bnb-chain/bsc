@@ -30,9 +30,10 @@ type GoToolchain struct {
 	Root string // GOROOT
 
 	// Cross-compilation variables. These are set when running the go tool.
-	GOARCH string
-	GOOS   string
-	CC     string
+	GOARCH      string
+	GOOS        string
+	CC          string
+	CCForTarget string
 }
 
 // Go creates an invocation of the go command.
@@ -52,6 +53,12 @@ func (g *GoToolchain) Go(command string, args ...string) *exec.Cmd {
 		tool.Env = append(tool.Env, "CC="+g.CC)
 	} else if os.Getenv("CC") != "" {
 		tool.Env = append(tool.Env, "CC="+os.Getenv("CC"))
+	}
+	// Configure C compiler.
+	if g.CCForTarget != "" {
+		tool.Env = append(tool.Env, "CC_FOR_TARGET="+g.CCForTarget)
+	} else if os.Getenv("CCForTarget") != "" {
+		tool.Env = append(tool.Env, "CC_FOR_TARGET="+os.Getenv("CC_FOR_TARGET"))
 	}
 	return tool
 }

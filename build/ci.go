@@ -197,15 +197,16 @@ func main() {
 
 func doInstall(cmdline []string) {
 	var (
-		dlgo   = flag.Bool("dlgo", false, "Download Go and build with it")
-		arch   = flag.String("arch", "", "Architecture to cross build for")
-		cc     = flag.String("cc", "", "C compiler to cross build with")
-		output = flag.String("o", "", "Output directory for build artifacts")
+		dlgo        = flag.Bool("dlgo", false, "Download Go and build with it")
+		arch        = flag.String("arch", "", "Architecture to cross build for")
+		cc          = flag.String("cc", "", "C compiler to cross build with")
+		ccForTarget = flag.String("cc_for_target", "", "C compiler to build for the target platform")
+		output      = flag.String("o", "", "Output directory for build artifacts")
 	)
 	flag.CommandLine.Parse(cmdline)
 
 	// Configure the toolchain.
-	tc := build.GoToolchain{GOARCH: *arch, CC: *cc}
+	tc := build.GoToolchain{GOARCH: *arch, CC: *cc, CCForTarget: *ccForTarget}
 	if *dlgo {
 		csdb := build.MustLoadChecksums("build/checksums.txt")
 		tc.Root = build.DownloadGo(csdb, dlgoVersion)
