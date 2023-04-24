@@ -689,15 +689,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		headers[i], headers[len(headers)-1-i] = headers[len(headers)-1-i], headers[i]
 	}
 
-	verifiedAttestations := make(map[common.Hash]struct{}, len(headers))
-	for index, header := range headers {
-		// vote attestation should be checked here to decide whether to update attestation of snapshot between [Luban,Plato)
-		// because err of verifyVoteAttestation is ignored when importing blocks and headers before Plato.
-		if p.chainConfig.IsLuban(header.Number) && !p.chainConfig.IsPlato(header.Number) && p.verifyVoteAttestation(chain, header, headers[:index]) == nil {
-			verifiedAttestations[header.Hash()] = struct{}{}
-		}
-	}
-	snap, err := snap.apply(headers, chain, parents, p.chainConfig, verifiedAttestations)
+	snap, err := snap.apply(headers, chain, parents, p.chainConfig)
 	if err != nil {
 		return nil, err
 	}
