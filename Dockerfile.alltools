@@ -29,3 +29,7 @@ ARG VERSION=""
 ARG BUILDNUM=""
 
 LABEL commit="$COMMIT" version="$VERSION" buildnum="$BUILDNUM"
+
+# For blst runtime env
+ENV CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
+ENV CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"

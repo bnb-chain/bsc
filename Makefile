@@ -17,16 +17,7 @@ geth:
 	@echo "Done building."
 	@echo "Run \"$(GOBIN)/geth\" to launch geth."
 
-geth-linux-arm: geth-linux-arm5 geth-linux-arm6 geth-linux-arm7 geth-linux-arm64
-
-geth-linux-arm5:
-	GOARM=5 $(GORUN) build/ci.go install -arch=arm -o=build/bin/geth-linux-arm-5 ./cmd/geth
-
-geth-linux-arm6:
-	GOARM=6 $(GORUN) build/ci.go install -arch=arm -o=build/bin/geth-linux-arm-6 ./cmd/geth
-
-geth-linux-arm7:
-	GOARM=7 $(GORUN) build/ci.go install -arch=arm -o=build/bin/geth-linux-arm-7 ./cmd/geth
+geth-linux-arm: geth-linux-arm64
 
 geth-linux-arm64:
 	$(GORUN) build/ci.go install -arch=arm64 -o=build/bin/geth-linux-arm64 ./cmd/geth
