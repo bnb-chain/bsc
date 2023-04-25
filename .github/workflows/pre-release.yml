@@ -44,8 +44,17 @@ jobs:
       # ==============================
 
       - name: Build Binary for ${{matrix.os}}
-        env:
-          CGO_ENABLED: "0"
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          go mod download
+          wget https://musl.cc/x86_64-linux-musl-cross.tgz
+          tar -xvf ./x86_64-linux-musl-cross.tgz
+          GIT_COMMIT=$(git rev-parse HEAD)
+          GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC=$(pwd)/x86_64-linux-musl-cross/bin/x86_64-linux-musl-gcc go build -ldflags "-X main.gitCommit=$GIT_COMMIT -X main.gitDate=$GIT_COMMIT_DATE -extldflags=-static" -o ./build/bin/geth -a ./cmd/geth
+      
+      - name: Build Binary for ${{matrix.os}}
+        if: matrix.os != 'ubuntu-latest'
         run: |
           go mod download
           make geth
@@ -58,7 +67,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod download
-          make geth-linux-arm
+          wget https://musl.cc/aarch64-linux-musl-cross.tgz
+          tar -xvf ./aarch64-linux-musl-cross.tgz
+          GIT_COMMIT=$(git rev-parse HEAD)
+          GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=$(pwd)/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc go build -ldflags "-X main.gitCommit=$GIT_COMMIT -X main.gitDate=$GIT_COMMIT_DATE -extldflags=-static" -o ./build/bin/geth-linux-arm64 -a ./cmd/geth
+
       # ==============================
       #       Upload artifacts
       # ==============================
@@ -83,27 +97,6 @@ jobs:
         with:
           name: windows
           path: ./build/bin/geth.exe
-
-      - name: Upload ARM-5 Build
-        uses: actions/upload-artifact@v3
-        if: matrix.os == 'ubuntu-latest'
-        with:
-          name: arm5
-          path: ./build/bin/geth-linux-arm-5
-      
-      - name: Upload ARM-6 Build
-        uses: actions/upload-artifact@v3
-        if: matrix.os == 'ubuntu-latest'
-        with:
-          name: arm6
-          path: ./build/bin/geth-linux-arm-6
-
-      - name: Upload ARM-7 Build
-        uses: actions/upload-artifact@v3
-        if: matrix.os == 'ubuntu-latest'
-        with:
-          name: arm7
-          path: ./build/bin/geth-linux-arm-7
 
       - name: Upload ARM-64 Build
         uses: actions/upload-artifact@v3
@@ -148,24 +141,6 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v3
         with:
-          name: arm5
-          path: ./arm5
-      
-      - name: Download Artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: arm6
-          path: ./arm6
-      
-      - name: Download Artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: arm7
-          path: ./arm7
-      
-      - name: Download Artifacts
-        uses: actions/download-artifact@v3
-        with:
           name: arm64
           path: ./arm64
       
@@ -204,7 +179,4 @@ jobs:
             ./linux/geth_linux
             ./macos/geth_macos
             ./windows/geth_windows.exe
-            ./arm5/geth-linux-arm-5
-            ./arm6/geth-linux-arm-6
-            ./arm7/geth-linux-arm-7
             ./arm64/geth-linux-arm64

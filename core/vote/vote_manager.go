@@ -180,7 +180,11 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 	}
 
 	//Rule 2: A validator must not vote within the span of its other votes.
-	for blockNumber := sourceNumber + 1; blockNumber < targetNumber; blockNumber++ {
+	blockNumber := sourceNumber + 1
+	if blockNumber+maliciousVoteSlashScope < targetNumber {
+		blockNumber = targetNumber - maliciousVoteSlashScope
+	}
+	for ; blockNumber < targetNumber; blockNumber++ {
 		if voteDataBuffer.Contains(blockNumber) {
 			voteData, ok := voteDataBuffer.Get(blockNumber)
 			if !ok {
@@ -188,7 +192,8 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				continue
 			}
 			if voteData.(*types.VoteData).SourceNumber > sourceNumber {
-				log.Debug("error: cur vote is within the span of other votes")
+				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is within the span of other votes %d-->%d",
+					sourceNumber, targetNumber, voteData.(*types.VoteData).SourceNumber, voteData.(*types.VoteData).TargetNumber))
 				return false, 0, common.Hash{}
 			}
 		}

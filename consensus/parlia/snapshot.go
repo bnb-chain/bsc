@@ -21,15 +21,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
+
+	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	lru "github.com/hashicorp/golang-lru"
 )
 
 // Snapshot is the state of the validatorSet at a given point.
@@ -174,9 +177,24 @@ func (s *Snapshot) isMajorityFork(forkHash string) bool {
 }
 
 func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) {
+	if !chainConfig.IsLuban(header.Number) {
+		return
+	}
+
 	// The attestation should have been checked in verify header, update directly
 	attestation, _ := getVoteAttestationFromHeader(header, chainConfig, parliaConfig)
 	if attestation == nil {
+		return
+	}
+
+	// Headers with bad attestation are accepted before Plato upgrade,
+	// but Attestation of snapshot is only updated when the target block is direct parent of the header
+	targetNumber := attestation.Data.TargetNumber
+	targetHash := attestation.Data.TargetHash
+	if targetHash != header.ParentHash || targetNumber+1 != header.Number.Uint64() {
+		log.Warn("updateAttestation failed", "error", fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
+			header.Number.Uint64()-1, header.ParentHash, targetNumber, targetHash))
+		updateAttestationFailedGauge.Inc(1)
 		return
 	}
 
@@ -189,7 +207,7 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 	}
 }
 
-func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig, verifiedAttestations map[common.Hash]struct{}) (*Snapshot, error) {
+func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig) (*Snapshot, error) {
 	// Allow passing in no headers for cleaner code
 	if len(headers) == 0 {
 		return s, nil
@@ -280,10 +298,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			}
 		}
 
-		_, voteAssestationNoErr := verifiedAttestations[header.Hash()]
-		if chainConfig.IsPlato(header.Number) || (chainConfig.IsLuban(header.Number) && voteAssestationNoErr) {
-			snap.updateAttestation(header, chainConfig, s.config)
-		}
+		snap.updateAttestation(header, chainConfig, s.config)
 
 		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
 	}

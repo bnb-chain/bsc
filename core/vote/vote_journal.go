@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	maxSizeOfRecentEntry = 512
+	maxSizeOfRecentEntry    = 512
+	maliciousVoteSlashScope = 256
 )
 
 type VoteJournal struct {
