@@ -251,6 +251,7 @@ func (s *StateDB) StopPrefetcher() {
 	s.prefetcherLock.Lock()
 	if s.prefetcher != nil {
 		s.prefetcher.close()
+		s.prefetcher = nil
 	}
 	s.prefetcherLock.Unlock()
 }
@@ -454,6 +455,14 @@ func (s *StateDB) GetCode(addr common.Address) []byte {
 		return stateObject.Code(s.db)
 	}
 	return nil
+}
+
+func (s *StateDB) GetRoot(addr common.Address) common.Hash {
+	stateObject := s.getStateObject(addr)
+	if stateObject != nil {
+		return stateObject.data.Root
+	}
+	return common.Hash{}
 }
 
 func (s *StateDB) GetCodeSize(addr common.Address) int {

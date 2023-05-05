@@ -21,16 +21,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"math/big"
+	"fmt"
 	"sort"
+
+	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	lru "github.com/hashicorp/golang-lru"
 )
 
 // Snapshot is the state of the validatorSet at a given point.
@@ -39,11 +41,17 @@ type Snapshot struct {
 	ethAPI   *ethapi.PublicBlockChainAPI
 	sigCache *lru.ARCCache // Cache of recent block signatures to speed up ecrecover
 
-	Number           uint64                      `json:"number"`             // Block number where the snapshot was created
-	Hash             common.Hash                 `json:"hash"`               // Block hash where the snapshot was created
-	Validators       map[common.Address]struct{} `json:"validators"`         // Set of authorized validators at this moment
-	Recents          map[uint64]common.Address   `json:"recents"`            // Set of recent validators for spam protections
-	RecentForkHashes map[uint64]string           `json:"recent_fork_hashes"` // Set of recent forkHash
+	Number           uint64                            `json:"number"`                // Block number where the snapshot was created
+	Hash             common.Hash                       `json:"hash"`                  // Block hash where the snapshot was created
+	Validators       map[common.Address]*ValidatorInfo `json:"validators"`            // Set of authorized validators at this moment
+	Recents          map[uint64]common.Address         `json:"recents"`               // Set of recent validators for spam protections
+	RecentForkHashes map[uint64]string                 `json:"recent_fork_hashes"`    // Set of recent forkHash
+	Attestation      *types.VoteData                   `json:"attestation:omitempty"` // Attestation for fast finality
+}
+
+type ValidatorInfo struct {
+	Index       int                `json:"index:omitempty"` // The index should offset by 1
+	VoteAddress types.BLSPublicKey `json:"vote_address,omitempty"`
 }
 
 // newSnapshot creates a new snapshot with the specified startup parameters. This
@@ -55,6 +63,7 @@ func newSnapshot(
 	number uint64,
 	hash common.Hash,
 	validators []common.Address,
+	voteAddrs []types.BLSPublicKey,
 	ethAPI *ethapi.PublicBlockChainAPI,
 ) *Snapshot {
 	snap := &Snapshot{
@@ -65,10 +74,25 @@ func newSnapshot(
 		Hash:             hash,
 		Recents:          make(map[uint64]common.Address),
 		RecentForkHashes: make(map[uint64]string),
-		Validators:       make(map[common.Address]struct{}),
+		Validators:       make(map[common.Address]*ValidatorInfo),
 	}
-	for _, v := range validators {
-		snap.Validators[v] = struct{}{}
+	for idx, v := range validators {
+		// The luban fork from the genesis block
+		if len(voteAddrs) == len(validators) {
+			snap.Validators[v] = &ValidatorInfo{
+				VoteAddress: voteAddrs[idx],
+			}
+		} else {
+			snap.Validators[v] = &ValidatorInfo{}
+		}
+	}
+
+	// The luban fork from the genesis block
+	if len(voteAddrs) == len(validators) {
+		validators := snap.validators()
+		for idx, v := range validators {
+			snap.Validators[v].Index = idx + 1 // offset by 1
+		}
 	}
 	return snap
 }
@@ -114,19 +138,30 @@ func (s *Snapshot) copy() *Snapshot {
 		sigCache:         s.sigCache,
 		Number:           s.Number,
 		Hash:             s.Hash,
-		Validators:       make(map[common.Address]struct{}),
+		Validators:       make(map[common.Address]*ValidatorInfo),
 		Recents:          make(map[uint64]common.Address),
 		RecentForkHashes: make(map[uint64]string),
 	}
 
 	for v := range s.Validators {
-		cpy.Validators[v] = struct{}{}
+		cpy.Validators[v] = &ValidatorInfo{
+			Index:       s.Validators[v].Index,
+			VoteAddress: s.Validators[v].VoteAddress,
+		}
 	}
 	for block, v := range s.Recents {
 		cpy.Recents[block] = v
 	}
 	for block, id := range s.RecentForkHashes {
 		cpy.RecentForkHashes[block] = id
+	}
+	if s.Attestation != nil {
+		cpy.Attestation = &types.VoteData{
+			SourceNumber: s.Attestation.SourceNumber,
+			SourceHash:   s.Attestation.SourceHash,
+			TargetNumber: s.Attestation.TargetNumber,
+			TargetHash:   s.Attestation.TargetHash,
+		}
 	}
 	return cpy
 }
@@ -141,7 +176,38 @@ func (s *Snapshot) isMajorityFork(forkHash string) bool {
 	return ally > len(s.RecentForkHashes)/2
 }
 
-func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainId *big.Int) (*Snapshot, error) {
+func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) {
+	if !chainConfig.IsLuban(header.Number) {
+		return
+	}
+
+	// The attestation should have been checked in verify header, update directly
+	attestation, _ := getVoteAttestationFromHeader(header, chainConfig, parliaConfig)
+	if attestation == nil {
+		return
+	}
+
+	// Headers with bad attestation are accepted before Plato upgrade,
+	// but Attestation of snapshot is only updated when the target block is direct parent of the header
+	targetNumber := attestation.Data.TargetNumber
+	targetHash := attestation.Data.TargetHash
+	if targetHash != header.ParentHash || targetNumber+1 != header.Number.Uint64() {
+		log.Warn("updateAttestation failed", "error", fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
+			header.Number.Uint64()-1, header.ParentHash, targetNumber, targetHash))
+		updateAttestationFailedGauge.Inc(1)
+		return
+	}
+
+	// Update attestation
+	s.Attestation = &types.VoteData{
+		SourceNumber: attestation.Data.SourceNumber,
+		SourceHash:   attestation.Data.SourceHash,
+		TargetNumber: attestation.Data.TargetNumber,
+		TargetHash:   attestation.Data.TargetHash,
+	}
+}
+
+func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig) (*Snapshot, error) {
 	// Allow passing in no headers for cleaner code
 	if len(headers) == 0 {
 		return s, nil
@@ -174,7 +240,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			delete(snap.RecentForkHashes, number-limit)
 		}
 		// Resolve the authorization key and check against signers
-		validator, err := ecrecover(header, s.sigCache, chainId)
+		validator, err := ecrecover(header, s.sigCache, chainConfig.ChainID)
 		if err != nil {
 			return nil, err
 		}
@@ -194,15 +260,20 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				return nil, consensus.ErrUnknownAncestor
 			}
 
-			validatorBytes := checkpointHeader.Extra[extraVanity : len(checkpointHeader.Extra)-extraSeal]
 			// get validators from headers and use that for new validator set
-			newValArr, err := ParseValidators(validatorBytes)
+			newValArr, voteAddrs, err := parseValidators(checkpointHeader, chainConfig, s.config)
 			if err != nil {
 				return nil, err
 			}
-			newVals := make(map[common.Address]struct{}, len(newValArr))
-			for _, val := range newValArr {
-				newVals[val] = struct{}{}
+			newVals := make(map[common.Address]*ValidatorInfo, len(newValArr))
+			for idx, val := range newValArr {
+				if !chainConfig.IsLuban(header.Number) {
+					newVals[val] = &ValidatorInfo{}
+				} else {
+					newVals[val] = &ValidatorInfo{
+						VoteAddress: voteAddrs[idx],
+					}
+				}
 			}
 			oldLimit := len(snap.Validators)/2 + 1
 			newLimit := len(newVals)/2 + 1
@@ -219,7 +290,16 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				}
 			}
 			snap.Validators = newVals
+			if chainConfig.IsLuban(header.Number) {
+				validators := snap.validators()
+				for idx, val := range validators {
+					snap.Validators[val].Index = idx + 1 // offset by 1
+				}
+			}
 		}
+
+		snap.updateAttestation(header, chainConfig, s.config)
+
 		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
 	}
 	snap.Number += uint64(len(headers))
@@ -265,6 +345,10 @@ func (s *Snapshot) enoughDistance(validator common.Address, header *types.Header
 }
 
 func (s *Snapshot) indexOfVal(validator common.Address) int {
+	if validator, ok := s.Validators[validator]; ok && validator.Index > 0 {
+		return validator.Index - 1 // Index is offset by 1
+	}
+
 	validators := s.validators()
 	for idx, val := range validators {
 		if val == validator {
@@ -280,18 +364,29 @@ func (s *Snapshot) supposeValidator() common.Address {
 	return validators[index]
 }
 
-func ParseValidators(validatorsBytes []byte) ([]common.Address, error) {
-	if len(validatorsBytes)%validatorBytesLength != 0 {
-		return nil, errors.New("invalid validators bytes")
+func parseValidators(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) ([]common.Address, []types.BLSPublicKey, error) {
+	validatorsBytes := getValidatorBytesFromHeader(header, chainConfig, parliaConfig)
+	if len(validatorsBytes) == 0 {
+		return nil, nil, errors.New("invalid validators bytes")
 	}
+
+	if !chainConfig.IsLuban(header.Number) {
+		n := len(validatorsBytes) / validatorBytesLengthBeforeLuban
+		result := make([]common.Address, n)
+		for i := 0; i < n; i++ {
+			result[i] = common.BytesToAddress(validatorsBytes[i*validatorBytesLengthBeforeLuban : (i+1)*validatorBytesLengthBeforeLuban])
+		}
+		return result, nil, nil
+	}
+
 	n := len(validatorsBytes) / validatorBytesLength
-	result := make([]common.Address, n)
+	cnsAddrs := make([]common.Address, n)
+	voteAddrs := make([]types.BLSPublicKey, n)
 	for i := 0; i < n; i++ {
-		address := make([]byte, validatorBytesLength)
-		copy(address, validatorsBytes[i*validatorBytesLength:(i+1)*validatorBytesLength])
-		result[i] = common.BytesToAddress(address)
+		cnsAddrs[i] = common.BytesToAddress(validatorsBytes[i*validatorBytesLength : i*validatorBytesLength+common.AddressLength])
+		copy(voteAddrs[i][:], validatorsBytes[i*validatorBytesLength+common.AddressLength:(i+1)*validatorBytesLength])
 	}
-	return result, nil
+	return cnsAddrs, voteAddrs, nil
 }
 
 func FindAncientHeader(header *types.Header, ite uint64, chain consensus.ChainHeaderReader, candidateParents []*types.Header) *types.Header {

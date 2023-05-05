@@ -21,7 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// NewTxsEvent is posted when a batch of transactions enter the transaction pool.
+// NewTxsEvent is posted when a batch of transactions enters the transaction pool.
 type NewTxsEvent struct{ Txs []*types.Transaction }
 
 // ReannoTxsEvent is posted when a batch of local pending transactions exceed a specified duration.
@@ -32,6 +32,12 @@ type NewMinedBlockEvent struct{ Block *types.Block }
 
 // RemovedLogsEvent is posted when a reorg happens
 type RemovedLogsEvent struct{ Logs []*types.Log }
+
+// NewVoteEvent is posted when a batch of votes enters the vote pool.
+type NewVoteEvent struct{ Vote *types.VoteEnvelope }
+
+// FinalizedHeaderEvent is posted when a finalized header is reached.
+type FinalizedHeaderEvent struct{ Header *types.Header }
 
 type ChainEvent struct {
 	Block *types.Block

@@ -136,10 +136,11 @@ func (p *testTxPool) SubscribeReannoTxsEvent(ch chan<- core.ReannoTxsEvent) even
 // preinitialized with some sane testing defaults and the transaction pool mocked
 // out.
 type testHandler struct {
-	db      ethdb.Database
-	chain   *core.BlockChain
-	txpool  *testTxPool
-	handler *handler
+	db       ethdb.Database
+	chain    *core.BlockChain
+	txpool   *testTxPool
+	votepool *testVotePool
+	handler  *handler
 }
 
 // newTestHandler creates a new handler for testing purposes with no blocks.
@@ -164,12 +165,14 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 		panic(err)
 	}
 	txpool := newTestTxPool()
+	votepool := newTestVotePool()
 
 	handler, _ := newHandler(&handlerConfig{
 		Database:   db,
 		Chain:      chain,
 		TxPool:     txpool,
 		Merger:     consensus.NewMerger(rawdb.NewMemoryDatabase()),
+		VotePool:   votepool,
 		Network:    1,
 		Sync:       downloader.SnapSync,
 		BloomCache: 1,
@@ -177,10 +180,11 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 	handler.Start(1000)
 
 	return &testHandler{
-		db:      db,
-		chain:   chain,
-		txpool:  txpool,
-		handler: handler,
+		db:       db,
+		chain:    chain,
+		txpool:   txpool,
+		votepool: votepool,
+		handler:  handler,
 	}
 }
 
@@ -188,4 +192,46 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 func (b *testHandler) close() {
 	b.handler.Stop()
 	b.chain.Stop()
+}
+
+// newTestVotePool creates a mock vote pool.
+type testVotePool struct {
+	pool map[common.Hash]*types.VoteEnvelope // Hash map of collected votes
+
+	voteFeed event.Feed   // Notification feed to allow waiting for inclusion
+	lock     sync.RWMutex // Protects the vote pool
+}
+
+// newTestVotePool creates a mock vote pool.
+func newTestVotePool() *testVotePool {
+	return &testVotePool{
+		pool: make(map[common.Hash]*types.VoteEnvelope),
+	}
+}
+
+func (t *testVotePool) PutVote(vote *types.VoteEnvelope) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	t.pool[vote.Hash()] = vote
+	t.voteFeed.Send(core.NewVoteEvent{Vote: vote})
+}
+
+func (t *testVotePool) FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {
+	panic("implement me")
+}
+
+func (t *testVotePool) GetVotes() []*types.VoteEnvelope {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	votes := make([]*types.VoteEnvelope, 0, len(t.pool))
+	for _, vote := range t.pool {
+		votes = append(votes, vote)
+	}
+	return votes
+}
+
+func (t *testVotePool) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {
+	return t.voteFeed.Subscribe(ch)
 }

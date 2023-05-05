@@ -204,6 +204,17 @@ type Config struct {
 
 	// EnableDoubleSignMonitor is a flag that whether to enable the double signature checker
 	EnableDoubleSignMonitor bool `toml:",omitempty"`
+
+	// BLSPasswordFile is the file that contains BLS wallet password.
+	BLSPasswordFile string `toml:",omitempty"`
+
+	// BLSWalletDir is the file system folder of BLS wallet. The directory can
+	// be specified as a relative path, in which case it is resolved relative to the
+	// current directory.
+	BLSWalletDir string `toml:",omitempty"`
+
+	// VoteJournalDir is the directory to store votes in the fast finality feature.
+	VoteJournalDir string `toml:",omitempty"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into
@@ -502,13 +513,13 @@ func (c *Config) warnOnce(w *bool, format string, args ...interface{}) {
 }
 
 type LogConfig struct {
-	FileRoot     *string
-	FilePath     *string
-	MaxBytesSize *uint
-	Level        *string
+	FileRoot     *string `toml:",omitempty"`
+	FilePath     *string `toml:",omitempty"`
+	MaxBytesSize *uint   `toml:",omitempty"`
+	Level        *string `toml:",omitempty"`
 
 	// TermTimeFormat is the time format used for console logging.
-	TermTimeFormat *string
+	TermTimeFormat *string `toml:",omitempty"`
 	// TimeFormat is the time format used for file logging.
-	TimeFormat *string
+	TimeFormat *string `toml:",omitempty"`
 }

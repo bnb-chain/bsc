@@ -52,3 +52,5 @@ czejn
 **/yarn-error.log
 cmd/geth/node/
 cmd/geth/__debug_bin
+cmd/bootnode/bootnode
+graphql/__debug_bin

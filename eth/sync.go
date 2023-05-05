@@ -60,6 +60,15 @@ func (h *handler) syncTransactions(p *eth.Peer) {
 	p.AsyncSendPooledTransactionHashes(hashes)
 }
 
+// syncVotes starts sending all currently pending votes to the given peer.
+func (h *handler) syncVotes(p *bscPeer) {
+	votes := h.votepool.GetVotes()
+	if len(votes) == 0 {
+		return
+	}
+	p.AsyncSendVotes(votes)
+}
+
 // chainSyncer coordinates blockchain sync components.
 type chainSyncer struct {
 	handler     *handler

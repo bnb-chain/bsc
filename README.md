@@ -61,7 +61,7 @@ Many of the below are the same as or similar to go-ethereum.
 
 For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
 
-Building `geth` requires both a Go (version 1.18 or later) and a C compiler. You can install
+Building `geth` requires both a Go (version 1.19 or later) and a C compiler. You can install
 them using your favourite package manager. Once the dependencies are installed, run
 
 ```shell
@@ -72,6 +72,16 @@ or, to build the full suite of utilities:
 
 ```shell
 make all
+```
+
+If you get such error when running the node with self built binary:
+```shell
+Caught SIGILL in blst_cgo_init, consult <blst>/bindinds/go/README.md.
+```
+please try to add the following environment variables and build again:
+```shell
+export CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
+export CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
 ```
 
 ## Executables

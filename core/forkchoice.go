@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -35,6 +36,12 @@ import (
 type ChainReader interface {
 	// Config retrieves the header chain's chain configuration.
 	Config() *params.ChainConfig
+
+	// Engine retrieves the blockchain's consensus engine.
+	Engine() consensus.Engine
+
+	// GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`
+	GetJustifiedNumber(header *types.Header) uint64
 
 	// GetTd returns the total difficulty of a local block.
 	GetTd(common.Hash, uint64) *big.Int
@@ -69,12 +76,12 @@ func NewForkChoice(chainReader ChainReader, preserve func(header *types.Header) 
 	}
 }
 
-// ReorgNeeded returns whether the reorg should be applied
+// reorgNeeded returns whether the reorg should be applied
 // based on the given external header and local canonical chain.
 // In the td mode, the new head is chosen if the corresponding
 // total difficulty is higher. In the extern mode, the trusted
 // header is always selected as the head.
-func (f *ForkChoice) ReorgNeeded(current *types.Header, header *types.Header) (bool, error) {
+func (f *ForkChoice) reorgNeeded(current *types.Header, header *types.Header) (bool, error) {
 	var (
 		localTD  = f.chain.GetTd(current.Hash(), current.Number.Uint64())
 		externTd = f.chain.GetTd(header.Hash(), header.Number.Uint64())
@@ -105,4 +112,25 @@ func (f *ForkChoice) ReorgNeeded(current *types.Header, header *types.Header) (b
 		}
 	}
 	return reorg, nil
+}
+
+// ReorgNeededWithFastFinality compares justified block numbers firstly, backoff to compare tds when equal
+func (f *ForkChoice) ReorgNeededWithFastFinality(current *types.Header, header *types.Header) (bool, error) {
+	_, ok := f.chain.Engine().(consensus.PoSA)
+	if !ok {
+		return f.reorgNeeded(current, header)
+	}
+
+	justifiedNumber, curJustifiedNumber := uint64(0), uint64(0)
+	if f.chain.Config().IsPlato(header.Number) {
+		justifiedNumber = f.chain.GetJustifiedNumber(header)
+	}
+	if f.chain.Config().IsPlato(current.Number) {
+		curJustifiedNumber = f.chain.GetJustifiedNumber(current)
+	}
+	if justifiedNumber == curJustifiedNumber {
+		return f.reorgNeeded(current, header)
+	}
+
+	return justifiedNumber > curJustifiedNumber, nil
 }
