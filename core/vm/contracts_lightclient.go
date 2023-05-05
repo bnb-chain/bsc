@@ -193,6 +193,12 @@ func (c *iavlMerkleProofValidatePlato) RequiredGas(_ []byte) uint64 {
 
 func (c *iavlMerkleProofValidatePlato) Run(input []byte) (result []byte, err error) {
 	c.basicIavlMerkleProofValidate.proofRuntime = v1.Ics23ProofRuntime()
+	c.basicIavlMerkleProofValidate.verifiers = []merkle.ProofOpVerifier{
+		forbiddenAbsenceOpVerifier,
+		singleValueOpVerifier,
+		multiStoreOpVerifier,
+		forbiddenSimpleValueOpVerifier,
+	}
 	c.basicIavlMerkleProofValidate.keyVerifier = keyVerifier
 	c.basicIavlMerkleProofValidate.opsVerifier = proofOpsVerifier
 	return c.basicIavlMerkleProofValidate.Run(input)

@@ -231,7 +231,7 @@ func init() {
 		PrecompiledAddressesLuban = append(PrecompiledAddressesLuban, k)
 	}
 	for k := range PrecompiledContractsPlato {
-		PrecompiledAddressesLuban = append(PrecompiledAddressesLuban, k)
+		PrecompiledAddressesPlato = append(PrecompiledAddressesPlato, k)
 	}
 }
 
