@@ -75,9 +75,9 @@ var (
 	diffInTurn = big.NewInt(2)            // Block difficulty for in-turn signatures
 	diffNoTurn = big.NewInt(1)            // Block difficulty for out-of-turn signatures
 	// 100 native token
-	maxSystemBalance                 = new(big.Int).Mul(big.NewInt(100), big.NewInt(params.Ether))
-	verifyVoteAttestationFailedGauge = metrics.NewRegisteredGauge("parlia/verifyVoteAttestationFailed", nil)
-	updateAttestationFailedGauge     = metrics.NewRegisteredGauge("parlia/updateAttestationFailed", nil)
+	maxSystemBalance                  = new(big.Int).Mul(big.NewInt(100), big.NewInt(params.Ether))
+	verifyVoteAttestationErrorCounter = metrics.NewRegisteredCounter("parlia/verifyVoteAttestation/error", nil)
+	updateAttestationErrorCounter     = metrics.NewRegisteredCounter("parlia/updateAttestation/error", nil)
 
 	systemContracts = map[common.Address]bool{
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
@@ -599,7 +599,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 
 	// Verify vote attestation for fast finality.
 	if err := p.verifyVoteAttestation(chain, header, parents); err != nil {
-		verifyVoteAttestationFailedGauge.Inc(1)
+		verifyVoteAttestationErrorCounter.Inc(1)
 		if chain.Config().IsPlato(header.Number) {
 			return err
 		}

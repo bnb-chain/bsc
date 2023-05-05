@@ -14,6 +14,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+var votesManagerCounter = metrics.NewRegisteredCounter("votesManager/local", nil)
+
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {
 	mux *event.TypeMux
@@ -138,19 +140,19 @@ func (voteManager *VoteManager) loop() {
 				voteMessage.Data.SourceHash = sourceHash
 
 				if err := voteManager.signer.SignVote(voteMessage); err != nil {
-					log.Error("Failed to sign vote", "err", err)
-					votesSigningErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
+					log.Error("Failed to sign vote", "err", err, "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
+					votesSigningErrorCounter.Inc(1)
 					continue
 				}
 				if err := voteManager.journal.WriteVote(voteMessage); err != nil {
 					log.Error("Failed to write vote into journal", "err", err)
-					voteJournalError.Inc(1)
+					voteJournalErrorCounter.Inc(1)
 					continue
 				}
 
 				log.Debug("vote manager produced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
-				votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
+				votesManagerCounter.Inc(1)
 			}
 		case <-voteManager.chainHeadSub.Err():
 			log.Debug("voteManager subscribed chainHead failed")
@@ -216,9 +218,4 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 	// Since the header subscribed to is the canonical chain, so this rule is satisified by default.
 	log.Debug("All three rules check passed")
 	return true, sourceNumber, sourceHash
-}
-
-// Metrics to monitor if voteManager worked in the expetected logic.
-func votesManagerMetric(blockNumber uint64, blockHash common.Hash) metrics.Gauge {
-	return metrics.GetOrRegisterGauge(fmt.Sprintf("voteManager/blockNumber/%d/blockHash/%s", blockNumber, blockHash), nil)
 }
