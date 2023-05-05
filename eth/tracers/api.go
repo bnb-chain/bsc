@@ -887,6 +887,127 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	return api.traceTx(ctx, msg, new(Context), vmctx, statedb, traceConfig)
 }
 
+type SimulatedTx struct {
+	ethapi.TransactionArgs
+	Id string `json:"id"`
+}
+
+type GroupBundle struct {
+	Id          string          `json:"id"`
+	Txs         []SimulatedTx   `json:"txs"`
+	BlockNumber rpc.BlockNumber `json:"blockNumber"`
+	Timestamp   uint64          `json:"timestamp"`
+}
+
+type TraceCallBundleArgs struct {
+	Bundles                []GroupBundle         `json:"bundles"`
+	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
+	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
+	Timestamp              uint64                `json:"timestamp"`
+}
+
+func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (interface{}, error) {
+	// Try to retrieve the specified block
+	var (
+		err   error
+		block *types.Block
+	)
+	if hash, ok := blockNrOrHash.Hash(); ok {
+		block, err = api.blockByHash(ctx, hash)
+	} else if number, ok := blockNrOrHash.Number(); ok {
+		block, err = api.blockByNumber(ctx, number)
+	} else {
+		return nil, errors.New("invalid arguments; neither block nor hash specified")
+	}
+	if err != nil {
+		return nil, err
+	}
+	// try to recompute the state
+	reexec := defaultTraceReexec
+	if config != nil && config.Reexec != nil {
+		reexec = *config.Reexec
+	}
+	statedb, err := api.backend.StateAtBlock(ctx, block, reexec, nil, true, false)
+	if err != nil {
+		return nil, err
+	}
+	// Apply the customized state rules if required.
+	if config != nil {
+		if err := config.StateOverrides.Apply(statedb); err != nil {
+			return nil, err
+		}
+	}
+
+	var traceConfig *TraceConfig
+	if config != nil {
+		traceConfig = &config.TraceConfig
+	}
+	results := []map[string]interface{}{}
+
+	for _, bundle := range args.Bundles {
+		header := block.Header()
+		if bundle.BlockNumber != 0 {
+			header.Number = big.NewInt(int64(bundle.BlockNumber))
+		}
+		if bundle.Timestamp != 0 {
+			header.Time = bundle.Timestamp
+		}
+
+		vmctx := core.NewEVMBlockContext(header, api.chainContext(ctx), nil)
+
+		bundleResults := []map[string]interface{}{}
+		bundleJsonResult := map[string]interface{}{}
+		bundleJsonResult["id"] = bundle.Id
+		bundleJsonResult["blockNumber"] = header.Number
+		bundleJsonResult["timestamp"] = header.Time
+
+		for i, encodedTx := range bundle.Txs {
+			tx := encodedTx.ToTransaction()
+
+			msg, err := encodedTx.ToMessage(api.backend.RPCGasCap(), block.BaseFee())
+			if err != nil {
+				return nil, err
+			}
+
+			txctx := &Context{
+				//BlockHash: blockHash,
+				TxIndex: i,
+				TxHash:  tx.Hash(),
+			}
+
+			traceRes, err := api.traceTx(ctx, msg, txctx, vmctx, statedb, traceConfig)
+			if err != nil {
+				jsonResult := map[string]interface{}{
+					"id":    bundle.Txs[i].Id,
+					"error": fmt.Sprintf("%s", err),
+				}
+				bundleResults = append(bundleResults, jsonResult)
+			} else {
+				jsonResult := map[string]interface{}{
+					"id":     bundle.Txs[i].Id,
+					"result": traceRes,
+				}
+				bundleResults = append(bundleResults, jsonResult)
+			}
+
+			statedb.Prepare(tx.Hash(), i)
+			vmenv := vm.NewEVM(vmctx, core.NewEVMTxContext(msg), statedb, api.backend.ChainConfig(), vm.Config{})
+			if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas())); err != nil {
+				//failed = err
+				break
+			}
+			statedb.Finalise(vmenv.ChainConfig().IsEIP158(block.Number()))
+		}
+
+		bundleJsonResult["txs"] = bundleResults
+		results = append(results, bundleJsonResult)
+	}
+	ret := map[string]interface{}{}
+	ret["results"] = results
+
+	return ret, nil
+}
+
 // traceTx configures a new tracer according to the provided configuration, and
 // executes the given message in the provided environment. The return value will
 // be tracer dependent.
