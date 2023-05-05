@@ -854,6 +854,7 @@ type Rules struct {
 	IsMoran                                                 bool
 	IsPlanck                                                bool
 	IsLuban                                                 bool
+	IsPlato                                                 bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -879,5 +880,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		IsMoran:          c.IsMoran(num),
 		IsPlanck:         c.IsPlanck(num),
 		IsLuban:          c.IsLuban(num),
+		IsPlato:          c.IsPlato(num),
 	}
 }
