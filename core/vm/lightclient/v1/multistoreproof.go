@@ -143,3 +143,10 @@ func Ics23CompatibleProofRuntime() (prt *merkle.ProofRuntime) {
 	prt.RegisterOpDecoder(ProofOpSimpleMerkleCommitment, CommitmentOpDecoder)
 	return
 }
+
+func Ics23ProofRuntime() (prt *merkle.ProofRuntime) {
+	prt = merkle.NewProofRuntime()
+	prt.RegisterOpDecoder(ProofOpIAVLCommitment, CommitmentOpDecoder)
+	prt.RegisterOpDecoder(ProofOpSimpleMerkleCommitment, CommitmentOpDecoder)
+	return
+}
