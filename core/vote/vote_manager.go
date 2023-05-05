@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-var votesManagerCount = metrics.NewRegisteredGauge("votesManager/count", nil)
+var votesManagerCounter = metrics.NewRegisteredCounter("votesManager/local", nil)
 
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {
@@ -141,18 +141,18 @@ func (voteManager *VoteManager) loop() {
 
 				if err := voteManager.signer.SignVote(voteMessage); err != nil {
 					log.Error("Failed to sign vote", "err", err, "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
-					votesSigningError.Inc(1)
+					votesSigningErrorCounter.Inc(1)
 					continue
 				}
 				if err := voteManager.journal.WriteVote(voteMessage); err != nil {
 					log.Error("Failed to write vote into journal", "err", err)
-					voteJournalError.Inc(1)
+					voteJournalErrorCounter.Inc(1)
 					continue
 				}
 
 				log.Debug("vote manager produced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
-				votesManagerCount.Inc(1)
+				votesManagerCounter.Inc(1)
 			}
 		case <-voteManager.chainHeadSub.Err():
 			log.Debug("voteManager subscribed chainHead failed")

@@ -24,7 +24,7 @@ type VoteJournal struct {
 	voteDataBuffer *lru.Cache
 }
 
-var voteJournalError = metrics.NewRegisteredGauge("voteJournal/error", nil)
+var voteJournalErrorCounter = metrics.NewRegisteredCounter("voteJournal/error", nil)
 
 func NewVoteJournal(filePath string) (*VoteJournal, error) {
 	walLog, err := wal.Open(filePath, &wal.Options{

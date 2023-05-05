@@ -23,7 +23,7 @@ const (
 	voteSignerTimeout = time.Second * 5
 )
 
-var votesSigningError = metrics.NewRegisteredGauge("votesSigner/error", nil)
+var votesSigningErrorCounter = metrics.NewRegisteredCounter("votesSigner/error", nil)
 
 type VoteSigner struct {
 	km     *keymanager.IKeymanager

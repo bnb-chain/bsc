@@ -194,7 +194,7 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 	if targetHash != header.ParentHash || targetNumber+1 != header.Number.Uint64() {
 		log.Warn("updateAttestation failed", "error", fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
 			header.Number.Uint64()-1, header.ParentHash, targetNumber, targetHash))
-		updateAttestationError.Inc(1)
+		updateAttestationErrorCounter.Inc(1)
 		return
 	}
 
