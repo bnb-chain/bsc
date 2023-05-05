@@ -14,7 +14,6 @@ import (
 	"github.com/prysmaticlabs/prysm/v3/validator/accounts/wallet"
 	"github.com/prysmaticlabs/prysm/v3/validator/keymanager"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -23,6 +22,8 @@ import (
 const (
 	voteSignerTimeout = time.Second * 5
 )
+
+var votesSigningError = metrics.NewRegisteredGauge("votesSigner/error", nil)
 
 type VoteSigner struct {
 	km     *keymanager.IKeymanager
@@ -102,9 +103,4 @@ func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
 	copy(vote.VoteAddress[:], blsPubKey.Marshal()[:])
 	copy(vote.Signature[:], signature.Marshal()[:])
 	return nil
-}
-
-// Metrics to indicate if there's any failed signing.
-func votesSigningErrorMetric(blockNumber uint64, blockHash common.Hash) metrics.Gauge {
-	return metrics.GetOrRegisterGauge(fmt.Sprintf("voteSigning/blockNumber/%d/blockHash/%s", blockNumber, blockHash), nil)
 }
