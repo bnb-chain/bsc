@@ -2797,7 +2797,7 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 					if errUnpack == nil {
 						jsonResult["revert"] = reason
 					} else {
-						jsonResult["revert"] = "unpack error"
+						jsonResult["revert"] = string(result.Revert())
 					}
 				} else {
 					dst := make([]byte, hex.EncodedLen(len(result.Return())))
