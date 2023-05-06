@@ -78,6 +78,7 @@ var (
 	maxSystemBalance                  = new(big.Int).Mul(big.NewInt(100), big.NewInt(params.Ether))
 	verifyVoteAttestationErrorCounter = metrics.NewRegisteredCounter("parlia/verifyVoteAttestation/error", nil)
 	updateAttestationErrorCounter     = metrics.NewRegisteredCounter("parlia/updateAttestation/error", nil)
+	validVotesfromSelfCounter         = metrics.NewRegisteredCounter("parlia/VerifyVote/self", nil)
 
 	systemContracts = map[common.Address]bool{
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
@@ -1216,8 +1217,11 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 
 	validators := snap.Validators
 	voteAddress := vote.VoteAddress
-	for _, validator := range validators {
+	for addr, validator := range validators {
 		if validator.VoteAddress == voteAddress {
+			if addr == p.val {
+				validVotesfromSelfCounter.Inc(1)
+			}
 			return nil
 		}
 	}
