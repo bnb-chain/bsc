@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 
 	"github.com/pkg/errors"
-	"github.com/prysmaticlabs/prysm/v3/crypto/bls"
+	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
 
 	"github.com/ethereum/go-ethereum/common"
 )

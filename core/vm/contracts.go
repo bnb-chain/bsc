@@ -22,7 +22,7 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/prysmaticlabs/prysm/v3/crypto/bls"
+	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
 	"golang.org/x/crypto/ripemd160"
 
 	"github.com/ethereum/go-ethereum/common"
