@@ -1,21 +1,23 @@
 # Changelog
 ## v1.2.2
 FEATURE
-* [\#1574](https://github.com/bnb-chain/bsc/pull/1574) upgrade: update PlatoUpgrade contracts code (#1574)
+* [\#1574](https://github.com/bnb-chain/bsc/pull/1574) upgrade: update PlatoUpgrade contracts code
+* [\#1594](https://github.com/bnb-chain/bsc/pull/1594) upgrade: block height of Plato on testnet
 
 IMPROVEMENT
-* [\#866](https://github.com/bnb-chain/bsc/pull/866) code: x = append(y) is equivalent to x = y (#866)
-* [\#1488](https://github.com/bnb-chain/bsc/pull/1488) eth/tracers, core/vm: remove `time` from trace output and tracing interface (#1488)
-* [\#1573](https://github.com/bnb-chain/bsc/pull/1573)  feat: remove supports for legacy proof type (#1573)
-* [\#1576](https://github.com/bnb-chain/bsc/pull/1576) fix: support golang 1.20 by upgrading prysm to v4 (#1576)
-* [\#1578](https://github.com/bnb-chain/bsc/pull/1578) fix: output an error log when bsc extension fail to handshake (#1578)
-* [\#1583](https://github.com/bnb-chain/bsc/pull/1583) metrics: add a counter for validator to check work status of voting (#1583)
+* [\#866](https://github.com/bnb-chain/bsc/pull/866) code: x = append(y) is equivalent to x = y
+* [\#1488](https://github.com/bnb-chain/bsc/pull/1488) eth/tracers, core/vm: remove `time` from trace output and tracing interface
+* [\#1547](https://github.com/bnb-chain/bsc/pull/1547) fix: recently signed check when slashing unavailable validator
+* [\#1573](https://github.com/bnb-chain/bsc/pull/1573) feat: remove supports for legacy proof type
+* [\#1576](https://github.com/bnb-chain/bsc/pull/1576) fix: support golang 1.20 by upgrading prysm to v4
+* [\#1578](https://github.com/bnb-chain/bsc/pull/1578) fix: output an error log when bsc extension fail to handshake
+* [\#1583](https://github.com/bnb-chain/bsc/pull/1583) metrics: add a counter for validator to check work status of voting
 
 BUGFIX
-* [\#1566](https://github.com/bnb-chain/bsc/pull/1566) fix: config for VoteJournalDir and BLSWalletDir (#1566)
-* [\#1572](https://github.com/bnb-chain/bsc/pull/1572) fix: remove dynamic metric labels about fast finality (#1572)
-* [\#1575](https://github.com/bnb-chain/bsc/pull/1575) fix: make BLST PORTABLE for release binary (#1575)
-* [\#1590](https://github.com/bnb-chain/bsc/pull/1590) fix: fix snap flaky tests (#1590)
+* [\#1566](https://github.com/bnb-chain/bsc/pull/1566) fix: config for VoteJournalDir and BLSWalletDir
+* [\#1572](https://github.com/bnb-chain/bsc/pull/1572) fix: remove dynamic metric labels about fast finality
+* [\#1575](https://github.com/bnb-chain/bsc/pull/1575) fix: make BLST PORTABLE for release binary
+* [\#1590](https://github.com/bnb-chain/bsc/pull/1590) fix: fix snap flaky tests
 
 ## v1.2.1
 IMPROVEMENT
