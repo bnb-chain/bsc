@@ -27,10 +27,13 @@ import (
 	"testing/quick"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 func TestTable_pingReplace(t *testing.T) {
@@ -65,7 +68,7 @@ func testPingReplace(t *testing.T, newNodeIsResponding, lastInBucketIsResponding
 	// its bucket if it is unresponsive. Revalidate again to ensure that
 	transport.dead[last.ID()] = !lastInBucketIsResponding
 	transport.dead[pingSender.ID()] = !newNodeIsResponding
-	tab.addSeenNode(pingSender)
+	tab.addSeenNodeSync(pingSender)
 	tab.doRevalidate(make(chan struct{}, 1))
 	tab.doRevalidate(make(chan struct{}, 1))
 
@@ -148,7 +151,7 @@ func TestTable_IPLimit(t *testing.T) {
 
 	for i := 0; i < tableIPLimit+1; i++ {
 		n := nodeAtDistance(tab.self().ID(), i, net.IP{172, 0, 1, byte(i)})
-		tab.addSeenNode(n)
+		tab.addSeenNodeSync(n)
 	}
 	if tab.len() > tableIPLimit {
 		t.Errorf("too many nodes in table")
@@ -314,8 +317,8 @@ func TestTable_addVerifiedNode(t *testing.T) {
 	// Insert two nodes.
 	n1 := nodeAtDistance(tab.self().ID(), 256, net.IP{88, 77, 66, 1})
 	n2 := nodeAtDistance(tab.self().ID(), 256, net.IP{88, 77, 66, 2})
-	tab.addSeenNode(n1)
-	tab.addSeenNode(n2)
+	tab.addSeenNodeSync(n1)
+	tab.addSeenNodeSync(n2)
 
 	// Verify bucket content:
 	bcontent := []*node{n1, n2}
@@ -327,7 +330,7 @@ func TestTable_addVerifiedNode(t *testing.T) {
 	newrec := n2.Record()
 	newrec.Set(enr.IP{99, 99, 99, 99})
 	newn2 := wrapNode(enode.SignNull(newrec, n2.ID()))
-	tab.addVerifiedNode(newn2)
+	tab.addVerifiedNodeSync(newn2)
 
 	// Check that bucket is updated correctly.
 	newBcontent := []*node{newn2, n1}
@@ -346,8 +349,8 @@ func TestTable_addSeenNode(t *testing.T) {
 	// Insert two nodes.
 	n1 := nodeAtDistance(tab.self().ID(), 256, net.IP{88, 77, 66, 1})
 	n2 := nodeAtDistance(tab.self().ID(), 256, net.IP{88, 77, 66, 2})
-	tab.addSeenNode(n1)
-	tab.addSeenNode(n2)
+	tab.addSeenNodeSync(n1)
+	tab.addSeenNodeSync(n2)
 
 	// Verify bucket content:
 	bcontent := []*node{n1, n2}
@@ -359,7 +362,7 @@ func TestTable_addSeenNode(t *testing.T) {
 	newrec := n2.Record()
 	newrec.Set(enr.IP{99, 99, 99, 99})
 	newn2 := wrapNode(enode.SignNull(newrec, n2.ID()))
-	tab.addSeenNode(newn2)
+	tab.addSeenNodeSync(newn2)
 
 	// Check that bucket content is unchanged.
 	if !reflect.DeepEqual(tab.bucket(n1.ID()).entries, bcontent) {
@@ -382,7 +385,7 @@ func TestTable_revalidateSyncRecord(t *testing.T) {
 	r.Set(enr.IP(net.IP{127, 0, 0, 1}))
 	id := enode.ID{1}
 	n1 := wrapNode(enode.SignNull(&r, id))
-	tab.addSeenNode(n1)
+	tab.addSeenNodeSync(n1)
 
 	// Update the node record.
 	r.Set(enr.WithEntry("foo", "bar"))
@@ -394,6 +397,41 @@ func TestTable_revalidateSyncRecord(t *testing.T) {
 	if !reflect.DeepEqual(intable, n2) {
 		t.Fatalf("table contains old record with seq %d, want seq %d", intable.Seq(), n2.Seq())
 	}
+}
+
+// This test checks that ENR filtering is working properly
+func TestTable_filterNode(t *testing.T) {
+	// Create ENR filter
+	type eth struct {
+		ForkID forkid.ID
+		Tail   []rlp.RawValue `rlp:"tail"`
+	}
+
+	enrFilter, _ := ParseEthFilter("bsc")
+
+	// Check test ENR record
+	var r1 enr.Record
+	r1.Set(enr.WithEntry("foo", "bar"))
+	if enrFilter(&r1) {
+		t.Fatalf("filterNode doesn't work correctly for entry")
+	}
+	t.Logf("Check test ENR record - passed")
+
+	// Check wrong genesis ENR record
+	var r2 enr.Record
+	r2.Set(enr.WithEntry("eth", eth{ForkID: forkid.NewID(params.BSCChainConfig, params.ChapelGenesisHash, uint64(0))}))
+	if enrFilter(&r2) {
+		t.Fatalf("filterNode doesn't work correctly for wrong genesis entry")
+	}
+	t.Logf("Check wrong genesis ENR record - passed")
+
+	// Check correct genesis ENR record
+	var r3 enr.Record
+	r3.Set(enr.WithEntry("eth", eth{ForkID: forkid.NewID(params.BSCChainConfig, params.BSCGenesisHash, uint64(0))}))
+	if !enrFilter(&r3) {
+		t.Fatalf("filterNode doesn't work correctly for correct genesis entry")
+	}
+	t.Logf("Check correct genesis ENR record - passed")
 }
 
 // gen wraps quick.Value so it's easier to use.
