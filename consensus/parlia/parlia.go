@@ -755,13 +755,8 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 		return errUnauthorizedValidator
 	}
 
-	for seen, recent := range snap.Recents {
-		if recent == signer {
-			// Signer is among recents, only fail if the current block doesn't shift it out
-			if limit := uint64(len(snap.Validators)/2 + 1); seen > number-limit {
-				return errRecentlySigned
-			}
-		}
+	if snap.SignRecently(signer) {
+		return errRecentlySigned
 	}
 
 	// Ensure that the difficulty corresponds to the turn-ness of the signer
@@ -1066,12 +1061,17 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if header.Difficulty.Cmp(diffInTurn) != 0 {
 		spoiledVal := snap.supposeValidator()
 		signedRecently := false
-		for _, recent := range snap.Recents {
-			if recent == spoiledVal {
-				signedRecently = true
-				break
+		if p.chainConfig.IsPlato(header.Number) {
+			signedRecently = snap.SignRecently(spoiledVal)
+		} else {
+			for _, recent := range snap.Recents {
+				if recent == spoiledVal {
+					signedRecently = true
+					break
+				}
 			}
 		}
+
 		if !signedRecently {
 			log.Trace("slash validator", "block hash", header.Hash(), "address", spoiledVal)
 			err = p.slash(spoiledVal, state, header, cx, txs, receipts, systemTxs, usedGas, false)
@@ -1124,10 +1124,14 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 		spoiledVal := snap.supposeValidator()
 		signedRecently := false
-		for _, recent := range snap.Recents {
-			if recent == spoiledVal {
-				signedRecently = true
-				break
+		if p.chainConfig.IsPlato(header.Number) {
+			signedRecently = snap.SignRecently(spoiledVal)
+		} else {
+			for _, recent := range snap.Recents {
+				if recent == spoiledVal {
+					signedRecently = true
+					break
+				}
 			}
 		}
 		if !signedRecently {
@@ -1298,14 +1302,9 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	}
 
 	// If we're amongst the recent signers, wait for the next block
-	for seen, recent := range snap.Recents {
-		if recent == val {
-			// Signer is among recents, only wait if the current block doesn't shift it out
-			if limit := uint64(len(snap.Validators)/2 + 1); number < limit || seen > number-limit {
-				log.Info("Signed recently, must wait for others")
-				return nil
-			}
-		}
+	if snap.SignRecently(val) {
+		log.Info("Signed recently, must wait for others")
+		return nil
 	}
 
 	// Sweet, the protocol permits us to sign the block, wait for our time
@@ -1412,19 +1411,7 @@ func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Block) 
 		return true, errUnauthorizedValidator
 	}
 
-	// If we're amongst the recent signers, wait for the next block
-	number := parent.NumberU64() + 1
-	for seen, recent := range snap.Recents {
-		if recent != p.val {
-			continue
-		}
-
-		// Signer is among recents, only wait if the current block doesn't shift it out
-		if limit := uint64(len(snap.Validators)/2 + 1); number < limit || seen > number-limit {
-			return true, nil
-		}
-	}
-	return false, nil
+	return snap.SignRecently(p.val), nil
 }
 
 // CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
