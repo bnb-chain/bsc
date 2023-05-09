@@ -1403,7 +1403,7 @@ func setVoteJournalDir(ctx *cli.Context, cfg *node.Config) {
 	dataDir := cfg.DataDir
 	if ctx.GlobalIsSet(VoteJournalDirFlag.Name) {
 		cfg.VoteJournalDir = ctx.GlobalString(VoteJournalDirFlag.Name)
-	} else {
+	} else if cfg.VoteJournalDir == "" {
 		cfg.VoteJournalDir = filepath.Join(dataDir, "voteJournal")
 	}
 }
@@ -1412,7 +1412,7 @@ func setBLSWalletDir(ctx *cli.Context, cfg *node.Config) {
 	dataDir := cfg.DataDir
 	if ctx.GlobalIsSet(BLSWalletDirFlag.Name) {
 		cfg.BLSWalletDir = ctx.GlobalString(BLSWalletDirFlag.Name)
-	} else {
+	} else if cfg.BLSWalletDir == "" {
 		cfg.BLSWalletDir = filepath.Join(dataDir, "bls/wallet")
 	}
 }

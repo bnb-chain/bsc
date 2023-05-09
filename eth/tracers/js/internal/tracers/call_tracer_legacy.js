@@ -234,7 +234,6 @@
 			input:   call.input,
 			output:  call.output,
 			error:   call.error,
-			time:    call.time,
 			calls:   call.calls,
 		}
 		for (var key in sorted) {

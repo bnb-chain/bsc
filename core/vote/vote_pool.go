@@ -29,8 +29,8 @@ const (
 )
 
 var (
-	localCurVotesGauge    = metrics.NewRegisteredGauge("curVotes/local", nil)
-	localFutureVotesGauge = metrics.NewRegisteredGauge("futureVotes/local", nil)
+	localCurVotesCounter    = metrics.NewRegisteredCounter("curVotes/local", nil)
+	localFutureVotesCounter = metrics.NewRegisteredCounter("futureVotes/local", nil)
 
 	localReceivedVotesGauge = metrics.NewRegisteredGauge("receivedVotes/local", nil)
 
@@ -203,9 +203,9 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 	log.Debug("VoteHash put into votepool is:", "voteHash", voteHash)
 
 	if isFutureVote {
-		localFutureVotesGauge.Inc(1)
+		localFutureVotesCounter.Inc(1)
 	} else {
-		localCurVotesGauge.Inc(1)
+		localCurVotesCounter.Inc(1)
 	}
 	localReceivedVotesGauge.Update(int64(pool.receivedVotes.Cardinality()))
 }
@@ -278,8 +278,8 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 
 	delete(futureVotes, blockHash)
 
-	localCurVotesGauge.Inc(int64(len(validVotes)))
-	localFutureVotesGauge.Dec(int64(len(voteBox.voteMessages)))
+	localCurVotesCounter.Inc(int64(len(validVotes)))
+	localFutureVotesCounter.Dec(int64(len(voteBox.voteMessages)))
 }
 
 // Prune old data of duplicationSet, curVotePq and curVotesMap.
@@ -304,7 +304,7 @@ func (pool *VotePool) prune(latestBlockNumber uint64) {
 			// Prune curVotes Map.
 			delete(curVotes, blockHash)
 
-			localCurVotesGauge.Dec(int64(len(voteMessages)))
+			localCurVotesCounter.Dec(int64(len(voteMessages)))
 			localReceivedVotesGauge.Update(int64(pool.receivedVotes.Cardinality()))
 		}
 	}

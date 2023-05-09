@@ -18,13 +18,17 @@ package discover
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"net"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // UDPConn is a network connection on which discovery can operate.
@@ -35,18 +39,47 @@ type UDPConn interface {
 	LocalAddr() net.Addr
 }
 
+type NodeFilterFunc func(*enr.Record) bool
+
+func ParseEthFilter(chain string) (NodeFilterFunc, error) {
+	var filter forkid.Filter
+	switch chain {
+	case "bsc":
+		filter = forkid.NewStaticFilter(params.BSCChainConfig, params.BSCGenesisHash)
+	case "chapel":
+		filter = forkid.NewStaticFilter(params.ChapelChainConfig, params.ChapelGenesisHash)
+	case "rialto":
+		filter = forkid.NewStaticFilter(params.RialtoChainConfig, params.RialtoGenesisHash)
+	default:
+		return nil, fmt.Errorf("unknown network %q", chain)
+	}
+
+	f := func(r *enr.Record) bool {
+		var eth struct {
+			ForkID forkid.ID
+			Tail   []rlp.RawValue `rlp:"tail"`
+		}
+		if r.Load(enr.WithEntry("eth", &eth)) != nil {
+			return false
+		}
+		return filter(eth.ForkID) == nil
+	}
+	return f, nil
+}
+
 // Config holds settings for the discovery listener.
 type Config struct {
 	// These settings are required and configure the UDP listener:
 	PrivateKey *ecdsa.PrivateKey
 
 	// These settings are optional:
-	NetRestrict  *netutil.Netlist   // list of allowed IP networks
-	Bootnodes    []*enode.Node      // list of bootstrap nodes
-	Unhandled    chan<- ReadPacket  // unhandled packets are sent on this channel
-	Log          log.Logger         // if set, log messages go here
-	ValidSchemes enr.IdentityScheme // allowed identity schemes
-	Clock        mclock.Clock
+	NetRestrict    *netutil.Netlist   // list of allowed IP networks
+	Bootnodes      []*enode.Node      // list of bootstrap nodes
+	Unhandled      chan<- ReadPacket  // unhandled packets are sent on this channel
+	Log            log.Logger         // if set, log messages go here
+	ValidSchemes   enr.IdentityScheme // allowed identity schemes
+	Clock          mclock.Clock
+	FilterFunction NodeFilterFunc // function for filtering ENR entries
 }
 
 func (cfg Config) withDefaults() Config {

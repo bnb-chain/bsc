@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"math/big"
 	"sync/atomic"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -82,7 +81,7 @@ func (t *prestateTracer) CaptureStart(env *vm.EVM, from common.Address, to commo
 }
 
 // CaptureEnd is called after the call finishes to finalize the tracing.
-func (t *prestateTracer) CaptureEnd(output []byte, gasUsed uint64, _ time.Duration, err error) {
+func (t *prestateTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
 	if t.create {
 		// Exclude created contract.
 		delete(t.prestate, t.to)

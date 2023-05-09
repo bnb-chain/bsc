@@ -200,7 +200,7 @@ func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 
 // diffLayerKey = diffLayerKeyPrefix + hash
 func diffLayerKey(hash common.Hash) []byte {
-	return append(append(diffLayerPrefix, hash.Bytes()...))
+	return append(diffLayerPrefix, hash.Bytes()...)
 }
 
 // txLookupKey = txLookupPrefix + hash
