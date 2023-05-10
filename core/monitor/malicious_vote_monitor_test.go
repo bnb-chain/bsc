@@ -22,7 +22,7 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - maliciousVoteSlashScope - 1),
+				TargetNumber: pendingBlockNumber - maliciousVoteSlashScope - 1,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
 			},
 		}
@@ -34,7 +34,7 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - maliciousVoteSlashScope - 1),
+				TargetNumber: pendingBlockNumber - maliciousVoteSlashScope - 1,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
 			},
 		}
@@ -54,7 +54,7 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - maliciousVoteSlashScope - 1),
+				TargetNumber: pendingBlockNumber - maliciousVoteSlashScope - 1,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
 			},
 		}
@@ -65,7 +65,7 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - maliciousVoteSlashScope - 1),
+				TargetNumber: pendingBlockNumber - maliciousVoteSlashScope - 1,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
 			},
 		}
@@ -85,7 +85,7 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - 1),
+				TargetNumber: pendingBlockNumber - 1,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
 			},
 		}
@@ -96,7 +96,7 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - 1),
+				TargetNumber: pendingBlockNumber - 1,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
 			},
 		}
@@ -114,9 +114,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			VoteAddress: voteAddress,
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
-				SourceNumber: uint64(pendingBlockNumber - 4),
+				SourceNumber: pendingBlockNumber - 4,
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - 1),
+				TargetNumber: pendingBlockNumber - 1,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
 			},
 		}
@@ -125,9 +125,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			VoteAddress: voteAddress,
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
-				SourceNumber: uint64(pendingBlockNumber - 2),
+				SourceNumber: pendingBlockNumber - 2,
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - 3),
+				TargetNumber: pendingBlockNumber - 3,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
 			},
 		}
@@ -145,9 +145,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			VoteAddress: voteAddress,
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
-				SourceNumber: uint64(pendingBlockNumber - 2),
+				SourceNumber: pendingBlockNumber - 2,
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - 3),
+				TargetNumber: pendingBlockNumber - 3,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
 			},
 		}
@@ -156,9 +156,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			VoteAddress: voteAddress,
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
-				SourceNumber: uint64(pendingBlockNumber - 4),
+				SourceNumber: pendingBlockNumber - 4,
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - 1),
+				TargetNumber: pendingBlockNumber - 1,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
 			},
 		}
@@ -176,9 +176,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			VoteAddress: voteAddress,
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
-				SourceNumber: uint64(pendingBlockNumber - 4),
+				SourceNumber: pendingBlockNumber - 4,
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - 3),
+				TargetNumber: pendingBlockNumber - 3,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
 			},
 		}
@@ -187,9 +187,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			VoteAddress: voteAddress,
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
-				SourceNumber: uint64(pendingBlockNumber - 3),
+				SourceNumber: pendingBlockNumber - 3,
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - 2),
+				TargetNumber: pendingBlockNumber - 2,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
 			},
 		}
@@ -198,9 +198,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			VoteAddress: voteAddress,
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
-				SourceNumber: uint64(pendingBlockNumber - 2),
+				SourceNumber: pendingBlockNumber - 2,
 				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
-				TargetNumber: uint64(pendingBlockNumber - 1),
+				TargetNumber: pendingBlockNumber - 1,
 				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
 			},
 		}
