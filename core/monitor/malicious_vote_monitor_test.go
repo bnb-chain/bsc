@@ -9,6 +9,7 @@ import (
 )
 
 func TestMaliciousVoteMonitor(t *testing.T) {
+	//log.Root().SetHandler(log.StdoutHandler)
 	// case 1, different voteAddress
 	{
 		maliciousVoteMonitor := NewMaliciousVoteMonitor()

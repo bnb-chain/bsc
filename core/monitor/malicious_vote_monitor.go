@@ -65,13 +65,13 @@ func (m *MaliciousVoteMonitor) ConflictDetect(newVote *types.VoteEnvelope, pendi
 				continue
 			}
 			if blockNumber == targetNumber {
-				log.Warn("violate rule1", "VoteAddress", common.Bytes2Hex(newVote.VoteAddress[:]), "voteExisted", voteData.(*types.VoteData), "newVote", newVote)
+				log.Warn("violate rule1", "VoteAddress", common.Bytes2Hex(newVote.VoteAddress[:]), "voteExisted", voteData.(*types.VoteData), "newVote", newVote.Data)
 				violateRule1Counter.Inc(1)
 				// prepare message for slashing
 				return true
 			} else if (blockNumber < targetNumber && voteData.(*types.VoteData).SourceNumber > sourceNumber) ||
 				(blockNumber > targetNumber && voteData.(*types.VoteData).SourceNumber < sourceNumber) {
-				log.Warn("violate rule2", "VoteAddress", common.Bytes2Hex(newVote.VoteAddress[:]), "voteExisted", voteData.(*types.VoteData), "newVote", newVote)
+				log.Warn("violate rule2", "VoteAddress", common.Bytes2Hex(newVote.VoteAddress[:]), "voteExisted", voteData.(*types.VoteData), "newVote", newVote.Data)
 				violateRule2Counter.Inc(1)
 				// prepare message for slashing
 				return true
