@@ -600,12 +600,12 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 
 	// Verify vote attestation for fast finality.
 	if err := p.verifyVoteAttestation(chain, header, parents); err != nil {
+		log.Warn("Verify vote attestation failed", "error", err, "hash", header.Hash(), "number", header.Number,
+			"parent", header.ParentHash, "coinbase", header.Coinbase, "extra", common.Bytes2Hex(header.Extra))
 		verifyVoteAttestationErrorCounter.Inc(1)
 		if chain.Config().IsPlato(header.Number) {
 			return err
 		}
-		log.Warn("Verify vote attestation failed", "error", err, "hash", header.Hash(), "number", header.Number,
-			"parent", header.ParentHash, "coinbase", header.Coinbase, "extra", common.Bytes2Hex(header.Extra))
 	}
 
 	// All basic checks passed, verify the seal and return
