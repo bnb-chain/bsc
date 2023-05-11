@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/bloombits"
+	"github.com/ethereum/go-ethereum/core/monitor"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -300,6 +301,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	if eth.votePool != nil {
 		eth.handler.votepool = eth.votePool
+		if stack.Config().EnableMaliciousVoteMonitor {
+			eth.handler.maliciousVoteMonitor = monitor.NewMaliciousVoteMonitor()
+			log.Info("Create MaliciousVoteMonitor successfully")
+		}
 	}
 
 	eth.miner = miner.New(eth, &config.Miner, chainConfig, eth.EventMux(), eth.engine, eth.isLocalBlock)

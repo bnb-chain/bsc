@@ -194,7 +194,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				continue
 			}
 			if voteData.(*types.VoteData).SourceNumber > sourceNumber {
-				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is within the span of other votes %d-->%d",
+				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is across the span of other votes %d-->%d",
 					sourceNumber, targetNumber, voteData.(*types.VoteData).SourceNumber, voteData.(*types.VoteData).TargetNumber))
 				return false, 0, common.Hash{}
 			}
@@ -208,14 +208,15 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				continue
 			}
 			if voteData.(*types.VoteData).SourceNumber < sourceNumber {
-				log.Debug("error: other votes are within span of cur vote")
+				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is within the span of other votes %d-->%d",
+					sourceNumber, targetNumber, voteData.(*types.VoteData).SourceNumber, voteData.(*types.VoteData).TargetNumber))
 				return false, 0, common.Hash{}
 			}
 		}
 	}
 
 	// Rule 3: Validators always vote for their canonical chain’s latest block.
-	// Since the header subscribed to is the canonical chain, so this rule is satisified by default.
+	// Since the header subscribed to is the canonical chain, so this rule is satisfied by default.
 	log.Debug("All three rules check passed")
 	return true, sourceNumber, sourceHash
 }
