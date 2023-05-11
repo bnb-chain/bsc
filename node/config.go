@@ -205,6 +205,9 @@ type Config struct {
 	// EnableDoubleSignMonitor is a flag that whether to enable the double signature checker
 	EnableDoubleSignMonitor bool `toml:",omitempty"`
 
+	// EnableMaliciousVoteMonitor is a flag that whether to enable the malicious vote checker
+	EnableMaliciousVoteMonitor bool `toml:",omitempty"`
+
 	// BLSPasswordFile is the file that contains BLS wallet password.
 	BLSPasswordFile string `toml:",omitempty"`
 

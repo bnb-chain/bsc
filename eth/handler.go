@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
+	"github.com/ethereum/go-ethereum/core/monitor"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -133,11 +134,12 @@ type handler struct {
 	checkpointNumber uint64      // Block number for the sync progress validator to cross reference
 	checkpointHash   common.Hash // Block hash for the sync progress validator to cross reference
 
-	database ethdb.Database
-	txpool   txPool
-	votepool votePool
-	chain    *core.BlockChain
-	maxPeers int
+	database             ethdb.Database
+	txpool               txPool
+	votepool             votePool
+	maliciousVoteMonitor *monitor.MaliciousVoteMonitor
+	chain                *core.BlockChain
+	maxPeers             int
 
 	downloader   *downloader.Downloader
 	blockFetcher *fetcher.BlockFetcher
@@ -641,6 +643,11 @@ func (h *handler) Start(maxPeers int) {
 		h.voteCh = make(chan core.NewVoteEvent, voteChanSize)
 		h.votesSub = h.votepool.SubscribeNewVoteEvent(h.voteCh)
 		go h.voteBroadcastLoop()
+
+		if h.maliciousVoteMonitor != nil {
+			h.wg.Add(1)
+			go h.startMaliciousVoteMonitor()
+		}
 	}
 
 	// announce local pending transactions again
@@ -657,6 +664,22 @@ func (h *handler) Start(maxPeers int) {
 	// start sync handlers
 	h.wg.Add(1)
 	go h.chainSync.loop()
+}
+
+func (h *handler) startMaliciousVoteMonitor() {
+	defer h.wg.Done()
+	voteCh := make(chan core.NewVoteEvent, voteChanSize)
+	votesSub := h.votepool.SubscribeNewVoteEvent(voteCh)
+	defer votesSub.Unsubscribe()
+	for {
+		select {
+		case event := <-voteCh:
+			pendingBlockNumber := h.chain.CurrentHeader().Number.Uint64() + 1
+			h.maliciousVoteMonitor.ConflictDetect(event.Vote, pendingBlockNumber)
+		case <-votesSub.Err():
+			return
+		}
+	}
 }
 
 func (h *handler) Stop() {
