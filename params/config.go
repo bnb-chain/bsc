@@ -195,6 +195,9 @@ var (
 		LubanBlock: nil,
 		PlatoBlock: nil,
 
+                // TODO modify blockNumber to enable Berlin EIPs after the block.
+		BerlinBlock: nil,
+
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
