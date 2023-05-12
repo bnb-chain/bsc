@@ -195,7 +195,7 @@ var (
 		LubanBlock: nil,
 		PlatoBlock: nil,
 
-                // TODO modify blockNumber to enable Berlin EIPs after the block.
+		// TODO modify blockNumber to enable Berlin EIPs after the block.
 		BerlinBlock: nil,
 
 		Parlia: &ParliaConfig{
