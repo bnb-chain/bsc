@@ -228,7 +228,7 @@ var (
 		// TODO Caution !!! it should be very careful !!!
 		LubanBlock: big.NewInt(29295050),
 		PlatoBlock: big.NewInt(29861024),
-		HertzBlock: big.NewInt(0),
+		HertzBlock: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -574,12 +574,12 @@ func (c *ChainConfig) IsOnPlato(num *big.Int) bool {
 	return configNumEqual(c.PlatoBlock, num)
 }
 
-// IsHertz returns whether num is either equal to the second fast finality fork block or greater.
+// IsHertz returns whether num is either equal to the block of enabling Berlin EIPs or greater.
 func (c *ChainConfig) IsHertz(num *big.Int) bool {
 	return isForked(c.HertzBlock, num)
 }
 
-// IsOnHertz returns whether num is equal to the second fast finality fork block.
+// IsOnHertz returns whether num is equal to the fork block of enabling Berlin EIPs.
 func (c *ChainConfig) IsOnHertz(num *big.Int) bool {
 	return configNumEqual(c.HertzBlock, num)
 }
@@ -803,7 +803,7 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 		return newCompatError("plato fork block", c.PlatoBlock, newcfg.PlatoBlock)
 	}
 	if isForkIncompatible(c.HertzBlock, newcfg.HertzBlock, head) {
-		return newCompatError("hartz fork block", c.HertzBlock, newcfg.HertzBlock)
+		return newCompatError("hertz fork block", c.HertzBlock, newcfg.HertzBlock)
 	}
 	return nil
 }
