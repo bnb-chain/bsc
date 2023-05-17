@@ -879,6 +879,7 @@ type Rules struct {
 	IsPlanck                                                bool
 	IsLuban                                                 bool
 	IsPlato                                                 bool
+	IsHertz                                                 bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -905,5 +906,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		IsPlanck:         c.IsPlanck(num),
 		IsLuban:          c.IsLuban(num),
 		IsPlato:          c.IsPlato(num),
+		IsHertz:          c.IsHertz(num),
 	}
 }
