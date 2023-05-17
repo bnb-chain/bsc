@@ -3,7 +3,7 @@ package mamoru
 import (
 	"math/big"
 
-	"github.com/Mamoru-Foundation/mamoru-sniffer-go/evm_types"
+	"github.com/Mamoru-Foundation/mamoru-sniffer-go/mamoru_sniffer"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -19,8 +19,8 @@ func NewFeed(chainConfig *params.ChainConfig) Feeder {
 	return &EthFeed{chainConfig: chainConfig}
 }
 
-func (f *EthFeed) FeedBlock(block *types.Block) evm_types.Block {
-	var blockData evm_types.Block
+func (f *EthFeed) FeedBlock(block *types.Block) mamoru_sniffer.Block {
+	var blockData mamoru_sniffer.Block
 	blockData.BlockIndex = block.NumberU64()
 	blockData.Hash = block.Hash().String()
 	blockData.ParentHash = block.ParentHash().String()
@@ -38,15 +38,15 @@ func (f *EthFeed) FeedBlock(block *types.Block) evm_types.Block {
 	return blockData
 }
 
-func (f *EthFeed) FeedTransactions(blockNumber *big.Int, txs types.Transactions, receipts types.Receipts) []evm_types.Transaction {
+func (f *EthFeed) FeedTransactions(blockNumber *big.Int, txs types.Transactions, receipts types.Receipts) []mamoru_sniffer.Transaction {
 	signer := types.MakeSigner(f.chainConfig, blockNumber)
-	var transactions []evm_types.Transaction
+	var transactions []mamoru_sniffer.Transaction
 
 	for i, tx := range txs {
 		if tx == nil {
 			continue
 		}
-		var transaction evm_types.Transaction
+		var transaction mamoru_sniffer.Transaction
 		transaction.TxIndex = uint32(i)
 		transaction.TxHash = tx.Hash().String()
 		transaction.Type = tx.Type()
@@ -77,14 +77,14 @@ func (f *EthFeed) FeedTransactions(blockNumber *big.Int, txs types.Transactions,
 	return transactions
 }
 
-func (f *EthFeed) FeedCallTraces(callFrames []*CallFrame, blockNumber uint64) []evm_types.CallTrace {
-	var callTraces []evm_types.CallTrace
+func (f *EthFeed) FeedCallTraces(callFrames []*CallFrame, blockNumber uint64) []mamoru_sniffer.CallTrace {
+	var callTraces []mamoru_sniffer.CallTrace
 	for i, frame := range callFrames {
 		if frame == nil {
 			log.Error("Mamoru FeedCallTraces", "err", "frame is empty")
 			continue
 		}
-		var callTrace evm_types.CallTrace
+		var callTrace mamoru_sniffer.CallTrace
 		callTrace.TxIndex = uint32(i)
 		callTrace.BlockIndex = blockNumber
 		callTrace.Type = frame.Type
@@ -101,8 +101,8 @@ func (f *EthFeed) FeedCallTraces(callFrames []*CallFrame, blockNumber uint64) []
 	return callTraces
 }
 
-func (f *EthFeed) FeedEvents(receipts types.Receipts) []evm_types.Event {
-	var events []evm_types.Event
+func (f *EthFeed) FeedEvents(receipts types.Receipts) []mamoru_sniffer.Event {
+	var events []mamoru_sniffer.Event
 	for _, receipt := range receipts {
 		if receipt == nil {
 			log.Error("Mamoru FeedEvents", "err", "Receipt is empty")
@@ -113,7 +113,7 @@ func (f *EthFeed) FeedEvents(receipts types.Receipts) []evm_types.Event {
 				log.Error("Mamoru FeedEvents", "err", "Logs is empty")
 				continue
 			}
-			var event evm_types.Event
+			var event mamoru_sniffer.Event
 			event.Index = uint32(rlog.Index)
 			event.BlockNumber = rlog.BlockNumber
 			event.BlockHash = rlog.BlockHash.String()

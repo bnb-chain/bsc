@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Mamoru-Foundation/mamoru-sniffer-go/evm_types"
 	"github.com/Mamoru-Foundation/mamoru-sniffer-go/mamoru_sniffer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -114,32 +113,32 @@ type testFeeder struct {
 	callFrames []*mamoru.CallFrame
 }
 
-func (f *testFeeder) FeedBlock(block *types.Block) evm_types.Block {
+func (f *testFeeder) FeedBlock(block *types.Block) mamoru_sniffer.Block {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	f.block = block
-	return evm_types.Block{}
+	return mamoru_sniffer.Block{}
 }
 
-func (f *testFeeder) FeedTransactions(_ *big.Int, txs types.Transactions, _ types.Receipts) []evm_types.Transaction {
+func (f *testFeeder) FeedTransactions(_ *big.Int, txs types.Transactions, _ types.Receipts) []mamoru_sniffer.Transaction {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	f.txs = append(f.txs, txs...)
-	return []evm_types.Transaction{}
+	return []mamoru_sniffer.Transaction{}
 }
 
-func (f *testFeeder) FeedEvents(receipts types.Receipts) []evm_types.Event {
+func (f *testFeeder) FeedEvents(receipts types.Receipts) []mamoru_sniffer.Event {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	f.receipts = append(f.receipts, receipts...)
-	return []evm_types.Event{}
+	return []mamoru_sniffer.Event{}
 }
 
-func (f *testFeeder) FeedCallTraces(callFrames []*mamoru.CallFrame, _ uint64) []evm_types.CallTrace {
+func (f *testFeeder) FeedCallTraces(callFrames []*mamoru.CallFrame, _ uint64) []mamoru_sniffer.CallTrace {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	f.callFrames = append(f.callFrames, callFrames...)
-	return []evm_types.CallTrace{}
+	return []mamoru_sniffer.CallTrace{}
 }
 
 func (f *testFeeder) Txs() types.Transactions {

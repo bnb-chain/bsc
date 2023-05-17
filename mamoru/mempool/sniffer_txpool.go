@@ -162,6 +162,7 @@ func (bc *SnifferBackend) process(ctx context.Context, block *types.Block, txs t
 	}
 
 	stateDb = stateDb.Copy()
+	header := block.Header()
 
 	for index, tx := range txs {
 		calltracer, err := mamoru.NewCallTracer(false)
@@ -169,7 +170,6 @@ func (bc *SnifferBackend) process(ctx context.Context, block *types.Block, txs t
 			log.Error("Mamoru Call tracer", "err", err, "ctx", "txpool")
 		}
 
-		header := block.Header()
 		chCtx := core.ChainContext(bc.chain)
 		author, _ := types.LatestSigner(bc.chainConfig).Sender(tx)
 		gasPool := new(core.GasPool).AddGas(tx.Gas())
