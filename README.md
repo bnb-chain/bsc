@@ -131,19 +131,26 @@ chmod -v u+x geth
 
 # MacOS
 wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep geth_mac |cut -d\" -f4)
-mv geth_mac geth
+mv geth_macos geth
 chmod -v u+x geth
 ```
 
 #### 2. Download the config files
 ```shell
+//== mainnet
 wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep mainnet |cut -d\" -f4)
 unzip mainnet.zip
+
+//== testnet
+wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep testnet |cut -d\" -f4)
+unzip testnet.zip
 ```
 
 #### 3. Download snapshot
 Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-snapshots). Follow the guide to structure your files.
 
+Note: if you can not download the chaindata snapshot and want to sync from genesis, you have to generate the genesis block first, you have already get the genesis.json in Step 2.
+So just run: `geth --datadir <datadir> init ./genesis.json`
 #### 4. Start a full node
 ```shell
 ./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0
