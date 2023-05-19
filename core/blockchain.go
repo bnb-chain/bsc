@@ -189,11 +189,13 @@ type BlockChain struct {
 	chainConfig *params.ChainConfig // Chain & network configuration
 	cacheConfig *CacheConfig        // Cache configuration for pruning
 
-	db         ethdb.Database // Low level persistent database to store final content in
-	snaps      *snapshot.Tree // Snapshot tree for fast trie leaf access
-	triegc     *prque.Prque   // Priority queue mapping block numbers to tries to gc
-	gcproc     time.Duration  // Accumulates canonical block processing for trie dumping
-	commitLock sync.Mutex     // CommitLock is used to protect above field from being modified concurrently
+	db            ethdb.Database // Low level persistent database to store final content in
+	snaps         *snapshot.Tree // Snapshot tree for fast trie leaf access
+	triegc        *prque.Prque   // Priority queue mapping block numbers to tries to gc
+	gcproc        time.Duration  // Accumulates canonical block processing for trie dumping
+	lastWrite     uint64         // Last block when the state was flushed
+	flushInterval atomic.Int64   // Time interval (processing time) after which to flush a state
+	commitLock    sync.Mutex     // CommitLock is used to protect above field from being modified concurrently
 
 	// txLookupLimit is the maximum number of blocks from head whose tx indices
 	// are reserved:
@@ -328,6 +330,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		diffPeersToDiffHashes: make(map[string]map[common.Hash]struct{}),
 	}
 
+	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.prefetcher = NewStatePrefetcher(chainConfig, bc, engine)
 	bc.forker = NewForkChoice(bc, shouldPreserve)
 	bc.validator = NewBlockValidator(chainConfig, bc, engine)
@@ -1465,8 +1468,6 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 	return 0, nil
 }
 
-var lastWrite uint64
-
 // writeBlockWithoutState writes only the block and its metadata to the database,
 // but does not write any state. This is used to construct competing side forks
 // up to the point where they exceed the canonical total difficulty.
@@ -1554,9 +1555,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 				}
 				// Find the next state trie we need to commit
 				chosen := current - bc.triesInMemory
+				flushInterval := time.Duration(bc.flushInterval.Load())
 
 				// If we exceeded out time allowance, flush an entire trie to disk
-				if bc.gcproc > bc.cacheConfig.TrieTimeLimit {
+				if bc.gcproc > flushInterval {
 					canWrite := true
 					if posa, ok := bc.engine.(consensus.PoSA); ok {
 						if !posa.EnoughDistance(bc, block.Header()) {
@@ -1572,13 +1574,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 						} else {
 							// If we're exceeding limits but haven't reached a large enough memory gap,
 							// warn the user that the system is becoming unstable.
-							if chosen < lastWrite+bc.triesInMemory && bc.gcproc >= 2*bc.cacheConfig.TrieTimeLimit {
-								log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", bc.cacheConfig.TrieTimeLimit, "optimum", float64(chosen-lastWrite)/float64(bc.triesInMemory))
+							if chosen < bc.lastWrite+bc.triesInMemory && bc.gcproc >= 2*flushInterval {
+								log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", bc.cacheConfig.TrieTimeLimit, "optimum", float64(chosen-bc.lastWrite)/float64(bc.triesInMemory))
 							}
 							// Flush an entire trie and restart the counters
 							triedb.Commit(header.Root, true, nil)
 							rawdb.WriteSafePointBlockNumber(bc.db, chosen)
-							lastWrite = chosen
+							bc.lastWrite = chosen
 							bc.gcproc = 0
 						}
 					}
@@ -3169,4 +3171,11 @@ func CalculateDiffHash(d *types.DiffLayer) (common.Hash, error) {
 	var hash common.Hash
 	hasher.Sum(hash[:0])
 	return hash, nil
+}
+
+// SetTrieFlushInterval configures how often in-memory tries are persisted to disk.
+// The interval is in terms of block processing time, not wall clock.
+// It is thread-safe and can be called repeatedly without side effects.
+func (bc *BlockChain) SetTrieFlushInterval(interval time.Duration) {
+	bc.flushInterval.Store(int64(interval))
 }
