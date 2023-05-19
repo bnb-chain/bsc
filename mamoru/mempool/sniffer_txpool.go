@@ -46,11 +46,13 @@ type SnifferBackend struct {
 	chEvSub     event.Subscription
 	chSideEvSub event.Subscription
 
-	ctx context.Context
-	mu  sync.RWMutex
+	ctx     context.Context
+	mu      sync.RWMutex
+	sniffer *mamoru.Sniffer
 }
 
 func NewSniffer(ctx context.Context, txPool BcTxPool, chain blockChain, chainConfig *params.ChainConfig, feeder mamoru.Feeder) *SnifferBackend {
+	sniffer := mamoru.NewSniffer()
 	sb := &SnifferBackend{
 		txPool:      txPool,
 		chain:       chain,
@@ -66,6 +68,8 @@ func NewSniffer(ctx context.Context, txPool BcTxPool, chain blockChain, chainCon
 
 		ctx: ctx,
 		mu:  sync.RWMutex{},
+
+		sniffer: sniffer,
 	}
 	sb.TxSub = sb.SubscribeNewTxsEvent(sb.newTxsEvent)
 	sb.headSub = sb.SubscribeChainHeadEvent(sb.newHeadEvent)
@@ -144,7 +148,7 @@ func (bc *SnifferBackend) SnifferLoop() {
 }
 
 func (bc *SnifferBackend) process(ctx context.Context, block *types.Block, txs types.Transactions) {
-	if !mamoru.IsSnifferEnable() || !mamoru.Connect() || ctx.Err() != nil {
+	if bc.sniffer != nil || !bc.sniffer.IsSnifferEnable() || !bc.sniffer.Connect() || ctx.Err() != nil {
 		return
 	}
 

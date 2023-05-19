@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -31,6 +30,8 @@ type CallTracer struct {
 	interrupt uint32 // Atomic flag to signal execution interruption
 	reason    error  // Textual reason for the interruption
 }
+
+var _ vm.EVMLogger = (*CallTracer)(nil)
 
 type CallTracerConfig struct {
 	OnlyTopCall bool `json:"onlyTopCall"` // If true, call tracer won't collect any subcalls
@@ -63,7 +64,7 @@ func (t *CallTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Ad
 }
 
 // CaptureEnd is called after the call finishes to finalize the tracing.
-func (t *CallTracer) CaptureEnd(output []byte, gasUsed uint64, _ time.Duration, err error) {
+func (t *CallTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
 	t.callstack[0].GasUsed = gasUsed
 	if err != nil {
 		t.callstack[0].Error = err.Error()

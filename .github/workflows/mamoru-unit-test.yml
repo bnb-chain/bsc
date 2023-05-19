@@ -13,7 +13,7 @@ on:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v3
       - name: Set up Go
@@ -37,12 +37,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-    - name: Unit Test
-      env:
-        CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
-        CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
-        ANDROID_HOME: "" # Skip android test
-      run: |
-        go mod download
-        go test -p 1 -timeout 1h ./mamoru/...
+      - name: Unit Test
+        env:
+          CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
+          CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
+          ANDROID_HOME: "" # Skip android test
+        run: |
+          go mod download
+          make test
 

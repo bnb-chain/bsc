@@ -78,6 +78,9 @@ type LightChain struct {
 	running          int32 // whether LightChain is running or stopped
 	procInterrupt    int32 // interrupts chain insert
 	disableCheckFreq int32 // disables header verification
+
+	// mamoru sniffer
+	Sniffer *mamoru.Sniffer
 }
 
 // NewLightChain returns a fully initialised light chain using information
@@ -88,6 +91,9 @@ func NewLightChain(odr OdrBackend, config *params.ChainConfig, engine consensus.
 	bodyRLPCache, _ := lru.New(bodyCacheLimit)
 	blockCache, _ := lru.New(blockCacheLimit)
 
+	// create mamoru sniffer
+	sniffer := mamoru.NewSniffer()
+
 	bc := &LightChain{
 		chainDb:       odr.Database(),
 		indexerConfig: odr.IndexerConfig(),
@@ -97,6 +103,9 @@ func NewLightChain(odr OdrBackend, config *params.ChainConfig, engine consensus.
 		bodyRLPCache:  bodyRLPCache,
 		blockCache:    blockCache,
 		engine:        engine,
+
+		// mamoru sniffer
+		Sniffer: sniffer,
 	}
 	bc.forker = core.NewForkChoice(bc, nil)
 	var err error
@@ -470,9 +479,14 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 	}
 	//return 0, err
 	////////////////////////////////////////////////////////////////////////////
-	if !mamoru.IsSnifferEnable() || !mamoru.Connect() {
+	if lc.Sniffer == nil || !lc.Sniffer.IsSnifferEnable() || !lc.Sniffer.Connect() {
 		return 0, nil
 	}
+
+	if !lc.Sniffer.CheckSynced() {
+		return 0, nil
+	}
+
 	ctx := context.Background()
 
 	lastBlock, err := lc.GetBlockByNumber(ctx, block.NumberU64())
@@ -493,6 +507,7 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 
 	startTime := time.Now()
 	log.Info("Mamoru Light-chain Sniffer start", "number", block.NumberU64(), "ctx", "lightchain")
+
 	tracer := mamoru.NewTracer(mamoru.NewFeed(lc.Config()))
 
 	tracer.FeedBlock(block)
@@ -505,6 +520,7 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 		log.Error("Mamoru Sniffer Tracer Error", "err", err, "ctx", "lightchain")
 		return 0, err
 	}
+
 	for _, call := range callFrames {
 		result := call.Result
 		tracer.FeedCalTraces(result, block.NumberU64())
@@ -512,6 +528,7 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 
 	tracer.Send(startTime, block.Number(), block.Hash(), "lightchain")
 	////////////////////////////////////////////////////////////////////////////
+
 	return 0, err
 }
 
