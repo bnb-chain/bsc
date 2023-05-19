@@ -194,8 +194,9 @@ var (
 		// TODO Caution !!! it should be very careful !!!
 		LubanBlock: nil,
 		PlatoBlock: nil,
-		// TODO modify blockNumber, this block should enable Berlin and London EIPs.
-		HertzBlock: nil,
+		// TODO modify blockNumber, make sure the Hertz block number is equal to BerlinBlock for enabling Berlin EIPs
+		BerlinBlock: nil,
+		HertzBlock:  nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -226,9 +227,10 @@ var (
 
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
-		LubanBlock: big.NewInt(29295050),
-		PlatoBlock: big.NewInt(29861024),
-		HertzBlock: nil,
+		LubanBlock:  big.NewInt(29295050),
+		PlatoBlock:  big.NewInt(29861024),
+		BerlinBlock: nil,
+		HertzBlock:  nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -258,9 +260,10 @@ var (
 		PlanckBlock:         nil,
 
 		// TODO
-		LubanBlock: nil,
-		PlatoBlock: nil,
-		HertzBlock: nil,
+		LubanBlock:  nil,
+		PlatoBlock:  nil,
+		BerlinBlock: nil,
+		HertzBlock:  nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -603,10 +606,6 @@ func (c *ChainConfig) IsIstanbul(num *big.Int) bool {
 
 // IsBerlin returns whether num is either equal to the Berlin fork block or greater.
 func (c *ChainConfig) IsBerlin(num *big.Int) bool {
-	// Check if it is Hertz, which works on BSC
-	if c.IsHertz(num) {
-		return true
-	}
 	return isForked(c.BerlinBlock, num)
 }
 
