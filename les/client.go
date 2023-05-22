@@ -188,6 +188,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*LightEthereum, error) {
 		leth.blockchain.DisableCheckFreq()
 	}
 
+	//Mamoru Sniffer set downloader for sync progress check
+	leth.blockchain.Sniffer.SetDownloader(leth.handler.downloader)
+
 	leth.netRPCService = ethapi.NewPublicNetAPI(leth.p2pServer, leth.config.NetworkId)
 
 	// Register the backend on the node

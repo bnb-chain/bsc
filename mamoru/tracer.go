@@ -2,8 +2,6 @@ package mamoru
 
 import (
 	"math/big"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -12,18 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 )
-
-var (
-	sniffer            *mamoru_sniffer.Sniffer
-	SnifferConnectFunc = mamoru_sniffer.Connect
-	lock               = &sync.Mutex{}
-)
-
-func init() {
-	if IsSnifferEnable() {
-		Connect()
-	}
-}
 
 type Tracer struct {
 	feeder  Feeder
@@ -83,30 +69,4 @@ func (t *Tracer) Send(start time.Time, blockNumber *big.Int, blockHash common.Ha
 		"ctx", snifferContext,
 	}
 	log.Info("Mamoru Sniffer finish", logCtx...)
-}
-
-func IsSnifferEnable() bool {
-	isEnable, ok := os.LookupEnv("MAMORU_SNIFFER_ENABLE")
-
-	return ok && isEnable == "true"
-}
-
-func Connect() bool {
-	if sniffer != nil {
-		return true
-	}
-	lock.Lock()
-	defer lock.Unlock()
-	var err error
-	if sniffer == nil {
-		sniffer, err = SnifferConnectFunc()
-		if err != nil {
-			erst := strings.Replace(err.Error(), "\t", "", -1)
-			erst = strings.Replace(erst, "\n", "", -1)
-			//	erst = strings.Replace(erst, " ", "", -1)
-			log.Error("Mamoru Sniffer connect", "err", erst)
-			return false
-		}
-	}
-	return true
 }

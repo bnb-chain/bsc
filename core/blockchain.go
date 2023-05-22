@@ -268,14 +268,15 @@ type BlockChain struct {
 
 	// monitor
 	doubleSignMonitor *monitor.DoubleSignMonitor
+
+	// mamoru Sniffer
+	Sniffer *mamoru.Sniffer
 }
 
 // NewBlockChain returns a fully initialised block chain using information
 // available in the database. It initialises the default Ethereum Validator and
 // Processor.
-func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine,
-	vmConfig vm.Config, shouldPreserve func(block *types.Header) bool, txLookupLimit *uint64,
-	options ...BlockChainOption) (*BlockChain, error) {
+func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(block *types.Header) bool, txLookupLimit *uint64, options ...BlockChainOption) (*BlockChain, error) {
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
 	}
@@ -294,6 +295,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	diffLayerCache, _ := lru.New(diffLayerCacheLimit)
 	diffLayerRLPCache, _ := lru.New(diffLayerRLPCacheLimit)
 	diffLayerChanCache, _ := lru.New(diffLayerCacheLimit)
+
+	// Create mamoru sniffer
+	sniffer := mamoru.NewSniffer()
 
 	bc := &BlockChain{
 		chainConfig: chainConfig,
@@ -328,6 +332,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		diffHashToPeers:       make(map[common.Hash]map[string]struct{}),
 		diffNumToBlockHashes:  make(map[uint64]map[common.Hash]struct{}),
 		diffPeersToDiffHashes: make(map[string]map[common.Hash]struct{}),
+
+		// mamoru sniffer
+		Sniffer: sniffer,
 	}
 
 	bc.prefetcher = NewStatePrefetcher(chainConfig, bc, engine)
@@ -338,11 +345,11 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	var err error
 
 	//////////////////////////////////////////////////////////////
-	tracer, err := mamoru.NewCallTracer(true)
+	callTracer, err := mamoru.NewCallTracer(true)
 	if err != nil {
 		return nil, err
 	}
-	bc.vmConfig.Tracer = tracer
+	bc.vmConfig.Tracer = callTracer
 	bc.vmConfig.Debug = true
 	//////////////////////////////////////////////////////////////
 
@@ -1701,14 +1708,15 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	}
 
 	////////////////////////////////////////////////////////////
-	if !mamoru.IsSnifferEnable() || !mamoru.Connect() {
-		return 0, nil
+	if bc.Sniffer == nil || !bc.Sniffer.IsSnifferEnable() || !bc.Sniffer.Connect() {
+		return status, nil
 	}
-
+	if !bc.Sniffer.CheckSynced() {
+		return status, nil
+	}
 	startTime := time.Now()
 	log.Info("Mamoru Blockchain Sniffer start", "number", block.NumberU64(), "ctx", "blockchain")
 	tracer := mamoru.NewTracer(mamoru.NewFeed(bc.chainConfig))
-
 	tracer.FeedBlock(block)
 	tracer.FeedTransactions(block.Number(), block.Transactions(), receipts)
 	tracer.FeedEvents(receipts)

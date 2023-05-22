@@ -4,7 +4,7 @@ ARG VERSION=""
 ARG BUILDNUM=""
 
 # Build Geth in a stock Go builder container
-FROM golang:1.20 as builder
+FROM golang:1.19 as builder
 
 RUN apt install make gcc git bash
 

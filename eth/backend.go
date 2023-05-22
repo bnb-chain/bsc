@@ -309,6 +309,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}); err != nil {
 		return nil, err
 	}
+
+	//Mamoru Sniffer set downloader for sync progress check
+	eth.blockchain.Sniffer.SetDownloader(eth.handler.downloader)
+
 	if eth.votePool != nil {
 		eth.handler.votepool = eth.votePool
 		if stack.Config().EnableMaliciousVoteMonitor {

@@ -25,7 +25,6 @@ type blockChain interface {
 
 	SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription
 	SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription
-	SubscribeChainSideEvent(ch chan<- core.ChainSideEvent) event.Subscription
 }
 
 type SnifferBackend struct {
@@ -37,20 +36,20 @@ type SnifferBackend struct {
 	newHeadEvent chan core.ChainHeadEvent
 	newTxsEvent  chan core.NewTxsEvent
 
-	chEv     chan core.ChainEvent
-	chSideEv chan core.ChainSideEvent
+	chEv chan core.ChainEvent
 
 	TxSub   event.Subscription
 	headSub event.Subscription
 
-	chEvSub     event.Subscription
-	chSideEvSub event.Subscription
+	chEvSub event.Subscription
 
-	ctx context.Context
-	mu  sync.RWMutex
+	ctx     context.Context
+	mu      sync.RWMutex
+	sniffer *mamoru.Sniffer
 }
 
 func NewSniffer(ctx context.Context, txPool BcTxPool, chain blockChain, chainConfig *params.ChainConfig, feeder mamoru.Feeder) *SnifferBackend {
+	sniffer := mamoru.NewSniffer()
 	sb := &SnifferBackend{
 		txPool:      txPool,
 		chain:       chain,
@@ -59,18 +58,18 @@ func NewSniffer(ctx context.Context, txPool BcTxPool, chain blockChain, chainCon
 		newTxsEvent:  make(chan core.NewTxsEvent, core.DefaultTxPoolConfig.GlobalQueue),
 		newHeadEvent: make(chan core.ChainHeadEvent, 10),
 
-		chEv:     make(chan core.ChainEvent, 10),
-		chSideEv: make(chan core.ChainSideEvent, 10),
+		chEv: make(chan core.ChainEvent, 10),
 
 		feeder: feeder,
 
 		ctx: ctx,
 		mu:  sync.RWMutex{},
+
+		sniffer: sniffer,
 	}
 	sb.TxSub = sb.SubscribeNewTxsEvent(sb.newTxsEvent)
 	sb.headSub = sb.SubscribeChainHeadEvent(sb.newHeadEvent)
 	sb.chEvSub = sb.SubscribeChainEvent(sb.chEv)
-	sb.chSideEvSub = sb.SubscribeChainSideEvent(sb.chSideEv)
 
 	return sb
 }
@@ -88,16 +87,11 @@ func (bc *SnifferBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.S
 	return bc.chain.SubscribeChainEvent(ch)
 }
 
-func (bc *SnifferBackend) SubscribeChainSideEvent(ch chan<- core.ChainSideEvent) event.Subscription {
-	return bc.chain.SubscribeChainSideEvent(ch)
-}
-
 func (bc *SnifferBackend) SnifferLoop() {
 	defer func() {
 		bc.TxSub.Unsubscribe()
 		bc.headSub.Unsubscribe()
 		bc.chEvSub.Unsubscribe()
-		bc.chSideEvSub.Unsubscribe()
 	}()
 
 	ctx, cancel := context.WithCancel(bc.ctx)
@@ -130,21 +124,12 @@ func (bc *SnifferBackend) SnifferLoop() {
 				block = newChEv.Block
 				bc.mu.RUnlock()
 			}
-
-		case newChSideEv := <-bc.chSideEv:
-			if newChSideEv.Block != nil && newChSideEv.Block.NumberU64() > block.NumberU64() {
-				log.Info("New core.ChainSideEvent", "number", newChSideEv.Block.NumberU64(), "ctx", "txpool")
-				bc.mu.RLock()
-				block = newChSideEv.Block
-				bc.mu.RUnlock()
-			}
-
 		}
 	}
 }
 
 func (bc *SnifferBackend) process(ctx context.Context, block *types.Block, txs types.Transactions) {
-	if !mamoru.IsSnifferEnable() || !mamoru.Connect() || ctx.Err() != nil {
+	if bc.sniffer != nil || !bc.sniffer.IsSnifferEnable() || !bc.sniffer.Connect() || ctx.Err() != nil {
 		return
 	}
 
