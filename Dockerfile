@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y $PACKAGES \
   && sed -i -e "s/bin\/sh/bin\/bash/" /etc/passwd \
   && apt-get clean
 
-RUN echo "[ ! -z \"\$TERM\" -a -r /etc/motd ] && cat /etc/motd" >> /etc/bash/bashrc
+RUN mkdir -p /etc/bash && echo "[ ! -z \"\$TERM\" -a -r /etc/motd ] && cat /etc/motd" >> /etc/bash/bashrc
 
 WORKDIR ${BSC_HOME}
 
