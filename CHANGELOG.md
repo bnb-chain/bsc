@@ -1,5 +1,9 @@
 # Changelog
-## v1.2.2
+## v1.2.4
+FEATURE
+* [\#1636](https://github.com/bnb-chain/bsc/pull/1636) upgrade: block height of Luban on mainnet
+
+## v1.2.3
 FEATURE
 * [\#1574](https://github.com/bnb-chain/bsc/pull/1574) upgrade: update PlatoUpgrade contracts code
 * [\#1594](https://github.com/bnb-chain/bsc/pull/1594) upgrade: block height of Plato on testnet
@@ -18,6 +22,9 @@ BUGFIX
 * [\#1572](https://github.com/bnb-chain/bsc/pull/1572) fix: remove dynamic metric labels about fast finality
 * [\#1575](https://github.com/bnb-chain/bsc/pull/1575) fix: make BLST PORTABLE for release binary
 * [\#1590](https://github.com/bnb-chain/bsc/pull/1590) fix: fix snap flaky tests
+
+## v1.2.2
+It was skipped by a mistake, replaced by v1.2.3
 
 ## v1.2.1
 IMPROVEMENT
