@@ -1002,35 +1002,35 @@ func TestOptionMaxPeersPerIp(t *testing.T) {
 
 	// case 1: normal case
 	doneCh1 := make(chan struct{})
-	for tryNum := 1; tryNum <= 4; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
 		tryFunc(tryNum, "1.2.3.11:", "1.2.3.22:", false, doneCh1)
 	}
 	close(doneCh1)
 
 	// case 2: once the previous connection was unregisterred, new connections with same IP can be accepted.
 	doneCh2 := make(chan struct{})
-	for tryNum := 1; tryNum <= 4; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
 		tryFunc(tryNum, "1.2.3.11:", "1.2.3.22:", false, doneCh2)
 	}
 	close(doneCh2)
 
 	// case 3: ipv6 address, like: [2001:db8::1]:80
 	doneCh3 := make(chan struct{})
-	for tryNum := 1; tryNum <= 4; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
 		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", false, doneCh3)
 	}
 	close(doneCh3)
 
 	// case 4: same as case 2, but for ipv6
 	doneCh4 := make(chan struct{})
-	for tryNum := 1; tryNum <= 4; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
 		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", false, doneCh4)
 	}
 	close(doneCh4)
 
 	// case 5: test trust node
 	doneCh5 := make(chan struct{})
-	for tryNum := 1; tryNum <= 4; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
 		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", true, doneCh5)
 	}
 	close(doneCh5)
