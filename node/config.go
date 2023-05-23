@@ -25,6 +25,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -525,4 +526,6 @@ type LogConfig struct {
 	TermTimeFormat *string `toml:",omitempty"`
 	// TimeFormat is the time format used for file logging.
 	TimeFormat *string `toml:",omitempty"`
+
+	Duration *time.Duration `toml:",omitempty"`
 }
