@@ -19,6 +19,8 @@ package miner
 
 import (
 	"fmt"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/rpc"
 	"math/big"
 	"sync"
 	"time"
@@ -55,6 +57,10 @@ type Config struct {
 	Recommit      time.Duration  // The time interval for miner to re-create mining work.
 	Noverify      bool           // Disable remote mining solution verification(only useful in ethash).
 	VoteEnable    bool           // whether enable voting
+
+	MEVRelays                   map[string]*rpc.Client // RPC clients to register validator each epoch
+	ProposedBlockUri            string                 // received eth_proposedBlocks on that uri
+	RegisterValidatorSignedHash []byte                 // signed value of crypto.Keccak256([]byte(ProposedBlockUri))
 }
 
 // Miner creates blocks and searches for proof-of-work values.
@@ -69,6 +75,10 @@ type Miner struct {
 	stopCh   chan struct{}
 
 	wg sync.WaitGroup
+
+	mevRelays              map[string]*rpc.Client
+	proposedBlockUri       string
+	signedProposedBlockUri []byte
 }
 
 func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, isLocalBlock func(header *types.Header) bool) *Miner {
@@ -80,6 +90,10 @@ func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *even
 		startCh: make(chan common.Address),
 		stopCh:  make(chan struct{}),
 		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, false),
+
+		mevRelays:              config.MEVRelays,
+		proposedBlockUri:       config.ProposedBlockUri,
+		signedProposedBlockUri: config.RegisterValidatorSignedHash,
 	}
 	miner.wg.Add(1)
 	go miner.update()
@@ -100,9 +114,18 @@ func (miner *Miner) update() {
 		}
 	}()
 
+	chainBlockCh := make(chan core.ChainHeadEvent, chainHeadChanSize)
+
+	chainBlockSub := miner.eth.BlockChain().SubscribeChainBlockEvent(chainBlockCh)
+	defer chainBlockSub.Unsubscribe()
+
 	shouldStart := false
 	canStart := true
 	dlEventCh := events.Chan()
+
+	// miner started at the middle of an epoch, we want to register it
+	miner.registerValidator()
+
 	for {
 		select {
 		case ev := <-dlEventCh:
@@ -142,11 +165,18 @@ func (miner *Miner) update() {
 				miner.worker.start()
 			}
 			shouldStart = true
+
+		case block := <-chainBlockCh:
+			if block.Block.NumberU64()%miner.eth.BlockChain().Config().Parlia.Epoch == 0 {
+				miner.registerValidator()
+			}
 		case <-miner.stopCh:
 			shouldStart = false
 			miner.worker.stop()
 		case <-miner.exitCh:
 			miner.worker.close()
+			return
+		case <-chainBlockSub.Err():
 			return
 		}
 	}
@@ -251,4 +281,50 @@ func (miner *Miner) GetSealingBlock(parent common.Hash, timestamp uint64, coinba
 // to the given channel.
 func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscription {
 	return miner.worker.pendingLogsFeed.Subscribe(ch)
+}
+
+// ProposedBlock add the block to the list of works
+func (miner *Miner) ProposedBlock(blockNumber *big.Int, prevBlockHash common.Hash, reward *big.Int, gasLimit uint64, gasUsed uint64, txs types.Transactions) error {
+	log.Info("Received ProposedBlock", "number", blockNumber, "prevHash", prevBlockHash.Hex(), "potential reward", reward, "gasLimit", gasLimit, "gasUsed", gasUsed, "txcount", len(txs))
+
+	if gasLimit > miner.worker.current.header.GasLimit {
+		log.Debug("Skipping the block as gas limit exceeds the current block gas limit", "number", blockNumber.Int64(), "proposedBlockGasLimit", gasLimit, "currentGasLimit", miner.worker.current.header.GasLimit, "chainCurrentBlock", miner.worker.current.header.Number.Int64())
+		return fmt.Errorf("gasLimit exceeds the current block gas limit")
+	}
+
+	if gasUsed > miner.worker.current.header.GasLimit {
+		log.Debug("Skipping the block as gas used exceeds the current block gas limit", "number", blockNumber.Int64(), "proposedBlockGasUsed", gasUsed, "currentGasLimit", miner.worker.current.header.GasLimit, "chainCurrentBlock", miner.worker.current.header.Number.Int64())
+		return fmt.Errorf("gasUsed exceeds the current block gas limit")
+	}
+	miner.worker.proposedCh <- &ProposedBlockArgs{
+		blockNumber:   blockNumber,
+		prevBlockHash: prevBlockHash,
+		blockReward:   reward,
+		gasLimit:      gasLimit,
+		gasUsed:       gasUsed,
+		txs:           txs,
+	}
+	return nil
+}
+
+func (miner *Miner) registerValidator() {
+	log.Info("register validator to MEV relays")
+	registerValidatorArgs := &ethapi.RegisterValidatorArgs{
+		Data:      []byte(miner.proposedBlockUri),
+		Signature: miner.signedProposedBlockUri,
+	}
+	for dest, destClient := range miner.mevRelays {
+		go func(dest string, destinationClient *rpc.Client, registerValidatorArgs *ethapi.RegisterValidatorArgs) {
+			var result any
+
+			if err := destinationClient.Call(
+				&result, "eth_registerValidator", registerValidatorArgs,
+			); err != nil {
+				log.Warn("Failed to register validator to MEV relay ", "dest", dest, "err", err)
+				return
+			}
+
+			log.Debug("register validator to MEV relay", "dest", dest, "result", result)
+		}(dest, destClient, registerValidatorArgs)
+	}
 }
