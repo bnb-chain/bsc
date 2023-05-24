@@ -168,7 +168,7 @@ func (miner *Miner) update() {
 			shouldStart = true
 
 		case block := <-chainBlockCh:
-			if block.Block.NumberU64()%miner.eth.BlockChain().Config().Parlia.Epoch == 0 {
+			if block.Block.NumberU64()%params.BSCChainConfig.Parlia.Epoch == 0 {
 				miner.registerValidator()
 			}
 		case <-miner.stopCh:
