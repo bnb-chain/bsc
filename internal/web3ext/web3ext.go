@@ -569,10 +569,10 @@ web3._extend({
 			call: 'eth_getLogs',
 			params: 1,
 		}),
-		new.web3._extend.Method({
+		new web3._extend.Method({
 			name: 'proposedBlock',
 			call: 'eth_proposedBlock',
-			params: 1
+			params: 1,
 		}),
 	],
 	properties: [
