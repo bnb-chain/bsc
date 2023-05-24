@@ -49,7 +49,7 @@ var DefaultConfig = Config{
 	P2P: p2p.Config{
 		ListenAddr:    ":30303",
 		MaxPeers:      50,
-		MaxPeersPerIp: 0, // by default, it will be same as MaxPeers
+		MaxPeersPerIP: 0, // by default, it will be same as MaxPeers
 		NAT:           nat.Any(),
 	},
 }

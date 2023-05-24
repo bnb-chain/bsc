@@ -703,10 +703,10 @@ var (
 		Value: node.DefaultConfig.P2P.MaxPeers,
 	}
 
-	MaxPeersPerIpFlag = cli.IntFlag{
+	MaxPeersPerIPFlag = cli.IntFlag{
 		Name:  "maxpeersperip",
 		Usage: "Maximum number of network peers from a single IP address, (default used if set to <= 0, which is same as MaxPeers)",
-		Value: node.DefaultConfig.P2P.MaxPeersPerIp,
+		Value: node.DefaultConfig.P2P.MaxPeersPerIP,
 	}
 
 	MaxPendingPeersFlag = cli.IntFlag{
@@ -1290,12 +1290,12 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 		}
 	}
 	// if max peers per ip is not set, use max peers
-	if cfg.MaxPeersPerIp <= 0 {
-		cfg.MaxPeersPerIp = cfg.MaxPeers
+	if cfg.MaxPeersPerIP <= 0 {
+		cfg.MaxPeersPerIP = cfg.MaxPeers
 	}
 	// flag like: `--maxpeersperip 10` could override the setting in config.toml
-	if ctx.GlobalIsSet(MaxPeersPerIpFlag.Name) {
-		cfg.MaxPeersPerIp = ctx.GlobalInt(MaxPeersPerIpFlag.Name)
+	if ctx.GlobalIsSet(MaxPeersPerIPFlag.Name) {
+		cfg.MaxPeersPerIP = ctx.GlobalInt(MaxPeersPerIPFlag.Name)
 	}
 
 	if !(lightClient || lightServer) {

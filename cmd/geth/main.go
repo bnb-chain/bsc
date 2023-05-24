@@ -132,7 +132,7 @@ var (
 		utils.PruneAncientDataFlag,
 		utils.ListenPortFlag,
 		utils.MaxPeersFlag,
-		utils.MaxPeersPerIpFlag,
+		utils.MaxPeersPerIPFlag,
 		utils.MaxPendingPeersFlag,
 		utils.MiningEnabledFlag,
 		utils.MinerThreadsFlag,

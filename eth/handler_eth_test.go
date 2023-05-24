@@ -931,7 +931,7 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 	}
 }
 
-func TestOptionMaxPeersPerIp(t *testing.T) {
+func TestOptionMaxPeersPerIP(t *testing.T) {
 	t.Parallel()
 
 	handler := newTestHandler()
@@ -941,7 +941,7 @@ func TestOptionMaxPeersPerIp(t *testing.T) {
 		head          = handler.chain.CurrentBlock()
 		td            = handler.chain.GetTd(head.Hash(), head.NumberU64())
 		wg            = sync.WaitGroup{}
-		maxPeersPerIp = handler.handler.maxPeersPerIp
+		maxPeersPerIP = handler.handler.maxPeersPerIP
 		uniPort       = 1000
 	)
 
@@ -974,23 +974,23 @@ func TestOptionMaxPeersPerIp(t *testing.T) {
 			})
 			// err is nil, connection ok and it is closed by the doneCh
 			if err == nil {
-				if trust || num <= maxPeersPerIp {
+				if trust || num <= maxPeersPerIP {
 					return
 				}
-				// if num > maxPeersPerIp and not trust, should report: p2p.DiscTooManyPeers
-				t.Errorf("current num is %d, maxPeersPerIp is %d, should failed", num, maxPeersPerIp)
+				// if num > maxPeersPerIP and not trust, should report: p2p.DiscTooManyPeers
+				t.Errorf("current num is %d, maxPeersPerIP is %d, should failed", num, maxPeersPerIP)
 				return
 			}
 			wg.Done()
 			if trust {
-				t.Errorf("trust node should not failed, num is %d, maxPeersPerIp is %d, but failed:%s", num, maxPeersPerIp, err)
+				t.Errorf("trust node should not failed, num is %d, maxPeersPerIP is %d, but failed:%s", num, maxPeersPerIP, err)
 			}
-			// err should be p2p.DiscTooManyPeers and num > maxPeersPerIp
-			if err == p2p.DiscTooManyPeers && num > maxPeersPerIp {
+			// err should be p2p.DiscTooManyPeers and num > maxPeersPerIP
+			if err == p2p.DiscTooManyPeers && num > maxPeersPerIP {
 				return
 			}
 
-			t.Errorf("current num is %d, maxPeersPerIp is %d, but failed:%s", num, maxPeersPerIp, err)
+			t.Errorf("current num is %d, maxPeersPerIP is %d, but failed:%s", num, maxPeersPerIP, err)
 		}(tryNum)
 
 		if err := src.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
@@ -1002,35 +1002,35 @@ func TestOptionMaxPeersPerIp(t *testing.T) {
 
 	// case 1: normal case
 	doneCh1 := make(chan struct{})
-	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
 		tryFunc(tryNum, "1.2.3.11:", "1.2.3.22:", false, doneCh1)
 	}
 	close(doneCh1)
 
 	// case 2: once the previous connection was unregisterred, new connections with same IP can be accepted.
 	doneCh2 := make(chan struct{})
-	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
 		tryFunc(tryNum, "1.2.3.11:", "1.2.3.22:", false, doneCh2)
 	}
 	close(doneCh2)
 
 	// case 3: ipv6 address, like: [2001:db8::1]:80
 	doneCh3 := make(chan struct{})
-	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
 		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", false, doneCh3)
 	}
 	close(doneCh3)
 
 	// case 4: same as case 2, but for ipv6
 	doneCh4 := make(chan struct{})
-	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
 		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", false, doneCh4)
 	}
 	close(doneCh4)
 
 	// case 5: test trust node
 	doneCh5 := make(chan struct{})
-	for tryNum := 1; tryNum <= maxPeersPerIp+2; tryNum++ {
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
 		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", true, doneCh5)
 	}
 	close(doneCh5)
