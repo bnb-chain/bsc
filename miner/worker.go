@@ -1187,17 +1187,10 @@ func (w *worker) fillTransactionsProposedBlock(env *environment, block *Proposed
 		"proposed reward", block.blockReward, "actual reward", blockReward,
 		"proposed gasUsed", block.gasUsed, "actual gasUsed", env.receipts[len(env.receipts)-1].CumulativeGasUsed,
 		"proposed txs", len(block.txs), "actual txs", tcount)
-	// ToDo check if wa
+
 	if tcount < len(block.txs) {
 		return errors.New("block parameters mismatch"), nil
 	}
-	// Skip those checks for now
-	// if env.receipts[tcount].CumulativeGasUsed != block.gasUsed {
-	// 	return errors.New("block parameters mismatch"), nil
-	// }
-	// if blockReward.Cmp(block.blockReward) != 0 {
-	// 	return errors.New("block parameters mismatch"), nil
-	// }
 
 	bloomProcessors.Close()
 	if !w.isRunning() && len(coalescedLogs) > 0 {
