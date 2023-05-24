@@ -74,6 +74,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 func init() {
@@ -544,6 +545,14 @@ var (
 	MinerNoVerfiyFlag = cli.BoolFlag{
 		Name:  "miner.noverify",
 		Usage: "Disable remote sealing verification",
+	}
+	MinerMEVRelaysFlag = cli.StringSliceFlag{
+		Name:  "miner.mevrelays",
+		Usage: "Destinations to register the validator each epoch. The miner will accept proposed blocks from these urls, if they are profitable.",
+	}
+	MinerMEVProposedBlockUriFlag = cli.StringFlag{
+		Name:  "miner.mevproposedblockuri",
+		Usage: "The uri MEV relays should send the eth_proposedBlock to.",
 	}
 	// Account settings
 	UnlockedAccountFlag = cli.StringFlag{
@@ -1546,6 +1555,19 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	if ctx.GlobalBool(VotingEnabledFlag.Name) {
 		cfg.VoteEnable = true
 	}
+
+	cfg.MEVRelays = make(map[string]*rpc.Client)
+	if ctx.GlobalIsSet(MinerMEVRelaysFlag.Name) {
+		for _, dest := range ctx.GlobalStringSlice(MinerMEVRelaysFlag.Name) {
+			client, err := rpc.Dial(dest)
+			if err != nil {
+				log.Warn("Failed to connect to propose block destination", "err", err, "dest", dest)
+				continue
+			}
+
+			cfg.MEVRelays[dest] = client
+		}
+	}
 }
 
 func setWhitelist(ctx *cli.Context, cfg *ethconfig.Config) {
@@ -1568,6 +1590,60 @@ func setWhitelist(ctx *cli.Context, cfg *ethconfig.Config) {
 			Fatalf("Invalid whitelist hash %s: %v", parts[1], err)
 		}
 		cfg.Whitelist[number] = hash
+	}
+}
+
+func setMEV(ctx *cli.Context, ks *keystore.KeyStore, cfg *miner.Config) {
+	if len(cfg.MEVRelays) > 0 {
+		if ctx.GlobalIsSet(MinerMEVProposedBlockUriFlag.Name) {
+			cfg.ProposedBlockUri = ctx.GlobalString(MinerMEVProposedBlockUriFlag.Name)
+		}
+		account, err := ks.Find(accounts.Account{Address: cfg.Etherbase})
+		if err != nil {
+			Fatalf("Could not find the validator public address %v to sign the registerValidator message, %v", cfg.Etherbase, err)
+		}
+		registerHash := accounts.TextHash([]byte(cfg.ProposedBlockUri))
+		passwordList := MakePasswordList(ctx)
+		if passwordList == nil {
+			cfg.RegisterValidatorSignedHash, err = ks.SignHash(account, registerHash)
+			if err != nil {
+				Fatalf("Failed sign registerValidator message unlocked with error: %v", err)
+			}
+		} else {
+			passwordFound := false
+			for _, password := range passwordList {
+				cfg.RegisterValidatorSignedHash, err = ks.SignHashWithPassphrase(account, password, registerHash)
+				if err == nil {
+					passwordFound = true
+					break
+				}
+			}
+			if !passwordFound {
+				Fatalf("Failed sign registerValidator message with passphrase with error")
+			}
+		}
+
+		signature := make([]byte, crypto.SignatureLength)
+		copy(signature, cfg.RegisterValidatorSignedHash)
+		// verify the validator public address used to sign the registerValidator message
+		if len(signature) != crypto.SignatureLength {
+			Fatalf("signature used to sign registerValidator must be %d bytes long", crypto.SignatureLength)
+		}
+		if signature[crypto.RecoveryIDOffset] == 27 || signature[crypto.RecoveryIDOffset] == 28 {
+			signature[crypto.RecoveryIDOffset] -= 27 // Transform yellow paper V from 27/28 to 0/1
+		}
+		if signature[crypto.RecoveryIDOffset] != 0 && signature[crypto.RecoveryIDOffset] != 1 {
+			Fatalf("invalid Ethereum signature of the registerValidator (V is not 0, or 1, or 27 or 28), it is %v", cfg.RegisterValidatorSignedHash[crypto.RecoveryIDOffset])
+		}
+
+		rpk, err := crypto.SigToPub(registerHash, signature)
+		if err != nil {
+			Fatalf("Failed to get validator public address from the registerValidator signed message %v", err)
+		}
+		addr := crypto.PubkeyToAddress(*rpk)
+		if addr != account.Address {
+			Fatalf("Validator public Etherbase %v was not used to sign the registerValidator %v", account.Address, addr)
+		}
 	}
 }
 
@@ -1636,6 +1712,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	setMiner(ctx, &cfg.Miner)
 	setWhitelist(ctx, cfg)
 	setLes(ctx, cfg)
+	setMEV(ctx, ks, &cfg.Miner)
 
 	// Cap the cache allowance and tune the garbage collector
 	mem, err := gopsutil.VirtualMemory()
