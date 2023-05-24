@@ -217,17 +217,18 @@ func DecodeLightBlockValidationInput(input []byte) (*ConsensusState, *types.Ligh
 }
 
 // output:
-// | validatorSetChanged | empty      | consensusStateBytesLength |  new consensusState |
-// | 1 byte              | 23 bytes   | 8 bytes                   |                     |
+// 1. if validatorSet changed
+// |  new consensusState |
+// |                     |
+// 2. if validatorSet not changed
+// | chainId | height | validatorSetHash |
+// | 32 bytes| 8 btyes| 32 bytes         |
 func EncodeLightBlockValidationResult(validatorSetChanged bool, consensusStateBytes []byte) []byte {
-	lengthBytes := make([]byte, validateResultMetaDataLength)
 	if validatorSetChanged {
-		copy(lengthBytes[:1], []byte{0x01})
+		return consensusStateBytes
 	}
 
-	consensusStateBytesLength := uint64(len(consensusStateBytes))
-	binary.BigEndian.PutUint64(lengthBytes[validateResultMetaDataLength-uint64TypeLength:], consensusStateBytesLength)
-
-	result := append(lengthBytes, consensusStateBytes...)
-	return result
+	// validatorSet not changed
+	returnLen := chainIDLength + heightLength + validatorSetHashLength
+	return consensusStateBytes[:returnLen]
 }
