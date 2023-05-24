@@ -194,8 +194,9 @@ var (
 		// TODO Caution !!! it should be very careful !!!
 		LubanBlock: nil,
 		PlatoBlock: nil,
-		// TODO modify blockNumber, make sure the Hertz block number is equal to BerlinBlock for enabling Berlin EIPs
+		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
 		BerlinBlock: nil,
+		LondonBlock: nil,
 		HertzBlock:  nil,
 
 		Parlia: &ParliaConfig{
@@ -227,9 +228,11 @@ var (
 
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
-		LubanBlock:  big.NewInt(29295050),
-		PlatoBlock:  big.NewInt(29861024),
+		LubanBlock: big.NewInt(29295050),
+		PlatoBlock: big.NewInt(29861024),
+		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
 		BerlinBlock: nil,
+		LondonBlock: nil,
 		HertzBlock:  nil,
 
 		Parlia: &ParliaConfig{

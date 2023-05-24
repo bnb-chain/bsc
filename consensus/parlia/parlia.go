@@ -406,9 +406,8 @@ func (p *Parlia) getParent(chain consensus.ChainHeaderReader, header *types.Head
 
 	if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
 		return nil, consensus.ErrUnknownAncestor
-	} else {
-		return parent, nil
 	}
+	return parent, nil
 }
 
 // verifyVoteAttestation checks whether the vote attestation in the header is valid.

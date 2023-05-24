@@ -425,7 +425,7 @@ func testHeader(t *testing.T, chain []*types.Block, client *rpc.Client) {
 			if err != nil {
 				t.Fatalf("Error serializing received block header.")
 			}
-			wantBytes, _ := rlp.EncodeToBytes(tt.want)
+			wantBytes, err := rlp.EncodeToBytes(tt.want)
 			if err != nil {
 				t.Fatalf("Error serializing wanted block header.")
 			}
