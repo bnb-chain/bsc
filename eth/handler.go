@@ -143,6 +143,7 @@ type handler struct {
 	maxPeers             int
 	maxPeersPerIp        int
 	peersPerIp           map[string]int
+	peerPerIpLock        sync.Mutex
 
 	downloader   *downloader.Downloader
 	blockFetcher *fetcher.BlockFetcher
@@ -405,13 +406,15 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Debug("runEthPeer", "no ip address, remoteAddress", remoteAddr)
 	} else if !peerInfo.Network.Trusted {
 		remoteIp := remoteAddr[:indexIp]
+		h.peerPerIpLock.Lock()
 		if num, ok := h.peersPerIp[remoteIp]; ok && num >= h.maxPeersPerIp {
+			h.peerPerIpLock.Unlock()
 			peer.Log().Info("The IP has too many peers", "ip", remoteIp, "maxPeersPerIp", h.maxPeersPerIp,
 				"name", peerInfo.Name, "Enode", peerInfo.Enode)
 			return p2p.DiscTooManyPeers
 		}
-
 		h.peersPerIp[remoteIp] = h.peersPerIp[remoteIp] + 1
+		h.peerPerIpLock.Unlock()
 	}
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
@@ -656,6 +659,7 @@ func (h *handler) unregisterPeer(id string) {
 		peer.Log().Debug("unregisterPeer", "name", peerInfo.Name, "no ip address, remoteAddress", remoteAddr)
 	} else if !peerInfo.Network.Trusted {
 		remoteIp := remoteAddr[:indexIp]
+		h.peerPerIpLock.Lock()
 		if h.peersPerIp[remoteIp] <= 0 {
 			peer.Log().Error("unregisterPeer without record", "name", peerInfo.Name, "remoteAddress", remoteAddr)
 		} else {
@@ -665,6 +669,7 @@ func (h *handler) unregisterPeer(id string) {
 				delete(h.peersPerIp, remoteIp)
 			}
 		}
+		h.peerPerIpLock.Unlock()
 	}
 }
 
