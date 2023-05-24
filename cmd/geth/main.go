@@ -144,6 +144,8 @@ var (
 		utils.MinerRecommitIntervalFlag,
 		utils.MinerNoVerfiyFlag,
 		utils.MinerDelayLeftoverFlag,
+		utils.MinerMEVRelaysFlag,
+		utils.MinerMEVProposedBlockUriFlag,
 		utils.NATFlag,
 		utils.NoDiscoverFlag,
 		utils.DiscoveryV5Flag,

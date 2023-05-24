@@ -1332,6 +1332,57 @@ func (s *PublicBlockChainAPI) GetVerifyResult(ctx context.Context, blockNr rpc.B
 	return s.b.Chain().GetVerifyResult(uint64(blockNr), blockHash, diffHash)
 }
 
+// RegisterValidatorArgs has the epoch and the uri to send the proposedBlock to the validator
+type RegisterValidatorArgs struct {
+	Data      hexutil.Bytes `json:"data"` // bytes of string with callback ProposedBlockUri
+	Signature hexutil.Bytes `json:"signature"`
+}
+
+func (s *PublicEthereumAPI) RegisterValidator(ctx context.Context, args RegisterValidatorArgs) error {
+	return nil
+}
+
+type ProposedBlockArgs struct {
+	BlockNumber   rpc.BlockNumber `json:"blockNumber"`
+	PrevBlockHash common.Hash     `json:"prevBlockHash"`
+	BlockReward   *big.Int        `json:"blockReward"`
+	GasLimit      uint64          `json:"gasLimit"`
+	GasUsed       uint64          `json:"gasUsed"`
+	Payload       []hexutil.Bytes `json:"payload"`
+}
+
+// ProposedBlock will submit the block to the miner worker
+func (s *PublicBlockChainAPI) ProposedBlock(ctx context.Context, args ProposedBlockArgs) error {
+	var txs types.Transactions
+	if len(args.Payload) == 0 {
+		return errors.New("block missing txs")
+	}
+	if args.BlockNumber == 0 {
+		return errors.New("block missing blockNumber")
+	}
+
+	nextBlock := big.NewInt(0).Add(big.NewInt(1), s.b.CurrentBlock().Number())
+	proposedBlockNumber := big.NewInt(args.BlockNumber.Int64())
+
+	if nextBlock.Cmp(proposedBlockNumber) != 0 {
+		log.Debug("Validating ProposedBlock failed", "number", args.BlockNumber, "chain number", s.b.CurrentBlock().Number())
+		return errors.New("blockNumber is incorrect")
+	}
+	if s.b.CurrentBlock().Hash() != args.PrevBlockHash {
+		log.Debug("Validating ProposedBlock failed", "number", args.BlockNumber, "prevHash", args.PrevBlockHash.Hex(), "chain current block", s.b.CurrentBlock().Hash())
+		return errors.New("prevBlockHash is incorrect")
+	}
+
+	for _, encodedTx := range args.Payload {
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			return err
+		}
+		txs = append(txs, tx)
+	}
+	return s.b.ProposedBlock(ctx, proposedBlockNumber, args.PrevBlockHash, args.BlockReward, args.GasLimit, args.GasUsed, txs)
+}
+
 // ExecutionResult groups all structured logs emitted by the EVM
 // while replaying a transaction in debug mode as well as transaction
 // execution status, the amount of gas used and the return value

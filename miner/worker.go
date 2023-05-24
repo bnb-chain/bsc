@@ -173,6 +173,16 @@ type getWorkReq struct {
 	result chan *types.Block
 }
 
+// ProposedBlockArgs defines the argument of a proposed block
+type ProposedBlockArgs struct {
+	blockNumber   *big.Int
+	prevBlockHash common.Hash
+	blockReward   *big.Int
+	gasLimit      uint64
+	gasUsed       uint64
+	txs           types.Transactions
+}
+
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
@@ -196,6 +206,7 @@ type worker struct {
 	// Channels
 	newWorkCh          chan *newWorkReq
 	getWorkCh          chan *getWorkReq
+	proposedCh         chan *ProposedBlockArgs
 	taskCh             chan *task
 	resultCh           chan *types.Block
 	startCh            chan struct{}
@@ -233,33 +244,40 @@ type worker struct {
 	fullTaskHook      func()                             // Method to call before pushing the full sealing task.
 	resubmitHook      func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 	recentMinedBlocks *lru.Cache
+
+	// Proposed block
+	bestProposedBlockLock   sync.RWMutex
+	bestProposedBlock       *environment
+	bestProposedBlockReward *big.Int
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
 	recentMinedBlocks, _ := lru.New(recentMinedCacheLimit)
 	worker := &worker{
-		prefetcher:         core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
-		config:             config,
-		chainConfig:        chainConfig,
-		engine:             engine,
-		eth:                eth,
-		mux:                mux,
-		chain:              eth.BlockChain(),
-		isLocalBlock:       isLocalBlock,
-		localUncles:        make(map[common.Hash]*types.Block),
-		remoteUncles:       make(map[common.Hash]*types.Block),
-		unconfirmed:        newUnconfirmedBlocks(eth.BlockChain(), sealingLogAtDepth),
-		pendingTasks:       make(map[common.Hash]*task),
-		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
-		chainSideCh:        make(chan core.ChainSideEvent, chainSideChanSize),
-		newWorkCh:          make(chan *newWorkReq),
-		getWorkCh:          make(chan *getWorkReq),
-		taskCh:             make(chan *task),
-		resultCh:           make(chan *types.Block, resultQueueSize),
-		exitCh:             make(chan struct{}),
-		startCh:            make(chan struct{}, 1),
-		resubmitIntervalCh: make(chan time.Duration),
-		recentMinedBlocks:  recentMinedBlocks,
+		prefetcher:              core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
+		config:                  config,
+		chainConfig:             chainConfig,
+		engine:                  engine,
+		eth:                     eth,
+		mux:                     mux,
+		chain:                   eth.BlockChain(),
+		isLocalBlock:            isLocalBlock,
+		localUncles:             make(map[common.Hash]*types.Block),
+		remoteUncles:            make(map[common.Hash]*types.Block),
+		unconfirmed:             newUnconfirmedBlocks(eth.BlockChain(), sealingLogAtDepth),
+		pendingTasks:            make(map[common.Hash]*task),
+		chainHeadCh:             make(chan core.ChainHeadEvent, chainHeadChanSize),
+		chainSideCh:             make(chan core.ChainSideEvent, chainSideChanSize),
+		newWorkCh:               make(chan *newWorkReq),
+		getWorkCh:               make(chan *getWorkReq),
+		proposedCh:              make(chan *ProposedBlockArgs),
+		taskCh:                  make(chan *task),
+		resultCh:                make(chan *types.Block, resultQueueSize),
+		exitCh:                  make(chan struct{}),
+		startCh:                 make(chan struct{}, 1),
+		resubmitIntervalCh:      make(chan time.Duration),
+		recentMinedBlocks:       recentMinedBlocks,
+		bestProposedBlockReward: big.NewInt(0),
 	}
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
@@ -272,11 +290,12 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		recommit = minRecommitInterval
 	}
 
-	worker.wg.Add(4)
+	worker.wg.Add(5)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
+	go worker.proposedLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -407,6 +426,10 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 		select {
 		case <-w.startCh:
 			clearPending(w.chain.CurrentBlock().NumberU64())
+			w.bestProposedBlockLock.Lock()
+			w.bestProposedBlock = nil
+			w.bestProposedBlockReward.SetInt64(0)
+			w.bestProposedBlockLock.Unlock()
 			timestamp = time.Now().Unix()
 			commit(commitInterruptNewHead)
 
@@ -688,6 +711,53 @@ func (w *worker) resultLoop() {
 			w.unconfirmed.Insert(block.NumberU64(), block.Hash())
 
 		case <-w.exitCh:
+			return
+		}
+	}
+}
+
+// proposedLoop is responsible for generating and submitting sealing work based on
+// proposed blocks
+func (w *worker) proposedLoop() {
+	chainBlockCh := make(chan core.ChainHeadEvent, chainHeadChanSize)
+
+	chainBlockSub := w.eth.BlockChain().SubscribeChainBlockEvent(chainBlockCh)
+
+	defer w.wg.Done()
+	defer chainBlockSub.Unsubscribe()
+	defer func() {
+		if w.current != nil {
+			w.current.discard()
+		}
+	}()
+
+	for {
+		select {
+		case req := <-w.proposedCh:
+			bestReward := big.NewInt(0)
+			w.bestProposedBlockLock.RLock()
+			bestReward.Set(w.bestProposedBlockReward)
+			w.bestProposedBlockLock.RUnlock()
+
+			if bestReward != nil && bestReward.Cmp(req.blockReward) > 0 {
+				log.Debug("Skipping proposedBlock", "number", req.blockNumber, "proposedReward", req.blockReward, "reward", bestReward)
+				continue
+			}
+			if err := w.validateProposedBlock(req); err != nil {
+				log.Error("Processing proposedBlock failed", "err", err, "ProposedBlock", fmt.Sprintf("number %v, prev block hash %v, reward %v, gas limit %v, gas used %v, txcount %v", req.blockNumber, req.prevBlockHash.Hex(), req.blockReward, req.gasLimit, req.gasUsed, len(req.txs)))
+			}
+
+		case <-chainBlockCh:
+			// each block will have its own interruptCh to stop work with a reason
+			w.bestProposedBlockLock.Lock()
+			w.bestProposedBlock = nil
+			w.bestProposedBlockReward.SetInt64(0)
+			w.bestProposedBlockLock.Unlock()
+
+		// System stopped
+		case <-w.exitCh:
+			return
+		case <-chainBlockSub.Err():
 			return
 		}
 	}
@@ -1057,8 +1127,145 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	defer work.discard()
 
 	w.fillTransactions(nil, work, nil)
-	block, _, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
+
+	bestWork := work
+	reward := work.state.GetBalance(consensus.SystemAddress)
+	w.bestProposedBlockLock.RLock()
+	if w.bestProposedBlock != nil && w.bestProposedBlockReward.Cmp(reward) > 0 {
+		log.Debug("Prefer proposedBlock", "number", bestWork.header.Number, "balance", reward, "proposedReward", w.bestProposedBlockReward, "type", "generateWork")
+		bestWork = w.bestProposedBlock.copy()
+	}
+	w.bestProposedBlockLock.RUnlock()
+	block, _, err := w.engine.FinalizeAndAssemble(w.chain, bestWork.header, bestWork.state, bestWork.txs, bestWork.unclelist(), bestWork.receipts)
 	return block, err
+}
+
+// fillTransactionsProposedBlock retrieves the pending transactions from the txpool and fills them
+// into the given sealing block. The transaction selection and ordering strategy can
+// be customized with the plugin in the future.
+func (w *worker) fillTransactionsProposedBlock(env *environment, block *ProposedBlockArgs) (error, *big.Int) {
+	gasLimit := env.header.GasLimit
+	blockReward := big.NewInt(0)
+	if env.gasPool == nil {
+		env.gasPool = new(core.GasPool).AddGas(gasLimit)
+		if w.chain.Config().IsEuler(env.header.Number) {
+			env.gasPool.SubGas(params.SystemTxsGas * 3)
+		} else {
+			env.gasPool.SubGas(params.SystemTxsGas)
+		}
+	}
+
+	var coalescedLogs []*types.Log
+	// initialize bloom processors
+	processorCapacity := 100
+	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
+
+	signal := commitInterruptNone
+	for _, tx := range block.txs {
+		// If we don't have enough gas for any further transactions then we're done
+		if env.gasPool.Gas() < params.TxGas {
+			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
+			signal = commitInterruptOutOfGas
+			break
+		}
+
+		if tx.Protected() && !w.chainConfig.IsEIP155(env.header.Number) {
+			return errors.New("block payload is incorrect"), nil
+		}
+		// Start executing the transaction
+		env.state.Prepare(tx.Hash(), env.tcount)
+
+		_, err := w.commitTransaction(env, tx, bloomProcessors)
+		if err != nil {
+			return err, nil
+		}
+	}
+
+	tcount := len(env.txs)
+	blockReward = env.state.GetBalance(consensus.SystemAddress)
+	log.Debug("processing proposedBlock", "blockNumber", block.blockNumber,
+		"proposed reward", block.blockReward, "actual reward", blockReward,
+		"proposed gasUsed", block.gasUsed, "actual gasUsed", env.receipts[len(env.receipts)-1].CumulativeGasUsed,
+		"proposed txs", len(block.txs), "actual txs", tcount)
+	// ToDo check if wa
+	if tcount < len(block.txs) {
+		return errors.New("block parameters mismatch"), nil
+	}
+	// Skip those checks for now
+	// if env.receipts[tcount].CumulativeGasUsed != block.gasUsed {
+	// 	return errors.New("block parameters mismatch"), nil
+	// }
+	// if blockReward.Cmp(block.blockReward) != 0 {
+	// 	return errors.New("block parameters mismatch"), nil
+	// }
+
+	bloomProcessors.Close()
+	if !w.isRunning() && len(coalescedLogs) > 0 {
+		// We don't push the pendingLogsEvent while we are sealing. The reason is that
+		// when we are sealing, the worker will regenerate a sealing block every 3 seconds.
+		// In order to avoid pushing the repeated pendingLog, we disable the pending log pushing.
+
+		// make a copy, the state caches the logs and these logs get "upgraded" from pending to mined
+		// logs by filling in the block hash when the block was mined by the local miner. This can
+		// cause a race condition if a log was "upgraded" before the PendingLogsEvent is processed.
+		cpy := make([]*types.Log, len(coalescedLogs))
+		for i, l := range coalescedLogs {
+			cpy[i] = new(types.Log)
+			*cpy[i] = *l
+		}
+		w.pendingLogsFeed.Send(cpy)
+	}
+	return signalToErr(signal), blockReward
+}
+
+// validateProposedBlock generates a sealing block based on a proposed block.
+func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
+	start := time.Now()
+
+	// Set the coinbase if the worker is running or it's required
+	var coinbase common.Address
+	if w.isRunning() {
+		if w.coinbase == (common.Address{}) {
+			return errors.New("Refusing to mine without etherbase")
+		}
+		coinbase = w.coinbase // Use the preset address as the fee recipient
+	}
+
+	work, err := w.prepareWork(&generateParams{
+		timestamp: uint64(time.Now().Unix()),
+		coinbase:  coinbase,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Fill transactions from the proposed block
+	fillStart := time.Now()
+	err, blockReward := w.fillTransactionsProposedBlock(work, proposedBlock)
+	fillDuration := time.Since(fillStart)
+	if err != nil {
+		return err
+	}
+
+	bestProposedLockStart := time.Now()
+	nextBlock := big.NewInt(0).Add(big.NewInt(1), w.eth.BlockChain().CurrentBlock().Number())
+
+	if nextBlock.Cmp(proposedBlock.blockNumber) != 0 {
+		// block was changed during validation, need to ignore this proposedBlock
+		return errors.New("chain changed")
+	}
+
+	w.bestProposedBlockLock.Lock()
+	defer w.bestProposedBlockLock.Unlock()
+	if blockReward.Cmp(w.bestProposedBlockReward) > 0 {
+		log.Debug("Replacing proposedBlock", "number", work.header.Number, "reward", w.bestProposedBlockReward, "new reward", blockReward)
+		w.bestProposedBlock = work
+		w.bestProposedBlockReward.Set(blockReward)
+	}
+	bestProposedLockDuration := time.Since(bestProposedLockStart)
+	totalDuration := time.Since(start)
+	log.Debug("validate proposed block", "blockNumber", proposedBlock.blockNumber, "duration", totalDuration, "fill duration", fillDuration, "lock duration", bestProposedLockDuration)
+	return nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block
@@ -1212,15 +1419,24 @@ LOOP:
 	}
 	// get the most profitable work
 	bestWork := workList[0]
-	bestReward := new(big.Int)
+	bestReward := big.NewInt(0)
 	for i, wk := range workList {
 		balance := wk.state.GetBalance(consensus.SystemAddress)
 		log.Debug("Get the most profitable work", "index", i, "balance", balance, "bestReward", bestReward)
 		if balance.Cmp(bestReward) > 0 {
 			bestWork = wk
-			bestReward = balance
+			bestReward.Set(balance)
 		}
 	}
+	// check the top proposedBlock
+	w.bestProposedBlockLock.RLock()
+	if w.bestProposedBlock != nil && w.bestProposedBlockReward.Cmp(bestReward) > 0 {
+		log.Debug("Prefer proposedBlock", "number", bestWork.header.Number, "balance", bestReward, "proposedReward", w.bestProposedBlockReward, "type", "commitWork")
+		bestWork = w.bestProposedBlock.copy()
+		bestReward.Set(w.bestProposedBlockReward)
+	}
+	w.bestProposedBlockLock.RUnlock()
+
 	w.commit(bestWork, w.fullTaskHook, true, start)
 
 	// Swap out the old work with the new one, terminating any leftover
