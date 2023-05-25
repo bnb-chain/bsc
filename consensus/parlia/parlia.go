@@ -1719,10 +1719,10 @@ func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, he
 }
 
 // GetFinalizedHeader returns highest finalized block header.
-// It will find vote finalized block within NaturallyFinalizedDist blocks firstly,
-// If the vote finalized block not found, return its naturally finalized block.
+// It will find vote finalized block within ProbabilisticFinalizedDist blocks firstly,
+// If the vote finalized block not found, return its probabilistic finalized block.
 func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
-	backward := uint64(types.NaturallyFinalizedDist)
+	backward := uint64(types.ProbabilisticFinalizedDist)
 	if chain == nil || header == nil {
 		return nil
 	}
