@@ -13,7 +13,7 @@ import (
 )
 
 func TestWriter(t *testing.T) {
-	w := NewAsyncFileWriter("./hello.log", 100, nil)
+	w := NewAsyncFileWriter("./hello.log", 100, time.Hour)
 	w.Start()
 	w.Write([]byte("hello\n"))
 	w.Write([]byte("world\n"))
@@ -32,15 +32,15 @@ func TestWriter(t *testing.T) {
 }
 
 func TestWriterNames(t *testing.T) {
-	interval := 2 * time.Second
-	w := NewAsyncFileWriter("./hello.log", 1000, &interval)
+	w := NewAsyncFileWriter("./hello.log", 1000, 2*time.Second)
 	w.Start()
 	w.Write([]byte("hello\n"))
-	// time.Sleep(3 * time.Second)
+	time.Sleep(3 * time.Second)
 	w.Write([]byte("cruel\n"))
-	// time.Sleep(3 * time.Second)
+	time.Sleep(3 * time.Second)
 	w.Write([]byte("world\n"))
 	w.Stop()
+
 	files, _ := ioutil.ReadDir("./")
 	logCounter := 0
 	for _, f := range files {

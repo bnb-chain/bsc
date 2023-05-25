@@ -109,7 +109,7 @@ func New(conf *Config) (*Node, error) {
 					logFilePath,
 					*conf.LogConfig.MaxBytesSize,
 					*conf.LogConfig.Level,
-					conf.LogConfig.Duration,
+					*conf.LogConfig.Duration,
 				),
 			)
 		}

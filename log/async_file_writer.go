@@ -17,7 +17,7 @@ type AlignedTicker struct {
 	C    <-chan time.Time
 }
 
-func NewAlignedTicker(duration *time.Duration) *AlignedTicker {
+func NewAlignedTicker(duration time.Duration) *AlignedTicker {
 	ht := &AlignedTicker{
 		stop: make(chan struct{}),
 	}
@@ -29,7 +29,7 @@ func (ht *AlignedTicker) Stop() {
 	ht.stop <- struct{}{}
 }
 
-func (ht *AlignedTicker) Ticker(duration *time.Duration) <-chan time.Time {
+func (ht *AlignedTicker) Ticker(duration time.Duration) <-chan time.Time {
 	ch := make(chan time.Time)
 	go func() {
 		intervalLow := time.Now().Unix() / int64(duration.Seconds())
@@ -63,26 +63,17 @@ type AsyncFileWriter struct {
 	ticker  *AlignedTicker
 }
 
-func NewAsyncFileWriter(filePath string, bufSize int64, duration *time.Duration) *AsyncFileWriter {
+func NewAsyncFileWriter(filePath string, bufSize int64, duration time.Duration) *AsyncFileWriter {
 	absFilePath, err := filepath.Abs(filePath)
 	if err != nil {
 		panic(fmt.Sprintf("get file path of logger error. filePath=%s, err=%s", filePath, err))
-	}
-
-	var alignedTicker *AlignedTicker
-
-	if duration == nil {
-		var hour = time.Hour
-		alignedTicker = NewAlignedTicker(&hour)
-	} else {
-		alignedTicker = NewAlignedTicker(duration)
 	}
 
 	return &AsyncFileWriter{
 		filePath: absFilePath,
 		buf:      make(chan []byte, bufSize),
 		stop:     make(chan struct{}),
-		ticker:   alignedTicker,
+		ticker:   NewAlignedTicker(duration),
 	}
 }
 
