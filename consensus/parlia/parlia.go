@@ -1740,18 +1740,12 @@ func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, he
 }
 
 // GetFinalizedHeader returns highest finalized block header.
-// It will find vote finalized block within NaturallyFinalizedDist blocks firstly,
-// If the vote finalized block not found, return its naturally finalized block.
 func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
-	backward := uint64(types.NaturallyFinalizedDist)
 	if chain == nil || header == nil {
 		return nil
 	}
 	if !chain.Config().IsPlato(header.Number) {
 		return chain.GetHeaderByNumber(0)
-	}
-	if header.Number.Uint64() < backward {
-		backward = header.Number.Uint64()
 	}
 
 	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
@@ -1761,20 +1755,10 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		return nil
 	}
 
-	for snap.Attestation != nil && snap.Attestation.SourceNumber >= header.Number.Uint64()-backward {
-		if snap.Attestation.TargetNumber == snap.Attestation.SourceNumber+1 {
-			return chain.GetHeaderByHash(snap.Attestation.SourceHash)
-		}
-
-		snap, err = p.snapshot(chain, snap.Attestation.SourceNumber, snap.Attestation.SourceHash, nil)
-		if err != nil {
-			log.Error("Unexpected error when getting snapshot",
-				"error", err, "blockNumber", snap.Attestation.SourceNumber, "blockHash", snap.Attestation.SourceHash)
-			return nil
-		}
+	if snap.Attestation != nil {
+		return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
 	}
-
-	return FindAncientHeader(header, backward, chain, nil)
+	return nil
 }
 
 // ===========================     utility function        ==========================
