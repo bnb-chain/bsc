@@ -249,6 +249,7 @@ type worker struct {
 	bestProposedBlockLock   sync.RWMutex
 	bestProposedBlock       *environment
 	bestProposedBlockReward *big.Int
+	currentGasLimit         *uint64
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
@@ -278,6 +279,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitIntervalCh:      make(chan time.Duration),
 		recentMinedBlocks:       recentMinedBlocks,
 		bestProposedBlockReward: big.NewInt(0),
+		currentGasLimit:         new(uint64),
 	}
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
@@ -1311,6 +1313,7 @@ LOOP:
 		}
 		prevWork = work
 		workList = append(workList, work)
+		atomic.StoreUint64(w.currentGasLimit, work.header.GasLimit)
 
 		delay := w.engine.Delay(w.chain, work.header, &w.config.DelayLeftOver)
 		if delay == nil {

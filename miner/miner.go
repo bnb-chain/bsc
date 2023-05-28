@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -287,15 +288,11 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 // ProposedBlock add the block to the list of works
 func (miner *Miner) ProposedBlock(blockNumber *big.Int, prevBlockHash common.Hash, reward *big.Int, gasLimit uint64, gasUsed uint64, txs types.Transactions) error {
 	log.Info("Received ProposedBlock", "number", blockNumber, "prevHash", prevBlockHash.Hex(), "potential reward", reward, "gasLimit", gasLimit, "gasUsed", gasUsed, "txcount", len(txs))
+	currentGasLimit := atomic.LoadUint64(miner.worker.currentGasLimit)
 
-	if gasLimit > miner.worker.current.header.GasLimit {
-		log.Debug("Skipping the block as gas limit exceeds the current block gas limit", "number", blockNumber.Int64(), "proposedBlockGasLimit", gasLimit, "currentGasLimit", miner.worker.current.header.GasLimit, "chainCurrentBlock", miner.worker.current.header.Number.Int64())
-		return fmt.Errorf("gasLimit exceeds the current block gas limit")
-	}
-
-	if gasUsed > miner.worker.current.header.GasLimit {
-		log.Debug("Skipping the block as gas used exceeds the current block gas limit", "number", blockNumber.Int64(), "proposedBlockGasUsed", gasUsed, "currentGasLimit", miner.worker.current.header.GasLimit, "chainCurrentBlock", miner.worker.current.header.Number.Int64())
-		return fmt.Errorf("gasUsed exceeds the current block gas limit")
+	if gasUsed > currentGasLimit {
+		log.Debug("Skipping the block as gas used exceeds the current block gas limit", "number", blockNumber.Int64(), "proposedBlockGasUsed", gasUsed, "currentGasLimit", currentGasLimit, "chainCurrentBlock", miner.worker.current.header.Number.Int64())
+		return fmt.Errorf("gasUsed exceeds the current block gas limit %v", currentGasLimit)
 	}
 	miner.worker.proposedCh <- &ProposedBlockArgs{
 		blockNumber:   blockNumber,
