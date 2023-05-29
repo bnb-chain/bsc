@@ -42,7 +42,7 @@ var (
 	errExpired          = errors.New("expired")
 	errUnsolicitedReply = errors.New("unsolicited reply")
 	errUnknownNode      = errors.New("unknown node")
-	errTimeout          = errors.New("RPC timeout")
+	errTimeout          = errors.New("udp timeout")
 	errClockWarp        = errors.New("reply deadline too far in the future")
 	errClosed           = errors.New("socket closed")
 	errLowPort          = errors.New("low port")
@@ -143,7 +143,7 @@ func ListenV4(c UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv4, error) {
 		log:             cfg.Log,
 	}
 
-	tab, err := newTable(t, ln.Database(), cfg.Bootnodes, t.log)
+	tab, err := newTable(t, ln.Database(), cfg.Bootnodes, t.log, cfg.FilterFunction)
 	if err != nil {
 		return nil, err
 	}

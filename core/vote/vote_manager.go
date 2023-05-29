@@ -14,6 +14,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+var votesManagerCounter = metrics.NewRegisteredCounter("votesManager/local", nil)
+
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {
 	mux *event.TypeMux
@@ -138,19 +140,19 @@ func (voteManager *VoteManager) loop() {
 				voteMessage.Data.SourceHash = sourceHash
 
 				if err := voteManager.signer.SignVote(voteMessage); err != nil {
-					log.Error("Failed to sign vote", "err", err)
-					votesSigningErrorMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
+					log.Error("Failed to sign vote", "err", err, "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
+					votesSigningErrorCounter.Inc(1)
 					continue
 				}
 				if err := voteManager.journal.WriteVote(voteMessage); err != nil {
 					log.Error("Failed to write vote into journal", "err", err)
-					voteJournalError.Inc(1)
+					voteJournalErrorCounter.Inc(1)
 					continue
 				}
 
 				log.Debug("vote manager produced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
-				votesManagerMetric(vote.TargetNumber, vote.TargetHash).Inc(1)
+				votesManagerCounter.Inc(1)
 			}
 		case <-voteManager.chainHeadSub.Err():
 			log.Debug("voteManager subscribed chainHead failed")
@@ -192,7 +194,7 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				continue
 			}
 			if voteData.(*types.VoteData).SourceNumber > sourceNumber {
-				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is within the span of other votes %d-->%d",
+				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is across the span of other votes %d-->%d",
 					sourceNumber, targetNumber, voteData.(*types.VoteData).SourceNumber, voteData.(*types.VoteData).TargetNumber))
 				return false, 0, common.Hash{}
 			}
@@ -206,19 +208,15 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				continue
 			}
 			if voteData.(*types.VoteData).SourceNumber < sourceNumber {
-				log.Debug("error: other votes are within span of cur vote")
+				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is within the span of other votes %d-->%d",
+					sourceNumber, targetNumber, voteData.(*types.VoteData).SourceNumber, voteData.(*types.VoteData).TargetNumber))
 				return false, 0, common.Hash{}
 			}
 		}
 	}
 
 	// Rule 3: Validators always vote for their canonical chain’s latest block.
-	// Since the header subscribed to is the canonical chain, so this rule is satisified by default.
+	// Since the header subscribed to is the canonical chain, so this rule is satisfied by default.
 	log.Debug("All three rules check passed")
 	return true, sourceNumber, sourceHash
-}
-
-// Metrics to monitor if voteManager worked in the expetected logic.
-func votesManagerMetric(blockNumber uint64, blockHash common.Hash) metrics.Gauge {
-	return metrics.GetOrRegisterGauge(fmt.Sprintf("voteManager/blockNumber/%d/blockHash/%s", blockNumber, blockHash), nil)
 }

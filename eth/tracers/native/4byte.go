@@ -21,7 +21,6 @@ import (
 	"math/big"
 	"strconv"
 	"sync/atomic"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -129,7 +128,7 @@ func (t *fourByteTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64,
 }
 
 // CaptureEnd is called after the call finishes to finalize the tracing.
-func (t *fourByteTracer) CaptureEnd(output []byte, gasUsed uint64, _ time.Duration, err error) {
+func (t *fourByteTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
 }
 
 func (*fourByteTracer) CaptureTxStart(gasLimit uint64) {}

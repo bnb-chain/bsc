@@ -192,7 +192,7 @@ var (
 
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
-		LubanBlock: nil,
+		LubanBlock: big.NewInt(29020050),
 		PlatoBlock: nil,
 
 		Parlia: &ParliaConfig{
@@ -225,7 +225,7 @@ var (
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
 		LubanBlock: big.NewInt(29295050),
-		PlatoBlock: nil,
+		PlatoBlock: big.NewInt(29861024),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -854,6 +854,7 @@ type Rules struct {
 	IsMoran                                                 bool
 	IsPlanck                                                bool
 	IsLuban                                                 bool
+	IsPlato                                                 bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -879,5 +880,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		IsMoran:          c.IsMoran(num),
 		IsPlanck:         c.IsPlanck(num),
 		IsLuban:          c.IsLuban(num),
+		IsPlato:          c.IsPlato(num),
 	}
 }

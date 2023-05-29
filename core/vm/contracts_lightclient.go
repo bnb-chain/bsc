@@ -183,6 +183,27 @@ func (c *iavlMerkleProofValidatePlanck) Run(input []byte) (result []byte, err er
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
 
+type iavlMerkleProofValidatePlato struct {
+	basicIavlMerkleProofValidate
+}
+
+func (c *iavlMerkleProofValidatePlato) RequiredGas(_ []byte) uint64 {
+	return params.IAVLMerkleProofValidateGas
+}
+
+func (c *iavlMerkleProofValidatePlato) Run(input []byte) (result []byte, err error) {
+	c.basicIavlMerkleProofValidate.proofRuntime = v1.Ics23ProofRuntime()
+	c.basicIavlMerkleProofValidate.verifiers = []merkle.ProofOpVerifier{
+		forbiddenAbsenceOpVerifier,
+		singleValueOpVerifier,
+		multiStoreOpVerifier,
+		forbiddenSimpleValueOpVerifier,
+	}
+	c.basicIavlMerkleProofValidate.keyVerifier = keyVerifier
+	c.basicIavlMerkleProofValidate.opsVerifier = proofOpsVerifier
+	return c.basicIavlMerkleProofValidate.Run(input)
+}
+
 func successfulMerkleResult() []byte {
 	result := make([]byte, merkleProofValidateResultLength)
 	binary.BigEndian.PutUint64(result[merkleProofValidateResultLength-uint64TypeLength:], 0x01)

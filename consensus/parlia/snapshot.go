@@ -194,7 +194,7 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 	if targetHash != header.ParentHash || targetNumber+1 != header.Number.Uint64() {
 		log.Warn("updateAttestation failed", "error", fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
 			header.Number.Uint64()-1, header.ParentHash, targetNumber, targetHash))
-		updateAttestationFailedGauge.Inc(1)
+		updateAttestationErrorCounter.Inc(1)
 		return
 	}
 
@@ -205,6 +205,17 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 		TargetNumber: attestation.Data.TargetNumber,
 		TargetHash:   attestation.Data.TargetHash,
 	}
+}
+
+func (s *Snapshot) SignRecently(validator common.Address) bool {
+	for seen, recent := range s.Recents {
+		if recent == validator {
+			if limit := uint64(len(s.Validators)/2 + 1); s.Number+1 < limit || seen > s.Number+1-limit {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig) (*Snapshot, error) {
