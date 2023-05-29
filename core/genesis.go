@@ -260,6 +260,10 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 	case ghash == params.RialtoGenesisHash:
 		defaultConfig = params.RialtoChainConfig
 	default:
+		if g != nil {
+			// it could be a custom config for QA test, just return
+			return g.Config
+		}
 		defaultConfig = params.AllEthashProtocolChanges
 	}
 	if g == nil || g.Config == nil {
