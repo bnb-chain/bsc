@@ -419,7 +419,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if p, ok := w.engine.(*parlia.Parlia); ok {
 				signedRecent, err := p.SignRecently(w.chain, head.Block)
 				if err != nil {
-					log.Info("Not allowed to propose block", "err", err)
+					log.Debug("Not allowed to propose block", "err", err)
 					continue
 				}
 				if signedRecent {

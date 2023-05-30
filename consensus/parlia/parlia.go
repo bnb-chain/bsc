@@ -144,7 +144,9 @@ var (
 	errBlockHashInconsistent = errors.New("the block hash is inconsistent")
 
 	// errUnauthorizedValidator is returned if a header is signed by a non-authorized entity.
-	errUnauthorizedValidator = errors.New("unauthorized validator")
+	errUnauthorizedValidator = func(val string) error {
+		return errors.New("unauthorized validator: " + val)
+	}
 
 	// errCoinBaseMisMatch is returned if a header's coinbase do not match with signature
 	errCoinBaseMisMatch = errors.New("coinbase do not match with signature")
@@ -752,7 +754,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	}
 
 	if _, ok := snap.Validators[signer]; !ok {
-		return errUnauthorizedValidator
+		return errUnauthorizedValidator(signer.String())
 	}
 
 	if snap.SignRecently(signer) {
@@ -1298,7 +1300,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 	// Bail out if we're unauthorized to sign a block
 	if _, authorized := snap.Validators[val]; !authorized {
-		return errUnauthorizedValidator
+		return errUnauthorizedValidator(val.String())
 	}
 
 	// If we're amongst the recent signers, wait for the next block
@@ -1408,7 +1410,7 @@ func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Block) 
 
 	// Bail out if we're unauthorized to sign a block
 	if _, authorized := snap.Validators[p.val]; !authorized {
-		return true, errUnauthorizedValidator
+		return true, errUnauthorizedValidator(p.val.String())
 	}
 
 	return snap.SignRecently(p.val), nil
@@ -1864,7 +1866,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 			}
 		}
 		if idx < 0 {
-			log.Info("The validator is not authorized", "addr", val)
+			log.Debug("The validator is not authorized", "addr", val)
 			return 0
 		}
 
