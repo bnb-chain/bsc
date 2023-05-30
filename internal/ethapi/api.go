@@ -1871,10 +1871,13 @@ func (s *PublicTransactionPoolAPI) GetTransactionReceiptsByBlockNumber(ctx conte
 		fields := map[string]interface{}{
 			"blockHash":         blockHash,
 			"blockNumber":       hexutil.Uint64(blockNumber),
+			"blockTimestamp":    hexutil.Uint64(block.Time()),
 			"transactionHash":   tx.Hash(),
 			"transactionIndex":  hexutil.Uint64(idx),
 			"from":              from,
 			"to":                tx.To(),
+			"nonce":             hexutil.Uint64(tx.Nonce()),
+			"value":             (*hexutil.Big)(tx.Value()),
 			"gasUsed":           hexutil.Uint64(receipt.GasUsed),
 			"cumulativeGasUsed": hexutil.Uint64(receipt.CumulativeGasUsed),
 			"contractAddress":   nil,
