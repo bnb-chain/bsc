@@ -783,7 +783,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		for _, peer := range peers {
 			txset[peer] = append(txset[peer], tx.Hash())
 		}
-		 For the remaining peers, send announcement only
+		//For the remaining peers, send announcement only
 		for _, peer := range peers {
 			annos[peer] = append(annos[peer], tx.Hash())
 		}
