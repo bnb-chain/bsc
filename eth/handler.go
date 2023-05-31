@@ -151,14 +151,15 @@ type handler struct {
 	peers        *peerSet
 	merger       *consensus.Merger
 
-	eventMux      *event.TypeMux
-	txsCh         chan core.NewTxsEvent
-	txsSub        event.Subscription
-	reannoTxsCh   chan core.ReannoTxsEvent
-	reannoTxsSub  event.Subscription
-	minedBlockSub *event.TypeMuxSubscription
-	voteCh        chan core.NewVoteEvent
-	votesSub      event.Subscription
+	eventMux       *event.TypeMux
+	txsCh          chan core.NewTxsEvent
+	txsSub         event.Subscription
+	reannoTxsCh    chan core.ReannoTxsEvent
+	reannoTxsSub   event.Subscription
+	minedBlockSub  *event.TypeMuxSubscription
+	voteCh         chan core.NewVoteEvent
+	votesSub       event.Subscription
+	voteMonitorSub event.Subscription
 
 	whitelist map[uint64]common.Hash
 
@@ -714,14 +715,13 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 func (h *handler) startMaliciousVoteMonitor() {
 	defer h.wg.Done()
 	voteCh := make(chan core.NewVoteEvent, voteChanSize)
-	votesSub := h.votepool.SubscribeNewVoteEvent(voteCh)
-	defer votesSub.Unsubscribe()
+	h.voteMonitorSub = h.votepool.SubscribeNewVoteEvent(voteCh)
 	for {
 		select {
 		case event := <-voteCh:
 			pendingBlockNumber := h.chain.CurrentHeader().Number.Uint64() + 1
 			h.maliciousVoteMonitor.ConflictDetect(event.Vote, pendingBlockNumber)
-		case <-votesSub.Err():
+		case <-h.voteMonitorSub.Err():
 			return
 		}
 	}
@@ -733,6 +733,9 @@ func (h *handler) Stop() {
 	h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
 	if h.votepool != nil {
 		h.votesSub.Unsubscribe() // quits voteBroadcastLoop
+		if h.maliciousVoteMonitor != nil {
+			h.voteMonitorSub.Unsubscribe()
+		}
 	}
 
 	// Quit chainSync and txsync64.
