@@ -813,7 +813,7 @@ func (h *handler) ReannounceTransactions(txs types.Transactions) {
 
 	// Announce transactions hash to a batch of peers
 	peersCount := uint(math.Sqrt(float64(h.peers.len())))
-	peers := h.peers.headPeers(h.peers.len())
+	peers := h.peers.headPeers(uint(float64(h.peers.len())))
 	for _, peer := range peers {
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
