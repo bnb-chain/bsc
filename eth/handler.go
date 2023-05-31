@@ -779,25 +779,25 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	for _, tx := range txs {
 		peers := h.peers.peersWithoutTransaction(tx.Hash())
 		// Send the tx unconditionally to a subset of our peers
-		numDirect := int(math.Sqrt(float64(len(peers))))
-		for _, peer := range peers[:numDirect] {
+		//numDirect := int(math.Sqrt(float64(len(peers))))
+		for _, peer := range peers {
 			txset[peer] = append(txset[peer], tx.Hash())
 		}
 		// For the remaining peers, send announcement only
-		for _, peer := range peers[numDirect:] {
-			annos[peer] = append(annos[peer], tx.Hash())
-		}
+		//for _, peer := range peers[numDirect:] {
+		//	annos[peer] = append(annos[peer], tx.Hash())
+		//}
 	}
 	for peer, hashes := range txset {
 		directPeers++
 		directCount += len(hashes)
 		peer.AsyncSendTransactions(hashes)
 	}
-	for peer, hashes := range annos {
-		annoPeers++
-		annoCount += len(hashes)
-		peer.AsyncSendPooledTransactionHashes(hashes)
-	}
+	//for peer, hashes := range annos {
+	//	annoPeers++
+	//	annoCount += len(hashes)
+	//	peer.AsyncSendPooledTransactionHashes(hashes)
+	//}
 	log.Debug("Transaction broadcast", "txs", len(txs),
 		"announce packs", annoPeers, "announced hashes", annoCount,
 		"tx packs", directPeers, "broadcast txs", directCount)
@@ -813,7 +813,7 @@ func (h *handler) ReannounceTransactions(txs types.Transactions) {
 
 	// Announce transactions hash to a batch of peers
 	peersCount := uint(math.Sqrt(float64(h.peers.len())))
-	peers := h.peers.headPeers(peersCount)
+	peers := h.peers//.headPeers(peersCount)
 	for _, peer := range peers {
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
