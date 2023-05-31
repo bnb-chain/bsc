@@ -783,10 +783,10 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		for _, peer := range peers {
 			txset[peer] = append(txset[peer], tx.Hash())
 		}
-		// For the remaining peers, send announcement only
-		//for _, peer := range peers[numDirect:] {
-		//	annos[peer] = append(annos[peer], tx.Hash())
-		//}
+		 For the remaining peers, send announcement only
+		for _, peer := range peers {
+			annos[peer] = append(annos[peer], tx.Hash())
+		}
 	}
 	for peer, hashes := range txset {
 		directPeers++
@@ -813,7 +813,7 @@ func (h *handler) ReannounceTransactions(txs types.Transactions) {
 
 	// Announce transactions hash to a batch of peers
 	peersCount := uint(math.Sqrt(float64(h.peers.len())))
-	peers := h.peers//.headPeers(peersCount)
+	peers := h.peers.headPeers(h.peers.len())
 	for _, peer := range peers {
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
