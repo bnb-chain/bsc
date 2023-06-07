@@ -144,7 +144,7 @@ func TestSstoreClearGasPostEIP3529(t *testing.T) {
 	initialStorage[common.HexToHash("01")] = common.HexToHash("01")
 	initialStorage[common.HexToHash("02")] = common.HexToHash("02")
 
-	// Expected gas is intrinsic +  2*pushGas + cold load (due to legacy tx) + SstoreReset (a->b such that a!=0) - sstoreClearGasRefund
+	// Expected gas is intrinsic +  2*pushGas + SstoreReset (a->b such that a!=0) - sstoreClearGasRefund
 	expectedGasUsage := params.TxGas + 2*vm.GasFastestStep + params.SstoreResetGasEIP2200 - params.SstoreClearsScheduleRefundEIP3529
 	testGasUsage(t, postHertzConfig(), ethash.NewFaker(), bytecode, initialStorage, 60_000, expectedGasUsage)
 }
