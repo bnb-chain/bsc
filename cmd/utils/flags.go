@@ -905,7 +905,7 @@ var (
 
 	VotingEnabledFlag = cli.BoolFlag{
 		Name:  "vote",
-		Usage: "Enable voting",
+		Usage: "Enable voting when mining",
 	}
 
 	EnableMaliciousVoteMonitorFlag = cli.BoolFlag{
