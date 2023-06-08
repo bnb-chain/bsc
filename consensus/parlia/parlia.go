@@ -278,7 +278,7 @@ func New(
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
 		slashABI:                   sABI,
-		signer:                     types.NewEIP155Signer(chainConfig.ChainID),
+		signer:                     types.LatestSigner(chainConfig),
 	}
 
 	return c
