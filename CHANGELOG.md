@@ -1,4 +1,8 @@
 # Changelog
+## v1.2.5
+BUGFIX
+* [\#1675](https://github.com/bnb-chain/bsc/pull/1675) goleveldb: downgrade the version for performance
+
 ## v1.2.4
 FEATURE
 * [\#1636](https://github.com/bnb-chain/bsc/pull/1636) upgrade: block height of Luban on mainnet
