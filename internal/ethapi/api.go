@@ -1365,11 +1365,11 @@ func (s *PublicBlockChainAPI) ProposedBlock(ctx context.Context, args ProposedBl
 	proposedBlockNumber := big.NewInt(args.BlockNumber.Int64())
 
 	if nextBlock.Cmp(proposedBlockNumber) != 0 {
-		log.Debug("Validating ProposedBlock failed", "number", args.BlockNumber, "chain number", s.b.CurrentBlock().Number())
+		log.Info("Validating ProposedBlock failed", "number", args.BlockNumber, "chain number", s.b.CurrentBlock().Number())
 		return errors.New("blockNumber is incorrect")
 	}
 	if s.b.CurrentBlock().Hash() != args.PrevBlockHash {
-		log.Debug("Validating ProposedBlock failed", "number", args.BlockNumber, "prevHash", args.PrevBlockHash.Hex(), "chain current block", s.b.CurrentBlock().Hash())
+		log.Info("Validating ProposedBlock failed", "number", args.BlockNumber, "prevHash", args.PrevBlockHash.Hex(), "chain current block", s.b.CurrentBlock().Hash())
 		return errors.New("prevBlockHash is incorrect")
 	}
 
