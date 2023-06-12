@@ -1,17 +1,17 @@
-package eip3529tests
+package parlia_tests
 
 import (
-	"math/big"
-	"testing"
-
+	"crypto/ecdsa"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"math/big"
+	"reflect"
+	"testing"
 )
 
 func newGwei(n int64) *big.Int {
@@ -19,43 +19,30 @@ func newGwei(n int64) *big.Int {
 }
 
 // Test the gas used by running a transaction sent to a smart contract with given bytecode and storage.
-func TestGasUsage(t *testing.T, config *params.ChainConfig, engine consensus.Engine, bytecode []byte, initialStorage map[common.Hash]common.Hash, initialGas, expectedGasUsed uint64) {
+func TestGasUsage(t *testing.T, config *params.ChainConfig, engine consensus.Engine, key *ecdsa.PrivateKey, gAlloc core.GenesisAlloc, txData types.TxData, expectedGasUsed uint64) {
 	var (
-		aa = common.HexToAddress("0x000000000000000000000000000000000000aaaa")
-
 		// Generate a canonical chain to act as the main dataset
 		db = rawdb.NewMemoryDatabase()
 
-		// A sender who makes transactions, has some funds
-		key, _        = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
-		address       = crypto.PubkeyToAddress(key.PublicKey)
-		balanceBefore = big.NewInt(1000000000000000)
-		gspec         = &core.Genesis{
+		gspec = &core.Genesis{
 			Config: config,
-			Alloc: core.GenesisAlloc{
-				address: {Balance: balanceBefore},
-				aa: {
-					Code:    bytecode,
-					Storage: initialStorage,
-					Nonce:   0,
-					Balance: big.NewInt(0),
-				},
-			},
+			Alloc:  gAlloc,
 		}
 		genesis = gspec.MustCommit(db)
 	)
 
 	blocks, _ := core.GenerateChain(gspec.Config, genesis, engine, db, 1, func(i int, b *core.BlockGen) {
 		b.SetCoinbase(common.Address{1})
-
 		// One transaction to 0xAAAA
 		signer := types.LatestSigner(gspec.Config)
-		tx, _ := types.SignNewTx(key, signer, &types.LegacyTx{
-			Nonce:    0,
-			To:       &aa,
-			Gas:      initialGas,
-			GasPrice: newGwei(5),
-		})
+		txType := reflect.TypeOf(txData)
+		var tx *types.Transaction
+		if txType.String() == "*types.AccessListTx" {
+			txData.(*types.AccessListTx).GasPrice = b.BaseFee()
+			tx, _ = types.SignNewTx(key, signer, txData)
+		} else {
+			tx, _ = types.SignNewTx(key, signer, txData)
+		}
 		b.AddTx(tx)
 	})
 
