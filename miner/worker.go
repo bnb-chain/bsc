@@ -1131,6 +1131,8 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	w.fillTransactions(nil, work, nil)
 
 	bestWork := work
+	defer bestWork.discard()
+
 	reward := work.state.GetBalance(consensus.SystemAddress)
 	w.bestProposedBlockLock.RLock()
 	if w.bestProposedBlock != nil && w.bestProposedBlockReward.Cmp(reward) > 0 {
@@ -1233,6 +1235,7 @@ func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
 	if err != nil {
 		return err
 	}
+	defer work.discard()
 
 	// Fill transactions from the proposed block
 	fillStart := time.Now()
@@ -1254,6 +1257,10 @@ func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
 	defer w.bestProposedBlockLock.Unlock()
 	if blockReward.Cmp(w.bestProposedBlockReward) > 0 {
 		log.Debug("Replacing proposedBlock", "number", work.header.Number, "reward", w.bestProposedBlockReward, "new reward", blockReward)
+		// discard old bestProposedBlock before overwriting
+		if w.bestProposedBlock != nil {
+			w.bestProposedBlock.discard()
+		}
 		w.bestProposedBlock = work
 		w.bestProposedBlockReward.Set(blockReward)
 	}
