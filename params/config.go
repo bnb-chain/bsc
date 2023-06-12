@@ -274,6 +274,42 @@ var (
 		},
 	}
 
+	ParliaTestChainConfig = &ChainConfig{
+		ChainID:             big.NewInt(2),
+		HomesteadBlock:      big.NewInt(0),
+		EIP150Block:         big.NewInt(0),
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    big.NewInt(0),
+		RamanujanBlock:      big.NewInt(0),
+		NielsBlock:          big.NewInt(0),
+		MirrorSyncBlock:     big.NewInt(0),
+		BrunoBlock:          big.NewInt(0),
+		EulerBlock:          big.NewInt(0),
+		NanoBlock:           big.NewInt(0),
+		MoranBlock:          big.NewInt(0),
+		GibbsBlock:          big.NewInt(0),
+		PlanckBlock:         big.NewInt(0),
+
+		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
+		// TODO Caution !!! it should be very careful !!!
+		LubanBlock: big.NewInt(0),
+		PlatoBlock: big.NewInt(0),
+		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
+		BerlinBlock: big.NewInt(0),
+		LondonBlock: big.NewInt(0),
+		HertzBlock:  big.NewInt(0),
+
+		Parlia: &ParliaConfig{
+			Period: 3,
+			Epoch:  200,
+		},
+	}
+
 	// AllEthashProtocolChanges contains every protocol change (EIPs) introduced
 	// and accepted by the Ethereum core developers into the Ethash consensus.
 	//
