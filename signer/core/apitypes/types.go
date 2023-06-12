@@ -100,6 +100,8 @@ type SendTxArgs struct {
 	// For non-legacy transactions
 	AccessList *types.AccessList `json:"accessList,omitempty"`
 	ChainID    *hexutil.Big      `json:"chainId,omitempty"`
+
+	Blobs []types.Blob `json:"blobs,omitempty"`
 }
 
 func (args SendTxArgs) String() string {

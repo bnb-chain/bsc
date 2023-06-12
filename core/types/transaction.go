@@ -20,6 +20,8 @@ import (
 	"bytes"
 	"container/heap"
 	"errors"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/protolambda/ztyp/codec"
 	"io"
 	"math/big"
 	"sync/atomic"
@@ -38,6 +40,7 @@ var (
 	ErrTxTypeNotSupported   = errors.New("transaction type not supported")
 	ErrGasFeeCapTooLow      = errors.New("fee cap less than base fee")
 	errEmptyTypedTx         = errors.New("empty typed transaction bytes")
+	errShortTypedTx         = errors.New("typed transaction too short")
 )
 
 // Transaction types.
@@ -45,6 +48,7 @@ const (
 	LegacyTxType = iota
 	AccessListTxType
 	DynamicFeeTxType
+	BlobTxType
 )
 
 // Transaction is an Ethereum transaction.
@@ -56,35 +60,76 @@ type Transaction struct {
 	hash atomic.Value
 	size atomic.Value
 	from atomic.Value
+
+	// sizeWrapData, 0 if there is no wrapData
+	sizeWrapData atomic.Value
+
+	// For network propagation and disk, not embedded in the execution payload
+	wrapData TxWrapData
 }
 
+type TxOption func(tx *Transaction)
+
 // NewTx creates a new transaction.
-func NewTx(inner TxData) *Transaction {
+func NewTx(inner TxData, options ...TxOption) *Transaction {
 	tx := new(Transaction)
 	tx.setDecoded(inner.copy(), 0)
+	for _, txOpt := range options {
+		txOpt(tx)
+	}
 	return tx
+}
+
+// WithTxWrapData is a TxOption to add additional data to a transaction.
+// wrapData may be nil to downgrade a transaction to a minimal tx.
+func WithTxWrapData(wrapData TxWrapData) TxOption {
+	return func(tx *Transaction) {
+		if wrapData != nil {
+			tx.wrapData = wrapData.copy()
+		}
+	}
+}
+
+type TxWrapData interface {
+	copy() TxWrapData
+	kzgs() BlobKzgs
+	blobs() Blobs
+	proofs() KZGProofs
+	encodeTyped(w io.Writer, txdata TxData) error
+	sizeWrapData() common.StorageSize
+	validateBlobTransactionWrapper(inner TxData) error
 }
 
 // TxData is the underlying data of a transaction.
 //
-// This is implemented by DynamicFeeTx, LegacyTx and AccessListTx.
+// This is implemented by DynamicFeeTx, LegacyTx, AccessListTx & SignedBlobTx.
 type TxData interface {
 	txType() byte // returns the type ID
 	copy() TxData // creates a deep copy and initializes all fields
 
 	chainID() *big.Int
 	accessList() AccessList
+	dataHashes() []common.Hash
 	data() []byte
 	gas() uint64
 	gasPrice() *big.Int
 	gasTipCap() *big.Int
 	gasFeeCap() *big.Int
+	maxFeePerDataGas() *big.Int
 	value() *big.Int
 	nonce() uint64
 	to() *common.Address
 
 	rawSignatureValues() (v, r, s *big.Int)
 	setSignatureValues(chainID, v, r, s *big.Int)
+
+	// effectiveGasPrice computes the gas price paid by the transaction, given
+	// the inclusion block baseFee.
+	//
+	// Unlike other TxData methods, the returned *big.Int should be an independent
+	// copy of the computed value, i.e. callers are allowed to mutate the result.
+	// Method implementations can use 'dst' to store the result.
+	effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int
 }
 
 // Time returns transaction's time
@@ -107,10 +152,28 @@ func (tx *Transaction) EncodeRLP(w io.Writer) error {
 	return rlp.Encode(w, buf.Bytes())
 }
 
-// encodeTyped writes the canonical encoding of a typed transaction to w.
-func (tx *Transaction) encodeTyped(w *bytes.Buffer) error {
-	w.WriteByte(tx.Type())
-	return rlp.Encode(w, tx.inner)
+// encodeTyped writes the canonical encoding of a typed transaction to w, including wrapper data.
+func (tx *Transaction) encodeTyped(w io.Writer) error {
+	if tx.wrapData != nil {
+		return tx.wrapData.encodeTyped(w, tx.inner)
+	} else {
+		return tx.encodeTypedMinimal(w)
+	}
+}
+
+func (tx *Transaction) encodeTypedMinimal(w io.Writer) error {
+	if _, err := w.Write([]byte{tx.Type()}); err != nil {
+		return err
+	}
+	if tx.Type() == BlobTxType {
+		blobTx, ok := tx.inner.(*SignedBlobTx)
+		if !ok {
+			return ErrInvalidTxType
+		}
+		return EncodeSSZ(w, blobTx)
+	} else {
+		return rlp.Encode(w, tx.inner)
+	}
 }
 
 // MarshalBinary returns the canonical encoding of the transaction.
@@ -125,6 +188,16 @@ func (tx *Transaction) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), err
 }
 
+// MarshalMinimal returns the minimal unwrapped encoding of the transaction.
+func (tx *Transaction) MarshalMinimal() ([]byte, error) {
+	if tx.Type() == LegacyTxType {
+		return rlp.EncodeToBytes(tx.inner)
+	}
+	var buf bytes.Buffer
+	err := tx.encodeTypedMinimal(&buf)
+	return buf.Bytes(), err
+}
+
 // DecodeRLP implements rlp.Decoder
 func (tx *Transaction) DecodeRLP(s *rlp.Stream) error {
 	kind, size, err := s.Kind()
@@ -136,7 +209,7 @@ func (tx *Transaction) DecodeRLP(s *rlp.Stream) error {
 		var inner LegacyTx
 		err := s.Decode(&inner)
 		if err == nil {
-			tx.setDecoded(&inner, int(rlp.ListSize(size)))
+			tx.setDecoded(&inner, rlp.ListSize(size))
 		}
 		return err
 	case kind == rlp.String:
@@ -145,9 +218,9 @@ func (tx *Transaction) DecodeRLP(s *rlp.Stream) error {
 		if b, err = s.Bytes(); err != nil {
 			return err
 		}
-		inner, err := tx.decodeTyped(b)
+		inner, err := tx.decodeTypedMinimal(b)
 		if err == nil {
-			tx.setDecoded(inner, len(b))
+			tx.setDecoded(inner, uint64(len(b)))
 		}
 		return err
 	default:
@@ -165,22 +238,63 @@ func (tx *Transaction) UnmarshalBinary(b []byte) error {
 		if err != nil {
 			return err
 		}
-		tx.setDecoded(&data, len(b))
+		tx.setDecoded(&data, uint64(len(b)))
 		return nil
 	}
 	// It's an EIP2718 typed transaction envelope.
-	inner, err := tx.decodeTyped(b)
+	inner, wrapData, err := tx.decodeTyped(b)
 	if err != nil {
 		return err
 	}
-	tx.setDecoded(inner, len(b))
+	tx.setDecoded(inner, 0)
+	tx.wrapData = wrapData
 	return nil
 }
 
+// UnmarshalMinimal decodes the minimal encoding of transactions.
+// It supports legacy RLP transactions and EIP2718 typed transactions.
+func (tx *Transaction) UnmarshalMinimal(b []byte) error {
+	if len(b) > 0 && b[0] > 0x7f {
+		return tx.UnmarshalBinary(b)
+	}
+	// It's an EIP2718 typed transaction envelope.
+	inner, err := tx.decodeTypedMinimal(b)
+	if err != nil {
+		return err
+	}
+	tx.setDecoded(inner, uint64(len(b)))
+	tx.wrapData = nil
+	return nil
+}
+
+func DecodeSSZ(data []byte, dest codec.Deserializable) error {
+	return dest.Deserialize(codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
+}
+
+func EncodeSSZ(w io.Writer, obj codec.Serializable) error {
+	return obj.Serialize(codec.NewEncodingWriter(w))
+}
+
 // decodeTyped decodes a typed transaction from the canonical format.
-func (tx *Transaction) decodeTyped(b []byte) (TxData, error) {
+func (tx *Transaction) decodeTyped(b []byte) (TxData, TxWrapData, error) {
 	if len(b) == 0 {
-		return nil, errEmptyTypedTx
+		return nil, nil, errShortTypedTx
+	}
+	switch b[0] {
+	case BlobTxType:
+		var wrapped BlobTxWrapper
+		err := DecodeSSZ(b[1:], &wrapped)
+		return &wrapped.Tx, &BlobTxWrapData{BlobKzgs: wrapped.BlobKzgs, Blobs: wrapped.Blobs, Proofs: wrapped.Proofs}, err
+	default:
+		minimal, err := tx.decodeTypedMinimal(b)
+		return minimal, nil, err
+	}
+}
+
+// decodeTypedMinimal decodes a typed transaction from the canonical format.
+func (tx *Transaction) decodeTypedMinimal(b []byte) (TxData, error) {
+	if len(b) <= 1 {
+		return nil, errShortTypedTx
 	}
 	switch b[0] {
 	case AccessListTxType:
@@ -191,17 +305,21 @@ func (tx *Transaction) decodeTyped(b []byte) (TxData, error) {
 		var inner DynamicFeeTx
 		err := rlp.DecodeBytes(b[1:], &inner)
 		return &inner, err
+	case BlobTxType:
+		var inner SignedBlobTx
+		err := DecodeSSZ(b[1:], &inner)
+		return &inner, err
 	default:
 		return nil, ErrTxTypeNotSupported
 	}
 }
 
 // setDecoded sets the inner transaction and size after decoding.
-func (tx *Transaction) setDecoded(inner TxData, size int) {
+func (tx *Transaction) setDecoded(inner TxData, size uint64) {
 	tx.inner = inner
 	tx.time = time.Now()
 	if size > 0 {
-		tx.size.Store(common.StorageSize(size))
+		tx.size.Store(size)
 	}
 }
 
@@ -268,6 +386,9 @@ func (tx *Transaction) Data() []byte { return tx.inner.data() }
 // AccessList returns the access list of the transaction.
 func (tx *Transaction) AccessList() AccessList { return tx.inner.accessList() }
 
+// DataHashes returns the blob versioned hashes of the transaction.
+func (tx *Transaction) DataHashes() []common.Hash { return tx.inner.dataHashes() }
+
 // Gas returns the gas limit of the transaction.
 func (tx *Transaction) Gas() uint64 { return tx.inner.gas() }
 
@@ -279,6 +400,11 @@ func (tx *Transaction) GasTipCap() *big.Int { return new(big.Int).Set(tx.inner.g
 
 // GasFeeCap returns the fee cap per gas of the transaction.
 func (tx *Transaction) GasFeeCap() *big.Int { return new(big.Int).Set(tx.inner.gasFeeCap()) }
+
+// MaxFeePerDataGas returns the max_fee_per_data_gas value for the transaction
+func (tx *Transaction) MaxFeePerDataGas() *big.Int {
+	return new(big.Int).Set(tx.inner.maxFeePerDataGas())
+}
 
 // Value returns the ether amount of the transaction.
 func (tx *Transaction) Value() *big.Int { return new(big.Int).Set(tx.inner.value()) }
@@ -292,11 +418,26 @@ func (tx *Transaction) To() *common.Address {
 	return copyAddressPtr(tx.inner.to())
 }
 
-// Cost returns gas * gasPrice + value.
+// Cost returns (gas * gasPrice) + (DataGas() * maxDataFeePerGas) + value.
 func (tx *Transaction) Cost() *big.Int {
 	total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
 	total.Add(total, tx.Value())
+	dataGasFee := tx.DataGas()
+	dataGasFee.Mul(dataGasFee, tx.MaxFeePerDataGas())
+	total.Add(total, dataGasFee)
 	return total
+}
+
+// DataGas implements get_total_data_gas from EIP-4844. While this returns a big.Int for
+// convenience, it should never exceed math.MaxUint64.
+func (tx *Transaction) DataGas() *big.Int {
+	r := new(big.Int)
+	l := int64(len(tx.DataHashes()))
+	if l != 0 {
+		r.SetInt64(l)
+		r.Mul(r, big.NewInt(params.DataGasPerBlob))
+	}
+	return r
 }
 
 // RawSignatureValues returns the V, R, S signature values of the transaction.
@@ -380,9 +521,14 @@ func (tx *Transaction) Hash() common.Hash {
 	}
 
 	var h common.Hash
-	if tx.Type() == LegacyTxType {
+	switch tx.Type() {
+	case LegacyTxType:
 		h = rlpHash(tx.inner)
-	} else {
+	case BlobTxType:
+		// TODO(eip-4844): We should remove this ugly switch by making hash()
+		// a part of the TxData interface
+		h = prefixedSSZHash(tx.Type(), tx.inner.(*SignedBlobTx))
+	default:
 		h = prefixedRlpHash(tx.Type(), tx.inner)
 	}
 	tx.hash.Store(h)
@@ -401,6 +547,42 @@ func (tx *Transaction) Size() common.StorageSize {
 	return common.StorageSize(c)
 }
 
+func (tx *Transaction) WrapDataSize() common.StorageSize {
+	if size := tx.sizeWrapData.Load(); size != nil {
+		return size.(common.StorageSize)
+	}
+	var size common.StorageSize
+	if tx.wrapData != nil {
+		size = tx.wrapData.sizeWrapData()
+	}
+	tx.sizeWrapData.Store(size)
+	return size
+}
+
+// IsIncomplete returns true if the transaction can be wrapped but is not.
+func (tx *Transaction) IsIncomplete() bool {
+	return tx.Type() == BlobTxType && tx.wrapData == nil
+}
+
+// VerifyBlobs verifies the blob transaction
+func (tx *Transaction) VerifyBlobs() error {
+	if tx.wrapData != nil {
+		return tx.wrapData.validateBlobTransactionWrapper(tx.inner)
+	}
+	return nil
+}
+
+// BlobWrapData returns the blob and kzg data, if any.
+// kzgs and blobs may be empty if the transaction is not wrapped.
+func (tx *Transaction) BlobWrapData() (versionedHashes []common.Hash, kzgs BlobKzgs, blobs Blobs, proofs KZGProofs) {
+	if blobWrap, ok := tx.wrapData.(*BlobTxWrapData); ok {
+		if signedBlobTx, ok := tx.inner.(*SignedBlobTx); ok {
+			return signedBlobTx.Message.BlobVersionedHashes, blobWrap.BlobKzgs, blobWrap.Blobs, blobWrap.Proofs
+		}
+	}
+	return nil, nil, nil, nil
+}
+
 // WithSignature returns a new transaction with the given signature.
 // This signature needs to be in the [R || S || V] format where V is 0 or 1.
 func (tx *Transaction) WithSignature(signer Signer, sig []byte) (*Transaction, error) {
@@ -410,7 +592,11 @@ func (tx *Transaction) WithSignature(signer Signer, sig []byte) (*Transaction, e
 	}
 	cpy := tx.inner.copy()
 	cpy.setSignatureValues(signer.ChainID(), v, r, s)
-	return &Transaction{inner: cpy, time: tx.time}, nil
+	out := &Transaction{inner: cpy, time: tx.time}
+	if tx.wrapData != nil {
+		out.wrapData = tx.wrapData.copy()
+	}
+	return out, nil
 }
 
 // Transactions implements DerivableList for transactions.
@@ -427,7 +613,7 @@ func (s Transactions) EncodeIndex(i int, w *bytes.Buffer) {
 	if tx.Type() == LegacyTxType {
 		rlp.Encode(w, tx.inner)
 	} else {
-		tx.encodeTyped(w)
+		tx.encodeTypedMinimal(w)
 	}
 }
 
@@ -736,3 +922,65 @@ func copyAddressPtr(a *common.Address) *common.Address {
 	cpy := *a
 	return &cpy
 }
+
+// NetworkTransaction is a Transaction wrapper that encodes its maximal representation
+type NetworkTransaction struct {
+	Tx *Transaction
+}
+
+func NewNetworkTransaction(tx *Transaction) *NetworkTransaction {
+	return &NetworkTransaction{Tx: tx}
+}
+
+// EncodeRLP implements rlp.Encoder
+func (tx *NetworkTransaction) EncodeRLP(w io.Writer) error {
+	if tx.Tx.Type() == LegacyTxType {
+		return rlp.Encode(w, tx.Tx)
+	}
+	// It's an EIP-2718 typed TX envelope.
+	buf := encodeBufferPool.Get().(*bytes.Buffer)
+	defer encodeBufferPool.Put(buf)
+	buf.Reset()
+	if err := tx.Tx.encodeTyped(buf); err != nil {
+		return err
+	}
+	return rlp.Encode(w, buf.Bytes())
+}
+
+// DecodeRLP implements rlp.Decoder
+func (tx *NetworkTransaction) DecodeRLP(s *rlp.Stream) error {
+	kind, size, err := s.Kind()
+	switch {
+	case err != nil:
+		return err
+	case kind == rlp.List:
+		// It's a legacy transaction.
+		var inner LegacyTx
+		err := s.Decode(&inner)
+		if err == nil {
+			tx.Tx = new(Transaction)
+			tx.Tx.setDecoded(&inner, rlp.ListSize(size))
+		}
+		return err
+	default:
+		// It's an EIP-2718 typed TX envelope.
+		var b []byte
+		if b, err = s.Bytes(); err != nil {
+			return err
+		}
+		inner, wrapData, err := tx.Tx.decodeTyped(b)
+		if err == nil {
+			tx.Tx = new(Transaction)
+			tx.Tx.setDecoded(inner, 0)
+			tx.Tx.wrapData = wrapData
+		}
+		return err
+	}
+}
+
+// Hash returns the transaction hash.
+func (tx *NetworkTransaction) Hash() common.Hash {
+	return tx.Tx.Hash()
+}
+
+type NetworkTransactions []*NetworkTransaction
