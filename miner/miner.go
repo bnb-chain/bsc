@@ -287,7 +287,7 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 
 // ProposedBlock add the block to the list of works
 func (miner *Miner) ProposedBlock(blockNumber *big.Int, prevBlockHash common.Hash, reward *big.Int, gasLimit uint64, gasUsed uint64, txs types.Transactions) error {
-	log.Info("Received ProposedBlock", "number", blockNumber, "prevHash", prevBlockHash.Hex(), "potential reward", reward, "gasLimit", gasLimit, "gasUsed", gasUsed, "txcount", len(txs))
+	log.Debug("Received ProposedBlock", "number", blockNumber, "prevHash", prevBlockHash.Hex(), "potential reward", reward, "gasLimit", gasLimit, "gasUsed", gasUsed, "txcount", len(txs))
 	currentGasLimit := atomic.LoadUint64(miner.worker.currentGasLimit)
 
 	if gasUsed > currentGasLimit {
