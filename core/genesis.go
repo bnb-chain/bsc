@@ -246,21 +246,119 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	return newcfg, stored, nil
 }
 
+// Hard fork block height specified in config.toml has higher priority, but
+// if it is not specified in config.toml, use the default height in code.
 func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
+	var defaultConfig *params.ChainConfig
 	switch {
-	case g != nil:
-		return g.Config
 	case ghash == params.MainnetGenesisHash:
-		return params.MainnetChainConfig
+		defaultConfig = params.MainnetChainConfig
 	case ghash == params.BSCGenesisHash:
-		return params.BSCChainConfig
+		defaultConfig = params.BSCChainConfig
 	case ghash == params.ChapelGenesisHash:
-		return params.ChapelChainConfig
+		defaultConfig = params.ChapelChainConfig
 	case ghash == params.RialtoGenesisHash:
-		return params.RialtoChainConfig
+		defaultConfig = params.RialtoChainConfig
 	default:
-		return params.AllEthashProtocolChanges
+		if g != nil {
+			// it could be a custom config for QA test, just return
+			return g.Config
+		}
+		defaultConfig = params.AllEthashProtocolChanges
 	}
+	if g == nil || g.Config == nil {
+		return defaultConfig
+	}
+
+	// if not set in config.toml, use the default value of each network
+	if g.Config.ChainID == nil {
+		g.Config.ChainID = defaultConfig.ChainID
+	}
+	if g.Config.HomesteadBlock == nil {
+		g.Config.HomesteadBlock = defaultConfig.HomesteadBlock
+	}
+	if g.Config.EIP150Block == nil {
+		g.Config.EIP150Block = defaultConfig.EIP150Block
+	}
+	if g.Config.EIP155Block == nil {
+		g.Config.EIP155Block = defaultConfig.EIP155Block
+	}
+	if g.Config.EIP158Block == nil {
+		g.Config.EIP158Block = defaultConfig.EIP158Block
+	}
+	if g.Config.ByzantiumBlock == nil {
+		g.Config.ByzantiumBlock = defaultConfig.ByzantiumBlock
+	}
+	if g.Config.ConstantinopleBlock == nil {
+		g.Config.ConstantinopleBlock = defaultConfig.ConstantinopleBlock
+	}
+	if g.Config.PetersburgBlock == nil {
+		g.Config.PetersburgBlock = defaultConfig.PetersburgBlock
+	}
+	if g.Config.IstanbulBlock == nil {
+		g.Config.IstanbulBlock = defaultConfig.IstanbulBlock
+	}
+	if g.Config.MuirGlacierBlock == nil {
+		g.Config.MuirGlacierBlock = defaultConfig.MuirGlacierBlock
+	}
+
+	// BSC dedicated start
+	if g.Config.RamanujanBlock == nil {
+		g.Config.RamanujanBlock = defaultConfig.RamanujanBlock
+	}
+	if g.Config.NielsBlock == nil {
+		g.Config.NielsBlock = defaultConfig.NielsBlock
+	}
+	if g.Config.MirrorSyncBlock == nil {
+		g.Config.MirrorSyncBlock = defaultConfig.MirrorSyncBlock
+	}
+	if g.Config.BrunoBlock == nil {
+		g.Config.BrunoBlock = defaultConfig.BrunoBlock
+	}
+	if g.Config.EulerBlock == nil {
+		g.Config.EulerBlock = defaultConfig.EulerBlock
+	}
+	if g.Config.NanoBlock == nil {
+		g.Config.NanoBlock = defaultConfig.NanoBlock
+	}
+	if g.Config.MoranBlock == nil {
+		g.Config.MoranBlock = defaultConfig.MoranBlock
+	}
+	if g.Config.GibbsBlock == nil {
+		g.Config.GibbsBlock = defaultConfig.GibbsBlock
+	}
+	if g.Config.PlanckBlock == nil {
+		g.Config.PlanckBlock = defaultConfig.PlanckBlock
+	}
+	if g.Config.LubanBlock == nil {
+		g.Config.LubanBlock = defaultConfig.LubanBlock
+	}
+	if g.Config.PlatoBlock == nil {
+		g.Config.PlatoBlock = defaultConfig.PlatoBlock
+	}
+	if g.Config.BerlinBlock == nil {
+		g.Config.BerlinBlock = defaultConfig.BerlinBlock
+	}
+	if g.Config.LondonBlock == nil {
+		g.Config.LondonBlock = defaultConfig.LondonBlock
+	}
+	if g.Config.HertzBlock == nil {
+		g.Config.HertzBlock = defaultConfig.HertzBlock
+	}
+
+	// BSC Parlia set up
+	if g.Config.Parlia == nil {
+		g.Config.Parlia = defaultConfig.Parlia
+	} else {
+		if g.Config.Parlia.Period == 0 {
+			g.Config.Parlia.Period = defaultConfig.Parlia.Period
+		}
+		if g.Config.Parlia.Epoch == 0 {
+			g.Config.Parlia.Epoch = defaultConfig.Parlia.Epoch
+		}
+	}
+
+	return g.Config
 }
 
 // ToBlock creates the genesis block and writes state of a genesis specification
