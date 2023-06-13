@@ -2,6 +2,10 @@ package parlia_tests
 
 import (
 	"crypto/ecdsa"
+	"math/big"
+	"reflect"
+	"testing"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
@@ -9,9 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
-	"math/big"
-	"reflect"
-	"testing"
 )
 
 func newGwei(n int64) *big.Int {
