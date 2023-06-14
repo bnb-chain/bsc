@@ -122,6 +122,10 @@ func (buf *encBuffer) writeBytes(b []byte) {
 	}
 }
 
+func (buf *encBuffer) writeString(s string) {
+	buf.writeBytes([]byte(s))
+}
+
 // wordBytes is the number of bytes in a big.Word
 const wordBytes = (32 << (uint64(^big.Word(0)) >> 63)) / 8
 
@@ -359,6 +363,11 @@ func (w EncoderBuffer) WriteBigInt(i *big.Int) {
 // WriteBytes encodes b as an RLP string.
 func (w EncoderBuffer) WriteBytes(b []byte) {
 	w.buf.writeBytes(b)
+}
+
+// WriteBytes encodes s as an RLP string.
+func (w EncoderBuffer) WriteString(s string) {
+	w.buf.writeString(s)
 }
 
 // List starts a list. It returns an internal index. Call EndList with

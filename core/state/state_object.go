@@ -257,13 +257,9 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			s.db.SnapshotStorageReads += time.Since(start)
 		}
 	}
-
-	// If snapshot unavailable or reading from it failed, load from the database
+	// If the snapshot is unavailable or reading from it fails, load from the database.
 	if s.db.snap == nil || err != nil {
 		start := time.Now()
-		//		if metrics.EnabledExpensive {
-		//			meter = &s.db.StorageReads
-		//		}
 		enc, err = s.getTrie(db).TryGet(key.Bytes())
 		if metrics.EnabledExpensive {
 			s.db.StorageReads += time.Since(start)
