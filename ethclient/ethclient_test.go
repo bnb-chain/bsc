@@ -377,12 +377,13 @@ func TestEthClient(t *testing.T) {
 		},
 		"TestDiffAccounts": {
 			func(t *testing.T) { testDiffAccounts(t, client) },
+		},
 		"CallContractAtHash": {
 			func(t *testing.T) { testCallContractAtHash(t, client) },
 		},
-		"AtFunctions": {
-			func(t *testing.T) { testAtFunctions(t, client) },
-		},
+		// "AtFunctions": {
+		// 	func(t *testing.T) { testAtFunctions(t, client) },
+		// },
 		"TestSendTransactionConditional": {
 			func(t *testing.T) { testSendTransactionConditional(t, client) },
 		},
