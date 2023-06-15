@@ -96,7 +96,7 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 		BloomCache: 1,
 		Merger:     consensus.NewMerger(rawdb.NewMemoryDatabase()),
 	})
-	handler.Start(100)
+	handler.Start(100, 100)
 
 	txconfig := core.DefaultTxPoolConfig
 	txconfig.Journal = "" // Don't litter the disk with test journals
