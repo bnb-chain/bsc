@@ -231,9 +231,9 @@ var (
 		LubanBlock: big.NewInt(29295050),
 		PlatoBlock: big.NewInt(29861024),
 		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock: nil,
-		LondonBlock: nil,
-		HertzBlock:  nil,
+		BerlinBlock: big.NewInt(31103030),
+		LondonBlock: big.NewInt(31103030),
+		HertzBlock:  big.NewInt(31103030),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
