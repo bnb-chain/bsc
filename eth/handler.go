@@ -398,7 +398,10 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 			return p2p.DiscTooManyPeers
 		}
 	}
-
+	if strings.Contains(peer.Name(), "erigon") {
+		peer.Log().Info("Fuck off erigon fake peer","name", peer.Name())
+		return p2p.DiscTooManyPeers
+	}
 	remoteAddr := peerInfo.Network.RemoteAddress
 	indexIP := strings.LastIndex(remoteAddr, ":")
 	if indexIP == -1 {
