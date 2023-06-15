@@ -23,6 +23,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -246,6 +248,32 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	return newcfg, stored, nil
 }
 
+// For any block in g.Config which is nil but the same block in defaultConfig is not
+// set the block in genesis config to the block in defaultConfig.
+// Reflection is used to avoid a long series of if statements with hardcoded block names.
+func (g *Genesis) setDefaultBlockValues(defaultConfig *params.ChainConfig) {
+	// Regex to match block names
+	blockRegex := regexp.MustCompile(`.*Block$`)
+
+	// Get reflect values
+	gConfigElem := reflect.ValueOf(g.Config).Elem()
+	defaultConfigElem := reflect.ValueOf(defaultConfig).Elem()
+
+	// Iterate over fields in config
+	for i := 0; i < gConfigElem.NumField(); i++ {
+		gConfigField := gConfigElem.Field(i)
+		defaultConfigField := defaultConfigElem.Field(i)
+		fieldName := gConfigElem.Type().Field(i).Name
+
+		// Use the regex to check if the field is a Block field
+		if gConfigField.Kind() == reflect.Ptr && blockRegex.MatchString(fieldName) {
+			if gConfigField.IsNil() {
+				gConfigField.Set(defaultConfigField)
+			}
+		}
+	}
+}
+
 // Hard fork block height specified in config.toml has higher priority, but
 // if it is not specified in config.toml, use the default height in code.
 func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
@@ -270,81 +298,7 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		return defaultConfig
 	}
 
-	// if not set in config.toml, use the default value of each network
-	if g.Config.ChainID == nil {
-		g.Config.ChainID = defaultConfig.ChainID
-	}
-	if g.Config.HomesteadBlock == nil {
-		g.Config.HomesteadBlock = defaultConfig.HomesteadBlock
-	}
-	if g.Config.EIP150Block == nil {
-		g.Config.EIP150Block = defaultConfig.EIP150Block
-	}
-	if g.Config.EIP155Block == nil {
-		g.Config.EIP155Block = defaultConfig.EIP155Block
-	}
-	if g.Config.EIP158Block == nil {
-		g.Config.EIP158Block = defaultConfig.EIP158Block
-	}
-	if g.Config.ByzantiumBlock == nil {
-		g.Config.ByzantiumBlock = defaultConfig.ByzantiumBlock
-	}
-	if g.Config.ConstantinopleBlock == nil {
-		g.Config.ConstantinopleBlock = defaultConfig.ConstantinopleBlock
-	}
-	if g.Config.PetersburgBlock == nil {
-		g.Config.PetersburgBlock = defaultConfig.PetersburgBlock
-	}
-	if g.Config.IstanbulBlock == nil {
-		g.Config.IstanbulBlock = defaultConfig.IstanbulBlock
-	}
-	if g.Config.MuirGlacierBlock == nil {
-		g.Config.MuirGlacierBlock = defaultConfig.MuirGlacierBlock
-	}
-
-	// BSC dedicated start
-	if g.Config.RamanujanBlock == nil {
-		g.Config.RamanujanBlock = defaultConfig.RamanujanBlock
-	}
-	if g.Config.NielsBlock == nil {
-		g.Config.NielsBlock = defaultConfig.NielsBlock
-	}
-	if g.Config.MirrorSyncBlock == nil {
-		g.Config.MirrorSyncBlock = defaultConfig.MirrorSyncBlock
-	}
-	if g.Config.BrunoBlock == nil {
-		g.Config.BrunoBlock = defaultConfig.BrunoBlock
-	}
-	if g.Config.EulerBlock == nil {
-		g.Config.EulerBlock = defaultConfig.EulerBlock
-	}
-	if g.Config.NanoBlock == nil {
-		g.Config.NanoBlock = defaultConfig.NanoBlock
-	}
-	if g.Config.MoranBlock == nil {
-		g.Config.MoranBlock = defaultConfig.MoranBlock
-	}
-	if g.Config.GibbsBlock == nil {
-		g.Config.GibbsBlock = defaultConfig.GibbsBlock
-	}
-	if g.Config.PlanckBlock == nil {
-		g.Config.PlanckBlock = defaultConfig.PlanckBlock
-	}
-	if g.Config.LubanBlock == nil {
-		g.Config.LubanBlock = defaultConfig.LubanBlock
-	}
-	if g.Config.PlatoBlock == nil {
-		g.Config.PlatoBlock = defaultConfig.PlatoBlock
-	}
-	if g.Config.BerlinBlock == nil {
-		g.Config.BerlinBlock = defaultConfig.BerlinBlock
-	}
-	if g.Config.LondonBlock == nil {
-		g.Config.LondonBlock = defaultConfig.LondonBlock
-	}
-	if g.Config.HertzBlock == nil {
-		g.Config.HertzBlock = defaultConfig.HertzBlock
-	}
+	g.setDefaultBlockValues(defaultConfig)
 
 	// BSC Parlia set up
 	if g.Config.Parlia == nil {
