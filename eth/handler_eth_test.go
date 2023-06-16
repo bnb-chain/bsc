@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -110,6 +112,7 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 			MoranBlock:          big.NewInt(5),
 			LubanBlock:          big.NewInt(6),
 			PlatoBlock:          big.NewInt(6),
+			HertzBlock:          big.NewInt(7),
 		}
 		dbNoFork  = rawdb.NewMemoryDatabase()
 		dbProFork = rawdb.NewMemoryDatabase()
@@ -147,8 +150,8 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 			BloomCache: 1,
 		})
 	)
-	ethNoFork.Start(1000)
-	ethProFork.Start(1000)
+	ethNoFork.Start(1000, 1000)
+	ethProFork.Start(1000, 1000)
 
 	// Clean up everything after ourselves
 	defer chainNoFork.Stop()
@@ -926,4 +929,110 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+func TestOptionMaxPeersPerIP(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestHandler()
+	defer handler.close()
+	var (
+		genesis       = handler.chain.Genesis()
+		head          = handler.chain.CurrentBlock()
+		td            = handler.chain.GetTd(head.Hash(), head.NumberU64())
+		wg            = sync.WaitGroup{}
+		maxPeersPerIP = handler.handler.maxPeersPerIP
+		uniPort       = 1000
+	)
+
+	tryFunc := func(tryNum int, ip1 string, ip2 string, trust bool, doneCh chan struct{}) {
+		// Create a source peer to send messages through and a sink handler to receive them
+		p2pSrc, p2pSink := p2p.MsgPipe()
+		defer p2pSrc.Close()
+		defer p2pSink.Close()
+
+		peer1 := p2p.NewPeerPipe(enode.ID{0}, "", nil, p2pSrc)
+		peer1.UpdateTestRemoteAddr(ip1 + strconv.Itoa(uniPort))
+		peer2 := p2p.NewPeerPipe(enode.ID{byte(uniPort)}, "", nil, p2pSink)
+		peer2.UpdateTestRemoteAddr(ip2 + strconv.Itoa(uniPort))
+		if trust {
+			peer2.UpdateTrustFlagTest()
+		}
+		uniPort++
+
+		src := eth.NewPeer(eth.ETH66, peer1, p2pSrc, handler.txpool)
+		sink := eth.NewPeer(eth.ETH66, peer2, p2pSink, handler.txpool)
+		defer src.Close()
+		defer sink.Close()
+
+		wg.Add(1)
+		go func(num int) {
+			err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+				wg.Done()
+				<-doneCh
+				return nil
+			})
+			// err is nil, connection ok and it is closed by the doneCh
+			if err == nil {
+				if trust || num <= maxPeersPerIP {
+					return
+				}
+				// if num > maxPeersPerIP and not trust, should report: p2p.DiscTooManyPeers
+				t.Errorf("current num is %d, maxPeersPerIP is %d, should failed", num, maxPeersPerIP)
+				return
+			}
+			wg.Done()
+			if trust {
+				t.Errorf("trust node should not failed, num is %d, maxPeersPerIP is %d, but failed:%s", num, maxPeersPerIP, err)
+			}
+			// err should be p2p.DiscTooManyPeers and num > maxPeersPerIP
+			if err == p2p.DiscTooManyPeers && num > maxPeersPerIP {
+				return
+			}
+
+			t.Errorf("current num is %d, maxPeersPerIP is %d, but failed:%s", num, maxPeersPerIP, err)
+		}(tryNum)
+
+		if err := src.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
+			t.Fatalf("failed to run protocol handshake")
+		}
+		// make sure runEthPeer execute one by one.
+		wg.Wait()
+	}
+
+	// case 1: normal case
+	doneCh1 := make(chan struct{})
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
+		tryFunc(tryNum, "1.2.3.11:", "1.2.3.22:", false, doneCh1)
+	}
+	close(doneCh1)
+
+	// case 2: once the previous connection was unregisterred, new connections with same IP can be accepted.
+	doneCh2 := make(chan struct{})
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
+		tryFunc(tryNum, "1.2.3.11:", "1.2.3.22:", false, doneCh2)
+	}
+	close(doneCh2)
+
+	// case 3: ipv6 address, like: [2001:db8::1]:80
+	doneCh3 := make(chan struct{})
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
+		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", false, doneCh3)
+	}
+	close(doneCh3)
+
+	// case 4: same as case 2, but for ipv6
+	doneCh4 := make(chan struct{})
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
+		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", false, doneCh4)
+	}
+	close(doneCh4)
+
+	// case 5: test trust node
+	doneCh5 := make(chan struct{})
+	for tryNum := 1; tryNum <= maxPeersPerIP+2; tryNum++ {
+		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", true, doneCh5)
+	}
+	close(doneCh5)
+
 }
