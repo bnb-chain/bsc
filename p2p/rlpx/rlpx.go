@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/golang/snappy"
+	mopenssl "github.com/microsoft/go-crypto-openssl/openssl"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -316,6 +317,75 @@ func (c *Conn) Handshake(prv *ecdsa.PrivateKey) (*ecdsa.PublicKey, error) {
 	c.session.wbuf = h.wbuf
 	return sec.remote, err
 }
+type extraModes interface {
+	// Copied out of crypto/aes/modes.go.
+	NewCTR(iv []byte) cipher.Stream
+}
+// this method is only used in tests. Enables manually settings openssl for each handshake
+func (c *Conn) handshakeTest(prv *ecdsa.PrivateKey, openssl bool) (*ecdsa.PublicKey, error) {
+	var (
+		sec Secrets
+		err error
+		h   handshakeState
+	)
+	if c.dialDest != nil {
+		sec, err = h.runInitiator(c.conn, prv, c.dialDest)
+	} else {
+		sec, err = h.runRecipient(c.conn, prv)
+	}
+	if err != nil {
+		return nil, err
+	}
+	c.initWithSecretsFake(sec, openssl)
+	c.session.rbuf = h.rbuf
+	c.session.wbuf = h.wbuf
+	return sec.remote, err
+}
+
+// InitWithSecrets injects connection secrets as if a handshake had
+// been performed. This cannot be called after the handshake.
+func (c *Conn) initWithSecretsFake(sec Secrets, openssl bool) {
+	if c.session != nil {
+		panic("can't handshake twice")
+	}
+
+	encc, err := aes.NewCipher(sec.AES)
+	if err != nil {
+		panic("invalid AES secret: " + err.Error())
+	}
+
+	// we use an all-zeroes IV for AES because the key used
+	// for encryption is ephemeral.
+	iv := make([]byte, encc.BlockSize())
+
+	var macc cipher.Block
+	if !openssl {
+		macc, err = aes.NewCipher(sec.MAC)
+	} else {
+		macc, err = mopenssl.NewAESCipher(sec.MAC)
+	}
+
+	if err != nil {
+		panic("invalid MAC secret: " + err.Error())
+	}
+
+	c.session = &sessionState{
+		egressMAC:  newHashMAC(macc, sec.EgressMAC),
+		ingressMAC: newHashMAC(macc, sec.IngressMAC),
+	}
+
+	if openssl {
+		encc, err = mopenssl.NewAESCipher(sec.AES)
+		if err != nil {
+			panic("invalid AES secret: " + err.Error())
+		}
+		c.session.enc = encc.(extraModes).NewCTR(iv)
+		c.session.dec = encc.(extraModes).NewCTR(iv)
+	} else {
+		c.session.enc = cipher.NewCTR(encc, iv)
+		c.session.dec = cipher.NewCTR(encc, iv)
+	}
+}
 
 // InitWithSecrets injects connection secrets as if a handshake had
 // been performed. This cannot be called after the handshake.
@@ -323,22 +393,42 @@ func (c *Conn) InitWithSecrets(sec Secrets) {
 	if c.session != nil {
 		panic("can't handshake twice")
 	}
-	macc, err := aes.NewCipher(sec.MAC)
-	if err != nil {
-		panic("invalid MAC secret: " + err.Error())
-	}
+
 	encc, err := aes.NewCipher(sec.AES)
 	if err != nil {
 		panic("invalid AES secret: " + err.Error())
 	}
+
 	// we use an all-zeroes IV for AES because the key used
 	// for encryption is ephemeral.
 	iv := make([]byte, encc.BlockSize())
+
+	var macc cipher.Block
+	if !OpenSsl {
+		macc, err = aes.NewCipher(sec.MAC)
+	} else {
+		macc, err = mopenssl.NewAESCipher(sec.MAC)
+	}
+
+	if err != nil {
+		panic("invalid MAC secret: " + err.Error())
+	}
+
 	c.session = &sessionState{
-		enc:        cipher.NewCTR(encc, iv),
-		dec:        cipher.NewCTR(encc, iv),
 		egressMAC:  newHashMAC(macc, sec.EgressMAC),
 		ingressMAC: newHashMAC(macc, sec.IngressMAC),
+	}
+
+	if OpenSsl {
+		encc, err = mopenssl.NewAESCipher(sec.AES)
+		if err != nil {
+			panic("invalid AES secret: " + err.Error())
+		}
+		c.session.enc = encc.(extraModes).NewCTR(iv)
+		c.session.dec = encc.(extraModes).NewCTR(iv)
+	} else {
+		c.session.enc = cipher.NewCTR(encc, iv)
+		c.session.dec = cipher.NewCTR(encc, iv)
 	}
 }
 

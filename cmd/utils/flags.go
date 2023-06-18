@@ -751,7 +751,10 @@ var (
 		Name:  "discovery.dns",
 		Usage: "Sets DNS discovery entry points (use \"\" to disable DNS)",
 	}
-
+	OpensslFlag = cli.BoolFlag{
+		Name:  "openssl",
+		Usage: "enables openssl encryption in rlpx instead of go native implementation",
+	}
 	// ATM the url is left to the user and deployment to
 	JSpathFlag = DirectoryFlag{
 		Name:  "jspath",

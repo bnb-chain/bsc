@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"github.com/ethereum/go-ethereum/p2p/simulations/pipes"
 	"github.com/ethereum/go-ethereum/rlp"
+	mopenssl "github.com/microsoft/go-crypto-openssl/openssl"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -42,15 +43,45 @@ type message struct {
 	err  error
 }
 
-func TestHandshake(t *testing.T) {
-	p1, p2 := createPeers(t)
+func TestOpensslCompabilityHandshake(t *testing.T) {
+	mopenssl.Init()
+	//test native-native, native-openssl, openssl-native, openssl-openssl
+	var (
+		testcases = [][]bool{[]bool{false, false}, []bool{false, true}, []bool{true, false}, []bool{true, true}}
+	)
+	for _, tcase := range testcases {
+		testHandshake(t, tcase)
+	}
+
+}
+
+func TestHandshake(t *testing.T) { testHandshake(t, []bool{false, false}) }
+
+func testHandshake(t *testing.T, bools []bool) {
+	p1, p2 := createPeers(t, bools[0], bools[1])
 	p1.Close()
 	p2.Close()
 }
 
+// This test ensures openssl compability with native aes mode
+func TestOpensslCompabilityReadWriteMsg(t *testing.T) {
+	// native-native, native-openssl, openssl-native, openssl-openssl
+	mopenssl.Init()
+	var (
+		testcases = [][2]bool{[2]bool{false, false}, [2]bool{false, true}, [2]bool{true, false}, [2]bool{true, true}}
+	)
+	for _, tcase := range testcases {
+		testReadWriteMsg(t, tcase[0], tcase[1])
+	}
+}
+
+
+
 // This test checks that messages can be sent and received through WriteMsg/ReadMsg.
-func TestReadWriteMsg(t *testing.T) {
-	peer1, peer2 := createPeers(t)
+func TestReadWriteMsg(t *testing.T) { testReadWriteMsg(t, false, false) }
+
+func testReadWriteMsg(t *testing.T, A bool, B bool) {
+	peer1, peer2 := createPeers(t, A, B)
 	defer peer1.Close()
 	defer peer2.Close()
 
@@ -85,26 +116,26 @@ func checkMsgReadWrite(t *testing.T, p1, p2 *Conn, msgCode uint64, msgData []byt
 	assert.Equal(t, msgData, msg.data, "wrong message data returned from ReadMsg")
 }
 
-func createPeers(t *testing.T) (peer1, peer2 *Conn) {
+func createPeers(t *testing.T, openssl1, openssl2 bool) (peer1, peer2 *Conn) {
 	conn1, conn2 := net.Pipe()
 	key1, key2 := newkey(), newkey()
 	peer1 = NewConn(conn1, &key2.PublicKey) // dialer
 	peer2 = NewConn(conn2, nil)             // listener
-	doHandshake(t, peer1, peer2, key1, key2)
+	doHandshake(t, peer1, peer2, key1, key2, openssl1, openssl2)
 	return peer1, peer2
 }
 
-func doHandshake(t *testing.T, peer1, peer2 *Conn, key1, key2 *ecdsa.PrivateKey) {
+func doHandshake(t *testing.T, peer1, peer2 *Conn, key1, key2 *ecdsa.PrivateKey, openssl1, openssl2 bool) {
 	keyChan := make(chan *ecdsa.PublicKey, 1)
 	go func() {
-		pubKey, err := peer2.Handshake(key2)
+		pubKey, err := peer2.handshakeTest(key2, openssl1)
 		if err != nil {
 			t.Errorf("peer2 could not do handshake: %v", err)
 		}
 		keyChan <- pubKey
 	}()
 
-	pubKey2, err := peer1.Handshake(key1)
+	pubKey2, err := peer1.handshakeTest(key1, openssl2)
 	if err != nil {
 		t.Errorf("peer1 could not do handshake: %v", err)
 	}
@@ -400,7 +431,7 @@ func BenchmarkThroughput(b *testing.B) {
 	go func() {
 		defer conn1.Close()
 		// Perform handshake.
-		_, err := conn1.Handshake(keyA)
+		_, err := conn1.handshakeTest(keyA, false)
 		handshakeDone <- err
 		if err != nil {
 			return
@@ -416,7 +447,62 @@ func BenchmarkThroughput(b *testing.B) {
 
 	// Set up client side.
 	defer conn2.Close()
-	if _, err := conn2.Handshake(keyB); err != nil {
+	if _, err := conn2.handshakeTest(keyB, false); err != nil {
+		b.Fatal("client handshake error:", err)
+	}
+	conn2.SetSnappy(true)
+	if err := <-handshakeDone; err != nil {
+		b.Fatal("server hanshake error:", err)
+	}
+
+	// Read N messages.
+	b.SetBytes(int64(len(msgdata)))
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _, _, err := conn2.Read()
+		if err != nil {
+			b.Fatal("read error:", err)
+		}
+	}
+}
+
+
+func BenchmarkThroughputOpenssl(b *testing.B) {
+	mopenssl.Init()
+	pipe1, pipe2, err := pipes.TCPPipe()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	var (
+		conn1, conn2  = NewConn(pipe1, nil), NewConn(pipe2, &keyA.PublicKey)
+		handshakeDone = make(chan error, 1)
+		msgdata       = make([]byte, 1024)
+		rand          = rand.New(rand.NewSource(1337))
+	)
+	rand.Read(msgdata)
+
+	// Server side.
+	go func() {
+		defer conn1.Close()
+		// Perform handshake.
+		_, err := conn1.handshakeTest(keyA, true)
+		handshakeDone <- err
+		if err != nil {
+			return
+		}
+		conn1.SetSnappy(true)
+		// Keep sending messages until connection closed.
+		for {
+			if _, err := conn1.Write(0, msgdata); err != nil {
+				return
+			}
+		}
+	}()
+
+	// Set up client side.
+	defer conn2.Close()
+	if _, err := conn2.handshakeTest(keyB, true); err != nil {
 		b.Fatal("client handshake error:", err)
 	}
 	conn2.SetSnappy(true)

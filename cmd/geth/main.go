@@ -175,6 +175,7 @@ var (
 		utils.BLSPasswordFileFlag,
 		utils.BLSWalletDirFlag,
 		utils.VoteJournalDirFlag,
+		utils.OpensslFlag,
 	}
 
 	rpcFlags = []cli.Flag{
