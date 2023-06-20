@@ -1169,7 +1169,7 @@ func (s *PublicBlockChainAPI) needToReplay(ctx context.Context, block *types.Blo
 	spendValueMap := make(map[common.Address]int64, len(accounts))
 	receiveValueMap := make(map[common.Address]int64, len(accounts))
 
-	signer := types.MakeSigner(s.b.ChainConfig(), block.Number())
+	signer := types.MakeSigner(s.b.ChainConfig(), block.Number(), block.Time())
 	for index, tx := range block.Transactions() {
 		receipt := receipts[index]
 		from, err := types.Sender(signer, tx)
@@ -1238,7 +1238,7 @@ func (s *PublicBlockChainAPI) replay(ctx context.Context, block *types.Block, ac
 	}
 
 	// Recompute transactions.
-	signer := types.MakeSigner(s.b.ChainConfig(), block.Number())
+	signer := types.MakeSigner(s.b.ChainConfig(), block.Number(), block.Time())
 	for _, tx := range block.Transactions() {
 		// Skip data empty tx and to is one of the interested accounts tx.
 		skip := false
@@ -1265,7 +1265,7 @@ func (s *PublicBlockChainAPI) replay(ctx context.Context, block *types.Block, ac
 		// Apply transaction
 		msg, _ := tx.AsMessage(signer, parent.Header().BaseFee)
 		txContext := core.NewEVMTxContext(msg)
-		context := core.NewEVMBlockContext(block.Header(), s.b.Chain(), nil)
+		context := core.NewEVMBlockContext(block.Header(), parent.ExcessDataGas(), s.b.Chain(), nil)
 		vmenv := vm.NewEVM(context, txContext, statedb, s.b.ChainConfig(), vm.Config{})
 
 		if posa, ok := s.b.Engine().(consensus.PoSA); ok {
