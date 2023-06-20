@@ -1,4 +1,10 @@
 # Changelog
+## v1.2.7
+FEATURE
+* [\#1645](https://github.com/bnb-chain/bsc/pull/1645) lightclient: fix validator set change
+* [\#1717](https://github.com/bnb-chain/bsc/pull/1717) feat: support creating a bls keystore from a specified private key
+* [\#1720](https://github.com/bnb-chain/bsc/pull/1720) metrics: add counter for voting status of whole network
+
 ## v1.2.6
 FEATURE
 * [\#1697](https://github.com/bnb-chain/bsc/pull/1697) upgrade: block height of Hertz(London&Berlin) on testnet
