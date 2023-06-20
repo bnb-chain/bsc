@@ -1759,7 +1759,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 	}
 
 	// Start a parallel signature recovery (signer will fluke on fork transition, minimal perf loss)
-	signer := types.MakeSigner(bc.chainConfig, chain[0].Number())
+	signer := types.MakeSigner(bc.chainConfig, chain[0].Number(), chain[0].Time())
 	go senderCacher.recoverFromBlocks(signer, chain)
 
 	var (
@@ -1965,7 +1965,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			statedb.EnablePipeCommit()
 		}
 		statedb.SetExpectedStateRoot(block.Root())
-		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
+		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, parent.ExcessDataGas, statedb, bc.vmConfig)
 		close(interruptCh) // state prefetch can be stopped
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
