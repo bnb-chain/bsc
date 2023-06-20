@@ -17,6 +17,8 @@
 package types
 
 import (
+	"github.com/holiman/uint256"
+	"github.com/protolambda/ztyp/view"
 	"math/big"
 	"testing"
 
@@ -73,6 +75,44 @@ func TestEIP155ChainId(t *testing.T) {
 
 	if tx.ChainId().Sign() != 0 {
 		t.Error("expected chain id to be 0 got", tx.ChainId())
+	}
+}
+
+func TestEIP4844Signing(t *testing.T) {
+	key, _ := crypto.GenerateKey()
+	addr := crypto.PubkeyToAddress(key.PublicKey)
+
+	signer := NewDankSigner(big.NewInt(18))
+	msg := BlobTxMessage{
+		Nonce:            view.Uint64View(0),
+		Gas:              view.Uint64View(123457),
+		To:               AddressOptionalSSZ{Address: (*AddressSSZ)(&addr)},
+		GasTipCap:        view.Uint256View(*uint256.NewInt(42)),
+		GasFeeCap:        view.Uint256View(*uint256.NewInt(10)),
+		MaxFeePerDataGas: view.Uint256View(*uint256.NewInt(10)),
+		Value:            view.Uint256View(*uint256.NewInt(10)),
+	}
+	var wrapData TxWrapData
+	wrapData, msg.BlobVersionedHashes = oneEmptyBlobWrapData()
+	txdata := &SignedBlobTx{Message: msg}
+	tx := NewTx(txdata, WithTxWrapData(wrapData))
+	tx, err := SignTx(tx, signer, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tx.Protected() {
+		t.Fatal("expected tx to be protected")
+	}
+
+	if tx.ChainId().Cmp(signer.ChainID()) != 0 {
+		t.Error("expected chainId to be", signer.ChainID(), "got", tx.ChainId())
+	}
+	sender, err := Sender(signer, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sender != addr {
+		t.Error("expected sender to be", addr, "got", sender)
 	}
 }
 

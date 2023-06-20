@@ -841,32 +841,36 @@ func (t *TransactionsByPriceAndNonce) Forward(tx *Transaction) {
 //
 // NOTE: In a future PR this will be removed.
 type Message struct {
-	to         *common.Address
-	from       common.Address
-	nonce      uint64
-	amount     *big.Int
-	gasLimit   uint64
-	gasPrice   *big.Int
-	gasFeeCap  *big.Int
-	gasTipCap  *big.Int
-	data       []byte
-	accessList AccessList
-	isFake     bool
+	to               *common.Address
+	from             common.Address
+	nonce            uint64
+	amount           *big.Int
+	gasLimit         uint64
+	gasPrice         *big.Int
+	gasFeeCap        *big.Int
+	gasTipCap        *big.Int
+	maxFeePerDataGas *big.Int
+	data             []byte
+	accessList       AccessList
+	isFake           bool
+	dataHashes       []common.Hash
 }
 
-func NewMessage(from common.Address, to *common.Address, nonce uint64, amount *big.Int, gasLimit uint64, gasPrice, gasFeeCap, gasTipCap *big.Int, data []byte, accessList AccessList, isFake bool) Message {
+func NewMessage(from common.Address, to *common.Address, nonce uint64, amount *big.Int, gasLimit uint64, gasPrice, gasFeeCap, gasTipCap, maxFeePerDataGas *big.Int, data []byte, accessList AccessList, isFake bool, dataHashes []common.Hash) Message {
 	return Message{
-		from:       from,
-		to:         to,
-		nonce:      nonce,
-		amount:     amount,
-		gasLimit:   gasLimit,
-		gasPrice:   gasPrice,
-		gasFeeCap:  gasFeeCap,
-		gasTipCap:  gasTipCap,
-		data:       data,
-		accessList: accessList,
-		isFake:     isFake,
+		from:             from,
+		to:               to,
+		nonce:            nonce,
+		amount:           amount,
+		gasLimit:         gasLimit,
+		gasPrice:         gasPrice,
+		gasFeeCap:        gasFeeCap,
+		gasTipCap:        gasTipCap,
+		maxFeePerDataGas: maxFeePerDataGas,
+		data:             data,
+		accessList:       accessList,
+		isFake:           isFake,
+		dataHashes:       dataHashes,
 	}
 }
 
