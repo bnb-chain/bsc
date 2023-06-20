@@ -20,10 +20,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
-	"math/big"
-
-	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
-	"golang.org/x/crypto/ripemd160"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -31,8 +27,13 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 	"github.com/ethereum/go-ethereum/crypto/bls12381"
 	"github.com/ethereum/go-ethereum/crypto/bn256"
+	"github.com/ethereum/go-ethereum/crypto/kzg"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
+	"golang.org/x/crypto/ripemd160"
+
+	"math/big"
 )
 
 // PrecompiledContract is the basic interface for native Go contracts. The implementation
@@ -212,17 +213,31 @@ var PrecompiledContractsBLS = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{18}): &bls12381MapG2{},
 }
 
+var PrecompiledContractsDanksharding = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{1}):  &ecrecover{},
+	common.BytesToAddress([]byte{2}):  &sha256hash{},
+	common.BytesToAddress([]byte{3}):  &ripemd160hash{},
+	common.BytesToAddress([]byte{4}):  &dataCopy{},
+	common.BytesToAddress([]byte{5}):  &bigModExp{eip2565: true},
+	common.BytesToAddress([]byte{6}):  &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{7}):  &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{8}):  &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{9}):  &blake2F{},
+	common.BytesToAddress([]byte{20}): &pointEvaluation{},
+}
+
 var (
-	PrecompiledAddressesHertz     []common.Address
-	PrecompiledAddressesPlato     []common.Address
-	PrecompiledAddressesLuban     []common.Address
-	PrecompiledAddressesPlanck    []common.Address
-	PrecompiledAddressesMoran     []common.Address
-	PrecompiledAddressesNano      []common.Address
-	PrecompiledAddressesBerlin    []common.Address
-	PrecompiledAddressesIstanbul  []common.Address
-	PrecompiledAddressesByzantium []common.Address
-	PrecompiledAddressesHomestead []common.Address
+	PrecompiledAddressesDanksharding []common.Address
+	PrecompiledAddressesHertz        []common.Address
+	PrecompiledAddressesPlato        []common.Address
+	PrecompiledAddressesLuban        []common.Address
+	PrecompiledAddressesPlanck       []common.Address
+	PrecompiledAddressesMoran        []common.Address
+	PrecompiledAddressesNano         []common.Address
+	PrecompiledAddressesBerlin       []common.Address
+	PrecompiledAddressesIstanbul     []common.Address
+	PrecompiledAddressesByzantium    []common.Address
+	PrecompiledAddressesHomestead    []common.Address
 )
 
 func init() {
@@ -256,11 +271,16 @@ func init() {
 	for k := range PrecompiledContractsHertz {
 		PrecompiledAddressesHertz = append(PrecompiledAddressesHertz, k)
 	}
+	for k := range PrecompiledContractsDanksharding {
+		PrecompiledAddressesDanksharding = append(PrecompiledAddressesDanksharding, k)
+	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	case rules.IsCancun:
+		return PrecompiledAddressesDanksharding
 	case rules.IsHertz:
 		return PrecompiledAddressesHertz
 	case rules.IsPlato:
@@ -1257,4 +1277,17 @@ func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
 	}
 
 	return big1.Bytes(), nil
+}
+
+// pointEvaluation implements the EIP-4844 point evaluation precompile
+// to check if a value is part of a blob at a specific point with a KZG proof.
+type pointEvaluation struct{}
+
+// RequiredGas returns the gas required to execute the pre-compiled contract.
+func (c *pointEvaluation) RequiredGas(input []byte) uint64 {
+	return params.PointEvaluationGas
+}
+
+func (c *pointEvaluation) Run(input []byte) ([]byte, error) {
+	return kzg.PointEvaluationPrecompile(input)
 }
