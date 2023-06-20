@@ -59,7 +59,7 @@ type Config struct {
 	Noverify      bool           // Disable remote mining solution verification(only useful in ethash).
 	VoteEnable    bool           // Whether to vote when mining
 
-  MEVRelays                   map[string]*rpc.Client // RPC clients to register validator each epoch
+	MEVRelays                   map[string]*rpc.Client // RPC clients to register validator each epoch
 	ProposedBlockUri            string                 // received eth_proposedBlocks on that uri
 	RegisterValidatorSignedHash []byte                 // signed value of crypto.Keccak256([]byte(ProposedBlockUri))
 }
