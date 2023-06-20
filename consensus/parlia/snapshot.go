@@ -46,7 +46,7 @@ type Snapshot struct {
 	Validators       map[common.Address]*ValidatorInfo `json:"validators"`            // Set of authorized validators at this moment
 	Recents          map[uint64]common.Address         `json:"recents"`               // Set of recent validators for spam protections
 	RecentForkHashes map[uint64]string                 `json:"recent_fork_hashes"`    // Set of recent forkHash
-	Attestation      *types.VoteData                   `json:"attestation:omitempty"` // Attestation for fast finality
+	Attestation      *types.VoteData                   `json:"attestation:omitempty"` // Attestation for fast finality, but `Source` used as `Finalized`
 }
 
 type ValidatorInfo struct {
@@ -199,11 +199,11 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 	}
 
 	// Update attestation
-	s.Attestation = &types.VoteData{
-		SourceNumber: attestation.Data.SourceNumber,
-		SourceHash:   attestation.Data.SourceHash,
-		TargetNumber: attestation.Data.TargetNumber,
-		TargetHash:   attestation.Data.TargetHash,
+	if s.Attestation != nil && attestation.Data.SourceNumber+1 != attestation.Data.TargetNumber {
+		s.Attestation.TargetNumber = attestation.Data.TargetNumber
+		s.Attestation.TargetHash = attestation.Data.TargetHash
+	} else {
+		s.Attestation = attestation.Data
 	}
 }
 
@@ -256,7 +256,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			return nil, err
 		}
 		if _, ok := snap.Validators[validator]; !ok {
-			return nil, errUnauthorizedValidator
+			return nil, errUnauthorizedValidator(validator.String())
 		}
 		for _, recent := range snap.Recents {
 			if recent == validator {

@@ -83,7 +83,7 @@ func (cs ConsensusState) EncodeConsensusState() ([]byte, error) {
 	return encodingBytes, nil
 }
 
-func (cs *ConsensusState) ApplyLightBlock(block *types.LightBlock) (bool, error) {
+func (cs *ConsensusState) ApplyLightBlock(block *types.LightBlock, isHertz bool) (bool, error) {
 	if uint64(block.Height) <= cs.Height {
 		return false, fmt.Errorf("block height <= consensus height (%d < %d)", block.Height, cs.Height)
 	}
@@ -118,12 +118,19 @@ func (cs *ConsensusState) ApplyLightBlock(block *types.LightBlock) (bool, error)
 		}
 	}
 
+	valSetChanged := !(bytes.Equal(cs.ValidatorSet.Hash(), block.ValidatorsHash))
+
 	// update consensus state
 	cs.Height = uint64(block.Height)
 	cs.NextValidatorSetHash = block.NextValidatorsHash
 	cs.ValidatorSet = block.ValidatorSet
 
-	return !(bytes.Equal(cs.ValidatorSet.Hash(), block.ValidatorsHash)), nil
+	if !isHertz {
+		// This logic is wrong, fixed in hertz fork.
+		return !(bytes.Equal(cs.ValidatorSet.Hash(), block.ValidatorsHash)), nil
+	}
+
+	return valSetChanged, nil
 }
 
 // input:
@@ -194,6 +201,11 @@ func DecodeLightBlockValidationInput(input []byte) (*ConsensusState, *types.Ligh
 	}
 
 	csLen := binary.BigEndian.Uint64(input[consensusStateLengthBytesLength-uint64TypeLength : consensusStateLengthBytesLength])
+
+	if consensusStateLengthBytesLength+csLen < consensusStateLengthBytesLength {
+		return nil, nil, fmt.Errorf("integer overflow, csLen: %d", csLen)
+	}
+
 	if uint64(len(input)) <= consensusStateLengthBytesLength+csLen {
 		return nil, nil, fmt.Errorf("expected payload size %d, actual size: %d", consensusStateLengthBytesLength+csLen, len(input))
 	}

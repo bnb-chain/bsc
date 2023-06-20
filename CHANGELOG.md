@@ -1,4 +1,36 @@
 # Changelog
+## v1.2.7
+FEATURE
+* [\#1645](https://github.com/bnb-chain/bsc/pull/1645) lightclient: fix validator set change
+* [\#1717](https://github.com/bnb-chain/bsc/pull/1717) feat: support creating a bls keystore from a specified private key
+* [\#1720](https://github.com/bnb-chain/bsc/pull/1720) metrics: add counter for voting status of whole network
+
+## v1.2.6
+FEATURE
+* [\#1697](https://github.com/bnb-chain/bsc/pull/1697) upgrade: block height of Hertz(London&Berlin) on testnet
+* [\#1686](https://github.com/bnb-chain/bsc/pull/1686) eip3529tests: refactor tests
+* [\#1676](https://github.com/bnb-chain/bsc/pull/1676) EIP-3529 (BEP-212) Unit tests for Parlia Config
+* [\#1660](https://github.com/bnb-chain/bsc/pull/1660) feat: add a tool for submitting evidence of maliciousvoting
+* [\#1623](https://github.com/bnb-chain/bsc/pull/1623) P2P: try to limit the connection number per IP address
+* [\#1608](https://github.com/bnb-chain/bsc/pull/1608) feature: Enable Berlin EIPs
+* [\#1597](https://github.com/bnb-chain/bsc/pull/1597) feature: add malicious vote monitor
+* [\#1422](https://github.com/bnb-chain/bsc/pull/1422) core: port several London EIPs on BSC
+
+IMPROVEMENT
+* [\#1662](https://github.com/bnb-chain/bsc/pull/1662) consensus, core/rawdb, miner: downgrade logs
+* [\#1654](https://github.com/bnb-chain/bsc/pull/1654) config: use default fork config if not specified in config.toml
+* [\#1642](https://github.com/bnb-chain/bsc/pull/1642) readme: update the disk requirement to 2.5TB
+* [\#1621](https://github.com/bnb-chain/bsc/pull/1621) upgrade: avoid to modify RialtoGenesisHash when testing in rialtoNet
+
+BUGFIX
+* [\#1682](https://github.com/bnb-chain/bsc/pull/1682) fix: set the signer of parlia to the most permissive one
+* [\#1681](https://github.com/bnb-chain/bsc/pull/1681) fix: not double GasLimit of block upon London upgrade
+* [\#1679](https://github.com/bnb-chain/bsc/pull/1679) fix: check integer overflow when decode crosschain payload
+* [\#1671](https://github.com/bnb-chain/bsc/pull/1671) fix: voting can only be enabled when mining
+* [\#1663](https://github.com/bnb-chain/bsc/pull/1663) fix: ungraceful shutdown caused by malicious Vote Monitor
+* [\#1651](https://github.com/bnb-chain/bsc/pull/1651) fix: remove naturally finality
+* [\#1641](https://github.com/bnb-chain/bsc/pull/1641) fix: support getFilterChanges after NewFinalizedHeaderFilter
+
 ## v1.2.5
 BUGFIX
 * [\#1675](https://github.com/bnb-chain/bsc/pull/1675) goleveldb: downgrade the version for performance

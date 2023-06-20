@@ -1343,6 +1343,7 @@ func (s *PublicEthereumAPI) RegisterValidator(ctx context.Context, args Register
 }
 
 type ProposedBlockArgs struct {
+	MEVRelay      string          `json:"mevRelay,omitempty"`
 	BlockNumber   rpc.BlockNumber `json:"blockNumber"`
 	PrevBlockHash common.Hash     `json:"prevBlockHash"`
 	BlockReward   *big.Int        `json:"blockReward"`
@@ -1365,11 +1366,11 @@ func (s *PublicBlockChainAPI) ProposedBlock(ctx context.Context, args ProposedBl
 	proposedBlockNumber := big.NewInt(args.BlockNumber.Int64())
 
 	if nextBlock.Cmp(proposedBlockNumber) != 0 {
-		log.Info("Validating ProposedBlock failed", "number", args.BlockNumber, "chain number", s.b.CurrentBlock().Number())
+		log.Info("Validating ProposedBlock failed", "number", args.BlockNumber, "chain number", s.b.CurrentBlock().Number(), "MEVRelay", args.MEVRelay)
 		return errors.New("blockNumber is incorrect")
 	}
 	if s.b.CurrentBlock().Hash() != args.PrevBlockHash {
-		log.Info("Validating ProposedBlock failed", "number", args.BlockNumber, "prevHash", args.PrevBlockHash.Hex(), "chain current block", s.b.CurrentBlock().Hash())
+		log.Info("Validating ProposedBlock failed", "number", args.BlockNumber, "prevHash", args.PrevBlockHash.Hex(), "chain current block", s.b.CurrentBlock().Hash(), "MEVRelay", args.MEVRelay)
 		return errors.New("prevBlockHash is incorrect")
 	}
 
@@ -1380,7 +1381,7 @@ func (s *PublicBlockChainAPI) ProposedBlock(ctx context.Context, args ProposedBl
 		}
 		txs = append(txs, tx)
 	}
-	return s.b.ProposedBlock(ctx, proposedBlockNumber, args.PrevBlockHash, args.BlockReward, args.GasLimit, args.GasUsed, txs)
+	return s.b.ProposedBlock(ctx, args.MEVRelay, proposedBlockNumber, args.PrevBlockHash, args.BlockReward, args.GasLimit, args.GasUsed, txs)
 }
 
 // ExecutionResult groups all structured logs emitted by the EVM

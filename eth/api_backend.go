@@ -409,6 +409,6 @@ func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Blo
 	return b.eth.stateAtTransaction(block, txIndex, reexec)
 }
 
-func (b *EthAPIBackend) ProposedBlock(ctx context.Context, blockNumber *big.Int, prevBlockHash common.Hash, reward *big.Int, gasLimit uint64, gasUsed uint64, txs types.Transactions) error {
-	return b.eth.miner.ProposedBlock(blockNumber, prevBlockHash, reward, gasLimit, gasUsed, txs)
+func (b *EthAPIBackend) ProposedBlock(ctx context.Context, MEVRelay string, blockNumber *big.Int, prevBlockHash common.Hash, reward *big.Int, gasLimit uint64, gasUsed uint64, txs types.Transactions) error {
+	return b.eth.miner.ProposedBlock(MEVRelay, blockNumber, prevBlockHash, reward, gasLimit, gasUsed, txs)
 }

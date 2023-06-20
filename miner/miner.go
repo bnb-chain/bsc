@@ -24,9 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/rpc"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -35,8 +32,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // Backend wraps all methods required for mining. Only full node is capable
@@ -58,7 +57,7 @@ type Config struct {
 	GasPrice      *big.Int       // Minimum gas price for mining a transaction
 	Recommit      time.Duration  // The time interval for miner to re-create mining work.
 	Noverify      bool           // Disable remote mining solution verification(only useful in ethash).
-	VoteEnable    bool           // whether enable voting
+	VoteEnable    bool           // Whether to vote when mining
 
 	MEVRelays                   map[string]*rpc.Client // RPC clients to register validator each epoch
 	ProposedBlockUri            string                 // received eth_proposedBlocks on that uri
@@ -169,6 +168,7 @@ func (miner *Miner) update() {
 			shouldStart = true
 
 		case block := <-chainBlockCh:
+			// ToDo check if epoch, if so send eth_registerValidator to list of Relays
 			if block.Block.NumberU64()%params.BSCChainConfig.Parlia.Epoch == 0 {
 				miner.registerValidator()
 			}
@@ -286,15 +286,16 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 }
 
 // ProposedBlock add the block to the list of works
-func (miner *Miner) ProposedBlock(blockNumber *big.Int, prevBlockHash common.Hash, reward *big.Int, gasLimit uint64, gasUsed uint64, txs types.Transactions) error {
-	log.Debug("Received ProposedBlock", "number", blockNumber, "prevHash", prevBlockHash.Hex(), "potential reward", reward, "gasLimit", gasLimit, "gasUsed", gasUsed, "txcount", len(txs))
+func (miner *Miner) ProposedBlock(MEVRelay string, blockNumber *big.Int, prevBlockHash common.Hash, reward *big.Int, gasLimit uint64, gasUsed uint64, txs types.Transactions) error {
+	log.Debug("Received ProposedBlock", "number", blockNumber, "MEVRelay", MEVRelay, "prevHash", prevBlockHash.Hex(), "potential reward", reward, "gasLimit", gasLimit, "gasUsed", gasUsed, "txcount", len(txs))
 	currentGasLimit := atomic.LoadUint64(miner.worker.currentGasLimit)
 
 	if gasUsed > currentGasLimit {
-		log.Debug("Skipping the block as gas used exceeds the current block gas limit", "number", blockNumber.Int64(), "proposedBlockGasUsed", gasUsed, "currentGasLimit", currentGasLimit, "chainCurrentBlock", miner.worker.current.header.Number.Int64())
+		log.Debug("Skipping the block as gas used exceeds the current block gas limit", "number", blockNumber.Int64(), "proposedBlockGasUsed", gasUsed, "currentGasLimit", currentGasLimit, "chainCurrentBlock", miner.worker.current.header.Number.Int64(), "MEVRelay", MEVRelay)
 		return fmt.Errorf("gasUsed exceeds the current block gas limit %v", currentGasLimit)
 	}
 	miner.worker.proposedCh <- &ProposedBlockArgs{
+		mevRelay:      MEVRelay,
 		blockNumber:   blockNumber,
 		prevBlockHash: prevBlockHash,
 		blockReward:   reward,

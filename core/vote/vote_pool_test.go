@@ -68,6 +68,17 @@ type mockInvalidPOSA struct {
 	consensus.PoSA
 }
 
+// testBackend is a mock implementation of the live Ethereum message handler.
+type testBackend struct {
+	eventMux *event.TypeMux
+}
+
+func newTestBackend() *testBackend {
+	return &testBackend{eventMux: new(event.TypeMux)}
+}
+func (b *testBackend) IsMining() bool           { return true }
+func (b *testBackend) EventMux() *event.TypeMux { return b.eventMux }
+
 func (p *mockPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, header *types.Header) (uint64, common.Hash, error) {
 	parentHeader := chain.GetHeaderByHash(header.ParentHash)
 	if parentHeader == nil {
@@ -167,7 +178,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 	file.Close()
 	os.Remove(journal)
 
-	voteManager, err := NewVoteManager(mux, params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir, mockEngine)
+	voteManager, err := NewVoteManager(newTestBackend(), params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir, mockEngine)
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}

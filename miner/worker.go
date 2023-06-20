@@ -175,6 +175,7 @@ type getWorkReq struct {
 
 // ProposedBlockArgs defines the argument of a proposed block
 type ProposedBlockArgs struct {
+	mevRelay      string
 	blockNumber   *big.Int
 	prevBlockHash common.Hash
 	blockReward   *big.Int
@@ -444,7 +445,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if p, ok := w.engine.(*parlia.Parlia); ok {
 				signedRecent, err := p.SignRecently(w.chain, head.Block)
 				if err != nil {
-					log.Info("Not allowed to propose block", "err", err)
+					log.Debug("Not allowed to propose block", "err", err)
 					continue
 				}
 				if signedRecent {
@@ -742,11 +743,11 @@ func (w *worker) proposedLoop() {
 			w.bestProposedBlockLock.RUnlock()
 
 			if bestReward != nil && bestReward.Cmp(req.blockReward) > 0 {
-				log.Debug("Skipping proposedBlock", "number", req.blockNumber, "proposedReward", req.blockReward, "reward", bestReward)
+				log.Debug("Skipping proposedBlock", "number", req.blockNumber, "proposedReward", req.blockReward, "reward", bestReward, "MEVRelay", req.mevRelay)
 				continue
 			}
 			if err := w.validateProposedBlock(req); err != nil {
-				log.Error("Processing proposedBlock failed", "err", err, "ProposedBlock", fmt.Sprintf("number %v, prev block hash %v, reward %v, gas limit %v, gas used %v, txcount %v", req.blockNumber, req.prevBlockHash.Hex(), req.blockReward, req.gasLimit, req.gasUsed, len(req.txs)))
+				log.Error("Processing proposedBlock failed", "err", err, "ProposedBlock", fmt.Sprintf("MEVRelay, %v, number %v, prev block hash %v, reward %v, gas limit %v, gas used %v, txcount %v", req.mevRelay, req.blockNumber, req.prevBlockHash.Hex(), req.blockReward, req.gasLimit, req.gasUsed, len(req.txs)))
 			}
 
 		case <-chainBlockCh:
@@ -1040,10 +1041,6 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Set baseFee and GasLimit if we are on an EIP-1559 chain
 	if w.chainConfig.IsLondon(header.Number) {
 		header.BaseFee = misc.CalcBaseFee(w.chainConfig, parent.Header())
-		if !w.chainConfig.IsLondon(parent.Number()) {
-			parentGasLimit := parent.GasLimit() * params.ElasticityMultiplier
-			header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
-		}
 	}
 	// Run the consensus preparation with the default or customized consensus engine.
 	if err := w.engine.Prepare(w.chain, header); err != nil {
@@ -1188,6 +1185,7 @@ func (w *worker) fillTransactionsProposedBlock(env *environment, block *Proposed
 	tcount := len(env.txs)
 	blockReward = env.state.GetBalance(consensus.SystemAddress)
 	log.Debug("processing proposedBlock", "blockNumber", block.blockNumber,
+		"from MEVRelay", block.mevRelay,
 		"proposed reward", block.blockReward, "actual reward", blockReward,
 		"proposed gasUsed", block.gasUsed, "actual gasUsed", env.receipts[len(env.receipts)-1].CumulativeGasUsed,
 		"proposed txs", len(block.txs), "actual txs", tcount)
@@ -1223,7 +1221,7 @@ func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
 	var coinbase common.Address
 	if w.isRunning() {
 		if w.coinbase == (common.Address{}) {
-			return errors.New("Refusing to mine without etherbase")
+			return errors.New("refusing to mine without etherbase")
 		}
 		coinbase = w.coinbase // Use the preset address as the fee recipient
 	}
@@ -1240,10 +1238,10 @@ func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
 	// Fill transactions from the proposed block
 	fillStart := time.Now()
 	err, blockReward := w.fillTransactionsProposedBlock(work, proposedBlock)
-	fillDuration := time.Since(fillStart)
 	if err != nil {
 		return err
 	}
+	fillDuration := time.Since(fillStart)
 
 	bestProposedLockStart := time.Now()
 	nextBlock := big.NewInt(0).Add(big.NewInt(1), w.eth.BlockChain().CurrentBlock().Number())
@@ -1256,7 +1254,7 @@ func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
 	w.bestProposedBlockLock.Lock()
 	defer w.bestProposedBlockLock.Unlock()
 	if blockReward.Cmp(w.bestProposedBlockReward) > 0 {
-		log.Debug("Replacing proposedBlock", "number", work.header.Number, "reward", w.bestProposedBlockReward, "new reward", blockReward)
+		log.Info("Replacing proposedBlock", "number", work.header.Number, "reward", w.bestProposedBlockReward, "new reward", blockReward, "from MEVRelay", proposedBlock.mevRelay)
 		// discard old bestProposedBlock before overwriting
 		if w.bestProposedBlock != nil {
 			w.bestProposedBlock.discard()
@@ -1266,7 +1264,7 @@ func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
 	}
 	bestProposedLockDuration := time.Since(bestProposedLockStart)
 	totalDuration := time.Since(start)
-	log.Debug("validate proposed block", "blockNumber", proposedBlock.blockNumber, "duration", totalDuration, "fill duration", fillDuration, "lock duration", bestProposedLockDuration)
+	log.Debug("validate proposed block", "blockNumber", proposedBlock.blockNumber, "MEVRelay", proposedBlock.mevRelay, "duration", totalDuration, "fill duration", fillDuration, "lock duration", bestProposedLockDuration)
 	return nil
 }
 

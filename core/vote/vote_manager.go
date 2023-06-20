@@ -16,9 +16,15 @@ import (
 
 var votesManagerCounter = metrics.NewRegisteredCounter("votesManager/local", nil)
 
+// Backend wraps all methods required for voting.
+type Backend interface {
+	IsMining() bool
+	EventMux() *event.TypeMux
+}
+
 // VoteManager will handle the vote produced by self.
 type VoteManager struct {
-	mux *event.TypeMux
+	eth Backend
 
 	chain       *core.BlockChain
 	chainconfig *params.ChainConfig
@@ -33,9 +39,9 @@ type VoteManager struct {
 	engine consensus.PoSA
 }
 
-func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
+func NewVoteManager(eth Backend, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
 	voteManager := &VoteManager{
-		mux: mux,
+		eth: eth,
 
 		chain:       chain,
 		chainconfig: chainconfig,
@@ -71,7 +77,7 @@ func NewVoteManager(mux *event.TypeMux, chainconfig *params.ChainConfig, chain *
 
 func (voteManager *VoteManager) loop() {
 	log.Debug("vote manager routine loop started")
-	events := voteManager.mux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
+	events := voteManager.eth.EventMux().Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
 	defer func() {
 		log.Debug("vote manager loop defer func occur")
 		if !events.Closed() {
@@ -104,6 +110,10 @@ func (voteManager *VoteManager) loop() {
 		case cHead := <-voteManager.chainHeadCh:
 			if !startVote {
 				log.Debug("startVote flag is false, continue")
+				continue
+			}
+			if !voteManager.eth.IsMining() {
+				log.Debug("skip voting because mining is disabled, continue")
 				continue
 			}
 

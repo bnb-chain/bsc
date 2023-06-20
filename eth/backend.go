@@ -249,31 +249,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	eth.txPool = core.NewTxPool(config.TxPool, chainConfig, eth.blockchain)
 
-	// Create voteManager instance
-	if posa, ok := eth.engine.(consensus.PoSA); ok {
-		// Create votePool instance
-		votePool := vote.NewVotePool(chainConfig, eth.blockchain, posa)
-		eth.votePool = votePool
-		if parlia, ok := eth.engine.(*parlia.Parlia); ok {
-			parlia.VotePool = votePool
-		} else {
-			return nil, fmt.Errorf("Engine is not Parlia type")
-		}
-		log.Info("Create votePool successfully")
-
-		if config.Miner.VoteEnable {
-			conf := stack.Config()
-			blsPasswordPath := stack.ResolvePath(conf.BLSPasswordFile)
-			blsWalletPath := stack.ResolvePath(conf.BLSWalletDir)
-			voteJournalPath := stack.ResolvePath(conf.VoteJournalDir)
-			if _, err := vote.NewVoteManager(eth.EventMux(), chainConfig, eth.blockchain, votePool, voteJournalPath, blsPasswordPath, blsWalletPath, posa); err != nil {
-				log.Error("Failed to Initialize voteManager", "err", err)
-				return nil, err
-			}
-			log.Info("Create voteManager successfully")
-		}
-	}
-
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit
 	checkpoint := config.Checkpoint
@@ -299,16 +274,39 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if eth.votePool != nil {
-		eth.handler.votepool = eth.votePool
+
+	eth.miner = miner.New(eth, &config.Miner, chainConfig, eth.EventMux(), eth.engine, eth.isLocalBlock)
+	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
+
+	// Create voteManager instance
+	if posa, ok := eth.engine.(consensus.PoSA); ok {
+		// Create votePool instance
+		votePool := vote.NewVotePool(chainConfig, eth.blockchain, posa)
+		eth.votePool = votePool
+		if parlia, ok := eth.engine.(*parlia.Parlia); ok {
+			parlia.VotePool = votePool
+		} else {
+			return nil, fmt.Errorf("Engine is not Parlia type")
+		}
+		log.Info("Create votePool successfully")
+		eth.handler.votepool = votePool
 		if stack.Config().EnableMaliciousVoteMonitor {
 			eth.handler.maliciousVoteMonitor = monitor.NewMaliciousVoteMonitor()
 			log.Info("Create MaliciousVoteMonitor successfully")
 		}
-	}
 
-	eth.miner = miner.New(eth, &config.Miner, chainConfig, eth.EventMux(), eth.engine, eth.isLocalBlock)
-	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
+		if config.Miner.VoteEnable {
+			conf := stack.Config()
+			blsPasswordPath := stack.ResolvePath(conf.BLSPasswordFile)
+			blsWalletPath := stack.ResolvePath(conf.BLSWalletDir)
+			voteJournalPath := stack.ResolvePath(conf.VoteJournalDir)
+			if _, err := vote.NewVoteManager(eth, chainConfig, eth.blockchain, votePool, voteJournalPath, blsPasswordPath, blsWalletPath, posa); err != nil {
+				log.Error("Failed to Initialize voteManager", "err", err)
+				return nil, err
+			}
+			log.Info("Create voteManager successfully")
+		}
+	}
 
 	gpoParams := config.GPO
 	if gpoParams.Default == nil {
@@ -656,7 +654,7 @@ func (s *Ethereum) Start() error {
 		maxPeers -= s.config.LightPeers
 	}
 	// Start the networking layer and the light server if requested
-	s.handler.Start(maxPeers)
+	s.handler.Start(maxPeers, s.p2pServer.MaxPeersPerIP)
 	return nil
 }
 

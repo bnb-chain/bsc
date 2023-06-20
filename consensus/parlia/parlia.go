@@ -144,7 +144,9 @@ var (
 	errBlockHashInconsistent = errors.New("the block hash is inconsistent")
 
 	// errUnauthorizedValidator is returned if a header is signed by a non-authorized entity.
-	errUnauthorizedValidator = errors.New("unauthorized validator")
+	errUnauthorizedValidator = func(val string) error {
+		return errors.New("unauthorized validator: " + val)
+	}
 
 	// errCoinBaseMisMatch is returned if a header's coinbase do not match with signature
 	errCoinBaseMisMatch = errors.New("coinbase do not match with signature")
@@ -276,7 +278,7 @@ func New(
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
 		slashABI:                   sABI,
-		signer:                     types.NewEIP155Signer(chainConfig.ChainID),
+		signer:                     types.LatestSigner(chainConfig),
 	}
 
 	return c
@@ -394,6 +396,22 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 	return &attestation, nil
 }
 
+// getParent returns the parent of a given block.
+func (p *Parlia) getParent(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) (*types.Header, error) {
+	var parent *types.Header
+	number := header.Number.Uint64()
+	if len(parents) > 0 {
+		parent = parents[len(parents)-1]
+	} else {
+		parent = chain.GetHeader(header.ParentHash, number-1)
+	}
+
+	if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
+		return nil, consensus.ErrUnknownAncestor
+	}
+	return parent, nil
+}
+
 // verifyVoteAttestation checks whether the vote attestation in the header is valid.
 func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
 	attestation, err := getVoteAttestationFromHeader(header, p.chainConfig, p.config)
@@ -411,15 +429,9 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	}
 
 	// Get parent block
-	number := header.Number.Uint64()
-	var parent *types.Header
-	if len(parents) > 0 {
-		parent = parents[len(parents)-1]
-	} else {
-		parent = chain.GetHeader(header.ParentHash, number-1)
-	}
-	if parent == nil || parent.Hash() != header.ParentHash {
-		return consensus.ErrUnknownAncestor
+	parent, err := p.getParent(chain, header, parents)
+	if err != nil {
+		return err
 	}
 
 	// The target block should be direct parent.
@@ -541,6 +553,23 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	if err := misc.VerifyForkHashes(chain.Config(), header, false); err != nil {
 		return err
 	}
+
+	parent, err := p.getParent(chain, header, parents)
+	if err != nil {
+		return err
+	}
+
+	// Verify the block's gas usage and (if applicable) verify the base fee.
+	if !chain.Config().IsLondon(header.Number) {
+		// Verify BaseFee not present before EIP-1559 fork.
+		if header.BaseFee != nil {
+			return fmt.Errorf("invalid baseFee before fork: have %d, expected 'nil'", header.BaseFee)
+		}
+	} else if err := misc.VerifyEip1559Header(chain.Config(), parent, header); err != nil {
+		// Verify the header's EIP-1559 attributes.
+		return err
+	}
+
 	// All basic checks passed, verify cascading fields
 	return p.verifyCascadingFields(chain, header, parents)
 }
@@ -556,15 +585,9 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		return nil
 	}
 
-	var parent *types.Header
-	if len(parents) > 0 {
-		parent = parents[len(parents)-1]
-	} else {
-		parent = chain.GetHeader(header.ParentHash, number-1)
-	}
-
-	if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
-		return consensus.ErrUnknownAncestor
+	parent, err := p.getParent(chain, header, parents)
+	if err != nil {
+		return err
 	}
 
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, parents)
@@ -752,7 +775,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	}
 
 	if _, ok := snap.Validators[signer]; !ok {
-		return errUnauthorizedValidator
+		return errUnauthorizedValidator(signer.String())
 	}
 
 	if snap.SignRecently(signer) {
@@ -1226,6 +1249,7 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 			if addr == p.val {
 				validVotesfromSelfCounter.Inc(1)
 			}
+			metrics.GetOrRegisterCounter(fmt.Sprintf("parlia/VerifyVote/%s", addr.String()), nil).Inc(1)
 			return nil
 		}
 	}
@@ -1298,7 +1322,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 	// Bail out if we're unauthorized to sign a block
 	if _, authorized := snap.Validators[val]; !authorized {
-		return errUnauthorizedValidator
+		return errUnauthorizedValidator(val.String())
 	}
 
 	// If we're amongst the recent signers, wait for the next block
@@ -1408,7 +1432,7 @@ func (p *Parlia) SignRecently(chain consensus.ChainReader, parent *types.Block) 
 
 	// Bail out if we're unauthorized to sign a block
 	if _, authorized := snap.Validators[p.val]; !authorized {
-		return true, errUnauthorizedValidator
+		return true, errUnauthorizedValidator(p.val.String())
 	}
 
 	return snap.SignRecently(p.val), nil
@@ -1719,18 +1743,12 @@ func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, he
 }
 
 // GetFinalizedHeader returns highest finalized block header.
-// It will find vote finalized block within NaturallyFinalizedDist blocks firstly,
-// If the vote finalized block not found, return its naturally finalized block.
 func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
-	backward := uint64(types.NaturallyFinalizedDist)
 	if chain == nil || header == nil {
 		return nil
 	}
 	if !chain.Config().IsPlato(header.Number) {
 		return chain.GetHeaderByNumber(0)
-	}
-	if header.Number.Uint64() < backward {
-		backward = header.Number.Uint64()
 	}
 
 	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
@@ -1740,20 +1758,10 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		return nil
 	}
 
-	for snap.Attestation != nil && snap.Attestation.SourceNumber >= header.Number.Uint64()-backward {
-		if snap.Attestation.TargetNumber == snap.Attestation.SourceNumber+1 {
-			return chain.GetHeaderByHash(snap.Attestation.SourceHash)
-		}
-
-		snap, err = p.snapshot(chain, snap.Attestation.SourceNumber, snap.Attestation.SourceHash, nil)
-		if err != nil {
-			log.Error("Unexpected error when getting snapshot",
-				"error", err, "blockNumber", snap.Attestation.SourceNumber, "blockHash", snap.Attestation.SourceHash)
-			return nil
-		}
+	if snap.Attestation != nil {
+		return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
 	}
-
-	return FindAncientHeader(header, backward, chain, nil)
+	return nil
 }
 
 // ===========================     utility function        ==========================
@@ -1864,7 +1872,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 			}
 		}
 		if idx < 0 {
-			log.Info("The validator is not authorized", "addr", val)
+			log.Debug("The validator is not authorized", "addr", val)
 			return 0
 		}
 
