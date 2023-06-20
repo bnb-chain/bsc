@@ -26,6 +26,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/signer/core"
 )
 
@@ -35,7 +36,16 @@ const (
 )
 
 var (
-	au = aurora.NewAurora(true)
+	au             = aurora.NewAurora(true)
+	privateKeyFlag = &cli.StringFlag{
+		Name:  "private-key",
+		Usage: "Hex string for the BLS12-381 private key you wish encrypt into a keystore file",
+		Value: "",
+	}
+	showPrivateKeyFlag = &cli.BoolFlag{
+		Name:  "show-private-key",
+		Usage: "Show the BLS12-381 private key you will encrypt into a keystore file",
+	}
 )
 
 var (
@@ -116,6 +126,8 @@ Make sure you backup your BLS keys regularly.`,
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
 							utils.DataDirFlag,
+							privateKeyFlag,
+							showPrivateKeyFlag,
 						},
 						Description: `
 	geth bls account new
@@ -294,9 +306,28 @@ func blsAccountCreate(ctx *cli.Context) error {
 
 	encryptor := keystorev4.New()
 	secretKey, err := bls.RandKey()
-	if err != nil {
+	privateKeyString := ctx.String(privateKeyFlag.Name)
+	if privateKeyString != "" {
+		if len(privateKeyString) > 2 && strings.Contains(privateKeyString, "0x") {
+			privateKeyString = privateKeyString[2:] // Strip the 0x prefix, if any.
+		}
+		bytesValue, err := hex.DecodeString(privateKeyString)
+		if err != nil {
+			utils.Fatalf("could not decode as hex string: %s", privateKeyString)
+		}
+		secretKey, err = bls.SecretKeyFromBytes(bytesValue)
+		if err != nil {
+			utils.Fatalf("not a valid BLS12-381 private key")
+		}
+	} else if err != nil {
 		utils.Fatalf("Could not generate BLS secret key: %v.", err)
 	}
+
+	showPrivateKey := ctx.Bool(showPrivateKeyFlag.Name)
+	if showPrivateKey {
+		fmt.Printf("private key used: 0x%s\n", common.Bytes2Hex(secretKey.Marshal()))
+	}
+
 	pubKeyBytes := secretKey.PublicKey().Marshal()
 	cryptoFields, err := encryptor.Encrypt(secretKey.Marshal(), accountPassword)
 	if err != nil {
