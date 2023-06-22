@@ -134,6 +134,7 @@ func main() {
 		PrivateKey:     nodeKey,
 		NetRestrict:    restrictList,
 		FilterFunction: filterFunction,
+		IsBootnode:     true,
 	}
 	if *runv5 {
 		if _, err := discover.ListenV5(conn, ln, cfg); err != nil {
