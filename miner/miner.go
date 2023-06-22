@@ -287,12 +287,24 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 
 // ProposedBlock add the block to the list of works
 func (miner *Miner) ProposedBlock(MEVRelay string, blockNumber *big.Int, prevBlockHash common.Hash, reward *big.Int, gasLimit uint64, gasUsed uint64, txs types.Transactions) error {
-	log.Debug("Received ProposedBlock", "number", blockNumber, "MEVRelay", MEVRelay, "prevHash", prevBlockHash.Hex(), "potential reward", reward, "gasLimit", gasLimit, "gasUsed", gasUsed, "txcount", len(txs))
+	var isBlockSkipped bool
 	currentGasLimit := atomic.LoadUint64(miner.worker.currentGasLimit)
-
+	defer func() {
+		log.Info("Received ProposedBlock",
+			"blockNumber", blockNumber.String(),
+			"fromMevRelay", MEVRelay,
+			"prevHash", prevBlockHash.Hex(),
+			"proposedReward", reward,
+			"gasLimit", gasLimit,
+			"gasUsed", gasUsed,
+			"txCount", len(txs),
+			"isBlockSkipped", isBlockSkipped,
+			"currentGasLimit", currentGasLimit,
+		)
+	}()
 	if gasUsed > currentGasLimit {
-		log.Debug("Skipping the block as gas used exceeds the current block gas limit", "number", blockNumber.Int64(), "proposedBlockGasUsed", gasUsed, "currentGasLimit", currentGasLimit, "chainCurrentBlock", miner.worker.current.header.Number.Int64(), "MEVRelay", MEVRelay)
-		return fmt.Errorf("gasUsed exceeds the current block gas limit %v", currentGasLimit)
+		isBlockSkipped = true
+		return fmt.Errorf("gasUsed exceeds the current block gas limit %v blockNumber %s", currentGasLimit, blockNumber.String())
 	}
 	miner.worker.proposedCh <- &ProposedBlockArgs{
 		mevRelay:      MEVRelay,

@@ -743,11 +743,11 @@ func (w *worker) proposedLoop() {
 			w.bestProposedBlockLock.RUnlock()
 
 			if bestReward != nil && bestReward.Cmp(req.blockReward) > 0 {
-				log.Debug("Skipping proposedBlock", "number", req.blockNumber, "proposedReward", req.blockReward, "reward", bestReward, "MEVRelay", req.mevRelay)
+				log.Debug("Skipping proposedBlock", "blockNumber", req.blockNumber.String(), "proposedReward", req.blockReward, "reward", bestReward, "mevRelay", req.mevRelay)
 				continue
 			}
 			if err := w.validateProposedBlock(req); err != nil {
-				log.Error("Processing proposedBlock failed", "err", err, "ProposedBlock", fmt.Sprintf("MEVRelay, %v, number %v, prev block hash %v, reward %v, gas limit %v, gas used %v, txcount %v", req.mevRelay, req.blockNumber, req.prevBlockHash.Hex(), req.blockReward, req.gasLimit, req.gasUsed, len(req.txs)))
+				log.Error("Processing proposedBlock failed", "err", err, "proposedBlock", fmt.Sprintf("mevRelay, %v, blockNumber %v, prevBlockHash %v, reward %v, gasLimit %v, gasUsed %v, txCount %v", req.mevRelay, req.blockNumber.String(), req.prevBlockHash.Hex(), req.blockReward, req.gasLimit, req.gasUsed, len(req.txs)))
 			}
 
 		case <-chainBlockCh:
@@ -1178,17 +1178,18 @@ func (w *worker) fillTransactionsProposedBlock(env *environment, block *Proposed
 
 		_, err := w.commitTransaction(env, tx, bloomProcessors)
 		if err != nil {
+			log.Error("Failed to commit transaction on proposedBlock", "blockNumber", block.blockNumber.String(), "fromMevRelay", block.mevRelay, "proposedTxs", len(block.txs), "failedTx", tx.Hash().String())
 			return err, nil
 		}
 	}
 
 	tcount := len(env.txs)
 	blockReward = env.state.GetBalance(consensus.SystemAddress)
-	log.Debug("processing proposedBlock", "blockNumber", block.blockNumber,
-		"from MEVRelay", block.mevRelay,
-		"proposed reward", block.blockReward, "actual reward", blockReward,
-		"proposed gasUsed", block.gasUsed, "actual gasUsed", env.receipts[len(env.receipts)-1].CumulativeGasUsed,
-		"proposed txs", len(block.txs), "actual txs", tcount)
+	log.Debug("Processing proposedBlock", "blockNumber", block.blockNumber.String(),
+		"fromMevRelay", block.mevRelay,
+		"proposedReward", block.blockReward, "actualReward", blockReward,
+		"proposedGasUsed", block.gasUsed, "actualGasUsed", env.receipts[len(env.receipts)-1].CumulativeGasUsed,
+		"proposedTxsCount", len(block.txs), "actualTxsCount", tcount)
 
 	if tcount < len(block.txs) {
 		return errors.New("block parameters mismatch"), nil
@@ -1254,7 +1255,7 @@ func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
 	w.bestProposedBlockLock.Lock()
 	defer w.bestProposedBlockLock.Unlock()
 	if blockReward.Cmp(w.bestProposedBlockReward) > 0 {
-		log.Info("Replacing proposedBlock", "number", work.header.Number, "reward", w.bestProposedBlockReward, "new reward", blockReward, "from MEVRelay", proposedBlock.mevRelay)
+		log.Info("Replacing proposedBlock", "blockNumber", work.header.Number.String(), "reward", w.bestProposedBlockReward, "newReward", blockReward, "fromMevRelay", proposedBlock.mevRelay)
 		// discard old bestProposedBlock before overwriting
 		if w.bestProposedBlock != nil {
 			w.bestProposedBlock.discard()
@@ -1264,7 +1265,7 @@ func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
 	}
 	bestProposedLockDuration := time.Since(bestProposedLockStart)
 	totalDuration := time.Since(start)
-	log.Debug("validate proposed block", "blockNumber", proposedBlock.blockNumber, "MEVRelay", proposedBlock.mevRelay, "duration", totalDuration, "fill duration", fillDuration, "lock duration", bestProposedLockDuration)
+	log.Debug("Validate proposedBlock", "blockNumber", proposedBlock.blockNumber.String(), "fromMevRelay", proposedBlock.mevRelay, "duration", totalDuration, "fillDuration", fillDuration, "lockDuration", bestProposedLockDuration)
 	return nil
 }
 
