@@ -42,9 +42,9 @@ type Prefetcher interface {
 	// Prefetch processes the state changes according to the Ethereum rules by running
 	// the transaction messages using the statedb, but any changes are discarded. The
 	// only goal is to pre-cache transaction signatures and state trie nodes.
-	Prefetch(block *types.Block, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{})
+	Prefetch(block *types.Block, excessDataGas *big.Int, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{})
 	// PrefetchMining used for pre-caching transaction signatures and state trie nodes. Only used for mining stage.
-	PrefetchMining(txs *types.TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction)
+	PrefetchMining(txs *types.TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, excessDataGas *big.Int, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction)
 }
 
 // Processor is an interface for processing blocks using a given initial state.
