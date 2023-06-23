@@ -559,6 +559,7 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return err
 	}
 
+	// todo do the verify for 4844 similar to verifyHeader() of go-ethereum
 	// Verify the block's gas usage and (if applicable) verify the base fee.
 	if !chain.Config().IsLondon(header.Number) {
 		// Verify BaseFee not present before EIP-1559 fork.
@@ -1929,8 +1930,15 @@ func applyMessage(
 	chainConfig *params.ChainConfig,
 	chainContext core.ChainContext,
 ) (uint64, error) {
+	//parent := eth.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
+	//if parent == nil {
+	//	return nil, vm.BlockContext{}, nil, fmt.Errorf("parent %#x not found", block.ParentHash())
+	//}
+	// todo how to find parent here? ...-> done, but double check the logic
+	parentBlockNumber := header.Number.Uint64() - 1
+	parentBlockHeader := chainContext.GetHeader(header.ParentHash, parentBlockNumber)
 	// Create a new context to be used in the EVM environment
-	context := core.NewEVMBlockContext(header, chainContext, nil)
+	context := core.NewEVMBlockContext(header, parentBlockHeader.ExcessDataGas, chainContext, nil)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	vmenv := vm.NewEVM(context, vm.TxContext{Origin: msg.From(), GasPrice: big.NewInt(0)}, state, chainConfig, vm.Config{})
