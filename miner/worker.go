@@ -92,10 +92,11 @@ type environment struct {
 	gasPool   *core.GasPool  // available gas used to pack transactions
 	coinbase  common.Address
 
-	header   *types.Header
-	txs      []*types.Transaction
-	receipts []*types.Receipt
-	uncles   map[common.Hash]*types.Header
+	header        *types.Header
+	excessDataGas *big.Int
+	txs           []*types.Transaction
+	receipts      []*types.Receipt
+	uncles        map[common.Hash]*types.Header
 }
 
 // copy creates a deep copy of environment.
@@ -694,11 +695,11 @@ func (w *worker) resultLoop() {
 }
 
 // makeEnv creates a new environment for the sealing block.
-func (w *worker) makeEnv(parent *types.Block, header *types.Header, coinbase common.Address,
+func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase common.Address,
 	prevEnv *environment) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
-	state, err := w.chain.StateAtWithSharedPool(parent.Root())
+	state, err := w.chain.StateAtWithSharedPool(parent.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -710,7 +711,7 @@ func (w *worker) makeEnv(parent *types.Block, header *types.Header, coinbase com
 
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
-		signer:    types.MakeSigner(w.chainConfig, header.Number),
+		signer:    types.MakeSigner(w.chainConfig, header.Number, header.Time),
 		state:     state,
 		coinbase:  coinbase,
 		ancestors: mapset.NewSet(),
@@ -720,6 +721,16 @@ func (w *worker) makeEnv(parent *types.Block, header *types.Header, coinbase com
 	}
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
+
+	// Initialize the prestate excess_data_gas field used during state transition
+	if w.chainConfig.IsCancun(header.Time) {
+		// TODO(EIP-4844): Unit test this
+		env.excessDataGas = new(big.Int)
+		if parent.ExcessDataGas != nil {
+			env.excessDataGas.Set(parent.ExcessDataGas)
+		}
+	}
+
 	return env, nil
 }
 
@@ -762,11 +773,14 @@ func (w *worker) updateSnapshot(env *environment) {
 }
 
 func (w *worker) commitTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
-	snap := env.state.Snapshot()
-
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, *w.chain.GetVMConfig(), receiptProcessors...)
+	var (
+		snap = env.state.Snapshot()
+		gp   = env.gasPool.Gas()
+	)
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, env.excessDataGas, tx, &env.header.GasUsed, *w.chain.GetVMConfig())
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
+		env.gasPool.SetGas(gp)
 		return nil, err
 	}
 	env.txs = append(env.txs, tx)
@@ -779,7 +793,7 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 	interruptCh chan int32, stopTimer *time.Timer) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
-		env.gasPool = new(core.GasPool).AddGas(gasLimit)
+		env.gasPool = new(core.GasPool).AddGas(gasLimit).AddDataGas(params.MaxDataGasPerBlock)
 		if w.chain.Config().IsEuler(env.header.Number) {
 			env.gasPool.SubGas(params.SystemTxsGas * 3)
 		} else {
@@ -801,7 +815,7 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 	txsPrefetch := txs.Copy()
 	tx := txsPrefetch.Peek()
 	txCurr := &tx
-	w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.CopyDoPrefetch(), *w.chain.GetVMConfig(), stopPrefetchCh, txCurr)
+	w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.excessDataGas, env.state.CopyDoPrefetch(), *w.chain.GetVMConfig(), stopPrefetchCh, txCurr)
 
 	signal := commitInterruptNone
 LOOP:
@@ -846,6 +860,9 @@ LOOP:
 		}
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance is the transaction pool.
+		// todo this comment was there but the following line of code wasn't there in bsc. Figure out if this was just an error
+		from, _ := types.Sender(env.signer, tx)
+
 		//
 		// We use the eip155 signer regardless of the current hf.
 		//from, _ := types.Sender(env.signer, tx)
@@ -886,6 +903,11 @@ LOOP:
 			// Pop the unsupported transaction without shifting in the next from the account
 			//log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
 			txs.Pop()
+
+		case errors.Is(err, core.ErrDataGasLimitReached):
+			// Shift, as the next tx from the account may not contain blobs
+			log.Trace("Skipping blob transaction. Reached max number of blobs in current context", "sender", from, "numBlobs", len(tx.DataHashes()))
+			txs.Shift()
 
 		default:
 			// Strange error, discard the transaction and get the next in line (note, the
@@ -935,11 +957,13 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Find the parent block for sealing task
 	parent := w.chain.CurrentBlock()
 	if genParams.parentHash != (common.Hash{}) {
-		parent = w.chain.GetBlockByHash(genParams.parentHash)
+		block := w.chain.GetBlockByHash(genParams.parentHash)
+		if block == nil {
+			return nil, fmt.Errorf("missing parent")
+		}
+		parent = block
 	}
-	if parent == nil {
-		return nil, fmt.Errorf("missing parent")
-	}
+
 	// Sanity check the timestamp correctness, recap the timestamp
 	// to parent+1 if the mutation is allowed.
 	timestamp := genParams.timestamp
@@ -977,7 +1001,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
 	// since clique algorithm can modify the coinbase field in header.
-	env, err := w.makeEnv(parent, header, genParams.coinbase, genParams.prevWork)
+	env, err := w.makeEnv(parent.Header(), header, genParams.coinbase, genParams.prevWork) // todo geth does it differently
 	if err != nil {
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err

@@ -81,11 +81,14 @@ func NewLightStateProcessor(config *params.ChainConfig, bc *BlockChain, engine c
 	}
 }
 
-func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
+func (p *LightStateProcessor) Process(block *types.Block, excessDataGas *big.Int, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
 	allowLightProcess := true
 	if posa, ok := p.engine.(consensus.PoSA); ok {
 		allowLightProcess = posa.AllowLightProcess(p.bc, block.Header())
 	}
+	//parentExcessDataGas := p.bc.GetBlock(block.ParentHash(), block.NumberU64()-1).ExcessDataGas()
+	baseFee := block.BaseFee()
+	blockTime := block.Time()
 	// random fallback to full process
 	if allowLightProcess && block.NumberU64()%fullProcessCheck != uint64(p.check) && len(block.Transactions()) != 0 {
 		var pid string
@@ -106,10 +109,11 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 			time.Sleep(time.Millisecond)
 		}
 		if diffLayer != nil {
-			if err := diffLayer.Receipts.DeriveFields(p.bc.chainConfig, block.Hash(), block.NumberU64(), block.Transactions()); err != nil {
+			if err := diffLayer.Receipts.DeriveFields(p.bc.chainConfig, block.Hash(), block.NumberU64(), blockTime, baseFee, excessDataGas, block.Transactions()); err != nil {
 				log.Error("Failed to derive block receipts fields", "hash", block.Hash(), "number", block.NumberU64(), "err", err)
 				// fallback to full process
-				return p.StateProcessor.Process(block, statedb, cfg)
+				return p.StateProcessor.Process(block, excessDataGas, statedb, cfg)
+				//todo not fully sure, check if we can  use block.Header().ExcessDataGas here
 			}
 
 			receipts, logs, gasUsed, err := p.LightProcess(diffLayer, block, statedb)
@@ -135,7 +139,8 @@ func (p *LightStateProcessor) Process(block *types.Block, statedb *state.StateDB
 		}
 	}
 	// fallback to full process
-	return p.StateProcessor.Process(block, statedb, cfg)
+	return p.StateProcessor.Process(block, excessDataGas, statedb, cfg)
+	// todo figure out difference between this Process() and the Process() that was called before
 }
 
 func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *types.Block, statedb *state.StateDB) (types.Receipts, []*types.Log, uint64, error) {
@@ -377,7 +382,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 // Process returns the receipts and logs accumulated during the process and
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
-func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
+func (p *StateProcessor) Process(block *types.Block, excessDataGas *big.Int, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
 	var (
 		usedGas     = new(uint64)
 		header      = block.Header()
@@ -395,7 +400,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Handle upgrade build-in system contract code
 	systemcontracts.UpgradeBuildInSystemContract(p.config, block.Number(), statedb)
 
-	blockContext := NewEVMBlockContext(header, p.bc, nil)
+	blockContext := NewEVMBlockContext(header, excessDataGas, p.bc, nil)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
 
 	txNum := len(block.Transactions())
@@ -406,7 +411,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// initialise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
-	signer := types.MakeSigner(p.config, header.Number)
+	signer := types.MakeSigner(p.config, header.Number, header.Time)
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
@@ -502,13 +507,13 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, receiptProcessors ...ReceiptProcessor) (*types.Receipt, error) {
-	msg, err := tx.AsMessage(types.MakeSigner(config, header.Number), header.BaseFee)
+func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, excessDataGas *big.Int, tx *types.Transaction, usedGas *uint64, cfg vm.Config, receiptProcessors ...ReceiptProcessor) (*types.Receipt, error) {
+	msg, err := tx.AsMessage(types.MakeSigner(config, header.Number, header.Time), header.BaseFee)
 	if err != nil {
 		return nil, err
 	}
 	// Create a new context to be used in the EVM environment
-	blockContext := NewEVMBlockContext(header, bc, author)
+	blockContext := NewEVMBlockContext(header, excessDataGas, bc, author)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg)
 	defer func() {
 		ite := vmenv.Interpreter()

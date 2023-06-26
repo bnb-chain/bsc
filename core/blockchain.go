@@ -1759,7 +1759,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 	}
 
 	// Start a parallel signature recovery (signer will fluke on fork transition, minimal perf loss)
-	signer := types.MakeSigner(bc.chainConfig, chain[0].Number())
+	signer := types.MakeSigner(bc.chainConfig, chain[0].Number(), chain[0].Time())
 	go senderCacher.recoverFromBlocks(signer, chain)
 
 	var (
@@ -1951,7 +1951,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 
 			// 1.do state prefetch for snapshot cache
 			throwaway := statedb.CopyDoPrefetch()
-			go bc.prefetcher.Prefetch(block, throwaway, &bc.vmConfig, interruptCh)
+			go bc.prefetcher.Prefetch(block, block.ExcessDataGas(), throwaway, &bc.vmConfig, interruptCh)
 
 			// 2.do trie prefetch for MPT trie node cache
 			// it is for the big state trie tree, prefetch based on transaction's From/To address.
@@ -1965,7 +1965,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			statedb.EnablePipeCommit()
 		}
 		statedb.SetExpectedStateRoot(block.Root())
-		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
+		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, parent.ExcessDataGas, statedb, bc.vmConfig)
 		close(interruptCh) // state prefetch can be stopped
 		if err != nil {
 			bc.reportBlock(block, receipts, err)

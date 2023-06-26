@@ -82,17 +82,30 @@ func (tx *DynamicFeeTx) copy() TxData {
 }
 
 // accessors for innerTx.
-func (tx *DynamicFeeTx) txType() byte           { return DynamicFeeTxType }
-func (tx *DynamicFeeTx) chainID() *big.Int      { return tx.ChainID }
-func (tx *DynamicFeeTx) accessList() AccessList { return tx.AccessList }
-func (tx *DynamicFeeTx) data() []byte           { return tx.Data }
-func (tx *DynamicFeeTx) gas() uint64            { return tx.Gas }
-func (tx *DynamicFeeTx) gasFeeCap() *big.Int    { return tx.GasFeeCap }
-func (tx *DynamicFeeTx) gasTipCap() *big.Int    { return tx.GasTipCap }
-func (tx *DynamicFeeTx) gasPrice() *big.Int     { return tx.GasFeeCap }
-func (tx *DynamicFeeTx) value() *big.Int        { return tx.Value }
-func (tx *DynamicFeeTx) nonce() uint64          { return tx.Nonce }
-func (tx *DynamicFeeTx) to() *common.Address    { return tx.To }
+func (tx *DynamicFeeTx) txType() byte               { return DynamicFeeTxType }
+func (tx *DynamicFeeTx) chainID() *big.Int          { return tx.ChainID }
+func (tx *DynamicFeeTx) accessList() AccessList     { return tx.AccessList }
+func (tx *DynamicFeeTx) dataHashes() []common.Hash  { return nil }
+func (tx *DynamicFeeTx) data() []byte               { return tx.Data }
+func (tx *DynamicFeeTx) gas() uint64                { return tx.Gas }
+func (tx *DynamicFeeTx) gasFeeCap() *big.Int        { return tx.GasFeeCap }
+func (tx *DynamicFeeTx) gasTipCap() *big.Int        { return tx.GasTipCap }
+func (tx *DynamicFeeTx) maxFeePerDataGas() *big.Int { return new(big.Int) }
+func (tx *DynamicFeeTx) gasPrice() *big.Int         { return tx.GasFeeCap }
+func (tx *DynamicFeeTx) value() *big.Int            { return tx.Value }
+func (tx *DynamicFeeTx) nonce() uint64              { return tx.Nonce }
+func (tx *DynamicFeeTx) to() *common.Address        { return tx.To }
+
+func (tx *DynamicFeeTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
+	if baseFee == nil {
+		return dst.Set(tx.GasFeeCap)
+	}
+	tip := dst.Sub(tx.GasFeeCap, baseFee)
+	if tip.Cmp(tx.GasTipCap) > 0 {
+		tip.Set(tx.GasTipCap)
+	}
+	return tip.Add(tip, baseFee)
+}
 
 func (tx *DynamicFeeTx) rawSignatureValues() (v, r, s *big.Int) {
 	return tx.V, tx.R, tx.S

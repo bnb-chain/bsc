@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
+	"math/big"
 )
 
 const prefetchThread = 3
@@ -48,10 +49,10 @@ func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine conse
 // Prefetch processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to pre-cache transaction signatures and snapshot clean state.
-func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{}) {
+func (p *statePrefetcher) Prefetch(block *types.Block, excessDataGas *big.Int, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{}) {
 	var (
 		header = block.Header()
-		signer = types.MakeSigner(p.config, header.Number)
+		signer = types.MakeSigner(p.config, header.Number, header.Time)
 	)
 	transactions := block.Transactions()
 	txChan := make(chan int, prefetchThread)
@@ -60,8 +61,8 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		go func() {
 			newStatedb := statedb.CopyDoPrefetch()
 			newStatedb.EnableWriteOnSharedStorage()
-			gaspool := new(GasPool).AddGas(block.GasLimit())
-			blockContext := NewEVMBlockContext(header, p.bc, nil)
+			gaspool := new(GasPool).AddGas(block.GasLimit()).AddDataGas(params.MaxDataGasPerBlock)
+			blockContext := NewEVMBlockContext(header, excessDataGas, p.bc, nil)
 			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, *cfg)
 			// Iterate over and process the individual transactions
 			for {
@@ -97,8 +98,8 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 // PrefetchMining processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to pre-cache transaction signatures and snapshot clean state. Only used for mining stage
-func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
-	var signer = types.MakeSigner(p.config, header.Number)
+func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, excessDataGas *big.Int, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
+	var signer = types.MakeSigner(p.config, header.Number, header.Time)
 
 	txCh := make(chan *types.Transaction, 2*prefetchThread)
 	for i := 0; i < prefetchThread; i++ {
@@ -107,7 +108,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 			newStatedb := statedb.CopyDoPrefetch()
 			newStatedb.EnableWriteOnSharedStorage()
 			gaspool := new(GasPool).AddGas(gasLimit)
-			blockContext := NewEVMBlockContext(header, p.bc, nil)
+			blockContext := NewEVMBlockContext(header, excessDataGas, p.bc, nil)
 			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
 			// Iterate over and process the individual transactions
 			for {

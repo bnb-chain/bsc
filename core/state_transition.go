@@ -52,17 +52,17 @@ The state transitioning model does all the necessary work to work out a valid ne
 6) Derive new state root
 */
 type StateTransition struct {
-	gp         *GasPool
-	msg        Message
-	gas        uint64
-	gasPrice   *big.Int
-	gasFeeCap  *big.Int
-	gasTipCap  *big.Int
-	initialGas uint64
-	value      *big.Int
-	data       []byte
-	state      vm.StateDB
-	evm        *vm.EVM
+	gp           *GasPool
+	msg          Message
+	gasRemaining uint64
+	gasPrice     *big.Int
+	gasFeeCap    *big.Int
+	gasTipCap    *big.Int
+	initialGas   uint64
+	value        *big.Int
+	data         []byte
+	state        vm.StateDB
+	evm          *vm.EVM
 }
 
 // Message represents a message sent to a contract.
@@ -74,12 +74,15 @@ type Message interface {
 	GasFeeCap() *big.Int
 	GasTipCap() *big.Int
 	Gas() uint64
+	MaxFeePerDataGas() *big.Int
 	Value() *big.Int
 
 	Nonce() uint64
 	IsFake() bool
 	Data() []byte
 	AccessList() types.AccessList
+
+	DataHashes() []common.Hash
 }
 
 // ExecutionResult includes all output after executing given evm
@@ -194,22 +197,46 @@ func (st *StateTransition) to() common.Address {
 
 func (st *StateTransition) buyGas() error {
 	mgval := new(big.Int).SetUint64(st.msg.Gas())
-	mgval = mgval.Mul(mgval, st.gasPrice)
-	balanceCheck := mgval
-	if st.gasFeeCap != nil {
-		balanceCheck = new(big.Int).SetUint64(st.msg.Gas())
-		balanceCheck = balanceCheck.Mul(balanceCheck, st.gasFeeCap)
-		balanceCheck.Add(balanceCheck, st.value)
+	mgval = mgval.Mul(mgval, st.msg.GasPrice())
+
+	// compute data fee for eip-4844 data blobs if any
+	dgval := new(big.Int)
+	var dataGasUsed uint64
+	if st.evm.ChainConfig().IsCancun(st.evm.Context.Time.Uint64()) {
+		dataGasUsed = st.dataGasUsed()
+		if st.evm.Context.ExcessDataGas == nil {
+			return fmt.Errorf("%w: cancun is active but ExcessDataGas is nil. Time: %v", ErrInternalFailure, st.evm.Context.Time)
+		}
+		dgval.Mul(types.GetDataGasPrice(st.evm.Context.ExcessDataGas), new(big.Int).SetUint64(dataGasUsed))
 	}
-	if have, want := st.state.GetBalance(st.msg.From()), balanceCheck; have.Cmp(want) < 0 {
-		return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
+
+	// perform the required user balance checks
+	balanceRequired := new(big.Int)
+	if st.msg.GasFeeCap == nil {
+		balanceRequired.Set(mgval)
+	} else {
+		balanceRequired.Add(st.msg.Value(), dgval)
+		// EIP-1559 mandates that the sender has enough balance to cover not just actual fee but
+		// the max gas fee, so we compute this upper bound rather than use mgval here.
+		maxGasFee := new(big.Int).SetUint64(st.msg.Gas())
+		maxGasFee.Mul(maxGasFee, st.msg.GasFeeCap())
+		balanceRequired.Add(balanceRequired, maxGasFee)
 	}
+	if have, want := st.state.GetBalance(st.msg.From()), balanceRequired; have.Cmp(want) < 0 {
+		return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From(), have, want)
+	}
+
+	// perform gas pool accounting
 	if err := st.gp.SubGas(st.msg.Gas()); err != nil {
 		return err
 	}
-	st.gas += st.msg.Gas()
+	st.gasRemaining += st.msg.Gas()
+	if err := st.gp.SubDataGas(dataGasUsed); err != nil {
+		return err
+	}
 
-	st.initialGas = st.msg.Gas()
+	// deduct the total gas fee (regular + data) from the sender's balance
+	mgval.Add(mgval, dgval)
 	st.state.SubBalance(st.msg.From(), mgval)
 	return nil
 }
@@ -259,6 +286,14 @@ func (st *StateTransition) preCheck() error {
 			}
 		}
 	}
+	if st.dataGasUsed() > 0 && st.evm.ChainConfig().IsCancun(st.evm.Context.Time.Uint64()) {
+		dataGasPrice := types.GetDataGasPrice(st.evm.Context.ExcessDataGas)
+		if dataGasPrice.Cmp(st.msg.MaxFeePerDataGas()) > 0 {
+			return fmt.Errorf("%w: address %v, maxFeePerDataGas: %v dataGasPrice: %v, excessDataGas: %v",
+				ErrMaxFeePerDataGas,
+				st.msg.From(), st.msg.MaxFeePerDataGas, dataGasPrice, st.evm.Context.ExcessDataGas)
+		}
+	}
 	return st.buyGas()
 }
 
@@ -280,7 +315,9 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	// applying the message. The rules include these clauses
 	//
 	// 1. the nonce of the message caller is correct
-	// 2. caller has enough balance to cover transaction fee(gaslimit * gasprice)
+	// 2. caller has enough balance to cover:
+	//       Legacy tx: fee(gaslimit * gasprice)
+	//       EIP-1559 tx: tx.value + max-fee(gaslimit * gascap + datagas * datagasprice)
 	// 3. the amount of gas required is available in the block
 	// 4. the purchased gas is enough to cover intrinsic usage
 	// 5. there is no overflow when calculating intrinsic gas
@@ -294,14 +331,14 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	if st.evm.Config.Debug {
 		st.evm.Config.Tracer.CaptureTxStart(st.initialGas)
 		defer func() {
-			st.evm.Config.Tracer.CaptureTxEnd(st.gas)
+			st.evm.Config.Tracer.CaptureTxEnd(st.gasRemaining)
 		}()
 	}
 
 	var (
 		msg              = st.msg
 		sender           = vm.AccountRef(msg.From())
-		rules            = st.evm.ChainConfig().Rules(st.evm.Context.BlockNumber, st.evm.Context.Random != nil)
+		rules            = st.evm.ChainConfig().Rules(st.evm.Context.BlockNumber, st.evm.Context.Random != nil, st.evm.Context.Time.Uint64())
 		contractCreation = msg.To() == nil
 	)
 	if st.evm.ChainConfig().IsNano(st.evm.Context.BlockNumber) {
@@ -319,10 +356,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if st.gas < gas {
-		return nil, fmt.Errorf("%w: have %d, want %d", ErrIntrinsicGas, st.gas, gas)
+	if st.gasRemaining < gas {
+		return nil, fmt.Errorf("%w: have %d, want %d", ErrIntrinsicGas, st.gasRemaining, gas)
 	}
-	st.gas -= gas
+	st.gasRemaining -= gas
 
 	// Check clause 6
 	if msg.Value().Sign() > 0 && !st.evm.Context.CanTransfer(st.state, msg.From(), msg.Value()) {
@@ -338,11 +375,11 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
 	if contractCreation {
-		ret, _, st.gas, vmerr = st.evm.Create(sender, st.data, st.gas, st.value)
+		ret, _, st.gasRemaining, vmerr = st.evm.Create(sender, st.data, st.gasRemaining, st.value)
 	} else {
 		// Increment the nonce for the next transaction
 		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
-		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
+		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), st.data, st.gasRemaining, st.value)
 	}
 
 	if !rules.IsLondon {
@@ -378,18 +415,22 @@ func (st *StateTransition) refundGas(refundQuotient uint64) {
 	if refund > st.state.GetRefund() {
 		refund = st.state.GetRefund()
 	}
-	st.gas += refund
+	st.gasRemaining += refund
 
 	// Return ETH for remaining gas, exchanged at the original rate.
-	remaining := new(big.Int).Mul(new(big.Int).SetUint64(st.gas), st.gasPrice)
+	remaining := new(big.Int).Mul(new(big.Int).SetUint64(st.gasRemaining), st.gasPrice)
 	st.state.AddBalance(st.msg.From(), remaining)
 
 	// Also return remaining gas to the block gas counter so it is
 	// available for the next transaction.
-	st.gp.AddGas(st.gas)
+	st.gp.AddGas(st.gasRemaining)
 }
 
 // gasUsed returns the amount of gas used up by the state transition.
 func (st *StateTransition) gasUsed() uint64 {
-	return st.initialGas - st.gas
+	return st.initialGas - st.gasRemaining
+}
+
+func (st *StateTransition) dataGasUsed() uint64 {
+	return types.GetDataGasUsed(len(st.msg.DataHashes()))
 }
