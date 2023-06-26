@@ -47,15 +47,16 @@ type Prestate struct {
 // ExecutionResult contains the execution status after running a state test, any
 // error that might have occurred and a dump of the final state if requested.
 type ExecutionResult struct {
-	StateRoot   common.Hash           `json:"stateRoot"`
-	TxRoot      common.Hash           `json:"txRoot"`
-	ReceiptRoot common.Hash           `json:"receiptsRoot"`
-	LogsHash    common.Hash           `json:"logsHash"`
-	Bloom       types.Bloom           `json:"logsBloom"        gencodec:"required"`
-	Receipts    types.Receipts        `json:"receipts"`
-	Rejected    []*rejectedTx         `json:"rejected,omitempty"`
-	Difficulty  *math.HexOrDecimal256 `json:"currentDifficulty" gencodec:"required"`
-	GasUsed     math.HexOrDecimal64   `json:"gasUsed"`
+	StateRoot     common.Hash           `json:"stateRoot"`
+	TxRoot        common.Hash           `json:"txRoot"`
+	ReceiptRoot   common.Hash           `json:"receiptsRoot"`
+	LogsHash      common.Hash           `json:"logsHash"`
+	Bloom         types.Bloom           `json:"logsBloom"        gencodec:"required"`
+	Receipts      types.Receipts        `json:"receipts"`
+	Rejected      []*rejectedTx         `json:"rejected,omitempty"`
+	Difficulty    *math.HexOrDecimal256 `json:"currentDifficulty" gencodec:"required"`
+	GasUsed       math.HexOrDecimal64   `json:"gasUsed"`
+	ExcessDataGas *math.HexOrDecimal256 `json:"currentExcessDataGas,omitempty"`
 }
 
 type ommer struct {
@@ -65,30 +66,38 @@ type ommer struct {
 
 //go:generate gencodec -type stEnv -field-override stEnvMarshaling -out gen_stenv.go
 type stEnv struct {
-	Coinbase         common.Address                      `json:"currentCoinbase"   gencodec:"required"`
-	Difficulty       *big.Int                            `json:"currentDifficulty"`
-	Random           *big.Int                            `json:"currentRandom"`
-	ParentDifficulty *big.Int                            `json:"parentDifficulty"`
-	GasLimit         uint64                              `json:"currentGasLimit"   gencodec:"required"`
-	Number           uint64                              `json:"currentNumber"     gencodec:"required"`
-	Timestamp        uint64                              `json:"currentTimestamp"  gencodec:"required"`
-	ParentTimestamp  uint64                              `json:"parentTimestamp,omitempty"`
-	BlockHashes      map[math.HexOrDecimal64]common.Hash `json:"blockHashes,omitempty"`
-	Ommers           []ommer                             `json:"ommers,omitempty"`
-	BaseFee          *big.Int                            `json:"currentBaseFee,omitempty"`
-	ParentUncleHash  common.Hash                         `json:"parentUncleHash"`
+	Coinbase            common.Address                      `json:"currentCoinbase"   gencodec:"required"`
+	Difficulty          *big.Int                            `json:"currentDifficulty"`
+	Random              *big.Int                            `json:"currentRandom"`
+	ParentDifficulty    *big.Int                            `json:"parentDifficulty"`
+	ParentBaseFee       *big.Int                            `json:"parentBaseFee,omitempty"`
+	ParentGasUsed       uint64                              `json:"parentGasUsed,omitempty"`
+	ParentGasLimit      uint64                              `json:"parentGasLimit,omitempty"`
+	ParentExcessDataGas *big.Int                            `json:"parentExcessDataGas,omitempty"`
+	GasLimit            uint64                              `json:"currentGasLimit"   gencodec:"required"`
+	Number              uint64                              `json:"currentNumber"     gencodec:"required"`
+	Timestamp           uint64                              `json:"currentTimestamp"  gencodec:"required"`
+	ParentTimestamp     uint64                              `json:"parentTimestamp,omitempty"`
+	BlockHashes         map[math.HexOrDecimal64]common.Hash `json:"blockHashes,omitempty"`
+	Ommers              []ommer                             `json:"ommers,omitempty"`
+	BaseFee             *big.Int                            `json:"currentBaseFee,omitempty"`
+	ParentUncleHash     common.Hash                         `json:"parentUncleHash"`
 }
 
 type stEnvMarshaling struct {
-	Coinbase         common.UnprefixedAddress
-	Difficulty       *math.HexOrDecimal256
-	Random           *math.HexOrDecimal256
-	ParentDifficulty *math.HexOrDecimal256
-	GasLimit         math.HexOrDecimal64
-	Number           math.HexOrDecimal64
-	Timestamp        math.HexOrDecimal64
-	ParentTimestamp  math.HexOrDecimal64
-	BaseFee          *math.HexOrDecimal256
+	Coinbase            common.UnprefixedAddress
+	Difficulty          *math.HexOrDecimal256
+	Random              *math.HexOrDecimal256
+	ParentDifficulty    *math.HexOrDecimal256
+	ParentBaseFee       *math.HexOrDecimal256
+	ParentGasUsed       math.HexOrDecimal64
+	ParentGasLimit      math.HexOrDecimal64
+	ParentExcessDataGas *math.HexOrDecimal256
+	GasLimit            math.HexOrDecimal64
+	Number              math.HexOrDecimal64
+	Timestamp           math.HexOrDecimal64
+	ParentTimestamp     math.HexOrDecimal64
+	BaseFee             *math.HexOrDecimal256
 }
 
 type rejectedTx struct {
@@ -117,7 +126,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	}
 	var (
 		statedb     = MakePreState(rawdb.NewMemoryDatabase(), pre.Pre)
-		signer      = types.MakeSigner(chainConfig, new(big.Int).SetUint64(pre.Env.Number))
+		signer      = types.MakeSigner(chainConfig, new(big.Int).SetUint64(pre.Env.Number), pre.Env.Timestamp)
 		gaspool     = new(core.GasPool)
 		blockHash   = common.Hash{0x13, 0x37}
 		rejectedTxs []*rejectedTx
@@ -126,7 +135,9 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		receipts    = make(types.Receipts, 0)
 		txIndex     = 0
 	)
+	// TODO(4844): Add DataGasLimit to prestate
 	gaspool.AddGas(pre.Env.GasLimit)
+	gaspool.AddDataGas(params.MaxDataGasPerBlock)
 	vmContext := vm.BlockContext{
 		CanTransfer: core.CanTransfer,
 		Transfer:    core.Transfer,
@@ -146,6 +157,13 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		rnd := common.BigToHash(pre.Env.Random)
 		vmContext.Random = &rnd
 	}
+	if chainConfig.IsCancun(pre.Env.Timestamp) {
+		if pre.Env.ParentExcessDataGas != nil {
+			vmContext.ExcessDataGas = pre.Env.ParentExcessDataGas
+		} else {
+			vmContext.ExcessDataGas = big.NewInt(0)
+		}
+	}
 	// If DAO is supported/enabled, we need to handle it here. In geth 'proper', it's
 	// done in StateProcessor.Process(block, ...), right before transactions are applied.
 	if chainConfig.DAOForkSupport &&
@@ -156,6 +174,9 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 
 	for i, tx := range txs {
 		msg, err := tx.AsMessage(signer, pre.Env.BaseFee)
+		if tx.Type() == types.BlobTxType && len(tx.DataHashes()) == 0 {
+			err = fmt.Errorf("blob transaction with zero blobs")
+		}
 		if err != nil {
 			log.Warn("rejected tx", "index", i, "hash", tx.Hash(), "error", err)
 			rejectedTxs = append(rejectedTxs, &rejectedTx{i, err.Error()})
@@ -168,8 +189,12 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		vmConfig.Tracer = tracer
 		vmConfig.Debug = (tracer != nil)
 		statedb.Prepare(tx.Hash(), txIndex)
-		txContext := core.NewEVMTxContext(msg)
-		snapshot := statedb.Snapshot()
+		var (
+			txContext   = core.NewEVMTxContext(msg)
+			snapshot    = statedb.Snapshot()
+			prevGas     = gaspool.Gas()
+			prevDataGas = gaspool.DataGas()
+		)
 		evm := vm.NewEVM(vmContext, txContext, statedb, chainConfig, vmConfig)
 
 		// (ret []byte, usedGas uint64, failed bool, err error)
@@ -178,6 +203,8 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 			statedb.RevertToSnapshot(snapshot)
 			log.Info("rejected tx", "index", i, "hash", tx.Hash(), "from", msg.From(), "error", err)
 			rejectedTxs = append(rejectedTxs, &rejectedTx{i, err.Error()})
+			gaspool.SetGas(prevGas)
+			gaspool.SetDataGas(prevDataGas)
 			continue
 		}
 		includedTxs = append(includedTxs, tx)
@@ -266,6 +293,16 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		Rejected:    rejectedTxs,
 		Difficulty:  (*math.HexOrDecimal256)(vmContext.Difficulty),
 		GasUsed:     (math.HexOrDecimal64)(gasUsed),
+	}
+	if vmContext.ExcessDataGas != nil {
+		// calculate and set the excess data gas at the end of this block execution
+		newBlobs := 0
+		for _, tx := range txs {
+			if tx.Type() == types.BlobTxType {
+				newBlobs += len(tx.DataHashes())
+			}
+		}
+		execRs.ExcessDataGas = (*math.HexOrDecimal256)(misc.CalcExcessDataGas(vmContext.ExcessDataGas, newBlobs))
 	}
 	return statedb, execRs, nil
 }
