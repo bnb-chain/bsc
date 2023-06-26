@@ -10,32 +10,43 @@ import (
 	"time"
 )
 
-type HourTicker struct {
+type TimeTicker struct {
 	stop chan struct{}
 	C    <-chan time.Time
 }
 
-func NewHourTicker() *HourTicker {
-	ht := &HourTicker{
+// NewTimeTicker notifies on a daily basis if dailyRotate is true, otherwise on an hourly basis
+func NewTimeTicker(dailyRotate bool) *TimeTicker {
+	ch := make(chan time.Time)
+	ht := TimeTicker{
 		stop: make(chan struct{}),
+		C:    ch,
 	}
-	ht.C = ht.Ticker()
-	return ht
+
+	ht.startTicker(ch, dailyRotate)
+
+	return &ht
 }
 
-func (ht *HourTicker) Stop() {
+func (ht *TimeTicker) Stop() {
 	ht.stop <- struct{}{}
 }
 
-func (ht *HourTicker) Ticker() <-chan time.Time {
-	ch := make(chan time.Time)
+func (ht *TimeTicker) startTicker(ch chan time.Time, dailyRotate bool) {
 	go func() {
+		day := time.Now().Day()
 		hour := time.Now().Hour()
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case t := <-ticker.C:
+				if dailyRotate && t.Day() != day {
+					ch <- t
+					day = t.Day()
+					continue
+				}
+
 				if t.Hour() != hour {
 					ch <- t
 					hour = t.Hour()
@@ -45,7 +56,6 @@ func (ht *HourTicker) Ticker() <-chan time.Time {
 			}
 		}
 	}()
-	return ch
 }
 
 type AsyncFileWriter struct {
@@ -56,10 +66,10 @@ type AsyncFileWriter struct {
 	started    int32
 	buf        chan []byte
 	stop       chan struct{}
-	hourTicker *HourTicker
+	timeTicker *TimeTicker
 }
 
-func NewAsyncFileWriter(filePath string, bufSize int64) *AsyncFileWriter {
+func NewAsyncFileWriter(filePath string, maxBytesSize int64, dailyRotate bool) *AsyncFileWriter {
 	absFilePath, err := filepath.Abs(filePath)
 	if err != nil {
 		panic(fmt.Sprintf("get file path of logger error. filePath=%s, err=%s", filePath, err))
@@ -67,9 +77,9 @@ func NewAsyncFileWriter(filePath string, bufSize int64) *AsyncFileWriter {
 
 	return &AsyncFileWriter{
 		filePath:   absFilePath,
-		buf:        make(chan []byte, bufSize),
+		buf:        make(chan []byte, maxBytesSize),
 		stop:       make(chan struct{}),
-		hourTicker: NewHourTicker(),
+		timeTicker: NewTimeTicker(dailyRotate),
 	}
 }
 
@@ -159,7 +169,7 @@ func (w *AsyncFileWriter) SyncWrite(msg []byte) {
 
 func (w *AsyncFileWriter) rotateFile() {
 	select {
-	case <-w.hourTicker.C:
+	case <-w.timeTicker.C:
 		if err := w.flushAndClose(); err != nil {
 			fmt.Fprintf(os.Stderr, "flush and close file error. err=%s", err)
 		}
@@ -174,7 +184,7 @@ func (w *AsyncFileWriter) Stop() {
 	w.stop <- struct{}{}
 	w.wg.Wait()
 
-	w.hourTicker.Stop()
+	w.timeTicker.Stop()
 }
 
 func (w *AsyncFileWriter) Write(msg []byte) (n int, err error) {

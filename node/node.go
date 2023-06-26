@@ -103,7 +103,8 @@ func New(conf *Config) (*Node, error) {
 			} else {
 				logFilePath = path.Join(*conf.LogConfig.FileRoot, *conf.LogConfig.FilePath)
 			}
-			log.Root().SetHandler(log.NewFileLvlHandler(logFilePath, *conf.LogConfig.MaxBytesSize, *conf.LogConfig.Level))
+
+			log.Root().SetHandler(log.NewFileLvlHandler(logFilePath, *conf.LogConfig.MaxBytesSize, *conf.LogConfig.Level, conf.LogConfig.DailyRotate))
 		}
 	}
 	if conf.Logger == nil {
