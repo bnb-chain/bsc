@@ -196,7 +196,7 @@ var PrecompiledContractsHertz = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
 	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidatePlato{},
 	common.BytesToAddress([]byte{102}): &blsSignatureVerify{},
-	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidate{},
+	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidateHertz{},
 }
 
 // PrecompiledContractsBLS contains the set of pre-compiled Ethereum

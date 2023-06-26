@@ -3581,12 +3581,24 @@ func TestInitThenFailCreateContract(t *testing.T) {
 	}
 }
 
-// TestEIP2718Transition tests that an EIP-2718 transaction will be accepted
+// TestEIP2718Transition* tests that an EIP-2718 transaction will be accepted
 // after the fork block has passed. This is verified by sending an EIP-2930
 // access list transaction, which specifies a single slot access, and then
 // checking that the gas usage of a hot SLOAD and a cold SLOAD are calculated
 // correctly.
-func TestEIP2718Transition(t *testing.T) {
+
+// TestEIP2718TransitionWithTestChainConfig tests EIP-2718 with TestChainConfig.
+func TestEIP2718TransitionWithTestChainConfig(t *testing.T) {
+	testEIP2718TransitionWithConfig(t, params.TestChainConfig)
+}
+
+// TestEIP2718TransitionWithParliaConfig tests EIP-2718 with Parlia Config.
+func TestEIP2718TransitionWithParliaConfig(t *testing.T) {
+	testEIP2718TransitionWithConfig(t, params.ParliaTestChainConfig)
+}
+
+// testEIP2718TransitionWithConfig tests EIP02718 with given ChainConfig.
+func testEIP2718TransitionWithConfig(t *testing.T, config *params.ChainConfig) {
 	var (
 		aa = common.HexToAddress("0x000000000000000000000000000000000000aaaa")
 
@@ -3599,7 +3611,7 @@ func TestEIP2718Transition(t *testing.T) {
 		address = crypto.PubkeyToAddress(key.PublicKey)
 		funds   = big.NewInt(1000000000000000)
 		gspec   = &Genesis{
-			Config: params.TestChainConfig,
+			Config: config,
 			Alloc: GenesisAlloc{
 				address: {Balance: funds},
 				// The address 0xAAAA sloads 0x00 and 0x01

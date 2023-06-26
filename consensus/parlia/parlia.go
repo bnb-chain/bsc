@@ -278,7 +278,7 @@ func New(
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
 		slashABI:                   sABI,
-		signer:                     types.NewEIP155Signer(chainConfig.ChainID),
+		signer:                     types.LatestSigner(chainConfig),
 	}
 
 	return c
@@ -1250,6 +1250,7 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 			if addr == p.val {
 				validVotesfromSelfCounter.Inc(1)
 			}
+			metrics.GetOrRegisterCounter(fmt.Sprintf("parlia/VerifyVote/%s", addr.String()), nil).Inc(1)
 			return nil
 		}
 	}
