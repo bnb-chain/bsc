@@ -13,6 +13,9 @@ const (
 	// maxKnownVotes is the maximum vote hashes to keep in the known list
 	// before starting to randomly evict them.
 	maxKnownVotes = 5376
+
+	// voteBufferSize is the maximum number of batch votes can be hold before sending
+	voteBufferSize = 21 * 2
 )
 
 // max is a helper function which returns the larger of the two given integers.
@@ -43,7 +46,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 	peer := &Peer{
 		id:            id,
 		knownVotes:    newKnownCache(maxKnownVotes),
-		voteBroadcast: make(chan []*types.VoteEnvelope),
+		voteBroadcast: make(chan []*types.VoteEnvelope, voteBufferSize),
 		Peer:          p,
 		rw:            rw,
 		version:       version,
@@ -105,7 +108,9 @@ func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
 	select {
 	case p.voteBroadcast <- votes:
 	case <-p.term:
-		p.Log().Debug("Dropping vote propagation", "count", len(votes))
+		p.Log().Debug("Dropping vote propagation for closed peer", "count", len(votes))
+	default:
+		p.Log().Debug("Dropping vote propagation for abnormal peer", "count", len(votes))
 	}
 }
 
