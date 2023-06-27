@@ -244,11 +244,12 @@ func (c Ctx) toArray() []interface{} {
 	return arr
 }
 
-func NewFileLvlHandler(logPath string, maxBytesSize uint, level string) Handler {
+func NewFileLvlHandler(logPath string, maxBytesSize uint, level string, duration time.Duration) Handler {
 	rfh, err := RotatingFileHandler(
 		logPath,
 		maxBytesSize,
 		LogfmtFormat(),
+		duration,
 	)
 	if err != nil {
 		panic(err)

@@ -461,6 +461,11 @@ func startExecNodeStack() (*node.Node, error) {
 		return nil, fmt.Errorf("error decoding %s: %v", envNodeConfig, err)
 	}
 
+	// Validate the config
+	if conf.Stack.LogConfig.Duration != nil && conf.Stack.LogConfig.Duration.Seconds() < minSecsLogRotation {
+		return nil, fmt.Errorf("error configuring logging: Minimal rotation interval is %d seconds", minSecsLogRotation)
+	}
+
 	// create enode record
 	nodeTcpConn, _ := net.ResolveTCPAddr("tcp", conf.Stack.P2P.ListenAddr)
 	if nodeTcpConn.IP == nil {
@@ -512,8 +517,9 @@ func startExecNodeStack() (*node.Node, error) {
 }
 
 const (
-	envStatusURL  = "_P2P_STATUS_URL"
-	envNodeConfig = "_P2P_NODE_CONFIG"
+	envStatusURL       = "_P2P_STATUS_URL"
+	envNodeConfig      = "_P2P_NODE_CONFIG"
+	minSecsLogRotation = 5
 )
 
 // nodeStartupJSON is sent to the simulation host after startup.
