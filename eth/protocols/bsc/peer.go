@@ -1,6 +1,8 @@
 package bsc
 
 import (
+	"time"
+
 	mapset "github.com/deckarep/golang-set"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -16,6 +18,15 @@ const (
 
 	// voteBufferSize is the maximum number of batch votes can be hold before sending
 	voteBufferSize = 21 * 2
+
+	// used to avoid of DDOS attack
+	// It's the max number of received votes per second from one peer
+	// 21 validators exist now, so 21 votes will be produced every one block interval
+	// so the limit is 7 = 21/3, here set it to 10 with a buffer.
+	receiveRateLimitPerSecond = 10
+
+	// the time span of one period
+	secondsPerPeriod = float64(10)
 )
 
 // max is a helper function which returns the larger of the two given integers.
@@ -31,6 +42,8 @@ type Peer struct {
 	id            string                     // Unique ID for the peer, cached
 	knownVotes    *knownCache                // Set of vote hashes known to be known by this peer
 	voteBroadcast chan []*types.VoteEnvelope // Channel used to queue votes propagation requests
+	periodBegin   time.Time                  // Begin time of the latest period for votes counting
+	periodCounter uint                       // Votes number in the latest period
 
 	*p2p.Peer                   // The embedded P2P package peer
 	rw        p2p.MsgReadWriter // Input/output streams for bsc
@@ -47,6 +60,8 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 		id:            id,
 		knownVotes:    newKnownCache(maxKnownVotes),
 		voteBroadcast: make(chan []*types.VoteEnvelope, voteBufferSize),
+		periodBegin:   time.Now(),
+		periodCounter: 0,
 		Peer:          p,
 		rw:            rw,
 		version:       version,
@@ -112,6 +127,18 @@ func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
 	default:
 		p.Log().Debug("Dropping vote propagation for abnormal peer", "count", len(votes))
 	}
+}
+
+// Step into the next period when secondsPerPeriod seconds passed,
+// Otherwise, check whether the number of received votes extra (secondsPerPeriod * receiveRateLimitPerSecond)
+func (p *Peer) IsOverLimitAfterReceiving() bool {
+	if timeInterval := time.Since(p.periodBegin).Seconds(); timeInterval >= secondsPerPeriod {
+		p.periodBegin = time.Now()
+		p.periodCounter = 0
+		return false
+	}
+	p.periodCounter += 1
+	return p.periodCounter > uint(secondsPerPeriod*receiveRateLimitPerSecond)
 }
 
 // broadcastVotes is a write loop that schedules votes broadcasts
