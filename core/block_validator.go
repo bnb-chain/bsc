@@ -18,6 +18,7 @@ package core
 
 import (
 	"fmt"
+	"github.com/ethereum/go-ethereum/consensus/misc"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -75,6 +76,9 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	}
 	if v.bc.isCachedBadBlock(block) {
 		return ErrKnownBadBlock
+	}
+	if err := misc.VerifyExcessDataGas(v.bc, block); err != nil {
+		return err
 	}
 	// Header validity is known at this point, check the uncles and transactions
 	header := block.Header()

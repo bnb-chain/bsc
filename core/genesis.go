@@ -62,10 +62,11 @@ type Genesis struct {
 
 	// These fields are used for consensus tests. Please don't use them
 	// in actual genesis blocks.
-	Number     uint64      `json:"number"`
-	GasUsed    uint64      `json:"gasUsed"`
-	ParentHash common.Hash `json:"parentHash"`
-	BaseFee    *big.Int    `json:"baseFeePerGas"`
+	Number        uint64      `json:"number"`
+	GasUsed       uint64      `json:"gasUsed"`
+	ParentHash    common.Hash `json:"parentHash"`
+	BaseFee       *big.Int    `json:"baseFeePerGas"`
+	ExcessDataGas *big.Int    `json:"excessDataGas"`
 }
 
 // GenesisAlloc specifies the initial state that is part of the genesis block.
@@ -94,15 +95,16 @@ type GenesisAccount struct {
 
 // field type overrides for gencodec
 type genesisSpecMarshaling struct {
-	Nonce      math.HexOrDecimal64
-	Timestamp  math.HexOrDecimal64
-	ExtraData  hexutil.Bytes
-	GasLimit   math.HexOrDecimal64
-	GasUsed    math.HexOrDecimal64
-	Number     math.HexOrDecimal64
-	Difficulty *math.HexOrDecimal256
-	BaseFee    *math.HexOrDecimal256
-	Alloc      map[common.UnprefixedAddress]GenesisAccount
+	Nonce         math.HexOrDecimal64
+	Timestamp     math.HexOrDecimal64
+	ExtraData     hexutil.Bytes
+	GasLimit      math.HexOrDecimal64
+	GasUsed       math.HexOrDecimal64
+	Number        math.HexOrDecimal64
+	Difficulty    *math.HexOrDecimal256
+	BaseFee       *math.HexOrDecimal256
+	ExcessDataGas *math.HexOrDecimal256
+	Alloc         map[common.UnprefixedAddress]GenesisAccount
 }
 
 type genesisAccountMarshaling struct {
@@ -185,6 +187,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	// but the corresponding state is missing.
 	header := rawdb.ReadHeader(db, stored, 0)
 	if _, err := state.New(header.Root, state.NewDatabaseWithConfigAndCache(db, nil), nil); err != nil {
+		// todo not doing https://github.com/ethereum/go-ethereum/pull/26703 for now as it is not related to 4844 and not clear if this is an issue for bsc
 		if genesis == nil {
 			genesis = DefaultGenesisBlock()
 		}
@@ -354,13 +357,20 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 	if g.Difficulty == nil && g.Mixhash == (common.Hash{}) {
 		head.Difficulty = params.GenesisDifficulty
 	}
-	if g.Config != nil && g.Config.IsLondon(common.Big0) {
-		if g.BaseFee != nil {
-			head.BaseFee = g.BaseFee
-		} else {
-			head.BaseFee = new(big.Int).SetUint64(params.InitialBaseFee)
+
+	if g.Config != nil {
+		if g.Config.IsLondon(common.Big0) {
+			if g.BaseFee != nil {
+				head.BaseFee = g.BaseFee
+			} else {
+				head.BaseFee = new(big.Int).SetUint64(params.InitialBaseFee)
+			}
+		}
+		if g.Config.IsCancun(g.Timestamp) {
+			head.SetExcessDataGas(g.ExcessDataGas)
 		}
 	}
+
 	statedb.Commit(nil)
 	statedb.Database().TrieDB().Commit(root, true, nil)
 
@@ -424,6 +434,16 @@ func DefaultGenesisBlock() *Genesis {
 		Difficulty: big.NewInt(17179869184),
 		Alloc:      decodePrealloc(mainnetAllocData),
 	}
+}
+
+// DefaultSepoliaGenesisBlock returns the Sepolia network genesis block.
+func DefaultEIP4844GenesisBlock() *Genesis {
+	g := new(Genesis)
+	reader := strings.NewReader(eip4844AllocData)
+	if err := json.NewDecoder(reader).Decode(g); err != nil {
+		panic(err)
+	}
+	return g
 }
 
 // DeveloperGenesisBlock returns the 'geth --dev' genesis block.
