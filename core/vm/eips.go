@@ -174,3 +174,26 @@ func opBaseFee(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]
 	scope.Stack.push(baseFee)
 	return nil, nil
 }
+
+// enableSharding applies mini-danksharding (DATAHASH Opcode)
+// - Adds an opcode that returns the versioned data hash of the tx at a index.
+func enableSharding(jt *JumpTable) {
+	jt[DATAHASH] = &operation{
+		execute:     opDataHash,
+		constantGas: GasFastestStep,
+		minStack:    minStack(1, 1),
+		maxStack:    maxStack(1, 1),
+	}
+}
+
+// opDataHash implements DATAHASH opcode
+func opDataHash(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	idx := scope.Stack.peek()
+	if idx.LtUint64(uint64(len(interpreter.evm.TxContext.DataHashes))) {
+		hash := interpreter.evm.TxContext.DataHashes[idx.Uint64()]
+		idx.SetBytes(hash.Bytes())
+	} else {
+		idx.Clear()
+	}
+	return nil, nil
+}
