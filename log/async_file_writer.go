@@ -15,47 +15,46 @@ type TimeTicker struct {
 	C    <-chan time.Time
 }
 
-// NewTimeTicker notifies on a daily basis if dailyRotate is true, otherwise on an hourly basis
-func NewTimeTicker(dailyRotate bool) *TimeTicker {
+// NewTimeTicker creates a TimeTicker that notifies based on rotateHours parameter.
+// if rotateHours is 1 and current time is 11:32 it means that the ticker will tick at 12:00
+// if rotateHours is 5 and current time is 09:12 means that the ticker will tick at 11:00
+func NewTimeTicker(rotateHours int) *TimeTicker {
 	ch := make(chan time.Time)
-	ht := TimeTicker{
+	tt := TimeTicker{
 		stop: make(chan struct{}),
 		C:    ch,
 	}
 
-	ht.startTicker(ch, dailyRotate)
+	tt.startTicker(ch, rotateHours)
 
-	return &ht
+	return &tt
 }
 
-func (ht *TimeTicker) Stop() {
-	ht.stop <- struct{}{}
+func (tt *TimeTicker) Stop() {
+	tt.stop <- struct{}{}
 }
 
-func (ht *TimeTicker) startTicker(ch chan time.Time, dailyRotate bool) {
+func (tt *TimeTicker) startTicker(ch chan time.Time, rotateHours int) {
 	go func() {
-		day := time.Now().Day()
-		hour := time.Now().Hour()
+		nextRotationHour := getNextRotationHour(time.Now(), rotateHours)
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case t := <-ticker.C:
-				if dailyRotate && t.Day() != day {
+				if t.Hour() == nextRotationHour {
 					ch <- t
-					day = t.Day()
-					continue
+					nextRotationHour = getNextRotationHour(time.Now(), rotateHours)
 				}
-
-				if t.Hour() != hour {
-					ch <- t
-					hour = t.Hour()
-				}
-			case <-ht.stop:
+			case <-tt.stop:
 				return
 			}
 		}
 	}()
+}
+
+func getNextRotationHour(now time.Time, delta int) int {
+	return now.Add(time.Hour * time.Duration(delta)).Hour()
 }
 
 type AsyncFileWriter struct {
@@ -69,7 +68,7 @@ type AsyncFileWriter struct {
 	timeTicker *TimeTicker
 }
 
-func NewAsyncFileWriter(filePath string, maxBytesSize int64, dailyRotate bool) *AsyncFileWriter {
+func NewAsyncFileWriter(filePath string, maxBytesSize int64, rotateHours int) *AsyncFileWriter {
 	absFilePath, err := filepath.Abs(filePath)
 	if err != nil {
 		panic(fmt.Sprintf("get file path of logger error. filePath=%s, err=%s", filePath, err))
@@ -79,7 +78,7 @@ func NewAsyncFileWriter(filePath string, maxBytesSize int64, dailyRotate bool) *
 		filePath:   absFilePath,
 		buf:        make(chan []byte, maxBytesSize),
 		stop:       make(chan struct{}),
-		timeTicker: NewTimeTicker(dailyRotate),
+		timeTicker: NewTimeTicker(rotateHours),
 	}
 }
 
