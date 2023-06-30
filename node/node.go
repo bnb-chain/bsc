@@ -103,7 +103,17 @@ func New(conf *Config) (*Node, error) {
 			} else {
 				logFilePath = path.Join(*conf.LogConfig.FileRoot, *conf.LogConfig.FilePath)
 			}
-			log.Root().SetHandler(log.NewFileLvlHandler(logFilePath, *conf.LogConfig.MaxBytesSize, *conf.LogConfig.Level))
+
+			if conf.LogConfig.RotateHours > 24 {
+				return nil, errors.New("Config.LogConfig.RotateHours cannot be greater than 24")
+			}
+
+			// To maintain backwards compatibility, if RotateHours is not set or set to a negative value, then it defaults to 1
+			if conf.LogConfig.RotateHours < 1 {
+				conf.LogConfig.RotateHours = 1
+			}
+
+			log.Root().SetHandler(log.NewFileLvlHandler(logFilePath, *conf.LogConfig.MaxBytesSize, *conf.LogConfig.Level, conf.LogConfig.RotateHours))
 		}
 	}
 	if conf.Logger == nil {
