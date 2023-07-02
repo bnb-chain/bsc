@@ -1,4 +1,12 @@
 # Changelog
+## v1.2.8
+FEATURE
+* [\#1626](https://github.com/bnb-chain/bsc/pull/1626) eth/filters, ethclient/gethclient: add fullTx option to pending tx filter
+* [\#1726](https://github.com/bnb-chain/bsc/pull/1726) feat: support password flag when handling bls keys
+
+BUGFIX
+* [\#1734](https://github.com/bnb-chain/bsc/pull/1734) fix: avoid to block the chain when failed to send votes
+
 ## v1.2.7
 FEATURE
 * [\#1645](https://github.com/bnb-chain/bsc/pull/1645) lightclient: fix validator set change

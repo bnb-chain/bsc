@@ -292,9 +292,9 @@ func (miner *Miner) ProposedBlock(MEVRelay string, blockNumber *big.Int, prevBlo
 	defer func() {
 		log.Info("Received ProposedBlock",
 			"blockNumber", blockNumber.String(),
-			"fromMevRelay", MEVRelay,
+			"mevRelay", MEVRelay,
 			"prevHash", prevBlockHash.Hex(),
-			"proposedReward", reward,
+			"potential reward", reward,
 			"gasLimit", gasLimit,
 			"gasUsed", gasUsed,
 			"txCount", len(txs),
@@ -304,7 +304,7 @@ func (miner *Miner) ProposedBlock(MEVRelay string, blockNumber *big.Int, prevBlo
 	}()
 	if gasUsed > currentGasLimit {
 		isBlockSkipped = true
-		return fmt.Errorf("gasUsed exceeds the current block gas limit %v blockNumber %s", currentGasLimit, blockNumber.String())
+		return fmt.Errorf("gasUsed exceeds the current block gas limit %v", currentGasLimit)
 	}
 	miner.worker.proposedCh <- &ProposedBlockArgs{
 		mevRelay:      MEVRelay,
