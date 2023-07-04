@@ -16,7 +16,7 @@ FROM ethereum/solc:0.6.4-alpine as bsc-genesis
 
 RUN apk add --no-cache ca-certificates npm nodejs bash alpine-sdk expect
 
-RUN git clone https://github.com/binance-chain/bsc-genesis-contract.git /root/genesis \
+RUN git clone https://github.com/bnb-chain/bsc-genesis-contract.git /root/genesis \
     && cd /root/genesis && npm install
 
 COPY docker/init_holders.template /root/genesis/init_holders.template
