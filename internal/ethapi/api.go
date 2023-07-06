@@ -1701,6 +1701,27 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	}
 }
 
+// ProposedBlockArgs are the arguments for the ProposedBlock RPC
+type ProposedBlockArgs struct {
+	MEVRelay      string          `json:"mevRelay,omitempty"`
+	BlockNumber   rpc.BlockNumber `json:"blockNumber"`
+	PrevBlockHash common.Hash     `json:"prevBlockHash"`
+	BlockReward   *big.Int        `json:"blockReward"`
+	GasLimit      uint64          `json:"gasLimit"`
+	GasUsed       uint64          `json:"gasUsed"`
+	Payload       []hexutil.Bytes `json:"payload"`
+}
+
+// ProposedBlock will submit the block to the miner worker
+func (s *PublicBlockChainAPI) ProposedBlock(ctx context.Context, args ProposedBlockArgs) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return s.b.ProposedBlock(ctx, &args)
+	}
+}
+
 // PublicTransactionPoolAPI exposes methods for the RPC interface
 type PublicTransactionPoolAPI struct {
 	b         Backend
@@ -2292,6 +2313,25 @@ func (s *PublicTransactionPoolAPI) Resend(ctx context.Context, sendArgs Transact
 		}
 	}
 	return common.Hash{}, fmt.Errorf("transaction %#x not found", matchTx.Hash())
+}
+
+// RegisterValidatorArgs represents the arguments to register a validator.
+type RegisterValidatorArgs struct {
+	Data      hexutil.Bytes `json:"data"` // bytes of string with callback ProposedBlockUri
+	Signature hexutil.Bytes `json:"signature"`
+	IsSentry  bool          `json:"is_sentry"`
+}
+
+// RegisterValidator registers a validator for the next epoch to the pool of proposing destinations.
+func (s *PublicTransactionPoolAPI) RegisterValidator(ctx context.Context, args RegisterValidatorArgs) error {
+	args.IsSentry = true
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return s.b.RegisterValidator(ctx, &args)
+	}
 }
 
 // PublicDebugAPI is the collection of Ethereum APIs exposed over the public

@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -407,4 +408,12 @@ func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, re
 
 func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (core.Message, vm.BlockContext, *state.StateDB, error) {
 	return b.eth.stateAtTransaction(block, txIndex, reexec)
+}
+
+func (b *EthAPIBackend) RegisterValidator(ctx context.Context, args *ethapi.RegisterValidatorArgs) error {
+	return b.eth.sentryProxy.RegisterValidator(ctx, args)
+}
+
+func (b *EthAPIBackend) ProposedBlock(ctx context.Context, args *ethapi.ProposedBlockArgs) error {
+	return b.eth.sentryProxy.ProposedBlock(ctx, args)
 }

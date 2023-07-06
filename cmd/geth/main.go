@@ -144,6 +144,8 @@ var (
 		utils.MinerExtraDataFlag,
 		utils.MinerRecommitIntervalFlag,
 		utils.MinerNoVerfiyFlag,
+		utils.SentryMinerUriFlag,
+		utils.SentryRelaysUriFlag,
 		utils.MinerDelayLeftoverFlag,
 		utils.NATFlag,
 		utils.NoDiscoverFlag,

@@ -545,6 +545,15 @@ var (
 		Name:  "miner.noverify",
 		Usage: "Disable remote sealing verification",
 	}
+	// Sentry settings
+	SentryMinerUriFlag = cli.StringFlag{
+		Name:  "sentry.mineruri",
+		Usage: "Uri used by the proxy forwarding blocks from the relay to the validator",
+	}
+	SentryRelaysUriFlag = cli.StringSliceFlag{
+		Name:  "sentry.relaysuri",
+		Usage: "Slice of MEV relay uris sending the registration from the validator node",
+	}
 	// Account settings
 	UnlockedAccountFlag = cli.StringFlag{
 		Name:  "unlock",
@@ -1171,6 +1180,12 @@ func setLes(ctx *cli.Context, cfg *ethconfig.Config) {
 	}
 }
 
+// setSentry configures the sentry settings from the command line flags.
+func setSentry(ctx *cli.Context, cfg *ethconfig.Config) {
+	cfg.SentryMinerUri = ctx.GlobalString(SentryMinerUriFlag.Name)
+	cfg.SentryRelaysUri = ctx.GlobalStringSlice(SentryRelaysUriFlag.Name)
+}
+
 // setMonitors enable monitors from the command line flags.
 func setMonitors(ctx *cli.Context, cfg *node.Config) {
 	if ctx.GlobalBool(EnableDoubleSignMonitorFlag.Name) {
@@ -1652,6 +1667,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	setMiner(ctx, &cfg.Miner)
 	setWhitelist(ctx, cfg)
 	setLes(ctx, cfg)
+	setSentry(ctx, cfg)
 
 	// Cap the cache allowance and tune the garbage collector
 	mem, err := gopsutil.VirtualMemory()

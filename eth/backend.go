@@ -109,6 +109,8 @@ type Ethereum struct {
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
 	votePool *vote.VotePool
+
+	sentryProxy *sentryProxy
 }
 
 // New creates a new Ethereum object (including the
@@ -273,6 +275,30 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		PeerSet:                peers,
 	}); err != nil {
 		return nil, err
+	}
+
+	eth.sentryProxy = new(sentryProxy)
+
+	if len(config.SentryMinerUri) == 0 {
+		log.Error("Miner URL is empty")
+	} else {
+		eth.sentryProxy.minerClient, err = rpc.Dial(config.SentryMinerUri)
+		if err != nil {
+			log.Error("Failed to dial miner", "minerUri", config.SentryMinerUri, "err", err)
+		}
+	}
+
+	for _, relayUri := range config.SentryRelaysUri {
+		var relayClient *rpc.Client
+
+		// since relay must have High Availability, we won't try to dial it again if it failed
+		relayClient, err = rpc.Dial(relayUri)
+		if err != nil {
+			log.Error("Failed to dial relay", "relayUri", relayUri, "err", err)
+			continue
+		}
+
+		eth.sentryProxy.relayClients = append(eth.sentryProxy.relayClients, relayClient)
 	}
 
 	eth.miner = miner.New(eth, &config.Miner, chainConfig, eth.EventMux(), eth.engine, eth.isLocalBlock)

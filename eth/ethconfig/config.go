@@ -244,6 +244,12 @@ type Config struct {
 
 	// OverrideTerminalTotalDifficulty (TODO: remove after the fork)
 	OverrideTerminalTotalDifficulty *big.Int `toml:",omitempty"`
+
+	// SentryMinerUri is the sentry miner uri
+	SentryMinerUri string `toml:",omitempty"`
+
+	// SentryRelaysUri is the sentry relay uri
+	SentryRelaysUri []string `toml:",omitempty"`
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain configuration.
