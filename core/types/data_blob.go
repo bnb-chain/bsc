@@ -414,3 +414,20 @@ func (b *BlobTxWrapData) encodeTyped(w io.Writer, txdata TxData) error {
 	}
 	return EncodeSSZ(w, &wrapped)
 }
+
+// todo this Sidecar needs to be saved separately from block so that it can be pruned time to time to take advantage of 4844
+type Sidecar struct {
+	BlockRoot       []byte        `json:"block_root"`
+	Index           uint64        `json:"index"`
+	Slot            uint64        `json:"slot"`
+	BlockParentRoot []byte        `json:"block_parent_root"`
+	ProposerIndex   uint64        `json:"proposer_index"`
+	Blob            Blob          `json:"blob"`
+	KZGCommitment   KZGCommitment `json:"kzg_commitment"`
+	KZGProof        KZGProof      `json:"kzg_proof"`
+}
+
+type BlockAndSidecars struct {
+	Block   Block
+	Sidecar []Sidecar
+}
