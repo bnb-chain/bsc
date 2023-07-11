@@ -1,4 +1,4 @@
-## BNB Smart Chain
+## ETHEREAL Smart Chain
 
 The goal of BNB Smart Chain is to bring programmability and interoperability to BNB Beacon Chain. In order to embrace the existing popular community and advanced technology, it will bring huge benefits by staying compatible with all the existing smart contracts on Ethereum and Ethereum tooling. And to achieve that, the easiest solution is to develop based on go-ethereum fork, as we respect the great work of Ethereum very much.
 
