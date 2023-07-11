@@ -1,5 +1,5 @@
 # Debian Packaging
-
+  
 Tagged releases and develop branch commits are available as installable Debian packages
 for Ubuntu. Packages are built for the all Ubuntu versions which are supported by
 Canonical.
