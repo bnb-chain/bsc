@@ -44,8 +44,8 @@ To combine DPoS and PoA for consensus, ETHEREAL Smart Chain implement a novel co
 To achieve the cross-chain communication from ETHEREAL Beacon Chain to ETHEREAL Smart Chain, need introduce a on-chain light client verification algorithm.
 It contains two parts:
 
-1. [Stateless Precompiled contracts](https://github.com/bnb-chain/bsc/blob/master/core/vm/contracts_lightclient.go) to do tendermint header verification and Merkle Proof verification.
-2. [Stateful solidity contracts](https://github.com/bnb-chain/bsc-genesis-contract/blob/master/contracts/TendermintLightClient.sol) to store validator set and trusted appHash.  
+1. [Stateless Precompiled contracts](https://github.com/ethereal-chain/bsc/blob/master/core/vm/contracts_lightclient.go) to do tendermint header verification and Merkle Proof verification.
+2. [Stateful solidity contracts](https://github.com/ethereal-chain/bsc-genesis-contract/blob/master/contracts/TendermintLightClient.sol) to store validator set and trusted appHash.  
 
 ## Native Token
 
@@ -125,12 +125,12 @@ The requirement for testnet:
 #### 1. Download the pre-build binaries
 ```shell
 # Linux
-wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep geth_linux |cut -d\" -f4)
+wget $(curl -s https://api.github.com/repos/ethereal-chain/bsc/releases/latest |grep browser_ |grep geth_linux |cut -d\" -f4)
 mv geth_linux geth
 chmod -v u+x geth
 
 # MacOS
-wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep geth_mac |cut -d\" -f4)
+wget $(curl -s https://api.github.com/repos/ethereal-chain/bsc/releases/latest |grep browser_ |grep geth_mac |cut -d\" -f4)
 mv geth_macos geth
 chmod -v u+x geth
 ```
@@ -138,16 +138,16 @@ chmod -v u+x geth
 #### 2. Download the config files
 ```shell
 //== mainnet
-wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep mainnet |cut -d\" -f4)
+wget $(curl -s https://api.github.com/repos/ethereal-chain/bsc/releases/latest |grep browser_ |grep mainnet |cut -d\" -f4)
 unzip mainnet.zip
 
 //== testnet
-wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep testnet |cut -d\" -f4)
+wget $(curl -s https://api.github.com/repos/ethereal-chain/bsc/releases/latest |grep browser_ |grep testnet |cut -d\" -f4)
 unzip testnet.zip
 ```
 
 #### 3. Download snapshot
-Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-snapshots). Follow the guide to structure your files.
+Download latest chaindata snapshot from [here](https://github.com/ethereal-chain/bsc-snapshots). Follow the guide to structure your files.
 
 Note: if you can not download the chaindata snapshot and want to sync from genesis, you have to generate the genesis block first, you have already get the genesis.json in Step 2.
 So just run: `geth --datadir <datadir> init ./genesis.json`
@@ -178,7 +178,7 @@ This tool is optional and if you leave it out you can always attach to an alread
 
 #### 7. More
 
-More details about [running a node](https://docs.bnbchain.org/docs/validator/fullnode) and [becoming a validator](https://docs.bnbchain.org/docs/validator/create-val)
+More details about [running a node](https://docs.etherealchain.org/docs/validator/fullnode) and [becoming a validator](https://docs.etherealchain.org/docs/validator/create-val)
 
 *Note: Although there are some internal protective measures to prevent transactions from
 crossing over between the main network and test network, you should make sure to always
@@ -244,8 +244,8 @@ running web servers, so malicious web pages could try to subvert locally availab
 APIs!**
 
 ### Operating a private network
-- [BSC-Deploy](https://github.com/bnb-chain/node-deploy/): deploy tool for setting up both ETHEREAL Beacon Chain, ETHEREAL Smart Chain and the cross chain infrastructure between them.
-- [BSC-Docker](https://github.com/bnb-chain/bsc-docker): deploy tool for setting up local BSC cluster in container.
+- [BSC-Deploy](https://github.com/ethereal-chain/node-deploy/): deploy tool for setting up both ETHEREAL Beacon Chain, ETHEREAL Smart Chain and the cross chain infrastructure between them.
+- [BSC-Docker](https://github.com/ethereal-chain/bsc-docker): deploy tool for setting up local BSC cluster in container.
 
 ## Contribution
 
@@ -254,7 +254,7 @@ from anyone on the internet, and are grateful for even the smallest of fixes!
 
 If you'd like to contribute to bsc, please fork, fix, commit and send a pull request
 for the maintainers to review and merge into the main code base. If you wish to submit
-more complex changes though, please check up with the core devs first on [our discord channel](https://discord.gg/bnbchain)
+more complex changes though, please check up with the core devs first on [our discord channel](https://discord.gg/etherealchain)
 to ensure those changes are in line with the general philosophy of the project and/or get
 some early feedback which can make both your efforts much lighter as well as our review
 and merge procedures quick and simple.
