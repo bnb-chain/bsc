@@ -1,7 +1,7 @@
 FROM golang:1.19-alpine as bsc
 
 RUN apk add --no-cache make cmake gcc musl-dev linux-headers git bash build-base libc-dev
-
+ 
 ADD . /bsc
 WORKDIR /bsc
 ENV CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
