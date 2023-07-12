@@ -80,6 +80,7 @@ type Config struct {
 	ValidSchemes   enr.IdentityScheme // allowed identity schemes
 	Clock          mclock.Clock
 	FilterFunction NodeFilterFunc // function for filtering ENR entries
+	IsBootnode     bool           // defines if it's bootnode
 }
 
 func (cfg Config) withDefaults() Config {
