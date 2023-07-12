@@ -68,6 +68,16 @@ const (
 	// the current 4 mining loops could have asynchronous risk of mining block with
 	// save height, keep recently mined blocks to avoid double sign for safety,
 	recentMinedCacheLimit = 20
+
+	// inTurnDifficulty when validator has main proposer duty
+	inTurnDifficulty = 2
+
+	//callerType to getBestWork
+	callerTypeGenerateWork = "generateWork"
+	callerTypeCommitWork   = "commitWork"
+
+	// timestamp format
+	timestampFormat = "2006-01-02 15:04:05.000000"
 )
 
 var (
@@ -247,40 +257,64 @@ type worker struct {
 	recentMinedBlocks *lru.Cache
 
 	// Proposed block
-	bestProposedBlockLock   sync.RWMutex
-	bestProposedBlock       *environment
-	bestProposedBlockReward *big.Int
-	currentGasLimit         *uint64
+	bestProposedBlockLock sync.RWMutex
+	// Key (k): The block number (blockNum)
+	// Value (v): A nested map representing the mapping between (k - prevBlockHash) and the corresponding proposed work(v - environment,reward)
+	bestProposedBlockInfo map[uint64]bestProposedWorks
+	currentGasLimit       *uint64
+}
+type bestProposedWorks map[string]*bestProposedWork
+
+// discard is unsafe operation, caller needs to protect before performing discard
+func (b bestProposedWorks) discard() {
+	for prevHash, w := range b {
+		if w.work != nil {
+			w.work.discard()
+		}
+		delete(b, prevHash)
+	}
+}
+
+type bestProposedWork struct {
+	work   *environment
+	reward *big.Int
+}
+
+func (b *bestProposedWork) copy() *bestProposedWork {
+	return &bestProposedWork{
+		work:   b.work.copy(),
+		reward: new(big.Int).Set(b.reward),
+	}
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
 	recentMinedBlocks, _ := lru.New(recentMinedCacheLimit)
 	worker := &worker{
-		prefetcher:              core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
-		config:                  config,
-		chainConfig:             chainConfig,
-		engine:                  engine,
-		eth:                     eth,
-		mux:                     mux,
-		chain:                   eth.BlockChain(),
-		isLocalBlock:            isLocalBlock,
-		localUncles:             make(map[common.Hash]*types.Block),
-		remoteUncles:            make(map[common.Hash]*types.Block),
-		unconfirmed:             newUnconfirmedBlocks(eth.BlockChain(), sealingLogAtDepth),
-		pendingTasks:            make(map[common.Hash]*task),
-		chainHeadCh:             make(chan core.ChainHeadEvent, chainHeadChanSize),
-		chainSideCh:             make(chan core.ChainSideEvent, chainSideChanSize),
-		newWorkCh:               make(chan *newWorkReq),
-		getWorkCh:               make(chan *getWorkReq),
-		proposedCh:              make(chan *ProposedBlockArgs),
-		taskCh:                  make(chan *task),
-		resultCh:                make(chan *types.Block, resultQueueSize),
-		exitCh:                  make(chan struct{}),
-		startCh:                 make(chan struct{}, 1),
-		resubmitIntervalCh:      make(chan time.Duration),
-		recentMinedBlocks:       recentMinedBlocks,
-		bestProposedBlockReward: big.NewInt(0),
-		currentGasLimit:         new(uint64),
+		prefetcher:            core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
+		config:                config,
+		chainConfig:           chainConfig,
+		engine:                engine,
+		eth:                   eth,
+		mux:                   mux,
+		chain:                 eth.BlockChain(),
+		isLocalBlock:          isLocalBlock,
+		localUncles:           make(map[common.Hash]*types.Block),
+		remoteUncles:          make(map[common.Hash]*types.Block),
+		unconfirmed:           newUnconfirmedBlocks(eth.BlockChain(), sealingLogAtDepth),
+		pendingTasks:          make(map[common.Hash]*task),
+		chainHeadCh:           make(chan core.ChainHeadEvent, chainHeadChanSize),
+		chainSideCh:           make(chan core.ChainSideEvent, chainSideChanSize),
+		newWorkCh:             make(chan *newWorkReq),
+		getWorkCh:             make(chan *getWorkReq),
+		proposedCh:            make(chan *ProposedBlockArgs),
+		taskCh:                make(chan *task),
+		resultCh:              make(chan *types.Block, resultQueueSize),
+		exitCh:                make(chan struct{}),
+		startCh:               make(chan struct{}, 1),
+		resubmitIntervalCh:    make(chan time.Duration),
+		recentMinedBlocks:     recentMinedBlocks,
+		currentGasLimit:       new(uint64),
+		bestProposedBlockInfo: make(map[uint64]bestProposedWorks),
 	}
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
@@ -428,10 +462,13 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 	for {
 		select {
 		case <-w.startCh:
-			clearPending(w.chain.CurrentBlock().NumberU64())
+			currentChainNumber := w.chain.CurrentBlock().NumberU64()
+			clearPending(currentChainNumber)
 			w.bestProposedBlockLock.Lock()
-			w.bestProposedBlock = nil
-			w.bestProposedBlockReward.SetInt64(0)
+			if proposedWorks, ok := w.bestProposedBlockInfo[currentChainNumber]; ok {
+				proposedWorks.discard()
+				delete(w.bestProposedBlockInfo, currentChainNumber)
+			}
 			w.bestProposedBlockLock.Unlock()
 			timestamp = time.Now().Unix()
 			commit(commitInterruptNewHead)
@@ -737,24 +774,60 @@ func (w *worker) proposedLoop() {
 	for {
 		select {
 		case req := <-w.proposedCh:
-			bestReward := big.NewInt(0)
+			var (
+				reward = new(big.Int).Set(req.blockReward)
+			)
 			w.bestProposedBlockLock.RLock()
-			bestReward.Set(w.bestProposedBlockReward)
+			if bestWorks, ok := w.bestProposedBlockInfo[req.blockNumber.Uint64()]; ok && bestWorks != nil {
+				previousProposedBlockWork, exist := bestWorks[req.prevBlockHash.String()]
+				if exist && previousProposedBlockWork != nil && previousProposedBlockWork.reward != nil {
+					if previousProposedBlockWork.reward.Cmp(reward) > 0 {
+						log.Debug("Skipping proposedBlock", "blockNumber", req.blockNumber, "prevBlockHash", req.prevBlockHash.String(), "newProposedBlockReward", reward, "previousProposedBlockReward", previousProposedBlockWork.reward, "newProposedBlockGasLimit", req.gasLimit, "newProposedBlockGasUsed", req.gasUsed, "newProposedBlockTxCount", len(req.txs), "mevRelay", req.mevRelay, "timestamp", time.Now().UTC().Format(timestampFormat))
+						w.bestProposedBlockLock.RUnlock()
+						continue
+					}
+				}
+			}
 			w.bestProposedBlockLock.RUnlock()
-
-			if bestReward != nil && bestReward.Cmp(req.blockReward) > 0 {
-				log.Debug("Skipping proposedBlock", "blockNumber", req.blockNumber.String(), "proposedReward", req.blockReward, "reward", bestReward, "mevRelay", req.mevRelay)
+			newProposedBlockWork, duration, err := w.simulateProposedBlock(req)
+			if err != nil {
+				log.Error("Processing and simulating proposedBlock failed", "blockNumber", req.blockNumber, "prevBlockHash", req.prevBlockHash.String(), "newProposedBlockReward", req.blockReward, "newProposedBlockGasUsed", req.gasUsed, "mevRelay", req.mevRelay, "newProposedBlockTxCount", len(req.txs), "simulatedDuration", duration, "timestamp", time.Now().UTC().Format(timestampFormat), "err", err)
 				continue
 			}
-			if err := w.validateProposedBlock(req); err != nil {
-				log.Error("Processing proposedBlock failed", "err", err, "proposedBlock", fmt.Sprintf("mevRelay, %v, blockNumber %v, prevBlockHash %v, reward %v, gasLimit %v, gasUsed %v, txCount %v", req.mevRelay, req.blockNumber.String(), req.prevBlockHash.Hex(), req.blockReward, req.gasLimit, req.gasUsed, len(req.txs)))
+
+			w.bestProposedBlockLock.Lock()
+			bestWorks, ok := w.bestProposedBlockInfo[req.blockNumber.Uint64()]
+			if !ok || bestWorks == nil {
+				works := make(bestProposedWorks)
+				if newProposedBlockWork.work != nil {
+					works[req.prevBlockHash.String()] = newProposedBlockWork
+				}
+				w.bestProposedBlockInfo[req.blockNumber.Uint64()] = works
+				log.Info("Received proposedBlock, this is the first proposed block for this block number and previous block hash", "newProposedBlockReward", newProposedBlockWork.reward, "blockNumber", req.blockNumber, "prevBlockHash", req.prevBlockHash.String(), "newProposedBlockGasUsed", req.gasUsed, "mevRelay", req.mevRelay, "newProposedBlockTxCount", len(req.txs), "simulatedDuration", duration, "timestamp", time.Now().UTC().Format(timestampFormat))
+
+			} else if previousProposedBlockWork, exist := bestWorks[req.prevBlockHash.String()]; exist && previousProposedBlockWork != nil && previousProposedBlockWork.work != nil {
+				if previousProposedBlockWork.reward != nil && newProposedBlockWork.reward.Cmp(previousProposedBlockWork.reward) > 0 {
+					log.Info("Received proposedBlock, replacing previously proposedBlock after simulation", "blockNumber", req.blockNumber, "prevBlockHash", req.prevBlockHash.String(), "previousProposedBlockReward", previousProposedBlockWork.reward, "newProposedBlockReward", newProposedBlockWork.reward, "newProposedBlockTxCount", len(newProposedBlockWork.work.txs), "mevRelay", req.mevRelay, "newProposedBlockGasUsed", req.gasUsed, "simulatedDuration", duration, "timestamp", time.Now().UTC().Format(timestampFormat))
+					// discard previously proposed block work before overwriting
+					previousProposedBlockWork.work.discard()
+					w.bestProposedBlockInfo[req.blockNumber.Uint64()][req.prevBlockHash.String()] = newProposedBlockWork
+				} else {
+					log.Info("Received proposedBlock reward is not higher than previously proposed block", "blockNumber", req.blockNumber, "prevBlockHash", req.prevBlockHash.String(), "previousProposedBlockReward", previousProposedBlockWork.reward, "newProposedBlockReward", newProposedBlockWork.reward, "newProposedBlockTxCount", len(newProposedBlockWork.work.txs), "newProposedBlockGasUsed", req.gasUsed, "mevRelay", req.mevRelay, "simulatedDuration", duration, "timestamp", time.Now().UTC().Format(timestampFormat))
+				}
+			} else {
+				log.Info("Received proposedBlock, simulation and validation completed", "blockNumber", req.blockNumber, "prevBlockHash", req.prevBlockHash.String(), "newProposedBlockReward", newProposedBlockWork.reward, "newProposedBlockGasUsed", req.gasUsed, "mevRelay", req.mevRelay, "newProposedBlockTxCount", len(req.txs), "simulatedDuration", duration, "timestamp", time.Now().UTC().Format(timestampFormat))
 			}
+			w.bestProposedBlockLock.Unlock()
 
 		case <-chainBlockCh:
 			// each block will have its own interruptCh to stop work with a reason
 			w.bestProposedBlockLock.Lock()
-			w.bestProposedBlock = nil
-			w.bestProposedBlockReward.SetInt64(0)
+			for blockNumber, works := range w.bestProposedBlockInfo {
+				if blockNumber <= w.chain.CurrentBlock().NumberU64() {
+					works.discard()
+					delete(w.bestProposedBlockInfo, blockNumber)
+				}
+			}
 			w.bestProposedBlockLock.Unlock()
 
 		// System stopped
@@ -1127,18 +1200,50 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 
 	w.fillTransactions(nil, work, nil)
 
-	bestWork := work
+	bestWork := work.copy()
 	defer bestWork.discard()
-
-	reward := work.state.GetBalance(consensus.SystemAddress)
-	w.bestProposedBlockLock.RLock()
-	if w.bestProposedBlock != nil && w.bestProposedBlockReward.Cmp(reward) > 0 {
-		log.Info("Prefer proposedBlock", "number", bestWork.header.Number, "balance", reward, "proposedReward", w.bestProposedBlockReward, "type", "generateWork")
-		bestWork = w.bestProposedBlock.copy()
-	}
-	w.bestProposedBlockLock.RUnlock()
+	bestWork = w.getBestWorkBetweenInternalAndProposedBlock(bestWork, callerTypeGenerateWork)
 	block, _, err := w.engine.FinalizeAndAssemble(w.chain, bestWork.header, bestWork.state, bestWork.txs, bestWork.unclelist(), bestWork.receipts)
 	return block, err
+}
+
+func (w *worker) getBestWorkBetweenInternalAndProposedBlock(internalWork *environment, callerType string) *environment {
+	var (
+		preferProposedBlock          bool
+		internalBlockReward          = new(big.Int).Set(internalWork.state.GetBalance(consensus.SystemAddress)) // added for logging
+		bestReward                   = new(big.Int).Set(internalBlockReward)
+		bestWork                     = internalWork
+		proposedBlockReward          = new(big.Int)
+		validatorHasMainProposerDuty = internalWork.header.Difficulty.Cmp(new(big.Int).SetInt64(inTurnDifficulty)) == 0
+	)
+
+	if !validatorHasMainProposerDuty {
+		// To prevent bundle leakage
+		return bestWork
+	}
+
+	w.bestProposedBlockLock.RLock()
+	defer w.bestProposedBlockLock.RUnlock()
+	works, ok := w.bestProposedBlockInfo[internalWork.header.Number.Uint64()]
+	if !ok || works == nil {
+		log.Info("Prefer internal block", "blockNumber", bestWork.header.Number, "prevBlockHash", bestWork.header.ParentHash.String(), "internalBlockReward", bestReward, "type", callerType, "timestamp", time.Now().UTC().Format(timestampFormat))
+		return bestWork
+	}
+
+	if proposedBlock, exist := works[internalWork.header.ParentHash.String()]; exist && proposedBlock != nil && proposedBlock.work != nil {
+		preferProposedBlock = proposedBlock.reward != nil && proposedBlock.reward.Cmp(bestReward) > 0
+		proposedBlockReward.Set(proposedBlock.reward)
+		if preferProposedBlock {
+			if bestWork != nil {
+				bestWork.discard()
+			}
+			bestWork = proposedBlock.work
+			bestReward.Set(proposedBlock.reward)
+		}
+	}
+
+	log.Info("Prefer internal or proposedBlock", "blockNumber", bestWork.header.Number, "prevBlockHash", bestWork.header.ParentHash.String(), "preferProposedBlock", preferProposedBlock, "internalBlockReward", internalBlockReward, "proposedBlockReward", proposedBlockReward, "type", callerType, "timestamp", time.Now().UTC().Format(timestampFormat))
+	return bestWork
 }
 
 // fillTransactionsProposedBlock retrieves the pending transactions from the txpool and fills them
@@ -1214,15 +1319,15 @@ func (w *worker) fillTransactionsProposedBlock(env *environment, block *Proposed
 	return signalToErr(signal), blockReward
 }
 
-// validateProposedBlock generates a sealing block based on a proposed block.
-func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
+// simulateProposedBlock generates a sealing block based on a proposed block.
+func (w *worker) simulateProposedBlock(proposedBlock *ProposedBlockArgs) (*bestProposedWork, time.Duration, error) {
 	start := time.Now()
 
 	// Set the coinbase if the worker is running or it's required
 	var coinbase common.Address
 	if w.isRunning() {
 		if w.coinbase == (common.Address{}) {
-			return errors.New("refusing to mine without etherbase")
+			return nil, time.Since(start), errors.New("refusing to mine without etherbase")
 		}
 		coinbase = w.coinbase // Use the preset address as the fee recipient
 	}
@@ -1232,41 +1337,30 @@ func (w *worker) validateProposedBlock(proposedBlock *ProposedBlockArgs) error {
 		coinbase:  coinbase,
 	})
 	if err != nil {
-		return err
+		return nil, time.Since(start), err
 	}
 	defer work.discard()
 
 	// Fill transactions from the proposed block
-	fillStart := time.Now()
 	err, blockReward := w.fillTransactionsProposedBlock(work, proposedBlock)
 	if err != nil {
-		return err
+		return nil, time.Since(start), err
 	}
-	fillDuration := time.Since(fillStart)
 
-	bestProposedLockStart := time.Now()
 	nextBlock := big.NewInt(0).Add(big.NewInt(1), w.eth.BlockChain().CurrentBlock().Number())
 
 	if nextBlock.Cmp(proposedBlock.blockNumber) != 0 {
 		// block was changed during validation, need to ignore this proposedBlock
-		return errors.New("chain changed")
+		return nil, time.Since(start), errors.New("chain changed")
 	}
 
-	w.bestProposedBlockLock.Lock()
-	defer w.bestProposedBlockLock.Unlock()
-	if blockReward.Cmp(w.bestProposedBlockReward) > 0 {
-		log.Info("Replacing proposedBlock", "blockNumber", work.header.Number.String(), "reward", w.bestProposedBlockReward, "newReward", blockReward, "fromMevRelay", proposedBlock.mevRelay)
-		// discard old bestProposedBlock before overwriting
-		if w.bestProposedBlock != nil {
-			w.bestProposedBlock.discard()
-		}
-		w.bestProposedBlock = work
-		w.bestProposedBlockReward.Set(blockReward)
+	bestWork := &bestProposedWork{
+		work:   work.copy(),
+		reward: new(big.Int).Set(blockReward),
 	}
-	bestProposedLockDuration := time.Since(bestProposedLockStart)
 	totalDuration := time.Since(start)
-	log.Debug("Validate proposedBlock", "blockNumber", proposedBlock.blockNumber.String(), "fromMevRelay", proposedBlock.mevRelay, "duration", totalDuration, "fillDuration", fillDuration, "lockDuration", bestProposedLockDuration)
-	return nil
+	log.Debug("simulated proposedBlock", "blockNumber", proposedBlock.blockNumber, "blockReward", blockReward, "fromMevRelay", proposedBlock.mevRelay, "duration", totalDuration, "timestamp", time.Now().UTC().Format(timestampFormat))
+	return bestWork, totalDuration, nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block
@@ -1430,15 +1524,7 @@ LOOP:
 			bestReward.Set(balance)
 		}
 	}
-	// check the top proposedBlock
-	w.bestProposedBlockLock.RLock()
-	if w.bestProposedBlock != nil && w.bestProposedBlockReward.Cmp(bestReward) > 0 {
-		log.Info("Prefer proposedBlock", "number", bestWork.header.Number, "balance", bestReward, "proposedReward", w.bestProposedBlockReward, "type", "commitWork")
-		bestWork = w.bestProposedBlock.copy()
-		bestReward.Set(w.bestProposedBlockReward)
-	}
-	w.bestProposedBlockLock.RUnlock()
-
+	bestWork = w.getBestWorkBetweenInternalAndProposedBlock(bestWork, callerTypeCommitWork)
 	w.commit(bestWork, w.fullTaskHook, true, start)
 
 	// Swap out the old work with the new one, terminating any leftover

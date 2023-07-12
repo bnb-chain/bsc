@@ -290,21 +290,22 @@ func (miner *Miner) ProposedBlock(MEVRelay string, blockNumber *big.Int, prevBlo
 	var isBlockSkipped bool
 	currentGasLimit := atomic.LoadUint64(miner.worker.currentGasLimit)
 	defer func() {
-		log.Info("Received ProposedBlock",
-			"blockNumber", blockNumber.String(),
-			"fromMevRelay", MEVRelay,
-			"prevHash", prevBlockHash.Hex(),
+		log.Debug("Received proposedBlock",
+			"blockNumber", blockNumber,
+			"mevRelay", MEVRelay,
+			"prevBlockHash", prevBlockHash.Hex(),
 			"proposedReward", reward,
 			"gasLimit", gasLimit,
 			"gasUsed", gasUsed,
 			"txCount", len(txs),
 			"isBlockSkipped", isBlockSkipped,
 			"currentGasLimit", currentGasLimit,
+			"timestamp", time.Now().String(),
 		)
 	}()
 	if gasUsed > currentGasLimit {
 		isBlockSkipped = true
-		return fmt.Errorf("gasUsed exceeds the current block gas limit %v blockNumber %s", currentGasLimit, blockNumber.String())
+		return fmt.Errorf("gasUsed exceeds the current block gas limit %v", currentGasLimit)
 	}
 	miner.worker.proposedCh <- &ProposedBlockArgs{
 		mevRelay:      MEVRelay,

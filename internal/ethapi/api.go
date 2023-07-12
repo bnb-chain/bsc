@@ -1362,18 +1362,13 @@ func (s *PublicBlockChainAPI) ProposedBlock(ctx context.Context, args ProposedBl
 		return errors.New("block missing blockNumber")
 	}
 
-	nextBlock := big.NewInt(0).Add(big.NewInt(1), s.b.CurrentBlock().Number())
+	blockOnChain := s.b.CurrentBlock().Number()
 	proposedBlockNumber := big.NewInt(args.BlockNumber.Int64())
 
-	if nextBlock.Cmp(proposedBlockNumber) != 0 {
-		log.Info("Validating ProposedBlock failed", "blockNumber", args.BlockNumber, "chainCurrentBlock", s.b.CurrentBlock().Number().String(), "fromMevRelay", args.MEVRelay)
-		return fmt.Errorf("blockNumber is incorrect. blockNumber %d chainCurrentBlock %s fromMevRelay %s ", args.BlockNumber, s.b.CurrentBlock().Hash().String(), args.MEVRelay)
+	if proposedBlockNumber.Cmp(blockOnChain) < 1 {
+		log.Info("Validating ProposedBlock failed", "blockNumber", args.BlockNumber, "onChainBlockNumber", blockOnChain, "prevBlockHash", args.PrevBlockHash, "mevRelay", args.MEVRelay)
+		return fmt.Errorf("blockNumber is incorrect. proposedBlockNumber: %v onChainBlockNumber: %v", args.BlockNumber, blockOnChain)
 	}
-	if s.b.CurrentBlock().Hash() != args.PrevBlockHash {
-		log.Info("Validating ProposedBlock failed", "blockNumber", args.BlockNumber, "prevBlockHash", args.PrevBlockHash.Hex(), "chainCurrentBlock", s.b.CurrentBlock().Hash().String(), "fromMevRelay", args.MEVRelay)
-		return fmt.Errorf("prevBlockHash is incorrect. prevBlockHash %s blockNumber %d chainCurrentBlock %s fromMevRelay %s ", args.PrevBlockHash.Hex(), args.BlockNumber, s.b.CurrentBlock().Hash().String(), args.MEVRelay)
-	}
-
 	for _, encodedTx := range args.Payload {
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {
