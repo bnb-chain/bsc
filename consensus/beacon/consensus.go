@@ -285,7 +285,7 @@ func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.
 
 // FinalizeAndAssemble implements consensus.Engine, setting the final state and
 // assembling the block.
-func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
+func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.BlockAndSidecars, []*types.Receipt, error) {
 	// FinalizeAndAssemble is different with Prepare, it can be used in both block
 	// generation and verification. So determine the consensus rules by header type.
 	if !beacon.IsPoSHeader(header) {
@@ -293,7 +293,13 @@ func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, hea
 	}
 	// Finalize and assemble the block
 	beacon.Finalize(chain, header, state, &txs, uncles, nil, nil, nil)
-	return types.NewBlock(header, txs, uncles, receipts, trie.NewStackTrie(nil)), receipts, nil
+	var sidecars []*types.Sidecar
+	block := types.NewBlock(header, txs, uncles, receipts, trie.NewStackTrie(nil))
+	blockAndSidecars := &types.BlockAndSidecars{
+		Block:   block,
+		Sidecar: sidecars,
+	}
+	return blockAndSidecars, receipts, nil
 }
 
 // Seal generates a new sealing request for the given input block and pushes
@@ -301,8 +307,8 @@ func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, hea
 //
 // Note, the method returns immediately and will send the result async. More
 // than one result may also be returned depending on the consensus algorithm.
-func (beacon *Beacon) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	if !beacon.IsPoSHeader(block.Header()) {
+func (beacon *Beacon) Seal(chain consensus.ChainHeaderReader, block *types.BlockAndSidecars, results chan<- *types.BlockAndSidecars, stop <-chan struct{}) error {
+	if !beacon.IsPoSHeader(block.Block.Header()) {
 		return beacon.ethone.Seal(chain, block, results, stop)
 	}
 	// The seal verification is done by the external consensus engine,

@@ -22,6 +22,7 @@ import (
 	crand "crypto/rand"
 	"encoding/json"
 	"errors"
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"math"
 	"math/big"
 	"math/rand"
@@ -49,15 +50,21 @@ var (
 
 // Seal implements consensus.Engine, attempting to find a nonce that satisfies
 // the block's difficulty requirements.
-func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
+func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.BlockAndSidecars, results chan<- *types.BlockAndSidecars, stop <-chan struct{}) error {
 	// If we're running a fake PoW, simply return a 0 nonce immediately
 	if ethash.config.PowMode == ModeFake || ethash.config.PowMode == ModeFullFake {
-		header := block.Header()
+		header := block.Block.Header()
 		header.Nonce, header.MixDigest = types.BlockNonce{}, common.Hash{}
+		// todo 4844 extract sidecars from block
+		var sidecars []*types.Sidecar
+		sidecars, err := engine.BlockToSidecars(block.Block)
+		if err != nil {
+			return err
+		}
 		select {
-		case results <- block.WithSeal(header):
+		case results <- &types.BlockAndSidecars{Block: block.Block.WithSeal(header), Sidecar: sidecars}:
 		default:
-			ethash.config.Log.Warn("Sealing result is not read by miner", "mode", "fake", "sealhash", ethash.SealHash(block.Header()))
+			ethash.config.Log.Warn("Sealing result is not read by miner", "mode", "fake", "sealhash", ethash.SealHash(block.Block.Header()))
 		}
 		return nil
 	}
@@ -91,18 +98,18 @@ func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.Block
 	}
 	var (
 		pend   sync.WaitGroup
-		locals = make(chan *types.Block)
+		locals = make(chan *types.BlockAndSidecars)
 	)
 	for i := 0; i < threads; i++ {
 		pend.Add(1)
 		go func(id int, nonce uint64) {
 			defer pend.Done()
-			ethash.mine(block, id, nonce, abort, locals)
+			ethash.mine(block.Block, id, nonce, abort, locals)
 		}(i, uint64(ethash.rand.Int63()))
 	}
 	// Wait until sealing is terminated or a nonce is found
 	gopool.Submit(func() {
-		var result *types.Block
+		var result *types.BlockAndSidecars
 		select {
 		case <-stop:
 			// Outside abort, stop all miner threads
@@ -112,7 +119,7 @@ func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.Block
 			select {
 			case results <- result:
 			default:
-				ethash.config.Log.Warn("Sealing result is not read by miner", "mode", "local", "sealhash", ethash.SealHash(block.Header()))
+				ethash.config.Log.Warn("Sealing result is not read by miner", "mode", "local", "sealhash", ethash.SealHash(block.Block.Header()))
 			}
 			close(abort)
 		case <-ethash.update:
@@ -130,7 +137,7 @@ func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.Block
 
 // mine is the actual proof-of-work miner that searches for a nonce starting from
 // seed that results in correct final block difficulty.
-func (ethash *Ethash) mine(block *types.Block, id int, seed uint64, abort chan struct{}, found chan *types.Block) {
+func (ethash *Ethash) mine(block *types.Block, id int, seed uint64, abort chan struct{}, found chan *types.BlockAndSidecars) {
 	// Extract some data from the header
 	var (
 		header  = block.Header()
@@ -171,9 +178,15 @@ search:
 				header.Nonce = types.EncodeNonce(nonce)
 				header.MixDigest = common.BytesToHash(digest)
 
+				// todo extract sidecars from block
+				var sidecars []*types.Sidecar
+				sidecars, err := engine.BlockToSidecars(block)
+				if err != nil {
+					// todo handle it
+				}
 				// Seal and return a block (if still needed)
 				select {
-				case found <- block.WithSeal(header):
+				case found <- &types.BlockAndSidecars{Block: block.WithSeal(header), Sidecar: sidecars}:
 					logger.Trace("Ethash nonce found and reported", "attempts", nonce-seed, "nonce", nonce)
 				case <-abort:
 					logger.Trace("Ethash nonce found but discarded", "attempts", nonce-seed, "nonce", nonce)
@@ -203,7 +216,7 @@ type remoteSealer struct {
 	ethash       *Ethash
 	noverify     bool
 	notifyURLs   []string
-	results      chan<- *types.Block
+	results      chan<- *types.BlockAndSidecars
 	workCh       chan *sealTask   // Notification channel to push new work and relative result channel to remote sealer
 	fetchWorkCh  chan *sealWork   // Channel used for remote sealer to fetch mining work
 	submitWorkCh chan *mineResult // Channel used for remote sealer to submit their mining result
@@ -215,8 +228,8 @@ type remoteSealer struct {
 
 // sealTask wraps a seal block with relative result channel for remote sealer thread.
 type sealTask struct {
-	block   *types.Block
-	results chan<- *types.Block
+	block   *types.BlockAndSidecars
+	results chan<- *types.BlockAndSidecars
 }
 
 // mineResult wraps the pow solution parameters for the specified block.
@@ -282,7 +295,7 @@ func (s *remoteSealer) loop() {
 			// Update current work with new received block.
 			// Note same work can be past twice, happens when changing CPU threads.
 			s.results = work.results
-			s.makeWork(work.block)
+			s.makeWork(work.block.Block)
 			s.notifyWork()
 
 		case work := <-s.fetchWorkCh:
@@ -434,11 +447,12 @@ func (s *remoteSealer) submitWork(nonce types.BlockNonce, mixDigest common.Hash,
 
 	// Solutions seems to be valid, return to the miner and notify acceptance.
 	solution := block.WithSeal(header)
+	var sidecars []*types.Sidecar
 
 	// The submitted solution is within the scope of acceptance.
 	if solution.NumberU64()+staleThreshold > s.currentBlock.NumberU64() {
 		select {
-		case s.results <- solution:
+		case s.results <- &types.BlockAndSidecars{Block: block, Sidecar: sidecars}:
 			s.ethash.config.Log.Debug("Work submitted is acceptable", "number", solution.NumberU64(), "sealhash", sealhash, "hash", solution.Hash())
 			return true
 		default:

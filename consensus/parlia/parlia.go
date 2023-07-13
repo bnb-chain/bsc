@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"io"
 	"math"
 	"math/big"
@@ -570,6 +571,21 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		// Verify the header's EIP-1559 attributes.
 		return err
 	}
+	// 4844 related verifications
+	// Verify existence / non-existence of excessDataGas.
+	cancun := chain.Config().IsCancun(header.Time)
+	if cancun {
+		if header.ExcessDataGas == nil {
+			return fmt.Errorf("missing excessDataGas")
+		}
+		// Verify the header's EIP-4844 attributes.
+		if err := misc.VerifyEip4844Header(chain.Config(), parent, header); err != nil {
+			return err
+		}
+	}
+	if !cancun && header.ExcessDataGas != nil {
+		return fmt.Errorf("invalied ExcessDataGas: have %v, expected nil", header.ExcessDataGas)
+	}
 
 	// All basic checks passed, verify cascading fields
 	return p.verifyCascadingFields(chain, header, parents)
@@ -1119,13 +1135,23 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if len(*systemTxs) > 0 {
 		return errors.New("the length of systemTxs do not match")
 	}
+
+	if chain.Config().IsCancun(header.Time) {
+		if parent := chain.GetHeaderByHash(header.ParentHash); parent != nil {
+			header.SetExcessDataGas(misc.CalcExcessDataGas(parent.ExcessDataGas, misc.CountBlobs(*txs)))
+		} else {
+			header.SetExcessDataGas(new(big.Int))
+		}
+	}
+
 	return nil
 }
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
+	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.BlockAndSidecars, []*types.Receipt, error) {
+	// TODO This should probably return blob as well if 4844 hardfork has occurred
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	cx := chainContext{Chain: chain, parlia: p}
 	if txs == nil {
@@ -1197,8 +1223,20 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	}()
 	wg.Wait()
 	blk.SetRoot(rootHash)
+	// TODO get sidecars from transactions -> Done without checks
+	var sidecars []*types.Sidecar
+	sidecars, err = engine.BlockToSidecars(blk)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	blockAndSidecars := &types.BlockAndSidecars{
+		Block:   blk,
+		Sidecar: sidecars,
+	}
+
 	// Assemble and return the final block for sealing
-	return blk, receipts, nil
+	return blockAndSidecars, receipts, nil
 }
 
 func (p *Parlia) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header) bool {
@@ -1298,8 +1336,8 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
-func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	header := block.Header()
+func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.BlockAndSidecars, results chan<- *types.BlockAndSidecars, stop <-chan struct{}) error {
+	header := block.Block.Header()
 
 	// Sealing the genesis block is not supported
 	number := header.Number.Uint64()
@@ -1307,7 +1345,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		return errUnknownBlock
 	}
 	// For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
-	if p.config.Period == 0 && len(block.Transactions()) == 0 {
+	if p.config.Period == 0 && len(block.Block.Transactions()) == 0 {
 		log.Info("Sealing paused, waiting for transactions")
 		return nil
 	}
@@ -1355,6 +1393,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 		// Sign all the things!
 		sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, ParliaRLP(header, p.chainConfig.ChainID))
+		// todo 4844 do similar for sidecars
 		if err != nil {
 			log.Error("Sign for the block header failed when sealing", "err", err)
 			return
@@ -1376,8 +1415,16 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 			}
 		}
 
+		// todo extract sidecars from block
+		var sidecars []*types.Sidecar
+		sidecars, err = engine.BlockToSidecars(block.Block)
+		if err != nil {
+			log.Error("Sidecars conversion failed from block", "err", err)
+		}
+		// todo sidecar needs to be signed somewhere
+
 		select {
-		case results <- block.WithSeal(header):
+		case results <- &types.BlockAndSidecars{Block: block.Block.WithSeal(header), Sidecar: sidecars}:
 		default:
 			log.Warn("Sealing result is not read by miner", "sealhash", SealHash(header, p.chainConfig.ChainID))
 		}

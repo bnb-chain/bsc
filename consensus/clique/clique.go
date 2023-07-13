@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"io"
 	"math/big"
 	"math/rand"
@@ -573,12 +574,18 @@ func (c *Clique) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (c *Clique) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
+	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.BlockAndSidecars, []*types.Receipt, error) {
 	// Finalize block
 	c.Finalize(chain, header, state, &txs, uncles, nil, nil, nil)
 
+	block := types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil))
+	var sidecars []*types.Sidecar
+	blockAndSidecars := &types.BlockAndSidecars{
+		Block:   block,
+		Sidecar: sidecars,
+	}
 	// Assemble and return the final block for sealing
-	return types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil)), receipts, nil
+	return blockAndSidecars, receipts, nil
 }
 
 // Authorize injects a private key into the consensus engine to mint new blocks
@@ -597,8 +604,8 @@ func (c *Clique) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
-func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	header := block.Header()
+func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.BlockAndSidecars, results chan<- *types.BlockAndSidecars, stop <-chan struct{}) error {
+	header := block.Block.Header()
 
 	// Sealing the genesis block is not supported
 	number := header.Number.Uint64()
@@ -606,7 +613,7 @@ func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		return errUnknownBlock
 	}
 	// For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
-	if c.config.Period == 0 && len(block.Transactions()) == 0 {
+	if c.config.Period == 0 && len(block.Block.Transactions()) == 0 {
 		return errors.New("sealing paused while waiting for transactions")
 	}
 	// Don't hold the signer fields for the entire sealing procedure
@@ -655,8 +662,15 @@ func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		case <-time.After(delay):
 		}
 
+		// todo extract sidecars from block
+		var sidecars []*types.Sidecar
+		sidecars, err = engine.BlockToSidecars(block.Block)
+		if err != nil {
+			log.Error("Sidecars conversion failed from block", "err", err)
+		}
+
 		select {
-		case results <- block.WithSeal(header):
+		case results <- &types.BlockAndSidecars{Block: block.Block.WithSeal(header), Sidecar: sidecars}:
 		default:
 			log.Warn("Sealing result is not read by miner", "sealhash", SealHash(header))
 		}
