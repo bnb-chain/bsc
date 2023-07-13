@@ -150,6 +150,7 @@ type task struct {
 	receipts  []*types.Receipt
 	state     *state.StateDB
 	block     *types.Block
+	sidecar   []*types.Sidecar
 	createdAt time.Time
 }
 
@@ -198,7 +199,7 @@ type worker struct {
 	newWorkCh          chan *newWorkReq
 	getWorkCh          chan *getWorkReq
 	taskCh             chan *task
-	resultCh           chan *types.Block
+	resultCh           chan *types.BlockAndSidecars // *types.Block // TODO this might have to be a struct containing block and blob
 	startCh            chan struct{}
 	exitCh             chan struct{}
 	resubmitIntervalCh chan time.Duration
@@ -256,7 +257,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		newWorkCh:          make(chan *newWorkReq),
 		getWorkCh:          make(chan *getWorkReq),
 		taskCh:             make(chan *task),
-		resultCh:           make(chan *types.Block, resultQueueSize),
+		resultCh:           make(chan *types.BlockAndSidecars, resultQueueSize),
 		exitCh:             make(chan struct{}),
 		startCh:            make(chan struct{}, 1),
 		resubmitIntervalCh: make(chan time.Duration),
@@ -577,7 +578,12 @@ func (w *worker) taskLoop() {
 			w.pendingTasks[sealHash] = task
 			w.pendingMu.Unlock()
 
-			if err := w.engine.Seal(w.chain, task.block, w.resultCh, stopCh); err != nil {
+			blockAndSidecars := &types.BlockAndSidecars{
+				Block:   task.block,
+				Sidecar: task.sidecar,
+			}
+
+			if err := w.engine.Seal(w.chain, blockAndSidecars, w.resultCh, stopCh); err != nil {
 				log.Warn("Block sealing failed", "err", err)
 				w.pendingMu.Lock()
 				delete(w.pendingTasks, sealHash)
@@ -602,18 +608,18 @@ func (w *worker) resultLoop() {
 				continue
 			}
 			// Short circuit when receiving duplicate result caused by resubmitting.
-			if w.chain.HasBlock(block.Hash(), block.NumberU64()) {
+			if w.chain.HasBlock(block.Block.Hash(), block.Block.NumberU64()) {
 				continue
 			}
 			var (
-				sealhash = w.engine.SealHash(block.Header())
-				hash     = block.Hash()
+				sealhash = w.engine.SealHash(block.Block.Header())
+				hash     = block.Block.Hash()
 			)
 			w.pendingMu.RLock()
 			task, exist := w.pendingTasks[sealhash]
 			w.pendingMu.RUnlock()
 			if !exist {
-				log.Error("Block found but no relative pending task", "number", block.Number(), "sealhash", sealhash, "hash", hash)
+				log.Error("Block found but no relative pending task", "number", block.Block.Number(), "sealhash", sealhash, "hash", hash)
 				continue
 			}
 			// Different block could share same sealhash, deep copy here to prevent write-write conflict.
@@ -628,7 +634,7 @@ func (w *worker) resultLoop() {
 
 				// add block location fields
 				receipt.BlockHash = hash
-				receipt.BlockNumber = block.Number()
+				receipt.BlockNumber = block.Block.Number()
 				receipt.TransactionIndex = uint(i)
 
 				// Update the block hash in all logs since it is now available and not when the
@@ -643,15 +649,15 @@ func (w *worker) resultLoop() {
 				logs = append(logs, receipt.Logs...)
 			}
 
-			if prev, ok := w.recentMinedBlocks.Get(block.NumberU64()); ok {
+			if prev, ok := w.recentMinedBlocks.Get(block.Block.NumberU64()); ok {
 				doubleSign := false
 				prevParents, _ := prev.([]common.Hash)
 				for _, prevParent := range prevParents {
-					if prevParent == block.ParentHash() {
-						log.Error("Reject Double Sign!!", "block", block.NumberU64(),
-							"hash", block.Hash(),
-							"root", block.Root(),
-							"ParentHash", block.ParentHash())
+					if prevParent == block.Block.ParentHash() {
+						log.Error("Reject Double Sign!!", "block", block.Block.NumberU64(),
+							"hash", block.Block.Hash(),
+							"root", block.Block.Root(),
+							"ParentHash", block.Block.ParentHash())
 						doubleSign = true
 						break
 					}
@@ -659,18 +665,19 @@ func (w *worker) resultLoop() {
 				if doubleSign {
 					continue
 				}
-				prevParents = append(prevParents, block.ParentHash())
-				w.recentMinedBlocks.Add(block.NumberU64(), prevParents)
+				prevParents = append(prevParents, block.Block.ParentHash())
+				w.recentMinedBlocks.Add(block.Block.NumberU64(), prevParents)
 			} else {
 				// Add() will call removeOldest internally to remove the oldest element
 				// if the LRU Cache is full
-				w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
+				w.recentMinedBlocks.Add(block.Block.NumberU64(), []common.Hash{block.Block.ParentHash()})
 			}
 
 			// Commit block and state to database.
-			task.state.SetExpectedStateRoot(block.Root())
+			task.state.SetExpectedStateRoot(block.Block.Root())
 			start := time.Now()
-			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, true)
+			// TODO Write Blob as well!
+			status, err := w.chain.WriteBlockAndSetHead(block.Block, receipts, logs, task.state, true)
 			if status != core.CanonStatTy {
 				if err != nil {
 					log.Error("Failed writing block to chain", "err", err, "status", status)
@@ -679,14 +686,16 @@ func (w *worker) resultLoop() {
 				}
 				continue
 			}
+			// todo
+			//statusSidecar, err := w.chain.WriteSidecarAndSetHead(block.Block, receipts, logs, task.state, true)
 			writeBlockTimer.UpdateSince(start)
-			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
+			log.Info("Successfully sealed new block", "number", block.Block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			// Broadcast the block and announce chain insertion event
-			w.mux.Post(core.NewMinedBlockEvent{Block: block})
+			w.mux.Post(core.NewMinedBlockEvent{Block: block.Block})
 
 			// Insert the block into the set of pending ones to resultLoop for confirmations
-			w.unconfirmed.Insert(block.NumberU64(), block.Hash())
+			w.unconfirmed.Insert(block.Block.NumberU64(), block.Block.Hash())
 
 		case <-w.exitCh:
 			return
@@ -1069,6 +1078,7 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 }
 
 // generateWork generates a sealing block based on the given parameters.
+// todo is it really used in BSC parlia?
 func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	work, err := w.prepareWork(params)
 	if err != nil {
@@ -1078,7 +1088,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 
 	w.fillTransactions(nil, work, nil)
 	block, _, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
-	return block, err
+	return block.Block, err
 }
 
 // commitWork generates several new sealing tasks based on the parent block
@@ -1268,7 +1278,8 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		env.state.CorrectAccountsRoot(w.chain.CurrentBlock().Root())
 
 		finalizeStart := time.Now()
-		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, env.txs, env.unclelist(), env.receipts)
+		// TODO We need to take into account blobs if 4844 hardfork has happened. i.e. use env.txs to get them
+		blockAndSidecars, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, env.txs, env.unclelist(), env.receipts)
 		if err != nil {
 			return err
 		}
@@ -1279,13 +1290,13 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		env := env.copy()
 
 		// If we're post merge, just ignore
-		if !w.isTTDReached(block.Header()) {
+		if !w.isTTDReached(blockAndSidecars.Block.Header()) {
 			select {
-			case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now()}:
-				w.unconfirmed.Shift(block.NumberU64() - 1)
-				log.Info("Commit new mining work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
+			case w.taskCh <- &task{receipts: receipts, state: env.state, block: blockAndSidecars.Block, createdAt: time.Now(), sidecar: blockAndSidecars.Sidecar}:
+				w.unconfirmed.Shift(blockAndSidecars.Block.NumberU64() - 1)
+				log.Info("Commit new mining work", "number", blockAndSidecars.Block.Number(), "sealhash", w.engine.SealHash(blockAndSidecars.Block.Header()),
 					"uncles", len(env.uncles), "txs", env.tcount,
-					"gas", block.GasUsed(),
+					"gas", blockAndSidecars.Block.GasUsed(),
 					"elapsed", common.PrettyDuration(time.Since(start)))
 
 			case <-w.exitCh:
