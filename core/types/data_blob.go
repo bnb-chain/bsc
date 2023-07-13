@@ -342,6 +342,7 @@ func (b *BlobTxWrapData) sizeWrapData() common.StorageSize {
 
 // validateBlobTransactionWrapper implements validate_blob_transaction_wrapper from EIP-4844
 func (b *BlobTxWrapData) validateBlobTransactionWrapper(inner TxData) error {
+	// todo 4844 where to do VerifyKZGCommitmentsAgainstTransactions()?? -> Probably same as this
 	blobTx, ok := inner.(*SignedBlobTx)
 	if !ok {
 		return fmt.Errorf("expected signed blob tx, got %T", inner)
@@ -417,17 +418,22 @@ func (b *BlobTxWrapData) encodeTyped(w io.Writer, txdata TxData) error {
 
 // todo this Sidecar needs to be saved separately from block so that it can be pruned time to time to take advantage of 4844
 type Sidecar struct {
-	BlockRoot       []byte        `json:"block_root"`
+	BlockRoot       common.Hash   `json:"block_root"` //[]byte
 	Index           uint64        `json:"index"`
 	Slot            uint64        `json:"slot"`
-	BlockParentRoot []byte        `json:"block_parent_root"`
+	BlockParentRoot common.Hash   `json:"block_parent_root"` //[]byte
 	ProposerIndex   uint64        `json:"proposer_index"`
 	Blob            Blob          `json:"blob"`
 	KZGCommitment   KZGCommitment `json:"kzg_commitment"`
 	KZGProof        KZGProof      `json:"kzg_proof"`
 }
 
+type SignedSidecar struct {
+	Message   *Sidecar
+	Signature []byte
+}
+
 type BlockAndSidecars struct {
-	Block   Block
-	Sidecar []Sidecar
+	Block   *Block
+	Sidecar []*Sidecar
 }

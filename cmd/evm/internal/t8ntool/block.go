@@ -187,12 +187,12 @@ func (i *bbInput) sealEthash(block *types.Block) (*types.Block, error) {
 	// Use a buffered chan for results.
 	// If the testmode is used, the sealer will return quickly, and complain
 	// "Sealing result is not read by miner" if it cannot write the result.
-	results := make(chan *types.Block, 1)
-	if err := engine.Seal(nil, block, results, nil); err != nil {
+	results := make(chan *types.BlockAndSidecars, 1)
+	if err := engine.Seal(nil, &types.BlockAndSidecars{Block: block}, results, nil); err != nil {
 		panic(fmt.Sprintf("failed to seal block: %v", err))
 	}
 	found := <-results
-	return block.WithSeal(found.Header()), nil
+	return block.WithSeal(found.Block.Header()), nil
 }
 
 // sealClique seals the given block using clique.

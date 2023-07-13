@@ -98,6 +98,15 @@ type TxWrapData interface {
 	encodeTyped(w io.Writer, txdata TxData) error
 	sizeWrapData() common.StorageSize
 	validateBlobTransactionWrapper(inner TxData) error
+
+	// TODO 4844
+	//// Blob operations.
+	//SaveBlobSidecar(ctx context.Context, sidecars []*ethpb.BlobSidecar) error
+	//DeleteBlobSidecar(ctx context.Context, beaconBlockRoot [32]byte) error
+	//
+	//// Blob operations.
+	//BlobSidecarsByRoot(ctx context.Context, beaconBlockRoot [32]byte, indices ...uint64) ([]*ethpb.BlobSidecar, error)
+	//BlobSidecarsBySlot(ctx context.Context, slot primitives.Slot, indices ...uint64) ([]*ethpb.BlobSidecar, error)
 }
 
 // TxData is the underlying data of a transaction.

@@ -396,7 +396,7 @@ func (b *Block) DecodeRLP(s *rlp.Stream) error {
 		return err
 	}
 	for i, tx := range *eb.Txs {
-		if tx.wrapData != nil {
+		if tx.wrapData != nil { // todo 4844 we may need to get rid of this, actually NOT
 			return fmt.Errorf("transactions in blocks must not contain wrap-data, tx %d is bad", i)
 		}
 	}

@@ -808,6 +808,8 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 	}
 }
 
+// TODO 4844 BroadcastBlob? BroadcastSidecar?
+
 // BroadcastTransactions will propagate a batch of transactions
 // - To a square root of all peers
 // - And, separately, as announcements to all peers which are not known to

@@ -76,3 +76,20 @@ func (q *payloadQueue) get(id beacon.PayloadID) *beacon.ExecutableDataV1 {
 	}
 	return nil
 }
+
+//// get retrieves a previously stored payload along with its blobs bundle, or nil if it does not
+//// exist.
+//func (q *payloadQueue) getPayloadWithBlobsBundle(id engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
+//	q.lock.RLock()
+//	defer q.lock.RUnlock()
+//
+//	for _, item := range q.payloads {
+//		if item == nil {
+//			return nil, nil // no more items
+//		}
+//		if item.id == id {
+//			return item.payload.ResolveWithBlobsBundle()
+//		}
+//	}
+//	return nil, nil
+//}
