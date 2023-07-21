@@ -944,6 +944,8 @@ func (h *handler) voteBroadcastLoop() {
 	for {
 		select {
 		case event := <-h.voteCh:
+			// The timeliness of votes is very important,
+			// so one vote will be sent instantly without waiting for other votes for batch sending by design.
 			h.BroadcastVote(event.Vote)
 		case <-h.votesSub.Err():
 			return

@@ -520,6 +520,7 @@ type LogConfig struct {
 	FilePath     *string `toml:",omitempty"`
 	MaxBytesSize *uint   `toml:",omitempty"`
 	Level        *string `toml:",omitempty"`
+	RotateHours  int     `toml:",omitempty"`
 
 	// TermTimeFormat is the time format used for console logging.
 	TermTimeFormat *string `toml:",omitempty"`
