@@ -1,4 +1,8 @@
 # Changelog
+## v1.2.9
+FEATURE
+* [\#1775](https://github.com/bnb-chain/bsc/pull/1775) upgrade: several hardfork block height on mainnet: Plato, Hertz(Berlin, London)
+
 ## v1.2.8
 FEATURE
 * [\#1626](https://github.com/bnb-chain/bsc/pull/1626) eth/filters, ethclient/gethclient: add fullTx option to pending tx filter
