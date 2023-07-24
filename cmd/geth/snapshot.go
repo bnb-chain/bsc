@@ -22,10 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/prometheus/tsdb/fileutil"
 	cli "gopkg.in/urfave/cli.v1"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
@@ -44,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/snap"
 )
 
 var (
@@ -233,8 +232,20 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		return nil, errors.New("failed to load head block")
 	}
 	headHeader := headBlock.Header()
-	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
-	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, TriesInMemory, headBlock.Root(), false, false, false, false)
+	dbConfig := &trie.Config{}
+	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
+		dbConfig.Snap = snap.ReadOnly
+	}
+	triedb := trie.NewDatabase(chaindb, dbConfig)
+	defer triedb.Close()
+
+	snapConfig := snapshot.Config{
+		CacheSize:  256,
+		Recovery:   false,
+		NoBuild:    true,
+		AsyncBuild: false,
+	}
+	snaptree, err := snapshot.New(snapConfig, chaindb, triedb, TriesInMemory, headBlock.Root())
 	if err != nil {
 		log.Error("snaptree error", "err", err)
 		return nil, err // The relevant snapshot(s) might not exist
@@ -261,7 +272,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	// Ensure the root is really present. The weak assumption
 	// is the presence of root can indicate the presence of the
 	// entire trie.
-	if blob := rawdb.ReadTrieNode(chaindb, targetRoot); len(blob) == 0 {
+	if blob := rawdb.ReadTrieNode(chaindb, common.Hash{}, nil, targetRoot, triedb.Scheme()); len(blob) == 0 {
 		// The special case is for clique based networks(rinkeby, goerli
 		// and some other private networks), it's possible that two
 		// consecutive blocks will have same root. In this case snapshot
@@ -275,7 +286,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		// as the pruning target.
 		var found bool
 		for i := len(layers) - 2; i >= 1; i-- {
-			if blob := rawdb.ReadTrieNode(chaindb, layers[i].Root()); len(blob) != 0 {
+			if blob := rawdb.ReadTrieNode(chaindb, common.Hash{}, nil, layers[i].Root(),triedb.Scheme() ); len(blob) != 0 {
 				targetRoot = layers[i].Root()
 				found = true
 				log.Info("Selecting middle-layer as the pruning target", "root", targetRoot, "depth", i)
@@ -283,7 +294,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 			}
 		}
 		if !found {
-			if blob := rawdb.ReadTrieNode(chaindb, snaptree.DiskRoot()); len(blob) != 0 {
+			if blob := rawdb.ReadTrieNode(chaindb, common.Hash{}, nil, snaptree.DiskRoot(), triedb.Scheme()); len(blob) != 0 {
 				targetRoot = snaptree.DiskRoot()
 				found = true
 				log.Info("Selecting disk-layer as the pruning target", "root", targetRoot)
@@ -307,99 +318,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 }
 
 func pruneBlock(ctx *cli.Context) error {
-	var (
-		stack   *node.Node
-		config  gethConfig
-		chaindb ethdb.Database
-		err     error
-
-		oldAncientPath      string
-		newAncientPath      string
-		blockAmountReserved uint64
-		blockpruner         *pruner.BlockPruner
-	)
-
-	stack, config = makeConfigNode(ctx)
-	defer stack.Close()
-	blockAmountReserved = ctx.GlobalUint64(utils.BlockAmountReserved.Name)
-	chaindb, err = accessDb(ctx, stack)
-	if err != nil {
-		return err
-	}
-
-	// Most of the problems reported by users when first using the prune-block
-	// tool are due to incorrect directory settings.Here, the default directory
-	// and relative directory are canceled, and the user is forced to formulate
-	// an absolute path to guide users to run the prune-block command correctly.
-	if !ctx.GlobalIsSet(utils.DataDirFlag.Name) {
-		return errors.New("datadir must be set")
-	} else {
-		datadir := ctx.GlobalString(utils.DataDirFlag.Name)
-		if !filepath.IsAbs(datadir) {
-			// force absolute paths, which often fail due to the splicing of relative paths
-			return errors.New("datadir not abs path")
-		}
-	}
-
-	if !ctx.GlobalIsSet(utils.AncientFlag.Name) {
-		return errors.New("datadir.ancient must be set")
-	} else {
-		oldAncientPath = ctx.GlobalString(utils.AncientFlag.Name)
-		if !filepath.IsAbs(oldAncientPath) {
-			// force absolute paths, which often fail due to the splicing of relative paths
-			return errors.New("datadir.ancient not abs path")
-		}
-	}
-
-	path, _ := filepath.Split(oldAncientPath)
-	if path == "" {
-		return errors.New("prune failed, did not specify the AncientPath")
-	}
-	newAncientPath = filepath.Join(path, "ancient_back")
-
-	blockpruner = pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
-
-	lock, exist, err := fileutil.Flock(filepath.Join(oldAncientPath, "PRUNEFLOCK"))
-	if err != nil {
-		log.Error("file lock error", "err", err)
-		return err
-	}
-	if exist {
-		defer lock.Release()
-		log.Info("file lock existed, waiting for prune recovery and continue", "err", err)
-		if err := blockpruner.RecoverInterruption("chaindata", config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), "", false); err != nil {
-			log.Error("Pruning failed", "err", err)
-			return err
-		}
-		log.Info("Block prune successfully")
-		return nil
-	}
-
-	if _, err := os.Stat(newAncientPath); err == nil {
-		// No file lock found for old ancientDB but new ancientDB exsisted, indicating the geth was interrupted
-		// after old ancientDB removal, this happened after backup successfully, so just rename the new ancientDB
-		if err := blockpruner.AncientDbReplacer(); err != nil {
-			log.Error("Failed to rename new ancient directory")
-			return err
-		}
-		log.Info("Block prune successfully")
-		return nil
-	}
-	name := "chaindata"
-	if err := blockpruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(), "", false, false); err != nil {
-		log.Error("Failed to back up block", "err", err)
-		return err
-	}
-
-	log.Info("backup block successfully")
-
-	//After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
-	if err := blockpruner.AncientDbReplacer(); err != nil {
-		return err
-	}
-
-	lock.Release()
-	log.Info("Block prune successfully")
+	// TODO: Rick
 	return nil
 }
 
@@ -408,7 +327,15 @@ func pruneState(ctx *cli.Context) error {
 	defer stack.Close()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
-	pruner, err := pruner.NewPruner(chaindb, stack.ResolvePath(""), stack.ResolvePath(config.Eth.TrieCleanCacheJournal), ctx.GlobalUint64(utils.BloomFilterSizeFlag.Name), ctx.GlobalUint64(utils.TriesInMemoryFlag.Name))
+	defer chaindb.Close()
+
+	prunerconfig := pruner.Config{
+		Datadir:   stack.ResolvePath(""),
+		Cachedir:  stack.ResolvePath(config.Eth.TrieCleanCacheJournal),
+		BloomSize: ctx.Uint64(utils.BloomFilterSizeFlag.Name),
+		TriesInMemory: (int)(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)),
+	}
+	pruner, err := pruner.NewPruner(chaindb, prunerconfig)
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)
 		return err
@@ -484,7 +411,20 @@ func verifyState(ctx *cli.Context) error {
 		log.Error("Failed to load head block")
 		return errors.New("no head block")
 	}
-	snaptree, err := snapshot.New(chaindb, trie.NewDatabase(chaindb), 256, 128, headBlock.Root(), false, false, false, false)
+	dbConfig := &trie.Config{}
+	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
+		dbConfig.Snap = snap.ReadOnly
+	}
+	triedb := trie.NewDatabase(chaindb, dbConfig)
+	defer triedb.Close()
+
+	snapConfig := snapshot.Config{
+		CacheSize:  256,
+		Recovery:   false,
+		NoBuild:    true,
+		AsyncBuild: false,
+	}
+	snaptree, err := snapshot.New(snapConfig, chaindb, triedb, 128, headBlock.Root())
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)
 		return err
@@ -517,6 +457,12 @@ func traverseState(ctx *cli.Context) error {
 	defer stack.Close()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	config := &trie.Config{}
+	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
+		config.Snap = snap.ReadOnly
+	}
+	triedb := trie.NewDatabase(chaindb, config)
+	defer triedb.Close()
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
 		log.Error("Failed to load head block")
@@ -541,8 +487,7 @@ func traverseState(ctx *cli.Context) error {
 		root = headBlock.Root()
 		log.Info("Start traversing the state", "root", root, "number", headBlock.NumberU64())
 	}
-	triedb := trie.NewDatabase(chaindb)
-	t, err := trie.NewSecure(root, triedb)
+	t, err := trie.NewStateTrie(trie.StateTrieID(root), triedb)
 	if err != nil {
 		log.Error("Failed to open trie", "root", root, "err", err)
 		return err
@@ -562,8 +507,9 @@ func traverseState(ctx *cli.Context) error {
 			log.Error("Invalid account encountered during traversal", "err", err)
 			return err
 		}
-		if acc.Root != emptyRoot {
-			storageTrie, err := trie.NewSecure(acc.Root, triedb)
+		if acc.Root != types.EmptyRootHash {
+			id := trie.StorageTrieID(root, common.BytesToHash(accIter.Key), acc.Root)
+			storageTrie, err := trie.NewStateTrie(id, triedb)
 			if err != nil {
 				log.Error("Failed to open storage trie", "root", acc.Root, "err", err)
 				return err
@@ -606,6 +552,13 @@ func traverseRawState(ctx *cli.Context) error {
 	defer stack.Close()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	config := &trie.Config{}
+	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
+		config.Snap = snap.ReadOnly
+	}
+	triedb := trie.NewDatabase(chaindb, config)
+	defer triedb.Close()
+
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
 		log.Error("Failed to load head block")
@@ -630,8 +583,7 @@ func traverseRawState(ctx *cli.Context) error {
 		root = headBlock.Root()
 		log.Info("Start traversing the state", "root", root, "number", headBlock.NumberU64())
 	}
-	triedb := trie.NewDatabase(chaindb)
-	t, err := trie.NewSecure(root, triedb)
+	t, err := trie.NewStateTrie(trie.StateTrieID(root), triedb)
 	if err != nil {
 		log.Error("Failed to open trie", "root", root, "err", err)
 		return err
@@ -644,6 +596,11 @@ func traverseRawState(ctx *cli.Context) error {
 		lastReport time.Time
 		start      = time.Now()
 	)
+	reader := triedb.GetReader(root)
+	if reader == nil {
+		log.Error("state is not existent", "root", root)
+		return nil
+	}
 	accIter := t.NodeIterator(nil)
 	for accIter.Next(true) {
 		nodes += 1
@@ -652,7 +609,8 @@ func traverseRawState(ctx *cli.Context) error {
 		// Check the present for non-empty hash node(embedded node doesn't
 		// have their own hash).
 		if node != (common.Hash{}) {
-			if !rawdb.HasTrieNode(chaindb, node) {
+			blob, _ := reader.Node(common.Hash{}, accIter.Path(), node)
+			if len(blob) == 0 {
 				log.Error("Missing trie node(account)", "hash", node)
 				return errors.New("missing account")
 			}
@@ -666,8 +624,9 @@ func traverseRawState(ctx *cli.Context) error {
 				log.Error("Invalid account encountered during traversal", "err", err)
 				return errors.New("invalid account")
 			}
-			if acc.Root != emptyRoot {
-				storageTrie, err := trie.NewSecure(acc.Root, triedb)
+			if acc.Root != types.EmptyRootHash {
+				id := trie.StorageTrieID(root, common.BytesToHash(accIter.LeafKey()), acc.Root)
+				storageTrie, err := trie.NewStateTrie(id, triedb)
 				if err != nil {
 					log.Error("Failed to open storage trie", "root", acc.Root, "err", err)
 					return errors.New("missing storage trie")
@@ -680,7 +639,8 @@ func traverseRawState(ctx *cli.Context) error {
 					// Check the present for non-empty hash node(embedded node doesn't
 					// have their own hash).
 					if node != (common.Hash{}) {
-						if !rawdb.HasTrieNode(chaindb, node) {
+						blob, _ := reader.Node(common.BytesToHash(accIter.LeafKey()), storageIter.Path(), node)
+						if len(blob) == 0 {
 							log.Error("Missing trie node(storage)", "hash", node)
 							return errors.New("missing storage")
 						}
@@ -732,8 +692,21 @@ func dumpState(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	triesInMemory := ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)
-	snaptree, err := snapshot.New(db, trie.NewDatabase(db), int(triesInMemory), 256, root, false, false, false, false)
+	dbConfig := &trie.Config{}
+	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
+		dbConfig.Snap = snap.ReadOnly
+	}
+	triedb := trie.NewDatabase(db, dbConfig)
+	defer triedb.Close()
+
+	snapConfig := snapshot.Config{
+		CacheSize:  256,
+		Recovery:   false,
+		NoBuild:    true,
+		AsyncBuild: false,
+	}
+	snaptree, err := snapshot.New(snapConfig, db, triedb, (int)(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)), root)
+
 	if err != nil {
 		return err
 	}

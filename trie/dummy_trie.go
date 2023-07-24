@@ -70,8 +70,8 @@ func (t *EmptyTrie) GetKey(shaKey []byte) []byte {
 	return nil
 }
 
-func (t *EmptyTrie) Commit(onleaf LeafCallback) (root common.Hash, committed int, err error) {
-	return common.Hash{}, 0, nil
+func (t *EmptyTrie) Commit(onleaf LeafCallback) (common.Hash, *NodeSet) {
+	return common.Hash{}, nil
 }
 
 func (t *EmptyTrie) Hash() common.Hash {
@@ -97,5 +97,29 @@ func (t *EmptyTrie) NodeIterator(start []byte) NodeIterator {
 
 // TryUpdateAccount abstract an account write in the trie.
 func (t *EmptyTrie) TryUpdateAccount(key []byte, account *types.StateAccount) error {
+	return nil
+}
+
+func (t *EmptyTrie) DeleteAccount(address common.Address) error {
+	return nil
+}
+
+func (t *EmptyTrie) DeleteStorage(_ common.Address, key []byte) error {
+	return nil
+}
+
+func (t *EmptyTrie) GetAccount(address common.Address) (*types.StateAccount, error) {
+	return nil, nil
+}
+
+func (t *EmptyTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (t *EmptyTrie) UpdateAccount(address common.Address, acc *types.StateAccount) error {
+	return nil
+}
+
+func (t *EmptyTrie) UpdateStorage(_ common.Address, key, value []byte) error {
 	return nil
 }

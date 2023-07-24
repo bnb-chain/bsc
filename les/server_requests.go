@@ -422,19 +422,19 @@ func handleGetProofs(msg Decoder) (serveRequestFn, uint64, uint64, error) {
 				}
 			default:
 				// Account key specified, open a storage trie
-				account, err := getAccount(statedb.TrieDB(), root, common.BytesToHash(request.AccKey))
+				account, err := getAccount(bc.TrieDB(), root, common.BytesToHash(request.AccKey))
 				if err != nil {
 					p.Log().Warn("Failed to retrieve account for proof", "block", header.Number, "hash", header.Hash(), "account", common.BytesToHash(request.AccKey), "err", err)
 					p.bumpInvalid()
 					continue
 				}
-				trie, err = statedb.OpenStorageTrie(common.BytesToHash(request.AccKey), account.Root)
+				trie, err = statedb.OpenStorageTrie(root, common.BytesToHash(request.AccKey), account.Root)
 				if trie == nil || err != nil {
 					p.Log().Warn("Failed to open storage trie for proof", "block", header.Number, "hash", header.Hash(), "account", common.BytesToHash(request.AccKey), "root", account.Root, "err", err)
 					continue
 				}
 			}
-			// Prove the user's request from the account or stroage trie
+			// Prove the user's request from the account or storage trie
 			if err := trie.Prove(request.Key, request.FromLevel, nodes); err != nil {
 				p.Log().Warn("Failed to prove state request", "block", header.Number, "hash", header.Hash(), "err", err)
 				continue

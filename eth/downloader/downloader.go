@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 var (
@@ -204,6 +205,10 @@ type BlockChain interface {
 
 	// Snapshots returns the blockchain snapshot tree to paused it during sync.
 	Snapshots() *snapshot.Tree
+
+	// TrieDB retrieves the low level trie database used for interacting
+	// with trie nodes.
+	TrieDB() *trie.Database
 }
 
 type DownloadOption func(downloader *Downloader) *Downloader
@@ -267,9 +272,10 @@ func New(checkpoint uint64, stateDb ethdb.Database, mux *event.TypeMux, chain Bl
 		dropPeer:       dropPeer,
 		headerProcCh:   make(chan *headerTask, 1),
 		quitCh:         make(chan struct{}),
-		SnapSyncer:     snap.NewSyncer(stateDb),
+		SnapSyncer:     snap.NewSyncer(stateDb, chain.TrieDB().Scheme()),
 		stateSyncStart: make(chan *stateSync),
 	}
+
 	for _, option := range options {
 		if dl != nil {
 			dl = option(dl)
@@ -579,10 +585,11 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 			d.ancientLimit = 0
 		}
 		frozen, _ := d.stateDB.Ancients() // Ignore the error here since light client can also hit here.
-		itemAmountInAncient, _ := d.stateDB.ItemAmountInAncient()
+		// itemAmountInAncient, _ := d.stateDB.ItemAmountInAncient()
 		// If a part of blockchain data has already been written into active store,
 		// disable the ancient style insertion explicitly.
-		if origin >= frozen && itemAmountInAncient != 0 {
+		// if origin >= frozen && itemAmountInAncient != 0 {
+		if origin >= frozen {
 			d.ancientLimit = 0
 			log.Info("Disabling direct-ancient mode", "origin", origin, "ancient", frozen-1)
 		} else if d.ancientLimit > 0 {

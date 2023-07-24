@@ -463,6 +463,8 @@ func (c *ChainConfig) String() string {
 	)
 }
 
+
+
 // IsHomestead returns whether num is either equal to the homestead block or greater.
 func (c *ChainConfig) IsHomestead(num *big.Int) bool {
 	return isForked(c.HomesteadBlock, num)

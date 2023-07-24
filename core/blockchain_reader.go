@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 // CurrentHeader retrieves the current head header of the canonical chain. The
@@ -40,6 +41,12 @@ func (bc *BlockChain) CurrentHeader() *types.Header {
 // block is retrieved from the blockchain's internal cache.
 func (bc *BlockChain) CurrentBlock() *types.Block {
 	return bc.currentBlock.Load().(*types.Block)
+}
+
+// CurrentSnapBlock retrieves the current snap-sync head block of the canonical
+// chain. The block is retrieved from the blockchain's internal cache.
+func (bc *BlockChain) CurrentSnapBlock() *types.Header {
+        return bc.currentSnapBlock.Load()
 }
 
 // CurrentFinalBlock retrieves the current finalized block of the canonical
@@ -392,6 +399,11 @@ func (bc *BlockChain) SetTxLookupLimit(limit uint64) {
 // stale transaction indices.
 func (bc *BlockChain) TxLookupLimit() uint64 {
 	return bc.txLookupLimit
+}
+
+// TrieDB retrieves the low level trie database used for data storage.
+func (bc *BlockChain) TrieDB() *trie.Database {
+	return bc.triedb
 }
 
 // SubscribeRemovedLogsEvent registers a subscription of RemovedLogsEvent.

@@ -18,6 +18,7 @@ package snapshot
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"math/rand"
 	"testing"
 
@@ -73,17 +74,17 @@ func TestMergeBasics(t *testing.T) {
 		if rand.Intn(2) == 0 {
 			accStorage := make(map[common.Hash][]byte)
 			value := make([]byte, 32)
-			rand.Read(value)
+			crand.Read(value)
 			accStorage[randomHash()] = value
 			storage[h] = accStorage
 		}
 	}
 	// Add some (identical) layers on top
-	parent := newDiffLayer(emptyLayer(), common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage), nil)
-	child := newDiffLayer(parent, common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage), nil)
-	child = newDiffLayer(child, common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage), nil)
-	child = newDiffLayer(child, common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage), nil)
-	child = newDiffLayer(child, common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage), nil)
+	parent := newDiffLayer(emptyLayer(), common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage))
+	child := newDiffLayer(parent, common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage))
+	child = newDiffLayer(child, common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage))
+	child = newDiffLayer(child, common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage))
+	child = newDiffLayer(child, common.Hash{}, copyDestructs(destructs), copyAccounts(accounts), copyStorage(storage))
 	// And flatten
 	merged := (child.flatten()).(*diffLayer)
 
@@ -151,13 +152,13 @@ func TestMergeDelete(t *testing.T) {
 		}
 	}
 	// Add some flipAccs-flopping layers on top
-	parent := newDiffLayer(emptyLayer(), common.Hash{}, flipDrops(), flipAccs(), storage, nil)
-	child := parent.Update(common.Hash{}, flopDrops(), flopAccs(), storage, nil)
-	child = child.Update(common.Hash{}, flipDrops(), flipAccs(), storage, nil)
-	child = child.Update(common.Hash{}, flopDrops(), flopAccs(), storage, nil)
-	child = child.Update(common.Hash{}, flipDrops(), flipAccs(), storage, nil)
-	child = child.Update(common.Hash{}, flopDrops(), flopAccs(), storage, nil)
-	child = child.Update(common.Hash{}, flipDrops(), flipAccs(), storage, nil)
+	parent := newDiffLayer(emptyLayer(), common.Hash{}, flipDrops(), flipAccs(), storage)
+	child := parent.Update(common.Hash{}, flopDrops(), flopAccs(), storage)
+	child = child.Update(common.Hash{}, flipDrops(), flipAccs(), storage)
+	child = child.Update(common.Hash{}, flopDrops(), flopAccs(), storage)
+	child = child.Update(common.Hash{}, flipDrops(), flipAccs(), storage)
+	child = child.Update(common.Hash{}, flopDrops(), flopAccs(), storage)
+	child = child.Update(common.Hash{}, flipDrops(), flipAccs(), storage)
 
 	if data, _ := child.Account(h1); data == nil {
 		t.Errorf("last diff layer: expected %x account to be non-nil", h1)
@@ -209,7 +210,7 @@ func TestInsertAndMerge(t *testing.T) {
 			accounts  = make(map[common.Hash][]byte)
 			storage   = make(map[common.Hash]map[common.Hash][]byte)
 		)
-		parent = newDiffLayer(emptyLayer(), common.Hash{}, destructs, accounts, storage, nil)
+		parent = newDiffLayer(emptyLayer(), common.Hash{}, destructs, accounts, storage)
 	}
 	{
 		var (
@@ -220,7 +221,7 @@ func TestInsertAndMerge(t *testing.T) {
 		accounts[acc] = randomAccount()
 		storage[acc] = make(map[common.Hash][]byte)
 		storage[acc][slot] = []byte{0x01}
-		child = newDiffLayer(parent, common.Hash{}, destructs, accounts, storage, nil)
+		child = newDiffLayer(parent, common.Hash{}, destructs, accounts, storage)
 	}
 	// And flatten
 	merged := (child.flatten()).(*diffLayer)
@@ -256,7 +257,7 @@ func BenchmarkSearch(b *testing.B) {
 		for i := 0; i < 10000; i++ {
 			accounts[randomHash()] = randomAccount()
 		}
-		return newDiffLayer(parent, common.Hash{}, destructs, accounts, storage, nil)
+		return newDiffLayer(parent, common.Hash{}, destructs, accounts, storage)
 	}
 	var layer snapshot
 	layer = emptyLayer()
@@ -294,11 +295,11 @@ func BenchmarkSearchSlot(b *testing.B) {
 		accStorage := make(map[common.Hash][]byte)
 		for i := 0; i < 5; i++ {
 			value := make([]byte, 32)
-			rand.Read(value)
+			crand.Read(value)
 			accStorage[randomHash()] = value
 			storage[accountKey] = accStorage
 		}
-		return newDiffLayer(parent, common.Hash{}, destructs, accounts, storage, nil)
+		return newDiffLayer(parent, common.Hash{}, destructs, accounts, storage)
 	}
 	var layer snapshot
 	layer = emptyLayer()
@@ -330,13 +331,12 @@ func BenchmarkFlatten(b *testing.B) {
 			accStorage := make(map[common.Hash][]byte)
 			for i := 0; i < 20; i++ {
 				value := make([]byte, 32)
-				rand.Read(value)
+				crand.Read(value)
 				accStorage[randomHash()] = value
-
 			}
 			storage[accountKey] = accStorage
 		}
-		return newDiffLayer(parent, common.Hash{}, destructs, accounts, storage, nil)
+		return newDiffLayer(parent, common.Hash{}, destructs, accounts, storage)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -380,13 +380,12 @@ func BenchmarkJournal(b *testing.B) {
 			accStorage := make(map[common.Hash][]byte)
 			for i := 0; i < 200; i++ {
 				value := make([]byte, 32)
-				rand.Read(value)
+				crand.Read(value)
 				accStorage[randomHash()] = value
-
 			}
 			storage[accountKey] = accStorage
 		}
-		return newDiffLayer(parent, common.Hash{}, destructs, accounts, storage, nil)
+		return newDiffLayer(parent, common.Hash{}, destructs, accounts, storage)
 	}
 	layer := snapshot(emptyLayer())
 	for i := 1; i < 128; i++ {

@@ -218,6 +218,8 @@ type Config struct {
 
 	// VoteJournalDir is the directory to store votes in the fast finality feature.
 	VoteJournalDir string `toml:",omitempty"`
+
+	DBEngine string `toml:",omitempty"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into

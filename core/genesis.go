@@ -182,7 +182,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	// We have the genesis block in database(perhaps in ancient database)
 	// but the corresponding state is missing.
 	header := rawdb.ReadHeader(db, stored, 0)
-	if _, err := state.New(header.Root, state.NewDatabaseWithConfigAndCache(db, nil), nil); err != nil {
+	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, nil, nil), nil); err != nil {
 		if genesis == nil {
 			genesis = DefaultGenesisBlock()
 		}
@@ -310,7 +310,7 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 		}
 	}
 	statedb.Commit(nil)
-	statedb.Database().TrieDB().Commit(root, true, nil)
+	statedb.Database().TrieDB().Commit(root, true)
 
 	return types.NewBlock(head, nil, nil, nil, trie.NewStackTrie(nil))
 }

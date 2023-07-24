@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -157,7 +156,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 		return nil, nil, 0, err
 	}
 	for des := range snapDestructs {
-		stateTrie.TryDelete(des[:])
+		stateTrie.DeleteAccount(des)
 	}
 	threads := gopool.Threads(len(snapAccounts))
 
@@ -196,19 +195,13 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				}
 
 				// fetch previous state
-				var previousAccount types.StateAccount
 				stateMux.Lock()
-				enc, err := stateTrie.TryGet(diffAccount[:])
+				// enc, err := stateTrie.TryGet(diffAccount[:])
+				previousAccount, err := stateTrie.GetAccount(diffAccount)
 				stateMux.Unlock()
 				if err != nil {
 					errChan <- err
 					return
-				}
-				if len(enc) != 0 {
-					if err := rlp.DecodeBytes(enc, &previousAccount); err != nil {
-						errChan <- err
-						return
-					}
 				}
 				if latestAccount.Balance == nil {
 					latestAccount.Balance = new(big.Int)
@@ -220,7 +213,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 					previousAccount.Root = types.EmptyRootHash
 				}
 				if len(previousAccount.CodeHash) == 0 {
-					previousAccount.CodeHash = types.EmptyCodeHash
+					previousAccount.CodeHash = types.EmptyCodeHash.Bytes()
 				}
 
 				// skip no change account
@@ -240,7 +233,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				// update code
 				codeHash := common.BytesToHash(latestAccount.CodeHash)
 				if !bytes.Equal(latestAccount.CodeHash, previousAccount.CodeHash) &&
-					!bytes.Equal(latestAccount.CodeHash, types.EmptyCodeHash) {
+					!bytes.Equal(latestAccount.CodeHash, types.EmptyCodeHash.Bytes()) {
 					if code, exist := fullDiffCode[codeHash]; exist {
 						if crypto.Keccak256Hash(code) != codeHash {
 							errChan <- fmt.Errorf("code and code hash mismatch, account %s", diffAccount.String())
@@ -261,7 +254,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				//update storage
 				latestRoot := common.BytesToHash(latestAccount.Root)
 				if latestRoot != previousAccount.Root {
-					accountTrie, err := statedb.Database().OpenStorageTrie(addrHash, previousAccount.Root)
+					accountTrie, err := statedb.Database().OpenStorageTrie(statedb.GetOriginalRoot(), addrHash, previousAccount.Root)
 					if err != nil {
 						errChan <- err
 						return
@@ -275,11 +268,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 						return
 					}
 					for k, v := range storageChange {
-						if len(v) != 0 {
-							accountTrie.TryUpdate([]byte(k), v)
-						} else {
-							accountTrie.TryDelete([]byte(k))
-						}
+						accountTrie.UpdateStorage(diffAccount, []byte(k), v)
 					}
 
 					// check storage root
@@ -304,13 +293,13 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 					Root:     common.BytesToHash(latestAccount.Root),
 					CodeHash: latestAccount.CodeHash,
 				}
-				bz, err := rlp.EncodeToBytes(&latestStateAccount)
-				if err != nil {
-					errChan <- err
-					return
-				}
+				// bz, err := rlp.EncodeToBytes(&latestStateAccount)
+				// if err != nil {
+				//	errChan <- err
+				//	return
+				// }
 				stateMux.Lock()
-				err = stateTrie.TryUpdate(diffAccount[:], bz)
+				err = stateTrie.UpdateAccount(diffAccount, &latestStateAccount)
 				stateMux.Unlock()
 				if err != nil {
 					errChan <- err
@@ -488,6 +477,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	}
 
 	// Set the receipt logs and create the bloom filter.
+	// receipt.Logs = statedb.GetLogs(tx.Hash(), blockNumber.Uint64(), blockHash)
 	receipt.Logs = statedb.GetLogs(tx.Hash(), blockHash)
 	receipt.BlockHash = blockHash
 	receipt.BlockNumber = blockNumber

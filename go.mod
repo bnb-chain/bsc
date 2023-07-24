@@ -81,9 +81,15 @@ require (
 )
 
 require (
+	github.com/cockroachdb/pebble v0.0.0-20230209160836-829675f94811
+	github.com/gofrs/flock v0.8.1
+)
+
+require (
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1 // indirect
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
 	github.com/BurntSushi/toml v1.2.1 // indirect
+	github.com/DataDog/zstd v1.5.2 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20200805130819-fd197cf57d96 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.0.2 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.3.33 // indirect
@@ -96,6 +102,9 @@ require (
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chzyer/readline v1.5.0 // indirect
+	github.com/cockroachdb/errors v1.9.1 // indirect
+	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
+	github.com/cockroachdb/redact v1.1.3 // indirect
 	github.com/containerd/cgroups v1.0.4 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/cosmos/gogoproto v1.4.1 // indirect
@@ -111,6 +120,7 @@ require (
 	github.com/flynn/noise v1.0.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
+	github.com/getsentry/sentry-go v0.18.0 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect

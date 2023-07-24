@@ -43,8 +43,7 @@ type journal struct {
 // newJournal creates a new initialized journal.
 func newJournal() *journal {
 	return &journal{
-		dirties: make(map[common.Address]int, defaultNumOfSlots),
-		entries: make([]journalEntry, 0, defaultNumOfSlots),
+		dirties: make(map[common.Address]int),
 	}
 }
 
@@ -91,7 +90,7 @@ type (
 		account *common.Address
 	}
 	resetObjectChange struct {
-		prev         *StateObject
+		prev         *stateObject
 		prevdestruct bool
 	}
 	suicideChange struct {
@@ -139,6 +138,11 @@ type (
 		address *common.Address
 		slot    *common.Hash
 	}
+
+	transientStorageChange struct {
+		account       *common.Address
+		key, prevalue common.Hash
+	}
 )
 
 func (ch createObjectChange) revert(s *StateDB) {
@@ -151,9 +155,9 @@ func (ch createObjectChange) dirtied() *common.Address {
 }
 
 func (ch resetObjectChange) revert(s *StateDB) {
-	s.SetStateObject(ch.prev)
-	if !ch.prevdestruct && s.snap != nil {
-		delete(s.snapDestructs, ch.prev.address)
+	s.setStateObject(ch.prev)
+	if !ch.prevdestruct {
+		delete(s.stateObjectsDestruct, ch.prev.address)
 	}
 }
 
@@ -214,6 +218,14 @@ func (ch storageChange) dirtied() *common.Address {
 	return ch.account
 }
 
+func (ch transientStorageChange) revert(s *StateDB) {
+	s.setTransientState(*ch.account, ch.key, ch.prevalue)
+}
+
+func (ch transientStorageChange) dirtied() *common.Address {
+	return nil
+}
+
 func (ch refundChange) revert(s *StateDB) {
 	s.refund = ch.prev
 }
@@ -254,9 +266,7 @@ func (ch accessListAddAccountChange) revert(s *StateDB) {
 		(addr) at this point, since no storage adds can remain when come upon
 		a single (addr) change.
 	*/
-	if s.accessList != nil {
-		s.accessList.DeleteAddress(*ch.address)
-	}
+	s.accessList.DeleteAddress(*ch.address)
 }
 
 func (ch accessListAddAccountChange) dirtied() *common.Address {
@@ -264,9 +274,7 @@ func (ch accessListAddAccountChange) dirtied() *common.Address {
 }
 
 func (ch accessListAddSlotChange) revert(s *StateDB) {
-	if s.accessList != nil {
-		s.accessList.DeleteSlot(*ch.address, *ch.slot)
-	}
+	s.accessList.DeleteSlot(*ch.address, *ch.slot)
 }
 
 func (ch accessListAddSlotChange) dirtied() *common.Address {

@@ -68,7 +68,7 @@ var (
 	bloomFuncs = math.Round((bloomSize / float64(aggregatorItemLimit)) * math.Log(2))
 
 	// the bloom offsets are runtime constants which determines which part of the
-	// the account/storage hash the hasher functions looks at, to determine the
+	// account/storage hash the hasher functions looks at, to determine the
 	// bloom key for an account/slot. This is randomized at init(), so that the
 	// global population of nodes do not all display the exact same behaviour with
 	// regards to bloom content
@@ -103,7 +103,7 @@ type diffLayer struct {
 	memory uint64     // Approximate guess as to how much memory we use
 
 	root  common.Hash // Root hash to which this snapshot diff belongs to
-	stale uint32      // Signals that the layer became stale (state progressed)
+	stale atomic.Bool // Signals that the layer became stale (state progressed)
 
 	// destructSet is a very special helper marker. If an account is marked as
 	// deleted, then it's recorded in this set. However it's allowed that an account
@@ -118,8 +118,8 @@ type diffLayer struct {
 	storageList map[common.Hash][]common.Hash          // List of storage slots for iterated retrievals, one per account. Any existing lists are sorted if non-nil
 	storageData map[common.Hash]map[common.Hash][]byte // Keyed storage slots for direct retrieval. one per account (nil means deleted)
 
-	verifiedCh chan struct{} // the difflayer is verified when verifiedCh is nil or closed
-	valid      bool          // mark the difflayer is valid or not.
+        verifiedCh chan struct{} // the difflayer is verified when verifiedCh is nil or closed
+        valid      bool          // mark the difflayer is valid or not.
 
 	diffed *bloomfilter.Filter // Bloom filter tracking all the diffed items up to the disk layer
 
@@ -191,7 +191,6 @@ func newDiffLayer(parent snapshot, root common.Hash, destructs map[common.Hash]s
 	default:
 		panic("unknown parent type")
 	}
-
 	// Sanity check that accounts or storage slots are never nil
 	for accountHash, blob := range accounts {
 		if blob == nil {
@@ -306,7 +305,7 @@ func (dl *diffLayer) Parent() snapshot {
 // Stale return whether this layer has become stale (was flattened across) or if
 // it's still live.
 func (dl *diffLayer) Stale() bool {
-	return atomic.LoadUint32(&dl.stale) != 0
+	return dl.stale.Load()
 }
 
 // Account directly retrieves the account associated with a particular hash in
@@ -506,7 +505,7 @@ func (dl *diffLayer) flatten() snapshot {
 
 	// Before actually writing all our data to the parent, first ensure that the
 	// parent hasn't been 'corrupted' by someone else already flattening into it
-	if atomic.SwapUint32(&parent.stale, 1) != 0 {
+	if parent.stale.Swap(true) {
 		panic("parent diff layer is stale") // we've flattened into the same parent from two children, boo
 	}
 	// Overwrite all the updated accounts blindly, merge the sorted list

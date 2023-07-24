@@ -450,7 +450,10 @@ func (api *PrivateDebugAPI) StorageRangeAt(blockHash common.Hash, txIndex int, c
 	if err != nil {
 		return StorageRangeResult{}, err
 	}
-	st := statedb.StorageTrie(contractAddress)
+	st, err := statedb.StorageTrie(contractAddress)
+	if err != nil {
+		return StorageRangeResult{}, err
+	}
 	if st == nil {
 		return StorageRangeResult{}, fmt.Errorf("account %x doesn't exist", contractAddress)
 	}
@@ -541,11 +544,11 @@ func (api *PrivateDebugAPI) getModifiedAccounts(startBlock, endBlock *types.Bloc
 	}
 	triedb := api.eth.BlockChain().StateCache().TrieDB()
 
-	oldTrie, err := trie.NewSecure(startBlock.Root(), triedb)
+	oldTrie, err := trie.NewStateTrie(trie.StateTrieID(startBlock.Root()), triedb)
 	if err != nil {
 		return nil, err
 	}
-	newTrie, err := trie.NewSecure(endBlock.Root(), triedb)
+	newTrie, err := trie.NewStateTrie(trie.StateTrieID(endBlock.Root()), triedb)
 	if err != nil {
 		return nil, err
 	}

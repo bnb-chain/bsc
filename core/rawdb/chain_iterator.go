@@ -1,4 +1,4 @@
-// Copyright 2019 The go-ethereum Authors
+// Copyright 2020 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -35,7 +34,7 @@ import (
 // injects into the database the block hash->number mappings.
 func InitDatabaseFromFreezer(db ethdb.Database) {
 	// If we can't access the freezer or it's empty, abort
-	frozen, err := db.ItemAmountInAncient()
+	frozen, err := db.Ancients()
 	if err != nil || frozen == 0 {
 		return
 	}
@@ -44,15 +43,14 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 		start  = time.Now()
 		logged = start.Add(-7 * time.Second) // Unindex during import is fast, don't double log
 		hash   common.Hash
-		offset = db.AncientOffSet()
 	)
-	for i := uint64(0) + offset; i < frozen+offset; i++ {
+	for i := uint64(0); i < frozen; {
 		// We read 100K hashes at a time, for a total of 3.2M
 		count := uint64(100_000)
-		if i+count > frozen+offset {
-			count = frozen + offset - i
+		if i+count > frozen {
+			count = frozen - i
 		}
-		data, err := db.AncientRange(freezerHashTable, i, count, 32*count)
+		data, err := db.AncientRange(ChainFreezerHashTable, i, count, 32*count)
 		if err != nil {
 			log.Crit("Failed to init database from freezer", "err", err)
 		}
@@ -100,10 +98,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 		number uint64
 		rlp    rlp.RawValue
 	}
-	if offset := db.AncientOffSet(); offset > from {
-		from = offset
-	}
-	if to <= from {
+	if to == from {
 		return nil
 	}
 	threads := to - from
@@ -137,11 +132,12 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 		}
 	}
 	// process runs in parallel
-	nThreadsAlive := int32(threads)
+	var nThreadsAlive atomic.Int32
+	nThreadsAlive.Store(int32(threads))
 	process := func() {
 		defer func() {
 			// Last processor closes the result channel
-			if atomic.AddInt32(&nThreadsAlive, -1) == 0 {
+			if nThreadsAlive.Add(-1) == 0 {
 				close(hashesCh)
 			}
 		}()
@@ -169,9 +165,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 	}
 	go lookup() // start the sequential db accessor
 	for i := 0; i < int(threads); i++ {
-		gopool.Submit(func() {
-			process()
-		})
+		go process()
 	}
 	return hashesCh
 }
@@ -186,9 +180,6 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 // signal received.
 func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool) {
 	// short circuit for invalid range
-	if offset := db.AncientOffSet(); offset > from {
-		from = offset
-	}
 	if from >= to {
 		return
 	}
@@ -201,7 +192,7 @@ func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan
 		// in to be [to-1]. Therefore, setting lastNum to means that the
 		// prqueue gap-evaluation will work correctly
 		lastNum = to
-		queue   = prque.New(nil)
+		queue   = prque.New[int64, *blockTxHashes](nil)
 		// for stats reporting
 		blocks, txs = 0, 0
 	)
@@ -220,7 +211,7 @@ func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan
 				break
 			}
 			// Next block available, pop it off and index it
-			delivery := queue.PopItem().(*blockTxHashes)
+			delivery := queue.PopItem()
 			lastNum = delivery.number
 			WriteTxLookupEntries(batch, delivery.number, delivery.hashes)
 			blocks++
@@ -253,7 +244,7 @@ func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan
 	case <-interrupt:
 		log.Debug("Transaction indexing interrupted", "blocks", blocks, "txs", txs, "tail", lastNum, "elapsed", common.PrettyDuration(time.Since(start)))
 	default:
-		log.Info("Indexed transactions", "blocks", blocks, "txs", txs, "tail", lastNum, "elapsed", common.PrettyDuration(time.Since(start)))
+		log.Debug("Indexed transactions", "blocks", blocks, "txs", txs, "tail", lastNum, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
 }
 
@@ -281,9 +272,6 @@ func indexTransactionsForTesting(db ethdb.Database, from uint64, to uint64, inte
 // signal received.
 func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool) {
 	// short circuit for invalid range
-	if offset := db.AncientOffSet(); offset > from {
-		from = offset
-	}
 	if from >= to {
 		return
 	}
@@ -295,7 +283,7 @@ func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt ch
 		// we expect the first number to come in to be [from]. Therefore, setting
 		// nextNum to from means that the prqueue gap-evaluation will work correctly
 		nextNum = from
-		queue   = prque.New(nil)
+		queue   = prque.New[int64, *blockTxHashes](nil)
 		// for stats reporting
 		blocks, txs = 0, 0
 	)
@@ -312,7 +300,7 @@ func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt ch
 			if hook != nil && !hook(nextNum) {
 				break
 			}
-			delivery := queue.PopItem().(*blockTxHashes)
+			delivery := queue.PopItem()
 			nextNum = delivery.number + 1
 			DeleteTxLookupEntries(batch, delivery.hashes)
 			txs += len(delivery.hashes)
@@ -348,7 +336,7 @@ func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt ch
 	case <-interrupt:
 		log.Debug("Transaction unindexing interrupted", "blocks", blocks, "txs", txs, "tail", to, "elapsed", common.PrettyDuration(time.Since(start)))
 	default:
-		log.Info("Unindexed transactions", "blocks", blocks, "txs", txs, "tail", to, "elapsed", common.PrettyDuration(time.Since(start)))
+		log.Debug("Unindexed transactions", "blocks", blocks, "txs", txs, "tail", to, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
 }
 

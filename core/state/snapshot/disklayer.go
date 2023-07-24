@@ -49,19 +49,6 @@ func (dl *diskLayer) Root() common.Hash {
 	return dl.root
 }
 
-func (dl *diskLayer) WaitAndGetVerifyRes() bool {
-	return true
-}
-
-func (dl *diskLayer) MarkValid() {}
-
-func (dl *diskLayer) Verified() bool {
-	return true
-}
-
-func (dl *diskLayer) CorrectAccounts(map[common.Hash][]byte) {
-}
-
 // Parent always returns nil as there's no layer below the disk.
 func (dl *diskLayer) Parent() snapshot {
 	return nil
@@ -74,12 +61,6 @@ func (dl *diskLayer) Stale() bool {
 	defer dl.lock.RUnlock()
 
 	return dl.stale
-}
-
-// Accounts directly retrieves all accounts in current snapshot in
-// the snapshot slim data format.
-func (dl *diskLayer) Accounts() (map[common.Hash]*Account, error) {
-	return nil, nil
 }
 
 // Account directly retrieves the account associated with a particular hash in
@@ -183,3 +164,23 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 func (dl *diskLayer) Update(blockHash common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer {
 	return newDiffLayer(dl, blockHash, destructs, accounts, storage, verified)
 }
+
+func (dl *diskLayer) WaitAndGetVerifyRes() bool {
+        return true
+}
+
+func (dl *diskLayer) MarkValid() {}
+
+func (dl *diskLayer) Verified() bool {
+        return true
+}
+
+func (dl *diskLayer) CorrectAccounts(map[common.Hash][]byte) {
+}
+
+// Accounts directly retrieves all accounts in current snapshot in
+// the snapshot slim data format.
+func (dl *diskLayer) Accounts() (map[common.Hash]*Account, error) {
+        return nil, nil
+}
+

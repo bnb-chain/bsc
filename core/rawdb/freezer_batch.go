@@ -18,7 +18,6 @@ package rawdb
 
 import (
 	"fmt"
-	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -34,10 +33,10 @@ type freezerBatch struct {
 	tables map[string]*freezerTableBatch
 }
 
-func newFreezerBatch(f *freezer) *freezerBatch {
+func newFreezerBatch(f *Freezer) *freezerBatch {
 	batch := &freezerBatch{tables: make(map[string]*freezerTableBatch, len(f.tables))}
 	for kind, table := range f.tables {
-		batch.tables[kind] = table.newBatch(f.offset)
+		batch.tables[kind] = table.newBatch()
 	}
 	return batch
 }
@@ -91,15 +90,11 @@ type freezerTableBatch struct {
 	indexBuffer []byte
 	curItem     uint64 // expected index of next append
 	totalBytes  int64  // counts written bytes since reset
-	offset      uint64
 }
 
 // newBatch creates a new batch for the freezer table.
-func (t *freezerTable) newBatch(offset uint64) *freezerTableBatch {
-	var batch = &freezerTableBatch{
-		t:      t,
-		offset: offset,
-	}
+func (t *freezerTable) newBatch() *freezerTableBatch {
+	batch := &freezerTableBatch{t: t}
 	if !t.noCompression {
 		batch.sb = new(snappyBuffer)
 	}
@@ -111,8 +106,7 @@ func (t *freezerTable) newBatch(offset uint64) *freezerTableBatch {
 func (batch *freezerTableBatch) reset() {
 	batch.dataBuffer = batch.dataBuffer[:0]
 	batch.indexBuffer = batch.indexBuffer[:0]
-	curItem := batch.t.items + batch.offset
-	batch.curItem = atomic.LoadUint64(&curItem)
+	batch.curItem = batch.t.items.Load()
 	batch.totalBytes = 0
 }
 
@@ -196,7 +190,7 @@ func (batch *freezerTableBatch) commit() error {
 	dataSize := int64(len(batch.dataBuffer))
 	batch.dataBuffer = batch.dataBuffer[:0]
 
-	// Write index.
+	// Write indices.
 	_, err = batch.t.index.Write(batch.indexBuffer)
 	if err != nil {
 		return err
@@ -206,8 +200,7 @@ func (batch *freezerTableBatch) commit() error {
 
 	// Update headBytes of table.
 	batch.t.headBytes += dataSize
-	items := batch.curItem - batch.offset
-	atomic.StoreUint64(&batch.t.items, items)
+	batch.t.items.Store(batch.curItem)
 
 	// Update metrics.
 	batch.t.sizeGauge.Inc(dataSize + indexSize)

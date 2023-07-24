@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/snap"
 	"github.com/olekukonko/tablewriter"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -455,7 +456,7 @@ func dbPut(ctx *cli.Context) error {
 
 // dbDumpTrie shows the key-value slots of a given storage trie
 func dbDumpTrie(ctx *cli.Context) error {
-	if ctx.NArg() < 1 {
+	if ctx.NArg() < 3 {
 		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
 	}
 	stack, _ := makeConfigNode(ctx)
@@ -463,30 +464,48 @@ func dbDumpTrie(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
+
+	config := &trie.Config{}
+	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
+		config.Snap = snap.ReadOnly
+	}
+	triedb := trie.NewDatabase(db, config)
+	defer triedb.Close()
+
 	var (
-		root  []byte
-		start []byte
-		max   = int64(-1)
-		err   error
+		state   []byte
+		storage []byte
+		account []byte
+		start   []byte
+		max     = int64(-1)
+		err     error
 	)
-	if root, err = hexutil.Decode(ctx.Args().Get(0)); err != nil {
-		log.Info("Could not decode the root", "error", err)
+	if state, err = hexutil.Decode(ctx.Args().Get(0)); err != nil {
+		log.Info("Could not decode the state root", "error", err)
 		return err
 	}
-	stRoot := common.BytesToHash(root)
-	if ctx.NArg() >= 2 {
-		if start, err = hexutil.Decode(ctx.Args().Get(1)); err != nil {
+	if account, err = hexutil.Decode(ctx.Args().Get(1)); err != nil {
+		log.Info("Could not decode the account hash", "error", err)
+		return err
+	}
+	if storage, err = hexutil.Decode(ctx.Args().Get(2)); err != nil {
+		log.Info("Could not decode the storage trie root", "error", err)
+		return err
+	}
+	if ctx.NArg() > 3 {
+		if start, err = hexutil.Decode(ctx.Args().Get(3)); err != nil {
 			log.Info("Could not decode the seek position", "error", err)
 			return err
 		}
 	}
-	if ctx.NArg() >= 3 {
-		if max, err = strconv.ParseInt(ctx.Args().Get(2), 10, 64); err != nil {
+	if ctx.NArg() > 4 {
+		if max, err = strconv.ParseInt(ctx.Args().Get(4), 10, 64); err != nil {
 			log.Info("Could not decode the max count", "error", err)
 			return err
 		}
 	}
-	theTrie, err := trie.New(stRoot, trie.NewDatabase(db))
+	id := trie.StorageTrieID(common.BytesToHash(state), common.BytesToHash(account), common.BytesToHash(storage))
+	theTrie, err := trie.New(id, triedb)
 	if err != nil {
 		return err
 	}
