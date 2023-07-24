@@ -57,6 +57,8 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			utils.IdentityFlag,
 			utils.LightKDFFlag,
 			utils.WhitelistFlag,
+			utils.PathBasedSchemeFlag,
+			utils.StateHistoryFlag,
 			utils.TriesInMemoryFlag,
 			utils.BlockAmountReserved,
 			utils.CheckSnapshotWithMPT,
