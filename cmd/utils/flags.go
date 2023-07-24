@@ -287,6 +287,11 @@ var (
 		Name:     "trie.path-based",
 		Usage:    "Enables experiment path-based state scheme (default = disabled)",
 	}
+	StateHistoryFlag = cli.Uint64Flag{
+		Name:     "trie.state-history",
+		Usage:    "Number of recent blocks to maintain state history for (default = 90,000 blocks 0 = entire chain)",
+		Value:    ethconfig.Defaults.StateHistory,
+	}
 	defaultVerifyMode   = ethconfig.Defaults.TriesVerifyMode
 	TriesVerifyModeFlag = TextMarshalerFlag{
 		Name: "tries-verify-mode",
@@ -930,6 +935,11 @@ var (
 	VoteJournalDirFlag = DirectoryFlag{
 		Name:  "vote-journal-path",
 		Usage: "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
+	}
+	// StateSchemeFlags is the flag group of all trie node scheme flags
+	StateSchemeFlags = []cli.Flag{
+		StateHistoryFlag,
+		PathBasedSchemeFlag,
 	}
 )
 
@@ -1742,6 +1752,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.Preimages = true
 		log.Info("Enabling recording of key preimages since archive mode is used")
 	}
+	if ctx.IsSet(StateHistoryFlag.Name) {
+		cfg.StateHistory = ctx.Uint64(StateHistoryFlag.Name)
+	}
+	if ctx.IsSet(PathBasedSchemeFlag.Name) {
+		cfg.StateScheme = ParseStateScheme(ctx)
+	}
 	if ctx.GlobalIsSet(TxLookupLimitFlag.Name) {
 		cfg.TxLookupLimit = ctx.GlobalUint64(TxLookupLimitFlag.Name)
 	}
@@ -2195,4 +2211,12 @@ func MigrateFlags(action func(ctx *cli.Context) error) func(*cli.Context) error 
 		}
 		return action(ctx)
 	}
+}
+
+// ParseStateScheme resolves scheme identifier from CLI flag.
+func ParseStateScheme(ctx *cli.Context) string {
+	if ctx.Bool(PathBasedSchemeFlag.Name) {
+		return rawdb.PathScheme
+	}
+	return rawdb.HashScheme
 }
