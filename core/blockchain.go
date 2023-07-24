@@ -317,7 +317,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		NoTries:   cacheConfig.NoTries,
 	}
 	if cacheConfig.NodeScheme == rawdb.PathScheme {
-	log.Info("State trie is running in path mode")
+		log.Info("State trie is running in path mode")
 		config.Snap = &snap.Config{
 			StateHistory: cacheConfig.StateHistory,
 			DirtySize:    cacheConfig.TrieDirtyLimit,

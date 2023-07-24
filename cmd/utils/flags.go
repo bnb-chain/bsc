@@ -2162,6 +2162,9 @@ func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chai
 	if ctx.GlobalIsSet(TriesInMemoryFlag.Name) {
 		cache.TriesInMemory = ctx.GlobalUint64(TriesInMemoryFlag.Name)
 	}
+	if ctx.IsSet(PathBasedSchemeFlag.Name) {
+		cache.NodeScheme = ParseStateScheme(ctx)
+	}
 	vmcfg := vm.Config{EnablePreimageRecording: ctx.GlobalBool(VMEnableDebugFlag.Name)}
 
 	// TODO(rjl493456442) disable snapshot generation/wiping if the chain is read only.
