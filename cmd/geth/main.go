@@ -119,6 +119,8 @@ var (
 		utils.WhitelistFlag,
 		utils.BloomFilterSizeFlag,
 		utils.TriesInMemoryFlag,
+		utils.PathBasedSchemeFlag,
+		utils.StateHistoryFlag,
 		utils.CacheFlag,
 		utils.CacheDatabaseFlag,
 		utils.CacheTrieFlag,

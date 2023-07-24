@@ -2145,6 +2145,8 @@ func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chai
 		TriesInMemory:     ethconfig.Defaults.TriesInMemory,
 		SnapshotLimit:     ethconfig.Defaults.SnapshotCache,
 		Preimages:         ctx.GlobalBool(CachePreimagesFlag.Name),
+		NodeScheme:          ParseStateScheme(ctx),
+                StateHistory:        ctx.Uint64(StateHistoryFlag.Name),
 	}
 	if cache.TrieDirtyDisabled && !cache.Preimages {
 		cache.Preimages = true
