@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/protolambda/ztyp/view"
 	"math/big"
 	"reflect"
 	"regexp"
@@ -113,7 +114,7 @@ func (args SendTxArgs) String() string {
 }
 
 // ToTransaction converts the arguments to a transaction.
-func (args *SendTxArgs) ToTransaction() *types.Transaction {
+func (args *SendTxArgs) ToTransaction() (*types.Transaction, error) {
 	// Add the To-field, if specified
 	var to *common.Address
 	if args.To != nil {
@@ -130,6 +131,33 @@ func (args *SendTxArgs) ToTransaction() *types.Transaction {
 
 	var data types.TxData
 	switch {
+	case args.Blobs != nil:
+		al := types.AccessList{}
+		if args.AccessList != nil {
+			al = *args.AccessList
+		}
+		msg := types.BlobTxMessage{}
+		msg.To.Address = (*types.AddressSSZ)(to)
+		msg.ChainID.SetFromBig((*big.Int)(args.ChainID))
+		msg.Nonce = view.Uint64View(args.Nonce)
+		msg.Gas = view.Uint64View(args.Gas)
+		msg.GasFeeCap.SetFromBig((*big.Int)(args.MaxFeePerGas))
+		msg.GasTipCap.SetFromBig((*big.Int)(args.MaxPriorityFeePerGas))
+		msg.Value.SetFromBig((*big.Int)(&args.Value))
+		msg.Data = input
+		msg.AccessList = types.AccessListView(al)
+		commitments, hashes, proofs, err := types.Blobs(args.Blobs).ComputeCommitmentsAndProofs()
+		if err != nil {
+			return nil, fmt.Errorf("invalid blobs: %v", err)
+		}
+		msg.BlobVersionedHashes = hashes
+		wrapData := types.BlobTxWrapData{
+			Blobs:    args.Blobs,
+			Proofs:   proofs,
+			BlobKzgs: commitments,
+		}
+		data = &types.SignedBlobTx{Message: msg}
+		return types.NewTx(data, types.WithTxWrapData(&wrapData)), nil
 	case args.MaxFeePerGas != nil:
 		al := types.AccessList{}
 		if args.AccessList != nil {
@@ -167,7 +195,7 @@ func (args *SendTxArgs) ToTransaction() *types.Transaction {
 			Data:     input,
 		}
 	}
-	return types.NewTx(data)
+	return types.NewTx(data), nil
 }
 
 type SigFormat struct {
