@@ -20,6 +20,7 @@ package engine
 import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // BlobsBundle holds the blobs of an execution payload
@@ -62,6 +63,7 @@ func BlockToSidecars(block *types.Block) ([]*types.Sidecar, error) {
 
 	for i, tx := range block.Transactions() {
 		if tx.Type() == types.BlobTxType {
+			log.Info("Blob Tx detected...........!!!!!!!!!!!")
 			versionedHashes, commitments, blobs, proofs := tx.BlobWrapData()
 			if len(versionedHashes) != len(commitments) || len(versionedHashes) != len(blobs) || len(blobs) != len(proofs) {
 				return nil, fmt.Errorf("tx %d in block %s has inconsistent blobs (%d) / commitments (%d)"+
@@ -80,6 +82,7 @@ func BlockToSidecars(block *types.Block) ([]*types.Sidecar, error) {
 				}
 				sidecars = append(sidecars, sidecar)
 			}
+			log.Info("Sidecars: ", sidecars[0])
 
 			//blobsBundle.Blobs = append(blobsBundle.Blobs, blobs...)
 			//blobsBundle.Commitments = append(blobsBundle.Commitments, commitments...)

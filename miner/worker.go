@@ -676,7 +676,7 @@ func (w *worker) resultLoop() {
 			// Commit block and state to database.
 			task.state.SetExpectedStateRoot(block.Block.Root())
 			start := time.Now()
-			// TODO Write Blob as well!
+			// TODO 4844 Write Blob as well!
 			status, err := w.chain.WriteBlockAndSetHead(block.Block, receipts, logs, task.state, true)
 			if status != core.CanonStatTy {
 				if err != nil {
@@ -686,7 +686,7 @@ func (w *worker) resultLoop() {
 				}
 				continue
 			}
-			// todo
+			// todo 4844
 			//statusSidecar, err := w.chain.WriteSidecarAndSetHead(block.Block, receipts, logs, task.state, true)
 			writeBlockTimer.UpdateSince(start)
 			log.Info("Successfully sealed new block", "number", block.Block.Number(), "sealhash", sealhash, "hash", hash,
