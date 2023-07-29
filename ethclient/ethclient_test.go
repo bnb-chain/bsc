@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -419,10 +420,20 @@ func testHeader(t *testing.T, chain []*types.Block, client *rpc.Client) {
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("HeaderByNumber(%v) error = %q, want %q", tt.block, err, tt.wantErr)
 			}
-			if got != nil && got.Number != nil && got.Number.Sign() == 0 {
-				got.Number = big.NewInt(0) // hack to make DeepEqual work
+
+			gotBytes, err := rlp.EncodeToBytes(got)
+			if err != nil {
+				t.Fatalf("Error serializing received block header.")
 			}
-			if !reflect.DeepEqual(got, tt.want) {
+			wantBytes, err := rlp.EncodeToBytes(tt.want)
+			if err != nil {
+				t.Fatalf("Error serializing wanted block header.")
+			}
+
+			// Instead of comparing the Header's compare the serialized bytes,
+			// because reflect.DeepEqual(*types.Header, *types.Header) sometimes
+			// returns false even though the underlying field values are exactly the same.
+			if !reflect.DeepEqual(gotBytes, wantBytes) {
 				t.Fatalf("HeaderByNumber(%v)\n   = %v\nwant %v", tt.block, got, tt.want)
 			}
 		})
@@ -583,7 +594,7 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gasPrice.Cmp(big.NewInt(1000000042)) != 0 {
+	if gasPrice.Cmp(big.NewInt(1000000000)) != 0 {
 		t.Fatalf("unexpected gas price: %v", gasPrice)
 	}
 

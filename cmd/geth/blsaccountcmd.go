@@ -26,6 +26,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/signer/core"
 )
 
@@ -35,7 +36,20 @@ const (
 )
 
 var (
-	au = aurora.NewAurora(true)
+	au             = aurora.NewAurora(true)
+	privateKeyFlag = &cli.StringFlag{
+		Name:  "private-key",
+		Usage: "Hex string for the BLS12-381 private key you wish encrypt into a keystore file",
+		Value: "",
+	}
+	showPrivateKeyFlag = &cli.BoolFlag{
+		Name:  "show-private-key",
+		Usage: "Show the BLS12-381 private key you will encrypt into a keystore file",
+	}
+	BLSAccountPasswordFileFlag = cli.StringFlag{
+		Name:  "blsaccountpassword",
+		Usage: "File path for the BLS account password, which contains the password to encrypt private key into keystore file for managing votes in fast_finality feature",
+	}
 )
 
 var (
@@ -77,6 +91,7 @@ or import a BLS account. The BLS wallet dir should be "<DATADIR>/bls/wallet".`,
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
 							utils.DataDirFlag,
+							utils.BLSPasswordFileFlag,
 						},
 						Description: `
 	geth bls wallet create
@@ -116,6 +131,10 @@ Make sure you backup your BLS keys regularly.`,
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
 							utils.DataDirFlag,
+							privateKeyFlag,
+							showPrivateKeyFlag,
+							utils.BLSPasswordFileFlag,
+							BLSAccountPasswordFileFlag,
 						},
 						Description: `
 	geth bls account new
@@ -135,6 +154,8 @@ You must remember this password to unlock your account in the future.`,
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
 							utils.DataDirFlag,
+							utils.BLSPasswordFileFlag,
+							BLSAccountPasswordFileFlag,
 						},
 						Description: `
 	geth bls account import <keyFile>
@@ -151,6 +172,7 @@ If the BLS wallet not created yet, it will try to create BLS wallet first.`,
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
 							utils.DataDirFlag,
+							utils.BLSPasswordFileFlag,
 						},
 						Description: `
 	geth bls account list
@@ -165,6 +187,7 @@ Print summary of existing BLS accounts in the current BLS wallet.`,
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
 							utils.DataDirFlag,
+							utils.BLSPasswordFileFlag,
 						},
 						Description: `
 	geth bls account delete
@@ -197,7 +220,7 @@ func blsWalletCreate(ctx *cli.Context) error {
 		utils.Fatalf("BLS wallet already exists in <DATADIR>/bls/wallet.")
 	}
 
-	password := utils.GetPassPhrase("Your new BLS wallet will be locked with a password. Please give a password. Do not forget this password.", true)
+	password := utils.GetPassPhraseWithList("Your new BLS wallet will be locked with a password. Please give a password. Do not forget this password.", true, 0, GetBLSPassword(ctx))
 
 	opts := []accounts.Option{}
 	opts = append(opts, accounts.WithWalletDir(dir))
@@ -227,7 +250,7 @@ func openOrCreateBLSWallet(ctx *cli.Context, cfg *gethConfig) (*wallet.Wallet, e
 	}
 	if !dirExists {
 		fmt.Println("BLS wallet not exists, creating BLS wallet...")
-		password := utils.GetPassPhrase("Your new BLS wallet will be locked with a password. Please give a password. Do not forget this password.", true)
+		password := utils.GetPassPhraseWithList("Your new BLS wallet will be locked with a password. Please give a password. Do not forget this password.", true, 0, GetBLSPassword(ctx))
 
 		opts := []accounts.Option{}
 		opts = append(opts, accounts.WithWalletDir(walletDir))
@@ -247,7 +270,7 @@ func openOrCreateBLSWallet(ctx *cli.Context, cfg *gethConfig) (*wallet.Wallet, e
 		return w, nil
 	}
 
-	walletPassword := utils.GetPassPhrase("Enter the password for your BLS wallet.", false)
+	walletPassword := utils.GetPassPhraseWithList("Enter the password for your BLS wallet.", false, 0, GetBLSPassword(ctx))
 	w, err = wallet.OpenWallet(context.Background(), &wallet.Config{
 		WalletDir:      walletDir,
 		WalletPassword: walletPassword,
@@ -287,16 +310,35 @@ func blsAccountCreate(ctx *cli.Context) error {
 	if err := os.MkdirAll(keystoreDir, 0755); err != nil {
 		utils.Fatalf("Could not access keystore dir: %v.", err)
 	}
-	accountPassword := utils.GetPassPhrase("Your new BLS account will be encrypted with a password. Please give a password. Do not forget this password.", true)
+	accountPassword := utils.GetPassPhraseWithList("Your new BLS account will be encrypted with a password. Please give a password. Do not forget this password.", true, 0, GetBLSAccountPassword(ctx))
 	if err := core.ValidatePasswordFormat(accountPassword); err != nil {
 		utils.Fatalf("Password invalid: %v.", err)
 	}
 
 	encryptor := keystorev4.New()
 	secretKey, err := bls.RandKey()
-	if err != nil {
+	privateKeyString := ctx.String(privateKeyFlag.Name)
+	if privateKeyString != "" {
+		if len(privateKeyString) > 2 && strings.Contains(privateKeyString, "0x") {
+			privateKeyString = privateKeyString[2:] // Strip the 0x prefix, if any.
+		}
+		bytesValue, err := hex.DecodeString(privateKeyString)
+		if err != nil {
+			utils.Fatalf("could not decode as hex string: %s", privateKeyString)
+		}
+		secretKey, err = bls.SecretKeyFromBytes(bytesValue)
+		if err != nil {
+			utils.Fatalf("not a valid BLS12-381 private key")
+		}
+	} else if err != nil {
 		utils.Fatalf("Could not generate BLS secret key: %v.", err)
 	}
+
+	showPrivateKey := ctx.Bool(showPrivateKeyFlag.Name)
+	if showPrivateKey {
+		fmt.Printf("private key used: 0x%s\n", common.Bytes2Hex(secretKey.Marshal()))
+	}
+
 	pubKeyBytes := secretKey.PublicKey().Marshal()
 	cryptoFields, err := encryptor.Encrypt(secretKey.Marshal(), accountPassword)
 	if err != nil {
@@ -380,7 +422,8 @@ func blsAccountImport(ctx *cli.Context) error {
 		utils.Fatalf("The BLS keymanager cannot import keystores")
 	}
 
-	password := utils.GetPassPhrase("Enter the password for your imported account.", false)
+	password := utils.GetPassPhraseWithList("Enter the password for your imported account.", false, 0, GetBLSAccountPassword(ctx))
+
 	fmt.Println("Importing BLS account, this may take a while...")
 	statuses, err := accounts.ImportAccounts(context.Background(), &accounts.ImportAccountsConfig{
 		Importer:        k,
@@ -416,7 +459,7 @@ func blsAccountList(ctx *cli.Context) error {
 		utils.Fatalf("BLS wallet not exists.")
 	}
 
-	walletPassword := utils.GetPassPhrase("Enter the password for your BLS wallet.", false)
+	walletPassword := utils.GetPassPhraseWithList("Enter the password for your BLS wallet.", false, 0, GetBLSPassword(ctx))
 	w, err := wallet.OpenWallet(context.Background(), &wallet.Config{
 		WalletDir:      walletDir,
 		WalletPassword: walletPassword,
@@ -495,7 +538,7 @@ func blsAccountDelete(ctx *cli.Context) error {
 		utils.Fatalf("BLS wallet not exists.")
 	}
 
-	walletPassword := utils.GetPassPhrase("Enter the password for your BLS wallet.", false)
+	walletPassword := utils.GetPassPhraseWithList("Enter the password for your BLS wallet.", false, 0, GetBLSPassword(ctx))
 	w, err := wallet.OpenWallet(context.Background(), &wallet.Config{
 		WalletDir:      walletDir,
 		WalletPassword: walletPassword,
@@ -555,4 +598,28 @@ func blsAccountDelete(ctx *cli.Context) error {
 	}
 
 	return nil
+}
+
+func GetBLSPassword(ctx *cli.Context) []string {
+	path := ctx.GlobalString(utils.BLSPasswordFileFlag.Name)
+	if path == "" {
+		return nil
+	}
+	text, err := ioutil.ReadFile(path)
+	if err != nil {
+		utils.Fatalf("Failed to read wallet password file: %v", err)
+	}
+	return []string{string(text)}
+}
+
+func GetBLSAccountPassword(ctx *cli.Context) []string {
+	path := ctx.String(BLSAccountPasswordFileFlag.Name)
+	if path == "" {
+		return nil
+	}
+	text, err := ioutil.ReadFile(path)
+	if err != nil {
+		utils.Fatalf("Failed to read account password file: %v", err)
+	}
+	return []string{string(text)}
 }

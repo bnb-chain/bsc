@@ -61,9 +61,15 @@ func (h *bscHandler) Handle(peer *bsc.Peer, packet bsc.Packet) error {
 // handleVotesBroadcast is invoked from a peer's message handler when it transmits a
 // votes broadcast for the local node to process.
 func (h *bscHandler) handleVotesBroadcast(peer *bsc.Peer, votes []*types.VoteEnvelope) error {
-	// Try to put votes into votepool
-	for _, vote := range votes {
-		h.votepool.PutVote(vote)
+	if peer.IsOverLimitAfterReceiving() {
+		peer.Log().Warn("peer sending votes too much, votes dropped; it may be a ddos attack, please check!")
+		return nil
 	}
+	// Here we only put the first vote, to avoid ddos attack by sending a large batch of votes.
+	// This won't abandon any valid vote, because one vote is sent every time referring to func voteBroadcastLoop
+	if len(votes) > 0 {
+		h.votepool.PutVote(votes[0])
+	}
+
 	return nil
 }

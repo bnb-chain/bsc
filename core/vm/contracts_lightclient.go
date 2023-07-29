@@ -360,7 +360,7 @@ func (c *cometBFTLightBlockValidate) RequiredGas(input []byte) uint64 {
 	return params.CometBFTLightBlockValidateGas
 }
 
-func (c *cometBFTLightBlockValidate) Run(input []byte) (result []byte, err error) {
+func (c *cometBFTLightBlockValidate) run(input []byte, isHertz bool) (result []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("internal error: %v\n", r)
@@ -372,7 +372,7 @@ func (c *cometBFTLightBlockValidate) Run(input []byte) (result []byte, err error
 		return nil, err
 	}
 
-	validatorSetChanged, err := cs.ApplyLightBlock(block)
+	validatorSetChanged, err := cs.ApplyLightBlock(block, isHertz)
 	if err != nil {
 		return nil, err
 	}
@@ -384,4 +384,16 @@ func (c *cometBFTLightBlockValidate) Run(input []byte) (result []byte, err error
 
 	result = v2.EncodeLightBlockValidationResult(validatorSetChanged, consensusStateBytes)
 	return result, nil
+}
+
+func (c *cometBFTLightBlockValidate) Run(input []byte) (result []byte, err error) {
+	return c.run(input, false)
+}
+
+type cometBFTLightBlockValidateHertz struct {
+	cometBFTLightBlockValidate
+}
+
+func (c *cometBFTLightBlockValidateHertz) Run(input []byte) (result []byte, err error) {
+	return c.run(input, true)
 }
