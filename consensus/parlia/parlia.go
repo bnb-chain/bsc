@@ -1758,10 +1758,12 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		return nil
 	}
 
-	if snap.Attestation != nil {
-		return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
+	// snap.Attestation is nil after plato upgrade, only can happen in local testnet
+	if snap.Attestation == nil {
+		return chain.GetHeaderByNumber(0) // keep consistent with GetJustifiedNumberAndHash
 	}
-	return nil
+
+	return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
 }
 
 // ===========================     utility function        ==========================
