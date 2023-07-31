@@ -82,6 +82,9 @@ func NewVoteManager(eth Backend, chainconfig *params.ChainConfig, chain *core.Bl
 
 func (voteManager *VoteManager) loop() {
 	log.Debug("vote manager routine loop started")
+	defer voteManager.chainHeadSub.Unsubscribe()
+	defer voteManager.syncVoteSub.Unsubscribe()
+
 	events := voteManager.eth.EventMux().Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
 	defer func() {
 		log.Debug("vote manager loop defer func occur")
