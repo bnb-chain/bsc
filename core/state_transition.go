@@ -164,15 +164,16 @@ func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation b
 // NewStateTransition initialises and returns a new state transition object.
 func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition {
 	return &StateTransition{
-		gp:        gp,
-		evm:       evm,
-		msg:       msg,
-		gasPrice:  msg.GasPrice(),
-		gasFeeCap: msg.GasFeeCap(),
-		gasTipCap: msg.GasTipCap(),
-		value:     msg.Value(),
-		data:      msg.Data(),
-		state:     evm.StateDB,
+		gp:         gp,
+		evm:        evm,
+		msg:        msg,
+		gasPrice:   msg.GasPrice(),
+		gasFeeCap:  msg.GasFeeCap(),
+		gasTipCap:  msg.GasTipCap(),
+		value:      msg.Value(),
+		data:       msg.Data(),
+		state:      evm.StateDB,
+		initialGas: msg.Gas(), // todo 4844 is this the missing piece? As initialGas seems to be becoming 0
 	}
 }
 
