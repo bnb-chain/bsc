@@ -1,6 +1,7 @@
 package vote
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -103,4 +104,8 @@ func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
 	copy(vote.VoteAddress[:], blsPubKey.Marshal()[:])
 	copy(vote.Signature[:], signature.Marshal()[:])
 	return nil
+}
+
+func (signer *VoteSigner) UsingKey(bLSPublicKey *types.BLSPublicKey) bool {
+	return bytes.Equal(signer.pubKey[:], bLSPublicKey[:])
 }
