@@ -1972,6 +1972,21 @@ func EnableMinerInfo(ctx *cli.Context, minerConfig miner.Config) SetupMetricsOpt
 	}
 }
 
+func EnableNodeInfo(poolConfig core.TxPoolConfig) SetupMetricsOption {
+	return func() {
+		// register node info into metrics
+		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
+			"PriceLimit":   poolConfig.PriceLimit,
+			"PriceBump":    poolConfig.PriceBump,
+			"AccountSlots": poolConfig.AccountSlots,
+			"GlobalSlots":  poolConfig.GlobalSlots,
+			"AccountQueue": poolConfig.AccountQueue,
+			"GlobalQueue":  poolConfig.GlobalQueue,
+			"Lifetime":     poolConfig.Lifetime,
+		})
+	}
+}
+
 func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
 	if metrics.Enabled {
 		log.Info("Enabling metrics collection")
