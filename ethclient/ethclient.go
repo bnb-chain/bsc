@@ -188,6 +188,27 @@ func (ec *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.H
 	return head, err
 }
 
+// GetFinalizedHeader returns the requested finalized block header.
+//   - probabilisticFinalized should be in range [2,21],
+//     then the block header with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
+func (ec *Client) FinalizedHeader(ctx context.Context, probabilisticFinalized int64) (*types.Header, error) {
+	var head *types.Header
+	err := ec.c.CallContext(ctx, &head, "eth_getFinalizedHeader", probabilisticFinalized)
+	if err == nil && head == nil {
+		err = ethereum.NotFound
+	}
+	return head, err
+}
+
+// GetFinalizedBlock returns the requested finalized block.
+//   - probabilisticFinalized should be in range [2,21],
+//     then the block with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
+//   - When fullTx is true all transactions in the block are returned, otherwise
+//     only the transaction hash is returned.
+func (ec *Client) FinalizedBlock(ctx context.Context, probabilisticFinalized int64, fullTx bool) (*types.Block, error) {
+	return ec.getBlock(ctx, "eth_getFinalizedBlock", probabilisticFinalized, true)
+}
+
 // GetDiffAccounts returns changed accounts in a specific block number.
 func (ec *Client) GetDiffAccounts(ctx context.Context, number *big.Int) ([]common.Address, error) {
 	accounts := make([]common.Address, 0)
