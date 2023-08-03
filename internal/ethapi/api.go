@@ -54,6 +54,14 @@ import (
 
 const UnHealthyTimeout = 5 * time.Second
 
+// max is a helper function which returns the larger of the two given integers.
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // PublicEthereumAPI provides an API to access Ethereum related information.
 // It offers only methods that operate on public data that is freely available to anyone.
 type PublicEthereumAPI struct {
@@ -771,6 +779,52 @@ func (s *PublicBlockChainAPI) Health() bool {
 		return rpc.RpcServingTimer.Percentile(0.75) < float64(UnHealthyTimeout)
 	}
 	return true
+}
+
+// GetFinalizedHeader returns the requested finalized block header.
+//   - probabilisticFinalized should be in range [2,21],
+//     then the block header with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
+func (s *PublicBlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFinalized int64) (map[string]interface{}, error) {
+	if probabilisticFinalized < 2 || probabilisticFinalized > 21 {
+		return nil, fmt.Errorf("%d out of range [2,21]", probabilisticFinalized)
+	}
+
+	var err error
+	fastFinalizedHeader, err := s.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
+	if err != nil { // impossible
+		return nil, err
+	}
+	latestHeader, err := s.b.HeaderByNumber(ctx, rpc.LatestBlockNumber)
+	if err != nil { // impossible
+		return nil, err
+	}
+	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized)
+
+	return s.GetHeaderByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber))
+}
+
+// GetFinalizedBlock returns the requested finalized block.
+//   - probabilisticFinalized should be in range [2,21],
+//     then the block with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
+//   - When fullTx is true all transactions in the block are returned, otherwise
+//     only the transaction hash is returned.
+func (s *PublicBlockChainAPI) GetFinalizedBlock(ctx context.Context, probabilisticFinalized int64, fullTx bool) (map[string]interface{}, error) {
+	if probabilisticFinalized < 2 || probabilisticFinalized > 21 {
+		return nil, fmt.Errorf("%d out of range [2,21]", probabilisticFinalized)
+	}
+
+	var err error
+	fastFinalizedHeader, err := s.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
+	if err != nil { // impossible
+		return nil, err
+	}
+	latestHeader, err := s.b.HeaderByNumber(ctx, rpc.LatestBlockNumber)
+	if err != nil { // impossible
+		return nil, err
+	}
+	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized)
+
+	return s.GetBlockByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber), fullTx)
 }
 
 // GetUncleByBlockNumberAndIndex returns the uncle block for the given block hash and index.

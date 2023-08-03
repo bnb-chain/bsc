@@ -62,7 +62,6 @@ func (h *bscHandler) Handle(peer *bsc.Peer, packet bsc.Packet) error {
 // votes broadcast for the local node to process.
 func (h *bscHandler) handleVotesBroadcast(peer *bsc.Peer, votes []*types.VoteEnvelope) error {
 	if peer.IsOverLimitAfterReceiving() {
-		peer.Log().Warn("peer sending votes too much, votes dropped; it may be a ddos attack, please check!")
 		return nil
 	}
 	// Here we only put the first vote, to avoid ddos attack by sending a large batch of votes.
