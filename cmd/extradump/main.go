@@ -89,28 +89,18 @@ func parseExtra(hexData string) (*Extra, error) {
 	}
 	extra.ExtraVanity = string(data[:extraVanityLength])
 	extra.ExtraSeal = data[dataLength-extraSealLength:]
-
-	// parse Validators and Vote Attestation
 	data = data[extraVanityLength : dataLength-extraSealLength]
 	dataLength = len(data)
+
+	// parse Validators and Vote Attestation
 	if dataLength > 0 {
-		validatorNum := int(data[0]) // suppose validators exist
-		validatorBytesTotalLength := validatorNumberSize + validatorNum*validatorBytesLength
-		if dataLength < validatorBytesTotalLength { // suppose is wrong, only Vote Attestation exist
-			if err := rlp.Decode(bytes.NewReader(data), &extra.VoteAttestation); err != nil {
-				return nil, fmt.Errorf("parse voteAttestation failed")
-
+		// parse Validators
+		if data[0] != '\xf8' { // rlp format of attestation begin with 'f8'
+			validatorNum := int(data[0])
+			validatorBytesTotalLength := validatorNumberSize + validatorNum*validatorBytesLength
+			if dataLength < validatorBytesTotalLength {
+				return nil, fmt.Errorf("parse validators failed")
 			}
-		} else {
-			if dataLength > validatorBytesTotalLength {
-				if err := rlp.Decode(bytes.NewReader(data[validatorBytesTotalLength:]), &extra.VoteAttestation); err != nil { // both Validators and Vote Attestation exist if err == nil
-					if err := rlp.Decode(bytes.NewReader(data[:]), &extra.VoteAttestation); err != nil { //  // suppose is wrong, only Vote Attestation exist
-						return nil, fmt.Errorf("parse voteAttestation failed")
-					}
-				}
-			}
-
-			// now, Validators must exist
 			extra.ValidatorSize = uint8(validatorNum)
 			data = data[validatorNumberSize:]
 			for i := 0; i < validatorNum; i++ {
@@ -119,10 +109,17 @@ func parseExtra(hexData string) (*Extra, error) {
 				copy(validatorInfo.BLSPublicKey[:], data[i*validatorBytesLength+common.AddressLength:(i+1)*validatorBytesLength])
 				extra.Validators = append(extra.Validators, validatorInfo)
 			}
+			sort.Sort(extra.Validators)
+			data = data[validatorBytesTotalLength-validatorNumberSize:]
+			dataLength = len(data)
+		}
 
-			// mark VoteIncluded
-			sort.Sort(validatorsAscending(extra.Validators))
-			if extra.VoteAttestation != nil {
+		// parse Vote Attestation
+		if dataLength > 0 {
+			if err := rlp.Decode(bytes.NewReader(data), &extra.VoteAttestation); err != nil {
+				return nil, fmt.Errorf("parse voteAttestation failed")
+			}
+			if extra.ValidatorSize > 0 {
 				validatorsBitSet := bitset.From([]uint64{uint64(extra.VoteAddressSet)})
 				for i := 0; i < int(extra.ValidatorSize); i++ {
 					if validatorsBitSet.Test(uint(i)) {
