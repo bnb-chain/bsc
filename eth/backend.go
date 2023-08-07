@@ -279,7 +279,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 
 	// Create voteManager instance
-	if posa, ok := eth.engine.(consensus.PoSA); ok {
+	if posa, ok := eth.engine.(consensus.PoSA); ok && !config.DisableBscProtocol {
 		// Create votePool instance
 		votePool := vote.NewVotePool(chainConfig, eth.blockchain, posa)
 		eth.votePool = votePool
