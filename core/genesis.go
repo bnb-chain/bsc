@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/snap"
 )
 
 //go:generate gencodec -type Genesis -field-override genesisSpecMarshaling -out gen_genesis.go
@@ -182,7 +183,30 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	// We have the genesis block in database(perhaps in ancient database)
 	// but the corresponding state is missing.
 	header := rawdb.ReadHeader(db, stored, 0)
-	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, nil, nil), nil); err != nil {
+
+
+	cacheConfig := defaultCacheConfig
+	cacheConfig.NodeScheme = rawdb.PathScheme
+	       // Open trie database with provided config
+        config := &trie.Config{
+                Cache:     cacheConfig.TrieCleanLimit,
+                Journal:   cacheConfig.TrieCleanJournal,
+                Preimages: cacheConfig.Preimages,
+                NoTries:   cacheConfig.NoTries,
+        }
+
+        // if cacheConfig.NodeScheme == rawdb.PathScheme {
+//                log.Info("State trie is running in path mode")
+                config.Snap = &snap.Config{
+                        StateHistory: cacheConfig.StateHistory,
+                        DirtySize:    cacheConfig.TrieDirtyLimit,
+                }
+        // }
+        triedb := trie.NewDatabase(db, config)
+	defer triedb.Close()
+
+	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, config, triedb), nil); err != nil {
+//	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, nil, nil), nil); err != nil {
 		if genesis == nil {
 			genesis = DefaultGenesisBlock()
 		}
@@ -269,7 +293,28 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 	if db == nil {
 		db = rawdb.NewMemoryDatabase()
 	}
-	statedb, err := state.New(common.Hash{}, state.NewDatabase(db), nil)
+
+        cacheConfig := defaultCacheConfig
+               // Open trie database with provided config
+        config := &trie.Config{
+                Cache:     cacheConfig.TrieCleanLimit,
+                Journal:   cacheConfig.TrieCleanJournal,
+                Preimages: cacheConfig.Preimages,
+                NoTries:   cacheConfig.NoTries,
+        }
+
+//        if cacheConfig.NodeScheme == rawdb.PathScheme {
+//                log.Info("State trie is running in path mode")
+                config.Snap = &snap.Config{
+                        StateHistory: cacheConfig.StateHistory,
+                        DirtySize:    cacheConfig.TrieDirtyLimit,
+                }
+//        }
+        triedb := trie.NewDatabase(db, config)
+	defer triedb.Close()
+
+	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithNodeDB(db, config, triedb), nil)
+	// statedb, err := state.New(common.Hash{}, state.NewDatabase(db), nil)
 	if err != nil {
 		panic(err)
 	}
@@ -311,6 +356,11 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 	}
 	statedb.Commit(nil)
 	statedb.Database().TrieDB().Commit(root, true)
+
+        // Ensure that the in-memory trie nodes are journaled to disk properly.
+        if err := triedb.Journal(root); err != nil {
+        	log.Info("Failed to journal in-memory trie nodes", "err", err)
+        }
 
 	return types.NewBlock(head, nil, nil, nil, trie.NewStackTrie(nil))
 }
