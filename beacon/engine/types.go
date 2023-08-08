@@ -71,8 +71,8 @@ func BlockToSidecars(block *types.Block) ([]*types.Sidecar, error) {
 			blockParentRoot := block.ParentHash()
 			for index, blob := range blobs {
 				sidecar := &types.Sidecar{
-					BlockRoot:       blockRoot,
-					BlockParentRoot: blockParentRoot,
+					BlockRoot:       blockRoot[:],
+					BlockParentRoot: blockParentRoot[:],
 					Index:           block.NumberU64(),
 					Blob:            blob,
 					KZGCommitment:   commitments[index],

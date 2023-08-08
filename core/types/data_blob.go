@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/prysmaticlabs/prysm/v4/consensus-types/primitives"
 	"io"
 
 	gokzg4844 "github.com/crate-crypto/go-kzg-4844"
@@ -418,14 +419,14 @@ func (b *BlobTxWrapData) encodeTyped(w io.Writer, txdata TxData) error {
 
 // todo this Sidecar needs to be saved separately from block so that it can be pruned time to time to take advantage of 4844
 type Sidecar struct {
-	BlockRoot       common.Hash   `json:"block_root"` //[]byte
-	Index           uint64        `json:"index"`
-	Slot            uint64        `json:"slot"`
-	BlockParentRoot common.Hash   `json:"block_parent_root"` //[]byte
-	ProposerIndex   uint64        `json:"proposer_index"`
-	Blob            Blob          `json:"blob"`
-	KZGCommitment   KZGCommitment `json:"kzg_commitment"`
-	KZGProof        KZGProof      `json:"kzg_proof"`
+	BlockRoot       []byte          `json:"block_root"` //[]byte
+	Index           uint64          `json:"index"`
+	Slot            primitives.Slot `json:"slot"`
+	BlockParentRoot []byte          `json:"block_parent_root"` //[]byte
+	ProposerIndex   uint64          `json:"proposer_index"`
+	Blob            Blob            `json:"blob"`
+	KZGCommitment   KZGCommitment   `json:"kzg_commitment"`
+	KZGProof        KZGProof        `json:"kzg_proof"`
 }
 
 type SignedSidecar struct {
