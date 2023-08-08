@@ -2,6 +2,7 @@ package rawdb
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -11,33 +12,33 @@ import (
 )
 
 type BlobSaver interface {
-	SaveBlobSidecar(*params.ChainConfig, []*types.Sidecar) error
+	SaveBlobSidecar(context.Context, *params.ChainConfig, []*types.Sidecar) error
 }
 
 type BlobGetter interface {
-	GetBlobSidecarsByRoot([32]byte) ([]*types.Sidecar, error)
-	GetBlobSidecarsBySlot(*params.ChainConfig, primitives.Slot) ([]*types.Sidecar, error)
+	GetBlobSidecarsByRoot(context.Context, [32]byte) ([]*types.Sidecar, error)
+	GetBlobSidecarsBySlot(context.Context, *params.ChainConfig, primitives.Slot) ([]*types.Sidecar, error)
 }
 
 type BlobDeleter interface {
-	DeleteBlobSidecar([32]byte) error
+	DeleteBlobSidecar(context.Context, [32]byte) error
 }
 
-func SaveBlobSidecar(saver BlobSaver, config *params.ChainConfig, scs []*types.Sidecar) error {
+func SaveBlobSidecar(ctx context.Context, saver BlobSaver, config *params.ChainConfig, scs []*types.Sidecar) error {
 	sortSideCars(scs)
 	if err := verifySideCars(scs); err != nil {
 		return errors.Wrap(err, "verifying sidecars")
 	}
 
-	if err := saver.SaveBlobSidecar(config, scs); err != nil {
+	if err := saver.SaveBlobSidecar(ctx, config, scs); err != nil {
 		return errors.Wrap(err, "saving blob in db")
 	}
 
 	return nil
 }
 
-func GetBlobSidecarsByRoot(getter BlobGetter, root [32]byte, indices ...uint64) ([]*types.Sidecar, error) {
-	scs, err := getter.GetBlobSidecarsByRoot(root)
+func GetBlobSidecarsByRoot(ctx context.Context, getter BlobGetter, root [32]byte, indices ...uint64) ([]*types.Sidecar, error) {
+	scs, err := getter.GetBlobSidecarsByRoot(ctx, root)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting blob sidecar by root from db")
 	}
@@ -50,8 +51,8 @@ func GetBlobSidecarsByRoot(getter BlobGetter, root [32]byte, indices ...uint64) 
 	return scs, nil
 }
 
-func GetBlobSidecarsBySlot(getter BlobGetter, config *params.ChainConfig, slot primitives.Slot, indices ...uint64) ([]*types.Sidecar, error) {
-	scs, err := getter.GetBlobSidecarsBySlot(config, slot)
+func GetBlobSidecarsBySlot(ctx context.Context, getter BlobGetter, config *params.ChainConfig, slot primitives.Slot, indices ...uint64) ([]*types.Sidecar, error) {
+	scs, err := getter.GetBlobSidecarsBySlot(ctx, config, slot)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting blob sidecar by slot from db")
 	}
@@ -64,8 +65,8 @@ func GetBlobSidecarsBySlot(getter BlobGetter, config *params.ChainConfig, slot p
 	return scs, nil
 }
 
-func DeleteBlobSidecar(deleter BlobDeleter, root [32]byte) error {
-	if err := deleter.DeleteBlobSidecar(root); err != nil {
+func DeleteBlobSidecar(ctx context.Context, deleter BlobDeleter, root [32]byte) error {
+	if err := deleter.DeleteBlobSidecar(ctx, root); err != nil {
 		return errors.Wrap(err, "deleting blob sidecar from db")
 	}
 
@@ -83,7 +84,7 @@ func filterForIndices(scs []*types.Sidecar, indices ...uint64) ([]*types.Sidecar
 	sidecars := make([]*types.Sidecar, len(indices))
 	for i, idx := range indices {
 		if idx > maxIdx {
-			return nil, errors.Errorf("BlobSidecars missing index: index %d", idx)
+			return nil, errors.Errorf("BlobSidecars with index: %d not found", idx)
 		}
 		sidecars[i] = scs[idx]
 	}

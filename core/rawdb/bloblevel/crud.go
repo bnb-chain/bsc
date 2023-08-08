@@ -2,6 +2,7 @@ package bloblevel
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -11,6 +12,8 @@ import (
 	"github.com/prysmaticlabs/prysm/v4/consensus-types/primitives"
 	"github.com/prysmaticlabs/prysm/v4/encoding/bytesutil"
 )
+
+var ErrNotFound = errors.New("not found")
 
 // TODO: move this to schema and investigate if the key format is correct
 // and does not conflict with others
@@ -24,7 +27,15 @@ func NewStorage(db ethdb.Database) *Storage {
 	return &Storage{db: db}
 }
 
-func (blob *Storage) SaveBlobSidecar(config *params.ChainConfig, scs []*types.Sidecar) error {
+// SaveBlobSidecar saves the blobs for a given epoch in the sidecar bucket. When we receive a blob:
+//
+//  1. Convert slot using a modulo operator to [0, maxSlots] where maxSlots = MAX_BLOB_EPOCHS*SLOTS_PER_EPOCH
+//
+//  2. Compute key for blob as bytes(slot_to_rotating_buffer(blob.slot)) ++ bytes(blob.slot) ++ blob.block_root
+//
+//  3. Begin the save algorithm:  If the incoming blob has a slot bigger than the saved slot at the spot
+//     in the rotating keys buffer, we overwrite all elements for that slot.
+func (blob *Storage) SaveBlobSidecar(ctx context.Context, config *params.ChainConfig, scs []*types.Sidecar) error {
 	slot := scs[0].Slot
 	encodedBlobSidecar, err := rlp.EncodeToBytes(scs)
 	if err != nil {
@@ -32,7 +43,7 @@ func (blob *Storage) SaveBlobSidecar(config *params.ChainConfig, scs []*types.Si
 	}
 
 	newKey := blobSidecarKey(scs[0], config)
-	rotatingBufferPrefix := newKey[0:8]
+	rotatingBufferPrefix := newKey[len(blobSidecarPrefix) : len(blobSidecarPrefix)+8]
 
 	var replacingKey []byte
 	it := blob.db.NewIterator(nil, rotatingBufferPrefix)
@@ -47,7 +58,7 @@ func (blob *Storage) SaveBlobSidecar(config *params.ChainConfig, scs []*types.Si
 
 		if len(key) != 0 {
 			replacingKey = key
-			oldSlotBytes := replacingKey[8:16]
+			oldSlotBytes := replacingKey[len(blobSidecarPrefix)+8 : len(blobSidecarPrefix)+16]
 			oldSlot := bytesutil.BytesToSlotBigEndian(oldSlotBytes)
 			if oldSlot >= slot {
 				return errors.Errorf("attempted to save blob with slot %d but already have older blob with slot %d", slot, oldSlot)
@@ -72,15 +83,14 @@ func (blob *Storage) SaveBlobSidecar(config *params.ChainConfig, scs []*types.Si
 	return nil
 }
 
-func (blob *Storage) GetBlobSidecarsByRoot(root [32]byte) ([]*types.Sidecar, error) {
+func (blob *Storage) GetBlobSidecarsByRoot(ctx context.Context, root [32]byte) ([]*types.Sidecar, error) {
 	var enc []byte
 
-	start, end := blobSidecarPrefix, blobSidecarPrefix
-	it := blob.db.NewIterator(nil, start)
+	it := blob.db.NewIterator(nil, blobSidecarPrefix)
 	defer it.Release()
 
 	for it.Next() {
-		if bytes.Compare(it.Key(), end) >= 0 {
+		if !bytes.HasPrefix(it.Key(), blobSidecarPrefix) {
 			break
 		}
 
@@ -93,32 +103,36 @@ func (blob *Storage) GetBlobSidecarsByRoot(root [32]byte) ([]*types.Sidecar, err
 	}
 
 	if enc == nil {
-		return nil, errors.New("not found")
+		return nil, ErrNotFound
 	}
 
 	scs := make([]*types.Sidecar, 0)
-	if err := rlp.Decode(bytes.NewReader(enc), scs); err != nil {
+	if err := rlp.Decode(bytes.NewReader(enc), &scs); err != nil {
 		return nil, errors.Wrap(err, "Invalid block body RLP")
 	}
 
 	return scs, nil
 }
 
-func (blob *Storage) GetBlobSidecarsBySlot(config *params.ChainConfig, slot primitives.Slot) ([]*types.Sidecar, error) {
+// GetBlobSidecarsBySlot retrieves BlobSidecars for the given slot.
+// If the `indices` argument is omitted, all blobs for the root will be returned.
+// Otherwise, the result will be filtered to only include the specified indices.
+// An error will result if an invalid index is specified.
+func (blob *Storage) GetBlobSidecarsBySlot(ctx context.Context, config *params.ChainConfig, slot primitives.Slot) ([]*types.Sidecar, error) {
 	var enc []byte
 
-	key := append(blobSidecarPrefix, slotKey(slot, config)...)
-	start, end := key, key
+	sk := slotKey(slot, config)
+	key := append(blobSidecarPrefix, sk...)
 
-	it := blob.db.NewIterator(nil, start)
+	it := blob.db.NewIterator(nil, key)
 	defer it.Release()
 
 	for it.Next() {
-		if bytes.Compare(it.Key(), end) >= 0 {
+		if !bytes.HasPrefix(it.Key(), key) {
 			break
 		}
 
-		slotInKey := bytesutil.BytesToSlotBigEndian(it.Key()[8:16])
+		slotInKey := bytesutil.BytesToSlotBigEndian(it.Key()[len(blobSidecarPrefix):len(key)])
 		if slotInKey == slot {
 			enc = it.Value()
 			break
@@ -126,25 +140,24 @@ func (blob *Storage) GetBlobSidecarsBySlot(config *params.ChainConfig, slot prim
 	}
 
 	if enc == nil {
-		return nil, errors.New("not found")
+		return nil, ErrNotFound
 	}
 
 	scs := make([]*types.Sidecar, 0)
-	if err := rlp.Decode(bytes.NewReader(enc), scs); err != nil {
+	if err := rlp.Decode(bytes.NewReader(enc), &scs); err != nil {
 		return nil, errors.Wrap(err, "Invalid block body RLP")
 	}
 
 	return scs, nil
 }
 
-func (blob *Storage) DeleteBlobSidecar(root [32]byte) error {
-	start, end := blobSidecarPrefix, blobSidecarPrefix
-	it := blob.db.NewIterator(nil, start)
+func (blob *Storage) DeleteBlobSidecar(ctx context.Context, root [32]byte) error {
+	it := blob.db.NewIterator(nil, blobSidecarPrefix)
 	defer it.Release()
 
 	for it.Next() {
 		key := it.Key()
-		if bytes.Compare(key, end) >= 0 {
+		if !bytes.HasPrefix(key, blobSidecarPrefix) {
 			break
 		}
 
