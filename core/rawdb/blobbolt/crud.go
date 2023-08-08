@@ -16,7 +16,7 @@ type Storage struct {
 	db *bolt.DB
 }
 
-func New(db *bolt.DB) *Storage {
+func NewStorage(db *bolt.DB) *Storage {
 	return &Storage{db: db}
 }
 
@@ -37,7 +37,7 @@ func (blob *Storage) SaveBlobSidecar(config *params.ChainConfig, scs []*types.Si
 		// as prysm uses (protobuf based) which is defined in the `encode` below
 		encodedBlobSidecar, err := rlp.EncodeToBytes(scs)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "encoding to bytes")
 		}
 		bkt := tx.Bucket(blobsBucket)
 		c := bkt.Cursor()
@@ -50,7 +50,7 @@ func (blob *Storage) SaveBlobSidecar(config *params.ChainConfig, scs []*types.Si
 				oldSlotBytes := replacingKey[8:16]
 				oldSlot := bytesutil.BytesToSlotBigEndian(oldSlotBytes)
 				if oldSlot >= slot {
-					return fmt.Errorf("attempted to save blob with slot %d but already have older blob with slot %d", slot, oldSlot)
+					return errors.Errorf("attempted to save blob with slot %d but already have older blob with slot %d", slot, oldSlot)
 				}
 				break
 			}
@@ -122,7 +122,6 @@ func (blob *Storage) GetBlobSidecarsBySlot(config *params.ChainConfig, slot prim
 	return scs, nil
 }
 
-// DeleteBlobSidecar returns true if the blobs are in the db.
 func (blob *Storage) DeleteBlobSidecar(beaconBlockRoot [32]byte) error {
 	return blob.db.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(blobsBucket)
