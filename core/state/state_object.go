@@ -192,6 +192,8 @@ func (s *StateObject) GetState(db Database, key common.Hash) common.Hash {
 	// If we have a dirty value for this state entry, return it
 	value, dirty := s.dirtyStorage[key]
 	if dirty {
+		storageMeter.Mark(1)
+		storageDirtyHitMeter.Mark(1)
 		return value
 	}
 	// Otherwise return the entry's original value
@@ -200,6 +202,7 @@ func (s *StateObject) GetState(db Database, key common.Hash) common.Hash {
 
 func (s *StateObject) getOriginStorage(key common.Hash) (common.Hash, bool) {
 	if value, cached := s.originStorage[key]; cached {
+		storageOriginHitMeter.Mark(1)
 		return value, true
 	}
 	// if L1 cache miss, try to get it from shared pool
@@ -210,6 +213,7 @@ func (s *StateObject) getOriginStorage(key common.Hash) (common.Hash, bool) {
 		}
 		storage := val.(common.Hash)
 		s.originStorage[key] = storage
+		storageShareHitMeter.Mark(1)
 		return storage, true
 	}
 	return common.Hash{}, false
@@ -224,12 +228,14 @@ func (s *StateObject) setOriginStorage(key common.Hash, value common.Hash) {
 
 // GetCommittedState retrieves a value from the committed account storage trie.
 func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Hash {
+	storageMeter.Mark(1)
 	// If the fake storage is set, only lookup the state here(in the debugging mode)
 	if s.fakeStorage != nil {
 		return s.fakeStorage[key]
 	}
 	// If we have a pending write or clean cached, return that
 	if value, pending := s.pendingStorage[key]; pending {
+		storagePendingHitMeter.Mark(1)
 		return value
 	}
 
@@ -255,6 +261,10 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
 		if metrics.EnabledExpensive {
 			s.db.SnapshotStorageReads += time.Since(start)
+			s.db.SnapshotStorageReadsCount++
+		}
+		if err == nil {
+			storageSnapHitMeter.Mark(1)
 		}
 	}
 
@@ -267,11 +277,13 @@ func (s *StateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		enc, err = s.getTrie(db).TryGet(key.Bytes())
 		if metrics.EnabledExpensive {
 			s.db.StorageReads += time.Since(start)
+			s.db.StorageReadsCount++
 		}
 		if err != nil {
 			s.setError(err)
 			return common.Hash{}
 		}
+		storageTrieHitMeter.Mark(1)
 	}
 	var value common.Hash
 	if len(enc) > 0 {
@@ -356,19 +368,21 @@ func (s *StateObject) updateTrie(db Database) Trie {
 	if len(s.pendingStorage) == 0 {
 		return s.trie
 	}
+	usedStorage := make([][]byte, 0, len(s.pendingStorage))
+	dirtyStorage := make(map[common.Hash][]byte)
+
 	// Track the amount of time wasted on updating the storage trie
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) {
 			s.db.MetricsMux.Lock()
 			s.db.StorageUpdates += time.Since(start)
+			s.db.StorageUpdatesCount += int64(len(dirtyStorage))
 			s.db.MetricsMux.Unlock()
 		}(time.Now())
 	}
 	// Insert all the pending updates into the trie
 	tr := s.getTrie(db)
 
-	usedStorage := make([][]byte, 0, len(s.pendingStorage))
-	dirtyStorage := make(map[common.Hash][]byte)
 	for key, value := range s.pendingStorage {
 		// Skip noop changes, persist actual changes
 		if value == s.originStorage[key] {

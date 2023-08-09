@@ -55,11 +55,13 @@ func (st *insertStats) report(chain []*types.Block, index int, dirty common.Stor
 		end := chain[index]
 
 		// Assemble the log context and send it to the logger
+		mgasps := float64(st.usedGas) * 1000 / float64(elapsed)
 		context := []interface{}{
 			"blocks", st.processed, "txs", txs, "mgas", float64(st.usedGas) / 1000000,
-			"elapsed", common.PrettyDuration(elapsed), "mgasps", float64(st.usedGas) * 1000 / float64(elapsed),
+			"elapsed", common.PrettyDuration(elapsed), "mgasps", mgasps,
 			"number", end.Number(), "hash", end.Hash(),
 		}
+		processGasGauge.Update(int64(mgasps))
 		if timestamp := time.Unix(int64(end.Time()), 0); time.Since(timestamp) > time.Minute {
 			context = append(context, []interface{}{"age", common.PrettyAge(timestamp)}...)
 		}

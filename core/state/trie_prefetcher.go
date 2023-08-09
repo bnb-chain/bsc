@@ -62,6 +62,7 @@ type triePrefetcher struct {
 	fetchersMutex     sync.RWMutex
 	prefetchChan      chan *prefetchMsg // no need to wait for return
 
+	fetchTrieMeter    metrics.Meter
 	deliveryMissMeter metrics.Meter
 	accountLoadMeter  metrics.Meter
 	accountDupMeter   metrics.Meter
@@ -92,6 +93,7 @@ func newTriePrefetcher(db Database, root, rootParent common.Hash, namespace stri
 		closeMainDoneChan: make(chan struct{}),
 		prefetchChan:      make(chan *prefetchMsg, concurrentChanSize),
 
+		fetchTrieMeter:    metrics.GetOrRegisterMeter(prefix+"/fetch", nil),
 		deliveryMissMeter: metrics.GetOrRegisterMeter(prefix+"/deliverymiss", nil),
 		accountLoadMeter:  metrics.GetOrRegisterMeter(prefix+"/account/load", nil),
 		accountDupMeter:   metrics.GetOrRegisterMeter(prefix+"/account/dup", nil),
@@ -278,6 +280,9 @@ func (p *triePrefetcher) prefetch(root common.Hash, keys [][]byte, accountHash c
 // trie returns the trie matching the root hash, or nil if the prefetcher doesn't
 // have it.
 func (p *triePrefetcher) trie(root common.Hash) Trie {
+	if p.fetchTrieMeter != nil {
+		p.fetchTrieMeter.Mark(1)
+	}
 	// If the prefetcher is inactive, return from existing deep copies
 	if p.fetches != nil {
 		trie := p.fetches[root]

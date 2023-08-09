@@ -51,6 +51,20 @@ var (
 	emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
 	emptyAddr = crypto.Keccak256Hash(common.Address{}.Bytes())
+
+	// metrics
+	accountMeter          = metrics.NewRegisteredMeter("state/db/account", nil)
+	accountOriginHitMeter = metrics.NewRegisteredMeter("state/db/account/origin", nil)
+	accountSnapHitMeter   = metrics.NewRegisteredMeter("state/db/account/snap", nil)
+	accountTrieHitMeter   = metrics.NewRegisteredMeter("state/db/account/trie", nil)
+
+	storageMeter           = metrics.NewRegisteredMeter("state/db/storage", nil)
+	storageDirtyHitMeter   = metrics.NewRegisteredMeter("state/db/storage/dirty", nil)
+	storagePendingHitMeter = metrics.NewRegisteredMeter("state/db/storage/pending", nil)
+	storageOriginHitMeter  = metrics.NewRegisteredMeter("state/db/storage/origin", nil)
+	storageShareHitMeter   = metrics.NewRegisteredMeter("state/db/storage/share", nil)
+	storageSnapHitMeter    = metrics.NewRegisteredMeter("state/db/storage/snap", nil)
+	storageTrieHitMeter    = metrics.NewRegisteredMeter("state/db/storage/trie", nil)
 )
 
 type proofList [][]byte
@@ -141,6 +155,13 @@ type StateDB struct {
 	SnapshotAccountReads time.Duration
 	SnapshotStorageReads time.Duration
 	SnapshotCommits      time.Duration
+
+	AccountReadsCount         int64
+	StorageReadsCount         int64
+	SnapshotAccountReadsCount int64
+	SnapshotStorageReadsCount int64
+	AccountUpdatesCount       int64
+	StorageUpdatesCount       int64
 
 	AccountUpdated int
 	StorageUpdated int
@@ -639,7 +660,10 @@ func (s *StateDB) updateStateObject(obj *StateObject) {
 	}
 	// Track the amount of time wasted on updating the account from the trie
 	if metrics.EnabledExpensive {
-		defer func(start time.Time) { s.AccountUpdates += time.Since(start) }(time.Now())
+		defer func(start time.Time) {
+			s.AccountUpdates += time.Since(start)
+			s.AccountUpdatesCount++
+		}(time.Now())
 	}
 	// Encode the account and update the account trie
 	addr := obj.Address()
@@ -655,7 +679,10 @@ func (s *StateDB) deleteStateObject(obj *StateObject) {
 	}
 	// Track the amount of time wasted on deleting the account from the trie
 	if metrics.EnabledExpensive {
-		defer func(start time.Time) { s.AccountUpdates += time.Since(start) }(time.Now())
+		defer func(start time.Time) {
+			s.AccountUpdates += time.Since(start)
+			s.AccountUpdatesCount++
+		}(time.Now())
 	}
 	// Delete the account from the trie
 	addr := obj.Address()
@@ -679,8 +706,10 @@ func (s *StateDB) getStateObject(addr common.Address) *StateObject {
 // flag set. This is needed by the state journal to revert to the correct s-
 // destructed object instead of wiping all knowledge about the state object.
 func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
+	accountMeter.Mark(1)
 	// Prefer live objects if any is available
 	if obj := s.stateObjects[addr]; obj != nil {
+		accountOriginHitMeter.Mark(1)
 		return obj
 	}
 	// If no live objects are available, attempt to use snapshots
@@ -690,8 +719,10 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 		acc, err := s.snap.Account(crypto.HashData(s.hasher, addr.Bytes()))
 		if metrics.EnabledExpensive {
 			s.SnapshotAccountReads += time.Since(start)
+			s.SnapshotAccountReadsCount++
 		}
 		if err == nil {
+			accountSnapHitMeter.Mark(1)
 			if acc == nil {
 				return nil
 			}
@@ -724,11 +755,13 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *StateObject {
 		enc, err := s.trie.TryGet(addr.Bytes())
 		if metrics.EnabledExpensive {
 			s.AccountReads += time.Since(start)
+			s.AccountReadsCount++
 		}
 		if err != nil {
 			s.setError(fmt.Errorf("getDeleteStateObject (%x) error: %v", addr.Bytes(), err))
 			return nil
 		}
+		accountTrieHitMeter.Mark(1)
 		if len(enc) == 0 {
 			return nil
 		}

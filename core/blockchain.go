@@ -54,6 +54,7 @@ var (
 	headBlockGauge     = metrics.NewRegisteredGauge("chain/head/block", nil)
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
 	headFastBlockGauge = metrics.NewRegisteredGauge("chain/head/receipt", nil)
+	processGasGauge    = metrics.NewRegisteredGauge("chain/process/gas", nil)
 
 	justifiedBlockGauge = metrics.NewRegisteredGauge("chain/head/justified", nil)
 	finalizedBlockGauge = metrics.NewRegisteredGauge("chain/head/finalized", nil)
@@ -71,6 +72,14 @@ var (
 	snapshotAccountReadTimer = metrics.NewRegisteredTimer("chain/snapshot/account/reads", nil)
 	snapshotStorageReadTimer = metrics.NewRegisteredTimer("chain/snapshot/storage/reads", nil)
 	snapshotCommitTimer      = metrics.NewRegisteredTimer("chain/snapshot/commits", nil)
+
+	processGasUsedHistogram       = metrics.NewRegisteredHistogram("chain/process/gas/used", nil, metrics.NewExpDecaySample(1028, 0.015))
+	accountReadsHistogram         = metrics.NewRegisteredHistogram("chain/account/reads/hist", nil, metrics.NewExpDecaySample(1028, 0.015))
+	storageReadsHistogram         = metrics.NewRegisteredHistogram("chain/storage/reads/hist", nil, metrics.NewExpDecaySample(1028, 0.015))
+	snapshotAccountReadsHistogram = metrics.NewRegisteredHistogram("chain/snapshot/account/reads/hist", nil, metrics.NewExpDecaySample(1028, 0.015))
+	snapshotStorageReadsHistogram = metrics.NewRegisteredHistogram("chain/snapshot/storage/reads/hist", nil, metrics.NewExpDecaySample(1028, 0.015))
+	accountUpdatesHistogram       = metrics.NewRegisteredHistogram("chain/account/updates/hist", nil, metrics.NewExpDecaySample(1028, 0.015))
+	storageUpdatesHistogram       = metrics.NewRegisteredHistogram("chain/storage/updates/hist", nil, metrics.NewExpDecaySample(1028, 0.015))
 
 	blockInsertTimer     = metrics.NewRegisteredTimer("chain/inserts", nil)
 	blockValidationTimer = metrics.NewRegisteredTimer("chain/validation", nil)
@@ -1975,10 +1984,15 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		// Update the metrics touched during block processing
 		accountReadTimer.Update(statedb.AccountReads)                 // Account reads are complete, we can mark them
 		storageReadTimer.Update(statedb.StorageReads)                 // Storage reads are complete, we can mark them
-		accountUpdateTimer.Update(statedb.AccountUpdates)             // Account updates are complete, we can mark them
-		storageUpdateTimer.Update(statedb.StorageUpdates)             // Storage updates are complete, we can mark them
 		snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads) // Account reads are complete, we can mark them
 		snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads) // Storage reads are complete, we can mark them
+		if metrics.EnabledExpensive {
+			accountReadsHistogram.Update(statedb.AccountReadsCount)
+			storageReadsHistogram.Update(statedb.StorageReadsCount)
+			snapshotAccountReadsHistogram.Update(statedb.SnapshotAccountReadsCount)
+			snapshotStorageReadsHistogram.Update(statedb.SnapshotStorageReadsCount)
+		}
+		processGasUsedHistogram.Update(int64(usedGas))
 
 		blockExecutionTimer.Update(time.Since(substart))
 
@@ -1997,8 +2011,14 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		proctime := time.Since(start)
 
 		// Update the metrics touched during block validation
-		accountHashTimer.Update(statedb.AccountHashes) // Account hashes are complete, we can mark them
-		storageHashTimer.Update(statedb.StorageHashes) // Storage hashes are complete, we can mark them
+		accountHashTimer.Update(statedb.AccountHashes)    // Account hashes are complete, we can mark them
+		storageHashTimer.Update(statedb.StorageHashes)    // Storage hashes are complete, we can mark them
+		accountUpdateTimer.Update(statedb.AccountUpdates) // Account updates are complete, we can mark them
+		storageUpdateTimer.Update(statedb.StorageUpdates) // Storage updates are complete, we can mark them
+		if metrics.EnabledExpensive {
+			accountUpdatesHistogram.Update(statedb.AccountUpdatesCount)
+			storageUpdatesHistogram.Update(statedb.StorageUpdatesCount)
+		}
 
 		blockValidationTimer.Update(time.Since(substart))
 
