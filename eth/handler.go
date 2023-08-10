@@ -45,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 const (
@@ -237,8 +238,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			// round on next sync cycle
 			if h.snapSync.Load() {
 				log.Info("Snap sync complete, auto disabling")
-				h.snapSync.Store(false)
-			}
+				h.snapSync.Store(false)		}
 			// If we've successfully finished a sync cycle, accept transactions from
 			// the network
 			h.acceptTxs.Store(true)
@@ -327,7 +327,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		n, err := h.chain.InsertChain(blocks)
 		if err == nil {
-			h.acceptTxs.Store(true) // Mark initial sync done on any fetcher import
+			h.enableSyncedFeatures() // Mark initial sync done on any fetcher import
 		}
 		return n, err
 	}
@@ -954,5 +954,14 @@ func (h *handler) voteBroadcastLoop() {
 		case <-h.votesSub.Err():
 			return
 		}
+	}
+}
+
+// enableSyncedFeatures enables the post-sync functionalities when the initial
+// sync is finished.
+func (h *handler) enableSyncedFeatures() {
+	h.acceptTxs.Store(true)
+	if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
+		h.chain.TrieDB().SetBufferSize(pathdb.DefaultBufferSize)
 	}
 }
