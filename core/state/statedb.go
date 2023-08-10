@@ -194,8 +194,6 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 	_, sdb.noTrie = tr.(*trie.EmptyTrie)
 	sdb.trie = tr
 
-	sdb.storagePool = NewStoragePool()
-
 	return sdb, nil
 }
 
@@ -1526,16 +1524,20 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 						// Write any storage changes in the state object to its storage trie
 						if !s.noTrie {
 							if set, err := obj.commitTrie(s.db); err != nil {
+								taskResults <- err
+								return
+							} else {
 								// Merge the dirty nodes of storage trie into global set.
 								if set != nil {
 									if err = nodes.Merge(set); err == nil {
 										updates, deleted := set.Size()
 										storageTrieNodesUpdated += updates
 										storageTrieNodesDeleted += deleted
+									} else {
+										taskResults <- err
+										return
 									}
 								}
-								taskResults <- err
-								return
 							}
 						}
 						taskResults <- nil
@@ -1595,6 +1597,25 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 					storageTriesDeletedMeter.Mark(int64(storageTrieNodesDeleted))
 					s.AccountUpdated, s.AccountDeleted = 0, 0
 					s.StorageUpdated, s.StorageDeleted = 0, 0
+				}
+				
+				// Update nodes to triedb
+				origin := s.originalRoot
+				if origin == (common.Hash{}) {
+					origin = types.EmptyRootHash
+				}
+				if root != origin {
+					start := time.Now()
+					if err := s.db.TrieDB().Update(root, origin, nodes); err != nil {
+						log.Info("Rick: failed to update triedb", "err", err)
+						return err
+						// return common.Hash{}, diffLayer, err
+					}
+					s.originalRoot = root
+					if metrics.EnabledExpensive {
+						s.TrieDBCommits += time.Since(start)
+					}
+
 				}
 			}
 
@@ -1726,21 +1747,6 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		root = types.EmptyRootHash
 	}
 
-	origin := s.originalRoot
-	if origin == (common.Hash{}) {
-		origin = types.EmptyRootHash
-	}
-
-	if root != origin {
-		start := time.Now()
-		if err := s.db.TrieDB().Update(root, origin, nodes); err != nil {
-			return common.Hash{}, diffLayer, err
-		}
-		s.originalRoot = root
-		if metrics.EnabledExpensive {
-			s.TrieDBCommits += time.Since(start)
-		}
-	}
 
 	return root, diffLayer, nil
 }

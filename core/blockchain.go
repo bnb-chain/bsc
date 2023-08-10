@@ -1169,47 +1169,57 @@ func (bc *BlockChain) Stop() {
 		}
 	}
 
-	// Ensure the state of a recent block is also stored to disk before exiting.
-	// We're writing three different states to catch different restart scenarios:
-	//  - HEAD:     So we don't need to reprocess any blocks in the general case
-	//  - HEAD-1:   So we don't do large reorgs if our HEAD becomes an uncle
-	//  - HEAD-127: So we have a hard limit on the number of blocks reexecuted
-	if !bc.cacheConfig.TrieDirtyDisabled {
-		triedb := bc.stateCache.TrieDB()
+	if bc.triedb.Scheme() == rawdb.PathScheme {
+		// Ensure that the in-memory trie nodes are journaled to disk properly.
+		if err := bc.triedb.Journal(bc.CurrentBlock().Root()); err != nil {
+			log.Info("Failed to journal in-memory trie nodes", "err", err)
+		}
+	} else {
+		// Ensure the state of a recent block is also stored to disk before exiting.
+		// We're writing three different states to catch different restart scenarios:
+		//  - HEAD:     So we don't need to reprocess any blocks in the general case
+		//  - HEAD-1:   So we don't do large reorgs if our HEAD becomes an uncle
+		//  - HEAD-127: So we have a hard limit on the number of blocks reexecuted
+		if !bc.cacheConfig.TrieDirtyDisabled {
+			triedb := bc.stateCache.TrieDB()
 
-		for _, offset := range []uint64{0, 1, bc.triesInMemory - 1} {
-			if number := bc.CurrentBlock().NumberU64(); number > offset {
-				recent := bc.GetBlockByNumber(number - offset)
+			for _, offset := range []uint64{0, 1, bc.triesInMemory - 1} {
+				if number := bc.CurrentBlock().NumberU64(); number > offset {
+					recent := bc.GetBlockByNumber(number - offset)
 
-				log.Info("Writing cached state to disk", "block", recent.Number(), "hash", recent.Hash(), "root", recent.Root())
-				if err := triedb.Commit(recent.Root(), true); err != nil {
-					log.Error("Failed to commit recent state trie", "err", err)
-				} else {
-					rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
+					log.Info("Writing cached state to disk", "block", recent.Number(), "hash", recent.Hash(), "root", recent.Root())
+					if err := triedb.Commit(recent.Root(), true); err != nil {
+						log.Error("Failed to commit recent state trie", "err", err)
+					} else {
+						rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
+					}
 				}
 			}
-		}
-		if snapBase != (common.Hash{}) {
-			log.Info("Writing snapshot state to disk", "root", snapBase)
-			if err := triedb.Commit(snapBase, true); err != nil {
-				log.Error("Failed to commit recent state trie", "err", err)
-			} else {
-				rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().NumberU64())
+			if snapBase != (common.Hash{}) {
+				log.Info("Writing snapshot state to disk", "root", snapBase)
+				if err := triedb.Commit(snapBase, true); err != nil {
+					log.Error("Failed to commit recent state trie", "err", err)
+				} else {
+					rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().NumberU64())
+				}
+			}
+			for !bc.triegc.Empty() {
+				go triedb.Dereference(bc.triegc.PopItem())
+			}
+			if size, _ := triedb.Size(); size != 0 {
+				log.Error("Dangling trie nodes after full cleanup")
 			}
 		}
-		for !bc.triegc.Empty() {
-			go triedb.Dereference(bc.triegc.PopItem())
-		}
-		if size, _ := triedb.Size(); size != 0 {
-			log.Error("Dangling trie nodes after full cleanup")
-		}
 	}
+
 	// Ensure all live cached entries be saved into disk, so that we can skip
 	// cache warmup when node restarts.
 	if bc.cacheConfig.TrieCleanJournal != "" {
 		triedb := bc.stateCache.TrieDB()
 		triedb.SaveCache(bc.cacheConfig.TrieCleanJournal)
 	}
+	// Close the trie database, release all the held resources as the last step.
+	bc.triedb.Close()
 	log.Info("Blockchain stopped")
 }
 
