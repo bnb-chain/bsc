@@ -10,42 +10,51 @@ import (
 	"time"
 )
 
-type HourTicker struct {
+type TimeTicker struct {
 	stop chan struct{}
 	C    <-chan time.Time
 }
 
-func NewHourTicker() *HourTicker {
-	ht := &HourTicker{
-		stop: make(chan struct{}),
-	}
-	ht.C = ht.Ticker()
-	return ht
-}
-
-func (ht *HourTicker) Stop() {
-	ht.stop <- struct{}{}
-}
-
-func (ht *HourTicker) Ticker() <-chan time.Time {
+// NewTimeTicker creates a TimeTicker that notifies based on rotateHours parameter.
+// if rotateHours is 1 and current time is 11:32 it means that the ticker will tick at 12:00
+// if rotateHours is 5 and current time is 09:12 means that the ticker will tick at 11:00
+func NewTimeTicker(rotateHours int) *TimeTicker {
 	ch := make(chan time.Time)
+	tt := TimeTicker{
+		stop: make(chan struct{}),
+		C:    ch,
+	}
+
+	tt.startTicker(ch, rotateHours)
+
+	return &tt
+}
+
+func (tt *TimeTicker) Stop() {
+	tt.stop <- struct{}{}
+}
+
+func (tt *TimeTicker) startTicker(ch chan time.Time, rotateHours int) {
 	go func() {
-		hour := time.Now().Hour()
+		nextRotationHour := getNextRotationHour(time.Now(), rotateHours)
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case t := <-ticker.C:
-				if t.Hour() != hour {
+				if t.Hour() == nextRotationHour {
 					ch <- t
-					hour = t.Hour()
+					nextRotationHour = getNextRotationHour(time.Now(), rotateHours)
 				}
-			case <-ht.stop:
+			case <-tt.stop:
 				return
 			}
 		}
 	}()
-	return ch
+}
+
+func getNextRotationHour(now time.Time, delta int) int {
+	return now.Add(time.Hour * time.Duration(delta)).Hour()
 }
 
 type AsyncFileWriter struct {
@@ -56,10 +65,10 @@ type AsyncFileWriter struct {
 	started    int32
 	buf        chan []byte
 	stop       chan struct{}
-	hourTicker *HourTicker
+	timeTicker *TimeTicker
 }
 
-func NewAsyncFileWriter(filePath string, bufSize int64) *AsyncFileWriter {
+func NewAsyncFileWriter(filePath string, maxBytesSize int64, rotateHours int) *AsyncFileWriter {
 	absFilePath, err := filepath.Abs(filePath)
 	if err != nil {
 		panic(fmt.Sprintf("get file path of logger error. filePath=%s, err=%s", filePath, err))
@@ -67,9 +76,9 @@ func NewAsyncFileWriter(filePath string, bufSize int64) *AsyncFileWriter {
 
 	return &AsyncFileWriter{
 		filePath:   absFilePath,
-		buf:        make(chan []byte, bufSize),
+		buf:        make(chan []byte, maxBytesSize),
 		stop:       make(chan struct{}),
-		hourTicker: NewHourTicker(),
+		timeTicker: NewTimeTicker(rotateHours),
 	}
 }
 
@@ -159,7 +168,7 @@ func (w *AsyncFileWriter) SyncWrite(msg []byte) {
 
 func (w *AsyncFileWriter) rotateFile() {
 	select {
-	case <-w.hourTicker.C:
+	case <-w.timeTicker.C:
 		if err := w.flushAndClose(); err != nil {
 			fmt.Fprintf(os.Stderr, "flush and close file error. err=%s", err)
 		}
@@ -174,7 +183,7 @@ func (w *AsyncFileWriter) Stop() {
 	w.stop <- struct{}{}
 	w.wg.Wait()
 
-	w.hourTicker.Stop()
+	w.timeTicker.Stop()
 }
 
 func (w *AsyncFileWriter) Write(msg []byte) (n int, err error) {

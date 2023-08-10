@@ -727,7 +727,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
 	if pool.all.Get(hash) != nil {
-		//log.Trace("Discarding already known transaction", "hash", hash)
+		log.Trace("Discarding already known transaction", "hash", hash)
 		knownTxMeter.Mark(1)
 		return false, ErrAlreadyKnown
 	}
@@ -737,7 +737,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 
 	// If the transaction fails basic validation, discard it
 	if err := pool.validateTx(tx, isLocal); err != nil {
-		//log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
+		log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
 		invalidTxMeter.Mark(1)
 		return false, err
 	}
@@ -749,7 +749,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
-			//log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
+			log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
 			underpricedTxMeter.Mark(1)
 			return false, ErrUnderpriced
 		}
@@ -770,7 +770,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 
 		// Special case, we still can't make the room for the new remote one.
 		if !isLocal && !success {
-			//log.Trace("Discarding overflown transaction", "hash", hash)
+			log.Trace("Discarding overflown transaction", "hash", hash)
 			overflowedTxMeter.Mark(1)
 			return false, ErrTxPoolOverflow
 		}
@@ -797,7 +797,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 
 		// Kick out the underpriced remote transactions.
 		for _, tx := range drop {
-			//log.Trace("Discarding freshly underpriced transaction", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
+			log.Trace("Discarding freshly underpriced transaction", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
 			underpricedTxMeter.Mark(1)
 			dropped := pool.removeTx(tx.Hash(), false)
 			pool.changesSinceReorg += dropped
@@ -822,7 +822,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		pool.priced.Put(tx, isLocal)
 		pool.journalTx(from, tx)
 		pool.queueTxEvent(tx)
-		//log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
+		log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
 		pool.beats[from] = time.Now()
@@ -844,7 +844,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	}
 	pool.journalTx(from, tx)
 
-	//log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
+	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
 }
 

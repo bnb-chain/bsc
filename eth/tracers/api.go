@@ -908,6 +908,8 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 			return nil, err
 		}
 	}
+	vmenv := vm.NewEVM(vmctx, txContext, statedb, api.backend.ChainConfig(), vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
+
 	// Define a meaningful timeout of a single transaction trace
 	if config.Timeout != nil {
 		if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
@@ -919,13 +921,13 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 		<-deadlineCtx.Done()
 		if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
 			tracer.Stop(errors.New("execution timeout"))
+			// Stop evm execution. Note cancellation is not necessarily immediate.
+			vmenv.Cancel()
 		}
 	}()
 	defer cancel()
 
 	// Run the transaction with tracing enabled.
-	vmenv := vm.NewEVM(vmctx, txContext, statedb, api.backend.ChainConfig(), vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
-
 	if posa, ok := api.backend.Engine().(consensus.PoSA); ok && message.From() == vmctx.Coinbase &&
 		posa.IsSystemContract(message.To()) && message.GasPrice().Cmp(big.NewInt(0)) == 0 {
 		balance := statedb.GetBalance(consensus.SystemAddress)

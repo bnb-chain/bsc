@@ -1,7 +1,8 @@
 package monitor
 
 import (
-	"github.com/ethereum/go-ethereum/common"
+	"encoding/json"
+
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -57,29 +58,40 @@ func (m *MaliciousVoteMonitor) ConflictDetect(newVote *types.VoteEnvelope, pendi
 	if !(blockNumber+maliciousVoteSlashScope > pendingBlockNumber) {
 		blockNumber = pendingBlockNumber - maliciousVoteSlashScope + 1
 	}
+	newVoteHash := newVote.Data.Hash()
 	for ; blockNumber <= pendingBlockNumber+upperLimitOfVoteBlockNumber; blockNumber++ {
 		if voteDataBuffer.Contains(blockNumber) {
-			voteData, ok := voteDataBuffer.Get(blockNumber)
+			voteEnvelope, ok := voteDataBuffer.Get(blockNumber)
 			if !ok {
 				log.Error("Failed to get voteData info from LRU cache.")
 				continue
 			}
-			if blockNumber == targetNumber {
-				log.Warn("violate rule1", "VoteAddress", common.Bytes2Hex(newVote.VoteAddress[:]), "voteExisted", voteData.(*types.VoteData), "newVote", newVote.Data)
+			maliciousVote := false
+			if blockNumber == targetNumber && voteEnvelope.(*types.VoteEnvelope).Data.Hash() != newVoteHash {
 				violateRule1Counter.Inc(1)
-				// prepare message for slashing
-				return true
-			} else if (blockNumber < targetNumber && voteData.(*types.VoteData).SourceNumber > sourceNumber) ||
-				(blockNumber > targetNumber && voteData.(*types.VoteData).SourceNumber < sourceNumber) {
-				log.Warn("violate rule2", "VoteAddress", common.Bytes2Hex(newVote.VoteAddress[:]), "voteExisted", voteData.(*types.VoteData), "newVote", newVote.Data)
+				maliciousVote = true
+			} else if (blockNumber < targetNumber && voteEnvelope.(*types.VoteEnvelope).Data.SourceNumber > sourceNumber) ||
+				(blockNumber > targetNumber && voteEnvelope.(*types.VoteEnvelope).Data.SourceNumber < sourceNumber) {
 				violateRule2Counter.Inc(1)
-				// prepare message for slashing
+				maliciousVote = true
+			}
+			if maliciousVote {
+				evidence := types.NewSlashIndicatorFinalityEvidenceWrapper(voteEnvelope.(*types.VoteEnvelope), newVote)
+				if evidence != nil {
+					if evidenceJson, err := json.Marshal(evidence); err == nil {
+						log.Warn("MaliciousVote", "evidence", string(evidenceJson))
+					} else {
+						log.Warn("MaliciousVote, Marshal evidence failed")
+					}
+				} else {
+					log.Warn("MaliciousVote, construct evidence failed")
+				}
 				return true
 			}
 		}
 	}
 
 	// for simplicity, Just override even if the targetNumber has existed.
-	voteDataBuffer.Add(newVote.Data.TargetNumber, newVote.Data)
+	voteDataBuffer.Add(newVote.Data.TargetNumber, newVote)
 	return false
 }

@@ -419,7 +419,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if p, ok := w.engine.(*parlia.Parlia); ok {
 				signedRecent, err := p.SignRecently(w.chain, head.Block)
 				if err != nil {
-					log.Info("Not allowed to propose block", "err", err)
+					log.Debug("Not allowed to propose block", "err", err)
 					continue
 				}
 				if signedRecent {
@@ -852,28 +852,30 @@ LOOP:
 		// Check whether the tx is replay protected. If we're not in the EIP155 hf
 		// phase, start ignoring the sender until we do.
 		if tx.Protected() && !w.chainConfig.IsEIP155(env.header.Number) {
-			//log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eip155", w.chainConfig.EIP155Block)
+			log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eip155", w.chainConfig.EIP155Block)
 			txs.Pop()
 			continue
 		}
 		// Start executing the transaction
 		env.state.Prepare(tx.Hash(), env.tcount)
 
+		from, _ := types.Sender(env.signer, tx)
+
 		logs, err := w.commitTransaction(env, tx, bloomProcessors)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
-			//log.Trace("Gas limit exceeded for current block", "sender", from)
+			log.Trace("Gas limit exceeded for current block", "sender", from)
 			txs.Pop()
 
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift
-			//log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
+			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
 			txs.Shift()
 
 		case errors.Is(err, core.ErrNonceTooHigh):
 			// Reorg notification data race between the transaction pool and miner, skip account =
-			//log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
+			log.Trace("Skipping account with high nonce", "sender", from, "nonce", tx.Nonce())
 			txs.Pop()
 
 		case errors.Is(err, nil):
@@ -884,7 +886,7 @@ LOOP:
 
 		case errors.Is(err, core.ErrTxTypeNotSupported):
 			// Pop the unsupported transaction without shifting in the next from the account
-			//log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
+			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
 			txs.Pop()
 
 		default:
@@ -968,10 +970,6 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Set baseFee and GasLimit if we are on an EIP-1559 chain
 	if w.chainConfig.IsLondon(header.Number) {
 		header.BaseFee = misc.CalcBaseFee(w.chainConfig, parent.Header())
-		if !w.chainConfig.IsLondon(parent.Number()) {
-			parentGasLimit := parent.GasLimit() * params.ElasticityMultiplier
-			header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
-		}
 	}
 	// Run the consensus preparation with the default or customized consensus engine.
 	if err := w.engine.Prepare(w.chain, header); err != nil {

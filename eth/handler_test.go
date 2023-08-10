@@ -177,7 +177,7 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 		Sync:       downloader.SnapSync,
 		BloomCache: 1,
 	})
-	handler.Start(1000)
+	handler.Start(1000, 3)
 
 	return &testHandler{
 		db:       db,

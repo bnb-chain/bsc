@@ -22,9 +22,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - maliciousVoteSlashScope - 1,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes(("01"))),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote1, pendingBlockNumber))
@@ -34,9 +34,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - maliciousVoteSlashScope - 1,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("02")),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote2, pendingBlockNumber))
@@ -54,9 +54,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - maliciousVoteSlashScope - 1,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("01")),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote1, pendingBlockNumber))
@@ -65,9 +65,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - maliciousVoteSlashScope - 1,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("02")),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote2, pendingBlockNumber))
@@ -85,9 +85,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - 1,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("01")),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote1, pendingBlockNumber))
@@ -96,9 +96,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: uint64(0),
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - 1,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("02")),
 			},
 		}
 		assert.Equal(t, true, maliciousVoteMonitor.ConflictDetect(vote2, pendingBlockNumber))
@@ -116,9 +116,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: pendingBlockNumber - 4,
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - 1,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("01")),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote1, pendingBlockNumber))
@@ -127,9 +127,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: pendingBlockNumber - 2,
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - 3,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("02")),
 			},
 		}
 		assert.Equal(t, true, maliciousVoteMonitor.ConflictDetect(vote2, pendingBlockNumber))
@@ -147,9 +147,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: pendingBlockNumber - 2,
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - 3,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("01")),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote1, pendingBlockNumber))
@@ -158,9 +158,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: pendingBlockNumber - 4,
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - 1,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("02")),
 			},
 		}
 		assert.Equal(t, true, maliciousVoteMonitor.ConflictDetect(vote2, pendingBlockNumber))
@@ -178,9 +178,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: pendingBlockNumber - 4,
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - 3,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("01")),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote1, pendingBlockNumber))
@@ -189,9 +189,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: pendingBlockNumber - 3,
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - 2,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("02")),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote2, pendingBlockNumber))
@@ -200,9 +200,9 @@ func TestMaliciousVoteMonitor(t *testing.T) {
 			Signature:   types.BLSSignature{},
 			Data: &types.VoteData{
 				SourceNumber: pendingBlockNumber - 2,
-				SourceHash:   common.BytesToHash(common.Hex2Bytes(string(rune(0)))),
+				SourceHash:   common.BytesToHash(common.Hex2Bytes("00")),
 				TargetNumber: pendingBlockNumber - 1,
-				TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
+				TargetHash:   common.BytesToHash(common.Hex2Bytes("02")),
 			},
 		}
 		assert.Equal(t, false, maliciousVoteMonitor.ConflictDetect(vote3, pendingBlockNumber))

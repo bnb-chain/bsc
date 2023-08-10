@@ -1,6 +1,8 @@
 package types
 
 import (
+	"bytes"
+	"math/big"
 	"sync/atomic"
 
 	"github.com/pkg/errors"
@@ -14,7 +16,6 @@ const (
 	BLSSignatureLength = 96
 
 	MaxAttestationExtraLength = 256
-	NaturallyFinalizedDist    = 21 // The distance to naturally finalized a block
 )
 
 type BLSPublicKey [BLSPublicKeyLength]byte
@@ -89,4 +90,42 @@ func (vote *VoteEnvelope) Verify() error {
 		return errors.New("verify bls signature failed.")
 	}
 	return nil
+}
+
+type SlashIndicatorVoteDataWrapper struct {
+	SrcNum  *big.Int
+	SrcHash string
+	TarNum  *big.Int
+	TarHash string
+	Sig     string
+}
+
+type SlashIndicatorFinalityEvidenceWrapper struct {
+	VoteA    SlashIndicatorVoteDataWrapper
+	VoteB    SlashIndicatorVoteDataWrapper
+	VoteAddr string
+}
+
+func NewSlashIndicatorFinalityEvidenceWrapper(vote1, vote2 *VoteEnvelope) *SlashIndicatorFinalityEvidenceWrapper {
+	if !bytes.Equal(vote1.VoteAddress[:], vote1.VoteAddress[:]) ||
+		vote1.Data == nil || vote2.Data == nil {
+		return nil
+	}
+	return &SlashIndicatorFinalityEvidenceWrapper{
+		VoteA: SlashIndicatorVoteDataWrapper{
+			SrcNum:  big.NewInt(int64(vote1.Data.SourceNumber)),
+			SrcHash: common.Bytes2Hex(vote1.Data.SourceHash[:]),
+			TarNum:  big.NewInt(int64(vote1.Data.TargetNumber)),
+			TarHash: common.Bytes2Hex(vote1.Data.TargetHash[:]),
+			Sig:     common.Bytes2Hex(vote1.Signature[:]),
+		},
+		VoteB: SlashIndicatorVoteDataWrapper{
+			SrcNum:  big.NewInt(int64(vote2.Data.SourceNumber)),
+			SrcHash: common.Bytes2Hex(vote2.Data.SourceHash[:]),
+			TarNum:  big.NewInt(int64(vote2.Data.TargetNumber)),
+			TarHash: common.Bytes2Hex(vote2.Data.TargetHash[:]),
+			Sig:     common.Bytes2Hex(vote2.Signature[:]),
+		},
+		VoteAddr: common.Bytes2Hex(vote1.VoteAddress[:]),
+	}
 }

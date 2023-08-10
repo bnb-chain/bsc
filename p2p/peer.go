@@ -116,8 +116,9 @@ type Peer struct {
 	disc     chan DiscReason
 
 	// events receives message send / receive events if set
-	events   *event.Feed
-	testPipe *MsgPipeRW // for testing
+	events         *event.Feed
+	testPipe       *MsgPipeRW // for testing
+	testRemoteAddr string     // for testing
 }
 
 // NewPeer returns a peer for testing purposes.
@@ -203,7 +204,21 @@ func (p *Peer) RunningCap(protocol string, versions []uint) bool {
 
 // RemoteAddr returns the remote address of the network connection.
 func (p *Peer) RemoteAddr() net.Addr {
+	if len(p.testRemoteAddr) > 0 {
+		if addr, err := net.ResolveTCPAddr("tcp", p.testRemoteAddr); err == nil {
+			return addr
+		}
+		log.Warn("RemoteAddr", "invalid testRemoteAddr", p.testRemoteAddr)
+	}
 	return p.rw.fd.RemoteAddr()
+}
+
+func (p *Peer) UpdateTestRemoteAddr(addr string) { // test purpose only
+	p.testRemoteAddr = addr
+}
+
+func (p *Peer) UpdateTrustFlagTest() { // test purpose only
+	p.rw.set(trustedConn, true)
 }
 
 // LocalAddr returns the local address of the network connection.
