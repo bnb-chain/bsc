@@ -1696,7 +1696,7 @@ func (p *Parlia) getSystemMessage(from, toAddress common.Address, data []byte, v
 	return callmsg{
 		ethereum.CallMsg{
 			From:     from,
-			Gas:      math.MaxUint64 / 2,
+			Gas:      math.MaxUint64 / 2, // TODO why is this the case here?
 			GasPrice: big.NewInt(0),
 			Value:    value,
 			To:       &toAddress,
@@ -1717,8 +1717,8 @@ func (p *Parlia) applyTransaction(
 	expectedTx := types.NewTransaction(nonce, *msg.To(), msg.Value(), msg.Gas(), msg.GasPrice(), msg.Data())
 	expectedHash := p.signer.Hash(expectedTx)
 
-	if msg.From() == p.val && mining {
-		expectedTx, err = p.signTxFn(accounts.Account{Address: msg.From()}, expectedTx, p.chainConfig.ChainID)
+	if msg.From() == p.val && mining { // todo understanding is this supposed to be satisfied in my case?
+		expectedTx, err = p.signTxFn(accounts.Account{Address: msg.From()}, expectedTx, p.chainConfig.ChainID) // todo gas remains MAX after this as well
 		if err != nil {
 			return err
 		}
@@ -1742,7 +1742,7 @@ func (p *Parlia) applyTransaction(
 		*receivedTxs = (*receivedTxs)[1:]
 	}
 	state.Prepare(expectedTx.Hash(), len(*txs))
-	gasUsed, err := applyMessage(msg, state, header, p.chainConfig, chainContext)
+	gasUsed, err := applyMessage(msg, state, header, p.chainConfig, chainContext) // 1516 only
 	if err != nil {
 		return err
 	}

@@ -130,16 +130,20 @@ func run(logger *log.Logger) error {
 
 			logger.Printf("Nonce: %d, GasPrice: %s, MaxPriorityFeePerGas: %s\n", nonce, gasPrice.String(), maxPriorityFeePerGas.String())
 
-			msg := types.BlobTxMessage{
+			msg := types.BlobTxMessage{ // todo add chainID!!!!
+				ChainID:             view.Uint256View(*uint256.NewInt(1337)),
 				Nonce:               view.Uint64View(nonce),
-				Gas:                 41000, //view.Uint64View(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64()), //todo check if this is correct as this seems high
+				Gas:                 43000, //view.Uint64View(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64()), //todo check if this is correct as this seems high
 				To:                  types.AddressOptionalSSZ{Address: (*types.AddressSSZ)(&receiver)},
 				GasTipCap:           view.Uint256View(*uint256.NewInt(maxPriorityFeePerGas.Uint64())),
 				GasFeeCap:           view.Uint256View(*uint256.NewInt(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64())),
 				MaxFeePerDataGas:    view.Uint256View(*uint256.NewInt(maxFeePerDataGas)),
 				Value:               view.Uint256View(*uint256.NewInt(0)),
 				BlobVersionedHashes: blobHashes,
+				Data:                types.TxDataView{},
+				AccessList:          types.AccessListView{},
 			}
+			fmt.Println("msg: ", msg)
 
 			data := types.BlobTxWrapData{
 				BlobKzgs: commitments,
@@ -151,6 +155,7 @@ func run(logger *log.Logger) error {
 
 			signedTx, err := types.SignTx(tx, types.NewDankSigner(chainID), privateKeyECDSA)
 			if err != nil {
+				fmt.Println("Error while signing Tx: ", err.Error())
 				return errors.Wrapf(err, "signing tx: %+v", tx)
 			}
 			// signedTxBytes, err := signedTx.MarshalMinimal()

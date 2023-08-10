@@ -371,6 +371,7 @@ func decodeByteArray(s *Stream, val reflect.Value) error {
 			return wrapStreamError(ErrCanonSize, val.Type())
 		}
 	case List:
+		fmt.Println(kind, size, err, "Array")
 		return wrapStreamError(ErrExpectedString, val.Type())
 	}
 	return nil
@@ -626,6 +627,7 @@ func (s *Stream) Bytes() ([]byte, error) {
 		}
 		return b, nil
 	default:
+		fmt.Println(kind, size, err, "stream")
 		return nil, ErrExpectedString
 	}
 }
@@ -657,6 +659,7 @@ func (s *Stream) ReadBytes(b []byte) error {
 		}
 		return nil
 	default:
+		fmt.Println(kind, size, err, "2")
 		return ErrExpectedString
 	}
 }
@@ -743,6 +746,7 @@ func (s *Stream) uint(maxbits int) (uint64, error) {
 			return v, nil
 		}
 	default:
+		fmt.Println(kind, size, err, "uint")
 		return 0, ErrExpectedString
 	}
 }
@@ -827,6 +831,7 @@ func (s *Stream) decodeBigInt(dst *big.Int) error {
 	case err != nil:
 		return err
 	case kind == List:
+		fmt.Println(kind, size, err, "BigInt")
 		return ErrExpectedString
 	case kind == Byte:
 		buffer = s.uintbuf[:1]

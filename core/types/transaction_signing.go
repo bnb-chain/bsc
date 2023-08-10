@@ -230,7 +230,8 @@ func (s dankSigner) Hash(tx *Transaction) common.Hash {
 	}
 	messageSigning := tx.inner.(*SignedBlobTx).Message
 	messageSigning.setChainID(s.chainId)
-	return prefixedSSZHash(BlobTxType, &messageSigning)
+	return prefixedRlpHash(BlobTxType, &messageSigning)
+	//return prefixedSSZHash(BlobTxType, &messageSigning)
 }
 
 type londonSigner struct{ eip2930Signer }

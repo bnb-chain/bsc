@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"container/heap"
 	"errors"
+	"fmt"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/protolambda/ztyp/codec"
 	"io"
@@ -95,7 +96,7 @@ type TxWrapData interface {
 	kzgs() BlobKzgs
 	blobs() Blobs
 	proofs() KZGProofs
-	encodeTyped(w io.Writer, txdata TxData) error
+	encodeTyped(w io.Writer, txdata TxData) error // todo 4844 why there isn't a decodeTyped??
 	sizeWrapData() common.StorageSize
 	validateBlobTransactionWrapper(inner TxData) error
 
@@ -164,6 +165,7 @@ func (tx *Transaction) EncodeRLP(w io.Writer) error {
 // encodeTyped writes the canonical encoding of a typed transaction to w, including wrapper data.
 func (tx *Transaction) encodeTyped(w io.Writer) error {
 	if tx.wrapData != nil {
+		fmt.Println("Encoding of blob Tx... 1")
 		return tx.wrapData.encodeTyped(w, tx.inner)
 	} else {
 		return tx.encodeTypedMinimal(w)
@@ -175,11 +177,13 @@ func (tx *Transaction) encodeTypedMinimal(w io.Writer) error {
 		return err
 	}
 	if tx.Type() == BlobTxType {
+		fmt.Println("Encoding of blob Tx... 2")
 		blobTx, ok := tx.inner.(*SignedBlobTx)
 		if !ok {
 			return ErrInvalidTxType
 		}
-		return EncodeSSZ(w, blobTx)
+		return rlp.Encode(w, blobTx)
+		//return EncodeSSZ(w, blobTx)
 	} else {
 		return rlp.Encode(w, tx.inner)
 	}
@@ -221,7 +225,7 @@ func (tx *Transaction) DecodeRLP(s *rlp.Stream) error {
 			tx.setDecoded(&inner, rlp.ListSize(size))
 		}
 		return err
-	case kind == rlp.String:
+	default:
 		// It's an EIP-2718 typed TX envelope.
 		var b []byte
 		if b, err = s.Bytes(); err != nil {
@@ -232,8 +236,6 @@ func (tx *Transaction) DecodeRLP(s *rlp.Stream) error {
 			tx.setDecoded(inner, uint64(len(b)))
 		}
 		return err
-	default:
-		return rlp.ErrExpectedList
 	}
 }
 
@@ -290,10 +292,15 @@ func (tx *Transaction) decodeTyped(b []byte) (TxData, TxWrapData, error) {
 		return nil, nil, errShortTypedTx
 	}
 	switch b[0] {
-	case BlobTxType:
-		var wrapped BlobTxWrapper
-		err := DecodeSSZ(b[1:], &wrapped)
-		return &wrapped.Tx, &BlobTxWrapData{BlobKzgs: wrapped.BlobKzgs, Blobs: wrapped.Blobs, Proofs: wrapped.Proofs}, err
+	case BlobTxType: //todo 4844 maybe remove this so that we dont use ssz for now?
+		//var wrapped BlobTxWrapper
+		//err := DecodeSSZ(b[1:], &wrapped)
+		fmt.Println("DecodeTyped called.....")
+		blobTxWrapper, err := decodeTyped(b[1:])
+		if err != nil {
+			return nil, nil, err
+		}
+		return &blobTxWrapper.Tx, &BlobTxWrapData{BlobKzgs: blobTxWrapper.BlobKzgs, Blobs: blobTxWrapper.Blobs, Proofs: blobTxWrapper.Proofs}, err
 	default:
 		minimal, err := tx.decodeTypedMinimal(b)
 		return minimal, nil, err
@@ -316,7 +323,8 @@ func (tx *Transaction) decodeTypedMinimal(b []byte) (TxData, error) {
 		return &inner, err
 	case BlobTxType:
 		var inner SignedBlobTx
-		err := DecodeSSZ(b[1:], &inner)
+		err := rlp.DecodeBytes(b[1:], &inner) // todo 4844 maybe make it rlp and not ssz?
+		//err := DecodeSSZ(b[1:], &inner) // todo 4844 maybe make it rlp and not ssz?
 		return &inner, err
 	default:
 		return nil, ErrTxTypeNotSupported
@@ -536,7 +544,8 @@ func (tx *Transaction) Hash() common.Hash {
 	case BlobTxType:
 		// TODO(eip-4844): We should remove this ugly switch by making hash()
 		// a part of the TxData interface
-		h = prefixedSSZHash(tx.Type(), tx.inner.(*SignedBlobTx))
+		h = prefixedRlpHash(tx.Type(), tx.inner.(*SignedBlobTx))
+		//h = prefixedSSZHash(tx.Type(), tx.inner.(*SignedBlobTx))
 	default:
 		h = prefixedRlpHash(tx.Type(), tx.inner)
 	}

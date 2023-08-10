@@ -82,7 +82,8 @@ func BlockToSidecars(block *types.Block) ([]*types.Sidecar, error) {
 				}
 				sidecars = append(sidecars, sidecar)
 			}
-			log.Info("Sidecars: ", sidecars[0])
+			log.Info("Sidecars: ", sidecars[0].Index, sidecars[0].BlockParentRoot, sidecars[0].ProposerIndex, sidecars[0].KZGCommitment, sidecars[0].Slot, sidecars[0].KZGCommitment)
+			fmt.Println("Sidecars: ", sidecars[0].Index, sidecars[0].BlockParentRoot, sidecars[0].ProposerIndex, sidecars[0].KZGCommitment, sidecars[0].Slot, sidecars[0].KZGCommitment)
 
 			//blobsBundle.Blobs = append(blobsBundle.Blobs, blobs...)
 			//blobsBundle.Commitments = append(blobsBundle.Commitments, commitments...)
