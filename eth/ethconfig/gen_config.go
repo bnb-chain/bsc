@@ -33,6 +33,9 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		PipeCommit              bool
 		RangeLimit              bool
 		TxLookupLimit           uint64                 `toml:",omitempty"`
+		TransactionHistory      uint64                 `toml:",omitempty"`
+		StateHistory            uint64                 `toml:",omitempty"`
+		StateScheme             string                 `toml:",omitempty"`
 		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
 		LightServ               int                    `toml:",omitempty"`
 		LightIngress            int                    `toml:",omitempty"`
@@ -85,6 +88,9 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.PipeCommit = c.PipeCommit
 	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
+	enc.TransactionHistory = c.TransactionHistory
+	enc.StateHistory = c.StateHistory
+	enc.StateScheme = c.StateScheme
 	enc.RequiredBlocks = c.RequiredBlocks
 	enc.LightServ = c.LightServ
 	enc.LightIngress = c.LightIngress
@@ -141,6 +147,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		PipeCommit              *bool
 		RangeLimit              *bool
 		TxLookupLimit           *uint64                `toml:",omitempty"`
+		TransactionHistory      *uint64                `toml:",omitempty"`
+		StateHistory            *uint64                `toml:",omitempty"`
+		StateScheme             *string                `toml:",omitempty"`
 		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
 		LightServ               *int                   `toml:",omitempty"`
 		LightIngress            *int                   `toml:",omitempty"`
@@ -227,6 +236,15 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.TxLookupLimit != nil {
 		c.TxLookupLimit = *dec.TxLookupLimit
+	}
+	if dec.TransactionHistory != nil {
+		c.TransactionHistory = *dec.TransactionHistory
+	}
+	if dec.StateHistory != nil {
+		c.StateHistory = *dec.StateHistory
+	}
+	if dec.StateScheme != nil {
+		c.StateScheme = *dec.StateScheme
 	}
 	if dec.RequiredBlocks != nil {
 		c.RequiredBlocks = dec.RequiredBlocks
