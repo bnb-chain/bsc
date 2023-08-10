@@ -87,9 +87,10 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
-	if dl.stale {
-		return nil, errSnapshotStale
-	}
+	// TODO : Rick
+	// if dl.stale {
+	//	return nil, errSnapshotStale
+	// }
 	// Try to retrieve the trie node from the dirty memory cache.
 	// The map is lock free since it's impossible to mutate the
 	// disk layer before tagging it as stale.

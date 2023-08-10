@@ -117,7 +117,11 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 	}
 	diff, ok := snap.(*diffLayer)
 	if !ok {
-		return fmt.Errorf("triedb snapshot [%#x] is disk layer", root)
+		// TODO : Rick
+		// The same root with the previous block
+		// Return directly if no state change
+		return nil
+		// return fmt.Errorf("triedb snapshot [%#x] is disk layer", root)
 	}
 	tree.lock.Lock()
 	defer tree.lock.Unlock()
