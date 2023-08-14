@@ -19,10 +19,12 @@ package types
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	gokzg4844 "github.com/crate-crypto/go-kzg-4844"
 	"github.com/ethereum/go-ethereum/crypto/kzg"
+	"github.com/holiman/uint256"
 	"math/big"
 	"math/rand"
 	"reflect"
@@ -79,6 +81,21 @@ var (
 func oneEmptyBlobWrapData() (wrap *BlobTxWrapData, versionedHashes VersionedHashesView) {
 	cryptoCtx := kzg.CryptoCtx()
 	blob := Blob{}
+	commitment, _ := cryptoCtx.BlobToKZGCommitment(gokzg4844.Blob(blob), 1)
+	proof, _ := cryptoCtx.ComputeBlobKZGProof(gokzg4844.Blob(blob), commitment, 1)
+	wrapData := &BlobTxWrapData{
+		BlobKzgs: BlobKzgs{KZGCommitment(commitment)},
+		Blobs:    Blobs{Blob(blob)},
+		Proofs:   KZGProofs{KZGProof(proof)},
+	}
+	return wrapData, VersionedHashesView{common.Hash(kzg.KZGToVersionedHash(gokzg4844.KZGCommitment(wrapData.BlobKzgs[0])))}
+}
+
+// Returns a wrapper consisting of a single blob of NOT all zeros that passes validation along with its
+// versioned hash.
+func oneNonEmptyBlobWrapData() (wrap *BlobTxWrapData, versionedHashes VersionedHashesView) {
+	cryptoCtx := kzg.CryptoCtx()
+	blob := Blob{1}
 	commitment, _ := cryptoCtx.BlobToKZGCommitment(gokzg4844.Blob(blob), 1)
 	proof, _ := cryptoCtx.ComputeBlobKZGProof(gokzg4844.Blob(blob), commitment, 1)
 	wrapData := &BlobTxWrapData{
@@ -618,4 +635,85 @@ func assertEqual(orig *Transaction, cpy *Transaction) error {
 		}
 	}
 	return nil
+}
+
+func TestEncodeRLP(t *testing.T) {
+
+	b, _ := oneNonEmptyBlobWrapData()
+	// Create transaction with wrap + inner
+	tx := &Transaction{
+		inner: &SignedBlobTx{
+			Message: BlobTxMessage{
+				ChainID: uint256.NewInt(1337),
+				Gas:     43000,
+			},
+		},
+		wrapData: b,
+	}
+
+	fmt.Println(tx.inner.chainID().String())
+
+	// Encode to RLP
+	buf := new(bytes.Buffer)
+	if err := tx.EncodeRLP(buf); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify encoded bytes
+	got := buf.Bytes()
+
+	s := rlp.NewStream(bytes.NewReader(got), 0)
+
+	var t2 Transaction
+
+	if err := t2.DecodeRLP(s); err != nil {
+		t.Fatal(err)
+	}
+	wantWrap := b
+	wantInner := tx.inner
+
+	if !reflect.DeepEqual(t2.wrapData, wantWrap) {
+		t.Errorf("wrap mismatch:\ngot: %v\nwant: %v", t2.wrapData, wantWrap)
+	}
+
+	if !reflect.DeepEqual(t2.inner, wantInner) {
+		t.Errorf("inner mismatch:\ngot: %v\nwant: %v", t2.inner, wantInner)
+	}
+}
+
+func TestDecodeRLP(t *testing.T) {
+
+	hexString := "c3c0c0c0ede0c48080808080c480808080c48080808080c180c48080808080c0c480808080c0cb80c480808080c480808080"
+
+	rlpBytes, err := hex.DecodeString(hexString)
+	if err != nil {
+		fmt.Println("Error decoding hex:", err)
+		return
+	}
+
+	//// Create RLP encoded bytes
+	//rlpBytes := []byte{ /* RLP encoded data */ }
+
+	b, _ := oneEmptyBlobWrapData()
+	// Decode
+	tx := &Transaction{
+		wrapData: b,
+	}
+
+	s := rlp.NewStream(bytes.NewReader(rlpBytes), 0)
+	if err := tx.DecodeRLP(s); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify decoded transaction
+	wantWrap := b
+	wantInner := &SignedBlobTx{ /* expected inner */ }
+
+	if !reflect.DeepEqual(tx.wrapData, wantWrap) {
+		t.Errorf("wrap mismatch:\ngot: %v\nwant: %v", tx.wrapData, wantWrap)
+	}
+
+	if !reflect.DeepEqual(tx.inner, wantInner) {
+		t.Errorf("inner mismatch:\ngot: %v\nwant: %v", tx.inner, wantInner)
+	}
 }

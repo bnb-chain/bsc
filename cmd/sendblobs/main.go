@@ -131,10 +131,10 @@ func run(logger *log.Logger) error {
 			logger.Printf("Nonce: %d, GasPrice: %s, MaxPriorityFeePerGas: %s\n", nonce, gasPrice.String(), maxPriorityFeePerGas.String())
 
 			msg := types.BlobTxMessage{ // todo add chainID!!!!
-				ChainID:             view.Uint256View(*uint256.NewInt(1337)),
+				ChainID:             uint256.NewInt(13),
 				Nonce:               view.Uint64View(nonce),
 				Gas:                 43000, //view.Uint64View(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64()), //todo check if this is correct as this seems high
-				To:                  types.AddressOptionalSSZ{Address: (*types.AddressSSZ)(&receiver)},
+				To:                  receiver,
 				GasTipCap:           view.Uint256View(*uint256.NewInt(maxPriorityFeePerGas.Uint64())),
 				GasFeeCap:           view.Uint256View(*uint256.NewInt(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64())),
 				MaxFeePerDataGas:    view.Uint256View(*uint256.NewInt(maxFeePerDataGas)),
