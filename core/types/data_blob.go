@@ -314,17 +314,17 @@ type BlobTxWrapper struct {
 	Proofs   KZGProofs
 }
 
-func (txw *BlobTxWrapper) Deserialize(dr *codec.DecodingReader) error {
-	return dr.Container(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
-}
-
-func (txw *BlobTxWrapper) Serialize(w *codec.EncodingWriter) error {
-	return w.Container(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
-}
-
-func (txw *BlobTxWrapper) ByteLength() uint64 {
-	return codec.ContainerLength(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
-}
+//func (txw *BlobTxWrapper) Deserialize(dr *codec.DecodingReader) error {
+//	return dr.Container(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
+//}
+//
+//func (txw *BlobTxWrapper) Serialize(w *codec.EncodingWriter) error {
+//	return w.Container(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
+//}
+//
+//func (txw *BlobTxWrapper) ByteLength() uint64 {
+//	return codec.ContainerLength(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
+//}
 
 func (txw *BlobTxWrapper) FixedLength() uint64 {
 	return 0
