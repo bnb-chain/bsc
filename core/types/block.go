@@ -260,10 +260,12 @@ func (tx *minimalTx) DecodeRLP(s *rlp.Stream) error {
 		if b, err = s.Bytes(); err != nil {
 			return err
 		}
-		inner, err := (*Transaction)(tx).decodeTypedMinimal(b)
+		inner, wrapData, err := (*Transaction)(tx).decodeTyped(b)
 		if err == nil {
 			(*Transaction)(tx).setDecoded(inner, uint64(len(b)))
 		}
+		(*Transaction)(tx).wrapData = wrapData
+		(*Transaction)(tx).sizeWrapData.Store(1)
 		return err
 	default:
 		return rlp.ErrExpectedList
@@ -278,7 +280,7 @@ func (tx *minimalTx) EncodeRLP(w io.Writer) error {
 	buf := encodeBufferPool.Get().(*bytes.Buffer)
 	defer encodeBufferPool.Put(buf)
 	buf.Reset()
-	if err := (*Transaction)(tx).encodeTypedMinimal(buf); err != nil {
+	if err := (*Transaction)(tx).encodeTyped(buf); err != nil {
 		return err
 	}
 	return rlp.Encode(w, buf.Bytes())

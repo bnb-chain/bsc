@@ -133,7 +133,7 @@ func run(logger *log.Logger) error {
 			msg := types.BlobTxMessage{ // todo add chainID!!!!
 				ChainID:             uint256.NewInt(13),
 				Nonce:               view.Uint64View(nonce),
-				Gas:                 43000, //view.Uint64View(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64()), //todo check if this is correct as this seems high
+				Gas:                 44000, //view.Uint64View(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64()), //todo check if this is correct as this seems high
 				To:                  receiver,
 				GasTipCap:           view.Uint256View(*uint256.NewInt(maxPriorityFeePerGas.Uint64())),
 				GasFeeCap:           view.Uint256View(*uint256.NewInt(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64())),
