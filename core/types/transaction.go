@@ -20,8 +20,6 @@ import (
 	"bytes"
 	"container/heap"
 	"errors"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/protolambda/ztyp/codec"
 	"io"
 	"math/big"
 	"sync/atomic"
@@ -30,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -86,6 +85,7 @@ func WithTxWrapData(wrapData TxWrapData) TxOption {
 	return func(tx *Transaction) {
 		if wrapData != nil {
 			tx.wrapData = wrapData.copy()
+			tx.sizeWrapData.Store(1)
 		}
 	}
 }
@@ -95,7 +95,7 @@ type TxWrapData interface {
 	kzgs() BlobKzgs
 	blobs() Blobs
 	proofs() KZGProofs
-	encodeTyped(w io.Writer, txdata TxData) error
+	encodeTyped(w io.Writer, txdata TxData) error // todo 4844 why there isn't a decodeTyped??
 	sizeWrapData() common.StorageSize
 	validateBlobTransactionWrapper(inner TxData) error
 
@@ -151,6 +151,7 @@ func (tx *Transaction) EncodeRLP(w io.Writer) error {
 	if tx.Type() == LegacyTxType {
 		return rlp.Encode(w, tx.inner)
 	}
+
 	// It's an EIP-2718 typed TX envelope.
 	buf := encodeBufferPool.Get().(*bytes.Buffer)
 	defer encodeBufferPool.Put(buf)
@@ -161,28 +162,30 @@ func (tx *Transaction) EncodeRLP(w io.Writer) error {
 	return rlp.Encode(w, buf.Bytes())
 }
 
-// encodeTyped writes the canonical encoding of a typed transaction to w, including wrapper data.
-func (tx *Transaction) encodeTyped(w io.Writer) error {
-	if tx.wrapData != nil {
-		return tx.wrapData.encodeTyped(w, tx.inner)
-	} else {
-		return tx.encodeTypedMinimal(w)
-	}
-}
-
-func (tx *Transaction) encodeTypedMinimal(w io.Writer) error {
-	if _, err := w.Write([]byte{tx.Type()}); err != nil {
+// encodeTyped encodes wrap + inner
+func (tx *Transaction) encodeTyped(w *bytes.Buffer) error {
+	err := w.WriteByte(tx.Type())
+	if err != nil {
 		return err
 	}
-	if tx.Type() == BlobTxType {
-		blobTx, ok := tx.inner.(*SignedBlobTx)
-		if !ok {
-			return ErrInvalidTxType
-		}
-		return EncodeSSZ(w, blobTx)
-	} else {
-		return rlp.Encode(w, tx.inner)
+
+	// get size and then encode size and then encode
+	tData := tx.inner
+	buf1 := new(bytes.Buffer)
+	if err := rlp.Encode(buf1, &tData); err != nil {
+		return err
 	}
+	dataRlpSize := byte(buf1.Len())
+	err = w.WriteByte(dataRlpSize)
+	if err != nil {
+		return err
+	}
+	err = rlp.Encode(w, tx.inner)
+	if err != nil {
+		return err
+	}
+
+	return rlp.Encode(w, tx.wrapData)
 }
 
 // MarshalBinary returns the canonical encoding of the transaction.
@@ -203,7 +206,7 @@ func (tx *Transaction) MarshalMinimal() ([]byte, error) {
 		return rlp.EncodeToBytes(tx.inner)
 	}
 	var buf bytes.Buffer
-	err := tx.encodeTypedMinimal(&buf)
+	err := tx.encodeTyped(&buf)
 	return buf.Bytes(), err
 }
 
@@ -221,20 +224,23 @@ func (tx *Transaction) DecodeRLP(s *rlp.Stream) error {
 			tx.setDecoded(&inner, rlp.ListSize(size))
 		}
 		return err
-	case kind == rlp.String:
+	default:
 		// It's an EIP-2718 typed TX envelope.
 		var b []byte
 		if b, err = s.Bytes(); err != nil {
 			return err
 		}
-		inner, err := tx.decodeTypedMinimal(b)
-		if err == nil {
-			tx.setDecoded(inner, uint64(len(b)))
+		// Decode wrap, inner
+		inner, wrap, err := tx.decodeTyped(b)
+		if err != nil {
+			return err
 		}
-		return err
-	default:
-		return rlp.ErrExpectedList
+
+		// Set wrap, inner
+		tx.wrapData = wrap
+		tx.inner = inner
 	}
+	return nil
 }
 
 // UnmarshalBinary decodes the canonical encoding of transactions.
@@ -267,36 +273,48 @@ func (tx *Transaction) UnmarshalMinimal(b []byte) error {
 		return tx.UnmarshalBinary(b)
 	}
 	// It's an EIP2718 typed transaction envelope.
-	inner, err := tx.decodeTypedMinimal(b)
+	inner, txWrapData, err := tx.decodeTyped(b)
 	if err != nil {
 		return err
 	}
 	tx.setDecoded(inner, uint64(len(b)))
-	tx.wrapData = nil
+	tx.wrapData = txWrapData
+	tx.sizeWrapData.Store(1)
 	return nil
 }
 
-func DecodeSSZ(data []byte, dest codec.Deserializable) error {
-	return dest.Deserialize(codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
-}
-
-func EncodeSSZ(w io.Writer, obj codec.Serializable) error {
-	return obj.Serialize(codec.NewEncodingWriter(w))
-}
-
-// decodeTyped decodes a typed transaction from the canonical format.
 func (tx *Transaction) decodeTyped(b []byte) (TxData, TxWrapData, error) {
-	if len(b) == 0 {
+	if len(b) <= 1 {
 		return nil, nil, errShortTypedTx
 	}
 	switch b[0] {
+	case AccessListTxType:
+		var inner AccessListTx
+		err := rlp.DecodeBytes(b[1:], &inner)
+		return &inner, nil, err
+	case DynamicFeeTxType:
+		var inner DynamicFeeTx
+		err := rlp.DecodeBytes(b[1:], &inner)
+		return &inner, nil, err
 	case BlobTxType:
-		var wrapped BlobTxWrapper
-		err := DecodeSSZ(b[1:], &wrapped)
-		return &wrapped.Tx, &BlobTxWrapData{BlobKzgs: wrapped.BlobKzgs, Blobs: wrapped.Blobs, Proofs: wrapped.Proofs}, err
+
+		// get size and then encode
+		dataRlpSize := uint64(b[1])
+
+		// Decode wrap
+		var inner SignedBlobTx
+		if err := rlp.DecodeBytes(b[2:(dataRlpSize+2)], &inner); err != nil {
+			return nil, nil, err
+		}
+
+		// Decode inner TxData
+		var wrap BlobTxWrapData
+		if err := rlp.DecodeBytes(b[(dataRlpSize+2):], &wrap); err != nil {
+			return nil, nil, err
+		}
+		return &inner, &wrap, nil
 	default:
-		minimal, err := tx.decodeTypedMinimal(b)
-		return minimal, nil, err
+		return nil, nil, ErrTxTypeNotSupported
 	}
 }
 
@@ -316,7 +334,8 @@ func (tx *Transaction) decodeTypedMinimal(b []byte) (TxData, error) {
 		return &inner, err
 	case BlobTxType:
 		var inner SignedBlobTx
-		err := DecodeSSZ(b[1:], &inner)
+		err := rlp.DecodeBytes(b[1:], &inner) // todo 4844 maybe make it rlp and not ssz?
+		//err := DecodeSSZ(b[1:], &inner) // todo 4844 maybe make it rlp and not ssz?
 		return &inner, err
 	default:
 		return nil, ErrTxTypeNotSupported
@@ -536,7 +555,8 @@ func (tx *Transaction) Hash() common.Hash {
 	case BlobTxType:
 		// TODO(eip-4844): We should remove this ugly switch by making hash()
 		// a part of the TxData interface
-		h = prefixedSSZHash(tx.Type(), tx.inner.(*SignedBlobTx))
+		h = prefixedRlpHash(tx.Type(), tx.inner.(*SignedBlobTx))
+		//h = prefixedSSZHash(tx.Type(), tx.inner.(*SignedBlobTx))
 	default:
 		h = prefixedRlpHash(tx.Type(), tx.inner)
 	}
@@ -627,7 +647,7 @@ func (s Transactions) EncodeIndex(i int, w *bytes.Buffer) {
 	if tx.Type() == LegacyTxType {
 		rlp.Encode(w, tx.inner)
 	} else {
-		tx.encodeTypedMinimal(w)
+		tx.encodeTyped(w)
 	}
 }
 

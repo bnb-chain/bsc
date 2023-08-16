@@ -1978,11 +1978,7 @@ func applyMessage(
 	chainConfig *params.ChainConfig,
 	chainContext core.ChainContext,
 ) (uint64, error) {
-	//parent := eth.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
-	//if parent == nil {
-	//	return nil, vm.BlockContext{}, nil, fmt.Errorf("parent %#x not found", block.ParentHash())
-	//}
-	// todo how to find parent here? ...-> done, but double check the logic
+
 	parentBlockNumber := header.Number.Uint64() - 1
 	parentBlockHeader := chainContext.GetHeader(header.ParentHash, parentBlockNumber)
 	// Create a new context to be used in the EVM environment

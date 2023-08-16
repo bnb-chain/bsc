@@ -211,10 +211,10 @@ func (s dankSigner) SignatureValues(tx *Transaction, sig []byte) (R, S, V *big.I
 	if !ok {
 		return s.londonSigner.SignatureValues(tx, sig)
 	}
-	id := u256ToBig(&txdata.Message.ChainID)
+	id := txdata.Message.ChainID
 	// Check that chain ID of tx matches the signer. We also accept ID zero here,
 	// because it indicates that the chain ID was not specified in the tx.
-	if id.Sign() != 0 && id.Cmp(s.chainId) != 0 {
+	if id.Sign() != 0 && id.ToBig().Cmp(s.chainId) != 0 {
 		return nil, nil, nil, ErrInvalidChainId
 	}
 	R, S, _ = decodeSignature(sig)
@@ -230,7 +230,8 @@ func (s dankSigner) Hash(tx *Transaction) common.Hash {
 	}
 	messageSigning := tx.inner.(*SignedBlobTx).Message
 	messageSigning.setChainID(s.chainId)
-	return prefixedSSZHash(BlobTxType, &messageSigning)
+	return prefixedRlpHash(BlobTxType, &messageSigning)
+	//return prefixedSSZHash(BlobTxType, &messageSigning)
 }
 
 type londonSigner struct{ eip2930Signer }

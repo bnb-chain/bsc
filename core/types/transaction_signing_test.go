@@ -86,7 +86,7 @@ func TestEIP4844Signing(t *testing.T) {
 	msg := BlobTxMessage{
 		Nonce:            view.Uint64View(0),
 		Gas:              view.Uint64View(123457),
-		To:               AddressOptionalSSZ{Address: (*AddressSSZ)(&addr)},
+		To:               addr,
 		GasTipCap:        view.Uint256View(*uint256.NewInt(42)),
 		GasFeeCap:        view.Uint256View(*uint256.NewInt(10)),
 		MaxFeePerDataGas: view.Uint256View(*uint256.NewInt(10)),

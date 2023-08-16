@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/rlp"
 	"io"
 
 	gokzg4844 "github.com/crate-crypto/go-kzg-4844"
@@ -313,17 +314,17 @@ type BlobTxWrapper struct {
 	Proofs   KZGProofs
 }
 
-func (txw *BlobTxWrapper) Deserialize(dr *codec.DecodingReader) error {
-	return dr.Container(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
-}
-
-func (txw *BlobTxWrapper) Serialize(w *codec.EncodingWriter) error {
-	return w.Container(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
-}
-
-func (txw *BlobTxWrapper) ByteLength() uint64 {
-	return codec.ContainerLength(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
-}
+//func (txw *BlobTxWrapper) Deserialize(dr *codec.DecodingReader) error {
+//	return dr.Container(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
+//}
+//
+//func (txw *BlobTxWrapper) Serialize(w *codec.EncodingWriter) error {
+//	return w.Container(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
+//}
+//
+//func (txw *BlobTxWrapper) ByteLength() uint64 {
+//	return codec.ContainerLength(&txw.Tx, &txw.BlobKzgs, &txw.Blobs, &txw.Proofs)
+//}
 
 func (txw *BlobTxWrapper) FixedLength() uint64 {
 	return 0
@@ -399,7 +400,7 @@ func (b *BlobTxWrapData) proofs() KZGProofs {
 	return b.Proofs
 }
 
-func (b *BlobTxWrapData) encodeTyped(w io.Writer, txdata TxData) error {
+func (b *BlobTxWrapData) encodeTyped(w io.Writer, txdata TxData) error { // todo 4844 why there isn't a decodeTyped function??
 	if _, err := w.Write([]byte{BlobTxType}); err != nil {
 		return err
 	}
@@ -413,7 +414,16 @@ func (b *BlobTxWrapData) encodeTyped(w io.Writer, txdata TxData) error {
 		Blobs:    b.Blobs,
 		Proofs:   b.Proofs,
 	}
-	return EncodeSSZ(w, &wrapped)
+	return rlp.Encode(w, &wrapped)
+	//return EncodeSSZ(w, &wrapped)
+}
+
+func decodeTyped(b []byte) (BlobTxWrapper, error) {
+	var blobTxWrapper BlobTxWrapper
+	if err := rlp.DecodeBytes(b, &blobTxWrapper); err != nil {
+		return BlobTxWrapper{}, err
+	}
+	return blobTxWrapper, nil
 }
 
 // todo this Sidecar needs to be saved separately from block so that it can be pruned time to time to take advantage of 4844

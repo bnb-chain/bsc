@@ -26,6 +26,8 @@ const prefix = "SEND_BLOBS"
 // send-blobs http://localhost:8545 5 0x0000000000000000000000000000000000000000000000000000000000000000 0x000000000000000000000000000000000000f1c1 100 100
 // sendblobs http://localhost:8545 5 9b28f36fbd67381120752d6172ecdcf10e06ab2d9a1367aac00cdcd6ac7855d3 0x000000000000000000000000000000000000f1c1 100 100
 // ./sendblobs http://localhost:8545 1 9b28f36fbd67381120752d6172ecdcf10e06ab2d9a1367aac00cdcd6ac7855d3 0x000000000000000000000000000000000000f1c1 1 1
+// go build .
+// ./sendblobs http://localhost:8545 1 9b28f36fbd67381120752d6172ecdcf10e06ab2d9a1367aac00cdcd6ac7855d3 0x000000000000000000000000000000000000f1c1 1 1
 func main() {
 	logger := log.New(os.Stdout, prefix, log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
 	if err := run(logger); err != nil {
@@ -131,14 +133,17 @@ func run(logger *log.Logger) error {
 			logger.Printf("Nonce: %d, GasPrice: %s, MaxPriorityFeePerGas: %s\n", nonce, gasPrice.String(), maxPriorityFeePerGas.String())
 
 			msg := types.BlobTxMessage{
+				ChainID:             uint256.NewInt(13),
 				Nonce:               view.Uint64View(nonce),
-				Gas:                 41000, //view.Uint64View(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64()), //todo check if this is correct as this seems high
-				To:                  types.AddressOptionalSSZ{Address: (*types.AddressSSZ)(&receiver)},
+				Gas:                 44000,
+				To:                  receiver,
 				GasTipCap:           view.Uint256View(*uint256.NewInt(maxPriorityFeePerGas.Uint64())),
 				GasFeeCap:           view.Uint256View(*uint256.NewInt(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64())),
 				MaxFeePerDataGas:    view.Uint256View(*uint256.NewInt(maxFeePerDataGas)),
 				Value:               view.Uint256View(*uint256.NewInt(0)),
 				BlobVersionedHashes: blobHashes,
+				Data:                types.TxDataView{},
+				AccessList:          types.AccessListView{},
 			}
 
 			data := types.BlobTxWrapData{
@@ -153,12 +158,7 @@ func run(logger *log.Logger) error {
 			if err != nil {
 				return errors.Wrapf(err, "signing tx: %+v", tx)
 			}
-			// signedTxBytes, err := signedTx.MarshalMinimal()
-			// if err != nil {
-			// 	return errors.Wrapf(err, "sending signed tx: %+v", signedTx)
-			// }
-			// client.
-			fmt.Println(signedTx.Gas())
+
 			err = client.SendTransaction(ctx, signedTx)
 			if err != nil {
 				return errors.Wrapf(err, "sending signed tx: %+v", signedTx)

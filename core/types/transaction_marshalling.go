@@ -104,7 +104,7 @@ func (t *Transaction) MarshalJSON() ([]byte, error) {
 		enc.R = (*hexutil.Big)(tx.R)
 		enc.S = (*hexutil.Big)(tx.S)
 	case *SignedBlobTx:
-		enc.ChainID = (*hexutil.Big)(u256ToBig(&tx.Message.ChainID))
+		enc.ChainID = (*hexutil.Big)(tx.Message.ChainID.ToBig())
 		enc.AccessList = (*AccessList)(&tx.Message.AccessList)
 		enc.Nonce = (*hexutil.Uint64)(&tx.Message.Nonce)
 		enc.Gas = (*hexutil.Uint64)(&tx.Message.Gas)
@@ -307,7 +307,7 @@ func (t *Transaction) UnmarshalJSON(input []byte) error {
 		}
 		itx.Message.ChainID.SetFromBig((*big.Int)(dec.ChainID))
 		if dec.To != nil {
-			itx.Message.To.Address = (*AddressSSZ)(dec.To)
+			itx.Message.To = *dec.To
 		}
 		if dec.Nonce == nil {
 			return errors.New("missing required field 'nonce' in transaction")

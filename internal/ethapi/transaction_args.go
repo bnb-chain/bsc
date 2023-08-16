@@ -275,7 +275,7 @@ func (args *TransactionArgs) toTransaction() *types.Transaction {
 			al = *args.AccessList
 		}
 		msg := types.BlobTxMessage{}
-		msg.To.Address = (*types.AddressSSZ)(args.To)
+		msg.To = *(args.To)
 		msg.ChainID.SetFromBig((*big.Int)(args.ChainID))
 		msg.Nonce = view.Uint64View(*args.Nonce)
 		msg.Gas = view.Uint64View(*args.Gas)

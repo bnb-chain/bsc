@@ -18,7 +18,6 @@ package types
 
 import (
 	"bytes"
-	"github.com/protolambda/ztyp/codec"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -55,18 +54,6 @@ func prefixedRlpHash(prefix byte, x interface{}) (h common.Hash) {
 	sha.Reset()
 	sha.Write([]byte{prefix})
 	rlp.Encode(sha, x)
-	sha.Read(h[:])
-	return h
-}
-
-// prefixedSSZHash writes the prefix into the hasher before SSZ encoding x.  It's used for
-// computing the tx id & signing hashes of signed blob transactions.
-func prefixedSSZHash(prefix byte, obj codec.Serializable) (h common.Hash) {
-	sha := hasherPool.Get().(crypto.KeccakState)
-	defer hasherPool.Put(sha)
-	sha.Reset()
-	sha.Write([]byte{prefix})
-	EncodeSSZ(sha, obj)
 	sha.Read(h[:])
 	return h
 }
