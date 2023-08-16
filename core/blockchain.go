@@ -595,11 +595,10 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 		return diffLayer.Storages[i].Account.Hex() < diffLayer.Storages[j].Account.Hex()
 	})
 
-	// TODO:Rick
-	// for index := range diffLayer.Storages {
+	for index := range diffLayer.Storages {
 		// Sort keys and vals by key.
-	//	sort.Sort(&diffLayer.Storages[index])
-	//}
+		sort.Sort(&diffLayer.Storages[index])
+	}
 
 	if bc.diffLayerCache.Len() >= diffLayerCacheLimit {
 		bc.diffLayerCache.RemoveOldest()

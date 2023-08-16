@@ -517,7 +517,7 @@ func (storage *DiffStorage) Swap(i, j int) {
 	storage.Keys[i], storage.Keys[j] = storage.Keys[j], storage.Keys[i]
 	storage.Vals[i], storage.Vals[j] = storage.Vals[j], storage.Vals[i]
 }
-// func (storage *DiffStorage) Less(i, j int) bool { return storage.Keys[i] < storage.Keys[j] }
+func (storage *DiffStorage) Less(i, j int) bool { return storage.Keys[i] < storage.Keys[j] }
 
 type DiffAccountsInTx struct {
 	TxHash   common.Hash
