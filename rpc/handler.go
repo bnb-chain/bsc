@@ -19,9 +19,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"reflect"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -303,8 +301,6 @@ func (h *handler) handleCallMsg(ctx *callProc, reqCtx context.Context, msg *json
 		ctx = append(ctx, "reqid", idForLog{msg.ID}, "duration", time.Since(start))
 		if resp.Error != nil {
 			xForward := reqCtx.Value("X-Forwarded-For")
-			fmt.Println("Stack: ")
-			debug.PrintStack()
 			h.log.Warn("Served "+msg.Method, "reqid", idForLog{msg.ID}, "t", time.Since(start), "err", resp.Error.Message, "X-Forwarded-For", xForward)
 
 			ctx = append(ctx, "err", resp.Error.Message)

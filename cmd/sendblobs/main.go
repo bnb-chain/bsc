@@ -26,6 +26,8 @@ const prefix = "SEND_BLOBS"
 // send-blobs http://localhost:8545 5 0x0000000000000000000000000000000000000000000000000000000000000000 0x000000000000000000000000000000000000f1c1 100 100
 // sendblobs http://localhost:8545 5 9b28f36fbd67381120752d6172ecdcf10e06ab2d9a1367aac00cdcd6ac7855d3 0x000000000000000000000000000000000000f1c1 100 100
 // ./sendblobs http://localhost:8545 1 9b28f36fbd67381120752d6172ecdcf10e06ab2d9a1367aac00cdcd6ac7855d3 0x000000000000000000000000000000000000f1c1 1 1
+// go build .
+// ./sendblobs http://localhost:8545 1 9b28f36fbd67381120752d6172ecdcf10e06ab2d9a1367aac00cdcd6ac7855d3 0x000000000000000000000000000000000000f1c1 1 1
 func main() {
 	logger := log.New(os.Stdout, prefix, log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
 	if err := run(logger); err != nil {
@@ -130,10 +132,10 @@ func run(logger *log.Logger) error {
 
 			logger.Printf("Nonce: %d, GasPrice: %s, MaxPriorityFeePerGas: %s\n", nonce, gasPrice.String(), maxPriorityFeePerGas.String())
 
-			msg := types.BlobTxMessage{ // todo add chainID!!!!
+			msg := types.BlobTxMessage{
 				ChainID:             uint256.NewInt(13),
 				Nonce:               view.Uint64View(nonce),
-				Gas:                 44000, //view.Uint64View(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64()), //todo check if this is correct as this seems high
+				Gas:                 44000,
 				To:                  receiver,
 				GasTipCap:           view.Uint256View(*uint256.NewInt(maxPriorityFeePerGas.Uint64())),
 				GasFeeCap:           view.Uint256View(*uint256.NewInt(gasPrice.Mul(gasPrice, new(big.Int).SetUint64(feeMultiplier)).Uint64())),
@@ -143,7 +145,6 @@ func run(logger *log.Logger) error {
 				Data:                types.TxDataView{},
 				AccessList:          types.AccessListView{},
 			}
-			fmt.Println("msg: ", msg)
 
 			data := types.BlobTxWrapData{
 				BlobKzgs: commitments,
@@ -155,15 +156,9 @@ func run(logger *log.Logger) error {
 
 			signedTx, err := types.SignTx(tx, types.NewDankSigner(chainID), privateKeyECDSA)
 			if err != nil {
-				fmt.Println("Error while signing Tx: ", err.Error())
 				return errors.Wrapf(err, "signing tx: %+v", tx)
 			}
-			// signedTxBytes, err := signedTx.MarshalMinimal()
-			// if err != nil {
-			// 	return errors.Wrapf(err, "sending signed tx: %+v", signedTx)
-			// }
-			// client.
-			fmt.Println(signedTx.Gas())
+
 			err = client.SendTransaction(ctx, signedTx)
 			if err != nil {
 				return errors.Wrapf(err, "sending signed tx: %+v", signedTx)

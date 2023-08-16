@@ -17,7 +17,6 @@
 package rlp
 
 import (
-	"fmt"
 	"io"
 	"reflect"
 )
@@ -61,7 +60,6 @@ func SplitString(b []byte) (content, rest []byte, err error) {
 		return nil, b, err
 	}
 	if k == List {
-		fmt.Println(k, content, err, "Split")
 		return nil, b, ErrExpectedString
 	}
 	return content, rest, nil

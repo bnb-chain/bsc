@@ -1696,7 +1696,7 @@ func (p *Parlia) getSystemMessage(from, toAddress common.Address, data []byte, v
 	return callmsg{
 		ethereum.CallMsg{
 			From:     from,
-			Gas:      math.MaxUint64 / 2, // TODO why is this the case here?
+			Gas:      math.MaxUint64 / 2,
 			GasPrice: big.NewInt(0),
 			Value:    value,
 			To:       &toAddress,
@@ -1717,8 +1717,8 @@ func (p *Parlia) applyTransaction(
 	expectedTx := types.NewTransaction(nonce, *msg.To(), msg.Value(), msg.Gas(), msg.GasPrice(), msg.Data())
 	expectedHash := p.signer.Hash(expectedTx)
 
-	if msg.From() == p.val && mining { // todo understanding is this supposed to be satisfied in my case?
-		expectedTx, err = p.signTxFn(accounts.Account{Address: msg.From()}, expectedTx, p.chainConfig.ChainID) // todo gas remains MAX after this as well
+	if msg.From() == p.val && mining {
+		expectedTx, err = p.signTxFn(accounts.Account{Address: msg.From()}, expectedTx, p.chainConfig.ChainID)
 		if err != nil {
 			return err
 		}
@@ -1742,7 +1742,7 @@ func (p *Parlia) applyTransaction(
 		*receivedTxs = (*receivedTxs)[1:]
 	}
 	state.Prepare(expectedTx.Hash(), len(*txs))
-	gasUsed, err := applyMessage(msg, state, header, p.chainConfig, chainContext) // 1516 only
+	gasUsed, err := applyMessage(msg, state, header, p.chainConfig, chainContext)
 	if err != nil {
 		return err
 	}
@@ -1978,11 +1978,7 @@ func applyMessage(
 	chainConfig *params.ChainConfig,
 	chainContext core.ChainContext,
 ) (uint64, error) {
-	//parent := eth.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
-	//if parent == nil {
-	//	return nil, vm.BlockContext{}, nil, fmt.Errorf("parent %#x not found", block.ParentHash())
-	//}
-	// todo how to find parent here? ...-> done, but double check the logic
+
 	parentBlockNumber := header.Number.Uint64() - 1
 	parentBlockHeader := chainContext.GetHeader(header.ParentHash, parentBlockNumber)
 	// Create a new context to be used in the EVM environment

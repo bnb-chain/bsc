@@ -485,9 +485,8 @@ func ReadBody(db ethdb.Reader, hash common.Hash, number uint64) *types.Body {
 	if err := rlp.Decode(bytes.NewReader(data), body); err != nil {
 		log.Error("Invalid block body RLP", "hash", hash, "err", err)
 		return nil
-	} else {
-		log.Info("No problem decoding")
 	}
+
 	return body
 }
 

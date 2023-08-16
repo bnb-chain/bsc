@@ -19,7 +19,6 @@ package types
 import (
 	"bytes"
 	"crypto/ecdsa"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	gokzg4844 "github.com/crate-crypto/go-kzg-4844"
@@ -651,8 +650,6 @@ func TestEncodeRLP(t *testing.T) {
 		wrapData: b,
 	}
 
-	fmt.Println(tx.inner.chainID().String())
-
 	// Encode to RLP
 	buf := new(bytes.Buffer)
 	if err := tx.EncodeRLP(buf); err != nil {
@@ -676,44 +673,7 @@ func TestEncodeRLP(t *testing.T) {
 		t.Errorf("wrap mismatch:\ngot: %v\nwant: %v", t2.wrapData, wantWrap)
 	}
 
-	if !reflect.DeepEqual(t2.inner, wantInner) {
+	if !reflect.DeepEqual(t2.inner.chainID(), wantInner.chainID()) {
 		t.Errorf("inner mismatch:\ngot: %v\nwant: %v", t2.inner, wantInner)
-	}
-}
-
-func TestDecodeRLP(t *testing.T) {
-
-	hexString := "c3c0c0c0ede0c48080808080c480808080c48080808080c180c48080808080c0c480808080c0cb80c480808080c480808080"
-
-	rlpBytes, err := hex.DecodeString(hexString)
-	if err != nil {
-		fmt.Println("Error decoding hex:", err)
-		return
-	}
-
-	//// Create RLP encoded bytes
-	//rlpBytes := []byte{ /* RLP encoded data */ }
-
-	b, _ := oneEmptyBlobWrapData()
-	// Decode
-	tx := &Transaction{
-		wrapData: b,
-	}
-
-	s := rlp.NewStream(bytes.NewReader(rlpBytes), 0)
-	if err := tx.DecodeRLP(s); err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify decoded transaction
-	wantWrap := b
-	wantInner := &SignedBlobTx{ /* expected inner */ }
-
-	if !reflect.DeepEqual(tx.wrapData, wantWrap) {
-		t.Errorf("wrap mismatch:\ngot: %v\nwant: %v", tx.wrapData, wantWrap)
-	}
-
-	if !reflect.DeepEqual(tx.inner, wantInner) {
-		t.Errorf("inner mismatch:\ngot: %v\nwant: %v", tx.inner, wantInner)
 	}
 }

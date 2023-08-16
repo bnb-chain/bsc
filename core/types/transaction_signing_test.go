@@ -116,30 +116,6 @@ func TestEIP4844Signing(t *testing.T) {
 	}
 }
 
-//func TestEncode(t *testing.T) {
-//	key, _ := crypto.GenerateKey()
-//	addr := crypto.PubkeyToAddress(key.PublicKey)
-//
-//	signer := NewDankSigner(big.NewInt(18))
-//	msg := BlobTxMessage{
-//		Nonce:            view.Uint64View(0),
-//		Gas:              view.Uint64View(123457),
-//		To:               AddressOptionalSSZ{Address: (*AddressSSZ)(&addr)},
-//		GasTipCap:        view.Uint256View(*uint256.NewInt(42)),
-//		GasFeeCap:        view.Uint256View(*uint256.NewInt(10)),
-//		MaxFeePerDataGas: view.Uint256View(*uint256.NewInt(10)),
-//		Value:            view.Uint256View(*uint256.NewInt(10)),
-//	}
-//	var wrapData TxWrapData
-//	wrapData, msg.BlobVersionedHashes = oneEmptyBlobWrapData()
-//	txdata := &SignedBlobTx{Message: msg}
-//	tx := NewTx(txdata, WithTxWrapData(wrapData))
-//
-//	buf := encodeBufferPool.Get().(*bytes.Buffer)
-//	defer encodeBufferPool.Put(buf)
-//	tx.EncodeRLP(buf)
-//}
-
 func TestEIP155SigningVitalik(t *testing.T) {
 	// Test vectors come from http://vitalik.ca/files/eip155_testvec.txt
 	for i, test := range []struct {
