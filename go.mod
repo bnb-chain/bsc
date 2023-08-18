@@ -81,7 +81,10 @@ require (
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
 
-require github.com/protolambda/ztyp v0.2.2
+require (
+	github.com/protolambda/ztyp v0.2.2
+	go.etcd.io/bbolt v1.3.6
+)
 
 require (
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1 // indirect
@@ -244,7 +247,6 @@ require (
 	github.com/wealdtech/go-eth2-util v1.6.3 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	go.etcd.io/bbolt v1.3.7 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/dig v1.15.0 // indirect
