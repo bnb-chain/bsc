@@ -357,7 +357,7 @@ func (t *StackTrie) hash(st *stNode, path []byte) {
 
 	case leafNode:
 		st.key = append(st.key, byte(16))
-		n := shortNode{Key: hexToCompact(st.key), Val: valueNode(st.val)}
+		n := shortNode{Key: hexToCompactInPlace(st.key), Val: valueNode(st.val)}
 
 		n.encode(t.h.encbuf)
 		blob = t.h.encodedBytes()
