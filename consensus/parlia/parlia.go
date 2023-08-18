@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/beacon/engine"
+	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/rawdb/bloblevel"
+	"github.com/prysmaticlabs/prysm/v4/encoding/bytesutil"
 	"io"
 	"math"
 	"math/big"
@@ -92,6 +95,7 @@ var (
 		common.HexToAddress(systemcontracts.RelayerIncentivizeContract): true,
 		common.HexToAddress(systemcontracts.CrossChainContract):         true,
 	}
+	blobStorage = bloblevel.NewStorage(rawdb.NewMemoryDatabase())
 )
 
 // Various error messages to mark blocks invalid. These should be private to
@@ -1422,6 +1426,36 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.BlockAndSi
 			log.Error("Sidecars conversion failed from block", "err", err)
 		}
 		// todo sidecar needs to be signed somewhere
+
+		// todo save sidecars here? Since below there is code which will save the block anyway.
+		if len(sidecars) > 0 {
+			cfg := params.ChainConfig{
+				DataBlobs: &params.DataBlobsConfig{
+					SlotsPerEpoch:                    1,
+					MinEpochsForBlobsSidecarsRequest: 1,
+				},
+			}
+			err = blobStorage.SaveBlobSidecar(context.Background(), &cfg, sidecars)
+			if err != nil {
+				log.Error("Sidecars could not be saved!", "err", err)
+			}
+
+			//// Original byte array
+			//originalBytes := []byte{23, 195, 163, 130, 130, 113, 153, 124, 5, 232, 93, 202, 189, 136, 171, 137, 161, 47, 86, 125, 255, 243, 39, 238, 158, 161, 43, 251, 252, 66, 208, 117}
+			//
+			//// Create a new byte array of size 32
+			//var byteArray32 [32]byte
+			//
+			//// Copy the original byte array into the new byte array
+			//copy(byteArray32[:], originalBytes)
+
+			got, err1 := rawdb.GetBlobSidecarsByRoot(context.Background(), blobStorage, bytesutil.ToBytes32(sidecars[0].BlockRoot))
+			if err1 != nil {
+				fmt.Println("Error while fetching sidecar", err1)
+			} else {
+				fmt.Println("Could fetch sidecar!!!!!: ", got[0].BlockParentRoot)
+			}
+		}
 
 		select {
 		case results <- &types.BlockAndSidecars{Block: block.Block.WithSeal(header), Sidecar: sidecars}:
