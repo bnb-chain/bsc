@@ -980,6 +980,6 @@ func (h *handler) voteBroadcastLoop() {
 func (h *handler) enableSyncedFeatures() {
 	h.acceptTxs.Store(true)
 	if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
-		h.chain.TrieDB().SetBufferSize(pathdb.DefaultBufferSize)
+		h.chain.TrieDB().SetBufferSize(pathdb.DefaultDirtyBufferSize)
 	}
 }
