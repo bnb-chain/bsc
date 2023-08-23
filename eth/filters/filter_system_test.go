@@ -203,7 +203,7 @@ func TestBlockSubscription(t *testing.T) {
 	var (
 		db           = rawdb.NewMemoryDatabase()
 		backend, sys = newTestFilterSystem(t, db, Config{})
-		api          = NewFilterAPI(sys, false)
+		api          = NewFilterAPI(sys, false, false)
 		genesis      = &core.Genesis{
 			Config:  params.TestChainConfig,
 			BaseFee: big.NewInt(params.InitialBaseFee),
@@ -314,7 +314,7 @@ func TestPendingTxFilterFullTx(t *testing.T) {
 	var (
 		db           = rawdb.NewMemoryDatabase()
 		backend, sys = newTestFilterSystem(t, db, Config{})
-		api          = NewFilterAPI(sys, false)
+		api          = NewFilterAPI(sys, false, false)
 
 		transactions = []*types.Transaction{
 			types.NewTransaction(0, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
@@ -758,7 +758,7 @@ func TestLightFilterLogs(t *testing.T) {
 	var (
 		db           = rawdb.NewMemoryDatabase()
 		backend, sys = newTestFilterSystem(t, db, Config{})
-		api          = NewFilterAPI(sys, true)
+		api          = NewFilterAPI(sys, true, false)
 		signer       = types.HomesteadSigner{}
 
 		firstAddr      = common.HexToAddress("0x1111111111111111111111111111111111111111")

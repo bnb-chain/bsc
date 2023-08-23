@@ -191,6 +191,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	utils.SetupMetrics(ctx,
 		utils.EnableBuildInfo(git.Commit, git.Date),
 		utils.EnableMinerInfo(ctx, cfg.Eth.Miner),
+		utils.EnableNodeInfo(cfg.Eth.TxPool),
 	)
 	return stack, backend
 }

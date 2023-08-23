@@ -517,6 +517,9 @@ func (ps *peerSet) headPeers(num uint) []*ethPeer {
 
 	list := make([]*ethPeer, 0, num)
 	for _, p := range ps.peers {
+		if len(list) > int(num) {
+			break
+		}
 		list = append(list, p)
 	}
 	return list

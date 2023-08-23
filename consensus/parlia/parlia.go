@@ -67,7 +67,7 @@ const (
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
-	collectAdditionalVotesRewardRatio = float64(1) // ratio of additional reward for collecting more votes than needed
+	collectAdditionalVotesRewardRatio = 100 // ratio of additional reward for collecting more votes than needed, the denominator is 100
 )
 
 var (
@@ -823,7 +823,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	}
 
 	if p.VotePool == nil {
-		return errors.New("vote pool is nil")
+		return nil
 	}
 
 	// Fetch direct parent's votes
@@ -877,6 +877,11 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		if _, ok := voteAddrSet[valInfo.VoteAddress]; ok {
 			attestation.VoteAddressSet |= 1 << (valInfo.Index - 1) //Index is offset by 1
 		}
+	}
+	validatorsBitSet := bitset.From([]uint64{uint64(attestation.VoteAddressSet)})
+	if validatorsBitSet.Count() < uint(len(signatures)) {
+		log.Warn(fmt.Sprintf("assembleVoteAttestation, check VoteAddress Set failed, expected:%d, real:%d", len(signatures), validatorsBitSet.Count()))
+		return fmt.Errorf("invalid attestation, check VoteAddress Set failed")
 	}
 
 	// Append attestation to header extra field.
@@ -1025,7 +1030,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		}
 		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
 		if validVoteCount > quorum {
-			accumulatedWeights[head.Coinbase] += uint64(float64(validVoteCount-quorum) * collectAdditionalVotesRewardRatio)
+			accumulatedWeights[head.Coinbase] += uint64((validVoteCount - quorum) * collectAdditionalVotesRewardRatio / 100)
 		}
 	}
 
@@ -1247,6 +1252,7 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 			if addr == p.val {
 				validVotesfromSelfCounter.Inc(1)
 			}
+			metrics.GetOrRegisterCounter(fmt.Sprintf("parlia/VerifyVote/%s", addr.String()), nil).Inc(1)
 			return nil
 		}
 	}
@@ -1755,10 +1761,11 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		return nil
 	}
 
-	if snap.Attestation != nil {
-		return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
+	if snap.Attestation == nil {
+		return chain.GetHeaderByNumber(0) // keep consistent with GetJustifiedNumberAndHash
 	}
-	return nil
+
+	return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
 }
 
 // ===========================     utility function        ==========================
@@ -1785,7 +1792,7 @@ func encodeSigHeader(w io.Writer, header *types.Header, chainId *big.Int) {
 		header.GasLimit,
 		header.GasUsed,
 		header.Time,
-		header.Extra[:len(header.Extra)-65], // this will panic if extra is too short, should check before calling encodeSigHeader
+		header.Extra[:len(header.Extra)-extraSeal], // this will panic if extra is too short, should check before calling encodeSigHeader
 		header.MixDigest,
 		header.Nonce,
 	})

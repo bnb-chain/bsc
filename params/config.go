@@ -163,11 +163,11 @@ var (
 		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
 		// TODO Caution !!! it should be very careful !!!
 		LubanBlock: big.NewInt(29020050),
-		PlatoBlock: nil,
+		PlatoBlock: big.NewInt(30720096),
 		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock: nil,
-		LondonBlock: nil,
-		HertzBlock:  nil,
+		BerlinBlock: big.NewInt(31302048),
+		LondonBlock: big.NewInt(31302048),
+		HertzBlock:  big.NewInt(31302048),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -201,9 +201,9 @@ var (
 		LubanBlock: big.NewInt(29295050),
 		PlatoBlock: big.NewInt(29861024),
 		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock: nil,
-		LondonBlock: nil,
-		HertzBlock:  nil,
+		BerlinBlock: big.NewInt(31103030),
+		LondonBlock: big.NewInt(31103030),
+		HertzBlock:  big.NewInt(31103030),
 
 		Parlia: &ParliaConfig{
 			Period: 3,

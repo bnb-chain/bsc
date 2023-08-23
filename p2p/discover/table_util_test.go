@@ -27,6 +27,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"golang.org/x/exp/slices"
@@ -41,7 +42,7 @@ func init() {
 }
 
 func newTestTable(t transport) (*Table, *enode.DB) {
-	cfg := Config{}
+	cfg := Config{Log: log.Root()}
 	db, _ := enode.OpenDB("")
 	tab, _ := newTable(t, db, cfg, nil)
 	go tab.loop()

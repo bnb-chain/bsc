@@ -32,6 +32,10 @@ type VoteManager struct {
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 
+	// used for backup validators to sync votes from corresponding mining validator
+	syncVoteCh  chan core.NewVoteEvent
+	syncVoteSub event.Subscription
+
 	pool    *VotePool
 	signer  *VoteSigner
 	journal *VoteJournal
@@ -46,9 +50,9 @@ func NewVoteManager(eth Backend, chainconfig *params.ChainConfig, chain *core.Bl
 		chain:       chain,
 		chainconfig: chainconfig,
 		chainHeadCh: make(chan core.ChainHeadEvent, chainHeadChanSize),
-
-		pool:   pool,
-		engine: engine,
+		syncVoteCh:  make(chan core.NewVoteEvent, voteBufferForPut),
+		pool:        pool,
+		engine:      engine,
 	}
 
 	// Create voteSigner.
@@ -69,6 +73,7 @@ func NewVoteManager(eth Backend, chainconfig *params.ChainConfig, chain *core.Bl
 
 	// Subscribe to chain head event.
 	voteManager.chainHeadSub = voteManager.chain.SubscribeChainHeadEvent(voteManager.chainHeadCh)
+	voteManager.syncVoteSub = voteManager.pool.SubscribeNewVoteEvent(voteManager.syncVoteCh)
 
 	go voteManager.loop()
 
@@ -77,6 +82,9 @@ func NewVoteManager(eth Backend, chainconfig *params.ChainConfig, chain *core.Bl
 
 func (voteManager *VoteManager) loop() {
 	log.Debug("vote manager routine loop started")
+	defer voteManager.chainHeadSub.Unsubscribe()
+	defer voteManager.syncVoteSub.Unsubscribe()
+
 	events := voteManager.eth.EventMux().Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
 	defer func() {
 		log.Debug("vote manager loop defer func occur")
@@ -164,6 +172,21 @@ func (voteManager *VoteManager) loop() {
 				voteManager.pool.PutVote(voteMessage)
 				votesManagerCounter.Inc(1)
 			}
+		case event := <-voteManager.syncVoteCh:
+			voteMessage := event.Vote
+			if voteManager.eth.IsMining() || !voteManager.signer.UsingKey(&voteMessage.VoteAddress) {
+				continue
+			}
+			if err := voteManager.journal.WriteVote(voteMessage); err != nil {
+				log.Error("Failed to write vote into journal", "err", err)
+				voteJournalErrorCounter.Inc(1)
+				continue
+			}
+			log.Debug("vote manager synced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
+			votesManagerCounter.Inc(1)
+		case <-voteManager.syncVoteSub.Err():
+			log.Debug("voteManager subscribed votes failed")
+			return
 		case <-voteManager.chainHeadSub.Err():
 			log.Debug("voteManager subscribed chainHead failed")
 			return

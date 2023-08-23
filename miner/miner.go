@@ -54,7 +54,8 @@ type Config struct {
 	Recommit      time.Duration  // The time interval for miner to re-create mining work.
 	VoteEnable    bool           // Whether to vote when mining
 
-	NewPayloadTimeout time.Duration // The maximum time allowance for creating a new payload
+	NewPayloadTimeout      time.Duration // The maximum time allowance for creating a new payload
+	DisableVoteAttestation bool          // Whether to skip assembling vote attestation
 }
 
 // DefaultConfig contains default settings for miner.

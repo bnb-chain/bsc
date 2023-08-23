@@ -91,6 +91,7 @@ type Config struct {
 	Log            log.Logger         // if set, log messages go here
 	ValidSchemes   enr.IdentityScheme // allowed identity schemes
 	Clock          mclock.Clock
+	IsBootnode     bool // defines if it's bootnode
 }
 
 func (cfg Config) withDefaults() Config {

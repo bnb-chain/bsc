@@ -108,10 +108,6 @@ var (
 		Name:  "enabletrustprotocol",
 		Usage: "Enable trust protocol",
 	}
-	DisableBscProtocolFlag = &cli.BoolFlag{
-		Name:  "disablebscprotocol",
-		Usage: "Disable bsc protocol",
-	}
 
 	DiffSyncFlag = &cli.BoolFlag{
 		Name:  "diffsync",
@@ -1046,6 +1042,11 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage: "Enable voting when mining",
 	}
 
+	DisableVoteAttestationFlag = &cli.BoolFlag{
+		Name:  "disablevoteattestation",
+		Usage: "Disable assembling vote attestation ",
+	}
+
 	EnableMaliciousVoteMonitorFlag = &cli.BoolFlag{
 		Name:  "monitor.maliciousvote",
 		Usage: "Enable malicious vote monitor to check whether any validator violates the voting rules of fast finality",
@@ -1725,6 +1726,9 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	if ctx.IsSet(MinerNewPayloadTimeout.Name) {
 		cfg.NewPayloadTimeout = ctx.Duration(MinerNewPayloadTimeout.Name)
 	}
+	if ctx.Bool(DisableVoteAttestationFlag.Name) {
+		cfg.DisableVoteAttestation = true
+	}
 }
 
 func setRequiredBlocks(ctx *cli.Context, cfg *ethconfig.Config) {
@@ -1882,9 +1886,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(EnableTrustProtocolFlag.Name) {
 		cfg.EnableTrustProtocol = ctx.IsSet(EnableTrustProtocolFlag.Name)
-	}
-	if ctx.IsSet(DisableBscProtocolFlag.Name) {
-		cfg.DisableBscProtocol = ctx.IsSet(DisableBscProtocolFlag.Name)
 	}
 	if ctx.IsSet(DiffSyncFlag.Name) {
 		log.Warn("The --diffsync flag is deprecated and will be removed in the future!")
@@ -2159,6 +2160,21 @@ func RegisterFilterAPI(stack *node.Node, backend ethapi.Backend, ethcfg *ethconf
 		Service:   filters.NewFilterAPI(filterSystem, isLightClient, ethcfg.RangeLimit),
 	}})
 	return filterSystem
+}
+
+func EnableNodeInfo(poolConfig legacypool.Config) SetupMetricsOption {
+	return func() {
+		// register node info into metrics
+		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
+			"PriceLimit":   poolConfig.PriceLimit,
+			"PriceBump":    poolConfig.PriceBump,
+			"AccountSlots": poolConfig.AccountSlots,
+			"GlobalSlots":  poolConfig.GlobalSlots,
+			"AccountQueue": poolConfig.AccountQueue,
+			"GlobalQueue":  poolConfig.GlobalQueue,
+			"Lifetime":     poolConfig.Lifetime,
+		})
+	}
 }
 
 func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {

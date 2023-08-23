@@ -41,9 +41,10 @@ import (
 )
 
 const (
-	alpha           = 3  // Kademlia concurrency factor
-	bucketSize      = 16 // Kademlia bucket size
-	maxReplacements = 10 // Size of per-bucket replacement list
+	alpha              = 3   // Kademlia concurrency factor
+	bucketSize         = 16  // Kademlia bucket size
+	bootNodeBucketSize = 256 // Bigger bucket size for boot nodes
+	maxReplacements    = 10  // Size of per-bucket replacement list
 
 	// We keep buckets for the upper 1/15 of distances because
 	// it's very unlikely we'll ever encounter a node that's closer.
@@ -65,11 +66,12 @@ const (
 // itself up-to-date by verifying the liveness of neighbors and requesting their node
 // records when announcements of a new record version are received.
 type Table struct {
-	mutex   sync.Mutex        // protects buckets, bucket content, nursery, rand
-	buckets [nBuckets]*bucket // index of known nodes by distance
-	nursery []*node           // bootstrap nodes
-	rand    *mrand.Rand       // source of randomness, periodically reseeded
-	ips     netutil.DistinctNetSet
+	mutex      sync.Mutex        // protects buckets, bucket content, nursery, rand
+	buckets    [nBuckets]*bucket // index of known nodes by distance
+	bucketSize int               // size of bucket
+	nursery    []*node           // bootstrap nodes
+	rand       *mrand.Rand       // source of randomness, periodically reseeded
+	ips        netutil.DistinctNetSet
 
 	db  *enode.DB // database of known nodes
 	net transport
@@ -120,6 +122,10 @@ func newTable(t transport, db *enode.DB, cfg Config, filter NodeFilterFunc) (*Ta
 		rand:       mrand.New(mrand.NewSource(0)),
 		ips:        netutil.DistinctNetSet{Subnet: tableSubnet, Limit: tableIPLimit},
 		enrFilter:  filter,
+		bucketSize: bucketSize,
+	}
+	if cfg.IsBootnode {
+		tab.bucketSize = bootNodeBucketSize
 	}
 	if err := tab.setFallbackNodes(cfg.Bootnodes); err != nil {
 		return nil, err
@@ -536,7 +542,7 @@ func (tab *Table) addSeenNodeSync(n *node) {
 		// Already in bucket, don't add.
 		return
 	}
-	if len(b.entries) >= bucketSize {
+	if len(b.entries) >= tab.bucketSize {
 		// Bucket full, maybe add as replacement.
 		tab.addReplacement(b, n)
 		return
@@ -603,7 +609,7 @@ func (tab *Table) addVerifiedNodeSync(n *node) {
 		// Already in bucket, moved to front.
 		return
 	}
-	if len(b.entries) >= bucketSize {
+	if len(b.entries) >= tab.bucketSize {
 		// Bucket full, maybe add as replacement.
 		tab.addReplacement(b, n)
 		return
@@ -614,7 +620,7 @@ func (tab *Table) addVerifiedNodeSync(n *node) {
 	}
 
 	// Add to front of bucket.
-	b.entries, _ = pushNode(b.entries, n, bucketSize)
+	b.entries, _ = pushNode(b.entries, n, tab.bucketSize)
 	b.replacements = deleteNode(b.replacements, n)
 	n.addedAt = time.Now()
 
