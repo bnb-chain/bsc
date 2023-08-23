@@ -827,7 +827,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	}
 
 	if p.VotePool == nil {
-		return errors.New("vote pool is nil")
+		return nil
 	}
 
 	// Fetch direct parent's votes
