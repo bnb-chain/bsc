@@ -13,17 +13,6 @@ EnablePreimageRecording = false
 EWASMInterpreter = ""
 EVMInterpreter = ""
 
-[Eth.Ethash]
-CacheDir = ""
-CachesInMem = 0
-CachesOnDisk = 0
-CachesLockMmap = false
-DatasetDir = ""
-DatasetsInMem = 0
-DatasetsOnDisk = 0
-DatasetsLockMmap = false
-PowMode = 0
-
 [Eth.GPO]
 Blocks = 20
 Percentile = 60

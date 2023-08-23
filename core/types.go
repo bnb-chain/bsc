@@ -36,6 +36,12 @@ type Validator interface {
 	RemoteVerifyManager() *remoteVerifyManager
 }
 
+type TransactionsByPriceAndNonce interface {
+	PeekWithUnwrap() *types.Transaction
+	Shift()
+	Forward(tx *types.Transaction)
+}
+
 // Prefetcher is an interface for pre-caching transaction signatures and state.
 type Prefetcher interface {
 	// Prefetch processes the state changes according to the Ethereum rules by running
@@ -43,7 +49,7 @@ type Prefetcher interface {
 	// only goal is to pre-cache transaction signatures and state trie nodes.
 	Prefetch(block *types.Block, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{})
 	// PrefetchMining used for pre-caching transaction signatures and state trie nodes. Only used for mining stage.
-	PrefetchMining(txs *types.TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction)
+	PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction)
 }
 
 // Processor is an interface for processing blocks using a given initial state.

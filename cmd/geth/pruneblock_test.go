@@ -89,7 +89,7 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 	if err != nil {
 		t.Fatalf("failed to make new blockpruner: %v", err)
 	}
-	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(), "", false, false); err != nil {
+	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(0), "", false, false); err != nil {
 		t.Fatalf("Failed to back up block: %v", err)
 	}
 

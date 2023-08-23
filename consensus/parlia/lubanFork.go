@@ -38,7 +38,7 @@ func (p *Parlia) getCurrentValidatorsBeforeLuban(blockHash common.Hash, blockNum
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
-	}, blockNr, nil)
+	}, blockNr, nil, nil)
 	if err != nil {
 		return nil, err
 	}

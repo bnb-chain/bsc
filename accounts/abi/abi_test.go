@@ -727,12 +727,12 @@ func TestBareEvents(t *testing.T) {
 // TestUnpackEvent is based on this contract:
 //
 //	contract T {
-//	  event received(address sender, uint amount, bytes memo);
-//	  event receivedAddr(address sender);
-//	  function receive(bytes memo) external payable {
-//	    received(msg.sender, msg.value, memo);
-//	    receivedAddr(msg.sender);
-//	  }
+//		event received(address sender, uint amount, bytes memo);
+//		event receivedAddr(address sender);
+//		function receive(bytes memo) external payable {
+//			received(msg.sender, msg.value, memo);
+//			receivedAddr(msg.sender);
+//		}
 //	}
 //
 // When receive("X") is called with sender 0x00... and value 1, it produces this tx receipt:
@@ -1042,9 +1042,7 @@ func TestABI_EventById(t *testing.T) {
 		}
 		if event == nil {
 			t.Errorf("We should find a event for topic %s, test #%d", topicID.Hex(), testnum)
-		}
-
-		if event.ID != topicID {
+		} else if event.ID != topicID {
 			t.Errorf("Event id %s does not match topic %s, test #%d", event.ID.Hex(), topicID.Hex(), testnum)
 		}
 
@@ -1056,6 +1054,34 @@ func TestABI_EventById(t *testing.T) {
 		if unknownEvent != nil {
 			t.Errorf("We should not find any event for topic %s, test #%d", unknowntopicID.Hex(), testnum)
 		}
+	}
+}
+
+func TestABI_ErrorByID(t *testing.T) {
+	abi, err := JSON(strings.NewReader(`[
+		{"inputs":[{"internalType":"uint256","name":"x","type":"uint256"}],"name":"MyError1","type":"error"},
+		{"inputs":[{"components":[{"internalType":"uint256","name":"a","type":"uint256"},{"internalType":"string","name":"b","type":"string"},{"internalType":"address","name":"c","type":"address"}],"internalType":"struct MyError.MyStruct","name":"x","type":"tuple"},{"internalType":"address","name":"y","type":"address"},{"components":[{"internalType":"uint256","name":"a","type":"uint256"},{"internalType":"string","name":"b","type":"string"},{"internalType":"address","name":"c","type":"address"}],"internalType":"struct MyError.MyStruct","name":"z","type":"tuple"}],"name":"MyError2","type":"error"},
+		{"inputs":[{"internalType":"uint256[]","name":"x","type":"uint256[]"}],"name":"MyError3","type":"error"}
+	]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, m := range abi.Errors {
+		a := fmt.Sprintf("%v", &m)
+		var id [4]byte
+		copy(id[:], m.ID[:4])
+		m2, err := abi.ErrorByID(id)
+		if err != nil {
+			t.Fatalf("Failed to look up ABI error: %v", err)
+		}
+		b := fmt.Sprintf("%v", m2)
+		if a != b {
+			t.Errorf("Error %v (id %x) not 'findable' by id in ABI", name, id)
+		}
+	}
+	// test unsuccessful lookups
+	if _, err = abi.ErrorByID([4]byte{}); err == nil {
+		t.Error("Expected error: no error with this id")
 	}
 }
 

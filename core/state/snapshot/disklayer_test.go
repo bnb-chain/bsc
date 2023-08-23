@@ -515,6 +515,8 @@ func TestDiskMidAccountPartialMerge(t *testing.T) {
 func TestDiskSeek(t *testing.T) {
 	// Create some accounts in the disk layer
 	db := rawdb.NewMemoryDatabase()
+	defer db.Close()
+
 	// Fill even keys [0,2,4...]
 	for i := 0; i < 0xff; i += 2 {
 		acc := common.Hash{byte(i)}

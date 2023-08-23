@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -86,13 +87,13 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 	if _, err := chain.InsertChain(bs); err != nil {
 		panic(err)
 	}
-	txconfig := core.DefaultTxPoolConfig
+	txconfig := coreTxpool.DefaultConfig
 	txconfig.Journal = "" // Don't litter the disk with test journals
 
 	return &testBackend{
 		db:     db,
 		chain:  chain,
-		txpool: core.NewTxPool(txconfig, params.TestChainConfig, chain),
+		txpool: txpool.NewTxPool(txconfig, params.TestChainConfig, chain),
 	}
 }
 

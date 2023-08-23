@@ -28,7 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -221,7 +221,7 @@ type Parlia struct {
 
 	lock sync.RWMutex // Protects the signer fields
 
-	ethAPI                     *ethapi.PublicBlockChainAPI
+	ethAPI                     *ethapi.BlockChainAPI
 	VotePool                   consensus.VotePool
 	validatorSetABIBeforeLuban abi.ABI
 	validatorSetABI            abi.ABI
@@ -235,7 +235,7 @@ type Parlia struct {
 func New(
 	chainConfig *params.ChainConfig,
 	db ethdb.Database,
-	ethAPI *ethapi.PublicBlockChainAPI,
+	ethAPI *ethapi.BlockChainAPI,
 	genesisHash common.Hash,
 ) *Parlia {
 	// get parlia config
@@ -312,14 +312,14 @@ func (p *Parlia) Author(header *types.Header) (common.Address, error) {
 }
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
-func (p *Parlia) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
+func (p *Parlia) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
 	return p.verifyHeader(chain, header, nil)
 }
 
 // VerifyHeaders is similar to VerifyHeader, but verifies a batch of headers. The
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
-func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
+func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header) (chan<- struct{}, <-chan error) {
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
@@ -549,10 +549,6 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return errInvalidDifficulty
 		}
 	}
-	// If all checks passed, validate any special fields for hard forks
-	if err := misc.VerifyForkHashes(chain.Config(), header, false); err != nil {
-		return err
-	}
 
 	parent, err := p.getParent(chain, header, parents)
 	if err != nil {
@@ -565,7 +561,7 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		if header.BaseFee != nil {
 			return fmt.Errorf("invalid baseFee before fork: have %d, expected 'nil'", header.BaseFee)
 		}
-	} else if err := misc.VerifyEip1559Header(chain.Config(), parent, header); err != nil {
+	} else if err := eip1559.VerifyEIP1559Header(chain.Config(), parent, header); err != nil {
 		// Verify the header's EIP-1559 attributes.
 		return err
 	}
@@ -618,7 +614,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	limit := parent.GasLimit / params.GasLimitBoundDivisor
 
 	if uint64(diff) >= limit || header.GasLimit < params.MinGasLimit {
-		return fmt.Errorf("invalid gas limit: have %d, want %d += %d", header.GasLimit, parent.GasLimit, limit)
+		return fmt.Errorf("invalid gas limit: have %d, want %d += %d", header.GasLimit, parent.GasLimit, limit-1)
 	}
 
 	// Verify vote attestation for fast finality.
@@ -918,8 +914,19 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	if len(header.Extra) < extraVanity-nextForkHashSize {
 		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, extraVanity-nextForkHashSize-len(header.Extra))...)
 	}
+
+	// Ensure the timestamp has the correct delay
+	parent := chain.GetHeader(header.ParentHash, number-1)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+	header.Time = p.blockTimeForRamanujanFork(snap, header, parent)
+	if header.Time < uint64(time.Now().Unix()) {
+		header.Time = uint64(time.Now().Unix())
+	}
+
 	header.Extra = header.Extra[:extraVanity-nextForkHashSize]
-	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, number)
+	nextForkHash := forkid.NewID(p.chainConfig, p.genesisHash, number, header.Time).Hash
 	header.Extra = append(header.Extra, nextForkHash[:]...)
 
 	if err := p.prepareValidators(header); err != nil {
@@ -932,15 +939,6 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	// Mix digest is reserved for now, set to empty
 	header.MixDigest = common.Hash{}
 
-	// Ensure the timestamp has the correct delay
-	parent := chain.GetHeader(header.ParentHash, number-1)
-	if parent == nil {
-		return consensus.ErrUnknownAncestor
-	}
-	header.Time = p.blockTimeForRamanujanFork(snap, header, parent)
-	if header.Time < uint64(time.Now().Unix()) {
-		header.Time = uint64(time.Now().Unix())
-	}
 	return nil
 }
 
@@ -1054,15 +1052,15 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs *[]*types.Transaction,
-	uncles []*types.Header, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64) error {
+func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction,
+	uncles []*types.Header, _ []*types.Withdrawal, receipts []*types.Receipt, systemTxs []*types.Transaction, usedGas *uint64) error {
 	// warn if not in majority fork
 	number := header.Number.Uint64()
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		return err
 	}
-	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, number)
+	nextForkHash := forkid.NewID(p.chainConfig, p.genesisHash, number, header.Time).Hash
 	if !snap.isMajorityFork(hex.EncodeToString(nextForkHash[:])) {
 		log.Debug("there is a possible fork, and your client is not the majority. Please check...", "nextForkHash", hex.EncodeToString(nextForkHash[:]))
 	}
@@ -1076,7 +1074,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	if header.Number.Cmp(common.Big1) == 0 {
-		err := p.initContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
+		err := p.initContract(state, header, cx, &txs, &receipts, &systemTxs, usedGas, false)
 		if err != nil {
 			log.Error("init contract failed")
 		}
@@ -1097,7 +1095,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 		if !signedRecently {
 			log.Trace("slash validator", "block hash", header.Hash(), "address", spoiledVal)
-			err = p.slash(spoiledVal, state, header, cx, txs, receipts, systemTxs, usedGas, false)
+			err = p.slash(spoiledVal, state, header, cx, &txs, &receipts, &systemTxs, usedGas, false)
 			if err != nil {
 				// it is possible that slash validator failed because of the slash channel is disabled.
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
@@ -1105,17 +1103,17 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 	val := header.Coinbase
-	err = p.distributeIncoming(val, state, header, cx, txs, receipts, systemTxs, usedGas, false)
+	err = p.distributeIncoming(val, state, header, cx, &txs, &receipts, &systemTxs, usedGas, false)
 	if err != nil {
 		return err
 	}
 
 	if p.chainConfig.IsPlato(header.Number) {
-		if err := p.distributeFinalityReward(chain, state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
+		if err := p.distributeFinalityReward(chain, state, header, cx, &txs, &receipts, &systemTxs, usedGas, false); err != nil {
 			return err
 		}
 	}
-	if len(*systemTxs) > 0 {
+	if len(systemTxs) > 0 {
 		return errors.New("the length of systemTxs do not match")
 	}
 	return nil
@@ -1124,7 +1122,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
+	txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, _ []*types.Withdrawal) (*types.Block, []*types.Receipt, error) {
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	cx := chainContext{Chain: chain, parlia: p}
 	if txs == nil {
@@ -1513,7 +1511,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
-	}, blockNr, nil)
+	}, blockNr, nil, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1692,7 +1690,7 @@ func (p *Parlia) applyTransaction(
 		// move to next
 		*receivedTxs = (*receivedTxs)[1:]
 	}
-	state.Prepare(expectedTx.Hash(), len(*txs))
+	state.SetTxContext(expectedTx.Hash(), len(*txs))
 	gasUsed, err := applyMessage(msg, state, header, p.chainConfig, chainContext)
 	if err != nil {
 		return err
@@ -1710,7 +1708,7 @@ func (p *Parlia) applyTransaction(
 	receipt.GasUsed = gasUsed
 
 	// Set the receipt logs and create a bloom for filtering
-	receipt.Logs = state.GetLogs(expectedTx.Hash(), header.Hash())
+	receipt.Logs = state.GetLogs(expectedTx.Hash(), header.Number.Uint64(), header.Hash())
 	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 	receipt.BlockHash = header.Hash()
 	receipt.BlockNumber = header.Number

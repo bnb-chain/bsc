@@ -1,4 +1,4 @@
-// Copyright 2020 The go-ethereum Authors
+// Copyright 2021 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -18,12 +18,10 @@
 package catalyst
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
-	"fmt"
+	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/log"
@@ -31,208 +29,115 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// Register adds catalyst APIs to the full node.
+// Register adds the engine API to the full node.
 func Register(stack *node.Node, backend *eth.Ethereum) error {
-	log.Warn("Catalyst mode enabled", "protocol", "eth")
+	log.Warn("Engine API enabled", "protocol", "eth")
 	stack.RegisterAPIs([]rpc.API{
 		{
-			Namespace: "engine",
-			Version:   "1.0",
-			Service:   NewConsensusAPI(backend),
-			Public:    true,
+			Namespace:     "engine",
+			Service:       NewConsensusAPI(backend),
+			Authenticated: true,
 		},
 	})
 	return nil
 }
 
+const (
+	// invalidBlockHitEviction is the number of times an invalid block can be
+	// referenced in forkchoice update or new payload before it is attempted
+	// to be reprocessed again.
+	invalidBlockHitEviction = 128
+
+	// invalidTipsetsCap is the max number of recent block hashes tracked that
+	// have lead to some bad ancestor block. It's just an OOM protection.
+	invalidTipsetsCap = 512
+
+	// beaconUpdateStartupTimeout is the time to wait for a beacon client to get
+	// attached before starting to issue warnings.
+	beaconUpdateStartupTimeout = 30 * time.Second
+
+	// beaconUpdateConsensusTimeout is the max time allowed for a beacon client
+	// to send a consensus update before it's considered offline and the user is
+	// warned.
+	beaconUpdateConsensusTimeout = 2 * time.Minute
+
+	// beaconUpdateWarnFrequency is the frequency at which to warn the user that
+	// the beacon client is offline.
+	beaconUpdateWarnFrequency = 5 * time.Minute
+)
+
+// All methods provided over the engine endpoint.
+var caps = []string{
+	"engine_forkchoiceUpdatedV1",
+	"engine_forkchoiceUpdatedV2",
+	"engine_exchangeTransitionConfigurationV1",
+	"engine_getPayloadV1",
+	"engine_getPayloadV2",
+	"engine_getPayloadV3",
+	"engine_newPayloadV1",
+	"engine_newPayloadV2",
+	"engine_newPayloadV3",
+	"engine_getPayloadBodiesByHashV1",
+	"engine_getPayloadBodiesByRangeV1",
+}
+
 type ConsensusAPI struct {
-	eth            *eth.Ethereum
-	preparedBlocks *payloadQueue // preparedBlocks caches payloads (*ExecutableDataV1) by payload ID (PayloadID)
+	eth *eth.Ethereum
+
+	remoteBlocks *headerQueue  // Cache of remote payloads received
+	localBlocks  *payloadQueue // Cache of local payloads generated
+
+	// The forkchoice update and new payload method require us to return the
+	// latest valid hash in an invalid chain. To support that return, we need
+	// to track historical bad blocks as well as bad tipsets in case a chain
+	// is constantly built on it.
+	//
+	// There are a few important caveats in this mechanism:
+	//   - The bad block tracking is ephemeral, in-memory only. We must never
+	//     persist any bad block information to disk as a bug in Geth could end
+	//     up blocking a valid chain, even if a later Geth update would accept
+	//     it.
+	//   - Bad blocks will get forgotten after a certain threshold of import
+	//     attempts and will be retried. The rationale is that if the network
+	//     really-really-really tries to feed us a block, we should give it a
+	//     new chance, perhaps us being racey instead of the block being legit
+	//     bad (this happened in Geth at a point with import vs. pending race).
+	//   - Tracking all the blocks built on top of the bad one could be a bit
+	//     problematic, so we will only track the head chain segment of a bad
+	//     chain to allow discarding progressing bad chains and side chains,
+	//     without tracking too much bad data.
+	invalidBlocksHits map[common.Hash]int           // Ephemeral cache to track invalid blocks and their hit count
+	invalidTipsets    map[common.Hash]*types.Header // Ephemeral cache to track invalid tipsets and their bad ancestor
+	invalidLock       sync.Mutex                    // Protects the invalid maps from concurrent access
+
+	// Geth can appear to be stuck or do strange things if the beacon client is
+	// offline or is sending us strange data. Stash some update stats away so
+	// that we can warn the user and not have them open issues on our tracker.
+	lastTransitionUpdate time.Time
+	lastTransitionLock   sync.Mutex
+	lastForkchoiceUpdate time.Time
+	lastForkchoiceLock   sync.Mutex
+	lastNewPayloadUpdate time.Time
+	lastNewPayloadLock   sync.Mutex
+
+	forkchoiceLock sync.Mutex // Lock for the forkChoiceUpdated method
+	newPayloadLock sync.Mutex // Lock for the NewPayload method
 }
 
 // NewConsensusAPI creates a new consensus api for the given backend.
 // The underlying blockchain needs to have a valid terminal total difficulty set.
 func NewConsensusAPI(eth *eth.Ethereum) *ConsensusAPI {
 	if eth.BlockChain().Config().TerminalTotalDifficulty == nil {
-		panic("Catalyst started without valid total difficulty")
+		log.Warn("Engine API started but chain not configured for merge yet")
 	}
-	return &ConsensusAPI{
-		eth:            eth,
-		preparedBlocks: newPayloadQueue(),
+	api := &ConsensusAPI{
+		eth:               eth,
+		remoteBlocks:      newHeaderQueue(),
+		localBlocks:       newPayloadQueue(),
+		invalidBlocksHits: make(map[common.Hash]int),
+		invalidTipsets:    make(map[common.Hash]*types.Header),
 	}
-}
+	// eth.Downloader().SetBadBlockCallback(api.setInvalidAncestor)
 
-// ForkchoiceUpdatedV1 has several responsibilities:
-// If the method is called with an empty head block:
-//
-//	we return success, which can be used to check if the catalyst mode is enabled
-//
-// If the total difficulty was not reached:
-//
-//	we return INVALID
-//
-// If the finalizedBlockHash is set:
-//
-//	we check if we have the finalizedBlockHash in our db, if not we start a sync
-//
-// We try to set our blockchain to the headBlock
-// If there are payloadAttributes:
-//
-//	we try to assemble a block with the payloadAttributes and return its payloadID
-func (api *ConsensusAPI) ForkchoiceUpdatedV1(heads beacon.ForkchoiceStateV1, payloadAttributes *beacon.PayloadAttributesV1) (beacon.ForkChoiceResponse, error) {
-	log.Trace("Engine API request received", "method", "ForkChoiceUpdated", "head", heads.HeadBlockHash, "finalized", heads.FinalizedBlockHash, "safe", heads.SafeBlockHash)
-	if heads.HeadBlockHash == (common.Hash{}) {
-		return beacon.ForkChoiceResponse{Status: beacon.SUCCESS.Status, PayloadID: nil}, nil
-	}
-	if err := api.checkTerminalTotalDifficulty(heads.HeadBlockHash); err != nil {
-		if block := api.eth.BlockChain().GetBlockByHash(heads.HeadBlockHash); block == nil {
-			// TODO (MariusVanDerWijden) trigger sync
-			return beacon.SYNCING, nil
-		}
-		return beacon.INVALID, err
-	}
-	// If the finalized block is set, check if it is in our blockchain
-	if heads.FinalizedBlockHash != (common.Hash{}) {
-		if block := api.eth.BlockChain().GetBlockByHash(heads.FinalizedBlockHash); block == nil {
-			// TODO (MariusVanDerWijden) trigger sync
-			return beacon.SYNCING, nil
-		}
-	}
-	// SetHead
-	if err := api.setHead(heads.HeadBlockHash); err != nil {
-		return beacon.INVALID, err
-	}
-	// Assemble block (if needed). It only works for full node.
-	if payloadAttributes != nil {
-		data, err := api.assembleBlock(heads.HeadBlockHash, payloadAttributes)
-		if err != nil {
-			return beacon.INVALID, err
-		}
-		id := computePayloadId(heads.HeadBlockHash, payloadAttributes)
-		api.preparedBlocks.put(id, data)
-		log.Info("Created payload", "payloadID", id)
-		return beacon.ForkChoiceResponse{Status: beacon.SUCCESS.Status, PayloadID: &id}, nil
-	}
-	return beacon.ForkChoiceResponse{Status: beacon.SUCCESS.Status, PayloadID: nil}, nil
-}
-
-// GetPayloadV1 returns a cached payload by id.
-func (api *ConsensusAPI) GetPayloadV1(payloadID beacon.PayloadID) (*beacon.ExecutableDataV1, error) {
-	log.Trace("Engine API request received", "method", "GetPayload", "id", payloadID)
-	data := api.preparedBlocks.get(payloadID)
-	if data == nil {
-		return nil, &beacon.UnknownPayload
-	}
-	return data, nil
-}
-
-// ExecutePayloadV1 creates an Eth1 block, inserts it in the chain, and returns the status of the chain.
-func (api *ConsensusAPI) ExecutePayloadV1(params beacon.ExecutableDataV1) (beacon.ExecutePayloadResponse, error) {
-	log.Trace("Engine API request received", "method", "ExecutePayload", params.BlockHash, "number", params.Number)
-	block, err := beacon.ExecutableDataToBlock(params)
-	if err != nil {
-		return api.invalid(), err
-	}
-	if !api.eth.BlockChain().HasBlock(block.ParentHash(), block.NumberU64()-1) {
-		/*
-			TODO (MariusVanDerWijden) reenable once sync is merged
-			if err := api.eth.Downloader().BeaconSync(api.eth.SyncMode(), block.Header()); err != nil {
-				return SYNCING, err
-			}
-		*/
-		// TODO (MariusVanDerWijden) we should return nil here not empty hash
-		return beacon.ExecutePayloadResponse{Status: beacon.SYNCING.Status, LatestValidHash: common.Hash{}}, nil
-	}
-	parent := api.eth.BlockChain().GetBlockByHash(params.ParentHash)
-	td := api.eth.BlockChain().GetTd(parent.Hash(), block.NumberU64()-1)
-	ttd := api.eth.BlockChain().Config().TerminalTotalDifficulty
-	if td.Cmp(ttd) < 0 {
-		return api.invalid(), fmt.Errorf("can not execute payload on top of block with low td got: %v threshold %v", td, ttd)
-	}
-	log.Trace("Inserting block without head", "hash", block.Hash(), "number", block.Number)
-	if err := api.eth.BlockChain().InsertBlockWithoutSetHead(block); err != nil {
-		return api.invalid(), err
-	}
-
-	if merger := api.eth.Merger(); !merger.TDDReached() {
-		merger.ReachTTD()
-	}
-	return beacon.ExecutePayloadResponse{Status: beacon.VALID.Status, LatestValidHash: block.Hash()}, nil
-}
-
-// computePayloadId computes a pseudo-random payloadid, based on the parameters.
-func computePayloadId(headBlockHash common.Hash, params *beacon.PayloadAttributesV1) beacon.PayloadID {
-	// Hash
-	hasher := sha256.New()
-	hasher.Write(headBlockHash[:])
-	binary.Write(hasher, binary.BigEndian, params.Timestamp)
-	hasher.Write(params.Random[:])
-	hasher.Write(params.SuggestedFeeRecipient[:])
-	var out beacon.PayloadID
-	copy(out[:], hasher.Sum(nil)[:8])
-	return out
-}
-
-// invalid returns a response "INVALID" with the latest valid hash set to the current head.
-func (api *ConsensusAPI) invalid() beacon.ExecutePayloadResponse {
-	return beacon.ExecutePayloadResponse{Status: beacon.INVALID.Status, LatestValidHash: api.eth.BlockChain().CurrentHeader().Hash()}
-}
-
-// assembleBlock creates a new block and returns the "execution
-// data" required for beacon clients to process the new block.
-func (api *ConsensusAPI) assembleBlock(parentHash common.Hash, params *beacon.PayloadAttributesV1) (*beacon.ExecutableDataV1, error) {
-	log.Info("Producing block", "parentHash", parentHash)
-	block, err := api.eth.Miner().GetSealingBlock(parentHash, params.Timestamp, params.SuggestedFeeRecipient, params.Random)
-	if err != nil {
-		return nil, err
-	}
-	return beacon.BlockToExecutableData(block), nil
-}
-
-// Used in tests to add a the list of transactions from a block to the tx pool.
-func (api *ConsensusAPI) insertTransactions(txs types.Transactions) error {
-	for _, tx := range txs {
-		api.eth.TxPool().AddLocal(tx)
-	}
-	return nil
-}
-
-func (api *ConsensusAPI) checkTerminalTotalDifficulty(head common.Hash) error {
-	// shortcut if we entered PoS already
-	if api.eth.Merger().PoSFinalized() {
-		return nil
-	}
-	// make sure the parent has enough terminal total difficulty
-	newHeadBlock := api.eth.BlockChain().GetBlockByHash(head)
-	if newHeadBlock == nil {
-		return &beacon.GenericServerError
-	}
-	td := api.eth.BlockChain().GetTd(newHeadBlock.Hash(), newHeadBlock.NumberU64())
-	if td != nil && td.Cmp(api.eth.BlockChain().Config().TerminalTotalDifficulty) < 0 {
-		return &beacon.InvalidTB
-	}
-	return nil
-}
-
-// setHead is called to perform a force choice.
-func (api *ConsensusAPI) setHead(newHead common.Hash) error {
-	log.Info("Setting head", "head", newHead)
-	headBlock := api.eth.BlockChain().CurrentBlock()
-	if headBlock.Hash() == newHead {
-		return nil
-	}
-	newHeadBlock := api.eth.BlockChain().GetBlockByHash(newHead)
-	if newHeadBlock == nil {
-		return &beacon.GenericServerError
-	}
-	if err := api.eth.BlockChain().SetChainHead(newHeadBlock); err != nil {
-		return err
-	}
-	// Trigger the transition if it's the first `NewHead` event.
-	if merger := api.eth.Merger(); !merger.PoSFinalized() {
-		merger.FinalizePoS()
-	}
-	// TODO (MariusVanDerWijden) are we really synced now?
-	api.eth.SetSynced()
-	return nil
+	return api
 }

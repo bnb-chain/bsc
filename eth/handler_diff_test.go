@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	coreTxpool "github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -44,7 +45,7 @@ import (
 type testBackend struct {
 	db     ethdb.Database
 	chain  *core.BlockChain
-	txpool *core.TxPool
+	txpool *coreTxpool.TxPool
 
 	handler *handler
 }
@@ -60,12 +61,13 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 	signer := types.HomesteadSigner{}
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
-	(&core.Genesis{
-		Config: params.TestChainConfig,
-		Alloc:  core.GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
-	}).MustCommit(db)
+	genesis := &core.Genesis{
+		Config:  params.TestChainConfig,
+		Alloc:   core.GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
+		BaseFee: big.NewInt(params.InitialBaseFee),
+	}
 
-	chain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil)
+	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 	generator := func(i int, block *core.BlockGen) {
 		// The chain maker doesn't have access to a chain, so the difficulty will be
 		// lets unset (nil). Set it here to the correct value.
@@ -98,13 +100,13 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 	})
 	handler.Start(100, 100)
 
-	txconfig := core.DefaultTxPoolConfig
+	txconfig := coreTxpool.DefaultConfig
 	txconfig.Journal = "" // Don't litter the disk with test journals
 
 	return &testBackend{
 		db:      db,
 		chain:   chain,
-		txpool:  core.NewTxPool(txconfig, params.TestChainConfig, chain),
+		txpool:  coreTxpool.NewTxPool(txconfig, params.TestChainConfig, chain),
 		handler: handler,
 	}
 }

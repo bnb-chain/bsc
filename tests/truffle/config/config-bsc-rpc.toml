@@ -9,18 +9,6 @@ GasFloor = 30000000
 GasCeil = 40000000
 GasPrice = 5000000000
 Recommit = 10000000000
-Noverify = false
-
-[Eth.Ethash]
-CacheDir = ""
-CachesInMem = 0
-CachesOnDisk = 0
-CachesLockMmap = false
-DatasetDir = ""
-DatasetsInMem = 0
-DatasetsOnDisk = 0
-DatasetsLockMmap = false
-PowMode = 0
 
 [Eth.TxPool]
 Locals = []
