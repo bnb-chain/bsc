@@ -372,7 +372,8 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	// chain config as that would be AllProtocolChanges (applying any new fork
 	// on top of an existing private network genesis block). In that case, only
 	// apply the overrides.
-	if genesis == nil && stored != params.MainnetGenesisHash {
+	if genesis == nil && stored != params.MainnetGenesisHash &&
+		stored != params.ChapelGenesisHash && stored != params.RialtoGenesisHash && stored != params.BSCGenesisHash {
 		newcfg = storedcfg
 		applyOverrides(newcfg)
 	}
