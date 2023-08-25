@@ -204,10 +204,11 @@ func (test *stateTest) run() bool {
 		}
 		if byzantium {
 			state.Finalise(true) // call finalise at the transaction boundary
+			state.AccountsIntermediateRoot()
 		} else {
 			state.IntermediateRoot(true) // call intermediateRoot at the transaction boundary
 		}
-		nroot, err := state.Commit(0, true) // call commit at the block boundary
+		nroot, _, err := state.Commit(0, nil) // call commit at the block boundary
 		if err != nil {
 			panic(err)
 		}

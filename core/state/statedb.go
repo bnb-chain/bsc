@@ -182,13 +182,8 @@ func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*St
 }
 
 func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	tr, err := db.OpenTrie(root)
-	if err != nil {
-		return nil, err
-	}
 	sdb := &StateDB{
 		db:                   db,
-		trie:                 tr,
 		originalRoot:         root,
 		snaps:                snaps,
 		accounts:             make(map[common.Hash][]byte),
@@ -212,7 +207,7 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 	}
 
 	snapVerified := sdb.snap != nil && sdb.snap.Verified()
-	tr, err = db.OpenTrie(root)
+	tr, err := db.OpenTrie(root)
 	// return error when 1. failed to open trie and 2. the snap is nil or the snap is not nil and done verification
 	if err != nil && (sdb.snap == nil || snapVerified) {
 		return nil, err
@@ -786,7 +781,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 	var data *types.StateAccount
 	if s.snap != nil {
 		start := time.Now()
-		acc, err := s.snap.Account(crypto.HashData(s.hasher, addr.Bytes()))
+		acc, err := s.snap.Account(crypto.HashData(crypto.NewKeccakState(), addr.Bytes()))
 		if metrics.EnabledExpensive {
 			s.SnapshotAccountReads += time.Since(start)
 		}
@@ -1248,6 +1243,7 @@ func (s *StateDB) populateSnapStorage(obj *stateObject) bool {
 	if len(obj.pendingStorage) == 0 {
 		return false
 	}
+	hasher := crypto.NewKeccakState()
 	var storage map[common.Hash][]byte
 	for key, value := range obj.pendingStorage {
 		var v []byte
@@ -1264,7 +1260,7 @@ func (s *StateDB) populateSnapStorage(obj *stateObject) bool {
 					obj.db.storages[obj.addrHash] = storage
 				}
 			}
-			storage[crypto.HashData(s.hasher, key[:])] = v // v will be nil if value is 0x00
+			storage[crypto.HashData(hasher, key[:])] = v // v will be nil if value is 0x00
 		}
 	}
 	return true

@@ -118,7 +118,6 @@ func TestDeleteBloomBits(t *testing.T) {
 	for i := uint(0); i < 2; i++ {
 		for s := uint64(0); s < 2; s++ {
 			WriteBloomBits(db, i, s, params.MainnetGenesisHash, []byte{0x01, 0x02})
-			WriteBloomBits(db, i, s, params.SepoliaGenesisHash, []byte{0x01, 0x02})
 		}
 	}
 	check := func(bit uint, section uint64, head common.Hash, exist bool) {

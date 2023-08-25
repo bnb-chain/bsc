@@ -303,6 +303,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 
 	// Open trie database with provided config
 	triedb := trie.NewDatabaseWithConfig(db, &trie.Config{
+		NoTries:   cacheConfig.NoTries,
 		Cache:     cacheConfig.TrieCleanLimit,
 		Preimages: cacheConfig.Preimages,
 	})
@@ -322,15 +323,13 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	log.Info("")
 
 	bc := &BlockChain{
-		chainConfig: chainConfig,
-		cacheConfig: cacheConfig,
-		db:          db,
-		triedb:      triedb,
-		triegc:      prque.New[int64, common.Hash](nil),
-		quit:        make(chan struct{}),
-		stateCache: state.NewDatabaseWithNodeDB(db, triedb, &trie.Config{
-			NoTries: cacheConfig.NoTries,
-		}),
+		chainConfig:           chainConfig,
+		cacheConfig:           cacheConfig,
+		db:                    db,
+		triedb:                triedb,
+		triegc:                prque.New[int64, common.Hash](nil),
+		quit:                  make(chan struct{}),
+		stateCache:            state.NewDatabaseWithNodeDB(db, triedb),
 		triesInMemory:         cacheConfig.TriesInMemory,
 		chainmu:               syncx.NewClosableMutex(),
 		bodyCache:             lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
