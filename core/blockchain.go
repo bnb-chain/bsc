@@ -232,7 +232,7 @@ type BlockChain struct {
 	// Readers don't need to take it, they can just read the database.
 	chainmu *syncx.ClosableMutex
 
-	highestVerifiedHeader atomic.Value
+	highestVerifiedHeader atomic.Pointer[types.Header]
 	currentBlock          atomic.Pointer[types.Header] // Current head of the chain
 	currentSnapBlock      atomic.Pointer[types.Header] // Current head of snap-sync
 
@@ -2166,7 +2166,7 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 	if header == nil || header.Number == nil {
 		return
 	}
-	currentHeader := bc.highestVerifiedHeader.Load().(*types.Header)
+	currentHeader := bc.highestVerifiedHeader.Load()
 	if currentHeader == nil {
 		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
 		return
@@ -2190,7 +2190,7 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 }
 
 func (bc *BlockChain) GetHighestVerifiedHeader() *types.Header {
-	return bc.highestVerifiedHeader.Load().(*types.Header)
+	return bc.highestVerifiedHeader.Load()
 }
 
 // insertSideChain is called when an import batch hits upon a pruned ancestor
