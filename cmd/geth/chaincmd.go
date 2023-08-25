@@ -318,16 +318,18 @@ func initNetwork(ctx *cli.Context) error {
 		utils.Fatalf("init.dir is required")
 	}
 	size := ctx.Int(utils.InitNetworkSize.Name)
+	if size <= 0 {
+		utils.Fatalf("size should be greater than 0")
+	}
 	port := ctx.Int(utils.InitNetworkPort.Name)
+	if port <= 0 {
+		utils.Fatalf("port should be greater than 0")
+	}
 	ipStr := ctx.String(utils.InitNetworkIps.Name)
 	cfgFile := ctx.String(configFileFlag.Name)
 
 	if len(cfgFile) == 0 {
 		utils.Fatalf("config file is required")
-	}
-
-	if size <= 0 {
-		utils.Fatalf("size should be greater than 0")
 	}
 
 	ips, err := parseIps(ipStr, size)
