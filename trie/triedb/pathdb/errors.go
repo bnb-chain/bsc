@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>
 
-package snap
+package pathdb
 
 import (
 	"errors"
@@ -28,30 +28,24 @@ var (
 	// and mutation is requested.
 	errSnapshotReadOnly = errors.New("read only")
 
-	// errSnapshotStale is returned from data accessors if the underlying snapshot
+	// errSnapshotStale is returned from data accessors if the underlying layer
 	// layer had been invalidated due to the chain progressing forward far enough
 	// to not maintain the layer's original state.
-	errSnapshotStale = errors.New("snapshot stale")
+	errSnapshotStale = errors.New("layer stale")
 
-	// errUnexpectedTrieHistory is returned if an unmatched trie history is applied
+	// errUnexpectedHistory is returned if an unmatched state history is applied
 	// to the database for state rollback.
-	errUnexpectedTrieHistory = errors.New("unexpected trie history")
+	errUnexpectedHistory = errors.New("unexpected state history")
 
 	// errStateUnrecoverable is returned if state is required to be reverted to
-	// a destination without associated trie history available.
+	// a destination without associated state history available.
 	errStateUnrecoverable = errors.New("state is unrecoverable")
+
+	// errUnexpectedNode is returned if the requested node with specified path is
+	// not hash matched with expectation.
+	errUnexpectedNode = errors.New("unexpected node")
 )
 
-// UnexpectedNodeErr is returned if the requested node with specified path is
-// not hash matched.
-type UnexpectedNodeErr struct {
-	typ   string
-	want  common.Hash
-	has   common.Hash
-	owner common.Hash
-	path  []byte
-}
-
-func (err *UnexpectedNodeErr) Error() string {
-	return fmt.Sprintf("%s: unexpected node %x!=%x(%x %v)", err.typ, err.want, err.has, err.owner, err.path)
+func newUnexpectedNodeError(loc string, expHash common.Hash, gotHash common.Hash, owner common.Hash, path []byte) error {
+	return fmt.Errorf("%w, loc: %s, node: (%x %v), %x!=%x", errUnexpectedNode, loc, owner, path, expHash, gotHash)
 }

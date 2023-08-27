@@ -40,7 +40,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/trie/snap"
 )
 
 //go:generate gencodec -type Genesis -field-override genesisSpecMarshaling -out gen_genesis.go
@@ -191,19 +190,9 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	cacheConfig.NodeScheme = rawdb.PathScheme
 	       // Open trie database with provided config
         config := &trie.Config{
-                Cache:     cacheConfig.TrieCleanLimit,
-                Journal:   cacheConfig.TrieCleanJournal,
-                Preimages: cacheConfig.Preimages,
                 NoTries:   cacheConfig.NoTries,
         }
 
-        // if cacheConfig.NodeScheme == rawdb.PathScheme {
-//                log.Info("State trie is running in path mode")
-                config.Snap = &snap.Config{
-                        StateHistory: cacheConfig.StateHistory,
-                        DirtySize:    cacheConfig.TrieDirtyLimit,
-                }
-        // }
         triedb := trie.NewDatabase(db, config)
 	defer triedb.Close()
 
@@ -349,19 +338,9 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
         cacheConfig := defaultCacheConfig
                // Open trie database with provided config
         config := &trie.Config{
-                Cache:     cacheConfig.TrieCleanLimit,
-                Journal:   cacheConfig.TrieCleanJournal,
-                Preimages: cacheConfig.Preimages,
                 NoTries:   cacheConfig.NoTries,
         }
 
-//        if cacheConfig.NodeScheme == rawdb.PathScheme {
-//                log.Info("State trie is running in path mode")
-                config.Snap = &snap.Config{
-                        StateHistory: cacheConfig.StateHistory,
-                        DirtySize:    cacheConfig.TrieDirtyLimit,
-                }
-//        }
         triedb := trie.NewDatabase(db, config)
 	defer triedb.Close()
 
@@ -406,7 +385,7 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 			head.BaseFee = new(big.Int).SetUint64(params.InitialBaseFee)
 		}
 	}
-	statedb.Commit(nil)
+	statedb.Commit(0, nil)
 	statedb.Database().TrieDB().Commit(root, true)
 
         // Ensure that the in-memory trie nodes are journaled to disk properly.

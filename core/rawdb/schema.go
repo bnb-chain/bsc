@@ -40,8 +40,8 @@ var (
 	// headFastBlockKey tracks the latest known incomplete block's hash during fast sync.
 	headFastBlockKey = []byte("LastFast")
 
-	// headStateKey tracks the id of latest stored state(for path-based only).
-	headStateKey = []byte("LastState")
+	// persistentStateIDKey tracks the id of latest stored state(for path-based only).
+	persistentStateIDKey = []byte("LastStateID")
 
 	// lastPivotKey tracks the last pivot block used by fast sync (to reenable on sethead).
 	lastPivotKey = []byte("LastPivot")
@@ -67,8 +67,8 @@ var (
 	// snapshotSyncStatusKey tracks the snapshot sync status across restarts.
 	snapshotSyncStatusKey = []byte("SnapshotSyncStatus")
 
-	// triesJournalKey tracks the in-memory trie node layers across restarts.
-	triesJournalKey = []byte("TriesJournal")
+	// trieJournalKey tracks the in-memory trie node layers across restarts.
+	trieJournalKey = []byte("TrieJournal")
 
 	// txIndexTailKey tracks the oldest block whose transactions have been indexed.
 	txIndexTailKey = []byte("TransactionIndexTail")
@@ -118,11 +118,12 @@ var (
 	// Path-based trie node scheme.
 	trieNodeAccountPrefix = []byte("A") // trieNodeAccountPrefix + hexPath -> trie node
 	trieNodeStoragePrefix = []byte("O") // trieNodeStoragePrefix + accountHash + hexPath -> trie node
-	stateLookupPrefix     = []byte("L") // stateLookupPrefix + state root -> state id
+	stateIDPrefix         = []byte("L") // stateIDPrefix + state root -> state id
 
 	ChtPrefix           = []byte("chtRootV2-") // ChtPrefix + chtNum (uint64 big endian) -> trie root hash
 	ChtTablePrefix      = []byte("cht-")
 	ChtIndexTablePrefix = []byte("chtIndexV2-")
+	genesisPrefix  = []byte("ethereum-genesis-") // genesis state prefix for the db
 
         BloomTriePrefix      = []byte("bltRoot-") // BloomTriePrefix + bloomTrieNum (uint64 big endian) -> trie root hash
         BloomTrieTablePrefix = []byte("blt-")
@@ -272,6 +273,21 @@ func IsCodeKey(key []byte) (bool, []byte) {
 	return false, nil
 }
 
+// configKey = configPrefix + hash
+func configKey(hash common.Hash) []byte {
+	return append(configPrefix, hash.Bytes()...)
+}
+
+// genesisStateSpecKey = genesisPrefix + hash
+func genesisStateSpecKey(hash common.Hash) []byte {
+	return append(genesisPrefix, hash.Bytes()...)
+}
+
+// stateIDKey = stateIDPrefix + root (32 bytes)
+func stateIDKey(root common.Hash) []byte {
+	return append(stateIDPrefix, root.Bytes()...)
+}
+
 // accountTrieNodeKey = trieNodeAccountPrefix + nodePath.
 func accountTrieNodeKey(path []byte) []byte {
 	return append(trieNodeAccountPrefix, path...)
@@ -345,15 +361,5 @@ func ResolveStorageTrieNode(key []byte) (bool, common.Hash, []byte) {
 func IsStorageTrieNode(key []byte) bool {
 	ok, _, _ := ResolveStorageTrieNode(key)
 	return ok
-}
-
-// stateLookupKey = stateLookupPrefix + root (32 bytes)
-func stateLookupKey(root common.Hash) []byte {
-	return append(stateLookupPrefix, root.Bytes()...)
-}
-
-// configKey = configPrefix + hash
-func configKey(hash common.Hash) []byte {
-	return append(configPrefix, hash.Bytes()...)
 }
 

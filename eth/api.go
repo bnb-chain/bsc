@@ -461,7 +461,11 @@ func (api *PrivateDebugAPI) StorageRangeAt(blockHash common.Hash, txIndex int, c
 }
 
 func storageRangeAt(st state.Trie, start []byte, maxResult int) (StorageRangeResult, error) {
-	it := trie.NewIterator(st.NodeIterator(start))
+        trieIt, err := st.NodeIterator(start)
+        if err != nil {
+                return StorageRangeResult{}, err
+        }
+        it := trie.NewIterator(trieIt)
 	result := StorageRangeResult{Storage: storageMap{}}
 	for i := 0; i < maxResult && it.Next(); i++ {
 		_, content, _, err := rlp.Split(it.Value)
@@ -552,7 +556,18 @@ func (api *PrivateDebugAPI) getModifiedAccounts(startBlock, endBlock *types.Bloc
 	if err != nil {
 		return nil, err
 	}
-	diff, _ := trie.NewDifferenceIterator(oldTrie.NodeIterator([]byte{}), newTrie.NodeIterator([]byte{}))
+
+        oldTrieIt, err := oldTrie.NodeIterator([]byte{})
+        if err != nil {
+                return nil, err
+        }
+
+        newTrieIt, err := newTrie.NodeIterator([]byte{})
+        if err != nil {
+                return nil, err
+        }
+
+	diff, _ := trie.NewDifferenceIterator(oldTrieIt, newTrieIt)
 	iter := trie.NewIterator(diff)
 
 	var dirty []common.Address

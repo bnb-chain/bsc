@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 // leafChanSize is the size of the leafCh. It's a pretty arbitrary number, to allow
@@ -43,9 +44,9 @@ type leafInfo struct {
 // capture all dirty nodes during the commit process and keep them cached in
 // insertion order.
 type committer struct {
-	nodes       *NodeSet
+	nodes       *trienode.NodeSet
 	tracer      *tracer
-	onleaf LeafCallback
+	onleaf triestate.LeafCallback
 	leafCh chan *leafInfo
 }
 
@@ -57,7 +58,7 @@ var committerPool = sync.Pool{
 }
 
 // newCommitter creates a new committer or picks one from the pool.
-func newCommitter(nodeset *NodeSet, tracer *tracer) *committer {
+func newCommitter(nodeset *trienode.NodeSet, tracer *tracer) *committer {
 	committer := committerPool.Get().(*committer)
 	committer.nodes = nodeset
 	committer.tracer = tracer
@@ -163,22 +164,15 @@ func (c *committer) store(path []byte, n node) node {
 		// The node is embedded in its parent, in other words, this node
 		// will not be stored in the database independently, mark it as
 		// deleted only if the node was existent in database before.
-		prev, ok := c.tracer.accessList[string(path)]
+		_, ok := c.tracer.accessList[string(path)]
 		if ok {
-			c.nodes.addNode(path, trienode.NewWithPrev(common.Hash{}, nil, prev))
+			c.nodes.AddNode(path, trienode.NewDeleted())
 		}
 		return n
 	}
 	// Collect the dirty node to nodeset for return.
-	var (
-		nhash = common.BytesToHash(hash)
-		node  = trienode.NewWithPrev(
-			nhash,
-			nodeToBytes(n),
-			c.tracer.accessList[string(path)],
-		)
-	)
-	c.nodes.addNode(path, node)
+	nhash := common.BytesToHash(hash)
+	c.nodes.AddNode(path, trienode.New(nhash, nodeToBytes(n)))
 
 	// Collect the corresponding leaf node if it's required. We don't check
 	// full node since it's impossible to store value in fullNode. The key
@@ -191,7 +185,7 @@ func (c *committer) store(path []byte, n node) node {
 	} else {
                 if sn, ok := n.(*shortNode); ok {
                         if val, ok := sn.Val.(valueNode); ok {
-                                c.nodes.addLeaf(&leaf{blob: val, parent: nhash})
+                                c.nodes.AddLeaf(nhash, val)
                         }
                 }
 	}
@@ -210,14 +204,14 @@ func (c *committer) commitLoop() {
 			switch n := n.(type) {
 			case *shortNode:
 				if child, ok := n.Val.(valueNode); ok {
-					c.nodes.addLeaf(&leaf{blob: child, parent: parent})
+					c.nodes.AddLeaf(parent, child)
 					c.onleaf(nil, nil, child, parent, nil)
 				}
 			case *fullNode:
 				// For children in range [0, 15], it's impossible
 				// to contain valueNode. Only check the 17th child.
 				if n.Children[16] != nil {
-					c.nodes.addLeaf(&leaf{blob: n.Children[16].(valueNode), parent: parent})
+					c.nodes.AddLeaf(parent, n.Children[16].(valueNode))
 					c.onleaf(nil, nil, n.Children[16].(valueNode), parent, nil)
 				}
 			}
@@ -230,7 +224,7 @@ type mptResolver struct{}
 
 // ForEach implements childResolver, decodes the provided node and
 // traverses the children inside.
-func (resolver mptResolver) forEach(node []byte, onChild func(common.Hash)) {
+func (resolver mptResolver) ForEach(node []byte, onChild func(common.Hash)) {
 	forGatherChildren(mustDecodeNodeUnsafe(nil, node), onChild)
 }
 

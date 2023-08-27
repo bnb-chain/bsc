@@ -29,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
 type Code []byte
@@ -456,7 +456,7 @@ func (s *stateObject) updateRoot(db Database) {
 
 // commitTrie submits the storage changes into the storage trie and re-computes
 // the root. Besides, all trie changes will be collected in a nodeset and returned.
-func (s *stateObject) commitTrie(db Database) (*trie.NodeSet, error) {
+func (s *stateObject) commitTrie(db Database) (*trienode.NodeSet, error) {
 	tr, err := s.updateTrie(db)
 	// If nothing changed or err, don't bother with committing anything
 	if tr == nil || err != nil {
@@ -469,7 +469,10 @@ func (s *stateObject) commitTrie(db Database) (*trie.NodeSet, error) {
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.db.StorageCommits += time.Since(start) }(time.Now())
 	}
-	root, nodes := tr.Commit(nil)
+	root, nodes, err := tr.Commit(nil)
+	if err != nil {
+		return nil, err
+	}
 	s.data.Root = root
 	if s.data.Root != types.EmptyRootHash {
 		db.CacheStorage(s.addrHash, s.data.Root, s.trie)

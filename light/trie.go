@@ -29,6 +29,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+        "github.com/ethereum/go-ethereum/trie/triestate"
+        "github.com/ethereum/go-ethereum/trie/trienode"
 )
 
 var (
@@ -175,9 +177,9 @@ func (t *odrTrie) DeleteAccount(address common.Address) error {
 	})
 }
 
-func (t *odrTrie) Commit(onleaf trie.LeafCallback) (common.Hash, *trie.NodeSet) {
+func (t *odrTrie) Commit(onleaf triestate.LeafCallback) (common.Hash, *trienode.NodeSet, error) {
 	if t.trie == nil {
-		return t.id.Root, nil
+		return t.id.Root, nil, nil
 	}
 	return t.trie.Commit(onleaf)
 }
@@ -189,15 +191,15 @@ func (t *odrTrie) Hash() common.Hash {
 	return t.trie.Hash()
 }
 
-func (t *odrTrie) NodeIterator(startkey []byte) trie.NodeIterator {
-	return newNodeIterator(t, startkey)
+func (t *odrTrie) NodeIterator(startkey []byte) (trie.NodeIterator, error) {
+	return newNodeIterator(t, startkey), nil
 }
 
 func (t *odrTrie) GetKey(sha []byte) []byte {
 	return nil
 }
 
-func (t *odrTrie) Prove(key []byte, fromLevel uint, proofDb ethdb.KeyValueWriter) error {
+func (t *odrTrie) Prove(key []byte, proofDb ethdb.KeyValueWriter) error {
 	return errors.New("not implemented, needs client/server interface split")
 }
 
@@ -213,7 +215,8 @@ func (t *odrTrie) do(key []byte, fn func() error) error {
 			} else {
 				id = trie.StateTrieID(t.id.StateRoot)
 			}
-			t.trie, err = trie.New(id, trie.NewHashDatabase(t.db.backend.Database()))
+			triedb := trie.NewDatabase(t.db.backend.Database(), trie.HashDefaults)
+			t.trie, err = trie.New(id, triedb)
 		}
 		if err == nil {
 			err = fn()
@@ -249,7 +252,8 @@ func newNodeIterator(t *odrTrie, startkey []byte) trie.NodeIterator {
 			} else {
 				id = trie.StateTrieID(t.id.StateRoot)
 			}
-			t, err := trie.New(id, trie.NewHashDatabase(t.db.backend.Database()))
+			triedb := trie.NewDatabase(t.db.backend.Database(), trie.HashDefaults)
+			t, err := trie.New(id, triedb)
 			if err == nil {
 				it.t.trie = t
 			}
@@ -257,7 +261,11 @@ func newNodeIterator(t *odrTrie, startkey []byte) trie.NodeIterator {
 		})
 	}
 	it.do(func() error {
-		it.NodeIterator = it.t.trie.NodeIterator(startkey)
+		var err error
+		it.NodeIterator, err = it.t.trie.NodeIterator(startkey)
+		if err != nil {
+			return err
+		}
 		return it.NodeIterator.Error()
 	})
 	return it

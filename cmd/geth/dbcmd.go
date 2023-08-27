@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/trie/snap"
 	"github.com/olekukonko/tablewriter"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -466,9 +465,6 @@ func dbDumpTrie(ctx *cli.Context) error {
 	defer db.Close()
 
 	config := &trie.Config{}
-	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
-		config.Snap = snap.ReadOnly
-	}
 	triedb := trie.NewDatabase(db, config)
 	defer triedb.Close()
 
@@ -509,8 +505,12 @@ func dbDumpTrie(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	trieIt, err := theTrie.NodeIterator(start)
+	if err != nil {
+		return err
+	}
 	var count int64
-	it := trie.NewIterator(theTrie.NodeIterator(start))
+	it := trie.NewIterator(trieIt)
 	for it.Next() {
 		if max > 0 && count == max {
 			fmt.Printf("Exiting after %d values\n", count)

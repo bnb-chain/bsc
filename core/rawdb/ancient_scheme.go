@@ -47,29 +47,35 @@ var chainFreezerNoSnappy = map[string]bool{
 }
 
 const (
-	// trieHistoryTableSize defines the maximum size of freezer data files.
-	trieHistoryTableSize = 2 * 1000 * 1000 * 1000
+	// stateHistoryTableSize defines the maximum size of freezer data files.
+	stateHistoryTableSize = 2 * 1000 * 1000 * 1000
 
-	// trieHistoryTable indicates the name of the trie history table.
-	trieHistoryTable = "history"
+	// stateHistoryAccountIndex indicates the name of the freezer state history table.
+	stateHistoryMeta         = "history.meta"
+	stateHistoryAccountIndex = "account.index"
+	stateHistoryStorageIndex = "storage.index"
+	stateHistoryAccountData  = "account.data"
+	stateHistoryStorageData  = "storage.data"
 )
 
-// trieHistoryFreezerNoSnappy configures whether compression is disabled for the ancient
-// trie histories
-var trieHistoryFreezerNoSnappy = map[string]bool{
-	trieHistoryTable: false,
+var stateFreezerNoSnappy = map[string]bool{
+	stateHistoryMeta:         true,
+	stateHistoryAccountIndex: false,
+	stateHistoryStorageIndex: false,
+	stateHistoryAccountData:  false,
+	stateHistoryStorageData:  false,
 }
 
 // The list of identifiers of ancient stores.
 var (
-	chainFreezerName       = "chain"       // the folder name of chain segment ancient store.
-	trieHistoryFreezerName = "triehistory" // the folder name of trie history ancient store.
+	chainFreezerName = "chain" // the folder name of chain segment ancient store.
+	stateFreezerName = "state" // the folder name of reverse diff ancient store.
 )
 
 // freezers the collections of all builtin freezers.
-var freezers = []string{chainFreezerName, trieHistoryFreezerName}
+var freezers = []string{chainFreezerName, stateFreezerName}
 
-// NewTrieHistoryFreezer initializes the freezer for trie histories.
-func NewTrieHistoryFreezer(ancientDir string, readOnly bool) (*ResettableFreezer, error) {
-	return NewResettableFreezer(filepath.Join(ancientDir, trieHistoryFreezerName), "eth/db/triehistory", readOnly, trieHistoryTableSize, trieHistoryFreezerNoSnappy)
+// NewStateFreezer initializes the freezer for state history.
+func NewStateFreezer(ancientDir string, readOnly bool) (*ResettableFreezer, error) {
+	return NewResettableFreezer(filepath.Join(ancientDir, stateFreezerName), "eth/db/state", readOnly, stateHistoryTableSize, stateFreezerNoSnappy)
 }

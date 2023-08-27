@@ -42,7 +42,6 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/trie/snap"
 )
 
 var (
@@ -233,9 +232,6 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	}
 	headHeader := headBlock.Header()
 	dbConfig := &trie.Config{}
-	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
-		dbConfig.Snap = snap.ReadOnly
-	}
 	triedb := trie.NewDatabase(chaindb, dbConfig)
 	defer triedb.Close()
 
@@ -412,9 +408,6 @@ func verifyState(ctx *cli.Context) error {
 		return errors.New("no head block")
 	}
 	dbConfig := &trie.Config{}
-	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
-		dbConfig.Snap = snap.ReadOnly
-	}
 	triedb := trie.NewDatabase(chaindb, dbConfig)
 	defer triedb.Close()
 
@@ -458,9 +451,6 @@ func traverseState(ctx *cli.Context) error {
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
 	config := &trie.Config{}
-	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
-		config.Snap = snap.ReadOnly
-	}
 	triedb := trie.NewDatabase(chaindb, config)
 	defer triedb.Close()
 	headBlock := rawdb.ReadHeadBlock(chaindb)
@@ -499,7 +489,12 @@ func traverseState(ctx *cli.Context) error {
 		lastReport time.Time
 		start      = time.Now()
 	)
-	accIter := trie.NewIterator(t.NodeIterator(nil))
+	acctIt, err := t.NodeIterator(nil)
+	if err != nil {
+		log.Error("Failed to open iterator", "root", root, "err", err)
+		return err
+	}
+	accIter := trie.NewIterator(acctIt)
 	for accIter.Next() {
 		accounts += 1
 		var acc types.StateAccount
@@ -514,7 +509,12 @@ func traverseState(ctx *cli.Context) error {
 				log.Error("Failed to open storage trie", "root", acc.Root, "err", err)
 				return err
 			}
-			storageIter := trie.NewIterator(storageTrie.NodeIterator(nil))
+			storageIt, err := storageTrie.NodeIterator(nil)
+			if err != nil {
+				log.Error("Failed to open storage iterator", "root", acc.Root, "err", err)
+				return err
+			}
+			storageIter := trie.NewIterator(storageIt)
 			for storageIter.Next() {
 				slots += 1
 			}
@@ -553,9 +553,6 @@ func traverseRawState(ctx *cli.Context) error {
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
 	config := &trie.Config{}
-	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
-		config.Snap = snap.ReadOnly
-	}
 	triedb := trie.NewDatabase(chaindb, config)
 	defer triedb.Close()
 
@@ -596,12 +593,16 @@ func traverseRawState(ctx *cli.Context) error {
 		lastReport time.Time
 		start      = time.Now()
 	)
-	reader := triedb.GetReader(root)
-	if reader == nil {
-		log.Error("state is not existent", "root", root)
+	accIter, err := t.NodeIterator(nil)
+	if err != nil {
+		log.Error("Failed to open iterator", "root", root, "err", err)
+		return err
+	}
+	reader, err := triedb.Reader(root)
+	if err != nil {
+		log.Error("State is non-existent", "root", root)
 		return nil
 	}
-	accIter := t.NodeIterator(nil)
 	for accIter.Next(true) {
 		nodes += 1
 		node := accIter.Hash()
@@ -631,7 +632,11 @@ func traverseRawState(ctx *cli.Context) error {
 					log.Error("Failed to open storage trie", "root", acc.Root, "err", err)
 					return errors.New("missing storage trie")
 				}
-				storageIter := storageTrie.NodeIterator(nil)
+				storageIter, err := storageTrie.NodeIterator(nil)
+				if err != nil {
+					log.Error("Failed to open storage iterator", "root", acc.Root, "err", err)
+					return err
+				}
 				for storageIter.Next(true) {
 					nodes += 1
 					node := storageIter.Hash()
@@ -693,9 +698,6 @@ func dumpState(ctx *cli.Context) error {
 		return err
 	}
 	dbConfig := &trie.Config{}
-	if ctx.Bool(utils.PathBasedSchemeFlag.Name) {
-		dbConfig.Snap = snap.ReadOnly
-	}
 	triedb := trie.NewDatabase(db, dbConfig)
 	defer triedb.Close()
 

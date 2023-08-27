@@ -142,13 +142,13 @@ func (db *nofreezedb) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, e
 }
 
 // TruncateHead returns an error as we don't have a backing chain freezer.
-func (db *nofreezedb) TruncateHead(items uint64) error {
-	return errNotSupported
+func (db *nofreezedb) TruncateHead(items uint64) (uint64, error) {
+	return 0, errNotSupported
 }
 
 // TruncateTail returns an error as we don't have a backing chain freezer.
-func (db *nofreezedb) TruncateTail(items uint64) error {
-	return errNotSupported
+func (db *nofreezedb) TruncateTail(items uint64) (uint64, error) {
+	return 0, errNotSupported
 }
 
 // Sync returns an error as we don't have a backing chain freezer.
@@ -573,12 +573,12 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			hashNumPairings.Add(size)
 		case IsLegacyTrieNode(key, it.Value()):
 			legacyTries.Add(size)
+		case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
+			stateLookups.Add(size)
 		case IsAccountTrieNode(key):
 			accountTries.Add(size)
 		case IsStorageTrieNode(key):
 			storageTries.Add(size)
-		case bytes.HasPrefix(key, stateLookupPrefix) && len(key) == len(stateLookupPrefix)+common.HashLength:
-			stateLookups.Add(size)
 		case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
 			codes.Add(size)
 		case bytes.HasPrefix(key, txLookupPrefix) && len(key) == (len(txLookupPrefix)+common.HashLength):

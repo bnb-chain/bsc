@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
 type revision struct {
@@ -503,7 +504,7 @@ func (s *StateDB) GetProofByHash(addrHash common.Hash) ([][]byte, error) {
 	if _, err := s.Trie(); err != nil {
 		return nil, err
 	}
-	err := s.trie.Prove(addrHash[:], 0, &proof)
+	err := s.trie.Prove(addrHash[:], &proof)
 	return proof, err
 }
 
@@ -517,7 +518,7 @@ func (s *StateDB) GetStorageProof(a common.Address, key common.Hash) ([][]byte, 
 		return nil, errors.New("storage trie for requested address does not exist")
 	}
 	var proof proofList
-	err = trie.Prove(crypto.Keccak256(key.Bytes()), 0, &proof)
+	err = trie.Prove(crypto.Keccak256(key.Bytes()), &proof)
 	if err != nil {
 		return nil, err
 	}
@@ -847,7 +848,11 @@ func (db *StateDB) ForEachStorage(addr common.Address, cb func(key, value common
 	if err != nil {
 		return err
 	}
-	it := trie.NewIterator(tr.NodeIterator(nil))
+	trieIt, err := tr.NodeIterator(nil)
+	if err != nil {
+		return err
+	}
+	it := trie.NewIterator(trieIt)
 
 	for it.Next() {
 		key := common.BytesToHash(db.trie.GetKey(it.Key))
@@ -1348,7 +1353,7 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 				tmpAccount := account
 				tmpDiff := diff
 				tasks <- func() {
-					root, _ := tmpDiff.Commit(nil)
+					root, _, _ := tmpDiff.Commit(nil)
 					// TODO: Rick
 					// root, set := tmpDiff.Commit(nil)
 				        // Merge the dirty nodes of account trie into global set
@@ -1374,7 +1379,7 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 
 			// commit account trie
 			var account types.StateAccount
-			root, _ := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash, _ []byte) error {
+			root, _, err := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash, _ []byte) error {
 				if err := rlp.DecodeBytes(leaf, &account); err != nil {
 					return nil
 				}
@@ -1383,6 +1388,9 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 				}
 				return nil
 			})
+			if err != nil {
+				return err
+			}
 			if root != types.EmptyRootHash {
 				s.db.CacheAccount(root, s.trie)
 			}
@@ -1432,7 +1440,7 @@ func (s *StateDB) LightCommit() (common.Hash, *types.DiffLayer, error) {
 
 
 // Commit writes the state to the underlying in-memory trie database.
-func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
+func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
 	// Short circuit in case any database failure occurred earlier.
 	if s.dbErr != nil {
 		s.StopPrefetcher()
@@ -1471,7 +1479,7 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 		accountTrieNodesDeleted int
 		storageTrieNodesUpdated int
 		storageTrieNodesDeleted int
-		nodes                   = trie.NewMergedNodeSet()
+		nodes                   = trienode.NewMergedNodeSet()
 		codeWriter              = s.db.DiskDB().NewBatch()
 	)
 
@@ -1559,7 +1567,7 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 			// for unmarshalling every time.
 			if !s.noTrie {
 				var account types.StateAccount
-				root, set := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash, _ []byte) error {
+				root, set, err := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash, _ []byte) error {
 					if err := rlp.DecodeBytes(leaf, &account); err != nil {
 						return nil
 					}
@@ -1568,6 +1576,9 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 					}
 					return nil
 				})
+				if err != nil {
+					return err
+				}
 				if root != types.EmptyRootHash {
 					s.db.CacheAccount(root, s.trie)
 				}
@@ -1606,7 +1617,7 @@ func (s *StateDB) Commit(failPostCommitFunc func(), postCommitFuncs ...func() er
 				}
 				if root != origin {
 					start := time.Now()
-					if err := s.db.TrieDB().Update(root, origin, nodes); err != nil {
+					if err := s.db.TrieDB().Update(root, origin, block, nodes, nil); err != nil {
 						log.Info("Rick: failed to update triedb", "err", err)
 						return err
 						// return common.Hash{}, diffLayer, err
