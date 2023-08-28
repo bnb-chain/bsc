@@ -518,7 +518,9 @@ func TestOpenDrops(t *testing.T) {
 	statedb.AddBalance(crypto.PubkeyToAddress(exceeder.PublicKey), big.NewInt(1000000))
 	statedb.AddBalance(crypto.PubkeyToAddress(overdrafter.PublicKey), big.NewInt(1000000))
 	statedb.AddBalance(crypto.PubkeyToAddress(overcapper.PublicKey), big.NewInt(10000000))
-	statedb.Commit(0, true)
+	statedb.Finalise(true)
+	statedb.AccountsIntermediateRoot()
+	statedb.Commit(0, nil)
 
 	chain := &testBlockChain{
 		config:  testChainConfig,
@@ -633,7 +635,9 @@ func TestOpenIndex(t *testing.T) {
 	// Create a blob pool out of the pre-seeded data
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabase(rawdb.NewDatabase(memorydb.New())), nil)
 	statedb.AddBalance(addr, big.NewInt(1_000_000_000))
-	statedb.Commit(0, true)
+	statedb.Finalise(true)
+	statedb.AccountsIntermediateRoot()
+	statedb.Commit(0, nil)
 
 	chain := &testBlockChain{
 		config:  testChainConfig,
@@ -735,7 +739,9 @@ func TestOpenHeap(t *testing.T) {
 	statedb.AddBalance(addr1, big.NewInt(1_000_000_000))
 	statedb.AddBalance(addr2, big.NewInt(1_000_000_000))
 	statedb.AddBalance(addr3, big.NewInt(1_000_000_000))
-	statedb.Commit(0, true)
+	statedb.Finalise(true)
+	statedb.AccountsIntermediateRoot()
+	statedb.Commit(0, nil)
 
 	chain := &testBlockChain{
 		config:  testChainConfig,
@@ -815,7 +821,9 @@ func TestOpenCap(t *testing.T) {
 		statedb.AddBalance(addr1, big.NewInt(1_000_000_000))
 		statedb.AddBalance(addr2, big.NewInt(1_000_000_000))
 		statedb.AddBalance(addr3, big.NewInt(1_000_000_000))
-		statedb.Commit(0, true)
+		statedb.Finalise(true)
+		statedb.AccountsIntermediateRoot()
+		statedb.Commit(0, nil)
 
 		chain := &testBlockChain{
 			config:  testChainConfig,
@@ -1217,7 +1225,9 @@ func TestAdd(t *testing.T) {
 				store.Put(blob)
 			}
 		}
-		statedb.Commit(0, true)
+		statedb.Finalise(true)
+		statedb.AccountsIntermediateRoot()
+		statedb.Commit(0, nil)
 		store.Close()
 
 		// Create a blob pool out of the pre-seeded dats
