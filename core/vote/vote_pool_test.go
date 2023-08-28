@@ -144,16 +144,14 @@ func TestInvalidVotePool(t *testing.T) {
 func testVotePool(t *testing.T, isValidRules bool) {
 	walletPasswordDir, walletDir := setUpKeyManager(t)
 
-	// Create a database pre-initialize with a genesis block
-	db := rawdb.NewMemoryDatabase()
-	(&core.Genesis{
+	genesis := &core.Genesis{
 		Config: params.TestChainConfig,
 		Alloc:  core.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
-	}).MustCommit(db)
-
-	chain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFullFaker(), vm.Config{}, nil, nil)
+	}
 
 	mux := new(event.TypeMux)
+	db := rawdb.NewMemoryDatabase()
+	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFullFaker(), vm.Config{}, nil, nil)
 
 	var mockEngine consensus.PoSA
 	if isValidRules {
@@ -167,7 +165,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 
 	// Create vote manager
 	// Create a temporary file for the votes journal
-	file, err := ioutil.TempFile("", "")
+	file, err := os.CreateTemp("", "")
 	if err != nil {
 		t.Fatalf("failed to create temporary file path: %v", err)
 	}
