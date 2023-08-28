@@ -2494,17 +2494,18 @@ func TestTransactionPendingReannouce(t *testing.T) {
 
 	// Create the pool to test the limit enforcement with
 	statedb, _ := state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
-	blockchain := &testBlockChain{1000000, statedb, new(event.Feed)}
+	blockchain := newTestBlockChain(params.TestChainConfig, 1000000, statedb, new(event.Feed))
 
 	config := testTxPoolConfig
 	// This ReannounceTime will be modified to time.Minute when creating tx_pool.
 	config.ReannounceTime = time.Second
 	reannounceInterval = time.Second
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := New(config, blockchain)
+	pool.Init(new(big.Int).SetUint64(config.PriceLimit), blockchain.CurrentBlock(), makeAddressReserver())
 	// Modify ReannounceTime to trigger quicker.
 	pool.config.ReannounceTime = time.Second
-	defer pool.Stop()
+	defer pool.Close()
 
 	key, _ := crypto.GenerateKey()
 	account := crypto.PubkeyToAddress(key.PublicKey)
@@ -2519,7 +2520,7 @@ func TestTransactionPendingReannouce(t *testing.T) {
 	for i := uint64(0); i < testTxPoolConfig.AccountQueue; i++ {
 		txs = append(txs, transaction(i, 100000, key))
 	}
-	pool.AddLocals(txs)
+	pool.addLocals(txs)
 
 	select {
 	case ev := <-events:
