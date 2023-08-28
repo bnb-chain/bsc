@@ -770,7 +770,7 @@ func TestMultiSyncManyUseless(t *testing.T) {
 	)
 	nodeScheme, sourceAccountTrie, elems, storageTries, storageElems := makeAccountTrieWithStorage(100, 3000, true, false)
 
-	mkSource := func(name string, noAccount, noStorage, noTrieNode bool) *testPeer {
+	mkSource := func(name string, noAccount, noStorage bool) *testPeer {
 		source := newTestPeer(name, t, term)
 		source.accountTrie = sourceAccountTrie.Copy()
 		source.accountValues = elems
@@ -783,18 +783,15 @@ func TestMultiSyncManyUseless(t *testing.T) {
 		if !noStorage {
 			source.storageRequestHandler = emptyStorageRequestHandler
 		}
-		if !noTrieNode {
-			source.trieRequestHandler = emptyTrieRequestHandler
-		}
+		source.trieRequestHandler = emptyTrieRequestHandler
 		return source
 	}
 
 	syncer := setupSyncer(
 		nodeScheme,
-		mkSource("full", true, true, true),
-		mkSource("noAccounts", false, true, true),
-		mkSource("noStorage", true, false, true),
-		mkSource("noTrie", true, true, false),
+		mkSource("full", true, true),
+		mkSource("noAccounts", false, true),
+		mkSource("noStorage", true, false),
 	)
 	done := checkStall(t, term)
 	if err := syncer.Sync(sourceAccountTrie.Hash(), cancel); err != nil {
@@ -817,7 +814,7 @@ func TestMultiSyncManyUselessWithLowTimeout(t *testing.T) {
 	)
 	nodeScheme, sourceAccountTrie, elems, storageTries, storageElems := makeAccountTrieWithStorage(100, 3000, true, false)
 
-	mkSource := func(name string, noAccount, noStorage, noTrieNode bool) *testPeer {
+	mkSource := func(name string, noAccount, noStorage bool) *testPeer {
 		source := newTestPeer(name, t, term)
 		source.accountTrie = sourceAccountTrie.Copy()
 		source.accountValues = elems
@@ -830,18 +827,15 @@ func TestMultiSyncManyUselessWithLowTimeout(t *testing.T) {
 		if !noStorage {
 			source.storageRequestHandler = emptyStorageRequestHandler
 		}
-		if !noTrieNode {
-			source.trieRequestHandler = emptyTrieRequestHandler
-		}
+		source.trieRequestHandler = emptyTrieRequestHandler
 		return source
 	}
 
 	syncer := setupSyncer(
 		nodeScheme,
-		mkSource("full", true, true, true),
-		mkSource("noAccounts", false, true, true),
-		mkSource("noStorage", true, false, true),
-		mkSource("noTrie", true, true, false),
+		mkSource("full", true, true),
+		mkSource("noAccounts", false, true),
+		mkSource("noStorage", true, false),
 	)
 	// We're setting the timeout to very low, to increase the chance of the timeout
 	// being triggered. This was previously a cause of panic, when a response
@@ -869,7 +863,7 @@ func TestMultiSyncManyUnresponsive(t *testing.T) {
 	)
 	nodeScheme, sourceAccountTrie, elems, storageTries, storageElems := makeAccountTrieWithStorage(100, 3000, true, false)
 
-	mkSource := func(name string, noAccount, noStorage, noTrieNode bool) *testPeer {
+	mkSource := func(name string, noAccount, noStorage bool) *testPeer {
 		source := newTestPeer(name, t, term)
 		source.accountTrie = sourceAccountTrie.Copy()
 		source.accountValues = elems
@@ -882,18 +876,15 @@ func TestMultiSyncManyUnresponsive(t *testing.T) {
 		if !noStorage {
 			source.storageRequestHandler = nonResponsiveStorageRequestHandler
 		}
-		if !noTrieNode {
-			source.trieRequestHandler = nonResponsiveTrieRequestHandler
-		}
+		source.trieRequestHandler = nonResponsiveTrieRequestHandler
 		return source
 	}
 
 	syncer := setupSyncer(
 		nodeScheme,
-		mkSource("full", true, true, true),
-		mkSource("noAccounts", false, true, true),
-		mkSource("noStorage", true, false, true),
-		mkSource("noTrie", true, true, false),
+		mkSource("full", true, true),
+		mkSource("noAccounts", false, true),
+		mkSource("noStorage", true, false),
 	)
 	// We're setting the timeout to very low, to make the test run a bit faster
 	syncer.rates.OverrideTTLLimit = time.Millisecond

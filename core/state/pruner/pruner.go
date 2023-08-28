@@ -106,7 +106,7 @@ func NewPruner(db ethdb.Database, config Config, triesInMemory uint64) (*Pruner,
 		NoBuild:    true,
 		AsyncBuild: false,
 	}
-	snaptree, err := snapshot.New(snapconfig, db, trie.NewDatabase(db), headBlock.Root(), int(triesInMemory), false)
+	snaptree, err := snapshot.New(snapconfig, db, trie.NewDatabase(db), headBlock.Root(), int(triesInMemory))
 	if err != nil {
 		return nil, err // The relevant snapshot(s) might not exist
 	}
@@ -685,7 +685,7 @@ func RecoverPruning(datadir string, db ethdb.Database, triesInMemory uint64) err
 		NoBuild:    true,
 		AsyncBuild: false,
 	}
-	snaptree, err := snapshot.New(snapconfig, db, trie.NewDatabase(db), headBlock.Root(), int(triesInMemory), false)
+	snaptree, err := snapshot.New(snapconfig, db, trie.NewDatabase(db), headBlock.Root(), int(triesInMemory))
 	if err != nil {
 		return err // The relevant snapshot(s) might not exist
 	}

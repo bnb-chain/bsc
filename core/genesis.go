@@ -141,7 +141,7 @@ func (ga *GenesisAlloc) deriveHash() (common.Hash, error) {
 		}
 	}
 	statedb.IntermediateRoot(false)
-	root, _, err := statedb.Commit(0, nil)
+	root, err := statedb.Commit(0, nil)
 	return root, err
 }
 
@@ -149,10 +149,6 @@ func (ga *GenesisAlloc) deriveHash() (common.Hash, error) {
 // all the generated states will be persisted into the given database.
 // Also, the genesis state specification will be flushed as well.
 func (ga *GenesisAlloc) flush(db ethdb.Database, triedb *trie.Database, blockhash common.Hash) error {
-	trieConfig := triedb.Config()
-	if trieConfig != nil {
-		trieConfig.NoTries = false
-	}
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb), nil)
 	if err != nil {
 		return err
@@ -166,7 +162,7 @@ func (ga *GenesisAlloc) flush(db ethdb.Database, triedb *trie.Database, blockhas
 		}
 	}
 	statedb.IntermediateRoot(false)
-	root, _, err := statedb.Commit(0, nil)
+	root, err := statedb.Commit(0, nil)
 	if err != nil {
 		return err
 	}

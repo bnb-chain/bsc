@@ -60,7 +60,7 @@ func TestDump(t *testing.T) {
 	s.state.updateStateObject(obj2)
 	s.state.Finalise(false)
 	s.state.AccountsIntermediateRoot()
-	root, _, _ := s.state.Commit(0, nil)
+	root, _ := s.state.Commit(0, nil)
 
 	// check that DumpToCollector contains the state objects that are in trie
 	s.state, _ = New(root, tdb, nil)
@@ -118,7 +118,7 @@ func TestIterativeDump(t *testing.T) {
 	s.state.updateStateObject(obj2)
 	s.state.Finalise(false)
 	s.state.AccountsIntermediateRoot()
-	root, _, _ := s.state.Commit(0, nil)
+	root, _ := s.state.Commit(0, nil)
 	s.state, _ = New(root, tdb, nil)
 
 	b := &bytes.Buffer{}
@@ -220,7 +220,7 @@ func TestSnapshot2(t *testing.T) {
 
 	state.Finalise(false)
 	state.AccountsIntermediateRoot()
-	root, _, _ := state.Commit(0, nil)
+	root, _ := state.Commit(0, nil)
 	state, _ = New(root, state.db, state.snaps)
 
 	// and one with deleted == true

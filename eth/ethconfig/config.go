@@ -66,9 +66,7 @@ var Defaults = Config{
 	TrieDirtyCache:     256,
 	TrieTimeout:        60 * time.Minute,
 	TriesInMemory:      128,
-	TriesVerifyMode:    core.LocalVerify,
 	SnapshotCache:      102,
-	DiffBlock:          uint64(86400),
 	FilterLogCacheSize: 32,
 	Miner:              miner.DefaultConfig,
 	TxPool:             legacypool.DefaultConfig,
@@ -101,18 +99,14 @@ type Config struct {
 
 	// This can be set to list of enrtree:// URLs which will be queried for
 	// for nodes to connect to.
-	EthDiscoveryURLs   []string
-	SnapDiscoveryURLs  []string
-	TrustDiscoveryURLs []string
-	BscDiscoveryURLs   []string
+	EthDiscoveryURLs  []string
+	SnapDiscoveryURLs []string
+	BscDiscoveryURLs  []string
 
 	NoPruning           bool // Whether to disable pruning and flush everything to disk
 	NoPrefetch          bool
 	DirectBroadcast     bool
 	DisableSnapProtocol bool //Whether disable snap protocol
-	DisableDiffProtocol bool //Whether disable diff protocol
-	EnableTrustProtocol bool //Whether enable trust protocol
-	DiffSync            bool // Whether support diff sync
 	PipeCommit          bool
 	RangeLimit          bool
 
@@ -136,9 +130,6 @@ type Config struct {
 	DatabaseHandles    int  `toml:"-"`
 	DatabaseCache      int
 	DatabaseFreezer    string
-	DatabaseDiff       string
-	PersistDiff        bool
-	DiffBlock          uint64
 	// PruneAncientData is an optional config and disabled by default, and usually you do not need it.
 	// When this flag is enabled, only keep the latest 9w blocks' data, the older blocks' data will be
 	// pruned instead of being dumped to freezerdb, the pruned data includes CanonicalHash, Header, Block,
@@ -148,13 +139,12 @@ type Config struct {
 	// the oldest unpruned block number.
 	PruneAncientData bool
 
-	TrieCleanCache  int
-	TrieDirtyCache  int
-	TrieTimeout     time.Duration
-	SnapshotCache   int
-	TriesInMemory   uint64
-	TriesVerifyMode core.VerifyMode
-	Preimages       bool
+	TrieCleanCache int
+	TrieDirtyCache int
+	TrieTimeout    time.Duration
+	SnapshotCache  int
+	TriesInMemory  uint64
+	Preimages      bool
 
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int

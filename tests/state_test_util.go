@@ -310,7 +310,7 @@ func MakePreState(db ethdb.Database, accounts core.GenesisAlloc, snapshotter boo
 	// Commit and re-open to start with a clean state.
 	statedb.Finalise(false)
 	statedb.AccountsIntermediateRoot()
-	root, _, _ := statedb.Commit(0, nil)
+	root, _ := statedb.Commit(0, nil)
 
 	var snaps *snapshot.Tree
 	if snapshotter {
@@ -320,7 +320,7 @@ func MakePreState(db ethdb.Database, accounts core.GenesisAlloc, snapshotter boo
 			NoBuild:    false,
 			AsyncBuild: false,
 		}
-		snaps, _ = snapshot.New(snapconfig, db, sdb.TrieDB(), root, 128, false)
+		snaps, _ = snapshot.New(snapconfig, db, sdb.TrieDB(), root, 128)
 	}
 	statedb, _ = state.New(root, sdb, snaps)
 	return snaps, statedb
