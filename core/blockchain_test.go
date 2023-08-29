@@ -4407,8 +4407,15 @@ func TestEIP3651(t *testing.T) {
 		}
 	)
 
+	gspec.Config.MirrorSyncBlock = common.Big0
+	gspec.Config.BrunoBlock = common.Big0
+	gspec.Config.EulerBlock = common.Big0
+	gspec.Config.GibbsBlock = common.Big0
+	gspec.Config.LubanBlock = common.Big0
+	gspec.Config.PlatoBlock = common.Big0
 	gspec.Config.BerlinBlock = common.Big0
 	gspec.Config.LondonBlock = common.Big0
+	gspec.Config.HertzBlock = common.Big0
 	gspec.Config.TerminalTotalDifficulty = common.Big0
 	gspec.Config.TerminalTotalDifficultyPassed = true
 	gspec.Config.ShanghaiTime = u64(0)

@@ -291,7 +291,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		triedb:        triedb,
 		triegc:        prque.New[int64, common.Hash](nil),
 		quit:          make(chan struct{}),
-		stateCache:    state.NewDatabaseWithNodeDB(db, triedb),
 		triesInMemory: cacheConfig.TriesInMemory,
 		chainmu:       syncx.NewClosableMutex(),
 		bodyCache:     lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
@@ -304,11 +303,11 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		engine:        engine,
 		vmConfig:      vmConfig,
 	}
-
-	bc.prefetcher = NewStatePrefetcher(chainConfig, bc, engine)
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
+	bc.stateCache = state.NewDatabaseWithNodeDB(bc.db, bc.triedb)
 	bc.validator = NewBlockValidator(chainConfig, bc, engine)
+	bc.prefetcher = NewStatePrefetcher(chainConfig, bc, engine)
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
 
 	var err error
@@ -440,8 +439,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root, int(bc.cacheConfig.TriesInMemory))
 	}
-	// write safe point block number
-	rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().Number.Uint64())
 	// do options before start any routine
 	for _, option := range options {
 		bc, err = option(bc)
@@ -453,7 +450,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	bc.wg.Add(1)
 	go bc.updateFutureBlocks()
 
-	bc.wg.Add(1)
 	if bc.pipeCommit {
 		// check current block and rewind invalid one
 		bc.wg.Add(1)
@@ -463,7 +459,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if bc.doubleSignMonitor != nil {
 		bc.wg.Add(1)
 		go bc.startDoubleSignMonitor()
-
 	}
 
 	// Rewind the chain in case of an incompatible config upgrade.

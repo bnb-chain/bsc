@@ -161,14 +161,9 @@ type StateDB struct {
 	StorageDeleted int
 }
 
-// New creates a new state from a given trie.
-func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	return newStateDB(root, db, snaps)
-}
-
 // NewWithSharedPool creates a new state with sharedStorge on layer 1.5
 func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	statedb, err := newStateDB(root, db, snaps)
+	statedb, err := New(root, db, snaps)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +171,8 @@ func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*St
 	return statedb, nil
 }
 
-func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
+// New creates a new state from a given trie.
+func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	sdb := &StateDB{
 		db:                   db,
 		originalRoot:         root,
@@ -302,7 +298,9 @@ func (s *StateDB) SetExpectedStateRoot(root common.Hash) {
 // Enable the pipeline commit function of statedb
 func (s *StateDB) EnablePipeCommit() {
 	if s.snap != nil && s.snaps.Layers() > 1 {
-		s.pipeCommit = true
+		// after big merge, disable pipeCommit for now,
+		// because `s.db.TrieDB().Update` should be called after `s.trie.Commit(true)`
+		s.pipeCommit = false
 	}
 }
 
@@ -1296,7 +1294,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	if s.trie == nil {
 		tr, err := s.db.OpenTrie(s.originalRoot)
 		if err != nil {
-			panic(fmt.Sprintf("Failed to open trie tree %s", s.originalRoot))
+			panic(fmt.Sprintf("failed to open trie tree %s", s.originalRoot))
 		}
 		s.trie = tr
 	}
@@ -1517,6 +1515,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 					}
 					s.snaps.Snapshot(s.expectedRoot).CorrectAccounts(accountData)
 				}
+				s.snap = nil
 			}
 
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
@@ -1677,7 +1676,9 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 						}
 					}()
 				}
-				s.snap = nil
+				if !s.pipeCommit {
+					s.snap = nil
+				}
 			}
 			return nil
 		},
