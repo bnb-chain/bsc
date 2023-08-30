@@ -562,7 +562,7 @@ func TestTransactionPendingReannounce(t *testing.T) {
 
 	sink := newTestHandler()
 	defer sink.close()
-	sink.handler.acceptTxs = 1 // mark synced to accept transactions
+	sink.handler.acceptTxs.Store(true) // mark synced to accept transactions
 
 	sourcePipe, sinkPipe := p2p.MsgPipe()
 	defer sourcePipe.Close()
@@ -604,6 +604,12 @@ func TestTransactionPendingReannounce(t *testing.T) {
 	}
 }
 
+/*
+// Notice:
+// TestCheckpointChallenge was removed in: https://github.com/ethereum/go-ethereum/pull/27147
+// After merge, it is useless for ethereum, but might be useful for BSC.
+// Disable the case right now, as it is not a big issue, trusted checkpoint is barely used in BSC.
+
 // Tests that post eth protocol handshake, clients perform a mutual checkpoint
 // challenge to validate each other's chains. Hash mismatches, or missing ones
 // during a fast sync should lead to the peer getting dropped.
@@ -642,7 +648,7 @@ func TestCheckpointChallenge(t *testing.T) {
 		})
 	}
 }
-
+*/
 // Tests that blocks are broadcast to a sqrt number of peers only.
 func TestBroadcastBlock1Peer(t *testing.T)    { testBroadcastBlock(t, 1, 1) }
 func TestBroadcastBlock2Peers(t *testing.T)   { testBroadcastBlock(t, 2, 1) }
