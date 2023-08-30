@@ -282,11 +282,13 @@ func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchai
 	}
 
 	// it was for diff sync, which was abandoned.
-	for _, option := range options {
-		if dl != nil {
-			dl = option(dl)
+	/*
+		for _, option := range options {
+			if dl != nil {
+				dl = option(dl)
+			}
 		}
-	}
+	*/
 
 	go dl.stateFetcher()
 	return dl

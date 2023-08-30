@@ -231,19 +231,21 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	// If sync succeeds, pass a callback to potentially disable snap sync mode
 	// and enable transaction propagation.
 	// it was for beacon sync, bsc do not need it.
-	success := func(dl *downloader.Downloader) *downloader.Downloader {
-		// If we were running snap sync and it finished, disable doing another
-		// round on next sync cycle
-		if h.snapSync.Load() {
-			log.Info("Snap sync complete, auto disabling")
-			h.snapSync.Store(false)
+	/*
+		success := func(dl *downloader.Downloader) *downloader.Downloader {
+			// If we were running snap sync and it finished, disable doing another
+			// round on next sync cycle
+			if h.snapSync.Load() {
+				log.Info("Snap sync complete, auto disabling")
+				h.snapSync.Store(false)
+			}
+			// If we've successfully finished a sync cycle, accept transactions from
+			// the network
+			h.acceptTxs.Store(true)
+			return dl
 		}
-		// If we've successfully finished a sync cycle, accept transactions from
-		// the network
-		h.acceptTxs.Store(true)
-		return dl
-	}
-	downloadOptions = append(downloadOptions, success)
+		downloadOptions = append(downloadOptions, success)
+	*/
 
 	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, nil, h.removePeer, downloadOptions...)
 
