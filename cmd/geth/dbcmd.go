@@ -504,6 +504,10 @@ func dbDumpTrie(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
+	config := &trie.Config{}
+	triedb := trie.NewDatabase(db, config)
+	defer triedb.Close()
+
 	var (
 		state   []byte
 		storage []byte
@@ -537,7 +541,7 @@ func dbDumpTrie(ctx *cli.Context) error {
 		}
 	}
 	id := trie.StorageTrieID(common.BytesToHash(state), common.BytesToHash(account), common.BytesToHash(storage))
-	theTrie, err := trie.New(id, trie.NewDatabase(db))
+	theTrie, err := trie.New(id, triedb)
 	if err != nil {
 		return err
 	}

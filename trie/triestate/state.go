@@ -29,6 +29,22 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+// LeafCallback is a callback type invoked when a trie operation reaches a leaf
+// node.
+//
+// The keys is a path tuple identifying a particular trie node either in a single
+// trie (account) or a layered trie (account -> storage). Each key in the tuple
+// is in the raw format(32 bytes).
+//
+// The path is a composite hexary path identifying the trie node. All the key
+// bytes are converted to the hexary nibbles and composited with the parent path
+// if the trie node is in a layered trie.
+//
+// It's used by state sync and commit to allow handling external references
+// between account and storage tries. And also it's used in the state healing
+// for extracting the raw states(leaf nodes) with corresponding paths.
+type LeafCallback func(keys [][]byte, path []byte, leaf []byte, parent common.Hash, parentPath []byte) error
+
 // Trie is an Ethereum state trie, can be implemented by Ethereum Merkle Patricia
 // tree or Verkle tree.
 type Trie interface {
@@ -43,7 +59,8 @@ type Trie interface {
 
 	// Commit the trie and returns a set of dirty nodes generated along with
 	// the new root hash.
-	Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet)
+	Commit(onleaf LeafCallback) (common.Hash, *trienode.NodeSet, error)
+	// Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error)
 }
 
 // TrieLoader wraps functions to load tries.
@@ -129,7 +146,10 @@ func Apply(prevRoot common.Hash, postRoot common.Hash, accounts map[common.Addre
 			return nil, fmt.Errorf("failed to revert state, err: %w", err)
 		}
 	}
-	root, result := tr.Commit(false)
+	root, result, err := tr.Commit(nil)
+	if err != nil {
+		return nil, err
+	}
 	if root != prevRoot {
 		return nil, fmt.Errorf("failed to revert state, want %#x, got %#x", prevRoot, root)
 	}
@@ -181,7 +201,10 @@ func updateAccount(ctx *context, loader TrieLoader, addr common.Address) error {
 			return err
 		}
 	}
-	root, result := st.Commit(false)
+	root, result, err := st.Commit(nil)
+	if err != nil {
+		return err
+	}
 	if root != prev.Root {
 		return errors.New("failed to reset storage trie")
 	}
@@ -232,7 +255,10 @@ func deleteAccount(ctx *context, loader TrieLoader, addr common.Address) error {
 			return err
 		}
 	}
-	root, result := st.Commit(false)
+	root, result, err := st.Commit(nil)
+	if err != nil {
+		return err
+	}
 	if root != types.EmptyRootHash {
 		return errors.New("failed to clear storage trie")
 	}

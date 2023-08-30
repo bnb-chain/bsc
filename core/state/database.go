@@ -29,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
-	exlru "github.com/hashicorp/golang-lru" //ex: external
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 const (
@@ -139,7 +139,7 @@ type Trie interface {
 	// The returned nodeset can be nil if the trie is clean(nothing to commit).
 	// Once the trie is committed, it's not usable anymore. A new trie must
 	// be created with new root and updated trie database for following usage
-	Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error)
+	Commit(onleaf triestate.LeafCallback) (common.Hash, *trienode.NodeSet, error)
 
 	// NodeIterator returns an iterator that returns nodes of the trie. Iteration
 	// starts at the key after the given start key. And error will be returned
@@ -168,12 +168,11 @@ func NewDatabase(db ethdb.Database) Database {
 // large memory cache.
 func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 	noTries := config != nil && config.NoTries
-
 	return &cachingDB{
 		disk:          db,
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		triedb:        trie.NewDatabaseWithConfig(db, config),
+		triedb:        trie.NewDatabase(db, config),
 		noTries:       noTries,
 	}
 }
@@ -182,27 +181,17 @@ func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database, config *trie.Config) Database {
 	noTries := config != nil && config.NoTries
 
-	return &cachingDB{
+	if triedb == nil {
+		triedb = trie.NewDatabase(db, config)
+	}
+
+	database := &cachingDB{
 		disk:          db,
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
+		accountTrieCache: lru.NewCache[common.Hash, Trie](accountTrieCacheSize),
+		storageTrieCache: lru.NewCache[common.Hash, TriesArray](storageTrieCacheSize),
 		triedb:        triedb,
-		noTries:       noTries,
-	}
-}
-
-func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Database {
-	atc, _ := exlru.New(accountTrieCacheSize)
-	stc, _ := exlru.New(storageTrieCacheSize)
-	noTries := config != nil && config.NoTries
-
-	database := &cachingDB{
-		disk:             db,
-		codeSizeCache:    lru.NewCache[common.Hash, int](codeSizeCacheSize),
-		codeCache:        lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		triedb:           trie.NewDatabaseWithConfig(db, config),
-		accountTrieCache: atc,
-		storageTrieCache: stc,
 		noTries:          noTries,
 	}
 	if !noTries {
@@ -212,12 +201,12 @@ func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Datab
 }
 
 type cachingDB struct {
-	disk             ethdb.KeyValueStore
-	codeSizeCache    *lru.Cache[common.Hash, int]
-	codeCache        *lru.SizeConstrainedCache[common.Hash, []byte]
-	triedb           *trie.Database
-	accountTrieCache *exlru.Cache
-	storageTrieCache *exlru.Cache
+	disk          ethdb.KeyValueStore
+	codeSizeCache *lru.Cache[common.Hash, int]
+	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
+	accountTrieCache *lru.Cache[common.Hash, Trie]
+	storageTrieCache *lru.Cache[common.Hash, TriesArray]
+	triedb        *trie.Database
 	noTries          bool
 }
 
@@ -226,17 +215,21 @@ type triePair struct {
 	trie Trie
 }
 
+type TriesArray [3]*triePair
+
 func (db *cachingDB) purgeLoop() {
-	for {
+	keys := db.accountTrieCache.Keys()
+	for _, key := range keys {
 		time.Sleep(purgeInterval * time.Second)
-		_, accounts, ok := db.accountTrieCache.GetOldest()
+		account, ok := db.accountTrieCache.Get(key)
 		if !ok {
 			continue
 		}
-		tr := accounts.(*trie.SecureTrie).GetRawTrie()
+		tr := account.(*trie.SecureTrie).GetRawTrie()
 		if tr.Size() > maxAccountTrieSize {
 			db.Purge()
 		}
+
 	}
 }
 
@@ -263,8 +256,7 @@ func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 		return trie.NewEmptyTrie(), nil
 	}
 	if db.storageTrieCache != nil {
-		if tries, exist := db.storageTrieCache.Get(crypto.Keccak256Hash(address.Bytes())); exist {
-			triesPairs := tries.([3]*triePair)
+		if triesPairs, exist := db.storageTrieCache.Get(crypto.Keccak256Hash(address.Bytes())); exist {
 			for _, triePair := range triesPairs {
 				if triePair != nil && triePair.root == root {
 					return triePair.trie.(*trie.SecureTrie).Copy(), nil
@@ -293,8 +285,7 @@ func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie
 		return
 	}
 	tr := t.(*trie.SecureTrie)
-	if tries, exist := db.storageTrieCache.Get(addrHash); exist {
-		triesArray := tries.([3]*triePair)
+	if triesArray, exist := db.storageTrieCache.Get(addrHash); exist {
 		newTriesArray := [3]*triePair{
 			{root: root, trie: tr.ResetCopy()},
 			triesArray[0],
