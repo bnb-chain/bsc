@@ -757,15 +757,9 @@ func (h *handler) startMaliciousVoteMonitor() {
 }
 
 func (h *handler) Stop() {
-	if h.txsSub != nil {
-		h.txsSub.Unsubscribe() // quits txBroadcastLoop
-	}
-	if h.reannoTxsSub != nil {
-		h.reannoTxsSub.Unsubscribe() // quits txReannounceLoop
-	}
-	if h.minedBlockSub != nil {
-		h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
-	}
+	h.txsSub.Unsubscribe()        // quits txBroadcastLoop
+	h.reannoTxsSub.Unsubscribe()  // quits txReannounceLoop
+	h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
 	if h.votepool != nil {
 		h.votesSub.Unsubscribe() // quits voteBroadcastLoop
 		if h.maliciousVoteMonitor != nil {
@@ -781,9 +775,7 @@ func (h *handler) Stop() {
 	// This also closes the gate for any new registrations on the peer set.
 	// sessions which are already established but not added to h.peers yet
 	// will exit when they try to register.
-	if h.peers != nil {
-		h.peers.close()
-	}
+	h.peers.close()
 	h.wg.Wait()
 
 	log.Info("Ethereum protocol stopped")
