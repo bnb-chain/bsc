@@ -38,10 +38,10 @@ var (
 )
 
 type prefetchMsg struct {
-	owner common.Hash
-	root  common.Hash
-	addr  common.Address
-	keys  [][]byte
+	owner       common.Hash
+	root        common.Hash
+	addr        common.Address
+	keys        [][]byte
 }
 
 // triePrefetcher is an active prefetcher, which receives accounts or storage
@@ -50,11 +50,11 @@ type prefetchMsg struct {
 //
 // Note, the prefetcher's API is not thread safe.
 type triePrefetcher struct {
-	db         Database               // Database to fetch trie nodes through
-	root       common.Hash            // Root hash of the account trie for metrics
-	rootParent common.Hash            // Root has of the account trie from block before the prvious one, designed for pipecommit mode
-	fetches    map[string]Trie        // Partially or fully fetcher tries
-	fetchers   map[string]*subfetcher // Subfetchers for each trie
+	db       Database               // Database to fetch trie nodes through
+	root     common.Hash            // Root hash of the account trie for metrics
+	rootParent common.Hash                 //Root has of the account trie from block before the prvious one, designed for pipecommit mode
+	fetches  map[string]Trie        // Partially or fully fetcher tries
+	fetchers map[string]*subfetcher // Subfetchers for each trie
 
 	abortChan         chan *subfetcher // to abort a single subfetcher and its children
 	closed            int32
@@ -83,10 +83,10 @@ type triePrefetcher struct {
 func newTriePrefetcher(db Database, root, rootParent common.Hash, namespace string) *triePrefetcher {
 	prefix := triePrefetchMetricsPrefix + namespace
 	p := &triePrefetcher{
-		db:         db,
-		root:       root,
+		db:       db,
+		root:     root,
 		rootParent: rootParent,
-		fetchers:   make(map[string]*subfetcher), // Active prefetchers use the fetchers map
+		fetchers: make(map[string]*subfetcher), // Active prefetchers use the fetchers map
 		abortChan:  make(chan *subfetcher, abortChanSize),
 
 		closeMainChan:     make(chan struct{}),
@@ -120,7 +120,7 @@ func (p *triePrefetcher) mainLoop() {
 		select {
 		case pMsg := <-p.prefetchChan:
 			id := p.trieID(pMsg.owner, pMsg.root)
-			fetcher := p.fetchers[id]
+        		fetcher := p.fetchers[id]
 			if fetcher == nil {
 				fetcher = newSubfetcher(p.db, p.root, pMsg.owner, pMsg.root, pMsg.addr)
 				p.fetchersMutex.Lock()
@@ -224,18 +224,29 @@ func (p *triePrefetcher) close() {
 func (p *triePrefetcher) copy() *triePrefetcher {
 	// If the prefetcher is already a copy, duplicate the data
 	if p.fetches != nil {
-		fetcherCopied := &triePrefetcher{
+		copy := &triePrefetcher{
 			db:      p.db,
 			root:    p.root,
-			fetches: make(map[string]Trie, len(p.fetches)),
+			fetches: make(map[string]Trie, len(p.fetches)), // Active prefetchers use the fetches map
+
+			deliveryMissMeter: p.deliveryMissMeter,
+			accountLoadMeter:  p.accountLoadMeter,
+			accountDupMeter:   p.accountDupMeter,
+			accountSkipMeter:  p.accountSkipMeter,
+			accountWasteMeter: p.accountWasteMeter,
+			storageLoadMeter:  p.storageLoadMeter,
+			storageDupMeter:   p.storageDupMeter,
+			storageSkipMeter:  p.storageSkipMeter,
+			storageWasteMeter: p.storageWasteMeter,
 		}
-		// p.fetches is safe to be accessed outside of mainloop
-		// if the triePrefetcher is active, fetches will not be used in mainLoop
-		// otherwise, inactive triePrefetcher is readonly, it won't modify fetches
+
 		for root, fetch := range p.fetches {
-			fetcherCopied.fetches[root] = p.db.CopyTrie(fetch)
+			if fetch == nil {
+				continue
+			}
+			copy.fetches[root] = p.db.CopyTrie(fetch)
 		}
-		return fetcherCopied
+		return copy
 	}
 
 	select {
@@ -246,6 +257,16 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 			db:      p.db,
 			root:    p.root,
 			fetches: make(map[string]Trie),
+
+			deliveryMissMeter: p.deliveryMissMeter,
+			accountLoadMeter:  p.accountLoadMeter,
+			accountDupMeter:   p.accountDupMeter,
+			accountSkipMeter:  p.accountSkipMeter,
+			accountWasteMeter: p.accountWasteMeter,
+			storageLoadMeter:  p.storageLoadMeter,
+			storageDupMeter:   p.storageDupMeter,
+			storageSkipMeter:  p.storageSkipMeter,
+			storageWasteMeter: p.storageWasteMeter,
 		}
 		return fetcherCopied
 	default:
@@ -254,6 +275,16 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 			db:      p.db,
 			root:    p.root,
 			fetches: make(map[string]Trie, len(p.fetchers)),
+
+			deliveryMissMeter: p.deliveryMissMeter,
+			accountLoadMeter:  p.accountLoadMeter,
+			accountDupMeter:   p.accountDupMeter,
+			accountSkipMeter:  p.accountSkipMeter,
+			accountWasteMeter: p.accountWasteMeter,
+			storageLoadMeter:  p.storageLoadMeter,
+			storageDupMeter:   p.storageDupMeter,
+			storageSkipMeter:  p.storageSkipMeter,
+			storageWasteMeter: p.storageWasteMeter,
 		}
 		// we're copying an active fetcher, retrieve the current states
 		for id, fetcher := range p.fetchers {
@@ -284,12 +315,12 @@ func (p *triePrefetcher) trie(owner common.Hash, root common.Hash) Trie {
 	if p.fetches != nil {
 		trie := p.fetches[id]
 		if trie == nil {
+			p.deliveryMissMeter.Mark(1)
 			return nil
 		}
 		return p.db.CopyTrie(trie)
 	}
-
-	// use lock instead of request to mainLoop by chan to get the fetcher for performance concern.
+	// Otherwise the prefetcher is active, bail if no trie was prefetched for this root
 	p.fetchersMutex.RLock()
 	fetcher := p.fetchers[id]
 	p.fetchersMutex.RUnlock()
@@ -327,8 +358,7 @@ func (p *triePrefetcher) used(owner common.Hash, root common.Hash, used [][]byte
 	case <-p.closeMainChan:
 	default:
 		p.fetchersMutex.RLock()
-		id := p.trieID(owner, root)
-		if fetcher := p.fetchers[id]; fetcher != nil {
+		if fetcher := p.fetchers[p.trieID(owner, root)]; fetcher != nil {
 			fetcher.lock.Lock()
 			fetcher.used = used
 			fetcher.lock.Unlock()

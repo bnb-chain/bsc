@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 var (
@@ -186,11 +187,11 @@ func (t *odrTrie) DeleteAccount(address common.Address) error {
 	})
 }
 
-func (t *odrTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
+func (t *odrTrie) Commit(onleaf triestate.LeafCallback) (common.Hash, *trienode.NodeSet, error) {
 	if t.trie == nil {
 		return t.id.Root, nil, nil
 	}
-	return t.trie.Commit(collectLeaf)
+	return t.trie.Commit(onleaf)
 }
 
 func (t *odrTrie) Hash() common.Hash {
@@ -224,7 +225,8 @@ func (t *odrTrie) do(key []byte, fn func() error) error {
 			} else {
 				id = trie.StateTrieID(t.id.StateRoot)
 			}
-			t.trie, err = trie.New(id, trie.NewDatabase(t.db.backend.Database()))
+			triedb := trie.NewDatabase(t.db.backend.Database(), nil)
+			t.trie, err = trie.New(id, triedb)
 		}
 		if err == nil {
 			err = fn()
@@ -260,7 +262,8 @@ func newNodeIterator(t *odrTrie, startkey []byte) trie.NodeIterator {
 			} else {
 				id = trie.StateTrieID(t.id.StateRoot)
 			}
-			t, err := trie.New(id, trie.NewDatabase(t.db.backend.Database()))
+			triedb := trie.NewDatabase(t.db.backend.Database(), nil)
+			t, err := trie.New(id, triedb)
 			if err == nil {
 				it.t.trie = t
 			}

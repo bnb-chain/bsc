@@ -81,7 +81,8 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 			}
 			info.tail = tail
 			infos = append(infos, info)
-
+		case stateFreezerName:
+			continue
 		default:
 			return nil, fmt.Errorf("unknown freezer, supported ones: %v", freezers)
 		}

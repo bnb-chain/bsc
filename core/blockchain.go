@@ -339,9 +339,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		return nil, ErrNoGenesis
 	}
 
-	bc.highestVerifiedHeader.Store(nil)
-	bc.currentBlock.Store(nil)
-	bc.currentSnapBlock.Store(nil)
+	var nilHeader *types.Header
+	bc.highestVerifiedHeader.Store(nilHeader)
+	bc.currentBlock.Store(nilHeader)
+	bc.currentSnapBlock.Store(nilHeader)
 
 	// If Geth is initialized with an external ancient store, re-initialize the
 	// missing chain indexes and chain flags. This procedure can survive crash
@@ -362,7 +363,16 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		var diskRoot common.Hash
 		if bc.cacheConfig.SnapshotLimit > 0 {
 			diskRoot = rawdb.ReadSnapshotRoot(bc.db)
+			if bc.triedb.Scheme() == rawdb.PathScheme {
+				if err := bc.triedb.Recover(diskRoot); err != nil {
+					diskRoot = common.Hash{}
+					log.Warn("failed to recover pathdb by snapshot, reset chain from genesis", "error", err)
+				}
+			}
+		} else if bc.triedb.Scheme() == rawdb.PathScheme {
+			_, diskRoot = rawdb.ReadAccountTrieNode(bc.db, nil)
 		}
+
 		if diskRoot != (common.Hash{}) {
 			log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash(), "snaproot", diskRoot)
 
@@ -832,7 +842,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 								log.Debug("Recommitted genesis state to disk")
 							}
 						}
-						log.Debug("Rewound to block with state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash())
+						log.Info("Rewound to block with state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash())
 						break
 					}
 					log.Debug("Skipping block with threshold state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "root", newHeadBlock.Root())
@@ -937,6 +947,11 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 		return fmt.Errorf("non existent block [%x..]", hash[:4])
 	}
 	root := block.Root()
+	if bc.triedb.Scheme() == rawdb.PathScheme {
+		if err := bc.triedb.Reset(root); err != nil {
+			return err
+		}
+	}
 	if !bc.HasState(root) {
 		return fmt.Errorf("non existent state [%x..]", root[:4])
 	}
@@ -1113,39 +1128,47 @@ func (bc *BlockChain) Stop() {
 		}
 	}
 
-	// Ensure the state of a recent block is also stored to disk before exiting.
-	// We're writing three different states to catch different restart scenarios:
-	//  - HEAD:     So we don't need to reprocess any blocks in the general case
-	//  - HEAD-1:   So we don't do large reorgs if our HEAD becomes an uncle
-	//  - HEAD-127: So we have a hard limit on the number of blocks reexecuted
-	if !bc.cacheConfig.TrieDirtyDisabled {
-		triedb := bc.triedb
+	if bc.triedb.Scheme() == rawdb.PathScheme {
+		if err := bc.triedb.Commit(bc.CurrentBlock().Root, true); err != nil {
+			log.Info("Failed to commit header block trie nodes", "error", err)
+		} else {
+			log.Info("Succeed to commit header block trie nodes", "root", bc.CurrentBlock().Root.String())
+		}
+	} else {
+		// Ensure the state of a recent block is also stored to disk before exiting.
+		// We're writing three different states to catch different restart scenarios:
+		//  - HEAD:     So we don't need to reprocess any blocks in the general case
+		//  - HEAD-1:   So we don't do large reorgs if our HEAD becomes an uncle
+		//  - HEAD-127: So we have a hard limit on the number of blocks reexecuted
+		if !bc.cacheConfig.TrieDirtyDisabled {
+			triedb := bc.triedb
 
-		for _, offset := range []uint64{0, 1, bc.triesInMemory - 1} {
-			if number := bc.CurrentBlock().Number.Uint64(); number > offset {
-				recent := bc.GetBlockByNumber(number - offset)
+			for _, offset := range []uint64{0, 1, bc.triesInMemory - 1} {
+				if number := bc.CurrentBlock().Number.Uint64(); number > offset {
+					recent := bc.GetBlockByNumber(number - offset)
 
-				log.Info("Writing cached state to disk", "block", recent.Number(), "hash", recent.Hash(), "root", recent.Root())
-				if err := triedb.Commit(recent.Root(), true); err != nil {
-					log.Error("Failed to commit recent state trie", "err", err)
-				} else {
-					rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
+					log.Info("Writing cached state to disk", "block", recent.Number(), "hash", recent.Hash(), "root", recent.Root())
+					if err := triedb.Commit(recent.Root(), true); err != nil {
+						log.Error("Failed to commit recent state trie", "err", err)
+					} else {
+						rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
+					}
 				}
 			}
-		}
-		if snapBase != (common.Hash{}) {
-			log.Info("Writing snapshot state to disk", "root", snapBase)
-			if err := triedb.Commit(snapBase, true); err != nil {
-				log.Error("Failed to commit recent state trie", "err", err)
-			} else {
-				rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().Number.Uint64())
+			if snapBase != (common.Hash{}) {
+				log.Info("Writing snapshot state to disk", "root", snapBase)
+				if err := triedb.Commit(snapBase, true); err != nil {
+					log.Error("Failed to commit recent state trie", "err", err)
+				} else {
+					rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().Number.Uint64())
+				}
 			}
-		}
-		for !bc.triegc.Empty() {
-			go triedb.Dereference(bc.triegc.PopItem())
-		}
-		if size, _ := triedb.Size(); size != 0 {
-			log.Error("Dangling trie nodes after full cleanup")
+			for !bc.triegc.Empty() {
+				go triedb.Dereference(bc.triegc.PopItem())
+			}
+			if size, _ := triedb.Size(); size != 0 {
+				log.Error("Dangling trie nodes after full cleanup")
+			}
 		}
 	}
 	// Flush the collected preimages to disk
@@ -1525,6 +1548,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	tryCommitTrieDB := func() error {
 		bc.commitLock.Lock()
 		defer bc.commitLock.Unlock()
+
+		// If node is running in path mode, skip explicit gc operation
+		// which is unnecessary in this mode.
+		if bc.triedb.Scheme() == rawdb.PathScheme {
+			return nil
+		}
 
 		triedb := bc.stateCache.TrieDB()
 		// If we're running an archive node, always flush

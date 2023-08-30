@@ -18,27 +18,60 @@ package trie
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
+
+// leafChanSize is the size of the leafCh. It's a pretty arbitrary number, to allow
+// some parallelism but not incur too much memory overhead.
+const leafChanSize = 200
+
+// leaf represents a trie leaf node
+type leaf struct {
+	blob   []byte      // raw blob of leaf
+	parent common.Hash // the hash of parent node
+}
+
+type leafInfo struct {
+	node   node        // the node to commit
+	parent common.Hash // the hash of parent node
+}
 
 // committer is the tool used for the trie Commit operation. The committer will
 // capture all dirty nodes during the commit process and keep them cached in
 // insertion order.
 type committer struct {
-	nodes       *trienode.NodeSet
-	tracer      *tracer
-	collectLeaf bool
+	nodes  *trienode.NodeSet
+	tracer *tracer
+	onleaf triestate.LeafCallback
+	leafCh chan *leafInfo
+}
+
+// committers live in a global sync.Pool
+var committerPool = sync.Pool{
+	New: func() interface{} {
+		return &committer{}
+	},
 }
 
 // newCommitter creates a new committer or picks one from the pool.
-func newCommitter(nodeset *trienode.NodeSet, tracer *tracer, collectLeaf bool) *committer {
-	return &committer{
-		nodes:       nodeset,
-		tracer:      tracer,
-		collectLeaf: collectLeaf,
-	}
+func newCommitter(nodeset *trienode.NodeSet, tracer *tracer) *committer {
+	committer := committerPool.Get().(*committer)
+	committer.nodes = nodeset
+	committer.tracer = tracer
+
+	return committer
+}
+
+func returnCommitterToPool(h *committer) {
+	h.nodes = nil
+	h.tracer = nil
+	h.onleaf = nil
+	h.leafCh = nil
+	committerPool.Put(h)
 }
 
 // Commit collapses a node down into a hash node.
@@ -144,7 +177,12 @@ func (c *committer) store(path []byte, n node) node {
 	// Collect the corresponding leaf node if it's required. We don't check
 	// full node since it's impossible to store value in fullNode. The key
 	// length of leaves should be exactly same.
-	if c.collectLeaf {
+	if c.leafCh != nil {
+		c.leafCh <- &leafInfo{
+			node:   n,
+			parent: nhash,
+		}
+	} else {
 		if sn, ok := n.(*shortNode); ok {
 			if val, ok := sn.Val.(valueNode); ok {
 				c.nodes.AddLeaf(nhash, val)
@@ -152,6 +190,60 @@ func (c *committer) store(path []byte, n node) node {
 		}
 	}
 	return hash
+}
+
+// commitLoop does the actual insert + leaf callback for nodes.
+func (c *committer) commitLoop() {
+	for item := range c.leafCh {
+		var (
+			n      = item.node
+			parent = item.parent
+		)
+
+		if c.onleaf != nil {
+			switch n := n.(type) {
+			case *shortNode:
+				if child, ok := n.Val.(valueNode); ok {
+					c.nodes.AddLeaf(parent, child)
+					c.onleaf(nil, nil, child, parent, nil)
+				}
+			case *fullNode:
+				// For children in range [0, 15], it's impossible
+				// to contain valueNode. Only check the 17th child.
+				if n.Children[16] != nil {
+					c.nodes.AddLeaf(parent, n.Children[16].(valueNode))
+					c.onleaf(nil, nil, n.Children[16].(valueNode), parent, nil)
+				}
+			}
+		}
+	}
+}
+
+// mptResolver the children resolver in merkle-patricia-tree.
+type mptResolver struct{}
+
+// ForEach implements childResolver, decodes the provided node and
+// traverses the children inside.
+func (resolver mptResolver) ForEach(node []byte, onChild func(common.Hash)) {
+	forGatherChildren(mustDecodeNodeUnsafe(nil, node), onChild)
+}
+
+// forGatherChildren traverses the node hierarchy and invokes the callback
+// for all the hashnode children.
+func forGatherChildren(n node, onChild func(hash common.Hash)) {
+	switch n := n.(type) {
+	case *shortNode:
+		forGatherChildren(n.Val, onChild)
+	case *fullNode:
+		for i := 0; i < 16; i++ {
+			forGatherChildren(n.Children[i], onChild)
+		}
+	case hashNode:
+		onChild(common.BytesToHash(n))
+	case valueNode, nil:
+	default:
+		panic(fmt.Sprintf("unknown node type: %T", n))
+	}
 }
 
 // estimateSize estimates the size of an rlp-encoded node, without actually
@@ -180,32 +272,5 @@ func estimateSize(n node) int {
 		return 1 + len(n)
 	default:
 		panic(fmt.Sprintf("node type %T", n))
-	}
-}
-
-// mptResolver the children resolver in merkle-patricia-tree.
-type mptResolver struct{}
-
-// ForEach implements childResolver, decodes the provided node and
-// traverses the children inside.
-func (resolver mptResolver) ForEach(node []byte, onChild func(common.Hash)) {
-	forGatherChildren(mustDecodeNodeUnsafe(nil, node), onChild)
-}
-
-// forGatherChildren traverses the node hierarchy and invokes the callback
-// for all the hashnode children.
-func forGatherChildren(n node, onChild func(hash common.Hash)) {
-	switch n := n.(type) {
-	case *shortNode:
-		forGatherChildren(n.Val, onChild)
-	case *fullNode:
-		for i := 0; i < 16; i++ {
-			forGatherChildren(n.Children[i], onChild)
-		}
-	case hashNode:
-		onChild(common.BytesToHash(n))
-	case valueNode, nil:
-	default:
-		panic(fmt.Sprintf("unknown node type: %T", n))
 	}
 }

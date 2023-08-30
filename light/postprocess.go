@@ -145,7 +145,7 @@ func NewChtIndexer(db ethdb.Database, odr OdrBackend, size, confirms uint64, dis
 		diskdb:         db,
 		odr:            odr,
 		trieTable:      trieTable,
-		triedb:         trie.NewDatabaseWithConfig(trieTable, &trie.Config{Cache: 1}), // Use a tiny cache only to keep memory down
+		triedb:         trie.NewDatabase(trieTable, nil),
 		sectionSize:    size,
 		disablePruning: disablePruning,
 	}
@@ -214,7 +214,7 @@ func (c *ChtIndexerBackend) Process(ctx context.Context, header *types.Header) e
 
 // Commit implements core.ChainIndexerBackend
 func (c *ChtIndexerBackend) Commit() error {
-	root, nodes, err := c.trie.Commit(false)
+	root, nodes, err := c.trie.Commit(nil)
 	if err != nil {
 		return err
 	}
@@ -348,7 +348,7 @@ func NewBloomTrieIndexer(db ethdb.Database, odr OdrBackend, parentSize, size uin
 		diskdb:         db,
 		odr:            odr,
 		trieTable:      trieTable,
-		triedb:         trie.NewDatabaseWithConfig(trieTable, &trie.Config{Cache: 1}), // Use a tiny cache only to keep memory down
+		triedb:         trie.NewDatabase(trieTable, nil),
 		parentSize:     parentSize,
 		size:           size,
 		disablePruning: disablePruning,
@@ -467,7 +467,7 @@ func (b *BloomTrieIndexerBackend) Commit() error {
 			return terr
 		}
 	}
-	root, nodes, err := b.trie.Commit(false)
+	root, nodes, err := b.trie.Commit(nil)
 	if err != nil {
 		return err
 	}

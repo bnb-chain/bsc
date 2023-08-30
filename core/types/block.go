@@ -593,13 +593,13 @@ type DiffCode struct {
 }
 
 type DiffAccount struct {
-	Account common.Hash
+	Account common.Address
 	Blob    []byte
 }
 
 type DiffStorage struct {
-	Account common.Hash
-	Keys    []common.Hash // Keys are hashed ones
+	Account common.Address
+	Keys    []string
 	Vals    [][]byte
 }
 

@@ -18,6 +18,7 @@ package pathdb
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -37,6 +38,7 @@ type nodebuffer struct {
 	size   uint64                                    // The size of aggregated writes
 	limit  uint64                                    // The maximum memory allowance in bytes
 	nodes  map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
+	mux    sync.RWMutex
 }
 
 // newNodeBuffer initializes the node buffer with the provided nodes.
@@ -60,7 +62,9 @@ func newNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.Node, l
 
 // node retrieves the trie node with given node info.
 func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {
+	b.mux.RLock()
 	subset, ok := b.nodes[owner]
+	b.mux.RUnlock()
 	if !ok {
 		return nil, nil
 	}
@@ -70,7 +74,7 @@ func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*tr
 	}
 	if n.Hash != hash {
 		dirtyFalseMeter.Mark(1)
-		log.Error("Unexpected trie node in node buffer", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
+		log.Debug("Unexpected trie node in node buffer", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
 		return nil, newUnexpectedNodeError("dirty", hash, n.Hash, owner, path)
 	}
 	return n, nil
@@ -81,6 +85,8 @@ func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*tr
 // It will just hold the node references from the given map which are safe to
 // copy.
 func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) *nodebuffer {
+	b.mux.Lock()
+	defer b.mux.Unlock()
 	var (
 		delta         int64
 		overwrite     int64
@@ -138,7 +144,9 @@ func (b *nodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 	}
 	var delta int64
 	for owner, subset := range nodes {
+		b.mux.RLock()
 		current, ok := b.nodes[owner]
+		b.mux.RUnlock()
 		if !ok {
 			panic(fmt.Sprintf("non-existent subset (%x)", owner))
 		}
@@ -189,6 +197,8 @@ func (b *nodebuffer) updateSize(delta int64) {
 func (b *nodebuffer) reset() {
 	b.layers = 0
 	b.size = 0
+	b.mux.Lock()
+	defer b.mux.Unlock()
 	b.nodes = make(map[common.Hash]map[string]*trienode.Node)
 }
 
@@ -219,7 +229,10 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 		start = time.Now()
 		batch = db.NewBatchWithSize(int(b.size))
 	)
+
+	b.mux.RLock()
 	nodes := writeNodes(batch, b.nodes, clean)
+	b.mux.RUnlock()
 	rawdb.WritePersistentStateID(batch, id)
 
 	// Flush all mutations in a single batch

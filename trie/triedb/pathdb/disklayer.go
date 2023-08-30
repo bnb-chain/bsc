@@ -47,8 +47,8 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *fastcache.C
 	// Initialize a clean cache if the memory allowance is not zero
 	// or reuse the provided cache if it is not nil (inherited from
 	// the original disk layer).
-	if cleans == nil && db.config.CleanSize != 0 {
-		cleans = fastcache.New(db.config.CleanSize)
+	if cleans == nil && db.config.CleanCacheSize != 0 {
+		cleans = fastcache.New(db.config.CleanCacheSize)
 	}
 	return &diskLayer{
 		root:   root,
@@ -133,7 +133,7 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 				return blob, nil
 			}
 			cleanFalseMeter.Mark(1)
-			log.Error("Unexpected trie node in clean cache", "owner", owner, "path", path, "expect", hash, "got", got)
+			log.Debug("Unexpected trie node in clean cache", "owner", owner, "path", path, "expect", hash, "got", got)
 		}
 		cleanMissMeter.Mark(1)
 	}
@@ -149,7 +149,7 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	}
 	if nHash != hash {
 		diskFalseMeter.Mark(1)
-		log.Error("Unexpected trie node in disk", "owner", owner, "path", path, "expect", hash, "got", nHash)
+		log.Error("Unexpected trie node in disk", "owner", owner, "path", common.Bytes2Hex(path), "expect", hash, "got", nHash)
 		return nil, newUnexpectedNodeError("disk", hash, nHash, owner, path)
 	}
 	if dl.cleans != nil && len(nBlob) > 0 {
@@ -177,13 +177,13 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// corresponding states(journal), the stored state history will
 	// be truncated in the next restart.
 	if dl.db.freezer != nil {
-		err := writeHistory(dl.db.diskdb, dl.db.freezer, bottom, dl.db.config.StateLimit)
+		err := writeHistory(dl.db.diskdb, dl.db.freezer, bottom, dl.db.config.StateHistory)
 		if err != nil {
 			return nil, err
 		}
 	}
 	// Mark the diskLayer as stale before applying any mutations on top.
-	dl.stale = true
+	//dl.stale = true
 
 	// Store the root->id lookup afterwards. All stored lookups are
 	// identified by the **unique** state root. It's impossible that
@@ -274,6 +274,20 @@ func (dl *diskLayer) size() common.StorageSize {
 		return 0
 	}
 	return common.StorageSize(dl.buffer.size)
+}
+
+// resetCache releases the memory held by clean cache to prevent memory leak.
+func (dl *diskLayer) resetCache() {
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	// Stale disk layer loses the ownership of clean cache.
+	if dl.stale {
+		return
+	}
+	if dl.cleans != nil {
+		dl.cleans.Reset()
+	}
 }
 
 // hasher is used to compute the sha256 hash of the provided data.

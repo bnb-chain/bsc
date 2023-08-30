@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math/big"
 	"runtime"
-	"strings"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -148,21 +147,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, trie.NewDatabase(chainDb), config.Genesis, nil)
+	triedb := trie.NewDatabase(chainDb, nil)
+	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, triedb, config.Genesis, nil)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
-	log.Info("")
-	log.Info(strings.Repeat("-", 153))
-	for _, line := range strings.Split(chainConfig.Description(), "\n") {
-		log.Info(line)
-	}
-	log.Info(strings.Repeat("-", 153))
-	log.Info("")
 
-	if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, config.TriesInMemory); err != nil {
-		log.Error("Failed to recover state", "error", err)
+	if triedb.Scheme() == rawdb.HashScheme {
+		if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, config.TriesInMemory); err != nil {
+			log.Error("Failed to recover state", "error", err)
+		}
 	}
+	_ = triedb.Close()
 
 	eth := &Ethereum{
 		config:            config,
@@ -633,7 +629,6 @@ func (s *Ethereum) Stop() error {
 	s.snapDialCandidates.Close()
 	s.trustDialCandidates.Close()
 	s.bscDialCandidates.Close()
-	s.handler.Stop()
 
 	// Then stop everything else.
 	s.bloomIndexer.Close()
@@ -641,6 +636,7 @@ func (s *Ethereum) Stop() error {
 	s.txPool.Close()
 	s.miner.Close()
 	s.blockchain.Stop()
+	s.handler.Stop()
 	s.engine.Close()
 
 	// Clean shutdown marker as the last thing before closing db
