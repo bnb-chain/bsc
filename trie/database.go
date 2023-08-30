@@ -18,11 +18,13 @@ package trie
 
 import (
 	"errors"
-	"time"
 	"runtime"
+	"strings"
+	"time"
 
-        "github.com/VictoriaMetrics/fastcache"
+	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
@@ -37,8 +39,8 @@ type Config struct {
 	HashDB    *hashdb.Config // Configs for hash-based scheme
 	PathDB    *pathdb.Config // Configs for experimental path-based scheme
 
-	Cache     int            // Memory allowance (MB) to use for caching trie nodes in memory
-	NoTries   bool
+	Cache   int // Memory allowance (MB) to use for caching trie nodes in memory
+	NoTries bool
 	// Testing hooks
 	OnCommit func(states *triestate.Set) // Hook invoked when commit is performed
 }
@@ -84,10 +86,10 @@ type backend interface {
 // types of node backend as an entrypoint. It's responsible for all interactions
 // relevant with trie nodes and node preimages.
 type Database struct {
-	config    *Config        // Configuration for trie database
-	diskdb    ethdb.Database // Persistent database to store the snapshot
-	preimages *preimageStore // The store for caching preimages
-	backend   backend        // The backend for managing trie nodes
+	config    *Config          // Configuration for trie database
+	diskdb    ethdb.Database   // Persistent database to store the snapshot
+	preimages *preimageStore   // The store for caching preimages
+	backend   backend          // The backend for managing trie nodes
 	cleans    *fastcache.Cache // Megabytes permitted using for read caches
 }
 
@@ -121,12 +123,16 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		diskdb:    diskdb,
 		preimages: preimages,
 	}
-	if config.HashDB != nil && config.PathDB != nil {
-		log.Crit("Both 'hash' and 'path' mode are configured")
-	}
-	if config.PathDB != nil {
+	dbScheme := rawdb.ReadStateScheme(diskdb)
+	if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {
+		if config.PathDB != nil {
+			config.PathDB = pathdb.Defaults
+		}
 		db.backend = pathdb.New(diskdb, config.PathDB)
 	} else {
+		if config.HashDB != nil {
+			config.HashDB = hashdb.Defaults
+		}
 		db.backend = hashdb.New(diskdb, config.HashDB, mptResolver{})
 	}
 	return db
@@ -322,45 +328,45 @@ func (db *Database) SetBufferSize(size int) error {
 
 // DiskDB retrieves the persistent storage backing the trie database.
 func (db *Database) DiskDB() ethdb.KeyValueStore {
-        return db.diskdb
+	return db.diskdb
 }
 
 // SaveCache atomically saves fast cache data to the given dir using all
 // available CPU cores.
 func (db *Database) SaveCache(dir string) error {
-        return db.saveCache(dir, runtime.GOMAXPROCS(0))
+	return db.saveCache(dir, runtime.GOMAXPROCS(0))
 }
 
 // saveCache saves clean state cache to given directory path
 // using specified CPU cores.
 func (db *Database) saveCache(dir string, threads int) error {
-        if db.cleans == nil {
-                return nil
-        }
-        log.Info("Writing clean trie cache to disk", "path", dir, "threads", threads)
+	if db.cleans == nil {
+		return nil
+	}
+	log.Info("Writing clean trie cache to disk", "path", dir, "threads", threads)
 
-        start := time.Now()
-        err := db.cleans.SaveToFileConcurrent(dir, threads)
-        if err != nil {
-                log.Error("Failed to persist clean trie cache", "error", err)
-                return err
-        }
-        log.Info("Persisted the clean trie cache", "path", dir, "elapsed", common.PrettyDuration(time.Since(start)))
-        return nil
+	start := time.Now()
+	err := db.cleans.SaveToFileConcurrent(dir, threads)
+	if err != nil {
+		log.Error("Failed to persist clean trie cache", "error", err)
+		return err
+	}
+	log.Info("Persisted the clean trie cache", "path", dir, "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
 }
 
 // SaveCachePeriodically atomically saves fast cache data to the given dir with
 // the specified interval. All dump operation will only use a single CPU core.
 func (db *Database) SaveCachePeriodically(dir string, interval time.Duration, stopCh <-chan struct{}) {
-        ticker := time.NewTicker(interval)
-        defer ticker.Stop()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 
-        for {
-                select {
-                case <-ticker.C:
-                        db.saveCache(dir, 1)
-                case <-stopCh:
-                        return
-                }
-        }
+	for {
+		select {
+		case <-ticker.C:
+			db.saveCache(dir, 1)
+		case <-stopCh:
+			return
+		}
+	}
 }
