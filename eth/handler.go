@@ -561,7 +561,7 @@ func (h *handler) runBscExtension(peer *bsc.Peer, handler bsc.Handler) error {
 	if !h.incHandlers() {
 		return p2p.DiscQuitting
 	}
-
+	defer h.decHandlers()
 	if err := h.peers.registerBscExtension(peer); err != nil {
 		if metrics.Enabled {
 			if peer.Inbound() {
