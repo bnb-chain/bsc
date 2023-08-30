@@ -187,8 +187,13 @@ func applyTransaction(msg *Message, config *params.ChainConfig, gp *GasPool, sta
 	receipt.BlockHash = blockHash
 	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())
+	receiptProcessorNumber := 0 // any way to get number of receiptProcessors directly?
 	for _, receiptProcessor := range receiptProcessors {
+		receiptProcessorNumber += 1
 		receiptProcessor.Apply(receipt)
+	}
+	if receiptProcessorNumber == 0 {
+		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 	}
 	return receipt, err
 }
