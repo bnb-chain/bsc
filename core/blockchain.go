@@ -48,6 +48,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+        "github.com/ethereum/go-ethereum/trie/triedb/hashdb"
+        "github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 var (
@@ -148,7 +150,7 @@ type CacheConfig struct {
 	SnapshotLimit       int           // Memory allowance (MB) to use for caching snapshot entries in memory
 	Preimages           bool          // Whether to store preimage of trie key to the disk
 	StateHistory        uint64        // Number of blocks from head whose state histories are reserved.
-	NodeScheme          string        // Disk scheme used to interact with trie nodes.
+	StateScheme          string        // Disk scheme used to interact with trie nodes.
 	TriesInMemory       uint64        // How many tries keeps in memory
 	NoTries             bool          // Insecure settings. Do not have any tries in databases if enabled.
 
@@ -168,7 +170,7 @@ var defaultCacheConfig = &CacheConfig{
 	TrieDirtyLimit: 256,
 	TrieTimeLimit:  5 * time.Minute,
 	SnapshotLimit:  256,
-	NodeScheme:     rawdb.HashScheme,
+	StateScheme:     rawdb.HashScheme,
 	TriesInMemory:  128,
 	SnapshotWait:   true,
 }
@@ -177,7 +179,7 @@ var defaultCacheConfig = &CacheConfig{
 // a provided trie node scheme.
 func DefaultCacheConfigWithScheme(scheme string) *CacheConfig {
 	config := *defaultCacheConfig
-	config.NodeScheme = scheme
+	config.StateScheme = scheme
 	return &config
 }
 
@@ -309,18 +311,24 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	diffLayerChanCache, _ := lru.New(diffLayerCacheLimit)
 
 	// Open trie database with provided config
-	config := &trie.Config{
+	trieConfig := &trie.Config{
 		NoTries:   cacheConfig.NoTries,
 	}
+        stateScheme := rawdb.ReadStateScheme(db)
+        if stateScheme == rawdb.PathScheme {
+                trieConfig.PathDB = pathdb.Defaults
+        } else {
+                trieConfig.HashDB = hashdb.Defaults
+        }
 
-	triedb := trie.NewDatabase(db, config)
+	triedb := trie.NewDatabase(db, trieConfig)
 	bc := &BlockChain{
 		chainConfig: chainConfig,
 		cacheConfig: cacheConfig,
 		db:          db,
 		triedb:      triedb,
 		triegc:      prque.New[int64, common.Hash](nil),
-		stateCache: state.NewDatabaseWithNodeDB(db, config, triedb),
+		stateCache: state.NewDatabaseWithNodeDB(db, trieConfig, triedb),
 		triesInMemory:         cacheConfig.TriesInMemory,
 		quit:                  make(chan struct{}),
 		chainmu:               syncx.NewClosableMutex(),

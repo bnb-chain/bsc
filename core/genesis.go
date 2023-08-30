@@ -157,11 +157,11 @@ func (e *GenesisMismatchError) Error() string {
 // error is a *params.ConfigCompatError and the new, unwritten config is returned.
 //
 // The returned chain configuration is never nil.
-func SetupGenesisBlock(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, common.Hash, error) {
-	return SetupGenesisBlockWithOverride(db, genesis, nil, nil, nil)
+func SetupGenesisBlock(db ethdb.Database, triedb *trie.Database, genesis *Genesis) (*params.ChainConfig, common.Hash, error) {
+	return SetupGenesisBlockWithOverride(db, triedb, genesis, nil, nil, nil)
 }
 
-func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, overrideBerlin, overrideArrowGlacier, overrideTerminalTotalDifficulty *big.Int) (*params.ChainConfig, common.Hash, error) {
+func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, genesis *Genesis, overrideBerlin, overrideArrowGlacier, overrideTerminalTotalDifficulty *big.Int) (*params.ChainConfig, common.Hash, error) {
 	if genesis != nil && genesis.Config == nil {
 		return params.AllEthashProtocolChanges, common.Hash{}, errGenesisNoConfig
 	}
@@ -186,15 +186,16 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, override
 	header := rawdb.ReadHeader(db, stored, 0)
 
 
+	stateScheme := rawdb.ReadStateScheme(db)
+
 	cacheConfig := defaultCacheConfig
-	cacheConfig.NodeScheme = rawdb.PathScheme
+	if stateScheme == "path" {
+		cacheConfig.StateScheme = rawdb.PathScheme
+	}
 	       // Open trie database with provided config
         config := &trie.Config{
                 NoTries:   cacheConfig.NoTries,
         }
-
-        triedb := trie.NewDatabase(db, config)
-	defer triedb.Close()
 
 	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, config, triedb), nil); err != nil {
 //	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, nil, nil), nil); err != nil {

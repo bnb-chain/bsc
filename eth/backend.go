@@ -62,6 +62,9 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/trie"
+        "github.com/ethereum/go-ethereum/trie/triedb/hashdb"
+        "github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -149,7 +152,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, config.Genesis, config.OverrideBerlin, config.OverrideArrowGlacier, config.OverrideTerminalTotalDifficulty)
+
+        trieConfig := &trie.Config{}
+	stateScheme := rawdb.ReadStateScheme(chainDb)
+	if stateScheme == rawdb.PathScheme {
+		trieConfig.PathDB = pathdb.Defaults
+	} else {
+		trieConfig.HashDB = hashdb.Defaults
+	}
+	triedb := trie.NewDatabase(chainDb, trieConfig)
+	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, triedb, config.Genesis, config.OverrideBerlin, config.OverrideArrowGlacier, config.OverrideTerminalTotalDifficulty)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
@@ -216,7 +228,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			NoTries:            config.TriesVerifyMode != core.LocalVerify,
 			SnapshotLimit:      config.SnapshotCache,
 			StateHistory:        config.StateHistory,
-			NodeScheme:          config.StateScheme,
+			StateScheme:          config.StateScheme,
 			TriesInMemory:      config.TriesInMemory,
 			Preimages:          config.Preimages,
 		}

@@ -74,6 +74,9 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 func init() {
@@ -283,13 +286,14 @@ var (
 		Usage: "The layer of tries trees that keep in memory",
 		Value: 128,
 	}
-	PathBasedSchemeFlag = cli.BoolFlag{
-		Name:     "trie.path-based",
-		Usage:    "Enables experiment path-based state scheme (default = disabled)",
+	StateSchemeFlag = cli.StringFlag{
+		Name:     "state.scheme",
+		Usage:    "Scheme to use for storing ethereum state ('hash' or 'path')",
+		Value:    rawdb.HashScheme,
 	}
 	StateHistoryFlag = cli.Uint64Flag{
-		Name:     "trie.state-history",
-		Usage:    "Number of recent blocks to maintain state history for (default = 90,000 blocks 0 = entire chain)",
+		Name:     "history.state",
+		Usage:    "Number of recent blocks to retain state history for (default = 90,000 blocks, 0 = entire chain)",
 		Value:    ethconfig.Defaults.StateHistory,
 	}
 	defaultVerifyMode   = ethconfig.Defaults.TriesVerifyMode
@@ -935,11 +939,6 @@ var (
 	VoteJournalDirFlag = DirectoryFlag{
 		Name:  "vote-journal-path",
 		Usage: "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
-	}
-	// StateSchemeFlags is the flag group of all trie node scheme flags
-	StateSchemeFlags = []cli.Flag{
-		StateHistoryFlag,
-		PathBasedSchemeFlag,
 	}
 )
 
@@ -1755,9 +1754,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(StateHistoryFlag.Name) {
 		cfg.StateHistory = ctx.Uint64(StateHistoryFlag.Name)
 	}
-	if ctx.IsSet(PathBasedSchemeFlag.Name) {
-		cfg.StateScheme = ParseStateScheme(ctx)
-	}
 	if ctx.GlobalIsSet(TxLookupLimitFlag.Name) {
 		cfg.TxLookupLimit = ctx.GlobalUint64(TxLookupLimitFlag.Name)
 	}
@@ -2127,7 +2123,15 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chainDb ethdb.Database) {
 	var err error
 	chainDb = MakeChainDatabase(ctx, stack, false, false) // TODO(rjl493456442) support read-only database
-	config, _, err := core.SetupGenesisBlock(chainDb, MakeGenesis(ctx))
+        trieConfig := &trie.Config{}
+        stateScheme := rawdb.ReadStateScheme(chainDb)
+        if stateScheme == rawdb.PathScheme {
+                trieConfig.PathDB = pathdb.Defaults
+        } else {
+                trieConfig.HashDB = hashdb.Defaults
+        }
+        triedb := trie.NewDatabase(chainDb, trieConfig)
+	config, _, err := core.SetupGenesisBlock(chainDb, triedb, MakeGenesis(ctx))
 	if err != nil {
 		Fatalf("%v", err)
 	}
@@ -2160,8 +2164,6 @@ func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chai
 		TriesInMemory:     ethconfig.Defaults.TriesInMemory,
 		SnapshotLimit:     ethconfig.Defaults.SnapshotCache,
 		Preimages:         ctx.GlobalBool(CachePreimagesFlag.Name),
-		NodeScheme:          ParseStateScheme(ctx),
-                StateHistory:        ctx.Uint64(StateHistoryFlag.Name),
 	}
 	if cache.TrieDirtyDisabled && !cache.Preimages {
 		cache.Preimages = true
@@ -2178,9 +2180,6 @@ func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chai
 	}
 	if ctx.GlobalIsSet(TriesInMemoryFlag.Name) {
 		cache.TriesInMemory = ctx.GlobalUint64(TriesInMemoryFlag.Name)
-	}
-	if ctx.IsSet(PathBasedSchemeFlag.Name) {
-		cache.NodeScheme = ParseStateScheme(ctx)
 	}
 	vmcfg := vm.Config{EnablePreimageRecording: ctx.GlobalBool(VMEnableDebugFlag.Name)}
 
@@ -2233,10 +2232,61 @@ func MigrateFlags(action func(ctx *cli.Context) error) func(*cli.Context) error 
 	}
 }
 
-// ParseStateScheme resolves scheme identifier from CLI flag.
-func ParseStateScheme(ctx *cli.Context) string {
-	if ctx.Bool(PathBasedSchemeFlag.Name) {
-		return rawdb.PathScheme
+// ParseStateScheme resolves scheme identifier from CLI flag. If the provided
+// state scheme is not compatible with the one of persistent scheme, an error
+// will be returned.
+//
+//   - none: use the scheme consistent with persistent state, or fallback
+//     to hash-based scheme if state is empty.
+//   - hash: use hash-based scheme or error out if not compatible with
+//     persistent state scheme.
+//   - path: use path-based scheme or error out if not compatible with
+//     persistent state scheme.
+func ParseStateScheme(ctx *cli.Context, disk ethdb.Database) (string, error) {
+	// If state scheme is not specified, use the scheme consistent
+	// with persistent state, or fallback to hash mode if database
+	// is empty.
+	stored := rawdb.ReadStateScheme(disk)
+	if !ctx.IsSet(StateSchemeFlag.Name) {
+		if stored == "" {
+			// use default scheme for empty database, flip it when
+			// path mode is chosen as default
+			log.Info("State schema set to default", "scheme", "hash")
+			return rawdb.HashScheme, nil
+		}
+		log.Info("State scheme set to already existing", "scheme", stored)
+		return stored, nil // reuse scheme of persistent scheme
 	}
-	return rawdb.HashScheme
+	// If state scheme is specified, ensure it's compatible with
+	// persistent state.
+	scheme := ctx.String(StateSchemeFlag.Name)
+	if stored == "" || scheme == stored {
+		log.Info("State scheme set by user", "scheme", scheme)
+		return scheme, nil
+	}
+	return "", fmt.Errorf("incompatible state scheme, stored: %s, provided: %s", stored, scheme)
+}
+
+// MakeTrieDatabase constructs a trie database based on the configured scheme.
+func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, readOnly bool) *trie.Database {
+	config := &trie.Config{
+		Preimages: preimage,
+	}
+	scheme, err := ParseStateScheme(ctx, disk)
+	if err != nil {
+		Fatalf("%v", err)
+	}
+	if scheme == rawdb.HashScheme {
+		// Read-only mode is not implemented in hash mode,
+		// ignore the parameter silently. TODO(rjl493456442)
+		// please config it if read mode is implemented.
+		config.HashDB = hashdb.Defaults
+		return trie.NewDatabase(disk, config)
+	}
+	if readOnly {
+		config.PathDB = pathdb.ReadOnly
+	} else {
+		config.PathDB = pathdb.Defaults
+	}
+	return trie.NewDatabase(disk, config)
 }
