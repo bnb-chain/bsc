@@ -92,6 +92,8 @@ func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, engine
 
 // loop is the vote pool's main even loop, waiting for and reacting to outside blockchain events and votes channel event.
 func (pool *VotePool) loop() {
+	defer pool.chainHeadSub.Unsubscribe()
+
 	for {
 		select {
 		// Handle ChainHeadEvent.

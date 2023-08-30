@@ -827,7 +827,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	}
 
 	if p.VotePool == nil {
-		return errors.New("vote pool is nil")
+		return nil
 	}
 
 	// Fetch direct parent's votes
@@ -881,6 +881,11 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		if _, ok := voteAddrSet[valInfo.VoteAddress]; ok {
 			attestation.VoteAddressSet |= 1 << (valInfo.Index - 1) //Index is offset by 1
 		}
+	}
+	validatorsBitSet := bitset.From([]uint64{uint64(attestation.VoteAddressSet)})
+	if validatorsBitSet.Count() < uint(len(signatures)) {
+		log.Warn(fmt.Sprintf("assembleVoteAttestation, check VoteAddress Set failed, expected:%d, real:%d", len(signatures), validatorsBitSet.Count()))
+		return fmt.Errorf("invalid attestation, check VoteAddress Set failed")
 	}
 
 	// Append attestation to header extra field.
@@ -1758,10 +1763,11 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		return nil
 	}
 
-	if snap.Attestation != nil {
-		return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
+	if snap.Attestation == nil {
+		return chain.GetHeaderByNumber(0) // keep consistent with GetJustifiedNumberAndHash
 	}
-	return nil
+
+	return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
 }
 
 // ===========================     utility function        ==========================

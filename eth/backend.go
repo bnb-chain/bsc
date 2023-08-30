@@ -284,7 +284,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		votePool := vote.NewVotePool(chainConfig, eth.blockchain, posa)
 		eth.votePool = votePool
 		if parlia, ok := eth.engine.(*parlia.Parlia); ok {
-			parlia.VotePool = votePool
+			if !config.Miner.DisableVoteAttestation {
+				// if there is no VotePool in Parlia Engine, the miner can't get votes for assembling
+				parlia.VotePool = votePool
+			}
 		} else {
 			return nil, fmt.Errorf("Engine is not Parlia type")
 		}
@@ -627,9 +630,8 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 	if s.config.EnableTrustProtocol {
 		protos = append(protos, trust.MakeProtocols((*trustHandler)(s.handler), s.snapDialCandidates)...)
 	}
-	if !s.config.DisableBscProtocol {
-		protos = append(protos, bsc.MakeProtocols((*bscHandler)(s.handler), s.bscDialCandidates)...)
-	}
+	protos = append(protos, bsc.MakeProtocols((*bscHandler)(s.handler), s.bscDialCandidates)...)
+
 	return protos
 }
 

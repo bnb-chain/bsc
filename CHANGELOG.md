@@ -1,4 +1,25 @@
 # Changelog
+## v1.2.11
+FEATURE
+* [\#1797](https://github.com/bnb-chain/bsc/pull/1797) client: add FinalizedHeader/Block to use the fast finality
+* [\#1805](https://github.com/bnb-chain/bsc/pull/1805) vote: remove DisableBscProtocol and add flag to skip votes assmebling
+
+BUGFIX
+* [\#1829](https://github.com/bnb-chain/bsc/pull/1829) fix: lagging nodes failed to sync
+
+## v1.2.10
+FEATURE
+* [\#1780](https://github.com/bnb-chain/bsc/pull/1780) log: reduce logs when receiving too much votes from a peer
+* [\#1788](https://github.com/bnb-chain/bsc/pull/1788) metrics: add txpool config into metrics server
+* [\#1789](https://github.com/bnb-chain/bsc/pull/1789) rpc: add GetFinalizedHeader/Block to simplify using the fast finality feature
+* [\#1791](https://github.com/bnb-chain/bsc/pull/1791) finality: add more check to ensure result of assembleVoteAttestation
+* [\#1795](https://github.com/bnb-chain/bsc/pull/1795) tool: add a tool extradump to parse extra data after luban
+
+BUGFIX
+* [\#1773](https://github.com/bnb-chain/bsc/pull/1773) discov: do not filter out bootnodes
+* [\#1778](https://github.com/bnb-chain/bsc/pull/1778) vote: backup validator sync votes from corresponding mining validator
+* [\#1784](https://github.com/bnb-chain/bsc/pull/1784) fix: exclude same votes when doing malicious voting check
+
 ## v1.2.9
 FEATURE
 * [\#1775](https://github.com/bnb-chain/bsc/pull/1775) upgrade: several hardfork block height on mainnet: Plato, Hertz(Berlin, London)

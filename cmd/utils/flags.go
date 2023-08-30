@@ -134,10 +134,6 @@ var (
 		Name:  "enabletrustprotocol",
 		Usage: "Enable trust protocol",
 	}
-	DisableBscProtocolFlag = cli.BoolFlag{
-		Name:  "disablebscprotocol",
-		Usage: "Disable bsc protocol",
-	}
 
 	DiffSyncFlag = cli.BoolFlag{
 		Name:  "diffsync",
@@ -908,6 +904,11 @@ var (
 		Usage: "Enable voting when mining",
 	}
 
+	DisableVoteAttestationFlag = cli.BoolFlag{
+		Name:  "disablevoteattestation",
+		Usage: "Disable assembling vote attestation ",
+	}
+
 	EnableMaliciousVoteMonitorFlag = cli.BoolFlag{
 		Name:  "monitor.maliciousvote",
 		Usage: "Enable malicious vote monitor to check whether any validator violates the voting rules of fast finality",
@@ -1562,6 +1563,9 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	if ctx.GlobalBool(VotingEnabledFlag.Name) {
 		cfg.VoteEnable = true
 	}
+	if ctx.GlobalBool(DisableVoteAttestationFlag.Name) {
+		cfg.DisableVoteAttestation = true
+	}
 }
 
 func setWhitelist(ctx *cli.Context, cfg *ethconfig.Config) {
@@ -1719,9 +1723,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(EnableTrustProtocolFlag.Name) {
 		cfg.EnableTrustProtocol = ctx.GlobalIsSet(EnableTrustProtocolFlag.Name)
-	}
-	if ctx.GlobalIsSet(DisableBscProtocolFlag.Name) {
-		cfg.DisableBscProtocol = ctx.GlobalIsSet(DisableBscProtocolFlag.Name)
 	}
 	if ctx.GlobalIsSet(DiffSyncFlag.Name) {
 		log.Warn("The --diffsync flag is deprecated and will be removed in the future!")
@@ -1969,6 +1970,21 @@ func EnableMinerInfo(ctx *cli.Context, minerConfig miner.Config) SetupMetricsOpt
 			minerInfo[UnlockedAccountFlag.Name] = ctx.GlobalString(UnlockedAccountFlag.Name)
 			metrics.NewRegisteredLabel("miner-info", nil).Mark(minerInfo)
 		}
+	}
+}
+
+func EnableNodeInfo(poolConfig core.TxPoolConfig) SetupMetricsOption {
+	return func() {
+		// register node info into metrics
+		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
+			"PriceLimit":   poolConfig.PriceLimit,
+			"PriceBump":    poolConfig.PriceBump,
+			"AccountSlots": poolConfig.AccountSlots,
+			"GlobalSlots":  poolConfig.GlobalSlots,
+			"AccountQueue": poolConfig.AccountQueue,
+			"GlobalQueue":  poolConfig.GlobalQueue,
+			"Lifetime":     poolConfig.Lifetime,
+		})
 	}
 }
 

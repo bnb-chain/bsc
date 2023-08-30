@@ -151,7 +151,6 @@ type Config struct {
 	DisableSnapProtocol bool //Whether disable snap protocol
 	DisableDiffProtocol bool //Whether disable diff protocol
 	EnableTrustProtocol bool //Whether enable trust protocol
-	DisableBscProtocol  bool //Whether disable bsc protocol
 	DiffSync            bool // Whether support diff sync
 	PipeCommit          bool
 	RangeLimit          bool

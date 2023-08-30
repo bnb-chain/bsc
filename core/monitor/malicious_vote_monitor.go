@@ -58,6 +58,7 @@ func (m *MaliciousVoteMonitor) ConflictDetect(newVote *types.VoteEnvelope, pendi
 	if !(blockNumber+maliciousVoteSlashScope > pendingBlockNumber) {
 		blockNumber = pendingBlockNumber - maliciousVoteSlashScope + 1
 	}
+	newVoteHash := newVote.Data.Hash()
 	for ; blockNumber <= pendingBlockNumber+upperLimitOfVoteBlockNumber; blockNumber++ {
 		if voteDataBuffer.Contains(blockNumber) {
 			voteEnvelope, ok := voteDataBuffer.Get(blockNumber)
@@ -66,7 +67,7 @@ func (m *MaliciousVoteMonitor) ConflictDetect(newVote *types.VoteEnvelope, pendi
 				continue
 			}
 			maliciousVote := false
-			if blockNumber == targetNumber {
+			if blockNumber == targetNumber && voteEnvelope.(*types.VoteEnvelope).Data.Hash() != newVoteHash {
 				violateRule1Counter.Inc(1)
 				maliciousVote = true
 			} else if (blockNumber < targetNumber && voteEnvelope.(*types.VoteEnvelope).Data.SourceNumber > sourceNumber) ||

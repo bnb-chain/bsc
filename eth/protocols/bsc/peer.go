@@ -26,7 +26,7 @@ const (
 	receiveRateLimitPerSecond = 10
 
 	// the time span of one period
-	secondsPerPeriod = float64(10)
+	secondsPerPeriod = float64(30)
 )
 
 // max is a helper function which returns the larger of the two given integers.
@@ -133,6 +133,9 @@ func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
 // Otherwise, check whether the number of received votes extra (secondsPerPeriod * receiveRateLimitPerSecond)
 func (p *Peer) IsOverLimitAfterReceiving() bool {
 	if timeInterval := time.Since(p.periodBegin).Seconds(); timeInterval >= secondsPerPeriod {
+		if p.periodCounter > uint(secondsPerPeriod*receiveRateLimitPerSecond) {
+			p.Log().Debug("sending votes too much", "secondsPerPeriod", secondsPerPeriod, "count ", p.periodCounter)
+		}
 		p.periodBegin = time.Now()
 		p.periodCounter = 0
 		return false
