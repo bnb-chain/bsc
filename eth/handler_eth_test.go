@@ -604,51 +604,6 @@ func TestTransactionPendingReannounce(t *testing.T) {
 	}
 }
 
-/*
-// Notice:
-// TestCheckpointChallenge was removed in: https://github.com/ethereum/go-ethereum/pull/27147
-// After merge, it is useless for ethereum, but might be useful for BSC.
-// Disable the case right now, as it is not a big issue, trusted checkpoint is barely used in BSC.
-
-// Tests that post eth protocol handshake, clients perform a mutual checkpoint
-// challenge to validate each other's chains. Hash mismatches, or missing ones
-// during a fast sync should lead to the peer getting dropped.
-func TestCheckpointChallenge(t *testing.T) {
-	tests := []struct {
-		syncmode   downloader.SyncMode
-		checkpoint bool
-		timeout    bool
-		empty      bool
-		match      bool
-		drop       bool
-	}{
-		// If checkpointing is not enabled locally, don't challenge and don't drop
-		{downloader.FullSync, false, false, false, false, false},
-		{downloader.SnapSync, false, false, false, false, false},
-
-		// If checkpointing is enabled locally and remote response is empty, only drop during fast sync
-		{downloader.FullSync, true, false, true, false, false},
-		{downloader.SnapSync, true, false, true, false, true}, // Special case, fast sync, unsynced peer
-
-		// If checkpointing is enabled locally and remote response mismatches, always drop
-		{downloader.FullSync, true, false, false, false, true},
-		{downloader.SnapSync, true, false, false, false, true},
-
-		// If checkpointing is enabled locally and remote response matches, never drop
-		{downloader.FullSync, true, false, false, true, false},
-		{downloader.SnapSync, true, false, false, true, false},
-
-		// If checkpointing is enabled locally and remote times out, always drop
-		{downloader.FullSync, true, true, false, true, true},
-		{downloader.SnapSync, true, true, false, true, true},
-	}
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("sync %v checkpoint %v timeout %v empty %v match %v", tt.syncmode, tt.checkpoint, tt.timeout, tt.empty, tt.match), func(t *testing.T) {
-			testCheckpointChallenge(t, tt.syncmode, tt.checkpoint, tt.timeout, tt.empty, tt.match, tt.drop)
-		})
-	}
-}
-*/
 // Tests that blocks are broadcast to a sqrt number of peers only.
 func TestBroadcastBlock1Peer(t *testing.T)    { testBroadcastBlock(t, 1, 1) }
 func TestBroadcastBlock2Peers(t *testing.T)   { testBroadcastBlock(t, 2, 1) }

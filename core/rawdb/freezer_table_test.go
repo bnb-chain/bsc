@@ -32,6 +32,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// these test cases are not reentrant
+// do `rm *rdat && rm *ridx && rm *meta && rm *cdat && rm *cidx` in  os.TempDir() before testing
+
 // TestFreezerBasics test initializing a freezertable from scratch, writing to the table,
 // and reading it back.
 func TestFreezerBasics(t *testing.T) {
