@@ -123,8 +123,17 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		diskdb:    diskdb,
 		preimages: preimages,
 	}
+	/*
+	 * 1. First, initialize db according to the user config
+	 * 2. Second, initialize the db according to the scheme already used by db
+	 * 3. Last, use the default scheme, namely hash scheme
+	 */
 	dbScheme := rawdb.ReadStateScheme(diskdb)
-	if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {
+	if config.HashDB != nil {
+		db.backend = hashdb.New(diskdb, config.HashDB, mptResolver{})
+	} else if config.PathDB != nil {
+		db.backend = pathdb.New(diskdb, config.PathDB)
+	} else if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {
 		if config.PathDB != nil {
 			config.PathDB = pathdb.Defaults
 		}

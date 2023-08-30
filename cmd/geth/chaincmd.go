@@ -228,6 +228,8 @@ func initGenesis(ctx *cli.Context) error {
 
 		triedb := utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false)
 		defer triedb.Close()
+		triedb.Scheme()
+		log.Info("ssssssssssss", "scheme", triedb.Scheme())
 
 		_, hash, err := core.SetupGenesisBlock(chaindb, triedb, genesis)
 		if err != nil {
