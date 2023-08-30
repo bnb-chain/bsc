@@ -226,9 +226,7 @@ func initGenesis(ctx *cli.Context) error {
 		}
 		defer chaindb.Close()
 
-		triedb := trie.NewDatabase(chaindb, &trie.Config{
-			Preimages: ctx.Bool(utils.CachePreimagesFlag.Name),
-		})
+		triedb := utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false)
 		defer triedb.Close()
 
 		_, hash, err := core.SetupGenesisBlock(chaindb, triedb, genesis)
