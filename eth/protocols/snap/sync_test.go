@@ -1482,7 +1482,7 @@ func makeAccountTrieNoStorage(n int, scheme string) (string, *trie.Trie, []*kv) 
 
 	// Commit the state changes into db and re-create the trie
 	// for accessing later.
-	root, nodes, _ := accTrie.Commit(false)
+	root, nodes, _ := accTrie.Commit(nil)
 	db.Update(root, types.EmptyRootHash, 0, trienode.NewWithNodeSet(nodes), nil)
 
 	accTrie, _ = trie.New(trie.StateTrieID(root), db)
@@ -1496,9 +1496,8 @@ func makeBoundaryAccountTrie(scheme string, n int) (string, *trie.Trie, []*kv) {
 	var (
 		entries    []*kv
 		boundaries []common.Hash
-
-		db      = trie.NewDatabase(rawdb.NewMemoryDatabase(), newDbConfig(scheme))
-		accTrie = trie.NewEmpty(db)
+		db         = trie.NewDatabase(rawdb.NewMemoryDatabase(), newDbConfig(scheme))
+		accTrie    = trie.NewEmpty(db)
 	)
 	// Initialize boundaries
 	var next common.Hash
@@ -1544,7 +1543,7 @@ func makeBoundaryAccountTrie(scheme string, n int) (string, *trie.Trie, []*kv) {
 
 	// Commit the state changes into db and re-create the trie
 	// for accessing later.
-	root, nodes, _ := accTrie.Commit(false)
+	root, nodes, _ := accTrie.Commit(nil)
 	db.Update(root, types.EmptyRootHash, 0, trienode.NewWithNodeSet(nodes), nil)
 
 	accTrie, _ = trie.New(trie.StateTrieID(root), db)
@@ -1590,7 +1589,7 @@ func makeAccountTrieWithStorageWithUniqueStorage(scheme string, accounts, slots 
 	slices.SortFunc(entries, (*kv).cmp)
 
 	// Commit account trie
-	root, set, _ := accTrie.Commit(true)
+	root, set, _ := accTrie.Commit(nil)
 	nodes.Merge(set)
 
 	// Commit gathered dirty nodes into database
@@ -1655,7 +1654,7 @@ func makeAccountTrieWithStorage(scheme string, accounts, slots int, code, bounda
 	slices.SortFunc(entries, (*kv).cmp)
 
 	// Commit account trie
-	root, set, _ := accTrie.Commit(true)
+	root, set, _ := accTrie.Commit(nil)
 	nodes.Merge(set)
 
 	// Commit gathered dirty nodes into database
@@ -1697,7 +1696,7 @@ func makeStorageTrieWithSeed(owner common.Hash, n, seed uint64, db *trie.Databas
 		entries = append(entries, elem)
 	}
 	slices.SortFunc(entries, (*kv).cmp)
-	root, nodes, _ := trie.Commit(false)
+	root, nodes, _ := trie.Commit(nil)
 	return root, nodes, entries
 }
 
@@ -1748,7 +1747,7 @@ func makeBoundaryStorageTrie(owner common.Hash, n int, db *trie.Database) (commo
 		entries = append(entries, elem)
 	}
 	slices.SortFunc(entries, (*kv).cmp)
-	root, nodes, _ := trie.Commit(false)
+	root, nodes, _ := trie.Commit(nil)
 	return root, nodes, entries
 }
 

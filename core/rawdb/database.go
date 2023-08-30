@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/status-im/keycard-go/hexutils"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -697,6 +698,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				}
 			}
 			if !accounted {
+				log.Warn("unaccounted", "key", hexutils.BytesToHex(key), "size", size)
 				unaccounted.Add(size)
 			}
 		}

@@ -61,7 +61,7 @@ func makeTestStateTrie() (*Database, *StateTrie, map[string][]byte) {
 			trie.MustUpdate(key, val)
 		}
 	}
-	root, nodes, _ := trie.Commit(false)
+	root, nodes, _ := trie.Commit(nil)
 	if err := triedb.Update(root, types.EmptyRootHash, 0, trienode.NewWithNodeSet(nodes), nil); err != nil {
 		panic(fmt.Errorf("failed to commit db %v", err))
 	}
@@ -143,7 +143,7 @@ func TestStateTrieConcurrency(t *testing.T) {
 					tries[index].MustUpdate(key, val)
 				}
 			}
-			tries[index].Commit(false)
+			tries[index].Commit(nil)
 		})
 	}
 	// Wait for all threads to finish

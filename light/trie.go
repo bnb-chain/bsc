@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 var (
@@ -186,11 +187,11 @@ func (t *odrTrie) DeleteAccount(address common.Address) error {
 	})
 }
 
-func (t *odrTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
+func (t *odrTrie) Commit(onleaf triestate.LeafCallback) (common.Hash, *trienode.NodeSet, error) {
 	if t.trie == nil {
 		return t.id.Root, nil, nil
 	}
-	return t.trie.Commit(collectLeaf)
+	return t.trie.Commit(onleaf)
 }
 
 func (t *odrTrie) Hash() common.Hash {

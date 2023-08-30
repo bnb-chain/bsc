@@ -352,48 +352,38 @@ func (db *Database) Cap(limit common.StorageSize) error {
 	// outside code doesn't see an inconsistent state (referenced data removed from
 	// memory cache during commit but not yet in persistent storage). This is ensured
 	// by only uncaching existing data when the database write finalizes.
-	db.lock.RLock()
 	nodes, storage, start := len(db.dirties), db.dirtiesSize, time.Now()
+	batch := db.diskdb.NewBatch()
+
 	// db.dirtiesSize only contains the useful data in the cache, but when reporting
 	// the total memory consumption, the maintenance metadata is also needed to be
 	// counted.
 	size := db.dirtiesSize + common.StorageSize(len(db.dirties)*cachedNodeSize)
 	size += db.childrenSize
-	db.lock.RUnlock()
-
-	batch := db.diskdb.NewBatch()
 
 	// Keep committing nodes from the flush-list until we're below allowance
 	oldest := db.oldest
-	err := func() error {
-		db.lock.RLock()
-		defer db.lock.RUnlock()
-		for size > limit && oldest != (common.Hash{}) {
-			// Fetch the oldest referenced node and push into the batch
-			node := db.dirties[oldest]
-			rawdb.WriteLegacyTrieNode(batch, oldest, node.node)
+	for size > limit && oldest != (common.Hash{}) {
+		// Fetch the oldest referenced node and push into the batch
+		node := db.dirties[oldest]
+		rawdb.WriteLegacyTrieNode(batch, oldest, node.node)
 
-			// If we exceeded the ideal batch size, commit and reset
-			if batch.ValueSize() >= ethdb.IdealBatchSize {
-				if err := batch.Write(); err != nil {
-					log.Error("Failed to write flush list to disk", "err", err)
-					return err
-				}
-				batch.Reset()
+		// If we exceeded the ideal batch size, commit and reset
+		if batch.ValueSize() >= ethdb.IdealBatchSize {
+			if err := batch.Write(); err != nil {
+				log.Error("Failed to write flush list to disk", "err", err)
+				return err
 			}
-			// Iterate to the next flush item, or abort if the size cap was achieved. Size
-			// is the total size, including the useful cached data (hash -> blob), the
-			// cache item metadata, as well as external children mappings.
-			size -= common.StorageSize(common.HashLength + len(node.node) + cachedNodeSize)
-			if node.external != nil {
-				size -= common.StorageSize(len(node.external) * common.HashLength)
-			}
-			oldest = node.flushNext
+			batch.Reset()
 		}
-		return nil
-	}()
-	if err != nil {
-		return err
+		// Iterate to the next flush item, or abort if the size cap was achieved. Size
+		// is the total size, including the useful cached data (hash -> blob), the
+		// cache item metadata, as well as external children mappings.
+		size -= common.StorageSize(common.HashLength + len(node.node) + cachedNodeSize)
+		if node.external != nil {
+			size -= common.StorageSize(len(node.external) * common.HashLength)
+		}
+		oldest = node.flushNext
 	}
 	// Flush out any remainder data from the last batch
 	if err := batch.Write(); err != nil {
@@ -445,11 +435,8 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 	start := time.Now()
 	batch := db.diskdb.NewBatch()
 
-	// Move all of the accumulated preimages into a write batch
-	db.lock.RLock()
 	// Move the trie itself into the batch, flushing if enough data is accumulated
 	nodes, storage := len(db.dirties), db.dirtiesSize
-	db.lock.RUnlock()
 
 	uncacher := &cleaner{db}
 	if err := db.commit(node, batch, uncacher); err != nil {
@@ -491,14 +478,10 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 // commit is the private locked version of Commit.
 func (db *Database) commit(hash common.Hash, batch ethdb.Batch, uncacher *cleaner) error {
 	// If the node does not exist, it's a previously committed node
-	db.lock.RLock()
 	node, ok := db.dirties[hash]
 	if !ok {
-		db.lock.RUnlock()
 		return nil
 	}
-	db.lock.RUnlock()
-
 	var err error
 
 	// Dereference all children and delete the node

@@ -105,7 +105,7 @@ func StartNode(ctx *cli.Context, stack *node.Node, isConsole bool) {
 			// However, SIGTERM still shuts down the node.
 			for {
 				sig := <-sigc
-				if sig == syscall.SIGTERM {
+				if sig == syscall.SIGTERM || sig == syscall.SIGKILL {
 					shutdown()
 					return
 				}

@@ -163,8 +163,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 	// mechanism also ensures that at most one **non-readOnly** database
 	// is opened at the same time to prevent accidental mutation.
 	if ancient, err := diskdb.AncientDatadir(); err == nil && ancient != "" && !db.readOnly {
-		offset := uint64(0) //TODO(Nathan)
-		freezer, err := rawdb.NewStateFreezer(ancient, false, offset)
+		freezer, err := rawdb.NewStateFreezer(ancient, false, 0)
 		if err != nil {
 			log.Crit("Failed to open state history freezer", "err", err)
 		}
@@ -296,6 +295,10 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
+	if db.tree.bottom().root == root {
+		return nil
+	}
+
 	// Short circuit if rollback operation is not supported.
 	if db.readOnly || db.freezer == nil {
 		return errors.New("state rollback is non-supported")
@@ -339,6 +342,7 @@ func (db *Database) Recoverable(root common.Hash) bool {
 	root = types.TrieRootHash(root)
 	id := rawdb.ReadStateID(db.diskdb, root)
 	if id == nil {
+		log.Warn("pathdb unrecoverable load id is nil")
 		return false
 	}
 	// Recoverable state must below the disk layer. The recoverable
@@ -346,6 +350,7 @@ func (db *Database) Recoverable(root common.Hash) bool {
 	// but can be restored by applying state history.
 	dl := db.tree.bottom()
 	if *id >= dl.stateID() {
+		log.Warn("pathdb unrecoverable", "target_id", *id, "bottom_id", dl.stateID())
 		return false
 	}
 	// Ensure the requested state is a canonical state and all state

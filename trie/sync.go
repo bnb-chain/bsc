@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+        "github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 // ErrNotRequested is returned by the trie sync when it's requested to process a
@@ -75,22 +76,6 @@ func NewSyncPath(path []byte) SyncPath {
 	return SyncPath{hexToKeybytes(path[:64]), hexToCompact(path[64:])}
 }
 
-// LeafCallback is a callback type invoked when a trie operation reaches a leaf
-// node.
-//
-// The keys is a path tuple identifying a particular trie node either in a single
-// trie (account) or a layered trie (account -> storage). Each key in the tuple
-// is in the raw format(32 bytes).
-//
-// The path is a composite hexary path identifying the trie node. All the key
-// bytes are converted to the hexary nibbles and composited with the parent path
-// if the trie node is in a layered trie.
-//
-// It's used by state sync and commit to allow handling external references
-// between account and storage tries. And also it's used in the state healing
-// for extracting the raw states(leaf nodes) with corresponding paths.
-type LeafCallback func(keys [][]byte, path []byte, leaf []byte, parent common.Hash, parentPath []byte) error
-
 // nodeRequest represents a scheduled or already in-flight trie node retrieval request.
 type nodeRequest struct {
 	hash common.Hash // Hash of the trie node to retrieve
@@ -99,7 +84,7 @@ type nodeRequest struct {
 
 	parent   *nodeRequest // Parent state node referencing this entry
 	deps     int          // Number of dependencies before allowed to commit this node
-	callback LeafCallback // Callback to invoke if a leaf node it reached on this branch
+	callback triestate.LeafCallback // Callback to invoke if a leaf node it reached on this branch
 }
 
 // codeRequest represents a scheduled or already in-flight bytecode retrieval request.
@@ -166,7 +151,7 @@ type Sync struct {
 }
 
 // NewSync creates a new trie data download scheduler.
-func NewSync(root common.Hash, database ethdb.KeyValueReader, callback LeafCallback, scheme string) *Sync {
+func NewSync(root common.Hash, database ethdb.KeyValueReader, callback triestate.LeafCallback, scheme string) *Sync {
 	ts := &Sync{
 		scheme:   scheme,
 		database: database,
@@ -183,7 +168,7 @@ func NewSync(root common.Hash, database ethdb.KeyValueReader, callback LeafCallb
 // AddSubTrie registers a new trie to the sync code, rooted at the designated
 // parent for completion tracking. The given path is a unique node path in
 // hex format and contain all the parent path if it's layered trie node.
-func (s *Sync) AddSubTrie(root common.Hash, path []byte, parent common.Hash, parentPath []byte, callback LeafCallback) {
+func (s *Sync) AddSubTrie(root common.Hash, path []byte, parent common.Hash, parentPath []byte, callback triestate.LeafCallback) {
 	// Short circuit if the trie is empty or already known
 	if root == types.EmptyRootHash {
 		return

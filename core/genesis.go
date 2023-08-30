@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 //go:generate go run github.com/fjl/gencodec -type Genesis -field-override genesisSpecMarshaling -out gen_genesis.go
@@ -127,7 +128,7 @@ func (ga *GenesisAlloc) UnmarshalJSON(data []byte) error {
 func (ga *GenesisAlloc) deriveHash() (common.Hash, error) {
 	// Create an ephemeral in-memory database for computing hash,
 	// all the derived states will be discarded to not pollute disk.
-	db := state.NewDatabase(rawdb.NewMemoryDatabase())
+	db := state.NewDatabaseWithConfig(rawdb.NewMemoryDatabase(), &trie.Config{PathDB: pathdb.Defaults})
 	statedb, err := state.New(types.EmptyRootHash, db, nil)
 	if err != nil {
 		return common.Hash{}, err
@@ -153,7 +154,7 @@ func (ga *GenesisAlloc) flush(db ethdb.Database, triedb *trie.Database, blockhas
 	if trieConfig != nil {
 		trieConfig.NoTries = false
 	}
-	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb), nil)
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb, trieConfig), nil)
 	if err != nil {
 		return err
 	}
@@ -299,9 +300,19 @@ func SetupGenesisBlock(db ethdb.Database, triedb *trie.Database, genesis *Genesi
 	return SetupGenesisBlockWithOverride(db, triedb, genesis, nil)
 }
 
-func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, genesis *Genesis, overrides *ChainOverrides) (*params.ChainConfig, common.Hash, error) {
+func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, genesis *Genesis, overrides *ChainOverrides) (gConfig *params.ChainConfig, gHash common.Hash, gErr error) {
+	defer func() {
+		if gErr != nil {
+			log.Error("failed to setup genesis block", "error", gErr)
+		} else {
+			log.Info("setup genesis block", "config", gConfig.String(), "hash", gHash)
+		}
+	}()
 	if genesis != nil && genesis.Config == nil {
-		return params.AllEthashProtocolChanges, common.Hash{}, errGenesisNoConfig
+		gConfig = params.AllEthashProtocolChanges
+		gHash = common.Hash{}
+		gErr = errGenesisNoConfig
+		return
 	}
 	applyOverrides := func(config *params.ChainConfig) {
 		if config != nil {
@@ -325,10 +336,15 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 		}
 		block, err := genesis.Commit(db, triedb)
 		if err != nil {
-			return genesis.Config, common.Hash{}, err
+			gConfig = genesis.Config
+			gHash = common.Hash{}
+			gErr = err
+			return
 		}
 		applyOverrides(genesis.Config)
-		return genesis.Config, block.Hash(), nil
+		gConfig = genesis.Config
+		gHash = block.Hash()
+		return
 	}
 	// The genesis block is present(perhaps in ancient database) while the
 	// state database is not initialized yet. It can happen that the node
@@ -342,33 +358,49 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 		// Ensure the stored genesis matches with the given one.
 		hash := genesis.ToBlock().Hash()
 		if hash != stored {
-			return genesis.Config, hash, &GenesisMismatchError{stored, hash}
+			gConfig = genesis.Config
+			gHash = hash
+			gErr = &GenesisMismatchError{stored, hash}
+			return
 		}
 		block, err := genesis.Commit(db, triedb)
 		if err != nil {
-			return genesis.Config, hash, err
+			gConfig = genesis.Config
+			gHash = hash
+			gErr = err
+			return
 		}
 		applyOverrides(genesis.Config)
-		return genesis.Config, block.Hash(), nil
+		gConfig = genesis.Config
+		gHash = block.Hash()
+		return
 	}
 	// Check whether the genesis block is already written.
 	if genesis != nil {
 		hash := genesis.ToBlock().Hash()
 		if hash != stored {
-			return genesis.Config, hash, &GenesisMismatchError{stored, hash}
+			gConfig = genesis.Config
+			gHash = hash
+			gErr = &GenesisMismatchError{stored, hash}
+			return
 		}
 	}
 	// Get the existing chain configuration.
 	newcfg := genesis.configOrDefault(stored)
 	applyOverrides(newcfg)
 	if err := newcfg.CheckConfigForkOrder(); err != nil {
-		return newcfg, common.Hash{}, err
+		gConfig = newcfg
+		gHash = common.Hash{}
+		gErr = err
+		return
 	}
 	storedcfg := rawdb.ReadChainConfig(db, stored)
 	if storedcfg == nil {
 		log.Warn("Found genesis block without chain config")
 		rawdb.WriteChainConfig(db, stored, newcfg)
-		return newcfg, stored, nil
+		gConfig = newcfg
+		gHash = stored
+		return
 	}
 	storedData, _ := json.Marshal(storedcfg)
 	// Special case: if a private network is being used (no genesis and also no
@@ -389,12 +421,17 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	}
 	compatErr := storedcfg.CheckCompatible(newcfg, head.Number.Uint64(), head.Time)
 	if compatErr != nil && ((head.Number.Uint64() != 0 && compatErr.RewindToBlock != 0) || (head.Time != 0 && compatErr.RewindToTime != 0)) {
-		return newcfg, stored, compatErr
+		gConfig = newcfg
+		gHash = stored
+		gErr = compatErr
+		return
 	}
 	// Don't overwrite if the old is identical to the new
 	if newData, _ := json.Marshal(newcfg); !bytes.Equal(storedData, newData) {
 		rawdb.WriteChainConfig(db, stored, newcfg)
 	}
+	gConfig = newcfg
+	gHash = stored
 	return newcfg, stored, nil
 }
 

@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 	exlru "github.com/hashicorp/golang-lru" //ex: external
 )
 
@@ -139,7 +140,7 @@ type Trie interface {
 	// The returned nodeset can be nil if the trie is clean(nothing to commit).
 	// Once the trie is committed, it's not usable anymore. A new trie must
 	// be created with new root and updated trie database for following usage
-	Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error)
+	Commit(onleaf triestate.LeafCallback) (common.Hash, *trienode.NodeSet, error)
 
 	// NodeIterator returns an iterator that returns nodes of the trie. Iteration
 	// starts at the key after the given start key. And error will be returned
@@ -168,7 +169,6 @@ func NewDatabase(db ethdb.Database) Database {
 // large memory cache.
 func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 	noTries := config != nil && config.NoTries
-
 	return &cachingDB{
 		disk:          db,
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
@@ -179,30 +179,22 @@ func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 }
 
 // NewDatabaseWithNodeDB creates a state database with an already initialized node database.
-func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database) Database {
-	noTries := triedb != nil && triedb.Config() != nil && triedb.Config().NoTries
-
-	return &cachingDB{
-		disk:          db,
-		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
-		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		triedb:        triedb,
-		noTries:       noTries,
-	}
-}
-
-func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Database {
+func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database, config *trie.Config) Database {
 	atc, _ := exlru.New(accountTrieCacheSize)
 	stc, _ := exlru.New(storageTrieCacheSize)
-	noTries := config != nil && config.NoTries
+	noTries := triedb != nil && triedb.Config() != nil && triedb.Config().NoTries
+
+	if triedb == nil {
+		triedb = trie.NewDatabase(db, config)
+	}
 
 	database := &cachingDB{
 		disk:             db,
 		codeSizeCache:    lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:        lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		triedb:           trie.NewDatabase(db, config),
 		accountTrieCache: atc,
 		storageTrieCache: stc,
+		triedb:           triedb,
 		noTries:          noTries,
 	}
 	if !noTries {
@@ -281,6 +273,9 @@ func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 }
 
 func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
+	if db.TrieDB().Scheme() == rawdb.PathScheme {
+		return
+	}
 	if db.accountTrieCache == nil {
 		return
 	}
@@ -289,6 +284,9 @@ func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
 }
 
 func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie) {
+	if db.TrieDB().Scheme() == rawdb.PathScheme {
+		return
+	}
 	if db.storageTrieCache == nil {
 		return
 	}

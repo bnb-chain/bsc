@@ -1085,7 +1085,7 @@ func TestResetObject(t *testing.T) {
 	var (
 		disk     = rawdb.NewMemoryDatabase()
 		tdb      = trie.NewDatabase(disk, nil)
-		db       = NewDatabaseWithNodeDB(disk, tdb)
+		db       = NewDatabaseWithNodeDB(disk, tdb, nil)
 		snaps, _ = snapshot.New(snapshot.Config{CacheSize: 10}, disk, tdb, types.EmptyRootHash, 128, false)
 		state, _ = New(types.EmptyRootHash, db, snaps)
 		addr     = common.HexToAddress("0x1")
