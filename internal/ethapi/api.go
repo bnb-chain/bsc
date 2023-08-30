@@ -2759,6 +2759,7 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 	// }
 	header := &types.Header{
 		ParentHash: parent.Hash(),
+		BaseFee:    big.NewInt(0).Set(parent.BaseFee),
 		Number:     blockNumber,
 		GasLimit:   gasLimit,
 		Time:       timestamp,
