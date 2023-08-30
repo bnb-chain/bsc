@@ -114,6 +114,10 @@ func (t *EmptyTrie) GetAccount(address common.Address) (*types.StateAccount, err
 	return nil, nil
 }
 
+func (t *EmptyTrie) GetAccountByHash(address common.Hash) (*types.StateAccount, error) {
+	return nil, nil
+}
+
 func (t *EmptyTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
 	return nil, nil
 }
@@ -124,4 +128,8 @@ func (t *EmptyTrie) UpdateAccount(address common.Address, acc *types.StateAccoun
 
 func (t *EmptyTrie) UpdateStorage(_ common.Address, key, value []byte) error {
 	return nil
+}
+
+func (t *EmptyTrie) UpdateContractCode(_ common.Address, _ common.Hash, _ []byte) error {
+        return nil
 }

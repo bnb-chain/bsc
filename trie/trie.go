@@ -698,6 +698,10 @@ func (t *Trie) Reset() {
 }
 
 func (t *Trie) Size() int {
-        return estimateSize(t.root)
+	return estimateSize(t.root)
 }
 
+// Owner returns the associated trie owner.
+func (t *Trie) Owner() common.Hash {
+	return t.owner
+}

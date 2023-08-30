@@ -76,6 +76,6 @@ var (
 var freezers = []string{chainFreezerName, stateFreezerName}
 
 // NewStateFreezer initializes the freezer for state history.
-func NewStateFreezer(ancientDir string, readOnly bool) (*ResettableFreezer, error) {
-	return NewResettableFreezer(filepath.Join(ancientDir, stateFreezerName), "eth/db/state", readOnly, stateHistoryTableSize, stateFreezerNoSnappy)
+func NewStateFreezer(ancientDir string, readOnly bool, offset uint64) (*ResettableFreezer, error) {
+	return NewResettableFreezer(filepath.Join(ancientDir, stateFreezerName), "eth/db/state", readOnly, offset, stateHistoryTableSize, stateFreezerNoSnappy)
 }

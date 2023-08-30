@@ -25,7 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
-//	"golang.org/x/exp/slices"
+	"golang.org/x/exp/slices"
 )
 
 // testHasher is a test utility for computing root hash of a batch of state
@@ -117,7 +117,7 @@ func hash(states map[common.Hash][]byte) (common.Hash, []byte) {
 	for hash := range states {
 		hs = append(hs, hash)
 	}
-	// slices.SortFunc(hs, common.Hash.Cmp)
+	slices.SortFunc(hs, common.Hash.Cmp)
 
 	var input []byte
 	for _, hash := range hs {

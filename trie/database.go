@@ -37,8 +37,8 @@ type Config struct {
 	HashDB    *hashdb.Config // Configs for hash-based scheme
 	PathDB    *pathdb.Config // Configs for experimental path-based scheme
 
-        NoTries   bool
-
+	Cache     int            // Memory allowance (MB) to use for caching trie nodes in memory
+	NoTries   bool
 	// Testing hooks
 	OnCommit func(states *triestate.Set) // Hook invoked when commit is performed
 }
