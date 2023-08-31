@@ -187,7 +187,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				snapMux.RLock()
 				blob := snapAccounts[diffAccount]
 				snapMux.RUnlock()
-				addrHash := crypto.Keccak256Hash(diffAccount[:])
+				// addrHash := crypto.Keccak256Hash(diffAccount[:])
 				latestAccount, err := snapshot.FullAccount(blob)
 				if err != nil {
 					errChan <- err
@@ -254,7 +254,7 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 				//update storage
 				latestRoot := common.BytesToHash(latestAccount.Root)
 				if latestRoot != previousAccount.Root {
-					accountTrie, err := statedb.Database().OpenStorageTrie(statedb.GetOriginalRoot(), addrHash, previousAccount.Root)
+					accountTrie, err := statedb.Database().OpenStorageTrie(statedb.GetOriginalRoot(), diffAccount, previousAccount.Root)
 					if err != nil {
 						errChan <- err
 						return
@@ -416,7 +416,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			bloomProcessors.Close()
 			return statedb, nil, nil, 0, err
 		}
-		statedb.Prepare(tx.Hash(), i)
+		statedb.SetTxContext(tx.Hash(), i)
 
 		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, bloomProcessors)
 		if err != nil {
@@ -478,7 +478,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 
 	// Set the receipt logs and create the bloom filter.
 	// receipt.Logs = statedb.GetLogs(tx.Hash(), blockNumber.Uint64(), blockHash)
-	receipt.Logs = statedb.GetLogs(tx.Hash(), blockHash)
+	receipt.Logs = statedb.GetLogs(tx.Hash(), blockNumber.Uint64(), blockHash)
 	receipt.BlockHash = blockHash
 	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())

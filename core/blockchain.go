@@ -328,7 +328,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		db:          db,
 		triedb:      triedb,
 		triegc:      prque.New[int64, common.Hash](nil),
-		stateCache: state.NewDatabaseWithNodeDB(db, trieConfig, triedb),
+		stateCache: state.NewDatabaseWithNodeDB(db, triedb, trieConfig),
 		triesInMemory:         cacheConfig.TriesInMemory,
 		quit:                  make(chan struct{}),
 		chainmu:               syncx.NewClosableMutex(),

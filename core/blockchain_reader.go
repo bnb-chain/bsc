@@ -327,8 +327,8 @@ func (bc *BlockChain) TrieNode(hash common.Hash) ([]byte, error) {
 
 // ContractCode retrieves a blob of data associated with a contract hash
 // either from ephemeral in-memory cache, or from persistent storage.
-func (bc *BlockChain) ContractCode(hash common.Hash) ([]byte, error) {
-	return bc.stateCache.ContractCode(common.Hash{}, hash)
+func (bc *BlockChain) ContractCode(addr common.Address, hash common.Hash) ([]byte, error) {
+	return bc.stateCache.ContractCode(addr, hash)
 }
 
 // ContractCodeWithPrefix retrieves a blob of data associated with a contract

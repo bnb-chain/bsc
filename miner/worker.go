@@ -857,7 +857,7 @@ LOOP:
 			continue
 		}
 		// Start executing the transaction
-		env.state.Prepare(tx.Hash(), env.tcount)
+		env.state.SetTxContext(tx.Hash(), env.tcount)
 
 		from, _ := types.Sender(env.signer, tx)
 

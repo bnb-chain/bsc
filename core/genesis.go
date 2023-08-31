@@ -197,7 +197,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
                 NoTries:   cacheConfig.NoTries,
         }
 
-	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, config, triedb), nil); err != nil {
+	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, triedb, config), nil); err != nil {
 //	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, nil, nil), nil); err != nil {
 		if genesis == nil {
 			genesis = DefaultGenesisBlock()
@@ -345,7 +345,7 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
         triedb := trie.NewDatabase(db, config)
 	defer triedb.Close()
 
-	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithNodeDB(db, config, triedb), nil)
+	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithNodeDB(db, triedb, config), nil)
 	// statedb, err := state.New(common.Hash{}, state.NewDatabase(db), nil)
 	if err != nil {
 		panic(err)

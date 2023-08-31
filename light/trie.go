@@ -60,8 +60,8 @@ func (db *odrDatabase) OpenTrie(root common.Hash) (state.Trie, error) {
 	return &odrTrie{db: db, id: db.id}, nil
 }
 
-func (db *odrDatabase) OpenStorageTrie(state, addrHash, root common.Hash) (state.Trie, error) {
-	return &odrTrie{db: db, id: StorageTrieID(db.id, addrHash, root)}, nil
+func (db *odrDatabase) OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash) (state.Trie, error) {
+	return &odrTrie{db: db, id: StorageTrieID(db.id, address, root)}, nil
 }
 
 func (db *odrDatabase) CopyTrie(t state.Trie) state.Trie {
@@ -69,8 +69,7 @@ func (db *odrDatabase) CopyTrie(t state.Trie) state.Trie {
 	case *odrTrie:
 		cpy := &odrTrie{db: t.db, id: t.id}
 		if t.trie != nil {
-			cpytrie := *t.trie
-			cpy.trie = &cpytrie
+			cpy.trie = t.trie.Copy()
 		}
 		return cpy
 	default:
@@ -78,7 +77,7 @@ func (db *odrDatabase) CopyTrie(t state.Trie) state.Trie {
 	}
 }
 
-func (db *odrDatabase) ContractCode(addrHash, codeHash common.Hash) ([]byte, error) {
+func (db *odrDatabase) ContractCode(addr common.Address, codeHash common.Hash) ([]byte, error) {
 	if codeHash == sha3Nil {
 		return nil, nil
 	}
@@ -87,14 +86,14 @@ func (db *odrDatabase) ContractCode(addrHash, codeHash common.Hash) ([]byte, err
 		return code, nil
 	}
 	id := *db.id
-	id.AccKey = addrHash[:]
+	id.AccountAddress = addr[:]
 	req := &CodeRequest{Id: &id, Hash: codeHash}
 	err := db.backend.Retrieve(db.ctx, req)
 	return req.Data, err
 }
 
-func (db *odrDatabase) ContractCodeSize(addrHash, codeHash common.Hash) (int, error) {
-	code, err := db.ContractCode(addrHash, codeHash)
+func (db *odrDatabase) ContractCodeSize(addr common.Address, codeHash common.Hash) (int, error) {
+	code, err := db.ContractCode(addr, codeHash)
 	return len(code), err
 }
 
@@ -120,28 +119,35 @@ type odrTrie struct {
 
 func (t *odrTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
 	key = crypto.Keccak256(key)
-	var res []byte
+	var enc []byte
 	err := t.do(key, func() (err error) {
-		res, err = t.trie.Get(key)
+		enc, err = t.trie.Get(key)
 		return err
 	})
-	return res, err
+	if err != nil || len(enc) == 0 {
+		return nil, err
+	}
+	_, content, _, err := rlp.Split(enc)
+	return content, err
 }
 
 func (t *odrTrie) GetAccount(address common.Address) (*types.StateAccount, error) {
-	var res types.StateAccount
-	key := crypto.Keccak256(address.Bytes())
+	var (
+		enc []byte
+		key = crypto.Keccak256(address.Bytes())
+	)
 	err := t.do(key, func() (err error) {
-		value, err := t.trie.Get(key)
-		if err != nil {
-			return err
-		}
-		if value == nil {
-			return nil
-		}
-		return rlp.DecodeBytes(value, &res)
+		enc, err = t.trie.Get(key)
+		return err
 	})
-	return &res, err
+	if err != nil || len(enc) == 0 {
+		return nil, err
+	}
+	acct := new(types.StateAccount)
+	if err := rlp.DecodeBytes(enc, acct); err != nil {
+		return nil, err
+	}
+	return acct, nil
 }
 
 func (t *odrTrie) UpdateAccount(address common.Address, acc *types.StateAccount) error {
@@ -155,10 +161,15 @@ func (t *odrTrie) UpdateAccount(address common.Address, acc *types.StateAccount)
 	})
 }
 
+func (t *odrTrie) UpdateContractCode(_ common.Address, _ common.Hash, _ []byte) error {
+	return nil
+}
+
 func (t *odrTrie) UpdateStorage(_ common.Address, key, value []byte) error {
 	key = crypto.Keccak256(key)
+	v, _ := rlp.EncodeToBytes(value)
 	return t.do(key, func() error {
-		return t.trie.Update(key, value)
+		return t.trie.Update(key, v)
 	})
 }
 
@@ -210,8 +221,8 @@ func (t *odrTrie) do(key []byte, fn func() error) error {
 		var err error
 		if t.trie == nil {
 			var id *trie.ID
-			if len(t.id.AccKey) > 0 {
-				id = trie.StorageTrieID(t.id.StateRoot, common.BytesToHash(t.id.AccKey), t.id.Root)
+			if len(t.id.AccountAddress) > 0 {
+				id = trie.StorageTrieID(t.id.StateRoot, crypto.Keccak256Hash(t.id.AccountAddress), t.id.Root)
 			} else {
 				id = trie.StateTrieID(t.id.StateRoot)
 			}
@@ -247,8 +258,8 @@ func newNodeIterator(t *odrTrie, startkey []byte) trie.NodeIterator {
 	if t.trie == nil {
 		it.do(func() error {
 			var id *trie.ID
-			if len(t.id.AccKey) > 0 {
-				id = trie.StorageTrieID(t.id.StateRoot, common.BytesToHash(t.id.AccKey), t.id.Root)
+			if len(t.id.AccountAddress) > 0 {
+				id = trie.StorageTrieID(t.id.StateRoot, crypto.Keccak256Hash(t.id.AccountAddress), t.id.Root)
 			} else {
 				id = trie.StateTrieID(t.id.StateRoot)
 			}

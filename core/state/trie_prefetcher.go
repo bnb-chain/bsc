@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 const (
@@ -517,7 +516,7 @@ func (sf *subfetcher) loop() {
 	if sf.owner == (common.Hash{}) {
 		trie, err = sf.db.OpenTrie(sf.root)
 	} else {
-		trie, err = sf.db.OpenStorageTrie(sf.state, sf.owner, sf.root)
+		trie, err = sf.db.OpenStorageTrie(sf.state, sf.addr, sf.root)
 	}
 	if err != nil {
 		log.Debug("Trie prefetcher failed opening trie", "root", sf.root, "err", err)
@@ -531,11 +530,11 @@ func (sf *subfetcher) loop() {
 		case <-sf.wake:
 			// Subfetcher was woken up, retrieve any tasks to avoid spinning the lock
 			if sf.trie == nil {
-				if sf.owner == types.EmptyAddr {
+				if sf.owner == (common.Hash{}) {
 					sf.trie, err = sf.db.OpenTrie(sf.root)
 				} else {
 					// address is useless
-					sf.trie, err = sf.db.OpenStorageTrie(sf.state, sf.owner, sf.root)
+					sf.trie, err = sf.db.OpenStorageTrie(sf.state, sf.addr, sf.root)
 				}
 				if err != nil {
 					continue
