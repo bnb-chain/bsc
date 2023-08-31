@@ -46,8 +46,7 @@ func u64(val uint64) *uint64 { return &val }
 // contain invalid transactions
 func TestStateProcessorErrors(t *testing.T) {
 	var (
-		InitialBaseFee = int64(1000000000) // the value in go-ethereum, target tx hash is fixed in some cases, use this value to fix it
-		config         = &params.ChainConfig{
+		config = &params.ChainConfig{
 			ChainID:                       big.NewInt(1),
 			HomesteadBlock:                big.NewInt(0),
 			EIP150Block:                   big.NewInt(0),
@@ -240,13 +239,13 @@ func TestStateProcessorErrors(t *testing.T) {
 			},
 			{ // ErrMaxInitCodeSizeExceeded
 				txs: []*types.Transaction{
-					mkDynamicCreationTx(0, 500000, common.Big0, big.NewInt(InitialBaseFee), tooBigInitCode[:]),
+					mkDynamicCreationTx(0, 500000, common.Big0, big.NewInt(params.InitialBaseFeeForEthMainnet), tooBigInitCode[:]),
 				},
 				want: "could not apply tx 0 [0xd491405f06c92d118dd3208376fcee18a57c54bc52063ee4a26b1cf296857c25]: max initcode size exceeded: code size 49153 limit 49152",
 			},
 			{ // ErrIntrinsicGas: Not enough gas to cover init code
 				txs: []*types.Transaction{
-					mkDynamicCreationTx(0, 54299, common.Big0, big.NewInt(InitialBaseFee), make([]byte, 320)),
+					mkDynamicCreationTx(0, 54299, common.Big0, big.NewInt(params.InitialBaseFeeForEthMainnet), make([]byte, 320)),
 				},
 				want: "could not apply tx 0 [0xfd49536a9b323769d8472fcb3ebb3689b707a349379baee3e2ee3fe7baae06a1]: intrinsic gas too low: have 54299, want 54300",
 			},
