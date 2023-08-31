@@ -18,7 +18,6 @@ package miner // TOFIX
 
 import (
 	"math/big"
-	"math/rand"
 	"testing"
 	"time"
 
