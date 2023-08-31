@@ -301,7 +301,7 @@ func generateTestChain() []*types.Block {
 	db := rawdb.NewMemoryDatabase()
 	db.SetDiffStore(memorydb.New())
 	genesis.MustCommit(db)
-	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFaker(), vm.Config{}, nil, nil, core.EnablePersistDiff(860000))
+	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 	generate := func(i int, block *core.BlockGen) {
 		block.OffsetTime(5)
 		block.SetExtra([]byte("test"))

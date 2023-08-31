@@ -146,7 +146,7 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 	defer db.Close()
 	genesis := gspec.MustCommit(db)
 	// Initialize a fresh chain with only a genesis block
-	blockchain, err := core.NewBlockChain(db, config, gspec.Config, engine, vm.Config{}, nil, nil)
+	blockchain, err := core.NewBlockChain(db, config, gspec, nil, engine, vm.Config{}, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create chain: %v", err)
 	}
