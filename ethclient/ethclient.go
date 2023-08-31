@@ -624,7 +624,7 @@ func (ec *Client) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *
 	}
 	baseFee := make([]*big.Int, len(res.BaseFee))
 	for i, b := range res.BaseFee {
-		baseFee[i] = (*big.Int)(b)
+		baseFee[i] = big.NewInt(b.ToInt().Int64())
 	}
 	return &ethereum.FeeHistory{
 		OldestBlock:  (*big.Int)(res.OldestBlock),
