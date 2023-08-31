@@ -205,14 +205,6 @@ func (t *table) NewBatch() ethdb.Batch {
 	return &tableBatch{t.db.NewBatch(), t.prefix}
 }
 
-func (t *table) DiffStore() ethdb.KeyValueStore {
-	return nil
-}
-
-func (t *table) SetDiffStore(diff ethdb.KeyValueStore) {
-	panic("not implement")
-}
-
 // NewBatchWithSize creates a write-only database batch with pre-allocated buffer.
 func (t *table) NewBatchWithSize(size int) ethdb.Batch {
 	return &tableBatch{t.db.NewBatchWithSize(size), t.prefix}
