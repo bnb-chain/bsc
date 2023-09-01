@@ -71,13 +71,13 @@ type stateObject struct {
 	rootCorrected bool // To indicate whether the root has been corrected in pipecommit mode
 
 	// Write caches.
-	trie Trie // storage trie, which becomes non-nil on first access
-	code Code // contract bytecode, which gets set when code is loaded
+	trie                Trie      // storage trie, which becomes non-nil on first access
+	code                Code      // contract bytecode, which gets set when code is loaded
 	sharedOriginStorage *sync.Map // Point to the entry of the stateObject in sharedPool
-	originStorage  Storage // Storage cache of original entries to dedup rewrites, reset for every transaction
-	pendingStorage Storage // Storage entries that need to be flushed to disk, at the end of an entire block
-	dirtyStorage   Storage // Storage entries that have been modified in the current transaction execution
-	fakeStorage    Storage // Fake storage which constructed by caller for debugging purpose.
+	originStorage       Storage   // Storage cache of original entries to dedup rewrites, reset for every transaction
+	pendingStorage      Storage   // Storage entries that need to be flushed to disk, at the end of an entire block
+	dirtyStorage        Storage   // Storage entries that have been modified in the current transaction execution
+	fakeStorage         Storage   // Fake storage which constructed by caller for debugging purpose.
 
 	// Cache flags.
 	// When an object is marked suicided it will be deleted from the trie
@@ -182,7 +182,7 @@ func (s *stateObject) getTrie() (Trie, error) {
 }
 
 // GetState retrieves a value from the account storage trie.
-func (s *stateObject) GetState(key common.Hash) common.Hash {	// If the fake storage is set, only lookup the state here(in the debugging mode)
+func (s *stateObject) GetState(key common.Hash) common.Hash { // If the fake storage is set, only lookup the state here(in the debugging mode)
 	if s.fakeStorage != nil {
 		return s.fakeStorage[key]
 	}
@@ -362,7 +362,8 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		var v []byte
 		if value != (common.Hash{}) {
 			// Encoding []byte cannot fail, ok to ignore the error.
-			v = common.TrimLeftZeroes(value[:])
+			//v = common.TrimLeftZeroes(value[:])
+			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
 		}
 		dirtyStorage[key] = v
 	}

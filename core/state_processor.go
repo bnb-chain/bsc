@@ -29,7 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -90,7 +89,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		signer  = types.MakeSigner(p.config, header.Number, header.Time)
 		txNum   = len(block.Transactions())
 	)
-	log.Info("00000000", "tx_num", txNum, "Coinbase", header.Coinbase)
+
 	// Iterate over and process the individual transactions
 	posa, isPoSA := p.engine.(consensus.PoSA)
 	commonTxs := make([]*types.Transaction, 0, txNum)
@@ -125,7 +124,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			bloomProcessors.Close()
 			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
-		log.Info("44444444444", "i", i, "receipt_txIdx", receipt.TransactionIndex)
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
 	}
