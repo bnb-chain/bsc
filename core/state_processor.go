@@ -103,16 +103,12 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	systemTxs := make([]*types.Transaction, 0, 2)
 
 	for i, tx := range block.Transactions() {
-		sender, _ := types.Sender(signer, tx)
-		log.Info("1111111111", "i", i, "sender", sender, "tx_hash", tx.Hash())
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
 				bloomProcessors.Close()
-				log.Info("aaaaaaaaa", "i", i, "error", err)
 				return statedb, nil, nil, 0, err
 			} else if isSystemTx {
 				systemTxs = append(systemTxs, tx)
-				log.Info("bbbbbbbbb", "i", i, "systemTxs", len(systemTxs))
 				continue
 			}
 		}
@@ -120,17 +116,13 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 		if err != nil {
 			bloomProcessors.Close()
-			log.Info("cccccccccc", "i", i, "error", err)
 			return statedb, nil, nil, 0, err
 		}
-		log.Info("2222222222", "i", i, "tx_from", msg.From)
-		log.Info("3333333333", "i", i, "tx_to", *msg.To)
 		statedb.SetTxContext(tx.Hash(), i)
 
 		receipt, err := applyTransaction(msg, p.config, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, bloomProcessors)
 		if err != nil {
 			bloomProcessors.Close()
-			log.Info("ddddddddddddd", "i", i, "error", err)
 			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		log.Info("44444444444", "i", i, "receipt_txIdx", receipt.TransactionIndex)
@@ -142,21 +134,18 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Fail if Shanghai not enabled and len(withdrawals) is non-zero.
 	withdrawals := block.Withdrawals()
 	if len(withdrawals) > 0 && !p.config.IsShanghai(block.Number(), block.Time()) {
-		log.Info("555555555555")
 		return nil, nil, nil, 0, errors.New("withdrawals before shanghai")
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	err := p.engine.Finalize(p.bc, header, statedb, commonTxs, block.Uncles(), withdrawals, &receipts, systemTxs, usedGas)
 	if err != nil {
-		log.Info("66666666666", "error", err)
 		return statedb, receipts, allLogs, *usedGas, err
 	}
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 
-	log.Info("777777", "receipts_len", len(receipts), "logs_len", len(allLogs))
 	return statedb, receipts, allLogs, *usedGas, nil
 }
 
