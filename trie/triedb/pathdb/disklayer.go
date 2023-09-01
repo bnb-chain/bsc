@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -54,7 +53,7 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *fastcache.C
 		root:   root,
 		id:     id,
 		db:     db,
-		cleans: cleans,
+		cleans: nil,
 		buffer: buffer,
 	}
 }

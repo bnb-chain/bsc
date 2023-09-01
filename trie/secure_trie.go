@@ -19,11 +19,9 @@ package trie
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
-	"github.com/status-im/keycard-go/hexutils"
 )
 
 // SecureTrie is the old name of StateTrie.
@@ -195,7 +193,6 @@ func (t *StateTrie) MustDelete(key []byte) {
 // If a node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) DeleteStorage(addr common.Address, key []byte) error {
 	hk := t.hashKey(key)
-	log.Info("DeleteStorage", " address", addr.String(), "key: ", hexutils.BytesToHex(key), "hk: ", hexutils.BytesToHex(hk))
 	delete(t.getSecKeyCache(), string(hk))
 	return t.trie.Delete(hk)
 }
