@@ -2247,7 +2247,7 @@ func ParseStateScheme(ctx *cli.Context, disk ethdb.Database) (string, error) {
 	// with persistent state, or fallback to hash mode if database
 	// is empty.
 	stored := rawdb.ReadStateScheme(disk)
-	if !ctx.IsSet(StateSchemeFlag.Name) {
+	if !ctx.GlobalIsSet(StateSchemeFlag.Name) {
 		if stored == "" {
 			// use default scheme for empty database, flip it when
 			// path mode is chosen as default
