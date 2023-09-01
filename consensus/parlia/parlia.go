@@ -281,6 +281,7 @@ func New(
 		signer:                     types.LatestSigner(chainConfig),
 	}
 
+	log.Info("tttttttttttt")
 	return c
 }
 
@@ -1080,6 +1081,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	if header.Number.Cmp(common.Big1) == 0 {
 		err := p.initContract(state, header, cx, &txs, &receipts, &systemTxs, usedGas, false)
+		log.Info("fff1111", "receipts_len", len(receipts), "error", err)
 		if err != nil {
 			log.Error("init contract failed")
 		}
@@ -1101,6 +1103,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		if !signedRecently {
 			log.Trace("slash validator", "block hash", header.Hash(), "address", spoiledVal)
 			err = p.slash(spoiledVal, state, header, cx, &txs, &receipts, &systemTxs, usedGas, false)
+			log.Info("fff2222", "receipts_len", len(receipts), "error", err)
 			if err != nil {
 				// it is possible that slash validator failed because of the slash channel is disabled.
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
@@ -1109,14 +1112,17 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 	val := header.Coinbase
 	err = p.distributeIncoming(val, state, header, cx, &txs, &receipts, &systemTxs, usedGas, false)
+	log.Info("fff33333", "receipts_len", len(receipts), "error", err)
 	if err != nil {
 		return err
 	}
 
 	if p.chainConfig.IsPlato(header.Number) {
 		if err := p.distributeFinalityReward(chain, state, header, cx, &txs, &receipts, &systemTxs, usedGas, false); err != nil {
+			log.Info("fff44444", "receipts_len", len(receipts), "error", err)
 			return err
 		}
+		log.Info("fff555555", "receipts_len", len(receipts), "error", err)
 	}
 	if len(systemTxs) > 0 {
 		return errors.New("the length of systemTxs do not match")
