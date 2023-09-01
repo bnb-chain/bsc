@@ -168,7 +168,7 @@ var eth66 = map[uint64]msgHandler{
 	NewBlockHashesMsg:             handleNewBlockhashes,
 	NewBlockMsg:                   handleNewBlock,
 	TransactionsMsg:               handleTransactions,
-	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes,
+	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes66,
 	GetBlockHeadersMsg:            handleGetBlockHeaders66,
 	BlockHeadersMsg:               handleBlockHeaders66,
 	GetBlockBodiesMsg:             handleGetBlockBodies66,
@@ -181,9 +181,40 @@ var eth66 = map[uint64]msgHandler{
 	PooledTransactionsMsg:         handlePooledTransactions66,
 }
 
+var eth67 = map[uint64]msgHandler{
+	NewBlockHashesMsg:             handleNewBlockhashes,
+	NewBlockMsg:                   handleNewBlock,
+	TransactionsMsg:               handleTransactions,
+	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes66,
+	GetBlockHeadersMsg:            handleGetBlockHeaders66,
+	BlockHeadersMsg:               handleBlockHeaders66,
+	GetBlockBodiesMsg:             handleGetBlockBodies66,
+	BlockBodiesMsg:                handleBlockBodies66,
+	GetReceiptsMsg:                handleGetReceipts66,
+	ReceiptsMsg:                   handleReceipts66,
+	GetPooledTransactionsMsg:      handleGetPooledTransactions66,
+	PooledTransactionsMsg:         handlePooledTransactions66,
+}
+
+var eth68 = map[uint64]msgHandler{
+	NewBlockHashesMsg:             handleNewBlockhashes,
+	NewBlockMsg:                   handleNewBlock,
+	TransactionsMsg:               handleTransactions,
+	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes68,
+	GetBlockHeadersMsg:            handleGetBlockHeaders66,
+	BlockHeadersMsg:               handleBlockHeaders66,
+	GetBlockBodiesMsg:             handleGetBlockBodies66,
+	BlockBodiesMsg:                handleBlockBodies66,
+	GetReceiptsMsg:                handleGetReceipts66,
+	ReceiptsMsg:                   handleReceipts66,
+	GetPooledTransactionsMsg:      handleGetPooledTransactions66,
+	PooledTransactionsMsg:         handlePooledTransactions66,
+}
+
 // handleMessage is invoked whenever an inbound message is received from a remote
 // peer. The remote connection is torn down upon returning any error.
 func handleMessage(backend Backend, peer *Peer) error {
+	fmt.Println("Handling message from remote peer!")
 	// Read the next message from the remote peer, and ensure it's fully consumed
 	msg, err := peer.rw.ReadMsg()
 	if err != nil {
@@ -195,6 +226,14 @@ func handleMessage(backend Backend, peer *Peer) error {
 	defer msg.Discard()
 
 	var handlers = eth66
+	if peer.Version() == ETH67 {
+		fmt.Println("verion 67 :( ")
+		handlers = eth67
+	}
+	if peer.Version() >= ETH68 {
+		fmt.Println("eth68!!")
+		handlers = eth68
+	}
 
 	// Track the amount of time it takes to serve the request and run the handler
 	if metrics.Enabled {
@@ -209,6 +248,7 @@ func handleMessage(backend Backend, peer *Peer) error {
 		}(time.Now())
 	}
 	if handler := handlers[msg.Code]; handler != nil {
+		fmt.Println("msg.Code, handler: ", msg.Code, handler)
 		return handler(backend, msg, peer)
 	}
 	return fmt.Errorf("%w: %v", errInvalidMsgCode, msg.Code)
