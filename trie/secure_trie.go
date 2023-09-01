@@ -156,7 +156,13 @@ func (t *StateTrie) MustUpdate(key, value []byte) {
 // If a node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) UpdateStorage(addr common.Address, key, value []byte) error {
 	hk := t.hashKey(key)
-	v, _ := rlp.EncodeToBytes(value)
+	var v []byte
+	if common.BytesToHash(value) != (common.Hash{}) {
+		v, _ = rlp.EncodeToBytes(value)
+	} else {
+		v = value
+	}
+
 	log.Info("UpdateStorage", "address: ", addr.String(), "key: ", hexutils.BytesToHex(key), "hk: ", hexutils.BytesToHex(hk), "val: ", hexutils.BytesToHex(value), "rlp_val", hexutils.BytesToHex(v))
 	err := t.trie.Update(hk, v)
 	if err != nil {
