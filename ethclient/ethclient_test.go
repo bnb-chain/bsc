@@ -183,25 +183,25 @@ func TestToFilterArg(t *testing.T) {
 }
 
 var (
-	testKey, _     = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
-	testAddr       = crypto.PubkeyToAddress(testKey.PublicKey)
-	testBalance    = big.NewInt(2e15)
-	gasPriceBlock1 = int64(2)
-	testBlockNum   = 128
-	testBlocks     = []testBlockParam{
+	testKey, _   = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	testAddr     = crypto.PubkeyToAddress(testKey.PublicKey)
+	testBalance  = big.NewInt(2e18)
+	testGasPrice = big.NewInt(3e9) // 3Gwei
+	testBlockNum = 128
+	testBlocks   = []testBlockParam{
 		{
 			blockNr: 1,
 			txs: []testTransactionParam{
 				{
 					to:       common.Address{0x10},
 					value:    big.NewInt(0),
-					gasPrice: big.NewInt(gasPriceBlock1),
+					gasPrice: testGasPrice,
 					data:     nil,
 				},
 				{
 					to:       common.Address{0x11},
 					value:    big.NewInt(0),
-					gasPrice: big.NewInt(gasPriceBlock1),
+					gasPrice: testGasPrice,
 					data:     nil,
 				},
 			},
@@ -472,7 +472,7 @@ func testBalanceAt(t *testing.T, client *rpc.Client) {
 		"valid_account": {
 			account: testAddr,
 			block:   big.NewInt(1),
-			want:    big.NewInt(0).Sub(testBalance, big.NewInt(2*21000*gasPriceBlock1)),
+			want:    big.NewInt(0).Sub(testBalance, big.NewInt(0).Mul(big.NewInt(2*21000), testGasPrice)),
 		},
 		"non_existent_account": {
 			account: common.Address{1},
@@ -611,7 +611,7 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gasPrice.Cmp(big.NewInt(1000000000)) != 0 {
+	if gasPrice.Cmp(testGasPrice) != 0 {
 		t.Fatalf("unexpected gas price: %v", gasPrice)
 	}
 
@@ -620,7 +620,7 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gasTipCap.Cmp(big.NewInt(1000000000)) != 0 {
+	if gasTipCap.Cmp(testGasPrice) != 0 {
 		t.Fatalf("unexpected gas tip cap: %v", gasTipCap)
 	}
 
@@ -633,8 +633,8 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 		OldestBlock: big.NewInt(2),
 		Reward: [][]*big.Int{
 			{
-				big.NewInt(2),
-				big.NewInt(2),
+				testGasPrice,
+				testGasPrice,
 			},
 		},
 		BaseFee: []*big.Int{
