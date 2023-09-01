@@ -2707,7 +2707,7 @@ func (bc *BlockChain) InsertHeaderChain(chain []*types.Header) (int, error) {
 func (bc *BlockChain) TriesInMemory() uint64 { return bc.triesInMemory }
 
 func EnablePipelineCommit(bc *BlockChain) (*BlockChain, error) {
-	bc.pipeCommit = true
+	bc.pipeCommit = false
 	return bc, nil
 }
 

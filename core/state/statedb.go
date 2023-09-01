@@ -1687,10 +1687,10 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 		go commmitTrie()
 	} else {
 		defer s.StopPrefetcher()
-		commitFuncs = append(commitFuncs, commmitTrie)
 	}
 	commitRes := make(chan error, len(commitFuncs))
 	for _, f := range commitFuncs {
+		// commitFuncs[0] and commitFuncs[1] both read map `stateObjects`, but no conflicts
 		tmpFunc := f
 		go func() {
 			commitRes <- tmpFunc()
@@ -1702,6 +1702,9 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 			return common.Hash{}, r
 		}
 	}
+	// commitFuncs[1] and commmitTrie concurrent map `storages` iteration and map write
+	commmitTrie()
+
 	root := s.stateRoot
 	if s.pipeCommit {
 		root = s.expectedRoot
