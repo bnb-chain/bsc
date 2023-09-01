@@ -147,7 +147,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	err := p.engine.Finalize(p.bc, header, statedb, commonTxs, block.Uncles(), withdrawals, receipts, systemTxs, usedGas)
+	err := p.engine.Finalize(p.bc, header, statedb, commonTxs, block.Uncles(), withdrawals, &receipts, systemTxs, usedGas)
 	if err != nil {
 		log.Info("66666666666", "error", err)
 		return statedb, receipts, allLogs, *usedGas, err
