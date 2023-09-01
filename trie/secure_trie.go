@@ -156,7 +156,7 @@ func (t *StateTrie) MustUpdate(key, value []byte) {
 func (t *StateTrie) UpdateStorage(addr common.Address, key, value []byte) error {
 	hk := t.hashKey(key)
 	v, _ := rlp.EncodeToBytes(value)
-	log.Info("address: ", addr, "key: ", key, "hk: ", hk, "val: ", value, "rlp_val", v)
+	log.Info("UpdateStorage address: ", addr, "key: ", key, "hk: ", hk, "val: ", value, "rlp_val", v)
 	err := t.trie.Update(hk, v)
 	if err != nil {
 		return err
@@ -194,8 +194,9 @@ func (t *StateTrie) MustDelete(key []byte) {
 // DeleteStorage removes any existing storage slot from the trie.
 // If the specified trie node is not in the trie, nothing will be changed.
 // If a node is not found in the database, a MissingNodeError is returned.
-func (t *StateTrie) DeleteStorage(_ common.Address, key []byte) error {
+func (t *StateTrie) DeleteStorage(addr common.Address, key []byte) error {
 	hk := t.hashKey(key)
+	log.Info("Storage address", addr, "key: ", key, "hk: ", hk)
 	delete(t.getSecKeyCache(), string(hk))
 	return t.trie.Delete(hk)
 }
