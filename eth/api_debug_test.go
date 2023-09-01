@@ -35,8 +35,13 @@ import (
 
 var dumper = spew.ConfigState{Indent: "    "}
 
+<<<<<<< HEAD
 func accountRangeTest(t *testing.T, trie *state.Trie, statedb *state.StateDB, start common.Hash, requestedNum int, expectedNum int) state.IteratorDump {
 	result := statedb.IteratorDump(&state.DumpConfig{
+=======
+func accountRangeTest(t *testing.T, statedb *state.StateDB, start common.Hash, requestedNum int, expectedNum int) state.Dump {
+	result := statedb.RawDump(&state.DumpConfig{
+>>>>>>> b5007068d (core, cmd, accounts, eth, light, trie: seperate out CodeStore interface)
 		SkipCode:          true,
 		SkipStorage:       true,
 		OnlyWithAddresses: false,
@@ -62,11 +67,13 @@ func TestAccountRange(t *testing.T) {
 	t.Parallel()
 
 	var (
-		statedb = state.NewDatabaseWithConfig(rawdb.NewMemoryDatabase(), &trie.Config{Preimages: true})
-		sdb, _  = state.New(types.EmptyRootHash, statedb, nil)
-		addrs   = [AccountRangeMaxResults * 2]common.Address{}
-		m       = map[common.Address]bool{}
+		disk   = rawdb.NewMemoryDatabase()
+		tdb    = trie.NewDatabase(disk, &trie.Config{Preimages: true})
+		sdb, _ = state.New(types.EmptyRootHash, state.NewDatabase(state.NewCodeDB(disk), tdb), nil)
+		addrs  = [AccountRangeMaxResults * 2]common.Address{}
+		m      = map[common.Address]bool{}
 	)
+	defer tdb.Close()
 
 	for i := range addrs {
 		hash := common.HexToHash(fmt.Sprintf("%x", i))
@@ -79,19 +86,20 @@ func TestAccountRange(t *testing.T) {
 			m[addr] = true
 		}
 	}
+<<<<<<< HEAD
 	sdb.Finalise(true)
 	sdb.AccountsIntermediateRoot()
 	root, _, _ := sdb.Commit(0, nil)
 	sdb, _ = state.New(root, statedb, nil)
+=======
+	root, _ := sdb.Commit(0, true)
+	sdb, _ = state.New(root, state.NewDatabase(state.NewCodeDB(disk), tdb), nil)
+>>>>>>> b5007068d (core, cmd, accounts, eth, light, trie: seperate out CodeStore interface)
 
-	trie, err := statedb.OpenTrie(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	accountRangeTest(t, &trie, sdb, common.Hash{}, AccountRangeMaxResults/2, AccountRangeMaxResults/2)
+	accountRangeTest(t, sdb, common.Hash{}, AccountRangeMaxResults/2, AccountRangeMaxResults/2)
 	// test pagination
-	firstResult := accountRangeTest(t, &trie, sdb, common.Hash{}, AccountRangeMaxResults, AccountRangeMaxResults)
-	secondResult := accountRangeTest(t, &trie, sdb, common.BytesToHash(firstResult.Next), AccountRangeMaxResults, AccountRangeMaxResults)
+	firstResult := accountRangeTest(t, sdb, common.Hash{}, AccountRangeMaxResults, AccountRangeMaxResults)
+	secondResult := accountRangeTest(t, sdb, common.BytesToHash(firstResult.Next), AccountRangeMaxResults, AccountRangeMaxResults)
 
 	hList := make([]common.Hash, 0)
 	for addr1 := range firstResult.Accounts {
@@ -109,7 +117,7 @@ func TestAccountRange(t *testing.T) {
 	// set and get an even split between the first and second sets.
 	slices.SortFunc(hList, common.Hash.Cmp)
 	middleH := hList[AccountRangeMaxResults/2]
-	middleResult := accountRangeTest(t, &trie, sdb, middleH, AccountRangeMaxResults, AccountRangeMaxResults)
+	middleResult := accountRangeTest(t, sdb, middleH, AccountRangeMaxResults, AccountRangeMaxResults)
 	missing, infirst, insecond := 0, 0, 0
 	for h := range middleResult.Accounts {
 		if _, ok := firstResult.Accounts[h]; ok {
@@ -135,7 +143,7 @@ func TestEmptyAccountRange(t *testing.T) {
 	t.Parallel()
 
 	var (
-		statedb = state.NewDatabase(rawdb.NewMemoryDatabase())
+		statedb = state.NewDatabaseForTesting(rawdb.NewMemoryDatabase())
 		st, _   = state.New(types.EmptyRootHash, statedb, nil)
 	)
 	// Commit(although nothing to flush) and re-init the statedb
@@ -162,9 +170,17 @@ func TestStorageRangeAt(t *testing.T) {
 
 	// Create a state where account 0x010000... has a few storage entries.
 	var (
+<<<<<<< HEAD
 		state, _ = state.New(types.EmptyRootHash, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
 		addr     = common.Address{0x01}
 		keys     = []common.Hash{ // hashes of Keys of storage
+=======
+		disk   = rawdb.NewMemoryDatabase()
+		tdb    = trie.NewDatabase(disk, &trie.Config{Preimages: true})
+		sdb, _ = state.New(types.EmptyRootHash, state.NewDatabase(state.NewCodeDB(disk), tdb), nil)
+		addr   = common.Address{0x01}
+		keys   = []common.Hash{ // hashes of Keys of storage
+>>>>>>> b5007068d (core, cmd, accounts, eth, light, trie: seperate out CodeStore interface)
 			common.HexToHash("340dd630ad21bf010b4e676dbfa9ba9a02175262d1fa356232cfde6cb5b47ef2"),
 			common.HexToHash("426fcb404ab2d5d8e61a3d918108006bbb0a9be65e92235bb10eefbdb6dcd053"),
 			common.HexToHash("48078cfed56339ea54962e72c37c7f588fc4f8e5bc173827ba75cb10a63a96a5"),
@@ -177,9 +193,16 @@ func TestStorageRangeAt(t *testing.T) {
 			keys[3]: {Key: &common.Hash{0x03}, Value: common.Hash{0x04}},
 		}
 	)
+	defer tdb.Close()
+
 	for _, entry := range storage {
 		state.SetState(addr, *entry.Key, entry.Value)
 	}
+<<<<<<< HEAD
+=======
+	root, _ := sdb.Commit(0, false)
+	sdb, _ = state.New(root, state.NewDatabase(state.NewCodeDB(disk), tdb), nil)
+>>>>>>> b5007068d (core, cmd, accounts, eth, light, trie: seperate out CodeStore interface)
 
 	// Check a few combinations of limit and start/end.
 	tests := []struct {

@@ -224,7 +224,7 @@ func pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 		}
 		log.Info("Database compaction finished", "elapsed", common.PrettyDuration(time.Since(cstart)))
 	}
-	statedb, _ := state.New(common.Hash{}, state.NewDatabase(maindb), nil)
+	statedb, _ := state.New(common.Hash{}, state.NewDatabase(state.NewCodeDB(maindb), trie.NewDatabase(maindb, nil)), nil)
 	for addr, account := range g.Alloc {
 		statedb.AddBalance(addr, account.Balance)
 		statedb.SetCode(addr, account.Code)

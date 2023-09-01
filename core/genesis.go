@@ -124,7 +124,9 @@ func (ga *GenesisAlloc) UnmarshalJSON(data []byte) error {
 func (ga *GenesisAlloc) hash() (common.Hash, error) {
 	// Create an ephemeral in-memory database for computing hash,
 	// all the derived states will be discarded to not pollute disk.
-	db := state.NewDatabase(rawdb.NewMemoryDatabase())
+	var config *trie.Config
+	memorydb := rawdb.NewMemoryDatabase()
+	db := state.NewDatabase(state.NewCodeDB(memorydb), trie.NewDatabase(memorydb, config))
 	statedb, err := state.New(types.EmptyRootHash, db, nil)
 	if err != nil {
 		return common.Hash{}, err
@@ -150,7 +152,7 @@ func (ga *GenesisAlloc) flush(db ethdb.Database, triedb *trie.Database, blockhas
 	if trieConfig != nil {
 		trieConfig.NoTries = false
 	}
-	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb), nil)
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabase(state.NewCodeDB(db), triedb), nil)
 	if err != nil {
 		return err
 	}
