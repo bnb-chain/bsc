@@ -19,6 +19,7 @@ package trie
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
@@ -152,9 +153,10 @@ func (t *StateTrie) MustUpdate(key, value []byte) {
 // stored in the trie.
 //
 // If a node is not found in the database, a MissingNodeError is returned.
-func (t *StateTrie) UpdateStorage(_ common.Address, key, value []byte) error {
+func (t *StateTrie) UpdateStorage(addr common.Address, key, value []byte) error {
 	hk := t.hashKey(key)
 	v, _ := rlp.EncodeToBytes(value)
+	log.Info("address: ", addr, "key: ", key, "hk: ", hk, "val: ", value, "rlp_val", v)
 	err := t.trie.Update(hk, v)
 	if err != nil {
 		return err
