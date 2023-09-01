@@ -362,7 +362,8 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		var v []byte
 		if value != (common.Hash{}) {
 			// Encoding []byte cannot fail, ok to ignore the error.
-			v = common.TrimLeftZeroes(value[:])
+			//v = common.TrimLeftZeroes(value[:])
+			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
 		}
 		dirtyStorage[key] = v
 	}
