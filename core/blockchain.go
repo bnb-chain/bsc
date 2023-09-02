@@ -306,6 +306,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		Cache:     cacheConfig.TrieCleanLimit,
 		Preimages: cacheConfig.Preimages,
 	})
+	log.Info("blockchain open triedb", "scheme", triedb.Scheme())
 	// Setup the genesis block, commit the provided genesis specification
 	// to database if the genesis block is not present yet, or load the
 	// stored one from database.

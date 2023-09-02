@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -144,6 +143,7 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		}
 		db.backend = hashdb.New(diskdb, config.HashDB, mptResolver{})
 	}
+	log.Info("open triedb", "scheme", db.Scheme())
 	return db
 }
 

@@ -53,7 +53,7 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *fastcache.C
 		root:   root,
 		id:     id,
 		db:     db,
-		cleans: nil,
+		cleans: cleans,
 		buffer: buffer,
 	}
 }

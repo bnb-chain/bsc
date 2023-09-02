@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 //go:generate go run github.com/fjl/gencodec -type Genesis -field-override genesisSpecMarshaling -out gen_genesis.go
@@ -127,7 +128,7 @@ func (ga *GenesisAlloc) UnmarshalJSON(data []byte) error {
 func (ga *GenesisAlloc) deriveHash() (common.Hash, error) {
 	// Create an ephemeral in-memory database for computing hash,
 	// all the derived states will be discarded to not pollute disk.
-	db := state.NewDatabase(rawdb.NewMemoryDatabase())
+	db := state.NewDatabaseWithConfig(rawdb.NewMemoryDatabase(), &trie.Config{PathDB: pathdb.Defaults})
 	statedb, err := state.New(types.EmptyRootHash, db, nil)
 	if err != nil {
 		return common.Hash{}, err
