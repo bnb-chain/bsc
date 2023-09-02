@@ -99,24 +99,46 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 	}
 	defer dbBack.Close()
 
+	// Check the absence of genesis
+	genesis, err := dbBack.Ancient("hashes", 0)
+	if err == nil {
+		t.Fatalf("not-nill error expected while fething genesis")
+	}
+	if len(genesis) != 0 {
+		t.Fatalf("got genesis but should be absent")
+	}
+
 	//check against if the backup data matched original one
 	for blockNumber := startBlockNumber; blockNumber < startBlockNumber+amountReserved; blockNumber++ {
-		blockHash := rawdb.ReadCanonicalHash(dbBack, blockNumber)
-		block := rawdb.ReadBlock(dbBack, blockHash, blockNumber)
+		// blockHash := rawdb.ReadCanonicalHash(dbBack, blockNumber)
+		// block := rawdb.ReadBlock(dbBack, blockHash, blockNumber)
 
-		if block.Hash() != blockHash {
+		// Fetch the data explicitly from ancient db instead of `ReadCanonicalHash` because it
+		// will pull data from leveldb if not found in ancient.
+		blockHash, err := dbBack.Ancient("hashes", blockNumber)
+		if err != nil {
+			t.Fatalf("error fetching block hash from ancient db: %v", err)
+		}
+
+		// We can proceed with fetching other things via generic functions because if
+		// the block wouldn't have been there in ancient db, the function above to get
+		// block hash itself would've thrown error.
+		hash := common.BytesToHash(blockHash)
+		block := rawdb.ReadBlock(dbBack, hash, blockNumber)
+
+		if block.Hash() != hash {
 			t.Fatalf("block data did not match between oldDb and backupDb")
 		}
-		if blockList[blockNumber-startBlockNumber].Hash() != blockHash {
+		if blockList[blockNumber-startBlockNumber].Hash() != hash {
 			t.Fatalf("block data did not match between oldDb and backupDb")
 		}
 
-		receipts := rawdb.ReadRawReceipts(dbBack, blockHash, blockNumber)
+		receipts := rawdb.ReadRawReceipts(dbBack, hash, blockNumber)
 		if err := checkReceiptsRLP(receipts, receiptsList[blockNumber-startBlockNumber]); err != nil {
 			t.Fatalf("receipts did not match between oldDb and backupDb")
 		}
 		// // Calculate the total difficulty of the block
-		td := rawdb.ReadTd(dbBack, blockHash, blockNumber)
+		td := rawdb.ReadTd(dbBack, hash, blockNumber)
 		if td == nil {
 			t.Fatalf("Failed to ReadTd: %v", consensus.ErrUnknownAncestor)
 		}
