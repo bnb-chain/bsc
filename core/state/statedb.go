@@ -96,11 +96,11 @@ type StateDB struct {
 
 	// These maps hold the state changes (including the corresponding
 	// original value) that occurred in this **block**.
-	AccountMux     sync.Mutex                                // Mutex for accounts access
-	StorageMux     sync.Mutex                                // Mutex for storages access
-	accounts       map[common.Address][]byte                    // The mutated accounts in 'slim RLP' encoding
-	storages       map[common.Address]map[string][]byte    // The mutated slots in prefix-zero trimmed rlp format
-	accountsOrigin map[common.Address][]byte                 // The original value of mutated accounts in 'slim RLP' encoding
+	AccountMux     sync.Mutex                           // Mutex for accounts access
+	StorageMux     sync.Mutex                           // Mutex for storages access
+	accounts       map[common.Address][]byte            // The mutated accounts in 'slim RLP' encoding
+	storages       map[common.Address]map[string][]byte // The mutated slots in prefix-zero trimmed rlp format
+	accountsOrigin map[common.Address][]byte            // The original value of mutated accounts in 'slim RLP' encoding
 	storagesOrigin map[common.Address]map[string][]byte // The original value of mutated slots in prefix-zero trimmed rlp format
 
 	// This map holds 'live' objects, which will get modified while processing
@@ -1160,8 +1160,8 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			// Note, we can't do this only at the end of a block because multiple
 			// transactions within the same block might self destruct and then
 			// resurrect an account; but the snapshotter needs both events.
-			delete(s.accounts, obj.address)      // Clear out any previously updated account data (may be recreated via a resurrect)
-			delete(s.storages, obj.address)      // Clear out any previously updated storage data (may be recreated via a resurrect)
+			delete(s.accounts, obj.address)       // Clear out any previously updated account data (may be recreated via a resurrect)
+			delete(s.storages, obj.address)       // Clear out any previously updated storage data (may be recreated via a resurrect)
 			delete(s.accountsOrigin, obj.address) // Clear out any previously updated account data (may be recreated via a resurrect)
 			delete(s.storagesOrigin, obj.address) // Clear out any previously updated storage data (may be recreated via a resurrect)
 		} else {
@@ -1654,6 +1654,18 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				if root != types.EmptyRootHash {
 					s.db.CacheAccount(root, s.trie)
 				}
+
+				if root != s.originalRoot {
+					start := time.Now()
+					if err := s.db.TrieDB().Update(root, s.originalRoot, block, nodes, nil); err != nil {
+						log.Info("failed to update triedb", "err", err)
+						return err
+					}
+					s.originalRoot = root
+					if metrics.EnabledExpensive {
+						s.TrieDBCommits += time.Since(start)
+					}
+				}
 			}
 
 			for _, postFunc := range postCommitFuncs {
@@ -1997,38 +2009,38 @@ func copy2DSet[k comparable](set map[k]map[string][]byte) map[k]map[string][]byt
 
 // TODO we can further improve it when the set is very large
 func transformSnapData(destructs map[common.Address]*types.StateAccount, accounts map[common.Address][]byte,
-        storage map[common.Address]map[string][]byte) (map[common.Hash]struct{}, map[common.Hash][]byte,
-        map[common.Hash]map[common.Hash][]byte) {
-        hashDestructs := make(map[common.Hash]struct{}, len(destructs))
-        hashAccounts := make(map[common.Hash][]byte, len(accounts))
-        hashStorages := make(map[common.Hash]map[common.Hash][]byte, len(storage))
+	storage map[common.Address]map[string][]byte) (map[common.Hash]struct{}, map[common.Hash][]byte,
+	map[common.Hash]map[common.Hash][]byte) {
+	hashDestructs := make(map[common.Hash]struct{}, len(destructs))
+	hashAccounts := make(map[common.Hash][]byte, len(accounts))
+	hashStorages := make(map[common.Hash]map[common.Hash][]byte, len(storage))
 	hasher := crypto.NewKeccakState()
-        for addr := range destructs {
-                hashDestructs[crypto.Keccak256Hash(addr[:])] = struct{}{}
-        }
-        for addr, account := range accounts {
-                hashAccounts[crypto.Keccak256Hash(addr[:])] = account
-        }
-        for addr, accountStore := range storage {
-                hashStorage := make(map[common.Hash][]byte, len(accountStore))
-                for k, v := range accountStore {
-                        hashStorage[crypto.HashData(hasher, []byte(k))] = v
-                }
-                hashStorages[crypto.Keccak256Hash(addr[:])] = hashStorage
-        }
-        return hashDestructs, hashAccounts, hashStorages
+	for addr := range destructs {
+		hashDestructs[crypto.Keccak256Hash(addr[:])] = struct{}{}
+	}
+	for addr, account := range accounts {
+		hashAccounts[crypto.Keccak256Hash(addr[:])] = account
+	}
+	for addr, accountStore := range storage {
+		hashStorage := make(map[common.Hash][]byte, len(accountStore))
+		for k, v := range accountStore {
+			hashStorage[crypto.HashData(hasher, []byte(k))] = v
+		}
+		hashStorages[crypto.Keccak256Hash(addr[:])] = hashStorage
+	}
+	return hashDestructs, hashAccounts, hashStorages
 }
 
 // TODO:Rick
 func covertOriginStorageToHash(storage map[common.Address]map[string][]byte) map[common.Address]map[common.Hash][]byte {
-        hashStorages := make(map[common.Address]map[common.Hash][]byte, len(storage))
-        hasher := crypto.NewKeccakState()
-        for addr, accountStore := range storage {
-                hashStorage := make(map[common.Hash][]byte, len(accountStore))
-                for k, v := range accountStore {
-                        hashStorage[crypto.HashData(hasher, []byte(k))] = v
-                }
-                hashStorages[addr] = hashStorage
-        }
-        return hashStorages
+	hashStorages := make(map[common.Address]map[common.Hash][]byte, len(storage))
+	hasher := crypto.NewKeccakState()
+	for addr, accountStore := range storage {
+		hashStorage := make(map[common.Hash][]byte, len(accountStore))
+		for k, v := range accountStore {
+			hashStorage[crypto.HashData(hasher, []byte(k))] = v
+		}
+		hashStorages[addr] = hashStorage
+	}
+	return hashStorages
 }
