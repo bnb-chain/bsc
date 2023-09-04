@@ -1019,7 +1019,9 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	// in the middle of a transaction. However, it doesn't cost us much to copy
 	// empty lists, so we do it anyway to not blow up if we ever decide copy them
 	// in the middle of a transaction.
-	state.accessList = s.accessList.Copy()
+	if s.accessList != nil {
+		state.accessList = s.accessList.Copy()
+	}
 	state.transientStorage = s.transientStorage.Copy()
 
 	state.prefetcher = s.prefetcher
