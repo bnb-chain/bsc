@@ -121,6 +121,11 @@ var (
 		Usage: "Data directory for the databases and keystore",
 		Value: DirectoryString(node.DefaultDataDir()),
 	}
+        DBEngineFlag = cli.StringFlag{
+                Name:     "db.engine",
+                Usage:    "Backing database implementation to use ('pebble' or 'leveldb')",
+                Value:    node.DefaultConfig.DBEngine,
+        }
 	DirectBroadcastFlag = cli.BoolFlag{
 		Name:  "directbroadcast",
 		Usage: "Enable directly broadcast mined block to all peers",
@@ -2259,7 +2264,7 @@ func ParseStateScheme(ctx *cli.Context, disk ethdb.Database) (string, error) {
 	}
 	// If state scheme is specified, ensure it's compatible with
 	// persistent state.
-	scheme := ctx.String(StateSchemeFlag.Name)
+	scheme := ctx.GlobalString(StateSchemeFlag.Name)
 	if stored == "" || scheme == stored {
 		log.Info("State scheme set by user", "scheme", scheme)
 		return scheme, nil

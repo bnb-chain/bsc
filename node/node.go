@@ -656,7 +656,7 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient 
 		db = rawdb.NewMemoryDatabase()
 	} else {
 		db, err = rawdb.Open(rawdb.OpenOptions{
-			Type:              n.config.DBEngine,
+			Type:              "leveldb", //TODO Rick
 			Directory:         n.ResolvePath(name),
 			AncientsDirectory: n.ResolveAncient(name, ancient),
 			Namespace:         namespace,
