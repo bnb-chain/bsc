@@ -278,9 +278,6 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	}
 
 	// Commit block
-	statedb.Finalise(config.IsEIP158(block.Number()))
-	statedb.AccountsIntermediateRoot()
-	statedb.Commit(block.NumberU64(), nil)
 	// Add 0-value mining reward. This only makes a difference in the cases
 	// where
 	// - the coinbase self-destructed, or
@@ -289,6 +286,8 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	statedb.AddBalance(block.Coinbase(), new(big.Int))
 	// And _now_ get the state root
 	root := statedb.IntermediateRoot(config.IsEIP158(block.Number()))
+	statedb.SetExpectedStateRoot(root)
+	root, err = statedb.Commit(block.NumberU64(), nil)
 	return snaps, statedb, root, err
 }
 
