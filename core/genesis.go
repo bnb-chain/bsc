@@ -65,9 +65,9 @@ type Genesis struct {
 	Number        uint64      `json:"number"`
 	GasUsed       uint64      `json:"gasUsed"`
 	ParentHash    common.Hash `json:"parentHash"`
-	BaseFee       *big.Int    `json:"baseFeePerGas"` // EIP-1559
-	ExcessBlobGas *uint64     `json:"excessBlobGas"` // EIP-4844
-	BlobGasUsed   *uint64     `json:"blobGasUsed"`   // EIP-4844
+	BaseFee       *big.Int    `json:"baseFeePerGas"`                             // EIP-1559
+	ExcessBlobGas *uint64     `json:"excessBlobGas,omitempty" toml:",omitempty"` // EIP-4844, TODO: remove tag `omitempty` after cancun fork
+	BlobGasUsed   *uint64     `json:"blobGasUsed,omitempty" toml:",omitempty"`   // EIP-4844, TODO: remove tag `omitempty` after cancun fork
 }
 
 func ReadGenesis(db ethdb.Database) (*Genesis, error) {
