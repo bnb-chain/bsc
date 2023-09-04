@@ -110,10 +110,6 @@ func NewDatabaseWithConfig(diskdb ethdb.Database, config *Config) *Database {
 	return db
 }
 
-func (db *Database) Config() *Config {
-	return db.config
-}
-
 // Reader returns a reader for accessing all trie nodes with provided state root.
 // An error will be returned if the requested state is not available.
 func (db *Database) Reader(blockRoot common.Hash) (Reader, error) {

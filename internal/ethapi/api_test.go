@@ -1052,7 +1052,8 @@ func TestRPCMarshalBlock(t *testing.T) {
 }
 
 // test cases faied because of basefee logic
-func testRPCGetBlockOrHeader(t *testing.T) {
+/*
+func TestRPCGetBlockOrHeader(t *testing.T) {
 	t.Parallel()
 
 	// Initialize test accounts
@@ -1777,6 +1778,7 @@ func testRPCGetBlockOrHeader(t *testing.T) {
 		require.JSONEqf(t, want, have, "test %d: json not match, want: %s, have: %s", i, want, have)
 	}
 }
+*/
 
 func TestRPCGetTransactionReceipt(t *testing.T) {
 	t.Parallel()

@@ -281,15 +281,6 @@ func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchai
 		syncStartBlock: chain.CurrentSnapBlock().Number.Uint64(),
 	}
 
-	// it was for diff sync, which was abandoned.
-	/*
-		for _, option := range options {
-			if dl != nil {
-				dl = option(dl)
-			}
-		}
-	*/
-
 	go dl.stateFetcher()
 	return dl
 }

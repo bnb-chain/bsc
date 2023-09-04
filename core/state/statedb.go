@@ -173,8 +173,13 @@ func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*St
 
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
+	tr, err := db.OpenTrie(root)
+	if err != nil {
+		return nil, err
+	}
 	sdb := &StateDB{
 		db:                   db,
+		trie:                 tr,
 		originalRoot:         root,
 		snaps:                snaps,
 		accounts:             make(map[common.Hash][]byte),
@@ -197,13 +202,10 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 		sdb.snap = sdb.snaps.Snapshot(root)
 	}
 
-	snapVerified := sdb.snap != nil && sdb.snap.Verified()
-	tr, err := db.OpenTrie(root)
 	// return error when 1. failed to open trie and 2. the snap is nil or the snap is not nil and done verification
-	if err != nil && (sdb.snap == nil || snapVerified) {
+	if err != nil && (sdb.snap == nil || sdb.snap.Verified()) {
 		return nil, err
 	}
-	sdb.trie = tr
 	return sdb, nil
 }
 
