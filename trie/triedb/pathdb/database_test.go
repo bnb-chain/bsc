@@ -97,7 +97,7 @@ type tester struct {
 
 func newTester(t *testing.T) *tester {
 	var (
-		disk, _ = rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), t.TempDir(), "", false, false, false, false, true)
+		disk, _ = rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), t.TempDir(), "", false, false, false, false)
 		db      = New(disk, &Config{CleanSize: 256 * 1024, DirtySize: 256 * 1024})
 		obj     = &tester{
 			db:           db,

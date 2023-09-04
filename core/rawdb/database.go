@@ -217,7 +217,7 @@ func resolveChainFreezerDir(ancient string) string {
 // value data store with a freezer moving immutable chain segments into cold
 // storage. The passed ancient indicates the path of root ancient directory
 // where the chain freezer can be opened.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData, skipCheckFreezerType /*useless*/ bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
 	var offset uint64
 	// The offset of ancientDB should be handled differently in different scenarios.
 	if isLastOffset {
@@ -386,12 +386,12 @@ func NewLevelDBDatabase(file string, cache int, handles int, namespace string, r
 // indicates the path of root ancient directory where the chain freezer can be
 // opened.
 // just used for test now
-func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData, skipCheckFreezerType bool) (ethdb.Database, error) {
+func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
 	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
 	if err != nil {
 		return nil, err
 	}
-	frdb, err := NewDatabaseWithFreezer(kvdb, ancient, namespace, readonly, disableFreeze, isLastOffset, pruneAncientData, skipCheckFreezerType)
+	frdb, err := NewDatabaseWithFreezer(kvdb, ancient, namespace, readonly, disableFreeze, isLastOffset, pruneAncientData)
 	if err != nil {
 		kvdb.Close()
 		return nil, err
@@ -489,7 +489,7 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
-	frdb, err := NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData, true)
+	frdb, err := NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData)
 	if err != nil {
 		kvdb.Close()
 		return nil, err

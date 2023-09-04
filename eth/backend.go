@@ -138,7 +138,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// Assemble the Ethereum object
 	chainDb, err := stack.OpenDatabaseWithFreezer("chaindata", config.DatabaseCache, config.DatabaseHandles,
-		config.DatabaseFreezer, "eth/db/chaindata/", false, false, false, config.PruneAncientData, false)
+		config.DatabaseFreezer, "eth/db/chaindata/", false, false, false, config.PruneAncientData)
 	if err != nil {
 		return nil, err
 	}
