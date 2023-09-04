@@ -1917,9 +1917,9 @@ func (s *PublicTransactionPoolAPI) GetTransactionReceiptsByBlockNumber(ctx conte
 	for idx, receipt := range receipts {
 		tx := txs[idx]
 		var signer types.Signer = types.FrontierSigner{}
-		if tx.Protected() {
-			signer = types.NewEIP155Signer(tx.ChainId())
-		}
+		//if tx.Protected() {
+		//}
+		signer = types.NewEIP155Signer(tx.ChainId())
 		from, _ := types.Sender(signer, tx)
 
 		fields := map[string]interface{}{
