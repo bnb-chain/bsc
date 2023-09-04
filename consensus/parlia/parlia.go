@@ -1934,6 +1934,8 @@ func applyMessage(
 	chainConfig *params.ChainConfig,
 	chainContext core.ChainContext,
 ) (uint64, error) {
+	// TODO: state.Prepare should be called here, now accessList related EIP not affect systemtxs
+	// 		 EIP1153 may cause a critical issue in the future
 	// Create a new context to be used in the EVM environment
 	context := core.NewEVMBlockContext(header, chainContext, nil)
 	// Create a new environment which holds all relevant information
