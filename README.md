@@ -247,6 +247,35 @@ APIs!**
 - [BSC-Deploy](https://github.com/bnb-chain/node-deploy/): deploy tool for setting up both BNB Beacon Chain, BNB Smart Chain and the cross chain infrastructure between them.
 - [BSC-Docker](https://github.com/bnb-chain/bsc-docker): deploy tool for setting up local BSC cluster in container.
 
+
+## Running a bootnode
+
+Bootnodes are super-lightweight nodes that are not behind a NAT and are running just discovery protocol. When you start up a node it should log your enode, which is a public identifier that others can use to connect to your node. 
+
+First the bootnode requires a key, which can be created with the following command, which will save a key to boot.key:
+
+```
+bootnode -genkey boot.key
+```
+
+This key can then be used to generate a bootnode as follows:
+
+```
+bootnode -nodekey boot.key -addr :30311 -network bsc
+```
+
+The choice of port passed to -addr is arbitrary. 
+The bootnode command returns the following logs to the terminal, confirming that it is running:
+
+```
+enode://3063d1c9e1b824cfbb7c7b6abafa34faec6bb4e7e06941d218d760acdd7963b274278c5c3e63914bd6d1b58504c59ec5522c56f883baceb8538674b92da48a96@127.0.0.1:0?discport=30311
+Note: you're using cmd/bootnode, a developer tool.
+We recommend using a regular node as bootstrap node for production deployments.
+INFO [08-21|11:11:30.687] New local node record                    seq=1,692,616,290,684 id=2c9af1742f8f85ce ip=<nil> udp=0 tcp=0
+INFO [08-21|12:11:30.753] New local node record                    seq=1,692,616,290,685 id=2c9af1742f8f85ce ip=54.217.128.118 udp=30311 tcp=0
+INFO [09-01|02:46:26.234] New local node record                    seq=1,692,616,290,686 id=2c9af1742f8f85ce ip=34.250.32.100  udp=30311 tcp=0
+```
+
 ## Contribution
 
 Thank you for considering to help out with the source code! We welcome contributions
