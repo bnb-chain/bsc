@@ -52,6 +52,7 @@ var DefaultConfig = Config{
 		MaxPeersPerIP: 0, // by default, it will be same as MaxPeers
 		NAT:           nat.Any(),
 	},
+	DBEngine: "leveldb",
 }
 
 // DefaultDataDir is the default data directory to use for the databases and other

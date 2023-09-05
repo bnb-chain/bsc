@@ -610,11 +610,15 @@ func truncateFromHead(db ethdb.Batcher, freezer *rawdb.ResettableFreezer, nhead 
 // truncateFromTail removes the extra state histories from the tail with the given
 // parameters. It returns the number of items removed from the tail.
 func truncateFromTail(db ethdb.Batcher, freezer *rawdb.ResettableFreezer, ntail uint64) (int, error) {
+	head, err := freezer.Ancients()
+	if err != nil {
+		return 0, err
+	}
 	otail, err := freezer.Tail()
 	if err != nil {
 		return 0, err
 	}
-	if otail >= ntail {
+	if otail >= ntail || head <= ntail {
 		return 0, nil
 	}
 	// Load the meta objects in range [otail+1, ntail]

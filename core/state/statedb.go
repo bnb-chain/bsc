@@ -93,6 +93,7 @@ type StateDB struct {
 	lightProcessed bool
 	fullProcessed  bool
 	pipeCommit     bool
+	nodeSetMux     sync.Mutex                                // Mutex for accounts access
 
 	// These maps hold the state changes (including the corresponding
 	// original value) that occurred in this **block**.
@@ -1642,9 +1643,12 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				// that the account was destructed and then resurrected in the same block.
 				// In this case, the node set is shared by both accounts.
 				if res.nodeSet != nil {
+					s.nodeSetMux.Lock()
 					if err := nodes.Merge(res.nodeSet); err != nil {
+						s.nodeSetMux.Unlock()
 						return err
 					}
+					s.nodeSetMux.Unlock()
 				}
 			}
 			close(finishCh)
