@@ -1591,6 +1591,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}()
 
 	tryCommitTrieDB := func() error {
+		// If node is running in path mode, skip explicit gc operation
+		// which is unnecessary in this mode.
+		if bc.triedb.Scheme() == rawdb.PathScheme {
+			return nil
+		}
+
 		bc.commitLock.Lock()
 		defer bc.commitLock.Unlock()
 
