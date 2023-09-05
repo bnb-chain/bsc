@@ -440,7 +440,7 @@ type OpenOptions struct {
 //
 //	                      type == null          type != null
 //	                   +----------------------------------------
-//	db is non-existent |  pebble default  |  specified type
+//	db is non-existent |  leveldb default  |  specified type
 //	db is existent     |  from db         |  specified type (if compatible)
 func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	// Reject any unsupported database type
@@ -467,13 +467,12 @@ func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	}
 	// No pre-existing database, no user-requested one either. Default to Pebble
 	// on supported platforms and LevelDB on anything else.
-	if PebbleEnabled {
-		log.Info("Defaulting to pebble as the backing database")
-		return NewPebbleDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
-	} else {
-		log.Info("Defaulting to leveldb as the backing database")
-		return NewLevelDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
-	}
+	// if PebbleEnabled {
+	// 	log.Info("Defaulting to pebble as the backing database")
+	// 	return NewPebbleDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
+	// }
+	log.Info("Defaulting to leveldb as the backing database")
+	return NewLevelDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
 }
 
 // Open opens both a disk-based key-value database such as leveldb or pebble, but also
