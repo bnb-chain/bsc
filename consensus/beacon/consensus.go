@@ -346,7 +346,7 @@ func (beacon *Beacon) Delay(_ consensus.ChainReader, _ *types.Header, _ *time.Du
 }
 
 // Finalize implements consensus.Engine, setting the final state on the header
-func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal, _ []*types.Receipt, _ []*types.Transaction, _ *uint64) error {
+func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal, _ *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64) error {
 	// Finalize is different with Prepare, it can be used in both block verification.
 	if !beacon.IsPoSHeader(header) {
 		beacon.ethone.Finalize(chain, header, state, txs, uncles, nil, nil, nil, nil)
@@ -382,7 +382,7 @@ func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, hea
 		}
 	}
 	// Finalize and assemble the block.
-	beacon.Finalize(chain, header, state, txs, uncles, withdrawals, nil, nil, nil)
+	beacon.Finalize(chain, header, state, &txs, uncles, withdrawals, nil, nil, nil)
 
 	// Assign the final state root to header.
 	header.Root = state.IntermediateRoot(true)
