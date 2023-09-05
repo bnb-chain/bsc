@@ -972,11 +972,12 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
 	}
+	fees := work.state.GetBalance(consensus.SystemAddress)
 	block, _, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, nil, work.receipts, params.withdrawals)
 	if err != nil {
 		return nil, nil, err
 	}
-	return block, work.state.GetBalance(consensus.SystemAddress), nil
+	return block, fees, nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block
