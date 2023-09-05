@@ -190,7 +190,7 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 		db:                   db,
 		trie:                 tr,
 		originalRoot:         root,
-		snaps:                snaps,
+		snaps:                nil, // snaps data is dirty, will be fixed in furture
 		accounts:             make(map[common.Address][]byte),
 		storages:             make(map[common.Address]map[string][]byte),
 		accountsOrigin:       make(map[common.Address][]byte),
