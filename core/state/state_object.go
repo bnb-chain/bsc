@@ -352,11 +352,16 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	// Insert all the pending updates into the trie
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
 	dirtyStorage := make(map[common.Hash][]byte)
+	preDirtyStorage := make(map[common.Hash]common.Hash)
 	for key, value := range s.pendingStorage {
 		// Skip noop changes, persist actual changes
 		if value == s.originStorage[key] {
 			continue
 		}
+
+		preDirtyStorage[key] = s.originStorage[key]
+		s.originStorage[key] = value
+
 		var v []byte
 		if value != (common.Hash{}) {
 			// Encoding []byte cannot fail, ok to ignore the error.
@@ -408,16 +413,11 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		s.db.StorageMux.Unlock()
 		for key, value := range dirtyStorage {
 			// rlp-encoded value to be used by the snapshot
-			var snapshotVal []byte
-			if len(value) != 0 {
-				snapshotVal, _ = rlp.EncodeToBytes(value)
-			}
-			storage[string(key[:])] = snapshotVal // snapshotVal will be nil if it's deleted
+			storage[string(key[:])] = value 
 
 			// Track the original value of slot only if it's mutated first time
-			prev := s.originStorage[key]
-			s.originStorage[key] = common.BytesToHash(value)
 			if _, ok := origin[string(key[:])]; !ok {
+				prev := preDirtyStorage[key]
 				if prev == (common.Hash{}) {
 					origin[string(key[:])] = nil // nil if it was not present previously
 				} else {
