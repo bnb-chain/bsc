@@ -1737,9 +1737,10 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	for _, f := range commitFuncs {
 		// commitFuncs[0] and commitFuncs[1] both read map `stateObjects`, but no conflicts
 		tmpFunc := f
-		go func() {
-			commitRes <- tmpFunc()
-		}()
+		// go func() {
+		// TODO(Nathan): if run commitFuncs[0] and commitFuncs[1] cocurrently, diffLayer.Codes may go wrong?, thus TestFastNode fail
+		commitRes <- tmpFunc()
+		// }()
 	}
 	for i := 0; i < len(commitFuncs); i++ {
 		r := <-commitRes
