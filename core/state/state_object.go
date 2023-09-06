@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -255,16 +254,12 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		if metrics.EnabledExpensive {
 			s.db.SnapshotStorageReads += time.Since(start)
 		}
-		var encVal common.Hash
-		encVal.SetBytes(enc)
-		log.Info("GetCommittedState rlp before", "addr", s.addrHash.String(), "key", key.String(), "val", encVal)
 		if len(enc) > 0 {
 			_, content, _, err := rlp.Split(enc)
 			if err != nil {
 				s.db.setError(err)
 			}
 			value.SetBytes(content)
-			log.Info("GetCommittedState rlp after", "addr", s.addrHash.String(), "key", key.String(), "val", value)
 		}
 	}
 	// If the snapshot is unavailable or reading from it fails, load from the database.
@@ -302,7 +297,6 @@ func (s *stateObject) SetState(key, value common.Hash) {
 		key:      key,
 		prevalue: prev,
 	})
-	log.Info("state object set state", "addr", s.addrHash.String(), "key", key.String(), "val", value.String())
 	s.setState(key, value)
 }
 
@@ -351,6 +345,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		origin  map[string][]byte
 		// storage map[common.Hash][]byte
 		// origin  map[common.Hash][]byte
+		preDirtyStorage = make(map[common.Hash]common.Hash)
 	)
 	tr, err := s.getTrie()
 	if err != nil {
@@ -365,6 +360,10 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		if value == s.originStorage[key] {
 			continue
 		}
+
+		preDirtyStorage[key] = s.originStorage[key]
+		s.originStorage[key] = value
+
 		var v []byte
 		if value != (common.Hash{}) {
 			// Encoding []byte cannot fail, ok to ignore the error.
@@ -417,16 +416,18 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		s.db.StorageMux.Unlock()
 		for key, value := range dirtyStorage {
 			// rlp-encoded value to be used by the snapshot
-			var snapshotVal []byte
-			if len(value) != 0 {
-				snapshotVal, _ = rlp.EncodeToBytes(value)
-			}
-			storage[string(key[:])] = snapshotVal // snapshotVal will be nil if it's deleted
+			//var snapshotVal []byte
+			//if len(value) != 0 {
+			//	snapshotVal, _ = rlp.EncodeToBytes(value)
+			//}
+			//storage[string(key[:])] = snapshotVal // snapshotVal will be nil if it's deleted
+			storage[string(key[:])] = value
 
 			// Track the original value of slot only if it's mutated first time
-			prev := s.originStorage[key]
-			s.originStorage[key] = common.BytesToHash(value)
+			//prev := s.originStorage[key]
+			//s.originStorage[key] = common.BytesToHash(value)
 			if _, ok := origin[string(key[:])]; !ok {
+				prev := preDirtyStorage[key]
 				if prev == (common.Hash{}) {
 					origin[string(key[:])] = nil // nil if it was not present previously
 				} else {

@@ -27,7 +27,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	bloomfilter "github.com/holiman/bloomfilter/v2"
 	"golang.org/x/exp/slices"
@@ -473,9 +472,6 @@ func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int) ([
 				snapshotDirtyStorageInexMeter.Mark(1)
 			}
 			snapshotBloomStorageTrueHitMeter.Mark(1)
-			var val common.Hash
-			val.SetBytes(data)
-			log.Info("difflayer storage", "addr", accountHash.String(), "key", storageHash.String(), "val", val.String())
 			return data, nil
 		}
 	}
@@ -499,13 +495,6 @@ func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int) ([
 // Update creates a new layer on top of the existing snapshot diff tree with
 // the specified data items.
 func (dl *diffLayer) Update(blockRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer {
-	for a, kvs := range storage {
-		for k, v := range kvs {
-			var val common.Hash
-			val.SetBytes(v)
-			log.Info("update difflayer", "addr", a.String(), "key", k.String(), "val", val.String())
-		}
-	}
 	return newDiffLayer(dl, blockRoot, destructs, accounts, storage, verified)
 }
 

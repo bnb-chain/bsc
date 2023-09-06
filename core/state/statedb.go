@@ -624,7 +624,6 @@ func (s *StateDB) SetCode(addr common.Address, code []byte) {
 func (s *StateDB) SetState(addr common.Address, key, value common.Hash) {
 	stateObject := s.GetOrNewStateObject(addr)
 	if stateObject != nil {
-		log.Info("statedb set state", "addr", crypto.Keccak256Hash(addr[:]), "key", key.String(), "val", value.String())
 		stateObject.SetState(key, value)
 	}
 }

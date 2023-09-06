@@ -636,9 +636,6 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		midAccount := base.genMarker != nil && bytes.Equal(accountHash[:], base.genMarker[:common.HashLength])
 
 		for storageHash, data := range storage {
-			var value common.Hash
-			value.SetBytes(data)
-			log.Info("persist disklayer", "addr", accountHash.String(), "key", storageHash.String(), "val", value)
 			// Skip any slot not covered yet by the snapshot
 			if midAccount && bytes.Compare(storageHash[:], base.genMarker[common.HashLength:]) > 0 {
 				continue
