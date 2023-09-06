@@ -86,6 +86,14 @@ func (db *Database) AncientSize(kind string) (uint64, error) {
 	panic("not supported")
 }
 
+func (db *Database) DiffStore() ethdb.KeyValueStore {
+	panic("not supported")
+}
+
+func (db *Database) SetDiffStore(diff ethdb.KeyValueStore) {
+	panic("not supported")
+}
+
 func (db *Database) ReadAncients(fn func(op ethdb.AncientReaderOp) error) (err error) {
 	return fn(db)
 }
