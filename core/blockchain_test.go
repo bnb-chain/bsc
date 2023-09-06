@@ -105,7 +105,7 @@ func testInvalidStateRootBlockImport(t *testing.T, blockchain *BlockChain, i, n 
 		t.Errorf("chain content mismatch at %d: have hash %v, want hash %v", i, hash2, hash1)
 	}
 	// Extend the newly created chain
-	blockChainB := makeBlockChain(blockchain2.chainConfig, blockchain2.CurrentBlock(), n, ethash.NewFaker(), db, forkSeed1)
+	blockChainB := makeBlockChain(blockchain2.chainConfig, blockchain2.GetBlockByHash(blockchain2.CurrentBlock().Hash()), n, ethash.NewFaker(), db, forkSeed1)
 	for idx, block := range blockChainB {
 		block.SetRoot(common.Hash{0: byte(forkSeed1), 19: byte(idx)})
 	}

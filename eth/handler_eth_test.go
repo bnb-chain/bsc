@@ -770,7 +770,7 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 	var (
 		genesis       = handler.chain.Genesis()
 		head          = handler.chain.CurrentBlock()
-		td            = handler.chain.GetTd(head.Hash(), head.NumberU64())
+		td            = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 		wg            = sync.WaitGroup{}
 		maxPeersPerIP = handler.handler.maxPeersPerIP
 		uniPort       = 1000
