@@ -29,6 +29,7 @@ import (
 
 // Config defines all necessary options for database.
 type Config struct {
+	NoTries   bool
 	Cache     int            // Memory allowance (MB) to use for caching trie nodes in memory
 	Preimages bool           // Flag whether the preimage of trie key is recorded
 	PathDB    *pathdb.Config // Configs for experimental path-based scheme, not used yet.

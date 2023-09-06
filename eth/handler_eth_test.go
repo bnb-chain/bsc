@@ -19,8 +19,10 @@ package eth
 import (
 	"fmt"
 	"math/big"
+	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -313,6 +315,43 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Errorf("no NewTxsEvent received within 2 seconds")
+	}
+}
+
+func TestWaitDiffExtensionTimout67(t *testing.T) { testWaitDiffExtensionTimout(t, eth.ETH67) }
+
+func testWaitDiffExtensionTimout(t *testing.T, protocol uint) {
+	t.Parallel()
+
+	// Create a message handler, configure it to accept transactions and watch them
+	handler := newTestHandler()
+	defer handler.close()
+
+	// Create a source peer to send messages through and a sink handler to receive them
+	_, p2pSink := p2p.MsgPipe()
+	defer p2pSink.Close()
+
+	protos := []p2p.Protocol{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}
+
+	sink := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
+		{
+			Name:    "diff",
+			Version: 1,
+		},
+	}), p2pSink, nil)
+	defer sink.Close()
+
+	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+
+	if err == nil || err.Error() != "peer wait timeout" {
+		t.Fatalf("error should be `peer wait timeout`")
 	}
 }
 
@@ -770,7 +809,7 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 	var (
 		genesis       = handler.chain.Genesis()
 		head          = handler.chain.CurrentBlock()
-		td            = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
+		td            = handler.chain.GetTd(head.Hash(), head.NumberU64())
 		wg            = sync.WaitGroup{}
 		maxPeersPerIP = handler.handler.maxPeersPerIP
 		uniPort       = 1000

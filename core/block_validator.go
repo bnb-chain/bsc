@@ -31,22 +31,36 @@ import (
 
 const badBlockCacheExpire = 30 * time.Second
 
+type BlockValidatorOption func(*BlockValidator) *BlockValidator
+
+func EnableRemoteVerifyManager(remoteValidator *remoteVerifyManager) BlockValidatorOption {
+	return func(bv *BlockValidator) *BlockValidator {
+		bv.remoteValidator = remoteValidator
+		return bv
+	}
+}
+
 // BlockValidator is responsible for validating block headers, uncles and
 // processed state.
 //
 // BlockValidator implements Validator.
 type BlockValidator struct {
-	config *params.ChainConfig // Chain configuration options
-	bc     *BlockChain         // Canonical block chain
-	engine consensus.Engine    // Consensus engine used for validating
+	config          *params.ChainConfig // Chain configuration options
+	bc              *BlockChain         // Canonical block chain
+	engine          consensus.Engine    // Consensus engine used for validating
+	remoteValidator *remoteVerifyManager
 }
 
 // NewBlockValidator returns a new block validator which is safe for re-use
-func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain, engine consensus.Engine) *BlockValidator {
+func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain, engine consensus.Engine, opts ...BlockValidatorOption) *BlockValidator {
 	validator := &BlockValidator{
 		config: config,
 		engine: engine,
 		bc:     blockchain,
+	}
+
+	for _, opt := range opts {
+		validator = opt(validator)
 	}
 
 	return validator
@@ -119,6 +133,12 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 					return consensus.ErrUnknownAncestor
 				}
 				return consensus.ErrPrunedAncestor
+			}
+			return nil
+		},
+		func() error {
+			if v.remoteValidator != nil && !v.remoteValidator.AncestorVerified(block.Header()) {
+				return fmt.Errorf("%w, number: %s, hash: %s", ErrAncestorHasNotBeenVerified, block.Number(), block.Hash())
 			}
 			return nil
 		},
@@ -197,6 +217,10 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		}
 	}
 	return err
+}
+
+func (v *BlockValidator) RemoteVerifyManager() *remoteVerifyManager {
+	return v.remoteValidator
 }
 
 // CalcGasLimit computes the gas limit of the next block after parent. It aims

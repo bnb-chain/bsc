@@ -79,9 +79,10 @@ func TestAccountRange(t *testing.T) {
 			m[addr] = true
 		}
 	}
-	sdb.Finalise(true)
-	sdb.AccountsIntermediateRoot()
-	root, _ := sdb.Commit(0, nil)
+	state.Finalise(true)
+	state.AccountsIntermediateRoot()
+	state.Commit(0, nil)
+	root := state.IntermediateRoot(true)
 	sdb, _ = state.New(root, statedb, nil)
 
 	trie, err := statedb.OpenTrie(root)

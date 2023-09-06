@@ -27,6 +27,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -1498,6 +1499,9 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 			// The importer will put together a new list of blocks to import, which is a superset
 			// of the blocks delivered from the downloader, and the indexing will be off.
 			log.Debug("Downloaded item processing failed on sidechain import", "index", index, "err", err)
+		}
+		if errors.Is(err, core.ErrAncestorHasNotBeenVerified) {
+			return err
 		}
 		return fmt.Errorf("%w: %v", errInvalidChain, err)
 	}

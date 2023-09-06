@@ -81,6 +81,9 @@ type Database interface {
 
 	// Purge cache
 	Purge()
+
+	// NoTries returns whether the database has tries storage.
+	NoTries() bool
 }
 
 // Trie is a Ethereum Merkle Patricia trie.
@@ -164,27 +167,34 @@ func NewDatabase(db ethdb.Database) Database {
 // is safe for concurrent use and retains a lot of collapsed RLP trie nodes in a
 // large memory cache.
 func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
+	noTries := config != nil && config.NoTries
+
 	return &cachingDB{
 		disk:          db,
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
 		triedb:        trie.NewDatabaseWithConfig(db, config),
+		noTries:       noTries,
 	}
 }
 
 // NewDatabaseWithNodeDB creates a state database with an already initialized node database.
 func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database) Database {
+	noTries := triedb.Config() != nil && triedb.Config().NoTries
+
 	return &cachingDB{
 		disk:          db,
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
 		triedb:        triedb,
+		noTries:       noTries,
 	}
 }
 
 func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Database {
 	atc, _ := exlru.New(accountTrieCacheSize)
 	stc, _ := exlru.New(storageTrieCacheSize)
+	noTries := config != nil && config.NoTries
 
 	database := &cachingDB{
 		disk:             db,
@@ -193,9 +203,11 @@ func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Datab
 		triedb:           trie.NewDatabaseWithConfig(db, config),
 		accountTrieCache: atc,
 		storageTrieCache: stc,
+		noTries:          noTries,
 	}
-	go database.purgeLoop()
-
+	if !noTries {
+		go database.purgeLoop()
+	}
 	return database
 }
 
@@ -206,6 +218,7 @@ type cachingDB struct {
 	triedb           *trie.Database
 	accountTrieCache *exlru.Cache
 	storageTrieCache *exlru.Cache
+	noTries          bool
 }
 
 type triePair struct {
@@ -229,6 +242,9 @@ func (db *cachingDB) purgeLoop() {
 
 // OpenTrie opens the main account trie at a specific root hash.
 func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
+	if db.noTries {
+		return trie.NewEmptyTrie(), nil
+	}
 	if db.accountTrieCache != nil {
 		if tr, exist := db.accountTrieCache.Get(root); exist {
 			return tr.(Trie).(*trie.SecureTrie).Copy(), nil
@@ -243,6 +259,9 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 
 // OpenStorageTrie opens the storage trie of an account.
 func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash) (Trie, error) {
+	if db.noTries {
+		return trie.NewEmptyTrie(), nil
+	}
 	if db.storageTrieCache != nil {
 		if tries, exist := db.storageTrieCache.Get(crypto.Keccak256Hash(address.Bytes())); exist {
 			triesPairs := tries.([3]*triePair)
@@ -288,6 +307,10 @@ func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie
 	}
 }
 
+func (db *cachingDB) NoTries() bool {
+	return db.noTries
+}
+
 func (db *cachingDB) Purge() {
 	if db.storageTrieCache != nil {
 		db.storageTrieCache.Purge()
@@ -304,6 +327,8 @@ func (db *cachingDB) CopyTrie(t Trie) Trie {
 	}
 	switch t := t.(type) {
 	case *trie.StateTrie:
+		return t.Copy()
+	case *trie.EmptyTrie:
 		return t.Copy()
 	default:
 		panic(fmt.Errorf("unknown trie type %T", t))

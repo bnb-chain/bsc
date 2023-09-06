@@ -72,7 +72,7 @@ func makeTestState() (ethdb.Database, Database, common.Hash, []*testAccount) {
 	}
 	state.Finalise(false)
 	state.AccountsIntermediateRoot()
-	root, _ := state.Commit(0, nil)
+	root, _, _ := state.Commit(0, nil)
 
 	// Return the generated state
 	return db, sdb, root, accounts
