@@ -255,13 +255,16 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		if metrics.EnabledExpensive {
 			s.db.SnapshotStorageReads += time.Since(start)
 		}
+		var encVal common.Hash
+		encVal.SetBytes(enc)
+		log.Info("GetCommittedState rlp before", "addr", s.addrHash.String(), "key", key.String(), "val", encVal)
 		if len(enc) > 0 {
 			_, content, _, err := rlp.Split(enc)
 			if err != nil {
 				s.db.setError(err)
 			}
 			value.SetBytes(content)
-			log.Info("GetCommittedState", "addr", s.addrHash.String(), "key", key.String(), "val", value)
+			log.Info("GetCommittedState rlp after", "addr", s.addrHash.String(), "key", key.String(), "val", value)
 		}
 	}
 	// If the snapshot is unavailable or reading from it fails, load from the database.
