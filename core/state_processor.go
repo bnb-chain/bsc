@@ -32,13 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-const (
-	fullProcessCheck       = 21 // On diff sync mode, will do full process every fullProcessCheck randomly
-	recentTime             = 1024 * 3
-	recentDiffLayerTimeout = 5
-	farDiffLayerTimeout    = 2
-)
-
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
 //

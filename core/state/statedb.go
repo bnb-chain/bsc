@@ -87,12 +87,8 @@ type StateDB struct {
 	expectedRoot common.Hash // The state root in the block header
 	stateRoot    common.Hash // The calculation result of IntermediateRoot
 
-	diffLayer      *types.DiffLayer
-	diffTries      map[common.Address]Trie
-	diffCode       map[common.Hash][]byte
-	lightProcessed bool
-	fullProcessed  bool
-	pipeCommit     bool
+	fullProcessed bool
+	pipeCommit    bool
 
 	// These maps hold the state changes (including the corresponding
 	// original value) that occurred in this **block**.
@@ -309,11 +305,6 @@ func (s *StateDB) SetExpectedStateRoot(root common.Hash) {
 	s.expectedRoot = root
 }
 
-// Mark that the block is processed by diff layer
-func (s *StateDB) MarkLightProcessed() {
-	s.lightProcessed = true
-}
-
 // Enable the pipeline commit function of statedb
 func (s *StateDB) EnablePipeCommit() {
 	if s.snap != nil && s.snaps.Layers() > 1 {
@@ -331,10 +322,6 @@ func (s *StateDB) IsPipeCommit() bool {
 // Mark that the block is full processed
 func (s *StateDB) MarkFullProcessed() {
 	s.fullProcessed = true
-}
-
-func (s *StateDB) IsLightProcessed() bool {
-	return s.lightProcessed
 }
 
 // setError remembers the first non-nil error it is called with.
@@ -1187,11 +1174,6 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
-	// light process is not allowed when there is no trie
-	if s.lightProcessed {
-		s.StopPrefetcher()
-		return s.trie.Hash()
-	}
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 	s.AccountsIntermediateRoot()
@@ -1613,7 +1595,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 						} else {
 							taskResults <- tastResult{nil, nil}
 						}
-
 					}
 					tasksNum++
 				}

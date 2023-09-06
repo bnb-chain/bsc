@@ -117,7 +117,7 @@ func testInvalidStateRootBlockImport(t *testing.T, blockchain *BlockChain, i, n 
 
 	time.Sleep(2 * rewindBadBlockInterval)
 	latestBlock := blockchain.CurrentBlock()
-	if latestBlock.Hash() != previousBlock.Hash() || latestBlock.NumberU64() != previousBlock.NumberU64() {
+	if latestBlock.Hash() != previousBlock.Hash() || latestBlock.Number.Uint64() != previousBlock.Number.Uint64() {
 		t.Fatalf("rewind do not take effect")
 	}
 	db, _, blockchain3, err := newCanonical(ethash.NewFaker(), i, true, pipeline)
@@ -126,7 +126,7 @@ func testInvalidStateRootBlockImport(t *testing.T, blockchain *BlockChain, i, n 
 	}
 	defer blockchain3.Stop()
 
-	blockChainC := makeBlockChain(blockchain3.chainConfig, blockchain3.CurrentBlock(), n, ethash.NewFaker(), db, forkSeed2)
+	blockChainC := makeBlockChain(blockchain3.chainConfig, blockchain3.GetBlockByHash(blockchain3.CurrentBlock().Hash()), n, ethash.NewFaker(), db, forkSeed2)
 
 	if _, err := blockchain.InsertChain(blockChainC); err != nil {
 		t.Fatalf("failed to insert forking chain: %v", err)
@@ -175,7 +175,7 @@ func testFork(t *testing.T, blockchain *BlockChain, i, n int, full, pipeline boo
 
 	if full {
 		cur := blockchain.CurrentBlock()
-		tdPre = blockchain.GetTd(cur.Hash(), cur.NumberU64())
+		tdPre = blockchain.GetTd(cur.Hash(), cur.Number.Uint64())
 		if err := testBlockChainImport(blockChainB, pipeline, blockchain); err != nil {
 			t.Fatalf("failed to import forked block chain: %v", err)
 		}

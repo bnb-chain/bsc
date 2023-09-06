@@ -219,49 +219,6 @@ type BlockChain interface {
 
 type DownloadOption func(downloader *Downloader) *Downloader
 
-type IDiffPeer interface {
-	RequestDiffLayers([]common.Hash) error
-}
-
-type IPeerSet interface {
-	GetDiffPeer(string) IDiffPeer
-}
-
-func EnableDiffFetchOp(peers IPeerSet) DownloadOption {
-	return func(dl *Downloader) *Downloader {
-		var hook = func(results []*fetchResult, stop chan struct{}) {
-			if dl.getMode() == FullSync {
-				go func() {
-					ticker := time.NewTicker(diffFetchTick)
-					defer ticker.Stop()
-					for _, r := range results {
-					Wait:
-						for {
-							select {
-							case <-stop:
-								return
-							case <-ticker.C:
-								if dl.blockchain.CurrentHeader().Number.Int64()+int64(diffFetchLimit) > r.Header.Number.Int64() {
-									break Wait
-								}
-							}
-						}
-						if ep := peers.GetDiffPeer(r.pid); ep != nil {
-							// It turns out a diff layer is 5x larger than block, we just request one diffLayer each time
-							err := ep.RequestDiffLayers([]common.Hash{r.Header.Hash()})
-							if err != nil {
-								return
-							}
-						}
-					}
-				}()
-			}
-		}
-		dl.chainInsertHook = hook
-		return dl
-	}
-}
-
 // New creates a new downloader to fetch hashes and blocks from remote peers.
 func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchain LightChain, dropPeer peerDropFn, options ...DownloadOption) *Downloader {
 	if lightchain == nil {

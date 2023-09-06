@@ -37,7 +37,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
-	"github.com/ethereum/go-ethereum/eth/protocols/diff"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
@@ -46,7 +45,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -118,7 +116,6 @@ type handlerConfig struct {
 	Merger                 *consensus.Merger      // The manager for eth1/2 transition
 	Network                uint64                 // Network identifier to adfvertise
 	Sync                   downloader.SyncMode    // Whether to snap or full sync
-	DiffSync               bool                   // Whether to diff sync
 	BloomCache             uint64                 // Megabytes to alloc for snap sync bloom
 	EventMux               *event.TypeMux         // Legacy event mux, deprecate for `feed`
 	RequiredBlocks         map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
@@ -135,7 +132,6 @@ type handler struct {
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
 	acceptTxs       atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
 	directBroadcast bool
-	diffSync        bool // Flag whether diff sync should operate on top of the diff protocol
 
 	database             ethdb.Database
 	txpool               txPool
@@ -198,7 +194,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		peersPerIP:             make(map[string]int),
 		requiredBlocks:         config.RequiredBlocks,
 		directBroadcast:        config.DirectBroadcast,
-		diffSync:               config.DiffSync,
 		quitSync:               make(chan struct{}),
 		handlerDoneCh:          make(chan struct{}),
 		handlerStartCh:         make(chan struct{}),
@@ -233,9 +228,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	// sync is requested. The downloader is responsible for deallocating the state
 	// bloom when it's done.
 	var downloadOptions []downloader.DownloadOption
-	if h.diffSync {
-		downloadOptions = append(downloadOptions, downloader.EnableDiffFetchOp(h.peers))
-	}
 	// If sync succeeds, pass a callback to potentially disable snap sync mode
 	// and enable transaction propagation.
 	// it was for beacon sync, bsc do not need it.
@@ -400,11 +392,6 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Snapshot extension barrier failed", "err", err)
 		return err
 	}
-	diff, err := h.peers.waitDiffExtension(peer)
-	if err != nil {
-		peer.Log().Error("Diff extension barrier failed", "err", err)
-		return err
-	}
 	trust, err := h.peers.waitTrustExtension(peer)
 	if err != nil {
 		peer.Log().Error("Trust extension barrier failed", "err", err)
@@ -468,7 +455,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
 	// Register the peer locally
-	if err := h.peers.registerPeer(peer, snap, diff, trust, bsc); err != nil {
+	if err := h.peers.registerPeer(peer, snap, trust, bsc); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
@@ -567,30 +554,6 @@ func (h *handler) runSnapExtension(peer *snap.Peer, handler snap.Handler) error 
 			}
 		}
 		peer.Log().Warn("Snapshot extension registration failed", "err", err)
-		return err
-	}
-	return handler(peer)
-}
-
-// runDiffExtension registers a `diff` peer into the joint eth/diff peerset and
-// starts handling inbound messages. As `diff` is only a satellite protocol to
-// `eth`, all subsystem registrations and lifecycle management will be done by
-// the main `eth` handler to prevent strange races.
-func (h *handler) runDiffExtension(peer *diff.Peer, handler diff.Handler) error {
-	if !h.incHandlers() {
-		return p2p.DiscQuitting
-	}
-
-	if err := h.peers.registerDiffExtension(peer); err != nil {
-		if metrics.Enabled {
-			if peer.Inbound() {
-				diff.IngressRegistrationErrorMeter.Mark(1)
-			} else {
-				diff.EgressRegistrationErrorMeter.Mark(1)
-			}
-		}
-		peer.Log().Error("Diff extension registration failed", "err", err)
-		peer.Close()
 		return err
 	}
 	return handler(peer)
@@ -819,12 +782,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		} else {
 			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
 		}
-		diff := h.chain.GetDiffLayerRLP(block.Hash())
 		for _, peer := range transfer {
-			if len(diff) != 0 && peer.diffExt != nil {
-				// difflayer should send before block
-				peer.diffExt.SendDiffLayers([]rlp.RawValue{diff})
-			}
 			peer.AsyncSendNewBlock(block, td)
 		}
 

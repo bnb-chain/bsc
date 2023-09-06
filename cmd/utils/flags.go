@@ -100,22 +100,13 @@ var (
 		Name:  "disablesnapprotocol",
 		Usage: "Disable snap protocol",
 	}
-	DisableDiffProtocolFlag = &cli.BoolFlag{
-		Name:  "disablediffprotocol",
-		Usage: "Disable diff protocol",
-	}
 	EnableTrustProtocolFlag = &cli.BoolFlag{
 		Name:  "enabletrustprotocol",
 		Usage: "Enable trust protocol",
 	}
-
-	DiffSyncFlag = &cli.BoolFlag{
-		Name:  "diffsync",
-		Usage: "warn: diff sync has been deprecated, the flag will be removed in the future",
-	}
 	PipeCommitFlag = &cli.BoolFlag{
 		Name:  "pipecommit",
-		Usage: "Enable MPT pipeline commit, it will improve syncing performance. It is an experimental feature(default is false), diffsync will be disable if pipeline commit is enabled",
+		Usage: "Enable MPT pipeline commit, it will improve syncing performance. It is an experimental feature(default is false)",
 	}
 	RangeLimitFlag = &cli.BoolFlag{
 		Name:  "rangelimit",
@@ -1881,14 +1872,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(DisableSnapProtocolFlag.Name) {
 		cfg.DisableSnapProtocol = ctx.Bool(DisableSnapProtocolFlag.Name)
 	}
-	if ctx.IsSet(DisableDiffProtocolFlag.Name) {
-		cfg.DisableDiffProtocol = ctx.IsSet(DisableDiffProtocolFlag.Name)
-	}
 	if ctx.IsSet(EnableTrustProtocolFlag.Name) {
 		cfg.EnableTrustProtocol = ctx.IsSet(EnableTrustProtocolFlag.Name)
-	}
-	if ctx.IsSet(DiffSyncFlag.Name) {
-		log.Warn("The --diffsync flag is deprecated and will be removed in the future!")
 	}
 	if ctx.IsSet(PipeCommitFlag.Name) {
 		cfg.PipeCommit = ctx.Bool(PipeCommitFlag.Name)

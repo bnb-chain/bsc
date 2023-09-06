@@ -110,9 +110,7 @@ type Config struct {
 	NoPrefetch          bool
 	DirectBroadcast     bool
 	DisableSnapProtocol bool //Whether disable snap protocol
-	DisableDiffProtocol bool //Whether disable diff protocol
 	EnableTrustProtocol bool //Whether enable trust protocol
-	DiffSync            bool // Whether support diff sync
 	PipeCommit          bool
 	RangeLimit          bool
 
