@@ -789,15 +789,15 @@ func testFinalizedAnnouncementDiscarding(t *testing.T, light bool) {
 	fetching := make(chan struct{}, 2)
 	tester.fetcher.fetchingHook = func(hashes []common.Hash) { fetching <- struct{}{} }
 
-	// Ensure that a block with a lower number than the threshold is discarded
+	// Ensure that a block with a lower number than the finalized height is discarded
 	tester.fetcher.Notify("lower", hashes[low], blocks[hashes[low]].NumberU64(), time.Now().Add(-arriveTimeout), headerFetcher, bodyFetcher, nil)
 	select {
 	case <-time.After(50 * time.Millisecond):
 	case <-fetching:
 		t.Fatalf("fetcher requested stale header")
 	}
-	// Ensure that a block with a higher number than the threshold is discarded
-	tester.fetcher.Notify("higher", hashes[equal], blocks[hashes[equal]].NumberU64(), time.Now().Add(-arriveTimeout), headerFetcher, bodyFetcher, nil)
+	// Ensure that a block with a same number of the finalized height is discarded
+	tester.fetcher.Notify("equal", hashes[equal], blocks[hashes[equal]].NumberU64(), time.Now().Add(-arriveTimeout), headerFetcher, bodyFetcher, nil)
 	select {
 	case <-time.After(50 * time.Millisecond):
 	case <-fetching:
