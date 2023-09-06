@@ -43,7 +43,6 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			utils.DisableSnapProtocolFlag,
 			utils.DisableDiffProtocolFlag,
 			utils.EnableTrustProtocolFlag,
-			utils.DisableBscProtocolFlag,
 			utils.RangeLimitFlag,
 			utils.SmartCardDaemonPathFlag,
 			utils.NetworkIdFlag,
@@ -202,6 +201,7 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			utils.MinerDelayLeftoverFlag,
 			utils.MinerNoVerfiyFlag,
 			utils.VotingEnabledFlag,
+			utils.DisableVoteAttestationFlag,
 		},
 	},
 	{
