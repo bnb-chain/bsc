@@ -96,7 +96,9 @@ func newTester(light bool) *fetcherTester {
 		blocks:  map[common.Hash]*types.Block{genesis.Hash(): genesis},
 		drops:   make(map[string]bool),
 	}
-	tester.fetcher = NewBlockFetcher(light, tester.getHeader, tester.getBlock, tester.verifyHeader, tester.broadcastBlock, tester.chainHeight, tester.insertHeaders, tester.insertChain, tester.dropPeer)
+	tester.fetcher = NewBlockFetcher(light, tester.getHeader, tester.getBlock, tester.verifyHeader,
+		tester.broadcastBlock, tester.chainHeight, tester.chainFinalizedHeight, tester.insertHeaders,
+		tester.insertChain, tester.dropPeer)
 	tester.fetcher.Start()
 
 	return tester
@@ -136,6 +138,18 @@ func (f *fetcherTester) chainHeight() uint64 {
 		return f.headers[f.hashes[len(f.hashes)-1]].Number.Uint64()
 	}
 	return f.blocks[f.hashes[len(f.hashes)-1]].NumberU64()
+}
+
+func (f *fetcherTester) chainFinalizedHeight() uint64 {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+	if len(f.hashes) < 3 {
+		return 0
+	}
+	if f.fetcher.light {
+		return f.headers[f.hashes[len(f.hashes)-3]].Number.Uint64()
+	}
+	return f.blocks[f.hashes[len(f.hashes)-3]].NumberU64()
 }
 
 // insertChain injects a new headers into the simulated chain.
@@ -723,6 +737,67 @@ func testDistantAnnouncementDiscarding(t *testing.T, light bool) {
 	}
 	// Ensure that a block with a higher number than the threshold is discarded
 	tester.fetcher.Notify("higher", hashes[high], blocks[hashes[high]].NumberU64(), time.Now().Add(-arriveTimeout), headerFetcher, bodyFetcher, nil)
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case <-fetching:
+		t.Fatalf("fetcher requested future header")
+	}
+}
+
+// Tests that announcements with numbers much lower or equal to the current finalized block
+// head get discarded to prevent wasting resources on useless blocks from faulty peers.
+func TestFullFinalizedAnnouncementDiscarding(t *testing.T) {
+	testFinalizedAnnouncementDiscarding(t, false)
+}
+func TestLightFinalizedAnnouncementDiscarding(t *testing.T) {
+	testFinalizedAnnouncementDiscarding(t, true)
+}
+
+func testFinalizedAnnouncementDiscarding(t *testing.T, light bool) {
+	// Create a long chain to import and define the discard boundaries
+	hashes, blocks := makeChain(3*maxQueueDist, 0, genesis)
+
+	head := hashes[len(hashes)/2]
+	justified := hashes[len(hashes)/2+1]
+	finalized := hashes[len(hashes)/2+2]
+	beforeFinalized := hashes[len(hashes)/2+3]
+
+	low, equal := len(hashes)/2+3, len(hashes)/2+2
+
+	// Create a tester and simulate a head block being the middle of the above chain
+	tester := newTester(light)
+
+	tester.lock.Lock()
+	tester.hashes = []common.Hash{beforeFinalized, finalized, justified, head}
+	tester.headers = map[common.Hash]*types.Header{
+		beforeFinalized: blocks[beforeFinalized].Header(),
+		finalized:       blocks[finalized].Header(),
+		justified:       blocks[justified].Header(),
+		head:            blocks[head].Header(),
+	}
+	tester.blocks = map[common.Hash]*types.Block{
+		beforeFinalized: blocks[beforeFinalized],
+		finalized:       blocks[finalized],
+		justified:       blocks[justified],
+		head:            blocks[head],
+	}
+	tester.lock.Unlock()
+
+	headerFetcher := tester.makeHeaderFetcher("lower", blocks, -gatherSlack)
+	bodyFetcher := tester.makeBodyFetcher("lower", blocks, 0)
+
+	fetching := make(chan struct{}, 2)
+	tester.fetcher.fetchingHook = func(hashes []common.Hash) { fetching <- struct{}{} }
+
+	// Ensure that a block with a lower number than the finalized height is discarded
+	tester.fetcher.Notify("lower", hashes[low], blocks[hashes[low]].NumberU64(), time.Now().Add(-arriveTimeout), headerFetcher, bodyFetcher, nil)
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case <-fetching:
+		t.Fatalf("fetcher requested stale header")
+	}
+	// Ensure that a block with a same number of the finalized height is discarded
+	tester.fetcher.Notify("equal", hashes[equal], blocks[hashes[equal]].NumberU64(), time.Now().Add(-arriveTimeout), headerFetcher, bodyFetcher, nil)
 	select {
 	case <-time.After(50 * time.Millisecond):
 	case <-fetching:

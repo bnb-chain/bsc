@@ -259,6 +259,13 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	heighter := func() uint64 {
 		return h.chain.CurrentBlock().NumberU64()
 	}
+	finalizeHeighter := func() uint64 {
+		fblock := h.chain.CurrentFinalBlock()
+		if fblock == nil {
+			return 0
+		}
+		return fblock.Number.Uint64()
+	}
 	inserter := func(blocks types.Blocks) (int, error) {
 		// All the block fetcher activities should be disabled
 		// after the transition. Print the warning log.
@@ -322,7 +329,8 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return n, err
 	}
-	h.blockFetcher = fetcher.NewBlockFetcher(false, nil, h.chain.GetBlockByHash, validator, h.BroadcastBlock, heighter, nil, inserter, h.removePeer)
+	h.blockFetcher = fetcher.NewBlockFetcher(false, nil, h.chain.GetBlockByHash, validator, h.BroadcastBlock,
+		heighter, finalizeHeighter, nil, inserter, h.removePeer)
 
 	fetchTx := func(peer string, hashes []common.Hash) error {
 		p := h.peers.peer(peer)
