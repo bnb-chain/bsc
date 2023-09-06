@@ -503,7 +503,7 @@ func (dl *diffLayer) Update(blockRoot common.Hash, destructs map[common.Hash]str
 		for k, v := range kvs {
 			var val common.Hash
 			val.SetBytes(v)
-			log.Info("disklayer storage cache", "addr", a.String(), "key", k.String(), "val", val.String())
+			log.Info("update difflayer", "addr", a.String(), "key", k.String(), "val", val.String())
 		}
 	}
 	return newDiffLayer(dl, blockRoot, destructs, accounts, storage, verified)

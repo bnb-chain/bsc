@@ -1710,17 +1710,6 @@ func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types
 	}
 	defer bc.chainmu.Unlock()
 
-	if block.NumberU64() == 363 {
-		log.Info("***********************************************")
-	}
-	if block.NumberU64() == 364 {
-		log.Crit("stop at 364")
-	}
-	defer func() {
-		if block.NumberU64() == 363 {
-			log.Info("***********************************************")
-		}
-	}()
 	return bc.writeBlockAndSetHead(block, receipts, logs, state, emitHeadEvent)
 }
 
