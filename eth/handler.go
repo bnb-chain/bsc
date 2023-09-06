@@ -260,7 +260,11 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return h.chain.CurrentBlock().NumberU64()
 	}
 	finalizeHeighter := func() uint64 {
-		return h.chain.CurrentFinalBlock().Number.Uint64()
+		fblock := h.chain.CurrentFinalBlock()
+		if fblock == nil {
+			return 0
+		}
+		return fblock.Number.Uint64()
 	}
 	inserter := func(blocks types.Blocks) (int, error) {
 		// All the block fetcher activities should be disabled
