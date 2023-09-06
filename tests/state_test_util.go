@@ -287,7 +287,7 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	// And _now_ get the state root
 	root := statedb.IntermediateRoot(config.IsEIP158(block.Number()))
 	statedb.SetExpectedStateRoot(root)
-	root, err = statedb.Commit(block.NumberU64(), nil)
+	root, _, err = statedb.Commit(block.NumberU64(), nil)
 	return snaps, statedb, root, err
 }
 
