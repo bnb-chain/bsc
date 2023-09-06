@@ -567,6 +567,7 @@ func (h *handler) runTrustExtension(peer *trust.Peer, handler trust.Handler) err
 	if !h.incHandlers() {
 		return p2p.DiscQuitting
 	}
+	defer h.decHandlers()
 
 	if err := h.peers.registerTrustExtension(peer); err != nil {
 		if metrics.Enabled {
@@ -591,6 +592,7 @@ func (h *handler) runBscExtension(peer *bsc.Peer, handler bsc.Handler) error {
 		return p2p.DiscQuitting
 	}
 	defer h.decHandlers()
+
 	if err := h.peers.registerBscExtension(peer); err != nil {
 		if metrics.Enabled {
 			if peer.Inbound() {
