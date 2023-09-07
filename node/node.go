@@ -609,6 +609,10 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 			Cache:     cache,
 			Handles:   handles,
 			ReadOnly:  readonly,
+			DisableFreeze:          false,
+			IsLastOffset:           false,
+			PruneAncientData:       false,
+			SkipCheckFreezerType:   true,
 		})
 	}
 
@@ -623,9 +627,7 @@ func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, di
 	if persistDiff {
 		chainDataHandles = handles * chainDataHandlesPercentage / 100
 	}
-	// chainDB, err := n.OpenDatabaseWithFreezer(name, cache, chainDataHandles, freezer, namespace, readonly, false, false, pruneAncientData, false)
-	// chainDB, err := n.OpenDatabaseWithFreezer(name, cache, chainDataHandles, freezer, namespace, readonly)
-	chainDB, err := n.OpenDatabaseWithFreezer(name, cache, chainDataHandles, freezer, namespace, readonly, false, false,false, false)
+	chainDB, err := n.OpenDatabaseWithFreezer(name, cache, chainDataHandles, freezer, namespace, readonly, false, false, pruneAncientData, false)
 	if err != nil {
 		return nil, err
 	}
@@ -646,17 +648,11 @@ func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, di
 // database to immutable append-only files. If the node is an ephemeral one, a
 // memory database is returned.
 func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient string, namespace string, readonly bool, disableFreeze, isLastOffset, pruneAncientData, skipCheckFreezerType bool) (ethdb.Database, error) {
-	// TODO, Rick
-	if disableFreeze && isLastOffset && pruneAncientData && skipCheckFreezerType {
-		n.log.Info("Rick to do later")
-	}
-
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	if n.state == closedState {
 		return nil, ErrNodeStopped
 	}
-
 	var db ethdb.Database
 	var err error
 	if n.config.DataDir == "" {
@@ -670,6 +666,10 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient 
 			Cache:             cache,
 			Handles:           handles,
 			ReadOnly:          readonly,
+			DisableFreeze:          disableFreeze,
+			IsLastOffset:           isLastOffset,
+			PruneAncientData:       pruneAncientData,
+			SkipCheckFreezerType:   skipCheckFreezerType,
 		})
 	}
 

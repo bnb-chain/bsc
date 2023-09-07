@@ -2075,7 +2075,6 @@ func transformSnapData(destructs map[common.Address]*types.StateAccount, account
         return hashDestructs, hashAccounts, hashStorages
 }
 
-// TODO:Rick
 func covertOriginStorageToHash(storage map[common.Address]map[string][]byte) map[common.Address]map[common.Hash][]byte {
         hashStorages := make(map[common.Address]map[common.Hash][]byte, len(storage))
         hasher := crypto.NewKeccakState()
