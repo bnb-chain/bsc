@@ -31,6 +31,7 @@ type EVMLogger interface {
 	// Transaction level
 	CaptureTxStart(gasLimit uint64)
 	CaptureTxEnd(restGas uint64)
+	CaptureSystemTxEnd(intrinsicGas uint64)
 	// Top call frame
 	CaptureStart(env *EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int)
 	CaptureEnd(output []byte, gasUsed uint64, err error)
