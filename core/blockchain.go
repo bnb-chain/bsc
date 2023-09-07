@@ -48,8 +48,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-        "github.com/ethereum/go-ethereum/trie/triedb/hashdb"
-        "github.com/ethereum/go-ethereum/trie/triedb/pathdb"
+	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 var (
@@ -150,12 +150,12 @@ type CacheConfig struct {
 	SnapshotLimit       int           // Memory allowance (MB) to use for caching snapshot entries in memory
 	Preimages           bool          // Whether to store preimage of trie key to the disk
 	StateHistory        uint64        // Number of blocks from head whose state histories are reserved.
-	StateScheme          string        // Disk scheme used to interact with trie nodes.
+	StateScheme         string        // Disk scheme used to interact with trie nodes.
 	TriesInMemory       uint64        // How many tries keeps in memory
 	NoTries             bool          // Insecure settings. Do not have any tries in databases if enabled.
 
 	SnapshotNoBuild bool // Whether the background generation is allowed
-	SnapshotWait bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
+	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 }
 
 // To avoid cycle import
@@ -170,7 +170,7 @@ var defaultCacheConfig = &CacheConfig{
 	TrieDirtyLimit: 256,
 	TrieTimeLimit:  5 * time.Minute,
 	SnapshotLimit:  256,
-	StateScheme:     rawdb.HashScheme,
+	StateScheme:    rawdb.HashScheme,
 	TriesInMemory:  128,
 	SnapshotWait:   true,
 }
@@ -203,11 +203,11 @@ type BlockChain struct {
 	chainConfig *params.ChainConfig // Chain & network configuration
 	cacheConfig *CacheConfig        // Cache configuration for pruning
 
-	db         ethdb.Database // Low level persistent database to store final content in
-	snaps      *snapshot.Tree // Snapshot tree for fast trie leaf access
-	triegc     *prque.Prque[int64, common.Hash] // Priority queue mapping block numbers to tries to gc
-	gcproc     time.Duration  // Accumulates canonical block processing for trie dumping
-	commitLock sync.Mutex     // CommitLock is used to protect above field from being modified concurrently
+	db            ethdb.Database                   // Low level persistent database to store final content in
+	snaps         *snapshot.Tree                   // Snapshot tree for fast trie leaf access
+	triegc        *prque.Prque[int64, common.Hash] // Priority queue mapping block numbers to tries to gc
+	gcproc        time.Duration                    // Accumulates canonical block processing for trie dumping
+	commitLock    sync.Mutex                       // CommitLock is used to protect above field from being modified concurrently
 	flushInterval atomic.Int64                     // Time interval (processing time) after which to flush a state
 	triedb        *trie.Database                   // The database handler for maintaining trie nodes.
 
@@ -235,9 +235,9 @@ type BlockChain struct {
 	// Readers don't need to take it, they can just read the database.
 	chainmu *syncx.ClosableMutex
 
-	currentBlock          atomic.Value // Current head of the block chain
-		currentSnapBlock  atomic.Pointer[types.Header] // Current head of snap-sync
-	currentFastBlock      atomic.Value // Current head of the fast-sync chain (may be above the block chain!)
+	currentBlock          atomic.Value                 // Current head of the block chain
+	currentSnapBlock      atomic.Pointer[types.Header] // Current head of snap-sync
+	currentFastBlock      atomic.Value                 // Current head of the fast-sync chain (may be above the block chain!)
 	highestVerifiedHeader atomic.Value
 
 	stateCache    state.Database // State database to reuse between imports (contains state cache)
@@ -250,9 +250,9 @@ type BlockChain struct {
 	badBlockCache *lru.Cache     // Cache for the blocks that failed to pass MPT root verification
 
 	// trusted diff layers
-	diffLayerCache             *lru.Cache   // Cache for the diffLayers
-	diffLayerRLPCache          *lru.Cache   // Cache for the rlp encoded diffLayers
-	diffLayerChanCache         *lru.Cache   // Cache for the difflayer channel
+	diffLayerCache             *lru.Cache                            // Cache for the diffLayers
+	diffLayerRLPCache          *lru.Cache                            // Cache for the rlp encoded diffLayers
+	diffLayerChanCache         *lru.Cache                            // Cache for the difflayer channel
 	diffQueue                  *prque.Prque[int64, *types.DiffLayer] // A Priority queue to store recent diff layer
 	diffQueueBuffer            chan *types.DiffLayer
 	diffLayerFreezerBlockLimit uint64
@@ -312,23 +312,23 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 
 	// Open trie database with provided config
 	trieConfig := &trie.Config{
-		NoTries:   cacheConfig.NoTries,
+		NoTries: cacheConfig.NoTries,
 	}
-        stateScheme := rawdb.ReadStateScheme(db)
-        if stateScheme == rawdb.PathScheme {
-                trieConfig.PathDB = pathdb.Defaults
-        } else {
-                trieConfig.HashDB = hashdb.Defaults
-        }
+	stateScheme := rawdb.ReadStateScheme(db)
+	if stateScheme == rawdb.PathScheme {
+		trieConfig.PathDB = pathdb.Defaults
+	} else {
+		trieConfig.HashDB = hashdb.Defaults
+	}
 
 	triedb := trie.NewDatabase(db, trieConfig)
 	bc := &BlockChain{
-		chainConfig: chainConfig,
-		cacheConfig: cacheConfig,
-		db:          db,
-		triedb:      triedb,
-		triegc:      prque.New[int64, common.Hash](nil),
-		stateCache: state.NewDatabaseWithNodeDB(db, triedb, trieConfig),
+		chainConfig:           chainConfig,
+		cacheConfig:           cacheConfig,
+		db:                    db,
+		triedb:                triedb,
+		triegc:                prque.New[int64, common.Hash](nil),
+		stateCache:            state.NewDatabaseWithNodeDB(db, triedb, trieConfig),
 		triesInMemory:         cacheConfig.TriesInMemory,
 		quit:                  make(chan struct{}),
 		chainmu:               syncx.NewClosableMutex(),
@@ -498,7 +498,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 			NoBuild:    bc.cacheConfig.SnapshotNoBuild,
 			AsyncBuild: !bc.cacheConfig.SnapshotWait,
 		}
-	bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, int(bc.cacheConfig.TriesInMemory), head.Root)
+		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, int(bc.cacheConfig.TriesInMemory), head.Root)
 	}
 	// write safe point block number
 	rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().NumberU64())
@@ -896,10 +896,10 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bo
 			bc.hc.SetHead(target, updateFn, delFn)
 		}
 	} else {
-                // Rewind the chain to the requested head and keep going backwards until a
-                // block with a state is found or fast sync pivot is passed
-                log.Warn("Rewinding blockchain", "target", head)
-                bc.hc.SetHead(head, updateFn, delFn)
+		// Rewind the chain to the requested head and keep going backwards until a
+		// block with a state is found or fast sync pivot is passed
+		log.Warn("Rewinding blockchain", "target", head)
+		bc.hc.SetHead(head, updateFn, delFn)
 	}
 	// Clear out any stale content from the caches
 	bc.bodyCache.Purge()

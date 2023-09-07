@@ -185,20 +185,19 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	// but the corresponding state is missing.
 	header := rawdb.ReadHeader(db, stored, 0)
 
-
 	stateScheme := rawdb.ReadStateScheme(db)
 
 	cacheConfig := defaultCacheConfig
 	if stateScheme == "path" {
 		cacheConfig.StateScheme = rawdb.PathScheme
 	}
-	       // Open trie database with provided config
-        config := &trie.Config{
-                NoTries:   cacheConfig.NoTries,
-        }
+	// Open trie database with provided config
+	config := &trie.Config{
+		NoTries: cacheConfig.NoTries,
+	}
 
 	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, triedb, config), nil); err != nil {
-//	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, nil, nil), nil); err != nil {
+		//	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, nil, nil), nil); err != nil {
 		if genesis == nil {
 			genesis = DefaultGenesisBlock()
 		}
@@ -335,14 +334,12 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 	if db == nil {
 		db = rawdb.NewMemoryDatabase()
 	}
-
-        cacheConfig := defaultCacheConfig
-               // Open trie database with provided config
-        config := &trie.Config{
-                NoTries:   cacheConfig.NoTries,
-        }
-
-        triedb := trie.NewDatabase(db, config)
+	cacheConfig := defaultCacheConfig
+	// Open trie database with provided config
+	config := &trie.Config{
+		NoTries: cacheConfig.NoTries,
+	}
+	triedb := trie.NewDatabase(db, config)
 	defer triedb.Close()
 
 	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithNodeDB(db, triedb, config), nil)
@@ -389,10 +386,10 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 	statedb.Commit(0, nil)
 	statedb.Database().TrieDB().Commit(root, true)
 
-        // Ensure that the in-memory trie nodes are journaled to disk properly.
-        if err := triedb.Journal(root); err != nil {
-        	log.Info("Failed to journal in-memory trie nodes", "err", err)
-        }
+	// Ensure that the in-memory trie nodes are journaled to disk properly.
+	if err := triedb.Journal(root); err != nil {
+		log.Info("Failed to journal in-memory trie nodes", "err", err)
+	}
 
 	return types.NewBlock(head, nil, nil, nil, trie.NewStackTrie(nil))
 }

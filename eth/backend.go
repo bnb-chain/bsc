@@ -63,8 +63,8 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
-        "github.com/ethereum/go-ethereum/trie/triedb/hashdb"
-        "github.com/ethereum/go-ethereum/trie/triedb/pathdb"
+	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -153,7 +153,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 
-        trieConfig := &trie.Config{}
+	trieConfig := &trie.Config{}
 	stateScheme := rawdb.ReadStateScheme(chainDb)
 	if stateScheme == rawdb.PathScheme {
 		trieConfig.PathDB = pathdb.Defaults
@@ -167,7 +167,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	log.Info("Initialised chain configuration", "config", chainConfig)
 
-        // Try to recover offline state pruning only in hash-based.
+	// Try to recover offline state pruning only in hash-based.
 	if config.StateScheme == rawdb.HashScheme {
 		if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, stack.ResolvePath(config.TrieCleanCacheJournal), int(config.TriesInMemory)); err != nil {
 			log.Error("Failed to recover state", "error", err)
@@ -227,8 +227,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TrieTimeLimit:      config.TrieTimeout,
 			NoTries:            config.TriesVerifyMode != core.LocalVerify,
 			SnapshotLimit:      config.SnapshotCache,
-			StateHistory:        config.StateHistory,
-			StateScheme:          config.StateScheme,
+			StateHistory:       config.StateHistory,
+			StateScheme:        config.StateScheme,
 			TriesInMemory:      config.TriesInMemory,
 			Preimages:          config.Preimages,
 		}
