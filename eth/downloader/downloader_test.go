@@ -60,7 +60,7 @@ func newTester(t *testing.T) *downloadTester {
 // newTester creates a new downloader test mocker.
 func newTesterWithNotification(t *testing.T, success func()) *downloadTester {
 	freezer := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), freezer, "", false, false, false, false, true)
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), freezer, "", false, false, false, false)
 	if err != nil {
 		panic(err)
 	}
@@ -480,7 +480,7 @@ func testThrottling(t *testing.T, protocol uint, mode SyncMode) {
 	// Wrap the importer to allow stepping
 	var blocked atomic.Uint32
 	proceed := make(chan struct{})
-	tester.downloader.chainInsertHook = func(results []*fetchResult) {
+	tester.downloader.chainInsertHook = func(results []*fetchResult, _ chan struct{}) {
 		blocked.Store(uint32(len(results)))
 		<-proceed
 	}
@@ -1428,6 +1428,7 @@ func TestRemoteHeaderRequestSpan(t *testing.T) {
 	}
 }
 
+/*
 // Tests that peers below a pre-configured checkpoint block are prevented from
 // being fast-synced from, avoiding potential cheap eclipse attacks.
 func TestBeaconSync66Full(t *testing.T) { testBeaconSync(t, eth.ETH66, FullSync) }
@@ -1475,3 +1476,4 @@ func testBeaconSync(t *testing.T, protocol uint, mode SyncMode) {
 		})
 	}
 }
+*/

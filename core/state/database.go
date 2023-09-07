@@ -179,8 +179,8 @@ func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 }
 
 // NewDatabaseWithNodeDB creates a state database with an already initialized node database.
-func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database, config *trie.Config) Database {
-	noTries := config != nil && config.NoTries
+func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database) Database {
+	noTries := triedb != nil && triedb.Config() != nil && triedb.Config().NoTries
 
 	return &cachingDB{
 		disk:          db,

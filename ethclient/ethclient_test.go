@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
@@ -186,9 +185,27 @@ func TestToFilterArg(t *testing.T) {
 var (
 	testKey, _   = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	testAddr     = crypto.PubkeyToAddress(testKey.PublicKey)
-	testBalance  = big.NewInt(2e15)
+	testBalance  = big.NewInt(2e18)
+	testGasPrice = big.NewInt(3e9) // 3Gwei
 	testBlockNum = 128
 	testBlocks   = []testBlockParam{
+		{
+			blockNr: 1,
+			txs: []testTransactionParam{
+				{
+					to:       common.Address{0x10},
+					value:    big.NewInt(0),
+					gasPrice: testGasPrice,
+					data:     nil,
+				},
+				{
+					to:       common.Address{0x11},
+					value:    big.NewInt(0),
+					gasPrice: testGasPrice,
+					data:     nil,
+				},
+			},
+		},
 		{
 			// This txs params also used to default block.
 			blockNr: 10,
@@ -299,7 +316,6 @@ func generateTestChain() []*types.Block {
 	signer := types.HomesteadSigner{}
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
-	db.SetDiffStore(memorydb.New())
 	genesis.MustCommit(db)
 	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFaker(), vm.Config{}, nil, nil, core.EnablePersistDiff(860000))
 	generate := func(i int, block *core.BlockGen) {
@@ -456,7 +472,7 @@ func testBalanceAt(t *testing.T, client *rpc.Client) {
 		"valid_account": {
 			account: testAddr,
 			block:   big.NewInt(1),
-			want:    testBalance,
+			want:    big.NewInt(0).Sub(testBalance, big.NewInt(0).Mul(big.NewInt(2*21000), testGasPrice)),
 		},
 		"non_existent_account": {
 			account: common.Address{1},
@@ -595,7 +611,7 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gasPrice.Cmp(big.NewInt(1000000000)) != 0 {
+	if gasPrice.Cmp(testGasPrice) != 0 {
 		t.Fatalf("unexpected gas price: %v", gasPrice)
 	}
 
@@ -604,7 +620,7 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gasTipCap.Cmp(big.NewInt(1000000000)) != 0 {
+	if gasTipCap.Cmp(testGasPrice) != 0 {
 		t.Fatalf("unexpected gas tip cap: %v", gasTipCap)
 	}
 
@@ -617,13 +633,13 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 		OldestBlock: big.NewInt(2),
 		Reward: [][]*big.Int{
 			{
-				big.NewInt(234375000),
-				big.NewInt(234375000),
+				testGasPrice,
+				testGasPrice,
 			},
 		},
 		BaseFee: []*big.Int{
-			big.NewInt(765625000),
-			big.NewInt(671627818),
+			big.NewInt(params.InitialBaseFee),
+			big.NewInt(params.InitialBaseFee),
 		},
 		GasUsedRatio: []float64{0.008912678667376286},
 	}

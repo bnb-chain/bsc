@@ -19,7 +19,6 @@ package types
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -586,18 +585,6 @@ func (d *DiffLayer) EncodeRLP(w io.Writer) error {
 		Accounts:  d.Accounts,
 		Storages:  d.Storages,
 	})
-}
-
-func (d *DiffLayer) Validate() error {
-	if d.BlockHash == (common.Hash{}) {
-		return errors.New("blockHash can't be empty")
-	}
-	for _, storage := range d.Storages {
-		if len(storage.Keys) != len(storage.Vals) {
-			return errors.New("the length of keys and values mismatch in storage")
-		}
-	}
-	return nil
 }
 
 type DiffCode struct {

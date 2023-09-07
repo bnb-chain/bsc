@@ -65,9 +65,9 @@ type Genesis struct {
 	Number        uint64      `json:"number"`
 	GasUsed       uint64      `json:"gasUsed"`
 	ParentHash    common.Hash `json:"parentHash"`
-	BaseFee       *big.Int    `json:"baseFeePerGas"` // EIP-1559
-	ExcessBlobGas *uint64     `json:"excessBlobGas"` // EIP-4844
-	BlobGasUsed   *uint64     `json:"blobGasUsed"`   // EIP-4844
+	BaseFee       *big.Int    `json:"baseFeePerGas"`                             // EIP-1559
+	ExcessBlobGas *uint64     `json:"excessBlobGas,omitempty" toml:",omitempty"` // EIP-4844, TODO: remove tag `omitempty` after cancun fork
+	BlobGasUsed   *uint64     `json:"blobGasUsed,omitempty" toml:",omitempty"`   // EIP-4844, TODO: remove tag `omitempty` after cancun fork
 }
 
 func ReadGenesis(db ethdb.Database) (*Genesis, error) {
@@ -149,9 +149,11 @@ func (ga *GenesisAlloc) deriveHash() (common.Hash, error) {
 // all the generated states will be persisted into the given database.
 // Also, the genesis state specification will be flushed as well.
 func (ga *GenesisAlloc) flush(db ethdb.Database, triedb *trie.Database, blockhash common.Hash) error {
-	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb, &trie.Config{
-		NoTries: false,
-	}), nil)
+	trieConfig := triedb.Config()
+	if trieConfig != nil {
+		trieConfig.NoTries = false
+	}
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb), nil)
 	if err != nil {
 		return err
 	}
@@ -372,7 +374,8 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	// chain config as that would be AllProtocolChanges (applying any new fork
 	// on top of an existing private network genesis block). In that case, only
 	// apply the overrides.
-	if genesis == nil && stored != params.MainnetGenesisHash {
+	if genesis == nil && stored != params.MainnetGenesisHash &&
+		stored != params.ChapelGenesisHash && stored != params.RialtoGenesisHash && stored != params.BSCGenesisHash {
 		newcfg = storedcfg
 		applyOverrides(newcfg)
 	}

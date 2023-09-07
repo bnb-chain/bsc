@@ -319,7 +319,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	var (
 		storage map[common.Hash][]byte
 		origin  map[common.Hash][]byte
-		hasher  = s.db.hasher
+		hasher  = crypto.NewKeccakState()
 	)
 	tr, err := s.getTrie()
 	if err != nil {
@@ -337,6 +337,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		var v []byte
 		if value != (common.Hash{}) {
 			// Encoding []byte cannot fail, ok to ignore the error.
+			value := value
 			v = common.TrimLeftZeroes(value[:])
 		}
 		dirtyStorage[key] = v

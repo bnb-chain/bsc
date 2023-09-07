@@ -65,7 +65,7 @@ var DefaultConfig = Config{
 		MaxPeersPerIP: 0, // by default, it will be same as MaxPeers
 		NAT:           nat.Any(),
 	},
-	DBEngine: "", // Use whatever exists, will default to Pebble if non-existent and supported
+	DBEngine: "", // Use whatever exists, will default to Leveldb if non-existent and supported
 }
 
 // DefaultDataDir is the default data directory to use for the databases and other

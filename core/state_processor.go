@@ -32,13 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-const (
-	fullProcessCheck       = 21 // On diff sync mode, will do full process every fullProcessCheck randomly
-	recentTime             = 1024 * 3
-	recentDiffLayerTimeout = 5
-	farDiffLayerTimeout    = 2
-)
-
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
 //
@@ -135,7 +128,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	err := p.engine.Finalize(p.bc, header, statedb, commonTxs, block.Uncles(), withdrawals, receipts, systemTxs, usedGas)
+	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), withdrawals, &receipts, &systemTxs, usedGas)
 	if err != nil {
 		return statedb, receipts, allLogs, *usedGas, err
 	}

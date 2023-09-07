@@ -87,12 +87,8 @@ type StateDB struct {
 	expectedRoot common.Hash // The state root in the block header
 	stateRoot    common.Hash // The calculation result of IntermediateRoot
 
-	diffLayer      *types.DiffLayer
-	diffTries      map[common.Address]Trie
-	diffCode       map[common.Hash][]byte
-	lightProcessed bool
-	fullProcessed  bool
-	pipeCommit     bool
+	fullProcessed bool
+	pipeCommit    bool
 
 	// These maps hold the state changes (including the corresponding
 	// original value) that occurred in this **block**.
@@ -166,14 +162,9 @@ type StateDB struct {
 	StorageDeleted int
 }
 
-// New creates a new state from a given trie.
-func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	return newStateDB(root, db, snaps)
-}
-
 // NewWithSharedPool creates a new state with sharedStorge on layer 1.5
 func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	statedb, err := newStateDB(root, db, snaps)
+	statedb, err := New(root, db, snaps)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +172,8 @@ func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*St
 	return statedb, nil
 }
 
-func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
+// New creates a new state from a given trie.
+func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	tr, err := db.OpenTrie(root)
 	if err != nil {
 		return nil, err
@@ -211,14 +203,11 @@ func newStateDB(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, 
 		sdb.snap = sdb.snaps.Snapshot(root)
 	}
 
-	snapVerified := sdb.snap != nil && sdb.snap.Verified()
-	tr, err = db.OpenTrie(root)
 	// return error when 1. failed to open trie and 2. the snap is nil or the snap is not nil and done verification
-	if err != nil && (sdb.snap == nil || snapVerified) {
+	if err != nil && (sdb.snap == nil || sdb.snap.Verified()) {
 		return nil, err
 	}
 	_, sdb.noTrie = tr.(*trie.EmptyTrie)
-	sdb.trie = tr
 	return sdb, nil
 }
 
@@ -316,15 +305,12 @@ func (s *StateDB) SetExpectedStateRoot(root common.Hash) {
 	s.expectedRoot = root
 }
 
-// Mark that the block is processed by diff layer
-func (s *StateDB) MarkLightProcessed() {
-	s.lightProcessed = true
-}
-
 // Enable the pipeline commit function of statedb
 func (s *StateDB) EnablePipeCommit() {
 	if s.snap != nil && s.snaps.Layers() > 1 {
-		s.pipeCommit = true
+		// after big merge, disable pipeCommit for now,
+		// because `s.db.TrieDB().Update` should be called after `s.trie.Commit(true)`
+		s.pipeCommit = false
 	}
 }
 
@@ -336,10 +322,6 @@ func (s *StateDB) IsPipeCommit() bool {
 // Mark that the block is full processed
 func (s *StateDB) MarkFullProcessed() {
 	s.fullProcessed = true
-}
-
-func (s *StateDB) IsLightProcessed() bool {
-	return s.lightProcessed
 }
 
 // setError remembers the first non-nil error it is called with.
@@ -1055,7 +1037,9 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	// in the middle of a transaction. However, it doesn't cost us much to copy
 	// empty lists, so we do it anyway to not blow up if we ever decide copy them
 	// in the middle of a transaction.
-	state.accessList = s.accessList.Copy()
+	if s.accessList != nil {
+		state.accessList = s.accessList.Copy()
+	}
 	state.transientStorage = s.transientStorage.Copy()
 
 	state.prefetcher = s.prefetcher
@@ -1190,11 +1174,6 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
-	// light process is not allowed when there is no trie
-	if s.lightProcessed {
-		s.StopPrefetcher()
-		return s.trie.Hash()
-	}
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 	s.AccountsIntermediateRoot()
@@ -1248,6 +1227,7 @@ func (s *StateDB) populateSnapStorage(obj *stateObject) bool {
 	if len(obj.pendingStorage) == 0 {
 		return false
 	}
+	hasher := crypto.NewKeccakState()
 	var storage map[common.Hash][]byte
 	for key, value := range obj.pendingStorage {
 		var v []byte
@@ -1264,7 +1244,7 @@ func (s *StateDB) populateSnapStorage(obj *stateObject) bool {
 					obj.db.storages[obj.addrHash] = storage
 				}
 			}
-			storage[crypto.HashData(s.hasher, key[:])] = v // v will be nil if value is 0x00
+			storage[crypto.HashData(hasher, key[:])] = v // v will be nil if value is 0x00
 		}
 	}
 	return true
@@ -1336,7 +1316,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	if s.trie == nil {
 		tr, err := s.db.OpenTrie(s.originalRoot)
 		if err != nil {
-			panic(fmt.Sprintf("Failed to open trie tree %s", s.originalRoot))
+			panic(fmt.Sprintf("failed to open trie tree %s", s.originalRoot))
 		}
 		s.trie = tr
 	}
@@ -1567,6 +1547,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 					}
 					s.snaps.Snapshot(s.expectedRoot).CorrectAccounts(accountData)
 				}
+				s.snap = nil
 			}
 
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
@@ -1614,7 +1595,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 						} else {
 							taskResults <- tastResult{nil, nil}
 						}
-
 					}
 					tasksNum++
 				}
@@ -1741,7 +1721,9 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 						}
 					}()
 				}
-				s.snap = nil
+				if !s.pipeCommit {
+					s.snap = nil
+				}
 			}
 			return nil
 		},
@@ -1750,14 +1732,15 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 		go commmitTrie()
 	} else {
 		defer s.StopPrefetcher()
-		commitFuncs = append(commitFuncs, commmitTrie)
 	}
 	commitRes := make(chan error, len(commitFuncs))
 	for _, f := range commitFuncs {
+		// commitFuncs[0] and commitFuncs[1] both read map `stateObjects`, but no conflicts
 		tmpFunc := f
-		go func() {
-			commitRes <- tmpFunc()
-		}()
+		// go func() {
+		// TODO(Nathan): if run commitFuncs[0] and commitFuncs[1] cocurrently, diffLayer.Codes may go wrong?, thus TestFastNode fail
+		commitRes <- tmpFunc()
+		// }()
 	}
 	for i := 0; i < len(commitFuncs); i++ {
 		r := <-commitRes
@@ -1765,6 +1748,9 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 			return common.Hash{}, nil, r
 		}
 	}
+	// commitFuncs[1] and commmitTrie concurrent map `storages` iteration and map write
+	commmitTrie()
+
 	root := s.stateRoot
 	if s.pipeCommit {
 		root = s.expectedRoot

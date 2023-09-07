@@ -333,10 +333,10 @@ func doTest(cmdline []string) {
 		gotest.Args = append(gotest.Args, "-race")
 	}
 
-	packages := []string{"./accounts/...", "./common/...", "./consensus/...", "./console/...", "./core/...",
-		"./crypto/...", "./eth/...", "./ethclient/...", "./ethdb/...", "./event/...", "./graphql/...", "./les/...",
-		"./light/...", "./log/...", "./metrics/...", "./miner/...", "./mobile/...", "./node/...",
-		"./p2p/...", "./params/...", "./rlp/...", "./rpc/...", "./tests/...", "./trie/...", "./cmd/geth/..."}
+	packages := []string{"./accounts/...", "./cmd/geth/...", "./common/...", "./consensus/...", "./console/...",
+	"./core/...", "./crypto/...", "./eth/...", "./ethstats/...", "./ethclient/...", "./ethdb/...", "./event/...",
+	"./graphql/...", "./internal/...", "./les/...", "./light/...", "./log/...", "./metrics/...", "./miner/...",
+	"./node/...", "./p2p/...", "./params/...", "./rlp/...", "./rpc/...", "./signer/...", "./tests/...", "./trie/..."}
 	if len(flag.CommandLine.Args()) > 0 {
 		packages = flag.CommandLine.Args()
 	}

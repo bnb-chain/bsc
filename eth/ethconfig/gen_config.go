@@ -29,9 +29,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		NoPrefetch              bool
 		DirectBroadcast         bool
 		DisableSnapProtocol     bool
-		DisableDiffProtocol     bool
 		EnableTrustProtocol     bool
-		DiffSync                bool
 		PipeCommit              bool
 		RangeLimit              bool
 		TxLookupLimit           uint64                 `toml:",omitempty"`
@@ -83,9 +81,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.NoPrefetch = c.NoPrefetch
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
-	enc.DisableDiffProtocol = c.DisableDiffProtocol
 	enc.EnableTrustProtocol = c.EnableTrustProtocol
-	enc.DiffSync = c.DiffSync
 	enc.PipeCommit = c.PipeCommit
 	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
@@ -141,9 +137,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		NoPrefetch              *bool
 		DirectBroadcast         *bool
 		DisableSnapProtocol     *bool
-		DisableDiffProtocol     *bool
 		EnableTrustProtocol     *bool
-		DiffSync                *bool
 		PipeCommit              *bool
 		RangeLimit              *bool
 		TxLookupLimit           *uint64                `toml:",omitempty"`
@@ -222,14 +216,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.DisableSnapProtocol != nil {
 		c.DisableSnapProtocol = *dec.DisableSnapProtocol
 	}
-	if dec.DisableDiffProtocol != nil {
-		c.DisableDiffProtocol = *dec.DisableDiffProtocol
-	}
 	if dec.EnableTrustProtocol != nil {
 		c.EnableTrustProtocol = *dec.EnableTrustProtocol
-	}
-	if dec.DiffSync != nil {
-		c.DiffSync = *dec.DiffSync
 	}
 	if dec.PipeCommit != nil {
 		c.PipeCommit = *dec.PipeCommit

@@ -19,10 +19,8 @@ package eth
 import (
 	"fmt"
 	"math/big"
-	"math/rand"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -318,43 +316,6 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 	}
 }
 
-func TestWaitDiffExtensionTimout67(t *testing.T) { testWaitDiffExtensionTimout(t, eth.ETH67) }
-
-func testWaitDiffExtensionTimout(t *testing.T, protocol uint) {
-	t.Parallel()
-
-	// Create a message handler, configure it to accept transactions and watch them
-	handler := newTestHandler()
-	defer handler.close()
-
-	// Create a source peer to send messages through and a sink handler to receive them
-	_, p2pSink := p2p.MsgPipe()
-	defer p2pSink.Close()
-
-	protos := []p2p.Protocol{
-		{
-			Name:    "diff",
-			Version: 1,
-		},
-	}
-
-	sink := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", []p2p.Cap{
-		{
-			Name:    "diff",
-			Version: 1,
-		},
-	}), p2pSink, nil)
-	defer sink.Close()
-
-	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
-		return eth.Handle((*ethHandler)(handler.handler), peer)
-	})
-
-	if err == nil || err.Error() != "peer wait timeout" {
-		t.Fatalf("error should be `peer wait timeout`")
-	}
-}
-
 func TestWaitSnapExtensionTimout67(t *testing.T) { testWaitSnapExtensionTimout(t, eth.ETH67) }
 
 func testWaitSnapExtensionTimout(t *testing.T, protocol uint) {
@@ -601,7 +562,7 @@ func TestTransactionPendingReannounce(t *testing.T) {
 
 	sink := newTestHandler()
 	defer sink.close()
-	sink.handler.acceptTxs = 1 // mark synced to accept transactions
+	sink.handler.acceptTxs.Store(true) // mark synced to accept transactions
 
 	sourcePipe, sinkPipe := p2p.MsgPipe()
 	defer sourcePipe.Close()
@@ -640,45 +601,6 @@ func TestTransactionPendingReannounce(t *testing.T) {
 		case <-time.NewTimer(time.Second).C:
 			t.Errorf("sink: transaction propagation timed out: have %d, want %d", arrived, len(txs))
 		}
-	}
-}
-
-// Tests that post eth protocol handshake, clients perform a mutual checkpoint
-// challenge to validate each other's chains. Hash mismatches, or missing ones
-// during a fast sync should lead to the peer getting dropped.
-func TestCheckpointChallenge(t *testing.T) {
-	tests := []struct {
-		syncmode   downloader.SyncMode
-		checkpoint bool
-		timeout    bool
-		empty      bool
-		match      bool
-		drop       bool
-	}{
-		// If checkpointing is not enabled locally, don't challenge and don't drop
-		{downloader.FullSync, false, false, false, false, false},
-		{downloader.SnapSync, false, false, false, false, false},
-
-		// If checkpointing is enabled locally and remote response is empty, only drop during fast sync
-		{downloader.FullSync, true, false, true, false, false},
-		{downloader.SnapSync, true, false, true, false, true}, // Special case, fast sync, unsynced peer
-
-		// If checkpointing is enabled locally and remote response mismatches, always drop
-		{downloader.FullSync, true, false, false, false, true},
-		{downloader.SnapSync, true, false, false, false, true},
-
-		// If checkpointing is enabled locally and remote response matches, never drop
-		{downloader.FullSync, true, false, false, true, false},
-		{downloader.SnapSync, true, false, false, true, false},
-
-		// If checkpointing is enabled locally and remote times out, always drop
-		{downloader.FullSync, true, true, false, true, true},
-		{downloader.SnapSync, true, true, false, true, true},
-	}
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("sync %v checkpoint %v timeout %v empty %v match %v", tt.syncmode, tt.checkpoint, tt.timeout, tt.empty, tt.match), func(t *testing.T) {
-			testCheckpointChallenge(t, tt.syncmode, tt.checkpoint, tt.timeout, tt.empty, tt.match, tt.drop)
-		})
 	}
 }
 
@@ -848,7 +770,7 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 	var (
 		genesis       = handler.chain.Genesis()
 		head          = handler.chain.CurrentBlock()
-		td            = handler.chain.GetTd(head.Hash(), head.NumberU64())
+		td            = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 		wg            = sync.WaitGroup{}
 		maxPeersPerIP = handler.handler.maxPeersPerIP
 		uniPort       = 1000

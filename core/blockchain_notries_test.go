@@ -201,7 +201,7 @@ func TestFastNode(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 	_, err = fastnode.chain.InsertChain(blocks)
-	if err == nil || fastnode.chain.CurrentBlock().NumberU64() != failed.blockNumber+10 {
+	if err == nil || fastnode.chain.CurrentBlock().Number.Uint64() != failed.blockNumber+10 {
 		t.Fatalf("blocks insert should be failed at height %d", failed.blockNumber+11)
 	}
 	// test insecure mode and succeed
@@ -220,7 +220,7 @@ func TestFastNode(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 	_, err = fastnode.chain.InsertChain(blocks)
-	if err == nil || fastnode.chain.CurrentBlock().NumberU64() != failed.blockNumber+10 {
+	if err == nil || fastnode.chain.CurrentBlock().Number.Uint64() != failed.blockNumber+10 {
 		t.Fatalf("blocks insert should be failed at height %d", failed.blockNumber+11)
 	}
 }

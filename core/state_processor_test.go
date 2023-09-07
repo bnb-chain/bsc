@@ -35,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -100,21 +99,23 @@ func TestStateProcessorErrors(t *testing.T) {
 		}), signer, key1)
 		return tx
 	}
-	var mkBlobTx = func(nonce uint64, to common.Address, gasLimit uint64, gasTipCap, gasFeeCap *big.Int, hashes []common.Hash) *types.Transaction {
-		tx, err := types.SignTx(types.NewTx(&types.BlobTx{
-			Nonce:      nonce,
-			GasTipCap:  uint256.MustFromBig(gasTipCap),
-			GasFeeCap:  uint256.MustFromBig(gasFeeCap),
-			Gas:        gasLimit,
-			To:         to,
-			BlobHashes: hashes,
-			Value:      new(uint256.Int),
-		}), signer, key1)
-		if err != nil {
-			t.Fatal(err)
+	/*
+		var mkBlobTx = func(nonce uint64, to common.Address, gasLimit uint64, gasTipCap, gasFeeCap *big.Int, hashes []common.Hash) *types.Transaction {
+			tx, err := types.SignTx(types.NewTx(&types.BlobTx{
+				Nonce:      nonce,
+				GasTipCap:  uint256.MustFromBig(gasTipCap),
+				GasFeeCap:  uint256.MustFromBig(gasFeeCap),
+				Gas:        gasLimit,
+				To:         to,
+				BlobHashes: hashes,
+				Value:      new(uint256.Int),
+			}), signer, key1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return tx
 		}
-		return tx
-	}
+	*/
 
 	{ // Tests against a 'recent' chain definition
 		var (
@@ -240,22 +241,25 @@ func TestStateProcessorErrors(t *testing.T) {
 			},
 			{ // ErrMaxInitCodeSizeExceeded
 				txs: []*types.Transaction{
-					mkDynamicCreationTx(0, 500000, common.Big0, big.NewInt(params.InitialBaseFee), tooBigInitCode[:]),
+					mkDynamicCreationTx(0, 500000, common.Big0, big.NewInt(params.InitialBaseFeeForEthMainnet), tooBigInitCode[:]),
 				},
 				want: "could not apply tx 0 [0xd491405f06c92d118dd3208376fcee18a57c54bc52063ee4a26b1cf296857c25]: max initcode size exceeded: code size 49153 limit 49152",
 			},
 			{ // ErrIntrinsicGas: Not enough gas to cover init code
 				txs: []*types.Transaction{
-					mkDynamicCreationTx(0, 54299, common.Big0, big.NewInt(params.InitialBaseFee), make([]byte, 320)),
+					mkDynamicCreationTx(0, 54299, common.Big0, big.NewInt(params.InitialBaseFeeForEthMainnet), make([]byte, 320)),
 				},
 				want: "could not apply tx 0 [0xfd49536a9b323769d8472fcb3ebb3689b707a349379baee3e2ee3fe7baae06a1]: intrinsic gas too low: have 54299, want 54300",
 			},
-			{ // ErrBlobFeeCapTooLow
-				txs: []*types.Transaction{
-					mkBlobTx(0, common.Address{}, params.TxGas, big.NewInt(1), big.NewInt(1), []common.Hash{(common.Hash{1})}),
+			// TODO(Nathan), blobtx disable now
+			/*
+				{ // ErrBlobFeeCapTooLow
+					txs: []*types.Transaction{
+						mkBlobTx(0, common.Address{}, params.TxGas, big.NewInt(1), big.NewInt(1), []common.Hash{(common.Hash{1})}),
+					},
+					want: "could not apply tx 0 [0x6c11015985ce82db691d7b2d017acda296db88b811c3c60dc71449c76256c716]: max fee per gas less than block base fee: address 0x71562b71999873DB5b286dF957af199Ec94617F7, maxFeePerGas: 1 baseFee: 875000000",
 				},
-				want: "could not apply tx 0 [0x6c11015985ce82db691d7b2d017acda296db88b811c3c60dc71449c76256c716]: max fee per gas less than block base fee: address 0x71562b71999873DB5b286dF957af199Ec94617F7, maxFeePerGas: 1 baseFee: 875000000",
-			},
+			*/
 		} {
 			block := GenerateBadBlock(gspec.ToBlock(), beacon.New(ethash.NewFaker()), tt.txs, gspec.Config)
 			_, err := blockchain.InsertChain(types.Blocks{block})

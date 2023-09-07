@@ -34,10 +34,7 @@ var (
 
 	errSideChainReceipts = errors.New("side blocks can't be accepted as ancient chain data")
 
-	// ErrDiffLayerNotFound is returned when diff layer not found.
-	ErrDiffLayerNotFound = errors.New("diff layer not found")
-
-	// ErrDiffLayerNotFound is returned when block - 11 has not been verified by the remote verifier.
+	// ErrAncestorHasNotBeenVerified is returned when block - 11 has not been verified by the remote verifier.
 	ErrAncestorHasNotBeenVerified = errors.New("block ancestor has not been verified")
 
 	// ErrCurrentBlockNotFound is returned when current block not found.

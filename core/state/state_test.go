@@ -60,7 +60,7 @@ func TestDump(t *testing.T) {
 	s.state.updateStateObject(obj2)
 	s.state.Finalise(false)
 	s.state.AccountsIntermediateRoot()
-	root, _,_ :s.state.Commit(0,nil)
+	root, _, _ := s.state.Commit(0, nil)
 
 	// check that DumpToCollector contains the state objects that are in trie
 	s.state, _ = New(root, tdb, nil)
@@ -116,7 +116,9 @@ func TestIterativeDump(t *testing.T) {
 	// write some of them to the trie
 	s.state.updateStateObject(obj1)
 	s.state.updateStateObject(obj2)
-	root,_, _ := s.state.Commit(0, false)
+	s.state.Finalise(false)
+	s.state.AccountsIntermediateRoot()
+	root, _, _ := s.state.Commit(0, nil)
 	s.state, _ = New(root, tdb, nil)
 
 	b := &bytes.Buffer{}
@@ -144,7 +146,7 @@ func TestNull(t *testing.T) {
 	s.state.SetState(address, common.Hash{}, value)
 	s.state.Finalise(false)
 	s.state.AccountsIntermediateRoot()
-	s.state.Commit(0,nil)
+	s.state.Commit(0, nil)
 
 	if value := s.state.GetState(address, common.Hash{}); value != (common.Hash{}) {
 		t.Errorf("expected empty current value, got %x", value)
@@ -214,11 +216,11 @@ func TestSnapshot2(t *testing.T) {
 	so0.SetCode(crypto.Keccak256Hash([]byte{'c', 'a', 'f', 'e'}), []byte{'c', 'a', 'f', 'e'})
 	so0.selfDestructed = false
 	so0.deleted = false
-	state.SetStateObject(so0)
+	state.setStateObject(so0)
 
 	state.Finalise(false)
 	state.AccountsIntermediateRoot()
-	root, _, _ := state.Commit(nil)
+	root, _, _ := state.Commit(0, nil)
 	state, _ = New(root, state.db, state.snaps)
 
 	// and one with deleted == true
@@ -228,7 +230,7 @@ func TestSnapshot2(t *testing.T) {
 	so1.SetCode(crypto.Keccak256Hash([]byte{'c', 'a', 'f', 'e', '2'}), []byte{'c', 'a', 'f', 'e', '2'})
 	so1.selfDestructed = true
 	so1.deleted = true
-	state.SetStateObject(so1)
+	state.setStateObject(so1)
 
 	so1 = state.getStateObject(stateobjaddr1)
 	if so1 != nil {

@@ -579,7 +579,9 @@ func TestCopyCommitCopy(t *testing.T) {
 		t.Fatalf("second copy committed storage slot mismatch: have %x, want %x", val, sval)
 	}
 	// Commit state, ensure states can be loaded from disk
-	root, _ := state.Commit(0, false)
+	state.Finalise(false)
+	state.AccountsIntermediateRoot()
+	root, _, _ := state.Commit(0, nil)
 	state, _ = New(root, tdb, nil)
 	if balance := state.GetBalance(addr); balance.Cmp(big.NewInt(42)) != 0 {
 		t.Fatalf("state post-commit balance mismatch: have %v, want %v", balance, 42)
@@ -693,7 +695,9 @@ func TestCommitCopy(t *testing.T) {
 		t.Fatalf("initial committed storage slot mismatch: have %x, want %x", val, common.Hash{})
 	}
 	// Copy the committed state database, the copied one is not functional.
-	state.Commit(0, true)
+	state.Finalise(true)
+	state.AccountsIntermediateRoot()
+	state.Commit(0, nil)
 	copied := state.Copy()
 	if balance := copied.GetBalance(addr); balance.Cmp(big.NewInt(0)) != 0 {
 		t.Fatalf("unexpected balance: have %v", balance)
@@ -729,7 +733,7 @@ func TestDeleteCreateRevert(t *testing.T) {
 
 	state.Finalise(false)
 	state.AccountsIntermediateRoot()
-	root, _, _ := state.Commit0, (nil)
+	root, _, _ := state.Commit(0, nil)
 	state, _ = New(root, state.db, state.snaps)
 
 	// Simulate self-destructing in one transaction, then create-reverting in another
@@ -1055,7 +1059,7 @@ func TestResetObject(t *testing.T) {
 		disk     = rawdb.NewMemoryDatabase()
 		tdb      = trie.NewDatabase(disk)
 		db       = NewDatabaseWithNodeDB(disk, tdb)
-		snaps, _ = snapshot.New(snapshot.Config{CacheSize: 10}, disk, tdb, types.EmptyRootHash)
+		snaps, _ = snapshot.New(snapshot.Config{CacheSize: 10}, disk, tdb, types.EmptyRootHash, 128, false)
 		state, _ = New(types.EmptyRootHash, db, snaps)
 		addr     = common.HexToAddress("0x1")
 		slotA    = common.HexToHash("0x1")
@@ -1070,7 +1074,9 @@ func TestResetObject(t *testing.T) {
 	state.CreateAccount(addr)
 	state.SetBalance(addr, big.NewInt(2))
 	state.SetState(addr, slotB, common.BytesToHash([]byte{0x2}))
-	root, _ := state.Commit(0, true)
+	root := state.IntermediateRoot(true)
+	state.SetExpectedStateRoot(root)
+	state.Commit(0, nil)
 
 	// Ensure the original account is wiped properly
 	snap := snaps.Snapshot(root)

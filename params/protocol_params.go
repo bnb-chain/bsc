@@ -177,6 +177,9 @@ const (
 	BlobTxMinBlobGasprice              = 1       // Minimum gas price for data blobs
 	BlobTxBlobGaspriceUpdateFraction   = 2225652 // Controls the maximum rate of change for blob gas price
 	BlobTxPointEvaluationPrecompileGas = 50000   // Gas price for the point evaluation precompile.
+
+	// used for test
+	InitialBaseFeeForEthMainnet = int64(1000000000) // Initial base fee for EIP-1559 blocks on Eth hMainnet
 )
 
 // Gas discount table for BLS12-381 G1 and G2 multi exponentiation operations
