@@ -121,11 +121,11 @@ var (
 		Usage: "Data directory for the databases and keystore",
 		Value: DirectoryString(node.DefaultDataDir()),
 	}
-        DBEngineFlag = cli.StringFlag{
-                Name:     "db.engine",
-                Usage:    "Backing database implementation to use ('pebble' or 'leveldb')",
-                Value:    node.DefaultConfig.DBEngine,
-        }
+	DBEngineFlag = cli.StringFlag{
+		Name:  "db.engine",
+		Usage: "Backing database implementation to use ('pebble' or 'leveldb')",
+		Value: node.DefaultConfig.DBEngine,
+	}
 	DirectBroadcastFlag = cli.BoolFlag{
 		Name:  "directbroadcast",
 		Usage: "Enable directly broadcast mined block to all peers",
@@ -288,14 +288,14 @@ var (
 		Value: 128,
 	}
 	StateSchemeFlag = cli.StringFlag{
-		Name:     "state.scheme",
-		Usage:    "Scheme to use for storing ethereum state ('hash' or 'path')",
-		Value:    rawdb.HashScheme,
+		Name:  "state.scheme",
+		Usage: "Scheme to use for storing ethereum state ('hash' or 'path')",
+		Value: rawdb.HashScheme,
 	}
 	StateHistoryFlag = cli.Uint64Flag{
-		Name:     "history.state",
-		Usage:    "Number of recent blocks to retain state history for (default = 90,000 blocks, 0 = entire chain)",
-		Value:    ethconfig.Defaults.StateHistory,
+		Name:  "history.state",
+		Usage: "Number of recent blocks to retain state history for (default = 90,000 blocks, 0 = entire chain)",
+		Value: ethconfig.Defaults.StateHistory,
 	}
 	defaultVerifyMode   = ethconfig.Defaults.TriesVerifyMode
 	TriesVerifyModeFlag = TextMarshalerFlag{
@@ -1820,6 +1820,18 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.GlobalIsSet(RPCGlobalTxFeeCapFlag.Name) {
 		cfg.RPCTxFeeCap = ctx.GlobalFloat64(RPCGlobalTxFeeCapFlag.Name)
 	}
+	if ctx.GlobalIsSet(StateSchemeFlag.Name) {
+		cfg.StateScheme = ctx.GlobalString(StateSchemeFlag.Name)
+		if cfg.StateScheme == rawdb.PathScheme {
+			cfg.TrieDBConfig.PathDB = pathdb.Defaults
+			cfg.TrieDBConfig.HashDB = nil
+		} else if cfg.StateScheme == rawdb.HashScheme {
+			cfg.TrieDBConfig.HashDB = hashdb.Defaults
+			cfg.TrieDBConfig.PathDB = nil
+		} else {
+			log.Crit("unsupported state scheme", cfg.StateScheme)
+		}
+	}
 	if ctx.GlobalIsSet(NoDiscoverFlag.Name) {
 		cfg.EthDiscoveryURLs, cfg.SnapDiscoveryURLs, cfg.TrustDiscoveryURLs, cfg.BscDiscoveryURLs = []string{}, []string{}, []string{}, []string{}
 	} else if ctx.GlobalIsSet(DNSDiscoveryFlag.Name) {
@@ -2129,14 +2141,14 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chainDb ethdb.Database) {
 	var err error
 	chainDb = MakeChainDatabase(ctx, stack, false, false) // TODO(rjl493456442) support read-only database
-        trieConfig := &trie.Config{}
-        stateScheme := rawdb.ReadStateScheme(chainDb)
-        if stateScheme == rawdb.PathScheme {
-                trieConfig.PathDB = pathdb.Defaults
-        } else {
-                trieConfig.HashDB = hashdb.Defaults
-        }
-        triedb := trie.NewDatabase(chainDb, trieConfig)
+	trieConfig := &trie.Config{}
+	stateScheme := rawdb.ReadStateScheme(chainDb)
+	if stateScheme == rawdb.PathScheme {
+		trieConfig.PathDB = pathdb.Defaults
+	} else {
+		trieConfig.HashDB = hashdb.Defaults
+	}
+	triedb := trie.NewDatabase(chainDb, trieConfig)
 	config, _, err := core.SetupGenesisBlock(chainDb, triedb, MakeGenesis(ctx))
 	if err != nil {
 		Fatalf("%v", err)

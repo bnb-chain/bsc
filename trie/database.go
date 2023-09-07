@@ -23,6 +23,7 @@ import (
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
@@ -110,7 +111,13 @@ func prepare(diskdb ethdb.Database, config *Config) *Database {
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	// Sanitize the config and use the default one if it's not specified.
 	if config == nil {
-		config = HashDefaults
+		if rawdb.PathStateScheme(diskdb) {
+			config = &Config{
+				PathDB: pathdb.Defaults,
+			}
+		} else {
+			config = HashDefaults
+		}
 	}
 	var preimages *preimageStore
 	if config.Preimages {
@@ -125,8 +132,14 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		log.Crit("Both 'hash' and 'path' mode are configured")
 	}
 	if config.PathDB != nil {
+		if rawdb.HashStateScheme(diskdb) {
+			log.Crit("incompatible trie db scheme", "config", rawdb.PathScheme, "exists", rawdb.HashScheme)
+		}
 		db.backend = pathdb.New(diskdb, config.PathDB)
 	} else {
+		if rawdb.PathStateScheme(diskdb) {
+			log.Crit("incompatible trie db scheme", "config", rawdb.HashScheme, "exists", rawdb.PathScheme)
+		}
 		db.backend = hashdb.New(diskdb, config.HashDB, mptResolver{})
 	}
 	log.Info("succeed to init triedb", "scheme", db.Scheme())

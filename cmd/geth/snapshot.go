@@ -231,8 +231,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		return nil, errors.New("failed to load head block")
 	}
 	headHeader := headBlock.Header()
-	dbConfig := &trie.Config{}
-	triedb := trie.NewDatabase(chaindb, dbConfig)
+	triedb := trie.NewDatabase(chaindb, nil)
 	defer triedb.Close()
 
 	snapConfig := snapshot.Config{
@@ -282,7 +281,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		// as the pruning target.
 		var found bool
 		for i := len(layers) - 2; i >= 1; i-- {
-			if blob := rawdb.ReadTrieNode(chaindb, common.Hash{}, nil, layers[i].Root(),triedb.Scheme() ); len(blob) != 0 {
+			if blob := rawdb.ReadTrieNode(chaindb, common.Hash{}, nil, layers[i].Root(), triedb.Scheme()); len(blob) != 0 {
 				targetRoot = layers[i].Root()
 				found = true
 				log.Info("Selecting middle-layer as the pruning target", "root", targetRoot, "depth", i)
@@ -326,9 +325,9 @@ func pruneState(ctx *cli.Context) error {
 	defer chaindb.Close()
 
 	prunerconfig := pruner.Config{
-		Datadir:   stack.ResolvePath(""),
-		Cachedir:  stack.ResolvePath(config.Eth.TrieCleanCacheJournal),
-		BloomSize: ctx.Uint64(utils.BloomFilterSizeFlag.Name),
+		Datadir:       stack.ResolvePath(""),
+		Cachedir:      stack.ResolvePath(config.Eth.TrieCleanCacheJournal),
+		BloomSize:     ctx.Uint64(utils.BloomFilterSizeFlag.Name),
 		TriesInMemory: (int)(ctx.GlobalUint64(utils.TriesInMemoryFlag.Name)),
 	}
 	pruner, err := pruner.NewPruner(chaindb, prunerconfig)
@@ -407,8 +406,7 @@ func verifyState(ctx *cli.Context) error {
 		log.Error("Failed to load head block")
 		return errors.New("no head block")
 	}
-	dbConfig := &trie.Config{}
-	triedb := trie.NewDatabase(chaindb, dbConfig)
+	triedb := trie.NewDatabase(chaindb, nil)
 	defer triedb.Close()
 
 	snapConfig := snapshot.Config{
@@ -450,8 +448,7 @@ func traverseState(ctx *cli.Context) error {
 	defer stack.Close()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
-	config := &trie.Config{}
-	triedb := trie.NewDatabase(chaindb, config)
+	triedb := trie.NewDatabase(chaindb, nil)
 	defer triedb.Close()
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
@@ -552,8 +549,7 @@ func traverseRawState(ctx *cli.Context) error {
 	defer stack.Close()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
-	config := &trie.Config{}
-	triedb := trie.NewDatabase(chaindb, config)
+	triedb := trie.NewDatabase(chaindb, nil)
 	defer triedb.Close()
 
 	headBlock := rawdb.ReadHeadBlock(chaindb)
@@ -697,8 +693,7 @@ func dumpState(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	dbConfig := &trie.Config{}
-	triedb := trie.NewDatabase(db, dbConfig)
+	triedb := trie.NewDatabase(db, nil)
 	defer triedb.Close()
 
 	snapConfig := snapshot.Config{

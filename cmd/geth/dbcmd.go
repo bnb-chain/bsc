@@ -464,8 +464,7 @@ func dbDumpTrie(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
-	config := &trie.Config{}
-	triedb := trie.NewDatabase(db, config)
+	triedb := trie.NewDatabase(db, nil)
 	defer triedb.Close()
 
 	var (

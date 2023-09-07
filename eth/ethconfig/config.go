@@ -31,8 +31,8 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -41,6 +41,8 @@ import (
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
 )
 
 // FullNodeGPO contains default gasprice oracle settings for full node.
@@ -76,6 +78,7 @@ var Defaults = Config{
 	TxLookupLimit:           2350000,
 	StateHistory:            params.FullImmutabilityThreshold,
 	StateScheme:             rawdb.HashScheme,
+	TrieDBConfig:            trie.Config{HashDB: hashdb.Defaults},
 	LightPeers:              100,
 	UltraLightFraction:      75,
 	DatabaseCache:           512,
@@ -161,7 +164,7 @@ type Config struct {
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 	StateHistory  uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
 	StateScheme   string `toml:",omitempty"` // Disk scheme used to interact with trie nodes.
-
+	TrieDBConfig  trie.Config
 	// Whitelist of required block number -> hash values to accept
 	Whitelist map[uint64]common.Hash `toml:"-"`
 

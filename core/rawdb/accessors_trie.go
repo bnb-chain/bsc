@@ -283,3 +283,26 @@ func ReadStateScheme(db ethdb.Reader) string {
 	}
 	return HashScheme
 }
+
+// PathStateScheme returns an indicator whether the base path trie nodes has been stored.
+func PathStateScheme(db ethdb.Reader) bool {
+	// Check if state in path-based scheme is present
+	blob, _ := ReadAccountTrieNode(db, nil)
+	if len(blob) != 0 {
+		return true
+	}
+	return false
+}
+
+// HashStateScheme returns an indicator whether the hash trie nodes has been stored.
+func HashStateScheme(db ethdb.Reader) bool {
+	header := ReadHeader(db, ReadCanonicalHash(db, 0), 0)
+	if header == nil {
+		return false
+	}
+	blob := ReadLegacyTrieNode(db, header.Root)
+	if len(blob) == 0 {
+		return false // no state in disk
+	}
+	return true
+}

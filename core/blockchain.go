@@ -48,8 +48,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
-	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 var (
@@ -314,14 +312,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	trieConfig := &trie.Config{
 		NoTries: cacheConfig.NoTries,
 	}
-	stateScheme := rawdb.ReadStateScheme(db)
-	if stateScheme == rawdb.PathScheme {
-		trieConfig.PathDB = pathdb.Defaults
-	} else {
-		trieConfig.HashDB = hashdb.Defaults
-	}
-
-	triedb := trie.NewDatabase(db, trieConfig)
+	triedb := trie.NewDatabase(db, nil)
 	bc := &BlockChain{
 		chainConfig:           chainConfig,
 		cacheConfig:           cacheConfig,
