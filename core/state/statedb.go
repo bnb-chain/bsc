@@ -1652,19 +1652,30 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				}
 			}
 			close(finishCh)
-
+			
+			// The onleaf func is called _serially_, so we can reuse the same account
+			// for unmarshalling every time.
 			if !s.noTrie {
-				// TODO: Rick
-				root, set, err := s.trie.Commit(nil)
+				var account types.StateAccount
+				root, set, err := s.trie.Commit(func(_ [][]byte, _ []byte, leaf []byte, parent common.Hash, parentPath []byte) error {
+					if err := rlp.DecodeBytes(leaf, &account); err != nil {
+						return nil
+					}
+					if account.Root != types.EmptyRootHash {
+						s.db.TrieDB().Reference(account.Root, parent)
+					}
+					return nil
+				})
 				if err != nil {
 					return err
 				}
-				// Merge the dirty nodes of account trie into global set
+
 				if set != nil {
 					if err := nodes.Merge(set); err != nil {
 						return err
 					}
 				}
+
 				if root != types.EmptyRootHash {
 					s.db.CacheAccount(root, s.trie)
 				}
