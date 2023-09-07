@@ -927,6 +927,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 	}()
 	defer cancel()
 
+	var intrinsicGas uint64 = 0
 	// Run the transaction with tracing enabled.
 	if posa, ok := api.backend.Engine().(consensus.PoSA); ok && message.From() == vmctx.Coinbase &&
 		posa.IsSystemContract(message.To()) && message.GasPrice().Cmp(big.NewInt(0)) == 0 {
@@ -935,6 +936,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 			statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
 			statedb.AddBalance(vmctx.Coinbase, balance)
 		}
+		intrinsicGas, _ = core.IntrinsicGas(message.Data(), message.AccessList(), false, true, true)
 	}
 
 	// Call Prepare to clear out the statedb access list
@@ -942,6 +944,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 	if _, err = core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas())); err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
+	tracer.CaptureSystemTxEnd(intrinsicGas)
 	return tracer.GetResult()
 }
 

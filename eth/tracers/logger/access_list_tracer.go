@@ -172,6 +172,8 @@ func (*AccessListTracer) CaptureTxStart(gasLimit uint64) {}
 
 func (*AccessListTracer) CaptureTxEnd(restGas uint64) {}
 
+func (*AccessListTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
+
 // AccessList returns the current accesslist maintained by the tracer.
 func (a *AccessListTracer) AccessList() types.AccessList {
 	return a.list.accessList()
