@@ -186,12 +186,12 @@ func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database, config *tri
 	}
 
 	database := &cachingDB{
-		disk:          db,
-		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
-		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
+		disk:             db,
+		codeSizeCache:    lru.NewCache[common.Hash, int](codeSizeCacheSize),
+		codeCache:        lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
 		accountTrieCache: lru.NewCache[common.Hash, Trie](accountTrieCacheSize),
 		storageTrieCache: lru.NewCache[common.Hash, TriesArray](storageTrieCacheSize),
-		triedb:        triedb,
+		triedb:           triedb,
 		noTries:          noTries,
 	}
 	if !noTries {
@@ -201,12 +201,12 @@ func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database, config *tri
 }
 
 type cachingDB struct {
-	disk          ethdb.KeyValueStore
-	codeSizeCache *lru.Cache[common.Hash, int]
-	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
+	disk             ethdb.KeyValueStore
+	codeSizeCache    *lru.Cache[common.Hash, int]
+	codeCache        *lru.SizeConstrainedCache[common.Hash, []byte]
 	accountTrieCache *lru.Cache[common.Hash, Trie]
 	storageTrieCache *lru.Cache[common.Hash, TriesArray]
-	triedb        *trie.Database
+	triedb           *trie.Database
 	noTries          bool
 }
 

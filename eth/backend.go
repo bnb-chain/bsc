@@ -150,7 +150,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	config.TrieDBConfig.PathDB.ReadOnly = true
+	if config.TrieDBConfig.PathDB != nil {
+		config.TrieDBConfig.PathDB.ReadOnly = true
+	}
 	triedb := trie.NewDatabase(chainDb, &config.TrieDBConfig)
 	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, triedb, config.Genesis, config.OverrideBerlin, config.OverrideArrowGlacier, config.OverrideTerminalTotalDifficulty)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
@@ -159,7 +161,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	log.Info("Initialised chain configuration", "config", chainConfig)
 
 	// Try to recover offline state pruning only in hash-based.
-	if config.StateScheme == rawdb.HashScheme {
+	if triedb.Scheme() == rawdb.HashScheme {
 		if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, stack.ResolvePath(config.TrieCleanCacheJournal), int(config.TriesInMemory)); err != nil {
 			log.Error("Failed to recover state", "error", err)
 		}

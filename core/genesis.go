@@ -184,20 +184,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	// We have the genesis block in database(perhaps in ancient database)
 	// but the corresponding state is missing.
 	header := rawdb.ReadHeader(db, stored, 0)
-
-	stateScheme := rawdb.ReadStateScheme(db)
-
-	cacheConfig := defaultCacheConfig
-	if stateScheme == "path" {
-		cacheConfig.StateScheme = rawdb.PathScheme
-	}
-	// Open trie database with provided config
-	config := &trie.Config{
-		NoTries: cacheConfig.NoTries,
-	}
-
-	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, triedb, config), nil); err != nil {
-		//	if _, err := state.New(header.Root, state.NewDatabaseWithNodeDB(db, nil, nil), nil); err != nil {
+	if header.Root != types.EmptyRootHash && !rawdb.HasLegacyTrieNode(db, header.Root) && !rawdb.HasAccountTrieNode(db, nil, header.Root) {
 		if genesis == nil {
 			genesis = DefaultGenesisBlock()
 		}
@@ -334,16 +321,10 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 	if db == nil {
 		db = rawdb.NewMemoryDatabase()
 	}
-	cacheConfig := defaultCacheConfig
-	// Open trie database with provided config
-	config := &trie.Config{
-		NoTries: cacheConfig.NoTries,
-	}
-	triedb := trie.NewDatabase(db, config)
+	triedb := trie.NewDatabase(db, nil)
 	defer triedb.Close()
 
-	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithNodeDB(db, triedb, config), nil)
-	// statedb, err := state.New(common.Hash{}, state.NewDatabase(db), nil)
+	statedb, err := state.New(common.Hash{}, state.NewDatabaseWithNodeDB(db, triedb, nil), nil)
 	if err != nil {
 		panic(err)
 	}

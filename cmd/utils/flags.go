@@ -1822,15 +1822,15 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.GlobalIsSet(StateSchemeFlag.Name) {
 		cfg.StateScheme = ctx.GlobalString(StateSchemeFlag.Name)
-		if cfg.StateScheme == rawdb.PathScheme {
-			cfg.TrieDBConfig.PathDB = pathdb.Defaults
-			cfg.TrieDBConfig.HashDB = nil
-		} else if cfg.StateScheme == rawdb.HashScheme {
-			cfg.TrieDBConfig.HashDB = hashdb.Defaults
-			cfg.TrieDBConfig.PathDB = nil
-		} else {
-			log.Crit("unsupported state scheme", cfg.StateScheme)
-		}
+	}
+	if cfg.StateScheme == rawdb.PathScheme {
+		cfg.TrieDBConfig.PathDB = pathdb.Defaults
+		cfg.TrieDBConfig.HashDB = nil
+	} else if cfg.StateScheme == rawdb.HashScheme {
+		cfg.TrieDBConfig.HashDB = hashdb.Defaults
+		cfg.TrieDBConfig.PathDB = nil
+	} else {
+		log.Crit("unsupported state scheme", cfg.StateScheme)
 	}
 	if ctx.GlobalIsSet(NoDiscoverFlag.Name) {
 		cfg.EthDiscoveryURLs, cfg.SnapDiscoveryURLs, cfg.TrustDiscoveryURLs, cfg.BscDiscoveryURLs = []string{}, []string{}, []string{}, []string{}
