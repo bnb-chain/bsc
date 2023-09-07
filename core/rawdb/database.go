@@ -590,10 +590,10 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		tds             stat
 		numHashPairings stat
 		hashNumPairings stat
-		accountTries    stat
-		storageTries    stat
 		legacyTries     stat
 		stateLookups    stat
+		accountTries    stat
+		storageTries    stat
 		codes           stat
 		txLookups       stat
 		accountSnaps    stat
@@ -727,10 +727,10 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Transaction index", txLookups.Size(), txLookups.Count()},
 		{"Key-Value store", "Bloombit index", bloomBits.Size(), bloomBits.Count()},
 		{"Key-Value store", "Contract codes", codes.Size(), codes.Count()},
-		{"Key-Value store", "Account trie nodes", accountTries.Size(), accountTries.Count()},
-		{"Key-Value store", "Storage trie nodes", storageTries.Size(), storageTries.Count()},
-		{"Key-Value store", "Legacy trie nodes", legacyTries.Size(), legacyTries.Count()},
-		{"Key-Value store", "State lookups", stateLookups.Size(), stateLookups.Count()},
+		{"Key-Value store", "Hash trie nodes", legacyTries.Size(), legacyTries.Count()},
+		{"Key-Value store", "Path trie state lookups", stateLookups.Size(), stateLookups.Count()},
+		{"Key-Value store", "Path trie account nodes", accountTries.Size(), accountTries.Count()},
+		{"Key-Value store", "Path trie storage nodes", storageTries.Size(), storageTries.Count()},
 		{"Key-Value store", "Trie preimages", preimages.Size(), preimages.Count()},
 		{"Key-Value store", "Account snapshot", accountSnaps.Size(), accountSnaps.Count()},
 		{"Key-Value store", "Storage snapshot", storageSnaps.Size(), storageSnaps.Count()},
@@ -791,10 +791,5 @@ func ReadChainMetadata(db ethdb.KeyValueStore) [][]string {
 		{"txIndexTail", pp(ReadTxIndexTail(db))},
 		{"fastTxLookupLimit", pp(ReadFastTxLookupLimit(db))},
 	}
-/*
-	if b := ReadSkeletonSyncStatus(db); b != nil {
-		data = append(data, []string{"SkeletonSyncStatus", string(b)})
-	}
-*/
 	return data
 }
