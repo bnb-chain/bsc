@@ -155,5 +155,5 @@ type PoSA interface {
 	GetJustifiedNumberAndHash(chain ChainHeaderReader, header *types.Header) (uint64, common.Hash, error)
 	GetFinalizedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
-	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header) bool
+	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool
 }

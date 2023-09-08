@@ -54,6 +54,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/internal/shutdowncheck"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -568,8 +569,12 @@ func (s *Ethereum) StartMining(threads int) error {
 				log.Error("Etherbase account unavailable locally", "err", err)
 				return fmt.Errorf("signer missing: %v", err)
 			}
-
 			parlia.Authorize(eb, wallet.SignData, wallet.SignTx)
+
+			minerInfo := metrics.Get("miner-info")
+			if minerInfo != nil {
+				minerInfo.(metrics.Label).Value()["Etherbase"] = eb.String()
+			}
 		}
 		// If mining is started, we can disable the transaction rejection mechanism
 		// introduced to speed sync times.
