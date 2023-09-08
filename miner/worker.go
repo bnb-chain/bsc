@@ -691,7 +691,9 @@ func (w *worker) resultLoop() {
 			writeBlockTimer.UpdateSince(start)
 			log.Info("Successfully sealed new block", "number", block.Block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
+			// todo 4844 do broadcast sidecars as well!
 			// Broadcast the block and announce chain insertion event
+			fmt.Println("Broadcasting newly mined block: ", block.Block.Number().String())
 			w.mux.Post(core.NewMinedBlockEvent{Block: block.Block})
 
 			// Insert the block into the set of pending ones to resultLoop for confirmations
@@ -984,13 +986,15 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	}
 	// Construct the sealing block header, set the extra field if it's allowed
 	num := parent.Number()
-	header := &types.Header{
-		ParentHash: parent.Hash(),
-		Number:     num.Add(num, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent.GasLimit(), w.config.GasCeil),
-		Time:       timestamp,
-		Coinbase:   genParams.coinbase,
+	header := &types.Header{ // todo 4844 it seems like excessDataGas should be set for Cancun
+		ParentHash:    parent.Hash(),
+		Number:        num.Add(num, common.Big1),
+		GasLimit:      core.CalcGasLimit(parent.GasLimit(), w.config.GasCeil),
+		Time:          timestamp,
+		Coinbase:      genParams.coinbase,
+		ExcessDataGas: parent.ExcessDataGas(),
 	}
+	//if parent.ExcessDataGas()
 	if !genParams.noExtra && len(w.extra) != 0 {
 		header.Extra = w.extra
 	}
