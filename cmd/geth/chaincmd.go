@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path"
@@ -237,31 +238,17 @@ func initGenesis(ctx *cli.Context) error {
 	return nil
 }
 
-// initNetwork will bootstrap and initialize a new genesis block, and nodekey, config files for network nodes
-func initNetwork(ctx *cli.Context) error {
-	initDir := ctx.String(utils.InitNetworkDir.Name)
-	if len(initDir) == 0 {
-		utils.Fatalf("init.dir is required")
-	}
-	size := ctx.Int(utils.InitNetworkSize.Name)
-	port := ctx.Int(utils.InitNetworkPort.Name)
-	ipStr := ctx.String(utils.InitNetworkIps.Name)
-	cfgFile := ctx.String(configFileFlag.Name)
-
-	if len(cfgFile) == 0 {
-		utils.Fatalf("config file is required")
-	}
+func parseIps(ipStr string, size int) ([]string, error) {
 	var ips []string
 	if len(ipStr) != 0 {
 		ips = strings.Split(ipStr, ",")
 		if len(ips) != size {
-			utils.Fatalf("mismatch of size and length of ips")
+			return nil, errors.New("mismatch of size and length of ips")
 		}
 		for i := 0; i < size; i++ {
 			_, err := net.ResolveIPAddr("", ips[i])
 			if err != nil {
-				utils.Fatalf("invalid format of ip")
-				return err
+				return nil, errors.New("invalid format of ip")
 			}
 		}
 	} else {
@@ -270,23 +257,103 @@ func initNetwork(ctx *cli.Context) error {
 			ips[i] = "127.0.0.1"
 		}
 	}
+	return ips, nil
+}
+
+func createPorts(ipStr string, port int, size int) []int {
+	ports := make([]int, size)
+	if len(ipStr) == 0 { // localhost , so different ports
+		for i := 0; i < size; i++ {
+			ports[i] = port + i
+		}
+	} else { // different machines, keep same port
+		for i := 0; i < size; i++ {
+			ports[i] = port
+		}
+	}
+	return ports
+}
+
+// Create config for node i in the cluster
+func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, port int, size int, i int) gethConfig {
+	baseConfig.Node.HTTPHost = ip
+	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port+i)
+	baseConfig.Node.P2P.BootstrapNodes = make([]*enode.Node, size-1)
+	// Set the P2P connections between this node and the other nodes
+	for j := 0; j < i; j++ {
+		baseConfig.Node.P2P.BootstrapNodes[j] = enodes[j]
+	}
+	for j := i + 1; j < size; j++ {
+		baseConfig.Node.P2P.BootstrapNodes[j-1] = enodes[j]
+	}
+	return baseConfig
+}
+
+// Create configs for nodes in the cluster
+func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, size int) ([]gethConfig, error) {
+	// Create the nodes
+	enodes := make([]*enode.Node, size)
+	for i := 0; i < size; i++ {
+		stack, err := node.New(&baseConfig.Node)
+		if err != nil {
+			return nil, err
+		}
+		stack.Config().DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
+		pk := stack.Config().NodeKey()
+		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
+	}
+
+	// Create the configs
+	configs := make([]gethConfig, size)
+	for i := 0; i < size; i++ {
+		configs[i] = createNodeConfig(baseConfig, enodes, ips[i], ports[i], size, i)
+	}
+	return configs, nil
+}
+
+// initNetwork will bootstrap and initialize a new genesis block, and nodekey, config files for network nodes
+func initNetwork(ctx *cli.Context) error {
+	initDir := ctx.String(utils.InitNetworkDir.Name)
+	if len(initDir) == 0 {
+		utils.Fatalf("init.dir is required")
+	}
+	size := ctx.Int(utils.InitNetworkSize.Name)
+	if size <= 0 {
+		utils.Fatalf("size should be greater than 0")
+	}
+	port := ctx.Int(utils.InitNetworkPort.Name)
+	if port <= 0 {
+		utils.Fatalf("port should be greater than 0")
+	}
+	ipStr := ctx.String(utils.InitNetworkIps.Name)
+	cfgFile := ctx.String(configFileFlag.Name)
+
+	if len(cfgFile) == 0 {
+		utils.Fatalf("config file is required")
+	}
+
+	ips, err := parseIps(ipStr, size)
+	if err != nil {
+		utils.Fatalf("Failed to pase ips string: %v", err)
+	}
+
+	ports := createPorts(ipStr, port, size)
 
 	// Make sure we have a valid genesis JSON
 	genesisPath := ctx.Args().First()
 	if len(genesisPath) == 0 {
 		utils.Fatalf("Must supply path to genesis JSON file")
 	}
-	file, err := os.Open(genesisPath)
+	inGenesisFile, err := os.Open(genesisPath)
 	if err != nil {
 		utils.Fatalf("Failed to read genesis file: %v", err)
 	}
-	defer file.Close()
+	defer inGenesisFile.Close()
 
 	genesis := new(core.Genesis)
-	if err := json.NewDecoder(file).Decode(genesis); err != nil {
+	if err := json.NewDecoder(inGenesisFile).Decode(genesis); err != nil {
 		utils.Fatalf("invalid genesis file: %v", err)
 	}
-	enodes := make([]*enode.Node, size)
 
 	// load config
 	var config gethConfig
@@ -294,37 +361,38 @@ func initNetwork(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	config.Eth.Genesis = genesis
 
-	for i := 0; i < size; i++ {
-		stack, err := node.New(&config.Node)
-		if err != nil {
-			return err
-		}
-		stack.Config().DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
-		pk := stack.Config().NodeKey()
-		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), port, port)
+	configs, err := createNodeConfigs(config, initDir, ips, ports, size)
+	if err != nil {
+		utils.Fatalf("Failed to create node configs: %v", err)
 	}
 
 	for i := 0; i < size; i++ {
-		config.Node.HTTPHost = ips[i]
-		config.Node.P2P.StaticNodes = make([]*enode.Node, size-1)
-		for j := 0; j < i; j++ {
-			config.Node.P2P.StaticNodes[j] = enodes[j]
-		}
-		for j := i + 1; j < size; j++ {
-			config.Node.P2P.StaticNodes[j-1] = enodes[j]
-		}
-		out, err := tomlSettings.Marshal(config)
+		// Write config.toml
+		configBytes, err := tomlSettings.Marshal(configs[i])
 		if err != nil {
 			return err
 		}
-		dump, err := os.OpenFile(path.Join(initDir, fmt.Sprintf("node%d", i), "config.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		configFile, err := os.OpenFile(path.Join(initDir, fmt.Sprintf("node%d", i), "config.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			return err
 		}
-		defer dump.Close()
-		dump.Write(out)
+		defer configFile.Close()
+		configFile.Write(configBytes)
+
+		// Write the input genesis.json to the node's directory
+		outGenesisFile, err := os.OpenFile(path.Join(initDir, fmt.Sprintf("node%d", i), "genesis.json"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return err
+		}
+		_, err = inGenesisFile.Seek(0, io.SeekStart)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(outGenesisFile, inGenesisFile)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
