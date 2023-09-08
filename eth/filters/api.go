@@ -390,7 +390,6 @@ func (api *FilterAPI) Logs(ctx context.Context, crit FilterCriteria) (*rpc.Subsc
 	}
 
 	gopool.Submit(func() {
-
 		for {
 			select {
 			case logs := <-matchedLogs:

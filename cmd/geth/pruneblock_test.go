@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -70,11 +69,7 @@ func TestOfflineBlockPrune(t *testing.T) {
 }
 
 func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64) {
-	datadir, err := ioutil.TempDir("", "")
-	if err != nil {
-		t.Fatalf("Failed to create temporary datadir: %v", err)
-	}
-	os.RemoveAll(datadir)
+	datadir := t.TempDir()
 
 	chaindbPath := filepath.Join(datadir, "chaindata")
 	oldAncientPath := filepath.Join(chaindbPath, "ancient")
@@ -86,9 +81,6 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 
 	//Initialize a block pruner for pruning, only remain amountReserved blocks backward.
 	testBlockPruner := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath, amountReserved)
-	if err != nil {
-		t.Fatalf("failed to make new blockpruner: %v", err)
-	}
 	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(0), "", false, false); err != nil {
 		t.Fatalf("Failed to back up block: %v", err)
 	}

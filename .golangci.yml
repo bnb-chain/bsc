@@ -48,24 +48,11 @@ linters-settings:
 
 issues:
   exclude-rules:
-     - path: crypto/blake2b/
+    - path: core/state/metrics.go
       linters:
-        - deadcode
-    - path: crypto/bn256/cloudflare
+        - unused
+    - path: core/txpool/legacypool/list.go
       linters:
-        - deadcode
-    - path: p2p/discv5/
-      linters:
-        - deadcode
-    - path: core/vm/instructions_test.go
-      linters:
-        - goconst
-    - path: cmd/faucet/
-      linters:
-        - deadcode
-    - path: crypto/bn256/cloudflare/optate.go
-      linters:
-        - deadcode
         - staticcheck
     - path: internal/build/pgp.go
       text: 'SA1019: "golang.org/x/crypto/openpgp" is deprecated: this package is unmaintained except for security fixes.'

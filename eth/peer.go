@@ -17,8 +17,6 @@
 package eth
 
 import (
-	"time"
-
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 
@@ -38,9 +36,6 @@ type ethPeer struct {
 	snapExt  *snapPeer // Satellite `snap` connection
 	trustExt *trustPeer
 	bscExt   *bscPeer // Satellite `bsc` connection
-
-	syncDrop *time.Timer   // Connection dropper if `eth` sync progress isn't validated in time
-	snapWait chan struct{} // Notification channel for snap connections
 }
 
 // info gathers and returns some `eth` protocol metadata known about a peer.

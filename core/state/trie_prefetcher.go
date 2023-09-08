@@ -192,7 +192,6 @@ func (p *triePrefetcher) mainLoop() {
 						}
 						fetcher.lock.Unlock()
 						p.storageWasteMeter.Mark(int64(len(fetcher.seen)))
-
 					}
 				}
 			}

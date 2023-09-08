@@ -161,7 +161,6 @@ func testSendVotes(t *testing.T, protocol uint) {
 			t.Errorf("missing vote: %x", vote.Hash())
 		}
 	}
-
 }
 
 func TestRecvVotes67(t *testing.T) { testRecvVotes(t, eth.ETH67) }

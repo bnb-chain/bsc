@@ -47,9 +47,6 @@ var (
 	MaxReceiptFetch = 256 // Amount of transaction receipts to allow fetching per request
 	MaxStateFetch   = 384 // Amount of node state values to allow fetching per request
 
-	diffFetchTick  = 10 * time.Millisecond
-	diffFetchLimit = 5
-
 	maxQueuedHeaders            = 32 * 1024                         // [eth/62] Maximum number of headers to queue for import (DOS protection)
 	maxHeadersProcess           = 2048                              // Number of header download results to import at once into the chain
 	maxResultsProcess           = 2048                              // Number of content download results to import at once into the chain
@@ -89,10 +86,6 @@ var (
 // peerDropFn is a callback type for dropping a peer detected as malicious.
 type peerDropFn func(id string)
 
-// badBlockFn is a callback for the async beacon sync to notify the caller that
-// the origin header requested to sync to, produced a chain with a bad block.
-type badBlockFn func(invalid *types.Header, origin *types.Header)
-
 // headerTask is a set of downloaded headers to queue along with their precomputed
 // hashes to avoid constant rehashing.
 type headerTask struct {
@@ -120,7 +113,6 @@ type Downloader struct {
 
 	// Callbacks
 	dropPeer peerDropFn // Drops a peer for misbehaving
-	badBlock badBlockFn // Reports a block as rejected by the chain
 
 	// Status
 	synchroniseMock func(id string, hash common.Hash) error // Replacement for synchronise during testing
@@ -783,14 +775,16 @@ func (d *Downloader) findAncestor(p *peerConnection, localHeight uint64, remoteH
 		remoteHeight = remoteHeader.Number.Uint64()
 	)
 	mode := d.getMode()
-	switch mode {
-	case FullSync:
-		localHeight = d.blockchain.CurrentBlock().Number.Uint64()
-	case SnapSync:
-		localHeight = d.blockchain.CurrentSnapBlock().Number.Uint64()
-	default:
-		localHeight = d.lightchain.CurrentHeader().Number.Uint64()
-	}
+	/*
+		switch mode {
+		case FullSync:
+			localHeight = d.blockchain.CurrentBlock().Number.Uint64()
+		case SnapSync:
+			localHeight = d.blockchain.CurrentSnapBlock().Number.Uint64()
+		default:
+			localHeight = d.lightchain.CurrentHeader().Number.Uint64()
+		}
+	*/
 	p.log.Debug("Looking for common ancestor", "local", localHeight, "remote", remoteHeight)
 
 	// Recap floor value for binary search
@@ -1687,28 +1681,6 @@ func (d *Downloader) DeliverSnapPacket(peer *snap.Peer, packet snap.Packet) erro
 	default:
 		return fmt.Errorf("unexpected snap packet type: %T", packet)
 	}
-}
-
-// readHeaderRange returns a list of headers, using the given last header as the base,
-// and going backwards towards genesis. This method assumes that the caller already has
-// placed a reasonable cap on count.
-func (d *Downloader) readHeaderRange(last *types.Header, count int) []*types.Header {
-	var (
-		current = last
-		headers []*types.Header
-	)
-	for {
-		parent := d.lightchain.GetHeaderByHash(current.ParentHash)
-		if parent == nil {
-			break // The chain is not continuous, or the chain is exhausted
-		}
-		headers = append(headers, parent)
-		if len(headers) >= count {
-			break
-		}
-		current = parent
-	}
-	return headers
 }
 
 // reportSnapSyncProgress calculates various status reports and provides it to the user.
