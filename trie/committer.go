@@ -36,7 +36,7 @@ type leaf struct {
 }
 
 type leafInfo struct {
-	node   node      // the node to commit
+	node   node        // the node to commit
 	parent common.Hash // the hash of parent node
 }
 
@@ -44,8 +44,8 @@ type leafInfo struct {
 // capture all dirty nodes during the commit process and keep them cached in
 // insertion order.
 type committer struct {
-	nodes       *trienode.NodeSet
-	tracer      *tracer
+	nodes  *trienode.NodeSet
+	tracer *tracer
 	onleaf triestate.LeafCallback
 	leafCh chan *leafInfo
 }
@@ -177,17 +177,17 @@ func (c *committer) store(path []byte, n node) node {
 	// Collect the corresponding leaf node if it's required. We don't check
 	// full node since it's impossible to store value in fullNode. The key
 	// length of leaves should be exactly same.
-	if  c.leafCh != nil  {
+	if c.leafCh != nil {
 		c.leafCh <- &leafInfo{
-			node: n,
+			node:   n,
 			parent: nhash,
 		}
 	} else {
-                if sn, ok := n.(*shortNode); ok {
-                        if val, ok := sn.Val.(valueNode); ok {
-                                c.nodes.AddLeaf(nhash, val)
-                        }
-                }
+		if sn, ok := n.(*shortNode); ok {
+			if val, ok := sn.Val.(valueNode); ok {
+				c.nodes.AddLeaf(nhash, val)
+			}
+		}
 	}
 	return hash
 }
@@ -196,7 +196,7 @@ func (c *committer) store(path []byte, n node) node {
 func (c *committer) commitLoop() {
 	for item := range c.leafCh {
 		var (
-			n = item.node
+			n      = item.node
 			parent = item.parent
 		)
 
@@ -251,26 +251,26 @@ func forGatherChildren(n node, onChild func(hash common.Hash)) {
 // with 1000 leafs, the only errors above 1% are on small shortnodes, where this
 // method overestimates by 2 or 3 bytes (e.g. 37 instead of 35)
 func estimateSize(n node) int {
-        switch n := n.(type) {
-        case *shortNode:
-                // A short node contains a compacted key, and a value.
-                return 3 + len(n.Key) + estimateSize(n.Val)
-        case *fullNode:
-                // A full node contains up to 16 hashes (some nils), and a key
-                s := 3
-                for i := 0; i < 16; i++ {
-                        if child := n.Children[i]; child != nil {
-                                s += estimateSize(child)
-                        } else {
-                                s++
-                        }
-                }
-                return s
-        case valueNode:
-                return 1 + len(n)
-        case hashNode:
-                return 1 + len(n)
-        default:
-                panic(fmt.Sprintf("node type %T", n))
-        }
+	switch n := n.(type) {
+	case *shortNode:
+		// A short node contains a compacted key, and a value.
+		return 3 + len(n.Key) + estimateSize(n.Val)
+	case *fullNode:
+		// A full node contains up to 16 hashes (some nils), and a key
+		s := 3
+		for i := 0; i < 16; i++ {
+			if child := n.Children[i]; child != nil {
+				s += estimateSize(child)
+			} else {
+				s++
+			}
+		}
+		return s
+	case valueNode:
+		return 1 + len(n)
+	case hashNode:
+		return 1 + len(n)
+	default:
+		panic(fmt.Sprintf("node type %T", n))
+	}
 }

@@ -19,6 +19,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -38,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli/v2"
 )
@@ -72,6 +74,8 @@ Remove blockchain and state databases`,
 			// no legacy stored receipts for bsc
 			// dbMigrateFreezerCmd,
 			dbCheckStateContentCmd,
+			dbHash2PathCmd,
+			dbTrieGetCmd,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -93,6 +97,17 @@ Remove blockchain and state databases`,
 		Description: `This command iterates the entire database for 32-byte keys, looking for rlp-encoded trie nodes.
 For each trie node encountered, it checks that the key corresponds to the keccak256(value). If this is not true, this indicates
 a data corruption.`,
+	}
+	dbHash2PathCmd = &cli.Command{
+		Action:    hash2Path,
+		Name:      "hash2path",
+		ArgsUsage: "<jobnum>",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+			utils.SyncModeFlag,
+		},
+		Usage:       "Convert Hash-Base to Path-Base trie node.",
+		Description: `This command iterates the entire trie node database and convert the hash-base node to path-base node.`,
 	}
 	dbStatCmd = &cli.Command{
 		Action: dbStats,
@@ -124,6 +139,18 @@ corruption if it is aborted during execution'!`,
 			utils.SyncModeFlag,
 		}, utils.NetworkFlags, utils.DatabasePathFlags),
 		Description: "This command looks up the specified database key from the database.",
+	}
+	dbTrieGetCmd = &cli.Command{
+		Action:    dbTrieGet,
+		Name:      "trieget",
+		Usage:     "Show the value of a trie node path key",
+		ArgsUsage: "[trie owner] <path-base key>",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+			utils.SyncModeFlag,
+			utils.MainnetFlag,
+		},
+		Description: "This command looks up the specified trie node key from the database.",
 	}
 	dbDeleteCmd = &cli.Command{
 		Action:    dbDelete,
@@ -266,6 +293,67 @@ func confirmAndRemoveDB(database string, kind string) {
 		})
 		log.Info("Database successfully deleted", "path", database, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
+}
+
+func hash2Path(ctx *cli.Context) error {
+	if ctx.NArg() != 1 {
+		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+	}
+
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	db.Sync()
+	defer db.Close()
+
+	config := trie.HashDefaults
+	triedb := trie.NewDatabase(db, config)
+	triedb.Cap(0)
+	fmt.Println("triedb scheme: ", triedb.Scheme())
+	defer triedb.Close()
+
+	headerHash := rawdb.ReadHeadHeaderHash(db)
+	blockNumber := rawdb.ReadHeaderNumber(db, headerHash)
+	if blockNumber == nil {
+		fmt.Println("read header number failed.")
+		return fmt.Errorf("read header number failed")
+	}
+
+	fmt.Println("HeaderHash: ", headerHash.String(), ", blockNumber: ", *blockNumber)
+
+	var headerBlockHash common.Hash
+	var trieRootHash common.Hash
+
+	if *blockNumber != math.MaxUint64 {
+		headerBlockHash = rawdb.ReadCanonicalHash(db, *blockNumber)
+		if headerBlockHash == (common.Hash{}) {
+			return fmt.Errorf("ReadHeadBlockHash empty hash")
+		}
+		blockHeader := rawdb.ReadHeader(db, headerBlockHash, *blockNumber)
+		trieRootHash = blockHeader.Root
+		fmt.Println("Canonical Hash: ", headerBlockHash.String(), ", TrieRootHash: ", trieRootHash.String())
+	}
+	if (trieRootHash == common.Hash{}) {
+		log.Error("Empty root hash")
+		return fmt.Errorf("Empty root hash.")
+	}
+
+	id := trie.StateTrieID(trieRootHash)
+	theTrie, err := trie.New(id, triedb)
+	if err != nil {
+		fmt.Printf("fail to new trie tree, err: %v, rootHash: %v\n", err, trieRootHash.String())
+		return err
+	}
+
+	h2p, err := trie.NewHash2Path(theTrie, triedb, trieRootHash, *blockNumber, 1000)
+	if err != nil {
+		fmt.Printf("fail to hash2Path, err: %v, rootHash: %v\n", err, trieRootHash.String())
+		return err
+	}
+	h2p.Run()
+
+	return nil
 }
 
 func inspect(ctx *cli.Context) error {
@@ -429,6 +517,59 @@ func dbGet(ctx *cli.Context) error {
 		return err
 	}
 	fmt.Printf("key %#x: %#x\n", key, data)
+	return nil
+}
+
+// dbTrieGet shows the value of a given database key
+func dbTrieGet(ctx *cli.Context) error {
+	if ctx.NArg() < 1 || ctx.NArg() > 2 {
+		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+	}
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer db.Close()
+
+	scheme := rawdb.ReadStateScheme(db)
+	if scheme != rawdb.PathScheme {
+		fmt.Println("Only path-base state scheme supported")
+		return fmt.Errorf("Only path-base state scheme supported")
+	}
+	config := &trie.Config{
+		PathDB: pathdb.Defaults,
+	}
+	triedb := trie.NewDatabase(db, config)
+
+	var (
+		pathKey []byte
+		owner   []byte
+		err     error
+	)
+	if ctx.NArg() == 1 {
+		pathKey, err = hexutil.Decode(ctx.Args().Get(0))
+		if err != nil {
+			log.Info("Could not decode the value", "error", err)
+			return err
+		}
+		_, hash := rawdb.ReadAccountTrieNode(triedb.DiskDB(), pathKey)
+		fmt.Println("PathKey: ", common.Bytes2Hex(pathKey), "Hash: ", hash)
+	} else if ctx.NArg() == 2 {
+		owner, err = hexutil.Decode(ctx.Args().Get(0))
+		if err != nil {
+			log.Info("Could not decode the value", "error", err)
+			return err
+		}
+		pathKey, err = hexutil.Decode(ctx.Args().Get(1))
+		if err != nil {
+			log.Info("Could not decode the value", "error", err)
+			return err
+		}
+
+		_, hash := rawdb.ReadStorageTrieNode(triedb.DiskDB(), common.BytesToHash(owner), pathKey)
+		fmt.Println("PathKey: ", common.Bytes2Hex(pathKey), "Owner: ", common.BytesToHash(owner), "Hash: ", hash)
+	}
+
 	return nil
 }
 
