@@ -40,9 +40,6 @@ var (
 	// headFastBlockKey tracks the latest known incomplete block's hash during fast sync.
 	headFastBlockKey = []byte("LastFast")
 
-	// headFinalizedBlockKey tracks the latest known finalized block hash.
-	headFinalizedBlockKey = []byte("LastFinalized")
-
 	// persistentStateIDKey tracks the id of latest stored state(for path-based only).
 	persistentStateIDKey = []byte("LastStateID")
 
@@ -69,9 +66,6 @@ var (
 
 	// snapshotSyncStatusKey tracks the snapshot sync status across restarts.
 	snapshotSyncStatusKey = []byte("SnapshotSyncStatus")
-
-	// skeletonSyncStatusKey tracks the skeleton sync status across restarts.
-	skeletonSyncStatusKey = []byte("SkeletonSyncStatus")
 
 	// trieJournalKey tracks the in-memory trie node layers across restarts.
 	trieJournalKey = []byte("TrieJournal")

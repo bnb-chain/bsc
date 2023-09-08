@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -415,7 +414,7 @@ func setUpKeyManager(t *testing.T) (string, string) {
 	if err := os.MkdirAll(filepath.Dir(walletPasswordDir), 0700); err != nil {
 		t.Fatalf("failed to create walletPassword dir: %v", err)
 	}
-	if err := ioutil.WriteFile(walletPasswordDir, []byte(password), 0600); err != nil {
+	if err := os.WriteFile(walletPasswordDir, []byte(password), 0600); err != nil {
 		t.Fatalf("failed to write wallet password dir: %v", err)
 	}
 

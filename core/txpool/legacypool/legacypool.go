@@ -415,7 +415,7 @@ func (pool *LegacyPool) loop() {
 			}()
 			pool.mu.RUnlock()
 			if len(reannoTxs) > 0 {
-				pool.reannoTxFeed.Send(core.ReannoTxsEvent{reannoTxs})
+				pool.reannoTxFeed.Send(core.ReannoTxsEvent{Txs: reannoTxs})
 			}
 
 		// Handle local transaction journal rotation
@@ -427,7 +427,6 @@ func (pool *LegacyPool) loop() {
 				}
 				pool.mu.Unlock()
 			}
-
 		}
 	}
 }

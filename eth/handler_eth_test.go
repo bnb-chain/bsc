@@ -865,5 +865,4 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", true, doneCh5)
 	}
 	close(doneCh5)
-
 }

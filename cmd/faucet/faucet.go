@@ -148,7 +148,7 @@ func main() {
 		}
 	}
 	website := new(bytes.Buffer)
-	err := template.Must(template.New("").Parse(string(websiteTmpl))).Execute(website, map[string]interface{}{
+	err := template.Must(template.New("").Parse(websiteTmpl)).Execute(website, map[string]interface{}{
 		"Network":    *netnameFlag,
 		"Amounts":    amounts,
 		"Recaptcha":  *captchaToken,

@@ -26,8 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/sha3"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -37,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 var (
@@ -45,40 +42,12 @@ var (
 	testKey, _       = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	contractCode, _  = hex.DecodeString("608060405260016000806101000a81548160ff02191690831515021790555034801561002a57600080fd5b506101688061003a6000396000f3fe608060405234801561001057600080fd5b50600436106100365760003560e01c806389a2d8011461003b578063b0483f4814610059575b600080fd5b610043610075565b60405161005091906100f4565b60405180910390f35b610073600480360381019061006e91906100bc565b61008b565b005b60008060009054906101000a900460ff16905090565b806000806101000a81548160ff02191690831515021790555050565b6000813590506100b68161011b565b92915050565b6000602082840312156100ce57600080fd5b60006100dc848285016100a7565b91505092915050565b6100ee8161010f565b82525050565b600060208201905061010960008301846100e5565b92915050565b60008115159050919050565b6101248161010f565b811461012f57600080fd5b5056fea264697066735822122092f788b569bfc3786e90601b5dbec01cfc3d76094164fd66ca7d599c4239fc5164736f6c63430008000033")
 	contractAddr     = common.HexToAddress("0xe74a3c7427cda785e0000d42a705b1f3fd371e09")
-	contractSlot     = common.HexToHash("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563")
 	contractData1, _ = hex.DecodeString("b0483f480000000000000000000000000000000000000000000000000000000000000000")
 	contractData2, _ = hex.DecodeString("b0483f480000000000000000000000000000000000000000000000000000000000000001")
 	commonGas        = 192138
 	// testAddr is the Ethereum address of the tester account.
 	testAddr = crypto.PubkeyToAddress(testKey.PublicKey)
 
-	checkBlocks = map[int]checkBlockParam{
-		12: {
-			txs: []checkTransactionParam{
-				{
-					to:    &contractAddr,
-					slot:  contractSlot,
-					value: []byte{01},
-				},
-			}},
-
-		13: {
-			txs: []checkTransactionParam{
-				{
-					to:    &contractAddr,
-					slot:  contractSlot,
-					value: []byte{},
-				},
-			}},
-		14: {
-			txs: []checkTransactionParam{
-				{
-					to:    &contractAddr,
-					slot:  contractSlot,
-					value: []byte{01},
-				},
-			}},
-	}
 	// testBlocks is the test parameters array for specific blocks.
 	testBlocks = []testBlockParam{
 		{
@@ -175,16 +144,6 @@ type testBlockParam struct {
 	txs     []testTransactionParam
 }
 
-type checkTransactionParam struct {
-	to    *common.Address
-	slot  common.Hash
-	value []byte
-}
-
-type checkBlockParam struct {
-	txs []checkTransactionParam
-}
-
 // testBackend is a mock implementation of the live Ethereum message handler. Its
 // purpose is to allow testing the request/reply workflows and wire serialization
 // in the `eth` protocol without actually doing any data processing.
@@ -251,7 +210,6 @@ func newTestBackendWithGenerator(blocks int, lightProcess bool) *testBackend {
 				}
 			}
 		}
-
 	}
 	bs, _ := GenerateChain(params.TestChainConfig, chain.Genesis(), ethash.NewFaker(), db, blocks, generator)
 	if _, err := chain.InsertChain(bs); err != nil {
@@ -270,21 +228,6 @@ func (b *testBackend) close() {
 }
 
 func (b *testBackend) Chain() *BlockChain { return b.chain }
-
-func rawDataToDiffLayer(data rlp.RawValue) (*types.DiffLayer, error) {
-	var diff types.DiffLayer
-	hasher := sha3.NewLegacyKeccak256()
-	err := rlp.DecodeBytes(data, &diff)
-	if err != nil {
-		return nil, err
-	}
-	hasher.Write(data)
-	var diffHash common.Hash
-	hasher.Sum(diffHash[:0])
-	diff.DiffHash.Store(diffHash)
-	hasher.Reset()
-	return &diff, nil
-}
 
 func TestFreezeDiffLayer(t *testing.T) {
 	blockNum := 1024
@@ -366,7 +309,6 @@ func newTwoForkedBlockchains(len1, len2 int) (chain1 *BlockChain, chain2 *BlockC
 				}
 			}
 		}
-
 	}
 	bs1, _ := GenerateChain(params.TestChainConfig, chain1.Genesis(), ethash.NewFaker(), db1, len1, generator1)
 	if _, err := chain1.InsertChain(bs1); err != nil {

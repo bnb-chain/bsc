@@ -1489,6 +1489,33 @@ func (s *BlockChainAPI) replay(ctx context.Context, block *types.Block, accounts
 	return result, statedb, nil
 }
 
+// GetDiffAccountsWithScope returns detailed changes of some interested accounts in a specific block number.
+func (s *BlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, blockNr rpc.BlockNumber, accounts []common.Address) (*types.DiffAccountsInBlock, error) {
+	if s.b.Chain() == nil {
+		return nil, fmt.Errorf("blockchain not support get diff accounts")
+	}
+
+	block, err := s.b.BlockByNumber(ctx, blockNr)
+	if err != nil {
+		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
+	}
+
+	needReplay, err := s.needToReplay(ctx, block, accounts)
+	if err != nil {
+		return nil, err
+	}
+	if !needReplay {
+		return &types.DiffAccountsInBlock{
+			Number:       uint64(blockNr),
+			BlockHash:    block.Hash(),
+			Transactions: make([]types.DiffAccountsInTx, 0),
+		}, nil
+	}
+
+	result, _, err := s.replay(ctx, block, accounts)
+	return result, err
+}
+
 func (s *BlockChainAPI) GetVerifyResult(ctx context.Context, blockNr rpc.BlockNumber, blockHash common.Hash, diffHash common.Hash) *core.VerifyResult {
 	return s.b.Chain().GetVerifyResult(uint64(blockNr), blockHash, diffHash)
 }

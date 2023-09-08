@@ -450,7 +450,6 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 
 // Backup the ancient data for the old ancient db, i.e. the most recent 128 blocks in ancient db.
 func (p *BlockPruner) BlockPruneBackUp(name string, cache, handles int, namespace string, readonly, interrupt bool) error {
-
 	start := time.Now()
 
 	if err := p.backUpOldDb(name, cache, handles, namespace, readonly, interrupt); err != nil {

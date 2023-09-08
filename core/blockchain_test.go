@@ -339,8 +339,8 @@ func testInsertAfterMerge(t *testing.T, blockchain *BlockChain, i, n int, full b
 // with various length chains.
 func TestExtendCanonicalHeaders(t *testing.T) {
 	testExtendCanonical(t, false, false)
-
 }
+
 func TestExtendCanonicalBlocks(t *testing.T) {
 	testExtendCanonical(t, true, false)
 	testExtendCanonical(t, true, true)
@@ -452,7 +452,6 @@ func TestLongerForkHeaders(t *testing.T) {
 func TestLongerForkBlocks(t *testing.T) {
 	testLongerFork(t, true, false)
 	testLongerFork(t, true, true)
-
 }
 
 func testLongerFork(t *testing.T, full, pipeline bool) {

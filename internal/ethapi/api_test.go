@@ -370,6 +370,7 @@ func newTestBackend(t *testing.T, n int, gspec *core.Genesis, generator func(i i
 	return backend
 }
 
+// nolint:unused
 func (b *testBackend) setPendingBlock(block *types.Block) {
 	b.pending = block
 }

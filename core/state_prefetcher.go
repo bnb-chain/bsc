@@ -138,7 +138,6 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 				return
 			default:
 				if count++; count%checkInterval == 0 {
-
 					txset.Forward(*txCurr)
 				}
 				tx := txset.PeekWithUnwrap()

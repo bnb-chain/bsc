@@ -51,7 +51,7 @@ func NewSecure(stateRoot common.Hash, owner common.Hash, root common.Hash, db *D
 type StateTrie struct {
 	trie             Trie
 	preimages        *preimageStore
-	hashKeyBuf       [common.HashLength]byte
+	hashKeyBuf       [common.HashLength]byte //nolint:unused
 	secKeyCache      map[string][]byte
 	secKeyCacheOwner *StateTrie // Pointer to self, replace the key cache on mismatch
 }
@@ -280,6 +280,8 @@ func (t *StateTrie) MustNodeIterator(start []byte) NodeIterator {
 // hashKey returns the hash of key as an ephemeral buffer.
 // The caller must not hold onto the return value because it will become
 // invalid on the next call to hashKey or secKey.
+//
+// no use hashKeyBuf for thread safe.
 func (t *StateTrie) hashKey(key []byte) []byte {
 	hash := make([]byte, common.HashLength)
 	h := newHasher(false)
