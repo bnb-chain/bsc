@@ -18,6 +18,7 @@
 package ethconfig
 
 import (
+	"github.com/ethereum/go-ethereum/core/rawdb/bloblevel"
 	"math/big"
 	"os"
 	"os/user"
@@ -247,9 +248,9 @@ type Config struct {
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain configuration.
-func CreateConsensusEngine(stack *node.Node, chainConfig *params.ChainConfig, config *ethash.Config, notify []string, noverify bool, db ethdb.Database, ee *ethapi.PublicBlockChainAPI, genesisHash common.Hash) consensus.Engine {
+func CreateConsensusEngine(stack *node.Node, chainConfig *params.ChainConfig, config *ethash.Config, notify []string, noverify bool, db ethdb.Database, blobDB *bloblevel.Storage, ee *ethapi.PublicBlockChainAPI, genesisHash common.Hash) consensus.Engine {
 	if chainConfig.Parlia != nil {
-		return parlia.New(chainConfig, db, ee, genesisHash)
+		return parlia.New(chainConfig, db, blobDB, ee, genesisHash)
 	}
 	// If proof-of-authority is requested, set it up
 	var engine consensus.Engine

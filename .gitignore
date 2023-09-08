@@ -54,3 +54,6 @@ cmd/bootnode/bootnode
 graphql/__debug_bin
 
 tempdatadir
+tempdatadir2
+config.toml
+config2.toml

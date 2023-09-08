@@ -210,10 +210,11 @@ func ParliaRLP(header *types.Header, chainId *big.Int) []byte {
 
 // Parlia is the consensus engine of BSC
 type Parlia struct {
-	chainConfig *params.ChainConfig  // Chain config
-	config      *params.ParliaConfig // Consensus engine configuration parameters for parlia consensus
-	genesisHash common.Hash
-	db          ethdb.Database // Database to store and retrieve snapshot checkpoints
+	chainConfig  *params.ChainConfig  // Chain config
+	config       *params.ParliaConfig // Consensus engine configuration parameters for parlia consensus
+	genesisHash  common.Hash
+	db           ethdb.Database // Database to store and retrieve snapshot checkpoints
+	blobDatabase *bloblevel.Storage
 
 	recentSnaps *lru.ARCCache // Snapshots for recent block to speed up
 	signatures  *lru.ARCCache // Signatures of recent blocks to speed up mining
@@ -240,6 +241,7 @@ type Parlia struct {
 func New(
 	chainConfig *params.ChainConfig,
 	db ethdb.Database,
+	blobDB *bloblevel.Storage,
 	ethAPI *ethapi.PublicBlockChainAPI,
 	genesisHash common.Hash,
 ) *Parlia {
@@ -277,6 +279,7 @@ func New(
 		config:                     parliaConfig,
 		genesisHash:                genesisHash,
 		db:                         db,
+		blobDatabase:               blobDB,
 		ethAPI:                     ethAPI,
 		recentSnaps:                recentSnaps,
 		signatures:                 signatures,
@@ -1427,7 +1430,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.BlockAndSi
 		}
 		// todo sidecar needs to be signed somewhere
 
-		// todo save sidecars here? Since below there is code which will save the block anyway.
+		// todo 4844 save sidecars here? Since below there is code which will save the block anyway.
 		if len(sidecars) > 0 {
 			cfg := params.ChainConfig{
 				DataBlobs: &params.DataBlobsConfig{
@@ -1435,21 +1438,12 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.BlockAndSi
 					MinEpochsForBlobsSidecarsRequest: 1,
 				},
 			}
-			err = blobStorage.SaveBlobSidecar(context.Background(), &cfg, sidecars)
+			err = p.blobDatabase.SaveBlobSidecar(context.Background(), &cfg, sidecars)
 			if err != nil {
 				log.Error("Sidecars could not be saved!", "err", err)
 			}
 
-			//// Original byte array
-			//originalBytes := []byte{23, 195, 163, 130, 130, 113, 153, 124, 5, 232, 93, 202, 189, 136, 171, 137, 161, 47, 86, 125, 255, 243, 39, 238, 158, 161, 43, 251, 252, 66, 208, 117}
-			//
-			//// Create a new byte array of size 32
-			//var byteArray32 [32]byte
-			//
-			//// Copy the original byte array into the new byte array
-			//copy(byteArray32[:], originalBytes)
-
-			got, err1 := rawdb.GetBlobSidecarsByRoot(context.Background(), blobStorage, bytesutil.ToBytes32(sidecars[0].BlockRoot))
+			got, err1 := rawdb.GetBlobSidecarsByRoot(context.Background(), p.blobDatabase, bytesutil.ToBytes32(sidecars[0].BlockRoot))
 			if err1 != nil {
 				fmt.Println("Error while fetching sidecar", err1)
 			} else {
