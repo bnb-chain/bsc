@@ -301,6 +301,7 @@ loop:
 			}
 			writeStart <- struct{}{}
 		case err = <-readErr:
+			fmt.Println("read Error!!!!! in p2p/peer.go")
 			if r, ok := err.(DiscReason); ok {
 				remoteRequested = true
 				reason = r
@@ -310,6 +311,7 @@ loop:
 			break loop
 		case err = <-p.protoErr:
 			reason = discReasonForError(err)
+			fmt.Println("About to break loop!!!!!")
 			break loop
 		case err = <-p.disc:
 			reason = discReasonForError(err)
@@ -344,7 +346,9 @@ func (p *Peer) pingLoop() {
 func (p *Peer) readLoop(errc chan<- error) {
 	defer p.wg.Done()
 	for {
-		msg, err := p.rw.ReadMsg()
+		fmt.Println("inside readLoop of peer....")
+		msg, err := p.rw.ReadMsg() // todo 4844 probably here lies the problem??
+		fmt.Println("msg, err: ", msg.String(), err)
 		if err != nil {
 			errc <- err
 			return
@@ -358,6 +362,8 @@ func (p *Peer) readLoop(errc chan<- error) {
 }
 
 func (p *Peer) handle(msg Msg) error {
+	// todo 4844 this is never getting block related message. Just ping-pong messages.
+	fmt.Println("handling message", msg)
 	switch {
 	case msg.Code == pingMsg:
 		msg.Discard()
@@ -374,6 +380,7 @@ func (p *Peer) handle(msg Msg) error {
 		// ignore other base protocol messages
 		return msg.Discard()
 	default:
+		fmt.Println("sub protocol message")
 		// it's a subprotocol message
 		proto, err := p.getProto(msg.Code)
 		if err != nil {
@@ -408,6 +415,7 @@ func countMatchingProtocols(protocols []Protocol, caps []Cap) int {
 
 // matchProtocols creates structures for matching named subprotocols.
 func matchProtocols(protocols []Protocol, caps []Cap, rw MsgReadWriter) map[string]*protoRW {
+	// todo 4844 check if this is going fine.
 	sort.Sort(capsByNameAndVersion(caps))
 	offset := baseProtocolLength
 	result := make(map[string]*protoRW)

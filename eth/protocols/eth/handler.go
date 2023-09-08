@@ -104,11 +104,12 @@ func MakeProtocols(backend Backend, network uint64, dnsdisc enode.Iterator) []p2
 			Version: version,
 			Length:  protocolLengths[version],
 			Run: func(p *p2p.Peer, rw p2p.MsgReadWriter) error {
+				fmt.Println("Inside Run() of protocols[i] in MakeProtocols()...", version)
 				peer := NewPeer(version, p, rw, backend.TxPool())
 				defer peer.Close()
 
 				return backend.RunPeer(peer, func(peer *Peer) error {
-					return Handle(backend, peer)
+					return Handle(backend, peer) // todo 4844 this probably isn't getting executed
 				})
 			},
 			NodeInfo: func() interface{} {
@@ -151,6 +152,8 @@ func nodeInfo(chain *core.BlockChain, network uint64) *NodeInfo {
 // connection is torn down.
 func Handle(backend Backend, peer *Peer) error {
 	for {
+		// todo 4844 this isn't getting executed regularly which it should! This is happening during Cancun
+		fmt.Println("func Handle(backend Backend, peer *Peer) error....")
 		if err := handleMessage(backend, peer); err != nil {
 			peer.Log().Debug("Message handling failed in `eth`", "err", err)
 			return err
@@ -248,6 +251,9 @@ func handleMessage(backend Backend, peer *Peer) error {
 		}(time.Now())
 	}
 	if handler := handlers[msg.Code]; handler != nil {
+		if msg.Code == NewBlockMsg {
+			fmt.Println("New Block Message got received!!!.....")
+		}
 		fmt.Println("msg.Code, handler: ", msg.Code, handler)
 		return handler(backend, msg, peer)
 	}

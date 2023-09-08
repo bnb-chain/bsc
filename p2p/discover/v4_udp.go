@@ -330,6 +330,7 @@ func (t *UDPv4) findnode(toid enode.ID, toaddr *net.UDPAddr, target v4wire.Pubke
 	// there's no need for an error in that case.
 	err := <-rm.errc
 	if errors.Is(err, errTimeout) && rm.reply != nil {
+		//fmt.Println("udp timeout about to happen...3")
 		err = nil
 	}
 	return nodes, err
@@ -480,6 +481,7 @@ func (t *UDPv4) loop() {
 			for el := plist.Front(); el != nil; el = el.Next() {
 				p := el.Value.(*replyMatcher)
 				if now.After(p.deadline) || now.Equal(p.deadline) {
+					//fmt.Println("udp timeout about to happen...2")
 					p.errc <- errTimeout
 					plist.Remove(el)
 					contTimeouts++

@@ -106,6 +106,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 	pruneTicker := time.NewTicker(pruneInterval)
 	defer pruneTicker.Stop()
 	for {
+		fmt.Println("for loop of remoteVerifyManager mainLoop")
 		select {
 		case h := <-vm.chainBlockCh:
 			vm.NewBlockVerifyTask(h.Block.Header())
@@ -143,6 +144,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 			vm.taskLock.RUnlock()
 			return
 		case <-vm.chainHeadSub.Err():
+			fmt.Println("Chain head subscription error!!!!")
 			return
 		}
 	}
