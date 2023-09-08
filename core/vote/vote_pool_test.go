@@ -99,11 +99,11 @@ func (m *mockInvalidPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *ty
 	return nil
 }
 
-func (m *mockPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header) bool {
+func (m *mockPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool {
 	return true
 }
 
-func (m *mockInvalidPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header) bool {
+func (m *mockInvalidPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool {
 	return true
 }
 
