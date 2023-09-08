@@ -76,10 +76,12 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		return h.txFetcher.Notify(peer.ID(), packet.Hashes)
 
 	case *eth.TransactionsPacket:
-		return h.txFetcher.Enqueue(peer.ID(), *packet, false)
+		txs := packet.Unwrap()
+		return h.txFetcher.Enqueue(peer.ID(), txs, false)
 
 	case *eth.PooledTransactionsPacket:
-		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
+		txs := packet.Unwrap()
+		return h.txFetcher.Enqueue(peer.ID(), txs, true)
 
 	default:
 		return fmt.Errorf("unexpected eth packet type: %T", packet)

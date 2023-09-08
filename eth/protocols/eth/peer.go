@@ -17,6 +17,7 @@
 package eth
 
 import (
+	"fmt"
 	"math/big"
 	"math/rand"
 	"sync"
@@ -212,7 +213,7 @@ func (p *Peer) markTransaction(hash common.Hash) {
 //
 // The reasons this is public is to allow packages using this protocol to write
 // tests that directly send messages without having to do the asyn queueing.
-func (p *Peer) SendTransactions(txs types.Transactions) error {
+func (p *Peer) SendTransactions(txs types.NetworkTransactions) error {
 	// Mark all the transactions as known, but ensure we don't overflow our limits
 	for _, tx := range txs {
 		p.knownTxs.Add(tx.Hash())
@@ -318,6 +319,7 @@ func (p *Peer) AsyncSendNewBlockHash(block *types.Block) {
 func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	// Mark all the block hash as known, but ensure we don't overflow our limits
 	p.knownBlocks.Add(block.Hash())
+	fmt.Println("Sending NewBlockMsg: ", block.Number().String())
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
 		Block: block,
 		TD:    td,
