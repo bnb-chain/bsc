@@ -108,7 +108,7 @@ type bucket struct {
 	index        int
 }
 
-func newTable(t transport, db *enode.DB, cfg Config, filter NodeFilterFunc) (*Table, error) {
+func newTable(t transport, db *enode.DB, cfg Config) (*Table, error) {
 	cfg = cfg.withDefaults()
 	tab := &Table{
 		net:        t,
@@ -121,7 +121,7 @@ func newTable(t transport, db *enode.DB, cfg Config, filter NodeFilterFunc) (*Ta
 		closed:     make(chan struct{}),
 		rand:       mrand.New(mrand.NewSource(0)),
 		ips:        netutil.DistinctNetSet{Subnet: tableSubnet, Limit: tableIPLimit},
-		enrFilter:  filter,
+		enrFilter:  cfg.FilterFunction,
 		bucketSize: bucketSize,
 	}
 	if cfg.IsBootnode {
@@ -142,8 +142,8 @@ func newTable(t transport, db *enode.DB, cfg Config, filter NodeFilterFunc) (*Ta
 	return tab, nil
 }
 
-func newMeteredTable(t transport, db *enode.DB, cfg Config, filter NodeFilterFunc) (*Table, error) {
-	tab, err := newTable(t, db, cfg, filter)
+func newMeteredTable(t transport, db *enode.DB, cfg Config) (*Table, error) {
+	tab, err := newTable(t, db, cfg)
 	if err != nil {
 		return nil, err
 	}

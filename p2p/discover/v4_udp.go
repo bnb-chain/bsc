@@ -143,7 +143,7 @@ func ListenV4(c UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv4, error) {
 		log:             cfg.Log,
 	}
 
-	tab, err := newMeteredTable(t, ln.Database(), cfg, cfg.FilterFunction)
+	tab, err := newMeteredTable(t, ln.Database(), cfg)
 	if err != nil {
 		return nil, err
 	}
