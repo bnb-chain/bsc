@@ -93,15 +93,15 @@ type StateDB struct {
 	lightProcessed bool
 	fullProcessed  bool
 	pipeCommit     bool
-	nodeSetMux     sync.Mutex                                // Mutex for accounts access
+	nodeSetMux     sync.Mutex // Mutex for accounts access
 
 	// These maps hold the state changes (including the corresponding
 	// original value) that occurred in this **block**.
-	AccountMux     sync.Mutex                                // Mutex for accounts access
-	StorageMux     sync.Mutex                                // Mutex for storages access
-	accounts       map[common.Address][]byte                    // The mutated accounts in 'slim RLP' encoding
-	storages       map[common.Address]map[string][]byte    // The mutated slots in prefix-zero trimmed rlp format
-	accountsOrigin map[common.Address][]byte                 // The original value of mutated accounts in 'slim RLP' encoding
+	AccountMux     sync.Mutex                           // Mutex for accounts access
+	StorageMux     sync.Mutex                           // Mutex for storages access
+	accounts       map[common.Address][]byte            // The mutated accounts in 'slim RLP' encoding
+	storages       map[common.Address]map[string][]byte // The mutated slots in prefix-zero trimmed rlp format
+	accountsOrigin map[common.Address][]byte            // The original value of mutated accounts in 'slim RLP' encoding
 	storagesOrigin map[common.Address]map[string][]byte // The original value of mutated slots in prefix-zero trimmed rlp format
 
 	// This map holds 'live' objects, which will get modified while processing
@@ -380,8 +380,8 @@ func (s *StateDB) SetDiff(diffLayer *types.DiffLayer, diffTries map[common.Addre
 }
 
 func (s *StateDB) SetSnapData(snapDestructs map[common.Address]*types.StateAccount, snapAccounts map[common.Address][]byte,
-        snapStorage map[common.Address]map[string][]byte) {
-        s.stateObjectsDestruct, s.accounts, s.storages = snapDestructs, snapAccounts, snapStorage
+	snapStorage map[common.Address]map[string][]byte) {
+	s.stateObjectsDestruct, s.accounts, s.storages = snapDestructs, snapAccounts, snapStorage
 }
 
 func (s *StateDB) AddLog(log *types.Log) {
@@ -1171,8 +1171,8 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			// Note, we can't do this only at the end of a block because multiple
 			// transactions within the same block might self destruct and then
 			// resurrect an account; but the snapshotter needs both events.
-			delete(s.accounts, obj.address)      // Clear out any previously updated account data (may be recreated via a resurrect)
-			delete(s.storages, obj.address)      // Clear out any previously updated storage data (may be recreated via a resurrect)
+			delete(s.accounts, obj.address)       // Clear out any previously updated account data (may be recreated via a resurrect)
+			delete(s.storages, obj.address)       // Clear out any previously updated storage data (may be recreated via a resurrect)
 			delete(s.accountsOrigin, obj.address) // Clear out any previously updated account data (may be recreated via a resurrect)
 			delete(s.storagesOrigin, obj.address) // Clear out any previously updated storage data (may be recreated via a resurrect)
 		} else {
@@ -1652,7 +1652,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				}
 			}
 			close(finishCh)
-			
+
 			// The onleaf func is called _serially_, so we can reuse the same account
 			// for unmarshalling every time.
 			if !s.noTrie {
@@ -1678,6 +1678,18 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 
 				if root != types.EmptyRootHash {
 					s.db.CacheAccount(root, s.trie)
+				}
+
+				if root != s.originalRoot {
+					start := time.Now()
+					hashStorages := covertOriginStorageToHash(s.storagesOrigin)
+					if err := s.db.TrieDB().Update(root, s.originalRoot, block, nodes, triestate.New(s.accountsOrigin, hashStorages, incomplete)); err != nil {
+						return err
+					}
+					s.originalRoot = root
+					if metrics.EnabledExpensive {
+						s.TrieDBCommits += time.Since(start)
+					}
 				}
 			}
 
@@ -1802,21 +1814,21 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	if root == (common.Hash{}) {
 		root = types.EmptyRootHash
 	}
-	origin := s.originalRoot
-	if origin == (common.Hash{}) {
-		origin = types.EmptyRootHash
-	}
-	if root != origin {
-		start := time.Now()
-		hashStorages := covertOriginStorageToHash(s.storagesOrigin)
-		if err := s.db.TrieDB().Update(root, origin, block, nodes, triestate.New(s.accountsOrigin, hashStorages, incomplete)); err != nil {
-			return common.Hash{}, nil, err
-		}
-		s.originalRoot = root
-		if metrics.EnabledExpensive {
-			s.TrieDBCommits += time.Since(start)
-		}
-	}
+	//origin := s.originalRoot
+	//if origin == (common.Hash{}) {
+	//	origin = types.EmptyRootHash
+	//}
+	//if root != origin {
+	//	start := time.Now()
+	//	hashStorages := covertOriginStorageToHash(s.storagesOrigin)
+	//	if err := s.db.TrieDB().Update(root, origin, block, nodes, triestate.New(s.accountsOrigin, hashStorages, incomplete)); err != nil {
+	//		return common.Hash{}, nil, err
+	//	}
+	//	s.originalRoot = root
+	//	if metrics.EnabledExpensive {
+	//		s.TrieDBCommits += time.Since(start)
+	//	}
+	//}
 	// Clear all internal flags at the end of commit operation.
 	s.accounts = make(map[common.Address][]byte)
 	s.storages = make(map[common.Address]map[string][]byte)
@@ -2053,37 +2065,37 @@ func copy2DSet[k comparable](set map[k]map[string][]byte) map[k]map[string][]byt
 
 // TODO we can further improve it when the set is very large
 func transformSnapData(destructs map[common.Address]*types.StateAccount, accounts map[common.Address][]byte,
-        storage map[common.Address]map[string][]byte) (map[common.Hash]struct{}, map[common.Hash][]byte,
-        map[common.Hash]map[common.Hash][]byte) {
-        hashDestructs := make(map[common.Hash]struct{}, len(destructs))
-        hashAccounts := make(map[common.Hash][]byte, len(accounts))
-        hashStorages := make(map[common.Hash]map[common.Hash][]byte, len(storage))
+	storage map[common.Address]map[string][]byte) (map[common.Hash]struct{}, map[common.Hash][]byte,
+	map[common.Hash]map[common.Hash][]byte) {
+	hashDestructs := make(map[common.Hash]struct{}, len(destructs))
+	hashAccounts := make(map[common.Hash][]byte, len(accounts))
+	hashStorages := make(map[common.Hash]map[common.Hash][]byte, len(storage))
 	hasher := crypto.NewKeccakState()
-        for addr := range destructs {
-                hashDestructs[crypto.Keccak256Hash(addr[:])] = struct{}{}
-        }
-        for addr, account := range accounts {
-                hashAccounts[crypto.Keccak256Hash(addr[:])] = account
-        }
-        for addr, accountStore := range storage {
-                hashStorage := make(map[common.Hash][]byte, len(accountStore))
-                for k, v := range accountStore {
-                        hashStorage[crypto.HashData(hasher, []byte(k))] = v
-                }
-                hashStorages[crypto.Keccak256Hash(addr[:])] = hashStorage
-        }
-        return hashDestructs, hashAccounts, hashStorages
+	for addr := range destructs {
+		hashDestructs[crypto.Keccak256Hash(addr[:])] = struct{}{}
+	}
+	for addr, account := range accounts {
+		hashAccounts[crypto.Keccak256Hash(addr[:])] = account
+	}
+	for addr, accountStore := range storage {
+		hashStorage := make(map[common.Hash][]byte, len(accountStore))
+		for k, v := range accountStore {
+			hashStorage[crypto.HashData(hasher, []byte(k))] = v
+		}
+		hashStorages[crypto.Keccak256Hash(addr[:])] = hashStorage
+	}
+	return hashDestructs, hashAccounts, hashStorages
 }
 
 func covertOriginStorageToHash(storage map[common.Address]map[string][]byte) map[common.Address]map[common.Hash][]byte {
-        hashStorages := make(map[common.Address]map[common.Hash][]byte, len(storage))
-        hasher := crypto.NewKeccakState()
-        for addr, accountStore := range storage {
-                hashStorage := make(map[common.Hash][]byte, len(accountStore))
-                for k, v := range accountStore {
-                        hashStorage[crypto.HashData(hasher, []byte(k))] = v
-                }
-                hashStorages[addr] = hashStorage
-        }
-        return hashStorages
+	hashStorages := make(map[common.Address]map[common.Hash][]byte, len(storage))
+	hasher := crypto.NewKeccakState()
+	for addr, accountStore := range storage {
+		hashStorage := make(map[common.Hash][]byte, len(accountStore))
+		for k, v := range accountStore {
+			hashStorage[crypto.HashData(hasher, []byte(k))] = v
+		}
+		hashStorages[addr] = hashStorage
+	}
+	return hashStorages
 }

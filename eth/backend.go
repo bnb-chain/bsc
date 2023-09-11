@@ -150,9 +150,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	if config.TrieDBConfig.PathDB != nil {
-		config.TrieDBConfig.PathDB.ReadOnly = true
-	}
 	triedb := trie.NewDatabase(chainDb, &config.TrieDBConfig)
 	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, triedb, config.Genesis, config.OverrideBerlin, config.OverrideArrowGlacier, config.OverrideTerminalTotalDifficulty)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
@@ -166,6 +163,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			log.Error("Failed to recover state", "error", err)
 		}
 	}
+	triedb.Close()
 	merger := consensus.NewMerger(chainDb)
 	eth := &Ethereum{
 		config:            config,
