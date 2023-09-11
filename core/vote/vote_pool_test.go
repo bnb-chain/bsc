@@ -160,7 +160,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 	}
 
 	// Create vote pool
-	votePool := NewVotePool(params.TestChainConfig, chain, mockEngine)
+	votePool := NewVotePool(chain, mockEngine)
 
 	// Create vote manager
 	// Create a temporary file for the votes journal
@@ -175,7 +175,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 	file.Close()
 	os.Remove(journal)
 
-	voteManager, err := NewVoteManager(newTestBackend(), params.TestChainConfig, chain, votePool, journal, walletPasswordDir, walletDir, mockEngine)
+	voteManager, err := NewVoteManager(newTestBackend(), chain, votePool, journal, walletPasswordDir, walletDir, mockEngine)
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}

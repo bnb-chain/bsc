@@ -19,7 +19,6 @@ package les
 
 import (
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -107,13 +106,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*LightEthereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Info("")
-	log.Info(strings.Repeat("-", 153))
-	for _, line := range strings.Split(chainConfig.Description(), "\n") {
-		log.Info(line)
-	}
-	log.Info(strings.Repeat("-", 153))
-	log.Info("")
+	// Description of chainConfig is empty now
+	/*
+		log.Info("")
+		log.Info(strings.Repeat("-", 153))
+		for _, line := range strings.Split(chainConfig.Description(), "\n") {
+			log.Info(line)
+		}
+		log.Info(strings.Repeat("-", 153))
+		log.Info("")
+	*/
 
 	peers := newServerPeerSet()
 	merger := consensus.NewMerger(chainDb)
