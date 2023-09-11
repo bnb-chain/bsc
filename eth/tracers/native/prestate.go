@@ -136,6 +136,8 @@ func (t *prestateTracer) CaptureTxStart(gasLimit uint64) {
 
 func (t *prestateTracer) CaptureTxEnd(restGas uint64) {}
 
+func (t *prestateTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
+
 // GetResult returns the json-encoded nested list of call traces, and any
 // error arising from the encoding or forceful termination (via `Stop`).
 func (t *prestateTracer) GetResult() (json.RawMessage, error) {

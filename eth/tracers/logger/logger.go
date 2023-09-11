@@ -269,6 +269,10 @@ func (l *StructLogger) CaptureTxEnd(restGas uint64) {
 	l.usedGas = l.gasLimit - restGas
 }
 
+func (l *StructLogger) CaptureSystemTxEnd(intrinsicGas uint64) {
+	l.usedGas -= intrinsicGas
+}
+
 // StructLogs returns the captured log entries.
 func (l *StructLogger) StructLogs() []StructLog { return l.logs }
 
@@ -397,6 +401,8 @@ func (t *mdLogger) CaptureExit(output []byte, gasUsed uint64, err error) {}
 func (*mdLogger) CaptureTxStart(gasLimit uint64) {}
 
 func (*mdLogger) CaptureTxEnd(restGas uint64) {}
+
+func (*mdLogger) CaptureSystemTxEnd(intrinsicGas uint64) {}
 
 // ExecutionResult groups all structured logs emitted by the EVM
 // while replaying a transaction in debug mode as well as transaction

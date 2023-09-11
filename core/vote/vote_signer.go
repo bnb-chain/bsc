@@ -1,7 +1,6 @@
 package vote
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -28,7 +27,7 @@ var votesSigningErrorCounter = metrics.NewRegisteredCounter("votesSigner/error",
 
 type VoteSigner struct {
 	km     *keymanager.IKeymanager
-	pubKey [48]byte
+	PubKey [48]byte
 }
 
 func NewVoteSigner(blsPasswordPath, blsWalletPath string) (*VoteSigner, error) {
@@ -39,7 +38,7 @@ func NewVoteSigner(blsPasswordPath, blsWalletPath string) (*VoteSigner, error) {
 	}
 	if !dirExists {
 		log.Error("BLS wallet did not exists.")
-		return nil, fmt.Errorf("BLS wallet did not exists.")
+		return nil, fmt.Errorf("BLS wallet did not exists")
 	}
 
 	walletPassword, err := ioutil.ReadFile(blsPasswordPath)
@@ -76,13 +75,13 @@ func NewVoteSigner(blsPasswordPath, blsWalletPath string) (*VoteSigner, error) {
 
 	return &VoteSigner{
 		km:     &km,
-		pubKey: pubKeys[0],
+		PubKey: pubKeys[0],
 	}, nil
 }
 
 func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
 	// Sign the vote, fetch the first pubKey as validator's bls public key.
-	pubKey := signer.pubKey
+	pubKey := signer.PubKey
 	blsPubKey, err := bls.PublicKeyFromBytes(pubKey[:])
 	if err != nil {
 		return errors.Wrap(err, "convert public key from bytes to bls failed")
@@ -104,8 +103,4 @@ func (signer *VoteSigner) SignVote(vote *types.VoteEnvelope) error {
 	copy(vote.VoteAddress[:], blsPubKey.Marshal()[:])
 	copy(vote.Signature[:], signature.Marshal()[:])
 	return nil
-}
-
-func (signer *VoteSigner) UsingKey(bLSPublicKey *types.BLSPublicKey) bool {
-	return bytes.Equal(signer.pubKey[:], bLSPublicKey[:])
 }
