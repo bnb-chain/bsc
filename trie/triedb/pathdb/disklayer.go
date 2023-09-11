@@ -183,7 +183,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		}
 	}
 	// Mark the diskLayer as stale before applying any mutations on top.
-	dl.stale = true
+	//dl.stale = true
 
 	// Store the root->id lookup afterwards. All stored lookups are
 	// identified by the **unique** state root. It's impossible that
