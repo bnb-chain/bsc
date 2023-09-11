@@ -131,16 +131,16 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	if config.HashDB != nil && config.PathDB != nil {
 		log.Crit("Both 'hash' and 'path' mode are configured")
 	}
-	if rawdb.ReadStateScheme(diskdb) == rawdb.PathScheme {
-		if config.PathDB == nil {
-			config.PathDB = pathdb.Defaults
-		}
-		db.backend = pathdb.New(diskdb, config.PathDB)
-	} else {
-		if config.HashDB == nil {
-			config.HashDB = hashdb.Defaults
+	if config.HashDB != nil {
+		if rawdb.ReadStateScheme(diskdb) == rawdb.PathScheme {
+			log.Info("incompatible state scheme", "old", rawdb.PathScheme, "new", rawdb.HashScheme)
 		}
 		db.backend = hashdb.New(diskdb, config.HashDB, mptResolver{})
+	} else {
+		if rawdb.ReadStateScheme(diskdb) == rawdb.HashScheme {
+			log.Info("incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
+		}
+		db.backend = pathdb.New(diskdb, config.PathDB)
 	}
 	log.Info("succeed to init triedb", "scheme", db.Scheme())
 	return db
