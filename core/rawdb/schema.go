@@ -123,11 +123,11 @@ var (
 	ChtPrefix           = []byte("chtRootV2-") // ChtPrefix + chtNum (uint64 big endian) -> trie root hash
 	ChtTablePrefix      = []byte("cht-")
 	ChtIndexTablePrefix = []byte("chtIndexV2-")
-	genesisPrefix  = []byte("ethereum-genesis-") // genesis state prefix for the db
+	genesisPrefix       = []byte("ethereum-genesis-") // genesis state prefix for the db
 
-        BloomTriePrefix      = []byte("bltRoot-") // BloomTriePrefix + bloomTrieNum (uint64 big endian) -> trie root hash
-        BloomTrieTablePrefix = []byte("blt-")
-        BloomTrieIndexPrefix = []byte("bltIndex-")
+	BloomTriePrefix      = []byte("bltRoot-") // BloomTriePrefix + bloomTrieNum (uint64 big endian) -> trie root hash
+	BloomTrieTablePrefix = []byte("blt-")
+	BloomTrieIndexPrefix = []byte("bltIndex-")
 
 	// difflayer database
 	diffLayerPrefix = []byte("d") // diffLayerPrefix + hash  -> diffLayer
@@ -362,4 +362,3 @@ func IsStorageTrieNode(key []byte) bool {
 	ok, _, _ := ResolveStorageTrieNode(key)
 	return ok
 }
-

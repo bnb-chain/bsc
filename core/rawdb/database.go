@@ -447,9 +447,9 @@ type OpenOptions struct {
 	Handles           int    // number of files to be open simultaneously
 	ReadOnly          bool
 
-	DisableFreeze    bool
-	IsLastOffset     bool
-	PruneAncientData bool
+	DisableFreeze        bool
+	IsLastOffset         bool
+	PruneAncientData     bool
 	SkipCheckFreezerType bool
 }
 
@@ -622,6 +622,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		// Totals
 		total common.StorageSize
 	)
+	trieDBScheme := ReadStateScheme(db)
+	log.Info("inspect trie db info", "scheme", trieDBScheme)
 	// Inspect key-value database first.
 	for it.Next() {
 		var (
@@ -643,13 +645,22 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		case bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
 			hashNumPairings.Add(size)
 		case IsLegacyTrieNode(key, it.Value()):
+			if trieDBScheme == PathScheme {
+				continue
+			}
 			legacyTries.Add(size)
 		case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
-			stateLookups.Add(size)
+			if trieDBScheme == PathScheme {
+				stateLookups.Add(size)
+			}
 		case IsAccountTrieNode(key):
-			accountTries.Add(size)
+			if trieDBScheme == PathScheme {
+				accountTries.Add(size)
+			}
 		case IsStorageTrieNode(key):
-			storageTries.Add(size)
+			if trieDBScheme == PathScheme {
+				storageTries.Add(size)
+			}
 		case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
 			codes.Add(size)
 		case bytes.HasPrefix(key, txLookupPrefix) && len(key) == (len(txLookupPrefix)+common.HashLength):
@@ -748,12 +759,12 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
-	table.SetFooter([]string{"", "Total", total.String(), " "})
+	table.SetFooter([]string{"Total", total.String(), "Trie DB Scheme", trieDBScheme})
 	table.AppendBulk(stats)
 	table.Render()
 
 	if unaccounted.size > 0 {
-		log.Error("Database contains unaccounted data", "size", unaccounted.size, "count", unaccounted.count)
+		log.Error("Database contains unaccounted data", "size", unaccounted.size, "count", unaccounted.count, "trie db scheme", trieDBScheme)
 	}
 
 	return nil
