@@ -126,11 +126,15 @@ func (t *transactionsByPriceAndNonce) Copy() *transactionsByPriceAndNonce {
 	for acc, txsTmp := range t.txs {
 		txs[acc] = txsTmp
 	}
+	var baseFee *big.Int
+	if t.baseFee != nil {
+		baseFee = big.NewInt(0).Set(t.baseFee)
+	}
 	return &transactionsByPriceAndNonce{
 		heads:   heads,
 		txs:     txs,
 		signer:  t.signer,
-		baseFee: big.NewInt(0).Set(t.baseFee),
+		baseFee: baseFee,
 	}
 }
 
