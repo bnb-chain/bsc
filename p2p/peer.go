@@ -346,9 +346,12 @@ func (p *Peer) pingLoop() {
 func (p *Peer) readLoop(errc chan<- error) {
 	defer p.wg.Done()
 	for {
-		fmt.Println("inside readLoop of peer....")
+		//fmt.Println("inside readLoop of peer....")
 		msg, err := p.rw.ReadMsg() // todo 4844 probably here lies the problem??
-		fmt.Println("msg, err: ", msg.String(), err)
+		if msg.Code != pingMsg && msg.Code != pongMsg {
+			fmt.Println("inside readLoop of peer....")
+			fmt.Println("msg, err: ", msg.String(), err)
+		}
 		if err != nil {
 			errc <- err
 			return
@@ -363,7 +366,9 @@ func (p *Peer) readLoop(errc chan<- error) {
 
 func (p *Peer) handle(msg Msg) error {
 	// todo 4844 this is never getting block related message. Just ping-pong messages.
-	fmt.Println("handling message", msg)
+	if msg.Code != pingMsg && msg.Code != pongMsg {
+		fmt.Println("handling message", msg)
+	}
 	switch {
 	case msg.Code == pingMsg:
 		msg.Discard()

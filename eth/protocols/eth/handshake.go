@@ -147,6 +147,7 @@ func (p *Peer) readStatus(network uint64, status *StatusPacket, genesis common.H
 	if err := forkFilter(status.ForkID); err != nil {
 		return fmt.Errorf("%w: %v", errForkIDRejected, err)
 	}
+	fmt.Println("Handshake successful! Probably")
 	return nil
 }
 

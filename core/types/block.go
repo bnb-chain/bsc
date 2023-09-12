@@ -409,12 +409,12 @@ func (b *Block) DecodeRLP(s *rlp.Stream) error {
 
 // EncodeRLP serializes b into the Ethereum RLP block format.
 func (b *Block) EncodeRLP(w io.Writer) error {
-	if b.header.ExcessDataGas != nil {
-		// This situation should not arise, but if it does (due to a bug) you'd silently produce an
-		// encoding that would fail to decode. ref:
-		// https://github.com/ethereum/go-ethereum/pull/26077
-		return errors.New("nil WithdrawalsHash in header with non-nil ExcessDataGas")
-	}
+	//if b.header.ExcessDataGas != nil {
+	//	// This situation should not arise, but if it does (due to a bug) you'd silently produce an
+	//	// encoding that would fail to decode. ref:
+	//	// https://github.com/ethereum/go-ethereum/pull/26077
+	//	return errors.New("nil WithdrawalsHash in header with non-nil ExcessDataGas")
+	//}
 	return rlp.Encode(w, extblock{
 		Header: b.header,
 		Txs:    (*extBlockTxs)(&b.transactions),

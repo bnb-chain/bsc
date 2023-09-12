@@ -223,6 +223,7 @@ func handleMessage(backend Backend, peer *Peer) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println("msg after peer.rw.ReadMsg() in eth/handler.go: ", msg)
 	if msg.Size > maxMessageSize {
 		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
 	}

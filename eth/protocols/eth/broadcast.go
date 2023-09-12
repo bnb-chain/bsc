@@ -17,6 +17,7 @@
 package eth
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -41,16 +42,20 @@ type blockPropagation struct {
 // to the remote peer. The goal is to have an async writer that does not lock up
 // node internals and at the same time rate limits queued data.
 func (p *Peer) broadcastBlocks() {
+	fmt.Println("func (p *Peer) broadcastBlocks()")
 	for {
 		select {
 		case prop := <-p.queuedBlocks:
+			fmt.Println("about to send new block ", prop.block.Number().String())
 			// todo 4844 is this really happening for every new block?
 			if err := p.SendNewBlock(prop.block, prop.td); err != nil {
+				fmt.Println("Error sending new block! ", err)
 				return
 			}
 			p.Log().Trace("Propagated block", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td)
 
 		case block := <-p.queuedBlockAnns:
+			fmt.Println("about to send block hash ", block.Number().String())
 			if err := p.SendNewBlockHashes([]common.Hash{block.Hash()}, []uint64{block.NumberU64()}); err != nil {
 				return
 			}

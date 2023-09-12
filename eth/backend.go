@@ -636,6 +636,7 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 	if !s.config.DisableBscProtocol {
 		protos = append(protos, bsc.MakeProtocols((*bscHandler)(s.handler), s.bscDialCandidates)...)
 	}
+	fmt.Println("protocols total: ", protos)
 	return protos
 }
 
