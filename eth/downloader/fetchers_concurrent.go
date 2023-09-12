@@ -92,6 +92,10 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 	}()
 	ordering := make(map[*eth.Request]int)
 	timeouts := prque.New[int64, *eth.Request](func(data *eth.Request, index int) {
+		if index < 0 {
+			delete(ordering, data)
+			return
+		}
 		ordering[data] = index
 	})
 
@@ -245,14 +249,16 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 				req.Close()
 
 				if index, live := ordering[req]; live {
-					timeouts.Remove(index)
-					if index == 0 {
-						if !timeout.Stop() {
-							<-timeout.C
-						}
-						if timeouts.Size() > 0 {
-							_, exp := timeouts.Peek()
-							timeout.Reset(time.Until(time.Unix(0, -exp)))
+					if index >= 0 && index < timeouts.Size() {
+						timeouts.Remove(index)
+						if index == 0 {
+							if !timeout.Stop() {
+								<-timeout.C
+							}
+							if timeouts.Size() > 0 {
+								_, exp := timeouts.Peek()
+								timeout.Reset(time.Until(time.Unix(0, -exp)))
+							}
 						}
 					}
 					delete(ordering, req)
@@ -333,14 +339,16 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 			// reschedule the timeout timer.
 			index, live := ordering[res.Req]
 			if live {
-				timeouts.Remove(index)
-				if index == 0 {
-					if !timeout.Stop() {
-						<-timeout.C
-					}
-					if timeouts.Size() > 0 {
-						_, exp := timeouts.Peek()
-						timeout.Reset(time.Until(time.Unix(0, -exp)))
+				if index >= 0 && index < timeouts.Size() {
+					timeouts.Remove(index)
+					if index == 0 {
+						if !timeout.Stop() {
+							<-timeout.C
+						}
+						if timeouts.Size() > 0 {
+							_, exp := timeouts.Peek()
+							timeout.Reset(time.Until(time.Unix(0, -exp)))
+						}
 					}
 				}
 				delete(ordering, res.Req)
