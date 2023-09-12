@@ -541,8 +541,7 @@ func traverseState(ctx *cli.Context) error {
 	defer stack.Close()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
-	config := &trie.Config{}
-	triedb := trie.NewDatabase(chaindb, config)
+	triedb := trie.NewDatabase(chaindb, nil)
 	defer triedb.Close()
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
@@ -643,8 +642,7 @@ func traverseRawState(ctx *cli.Context) error {
 	defer stack.Close()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
-	config := &trie.Config{}
-	triedb := trie.NewDatabase(chaindb, config)
+	triedb := trie.NewDatabase(chaindb, nil)
 	defer triedb.Close()
 
 	headBlock := rawdb.ReadHeadBlock(chaindb)

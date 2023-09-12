@@ -24,7 +24,6 @@ import (
 	"math/big"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -302,11 +301,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	diffLayerChanCache, _ := exlru.New(diffLayerCacheLimit)
 
 	// Open trie database with provided config
-	triedb := trie.NewDatabase(db, &trie.Config{
-		Cache:     cacheConfig.TrieCleanLimit,
-		Preimages: cacheConfig.Preimages,
-	})
-	log.Info("blockchain open triedb", "scheme", triedb.Scheme())
+	triedb := trie.NewDatabase(db, nil)
 	// Setup the genesis block, commit the provided genesis specification
 	// to database if the genesis block is not present yet, or load the
 	// stored one from database.
@@ -314,14 +309,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
-	log.Info("")
-	log.Info(strings.Repeat("-", 153))
-	for _, line := range strings.Split(chainConfig.Description(), "\n") {
-		log.Info(line)
-	}
-	log.Info(strings.Repeat("-", 153))
-	log.Info("")
-
 	bc := &BlockChain{
 		chainConfig: chainConfig,
 		cacheConfig: cacheConfig,

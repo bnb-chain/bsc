@@ -162,24 +162,23 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 	// Because the freezer can only be opened once at the same time, this
 	// mechanism also ensures that at most one **non-readOnly** database
 	// is opened at the same time to prevent accidental mutation.
-	//if ancient, err := diskdb.AncientDatadir(); err == nil && ancient != "" && !db.readOnly {
-	//	// TODO:Rick
-	//	freezer, err := rawdb.NewStateFreezer(ancient, false, 0)
-	//	if err != nil {
-	//		log.Crit("Failed to open state history freezer", "err", err)
-	//	}
-	//	db.freezer = freezer
-	//
-	//	// Truncate the extra state histories above in freezer in case
-	//	// it's not aligned with the disk layer.
-	//	pruned, err := truncateFromHead(db.diskdb, freezer, db.tree.bottom().stateID())
-	//	if err != nil {
-	//		log.Crit("Failed to truncate extra state histories", "err", err)
-	//	}
-	//	if pruned != 0 {
-	//		log.Warn("Truncated extra state histories", "number", pruned)
-	//	}
-	//}
+	if ancient, err := diskdb.AncientDatadir(); err == nil && ancient != "" && !db.readOnly {
+		freezer, err := rawdb.NewStateFreezer(ancient, false, 0)
+		if err != nil {
+			log.Crit("Failed to open state history freezer", "err", err)
+		}
+		db.freezer = freezer
+
+		// Truncate the extra state histories above in freezer in case
+		// it's not aligned with the disk layer.
+		pruned, err := truncateFromHead(db.diskdb, freezer, db.tree.bottom().stateID())
+		if err != nil {
+			log.Crit("Failed to truncate extra state histories", "err", err)
+		}
+		if pruned != 0 {
+			log.Warn("Truncated extra state histories", "number", pruned)
+		}
+	}
 	log.Warn("Path-based state scheme is an experimental feature")
 	return db
 }

@@ -697,6 +697,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				}
 			}
 			if !accounted {
+				log.Warn("unaccounted", "key", key, "size", size)
 				unaccounted.Add(size)
 			}
 		}

@@ -29,8 +29,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-        "github.com/ethereum/go-ethereum/trie/triestate"
-        "github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 var (
@@ -225,7 +225,7 @@ func (t *odrTrie) do(key []byte, fn func() error) error {
 			} else {
 				id = trie.StateTrieID(t.id.StateRoot)
 			}
-			triedb := trie.NewDatabase(t.db.backend.Database(), trie.HashDefaults)
+			triedb := trie.NewDatabase(t.db.backend.Database(), nil)
 			t.trie, err = trie.New(id, triedb)
 		}
 		if err == nil {
@@ -262,7 +262,7 @@ func newNodeIterator(t *odrTrie, startkey []byte) trie.NodeIterator {
 			} else {
 				id = trie.StateTrieID(t.id.StateRoot)
 			}
-			triedb := trie.NewDatabase(t.db.backend.Database(), trie.HashDefaults)
+			triedb := trie.NewDatabase(t.db.backend.Database(), nil)
 			t, err := trie.New(id, triedb)
 			if err == nil {
 				it.t.trie = t
