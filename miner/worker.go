@@ -73,6 +73,10 @@ const (
 var (
 	writeBlockTimer    = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
+	packageBlockTimer  = metrics.NewRegisteredTimer("worker/packageblock", nil)
+	processBlockTimer  = metrics.NewRegisteredTimer("worker/processblock", nil)
+	orderTxsTimer      = metrics.NewRegisteredTimer("worker/ordertxs", nil)
+	prepareWorkTimer   = metrics.NewRegisteredTimer("worker/preparework", nil)
 
 	errBlockInterruptedByNewHead  = errors.New("new head arrived while building block")
 	errBlockInterruptedByRecommit = errors.New("recommit interrupt while building block")
@@ -476,7 +480,9 @@ func (w *worker) mainLoop() {
 	for {
 		select {
 		case req := <-w.newWorkCh:
+			start := time.Now()
 			w.commitWork(req.interruptCh, req.timestamp)
+			packageBlockTimer.Update(time.Since(start))
 
 		case req := <-w.getWorkCh:
 			block, err := w.generateWork(req.params)
@@ -777,6 +783,9 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction, rece
 
 func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByPriceAndNonce,
 	interruptCh chan int32, stopTimer *time.Timer) error {
+	defer func(start time.Time) {
+		processBlockTimer.Update(time.Since(start))
+	}(time.Now())
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
@@ -931,6 +940,9 @@ type generateParams struct {
 // either based on the last chain head or specified parent. In this function
 // the pending transactions are not filled yet, only the empty task returned.
 func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
+	defer func(start time.Time) {
+		prepareWorkTimer.Update(time.Since(start))
+	}(time.Now())
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
@@ -1026,7 +1038,9 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 
 	err = nil
 	if len(localTxs) > 0 {
+		start := time.Now()
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
+		orderTxsTimer.Update(time.Since(start))
 		err = w.commitTransactions(env, txs, interruptCh, stopTimer)
 		// we will abort here when:
 		//   1.new block was imported
@@ -1039,7 +1053,9 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 		}
 	}
 	if len(remoteTxs) > 0 {
+		start := time.Now()
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
+		orderTxsTimer.Update(time.Since(start))
 		err = w.commitTransactions(env, txs, interruptCh, stopTimer)
 	}
 
