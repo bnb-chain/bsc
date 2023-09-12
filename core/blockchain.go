@@ -1990,9 +1990,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			continue
 		}
 
-		if block.NumberU64() == 363 {
-			log.Info("begin insert 363 block *********************")
-		}
 		// Retrieve the parent block and it's state to execute on top
 		start := time.Now()
 		parent := it.previous()

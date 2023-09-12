@@ -1657,7 +1657,8 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 
 				if root != s.originalRoot {
 					start := time.Now()
-					if err := s.db.TrieDB().Update(root, s.originalRoot, block, nodes, nil); err != nil {
+					hashStorages := covertOriginStorageToHash(s.storagesOrigin)
+					if err := s.db.TrieDB().Update(root, s.originalRoot, block, nodes, triestate.New(s.accountsOrigin, hashStorages, incomplete)); err != nil {
 						log.Info("failed to update triedb", "err", err)
 						return err
 					}
