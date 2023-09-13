@@ -1642,9 +1642,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 		// If node is running in path mode, skip explicit gc operation
 		// which is unnecessary in this mode.
-		//if bc.triedb.Scheme() == rawdb.PathScheme {
-		//	return nil
-		//}
+		if bc.triedb.Scheme() == rawdb.PathScheme {
+			return nil
+		}
 
 		triedb := bc.stateCache.TrieDB()
 		// If we're running an archive node, always flush
