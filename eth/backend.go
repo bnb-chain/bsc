@@ -151,8 +151,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
-	if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, config.TriesInMemory); err != nil {
-		log.Error("Failed to recover state", "error", err)
+
+	if triedb.Scheme() == rawdb.HashScheme {
+		if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, config.TriesInMemory); err != nil {
+			log.Error("Failed to recover state", "error", err)
+		}
 	}
 	_ = triedb.Close()
 
