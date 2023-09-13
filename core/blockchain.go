@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -309,6 +310,14 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
+	log.Info("")
+	log.Info(strings.Repeat("-", 153))
+	for _, line := range strings.Split(chainConfig.Description(), "\n") {
+		log.Info(line)
+	}
+	log.Info(strings.Repeat("-", 153))
+	log.Info("")
+
 	bc := &BlockChain{
 		chainConfig: chainConfig,
 		cacheConfig: cacheConfig,
@@ -790,6 +799,25 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	pivot := rawdb.ReadLastPivotNumber(bc.db)
 	frozen, _ := bc.db.Ancients()
 
+	// resetState resets the persistent state to genesis if it's not available.
+	//resetState := func() {
+	//	// Short circuit if the genesis state is already present.
+	//	if bc.HasState(bc.genesisBlock.Root()) {
+	//		return
+	//	}
+	//	// Reset the state database to empty for committing genesis state.
+	//	// Note, it should only happen in path-based scheme and Reset function
+	//	// is also only call-able in this mode.
+	//	if bc.triedb.Scheme() == rawdb.PathScheme {
+	//		if err := bc.triedb.Reset(types.EmptyRootHash); err != nil {
+	//			log.Crit("Failed to clean state", "err", err) // Shouldn't happen
+	//		}
+	//	}
+	//	// Write genesis state into database.
+	//	if err := CommitGenesisState(bc.db, bc.triedb, bc.genesisBlock.Hash()); err != nil {
+	//		log.Crit("Failed to commit genesis state", "err", err)
+	//	}
+	//}
 	updateFn := func(db ethdb.KeyValueWriter, header *types.Header) (*types.Header, bool) {
 		// Rewind the blockchain, ensuring we don't end up with a stateless head
 		// block. Note, depth equality is permitted to allow using SetHead as a
@@ -963,6 +991,11 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 		return fmt.Errorf("non existent block [%x..]", hash[:4])
 	}
 	root := block.Root()
+	if bc.triedb.Scheme() == rawdb.PathScheme {
+		if err := bc.triedb.Reset(root); err != nil {
+			return err
+		}
+	}
 	if !bc.HasState(root) {
 		return fmt.Errorf("non existent state [%x..]", root[:4])
 	}
@@ -1597,6 +1630,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	tryCommitTrieDB := func() error {
 		bc.commitLock.Lock()
 		defer bc.commitLock.Unlock()
+
+		// TODO:: after restart issue
+		// If node is running in path mode, skip explicit gc operation
+		// which is unnecessary in this mode.
+		//if bc.triedb.Scheme() == rawdb.PathScheme {
+		//	return nil
+		//}
 
 		triedb := bc.stateCache.TrieDB()
 		// If we're running an archive node, always flush
