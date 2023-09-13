@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/internal/utesting"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/rlpx"
 )
@@ -202,6 +203,29 @@ loop:
 	if err := c.Write(status); err != nil {
 		return nil, fmt.Errorf("write to connection failed: %v", err)
 	}
+
+	// exchange UpgradeStatus
+	if c.negotiatedProtoVersion >= eth.ETH67 {
+		extensionRaw, _ := (&eth.UpgradeStatusExtension{}).Encode()
+		upgradeStatus := UpgradeStatus{
+			Extension: extensionRaw,
+		}
+		if err := c.Write(upgradeStatus); err != nil {
+			return nil, fmt.Errorf("write to connection failed: %v", err)
+		}
+		switch msg := c.Read().(type) {
+		case *UpgradeStatus:
+			log.Debug("receive UpgradeStatus")
+		case *Disconnect:
+			return nil, fmt.Errorf("disconnect received: %v", msg.Reason)
+		case *Ping:
+			c.Write(&Pong{}) // TODO (renaynay): in the future, this should be an error
+			// (PINGs should not be a response upon fresh connection)
+		default:
+			return nil, fmt.Errorf("bad status message: %s", pretty.Sdump(msg))
+		}
+	}
+
 	return message, nil
 }
 
