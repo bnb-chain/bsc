@@ -391,7 +391,16 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		var diskRoot common.Hash
 		if bc.cacheConfig.SnapshotLimit > 0 {
 			diskRoot = rawdb.ReadSnapshotRoot(bc.db)
+			if bc.triedb.Scheme() == rawdb.PathScheme {
+				if err := bc.triedb.Recover(diskRoot); err != nil {
+					diskRoot = common.Hash{}
+					log.Crit("failed to recover pathdb by snapshot, please reset chain", "error", "err")
+				}
+			}
+		} else if bc.triedb.Scheme() == rawdb.PathScheme {
+			_, diskRoot = rawdb.ReadAccountTrieNode(bc.db, nil)
 		}
+
 		if diskRoot != (common.Hash{}) {
 			log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash(), "snaproot", diskRoot)
 
@@ -886,7 +895,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 								log.Debug("Recommitted genesis state to disk")
 							}
 						}
-						log.Debug("Rewound to block with state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash())
+						log.Info("Rewound to block with state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash())
 						break
 					}
 					log.Debug("Skipping block with threshold state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "root", newHeadBlock.Root())
@@ -1631,7 +1640,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		bc.commitLock.Lock()
 		defer bc.commitLock.Unlock()
 
-		// TODO:: after restart issue
 		// If node is running in path mode, skip explicit gc operation
 		// which is unnecessary in this mode.
 		//if bc.triedb.Scheme() == rawdb.PathScheme {
