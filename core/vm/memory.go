@@ -53,10 +53,9 @@ func (m *Memory) Set32(offset uint64, val *uint256.Int) {
 	if offset+32 > uint64(len(m.store)) {
 		panic("invalid memory: store empty")
 	}
-	// Zero the memory area
-	copy(m.store[offset:offset+32], []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
 	// Fill in relevant bits
-	val.WriteToSlice(m.store[offset:])
+	b32 := val.Bytes32()
+	copy(m.store[offset:], b32[:])
 }
 
 // Resize resizes the memory to size
@@ -103,4 +102,15 @@ func (m *Memory) Len() int {
 // Data returns the backing slice
 func (m *Memory) Data() []byte {
 	return m.store
+}
+
+// Copy copies data from the src position slice into the dst position.
+// The source and destination may overlap.
+// OBS: This operation assumes that any necessary memory expansion has already been performed,
+// and this method may panic otherwise.
+func (m *Memory) Copy(dst, src, len uint64) {
+	if len == 0 {
+		return
+	}
+	copy(m.store[dst:], m.store[src:src+len])
 }

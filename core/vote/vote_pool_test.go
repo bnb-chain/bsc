@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -144,16 +143,14 @@ func TestInvalidVotePool(t *testing.T) {
 func testVotePool(t *testing.T, isValidRules bool) {
 	walletPasswordDir, walletDir := setUpKeyManager(t)
 
-	// Create a database pre-initialize with a genesis block
-	db := rawdb.NewMemoryDatabase()
-	(&core.Genesis{
+	genesis := &core.Genesis{
 		Config: params.TestChainConfig,
 		Alloc:  core.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
-	}).MustCommit(db)
-
-	chain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFullFaker(), vm.Config{}, nil, nil)
+	}
 
 	mux := new(event.TypeMux)
+	db := rawdb.NewMemoryDatabase()
+	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFullFaker(), vm.Config{}, nil, nil)
 
 	var mockEngine consensus.PoSA
 	if isValidRules {
@@ -167,7 +164,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 
 	// Create vote manager
 	// Create a temporary file for the votes journal
-	file, err := ioutil.TempFile("", "")
+	file, err := os.CreateTemp("", "")
 	if err != nil {
 		t.Fatalf("failed to create temporary file path: %v", err)
 	}
@@ -417,7 +414,7 @@ func setUpKeyManager(t *testing.T) (string, string) {
 	if err := os.MkdirAll(filepath.Dir(walletPasswordDir), 0700); err != nil {
 		t.Fatalf("failed to create walletPassword dir: %v", err)
 	}
-	if err := ioutil.WriteFile(walletPasswordDir, []byte(password), 0600); err != nil {
+	if err := os.WriteFile(walletPasswordDir, []byte(password), 0600); err != nil {
 		t.Fatalf("failed to write wallet password dir: %v", err)
 	}
 

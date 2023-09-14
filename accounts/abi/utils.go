@@ -27,10 +27,8 @@ import "fmt"
 //     and struct definition) name will be converted to camelcase style which
 //     may eventually lead to name conflicts.
 //
-// Name conflicts are mostly resolved by adding number suffix.
-//
-//		 e.g. if the abi contains Methods send, send1
-//	  ResolveNameConflict would return send2 for input send.
+// Name conflicts are mostly resolved by adding number suffix. e.g. if the abi contains
+// Methods "send" and "send1", ResolveNameConflict would return "send2" for input "send".
 func ResolveNameConflict(rawName string, used func(string) bool) string {
 	name := rawName
 	ok := used(name)

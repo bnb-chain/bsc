@@ -130,7 +130,7 @@ func testSendVotes(t *testing.T, protocol uint) {
 	var (
 		genesis = handler.chain.Genesis()
 		head    = handler.chain.CurrentBlock()
-		td      = handler.chain.GetTd(head.Hash(), head.NumberU64())
+		td      = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 	)
 	time.Sleep(200 * time.Millisecond)
 	if err := remoteEth.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
@@ -161,7 +161,6 @@ func testSendVotes(t *testing.T, protocol uint) {
 			t.Errorf("missing vote: %x", vote.Hash())
 		}
 	}
-
 }
 
 func TestRecvVotes67(t *testing.T) { testRecvVotes(t, eth.ETH67) }
@@ -241,7 +240,7 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	var (
 		genesis = handler.chain.Genesis()
 		head    = handler.chain.CurrentBlock()
-		td      = handler.chain.GetTd(head.Hash(), head.NumberU64())
+		td      = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 	)
 	time.Sleep(200 * time.Millisecond)
 	if err := remoteEth.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {

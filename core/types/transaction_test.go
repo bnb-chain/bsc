@@ -20,12 +20,11 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
-	"math/rand"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -76,7 +75,7 @@ func TestDecodeEmptyTypedTx(t *testing.T) {
 	input := []byte{0x80}
 	var tx Transaction
 	err := rlp.DecodeBytes(input, &tx)
-	if err != errEmptyTypedTx {
+	if err != errShortTypedTx {
 		t.Fatal("wrong error:", err)
 	}
 }
@@ -114,7 +113,6 @@ func TestEIP2718TransactionSigHash(t *testing.T) {
 
 // This test checks signature operations on access list transactions.
 func TestEIP2930Signer(t *testing.T) {
-
 	var (
 		key, _  = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 		keyAddr = crypto.PubkeyToAddress(key.PublicKey)
@@ -171,14 +169,14 @@ func TestEIP2930Signer(t *testing.T) {
 			t.Errorf("test %d: wrong sig hash: got %x, want %x", i, sigHash, test.wantSignerHash)
 		}
 		sender, err := Sender(test.signer, test.tx)
-		if err != test.wantSenderErr {
+		if !errors.Is(err, test.wantSenderErr) {
 			t.Errorf("test %d: wrong Sender error %q", i, err)
 		}
 		if err == nil && sender != keyAddr {
 			t.Errorf("test %d: wrong sender address %x", i, sender)
 		}
 		signedTx, err := SignTx(test.tx, test.signer, key)
-		if err != test.wantSignErr {
+		if !errors.Is(err, test.wantSignErr) {
 			t.Fatalf("test %d: wrong SignTx error %q", i, err)
 		}
 		if signedTx != nil {
@@ -256,223 +254,6 @@ func TestRecipientNormal(t *testing.T) {
 	}
 	if addr != from {
 		t.Fatal("derived address doesn't match")
-	}
-}
-
-func TestTransactionPriceNonceSortLegacy(t *testing.T) {
-	testTransactionPriceNonceSort(t, nil)
-}
-
-func TestTransactionPriceNonceSort1559(t *testing.T) {
-	testTransactionPriceNonceSort(t, big.NewInt(0))
-	testTransactionPriceNonceSort(t, big.NewInt(5))
-	testTransactionPriceNonceSort(t, big.NewInt(50))
-}
-
-// Tests that transactions can be correctly sorted according to their price in
-// decreasing order, but at the same time with increasing nonces when issued by
-// the same account.
-func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
-	// Generate a batch of accounts to start with
-	keys := make([]*ecdsa.PrivateKey, 25)
-	for i := 0; i < len(keys); i++ {
-		keys[i], _ = crypto.GenerateKey()
-	}
-	signer := LatestSignerForChainID(common.Big1)
-
-	// Generate a batch of transactions with overlapping values, but shifted nonces
-	groups := map[common.Address]Transactions{}
-	expectedCount := 0
-	for start, key := range keys {
-		addr := crypto.PubkeyToAddress(key.PublicKey)
-		count := 25
-		for i := 0; i < 25; i++ {
-			var tx *Transaction
-			gasFeeCap := rand.Intn(50)
-			if baseFee == nil {
-				tx = NewTx(&LegacyTx{
-					Nonce:    uint64(start + i),
-					To:       &common.Address{},
-					Value:    big.NewInt(100),
-					Gas:      100,
-					GasPrice: big.NewInt(int64(gasFeeCap)),
-					Data:     nil,
-				})
-			} else {
-				tx = NewTx(&DynamicFeeTx{
-					Nonce:     uint64(start + i),
-					To:        &common.Address{},
-					Value:     big.NewInt(100),
-					Gas:       100,
-					GasFeeCap: big.NewInt(int64(gasFeeCap)),
-					GasTipCap: big.NewInt(int64(rand.Intn(gasFeeCap + 1))),
-					Data:      nil,
-				})
-				if count == 25 && int64(gasFeeCap) < baseFee.Int64() {
-					count = i
-				}
-			}
-			tx, err := SignTx(tx, signer, key)
-			if err != nil {
-				t.Fatalf("failed to sign tx: %s", err)
-			}
-			groups[addr] = append(groups[addr], tx)
-		}
-		expectedCount += count
-	}
-	// Sort the transactions and cross check the nonce ordering
-	txset := NewTransactionsByPriceAndNonce(signer, groups, baseFee)
-
-	txs := Transactions{}
-	for tx := txset.Peek(); tx != nil; tx = txset.Peek() {
-		txs = append(txs, tx)
-		txset.Shift()
-	}
-	if len(txs) != expectedCount {
-		t.Errorf("expected %d transactions, found %d", expectedCount, len(txs))
-	}
-	for i, txi := range txs {
-		fromi, _ := Sender(signer, txi)
-
-		// Make sure the nonce order is valid
-		for j, txj := range txs[i+1:] {
-			fromj, _ := Sender(signer, txj)
-			if fromi == fromj && txi.Nonce() > txj.Nonce() {
-				t.Errorf("invalid nonce ordering: tx #%d (A=%x N=%v) < tx #%d (A=%x N=%v)", i, fromi[:4], txi.Nonce(), i+j, fromj[:4], txj.Nonce())
-			}
-		}
-		// If the next tx has different from account, the price must be lower than the current one
-		if i+1 < len(txs) {
-			next := txs[i+1]
-			fromNext, _ := Sender(signer, next)
-			tip, err := txi.EffectiveGasTip(baseFee)
-			nextTip, nextErr := next.EffectiveGasTip(baseFee)
-			if err != nil || nextErr != nil {
-				t.Errorf("error calculating effective tip")
-			}
-			if fromi != fromNext && tip.Cmp(nextTip) < 0 {
-				t.Errorf("invalid gasprice ordering: tx #%d (A=%x P=%v) < tx #%d (A=%x P=%v)", i, fromi[:4], txi.GasPrice(), i+1, fromNext[:4], next.GasPrice())
-			}
-		}
-	}
-}
-
-// Tests that if multiple transactions have the same price, the ones seen earlier
-// are prioritized to avoid network spam attacks aiming for a specific ordering.
-func TestTransactionTimeSort(t *testing.T) {
-	// Generate a batch of accounts to start with
-	keys := make([]*ecdsa.PrivateKey, 5)
-	for i := 0; i < len(keys); i++ {
-		keys[i], _ = crypto.GenerateKey()
-	}
-	signer := HomesteadSigner{}
-
-	// Generate a batch of transactions with overlapping prices, but different creation times
-	groups := map[common.Address]Transactions{}
-	for start, key := range keys {
-		addr := crypto.PubkeyToAddress(key.PublicKey)
-
-		tx, _ := SignTx(NewTransaction(0, common.Address{}, big.NewInt(100), 100, big.NewInt(1), nil), signer, key)
-		tx.time = time.Unix(0, int64(len(keys)-start))
-
-		groups[addr] = append(groups[addr], tx)
-	}
-	// Sort the transactions and cross check the nonce ordering
-	txset := NewTransactionsByPriceAndNonce(signer, groups, nil)
-
-	txs := Transactions{}
-	for tx := txset.Peek(); tx != nil; tx = txset.Peek() {
-		txs = append(txs, tx)
-		txset.Shift()
-	}
-	if len(txs) != len(keys) {
-		t.Errorf("expected %d transactions, found %d", len(keys), len(txs))
-	}
-	for i, txi := range txs {
-		fromi, _ := Sender(signer, txi)
-		if i+1 < len(txs) {
-			next := txs[i+1]
-			fromNext, _ := Sender(signer, next)
-
-			if txi.GasPrice().Cmp(next.GasPrice()) < 0 {
-				t.Errorf("invalid gasprice ordering: tx #%d (A=%x P=%v) < tx #%d (A=%x P=%v)", i, fromi[:4], txi.GasPrice(), i+1, fromNext[:4], next.GasPrice())
-			}
-			// Make sure time order is ascending if the txs have the same gas price
-			if txi.GasPrice().Cmp(next.GasPrice()) == 0 && txi.time.After(next.time) {
-				t.Errorf("invalid received time ordering: tx #%d (A=%x T=%v) > tx #%d (A=%x T=%v)", i, fromi[:4], txi.time, i+1, fromNext[:4], next.time)
-			}
-		}
-	}
-}
-
-func TestTransactionForward(t *testing.T) {
-	// Generate a batch of accounts to start with
-	keys := make([]*ecdsa.PrivateKey, 5)
-	for i := 0; i < len(keys); i++ {
-		keys[i], _ = crypto.GenerateKey()
-	}
-	signer := HomesteadSigner{}
-
-	// Generate a batch of transactions with overlapping prices, but different creation times
-	groups := map[common.Address]Transactions{}
-	for start, key := range keys {
-		addr := crypto.PubkeyToAddress(key.PublicKey)
-
-		tx, _ := SignTx(NewTransaction(0, common.Address{}, big.NewInt(100), 100, big.NewInt(1), nil), signer, key)
-		tx2, _ := SignTx(NewTransaction(1, common.Address{}, big.NewInt(100), 100, big.NewInt(1), nil), signer, key)
-
-		tx.time = time.Unix(0, int64(len(keys)-start))
-		tx2.time = time.Unix(1, int64(len(keys)-start))
-
-		groups[addr] = append(groups[addr], tx)
-		groups[addr] = append(groups[addr], tx2)
-
-	}
-	// Sort the transactions
-	txset := NewTransactionsByPriceAndNonce(signer, groups, common.Big0)
-	txsetCpy := txset.Copy()
-	txs := Transactions{}
-	for tx := txsetCpy.Peek(); tx != nil; tx = txsetCpy.Peek() {
-		txs = append(txs, tx)
-		txsetCpy.Shift()
-	}
-
-	tmp := txset.Copy()
-	for j := 0; j < 11; j++ {
-		txset = tmp.Copy()
-		txsetCpy = tmp.Copy()
-		i := 0
-		for ; i < j; i++ {
-			txset.Shift()
-		}
-		tx := txset.Peek()
-		if tx == nil {
-			continue
-		}
-		txsetCpy.Forward(tx)
-		txCpy := txsetCpy.Peek()
-		if txCpy == nil {
-			if tx == nil {
-				continue
-			}
-			txset.Shift()
-			if txset.Peek() != nil {
-				t.Errorf("forward got an incorrect result, got %v, want %v", txCpy, tx)
-			} else {
-				continue
-			}
-		}
-		txset.Shift()
-		for ; i < len(txs)-1; i++ {
-			tx = txset.Peek()
-			txCpy = txsetCpy.Peek()
-			if txCpy != tx {
-				t.Errorf("forward got an incorrect result, got %v, want %v", txCpy, tx)
-			}
-			txsetCpy.Shift()
-			txset.Shift()
-		}
-
 	}
 }
 
@@ -597,8 +378,76 @@ func assertEqual(orig *Transaction, cpy *Transaction) error {
 	}
 	if orig.AccessList() != nil {
 		if !reflect.DeepEqual(orig.AccessList(), cpy.AccessList()) {
-			return fmt.Errorf("access list wrong!")
+			return errors.New("access list wrong!")
 		}
 	}
 	return nil
+}
+
+func TestTransactionSizes(t *testing.T) {
+	signer := NewLondonSigner(big.NewInt(123))
+	key, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	to := common.HexToAddress("0x01")
+	for i, txdata := range []TxData{
+		&AccessListTx{
+			ChainID:  big.NewInt(123),
+			Nonce:    0,
+			To:       nil,
+			Value:    big.NewInt(1000),
+			Gas:      21000,
+			GasPrice: big.NewInt(100000),
+		},
+		&LegacyTx{
+			Nonce:    1,
+			GasPrice: big.NewInt(500),
+			Gas:      1000000,
+			To:       &to,
+			Value:    big.NewInt(1),
+		},
+		&AccessListTx{
+			ChainID:  big.NewInt(123),
+			Nonce:    1,
+			GasPrice: big.NewInt(500),
+			Gas:      1000000,
+			To:       &to,
+			Value:    big.NewInt(1),
+			AccessList: AccessList{
+				AccessTuple{
+					Address:     common.HexToAddress("0x01"),
+					StorageKeys: []common.Hash{common.HexToHash("0x01")},
+				}},
+		},
+		&DynamicFeeTx{
+			ChainID:   big.NewInt(123),
+			Nonce:     1,
+			Gas:       1000000,
+			To:        &to,
+			Value:     big.NewInt(1),
+			GasTipCap: big.NewInt(500),
+			GasFeeCap: big.NewInt(500),
+		},
+	} {
+		tx, err := SignNewTx(key, signer, txdata)
+		if err != nil {
+			t.Fatalf("test %d: %v", i, err)
+		}
+		bin, _ := tx.MarshalBinary()
+
+		// Check initial calc
+		if have, want := int(tx.Size()), len(bin); have != want {
+			t.Errorf("test %d: size wrong, have %d want %d", i, have, want)
+		}
+		// Check cached version too
+		if have, want := int(tx.Size()), len(bin); have != want {
+			t.Errorf("test %d: (cached) size wrong, have %d want %d", i, have, want)
+		}
+		// Check unmarshalled version too
+		utx := new(Transaction)
+		if err := utx.UnmarshalBinary(bin); err != nil {
+			t.Fatalf("test %d: failed to unmarshal tx: %v", i, err)
+		}
+		if have, want := int(utx.Size()), len(bin); have != want {
+			t.Errorf("test %d: (unmarshalled) size wrong, have %d want %d", i, have, want)
+		}
+	}
 }

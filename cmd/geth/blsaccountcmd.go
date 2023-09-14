@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,8 +21,8 @@ import (
 	"github.com/prysmaticlabs/prysm/v4/validator/accounts/wallet"
 	"github.com/prysmaticlabs/prysm/v4/validator/keymanager"
 	"github.com/prysmaticlabs/prysm/v4/validator/keymanager/local"
+	"github.com/urfave/cli/v2"
 	keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
-	"gopkg.in/urfave/cli.v1"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -46,14 +45,14 @@ var (
 		Name:  "show-private-key",
 		Usage: "Show the BLS12-381 private key you will encrypt into a keystore file",
 	}
-	BLSAccountPasswordFileFlag = cli.StringFlag{
+	BLSAccountPasswordFileFlag = &cli.StringFlag{
 		Name:  "blsaccountpassword",
 		Usage: "File path for the BLS account password, which contains the password to encrypt private key into keystore file for managing votes in fast_finality feature",
 	}
 )
 
 var (
-	blsCommand = cli.Command{
+	blsCommand = &cli.Command{
 		Name:      "bls",
 		Usage:     "Manage BLS wallet and accounts",
 		ArgsUsage: "",
@@ -72,7 +71,7 @@ There are generally two steps to manage a BLS account:
 1.Create a BLS wallet: geth bls wallet create
 2.Create a BLS account: geth bls account new
   or import a BLS account: geth bls account import <keystore file>`,
-		Subcommands: []cli.Command{
+		Subcommands: []*cli.Command{
 			{
 				Name:      "wallet",
 				Usage:     "Manage BLS wallet",
@@ -82,11 +81,11 @@ There are generally two steps to manage a BLS account:
 
 Create a BLS wallet to manage BLS accounts, this should before creating
 or import a BLS account. The BLS wallet dir should be "<DATADIR>/bls/wallet".`,
-				Subcommands: []cli.Command{
+				Subcommands: []*cli.Command{
 					{
 						Name:      "create",
 						Usage:     "Create BLS wallet",
-						Action:    utils.MigrateFlags(blsWalletCreate),
+						Action:    blsWalletCreate,
 						ArgsUsage: "",
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
@@ -122,11 +121,11 @@ It is safe to transfer the entire directory or the individual keys therein
 between ethereum nodes by simply copying.
 
 Make sure you backup your BLS keys regularly.`,
-				Subcommands: []cli.Command{
+				Subcommands: []*cli.Command{
 					{
 						Name:      "new",
 						Usage:     "Create a BLS account",
-						Action:    utils.MigrateFlags(blsAccountCreate),
+						Action:    blsAccountCreate,
 						ArgsUsage: "",
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
@@ -149,7 +148,7 @@ You must remember this password to unlock your account in the future.`,
 					{
 						Name:      "import",
 						Usage:     "Import a BLS account",
-						Action:    utils.MigrateFlags(blsAccountImport),
+						Action:    blsAccountImport,
 						ArgsUsage: "<keystore file>",
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
@@ -167,7 +166,7 @@ If the BLS wallet not created yet, it will try to create BLS wallet first.`,
 					{
 						Name:      "list",
 						Usage:     "Print summary of existing BLS accounts",
-						Action:    utils.MigrateFlags(blsAccountList),
+						Action:    blsAccountList,
 						ArgsUsage: "",
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
@@ -182,7 +181,7 @@ Print summary of existing BLS accounts in the current BLS wallet.`,
 					{
 						Name:      "delete",
 						Usage:     "Delete the selected BLS account from the BLS wallet",
-						Action:    utils.MigrateFlags(blsAccountDelete),
+						Action:    blsAccountDelete,
 						ArgsUsage: "<BLS pubkey>",
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
@@ -204,7 +203,7 @@ Delete the selected BLS account from the BLS wallet.`,
 func blsWalletCreate(ctx *cli.Context) error {
 	cfg := gethConfig{Node: defaultNodeConfig()}
 	// Load config file.
-	if file := ctx.GlobalString(configFileFlag.Name); file != "" {
+	if file := ctx.String(configFileFlag.Name); file != "" {
 		if err := loadConfig(file, &cfg); err != nil {
 			utils.Fatalf("%v", err)
 		}
@@ -286,7 +285,7 @@ func openOrCreateBLSWallet(ctx *cli.Context, cfg *gethConfig) (*wallet.Wallet, e
 func blsAccountCreate(ctx *cli.Context) error {
 	cfg := gethConfig{Node: defaultNodeConfig()}
 	// Load config file.
-	if file := ctx.GlobalString(configFileFlag.Name); file != "" {
+	if file := ctx.String(configFileFlag.Name); file != "" {
 		if err := loadConfig(file, &cfg); err != nil {
 			utils.Fatalf("%v", err)
 		}
@@ -388,7 +387,7 @@ func blsAccountImport(ctx *cli.Context) error {
 	if len(keyfile) == 0 {
 		utils.Fatalf("The keystore file must be given as argument.")
 	}
-	keyJSON, err := ioutil.ReadFile(keyfile)
+	keyJSON, err := os.ReadFile(keyfile)
 	if err != nil {
 		utils.Fatalf("Could not read keystore file: %v", err)
 	}
@@ -402,7 +401,7 @@ func blsAccountImport(ctx *cli.Context) error {
 
 	cfg := gethConfig{Node: defaultNodeConfig()}
 	// Load config file.
-	if file := ctx.GlobalString(configFileFlag.Name); file != "" {
+	if file := ctx.String(configFileFlag.Name); file != "" {
 		if err := loadConfig(file, &cfg); err != nil {
 			utils.Fatalf("%v", err)
 		}
@@ -446,7 +445,7 @@ func blsAccountImport(ctx *cli.Context) error {
 func blsAccountList(ctx *cli.Context) error {
 	cfg := gethConfig{Node: defaultNodeConfig()}
 	// Load config file.
-	if file := ctx.GlobalString(configFileFlag.Name); file != "" {
+	if file := ctx.String(configFileFlag.Name); file != "" {
 		if err := loadConfig(file, &cfg); err != nil {
 			utils.Fatalf("%v", err)
 		}
@@ -503,11 +502,11 @@ func blsAccountList(ctx *cli.Context) error {
 
 // blsAccountDelete deletes a selected BLS account from the BLS wallet.
 func blsAccountDelete(ctx *cli.Context) error {
-	if len(ctx.Args()) == 0 {
+	if ctx.Args().Len() == 0 {
 		utils.Fatalf("No BLS account specified to delete.")
 	}
 	var filteredPubKeys []bls.PublicKey
-	for _, str := range ctx.Args() {
+	for _, str := range ctx.Args().Slice() {
 		pkString := str
 		if strings.Contains(pkString, "0x") {
 			pkString = pkString[2:]
@@ -525,7 +524,7 @@ func blsAccountDelete(ctx *cli.Context) error {
 
 	cfg := gethConfig{Node: defaultNodeConfig()}
 	// Load config file.
-	if file := ctx.GlobalString(configFileFlag.Name); file != "" {
+	if file := ctx.String(configFileFlag.Name); file != "" {
 		if err := loadConfig(file, &cfg); err != nil {
 			utils.Fatalf("%v", err)
 		}
@@ -601,11 +600,11 @@ func blsAccountDelete(ctx *cli.Context) error {
 }
 
 func GetBLSPassword(ctx *cli.Context) []string {
-	path := ctx.GlobalString(utils.BLSPasswordFileFlag.Name)
+	path := ctx.String(utils.BLSPasswordFileFlag.Name)
 	if path == "" {
 		return nil
 	}
-	text, err := ioutil.ReadFile(path)
+	text, err := os.ReadFile(path)
 	if err != nil {
 		utils.Fatalf("Failed to read wallet password file: %v", err)
 	}
@@ -617,7 +616,7 @@ func GetBLSAccountPassword(ctx *cli.Context) []string {
 	if path == "" {
 		return nil
 	}
-	text, err := ioutil.ReadFile(path)
+	text, err := os.ReadFile(path)
 	if err != nil {
 		utils.Fatalf("Failed to read account password file: %v", err)
 	}

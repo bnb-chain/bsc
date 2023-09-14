@@ -82,9 +82,6 @@ type headerRequesterFn func(common.Hash, chan *eth.Response) (*eth.Request, erro
 // bodyRequesterFn is a callback type for sending a body retrieval request.
 type bodyRequesterFn func([]common.Hash, chan *eth.Response) (*eth.Request, error)
 
-// DiffRequesterFn is a callback type for sending a diff layer retrieval request.
-type DiffRequesterFn func([]common.Hash) error
-
 // headerVerifierFn is a callback type to verify a block's header for fast propagation.
 type headerVerifierFn func(header *types.Header) error
 
@@ -118,8 +115,6 @@ type blockAnnounce struct {
 
 	fetchHeader headerRequesterFn // Fetcher function to retrieve the header of an announced block
 	fetchBodies bodyRequesterFn   // Fetcher function to retrieve the body of an announced block
-	fetchDiffs  DiffRequesterFn   // Fetcher function to retrieve the diff layer of an announced block
-
 }
 
 // headerFilterTask represents a batch of headers needing fetcher filtering.
@@ -187,9 +182,9 @@ type BlockFetcher struct {
 	completing map[common.Hash]*blockAnnounce   // Blocks with headers, currently body-completing
 
 	// Block cache
-	queue  *prque.Prque                         // Queue containing the import operations (block number sorted)
-	queues map[string]int                       // Per peer block counts to prevent memory exhaustion
-	queued map[common.Hash]*blockOrHeaderInject // Set of already queued blocks (to dedup imports)
+	queue  *prque.Prque[int64, *blockOrHeaderInject] // Queue containing the import operations (block number sorted)
+	queues map[string]int                            // Per peer block counts to prevent memory exhaustion
+	queued map[common.Hash]*blockOrHeaderInject      // Set of already queued blocks (to dedup imports)
 
 	// Callbacks
 	getHeader            HeaderRetrievalFn      // Retrieves a header from the local chain
@@ -228,7 +223,7 @@ func NewBlockFetcher(light bool, getHeader HeaderRetrievalFn, getBlock blockRetr
 		fetching:             make(map[common.Hash]*blockAnnounce),
 		fetched:              make(map[common.Hash][]*blockAnnounce),
 		completing:           make(map[common.Hash]*blockAnnounce),
-		queue:                prque.New(nil),
+		queue:                prque.New[int64, *blockOrHeaderInject](nil),
 		queues:               make(map[string]int),
 		queued:               make(map[common.Hash]*blockOrHeaderInject),
 		getHeader:            getHeader,
@@ -258,7 +253,7 @@ func (f *BlockFetcher) Stop() {
 // Notify announces the fetcher of the potential availability of a new block in
 // the network.
 func (f *BlockFetcher) Notify(peer string, hash common.Hash, number uint64, time time.Time,
-	headerFetcher headerRequesterFn, bodyFetcher bodyRequesterFn, diffFetcher DiffRequesterFn) error {
+	headerFetcher headerRequesterFn, bodyFetcher bodyRequesterFn) error {
 	block := &blockAnnounce{
 		hash:        hash,
 		number:      number,
@@ -266,7 +261,6 @@ func (f *BlockFetcher) Notify(peer string, hash common.Hash, number uint64, time
 		origin:      peer,
 		fetchHeader: headerFetcher,
 		fetchBodies: bodyFetcher,
-		fetchDiffs:  diffFetcher,
 	}
 	select {
 	case f.notify <- block:
@@ -370,7 +364,7 @@ func (f *BlockFetcher) loop() {
 		height := f.chainHeight()
 		finalizedHeight := f.chainFinalizedHeight()
 		for !f.queue.Empty() {
-			op := f.queue.PopItem().(*blockOrHeaderInject)
+			op := f.queue.PopItem()
 			hash := op.hash()
 			if f.queueChangeHook != nil {
 				f.queueChangeHook(hash, false)
@@ -502,14 +496,10 @@ func (f *BlockFetcher) loop() {
 
 				// Create a closure of the fetch and schedule in on a new thread
 				fetchHeader, hashes := f.fetching[hashes[0]].fetchHeader, hashes
-				fetchDiff := f.fetching[hashes[0]].fetchDiffs
 
 				go func(peer string) {
 					if f.fetchingHook != nil {
 						f.fetchingHook(hashes)
-					}
-					if fetchDiff != nil {
-						fetchDiff(hashes)
 					}
 					for _, hash := range hashes {
 						headerFetchMeter.Mark(1)
@@ -585,8 +575,8 @@ func (f *BlockFetcher) loop() {
 					select {
 					case res := <-resCh:
 						res.Done <- nil
-
-						txs, uncles := res.Res.(*eth.BlockBodiesPacket).Unpack()
+						// Ignoring withdrawals here, since the block fetcher is not used post-merge.
+						txs, uncles, _ := res.Res.(*eth.BlockBodiesPacket).Unpack()
 						f.FilterBodies(peer, txs, uncles, time.Now())
 
 					case <-timeout.C:
@@ -644,7 +634,7 @@ func (f *BlockFetcher) loop() {
 						announce.time = task.time
 
 						// If the block is empty (header only), short circuit into the final import queue
-						if header.TxHash == types.EmptyRootHash && header.UncleHash == types.EmptyUncleHash {
+						if header.TxHash == types.EmptyTxsHash && header.UncleHash == types.EmptyUncleHash {
 							log.Trace("Block empty, skipping body retrieval", "peer", announce.origin, "number", header.Number, "hash", header.Hash())
 
 							block := types.NewBlockWithHeader(header)
@@ -737,7 +727,6 @@ func (f *BlockFetcher) loop() {
 						} else {
 							f.forgetHash(hash)
 						}
-
 					}
 					if matched {
 						task.transactions = append(task.transactions[:i], task.transactions[i+1:]...)

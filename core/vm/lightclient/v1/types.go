@@ -36,7 +36,6 @@ type ConsensusState struct {
 // | chainID   | height   | appHash  | curValidatorSetHash | [{validator pubkey, voting power}] |
 // | 32 bytes  | 8 bytes  | 32 bytes | 32 bytes            | [{32 bytes, 8 bytes}]              |
 func DecodeConsensusState(input []byte) (ConsensusState, error) {
-
 	minimumLength := chainIDLength + heightLength + appHashLength + validatorSetHashLength
 	singleValidatorBytesLength := validatorPubkeyLength + validatorVotingPowerLength
 

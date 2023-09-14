@@ -117,7 +117,7 @@ func TestDiskMerge(t *testing.T) {
 	base.Storage(conNukeCache, conNukeCacheSlot)
 
 	// Modify or delete some accounts, flatten everything onto disk
-	if err := snaps.update(diffRoot, baseRoot, map[common.Hash]struct{}{
+	if err := snaps.Update(diffRoot, baseRoot, map[common.Hash]struct{}{
 		accDelNoCache:  {},
 		accDelCache:    {},
 		conNukeNoCache: {},
@@ -340,7 +340,7 @@ func TestDiskPartialMerge(t *testing.T) {
 		assertStorage(conNukeCache, conNukeCacheSlot, conNukeCacheSlot[:])
 
 		// Modify or delete some accounts, flatten everything onto disk
-		if err := snaps.update(diffRoot, baseRoot, map[common.Hash]struct{}{
+		if err := snaps.Update(diffRoot, baseRoot, map[common.Hash]struct{}{
 			accDelNoCache:  {},
 			accDelCache:    {},
 			conNukeNoCache: {},
@@ -462,7 +462,7 @@ func TestDiskGeneratorPersistence(t *testing.T) {
 		},
 	}
 	// Modify or delete some accounts, flatten everything onto disk
-	if err := snaps.update(diffRoot, baseRoot, nil, map[common.Hash][]byte{
+	if err := snaps.Update(diffRoot, baseRoot, nil, map[common.Hash][]byte{
 		accTwo: accTwo[:],
 	}, nil, nil); err != nil {
 		t.Fatalf("failed to update snapshot tree: %v", err)
@@ -480,7 +480,7 @@ func TestDiskGeneratorPersistence(t *testing.T) {
 	}
 	// Test scenario 2, the disk layer is fully generated
 	// Modify or delete some accounts, flatten everything onto disk
-	if err := snaps.update(diffTwoRoot, diffRoot, nil, map[common.Hash][]byte{
+	if err := snaps.Update(diffTwoRoot, diffRoot, nil, map[common.Hash][]byte{
 		accThree: accThree.Bytes(),
 	}, map[common.Hash]map[common.Hash][]byte{
 		accThree: {accThreeSlot: accThreeSlot.Bytes()},
@@ -515,6 +515,8 @@ func TestDiskMidAccountPartialMerge(t *testing.T) {
 func TestDiskSeek(t *testing.T) {
 	// Create some accounts in the disk layer
 	db := rawdb.NewMemoryDatabase()
+	defer db.Close()
+
 	// Fill even keys [0,2,4...]
 	for i := 0; i < 0xff; i += 2 {
 		acc := common.Hash{byte(i)}

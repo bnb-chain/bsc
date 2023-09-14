@@ -37,7 +37,7 @@ func (p *Peer) ID() string {
 	return p.id
 }
 
-// Version retrieves the peer's negoatiated `diff` protocol version.
+// Version retrieves the peer's negoatiated `trust` protocol version.
 func (p *Peer) Version() uint {
 	return p.version
 }

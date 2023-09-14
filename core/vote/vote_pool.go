@@ -4,7 +4,7 @@ import (
 	"container/heap"
 	"sync"
 
-	mapset "github.com/deckarep/golang-set"
+	mapset "github.com/deckarep/golang-set/v2"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -51,7 +51,7 @@ type VotePool struct {
 	votesFeed event.Feed
 	scope     event.SubscriptionScope
 
-	receivedVotes mapset.Set
+	receivedVotes mapset.Set[common.Hash]
 
 	curVotes    map[common.Hash]*VoteBox
 	futureVotes map[common.Hash]*VoteBox
@@ -73,7 +73,7 @@ func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, engine
 	votePool := &VotePool{
 		chain:         chain,
 		chainconfig:   chainconfig,
-		receivedVotes: mapset.NewSet(),
+		receivedVotes: mapset.NewSet[common.Hash](),
 		curVotes:      make(map[common.Hash]*VoteBox),
 		futureVotes:   make(map[common.Hash]*VoteBox),
 		curVotesPq:    &votesPriorityQueue{},
@@ -120,7 +120,7 @@ func (pool *VotePool) PutVote(vote *types.VoteEnvelope) {
 func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 	targetNumber := vote.Data.TargetNumber
 	targetHash := vote.Data.TargetHash
-	header := pool.chain.CurrentBlock().Header()
+	header := pool.chain.CurrentBlock()
 	headNumber := header.Number.Uint64()
 
 	// Make sure in the range (currentHeight-lowerLimitOfVoteBlockNumber, currentHeight+upperLimitOfVoteBlockNumber].

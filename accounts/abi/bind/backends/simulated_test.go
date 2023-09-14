@@ -93,7 +93,8 @@ func TestSimulatedBackend(t *testing.T) {
 
 var testKey, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 
-//	 the following is based on this contract:
+// the following is based on this contract:
+//
 //	 contract T {
 //	 	event received(address sender, uint amount, bytes memo);
 //	 	event receivedAddr(address sender);
@@ -101,7 +102,7 @@ var testKey, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d
 //	 	function receive(bytes calldata memo) external payable returns (string memory res) {
 //	 		emit received(msg.sender, msg.value, memo);
 //	 		emit receivedAddr(msg.sender);
-//			    return "hello world";
+//			return "hello world";
 //	 	}
 //	 }
 const abiJSON = `[ { "constant": false, "inputs": [ { "name": "memo", "type": "bytes" } ], "name": "receive", "outputs": [ { "name": "res", "type": "string" } ], "payable": true, "stateMutability": "payable", "type": "function" }, { "anonymous": false, "inputs": [ { "indexed": false, "name": "sender", "type": "address" }, { "indexed": false, "name": "amount", "type": "uint256" }, { "indexed": false, "name": "memo", "type": "bytes" } ], "name": "received", "type": "event" }, { "anonymous": false, "inputs": [ { "indexed": false, "name": "sender", "type": "address" } ], "name": "receivedAddr", "type": "event" } ]`
@@ -160,6 +161,7 @@ func TestAdjustTime(t *testing.T) {
 func TestNewAdjustTimeFail(t *testing.T) {
 	testAddr := crypto.PubkeyToAddress(testKey.PublicKey)
 	sim := simTestBackend(testAddr)
+	defer sim.blockchain.Stop()
 
 	// Create tx and send
 	head, _ := sim.HeaderByNumber(context.Background(), nil) // Should be child's, good enough
@@ -417,12 +419,13 @@ func TestEstimateGas(t *testing.T) {
 	/*
 		pragma solidity ^0.6.4;
 		contract GasEstimation {
-		    function PureRevert() public { revert(); }
-		    function Revert() public { revert("revert reason");}
-		    function OOG() public { for (uint i = 0; ; i++) {}}
-		    function Assert() public { assert(false);}
-		    function Valid() public {}
-		}*/
+			function PureRevert() public { revert(); }
+			function Revert() public { revert("revert reason");}
+			function OOG() public { for (uint i = 0; ; i++) {}}
+			function Assert() public { assert(false);}
+			function Valid() public {}
+		}
+	*/
 	const contractAbi = "[{\"inputs\":[],\"name\":\"Assert\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"OOG\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"PureRevert\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"Revert\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"Valid\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]"
 	const contractBin = "0x60806040523480156100115760006000fd5b50610017565b61016e806100266000396000f3fe60806040523480156100115760006000fd5b506004361061005c5760003560e01c806350f6fe3414610062578063aa8b1d301461006c578063b9b046f914610076578063d8b9839114610080578063e09fface1461008a5761005c565b60006000fd5b61006a610094565b005b6100746100ad565b005b61007e6100b5565b005b6100886100c2565b005b610092610135565b005b6000600090505b5b808060010191505061009b565b505b565b60006000fd5b565b600015156100bf57fe5b5b565b6040517f08c379a000000000000000000000000000000000000000000000000000000000815260040180806020018281038252600d8152602001807f72657665727420726561736f6e0000000000000000000000000000000000000081526020015060200191505060405180910390fd5b565b5b56fea2646970667358221220345bbcbb1a5ecf22b53a78eaebf95f8ee0eceff6d10d4b9643495084d2ec934a64736f6c63430006040033"
 
@@ -655,8 +658,7 @@ func TestHeaderByNumber(t *testing.T) {
 	}
 	if latestBlockHeader == nil {
 		t.Errorf("received a nil block header")
-	}
-	if latestBlockHeader.Number.Uint64() != uint64(0) {
+	} else if latestBlockHeader.Number.Uint64() != uint64(0) {
 		t.Errorf("expected block header number 0, instead got %v", latestBlockHeader.Number.Uint64())
 	}
 
@@ -1059,27 +1061,27 @@ func TestPendingAndCallContract(t *testing.T) {
 // This test is based on the following contract:
 /*
 contract Reverter {
-    function revertString() public pure{
-        require(false, "some error");
-    }
-    function revertNoString() public pure {
-        require(false, "");
-    }
-    function revertASM() public pure {
-        assembly {
-            revert(0x0, 0x0)
-        }
-    }
-    function noRevert() public pure {
-        assembly {
-            // Assembles something that looks like require(false, "some error") but is not reverted
-            mstore(0x0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
-            mstore(0x4, 0x0000000000000000000000000000000000000000000000000000000000000020)
-            mstore(0x24, 0x000000000000000000000000000000000000000000000000000000000000000a)
-            mstore(0x44, 0x736f6d65206572726f7200000000000000000000000000000000000000000000)
-            return(0x0, 0x64)
-        }
-    }
+	function revertString() public pure{
+		require(false, "some error");
+	}
+	function revertNoString() public pure {
+		require(false, "");
+	}
+	function revertASM() public pure {
+		assembly {
+			revert(0x0, 0x0)
+		}
+	}
+	function noRevert() public pure {
+		assembly {
+			// Assembles something that looks like require(false, "some error") but is not reverted
+			mstore(0x0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+			mstore(0x4, 0x0000000000000000000000000000000000000000000000000000000000000020)
+			mstore(0x24, 0x000000000000000000000000000000000000000000000000000000000000000a)
+			mstore(0x44, 0x736f6d65206572726f7200000000000000000000000000000000000000000000)
+			return(0x0, 0x64)
+		}
+	}
 }*/
 func TestCallContractRevert(t *testing.T) {
 	testAddr := crypto.PubkeyToAddress(testKey.PublicKey)
@@ -1188,7 +1190,7 @@ func TestFork(t *testing.T) {
 		sim.Commit()
 	}
 	// 3.
-	if sim.blockchain.CurrentBlock().NumberU64() != uint64(n) {
+	if sim.blockchain.CurrentBlock().Number.Uint64() != uint64(n) {
 		t.Error("wrong chain length")
 	}
 	// 4.
@@ -1198,7 +1200,7 @@ func TestFork(t *testing.T) {
 		sim.Commit()
 	}
 	// 6.
-	if sim.blockchain.CurrentBlock().NumberU64() != uint64(n+1) {
+	if sim.blockchain.CurrentBlock().Number.Uint64() != uint64(n+1) {
 		t.Error("wrong chain length")
 	}
 }
@@ -1206,11 +1208,10 @@ func TestFork(t *testing.T) {
 /*
 Example contract to test event emission:
 
-pragma solidity >=0.7.0 <0.9.0;
-
+	pragma solidity >=0.7.0 <0.9.0;
 	contract Callable {
-	    event Called();
-	    function Call() public { emit Called(); }
+		event Called();
+		function Call() public { emit Called(); }
 	}
 */
 const callableAbi = "[{\"anonymous\":false,\"inputs\":[],\"name\":\"Called\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"Call\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]"
@@ -1229,8 +1230,7 @@ const callableBin = "6080604052348015600f57600080fd5b5060998061001e6000396000f3f
 //  7. Mine two blocks to trigger a reorg.
 //  8. Check that the event was removed.
 //  9. Re-send the transaction and mine a block.
-//
-// 10. Check that the event was reborn.
+//  10. Check that the event was reborn.
 func TestForkLogsReborn(t *testing.T) {
 	testAddr := crypto.PubkeyToAddress(testKey.PublicKey)
 	sim := simTestBackend(testAddr)
@@ -1337,5 +1337,64 @@ func TestForkResendTx(t *testing.T) {
 	receipt, _ = sim.TransactionReceipt(context.Background(), tx.Hash())
 	if h := receipt.BlockNumber.Uint64(); h != 2 {
 		t.Errorf("TX included in wrong block: %d", h)
+	}
+}
+
+func TestCommitReturnValue(t *testing.T) {
+	testAddr := crypto.PubkeyToAddress(testKey.PublicKey)
+	sim := simTestBackend(testAddr)
+	defer sim.Close()
+
+	startBlockHeight := sim.blockchain.CurrentBlock().Number.Uint64()
+
+	// Test if Commit returns the correct block hash
+	h1 := sim.Commit()
+	if h1 != sim.blockchain.CurrentBlock().Hash() {
+		t.Error("Commit did not return the hash of the last block.")
+	}
+
+	// Create a block in the original chain (containing a transaction to force different block hashes)
+	head, _ := sim.HeaderByNumber(context.Background(), nil) // Should be child's, good enough
+	gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(1))
+	_tx := types.NewTransaction(0, testAddr, big.NewInt(1000), params.TxGas, gasPrice, nil)
+	tx, _ := types.SignTx(_tx, types.HomesteadSigner{}, testKey)
+	sim.SendTransaction(context.Background(), tx)
+	h2 := sim.Commit()
+
+	// Create another block in the original chain
+	sim.Commit()
+
+	// Fork at the first bock
+	if err := sim.Fork(context.Background(), h1); err != nil {
+		t.Errorf("forking: %v", err)
+	}
+
+	// Test if Commit returns the correct block hash after the reorg
+	h2fork := sim.Commit()
+	if h2 == h2fork {
+		t.Error("The block in the fork and the original block are the same block!")
+	}
+	if sim.blockchain.GetHeader(h2fork, startBlockHeight+2) == nil {
+		t.Error("Could not retrieve the just created block (side-chain)")
+	}
+}
+
+// TestAdjustTimeAfterFork ensures that after a fork, AdjustTime uses the pending fork
+// block's parent rather than the canonical head's parent.
+func TestAdjustTimeAfterFork(t *testing.T) {
+	testAddr := crypto.PubkeyToAddress(testKey.PublicKey)
+	sim := simTestBackend(testAddr)
+	defer sim.Close()
+
+	sim.Commit() // h1
+	h1 := sim.blockchain.CurrentHeader().Hash()
+	sim.Commit() // h2
+	sim.Fork(context.Background(), h1)
+	sim.AdjustTime(1 * time.Second)
+	sim.Commit()
+
+	head := sim.blockchain.CurrentHeader()
+	if head.Number == common.Big2 && head.ParentHash != h1 {
+		t.Errorf("failed to build block on fork")
 	}
 }
