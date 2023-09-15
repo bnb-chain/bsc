@@ -1221,8 +1221,11 @@ func (bc *BlockChain) Stop() {
 	}
 
 	if bc.triedb.Scheme() == rawdb.PathScheme {
-		if err := bc.triedb.Commit(bc.CurrentBlock().Root, true); err != nil {
-			log.Info("Failed to commit header block", "root", bc.CurrentBlock().Root.String(), "error", err)
+		if snapBase == (common.Hash{}) {
+			snapBase = bc.CurrentBlock().Root
+		}
+		if err := bc.triedb.Commit(snapBase, true); err != nil {
+			log.Info("Failed to commit header block", "root", snapBase.String(), "error", err)
 			// Ensure that the in-memory trie nodes are journaled to disk properly.
 			if err := bc.triedb.Journal(bc.CurrentBlock().Root); err != nil {
 				log.Info("Failed to journal in-memory trie nodes", "err", err)
