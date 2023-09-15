@@ -392,12 +392,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		if bc.cacheConfig.SnapshotLimit > 0 {
 			diskRoot = rawdb.ReadSnapshotRoot(bc.db)
 			if bc.triedb.Scheme() == rawdb.PathScheme {
-				_, pathdbRoot := rawdb.ReadAccountTrieNode(bc.db, nil)
-				if pathdbRoot.Cmp(diskRoot) != 0 {
-					if err := bc.triedb.Recover(diskRoot); err != nil {
-						diskRoot = common.Hash{}
-						log.Warn("failed to recover pathdb by snapshot, reset chain from genesis", "error", err)
-					}
+				if err := bc.triedb.Recover(diskRoot); err != nil {
+					diskRoot = common.Hash{}
+					log.Warn("failed to recover pathdb by snapshot, reset chain from genesis", "error", err)
 				}
 			}
 		} else if bc.triedb.Scheme() == rawdb.PathScheme {
