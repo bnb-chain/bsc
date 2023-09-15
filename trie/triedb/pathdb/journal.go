@@ -121,8 +121,10 @@ func (db *Database) loadLayers() layer {
 	// Load the layers by resolving the journal
 	head, err := db.loadJournal(root)
 	if err == nil {
+		log.Info("Failed to load journal", "error ", err)
 		return head
 	}
+	log.Info("Succeed to load journal ", "head", head.rootHash().String())
 	// journal is not matched(or missing) with the persistent state, discard
 	// it. Display log for discarding journal, but try to avoid showing
 	// useless information when the db is created from scratch.

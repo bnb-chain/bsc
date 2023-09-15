@@ -392,9 +392,12 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		if bc.cacheConfig.SnapshotLimit > 0 {
 			diskRoot = rawdb.ReadSnapshotRoot(bc.db)
 			if bc.triedb.Scheme() == rawdb.PathScheme {
-				if err := bc.triedb.Recover(diskRoot); err != nil {
-					diskRoot = common.Hash{}
-					log.Crit("failed to recover pathdb by snapshot, please reset chain", "error", err)
+				_, pathdbRoot := rawdb.ReadAccountTrieNode(bc.db, nil)
+				if pathdbRoot.Cmp(diskRoot) != 0 {
+					if err := bc.triedb.Recover(diskRoot); err != nil {
+						diskRoot = common.Hash{}
+						log.Warn("failed to recover pathdb by snapshot, reset chain from genesis", "error", err)
+					}
 				}
 			}
 		} else if bc.triedb.Scheme() == rawdb.PathScheme {
@@ -1224,6 +1227,8 @@ func (bc *BlockChain) Stop() {
 		// Ensure that the in-memory trie nodes are journaled to disk properly.
 		if err := bc.triedb.Journal(bc.CurrentBlock().Root); err != nil {
 			log.Info("Failed to journal in-memory trie nodes", "err", err)
+		} else {
+			log.Info("Succeed to journal in-memory trie nodes", "hash", bc.CurrentBlock().Root.String())
 		}
 	} else {
 		// Ensure the state of a recent block is also stored to disk before exiting.
