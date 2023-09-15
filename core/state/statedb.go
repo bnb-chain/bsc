@@ -1372,7 +1372,7 @@ func (s *StateDB) fastDeleteStorage(addrHash common.Hash, root common.Hash) (boo
 			return true, size, nil, nil, nil
 		}
 		slot := common.CopyBytes(iter.Slot())
-		if iter.Error() != nil { // error might occur after Slot function
+		if err := iter.Error(); err != nil { // error might occur after Slot function
 			return false, 0, nil, nil, err
 		}
 		size += common.StorageSize(common.HashLength + len(slot))
@@ -1382,7 +1382,7 @@ func (s *StateDB) fastDeleteStorage(addrHash common.Hash, root common.Hash) (boo
 			return false, 0, nil, nil, err
 		}
 	}
-	if iter.Error() != nil { // error might occur during iteration
+	if err := iter.Error(); err != nil { // error might occur during iteration
 		return false, 0, nil, nil, err
 	}
 	if stack.Hash() != root {
