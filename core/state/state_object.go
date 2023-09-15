@@ -336,7 +336,6 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		}
 		var v []byte
 		if value != (common.Hash{}) {
-			// Encoding []byte cannot fail, ok to ignore the error.
 			value := value
 			v = common.TrimLeftZeroes(value[:])
 		}
@@ -392,7 +391,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 
 			// Track the original value of slot only if it's mutated first time
 			prev := s.originStorage[key]
-			s.originStorage[key] = common.BytesToHash(value)
+			s.originStorage[key] = common.BytesToHash(value) // fill back left zeroes by BytesToHash
 			if _, ok := origin[khash]; !ok {
 				if prev == (common.Hash{}) {
 					origin[khash] = nil // nil if it was not present previously
@@ -422,7 +421,7 @@ func (s *stateObject) updateRoot() {
 	// If node runs in no trie mode, set root to empty.
 	defer func() {
 		if s.db.db.NoTries() {
-			s.data.Root = common.Hash{}
+			s.data.Root = types.EmptyRootHash
 		}
 	}()
 
