@@ -23,6 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 )
@@ -120,8 +121,8 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 	}
 	diff, ok := l.(*diffLayer)
 	if !ok {
+		log.Warn("triedb cap layer [%#x] is disk layer", root)
 		return nil
-		//return fmt.Errorf("triedb layer [%#x] is disk layer", root)
 	}
 	tree.lock.Lock()
 	defer tree.lock.Unlock()
