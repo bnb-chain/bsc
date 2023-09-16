@@ -124,12 +124,11 @@ func (db *Database) loadLayers() layer {
 		log.Info("Succeed to load journal", "root", head.rootHash().String())
 		return head
 	}
-	log.Info("Failed to load journal, begin to load disklayer", "error ", err)
 	// journal is not matched(or missing) with the persistent state, discard
 	// it. Display log for discarding journal, but try to avoid showing
 	// useless information when the db is created from scratch.
 	if !(root == types.EmptyRootHash && errors.Is(err, errMissJournal)) {
-		log.Info("Failed to load journal, discard it", "err", err)
+		log.Info("Failed to load pathdb journal, discard it", "err", err)
 	}
 	// Return single layer with persistent state.
 	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, newNodeBuffer(db.bufferSize, nil, 0))
