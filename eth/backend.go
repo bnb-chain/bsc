@@ -627,7 +627,6 @@ func (s *Ethereum) Stop() error {
 	s.snapDialCandidates.Close()
 	s.trustDialCandidates.Close()
 	s.bscDialCandidates.Close()
-	s.handler.Stop()
 
 	// Then stop everything else.
 	s.bloomIndexer.Close()
@@ -635,6 +634,7 @@ func (s *Ethereum) Stop() error {
 	s.txPool.Close()
 	s.miner.Close()
 	s.blockchain.Stop()
+	s.handler.Stop()
 	s.engine.Close()
 
 	// Clean shutdown marker as the last thing before closing db

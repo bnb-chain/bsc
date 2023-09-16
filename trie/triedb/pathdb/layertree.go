@@ -121,7 +121,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 	}
 	diff, ok := l.(*diffLayer)
 	if !ok {
-		log.Warn("triedb cap layer [%#x] is disk layer", root)
+		log.Warn("triedb cap layer is disk layer", "root", root.String())
 		return nil
 	}
 	tree.lock.Lock()
