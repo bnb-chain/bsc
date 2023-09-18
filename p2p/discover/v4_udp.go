@@ -411,6 +411,7 @@ func (t *UDPv4) loop() {
 	var (
 		plist        = list.New()
 		timeout      = time.NewTimer(0)
+		statusTicker = time.NewTicker(60 * time.Second)
 		nextTimeout  *replyMatcher // head of plist when timeout was last reset
 		contTimeouts = 0           // number of continuous timeouts to do NTP checks
 		ntpWarnTime  = time.Unix(0, 0)
@@ -438,6 +439,10 @@ func (t *UDPv4) loop() {
 		}
 		nextTimeout = nil
 		timeout.Stop()
+	}
+
+	logStatistic := func() {
+		t.log.Info("Current status", "table_size", t.tab.len(), "pending_size", plist.Len(), "db_size", t.db.Size())
 	}
 
 	for {
@@ -495,6 +500,9 @@ func (t *UDPv4) loop() {
 				}
 				contTimeouts = 0
 			}
+
+		case <-statusTicker.C:
+			logStatistic()
 		}
 	}
 }
