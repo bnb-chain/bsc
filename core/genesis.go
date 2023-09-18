@@ -154,7 +154,7 @@ func (ga *GenesisAlloc) flush(db ethdb.Database, triedb *trie.Database, blockhas
 	if trieConfig != nil {
 		trieConfig.NoTries = false
 	}
-	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb), nil)
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb, trieConfig), nil)
 	if err != nil {
 		return err
 	}

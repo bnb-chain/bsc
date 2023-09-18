@@ -1229,8 +1229,7 @@ func (s *StateDB) populateSnapStorage(obj *stateObject) bool {
 	if len(obj.pendingStorage) == 0 {
 		return false
 	}
-	hasher := crypto.NewKeccakState()
-	var storage map[common.Hash][]byte
+	var storage map[string][]byte
 	for key, value := range obj.pendingStorage {
 		var v []byte
 		if (value != common.Hash{}) {
@@ -1246,7 +1245,7 @@ func (s *StateDB) populateSnapStorage(obj *stateObject) bool {
 					obj.db.storages[obj.address] = storage
 				}
 			}
-			storage[crypto.HashData(hasher, key[:])] = v // v will be nil if value is 0x00
+			storage[string(key[:])] = v // v will be nil if value is 0x00
 		}
 	}
 	return true

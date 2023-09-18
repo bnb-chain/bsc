@@ -341,8 +341,8 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	}
 	// The snapshot storage map for the object
 	var (
-		storage         map[common.Hash][]byte
-		origin          map[common.Hash][]byte
+		storage         map[string][]byte
+		origin          map[string][]byte
 		preDirtyStorage = make(map[common.Hash]common.Hash)
 	)
 	tr, err := s.getTrie()
@@ -413,17 +413,9 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		}
 		s.db.StorageMux.Unlock()
 		for key, value := range dirtyStorage {
-			// rlp-encoded value to be used by the snapshot
-			//var snapshotVal []byte
-			//if len(value) != 0 {
-			//	snapshotVal, _ = rlp.EncodeToBytes(value)
-			//}
-			//storage[string(key[:])] = snapshotVal // snapshotVal will be nil if it's deleted
 			storage[string(key[:])] = value
 
 			// Track the original value of slot only if it's mutated first time
-			//prev := s.originStorage[key]
-			//s.originStorage[key] = common.BytesToHash(value)
 			if _, ok := origin[string(key[:])]; !ok {
 				prev := preDirtyStorage[key]
 				if prev == (common.Hash{}) {
