@@ -93,28 +93,34 @@ var (
 		Category: flags.EthCategory,
 	}
 	DirectBroadcastFlag = &cli.BoolFlag{
-		Name:  "directbroadcast",
-		Usage: "Enable directly broadcast mined block to all peers",
+		Name:     "directbroadcast",
+		Usage:    "Enable directly broadcast mined block to all peers",
+		Category: flags.EthCategory,
 	}
 	DisableSnapProtocolFlag = &cli.BoolFlag{
-		Name:  "disablesnapprotocol",
-		Usage: "Disable snap protocol",
+		Name:     "disablesnapprotocol",
+		Usage:    "Disable snap protocol",
+		Category: flags.EthCategory,
 	}
 	EnableTrustProtocolFlag = &cli.BoolFlag{
-		Name:  "enabletrustprotocol",
-		Usage: "Enable trust protocol",
+		Name:     "enabletrustprotocol",
+		Usage:    "Enable trust protocol",
+		Category: flags.FastNodeCategory,
 	}
 	PipeCommitFlag = &cli.BoolFlag{
-		Name:  "pipecommit",
-		Usage: "Enable MPT pipeline commit, it will improve syncing performance. It is an experimental feature(default is false)",
+		Name:     "pipecommit",
+		Usage:    "Enable MPT pipeline commit, it will improve syncing performance. It is an experimental feature(default is false)",
+		Category: flags.DeprecatedCategory,
 	}
 	RangeLimitFlag = &cli.BoolFlag{
-		Name:  "rangelimit",
-		Usage: "Enable 5000 blocks limit for range query",
+		Name:     "rangelimit",
+		Usage:    "Enable 5000 blocks limit for range query",
+		Category: flags.APICategory,
 	}
 	DiffFlag = flags.DirectoryFlag{
-		Name:  "datadir.diff",
-		Usage: "Data directory for difflayer segments (default = inside chaindata)",
+		Name:     "datadir.diff",
+		Usage:    "Data directory for difflayer segments (default = inside chaindata)",
+		Category: flags.FastNodeCategory,
 	}
 	RemoteDBFlag = &cli.StringFlag{
 		Name:     "remotedb",
@@ -165,8 +171,9 @@ var (
 		Category: flags.EthCategory,
 	}
 	DeveloperFlag = &cli.BoolFlag{
-		Name:  "dev",
-		Usage: "Ephemeral proof-of-authority network with a pre-funded developer account, mining enabled",
+		Name:     "dev",
+		Usage:    "Ephemeral proof-of-authority network with a pre-funded developer account, mining enabled",
+		Category: flags.DevCategory,
 	}
 	DeveloperPeriodFlag = &cli.Uint64Flag{
 		Name:     "dev.period",
@@ -268,9 +275,10 @@ var (
 		Category: flags.EthCategory,
 	}
 	TriesInMemoryFlag = &cli.Uint64Flag{
-		Name:  "triesInMemory",
-		Usage: "The layer of tries trees that keep in memory",
-		Value: 128,
+		Name:     "triesInMemory",
+		Usage:    "The layer of tries trees that keep in memory",
+		Value:    128,
+		Category: flags.PerfCategory,
 	}
 	defaultVerifyMode   = ethconfig.Defaults.TriesVerifyMode
 	TriesVerifyModeFlag = &flags.TextMarshalerFlag{
@@ -284,7 +292,8 @@ var (
 				"none: no merkle state root verification at all, there is no need to setup or connect remote verify node at all,
 				       it is more light comparing to full and insecure mode, but get a very small chance that the state is not consistent
 						with other peers."`,
-		Value: &defaultVerifyMode,
+		Value:    &defaultVerifyMode,
+		Category: flags.FastNodeCategory,
 	}
 	OverrideCancun = &cli.Uint64Flag{
 		Name:     "override.cancun",
@@ -462,17 +471,20 @@ var (
 		Category: flags.PerfCategory,
 	}
 	PersistDiffFlag = &cli.BoolFlag{
-		Name:  "persistdiff",
-		Usage: "Enable persistence of the diff layer",
+		Name:     "persistdiff",
+		Usage:    "Enable persistence of the diff layer",
+		Category: flags.FastNodeCategory,
 	}
 	DiffBlockFlag = &cli.Uint64Flag{
-		Name:  "diffblock",
-		Usage: "The number of blocks should be persisted in db (default = 86400)",
-		Value: uint64(86400),
+		Name:     "diffblock",
+		Usage:    "The number of blocks should be persisted in db (default = 86400)",
+		Value:    uint64(86400),
+		Category: flags.FastNodeCategory,
 	}
 	PruneAncientDataFlag = &cli.BoolFlag{
-		Name:  "pruneancient",
-		Usage: "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
+		Name:     "pruneancient",
+		Usage:    "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
+		Category: flags.HistoryCategory,
 	}
 	CacheLogSizeFlag = &cli.IntFlag{
 		Name:     "cache.blocklogs",
@@ -591,27 +603,27 @@ var (
 	}
 	// Authenticated RPC HTTP settings
 	AuthListenFlag = &cli.StringFlag{
-		Name:     "authrpc.addr",
-		Usage:    "Listening address for authenticated APIs",
-		Value:    node.DefaultConfig.AuthAddr,
-		Category: flags.APICategory,
+		Name:  "authrpc.addr",
+		Usage: "Listening address for authenticated APIs",
+		Value: node.DefaultConfig.AuthAddr,
+		// Category: flags.APICategory,
 	}
 	AuthPortFlag = &cli.IntFlag{
-		Name:     "authrpc.port",
-		Usage:    "Listening port for authenticated APIs",
-		Value:    node.DefaultConfig.AuthPort,
-		Category: flags.APICategory,
+		Name:  "authrpc.port",
+		Usage: "Listening port for authenticated APIs",
+		Value: node.DefaultConfig.AuthPort,
+		// Category: flags.APICategory,
 	}
 	AuthVirtualHostsFlag = &cli.StringFlag{
-		Name:     "authrpc.vhosts",
-		Usage:    "Comma separated list of virtual hostnames from which to accept requests (server enforced). Accepts '*' wildcard.",
-		Value:    strings.Join(node.DefaultConfig.AuthVirtualHosts, ","),
-		Category: flags.APICategory,
+		Name:  "authrpc.vhosts",
+		Usage: "Comma separated list of virtual hostnames from which to accept requests (server enforced). Accepts '*' wildcard.",
+		Value: strings.Join(node.DefaultConfig.AuthVirtualHosts, ","),
+		// Category: flags.APICategory,
 	}
 	JWTSecretFlag = &flags.DirectoryFlag{
-		Name:     "authrpc.jwtsecret",
-		Usage:    "Path to a JWT secret to use for authenticated RPC endpoints",
-		Category: flags.APICategory,
+		Name:  "authrpc.jwtsecret",
+		Usage: "Path to a JWT secret to use for authenticated RPC endpoints",
+		// Category: flags.APICategory,
 	}
 
 	// Logging and debug settings
@@ -780,9 +792,10 @@ var (
 	}
 
 	MaxPeersPerIPFlag = &cli.IntFlag{
-		Name:  "maxpeersperip",
-		Usage: "Maximum number of network peers from a single IP address, (default used if set to <= 0, which is same as MaxPeers)",
-		Value: node.DefaultConfig.P2P.MaxPeersPerIP,
+		Name:     "maxpeersperip",
+		Usage:    "Maximum number of network peers from a single IP address, (default used if set to <= 0, which is same as MaxPeers)",
+		Value:    node.DefaultConfig.P2P.MaxPeersPerIP,
+		Category: flags.NetworkingCategory,
 	}
 
 	MaxPendingPeersFlag = &cli.IntFlag{
@@ -1014,48 +1027,57 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	}
 
 	BlockAmountReserved = &cli.Uint64Flag{
-		Name:  "block-amount-reserved",
-		Usage: "Sets the expected remained amount of blocks for offline block prune",
+		Name:     "block-amount-reserved",
+		Usage:    "Sets the expected remained amount of blocks for offline block prune",
+		Category: flags.HistoryCategory,
 	}
 
 	CheckSnapshotWithMPT = &cli.BoolFlag{
-		Name:  "check-snapshot-with-mpt",
-		Usage: "Enable checking between snapshot and MPT ",
+		Name:     "check-snapshot-with-mpt",
+		Usage:    "Enable checking between snapshot and MPT ",
+		Category: flags.FastNodeCategory,
 	}
 
 	EnableDoubleSignMonitorFlag = &cli.BoolFlag{
-		Name:  "monitor.doublesign",
-		Usage: "Enable double sign monitor to check whether any validator signs multiple blocks",
+		Name:     "monitor.doublesign",
+		Usage:    "Enable double sign monitor to check whether any validator signs multiple blocks",
+		Category: flags.FastFinalityCategory,
 	}
 
 	VotingEnabledFlag = &cli.BoolFlag{
-		Name:  "vote",
-		Usage: "Enable voting when mining",
+		Name:     "vote",
+		Usage:    "Enable voting when mining",
+		Category: flags.FastFinalityCategory,
 	}
 
 	DisableVoteAttestationFlag = &cli.BoolFlag{
-		Name:  "disablevoteattestation",
-		Usage: "Disable assembling vote attestation ",
+		Name:     "disablevoteattestation",
+		Usage:    "Disable assembling vote attestation ",
+		Category: flags.FastFinalityCategory,
 	}
 
 	EnableMaliciousVoteMonitorFlag = &cli.BoolFlag{
-		Name:  "monitor.maliciousvote",
-		Usage: "Enable malicious vote monitor to check whether any validator violates the voting rules of fast finality",
+		Name:     "monitor.maliciousvote",
+		Usage:    "Enable malicious vote monitor to check whether any validator violates the voting rules of fast finality",
+		Category: flags.FastFinalityCategory,
 	}
 
 	BLSPasswordFileFlag = &cli.StringFlag{
-		Name:  "blspassword",
-		Usage: "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
+		Name:     "blspassword",
+		Usage:    "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
+		Category: flags.FastFinalityCategory,
 	}
 
 	BLSWalletDirFlag = &flags.DirectoryFlag{
-		Name:  "blswallet",
-		Usage: "Path for the blsWallet dir in fast finality feature (default = inside the datadir)",
+		Name:     "blswallet",
+		Usage:    "Path for the blsWallet dir in fast finality feature (default = inside the datadir)",
+		Category: flags.FastFinalityCategory,
 	}
 
 	VoteJournalDirFlag = &flags.DirectoryFlag{
-		Name:  "vote-journal-path",
-		Usage: "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
+		Name:     "vote-journal-path",
+		Usage:    "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
+		Category: flags.FastFinalityCategory,
 	}
 )
 
