@@ -10,8 +10,6 @@ TrieCleanCache = 256
 TrieDirtyCache = 256
 TrieTimeout = 6000000000
 EnablePreimageRecording = false
-EWASMInterpreter = ""
-EVMInterpreter = ""
 
 [Eth.GPO]
 Blocks = 20
