@@ -1,7 +1,0 @@
-const web3 = require("web3")
-
-const addresses = "{{INIT_HOLDER_ADDRESSES}}"
-const balance = web3.utils.toBN("{{INIT_HOLDER_BALANCE}}").toString("hex")
-const init_holders = addresses.split(",").map(address => ({ address, balance }));
-
-exports = module.exports = init_holders

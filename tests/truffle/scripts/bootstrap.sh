@@ -22,12 +22,11 @@ function init_validator() {
 }
 
 function generate_genesis() {
+     node generate-validator.js
      INIT_HOLDER_ADDRESSES=$(ls ${workspace}/init-holders | tr '\n' ',')
      INIT_HOLDER_ADDRESSES=${INIT_HOLDER_ADDRESSES/%,/}
-     sed  "s/{{INIT_HOLDER_ADDRESSES}}/${INIT_HOLDER_ADDRESSES}/g" ${workspace}/genesis/init_holders.template | sed  "s/{{INIT_HOLDER_BALANCE}}/${INIT_HOLDER_BALANCE}/g" > ${workspace}/genesis/init_holders.js
-     node generate-validator.js
-     chainIDHex=$(printf '%04x\n' ${BSC_CHAIN_ID})
-     node generate-genesis.js --chainid ${BSC_CHAIN_ID} --bscChainId ${chainIDHex}
+     node generate-initHolders.js --initHolders ${INIT_HOLDER_ADDRESSES}
+     node generate-genesis.js --chainid ${BSC_CHAIN_ID}
 }
 
 function init_genesis_data() {
