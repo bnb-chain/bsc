@@ -20,6 +20,7 @@ package eth
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/rawdb/bloblevel"
 	"math/big"
 	"runtime"
 	"sync"
@@ -143,6 +144,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	ethashConfig := config.Ethash
 	ethashConfig.NotifyFull = config.Miner.NotifyFull
 
+	// Initialise blob database
+	// todo 4844 do it using a <to be made> function that is proper and not recreating for each restart
+	blobDatabase := bloblevel.NewStorage(rawdb.NewMemoryDatabase())
+
 	// Assemble the Ethereum object
 	chainDb, err := stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
 		config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff, config.PruneAncientData)
@@ -180,7 +185,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		log.Info("Unprotected transactions allowed")
 	}
 	ethAPI := ethapi.NewPublicBlockChainAPI(eth.APIBackend)
-	eth.engine = ethconfig.CreateConsensusEngine(stack, chainConfig, &ethashConfig, config.Miner.Notify, config.Miner.Noverify, chainDb, ethAPI, genesisHash)
+	eth.engine = ethconfig.CreateConsensusEngine(stack, chainConfig, &ethashConfig, config.Miner.Notify, config.Miner.Noverify, chainDb, blobDatabase, ethAPI, genesisHash)
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
 	var dbVer = "<nil>"
@@ -258,6 +263,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	if eth.handler, err = newHandler(&handlerConfig{
 		Database:               chainDb,
+		BlobDatabase:           blobDatabase,
 		Chain:                  eth.blockchain,
 		TxPool:                 eth.txPool,
 		Merger:                 merger,
@@ -630,6 +636,7 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 	if !s.config.DisableBscProtocol {
 		protos = append(protos, bsc.MakeProtocols((*bscHandler)(s.handler), s.bscDialCandidates)...)
 	}
+	fmt.Println("protocols total: ", protos)
 	return protos
 }
 

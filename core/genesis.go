@@ -368,6 +368,9 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 		}
 		if g.Config.IsCancun(g.Timestamp) {
 			head.SetExcessDataGas(g.ExcessDataGas)
+			if head.ExcessDataGas == nil {
+				head.ExcessDataGas = big.NewInt(0)
+			}
 		}
 	}
 

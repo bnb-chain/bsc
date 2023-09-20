@@ -18,6 +18,8 @@ package eth
 
 import (
 	"errors"
+	"fmt"
+	"github.com/ethereum/go-ethereum/core/rawdb/bloblevel"
 	"math"
 	"math/big"
 	"strings"
@@ -105,7 +107,8 @@ type votePool interface {
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	Database               ethdb.Database   // Database for direct sync insertions
+	Database               ethdb.Database // Database for direct sync insertions
+	BlobDatabase           *bloblevel.Storage
 	Chain                  *core.BlockChain // Blockchain to serve data from
 	TxPool                 txPool           // Transaction pool to propagate from
 	VotePool               votePool
@@ -136,6 +139,7 @@ type handler struct {
 	checkpointHash   common.Hash // Block hash for the sync progress validator to cross reference
 
 	database             ethdb.Database
+	blobDatabase         *bloblevel.Storage
 	txpool               txPool
 	votepool             votePool
 	maliciousVoteMonitor *monitor.MaliciousVoteMonitor
@@ -145,21 +149,24 @@ type handler struct {
 	peersPerIP           map[string]int
 	peerPerIPLock        sync.Mutex
 
-	downloader   *downloader.Downloader
-	blockFetcher *fetcher.BlockFetcher
-	txFetcher    *fetcher.TxFetcher
-	peers        *peerSet
-	merger       *consensus.Merger
+	downloader   *downloader.Downloader // todo 4844 same for sidecars
+	blockFetcher *fetcher.BlockFetcher  // todo 4844 do the same for blobs
+	blobFetcher  *fetcher.BlockFetcher
 
-	eventMux       *event.TypeMux
-	txsCh          chan core.NewTxsEvent
-	txsSub         event.Subscription
-	reannoTxsCh    chan core.ReannoTxsEvent
-	reannoTxsSub   event.Subscription
-	minedBlockSub  *event.TypeMuxSubscription
-	voteCh         chan core.NewVoteEvent
-	votesSub       event.Subscription
-	voteMonitorSub event.Subscription
+	txFetcher *fetcher.TxFetcher
+	peers     *peerSet
+	merger    *consensus.Merger
+
+	eventMux        *event.TypeMux
+	txsCh           chan core.NewTxsEvent
+	txsSub          event.Subscription
+	reannoTxsCh     chan core.ReannoTxsEvent
+	reannoTxsSub    event.Subscription
+	minedBlockSub   *event.TypeMuxSubscription
+	minedSidecarSub *event.TypeMuxSubscription
+	voteCh          chan core.NewVoteEvent
+	votesSub        event.Subscription
+	voteMonitorSub  event.Subscription
 
 	whitelist map[uint64]common.Hash
 
@@ -186,6 +193,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		disablePeerTxBroadcast: config.DisablePeerTxBroadcast,
 		eventMux:               config.EventMux,
 		database:               config.Database,
+		blobDatabase:           config.BlobDatabase,
 		txpool:                 config.TxPool,
 		votepool:               config.VotePool,
 		chain:                  config.Chain,
@@ -341,28 +349,34 @@ func newHandler(config *handlerConfig) (*handler, error) {
 func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// If the peer has a `snap` extension, wait for it to connect so we can have
 	// a uniform initialization/teardown mechanism
+	//fmt.Println("IInside runEthPeer ...")
 	snap, err := h.peers.waitSnapExtension(peer)
 	if err != nil {
+		fmt.Println("runEthPeer error!!!!")
 		peer.Log().Error("Snapshot extension barrier failed", "err", err)
 		return err
 	}
 	diff, err := h.peers.waitDiffExtension(peer)
 	if err != nil {
+		fmt.Println("runEthPeer error!!!!")
 		peer.Log().Error("Diff extension barrier failed", "err", err)
 		return err
 	}
 	trust, err := h.peers.waitTrustExtension(peer)
 	if err != nil {
+		fmt.Println("runEthPeer error!!!!")
 		peer.Log().Error("Trust extension barrier failed", "err", err)
 		return err
 	}
 	bsc, err := h.peers.waitBscExtension(peer)
 	if err != nil {
+		fmt.Println("runEthPeer error!!!!")
 		peer.Log().Error("Bsc extension barrier failed", "err", err)
 		return err
 	}
 	// TODO(karalabe): Not sure why this is needed
 	if !h.chainSync.handlePeerEvent(peer) {
+		fmt.Println("runEthPeer error!!!!")
 		return p2p.DiscQuitting
 	}
 	h.peerWG.Add(1)
@@ -376,8 +390,11 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		number  = head.Number.Uint64()
 		td      = h.chain.GetTd(hash, number)
 	)
+	// todo 4844 check that this forkID logic is fine for Cancun or CancunTime!!! As we moved from block based fork to time based fork!
 	forkID := forkid.NewID(h.chain.Config(), h.chain.Genesis().Hash(), h.chain.CurrentHeader().Number.Uint64())
 	if err := peer.Handshake(h.networkID, td, hash, genesis.Hash(), forkID, h.forkFilter, &eth.UpgradeStatusExtension{DisablePeerTxBroadcast: h.disablePeerTxBroadcast}); err != nil {
+		fmt.Println("Peer Handshake failed!!!")
+		fmt.Println("runEthPeer error!!!!")
 		peer.Log().Debug("Ethereum handshake failed", "err", err)
 		return err
 	}
@@ -396,6 +413,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peerInfo := peer.Peer.Info()
 	if !peerInfo.Network.Trusted {
 		if reject || h.peers.len() >= h.maxPeers {
+			fmt.Println("runEthPeer error!!!!")
 			return p2p.DiscTooManyPeers
 		}
 	}
@@ -410,6 +428,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		h.peerPerIPLock.Lock()
 		if num, ok := h.peersPerIP[remoteIP]; ok && num >= h.maxPeersPerIP {
 			h.peerPerIPLock.Unlock()
+			fmt.Println("runEthPeer error!!!!")
 			peer.Log().Info("The IP has too many peers", "ip", remoteIP, "maxPeersPerIP", h.maxPeersPerIP,
 				"name", peerInfo.Name, "Enode", peerInfo.Enode)
 			return p2p.DiscTooManyPeers
@@ -421,6 +440,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 
 	// Register the peer locally
 	if err := h.peers.registerPeer(peer, snap, diff, trust, bsc); err != nil {
+		//fmt.Println("runEthPeer error!!!!")
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
@@ -428,15 +448,18 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 
 	p := h.peers.peer(peer.ID())
 	if p == nil {
+		//fmt.Println("runEthPeer error!!!!")
 		return errors.New("peer dropped during handling")
 	}
 	// Register the peer in the downloader. If the downloader considers it banned, we disconnect
 	if err := h.downloader.RegisterPeer(peer.ID(), peer.Version(), peer); err != nil {
 		peer.Log().Error("Failed to register peer in eth syncer", "err", err)
+		//fmt.Println("runEthPeer error!!!!")
 		return err
 	}
 	if snap != nil {
 		if err := h.downloader.SnapSyncer.Register(snap); err != nil {
+			//fmt.Println("runEthPeer error!!!!")
 			peer.Log().Error("Failed to register peer in snap syncer", "err", err)
 			return err
 		}
@@ -461,6 +484,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 
 		req, err := peer.RequestHeadersByNumber(h.checkpointNumber, 1, 0, false, resCh)
 		if err != nil {
+			fmt.Println("runEthPeer error!!!!")
 			return err
 		}
 		// Start a timer to disconnect if the peer doesn't reply in time
@@ -512,6 +536,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 
 		req, err := peer.RequestHeadersByNumber(number, 1, 0, false, resCh)
 		if err != nil {
+			fmt.Println("runEthPeer error!!!!")
 			return err
 		}
 		go func(number uint64, hash common.Hash, req *eth.Request) {
@@ -707,6 +732,11 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{})
 	go h.minedBroadcastLoop()
 
+	// broadcast mined sidecars
+	h.wg.Add(1)
+	h.minedSidecarSub = h.eventMux.Subscribe(core.NewMinedSidecarEvent{})
+	go h.minedSidecarBroadcastLoop()
+
 	// start sync handlers
 	h.wg.Add(1)
 	go h.chainSync.loop()
@@ -731,6 +761,7 @@ func (h *handler) Stop() {
 	h.txsSub.Unsubscribe()        // quits txBroadcastLoop
 	h.reannoTxsSub.Unsubscribe()  // quits txReannounceLoop
 	h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
+	h.minedSidecarSub.Unsubscribe()
 	if h.votepool != nil {
 		h.votesSub.Unsubscribe() // quits voteBroadcastLoop
 		if h.maliciousVoteMonitor != nil {
@@ -756,14 +787,17 @@ func (h *handler) Stop() {
 // BroadcastBlock will either propagate a block to a subset of its peers, or
 // will only announce its availability (depending what's requested).
 func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
+	//fmt.Println("Inside BroadcastBlock")
 	// Disable the block propagation if the chain has already entered the PoS
 	// stage. The block propagation is delegated to the consensus layer.
 	if h.merger.PoSFinalized() {
+		//fmt.Println("POS finalized...")
 		return
 	}
 	// Disable the block propagation if it's the post-merge block.
 	if beacon, ok := h.chain.Engine().(*beacon.Beacon); ok {
 		if beacon.IsPoSHeader(block.Header()) {
+			//fmt.Println("Disable the block propagation if it's the post-merge block")
 			return
 		}
 	}
@@ -772,6 +806,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 
 	// If propagation is requested, send to a subset of the peer
 	if propagate {
+		//fmt.Println("Propagate")
 		// Calculate the TD of the block (it's not imported yet, so block.Td is not valid)
 		var td *big.Int
 		if parent := h.chain.GetBlock(block.ParentHash(), block.NumberU64()-1); parent != nil {
@@ -802,6 +837,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
+			fmt.Println("AsyncSendNewBlockHash")
 			peer.AsyncSendNewBlockHash(block)
 		}
 		log.Trace("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
@@ -809,6 +845,22 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 }
 
 // TODO 4844 BroadcastBlob? BroadcastSidecar?
+func (h *handler) BroadcastSidecar(sidecar *types.Sidecar, propagate bool) {
+	hash := sidecar.SidecarToHash()
+	peers := h.peers.peersWithoutSidecar(hash)
+
+	fmt.Println("peers length in BroadcastSidecar: ", len(peers))
+
+	if propagate {
+		// todo 4844 add propagate logic
+		for _, peer := range peers {
+			peer.AsyncSendNewSidecar(sidecar, big.NewInt(1))
+		}
+	}
+	fmt.Println(peers)
+	fmt.Println("Broadcasted sidecar")
+
+}
 
 // BroadcastTransactions will propagate a batch of transactions
 // - To a square root of all peers
@@ -826,6 +878,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 
 	)
 	// Broadcast transactions to a batch of peers not knowing about it
+	// todo 4844 blob tx isn't broadcasted, decision yet to be made
 	for _, tx := range txs {
 		peers := h.peers.peersWithoutTransaction(tx.Hash())
 		// Send the tx unconditionally to a subset of our peers
@@ -903,13 +956,30 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 }
 
 // minedBroadcastLoop sends mined blocks to connected peers.
+// todo 4844 do similar for sidecar
 func (h *handler) minedBroadcastLoop() {
 	defer h.wg.Done()
 
 	for obj := range h.minedBlockSub.Chan() {
 		if ev, ok := obj.Data.(core.NewMinedBlockEvent); ok {
+			//fmt.Println("h.BroadcastBlock: ", ev.Block.Number().String())
 			h.BroadcastBlock(ev.Block, true)  // First propagate block to peers
 			h.BroadcastBlock(ev.Block, false) // Only then announce to the rest
+		}
+	}
+}
+
+// minedSidecarBroadcastLoop sends mined blocks to connected peers.
+func (h *handler) minedSidecarBroadcastLoop() {
+	defer h.wg.Done()
+
+	for obj := range h.minedSidecarSub.Chan() {
+		if ev, ok := obj.Data.(core.NewMinedSidecarEvent); ok {
+			fmt.Println("h.BroadcastSidecar: ", ev.Sidecar.SidecarToHash())
+			h.BroadcastSidecar(ev.Sidecar, true) // First propagate block to peers
+			//h.BroadcastSidecar(ev.Sidecar, false) // Only then announce to the rest
+		} else {
+			fmt.Println("No sidecar in minedSidecarBroadcastLoop")
 		}
 	}
 }

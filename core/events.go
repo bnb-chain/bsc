@@ -30,6 +30,9 @@ type ReannoTxsEvent struct{ Txs []*types.Transaction }
 // NewMinedBlockEvent is posted when a block has been imported.
 type NewMinedBlockEvent struct{ Block *types.Block }
 
+// NewMinedSidecarEvent is posted when a sidecar has been imported.
+type NewMinedSidecarEvent struct{ Sidecar *types.Sidecar }
+
 // RemovedLogsEvent is posted when a reorg happens
 type RemovedLogsEvent struct{ Logs []*types.Log }
 

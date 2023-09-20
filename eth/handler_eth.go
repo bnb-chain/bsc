@@ -68,14 +68,22 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	case *eth.NewBlockPacket:
 		return h.handleBlockBroadcast(peer, packet.Block, packet.TD)
 
-	case *eth.NewPooledTransactionHashesPacket:
+	case *eth.NewSidecarPacket:
+		return h.handleSidecarBroadcast(peer, packet.Sidecar, packet.TD)
+
+	case *eth.NewPooledTransactionHashesPacket66:
 		return h.txFetcher.Notify(peer.ID(), *packet)
 
+	case *eth.NewPooledTransactionHashesPacket68:
+		return h.txFetcher.Notify(peer.ID(), packet.Hashes)
+
 	case *eth.TransactionsPacket:
-		return h.txFetcher.Enqueue(peer.ID(), *packet, false)
+		txs := packet.Unwrap()
+		return h.txFetcher.Enqueue(peer.ID(), txs, false)
 
 	case *eth.PooledTransactionsPacket:
-		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
+		txs := packet.Unwrap()
+		return h.txFetcher.Enqueue(peer.ID(), txs, true)
 
 	default:
 		return fmt.Errorf("unexpected eth packet type: %T", packet)
@@ -88,6 +96,7 @@ func (h *ethHandler) handleBlockAnnounces(peer *eth.Peer, hashes []common.Hash, 
 	// Drop all incoming block announces from the p2p network if
 	// the chain already entered the pos stage and disconnect the
 	// remote peer.
+	//fmt.Println("Handling block announcement in handleBlockAnnounces")
 	if h.merger.PoSFinalized() {
 		// TODO (MariusVanDerWijden) drop non-updated peers after the merge
 		return nil
@@ -144,5 +153,15 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 		peer.SetHead(trueHead, trueTD)
 		h.chainSync.handlePeerEvent(peer)
 	}
+	return nil
+}
+
+// handleSidecarBroadcast is invoked from a peer's message handler when it transmits a
+// block broadcast for the local node to process.
+func (h *ethHandler) handleSidecarBroadcast(peer *eth.Peer, block *types.Sidecar, td *big.Int) error {
+	panic("Implement me handleSidecarBroadcast")
+
+	//h.blobFetcher.
+
 	return nil
 }

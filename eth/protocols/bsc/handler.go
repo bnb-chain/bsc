@@ -68,6 +68,7 @@ func MakeProtocols(backend Backend, dnsdisc enode.Iterator) []p2p.Protocol {
 			DialCandidates: dnsdisc,
 		}
 	}
+	fmt.Println("protocols: ", protocols)
 	return protocols
 }
 
@@ -100,6 +101,7 @@ func handleMessage(backend Backend, peer *Peer) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println("msg after peer.rw.ReadMsg() in handleMessage ", msg)
 	if msg.Size > maxMessageSize {
 		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
 	}

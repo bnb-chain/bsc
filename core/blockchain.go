@@ -20,6 +20,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/rawdb/bloblevel"
 	"io"
 	"math/big"
 	"sort"
@@ -189,11 +190,12 @@ type BlockChain struct {
 	chainConfig *params.ChainConfig // Chain & network configuration
 	cacheConfig *CacheConfig        // Cache configuration for pruning
 
-	db         ethdb.Database // Low level persistent database to store final content in
-	snaps      *snapshot.Tree // Snapshot tree for fast trie leaf access
-	triegc     *prque.Prque   // Priority queue mapping block numbers to tries to gc
-	gcproc     time.Duration  // Accumulates canonical block processing for trie dumping
-	commitLock sync.Mutex     // CommitLock is used to protect above field from being modified concurrently
+	db           ethdb.Database // Low level persistent database to store final content in
+	blobDatabase bloblevel.Storage
+	snaps        *snapshot.Tree // Snapshot tree for fast trie leaf access
+	triegc       *prque.Prque   // Priority queue mapping block numbers to tries to gc
+	gcproc       time.Duration  // Accumulates canonical block processing for trie dumping
+	commitLock   sync.Mutex     // CommitLock is used to protect above field from being modified concurrently
 
 	// txLookupLimit is the maximum number of blocks from head whose tx indices
 	// are reserved:

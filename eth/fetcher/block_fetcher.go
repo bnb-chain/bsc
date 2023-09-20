@@ -19,6 +19,7 @@ package fetcher
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -353,6 +354,7 @@ func (f *BlockFetcher) loop() {
 	defer completeTimer.Stop()
 
 	for {
+		fmt.Println("for loop in func (f *BlockFetcher) loop()")
 		// Clean up any expired block fetches
 		for hash, announce := range f.fetching {
 			if time.Since(announce.time) > fetchTimeout {
@@ -363,6 +365,7 @@ func (f *BlockFetcher) loop() {
 		height := f.chainHeight()
 		for !f.queue.Empty() {
 			op := f.queue.PopItem().(*blockOrHeaderInject)
+			fmt.Println("func (f *BlockFetcher) loop(): ", op.block.Number().String())
 			hash := op.hash()
 			if f.queueChangeHook != nil {
 				f.queueChangeHook(hash, false)
@@ -394,6 +397,7 @@ func (f *BlockFetcher) loop() {
 			return
 
 		case notification := <-f.notify:
+			fmt.Println("notification := <-f.notify in fetcher loop")
 			// A block was announced, make sure the peer isn't DOSing us
 			blockAnnounceInMeter.Mark(1)
 
@@ -681,6 +685,7 @@ func (f *BlockFetcher) loop() {
 
 		case filter := <-f.bodyFilter:
 			// Block bodies arrived, extract any explicitly requested blocks, return the rest
+			fmt.Println("Block body arrived...")
 			var task *bodyFilterTask
 			select {
 			case task = <-filter:

@@ -397,9 +397,9 @@ func (b *Block) DecodeRLP(s *rlp.Stream) error {
 	if err := s.Decode(&eb); err != nil {
 		return err
 	}
-	for i, tx := range *eb.Txs {
+	for _, tx := range *eb.Txs {
 		if tx.wrapData != nil { // todo 4844 we may need to get rid of this, actually NOT
-			return fmt.Errorf("transactions in blocks must not contain wrap-data, tx %d is bad", i)
+			//return fmt.Errorf("transactions in blocks must not contain wrap-data, tx %d is bad", i)
 		}
 	}
 	b.header, b.uncles, b.transactions = eb.Header, eb.Uncles, []*Transaction(*eb.Txs)
@@ -409,12 +409,12 @@ func (b *Block) DecodeRLP(s *rlp.Stream) error {
 
 // EncodeRLP serializes b into the Ethereum RLP block format.
 func (b *Block) EncodeRLP(w io.Writer) error {
-	if b.header.ExcessDataGas != nil {
-		// This situation should not arise, but if it does (due to a bug) you'd silently produce an
-		// encoding that would fail to decode. ref:
-		// https://github.com/ethereum/go-ethereum/pull/26077
-		return errors.New("nil WithdrawalsHash in header with non-nil ExcessDataGas")
-	}
+	//if b.header.ExcessDataGas != nil {
+	//	// This situation should not arise, but if it does (due to a bug) you'd silently produce an
+	//	// encoding that would fail to decode. ref:
+	//	// https://github.com/ethereum/go-ethereum/pull/26077
+	//	return errors.New("nil WithdrawalsHash in header with non-nil ExcessDataGas")
+	//}
 	return rlp.Encode(w, extblock{
 		Header: b.header,
 		Txs:    (*extBlockTxs)(&b.transactions),

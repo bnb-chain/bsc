@@ -17,6 +17,7 @@
 package eth
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -37,19 +38,31 @@ type blockPropagation struct {
 	td    *big.Int
 }
 
+// sidecarPropagation is a sidecar propagation event, waiting for its turn in the
+// broadcast queue.
+type sidecarPropagation struct {
+	sidecar *types.Sidecar
+	td      *big.Int
+}
+
 // broadcastBlocks is a write loop that multiplexes blocks and block accouncements
 // to the remote peer. The goal is to have an async writer that does not lock up
 // node internals and at the same time rate limits queued data.
 func (p *Peer) broadcastBlocks() {
+	fmt.Println("func (p *Peer) broadcastBlocks()")
 	for {
 		select {
 		case prop := <-p.queuedBlocks:
+			fmt.Println("about to send new block ", prop.block.Number().String())
+			// todo 4844 is this really happening for every new block?
 			if err := p.SendNewBlock(prop.block, prop.td); err != nil {
+				fmt.Println("Error sending new block! ", err)
 				return
 			}
 			p.Log().Trace("Propagated block", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td)
 
 		case block := <-p.queuedBlockAnns:
+			fmt.Println("about to send block hash ", block.Number().String())
 			if err := p.SendNewBlockHashes([]common.Hash{block.Hash()}, []uint64{block.NumberU64()}); err != nil {
 				return
 			}
@@ -57,6 +70,20 @@ func (p *Peer) broadcastBlocks() {
 
 		case <-p.term:
 			return
+		}
+	}
+}
+
+func (p *Peer) broadcastSidecars() {
+	for {
+		select {
+		case prop := <-p.queuedSidecars:
+			fmt.Println("broadcastSidecars(), prop := <-p.queuedSidecars")
+			if err := p.SendNewSidecar(prop.sidecar, prop.td); err != nil {
+				fmt.Println("Error sending new sidecar! ", err)
+				return
+			}
+			fmt.Println("sent sidecar...")
 		}
 	}
 }
@@ -77,12 +104,12 @@ func (p *Peer) broadcastTransactions() {
 			// Pile transaction until we reach our allowed network limit
 			var (
 				hashesCount uint64
-				txs         []*types.Transaction
+				txs         []*types.NetworkTransaction
 				size        common.StorageSize
 			)
 			for i := 0; i < len(queue) && size < maxTxPacketSize; i++ {
 				if tx := p.txpool.Get(queue[i]); tx != nil {
-					txs = append(txs, tx)
+					txs = append(txs, types.NewNetworkTransaction(tx))
 					size += common.StorageSize(tx.Size())
 				}
 				hashesCount++
@@ -146,13 +173,17 @@ func (p *Peer) announceTransactions() {
 		if done == nil && len(queue) > 0 {
 			// Pile transaction hashes until we reach our allowed network limit
 			var (
-				count   int
-				pending []common.Hash
-				size    common.StorageSize
+				count        int
+				pending      []common.Hash
+				pendingTypes []byte
+				pendingSizes []uint32
+				size         common.StorageSize
 			)
 			for count = 0; count < len(queue) && size < maxTxPacketSize; count++ {
-				if p.txpool.Get(queue[count]) != nil {
+				if tx := p.txpool.Get(queue[count]); tx != nil {
 					pending = append(pending, queue[count])
+					pendingTypes = append(pendingTypes, tx.Type())
+					pendingSizes = append(pendingSizes, uint32(tx.Size()))
 					size += common.HashLength
 				}
 			}
@@ -163,9 +194,16 @@ func (p *Peer) announceTransactions() {
 			if len(pending) > 0 {
 				done = make(chan struct{})
 				gopool.Submit(func() {
-					if err := p.sendPooledTransactionHashes(pending); err != nil {
-						fail <- err
-						return
+					if p.version >= ETH68 {
+						if err := p.sendPooledTransactionHashes68(pending, pendingTypes, pendingSizes); err != nil {
+							fail <- err
+							return
+						}
+					} else {
+						if err := p.sendPooledTransactionHashes66(pending); err != nil {
+							fail <- err
+							return
+						}
 					}
 					close(done)
 					//p.Log().Trace("Sent transaction announcements", "count", len(pending))

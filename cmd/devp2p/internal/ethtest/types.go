@@ -112,7 +112,7 @@ type NewBlock eth.NewBlockPacket
 func (nb NewBlock) Code() int { return 23 }
 
 // NewPooledTransactionHashes is the network packet for the tx hash propagation message.
-type NewPooledTransactionHashes eth.NewPooledTransactionHashesPacket
+type NewPooledTransactionHashes eth.NewPooledTransactionHashesPacket66
 
 func (nb NewPooledTransactionHashes) Code() int { return 24 }
 
