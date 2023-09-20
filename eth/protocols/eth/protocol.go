@@ -45,7 +45,7 @@ var ProtocolVersions = []uint{ETH68, ETH66, ETH67}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{ETH68: 17, ETH67: 18, ETH66: 17} // todo 4844 should ETH68 be also 18?
+var protocolLengths = map[uint]uint64{ETH68: 18, ETH67: 18, ETH66: 17} // todo 4844 should ETH68 be also 18?
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -69,6 +69,8 @@ const (
 
 	// Protocol messages overloaded in eth/66
 	UpgradeStatusMsg = 0x0b
+
+	NewSidecarMsg = 0x0c
 )
 
 var (
@@ -232,6 +234,16 @@ type BlockHeadersRLPPacket66 struct {
 type NewBlockPacket struct {
 	Block *types.Block
 	TD    *big.Int
+}
+
+// NewSidecarPacket is the network packet for the sidecar propagation message.
+type NewSidecarPacket struct {
+	Sidecar *types.Sidecar
+	TD      *big.Int
+}
+
+func (request *NewSidecarPacket) sanityCheck() error {
+	panic("Implement me!!")
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
@@ -412,6 +424,9 @@ func (*BlockBodiesPacket) Kind() byte   { return BlockBodiesMsg }
 
 func (*NewBlockPacket) Name() string { return "NewBlock" }
 func (*NewBlockPacket) Kind() byte   { return NewBlockMsg }
+
+func (*NewSidecarPacket) Name() string { return "NewSidecar" }
+func (*NewSidecarPacket) Kind() byte   { return NewSidecarMsg }
 
 func (*GetNodeDataPacket) Name() string { return "GetNodeData" }
 func (*GetNodeDataPacket) Kind() byte   { return GetNodeDataMsg }

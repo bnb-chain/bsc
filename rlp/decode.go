@@ -169,6 +169,7 @@ func makeDecoder(typ reflect.Type, tags rlpstruct.Tags) (dec decoder, err error)
 	case kind == reflect.Ptr:
 		return makePtrDecoder(typ, tags)
 	case reflect.PtrTo(typ).Implements(decoderInterface):
+		fmt.Println("type and kind: ", typ.String(), kind.String())
 		return decodeDecoder, nil
 	case isUint(kind):
 		return decodeUint, nil
@@ -1029,7 +1030,7 @@ func (s *Stream) Kind() (kind Kind, size uint64, err error) {
 		if inList && s.size > listLimit {
 			s.kinderr = ErrElemTooLarge
 		} else if s.limited && s.size > s.remaining {
-			fmt.Println("n > s.remaining 2", s.size, s.remaining)
+			//fmt.Println("n > s.remaining 2", s.size, s.remaining)
 			s.kinderr = ErrValueTooLarge
 		}
 	}
@@ -1169,7 +1170,7 @@ func (s *Stream) willRead(n uint64) error {
 	}
 	if s.limited {
 		if n > s.remaining {
-			fmt.Println("n > s.remaining", n, s.remaining)
+			//fmt.Println("n > s.remaining", n, s.remaining)
 			return ErrValueTooLarge
 		}
 		s.remaining -= n

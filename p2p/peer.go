@@ -301,7 +301,7 @@ loop:
 			}
 			writeStart <- struct{}{}
 		case err = <-readErr:
-			fmt.Println("read Error!!!!! in p2p/peer.go")
+			//fmt.Println("read Error!!!!! in p2p/peer.go")
 			if r, ok := err.(DiscReason); ok {
 				remoteRequested = true
 				reason = r
@@ -311,7 +311,7 @@ loop:
 			break loop
 		case err = <-p.protoErr:
 			reason = discReasonForError(err)
-			fmt.Println("About to break loop!!!!!")
+			fmt.Println("About to break loop!!!!! ", err)
 			break loop
 		case err = <-p.disc:
 			reason = discReasonForError(err)
@@ -349,8 +349,8 @@ func (p *Peer) readLoop(errc chan<- error) {
 		//fmt.Println("inside readLoop of peer....")
 		msg, err := p.rw.ReadMsg() // todo 4844 probably here lies the problem??
 		if msg.Code != pingMsg && msg.Code != pongMsg {
-			fmt.Println("inside readLoop of peer....")
-			fmt.Println("msg, err: ", msg.String(), err)
+			//fmt.Println("inside readLoop of peer....")
+			//fmt.Println("msg, err: ", msg.String(), err)
 		}
 		if err != nil {
 			errc <- err
@@ -367,7 +367,7 @@ func (p *Peer) readLoop(errc chan<- error) {
 func (p *Peer) handle(msg Msg) error {
 	// todo 4844 this is never getting block related message. Just ping-pong messages.
 	if msg.Code != pingMsg && msg.Code != pongMsg {
-		fmt.Println("handling message", msg)
+		//fmt.Println("handling message", msg)
 	}
 	switch {
 	case msg.Code == pingMsg:
@@ -385,7 +385,7 @@ func (p *Peer) handle(msg Msg) error {
 		// ignore other base protocol messages
 		return msg.Discard()
 	default:
-		fmt.Println("sub protocol message")
+		//fmt.Println("sub protocol message")
 		// it's a subprotocol message
 		proto, err := p.getProto(msg.Code)
 		if err != nil {
@@ -465,6 +465,7 @@ func (p *Peer) startProtocols(writeStart <-chan struct{}, writeErr chan<- error)
 			} else if !errors.Is(err, io.EOF) {
 				p.log.Trace(fmt.Sprintf("Protocol %s/%d failed", proto.Name, proto.Version), "err", err)
 			}
+			fmt.Println("error in startProtocols: ", err)
 			p.protoErr <- err
 		}()
 	}
@@ -517,6 +518,10 @@ func (rw *protoRW) WriteMsg(msg Msg) (err error) {
 func (rw *protoRW) ReadMsg() (Msg, error) {
 	select {
 	case msg := <-rw.in:
+		fmt.Println("Reading message from peer, ", msg.Code)
+		if msg.Code == 0x02 {
+			fmt.Println("fake Sidecar received in Node B!!!!!!!", msg.Size)
+		}
 		msg.Code -= rw.offset
 		return msg, nil
 	case <-rw.closed:

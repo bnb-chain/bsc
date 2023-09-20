@@ -83,6 +83,10 @@ type Peer struct {
 	queuedBlocks    chan *blockPropagation // Queue of blocks to broadcast to the peer
 	queuedBlockAnns chan *types.Block      // Queue of blocks to announce to the peer
 
+	knownSidecars     *knownCache              // Set of Sidecars known by this peer
+	queuedSidecars    chan *sidecarPropagation // Queue of sidecars to broadcast to the peer
+	queuedSidecarAnns chan *types.Sidecar      // Queue of sidecars to announce to the peer
+
 	txpool      TxPool             // Transaction pool used by the broadcasters for liveness checks
 	knownTxs    *knownCache        // Set of transaction hashes known to be known by this peer
 	txBroadcast chan []common.Hash // Channel used to queue transaction propagation requests
@@ -107,7 +111,9 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Pe
 		version:         version,
 		knownTxs:        newKnownCache(maxKnownTxs),
 		knownBlocks:     newKnownCache(maxKnownBlocks),
+		knownSidecars:   newKnownCache(maxKnownBlocks),
 		queuedBlocks:    make(chan *blockPropagation, maxQueuedBlocks),
+		queuedSidecars:  make(chan *sidecarPropagation, maxQueuedBlocks),
 		queuedBlockAnns: make(chan *types.Block, maxQueuedBlockAnns),
 		txBroadcast:     make(chan []common.Hash),
 		txAnnounce:      make(chan []common.Hash),
@@ -120,6 +126,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Pe
 	}
 	// Start up all the broadcasters
 	go peer.broadcastBlocks()
+	go peer.broadcastSidecars()
 	go peer.broadcastTransactions()
 	go peer.announceTransactions()
 	go peer.dispatcher()
@@ -185,6 +192,11 @@ func (p *Peer) KnownBlock(hash common.Hash) bool {
 	return p.knownBlocks.Contains(hash)
 }
 
+// KnownSidecar returns whether peer is known to already have a sidecar.
+func (p *Peer) KnownSidecar(hash common.Hash) bool {
+	return p.knownSidecars.Contains(hash)
+}
+
 // KnownTransaction returns whether peer is known to already have a transaction.
 func (p *Peer) KnownTransaction(hash common.Hash) bool {
 	return p.knownTxs.Contains(hash)
@@ -195,6 +207,13 @@ func (p *Peer) KnownTransaction(hash common.Hash) bool {
 func (p *Peer) markBlock(hash common.Hash) {
 	// If we reached the memory allowance, drop a previously known block hash
 	p.knownBlocks.Add(hash)
+}
+
+// markSidecar marks a sidecar as known for the peer, ensuring that the sidecar will
+// never be propagated to this particular peer.
+func (p *Peer) markSidecar(hash common.Hash) {
+	// If we reached the memory allowance, drop a previously known sidecar hash
+	p.knownSidecars.Add(hash)
 }
 
 // markTransaction marks a transaction as known for the peer, ensuring that it
@@ -315,6 +334,19 @@ func (p *Peer) AsyncSendNewBlockHash(block *types.Block) {
 	}
 }
 
+// AsyncSendNewSidecarHash queues the availability of a sidecar for propagation to a
+// remote peer. If the peer's broadcast queue is full, the event is silently
+// dropped.
+func (p *Peer) AsyncSendNewSidecarHash(sidecar *types.Sidecar) {
+	select {
+	case p.queuedSidecarAnns <- sidecar:
+		// Mark all the sidecar hash as known, but ensure we don't overflow our limits
+		p.knownSidecars.Add(sidecar.SidecarToHash())
+	default:
+		p.Log().Debug("Dropping sidecar announcement", "blockroot", sidecar.BlockRoot, "hash", sidecar.SidecarToHash())
+	}
+}
+
 // SendNewBlock propagates an entire block to a remote peer.
 func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	// Mark all the block hash as known, but ensure we don't overflow our limits
@@ -323,6 +355,19 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
 		Block: block,
 		TD:    td,
+	})
+}
+
+// SendNewSidecar propagates an entire sidecar to a remote peer.
+func (p *Peer) SendNewSidecar(sidecar *types.Sidecar, td *big.Int) error {
+	// Mark all the sidecar hash as known, but ensure we don't overflow our limits
+	p.knownSidecars.Add(sidecar.SidecarToHash())
+	fmt.Println("Sending NewSidecarMsg!!!!!!!: ", sidecar.SidecarToHash())
+	//return p2p.Send(p.rw, TransactionsMsg, types.NetworkTransactions{
+	//	{Tx: types.NewTx(&types.LegacyTx{Nonce: 12})}})
+	return p2p.Send(p.rw, NewSidecarMsg, &NewSidecarPacket{
+		Sidecar: sidecar,
+		TD:      td,
 	})
 }
 
@@ -335,6 +380,19 @@ func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 		p.knownBlocks.Add(block.Hash())
 	default:
 		p.Log().Debug("Dropping block propagation", "number", block.NumberU64(), "hash", block.Hash())
+	}
+}
+
+// AsyncSendNewSidecar queues an entire sidecar for propagation to a remote peer. If
+// the peer's broadcast queue is full, the event is silently dropped.
+func (p *Peer) AsyncSendNewSidecar(sidecar *types.Sidecar, td *big.Int) {
+	fmt.Println("Inside AsyncSendNewSidecar")
+	select {
+	case p.queuedSidecars <- &sidecarPropagation{sidecar: sidecar, td: td}:
+		// Mark all the block hash as known, but ensure we don't overflow our limits
+		p.knownSidecars.Add(sidecar.SidecarToHash())
+	default:
+		p.Log().Debug("Dropping sidecar propagation", "root", sidecar.BlockRoot, "hash", sidecar.SidecarToHash())
 	}
 }
 

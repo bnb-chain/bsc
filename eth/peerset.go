@@ -540,6 +540,21 @@ func (ps *peerSet) peersWithoutBlock(hash common.Hash) []*ethPeer {
 	return list
 }
 
+// peersWithoutSidecar retrieves a list of peers that do not have a given sidecar in
+// their set of known hashes, so it might be propagated to them.
+func (ps *peerSet) peersWithoutSidecar(hash common.Hash) []*ethPeer {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	list := make([]*ethPeer, 0, len(ps.peers))
+	for _, p := range ps.peers {
+		if !p.KnownSidecar(hash) {
+			list = append(list, p)
+		}
+	}
+	return list
+}
+
 // peersWithoutTransaction retrieves a list of peers that do not have a given
 // transaction in their set of known hashes.
 func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {

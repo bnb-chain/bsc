@@ -351,6 +351,26 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	return backend.Handle(peer, ann)
 }
 
+func handleNewSidecar(backend Backend, msg Decoder, peer *Peer) error {
+	fmt.Println("handleNewSidecar!!!!!!!!!!")
+	// Retrieve and decode the propagated block
+	ann := new(NewSidecarPacket)
+	if err := msg.Decode(ann); err != nil {
+		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
+	}
+	if err := ann.sanityCheck(); err != nil {
+		return err
+	}
+
+	ann.Sidecar.ReceivedAt = msg.Time()
+	ann.Sidecar.ReceivedFrom = peer
+
+	// Mark the peer as owning the block
+	peer.markSidecar(ann.Sidecar.SidecarToHash())
+
+	return backend.Handle(peer, ann)
+}
+
 func handleBlockHeaders66(backend Backend, msg Decoder, peer *Peer) error {
 	// A batch of headers arrived to one of our previous requests
 	res := new(BlockHeadersPacket66)

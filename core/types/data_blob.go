@@ -1,12 +1,14 @@
 package types
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/prysmaticlabs/prysm/v4/consensus-types/primitives"
 	"io"
+	"time"
 
 	gokzg4844 "github.com/crate-crypto/go-kzg-4844"
 	"github.com/ethereum/go-ethereum/common"
@@ -427,7 +429,8 @@ func decodeTyped(b []byte) (BlobTxWrapper, error) {
 	return blobTxWrapper, nil
 }
 
-// todo this Sidecar needs to be saved separately from block so that it can be pruned time to time to take advantage of 4844
+// todo 4844 this Sidecar needs to be saved separately from block so that it can be pruned time to time to take advantage of 4844
+// todo 4844 Sidecar needs to implement EncodeRLP so that it can be broadcasted easily
 type Sidecar struct {
 	BlockRoot       []byte          `json:"block_root"` //[]byte
 	Index           uint64          `json:"index"`
@@ -437,6 +440,49 @@ type Sidecar struct {
 	Blob            Blob            `json:"blob"`
 	KZGCommitment   KZGCommitment   `json:"kzg_commitment"`
 	KZGProof        KZGProof        `json:"kzg_proof"`
+
+	// These fields are used by package eth to track
+	// inter-peer block relay.
+	ReceivedAt   time.Time
+	ReceivedFrom interface{}
+}
+
+func (s *Sidecar) SidecarToHash() common.Hash {
+	//hash := common.Hash{}
+	//copy(hash[:], s.BlockRoot[:])
+	//binary.BigEndian.PutUint64(hash[len(s.BlockRoot):], s.Index)
+	//return hash
+
+	// Convert the index to a byte slice.
+	indexBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(indexBytes, s.Index)
+
+	// Concatenate BlockRoot and indexBytes.
+	combinedBytes := append(s.BlockRoot[:], indexBytes...)
+
+	// Calculate the hash of the combined bytes.
+	hash := common.BytesToHash(combinedBytes)
+
+	return hash
+}
+
+// todo 4844 write test for it to know it actually works
+func (s *Sidecar) HashToSidecarIdentifier(hash common.Hash) SidecarIdentifier {
+	var blockRoot []byte = make([]byte, len(hash))
+	copy(blockRoot, hash[:])
+
+	indexBytes := hash[len(blockRoot):]
+	index := binary.BigEndian.Uint64(indexBytes)
+
+	return SidecarIdentifier{
+		Index:     index,
+		BlockRoot: blockRoot,
+	}
+}
+
+type SidecarIdentifier struct {
+	BlockRoot []byte `json:"block_root"`
+	Index     uint64 `json:"index"`
 }
 
 type SignedSidecar struct {
@@ -447,4 +493,45 @@ type SignedSidecar struct {
 type BlockAndSidecars struct {
 	Block   *Block
 	Sidecar []*Sidecar
+}
+
+func (s *Sidecar) EncodeRLP(w io.Writer) error {
+	return rlp.Encode(w, []interface{}{
+		s.BlockRoot,
+		s.Index,
+		s.Slot,
+		s.BlockParentRoot,
+		s.ProposerIndex,
+		s.Blob,
+		s.KZGCommitment,
+		s.KZGProof,
+		s.ReceivedAt,
+		s.ReceivedFrom,
+	})
+}
+
+func (s *Sidecar) DecodeRLP(stream *rlp.Stream) error {
+	return stream.Decode(&struct {
+		BlockRoot       *[]byte
+		Index           *uint64
+		Slot            *primitives.Slot
+		BlockParentRoot *[]byte
+		ProposerIndex   *uint64
+		Blob            *Blob
+		KZGCommitment   *KZGCommitment
+		KZGProof        *KZGProof
+		ReceivedAt      *time.Time
+		ReceivedFrom    *interface{}
+	}{
+		&s.BlockRoot,
+		&s.Index,
+		&s.Slot,
+		&s.BlockParentRoot,
+		&s.ProposerIndex,
+		&s.Blob,
+		&s.KZGCommitment,
+		&s.KZGProof,
+		&s.ReceivedAt,
+		&s.ReceivedFrom,
+	})
 }

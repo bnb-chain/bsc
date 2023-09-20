@@ -38,6 +38,13 @@ type blockPropagation struct {
 	td    *big.Int
 }
 
+// sidecarPropagation is a sidecar propagation event, waiting for its turn in the
+// broadcast queue.
+type sidecarPropagation struct {
+	sidecar *types.Sidecar
+	td      *big.Int
+}
+
 // broadcastBlocks is a write loop that multiplexes blocks and block accouncements
 // to the remote peer. The goal is to have an async writer that does not lock up
 // node internals and at the same time rate limits queued data.
@@ -63,6 +70,20 @@ func (p *Peer) broadcastBlocks() {
 
 		case <-p.term:
 			return
+		}
+	}
+}
+
+func (p *Peer) broadcastSidecars() {
+	for {
+		select {
+		case prop := <-p.queuedSidecars:
+			fmt.Println("broadcastSidecars(), prop := <-p.queuedSidecars")
+			if err := p.SendNewSidecar(prop.sidecar, prop.td); err != nil {
+				fmt.Println("Error sending new sidecar! ", err)
+				return
+			}
+			fmt.Println("sent sidecar...")
 		}
 	}
 }

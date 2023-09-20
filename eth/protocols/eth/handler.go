@@ -153,7 +153,7 @@ func nodeInfo(chain *core.BlockChain, network uint64) *NodeInfo {
 func Handle(backend Backend, peer *Peer) error {
 	for {
 		// todo 4844 this isn't getting executed regularly which it should! This is happening during Cancun
-		fmt.Println("func Handle(backend Backend, peer *Peer) error....")
+		//fmt.Println("func Handle(backend Backend, peer *Peer) error....")
 		if err := handleMessage(backend, peer); err != nil {
 			peer.Log().Debug("Message handling failed in `eth`", "err", err)
 			return err
@@ -202,6 +202,7 @@ var eth67 = map[uint64]msgHandler{
 var eth68 = map[uint64]msgHandler{
 	NewBlockHashesMsg:             handleNewBlockhashes,
 	NewBlockMsg:                   handleNewBlock,
+	NewSidecarMsg:                 handleNewSidecar,
 	TransactionsMsg:               handleTransactions,
 	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes68,
 	GetBlockHeadersMsg:            handleGetBlockHeaders66,
@@ -217,13 +218,13 @@ var eth68 = map[uint64]msgHandler{
 // handleMessage is invoked whenever an inbound message is received from a remote
 // peer. The remote connection is torn down upon returning any error.
 func handleMessage(backend Backend, peer *Peer) error {
-	fmt.Println("Handling message from remote peer!")
+	//fmt.Println("Handling message from remote peer!")
 	// Read the next message from the remote peer, and ensure it's fully consumed
 	msg, err := peer.rw.ReadMsg()
 	if err != nil {
 		return err
 	}
-	fmt.Println("msg after peer.rw.ReadMsg() in eth/handler.go: ", msg)
+	//fmt.Println("msg after peer.rw.ReadMsg() in eth/handler.go: ", msg)
 	if msg.Size > maxMessageSize {
 		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
 	}
@@ -235,7 +236,7 @@ func handleMessage(backend Backend, peer *Peer) error {
 		handlers = eth67
 	}
 	if peer.Version() >= ETH68 {
-		fmt.Println("eth68!!")
+		//fmt.Println("eth68!!")
 		handlers = eth68
 	}
 
@@ -252,10 +253,10 @@ func handleMessage(backend Backend, peer *Peer) error {
 		}(time.Now())
 	}
 	if handler := handlers[msg.Code]; handler != nil {
-		if msg.Code == NewBlockMsg {
-			fmt.Println("New Block Message got received!!!.....")
+		if msg.Code == NewSidecarMsg {
+			fmt.Println("New Sidecar Message got received!!!.....")
 		}
-		fmt.Println("msg.Code, handler: ", msg.Code, handler)
+		//fmt.Println("msg.Code, handler: ", msg.Code, handler)
 		return handler(backend, msg, peer)
 	}
 	return fmt.Errorf("%w: %v", errInvalidMsgCode, msg.Code)

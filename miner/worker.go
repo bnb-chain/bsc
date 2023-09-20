@@ -695,6 +695,12 @@ func (w *worker) resultLoop() {
 			// Broadcast the block and announce chain insertion event
 			fmt.Println("Broadcasting newly mined block: ", block.Block.Number().String())
 			w.mux.Post(core.NewMinedBlockEvent{Block: block.Block})
+			if len(block.Sidecar) > 0 {
+				// posting the first sidecar for now to test. todo 4844 post all
+				w.mux.Post(core.NewMinedSidecarEvent{Sidecar: block.Sidecar[0]})
+			} else {
+				fmt.Println("empty sidecar")
+			}
 
 			// Insert the block into the set of pending ones to resultLoop for confirmations
 			w.unconfirmed.Insert(block.Block.NumberU64(), block.Block.Hash())
