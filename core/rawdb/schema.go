@@ -126,6 +126,10 @@ var (
 	trieNodeStoragePrefix = []byte("O") // trieNodeStoragePrefix + accountHash + hexPath -> trie node
 	stateIDPrefix         = []byte("L") // stateIDPrefix + state root -> state id
 
+	// Agg-Path-based storage scheme of merkle patricia trie.
+	aggTrieNodeAccountPrefix = []byte("m") // aggTrieNodeAccountPrefix + hexPath -> agg trie node
+	aggTrieNodeStoragePrefix = []byte("g") // aggTrieNodeAccountPrefix + account Hash + hexPath -> agg trie node
+
 	PreimagePrefix = []byte("secure-key-")       // PreimagePrefix + hash -> preimage
 	configPrefix   = []byte("ethereum-config-")  // config prefix for the db
 	genesisPrefix  = []byte("ethereum-genesis-") // genesis state prefix for the db
@@ -283,6 +287,22 @@ func storageTrieNodeKey(accountHash common.Hash, path []byte) []byte {
 	n += copy(buf[n:], accountHash.Bytes())
 	copy(buf[n:], path)
 	return buf
+}
+
+// aggAccountTrieNodeKey = aggTrieNodeAccountPrefix + nodePath.
+func aggAccountTrieNodeKey(path []byte) []byte {
+	if len(path)/2 != 0 {
+		panic("The path is not even length")
+	}
+	return append(aggTrieNodeAccountPrefix, path...)
+}
+
+// aggStorageTrieNodeKey = aggTrieNodeStoragePrefix + accountHash + nodePath
+func aggStorageTrieNodeKey(accountHash common.Hash, path []byte) []byte {
+	if len(path)/2 != 0 {
+		panic("The path is not even length")
+	}
+	return append(aggTrieNodeAccountPrefix, path...)
 }
 
 // IsLegacyTrieNode reports whether a provided database entry is a legacy trie

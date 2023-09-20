@@ -46,6 +46,11 @@ const HashScheme = "hash"
 // on extra state diffs to survive deep reorg.
 const PathScheme = "path"
 
+// AggPathScheme is the new state scheme based on PathScheme. This scheme merge two
+// or more layers trie nodes and aims to improve the performance and reduce the disk space
+// of MPT.
+const AggPathScheme = "aggpath"
+
 // hasher is used to compute the sha256 hash of the provided data.
 type hasher struct{ sha crypto.KeccakState }
 
@@ -158,6 +163,51 @@ func WriteStorageTrieNode(db ethdb.KeyValueWriter, accountHash common.Hash, path
 func DeleteStorageTrieNode(db ethdb.KeyValueWriter, accountHash common.Hash, path []byte) {
 	if err := db.Delete(storageTrieNodeKey(accountHash, path)); err != nil {
 		log.Crit("Failed to delete storage trie node", "err", err)
+	}
+}
+
+// Aggragate path-based state scheme
+// ReadAccountTrieAggNode retrieves the account trie agg node and return the raw bytes
+func ReadAccountTrieAggNode(db ethdb.KeyValueReader, path []byte) []byte {
+	data, err := db.Get(accountTrieAggNodeKey(path))
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// HasAccountTrieAggNode checks if the trie aggnode with the provided path is present in db.
+func HasAccountTrieAggNode(db ethdb.KeyValueReader, path []byte) bool {
+	ok, _ := db.Has(accountTrieAggNodeKey(path))
+	return ok
+}
+
+// WriteAccountTrieAggNode writes the provided account trie aggnode into database.
+func WriteAccountTrieAggNode(db ethdb.KeyValueWriter, path []byte, node []byte) {
+	if err := db.Put(accountTrieAggNodeKey(path), node); err != nil {
+		log.Crit("Failed to store account trie agg node", "err", err)
+	}
+}
+
+// ReadStorageTrieAggNode retrieves the storage trie agg node and return the raw bytes
+func ReadStorageTrieAggNode(db ethdb.KeyValueReader, accountHash common.Hash, path []byte) []byte {
+	data, err := db.Get(storageTrieAggNodeKey(accountHash, path))
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// HasAccountTrieAggNode checks if the trie aggnode with the provided path is present in db.
+func HasStorageTrieAggNode(db ethdb.KeyValueReader, accountHash common.Hash, path []byte) bool {
+	ok, _ := db.Has(storageTrieAggNodeKey(accountHash, path))
+	return ok
+}
+
+// WriteStorageTrieAggNode writes the priovided storage trie aggnode into database
+func WriteStorageTrieAggNode(db ethdb.KeyValueWriter, accountHash common.Hash, path []byte, node []byte) {
+	if err := db.Put(storageTrieAggNodeKey(accountHash, path), node); err != nil {
+		log.Crit("Failed to store account trie agg node", "err", err)
 	}
 }
 
