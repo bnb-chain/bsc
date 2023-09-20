@@ -27,7 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
-        "github.com/ethereum/go-ethereum/trie/triestate"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 // ErrNotRequested is returned by the trie sync when it's requested to process a
@@ -82,8 +82,8 @@ type nodeRequest struct {
 	path []byte      // Merkle path leading to this node for prioritization
 	data []byte      // Data content of the node, cached until all subtrees complete
 
-	parent   *nodeRequest // Parent state node referencing this entry
-	deps     int          // Number of dependencies before allowed to commit this node
+	parent   *nodeRequest           // Parent state node referencing this entry
+	deps     int                    // Number of dependencies before allowed to commit this node
 	callback triestate.LeafCallback // Callback to invoke if a leaf node it reached on this branch
 }
 

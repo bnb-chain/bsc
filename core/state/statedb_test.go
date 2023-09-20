@@ -48,7 +48,7 @@ func TestUpdateLeaks(t *testing.T) {
 		db  = rawdb.NewMemoryDatabase()
 		tdb = trie.NewDatabase(db, nil)
 	)
-	state, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(db, tdb), nil)
+	state, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(db, tdb, nil), nil)
 
 	// Update it with some accounts
 	for i := byte(0); i < 255; i++ {
@@ -84,8 +84,8 @@ func TestIntermediateLeaks(t *testing.T) {
 	finalDb := rawdb.NewMemoryDatabase()
 	transNdb := trie.NewDatabase(transDb, nil)
 	finalNdb := trie.NewDatabase(finalDb, nil)
-	transState, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(transDb, transNdb), nil)
-	finalState, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(finalDb, finalNdb), nil)
+	transState, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(transDb, transNdb, nil), nil)
+	finalState, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(finalDb, finalNdb, nil), nil)
 
 	modify := func(state *StateDB, addr common.Address, i, tweak byte) {
 		state.SetBalance(addr, big.NewInt(int64(11*i)+int64(tweak)))
@@ -786,7 +786,7 @@ func testMissingTrieNodes(t *testing.T, scheme string) {
 			CleanCacheSize: 0,
 		}}) // disable caching
 	}
-	db := NewDatabaseWithNodeDB(memDb, triedb)
+	db := NewDatabaseWithNodeDB(memDb, triedb, nil)
 
 	var root common.Hash
 	state, _ := New(types.EmptyRootHash, db, nil)
@@ -1012,7 +1012,7 @@ func TestFlushOrderDataLoss(t *testing.T) {
 	var (
 		memdb    = rawdb.NewMemoryDatabase()
 		triedb   = trie.NewDatabase(memdb, nil)
-		statedb  = NewDatabaseWithNodeDB(memdb, triedb)
+		statedb  = NewDatabaseWithNodeDB(memdb, triedb, nil)
 		state, _ = New(types.EmptyRootHash, statedb, nil)
 	)
 	for a := byte(0); a < 10; a++ {

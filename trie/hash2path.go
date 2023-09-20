@@ -23,7 +23,6 @@ type Hash2Path struct {
 	blocknum        uint64
 	root            node // root of triedb
 	stateRootHash   common.Hash
-	num             uint64 // block number
 	concurrentQueue chan struct{}
 	totalNum        uint64
 	wg              sync.WaitGroup

@@ -1923,19 +1923,20 @@ func (s *StateDB) GetStorage(address common.Address) *sync.Map {
 	return s.storagePool.getStorage(address)
 }
 
+// TODO:: revert `convertAccountSet` until others call it, fix lint error
 // convertAccountSet converts a provided account set from address keyed to hash keyed.
-func (s *StateDB) convertAccountSet(set map[common.Address]*types.StateAccount) map[common.Hash]struct{} {
-	ret := make(map[common.Hash]struct{}, len(set))
-	for addr := range set {
-		obj, exist := s.stateObjects[addr]
-		if !exist {
-			ret[crypto.Keccak256Hash(addr[:])] = struct{}{}
-		} else {
-			ret[obj.addrHash] = struct{}{}
-		}
-	}
-	return ret
-}
+//func (s *StateDB) convertAccountSet(set map[common.Address]*types.StateAccount) map[common.Hash]struct{} {
+//	ret := make(map[common.Hash]struct{}, len(set))
+//	for addr := range set {
+//		obj, exist := s.stateObjects[addr]
+//		if !exist {
+//			ret[crypto.Keccak256Hash(addr[:])] = struct{}{}
+//		} else {
+//			ret[obj.addrHash] = struct{}{}
+//		}
+//	}
+//	return ret
+//}
 
 // copySet returns a deep-copied set.
 func copySet[k comparable](set map[k][]byte) map[k][]byte {

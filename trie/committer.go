@@ -29,11 +29,12 @@ import (
 // some parallelism but not incur too much memory overhead.
 const leafChanSize = 200
 
+// `leaf` is unused, temporary delete
 // leaf represents a trie leaf node
-type leaf struct {
-	blob   []byte      // raw blob of leaf
-	parent common.Hash // the hash of parent node
-}
+//type leaf struct {
+//	blob   []byte      // raw blob of leaf
+//	parent common.Hash // the hash of parent node
+//}
 
 type leafInfo struct {
 	node   node        // the node to commit

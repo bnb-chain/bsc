@@ -93,10 +93,6 @@ type stateObject struct {
 
 	// Flag whether the object was created in the current transaction
 	created bool
-
-	dbErr error
-	//encode
-	//encodeData []byte
 }
 
 // empty returns whether the account is considered empty.
@@ -132,13 +128,6 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 // EncodeRLP implements rlp.Encoder.
 func (s *stateObject) EncodeRLP(w io.Writer) error {
 	return rlp.Encode(w, &s.data)
-}
-
-// setError remembers the first non-nil error it is called with.
-func (s *stateObject) setError(err error) {
-	if s.dbErr == nil {
-		s.dbErr = err
-	}
 }
 
 func (s *stateObject) markSelfdestructed() {

@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 var (
@@ -136,7 +137,9 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 		t.Fatalf("failed to create database with ancient backend")
 	}
 	defer db.Close()
-	genesis := gspec.MustCommit(db)
+	triedb := trie.NewDatabase(db, nil)
+	defer triedb.Close()
+	genesis := gspec.MustCommit(db, triedb)
 	// Initialize a fresh chain with only a genesis block
 	blockchain, err := core.NewBlockChain(db, config, gspec, nil, engine, vm.Config{}, nil, nil)
 	if err != nil {

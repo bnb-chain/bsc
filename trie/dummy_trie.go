@@ -19,13 +19,12 @@ package trie
 import (
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
-
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
-        "github.com/ethereum/go-ethereum/trie/trienode"
-        "github.com/ethereum/go-ethereum/trie/triestate"
+	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 type EmptyTrie struct{}
@@ -64,7 +63,6 @@ func (t *EmptyTrie) Delete(key []byte) {
 }
 
 func (t *EmptyTrie) TryDelete(key []byte) error {
-
 	return nil
 }
 
@@ -131,5 +129,5 @@ func (t *EmptyTrie) UpdateStorage(_ common.Address, key, value []byte) error {
 }
 
 func (t *EmptyTrie) UpdateContractCode(_ common.Address, _ common.Hash, _ []byte) error {
-        return nil
+	return nil
 }

@@ -180,7 +180,7 @@ func (test *stateTest) run() bool {
 		}
 		disk      = rawdb.NewMemoryDatabase()
 		tdb       = trie.NewDatabase(disk, &trie.Config{OnCommit: onCommit})
-		sdb       = NewDatabaseWithNodeDB(disk, tdb)
+		sdb       = NewDatabaseWithNodeDB(disk, tdb, nil)
 		byzantium = rand.Intn(2) == 0
 	)
 	for i, actions := range test.actions {

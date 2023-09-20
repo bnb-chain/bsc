@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 // Verify that Client implements the ethereum interfaces.
@@ -316,7 +317,7 @@ func generateTestChain() []*types.Block {
 	signer := types.HomesteadSigner{}
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
-	genesis.MustCommit(db)
+	genesis.MustCommit(db, trie.NewDatabase(db, nil))
 	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFaker(), vm.Config{}, nil, nil, core.EnablePersistDiff(860000))
 	generate := func(i int, block *core.BlockGen) {
 		block.OffsetTime(5)
@@ -352,7 +353,7 @@ func generateTestChain() []*types.Block {
 			}
 		}
 	}
-	gblock := genesis.MustCommit(db)
+	gblock := genesis.MustCommit(db, trie.NewDatabase(db, nil))
 	engine := ethash.NewFaker()
 	blocks, _ := core.GenerateChain(genesis.Config, gblock, engine, db, testBlockNum, generate)
 	blocks = append([]*types.Block{gblock}, blocks...)
