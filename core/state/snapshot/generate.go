@@ -367,7 +367,9 @@ func (dl *diskLayer) generateRange(ctx *generatorContext, trieId *trie.ID, prefi
 			return false, nil, err
 		}
 		if nodes != nil {
-			tdb.Update(root, types.EmptyRootHash, 0, trienode.NewWithNodeSet(nodes), nil)
+			// TODO(Nathan): why block is zero?
+			block := uint64(0)
+			tdb.Update(root, types.EmptyRootHash, block, trienode.NewWithNodeSet(nodes), nil)
 			tdb.Commit(root, false)
 		}
 		resolver = func(owner common.Hash, path []byte, hash common.Hash) []byte {

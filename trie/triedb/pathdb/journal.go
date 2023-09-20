@@ -343,12 +343,6 @@ func (db *Database) Journal(root common.Hash) error {
 	if l == nil {
 		return fmt.Errorf("triedb layer [%#x] missing", root)
 	}
-	disk := db.tree.bottom()
-	if l, ok := l.(*diffLayer); ok {
-		log.Info("Persisting dirty state to disk", "head", l.block, "root", root, "layers", l.id-disk.id+disk.buffer.layers)
-	} else { // disk layer only on noop runs (likely) or deep reorgs (unlikely)
-		log.Info("Persisting dirty state to disk", "root", root, "layers", disk.buffer.layers)
-	}
 	start := time.Now()
 
 	// Run the journaling
