@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 var votesManagerCounter = metrics.NewRegisteredCounter("votesManager/local", nil)
@@ -28,8 +27,7 @@ type Backend interface {
 type VoteManager struct {
 	eth Backend
 
-	chain       *core.BlockChain
-	chainconfig *params.ChainConfig
+	chain *core.BlockChain
 
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
@@ -45,12 +43,10 @@ type VoteManager struct {
 	engine consensus.PoSA
 }
 
-func NewVoteManager(eth Backend, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
+func NewVoteManager(eth Backend, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
 	voteManager := &VoteManager{
-		eth: eth,
-
+		eth:         eth,
 		chain:       chain,
-		chainconfig: chainconfig,
 		chainHeadCh: make(chan core.ChainHeadEvent, chainHeadChanSize),
 		syncVoteCh:  make(chan core.NewVoteEvent, voteBufferForPut),
 		pool:        pool,

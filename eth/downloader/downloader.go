@@ -330,9 +330,9 @@ func (d *Downloader) UnregisterPeer(id string) error {
 	return nil
 }
 
-// Synchronise tries to sync up our local blockchain with a remote peer, both
+// LegacySync tries to sync up our local blockchain with a remote peer, both
 // adding various sanity checks and wrapping it with various log entries.
-func (d *Downloader) Synchronise(id string, head common.Hash, td *big.Int, ttd *big.Int, mode SyncMode) error {
+func (d *Downloader) LegacySync(id string, head common.Hash, td *big.Int, ttd *big.Int, mode SyncMode) error {
 	err := d.synchronise(id, head, td, ttd, mode, false, nil)
 
 	switch err {

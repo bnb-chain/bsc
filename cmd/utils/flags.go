@@ -555,15 +555,16 @@ var (
 		Category: flags.MinerCategory,
 	}
 	MinerDelayLeftoverFlag = &cli.DurationFlag{
-		Name:  "miner.delayleftover",
-		Usage: "Time reserved to finalize a block",
-		Value: ethconfig.Defaults.Miner.DelayLeftOver,
+		Name:     "miner.delayleftover",
+		Usage:    "Time reserved to finalize a block",
+		Value:    ethconfig.Defaults.Miner.DelayLeftOver,
+		Category: flags.MinerCategory,
 	}
 	MinerNewPayloadTimeout = &cli.DurationFlag{
-		Name:     "miner.newpayload-timeout",
-		Usage:    "Specify the maximum time allowance for creating a new payload",
-		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
-		Category: flags.MinerCategory,
+		Name:  "miner.newpayload-timeout",
+		Usage: "Specify the maximum time allowance for creating a new payload",
+		Value: ethconfig.Defaults.Miner.NewPayloadTimeout,
+		// Category: flags.MinerCategory,
 	}
 
 	// Account settings
