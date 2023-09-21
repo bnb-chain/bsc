@@ -290,6 +290,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
+	log.Info("Initialised chain configuration", "config", chainConfig)
 	// Description of chainConfig is empty now
 	/*
 		log.Info("")

@@ -106,6 +106,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*LightEthereum, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Info("Initialised chain configuration for les.client", "config", chainConfig)
 	// Description of chainConfig is empty now
 	/*
 		log.Info("")
