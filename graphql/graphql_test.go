@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -444,6 +445,15 @@ func newGQLService(t *testing.T, stack *node.Node, shanghai bool, gspec *core.Ge
 		TrieDirtyCache: 5,
 		TrieTimeout:    60 * time.Minute,
 		SnapshotCache:  5,
+		// gspec hash is `types.EmptyRootHash` will no trie reader in trie.
+		// Because the statedb cache the old trie without reader, it will
+		// return the `missing trie node` error during insert chain.
+		// `rawdb.PathScheme` will skip the statedb cache.
+		//
+		// Genesis blocks in online scenarios can't be `types.EmptyRootHash`,
+		// the statedb cache the old trie with reader, the problem does not
+		// exist.
+		StateScheme: rawdb.PathScheme,
 	}
 	var engine consensus.Engine = ethash.NewFaker()
 	if shanghai {

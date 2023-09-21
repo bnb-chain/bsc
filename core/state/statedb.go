@@ -1721,6 +1721,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	if s.pipeCommit {
 		go commmitTrie()
 	} else {
+		commitFuncs = append(commitFuncs, commmitTrie)
 		defer s.StopPrefetcher()
 	}
 	commitRes := make(chan error, len(commitFuncs))
@@ -1737,10 +1738,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 			return common.Hash{}, nil, r
 		}
 	}
-	// commitFuncs[1] and commmitTrie concurrent map `storages` iteration and map write
-	if err := commmitTrie(); err != nil {
-		return common.Hash{}, nil, err
-	}
 
 	root := s.stateRoot
 	if s.pipeCommit {
@@ -1751,21 +1748,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 
 	if root == (common.Hash{}) {
 		root = types.EmptyRootHash
-	}
-	origin := s.originalRoot
-	if origin == (common.Hash{}) {
-		origin = types.EmptyRootHash
-	}
-	if root != origin {
-		start := time.Now()
-		hashStorages := covertOriginStorageToHash(s.storagesOrigin)
-		if err := s.db.TrieDB().Update(root, origin, block, nodes, triestate.New(s.accountsOrigin, hashStorages, incomplete)); err != nil {
-			return common.Hash{}, nil, err
-		}
-		s.originalRoot = root
-		if metrics.EnabledExpensive {
-			s.TrieDBCommits += time.Since(start)
-		}
 	}
 	// Clear all internal flags at the end of commit operation.
 	s.accounts = make(map[common.Address][]byte)
