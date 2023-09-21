@@ -279,7 +279,8 @@ func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
 	if db.TrieDB().Scheme() == rawdb.PathScheme {
 		return
 	}
-	if root == types.EmptyRootHash {
+	// `types.EmptyRootHash` and `common.Hash{}` without Reader in trie
+	if root == types.EmptyRootHash || root == (common.Hash{}) {
 		return
 	}
 	if db.accountTrieCache == nil {
@@ -294,7 +295,8 @@ func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie
 	if db.TrieDB().Scheme() == rawdb.PathScheme {
 		return
 	}
-	if root == types.EmptyRootHash {
+	// `types.EmptyRootHash` and `common.Hash{}` without Reader in trie
+	if root == types.EmptyRootHash || root == (common.Hash{}) {
 		return
 	}
 	if db.storageTrieCache == nil {
