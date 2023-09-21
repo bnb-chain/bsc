@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 const (
@@ -44,9 +43,8 @@ type VoteBox struct {
 }
 
 type VotePool struct {
-	chain       *core.BlockChain
-	chainconfig *params.ChainConfig
-	mu          sync.RWMutex
+	chain *core.BlockChain
+	mu    sync.RWMutex
 
 	votesFeed event.Feed
 	scope     event.SubscriptionScope
@@ -69,10 +67,9 @@ type VotePool struct {
 
 type votesPriorityQueue []*types.VoteData
 
-func NewVotePool(chainconfig *params.ChainConfig, chain *core.BlockChain, engine consensus.PoSA) *VotePool {
+func NewVotePool(chain *core.BlockChain, engine consensus.PoSA) *VotePool {
 	votePool := &VotePool{
 		chain:         chain,
-		chainconfig:   chainconfig,
 		receivedVotes: mapset.NewSet[common.Hash](),
 		curVotes:      make(map[common.Hash]*VoteBox),
 		futureVotes:   make(map[common.Hash]*VoteBox),

@@ -259,7 +259,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	// Sanitize the timeout config for creating payload.
 	newpayloadTimeout := worker.config.NewPayloadTimeout
 	if newpayloadTimeout == 0 {
-		log.Warn("Sanitizing new payload timeout to default", "provided", newpayloadTimeout, "updated", DefaultConfig.NewPayloadTimeout)
+		// log.Warn("Sanitizing new payload timeout to default", "provided", newpayloadTimeout, "updated", DefaultConfig.NewPayloadTimeout)
 		newpayloadTimeout = DefaultConfig.NewPayloadTimeout
 	}
 	if newpayloadTimeout < time.Millisecond*100 {

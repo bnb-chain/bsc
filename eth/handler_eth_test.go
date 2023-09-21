@@ -797,6 +797,7 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 		defer sink.Close()
 
 		wg.Add(1)
+		time.Sleep(time.Duration((tryNum-1)*200) * time.Millisecond)
 		go func(num int) {
 			err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
 				wg.Done()
