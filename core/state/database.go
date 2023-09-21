@@ -155,6 +155,10 @@ type Trie interface {
 	// nodes of the longest existing prefix of the key (at least the root), ending
 	// with the node that proves the absence of the key.
 	Prove(key []byte, proofDb ethdb.KeyValueWriter) error
+
+	// ReloadReader renews the trie reader and binds the new trie layer, it is used for
+	// caching trie, make sure cache the latest trie.
+	ReloadReader(stateRoot common.Hash) error
 }
 
 // NewDatabase creates a backing store for state. The returned database is safe for
@@ -286,6 +290,9 @@ func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
 	if db.accountTrieCache == nil {
 		return
 	}
+	if err := t.ReloadReader(root); err != nil {
+		return
+	}
 	tr := t.(*trie.SecureTrie)
 	db.accountTrieCache.Add(root, tr.ResetCopy())
 }
@@ -300,6 +307,9 @@ func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie
 		return
 	}
 	if db.storageTrieCache == nil {
+		return
+	}
+	if err := t.ReloadReader(root); err != nil {
 		return
 	}
 	tr := t.(*trie.SecureTrie)

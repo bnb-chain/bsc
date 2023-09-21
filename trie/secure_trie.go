@@ -73,6 +73,11 @@ func NewStateTrie(id *ID, db *Database) (*StateTrie, error) {
 	return &StateTrie{trie: *trie, preimages: db.preimages}, nil
 }
 
+// ReloadReader renews the trie reader and binds the new trie layer.
+func (t *StateTrie) ReloadReader(root common.Hash) error {
+	return t.trie.ReloadReader(root)
+}
+
 // MustGet returns the value for key stored in the trie.
 // The value bytes must not be modified by the caller.
 //

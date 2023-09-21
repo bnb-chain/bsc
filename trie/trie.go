@@ -38,6 +38,7 @@ import (
 //
 // Trie is not safe for concurrent use.
 type Trie struct {
+	db    *Database
 	root  node
 	owner common.Hash
 
@@ -87,6 +88,7 @@ func New(id *ID, db *Database) (*Trie, error) {
 		return nil, err
 	}
 	trie := &Trie{
+		db:     db,
 		owner:  id.Owner,
 		reader: reader,
 		tracer: newTracer(),
@@ -105,6 +107,19 @@ func New(id *ID, db *Database) (*Trie, error) {
 func NewEmpty(db *Database) *Trie {
 	tr, _ := New(TrieID(types.EmptyRootHash), db)
 	return tr
+}
+
+// ReloadReader renews the trie reader and binds the new trie layer.
+func (t *Trie) ReloadReader(root common.Hash) error {
+	if t.db == nil {
+		return fmt.Errorf("db is nil")
+	}
+	reader, err := newTrieReader(root, t.owner, t.db)
+	if err != nil {
+		return err
+	}
+	t.reader = reader
+	return nil
 }
 
 // MustNodeIterator is a wrapper of NodeIterator and will omit any encountered
@@ -612,6 +627,9 @@ func (t *Trie) Hash() common.Hash {
 func (t *Trie) Commit(onleaf triestate.LeafCallback) (common.Hash, *trienode.NodeSet, error) {
 	defer t.tracer.reset()
 	defer func() {
+		// Normally, each access to trie requires `OpenTrie` or `OpenStorageTrie`
+		// But statedb add the cache for accessing trie and uses it to write trie
+		// nodes directly, so the committed state is still false.
 		t.committed = false
 	}()
 	// Trie is empty and can be classified into two types of situations:

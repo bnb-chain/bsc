@@ -38,6 +38,10 @@ func NewEmptyTrie() *EmptyTrie {
 	return &EmptyTrie{}
 }
 
+func (t *EmptyTrie) ReloadReader(root common.Hash) error {
+	return nil
+}
+
 func (t *EmptyTrie) Get(key []byte) []byte {
 	return nil
 }
