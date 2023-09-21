@@ -279,6 +279,9 @@ func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
 	if db.TrieDB().Scheme() == rawdb.PathScheme {
 		return
 	}
+	if root == types.EmptyRootHash {
+		return
+	}
 	if db.accountTrieCache == nil {
 		return
 	}
@@ -287,6 +290,7 @@ func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
 }
 
 func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie) {
+	return
 	// ditto `CacheAccount`
 	if db.TrieDB().Scheme() == rawdb.PathScheme {
 		return
