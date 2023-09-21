@@ -147,30 +147,15 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 
-	// temp trie db, only get the chain config and genesis, need close after set up genesis
-	triedb := trie.NewDatabase(chainDb, nil)
-	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, triedb, config.Genesis, nil)
-	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
-		return nil, genesisErr
+	chainConfig, genesisHash, err := core.LoadChainConfig(chainDb, config.Genesis)
+	if err != nil {
+		return nil, err
 	}
-	_ = triedb.Close()
-	log.Info("")
-	log.Info(strings.Repeat("-", 153))
-	for _, line := range strings.Split(chainConfig.Description(), "\n") {
-		log.Info(line)
-	}
-	log.Info(strings.Repeat("-", 153))
-	log.Info("")
-
 	// Try to recover offline state pruning only in hash-based.
 	if config.StateScheme == rawdb.HashScheme {
 		if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, config.TriesInMemory); err != nil {
 			log.Error("Failed to recover state", "error", err)
 		}
-	}
-	chainConfig, genesisHash, err := core.LoadChainConfig(chainDb, config.Genesis)
-	if err != nil {
-		return nil, err
 	}
 
 	eth := &Ethereum{
