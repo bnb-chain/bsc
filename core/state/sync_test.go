@@ -51,7 +51,7 @@ func makeTestState(scheme string) (ethdb.Database, Database, *trie.Database, com
 	}
 	db := rawdb.NewMemoryDatabase()
 	nodeDb := trie.NewDatabase(db, config)
-	sdb := NewDatabaseWithNodeDB(db, nodeDb, nil)
+	sdb := NewDatabaseWithNodeDB(db, nodeDb)
 	state, _ := New(types.EmptyRootHash, sdb, nil)
 
 	// Fill it with some arbitrary data

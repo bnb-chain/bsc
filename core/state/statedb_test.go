@@ -47,7 +47,7 @@ func TestUpdateLeaks(t *testing.T) {
 		db  = rawdb.NewMemoryDatabase()
 		tdb = trie.NewDatabase(db, nil)
 	)
-	state, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(db, tdb, nil), nil)
+	state, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(db, tdb), nil)
 
 	// Update it with some accounts
 	for i := byte(0); i < 255; i++ {
@@ -83,8 +83,8 @@ func TestIntermediateLeaks(t *testing.T) {
 	finalDb := rawdb.NewMemoryDatabase()
 	transNdb := trie.NewDatabase(transDb, nil)
 	finalNdb := trie.NewDatabase(finalDb, nil)
-	transState, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(transDb, transNdb, nil), nil)
-	finalState, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(finalDb, finalNdb, nil), nil)
+	transState, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(transDb, transNdb), nil)
+	finalState, _ := New(types.EmptyRootHash, NewDatabaseWithNodeDB(finalDb, finalNdb), nil)
 
 	modify := func(state *StateDB, addr common.Address, i, tweak byte) {
 		state.SetBalance(addr, big.NewInt(int64(11*i)+int64(tweak)))
@@ -782,7 +782,7 @@ func testMissingTrieNodes(t *testing.T, scheme string) {
 			CleanCacheSize: 0,
 		}}) // disable caching
 	}
-	db := NewDatabaseWithNodeDB(memDb, triedb, nil)
+	db := NewDatabaseWithNodeDB(memDb, triedb)
 
 	var root common.Hash
 	state, _ := New(types.EmptyRootHash, db, nil)
@@ -1008,7 +1008,7 @@ func TestFlushOrderDataLoss(t *testing.T) {
 	var (
 		memdb    = rawdb.NewMemoryDatabase()
 		triedb   = trie.NewDatabase(memdb, nil)
-		statedb  = NewDatabaseWithNodeDB(memdb, triedb, nil)
+		statedb  = NewDatabaseWithNodeDB(memdb, triedb)
 		state, _ = New(types.EmptyRootHash, statedb, nil)
 	)
 	for a := byte(0); a < 10; a++ {
@@ -1081,7 +1081,7 @@ func TestResetObject(t *testing.T) {
 	var (
 		disk     = rawdb.NewMemoryDatabase()
 		tdb      = trie.NewDatabase(disk, nil)
-		db       = NewDatabaseWithNodeDB(disk, tdb, nil)
+		db       = NewDatabaseWithNodeDB(disk, tdb)
 		snaps, _ = snapshot.New(snapshot.Config{CacheSize: 10}, disk, tdb, types.EmptyRootHash, 128, false)
 		state, _ = New(types.EmptyRootHash, db, snaps)
 		addr     = common.HexToAddress("0x1")
