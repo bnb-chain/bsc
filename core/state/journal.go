@@ -95,11 +95,11 @@ type (
 		prev         *stateObject
 		prevdestruct bool
 		prevAccount  []byte
-		prevStorage  map[string][]byte
+		prevStorage  map[common.Hash][]byte
 
 		prevAccountOriginExist bool
 		prevAccountOrigin      []byte
-		prevStorageOrigin      map[string][]byte
+		prevStorageOrigin      map[common.Hash][]byte
 	}
 	selfDestructChange struct {
 		account     *common.Address
@@ -168,10 +168,10 @@ func (ch resetObjectChange) revert(s *StateDB) {
 		delete(s.stateObjectsDestruct, ch.prev.address)
 	}
 	if ch.prevAccount != nil {
-		s.accounts[ch.prev.address] = ch.prevAccount
+		s.accounts[ch.prev.addrHash] = ch.prevAccount
 	}
 	if ch.prevStorage != nil {
-		s.storages[ch.prev.address] = ch.prevStorage
+		s.storages[ch.prev.addrHash] = ch.prevStorage
 	}
 	if ch.prevAccountOriginExist {
 		s.accountsOrigin[ch.prev.address] = ch.prevAccountOrigin

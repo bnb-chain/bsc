@@ -593,13 +593,13 @@ type DiffCode struct {
 }
 
 type DiffAccount struct {
-	Account common.Address
+	Account common.Hash
 	Blob    []byte
 }
 
 type DiffStorage struct {
-	Account common.Address
-	Keys    []string
+	Account common.Hash
+	Keys    []common.Hash // Keys are hashed ones
 	Vals    [][]byte
 }
 
@@ -609,7 +609,7 @@ func (storage *DiffStorage) Swap(i, j int) {
 	storage.Vals[i], storage.Vals[j] = storage.Vals[j], storage.Vals[i]
 }
 func (storage *DiffStorage) Less(i, j int) bool {
-	return storage.Keys[i][:] < storage.Keys[j][:]
+	return string(storage.Keys[i][:]) < string(storage.Keys[j][:])
 }
 
 type DiffAccountsInTx struct {

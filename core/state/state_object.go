@@ -68,8 +68,6 @@ type stateObject struct {
 	origin   *types.StateAccount // Account original data without any change applied, nil means it was not existent
 	data     types.StateAccount  // Account data with all mutations applied in the scope of block
 
-	//rootCorrected bool // To indicate whether the root has been corrected in pipecommit mode
-
 	// Write caches.
 	trie Trie // storage trie, which becomes non-nil on first access
 	code Code // contract bytecode, which gets set when code is loaded
@@ -319,9 +317,9 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	}
 	// The snapshot storage map for the object
 	var (
-		storage         map[string][]byte
-		origin          map[string][]byte
-		preDirtyStorage = make(map[common.Hash]common.Hash)
+		storage map[common.Hash][]byte
+		origin  map[common.Hash][]byte
+		hasher  = crypto.NewKeccakState()
 	)
 	tr, err := s.getTrie()
 	if err != nil {
@@ -336,10 +334,6 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		if value == s.originStorage[key] {
 			continue
 		}
-
-		preDirtyStorage[key] = s.originStorage[key]
-		s.originStorage[key] = value
-
 		var v []byte
 		if value != (common.Hash{}) {
 			value := value
@@ -355,15 +349,13 @@ func (s *stateObject) updateTrie() (Trie, error) {
 			if len(value) == 0 {
 				if err := tr.DeleteStorage(s.address, key[:]); err != nil {
 					s.db.setError(err)
-				} else {
-					s.db.StorageDeleted += 1
 				}
+				s.db.StorageDeleted += 1
 			} else {
 				if err := tr.UpdateStorage(s.address, key[:], value); err != nil {
 					s.db.setError(err)
-				} else {
-					s.db.StorageUpdated += 1
 				}
+				s.db.StorageUpdated += 1
 			}
 			// Cache the items for preloading
 			usedStorage = append(usedStorage, common.CopyBytes(key[:]))
@@ -375,37 +367,38 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		defer wg.Done()
 		s.db.StorageMux.Lock()
 		// The snapshot storage map for the object
-		storage = s.db.storages[s.address]
-		// storage = s.db.storages[s.addrHash]
+		storage = s.db.storages[s.addrHash]
 		if storage == nil {
-			storage = make(map[string][]byte, len(dirtyStorage))
-			s.db.storages[s.address] = storage
+			storage = make(map[common.Hash][]byte, len(dirtyStorage))
+			s.db.storages[s.addrHash] = storage
 		}
 		// Cache the original value of mutated storage slots
 		origin = s.db.storagesOrigin[s.address]
 		if origin == nil {
-			origin = make(map[string][]byte)
+			origin = make(map[common.Hash][]byte)
 			s.db.storagesOrigin[s.address] = origin
-			// s.db.storagesOrigin[s.addrHash] = origin
 		}
 		s.db.StorageMux.Unlock()
 		for key, value := range dirtyStorage {
+			khash := crypto.HashData(hasher, key[:])
+
 			// rlp-encoded value to be used by the snapshot
 			var snapshotVal []byte
 			if len(value) != 0 {
 				snapshotVal, _ = rlp.EncodeToBytes(value)
 			}
-			storage[string(key[:])] = snapshotVal // snapshotVal will be nil if it's deleted
+			storage[khash] = snapshotVal // snapshotVal will be nil if it's deleted
 
 			// Track the original value of slot only if it's mutated first time
-			if _, ok := origin[string(key[:])]; !ok {
-				prev := preDirtyStorage[key]
+			prev := s.originStorage[key]
+			s.originStorage[key] = common.BytesToHash(value) // fill back left zeroes by BytesToHash
+			if _, ok := origin[khash]; !ok {
 				if prev == (common.Hash{}) {
-					origin[string(key[:])] = nil // nil if it was not present previously
+					origin[khash] = nil // nil if it was not present previously
 				} else {
 					// Encoding []byte cannot fail, ok to ignore the error.
 					b, _ := rlp.EncodeToBytes(common.TrimLeftZeroes(prev[:]))
-					origin[string(key[:])] = b
+					origin[khash] = b
 				}
 			}
 		}
