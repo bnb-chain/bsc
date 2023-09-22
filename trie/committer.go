@@ -183,12 +183,6 @@ func (c *committer) store(path []byte, n node) node {
 			node:   n,
 			parent: nhash,
 		}
-	} else {
-		if sn, ok := n.(*shortNode); ok {
-			if val, ok := sn.Val.(valueNode); ok {
-				c.nodes.AddLeaf(nhash, val)
-			}
-		}
 	}
 	return hash
 }
