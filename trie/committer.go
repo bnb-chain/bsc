@@ -183,6 +183,19 @@ func (c *committer) store(path []byte, n node) node {
 			node:   n,
 			parent: nhash,
 		}
+	} else {
+		switch n := n.(type) {
+		case *shortNode:
+			if child, ok := n.Val.(valueNode); ok {
+				c.nodes.AddLeaf(nhash, child)
+			}
+		case *fullNode:
+			// For children in range [0, 15], it's impossible
+			// to contain valueNode. Only check the 17th child.
+			if n.Children[16] != nil {
+				c.nodes.AddLeaf(nhash, n.Children[16].(valueNode))
+			}
+		}
 	}
 	return hash
 }
