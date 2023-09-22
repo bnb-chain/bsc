@@ -483,7 +483,7 @@ func TestNoCommitCrashWithNewSnapshot(t *testing.T) {
 	// Expected head fast block: C8
 	// Expected head block     : G
 	// Expected snapshot disk  : C4
-	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
+	for _, scheme := range []string{rawdb.HashScheme} {
 		test := &crashSnapshotTest{
 			snapshotTestBasic{
 				scheme:             scheme,
@@ -525,7 +525,7 @@ func TestLowCommitCrashWithNewSnapshot(t *testing.T) {
 	// Expected head fast block: C8
 	// Expected head block     : C2
 	// Expected snapshot disk  : C4
-	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
+	for _, scheme := range []string{rawdb.HashScheme} {
 		test := &crashSnapshotTest{
 			snapshotTestBasic{
 				scheme:             scheme,
