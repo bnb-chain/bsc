@@ -57,6 +57,10 @@ var (
 	memcacheCommitTimeTimer  = metrics.NewRegisteredResettingTimer("hashdb/memcache/commit/time", nil)
 	memcacheCommitNodesMeter = metrics.NewRegisteredMeter("hashdb/memcache/commit/nodes", nil)
 	memcacheCommitBytesMeter = metrics.NewRegisteredMeter("hashdb/memcache/commit/bytes", nil)
+
+	// StateTrieUT is used for StateTire unit test the Update func, it needs the account leaf node
+	// is StateAccount, the unit test cases are random val.
+	StateTrieUT = false
 )
 
 // ChildResolver defines the required method to decode the provided
@@ -608,7 +612,7 @@ func (db *Database) Update(root common.Hash, parent common.Hash, block uint64, n
 	}
 	// Link up the account trie and storage trie if the node points
 	// to an account trie leaf.
-	if set, present := nodes.Sets[common.Hash{}]; present {
+	if set, present := nodes.Sets[common.Hash{}]; present && !StateTrieUT {
 		for _, n := range set.Leaves {
 			var account types.StateAccount
 			if err := rlp.DecodeBytes(n.Blob, &account); err != nil {
