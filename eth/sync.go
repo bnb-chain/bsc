@@ -132,6 +132,8 @@ func (cs *chainSyncer) loop() {
 				<-cs.doneCh
 			}
 			return
+		case <-cs.handler.stopCh:
+			return
 		}
 	}
 }
