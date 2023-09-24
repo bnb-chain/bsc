@@ -1738,10 +1738,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 			return common.Hash{}, nil, r
 		}
 	}
-	// commitFuncs[1] and commmitTrie concurrent map `storages` iteration and map write
-	if err := commmitTrie(); err != nil {
-		return common.Hash{}, nil, err
-	}
 
 	root := s.stateRoot
 	if s.pipeCommit {
