@@ -18,8 +18,10 @@ package trie
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
@@ -31,7 +33,8 @@ import (
 // Config defines all necessary options for database.
 type Config struct {
 	NoTries   bool
-	Preimages bool           // Flag whether the preimage of node key is recorded
+	Preimages bool // Flag whether the preimage of node key is recorded
+	Cache     int
 	HashDB    *hashdb.Config // Configs for hash-based scheme
 	PathDB    *pathdb.Config // Configs for experimental path-based scheme
 
@@ -104,8 +107,22 @@ func prepare(diskdb ethdb.Database, config *Config) *Database {
 // the legacy hash-based scheme is used by default.
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	// Sanitize the config and use the default one if it's not specified.
+	dbScheme := rawdb.ReadStateScheme(diskdb)
 	if config == nil {
-		config = HashDefaults
+		if dbScheme == rawdb.PathScheme {
+			config = &Config{
+				PathDB: pathdb.Defaults,
+			}
+		} else {
+			config = HashDefaults
+		}
+	}
+	if config.PathDB == nil && config.HashDB == nil {
+		if dbScheme == rawdb.PathScheme {
+			config.PathDB = pathdb.Defaults
+		} else {
+			config.HashDB = hashdb.Defaults
+		}
 	}
 	var preimages *preimageStore
 	if config.Preimages {
@@ -116,12 +133,30 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		diskdb:    diskdb,
 		preimages: preimages,
 	}
-	if config.HashDB != nil && config.PathDB != nil {
-		log.Crit("Both 'hash' and 'path' mode are configured")
-	}
-	if config.PathDB != nil {
+	/*
+	 * 1. First, initialize db according to the user config
+	 * 2. Second, initialize the db according to the scheme already used by db
+	 * 3. Last, use the default scheme, namely hash scheme
+	 */
+	if config.HashDB != nil {
+		if rawdb.ReadStateScheme(diskdb) == rawdb.PathScheme {
+			log.Warn("incompatible state scheme", "old", rawdb.PathScheme, "new", rawdb.HashScheme)
+		}
+		db.backend = hashdb.New(diskdb, config.HashDB, mptResolver{})
+	} else if config.PathDB != nil {
+		if rawdb.ReadStateScheme(diskdb) == rawdb.HashScheme {
+			log.Warn("incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
+		}
+		db.backend = pathdb.New(diskdb, config.PathDB)
+	} else if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {
+		if config.PathDB == nil {
+			config.PathDB = pathdb.Defaults
+		}
 		db.backend = pathdb.New(diskdb, config.PathDB)
 	} else {
+		if config.HashDB == nil {
+			config.HashDB = hashdb.Defaults
+		}
 		db.backend = hashdb.New(diskdb, config.HashDB, mptResolver{})
 	}
 	return db
