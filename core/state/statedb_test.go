@@ -19,7 +19,6 @@ package state
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -717,9 +716,6 @@ func TestCommitCopy(t *testing.T) {
 	}
 	if val := copied.GetCommittedState(addr, skey); val != (common.Hash{}) {
 		t.Fatalf("unexpected storage slot: have %x", val)
-	}
-	if !errors.Is(copied.Error(), trie.ErrCommitted) {
-		t.Fatalf("unexpected state error, %v", copied.Error())
 	}
 }
 
