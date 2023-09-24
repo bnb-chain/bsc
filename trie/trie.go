@@ -610,7 +610,7 @@ func (t *Trie) Hash() common.Hash {
 func (t *Trie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
 	defer t.tracer.reset()
 	defer func() {
-		t.committed = true
+		t.committed = false
 	}()
 	// Trie is empty and can be classified into two types of situations:
 	// (a) The trie was empty and no update happens => return nil

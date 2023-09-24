@@ -459,7 +459,7 @@ func (s *stateObject) commit() (*trienode.NodeSet, error) {
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.db.StorageCommits += time.Since(start) }(time.Now())
 	}
-	root, nodes, err := tr.Commit(false)
+	root, nodes, err := tr.Commit(true)
 	if err != nil {
 		return nil, err
 	}

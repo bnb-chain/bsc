@@ -478,6 +478,7 @@ func pruneAllState(ctx *cli.Context) error {
 	}
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer chaindb.Close()
 	pruner, err := pruner.NewAllPruner(chaindb)
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)
@@ -495,6 +496,7 @@ func verifyState(ctx *cli.Context) error {
 	defer stack.Close()
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	defer chaindb.Close()
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
 		log.Error("Failed to load head block")
