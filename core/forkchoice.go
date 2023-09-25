@@ -137,5 +137,9 @@ func (f *ForkChoice) ReorgNeededWithFastFinality(current *types.Header, header *
 		return f.ReorgNeeded(current, header)
 	}
 
+	if justifiedNumber > curJustifiedNumber && header.Number.Cmp(current.Number) <= 0 {
+		log.Info("Chain find higher justifiedNumber", "fromHeight", current.Number, "fromHash", current.Hash(), "fromMiner", current.Coinbase, "fromJustified", curJustifiedNumber,
+			"toHeight", header.Number, "toHash", header.Hash(), "toMiner", header.Coinbase, "toJustified", justifiedNumber)
+	}
 	return justifiedNumber > curJustifiedNumber, nil
 }
