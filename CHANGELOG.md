@@ -1,10 +1,130 @@
 # Changelog
 ## v1.3.0
-FEATURE
-
-BUGFIX
-
-IMPROVEMENT
+#### RPC
+* [internal/ethapi: add debug_getRawReceipts RPC method (#24773)](https://github.com/bnb-chain/bsc/pull/1840/commits/ae7d834bc752a2d94fef9d354ee78fcb9425f3d1)
+* [node, rpc: add ReadHeaderTimeout config option (#25338)](https://github.com/bnb-chain/bsc/pull/1840/commits/9244f87dc1c8869a2632176f719e515217720a43)
+* [rpc: check that "version" is "2.0" in request objects (#25570)](https://github.com/bnb-chain/bsc/pull/1840/commits/38e002f4641c2779c897ccaca575ec5ddeee9254)
+* [rpc: support injecting HTTP headers through context (#26023)](https://github.com/bnb-chain/bsc/pull/1840/commits/add337e0f7bad02f3cf535c66cd31f252b0b5c99)
+* [rpc: websocket should respect the "HTTP_PROXY" by default (#27264)](https://github.com/bnb-chain/bsc/pull/1840/commits/73697529994e14996b7740730481e926d5ec3e40)
+* [rpc: change BlockNumber constant values to match ethclient (#27219)](https://github.com/bnb-chain/bsc/pull/1840/commits/9231770811cda0473a7fa4e2bccc95bf62aae634)
+* [eth: make debug_StorageRangeAt take a block hash or number (#27328)](https://github.com/bnb-chain/bsc/pull/1840/commits/d789c68b667e13eb5cefd19d09ae84f7d016df6a)
+* [eth,core: add api debug_getTrieFlushInterval (#27303)](https://github.com/bnb-chain/bsc/pull/1840/commits/0783cb7d91ad7b3cdf72ac6c6edaec8318673eb6)
+* [rpc: add limit for batch request items and response size (#26681)](https://github.com/bnb-chain/bsc/pull/1840/commits/f3314bb6df4c86e650f0e47cbb5a21ca0616ac11)
+* [core/types: support yParity field in JSON transactions (#27744)](https://github.com/bnb-chain/bsc/pull/1840/commits/bb148dd342ba03ce40cf04295e193c94b9dda322)
+* [eth/filters: send rpctransactions in pending-subscription (#26126)](https://github.com/bnb-chain/bsc/pull/1840/commits/8c5ce1107b3110c7cb735d8dfa91c9c701393c85)
+#### Flag
+* [cmd/geth: rename --whitelist to --eth.requiredblocks (#24505)](https://github.com/bnb-chain/bsc/pull/1840/commits/dbfd3972624c1d82db21f5dfceab8fde7a1eee0a)
+* [cmd: migrate to urfave/cli/v2 (#24751)](https://github.com/bnb-chain/bsc/pull/1840/commits/52ed3570c483693fdd6667add7e3050520ad3ba2)
+* [cmd/utils: print warning when --metrics.port set without --metrics.ad…](https://github.com/bnb-chain/bsc/pull/1840/commits/8846c07d044f30dca8cd0db91c6245f71f4b24fa)
+* [cmd/devp2p: add --extaddr flag (#26312)](https://github.com/bnb-chain/bsc/pull/1840/commits/b44abf56a966016cbb651648ac2d7b6705e80b11)
+* [core,eth: adddebug_setTrieFlushInterval to change trie flush frequ](https://github.com/bnb-chain/bsc/pull/1840/commits/711afbc7fd76f1f206429e26f9aa5bf98bc7b43d)
+* [miner, cmd, eth: require explicit etherbase address (#26413)](https://github.com/bnb-chain/bsc/pull/1840/commits/2b44ef5f93cc7479a77890917a29684b56e9167a)
+* [cmd/geth: Add[--log.format] cli param (#27001)](https://github.com/bnb-chain/bsc/pull/1840/commits/2d1492821d058a3488b4da2c1f62906eaf6d7c95)
+* [cmd/geth: rename --vmodule to --log.vmodule (#27071)](https://github.com/bnb-chain/bsc/pull/1840/commits/f2df2b1981fa1e014e4cb34cf9a8dd7b8519e0ac)
+* [params, trie: add verkle fork management + upgrade go-verkle (#27464)](https://github.com/bnb-chain/bsc/pull/1840/commits/85b8d1c06c49342966cad2bbdc17d0dc28b66ffd)
+#### GraphQL
+* [graphql: fee history fields (#24452)](https://github.com/bnb-chain/bsc/pull/1840/commits/57cec892536270fc6dafae01ded2c528ffa370e9)
+* [graphql: add rawReceipt field to transaction type (#24738)](https://github.com/bnb-chain/bsc/pull/1840/commits/d73df893a6fc528e69506397322205bd9258b6fa)
+* [graphql: add raw fields to block and tx (#24816)](https://github.com/bnb-chain/bsc/pull/1840/commits/29a6b6bcac170ca7f8fceb242eba45ff15df17a1)
+* [graphql: return correct logs for tx (#25612)](https://github.com/bnb-chain/bsc/pull/1840/commits/d0dc349fd36bd79f94516c866251783641ed12f1)
+* [graphql: add query timeout (#26116)](https://github.com/bnb-chain/bsc/pull/1840/commits/ee9ff064694c445a3a6972001ccbce2cc5b9c3f2)
+* [graphql, node, rpc: improve HTTP write timeout handling (#25457)](https://github.com/bnb-chain/bsc/pull/1840/commits/f20eba426a1a871f98d0d988bfd51767364650b7)
+* [graphql: implement withdrawals (EIP-4895) (#27072)](https://github.com/bnb-chain/bsc/pull/1840/commits/fbe432fa1584bc976fe0242d999a7dd8903378b2)
+#### Client
+* [ethclient: add CallContractAtHash (#24355)](https://github.com/bnb-chain/bsc/pull/1700/commits/e98114da4feedf6dfb17b9839fc2c314cf1e5768)
+* [ethclient: add PeerCount method (#24849)](https://github.com/bnb-chain/bsc/pull/1840/commits/f5ff022dbca2b14af59974154874537b5ed4cc5e) 
+* [ethereum, ethclient: add FeeHistory support (#25403)](https://github.com/bnb-chain/bsc/pull/1840/commits/9ad508018e4790da0c1c00ac355f206fca12ab7c)
+* [eth/filters, ethclient/gethclient: add fullTx option to pending tx fi…](https://github.com/bnb-chain/bsc/pull/1840/commits/5b1a04b9c749d804b51159fe12246c56de8515c1)
+* [ethclient: include withdrawals in ethclient block responses (#26778)](https://github.com/bnb-chain/bsc/pull/1840/commits/e1b98f49a5075694c5022f5ec74425e40da415dd)
+#### Tracer
+* [eth/tracers/js: drop duktape engine (#24934)](https://github.com/bnb-chain/bsc/pull/1840/commits/ba47d800b13058885288c38bd174babb38560c89)
+* [eth/tracers: add support for block overrides in debug_traceCall (#24871)](https://github.com/bnb-chain/bsc/pull/1840/commits/d8a2305565b1f97c451f8595e0f65358d6842714)
+* [eth/tracers: add onlyTopCall option to callTracer (#25430)](https://github.com/bnb-chain/bsc/pull/1840/commits/86de2e516e5a4a2bbe1d29b46a0f460fbdde8303)
+* [eth/tracers: remove revertReasonTracer, add revert reason to callTracer](https://github.com/bnb-chain/bsc/pull/1840/commits/ff1f49245d641a7268ade38cf512bdc7b26f9b7c)
+* [eth/tracers: add diffMode to prestateTracer (#25422)](https://github.com/bnb-chain/bsc/pull/1840/commits/5d52a35931bba10f438ce4f41410442dd9cd396c)
+* [eth/tracers: add multiplexing tracer (#26086)](https://github.com/bnb-chain/bsc/pull/1840/commits/53b624b56d4f36c90ebf8046bd1ca78c87a3b6df)
+* [core/vm: set tracer-observable value of a delegatecall to match parent `value`](https://github.com/bnb-chain/bsc/pull/1840/commits/b0cd8c4a5c4f0f25011ed64235a3ea1280f03c51)
+* [eth/tracers: add native flatCallTracer (aka parity style tracer) (#26…](https://github.com/bnb-chain/bsc/pull/1840/commits/2ad150d986dab085965be047c94af6b2952a9e24)
+* [eth/tracers/native: set created address to nil in case of failure (#2…](https://github.com/bnb-chain/bsc/pull/1840/commits/41af42e97c9d62d303a883cc3c143f560867fa34)
+* [eth/tracers: report correct gasLimit in call tracers (#27029)](https://github.com/bnb-chain/bsc/pull/1840/commits/0b76eb3708626fbd2eb9c1b58d7b4eac6a5eec15)
+* [eth/tracers: addtxHashfield on txTraceResult (#27183)](https://github.com/bnb-chain/bsc/pull/1840/commits/604e215d1bb070dff98fb76aa965064c74e3633f)
+* [eth/tracers: add ReturnData in the tracer's response (#27704)](https://github.com/bnb-chain/bsc/pull/1840/commits/1e069cf8026a9f71b5f7e80959465e4b273d5806)
+#### Command
+* [cmd/geth: inspect snapshot dangling storage (#24643)](https://github.com/bnb-chain/bsc/pull/1840/commits/92e3c56e7be26aac4a25859f55f234aadeec7dbf)
+* [core/state/snapshot: detect and clean up dangling storage snapshot in generation](https://github.com/bnb-chain/bsc/pull/1840/commits/59ac229f87831bd74b4dc07d34f54137cca78095)
+* [internal/ethapi: add db operations to api (#24739)](https://github.com/bnb-chain/bsc/pull/1840/commits/16701c51697e28986feebd122c6a491e4d9ac0e7)
+* [cmd/geth: adddb check-state-contentto verify integrity of trie nodes (#24840)](https://github.com/bnb-chain/bsc/pull/1840/commits/e0a9752b965f243313f2c32a91d306600dc3863c)
+* [ethdb/remotedb, cmd: add support for remote (readonly) databases](https://github.com/bnb-chain/bsc/pull/1840/commits/57192bd0dc545d921306f6a4d7566c0c70c764c5)
+* [cmd/abigen: accept combined-json via stdin (#24960)](https://github.com/bnb-chain/bsc/pull/1840/commits/0287e1a7c00c1eaad1a99b4ea05d70f1ed685140)
+* [cmd/geth: extend traverseRawState command (#24954)](https://github.com/bnb-chain/bsc/pull/1840/commits/a10660b7f8f4fa218ee62a7664b47eb6028fee84)
+* [cmd/geth, core/state/snapshot: rework journal loading, implement account-check (#24765)](https://github.com/bnb-chain/bsc/pull/1840/commits/c375ee91e99cd9c072f2fe9b535c5cb780b5f8a0)
+* [cmd/geth: add a verkle subcommand (#25718)](https://github.com/bnb-chain/bsc/pull/1840/commits/9d717167aaf27a48d56ad9d1a2c36f90eba1cc13)
+* [cmd/geth, cmd/utils: geth attach with custom headers (#25829)](https://github.com/bnb-chain/bsc/pull/1840/commits/ea26fc8a6c44ebb48223f991048f41b2ec0a6414)
+* [core/rawdb: refactor db inspector for extending multiple ancient storage](https://github.com/bnb-chain/bsc/pull/1840/commits/60e30a940bbba2c0d26de040195a5ccdb14d8c10)
+* [cmd/clef: addlist-accountsandlist-walletsto CLI (#26080)](https://github.com/bnb-chain/bsc/pull/1840/commits/f3a005f176372ff291dfa7c02ee1c87d18e9c788)
+* [cmd/clef: add importraw feature to clef (#26058)](https://github.com/bnb-chain/bsc/pull/1840/commits/17744639dafc5a54f21e220660bd39d765a09051)
+* [cmd/devp2p: add more nodekey commands (#26129)](https://github.com/bnb-chain/bsc/pull/1840/commits/913973436bb88b652faffc10d8f97e4c19722883)
+* [internal/web3ext: fix eth_call stateOverrides in console (#26265)](https://github.com/bnb-chain/bsc/pull/1840/commits/1325fef1025b9feb3342308265b6d1399614be30)
+* [cmd/evm: add blocktest subcommand to evm (#26526)](https://github.com/bnb-chain/bsc/pull/1840/commits/90f15a0230be34a292c5d0574ee7910ee44267de)
+#### HardFork
+* [params: define cancun and prague as timestamp based forks (#26481)](https://github.com/bnb-chain/bsc/pull/1840/commits/f3a005f176372ff291dfa7c02ee1c87d18e9c788)
+* [all: tie timestamp based forks to the passage of London (#27279)](https://github.com/bnb-chain/bsc/pull/1840/commits/85a4b82b3373fc5f3fa8b7c68061c55b0db0e9b7)
+##### Shanghai
+* [core/vm: implement EIP-3855: PUSH0 instruction (#24039)](https://github.com/bnb-chain/bsc/pull/1840/commits/3b967d16caf306ccf8eb78b3a68bec36fa2a52ee)
+* [core: implement EIP-3651, warm coinbase (#25819)](https://github.com/bnb-chain/bsc/pull/1840/commits/ec2ec2d08e28571dc189903f743cc3931da254a9)
+* [core/vm: implement EIP-3860: Limit and meter initcode (#23847)](https://github.com/bnb-chain/bsc/pull/1840/commits/793f0f9ec860f6f51e0cec943a268c10863097c7)
+* [all: implement withdrawals (EIP-4895) (#26484)](https://github.com/bnb-chain/bsc/pull/1840/commits/2a2b0419fb966c54fb86b17bbccea743a45b4d2a)
+##### CanCun (almost ready)
+* [all: implement EIP-1153 transient storage (#26003)](https://github.com/bnb-chain/bsc/pull/1840/commits/b4ea2bf7dda9def5374ed3ab16a3dfd872eaa40a)
+* [core: 4844 opcode and precompile (#27356)](https://github.com/bnb-chain/bsc/pull/1840/commits/c537ace249805903f068c4c66b90558848b49a2f)
+* [core/vm: implement EIP-5656, mcopy instruction (#26181)](https://github.com/bnb-chain/bsc/pull/1840/commits/5c9cbc218a67ea6d71652f0d93f4c354a687a965)
+* [core/state, core/vm: implement EIP 6780 (#27189)](https://github.com/bnb-chain/bsc/pull/1840/commits/988d84aa7caf8e71ce441fa65f80d44216d9e00e)
+#### New Feature
+* [eth: introduce eth67 protocol (#24093)](https://github.com/bnb-chain/bsc/pull/1840/commits/30602163d5d8321fbc68afdcbbaf2362b2641bde)
+* [eth: implement eth/68 (#25980)](https://github.com/bnb-chain/bsc/pull/1840/commits/b0d44338bbcefee044f1f635a84487cbbd8f0538)
+* [PBBS(ready to activate)](https://github.com/ethereum/go-ethereum/commits?author=rjl493456442)
+#### P2P
+* [eth/fetcher: throttle peers which deliver many invalid transactions (…](https://github.com/bnb-chain/bsc/pull/1840/commits/7f2890a9be1f91368582479f171248b972b45ae3)
+#### Build
+* [build/bot: add ppa-build.sh (#24919)](https://github.com/bnb-chain/bsc/pull/1840/commits/adcad1cd39ad2bc9ddab67b4bee3023b3e6c9873)
+* [more checs in ci](https://github.com/bnb-chain/bsc/pull/1840/files#diff-6179837f7df53a6f05c522b6b7bb566d484d5465d9894fb04910dd08bb40dcc9)
+#### Improvement
+* [all: use 'embed' instead of go-bindata (#24744)](https://github.com/bnb-chain/bsc/pull/1840/commits/7ab15490e93e6384cfaa233238777ea88a88b8b6)
+* [all: move genesis initialization to blockchain (#25523)](https://github.com/bnb-chain/bsc/pull/1840/commits/d10c28030944d1c32febba3f45ae8c175ab34063)
+#### Clear Up
+* [common/compiler, cmd/abigen: remove solc/vyper compiler integration](https://github.com/bnb-chain/bsc/pull/1840/commits/8541ddbd951370b2a42df8d82b0633ff0efeba12)
+* [all: remove concept of public/private API definitions (#25053)](https://github.com/bnb-chain/bsc/pull/1840/commits/10dc5dce0871bf8c24bac41b04e47c3b9ad2b93e)
+* [cmd/geth: drop geth js command (#25000)](https://github.com/bnb-chain/bsc/pull/1840/commits/f20a56926551ae91a349498f9ce97c8ee373d6bb)
+* [core/genesis: remove calaverasAllocData (#25516)](https://github.com/bnb-chain/bsc/pull/1840/commits/141cd425310b503c5678e674a8c3872cf46b7086)
+* [node: drop support for static & trusted node list files (#25610)](https://github.com/bnb-chain/bsc/pull/1840/commits/3630cafb34f7c48b9cc78cf736309275cbd70f74)
+* [core: drop legacy receipt types (#26225)](https://github.com/bnb-chain/bsc/pull/1840/commits/10347c6b54d5b28a2e71d9c4993e7f44b0a359c3)
+* [cmd/puppeth: remove puppeth](https://github.com/bnb-chain/bsc/pull/1840/commits/8ded6a9fcd883d7d96ef695f5b312c509eae3a0a)
+* [cmd, eth, node: deprecate personal namespace (#26390)](https://github.com/bnb-chain/bsc/pull/1840/commits/d0a4989a8def7e6bad182d1513e8d4a093c1672d)
+* [accounts, build, mobile: remove Andriod and iOS support](https://github.com/bnb-chain/bsc/pull/1840/commits/d9699c8238307d5c3081c12078f78527468d7dbc)
+* [params: remove EIP150Hash from chainconfig (#27087)](https://github.com/bnb-chain/bsc/pull/1840/commits/5e4d726e2a05aee80a75e5f99fd699f220dd503e)
+* [all: remove notion of trusted checkpoints in the post-merge world (#2…](https://github.com/bnb-chain/bsc/pull/1840/commits/1e556d220c3a40286dd90b37a08bb5fc659ee6ee)
+* [all: remove ethash pow, only retain shims needed for consensus and te](https://github.com/bnb-chain/bsc/pull/1840/commits/dde2da0efb8e9a1812f470bc43254134cd1f8cc0)
+* [cmd, core, eth, graphql, trie: no persisted clean trie cache file (#2…](https://github.com/bnb-chain/bsc/pull/1840/commits/59f7b289c329b5a56fa6f4e9acee64e504c4cc0d)
+* [les: remove obsolete code related to PoW header syncing (#27737)](https://github.com/bnb-chain/bsc/pull/1840/commits/d4d88f9bce13ca9310bf28f5f26ea9f1915ba90d)
+* remove diffsync
+#### Others
+* [accounts/usbwallet: support Ledger Nano S Plus and FTS (#25933)](https://github.com/bnb-chain/bsc/pull/1840/commits/7eafbec741d124bc53896f6bfc2408b70ab9a82a)
+* [accounts/scwallet: fix keycard data signing error (#25331)](https://github.com/bnb-chain/bsc/pull/1840/commits/0c66d971e7f3557df297cbe450fe7fc7826017be)
+* [core/state: replace fastcache code cache with gc-friendly structure (…](https://github.com/bnb-chain/bsc/pull/1840/commits/5fded040372784985265f83f33f15cb6a51bebdb)
+* [internal/debug: add --log.file option (#26149)](https://github.com/bnb-chain/bsc/pull/1840/commits/5b4c149f97408ecefc7f440e86c12a30c4342620)
+* [ci: disable coverage reporting in appveyor and travis](https://github.com/bnb-chain/bsc/pull/1840/commits/a0d63bc69a659009a3884f50c563a0e58483cdd0)
+* [all: change chain head markers from block to header (#26777)](https://github.com/bnb-chain/bsc/pull/1840/commits/cd31f2dee2843776e485769ce85e0524716199bc)
+* [core, miner: revert block gas counter in case of invalid transaction](https://github.com/bnb-chain/bsc/pull/1840/commits/77e33e5a49be99130a02dc72d6a0e4739fdd44d6)
+* [accounts/usbwallet: mitigate ledger app chunking issue (#26773)](https://github.com/bnb-chain/bsc/pull/1840/commits/1e3177de220b1590704c96572fce820bfc87281e)
+* [signer/core: accept all solidity primitive types for EIP-712 signing](https://github.com/bnb-chain/bsc/pull/1840/commits/02796f6bee7e014fd16ad39f0bcd3b665b51e0bb)
+* [cmd/geth: enable log rotation (#26843)](https://github.com/bnb-chain/bsc/pull/1840/commits/7076ae00aa36ae250608455de928557ce4e5549f)
+* [internal/ethapi: make EstimateGas use[latest] block by default (#24363)](https://github.com/bnb-chain/bsc/pull/1840/commits/0b66d47449f61e9ebaf9e1db3ed290b59844d4c1)
+* [miner: suspend miner if node is syncing (#27218)](https://github.com/bnb-chain/bsc/pull/1840/commits/d4961881d7c92603f591f9cb8c705d00d8cbdfc0)
+* [all: move main transaction pool into a subpool (#27463)](https://github.com/bnb-chain/bsc/pull/1840/commits/d40a255e973775575d8d16456252f93ac75c09f0)
+* [core/txpool/blobpool: 4844 blob transaction pool (#26940)](https://github.com/bnb-chain/bsc/pull/1840/commits/1662228ac68325b4024e0cb6a4ce7dde27eb4c2d)
+* [eth: send big transactions by announce/retrieve only (#27618)](https://github.com/bnb-chain/bsc/pull/1840/commits/f5d3d486e459dce29130576ae88f2324ad586b50)
+* [core/rawdb: support freezer batch read with no size limit (#27687)](https://github.com/bnb-chain/bsc/pull/1840/commits/0b1f97e151e8b34a0a0d528a3472e27de1d12a9c)
+* disable pipeCommit, break now
 
 ## v1.2.12
 FEATURE
