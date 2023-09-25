@@ -1,4 +1,11 @@
 # Changelog
+## v1.3.0
+FEATURE
+
+BUGFIX
+
+IMPROVEMENT
+
 ## v1.2.12
 FEATURE
 * [\#1852](https://github.com/bnb-chain/bsc/pull/1852) discov: add hardcoded bootnodes
