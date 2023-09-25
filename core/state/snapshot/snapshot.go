@@ -22,11 +22,10 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -115,11 +114,11 @@ type Snapshot interface {
 
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
-	Account(hash common.Hash) (*Account, error)
+	Account(hash common.Hash) (*types.SlimAccount, error)
 
 	// Accounts directly retrieves all accounts in current snapshot in
 	// the snapshot slim data format.
-	Accounts() (map[common.Hash]*Account, error)
+	Accounts() (map[common.Hash]*types.SlimAccount, error)
 
 	// AccountRLP directly retrieves the account RLP associated with a particular
 	// hash in the snapshot slim data format.
@@ -161,6 +160,14 @@ type snapshot interface {
 	StorageIterator(account common.Hash, seek common.Hash) (StorageIterator, bool)
 }
 
+// Config includes the configurations for snapshots.
+type Config struct {
+	CacheSize  int  // Megabytes permitted to use for read caches
+	Recovery   bool // Indicator that the snapshots is in the recovery mode
+	NoBuild    bool // Indicator that the snapshots generation is disallowed
+	AsyncBuild bool // The snapshot generation is allowed to be constructed asynchronously
+}
+
 // Tree is an Ethereum state snapshot tree. It consists of one persistent base
 // layer backed by a key-value store, on top of which arbitrarily many in-memory
 // diff layers are topped. The memory diffs can form a tree with branching, but
@@ -171,9 +178,9 @@ type snapshot interface {
 // storage data to avoid expensive multi-level trie lookups; and to allow sorted,
 // cheap iteration of the account/storage tries for sync aid.
 type Tree struct {
+	config   Config                   // Snapshots configurations
 	diskdb   ethdb.KeyValueStore      // Persistent database to store the snapshot
 	triedb   *trie.Database           // In-memory cache to access the trie through
-	cache    int                      // Megabytes permitted to use for read caches
 	layers   map[common.Hash]snapshot // Collection of all known layers
 	lock     sync.RWMutex
 	capLimit int
@@ -186,32 +193,39 @@ type Tree struct {
 // store (with a number of memory layers from a journal), ensuring that the head
 // of the snapshot matches the expected one.
 //
-// If the snapshot is missing or the disk layer is broken, the entire is deleted
-// and will be reconstructed from scratch based on the tries in the key-value
-// store, on a background thread. If the memory layers from the journal is not
-// continuous with disk layer or the journal is missing, all diffs will be discarded
-// iff it's in "recovery" mode, otherwise rebuild is mandatory.
-func New(diskdb ethdb.KeyValueStore, triedb *trie.Database, cache, cap int, root common.Hash, async bool, rebuild bool, recovery, withoutTrie bool) (*Tree, error) {
-	// Create a new, empty snapshot tree
+// If the snapshot is missing or the disk layer is broken, the snapshot will be
+// reconstructed using both the existing data and the state trie.
+// The repair happens on a background thread.
+//
+// If the memory layers in the journal do not match the disk layer (e.g. there is
+// a gap) or the journal is missing, there are two repair cases:
+//
+//   - if the 'recovery' parameter is true, memory diff-layers and the disk-layer
+//     will all be kept. This case happens when the snapshot is 'ahead' of the
+//     state trie.
+//   - otherwise, the entire snapshot is considered invalid and will be recreated on
+//     a background thread.
+func New(config Config, diskdb ethdb.KeyValueStore, triedb *trie.Database, root common.Hash, cap int, withoutTrie bool) (*Tree, error) {
 	snap := &Tree{
+		config:   config,
 		diskdb:   diskdb,
 		triedb:   triedb,
-		cache:    cache,
 		capLimit: cap,
 		layers:   make(map[common.Hash]snapshot),
 	}
-	if !async {
-		defer snap.waitBuild()
-	}
 	// Attempt to load a previously persisted snapshot and rebuild one if failed
-	head, disabled, err := loadSnapshot(diskdb, triedb, cache, root, recovery, withoutTrie)
+	head, disabled, err := loadSnapshot(diskdb, triedb, root, config.CacheSize, config.Recovery, config.NoBuild, withoutTrie)
 	if disabled {
 		log.Warn("Snapshot maintenance disabled (syncing)")
 		return snap, nil
 	}
+	// Create the building waiter iff the background generation is allowed
+	if !config.NoBuild && !config.AsyncBuild {
+		defer snap.waitBuild()
+	}
 	if err != nil {
-		if rebuild {
-			log.Warn("Failed to load snapshot, regenerating", "err", err)
+		log.Warn("Failed to load snapshot", "err", err)
+		if !config.NoBuild {
 			snap.Rebuild(root)
 			return snap, nil
 		}
@@ -277,7 +291,7 @@ func (t *Tree) Disable() {
 		case *diffLayer:
 			// If the layer is a simple diff, simply mark as stale
 			layer.lock.Lock()
-			atomic.StoreUint32(&layer.stale, 1)
+			layer.stale.Store(true)
 			layer.lock.Unlock()
 
 		default:
@@ -343,14 +357,9 @@ func (t *Tree) Snapshots(root common.Hash, limits int, nodisk bool) []Snapshot {
 	return ret
 }
 
-func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Address]struct{}, accounts map[common.Address][]byte, storage map[common.Address]map[string][]byte, verified chan struct{}) error {
-	hashDestructs, hashAccounts, hashStorage := transformSnapData(destructs, accounts, storage)
-	return t.update(blockRoot, parentRoot, hashDestructs, hashAccounts, hashStorage, verified)
-}
-
 // Update adds a new snapshot into the tree, if that can be linked to an existing
 // old parent. It is disallowed to insert a disk layer (the origin of all).
-func (t *Tree) update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) error {
+func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) error {
 	// Reject noop updates to avoid self-loops in the snapshot tree. This is a
 	// special case that can only happen for Clique networks where empty blocks
 	// don't modify the state (0 block subsidy).
@@ -572,20 +581,19 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 
 		it := rawdb.IterateStorageSnapshots(base.diskdb, hash)
 		for it.Next() {
-			if key := it.Key(); len(key) == 65 { // TODO(karalabe): Yuck, we should move this into the iterator
-				batch.Delete(key)
-				base.cache.Del(key[1:])
-				snapshotFlushStorageItemMeter.Mark(1)
+			key := it.Key()
+			batch.Delete(key)
+			base.cache.Del(key[1:])
+			snapshotFlushStorageItemMeter.Mark(1)
 
-				// Ensure we don't delete too much data blindly (contract can be
-				// huge). It's ok to flush, the root will go missing in case of a
-				// crash and we'll detect and regenerate the snapshot.
-				if batch.ValueSize() > ethdb.IdealBatchSize {
-					if err := batch.Write(); err != nil {
-						log.Crit("Failed to write storage deletions", "err", err)
-					}
-					batch.Reset()
+			// Ensure we don't delete too much data blindly (contract can be
+			// huge). It's ok to flush, the root will go missing in case of a
+			// crash and we'll detect and regenerate the snapshot.
+			if batch.ValueSize() > ethdb.IdealBatchSize {
+				if err := batch.Write(); err != nil {
+					log.Crit("Failed to write storage deletions", "err", err)
 				}
+				batch.Reset()
 			}
 		}
 		it.Release()
@@ -748,7 +756,7 @@ func (t *Tree) Rebuild(root common.Hash) {
 		case *diffLayer:
 			// If the layer is a simple diff, simply mark as stale
 			layer.lock.Lock()
-			atomic.StoreUint32(&layer.stale, 1)
+			layer.stale.Store(true)
 			layer.lock.Unlock()
 
 		default:
@@ -759,7 +767,7 @@ func (t *Tree) Rebuild(root common.Hash) {
 	// generator will run a wiper first if there's not one running right now.
 	log.Info("Rebuilding state snapshot")
 	t.layers = map[common.Hash]snapshot{
-		root: generateSnapshot(t.diskdb, t.triedb, t.cache, root),
+		root: generateSnapshot(t.diskdb, t.triedb, t.config.CacheSize, root),
 	}
 }
 
@@ -798,14 +806,14 @@ func (t *Tree) Verify(root common.Hash) error {
 	}
 	defer acctIt.Release()
 
-	got, err := generateTrieRoot(nil, acctIt, common.Hash{}, stackTrieGenerate, func(db ethdb.KeyValueWriter, accountHash, codeHash common.Hash, stat *generateStats) (common.Hash, error) {
+	got, err := generateTrieRoot(nil, "", acctIt, common.Hash{}, stackTrieGenerate, func(db ethdb.KeyValueWriter, accountHash, codeHash common.Hash, stat *generateStats) (common.Hash, error) {
 		storageIt, err := t.StorageIterator(root, accountHash, common.Hash{})
 		if err != nil {
 			return common.Hash{}, err
 		}
 		defer storageIt.Release()
 
-		hash, err := generateTrieRoot(nil, storageIt, accountHash, stackTrieGenerate, nil, stat, false)
+		hash, err := generateTrieRoot(nil, "", storageIt, accountHash, stackTrieGenerate, nil, stat, false)
 		if err != nil {
 			return common.Hash{}, err
 		}
@@ -867,34 +875,10 @@ func (t *Tree) generating() (bool, error) {
 	return layer.genMarker != nil, nil
 }
 
-// diskRoot is a external helper function to return the disk layer root.
+// DiskRoot is a external helper function to return the disk layer root.
 func (t *Tree) DiskRoot() common.Hash {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
 	return t.diskRoot()
-}
-
-// TODO we can further improve it when the set is very large
-func transformSnapData(destructs map[common.Address]struct{}, accounts map[common.Address][]byte,
-	storage map[common.Address]map[string][]byte) (map[common.Hash]struct{}, map[common.Hash][]byte,
-	map[common.Hash]map[common.Hash][]byte) {
-	hasher := crypto.NewKeccakState()
-	hashDestructs := make(map[common.Hash]struct{}, len(destructs))
-	hashAccounts := make(map[common.Hash][]byte, len(accounts))
-	hashStorages := make(map[common.Hash]map[common.Hash][]byte, len(storage))
-	for addr := range destructs {
-		hashDestructs[crypto.Keccak256Hash(addr[:])] = struct{}{}
-	}
-	for addr, account := range accounts {
-		hashAccounts[crypto.Keccak256Hash(addr[:])] = account
-	}
-	for addr, accountStore := range storage {
-		hashStorage := make(map[common.Hash][]byte, len(accountStore))
-		for k, v := range accountStore {
-			hashStorage[crypto.HashData(hasher, []byte(k))] = v
-		}
-		hashStorages[crypto.Keccak256Hash(addr[:])] = hashStorage
-	}
-	return hashDestructs, hashAccounts, hashStorages
 }

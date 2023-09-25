@@ -20,6 +20,7 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/core/forkid"
@@ -72,18 +73,37 @@ type Config struct {
 	// These settings are required and configure the UDP listener:
 	PrivateKey *ecdsa.PrivateKey
 
-	// These settings are optional:
-	NetRestrict    *netutil.Netlist   // list of allowed IP networks
-	Bootnodes      []*enode.Node      // list of bootstrap nodes
-	Unhandled      chan<- ReadPacket  // unhandled packets are sent on this channel
+	// All remaining settings are optional.
+
+	// Packet handling configuration:
+	NetRestrict *netutil.Netlist  // list of allowed IP networks
+	Unhandled   chan<- ReadPacket // unhandled packets are sent on this channel
+
+	// Node table configuration:
+	Bootnodes       []*enode.Node // list of bootstrap nodes
+	PingInterval    time.Duration // speed of node liveness check
+	RefreshInterval time.Duration // used in bucket refresh
+
+	// The options below are useful in very specific cases, like in unit tests.
+	V5ProtocolID *[6]byte
+
+	FilterFunction NodeFilterFunc     // function for filtering ENR entries
 	Log            log.Logger         // if set, log messages go here
 	ValidSchemes   enr.IdentityScheme // allowed identity schemes
 	Clock          mclock.Clock
-	FilterFunction NodeFilterFunc // function for filtering ENR entries
-	IsBootnode     bool           // defines if it's bootnode
+	IsBootnode     bool // defines if it's bootnode
 }
 
 func (cfg Config) withDefaults() Config {
+	// Node table configuration:
+	if cfg.PingInterval == 0 {
+		cfg.PingInterval = 10 * time.Second
+	}
+	if cfg.RefreshInterval == 0 {
+		cfg.RefreshInterval = 30 * time.Minute
+	}
+
+	// Debug/test settings:
 	if cfg.Log == nil {
 		cfg.Log = log.Root()
 	}

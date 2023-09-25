@@ -3,7 +3,7 @@ package vote
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"time"
 
 	"github.com/pkg/errors"
@@ -41,7 +41,7 @@ func NewVoteSigner(blsPasswordPath, blsWalletPath string) (*VoteSigner, error) {
 		return nil, fmt.Errorf("BLS wallet did not exists")
 	}
 
-	walletPassword, err := ioutil.ReadFile(blsPasswordPath)
+	walletPassword, err := os.ReadFile(blsPasswordPath)
 	if err != nil {
 		log.Error("Read BLS wallet password", "err", err)
 		return nil, err

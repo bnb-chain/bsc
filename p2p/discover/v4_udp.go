@@ -131,7 +131,7 @@ func ListenV4(c UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv4, error) {
 	cfg = cfg.withDefaults()
 	closeCtx, cancel := context.WithCancel(context.Background())
 	t := &UDPv4{
-		conn:            c,
+		conn:            newMeteredConn(c),
 		priv:            cfg.PrivateKey,
 		netrestrict:     cfg.NetRestrict,
 		localNode:       ln,
@@ -143,7 +143,7 @@ func ListenV4(c UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv4, error) {
 		log:             cfg.Log,
 	}
 
-	tab, err := newTable(t, ln.Database(), cfg.Bootnodes, t.log, cfg.FilterFunction, cfg.IsBootnode)
+	tab, err := newMeteredTable(t, ln.Database(), cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func (t *UDPv4) findnode(toid enode.ID, toaddr *net.UDPAddr, target v4wire.Pubke
 	return nodes, err
 }
 
-// RequestENR sends enrRequest to the given node and waits for a response.
+// RequestENR sends ENRRequest to the given node and waits for a response.
 func (t *UDPv4) RequestENR(n *enode.Node) (*enode.Node, error) {
 	addr := &net.UDPAddr{IP: n.IP(), Port: n.UDP()}
 	t.ensureBond(n.ID(), addr)
@@ -411,6 +411,7 @@ func (t *UDPv4) loop() {
 	var (
 		plist        = list.New()
 		timeout      = time.NewTimer(0)
+		statusTicker = time.NewTicker(60 * time.Second)
 		nextTimeout  *replyMatcher // head of plist when timeout was last reset
 		contTimeouts = 0           // number of continuous timeouts to do NTP checks
 		ntpWarnTime  = time.Unix(0, 0)
@@ -438,6 +439,10 @@ func (t *UDPv4) loop() {
 		}
 		nextTimeout = nil
 		timeout.Stop()
+	}
+
+	logStatistic := func() {
+		t.log.Info("Current status", "table_size", t.tab.len(), "pending_size", plist.Len(), "db_size", t.db.Size())
 	}
 
 	for {
@@ -495,6 +500,9 @@ func (t *UDPv4) loop() {
 				}
 				contTimeouts = 0
 			}
+
+		case <-statusTicker.C:
+			logStatistic()
 		}
 	}
 }
@@ -528,7 +536,7 @@ func (t *UDPv4) readLoop(unhandled chan<- ReadPacket) {
 			t.log.Debug("Temporary UDP read error", "err", err)
 			continue
 		} else if err != nil {
-			// Shut down the loop for permament errors.
+			// Shut down the loop for permanent errors.
 			if !errors.Is(err, io.EOF) {
 				t.log.Debug("UDP read error", "err", err)
 			}
@@ -646,12 +654,12 @@ type packetHandlerV4 struct {
 func (t *UDPv4) verifyPing(h *packetHandlerV4, from *net.UDPAddr, fromID enode.ID, fromKey v4wire.Pubkey) error {
 	req := h.Packet.(*v4wire.Ping)
 
+	if v4wire.Expired(req.Expiration) {
+		return errExpired
+	}
 	senderKey, err := v4wire.DecodePubkey(crypto.S256(), fromKey)
 	if err != nil {
 		return err
-	}
-	if v4wire.Expired(req.Expiration) {
-		return errExpired
 	}
 	h.senderKey = senderKey
 	return nil
