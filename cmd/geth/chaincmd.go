@@ -286,11 +286,12 @@ func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, port
 	// Create the nodes
 	enodes := make([]*enode.Node, size)
 	for i := 0; i < size; i++ {
-		stack, err := node.New(&baseConfig.Node)
+		nodeConfig := baseConfig.Node
+		nodeConfig.DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
+		stack, err := node.New(&nodeConfig)
 		if err != nil {
 			return nil, err
 		}
-		stack.Config().DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
 		pk := stack.Config().NodeKey()
 		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
 	}
