@@ -106,7 +106,7 @@ func verifySideCars(scs []*types.Sidecar) error {
 	r := scs[0].BlockRoot
 	p := scs[0].ProposerIndex
 
-	for i, sc := range scs {
+	for _, sc := range scs {
 		if sc.Slot != sl {
 			return fmt.Errorf("sidecar slot mismatch: %d != %d", sc.Slot, sl)
 		}
@@ -119,9 +119,6 @@ func verifySideCars(scs []*types.Sidecar) error {
 		}
 		if sc.ProposerIndex != p {
 			return fmt.Errorf("sidecar proposer index mismatch: %d != %d", sc.ProposerIndex, p)
-		}
-		if sc.Index != uint64(i) {
-			return fmt.Errorf("sidecar index mismatch: %d != %d", sc.Index, i)
 		}
 	}
 	return nil

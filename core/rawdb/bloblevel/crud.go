@@ -11,6 +11,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/prysm/v4/consensus-types/primitives"
 	"github.com/prysmaticlabs/prysm/v4/encoding/bytesutil"
+	"github.com/prysmaticlabs/prysm/v4/time/slots"
+	"sort"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -36,7 +38,6 @@ func NewStorage(db ethdb.Database) *Storage {
 //  3. Begin the save algorithm:  If the incoming blob has a slot bigger than the saved slot at the spot
 //     in the rotating keys buffer, we overwrite all elements for that slot.
 func (blob *Storage) SaveBlobSidecar(ctx context.Context, config *params.ChainConfig, scs []*types.Sidecar) error {
-	slot := scs[0].Slot
 	encodedBlobSidecar, err := rlp.EncodeToBytes(scs)
 	if err != nil {
 		return errors.Wrap(err, "encoding to bytes")
@@ -58,11 +59,6 @@ func (blob *Storage) SaveBlobSidecar(ctx context.Context, config *params.ChainCo
 
 		if len(key) != 0 {
 			replacingKey = key
-			oldSlotBytes := replacingKey[len(blobSidecarPrefix)+8 : len(blobSidecarPrefix)+16]
-			oldSlot := bytesutil.BytesToSlotBigEndian(oldSlotBytes)
-			if oldSlot >= slot {
-				return errors.Errorf("attempted to save blob with slot %d but already have older blob with slot %d", slot, oldSlot)
-			}
 			break
 		}
 	}
@@ -70,8 +66,39 @@ func (blob *Storage) SaveBlobSidecar(ctx context.Context, config *params.ChainCo
 	// If there is no element stored at blob.slot % MAX_SLOTS_TO_PERSIST_BLOBS, then we simply
 	// store the blob by key and exit early.
 	if len(replacingKey) != 0 {
-		if err := blob.db.Delete(replacingKey); err != nil {
-			fmt.Printf("Could not delete blob with key %#x\n", replacingKey)
+		oldSlotBytes := replacingKey[len(blobSidecarPrefix) : len(blobSidecarPrefix)+8]
+		oldSlot := bytesutil.BytesToSlotBigEndian(oldSlotBytes)
+		oldEpoch := slotsToEpoch(oldSlot, config)
+		if slots.ToEpoch(scs[0].Slot) >= oldEpoch.Add(uint64(config.DataBlobs.MinEpochsForBlobsSidecarsRequest)) {
+			if err := blob.db.Delete(replacingKey); err != nil {
+				fmt.Printf("Could not delete blob with key %#x\n", replacingKey)
+			}
+		} else {
+			// Otherwise, we need to merge the new blob with the old blob.
+			enc, err := blob.db.Get(replacingKey)
+			if err != nil {
+				return errors.Wrap(err, "getting replacing key blob for merging")
+			}
+			retrievedSidecars := make([]*types.Sidecar, 0)
+			if err := rlp.Decode(bytes.NewReader(enc), &retrievedSidecars); err != nil {
+				return errors.Wrap(err, "decoding merge blob sidecars")
+			}
+			//scs = append(retrievedSidecars, scs...)
+			// Skip duplicates using indices
+			has := make(map[uint64]bool)
+			for _, sidecar := range retrievedSidecars {
+				has[sidecar.Index] = true
+			}
+			for _, sidecar := range scs {
+				if !has[sidecar.Index] {
+					retrievedSidecars = append(retrievedSidecars, sidecar)
+				}
+			}
+			sortSideCars(retrievedSidecars)
+			encodedBlobSidecar, err = rlp.EncodeToBytes(retrievedSidecars)
+			if err != nil {
+				return errors.Wrap(err, "encoding scs for merging with old blob")
+			}
 		}
 	}
 
@@ -132,7 +159,7 @@ func (blob *Storage) GetBlobSidecarsBySlot(ctx context.Context, config *params.C
 			break
 		}
 
-		slotInKey := bytesutil.BytesToSlotBigEndian(it.Key()[len(blobSidecarPrefix):len(key)])
+		slotInKey := bytesutil.BytesToSlotBigEndian(it.Key()[len(blobSidecarPrefix)+8 : len(blobSidecarPrefix)+16])
 		if slotInKey == slot {
 			enc = it.Value()
 			break
@@ -188,4 +215,15 @@ func slotKey(slot primitives.Slot, config *params.ChainConfig) []byte {
 	maxEpochsToPersistBlobs := config.DataBlobs.MinEpochsForBlobsSidecarsRequest
 	maxSlotsToPersistBlobs := primitives.Slot(maxEpochsToPersistBlobs.Mul(uint64(slotsPerEpoch)))
 	return bytesutil.Uint64ToBytesBigEndian(uint64(slot.ModSlot(maxSlotsToPersistBlobs)))
+}
+
+// sortSideCars sorts the sidecars by their index.
+func sortSideCars(scs []*types.Sidecar) {
+	sort.Slice(scs, func(i, j int) bool {
+		return scs[i].Index < scs[j].Index
+	})
+}
+
+func slotsToEpoch(slot primitives.Slot, config *params.ChainConfig) primitives.Epoch {
+	return primitives.Epoch(slot.DivSlot(config.DataBlobs.SlotsPerEpoch))
 }
