@@ -269,7 +269,7 @@ func createPorts(ipStr string, port int, size int) []int {
 // Create config for node i in the cluster
 func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, port int, size int, i int) gethConfig {
 	baseConfig.Node.HTTPHost = ip
-	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port+i)
+	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port)
 	baseConfig.Node.P2P.BootstrapNodes = make([]*enode.Node, size-1)
 	// Set the P2P connections between this node and the other nodes
 	for j := 0; j < i; j++ {
