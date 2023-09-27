@@ -593,13 +593,13 @@ func PruneHashTrieNodeInDataBase(db ethdb.Database) error {
 			db.Delete(key)
 			total_num++
 			if total_num%100000 == 0 {
-				log.Info("Pruning ", "Complete progress: ", total_num, "hash-base trie nodes")
+				log.Info("Pruning hash-base state trie nodes", "Complete progress: ", total_num)
 			}
 		default:
 			continue
 		}
 	}
-	log.Info("Pruning ", "Complete progress", total_num, "hash-base trie nodes")
+	log.Info("Pruning hash-base state trie nodes", "Complete progress", total_num)
 	return nil
 }
 
