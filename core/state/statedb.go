@@ -1608,6 +1608,22 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				if root != types.EmptyRootHash {
 					s.db.CacheAccount(root, s.trie)
 				}
+
+				origin := s.originalRoot
+				if origin == (common.Hash{}) {
+					origin = types.EmptyRootHash
+				}
+
+				if root != origin {
+					start := time.Now()
+					if err := s.db.TrieDB().Update(root, origin, block, nodes, triestate.New(s.accountsOrigin, s.storagesOrigin, incomplete)); err != nil {
+						return err
+					}
+					s.originalRoot = root
+					if metrics.EnabledExpensive {
+						s.TrieDBCommits += time.Since(start)
+					}
+				}
 			}
 
 			for _, postFunc := range postCommitFuncs {
@@ -1732,24 +1748,10 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	} else {
 		s.snap = nil
 	}
-
 	if root == (common.Hash{}) {
 		root = types.EmptyRootHash
 	}
-	origin := s.originalRoot
-	if origin == (common.Hash{}) {
-		origin = types.EmptyRootHash
-	}
-	if root != origin {
-		start := time.Now()
-		if err := s.db.TrieDB().Update(root, origin, block, nodes, triestate.New(s.accountsOrigin, s.storagesOrigin, incomplete)); err != nil {
-			return common.Hash{}, nil, err
-		}
-		s.originalRoot = root
-		if metrics.EnabledExpensive {
-			s.TrieDBCommits += time.Since(start)
-		}
-	}
+
 	// Clear all internal flags at the end of commit operation.
 	s.accounts = make(map[common.Hash][]byte)
 	s.storages = make(map[common.Hash]map[common.Hash][]byte)
