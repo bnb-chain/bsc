@@ -10,37 +10,40 @@ import (
 	"testing"
 )
 
-func TestInitNetworkLocalhost(t *testing.T) {
-	size := 4
-	ipStr := ""
+var size int
+var basePort int
+var configPath string
+var genesisPath string
+
+func setup(t *testing.T) {
+	size = 4
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatalf("error getting current file path")
 	}
 	currentDirectory := filepath.Dir(filename)
-	configPath := filepath.Join(currentDirectory, "testdata/config.toml")
-	genesisPath := filepath.Join(currentDirectory, "testdata/parlia.json")
-	basePort := 30311
+	configPath = filepath.Join(currentDirectory, "testdata/config.toml")
+	genesisPath = filepath.Join(currentDirectory, "testdata/parlia.json")
+	basePort = 30311
+}
+
+func TestInitNetworkLocalhost(t *testing.T) {
+	setup(t)
+	ipStr := ""
 	testInitNetwork(t, size, basePort, ipStr, configPath, genesisPath)
 }
 
 func TestInitNetworkRemoteHosts(t *testing.T) {
-	size := 4
+	setup(t)
 	ipStr := "192.168.24.103,172.15.67.89,10.0.17.36,203.113.45.76"
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatalf("error getting current file path")
-	}
-	currentDirectory := filepath.Dir(filename)
-	configPath := filepath.Join(currentDirectory, "testdata/config.toml")
-	genesisPath := filepath.Join(currentDirectory, "testdata/parlia.json")
-	basePort := 30311
 	testInitNetwork(t, size, basePort, ipStr, configPath, genesisPath)
 }
 
 func testInitNetwork(t *testing.T, size, basePort int, ipStr, configPath, genesisPath string) {
 	dir := t.TempDir()
-	geth := runGeth(t, "init-network", "--init.dir", dir, "--init.size", strconv.Itoa(size), "--init.ips", ipStr, "--init.p2p-port", strconv.Itoa(basePort), "--config", configPath, genesisPath)
+	geth := runGeth(t, "init-network", "--init.dir", dir, "--init.size", strconv.Itoa(size),
+		"--init.ips", ipStr, "--init.p2p-port", strconv.Itoa(basePort), "--config", configPath,
+		genesisPath)
 	// expect the command to complete first
 	geth.WaitExit()
 
@@ -111,7 +114,6 @@ func verifyConfigFileRemoteHosts(t *testing.T, config *gethConfig, ipStr string,
 			t.Fatalf("expected bootnode port at position %d to be %d but got %d instead", j, basePort, bootnodes[j].UDP())
 		}
 	}
-
 }
 
 func verifyConfigFileLocalhost(t *testing.T, config *gethConfig, i int, basePort int, size int) {
