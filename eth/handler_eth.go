@@ -159,9 +159,13 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 // handleSidecarBroadcast is invoked from a peer's message handler when it transmits a
 // block broadcast for the local node to process.
 func (h *ethHandler) handleSidecarBroadcast(peer *eth.Peer, block *types.Sidecar, td *big.Int) error {
-	panic("Implement me handleSidecarBroadcast")
+	
+	if err := h.sidecarFetcher.Enqueue(peer.ID(), block); err != nil {
+		fmt.Println("Could not enqueue sidecar in handleSidecarBroadcast")
+		return err
+	}
 
-	//h.blobFetcher.
+	//panic("Implement me handleSidecarBroadcast")
 
 	return nil
 }
