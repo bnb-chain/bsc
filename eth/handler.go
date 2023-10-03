@@ -17,6 +17,7 @@
 package eth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/core/rawdb/bloblevel"
@@ -149,9 +150,11 @@ type handler struct {
 	peersPerIP           map[string]int
 	peerPerIPLock        sync.Mutex
 
-	downloader   *downloader.Downloader // todo 4844 same for sidecars
-	blockFetcher *fetcher.BlockFetcher  // todo 4844 do the same for blobs
-	blobFetcher  *fetcher.BlockFetcher
+	downloader        *downloader.Downloader // todo 4844 same for sidecars
+	sidecarDownloader *downloader.Downloader
+
+	blockFetcher   *fetcher.BlockFetcher // todo 4844 do the same for blobs
+	sidecarFetcher *fetcher.SidecarFetcher
 
 	txFetcher *fetcher.TxFetcher
 	peers     *peerSet
@@ -330,7 +333,22 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return n, err
 	}
+
+	inserterSidecar := func(sidecars types.Sidecars) (int, error) {
+		// todo 4844 write insert logic here!
+		// todo 4844 verify sidecars THEN save
+		cfg := &params.ChainConfig{
+			DataBlobs: &params.DataBlobsConfig{
+				SlotsPerEpoch:                    1,
+				MinEpochsForBlobsSidecarsRequest: 1,
+			},
+		}
+		h.blobDatabase.SaveBlobSidecar(context.Background(), cfg, sidecars) // todo 4844 get chain config here
+		return 0, nil
+	}
 	h.blockFetcher = fetcher.NewBlockFetcher(false, nil, h.chain.GetBlockByHash, validator, h.BroadcastBlock, heighter, nil, inserter, h.removePeer)
+
+	h.sidecarFetcher = fetcher.NewSidecarFetcher(false, h.blobDatabase.RetrieveSidecar, h.BroadcastSidecar, heighter, inserterSidecar, h.removePeer)
 
 	fetchTx := func(peer string, hashes []common.Hash) error {
 		p := h.peers.peer(peer)

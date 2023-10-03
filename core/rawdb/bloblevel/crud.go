@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
@@ -112,6 +113,15 @@ func (blob *Storage) GetBlobSidecarsByRoot(ctx context.Context, root [32]byte) (
 	}
 
 	return scs, nil
+}
+
+func (blob *Storage) RetrieveSidecar(root common.Hash) *types.Sidecar {
+	sidecar, err := blob.GetBlobSidecarsByRoot(context.Background(), root)
+	if err != nil {
+		return nil
+	}
+	// todo 4844 get functionality to retrieve sidecar strictly according to ITS hash, not its block's hash
+	return sidecar[0]
 }
 
 // GetBlobSidecarsBySlot retrieves BlobSidecars for the given slot.

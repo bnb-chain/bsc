@@ -433,7 +433,7 @@ func decodeTyped(b []byte) (BlobTxWrapper, error) {
 // todo 4844 Sidecar needs to implement EncodeRLP so that it can be broadcasted easily
 type Sidecar struct {
 	BlockRoot       []byte          `json:"block_root"` //[]byte
-	Index           uint64          `json:"index"`
+	Index           uint64          `json:"index"`      // block number
 	Slot            primitives.Slot `json:"slot"`
 	BlockParentRoot []byte          `json:"block_parent_root"` //[]byte
 	ProposerIndex   uint64          `json:"proposer_index"`
@@ -447,12 +447,9 @@ type Sidecar struct {
 	ReceivedFrom interface{}
 }
 
-func (s *Sidecar) SidecarToHash() common.Hash {
-	//hash := common.Hash{}
-	//copy(hash[:], s.BlockRoot[:])
-	//binary.BigEndian.PutUint64(hash[len(s.BlockRoot):], s.Index)
-	//return hash
+type Sidecars []*Sidecar
 
+func (s *Sidecar) SidecarToHash() common.Hash {
 	// Convert the index to a byte slice.
 	indexBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(indexBytes, s.Index)
