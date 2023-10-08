@@ -289,8 +289,19 @@ func writeNodesV2(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.
 }
 
 // loadAggNode read the aggnode from the database
-func loadAggNode(reader ethdb.KeyValueReader, owner common.Hash, path []byte) *trienode.AggNode {
+func loadAggNode(reader ethdb.KeyValueReader, owner common.Hash, path []byte) (*trienode.AggNode, error) {
+	var val []byte
+	if owner == (common.Hash{}) {
+		val = rawdb.ReadAccountTrieAggNode(reader, path)
+	} else {
+		val = rawdb.ReadAccountTrieAggNode(reader, path)
+	}
 
+	if val == nil {
+		return &trienode.AggNode{}, nil
+	}
+
+	return trienode.DecodeAggNode(val)
 }
 
 // cacheKey constructs the unique key of clean cache.
