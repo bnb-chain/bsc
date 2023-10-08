@@ -74,7 +74,6 @@ Remove blockchain and state databases`,
 			// dbMigrateFreezerCmd,
 			dbCheckStateContentCmd,
 			dbHbss2PbssCmd,
-			dbPruneHashTrieCmd,
 			dbTrieGetCmd,
 			dbTrieDeleteCmd,
 		},
@@ -106,6 +105,8 @@ a data corruption.`,
 		Flags: []cli.Flag{
 			utils.DataDirFlag,
 			utils.SyncModeFlag,
+			utils.ForceFlag,
+			utils.AncientFlag,
 		},
 		Usage:       "Convert Hash-Base to Path-Base trie node.",
 		Description: `This command iterates the entire trie node database and convert the hash-base node to path-base node.`,
@@ -135,17 +136,6 @@ a data corruption.`,
 			utils.StateSchemeFlag,
 		},
 		Description: "This command delete the specify trie node from the database.",
-	}
-	dbPruneHashTrieCmd = &cli.Command{
-		Action:    pruneHashTrie,
-		Name:      "prune-hash-trie",
-		ArgsUsage: "",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
-			utils.SyncModeFlag,
-		},
-		Usage:       "[Caution]Prune all the hash trie node in diskdb",
-		Description: `This command iterates the entrie kv in leveldb and delete all the hash trie node.`,
 	}
 	dbStatCmd = &cli.Command{
 		Action: dbStats,
@@ -941,6 +931,8 @@ func hbss2pbss(ctx *cli.Context) error {
 		jobnum = 1000
 	}
 
+	force := ctx.Bool(utils.ForceFlag.Name)
+
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -948,65 +940,74 @@ func hbss2pbss(ctx *cli.Context) error {
 	db.Sync()
 	defer db.Close()
 
-	config := trie.HashDefaults
-	triedb := trie.NewDatabase(db, config)
-	triedb.Cap(0)
-	log.Info("hbss2pbss triedb", "scheme", triedb.Scheme())
-	defer triedb.Close()
+	// convert hbss trie node to pbss trie node
+	lastStateID := rawdb.ReadPersistentStateID(db)
+	if lastStateID == 0 || force {
+		config := trie.HashDefaults
+		triedb := trie.NewDatabase(db, config)
+		triedb.Cap(0)
+		log.Info("hbss2pbss triedb", "scheme", triedb.Scheme())
+		defer triedb.Close()
 
-	headerHash := rawdb.ReadHeadHeaderHash(db)
-	blockNumber := rawdb.ReadHeaderNumber(db, headerHash)
-	if blockNumber == nil {
-		log.Error("read header number failed.")
-		return fmt.Errorf("read header number failed")
-	}
-
-	log.Info("hbss2pbss converting", "HeaderHash: ", headerHash.String(), ", blockNumber: ", *blockNumber)
-
-	var headerBlockHash common.Hash
-	var trieRootHash common.Hash
-
-	if *blockNumber != math.MaxUint64 {
-		headerBlockHash = rawdb.ReadCanonicalHash(db, *blockNumber)
-		if headerBlockHash == (common.Hash{}) {
-			return fmt.Errorf("ReadHeadBlockHash empty hash")
+		headerHash := rawdb.ReadHeadHeaderHash(db)
+		blockNumber := rawdb.ReadHeaderNumber(db, headerHash)
+		if blockNumber == nil {
+			log.Error("read header number failed.")
+			return fmt.Errorf("read header number failed")
 		}
-		blockHeader := rawdb.ReadHeader(db, headerBlockHash, *blockNumber)
-		trieRootHash = blockHeader.Root
-		fmt.Println("Canonical Hash: ", headerBlockHash.String(), ", TrieRootHash: ", trieRootHash.String())
-	}
-	if (trieRootHash == common.Hash{}) {
-		log.Error("Empty root hash")
-		return fmt.Errorf("Empty root hash.")
+
+		log.Info("hbss2pbss converting", "HeaderHash: ", headerHash.String(), ", blockNumber: ", *blockNumber)
+
+		var headerBlockHash common.Hash
+		var trieRootHash common.Hash
+
+		if *blockNumber != math.MaxUint64 {
+			headerBlockHash = rawdb.ReadCanonicalHash(db, *blockNumber)
+			if headerBlockHash == (common.Hash{}) {
+				return fmt.Errorf("ReadHeadBlockHash empty hash")
+			}
+			blockHeader := rawdb.ReadHeader(db, headerBlockHash, *blockNumber)
+			trieRootHash = blockHeader.Root
+			fmt.Println("Canonical Hash: ", headerBlockHash.String(), ", TrieRootHash: ", trieRootHash.String())
+		}
+		if (trieRootHash == common.Hash{}) {
+			log.Error("Empty root hash")
+			return fmt.Errorf("Empty root hash.")
+		}
+
+		id := trie.StateTrieID(trieRootHash)
+		theTrie, err := trie.New(id, triedb)
+		if err != nil {
+			log.Error("fail to new trie tree", "err", err, "rootHash", err, trieRootHash.String())
+			return err
+		}
+
+		h2p, err := trie.NewHbss2Pbss(theTrie, triedb, trieRootHash, *blockNumber, jobnum)
+		if err != nil {
+			log.Error("fail to new hash2pbss", "err", err, "rootHash", err, trieRootHash.String())
+			return err
+		}
+		h2p.Run()
+	} else {
+		log.Info("Convert hbss to pbss success. Nothing to do.")
 	}
 
-	id := trie.StateTrieID(trieRootHash)
-	theTrie, err := trie.New(id, triedb)
+	// repair state ancient offset
+	lastStateID = rawdb.ReadPersistentStateID(db)
+	if lastStateID == 0 {
+		log.Error("Convert hbss to pbss trie node error. The last state id is still 0")
+	}
+	ancient := stack.ResolveAncient("chaindata", ctx.String(utils.AncientFlag.Name))
+	err = rawdb.ResetStateFreezerTableOffset(ancient, lastStateID)
 	if err != nil {
-		log.Error("fail to new trie tree", "err", err, "rootHash", err, trieRootHash.String())
+		log.Error("Reset state freezer table offset failed", "error", err)
 		return err
 	}
-
-	h2p, err := trie.NewHbss2Pbss(theTrie, triedb, trieRootHash, *blockNumber, jobnum)
+	// prune hbss trie node
+	err = rawdb.PruneHashTrieNodeInDataBase(db)
 	if err != nil {
-		log.Error("fail to new hash2pbss", "err", err, "rootHash", err, trieRootHash.String())
+		log.Error("Prune Hash trie node in database failed", "error", err)
 		return err
 	}
-	h2p.Run()
-
 	return nil
-}
-
-func pruneHashTrie(ctx *cli.Context) error {
-	if ctx.NArg() != 0 {
-		return fmt.Errorf("required none argument")
-	}
-
-	stack, _ := makeConfigNode(ctx)
-	defer stack.Close()
-
-	db := utils.MakeChainDatabase(ctx, stack, false, false)
-	defer db.Close()
-
-	return rawdb.PruneHashTrieNodeInDataBase(db)
 }

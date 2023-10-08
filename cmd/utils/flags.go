@@ -207,7 +207,12 @@ var (
 		Usage:    "Exits after block synchronisation completes",
 		Category: flags.EthCategory,
 	}
-
+	// hbss2pbss command options
+	ForceFlag = &cli.BoolFlag{
+		Name:  "force",
+		Usage: "Force convert hbss trie node to pbss trie node. Ingore any metadata",
+		Value: false,
+	}
 	// Dump command options.
 	IterativeOutputFlag = &cli.BoolFlag{
 		Name:  "iterative",

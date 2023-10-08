@@ -83,7 +83,7 @@ func (h2p *Hbss2Pbss) Run() {
 	h2p.ConcurrentTraversal(h2p.trie, h2p.root, []byte{})
 	h2p.wg.Wait()
 
-	log.Info("Total complete: %v, go routines Num: %v, h2p concurrentQueue: %v\n", h2p.totalNum, runtime.NumGoroutine(), len(h2p.concurrentQueue))
+	log.Info("Total", "complete", h2p.totalNum, "go routines Num", runtime.NumGoroutine, "h2p concurrentQueue", len(h2p.concurrentQueue))
 
 	rawdb.WritePersistentStateID(h2p.db.diskdb, h2p.blocknum)
 	rawdb.WriteStateID(h2p.db.diskdb, h2p.stateRootHash, h2p.blocknum)
