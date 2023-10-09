@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 )
@@ -120,6 +121,7 @@ func newTriePrefetcher(db Database, root common.Hash, namespace string, noreads 
 // include: subfetcher's creation & abort, child subfetcher's creation & abort.
 // since the mainLoop will handle all the requests, each message handle should be lightweight
 func (p *triePrefetcher) mainLoop() {
+	defer debug.Handler.StartRegionAutoExpensive("prefetch mainLoop")()
 	for {
 		select {
 		case pMsg := <-p.prefetchChan:
@@ -198,6 +200,8 @@ func (p *triePrefetcher) mainLoop() {
 // close iterates over all the subfetchers, aborts any that were left spinning
 // and reports the stats to the metrics subsystem.
 func (p *triePrefetcher) close() {
+	defer debug.Handler.StartRegionAutoExpensive("triePrefetcher close")()
+
 	// If the prefetcher is an inactive one, bail out
 	if p.fetches != nil {
 		return
@@ -320,6 +324,7 @@ func (p *triePrefetcher) trie(owner common.Hash, root common.Hash) Trie {
 // used marks a batch of state items used to allow creating statistics as to
 // how useful or wasteful the prefetcher is.
 func (p *triePrefetcher) used(owner common.Hash, root common.Hash, usedAddr []common.Address, usedSlot []common.Hash) {
+	defer debug.Handler.StartRegionAutoExpensive("triePrefetcher used")()
 	// If the prefetcher is an inactive one, bail out
 	if p.fetches != nil {
 		return
@@ -388,6 +393,7 @@ type subfetcher struct {
 // newSubfetcher creates a goroutine to prefetch state items belonging to a
 // particular root hash.
 func newSubfetcher(db Database, state common.Hash, owner common.Hash, root common.Hash, addr common.Address) *subfetcher {
+	defer debug.Handler.StartRegionAutoExpensive("newSubfetcher")()
 	sf := &subfetcher{
 		db:    db,
 		state: state,
@@ -419,6 +425,8 @@ func (sf *subfetcher) schedule(keys [][]byte) {
 }
 
 func (sf *subfetcher) scheduleParallel(keys [][]byte) {
+	defer debug.Handler.StartRegionAutoExpensive("scheduleParallel")()
+
 	var keyIndex uint32 = 0
 	childrenNum := len(sf.paraChildren)
 	if childrenNum > 0 {
@@ -521,6 +529,14 @@ func (sf *subfetcher) openTrie() error {
 // loop waits for new tasks to be scheduled and keeps loading them until it runs
 // out of tasks or its underlying trie is retrieved for committing.
 func (sf *subfetcher) loop() {
+
+	traceMsg := "subfetcher"
+	if sf.owner == (common.Hash{}) {
+		traceMsg += "_account" // L1 account trie
+	} else {
+		traceMsg += "_" + sf.addr.String() // L2 storage trie
+	}
+	defer debug.Handler.StartRegionAutoExpensive(traceMsg)()
 	// No matter how the loop stops, signal anyone waiting that it's terminated
 	defer close(sf.term)
 
@@ -541,6 +557,8 @@ func (sf *subfetcher) loop() {
 					sf.trie, err = sf.db.OpenStorageTrie(sf.state, sf.addr, sf.root, nil)
 				}
 				if err != nil {
+					log.Info("subfetcher loop open Trie error", "sf.owner", sf.owner,
+						"sf.addr", sf.addr, "err", err)
 					continue
 				}
 			}

@@ -134,6 +134,7 @@ func (s *stateObject) touch() {
 // If a new trie is opened, it will be cached within the state object to allow
 // subsequent reads to expand the same trie instead of reloading from disk.
 func (s *stateObject) getTrie() (Trie, error) {
+	defer debug.Handler.StartRegionAuto("getTrie")()
 	if s.trie == nil {
 		tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root, s.db.trie)
 		if err != nil {
@@ -291,6 +292,7 @@ func (s *stateObject) setState(key common.Hash, value common.Hash, origin common
 // committed later. It is invoked at the end of every transaction.
 func (s *stateObject) finalise() {
 	slotsToPrefetch := make([]common.Hash, 0, len(s.dirtyStorage))
+	defer debug.Handler.StartRegionAuto("finalise")()
 	for key, value := range s.dirtyStorage {
 		if origin, exist := s.uncommittedStorage[key]; exist && origin == value {
 			// The slot is reverted to its original value, delete the entry
@@ -336,6 +338,8 @@ func (s *stateObject) finalise() {
 //
 // It assumes all the dirty storage slots have been finalized before.
 func (s *stateObject) updateTrie() (Trie, error) {
+	defer debug.Handler.StartRegionAuto("updateTrie")()
+
 	// Short circuit if nothing was accessed, don't trigger a prefetcher warning
 	if len(s.uncommittedStorage) == 0 {
 		// Nothing was written, so we could stop early. Unless we have both reads
@@ -418,6 +422,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 // updateRoot flushes all cached storage mutations to trie, recalculating the
 // new storage trie root.
 func (s *stateObject) updateRoot() {
+	defer debug.Handler.StartRegionAuto("updateRoot")()
 	// If node runs in no trie mode, set root to empty.
 	defer func() {
 		if s.db.db.NoTries() {

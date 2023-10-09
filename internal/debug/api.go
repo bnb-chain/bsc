@@ -63,6 +63,7 @@ type HandlerT struct {
 	bigBlockThreshold uint64
 	traceBigNum       uint64
 	fileSubfix        string
+	expensive         bool
 }
 
 // Verbosity sets the log verbosity ceiling. The verbosity of individual packages

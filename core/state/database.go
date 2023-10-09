@@ -220,7 +220,7 @@ func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 
 // OpenTrie opens the main account trie at a specific root hash.
 func (db *CachingDB) OpenTrie(root common.Hash) (Trie, error) {
-	defer debug.Handler.StartRegionAuto("OpenTrie")()
+	defer debug.Handler.StartRegionAutoExpensive("OpenTrie")()
 	if db.noTries {
 		return trie.NewEmptyTrie(), nil
 	}
@@ -236,7 +236,7 @@ func (db *CachingDB) OpenTrie(root common.Hash) (Trie, error) {
 
 // OpenStorageTrie opens the storage trie of an account.
 func (db *CachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash, self Trie) (Trie, error) {
-	defer debug.Handler.StartRegionAuto("OpenStorageTrie")()
+	defer debug.Handler.StartRegionAutoExpensive("OpenStorageTrie")()
 	if db.noTries {
 		return trie.NewEmptyTrie(), nil
 	}

@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -1118,6 +1119,7 @@ func (p *Parlia) NextInTurnValidator(chain consensus.ChainHeaderReader, header *
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
+	defer debug.Handler.StartRegionAuto("Parlia-Prepare")()
 	header.Coinbase = p.val
 	header.Nonce = types.BlockNonce{}
 
@@ -1470,6 +1472,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 // nor block rewards given, and returns the final block.
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+	defer debug.Handler.StartRegionAuto("FinalizeAndAssemble")()
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	cx := chainContext{Chain: chain, parlia: p}
 
@@ -1677,6 +1680,7 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
+	defer debug.Handler.StartRegionAuto("Seal")()
 	header := block.Header()
 
 	// Sealing the genesis block is not supported
@@ -1713,12 +1717,14 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	// Wait until sealing is terminated or delay timeout.
 	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
 	go func() {
+		defer debug.Handler.StartRegionAuto("Seal-1")()
 		select {
 		case <-stop:
 			return
 		case <-time.After(delay):
 		}
 
+		defer debug.Handler.StartRegionAuto("Seal-2")()
 		err := p.assembleVoteAttestation(chain, header)
 		if err != nil {
 			/* If the vote attestation can't be assembled successfully, the blockchain won't get
@@ -1735,6 +1741,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		copy(header.Extra[len(header.Extra)-extraSeal:], sig)
 
 		if p.shouldWaitForCurrentBlockProcess(chain, header, snap) {
+			defer debug.Handler.StartRegionAuto("Seal-3")()
 			highestVerifiedHeader := chain.GetHighestVerifiedHeader()
 			// including time for writing and committing blocks
 			waitProcessEstimate := math.Ceil(float64(highestVerifiedHeader.GasUsed) / float64(100_000_000))
@@ -1752,6 +1759,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 			}
 		}
 
+		defer debug.Handler.StartRegionAuto("Seal-4")()
 		select {
 		case results <- block.WithSeal(header):
 		default:

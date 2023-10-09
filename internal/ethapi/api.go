@@ -322,21 +322,22 @@ func (api *BlockChainAPI) ChainId() *hexutil.Big {
 
 // Larry add
 // start trace from number to number + length
-func (api *BlockChainAPI) EnableTraceCaptureWithBlockRange(number hexutil.Uint64, length hexutil.Uint64) {
+func (api *BlockChainAPI) EnableTraceCaptureWithBlockRange(number hexutil.Uint64, length hexutil.Uint64, expensive bool) {
 	if lengU64 := uint64(length); lengU64 > 1000 {
 		log.Warn("BlockChainAPI.EnableTraceCaptureWithBlockRange length not acceptable", "length", lengU64)
 	}
-	debug.Handler.RpcEnableTraceCaptureWithBlockRange(uint64(number), uint64(length))
+	debug.Handler.RpcEnableTraceCaptureWithBlockRange(uint64(number), uint64(length), expensive)
 }
 
-func (api *BlockChainAPI) EnableTraceCaptureBigBlock(number hexutil.Uint64, threshold hexutil.Uint64, length hexutil.Uint64) {
+func (api *BlockChainAPI) EnableTraceCaptureBigBlock(number hexutil.Uint64, threshold hexutil.Uint64,
+	length hexutil.Uint64, expensive bool) {
 	if threshold < 100 {
 		log.Warn("BlockChainAPI.EnableTraceCaptureBigBlock threshold is small", "threshold", threshold)
 	}
 	if lengU64 := uint64(length); lengU64 > 1000 {
 		log.Warn("BlockChainAPI.EnableTraceCaptureBigBlock length too big", "length", lengU64)
 	}
-	debug.Handler.RpcEnableTraceCaptureBigBlock(uint64(number), uint64(threshold), uint64(length))
+	debug.Handler.RpcEnableTraceCaptureBigBlock(uint64(number), uint64(threshold), uint64(length), expensive)
 }
 
 func (api *BlockChainAPI) EnableTraceCapture() {

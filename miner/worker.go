@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
@@ -450,7 +452,20 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
+			mockBlockNum := uint64(1)
+			debug.Handler.EnableTraceBigBlock(mockBlockNum, 0, "") // to disable trace, set blockNum to 0
+
+			// if next block is my turn, enable trace
+			difficulty := w.engine.CalcDifficulty(w.chain, 0, head.Header)
+			if difficulty != nil && difficulty.Cmp(diffInTurn) == 0 {
+				log.Info("Next is my turn, try to enable trace", "block", head.Header.Number.Uint64()+1)
+				mockTxNum := 10000
+				debug.Handler.EnableTraceBigBlock(head.Header.Number.Uint64()+1, mockTxNum, "")
+			}
+			traceMsg := "NewWorkLoop " + strconv.FormatUint(head.Header.Number.Uint64()+1, 10)
+			trace := debug.Handler.StartTrace(traceMsg)
 			if !w.isRunning() {
+				debug.Handler.EndTrace(trace)
 				continue
 			}
 			if interruptCh != nil {
@@ -465,16 +480,18 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				if err != nil {
 					timer.Reset(recommit)
 					log.Debug("Not allowed to propose block", "err", err)
+					debug.Handler.EndTrace(trace)
 					continue
 				}
 				if signedRecent {
 					timer.Reset(recommit)
 					log.Info("Signed recently, must wait")
+					debug.Handler.EndTrace(trace)
 					continue
 				}
 			}
 			commit(commitInterruptNewHead)
-
+			debug.Handler.EndTrace(trace)
 		case <-timer.C:
 			// If sealing is running resubmit a new work cycle periodically to pull in
 			// higher priced transactions. Disable this overhead for pending blocks.
@@ -551,12 +568,14 @@ func (w *worker) taskLoop() {
 	for {
 		select {
 		case task := <-w.taskCh:
+			trace := debug.Handler.StartTrace("taskLoop")
 			if w.newTaskHook != nil {
 				w.newTaskHook(task)
 			}
 			// Reject duplicate sealing work due to resubmitting.
 			sealHash := w.engine.SealHash(task.block.Header())
 			if sealHash == prev {
+				debug.Handler.EndTrace(trace)
 				continue
 			}
 			// Interrupt previous sealing operation
@@ -564,6 +583,7 @@ func (w *worker) taskLoop() {
 			stopCh, prev = make(chan struct{}), sealHash
 
 			if w.skipSealHook != nil && w.skipSealHook(task) {
+				debug.Handler.EndTrace(trace)
 				continue
 			}
 			w.pendingMu.Lock()
@@ -576,6 +596,8 @@ func (w *worker) taskLoop() {
 				delete(w.pendingTasks, sealHash)
 				w.pendingMu.Unlock()
 			}
+			debug.Handler.EndTrace(trace)
+
 		case <-w.exitCh:
 			interrupt()
 			return
@@ -590,12 +612,15 @@ func (w *worker) resultLoop() {
 	for {
 		select {
 		case block := <-w.resultCh:
+			trace := debug.Handler.StartTrace("resultLoop")
 			// Short circuit when receiving empty result.
 			if block == nil {
+				debug.Handler.EndTrace(trace)
 				continue
 			}
 			// Short circuit when receiving duplicate result caused by resubmitting.
 			if w.chain.HasBlock(block.Hash(), block.NumberU64()) {
+				debug.Handler.EndTrace(trace)
 				continue
 			}
 			var (
@@ -607,6 +632,7 @@ func (w *worker) resultLoop() {
 			w.pendingMu.RUnlock()
 			if !exist {
 				log.Error("Block found but no relative pending task", "number", block.Number(), "sealhash", sealhash, "hash", hash)
+				debug.Handler.EndTrace(trace)
 				continue
 			}
 			// Different block could share same sealhash, deep copy here to prevent write-write conflict.
@@ -670,6 +696,7 @@ func (w *worker) resultLoop() {
 				} else {
 					log.Info("Written block as SideChain and avoid broadcasting", "status", status)
 				}
+				debug.Handler.EndTrace(trace)
 				continue
 			}
 			writeBlockTimer.UpdateSince(start)
@@ -679,6 +706,7 @@ func (w *worker) resultLoop() {
 			log.Info("Successfully seal and write new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
+			debug.Handler.EndTrace(trace)
 
 		case <-w.exitCh:
 			return
@@ -743,6 +771,7 @@ func (w *worker) updateSnapshot(env *environment) {
 }
 
 func (w *worker) commitTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
+	defer debug.Handler.StartRegionAuto("commitTransaction")()
 	if tx.Type() == types.BlobTxType {
 		return w.commitBlobTransaction(env, tx, receiptProcessors...)
 	}
@@ -800,6 +829,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 
 func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transactionsByPriceAndNonce,
 	interruptCh chan int32, stopTimer *time.Timer) error {
+	defer debug.Handler.StartRegionAuto("commitTransactions")()
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
@@ -992,6 +1022,7 @@ type generateParams struct {
 // either based on the last chain head or specified parent. In this function
 // the pending transactions are not filled yet, only the empty task returned.
 func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environment, error) {
+	defer debug.Handler.StartRegionAuto("prepareWork")()
 	w.confMu.RLock()
 	defer w.confMu.RUnlock()
 
@@ -1043,6 +1074,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		log.Error("Failed to prepare header for sealing", "err", err)
 		return nil, err
 	}
+	defer debug.Handler.StartRegionAuto("PrepareWork-2")()
 	// Apply EIP-4844, EIP-4788.
 	if w.chainConfig.IsCancun(header.Number, header.Time) {
 		var excessBlobGas uint64
@@ -1071,7 +1103,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
 	}
-
+	defer debug.Handler.StartRegionAuto("PrepareWork-3")()
 	// Handle upgrade built-in system contract code
 	systemcontracts.TryUpdateBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
 
@@ -1080,6 +1112,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 	}
 
 	if w.chainConfig.IsPrague(header.Number, header.Time) {
+		defer debug.Handler.StartRegionAuto("ProcessParentBlockHash")()
 		core.ProcessParentBlockHash(header.ParentHash, env.evm)
 	}
 	return env, nil
@@ -1089,6 +1122,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer, bidTxs mapset.Set[common.Hash]) (err error) {
+	defer debug.Handler.StartRegionAuto("fillTransactions")()
 	w.confMu.RLock()
 	tip := w.tip
 	prio := w.prio
@@ -1229,6 +1263,8 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 // commitWork generates several new sealing tasks based on the parent block
 // and submit them to the sealer.
 func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
+	// to enable trace, blockNum to 1000000000, set txNum to 1000
+	defer debug.Handler.StartRegionAutoExpensive("commitWork")()
 	// Abort committing if node is still syncing
 	if w.syncing.Load() {
 		return
@@ -1404,12 +1440,14 @@ LOOP:
 			// Still some time left, wait for the best bid.
 			// This happens during the peak time of the network, the local block building LOOP would break earlier than
 			// the final sealing time by meeting the errBlockInterruptedByOutOfGas criteria.
-
+			trace := debug.Handler.StartTrace("commitWork tillSealingTime")
 			log.Info("commitWork local building finished, wait for the best bid", "tillSealingTime", common.PrettyDuration(tillSealingTime))
 			stopTimer.Reset(tillSealingTime)
 			select {
 			case <-stopTimer.C:
+				debug.Handler.EndTrace(trace)
 			case <-interruptCh:
+				debug.Handler.EndTrace(trace)
 				log.Debug("commitWork interruptCh closed, new block imported or resubmit triggered")
 				return
 			}
@@ -1475,6 +1513,7 @@ func (w *worker) inTurn() bool {
 // the deep copy first.
 func (w *worker) commit(env *environment, interval func(), update bool, start time.Time) error {
 	if w.isRunning() {
+		defer debug.Handler.StartRegionAuto("worker-commit")()
 		if interval != nil {
 			interval()
 		}

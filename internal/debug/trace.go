@@ -110,19 +110,20 @@ func (h *HandlerT) RpcDisableTraceCapture() error {
 	return nil
 }
 
-func (h *HandlerT) RpcEnableTraceCaptureWithBlockRange(number, length uint64) {
+func (h *HandlerT) RpcEnableTraceCaptureWithBlockRange(number, length uint64, expensive bool) {
 	h.startBlockNum = number
 	h.endBlockNum = number + length
-
+	h.expensive = expensive
 	log.Info("enable traceCapture", "startBlockNum", h.startBlockNum,
 		"endBlockNum", h.endBlockNum)
 }
 
-func (h *HandlerT) RpcEnableTraceCaptureBigBlock(number, threshold, length uint64) {
+func (h *HandlerT) RpcEnableTraceCaptureBigBlock(number, threshold, length uint64, expensive bool) {
 	h.startBlockNum = number
 	h.traceBigBlock = true
 	h.bigBlockThreshold = threshold
 	h.traceBigNum = length
+	h.expensive = expensive
 	log.Info("enable big block traceCapture", "startBlockNum", h.startBlockNum,
 		"threshold", threshold, "length", length)
 }
@@ -204,6 +205,22 @@ func (h *HandlerT) StartRegionAuto(msg string) func() {
 	region := trace.StartRegion(h.ctx, msg)
 	return func() {
 		// log.Info("StartRegionAuto exit", "msg", msg)
+		region.End()
+	}
+}
+
+func (h *HandlerT) StartRegionAutoExpensive(msg string) func() {
+	if !h.expensive {
+		return func() {
+		}
+	}
+	if h.task == nil {
+		return func() {
+		}
+	}
+
+	region := trace.StartRegion(h.ctx, msg)
+	return func() {
 		region.End()
 	}
 }

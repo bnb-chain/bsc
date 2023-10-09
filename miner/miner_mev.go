@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -43,6 +44,7 @@ func (miner *Miner) HasBuilder(builder common.Address) bool {
 }
 
 func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common.Hash, error) {
+	defer debug.Handler.StartRegionAuto("mev.SendBid")()
 	builder, err := bidArgs.EcrecoverSender()
 	if err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature:%v", err))
