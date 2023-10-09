@@ -38,7 +38,7 @@ const (
 	maxDiffLayers = 128
 
 	// defaultCleanSize is the default memory allowance of clean cache.
-	defaultCleanSize = 16 * 1024 * 1024
+	defaultCleanSize = 1 * 1024 * 1024 * 1024
 
 	// maxBufferSize is the maximum memory allowance of node buffer.
 	// Too large nodebuffer will cause the system to pause for a long
@@ -428,5 +428,5 @@ func (db *Database) SetBufferSize(size int) error {
 
 // Scheme returns the node scheme used in the database.
 func (db *Database) Scheme() string {
-	return rawdb.PathScheme
+	return rawdb.AggPathScheme
 }

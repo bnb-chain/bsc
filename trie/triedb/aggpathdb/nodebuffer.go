@@ -231,7 +231,8 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	)
 
 	b.mux.RLock()
-	nodes := writeNodes(batch, b.nodes, clean)
+	// nodes := writeNodes(batch, b.nodes, clean)
+	nodes := aggregateAndWriteNodes(batch, b.nodes, clean, db)
 	b.mux.RUnlock()
 	rawdb.WritePersistentStateID(batch, id)
 
@@ -248,45 +249,26 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	return nil
 }
 
-// writeNodes writes the trie nodes into the provided database batch.
-// Note this function will also inject all the newly written nodes
-// into clean cache.
-func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node, clean *fastcache.Cache) (total int) {
-	for owner, subset := range nodes {
-		for path, n := range subset {
-			if n.IsDeleted() {
-				if owner == (common.Hash{}) {
-					rawdb.DeleteAccountTrieNode(batch, []byte(path))
-				} else {
-					rawdb.DeleteStorageTrieNode(batch, owner, []byte(path))
-				}
-				if clean != nil {
-					clean.Del(cacheKey(owner, []byte(path)))
-				}
-			} else {
-				if owner == (common.Hash{}) {
-					rawdb.WriteAccountTrieNode(batch, []byte(path), n.Blob)
-				} else {
-					rawdb.WriteStorageTrieNode(batch, owner, []byte(path), n.Blob)
-				}
-				if clean != nil {
-					clean.Set(cacheKey(owner, []byte(path)), n.Blob)
-				}
-			}
-		}
-		total += len(subset)
-	}
-	return total
-}
-
-// writeNodesV2 will aggregate the trienode into trie aggnode and persist into the database
-func writeNodesV2(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node, clean *fastcache.Cache, reader ethdb.KeyValueReader) (total int) {
+// aggregateAndWriteNodes will aggregate the trienode into trie aggnode and persist into the database
+// Note this function will inject all the clean aggNode into the cleanCache
+func aggregateAndWriteNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node,
+	clean *fastcache.Cache, reader ethdb.KeyValueReader) (total int) {
 	// pre-aggregate the node
 	changeSets := make(map[common.Hash]map[string]map[string]*trienode.Node)
 	for owner, subset := range nodes {
+		current, exist := changeSets[owner]
+		if !exist {
+			current = make(map[string]map[string]*trienode.Node)
+			changeSets[owner] = current
+		}
 		for path, n := range subset {
-			aggNodePath := aggNodePath([]byte(path))
-			changeSets[owner][string(aggNodePath)][path] = n
+			aggPath := aggNodePath([]byte(path))
+			aggChangeSet, exist := changeSets[owner][string(aggPath)]
+			if !exist {
+				aggChangeSet = make(map[string]*trienode.Node)
+			}
+			aggChangeSet[path] = n
+			changeSets[owner][string(aggPath)] = aggChangeSet
 		}
 	}
 
@@ -308,7 +290,7 @@ func writeNodesV2(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.
 }
 
 func aggNodePath(path []byte) []byte {
-	if len(path)/2 == 0 {
+	if len(path)%2 == 0 {
 		// even path
 		return path[:]
 	} else {
