@@ -281,22 +281,76 @@ func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.No
 
 // writeNodesV2 will aggregate the trienode into trie aggnode and persist into the database
 func writeNodesV2(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node, clean *fastcache.Cache, reader ethdb.KeyValueReader) (total int) {
+	// pre-aggregate the node
+	changeSets := make(map[common.Hash]map[string]map[string]*trienode.Node)
 	for owner, subset := range nodes {
 		for path, n := range subset {
-
+			aggNodePath := aggNodePath([]byte(path))
+			changeSets[owner][string(aggNodePath)][path] = n
 		}
+	}
+
+	for owner, subset := range changeSets {
+		for aggPath, cs := range subset {
+			aggNode := mustGetOrLoadAggNode(reader, clean, owner, []byte(aggPath))
+			for path, n := range cs {
+				aggNode.Add([]byte(path), n)
+			}
+			aggNodeBytes := trienode.EncodeAggNode(aggNode)
+			writeAggNode(batch, []byte(aggPath), owner, aggNodeBytes)
+			if clean != nil {
+				clean.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
+			}
+			total++
+		}
+	}
+	return total
+}
+
+func aggNodePath(path []byte) []byte {
+	if len(path)/2 == 0 {
+		// even path
+		return path[:]
+	} else {
+		// odd path
+		return path[:len(path)-1]
 	}
 }
 
-// loadAggNode read the aggnode from the database
-func loadAggNode(reader ethdb.KeyValueReader, owner common.Hash, path []byte) (*trienode.AggNode, error) {
-	var val []byte
+func mustGetOrLoadAggNode(reader ethdb.KeyValueReader, clean *fastcache.Cache, owner common.Hash, path []byte) *trienode.AggNode {
+	aggNode, err := getOrLoadAggNode(reader, clean, owner, path)
+	if err != nil {
+		panic("must get or load agg node failed")
+	}
+	return aggNode
+}
+
+func writeAggNode(batch ethdb.Batch, aggPath []byte, owner common.Hash, aggNodeBytes []byte) {
 	if owner == (common.Hash{}) {
-		val = rawdb.ReadAccountTrieAggNode(reader, path)
+		rawdb.WriteAccountTrieAggNode(batch, aggPath, aggNodeBytes)
 	} else {
-		val = rawdb.ReadAccountTrieAggNode(reader, path)
+		rawdb.WriteStorageTrieAggNode(batch, owner, aggPath, aggNodeBytes)
+	}
+}
+
+// getOrLoadAggNode read the aggnode from the database
+func getOrLoadAggNode(reader ethdb.KeyValueReader, clean *fastcache.Cache, owner common.Hash, path []byte) (*trienode.AggNode, error) {
+	var val []byte
+
+	cacheHit := false
+	if clean != nil {
+		val, cacheHit = clean.HasGet(nil, path)
 	}
 
+	if !cacheHit {
+		if owner == (common.Hash{}) {
+			val = rawdb.ReadAccountTrieAggNode(reader, path)
+		} else {
+			val = rawdb.ReadStorageTrieAggNode(reader, owner, path)
+		}
+	}
+
+	// not found
 	if val == nil {
 		return &trienode.AggNode{}, nil
 	}

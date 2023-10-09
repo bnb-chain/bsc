@@ -26,6 +26,14 @@ func DecodeAggNode(data []byte) (*AggNode, error) {
 	return aggNode, nil
 }
 
+func (n *AggNode) Add(path []byte, node *Node) {
+
+}
+
+func EncodeAggNode(aggNode *AggNode) []byte {
+	return aggNode.encodeTo()
+}
+
 func (n *AggNode) decodeFrom(buf []byte) error {
 	if len(buf) == 0 {
 		return io.ErrUnexpectedEOF
