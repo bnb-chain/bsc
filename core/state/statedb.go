@@ -1350,6 +1350,10 @@ func (s *StateDB) deleteStorage(addr common.Address, addrHash common.Hash, root 
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("failed to open storage trie, err: %w", err)
 	}
+	// skip deleting storages for EmptyTrie
+	if _, ok := tr.(*trie.EmptyTrie); ok {
+		return false, nil, nil, nil
+	}
 	it, err := tr.NodeIterator(nil)
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("failed to open storage iterator, err: %w", err)
