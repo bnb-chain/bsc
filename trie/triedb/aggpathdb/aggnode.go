@@ -1,20 +1,17 @@
-package trienode
+package aggpathdb
 
 import (
 	"fmt"
 	"io"
-	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
-	"golang.org/x/crypto/sha3"
+	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
 // AggNode is a basic structure for aggregate and store two layer trie node.
 type AggNode struct {
-	root   *Node
-	childs [16]*Node
+	root   *trienode.Node
+	childs [16]*trienode.Node
 }
 
 func DecodeAggNode(data []byte) (*AggNode, error) {
@@ -26,8 +23,13 @@ func DecodeAggNode(data []byte) (*AggNode, error) {
 	return aggNode, nil
 }
 
-func (n *AggNode) Add(path []byte, node *Node) {
-
+func (n *AggNode) Add(path []byte, node *trienode.Node) {
+	if len(path)%2 == 0 {
+		n.root = node
+	} else {
+		i := path[len(path)-1]
+		n.childs[int(i)] = node
+	}
 }
 
 func EncodeAggNode(aggNode *AggNode) []byte {
@@ -55,7 +57,7 @@ func (n *AggNode) decodeFrom(buf []byte) error {
 	}
 
 	for i := 0; i < 16; i++ {
-		var cn *Node
+		var cn *trienode.Node
 		cn, rest, err = decodeNode(rest)
 		if err != nil {
 			return fmt.Errorf("decode childs Node(%d) failed in AggNode: %v", i, err)
@@ -79,7 +81,7 @@ func (n *AggNode) encodeTo() []byte {
 	return result
 }
 
-func writeNode(w rlp.EncoderBuffer, n *Node) {
+func writeNode(w rlp.EncoderBuffer, n *trienode.Node) {
 	if n == nil {
 		w.Write(rlp.EmptyString)
 	} else {
@@ -87,7 +89,7 @@ func writeNode(w rlp.EncoderBuffer, n *Node) {
 	}
 }
 
-func decodeNode(buf []byte) (*Node, []byte, error) {
+func decodeNode(buf []byte) (*trienode.Node, []byte, error) {
 	kind, val, rest, err := rlp.Split(buf)
 	if err != nil {
 		return nil, buf, err
@@ -99,24 +101,5 @@ func decodeNode(buf []byte) (*Node, []byte, error) {
 
 	h := newHasher()
 	defer h.release()
-	return New(h.hash(val), val), rest, nil
-}
-
-// hasher is used to compute the sha256 hash of the provided data.
-type hasher struct{ sha crypto.KeccakState }
-
-var hasherPool = sync.Pool{
-	New: func() interface{} { return &hasher{sha: sha3.NewLegacyKeccak256().(crypto.KeccakState)} },
-}
-
-func newHasher() *hasher {
-	return hasherPool.Get().(*hasher)
-}
-
-func (h *hasher) hash(data []byte) common.Hash {
-	return crypto.HashData(h.sha, data)
-}
-
-func (h *hasher) release() {
-	hasherPool.Put(h)
+	return trienode.New(h.hash(val), val), rest, nil
 }

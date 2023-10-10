@@ -232,7 +232,7 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 
 	b.mux.RLock()
 	// nodes := writeNodes(batch, b.nodes, clean)
-	nodes := aggregateAndWriteNodes(batch, b.nodes, clean, db)
+	nodes := aggregateAndWriteNodes(db, batch, b.nodes, clean)
 	b.mux.RUnlock()
 	rawdb.WritePersistentStateID(batch, id)
 
@@ -251,9 +251,10 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 
 // aggregateAndWriteNodes will aggregate the trienode into trie aggnode and persist into the database
 // Note this function will inject all the clean aggNode into the cleanCache
-func aggregateAndWriteNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node,
-	clean *fastcache.Cache, reader ethdb.KeyValueReader) (total int) {
+func aggregateAndWriteNodes(reader ethdb.KeyValueReader, batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node,
+	clean *fastcache.Cache) (total int) {
 	// pre-aggregate the node
+	// Note: temporary impl. When a node writes to a diskLayer, it should be aggregated to aggNode.
 	changeSets := make(map[common.Hash]map[string]map[string]*trienode.Node)
 	for owner, subset := range nodes {
 		current, exist := changeSets[owner]
@@ -278,7 +279,7 @@ func aggregateAndWriteNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]
 			for path, n := range cs {
 				aggNode.Add([]byte(path), n)
 			}
-			aggNodeBytes := trienode.EncodeAggNode(aggNode)
+			aggNodeBytes := EncodeAggNode(aggNode)
 			writeAggNode(batch, []byte(aggPath), owner, aggNodeBytes)
 			if clean != nil {
 				clean.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
@@ -292,14 +293,14 @@ func aggregateAndWriteNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]
 func aggNodePath(path []byte) []byte {
 	if len(path)%2 == 0 {
 		// even path
-		return path[:]
+		return path
 	} else {
 		// odd path
 		return path[:len(path)-1]
 	}
 }
 
-func mustGetOrLoadAggNode(reader ethdb.KeyValueReader, clean *fastcache.Cache, owner common.Hash, path []byte) *trienode.AggNode {
+func mustGetOrLoadAggNode(reader ethdb.KeyValueReader, clean *fastcache.Cache, owner common.Hash, path []byte) *AggNode {
 	aggNode, err := getOrLoadAggNode(reader, clean, owner, path)
 	if err != nil {
 		panic("must get or load agg node failed")
@@ -316,7 +317,7 @@ func writeAggNode(batch ethdb.Batch, aggPath []byte, owner common.Hash, aggNodeB
 }
 
 // getOrLoadAggNode read the aggnode from the database
-func getOrLoadAggNode(reader ethdb.KeyValueReader, clean *fastcache.Cache, owner common.Hash, path []byte) (*trienode.AggNode, error) {
+func getOrLoadAggNode(reader ethdb.KeyValueReader, clean *fastcache.Cache, owner common.Hash, path []byte) (*AggNode, error) {
 	var val []byte
 
 	cacheHit := false
@@ -334,10 +335,10 @@ func getOrLoadAggNode(reader ethdb.KeyValueReader, clean *fastcache.Cache, owner
 
 	// not found
 	if val == nil {
-		return &trienode.AggNode{}, nil
+		return &AggNode{}, nil
 	}
 
-	return trienode.DecodeAggNode(val)
+	return DecodeAggNode(val)
 }
 
 // cacheKey constructs the unique key of clean cache.
