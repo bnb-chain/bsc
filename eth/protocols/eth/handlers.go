@@ -247,8 +247,8 @@ func handleGetNodeData66(backend Backend, msg Decoder, peer *Peer) error {
 // ServiceGetNodeDataQuery assembles the response to a node data query. It is
 // exposed to allow external packages to test protocol behavior.
 func ServiceGetNodeDataQuery(chain *core.BlockChain, query GetNodeDataPacket) [][]byte {
-	// Request nodes by hash is not supported in path-based scheme.
-	if chain.TrieDB().Scheme() == rawdb.PathScheme {
+	// Request nodes by hash is not supported in path-based and aggregated-path-based scheme.
+	if chain.TrieDB().Scheme() == rawdb.PathScheme || chain.TrieDB().Scheme() == rawdb.AggPathScheme {
 		return nil
 	}
 	// Gather state data until the fetch or network limits is reached

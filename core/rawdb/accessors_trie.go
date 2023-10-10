@@ -252,6 +252,8 @@ func HasTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash c
 			return HasAccountTrieNode(db, path, hash)
 		}
 		return HasStorageTrieNode(db, owner, path, hash)
+	// TODO:: support AggPathScheme after adding AggNode retrieve func
+	//case AggPathScheme:
 	default:
 		panic(fmt.Sprintf("Unknown scheme %v", scheme))
 	}
@@ -283,6 +285,8 @@ func ReadTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash 
 			return nil
 		}
 		return blob
+	// TODO:: support AggPathScheme after adding AggNode retrieve func
+	//case AggPathScheme:
 	default:
 		panic(fmt.Sprintf("Unknown scheme %v", scheme))
 	}
@@ -306,6 +310,8 @@ func WriteTrieNode(db ethdb.KeyValueWriter, owner common.Hash, path []byte, hash
 		} else {
 			WriteStorageTrieNode(db, owner, path, node)
 		}
+	// TODO:: support AggPathScheme after exporting AggNode Update func, considering triedb cache
+	//case AggPathScheme:
 	default:
 		panic(fmt.Sprintf("Unknown scheme %v", scheme))
 	}
@@ -329,6 +335,8 @@ func DeleteTrieNode(db ethdb.KeyValueWriter, owner common.Hash, path []byte, has
 		} else {
 			DeleteStorageTrieNode(db, owner, path)
 		}
+	// TODO:: support AggPathScheme after exporting AggNode Update func, considering triedb cache
+	//case AggPathScheme:
 	default:
 		panic(fmt.Sprintf("Unknown scheme %v", scheme))
 	}

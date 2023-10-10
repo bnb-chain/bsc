@@ -625,6 +625,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		stateLookups    stat
 		accountTries    stat
 		storageTries    stat
+		accountAggTries stat
+		storageAggTries stat
 		codes           stat
 		txLookups       stat
 		accountSnaps    stat
@@ -673,6 +675,10 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			accountTries.Add(size)
 		case IsStorageTrieNode(key):
 			storageTries.Add(size)
+		case IsAccountTrieAggNode(key):
+			accountAggTries.Add(size)
+		case IsStorageTrieAggNode(key):
+			storageAggTries.Add(size)
 		case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
 			codes.Add(size)
 		case bytes.HasPrefix(key, txLookupPrefix) && len(key) == (len(txLookupPrefix)+common.HashLength):
@@ -743,6 +749,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Path trie state lookups", stateLookups.Size(), stateLookups.Count()},
 		{"Key-Value store", "Path trie account nodes", accountTries.Size(), accountTries.Count()},
 		{"Key-Value store", "Path trie storage nodes", storageTries.Size(), storageTries.Count()},
+		{"Key-Value store", "Aggregated Path trie account nodes", accountAggTries.Size(), accountAggTries.Count()},
+		{"Key-Value store", "Aggregated Path trie storage nodes", storageAggTries.Size(), storageAggTries.Count()},
 		{"Key-Value store", "Trie preimages", preimages.Size(), preimages.Count()},
 		{"Key-Value store", "Account snapshot", accountSnaps.Size(), accountSnaps.Count()},
 		{"Key-Value store", "Storage snapshot", storageSnaps.Size(), storageSnaps.Count()},

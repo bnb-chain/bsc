@@ -492,6 +492,7 @@ func dbTrieGet(ctx *cli.Context) error {
 		scheme = rawdb.HashScheme
 	}
 
+	// TODO:: support AggPathScheme, after export AggNode Get func
 	if scheme == rawdb.PathScheme {
 		var (
 			pathKey []byte
@@ -558,6 +559,7 @@ func dbTrieDelete(ctx *cli.Context) error {
 		scheme = rawdb.HashScheme
 	}
 
+	// TODO:: support AggPathScheme, after export AggNode Get func
 	if scheme == rawdb.PathScheme {
 		var (
 			pathKey []byte

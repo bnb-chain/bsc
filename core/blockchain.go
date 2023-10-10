@@ -407,7 +407,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		if bc.cacheConfig.SnapshotLimit > 0 {
 			diskRoot = rawdb.ReadSnapshotRoot(bc.db)
 		}
-		if bc.triedb.Scheme() == rawdb.PathScheme {
+		if bc.triedb.Scheme() == rawdb.PathScheme || bc.triedb.Scheme() == rawdb.AggPathScheme {
 			recoverable, _ := bc.triedb.Recoverable(diskRoot)
 			if !bc.HasState(diskRoot) && !recoverable {
 				diskRoot = bc.triedb.Head()
@@ -824,7 +824,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		// Reset the state database to empty for committing genesis state.
 		// Note, it should only happen in path-based scheme and Reset function
 		// is also only call-able in this mode.
-		if bc.triedb.Scheme() == rawdb.PathScheme {
+		if bc.triedb.Scheme() == rawdb.PathScheme || bc.triedb.Scheme() == rawdb.AggPathScheme {
 			if err := bc.triedb.Reset(types.EmptyRootHash); err != nil {
 				log.Crit("Failed to clean state", "err", err) // Shouldn't happen
 			}
@@ -986,7 +986,7 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 	}
 	// Reset the trie database with the fresh snap synced state.
 	root := block.Root()
-	if bc.triedb.Scheme() == rawdb.PathScheme {
+	if bc.triedb.Scheme() == rawdb.PathScheme || bc.triedb.Scheme() == rawdb.AggPathScheme {
 		if err := bc.triedb.Reset(root); err != nil {
 			return err
 		}
@@ -1166,7 +1166,7 @@ func (bc *BlockChain) Stop() {
 			log.Error("Failed to journal state snapshot", "err", err)
 		}
 	}
-	if bc.triedb.Scheme() == rawdb.PathScheme {
+	if bc.triedb.Scheme() == rawdb.PathScheme || bc.triedb.Scheme() == rawdb.AggPathScheme {
 		// Ensure that the in-memory trie nodes are journaled to disk properly.
 		if err := bc.triedb.Journal(bc.CurrentBlock().Root); err != nil {
 			log.Info("Failed to journal in-memory trie nodes", "err", err)
@@ -1599,7 +1599,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 		// If node is running in path mode, skip explicit gc operation
 		// which is unnecessary in this mode.
-		if bc.triedb.Scheme() == rawdb.PathScheme {
+		if bc.triedb.Scheme() == rawdb.PathScheme || bc.triedb.Scheme() == rawdb.AggPathScheme {
 			return nil
 		}
 
