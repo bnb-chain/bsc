@@ -342,6 +342,11 @@ func ReadStateScheme(db ethdb.Reader) string {
 	if len(blob) != 0 {
 		return PathScheme
 	}
+	// Check if state in aggregated-path-based scheme is present
+	blob = ReadAccountTrieAggNode(db, nil)
+	if len(blob) != 0 {
+		return AggPathScheme
+	}
 	// In a hash-based scheme, the genesis state is consistently stored
 	// on the disk. To assess the scheme of the persistent state, it
 	// suffices to inspect the scheme of the genesis state.

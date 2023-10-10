@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/trie/triedb/aggpathdb"
 	exlru "github.com/hashicorp/golang-lru"
 	"golang.org/x/crypto/sha3"
 
@@ -176,6 +177,13 @@ func (c *CacheConfig) triedbConfig() *trie.Config {
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
 			SyncFlush:      c.PathSyncFlush,
+			StateHistory:   c.StateHistory,
+			CleanCacheSize: c.TrieCleanLimit * 1024 * 1024,
+			DirtyCacheSize: c.TrieDirtyLimit * 1024 * 1024,
+		}
+	}
+	if c.StateScheme == rawdb.AggPathScheme {
+		config.AggPathDB = &aggpathdb.Config{
 			StateHistory:   c.StateHistory,
 			CleanCacheSize: c.TrieCleanLimit * 1024 * 1024,
 			DirtyCacheSize: c.TrieDirtyLimit * 1024 * 1024,
