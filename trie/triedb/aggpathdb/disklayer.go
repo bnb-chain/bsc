@@ -119,44 +119,30 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	}
 	dirtyMissMeter.Mark(1)
 
-	// Try to retrieve the trie node from the clean memory cache
-	key := cacheKey(owner, path)
-	if dl.cleans != nil {
-		if blob := dl.cleans.Get(nil, key); len(blob) > 0 {
-			h := newHasher()
-			defer h.release()
+	// try to retrieve the trie aggNode from the clean memory cache and database
+	aggNode, err := getAggNodeFromCacheOrDiskDB(dl.db.diskdb, dl.cleans, owner, path)
+	if err != nil || aggNode == nil {
+		return nil, err
+	}
 
-			got := h.hash(blob)
-			if got == hash {
-				cleanHitMeter.Mark(1)
-				cleanReadMeter.Mark(int64(len(blob)))
-				return blob, nil
-			}
-			cleanFalseMeter.Mark(1)
-			log.Debug("Unexpected trie node in clean cache", "owner", owner, "path", path, "expect", hash, "got", got)
-		}
-		cleanMissMeter.Mark(1)
+	node := aggNode.Node(path)
+	if node == nil {
+		// not found
+		return []byte{}, nil
 	}
-	// Try to retrieve the trie node from the disk.
-	var (
-		nBlob []byte
-		nHash common.Hash
-	)
-	if owner == (common.Hash{}) {
-		nBlob, nHash = rawdb.ReadAccountTrieNode(dl.db.diskdb, path)
-	} else {
-		nBlob, nHash = rawdb.ReadStorageTrieNode(dl.db.diskdb, owner, path)
+
+	h := newHasher()
+	defer h.release()
+
+	got := h.hash(node.Blob)
+	if got == hash {
+		return node.Blob, nil
 	}
-	if nHash != hash {
-		diskFalseMeter.Mark(1)
-		log.Error("Unexpected trie node in disk", "owner", owner, "path", common.Bytes2Hex(path), "expect", hash, "got", nHash)
-		return nil, newUnexpectedNodeError("disk", hash, nHash, owner, path)
+	if dl.cleans != nil {
+		dl.cleans.Set(cacheKey(owner, path), aggNode.encodeTo())
 	}
-	if dl.cleans != nil && len(nBlob) > 0 {
-		dl.cleans.Set(key, nBlob)
-		cleanWriteMeter.Mark(int64(len(nBlob)))
-	}
-	return nBlob, nil
+
+	return []byte{}, nil
 }
 
 // update implements the layer interface, returning a new diff layer on top
@@ -245,7 +231,7 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 		}
 	} else {
 		batch := dl.db.diskdb.NewBatch()
-		aggregateAndWriteNodes(batch, nodes, dl.cleans, dl.db.diskdb)
+		aggregateAndWriteNodes(dl.db.diskdb, batch, nodes, dl.cleans)
 		rawdb.WritePersistentStateID(batch, dl.id-1)
 		if err := batch.Write(); err != nil {
 			log.Crit("Failed to write states", "err", err)
