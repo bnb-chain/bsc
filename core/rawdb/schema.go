@@ -302,7 +302,7 @@ func storageTrieAggNodeKey(accountHash common.Hash, path []byte) []byte {
 	if len(path)%2 != 0 {
 		panic("The path is not even length")
 	}
-	return append(aggTrieNodeStoragePrefix, path...)
+	return append(append(aggTrieNodeStoragePrefix, accountHash.Bytes()...), path...)
 }
 
 // IsLegacyTrieNode reports whether a provided database entry is a legacy trie
