@@ -162,11 +162,7 @@ func (b *nodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 				// In case of database rollback, don't panic if this "clean"
 				// node occurs which is not present in buffer.
 				var nhash common.Hash
-				if owner == (common.Hash{}) {
-					_, nhash = rawdb.ReadAccountTrieNode(db, []byte(path))
-				} else {
-					_, nhash = rawdb.ReadStorageTrieNode(db, owner, []byte(path))
-				}
+				_, nhash = ReadTrieNode(db, owner, []byte(path))
 				// Ignore the clean node in the case described above.
 				if nhash == n.Hash {
 					continue

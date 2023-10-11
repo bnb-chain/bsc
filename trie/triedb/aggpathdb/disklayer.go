@@ -120,7 +120,7 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	dirtyMissMeter.Mark(1)
 
 	// try to retrieve the trie aggNode from the clean memory cache and database
-	aggNode, err := getAggNodeFromCacheOrDiskDB(dl.db.diskdb, dl.cleans, owner, path)
+	aggNode, err := getAggNodeFromCacheOrDiskDB(dl.db.diskdb, dl.cleans, owner, getAggNodePath(path))
 	if err != nil || aggNode == nil {
 		return nil, err
 	}

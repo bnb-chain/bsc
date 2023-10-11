@@ -179,7 +179,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 			log.Warn("Truncated extra state histories", "number", pruned)
 		}
 	}
-	log.Warn("Path-based state scheme is an experimental feature")
+	log.Warn("Aggregated Path-based state scheme is an experimental feature")
 	return db
 }
 
@@ -252,11 +252,11 @@ func (db *Database) Reset(root common.Hash) error {
 	if root == types.EmptyRootHash {
 		// Empty state is requested as the target, nuke out
 		// the root node and leave all others as dangling.
-		rawdb.DeleteAccountTrieNode(batch, nil)
+		DeleteTrieNode(db.diskdb, common.Hash{}, nil)
 	} else {
 		// Ensure the requested state is existent before any
 		// action is applied.
-		_, hash := rawdb.ReadAccountTrieNode(db.diskdb, nil)
+		_, hash := ReadTrieNode(db.diskdb, common.Hash{}, nil)
 		if hash != root {
 			return fmt.Errorf("state is mismatched, local: %x, target: %x", hash, root)
 		}

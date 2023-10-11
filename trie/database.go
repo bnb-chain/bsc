@@ -179,6 +179,8 @@ func (db *Database) Reader(blockRoot common.Hash) (Reader, error) {
 		return b.Reader(blockRoot)
 	case *pathdb.Database:
 		return b.Reader(blockRoot)
+	case *aggpathdb.Database:
+		return b.Reader(blockRoot)
 	}
 	return nil, errors.New("unknown backend")
 }

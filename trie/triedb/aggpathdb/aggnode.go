@@ -31,7 +31,7 @@ func EncodeAggNode(aggNode *AggNode) []byte {
 	return aggNode.encodeTo()
 }
 
-func GetAggNodePathKey(path []byte) []byte {
+func getAggNodePath(path []byte) []byte {
 	if len(path)%2 == 0 {
 		// even path
 		return path
@@ -149,7 +149,7 @@ func aggregateAndWriteNodes(reader ethdb.KeyValueReader, batch ethdb.Batch, node
 			changeSets[owner] = current
 		}
 		for path, n := range subset {
-			aggPath := GetAggNodePathKey([]byte(path))
+			aggPath := getAggNodePath([]byte(path))
 			aggChangeSet, exist := changeSets[owner][string(aggPath)]
 			if !exist {
 				aggChangeSet = make(map[string]*trienode.Node)
@@ -171,6 +171,10 @@ func aggregateAndWriteNodes(reader ethdb.KeyValueReader, batch ethdb.Batch, node
 			}
 			aggNodeBytes := EncodeAggNode(aggNode)
 			writeAggNode(batch, []byte(aggPath), owner, aggNodeBytes)
+			if len(aggPath) == 0 {
+				fmt.Println("root Hash: ", aggNode.root.Hash.String())
+			}
+			fmt.Println("WriteAggNode, aggpath: ", common.Bytes2Hex([]byte(aggPath)))
 			if clean != nil {
 				clean.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
 			}
@@ -221,4 +225,61 @@ func getAggNodeFromCacheOrDiskDB(reader ethdb.KeyValueReader, clean *fastcache.C
 		return nil, nil
 	}
 	return DecodeAggNode(val)
+}
+
+func ReadTrieNode(reader ethdb.KeyValueReader, owner common.Hash, path []byte) ([]byte, common.Hash) {
+	aggPath := getAggNodePath(path)
+	var aggNodeBytes []byte
+	if owner == (common.Hash{}) {
+		aggNodeBytes = rawdb.ReadAccountTrieAggNode(reader, aggPath)
+	} else {
+		aggNodeBytes = rawdb.ReadStorageTrieAggNode(reader, owner, aggPath)
+	}
+
+	fmt.Println("read trie aggnode, aggpath: ", common.Bytes2Hex(aggPath), "bytes: ", len(aggNodeBytes))
+
+	if aggNodeBytes == nil {
+		return nil, common.Hash{}
+	}
+
+	aggNode, err := DecodeAggNode(aggNodeBytes)
+	if err != nil {
+		panic(fmt.Sprintf("Decode account trie node failed. error: %v", err))
+	}
+
+	node := aggNode.Node(path)
+	h := newHasher()
+	defer h.release()
+	node.Hash = h.hash(node.Blob)
+	fmt.Println("read trie node, node hash: ", node.Hash.String())
+
+	return node.Blob, node.Hash
+}
+
+func DeleteTrieNode(db ethdb.KeyValueStore, owner common.Hash, path []byte) {
+	aggPath := getAggNodePath(path)
+	var aggNodeBytes []byte
+	if owner == (common.Hash{}) {
+		aggNodeBytes = rawdb.ReadAccountTrieAggNode(db, aggPath)
+	} else {
+		aggNodeBytes = rawdb.ReadStorageTrieAggNode(db, owner, aggPath)
+	}
+
+	fmt.Println("read trie aggnode, aggpath: ", common.Bytes2Hex(aggPath), "bytes: ", len(aggNodeBytes))
+
+	if aggNodeBytes == nil {
+		return
+	}
+
+	aggNode, err := DecodeAggNode(aggNodeBytes)
+	if err != nil {
+		panic(fmt.Sprintf("Decode account trie node failed. error: %v", err))
+	}
+	aggNode.Delete(path)
+
+	if owner == (common.Hash{}) {
+		rawdb.WriteAccountTrieAggNode(db, aggPath, aggNode.encodeTo())
+	} else {
+		rawdb.WriteStorageTrieAggNode(db, owner, aggPath, aggNode.encodeTo())
+	}
 }
