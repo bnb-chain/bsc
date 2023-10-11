@@ -252,11 +252,11 @@ func (db *Database) Reset(root common.Hash) error {
 	if root == types.EmptyRootHash {
 		// Empty state is requested as the target, nuke out
 		// the root node and leave all others as dangling.
-		DeleteTrieNode(db.diskdb, common.Hash{}, nil)
+		DeleteTrieNodeFromAggNode(db.diskdb, common.Hash{}, nil)
 	} else {
 		// Ensure the requested state is existent before any
 		// action is applied.
-		_, hash := ReadTrieNode(db.diskdb, common.Hash{}, nil)
+		_, hash := ReadTrieNodeFromAggNode(db.diskdb, common.Hash{}, nil)
 		if hash != root {
 			return fmt.Errorf("state is mismatched, local: %x, target: %x", hash, root)
 		}

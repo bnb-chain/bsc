@@ -162,7 +162,7 @@ func (b *nodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 				// In case of database rollback, don't panic if this "clean"
 				// node occurs which is not present in buffer.
 				var nhash common.Hash
-				_, nhash = ReadTrieNode(db, owner, []byte(path))
+				_, nhash = ReadTrieNodeFromAggNode(db, owner, []byte(path))
 				// Ignore the clean node in the case described above.
 				if nhash == n.Hash {
 					continue
@@ -227,8 +227,7 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	)
 
 	b.mux.RLock()
-	// nodes := writeNodes(batch, b.nodes, clean)
-	nodes := aggregateAndWriteNodes(db, batch, b.nodes, clean)
+	nodes := aggregateAndWriteNodes(db, clean, batch, b.nodes)
 	b.mux.RUnlock()
 	rawdb.WritePersistentStateID(batch, id)
 

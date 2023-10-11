@@ -166,7 +166,6 @@ func DeleteStorageTrieNode(db ethdb.KeyValueWriter, accountHash common.Hash, pat
 	}
 }
 
-// Aggragate path-based state scheme
 // ReadAccountTrieAggNode retrieves the account trie agg node and return the raw bytes
 func ReadAccountTrieAggNode(db ethdb.KeyValueReader, path []byte) []byte {
 	data, err := db.Get(accountTrieAggNodeKey(path))

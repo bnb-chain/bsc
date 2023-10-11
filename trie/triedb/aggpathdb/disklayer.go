@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
@@ -119,14 +120,28 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	}
 	dirtyMissMeter.Mark(1)
 
-	// try to retrieve the trie aggNode from the clean memory cache and database
-	aggNode, err := getAggNodeFromCacheOrDiskDB(dl.db.diskdb, dl.cleans, owner, getAggNodePath(path))
-	if err != nil || aggNode == nil {
+	aggPath := getAggNodePath(path)
+	// try to retrieve the trie aggNode from the clean memory cache
+	aggNode, err := getAggNodeFromCache(dl.cleans, owner, aggPath)
+	if err != nil {
 		return nil, err
 	}
 
-	node := aggNode.Node(path)
-	if node == nil {
+	// try to get aggNode from the database
+	if aggNode == nil {
+		aggNode, err = loadAggNodeFromDatabase(dl.db.diskdb, owner, aggPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// aggNode not found
+	if aggNode == nil {
+		return []byte{}, nil
+	}
+
+	rawNode := aggNode.Node(path)
+	if rawNode == nil {
 		// not found
 		return []byte{}, nil
 	}
@@ -134,9 +149,9 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	h := newHasher()
 	defer h.release()
 
-	got := h.hash(node.Blob)
+	got := h.hash(rawNode)
 	if got == hash {
-		return node.Blob, nil
+		return rawNode, nil
 	}
 	if dl.cleans != nil {
 		dl.cleans.Set(cacheKey(owner, path), aggNode.encodeTo())
@@ -231,7 +246,7 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 		}
 	} else {
 		batch := dl.db.diskdb.NewBatch()
-		aggregateAndWriteNodes(dl.db.diskdb, batch, nodes, dl.cleans)
+		aggregateAndWriteNodes(dl.db.diskdb, dl.cleans, batch, nodes)
 		rawdb.WritePersistentStateID(batch, dl.id-1)
 		if err := batch.Write(); err != nil {
 			log.Crit("Failed to write states", "err", err)
@@ -274,6 +289,50 @@ func (dl *diskLayer) resetCache() {
 	if dl.cleans != nil {
 		dl.cleans.Reset()
 	}
+}
+
+// aggregateAndWriteNodes will aggregate the trienode into trie aggnode and persist into the database
+// Note this function will inject all the clean aggNode into the cleanCache
+func aggregateAndWriteNodes(reader ethdb.KeyValueReader, clean *fastcache.Cache, batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node) (total int) {
+	// pre-aggregate the node
+	// Note: temporary impl. When a node writes to a diskLayer, it should be aggregated to aggNode.
+	changeSets := make(map[common.Hash]map[string]map[string]*trienode.Node)
+	for owner, subset := range nodes {
+		current, exist := changeSets[owner]
+		if !exist {
+			current = make(map[string]map[string]*trienode.Node)
+			changeSets[owner] = current
+		}
+		for path, n := range subset {
+			aggPath := getAggNodePath([]byte(path))
+			aggChangeSet, exist := changeSets[owner][string(aggPath)]
+			if !exist {
+				aggChangeSet = make(map[string]*trienode.Node)
+			}
+			aggChangeSet[path] = n
+			changeSets[owner][string(aggPath)] = aggChangeSet
+		}
+	}
+
+	for owner, subset := range changeSets {
+		for aggPath, cs := range subset {
+			aggNode := getOrNewAggNode(reader, clean, owner, []byte(aggPath))
+			for path, n := range cs {
+				if n.IsDeleted() {
+					aggNode.Delete([]byte(path))
+				} else {
+					aggNode.Update([]byte(path), n)
+				}
+			}
+			aggNodeBytes := EncodeAggNode(aggNode)
+			writeAggNode(batch, owner, []byte(aggPath), aggNodeBytes)
+			if clean != nil {
+				clean.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
+			}
+			total++
+		}
+	}
+	return total
 }
 
 // hasher is used to compute the sha256 hash of the provided data.

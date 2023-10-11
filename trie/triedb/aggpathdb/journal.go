@@ -115,7 +115,7 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 // loadLayers loads a pre-existing state layer backed by a key-value store.
 func (db *Database) loadLayers() layer {
 	// Retrieve the root node of persistent state.
-	_, root := ReadTrieNode(db.diskdb, common.Hash{}, nil)
+	_, root := ReadTrieNodeFromAggNode(db.diskdb, common.Hash{}, nil)
 	root = types.TrieRootHash(root)
 
 	// Load the layers by resolving the journal
@@ -366,7 +366,7 @@ func (db *Database) Journal(root common.Hash) error {
 	}
 	// The stored state in disk might be empty, convert the
 	// root to emptyRoot in this case.
-	_, diskroot := ReadTrieNode(db.diskdb, common.Hash{}, nil)
+	_, diskroot := ReadTrieNodeFromAggNode(db.diskdb, common.Hash{}, nil)
 	diskroot = types.TrieRootHash(diskroot)
 
 	// Secondly write out the state root in disk, ensure all layers

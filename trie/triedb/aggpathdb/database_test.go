@@ -530,7 +530,7 @@ func TestCorruptedJournal(t *testing.T) {
 		t.Errorf("Failed to journal, err: %v", err)
 	}
 	tester.db.Close()
-	_, root := ReadTrieNode(tester.db.diskdb, common.Hash{}, nil)
+	_, root := ReadTrieNodeFromAggNode(tester.db.diskdb, common.Hash{}, nil)
 
 	// Mutate the journal in disk, it should be regarded as invalid
 	blob := rawdb.ReadTrieJournal(tester.db.diskdb)
