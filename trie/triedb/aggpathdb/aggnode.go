@@ -50,7 +50,7 @@ func (n *AggNode) Update(path []byte, node *trienode.Node) {
 	}
 }
 
-func (n *AggNode) Del(path []byte) {
+func (n *AggNode) Delete(path []byte) {
 	if len(path)%2 == 0 {
 		n.root = nil
 	} else {
@@ -164,7 +164,7 @@ func aggregateAndWriteNodes(reader ethdb.KeyValueReader, batch ethdb.Batch, node
 			aggNode := getOrNewAggNode(reader, clean, owner, []byte(aggPath))
 			for path, n := range cs {
 				if n.IsDeleted() {
-
+					aggNode.Delete([]byte(path))
 				} else {
 					aggNode.Update([]byte(path), n)
 				}
