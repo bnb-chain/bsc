@@ -1123,6 +1123,7 @@ func (bc *BlockChain) Stop() {
 	//  - HEAD-127: So we have a hard limit on the number of blocks reexecuted
 	if !bc.cacheConfig.TrieDirtyDisabled {
 		triedb := bc.triedb
+		var once sync.Once
 
 		for _, offset := range []uint64{0, 1, bc.triesInMemory - 1} {
 			if number := bc.CurrentBlock().Number.Uint64(); number > offset {
@@ -1133,6 +1134,9 @@ func (bc *BlockChain) Stop() {
 					log.Error("Failed to commit recent state trie", "err", err)
 				} else {
 					rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
+					once.Do(func() {
+						rawdb.WriteHeadBlockHash(bc.db, recent.Hash())
+					})
 				}
 			}
 		}
@@ -1145,7 +1149,7 @@ func (bc *BlockChain) Stop() {
 			}
 		}
 		for !bc.triegc.Empty() {
-			go triedb.Dereference(bc.triegc.PopItem())
+			triedb.Dereference(bc.triegc.PopItem())
 		}
 		if size, _ := triedb.Size(); size != 0 {
 			log.Error("Dangling trie nodes after full cleanup")
