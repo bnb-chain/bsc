@@ -156,7 +156,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	if config.StateScheme == rawdb.HashScheme {
+	scheme, err := rawdb.ParseStateScheme(config.StateScheme, chainDb)
+	if err != nil {
+		return nil, err
+	}
+	// Try to recover offline state pruning only in hash-based.
+	if scheme == rawdb.HashScheme {
 		if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, config.TriesInMemory); err != nil {
 			log.Error("Failed to recover state", "error", err)
 		}
@@ -242,8 +247,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TriesInMemory:       config.TriesInMemory,
 			Preimages:           config.Preimages,
 			StateHistory:        config.StateHistory,
-			StateScheme:         config.StateScheme,
 			PathSyncFlush:       config.PathSyncFlush,
+			StateScheme:         scheme,
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
