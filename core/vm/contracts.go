@@ -409,7 +409,7 @@ func (c *dataCopy) RequiredGas(input []byte) uint64 {
 }
 
 func (c *dataCopy) Run(in []byte) ([]byte, error) {
-	return in, nil
+	return common.CopyBytes(in), nil
 }
 
 // bigModExp implements a native big integer exponential modular operation.
