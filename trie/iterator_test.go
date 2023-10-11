@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/trie/triedb"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
@@ -424,8 +425,8 @@ func testIteratorContinueAfterError(t *testing.T, memonly bool, scheme string) {
 		if memonly {
 			tr.reader.banned = map[string]struct{}{string(rpath): {}}
 		} else {
-			rval = rawdb.ReadTrieNode(diskdb, common.Hash{}, rpath, rhash, tdb.Scheme())
-			rawdb.DeleteTrieNode(diskdb, common.Hash{}, rpath, rhash, tdb.Scheme())
+			rval = triedb.ReadTrieNode(diskdb, common.Hash{}, rpath, rhash, tdb.Scheme())
+			triedb.DeleteTrieNode(diskdb, common.Hash{}, rpath, rhash, tdb.Scheme())
 		}
 		// Iterate until the error is hit.
 		seen := make(map[string]bool)
@@ -440,7 +441,7 @@ func testIteratorContinueAfterError(t *testing.T, memonly bool, scheme string) {
 		if memonly {
 			delete(tr.reader.banned, string(rpath))
 		} else {
-			rawdb.WriteTrieNode(diskdb, common.Hash{}, rpath, rhash, rval, tdb.Scheme())
+			triedb.WriteTrieNode(diskdb, common.Hash{}, rpath, rhash, rval, tdb.Scheme())
 		}
 		checkIteratorNoDups(t, it, seen)
 		if it.Error() != nil {
@@ -469,8 +470,8 @@ func testIteratorContinueAfterSeekError(t *testing.T, memonly bool, scheme strin
 		barNodeHash = common.HexToHash("05041990364eb72fcb1127652ce40d8bab765f2bfe53225b1170d276cc101c2e")
 	)
 	diskdb := rawdb.NewMemoryDatabase()
-	triedb := newTestDatabase(diskdb, scheme)
-	ctr := NewEmpty(triedb)
+	trietestdb := newTestDatabase(diskdb, scheme)
+	ctr := NewEmpty(trietestdb)
 	for _, val := range testdata1 {
 		ctr.MustUpdate([]byte(val.k), []byte(val.v))
 	}
@@ -481,19 +482,19 @@ func testIteratorContinueAfterSeekError(t *testing.T, memonly bool, scheme strin
 			break
 		}
 	}
-	triedb.Update(root, types.EmptyRootHash, 0, trienode.NewWithNodeSet(nodes), nil)
+	trietestdb.Update(root, types.EmptyRootHash, 0, trienode.NewWithNodeSet(nodes), nil)
 	if !memonly {
-		triedb.Commit(root, false)
+		trietestdb.Commit(root, false)
 	}
 	var (
 		barNodeBlob []byte
 	)
-	tr, _ := New(TrieID(root), triedb)
+	tr, _ := New(TrieID(root), trietestdb)
 	if memonly {
 		tr.reader.banned = map[string]struct{}{string(barNodePath): {}}
 	} else {
-		barNodeBlob = rawdb.ReadTrieNode(diskdb, common.Hash{}, barNodePath, barNodeHash, triedb.Scheme())
-		rawdb.DeleteTrieNode(diskdb, common.Hash{}, barNodePath, barNodeHash, triedb.Scheme())
+		barNodeBlob = triedb.ReadTrieNode(diskdb, common.Hash{}, barNodePath, barNodeHash, trietestdb.Scheme())
+		triedb.DeleteTrieNode(diskdb, common.Hash{}, barNodePath, barNodeHash, trietestdb.Scheme())
 	}
 	// Create a new iterator that seeks to "bars". Seeking can't proceed because
 	// the node is missing.
@@ -508,7 +509,7 @@ func testIteratorContinueAfterSeekError(t *testing.T, memonly bool, scheme strin
 	if memonly {
 		delete(tr.reader.banned, string(barNodePath))
 	} else {
-		rawdb.WriteTrieNode(diskdb, common.Hash{}, barNodePath, barNodeHash, barNodeBlob, triedb.Scheme())
+		triedb.WriteTrieNode(diskdb, common.Hash{}, barNodePath, barNodeHash, barNodeBlob, trietestdb.Scheme())
 	}
 	// Check that iteration produces the right set of values.
 	if err := checkIteratorOrder(testdata1[2:], NewIterator(it)); err != nil {

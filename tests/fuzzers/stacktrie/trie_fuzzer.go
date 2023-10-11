@@ -141,7 +141,7 @@ func (f *fuzzer) fuzz() int {
 		spongeB = &spongeDb{sponge: sha3.NewLegacyKeccak256()}
 		dbB     = trie.NewDatabase(rawdb.NewDatabase(spongeB), nil)
 		trieB   = trie.NewStackTrie(func(owner common.Hash, path []byte, hash common.Hash, blob []byte) {
-			rawdb.WriteTrieNode(spongeB, owner, path, hash, blob, dbB.Scheme())
+			triedb.WriteTrieNode(spongeB, owner, path, hash, blob, dbB.Scheme())
 		})
 		vals        []kv
 		useful      bool

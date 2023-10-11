@@ -321,7 +321,7 @@ func aggregateAndWriteNodes(reader ethdb.KeyValueReader, clean *fastcache.Cache,
 				if n.IsDeleted() {
 					aggNode.Delete([]byte(path))
 				} else {
-					aggNode.Update([]byte(path), n)
+					aggNode.Update([]byte(path), n.Blob)
 				}
 			}
 			aggNodeBytes := EncodeAggNode(aggNode)

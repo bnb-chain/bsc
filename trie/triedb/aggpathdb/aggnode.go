@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
 // AggNode is a basic structure for aggregate and store two layer trie node.
@@ -46,12 +45,12 @@ func (n *AggNode) Empty() bool {
 	return reflect.DeepEqual(n, AggNode{})
 }
 
-func (n *AggNode) Update(path []byte, node *trienode.Node) {
+func (n *AggNode) Update(path []byte, node []byte) {
 	if len(path)%2 == 0 {
-		n.root = node.Blob
+		n.root = node
 	} else {
 		i := path[len(path)-1]
-		n.childs[int(i)] = node.Blob
+		n.childs[int(i)] = node
 	}
 }
 
@@ -167,11 +166,11 @@ func getOrNewAggNode(db ethdb.KeyValueReader, clean *fastcache.Cache, owner comm
 	return aggNode
 }
 
-func writeAggNode(batch ethdb.Batch, owner common.Hash, aggPath []byte, aggNodeBytes []byte) {
+func writeAggNode(db ethdb.KeyValueWriter, owner common.Hash, aggPath []byte, aggNodeBytes []byte) {
 	if owner == (common.Hash{}) {
-		rawdb.WriteAccountTrieAggNode(batch, aggPath, aggNodeBytes)
+		rawdb.WriteAccountTrieAggNode(db, aggPath, aggNodeBytes)
 	} else {
-		rawdb.WriteStorageTrieAggNode(batch, owner, aggPath, aggNodeBytes)
+		rawdb.WriteStorageTrieAggNode(db, owner, aggPath, aggNodeBytes)
 	}
 }
 
@@ -234,6 +233,20 @@ func DeleteTrieNodeFromAggNode(db ethdb.KeyValueStore, owner common.Hash, path [
 	batch := db.NewBatch()
 	writeAggNode(batch, owner, aggPath, aggNode.encodeTo())
 	batch.Write()
+}
+
+func WriteTrieNodeFromAggNode(db ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte, node []byte) {
+	aggPath := getAggNodePath(path)
+	aggNode, err := loadAggNodeFromDatabase(reader, owner, aggPath)
+	if err != nil {
+		panic(fmt.Sprintf("Decode account trie node failed. error: %v", err))
+	}
+	if aggNode == nil {
+		return
+	}
+	aggNode.Update(path, node)
+
+	writeAggNode(db, owner, aggPath, aggNode.encodeTo())
 }
 
 func HasTrieNodeInAggNode(db ethdb.KeyValueReader, owner common.Hash, path []byte) bool {

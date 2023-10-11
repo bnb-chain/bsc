@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/trie/triedb"
 )
 
 // ErrNotRequested is returned by the trie sync when it's requested to process a
@@ -206,7 +207,7 @@ func (s *Sync) AddSubTrie(root common.Hash, path []byte, parent common.Hash, par
 		return
 	}
 	owner, inner := ResolvePath(path)
-	if rawdb.HasTrieNode(s.database, owner, inner, root, s.scheme) {
+	if triedb.HasTrieNode(s.database, owner, inner, root, s.scheme) {
 		return
 	}
 	// Assemble the new sub-trie sync request
@@ -364,14 +365,14 @@ func (s *Sync) Commit(dbw ethdb.Batch) error {
 	// Flush the pending node writes into database batch.
 	for path, value := range s.membatch.nodes {
 		owner, inner := ResolvePath([]byte(path))
-		rawdb.WriteTrieNode(dbw, owner, inner, s.membatch.hashes[path], value, s.scheme)
+		triedb.WriteTrieNode(dbw, s.database, owner, inner, s.membatch.hashes[path], value, s.scheme)
 	}
 	// Flush the pending node deletes into the database batch.
 	// Please note that each written and deleted node has a
 	// unique path, ensuring no duplication occurs.
 	for path := range s.membatch.deletes {
 		owner, inner := ResolvePath([]byte(path))
-		rawdb.DeleteTrieNode(dbw, owner, inner, common.Hash{} /* unused */, s.scheme)
+		triedb.DeleteTrieNode(dbw, owner, inner, common.Hash{} /* unused */, s.scheme)
 	}
 	// Flush the pending code writes into database batch.
 	for hash, value := range s.membatch.codes {
@@ -529,7 +530,7 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 					chash        = common.BytesToHash(node)
 					owner, inner = ResolvePath(child.path)
 				)
-				if rawdb.HasTrieNode(s.database, owner, inner, chash, s.scheme) {
+				if triedb.HasTrieNode(s.database, owner, inner, chash, s.scheme) {
 					return
 				}
 				// Locally unknown node, schedule for retrieval

@@ -428,7 +428,7 @@ func testGenerateCorruptAccountTrie(t *testing.T, scheme string) {
 	targetPath := []byte{0xc}
 	targetHash := common.HexToHash("0x65145f923027566669a1ae5ccac66f945b55ff6eaeb17d2ea8e048b7d381f2d7")
 
-	rawdb.DeleteTrieNode(helper.diskdb, common.Hash{}, targetPath, targetHash, scheme)
+	triedb.DeleteTrieNode(helper.diskdb, common.Hash{}, targetPath, targetHash, scheme)
 
 	snap := generateSnapshot(helper.diskdb, helper.triedb, 16, root)
 	select {
@@ -471,8 +471,8 @@ func testGenerateMissingStorageTrie(t *testing.T, scheme string) {
 	root := helper.Commit()
 
 	// Delete storage trie root of account one and three.
-	rawdb.DeleteTrieNode(helper.diskdb, acc1, nil, stRoot, scheme)
-	rawdb.DeleteTrieNode(helper.diskdb, acc3, nil, stRoot, scheme)
+	triedb.DeleteTrieNode(helper.diskdb, acc1, nil, stRoot, scheme)
+	triedb.DeleteTrieNode(helper.diskdb, acc3, nil, stRoot, scheme)
 
 	snap := generateSnapshot(helper.diskdb, helper.triedb, 16, root)
 	select {
@@ -513,8 +513,8 @@ func testGenerateCorruptStorageTrie(t *testing.T, scheme string) {
 	// Delete a node in the storage trie.
 	targetPath := []byte{0x4}
 	targetHash := common.HexToHash("0x18a0f4d79cff4459642dd7604f303886ad9d77c30cf3d7d7cedb3a693ab6d371")
-	rawdb.DeleteTrieNode(helper.diskdb, hashData([]byte("acc-1")), targetPath, targetHash, scheme)
-	rawdb.DeleteTrieNode(helper.diskdb, hashData([]byte("acc-3")), targetPath, targetHash, scheme)
+	triedb.DeleteTrieNode(helper.diskdb, hashData([]byte("acc-1")), targetPath, targetHash, scheme)
+	triedb.DeleteTrieNode(helper.diskdb, hashData([]byte("acc-3")), targetPath, targetHash, scheme)
 
 	snap := generateSnapshot(helper.diskdb, helper.triedb, 16, root)
 	select {

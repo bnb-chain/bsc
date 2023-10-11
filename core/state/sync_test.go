@@ -723,15 +723,15 @@ func testIncompleteStateSync(t *testing.T, scheme string) {
 	for i, path := range addedPaths {
 		owner, inner := trie.ResolvePath([]byte(path))
 		hash := addedHashes[i]
-		val := rawdb.ReadTrieNode(dstDb, owner, inner, hash, scheme)
+		val := triedb.ReadTrieNode(dstDb, owner, inner, hash, scheme)
 		if val == nil {
 			t.Error("missing trie node")
 		}
-		rawdb.DeleteTrieNode(dstDb, owner, inner, hash, scheme)
+		triedb.DeleteTrieNode(dstDb, owner, inner, hash, scheme)
 		if err := checkStateConsistency(dstDb, scheme, srcRoot); err == nil {
 			t.Errorf("trie inconsistency not caught, missing: %v", path)
 		}
-		rawdb.WriteTrieNode(dstDb, owner, inner, hash, val, scheme)
+		triedb.WriteTrieNode(dstDb, owner, inner, hash, val, scheme)
 	}
 }
 

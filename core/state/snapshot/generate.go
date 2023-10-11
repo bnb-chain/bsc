@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
@@ -371,7 +372,7 @@ func (dl *diskLayer) generateRange(ctx *generatorContext, trieId *trie.ID, prefi
 			tdb.Commit(root, false)
 		}
 		resolver = func(owner common.Hash, path []byte, hash common.Hash) []byte {
-			return rawdb.ReadTrieNode(mdb, owner, path, hash, tdb.Scheme())
+			return triedb.ReadTrieNode(mdb, owner, path, hash, tdb.Scheme())
 		}
 	}
 	// Construct the trie for state iteration, reuse the trie

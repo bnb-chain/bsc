@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
+	"github.com/ethereum/go-ethereum/trie/triedb"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
@@ -589,12 +590,12 @@ func testIncompleteSync(t *testing.T, scheme string) {
 	for i, path := range addedKeys {
 		owner, inner := ResolvePath([]byte(path))
 		nodeHash := addedHashes[i]
-		value := rawdb.ReadTrieNode(diskdb, owner, inner, nodeHash, scheme)
-		rawdb.DeleteTrieNode(diskdb, owner, inner, nodeHash, scheme)
+		value := triedb.ReadTrieNode(diskdb, owner, inner, nodeHash, scheme)
+		triedb.DeleteTrieNode(diskdb, owner, inner, nodeHash, scheme)
 		if err := checkTrieConsistency(diskdb, srcDb.Scheme(), root, false); err == nil {
 			t.Fatalf("trie inconsistency not caught, missing: %x", path)
 		}
-		rawdb.WriteTrieNode(diskdb, owner, inner, nodeHash, value, scheme)
+		triedb.WriteTrieNode(diskdb, diskdb, owner, inner, nodeHash, value, scheme)
 	}
 }
 

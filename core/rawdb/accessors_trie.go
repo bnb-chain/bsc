@@ -17,7 +17,6 @@
 package rawdb
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -237,107 +236,6 @@ func WriteLegacyTrieNode(db ethdb.KeyValueWriter, hash common.Hash, node []byte)
 func DeleteLegacyTrieNode(db ethdb.KeyValueWriter, hash common.Hash) {
 	if err := db.Delete(hash.Bytes()); err != nil {
 		log.Crit("Failed to delete legacy trie node", "err", err)
-	}
-}
-
-// HasTrieNode checks the trie node presence with the provided node info and
-// the associated node hash.
-func HasTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash common.Hash, scheme string) bool {
-	switch scheme {
-	case HashScheme:
-		return HasLegacyTrieNode(db, hash)
-	case PathScheme:
-		if owner == (common.Hash{}) {
-			return HasAccountTrieNode(db, path, hash)
-		}
-		return HasStorageTrieNode(db, owner, path, hash)
-	// TODO:: support AggPathScheme after adding AggNode retrieve func
-	//case AggPathScheme:
-	default:
-		panic(fmt.Sprintf("Unknown scheme %v", scheme))
-	}
-}
-
-// ReadTrieNode retrieves the trie node from database with the provided node info
-// and associated node hash.
-// hashScheme-based lookup requires the following:
-//   - hash
-//
-// pathScheme-based lookup requires the following:
-//   - owner
-//   - path
-func ReadTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash common.Hash, scheme string) []byte {
-	switch scheme {
-	case HashScheme:
-		return ReadLegacyTrieNode(db, hash)
-	case PathScheme:
-		var (
-			blob  []byte
-			nHash common.Hash
-		)
-		if owner == (common.Hash{}) {
-			blob, nHash = ReadAccountTrieNode(db, path)
-		} else {
-			blob, nHash = ReadStorageTrieNode(db, owner, path)
-		}
-		if nHash != hash {
-			return nil
-		}
-		return blob
-	// TODO:: support AggPathScheme after adding AggNode retrieve func
-	//case AggPathScheme:
-	default:
-		panic(fmt.Sprintf("Unknown scheme %v", scheme))
-	}
-}
-
-// WriteTrieNode writes the trie node into database with the provided node info
-// and associated node hash.
-// hashScheme-based lookup requires the following:
-//   - hash
-//
-// pathScheme-based lookup requires the following:
-//   - owner
-//   - path
-func WriteTrieNode(db ethdb.KeyValueWriter, owner common.Hash, path []byte, hash common.Hash, node []byte, scheme string) {
-	switch scheme {
-	case HashScheme:
-		WriteLegacyTrieNode(db, hash, node)
-	case PathScheme:
-		if owner == (common.Hash{}) {
-			WriteAccountTrieNode(db, path, node)
-		} else {
-			WriteStorageTrieNode(db, owner, path, node)
-		}
-	// TODO:: support AggPathScheme after exporting AggNode Update func, considering triedb cache
-	//case AggPathScheme:
-	default:
-		panic(fmt.Sprintf("Unknown scheme %v", scheme))
-	}
-}
-
-// DeleteTrieNode deletes the trie node from database with the provided node info
-// and associated node hash.
-// hashScheme-based lookup requires the following:
-//   - hash
-//
-// pathScheme-based lookup requires the following:
-//   - owner
-//   - path
-func DeleteTrieNode(db ethdb.KeyValueWriter, owner common.Hash, path []byte, hash common.Hash, scheme string) {
-	switch scheme {
-	case HashScheme:
-		DeleteLegacyTrieNode(db, hash)
-	case PathScheme:
-		if owner == (common.Hash{}) {
-			DeleteAccountTrieNode(db, path)
-		} else {
-			DeleteStorageTrieNode(db, owner, path)
-		}
-	// TODO:: support AggPathScheme after exporting AggNode Update func, considering triedb cache
-	//case AggPathScheme:
-	default:
-		panic(fmt.Sprintf("Unknown scheme %v", scheme))
 	}
 }
 
