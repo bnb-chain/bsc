@@ -27,10 +27,6 @@ func DecodeAggNode(data []byte) (*AggNode, error) {
 	return aggNode, nil
 }
 
-func EncodeAggNode(aggNode *AggNode) []byte {
-	return aggNode.encodeTo()
-}
-
 func getAggNodePath(path []byte) []byte {
 	if len(path)%2 == 0 {
 		// even path
