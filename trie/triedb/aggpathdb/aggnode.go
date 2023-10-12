@@ -144,6 +144,7 @@ func decodeRawNode(buf []byte) ([]byte, []byte, error) {
 	return val, rest, nil
 }
 
+// getOrNewAggNode retrieves the aggNode from the clean memory cache or database.
 func getOrNewAggNode(db ethdb.KeyValueReader, clean *fastcache.Cache, owner common.Hash, aggPath []byte) *AggNode {
 	aggNode, err := getAggNodeFromCache(clean, owner, aggPath)
 	if err != nil {

@@ -35,6 +35,10 @@ func HasTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash c
 // pathScheme-based lookup requires the following:
 //   - owner
 //   - path
+//
+// aggPath Scheme-based lookup requires the following:
+//   - owner
+//   - path
 func ReadTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash common.Hash, scheme string) []byte {
 	switch scheme {
 	case rawdb.HashScheme:
@@ -72,6 +76,10 @@ func ReadTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash 
 // pathScheme-based lookup requires the following:
 //   - owner
 //   - path
+//
+// aggPath Scheme-based lookup requires the following:
+//   - owner
+//   - path
 func WriteTrieNode(db ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte, hash common.Hash, node []byte, scheme string) {
 	switch scheme {
 	case rawdb.HashScheme:
@@ -97,7 +105,11 @@ func WriteTrieNode(db ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner c
 // pathScheme-based lookup requires the following:
 //   - owner
 //   - path
-func DeleteTrieNode(db ethdb.KeyValueWriter, owner common.Hash, path []byte, hash common.Hash, scheme string) {
+//
+// aggPath Scheme-based lookup requires the following:
+//   - owner
+//   - path
+func DeleteTrieNode(db ethdb.KeyValueStore, owner common.Hash, path []byte, hash common.Hash, scheme string) {
 	switch scheme {
 	case rawdb.HashScheme:
 		rawdb.DeleteLegacyTrieNode(db, hash)
@@ -107,8 +119,8 @@ func DeleteTrieNode(db ethdb.KeyValueWriter, owner common.Hash, path []byte, has
 		} else {
 			rawdb.DeleteStorageTrieNode(db, owner, path)
 		}
-	// TODO:: support AggPathScheme after exporting AggNode Update func, considering triedb cache
-	//case AggPathScheme:
+	case rawdb.AggPathScheme:
+		aggpathdb.DeleteTrieNodeFromAggNode(db, owner, path)
 	default:
 		panic(fmt.Sprintf("Unknown scheme %v", scheme))
 	}

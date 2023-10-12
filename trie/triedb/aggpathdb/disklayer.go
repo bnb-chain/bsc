@@ -314,6 +314,7 @@ func aggregateAndWriteNodes(reader ethdb.KeyValueReader, clean *fastcache.Cache,
 		}
 	}
 
+	// load the aggNode from clean memory cache and update it, then persist it.
 	for owner, subset := range changeSets {
 		for aggPath, cs := range subset {
 			aggNode := getOrNewAggNode(reader, clean, owner, []byte(aggPath))
