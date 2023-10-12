@@ -1351,7 +1351,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	// If we're amongst the recent signers, wait for the next block
 	if snap.SignRecently(val) {
 		log.Info("Signed recently, must wait for others")
-		return nil
+		return errRecentlySigned
 	}
 
 	// Sweet, the protocol permits us to sign the block, wait for our time
