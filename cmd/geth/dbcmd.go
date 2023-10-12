@@ -19,6 +19,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -72,6 +73,9 @@ Remove blockchain and state databases`,
 			// no legacy stored receipts for bsc
 			// dbMigrateFreezerCmd,
 			dbCheckStateContentCmd,
+			dbHbss2PbssCmd,
+			dbTrieGetCmd,
+			dbTrieDeleteCmd,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -93,6 +97,45 @@ Remove blockchain and state databases`,
 		Description: `This command iterates the entire database for 32-byte keys, looking for rlp-encoded trie nodes.
 For each trie node encountered, it checks that the key corresponds to the keccak256(value). If this is not true, this indicates
 a data corruption.`,
+	}
+	dbHbss2PbssCmd = &cli.Command{
+		Action:    hbss2pbss,
+		Name:      "hbss-to-pbss",
+		ArgsUsage: "<jobnum (optional)>",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+			utils.SyncModeFlag,
+			utils.ForceFlag,
+			utils.AncientFlag,
+		},
+		Usage:       "Convert Hash-Base to Path-Base trie node.",
+		Description: `This command iterates the entire trie node database and convert the hash-base node to path-base node.`,
+	}
+	dbTrieGetCmd = &cli.Command{
+		Action:    dbTrieGet,
+		Name:      "trie-get",
+		Usage:     "Show the value of a trie node path key",
+		ArgsUsage: "[trie owner] <path-base key>",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+			utils.SyncModeFlag,
+			utils.MainnetFlag,
+			utils.StateSchemeFlag,
+		},
+		Description: "This command looks up the specified trie node key from the database.",
+	}
+	dbTrieDeleteCmd = &cli.Command{
+		Action:    dbTrieDelete,
+		Name:      "trie-delete",
+		Usage:     "delete the specify trie node",
+		ArgsUsage: "[trie owner] <hash-base key> | <path-base key>",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+			utils.SyncModeFlag,
+			utils.MainnetFlag,
+			utils.StateSchemeFlag,
+		},
+		Description: "This command delete the specify trie node from the database.",
 	}
 	dbStatCmd = &cli.Command{
 		Action: dbStats,
@@ -154,6 +197,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		ArgsUsage: "<hex-encoded state root> <hex-encoded account hash> <hex-encoded storage trie root> <hex-encoded start (optional)> <int max elements (optional)>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
+			utils.StateSchemeFlag,
 		}, utils.NetworkFlags, utils.DatabasePathFlags),
 		Description: "This command looks up the specified database key from the database.",
 	}
@@ -432,6 +476,133 @@ func dbGet(ctx *cli.Context) error {
 	return nil
 }
 
+// dbTrieGet shows the value of a given database key
+func dbTrieGet(ctx *cli.Context) error {
+	if ctx.NArg() < 1 || ctx.NArg() > 2 {
+		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+	}
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer db.Close()
+
+	scheme := ctx.String(utils.StateSchemeFlag.Name)
+	if scheme == "" {
+		scheme = rawdb.HashScheme
+	}
+
+	if scheme == rawdb.PathScheme {
+		var (
+			pathKey []byte
+			owner   []byte
+			err     error
+		)
+		if ctx.NArg() == 1 {
+			pathKey, err = hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			nodeVal, hash := rawdb.ReadAccountTrieNode(db, pathKey)
+			log.Info("TrieGet result ", "PathKey", common.Bytes2Hex(pathKey), "Hash: ", hash, "node: ", trie.NodeString(hash.Bytes(), nodeVal))
+		} else if ctx.NArg() == 2 {
+			owner, err = hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			pathKey, err = hexutil.Decode(ctx.Args().Get(1))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+
+			nodeVal, hash := rawdb.ReadStorageTrieNode(db, common.BytesToHash(owner), pathKey)
+			log.Info("TrieGet result ", "PathKey: ", common.Bytes2Hex(pathKey), "Owner: ", common.BytesToHash(owner), "Hash: ", hash, "node: ", trie.NodeString(hash.Bytes(), nodeVal))
+		}
+	} else if scheme == rawdb.HashScheme {
+		if ctx.NArg() == 1 {
+			hashKey, err := hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			val, err := db.Get(hashKey)
+			if err != nil {
+				log.Error("db get failed, ", "error: ", err)
+				return err
+			}
+			log.Info("TrieGet result ", "HashKey: ", common.BytesToHash(hashKey), "node: ", trie.NodeString(hashKey, val))
+		} else {
+			log.Error("args too much")
+		}
+	}
+
+	return nil
+}
+
+// dbTrieDelete delete the trienode of a given database key
+func dbTrieDelete(ctx *cli.Context) error {
+	if ctx.NArg() < 1 || ctx.NArg() > 2 {
+		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+	}
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer db.Close()
+
+	scheme := ctx.String(utils.StateSchemeFlag.Name)
+	if scheme == "" {
+		scheme = rawdb.HashScheme
+	}
+
+	if scheme == rawdb.PathScheme {
+		var (
+			pathKey []byte
+			owner   []byte
+			err     error
+		)
+		if ctx.NArg() == 1 {
+			pathKey, err = hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			rawdb.DeleteAccountTrieNode(db, pathKey)
+		} else if ctx.NArg() == 2 {
+			owner, err = hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			pathKey, err = hexutil.Decode(ctx.Args().Get(1))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			rawdb.DeleteStorageTrieNode(db, common.BytesToHash(owner), pathKey)
+		}
+	} else if scheme == rawdb.HashScheme {
+		if ctx.NArg() == 1 {
+			hashKey, err := hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			err = db.Delete(hashKey)
+			if err != nil {
+				log.Error("db delete failed", "err", err)
+				return err
+			}
+		} else {
+			log.Error("args too much")
+		}
+	}
+	return nil
+}
+
 // dbDelete deletes a key from the database
 func dbDelete(ctx *cli.Context) error {
 	if ctx.NArg() != 1 {
@@ -504,6 +675,9 @@ func dbDumpTrie(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
+	triedb := utils.MakeTrieDatabase(ctx, db, false, true)
+	defer triedb.Close()
+
 	var (
 		state   []byte
 		storage []byte
@@ -537,7 +711,7 @@ func dbDumpTrie(ctx *cli.Context) error {
 		}
 	}
 	id := trie.StorageTrieID(common.BytesToHash(state), common.BytesToHash(account), common.BytesToHash(storage))
-	theTrie, err := trie.New(id, trie.NewDatabase(db))
+	theTrie, err := trie.New(id, triedb)
 	if err != nil {
 		return err
 	}
@@ -737,5 +911,103 @@ func showMetaData(ctx *cli.Context) error {
 	table.SetHeader([]string{"Field", "Value"})
 	table.AppendBulk(data)
 	table.Render()
+	return nil
+}
+
+func hbss2pbss(ctx *cli.Context) error {
+	if ctx.NArg() > 1 {
+		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+	}
+
+	var jobnum uint64
+	var err error
+	if ctx.NArg() == 1 {
+		jobnum, err = strconv.ParseUint(ctx.Args().Get(0), 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to Parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
+		}
+	} else {
+		// by default
+		jobnum = 1000
+	}
+
+	force := ctx.Bool(utils.ForceFlag.Name)
+
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	db.Sync()
+	defer db.Close()
+
+	// convert hbss trie node to pbss trie node
+	lastStateID := rawdb.ReadPersistentStateID(db)
+	if lastStateID == 0 || force {
+		config := trie.HashDefaults
+		triedb := trie.NewDatabase(db, config)
+		triedb.Cap(0)
+		log.Info("hbss2pbss triedb", "scheme", triedb.Scheme())
+		defer triedb.Close()
+
+		headerHash := rawdb.ReadHeadHeaderHash(db)
+		blockNumber := rawdb.ReadHeaderNumber(db, headerHash)
+		if blockNumber == nil {
+			log.Error("read header number failed.")
+			return fmt.Errorf("read header number failed")
+		}
+
+		log.Info("hbss2pbss converting", "HeaderHash: ", headerHash.String(), ", blockNumber: ", *blockNumber)
+
+		var headerBlockHash common.Hash
+		var trieRootHash common.Hash
+
+		if *blockNumber != math.MaxUint64 {
+			headerBlockHash = rawdb.ReadCanonicalHash(db, *blockNumber)
+			if headerBlockHash == (common.Hash{}) {
+				return fmt.Errorf("ReadHeadBlockHash empty hash")
+			}
+			blockHeader := rawdb.ReadHeader(db, headerBlockHash, *blockNumber)
+			trieRootHash = blockHeader.Root
+			fmt.Println("Canonical Hash: ", headerBlockHash.String(), ", TrieRootHash: ", trieRootHash.String())
+		}
+		if (trieRootHash == common.Hash{}) {
+			log.Error("Empty root hash")
+			return fmt.Errorf("Empty root hash.")
+		}
+
+		id := trie.StateTrieID(trieRootHash)
+		theTrie, err := trie.New(id, triedb)
+		if err != nil {
+			log.Error("fail to new trie tree", "err", err, "rootHash", err, trieRootHash.String())
+			return err
+		}
+
+		h2p, err := trie.NewHbss2Pbss(theTrie, triedb, trieRootHash, *blockNumber, jobnum)
+		if err != nil {
+			log.Error("fail to new hash2pbss", "err", err, "rootHash", err, trieRootHash.String())
+			return err
+		}
+		h2p.Run()
+	} else {
+		log.Info("Convert hbss to pbss success. Nothing to do.")
+	}
+
+	// repair state ancient offset
+	lastStateID = rawdb.ReadPersistentStateID(db)
+	if lastStateID == 0 {
+		log.Error("Convert hbss to pbss trie node error. The last state id is still 0")
+	}
+	ancient := stack.ResolveAncient("chaindata", ctx.String(utils.AncientFlag.Name))
+	err = rawdb.ResetStateFreezerTableOffset(ancient, lastStateID)
+	if err != nil {
+		log.Error("Reset state freezer table offset failed", "error", err)
+		return err
+	}
+	// prune hbss trie node
+	err = rawdb.PruneHashTrieNodeInDataBase(db)
+	if err != nil {
+		log.Error("Prune Hash trie node in database failed", "error", err)
+		return err
+	}
 	return nil
 }

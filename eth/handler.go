@@ -45,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 const (
@@ -163,6 +164,7 @@ type handler struct {
 
 	// channels for fetcher, syncer, txsyncLoop
 	quitSync chan struct{}
+	stopCh   chan struct{}
 
 	chainSync *chainSyncer
 	wg        sync.WaitGroup
@@ -197,6 +199,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		quitSync:               make(chan struct{}),
 		handlerDoneCh:          make(chan struct{}),
 		handlerStartCh:         make(chan struct{}),
+		stopCh:                 make(chan struct{}),
 	}
 	if config.Sync == downloader.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the snap
@@ -237,8 +240,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			// round on next sync cycle
 			if h.snapSync.Load() {
 				log.Info("Snap sync complete, auto disabling")
-				h.snapSync.Store(false)
-			}
+				h.snapSync.Store(false)		}
 			// If we've successfully finished a sync cycle, accept transactions from
 			// the network
 			h.acceptTxs.Store(true)
@@ -327,7 +329,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		n, err := h.chain.InsertChain(blocks)
 		if err == nil {
-			h.acceptTxs.Store(true) // Mark initial sync done on any fetcher import
+			h.enableSyncedFeatures() // Mark initial sync done on any fetcher import
 		}
 		return n, err
 	}
@@ -364,6 +366,8 @@ func (h *handler) protoTracker() {
 			for ; active > 0; active-- {
 				<-h.handlerDoneCh
 			}
+			return
+		case <-h.stopCh:
 			return
 		}
 	}
@@ -729,6 +733,8 @@ func (h *handler) startMaliciousVoteMonitor() {
 			h.maliciousVoteMonitor.ConflictDetect(event.Vote, pendingBlockNumber)
 		case <-h.voteMonitorSub.Err():
 			return
+		case <-h.stopCh:
+			return
 		}
 	}
 }
@@ -743,7 +749,7 @@ func (h *handler) Stop() {
 			h.voteMonitorSub.Unsubscribe()
 		}
 	}
-
+	close(h.stopCh)
 	// Quit chainSync and txsync64.
 	// After this is done, no new peers will be accepted.
 	close(h.quitSync)
@@ -908,10 +914,18 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 func (h *handler) minedBroadcastLoop() {
 	defer h.wg.Done()
 
-	for obj := range h.minedBlockSub.Chan() {
-		if ev, ok := obj.Data.(core.NewMinedBlockEvent); ok {
-			h.BroadcastBlock(ev.Block, true)  // First propagate block to peers
-			h.BroadcastBlock(ev.Block, false) // Only then announce to the rest
+	for {
+		select {
+		case obj := <-h.minedBlockSub.Chan():
+			if obj == nil {
+				continue
+			}
+			if ev, ok := obj.Data.(core.NewMinedBlockEvent); ok {
+				h.BroadcastBlock(ev.Block, true)  // First propagate block to peers
+				h.BroadcastBlock(ev.Block, false) // Only then announce to the rest
+			}
+		case <-h.stopCh:
+			return
 		}
 	}
 }
@@ -925,6 +939,8 @@ func (h *handler) txBroadcastLoop() {
 			h.BroadcastTransactions(event.Txs)
 		case <-h.txsSub.Err():
 			return
+		case <-h.stopCh:
+			return
 		}
 	}
 }
@@ -937,6 +953,8 @@ func (h *handler) txReannounceLoop() {
 		case event := <-h.reannoTxsCh:
 			h.ReannounceTransactions(event.Txs)
 		case <-h.reannoTxsSub.Err():
+			return
+		case <-h.stopCh:
 			return
 		}
 	}
@@ -954,5 +972,14 @@ func (h *handler) voteBroadcastLoop() {
 		case <-h.votesSub.Err():
 			return
 		}
+	}
+}
+
+// enableSyncedFeatures enables the post-sync functionalities when the initial
+// sync is finished.
+func (h *handler) enableSyncedFeatures() {
+	h.acceptTxs.Store(true)
+	if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
+		h.chain.TrieDB().SetBufferSize(pathdb.DefaultBufferSize)
 	}
 }

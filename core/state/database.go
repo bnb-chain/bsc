@@ -70,7 +70,7 @@ type Database interface {
 	// DiskDB returns the underlying key-value disk database.
 	DiskDB() ethdb.KeyValueStore
 
-	// TrieDB retrieves the low level trie database used for data storage.
+	// TrieDB returns the underlying trie database for managing trie nodes.
 	TrieDB() *trie.Database
 
 	// Cache the account trie tree
@@ -173,7 +173,7 @@ func NewDatabaseWithConfig(db ethdb.Database, config *trie.Config) Database {
 		disk:          db,
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		triedb:        trie.NewDatabaseWithConfig(db, config),
+		triedb:        trie.NewDatabase(db, config),
 		noTries:       noTries,
 	}
 }
@@ -200,7 +200,7 @@ func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Datab
 		disk:             db,
 		codeSizeCache:    lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:        lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		triedb:           trie.NewDatabaseWithConfig(db, config),
+		triedb:           trie.NewDatabase(db, config),
 		accountTrieCache: atc,
 		storageTrieCache: stc,
 		noTries:          noTries,
@@ -281,6 +281,12 @@ func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 }
 
 func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
+	// only the hash scheme trie db support account cache, because the path scheme trie db
+	// account trie bind the previous layer, touch the dirty data when next access. This is
+	// related to the implementation of the Reader interface of pathdb.
+	if db.TrieDB().Scheme() == rawdb.PathScheme {
+		return
+	}
 	if db.accountTrieCache == nil {
 		return
 	}
@@ -289,6 +295,10 @@ func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
 }
 
 func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie) {
+	// ditto `CacheAccount`
+	if db.TrieDB().Scheme() == rawdb.PathScheme {
+		return
+	}
 	if db.storageTrieCache == nil {
 		return
 	}

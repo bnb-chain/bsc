@@ -18,9 +18,12 @@ package rawdb
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 )
 
 type tableSize struct {
@@ -50,36 +53,61 @@ func (info *freezerInfo) size() common.StorageSize {
 	return total
 }
 
+func inspect(name string, order map[string]bool, reader ethdb.AncientReader) (freezerInfo, error) {
+	info := freezerInfo{name: name}
+	for t := range order {
+		size, err := reader.AncientSize(t)
+		if err != nil {
+			return freezerInfo{}, err
+		}
+		info.sizes = append(info.sizes, tableSize{name: t, size: common.StorageSize(size)})
+	}
+	// Retrieve the number of last stored item
+	ancients, err := reader.Ancients()
+	if err != nil {
+		return freezerInfo{}, err
+	}
+	info.head = ancients - 1
+
+	// Retrieve the number of first stored item
+	tail, err := reader.Tail()
+	if err != nil {
+		return freezerInfo{}, err
+	}
+	info.tail = tail
+	return info, nil
+}
+
 // inspectFreezers inspects all freezers registered in the system.
 func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 	var infos []freezerInfo
 	for _, freezer := range freezers {
 		switch freezer {
 		case chainFreezerName:
-			// Chain ancient store is a bit special. It's always opened along
-			// with the key-value store, inspect the chain store directly.
-			info := freezerInfo{name: freezer}
-			// Retrieve storage size of every contained table.
-			for table := range chainFreezerNoSnappy {
-				size, err := db.AncientSize(table)
-				if err != nil {
-					return nil, err
-				}
-				info.sizes = append(info.sizes, tableSize{name: table, size: common.StorageSize(size)})
-			}
-			// Retrieve the number of last stored item
-			ancients, err := db.Ancients()
+			info, err := inspect(chainFreezerName, chainFreezerNoSnappy, db)
 			if err != nil {
 				return nil, err
 			}
-			info.head = ancients - 1
+			infos = append(infos, info)
 
-			// Retrieve the number of first stored item
-			tail, err := db.Tail()
+		case stateFreezerName:
+			if ReadStateScheme(db) != PathScheme {
+				continue
+			}
+			datadir, err := db.AncientDatadir()
 			if err != nil {
 				return nil, err
 			}
-			info.tail = tail
+			f, err := NewStateFreezer(datadir, true, 0)
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+
+			info, err := inspect(stateFreezerName, stateFreezerNoSnappy, f)
+			if err != nil {
+				return nil, err
+			}
 			infos = append(infos, info)
 
 		default:
@@ -117,5 +145,25 @@ func InspectFreezerTable(ancient string, freezerName string, tableName string, s
 		return err
 	}
 	table.dumpIndexStdout(start, end)
+	return nil
+}
+
+func ResetStateFreezerTableOffset(ancient string, virtualTail uint64) error {
+	path, tables := filepath.Join(ancient, stateFreezerName), stateFreezerNoSnappy
+
+	for name, disableSnappy := range tables {
+		log.Info("Handle table", "name", name, "disableSnappy", disableSnappy)
+		table, err := newTable(path, name, metrics.NilMeter{}, metrics.NilMeter{}, metrics.NilGauge{}, freezerTableSize, disableSnappy, false)
+		if err != nil {
+			log.Error("New table failed", "error", err)
+			return err
+		}
+		// Reset the metadata of the freezer table
+		err = table.ResetItemsOffset(virtualTail)
+		if err != nil {
+			log.Error("Reset items offset of the table", "name", name, "error", err)
+			return err
+		}
+	}
 	return nil
 }
