@@ -1120,15 +1120,10 @@ var (
 		DataDirFlag,
 		AncientFlag,
 		RemoteDBFlag,
+		DBEngineFlag,
 		HttpHeaderFlag,
 	}
 )
-
-func init() {
-	if rawdb.PebbleEnabled {
-		DatabasePathFlags = append(DatabasePathFlags, DBEngineFlag)
-	}
-}
 
 // MakeDataDir retrieves the currently requested data directory, terminating
 // if none (or the empty string) is specified. If the node is starting a testnet,
