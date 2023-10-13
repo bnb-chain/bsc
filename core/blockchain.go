@@ -389,7 +389,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	}
 	// Make sure the state associated with the block is available
 	head := bc.CurrentBlock()
-	if !bc.HasState(head.Root) {
+	if !bc.stateCache.NoTries() && !bc.HasState(head.Root) {
 		// Head state is missing, before the state recovery, find out the
 		// disk layer point of snapshot(if it's enabled). Make sure the
 		// rewound point is lower than disk layer.
@@ -1180,6 +1180,7 @@ func (bc *BlockChain) Stop() {
 		//  - HEAD-127: So we have a hard limit on the number of blocks reexecuted
 		if !bc.cacheConfig.TrieDirtyDisabled {
 			triedb := bc.triedb
+		var once sync.Once
 
 			for _, offset := range []uint64{0, 1, TriesInMemory - 1} {
 				if number := bc.CurrentBlock().Number.Uint64(); number > offset {
@@ -1187,7 +1188,12 @@ func (bc *BlockChain) Stop() {
 					log.Info("Writing cached state to disk", "block", recent.Number(), "hash", recent.Hash(), "root", recent.Root())
 					if err := triedb.Commit(recent.Root(), true); err != nil {
 						log.Error("Failed to commit recent state trie", "err", err)
-					}
+					} else {
+						rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
+						once.Do(func() {
+						  rawdb.WriteHeadBlockHash(bc.db, recent.Hash())
+						})
+          }
 				}
 			}
 			if snapBase != (common.Hash{}) {
@@ -1208,7 +1214,7 @@ func (bc *BlockChain) Stop() {
 				}
 			}
 			for !bc.triegc.Empty() {
-				go triedb.Dereference(bc.triegc.PopItem())
+				triedb.Dereference(bc.triegc.PopItem())
 			}
 			if size, _ := triedb.Size(); size != 0 {
 				log.Error("Dangling trie nodes after full cleanup")

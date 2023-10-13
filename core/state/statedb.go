@@ -1350,6 +1350,10 @@ func (s *StateDB) deleteStorage(addr common.Address, addrHash common.Hash, root 
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("failed to open storage trie, err: %w", err)
 	}
+	// skip deleting storages for EmptyTrie
+	if _, ok := tr.(*trie.EmptyTrie); ok {
+		return false, nil, nil, nil
+	}
 	it, err := tr.NodeIterator(nil)
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("failed to open storage iterator, err: %w", err)
@@ -1422,7 +1426,13 @@ func (s *StateDB) deleteStorage(addr common.Address, addrHash common.Hash, root 
 // In case (d), **original** account along with its storages should be deleted,
 // with their values be tracked as original value.
 func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.Address]struct{}, error) {
+	// Short circuit if geth is running with hash mode. This procedure can consume
+	// considerable time and storage deletion isn't supported in hash mode, thus
+	// preemptively avoiding unnecessary expenses.
 	incomplete := make(map[common.Address]struct{})
+	if s.db.TrieDB().Scheme() == rawdb.HashScheme {
+		return incomplete, nil
+	}
 	for addr, prev := range s.stateObjectsDestruct {
 		// The original account was non-existing, and it's marked as destructed
 		// in the scope of block. It can be case (a) or (b).
@@ -1748,7 +1758,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	} else {
 		s.snap = nil
 	}
-
 	if root == (common.Hash{}) {
 		root = types.EmptyRootHash
 	}

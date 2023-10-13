@@ -277,7 +277,7 @@ func createPorts(ipStr string, port int, size int) []int {
 // Create config for node i in the cluster
 func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, port int, size int, i int) gethConfig {
 	baseConfig.Node.HTTPHost = ip
-	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port+i)
+	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port)
 	baseConfig.Node.P2P.BootstrapNodes = make([]*enode.Node, size-1)
 	// Set the P2P connections between this node and the other nodes
 	for j := 0; j < i; j++ {
@@ -294,11 +294,12 @@ func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, port
 	// Create the nodes
 	enodes := make([]*enode.Node, size)
 	for i := 0; i < size; i++ {
-		stack, err := node.New(&baseConfig.Node)
+		nodeConfig := baseConfig.Node
+		nodeConfig.DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
+		stack, err := node.New(&nodeConfig)
 		if err != nil {
 			return nil, err
 		}
-		stack.Config().DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
 		pk := stack.Config().NodeKey()
 		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
 	}

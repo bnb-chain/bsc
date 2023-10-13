@@ -152,6 +152,7 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 	evm.Config = config
 	evm.chainConfig = chainConfig
 	evm.chainRules = chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time)
+	evm.abort.Store(false)
 	evm.callGasTemp = 0
 	evm.depth = 0
 
