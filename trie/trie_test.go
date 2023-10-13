@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie/triedb"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"golang.org/x/crypto/sha3"
 )
@@ -909,7 +910,7 @@ func TestCommitSequenceStackTrie(t *testing.T) {
 		// Another sponge is used for the stacktrie commits
 		stackTrieSponge := &spongeDb{sponge: sha3.NewLegacyKeccak256(), id: "b"}
 		stTrie := NewStackTrie(func(owner common.Hash, path []byte, hash common.Hash, blob []byte) {
-			triedb.WriteTrieNode(stackTrieSponge, owner, path, hash, blob, db.Scheme())
+			triedb.WriteTrieNode(stackTrieSponge, stackTrieSponge, owner, path, hash, blob, db.Scheme())
 		})
 		// Fill the trie with elements
 		for i := 0; i < count; i++ {
@@ -968,7 +969,7 @@ func TestCommitSequenceSmallRoot(t *testing.T) {
 	// Another sponge is used for the stacktrie commits
 	stackTrieSponge := &spongeDb{sponge: sha3.NewLegacyKeccak256(), id: "b"}
 	stTrie := NewStackTrie(func(owner common.Hash, path []byte, hash common.Hash, blob []byte) {
-		triedb.WriteTrieNode(stackTrieSponge, owner, path, hash, blob, db.Scheme())
+		triedb.WriteTrieNode(stackTrieSponge, stackTrieSponge, owner, path, hash, blob, db.Scheme())
 	})
 	// Add a single small-element to the trie(s)
 	key := make([]byte, 5)
