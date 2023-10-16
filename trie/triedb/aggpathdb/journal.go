@@ -128,7 +128,7 @@ func (db *Database) loadLayers() layer {
 	// it. Display log for discarding journal, but try to avoid showing
 	// useless information when the db is created from scratch.
 	if !(root == types.EmptyRootHash && errors.Is(err, errMissJournal)) {
-		log.Info("Failed to load pathdb journal, discard it", "err", err)
+		log.Info("Failed to load aggpathdb journal, discard it", "err", err)
 	}
 	// Return single layer with persistent state.
 	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, newNodeBuffer(db.bufferSize, nil, 0))

@@ -309,33 +309,64 @@ func (db *Database) Node(hash common.Hash) ([]byte, error) {
 // corresponding trie histories are existent. It's only supported by path-based
 // database and will return an error for others.
 func (db *Database) Recover(target common.Hash) error {
-	pdb, ok := db.backend.(*pathdb.Database)
-	if !ok {
+
+	if db.backend.Scheme() == rawdb.PathScheme {
+		pdb, ok := db.backend.(*pathdb.Database)
+		if !ok {
+			return errors.New("not supported")
+		}
+		return pdb.Recover(target, &trieLoader{db: db})
+	} else if db.backend.Scheme() == rawdb.AggPathScheme {
+		pdb, ok := db.backend.(*aggpathdb.Database)
+		if !ok {
+			return errors.New("not supported")
+		}
+		return pdb.Recover(target, &trieLoader{db: db})
+	} else {
 		return errors.New("not supported")
 	}
-	return pdb.Recover(target, &trieLoader{db: db})
 }
 
 // Recoverable returns the indicator if the specified state is enabled to be
 // recovered. It's only supported by path-based database and will return an
 // error for others.
 func (db *Database) Recoverable(root common.Hash) (bool, error) {
-	pdb, ok := db.backend.(*pathdb.Database)
-	if !ok {
+	if db.backend.Scheme() == rawdb.PathScheme {
+		pdb, ok := db.backend.(*pathdb.Database)
+		if !ok {
+			return false, errors.New("not supported")
+		}
+		return pdb.Recoverable(root), nil
+	} else if db.backend.Scheme() == rawdb.AggPathScheme {
+		pdb, ok := db.backend.(*aggpathdb.Database)
+		if !ok {
+			return false, errors.New("not supported")
+		}
+		return pdb.Recoverable(root), nil
+	} else {
 		return false, errors.New("not supported")
 	}
-	return pdb.Recoverable(root), nil
 }
 
 // Reset wipes all available journal from the persistent database and discard
 // all caches and diff layers. Using the given root to create a new disk layer.
 // It's only supported by path-based database and will return an error for others.
 func (db *Database) Reset(root common.Hash) error {
-	pdb, ok := db.backend.(*pathdb.Database)
-	if !ok {
+	if db.backend.Scheme() == rawdb.PathScheme {
+		pdb, ok := db.backend.(*pathdb.Database)
+		if !ok {
+			return errors.New("not supported")
+		}
+		return pdb.Reset(root)
+	} else if db.backend.Scheme() == rawdb.AggPathScheme {
+		pdb, ok := db.backend.(*aggpathdb.Database)
+		if !ok {
+			return errors.New("not supported")
+		}
+		return pdb.Reset(root)
+	} else {
 		return errors.New("not supported")
 	}
-	return pdb.Reset(root)
 }
 
 // Journal commits an entire diff hierarchy to disk into a single journal entry.
@@ -343,22 +374,42 @@ func (db *Database) Reset(root common.Hash) error {
 // flattening everything down (bad for reorgs). It's only supported by path-based
 // database and will return an error for others.
 func (db *Database) Journal(root common.Hash) error {
-	pdb, ok := db.backend.(*pathdb.Database)
-	if !ok {
+	if db.backend.Scheme() == rawdb.PathScheme {
+		pdb, ok := db.backend.(*pathdb.Database)
+		if !ok {
+			return errors.New("not supported")
+		}
+		return pdb.Journal(root)
+	} else if db.backend.Scheme() == rawdb.AggPathScheme {
+		pdb, ok := db.backend.(*aggpathdb.Database)
+		if !ok {
+			return errors.New("not supported")
+		}
+		return pdb.Journal(root)
+	} else {
 		return errors.New("not supported")
 	}
-	return pdb.Journal(root)
 }
 
 // SetBufferSize sets the node buffer size to the provided value(in bytes).
 // It's only supported by path-based database and will return an error for
 // others.
 func (db *Database) SetBufferSize(size int) error {
-	pdb, ok := db.backend.(*pathdb.Database)
-	if !ok {
+	if db.backend.Scheme() == rawdb.PathScheme {
+		pdb, ok := db.backend.(*pathdb.Database)
+		if !ok {
+			return errors.New("not supported")
+		}
+		return pdb.SetBufferSize(size)
+	} else if db.backend.Scheme() == rawdb.AggPathScheme {
+		pdb, ok := db.backend.(*aggpathdb.Database)
+		if !ok {
+			return errors.New("not supported")
+		}
+		return pdb.SetBufferSize(size)
+	} else {
 		return errors.New("not supported")
 	}
-	return pdb.SetBufferSize(size)
 }
 
 // Head return the top non-fork difflayer/disklayer root hash for rewinding.
