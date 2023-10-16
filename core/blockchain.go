@@ -1180,8 +1180,7 @@ func (bc *BlockChain) Stop() {
 		//  - HEAD-127: So we have a hard limit on the number of blocks reexecuted
 		if !bc.cacheConfig.TrieDirtyDisabled {
 			triedb := bc.triedb
-		var once sync.Once
-
+			var once sync.Once
 			for _, offset := range []uint64{0, 1, TriesInMemory - 1} {
 				if number := bc.CurrentBlock().Number.Uint64(); number > offset {
 					recent := bc.GetBlockByNumber(number - offset)
@@ -1191,9 +1190,9 @@ func (bc *BlockChain) Stop() {
 					} else {
 						rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
 						once.Do(func() {
-						  rawdb.WriteHeadBlockHash(bc.db, recent.Hash())
+							rawdb.WriteHeadBlockHash(bc.db, recent.Hash())
 						})
-          }
+					}
 				}
 			}
 			if snapBase != (common.Hash{}) {
