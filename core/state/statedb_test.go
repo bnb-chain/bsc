@@ -1120,7 +1120,7 @@ func TestDeleteStorage(t *testing.T) {
 		disk     = rawdb.NewMemoryDatabase()
 		tdb      = trie.NewDatabase(disk, nil)
 		db       = NewDatabaseWithNodeDB(disk, tdb)
-		snaps, _ = snapshot.New(snapshot.Config{CacheSize: 10}, disk, tdb, types.EmptyRootHash)
+		snaps, _ = snapshot.New(snapshot.Config{CacheSize: 10}, disk, tdb, types.EmptyRootHash, 128, false)
 		state, _ = New(types.EmptyRootHash, db, snaps)
 		addr     = common.HexToAddress("0x1")
 	)
@@ -1132,7 +1132,7 @@ func TestDeleteStorage(t *testing.T) {
 		value := common.Hash(uint256.NewInt(uint64(10 * i)).Bytes32())
 		state.SetState(addr, slot, value)
 	}
-	root, _ := state.Commit(0, true)
+	root, _, _ := state.Commit(0, nil)
 	// Init phase done, create two states, one with snap and one without
 	fastState, _ := New(root, db, snaps)
 	slowState, _ := New(root, db, nil)
