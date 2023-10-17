@@ -38,7 +38,7 @@ const (
 	maxDiffLayers = 128
 
 	// defaultCleanSize is the default memory allowance of clean cache.
-	defaultCleanSize = 1 * 1024 * 1024 * 1024
+	defaultCleanSize = 16 * 1024 * 1024
 
 	// maxBufferSize is the maximum memory allowance of node buffer.
 	// Too large nodebuffer will cause the system to pause for a long
@@ -295,10 +295,6 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	if db.tree.bottom().root == root {
-		return nil
-	}
-
 	// Short circuit if rollback operation is not supported.
 	if db.readOnly || db.freezer == nil {
 		return errors.New("state rollback is non-supported")
@@ -342,7 +338,6 @@ func (db *Database) Recoverable(root common.Hash) bool {
 	root = types.TrieRootHash(root)
 	id := rawdb.ReadStateID(db.diskdb, root)
 	if id == nil {
-		log.Warn("pathdb unrecoverable load id is nil")
 		return false
 	}
 	// Recoverable state must below the disk layer. The recoverable
@@ -350,7 +345,6 @@ func (db *Database) Recoverable(root common.Hash) bool {
 	// but can be restored by applying state history.
 	dl := db.tree.bottom()
 	if *id >= dl.stateID() {
-		log.Warn("pathdb unrecoverable", "target_id", *id, "bottom_id", dl.stateID())
 		return false
 	}
 	// Ensure the requested state is a canonical state and all state

@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
@@ -153,7 +152,7 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	if got == hash {
 		return rawNode, nil
 	}
-	if dl.cleans != nil {
+	if dl.cleans != nil && len(rawNode) > 0 {
 		dl.cleans.Set(cacheKey(owner, path), aggNode.encodeTo())
 	}
 
@@ -184,7 +183,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		}
 	}
 	// Mark the diskLayer as stale before applying any mutations on top.
-	//dl.stale = true
+	dl.stale = true
 
 	// Store the root->id lookup afterwards. All stored lookups are
 	// identified by the **unique** state root. It's impossible that
@@ -289,58 +288,6 @@ func (dl *diskLayer) resetCache() {
 	if dl.cleans != nil {
 		dl.cleans.Reset()
 	}
-}
-
-// aggregateAndWriteNodes will aggregate the trienode into trie aggnode and persist into the database
-// Note this function will inject all the clean aggNode into the cleanCache
-func aggregateAndWriteNodes(reader ethdb.KeyValueReader, clean *fastcache.Cache, batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node) (total int) {
-	// pre-aggregate the node
-	// Note: temporary impl. When a node writes to a diskLayer, it should be aggregated to aggNode.
-	changeSets := make(map[common.Hash]map[string]map[string]*trienode.Node)
-	for owner, subset := range nodes {
-		current, exist := changeSets[owner]
-		if !exist {
-			current = make(map[string]map[string]*trienode.Node)
-			changeSets[owner] = current
-		}
-		for path, n := range subset {
-			aggPath := getAggNodePath([]byte(path))
-			aggChangeSet, exist := changeSets[owner][string(aggPath)]
-			if !exist {
-				aggChangeSet = make(map[string]*trienode.Node)
-			}
-			aggChangeSet[path] = n
-			changeSets[owner][string(aggPath)] = aggChangeSet
-		}
-	}
-
-	// load the aggNode from clean memory cache and update it, then persist it.
-	for owner, subset := range changeSets {
-		for aggPath, cs := range subset {
-			aggNode := getOrNewAggNode(reader, clean, owner, []byte(aggPath))
-			for path, n := range cs {
-				if n.IsDeleted() {
-					aggNode.Delete([]byte(path))
-				} else {
-					aggNode.Update([]byte(path), n.Blob)
-				}
-			}
-			if aggNode.Empty() {
-				deleteAggNode(batch, owner, []byte(aggPath))
-				if clean != nil {
-					clean.Del(cacheKey(owner, []byte(aggPath)))
-				}
-			} else {
-				aggNodeBytes := aggNode.encodeTo()
-				writeAggNode(batch, owner, []byte(aggPath), aggNodeBytes)
-				if clean != nil {
-					clean.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
-				}
-			}
-			total++
-		}
-	}
-	return total
 }
 
 // hasher is used to compute the sha256 hash of the provided data.

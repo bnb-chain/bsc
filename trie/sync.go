@@ -372,7 +372,7 @@ func (s *Sync) Commit(dbw ethdb.Batch) error {
 	// unique path, ensuring no duplication occurs.
 	for path := range s.membatch.deletes {
 		owner, inner := ResolvePath([]byte(path))
-		triedb.DeleteTrieNode(dbw, owner, inner, common.Hash{} /* unused */, s.scheme)
+		triedb.DeleteTrieNode(dbw, s.database, owner, inner, common.Hash{} /* unused */, s.scheme)
 	}
 	// Flush the pending code writes into database batch.
 	for hash, value := range s.membatch.codes {

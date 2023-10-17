@@ -309,7 +309,6 @@ func (db *Database) Node(hash common.Hash) ([]byte, error) {
 // corresponding trie histories are existent. It's only supported by path-based
 // database and will return an error for others.
 func (db *Database) Recover(target common.Hash) error {
-
 	if db.backend.Scheme() == rawdb.PathScheme {
 		pdb, ok := db.backend.(*pathdb.Database)
 		if !ok {

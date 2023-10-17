@@ -18,7 +18,6 @@ package aggpathdb
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -38,7 +37,6 @@ type nodebuffer struct {
 	size   uint64                                    // The size of aggregated writes
 	limit  uint64                                    // The maximum memory allowance in bytes
 	nodes  map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
-	mux    sync.RWMutex
 }
 
 // newNodeBuffer initializes the node buffer with the provided nodes.
@@ -62,9 +60,7 @@ func newNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.Node, l
 
 // node retrieves the trie node with given node info.
 func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {
-	b.mux.RLock()
 	subset, ok := b.nodes[owner]
-	b.mux.RUnlock()
 	if !ok {
 		return nil, nil
 	}
@@ -74,7 +70,7 @@ func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*tr
 	}
 	if n.Hash != hash {
 		dirtyFalseMeter.Mark(1)
-		log.Debug("Unexpected trie node in node buffer", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
+		log.Error("Unexpected trie node in node buffer", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
 		return nil, newUnexpectedNodeError("dirty", hash, n.Hash, owner, path)
 	}
 	return n, nil
@@ -85,8 +81,6 @@ func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*tr
 // It will just hold the node references from the given map which are safe to
 // copy.
 func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) *nodebuffer {
-	b.mux.Lock()
-	defer b.mux.Unlock()
 	var (
 		delta         int64
 		overwrite     int64
@@ -144,9 +138,7 @@ func (b *nodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 	}
 	var delta int64
 	for owner, subset := range nodes {
-		b.mux.RLock()
 		current, ok := b.nodes[owner]
-		b.mux.RUnlock()
 		if !ok {
 			panic(fmt.Sprintf("non-existent subset (%x)", owner))
 		}
@@ -193,8 +185,6 @@ func (b *nodebuffer) updateSize(delta int64) {
 func (b *nodebuffer) reset() {
 	b.layers = 0
 	b.size = 0
-	b.mux.Lock()
-	defer b.mux.Unlock()
 	b.nodes = make(map[common.Hash]map[string]*trienode.Node)
 }
 
@@ -226,9 +216,7 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 		batch = db.NewBatchWithSize(int(b.size))
 	)
 
-	b.mux.RLock()
 	nodes := aggregateAndWriteNodes(db, clean, batch, b.nodes)
-	b.mux.RUnlock()
 	rawdb.WritePersistentStateID(batch, id)
 
 	// Flush all mutations in a single batch
@@ -242,6 +230,59 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	log.Debug("Persisted aggpathdb nodes", "nodes", len(b.nodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
 	b.reset()
 	return nil
+}
+
+// aggregateAndWriteNodes will aggregate the trienode into trie aggnode and persist into the database
+// Note this function will inject all the clean aggNode into the cleanCache
+func aggregateAndWriteNodes(reader ethdb.KeyValueReader, clean *fastcache.Cache, batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node) (total int) {
+	// pre-aggregate the node
+	// Note: temporary impl. When a node writes to a diskLayer, it should be aggregated to aggNode.
+	changeSets := make(map[common.Hash]map[string]map[string]*trienode.Node)
+	for owner, subset := range nodes {
+		current, exist := changeSets[owner]
+		if !exist {
+			current = make(map[string]map[string]*trienode.Node)
+			changeSets[owner] = current
+		}
+		for path, n := range subset {
+			aggPath := getAggNodePath([]byte(path))
+			aggChangeSet, exist := changeSets[owner][string(aggPath)]
+			if !exist {
+				aggChangeSet = make(map[string]*trienode.Node)
+			}
+			aggChangeSet[path] = n
+			changeSets[owner][string(aggPath)] = aggChangeSet
+		}
+	}
+
+	// load the aggNode from clean memory cache and update it, then persist it.
+	for owner, subset := range changeSets {
+		for aggPath, cs := range subset {
+			aggNode := getOrNewAggNode(reader, clean, owner, []byte(aggPath))
+			for path, n := range cs {
+				if n.IsDeleted() {
+					aggNode.Delete([]byte(path))
+				} else {
+					aggNode.Update([]byte(path), n.Blob)
+				}
+			}
+			if aggNode.Empty() {
+				deleteAggNode(batch, owner, []byte(aggPath))
+				if clean != nil {
+					clean.Del(cacheKey(owner, []byte(aggPath)))
+				}
+			} else {
+				aggNodeBytes := aggNode.encodeTo()
+				writeAggNode(batch, owner, []byte(aggPath), aggNodeBytes)
+				if clean != nil {
+					clean.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
+				}
+			}
+			total++
+		}
+	}
+	changeSets = nil
+	return total
 }
 
 // cacheKey constructs the unique key of clean cache.
