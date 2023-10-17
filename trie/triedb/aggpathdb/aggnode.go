@@ -171,6 +171,14 @@ func writeAggNode(db ethdb.KeyValueWriter, owner common.Hash, aggPath []byte, ag
 	}
 }
 
+func deleteAggNode(db ethdb.KeyValueWriter, owner common.Hash, aggPath []byte) {
+	if owner == (common.Hash{}) {
+		rawdb.DeleteAccountTrieNode(db, aggPath)
+	} else {
+		rawdb.DeleteStorageTrieNode(db, owner, aggPath)
+	}
+}
+
 // getAggNodeFromCache read the aggnode from the clean cache (if hit) or database
 func getAggNodeFromCache(clean *fastcache.Cache, owner common.Hash, aggPath []byte) (*AggNode, error) {
 	if clean == nil {
@@ -216,9 +224,9 @@ func ReadTrieNodeFromAggNode(reader ethdb.KeyValueReader, owner common.Hash, pat
 	return rawNode, nhash
 }
 
-func DeleteTrieNodeFromAggNode(db ethdb.KeyValueStore, owner common.Hash, path []byte) {
+func DeleteTrieNodeFromAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte) {
 	aggPath := getAggNodePath(path)
-	aggNode, err := loadAggNodeFromDatabase(db, owner, aggPath)
+	aggNode, err := loadAggNodeFromDatabase(reader, owner, aggPath)
 	if err != nil {
 		panic(fmt.Sprintf("Decode account trie node failed. error: %v", err))
 	}
@@ -227,12 +235,14 @@ func DeleteTrieNodeFromAggNode(db ethdb.KeyValueStore, owner common.Hash, path [
 	}
 	aggNode.Delete(path)
 
-	batch := db.NewBatch()
-	writeAggNode(batch, owner, aggPath, aggNode.encodeTo())
-	batch.Write()
+	if aggNode.Empty() {
+		deleteAggNode(writer, owner, aggPath)
+	} else {
+		writeAggNode(writer, owner, aggPath, aggNode.encodeTo())
+	}
 }
 
-func WriteTrieNodeFromAggNode(db ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte, node []byte) {
+func WriteTrieNodeFromAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte, node []byte) {
 	aggPath := getAggNodePath(path)
 	aggNode, err := loadAggNodeFromDatabase(reader, owner, aggPath)
 	if err != nil {
@@ -243,7 +253,7 @@ func WriteTrieNodeFromAggNode(db ethdb.KeyValueWriter, reader ethdb.KeyValueRead
 	}
 	aggNode.Update(path, node)
 
-	writeAggNode(db, owner, aggPath, aggNode.encodeTo())
+	writeAggNode(writer, owner, aggPath, aggNode.encodeTo())
 }
 
 func HasTrieNodeInAggNode(db ethdb.KeyValueReader, owner common.Hash, path []byte) bool {

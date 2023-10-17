@@ -325,10 +325,17 @@ func aggregateAndWriteNodes(reader ethdb.KeyValueReader, clean *fastcache.Cache,
 					aggNode.Update([]byte(path), n.Blob)
 				}
 			}
-			aggNodeBytes := aggNode.encodeTo()
-			writeAggNode(batch, owner, []byte(aggPath), aggNodeBytes)
-			if clean != nil {
-				clean.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
+			if aggNode.Empty() {
+				deleteAggNode(batch, owner, []byte(aggPath))
+				if clean != nil {
+					clean.Del(cacheKey(owner, []byte(aggPath)))
+				}
+			} else {
+				aggNodeBytes := aggNode.encodeTo()
+				writeAggNode(batch, owner, []byte(aggPath), aggNodeBytes)
+				if clean != nil {
+					clean.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
+				}
 			}
 			total++
 		}

@@ -252,7 +252,7 @@ func (db *Database) Reset(root common.Hash) error {
 	if root == types.EmptyRootHash {
 		// Empty state is requested as the target, nuke out
 		// the root node and leave all others as dangling.
-		DeleteTrieNodeFromAggNode(db.diskdb, common.Hash{}, nil)
+		DeleteTrieNodeFromAggNode(db.diskdb, db.diskdb, common.Hash{}, nil)
 	} else {
 		// Ensure the requested state is existent before any
 		// action is applied.
