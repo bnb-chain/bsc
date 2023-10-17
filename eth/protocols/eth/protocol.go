@@ -243,7 +243,7 @@ type NewSidecarPacket struct {
 }
 
 func (request *NewSidecarPacket) sanityCheck() error {
-	// todo 4844 implement logic of this function from Prysm:
+	// todo 4844 implement logic of this function from Prysm once it is done: https://github.com/orgs/prysmaticlabs/projects/3
 	// func (s *Service) validateBlob(ctx context.Context, pid peer.ID, msg *pubsub.Message) (pubsub.ValidationResult, error) {}
 	fmt.Println("Doing fake sanity check of sidecar packet for now.")
 	return nil
