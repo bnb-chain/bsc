@@ -1,4 +1,13 @@
 # Changelog
+## v1.3.1
+FEATURE
+* [\#1881](https://github.com/bnb-chain/bsc/pull/1881) feat: active pbss
+* [\#1882](https://github.com/bnb-chain/bsc/pull/1881) cmd/geth: add hbss to pbss convert tool
+* [\#1916](https://github.com/bnb-chain/bsc/pull/1916) feat: cherry-pick pbss patch commits from eth repo in v1.13.2
+
+BUGFIX
+* [\#1923](https://github.com/bnb-chain/bsc/pull/1923) consensus/parlia: fix nextForkHash in Extra filed of block header
+
 ## v1.3.0
 #### RPC
 * [internal/ethapi: add debug_getRawReceipts RPC method (#24773)](https://github.com/bnb-chain/bsc/pull/1840/commits/ae7d834bc752a2d94fef9d354ee78fcb9425f3d1)
