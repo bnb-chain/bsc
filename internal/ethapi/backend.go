@@ -103,12 +103,15 @@ type Backend interface {
 	SubscribeNewVoteEvent(chan<- core.NewVoteEvent) event.Subscription
 }
 
-func GetAPIs(apiBackend Backend) []rpc.API {
+func GetAPIs(apiBackend Backend, chain *core.BlockChain) []rpc.API {
 	nonceLock := new(AddrLocker)
 	return []rpc.API{
 		{
 			Namespace: "eth",
 			Service:   NewEthereumAPI(apiBackend),
+		}, {
+			Namespace: "eth",
+			Service:   NewSearcherAPI(apiBackend, chain),
 		}, {
 			Namespace: "eth",
 			Service:   NewBlockChainAPI(apiBackend),

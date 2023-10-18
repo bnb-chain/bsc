@@ -163,6 +163,13 @@ type StateDB struct {
 	StorageDeleted int
 }
 
+// PrepareLegacy sets the current transaction hash and index which are
+// used when the EVM emits new state logs.
+func (s *StateDB) PrepareLegacy(thash common.Hash, ti int) {
+	s.thash = thash
+	s.txIndex = ti
+}
+
 // NewWithSharedPool creates a new state with sharedStorge on layer 1.5
 func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	statedb, err := New(root, db, snaps)
