@@ -119,44 +119,74 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	}
 	dirtyMissMeter.Mark(1)
 
+	// Try to retrieve the trie node from the clean memory cache
 	aggPath := getAggNodePath(path)
-	// try to retrieve the trie aggNode from the clean memory cache
-	aggNode, err := getAggNodeFromCache(dl.cleans, owner, aggPath)
-	if err != nil {
-		return nil, err
+	key := cacheKey(owner, path)
+	if dl.cleans != nil {
+		if blob := dl.cleans.Get(nil, key); len(blob) > 0 {
+			aggNode, err := DecodeAggNode(blob)
+			if err != nil {
+				return nil, fmt.Errorf("decode aggNode failed. error: %v", err)
+			}
+
+			rawNode := aggNode.Node(path)
+			if rawNode == nil {
+				// not found
+				return []byte{}, nil
+			}
+			h := newHasher()
+			defer h.release()
+
+			got := h.hash(rawNode)
+			if got == hash {
+				cleanHitMeter.Mark(1)
+				cleanReadMeter.Mark(int64(len(blob)))
+				return rawNode, nil
+			}
+			cleanFalseMeter.Mark(1)
+			log.Error("Unexpected trie node in clean cache", "owner", owner, "path", path, "expect", hash, "got", got)
+		}
+		cleanMissMeter.Mark(1)
 	}
+	// Try to retrieve the trie node from the disk.
+	var (
+		nBlob []byte
+		nHash common.Hash
+	)
 
 	// try to get aggNode from the database
-	if aggNode == nil {
-		aggNode, err = loadAggNodeFromDatabase(dl.db.diskdb, owner, aggPath)
-		if err != nil {
-			return nil, err
-		}
+	if owner == (common.Hash{}) {
+		nBlob = rawdb.ReadAccountTrieAggNode(dl.db.diskdb, aggPath)
+	} else {
+		nBlob = rawdb.ReadStorageTrieAggNode(dl.db.diskdb, owner, aggPath)
 	}
 
-	// aggNode not found
-	if aggNode == nil {
-		return []byte{}, nil
+	aggNode, err := DecodeAggNode(nBlob)
+	if err != nil {
+		return nil, fmt.Errorf("decode aggNode failed. error: %v", err)
 	}
-
 	rawNode := aggNode.Node(path)
 	if rawNode == nil {
 		// not found
 		return []byte{}, nil
 	}
-
 	h := newHasher()
 	defer h.release()
 
-	got := h.hash(rawNode)
-	if got == hash {
-		return rawNode, nil
-	}
-	if dl.cleans != nil && len(rawNode) > 0 {
-		dl.cleans.Set(cacheKey(owner, path), aggNode.encodeTo())
+	nHash = h.hash(rawNode)
+
+	if nHash != hash {
+		diskFalseMeter.Mark(1)
+		log.Error("Unexpected trie node in disk", "owner", owner, "path", path, "expect", hash, "got", nHash)
+		return nil, newUnexpectedNodeError("disk", hash, nHash, owner, path)
 	}
 
-	return []byte{}, nil
+	if dl.cleans != nil && len(nBlob) > 0 {
+		dl.cleans.Set(cacheKey(owner, aggPath), nBlob)
+		cleanWriteMeter.Mark(int64(len(nBlob)))
+	}
+
+	return rawNode, nil
 }
 
 // update implements the layer interface, returning a new diff layer on top

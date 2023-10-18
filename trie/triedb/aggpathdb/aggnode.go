@@ -186,8 +186,12 @@ func getAggNodeFromCache(clean *fastcache.Cache, owner common.Hash, aggPath []by
 	}
 	blob, cacheHit := clean.HasGet(nil, cacheKey(owner, aggPath))
 	if !cacheHit {
+		cleanMissMeter.Mark(1)
 		return nil, nil
 	}
+
+	cleanHitMeter.Mark(1)
+	cleanReadMeter.Mark(int64(len(blob)))
 
 	return DecodeAggNode(blob)
 }
@@ -203,6 +207,7 @@ func loadAggNodeFromDatabase(db ethdb.KeyValueReader, owner common.Hash, aggPath
 	if blob == nil {
 		return nil, nil
 	}
+
 	return DecodeAggNode(blob)
 }
 
