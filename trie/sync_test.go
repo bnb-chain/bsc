@@ -591,7 +591,7 @@ func testIncompleteSync(t *testing.T, scheme string) {
 		owner, inner := ResolvePath([]byte(path))
 		nodeHash := addedHashes[i]
 		value := triedb.ReadTrieNode(diskdb, owner, inner, nodeHash, scheme)
-		triedb.DeleteTrieNode(diskdb, owner, inner, nodeHash, scheme)
+		triedb.DeleteTrieNode(diskdb, diskdb, owner, inner, nodeHash, scheme)
 		if err := checkTrieConsistency(diskdb, srcDb.Scheme(), root, false); err == nil {
 			t.Fatalf("trie inconsistency not caught, missing: %x", path)
 		}

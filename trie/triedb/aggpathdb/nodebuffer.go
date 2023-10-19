@@ -33,10 +33,10 @@ import (
 // write. The content of the nodebuffer must be checked before diving into
 // disk (since it basically is not-yet-written data).
 type nodebuffer struct {
-	layers uint64                                    // The number of diff layers aggregated inside
-	size   uint64                                    // The size of aggregated writes
-	limit  uint64                                    // The maximum memory allowance in bytes
-	nodes  map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
+	layers uint64                                               // The number of diff layers aggregated inside
+	size   uint64                                               // The size of aggregated writes
+	limit  uint64                                               // The maximum memory allowance in bytes
+	nodes  map[common.Hash]map[string]map[string]*trienode.Node // The dirty node set, mapped by owner, aggpath and path
 }
 
 // newNodeBuffer initializes the node buffer with the provided nodes.
@@ -50,12 +50,14 @@ func newNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.Node, l
 			size += uint64(len(n.Blob) + len(path))
 		}
 	}
-	return &nodebuffer{
+	b := &nodebuffer{
 		layers: layers,
-		nodes:  nodes,
 		size:   size,
+		nodes:  make(map[common.Hash]map[string]map[string]*trienode.Node),
 		limit:  uint64(limit),
 	}
+	preAggregateNodes(nodes, b.nodes)
+	return b
 }
 
 // node retrieves the trie node with given node info.
@@ -64,7 +66,13 @@ func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*tr
 	if !ok {
 		return nil, nil
 	}
-	n, ok := subset[string(path)]
+
+	cs, ok := subset[string(toAggPath(path))]
+	if !ok {
+		return nil, nil
+	}
+
+	n, ok := cs[string(path)]
 	if !ok {
 		return nil, nil
 	}
@@ -94,23 +102,37 @@ func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) *no
 			// The nodes belong to original diff layer are still accessible even
 			// after merging, thus the ownership of nodes map should still belong
 			// to original layer and any mutation on it should be prevented.
-			current = make(map[string]*trienode.Node)
+			current = make(map[string]map[string]*trienode.Node)
+
 			for path, n := range subset {
-				current[path] = n
+				aggPath := toAggPath([]byte(path))
+				cs, exist := current[string(aggPath)]
+				if !exist {
+					cs = make(map[string]*trienode.Node)
+				}
+				cs[path] = n
+				current[string(aggPath)] = cs
 				delta += int64(len(n.Blob) + len(path))
 			}
 			b.nodes[owner] = current
 			continue
 		}
+
 		for path, n := range subset {
-			if orig, exist := current[path]; !exist {
+			aggPath := toAggPath([]byte(path))
+			cs, exist := current[string(aggPath)]
+			if !exist {
+				cs = make(map[string]*trienode.Node)
+			}
+			if orig, exist := cs[path]; !exist {
 				delta += int64(len(n.Blob) + len(path))
 			} else {
 				delta += int64(len(n.Blob) - len(orig.Blob))
 				overwrite++
 				overwriteSize += int64(len(orig.Blob) + len(path))
 			}
-			current[path] = n
+			cs[path] = n
+			current[string(aggPath)] = cs
 		}
 		b.nodes[owner] = current
 	}
@@ -143,7 +165,12 @@ func (b *nodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 			panic(fmt.Sprintf("non-existent subset (%x)", owner))
 		}
 		for path, n := range subset {
-			orig, ok := current[path]
+			aggPath := toAggPath([]byte(path))
+			cs, ok := current[string(aggPath)]
+			if !ok {
+				panic(fmt.Sprintf("non-existent changeset (%x) (%x)", owner, aggPath))
+			}
+			orig, ok := cs[path]
 			if !ok {
 				// There is a special case in MPT that one child is removed from
 				// a fullNode which only has two children, and then a new child
@@ -161,7 +188,8 @@ func (b *nodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 				}
 				panic(fmt.Sprintf("non-existent node (%x %v) blob: %v", owner, path, crypto.Keccak256Hash(n.Blob).Hex()))
 			}
-			current[path] = n
+			cs[path] = n
+			current[string(aggPath)] = cs
 			delta += int64(len(n.Blob)) - int64(len(orig.Blob))
 		}
 	}
@@ -185,7 +213,7 @@ func (b *nodebuffer) updateSize(delta int64) {
 func (b *nodebuffer) reset() {
 	b.layers = 0
 	b.size = 0
-	b.nodes = make(map[common.Hash]map[string]*trienode.Node)
+	b.nodes = make(map[common.Hash]map[string]map[string]*trienode.Node)
 }
 
 // empty returns an indicator if nodebuffer contains any state transition inside.
@@ -195,14 +223,14 @@ func (b *nodebuffer) empty() bool {
 
 // setSize sets the buffer size to the provided number, and invokes a flush
 // operation if the current memory usage exceeds the new limit.
-func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, aggNodeCache *aggnodecache, cleans *fastcache.Cache, id uint64) error {
 	b.limit = uint64(size)
-	return b.flush(db, clean, id, false)
+	return b.flush(db, aggNodeCache, cleans, id, false)
 }
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error {
+func (b *nodebuffer) flush(db ethdb.KeyValueStore, aggNodeCache *aggnodecache, cleans *fastcache.Cache, id uint64, force bool) error {
 	if b.size <= b.limit && !force {
 		return nil
 	}
@@ -216,7 +244,7 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 		batch = db.NewBatchWithSize(int(b.size))
 	)
 
-	nodes := aggregateAndWriteNodes(db, clean, batch, b.nodes)
+	nodes := aggregateAndWriteNodes(aggNodeCache, cleans, batch, b.nodes)
 	rawdb.WritePersistentStateID(batch, id)
 
 	// Flush all mutations in a single batch
@@ -227,61 +255,72 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	commitBytesMeter.Mark(int64(size))
 	commitNodesMeter.Mark(int64(nodes))
 	commitTimeTimer.UpdateSince(start)
-	log.Debug("Persisted aggpathdb nodes", "nodes", len(b.nodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
+	log.Debug("Persisted aggPathDB nodes", "nodes", len(b.nodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
 	b.reset()
 	return nil
 }
 
-// aggregateAndWriteNodes will aggregate the trienode into trie aggnode and persist into the database
-// Note this function will inject all the clean aggNode into the cleanCache
-func aggregateAndWriteNodes(reader ethdb.KeyValueReader, clean *fastcache.Cache, batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node) (total int) {
-	// pre-aggregate the node
-	// Note: temporary impl. When a node writes to a diskLayer, it should be aggregated to aggNode.
-	changeSets := make(map[common.Hash]map[string]map[string]*trienode.Node)
+func preAggregateNodes(nodes map[common.Hash]map[string]*trienode.Node, changeSet map[common.Hash]map[string]map[string]*trienode.Node) {
 	for owner, subset := range nodes {
-		current, exist := changeSets[owner]
+		current, exist := changeSet[owner]
 		if !exist {
 			current = make(map[string]map[string]*trienode.Node)
-			changeSets[owner] = current
 		}
 		for path, n := range subset {
-			aggPath := getAggNodePath([]byte(path))
-			aggChangeSet, exist := changeSets[owner][string(aggPath)]
+			aggPath := toAggPath([]byte(path))
+			aggChangeSet, exist := current[string(aggPath)]
 			if !exist {
 				aggChangeSet = make(map[string]*trienode.Node)
 			}
 			aggChangeSet[path] = n
-			changeSets[owner][string(aggPath)] = aggChangeSet
+			current[string(aggPath)] = aggChangeSet
 		}
+		changeSet[owner] = current
 	}
+}
 
+// aggregateAndWriteNodes will aggregate the trienode into trie aggnode and persist into the database
+// Note this function will inject all the clean aggNode into the cleanCache
+func aggregateAndWriteNodes(aggNodeCache *aggnodecache, cleans *fastcache.Cache,
+	batch ethdb.Batch, nodes map[common.Hash]map[string]map[string]*trienode.Node) (total int) {
 	// load the aggNode from clean memory cache and update it, then persist it.
-	for owner, subset := range changeSets {
+	for owner, subset := range nodes {
 		for aggPath, cs := range subset {
-			aggNode := getOrNewAggNode(reader, clean, owner, []byte(aggPath))
+			aggNode, err := aggNodeCache.aggNode(owner, []byte(aggPath))
+			if err != nil {
+				panic(fmt.Sprintf("Decode aggNode failed, error %v", err))
+			}
+			if aggNode == nil {
+				aggNode = &AggNode{}
+			}
 			for path, n := range cs {
 				if n.IsDeleted() {
 					aggNode.Delete([]byte(path))
+					if cleans != nil {
+						cleans.Del(cacheKey(owner, []byte(path)))
+					}
 				} else {
 					aggNode.Update([]byte(path), n.Blob)
+					if cleans != nil {
+						cleans.Set(cacheKey(owner, []byte(path)), n.Blob)
+					}
 				}
 			}
 			if aggNode.Empty() {
 				deleteAggNode(batch, owner, []byte(aggPath))
-				if clean != nil {
-					clean.Del(cacheKey(owner, []byte(aggPath)))
+				if aggNodeCache.cleans != nil {
+					aggNodeCache.cleans.Del(cacheKey(owner, []byte(aggPath)))
 				}
 			} else {
 				aggNodeBytes := aggNode.encodeTo()
 				writeAggNode(batch, owner, []byte(aggPath), aggNodeBytes)
-				if clean != nil {
-					clean.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
+				if aggNodeCache.cleans != nil {
+					aggNodeCache.cleans.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
 				}
 			}
 			total++
 		}
 	}
-	changeSets = nil
 	return total
 }
 

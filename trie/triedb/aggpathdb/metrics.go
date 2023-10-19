@@ -23,6 +23,13 @@ var (
 	cleanMissMeter  = metrics.NewRegisteredMeter("aggpathdb/clean/miss", nil)
 	cleanReadMeter  = metrics.NewRegisteredMeter("aggpathdb/clean/read", nil)
 	cleanWriteMeter = metrics.NewRegisteredMeter("aggpathdb/clean/write", nil)
+	cleanFalseMeter = metrics.NewRegisteredMeter("aggpathdb/clean/false", nil)
+
+	aggNodeCleanHitMeter   = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/hit", nil)
+	aggNodeCleanMissMeter  = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/miss", nil)
+	aggNodeCleanReadMeter  = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/read", nil)
+	aggNodeCleanWriteMeter = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/write", nil)
+	aggNodeCleanFalseMeter = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/false", nil)
 
 	dirtyHitMeter         = metrics.NewRegisteredMeter("aggpathdb/dirty/hit", nil)
 	dirtyMissMeter        = metrics.NewRegisteredMeter("aggpathdb/dirty/miss", nil)
@@ -30,7 +37,6 @@ var (
 	dirtyWriteMeter       = metrics.NewRegisteredMeter("aggpathdb/dirty/write", nil)
 	dirtyNodeHitDepthHist = metrics.NewRegisteredHistogram("aggpathdb/dirty/depth", nil, metrics.NewExpDecaySample(1028, 0.015))
 
-	cleanFalseMeter = metrics.NewRegisteredMeter("aggpathdb/clean/false", nil)
 	dirtyFalseMeter = metrics.NewRegisteredMeter("aggpathdb/dirty/false", nil)
 	diskFalseMeter  = metrics.NewRegisteredMeter("aggpathdb/disk/false", nil)
 

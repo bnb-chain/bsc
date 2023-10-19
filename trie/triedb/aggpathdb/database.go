@@ -38,7 +38,10 @@ const (
 	maxDiffLayers = 128
 
 	// defaultCleanSize is the default memory allowance of clean cache.
-	defaultCleanSize = 2 * 1024 * 1024 * 1024
+	defaultCleanSize = 16 * 1024 * 1024
+
+	// maxCleanAggNodeSize os the maximum memory allowance of clean aggNode cache
+	maxCleanAggNodeSize = 4 * 1024 * 1024 * 1024
 
 	// maxBufferSize is the maximum memory allowance of node buffer.
 	// Too large nodebuffer will cause the system to pause for a long
@@ -99,10 +102,6 @@ func (c *Config) sanitize() *Config {
 	if conf.DirtyCacheSize > maxBufferSize {
 		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.DirtyCacheSize), "updated", common.StorageSize(maxBufferSize))
 		conf.DirtyCacheSize = maxBufferSize
-	}
-	if conf.CleanCacheSize < defaultCleanSize {
-		log.Warn("Sanitizing invalid clean cache size size", "provided", common.StorageSize(conf.CleanCacheSize), "updated", common.StorageSize(defaultCleanSize))
-		conf.CleanCacheSize = defaultCleanSize
 	}
 	return &conf
 }
@@ -287,7 +286,7 @@ func (db *Database) Reset(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	dl := newDiskLayer(root, 0, db, nil, newNodeBuffer(db.bufferSize, nil, 0))
+	dl := newDiskLayer(root, 0, db, nil, nil, newNodeBuffer(db.bufferSize, nil, 0))
 	db.tree.reset(dl)
 	log.Info("Rebuilt trie database", "root", root)
 	return nil
