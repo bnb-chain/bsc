@@ -45,7 +45,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
 const (
@@ -979,7 +978,7 @@ func (h *handler) voteBroadcastLoop() {
 // sync is finished.
 func (h *handler) enableSyncedFeatures() {
 	h.acceptTxs.Store(true)
-	if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
-		h.chain.TrieDB().SetBufferSize(pathdb.DefaultBufferSize)
-	}
+	//if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
+	//	h.chain.TrieDB().SetBufferSize(pathdb.DefaultBufferSize)
+	//}
 }

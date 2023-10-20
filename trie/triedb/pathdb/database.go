@@ -44,7 +44,7 @@ const (
 	// Too large nodebuffer will cause the system to pause for a long
 	// time when write happens. Also, the largest batch that pebble can
 	// support is 4GB, node will panic if batch size exceeds this limit.
-	maxBufferSize = 256 * 1024 * 1024
+	maxBufferSize = 4 * 1024 * 1024
 
 	// DefaultBufferSize is the default memory allowance of node buffer
 	// that aggregates the writes from above until it's flushed into the
@@ -144,7 +144,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 	if config == nil {
 		config = Defaults
 	}
-	config = config.sanitize()
+	//config = config.sanitize()
 
 	db := &Database{
 		readOnly:   config.ReadOnly,
@@ -152,6 +152,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		config:     config,
 		diskdb:     diskdb,
 	}
+	log.Warn("node buffer size", "provided", common.StorageSize(db.bufferSize))
 	// Construct the layer tree by resolving the in-disk singleton state
 	// and in-memory layer journal.
 	db.tree = newLayerTree(db.loadLayers())
@@ -412,11 +413,13 @@ func (db *Database) Initialized(genesisRoot common.Hash) bool {
 func (db *Database) SetBufferSize(size int) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
+	// disable SetBufferSize
+	return nil
 
-	if size > maxBufferSize {
-		log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(maxBufferSize))
-		size = maxBufferSize
-	}
+	//if size > maxBufferSize {
+	//	log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(maxBufferSize))
+	//	size = maxBufferSize
+	//}
 	db.bufferSize = size
 	return db.tree.bottom().setBufferSize(db.bufferSize)
 }

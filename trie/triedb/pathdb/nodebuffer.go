@@ -215,11 +215,15 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	if head+b.layers != id {
 		return fmt.Errorf("buffer layers (%d) cannot be applied on top of persisted state id (%d) to reach requested state id (%d)", b.layers, head, id)
 	}
+
 	var (
 		start = time.Now()
 		batch = db.NewBatchWithSize(int(b.size))
 	)
-	nodes := writeNodes(batch, b.nodes, clean)
+	nodes, err := writeNodes(batch, b.nodes, clean)
+	if err != nil {
+		return err
+	}
 	rawdb.WritePersistentStateID(batch, id)
 
 	// Flush all mutations in a single batch
@@ -238,7 +242,7 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 // writeNodes writes the trie nodes into the provided database batch.
 // Note this function will also inject all the newly written nodes
 // into clean cache.
-func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node, clean *fastcache.Cache) (total int) {
+func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node, clean *fastcache.Cache) (total int, err error) {
 	for owner, subset := range nodes {
 		for path, n := range subset {
 			if n.IsDeleted() {
@@ -263,7 +267,7 @@ func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.No
 		}
 		total += len(subset)
 	}
-	return total
+	return total, nil
 }
 
 // cacheKey constructs the unique key of clean cache.
