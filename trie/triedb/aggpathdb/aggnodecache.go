@@ -16,9 +16,6 @@ type aggnodecache struct {
 
 func newAggNodeCache(db *Database, cleans *fastcache.Cache, cacheSize int) *aggnodecache {
 	if cleans == nil {
-		if cacheSize > maxCleanAggNodeSize {
-			cacheSize = maxCleanAggNodeSize
-		}
 		cleans = fastcache.New(cacheSize)
 	}
 
@@ -50,14 +47,14 @@ func (c *aggnodecache) node(owner common.Hash, path []byte, hash common.Hash) ([
 
 			got := h.hash(rawNode)
 			if got == hash {
-				aggNodeCleanHitMeter.Mark(1)
-				aggNodeCleanReadMeter.Mark(int64(len(blob)))
+				cleanHitMeter.Mark(1)
+				cleanReadMeter.Mark(int64(len(blob)))
 				return rawNode, nil
 			}
-			aggNodeCleanFalseMeter.Mark(1)
+			cleanFalseMeter.Mark(1)
 			log.Error("Unexpected trie node in clean cache", "owner", owner, "path", path, "expect", hash, "got", got)
 		}
-		aggNodeCleanMissMeter.Mark(1)
+		cleanMissMeter.Mark(1)
 	}
 
 	// Try to retrieve the trie node from the disk.
@@ -93,7 +90,7 @@ func (c *aggnodecache) node(owner common.Hash, path []byte, hash common.Hash) ([
 	}
 	if c.cleans != nil && len(nBlob) > 0 {
 		c.cleans.Set(key, nBlob)
-		aggNodeCleanWriteMeter.Mark(int64(len(nBlob)))
+		cleanWriteMeter.Mark(int64(len(nBlob)))
 	}
 
 	return rawNode, nil
@@ -105,11 +102,11 @@ func (c *aggnodecache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, err
 		cacheHit := false
 		blob, cacheHit = c.cleans.HasGet(nil, cacheKey(owner, aggPath))
 		if cacheHit {
-			aggNodeCleanHitMeter.Mark(1)
-			aggNodeCleanReadMeter.Mark(int64(len(blob)))
+			cleanHitMeter.Mark(1)
+			cleanReadMeter.Mark(int64(len(blob)))
 			return DecodeAggNode(blob)
 		}
-		aggNodeCleanMissMeter.Mark(1)
+		cleanMissMeter.Mark(1)
 	}
 
 	// cache miss
@@ -123,4 +120,8 @@ func (c *aggnodecache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, err
 		return nil, nil
 	}
 	return DecodeAggNode(blob)
+}
+
+func (c *aggnodecache) Reset() {
+	c.cleans.Reset()
 }

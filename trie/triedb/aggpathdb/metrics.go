@@ -25,12 +25,6 @@ var (
 	cleanWriteMeter = metrics.NewRegisteredMeter("aggpathdb/clean/write", nil)
 	cleanFalseMeter = metrics.NewRegisteredMeter("aggpathdb/clean/false", nil)
 
-	aggNodeCleanHitMeter   = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/hit", nil)
-	aggNodeCleanMissMeter  = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/miss", nil)
-	aggNodeCleanReadMeter  = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/read", nil)
-	aggNodeCleanWriteMeter = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/write", nil)
-	aggNodeCleanFalseMeter = metrics.NewRegisteredMeter("aggpathdb/aggnode/clean/false", nil)
-
 	dirtyHitMeter         = metrics.NewRegisteredMeter("aggpathdb/dirty/hit", nil)
 	dirtyMissMeter        = metrics.NewRegisteredMeter("aggpathdb/dirty/miss", nil)
 	dirtyReadMeter        = metrics.NewRegisteredMeter("aggpathdb/dirty/read", nil)

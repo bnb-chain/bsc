@@ -5,7 +5,6 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -158,23 +157,6 @@ func deleteAggNode(db ethdb.KeyValueWriter, owner common.Hash, aggPath []byte) {
 	} else {
 		rawdb.DeleteStorageTrieNode(db, owner, aggPath)
 	}
-}
-
-// getAggNodeFromCache read the aggnode from the clean cache (if hit) or database
-func getAggNodeFromCache(clean *fastcache.Cache, owner common.Hash, aggPath []byte) (*AggNode, error) {
-	if clean == nil {
-		return nil, nil
-	}
-	blob, cacheHit := clean.HasGet(nil, cacheKey(owner, aggPath))
-	if !cacheHit {
-		cleanMissMeter.Mark(1)
-		return nil, nil
-	}
-
-	cleanHitMeter.Mark(1)
-	cleanReadMeter.Mark(int64(len(blob)))
-
-	return DecodeAggNode(blob)
 }
 
 func loadAggNodeFromDatabase(db ethdb.KeyValueReader, owner common.Hash, aggPath []byte) (*AggNode, error) {

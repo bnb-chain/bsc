@@ -38,10 +38,7 @@ const (
 	maxDiffLayers = 128
 
 	// defaultCleanSize is the default memory allowance of clean cache.
-	defaultCleanSize = 16 * 1024 * 1024
-
-	// maxCleanAggNodeSize os the maximum memory allowance of clean aggNode cache
-	maxCleanAggNodeSize = 4 * 1024 * 1024 * 1024
+	defaultCleanSize = 256 * 1024 * 1024
 
 	// maxBufferSize is the maximum memory allowance of node buffer.
 	// Too large nodebuffer will cause the system to pause for a long
@@ -166,8 +163,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 	// mechanism also ensures that at most one **non-readOnly** database
 	// is opened at the same time to prevent accidental mutation.
 	if ancient, err := diskdb.AncientDatadir(); err == nil && ancient != "" && !db.readOnly {
-		offset := uint64(0) //TODO(Nathan): just for passing compilation
-		freezer, err := rawdb.NewStateFreezer(ancient, false, offset)
+		freezer, err := rawdb.NewStateFreezer(ancient, false, 0)
 		if err != nil {
 			log.Crit("Failed to open state history freezer", "err", err)
 		}
@@ -286,7 +282,7 @@ func (db *Database) Reset(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	dl := newDiskLayer(root, 0, db, nil, nil, newNodeBuffer(db.bufferSize, nil, 0))
+	dl := newDiskLayer(root, 0, db, nil, newNodeBuffer(db.bufferSize, nil, 0))
 	db.tree.reset(dl)
 	log.Info("Rebuilt trie database", "root", root)
 	return nil

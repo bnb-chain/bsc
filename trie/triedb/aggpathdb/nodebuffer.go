@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -223,14 +222,14 @@ func (b *nodebuffer) empty() bool {
 
 // setSize sets the buffer size to the provided number, and invokes a flush
 // operation if the current memory usage exceeds the new limit.
-func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, aggNodeCache *aggnodecache, cleans *fastcache.Cache, id uint64) error {
+func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, cleans *aggnodecache, id uint64) error {
 	b.limit = uint64(size)
-	return b.flush(db, aggNodeCache, cleans, id, false)
+	return b.flush(db, cleans, id, false)
 }
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (b *nodebuffer) flush(db ethdb.KeyValueStore, aggNodeCache *aggnodecache, cleans *fastcache.Cache, id uint64, force bool) error {
+func (b *nodebuffer) flush(db ethdb.KeyValueStore, cleans *aggnodecache, id uint64, force bool) error {
 	if b.size <= b.limit && !force {
 		return nil
 	}
@@ -244,7 +243,7 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, aggNodeCache *aggnodecache, c
 		batch = db.NewBatchWithSize(int(b.size))
 	)
 
-	nodes := aggregateAndWriteNodes(aggNodeCache, cleans, batch, b.nodes)
+	nodes := aggregateAndWriteNodes(cleans, batch, b.nodes)
 	rawdb.WritePersistentStateID(batch, id)
 
 	// Flush all mutations in a single batch
@@ -281,12 +280,11 @@ func preAggregateNodes(nodes map[common.Hash]map[string]*trienode.Node, changeSe
 
 // aggregateAndWriteNodes will aggregate the trienode into trie aggnode and persist into the database
 // Note this function will inject all the clean aggNode into the cleanCache
-func aggregateAndWriteNodes(aggNodeCache *aggnodecache, cleans *fastcache.Cache,
-	batch ethdb.Batch, nodes map[common.Hash]map[string]map[string]*trienode.Node) (total int) {
+func aggregateAndWriteNodes(cleans *aggnodecache, batch ethdb.Batch, nodes map[common.Hash]map[string]map[string]*trienode.Node) (total int) {
 	// load the aggNode from clean memory cache and update it, then persist it.
 	for owner, subset := range nodes {
 		for aggPath, cs := range subset {
-			aggNode, err := aggNodeCache.aggNode(owner, []byte(aggPath))
+			aggNode, err := cleans.aggNode(owner, []byte(aggPath))
 			if err != nil {
 				panic(fmt.Sprintf("Decode aggNode failed, error %v", err))
 			}
@@ -296,27 +294,30 @@ func aggregateAndWriteNodes(aggNodeCache *aggnodecache, cleans *fastcache.Cache,
 			for path, n := range cs {
 				if n.IsDeleted() {
 					aggNode.Delete([]byte(path))
-					if cleans != nil {
-						cleans.Del(cacheKey(owner, []byte(path)))
-					}
 				} else {
 					aggNode.Update([]byte(path), n.Blob)
-					if cleans != nil {
-						cleans.Set(cacheKey(owner, []byte(path)), n.Blob)
-					}
 				}
 			}
 			if aggNode.Empty() {
 				deleteAggNode(batch, owner, []byte(aggPath))
-				if aggNodeCache.cleans != nil {
-					aggNodeCache.cleans.Del(cacheKey(owner, []byte(aggPath)))
+				if cleans.cleans != nil {
+					cleans.cleans.Del(cacheKey(owner, []byte(aggPath)))
 				}
 			} else {
 				aggNodeBytes := aggNode.encodeTo()
 				writeAggNode(batch, owner, []byte(aggPath), aggNodeBytes)
-				if aggNodeCache.cleans != nil {
-					aggNodeCache.cleans.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
+				if cleans.cleans != nil {
+					cleans.cleans.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
 				}
+			}
+			// If we exceeded the ideal batch size, commit and reset
+			if batch.ValueSize() >= ethdb.IdealBatchSize {
+				if err := batch.Write(); err != nil {
+					log.Error("Failed to write flush list to disk", "err", err)
+					panic("Failed to write flush list to disk")
+				}
+				commitBytesMeter.Mark(int64(batch.ValueSize()))
+				batch.Reset()
 			}
 			total++
 		}
