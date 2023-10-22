@@ -3,6 +3,7 @@ package rawdb_test
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/rawdb/bloblevel"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/prysm/v4/beacon-chain/db/kv"
+	"github.com/prysmaticlabs/prysm/v4/consensus-types/primitives"
 	"github.com/prysmaticlabs/prysm/v4/encoding/bytesutil"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -161,44 +163,78 @@ func TestBlobLevelDbStorage(t *testing.T) {
 		require.ErrorContains(t, err, "not found")
 		require.Equal(t, 0, len(got))
 	})
-	t.Run("saving a blob with older slot", func(t *testing.T) {
-		storage := bloblevel.NewStorage(rawdb.NewMemoryDatabase())
-		scs := generateBlobSidecars(t, params.MaxBlobsPerBlock)
-		require.NoError(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, scs))
-		require.Equal(t, params.MaxBlobsPerBlock, len(scs))
-		got, err := rawdb.GetBlobSidecarsByRoot(ctx, storage, bytesutil.ToBytes32(scs[0].BlockRoot))
-		require.NoError(t, err)
-		require.NoError(t, equalBlobSlices(scs, got))
-		require.ErrorContains(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, scs), "but already have older blob with slot")
-	})
-
-	//t.Run("saving a new blob for rotation", func(t *testing.T) {
-	//	ctx := context.Background()
-	//	db := rawdb.NewMemoryDatabase()
-	//
-	//	storage := bloblevel.NewStorage(db)
+	//t.Run("saving a blob with older slot", func(t *testing.T) {
+	//	storage := bloblevel.NewStorage(rawdb.NewMemoryDatabase())
 	//	scs := generateBlobSidecars(t, params.MaxBlobsPerBlock)
 	//	require.NoError(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, scs))
 	//	require.Equal(t, params.MaxBlobsPerBlock, len(scs))
-	//	oldBlockRoot := scs[0].BlockRoot
-	//	got, err := rawdb.GetBlobSidecarsByRoot(ctx, storage, bytesutil.ToBytes32(oldBlockRoot))
+	//	got, err := rawdb.GetBlobSidecarsByRoot(ctx, storage, bytesutil.ToBytes32(scs[0].BlockRoot))
 	//	require.NoError(t, err)
 	//	require.NoError(t, equalBlobSlices(scs, got))
-	//
-	//	newScs := generateBlobSidecars(t, params.MaxBlobsPerBlock)
-	//	newRetentionSlot := primitives.Slot(params.TestChainConfig.DataBlobs.MinEpochsForBlobsSidecarsRequest.Mul(uint64(params.TestChainConfig.DataBlobs.SlotsPerEpoch)))
-	//	for _, sc := range newScs {
-	//		sc.Slot = sc.Slot + newRetentionSlot
-	//	}
-	//	require.NoError(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, newScs))
-	//
-	//	_, err = rawdb.GetBlobSidecarsBySlot(ctx, storage, params.TestChainConfig, 100)
-	//	require.ErrorIs(t, bloblevel.ErrNotFound, err)
-	//
-	//	got, err = rawdb.GetBlobSidecarsByRoot(ctx, storage, bytesutil.ToBytes32(newScs[0].BlockRoot))
-	//	require.NoError(t, err)
-	//	require.NoError(t, equalBlobSlices(newScs, got))
+	//	require.ErrorContains(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, scs), "but already have older blob with slot")
 	//})
+
+	t.Run("saving blob different times", func(t *testing.T) {
+		storage := bloblevel.NewStorage(rawdb.NewMemoryDatabase())
+		scs := generateBlobSidecars(t, params.MaxBlobsPerBlock)
+
+		scs0 := scs[0:2]
+		scs1 := scs[2:4]
+		require.NoError(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, scs0))
+		require.NoError(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, scs1))
+
+		saved, err := rawdb.GetBlobSidecarsByRoot(ctx, storage, bytesutil.ToBytes32(scs0[0].BlockRoot))
+		require.NoError(t, err)
+		require.NoError(t, equalBlobSlices(saved, scs))
+	})
+
+	t.Run("saving a new blob for rotation", func(t *testing.T) {
+		ctx := context.Background()
+		db := rawdb.NewMemoryDatabase()
+
+		storage := bloblevel.NewStorage(db)
+		scs := generateBlobSidecars(t, params.MaxBlobsPerBlock)
+		require.NoError(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, scs))
+		require.Equal(t, params.MaxBlobsPerBlock, len(scs))
+		oldBlockRoot := scs[0].BlockRoot
+		got, err := rawdb.GetBlobSidecarsByRoot(ctx, storage, bytesutil.ToBytes32(oldBlockRoot))
+		require.NoError(t, err)
+		require.NoError(t, equalBlobSlices(scs, got))
+
+		newScs := generateBlobSidecars(t, params.MaxBlobsPerBlock)
+		newRetentionSlot := primitives.Slot(params.TestChainConfig.DataBlobs.MinEpochsForBlobsSidecarsRequest.Mul(uint64(params.TestChainConfig.DataBlobs.SlotsPerEpoch)))
+		for _, sc := range newScs {
+			sc.Slot = sc.Slot + newRetentionSlot
+		}
+		require.NoError(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, newScs))
+
+		x, err := rawdb.GetBlobSidecarsBySlot(ctx, storage, params.TestChainConfig, 100)
+		require.ErrorIs(t, err, bloblevel.ErrNotFound)
+		fmt.Println(len(x))
+
+		got, err = rawdb.GetBlobSidecarsByRoot(ctx, storage, bytesutil.ToBytes32(newScs[0].BlockRoot))
+		require.NoError(t, err)
+		require.NoError(t, equalBlobSlices(newScs, got))
+	})
+
+	t.Run("saving same blob twice", func(t *testing.T) {
+		ctx := context.Background()
+		db := rawdb.NewMemoryDatabase()
+		storage := bloblevel.NewStorage(db)
+
+		scs := generateBlobSidecars(t, 1)
+		require.Equal(t, 1, len(scs))
+		require.NoError(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, scs))
+
+		got, err := rawdb.GetBlobSidecarsByRoot(ctx, storage, bytesutil.ToBytes32(scs[0].BlockRoot))
+		require.NoError(t, err)
+		require.NoError(t, equalBlobSlices(scs, got))
+
+		require.NoError(t, rawdb.SaveBlobSidecar(ctx, storage, params.TestChainConfig, scs))
+		got, err = rawdb.GetBlobSidecarsByRoot(ctx, storage, bytesutil.ToBytes32(scs[0].BlockRoot))
+		require.NoError(t, err)
+		require.NoError(t, equalBlobSlices(scs, got))
+	})
 }
 
 func generateBlobSidecars(t *testing.T, n uint64) []*types.Sidecar {
