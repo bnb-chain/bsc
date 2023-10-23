@@ -995,10 +995,11 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 	if config != nil && config.Reexec != nil {
 		reexec = *config.Reexec
 	}
-	statedb, err := api.backend.StateAtBlock(ctx, block, reexec, nil, true, false)
+	statedb, release, err := api.backend.StateAtBlock(ctx, block, reexec, nil, true, false)
 	if err != nil {
 		return nil, err
 	}
+	defer release()
 	// Apply the customized state rules if required.
 	if config != nil {
 		if err := config.StateOverrides.Apply(statedb); err != nil {
@@ -1058,9 +1059,9 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 				bundleResults = append(bundleResults, jsonResult)
 			}
 
-			statedb.Prepare(tx.Hash(), i)
+			statedb.SetTxContext(tx.Hash(), i)
 			vmenv := vm.NewEVM(vmctx, core.NewEVMTxContext(msg), statedb, api.backend.ChainConfig(), vm.Config{})
-			if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas())); err != nil {
+			if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit)); err != nil {
 				//failed = err
 				break
 			}

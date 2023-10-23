@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -1984,7 +1983,7 @@ func (s *TransactionAPI) GetTransactionReceiptsByBlockNumber(ctx context.Context
 	txReceipts := make([]map[string]interface{}, 0, len(txs))
 	for idx, receipt := range receipts {
 		tx := txs[idx]
-		signer := types.MakeSigner(s.b.ChainConfig(), new(big.Int).SetUint64(blockNumber))
+		signer := types.MakeSigner(s.b.ChainConfig(), new(big.Int).SetUint64(blockNumber), block.Time())
 		from, _ := types.Sender(signer, tx)
 
 		fields := map[string]interface{}{
@@ -2611,9 +2610,14 @@ func NewBundleAPI(b Backend, chain *core.BlockChain) *BundleAPI {
 	return &BundleAPI{b, chain}
 }
 
+type TxWrapper struct {
+	TransactionArgs
+	Id string `json:"id"`
+}
+
 // SendBundleArgs represents the arguments for a call.
 type CallBundleArgs struct {
-	Txs                    []TransactionArgs     `json:"txs"`
+	Txs                    []TxWrapper           `json:"txs"`
 	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
 	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
 	Coinbase               *string               `json:"coinbase"`
@@ -2683,12 +2687,12 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		Coinbase:   coinbase,
 	}
 
-	var txs []types.Message
-
-	for _, encodedTx := range args.Txs {
-		tx, _ := encodedTx.ToMessage(25000000, header.BaseFee)
-		txs = append(txs, tx)
-	}
+	//var txs []*core.Message
+	//
+	//for _, encodedTx := range args.Txs {
+	//	tx, _ := encodedTx.ToMessage(25000000, header.BaseFee)
+	//	txs = append(txs, tx)
+	//}
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
 	// Setup context so it may be cancelled the call has completed
@@ -2716,11 +2720,21 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	// signer := types.MakeSigner(s.b.ChainConfig(), blockNumber)
 	var totalGasUsed uint64
 	gasFees := new(big.Int)
+
+	var txs []*core.Message
+	for _, encodedTx := range args.Txs {
+		tx, _ := encodedTx.ToMessage(25000000, header.BaseFee)
+		txs = append(txs, tx)
+	}
+
 	for i, tx := range txs {
-		nonce := state.GetNonce(tx.From())
-		expectedTx := types.NewTransaction(nonce, *tx.To(), tx.Value(), tx.Gas(), tx.GasPrice(), tx.Data())
-		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-		state.Prepare(expectedTx.Hash(), i)
+		args.Txs[i].setDefaults(ctx, s.b)
+		expectedTx := args.Txs[i].toTransaction()
+
+		//nonce := state.GetNonce(tx.From)
+		//expectedTx := types.NewTransaction(nonce, *tx.To(), tx.Value(), tx.Gas(), tx.GasPrice(), tx.Data())
+		//coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
+		state.SetTxContext(expectedTx.Hash(), i)
 
 		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, expectedTx, &header.GasUsed, vmconfig)
 		if err != nil {
@@ -2728,9 +2742,9 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 				"error":   fmt.Sprintf("%s", err),
 				"gasUsed": 0,
 			}
-			coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
-			jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
-			jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(1))).String()
+			//coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
+			//jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
+			//jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(1))).String()
 
 			results = append(results, jsonResult)
 		} else {
@@ -2771,11 +2785,11 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 			// if args.SimulationLogs == true {
 			// 	jsonResult["logs"] = receipt.Logs
 			// }
-			coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
-			jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
+			//coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
+			//jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
 			// jsonResult["gasFees"] = gasFeesTx.String()
 			// jsonResult["ethSentToCoinbase"] = new(big.Int).Sub(coinbaseDiffTx, gasFeesTx).String()
-			jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String()
+			//jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String()
 			jsonResult["gasUsed"] = receipt.GasUsed
 
 			results = append(results, jsonResult)
@@ -2918,7 +2932,6 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 		header.Number = bundleBlockNumber
 		header.Time = bundleTimestamp
 
-		var txs []types.Message
 		bundleResults := []map[string]interface{}{}
 
 		bundleJsonResult := map[string]interface{}{}
@@ -2926,6 +2939,7 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 		bundleJsonResult["blockNumber"] = bundleBlockNumber
 		bundleJsonResult["timestamp"] = bundleTimestamp
 
+		var txs []*core.Message
 		for _, encodedTx := range bundle.Txs {
 			tx, _ := encodedTx.ToMessage(25000000, header.BaseFee)
 			txs = append(txs, tx)
@@ -2937,7 +2951,7 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 			//nonce := state.GetNonce(tx.From())
 			//expectedTx := types.NewTransaction(nonce, *tx.To(), tx.Value(), tx.Gas(), tx.GasPrice(), tx.Data())
 			//coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-			state.Prepare(expectedTx.Hash(), txCounter)
+			state.SetTxContext(expectedTx.Hash(), txCounter)
 
 			receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, expectedTx, &header.GasUsed, vmconfig)
 			if err != nil {
@@ -2998,39 +3012,39 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 	return ret, nil
 }
 
-func (s *PublicBlockChainAPI) GetStorages(
-	ctx context.Context,
-	address common.Address,
-	blockNrOrHash rpc.BlockNumberOrHash,
-) ([]hexutil.Bytes, error) {
-	var wg sync.WaitGroup
-
-	var stateError error
-
-	result := make([]hexutil.Bytes, 31)
-	for i := 0; i <= 30; i++ {
-		wg.Add(1)
-		go func(i int) {
-			state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
-			if state != nil && err == nil {
-				res := state.GetState(address, common.BigToHash(big.NewInt(int64(i))))
-				result[i] = res[:]
-			} else {
-				stateError = state.Error()
-			}
-			wg.Done()
-		}(i)
-	}
-	wg.Wait()
-
-	//state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
-	//if state == nil || err != nil {
-	//	return nil, err
-	//}
-	//result := make([]hexutil.Bytes, 31)
-	//for i := 0; i <= 30; i++ {
-	//	res := state.GetState(address, common.BigToHash(big.NewInt(int64(i))))
-	//	result[i] = res[:]
-	//}
-	return result, stateError
-}
+//func (s *PublicBlockChainAPI) GetStorages(
+//	ctx context.Context,
+//	address common.Address,
+//	blockNrOrHash rpc.BlockNumberOrHash,
+//) ([]hexutil.Bytes, error) {
+//	var wg sync.WaitGroup
+//
+//	var stateError error
+//
+//	result := make([]hexutil.Bytes, 31)
+//	for i := 0; i <= 30; i++ {
+//		wg.Add(1)
+//		go func(i int) {
+//			state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+//			if state != nil && err == nil {
+//				res := state.GetState(address, common.BigToHash(big.NewInt(int64(i))))
+//				result[i] = res[:]
+//			} else {
+//				stateError = state.Error()
+//			}
+//			wg.Done()
+//		}(i)
+//	}
+//	wg.Wait()
+//
+//	//state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+//	//if state == nil || err != nil {
+//	//	return nil, err
+//	//}
+//	//result := make([]hexutil.Bytes, 31)
+//	//for i := 0; i <= 30; i++ {
+//	//	res := state.GetState(address, common.BigToHash(big.NewInt(int64(i))))
+//	//	result[i] = res[:]
+//	//}
+//	return result, stateError
+//}
