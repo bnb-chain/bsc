@@ -118,8 +118,6 @@ func (d *Database) onWriteStallEnd() {
 }
 
 // panicLogger is just a noop logger to disable Pebble's internal logger.
-//
-// TODO(karalabe): Remove when Pebble sets this as teh default.
 type panicLogger struct{}
 
 func (l panicLogger) Infof(format string, args ...interface{}) {
@@ -140,7 +138,6 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		handles = minHandles
 	}
 	logger := log.New("database", file)
-	logger.Info("Allocated cache and file handles", "cache", common.StorageSize(cache*1024*1024), "handles", handles)
 
 	// The max memtable size is limited by the uint32 offsets stored in
 	// internal/arenaskl.node, DeferredBatchOp, and flushableBatchEntry.
@@ -154,6 +151,10 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 	if memTableSize > maxMemTableSize {
 		memTableSize = maxMemTableSize
 	}
+
+	logger.Info("Allocated cache and file handles", "cache", common.StorageSize(cache*1024*1024),
+		"handles", handles, "memory table", common.StorageSize(memTableSize))
+
 	db := &Database{
 		fn:       file,
 		log:      logger,
@@ -183,15 +184,6 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 
 		// Per-level options. Options for at least one level must be specified. The
 		// options for the last level are used for all subsequent levels.
-		Levels: []pebble.LevelOptions{
-			{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-		},
 		ReadOnly: readonly,
 		EventListener: &pebble.EventListener{
 			CompactionBegin: db.onCompactionBegin,
@@ -201,6 +193,19 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		},
 		Logger: panicLogger{}, // TODO(karalabe): Delete when this is upstreamed in Pebble
 	}
+
+	for i := 0; i < len(opt.Levels); i++ {
+		l := &opt.Levels[i]
+		l.BlockSize = 32 << 10       // 32 KB
+		l.IndexBlockSize = 256 << 10 // 256 KB
+		l.FilterPolicy = bloom.FilterPolicy(10)
+		l.FilterType = pebble.TableFilter
+		if i > 0 {
+			l.TargetFileSize = opt.Levels[i-1].TargetFileSize * 2
+		}
+		l.EnsureDefaults()
+	}
+
 	// Disable seek compaction explicitly. Check https://github.com/ethereum/go-ethereum/pull/20130
 	// for more details.
 	opt.Experimental.ReadSamplingMultiplier = -1
