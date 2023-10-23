@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 func newGwei(n int64) *big.Int {
@@ -42,7 +43,7 @@ func TestGasUsage(t *testing.T, config *params.ChainConfig, engine consensus.Eng
 				},
 			},
 		}
-		genesis = gspec.MustCommit(db)
+		genesis = gspec.MustCommit(db, trie.NewDatabase(db, nil))
 	)
 
 	blocks, _ := core.GenerateChain(gspec.Config, genesis, engine, db, 1, func(i int, b *core.BlockGen) {
@@ -61,9 +62,9 @@ func TestGasUsage(t *testing.T, config *params.ChainConfig, engine consensus.Eng
 
 	// Import the canonical chain
 	diskdb := rawdb.NewMemoryDatabase()
-	gspec.MustCommit(diskdb)
+	gspec.MustCommit(diskdb, trie.NewDatabase(diskdb, nil))
 
-	chain, err := core.NewBlockChain(diskdb, nil, gspec.Config, engine, vm.Config{}, nil, nil)
+	chain, err := core.NewBlockChain(diskdb, nil, gspec, nil, engine, vm.Config{}, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create tester chain: %v", err)
 	}

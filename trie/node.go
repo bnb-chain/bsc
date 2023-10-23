@@ -99,6 +99,24 @@ func (n valueNode) fstring(ind string) string {
 	return fmt.Sprintf("%x ", []byte(n))
 }
 
+// rawNode is a simple binary blob used to differentiate between collapsed trie
+// nodes and already encoded RLP binary blobs (while at the same time store them
+// in the same cache fields).
+type rawNode []byte
+
+func (n rawNode) cache() (hashNode, bool)   { panic("this should never end up in a live trie") }
+func (n rawNode) fstring(ind string) string { panic("this should never end up in a live trie") }
+
+func (n rawNode) EncodeRLP(w io.Writer) error {
+	_, err := w.Write(n)
+	return err
+}
+
+func NodeString(hash, buf []byte) string {
+	node := mustDecodeNode(hash, buf)
+	return node.fstring("NodeString: ")
+}
+
 // mustDecodeNode is a wrapper of decodeNode and panic if any error is encountered.
 func mustDecodeNode(hash, buf []byte) node {
 	n, err := decodeNode(hash, buf)

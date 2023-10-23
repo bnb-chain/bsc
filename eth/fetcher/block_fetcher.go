@@ -82,9 +82,6 @@ type headerRequesterFn func(common.Hash, chan *eth.Response) (*eth.Request, erro
 // bodyRequesterFn is a callback type for sending a body retrieval request.
 type bodyRequesterFn func([]common.Hash, chan *eth.Response) (*eth.Request, error)
 
-// DiffRequesterFn is a callback type for sending a diff layer retrieval request.
-type DiffRequesterFn func([]common.Hash) error
-
 // headerVerifierFn is a callback type to verify a block's header for fast propagation.
 type headerVerifierFn func(header *types.Header) error
 
@@ -93,6 +90,9 @@ type blockBroadcasterFn func(block *types.Block, propagate bool)
 
 // chainHeightFn is a callback type to retrieve the current chain height.
 type chainHeightFn func() uint64
+
+// chainFinalizedHeightFn is a callback type to retrieve the current chain finalized height.
+type chainFinalizedHeightFn func() uint64
 
 // headersInsertFn is a callback type to insert a batch of headers into the local chain.
 type headersInsertFn func(headers []*types.Header) (int, error)
@@ -115,8 +115,6 @@ type blockAnnounce struct {
 
 	fetchHeader headerRequesterFn // Fetcher function to retrieve the header of an announced block
 	fetchBodies bodyRequesterFn   // Fetcher function to retrieve the body of an announced block
-	fetchDiffs  DiffRequesterFn   // Fetcher function to retrieve the diff layer of an announced block
-
 }
 
 // headerFilterTask represents a batch of headers needing fetcher filtering.
@@ -184,19 +182,20 @@ type BlockFetcher struct {
 	completing map[common.Hash]*blockAnnounce   // Blocks with headers, currently body-completing
 
 	// Block cache
-	queue  *prque.Prque                         // Queue containing the import operations (block number sorted)
-	queues map[string]int                       // Per peer block counts to prevent memory exhaustion
-	queued map[common.Hash]*blockOrHeaderInject // Set of already queued blocks (to dedup imports)
+	queue  *prque.Prque[int64, *blockOrHeaderInject] // Queue containing the import operations (block number sorted)
+	queues map[string]int                            // Per peer block counts to prevent memory exhaustion
+	queued map[common.Hash]*blockOrHeaderInject      // Set of already queued blocks (to dedup imports)
 
 	// Callbacks
-	getHeader      HeaderRetrievalFn  // Retrieves a header from the local chain
-	getBlock       blockRetrievalFn   // Retrieves a block from the local chain
-	verifyHeader   headerVerifierFn   // Checks if a block's headers have a valid proof of work
-	broadcastBlock blockBroadcasterFn // Broadcasts a block to connected peers
-	chainHeight    chainHeightFn      // Retrieves the current chain's height
-	insertHeaders  headersInsertFn    // Injects a batch of headers into the chain
-	insertChain    chainInsertFn      // Injects a batch of blocks into the chain
-	dropPeer       peerDropFn         // Drops a peer for misbehaving
+	getHeader            HeaderRetrievalFn      // Retrieves a header from the local chain
+	getBlock             blockRetrievalFn       // Retrieves a block from the local chain
+	verifyHeader         headerVerifierFn       // Checks if a block's headers have a valid proof of work
+	broadcastBlock       blockBroadcasterFn     // Broadcasts a block to connected peers
+	chainHeight          chainHeightFn          // Retrieves the current chain's height
+	chainFinalizedHeight chainFinalizedHeightFn // Retrieves the current chain's finalized height
+	insertHeaders        headersInsertFn        // Injects a batch of headers into the chain
+	insertChain          chainInsertFn          // Injects a batch of blocks into the chain
+	dropPeer             peerDropFn             // Drops a peer for misbehaving
 
 	// Testing hooks
 	announceChangeHook func(common.Hash, bool)           // Method to call upon adding or deleting a hash from the blockAnnounce list
@@ -207,32 +206,35 @@ type BlockFetcher struct {
 }
 
 // NewBlockFetcher creates a block fetcher to retrieve blocks based on hash announcements.
-func NewBlockFetcher(light bool, getHeader HeaderRetrievalFn, getBlock blockRetrievalFn, verifyHeader headerVerifierFn, broadcastBlock blockBroadcasterFn, chainHeight chainHeightFn, insertHeaders headersInsertFn, insertChain chainInsertFn, dropPeer peerDropFn) *BlockFetcher {
+func NewBlockFetcher(light bool, getHeader HeaderRetrievalFn, getBlock blockRetrievalFn, verifyHeader headerVerifierFn,
+	broadcastBlock blockBroadcasterFn, chainHeight chainHeightFn, chainFinalizedHeight chainFinalizedHeightFn,
+	insertHeaders headersInsertFn, insertChain chainInsertFn, dropPeer peerDropFn) *BlockFetcher {
 	return &BlockFetcher{
-		light:          light,
-		notify:         make(chan *blockAnnounce),
-		inject:         make(chan *blockOrHeaderInject),
-		headerFilter:   make(chan chan *headerFilterTask),
-		bodyFilter:     make(chan chan *bodyFilterTask),
-		done:           make(chan common.Hash),
-		quit:           make(chan struct{}),
-		requeue:        make(chan *blockOrHeaderInject),
-		announces:      make(map[string]int),
-		announced:      make(map[common.Hash][]*blockAnnounce),
-		fetching:       make(map[common.Hash]*blockAnnounce),
-		fetched:        make(map[common.Hash][]*blockAnnounce),
-		completing:     make(map[common.Hash]*blockAnnounce),
-		queue:          prque.New(nil),
-		queues:         make(map[string]int),
-		queued:         make(map[common.Hash]*blockOrHeaderInject),
-		getHeader:      getHeader,
-		getBlock:       getBlock,
-		verifyHeader:   verifyHeader,
-		broadcastBlock: broadcastBlock,
-		chainHeight:    chainHeight,
-		insertHeaders:  insertHeaders,
-		insertChain:    insertChain,
-		dropPeer:       dropPeer,
+		light:                light,
+		notify:               make(chan *blockAnnounce),
+		inject:               make(chan *blockOrHeaderInject),
+		headerFilter:         make(chan chan *headerFilterTask),
+		bodyFilter:           make(chan chan *bodyFilterTask),
+		done:                 make(chan common.Hash),
+		quit:                 make(chan struct{}),
+		requeue:              make(chan *blockOrHeaderInject),
+		announces:            make(map[string]int),
+		announced:            make(map[common.Hash][]*blockAnnounce),
+		fetching:             make(map[common.Hash]*blockAnnounce),
+		fetched:              make(map[common.Hash][]*blockAnnounce),
+		completing:           make(map[common.Hash]*blockAnnounce),
+		queue:                prque.New[int64, *blockOrHeaderInject](nil),
+		queues:               make(map[string]int),
+		queued:               make(map[common.Hash]*blockOrHeaderInject),
+		getHeader:            getHeader,
+		getBlock:             getBlock,
+		verifyHeader:         verifyHeader,
+		broadcastBlock:       broadcastBlock,
+		chainHeight:          chainHeight,
+		chainFinalizedHeight: chainFinalizedHeight,
+		insertHeaders:        insertHeaders,
+		insertChain:          insertChain,
+		dropPeer:             dropPeer,
 	}
 }
 
@@ -251,7 +253,7 @@ func (f *BlockFetcher) Stop() {
 // Notify announces the fetcher of the potential availability of a new block in
 // the network.
 func (f *BlockFetcher) Notify(peer string, hash common.Hash, number uint64, time time.Time,
-	headerFetcher headerRequesterFn, bodyFetcher bodyRequesterFn, diffFetcher DiffRequesterFn) error {
+	headerFetcher headerRequesterFn, bodyFetcher bodyRequesterFn) error {
 	block := &blockAnnounce{
 		hash:        hash,
 		number:      number,
@@ -259,7 +261,6 @@ func (f *BlockFetcher) Notify(peer string, hash common.Hash, number uint64, time
 		origin:      peer,
 		fetchHeader: headerFetcher,
 		fetchBodies: bodyFetcher,
-		fetchDiffs:  diffFetcher,
 	}
 	select {
 	case f.notify <- block:
@@ -361,8 +362,9 @@ func (f *BlockFetcher) loop() {
 		}
 		// Import any queued blocks that could potentially fit
 		height := f.chainHeight()
+		finalizedHeight := f.chainFinalizedHeight()
 		for !f.queue.Empty() {
-			op := f.queue.PopItem().(*blockOrHeaderInject)
+			op := f.queue.PopItem()
 			hash := op.hash()
 			if f.queueChangeHook != nil {
 				f.queueChangeHook(hash, false)
@@ -377,7 +379,7 @@ func (f *BlockFetcher) loop() {
 				break
 			}
 			// Otherwise if fresh and still unknown, try and import
-			if (number+maxUncleDist < height) || (f.light && f.getHeader(hash) != nil) || (!f.light && f.getBlock(hash) != nil) {
+			if (number+maxUncleDist < height) || number <= finalizedHeight || (f.light && f.getHeader(hash) != nil) || (!f.light && f.getBlock(hash) != nil) {
 				f.forgetBlock(hash)
 				continue
 			}
@@ -408,7 +410,13 @@ func (f *BlockFetcher) loop() {
 			}
 			// If we have a valid block number, check that it's potentially useful
 			if dist := int64(notification.number) - int64(f.chainHeight()); dist < -maxUncleDist || dist > maxQueueDist {
-				log.Debug("Peer discarded announcement", "peer", notification.origin, "number", notification.number, "hash", notification.hash, "distance", dist)
+				log.Debug("Peer discarded announcement by distance", "peer", notification.origin, "number", notification.number, "hash", notification.hash, "distance", dist)
+				blockAnnounceDropMeter.Mark(1)
+				break
+			}
+			finalized := f.chainFinalizedHeight()
+			if notification.number <= finalized {
+				log.Debug("Peer discarded announcement by finality", "peer", notification.origin, "number", notification.number, "hash", notification.hash, "finalized", finalized)
 				blockAnnounceDropMeter.Mark(1)
 				break
 			}
@@ -488,14 +496,10 @@ func (f *BlockFetcher) loop() {
 
 				// Create a closure of the fetch and schedule in on a new thread
 				fetchHeader, hashes := f.fetching[hashes[0]].fetchHeader, hashes
-				fetchDiff := f.fetching[hashes[0]].fetchDiffs
 
 				go func(peer string) {
 					if f.fetchingHook != nil {
 						f.fetchingHook(hashes)
-					}
-					if fetchDiff != nil {
-						fetchDiff(hashes)
 					}
 					for _, hash := range hashes {
 						headerFetchMeter.Mark(1)
@@ -571,8 +575,8 @@ func (f *BlockFetcher) loop() {
 					select {
 					case res := <-resCh:
 						res.Done <- nil
-
-						txs, uncles := res.Res.(*eth.BlockBodiesPacket).Unpack()
+						// Ignoring withdrawals here, since the block fetcher is not used post-merge.
+						txs, uncles, _ := res.Res.(*eth.BlockBodiesPacket).Unpack()
 						f.FilterBodies(peer, txs, uncles, time.Now())
 
 					case <-timeout.C:
@@ -630,7 +634,7 @@ func (f *BlockFetcher) loop() {
 						announce.time = task.time
 
 						// If the block is empty (header only), short circuit into the final import queue
-						if header.TxHash == types.EmptyRootHash && header.UncleHash == types.EmptyUncleHash {
+						if header.TxHash == types.EmptyTxsHash && header.UncleHash == types.EmptyUncleHash {
 							log.Trace("Block empty, skipping body retrieval", "peer", announce.origin, "number", header.Number, "hash", header.Hash())
 
 							block := types.NewBlockWithHeader(header)
@@ -723,7 +727,6 @@ func (f *BlockFetcher) loop() {
 						} else {
 							f.forgetHash(hash)
 						}
-
 					}
 					if matched {
 						task.transactions = append(task.transactions[:i], task.transactions[i+1:]...)
@@ -810,6 +813,14 @@ func (f *BlockFetcher) enqueue(peer string, header *types.Header, block *types.B
 	// Discard any past or too distant blocks
 	if dist := int64(number) - int64(f.chainHeight()); dist < -maxUncleDist || dist > maxQueueDist {
 		log.Debug("Discarded delivered header or block, too far away", "peer", peer, "number", number, "hash", hash, "distance", dist)
+		blockBroadcastDropMeter.Mark(1)
+		f.forgetHash(hash)
+		return
+	}
+	// Discard any block that is below the current finalized height
+	finalizedHeight := f.chainFinalizedHeight()
+	if number <= finalizedHeight {
+		log.Debug("Discarded delivered header or block, below or equal to finalized", "peer", peer, "number", number, "hash", hash, "finalized", finalizedHeight)
 		blockBroadcastDropMeter.Mark(1)
 		f.forgetHash(hash)
 		return

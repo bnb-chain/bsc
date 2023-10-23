@@ -28,8 +28,8 @@ import (
 func TestFeeHistory(t *testing.T) {
 	var cases = []struct {
 		pending             bool
-		maxHeader, maxBlock int
-		count               int
+		maxHeader, maxBlock uint64
+		count               uint64
 		last                rpc.BlockNumber
 		percent             []float64
 		expFirst            uint64
@@ -62,7 +62,7 @@ func TestFeeHistory(t *testing.T) {
 		oracle := NewOracle(backend, config)
 
 		first, reward, baseFee, ratio, err := oracle.FeeHistory(context.Background(), c.count, c.last, c.percent)
-
+		backend.teardown()
 		expReward := c.expCount
 		if len(c.percent) == 0 {
 			expReward = 0

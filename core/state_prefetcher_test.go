@@ -1,16 +1,15 @@
 package core
 
 import (
-	"math/big"
-	"testing"
-	"time"
-
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"runtime/pprof"
 	"strings"
+	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -20,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 
 	"github.com/google/pprof/profile"
 )
@@ -37,7 +37,8 @@ func TestPrefetchLeaking(t *testing.T) {
 			Alloc:   GenesisAlloc{address: {Balance: funds}},
 			BaseFee: big.NewInt(params.InitialBaseFee),
 		}
-		genesis = gspec.MustCommit(gendb)
+		triedb  = trie.NewDatabase(gendb, nil)
+		genesis = gspec.MustCommit(gendb, triedb)
 		signer  = types.LatestSigner(gspec.Config)
 	)
 	blocks, _ := GenerateChain(gspec.Config, genesis, ethash.NewFaker(), gendb, 1, func(i int, block *BlockGen) {
@@ -51,8 +52,8 @@ func TestPrefetchLeaking(t *testing.T) {
 		}
 	})
 	archiveDb := rawdb.NewMemoryDatabase()
-	gspec.MustCommit(archiveDb)
-	archive, _ := NewBlockChain(archiveDb, nil, gspec.Config, ethash.NewFaker(), vm.Config{}, nil, nil)
+	gspec.MustCommit(archiveDb, triedb)
+	archive, _ := NewBlockChain(archiveDb, nil, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 	defer archive.Stop()
 
 	block := blocks[0]

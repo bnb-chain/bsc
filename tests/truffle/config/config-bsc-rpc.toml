@@ -9,18 +9,6 @@ GasFloor = 30000000
 GasCeil = 40000000
 GasPrice = 5000000000
 Recommit = 10000000000
-Noverify = false
-
-[Eth.Ethash]
-CacheDir = ""
-CachesInMem = 0
-CachesOnDisk = 0
-CachesLockMmap = false
-DatasetDir = ""
-DatasetsInMem = 0
-DatasetsOnDisk = 0
-DatasetsLockMmap = false
-PowMode = 0
 
 [Eth.TxPool]
 Locals = []
@@ -65,3 +53,9 @@ EnableMsgEvents = false
 ReadTimeout = 30000000000
 WriteTimeout = 30000000000
 IdleTimeout = 120000000000
+
+[Node.LogConfig]
+FilePath = "bsc.log"
+MaxBytesSize = 10485760
+Level = "info"
+FileRoot = ""

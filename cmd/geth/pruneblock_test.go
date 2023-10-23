@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -42,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 var (
@@ -70,11 +70,7 @@ func TestOfflineBlockPrune(t *testing.T) {
 }
 
 func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64) {
-	datadir, err := ioutil.TempDir("", "")
-	if err != nil {
-		t.Fatalf("Failed to create temporary datadir: %v", err)
-	}
-	os.RemoveAll(datadir)
+	datadir := t.TempDir()
 
 	chaindbPath := filepath.Join(datadir, "chaindata")
 	oldAncientPath := filepath.Join(chaindbPath, "ancient")
@@ -86,14 +82,11 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 
 	//Initialize a block pruner for pruning, only remain amountReserved blocks backward.
 	testBlockPruner := pruner.NewBlockPruner(db, node, oldAncientPath, newAncientPath, amountReserved)
-	if err != nil {
-		t.Fatalf("failed to make new blockpruner: %v", err)
-	}
-	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(), "", false, false); err != nil {
+	if err := testBlockPruner.BlockPruneBackUp(chaindbPath, 512, utils.MakeDatabaseHandles(0), "", false, false); err != nil {
 		t.Fatalf("Failed to back up block: %v", err)
 	}
 
-	dbBack, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, newAncientPath, "", false, true, false, false, true)
+	dbBack, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, newAncientPath, "", false, true, false, false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -139,14 +132,18 @@ func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64
 
 func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemain uint64) (ethdb.Database, []*types.Block, []*types.Block, []types.Receipts, []*big.Int, uint64, *core.BlockChain) {
 	//create a database with ancient freezer
-	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false, false, false, false, true)
+	db, err := rawdb.NewLevelDBDatabaseWithFreezer(chaindbPath, 0, 0, AncientPath, "", false, false, false, false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
 	defer db.Close()
-	genesis := gspec.MustCommit(db)
+
+	triedb := trie.NewDatabase(db, nil)
+	defer triedb.Close()
+
+	genesis := gspec.MustCommit(db, triedb)
 	// Initialize a fresh chain with only a genesis block
-	blockchain, err := core.NewBlockChain(db, config, gspec.Config, engine, vm.Config{}, nil, nil)
+	blockchain, err := core.NewBlockChain(db, config, gspec, nil, engine, vm.Config{}, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create chain: %v", err)
 	}

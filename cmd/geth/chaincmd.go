@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path"
@@ -38,23 +39,24 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"gopkg.in/urfave/cli.v1"
+	"github.com/urfave/cli/v2"
 )
 
 var (
-	initCommand = cli.Command{
-		Action:    utils.MigrateFlags(initGenesis),
+	initCommand = &cli.Command{
+		Action:    initGenesis,
 		Name:      "init",
 		Usage:     "Bootstrap and initialize a new genesis block",
 		ArgsUsage: "<genesisPath>",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
-		},
-		Category: "BLOCKCHAIN COMMANDS",
+		Flags: flags.Merge([]cli.Flag{
+			utils.CachePreimagesFlag,
+			utils.StateSchemeFlag,
+		}, utils.DatabasePathFlags),
 		Description: `
 The init command initializes a new genesis block and definition for the network.
 This is a destructive action and changes the network in which you will be
@@ -62,8 +64,8 @@ participating.
 
 It expects the genesis file as argument.`,
 	}
-	initNetworkCommand = cli.Command{
-		Action:    utils.MigrateFlags(initNetwork),
+	initNetworkCommand = &cli.Command{
+		Action:    initNetwork,
 		Name:      "init-network",
 		Usage:     "Bootstrap and initialize a new genesis block, and nodekey, config files for network nodes",
 		ArgsUsage: "<genesisPath>",
@@ -79,25 +81,22 @@ It expects the genesis file as argument.`,
 The init-network command initializes a new genesis block, definition for the network, config files for network nodes.
 It expects the genesis file as argument.`,
 	}
-	dumpGenesisCommand = cli.Command{
-		Action:    utils.MigrateFlags(dumpGenesis),
+	dumpGenesisCommand = &cli.Command{
+		Action:    dumpGenesis,
 		Name:      "dumpgenesis",
 		Usage:     "Dumps genesis block JSON configuration to stdout",
 		ArgsUsage: "",
-		Flags: []cli.Flag{
-			utils.MainnetFlag,
-		},
-		Category: "BLOCKCHAIN COMMANDS",
+		Flags:     append([]cli.Flag{utils.DataDirFlag}, utils.NetworkFlags...),
 		Description: `
-The dumpgenesis command dumps the genesis block configuration in JSON format to stdout.`,
+The dumpgenesis command prints the genesis configuration of the network preset
+if one is set.  Otherwise it prints the genesis from the datadir.`,
 	}
-	importCommand = cli.Command{
-		Action:    utils.MigrateFlags(importChain),
+	importCommand = &cli.Command{
+		Action:    importChain,
 		Name:      "import",
 		Usage:     "Import a blockchain file",
 		ArgsUsage: "<filename> (<filename 2> ... <filename N>) ",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
+		Flags: flags.Merge([]cli.Flag{
 			utils.CacheFlag,
 			utils.SyncModeFlag,
 			utils.GCModeFlag,
@@ -119,8 +118,10 @@ The dumpgenesis command dumps the genesis block configuration in JSON format to 
 			utils.MetricsInfluxDBBucketFlag,
 			utils.MetricsInfluxDBOrganizationFlag,
 			utils.TxLookupLimitFlag,
-		},
-		Category: "BLOCKCHAIN COMMANDS",
+			utils.TransactionHistoryFlag,
+			utils.StateSchemeFlag,
+			utils.StateHistoryFlag,
+		}, utils.DatabasePathFlags),
 		Description: `
 The import command imports blocks from an RLP-encoded form. The form can be one file
 with several RLP-encoded blocks, or several files can be used.
@@ -128,17 +129,16 @@ with several RLP-encoded blocks, or several files can be used.
 If only one file is used, import error will result in failure. If several files are used,
 processing will proceed even if an individual RLP-file import failure occurs.`,
 	}
-	exportCommand = cli.Command{
-		Action:    utils.MigrateFlags(exportChain),
+	exportCommand = &cli.Command{
+		Action:    exportChain,
 		Name:      "export",
 		Usage:     "Export blockchain into file",
 		ArgsUsage: "<filename> [<blockNumFirst> <blockNumLast>]",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
+		Flags: flags.Merge([]cli.Flag{
 			utils.CacheFlag,
 			utils.SyncModeFlag,
-		},
-		Category: "BLOCKCHAIN COMMANDS",
+			utils.StateSchemeFlag,
+		}, utils.DatabasePathFlags),
 		Description: `
 Requires a first argument of the file to write to.
 Optional second and third arguments control the first and
@@ -146,45 +146,40 @@ last block to write. In this mode, the file will be appended
 if already existing. If the file ends with .gz, the output will
 be gzipped.`,
 	}
-	importPreimagesCommand = cli.Command{
-		Action:    utils.MigrateFlags(importPreimages),
+	importPreimagesCommand = &cli.Command{
+		Action:    importPreimages,
 		Name:      "import-preimages",
 		Usage:     "Import the preimage database from an RLP stream",
 		ArgsUsage: "<datafile>",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
+		Flags: flags.Merge([]cli.Flag{
 			utils.CacheFlag,
 			utils.SyncModeFlag,
-		},
-		Category: "BLOCKCHAIN COMMANDS",
+		}, utils.DatabasePathFlags),
 		Description: `
 The import-preimages command imports hash preimages from an RLP encoded stream.
 It's deprecated, please use "geth db import" instead.
 `,
 	}
-	exportPreimagesCommand = cli.Command{
-		Action:    utils.MigrateFlags(exportPreimages),
+	exportPreimagesCommand = &cli.Command{
+		Action:    exportPreimages,
 		Name:      "export-preimages",
 		Usage:     "Export the preimage database into an RLP stream",
 		ArgsUsage: "<dumpfile>",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
+		Flags: flags.Merge([]cli.Flag{
 			utils.CacheFlag,
 			utils.SyncModeFlag,
-		},
-		Category: "BLOCKCHAIN COMMANDS",
+		}, utils.DatabasePathFlags),
 		Description: `
 The export-preimages command exports hash preimages to an RLP encoded stream.
 It's deprecated, please use "geth db export" instead.
 `,
 	}
-	dumpCommand = cli.Command{
-		Action:    utils.MigrateFlags(dump),
+	dumpCommand = &cli.Command{
+		Action:    dump,
 		Name:      "dump",
 		Usage:     "Dump a specific block from storage",
 		ArgsUsage: "[? <blockHash> | <blockNum>]",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
+		Flags: flags.Merge([]cli.Flag{
 			utils.CacheFlag,
 			utils.IterativeOutputFlag,
 			utils.ExcludeCodeFlag,
@@ -192,8 +187,8 @@ It's deprecated, please use "geth db export" instead.
 			utils.IncludeIncompletesFlag,
 			utils.StartKeyFlag,
 			utils.DumpLimitFlag,
-		},
-		Category: "BLOCKCHAIN COMMANDS",
+			utils.StateSchemeFlag,
+		}, utils.DatabasePathFlags),
 		Description: `
 This command dumps out the state for a given block (or latest, if none provided).
 `,
@@ -203,10 +198,12 @@ This command dumps out the state for a given block (or latest, if none provided)
 // initGenesis will initialise the given JSON format genesis file and writes it as
 // the zero'd block (i.e. genesis) or will fail hard if it can't succeed.
 func initGenesis(ctx *cli.Context) error {
-	// Make sure we have a valid genesis JSON
+	if ctx.Args().Len() != 1 {
+		utils.Fatalf("need genesis.json file as the only argument")
+	}
 	genesisPath := ctx.Args().First()
 	if len(genesisPath) == 0 {
-		utils.Fatalf("Must supply path to genesis JSON file")
+		utils.Fatalf("invalid path to genesis file")
 	}
 	file, err := os.Open(genesisPath)
 	if err != nil {
@@ -223,18 +220,96 @@ func initGenesis(ctx *cli.Context) error {
 	defer stack.Close()
 
 	for _, name := range []string{"chaindata", "lightchaindata"} {
-		chaindb, err := stack.OpenDatabase(name, 0, 0, "", false)
+		chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false, false, false)
 		if err != nil {
 			utils.Fatalf("Failed to open database: %v", err)
 		}
-		_, hash, err := core.SetupGenesisBlock(chaindb, genesis)
+		defer chaindb.Close()
+
+		triedb := utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false)
+		defer triedb.Close()
+
+		_, hash, err := core.SetupGenesisBlock(chaindb, triedb, genesis)
 		if err != nil {
 			utils.Fatalf("Failed to write genesis block: %v", err)
 		}
-		chaindb.Close()
 		log.Info("Successfully wrote genesis state", "database", name, "hash", hash)
 	}
 	return nil
+}
+
+func parseIps(ipStr string, size int) ([]string, error) {
+	var ips []string
+	if len(ipStr) != 0 {
+		ips = strings.Split(ipStr, ",")
+		if len(ips) != size {
+			return nil, errors.New("mismatch of size and length of ips")
+		}
+		for i := 0; i < size; i++ {
+			_, err := net.ResolveIPAddr("", ips[i])
+			if err != nil {
+				return nil, errors.New("invalid format of ip")
+			}
+		}
+	} else {
+		ips = make([]string, size)
+		for i := 0; i < size; i++ {
+			ips[i] = "127.0.0.1"
+		}
+	}
+	return ips, nil
+}
+
+func createPorts(ipStr string, port int, size int) []int {
+	ports := make([]int, size)
+	if len(ipStr) == 0 { // localhost , so different ports
+		for i := 0; i < size; i++ {
+			ports[i] = port + i
+		}
+	} else { // different machines, keep same port
+		for i := 0; i < size; i++ {
+			ports[i] = port
+		}
+	}
+	return ports
+}
+
+// Create config for node i in the cluster
+func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, port int, size int, i int) gethConfig {
+	baseConfig.Node.HTTPHost = ip
+	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port)
+	baseConfig.Node.P2P.BootstrapNodes = make([]*enode.Node, size-1)
+	// Set the P2P connections between this node and the other nodes
+	for j := 0; j < i; j++ {
+		baseConfig.Node.P2P.BootstrapNodes[j] = enodes[j]
+	}
+	for j := i + 1; j < size; j++ {
+		baseConfig.Node.P2P.BootstrapNodes[j-1] = enodes[j]
+	}
+	return baseConfig
+}
+
+// Create configs for nodes in the cluster
+func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, size int) ([]gethConfig, error) {
+	// Create the nodes
+	enodes := make([]*enode.Node, size)
+	for i := 0; i < size; i++ {
+		nodeConfig := baseConfig.Node
+		nodeConfig.DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
+		stack, err := node.New(&nodeConfig)
+		if err != nil {
+			return nil, err
+		}
+		pk := stack.Config().NodeKey()
+		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
+	}
+
+	// Create the configs
+	configs := make([]gethConfig, size)
+	for i := 0; i < size; i++ {
+		configs[i] = createNodeConfig(baseConfig, enodes, ips[i], ports[i], size, i)
+	}
+	return configs, nil
 }
 
 // initNetwork will bootstrap and initialize a new genesis block, and nodekey, config files for network nodes
@@ -244,49 +319,42 @@ func initNetwork(ctx *cli.Context) error {
 		utils.Fatalf("init.dir is required")
 	}
 	size := ctx.Int(utils.InitNetworkSize.Name)
+	if size <= 0 {
+		utils.Fatalf("size should be greater than 0")
+	}
 	port := ctx.Int(utils.InitNetworkPort.Name)
+	if port <= 0 {
+		utils.Fatalf("port should be greater than 0")
+	}
 	ipStr := ctx.String(utils.InitNetworkIps.Name)
 	cfgFile := ctx.String(configFileFlag.Name)
 
 	if len(cfgFile) == 0 {
 		utils.Fatalf("config file is required")
 	}
-	var ips []string
-	if len(ipStr) != 0 {
-		ips = strings.Split(ipStr, ",")
-		if len(ips) != size {
-			utils.Fatalf("mismatch of size and length of ips")
-		}
-		for i := 0; i < size; i++ {
-			_, err := net.ResolveIPAddr("", ips[i])
-			if err != nil {
-				utils.Fatalf("invalid format of ip")
-				return err
-			}
-		}
-	} else {
-		ips = make([]string, size)
-		for i := 0; i < size; i++ {
-			ips[i] = "127.0.0.1"
-		}
+
+	ips, err := parseIps(ipStr, size)
+	if err != nil {
+		utils.Fatalf("Failed to pase ips string: %v", err)
 	}
+
+	ports := createPorts(ipStr, port, size)
 
 	// Make sure we have a valid genesis JSON
 	genesisPath := ctx.Args().First()
 	if len(genesisPath) == 0 {
 		utils.Fatalf("Must supply path to genesis JSON file")
 	}
-	file, err := os.Open(genesisPath)
+	inGenesisFile, err := os.Open(genesisPath)
 	if err != nil {
 		utils.Fatalf("Failed to read genesis file: %v", err)
 	}
-	defer file.Close()
+	defer inGenesisFile.Close()
 
 	genesis := new(core.Genesis)
-	if err := json.NewDecoder(file).Decode(genesis); err != nil {
+	if err := json.NewDecoder(inGenesisFile).Decode(genesis); err != nil {
 		utils.Fatalf("invalid genesis file: %v", err)
 	}
-	enodes := make([]*enode.Node, size)
 
 	// load config
 	var config gethConfig
@@ -294,55 +362,81 @@ func initNetwork(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	config.Eth.Genesis = genesis
 
-	for i := 0; i < size; i++ {
-		stack, err := node.New(&config.Node)
-		if err != nil {
-			return err
-		}
-		stack.Config().DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
-		pk := stack.Config().NodeKey()
-		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), port, port)
+	configs, err := createNodeConfigs(config, initDir, ips, ports, size)
+	if err != nil {
+		utils.Fatalf("Failed to create node configs: %v", err)
 	}
 
 	for i := 0; i < size; i++ {
-		config.Node.HTTPHost = ips[i]
-		config.Node.P2P.StaticNodes = make([]*enode.Node, size-1)
-		for j := 0; j < i; j++ {
-			config.Node.P2P.StaticNodes[j] = enodes[j]
-		}
-		for j := i + 1; j < size; j++ {
-			config.Node.P2P.StaticNodes[j-1] = enodes[j]
-		}
-		out, err := tomlSettings.Marshal(config)
+		// Write config.toml
+		configBytes, err := tomlSettings.Marshal(configs[i])
 		if err != nil {
 			return err
 		}
-		dump, err := os.OpenFile(path.Join(initDir, fmt.Sprintf("node%d", i), "config.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		configFile, err := os.OpenFile(path.Join(initDir, fmt.Sprintf("node%d", i), "config.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			return err
 		}
-		defer dump.Close()
-		dump.Write(out)
+		defer configFile.Close()
+		configFile.Write(configBytes)
+
+		// Write the input genesis.json to the node's directory
+		outGenesisFile, err := os.OpenFile(path.Join(initDir, fmt.Sprintf("node%d", i), "genesis.json"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return err
+		}
+		_, err = inGenesisFile.Seek(0, io.SeekStart)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(outGenesisFile, inGenesisFile)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func dumpGenesis(ctx *cli.Context) error {
-	// TODO(rjl493456442) support loading from the custom datadir
-	genesis := utils.MakeGenesis(ctx)
-	if genesis == nil {
-		genesis = core.DefaultGenesisBlock()
+	// if there is a testnet preset enabled, dump that
+	if utils.IsNetworkPreset(ctx) {
+		genesis := utils.MakeGenesis(ctx)
+		if err := json.NewEncoder(os.Stdout).Encode(genesis); err != nil {
+			utils.Fatalf("could not encode genesis: %s", err)
+		}
+		return nil
 	}
-	if err := json.NewEncoder(os.Stdout).Encode(genesis); err != nil {
-		utils.Fatalf("could not encode genesis")
+	// dump whatever already exists in the datadir
+	stack, _ := makeConfigNode(ctx)
+	for _, name := range []string{"chaindata", "lightchaindata"} {
+		db, err := stack.OpenDatabase(name, 0, 0, "", true)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return err
+			}
+			continue
+		}
+		genesis, err := core.ReadGenesis(db)
+		if err != nil {
+			utils.Fatalf("failed to read genesis: %s", err)
+		}
+		db.Close()
+
+		if err := json.NewEncoder(os.Stdout).Encode(*genesis); err != nil {
+			utils.Fatalf("could not encode stored genesis: %s", err)
+		}
+		return nil
 	}
+	if ctx.IsSet(utils.DataDirFlag.Name) {
+		utils.Fatalf("no existing datadir at %s", stack.Config().DataDir)
+	}
+	utils.Fatalf("no network preset provided, no existing genesis in the default datadir")
 	return nil
 }
 
 func importChain(ctx *cli.Context) error {
-	if len(ctx.Args()) < 1 {
+	if ctx.Args().Len() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
 	// Start metrics export if enabled
@@ -353,20 +447,20 @@ func importChain(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chain, db := utils.MakeChain(ctx, stack)
+	chain, db := utils.MakeChain(ctx, stack, false)
 	defer db.Close()
 
 	// Start periodically gathering memory profiles
-	var peakMemAlloc, peakMemSys uint64
+	var peakMemAlloc, peakMemSys atomic.Uint64
 	go func() {
 		stats := new(runtime.MemStats)
 		for {
 			runtime.ReadMemStats(stats)
-			if atomic.LoadUint64(&peakMemAlloc) < stats.Alloc {
-				atomic.StoreUint64(&peakMemAlloc, stats.Alloc)
+			if peakMemAlloc.Load() < stats.Alloc {
+				peakMemAlloc.Store(stats.Alloc)
 			}
-			if atomic.LoadUint64(&peakMemSys) < stats.Sys {
-				atomic.StoreUint64(&peakMemSys, stats.Sys)
+			if peakMemSys.Load() < stats.Sys {
+				peakMemSys.Store(stats.Sys)
 			}
 			time.Sleep(5 * time.Second)
 		}
@@ -376,13 +470,13 @@ func importChain(ctx *cli.Context) error {
 
 	var importErr error
 
-	if len(ctx.Args()) == 1 {
+	if ctx.Args().Len() == 1 {
 		if err := utils.ImportChain(chain, ctx.Args().First()); err != nil {
 			importErr = err
 			log.Error("Import error", "err", err)
 		}
 	} else {
-		for _, arg := range ctx.Args() {
+		for _, arg := range ctx.Args().Slice() {
 			if err := utils.ImportChain(chain, arg); err != nil {
 				importErr = err
 				log.Error("Import error", "file", arg, "err", err)
@@ -399,12 +493,12 @@ func importChain(ctx *cli.Context) error {
 	mem := new(runtime.MemStats)
 	runtime.ReadMemStats(mem)
 
-	fmt.Printf("Object memory: %.3f MB current, %.3f MB peak\n", float64(mem.Alloc)/1024/1024, float64(atomic.LoadUint64(&peakMemAlloc))/1024/1024)
-	fmt.Printf("System memory: %.3f MB current, %.3f MB peak\n", float64(mem.Sys)/1024/1024, float64(atomic.LoadUint64(&peakMemSys))/1024/1024)
+	fmt.Printf("Object memory: %.3f MB current, %.3f MB peak\n", float64(mem.Alloc)/1024/1024, float64(peakMemAlloc.Load())/1024/1024)
+	fmt.Printf("System memory: %.3f MB current, %.3f MB peak\n", float64(mem.Sys)/1024/1024, float64(peakMemSys.Load())/1024/1024)
 	fmt.Printf("Allocations:   %.3f million\n", float64(mem.Mallocs)/1000000)
 	fmt.Printf("GC pause:      %v\n\n", time.Duration(mem.PauseTotalNs))
 
-	if ctx.GlobalBool(utils.NoCompactionFlag.Name) {
+	if ctx.Bool(utils.NoCompactionFlag.Name) {
 		return nil
 	}
 
@@ -421,19 +515,19 @@ func importChain(ctx *cli.Context) error {
 }
 
 func exportChain(ctx *cli.Context) error {
-	if len(ctx.Args()) < 1 {
+	if ctx.Args().Len() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
 
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chain, _ := utils.MakeChain(ctx, stack)
+	chain, _ := utils.MakeChain(ctx, stack, true)
 	start := time.Now()
 
 	var err error
 	fp := ctx.Args().First()
-	if len(ctx.Args()) < 3 {
+	if ctx.Args().Len() < 3 {
 		err = utils.ExportChain(chain, fp)
 	} else {
 		// This can be improved to allow for numbers larger than 9223372036854775807
@@ -445,8 +539,8 @@ func exportChain(ctx *cli.Context) error {
 		if first < 0 || last < 0 {
 			utils.Fatalf("Export error: block number must be greater than 0\n")
 		}
-		if head := chain.CurrentFastBlock(); uint64(last) > head.NumberU64() {
-			utils.Fatalf("Export error: block number %d larger than head block %d\n", uint64(last), head.NumberU64())
+		if head := chain.CurrentSnapBlock(); uint64(last) > head.Number.Uint64() {
+			utils.Fatalf("Export error: block number %d larger than head block %d\n", uint64(last), head.Number.Uint64())
 		}
 		err = utils.ExportAppendChain(chain, fp, uint64(first), uint64(last))
 	}
@@ -460,7 +554,7 @@ func exportChain(ctx *cli.Context) error {
 
 // importPreimages imports preimage data from the specified file.
 func importPreimages(ctx *cli.Context) error {
-	if len(ctx.Args()) < 1 {
+	if ctx.Args().Len() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
 
@@ -479,7 +573,7 @@ func importPreimages(ctx *cli.Context) error {
 
 // exportPreimages dumps the preimage data to specified json file in streaming way.
 func exportPreimages(ctx *cli.Context) error {
-	if len(ctx.Args()) < 1 {
+	if ctx.Args().Len() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
 	stack, _ := makeConfigNode(ctx)
@@ -511,12 +605,12 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 				return nil, nil, common.Hash{}, fmt.Errorf("block %x not found", hash)
 			}
 		} else {
-			number, err := strconv.Atoi(arg)
+			number, err := strconv.ParseUint(arg, 10, 64)
 			if err != nil {
 				return nil, nil, common.Hash{}, err
 			}
-			if hash := rawdb.ReadCanonicalHash(db, uint64(number)); hash != (common.Hash{}) {
-				header = rawdb.ReadHeader(db, hash, uint64(number))
+			if hash := rawdb.ReadCanonicalHash(db, number); hash != (common.Hash{}) {
+				header = rawdb.ReadHeader(db, hash, number)
 			} else {
 				return nil, nil, common.Hash{}, fmt.Errorf("header for block %d not found", number)
 			}
@@ -561,7 +655,10 @@ func dump(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	state, err := state.New(root, state.NewDatabase(db), nil)
+	triedb := utils.MakeTrieDatabase(ctx, db, true, false) // always enable preimage lookup
+	defer triedb.Close()
+
+	state, err := state.New(root, state.NewDatabaseWithNodeDB(db, triedb), nil)
 	if err != nil {
 		return err
 	}
@@ -571,7 +668,7 @@ func dump(ctx *cli.Context) error {
 		if conf.OnlyWithAddresses {
 			fmt.Fprintf(os.Stderr, "If you want to include accounts with missing preimages, you need iterative output, since"+
 				" otherwise the accounts will overwrite each other in the resulting mapping.")
-			return fmt.Errorf("incompatible options")
+			return errors.New("incompatible options")
 		}
 		fmt.Println(string(state.Dump(conf)))
 	}

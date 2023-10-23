@@ -1,4 +1,4 @@
-// Copyright 2017 The go-ethereum Authors
+// Copyright 2021 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -100,3 +100,5 @@ func (l *JSONLogger) CaptureExit(output []byte, gasUsed uint64, err error) {}
 func (l *JSONLogger) CaptureTxStart(gasLimit uint64) {}
 
 func (l *JSONLogger) CaptureTxEnd(restGas uint64) {}
+
+func (l *JSONLogger) CaptureSystemTxEnd(intrinsicGas uint64) {}

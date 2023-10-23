@@ -1,7 +1,9 @@
 package vote
 
 import (
+	"bytes"
 	"fmt"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -11,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 var votesManagerCounter = metrics.NewRegisteredCounter("votesManager/local", nil)
@@ -26,8 +27,7 @@ type Backend interface {
 type VoteManager struct {
 	eth Backend
 
-	chain       *core.BlockChain
-	chainconfig *params.ChainConfig
+	chain *core.BlockChain
 
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
@@ -43,12 +43,10 @@ type VoteManager struct {
 	engine consensus.PoSA
 }
 
-func NewVoteManager(eth Backend, chainconfig *params.ChainConfig, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
+func NewVoteManager(eth Backend, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
 	voteManager := &VoteManager{
-		eth: eth,
-
+		eth:         eth,
 		chain:       chain,
-		chainconfig: chainconfig,
 		chainHeadCh: make(chan core.ChainHeadEvent, chainHeadChanSize),
 		syncVoteCh:  make(chan core.NewVoteEvent, voteBufferForPut),
 		pool:        pool,
@@ -97,6 +95,7 @@ func (voteManager *VoteManager) loop() {
 	dlEventCh := events.Chan()
 
 	startVote := true
+	var once sync.Once
 	for {
 		select {
 		case ev := <-dlEventCh:
@@ -132,10 +131,21 @@ func (voteManager *VoteManager) loop() {
 
 			curHead := cHead.Block.Header()
 			// Check if cur validator is within the validatorSet at curHead
-			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead) {
+			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead,
+				func(bLSPublicKey *types.BLSPublicKey) bool {
+					return bytes.Equal(voteManager.signer.PubKey[:], bLSPublicKey[:])
+				}) {
 				log.Debug("cur validator is not within the validatorSet at curHead")
 				continue
 			}
+
+			// Add VoteKey to `miner-info`
+			once.Do(func() {
+				minerInfo := metrics.Get("miner-info")
+				if minerInfo != nil {
+					minerInfo.(metrics.Label).Value()["VoteKey"] = common.Bytes2Hex(voteManager.signer.PubKey[:])
+				}
+			})
 
 			// Vote for curBlockHeader block.
 			vote := &types.VoteData{
@@ -174,7 +184,7 @@ func (voteManager *VoteManager) loop() {
 			}
 		case event := <-voteManager.syncVoteCh:
 			voteMessage := event.Vote
-			if voteManager.eth.IsMining() || !voteManager.signer.UsingKey(&voteMessage.VoteAddress) {
+			if voteManager.eth.IsMining() || !bytes.Equal(voteManager.signer.PubKey[:], voteMessage.VoteAddress[:]) {
 				continue
 			}
 			if err := voteManager.journal.WriteVote(voteMessage); err != nil {

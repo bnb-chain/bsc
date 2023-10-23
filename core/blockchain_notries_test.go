@@ -86,30 +86,30 @@ func makeTestBackendWithRemoteValidator(blocks int, mode VerifyMode, failed *ver
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
 	db.SetDiffStore(memorydb.New())
-	(&Genesis{
+	gspec := &Genesis{
 		Config: params.TestChainConfig,
 		Alloc:  GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
-	}).MustCommit(db)
+	}
 	engine := ethash.NewFaker()
 
 	db2 := rawdb.NewMemoryDatabase()
 	db2.SetDiffStore(memorydb.New())
-	(&Genesis{
+	gspec2 := &Genesis{
 		Config: params.TestChainConfig,
 		Alloc:  GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
-	}).MustCommit(db2)
+	}
 	engine2 := ethash.NewFaker()
 
 	peer := newMockVerifyPeer()
 	peers := []VerifyPeer{peer}
 
-	verifier, err := NewBlockChain(db, nil, params.TestChainConfig, engine, vm.Config{},
+	verifier, err := NewBlockChain(db, nil, gspec, nil, engine, vm.Config{},
 		nil, nil, EnablePersistDiff(100000), EnableBlockValidator(params.TestChainConfig, engine2, LocalVerify, nil))
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	fastnode, err := NewBlockChain(db2, nil, params.TestChainConfig, engine2, vm.Config{},
+	fastnode, err := NewBlockChain(db2, nil, gspec2, nil, engine2, vm.Config{},
 		nil, nil, EnableBlockValidator(params.TestChainConfig, engine2, mode, newMockRemoteVerifyPeer(peers)))
 	if err != nil {
 		return nil, nil, nil, err
@@ -201,7 +201,7 @@ func TestFastNode(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 	_, err = fastnode.chain.InsertChain(blocks)
-	if err == nil || fastnode.chain.CurrentBlock().NumberU64() != failed.blockNumber+10 {
+	if err == nil || fastnode.chain.CurrentBlock().Number.Uint64() != failed.blockNumber+10 {
 		t.Fatalf("blocks insert should be failed at height %d", failed.blockNumber+11)
 	}
 	// test insecure mode and succeed
@@ -220,7 +220,7 @@ func TestFastNode(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 	_, err = fastnode.chain.InsertChain(blocks)
-	if err == nil || fastnode.chain.CurrentBlock().NumberU64() != failed.blockNumber+10 {
+	if err == nil || fastnode.chain.CurrentBlock().Number.Uint64() != failed.blockNumber+10 {
 		t.Fatalf("blocks insert should be failed at height %d", failed.blockNumber+11)
 	}
 }
