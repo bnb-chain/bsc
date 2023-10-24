@@ -266,15 +266,6 @@ func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.No
 					clean.Set(cacheKey(owner, []byte(path)), n.Blob)
 				}
 			}
-			// If we exceeded the ideal batch size, commit and reset
-			if batch.ValueSize() >= ethdb.IdealBatchSize {
-				if err := batch.Write(); err != nil {
-					log.Error("Failed to write flush list to disk", "err", err)
-					panic("Failed to write flush list to disk")
-				}
-				commitBytesMeter.Mark(int64(batch.ValueSize()))
-				batch.Reset()
-			}
 		}
 		total += len(subset)
 	}

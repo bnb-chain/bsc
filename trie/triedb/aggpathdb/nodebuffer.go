@@ -310,15 +310,6 @@ func aggregateAndWriteNodes(cleans *aggnodecache, batch ethdb.Batch, nodes map[c
 					cleans.cleans.Set(cacheKey(owner, []byte(aggPath)), aggNodeBytes)
 				}
 			}
-			// If we exceeded the ideal batch size, commit and reset
-			if batch.ValueSize() >= ethdb.IdealBatchSize {
-				if err := batch.Write(); err != nil {
-					log.Error("Failed to write flush list to disk", "err", err)
-					panic("Failed to write flush list to disk")
-				}
-				commitBytesMeter.Mark(int64(batch.ValueSize()))
-				batch.Reset()
-			}
 			total++
 		}
 	}

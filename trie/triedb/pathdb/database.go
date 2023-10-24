@@ -153,7 +153,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 	if config == nil {
 		config = Defaults
 	}
-	//config = config.sanitize()
+	config = config.sanitize()
 
 	db := &Database{
 		readOnly:   config.ReadOnly,
