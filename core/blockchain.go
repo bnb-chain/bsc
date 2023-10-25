@@ -1601,6 +1601,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		// If node is running in path mode, skip explicit gc operation
 		// which is unnecessary in this mode.
 		if bc.triedb.Scheme() == rawdb.PathScheme {
+			if posa, ok := bc.engine.(consensus.PoSA); ok {
+				if !posa.EnoughDistance(bc, block.Header()) {
+					bc.triedb.DisableFlush()
+				} else {
+					bc.triedb.EnableFlush()
+				}
+			}
 			return nil
 		}
 

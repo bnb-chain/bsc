@@ -52,6 +52,11 @@ const (
 	// Do not increase the buffer size arbitrarily, otherwise the system
 	// pause time will increase when the database writes happen.
 	DefaultDirtyBufferSize = 64 * 1024 * 1024
+
+	// DefaultDirtyBufferFlushRate is the default flush rate, if node buffer size
+	// bigger than bufferSize / DefaultDirtyBufferFlushRate and node buffer can
+	// flush will force flush node buffer to disk
+	DefaultDirtyBufferFlushRate = 2
 )
 
 // layer is the interface implemented by all state layers which includes some
@@ -98,7 +103,9 @@ func (c *Config) sanitize() *Config {
 	conf := *c
 	if conf.DirtyCacheSize > MaxDirtyBufferSize {
 		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.DirtyCacheSize), "updated", common.StorageSize(MaxDirtyBufferSize))
-		conf.DirtyCacheSize = MaxDirtyBufferSize
+		conf.DirtyCacheSize = MaxDirtyBufferSize * DefaultDirtyBufferFlushRate
+	} else {
+		conf.DirtyCacheSize = conf.DirtyCacheSize * DefaultDirtyBufferFlushRate
 	}
 	return &conf
 }
@@ -410,18 +417,32 @@ func (db *Database) Initialized(genesisRoot common.Hash) bool {
 
 // SetBufferSize sets the node buffer size to the provided value(in bytes).
 func (db *Database) SetBufferSize(size int) error {
-	db.lock.Lock()
-	defer db.lock.Unlock()
-
-	if size > MaxDirtyBufferSize {
-		log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(MaxDirtyBufferSize))
-		size = MaxDirtyBufferSize
-	}
-	db.bufferSize = size
-	return db.tree.bottom().setBufferSize(db.bufferSize)
+	// disable set node buffer size after init db
+	return nil
+	//db.lock.Lock()
+	//defer db.lock.Unlock()
+	//
+	//if size > MaxDirtyBufferSize {
+	//	log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(MaxDirtyBufferSize))
+	//	size = MaxDirtyBufferSize
+	//}
+	//db.bufferSize = size
+	//return db.tree.bottom().setBufferSize(db.bufferSize)
 }
 
 // Scheme returns the node scheme used in the database.
 func (db *Database) Scheme() string {
 	return rawdb.PathScheme
+}
+
+func (db *Database) EnableFlush() {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	db.tree.bottom().buffer.enableFlush()
+}
+
+func (db *Database) DisableFlush() {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	db.tree.bottom().buffer.disableFlush()
 }

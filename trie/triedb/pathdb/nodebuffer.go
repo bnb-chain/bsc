@@ -18,6 +18,7 @@ package pathdb
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -33,10 +34,12 @@ import (
 // write. The content of the nodebuffer must be checked before diving into
 // disk (since it basically is not-yet-written data).
 type nodebuffer struct {
-	layers uint64                                    // The number of diff layers aggregated inside
-	size   uint64                                    // The size of aggregated writes
-	limit  uint64                                    // The maximum memory allowance in bytes
-	nodes  map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
+	layers   uint64                                    // The number of diff layers aggregated inside
+	size     uint64                                    // The size of aggregated writes
+	limit    uint64                                    // The maximum memory allowance in bytes
+	nodes    map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
+	mux      sync.Mutex
+	canFlush bool
 }
 
 // newNodeBuffer initializes the node buffer with the provided nodes.
@@ -207,32 +210,40 @@ func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
 func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error {
-	if b.size <= b.limit && !force {
+	flush := func() error {
+		// Ensure the target state id is aligned with the internal counter.
+		head := rawdb.ReadPersistentStateID(db)
+		if head+b.layers != id {
+			return fmt.Errorf("buffer layers (%d) cannot be applied on top of persisted state id (%d) to reach requested state id (%d)", b.layers, head, id)
+		}
+		var (
+			start = time.Now()
+			batch = db.NewBatchWithSize(int(b.size))
+		)
+		nodes := writeNodes(batch, b.nodes, clean)
+		rawdb.WritePersistentStateID(batch, id)
+
+		// Flush all mutations in a single batch
+		size := batch.ValueSize()
+		if err := batch.Write(); err != nil {
+			return err
+		}
+		commitBytesMeter.Mark(int64(size))
+		commitNodesMeter.Mark(int64(nodes))
+		commitTimeTimer.UpdateSince(start)
+		log.Debug("Persisted pathdb nodes", "nodes", len(b.nodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
+		b.reset()
 		return nil
 	}
-	// Ensure the target state id is aligned with the internal counter.
-	head := rawdb.ReadPersistentStateID(db)
-	if head+b.layers != id {
-		return fmt.Errorf("buffer layers (%d) cannot be applied on top of persisted state id (%d) to reach requested state id (%d)", b.layers, head, id)
-	}
-	var (
-		start = time.Now()
-		batch = db.NewBatchWithSize(int(b.size))
-	)
-	nodes := writeNodes(batch, b.nodes, clean)
-	rawdb.WritePersistentStateID(batch, id)
 
-	// Flush all mutations in a single batch
-	size := batch.ValueSize()
-	if err := batch.Write(); err != nil {
-		return err
+	if (b.size >= b.limit/DefaultDirtyBufferFlushRate && b.safeFlush()) || force {
+		return flush()
 	}
-	commitBytesMeter.Mark(int64(size))
-	commitNodesMeter.Mark(int64(nodes))
-	commitTimeTimer.UpdateSince(start)
-	log.Debug("Persisted pathdb nodes", "nodes", len(b.nodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
-	b.reset()
-	return nil
+	if b.size <= b.limit/DefaultDirtyBufferFlushRate && !force {
+		return nil
+	}
+
+	return flush()
 }
 
 // writeNodes writes the trie nodes into the provided database batch.
@@ -272,4 +283,22 @@ func cacheKey(owner common.Hash, path []byte) []byte {
 		return path
 	}
 	return append(owner.Bytes(), path...)
+}
+
+func (b *nodebuffer) safeFlush() bool {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+	return b.canFlush
+}
+
+func (b *nodebuffer) enableFlush() {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+	b.canFlush = true
+}
+
+func (b *nodebuffer) disableFlush() {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+	b.canFlush = false
 }

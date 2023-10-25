@@ -353,3 +353,19 @@ func (db *Database) SetBufferSize(size int) error {
 	}
 	return pdb.SetBufferSize(size)
 }
+
+func (db *Database) EnableFlush() {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return
+	}
+	pdb.EnableFlush()
+}
+
+func (db *Database) DisableFlush() {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return
+	}
+	pdb.DisableFlush()
+}
