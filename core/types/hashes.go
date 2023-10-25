@@ -17,6 +17,8 @@
 package types
 
 import (
+	"runtime/debug"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
@@ -46,7 +48,7 @@ var (
 // emptyHash one instead.
 func TrieRootHash(hash common.Hash) common.Hash {
 	if hash == (common.Hash{}) {
-		log.Error("Zero trie root hash!")
+		log.Error("Zero trie root hash!", "debug stack", debug.Stack())
 		return EmptyRootHash
 	}
 	return hash
