@@ -9,12 +9,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
 // AggNode is a basic structure for aggregate and store two layer trie node.
 type AggNode struct {
-	root   []byte
-	childs [16][]byte
+	root    *trienode.Node
+	childes [16]*trienode.Node
 }
 
 func DecodeAggNode(data []byte) (*AggNode, error) {
@@ -40,12 +41,25 @@ func (n *AggNode) Empty() bool {
 	return reflect.DeepEqual(n, AggNode{})
 }
 
-func (n *AggNode) Update(path []byte, node []byte) {
+func (n *AggNode) Size() int {
+	size := 0
+	if n.root != nil {
+		size += len(n.root.Blob)
+	}
+	for _, c := range n.childes {
+		if c != nil {
+			size += len(c.Blob)
+		}
+	}
+	return size
+}
+
+func (n *AggNode) Update(path []byte, node *trienode.Node) {
 	if len(path)%2 == 0 {
 		n.root = node
 	} else {
 		i := path[len(path)-1]
-		n.childs[int(i)] = node
+		n.childes[int(i)] = node
 	}
 }
 
@@ -54,7 +68,7 @@ func (n *AggNode) Delete(path []byte) {
 		n.root = nil
 	} else {
 		i := path[len(path)-1]
-		n.childs[int(i)] = nil
+		n.childes[int(i)] = nil
 	}
 }
 
@@ -63,16 +77,16 @@ func (n *AggNode) Has(path []byte) bool {
 		return n.root == nil
 	} else {
 		i := path[len(path)-1]
-		return n.childs[int(i)] == nil
+		return n.childes[int(i)] == nil
 	}
 }
 
-func (n *AggNode) Node(path []byte) []byte {
+func (n *AggNode) Node(path []byte) *trienode.Node {
 	if len(path)%2 == 0 {
 		return n.root
 	} else {
 		i := path[len(path)-1]
-		return n.childs[int(i)]
+		return n.childes[int(i)]
 	}
 }
 
@@ -97,12 +111,12 @@ func (n *AggNode) decodeFrom(buf []byte) error {
 	}
 
 	for i := 0; i < 16; i++ {
-		var cn []byte
+		var cn *trienode.Node
 		cn, rest, err = decodeRawNode(rest)
 		if err != nil {
-			return fmt.Errorf("decode childs Node(%d) failed in AggNode: %v", i, err)
+			return fmt.Errorf("decode childes Node(%d) failed in AggNode: %v", i, err)
 		}
-		n.childs[i] = cn
+		n.childes[i] = cn
 	}
 	return nil
 }
@@ -111,9 +125,17 @@ func (n *AggNode) encodeTo() []byte {
 	w := rlp.NewEncoderBuffer(nil)
 	offset := w.List()
 
-	writeRawNode(w, n.root)
-	for _, c := range n.childs {
-		writeRawNode(w, c)
+	if n.root != nil {
+		writeRawNode(w, n.root.Blob)
+	} else {
+		writeRawNode(w, nil)
+	}
+	for _, c := range n.childes {
+		if c != nil {
+			writeRawNode(w, c.Blob)
+		} else {
+			writeRawNode(w, nil)
+		}
 	}
 	w.ListEnd(offset)
 	result := w.ToBytes()
@@ -129,7 +151,7 @@ func writeRawNode(w rlp.EncoderBuffer, n []byte) {
 	}
 }
 
-func decodeRawNode(buf []byte) ([]byte, []byte, error) {
+func decodeRawNode(buf []byte) (*trienode.Node, []byte, error) {
 	kind, val, rest, err := rlp.Split(buf)
 	if err != nil {
 		return nil, buf, err
@@ -140,7 +162,7 @@ func decodeRawNode(buf []byte) ([]byte, []byte, error) {
 	}
 
 	// Hashes are not calculated here to avoid unnecessary overhead
-	return val, rest, nil
+	return &trienode.Node{Blob: val}, rest, nil
 }
 
 func writeAggNode(db ethdb.KeyValueWriter, owner common.Hash, aggPath []byte, aggNodeBytes []byte) {
@@ -184,12 +206,14 @@ func ReadTrieNodeFromAggNode(reader ethdb.KeyValueReader, owner common.Hash, pat
 		return nil, common.Hash{}
 	}
 
-	rawNode := aggNode.Node(path)
-	h := newHasher()
-	defer h.release()
-	nhash := h.hash(rawNode)
+	node := aggNode.Node(path)
 
-	return rawNode, nhash
+	if node.Hash == (common.Hash{}) && len(node.Blob) != 0 {
+		h := newHasher()
+		defer h.release()
+		node.Hash = h.hash(node.Blob)
+	}
+	return node.Blob, node.Hash
 }
 
 func DeleteTrieNodeFromAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte) {
@@ -210,7 +234,7 @@ func DeleteTrieNodeFromAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValu
 	}
 }
 
-func WriteTrieNodeFromAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte, node []byte) {
+func WriteTrieNodeWithAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte, node []byte) {
 	aggPath := toAggPath(path)
 	aggNode, err := loadAggNodeFromDatabase(reader, owner, aggPath)
 	if err != nil {
@@ -219,7 +243,7 @@ func WriteTrieNodeFromAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValue
 	if aggNode == nil {
 		return
 	}
-	aggNode.Update(path, node)
+	aggNode.Update(path, &trienode.Node{Blob: node})
 
 	writeAggNode(writer, owner, aggPath, aggNode.encodeTo())
 }

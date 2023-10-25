@@ -35,14 +35,14 @@ var (
 	diskFalseMeter  = metrics.NewRegisteredMeter("aggpathdb/disk/false", nil)
 
 	commitTimeTimer  = metrics.NewRegisteredTimer("aggpathdb/commit/time", nil)
-	commitNodesMeter = metrics.NewRegisteredMeter("aggpathdb/commit/nodes", nil)
+	commitNodesMeter = metrics.NewRegisteredMeter("aggpathdb/commit/aggNodes", nil)
 	commitBytesMeter = metrics.NewRegisteredMeter("aggpathdb/commit/bytes", nil)
 
-	gcNodesMeter = metrics.NewRegisteredMeter("aggpathdb/gc/nodes", nil)
+	gcNodesMeter = metrics.NewRegisteredMeter("aggpathdb/gc/aggNodes", nil)
 	gcBytesMeter = metrics.NewRegisteredMeter("aggpathdb/gc/bytes", nil)
 
 	diffLayerBytesMeter = metrics.NewRegisteredMeter("aggpathdb/diff/bytes", nil)
-	diffLayerNodesMeter = metrics.NewRegisteredMeter("aggpathdb/diff/nodes", nil)
+	diffLayerNodesMeter = metrics.NewRegisteredMeter("aggpathdb/diff/aggNodes", nil)
 
 	historyBuildTimeMeter  = metrics.NewRegisteredTimer("aggpathdb/history/time", nil)
 	historyDataBytesMeter  = metrics.NewRegisteredMeter("aggpathdb/history/bytes/data", nil)

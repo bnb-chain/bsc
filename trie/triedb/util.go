@@ -91,7 +91,7 @@ func WriteTrieNode(db ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner c
 			rawdb.WriteStorageTrieNode(db, owner, path, node)
 		}
 	case rawdb.AggPathScheme:
-		aggpathdb.WriteTrieNodeFromAggNode(db, reader, owner, path, node)
+		aggpathdb.WriteTrieNodeWithAggNode(db, reader, owner, path, node)
 	default:
 		panic(fmt.Sprintf("Unknown scheme %v", scheme))
 	}

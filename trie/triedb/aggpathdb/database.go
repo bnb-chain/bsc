@@ -41,7 +41,7 @@ const (
 	defaultCleanSize = 256 * 1024 * 1024
 
 	// maxBufferSize is the maximum memory allowance of node buffer.
-	// Too large nodebuffer will cause the system to pause for a long
+	// Too large aggNodeBuffer will cause the system to pause for a long
 	// time when write happens. Also, the largest batch that pebble can
 	// support is 4GB, node will panic if batch size exceeds this limit.
 	maxBufferSize = 256 * 1024 * 1024
@@ -73,7 +73,7 @@ type layer interface {
 	parentLayer() layer
 
 	// update creates a new layer on top of the existing layer diff tree with
-	// the provided dirty trie nodes along with the state change set.
+	// the provided dirty trie aggNodes along with the state change set.
 	//
 	// Note, the maps are retained by the method to avoid copying everything.
 	update(root common.Hash, id uint64, block uint64, nodes map[common.Hash]map[string]*trienode.Node, states *triestate.Set) *diffLayer
@@ -87,8 +87,8 @@ type layer interface {
 // Config contains the settings for database.
 type Config struct {
 	StateHistory   uint64 // Number of recent blocks to maintain state history for
-	CleanCacheSize int    // Maximum memory allowance (in bytes) for caching clean nodes
-	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty nodes
+	CleanCacheSize int    // Maximum memory allowance (in bytes) for caching clean aggNodes
+	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty aggNodes
 	ReadOnly       bool   // Flag whether the database is opened in read only mode.
 }
 
@@ -113,7 +113,7 @@ var Defaults = &Config{
 // ReadOnly is the config in order to open database in read only mode.
 var ReadOnly = &Config{ReadOnly: true}
 
-// Database is a multiple-layered structure for maintaining in-memory trie nodes.
+// Database is a multiple-layered structure for maintaining in-memory trie aggNodes.
 // It consists of one persistent base layer backed by a key-value store, on top
 // of which arbitrarily many in-memory diff layers are stacked. The memory diffs
 // can form a tree with branching, but the disk layer is singleton and common to
@@ -129,9 +129,9 @@ type Database struct {
 	// It will be set automatically when the database is journaled during
 	// the shutdown to reject all following unexpected mutations.
 	readOnly   bool                     // Indicator if database is opened in read only mode
-	bufferSize int                      // Memory allowance (in bytes) for caching dirty nodes
+	bufferSize int                      // Memory allowance (in bytes) for caching dirty aggNodes
 	config     *Config                  // Configuration for database
-	diskdb     ethdb.Database           // Persistent storage for matured trie nodes
+	diskdb     ethdb.Database           // Persistent storage for matured trie aggNodes
 	tree       *layerTree               // The group for all known layers
 	freezer    *rawdb.ResettableFreezer // Freezer for storing trie histories, nil possible in tests
 	lock       sync.RWMutex             // Lock to prevent mutations from happening at the same time
@@ -197,7 +197,7 @@ func (db *Database) Reader(root common.Hash) (layer, error) {
 // from that this function will flatten the extra diff layers at bottom into disk
 // to only keep 128 diff layers in memory by default.
 //
-// The passed in maps(nodes, states) will be retained to avoid copying everything.
+// The passed in maps(aggNodes, states) will be retained to avoid copying everything.
 // Therefore, these maps must not be changed afterwards.
 func (db *Database) Update(root common.Hash, parentRoot common.Hash, block uint64, nodes *trienode.MergedNodeSet, states *triestate.Set) error {
 	// Hold the lock to prevent concurrent mutations.
@@ -282,7 +282,7 @@ func (db *Database) Reset(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	dl := newDiskLayer(root, 0, db, nil, newNodeBuffer(db.bufferSize, nil, 0))
+	dl := newDiskLayer(root, 0, db, nil, newAggNodeBuffer(db.bufferSize, nil, 0))
 	db.tree.reset(dl)
 	log.Info("Rebuilt trie database", "root", root)
 	return nil

@@ -187,6 +187,13 @@ func WriteAccountTrieAggNode(db ethdb.KeyValueWriter, path []byte, node []byte) 
 	}
 }
 
+// DeleteAccountTrieAggNode deletes the specified account trie node from the database.
+func DeleteAccountTrieAggNode(db ethdb.KeyValueWriter, path []byte) {
+	if err := db.Delete(accountTrieAggNodeKey(path)); err != nil {
+		log.Crit("Failed to delete account trie agg node", "err", err)
+	}
+}
+
 // ReadStorageTrieAggNode retrieves the storage trie agg node and return the raw bytes
 func ReadStorageTrieAggNode(db ethdb.KeyValueReader, accountHash common.Hash, path []byte) []byte {
 	data, err := db.Get(storageTrieAggNodeKey(accountHash, path))
@@ -200,6 +207,13 @@ func ReadStorageTrieAggNode(db ethdb.KeyValueReader, accountHash common.Hash, pa
 func HasStorageTrieAggNode(db ethdb.KeyValueReader, accountHash common.Hash, path []byte) bool {
 	ok, _ := db.Has(storageTrieAggNodeKey(accountHash, path))
 	return ok
+}
+
+// DeleteStorageTrieAggNode deletes the specified storage trie node from the database.
+func DeleteStorageTrieAggNode(db ethdb.KeyValueWriter, accountHash common.Hash, path []byte) {
+	if err := db.Delete(storageTrieAggNodeKey(accountHash, path)); err != nil {
+		log.Crit("Failed to delete storage trie agg node", "err", err)
+	}
 }
 
 // WriteStorageTrieAggNode writes the priovided storage trie aggnode into database

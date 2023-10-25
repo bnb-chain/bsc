@@ -48,7 +48,7 @@ type journalNode struct {
 	Blob []byte // RLP-encoded trie node blob, nil means the node is deleted
 }
 
-// journalNodes represents a list trie nodes belong to a single account
+// journalNodes represents a list trie aggNodes belong to a single account
 // or the main account trie.
 type journalNodes struct {
 	Owner common.Hash
@@ -130,7 +130,7 @@ func (db *Database) loadLayers() layer {
 		log.Info("Failed to load aggpathdb journal, discard it", "err", err)
 	}
 	// Return single layer with persistent state.
-	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, newNodeBuffer(db.bufferSize, nil, 0))
+	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, newAggNodeBuffer(db.bufferSize, nil, 0))
 }
 
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
@@ -152,10 +152,10 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 	if stored > id {
 		return nil, fmt.Errorf("invalid state id: stored %d resolved %d", stored, id)
 	}
-	// Resolve nodes cached in node buffer
+	// Resolve aggNodes cached in node buffer
 	var encoded []journalNodes
 	if err := r.Decode(&encoded); err != nil {
-		return nil, fmt.Errorf("load disk nodes: %v", err)
+		return nil, fmt.Errorf("load disk aggNodes: %v", err)
 	}
 	nodes := make(map[common.Hash]map[string]*trienode.Node)
 	for _, entry := range encoded {
@@ -170,7 +170,8 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		nodes[entry.Owner] = subset
 	}
 	// Calculate the internal state transitions by id difference.
-	base := newDiskLayer(root, id, db, nil, newNodeBuffer(db.bufferSize, nodes, id-stored))
+	base := newDiskLayer(root, id, db, nil, newEmptyAggNodeBuffer(db.bufferSize, id-stored))
+	base.commitNodes(nodes)
 	return base, nil
 }
 
@@ -190,10 +191,10 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 	if err := r.Decode(&block); err != nil {
 		return nil, fmt.Errorf("load block number: %v", err)
 	}
-	// Read in-memory trie nodes from journal
+	// Read in-memory trie aggNodes from journal
 	var encoded []journalNodes
 	if err := r.Decode(&encoded); err != nil {
-		return nil, fmt.Errorf("load diff nodes: %v", err)
+		return nil, fmt.Errorf("load diff aggNodes: %v", err)
 	}
 	nodes := make(map[common.Hash]map[string]*trienode.Node)
 	for _, entry := range encoded {
@@ -241,7 +242,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete)), r)
 }
 
-// journal implements the layer interface, marshaling the un-flushed trie nodes
+// journal implements the layer interface, marshaling the un-flushed trie aggNodes
 // along with layer meta data into provided byte buffer.
 func (dl *diskLayer) journal(w io.Writer) error {
 	dl.lock.RLock()
@@ -259,13 +260,18 @@ func (dl *diskLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, dl.id); err != nil {
 		return err
 	}
-	// Step three, write all unwritten nodes into the journal
-	nodes := make([]journalNodes, 0, len(dl.buffer.nodes))
-	for owner, subset := range dl.buffer.nodes {
+	// Step three, write all unwritten aggNodes into the journal
+	nodes := make([]journalNodes, 0, len(dl.buffer.aggNodes))
+	for owner, subset := range dl.buffer.aggNodes {
 		entry := journalNodes{Owner: owner}
-		for _, cs := range subset {
-			for path, node := range cs {
-				entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
+		for path, an := range subset {
+			if an.root != nil {
+				entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: an.root.Blob})
+			}
+			for i, n := range an.childes {
+				if n != nil {
+					entry.Nodes = append(entry.Nodes, journalNode{Path: append([]byte(path), byte(i)), Blob: n.Blob})
+				}
 			}
 		}
 		nodes = append(nodes, entry)
@@ -273,7 +279,7 @@ func (dl *diskLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, nodes); err != nil {
 		return err
 	}
-	log.Debug("Journaled pathdb disk layer", "root", dl.root, "nodes", len(dl.buffer.nodes))
+	log.Debug("Journaled pathdb disk layer", "root", dl.root, "aggNodes", len(dl.buffer.aggNodes))
 	return nil
 }
 
@@ -294,7 +300,7 @@ func (dl *diffLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, dl.block); err != nil {
 		return err
 	}
-	// Write the accumulated trie nodes into buffer
+	// Write the accumulated trie aggNodes into buffer
 	nodes := make([]journalNodes, 0, len(dl.nodes))
 	for owner, subset := range dl.nodes {
 		entry := journalNodes{Owner: owner}
@@ -330,7 +336,7 @@ func (dl *diffLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, storage); err != nil {
 		return err
 	}
-	log.Debug("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
+	log.Debug("Journaled aggpathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "aggNodes", len(dl.nodes))
 	return nil
 }
 
