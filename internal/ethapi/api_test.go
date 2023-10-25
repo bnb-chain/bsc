@@ -1809,7 +1809,7 @@ func setupReceiptBackend(t *testing.T, genBlocks int) (*testBackend, []common.Ha
 		}
 		signer   = types.LatestSignerForChainID(params.TestChainConfig.ChainID)
 		txHashes = make([]common.Hash, genBlocks)
-		gasPrice  = big.NewInt(3e9) // 3Gwei
+		gasPrice = big.NewInt(3e9) // 3Gwei
 	)
 	backend := newTestBackend(t, genBlocks, genesis, func(i int, b *core.BlockGen) {
 		var (
