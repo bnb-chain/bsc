@@ -818,6 +818,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		if err := CommitGenesisState(bc.db, bc.triedb, bc.genesisBlock.Hash()); err != nil {
 			log.Crit("Failed to commit genesis state", "err", err)
 		}
+		log.Info("Reset to block with genesis state", "number", bc.genesisBlock.NumberU64(), "hash", bc.genesisBlock.Hash())
 	}
 	updateFn := func(db ethdb.KeyValueWriter, header *types.Header) (*types.Header, bool) {
 		// Rewind the blockchain, ensuring we don't end up with a stateless head
@@ -851,22 +852,23 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 							log.Error("Missing block in the middle, aiming genesis", "number", newHeadBlock.NumberU64()-1, "hash", newHeadBlock.ParentHash())
 							newHeadBlock = bc.genesisBlock
 						} else {
-							log.Trace("Rewind passed pivot, aiming genesis", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "pivot", *pivot)
+							log.Info("Rewind passed pivot, aiming genesis", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "pivot", *pivot)
 							newHeadBlock = bc.genesisBlock
 						}
 					}
 					if beyondRoot || newHeadBlock.NumberU64() == 0 {
-						if !bc.HasState(newHeadBlock.Root()) && bc.stateRecoverable(newHeadBlock.Root()) {
+						if newHeadBlock.NumberU64() == 0 {
+							resetState()
+						} else if !bc.HasState(newHeadBlock.Root()) {
 							// Rewind to a block with recoverable state. If the state is
 							// missing, run the state recovery here.
 							if err := bc.triedb.Recover(newHeadBlock.Root()); err != nil {
 								log.Crit("Failed to rollback state", "err", err) // Shouldn't happen
 							}
-							log.Info("Rewound to block with state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash())
 						}
 						break
 					}
-					log.Debug("Skipping block with threshold state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "root", newHeadBlock.Root())
+					log.Info("Skipping block with threshold state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "root", newHeadBlock.Root())
 					newHeadBlock = bc.GetBlock(newHeadBlock.ParentHash(), newHeadBlock.NumberU64()-1) // Keep rewinding
 				}
 			}
