@@ -145,8 +145,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// dirty cache to the clean cache.
 	if config.StateScheme == rawdb.PathScheme && config.TrieDirtyCache > pathdb.MaxDirtyBufferSize/1024/1024 {
 		log.Info("Capped dirty cache size", "provided", common.StorageSize(config.TrieDirtyCache)*1024*1024, "adjusted", common.StorageSize(pathdb.MaxDirtyBufferSize))
+		oldTrieCleanCache := config.TrieCleanCache
 		config.TrieCleanCache += config.TrieDirtyCache - pathdb.MaxDirtyBufferSize/1024/1024
 		config.TrieDirtyCache = pathdb.MaxDirtyBufferSize / 1024 / 1024
+		log.Info("Expand clean size", "provided", common.StorageSize(oldTrieCleanCache)*1024*1024, "adjusted", common.StorageSize(config.TrieCleanCache)*1024*1024)
 	}
 	log.Info("Allocated trie memory caches", "clean", common.StorageSize(config.TrieCleanCache)*1024*1024, "dirty", common.StorageSize(config.TrieDirtyCache)*1024*1024)
 
