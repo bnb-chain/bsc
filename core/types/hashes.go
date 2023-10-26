@@ -48,7 +48,7 @@ var (
 // emptyHash one instead.
 func TrieRootHash(hash common.Hash) common.Hash {
 	if hash == (common.Hash{}) {
-		log.Error("Zero trie root hash!", "debug stack", debug.Stack())
+		log.Error("Zero trie root hash!", "debug stack", string(debug.Stack()))
 		return EmptyRootHash
 	}
 	return hash
