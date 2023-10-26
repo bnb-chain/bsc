@@ -1200,7 +1200,7 @@ func (bc *BlockChain) Stop() {
 			for !bc.triegc.Empty() {
 				triedb.Dereference(bc.triegc.PopItem())
 			}
-			if size, _ := triedb.Size(); size != 0 {
+			if _, size, _ := triedb.Size(); size != 0 {
 				log.Error("Dangling trie nodes after full cleanup")
 			}
 		}
@@ -1611,8 +1611,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			if current := block.NumberU64(); current > bc.triesInMemory {
 				// If we exceeded our memory allowance, flush matured singleton nodes to disk
 				var (
-					nodes, imgs = triedb.Size()
-					limit       = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
+					_, nodes, imgs = triedb.Size()
+					limit          = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
 				)
 				if nodes > limit || imgs > 4*1024*1024 {
 					triedb.Cap(limit - ethdb.IdealBatchSize)
@@ -2096,8 +2096,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		stats.processed++
 		stats.usedGas += usedGas
 
-		dirty, _ := bc.triedb.Size()
-		stats.report(chain, it.index, dirty, setHead)
+		trieDiffNodes, trieBufNodes, _ := bc.triedb.Size()
+		stats.report(chain, it.index, trieDiffNodes, trieBufNodes, setHead)
 
 		if !setHead {
 			// After merge we expect few side chains. Simply count
