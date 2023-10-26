@@ -212,3 +212,41 @@ func (tree *layerTree) bottom() *diskLayer {
 	}
 	return current.(*diskLayer)
 }
+
+func (tree *layerTree) front() common.Hash {
+	tree.lock.RLock()
+	defer tree.lock.RUnlock()
+
+	chain := make(map[common.Hash][]common.Hash)
+	var base common.Hash
+	for _, layer := range tree.layers {
+		if dl, ok := layer.(*diskLayer); ok {
+			if dl.stale {
+				return base
+			}
+			base = dl.rootHash()
+		} else {
+			if dl.stale {
+				continue
+			}
+			if _, ok := chain[dl.parentLayer().rootHash()]; !ok {
+				chain[dl.parentLayer().rootHash()] = make([]common.Hash, 0)
+			}
+			chain[dl.parentLayer().rootHash()] = append(chain[dl.parentLayer().rootHash()], dl.rootHash())
+		}
+	}
+	if (base == common.Hash{}) {
+		return base
+	}
+	parent := base
+	for {
+		children, ok := chain[parent]
+		if !ok {
+			return parent
+		}
+		if len(children) != 1 {
+			return parent
+		}
+		parent = children[0]
+	}
+}

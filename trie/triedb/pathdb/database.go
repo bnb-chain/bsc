@@ -446,3 +446,9 @@ func (db *Database) DisableFlush() {
 	defer db.lock.Unlock()
 	db.tree.bottom().buffer.disableFlush()
 }
+
+func (db *Database) Head() common.Hash {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	return db.tree.front()
+}

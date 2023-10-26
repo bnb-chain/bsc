@@ -398,7 +398,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			diskRoot = rawdb.ReadSnapshotRoot(bc.db)
 		}
 		if bc.triedb.Scheme() == rawdb.PathScheme {
-			_, diskRoot = rawdb.ReadAccountTrieNode(bc.db, nil)
+			diskRoot = bc.triedb.Head()
 		}
 		if diskRoot != (common.Hash{}) {
 			log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash(), "diskroot", diskRoot)

@@ -369,3 +369,11 @@ func (db *Database) DisableFlush() {
 	}
 	pdb.DisableFlush()
 }
+
+func (db *Database) Head() common.Hash {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return common.Hash{}
+	}
+	return pdb.Head()
+}
