@@ -70,6 +70,7 @@ func (h *hasher) release() {
 func ReadAccountTrieNode(db ethdb.KeyValueReader, path []byte) ([]byte, common.Hash) {
 	data, err := db.Get(accountTrieNodeKey(path))
 	if err != nil {
+		log.Error("failed to read account trie node", "error", err)
 		return nil, common.Hash{}
 	}
 	h := newHasher()
