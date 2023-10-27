@@ -255,15 +255,15 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 }
 
 // setBufferSize sets the node buffer size to the provided value.
-func (dl *diskLayer) setBufferSize(size int) error {
-	dl.lock.RLock()
-	defer dl.lock.RUnlock()
-
-	if dl.stale {
-		return errSnapshotStale
-	}
-	return dl.buffer.setSize(size, dl.db.diskdb, dl.cleans, dl.id)
-}
+//func (dl *diskLayer) setBufferSize(size int) error {
+//	dl.lock.RLock()
+//	defer dl.lock.RUnlock()
+//
+//	if dl.stale {
+//		return errSnapshotStale
+//	}
+//	return dl.buffer.setSize(size, dl.db.diskdb, dl.cleans, dl.id)
+//}
 
 // size returns the approximate size of cached nodes in the disk layer.
 func (dl *diskLayer) size() common.StorageSize {

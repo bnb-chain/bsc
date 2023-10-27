@@ -52,11 +52,6 @@ const (
 	// Do not increase the buffer size arbitrarily, otherwise the system
 	// pause time will increase when the database writes happen.
 	DefaultDirtyBufferSize = 64 * 1024 * 1024
-
-	// DefaultDirtyBufferFlushRate is the default flush rate, if node buffer size
-	// bigger than bufferSize / DefaultDirtyBufferFlushRate and node buffer can
-	// flush will force flush node buffer to disk
-	DefaultDirtyBufferFlushRate = 2
 )
 
 // layer is the interface implemented by all state layers which includes some
@@ -103,9 +98,7 @@ func (c *Config) sanitize() *Config {
 	conf := *c
 	if conf.DirtyCacheSize > MaxDirtyBufferSize {
 		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.DirtyCacheSize), "updated", common.StorageSize(MaxDirtyBufferSize))
-		conf.DirtyCacheSize = MaxDirtyBufferSize * DefaultDirtyBufferFlushRate
-	} else {
-		conf.DirtyCacheSize = conf.DirtyCacheSize * DefaultDirtyBufferFlushRate
+		conf.DirtyCacheSize = MaxDirtyBufferSize
 	}
 	return &conf
 }

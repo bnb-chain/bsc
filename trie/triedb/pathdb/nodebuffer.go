@@ -202,48 +202,41 @@ func (b *nodebuffer) empty() bool {
 
 // setSize sets the buffer size to the provided number, and invokes a flush
 // operation if the current memory usage exceeds the new limit.
-func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
-	b.limit = uint64(size)
-	return b.flush(db, clean, id, false)
-}
+//func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+//	b.limit = uint64(size)
+//	return b.flush(db, clean, id, false)
+//}
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
 func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error {
-	flush := func() error {
-		// Ensure the target state id is aligned with the internal counter.
-		head := rawdb.ReadPersistentStateID(db)
-		if head+b.layers != id {
-			return fmt.Errorf("buffer layers (%d) cannot be applied on top of persisted state id (%d) to reach requested state id (%d)", b.layers, head, id)
-		}
-		var (
-			start = time.Now()
-			batch = db.NewBatchWithSize(int(b.size))
-		)
-		nodes := writeNodes(batch, b.nodes, clean)
-		rawdb.WritePersistentStateID(batch, id)
-
-		// Flush all mutations in a single batch
-		size := batch.ValueSize()
-		if err := batch.Write(); err != nil {
-			return err
-		}
-		commitBytesMeter.Mark(int64(size))
-		commitNodesMeter.Mark(int64(nodes))
-		commitTimeTimer.UpdateSince(start)
-		log.Debug("Persisted pathdb nodes", "nodes", len(b.nodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
-		b.reset()
+	if b.size <= b.limit && !force {
 		return nil
 	}
 
-	if (b.size >= b.limit/DefaultDirtyBufferFlushRate && b.safeFlush()) || force {
-		return flush()
+	// Ensure the target state id is aligned with the internal counter.
+	head := rawdb.ReadPersistentStateID(db)
+	if head+b.layers != id {
+		return fmt.Errorf("buffer layers (%d) cannot be applied on top of persisted state id (%d) to reach requested state id (%d)", b.layers, head, id)
 	}
-	if b.size <= b.limit/DefaultDirtyBufferFlushRate && !force {
-		return nil
-	}
+	var (
+		start = time.Now()
+		batch = db.NewBatchWithSize(int(b.size))
+	)
+	nodes := writeNodes(batch, b.nodes, clean)
+	rawdb.WritePersistentStateID(batch, id)
 
-	return flush()
+	// Flush all mutations in a single batch
+	size := batch.ValueSize()
+	if err := batch.Write(); err != nil {
+		return err
+	}
+	commitBytesMeter.Mark(int64(size))
+	commitNodesMeter.Mark(int64(nodes))
+	commitTimeTimer.UpdateSince(start)
+	log.Debug("Persisted pathdb nodes", "nodes", len(b.nodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
+	b.reset()
+	return nil
 }
 
 // writeNodes writes the trie nodes into the provided database batch.
