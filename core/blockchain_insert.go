@@ -39,7 +39,7 @@ const statsReportLimit = 8 * time.Second
 
 // report prints statistics if some number of blocks have been processed
 // or more than a few seconds have passed since the last message.
-func (st *insertStats) report(chain []*types.Block, index int, trieDiffNodes, trieBufNodes common.StorageSize, setHead bool) {
+func (st *insertStats) report(chain []*types.Block, index int, trieDiffNodes, trieBufNodes, trieBackgroundBufNodes common.StorageSize, setHead bool) {
 	// Fetch the timings for the batch
 	var (
 		now     = mclock.Now()
@@ -65,8 +65,11 @@ func (st *insertStats) report(chain []*types.Block, index int, trieDiffNodes, tr
 		}
 		if trieDiffNodes != 0 { // pathdb
 			context = append(context, []interface{}{"triediffs", trieDiffNodes}...)
+			context = append(context, []interface{}{"triedirty", trieBufNodes}...)
+			context = append(context, []interface{}{"trieimutabledirty", trieBackgroundBufNodes}...)
+		} else {
+			context = append(context, []interface{}{"triedirty", trieBufNodes}...)
 		}
-		context = append(context, []interface{}{"triedirty", trieBufNodes}...)
 
 		if st.queued > 0 {
 			context = append(context, []interface{}{"queued", st.queued}...)

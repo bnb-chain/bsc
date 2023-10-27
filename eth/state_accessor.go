@@ -175,8 +175,8 @@ func (eth *Ethereum) hashState(ctx context.Context, block *types.Block, reexec u
 		parent = root
 	}
 	if report {
-		diff, nodes, imgs := triedb.Size()
-		log.Info("Historical state regenerated", "block", current.NumberU64(), "elapsed", time.Since(start), "diff", diff, "nodes", nodes, "preimages", imgs)
+		diff, nodes, backgrounds, imgs := triedb.Size()
+		log.Info("Historical state regenerated", "block", current.NumberU64(), "elapsed", time.Since(start), "diff", diff, "nodes", nodes, "backgrounds", backgrounds, "preimages", imgs)
 	}
 	return statedb, func() { triedb.Dereference(block.Root()) }, nil
 }

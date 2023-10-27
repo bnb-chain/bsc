@@ -260,8 +260,9 @@ func (dl *diskLayer) journal(w io.Writer) error {
 		return err
 	}
 	// Step three, write all unwritten nodes into the journal
-	nodes := make([]journalNodes, 0, len(dl.buffer.nodes))
-	for owner, subset := range dl.buffer.nodes {
+	trieNodes := dl.buffer.nodes()
+	nodes := make([]journalNodes, 0, len(trieNodes))
+	for owner, subset := range trieNodes {
 		entry := journalNodes{Owner: owner}
 		for path, node := range subset {
 			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
@@ -271,7 +272,7 @@ func (dl *diskLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, nodes); err != nil {
 		return err
 	}
-	log.Debug("Journaled pathdb disk layer", "root", dl.root, "nodes", len(dl.buffer.nodes))
+	log.Debug("Journaled pathdb disk layer", "root", dl.root, "nodes", len(trieNodes))
 	return nil
 }
 
@@ -344,9 +345,9 @@ func (db *Database) Journal(root common.Hash) error {
 	}
 	disk := db.tree.bottom()
 	if l, ok := l.(*diffLayer); ok {
-		log.Info("Persisting dirty state to disk", "head", l.block, "root", root, "layers", l.id-disk.id+disk.buffer.layers)
+		log.Info("Persisting dirty state to disk", "head", l.block, "root", root, "layers", l.id-disk.id+disk.buffer.layers())
 	} else { // disk layer only on noop runs (likely) or deep reorgs (unlikely)
-		log.Info("Persisting dirty state to disk", "root", root, "layers", disk.buffer.layers)
+		log.Info("Persisting dirty state to disk", "root", root, "layers", disk.buffer.layers())
 	}
 	start := time.Now()
 

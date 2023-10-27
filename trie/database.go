@@ -61,7 +61,7 @@ type backend interface {
 
 	// Size returns the current storage size of the memory cache in front of the
 	// persistent database layer.
-	Size() (common.StorageSize, common.StorageSize)
+	Size() (common.StorageSize, common.StorageSize, common.StorageSize)
 
 	// Update performs a state transition by committing dirty nodes contained
 	// in the given set in order to update state from the specified parent to
@@ -207,16 +207,16 @@ func (db *Database) Commit(root common.Hash, report bool) error {
 
 // Size returns the storage size of dirty trie nodes in front of the persistent
 // database and the size of cached preimages.
-func (db *Database) Size() (common.StorageSize, common.StorageSize, common.StorageSize) {
+func (db *Database) Size() (common.StorageSize, common.StorageSize, common.StorageSize, common.StorageSize) {
 	var (
-		diffs, nodes common.StorageSize
-		preimages    common.StorageSize
+		diffs, nodes, background common.StorageSize
+		preimages                common.StorageSize
 	)
-	diffs, nodes = db.backend.Size()
+	diffs, nodes, background = db.backend.Size()
 	if db.preimages != nil {
 		preimages = db.preimages.size()
 	}
-	return diffs, nodes, preimages
+	return diffs, nodes, background, preimages
 }
 
 // Initialized returns an indicator if the state data is already initialized

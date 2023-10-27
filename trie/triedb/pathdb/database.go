@@ -44,7 +44,7 @@ const (
 	// Too large nodebuffer will cause the system to pause for a long
 	// time when write happens. Also, the largest batch that pebble can
 	// support is 4GB, node will panic if batch size exceeds this limit.
-	MaxDirtyBufferSize = 256 * 1024 * 1024
+	MaxDirtyBufferSize = 128 * 1024 * 1024
 
 	// DefaultDirtyBufferSize is the default memory allowance of node buffer
 	// that aggregates the writes from above until it's flushed into the
@@ -52,6 +52,8 @@ const (
 	// Do not increase the buffer size arbitrarily, otherwise the system
 	// pause time will increase when the database writes happen.
 	DefaultDirtyBufferSize = 64 * 1024 * 1024
+
+	DefaultBackgroundFlushInterval = 3
 )
 
 // layer is the interface implemented by all state layers which includes some
@@ -96,9 +98,11 @@ type Config struct {
 // unreasonable or unworkable.
 func (c *Config) sanitize() *Config {
 	conf := *c
-	if conf.DirtyCacheSize > MaxDirtyBufferSize {
+	if conf.DirtyCacheSize > MaxDirtyBufferSize/2 {
 		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.DirtyCacheSize), "updated", common.StorageSize(MaxDirtyBufferSize))
-		conf.DirtyCacheSize = MaxDirtyBufferSize
+		conf.DirtyCacheSize = MaxDirtyBufferSize / 2
+	} else if conf.DirtyCacheSize > DefaultDirtyBufferSize {
+		conf.DirtyCacheSize = conf.DirtyCacheSize / 2
 	}
 	return &conf
 }
@@ -384,16 +388,16 @@ func (db *Database) Close() error {
 
 // Size returns the current storage size of the memory cache in front of the
 // persistent database layer.
-func (db *Database) Size() (diffs common.StorageSize, nodes common.StorageSize) {
+func (db *Database) Size() (diffs common.StorageSize, nodes common.StorageSize, backgroundNodes common.StorageSize) {
 	db.tree.forEach(func(layer layer) {
 		if diff, ok := layer.(*diffLayer); ok {
 			diffs += common.StorageSize(diff.memory)
 		}
 		if disk, ok := layer.(*diskLayer); ok {
-			nodes += disk.size()
+			nodes, backgroundNodes = disk.size()
 		}
 	})
-	return diffs, nodes
+	return diffs, nodes, backgroundNodes
 }
 
 // Initialized returns an indicator if the state data is already

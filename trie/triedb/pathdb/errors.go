@@ -45,6 +45,16 @@ var (
 	// errUnexpectedNode is returned if the requested node with specified path is
 	// not hash matched with expectation.
 	errUnexpectedNode = errors.New("unexpected node")
+
+	errWriteImmutable = errors.New("write immutable memory table")
+
+	errFlushImmutable = errors.New("flush immutable memory table")
+
+	errRevertImmutable = errors.New("revert immutable memory table")
+
+	errIncompatibleMerge = errors.New("incompatible memory table merge")
+
+	errBackgroundFlushing = errors.New("background flush doing, try again later")
 )
 
 func newUnexpectedNodeError(loc string, expHash common.Hash, gotHash common.Hash, owner common.Hash, path []byte, blob []byte) error {

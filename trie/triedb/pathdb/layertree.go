@@ -23,6 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 )
@@ -219,20 +220,20 @@ func (tree *layerTree) front() common.Hash {
 
 	chain := make(map[common.Hash][]common.Hash)
 	var base common.Hash
-	for _, layer := range tree.layers {
-		if dl, ok := layer.(*diskLayer); ok {
+	for _, ly := range tree.layers {
+		switch dl := ly.(type) {
+		case *diskLayer:
 			if dl.stale {
 				return base
 			}
 			base = dl.rootHash()
-		} else {
-			if dl.stale {
-				continue
-			}
+		case *diffLayer:
 			if _, ok := chain[dl.parentLayer().rootHash()]; !ok {
 				chain[dl.parentLayer().rootHash()] = make([]common.Hash, 0)
 			}
 			chain[dl.parentLayer().rootHash()] = append(chain[dl.parentLayer().rootHash()], dl.rootHash())
+		default:
+			log.Error("unsupported layer type")
 		}
 	}
 	if (base == common.Hash{}) {

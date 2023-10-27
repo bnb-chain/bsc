@@ -266,14 +266,14 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 //}
 
 // size returns the approximate size of cached nodes in the disk layer.
-func (dl *diskLayer) size() common.StorageSize {
+func (dl *diskLayer) size() (common.StorageSize, common.StorageSize) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
 	if dl.stale {
-		return 0
+		return 0, 0
 	}
-	return common.StorageSize(dl.buffer.size)
+	return common.StorageSize(dl.buffer.current.size), common.StorageSize(dl.buffer.backup.size)
 }
 
 // resetCache releases the memory held by clean cache to prevent memory leak.
