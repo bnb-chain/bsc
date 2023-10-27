@@ -282,7 +282,7 @@ func (db *Database) Reset(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	dl := newDiskLayer(root, 0, db, nil, newAggNodeBuffer(db.bufferSize, nil, 0))
+	dl := newDiskLayer(root, 0, db, nil, newAggNodeBuffer(db.bufferSize, nil, 0), newAggNodeBuffer(db.bufferSize, nil, 0))
 	db.tree.reset(dl)
 	log.Info("Rebuilt trie database", "root", root)
 	return nil

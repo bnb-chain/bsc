@@ -37,6 +37,10 @@ func toAggPath(path []byte) []byte {
 	}
 }
 
+func (n *AggNode) copy() (*AggNode, error) {
+	return DecodeAggNode(n.encodeTo())
+}
+
 func (n *AggNode) Empty() bool {
 	return reflect.DeepEqual(n, AggNode{})
 }

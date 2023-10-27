@@ -130,7 +130,7 @@ func (db *Database) loadLayers() layer {
 		log.Info("Failed to load aggpathdb journal, discard it", "err", err)
 	}
 	// Return single layer with persistent state.
-	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, newAggNodeBuffer(db.bufferSize, nil, 0))
+	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, newAggNodeBuffer(db.bufferSize, nil, 0), newAggNodeBuffer(db.bufferSize, nil, 0))
 }
 
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
@@ -170,7 +170,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		nodes[entry.Owner] = subset
 	}
 	// Calculate the internal state transitions by id difference.
-	base := newDiskLayer(root, id, db, nil, newEmptyAggNodeBuffer(db.bufferSize, id-stored))
+	base := newDiskLayer(root, id, db, nil, newEmptyAggNodeBuffer(db.bufferSize, id-stored), newEmptyAggNodeBuffer(db.bufferSize, id-stored))
 	base.commitNodes(nodes)
 	return base, nil
 }

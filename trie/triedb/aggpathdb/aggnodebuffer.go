@@ -112,46 +112,6 @@ func (b *aggNodeBuffer) aggNode(owner common.Hash, path []byte) *AggNode {
 	return aggNode
 }
 
-// commit merges the dirty aggNodes into the aggNodeBuffer. This operation won't take
-// the ownership of the aggNodes map which belongs to the bottom-most diff layer.
-// It will just hold the node references from the given map which are safe to
-// copy.
-func (b *aggNodeBuffer) commit(aggNodes map[common.Hash]map[string]*AggNode) *aggNodeBuffer {
-	var (
-		delta         int64
-		overwrite     int64
-		overwriteSize int64
-	)
-	for owner, subset := range aggNodes {
-		current, exist := b.aggNodes[owner]
-		if !exist {
-			// Allocate a new map for the subset instead of claiming it directly
-			// from the passed map to avoid potential concurrent map read/write.
-			// The aggNodes belong to original diff layer are still accessible even
-			// after merging, thus the ownership of aggNodes map should still belong
-			// to original layer and any mutation on it should be prevented.
-			current = make(map[string]*AggNode)
-
-			for path, n := range subset {
-				if orig, exist := current[path]; !exist {
-					delta += int64(n.Size() + len(path))
-				} else {
-					delta += int64(n.Size() - orig.Size())
-					overwrite++
-					overwriteSize += int64(orig.Size() + len(path))
-				}
-				current[path] = n
-			}
-			b.aggNodes[owner] = current
-		}
-	}
-	b.updateSize(delta)
-	b.layers++
-	gcNodesMeter.Mark(overwrite)
-	gcBytesMeter.Mark(overwriteSize)
-	return b
-}
-
 // revert is the reverse operation of commit. It also merges the provided aggNodes
 // into the aggNodeBuffer, the difference is that the provided node set should
 // revert the changes made by the last state transition.
@@ -241,6 +201,13 @@ func (b *aggNodeBuffer) setSize(size int, db ethdb.KeyValueStore, cleans *aggNod
 	return b.flush(db, cleans, id, false)
 }
 
+func (b *aggNodeBuffer) canFlush(force bool) bool {
+	if b.size <= b.limit && !force {
+		return false
+	}
+	return true
+}
+
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
 func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, cleans *aggNodeCache, id uint64, force bool) error {
@@ -271,6 +238,38 @@ func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, cleans *aggNodeCache, id u
 	log.Debug("Persisted aggPathDB aggNodes", "aggNodes", len(b.aggNodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
 	b.reset()
 	return nil
+}
+
+// aggregateAndWriteNodes will persist all agg node into the database
+// Note this function will inject all the clean node into the cleanCache
+func aggregateAndWriteNodes(cache *aggNodeCache, batch ethdb.Batch, nodes map[common.Hash]map[string]*AggNode) (total int) {
+	// load the node from clean memory cache and update it, then persist it.
+	for owner, subset := range nodes {
+		for path, n := range subset {
+			if n.Empty() {
+				if owner == (common.Hash{}) {
+					rawdb.DeleteAccountTrieAggNode(batch, []byte(path))
+				} else {
+					rawdb.DeleteStorageTrieAggNode(batch, owner, []byte(path))
+				}
+				if cache != nil {
+					cache.cleans.Del(cacheKey(owner, []byte(path)))
+				}
+			} else {
+				nbytes := n.encodeTo()
+				if owner == (common.Hash{}) {
+					rawdb.WriteAccountTrieAggNode(batch, []byte(path), nbytes)
+				} else {
+					rawdb.WriteStorageTrieAggNode(batch, owner, []byte(path), nbytes)
+				}
+				if cache != nil {
+					cache.Set(cacheKey(owner, []byte(path)), nbytes)
+				}
+			}
+		}
+		total += len(subset)
+	}
+	return total
 }
 
 // cacheKey constructs the unique key of clean cache.

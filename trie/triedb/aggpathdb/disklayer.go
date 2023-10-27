@@ -20,11 +20,11 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
@@ -33,17 +33,18 @@ import (
 
 // diskLayer is a low level persistent layer built on top of a key-value store.
 type diskLayer struct {
-	root   common.Hash    // Immutable, root hash to which this layer was made for
-	id     uint64         // Immutable, corresponding state id
-	db     *Database      // Agg-Path-based trie database
-	cleans *aggNodeCache  // GC friendly memory cache of clean agg node RLPs
-	buffer *aggNodeBuffer // Agg node buffer to aggregate writes
-	stale  bool           // Signals that the layer became stale (state progressed)
-	lock   sync.RWMutex   // Lock used to protect stale flag
+	root            common.Hash    // Immutable, root hash to which this layer was made for
+	id              uint64         // Immutable, corresponding state id
+	db              *Database      // Agg-Path-based trie database
+	cleans          *aggNodeCache  // GC friendly memory cache of clean agg node RLPs
+	buffer          *aggNodeBuffer // Agg node buffer to aggregate writes
+	immutableBuffer *aggNodeBuffer // Agg node buffer to aggregate writes
+	stale           bool           // Signals that the layer became stale (state progressed)
+	lock            sync.RWMutex   // Lock used to protect stale flag
 }
 
 // newDiskLayer creates a new disk layer based on the passing arguments.
-func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *aggNodeCache, buffer *aggNodeBuffer) *diskLayer {
+func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *aggNodeCache, buffer *aggNodeBuffer, immutableBuffer *aggNodeBuffer) *diskLayer {
 	// Initialize a clean cache if the memory allowance is not zero
 	// or reuse the provided cache if it is not nil (inherited from
 	// the original disk layer).
@@ -51,11 +52,12 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *aggNodeCach
 		cleans = newAggNodeCache(db, nil, db.config.CleanCacheSize)
 	}
 	return &diskLayer{
-		root:   root,
-		id:     id,
-		db:     db,
-		cleans: cleans,
-		buffer: buffer,
+		root:            root,
+		id:              id,
+		db:              db,
+		cleans:          cleans,
+		buffer:          buffer,
+		immutableBuffer: immutableBuffer,
 	}
 }
 
@@ -119,6 +121,15 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	}
 	dirtyMissMeter.Mark(1)
 
+	n, err = dl.immutableBuffer.node(owner, path, hash)
+	if err != nil {
+		return nil, err
+	}
+
+	if n != nil {
+		return n.Blob, nil
+	}
+
 	// Try to retrieve the trie node from the agg node cache.
 	blob, err := dl.cleans.node(owner, path, hash)
 	if err != nil {
@@ -168,12 +179,21 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// many aggNodes cached. The clean cache is inherited from the original
 	// disk layer for reusing.
 	dl.commitNodes(bottom.nodes)
-	ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer)
-	err := ndl.buffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id, force)
-	if err != nil {
-		return nil, err
+	if !force && dl.buffer.canFlush(force) {
+		for !dl.immutableBuffer.empty() {
+			// wait until
+			time.Sleep(100 * time.Microsecond)
+		}
+
+		ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
+		go ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id, force)
+		return ndl, nil
+	} else {
+		ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer, dl.immutableBuffer)
+		ndl.buffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id, force)
+		return ndl, nil
 	}
-	return ndl, nil
+
 }
 
 // revert applies the given state history and return a reverted disk layer.
@@ -223,7 +243,7 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 			log.Crit("Failed to write states", "err", err)
 		}
 	}
-	return newDiskLayer(h.meta.parent, dl.id-1, dl.db, dl.cleans, dl.buffer), nil
+	return newDiskLayer(h.meta.parent, dl.id-1, dl.db, dl.cleans, dl.buffer, dl.immutableBuffer), nil
 }
 
 func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node) {
@@ -248,16 +268,24 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 			aggNode, ok := current[string(aggPath)]
 			if aggNode == nil {
 				var err error
-				// retrieve aggNode from clean cache and disk
-				aggNode, err = dl.cleans.aggNode(owner, aggPath)
-				if err != nil {
-					panic(fmt.Sprintf("decode agg node failed, err: %v", err))
+				immutableAggNode := dl.immutableBuffer.aggNode(owner, aggPath)
+				if immutableAggNode == nil {
+					// retrieve aggNode from clean cache and disk
+					aggNode, err = dl.cleans.aggNode(owner, aggPath)
+					if err != nil {
+						panic(fmt.Sprintf("decode agg node failed from clean cache, err: %v", err))
+					}
+					// if immutable buffer and cache missing, create a new aggNode
+					if aggNode == nil {
+						aggNode = &AggNode{}
+					}
+				} else {
+					aggNode, err = immutableAggNode.copy()
+					if err != nil {
+						panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
+					}
 				}
 
-				// if cache missing, create a new aggNode
-				if aggNode == nil {
-					aggNode = &AggNode{}
-				}
 			}
 			oldSize := aggNode.Size()
 			if n.IsDeleted() {
@@ -281,38 +309,6 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 	dl.buffer.layers++
 	gcNodesMeter.Mark(overwrite)
 	gcBytesMeter.Mark(overwriteSize)
-}
-
-// aggregateAndWriteNodes will persist all agg node into the database
-// Note this function will inject all the clean node into the cleanCache
-func aggregateAndWriteNodes(cache *aggNodeCache, batch ethdb.Batch, nodes map[common.Hash]map[string]*AggNode) (total int) {
-	// load the node from clean memory cache and update it, then persist it.
-	for owner, subset := range nodes {
-		for path, n := range subset {
-			if n.Empty() {
-				if owner == (common.Hash{}) {
-					rawdb.DeleteAccountTrieAggNode(batch, []byte(path))
-				} else {
-					rawdb.DeleteStorageTrieAggNode(batch, owner, []byte(path))
-				}
-				if cache != nil {
-					cache.cleans.Del(cacheKey(owner, []byte(path)))
-				}
-			} else {
-				nbytes := n.encodeTo()
-				if owner == (common.Hash{}) {
-					rawdb.WriteAccountTrieAggNode(batch, []byte(path), nbytes)
-				} else {
-					rawdb.WriteStorageTrieAggNode(batch, owner, []byte(path), nbytes)
-				}
-				if cache != nil {
-					cache.Set(cacheKey(owner, []byte(path)), nbytes)
-				}
-			}
-		}
-		total += len(subset)
-	}
-	return total
 }
 
 // setBufferSize sets the node buffer size to the provided value.
