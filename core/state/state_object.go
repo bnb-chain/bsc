@@ -149,17 +149,17 @@ func (s *stateObject) touch() {
 func (s *stateObject) getTrie() (Trie, error) {
 	if s.trie == nil {
 		// Try fetching from prefetcher first
-		if s.data.Root != types.EmptyRootHash && s.db.prefetcher != nil {
-			// When the miner is creating the pending state, there is no prefetcher
-			s.trie = s.db.prefetcher.trie(s.addrHash, s.data.Root)
+		// if s.data.Root != types.EmptyRootHash && s.db.prefetcher != nil {
+		// When the miner is creating the pending state, there is no prefetcher
+		//	s.trie = s.db.prefetcher.trie(s.addrHash, s.data.Root)
+		// }
+		// if s.trie == nil {
+		tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root)
+		if err != nil {
+			return nil, err
 		}
-		if s.trie == nil {
-			tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root)
-			if err != nil {
-				return nil, err
-			}
-			s.trie = tr
-		}
+		s.trie = tr
+		// }
 	}
 	return s.trie, nil
 }
