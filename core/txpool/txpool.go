@@ -319,11 +319,11 @@ func (p *TxPool) Pending(enforceTips bool) map[common.Address][]*LazyTransaction
 // SubscribeNewTxsEvent registers a subscription of NewTxsEvent and starts sending
 // events to the given channel.
 func (p *TxPool) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
-	subs := make([]event.Subscription, len(p.subpools))
-	for i, subpool := range p.subpools {
+	subs := make([]event.Subscription, 0, len(p.subpools))
+	for _, subpool := range p.subpools {
 		sub := subpool.SubscribeTransactions(ch)
 		if sub != nil { // sub will be nil when subpool have been shut down
-			subs[i] = sub
+			subs = append(subs, sub)
 		}
 	}
 	return p.subs.Track(event.JoinSubscriptions(subs...))
@@ -332,11 +332,11 @@ func (p *TxPool) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscrip
 // SubscribeNewTxsEvent registers a subscription of NewTxsEvent and starts sending
 // events to the given channel.
 func (p *TxPool) SubscribeReannoTxsEvent(ch chan<- core.ReannoTxsEvent) event.Subscription {
-	subs := make([]event.Subscription, len(p.subpools))
-	for i, subpool := range p.subpools {
+	subs := make([]event.Subscription, 0, len(p.subpools))
+	for _, subpool := range p.subpools {
 		sub := subpool.SubscribeReannoTxsEvent(ch)
 		if sub != nil { // sub will be nil when subpool have been shut down
-			subs[i] = sub
+			subs = append(subs, sub)
 		}
 	}
 	return p.subs.Track(event.JoinSubscriptions(subs...))
