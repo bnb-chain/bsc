@@ -1691,9 +1691,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 						return err
 					}
 				}
-				if root != types.EmptyRootHash {
-					s.db.CacheAccount(root, s.trie)
-				}
 
 				origin := s.originalRoot
 				if origin == (common.Hash{}) {

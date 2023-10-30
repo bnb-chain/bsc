@@ -464,9 +464,6 @@ func (s *stateObject) commit() (*trienode.NodeSet, error) {
 		return nil, err
 	}
 	s.data.Root = root
-	if s.data.Root != types.EmptyRootHash {
-		s.db.db.CacheStorage(s.addrHash, s.data.Root, s.trie)
-	}
 
 	// Update original account data after commit
 	s.origin = s.data.Copy()
