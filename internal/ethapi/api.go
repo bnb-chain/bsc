@@ -2038,7 +2038,7 @@ func (s *TransactionAPI) GetTransactionDataAndReceipt(ctx context.Context, hash 
 	receipt := receipts[index]
 
 	// Derive the sender.
-	header, err := s.b.HeaderByHash(ctx, hash)
+	header, err := s.b.HeaderByHash(ctx, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -2076,6 +2076,8 @@ func (s *TransactionAPI) GetTransactionDataAndReceipt(ctx context.Context, hash 
 		"contractAddress":   nil,
 		"logs":              receipt.Logs,
 		"logsBloom":         receipt.Bloom,
+		"type":              hexutil.Uint(tx.Type()),
+		"effectiveGasPrice": (*hexutil.Big)(receipt.EffectiveGasPrice),
 	}
 
 	// Assign receipt status or post state.
