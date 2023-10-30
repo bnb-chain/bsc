@@ -87,6 +87,7 @@ func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) tri
 		delta         int64
 		overwrite     int64
 		overwriteSize int64
+		total         int64
 	)
 	for owner, subset := range nodes {
 		current, exist := b.nodes[owner]
@@ -105,6 +106,7 @@ func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) tri
 			continue
 		}
 		for path, n := range subset {
+			total++
 			if orig, exist := current[path]; !exist {
 				delta += int64(len(n.Blob) + len(path) + len(owner))
 			} else {
@@ -118,6 +120,7 @@ func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) tri
 	}
 	b.updateSize(delta)
 	b.layers++
+	gcTotalNodeMeter.Mark(total)
 	gcNodesMeter.Mark(overwrite)
 	gcBytesMeter.Mark(overwriteSize)
 	return b

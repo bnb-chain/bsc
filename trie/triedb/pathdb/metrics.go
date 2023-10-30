@@ -38,8 +38,9 @@ var (
 	commitNodesMeter = metrics.NewRegisteredMeter("pathdb/commit/nodes", nil)
 	commitBytesMeter = metrics.NewRegisteredMeter("pathdb/commit/bytes", nil)
 
-	gcNodesMeter = metrics.NewRegisteredMeter("pathdb/gc/nodes", nil)
-	gcBytesMeter = metrics.NewRegisteredMeter("pathdb/gc/bytes", nil)
+	gcNodesMeter     = metrics.NewRegisteredMeter("pathdb/gc/nodes", nil)
+	gcBytesMeter     = metrics.NewRegisteredMeter("pathdb/gc/bytes", nil)
+	gcTotalNodeMeter = metrics.NewRegisteredMeter("pathdb/gc/totalnodes", nil)
 
 	diffLayerBytesMeter = metrics.NewRegisteredMeter("pathdb/diff/bytes", nil)
 	diffLayerNodesMeter = metrics.NewRegisteredMeter("pathdb/diff/nodes", nil)
