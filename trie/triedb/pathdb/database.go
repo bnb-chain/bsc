@@ -425,3 +425,10 @@ func (db *Database) SetBufferSize(size int) error {
 func (db *Database) Scheme() string {
 	return rawdb.PathScheme
 }
+
+// Head return the top non-fork difflayer/disklayer root hash for rewinding.
+func (db *Database) Head() common.Hash {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	return db.tree.front()
+}

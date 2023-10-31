@@ -23,6 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 )
@@ -211,4 +212,43 @@ func (tree *layerTree) bottom() *diskLayer {
 		current = current.parentLayer()
 	}
 	return current.(*diskLayer)
+}
+
+// front return the top non-fork difflayer/disklayer root hash for rewinding.
+func (tree *layerTree) front() common.Hash {
+	tree.lock.RLock()
+	defer tree.lock.RUnlock()
+
+	chain := make(map[common.Hash][]common.Hash)
+	var base common.Hash
+	for _, layer := range tree.layers {
+		switch dl := layer.(type) {
+		case *diskLayer:
+			if dl.stale {
+				return base
+			}
+			base = dl.rootHash()
+		case *diffLayer:
+			if _, ok := chain[dl.parentLayer().rootHash()]; !ok {
+				chain[dl.parentLayer().rootHash()] = make([]common.Hash, 0)
+			}
+			chain[dl.parentLayer().rootHash()] = append(chain[dl.parentLayer().rootHash()], dl.rootHash())
+		default:
+			log.Warn("unsupported layer type")
+		}
+	}
+	if (base == common.Hash{}) {
+		return base
+	}
+	parent := base
+	for {
+		children, ok := chain[parent]
+		if !ok {
+			return parent
+		}
+		if len(children) != 1 {
+			return parent
+		}
+		parent = children[0]
+	}
 }

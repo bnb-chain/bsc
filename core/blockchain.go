@@ -396,11 +396,15 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		var diskRoot common.Hash
 		if bc.cacheConfig.SnapshotLimit > 0 {
 			diskRoot = rawdb.ReadSnapshotRoot(bc.db)
-		} else if bc.triedb.Scheme() == rawdb.PathScheme {
-			_, diskRoot = rawdb.ReadAccountTrieNode(bc.db, nil)
+		}
+		if bc.triedb.Scheme() == rawdb.PathScheme {
+			recoverable, _ := bc.triedb.Recoverable(diskRoot)
+			if !bc.HasState(diskRoot) && !recoverable {
+				diskRoot = bc.triedb.Head()
+			}
 		}
 		if diskRoot != (common.Hash{}) {
-			log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash(), "snaproot", diskRoot)
+			log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash(), "diskRoot", diskRoot)
 
 			snapDisk, err := bc.setHeadBeyondRoot(head.Number.Uint64(), 0, diskRoot, true)
 			if err != nil {
@@ -802,6 +806,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 
 	// resetState resets the persistent state to genesis if it's not available.
 	resetState := func() {
+		log.Info("Reset to block with genesis state", "number", bc.genesisBlock.NumberU64(), "hash", bc.genesisBlock.Hash())
 		// Short circuit if the genesis state is already present.
 		if bc.HasState(bc.genesisBlock.Root()) {
 			return
@@ -825,7 +830,6 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		// chain reparation mechanism without deleting any data!
 		if currentBlock := bc.CurrentBlock(); currentBlock != nil && header.Number.Uint64() <= currentBlock.Number.Uint64() {
 			newHeadBlock := bc.GetBlock(header.Hash(), header.Number.Uint64())
-			lastBlockNum := header.Number.Uint64()
 			if newHeadBlock == nil {
 				log.Error("Gap in the chain, rewinding to genesis", "number", header.Number, "hash", header.Hash())
 				newHeadBlock = bc.genesisBlock
@@ -835,10 +839,8 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 				// keeping rewinding until we exceed the optional threshold
 				// root hash
 				beyondRoot := (root == common.Hash{}) // Flag whether we're beyond the requested root (no root, always true)
-				enoughBeyondCount := false
-				beyondCount := 0
+
 				for {
-					beyondCount++
 					// If a root threshold was requested but not yet crossed, check
 					if root != (common.Hash{}) && !beyondRoot && newHeadBlock.Root() == root {
 						beyondRoot, rootNumber = true, newHeadBlock.NumberU64()
@@ -854,24 +856,11 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 							log.Error("Missing block in the middle, aiming genesis", "number", newHeadBlock.NumberU64()-1, "hash", newHeadBlock.ParentHash())
 							newHeadBlock = bc.genesisBlock
 						} else {
-							log.Trace("Rewind passed pivot, aiming genesis", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "pivot", *pivot)
+							log.Info("Rewind passed pivot, aiming genesis", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "pivot", *pivot)
 							newHeadBlock = bc.genesisBlock
 						}
 					}
-					if beyondRoot || (enoughBeyondCount && root != common.Hash{}) || newHeadBlock.NumberU64() == 0 {
-						if enoughBeyondCount && (root != common.Hash{}) && rootNumber == 0 {
-							for {
-								lastBlockNum++
-								block := bc.GetBlockByNumber(lastBlockNum)
-								if block == nil {
-									break
-								}
-								if block.Root() == root {
-									rootNumber = block.NumberU64()
-									break
-								}
-							}
-						}
+					if beyondRoot || newHeadBlock.NumberU64() == 0 {
 						if newHeadBlock.NumberU64() == 0 {
 							resetState()
 						} else if !bc.HasState(newHeadBlock.Root()) {
