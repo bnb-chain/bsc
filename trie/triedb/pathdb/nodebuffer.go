@@ -29,6 +29,8 @@ import (
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
+var _ trienodebuffer = &nodebuffer{}
+
 // nodebuffer is a collection of modified trie nodes to aggregate the disk
 // write. The content of the nodebuffer must be checked before diving into
 // disk (since it basically is not-yet-written data).
@@ -80,7 +82,7 @@ func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*tr
 // the ownership of the nodes map which belongs to the bottom-most diff layer.
 // It will just hold the node references from the given map which are safe to
 // copy.
-func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) *nodebuffer {
+func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) trienodebuffer {
 	var (
 		delta         int64
 		overwrite     int64
@@ -97,14 +99,14 @@ func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) *no
 			current = make(map[string]*trienode.Node)
 			for path, n := range subset {
 				current[path] = n
-				delta += int64(len(n.Blob) + len(path))
+				delta += int64(len(n.Blob) + len(path) + len(owner))
 			}
 			b.nodes[owner] = current
 			continue
 		}
 		for path, n := range subset {
 			if orig, exist := current[path]; !exist {
-				delta += int64(len(n.Blob) + len(path))
+				delta += int64(len(n.Blob) + len(path) + len(owner))
 			} else {
 				delta += int64(len(n.Blob) - len(orig.Blob))
 				overwrite++
@@ -199,10 +201,10 @@ func (b *nodebuffer) empty() bool {
 
 // setSize sets the buffer size to the provided number, and invokes a flush
 // operation if the current memory usage exceeds the new limit.
-func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
-	b.limit = uint64(size)
-	return b.flush(db, clean, id, false)
-}
+//func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+//	b.limit = uint64(size)
+//	return b.flush(db, clean, id, false)
+//}
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
@@ -217,7 +219,7 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	}
 	var (
 		start = time.Now()
-		batch = db.NewBatchWithSize(int(b.size))
+		batch = db.NewBatchWithSize(int(float64(b.size) * DefaultBatchRedundancyRate))
 	)
 	nodes := writeNodes(batch, b.nodes, clean)
 	rawdb.WritePersistentStateID(batch, id)
@@ -272,4 +274,19 @@ func cacheKey(owner common.Hash, path []byte) []byte {
 		return path
 	}
 	return append(owner.Bytes(), path...)
+}
+
+// getSize return the nodebuffer used size.
+func (b *nodebuffer) getSize() (uint64, uint64) {
+	return b.size, 0
+}
+
+// getAllNodes return all the trie nodes are cached in nodebuffer.
+func (b *nodebuffer) getAllNodes() map[common.Hash]map[string]*trienode.Node {
+	return b.nodes
+}
+
+// getLayers return the size of cached difflayers.
+func (b *nodebuffer) getLayers() uint64 {
+	return b.layers
 }

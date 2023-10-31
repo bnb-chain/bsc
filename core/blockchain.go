@@ -155,6 +155,7 @@ type CacheConfig struct {
 	NoTries             bool          // Insecure settings. Do not have any tries in databases if enabled.
 	StateHistory        uint64        // Number of blocks from head whose state histories are reserved.
 	StateScheme         string        // Scheme used to store ethereum states and merkle tree nodes on top
+	PathSyncFlush       bool          // Whether sync flush the trienodebuffer of pathdb to disk.
 
 	SnapshotNoBuild bool // Whether the background generation is allowed
 	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
@@ -174,6 +175,7 @@ func (c *CacheConfig) triedbConfig() *trie.Config {
 	}
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
+			SyncFlush:      c.PathSyncFlush,
 			StateHistory:   c.StateHistory,
 			CleanCacheSize: c.TrieCleanLimit * 1024 * 1024,
 			DirtyCacheSize: c.TrieDirtyLimit * 1024 * 1024,
@@ -1204,7 +1206,7 @@ func (bc *BlockChain) Stop() {
 			for !bc.triegc.Empty() {
 				triedb.Dereference(bc.triegc.PopItem())
 			}
-			if size, _ := triedb.Size(); size != 0 {
+			if _, size, _, _ := triedb.Size(); size != 0 {
 				log.Error("Dangling trie nodes after full cleanup")
 			}
 		}
@@ -1608,8 +1610,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			if current := block.NumberU64(); current > bc.triesInMemory {
 				// If we exceeded our memory allowance, flush matured singleton nodes to disk
 				var (
-					nodes, imgs = triedb.Size()
-					limit       = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
+					_, nodes, _, imgs = triedb.Size()
+					limit             = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
 				)
 				if nodes > limit || imgs > 4*1024*1024 {
 					triedb.Cap(limit - ethdb.IdealBatchSize)
@@ -2093,8 +2095,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		stats.processed++
 		stats.usedGas += usedGas
 
-		dirty, _ := bc.triedb.Size()
-		stats.report(chain, it.index, dirty, setHead)
+		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
+		stats.report(chain, it.index, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, setHead)
 
 		if !setHead {
 			// After merge we expect few side chains. Simply count

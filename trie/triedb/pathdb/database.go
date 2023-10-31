@@ -52,6 +52,14 @@ const (
 	// Do not increase the buffer size arbitrarily, otherwise the system
 	// pause time will increase when the database writes happen.
 	DefaultDirtyBufferSize = 64 * 1024 * 1024
+
+	// DefaultBackgroundFlushInterval defines the default the wait interval
+	// that background node cache flush disk.
+	DefaultBackgroundFlushInterval = 3
+
+	// DefaultBatchRedundancyRate defines the batch size, compatible write
+	// size calculation is inaccurate
+	DefaultBatchRedundancyRate = 1.1
 )
 
 // layer is the interface implemented by all state layers which includes some
@@ -86,6 +94,7 @@ type layer interface {
 
 // Config contains the settings for database.
 type Config struct {
+	SyncFlush      bool   // Flag of trienodebuffer sync flush cache to disk
 	StateHistory   uint64 // Number of recent blocks to maintain state history for
 	CleanCacheSize int    // Maximum memory allowance (in bytes) for caching clean nodes
 	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty nodes
@@ -180,7 +189,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 			log.Warn("Truncated extra state histories", "number", pruned)
 		}
 	}
-	log.Warn("Path-based state scheme is an experimental feature")
+	log.Warn("Path-based state scheme is an experimental feature", "sync", db.config.SyncFlush)
 	return db
 }
 
@@ -283,7 +292,7 @@ func (db *Database) Reset(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	dl := newDiskLayer(root, 0, db, nil, newNodeBuffer(db.bufferSize, nil, 0))
+	dl := newDiskLayer(root, 0, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nil, 0))
 	db.tree.reset(dl)
 	log.Info("Rebuilt trie database", "root", root)
 	return nil
@@ -384,16 +393,16 @@ func (db *Database) Close() error {
 
 // Size returns the current storage size of the memory cache in front of the
 // persistent database layer.
-func (db *Database) Size() (size common.StorageSize) {
+func (db *Database) Size() (diffs common.StorageSize, nodes common.StorageSize, immutableNodes common.StorageSize) {
 	db.tree.forEach(func(layer layer) {
 		if diff, ok := layer.(*diffLayer); ok {
-			size += common.StorageSize(diff.memory)
+			diffs += common.StorageSize(diff.memory)
 		}
 		if disk, ok := layer.(*diskLayer); ok {
-			size += disk.size()
+			nodes, immutableNodes = disk.size()
 		}
 	})
-	return size
+	return diffs, nodes, immutableNodes
 }
 
 // Initialized returns an indicator if the state data is already
@@ -410,15 +419,18 @@ func (db *Database) Initialized(genesisRoot common.Hash) bool {
 
 // SetBufferSize sets the node buffer size to the provided value(in bytes).
 func (db *Database) SetBufferSize(size int) error {
-	db.lock.Lock()
-	defer db.lock.Unlock()
+	// disable SetBufferSize after init db
+	return nil
 
-	if size > MaxDirtyBufferSize {
-		log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(MaxDirtyBufferSize))
-		size = MaxDirtyBufferSize
-	}
-	db.bufferSize = size
-	return db.tree.bottom().setBufferSize(db.bufferSize)
+	//db.lock.Lock()
+	//defer db.lock.Unlock()
+	//
+	//if size > MaxDirtyBufferSize {
+	//	log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(MaxDirtyBufferSize))
+	//	size = MaxDirtyBufferSize
+	//}
+	//db.bufferSize = size
+	//return db.tree.bottom().setBufferSize(db.bufferSize)
 }
 
 // Scheme returns the node scheme used in the database.
