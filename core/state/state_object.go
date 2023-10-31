@@ -165,20 +165,20 @@ func (s *StateObject) getTrie(db Database) Trie {
 	if s.trie == nil {
 		// Try fetching from prefetcher first
 		// We don't prefetch empty tries
-		prefetcher := s.db.prefetcher
-		if s.data.Root != emptyRoot && prefetcher != nil {
-			// When the miner is creating the pending state, there is no
-			// prefetcher
-			s.trie = prefetcher.trie(s.data.Root)
+		// prefetcher := s.db.prefetcher
+		// if s.data.Root != emptyRoot && prefetcher != nil {
+		// When the miner is creating the pending state, there is no
+		// prefetcher
+		// s.trie = prefetcher.trie(s.data.Root)
+		// }
+		// if s.trie == nil {
+		var err error
+		s.trie, err = db.OpenStorageTrie(s.addrHash, s.data.Root)
+		if err != nil {
+			s.trie, _ = db.OpenStorageTrie(s.addrHash, common.Hash{})
+			s.setError(fmt.Errorf("can't create storage trie: %v", err))
 		}
-		if s.trie == nil {
-			var err error
-			s.trie, err = db.OpenStorageTrie(s.addrHash, s.data.Root)
-			if err != nil {
-				s.trie, _ = db.OpenStorageTrie(s.addrHash, common.Hash{})
-				s.setError(fmt.Errorf("can't create storage trie: %v", err))
-			}
-		}
+		// }
 	}
 	return s.trie
 }
