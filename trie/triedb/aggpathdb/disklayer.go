@@ -193,7 +193,6 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		ndl.buffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id, force)
 		return ndl, nil
 	}
-
 }
 
 // revert applies the given state history and return a reverted disk layer.
@@ -285,7 +284,6 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 						panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
 					}
 				}
-
 			}
 			oldSize := aggNode.Size()
 			if n.IsDeleted() {

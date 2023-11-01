@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb"
 	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
@@ -727,11 +728,11 @@ func testIncompleteStateSync(t *testing.T, scheme string) {
 		if val == nil {
 			t.Error("missing trie node")
 		}
-		triedb.DeleteTrieNode(dstDb, owner, inner, hash, scheme)
+		triedb.DeleteTrieNode(dstDb, dstDb, owner, inner, hash, scheme)
 		if err := checkStateConsistency(dstDb, scheme, srcRoot); err == nil {
 			t.Errorf("trie inconsistency not caught, missing: %v", path)
 		}
-		triedb.WriteTrieNode(dstDb, owner, inner, hash, val, scheme)
+		triedb.WriteTrieNode(dstDb, dstDb, owner, inner, hash, val, scheme)
 	}
 }
 
