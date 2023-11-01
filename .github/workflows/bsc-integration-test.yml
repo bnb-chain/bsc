@@ -13,50 +13,62 @@ jobs:
       - name: Checkout bsc-docker-deploy
         uses: actions/checkout@v4
         with:
-          # Repository name with owner. For example, actions/checkout
-          # Default: ${{ github.repository }}
           repository: 'bnb-chain/bsc-docker-deploy'
-          token: ${{ secrets.PAT }}
+          token: ${{ github.token }}
           path: "bsc-docker-deploy"
           ref: 'feature/dinamic-entrypoint'
       - name: Checkout bsc-genesis-contract
         uses: actions/checkout@v4
         with:
           repository: 'bnb-chain/bsc-genesis-contract'
-          token: ${{ secrets.PAT }}
+          token: ${{ github.token }}
           path: "bsc-docker-deploy/bsc-genesis-contract"
       - name: Checkout node
         uses: actions/checkout@v4
         with:
           repository: 'bnb-chain/node'
-          token: ${{ secrets.PAT }}
+          token: ${{ github.token }}
           path: "bsc-docker-deploy/node"
       - name: Checkout bsc
         uses: actions/checkout@v4
         with:
           repository: 'bnb-chain/bsc'
-          token: ${{ secrets.PAT }}
+          token: ${{ github.token }}
           path: "bsc-docker-deploy/bsc"
+      - name: Test
+        run: |
+          ls -lah
+          pwd
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      - name: login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
+          push: true
           context: bsc-docker-deploy/
-          tags: bnb-chain.local/bsc-integration-testing:latest
+          tags: ghcr.io/bnb-chain/bsc-integration-testing:latest
       - name: Checkout bsc-integration-testing
         uses: actions/checkout@v4
         with:
           repository: 'bnb-chain/bsc-integration-testing'
-          token: ${{ secrets.PAT }}
+          token: ${{ github.token }}
           path: "bsc-integration-testing"
       - name: Setup Go 1.21
         uses: actions/setup-go@v4
         with:
           go-version: "1.21"
       - name: Go test with docker containers
-        uses: bnb-alexlucaci/go-test-docker-run-action@v2
+        uses: bnb-alexlucaci/go-test-docker-run-action@v3
         with:
+          working_directory: ./bsc-integration-testing
+          username: bnb-alexlucaci
+          password: ${{ github.token }}
+          registry: ghcr.io
           run: |
-            cd bsc-integration-testing
-            env VOLUME_MOUNT_PATH=${{ runner.workspace }}/bsc-integration-testing/foundation/test IMAGE_NAME=bnb-chain.local/bsc-integration-testing:latest go test -v ./...
+            env VOLUME_MOUNT_PATH=${{ github.workspace }}/bsc-integration-testing/foundation/test IMAGE_NAME=ghcr.io/bnb-chain/bsc-integration-testing:latest go test -v ./...
