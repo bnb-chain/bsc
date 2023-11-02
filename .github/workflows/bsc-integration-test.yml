@@ -14,26 +14,26 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 'bnb-chain/bsc-docker-deploy'
-          token: ${{ github.token }}
+          token: ${{ secrets.BSC_INTEGRATION_TEST_GITHUB_TOKEN }}
           path: "bsc-docker-deploy"
           ref: 'feature/dinamic-entrypoint'
       - name: Checkout bsc-genesis-contract
         uses: actions/checkout@v4
         with:
           repository: 'bnb-chain/bsc-genesis-contract'
-          token: ${{ github.token }}
+          token: ${{ secrets.BSC_INTEGRATION_TEST_GITHUB_TOKEN }}
           path: "bsc-docker-deploy/bsc-genesis-contract"
       - name: Checkout node
         uses: actions/checkout@v4
         with:
           repository: 'bnb-chain/node'
-          token: ${{ github.token }}
+          token: ${{ secrets.BSC_INTEGRATION_TEST_GITHUB_TOKEN }}
           path: "bsc-docker-deploy/node"
       - name: Checkout bsc
         uses: actions/checkout@v4
         with:
           repository: 'bnb-chain/bsc'
-          token: ${{ github.token }}
+          token: ${{ secrets.BSC_INTEGRATION_TEST_GITHUB_TOKEN }}
           path: "bsc-docker-deploy/bsc"
       - name: Test
         run: |
@@ -46,7 +46,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ github.token }}
+          password: ${{ secrets.BSC_INTEGRATION_TEST_GITHUB_TOKEN }}
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 'bnb-chain/bsc-integration-testing'
-          token: ${{ github.token }}
+          token: ${{ secrets.BSC_INTEGRATION_TEST_GITHUB_TOKEN }}
           path: "bsc-integration-testing"
       - name: Setup Go 1.21
         uses: actions/setup-go@v4
@@ -68,7 +68,7 @@ jobs:
         with:
           working_directory: ./bsc-integration-testing
           username: bnb-alexlucaci
-          password: ${{ github.token }}
+          password: ${{ secrets.BSC_INTEGRATION_TEST_GITHUB_TOKEN }}
           registry: ghcr.io
           run: |
             env VOLUME_MOUNT_PATH=${{ github.workspace }}/bsc-integration-testing/foundation/test IMAGE_NAME=ghcr.io/bnb-chain/bsc-integration-testing:latest go test -v ./...
