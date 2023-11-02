@@ -170,7 +170,8 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		nodes[entry.Owner] = subset
 	}
 	// Calculate the internal state transitions by id difference.
-	base := newDiskLayer(root, id, db, nil, newEmptyAggNodeBuffer(db.bufferSize, id-stored), newEmptyAggNodeBuffer(db.bufferSize, id-stored))
+	// commitNodes will
+	base := newDiskLayer(root, id, db, nil, newEmptyAggNodeBuffer(db.bufferSize, id-stored-1), newEmptyAggNodeBuffer(db.bufferSize, 0))
 	base.commitNodes(nodes)
 	return base, nil
 }

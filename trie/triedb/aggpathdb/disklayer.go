@@ -179,18 +179,46 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// many aggNodes cached. The clean cache is inherited from the original
 	// disk layer for reusing.
 	dl.commitNodes(bottom.nodes)
-	if !force && dl.buffer.canFlush(force) {
-		for !dl.immutableBuffer.empty() {
-			// wait until
-			time.Sleep(100 * time.Microsecond)
+	if dl.buffer.canFlush(force) {
+		for {
+			exit := false
+			select {
+			case err := <-dl.immutableBuffer.flushResult:
+				// immutable buffer flush completed, get the result
+				if err != nil {
+					log.Error("Immutable buffer flush failed", "error", err)
+					return nil, err
+				} else {
+					exit = true
+				}
+			default:
+				if dl.immutableBuffer.empty() {
+					exit = true
+				} else {
+					// wait until the immutable buffer flush completely.
+					time.Sleep(5 * time.Microsecond)
+				}
+			}
+			if exit {
+				break
+			}
 		}
 
 		ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
-		go ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id, force)
+		if force {
+			err := ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			go func() {
+				err := ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id)
+				ndl.immutableBuffer.flushResult <- err
+			}()
+		}
 		return ndl, nil
 	} else {
 		ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer, dl.immutableBuffer)
-		ndl.buffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id, force)
 		return ndl, nil
 	}
 }

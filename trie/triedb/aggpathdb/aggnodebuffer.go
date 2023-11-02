@@ -32,17 +32,19 @@ import (
 // write. The content of the aggNodeBuffer must be checked before diving into
 // disk (since it basically is not-yet-written data).
 type aggNodeBuffer struct {
-	layers   uint64                              // The number of diff layers aggregated inside
-	size     uint64                              // The size of aggregated writes
-	limit    uint64                              // The maximum memory allowance in bytes
-	aggNodes map[common.Hash]map[string]*AggNode // The dirty node set, mapped by owner, aggpath and path
+	layers      uint64                              // The number of diff layers aggregated inside
+	size        uint64                              // The size of aggregated writes
+	limit       uint64                              // The maximum memory allowance in bytes
+	aggNodes    map[common.Hash]map[string]*AggNode // The dirty node set, mapped by owner, aggpath and path
+	flushResult chan error
 }
 
 func newEmptyAggNodeBuffer(limit int, layers uint64) *aggNodeBuffer {
 	return &aggNodeBuffer{
-		layers:   layers,
-		limit:    uint64(limit),
-		aggNodes: make(map[common.Hash]map[string]*AggNode),
+		layers:      layers,
+		limit:       uint64(limit),
+		aggNodes:    make(map[common.Hash]map[string]*AggNode),
+		flushResult: make(chan error, 1),
 	}
 }
 
@@ -198,7 +200,10 @@ func (b *aggNodeBuffer) empty() bool {
 // operation if the current memory usage exceeds the new limit.
 func (b *aggNodeBuffer) setSize(size int, db ethdb.KeyValueStore, cleans *aggNodeCache, id uint64) error {
 	b.limit = uint64(size)
-	return b.flush(db, cleans, id, false)
+	if b.canFlush(false) {
+		return b.flush(db, cleans, id)
+	}
+	return nil
 }
 
 func (b *aggNodeBuffer) canFlush(force bool) bool {
@@ -210,10 +215,7 @@ func (b *aggNodeBuffer) canFlush(force bool) bool {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, cleans *aggNodeCache, id uint64, force bool) error {
-	if b.size <= b.limit && !force {
-		return nil
-	}
+func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, cleans *aggNodeCache, id uint64) error {
 	// Ensure the target state id is aligned with the internal counter.
 	head := rawdb.ReadPersistentStateID(db)
 	if head+b.layers != id {
