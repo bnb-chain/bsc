@@ -419,18 +419,15 @@ func (db *Database) Initialized(genesisRoot common.Hash) bool {
 
 // SetBufferSize sets the node buffer size to the provided value(in bytes).
 func (db *Database) SetBufferSize(size int) error {
-	// disable SetBufferSize after init db
-	return nil
+	db.lock.Lock()
+	defer db.lock.Unlock()
 
-	//db.lock.Lock()
-	//defer db.lock.Unlock()
-	//
-	//if size > MaxDirtyBufferSize {
-	//	log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(MaxDirtyBufferSize))
-	//	size = MaxDirtyBufferSize
-	//}
-	//db.bufferSize = size
-	//return db.tree.bottom().setBufferSize(db.bufferSize)
+	if size > MaxDirtyBufferSize {
+		log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(MaxDirtyBufferSize))
+		size = MaxDirtyBufferSize
+	}
+	db.bufferSize = size
+	return db.tree.bottom().setBufferSize(db.bufferSize)
 }
 
 // Scheme returns the node scheme used in the database.

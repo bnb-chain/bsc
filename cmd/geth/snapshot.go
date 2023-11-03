@@ -361,7 +361,17 @@ func pruneBlock(ctx *cli.Context) error {
 	if path == "" {
 		return errors.New("prune failed, did not specify the AncientPath")
 	}
-	if !strings.HasSuffix(oldAncientPath, "geth/chaindata/ancient/chain") {
+	newVersionPath := false
+	files, err := os.ReadDir(oldAncientPath)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if file.IsDir() && file.Name() == "chain" {
+			newVersionPath = true
+		}
+	}
+	if newVersionPath && !strings.HasSuffix(oldAncientPath, "geth/chaindata/ancient/chain") {
 		log.Error("datadir.ancient subdirectory incorrect", "got path", oldAncientPath, "want subdirectory", "geth/chaindata/ancient/chain/")
 		return errors.New("datadir.ancient subdirectory incorrect")
 	}

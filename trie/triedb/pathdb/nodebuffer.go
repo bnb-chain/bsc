@@ -201,10 +201,10 @@ func (b *nodebuffer) empty() bool {
 
 // setSize sets the buffer size to the provided number, and invokes a flush
 // operation if the current memory usage exceeds the new limit.
-//func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
-//	b.limit = uint64(size)
-//	return b.flush(db, clean, id, false)
-//}
+func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+	b.limit = uint64(size)
+	return b.flush(db, clean, id, false)
+}
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
@@ -219,6 +219,10 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	}
 	var (
 		start = time.Now()
+		// Although the calculation of b.size has been as accurate as possible,
+		// some omissions were still found during testing and code review, but
+		// we are still not sure it is completely accurate. For better protection,
+		// some redundancy is added here.
 		batch = db.NewBatchWithSize(int(float64(b.size) * DefaultBatchRedundancyRate))
 	)
 	nodes := writeNodes(batch, b.nodes, clean)

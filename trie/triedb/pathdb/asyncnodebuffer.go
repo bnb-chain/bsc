@@ -1,6 +1,7 @@
 package pathdb
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -82,12 +83,16 @@ func (a *asyncnodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]
 
 	var err error
 	a.current, err = a.current.merge(a.background)
-	a.background.reset()
 	if err != nil {
-		log.Crit("[BUG] failed to merge memory table under revert nodebuffer", "error", err)
+		log.Crit("[BUG] failed to merge node cache under revert async node buffer", "error", err)
 	}
 	a.background.reset()
 	return a.current.revert(db, nodes)
+}
+
+// setSize is unsupported in asyncnodebuffer, due to the double buffer, blocking will occur.
+func (a *asyncnodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+	return errors.New("not supported")
 }
 
 // reset cleans up the disk cache.
@@ -142,12 +147,9 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 	}
 
 	atomic.StoreUint64(&a.current.immutable, 1)
-	tmp := a.background
-	a.background = a.current
-	a.current = tmp
+	a.current, a.background = a.background, a.current
 
-	persistId := id - a.current.layers
-	go func() {
+	go func(persistId uint64) {
 		for {
 			err := a.background.flush(db, clean, persistId)
 			if err == nil {
@@ -156,7 +158,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 			}
 			log.Error("failed to flush background nodecahce to disk", "state_id", persistId, "error", err)
 		}
-	}()
+	}(id)
 	return nil
 }
 
@@ -321,11 +323,13 @@ func (nc *nodecache) merge(nc1 *nodecache) (*nodecache, error) {
 		return nil, nil
 	}
 	if nc == nil || nc.empty() {
-		atomic.StoreUint64(&nc1.immutable, 0)
+		res := copyNodeCache(nc1)
+		atomic.StoreUint64(&res.immutable, 0)
 		return nc1, nil
 	}
 	if nc1 == nil || nc1.empty() {
-		atomic.StoreUint64(&nc.immutable, 0)
+		res := copyNodeCache(nc)
+		atomic.StoreUint64(&res.immutable, 0)
 		return nc, nil
 	}
 	if atomic.LoadUint64(&nc.immutable) == atomic.LoadUint64(&nc1.immutable) {
@@ -419,4 +423,26 @@ func (nc *nodecache) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 	}
 	nc.updateSize(delta)
 	return nil
+}
+
+func copyNodeCache(n *nodecache) *nodecache {
+	if n == nil {
+		return nil
+	}
+	nc := &nodecache{
+		layers:    n.layers,
+		size:      n.size,
+		limit:     n.limit,
+		immutable: atomic.LoadUint64(&n.immutable),
+		nodes:     make(map[common.Hash]map[string]*trienode.Node),
+	}
+	for acc, subTree := range n.nodes {
+		if _, ok := nc.nodes[acc]; !ok {
+			nc.nodes[acc] = make(map[string]*trienode.Node)
+		}
+		for path, node := range subTree {
+			nc.nodes[acc][path] = node
+		}
+	}
+	return nc
 }

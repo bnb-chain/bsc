@@ -54,6 +54,10 @@ type trienodebuffer interface {
 	// memory threshold is reached. Note, all data must be written atomically.
 	flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error
 
+	// setSize sets the buffer size to the provided number, and invokes a flush
+	// operation if the current memory usage exceeds the new limit.
+	setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error
+
 	// reset cleans up the disk cache.
 	reset()
 
@@ -330,16 +334,16 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 	return newDiskLayer(h.meta.parent, dl.id-1, dl.db, dl.cleans, dl.buffer), nil
 }
 
-// setBufferSize sets the node buffer size to the provided value.
-//func (dl *diskLayer) setBufferSize(size int) error {
-//	dl.lock.RLock()
-//	defer dl.lock.RUnlock()
-//
-//	if dl.stale {
-//		return errSnapshotStale
-//	}
-//	return dl.buffer.setSize(size, dl.db.diskdb, dl.cleans, dl.id)
-//}
+// setBufferSize sets the trie node buffer size to the provided value.
+func (dl *diskLayer) setBufferSize(size int) error {
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	if dl.stale {
+		return errSnapshotStale
+	}
+	return dl.buffer.setSize(size, dl.db.diskdb, dl.cleans, dl.id)
+}
 
 // size returns the approximate size of cached nodes in the disk layer.
 func (dl *diskLayer) size() (common.StorageSize, common.StorageSize) {

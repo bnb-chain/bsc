@@ -225,6 +225,7 @@ func (tree *layerTree) front() common.Hash {
 		switch dl := layer.(type) {
 		case *diskLayer:
 			if dl.stale {
+				log.Info("pathdb top disklayer is stale")
 				return base
 			}
 			base = dl.rootHash()
@@ -234,19 +235,22 @@ func (tree *layerTree) front() common.Hash {
 			}
 			chain[dl.parentLayer().rootHash()] = append(chain[dl.parentLayer().rootHash()], dl.rootHash())
 		default:
-			log.Warn("unsupported layer type")
+			log.Crit("unsupported layer type")
 		}
 	}
 	if (base == common.Hash{}) {
+		log.Info("pathdb top difflayer is empty")
 		return base
 	}
 	parent := base
 	for {
 		children, ok := chain[parent]
 		if !ok {
+			log.Info("pathdb top difflayer", "root", parent)
 			return parent
 		}
 		if len(children) != 1 {
+			log.Info("pathdb top difflayer is forked", "common ancestor root", parent)
 			return parent
 		}
 		parent = children[0]
