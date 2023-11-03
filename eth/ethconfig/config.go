@@ -19,6 +19,7 @@ package ethconfig
 
 import (
 	"errors"
+	"github.com/ethereum/go-ethereum/core/txpool/puissantpool"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -169,8 +170,9 @@ type Config struct {
 	Miner miner.Config
 
 	// Transaction pool options
-	TxPool   legacypool.Config
-	BlobPool blobpool.Config
+	TxPool       legacypool.Config
+	BlobPool     blobpool.Config
+	PuissantPool puissantpool.Config
 
 	// Gas Price Oracle options
 	GPO gasprice.Config

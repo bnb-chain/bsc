@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
+	"github.com/ethereum/go-ethereum/core/txpool/puissantpool"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/miner"
@@ -62,6 +63,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		Miner                   miner.Config
 		TxPool                  legacypool.Config
 		BlobPool                blobpool.Config
+		PuissantPool            puissantpool.Config
 		GPO                     gasprice.Config
 		EnablePreimageRecording bool
 		DocRoot                 string `toml:"-"`
@@ -117,6 +119,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.Miner = c.Miner
 	enc.TxPool = c.TxPool
 	enc.BlobPool = c.BlobPool
+	enc.PuissantPool = c.PuissantPool
 	enc.GPO = c.GPO
 	enc.EnablePreimageRecording = c.EnablePreimageRecording
 	enc.DocRoot = c.DocRoot
@@ -176,6 +179,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		Miner                   *miner.Config
 		TxPool                  *legacypool.Config
 		BlobPool                *blobpool.Config
+		PuissantPool            *puissantpool.Config
 		GPO                     *gasprice.Config
 		EnablePreimageRecording *bool
 		DocRoot                 *string `toml:"-"`
@@ -323,6 +327,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.BlobPool != nil {
 		c.BlobPool = *dec.BlobPool
+	}
+	if dec.PuissantPool != nil {
+		c.PuissantPool = *dec.PuissantPool
 	}
 	if dec.GPO != nil {
 		c.GPO = *dec.GPO

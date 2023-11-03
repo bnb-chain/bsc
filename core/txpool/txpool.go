@@ -19,6 +19,7 @@ package txpool
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/txpool/puissantpool"
 	"math/big"
 	"sync"
 
@@ -65,7 +66,8 @@ type BlockChain interface {
 // They exit the pool when they are included in the blockchain or evicted due to
 // resource constraints.
 type TxPool struct {
-	subpools []SubPool // List of subpools for specialized transaction handling
+	subpools     []SubPool // List of subpools for specialized transaction handling
+	puissantPool *puissantpool.PuissantPool
 
 	reservations map[common.Address]SubPool // Map with the account to pool reservations
 	reserveLock  sync.Mutex                 // Lock protecting the account reservations
@@ -76,7 +78,7 @@ type TxPool struct {
 
 // New creates a new transaction pool to gather, sort and filter inbound
 // transactions from the network.
-func New(gasTip *big.Int, chain BlockChain, subpools []SubPool) (*TxPool, error) {
+func New(gasTip *big.Int, chain BlockChain, subpools []SubPool, puissantPool *puissantpool.PuissantPool) (*TxPool, error) {
 	// Retrieve the current head so that all subpools and this main coordinator
 	// pool will have the same starting state, even if the chain moves forward
 	// during initialization.
@@ -84,6 +86,8 @@ func New(gasTip *big.Int, chain BlockChain, subpools []SubPool) (*TxPool, error)
 
 	pool := &TxPool{
 		subpools:     subpools,
+		puissantPool: puissantPool,
+
 		reservations: make(map[common.Address]SubPool),
 		quit:         make(chan chan error),
 	}
@@ -95,6 +99,12 @@ func New(gasTip *big.Int, chain BlockChain, subpools []SubPool) (*TxPool, error)
 			return nil, err
 		}
 	}
+	if puissantPool != nil {
+		if err := puissantPool.Init(gasTip, head); err != nil {
+			return nil, err
+		}
+	}
+
 	go pool.loop(head, chain)
 	return pool, nil
 }
@@ -162,6 +172,10 @@ func (p *TxPool) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if p.puissantPool != nil {
+		_ = p.puissantPool.Close()
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("subpool close errors: %v", errs)
 	}
@@ -202,6 +216,9 @@ func (p *TxPool) loop(head *types.Header, chain BlockChain) {
 				go func(oldHead, newHead *types.Header) {
 					for _, subpool := range p.subpools {
 						subpool.Reset(oldHead, newHead)
+					}
+					if p.puissantPool != nil {
+						p.puissantPool.Reset(oldHead, newHead)
 					}
 					resetDone <- newHead
 				}(oldHead, newHead)
