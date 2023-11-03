@@ -159,15 +159,11 @@ var (
 		MoranBlock:          big.NewInt(22107423),
 		GibbsBlock:          big.NewInt(23846001),
 		PlanckBlock:         big.NewInt(27281024),
-
-		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
-		// TODO Caution !!! it should be very careful !!!
-		LubanBlock: big.NewInt(29020050),
-		PlatoBlock: big.NewInt(30720096),
-		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock: big.NewInt(31302048),
-		LondonBlock: big.NewInt(31302048),
-		HertzBlock:  big.NewInt(31302048),
+		LubanBlock:          big.NewInt(29020050),
+		PlatoBlock:          big.NewInt(30720096),
+		BerlinBlock:         big.NewInt(31302048),
+		LondonBlock:         big.NewInt(31302048),
+		HertzBlock:          big.NewInt(31302048),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -195,15 +191,11 @@ var (
 		NanoBlock:           big.NewInt(23482428),
 		MoranBlock:          big.NewInt(23603940),
 		PlanckBlock:         big.NewInt(28196022),
-
-		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
-		// TODO Caution !!! it should be very careful !!!
-		LubanBlock: big.NewInt(29295050),
-		PlatoBlock: big.NewInt(29861024),
-		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock: big.NewInt(31103030),
-		LondonBlock: big.NewInt(31103030),
-		HertzBlock:  big.NewInt(31103030),
+		LubanBlock:          big.NewInt(29295050),
+		PlatoBlock:          big.NewInt(29861024),
+		BerlinBlock:         big.NewInt(31103030),
+		LondonBlock:         big.NewInt(31103030),
+		HertzBlock:          big.NewInt(31103030),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -231,12 +223,10 @@ var (
 		NanoBlock:           nil,
 		MoranBlock:          nil,
 		PlanckBlock:         nil,
-
-		// TODO
-		LubanBlock:  nil,
-		PlatoBlock:  nil,
-		BerlinBlock: nil,
-		HertzBlock:  nil,
+		LubanBlock:          nil,
+		PlatoBlock:          nil,
+		BerlinBlock:         nil,
+		HertzBlock:          nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,

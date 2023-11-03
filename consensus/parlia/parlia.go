@@ -828,6 +828,13 @@ func (p *Parlia) prepareValidators(header *types.Header) error {
 		}
 	} else {
 		header.Extra = append(header.Extra, byte(len(newValidators)))
+		if p.chainConfig.IsOnLuban(header.Number) {
+			voteAddressMap = make(map[common.Address]*types.BLSPublicKey, len(newValidators))
+			var zeroBlsKey types.BLSPublicKey
+			for _, validator := range newValidators {
+				voteAddressMap[validator] = &zeroBlsKey
+			}
+		}
 		for _, validator := range newValidators {
 			header.Extra = append(header.Extra, validator.Bytes()...)
 			header.Extra = append(header.Extra, voteAddressMap[validator].Bytes()...)
@@ -989,6 +996,13 @@ func (p *Parlia) verifyValidators(header *types.Header) error {
 			return errMismatchingEpochValidators
 		}
 		validatorsBytes = make([]byte, validatorsNumber*validatorBytesLength)
+		if p.chainConfig.IsOnLuban(header.Number) {
+			voteAddressMap = make(map[common.Address]*types.BLSPublicKey, len(newValidators))
+			var zeroBlsKey types.BLSPublicKey
+			for _, validator := range newValidators {
+				voteAddressMap[validator] = &zeroBlsKey
+			}
+		}
 		for i, validator := range newValidators {
 			copy(validatorsBytes[i*validatorBytesLength:], validator.Bytes())
 			copy(validatorsBytes[i*validatorBytesLength+common.AddressLength:], voteAddressMap[validator].Bytes())
