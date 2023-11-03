@@ -610,10 +610,7 @@ func (t *Trie) Hash() common.Hash {
 func (t *Trie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
 	defer t.tracer.reset()
 	defer func() {
-		// StateDB will cache the trie and reuse it to read and write,
-		// the committed flag is true will prevent the cache trie access
-		// the trie node.
-		t.committed = false
+		t.committed = true
 	}()
 	// Trie is empty and can be classified into two types of situations:
 	// (a) The trie was empty and no update happens => return nil
