@@ -1,4 +1,11 @@
 # Changelog
+## v1.2.13
+IMPROVEMENT
+* [\#1954](https://github.com/bnb-chain/bsc/pull/1954) performance: keep trie prefetch during validation phase
+
+BUGFIX
+* [\#1950](https://github.com/bnb-chain/bsc/pull/1950) fix: 2 APIs of get receipt related(#1950)
+
 ## v1.2.12
 FEATURE
 * [\#1852](https://github.com/bnb-chain/bsc/pull/1852) discov: add hardcoded bootnodes
