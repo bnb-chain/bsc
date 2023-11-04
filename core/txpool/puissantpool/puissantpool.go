@@ -170,7 +170,7 @@ func (pool *PuissantPool) Reset(oldHead, newHead *types.Header) {
 	<-wait
 }
 
-func (pool *PuissantPool) AddPuissantPackage(pid types.PuissantID, txs types.Transactions, maxTimestamp uint64, relaySignature hexutil.Bytes) error {
+func (pool *PuissantPool) AddPuissantBundle(pid types.PuissantID, txs types.Transactions, maxTimestamp uint64, relaySignature hexutil.Bytes) error {
 	if err := pool.isFromTrustedRelay(pid, relaySignature); err != nil {
 		return err
 	}

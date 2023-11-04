@@ -19,6 +19,7 @@ package txpool
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/txpool/puissantpool"
 	"math/big"
 	"sync"
@@ -445,4 +446,11 @@ func (p *TxPool) Status(hash common.Hash) TxStatus {
 		}
 	}
 	return TxStatusUnknown
+}
+
+func (p *TxPool) AddPuissantBundle(pid types.PuissantID, txs types.Transactions, maxTimestamp uint64, relaySignature hexutil.Bytes) error {
+	if p.puissantPool != nil {
+		return p.puissantPool.AddPuissantBundle(pid, txs, maxTimestamp, relaySignature)
+	}
+	return errors.New("puissant is not enabled")
 }

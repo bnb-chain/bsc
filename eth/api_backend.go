@@ -19,6 +19,7 @@ package eth
 import (
 	"context"
 	"errors"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
 	"time"
 
@@ -288,6 +289,10 @@ func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscri
 
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
 	return b.eth.txPool.Add([]*txpool.Transaction{{Tx: signedTx}}, true, false)[0]
+}
+
+func (b *EthAPIBackend) SendPuissant(ctx context.Context, pid types.PuissantID, txs types.Transactions, maxTimestamp uint64, relaySignature hexutil.Bytes) error {
+	return b.eth.txPool.AddPuissantBundle(pid, txs, maxTimestamp, relaySignature)
 }
 
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {

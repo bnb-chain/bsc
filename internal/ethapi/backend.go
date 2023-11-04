@@ -19,6 +19,7 @@ package ethapi
 
 import (
 	"context"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
 	"time"
 
@@ -101,6 +102,8 @@ type Backend interface {
 	ServiceFilter(ctx context.Context, session *bloombits.MatcherSession)
 	SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeaderEvent) event.Subscription
 	SubscribeNewVoteEvent(chan<- core.NewVoteEvent) event.Subscription
+
+	SendPuissant(ctx context.Context, pid types.PuissantID, txs types.Transactions, maxTimestamp uint64, relaySignature hexutil.Bytes) error
 }
 
 func GetAPIs(apiBackend Backend) []rpc.API {
@@ -127,6 +130,9 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 		}, {
 			Namespace: "personal",
 			Service:   NewPersonalAccountAPI(apiBackend, nonceLock),
+		}, {
+			Namespace: "eth",
+			Service:   NewPuissantAPI(apiBackend),
 		},
 	}
 }
