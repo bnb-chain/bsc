@@ -87,7 +87,7 @@ func (s puissantTxQueue) Less(i, j int) bool {
 		return txIBSeq < txJBSeq
 	}
 
-	cmp := s[i].GasPrice().Cmp(s[j].GasPrice())
+	cmp := s[i].GasTipCap().Cmp(s[j].GasTipCap())
 	if cmp == 0 {
 		iIsBundle := s[i].IsPuissant()
 		jIsBundle := s[j].IsPuissant()
@@ -170,7 +170,7 @@ func (t *TransactionsPuissant) LogPuissantTxs() {
 	for _, tx := range t.txHeadsAndPuissant {
 		if tx.IsPuissant() {
 			_, pSeq, bInnerSeq := tx.PuissantInfo()
-			log.Info("puissant-tx", "seq", fmt.Sprintf("%2d - %d", pSeq, bInnerSeq), "hash", tx.Hash(), "revert", tx.AcceptsReverting(), "gp", tx.GasPrice().Uint64())
+			log.Info("puissant-tx", "seq", fmt.Sprintf("%2d - %d", pSeq, bInnerSeq), "hash", tx.Hash(), "revert", tx.AcceptsReverting(), "gp", tx.GasTipCap().Uint64())
 		}
 	}
 }

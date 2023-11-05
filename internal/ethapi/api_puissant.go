@@ -68,7 +68,7 @@ func (s *PuissantAPI) SendPuissant(ctx context.Context, args SendPuissantArgs) e
 		}
 
 		// txs-sort-check
-		if txGP := tx.GasPrice(); tmpGasPrice == nil || tmpGasPrice.Cmp(txGP) >= 0 {
+		if txGP := tx.GasTipCap(); tmpGasPrice == nil || tmpGasPrice.Cmp(txGP) >= 0 {
 			tmpGasPrice = txGP
 		} else {
 			return errors.New("invalid, require txs descending sort by gas price")
