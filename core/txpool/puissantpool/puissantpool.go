@@ -2,14 +2,11 @@ package puissantpool
 
 import (
 	"errors"
-	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"math/big"
@@ -280,14 +277,14 @@ func (pool *PuissantPool) reset(oldHead, newHead *types.Header) {
 }
 
 func (pool *PuissantPool) isFromTrustedRelay(pid types.PuissantID, relaySignature hexutil.Bytes) error {
-	recovered, err := crypto.SigToPub(accounts.TextHash(pid[:]), relaySignature)
-	if err != nil {
-		return err
-	}
-	relayAddr := crypto.PubkeyToAddress(*recovered)
-	if !pool.trustRelay.Contains(relayAddr) {
-		return fmt.Errorf("invalid relay address %s", relayAddr.String())
-	}
+	//recovered, err := crypto.SigToPub(accounts.TextHash(pid[:]), relaySignature)
+	//if err != nil {
+	//	return err
+	//}
+	//relayAddr := crypto.PubkeyToAddress(*recovered)
+	//if !pool.trustRelay.Contains(relayAddr) {
+	//	return fmt.Errorf("invalid relay address %s", relayAddr.String())
+	//}
 	return nil
 }
 

@@ -1,83 +1,22 @@
-package types
+package miner
 
 import (
 	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
-	"math/big"
 	"sort"
 )
 
-type PuissantBundle struct {
-	id       PuissantID
-	txs      Transactions
-	expireAt uint64
-	bidPrice *big.Int // gas price of the first transaction
-}
-
-func NewPuissantBundle(pid PuissantID, txs Transactions, maxTS uint64) *PuissantBundle {
-	if txs.Len() == 0 {
-		panic("empty bundle")
-	}
-	return &PuissantBundle{
-		id:       pid,
-		txs:      txs,
-		expireAt: maxTS,
-		bidPrice: txs[0].GasTipCap(),
-	}
-}
-
-func (pp *PuissantBundle) ID() PuissantID {
-	return pp.id
-}
-
-func (pp *PuissantBundle) ExpireAt() uint64 {
-	return pp.expireAt
-}
-
-func (pp *PuissantBundle) Txs() Transactions {
-	return pp.txs
-}
-
-func (pp *PuissantBundle) TxCount() int {
-	return len(pp.txs)
-}
-
-func (pp *PuissantBundle) HasHigherBidPriceThan(with *PuissantBundle) bool {
-	return pp.bidPrice.Cmp(with.bidPrice) > 0
-}
-
-func (pp *PuissantBundle) HasHigherBidPriceIntCmp(with *big.Int) bool {
-	return pp.bidPrice.Cmp(with) > 0
-}
-
-func (pp *PuissantBundle) BidPrice() *big.Int {
-	return new(big.Int).Set(pp.bidPrice)
-}
-
-// PuissantBundles list of PuissantBundle
-type PuissantBundles []*PuissantBundle
-
-func (p PuissantBundles) Len() int {
-	return len(p)
-}
-
-func (p PuissantBundles) Less(i, j int) bool {
-	return p[i].HasHigherBidPriceThan(p[j])
-}
-
-func (p PuissantBundles) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-}
-
 // transactions queue
-type puissantTxQueue Transactions
+type puissantTxQueue types.Transactions
 
 func (s puissantTxQueue) Len() int { return len(s) }
 func (s puissantTxQueue) Less(i, j int) bool {
 
-	bundleSort := func(txI, txJ *Transaction) bool {
+	bundleSort := func(txI, txJ *types.Transaction) bool {
 		_, txIBSeq, txIInnerSeq := txI.PuissantInfo()
 		_, txJBSeq, txJInnerSeq := txJ.PuissantInfo()
 
@@ -112,21 +51,23 @@ func (s puissantTxQueue) Less(i, j int) bool {
 func (s puissantTxQueue) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 
 type TransactionsPuissant struct {
-	txs                map[common.Address][]*Transaction
+	txs                map[common.Address][]*types.Transaction
 	txHeadsAndPuissant puissantTxQueue
-	signer             Signer
-	enabled            mapset.Set[PuissantID]
+	signer             types.Signer
+	enabled            mapset.Set[types.PuissantID]
 }
 
-func NewTransactionsPuissant(signer Signer, txs map[common.Address][]*Transaction, bundles PuissantBundles) *TransactionsPuissant {
+func NewTransactionsPuissant(signer types.Signer, txs map[common.Address][]*txpool.LazyTransaction, bundles types.PuissantBundles) *TransactionsPuissant {
+	var tmpTxs = make(map[common.Address][]*types.Transaction)
+
 	headsAndBundleTxs := make(puissantTxQueue, 0, len(txs))
 	for from, accTxs := range txs {
 		// Ensure the sender address is from the signer
-		if acc, _ := Sender(signer, accTxs[0]); acc != from {
+		if acc, _ := types.Sender(signer, accTxs[0].Tx.Tx); acc != from {
 			delete(txs, from)
 			continue
 		}
-		headsAndBundleTxs = append(headsAndBundleTxs, accTxs[0])
+		headsAndBundleTxs = append(headsAndBundleTxs, accTxs[0].Tx.Tx)
 		txs[from] = accTxs[1:]
 	}
 
@@ -136,16 +77,22 @@ func NewTransactionsPuissant(signer Signer, txs map[common.Address][]*Transactio
 		}
 	}
 
+	for from, accTxs := range txs {
+		for _, tx := range accTxs {
+			tmpTxs[from] = append(tmpTxs[from], tx.Tx.Tx)
+		}
+	}
+
 	sort.Sort(&headsAndBundleTxs)
 	return &TransactionsPuissant{
-		enabled:            mapset.NewThreadUnsafeSet[PuissantID](),
-		txs:                txs,
+		enabled:            mapset.NewThreadUnsafeSet[types.PuissantID](),
+		txs:                tmpTxs,
 		txHeadsAndPuissant: headsAndBundleTxs,
 		signer:             signer,
 	}
 }
 
-func (t *TransactionsPuissant) ResetEnable(pids []PuissantID) {
+func (t *TransactionsPuissant) ResetEnable(pids []types.PuissantID) {
 	t.enabled.Clear()
 	for _, pid := range pids {
 		t.enabled.Add(pid)
@@ -157,9 +104,9 @@ func (t *TransactionsPuissant) Copy() *TransactionsPuissant {
 		return nil
 	}
 
-	newHeadsAndBundleTxs := make([]*Transaction, len(t.txHeadsAndPuissant))
+	newHeadsAndBundleTxs := make([]*types.Transaction, len(t.txHeadsAndPuissant))
 	copy(newHeadsAndBundleTxs, t.txHeadsAndPuissant)
-	txs := make(map[common.Address][]*Transaction, len(t.txs))
+	txs := make(map[common.Address][]*types.Transaction, len(t.txs))
 	for acc, txsTmp := range t.txs {
 		txs[acc] = txsTmp
 	}
@@ -175,7 +122,7 @@ func (t *TransactionsPuissant) LogPuissantTxs() {
 	}
 }
 
-func (t *TransactionsPuissant) Peek() *Transaction {
+func (t *TransactionsPuissant) Peek() *types.Transaction {
 	if len(t.txHeadsAndPuissant) == 0 {
 		return nil
 	}
@@ -188,7 +135,7 @@ func (t *TransactionsPuissant) Peek() *Transaction {
 }
 
 func (t *TransactionsPuissant) Shift() {
-	acc, _ := Sender(t.signer, t.txHeadsAndPuissant[0])
+	acc, _ := types.Sender(t.signer, t.txHeadsAndPuissant[0])
 	if !t.txHeadsAndPuissant[0].IsPuissant() {
 		if txs, ok := t.txs[acc]; ok && len(txs) > 0 {
 			t.txHeadsAndPuissant[0], t.txs[acc] = txs[0], txs[1:]
@@ -206,17 +153,4 @@ func (t *TransactionsPuissant) Pop() {
 	if len(t.txHeadsAndPuissant) > 0 {
 		t.txHeadsAndPuissant = t.txHeadsAndPuissant[1:]
 	}
-}
-
-func WeiToEther(wei *big.Int) *big.Float {
-	// 1 ether = 10^18 wei
-	ether := new(big.Float).SetInt(big.NewInt(0).Exp(big.NewInt(10), big.NewInt(18), nil))
-
-	// Convert wei to big.Float
-	weiFloat := new(big.Float).SetInt(wei)
-
-	// Divide wei by ether to get the amount in ethers
-	ethValue := new(big.Float).Quo(weiFloat, ether)
-
-	return ethValue
 }

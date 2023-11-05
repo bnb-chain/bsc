@@ -17,21 +17,23 @@
 package miner
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	lru2 "github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
-	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -74,49 +76,6 @@ var (
 	errBlockInterruptedByOutOfGas = errors.New("out of gas while building block")
 )
 
-// environment is the worker's current environment and holds all
-// information of the sealing block generation.
-type environment struct {
-	signer   types.Signer
-	state    *state.StateDB // apply state changes here
-	tcount   int            // tx count in cycle
-	gasPool  *core.GasPool  // available gas used to pack transactions
-	coinbase common.Address
-
-	header   *types.Header
-	txs      []*types.Transaction
-	receipts []*types.Receipt
-}
-
-// copy creates a deep copy of environment.
-func (env *environment) copy() *environment {
-	cpy := &environment{
-		signer:   env.signer,
-		state:    env.state.Copy(),
-		tcount:   env.tcount,
-		coinbase: env.coinbase,
-		header:   types.CopyHeader(env.header),
-		receipts: copyReceipts(env.receipts),
-	}
-	if env.gasPool != nil {
-		gasPool := *env.gasPool
-		cpy.gasPool = &gasPool
-	}
-	cpy.txs = make([]*types.Transaction, len(env.txs))
-	copy(cpy.txs, env.txs)
-	return cpy
-}
-
-// discard terminates the background prefetcher go-routine. It should
-// always be called for all created environment instances otherwise
-// the go-routine leak can happen.
-func (env *environment) discard() {
-	if env.state == nil {
-		return
-	}
-	env.state.StopPrefetcher()
-}
-
 // task contains all information for consensus engine sealing and result submitting.
 type task struct {
 	receipts  []*types.Receipt
@@ -155,7 +114,6 @@ type getWorkReq struct {
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
-	prefetcher  core.Prefetcher
 	config      *Config
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
@@ -180,8 +138,6 @@ type worker struct {
 	resubmitIntervalCh chan time.Duration
 
 	wg sync.WaitGroup
-
-	current *environment // An environment for current running cycle.
 
 	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
 	coinbase common.Address
@@ -224,7 +180,6 @@ type worker struct {
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
 	recentMinedBlocks, _ := lru.New(recentMinedCacheLimit)
 	worker := &worker{
-		prefetcher:         core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
 		config:             config,
 		chainConfig:        chainConfig,
 		engine:             engine,
@@ -421,7 +376,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if p, ok := w.engine.(*parlia.Parlia); ok {
 				signedRecent, err := p.SignRecently(w.chain, head.Block)
 				if err != nil {
-					log.Debug("Not allowed to propose block", "err", err)
+					log.Info("Not allowed to propose block", "err", err)
 					continue
 				}
 				if signedRecent {
@@ -465,11 +420,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 func (w *worker) mainLoop() {
 	defer w.wg.Done()
 	defer w.chainHeadSub.Unsubscribe()
-	defer func() {
-		if w.current != nil {
-			w.current.discard()
-		}
-	}()
 
 	for {
 		select {
@@ -645,215 +595,26 @@ func (w *worker) resultLoop() {
 	}
 }
 
-// makeEnv creates a new environment for the sealing block.
-func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase common.Address,
-	prevEnv *environment) (*environment, error) {
-	// Retrieve the parent state to execute on top and start a prefetcher for
-	// the miner to speed block sealing up a bit
-	state, err := w.chain.StateAtWithSharedPool(parent.Root)
-	if err != nil {
-		return nil, err
-	}
-	if prevEnv == nil {
-		state.StartPrefetcher("miner")
-	} else {
-		state.TransferPrefetcher(prevEnv.state)
-	}
-
-	// Note the passed coinbase may be different with header.Coinbase.
-	env := &environment{
-		signer:   types.MakeSigner(w.chainConfig, header.Number, header.Time),
-		state:    state,
-		coinbase: coinbase,
-		header:   header,
-	}
-	// Keep track of transactions which return errors so they can be removed
-	env.tcount = 0
-	return env, nil
-}
-
 // updateSnapshot updates pending snapshot block, receipts and state.
-func (w *worker) updateSnapshot(env *environment) {
+func (w *worker) updateSnapshot(env *core.MinerEnvironment) {
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
 
 	w.snapshotBlock = types.NewBlock(
-		env.header,
-		env.txs,
+		env.Header,
+		env.PackedTxs,
 		nil,
-		env.receipts,
+		env.Receipts,
 		trie.NewStackTrie(nil),
 	)
-	w.snapshotReceipts = copyReceipts(env.receipts)
-	w.snapshotState = env.state.Copy()
-}
-
-func (w *worker) commitTransaction(env *environment, tx *txpool.Transaction, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
-	var (
-		snap = env.state.Snapshot()
-		gp   = env.gasPool.Gas()
-	)
-
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx.Tx, &env.header.GasUsed, *w.chain.GetVMConfig(), receiptProcessors...)
-	if err != nil {
-		env.state.RevertToSnapshot(snap)
-		env.gasPool.SetGas(gp)
-		return nil, err
-	}
-	env.txs = append(env.txs, tx.Tx)
-	env.receipts = append(env.receipts, receipt)
-
-	return receipt.Logs, nil
-}
-
-func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAndNonce,
-	interruptCh chan int32, stopTimer *time.Timer) error {
-	gasLimit := env.header.GasLimit
-	if env.gasPool == nil {
-		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		if w.chain.Config().IsEuler(env.header.Number) {
-			env.gasPool.SubGas(params.SystemTxsGas * 3)
-		} else {
-			env.gasPool.SubGas(params.SystemTxsGas)
-		}
-	}
-
-	var coalescedLogs []*types.Log
-	// initialize bloom processors
-	processorCapacity := 100
-	if txs.CurrentSize() < processorCapacity {
-		processorCapacity = txs.CurrentSize()
-	}
-	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
-
-	stopPrefetchCh := make(chan struct{})
-	defer close(stopPrefetchCh)
-	//prefetch txs from all pending txs
-	txsPrefetch := txs.Copy()
-	tx := txsPrefetch.PeekWithUnwrap()
-	if tx != nil {
-		txCurr := &tx
-		w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.CopyDoPrefetch(), *w.chain.GetVMConfig(), stopPrefetchCh, txCurr)
-	}
-
-	signal := commitInterruptNone
-LOOP:
-	for {
-		// In the following three cases, we will interrupt the execution of the transaction.
-		// (1) new head block event arrival, the reason is 1
-		// (2) worker start or restart, the reason is 1
-		// (3) worker recreate the sealing block with any newly arrived transactions, the reason is 2.
-		// For the first two cases, the semi-finished work will be discarded.
-		// For the third case, the semi-finished work will be submitted to the consensus engine.
-		if interruptCh != nil {
-			select {
-			case signal, ok := <-interruptCh:
-				if !ok {
-					// should never be here, since interruptCh should not be read before
-					log.Warn("commit transactions stopped unknown")
-				}
-				return signalToErr(signal)
-			default:
-			}
-		}
-		// If we don't have enough gas for any further transactions then we're done.
-		if env.gasPool.Gas() < params.TxGas {
-			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
-			signal = commitInterruptOutOfGas
-			break
-		}
-		if stopTimer != nil {
-			select {
-			case <-stopTimer.C:
-				log.Info("Not enough time for further transactions", "txs", len(env.txs))
-				stopTimer.Reset(0) // re-active the timer, in case it will be used later.
-				signal = commitInterruptTimeout
-				break LOOP
-			default:
-			}
-		}
-		// Retrieve the next transaction and abort if all done
-		ltx := txs.Peek()
-		if ltx == nil {
-			break
-		}
-		tx := ltx.Resolve()
-		if tx == nil {
-			log.Warn("Ignoring evicted transaction")
-
-			txs.Pop()
-			continue
-		}
-		// Error may be ignored here. The error has already been checked
-		// during transaction acceptance is the transaction pool.
-		from, _ := types.Sender(env.signer, tx.Tx)
-
-		// Check whether the tx is replay protected. If we're not in the EIP155 hf
-		// phase, start ignoring the sender until we do.
-		if tx.Tx.Protected() && !w.chainConfig.IsEIP155(env.header.Number) {
-			log.Trace("Ignoring reply protected transaction", "hash", tx.Tx.Hash(), "eip155", w.chainConfig.EIP155Block)
-
-			txs.Pop()
-			continue
-		}
-		// Start executing the transaction
-		env.state.SetTxContext(tx.Tx.Hash(), env.tcount)
-
-		logs, err := w.commitTransaction(env, tx, bloomProcessors)
-		switch {
-		case errors.Is(err, core.ErrNonceTooLow):
-			// New head notification data race between the transaction pool and miner, shift
-			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Tx.Nonce())
-			txs.Shift()
-
-		case errors.Is(err, nil):
-			// Everything ok, collect the logs and shift in the next transaction from the same account
-			coalescedLogs = append(coalescedLogs, logs...)
-			env.tcount++
-			txs.Shift()
-
-		default:
-			// Transaction is regarded as invalid, drop all consecutive transactions from
-			// the same sender because of `nonce-too-high` clause.
-			log.Debug("Transaction failed, account skipped", "hash", tx.Tx.Hash(), "err", err)
-			txs.Pop()
-		}
-	}
-	bloomProcessors.Close()
-	if !w.isRunning() && len(coalescedLogs) > 0 {
-		// We don't push the pendingLogsEvent while we are sealing. The reason is that
-		// when we are sealing, the worker will regenerate a sealing block every 3 seconds.
-		// In order to avoid pushing the repeated pendingLog, we disable the pending log pushing.
-
-		// make a copy, the state caches the logs and these logs get "upgraded" from pending to mined
-		// logs by filling in the block hash when the block was mined by the local miner. This can
-		// cause a race condition if a log was "upgraded" before the PendingLogsEvent is processed.
-		cpy := make([]*types.Log, len(coalescedLogs))
-		for i, l := range coalescedLogs {
-			cpy[i] = new(types.Log)
-			*cpy[i] = *l
-		}
-		w.pendingLogsFeed.Send(cpy)
-	}
-	return signalToErr(signal)
-}
-
-// generateParams wraps various of settings for generating sealing task.
-type generateParams struct {
-	timestamp   uint64            // The timestamp for sealing task
-	forceTime   bool              // Flag whether the given timestamp is immutable or not
-	parentHash  common.Hash       // Parent block hash, empty means the latest chain head
-	coinbase    common.Address    // The fee recipient address for including transaction
-	random      common.Hash       // The randomness generated by beacon chain, empty before the merge
-	withdrawals types.Withdrawals // List of withdrawals to include in block.
-	prevWork    *environment
-	noTxs       bool // Flag whether an empty block without any transaction is expected
+	w.snapshotReceipts = types.CopyReceipts(env.Receipts)
+	w.snapshotState = env.State.Copy()
 }
 
 // prepareWork constructs the sealing task according to the given parameters,
 // either based on the last chain head or specified parent. In this function
 // the pending transactions are not filled yet, only the empty task returned.
-func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
+func (w *worker) prepareWork(genParams *generateParams) (*core.MinerEnvironment, error) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
@@ -907,54 +668,16 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
 	// since clique algorithm can modify the coinbase field in header.
-	env, err := w.makeEnv(parent, header, genParams.coinbase, genParams.prevWork)
+	env, err := w.makeEnv(parent.Root, header)
 	if err != nil {
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
 	}
 
 	// Handle upgrade build-in system contract code
-	systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, env.state)
+	systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, env.State)
 
 	return env, nil
-}
-
-// fillTransactions retrieves the pending transactions from the txpool and fills them
-// into the given sealing block. The transaction selection and ordering strategy can
-// be customized with the plugin in the future.
-func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer) (err error) {
-	// Split the pending transactions into locals and remotes
-	// Fill the block with all available pending transactions.
-	pending := w.eth.TxPool().Pending(false)
-
-	localTxs, remoteTxs := make(map[common.Address][]*txpool.LazyTransaction), pending
-	for _, account := range w.eth.TxPool().Locals() {
-		if txs := remoteTxs[account]; len(txs) > 0 {
-			delete(remoteTxs, account)
-			localTxs[account] = txs
-		}
-	}
-
-	err = nil
-	if len(localTxs) > 0 {
-		txs := newTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
-		err = w.commitTransactions(env, txs, interruptCh, stopTimer)
-		// we will abort here when:
-		//   1.new block was imported
-		//   2.out of Gas, no more transaction can be added.
-		//   3.the mining timer has expired, stop adding transactions.
-		//   4.interrupted resubmit timer, which is by default 10s.
-		//     resubmit is for PoW only, can be deleted for PoS consensus later
-		if err != nil {
-			return
-		}
-	}
-	if len(remoteTxs) > 0 {
-		txs := newTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
-		err = w.commitTransactions(env, txs, interruptCh, stopTimer)
-	}
-
-	return
 }
 
 // generateWork generates a sealing block based on the given parameters.
@@ -963,16 +686,10 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	if err != nil {
 		return nil, nil, err
 	}
-	defer work.discard()
+	defer work.Discard()
 
-	if !params.noTxs {
-		err := w.fillTransactions(nil, work, nil)
-		if errors.Is(err, errBlockInterruptedByTimeout) {
-			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
-		}
-	}
-	fees := work.state.GetBalance(consensus.SystemAddress)
-	block, _, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, nil, work.receipts, params.withdrawals)
+	fees := work.State.GetBalance(consensus.SystemAddress)
+	block, _, err := w.engine.FinalizeAndAssemble(w.chain, work.Header, work.State, work.PackedTxs, nil, work.Receipts, params.withdrawals)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -998,181 +715,149 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 		}
 	}
 
-	stopTimer := time.NewTimer(0)
-	defer stopTimer.Stop()
-	<-stopTimer.C // discard the initial tick
-
-	stopWaitTimer := time.NewTimer(0)
-	defer stopWaitTimer.Stop()
-	<-stopWaitTimer.C // discard the initial tick
-
 	// validator can try several times to get the most profitable block,
 	// as long as the timestamp is not reached.
-	workList := make([]*environment, 0, 10)
-	var prevWork *environment
-	// workList clean up
-	defer func() {
-		for _, wk := range workList {
-			// only keep the best work, discard others.
-			if wk == w.current {
-				continue
-			}
-			wk.discard()
-		}
-	}()
+	var (
+		workList = make([]*multiPackingWork, 0, 20)
+		//pReporter = core.NewPuissantReporter()
+	)
 
 LOOP:
-	for {
+	for round := 0; round < math.MaxInt64; round++ {
+		roundStart := time.Now()
+
 		work, err := w.prepareWork(&generateParams{
 			timestamp: uint64(timestamp),
 			coinbase:  coinbase,
-			prevWork:  prevWork,
 		})
 		if err != nil {
 			return
 		}
-		prevWork = work
-		workList = append(workList, work)
+		thisRound := &multiPackingWork{round: round, work: work, income: new(big.Int)}
+		workList = append(workList, thisRound)
 
-		delay := w.engine.Delay(w.chain, work.header, &w.config.DelayLeftOver)
-		if delay == nil {
-			log.Warn("commitWork delay is nil, something is wrong")
-			stopTimer = nil
-		} else if *delay <= 0 {
-			log.Debug("Not enough time for commitWork")
-			break
-		} else {
-			log.Debug("commitWork stopTimer", "block", work.header.Number,
-				"header time", time.Until(time.Unix(int64(work.header.Time), 0)),
-				"commit delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)
-			stopTimer.Reset(*delay)
-		}
-
-		// subscribe before fillTransactions
-		txsCh := make(chan core.NewTxsEvent, txChanSize)
-		sub := w.eth.TxPool().SubscribeNewTxsEvent(txsCh)
-		// if TxPool has been stopped, `sub` would be nil, it could happen on shutdown.
-		if sub == nil {
-			log.Info("commitWork SubscribeNewTxsEvent return nil")
-		} else {
-			defer sub.Unsubscribe()
-		}
-
-		// Fill pending transactions from the txpool into the block.
-		fillStart := time.Now()
-		err = w.fillTransactions(interruptCh, work, stopTimer)
-		fillDuration := time.Since(fillStart)
-		switch {
-		case errors.Is(err, errBlockInterruptedByNewHead):
-			// work.discard()
-			log.Debug("commitWork abort", "err", err)
-			return
-		case errors.Is(err, errBlockInterruptedByRecommit):
-			fallthrough
-		case errors.Is(err, errBlockInterruptedByTimeout):
-			fallthrough
-		case errors.Is(err, errBlockInterruptedByOutOfGas):
-			// break the loop to get the best work
-			log.Debug("commitWork finish", "reason", err)
-			break LOOP
-		}
-
-		if interruptCh == nil || stopTimer == nil {
-			// it is single commit work, no need to try several time.
-			log.Info("commitWork interruptCh or stopTimer is nil")
+		timeLeft := blockMiningTimeLeft(work.Header.Time)
+		if timeLeft <= 0 {
+			log.Warn(" 📦 ⚠️ not enough time for this round, jump out",
+				"round", round,
+				"income", types.WeiToEther(thisRound.income),
+				"elapsed", common.PrettyDuration(time.Since(roundStart)),
+				"timeLeft", timeLeft,
+			)
 			break
 		}
 
-		newTxsNum := 0
-		// stopTimer was the maximum delay for each fillTransactions
-		// but now it is used to wait until (head.Time - DelayLeftOver) is reached.
-		stopTimer.Reset(time.Until(time.Unix(int64(work.header.Time), 0)) - w.config.DelayLeftOver)
-	LOOP_WAIT:
-		for {
-			select {
-			case <-stopTimer.C:
-				log.Debug("commitWork stopTimer expired")
-				break LOOP
-			case <-interruptCh:
-				log.Debug("commitWork interruptCh closed, new block imported or resubmit triggered")
-				return
-			case ev := <-txsCh:
-				delay := w.engine.Delay(w.chain, work.header, &w.config.DelayLeftOver)
-				log.Debug("commitWork txsCh arrived", "fillDuration", fillDuration.String(),
-					"delay", delay.String(), "work.tcount", work.tcount,
-					"newTxsNum", newTxsNum, "len(ev.Txs)", len(ev.Txs))
-				if *delay < fillDuration {
-					// There may not have enough time for another fillTransactions.
-					break LOOP
-				} else if *delay < fillDuration*2 {
-					// We can schedule another fillTransactions, but the time is limited,
-					// probably it is the last chance, schedule it immediately.
-					break LOOP_WAIT
-				} else {
-					// There is still plenty of time left.
-					// We can wait a while to collect more transactions before
-					// schedule another fillTransaction to reduce CPU cost.
-					// There will be 2 cases to schedule another fillTransactions:
-					//   1.newTxsNum >= work.tcount
-					//   2.no much time left, have to schedule it immediately.
-					newTxsNum = newTxsNum + len(ev.Txs)
-					if newTxsNum >= work.tcount {
-						break LOOP_WAIT
-					}
-					stopWaitTimer.Reset(*delay - fillDuration*2)
-				}
-			case <-stopWaitTimer.C:
-				if newTxsNum > 0 {
-					break LOOP_WAIT
-				}
+		// empty block at first round
+		if round == 0 {
+			log.Info(" 📦 packing", "round", round, "elapsed", common.PrettyDuration(time.Since(roundStart)))
+			continue
+		}
+
+		pendingTxs, pendingPuissant := w.eth.TxPool().PendingTxsAndPuissant(false, work.Header.Time)
+
+		var pendings = make(map[common.Address][]*types.Transaction)
+		for from, txs := range pendingTxs {
+			for _, tx := range txs {
+				pendings[from] = append(pendings[from], tx.Tx.Tx)
 			}
 		}
-		// if sub's channel if full, it will block other NewTxsEvent subscribers,
-		// so unsubscribe ASAP and Unsubscribe() is re-enterable, safe to call several time.
-		if sub != nil {
-			sub.Unsubscribe()
+		report, err := core.RunPuissantCommitter(
+			timeLeft,
+			work,
+			pendings,
+			pendingPuissant,
+			w.chain,
+			w.chainConfig,
+			w.eth.TxPool().DeletePuissantPackages,
+
+			lru2.NewCache[common.Hash, struct{}](1000),
+		)
+		//pReporter.Update(report, round)
+		thisRound.err = err
+		thisRound.income = work.State.GetBalance(consensus.SystemAddress)
+
+		roundElapsed := time.Since(roundStart)
+		select {
+		case signal, ok := <-interruptCh:
+			if !ok {
+				// should never be here, since interruptCh should not be read before
+				log.Warn("commit transactions stopped unknown")
+				return
+			}
+			if err := signalToErr(signal); errors.Is(err, errBlockInterruptedByNewHead) {
+				log.Debug("commitWork abort", "err", err)
+				return
+			} else if errors.Is(err, errBlockInterruptedByTimeout) || errors.Is(err, errBlockInterruptedByOutOfGas) {
+				// break the loop to get the best work
+				log.Debug("commitWork finish", "reason", err)
+				break LOOP
+			}
+		default:
+		}
+
+		roundInterval := repackingInterval(roundElapsed, work.Header.Time)
+
+		log.Info(" 📦 packing",
+			"round", round,
+			"txs", work.PackedTxs.Len(),
+			"triedPuissant", len(report),
+			"income", types.WeiToEther(thisRound.income),
+			"elapsed", common.PrettyDuration(roundElapsed),
+			"timeLeft", blockMiningTimeLeft(work.Header.Time),
+			"interval", common.PrettyDuration(roundInterval),
+			"err", thisRound.err,
+		)
+
+		//break LOOP // TODO testnet
+
+		if roundInterval > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), roundInterval)
+			go func() {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-interruptCh:
+						cancel()
+					}
+				}
+			}()
+			<-ctx.Done()
+			if errors.Is(ctx.Err(), context.Canceled) {
+				log.Info(" ⚠️ jump out due to interruption")
+				return
+			}
+		} else {
+			// no time for another round, commit now
+			break LOOP
 		}
 	}
 	// get the most profitable work
-	bestWork := workList[0]
-	bestReward := new(big.Int)
-	for i, wk := range workList {
-		balance := wk.state.GetBalance(consensus.SystemAddress)
-		log.Debug("Get the most profitable work", "index", i, "balance", balance, "bestReward", bestReward)
-		if balance.Cmp(bestReward) > 0 {
-			bestWork = wk
-			bestReward = balance
-		}
-	}
-	w.commit(bestWork, w.fullTaskHook, true, start)
+	bestWork := pickTheMostProfitableWork(workList)
+	w.commit(bestWork.work, w.fullTaskHook, true, start)
 
-	// Swap out the old work with the new one, terminating any leftover
-	// prefetcher processes in the mean time and starting a new one.
-	if w.current != nil {
-		w.current.discard()
-	}
-	w.current = bestWork
+	//go pReporter.Done(bestWork.round, initHeader.Number.Uint64(), bestWork.income, w.sendMessage, w.engine.SignText)
 }
 
 // commit runs any post-transaction state modifications, assembles the final block
 // and commits new work if consensus engine is running.
 // Note the assumption is held that the mutation is allowed to the passed env, do
 // the deep copy first.
-func (w *worker) commit(env *environment, interval func(), update bool, start time.Time) error {
+func (w *worker) commit(env *core.MinerEnvironment, interval func(), update bool, start time.Time) error {
 	if w.isRunning() {
 		if interval != nil {
 			interval()
 		}
 
-		err := env.state.WaitPipeVerification()
+		err := env.State.WaitPipeVerification()
 		if err != nil {
 			return err
 		}
-		env.state.CorrectAccountsRoot(w.chain.CurrentBlock().Root)
+		env.State.CorrectAccountsRoot(w.chain.CurrentBlock().Root)
 
 		// Withdrawals are set to nil here, because this is only called in PoW.
 		finalizeStart := time.Now()
-		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, env.txs, nil, env.receipts, nil)
+		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.Header), env.State, env.PackedTxs, nil, env.Receipts, nil)
 		if err != nil {
 			return err
 		}
@@ -1181,16 +866,16 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 
 		// Create a local environment copy, avoid the data race with snapshot state.
 		// https://github.com/ethereum/go-ethereum/issues/24299
-		env := env.copy()
+		env := env.Copy()
 
 		// If we're post merge, just ignore
 		if !w.isTTDReached(block.Header()) {
 			select {
-			case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now()}:
-				fees := env.state.GetBalance(consensus.SystemAddress)
+			case w.taskCh <- &task{receipts: receipts, state: env.State, block: block, createdAt: time.Now()}:
+				fees := env.State.GetBalance(consensus.SystemAddress)
 				feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
 				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-					"txs", env.tcount, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+					"txs", env.TxCount, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 			case <-w.exitCh:
 				log.Info("Worker has exited")
@@ -1236,16 +921,6 @@ func (w *worker) getSealingBlock(parent common.Hash, timestamp uint64, coinbase 
 func (w *worker) isTTDReached(header *types.Header) bool {
 	td, ttd := w.chain.GetTd(header.ParentHash, header.Number.Uint64()-1), w.chain.Config().TerminalTotalDifficulty
 	return td != nil && ttd != nil && td.Cmp(ttd) >= 0
-}
-
-// copyReceipts makes a deep copy of the given receipts.
-func copyReceipts(receipts []*types.Receipt) []*types.Receipt {
-	result := make([]*types.Receipt, len(receipts))
-	for i, l := range receipts {
-		cpy := *l
-		result[i] = &cpy
-	}
-	return result
 }
 
 // signalToErr converts the interruption signal to a concrete error type for return.

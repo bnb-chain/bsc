@@ -96,6 +96,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/internal v0.8.3 // indirect
 	github.com/BurntSushi/toml v1.2.1 // indirect
 	github.com/DataDog/zstd v1.5.2 // indirect
+	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20200805130819-fd197cf57d96 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.0.2 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.3.33 // indirect
@@ -164,7 +165,7 @@ require (
 	github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a // indirect
 	github.com/k0kubun/go-ansi v0.0.0-20180517002512-3bf9e2903213 // indirect
 	github.com/kilic/bls12-381 v0.1.0 // indirect
-	github.com/klauspost/compress v1.15.15 // indirect
+	github.com/klauspost/compress v1.17.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.1 // indirect
 	github.com/koron/go-ssdp v0.0.3 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
@@ -254,6 +255,8 @@ require (
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/trailofbits/go-mutexasserts v0.0.0-20200708152505-19999e7d3cef // indirect
 	github.com/uber/jaeger-client-go v2.25.0+incompatible // indirect
+	github.com/valyala/bytebufferpool v1.0.0 // indirect
+	github.com/valyala/fasthttp v1.47.0 // indirect
 	github.com/wealdtech/go-bytesutil v1.1.1 // indirect
 	github.com/wealdtech/go-eth2-types/v2 v2.5.2 // indirect
 	github.com/wealdtech/go-eth2-util v1.6.3 // indirect

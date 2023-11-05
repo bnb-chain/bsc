@@ -375,3 +375,13 @@ func (rs Receipts) DeriveFields(config *params.ChainConfig, hash common.Hash, nu
 	}
 	return nil
 }
+
+// CopyReceipts makes a deep copy of the given receipts.
+func CopyReceipts(receipts []*Receipt) []*Receipt {
+	result := make([]*Receipt, len(receipts))
+	for i, l := range receipts {
+		cpy := *l
+		result[i] = &cpy
+	}
+	return result
+}
