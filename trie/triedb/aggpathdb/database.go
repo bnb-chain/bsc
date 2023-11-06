@@ -52,6 +52,8 @@ const (
 	// Do not increase the buffer size arbitrarily, otherwise the system
 	// pause time will increase when the database writes happen.
 	DefaultDirtyBufferSize = 64 * 1024 * 1024
+	// size calculation is inaccurate
+	DefaultBatchRedundancyRate = 1.1
 )
 
 // layer is the interface implemented by all state layers which includes some

@@ -322,10 +322,10 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 			newSize := aggNode.Size()
 			if ok {
 				overwrite++
-				overwriteSize += int64(newSize - oldSize + len(path))
+				overwriteSize += int64(newSize - oldSize + len(path) + len(owner))
 				delta += int64(newSize - oldSize)
 			} else {
-				delta += int64(newSize + len(path))
+				delta += int64(newSize + len(path) + len(owner))
 			}
 			current[string(aggPath)] = aggNode
 			dl.buffer.aggNodes[owner] = current

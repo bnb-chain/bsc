@@ -217,7 +217,7 @@ func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, cleans *aggNodeCache, id u
 	}
 	var (
 		start = time.Now()
-		batch = db.NewBatchWithSize(int(b.size))
+		batch = db.NewBatchWithSize(int(float64(b.size) * DefaultBatchRedundancyRate))
 	)
 
 	nodes := aggregateAndWriteNodes(cleans, batch, b.aggNodes)
