@@ -290,7 +290,7 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 			current = make(map[string]*AggNode)
 		}
 		for path, n := range subset {
-			aggPath := toAggPath([]byte(path))
+			aggPath := ToAggPath([]byte(path))
 			// retrieve aggNode from dirty buffer
 			aggNode, ok := current[string(aggPath)]
 			if aggNode == nil {
@@ -349,14 +349,14 @@ func (dl *diskLayer) setBufferSize(size int) error {
 }
 
 // size returns the approximate size of cached aggNodes in the disk layer.
-func (dl *diskLayer) size() common.StorageSize {
+func (dl *diskLayer) size() (common.StorageSize, common.StorageSize) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
 	if dl.stale {
-		return 0
+		return 0, 0
 	}
-	return common.StorageSize(dl.buffer.size)
+	return common.StorageSize(dl.buffer.size), common.StorageSize(dl.immutableBuffer.size)
 }
 
 // resetCache releases the memory held by clean cache to prevent memory leak.

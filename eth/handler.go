@@ -980,9 +980,9 @@ func (h *handler) enableSyncedFeatures() {
 	h.acceptTxs.Store(true)
 	// In the bsc scenario, pathdb.MaxDirtyBufferSize (256MB) will be used.
 	// The performance is better than DefaultDirtyBufferSize (64MB).
-	if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
-		h.chain.TrieDB().SetBufferSize(pathdb.DefaultDirtyBufferSize)
-	} else if h.chain.TrieDB().Scheme() == rawdb.AggPathScheme {
-		h.chain.TrieDB().SetBufferSize(aggpathdb.DefaultBufferSize)
-	}
+	//if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
+	//	h.chain.TrieDB().SetBufferSize(pathdb.DefaultDirtyBufferSize)
+	//} else if h.chain.TrieDB().Scheme() == rawdb.AggPathScheme {
+	//	h.chain.TrieDB().SetBufferSize(aggpathdb.DefaultDirtyBufferSize)
+	//}
 }

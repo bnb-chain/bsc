@@ -27,7 +27,7 @@ func newAggNodeCache(db *Database, cleans *fastcache.Cache, cacheSize int) *aggN
 }
 
 func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([]byte, error) {
-	aggPath := toAggPath(path)
+	aggPath := ToAggPath(path)
 	key := cacheKey(owner, aggPath)
 
 	if c.cleans != nil {
@@ -41,11 +41,6 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 			if n == nil {
 				// not found
 				return []byte{}, nil
-			}
-			if n.Hash == (common.Hash{}) && len(n.Blob) != 0 {
-				h := newHasher()
-				defer h.release()
-				n.Hash = h.hash(n.Blob)
 			}
 
 			if n.Hash == hash {
@@ -79,11 +74,6 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 	if n == nil {
 		// not found
 		return []byte{}, nil
-	}
-	if n.Hash == (common.Hash{}) && len(n.Blob) != 0 {
-		h := newHasher()
-		defer h.release()
-		n.Hash = h.hash(n.Blob)
 	}
 
 	if n.Hash != hash {

@@ -75,7 +75,7 @@ func (b *aggNodeBuffer) node(owner common.Hash, path []byte, hash common.Hash) (
 		return nil, nil
 	}
 
-	aggNode, ok := subset[string(toAggPath(path))]
+	aggNode, ok := subset[string(ToAggPath(path))]
 	if !ok {
 		return nil, nil
 	}
@@ -83,12 +83,6 @@ func (b *aggNodeBuffer) node(owner common.Hash, path []byte, hash common.Hash) (
 	n := aggNode.Node(path)
 	if n == nil {
 		return nil, nil
-	}
-
-	if n.Hash == (common.Hash{}) && len(n.Blob) != 0 {
-		h := newHasher()
-		defer h.release()
-		n.Hash = h.hash(n.Blob)
 	}
 
 	if n.Hash != hash {
@@ -106,7 +100,7 @@ func (b *aggNodeBuffer) aggNode(owner common.Hash, path []byte) *AggNode {
 		return nil
 	}
 
-	aggNode, ok := subset[string(toAggPath(path))]
+	aggNode, ok := subset[string(ToAggPath(path))]
 	if !ok {
 		return nil
 	}

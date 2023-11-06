@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb/aggpathdb"
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli/v2"
 )
@@ -492,7 +493,6 @@ func dbTrieGet(ctx *cli.Context) error {
 		scheme = rawdb.HashScheme
 	}
 
-	// TODO:: support AggPathScheme, after export AggNode Get func
 	if scheme == rawdb.PathScheme {
 		var (
 			pathKey []byte
@@ -538,6 +538,39 @@ func dbTrieGet(ctx *cli.Context) error {
 		} else {
 			log.Error("args too much")
 		}
+	} else if scheme == rawdb.AggPathScheme {
+		var (
+			pathKey      []byte
+			owner        []byte
+			err          error
+			aggNodeBytes []byte
+			aggNode      *aggpathdb.AggNode
+		)
+		if ctx.NArg() == 1 {
+			pathKey, err = hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Error("Could not decode the value", "error", err)
+				return err
+			}
+			aggPathKey := aggpathdb.ToAggPath(pathKey)
+			aggNodeBytes = rawdb.ReadAccountTrieAggNode(db, aggPathKey)
+		} else if ctx.NArg() == 2 {
+			owner, err = hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			pathKey, err = hexutil.Decode(ctx.Args().Get(1))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			aggPathKey := aggpathdb.ToAggPath(pathKey)
+			aggNodeBytes = rawdb.ReadStorageTrieAggNode(db, common.BytesToHash(owner), aggPathKey)
+		}
+		aggNode, err = aggpathdb.DecodeAggNode(aggNodeBytes)
+		node := aggNode.Node(pathKey)
+		log.Info("TrieGet result ", "PathKey: ", common.Bytes2Hex(pathKey), "Owner: ", common.BytesToHash(owner), "HashKey: ", node.Hash, "node: ", trie.NodeString(node.Hash.Bytes(), node.Blob))
 	}
 
 	return nil
@@ -559,7 +592,6 @@ func dbTrieDelete(ctx *cli.Context) error {
 		scheme = rawdb.HashScheme
 	}
 
-	// TODO:: support AggPathScheme, after export AggNode Get func
 	if scheme == rawdb.PathScheme {
 		var (
 			pathKey []byte
@@ -600,6 +632,32 @@ func dbTrieDelete(ctx *cli.Context) error {
 			}
 		} else {
 			log.Error("args too much")
+		}
+	} else if scheme == rawdb.AggPathScheme {
+		var (
+			pathKey []byte
+			owner   []byte
+			err     error
+		)
+		if ctx.NArg() == 1 {
+			pathKey, err = hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			aggpathdb.DeleteTrieNodeFromAggNode(db, db, common.Hash{}, pathKey)
+		} else if ctx.NArg() == 2 {
+			owner, err = hexutil.Decode(ctx.Args().Get(0))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			pathKey, err = hexutil.Decode(ctx.Args().Get(1))
+			if err != nil {
+				log.Info("Could not decode the value", "error", err)
+				return err
+			}
+			aggpathdb.DeleteTrieNodeFromAggNode(db, db, common.BytesToHash(owner), pathKey)
 		}
 	}
 	return nil

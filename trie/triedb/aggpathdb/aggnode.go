@@ -27,7 +27,7 @@ func DecodeAggNode(data []byte) (*AggNode, error) {
 	return aggNode, nil
 }
 
-func toAggPath(path []byte) []byte {
+func ToAggPath(path []byte) []byte {
 	if len(path)%2 == 0 {
 		// even path
 		return path
@@ -86,12 +86,19 @@ func (n *AggNode) Has(path []byte) bool {
 }
 
 func (n *AggNode) Node(path []byte) *trienode.Node {
+	var tn *trienode.Node
 	if len(path)%2 == 0 {
-		return n.root
+		tn = n.root
 	} else {
 		i := path[len(path)-1]
-		return n.childes[int(i)]
+		tn = n.childes[int(i)]
 	}
+	if tn.Hash == (common.Hash{}) && len(tn.Blob) != 0 {
+		h := newHasher()
+		defer h.release()
+		tn.Hash = h.hash(tn.Blob)
+	}
+	return tn
 }
 
 func (n *AggNode) decodeFrom(buf []byte) error {
@@ -201,7 +208,7 @@ func loadAggNodeFromDatabase(db ethdb.KeyValueReader, owner common.Hash, aggPath
 }
 
 func ReadTrieNodeFromAggNode(reader ethdb.KeyValueReader, owner common.Hash, path []byte) ([]byte, common.Hash) {
-	aggPath := toAggPath(path)
+	aggPath := ToAggPath(path)
 	aggNode, err := loadAggNodeFromDatabase(reader, owner, aggPath)
 	if err != nil {
 		panic(fmt.Sprintf("Decode account trie node failed. error: %v", err))
@@ -212,16 +219,11 @@ func ReadTrieNodeFromAggNode(reader ethdb.KeyValueReader, owner common.Hash, pat
 
 	node := aggNode.Node(path)
 
-	if node.Hash == (common.Hash{}) && len(node.Blob) != 0 {
-		h := newHasher()
-		defer h.release()
-		node.Hash = h.hash(node.Blob)
-	}
 	return node.Blob, node.Hash
 }
 
 func DeleteTrieNodeFromAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte) {
-	aggPath := toAggPath(path)
+	aggPath := ToAggPath(path)
 	aggNode, err := loadAggNodeFromDatabase(reader, owner, aggPath)
 	if err != nil {
 		panic(fmt.Sprintf("Decode account trie node failed. error: %v", err))
@@ -239,7 +241,7 @@ func DeleteTrieNodeFromAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValu
 }
 
 func WriteTrieNodeWithAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValueReader, owner common.Hash, path []byte, node []byte) {
-	aggPath := toAggPath(path)
+	aggPath := ToAggPath(path)
 	aggNode, err := loadAggNodeFromDatabase(reader, owner, aggPath)
 	if err != nil {
 		panic(fmt.Sprintf("Decode account trie node failed. error: %v", err))
@@ -253,7 +255,7 @@ func WriteTrieNodeWithAggNode(writer ethdb.KeyValueWriter, reader ethdb.KeyValue
 }
 
 func HasTrieNodeInAggNode(db ethdb.KeyValueReader, owner common.Hash, path []byte) bool {
-	aggPath := toAggPath(path)
+	aggPath := ToAggPath(path)
 	aggNode, err := loadAggNodeFromDatabase(db, owner, aggPath)
 	if err != nil {
 		panic(fmt.Sprintf("Decode account trie node failed. error: %v", err))

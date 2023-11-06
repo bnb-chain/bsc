@@ -415,9 +415,20 @@ func (db *Database) SetBufferSize(size int) error {
 // It's only supported by path-based database and will return an error for
 // others.
 func (db *Database) Head() common.Hash {
-	pdb, ok := db.backend.(*pathdb.Database)
-	if !ok {
+	if db.backend.Scheme() == rawdb.PathScheme {
+		pdb, ok := db.backend.(*pathdb.Database)
+		if !ok {
+			return common.Hash{}
+		}
+		return pdb.Head()
+	} else if db.backend.Scheme() == rawdb.AggPathScheme {
+		pdb, ok := db.backend.(*aggpathdb.Database)
+		if !ok {
+			return common.Hash{}
+		}
+		return pdb.Head()
+	} else {
 		return common.Hash{}
 	}
-	return pdb.Head()
+
 }
