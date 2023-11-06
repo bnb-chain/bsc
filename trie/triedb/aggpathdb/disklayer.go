@@ -264,7 +264,7 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 	} else {
 		batch := dl.db.diskdb.NewBatch()
 		dl.commitNodes(nodes)
-		aggregateAndWriteNodes(dl.cleans, batch, dl.buffer.aggNodes)
+		writeAggNodes(dl.cleans, batch, dl.buffer.aggNodes)
 		rawdb.WritePersistentStateID(batch, dl.id-1)
 		if err := batch.Write(); err != nil {
 			log.Crit("Failed to write states", "err", err)

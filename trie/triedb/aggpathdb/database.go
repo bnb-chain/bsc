@@ -40,11 +40,11 @@ const (
 	// defaultCleanSize is the default memory allowance of clean cache.
 	defaultCleanSize = 16 * 1024 * 1024
 
-	// maxDirtyBufferSize is the maximum memory allowance of node buffer.
+	// MaxDirtyBufferSize is the maximum memory allowance of node buffer.
 	// Too large aggNodeBuffer will cause the system to pause for a long
 	// time when write happens. Also, the largest batch that pebble can
 	// support is 4GB, node will panic if batch size exceeds this limit.
-	maxDirtyBufferSize = 256 * 1024 * 1024
+	MaxDirtyBufferSize = 256 * 1024 * 1024
 
 	// DefaultDirtyBufferSize is the default memory allowance of node buffer
 	// that aggregates the writes from above until it's flushed into the
@@ -98,9 +98,9 @@ type Config struct {
 // unreasonable or unworkable.
 func (c *Config) sanitize() *Config {
 	conf := *c
-	if conf.DirtyCacheSize > maxDirtyBufferSize {
-		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.DirtyCacheSize), "updated", common.StorageSize(maxDirtyBufferSize))
-		conf.DirtyCacheSize = maxDirtyBufferSize
+	if conf.DirtyCacheSize > MaxDirtyBufferSize {
+		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.DirtyCacheSize), "updated", common.StorageSize(MaxDirtyBufferSize))
+		conf.DirtyCacheSize = MaxDirtyBufferSize
 	}
 	return &conf
 }
@@ -414,9 +414,9 @@ func (db *Database) SetBufferSize(size int) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	if size > maxDirtyBufferSize {
-		log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(maxDirtyBufferSize))
-		size = maxDirtyBufferSize
+	if size > MaxDirtyBufferSize {
+		log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(MaxDirtyBufferSize))
+		size = MaxDirtyBufferSize
 	}
 	db.bufferSize = size
 	return db.tree.bottom().setBufferSize(db.bufferSize)

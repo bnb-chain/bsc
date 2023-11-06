@@ -81,7 +81,7 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 		log.Error("Unexpected trie node in disk", "owner", owner, "path", path, "expect", hash, "got", nHash)
 		return nil, newUnexpectedNodeError("disk", hash, nHash, owner, path, nBlob)
 	}
-	if c.cleans != nil && len(nBlob) > 0 {
+	if c.cleans != nil {
 		c.cleans.Set(key, nBlob)
 		cleanWriteMeter.Mark(int64(len(nBlob)))
 	}
@@ -91,9 +91,10 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 
 func (c *aggNodeCache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, error) {
 	var blob []byte
+	cKey := cacheKey(owner, aggPath)
 	if c.cleans != nil {
 		cacheHit := false
-		blob, cacheHit = c.cleans.HasGet(nil, cacheKey(owner, aggPath))
+		blob, cacheHit = c.cleans.HasGet(nil, cKey)
 		if cacheHit {
 			cleanHitMeter.Mark(1)
 			cleanReadMeter.Mark(int64(len(blob)))
@@ -108,9 +109,13 @@ func (c *aggNodeCache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, err
 	} else {
 		blob = rawdb.ReadStorageTrieAggNode(c.db.diskdb, owner, aggPath)
 	}
-
 	if blob == nil {
 		return nil, nil
+	}
+
+	if c.cleans != nil {
+		c.cleans.Set(cKey, blob)
+		cleanWriteMeter.Mark(int64(len(blob)))
 	}
 	return DecodeAggNode(blob)
 }

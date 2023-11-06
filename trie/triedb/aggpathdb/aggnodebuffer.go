@@ -220,7 +220,7 @@ func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, cleans *aggNodeCache, id u
 		batch = db.NewBatchWithSize(int(float64(b.size) * DefaultBatchRedundancyRate))
 	)
 
-	nodes := aggregateAndWriteNodes(cleans, batch, b.aggNodes)
+	nodes := writeAggNodes(cleans, batch, b.aggNodes)
 	rawdb.WritePersistentStateID(batch, id)
 
 	// Flush all mutations in a single batch
@@ -236,9 +236,9 @@ func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, cleans *aggNodeCache, id u
 	return nil
 }
 
-// aggregateAndWriteNodes will persist all agg node into the database
+// writeAggNodes will persist all agg node into the database
 // Note this function will inject all the clean node into the cleanCache
-func aggregateAndWriteNodes(cache *aggNodeCache, batch ethdb.Batch, nodes map[common.Hash]map[string]*AggNode) (total int) {
+func writeAggNodes(cache *aggNodeCache, batch ethdb.Batch, nodes map[common.Hash]map[string]*AggNode) (total int) {
 	// load the node from clean memory cache and update it, then persist it.
 	for owner, subset := range nodes {
 		for path, n := range subset {
