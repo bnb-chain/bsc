@@ -97,6 +97,7 @@ var (
 		utils.TransactionHistoryFlag,
 		utils.StateSchemeFlag,
 		utils.StateHistoryFlag,
+		utils.PathDBSyncFlag,
 		utils.LightServeFlag,
 		utils.LightIngressFlag,
 		utils.LightEgressFlag,
