@@ -314,6 +314,12 @@ var (
 		Value:    rawdb.HashScheme,
 		Category: flags.StateCategory,
 	}
+	PathDBSyncFlag = &cli.BoolFlag{
+		Name:     "pathdb.sync",
+		Usage:    "sync flush nodes cache to disk in path schema",
+		Value:    false,
+		Category: flags.StateCategory,
+	}
 	StateHistoryFlag = &cli.Uint64Flag{
 		Name:     "history.state",
 		Usage:    "Number of recent blocks to retain state history for (default = 90,000 blocks, 0 = entire chain)",
@@ -1950,6 +1956,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	} else if ctx.IsSet(TxLookupLimitFlag.Name) {
 		log.Warn("The flag --txlookuplimit is deprecated and will be removed, please use --history.transactions")
 		cfg.TransactionHistory = ctx.Uint64(TransactionHistoryFlag.Name)
+	}
+	if ctx.IsSet(PathDBSyncFlag.Name) {
+		cfg.PathSyncFlush = true
 	}
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.TransactionHistory != 0 {
 		cfg.TransactionHistory = 0

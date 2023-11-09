@@ -19,7 +19,6 @@ package state
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
@@ -29,25 +28,14 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
-	exlru "github.com/hashicorp/golang-lru" //ex: external
 )
 
 const (
 	// Number of codehash->size associations to keep.
 	codeSizeCacheSize = 100000
 
-	// Number of state trie in cache
-	accountTrieCacheSize = 32
-
-	// Number of storage Trie in cache
-	storageTrieCacheSize = 2000
-
 	// Cache size granted for caching clean code.
 	codeCacheSize = 64 * 1024 * 1024
-
-	purgeInterval = 600
-
-	maxAccountTrieSize = 1024 * 1024
 )
 
 // Database wraps access to tries and contract code.
@@ -72,15 +60,6 @@ type Database interface {
 
 	// TrieDB returns the underlying trie database for managing trie nodes.
 	TrieDB() *trie.Database
-
-	// Cache the account trie tree
-	CacheAccount(root common.Hash, t Trie)
-
-	// Cache the storage trie tree
-	CacheStorage(addrHash common.Hash, root common.Hash, t Trie)
-
-	// Purge cache
-	Purge()
 
 	// NoTries returns whether the database has tries storage.
 	NoTries() bool
@@ -191,64 +170,18 @@ func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database) Database {
 	}
 }
 
-func NewDatabaseWithConfigAndCache(db ethdb.Database, config *trie.Config) Database {
-	atc, _ := exlru.New(accountTrieCacheSize)
-	stc, _ := exlru.New(storageTrieCacheSize)
-	noTries := config != nil && config.NoTries
-
-	database := &cachingDB{
-		disk:             db,
-		codeSizeCache:    lru.NewCache[common.Hash, int](codeSizeCacheSize),
-		codeCache:        lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		triedb:           trie.NewDatabase(db, config),
-		accountTrieCache: atc,
-		storageTrieCache: stc,
-		noTries:          noTries,
-	}
-	if !noTries {
-		go database.purgeLoop()
-	}
-	return database
-}
-
 type cachingDB struct {
-	disk             ethdb.KeyValueStore
-	codeSizeCache    *lru.Cache[common.Hash, int]
-	codeCache        *lru.SizeConstrainedCache[common.Hash, []byte]
-	triedb           *trie.Database
-	accountTrieCache *exlru.Cache
-	storageTrieCache *exlru.Cache
-	noTries          bool
-}
-
-type triePair struct {
-	root common.Hash
-	trie Trie
-}
-
-func (db *cachingDB) purgeLoop() {
-	for {
-		time.Sleep(purgeInterval * time.Second)
-		_, accounts, ok := db.accountTrieCache.GetOldest()
-		if !ok {
-			continue
-		}
-		tr := accounts.(*trie.SecureTrie).GetRawTrie()
-		if tr.Size() > maxAccountTrieSize {
-			db.Purge()
-		}
-	}
+	disk          ethdb.KeyValueStore
+	codeSizeCache *lru.Cache[common.Hash, int]
+	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
+	triedb        *trie.Database
+	noTries       bool
 }
 
 // OpenTrie opens the main account trie at a specific root hash.
 func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 	if db.noTries {
 		return trie.NewEmptyTrie(), nil
-	}
-	if db.accountTrieCache != nil {
-		if tr, exist := db.accountTrieCache.Get(root); exist {
-			return tr.(Trie).(*trie.SecureTrie).Copy(), nil
-		}
 	}
 	tr, err := trie.NewStateTrie(trie.StateTrieID(root), db.triedb)
 	if err != nil {
@@ -262,16 +195,6 @@ func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 	if db.noTries {
 		return trie.NewEmptyTrie(), nil
 	}
-	if db.storageTrieCache != nil {
-		if tries, exist := db.storageTrieCache.Get(crypto.Keccak256Hash(address.Bytes())); exist {
-			triesPairs := tries.([3]*triePair)
-			for _, triePair := range triesPairs {
-				if triePair != nil && triePair.root == root {
-					return triePair.trie.(*trie.SecureTrie).Copy(), nil
-				}
-			}
-		}
-	}
 
 	tr, err := trie.NewStateTrie(trie.StorageTrieID(stateRoot, crypto.Keccak256Hash(address.Bytes()), root), db.triedb)
 	if err != nil {
@@ -280,54 +203,8 @@ func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 	return tr, nil
 }
 
-func (db *cachingDB) CacheAccount(root common.Hash, t Trie) {
-	// only the hash scheme trie db support account cache, because the path scheme trie db
-	// account trie bind the previous layer, touch the dirty data when next access. This is
-	// related to the implementation of the Reader interface of pathdb.
-	if db.TrieDB().Scheme() == rawdb.PathScheme {
-		return
-	}
-	if db.accountTrieCache == nil {
-		return
-	}
-	tr := t.(*trie.SecureTrie)
-	db.accountTrieCache.Add(root, tr.ResetCopy())
-}
-
-func (db *cachingDB) CacheStorage(addrHash common.Hash, root common.Hash, t Trie) {
-	// ditto `CacheAccount`
-	if db.TrieDB().Scheme() == rawdb.PathScheme {
-		return
-	}
-	if db.storageTrieCache == nil {
-		return
-	}
-	tr := t.(*trie.SecureTrie)
-	if tries, exist := db.storageTrieCache.Get(addrHash); exist {
-		triesArray := tries.([3]*triePair)
-		newTriesArray := [3]*triePair{
-			{root: root, trie: tr.ResetCopy()},
-			triesArray[0],
-			triesArray[1],
-		}
-		db.storageTrieCache.Add(addrHash, newTriesArray)
-	} else {
-		triesArray := [3]*triePair{{root: root, trie: tr.ResetCopy()}, nil, nil}
-		db.storageTrieCache.Add(addrHash, triesArray)
-	}
-}
-
 func (db *cachingDB) NoTries() bool {
 	return db.noTries
-}
-
-func (db *cachingDB) Purge() {
-	if db.storageTrieCache != nil {
-		db.storageTrieCache.Purge()
-	}
-	if db.accountTrieCache != nil {
-		db.accountTrieCache.Purge()
-	}
 }
 
 // CopyTrie returns an independent copy of the given trie.

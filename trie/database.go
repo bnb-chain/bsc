@@ -61,7 +61,7 @@ type backend interface {
 
 	// Size returns the current storage size of the memory cache in front of the
 	// persistent database layer.
-	Size() common.StorageSize
+	Size() (common.StorageSize, common.StorageSize, common.StorageSize)
 
 	// Update performs a state transition by committing dirty nodes contained
 	// in the given set in order to update state from the specified parent to
@@ -207,16 +207,16 @@ func (db *Database) Commit(root common.Hash, report bool) error {
 
 // Size returns the storage size of dirty trie nodes in front of the persistent
 // database and the size of cached preimages.
-func (db *Database) Size() (common.StorageSize, common.StorageSize) {
+func (db *Database) Size() (common.StorageSize, common.StorageSize, common.StorageSize, common.StorageSize) {
 	var (
-		storages  common.StorageSize
-		preimages common.StorageSize
+		diffs, nodes, immutablenodes common.StorageSize
+		preimages                    common.StorageSize
 	)
-	storages = db.backend.Size()
+	diffs, nodes, immutablenodes = db.backend.Size()
 	if db.preimages != nil {
 		preimages = db.preimages.size()
 	}
-	return storages, preimages
+	return diffs, nodes, immutablenodes, preimages
 }
 
 // Initialized returns an indicator if the state data is already initialized
@@ -352,4 +352,15 @@ func (db *Database) SetBufferSize(size int) error {
 		return errors.New("not supported")
 	}
 	return pdb.SetBufferSize(size)
+}
+
+// Head return the top non-fork difflayer/disklayer root hash for rewinding.
+// It's only supported by path-based database and will return an error for
+// others.
+func (db *Database) Head() common.Hash {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return common.Hash{}
+	}
+	return pdb.Head()
 }
