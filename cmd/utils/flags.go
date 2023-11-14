@@ -2355,7 +2355,7 @@ func tryMakeReadOnlyDatabase(ctx *cli.Context, stack *node.Node) ethdb.Database 
 	// If datadir doesn't exist we need to open db in write-mode
 	// so database engine can create files.
 	readonly := true
-	if !common.FileExist(stack.ResolvePath("chaindata")) {
+	if !common.FileExist(stack.ResolvePath("chaindata")) || ctx.Bool(PruneAncientDataFlag.Name) {
 		readonly = false
 	}
 	return MakeChainDatabase(ctx, stack, readonly, false)
