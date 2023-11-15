@@ -193,6 +193,18 @@ It's deprecated, please use "geth db export" instead.
 This command dumps out the state for a given block (or latest, if none provided).
 `,
 	}
+	exportSegmentCommand = &cli.Command{
+		Action:    exportSegment,
+		Name:      "export-segment",
+		Usage:     "Export history segments from start block",
+		ArgsUsage: "",
+		Flags: flags.Merge([]cli.Flag{
+			utils.HistorySegOutputFlag,
+		}, utils.DatabasePathFlags),
+		Description: `
+This command export history segments from start block.
+`,
+	}
 )
 
 // initGenesis will initialise the given JSON format genesis file and writes it as
@@ -673,6 +685,15 @@ func dump(ctx *cli.Context) error {
 		fmt.Println(string(state.Dump(conf)))
 	}
 	return nil
+}
+
+func exportSegment(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	defer db.Close()
+
 }
 
 // hashish returns true for strings that look like hashes.

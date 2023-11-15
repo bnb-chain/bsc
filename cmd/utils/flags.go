@@ -1127,6 +1127,13 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
 		Category: flags.FastFinalityCategory,
 	}
+
+	// Export history segment
+	HistorySegOutputFlag = &cli.StringFlag{
+		Name:  "output",
+		Usage: "Specific history segments output file name & type",
+		Value: "./gen_history_segments.go",
+	}
 )
 
 var (
