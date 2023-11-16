@@ -34,7 +34,6 @@ const (
 )
 
 var (
-	GenesisHash common.Hash
 	// upgrade config
 	ramanujanUpgrade = make(map[string]*Upgrade)
 
@@ -557,7 +556,7 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 		return
 	}
 	var network string
-	switch GenesisHash {
+	switch params.LocalGenesisHash {
 	/* Add mainnet genesis hash */
 	case params.BSCGenesisHash:
 		network = mainNet

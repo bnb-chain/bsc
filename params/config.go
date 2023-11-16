@@ -30,6 +30,8 @@ var (
 	BSCGenesisHash    = common.HexToHash("0x0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b")
 	ChapelGenesisHash = common.HexToHash("0x6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe34")
 	RialtoGenesisHash = common.HexToHash("0xee835a629f9cf5510b48b6ba41d69e0ff7d6ef10f977166ef939db41f59f5501")
+
+	LocalGenesisHash common.Hash // it will be initial by user program, aim to indicate testnet, mainnet, or other chain
 )
 
 func newUint64(val uint64) *uint64 { return &val }
@@ -1092,6 +1094,10 @@ func configTimestampEqual(x, y *uint64) bool {
 		return x == nil
 	}
 	return *x == *y
+}
+
+func SetupLocalGenesisHash(h common.Hash) {
+	LocalGenesisHash = h
 }
 
 // ConfigCompatError is raised if the locally-stored blockchain is initialised with a
