@@ -30,6 +30,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/consensus"
+
+	"github.com/ethereum/go-ethereum/params"
+
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
+
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -694,6 +700,78 @@ func exportSegment(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
+	genesisHash := rawdb.ReadCanonicalHash(db, 0)
+	chainConfig := rawdb.ReadChainConfig(db, genesisHash)
+	if chainConfig == nil {
+		return errors.New("failed to load chainConfig")
+	}
+	engine, err := ethconfig.CreateConsensusEngine(chainConfig, db, nil, genesisHash)
+	if err != nil {
+		return err
+	}
+	if _, ok := engine.(consensus.PoSA); !ok {
+		return errors.New("current chain is not POSA, cannot generate history segment")
+	}
+	headerChain, err := core.NewHeaderChain(db, chainConfig, engine, func() bool {
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	latest := headerChain.CurrentHeader()
+	if !chainConfig.IsLuban(latest.Number) {
+		return errors.New("current chain is not enable Luban hard fork, cannot generate history segment")
+	}
+	if latest.Number.Uint64() < params.BoundStartBlock {
+		return errors.New("current chain is too short, less than BoundStartBlock")
+	}
+
+	log.Info("start export segment", "from", params.BoundStartBlock, "to", latest.Number, "chainCfg", chainConfig)
+	segs := []params.HisSegment{
+		{
+			Index: 0,
+			StartAtBlock: params.HisBlockInfo{
+				Number: 0,
+				Hash:   genesisHash,
+			},
+		},
+	}
+	// try find finalized block in every segment boundary
+	for num := params.BoundStartBlock; num <= latest.Number.Uint64(); num += params.HistorySegmentLength {
+		var fs, ft *types.Header
+		for next := num + 1; next <= latest.Number.Uint64(); next++ {
+			fs = headerChain.GetHeaderByNumber(next)
+			ft = headerChain.GetFinalizedHeader(fs)
+			if ft == nil {
+				continue
+			}
+			if ft.Number.Uint64() >= num {
+				break
+			}
+		}
+		if ft == nil || fs == nil {
+			// if there cannot found any finalized block, just skip
+			break
+		}
+		log.Info("found segment boundary", "startAt", ft.Number, "FinalityAt", fs.Number)
+		segs = append(segs, params.HisSegment{
+			Index: uint64(len(segs)),
+			StartAtBlock: params.HisBlockInfo{
+				Number: ft.Number.Uint64(),
+				Hash:   ft.Hash(),
+			},
+			FinalityAtBlock: params.HisBlockInfo{
+				Number: fs.Number.Uint64(),
+				Hash:   fs.Hash(),
+			},
+		})
+	}
+	output, err := json.MarshalIndent(segs, "", "\n")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(output))
+	return nil
 }
 
 // hashish returns true for strings that look like hashes.
