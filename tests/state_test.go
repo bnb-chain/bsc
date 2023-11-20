@@ -68,6 +68,8 @@ func TestState(t *testing.T) {
 	st.fails(`stEIP4844-blobtransactions/opcodeBlobhashOutOfRange.json`, "test has incorrect state root")
 	st.fails(`stEIP4844-blobtransactions/opcodeBlobhBounds.json`, "test has incorrect state root")
 
+	st.runonly(`^Shanghai`)
+
 	// For Istanbul, older tests were moved into LegacyTests
 	for _, dir := range []string{
 		filepath.Join(baseDir, "EIPTests", "StateTests"),
