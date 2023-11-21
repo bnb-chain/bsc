@@ -722,11 +722,13 @@ func exportSegment(ctx *cli.Context) error {
 	if !chainConfig.IsLuban(latest.Number) {
 		return errors.New("current chain is not enable Luban hard fork, cannot generate history segment")
 	}
-	if latest.Number.Uint64() < params.BoundStartBlock {
+	latestNum := latest.Number.Uint64()
+	if latestNum < params.FullImmutabilityThreshold || latestNum < params.BoundStartBlock {
 		return errors.New("current chain is too short, less than BoundStartBlock")
 	}
 
-	log.Info("start export segment", "from", params.BoundStartBlock, "to", latest.Number, "chainCfg", chainConfig)
+	target := latestNum - params.FullImmutabilityThreshold
+	log.Info("start export segment", "from", params.BoundStartBlock, "to", target, "chainCfg", chainConfig)
 	segs := []params.HisSegment{
 		{
 			Index: 0,
@@ -737,9 +739,9 @@ func exportSegment(ctx *cli.Context) error {
 		},
 	}
 	// try find finalized block in every segment boundary
-	for num := params.BoundStartBlock; num <= latest.Number.Uint64(); num += params.HistorySegmentLength {
+	for num := params.BoundStartBlock; num <= target; num += params.HistorySegmentLength {
 		var fs, ft *types.Header
-		for next := num + 1; next <= latest.Number.Uint64(); next++ {
+		for next := num + 1; next <= target; next++ {
 			fs = headerChain.GetHeaderByNumber(next)
 			ft = headerChain.GetFinalizedHeader(fs)
 			if ft == nil {
