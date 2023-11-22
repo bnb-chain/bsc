@@ -203,6 +203,10 @@ type Config struct {
 
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
+
+	// History Segment
+	HistorySegmentEnable     bool   `toml:",omitempty"`
+	HistorySegmentCustomFile string `toml:",omitempty"`
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.

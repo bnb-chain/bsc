@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -184,6 +185,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		overrides.OverrideVerkle = config.OverrideVerkle
 	}
 
+	// if enable history segment, try prune ancient data when restart
+	if config.HistorySegmentEnable {
+		if err = truncateAncientTail(chainDb, genesisHash, config.HistorySegmentCustomFile); err != nil {
+			return nil, err
+		}
+	}
+
 	eth := &Ethereum{
 		config:            config,
 		merger:            consensus.NewMerger(chainDb),
@@ -259,7 +267,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	peers := newPeerSet()
 	bcOps = append(bcOps, core.EnableBlockValidator(chainConfig, eth.engine, config.TriesVerifyMode, peers))
-	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, eth.shouldPreserve, &config.TransactionHistory, bcOps...)
+	txLookupLimit := &config.TransactionHistory
+	// if enable HistorySegment, just skip txLookupLimit params, may cause regenerate tx index
+	if config.HistorySegmentEnable {
+		txLookupLimit = nil
+	}
+	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, eth.shouldPreserve, txLookupLimit, bcOps...)
 	if err != nil {
 		return nil, err
 	}
@@ -373,6 +386,38 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.shutdownTracker.MarkStartup()
 
 	return eth, nil
+}
+
+func truncateAncientTail(db ethdb.Database, genesisHash common.Hash, CustomPath string) error {
+	hsm, err := params.NewHistorySegmentManager(&params.HistorySegmentConfig{
+		CustomPath: CustomPath,
+		Genesis:    genesisHash,
+	})
+	if err != nil {
+		return err
+	}
+
+	// get latest 2 segments
+	latestHeader := rawdb.ReadHeadHeader(db)
+	curSegment := hsm.CurSegment(latestHeader.Number.Uint64())
+	prevSegment, ok := hsm.PrevSegment(curSegment)
+	if !ok {
+		return fmt.Errorf("there is no enough history to prune, cur: %v", curSegment)
+	}
+
+	// check segment if match hard code
+	if err = rawdb.AvailableHistorySegment(db, curSegment, prevSegment); err != nil {
+		return err
+	}
+
+	pruneTail := prevSegment.StartAtBlock.Number
+	start := time.Now()
+	old, err := db.TruncateTail(pruneTail)
+	if err != nil {
+		return err
+	}
+	log.Info("TruncateTail in freezerDB", "old", old, "now", pruneTail, "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
 }
 
 func makeExtraData(extra []byte) []byte {

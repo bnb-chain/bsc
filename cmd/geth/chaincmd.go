@@ -205,10 +205,28 @@ This command dumps out the state for a given block (or latest, if none provided)
 		Usage:     "Export history segments from start block",
 		ArgsUsage: "",
 		Flags: flags.Merge([]cli.Flag{
+			utils.CacheFlag,
+			utils.SyncModeFlag,
 			utils.HistorySegOutputFlag,
+			utils.BoundStartBlockFlag,
+			utils.HistorySegmentLengthFlag,
 		}, utils.DatabasePathFlags),
 		Description: `
 This command export history segments from start block.
+`,
+	}
+	pruneHistorySegmentsCommand = &cli.Command{
+		Action:    pruneHistorySegments,
+		Name:      "prune-history-segments",
+		Usage:     "Prune all history segments, it only keep latest 2 segments",
+		ArgsUsage: "",
+		Flags: flags.Merge([]cli.Flag{
+			utils.CacheFlag,
+			utils.SyncModeFlag,
+			utils.HistorySegCustomFlag,
+		}, utils.DatabasePathFlags),
+		Description: `
+Prune all history segments, it only keep latest 2 segments.
 `,
 	}
 )
@@ -697,24 +715,11 @@ func exportSegment(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
 	defer db.Close()
 
 	genesisHash := rawdb.ReadCanonicalHash(db, 0)
-	chainConfig := rawdb.ReadChainConfig(db, genesisHash)
-	if chainConfig == nil {
-		return errors.New("failed to load chainConfig")
-	}
-	engine, err := ethconfig.CreateConsensusEngine(chainConfig, db, nil, genesisHash)
-	if err != nil {
-		return err
-	}
-	if _, ok := engine.(consensus.PoSA); !ok {
-		return errors.New("current chain is not POSA, cannot generate history segment")
-	}
-	headerChain, err := core.NewHeaderChain(db, chainConfig, engine, func() bool {
-		return true
-	})
+	headerChain, chainConfig, err := simpleHeaderChain(db, genesisHash)
 	if err != nil {
 		return err
 	}
@@ -722,14 +727,36 @@ func exportSegment(ctx *cli.Context) error {
 	if !chainConfig.IsLuban(latest.Number) {
 		return errors.New("current chain is not enable Luban hard fork, cannot generate history segment")
 	}
+
+	var (
+		boundStartBlock      uint64
+		historySegmentLength uint64
+	)
+	switch genesisHash {
+	case params.BSCGenesisHash, params.ChapelGenesisHash, params.RialtoGenesisHash:
+		boundStartBlock = params.BoundStartBlock
+		historySegmentLength = params.HistorySegmentLength
+	default:
+		if ctx.IsSet(utils.BoundStartBlockFlag.Name) {
+			boundStartBlock = ctx.Uint64(utils.BoundStartBlockFlag.Name)
+		}
+		if ctx.IsSet(utils.HistorySegmentLengthFlag.Name) {
+			historySegmentLength = ctx.Uint64(utils.HistorySegmentLengthFlag.Name)
+		}
+	}
+	if boundStartBlock == 0 || historySegmentLength == 0 {
+		return fmt.Errorf("wrong params, boundStartBlock: %v, historySegmentLength: %v", boundStartBlock, historySegmentLength)
+	}
+
 	latestNum := latest.Number.Uint64()
-	if latestNum < params.FullImmutabilityThreshold || latestNum < params.BoundStartBlock {
+	if latestNum < params.FullImmutabilityThreshold || latestNum < boundStartBlock {
 		return errors.New("current chain is too short, less than BoundStartBlock")
 	}
 
 	target := latestNum - params.FullImmutabilityThreshold
-	log.Info("start export segment", "from", params.BoundStartBlock, "to", target, "chainCfg", chainConfig)
-	segs := []params.HisSegment{
+	log.Info("start export segment", "from", boundStartBlock, "to", target, "boundStartBlock", boundStartBlock,
+		"historySegmentLength", historySegmentLength, "chainCfg", chainConfig)
+	segments := []params.HisSegment{
 		{
 			Index: 0,
 			StartAtBlock: params.HisBlockInfo{
@@ -739,7 +766,7 @@ func exportSegment(ctx *cli.Context) error {
 		},
 	}
 	// try find finalized block in every segment boundary
-	for num := params.BoundStartBlock; num <= target; num += params.HistorySegmentLength {
+	for num := boundStartBlock; num <= target; num += historySegmentLength {
 		var fs, ft *types.Header
 		for next := num + 1; next <= target; next++ {
 			fs = headerChain.GetHeaderByNumber(next)
@@ -755,9 +782,13 @@ func exportSegment(ctx *cli.Context) error {
 			// if there cannot found any finalized block, just skip
 			break
 		}
+		if ft.Number.Uint64() < num {
+			// cannot find expect finality blocks, just skip
+			break
+		}
 		log.Info("found segment boundary", "startAt", ft.Number, "FinalityAt", fs.Number)
-		segs = append(segs, params.HisSegment{
-			Index: uint64(len(segs)),
+		segments = append(segments, params.HisSegment{
+			Index: uint64(len(segments)),
 			StartAtBlock: params.HisBlockInfo{
 				Number: ft.Number.Uint64(),
 				Hash:   ft.Hash(),
@@ -768,11 +799,76 @@ func exportSegment(ctx *cli.Context) error {
 			},
 		})
 	}
-	output, err := json.MarshalIndent(segs, "", "\n")
+	if err = params.ValidateHisSegments(genesisHash, segments); err != nil {
+		return err
+	}
+	output, err := json.MarshalIndent(segments, "", "    ")
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(output))
+	out := ctx.String(utils.HistorySegOutputFlag.Name)
+	outFile, err := os.OpenFile(out, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+	_, err = outFile.Write(output)
+	if err != nil {
+		return err
+	}
+	log.Info("write history segment success", "count", len(segments), "path", out)
+	return nil
+}
+
+func pruneHistorySegments(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer db.Close()
+
+	genesisHash := rawdb.ReadCanonicalHash(db, 0)
+	headerChain, _, err := simpleHeaderChain(db, genesisHash)
+	if err != nil {
+		return err
+	}
+	cfg := &params.HistorySegmentConfig{
+		CustomPath: "",
+		Genesis:    genesisHash,
+	}
+	if ctx.IsSet(utils.HistorySegCustomFlag.Name) {
+		cfg.CustomPath = ctx.String(utils.HistorySegCustomFlag.Name)
+	}
+	hsm, err := params.NewHistorySegmentManager(cfg)
+	if err != nil {
+		return err
+	}
+
+	// get latest 2 segments
+	latestHeader := headerChain.CurrentHeader()
+	curSegment := hsm.CurSegment(latestHeader.Number.Uint64())
+	prevSegment, ok := hsm.PrevSegment(curSegment)
+	if !ok {
+		return fmt.Errorf("there is no enough history to prune, cur: %v", curSegment)
+	}
+
+	// check segment if match hard code
+	if err = rawdb.AvailableHistorySegment(db, curSegment, prevSegment); err != nil {
+		return err
+	}
+
+	pruneTail := prevSegment.StartAtBlock.Number
+	log.Info("The older history will be pruned", "prevSegment", prevSegment, "curSegment", curSegment, "pruneTail", pruneTail)
+	if err = rawdb.PruneTxLookupToTail(db, pruneTail); err != nil {
+		return err
+	}
+
+	start := time.Now()
+	old, err := db.TruncateTail(pruneTail)
+	if err != nil {
+		return err
+	}
+	log.Info("TruncateTail in freezerDB", "old", old, "now", pruneTail, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
 
@@ -780,4 +876,25 @@ func exportSegment(ctx *cli.Context) error {
 func hashish(x string) bool {
 	_, err := strconv.Atoi(x)
 	return err != nil
+}
+
+func simpleHeaderChain(db ethdb.Database, genesisHash common.Hash) (*core.HeaderChain, *params.ChainConfig, error) {
+	chainConfig := rawdb.ReadChainConfig(db, genesisHash)
+	if chainConfig == nil {
+		return nil, nil, errors.New("failed to load chainConfig")
+	}
+	engine, err := ethconfig.CreateConsensusEngine(chainConfig, db, nil, genesisHash)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, ok := engine.(consensus.PoSA); !ok {
+		return nil, nil, errors.New("current chain is not POSA, cannot generate history segment")
+	}
+	headerChain, err := core.NewHeaderChain(db, chainConfig, engine, func() bool {
+		return true
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return headerChain, chainConfig, nil
 }

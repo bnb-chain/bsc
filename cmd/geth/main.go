@@ -170,6 +170,8 @@ var (
 		utils.BLSPasswordFileFlag,
 		utils.BLSWalletDirFlag,
 		utils.VoteJournalDirFlag,
+		utils.HistorySegEnableFlag,
+		utils.HistorySegCustomFlag,
 	}, utils.NetworkFlags, utils.DatabasePathFlags)
 
 	rpcFlags = []cli.Flag{
@@ -261,6 +263,8 @@ func init() {
 		blsCommand,
 		// See verkle.go
 		verkleCommand,
+		exportSegmentCommand,
+		pruneHistorySegmentsCommand,
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
 
