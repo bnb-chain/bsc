@@ -15,15 +15,31 @@ const (
 )
 
 var (
-	historySegmentsInBSCMainnet = []HisSegment{
-		{
-			Index: 0,
-			StartAtBlock: HisBlockInfo{
-				Number: 0,
-				Hash:   BSCGenesisHash,
-			},
-		},
-	}
+	historySegmentsInBSCMainnet = unmarshalHisSegments(`
+[
+    {
+        "index": 0,
+        "start_at_block": {
+            "number": 0,
+            "hash": "0x0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b"
+        },
+        "finality_at_block": {
+            "number": 0,
+            "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+    },
+    {
+        "index": 1,
+        "start_at_block": {
+            "number": 31268530,
+            "hash": "0xdb8a505f19ef04cb21ae79e3cb641963ffc44f3666e6fde499be55a72b6c7865"
+        },
+        "finality_at_block": {
+            "number": 31268532,
+            "hash": "0xaa1b4e4d251289d21da95e66cf9b57f641b2dbc8031a2bb145ae58ee7ade03e7"
+        }
+    }
+]`)
 	historySegmentsInBSCChapel = unmarshalHisSegments(`
 [
     {
