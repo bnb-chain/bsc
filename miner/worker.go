@@ -709,6 +709,7 @@ func (w *worker) commitTransaction(env *environment, tx *txpool.Transaction, rec
 func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAndNonce,
 	interruptCh chan int32, stopTimer *time.Timer) error {
 	gasLimit := env.header.GasLimit
+	// TODO: update SystemTxsGas
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
 		if w.chain.Config().IsEuler(env.header.Number) {
@@ -728,7 +729,7 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 
 	stopPrefetchCh := make(chan struct{})
 	defer close(stopPrefetchCh)
-	//prefetch txs from all pending txs
+	// prefetch txs from all pending txs
 	txsPrefetch := txs.Copy()
 	tx := txsPrefetch.PeekWithUnwrap()
 	if tx != nil {

@@ -17,23 +17,28 @@
 package vm
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
 
+	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
+	"golang.org/x/crypto/ripemd160"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 	"github.com/ethereum/go-ethereum/crypto/bls12381"
 	"github.com/ethereum/go-ethereum/crypto/bn256"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
-	"golang.org/x/crypto/ripemd160"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // PrecompiledContract is the basic interface for native Go contracts. The implementation
@@ -219,6 +224,27 @@ var PrecompiledContractsCancun = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidate{},
 }
 
+// PrecompiledContractsFusion contains the default set of pre-compiled Ethereum
+// contracts used in the fusion release.
+var PrecompiledContractsFusion = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{1}): &ecrecover{},
+	common.BytesToAddress([]byte{2}): &sha256hash{},
+	common.BytesToAddress([]byte{3}): &ripemd160hash{},
+	common.BytesToAddress([]byte{4}): &dataCopy{},
+	common.BytesToAddress([]byte{5}): &bigModExp{},
+	common.BytesToAddress([]byte{6}): &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{9}): &blake2F{},
+
+	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
+	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidatePlato{},
+	common.BytesToAddress([]byte{102}): &blsSignatureVerify{},
+	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidate{},
+	common.BytesToAddress([]byte{104}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{105}): &tmSignatureRecover{},
+}
+
 // PrecompiledContractsBLS contains the set of pre-compiled Ethereum
 // contracts specified in EIP-2537. These are exported for testing purposes.
 var PrecompiledContractsBLS = map[common.Address]PrecompiledContract{
@@ -245,6 +271,7 @@ var (
 	PrecompiledAddressesIstanbul  []common.Address
 	PrecompiledAddressesByzantium []common.Address
 	PrecompiledAddressesHomestead []common.Address
+	PrecompiledAddressesFusion    []common.Address
 )
 
 func init() {
@@ -281,11 +308,16 @@ func init() {
 	for k := range PrecompiledContractsCancun {
 		PrecompiledAddressesCancun = append(PrecompiledAddressesCancun, k)
 	}
+	for k := range PrecompiledContractsFusion {
+		PrecompiledAddressesFusion = append(PrecompiledAddressesFusion, k)
+	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	case rules.IsFusion:
+		return PrecompiledAddressesFusion
 	case rules.IsCancun:
 		return PrecompiledAddressesCancun
 	case rules.IsHertz:
@@ -561,7 +593,7 @@ func (c *bigModExp) Run(input []byte) ([]byte, error) {
 		// Modulo 0 is undefined, return zero
 		return common.LeftPadBytes([]byte{}, int(modLen)), nil
 	case base.BitLen() == 1: // a bit length of 1 means it's 1 (or -1).
-		//If base == 1, then we can just return base % mod (if mod >= 1, which it is)
+		// If base == 1, then we can just return base % mod (if mod >= 1, which it is)
 		v = base.Mod(base, mod).Bytes()
 	default:
 		v = base.Exp(base, exp, mod).Bytes()
@@ -1354,4 +1386,101 @@ func kZGToVersionedHash(kzg kzg4844.Commitment) common.Hash {
 	h[0] = blobCommitmentVersionKZG
 
 	return h
+}
+
+// verifyDoubleSignEvidence implements bsc header verification precompile.
+type verifyDoubleSignEvidence struct{}
+
+// RequiredGas returns the gas required to execute the pre-compiled contract.
+func (c *verifyDoubleSignEvidence) RequiredGas(input []byte) uint64 {
+	return params.DoubleSignEvidenceVerifyGas
+}
+
+var (
+	extraSeal = 65
+)
+
+type DoubleSignEvidence struct {
+	ChainId      *big.Int
+	HeaderBytes1 []byte
+	HeaderBytes2 []byte
+}
+
+// Run input: rlp encoded DoubleSignEvidence
+// return:
+// signer address| evidence time|
+// 20 bytes      | 32 bytes     |
+// TODO: remove debug log
+func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
+	evidence := &DoubleSignEvidence{}
+	err := rlp.DecodeBytes(input, evidence)
+	if err != nil {
+		log.Debug("rlp decode evidence failed", "err", err)
+		return nil, ErrExecutionReverted
+	}
+
+	header1 := &types.Header{}
+	err = rlp.DecodeBytes(evidence.HeaderBytes1, header1)
+	if err != nil {
+		log.Debug("rlp decode header1 failed", "err", err)
+		return nil, ErrExecutionReverted
+	}
+
+	header2 := &types.Header{}
+	err = rlp.DecodeBytes(evidence.HeaderBytes2, header2)
+	if err != nil {
+		log.Debug("rlp decode header2 failed", "err", err)
+		return nil, ErrExecutionReverted
+	}
+
+	// basic check
+	if header1.Number.Uint64() != header2.Number.Uint64() {
+		log.Debug("header1 and header2 number not equal")
+		return nil, ErrExecutionReverted
+	}
+	if header1.ParentHash != header2.ParentHash {
+		log.Debug("header1 and header2 parent hash not equal")
+		return nil, ErrExecutionReverted
+	}
+
+	if len(header1.Extra) < extraSeal || len(header2.Extra) < extraSeal {
+		log.Debug("header1 or header2 extra length not enough")
+		return nil, ErrExecutionReverted
+	}
+	sig1 := header1.Extra[len(header1.Extra)-extraSeal:]
+	sig2 := header2.Extra[len(header2.Extra)-extraSeal:]
+	if bytes.Equal(sig1, sig2) {
+		log.Debug("header1 and header2 sig equal")
+		return nil, ErrExecutionReverted
+	}
+	evidenceTime := header1.Time
+	if evidenceTime < header2.Time {
+		evidenceTime = header2.Time
+	}
+
+	// check sig
+	msgHash1 := types.SealHash(header1, evidence.ChainId)
+	msgHash2 := types.SealHash(header2, evidence.ChainId)
+	pubkey1, err := secp256k1.RecoverPubkey(msgHash1.Bytes(), sig1)
+	if err != nil {
+		log.Debug("recover pubkey1 failed", "err", err)
+		return nil, ErrExecutionReverted
+	}
+	pubkey2, err := secp256k1.RecoverPubkey(msgHash2.Bytes(), sig2)
+	if err != nil {
+		log.Debug("recover pubkey2 failed", "err", err)
+		return nil, ErrExecutionReverted
+	}
+	if !bytes.Equal(pubkey1, pubkey2) {
+		log.Debug("pubkey1 and pubkey2 not equal")
+		return nil, ErrExecutionReverted
+	}
+
+	returnBz := make([]byte, 52) // 20 + 32
+	signerAddr := crypto.Keccak256(pubkey1[1:])[12:]
+	evidenceTimeBz := big.NewInt(int64(evidenceTime)).Bytes()
+	copy(returnBz[:20], signerAddr)
+	copy(returnBz[52-len(evidenceTimeBz):], evidenceTimeBz)
+
+	return returnBz, nil
 }

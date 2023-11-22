@@ -8,8 +8,10 @@ import (
 
 	"github.com/tendermint/iavl"
 	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/crypto/secp256k1"
 	cmn "github.com/tendermint/tendermint/libs/common"
 
+	//nolint:staticcheck
 	v1 "github.com/ethereum/go-ethereum/core/vm/lightclient/v1"
 	v2 "github.com/ethereum/go-ethereum/core/vm/lightclient/v2"
 	"github.com/ethereum/go-ethereum/params"
@@ -104,7 +106,7 @@ func (c *tmHeaderValidate) Run(input []byte) (result []byte, err error) {
 	return result, nil
 }
 
-//------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------
 
 // iavlMerkleProofValidate implemented as a native contract.
 type iavlMerkleProofValidate struct {
@@ -396,4 +398,41 @@ type cometBFTLightBlockValidateHertz struct {
 
 func (c *cometBFTLightBlockValidateHertz) Run(input []byte) (result []byte, err error) {
 	return c.run(input, true)
+}
+
+// tmSignatureRecover implemented as a native contract.
+type tmSignatureRecover struct{}
+
+func (c *tmSignatureRecover) RequiredGas(input []byte) uint64 {
+	return params.EcrecoverGas
+}
+
+const (
+	tmPubKeyLength           uint8 = 33
+	tmSignatureLength        uint8 = 64
+	tmSignatureMsgHashLength uint8 = 32
+)
+
+// input:
+// | tmPubKey | tmSignature  |  tmSignatureMsgHash  |
+// | 33 bytes |  64 bytes    |       32 bytes       |
+func (c *tmSignatureRecover) Run(input []byte) (result []byte, err error) {
+	if len(input) != int(tmPubKeyLength)+int(tmSignatureLength)+int(tmSignatureMsgHashLength) {
+		return nil, fmt.Errorf("invalid input")
+	}
+
+	return c.runTMSecp256k1Signature(
+		input[:tmPubKeyLength],
+		input[tmPubKeyLength:tmPubKeyLength+tmSignatureLength],
+		input[tmPubKeyLength+tmSignatureLength:],
+	)
+}
+
+func (c *tmSignatureRecover) runTMSecp256k1Signature(pubkey, signatureStr, msgHash []byte) (result []byte, err error) {
+	tmPubKey := secp256k1.PubKeySecp256k1(pubkey)
+	ok := tmPubKey.VerifyBytesWithMsgHash(msgHash, signatureStr)
+	if !ok {
+		return nil, fmt.Errorf("invalid signature")
+	}
+	return tmPubKey.Address().Bytes(), nil
 }

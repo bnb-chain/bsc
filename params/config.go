@@ -165,6 +165,9 @@ var (
 		LondonBlock:         big.NewInt(31302048),
 		HertzBlock:          big.NewInt(31302048),
 
+		// TODO
+		FusionTime: nil,
+
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -197,6 +200,9 @@ var (
 		LondonBlock:         big.NewInt(31103030),
 		HertzBlock:          big.NewInt(31103030),
 
+		// TODO
+		FusionTime: nil,
+
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -227,6 +233,9 @@ var (
 		PlatoBlock:          nil,
 		BerlinBlock:         nil,
 		HertzBlock:          nil,
+
+		// TODO
+		FusionTime: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -449,6 +458,7 @@ type ChainConfig struct {
 
 	ShanghaiTime *uint64 `json:"shanghaiTime,omitempty"  toml:",omitempty"` // Shanghai switch time (nil = no fork, 0 = already on shanghai)
 	KeplerTime   *uint64 `json:"keplerTime,omitempty" toml:",omitempty"`    // Kepler switch time (nil = no fork, 0 = already activated)
+	FusionTime   *uint64 `json:"fusionTime,omitempty" toml:",omitempty"`    // Fusion switch time (nil = no fork, 0 = already activated)
 	CancunTime   *uint64 `json:"cancunTime,omitempty"  toml:",omitempty"`   // Cancun switch time (nil = no fork, 0 = already on cancun)
 	PragueTime   *uint64 `json:"pragueTime,omitempty"  toml:",omitempty"`   // Prague switch time (nil = no fork, 0 = already on prague)
 	VerkleTime   *uint64 `json:"verkleTime,omitempty"  toml:",omitempty"`   // Verkle switch time (nil = no fork, 0 = already on verkle)
@@ -541,7 +551,12 @@ func (c *ChainConfig) String() string {
 		KeplerTime = big.NewInt(0).SetUint64(*c.KeplerTime)
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, ShanghaiTime: %v, KeplerTime: %v, Engine: %v}",
+	var FusionTime *big.Int
+	if c.FusionTime != nil {
+		FusionTime = big.NewInt(0).SetUint64(*c.FusionTime)
+	}
+
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, ShanghaiTime: %v, KeplerTime: %v, FusionTime: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -574,6 +589,7 @@ func (c *ChainConfig) String() string {
 		c.HertzBlock,
 		ShanghaiTime,
 		KeplerTime,
+		FusionTime,
 		engine,
 	)
 }
@@ -791,6 +807,20 @@ func (c *ChainConfig) IsOnKepler(currentBlockNumber *big.Int, lastBlockTime uint
 	return !c.IsKepler(lastBlockNumber, lastBlockTime) && c.IsKepler(currentBlockNumber, currentBlockTime)
 }
 
+// IsFusion returns whether time is either equal to the fusion fork time or greater.
+func (c *ChainConfig) IsFusion(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.FusionTime, time)
+}
+
+// IsOnFusion returns whether currentBlockTime is either equal to the fusion fork time or greater firstly.
+func (c *ChainConfig) IsOnFusion(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsFusion(lastBlockNumber, lastBlockTime) && c.IsFusion(currentBlockNumber, currentBlockTime)
+}
+
 // IsCancun returns whether num is either equal to the Cancun fork time or greater.
 func (c *ChainConfig) IsCancun(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.CancunTime, time)
@@ -855,6 +885,8 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "platoBlock", block: c.PlatoBlock},
 		{name: "hertzBlock", block: c.HertzBlock},
 		{name: "shanghaiTime", timestamp: c.ShanghaiTime},
+		{name: "keplerTime", timestamp: c.KeplerTime},
+		{name: "fusionTime", timestamp: c.FusionTime},
 		{name: "cancunTime", timestamp: c.CancunTime, optional: true},
 		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
@@ -990,6 +1022,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	}
 	if isForkTimestampIncompatible(c.KeplerTime, newcfg.KeplerTime, headTimestamp) {
 		return newTimestampCompatError("Kepler fork timestamp", c.KeplerTime, newcfg.KeplerTime)
+	}
+	if isForkTimestampIncompatible(c.FusionTime, newcfg.FusionTime, headTimestamp) {
+		return newTimestampCompatError("Fusion fork timestamp", c.FusionTime, newcfg.FusionTime)
 	}
 	if isForkTimestampIncompatible(c.CancunTime, newcfg.CancunTime, headTimestamp) {
 		return newTimestampCompatError("Cancun fork timestamp", c.CancunTime, newcfg.CancunTime)
@@ -1151,7 +1186,7 @@ type Rules struct {
 	IsLuban                                                 bool
 	IsPlato                                                 bool
 	IsHertz                                                 bool
-	IsShanghai, IsKepler, IsCancun, IsPrague                bool
+	IsShanghai, IsKepler, IsFusion, IsCancun, IsPrague      bool
 	IsVerkle                                                bool
 }
 
@@ -1182,6 +1217,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsHertz:          c.IsHertz(num),
 		IsShanghai:       c.IsShanghai(num, timestamp),
 		IsKepler:         c.IsKepler(num, timestamp),
+		IsFusion:         c.IsFusion(num, timestamp),
 		IsCancun:         c.IsCancun(num, timestamp),
 		IsPrague:         c.IsPrague(num, timestamp),
 		IsVerkle:         c.IsVerkle(num, timestamp),

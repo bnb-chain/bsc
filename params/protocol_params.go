@@ -144,6 +144,7 @@ const (
 	IdentityPerWordGas          uint64 = 3    // Per-work price for a data copy operation
 	BlsSignatureVerifyBaseGas   uint64 = 1000 // base price for a BLS signature verify operation
 	BlsSignatureVerifyPerKeyGas uint64 = 3500 // Per-key price for a BLS signature verify operation
+	DoubleSignEvidenceVerifyGas uint64 = 1000 // Gas for verify double sign evidence
 
 	Bn256AddGasByzantium             uint64 = 500    // Byzantium gas needed for an elliptic curve addition
 	Bn256AddGasIstanbul              uint64 = 150    // Gas needed for an elliptic curve addition
