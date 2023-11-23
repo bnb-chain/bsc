@@ -753,6 +753,7 @@ func exportSegment(ctx *cli.Context) error {
 		return errors.New("current chain is too short, less than BoundStartBlock")
 	}
 
+	start := time.Now()
 	target := latestNum - params.FullImmutabilityThreshold
 	log.Info("start export segment", "from", boundStartBlock, "to", target, "boundStartBlock", boundStartBlock,
 		"historySegmentLength", historySegmentLength, "chainCfg", chainConfig)
@@ -806,6 +807,8 @@ func exportSegment(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	log.Info("Generate History Segment done", "count", len(segments), "elapsed", common.PrettyDuration(time.Since(start)))
+
 	out := ctx.String(utils.HistorySegOutputFlag.Name)
 	outFile, err := os.OpenFile(out, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
@@ -816,7 +819,7 @@ func exportSegment(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Info("write history segment success", "count", len(segments), "path", out)
+	log.Info("write history segment success", "path", out)
 	return nil
 }
 
@@ -868,6 +871,8 @@ func pruneHistorySegments(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	// update prune offset
+	rawdb.WriteOffSetOfCurrentAncientFreezer(db, pruneTail)
 	log.Info("TruncateTail in freezerDB", "old", old, "now", pruneTail, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
