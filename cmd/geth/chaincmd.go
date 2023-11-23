@@ -850,18 +850,18 @@ func pruneHistorySegments(ctx *cli.Context) error {
 	// get latest 2 segments
 	latestHeader := headerChain.CurrentHeader()
 	curSegment := hsm.CurSegment(latestHeader.Number.Uint64())
-	prevSegment, ok := hsm.PrevSegment(curSegment)
+	lastSegment, ok := hsm.LastSegment(curSegment)
 	if !ok {
 		return fmt.Errorf("there is no enough history to prune, cur: %v", curSegment)
 	}
 
 	// check segment if match hard code
-	if err = rawdb.AvailableHistorySegment(db, curSegment, prevSegment); err != nil {
+	if err = rawdb.AvailableHistorySegment(db, curSegment, lastSegment); err != nil {
 		return err
 	}
 
-	pruneTail := prevSegment.StartAtBlock.Number
-	log.Info("The older history will be pruned", "prevSegment", prevSegment, "curSegment", curSegment, "pruneTail", pruneTail)
+	pruneTail := lastSegment.StartAtBlock.Number
+	log.Info("The older history will be pruned", "lastSegment", lastSegment, "curSegment", curSegment, "pruneTail", pruneTail)
 	if err = rawdb.PruneTxLookupToTail(db, pruneTail); err != nil {
 		return err
 	}

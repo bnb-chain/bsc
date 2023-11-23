@@ -448,3 +448,7 @@ func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscr
 func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEvent) event.Subscription {
 	return bc.scope.Track(bc.finalizedHeaderFeed.Subscribe(ch))
 }
+
+func (bc *BlockChain) LastHistorySegment() *params.HisSegment {
+	return bc.lastSegment
+}

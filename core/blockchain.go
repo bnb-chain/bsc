@@ -298,6 +298,9 @@ type BlockChain struct {
 	vmConfig   vm.Config
 	pipeCommit bool
 
+	// history segment
+	lastSegment *params.HisSegment
+
 	// monitor
 	doubleSignMonitor *monitor.DoubleSignMonitor
 }
@@ -555,6 +558,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 // GetVMConfig returns the block chain VM config.
 func (bc *BlockChain) GetVMConfig() *vm.Config {
 	return &bc.vmConfig
+}
+
+func (bc *BlockChain) SetupHistorySegment(lastSegment *params.HisSegment) {
+	bc.lastSegment = lastSegment
 }
 
 func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts, block *types.Block) {

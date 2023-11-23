@@ -99,8 +99,15 @@ type HisSegment struct {
 	// TODO(0xbundler): if need add more finality evidence? like signature?
 }
 
-func (h *HisSegment) String() string {
-	return fmt.Sprintf("[Index: %v, StartAt: %v, FinalityAt: %v]", h.Index, h.StartAtBlock, h.FinalityAtBlock)
+func (s *HisSegment) String() string {
+	return fmt.Sprintf("[Index: %v, StartAt: %v, FinalityAt: %v]", s.Index, s.StartAtBlock, s.FinalityAtBlock)
+}
+
+func (s *HisSegment) MatchBlock(h common.Hash, n uint64) bool {
+	if s.StartAtBlock.Number == n && s.StartAtBlock.Hash == h {
+		return true
+	}
+	return false
 }
 
 type HistorySegmentConfig struct {
@@ -203,14 +210,20 @@ func (m *HistorySegmentManager) CurSegment(num uint64) HisSegment {
 	return segments[i]
 }
 
-// PrevSegment return the current's last segment, because the latest 2 segments is available,
+// LastSegment return the current's last segment, because the latest 2 segments is available,
 // so user could keep current & prev segment
-func (m *HistorySegmentManager) PrevSegment(cur HisSegment) (HisSegment, bool) {
+func (m *HistorySegmentManager) LastSegment(cur HisSegment) (HisSegment, bool) {
 	segments := m.HisSegments()
 	if cur.Index == 0 || cur.Index >= uint64(len(segments)) {
 		return HisSegment{}, false
 	}
 	return segments[cur.Index-1], true
+}
+
+// LastSegmentByNumber return the current's last segment
+func (m *HistorySegmentManager) LastSegmentByNumber(num uint64) (HisSegment, bool) {
+	cur := m.CurSegment(num)
+	return m.LastSegment(cur)
 }
 
 func unmarshalHisSegments(enc string) []HisSegment {

@@ -207,6 +207,9 @@ type BlockChain interface {
 	// TrieDB retrieves the low level trie database used for interacting
 	// with trie nodes.
 	TrieDB() *trie.Database
+
+	// LastHistorySegment get last history segment
+	LastHistorySegment() *params.HisSegment
 }
 
 type DownloadOption func(downloader *Downloader) *Downloader
@@ -229,6 +232,9 @@ func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchai
 		SnapSyncer:     snap.NewSyncer(stateDb, chain.TrieDB().Scheme()),
 		stateSyncStart: make(chan *stateSync),
 		syncStartBlock: chain.CurrentSnapBlock().Number.Uint64(),
+	}
+	for _, op := range options {
+		dl = op(dl)
 	}
 
 	go dl.stateFetcher()
@@ -490,6 +496,13 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 		localHeight = d.blockchain.CurrentBlock().Number.Uint64()
 	case SnapSync:
 		localHeight = d.blockchain.CurrentSnapBlock().Number.Uint64()
+		// if enable history segment, ensure local height >= lastSegment height
+		if d.blockchain.LastHistorySegment() != nil {
+			lastSegment := d.blockchain.LastHistorySegment()
+			if localHeight < lastSegment.StartAtBlock.Number {
+				localHeight = lastSegment.StartAtBlock.Number
+			}
+		}
 	default:
 		localHeight = d.lightchain.CurrentHeader().Number.Uint64()
 	}
@@ -875,6 +888,11 @@ func (d *Downloader) findAncestorSpanSearch(p *peerConnection, mode SyncMode, re
 			known = d.blockchain.HasBlock(h, n)
 		case SnapSync:
 			known = d.blockchain.HasFastBlock(h, n)
+			// if enable history segment, check in last segment
+			if d.blockchain.LastHistorySegment() != nil && !known {
+				lastSegment := d.blockchain.LastHistorySegment()
+				known = lastSegment.MatchBlock(h, n)
+			}
 		default:
 			known = d.lightchain.HasHeader(h, n)
 		}
@@ -928,6 +946,11 @@ func (d *Downloader) findAncestorBinarySearch(p *peerConnection, mode SyncMode, 
 			known = d.blockchain.HasBlock(h, n)
 		case SnapSync:
 			known = d.blockchain.HasFastBlock(h, n)
+			// if enable history segment, check in last segment
+			if d.blockchain.LastHistorySegment() != nil && !known {
+				lastSegment := d.blockchain.LastHistorySegment()
+				known = lastSegment.MatchBlock(h, n)
+			}
 		default:
 			known = d.lightchain.HasHeader(h, n)
 		}
