@@ -416,8 +416,6 @@ func truncateAncientTail(db ethdb.Database, genesisHash common.Hash, CustomPath 
 	if err != nil {
 		return err
 	}
-	// update prune offset
-	rawdb.WriteOffSetOfCurrentAncientFreezer(db, pruneTail)
 	log.Info("TruncateTail in freezerDB", "old", old, "now", pruneTail, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }

@@ -257,7 +257,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 	}
 	ancientInspectCmd = &cli.Command{
 		Action: ancientInspect,
-		Name:   "inspect-reserved-oldest-blocks",
+		Name:   "inspect-ancient",
 		Flags: []cli.Flag{
 			utils.DataDirFlag,
 		},
@@ -448,7 +448,7 @@ func ancientInspect(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, true)
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 	return rawdb.AncientInspect(db)
 }

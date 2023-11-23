@@ -308,8 +308,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	// it to the freezer content.
 	// Only to check the followings when offset equal to 0, otherwise the block number
 	// in ancientdb did not start with 0, no genesis block in ancientdb as well.
-
-	if kvgenesis, _ := db.Get(headerHashKey(0)); offset == 0 && len(kvgenesis) > 0 {
+	if kvgenesis, _ := db.Get(headerHashKey(0)); (offset == 0 && frdb.tail.Load() == 0) && len(kvgenesis) > 0 {
 		if frozen, _ := frdb.Ancients(); frozen > 0 {
 			// If the freezer already contains something, ensure that the genesis blocks
 			// match, otherwise we might mix up freezers across chains and destroy both
@@ -557,7 +556,39 @@ func (s *stat) Count() string {
 	return s.count.String()
 }
 func AncientInspect(db ethdb.Database) error {
+	log.Info("Inspect freezerDB...")
+	var stats [][]string
+	var total common.StorageSize
+	frds, err := inspectFreezers(db)
+	if err != nil {
+		return err
+	}
+	for _, ancient := range frds {
+		for _, table := range ancient.sizes {
+			stats = append(stats, []string{
+				fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
+				strings.Title(table.name),
+				table.size.String(),
+				fmt.Sprintf("%d", ancient.tail),
+				fmt.Sprintf("%d", ancient.head),
+				fmt.Sprintf("%d", ancient.count()),
+			})
+		}
+		total += ancient.size()
+	}
+	frdTable := tablewriter.NewWriter(os.Stdout)
+	frdTable.SetHeader([]string{"Database", "Category", "Size", "tail", "head", "Items"})
+	frdTable.SetFooter([]string{"", "Total", total.String(), " ", " ", " "})
+	frdTable.AppendBulk(stats)
+	frdTable.Render()
+
+	log.Info("Inspect ancient prune situation...")
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
+	// if tail is not 0, just overwrite it
+	tail, _ := db.Tail()
+	if tail > 0 {
+		offset = counter(tail)
+	}
 	// Get number of ancient rows inside the freezer.
 	ancients := counter(0)
 	if count, err := db.ItemAmountInAncient(); err != nil {
@@ -572,7 +603,7 @@ func AncientInspect(db ethdb.Database) error {
 	} else {
 		endNumber = offset + ancients - 1
 	}
-	stats := [][]string{
+	stats = [][]string{
 		{"Offset/StartBlockNumber", "Offset/StartBlockNumber of ancientDB", offset.String()},
 		{"Amount of remained items in AncientStore", "Remaining items of ancientDB", ancients.String()},
 		{"The last BlockNumber within ancientDB", "The last BlockNumber", endNumber.String()},
