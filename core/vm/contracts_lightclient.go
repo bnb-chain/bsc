@@ -400,10 +400,10 @@ func (c *cometBFTLightBlockValidateHertz) Run(input []byte) (result []byte, err 
 	return c.run(input, true)
 }
 
-// tmSignatureRecover implemented as a native contract.
-type tmSignatureRecover struct{}
+// secp256k1SignatureRecover implemented as a native contract.
+type secp256k1SignatureRecover struct{}
 
-func (c *tmSignatureRecover) RequiredGas(input []byte) uint64 {
+func (c *secp256k1SignatureRecover) RequiredGas(input []byte) uint64 {
 	return params.EcrecoverGas
 }
 
@@ -416,7 +416,7 @@ const (
 // input:
 // | tmPubKey | tmSignature  |  tmSignatureMsgHash  |
 // | 33 bytes |  64 bytes    |       32 bytes       |
-func (c *tmSignatureRecover) Run(input []byte) (result []byte, err error) {
+func (c *secp256k1SignatureRecover) Run(input []byte) (result []byte, err error) {
 	if len(input) != int(tmPubKeyLength)+int(tmSignatureLength)+int(tmSignatureMsgHashLength) {
 		return nil, fmt.Errorf("invalid input")
 	}
@@ -428,7 +428,7 @@ func (c *tmSignatureRecover) Run(input []byte) (result []byte, err error) {
 	)
 }
 
-func (c *tmSignatureRecover) runTMSecp256k1Signature(pubkey, signatureStr, msgHash []byte) (result []byte, err error) {
+func (c *secp256k1SignatureRecover) runTMSecp256k1Signature(pubkey, signatureStr, msgHash []byte) (result []byte, err error) {
 	tmPubKey := secp256k1.PubKeySecp256k1(pubkey)
 	ok := tmPubKey.VerifyBytesWithMsgHash(msgHash, signatureStr)
 	if !ok {

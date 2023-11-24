@@ -242,7 +242,7 @@ var PrecompiledContractsFusion = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{102}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidate{},
 	common.BytesToAddress([]byte{104}): &verifyDoubleSignEvidence{},
-	common.BytesToAddress([]byte{105}): &tmSignatureRecover{},
+	common.BytesToAddress([]byte{105}): &secp256k1SignatureRecover{},
 }
 
 // PrecompiledContractsBLS contains the set of pre-compiled Ethereum

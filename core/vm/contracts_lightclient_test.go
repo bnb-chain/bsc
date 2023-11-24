@@ -374,7 +374,7 @@ func TestCometBFTLightBlockValidateHertz(t *testing.T) {
 	require.Equal(t, expectOutputStr, hex.EncodeToString(res))
 }
 
-func TestTMSignatureRecover(t *testing.T) {
+func TestSecp256k1SignatureRecover(t *testing.T) {
 	// local key
 	{
 		pubKey, err := hex.DecodeString("0278caa4d6321aa856d6341dd3e8bcdfe0b55901548871c63c3f5cec43c2ae88a9")
@@ -387,7 +387,7 @@ func TestTMSignatureRecover(t *testing.T) {
 		require.NoError(t, err)
 
 		input := append(append(pubKey, sig...), msghash...)
-		contract := &tmSignatureRecover{}
+		contract := &secp256k1SignatureRecover{}
 		res, err := contract.Run(input)
 		require.NoError(t, err)
 
@@ -405,7 +405,7 @@ func TestTMSignatureRecover(t *testing.T) {
 		require.NoError(t, err)
 
 		input := append(append(pubKey, sig...), msghash...)
-		contract := &tmSignatureRecover{}
+		contract := &secp256k1SignatureRecover{}
 		res, err := contract.Run(input)
 		require.NoError(t, err)
 
