@@ -153,11 +153,10 @@ Note: if you can not download the chaindata snapshot and want to sync from genes
 So just run: `geth --datadir <datadir> init ./genesis.json`
 #### 4. Start a full node
 ```shell
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0
 
 ## It is recommand to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0 --tries-verify-mode none
-```
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none
 
 #### 5. Monitor node status
 
