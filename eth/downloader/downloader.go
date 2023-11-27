@@ -210,6 +210,9 @@ type BlockChain interface {
 
 	// LastHistorySegment get last history segment
 	LastHistorySegment() *params.HisSegment
+
+	// WriteHeaders just write header into db, it an unsafe interface, just for history segment
+	WriteCanonicalHeaders([]*types.Header, []uint64) error
 }
 
 type DownloadOption func(downloader *Downloader) *Downloader
@@ -845,6 +848,13 @@ func (d *Downloader) findAncestor(p *peerConnection, localHeight uint64, remoteH
 	if err != nil {
 		return 0, err
 	}
+
+	if ancestor == 0 && mode == SnapSync {
+		ancestor, err = d.findAncestorFromHistorySegment(p, remoteHeight)
+		if err != nil {
+			return 0, err
+		}
+	}
 	return ancestor, nil
 }
 
@@ -888,11 +898,6 @@ func (d *Downloader) findAncestorSpanSearch(p *peerConnection, mode SyncMode, re
 			known = d.blockchain.HasBlock(h, n)
 		case SnapSync:
 			known = d.blockchain.HasFastBlock(h, n)
-			// if enable history segment, check in last segment
-			if d.blockchain.LastHistorySegment() != nil && !known {
-				lastSegment := d.blockchain.LastHistorySegment()
-				known = lastSegment.MatchBlock(h, n)
-			}
 		default:
 			known = d.lightchain.HasHeader(h, n)
 		}
@@ -1748,4 +1753,36 @@ func (d *Downloader) reportSnapSyncProgress(force bool) {
 	)
 	log.Info("Syncing: chain download in progress", "synced", progress, "chain", syncedBytes, "headers", headers, "bodies", bodies, "receipts", receipts, "eta", common.PrettyDuration(eta))
 	d.syncLogTime = time.Now()
+}
+
+func (d *Downloader) findAncestorFromHistorySegment(p *peerConnection, remoteHeight uint64) (uint64, error) {
+	lastSegment := d.blockchain.LastHistorySegment()
+	if lastSegment == nil {
+		return 0, nil
+	}
+
+	expect := lastSegment.StartAtBlock.Number
+	if expect > remoteHeight {
+		return 0, nil
+	}
+	headers, hashes, err := d.fetchHeadersByNumber(p, expect, 1, 0, false)
+	if err != nil {
+		return 0, err
+	}
+	// Make sure the peer actually gave something valid
+	if len(headers) != 1 {
+		return 0, fmt.Errorf("%w: multiple headers (%d) for single request", errBadPeer, len(headers))
+	}
+
+	// check if it matches local last segment
+	h := hashes[0]
+	n := headers[0].Number.Uint64()
+	if lastSegment.MatchBlock(h, n) && headers[0].Hash() == h {
+		// just write header, td, because it's snap sync, just sync history is enough
+		if err = d.blockchain.WriteCanonicalHeaders(headers, []uint64{lastSegment.StartAtBlock.TD}); err != nil {
+			return 0, err
+		}
+		return n, nil
+	}
+	return 0, nil
 }

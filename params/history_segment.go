@@ -90,6 +90,8 @@ var (
 type HisBlockInfo struct {
 	Number uint64      `json:"number"`
 	Hash   common.Hash `json:"hash"`
+	TD     uint64
+	// TODO(0xbundler): add consensus data, parlia snapshot
 }
 
 type HisSegment struct {

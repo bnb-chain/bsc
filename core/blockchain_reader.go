@@ -452,3 +452,14 @@ func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEve
 func (bc *BlockChain) LastHistorySegment() *params.HisSegment {
 	return bc.lastSegment
 }
+
+func (bc *BlockChain) WriteCanonicalHeaders(headers []*types.Header, tds []uint64) error {
+	for i, header := range headers {
+		h := header.Hash()
+		n := header.Number.Uint64()
+		rawdb.WriteTd(bc.db, h, n, new(big.Int).SetUint64(tds[i]))
+		rawdb.WriteHeader(bc.db, header)
+		rawdb.WriteCanonicalHash(bc.db, h, n)
+	}
+	return nil
+}
