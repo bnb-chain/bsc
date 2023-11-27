@@ -1165,15 +1165,15 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if parent == nil {
 		return errors.New("parent not found")
 	}
-	if p.chainConfig.IsOnFusion(header.Number, parent.Time, header.Time) {
-		err := p.initializeFusionContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
+	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
 		if err != nil {
-			log.Error("init fusion contract failed", "error", err)
+			log.Error("init feynman contract failed", "error", err)
 		}
 	}
 
 	// update validators every day
-	if p.chainConfig.IsFusion(header.Number, header.Time) {
+	if p.chainConfig.IsFeynman(header.Number, header.Time) {
 		// TODO: revert this
 		// if time.Unix(int64(parent.Time), 0).Day() < time.Unix(int64(header.Time), 0).Day() {
 		if time.Unix(int64(header.Time), 0).Minute()%5 > time.Unix(int64(parent.Time), 0).Minute()%5 {
@@ -1249,15 +1249,15 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if parent == nil {
 		return nil, nil, errors.New("parent not found")
 	}
-	if p.chainConfig.IsOnFusion(header.Number, parent.Time, header.Time) {
-		err := p.initializeFusionContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
+	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+		err := p.initializeFeynmanContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
 		if err != nil {
-			log.Error("init fusion contract failed", "error", err)
+			log.Error("init feynman contract failed", "error", err)
 		}
 	}
 
 	// update validators every day
-	if p.chainConfig.IsFusion(header.Number, header.Time) {
+	if p.chainConfig.IsFeynman(header.Number, header.Time) {
 		// TODO: revert this
 		// if time.Unix(int64(parent.Time), 0).Day() < time.Unix(int64(header.Time), 0).Day() {
 		if time.Unix(int64(header.Time), 0).Minute()%5 > time.Unix(int64(parent.Time), 0).Minute()%5 {

@@ -188,6 +188,8 @@ github.com/bnb-chain/greenfield-tendermint v0.0.0-20230417032003-4cda1f296fb2 h1
 github.com/bnb-chain/greenfield-tendermint v0.0.0-20230417032003-4cda1f296fb2/go.mod h1:9q11eHNRY9FDwFH+4pompzPNGv//Z3VcfvkELaHJPMs=
 github.com/bnb-chain/ics23 v0.1.0 h1:DvjGOts2FBfbxB48384CYD1LbcrfjThFz8kowY/7KxU=
 github.com/bnb-chain/ics23 v0.1.0/go.mod h1:cU6lTGolbbLFsGCgceNB2AzplH1xecLp6+KXvxM32nI=
+github.com/bnb-chain/tendermint v0.31.16-0.20231127100033-8c9db31ef533 h1:9klAX5tzyt6mpWv23zq5HVxTLZHlK28E84nVUzirVWo=
+github.com/bnb-chain/tendermint v0.31.16-0.20231127100033-8c9db31ef533/go.mod h1:cmt8HHmQUSVaWQ/hoTefRxsh5X3ERaM1zCUIR0DPbFU=
 github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
 github.com/bradfitz/go-smtpd v0.0.0-20170404230938-deb6d6237625/go.mod h1:HYsPBTaaSFSlLx/70C2HPIMNZpVV8+vt/A+FMnYP11g=
 github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d/go.mod h1:PmM6Mmwb0LSuEubjR8N7PtNe1KxZLtOUHtbeikc5h60=
@@ -802,8 +804,6 @@ github.com/iris-contrib/go.uuid v2.0.0+incompatible/go.mod h1:iz2lgM/1UnEf1kP0L/
 github.com/iris-contrib/jade v1.1.3/go.mod h1:H/geBymxJhShH5kecoiOCSssPX7QWYH7UaeZTSWddIk=
 github.com/iris-contrib/pongo2 v0.0.1/go.mod h1:Ssh+00+3GAZqSQb30AvBRNxBx7rf0GqwkjqxNd0u65g=
 github.com/iris-contrib/schema v0.0.1/go.mod h1:urYA3uvUNG1TIIjOSCzHr9/LmbQo8LrOcOqfqxa4hXw=
-github.com/j75689/tendermint v0.0.0-20231110072701-fb5a4b37d9d8 h1:+SAW4SBz3bmmmRTDnIlHr8PWuEaZIfudpeIJtn6G12k=
-github.com/j75689/tendermint v0.0.0-20231110072701-fb5a4b37d9d8/go.mod h1:cmt8HHmQUSVaWQ/hoTefRxsh5X3ERaM1zCUIR0DPbFU=
 github.com/jackpal/go-nat-pmp v1.0.2-0.20160603034137-1fa385a6f458/go.mod h1:QPH045xvCAeXUZOxsnwmrtiCoxIr9eob+4orBN1SBKc=
 github.com/jackpal/go-nat-pmp v1.0.2 h1:KzKSgb7qkJvOUTqYl9/Hg/me3pWgBmERKrTGD7BdWus=
 github.com/jackpal/go-nat-pmp v1.0.2/go.mod h1:QPH045xvCAeXUZOxsnwmrtiCoxIr9eob+4orBN1SBKc=

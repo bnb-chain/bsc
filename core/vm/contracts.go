@@ -224,9 +224,9 @@ var PrecompiledContractsCancun = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidate{},
 }
 
-// PrecompiledContractsFusion contains the default set of pre-compiled Ethereum
-// contracts used in the fusion release.
-var PrecompiledContractsFusion = map[common.Address]PrecompiledContract{
+// PrecompiledContractsFeynman contains the default set of pre-compiled Ethereum
+// contracts used in the Feynman release.
+var PrecompiledContractsFeynman = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{1}): &ecrecover{},
 	common.BytesToAddress([]byte{2}): &sha256hash{},
 	common.BytesToAddress([]byte{3}): &ripemd160hash{},
@@ -271,7 +271,7 @@ var (
 	PrecompiledAddressesIstanbul  []common.Address
 	PrecompiledAddressesByzantium []common.Address
 	PrecompiledAddressesHomestead []common.Address
-	PrecompiledAddressesFusion    []common.Address
+	PrecompiledAddressesFeynman   []common.Address
 )
 
 func init() {
@@ -308,16 +308,16 @@ func init() {
 	for k := range PrecompiledContractsCancun {
 		PrecompiledAddressesCancun = append(PrecompiledAddressesCancun, k)
 	}
-	for k := range PrecompiledContractsFusion {
-		PrecompiledAddressesFusion = append(PrecompiledAddressesFusion, k)
+	for k := range PrecompiledContractsFeynman {
+		PrecompiledAddressesFeynman = append(PrecompiledAddressesFeynman, k)
 	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
-	case rules.IsFusion:
-		return PrecompiledAddressesFusion
+	case rules.IsFeynman:
+		return PrecompiledAddressesFeynman
 	case rules.IsCancun:
 		return PrecompiledAddressesCancun
 	case rules.IsHertz:

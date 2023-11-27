@@ -18,8 +18,8 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// initializeFusionContract initialize new contracts of fusion fork
-func (p *Parlia) initializeFusionContract(state *state.StateDB, header *types.Header, chain core.ChainContext,
+// initializeFeynmanContract initialize new contracts of Feynman fork
+func (p *Parlia) initializeFeynmanContract(state *state.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool,
 ) error {
 	// method
@@ -35,13 +35,13 @@ func (p *Parlia) initializeFusionContract(state *state.StateDB, header *types.He
 	// get packed data
 	data, err := p.stakeHubABI.Pack(method)
 	if err != nil {
-		log.Error("Unable to pack tx for initialize fusion contracts", "error", err)
+		log.Error("Unable to pack tx for initialize feynman contracts", "error", err)
 		return err
 	}
 	for _, c := range contracts {
 		msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(c), data, common.Big0)
 		// apply message
-		log.Info("initialize fusion contract", "block number", header.Number.Uint64(), "contract", c)
+		log.Info("initialize feynman contract", "block number", header.Number.Uint64(), "contract", c)
 		err = p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
 		if err != nil {
 			return err
