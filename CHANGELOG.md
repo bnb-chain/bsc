@@ -1,4 +1,19 @@
 # Changelog
+## v1.3.2
+FEATURE
+* [\#1970](https://github.com/bnb-chain/bsc/pull/1970) core: enable Shanghai EIPs
+* [\#1973](https://github.com/bnb-chain/bsc/pull/1973) core/systemcontracts: include BEP-319 on kepler hardfork
+
+BUGFIX
+* [\#1964](https://github.com/bnb-chain/bsc/pull/1964) consensus/parlia: hardfork block can be epoch block
+* [\#1979](https://github.com/bnb-chain/bsc/pull/1979) fix: upgrade pebble and improve config
+* [\#1980](https://github.com/bnb-chain/bsc/pull/1980) internal/ethapi: fix null effectiveGasPrice in GetTransactionReceipt
+* [\#1986](https://github.com/bnb-chain/bsc/pull/1986) fix(cmd): check pruneancient when creating db
+
+IMPROVEMENT
+* [\#1977](https://github.com/bnb-chain/bsc/pull/1977) doc: add instructions for starting fullnode with pbss
+* [\#2000](https://github.com/bnb-chain/bsc/pull/2000) cmd/utils: exit process if txlookuplimit flag is set
+
 ## v1.3.1
 FEATURE
 * [\#1881](https://github.com/bnb-chain/bsc/pull/1881) feat: active pbss
