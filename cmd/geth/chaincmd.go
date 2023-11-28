@@ -719,7 +719,7 @@ func exportSegment(ctx *cli.Context) error {
 	defer db.Close()
 
 	genesisHash := rawdb.ReadCanonicalHash(db, 0)
-	headerChain, chainConfig, err := simpleHeaderChain(db, genesisHash)
+	chainConfig, engine, headerChain, err := simpleHeaderChain(db, genesisHash)
 	if err != nil {
 		return err
 	}
@@ -788,7 +788,7 @@ func exportSegment(ctx *cli.Context) error {
 			break
 		}
 		log.Info("found segment boundary", "startAt", ft.Number, "FinalityAt", fs.Number)
-		segments = append(segments, params.HisSegment{
+		segment := params.HisSegment{
 			Index: uint64(len(segments)),
 			StartAtBlock: params.HisBlockInfo{
 				Number: ft.Number.Uint64(),
@@ -798,7 +798,18 @@ func exportSegment(ctx *cli.Context) error {
 				Number: fs.Number.Uint64(),
 				Hash:   fs.Hash(),
 			},
-		})
+		}
+		segment.StartAtBlock.TD = headerChain.GetTd(segment.StartAtBlock.Hash, segment.StartAtBlock.Number).Uint64()
+		segment.FinalityAtBlock.TD = headerChain.GetTd(segment.FinalityAtBlock.Hash, segment.FinalityAtBlock.Number).Uint64()
+		// if using posa consensus, just get snapshot as consensus data
+		if p, ok := engine.(consensus.PoSA); ok {
+			enc, err := p.GetConsensusData(headerChain, ft)
+			if err != nil {
+				return err
+			}
+			segment.StartAtBlock.ConsensusData = enc
+		}
+		segments = append(segments, segment)
 	}
 	if err = params.ValidateHisSegments(genesisHash, segments); err != nil {
 		return err
@@ -831,7 +842,7 @@ func pruneHistorySegments(ctx *cli.Context) error {
 	defer db.Close()
 
 	genesisHash := rawdb.ReadCanonicalHash(db, 0)
-	headerChain, _, err := simpleHeaderChain(db, genesisHash)
+	_, _, headerChain, err := simpleHeaderChain(db, genesisHash)
 	if err != nil {
 		return err
 	}
@@ -881,23 +892,23 @@ func hashish(x string) bool {
 	return err != nil
 }
 
-func simpleHeaderChain(db ethdb.Database, genesisHash common.Hash) (*core.HeaderChain, *params.ChainConfig, error) {
+func simpleHeaderChain(db ethdb.Database, genesisHash common.Hash) (*params.ChainConfig, consensus.Engine, *core.HeaderChain, error) {
 	chainConfig := rawdb.ReadChainConfig(db, genesisHash)
 	if chainConfig == nil {
-		return nil, nil, errors.New("failed to load chainConfig")
+		return nil, nil, nil, errors.New("failed to load chainConfig")
 	}
 	engine, err := ethconfig.CreateConsensusEngine(chainConfig, db, nil, genesisHash)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if _, ok := engine.(consensus.PoSA); !ok {
-		return nil, nil, errors.New("current chain is not POSA, cannot generate history segment")
+		return nil, nil, nil, errors.New("current chain is not POSA, cannot generate history segment")
 	}
 	headerChain, err := core.NewHeaderChain(db, chainConfig, engine, func() bool {
 		return true
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return headerChain, chainConfig, nil
+	return chainConfig, engine, headerChain, nil
 }

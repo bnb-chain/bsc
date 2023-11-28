@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -230,6 +231,9 @@ type Parlia struct {
 
 	// The fields below are for testing only
 	fakeDiff bool // Skip difficulty verifications
+
+	// history segment, it provides history segment's consensus data to prevent generate snap from older headers
+	lastSegment *params.HisSegment
 }
 
 // New creates a Parlia consensus engine.
@@ -284,6 +288,10 @@ func New(
 	}
 
 	return c
+}
+
+func (p *Parlia) SetupLastSegment(segment *params.HisSegment) {
+	p.lastSegment = segment
 }
 
 func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
@@ -677,7 +685,20 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				break
 			}
 		}
-		// TODO(0xbundler): check history consensus data, load snapshot
+		// check history consensus data, load snapshot
+		if p.lastSegment != nil && p.lastSegment.MatchBlock(hash, number) {
+			var tmp Snapshot
+			err := json.Unmarshal(p.lastSegment.StartAtBlock.ConsensusData, &tmp)
+			if err == nil {
+				tmp.config = p.config
+				tmp.sigCache = p.signatures
+				tmp.ethAPI = p.ethAPI
+				snap = &tmp
+				break
+			}
+			log.Error("Try load snapshot from history segment, wrong encode", "number", number, "hash", hash, "err", err)
+		}
+
 		// If we're at the genesis, snapshot the initial state. Alternatively if we have
 		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
 		// consider the checkpoint trusted and snapshot it.
@@ -1510,6 +1531,19 @@ func (p *Parlia) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 // Close implements consensus.Engine. It's a noop for parlia as there are no background threads.
 func (p *Parlia) Close() error {
 	return nil
+}
+
+func (p *Parlia) GetConsensusData(chain consensus.ChainHeaderReader, header *types.Header) ([]byte, error) {
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number, header.Hash(), nil)
+	if err != nil {
+		return nil, err
+	}
+	enc, err := json.Marshal(snap)
+	if err != nil {
+		return nil, err
+	}
+	return enc, nil
 }
 
 // ==========================  interaction with contract/account =========

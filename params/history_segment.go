@@ -1,6 +1,7 @@
 package params
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -88,10 +89,29 @@ var (
 )
 
 type HisBlockInfo struct {
-	Number uint64      `json:"number"`
-	Hash   common.Hash `json:"hash"`
-	TD     uint64
-	// TODO(0xbundler): add consensus data, parlia snapshot
+	Number        uint64      `json:"number"`
+	Hash          common.Hash `json:"hash"`
+	TD            uint64      `json:"td"`
+	ConsensusData []byte      `json:"consensus_data"` // add consensus data, like parlia snapshot
+}
+
+func (b *HisBlockInfo) Equals(c *HisBlockInfo) bool {
+	if b == nil || c == nil {
+		return b == c
+	}
+	if b.Number != c.Number {
+		return false
+	}
+	if b.Hash != c.Hash {
+		return false
+	}
+	if b.TD != c.TD {
+		return false
+	}
+	if !bytes.Equal(b.ConsensusData, c.ConsensusData) {
+		return false
+	}
+	return true
 }
 
 type HisSegment struct {
@@ -110,6 +130,22 @@ func (s *HisSegment) MatchBlock(h common.Hash, n uint64) bool {
 		return true
 	}
 	return false
+}
+
+func (s *HisSegment) Equals(compared *HisSegment) bool {
+	if s == nil || compared == nil {
+		return s == compared
+	}
+	if s.Index != compared.Index {
+		return false
+	}
+	if !s.StartAtBlock.Equals(&compared.StartAtBlock) {
+		return false
+	}
+	if !s.FinalityAtBlock.Equals(&compared.FinalityAtBlock) {
+		return false
+	}
+	return true
 }
 
 type HistorySegmentConfig struct {
@@ -180,7 +216,7 @@ func ValidateHisSegments(genesis common.Hash, segments []HisSegment) error {
 			Hash:   genesis,
 		},
 	}
-	if segments[0] != expectSeg0 {
+	if !segments[0].Equals(&expectSeg0) {
 		return fmt.Errorf("wrong segement0 start block, it must be genesis, expect: %v, actual: %v", expectSeg0, segments[0])
 	}
 	for i := 1; i < len(segments); i++ {

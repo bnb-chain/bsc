@@ -154,4 +154,6 @@ type PoSA interface {
 	GetFinalizedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
 	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool
+	GetConsensusData(chain ChainHeaderReader, header *types.Header) ([]byte, error)
+	SetupLastSegment(segment *params.HisSegment)
 }

@@ -210,6 +210,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
+	var lastSegment *params.HisSegment
+	if config.HistorySegmentEnable {
+		_, lastSegment, err = GetHistorySegmentAndLastSegment(chainDb, genesisHash, config.HistorySegmentCustomFile)
+		if err != nil {
+			return nil, err
+		}
+		if p, ok := eth.engine.(consensus.PoSA); ok {
+			p.SetupLastSegment(lastSegment)
+		}
+	}
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
 	var dbVer = "<nil>"
@@ -268,11 +278,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	bcOps = append(bcOps, func(bc *core.BlockChain) (*core.BlockChain, error) {
 		// if enable history segment, try prune ancient data when restart
-		if config.HistorySegmentEnable {
-			_, lastSegment, err := GetHistorySegmentAndLastSegment(chainDb, genesisHash, config.HistorySegmentCustomFile)
-			if err != nil {
-				return nil, err
-			}
+		if config.HistorySegmentEnable && lastSegment != nil {
 			if err = truncateAncientTail(chainDb, lastSegment); err != nil {
 				return nil, err
 			}
