@@ -119,6 +119,7 @@ func newTester(t *testing.T, historyLimit uint64) *tester {
 			parent = obj.roots[len(obj.roots)-1]
 		}
 		root, nodes, states := obj.generate(parent)
+		fmt.Printf("newTester obj i:%d, root:%s \n", i, root.String())
 		if err := db.Update(root, parent, uint64(i), nodes, states); err != nil {
 			panic(fmt.Errorf("failed to update state changes, err: %w", err))
 		}
@@ -512,14 +513,17 @@ func TestJournal(t *testing.T) {
 	tester.db.Close()
 	tester.db = New(tester.db.diskdb, nil)
 
+	fmt.Printf("TestJournal tester.roots len:%d \n", len(tester.roots))
 	// Verify states including disk layer and all diff on top.
 	for i := 0; i < len(tester.roots); i++ {
 		if i >= tester.bottomIndex() {
+			fmt.Printf("TestJournal verifyState loop i:%d, bottomIndex:%d, verifyState:%s \n", i, tester.bottomIndex(), tester.roots[i])
 			if err := tester.verifyState(tester.roots[i]); err != nil {
 				t.Fatalf("Invalid state, err: %v", err)
 			}
 			continue
 		}
+		fmt.Printf("TestJournal verifyState loop i:%d, verifyState:%s \n", i, tester.roots[i])
 		if err := tester.verifyState(tester.roots[i]); err == nil {
 			t.Fatal("Unexpected state")
 		}
