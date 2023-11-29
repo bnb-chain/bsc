@@ -1,4 +1,8 @@
 # Changelog
+## v1.2.14
+BUGFIX
+fix: remove sharedPool
+
 ## v1.2.13
 IMPROVEMENT
 * [\#1954](https://github.com/bnb-chain/bsc/pull/1954) performance: keep trie prefetch during validation phase
