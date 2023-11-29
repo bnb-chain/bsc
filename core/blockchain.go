@@ -240,7 +240,8 @@ type BlockChain struct {
 	chainConfig *params.ChainConfig // Chain & network configuration
 	cacheConfig *CacheConfig        // Cache configuration for pruning
 
-	db            ethdb.Database                   // Low level persistent database to store final content in
+	db            ethdb.Database // Low level persistent database to store final content in
+	separateDB    ethdb.Database
 	snaps         *snapshot.Tree                   // Snapshot tree for fast trie leaf access
 	triegc        *prque.Prque[int64, common.Hash] // Priority queue mapping block numbers to tries to gc
 	gcproc        time.Duration                    // Accumulates canonical block processing for trie dumping
@@ -324,17 +325,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	diffLayerCache, _ := exlru.New(diffLayerCacheLimit)
 	diffLayerChanCache, _ := exlru.New(diffLayerCacheLimit)
 
-	// Open trie database with provided config
-	triedb := trie.NewDatabase(db, cacheConfig.triedbConfig())
-	// Setup the genesis block, commit the provided genesis specification
-	// to database if the genesis block is not present yet, or load the
-	// stored one from database.
-	chainConfig, genesisHash, genesisErr := SetupGenesisBlockWithOverride(db, triedb, genesis, overrides)
-	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
-		return nil, genesisErr
-	}
-	systemcontracts.GenesisHash = genesisHash
-	log.Info("Initialised chain configuration", "config", chainConfig)
 	// Description of chainConfig is empty now
 	/*
 		log.Info("")
@@ -347,10 +337,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	*/
 
 	bc := &BlockChain{
-		chainConfig:        chainConfig,
-		cacheConfig:        cacheConfig,
-		db:                 db,
-		triedb:             triedb,
+		//	chainConfig:        chainConfig,
+		cacheConfig: cacheConfig,
+		db:          db,
+		//	triedb:             triedb,
 		triegc:             prque.New[int64, common.Hash](nil),
 		quit:               make(chan struct{}),
 		triesInMemory:      cacheConfig.TriesInMemory,
@@ -369,6 +359,35 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
 		diffQueueBuffer:    make(chan *types.DiffLayer),
 	}
+	var err error
+	// do options before start any routine
+	for _, option := range options {
+		bc, err = option(bc)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Open trie database with provided config
+	var triedb *trie.Database
+	if bc.separateDB != nil {
+		fmt.Printf("the separate db of block chain has been setted")
+		triedb = trie.NewDatabase(bc.separateDB, cacheConfig.triedbConfig())
+	} else {
+		triedb = trie.NewDatabase(db, cacheConfig.triedbConfig())
+	}
+	bc.triedb = triedb
+	// Setup the genesis block, commit the provided genesis specification
+	// to database if the genesis block is not present yet, or load the
+	// stored one from database.
+	chainConfig, genesisHash, genesisErr := SetupGenesisBlockWithOverride(db, triedb, genesis, overrides)
+	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
+		return nil, genesisErr
+	}
+	systemcontracts.GenesisHash = genesisHash
+	log.Info("Initialised chain configuration", "config", chainConfig)
+	bc.chainConfig = chainConfig
+
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
 	bc.stateCache = state.NewDatabaseWithNodeDB(bc.db, bc.triedb)
@@ -376,7 +395,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	bc.prefetcher = NewStatePrefetcher(chainConfig, bc, engine)
 	bc.processor = NewStateProcessor(chainConfig, bc, engine)
 
-	var err error
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
 	if err != nil {
 		return nil, err
@@ -524,13 +542,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
 	}
-	// do options before start any routine
-	for _, option := range options {
-		bc, err = option(bc)
-		if err != nil {
-			return nil, err
-		}
-	}
+
 	// Start future block processor.
 	bc.wg.Add(1)
 	go bc.updateFutureBlocks()
@@ -2857,6 +2869,13 @@ func (bc *BlockChain) TriesInMemory() uint64 { return bc.triesInMemory }
 func EnablePipelineCommit(bc *BlockChain) (*BlockChain, error) {
 	bc.pipeCommit = false
 	return bc, nil
+}
+
+func EnableSeparateDB(separateDB ethdb.Database) BlockChainOption {
+	return func(chain *BlockChain) (*BlockChain, error) {
+		chain.separateDB = separateDB
+		return chain, nil
+	}
 }
 
 func EnablePersistDiff(limit uint64) BlockChainOption {

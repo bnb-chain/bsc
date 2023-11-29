@@ -272,6 +272,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		bcOps = append(bcOps, core.EnableDoubleSignChecker)
 	}
 
+	if stack.Config().TrieDir != "" {
+		fmt.Println("trie data dir has setted to ", stack.Config().TrieDir)
+		newChainDb, err := stack.OpenDatabaseForTrie("chaindata", config.DatabaseCache, config.DatabaseHandles,
+			config.DatabaseFreezer, "eth/db/chaindata/", false, false, false, config.PruneAncientData)
+		if err != nil {
+			return nil, err
+		}
+		bcOps = append(bcOps, core.EnableSeparateDB(newChainDb))
+	}
+
 	peers := newPeerSet()
 	bcOps = append(bcOps, core.EnableBlockValidator(chainConfig, eth.engine, config.TriesVerifyMode, peers))
 	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, eth.shouldPreserve, &config.TransactionHistory, bcOps...)

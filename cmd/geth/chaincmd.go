@@ -237,8 +237,21 @@ func initGenesis(ctx *cli.Context) error {
 		}
 		defer chaindb.Close()
 
-		triedb := utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
-		defer triedb.Close()
+		var triedb *trie.Database
+		// if the trie datadir has been set , new triedb with a new chaindb
+		if ctx.IsSet(utils.TrieDirFlag.Name) {
+			newChaindb, dbErr := stack.OpenDatabaseForTrie(name, 0, 0, "", "", false, false, false, false)
+			if dbErr != nil {
+				utils.Fatalf("Failed to open database: %v", err)
+			}
+			defer newChaindb.Close()
+
+			triedb = utils.MakeTrieDatabase(ctx, newChaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false)
+			defer triedb.Close()
+		} else {
+			triedb = utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false)
+			defer triedb.Close()
+		}
 
 		_, hash, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
 		if err != nil {
