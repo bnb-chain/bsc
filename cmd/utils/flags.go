@@ -169,9 +169,9 @@ var (
 		Value:    ethconfig.Defaults.NetworkId,
 		Category: flags.EthCategory,
 	}
-	MainnetFlag = &cli.BoolFlag{
-		Name:     "mainnet",
-		Usage:    "Ethereum mainnet",
+	BSCMainnetFlag = &cli.BoolFlag{
+		Name:     "bsc",
+		Usage:    "BSC mainnet",
 		Category: flags.EthCategory,
 	}
 	DeveloperFlag = &cli.BoolFlag{
@@ -1113,7 +1113,7 @@ var (
 	// TestnetFlags is the flag group of all built-in supported testnets.
 	TestnetFlags = []cli.Flag{}
 	// NetworkFlags is the flag group of all built-in supported networks.
-	NetworkFlags = append([]cli.Flag{MainnetFlag}, TestnetFlags...)
+	NetworkFlags = append([]cli.Flag{BSCMainnetFlag}, TestnetFlags...)
 
 	// DatabasePathFlags is the flag group of all database path flags.
 	DatabasePathFlags = []cli.Flag{
@@ -1849,7 +1849,7 @@ func CheckExclusive(ctx *cli.Context, args ...interface{}) {
 // SetEthConfig applies eth-related command line flags to the config.
 func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Avoid conflicting network flags
-	CheckExclusive(ctx, MainnetFlag, DeveloperFlag)
+	CheckExclusive(ctx, BSCMainnetFlag, DeveloperFlag)
 	CheckExclusive(ctx, LightServeFlag, SyncModeFlag, "light")
 	CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag) // Can't use both ephemeral unlocked and external signer
 
@@ -2038,12 +2038,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	// Override any default configs for hard coded networks.
 	switch {
-	case ctx.Bool(MainnetFlag.Name):
+	case ctx.Bool(BSCMainnetFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
-			cfg.NetworkId = 1
+			cfg.NetworkId = 56
 		}
-		cfg.Genesis = core.DefaultGenesisBlock()
-		SetDNSDiscoveryDefaults(cfg, params.MainnetGenesisHash)
+		cfg.Genesis = core.DefaultBSCGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.BSCGenesisHash)
 	case ctx.Bool(DeveloperFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 1337
@@ -2403,8 +2403,8 @@ func DialRPCWithHeaders(endpoint string, headers []string) (*rpc.Client, error) 
 func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	var genesis *core.Genesis
 	switch {
-	case ctx.Bool(MainnetFlag.Name):
-		genesis = core.DefaultGenesisBlock()
+	case ctx.Bool(BSCMainnetFlag.Name):
+		genesis = core.DefaultBSCGenesisBlock()
 	case ctx.Bool(DeveloperFlag.Name):
 		Fatalf("Developer chains are ephemeral")
 	}
