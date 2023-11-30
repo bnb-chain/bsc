@@ -7,9 +7,7 @@ on:
       - develop
 
   pull_request:
-    branches: 
-      - master
-      - develop
+
 
 jobs:
   golang-lint:
@@ -44,7 +42,7 @@ jobs:
           ${{ runner.os }}-go-
     
     - run: |
-        go mod download
+        go mod tidy
 
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v3

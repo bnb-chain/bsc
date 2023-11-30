@@ -711,11 +711,7 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		if w.chain.Config().IsEuler(env.header.Number) {
-			env.gasPool.SubGas(params.SystemTxsGas * 3)
-		} else {
-			env.gasPool.SubGas(params.SystemTxsGas)
-		}
+		env.gasPool.SubGas(params.SystemTxsGas * 5)
 	}
 
 	var coalescedLogs []*types.Log
@@ -728,7 +724,7 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 
 	stopPrefetchCh := make(chan struct{})
 	defer close(stopPrefetchCh)
-	//prefetch txs from all pending txs
+	// prefetch txs from all pending txs
 	txsPrefetch := txs.Copy()
 	tx := txsPrefetch.PeekWithUnwrap()
 	if tx != nil {

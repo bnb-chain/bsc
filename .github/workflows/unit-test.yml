@@ -7,9 +7,7 @@ on:
       - develop
 
   pull_request:
-    branches: 
-      - master
-      - develop
+
 
 jobs:
   unit-test:
@@ -50,6 +48,6 @@ jobs:
         ANDROID_HOME: "" # Skip android test
       run: |
         git submodule update --init --depth 1 --recursive
-        go mod download
+        go mod tidy
         make test
 

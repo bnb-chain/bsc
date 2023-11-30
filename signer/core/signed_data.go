@@ -262,7 +262,7 @@ func parliaHeaderHashAndRlp(header *types.Header, chainId *big.Int) (hash, rlp [
 		return
 	}
 	rlp = parlia.ParliaRLP(header, chainId)
-	hash = parlia.SealHash(header, chainId).Bytes()
+	hash = types.SealHash(header, chainId).Bytes()
 	return hash, rlp, err
 }
 
