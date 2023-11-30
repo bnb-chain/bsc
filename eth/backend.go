@@ -210,14 +210,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	var lastSegment *params.HistorySegment
+	var (
+		hsm         *params.HistorySegmentManager
+		lastSegment *params.HistorySegment
+	)
 	if config.HistorySegmentEnable {
-		_, lastSegment, err = GetHistorySegmentAndLastSegment(chainDb, genesisHash, config.HistorySegmentCustomFile)
+		hsm, lastSegment, err = GetHistorySegmentAndLastSegment(chainDb, genesisHash, config.HistorySegmentCustomFile)
 		if err != nil {
 			return nil, err
 		}
 		if p, ok := eth.engine.(consensus.PoSA); ok {
-			p.SetupLastSegment(lastSegment)
+			log.Info("setup consensus engine history segment", "lastSegment", lastSegment)
+			p.SetupHistorySegment(hsm)
 		}
 	}
 
@@ -278,11 +282,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	bcOps = append(bcOps, func(bc *core.BlockChain) (*core.BlockChain, error) {
 		// if enable history segment, try prune ancient data when restart
-		if config.HistorySegmentEnable && lastSegment != nil {
+		if config.HistorySegmentEnable {
 			if err = truncateAncientTail(chainDb, lastSegment); err != nil {
 				return nil, err
 			}
-			bc.SetupHistorySegment(lastSegment)
+			bc.SetupHistorySegment(hsm)
+			log.Info("setup blockchain history segment", "lastSegment", lastSegment)
 		}
 		return bc, nil
 	})
@@ -403,9 +408,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 }
 
 func GetHistorySegmentAndLastSegment(db ethdb.Database, genesisHash common.Hash, CustomPath string) (*params.HistorySegmentManager, *params.HistorySegment, error) {
+	td := rawdb.ReadTd(db, genesisHash, 0)
 	hsm, err := params.NewHistorySegmentManager(&params.HistorySegmentConfig{
 		CustomPath: CustomPath,
-		Genesis:    genesisHash,
+		Genesis:    params.NewHistoryBlock(0, genesisHash, td.Uint64()),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -423,7 +429,7 @@ func GetHistorySegmentAndLastSegment(db ethdb.Database, genesisHash common.Hash,
 	if err = rawdb.AvailableHistorySegment(db, lastSegment); err != nil {
 		return nil, nil, err
 	}
-	return hsm, &lastSegment, nil
+	return hsm, lastSegment, nil
 }
 
 func truncateAncientTail(db ethdb.Database, lastSegment *params.HistorySegment) error {

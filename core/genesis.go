@@ -328,7 +328,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 			log.Info("Writing default BSC mainnet genesis block")
 			genesis = DefaultBSCGenesisBlock()
 		} else {
-			log.Info("Writing custom genesis block")
+			log.Info("Writing custom genesis block", "config", genesis.Config)
 		}
 		block, err := genesis.Commit(db, triedb)
 		if err != nil {
@@ -421,6 +421,7 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 		}
 		storedcfg := rawdb.ReadChainConfig(db, stored)
 		if storedcfg != nil {
+			log.Info("found chain config", "hash", stored, "cfg", storedcfg)
 			return storedcfg, stored, nil
 		}
 	}

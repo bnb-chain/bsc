@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sort"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -271,6 +272,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 		if number > 0 && number%s.config.Epoch == uint64(len(snap.Validators)/2) {
 			checkpointHeader := FindAncientHeader(header, uint64(len(snap.Validators)/2), chain, parents)
 			if checkpointHeader == nil {
+				log.Info("cannot find ancestor, FindAncientHeader", "number", number, "stack", string(debug.Stack()))
 				return nil, consensus.ErrUnknownAncestor
 			}
 

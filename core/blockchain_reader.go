@@ -449,8 +449,15 @@ func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEve
 	return bc.scope.Track(bc.finalizedHeaderFeed.Subscribe(ch))
 }
 
-func (bc *BlockChain) LastHistorySegment() *params.HistorySegment {
-	return bc.lastSegment
+func (bc *BlockChain) LastHistorySegment(num uint64) *params.HistorySegment {
+	if bc.hsm == nil {
+		return nil
+	}
+	segment, ok := bc.hsm.LastSegmentByNumber(num)
+	if !ok {
+		return nil
+	}
+	return segment
 }
 
 func (bc *BlockChain) WriteCanonicalHeaders(headers []*types.Header, tds []uint64) error {

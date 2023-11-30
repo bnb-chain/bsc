@@ -112,13 +112,35 @@ func TestSnapSyncWithHistorySegment(t *testing.T) {
 
 	// Create an empty handler and ensure it's in snap sync mode
 	empty := newTestHandlerWithBlocks(0, func(bc *core.BlockChain) (*core.BlockChain, error) {
-		header := full.chain.GetHeaderByNumber(500)
-		bc.SetupHistorySegment(&params.HistorySegment{
-			Index:           1,
-			ReGenesisNumber: header.Number.Uint64(),
-			ReGenesisHash:   header.Hash(),
-			TD:              full.chain.GetTd(header.Hash(), header.Number.Uint64()).Uint64(),
+		h0 := full.chain.GetHeaderByNumber(0)
+		h1 := full.chain.GetHeaderByNumber(500)
+		h2 := full.chain.GetHeaderByNumber(1000)
+		h0Hash := h0.Hash()
+		h0TD := full.chain.GetTd(h0Hash, h0.Number.Uint64()).Uint64()
+		hsm, err := params.NewHistorySegmentManagerWithSegments(params.NewHistoryBlock(h0.Number.Uint64(), h0Hash, h0TD), []params.HistorySegment{
+			{
+				Index:           0,
+				ReGenesisNumber: h0.Number.Uint64(),
+				ReGenesisHash:   h0Hash,
+				TD:              h0TD,
+			},
+			{
+				Index:           1,
+				ReGenesisNumber: h1.Number.Uint64(),
+				ReGenesisHash:   h1.Hash(),
+				TD:              full.chain.GetTd(h1.Hash(), h1.Number.Uint64()).Uint64(),
+			},
+			{
+				Index:           2,
+				ReGenesisNumber: h2.Number.Uint64(),
+				ReGenesisHash:   h2.Hash(),
+				TD:              full.chain.GetTd(h2.Hash(), h2.Number.Uint64()).Uint64(),
+			},
 		})
+		if err != nil {
+			t.Fatalf("cannot init HistorySegmentManager, err: %v", err)
+		}
+		bc.SetupHistorySegment(hsm)
 		return bc, nil
 	})
 	if !empty.handler.snapSync.Load() {
@@ -172,7 +194,7 @@ func TestSnapSyncWithHistorySegment(t *testing.T) {
 		t.Fatalf("snap sync not disabled after successful synchronisation")
 	}
 	assert.Nil(t, empty.chain.GetHeaderByNumber(1), 1)
-	assert.Nil(t, empty.chain.GetHeaderByNumber(251), 251)
+	assert.Nil(t, empty.chain.GetHeaderByNumber(499), 499)
 	assert.NotNil(t, empty.chain.GetHeaderByNumber(500), 500)
 	assert.NotNil(t, empty.chain.GetHeaderByNumber(1024), 1024)
 }

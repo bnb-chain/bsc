@@ -1,17 +1,17 @@
 package params
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
-	BoundStartBlock      uint64 = 31268530 // The starting block height of the first segment, was produced on Aug-29-2023
+	BoundStartBlock      uint64 = 31268600 // The starting block height of the first segment, was produced on Aug-29-2023
 	HistorySegmentLength uint64 = 2592000  // Assume 1 block for every 3 second, 2,592,000 blocks will be produced in 90 days.
 )
 
@@ -20,12 +20,26 @@ var (
 	historySegmentsInBSCChapel  []HistorySegment
 )
 
+type HistoryBlock struct {
+	Number uint64
+	hash   common.Hash
+	TD     uint64
+}
+
+func NewHistoryBlock(num uint64, hash common.Hash, td uint64) HistoryBlock {
+	return HistoryBlock{
+		Number: num,
+		hash:   hash,
+		TD:     td,
+	}
+}
+
 type HistorySegment struct {
 	Index           uint64      `json:"index"`                    // segment index number
 	ReGenesisNumber uint64      `json:"re_genesis_number"`        // new history segment start at a finality block number, called ReGenesisNumber
 	ReGenesisHash   common.Hash `json:"re_genesis_hash"`          // new history segment start at a finality block hash, called ReGenesisHash
 	TD              uint64      `json:"td"`                       // the ReGenesisBlock's TD
-	ConsensusData   []byte      `json:"consensus_data,omitempty"` // the ReGenesisBlock's consensus data
+	ConsensusData   string      `json:"consensus_data,omitempty"` // the ReGenesisBlock's consensus data
 }
 
 func (s *HistorySegment) String() string {
@@ -52,15 +66,15 @@ func (s *HistorySegment) Equals(compared *HistorySegment) bool {
 	if s.TD != compared.TD {
 		return false
 	}
-	if !bytes.Equal(s.ConsensusData, compared.ConsensusData) {
+	if !strings.EqualFold(s.ConsensusData, compared.ConsensusData) {
 		return false
 	}
 	return true
 }
 
 type HistorySegmentConfig struct {
-	CustomPath string      // custom HistorySegments file path, need read from the file
-	Genesis    common.Hash // specific chain genesis, it may use hard-code config
+	CustomPath string       // custom HistorySegments file path, need read from the file
+	Genesis    HistoryBlock // specific chain genesis, it may use hard-code config
 }
 
 func (cfg *HistorySegmentConfig) LoadCustomSegments() ([]HistorySegment, error) {
@@ -93,7 +107,7 @@ func NewHistorySegmentManager(cfg *HistorySegmentConfig) (*HistorySegmentManager
 		segments []HistorySegment
 		err      error
 	)
-	switch cfg.Genesis {
+	switch cfg.Genesis.hash {
 	case BSCGenesisHash:
 		segments = historySegmentsInBSCMainnet
 	case ChapelGenesisHash:
@@ -104,7 +118,7 @@ func NewHistorySegmentManager(cfg *HistorySegmentConfig) (*HistorySegmentManager
 	if len(segments) == 0 {
 		segments, err = cfg.LoadCustomSegments()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("LoadCustomSegments err %v", err)
 		}
 	}
 	if err = ValidateHisSegments(cfg.Genesis, segments); err != nil {
@@ -116,14 +130,27 @@ func NewHistorySegmentManager(cfg *HistorySegmentConfig) (*HistorySegmentManager
 	}, nil
 }
 
-func ValidateHisSegments(genesis common.Hash, segments []HistorySegment) error {
+func NewHistorySegmentManagerWithSegments(genesis HistoryBlock, segments []HistorySegment) (*HistorySegmentManager, error) {
+	if err := ValidateHisSegments(genesis, segments); err != nil {
+		return nil, err
+	}
+	return &HistorySegmentManager{
+		segments: segments,
+		cfg: &HistorySegmentConfig{
+			Genesis: genesis,
+		},
+	}, nil
+}
+
+func ValidateHisSegments(genesis HistoryBlock, segments []HistorySegment) error {
 	if len(segments) == 0 {
 		return errors.New("history segment length cannot be 0")
 	}
 	expectSeg0 := HistorySegment{
 		Index:           0,
-		ReGenesisNumber: 0,
-		ReGenesisHash:   genesis,
+		ReGenesisNumber: genesis.Number,
+		ReGenesisHash:   genesis.hash,
+		TD:              genesis.TD,
 	}
 	if !segments[0].Equals(&expectSeg0) {
 		return fmt.Errorf("wrong segement0 start block, it must be genesis, expect: %v, actual: %v", expectSeg0, segments[0])
@@ -144,7 +171,7 @@ func (m *HistorySegmentManager) HisSegments() []HistorySegment {
 }
 
 // CurSegment return which segment include this block
-func (m *HistorySegmentManager) CurSegment(num uint64) HistorySegment {
+func (m *HistorySegmentManager) CurSegment(num uint64) *HistorySegment {
 	segments := m.HisSegments()
 	i := len(segments) - 1
 	for i >= 0 {
@@ -153,21 +180,24 @@ func (m *HistorySegmentManager) CurSegment(num uint64) HistorySegment {
 		}
 		i--
 	}
-	return segments[i]
+	return &segments[i]
 }
 
 // LastSegment return the current's last segment, because the latest 2 segments is available,
 // so user could keep current & prev segment
-func (m *HistorySegmentManager) LastSegment(cur HistorySegment) (HistorySegment, bool) {
+func (m *HistorySegmentManager) LastSegment(cur *HistorySegment) (*HistorySegment, bool) {
+	if cur == nil {
+		return nil, false
+	}
 	segments := m.HisSegments()
 	if cur.Index == 0 || cur.Index >= uint64(len(segments)) {
-		return HistorySegment{}, false
+		return nil, false
 	}
-	return segments[cur.Index-1], true
+	return &segments[cur.Index-1], true
 }
 
 // LastSegmentByNumber return the current's last segment
-func (m *HistorySegmentManager) LastSegmentByNumber(num uint64) (HistorySegment, bool) {
+func (m *HistorySegmentManager) LastSegmentByNumber(num uint64) (*HistorySegment, bool) {
 	cur := m.CurSegment(num)
 	return m.LastSegment(cur)
 }

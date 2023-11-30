@@ -37,19 +37,19 @@ func TestNewHisSegmentManager_HardCode(t *testing.T) {
 		{
 			cfg: &HistorySegmentConfig{
 				CustomPath: "",
-				Genesis:    BSCGenesisHash,
+				Genesis:    NewHistoryBlock(0, BSCGenesisHash, 0),
 			},
 		},
 		{
 			cfg: &HistorySegmentConfig{
 				CustomPath: "",
-				Genesis:    ChapelGenesisHash,
+				Genesis:    NewHistoryBlock(0, ChapelGenesisHash, 0),
 			},
 		},
 		{
 			cfg: &HistorySegmentConfig{
 				CustomPath: "",
-				Genesis:    RialtoGenesisHash,
+				Genesis:    NewHistoryBlock(0, RialtoGenesisHash, 0),
 			},
 		},
 	}
@@ -135,7 +135,7 @@ func TestHisSegmentManager_Validate(t *testing.T) {
 		},
 	}
 	for i, item := range tests {
-		err := ValidateHisSegments(item.genesis, item.segments)
+		err := ValidateHisSegments(NewHistoryBlock(0, item.genesis, 0), item.segments)
 		if item.err {
 			assert.Error(t, err, i)
 			continue

@@ -719,11 +719,15 @@ func exportSegment(ctx *cli.Context) error {
 	defer db.Close()
 
 	genesisHash := rawdb.ReadCanonicalHash(db, 0)
+	td := rawdb.ReadTd(db, genesisHash, 0)
 	chainConfig, engine, headerChain, err := simpleHeaderChain(db, genesisHash)
 	if err != nil {
 		return err
 	}
 	latest := headerChain.CurrentHeader()
+	if _, ok := engine.(consensus.PoSA); !ok {
+		return errors.New("current chain is not POSA consensus, cannot generate history segment")
+	}
 	if !chainConfig.IsLuban(latest.Number) {
 		return errors.New("current chain is not enable Luban hard fork, cannot generate history segment")
 	}
@@ -763,10 +767,15 @@ func exportSegment(ctx *cli.Context) error {
 			Index:           0,
 			ReGenesisNumber: 0,
 			ReGenesisHash:   genesisHash,
+			TD:              td.Uint64(),
 		},
 	}
 	// try find finalized block in every segment boundary
 	for num := boundStartBlock; num <= target; num += historySegmentLength {
+		// align the segment start at parlia's epoch
+		if chainConfig.Parlia != nil {
+			num -= num % chainConfig.Parlia.Epoch
+		}
 		var fs, ft *types.Header
 		for next := num + 1; next <= target; next++ {
 			fs = headerChain.GetHeaderByNumber(next)
@@ -799,11 +808,11 @@ func exportSegment(ctx *cli.Context) error {
 			if err != nil {
 				return err
 			}
-			segment.ConsensusData = enc
+			segment.ConsensusData = hexutil.Encode(enc)
 		}
 		segments = append(segments, segment)
 	}
-	if err = params.ValidateHisSegments(genesisHash, segments); err != nil {
+	if err = params.ValidateHisSegments(params.NewHistoryBlock(0, genesisHash, td.Uint64()), segments); err != nil {
 		return err
 	}
 	output, err := json.MarshalIndent(segments, "", "    ")
@@ -813,7 +822,7 @@ func exportSegment(ctx *cli.Context) error {
 	log.Info("Generate History Segment done", "count", len(segments), "elapsed", common.PrettyDuration(time.Since(start)))
 
 	out := ctx.String(utils.HistorySegOutputFlag.Name)
-	outFile, err := os.OpenFile(out, os.O_CREATE|os.O_RDWR, 0644)
+	outFile, err := os.OpenFile(out, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -834,13 +843,14 @@ func pruneHistorySegments(ctx *cli.Context) error {
 	defer db.Close()
 
 	genesisHash := rawdb.ReadCanonicalHash(db, 0)
+	td := rawdb.ReadTd(db, genesisHash, 0)
 	_, _, headerChain, err := simpleHeaderChain(db, genesisHash)
 	if err != nil {
 		return err
 	}
 	cfg := &params.HistorySegmentConfig{
 		CustomPath: "",
-		Genesis:    genesisHash,
+		Genesis:    params.NewHistoryBlock(0, genesisHash, td.Uint64()),
 	}
 	if ctx.IsSet(utils.HistorySegCustomFlag.Name) {
 		cfg.CustomPath = ctx.String(utils.HistorySegCustomFlag.Name)
@@ -864,7 +874,7 @@ func pruneHistorySegments(ctx *cli.Context) error {
 	}
 
 	pruneTail := lastSegment.ReGenesisNumber
-	log.Info("The older history will be pruned", "lastSegment", &lastSegment, "curSegment", &curSegment, "pruneTail", pruneTail)
+	log.Info("The older history will be pruned", "lastSegment", lastSegment, "curSegment", curSegment, "pruneTail", pruneTail)
 	if err = rawdb.PruneTxLookupToTail(db, pruneTail); err != nil {
 		return err
 	}
