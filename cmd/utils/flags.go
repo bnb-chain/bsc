@@ -1093,13 +1093,13 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	BLSPasswordFileFlag = &cli.StringFlag{
 		Name:     "blspassword",
 		Usage:    "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
-		Category: flags.FastFinalityCategory,
+		Category: flags.AccountCategory,
 	}
 
 	BLSWalletDirFlag = &flags.DirectoryFlag{
 		Name:     "blswallet",
 		Usage:    "Path for the blsWallet dir in fast finality feature (default = inside the datadir)",
-		Category: flags.FastFinalityCategory,
+		Category: flags.AccountCategory,
 	}
 
 	VoteJournalDirFlag = &flags.DirectoryFlag{
@@ -1462,7 +1462,10 @@ func setEtherbase(ctx *cli.Context, cfg *ethconfig.Config) {
 
 // MakePasswordList reads password lines from the file specified by the global --password flag.
 func MakePasswordList(ctx *cli.Context) []string {
-	path := ctx.Path(PasswordFileFlag.Name)
+	return MakePasswordListFromPath(ctx.Path(PasswordFileFlag.Name))
+}
+
+func MakePasswordListFromPath(path string) []string {
 	if path == "" {
 		return nil
 	}
