@@ -271,12 +271,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if stack.Config().EnableDoubleSignMonitor {
 		bcOps = append(bcOps, core.EnableDoubleSignChecker)
 	}
-
+	log.Info("trie dir is :" + stack.Config().TrieDir)
 	if stack.Config().TrieDir != "" {
 		fmt.Println("trie data dir has setted to ", stack.Config().TrieDir)
 		newChainDb, err := stack.OpenDatabaseForTrie("chaindata", config.DatabaseCache, config.DatabaseHandles,
 			config.DatabaseFreezer, "eth/db/chaindata/", false, false, false, config.PruneAncientData)
 		if err != nil {
+			log.Info("open db err", err)
 			return nil, err
 		}
 		bcOps = append(bcOps, core.EnableSeparateDB(newChainDb))

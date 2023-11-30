@@ -371,7 +371,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// Open trie database with provided config
 	var triedb *trie.Database
 	if bc.separateDB != nil {
-		fmt.Printf("the separate db of block chain has been setted")
+		log.Info("the separate db of block chain has been set")
 		triedb = trie.NewDatabase(bc.separateDB, cacheConfig.triedbConfig())
 	} else {
 		triedb = trie.NewDatabase(db, cacheConfig.triedbConfig())
@@ -2873,7 +2873,9 @@ func EnablePipelineCommit(bc *BlockChain) (*BlockChain, error) {
 
 func EnableSeparateDB(separateDB ethdb.Database) BlockChainOption {
 	return func(chain *BlockChain) (*BlockChain, error) {
-		chain.separateDB = separateDB
+		if separateDB != nil {
+			chain.separateDB = separateDB
+		}
 		return chain, nil
 	}
 }

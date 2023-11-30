@@ -183,7 +183,7 @@ func makeGenesis(faucets []*ecdsa.PrivateKey, sealers []*ecdsa.PrivateKey) *core
 func makeSealer(genesis *core.Genesis) (*node.Node, *eth.Ethereum, error) {
 	// Define the basic configurations for the Ethereum node
 	datadir, _ := os.MkdirTemp("", "")
-
+	log.Info("making sealer")
 	config := &node.Config{
 		Name:    "geth",
 		Version: params.Version,

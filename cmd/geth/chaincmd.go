@@ -242,7 +242,7 @@ func initGenesis(ctx *cli.Context) error {
 		if ctx.IsSet(utils.TrieDirFlag.Name) {
 			newChaindb, dbErr := stack.OpenDatabaseForTrie(name, 0, 0, "", "", false, false, false, false)
 			if dbErr != nil {
-				utils.Fatalf("Failed to open database: %v", err)
+				utils.Fatalf("Failed to open separate trie database: %v", dbErr)
 			}
 			defer newChaindb.Close()
 

@@ -183,6 +183,7 @@ func (s *stateObject) getOriginStorage(key common.Hash) (common.Hash, bool) {
 	if value, cached := s.originStorage[key]; cached {
 		return value, true
 	}
+
 	// if L1 cache miss, try to get it from shared pool
 	if s.sharedOriginStorage != nil {
 		val, ok := s.sharedOriginStorage.Load(key)
