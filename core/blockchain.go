@@ -299,7 +299,7 @@ type BlockChain struct {
 	pipeCommit bool
 
 	// history segment
-	lastSegment *params.HisSegment
+	lastSegment *params.HistorySegment
 
 	// monitor
 	doubleSignMonitor *monitor.DoubleSignMonitor
@@ -560,7 +560,7 @@ func (bc *BlockChain) GetVMConfig() *vm.Config {
 	return &bc.vmConfig
 }
 
-func (bc *BlockChain) SetupHistorySegment(lastSegment *params.HisSegment) {
+func (bc *BlockChain) SetupHistorySegment(lastSegment *params.HistorySegment) {
 	bc.lastSegment = lastSegment
 }
 

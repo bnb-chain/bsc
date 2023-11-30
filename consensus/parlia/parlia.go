@@ -233,7 +233,7 @@ type Parlia struct {
 	fakeDiff bool // Skip difficulty verifications
 
 	// history segment, it provides history segment's consensus data to prevent generate snap from older headers
-	lastSegment *params.HisSegment
+	lastSegment *params.HistorySegment
 }
 
 // New creates a Parlia consensus engine.
@@ -290,7 +290,7 @@ func New(
 	return c
 }
 
-func (p *Parlia) SetupLastSegment(segment *params.HisSegment) {
+func (p *Parlia) SetupLastSegment(segment *params.HistorySegment) {
 	p.lastSegment = segment
 }
 
@@ -688,7 +688,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		// check history consensus data, load snapshot
 		if p.lastSegment != nil && p.lastSegment.MatchBlock(hash, number) {
 			var tmp Snapshot
-			err := json.Unmarshal(p.lastSegment.StartAtBlock.ConsensusData, &tmp)
+			err := json.Unmarshal(p.lastSegment.ConsensusData, &tmp)
 			if err == nil {
 				tmp.config = p.config
 				tmp.sigCache = p.signatures

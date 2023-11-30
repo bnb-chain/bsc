@@ -114,10 +114,10 @@ func (m *mockInvalidPOSA) GetConsensusData(chain consensus.ChainHeaderReader, he
 	return nil, nil
 }
 
-func (m *mockPOSA) SetupLastSegment(segment *params.HisSegment) {
+func (m *mockPOSA) SetupLastSegment(segment *params.HistorySegment) {
 }
 
-func (m *mockInvalidPOSA) SetupLastSegment(segment *params.HisSegment) {
+func (m *mockInvalidPOSA) SetupLastSegment(segment *params.HistorySegment) {
 }
 
 func (pool *VotePool) verifyStructureSizeOfVotePool(receivedVotes, curVotes, futureVotes, curVotesPq, futureVotesPq int) bool {

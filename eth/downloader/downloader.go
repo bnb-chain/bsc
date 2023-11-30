@@ -209,7 +209,7 @@ type BlockChain interface {
 	TrieDB() *trie.Database
 
 	// LastHistorySegment get last history segment
-	LastHistorySegment() *params.HisSegment
+	LastHistorySegment() *params.HistorySegment
 
 	// WriteHeaders just write header into db, it an unsafe interface, just for history segment
 	WriteCanonicalHeaders([]*types.Header, []uint64) error
@@ -502,8 +502,8 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 		// if enable history segment, ensure local height >= lastSegment height
 		if d.blockchain.LastHistorySegment() != nil {
 			lastSegment := d.blockchain.LastHistorySegment()
-			if localHeight < lastSegment.StartAtBlock.Number {
-				localHeight = lastSegment.StartAtBlock.Number
+			if localHeight < lastSegment.ReGenesisNumber {
+				localHeight = lastSegment.ReGenesisNumber
 			}
 		}
 	default:
@@ -1761,7 +1761,7 @@ func (d *Downloader) findAncestorFromHistorySegment(p *peerConnection, remoteHei
 		return 0, nil
 	}
 
-	expect := lastSegment.StartAtBlock.Number
+	expect := lastSegment.ReGenesisNumber
 	if expect > remoteHeight {
 		return 0, nil
 	}
@@ -1779,7 +1779,7 @@ func (d *Downloader) findAncestorFromHistorySegment(p *peerConnection, remoteHei
 	n := headers[0].Number.Uint64()
 	if lastSegment.MatchBlock(h, n) && headers[0].Hash() == h {
 		// just write header, td, because it's snap sync, just sync history is enough
-		if err = d.blockchain.WriteCanonicalHeaders(headers, []uint64{lastSegment.StartAtBlock.TD}); err != nil {
+		if err = d.blockchain.WriteCanonicalHeaders(headers, []uint64{lastSegment.TD}); err != nil {
 			return 0, err
 		}
 		return n, nil

@@ -10,35 +10,21 @@ import (
 )
 
 var (
-	historySegmentsInTest = []HisSegment{
+	historySegmentsInTest = []HistorySegment{
 		{
-			Index: 0,
-			StartAtBlock: HisBlockInfo{
-				Number: 0,
-				Hash:   common.Hash{},
-			},
+			Index:           0,
+			ReGenesisNumber: 0,
+			ReGenesisHash:   common.Hash{},
 		},
 		{
-			Index: 1,
-			StartAtBlock: HisBlockInfo{
-				Number: BoundStartBlock,
-				Hash:   common.HexToHash("0xdb8a505f19ef04cb21ae79e3cb641963ffc44f3666e6fde499be55a72b6c7865"),
-			},
-			FinalityAtBlock: HisBlockInfo{
-				Number: 31268532,
-				Hash:   common.HexToHash("0xaa1b4e4d251289d21da95e66cf9b57f641b2dbc8031a2bb145ae58ee7ade03e7"),
-			},
+			Index:           1,
+			ReGenesisNumber: BoundStartBlock,
+			ReGenesisHash:   common.HexToHash("0xdb8a505f19ef04cb21ae79e3cb641963ffc44f3666e6fde499be55a72b6c7865"),
 		},
 		{
-			Index: 2,
-			StartAtBlock: HisBlockInfo{
-				Number: 33860530,
-				Hash:   common.HexToHash("0xbf6d408bce0d531c41b00410e1c567e46b359db6e14d842cd8c8325039dff498"),
-			},
-			FinalityAtBlock: HisBlockInfo{
-				Number: 33860532,
-				Hash:   common.HexToHash("0xb22bf5eb6fe8ed39894d32b148fdedd91bd11497e7744e6c84c6b104aa577a15"),
-			},
+			Index:           2,
+			ReGenesisNumber: 33860530,
+			ReGenesisHash:   common.HexToHash("0xbf6d408bce0d531c41b00410e1c567e46b359db6e14d842cd8c8325039dff498"),
 		},
 	}
 	testGenesis = common.HexToHash("0x50b168d3ba07cc77c13a5469b9a1aad8752ba725ff989b76bc7df89dc936e866")
@@ -76,74 +62,74 @@ func TestNewHisSegmentManager_HardCode(t *testing.T) {
 func TestHisSegmentManager_Validate(t *testing.T) {
 	tests := []struct {
 		genesis  common.Hash
-		segments []HisSegment
+		segments []HistorySegment
 		err      bool
 	}{
 		{
 			genesis: testGenesis,
-			segments: []HisSegment{
+			segments: []HistorySegment{
 				{
-					Index: 1,
-					StartAtBlock: HisBlockInfo{
-						Number: 1,
-						Hash:   common.Hash{},
-					},
+					Index:           1,
+					ReGenesisNumber: 1,
+					ReGenesisHash:   common.Hash{},
 				},
 			},
 			err: true,
 		},
 		{
 			genesis: testGenesis,
-			segments: []HisSegment{
+			segments: []HistorySegment{
 				{
-					Index: 0,
-					StartAtBlock: HisBlockInfo{
-						Number: 0,
-						Hash:   testGenesis,
-					},
+					Index:           0,
+					ReGenesisNumber: 0,
+					ReGenesisHash:   testGenesis,
 				},
 			},
 		},
 		{
 			genesis: testGenesis,
-			segments: []HisSegment{
+			segments: []HistorySegment{
 				{
-					Index: 0,
-					StartAtBlock: HisBlockInfo{
-						Number: 0,
-						Hash:   testGenesis,
-					},
+					Index:           0,
+					ReGenesisNumber: 0,
+					ReGenesisHash:   testGenesis,
 				},
 				{
-					Index: 1,
-					StartAtBlock: HisBlockInfo{
-						Number: 1,
-						Hash:   common.HexToHash("0xaa1b4e4d251289d21da95e66cf9b57f641b2dbc8031a2bb145ae58ee7ade03e7"),
-					},
+					Index:           1,
+					ReGenesisNumber: 0,
+					ReGenesisHash:   common.HexToHash("0xaa1b4e4d251289d21da95e66cf9b57f641b2dbc8031a2bb145ae58ee7ade03e7"),
 				},
 			},
 			err: true,
 		},
 		{
 			genesis: testGenesis,
-			segments: []HisSegment{
+			segments: []HistorySegment{
 				{
-					Index: 0,
-					StartAtBlock: HisBlockInfo{
-						Number: 0,
-						Hash:   testGenesis,
-					},
+					Index:           0,
+					ReGenesisNumber: 0,
+					ReGenesisHash:   testGenesis,
 				},
 				{
-					Index: 1,
-					StartAtBlock: HisBlockInfo{
-						Number: 1,
-						Hash:   common.HexToHash("0xaa1b4e4d251289d21da95e66cf9b57f641b2dbc8031a2bb145ae58ee7ade03e7"),
-					},
-					FinalityAtBlock: HisBlockInfo{
-						Number: 3,
-						Hash:   common.HexToHash("0xb22bf5eb6fe8ed39894d32b148fdedd91bd11497e7744e6c84c6b104aa577a15"),
-					},
+					Index:           0,
+					ReGenesisNumber: 1,
+					ReGenesisHash:   common.HexToHash("0xaa1b4e4d251289d21da95e66cf9b57f641b2dbc8031a2bb145ae58ee7ade03e7"),
+				},
+			},
+			err: true,
+		},
+		{
+			genesis: testGenesis,
+			segments: []HistorySegment{
+				{
+					Index:           0,
+					ReGenesisNumber: 0,
+					ReGenesisHash:   testGenesis,
+				},
+				{
+					Index:           1,
+					ReGenesisNumber: 1,
+					ReGenesisHash:   common.HexToHash("0xaa1b4e4d251289d21da95e66cf9b57f641b2dbc8031a2bb145ae58ee7ade03e7"),
 				},
 			},
 		},
@@ -179,7 +165,7 @@ func TestIndexSegment(t *testing.T) {
 	assert.Equal(t, segments[2], hsm.CurSegment(BoundStartBlock+HistorySegmentLength*2))
 
 	var (
-		prev HisSegment
+		prev HistorySegment
 		ok   bool
 	)
 	_, ok = hsm.LastSegment(segments[0])
@@ -190,7 +176,7 @@ func TestIndexSegment(t *testing.T) {
 	prev, ok = hsm.LastSegment(segments[2])
 	assert.Equal(t, true, ok)
 	assert.Equal(t, segments[1], prev)
-	_, ok = hsm.LastSegment(HisSegment{
+	_, ok = hsm.LastSegment(HistorySegment{
 		Index: uint64(len(segments)),
 	})
 	assert.Equal(t, false, ok)

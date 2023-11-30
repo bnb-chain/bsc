@@ -729,21 +729,22 @@ func exportSegment(ctx *cli.Context) error {
 	}
 
 	var (
-		boundStartBlock      uint64
-		historySegmentLength uint64
-	)
-	switch genesisHash {
-	case params.BSCGenesisHash, params.ChapelGenesisHash, params.RialtoGenesisHash:
-		boundStartBlock = params.BoundStartBlock
+		boundStartBlock      = params.BoundStartBlock
 		historySegmentLength = params.HistorySegmentLength
-	default:
-		if ctx.IsSet(utils.BoundStartBlockFlag.Name) {
-			boundStartBlock = ctx.Uint64(utils.BoundStartBlockFlag.Name)
-		}
-		if ctx.IsSet(utils.HistorySegmentLengthFlag.Name) {
-			historySegmentLength = ctx.Uint64(utils.HistorySegmentLengthFlag.Name)
-		}
+	)
+	// TODO(0xbundler): for testing
+	//switch genesisHash {
+	//case params.BSCGenesisHash, params.ChapelGenesisHash, params.RialtoGenesisHash:
+	//	boundStartBlock = params.BoundStartBlock
+	//	historySegmentLength = params.HistorySegmentLength
+	//default:
+	if ctx.IsSet(utils.BoundStartBlockFlag.Name) {
+		boundStartBlock = ctx.Uint64(utils.BoundStartBlockFlag.Name)
 	}
+	if ctx.IsSet(utils.HistorySegmentLengthFlag.Name) {
+		historySegmentLength = ctx.Uint64(utils.HistorySegmentLengthFlag.Name)
+	}
+	//}
 	if boundStartBlock == 0 || historySegmentLength == 0 {
 		return fmt.Errorf("wrong params, boundStartBlock: %v, historySegmentLength: %v", boundStartBlock, historySegmentLength)
 	}
@@ -757,13 +758,11 @@ func exportSegment(ctx *cli.Context) error {
 	target := latestNum - params.FullImmutabilityThreshold
 	log.Info("start export segment", "from", boundStartBlock, "to", target, "boundStartBlock", boundStartBlock,
 		"historySegmentLength", historySegmentLength, "chainCfg", chainConfig)
-	segments := []params.HisSegment{
+	segments := []params.HistorySegment{
 		{
-			Index: 0,
-			StartAtBlock: params.HisBlockInfo{
-				Number: 0,
-				Hash:   genesisHash,
-			},
+			Index:           0,
+			ReGenesisNumber: 0,
+			ReGenesisHash:   genesisHash,
 		},
 	}
 	// try find finalized block in every segment boundary
@@ -788,26 +787,19 @@ func exportSegment(ctx *cli.Context) error {
 			break
 		}
 		log.Info("found segment boundary", "startAt", ft.Number, "FinalityAt", fs.Number)
-		segment := params.HisSegment{
-			Index: uint64(len(segments)),
-			StartAtBlock: params.HisBlockInfo{
-				Number: ft.Number.Uint64(),
-				Hash:   ft.Hash(),
-			},
-			FinalityAtBlock: params.HisBlockInfo{
-				Number: fs.Number.Uint64(),
-				Hash:   fs.Hash(),
-			},
+		segment := params.HistorySegment{
+			Index:           uint64(len(segments)),
+			ReGenesisNumber: ft.Number.Uint64(),
+			ReGenesisHash:   ft.Hash(),
 		}
-		segment.StartAtBlock.TD = headerChain.GetTd(segment.StartAtBlock.Hash, segment.StartAtBlock.Number).Uint64()
-		segment.FinalityAtBlock.TD = headerChain.GetTd(segment.FinalityAtBlock.Hash, segment.FinalityAtBlock.Number).Uint64()
+		segment.TD = headerChain.GetTd(segment.ReGenesisHash, segment.ReGenesisNumber).Uint64()
 		// if using posa consensus, just get snapshot as consensus data
 		if p, ok := engine.(consensus.PoSA); ok {
 			enc, err := p.GetConsensusData(headerChain, ft)
 			if err != nil {
 				return err
 			}
-			segment.StartAtBlock.ConsensusData = enc
+			segment.ConsensusData = enc
 		}
 		segments = append(segments, segment)
 	}
@@ -863,7 +855,7 @@ func pruneHistorySegments(ctx *cli.Context) error {
 	curSegment := hsm.CurSegment(latestHeader.Number.Uint64())
 	lastSegment, ok := hsm.LastSegment(curSegment)
 	if !ok {
-		return fmt.Errorf("there is no enough history to prune, cur: %v", curSegment)
+		return fmt.Errorf("there is no enough history to prune, cur: %v", &curSegment)
 	}
 
 	// check segment if match hard code
@@ -871,8 +863,8 @@ func pruneHistorySegments(ctx *cli.Context) error {
 		return err
 	}
 
-	pruneTail := lastSegment.StartAtBlock.Number
-	log.Info("The older history will be pruned", "lastSegment", lastSegment, "curSegment", curSegment, "pruneTail", pruneTail)
+	pruneTail := lastSegment.ReGenesisNumber
+	log.Info("The older history will be pruned", "lastSegment", &lastSegment, "curSegment", &curSegment, "pruneTail", pruneTail)
 	if err = rawdb.PruneTxLookupToTail(db, pruneTail); err != nil {
 		return err
 	}

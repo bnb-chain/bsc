@@ -113,13 +113,11 @@ func TestSnapSyncWithHistorySegment(t *testing.T) {
 	// Create an empty handler and ensure it's in snap sync mode
 	empty := newTestHandlerWithBlocks(0, func(bc *core.BlockChain) (*core.BlockChain, error) {
 		header := full.chain.GetHeaderByNumber(500)
-		bc.SetupHistorySegment(&params.HisSegment{
-			Index: 1,
-			StartAtBlock: params.HisBlockInfo{
-				Number: header.Number.Uint64(),
-				Hash:   header.Hash(),
-				TD:     full.chain.GetTd(header.Hash(), header.Number.Uint64()).Uint64(),
-			},
+		bc.SetupHistorySegment(&params.HistorySegment{
+			Index:           1,
+			ReGenesisNumber: header.Number.Uint64(),
+			ReGenesisHash:   header.Hash(),
+			TD:              full.chain.GetTd(header.Hash(), header.Number.Uint64()).Uint64(),
 		})
 		return bc, nil
 	})

@@ -62,15 +62,11 @@ func PruneTxLookupToTail(db ethdb.KeyValueStore, tail uint64) error {
 	return nil
 }
 
-func AvailableHistorySegment(db ethdb.Reader, segments ...params.HisSegment) error {
+func AvailableHistorySegment(db ethdb.Reader, segments ...params.HistorySegment) error {
 	for _, s := range segments {
-		hash := ReadCanonicalHash(db, s.StartAtBlock.Number)
-		if hash != s.StartAtBlock.Hash {
+		hash := ReadCanonicalHash(db, s.ReGenesisNumber)
+		if hash != s.ReGenesisHash {
 			return fmt.Errorf("cannot find segment StartAtBlock, seg: %v", s)
-		}
-		hash = ReadCanonicalHash(db, s.FinalityAtBlock.Number)
-		if hash != s.FinalityAtBlock.Hash {
-			return fmt.Errorf("cannot find segment FinalityAtBlock, seg: %v", s)
 		}
 	}
 	return nil

@@ -210,7 +210,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	var lastSegment *params.HisSegment
+	var lastSegment *params.HistorySegment
 	if config.HistorySegmentEnable {
 		_, lastSegment, err = GetHistorySegmentAndLastSegment(chainDb, genesisHash, config.HistorySegmentCustomFile)
 		if err != nil {
@@ -402,7 +402,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	return eth, nil
 }
 
-func GetHistorySegmentAndLastSegment(db ethdb.Database, genesisHash common.Hash, CustomPath string) (*params.HistorySegmentManager, *params.HisSegment, error) {
+func GetHistorySegmentAndLastSegment(db ethdb.Database, genesisHash common.Hash, CustomPath string) (*params.HistorySegmentManager, *params.HistorySegment, error) {
 	hsm, err := params.NewHistorySegmentManager(&params.HistorySegmentConfig{
 		CustomPath: CustomPath,
 		Genesis:    genesisHash,
@@ -426,12 +426,12 @@ func GetHistorySegmentAndLastSegment(db ethdb.Database, genesisHash common.Hash,
 	return hsm, &lastSegment, nil
 }
 
-func truncateAncientTail(db ethdb.Database, lastSegment *params.HisSegment) error {
+func truncateAncientTail(db ethdb.Database, lastSegment *params.HistorySegment) error {
 	if lastSegment == nil {
 		return nil
 	}
 
-	pruneTail := lastSegment.StartAtBlock.Number
+	pruneTail := lastSegment.ReGenesisNumber
 	start := time.Now()
 	old, err := db.TruncateTail(pruneTail)
 	if err != nil {
