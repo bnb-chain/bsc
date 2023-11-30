@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/math"
-	"fmt"
 )
 
 func TestCheckCompatible(t *testing.T) {
@@ -137,5 +136,4 @@ func TestConfigRules(t *testing.T) {
 	if r := c.Rules(big.NewInt(0), true, stamp); !r.IsShanghai {
 		t.Errorf("expected %v to be shanghai", stamp)
 	}
-	fmt.Println(c)
 }

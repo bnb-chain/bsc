@@ -709,14 +709,9 @@ func (w *worker) commitTransaction(env *environment, tx *txpool.Transaction, rec
 func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAndNonce,
 	interruptCh chan int32, stopTimer *time.Timer) error {
 	gasLimit := env.header.GasLimit
-	// TODO: update SystemTxsGas
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		if w.chain.Config().IsEuler(env.header.Number) {
-			env.gasPool.SubGas(params.SystemTxsGas * 3)
-		} else {
-			env.gasPool.SubGas(params.SystemTxsGas)
-		}
+		env.gasPool.SubGas(params.SystemTxsGas * 5)
 	}
 
 	var coalescedLogs []*types.Log

@@ -1410,47 +1410,39 @@ type DoubleSignEvidence struct {
 // return:
 // signer address| evidence time|
 // 20 bytes      | 32 bytes     |
-// TODO: remove debug log
 func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	evidence := &DoubleSignEvidence{}
 	err := rlp.DecodeBytes(input, evidence)
 	if err != nil {
-		log.Debug("rlp decode evidence failed", "err", err)
 		return nil, ErrExecutionReverted
 	}
 
 	header1 := &types.Header{}
 	err = rlp.DecodeBytes(evidence.HeaderBytes1, header1)
 	if err != nil {
-		log.Debug("rlp decode header1 failed", "err", err)
 		return nil, ErrExecutionReverted
 	}
 
 	header2 := &types.Header{}
 	err = rlp.DecodeBytes(evidence.HeaderBytes2, header2)
 	if err != nil {
-		log.Debug("rlp decode header2 failed", "err", err)
 		return nil, ErrExecutionReverted
 	}
 
 	// basic check
 	if header1.Number.Uint64() != header2.Number.Uint64() {
-		log.Debug("header1 and header2 number not equal")
 		return nil, ErrExecutionReverted
 	}
 	if header1.ParentHash != header2.ParentHash {
-		log.Debug("header1 and header2 parent hash not equal")
 		return nil, ErrExecutionReverted
 	}
 
 	if len(header1.Extra) < extraSeal || len(header2.Extra) < extraSeal {
-		log.Debug("header1 or header2 extra length not enough")
 		return nil, ErrExecutionReverted
 	}
 	sig1 := header1.Extra[len(header1.Extra)-extraSeal:]
 	sig2 := header2.Extra[len(header2.Extra)-extraSeal:]
 	if bytes.Equal(sig1, sig2) {
-		log.Debug("header1 and header2 sig equal")
 		return nil, ErrExecutionReverted
 	}
 	evidenceTime := header1.Time
@@ -1463,16 +1455,13 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	msgHash2 := types.SealHash(header2, evidence.ChainId)
 	pubkey1, err := secp256k1.RecoverPubkey(msgHash1.Bytes(), sig1)
 	if err != nil {
-		log.Debug("recover pubkey1 failed", "err", err)
 		return nil, ErrExecutionReverted
 	}
 	pubkey2, err := secp256k1.RecoverPubkey(msgHash2.Bytes(), sig2)
 	if err != nil {
-		log.Debug("recover pubkey2 failed", "err", err)
 		return nil, ErrExecutionReverted
 	}
 	if !bytes.Equal(pubkey1, pubkey2) {
-		log.Debug("pubkey1 and pubkey2 not equal")
 		return nil, ErrExecutionReverted
 	}
 

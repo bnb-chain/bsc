@@ -56,15 +56,6 @@ type ValidatorItem struct {
 	voteAddress []byte
 }
 
-type BSCValidatorSetValidator struct {
-	ConsensusAddress common.Address
-	FeeAddress       common.Address
-	BBCFeeAddress    common.Address
-	VotingPower      uint64
-	Jailed           bool
-	Incoming         *big.Int
-}
-
 // An ValidatorHeap is a max-heap of validator's votingPower.
 type ValidatorHeap []ValidatorItem
 
@@ -126,7 +117,7 @@ func (p *Parlia) updateValidatorSetV2(state *state.StateDB, header *types.Header
 
 func (p *Parlia) getValidatorElectionInfo(blockNr rpc.BlockNumberOrHash) ([]ValidatorItem, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // cancel when we are finished consuming integers
+	defer cancel()
 
 	method := "getValidatorElectionInfo"
 	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)
@@ -173,7 +164,7 @@ func (p *Parlia) getValidatorElectionInfo(blockNr rpc.BlockNumberOrHash) ([]Vali
 
 func (p *Parlia) getMaxElectedValidators(blockNr rpc.BlockNumberOrHash) (maxElectedValidators *big.Int, err error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // cancel when we are finished consuming integers
+	defer cancel()
 
 	method := "maxElectedValidators"
 	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)

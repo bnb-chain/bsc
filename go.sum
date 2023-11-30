@@ -188,8 +188,8 @@ github.com/bnb-chain/greenfield-tendermint v0.0.0-20230417032003-4cda1f296fb2 h1
 github.com/bnb-chain/greenfield-tendermint v0.0.0-20230417032003-4cda1f296fb2/go.mod h1:9q11eHNRY9FDwFH+4pompzPNGv//Z3VcfvkELaHJPMs=
 github.com/bnb-chain/ics23 v0.1.0 h1:DvjGOts2FBfbxB48384CYD1LbcrfjThFz8kowY/7KxU=
 github.com/bnb-chain/ics23 v0.1.0/go.mod h1:cU6lTGolbbLFsGCgceNB2AzplH1xecLp6+KXvxM32nI=
-github.com/bnb-chain/tendermint v0.31.16-0.20231127100033-8c9db31ef533 h1:9klAX5tzyt6mpWv23zq5HVxTLZHlK28E84nVUzirVWo=
-github.com/bnb-chain/tendermint v0.31.16-0.20231127100033-8c9db31ef533/go.mod h1:cmt8HHmQUSVaWQ/hoTefRxsh5X3ERaM1zCUIR0DPbFU=
+github.com/bnb-chain/tendermint v0.31.16 h1:rOO6WG61JDAuRCCL8TKnGhorJftQDVygq0mqR7A0ck4=
+github.com/bnb-chain/tendermint v0.31.16/go.mod h1:cmt8HHmQUSVaWQ/hoTefRxsh5X3ERaM1zCUIR0DPbFU=
 github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
 github.com/bradfitz/go-smtpd v0.0.0-20170404230938-deb6d6237625/go.mod h1:HYsPBTaaSFSlLx/70C2HPIMNZpVV8+vt/A+FMnYP11g=
 github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d/go.mod h1:PmM6Mmwb0LSuEubjR8N7PtNe1KxZLtOUHtbeikc5h60=

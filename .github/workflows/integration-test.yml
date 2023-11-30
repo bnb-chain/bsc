@@ -7,9 +7,6 @@ on:
       - develop
 
   pull_request:
-    branches: 
-      - master
-      - develop
 
 jobs:
   truffle-test:
