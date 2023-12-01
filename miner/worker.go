@@ -1238,13 +1238,13 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if interval != nil {
 			interval()
 		}
-
-		err := env.state.WaitPipeVerification()
-		if err != nil {
-			return err
-		}
-		env.state.CorrectAccountsRoot(w.chain.CurrentBlock().Root())
-
+		/*
+			err := env.state.WaitPipeVerification()
+			if err != nil {
+				return err
+			}
+			env.state.CorrectAccountsRoot(w.chain.CurrentBlock().Root())
+		*/
 		finalizeStart := time.Now()
 		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, env.txs, env.unclelist(), env.receipts)
 		if err != nil {
