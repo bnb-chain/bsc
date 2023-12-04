@@ -1,7 +1,12 @@
 # Changelog
+## v1.2.15
+BUGFIX
+* fix: remove pipecommit in miner
+* add a hard fork: Hertzfix
+
 ## v1.2.14
 BUGFIX
-fix: remove sharedPool
+* fix: remove sharedPool
 
 ## v1.2.13
 IMPROVEMENT
