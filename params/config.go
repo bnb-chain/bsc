@@ -427,7 +427,7 @@ type ChainConfig struct {
 	LubanBlock      *big.Int `json:"lubanBlock,omitempty" toml:",omitempty"`      // lubanBlock switch block (nil = no fork, 0 = already activated)
 	PlatoBlock      *big.Int `json:"platoBlock,omitempty" toml:",omitempty"`      // platoBlock switch block (nil = no fork, 0 = already activated)
 	HertzBlock      *big.Int `json:"hertzBlock,omitempty" toml:",omitempty"`      // hertzBlock switch block (nil = no fork, 0 = already activated)
-	HertzfixBlock   *big.Int `json:"HertzfixBlock,omitempty" toml:",omitempty"`   // HertzfixBlock switch block (nil = no fork, 0 = already activated)
+	HertzfixBlock   *big.Int `json:"hertzfixBlock,omitempty" toml:",omitempty"`   // hertzfixBlock switch block (nil = no fork, 0 = already activated)
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
 	Clique *CliqueConfig `json:"clique,omitempty" toml:",omitempty"`
@@ -746,7 +746,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "lubanBlock", block: c.LubanBlock},
 		{name: "platoBlock", block: c.PlatoBlock},
 		{name: "hertzBlock", block: c.HertzBlock},
-		{name: "HertzfixBlock", block: c.HertzfixBlock},
+		{name: "hertzfixBlock", block: c.HertzfixBlock},
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number
@@ -856,7 +856,7 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 		return newCompatError("hertz fork block", c.HertzBlock, newcfg.HertzBlock)
 	}
 	if isForkIncompatible(c.HertzfixBlock, newcfg.HertzfixBlock, head) {
-		return newCompatError("Hertzfix fork block", c.HertzfixBlock, newcfg.HertzfixBlock)
+		return newCompatError("hertzfix fork block", c.HertzfixBlock, newcfg.HertzfixBlock)
 	}
 	return nil
 }
