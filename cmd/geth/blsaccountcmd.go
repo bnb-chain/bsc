@@ -42,7 +42,7 @@ var (
 		Usage:    "Show the BLS12-381 private key you will encrypt into a keystore file",
 		Category: flags.AccountCategory,
 	}
-	bLSAccountPasswordFileFlag = &cli.StringFlag{
+	blsAccountPasswordFileFlag = &cli.StringFlag{
 		Name:     "blsaccountpassword",
 		Usage:    "File path for the BLS account password, which contains the password to encrypt private key into keystore file for managing votes in fast_finality feature",
 		Category: flags.AccountCategory,
@@ -130,7 +130,7 @@ Make sure you backup your BLS keys regularly.`,
 							utils.DataDirFlag,
 							showPrivateKeyFlag,
 							utils.BLSPasswordFileFlag,
-							bLSAccountPasswordFileFlag,
+							blsAccountPasswordFileFlag,
 						},
 						Description: `
 	geth bls account new
@@ -151,7 +151,7 @@ You must remember this password to unlock your account in the future.`,
 						Flags: []cli.Flag{
 							utils.DataDirFlag,
 							utils.BLSPasswordFileFlag,
-							bLSAccountPasswordFileFlag,
+							blsAccountPasswordFileFlag,
 						},
 						Description: `
 	geth bls account import <keyFile>
@@ -304,7 +304,7 @@ func blsAccountCreate(ctx *cli.Context) error {
 	if err := os.MkdirAll(keystoreDir, 0755); err != nil {
 		utils.Fatalf("Could not access keystore dir: %v.", err)
 	}
-	accountPassword := utils.GetPassPhraseWithList("Your new BLS account will be encrypted with a password. Please give a password. Do not forget this password.", true, 0, utils.MakePasswordListFromPath(ctx.String(bLSAccountPasswordFileFlag.Name)))
+	accountPassword := utils.GetPassPhraseWithList("Your new BLS account will be encrypted with a password. Please give a password. Do not forget this password.", true, 0, utils.MakePasswordListFromPath(ctx.String(blsAccountPasswordFileFlag.Name)))
 	if err := core.ValidatePasswordFormat(accountPassword); err != nil {
 		utils.Fatalf("Password invalid: %v.", err)
 	}
@@ -426,7 +426,7 @@ func blsAccountImport(ctx *cli.Context) error {
 	}
 
 	if accountPassword == "" {
-		accountPassword = utils.GetPassPhraseWithList("Enter the password for your imported account.", false, 0, utils.MakePasswordListFromPath(ctx.String(bLSAccountPasswordFileFlag.Name)))
+		accountPassword = utils.GetPassPhraseWithList("Enter the password for your imported account.", false, 0, utils.MakePasswordListFromPath(ctx.String(blsAccountPasswordFileFlag.Name)))
 	}
 
 	fmt.Println("Importing BLS account, this may take a while...")
