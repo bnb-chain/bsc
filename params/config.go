@@ -198,7 +198,7 @@ var (
 		BerlinBlock:   big.NewInt(31302048),
 		LondonBlock:   big.NewInt(31302048),
 		HertzBlock:    big.NewInt(31302048),
-		HertzfixBlock: nil,
+		HertzfixBlock: big.NewInt(34140700),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -234,7 +234,7 @@ var (
 		BerlinBlock:   big.NewInt(31103030),
 		LondonBlock:   big.NewInt(31103030),
 		HertzBlock:    big.NewInt(31103030),
-		HertzfixBlock: big.NewInt(35656600),
+		HertzfixBlock: big.NewInt(35682300),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
