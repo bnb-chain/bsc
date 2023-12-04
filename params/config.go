@@ -195,10 +195,10 @@ var (
 		LubanBlock: big.NewInt(29020050),
 		PlatoBlock: big.NewInt(30720096),
 		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock: big.NewInt(31302048),
-		LondonBlock: big.NewInt(31302048),
-		HertzBlock:  big.NewInt(31302048),
-
+		BerlinBlock:  big.NewInt(31302048),
+		LondonBlock:  big.NewInt(31302048),
+		HertzBlock:   big.NewInt(31302048),
+		Hotfix1Block: nil,
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -231,9 +231,10 @@ var (
 		LubanBlock: big.NewInt(29295050),
 		PlatoBlock: big.NewInt(29861024),
 		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock: big.NewInt(31103030),
-		LondonBlock: big.NewInt(31103030),
-		HertzBlock:  big.NewInt(31103030),
+		BerlinBlock:  big.NewInt(31103030),
+		LondonBlock:  big.NewInt(31103030),
+		HertzBlock:   big.NewInt(31103030),
+		Hotfix1Block: big.NewInt(35656600),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -263,10 +264,11 @@ var (
 		PlanckBlock:         nil,
 
 		// TODO
-		LubanBlock:  nil,
-		PlatoBlock:  nil,
-		BerlinBlock: nil,
-		HertzBlock:  nil,
+		LubanBlock:   nil,
+		PlatoBlock:   nil,
+		BerlinBlock:  nil,
+		HertzBlock:   nil,
+		Hotfix1Block: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -300,10 +302,10 @@ var (
 		LubanBlock: big.NewInt(0),
 		PlatoBlock: big.NewInt(0),
 		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock: big.NewInt(0),
-		LondonBlock: big.NewInt(0),
-		HertzBlock:  big.NewInt(0),
-
+		BerlinBlock:  big.NewInt(0),
+		LondonBlock:  big.NewInt(0),
+		HertzBlock:   big.NewInt(0),
+		Hotfix1Block: big.NewInt(0),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -316,16 +318,16 @@ var (
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
 
-	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), new(EthashConfig), nil, nil}
+	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), new(EthashConfig), nil, nil}
 
 	// AllCliqueProtocolChanges contains every protocol change (EIPs) introduced
 	// and accepted by the Ethereum core developers into the Clique consensus.
 	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
-	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil}
+	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil}
 
-	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), new(EthashConfig), nil, nil}
+	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), new(EthashConfig), nil, nil}
 	TestRules       = TestChainConfig.Rules(new(big.Int), false)
 )
 
@@ -425,7 +427,7 @@ type ChainConfig struct {
 	LubanBlock      *big.Int `json:"lubanBlock,omitempty" toml:",omitempty"`      // lubanBlock switch block (nil = no fork, 0 = already activated)
 	PlatoBlock      *big.Int `json:"platoBlock,omitempty" toml:",omitempty"`      // platoBlock switch block (nil = no fork, 0 = already activated)
 	HertzBlock      *big.Int `json:"hertzBlock,omitempty" toml:",omitempty"`      // hertzBlock switch block (nil = no fork, 0 = already activated)
-
+	Hotfix1Block    *big.Int `json:"hotfix1Block,omitempty" toml:",omitempty"`    // hotfix1Block switch block (nil = no fork, 0 = already activated)
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
 	Clique *CliqueConfig `json:"clique,omitempty" toml:",omitempty"`
@@ -476,7 +478,7 @@ func (c *ChainConfig) String() string {
 		engine = "unknown"
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Engine: %v}",
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hotfix1: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -507,6 +509,7 @@ func (c *ChainConfig) String() string {
 		c.LubanBlock,
 		c.PlatoBlock,
 		c.HertzBlock,
+		c.Hotfix1Block,
 		engine,
 	)
 }
@@ -626,6 +629,14 @@ func (c *ChainConfig) IsOnHertz(num *big.Int) bool {
 	return configNumEqual(c.HertzBlock, num)
 }
 
+func (c *ChainConfig) IsHotfix1(num *big.Int) bool {
+	return isForked(c.Hotfix1Block, num)
+}
+
+func (c *ChainConfig) IsOnHotfix1(num *big.Int) bool {
+	return configNumEqual(c.Hotfix1Block, num)
+}
+
 // IsMuirGlacier returns whether num is either equal to the Muir Glacier (EIP-2384) fork block or greater.
 func (c *ChainConfig) IsMuirGlacier(num *big.Int) bool {
 	return isForked(c.MuirGlacierBlock, num)
@@ -735,6 +746,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "lubanBlock", block: c.LubanBlock},
 		{name: "platoBlock", block: c.PlatoBlock},
 		{name: "hertzBlock", block: c.HertzBlock},
+		{name: "hotfix1Block", block: c.Hotfix1Block},
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number
@@ -843,6 +855,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	if isForkIncompatible(c.HertzBlock, newcfg.HertzBlock, head) {
 		return newCompatError("hertz fork block", c.HertzBlock, newcfg.HertzBlock)
 	}
+	if isForkIncompatible(c.Hotfix1Block, newcfg.Hotfix1Block, head) {
+		return newCompatError("hotfix1 fork block", c.Hotfix1Block, newcfg.Hotfix1Block)
+	}
 	return nil
 }
 
@@ -918,6 +933,7 @@ type Rules struct {
 	IsLuban                                                 bool
 	IsPlato                                                 bool
 	IsHertz                                                 bool
+	IsHotfix1                                               bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -945,5 +961,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		IsLuban:          c.IsLuban(num),
 		IsPlato:          c.IsPlato(num),
 		IsHertz:          c.IsHertz(num),
+		IsHotfix1:        c.IsHotfix1(num),
 	}
 }

@@ -59,7 +59,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	for i := 0; i < prefetchThread; i++ {
 		go func() {
 			newStatedb := statedb.CopyDoPrefetch()
-			if header.Number.Uint64() < 33968300 {
+			if !p.config.IsHotfix1(header.Number) {
 				newStatedb.EnableWriteOnSharedStorage()
 			}
 			gaspool := new(GasPool).AddGas(block.GasLimit())
@@ -107,7 +107,7 @@ func (p *statePrefetcher) PrefetchMining(txs *types.TransactionsByPriceAndNonce,
 		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
 			idx := 0
 			newStatedb := statedb.CopyDoPrefetch()
-			if header.Number.Uint64() < 33968300 {
+			if !p.config.IsHotfix1(header.Number) {
 				newStatedb.EnableWriteOnSharedStorage()
 			}
 			gaspool := new(GasPool).AddGas(gasLimit)
