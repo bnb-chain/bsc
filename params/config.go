@@ -195,10 +195,10 @@ var (
 		LubanBlock: big.NewInt(29020050),
 		PlatoBlock: big.NewInt(30720096),
 		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock:  big.NewInt(31302048),
-		LondonBlock:  big.NewInt(31302048),
-		HertzBlock:   big.NewInt(31302048),
-		Hotfix1Block: nil,
+		BerlinBlock:   big.NewInt(31302048),
+		LondonBlock:   big.NewInt(31302048),
+		HertzBlock:    big.NewInt(31302048),
+		HertzfixBlock: nil,
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -231,10 +231,10 @@ var (
 		LubanBlock: big.NewInt(29295050),
 		PlatoBlock: big.NewInt(29861024),
 		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock:  big.NewInt(31103030),
-		LondonBlock:  big.NewInt(31103030),
-		HertzBlock:   big.NewInt(31103030),
-		Hotfix1Block: big.NewInt(35656600),
+		BerlinBlock:   big.NewInt(31103030),
+		LondonBlock:   big.NewInt(31103030),
+		HertzBlock:    big.NewInt(31103030),
+		HertzfixBlock: big.NewInt(35656600),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -264,11 +264,11 @@ var (
 		PlanckBlock:         nil,
 
 		// TODO
-		LubanBlock:   nil,
-		PlatoBlock:   nil,
-		BerlinBlock:  nil,
-		HertzBlock:   nil,
-		Hotfix1Block: nil,
+		LubanBlock:    nil,
+		PlatoBlock:    nil,
+		BerlinBlock:   nil,
+		HertzBlock:    nil,
+		HertzfixBlock: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -302,10 +302,10 @@ var (
 		LubanBlock: big.NewInt(0),
 		PlatoBlock: big.NewInt(0),
 		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock:  big.NewInt(0),
-		LondonBlock:  big.NewInt(0),
-		HertzBlock:   big.NewInt(0),
-		Hotfix1Block: big.NewInt(0),
+		BerlinBlock:   big.NewInt(0),
+		LondonBlock:   big.NewInt(0),
+		HertzBlock:    big.NewInt(0),
+		HertzfixBlock: big.NewInt(0),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -427,7 +427,7 @@ type ChainConfig struct {
 	LubanBlock      *big.Int `json:"lubanBlock,omitempty" toml:",omitempty"`      // lubanBlock switch block (nil = no fork, 0 = already activated)
 	PlatoBlock      *big.Int `json:"platoBlock,omitempty" toml:",omitempty"`      // platoBlock switch block (nil = no fork, 0 = already activated)
 	HertzBlock      *big.Int `json:"hertzBlock,omitempty" toml:",omitempty"`      // hertzBlock switch block (nil = no fork, 0 = already activated)
-	Hotfix1Block    *big.Int `json:"hotfix1Block,omitempty" toml:",omitempty"`    // hotfix1Block switch block (nil = no fork, 0 = already activated)
+	HertzfixBlock   *big.Int `json:"HertzfixBlock,omitempty" toml:",omitempty"`   // HertzfixBlock switch block (nil = no fork, 0 = already activated)
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
 	Clique *CliqueConfig `json:"clique,omitempty" toml:",omitempty"`
@@ -478,7 +478,7 @@ func (c *ChainConfig) String() string {
 		engine = "unknown"
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hotfix1: %v, Engine: %v}",
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -509,7 +509,7 @@ func (c *ChainConfig) String() string {
 		c.LubanBlock,
 		c.PlatoBlock,
 		c.HertzBlock,
-		c.Hotfix1Block,
+		c.HertzfixBlock,
 		engine,
 	)
 }
@@ -629,12 +629,12 @@ func (c *ChainConfig) IsOnHertz(num *big.Int) bool {
 	return configNumEqual(c.HertzBlock, num)
 }
 
-func (c *ChainConfig) IsHotfix1(num *big.Int) bool {
-	return isForked(c.Hotfix1Block, num)
+func (c *ChainConfig) IsHertzfix(num *big.Int) bool {
+	return isForked(c.HertzfixBlock, num)
 }
 
-func (c *ChainConfig) IsOnHotfix1(num *big.Int) bool {
-	return configNumEqual(c.Hotfix1Block, num)
+func (c *ChainConfig) IsOnHertzfix(num *big.Int) bool {
+	return configNumEqual(c.HertzfixBlock, num)
 }
 
 // IsMuirGlacier returns whether num is either equal to the Muir Glacier (EIP-2384) fork block or greater.
@@ -746,7 +746,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "lubanBlock", block: c.LubanBlock},
 		{name: "platoBlock", block: c.PlatoBlock},
 		{name: "hertzBlock", block: c.HertzBlock},
-		{name: "hotfix1Block", block: c.Hotfix1Block},
+		{name: "HertzfixBlock", block: c.HertzfixBlock},
 	} {
 		if lastFork.name != "" {
 			// Next one must be higher number
@@ -855,8 +855,8 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, head *big.Int) *Confi
 	if isForkIncompatible(c.HertzBlock, newcfg.HertzBlock, head) {
 		return newCompatError("hertz fork block", c.HertzBlock, newcfg.HertzBlock)
 	}
-	if isForkIncompatible(c.Hotfix1Block, newcfg.Hotfix1Block, head) {
-		return newCompatError("hotfix1 fork block", c.Hotfix1Block, newcfg.Hotfix1Block)
+	if isForkIncompatible(c.HertzfixBlock, newcfg.HertzfixBlock, head) {
+		return newCompatError("Hertzfix fork block", c.HertzfixBlock, newcfg.HertzfixBlock)
 	}
 	return nil
 }
@@ -933,7 +933,7 @@ type Rules struct {
 	IsLuban                                                 bool
 	IsPlato                                                 bool
 	IsHertz                                                 bool
-	IsHotfix1                                               bool
+	IsHertzfix                                              bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -961,6 +961,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		IsLuban:          c.IsLuban(num),
 		IsPlato:          c.IsPlato(num),
 		IsHertz:          c.IsHertz(num),
-		IsHotfix1:        c.IsHotfix1(num),
+		IsHertzfix:       c.IsHertzfix(num),
 	}
 }
