@@ -3036,7 +3036,7 @@ func EnableLightProcessor(bc *BlockChain) (*BlockChain, error) {
 }
 
 func EnablePipelineCommit(bc *BlockChain) (*BlockChain, error) {
-	bc.pipeCommit = true
+	bc.pipeCommit = false
 	return bc, nil
 }
 

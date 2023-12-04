@@ -1728,7 +1728,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		log.Warn("The --diffsync flag is deprecated and will be removed in the future!")
 	}
 	if ctx.GlobalIsSet(PipeCommitFlag.Name) {
-		cfg.PipeCommit = ctx.GlobalBool(PipeCommitFlag.Name)
+		log.Warn("The --pipecommit flag is deprecated and could be removed in the future!")
 	}
 	if ctx.GlobalIsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.GlobalBool(RangeLimitFlag.Name)
