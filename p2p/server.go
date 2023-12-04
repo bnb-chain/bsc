@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -889,9 +890,27 @@ func (srv *Server) addPeerChecks(peers map[enode.ID]*Peer, inboundCount int, c *
 	if len(srv.Protocols) > 0 && countMatchingProtocols(srv.Protocols, c.caps) == 0 {
 		return DiscUselessPeer
 	}
+
+	if !checkValidErigonNodes(c.name) {
+		return errors.New("only connect to Erigon peers with version 1.1.9-dev-d0bc870b or 1.1.9-dev-86fc9ec3")
+	}
+
 	// Repeat the post-handshake checks because the
 	// peer set might have changed since those checks were performed.
 	return srv.postHandshakeChecks(peers, inboundCount, c)
+}
+
+// TEMP FIX: If the node is running erigon, only support the following version:
+// 1.1.9-dev-d0bc870b
+// 1.1.9-dev-86fc9ec3
+func checkValidErigonNodes(name string) bool {
+	name = strings.ToLower(name)
+	if strings.Contains(name, "erigon") {
+		if !strings.Contains(name, "d0bc870b") && !strings.Contains(name, "86fc9ec3") {
+			return false
+		}
+	}
+	return true
 }
 
 // listenLoop runs in its own goroutine and accepts
