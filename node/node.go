@@ -180,8 +180,8 @@ func New(conf *Config) (*Node, error) {
 		node.server.Config.NodeDatabase = node.config.NodeDB()
 	}
 
-	if conf.TrieDir != "" {
-		node.config.enableSeparateTrie(conf.TrieDir)
+	if conf.EnableSeparateTrie {
+		node.config.enableSeparateTrie()
 	}
 
 	// Check HTTP/WS prefixes are valid.
@@ -840,7 +840,10 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 	return db, err
 }
 
-func (n *Node) OpenDatabaseForTrie(name string, cache, handles int, ancient, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
+// OpenTrieDataBase opens an existing database to store the trie data with the given name (or
+// creates one if no previous can be found) from within the node's data directory.
+// This function is only used in scenarios where the separate db is used.
+func (n *Node) OpenTrieDataBase(name string, cache, handles int, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	if n.state == closedState {
@@ -848,28 +851,34 @@ func (n *Node) OpenDatabaseForTrie(name string, cache, handles int, ancient, nam
 	}
 	var db ethdb.Database
 	var err error
-	if n.config.DataDir == "" {
-		db = rawdb.NewMemoryDatabase()
-	} else {
-		direcrory := filepath.Join(n.config.trieDir(), name)
-		db, err = rawdb.Open(rawdb.OpenOptions{
-			Type:              n.config.DBEngine,
-			Directory:         direcrory,
-			AncientsDirectory: filepath.Join(direcrory, "ancient"),
-			Namespace:         namespace,
-			Cache:             cache,
-			Handles:           handles,
-			ReadOnly:          readonly,
-			DisableFreeze:     disableFreeze,
-			IsLastOffset:      isLastOffset,
-			PruneAncientData:  pruneAncientData,
-		})
-	}
+	separateDir := filepath.Join(n.ResolvePath(name), "state")
+	db, err = rawdb.Open(rawdb.OpenOptions{
+		Type:              n.config.DBEngine,
+		Directory:         separateDir,
+		AncientsDirectory: filepath.Join(separateDir, "ancient"),
+		Namespace:         namespace,
+		Cache:             cache,
+		Handles:           handles,
+		ReadOnly:          readonly,
+		DisableFreeze:     disableFreeze,
+		IsLastOffset:      isLastOffset,
+		PruneAncientData:  pruneAncientData,
+	})
 
 	if err == nil {
 		db = n.wrapDatabase(db)
 	}
 	return db, err
+}
+
+// HasSeparateTrieDir check the state subdirectory of db, if subdirectory exists, return true
+func (n *Node) HasSeparateTrieDir() bool {
+	separateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
+	fileInfo, err := os.Stat(separateDir)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return fileInfo.IsDir()
 }
 
 func (n *Node) OpenDiffDatabase(name string, handles int, diff, namespace string, readonly bool) (*leveldb.Database, error) {

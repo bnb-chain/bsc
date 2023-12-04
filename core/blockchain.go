@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -165,8 +166,20 @@ type CacheConfig struct {
 	StateScheme         string        // Scheme used to store ethereum states and merkle tree nodes on top
 	PathSyncFlush       bool          // Whether sync flush the trienodebuffer of pathdb to disk.
 
-	SnapshotNoBuild bool // Whether the background generation is allowed
-	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
+	SnapshotNoBuild    bool                // Whether the background generation is allowed
+	SnapshotWait       bool                // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
+	SeparateTrieConfig *SeparateTrieConfig // The configuration of the separated single trie database
+}
+
+// SeparateTrieConfig contains the configuration values of the separated single trie database
+type SeparateTrieConfig struct {
+	SeparateDBHandles int    // The handler num used by the separated trie db
+	SeparateDBCache   int    // The cache size used by the separated trie db
+	SeparateDBEngine  string // The db engine (pebble or leveldb) used by the separated trie db
+	TrieDataDir       string // The directory of the separated trie db
+	TrieNameSpace     string // The namespace of the separated trie db
+	SeparateDBAncient string // The ancient directory of the separated trie db
+	PruneAncientData  bool
 }
 
 // triedbConfig derives the configures for trie database.
@@ -240,8 +253,7 @@ type BlockChain struct {
 	chainConfig *params.ChainConfig // Chain & network configuration
 	cacheConfig *CacheConfig        // Cache configuration for pruning
 
-	db            ethdb.Database // Low level persistent database to store final content in
-	separateDB    ethdb.Database
+	db            ethdb.Database                   // Low level persistent database to store final content in
 	snaps         *snapshot.Tree                   // Snapshot tree for fast trie leaf access
 	triegc        *prque.Prque[int64, common.Hash] // Priority queue mapping block numbers to tries to gc
 	gcproc        time.Duration                    // Accumulates canonical block processing for trie dumping
@@ -337,10 +349,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	*/
 
 	bc := &BlockChain{
-		//	chainConfig:        chainConfig,
-		cacheConfig: cacheConfig,
-		db:          db,
-		//	triedb:             triedb,
+		cacheConfig:        cacheConfig,
+		db:                 db,
 		triegc:             prque.New[int64, common.Hash](nil),
 		quit:               make(chan struct{}),
 		triesInMemory:      cacheConfig.TriesInMemory,
@@ -360,19 +370,32 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		diffQueueBuffer:    make(chan *types.DiffLayer),
 	}
 	var err error
-	// do options before start any routine
-	for _, option := range options {
-		bc, err = option(bc)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	// Open trie database with provided config
 	var triedb *trie.Database
-	if bc.separateDB != nil {
-		log.Info("the separate db of block chain has been set")
-		triedb = trie.NewDatabase(bc.separateDB, cacheConfig.triedbConfig())
+	if cacheConfig.SeparateTrieConfig != nil {
+		separatedTrieConfig := cacheConfig.SeparateTrieConfig
+		separatedTrieDir := separatedTrieConfig.TrieDataDir
+		log.Info("node run with separated trie database", "directory", separatedTrieDir)
+		// open the separated db to init the trie database which only store the trie data
+		separateDB, dbErr := rawdb.Open(rawdb.OpenOptions{
+			Type:              separatedTrieConfig.SeparateDBEngine,
+			Directory:         separatedTrieDir,
+			AncientsDirectory: filepath.Join(separatedTrieDir, separatedTrieConfig.SeparateDBAncient),
+			Namespace:         separatedTrieConfig.TrieNameSpace,
+			Cache:             separatedTrieConfig.SeparateDBCache,
+			Handles:           separatedTrieConfig.SeparateDBHandles,
+			ReadOnly:          false,
+			DisableFreeze:     false,
+			IsLastOffset:      false,
+			PruneAncientData:  separatedTrieConfig.PruneAncientData,
+		})
+
+		if dbErr != nil {
+			log.Error("Failed to separate trie database", "err", dbErr)
+			return nil, dbErr
+		}
+		triedb = trie.NewDatabase(separateDB, cacheConfig.triedbConfig())
 	} else {
 		triedb = trie.NewDatabase(db, cacheConfig.triedbConfig())
 	}
@@ -384,9 +407,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
+	bc.chainConfig = chainConfig
 	systemcontracts.GenesisHash = genesisHash
 	log.Info("Initialised chain configuration", "config", chainConfig)
-	bc.chainConfig = chainConfig
 
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
@@ -542,7 +565,13 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
 	}
-
+	// do options before start any routine
+	for _, option := range options {
+		bc, err = option(bc)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// Start future block processor.
 	bc.wg.Add(1)
 	go bc.updateFutureBlocks()
@@ -2869,15 +2898,6 @@ func (bc *BlockChain) TriesInMemory() uint64 { return bc.triesInMemory }
 func EnablePipelineCommit(bc *BlockChain) (*BlockChain, error) {
 	bc.pipeCommit = false
 	return bc, nil
-}
-
-func EnableSeparateDB(separateDB ethdb.Database) BlockChainOption {
-	return func(chain *BlockChain) (*BlockChain, error) {
-		if separateDB != nil {
-			chain.separateDB = separateDB
-		}
-		return chain, nil
-	}
 }
 
 func EnablePersistDiff(limit uint64) BlockChainOption {

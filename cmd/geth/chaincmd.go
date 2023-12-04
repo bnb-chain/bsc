@@ -238,15 +238,15 @@ func initGenesis(ctx *cli.Context) error {
 		defer chaindb.Close()
 
 		var triedb *trie.Database
-		// if the trie datadir has been set , new triedb with a new chaindb
-		if ctx.IsSet(utils.TrieDirFlag.Name) {
-			newChaindb, dbErr := stack.OpenDatabaseForTrie(name, 0, 0, "", "", false, false, false, false)
+		// if the trie data dir has been set , new trie db with a new trie database
+		if ctx.IsSet(utils.SeparateDBFlag.Name) {
+			separatedDB, dbErr := stack.OpenTrieDataBase(name, 0, 0, "", false, false, false, false)
 			if dbErr != nil {
 				utils.Fatalf("Failed to open separate trie database: %v", dbErr)
 			}
-			defer newChaindb.Close()
+			defer separatedDB.Close()
 
-			triedb = utils.MakeTrieDatabase(ctx, newChaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false)
+			triedb = utils.MakeTrieDatabase(ctx, separatedDB, ctx.Bool(utils.CachePreimagesFlag.Name), false)
 			defer triedb.Close()
 		} else {
 			triedb = utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false)

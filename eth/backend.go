@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"runtime"
 	"sync"
 
@@ -65,6 +66,11 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
+)
+
+const (
+	SeparateDBNamespace   = "eth/separatedb/chaindata/"
+	SeparateTrieNamespace = "eth/triedb/chaindata/"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -133,10 +139,22 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// Assemble the Ethereum object
-	chainDb, err := stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
-		config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff, config.PruneAncientData)
-	if err != nil {
-		return nil, err
+	var chainDb ethdb.Database
+	var err error
+	if stack.Config().EnableSeparateTrie || stack.HasSeparateTrieDir() {
+		// It is the separated db which contain snapshot, meta and block data with no trie data storing in it.
+		// Allocate partial handles and cache to this separate database because it is not a complete database.
+		chainDb, err = stack.OpenAndMergeDatabase("chaindata", int(float64(config.DatabaseCache)*0.6), int(float64(config.DatabaseHandles)*0.6),
+			config.DatabaseFreezer, config.DatabaseDiff, SeparateDBNamespace, false, config.PersistDiff, config.PruneAncientData)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		chainDb, err = stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
+			config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff, config.PruneAncientData)
+		if err != nil {
+			return nil, err
+		}
 	}
 	config.StateScheme, err = rawdb.ParseStateScheme(config.StateScheme, chainDb)
 	if err != nil {
@@ -272,19 +290,28 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		bcOps = append(bcOps, core.EnableDoubleSignChecker)
 	}
 
-	if stack.Config().TrieDir != "" {
-		fmt.Println("trie data dir has setted to ", stack.Config().TrieDir)
-		newChainDb, err := stack.OpenDatabaseForTrie("chaindata", config.DatabaseCache, config.DatabaseHandles,
-			config.DatabaseFreezer, "eth/db/chaindata/", false, false, false, config.PruneAncientData)
-		if err != nil {
-			log.Info("open db err", err)
-			return nil, err
-		}
-		bcOps = append(bcOps, core.EnableSeparateDB(newChainDb))
-	}
-
 	peers := newPeerSet()
 	bcOps = append(bcOps, core.EnableBlockValidator(chainConfig, eth.engine, config.TriesVerifyMode, peers))
+
+	// if the separated trie db has set, need to new blockchain with the separated trie database
+	if stack.Config().EnableSeparateTrie || stack.HasSeparateTrieDir() {
+		ancientDir := config.DatabaseFreezer
+		if ancientDir == "" {
+			ancientDir = "ancient"
+		}
+		// Allocate partial handles and cache to this separated database.
+		separateDir := filepath.Join(stack.ResolvePath("chaindata"), "state")
+		separatedDBConfig := &core.SeparateTrieConfig{
+			SeparateDBHandles: int(float64(config.DatabaseHandles) * 0.5),
+			SeparateDBCache:   int(float64(config.DatabaseCache) * 0.5),
+			SeparateDBEngine:  stack.Config().DBEngine,
+			TrieDataDir:       separateDir,
+			TrieNameSpace:     SeparateTrieNamespace,
+			SeparateDBAncient: ancientDir,
+		}
+		cacheConfig.SeparateTrieConfig = separatedDBConfig
+	}
+
 	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, eth.shouldPreserve, &config.TransactionHistory, bcOps...)
 	if err != nil {
 		return nil, err

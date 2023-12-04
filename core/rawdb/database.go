@@ -603,12 +603,31 @@ func PruneHashTrieNodeInDataBase(db ethdb.Database) error {
 	return nil
 }
 
+func inspectTrieData(key, value []byte, legacyTries, accountTries, storageTries, stateLookups *stat) {
+	size := common.StorageSize(len(key) + len(value))
+	switch {
+	case IsLegacyTrieNode(key, value):
+		legacyTries.Add(size)
+	case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
+		stateLookups.Add(size)
+	case IsAccountTrieNode(key):
+		accountTries.Add(size)
+	case IsStorageTrieNode(key):
+		storageTries.Add(size)
+	}
+}
+
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
-func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
+func InspectDatabase(db ethdb.Database, separateDB ethdb.Database, keyPrefix, keyStart []byte) error {
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
 
+	var trieIter ethdb.Iterator
+	if separateDB != nil {
+		trieIter = separateDB.NewIterator(keyPrefix, nil)
+		defer trieIter.Release()
+	}
 	var (
 		count  int64
 		start  = time.Now()
@@ -728,6 +747,31 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			logged = time.Now()
 		}
 	}
+	// inspect separate trie db
+	if trieIter != nil {
+		count = 0
+		logged = time.Now()
+		for trieIter.Next() {
+			var (
+				key   = trieIter.Key()
+				value = trieIter.Value()
+				size  = common.StorageSize(len(key) + len(value))
+			)
+			inspectTrieData(key, value, &legacyTries, &accountTries, &storageTries, &stateLookups)
+			for _, meta := range [][]byte{
+				fastTrieProgressKey, persistentStateIDKey, trieJournalKey} {
+				if bytes.Equal(key, meta) {
+					metadata.Add(size)
+					break
+				}
+			}
+			count++
+			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
+				log.Info("Inspecting separate database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+				logged = time.Now()
+			}
+		}
+	}
 	// Display the database statistic of key-value store.
 	stats := [][]string{
 		{"Key-Value store", "Headers", headers.Size(), headers.Count()},
@@ -767,6 +811,28 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			})
 		}
 		total += ancient.size()
+	}
+
+	// inspect ancient state in separate trie db if exist
+	if trieIter != nil {
+		stateAncients, err := inspectFreezers(separateDB)
+		if err != nil {
+			return err
+		}
+		for _, ancient := range stateAncients {
+			for _, table := range ancient.sizes {
+				if ancient.name == "chain" {
+					break
+				}
+				stats = append(stats, []string{
+					fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
+					strings.Title(table.name),
+					table.size.String(),
+					fmt.Sprintf("%d", ancient.count()),
+				})
+			}
+			total += ancient.size()
+		}
 	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})

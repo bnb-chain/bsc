@@ -93,11 +93,10 @@ var (
 		Value:    flags.DirectoryString(node.DefaultDataDir()),
 		Category: flags.EthCategory,
 	}
-
-	TrieDirFlag = &flags.DirectoryFlag{
-		Name:     "triedir",
-		Usage:    "Data directory for the trie data base",
-		Value:    flags.DirectoryString(node.DefaultDataDir() + "trie"),
+	SeparateDBFlag = &cli.BoolFlag{
+		Name: "separatetrie",
+		Usage: "Enable a separated trie database, it will be created within a subdirectory called state, " +
+			"Users can copy this state directory to another directory or disk, and then create a symbolic link to the state directory under the chaindata",
 		Category: flags.EthCategory,
 	}
 	DirectBroadcastFlag = &cli.BoolFlag{
@@ -1119,7 +1118,7 @@ var (
 		DBEngineFlag,
 		StateSchemeFlag,
 		HttpHeaderFlag,
-		TrieDirFlag,
+		SeparateDBFlag,
 	}
 )
 
@@ -1638,11 +1637,11 @@ func SetDataDir(ctx *cli.Context, cfg *node.Config) {
 	switch {
 	case ctx.IsSet(DataDirFlag.Name):
 		cfg.DataDir = ctx.String(DataDirFlag.Name)
-	case ctx.IsSet(TrieDirFlag.Name):
-		fmt.Println("setting TrieDirFlag.Name", ctx.String(TrieDirFlag.Name))
-		cfg.TrieDir = ctx.String(TrieDirFlag.Name)
 	case ctx.Bool(DeveloperFlag.Name):
 		cfg.DataDir = "" // unless explicitly requested, use memory databases
+	}
+	if ctx.IsSet(SeparateDBFlag.Name) {
+		cfg.EnableSeparateTrie = true
 	}
 }
 
@@ -2143,15 +2142,6 @@ func SetDNSDiscoveryDefaults(cfg *ethconfig.Config, genesis common.Hash) {
 // RegisterEthService adds an Ethereum client to the stack.
 // The second return value is the full node instance.
 func RegisterEthService(stack *node.Node, cfg *ethconfig.Config) (ethapi.Backend, *eth.Ethereum) {
-	if cfg.SyncMode == downloader.LightSync {
-		backend, err := les.New(stack, cfg)
-		if err != nil {
-			Fatalf("Failed to register the Ethereum service: %v", err)
-		}
-		stack.RegisterAPIs(tracers.APIs(backend.ApiBackend))
-		return backend.ApiBackend, nil
-	}
-
 	backend, err := eth.New(stack, cfg)
 	if err != nil {
 		Fatalf("Failed to register the Ethereum service: %v", err)
@@ -2339,6 +2329,17 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 		Fatalf("Could not open database: %v", err)
 	}
 	return chainDb
+}
+
+// MakeSeparateTrieDB open a separate trie database using the flags passed to the client and will hard crash if it fails.
+func MakeSeparateTrieDB(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
+	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
+	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name))
+	trieDb, err := stack.OpenTrieDataBase("chaindata", cache, handles, "", readonly, disableFreeze, false, false)
+	if err != nil {
+		Fatalf("Failed to open separate trie database: %v", err)
+	}
+	return trieDb
 }
 
 // tryMakeReadOnlyDatabase try to open the chain database in read-only mode,
