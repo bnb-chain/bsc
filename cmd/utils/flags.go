@@ -1092,7 +1092,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 
 	BLSPasswordFileFlag = &cli.StringFlag{
 		Name:     "blspassword",
-		Usage:    "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
+		Usage:    "Password file path for the BLS wallet, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
 		Category: flags.AccountCategory,
 	}
 
