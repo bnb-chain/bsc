@@ -48,7 +48,7 @@ var (
 		Name:  "show-private-key",
 		Usage: "Show the BLS12-381 private key you will encrypt into a keystore file",
 	}
-	bLSAccountPasswordFileFlag = &cli.StringFlag{
+	blsAccountPasswordFileFlag = &cli.StringFlag{
 		Name:  "blsaccountpassword",
 		Usage: "File path for the BLS account password, which contains the password to encrypt private key into keystore file for managing votes in fast_finality feature",
 	}
@@ -140,7 +140,7 @@ Make sure you backup your BLS keys regularly.`,
 							privateKeyFlag,
 							showPrivateKeyFlag,
 							utils.BLSPasswordFileFlag,
-							bLSAccountPasswordFileFlag,
+							blsAccountPasswordFileFlag,
 						},
 						Description: `
 	geth bls account new
@@ -161,7 +161,7 @@ You must remember this password to unlock your account in the future.`,
 						Flags: []cli.Flag{
 							utils.DataDirFlag,
 							utils.BLSPasswordFileFlag,
-							bLSAccountPasswordFileFlag,
+							blsAccountPasswordFileFlag,
 						},
 						Description: `
 	geth bls account import <keyFile>
@@ -711,7 +711,7 @@ func GetBLSPassword(ctx *cli.Context) []string {
 }
 
 func GetBLSAccountPassword(ctx *cli.Context) []string {
-	path := ctx.String(bLSAccountPasswordFileFlag.Name)
+	path := ctx.String(blsAccountPasswordFileFlag.Name)
 	if path == "" {
 		return nil
 	}
