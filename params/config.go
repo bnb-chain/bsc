@@ -165,6 +165,9 @@ var (
 		LondonBlock:         big.NewInt(31302048),
 		HertzBlock:          big.NewInt(31302048),
 		HertzfixBlock:       big.NewInt(34140700),
+		// UnixTime: 1705996800 is January 23, 2024 8:00:00 AM UTC
+		ShanghaiTime: newUint64(1705996800),
+		KeplerTime:   newUint64(1705996800),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -198,6 +201,9 @@ var (
 		LondonBlock:         big.NewInt(31103030),
 		HertzBlock:          big.NewInt(31103030),
 		HertzfixBlock:       big.NewInt(35682300),
+		// UnixTime: 1702972800 is December 19, 2023 8:00:00 AM UTC
+		ShanghaiTime: newUint64(1702972800),
+		KeplerTime:   newUint64(1702972800),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
