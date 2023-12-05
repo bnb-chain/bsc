@@ -94,6 +94,20 @@ func (b *aggNodeBuffer) node(owner common.Hash, path []byte, hash common.Hash) (
 }
 
 // aggnode retrieves the agg node with given node info.
+func (b *aggNodeBuffer) getAggNodeByAggPath(owner common.Hash, aggPath string) *AggNode {
+	subset, ok := b.aggNodes[owner]
+	if !ok {
+		return nil
+	}
+	aggNode, ok := subset[aggPath]
+	if !ok {
+		return nil
+	}
+
+	return aggNode
+}
+
+// aggnode retrieves the agg node with given node info.
 func (b *aggNodeBuffer) aggNode(owner common.Hash, path []byte) *AggNode {
 	subset, ok := b.aggNodes[owner]
 	if !ok {

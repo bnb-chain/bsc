@@ -17,12 +17,17 @@
 package rawdb
 
 import (
+	"errors"
+	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/syndtr/goleveldb/leveldb"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -169,7 +174,15 @@ func DeleteStorageTrieNode(db ethdb.KeyValueWriter, accountHash common.Hash, pat
 func ReadAccountTrieAggNode(db ethdb.KeyValueReader, path []byte) []byte {
 	data, err := db.Get(accountTrieAggNodeKey(path))
 	if err != nil {
-		return nil
+		// When the load of leveldb is high, a non-not found error will occur, and if nil is returned at this time,
+		// the aggnode orig data will be lost. Panic here to avoid further data damaged.
+		if errors.Is(err, leveldb.ErrNotFound) ||
+			errors.Is(err, pebble.ErrNotFound) ||
+			errors.Is(err, memorydb.ErrMemorydbNotFound) {
+			return nil
+		} else {
+			panic(fmt.Sprintf("Failed to get storage agg node, error %v", err))
+		}
 	}
 	return data
 }
@@ -198,7 +211,15 @@ func DeleteAccountTrieAggNode(db ethdb.KeyValueWriter, path []byte) {
 func ReadStorageTrieAggNode(db ethdb.KeyValueReader, accountHash common.Hash, path []byte) []byte {
 	data, err := db.Get(storageTrieAggNodeKey(accountHash, path))
 	if err != nil {
-		return nil
+		// When the load of leveldb is high, a non-not found error will occur, and if nil is returned at this time,
+		// the aggnode orig data will be lost. Panic here to avoid further data damaged.
+		if errors.Is(err, leveldb.ErrNotFound) ||
+			errors.Is(err, pebble.ErrNotFound) ||
+			errors.Is(err, memorydb.ErrMemorydbNotFound) {
+			return nil
+		} else {
+			panic(fmt.Sprintf("Failed to get storage agg node, error %v", err))
+		}
 	}
 	return data
 }

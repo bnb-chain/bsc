@@ -274,67 +274,180 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 }
 
 func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node) {
-	var (
+	// owner -> aggPath -> path -> trienode
+	aggTrie := make(map[common.Hash]map[string]map[string]*trienode.Node)
+	for owner, subset := range nodes {
+		if _, ok := aggTrie[owner]; !ok {
+			aggTrie[owner] = make(map[string]map[string]*trienode.Node)
+		}
+		for path, node := range subset {
+			aggPath := ToAggPath([]byte(path))
+			if _, ok := aggTrie[owner][string(aggPath)]; !ok {
+				aggTrie[owner][string(aggPath)] = make(map[string]*trienode.Node)
+			}
+			aggTrie[owner][string(aggPath)][path] = node
+		}
+	}
+
+	wgCounter := 0
+	for _, subset := range aggTrie {
+		wgCounter += len(subset)
+	}
+
+	type subTree struct {
+		owner         common.Hash
+		aggPath       string
+		aggNode       *AggNode
 		delta         int64
 		overwrite     int64
 		overwriteSize int64
+	}
+	var (
+		mx            sync.RWMutex // local concurrent mux
+		wg            sync.WaitGroup
+		stopCh        = make(chan struct{})
+		mergeSubResCh = make(chan *subTree, wgCounter)
 	)
-	for owner, subset := range nodes {
-		current, exist := dl.buffer.aggNodes[owner]
-		if !exist {
-			// Allocate a new map for the subset instead of claiming it directly
-			// from the passed map to avoid potential concurrent map read/write.
-			// The nodes belong to original diff layer are still accessible even
-			// after merging, thus the ownership of nodes map should still belong
-			// to original layer and any mutation on it should be prevented.
-			current = make(map[string]*AggNode)
+	wg.Add(wgCounter)
+	go func() {
+		for {
+			select {
+			case res := <-mergeSubResCh:
+				if res.aggNode != nil {
+					mx.Lock()
+					if _, ok := dl.buffer.aggNodes[res.owner]; !ok {
+						dl.buffer.aggNodes[res.owner] = make(map[string]*AggNode)
+					}
+					dl.buffer.aggNodes[res.owner][res.aggPath] = res.aggNode
+					mx.Unlock()
+				}
+				dl.buffer.updateSize(res.delta)
+				gcNodesMeter.Mark(res.overwrite)
+				gcBytesMeter.Mark(res.overwriteSize)
+				wg.Done()
+			case <-stopCh:
+				return
+			}
 		}
-		for path, n := range subset {
-			aggPath := ToAggPath([]byte(path))
-			// retrieve aggNode from dirty buffer
-			aggNode, ok := current[string(aggPath)]
-			if aggNode == nil {
-				var err error
-				immutableAggNode := dl.immutableBuffer.aggNode(owner, aggPath)
-				if immutableAggNode == nil {
-					// retrieve aggNode from clean cache and disk
-					aggNode, err = dl.cleans.aggNode(owner, aggPath)
-					if err != nil {
-						panic(fmt.Sprintf("decode agg node failed from clean cache, err: %v", err))
+	}()
+	for owner, aggSubset := range aggTrie {
+		o := owner
+		for aPath, trieNodesSet := range aggSubset {
+			ap := aPath
+			trieSet := trieNodesSet
+			go func(account common.Hash, aggPath string, trieNodes map[string]*trienode.Node) {
+				subRes := &subTree{owner: account, aggPath: aggPath, aggNode: nil}
+				mx.RLock()
+				aggNode := dl.buffer.getAggNodeByAggPath(account, aggPath)
+				mx.RUnlock()
+				exit := true
+				if aggNode == nil {
+					exit = false
+					var err error
+					immutableAggNode := dl.immutableBuffer.getAggNodeByAggPath(account, aggPath)
+					if immutableAggNode == nil {
+						aggNode, err = dl.cleans.aggNode(account, []byte(aggPath))
+						if err != nil {
+							panic(fmt.Sprintf("decode agg node failed from clean cache, err: %v", err))
+						}
+						if aggNode == nil {
+							aggNode = &AggNode{}
+						}
+					} else {
+						aggNode, err = immutableAggNode.copy()
+						if err != nil {
+							panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
+						}
 					}
-					// if immutable buffer and cache missing, create a new aggNode
-					if aggNode == nil {
-						aggNode = &AggNode{}
-					}
-				} else {
-					aggNode, err = immutableAggNode.copy()
-					if err != nil {
-						panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
+					subRes.aggNode = aggNode
+				}
+				pathSize := 0
+				oldSize := aggNode.Size()
+				for path, n := range trieNodes {
+					pathSize += len(path)
+					if n.IsDeleted() {
+						aggNode.Delete([]byte(path))
+					} else {
+						aggNode.Update([]byte(path), n)
 					}
 				}
-			}
-			oldSize := aggNode.Size()
-			if n.IsDeleted() {
-				aggNode.Delete([]byte(path))
-			} else {
-				aggNode.Update([]byte(path), n)
-			}
-			newSize := aggNode.Size()
-			if ok {
-				overwrite++
-				overwriteSize += int64(newSize - oldSize + len(path) + len(owner))
-				delta += int64(newSize - oldSize)
-			} else {
-				delta += int64(newSize + len(path) + len(owner))
-			}
-			current[string(aggPath)] = aggNode
-			dl.buffer.aggNodes[owner] = current
+				newSize := aggNode.Size()
+				if exit {
+					subRes.overwrite++
+					subRes.overwriteSize += int64(newSize - oldSize + pathSize + len(account))
+					subRes.delta += int64(newSize - oldSize)
+				} else {
+					subRes.delta += int64(newSize + pathSize + len(account))
+				}
+				mergeSubResCh <- subRes
+			}(o, ap, trieSet)
 		}
 	}
-	dl.buffer.updateSize(delta)
+	wg.Wait()
+	close(stopCh)
 	dl.buffer.layers++
-	gcNodesMeter.Mark(overwrite)
-	gcBytesMeter.Mark(overwriteSize)
+
+	//var (
+	//	delta         int64
+	//	overwrite     int64
+	//	overwriteSize int64
+	//)
+	//for owner, subset := range nodes {
+	//	current, exist := dl.buffer.aggNodes[owner]
+	//	if !exist {
+	//		// Allocate a new map for the subset instead of claiming it directly
+	//		// from the passed map to avoid potential concurrent map read/write.
+	//		// The nodes belong to original diff layer are still accessible even
+	//		// after merging, thus the ownership of nodes map should still belong
+	//		// to original layer and any mutation on it should be prevented.
+	//		current = make(map[string]*AggNode)
+	//	}
+	//	for path, n := range subset {
+	//		aggPath := ToAggPath([]byte(path))
+	//		// retrieve aggNode from dirty buffer
+	//		aggNode, ok := current[string(aggPath)]
+	//		if aggNode == nil {
+	//			var err error
+	//			immutableAggNode := dl.immutableBuffer.aggNode(owner, aggPath)
+	//			if immutableAggNode == nil {
+	//				// retrieve aggNode from clean cache and disk
+	//				aggNode, err = dl.cleans.aggNode(owner, aggPath)
+	//				if err != nil {
+	//					panic(fmt.Sprintf("decode agg node failed from clean cache, err: %v", err))
+	//				}
+	//				// if immutable buffer and cache missing, create a new aggNode
+	//				if aggNode == nil {
+	//					aggNode = &AggNode{}
+	//				}
+	//			} else {
+	//				aggNode, err = immutableAggNode.copy()
+	//				if err != nil {
+	//					panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
+	//				}
+	//			}
+	//		}
+	//		oldSize := aggNode.Size()
+	//		if n.IsDeleted() {
+	//			aggNode.Delete([]byte(path))
+	//		} else {
+	//			aggNode.Update([]byte(path), n)
+	//		}
+	//		newSize := aggNode.Size()
+	//		if ok {
+	//			overwrite++
+	//			overwriteSize += int64(newSize - oldSize + len(path) + len(owner))
+	//			delta += int64(newSize - oldSize)
+	//		} else {
+	//			delta += int64(newSize + len(path) + len(owner))
+	//		}
+	//		current[string(aggPath)] = aggNode
+	//		dl.buffer.aggNodes[owner] = current
+	//	}
+	//}
+	//dl.buffer.updateSize(delta)
+	//dl.buffer.layers++
+	//gcNodesMeter.Mark(overwrite)
+	//gcBytesMeter.Mark(overwriteSize)
 }
 
 // setBufferSize sets the node buffer size to the provided value.
