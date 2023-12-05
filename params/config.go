@@ -229,7 +229,7 @@ var (
 		PlatoBlock:          nil,
 		BerlinBlock:         nil,
 		HertzBlock:          nil,
-		HertzfixBlock: nil,
+		HertzfixBlock:       nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
