@@ -1639,7 +1639,7 @@ func SetDataDir(ctx *cli.Context, cfg *node.Config) {
 	case ctx.IsSet(DataDirFlag.Name):
 		cfg.DataDir = ctx.String(DataDirFlag.Name)
 	case ctx.IsSet(TrieDirFlag.Name):
-		fmt.Println("setting TrieDirFlag.Name")
+		fmt.Println("setting TrieDirFlag.Name", ctx.String(TrieDirFlag.Name))
 		cfg.TrieDir = ctx.String(TrieDirFlag.Name)
 	case ctx.Bool(DeveloperFlag.Name):
 		cfg.DataDir = "" // unless explicitly requested, use memory databases

@@ -448,6 +448,10 @@ func (c *Config) checkLegacyFiles() {
 	c.checkLegacyFile(c.ResolvePath(datadirTrustedNodes))
 }
 
+func (c *Config) enableSeparateTrie(trieDir string) {
+	c.TrieDir = trieDir
+}
+
 // checkLegacyFile will only raise an error if a file at the given path exists.
 func (c *Config) checkLegacyFile(path string) {
 	// Short circuit if no node config is present
