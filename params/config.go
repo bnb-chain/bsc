@@ -159,16 +159,13 @@ var (
 		MoranBlock:          big.NewInt(22107423),
 		GibbsBlock:          big.NewInt(23846001),
 		PlanckBlock:         big.NewInt(27281024),
+		LubanBlock:          big.NewInt(29020050),
+		PlatoBlock:          big.NewInt(30720096),
+		BerlinBlock:         big.NewInt(31302048),
+		LondonBlock:         big.NewInt(31302048),
+		HertzBlock:          big.NewInt(31302048),
+		HertzfixBlock:       big.NewInt(34140700),
 
-		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
-		// TODO Caution !!! it should be very careful !!!
-		LubanBlock: big.NewInt(29020050),
-		PlatoBlock: big.NewInt(30720096),
-		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock:   big.NewInt(31302048),
-		LondonBlock:   big.NewInt(31302048),
-		HertzBlock:    big.NewInt(31302048),
-		HertzfixBlock: big.NewInt(34140700),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -195,16 +192,12 @@ var (
 		NanoBlock:           big.NewInt(23482428),
 		MoranBlock:          big.NewInt(23603940),
 		PlanckBlock:         big.NewInt(28196022),
-
-		// TODO modify blockNumber, make sure the blockNumber is not an integer multiple of 200 (epoch number)
-		// TODO Caution !!! it should be very careful !!!
-		LubanBlock: big.NewInt(29295050),
-		PlatoBlock: big.NewInt(29861024),
-		// TODO modify blockNumber, make sure HertzBlock=BerlinBlock=LondonBlock to enable Berlin and London EIPs
-		BerlinBlock:   big.NewInt(31103030),
-		LondonBlock:   big.NewInt(31103030),
-		HertzBlock:    big.NewInt(31103030),
-		HertzfixBlock: big.NewInt(35682300),
+		LubanBlock:          big.NewInt(29295050),
+		PlatoBlock:          big.NewInt(29861024),
+		BerlinBlock:         big.NewInt(31103030),
+		LondonBlock:         big.NewInt(31103030),
+		HertzBlock:          big.NewInt(31103030),
+		HertzfixBlock:       big.NewInt(35682300),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -232,12 +225,10 @@ var (
 		NanoBlock:           nil,
 		MoranBlock:          nil,
 		PlanckBlock:         nil,
-
-		// TODO
-		LubanBlock:    nil,
-		PlatoBlock:    nil,
-		BerlinBlock:   nil,
-		HertzBlock:    nil,
+		LubanBlock:          nil,
+		PlatoBlock:          nil,
+		BerlinBlock:         nil,
+		HertzBlock:          nil,
 		HertzfixBlock: nil,
 
 		Parlia: &ParliaConfig{
@@ -460,6 +451,7 @@ type ChainConfig struct {
 	// Fork scheduling was switched from blocks to timestamps here
 
 	ShanghaiTime *uint64 `json:"shanghaiTime,omitempty"  toml:",omitempty"` // Shanghai switch time (nil = no fork, 0 = already on shanghai)
+	KeplerTime   *uint64 `json:"keplerTime,omitempty" toml:",omitempty"`    // Kepler switch time (nil = no fork, 0 = already activated)
 	CancunTime   *uint64 `json:"cancunTime,omitempty"  toml:",omitempty"`   // Cancun switch time (nil = no fork, 0 = already on cancun)
 	PragueTime   *uint64 `json:"pragueTime,omitempty"  toml:",omitempty"`   // Prague switch time (nil = no fork, 0 = already on prague)
 	VerkleTime   *uint64 `json:"verkleTime,omitempty"  toml:",omitempty"`   // Verkle switch time (nil = no fork, 0 = already on verkle)
@@ -542,7 +534,17 @@ func (c *ChainConfig) String() string {
 		engine = "unknown"
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, Engine: %v}",
+	var ShanghaiTime *big.Int
+	if c.ShanghaiTime != nil {
+		ShanghaiTime = big.NewInt(0).SetUint64(*c.ShanghaiTime)
+	}
+
+	var KeplerTime *big.Int
+	if c.KeplerTime != nil {
+		KeplerTime = big.NewInt(0).SetUint64(*c.KeplerTime)
+	}
+
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, ShanghaiTime: %v, KeplerTime: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -574,6 +576,8 @@ func (c *ChainConfig) String() string {
 		c.PlatoBlock,
 		c.HertzBlock,
 		c.HertzfixBlock,
+		ShanghaiTime,
+		KeplerTime,
 		engine,
 	)
 }
@@ -785,6 +789,20 @@ func (c *ChainConfig) IsShanghai(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.ShanghaiTime, time)
 }
 
+// IsKepler returns whether time is either equal to the kepler fork time or greater.
+func (c *ChainConfig) IsKepler(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.KeplerTime, time)
+}
+
+// IsOnKepler returns whether currentBlockTime is either equal to the kepler fork time or greater firstly.
+func (c *ChainConfig) IsOnKepler(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsKepler(lastBlockNumber, lastBlockTime) && c.IsKepler(currentBlockNumber, currentBlockTime)
+}
+
 // IsCancun returns whether num is either equal to the Cancun fork time or greater.
 func (c *ChainConfig) IsCancun(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.CancunTime, time)
@@ -986,6 +1004,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.ShanghaiTime, newcfg.ShanghaiTime, headTimestamp) {
 		return newTimestampCompatError("Shanghai fork timestamp", c.ShanghaiTime, newcfg.ShanghaiTime)
 	}
+	if isForkTimestampIncompatible(c.KeplerTime, newcfg.KeplerTime, headTimestamp) {
+		return newTimestampCompatError("Kepler fork timestamp", c.KeplerTime, newcfg.KeplerTime)
+	}
 	if isForkTimestampIncompatible(c.CancunTime, newcfg.CancunTime, headTimestamp) {
 		return newTimestampCompatError("Cancun fork timestamp", c.CancunTime, newcfg.CancunTime)
 	}
@@ -1147,7 +1168,7 @@ type Rules struct {
 	IsPlato                                                 bool
 	IsHertz                                                 bool
 	IsHertzfix                                              bool
-	IsShanghai, IsCancun, IsPrague                          bool
+	IsShanghai, IsKepler, IsCancun, IsPrague                bool
 	IsVerkle                                                bool
 }
 
@@ -1178,6 +1199,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsHertz:          c.IsHertz(num),
 		IsHertzfix:       c.IsHertzfix(num),
 		IsShanghai:       c.IsShanghai(num, timestamp),
+		IsKepler:         c.IsKepler(num, timestamp),
 		IsCancun:         c.IsCancun(num, timestamp),
 		IsPrague:         c.IsPrague(num, timestamp),
 		IsVerkle:         c.IsVerkle(num, timestamp),
