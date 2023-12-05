@@ -164,6 +164,7 @@ var (
 		BerlinBlock:         big.NewInt(31302048),
 		LondonBlock:         big.NewInt(31302048),
 		HertzBlock:          big.NewInt(31302048),
+		HertzfixBlock:       big.NewInt(34140700),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -196,6 +197,7 @@ var (
 		BerlinBlock:         big.NewInt(31103030),
 		LondonBlock:         big.NewInt(31103030),
 		HertzBlock:          big.NewInt(31103030),
+		HertzfixBlock:       big.NewInt(35682300),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -227,6 +229,7 @@ var (
 		PlatoBlock:          nil,
 		BerlinBlock:         nil,
 		HertzBlock:          nil,
+		HertzfixBlock: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -259,7 +262,7 @@ var (
 		BerlinBlock:         big.NewInt(0),
 		LondonBlock:         big.NewInt(0),
 		HertzBlock:          big.NewInt(0),
-
+		HertzfixBlock:       big.NewInt(0),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -474,7 +477,7 @@ type ChainConfig struct {
 	LubanBlock      *big.Int `json:"lubanBlock,omitempty" toml:",omitempty"`      // lubanBlock switch block (nil = no fork, 0 = already activated)
 	PlatoBlock      *big.Int `json:"platoBlock,omitempty" toml:",omitempty"`      // platoBlock switch block (nil = no fork, 0 = already activated)
 	HertzBlock      *big.Int `json:"hertzBlock,omitempty" toml:",omitempty"`      // hertzBlock switch block (nil = no fork, 0 = already activated)
-
+	HertzfixBlock   *big.Int `json:"hertzfixBlock,omitempty" toml:",omitempty"`   // hertzfixBlock switch block (nil = no fork, 0 = already activated)
 	// Various consensus engines
 	Ethash    *EthashConfig `json:"ethash,omitempty" toml:",omitempty"`
 	Clique    *CliqueConfig `json:"clique,omitempty" toml:",omitempty"`
@@ -541,7 +544,7 @@ func (c *ChainConfig) String() string {
 		KeplerTime = big.NewInt(0).SetUint64(*c.KeplerTime)
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, ShanghaiTime: %v, KeplerTime: %v, Engine: %v}",
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, ShanghaiTime: %v, KeplerTime: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -572,6 +575,7 @@ func (c *ChainConfig) String() string {
 		c.LubanBlock,
 		c.PlatoBlock,
 		c.HertzBlock,
+		c.HertzfixBlock,
 		ShanghaiTime,
 		KeplerTime,
 		engine,
@@ -691,6 +695,14 @@ func (c *ChainConfig) IsHertz(num *big.Int) bool {
 // IsOnHertz returns whether num is equal to the fork block of enabling Berlin EIPs.
 func (c *ChainConfig) IsOnHertz(num *big.Int) bool {
 	return configBlockEqual(c.HertzBlock, num)
+}
+
+func (c *ChainConfig) IsHertzfix(num *big.Int) bool {
+	return isBlockForked(c.HertzfixBlock, num)
+}
+
+func (c *ChainConfig) IsOnHertzfix(num *big.Int) bool {
+	return configBlockEqual(c.HertzfixBlock, num)
 }
 
 // IsMuirGlacier returns whether num is either equal to the Muir Glacier (EIP-2384) fork block or greater.
@@ -854,6 +866,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "lubanBlock", block: c.LubanBlock},
 		{name: "platoBlock", block: c.PlatoBlock},
 		{name: "hertzBlock", block: c.HertzBlock},
+		{name: "hertzfixBlock", block: c.HertzfixBlock},
 		{name: "shanghaiTime", timestamp: c.ShanghaiTime},
 		{name: "cancunTime", timestamp: c.CancunTime, optional: true},
 		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
@@ -984,6 +997,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	}
 	if isForkBlockIncompatible(c.HertzBlock, newcfg.HertzBlock, headNumber) {
 		return newBlockCompatError("hertz fork block", c.HertzBlock, newcfg.HertzBlock)
+	}
+	if isForkBlockIncompatible(c.HertzfixBlock, newcfg.HertzfixBlock, headNumber) {
+		return newBlockCompatError("hertzfix fork block", c.HertzfixBlock, newcfg.HertzfixBlock)
 	}
 	if isForkTimestampIncompatible(c.ShanghaiTime, newcfg.ShanghaiTime, headTimestamp) {
 		return newTimestampCompatError("Shanghai fork timestamp", c.ShanghaiTime, newcfg.ShanghaiTime)
@@ -1151,6 +1167,7 @@ type Rules struct {
 	IsLuban                                                 bool
 	IsPlato                                                 bool
 	IsHertz                                                 bool
+	IsHertzfix                                              bool
 	IsShanghai, IsKepler, IsCancun, IsPrague                bool
 	IsVerkle                                                bool
 }
@@ -1180,6 +1197,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsLuban:          c.IsLuban(num),
 		IsPlato:          c.IsPlato(num),
 		IsHertz:          c.IsHertz(num),
+		IsHertzfix:       c.IsHertzfix(num),
 		IsShanghai:       c.IsShanghai(num, timestamp),
 		IsKepler:         c.IsKepler(num, timestamp),
 		IsCancun:         c.IsCancun(num, timestamp),
