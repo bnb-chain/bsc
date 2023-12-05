@@ -34,7 +34,7 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 		if blob := c.cleans.Get(nil, key); len(blob) > 0 {
 			aggNode, err := DecodeAggNode(blob)
 			if err != nil {
-				return nil, fmt.Errorf("decode node failed. error: %v", err)
+				return nil, fmt.Errorf("decode node failed from clean cache. error: %v", err)
 			}
 
 			n := aggNode.Node(path)
@@ -66,9 +66,13 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 	} else {
 		nBlob = rawdb.ReadStorageTrieAggNode(c.db.diskdb, owner, aggPath)
 	}
+	if nBlob == nil {
+		// not found
+		return []byte{}, nil
+	}
 	aggNode, err := DecodeAggNode(nBlob)
 	if err != nil {
-		return nil, fmt.Errorf("decode node failed. error: %v", err)
+		return nil, fmt.Errorf("decode node failed from diskdb. error: %v", err)
 	}
 	n := aggNode.Node(path)
 	if n == nil {

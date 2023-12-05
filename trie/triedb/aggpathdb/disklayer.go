@@ -156,10 +156,25 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// after storing the state history but without flushing the
 	// corresponding states(journal), the stored state history will
 	// be truncated in the next restart.
+	var (
+		overflow bool
+		oldest   uint64
+	)
 	if dl.db.freezer != nil {
-		err := writeHistory(dl.db.diskdb, dl.db.freezer, bottom, dl.db.config.StateHistory)
+		err := writeHistory(dl.db.freezer, bottom)
 		if err != nil {
 			return nil, err
+		}
+		// Determine if the persisted history object has exceeded the configured
+		// limitation, set the overflow as true if so.
+		tail, err := dl.db.freezer.Tail()
+		if err != nil {
+			return nil, err
+		}
+		limit := dl.db.config.StateHistory
+		if limit != 0 && bottom.stateID()-tail > limit {
+			overflow = true
+			oldest = bottom.stateID() - limit + 1 // track the id of history **after truncation**
 		}
 	}
 	// Mark the diskLayer as stale before applying any mutations on top.
@@ -174,10 +189,18 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	}
 	rawdb.WriteStateID(dl.db.diskdb, bottom.rootHash(), bottom.stateID())
 
+	// In a unique scenario where the ID of the oldest history object (after tail
+	// truncation) surpasses the persisted state ID, we take the necessary action
+	// of forcibly committing the cached dirty nodes to ensure that the persisted
+	// state ID remains higher.
+	if !force && rawdb.ReadPersistentStateID(dl.db.diskdb) < oldest {
+		force = true
+	}
 	// Construct a new disk layer by merging the aggNodes from the provided
 	// diff layer, and flush the content in disk layer if there are too
 	// many aggNodes cached. The clean cache is inherited from the original
 	// disk layer for reusing.
+	var ndl *diskLayer
 	dl.commitNodes(bottom.nodes)
 	if dl.buffer.canFlush(force) {
 		for {
@@ -204,7 +227,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			}
 		}
 
-		ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
+		ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
 		if force {
 			err := ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id)
 			if err != nil {
@@ -216,11 +239,21 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 				ndl.immutableBuffer.flushResult <- err
 			}()
 		}
-		return ndl, nil
 	} else {
-		ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer, dl.immutableBuffer)
-		return ndl, nil
+		ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer, dl.immutableBuffer)
 	}
+
+	// To remove outdated history objects from the end, we set the 'tail' parameter
+	// to 'oldest-1' due to the offset between the freezer index and the history ID.
+	if overflow {
+		pruned, err := truncateFromTail(ndl.db.diskdb, ndl.db.freezer, oldest-1)
+		if err != nil {
+			return nil, err
+		}
+		log.Debug("Pruned state history", "items", pruned, "tailid", oldest)
+	}
+	return ndl, nil
+
 }
 
 // revert applies the given state history and return a reverted disk layer.
@@ -338,13 +371,13 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 			go func(account common.Hash, aggPath string, trieNodes map[string]*trienode.Node) {
 				subRes := &subTree{owner: account, aggPath: aggPath, aggNode: nil}
 				mx.RLock()
-				aggNode := dl.buffer.getAggNodeByAggPath(account, aggPath)
+				aggNode := dl.buffer.aggNode(account, []byte(aggPath))
 				mx.RUnlock()
 				exit := true
 				if aggNode == nil {
 					exit = false
 					var err error
-					immutableAggNode := dl.immutableBuffer.getAggNodeByAggPath(account, aggPath)
+					immutableAggNode := dl.immutableBuffer.aggNode(account, []byte(aggPath))
 					if immutableAggNode == nil {
 						aggNode, err = dl.cleans.aggNode(account, []byte(aggPath))
 						if err != nil {
