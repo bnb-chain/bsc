@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/metrics"
 
@@ -482,7 +481,8 @@ func (h *handler) handleCallMsg(ctx *callProc, reqCtx context.Context, msg *json
 			xForward := reqCtx.Value("X-Forwarded-For")
 			h.log.Warn("Served "+msg.Method, "reqid", idForLog{msg.ID}, "t", time.Since(start), "err", resp.Error.Message, "X-Forwarded-For", xForward)
 
-			if strings.Contains(resp.Error.Message, common.ErrInBlackList.Error()) {
+			monitoredError := "sender or to in black list" // using legacypool.ErrInBlackList.Error() will cause `import cycle`
+			if strings.Contains(resp.Error.Message, monitoredError) {
 				accountBlacklistRpcCounter.Inc(1)
 				log.Warn("blacklist account detected from direct rpc", "remoteAddr", h.conn.remoteAddr())
 			}

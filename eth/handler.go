@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/monitor"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
@@ -346,13 +347,13 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	addTxs := func(peer string, txs []*txpool.Transaction) []error {
 		errors := h.txpool.Add(txs, false, false)
 		for _, err := range errors {
-			if err == common.ErrInBlackList {
+			if err == legacypool.ErrInBlackList {
 				accountBlacklistPeerCounter.Inc(1)
 				p := h.peers.peer(peer)
 				if p != nil {
 					remoteAddr := p.remoteAddr()
 					if remoteAddr != nil {
-						log.Warn("blacklist account detected from other peer", "remoteAddr", remoteAddr)
+						log.Warn("blacklist account detected from other peer", "remoteAddr", remoteAddr, "ID", p.ID())
 					}
 				}
 			}

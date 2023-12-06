@@ -64,6 +64,8 @@ var (
 	// ErrTxPoolOverflow is returned if the transaction pool is full and can't accept
 	// another remote transaction.
 	ErrTxPoolOverflow = errors.New("txpool is full")
+
+	ErrInBlackList = errors.New("sender or to in black list")
 )
 
 var (
@@ -629,7 +631,7 @@ func (pool *LegacyPool) validateTxBasics(tx *types.Transaction, local bool) erro
 	for _, blackAddr := range types.NanoBlackList {
 		if sender == blackAddr || (tx.To() != nil && *tx.To() == blackAddr) {
 			log.Error("blacklist account detected", "account", blackAddr, "tx", tx.Hash())
-			return common.ErrInBlackList
+			return ErrInBlackList
 		}
 	}
 
@@ -661,7 +663,7 @@ func (pool *LegacyPool) validateTx(tx *types.Transaction, local bool) error {
 	for _, blackAddr := range types.NanoBlackList {
 		if sender == blackAddr || (tx.To() != nil && *tx.To() == blackAddr) {
 			log.Error("blacklist account detected", "account", blackAddr, "tx", tx.Hash())
-			return common.ErrInBlackList
+			return ErrInBlackList
 		}
 	}
 
