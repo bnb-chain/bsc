@@ -190,11 +190,16 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// identified by the **unique** state root. It's impossible that
 	// in the same chain blocks are not adjacent but have the same
 	// root.
-	if dl.id == 0 {
-		rawdb.WriteStateID(dl.db.diskdb, dl.root, 0)
-	}
-	rawdb.WriteStateID(dl.db.diskdb, bottom.rootHash(), bottom.stateID())
-	commitWriteStateIDTimeTimer.UpdateSince(start)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		if dl.id == 0 {
+			rawdb.WriteStateID(dl.db.diskdb, dl.root, 0)
+		}
+		rawdb.WriteStateID(dl.db.diskdb, bottom.rootHash(), bottom.stateID())
+		commitWriteStateIDTimeTimer.UpdateSince(start)
+		wg.Done()
+	}()
 
 	// In a unique scenario where the ID of the oldest history object (after tail
 	// truncation) surpasses the persisted state ID, we take the necessary action
@@ -208,58 +213,79 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// many aggNodes cached. The clean cache is inherited from the original
 	// disk layer for reusing.
 	var ndl *diskLayer
-	dl.commitNodes(bottom.nodes)
-	commitCommitNodesTimeTimer.UpdateSince(start)
-	if dl.buffer.canFlush(force) {
-		for {
-			exit := false
-			select {
-			case err := <-dl.immutableBuffer.flushResult:
-				// immutable buffer flush completed, get the result
-				if err != nil {
-					log.Error("Immutable buffer flush failed", "error", err)
-					return nil, err
-				} else {
-					exit = true
+	commitErr := make(chan error, 1)
+	wg.Add(1)
+	go func() {
+		dl.commitNodes(bottom.nodes)
+		commitCommitNodesTimeTimer.UpdateSince(start)
+		if dl.buffer.canFlush(force) {
+			for {
+				exit := false
+				select {
+				case err := <-dl.immutableBuffer.flushResult:
+					// immutable buffer flush completed, get the result
+					if err != nil {
+						log.Error("Immutable buffer flush failed", "error", err)
+						commitErr <- err
+					} else {
+						exit = true
+					}
+				default:
+					if dl.immutableBuffer.empty() {
+						exit = true
+					} else {
+						// wait until the immutable buffer flush completely.
+						time.Sleep(5 * time.Microsecond)
+					}
 				}
-			default:
-				if dl.immutableBuffer.empty() {
-					exit = true
-				} else {
-					// wait until the immutable buffer flush completely.
-					time.Sleep(5 * time.Microsecond)
+				if exit {
+					break
 				}
 			}
-			if exit {
-				break
-			}
-		}
 
-		ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
-		if force {
-			err := ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id)
-			if err != nil {
-				return nil, err
+			ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
+			if force {
+				err := ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id)
+				if err != nil {
+					commitErr <- err
+				}
+			} else {
+				go func() {
+					err := ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id)
+					ndl.immutableBuffer.flushResult <- err
+				}()
 			}
 		} else {
-			go func() {
-				err := ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id)
-				ndl.immutableBuffer.flushResult <- err
-			}()
+			ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer, dl.immutableBuffer)
 		}
-	} else {
-		ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer, dl.immutableBuffer)
-	}
+		commitErr <- nil
+		wg.Done()
+	}()
+
 	commitFlushTimer.UpdateSince(start)
 
-	// To remove outdated history objects from the end, we set the 'tail' parameter
-	// to 'oldest-1' due to the offset between the freezer index and the history ID.
-	if overflow {
-		pruned, err := truncateFromTail(ndl.db.diskdb, ndl.db.freezer, oldest-1)
-		if err != nil {
-			return nil, err
+	truncateErr := make(chan error, 1)
+	wg.Add(1)
+	go func() {
+		// To remove outdated history objects from the end, we set the 'tail' parameter
+		// to 'oldest-1' due to the offset between the freezer index and the history ID.
+		if overflow {
+			pruned, err := truncateFromTail(ndl.db.diskdb, ndl.db.freezer, oldest-1)
+			if err != nil {
+				truncateErr <- err
+			}
+			log.Debug("Pruned state history", "items", pruned, "tailid", oldest)
 		}
-		log.Debug("Pruned state history", "items", pruned, "tailid", oldest)
+		truncateErr <- nil
+		wg.Done()
+	}()
+
+	wg.Wait()
+	if err := <-commitErr; err != nil {
+		return nil, err
+	}
+	if err := <-truncateErr; err != nil {
+		return nil, err
 	}
 	commitTruncateHistoryTimer.UpdateSince(start)
 	return ndl, nil
