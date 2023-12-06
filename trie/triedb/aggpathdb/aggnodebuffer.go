@@ -228,9 +228,9 @@ func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, cleans *aggNodeCache, id u
 	if err := batch.Write(); err != nil {
 		return err
 	}
-	commitBytesMeter.Mark(int64(size))
-	commitNodesMeter.Mark(int64(nodes))
-	commitTimeTimer.UpdateSince(start)
+	flushBytesMeter.Mark(int64(size))
+	flushNodesMeter.Mark(int64(nodes))
+	flushTimeTimer.UpdateSince(start)
 	log.Debug("Persisted aggPathDB aggNodes", "aggNodes", len(b.aggNodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
 	b.reset()
 	return nil

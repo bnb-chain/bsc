@@ -119,16 +119,18 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		dirtyReadMeter.Mark(int64(len(n.Blob)))
 		return n.Blob, nil
 	}
-	dirtyMissMeter.Mark(1)
 
 	n, err = dl.immutableBuffer.node(owner, path, hash)
 	if err != nil {
+		dirtyHitMeter.Mark(1)
+		dirtyReadMeter.Mark(int64(len(n.Blob)))
 		return nil, err
 	}
 
 	if n != nil {
 		return n.Blob, nil
 	}
+	dirtyMissMeter.Mark(1)
 
 	// Try to retrieve the trie node from the agg node cache.
 	blob, err := dl.cleans.node(owner, path, hash)
@@ -151,6 +153,9 @@ func (dl *diskLayer) update(root common.Hash, id uint64, block uint64, nodes map
 func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	dl.lock.Lock()
 	defer dl.lock.Unlock()
+
+	start := time.Now()
+	defer commitTimeTimer.UpdateSince(start)
 
 	// Construct and store the state history first. If crash happens
 	// after storing the state history but without flushing the
@@ -177,6 +182,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			oldest = bottom.stateID() - limit + 1 // track the id of history **after truncation**
 		}
 	}
+	commitWriteHistoryTimeTimer.UpdateSince(start)
 	// Mark the diskLayer as stale before applying any mutations on top.
 	dl.stale = true
 
@@ -188,6 +194,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		rawdb.WriteStateID(dl.db.diskdb, dl.root, 0)
 	}
 	rawdb.WriteStateID(dl.db.diskdb, bottom.rootHash(), bottom.stateID())
+	commitWriteStateIDTimeTimer.UpdateSince(start)
 
 	// In a unique scenario where the ID of the oldest history object (after tail
 	// truncation) surpasses the persisted state ID, we take the necessary action
@@ -202,6 +209,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// disk layer for reusing.
 	var ndl *diskLayer
 	dl.commitNodes(bottom.nodes)
+	commitCommitNodesTimeTimer.UpdateSince(start)
 	if dl.buffer.canFlush(force) {
 		for {
 			exit := false
@@ -242,6 +250,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	} else {
 		ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer, dl.immutableBuffer)
 	}
+	commitFlushTimer.UpdateSince(start)
 
 	// To remove outdated history objects from the end, we set the 'tail' parameter
 	// to 'oldest-1' due to the offset between the freezer index and the history ID.
@@ -252,6 +261,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		}
 		log.Debug("Pruned state history", "items", pruned, "tailid", oldest)
 	}
+	commitTruncateHistoryTimer.UpdateSince(start)
 	return ndl, nil
 
 }
