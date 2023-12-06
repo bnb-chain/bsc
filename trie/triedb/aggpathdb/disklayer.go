@@ -17,6 +17,7 @@
 package aggpathdb
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -29,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 	"golang.org/x/crypto/sha3"
+	"golang.org/x/sync/semaphore"
 )
 
 // diskLayer is a low level persistent layer built on top of a key-value store.
@@ -376,6 +378,9 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 		wg            sync.WaitGroup
 		stopCh        = make(chan struct{})
 		mergeSubResCh = make(chan *subTree, wgCounter)
+
+		sem = semaphore.NewWeighted(int64(1024))
+		ctx = context.Background()
 	)
 	wg.Add(wgCounter)
 	go func() {
@@ -405,6 +410,8 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 			ap := aPath
 			trieSet := trieNodesSet
 			go func(account common.Hash, aggPath string, trieNodes map[string]*trienode.Node) {
+				_ = sem.Acquire(ctx, 1)
+				defer sem.Release(1)
 				subRes := &subTree{owner: account, aggPath: aggPath, aggNode: nil}
 				mx.RLock()
 				aggNode := dl.buffer.aggNode(account, []byte(aggPath))
