@@ -210,6 +210,9 @@ func (p *Peer) RemoteAddr() net.Addr {
 		}
 		log.Warn("RemoteAddr", "invalid testRemoteAddr", p.testRemoteAddr)
 	}
+	if p.rw == nil {
+		return nil
+	}
 	return p.rw.fd.RemoteAddr()
 }
 
