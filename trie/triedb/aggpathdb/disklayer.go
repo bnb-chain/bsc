@@ -272,7 +272,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		// To remove outdated history objects from the end, we set the 'tail' parameter
 		// to 'oldest-1' due to the offset between the freezer index and the history ID.
 		if overflow {
-			pruned, err := truncateFromTail(ndl.db.diskdb, ndl.db.freezer, oldest-1)
+			pruned, err := truncateFromTail(dl.db.diskdb, dl.db.freezer, oldest-1)
 			if err != nil {
 				truncateErr <- err
 			}
