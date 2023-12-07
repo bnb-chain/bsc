@@ -38,7 +38,13 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
 	"golang.org/x/crypto/sha3"
+)
+
+const (
+	SnappyProtocolVersion = 5
+	S2ProtocolVersion     = 6
 )
 
 // Conn is an RLPx network connection. It wraps a low-level network connection. The
@@ -52,10 +58,11 @@ type Conn struct {
 	conn     net.Conn
 	session  *sessionState
 
-	// These are the buffers for snappy compression.
+	// These are the buffers for snappy/s2 compression.
 	// Compression is enabled if they are non-nil.
-	snappyReadBuffer  []byte
-	snappyWriteBuffer []byte
+	compressionReadBuffer  []byte
+	compressionWriteBuffer []byte
+	compressionVersion     uint64
 }
 
 // sessionState contains the session keys.
@@ -98,16 +105,18 @@ func NewConn(conn net.Conn, dialDest *ecdsa.PublicKey) *Conn {
 	}
 }
 
-// SetSnappy enables or disables snappy compression of messages. This is usually called
+// SetCompression enables or disables compression of messages. This is usually called
 // after the devp2p Hello message exchange when the negotiated version indicates that
 // compression is available on both ends of the connection.
-func (c *Conn) SetSnappy(snappy bool) {
-	if snappy {
-		c.snappyReadBuffer = []byte{}
-		c.snappyWriteBuffer = []byte{}
+func (c *Conn) SetCompression(version uint64) {
+	if version >= SnappyProtocolVersion {
+		c.compressionReadBuffer = []byte{}
+		c.compressionWriteBuffer = []byte{}
+		c.compressionVersion = version
 	} else {
-		c.snappyReadBuffer = nil
-		c.snappyWriteBuffer = nil
+		c.compressionReadBuffer = nil
+		c.compressionWriteBuffer = nil
+		c.compressionVersion = 0
 	}
 }
 
@@ -144,17 +153,11 @@ func (c *Conn) Read() (code uint64, data []byte, wireSize int, err error) {
 	wireSize = len(data)
 
 	// If snappy is enabled, verify and decompress message.
-	if c.snappyReadBuffer != nil {
-		var actualSize int
-		actualSize, err = snappy.DecodedLen(data)
+	if c.compressionReadBuffer != nil {
+		data, err = c.decompress(data)
 		if err != nil {
 			return code, nil, 0, err
 		}
-		if actualSize > maxUint24 {
-			return code, nil, 0, errPlainMessageTooLarge
-		}
-		c.snappyReadBuffer = growslice(c.snappyReadBuffer, actualSize)
-		data, err = snappy.Decode(c.snappyReadBuffer, data)
 	}
 	return code, data, wireSize, err
 }
@@ -215,17 +218,62 @@ func (c *Conn) Write(code uint64, data []byte) (uint32, error) {
 	if len(data) > maxUint24 {
 		return 0, errPlainMessageTooLarge
 	}
-	if c.snappyWriteBuffer != nil {
-		// Ensure the buffer has sufficient size.
-		// Package snappy will allocate its own buffer if the provided
-		// one is smaller than MaxEncodedLen.
-		c.snappyWriteBuffer = growslice(c.snappyWriteBuffer, snappy.MaxEncodedLen(len(data)))
-		data = snappy.Encode(c.snappyWriteBuffer, data)
+	if c.compressionWriteBuffer != nil {
+		data = c.compress(data)
 	}
 
 	wireSize := uint32(len(data))
 	err := c.session.writeFrame(c.conn, code, data)
 	return wireSize, err
+}
+
+func (c *Conn) compress(data []byte) []byte {
+	// Ensure the buffer has sufficient size.
+	// Package snappy will allocate its own buffer if the provided
+	// one is smaller than MaxEncodedLen.
+	switch c.compressionVersion {
+	case SnappyProtocolVersion:
+		c.compressionWriteBuffer = growslice(c.compressionWriteBuffer, snappy.MaxEncodedLen(len(data)))
+		return snappy.Encode(c.compressionWriteBuffer, data)
+	case S2ProtocolVersion:
+		c.compressionWriteBuffer = growslice(c.compressionWriteBuffer, s2.MaxEncodedLen(len(data)))
+		return s2.Encode(c.compressionWriteBuffer, data)
+	default:
+		return nil
+	}
+}
+
+func (c *Conn) decompress(data []byte) ([]byte, error) {
+	var actualSize int
+	var err error
+
+	switch c.compressionVersion {
+	case SnappyProtocolVersion:
+		actualSize, err = snappy.DecodedLen(data)
+	case S2ProtocolVersion:
+		actualSize, err = s2.DecodedLen(data)
+	default:
+		return nil, errUnknownCompression
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if actualSize > maxUint24 {
+		return nil, errPlainMessageTooLarge
+	}
+
+	c.compressionReadBuffer = growslice(c.compressionReadBuffer, actualSize)
+
+	switch c.compressionVersion {
+	case SnappyProtocolVersion:
+		return snappy.Decode(c.compressionReadBuffer, data)
+	case S2ProtocolVersion:
+		return s2.Decode(c.compressionReadBuffer, data)
+	default:
+		return nil, errUnknownCompression
+	}
 }
 
 func (h *sessionState) writeFrame(conn io.Writer, code uint64, data []byte) error {
@@ -365,6 +413,8 @@ var (
 	// errPlainMessageTooLarge is returned if a decompressed message length exceeds
 	// the allowed 24 bits (i.e. length >= 16MB).
 	errPlainMessageTooLarge = errors.New("message length >= 16MB")
+
+	errUnknownCompression = errors.New("Unknown compression algorithm")
 )
 
 // Secrets represents the connection secrets which are negotiated during the handshake.

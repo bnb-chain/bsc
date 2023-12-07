@@ -101,7 +101,7 @@ func (c *Conn) handshake() error {
 	// write hello to client
 	pub0 := crypto.FromECDSAPub(&c.ourKey.PublicKey)[1:]
 	ourHandshake := &Hello{
-		Version: 5,
+		Version: 6,
 		Caps:    c.caps,
 		ID:      pub0,
 	}
@@ -112,9 +112,7 @@ func (c *Conn) handshake() error {
 	switch msg := c.Read().(type) {
 	case *Hello:
 		// set snappy if version is at least 5
-		if msg.Version >= 5 {
-			c.SetSnappy(true)
-		}
+		c.SetCompression(p2p.Min(msg.Version, ourHandshake.Version))
 		c.negotiateEthProtocol(msg.Caps)
 		if c.negotiatedProtoVersion == 0 {
 			return fmt.Errorf("could not negotiate eth protocol (remote caps: %v, local eth version: %v)", msg.Caps, c.ourHighestProtoVersion)

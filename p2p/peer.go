@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/ethereum/go-ethereum/p2p/rlpx"
 	"github.com/ethereum/go-ethereum/rlp"
 	"golang.org/x/exp/slices"
 )
@@ -39,11 +40,9 @@ var (
 )
 
 const (
-	baseProtocolVersion    = 5
+	baseProtocolVersion    = rlpx.S2ProtocolVersion
 	baseProtocolLength     = uint64(16)
 	baseProtocolMaxMsgSize = 2 * 1024
-
-	snappyProtocolVersion = 5
 
 	pingInterval = 15 * time.Second
 )

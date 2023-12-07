@@ -147,7 +147,7 @@ func (t *rlpxTransport) doProtoHandshake(our *protoHandshake) (their *protoHands
 		return nil, fmt.Errorf("write error: %v", err)
 	}
 	// If the protocol version supports Snappy encoding, upgrade immediately
-	t.conn.SetSnappy(their.Version >= snappyProtocolVersion)
+	t.conn.SetCompression(Min(their.Version, our.Version))
 
 	return their, nil
 }
@@ -180,4 +180,11 @@ func readProtocolHandshake(rw MsgReader) (*protoHandshake, error) {
 		return nil, DiscInvalidIdentity
 	}
 	return &hs, nil
+}
+
+func Min(a, b uint64) uint64 {
+	if a < b {
+		return a
+	}
+	return b
 }

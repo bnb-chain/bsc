@@ -59,8 +59,8 @@ func TestReadWriteMsg(t *testing.T) {
 	checkMsgReadWrite(t, peer1, peer2, testCode, testData)
 
 	t.Log("enabling snappy")
-	peer1.SetSnappy(true)
-	peer2.SetSnappy(true)
+	peer1.SetCompression(SnappyProtocolVersion)
+	peer2.SetCompression(SnappyProtocolVersion)
 	checkMsgReadWrite(t, peer1, peer2, testCode, testData)
 }
 
@@ -405,7 +405,7 @@ func BenchmarkThroughput(b *testing.B) {
 		if err != nil {
 			return
 		}
-		conn1.SetSnappy(true)
+		conn1.SetCompression(SnappyProtocolVersion)
 		// Keep sending messages until connection closed.
 		for {
 			if _, err := conn1.Write(0, msgdata); err != nil {
@@ -419,7 +419,7 @@ func BenchmarkThroughput(b *testing.B) {
 	if _, err := conn2.Handshake(keyB); err != nil {
 		b.Fatal("client handshake error:", err)
 	}
-	conn2.SetSnappy(true)
+	conn2.SetCompression(SnappyProtocolVersion)
 	if err := <-handshakeDone; err != nil {
 		b.Fatal("server hanshake error:", err)
 	}
