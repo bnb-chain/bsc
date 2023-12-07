@@ -146,6 +146,7 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, pending bool) *testBacke
 	config.LubanBlock = nil
 	config.PlatoBlock = nil
 	config.HertzBlock = nil
+	config.HertzfixBlock = nil
 	config.TerminalTotalDifficulty = common.Big0
 	engine := ethash.NewFaker()
 

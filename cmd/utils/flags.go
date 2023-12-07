@@ -1092,14 +1092,14 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 
 	BLSPasswordFileFlag = &cli.StringFlag{
 		Name:     "blspassword",
-		Usage:    "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
-		Category: flags.FastFinalityCategory,
+		Usage:    "Password file path for the BLS wallet, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
+		Category: flags.AccountCategory,
 	}
 
 	BLSWalletDirFlag = &flags.DirectoryFlag{
 		Name:     "blswallet",
 		Usage:    "Path for the blsWallet dir in fast finality feature (default = inside the datadir)",
-		Category: flags.FastFinalityCategory,
+		Category: flags.AccountCategory,
 	}
 
 	VoteJournalDirFlag = &flags.DirectoryFlag{
@@ -1462,7 +1462,10 @@ func setEtherbase(ctx *cli.Context, cfg *ethconfig.Config) {
 
 // MakePasswordList reads password lines from the file specified by the global --password flag.
 func MakePasswordList(ctx *cli.Context) []string {
-	path := ctx.Path(PasswordFileFlag.Name)
+	return MakePasswordListFromPath(ctx.Path(PasswordFileFlag.Name))
+}
+
+func MakePasswordListFromPath(path string) []string {
 	if path == "" {
 		return nil
 	}
@@ -1919,7 +1922,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.EnableTrustProtocol = ctx.IsSet(EnableTrustProtocolFlag.Name)
 	}
 	if ctx.IsSet(PipeCommitFlag.Name) {
-		cfg.PipeCommit = ctx.Bool(PipeCommitFlag.Name)
+		log.Warn("The --pipecommit flag is deprecated and could be removed in the future!")
 	}
 	if ctx.IsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.Bool(RangeLimitFlag.Name)
