@@ -11,7 +11,6 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -418,7 +417,6 @@ func (p *Parlia) getParent(chain consensus.ChainHeaderReader, header *types.Head
 	}
 
 	if parent == nil || parent.Number.Uint64() != number-1 || parent.Hash() != header.ParentHash {
-		log.Info("cannot find ancestor, FindAncientHeader", "number", number, "stack", string(debug.Stack()))
 		return nil, consensus.ErrUnknownAncestor
 	}
 	return parent, nil
@@ -541,7 +539,6 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	// Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
 	signersBytes := getValidatorBytesFromHeader(header, p.chainConfig, p.config)
 	if !isEpoch && len(signersBytes) != 0 {
-		log.Error("validate header err", "number", header.Number, "hash", header.Hash(), "chainconfig", p.chainConfig, "config", p.config, "bytes", len(signersBytes))
 		return errExtraValidators
 	}
 	if isEpoch && len(signersBytes) == 0 {
@@ -727,7 +724,6 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 			// If we have explicit parents, pick from there (enforced)
 			header = parents[len(parents)-1]
 			if header.Hash() != hash || header.Number.Uint64() != number {
-				log.Info("cannot find ancestor, FindAncientHeader", "number", number, "stack", string(debug.Stack()))
 				return nil, consensus.ErrUnknownAncestor
 			}
 			parents = parents[:len(parents)-1]
@@ -735,7 +731,6 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 			// No explicit parents (or no more left), reach out to the database
 			header = chain.GetHeader(hash, number)
 			if header == nil {
-				log.Info("cannot find ancestor, FindAncientHeader", "number", number, "stack", string(debug.Stack()))
 				return nil, consensus.ErrUnknownAncestor
 			}
 		}
@@ -795,7 +790,7 @@ func (p *Parlia) findSnapFromHistorySegment(hash common.Hash, number uint64) (*S
 	tmp.config = p.config
 	tmp.sigCache = p.signatures
 	tmp.ethAPI = p.ethAPI
-	log.Info("found history segment snapshot", "number", number, "hash", hash, "segment", segment)
+	log.Debug("found history segment snapshot", "number", number, "hash", hash, "segment", segment)
 	return &tmp, true
 }
 
@@ -1000,7 +995,6 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	// Ensure the timestamp has the correct delay
 	parent := chain.GetHeader(header.ParentHash, number-1)
 	if parent == nil {
-		log.Info("cannot find ancestor, FindAncientHeader", "number", number, "stack", string(debug.Stack()))
 		return consensus.ErrUnknownAncestor
 	}
 	header.Time = p.blockTimeForRamanujanFork(snap, header, parent)

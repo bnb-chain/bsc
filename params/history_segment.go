@@ -43,7 +43,7 @@ type HistorySegment struct {
 }
 
 func (s *HistorySegment) String() string {
-	return fmt.Sprintf("[Index: %v, ReGenesisNumber: %v, ReGenesisHash: %v, TD: %v]", s.Index, s.ReGenesisNumber, s.ReGenesisNumber, s.TD)
+	return fmt.Sprintf("{Index: %v, ReGenesisNumber: %v, ReGenesisHash: %v, TD: %v}", s.Index, s.ReGenesisNumber, s.ReGenesisHash, s.TD)
 }
 
 func (s *HistorySegment) MatchBlock(h common.Hash, n uint64) bool {

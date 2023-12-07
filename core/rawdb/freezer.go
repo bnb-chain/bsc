@@ -598,3 +598,32 @@ func (f *Freezer) MigrateTable(kind string, convert convertLegacyFn) error {
 	}
 	return nil
 }
+
+func (f *Freezer) AncientReset(tail, head uint64) error {
+	if f.readonly {
+		return errReadOnly
+	}
+	f.writeLock.Lock()
+	defer f.writeLock.Unlock()
+
+	for i := range f.tables {
+		nt, err := f.tables[i].resetItems(tail, head)
+		if err != nil {
+			return err
+		}
+		f.tables[i] = nt
+	}
+
+	if err := f.repair(); err != nil {
+		for _, table := range f.tables {
+			table.Close()
+		}
+		return err
+	}
+
+	f.frozen.Add(f.offset)
+	f.tail.Add(f.offset)
+	f.writeBatch = newFreezerBatch(f)
+	log.Info("Ancient database reset", "tail", f.tail.Load(), "frozen", f.frozen.Load())
+	return nil
+}

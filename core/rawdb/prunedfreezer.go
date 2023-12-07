@@ -188,6 +188,10 @@ func (f *prunedfreezer) TruncateTail(tail uint64) (uint64, error) {
 	return 0, errNotSupported
 }
 
+func (f *prunedfreezer) AncientReset(tail, head uint64) error {
+	return errNotSupported
+}
+
 // Sync flushes meta data tables to disk.
 func (f *prunedfreezer) Sync() error {
 	WriteFrozenOfAncientFreezer(f.db, atomic.LoadUint64(&f.frozen))

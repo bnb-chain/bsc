@@ -220,7 +220,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return nil, err
 		}
 		if p, ok := eth.engine.(consensus.PoSA); ok {
-			log.Info("setup consensus engine history segment", "lastSegment", lastSegment)
 			p.SetupHistorySegment(hsm)
 		}
 	}
@@ -287,7 +286,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return nil, err
 			}
 			bc.SetupHistorySegment(hsm)
-			log.Info("setup blockchain history segment", "lastSegment", lastSegment)
 		}
 		return bc, nil
 	})
@@ -427,7 +425,8 @@ func GetHistorySegmentAndLastSegment(db ethdb.Database, genesisHash common.Hash,
 
 	// check segment if match hard code
 	if err = rawdb.AvailableHistorySegment(db, lastSegment); err != nil {
-		return nil, nil, err
+		log.Warn("there is no available history to prune", "head", latestHeader.Number)
+		return hsm, nil, nil
 	}
 	return hsm, lastSegment, nil
 }

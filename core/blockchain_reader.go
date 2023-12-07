@@ -470,3 +470,7 @@ func (bc *BlockChain) WriteCanonicalHeaders(headers []*types.Header, tds []uint6
 	}
 	return nil
 }
+
+func (bc *BlockChain) FreezerDBReset(tail, head uint64) error {
+	return bc.db.AncientReset(tail, head)
+}

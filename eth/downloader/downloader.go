@@ -214,8 +214,11 @@ type BlockChain interface {
 	// LastHistorySegment get last history segment
 	LastHistorySegment(num uint64) *params.HistorySegment
 
-	// WriteHeaders just write header into db, it an unsafe interface, just for history segment
+	// WriteCanonicalHeaders just write header into db, it an unsafe interface, just for history segment
 	WriteCanonicalHeaders([]*types.Header, []uint64) error
+
+	// FreezerDBReset reset freezer db to target tail & head
+	FreezerDBReset(tail, head uint64) error
 }
 
 type DownloadOption func(downloader *Downloader) *Downloader
@@ -516,7 +519,7 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 	if err != nil {
 		return err
 	}
-	log.Info("sync from peer", "local", localHeight, "remote", remoteHeight, "origin", origin, "peer", p.peer)
+	log.Debug("sync from peer", "local", localHeight, "remote", remoteHeight, "origin", origin, "peer", p.peer)
 
 	if localHeight >= remoteHeight {
 		// if remoteHeader does not exist in local chain, will move on to insert it as a side chain.
@@ -589,6 +592,13 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 		// Rewind the ancient store and blockchain if reorg happens.
 		if origin+1 < frozen {
 			if err := d.lightchain.SetHead(origin); err != nil {
+				return err
+			}
+		}
+
+		// if enable history segment, force reset freezer tail
+		if d.lastSegment != nil && localHeight == 0 {
+			if err := d.blockchain.FreezerDBReset(origin, origin); err != nil {
 				return err
 			}
 		}
@@ -1778,7 +1788,7 @@ func (d *Downloader) findAncestorFromHistorySegment(p *peerConnection, remoteHei
 			if err = d.blockchain.WriteCanonicalHeaders(headers, []uint64{d.lastSegment.TD}); err != nil {
 				return 0, err
 			}
-			log.Info("sync history segment header to local", "number", n, "hash", h, "segment", d.lastSegment)
+			log.Debug("sync history segment header to local", "number", n, "hash", h, "segment", d.lastSegment)
 		}
 		return n, nil
 	}
