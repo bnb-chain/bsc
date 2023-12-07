@@ -218,7 +218,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	commitErr := make(chan error, 1)
 	wg.Add(1)
 	go func() {
-		dl.commitNodes(bottom.nodes)
+		dl.commitNodesV2(bottom.nodes)
 		commitCommitNodesTimeTimer.UpdateSince(start)
 		if dl.buffer.canFlush(force) {
 			for {
@@ -341,6 +341,124 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 		}
 	}
 	return newDiskLayer(h.meta.parent, dl.id-1, dl.db, dl.cleans, dl.buffer, dl.immutableBuffer), nil
+}
+
+func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.Node) {
+	type subTree struct {
+		owner         common.Hash
+		aggPath       string
+		aggNode       *AggNode
+		delta         int64
+		overwrite     int64
+		overwriteSize int64
+	}
+	var (
+		mx            sync.RWMutex // local concurrent mux
+		stopCh        = make(chan struct{})
+		mergeSubResCh = make(chan *subTree)
+		wg            sync.WaitGroup
+		subTreeWG     sync.WaitGroup
+
+		sem = semaphore.NewWeighted(int64(1024))
+		ctx = context.Background()
+	)
+	go func() {
+		for {
+			select {
+			case res := <-mergeSubResCh:
+				if res.aggNode != nil {
+					mx.Lock()
+					if _, ok := dl.buffer.aggNodes[res.owner]; !ok {
+						dl.buffer.aggNodes[res.owner] = make(map[string]*AggNode)
+					}
+					dl.buffer.aggNodes[res.owner][res.aggPath] = res.aggNode
+					mx.Unlock()
+				}
+				dl.buffer.updateSize(res.delta)
+				gcNodesMeter.Mark(res.overwrite)
+				gcBytesMeter.Mark(res.overwriteSize)
+				wg.Done()
+			case <-stopCh:
+				return
+			}
+		}
+	}()
+	subTreeWG.Add(len(nodes))
+	for owner, subset := range nodes {
+		o := owner
+		ss := subset
+		go func(owner common.Hash, ss map[string]*trienode.Node) {
+			aggNodes := make(map[string]map[string]*trienode.Node)
+			for path, node := range ss {
+				aggPath := ToAggPath([]byte(path))
+				if _, ok := aggNodes[string(aggPath)]; !ok {
+					aggNodes[string(aggPath)] = make(map[string]*trienode.Node)
+				}
+				aggNodes[string(aggPath)][path] = node
+			}
+
+			wg.Add(len(aggNodes))
+
+			for aggPath, aggSubset := range aggNodes {
+				ap := aggPath
+				trieSet := aggSubset
+				go func(account common.Hash, aggPath string, trieNodes map[string]*trienode.Node) {
+					_ = sem.Acquire(ctx, 1)
+					defer sem.Release(1)
+					subRes := &subTree{owner: account, aggPath: aggPath, aggNode: nil}
+					mx.RLock()
+					aggNode := dl.buffer.aggNode(account, []byte(aggPath))
+					mx.RUnlock()
+					exit := true
+					if aggNode == nil {
+						exit = false
+						var err error
+						immutableAggNode := dl.immutableBuffer.aggNode(account, []byte(aggPath))
+						if immutableAggNode == nil {
+							aggNode, err = dl.cleans.aggNode(account, []byte(aggPath))
+							if err != nil {
+								panic(fmt.Sprintf("decode agg node failed from clean cache, err: %v", err))
+							}
+							if aggNode == nil {
+								aggNode = &AggNode{}
+							}
+						} else {
+							aggNode, err = immutableAggNode.copy()
+							if err != nil {
+								panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
+							}
+						}
+						subRes.aggNode = aggNode
+					}
+					pathSize := 0
+					oldSize := aggNode.Size()
+					for path, n := range trieNodes {
+						pathSize += len(path)
+						if n.IsDeleted() {
+							aggNode.Delete([]byte(path))
+						} else {
+							aggNode.Update([]byte(path), n)
+						}
+					}
+					newSize := aggNode.Size()
+					if exit {
+						subRes.overwrite++
+						subRes.overwriteSize += int64(newSize - oldSize + pathSize + len(account))
+						subRes.delta += int64(newSize - oldSize)
+					} else {
+						subRes.delta += int64(newSize + pathSize + len(account))
+					}
+					mergeSubResCh <- subRes
+				}(o, ap, trieSet)
+			}
+			subTreeWG.Done()
+		}(o, ss)
+	}
+
+	subTreeWG.Wait()
+	wg.Wait()
+	close(stopCh)
+	dl.buffer.layers++
 }
 
 func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node) {

@@ -117,10 +117,6 @@ func (c *aggNodeCache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, err
 		return nil, nil
 	}
 
-	if c.cleans != nil {
-		c.cleans.Set(cKey, blob)
-		cleanWriteMeter.Mark(int64(len(blob)))
-	}
 	return DecodeAggNode(blob)
 }
 
