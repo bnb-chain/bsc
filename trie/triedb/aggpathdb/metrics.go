@@ -41,6 +41,10 @@ var (
 	commitFlushTimer            = metrics.NewRegisteredTimer("aggpathdb/commit/flush/time", nil)
 	commitTruncateHistoryTimer  = metrics.NewRegisteredTimer("aggpathdb/commit/truncatehistory/time", nil)
 
+	commitNodesPart1Timer = metrics.NewRegisteredTimer("aggpathdb/commit/commitnodes1/time", nil)
+	commitNodesPart2Timer = metrics.NewRegisteredTimer("aggpathdb/commit/commitnodes2/time", nil)
+	commitNodesPart3Timer = metrics.NewRegisteredTimer("aggpathdb/commit/commitnodes3/time", nil)
+
 	flushTimeTimer  = metrics.NewRegisteredTimer("aggpathdb/flush/time", nil)
 	flushNodesMeter = metrics.NewRegisteredMeter("aggpathdb/flush/aggNodes", nil)
 	flushBytesMeter = metrics.NewRegisteredMeter("aggpathdb/flush/bytes", nil)

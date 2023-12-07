@@ -291,7 +291,6 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	}
 	commitTruncateHistoryTimer.UpdateSince(start)
 	return ndl, nil
-
 }
 
 // revert applies the given state history and return a reverted disk layer.
@@ -345,6 +344,7 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 }
 
 func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node) {
+	start := time.Now()
 	// owner -> aggPath -> path -> trienode
 	aggTrie := make(map[common.Hash]map[string]map[string]*trienode.Node)
 	for owner, subset := range nodes {
@@ -359,6 +359,7 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 			aggTrie[owner][string(aggPath)][path] = node
 		}
 	}
+	commitNodesPart1Timer.UpdateSince(start)
 
 	wgCounter := 0
 	for _, subset := range aggTrie {
@@ -404,12 +405,14 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 			}
 		}
 	}()
+	start3 := time.Now()
 	for owner, aggSubset := range aggTrie {
 		o := owner
 		for aPath, trieNodesSet := range aggSubset {
 			ap := aPath
 			trieSet := trieNodesSet
 			go func(account common.Hash, aggPath string, trieNodes map[string]*trienode.Node) {
+				start2 := time.Now()
 				_ = sem.Acquire(ctx, 1)
 				defer sem.Release(1)
 				subRes := &subTree{owner: account, aggPath: aggPath, aggNode: nil}
@@ -456,9 +459,11 @@ func (dl *diskLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node
 					subRes.delta += int64(newSize + pathSize + len(account))
 				}
 				mergeSubResCh <- subRes
+				commitNodesPart2Timer.UpdateSince(start2)
 			}(o, ap, trieSet)
 		}
 	}
+	commitNodesPart3Timer.UpdateSince(start3)
 	wg.Wait()
 	close(stopCh)
 	dl.buffer.layers++
