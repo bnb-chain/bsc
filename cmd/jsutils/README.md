@@ -11,11 +11,15 @@ Install node.js dependency:
     npm install
 ```
 ## Run
-mainnet
+mainnet validators version
 ```bash
     npm run startMainnet
 ```
-testnet
+testnet validators version
 ```bash
     npm run startTestnet
+```
+Transaction count
+```bash
+node gettxcount.js --rpc ${url} --startNum ${start} --endNum ${end}
 ```
