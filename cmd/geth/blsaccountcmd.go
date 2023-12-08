@@ -673,7 +673,7 @@ func blsAccountGenerateProof(ctx *cli.Context) error {
 		utils.Fatalf("BLS wallet not exists.")
 	}
 
-	walletPassword := utils.GetPassPhraseWithList("Enter the password for your BLS wallet.", false, 0, GetBLSPassword(ctx))
+	walletPassword := utils.GetPassPhraseWithList("Enter the password for your BLS wallet.", false, 0, utils.MakePasswordListFromPath(ctx.String(utils.BLSPasswordFileFlag.Name)))
 	w, err := wallet.OpenWallet(context.Background(), &wallet.Config{
 		WalletDir:      walletDir,
 		WalletPassword: walletPassword,

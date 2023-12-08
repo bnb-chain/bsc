@@ -204,14 +204,14 @@ func getTopValidatorsByVotingPower(validatorItems []ValidatorItem, maxElectedVal
 	hp := &validatorHeap
 	heap.Init(hp)
 
-	length := int(maxElectedValidators.Int64())
-	if length > len(validatorHeap) {
-		length = len(validatorHeap)
+	topN := int(maxElectedValidators.Int64())
+	if topN > len(validatorHeap) {
+		topN = len(validatorHeap)
 	}
-	eValidators := make([]common.Address, length)
-	eVotingPowers := make([]uint64, length)
-	eVoteAddrs := make([][]byte, length)
-	for i := 0; i < length; i++ {
+	eValidators := make([]common.Address, topN)
+	eVotingPowers := make([]uint64, topN)
+	eVoteAddrs := make([][]byte, topN)
+	for i := 0; i < topN; i++ {
 		item := heap.Pop(hp).(ValidatorItem)
 		eValidators[i] = item.address
 		// as the decimal in BNB Beacon Chain is 1e8 and in BNB Smart Chain is 1e18, we need to divide it by 1e10

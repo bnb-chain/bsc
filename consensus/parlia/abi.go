@@ -4483,6 +4483,54 @@ const stakeABI = `
   },
   {
     "type": "function",
+    "name": "getValidatorRewardRecord",
+    "inputs": [
+      {
+        "name": "operatorAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "dayIndex",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getValidatorTotalPooledBNBRecord",
+    "inputs": [
+      {
+        "name": "operatorAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "dayIndex",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "initialize",
     "inputs": [],
     "outputs": [],
