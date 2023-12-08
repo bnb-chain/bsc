@@ -1129,7 +1129,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	}
 
 	// History segment
-	HistorySegEnableFlag = &cli.BoolFlag{
+	HistorySegEnabledFlag = &cli.BoolFlag{
 		Name:     "history-segment",
 		Usage:    "Enable history segment feature, it will auto prune history segments by hard-code segment hash",
 		Value:    false,
@@ -2182,8 +2182,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 
 	// parse History Segment flags
-	if ctx.IsSet(HistorySegEnableFlag.Name) {
-		cfg.HistorySegmentEnable = ctx.Bool(HistorySegEnableFlag.Name)
+	if ctx.IsSet(HistorySegEnabledFlag.Name) {
+		cfg.HistorySegmentEnabled = ctx.Bool(HistorySegEnabledFlag.Name)
 	}
 	if ctx.IsSet(HistorySegCustomFlag.Name) {
 		cfg.HistorySegmentCustomFile = ctx.String(HistorySegCustomFlag.Name)

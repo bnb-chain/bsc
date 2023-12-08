@@ -170,7 +170,7 @@ var (
 		utils.BLSPasswordFileFlag,
 		utils.BLSWalletDirFlag,
 		utils.VoteJournalDirFlag,
-		utils.HistorySegEnableFlag,
+		utils.HistorySegEnabledFlag,
 		utils.HistorySegCustomFlag,
 	}, utils.NetworkFlags, utils.DatabasePathFlags)
 

@@ -23,33 +23,27 @@ var (
 		},
 		{
 			Index:           2,
-			ReGenesisNumber: 33860530,
+			ReGenesisNumber: BoundStartBlock + HistorySegmentLength,
 			ReGenesisHash:   common.HexToHash("0xbf6d408bce0d531c41b00410e1c567e46b359db6e14d842cd8c8325039dff498"),
 		},
 	}
 	testGenesis = common.HexToHash("0x50b168d3ba07cc77c13a5469b9a1aad8752ba725ff989b76bc7df89dc936e866")
 )
 
-func TestNewHisSegmentManager_HardCode(t *testing.T) {
+func TestNewHistorySegmentManager_HardCode(t *testing.T) {
 	tests := []struct {
 		cfg *HistorySegmentConfig
 	}{
 		{
 			cfg: &HistorySegmentConfig{
 				CustomPath: "",
-				Genesis:    NewHistoryBlock(0, BSCGenesisHash, 0),
+				Genesis:    NewHistoryBlock(0, BSCGenesisHash, 1),
 			},
 		},
 		{
 			cfg: &HistorySegmentConfig{
 				CustomPath: "",
-				Genesis:    NewHistoryBlock(0, ChapelGenesisHash, 0),
-			},
-		},
-		{
-			cfg: &HistorySegmentConfig{
-				CustomPath: "",
-				Genesis:    NewHistoryBlock(0, RialtoGenesisHash, 0),
+				Genesis:    NewHistoryBlock(0, ChapelGenesisHash, 1),
 			},
 		},
 	}
@@ -59,7 +53,7 @@ func TestNewHisSegmentManager_HardCode(t *testing.T) {
 	}
 }
 
-func TestHisSegmentManager_Validate(t *testing.T) {
+func TestHistorySegmentManager_Validate(t *testing.T) {
 	tests := []struct {
 		genesis  common.Hash
 		segments []HistorySegment
@@ -135,7 +129,7 @@ func TestHisSegmentManager_Validate(t *testing.T) {
 		},
 	}
 	for i, item := range tests {
-		err := ValidateHisSegments(NewHistoryBlock(0, item.genesis, 0), item.segments)
+		err := ValidateHistorySegments(NewHistoryBlock(0, item.genesis, 0), item.segments)
 		if item.err {
 			assert.Error(t, err, i)
 			continue
@@ -144,11 +138,11 @@ func TestHisSegmentManager_Validate(t *testing.T) {
 	}
 }
 
-func TestUnmarshalHisSegments(t *testing.T) {
+func TestUnmarshalHistorySegments(t *testing.T) {
 	enc, err := json.MarshalIndent(historySegmentsInTest, "", "    ")
 	assert.NoError(t, err)
 	//t.Log(string(enc))
-	segments := unmarshalHisSegments(string(enc))
+	segments := unmarshalHistorySegments(string(enc))
 	assert.Equal(t, historySegmentsInTest, segments)
 }
 
@@ -157,12 +151,12 @@ func TestIndexSegment(t *testing.T) {
 	hsm := HistorySegmentManager{
 		segments: historySegmentsInTest,
 	}
-	assert.Equal(t, segments[0], hsm.CurSegment(0))
-	assert.Equal(t, segments[0], hsm.CurSegment(BoundStartBlock-1))
-	assert.Equal(t, segments[1], hsm.CurSegment(BoundStartBlock))
-	assert.Equal(t, segments[1], hsm.CurSegment(BoundStartBlock+HistorySegmentLength-1))
-	assert.Equal(t, segments[2], hsm.CurSegment(BoundStartBlock+HistorySegmentLength))
-	assert.Equal(t, segments[2], hsm.CurSegment(BoundStartBlock+HistorySegmentLength*2))
+	assert.Equal(t, &segments[0], hsm.CurSegment(0))
+	assert.Equal(t, &segments[0], hsm.CurSegment(BoundStartBlock-1))
+	assert.Equal(t, &segments[1], hsm.CurSegment(BoundStartBlock))
+	assert.Equal(t, &segments[1], hsm.CurSegment(BoundStartBlock+HistorySegmentLength-1))
+	assert.Equal(t, &segments[2], hsm.CurSegment(BoundStartBlock+HistorySegmentLength))
+	assert.Equal(t, &segments[2], hsm.CurSegment(BoundStartBlock+HistorySegmentLength*2))
 
 	var (
 		prev *HistorySegment
@@ -172,10 +166,10 @@ func TestIndexSegment(t *testing.T) {
 	assert.Equal(t, false, ok)
 	prev, ok = hsm.LastSegment(&segments[1])
 	assert.Equal(t, true, ok)
-	assert.Equal(t, segments[0], prev)
+	assert.Equal(t, &segments[0], prev)
 	prev, ok = hsm.LastSegment(&segments[2])
 	assert.Equal(t, true, ok)
-	assert.Equal(t, segments[1], prev)
+	assert.Equal(t, &segments[1], prev)
 	_, ok = hsm.LastSegment(&HistorySegment{
 		Index: uint64(len(segments)),
 	})

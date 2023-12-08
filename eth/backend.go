@@ -214,7 +214,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		hsm         *params.HistorySegmentManager
 		lastSegment *params.HistorySegment
 	)
-	if config.HistorySegmentEnable {
+	if config.HistorySegmentEnabled {
 		hsm, lastSegment, err = GetHistorySegmentAndLastSegment(chainDb, genesisHash, config.HistorySegmentCustomFile)
 		if err != nil {
 			return nil, err
@@ -276,12 +276,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	txLookupLimit := &config.TransactionHistory
 	// if enable HistorySegment, just skip txLookupLimit params,
 	// may cause regenerate tx index, but it will also generate new block index
-	if config.HistorySegmentEnable {
+	if config.HistorySegmentEnabled {
 		txLookupLimit = nil
 	}
 	bcOps = append(bcOps, func(bc *core.BlockChain) (*core.BlockChain, error) {
 		// if enable history segment, try prune ancient data when restart
-		if config.HistorySegmentEnable {
+		if config.HistorySegmentEnabled {
 			if err = truncateAncientTail(chainDb, lastSegment); err != nil {
 				return nil, err
 			}

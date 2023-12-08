@@ -205,7 +205,7 @@ type Config struct {
 	OverrideVerkle *uint64 `toml:",omitempty"`
 
 	// History Segment
-	HistorySegmentEnable     bool   `toml:",omitempty"`
+	HistorySegmentEnabled    bool   `toml:",omitempty"`
 	HistorySegmentCustomFile string `toml:",omitempty"`
 }
 

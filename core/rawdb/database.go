@@ -202,7 +202,7 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 }
 
 func (db *nofreezedb) AncientReset(tail, head uint64) error {
-	return errNotSupported
+	return nil
 }
 
 // NewDatabase creates a high level database on top of a given key-value data

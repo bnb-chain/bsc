@@ -726,29 +726,28 @@ func exportSegment(ctx *cli.Context) error {
 	}
 	latest := headerChain.CurrentHeader()
 	if _, ok := engine.(consensus.PoSA); !ok {
-		return errors.New("current chain is not POSA consensus, cannot generate history segment")
+		return errors.New("cannot generate history segment because consensus engine is not PoSA")
 	}
 	if !chainConfig.IsLuban(latest.Number) {
-		return errors.New("current chain is not enable Luban hard fork, cannot generate history segment")
+		return errors.New("luban hard fork is not enabled , cannot generate history segment")
 	}
 
 	var (
 		boundStartBlock      = params.BoundStartBlock
 		historySegmentLength = params.HistorySegmentLength
 	)
-	// TODO(0xbundler): for testing
-	//switch genesisHash {
-	//case params.BSCGenesisHash, params.ChapelGenesisHash, params.RialtoGenesisHash:
-	//	boundStartBlock = params.BoundStartBlock
-	//	historySegmentLength = params.HistorySegmentLength
-	//default:
-	if ctx.IsSet(utils.BoundStartBlockFlag.Name) {
-		boundStartBlock = ctx.Uint64(utils.BoundStartBlockFlag.Name)
+	switch genesisHash {
+	case params.BSCGenesisHash, params.ChapelGenesisHash, params.RialtoGenesisHash:
+		boundStartBlock = params.BoundStartBlock
+		historySegmentLength = params.HistorySegmentLength
+	default:
+		if ctx.IsSet(utils.BoundStartBlockFlag.Name) {
+			boundStartBlock = ctx.Uint64(utils.BoundStartBlockFlag.Name)
+		}
+		if ctx.IsSet(utils.HistorySegmentLengthFlag.Name) {
+			historySegmentLength = ctx.Uint64(utils.HistorySegmentLengthFlag.Name)
+		}
 	}
-	if ctx.IsSet(utils.HistorySegmentLengthFlag.Name) {
-		historySegmentLength = ctx.Uint64(utils.HistorySegmentLengthFlag.Name)
-	}
-	//}
 	if boundStartBlock == 0 || historySegmentLength == 0 {
 		return fmt.Errorf("wrong params, boundStartBlock: %v, historySegmentLength: %v", boundStartBlock, historySegmentLength)
 	}
@@ -812,7 +811,7 @@ func exportSegment(ctx *cli.Context) error {
 		}
 		segments = append(segments, segment)
 	}
-	if err = params.ValidateHisSegments(params.NewHistoryBlock(0, genesisHash, td.Uint64()), segments); err != nil {
+	if err = params.ValidateHistorySegments(params.NewHistoryBlock(0, genesisHash, td.Uint64()), segments); err != nil {
 		return err
 	}
 	output, err := json.MarshalIndent(segments, "", "    ")
@@ -902,9 +901,6 @@ func simpleHeaderChain(db ethdb.Database, genesisHash common.Hash) (*params.Chai
 	engine, err := ethconfig.CreateConsensusEngine(chainConfig, db, nil, genesisHash)
 	if err != nil {
 		return nil, nil, nil, err
-	}
-	if _, ok := engine.(consensus.PoSA); !ok {
-		return nil, nil, nil, errors.New("current chain is not POSA, cannot generate history segment")
 	}
 	headerChain, err := core.NewHeaderChain(db, chainConfig, engine, func() bool {
 		return true

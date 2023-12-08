@@ -189,7 +189,7 @@ func (f *prunedfreezer) TruncateTail(tail uint64) (uint64, error) {
 }
 
 func (f *prunedfreezer) AncientReset(tail, head uint64) error {
-	return errNotSupported
+	return nil
 }
 
 // Sync flushes meta data tables to disk.

@@ -73,7 +73,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverrideKepler           *uint64 `toml:",omitempty"`
 		OverrideCancun           *uint64 `toml:",omitempty"`
 		OverrideVerkle           *uint64 `toml:",omitempty"`
-		HistorySegmentEnable     bool    `toml:",omitempty"`
+		HistorySegmentEnabled    bool    `toml:",omitempty"`
 		HistorySegmentCustomFile string  `toml:",omitempty"`
 	}
 	var enc Config
@@ -133,7 +133,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideKepler = c.OverrideKepler
 	enc.OverrideCancun = c.OverrideCancun
 	enc.OverrideVerkle = c.OverrideVerkle
-	enc.HistorySegmentEnable = c.HistorySegmentEnable
+	enc.HistorySegmentEnabled = c.HistorySegmentEnabled
 	enc.HistorySegmentCustomFile = c.HistorySegmentCustomFile
 	return &enc, nil
 }
@@ -197,7 +197,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverrideKepler           *uint64 `toml:",omitempty"`
 		OverrideCancun           *uint64 `toml:",omitempty"`
 		OverrideVerkle           *uint64 `toml:",omitempty"`
-		HistorySegmentEnable     *bool   `toml:",omitempty"`
+		HistorySegmentEnabled    *bool   `toml:",omitempty"`
 		HistorySegmentCustomFile *string `toml:",omitempty"`
 	}
 	var dec Config
@@ -372,8 +372,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle
 	}
-	if dec.HistorySegmentEnable != nil {
-		c.HistorySegmentEnable = *dec.HistorySegmentEnable
+	if dec.HistorySegmentEnabled != nil {
+		c.HistorySegmentEnabled = *dec.HistorySegmentEnabled
 	}
 	if dec.HistorySegmentCustomFile != nil {
 		c.HistorySegmentCustomFile = *dec.HistorySegmentCustomFile
