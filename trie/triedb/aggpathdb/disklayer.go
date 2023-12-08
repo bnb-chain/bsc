@@ -193,15 +193,12 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// in the same chain blocks are not adjacent but have the same
 	// root.
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		if dl.id == 0 {
-			rawdb.WriteStateID(dl.db.diskdb, dl.root, 0)
-		}
-		rawdb.WriteStateID(dl.db.diskdb, bottom.rootHash(), bottom.stateID())
-		commitWriteStateIDTimeTimer.UpdateSince(start)
-		wg.Done()
-	}()
+	batch := dl.db.diskdb.NewBatch()
+	if dl.id == 0 {
+		rawdb.WriteStateID(batch, dl.root, 0)
+	}
+	rawdb.WriteStateID(batch, bottom.rootHash(), bottom.stateID())
+	commitWriteStateIDTimeTimer.UpdateSince(start)
 
 	// In a unique scenario where the ID of the oldest history object (after tail
 	// truncation) surpasses the persisted state ID, we take the necessary action
@@ -272,7 +269,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		// To remove outdated history objects from the end, we set the 'tail' parameter
 		// to 'oldest-1' due to the offset between the freezer index and the history ID.
 		if overflow {
-			pruned, err := truncateFromTail(dl.db.diskdb, dl.db.freezer, oldest-1)
+			pruned, err := truncateFromTail(batch, dl.db.freezer, oldest-1)
 			if err != nil {
 				truncateErr <- err
 			}
@@ -359,7 +356,7 @@ func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.No
 		wg            sync.WaitGroup
 		subTreeWG     sync.WaitGroup
 
-		sem = semaphore.NewWeighted(int64(1024))
+		sem = semaphore.NewWeighted(int64(2048))
 		ctx = context.Background()
 	)
 	go func() {

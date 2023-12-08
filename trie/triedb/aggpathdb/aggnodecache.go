@@ -100,11 +100,8 @@ func (c *aggNodeCache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, err
 		cacheHit := false
 		blob, cacheHit = c.cleans.HasGet(nil, cKey)
 		if cacheHit {
-			cleanHitMeter.Mark(1)
-			cleanReadMeter.Mark(int64(len(blob)))
 			return DecodeAggNode(blob)
 		}
-		cleanMissMeter.Mark(1)
 	}
 
 	// cache miss
