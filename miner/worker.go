@@ -914,7 +914,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	}
 
 	// Handle upgrade build-in system contract code
-	systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, env.state)
+	systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state)
 
 	return env, nil
 }
@@ -1163,12 +1163,14 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if interval != nil {
 			interval()
 		}
+		/*
 
-		err := env.state.WaitPipeVerification()
-		if err != nil {
-			return err
-		}
-		env.state.CorrectAccountsRoot(w.chain.CurrentBlock().Root)
+			err := env.state.WaitPipeVerification()
+			if err != nil {
+				return err
+			}
+			env.state.CorrectAccountsRoot(w.chain.CurrentBlock().Root)
+		*/
 
 		// Withdrawals are set to nil here, because this is only called in PoW.
 		finalizeStart := time.Now()

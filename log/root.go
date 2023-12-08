@@ -2,6 +2,7 @@ package log
 
 import (
 	"os"
+	"time"
 )
 
 var (
@@ -105,6 +106,7 @@ func Error(msg string, ctx ...interface{}) {
 //	log.Crit("msg", "key1", val1, "key2", val2)
 func Crit(msg string, ctx ...interface{}) {
 	root.write(msg, LvlCrit, ctx, skipLevel)
+	time.Sleep(3 * time.Second)
 	os.Exit(1)
 }
 

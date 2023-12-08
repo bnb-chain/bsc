@@ -150,13 +150,25 @@ unzip testnet.zip
 Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-snapshots). Follow the guide to structure your files.
 
 Note: if you can not download the chaindata snapshot and want to sync from genesis, you have to generate the genesis block first, you have already get the genesis.json in Step 2.
-So just run: `geth --datadir <datadir> init ./genesis.json`
+So just run: 
+``` shell
+## It will init genesis with Hash-Base Storage Scheme by default.
+geth --datadir <datadir> init ./genesis.json
+
+## It will init genesis with Path-Base Storage Scheme.
+geth --datadir <datadir> --state.scheme path init ./genesis.json
+```
 #### 4. Start a full node
 ```shell
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0
 
 ## It is recommand to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0 --tries-verify-mode none
+## It will run with Hash-Base Storage Scheme by default
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none
+
+## It runs fullnode with Path-Base Storage Scheme. 
+## It will enable inline state prune, keeping the latest 90000 blocks' history state by default.
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none --state.scheme path
 ```
 
 #### 5. Monitor node status

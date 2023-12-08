@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/monitor"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
@@ -65,7 +66,8 @@ const (
 )
 
 var (
-	syncChallengeTimeout = 15 * time.Second // Time allowance for a node to reply to the sync progress challenge
+	syncChallengeTimeout        = 15 * time.Second // Time allowance for a node to reply to the sync progress challenge
+	accountBlacklistPeerCounter = metrics.NewRegisteredCounter("eth/count/blacklist", nil)
 )
 
 // txPool defines the methods needed from a transaction pool implementation to
@@ -342,8 +344,21 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return p.RequestTxs(hashes)
 	}
-	addTxs := func(txs []*txpool.Transaction) []error {
-		return h.txpool.Add(txs, false, false)
+	addTxs := func(peer string, txs []*txpool.Transaction) []error {
+		errors := h.txpool.Add(txs, false, false)
+		for _, err := range errors {
+			if err == legacypool.ErrInBlackList {
+				accountBlacklistPeerCounter.Inc(1)
+				p := h.peers.peer(peer)
+				if p != nil {
+					remoteAddr := p.remoteAddr()
+					if remoteAddr != nil {
+						log.Warn("blacklist account detected from other peer", "remoteAddr", remoteAddr, "ID", p.ID())
+					}
+				}
+			}
+		}
+		return errors
 	}
 	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx)
 	h.chainSync = newChainSyncer(h)
