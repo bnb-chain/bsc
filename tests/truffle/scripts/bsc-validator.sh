@@ -15,4 +15,4 @@ geth --config ${DATA_DIR}/config.toml --datadir ${DATA_DIR} --netrestrict ${CLUS
     --bootnodes enode://${BOOTSTRAP_PUB_KEY}@${BOOTSTRAP_IP}:${BOOTSTRAP_TCP_PORT} \
     --mine -unlock ${VALIDATOR_ADDR} --miner.etherbase ${VALIDATOR_ADDR} --password /dev/null \
     --light.serve 50 \
-    --rpc.allow-unprotected-txs --history.transactions 15768000
+    --rpc.allow-unprotected-txs --history.transactions 15768000 >${DATA_DIR}/bscnode-validator.log

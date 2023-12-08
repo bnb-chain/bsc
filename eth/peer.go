@@ -17,6 +17,8 @@
 package eth
 
 import (
+	"net"
+
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 
@@ -43,6 +45,13 @@ func (p *ethPeer) info() *ethPeerInfo {
 	return &ethPeerInfo{
 		Version: p.Version(),
 	}
+}
+
+func (p *ethPeer) remoteAddr() net.Addr {
+	if p.Peer != nil && p.Peer.Peer != nil {
+		return p.Peer.Peer.RemoteAddr()
+	}
+	return nil
 }
 
 // snapPeerInfo represents a short summary of the `snap` sub-protocol metadata known

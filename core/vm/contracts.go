@@ -1453,6 +1453,9 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	// check sig
 	msgHash1 := types.SealHash(header1, evidence.ChainId)
 	msgHash2 := types.SealHash(header2, evidence.ChainId)
+	if bytes.Equal(msgHash1.Bytes(), msgHash2.Bytes()) {
+		return nil, ErrExecutionReverted
+	}
 	pubkey1, err := secp256k1.RecoverPubkey(msgHash1.Bytes(), sig1)
 	if err != nil {
 		return nil, ErrExecutionReverted
