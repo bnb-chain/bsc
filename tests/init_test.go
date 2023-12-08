@@ -93,7 +93,7 @@ type testMatcher struct {
 	failpat        []testFailure
 	skiploadpat    []*regexp.Regexp
 	slowpat        []*regexp.Regexp
-	runonlylistpat *regexp.Regexp
+	runonlylistpat []*regexp.Regexp
 }
 
 type testConfig struct {
@@ -127,7 +127,7 @@ func (tm *testMatcher) fails(pattern string, reason string) {
 }
 
 func (tm *testMatcher) runonly(pattern string) {
-	tm.runonlylistpat = regexp.MustCompile(pattern)
+	tm.runonlylistpat = append(tm.runonlylistpat, regexp.MustCompile(pattern))
 }
 
 // config defines chain config for tests matching the pattern.
@@ -220,7 +220,14 @@ func (tm *testMatcher) runTestFile(t *testing.T, path, name string, runTest inte
 		t.Skip(r)
 	}
 	if tm.runonlylistpat != nil {
-		if !tm.runonlylistpat.MatchString(name) {
+		match := false
+		for _, pat := range tm.runonlylistpat {
+			if pat.MatchString(name) {
+				match = true
+				break
+			}
+		}
+		if !match {
 			t.Skip("Skipped by runonly")
 		}
 	}

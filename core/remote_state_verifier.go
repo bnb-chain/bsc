@@ -351,8 +351,9 @@ func (vt *verifyTask) sendVerifyRequest(n int) {
 	}
 
 	if n < len(validPeers) && n > 0 {
-		rand.Seed(time.Now().UnixNano())
-		rand.Shuffle(len(validPeers), func(i, j int) { validPeers[i], validPeers[j] = validPeers[j], validPeers[i] })
+		// rand.Seed(time.Now().UnixNano())
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		r.Shuffle(len(validPeers), func(i, j int) { validPeers[i], validPeers[j] = validPeers[j], validPeers[i] })
 	} else {
 		n = len(validPeers)
 	}

@@ -71,7 +71,7 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 	dirtyWriteMeter.Mark(size)
 	diffLayerNodesMeter.Mark(int64(count))
 	diffLayerBytesMeter.Mark(int64(dl.memory))
-	log.Debug("Created new diff layer", "id", id, "block", block, "nodes", count, "size", common.StorageSize(dl.memory))
+	log.Debug("Created new diff layer", "id", id, "block", block, "nodes", count, "size", common.StorageSize(dl.memory), "root", dl.root)
 	return dl
 }
 
@@ -114,7 +114,7 @@ func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, dept
 			if n.Hash != hash {
 				dirtyFalseMeter.Mark(1)
 				log.Error("Unexpected trie node in diff layer", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
-				return nil, newUnexpectedNodeError("diff", hash, n.Hash, owner, path)
+				return nil, newUnexpectedNodeError("diff", hash, n.Hash, owner, path, n.Blob)
 			}
 			dirtyHitMeter.Mark(1)
 			dirtyNodeHitDepthHist.Update(int64(depth))

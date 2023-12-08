@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -129,7 +130,7 @@ func (db *Database) loadLayers() layer {
 		log.Info("Failed to load journal, discard it", "err", err)
 	}
 	// Return single layer with persistent state.
-	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, newNodeBuffer(db.bufferSize, nil, 0))
+	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nil, 0))
 }
 
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
@@ -169,7 +170,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		nodes[entry.Owner] = subset
 	}
 	// Calculate the internal state transitions by id difference.
-	base := newDiskLayer(root, id, db, nil, newNodeBuffer(db.bufferSize, nodes, id-stored))
+	base := newDiskLayer(root, id, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nodes, id-stored))
 	return base, nil
 }
 
@@ -259,8 +260,9 @@ func (dl *diskLayer) journal(w io.Writer) error {
 		return err
 	}
 	// Step three, write all unwritten nodes into the journal
-	nodes := make([]journalNodes, 0, len(dl.buffer.nodes))
-	for owner, subset := range dl.buffer.nodes {
+	bufferNodes := dl.buffer.getAllNodes()
+	nodes := make([]journalNodes, 0, len(bufferNodes))
+	for owner, subset := range bufferNodes {
 		entry := journalNodes{Owner: owner}
 		for path, node := range subset {
 			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
@@ -270,7 +272,7 @@ func (dl *diskLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, nodes); err != nil {
 		return err
 	}
-	log.Debug("Journaled pathdb disk layer", "root", dl.root, "nodes", len(dl.buffer.nodes))
+	log.Debug("Journaled pathdb disk layer", "root", dl.root, "nodes", len(bufferNodes))
 	return nil
 }
 
@@ -341,6 +343,14 @@ func (db *Database) Journal(root common.Hash) error {
 	if l == nil {
 		return fmt.Errorf("triedb layer [%#x] missing", root)
 	}
+	disk := db.tree.bottom()
+	if l, ok := l.(*diffLayer); ok {
+		log.Info("Persisting dirty state to disk", "head", l.block, "root", root, "layers", l.id-disk.id+disk.buffer.getLayers())
+	} else { // disk layer only on noop runs (likely) or deep reorgs (unlikely)
+		log.Info("Persisting dirty state to disk", "root", root, "layers", disk.buffer.getLayers())
+	}
+	start := time.Now()
+
 	// Run the journaling
 	db.lock.Lock()
 	defer db.lock.Unlock()
@@ -373,6 +383,6 @@ func (db *Database) Journal(root common.Hash) error {
 
 	// Set the db in read only mode to reject all following mutations
 	db.readOnly = true
-	log.Info("Stored journal in triedb", "disk", diskroot, "size", common.StorageSize(journal.Len()))
+	log.Info("Persisted dirty state to disk", "size", common.StorageSize(journal.Len()), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }

@@ -314,6 +314,12 @@ var (
 		Value:    rawdb.HashScheme,
 		Category: flags.StateCategory,
 	}
+	PathDBSyncFlag = &cli.BoolFlag{
+		Name:     "pathdb.sync",
+		Usage:    "sync flush nodes cache to disk in path schema",
+		Value:    false,
+		Category: flags.StateCategory,
+	}
 	StateHistoryFlag = &cli.Uint64Flag{
 		Name:     "history.state",
 		Usage:    "Number of recent blocks to retain state history for (default = 90,000 blocks, 0 = entire chain)",
@@ -1086,14 +1092,14 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 
 	BLSPasswordFileFlag = &cli.StringFlag{
 		Name:     "blspassword",
-		Usage:    "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
-		Category: flags.FastFinalityCategory,
+		Usage:    "Password file path for the BLS wallet, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
+		Category: flags.AccountCategory,
 	}
 
 	BLSWalletDirFlag = &flags.DirectoryFlag{
 		Name:     "blswallet",
 		Usage:    "Path for the blsWallet dir in fast finality feature (default = inside the datadir)",
-		Category: flags.FastFinalityCategory,
+		Category: flags.AccountCategory,
 	}
 
 	VoteJournalDirFlag = &flags.DirectoryFlag{
@@ -1456,7 +1462,10 @@ func setEtherbase(ctx *cli.Context, cfg *ethconfig.Config) {
 
 // MakePasswordList reads password lines from the file specified by the global --password flag.
 func MakePasswordList(ctx *cli.Context) []string {
-	path := ctx.Path(PasswordFileFlag.Name)
+	return MakePasswordListFromPath(ctx.Path(PasswordFileFlag.Name))
+}
+
+func MakePasswordListFromPath(path string) []string {
 	if path == "" {
 		return nil
 	}
@@ -1913,7 +1922,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.EnableTrustProtocol = ctx.IsSet(EnableTrustProtocolFlag.Name)
 	}
 	if ctx.IsSet(PipeCommitFlag.Name) {
-		cfg.PipeCommit = ctx.Bool(PipeCommitFlag.Name)
+		log.Warn("The --pipecommit flag is deprecated and could be removed in the future!")
 	}
 	if ctx.IsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.Bool(RangeLimitFlag.Name)
@@ -1942,14 +1951,15 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Parse transaction history flag, if user is still using legacy config
 	// file with 'TxLookupLimit' configured, copy the value to 'TransactionHistory'.
 	if cfg.TransactionHistory == ethconfig.Defaults.TransactionHistory && cfg.TxLookupLimit != ethconfig.Defaults.TxLookupLimit {
-		log.Warn("The config option 'TxLookupLimit' is deprecated and will be removed, please use 'TransactionHistory'")
-		cfg.TransactionHistory = cfg.TxLookupLimit
+		log.Crit("The config option 'TxLookupLimit' is deprecated and may cause unexpected performance degradation issues, please use 'TransactionHistory' instead")
 	}
 	if ctx.IsSet(TransactionHistoryFlag.Name) {
 		cfg.TransactionHistory = ctx.Uint64(TransactionHistoryFlag.Name)
 	} else if ctx.IsSet(TxLookupLimitFlag.Name) {
-		log.Warn("The flag --txlookuplimit is deprecated and will be removed, please use --history.transactions")
-		cfg.TransactionHistory = ctx.Uint64(TransactionHistoryFlag.Name)
+		log.Crit("The flag --txlookuplimit is deprecated and may cause unexpected performance degradation issues. Please use --history.transactions instead")
+	}
+	if ctx.IsSet(PathDBSyncFlag.Name) {
+		cfg.PathSyncFlush = true
 	}
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.TransactionHistory != 0 {
 		cfg.TransactionHistory = 0
@@ -2346,7 +2356,7 @@ func tryMakeReadOnlyDatabase(ctx *cli.Context, stack *node.Node) ethdb.Database 
 	// If datadir doesn't exist we need to open db in write-mode
 	// so database engine can create files.
 	readonly := true
-	if !common.FileExist(stack.ResolvePath("chaindata")) {
+	if !common.FileExist(stack.ResolvePath("chaindata")) || ctx.Bool(PruneAncientDataFlag.Name) {
 		readonly = false
 	}
 	return MakeChainDatabase(ctx, stack, readonly, false)

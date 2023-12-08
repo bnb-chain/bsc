@@ -170,9 +170,9 @@ type TxFetcher struct {
 	alternates map[common.Hash]map[string]struct{} // In-flight transaction alternate origins if retrieval fails
 
 	// Callbacks
-	hasTx    func(common.Hash) bool              // Retrieves a tx from the local txpool
-	addTxs   func([]*txpool.Transaction) []error // Insert a batch of transactions into local txpool
-	fetchTxs func(string, []common.Hash) error   // Retrieves a set of txs from a remote peer
+	hasTx    func(common.Hash) bool                      // Retrieves a tx from the local txpool
+	addTxs   func(string, []*txpool.Transaction) []error // Insert a batch of transactions into local txpool
+	fetchTxs func(string, []common.Hash) error           // Retrieves a set of txs from a remote peer
 
 	step  chan struct{} // Notification channel when the fetcher loop iterates
 	clock mclock.Clock  // Time wrapper to simulate in tests
@@ -181,14 +181,14 @@ type TxFetcher struct {
 
 // NewTxFetcher creates a transaction fetcher to retrieve transaction
 // based on hash announcements.
-func NewTxFetcher(hasTx func(common.Hash) bool, addTxs func([]*txpool.Transaction) []error, fetchTxs func(string, []common.Hash) error) *TxFetcher {
+func NewTxFetcher(hasTx func(common.Hash) bool, addTxs func(string, []*txpool.Transaction) []error, fetchTxs func(string, []common.Hash) error) *TxFetcher {
 	return NewTxFetcherForTests(hasTx, addTxs, fetchTxs, mclock.System{}, nil)
 }
 
 // NewTxFetcherForTests is a testing method to mock out the realtime clock with
 // a simulated version and the internal randomness with a deterministic one.
 func NewTxFetcherForTests(
-	hasTx func(common.Hash) bool, addTxs func([]*txpool.Transaction) []error, fetchTxs func(string, []common.Hash) error,
+	hasTx func(common.Hash) bool, addTxs func(string, []*txpool.Transaction) []error, fetchTxs func(string, []common.Hash) error,
 	clock mclock.Clock, rand *mrand.Rand) *TxFetcher {
 	return &TxFetcher{
 		notify:      make(chan *txAnnounce),
@@ -300,7 +300,7 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 		for j, tx := range batch {
 			wrapped[j] = &txpool.Transaction{Tx: tx}
 		}
-		for j, err := range f.addTxs(wrapped) {
+		for j, err := range f.addTxs(peer, wrapped) {
 			// Track the transaction hash if the price is too low for us.
 			// Avoid re-request this transaction when we receive another
 			// announcement.

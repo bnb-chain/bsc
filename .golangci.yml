@@ -51,9 +51,6 @@ issues:
     - path: core/state/metrics.go
       linters:
         - unused
-    - path: core/state/statedb_fuzz_test.go
-      linters:
-        - unused
     - path: core/txpool/legacypool/list.go
       linters:
         - staticcheck

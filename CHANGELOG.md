@@ -1,4 +1,57 @@
 # Changelog
+## v1.3.5
+FEATURE
+* [\#1970](https://github.com/bnb-chain/bsc/pull/1970) core: enable Shanghai EIPs
+* [\#1973](https://github.com/bnb-chain/bsc/pull/1973) core/systemcontracts: include BEP-319 on kepler hardfork
+
+BUGFIX
+* [\#1964](https://github.com/bnb-chain/bsc/pull/1964) consensus/parlia: hardfork block can be epoch block
+* [\#1979](https://github.com/bnb-chain/bsc/pull/1979) fix: upgrade pebble and improve config
+* [\#1980](https://github.com/bnb-chain/bsc/pull/1980) internal/ethapi: fix null effectiveGasPrice in GetTransactionReceipt
+
+IMPROVEMENT
+* [\#1977](https://github.com/bnb-chain/bsc/pull/1977) doc: add instructions for starting fullnode with pbss
+
+## v1.3.4
+BUGFIX
+* fix: remove pipecommit in miner
+* add a hard fork: Hertzfix
+
+## v1.3.3
+BUGFIX
+* [\#1986](https://github.com/bnb-chain/bsc/pull/1986) fix(cmd): check pruneancient when creating db
+
+IMPROVEMENT
+* [\#2000](https://github.com/bnb-chain/bsc/pull/2000) cmd/utils: exit process if txlookuplimit flag is set
+
+## v1.3.2
+BUGFIX
+* fix: remove sharedPool
+
+IMPROVEMENT
+* [\#2007](https://github.com/bnb-chain/bsc/pull/2007) consensus/parlia: increase size of snapshot cache in parlia
+* [\#2008](https://github.com/bnb-chain/bsc/pull/2008) consensus/parlia: recover faster when snapshot of parlia is gone in disk
+
+## v1.3.1
+FEATURE
+* [\#1881](https://github.com/bnb-chain/bsc/pull/1881) feat: active pbss
+* [\#1882](https://github.com/bnb-chain/bsc/pull/1882) cmd/geth: add hbss to pbss convert tool
+* [\#1916](https://github.com/bnb-chain/bsc/pull/1916) feat: cherry-pick pbss patch commits from eth repo in v1.13.2
+* [\#1939](https://github.com/bnb-chain/bsc/pull/1939) dependency: go version to 1.20 and some dependencies in go.mod
+* [\#1955](https://github.com/bnb-chain/bsc/pull/1955) eth, trie/triedb/pathdb: pbss patches
+* [\#1962](https://github.com/bnb-chain/bsc/pull/1962) cherry pick pbss patches from go-ethereum
+
+BUGFIX
+* [\#1923](https://github.com/bnb-chain/bsc/pull/1923) consensus/parlia: fix nextForkHash in Extra filed of block header
+* [\#1950](https://github.com/bnb-chain/bsc/pull/1950) fix: 2 APIs of get receipt related
+* [\#1951](https://github.com/bnb-chain/bsc/pull/1951) txpool: fix a potential crash issue in shutdown;
+* [\#1963](https://github.com/bnb-chain/bsc/pull/1963) fix: revert trie commited flag after delete statedb mpt cache
+
+IMPROVEMENT
+* [\#1948](https://github.com/bnb-chain/bsc/pull/1948) performance: commitTire concurrently
+* [\#1949](https://github.com/bnb-chain/bsc/pull/1949) code: remove accountTrieCache and storageTrieCache
+* [\#1954](https://github.com/bnb-chain/bsc/pull/1954) trie: keep trie prefetch during validation phase
+
 ## v1.3.0
 #### RPC
 * [internal/ethapi: add debug_getRawReceipts RPC method (#24773)](https://github.com/bnb-chain/bsc/pull/1840/commits/ae7d834bc752a2d94fef9d354ee78fcb9425f3d1)
