@@ -240,8 +240,8 @@ var (
 		LubanBlock:          nil,
 		PlatoBlock:          nil,
 		BerlinBlock:         nil,
-		HertzBlock:          nil,
-		HertzfixBlock:       nil,
+		HertzBlock:          big.NewInt(0),
+		HertzfixBlock:       big.NewInt(0),
 
 		// TODO
 		ShanghaiTime: newUint64(0),
