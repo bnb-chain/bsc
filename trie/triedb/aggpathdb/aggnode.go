@@ -93,27 +93,12 @@ func (n *AggNode) Node(path []byte) *trienode.Node {
 		i := path[len(path)-1]
 		tn = n.childes[int(i)]
 	}
-	if tn == nil {
-		return nil
-	}
 	if tn.Hash == (common.Hash{}) && len(tn.Blob) != 0 {
 		h := newHasher()
 		defer h.release()
 		tn.Hash = h.hash(tn.Blob)
 	}
 	return tn
-}
-
-func (n *AggNode) Merge(delta *AggNode) {
-	if delta.root != nil {
-		n.root = delta.root
-	}
-
-	for i, c := range delta.childes {
-		if c != nil {
-			n.childes[i] = c
-		}
-	}
 }
 
 func (n *AggNode) decodeFrom(buf []byte) error {
