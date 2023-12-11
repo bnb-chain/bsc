@@ -239,7 +239,8 @@ var (
 		PlanckBlock:         big.NewInt(5),
 		LubanBlock:          big.NewInt(6),
 		PlatoBlock:          big.NewInt(7),
-		BerlinBlock:         nil,
+		BerlinBlock:         _hertz_upgrade_block_,
+		LondonBlock:         _hertz_upgrade_block_,
 		HertzBlock:          _hertz_upgrade_block_,
 		HertzfixBlock:       _hertz_upgrade_block_,
 
