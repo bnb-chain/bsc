@@ -302,11 +302,18 @@ func (dl *diffLayer) journal(w io.Writer) error {
 		return err
 	}
 	// Write the accumulated trie aggNodes into buffer
-	nodes := make([]journalNodes, 0, len(dl.nodes))
-	for owner, subset := range dl.nodes {
+	nodes := make([]journalNodes, 0, len(dl.aggnodes))
+	for owner, subset := range dl.aggnodes {
 		entry := journalNodes{Owner: owner}
-		for path, node := range subset {
-			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
+		for path, an := range subset {
+			if an.root != nil {
+				entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: an.root.Blob})
+			}
+			for i, n := range an.childes {
+				if n != nil {
+					entry.Nodes = append(entry.Nodes, journalNode{Path: append([]byte(path), byte(i)), Blob: n.Blob})
+				}
+			}
 		}
 		nodes = append(nodes, entry)
 	}
@@ -337,7 +344,7 @@ func (dl *diffLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, storage); err != nil {
 		return err
 	}
-	log.Debug("Journaled aggpathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "aggNodes", len(dl.nodes))
+	log.Debug("Journaled aggpathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "aggNodes", len(dl.aggnodes))
 	return nil
 }
 

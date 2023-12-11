@@ -215,7 +215,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	commitErr := make(chan error, 1)
 	wg.Add(1)
 	go func() {
-		dl.commitNodesV2(bottom.nodes)
+		dl.commitNodesV2(bottom.aggnodes)
 		commitCommitNodesTimeTimer.UpdateSince(start)
 		if dl.buffer.canFlush(force) {
 			for {
@@ -340,7 +340,7 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 	return newDiskLayer(h.meta.parent, dl.id-1, dl.db, dl.cleans, dl.buffer, dl.immutableBuffer), nil
 }
 
-func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.Node) {
+func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*AggNode) {
 	type subTree struct {
 		owner         common.Hash
 		aggPath       string
@@ -384,22 +384,12 @@ func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.No
 	for owner, subset := range nodes {
 		o := owner
 		ss := subset
-		go func(owner common.Hash, ss map[string]*trienode.Node) {
-			aggNodes := make(map[string]map[string]*trienode.Node)
-			for path, node := range ss {
-				aggPath := ToAggPath([]byte(path))
-				if _, ok := aggNodes[string(aggPath)]; !ok {
-					aggNodes[string(aggPath)] = make(map[string]*trienode.Node)
-				}
-				aggNodes[string(aggPath)][path] = node
-			}
-
-			wg.Add(len(aggNodes))
-
-			for aggPath, aggSubset := range aggNodes {
+		go func(owner common.Hash, ss map[string]*AggNode) {
+			wg.Add(len(ss))
+			for aggPath, aggSubset := range ss {
 				ap := aggPath
-				trieSet := aggSubset
-				go func(account common.Hash, aggPath string, trieNodes map[string]*trienode.Node) {
+				delta := aggSubset
+				go func(account common.Hash, aggPath string, delta *AggNode) {
 					_ = sem.Acquire(ctx, 1)
 					defer sem.Release(1)
 					subRes := &subTree{owner: account, aggPath: aggPath, aggNode: nil}
@@ -429,14 +419,8 @@ func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.No
 					}
 					pathSize := 0
 					oldSize := aggNode.Size()
-					for path, n := range trieNodes {
-						pathSize += len(path)
-						if n.IsDeleted() {
-							aggNode.Delete([]byte(path))
-						} else {
-							aggNode.Update([]byte(path), n)
-						}
-					}
+
+					aggNode.Merge(delta)
 					newSize := aggNode.Size()
 					if exit {
 						subRes.overwrite++
@@ -446,7 +430,7 @@ func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.No
 						subRes.delta += int64(newSize + pathSize + len(account))
 					}
 					mergeSubResCh <- subRes
-				}(o, ap, trieSet)
+				}(o, ap, delta)
 			}
 			subTreeWG.Done()
 		}(o, ss)
