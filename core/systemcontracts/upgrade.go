@@ -881,6 +881,11 @@ func init() {
 				Code:         "SlashContractByteCode",
 			},
 			{
+				ContractAddr: common.HexToAddress(TokenHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/cfc0bd1127186a917ddc38fd38d22903034d3f0b",
+				Code:         "TokenHubContractByteCode",
+			},
+			{
 				ContractAddr: common.HexToAddress(StakingContract),
 				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/cfc0bd1127186a917ddc38fd38d22903034d3f0b",
 				Code:         "StakingContractByteCode",
