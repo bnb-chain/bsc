@@ -244,8 +244,8 @@ var (
 		HertzfixBlock:       _hertz_upgrade_block_,
 
 		// TODO
-		ShanghaiTime: newUint64(0),
-		KeplerTime:   newUint64(0),
+		ShanghaiTime: _rialto_upgrade_height_,
+		KeplerTime:   _rialto_upgrade_height_,
 		FeynmanTime:  _rialto_upgrade_height_,
 
 		Parlia: &ParliaConfig{
