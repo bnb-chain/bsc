@@ -244,7 +244,7 @@ var (
 		HertzfixBlock:       nil,
 
 		// TODO
-		FeynmanTime: nil,
+		FeynmanTime: _rialto_upgrade_height_,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
