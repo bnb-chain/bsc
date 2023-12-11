@@ -3928,6 +3928,19 @@ const stakeABI = `
   },
   {
     "type": "function",
+    "name": "BREATH_BLOCK_INTERVAL",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "DEAD_ADDRESS",
     "inputs": [],
     "outputs": [
@@ -4023,6 +4036,24 @@ const stakeABI = `
         "name": "requestNumber",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claimBatch",
+    "inputs": [
+      {
+        "name": "operatorAddresses",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "requestNumbers",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
       }
     ],
     "outputs": [],
@@ -4348,6 +4379,11 @@ const stakeABI = `
         "internalType": "address"
       },
       {
+        "name": "createdTime",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
         "name": "voteAddress",
         "type": "bytes",
         "internalType": "bytes"
@@ -4491,7 +4527,7 @@ const stakeABI = `
         "internalType": "address"
       },
       {
-        "name": "dayIndex",
+        "name": "index",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -4515,7 +4551,7 @@ const stakeABI = `
         "internalType": "address"
       },
       {
-        "name": "dayIndex",
+        "name": "index",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -5196,6 +5232,11 @@ const stakeABI = `
   {
     "type": "error",
     "name": "InvalidMoniker",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidRequest",
     "inputs": []
   },
   {
