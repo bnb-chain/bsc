@@ -192,7 +192,6 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// identified by the **unique** state root. It's impossible that
 	// in the same chain blocks are not adjacent but have the same
 	// root.
-	wg := sync.WaitGroup{}
 	batch := dl.db.diskdb.NewBatch()
 	if dl.id == 0 {
 		rawdb.WriteStateID(batch, dl.root, 0)
@@ -212,81 +211,69 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// many aggNodes cached. The clean cache is inherited from the original
 	// disk layer for reusing.
 	var ndl *diskLayer
-	commitErr := make(chan error, 1)
-	wg.Add(1)
-	go func() {
-		dl.commitNodesV2(bottom.aggnodes)
-		commitCommitNodesTimeTimer.UpdateSince(start)
-		if dl.buffer.canFlush(force) {
-			for {
-				exit := false
-				select {
-				case err := <-dl.immutableBuffer.flushResult:
-					// immutable buffer flush completed, get the result
-					if err != nil {
-						log.Error("Immutable buffer flush failed", "error", err)
-						commitErr <- err
-					} else {
-						exit = true
-					}
-				default:
-					if dl.immutableBuffer.empty() {
-						exit = true
-					} else {
-						// wait until the immutable buffer flush completely.
-						time.Sleep(5 * time.Microsecond)
-					}
-				}
-				if exit {
-					break
-				}
-			}
+	dl.commitNodesV2(bottom.aggnodes)
+	commitCommitNodesTimeTimer.UpdateSince(start)
 
-			ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
-			if force {
-				err := ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id)
-				if err != nil {
-					commitErr <- err
-				}
-			} else {
-				go func() {
-					err := ndl.immutableBuffer.flush(ndl.db.diskdb, ndl.cleans, ndl.id)
-					ndl.immutableBuffer.flushResult <- err
-				}()
-			}
-		} else {
-			ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer, dl.immutableBuffer)
+	// To remove outdated history objects from the end, we set the 'tail' parameter
+	// to 'oldest-1' due to the offset between the freezer index and the history ID.
+	if overflow {
+		pruned, err := truncateFromTail(batch, dl.db.freezer, oldest-1)
+		if err != nil {
+			return nil, err
 		}
-		commitErr <- nil
-		wg.Done()
-	}()
-
-	commitFlushTimer.UpdateSince(start)
-
-	truncateErr := make(chan error, 1)
-	wg.Add(1)
-	go func() {
-		// To remove outdated history objects from the end, we set the 'tail' parameter
-		// to 'oldest-1' due to the offset between the freezer index and the history ID.
-		if overflow {
-			pruned, err := truncateFromTail(batch, dl.db.freezer, oldest-1)
-			if err != nil {
-				truncateErr <- err
-			}
-			log.Debug("Pruned state history", "items", pruned, "tailid", oldest)
-		}
-		truncateErr <- nil
-		wg.Done()
-	}()
-
-	wg.Wait()
-	if err := <-commitErr; err != nil {
-		return nil, err
-	}
-	if err := <-truncateErr; err != nil {
-		return nil, err
+		log.Debug("Pruned state history", "items", pruned, "tailid", oldest)
 	}
 	commitTruncateHistoryTimer.UpdateSince(start)
+
+	if dl.buffer.canFlush(force) {
+		for {
+			exit := false
+			select {
+			case err := <-dl.immutableBuffer.flushResult:
+				// immutable buffer flush completed, get the result
+				if err != nil {
+					log.Error("Immutable buffer flush failed", "error", err)
+					return nil, err
+				} else {
+					exit = true
+				}
+			default:
+				if dl.immutableBuffer.empty() {
+					exit = true
+				} else {
+					// wait until the immutable buffer flush completely.
+					time.Sleep(5 * time.Microsecond)
+				}
+			}
+			if exit {
+				break
+			}
+		}
+
+		ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
+		if force {
+			err := ndl.immutableBuffer.flush(ndl.db.diskdb, batch, ndl.cleans, ndl.id)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			go func() {
+				err := ndl.immutableBuffer.flush(ndl.db.diskdb, batch, ndl.cleans, ndl.id)
+				ndl.immutableBuffer.flushResult <- err
+			}()
+		}
+	} else {
+		go func() {
+			err := batch.Write()
+			if err != nil {
+				panic(err)
+			}
+			batch.Reset()
+		}()
+		ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer, dl.immutableBuffer)
+	}
+
+	commitFlushTimer.UpdateSince(start)
 	return ndl, nil
 }
 

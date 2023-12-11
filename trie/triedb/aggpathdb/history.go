@@ -619,9 +619,6 @@ func truncateFromTail(batch ethdb.Batch, freezer *rawdb.ResettableFreezer, ntail
 		}
 		rawdb.DeleteStateID(batch, m.root)
 	}
-	if err := batch.Write(); err != nil {
-		return 0, err
-	}
 	otail, err = freezer.TruncateTail(ntail)
 	if err != nil {
 		return 0, err
