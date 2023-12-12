@@ -431,27 +431,31 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 	return params.BSCChainConfig, params.BSCGenesisHash, nil
 }
 
-// For any block in g.Config which is nil but the same block in defaultConfig is not
-// set the block in genesis config to the block in defaultConfig.
+// For any block or time in g.Config which is nil but the same field in defaultConfig is not
+// set the field in genesis config to the field in defaultConfig.
 // Reflection is used to avoid a long series of if statements with hardcoded block names.
-func (g *Genesis) setDefaultBlockValues(defaultConfig *params.ChainConfig) {
-	// Regex to match block names
-	blockRegex := regexp.MustCompile(`.*Block$`)
+func (g *Genesis) setDefaultHardforkValues(defaultConfig *params.ChainConfig) {
+	// Regex to match block names or time names
+	hardforkPattern := []string{`.*Block$`, `.*Time$`}
 
-	// Get reflect values
-	gConfigElem := reflect.ValueOf(g.Config).Elem()
-	defaultConfigElem := reflect.ValueOf(defaultConfig).Elem()
+	for _, pat := range hardforkPattern {
+		hardforkRegex := regexp.MustCompile(pat)
 
-	// Iterate over fields in config
-	for i := 0; i < gConfigElem.NumField(); i++ {
-		gConfigField := gConfigElem.Field(i)
-		defaultConfigField := defaultConfigElem.Field(i)
-		fieldName := gConfigElem.Type().Field(i).Name
+		// Get reflect values
+		gConfigElem := reflect.ValueOf(g.Config).Elem()
+		defaultConfigElem := reflect.ValueOf(defaultConfig).Elem()
 
-		// Use the regex to check if the field is a Block field
-		if gConfigField.Kind() == reflect.Ptr && blockRegex.MatchString(fieldName) {
-			if gConfigField.IsNil() {
-				gConfigField.Set(defaultConfigField)
+		// Iterate over fields in config
+		for i := 0; i < gConfigElem.NumField(); i++ {
+			gConfigField := gConfigElem.Field(i)
+			defaultConfigField := defaultConfigElem.Field(i)
+			fieldName := gConfigElem.Type().Field(i).Name
+
+			// Use the regex to check if the field is a Block field
+			if gConfigField.Kind() == reflect.Ptr && hardforkRegex.MatchString(fieldName) {
+				if gConfigField.IsNil() {
+					gConfigField.Set(defaultConfigField)
+				}
 			}
 		}
 	}
@@ -481,7 +485,7 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		return defaultConfig
 	}
 
-	g.setDefaultBlockValues(defaultConfig)
+	g.setDefaultHardforkValues(defaultConfig)
 
 	// BSC Parlia set up
 	if g.Config.Parlia == nil {
