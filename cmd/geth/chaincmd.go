@@ -362,7 +362,7 @@ func initNetwork(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-
+	config.Eth.Genesis = genesis
 	configs, err := createNodeConfigs(config, initDir, ips, ports, size)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
