@@ -873,7 +873,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "platoBlock", block: c.PlatoBlock},
 		{name: "hertzBlock", block: c.HertzBlock},
 		{name: "hertzfixBlock", block: c.HertzfixBlock},
-		{name: "shanghaiTime", timestamp: c.ShanghaiTime},
+		{name: "keplerTime", timestamp: c.KeplerTime},
 		{name: "cancunTime", timestamp: c.CancunTime, optional: true},
 		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
