@@ -1408,8 +1408,8 @@ type DoubleSignEvidence struct {
 
 // Run input: rlp encoded DoubleSignEvidence
 // return:
-// signer address| evidence time|
-// 20 bytes      | 32 bytes     |
+// signer address| evidence height|
+// 20 bytes      | 32 bytes       |
 func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	evidence := &DoubleSignEvidence{}
 	err := rlp.DecodeBytes(input, evidence)
@@ -1445,9 +1445,9 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	if bytes.Equal(sig1, sig2) {
 		return nil, ErrExecutionReverted
 	}
-	evidenceTime := header1.Time
-	if evidenceTime < header2.Time {
-		evidenceTime = header2.Time
+	evidenceHeight := header1.Number
+	if evidenceHeight.Cmp(header2.Number) == -1 {
+		evidenceHeight = header2.Number
 	}
 
 	// check sig
@@ -1470,9 +1470,9 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 
 	returnBz := make([]byte, 52) // 20 + 32
 	signerAddr := crypto.Keccak256(pubkey1[1:])[12:]
-	evidenceTimeBz := big.NewInt(int64(evidenceTime)).Bytes()
+	evidenceHeightBz := evidenceHeight.Bytes()
 	copy(returnBz[:20], signerAddr)
-	copy(returnBz[52-len(evidenceTimeBz):], evidenceTimeBz)
+	copy(returnBz[52-len(evidenceHeightBz):], evidenceHeightBz)
 
 	return returnBz, nil
 }
