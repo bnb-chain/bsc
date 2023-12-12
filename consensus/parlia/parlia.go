@@ -1178,7 +1178,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if p.chainConfig.IsFeynman(header.Number, header.Time) {
 		// TODO: revert this
 		// if time.Unix(int64(parent.Time), 0).Day() < time.Unix(int64(header.Time), 0).Day() {
-		if time.Unix(int64(header.Time), 0).Minute() > time.Unix(int64(parent.Time), 0).Minute() {
+		if time.Unix(int64(header.Time), 0).Minute() != time.Unix(int64(parent.Time), 0).Minute() {
 			if err := p.updateValidatorSetV2(state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
 				return err
 			}
@@ -1262,7 +1262,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if p.chainConfig.IsFeynman(header.Number, header.Time) {
 		// TODO: revert this
 		// if time.Unix(int64(parent.Time), 0).Day() < time.Unix(int64(header.Time), 0).Day() {
-		if time.Unix(int64(header.Time), 0).Minute() > time.Unix(int64(parent.Time), 0).Minute() {
+		if time.Unix(int64(header.Time), 0).Minute() != time.Unix(int64(parent.Time), 0).Minute() {
 			if err := p.updateValidatorSetV2(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
 				return nil, nil, err
 			}
