@@ -124,12 +124,12 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 
 	n, err = dl.immutableBuffer.node(owner, path, hash)
 	if err != nil {
-		dirtyHitMeter.Mark(1)
-		dirtyReadMeter.Mark(int64(len(n.Blob)))
 		return nil, err
 	}
 
 	if n != nil {
+		dirtyHitMeter.Mark(1)
+		dirtyReadMeter.Mark(int64(len(n.Blob)))
 		return n.Blob, nil
 	}
 	dirtyMissMeter.Mark(1)

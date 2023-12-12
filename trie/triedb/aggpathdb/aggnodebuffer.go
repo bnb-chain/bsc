@@ -220,11 +220,13 @@ func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, batch ethdb.Batch, cleans 
 		newBatch = db.NewBatchWithSize(int(float64(b.size) * DefaultBatchRedundancyRate))
 	)
 
-	err := batch.Replay(newBatch)
-	if err != nil {
-		return err
+	if batch != nil {
+		err := batch.Replay(newBatch)
+		if err != nil {
+			return err
+		}
+		batch.Reset()
 	}
-	batch.Reset()
 
 	nodes := writeAggNodes(cleans, batch, b.aggNodes)
 	rawdb.WritePersistentStateID(batch, id)
