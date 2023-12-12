@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -17,6 +16,19 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 )
+
+// TODO: revert to normal value
+// const SecondsPerDay uint64 = 86400
+const SecondsPerDay uint64 = 60
+
+// the parmas should be blocks' time which are timestamp
+func sameDayInUTC(first, second uint64) bool {
+	return first/SecondsPerDay == second/SecondsPerDay
+}
+
+func isBreatheBlock(lastBlockTime, blockTime uint64) bool {
+	return lastBlockTime != 0 && !sameDayInUTC(lastBlockTime, blockTime)
+}
 
 // initializeFeynmanContract initialize new contracts of Feynman fork
 func (p *Parlia) initializeFeynmanContract(state *state.StateDB, header *types.Header, chain core.ChainContext,
