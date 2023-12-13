@@ -182,7 +182,7 @@ func (b *aggNodeBuffer) updateSize(delta int64) {
 func (b *aggNodeBuffer) reset() {
 	b.layers = 0
 	b.size = 0
-	b.aggNodes = make(map[common.Hash]map[string]*AggNode)
+	// b.aggNodes = make(map[common.Hash]map[string]*AggNode)
 }
 
 // empty returns an indicator if aggNodeBuffer contains any state transition inside.

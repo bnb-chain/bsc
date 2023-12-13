@@ -100,10 +100,12 @@ func (c *aggNodeCache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, err
 		cacheHit := false
 		blob, cacheHit = c.cleans.HasGet(nil, cKey)
 		if cacheHit {
+			aggNodeHitMeter.Mark(1)
 			return DecodeAggNode(blob)
 		}
 	}
 
+	aggNodeMissMeter.Mark(1)
 	// cache miss
 	if owner == (common.Hash{}) {
 		blob = rawdb.ReadAccountTrieAggNode(c.db.diskdb, aggPath)

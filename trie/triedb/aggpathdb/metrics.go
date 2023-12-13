@@ -31,6 +31,10 @@ var (
 	dirtyWriteMeter       = metrics.NewRegisteredMeter("aggpathdb/dirty/write", nil)
 	dirtyNodeHitDepthHist = metrics.NewRegisteredHistogram("aggpathdb/dirty/depth", nil, metrics.NewExpDecaySample(1028, 0.015))
 
+	aggNodeHitMeter  = metrics.NewRegisteredMeter("aggpathdb/aggnode/hit", nil)
+	aggNodeMissMeter = metrics.NewRegisteredMeter("aggpathdb/aggnode/miss", nil)
+	aggNodeTimeTimer = metrics.NewRegisteredTimer("aggpathdb/aggnode/time", nil)
+
 	dirtyFalseMeter = metrics.NewRegisteredMeter("aggpathdb/dirty/false", nil)
 	diskFalseMeter  = metrics.NewRegisteredMeter("aggpathdb/disk/false", nil)
 

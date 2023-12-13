@@ -142,10 +142,6 @@ func (dl *diffLayer) update(root common.Hash, id uint64, block uint64, nodes map
 	return newDiffLayer(dl, root, id, block, nodes, states)
 }
 
-func (dl *diffLayer) commitNodes(nodes map[common.Hash]map[string]*trienode.Node) {
-
-}
-
 // persist flushes the diff layer and all its parent layers to disk layer.
 func (dl *diffLayer) persist(force bool) (layer, error) {
 	if parent, ok := dl.parentLayer().(*diffLayer); ok {

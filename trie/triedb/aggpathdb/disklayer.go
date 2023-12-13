@@ -250,6 +250,9 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			}
 		}
 
+		// keep aggnodes in memory until next switch
+		dl.immutableBuffer.aggNodes = make(map[common.Hash]map[string]*AggNode)
+
 		ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
 		if force {
 			err := ndl.immutableBuffer.flush(ndl.db.diskdb, batch, ndl.cleans, ndl.id)
@@ -390,6 +393,7 @@ func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.No
 					_ = sem.Acquire(ctx, 1)
 					defer sem.Release(1)
 					subRes := &subTree{owner: account, aggPath: aggPath, aggNode: nil}
+					start := time.Now()
 					mx.RLock()
 					aggNode := dl.buffer.aggNode(account, []byte(aggPath))
 					mx.RUnlock()
@@ -407,13 +411,17 @@ func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.No
 								aggNode = &AggNode{}
 							}
 						} else {
+							aggNodeHitMeter.Mark(1)
 							aggNode, err = immutableAggNode.copy()
 							if err != nil {
 								panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
 							}
 						}
 						subRes.aggNode = aggNode
+					} else {
+						aggNodeHitMeter.Mark(1)
 					}
+					aggNodeTimeTimer.UpdateSince(start)
 					pathSize := 0
 					oldSize := aggNode.Size()
 					for path, n := range trieNodes {
