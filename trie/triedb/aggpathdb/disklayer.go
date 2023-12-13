@@ -211,7 +211,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// many aggNodes cached. The clean cache is inherited from the original
 	// disk layer for reusing.
 	var ndl *diskLayer
-	dl.commitNodesV2(bottom.nodes)
+	dl.commitNodesV3(bottom.aggnodes)
 	commitCommitNodesTimeTimer.UpdateSince(start)
 
 	// To remove outdated history objects from the end, we set the 'tail' parameter
@@ -328,6 +328,69 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 		}
 	}
 	return newDiskLayer(h.meta.parent, dl.id-1, dl.db, dl.cleans, dl.buffer, dl.immutableBuffer), nil
+}
+
+func (dl *diskLayer) commitNodesV3(aggnodes map[common.Hash]map[string]*AggNode) {
+	var (
+		delta         int64
+		overwrite     int64
+		overwriteSize int64
+	)
+	for owner, subset := range aggnodes {
+		current, exist := dl.buffer.aggNodes[owner]
+		if !exist {
+			// Allocate a new map for the subset instead of claiming it directly
+			// from the passed map to avoid potential concurrent map read/write.
+			// The nodes belong to original diff layer are still accessible even
+			// after merging, thus the ownership of nodes map should still belong
+			// to original layer and any mutation on it should be prevented.
+			current = make(map[string]*AggNode)
+		}
+		for aggPath, n := range subset {
+			start := time.Now()
+			aggNode, ok := current[aggPath]
+			if !ok {
+				var err error
+				immutableAggNode := dl.immutableBuffer.aggNode(owner, []byte(aggPath))
+				if immutableAggNode == nil {
+					// retrieve aggNode from clean cache and disk
+					aggNode, err = dl.cleans.aggNode(owner, []byte(aggPath))
+					if err != nil {
+						panic(fmt.Sprintf("decode agg node failed from clean cache, err: %v", err))
+					}
+					// if immutable buffer and cache missing, create a new aggNode
+					if aggNode == nil {
+						aggNode = &AggNode{}
+					}
+				} else {
+					aggNodeHitMeter.Mark(1)
+					aggNode, err = immutableAggNode.copy()
+					if err != nil {
+						panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
+					}
+				}
+			} else {
+				aggNodeHitMeter.Mark(1)
+			}
+			oldSize := aggNode.Size()
+			aggNode.Merge(n)
+			newSize := aggNode.Size()
+			if ok {
+				overwrite++
+				overwriteSize += int64(newSize - oldSize + len(aggPath) + len(owner))
+				delta += int64(newSize - oldSize)
+			} else {
+				delta += int64(newSize + len(aggPath) + len(owner))
+			}
+			current[aggPath] = aggNode
+			dl.buffer.aggNodes[owner] = current
+			aggNodeTimeTimer.UpdateSince(start)
+		}
+	}
+	dl.buffer.updateSize(delta)
+	dl.buffer.layers++
+	gcNodesMeter.Mark(overwrite)
+	gcBytesMeter.Mark(overwriteSize)
 }
 
 func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.Node) {

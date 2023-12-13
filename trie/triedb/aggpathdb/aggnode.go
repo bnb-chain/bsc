@@ -38,11 +38,26 @@ func ToAggPath(path []byte) []byte {
 }
 
 func (n *AggNode) copy() (*AggNode, error) {
-	return DecodeAggNode(n.encodeTo())
+	return &AggNode{
+		root:    n.root,
+		childes: n.childes,
+	}, nil
 }
 
 func (n *AggNode) Empty() bool {
 	return reflect.DeepEqual(n, AggNode{})
+}
+
+func (n *AggNode) Merge(delta *AggNode) {
+	if delta.root != nil {
+		n.root = delta.root
+	}
+
+	for i, c := range delta.childes {
+		if c != nil {
+			n.childes[i] = c
+		}
+	}
 }
 
 func (n *AggNode) Size() int {
