@@ -435,7 +435,7 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 // set the field in genesis config to the field in defaultConfig.
 // Reflection is used to avoid a long series of if statements with hardcoded block names.
 func (g *Genesis) setDefaultHardforkValues(defaultConfig *params.ChainConfig) {
-	// Regex to match block names or time names
+	// Regex to match Block names or Time names
 	hardforkPattern := []string{`.*Block$`, `.*Time$`}
 
 	for _, pat := range hardforkPattern {
@@ -451,7 +451,7 @@ func (g *Genesis) setDefaultHardforkValues(defaultConfig *params.ChainConfig) {
 			defaultConfigField := defaultConfigElem.Field(i)
 			fieldName := gConfigElem.Type().Field(i).Name
 
-			// Use the regex to check if the field is a Block field
+			// Use the regex to check if the field is a Block or Time field
 			if gConfigField.Kind() == reflect.Ptr && hardforkRegex.MatchString(fieldName) {
 				if gConfigField.IsNil() {
 					gConfigField.Set(defaultConfigField)
@@ -461,7 +461,7 @@ func (g *Genesis) setDefaultHardforkValues(defaultConfig *params.ChainConfig) {
 	}
 }
 
-// Hard fork block height specified in config.toml has higher priority, but
+// Hard fork field specified in config.toml has higher priority, but
 // if it is not specified in config.toml, use the default height in code.
 func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 	var defaultConfig *params.ChainConfig
