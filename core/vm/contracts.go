@@ -1445,10 +1445,6 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	if bytes.Equal(sig1, sig2) {
 		return nil, ErrExecutionReverted
 	}
-	evidenceHeight := header1.Number
-	if evidenceHeight.Cmp(header2.Number) == -1 {
-		evidenceHeight = header2.Number
-	}
 
 	// check sig
 	msgHash1 := types.SealHash(header1, evidence.ChainId)
@@ -1470,7 +1466,7 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 
 	returnBz := make([]byte, 52) // 20 + 32
 	signerAddr := crypto.Keccak256(pubkey1[1:])[12:]
-	evidenceHeightBz := evidenceHeight.Bytes()
+	evidenceHeightBz := header1.Number.Bytes()
 	copy(returnBz[:20], signerAddr)
 	copy(returnBz[52-len(evidenceHeightBz):], evidenceHeightBz)
 
