@@ -115,6 +115,7 @@ type Config struct {
 	DirectBroadcast     bool
 	DisableSnapProtocol bool //Whether disable snap protocol
 	EnableTrustProtocol bool //Whether enable trust protocol
+	DisableBscProtocol  bool //Whether disable bsc protocol
 	PipeCommit          bool
 	RangeLimit          bool
 

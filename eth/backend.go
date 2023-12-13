@@ -600,7 +600,9 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 	if s.config.EnableTrustProtocol {
 		protos = append(protos, trust.MakeProtocols((*trustHandler)(s.handler), s.snapDialCandidates)...)
 	}
-	protos = append(protos, bsc.MakeProtocols((*bscHandler)(s.handler), s.bscDialCandidates)...)
+	if !s.config.DisableBscProtocol {
+		protos = append(protos, bsc.MakeProtocols((*bscHandler)(s.handler), s.bscDialCandidates)...)
+	}
 
 	return protos
 }

@@ -111,6 +111,11 @@ var (
 		Usage:    "Enable trust protocol",
 		Category: flags.FastNodeCategory,
 	}
+	DisableBscProtocolFlag = &cli.BoolFlag{
+		Name:     "disablebscprotocol",
+		Usage:    "Disable bsc protocol",
+		Category: flags.FastFinalityCategory,
+	}
 	PipeCommitFlag = &cli.BoolFlag{
 		Name:     "pipecommit",
 		Usage:    "Enable MPT pipeline commit, it will improve syncing performance. It is an experimental feature(default is false)",
@@ -1919,6 +1924,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(EnableTrustProtocolFlag.Name) {
 		cfg.EnableTrustProtocol = ctx.IsSet(EnableTrustProtocolFlag.Name)
+	}
+	if ctx.IsSet(DisableBscProtocolFlag.Name) {
+		if ctx.Bool(MiningEnabledFlag.Name) {
+			log.Crit("bsc protocol can't be disabled when mining is enabled")
+		}
+		cfg.DisableBscProtocol = ctx.Bool(DisableBscProtocolFlag.Name)
 	}
 	if ctx.IsSet(PipeCommitFlag.Name) {
 		log.Warn("The --pipecommit flag is deprecated and could be removed in the future!")
