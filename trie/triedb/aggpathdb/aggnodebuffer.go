@@ -209,23 +209,23 @@ func (b *aggNodeBuffer) canFlush(force bool) bool {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, batch ethdb.Batch, cleans *aggNodeCache, id uint64) error {
+func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, bt ethdb.Batch, cleans *aggNodeCache, id uint64) error {
 	// Ensure the target state id is aligned with the internal counter.
 	head := rawdb.ReadPersistentStateID(db)
 	if head+b.layers != id {
 		return fmt.Errorf("buffer layers (%d) cannot be applied on top of persisted state id (%d) to reach requested state id (%d)", b.layers, head, id)
 	}
 	var (
-		start    = time.Now()
-		newBatch = db.NewBatchWithSize(int(float64(b.size) * DefaultBatchRedundancyRate))
+		start = time.Now()
+		batch = db.NewBatchWithSize(int(float64(b.size) * DefaultBatchRedundancyRate))
 	)
 
-	if batch != nil {
-		err := batch.Replay(newBatch)
+	if bt != nil {
+		err := bt.Replay(batch)
 		if err != nil {
 			return err
 		}
-		batch.Reset()
+		bt.Reset()
 	}
 
 	nodes := writeAggNodes(cleans, batch, b.aggNodes)

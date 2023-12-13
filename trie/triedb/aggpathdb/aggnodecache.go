@@ -16,10 +16,10 @@ type aggNodeCache struct {
 
 func newAggNodeCache(db *Database, cleans *fastcache.Cache, cacheSize int) *aggNodeCache {
 	if cleans == nil {
-		cleans = fastcache.New(cacheSize)
+		cleans = fastcache.New(cacheSize * 2)
 	}
 
-	log.Info("Allocated node cache", "size", cacheSize)
+	log.Info("Allocated node cache", "size", cacheSize*2)
 	return &aggNodeCache{
 		cleans: cleans,
 		db:     db,
