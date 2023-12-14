@@ -283,3 +283,12 @@ func cacheKey(owner common.Hash, path []byte) []byte {
 	}
 	return append(owner.Bytes(), path...)
 }
+
+// parseCacheKey parse key of clean cache.
+func parseCacheKey(key []byte) (common.Hash, []byte) {
+	if len(key) < common.HashLength {
+		return common.Hash{}, key
+	} else {
+		return common.BytesToHash(key[:common.HashLength]), key[common.HashLength:]
+	}
+}

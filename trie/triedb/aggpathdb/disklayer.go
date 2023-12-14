@@ -336,7 +336,11 @@ func (dl *diskLayer) commitNodesV3(aggnodes map[common.Hash]map[string]*AggNode)
 		overwrite     int64
 		overwriteSize int64
 	)
+	wg := sync.WaitGroup{}
+	asyncAggNodes := sync.Map{}
+	sem := semaphore.NewWeighted(int64(1024))
 	for owner, subset := range aggnodes {
+		o := owner
 		current, exist := dl.buffer.aggNodes[owner]
 		if !exist {
 			// Allocate a new map for the subset instead of claiming it directly
@@ -360,7 +364,38 @@ func (dl *diskLayer) commitNodesV3(aggnodes map[common.Hash]map[string]*AggNode)
 					}
 					// if immutable buffer and cache missing, create a new aggNode
 					if aggNode == nil {
-						aggNode = &AggNode{}
+						ap := aggPath
+						an := n
+						wg.Add(1)
+						go func(delta *AggNode, owner common.Hash, aggPath string) {
+							_ = sem.Acquire(context.Background(), 1)
+							defer sem.Release(1)
+							var (
+								blob        []byte
+								diskAggNode *AggNode
+								err1        error
+							)
+							start1 := time.Now()
+							// cache miss
+							if owner == (common.Hash{}) {
+								blob = rawdb.ReadAccountTrieAggNode(dl.db.diskdb, []byte(aggPath))
+							} else {
+								blob = rawdb.ReadStorageTrieAggNode(dl.db.diskdb, owner, []byte(aggPath))
+							}
+							if blob == nil {
+								diskAggNode = &AggNode{}
+							} else {
+								diskAggNode, err1 = DecodeAggNode(blob)
+								if err1 != nil {
+									panic(err1)
+								}
+							}
+							diskAggNode.Merge(delta)
+							asyncAggNodes.Store(string(cacheKey(owner, []byte(aggPath))), diskAggNode)
+							aggNodeTimeDiskTimer.UpdateSince(start1)
+							wg.Done()
+						}(an, o, ap)
+						continue
 					}
 				} else {
 					aggNodeHitImmuBufferMeter.Mark(1)
@@ -389,6 +424,18 @@ func (dl *diskLayer) commitNodesV3(aggnodes map[common.Hash]map[string]*AggNode)
 			aggNodeTimeTimer.UpdateSince(start)
 		}
 	}
+
+	wg.Wait()
+	asyncAggNodes.Range(func(key, value interface{}) bool {
+		owner, aggPath := parseCacheKey([]byte(key.(string)))
+		current, exist := dl.buffer.aggNodes[owner]
+		if !exist {
+			current = make(map[string]*AggNode)
+		}
+		current[string(aggPath)] = value.(*AggNode)
+		dl.buffer.aggNodes[owner] = current
+		return true
+	})
 	dl.buffer.updateSize(delta)
 	dl.buffer.layers++
 	gcNodesMeter.Mark(overwrite)
