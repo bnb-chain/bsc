@@ -252,7 +252,6 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 
 		// keep aggnodes in memory until next switch
 		dl.immutableBuffer.aggNodes = make(map[common.Hash]map[string]*AggNode)
-
 		ndl = newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.immutableBuffer, dl.buffer)
 		if force {
 			err := ndl.immutableBuffer.flush(ndl.db.diskdb, batch, ndl.cleans, ndl.id)
@@ -338,7 +337,7 @@ func (dl *diskLayer) commitNodesV3(aggnodes map[common.Hash]map[string]*AggNode)
 	)
 	wg := sync.WaitGroup{}
 	asyncAggNodes := sync.Map{}
-	sem := semaphore.NewWeighted(int64(2048))
+	sem := semaphore.NewWeighted(int64(1024))
 	for owner, subset := range aggnodes {
 		o := owner
 		current, exist := dl.buffer.aggNodes[owner]
@@ -413,6 +412,7 @@ func (dl *diskLayer) commitNodesV3(aggnodes map[common.Hash]map[string]*AggNode)
 		}
 		current[string(aggPath)] = value.(*AggNode)
 		dl.buffer.aggNodes[owner] = current
+		delta += int64(value.(*AggNode).Size() + len(aggPath) + len(owner))
 		return true
 	})
 	dl.buffer.updateSize(delta)
