@@ -111,8 +111,8 @@ func New(conf *Config) (*Node, error) {
 
 			rotateHours := uint(1) // To maintain backwards compatibility, if RotateHours is not set, then it defaults to 1
 			if conf.LogConfig.RotateHours != nil {
-				if *conf.LogConfig.RotateHours > 24 {
-					return nil, errors.New("Config.LogConfig.RotateHours cannot be greater than 24")
+				if *conf.LogConfig.RotateHours > 23 {
+					return nil, errors.New("Config.LogConfig.RotateHours cannot be greater than 23")
 				}
 
 				rotateHours = *conf.LogConfig.RotateHours
