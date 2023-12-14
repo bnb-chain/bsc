@@ -107,8 +107,20 @@ func (c *aggNodeCache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, err
 			return DecodeAggNode(blob)
 		}
 	}
+	aggNodeMissMeter.Mark(1)
+	start2 := time.Now()
+	// cache miss
+	if owner == (common.Hash{}) {
+		blob = rawdb.ReadAccountTrieAggNode(c.db.diskdb, aggPath)
+	} else {
+		blob = rawdb.ReadStorageTrieAggNode(c.db.diskdb, owner, aggPath)
+	}
+	if blob == nil {
+		return nil, nil
+	}
+	defer aggNodeTimeDiskTimer.UpdateSince(start2)
 
-	return nil, nil
+	return DecodeAggNode(blob)
 }
 
 func (c *aggNodeCache) Reset() {
