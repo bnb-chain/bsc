@@ -71,8 +71,8 @@ func testSetupGenesis(t *testing.T, scheme string) {
 			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
 				return SetupGenesisBlock(db, trie.NewDatabase(db, newDbConfig(scheme)), nil)
 			},
-			wantHash:   params.MainnetGenesisHash,
-			wantConfig: params.MainnetChainConfig,
+			wantHash:   params.BSCGenesisHash,
+			wantConfig: params.BSCChainConfig,
 		},
 		{
 			name: "mainnet block in DB, genesis == nil",
@@ -258,9 +258,9 @@ func TestConfigOrDefault(t *testing.T) {
 	}
 }
 
-func TestSetDefaultBlockValues(t *testing.T) {
+func TestSetDefaultHardforkValues(t *testing.T) {
 	genesis := &Genesis{Config: &params.ChainConfig{ChainID: big.NewInt(66), HomesteadBlock: big.NewInt(11)}}
-	genesis.setDefaultBlockValues(params.BSCChainConfig)
+	genesis.setDefaultHardforkValues(params.BSCChainConfig)
 
 	// Make sure the non-nil block was not modified
 	if genesis.Config.HomesteadBlock.Cmp(big.NewInt(11)) != 0 {
@@ -278,6 +278,14 @@ func TestSetDefaultBlockValues(t *testing.T) {
 
 	if genesis.Config.PlanckBlock.Cmp(params.BSCChainConfig.PlanckBlock) != 0 {
 		t.Errorf("Nano block not matching: in genesis = %v , in defaultConfig = %v", genesis.Config.PlanckBlock, params.BSCChainConfig.PlanckBlock)
+	}
+
+	// Spot check a few times
+	if *genesis.Config.ShanghaiTime != *params.BSCChainConfig.ShanghaiTime {
+		t.Errorf("Shanghai Time not matching: in genesis = %d , in defaultConfig = %d", *genesis.Config.ShanghaiTime, *params.BSCChainConfig.ShanghaiTime)
+	}
+	if *genesis.Config.KeplerTime != *params.BSCChainConfig.KeplerTime {
+		t.Errorf("Kepler Time not matching: in genesis = %d , in defaultConfig = %d", *genesis.Config.KeplerTime, *params.BSCChainConfig.KeplerTime)
 	}
 
 	// Lastly make sure non-block fields such as ChainID have not been modified
