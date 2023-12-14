@@ -2,6 +2,7 @@ package aggpathdb
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -94,18 +95,21 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 }
 
 func (c *aggNodeCache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, error) {
+	start := time.Now()
 	var blob []byte
 	cKey := cacheKey(owner, aggPath)
 	if c.cleans != nil {
 		cacheHit := false
 		blob, cacheHit = c.cleans.HasGet(nil, cKey)
 		if cacheHit {
-			aggNodeHitMeter.Mark(1)
+			defer aggNodeTimeCleanCacheTimer.UpdateSince(start)
+			aggNodeHitCleanCacheMeter.Mark(1)
 			return DecodeAggNode(blob)
 		}
 	}
 
 	aggNodeMissMeter.Mark(1)
+	start2 := time.Now()
 	// cache miss
 	if owner == (common.Hash{}) {
 		blob = rawdb.ReadAccountTrieAggNode(c.db.diskdb, aggPath)
@@ -115,6 +119,7 @@ func (c *aggNodeCache) aggNode(owner common.Hash, aggPath []byte) (*AggNode, err
 	if blob == nil {
 		return nil, nil
 	}
+	defer aggNodeTimeDiskTimer.UpdateSince(start2)
 
 	return DecodeAggNode(blob)
 }

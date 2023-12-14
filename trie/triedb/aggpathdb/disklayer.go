@@ -363,14 +363,16 @@ func (dl *diskLayer) commitNodesV3(aggnodes map[common.Hash]map[string]*AggNode)
 						aggNode = &AggNode{}
 					}
 				} else {
-					aggNodeHitMeter.Mark(1)
+					aggNodeHitImmuBufferMeter.Mark(1)
 					aggNode, err = immutableAggNode.copy()
 					if err != nil {
 						panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
 					}
+					aggNodeTimeImmuBufferTimer.UpdateSince(start)
 				}
 			} else {
-				aggNodeHitMeter.Mark(1)
+				aggNodeHitBufferMeter.Mark(1)
+				aggNodeTimeBufferTimer.UpdateSince(start)
 			}
 			oldSize := aggNode.Size()
 			aggNode.Merge(n)
@@ -474,15 +476,12 @@ func (dl *diskLayer) commitNodesV2(nodes map[common.Hash]map[string]*trienode.No
 								aggNode = &AggNode{}
 							}
 						} else {
-							aggNodeHitMeter.Mark(1)
 							aggNode, err = immutableAggNode.copy()
 							if err != nil {
 								panic(fmt.Sprintf("decode agg node failed from immutable buffer, err: %v", err))
 							}
 						}
 						subRes.aggNode = aggNode
-					} else {
-						aggNodeHitMeter.Mark(1)
 					}
 					aggNodeTimeTimer.UpdateSince(start)
 					pathSize := 0
