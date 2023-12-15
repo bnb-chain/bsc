@@ -192,6 +192,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 			WriteStallEnd:   db.onWriteStallEnd,
 		},
 		Logger: panicLogger{}, // TODO(karalabe): Delete when this is upstreamed in Pebble
+		Levels: make([]pebble.LevelOptions, 7),
 	}
 
 	for i := 0; i < len(opt.Levels); i++ {
