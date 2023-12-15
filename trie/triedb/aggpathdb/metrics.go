@@ -36,7 +36,6 @@ var (
 	aggNodeHitCleanCacheMeter = metrics.NewRegisteredMeter("aggpathdb/aggnode/hit/cleancache", nil)
 
 	aggNodeMissMeter           = metrics.NewRegisteredMeter("aggpathdb/aggnode/miss", nil)
-	aggNodeTimeTimer           = metrics.NewRegisteredTimer("aggpathdb/aggnode/time", nil)
 	aggNodeTimeBufferTimer     = metrics.NewRegisteredTimer("aggpathdb/aggnode/time/buffer", nil)
 	aggNodeTimeImmuBufferTimer = metrics.NewRegisteredTimer("aggpathdb/aggnode/time/immubuffer", nil)
 	aggNodeTimeCleanCacheTimer = metrics.NewRegisteredTimer("aggpathdb/aggnode/time/cleancache", nil)
@@ -51,10 +50,7 @@ var (
 	commitCommitNodesTimeTimer  = metrics.NewRegisteredTimer("aggpathdb/commit/commitnodes/time", nil)
 	commitFlushTimer            = metrics.NewRegisteredTimer("aggpathdb/commit/flush/time", nil)
 	commitTruncateHistoryTimer  = metrics.NewRegisteredTimer("aggpathdb/commit/truncatehistory/time", nil)
-
-	commitNodesPart1Timer = metrics.NewRegisteredTimer("aggpathdb/commit/commitnodes1/time", nil)
-	commitNodesPart2Timer = metrics.NewRegisteredTimer("aggpathdb/commit/commitnodes2/time", nil)
-	commitNodesPart3Timer = metrics.NewRegisteredTimer("aggpathdb/commit/commitnodes3/time", nil)
+	commitMergeAsyncMapTimer    = metrics.NewRegisteredTimer("aggpathdb/commit/mergeasync/time", nil)
 
 	flushTimeTimer  = metrics.NewRegisteredTimer("aggpathdb/flush/time", nil)
 	flushNodesMeter = metrics.NewRegisteredMeter("aggpathdb/flush/aggNodes", nil)

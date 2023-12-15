@@ -37,11 +37,11 @@ func ToAggPath(path []byte) []byte {
 	}
 }
 
-func (n *AggNode) copy() (*AggNode, error) {
+func (n *AggNode) copy() *AggNode {
 	return &AggNode{
 		root:    n.root,
 		childes: n.childes,
-	}, nil
+	}
 }
 
 func (n *AggNode) Empty() bool {
