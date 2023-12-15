@@ -2487,6 +2487,9 @@ func MakeConsolePreloads(ctx *cli.Context) []string {
 }
 
 // ResolveStateScheme resolve state scheme from CLI flag, config file and persistent state.
+// The differences between ResolveStateScheme and ParseStateScheme are:
+// - ResolveStateScheme adds config to compare with CLI and persistent state to ensure correctness.
+// - ResolveStateScheme is only used in SetEthConfig function.
 //
 // 1. If config isn't provided, write hash mode to config by default, so in current function, config is nonempty.
 // 2. If persistent state and cli is empty, use config param.
