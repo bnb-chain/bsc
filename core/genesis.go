@@ -399,37 +399,59 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	return newcfg, stored, nil
 }
 
-// LoadChainConfig loads the stored chain config if it is already present in
-// database, otherwise, return the config in the provided genesis specification.
+// LoadChainConfig the newest chain config
+// The config that will be used is:
+//
+//	                     genesis.Config == nil     genesis.Config != nil
+//	                 +-------------------------------------------------------
+//	db has no config |   main-net default      |   genesis.Config
+//	db has config    |   from DB               |   genesis.Config (if compatible)
 func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, common.Hash, error) {
 	// Load the stored chain config from the database. It can be nil
 	// in case the database is empty. Notably, we only care about the
 	// chain config corresponds to the canonical chain.
+	var storedcfg *params.ChainConfig
 	stored := rawdb.ReadCanonicalHash(db, 0)
 	if stored != (common.Hash{}) {
-		storedcfg := rawdb.ReadChainConfig(db, stored)
-		if storedcfg != nil {
-			return storedcfg, stored, nil
-		}
+		storedcfg = rawdb.ReadChainConfig(db, stored)
 	}
 	// Load the config from the provided genesis specification
-	if genesis != nil {
-		// Reject invalid genesis spec without valid chain config
-		if genesis.Config == nil {
-			return nil, common.Hash{}, errGenesisNoConfig
+	var newcfg *params.ChainConfig
+	if genesis == nil || genesis.Config == nil {
+		if stored != params.BSCGenesisHash && stored != params.ChapelGenesisHash {
+			if storedcfg == nil {
+				// Reject invalid genesis spec without valid chain config
+				return nil, common.Hash{}, errGenesisNoConfig
+			} else {
+				return storedcfg, stored, nil
+			}
 		}
+	}
+	newcfg = genesis.configOrDefault(stored)
+
+	if storedcfg == nil {
 		// If the canonical genesis header is present, but the chain
 		// config is missing(initialize the empty leveldb with an
 		// external ancient chain segment), ensure the provided genesis
 		// is matched.
-		if stored != (common.Hash{}) && genesis.ToBlock().Hash() != stored {
+		if stored != (common.Hash{}) && genesis != nil && genesis.ToBlock().Hash() != stored {
 			return nil, common.Hash{}, &GenesisMismatchError{stored, genesis.ToBlock().Hash()}
 		}
-		return genesis.Config, stored, nil
+		return newcfg, stored, nil
+	} else {
+		// Check config compatibility and write the config. Compatibility errors
+		// are returned to the caller unless we're already at block zero.
+		head := rawdb.ReadHeadHeader(db)
+		if head == nil {
+			return newcfg, stored, errors.New("missing head header")
+		}
+		compatErr := storedcfg.CheckCompatible(newcfg, head.Number.Uint64(), head.Time)
+		fmt.Printf("Number%v,head.Time:%v, compatErr %v", head.Number.Uint64(), head.Time, compatErr)
+		if compatErr != nil && ((head.Number.Uint64() != 0 && compatErr.RewindToBlock != 0) || (head.Time != 0 && compatErr.RewindToTime != 0)) {
+			return newcfg, stored, compatErr
+		}
+		return newcfg, stored, nil
 	}
-	// There is no stored chain config and no new config provided,
-	// In this case the default chain config(mainnet) will be used
-	return params.BSCChainConfig, params.BSCGenesisHash, nil
 }
 
 // For any block or time in g.Config which is nil but the same field in defaultConfig is not

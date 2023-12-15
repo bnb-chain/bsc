@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
@@ -299,4 +300,198 @@ func newDbConfig(scheme string) *trie.Config {
 		return trie.HashDefaults
 	}
 	return &trie.Config{PathDB: pathdb.Defaults}
+}
+
+func configBlockEqual(x, y *big.Int) bool {
+	if x == nil {
+		return y == nil
+	}
+	if y == nil {
+		return x == nil
+	}
+	return x.Cmp(y) == 0
+}
+
+func configTimestampEqual(x, y *uint64) bool {
+	if x == nil {
+		return y == nil
+	}
+	if y == nil {
+		return x == nil
+	}
+	return *x == *y
+}
+
+func newUint64(val uint64) *uint64 { return &val }
+
+func TestLoadChainConfig(t *testing.T) {
+	mainetGenesis := *DefaultBSCGenesisBlock()
+
+	mainetGenesisNewgKepler := mainetGenesis
+	mainetGenesisNewgKepler.Config = &params.ChainConfig{
+		ChainID:             big.NewInt(56),
+		HomesteadBlock:      big.NewInt(0),
+		EIP150Block:         big.NewInt(0),
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    big.NewInt(0),
+		RamanujanBlock:      big.NewInt(0),
+		NielsBlock:          big.NewInt(0),
+		MirrorSyncBlock:     big.NewInt(5184000),
+		BrunoBlock:          big.NewInt(13082000),
+		EulerBlock:          big.NewInt(18907621),
+		NanoBlock:           big.NewInt(21962149),
+		MoranBlock:          big.NewInt(22107423),
+		GibbsBlock:          big.NewInt(23846001),
+		PlanckBlock:         big.NewInt(27281024),
+		LubanBlock:          big.NewInt(29020050),
+		PlatoBlock:          big.NewInt(30720096),
+		BerlinBlock:         big.NewInt(31302048),
+		LondonBlock:         big.NewInt(31302048),
+		HertzBlock:          big.NewInt(31302048),
+		HertzfixBlock:       big.NewInt(34140700),
+		// UnixTime: 1705996800 is January 23, 2024 8:00:00 AM UTC
+		ShanghaiTime: newUint64(1705996800),
+		KeplerTime:   newUint64(1705996800),
+
+		Parlia: &params.ParliaConfig{
+			Period: 3,
+			Epoch:  200,
+		},
+	}
+	mainetGenesisNewgKepler.Config.KeplerTime = newUint64(*mainetGenesis.Config.KeplerTime + 1)
+
+	headbeforeKepler := mainetGenesis.ToBlock().Header()
+	headbeforeKepler.Number = mainetGenesis.Config.LondonBlock
+	headbeforeKepler.Time = *mainetGenesis.Config.KeplerTime - 1
+
+	headAfterKepler := mainetGenesis.ToBlock().Header()
+	headAfterKepler.Number = mainetGenesis.Config.LondonBlock
+	headAfterKepler.Time = *mainetGenesis.Config.KeplerTime + 1
+	headAfterKeplerErrFromNil := params.NewTimestampCompatError("Kepler fork timestamp", nil, mainetGenesis.Config.KeplerTime)
+	headAfterKeplerErrFromNonNil := params.NewTimestampCompatError("Kepler fork timestamp", mainetGenesis.Config.KeplerTime, &headAfterKepler.Time)
+
+	mainetGenesisNoKepler := mainetGenesisNewgKepler
+	mainetGenesisNoKepler.Config = &params.ChainConfig{
+		ChainID:             big.NewInt(56),
+		HomesteadBlock:      big.NewInt(0),
+		EIP150Block:         big.NewInt(0),
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    big.NewInt(0),
+		RamanujanBlock:      big.NewInt(0),
+		NielsBlock:          big.NewInt(0),
+		MirrorSyncBlock:     big.NewInt(5184000),
+		BrunoBlock:          big.NewInt(13082000),
+		EulerBlock:          big.NewInt(18907621),
+		NanoBlock:           big.NewInt(21962149),
+		MoranBlock:          big.NewInt(22107423),
+		GibbsBlock:          big.NewInt(23846001),
+		PlanckBlock:         big.NewInt(27281024),
+		LubanBlock:          big.NewInt(29020050),
+		PlatoBlock:          big.NewInt(30720096),
+		BerlinBlock:         big.NewInt(31302048),
+		LondonBlock:         big.NewInt(31302048),
+		HertzBlock:          big.NewInt(31302048),
+		HertzfixBlock:       big.NewInt(34140700),
+		// UnixTime: 1705996800 is January 23, 2024 8:00:00 AM UTC
+		ShanghaiTime: newUint64(1705996800),
+		KeplerTime:   newUint64(1705996800),
+
+		Parlia: &params.ParliaConfig{
+			Period: 3,
+			Epoch:  200,
+		},
+	}
+	mainetGenesisNoKepler.Config.KeplerTime = nil
+
+	privateNetGenesisHash := common.Hash{1}
+
+	for i, c := range []struct {
+		storedHash    common.Hash
+		storedCfg     *params.ChainConfig
+		newGenesisCfg *Genesis
+		currentHead   *types.Header
+		expectedCfg   *params.ChainConfig
+		expectedHash  common.Hash
+		expectedErr   error
+	}{
+		// ------------if---- genesis == nil || genesis.Config == nil----------------//
+		// private net
+		// stored nil config
+		{privateNetGenesisHash, nil, nil, headAfterKepler, nil, common.Hash{}, errGenesisNoConfig},
+		// stored config without Kepler
+		{privateNetGenesisHash, mainetGenesisNoKepler.Config, nil, headbeforeKepler, mainetGenesisNoKepler.Config, privateNetGenesisHash, nil},
+		// stored newest config, current head before kepler
+		{privateNetGenesisHash, params.BSCChainConfig, nil, headbeforeKepler, params.BSCChainConfig, privateNetGenesisHash, nil},
+		// stored newest config, current head after kepler
+		{privateNetGenesisHash, params.BSCChainConfig, nil, headbeforeKepler, params.BSCChainConfig, privateNetGenesisHash, nil},
+		// mainnet
+		// stored nil config
+		{params.BSCGenesisHash, nil, nil, headAfterKepler, params.BSCChainConfig, params.BSCGenesisHash, nil},
+		// stored config without Keple
+		{params.BSCGenesisHash, mainetGenesisNoKepler.Config, nil, headbeforeKepler, params.BSCChainConfig, params.BSCGenesisHash, nil},
+		// stored newest config, current head before kepler
+		{params.BSCGenesisHash, params.BSCChainConfig, nil, headbeforeKepler, params.BSCChainConfig, params.BSCGenesisHash, nil},
+		// stored newest config, current head after kepler
+		{params.BSCGenesisHash, params.BSCChainConfig, nil, headbeforeKepler, params.BSCChainConfig, params.BSCGenesisHash, nil},
+
+		// --------------------------------else-------------------------------------//
+		// private net
+		// stored config without Kepler, config without kepler, current head before kepler
+		{privateNetGenesisHash, mainetGenesisNoKepler.Config, &mainetGenesisNoKepler, headbeforeKepler, mainetGenesisNoKepler.Config, privateNetGenesisHash, nil},
+		// stored newest config, config with new Kepler time, current head before Kepler
+		{privateNetGenesisHash, params.BSCChainConfig, &mainetGenesisNewgKepler, headbeforeKepler, mainetGenesisNewgKepler.Config, privateNetGenesisHash, nil},
+		// stored newest config, config with new Kepler time, current head after Kepler
+		{privateNetGenesisHash, params.BSCChainConfig, &mainetGenesisNewgKepler, headAfterKepler, mainetGenesisNewgKepler.Config, privateNetGenesisHash, headAfterKeplerErrFromNonNil},
+		// stored newest config, same config
+		{privateNetGenesisHash, params.BSCChainConfig, &mainetGenesis, headAfterKepler, params.BSCChainConfig, privateNetGenesisHash, nil},
+		// mainnet
+		// stored config without Kepler, config without kepler, current head after kepler
+		{params.BSCGenesisHash, mainetGenesisNoKepler.Config, &mainetGenesisNoKepler, headAfterKepler, params.BSCChainConfig, params.BSCGenesisHash, headAfterKeplerErrFromNil},
+		// stored config without Kepler, config without kepler, current head before kepler, after this case mainetGenesisNoKepler.Config.KeplerTime changed
+		{params.BSCGenesisHash, mainetGenesisNoKepler.Config, &mainetGenesisNoKepler, headbeforeKepler, params.BSCChainConfig, params.BSCGenesisHash, nil},
+		// stored newest config, config with new Kepler time, current head before Kepler
+		{params.BSCGenesisHash, params.BSCChainConfig, &mainetGenesisNewgKepler, headbeforeKepler, mainetGenesisNewgKepler.Config, params.BSCGenesisHash, nil},
+		// stored newest config, config with new Kepler time, current head after Kepler
+		{params.BSCGenesisHash, params.BSCChainConfig, &mainetGenesisNewgKepler, headAfterKepler, mainetGenesisNewgKepler.Config, params.BSCGenesisHash, headAfterKeplerErrFromNonNil},
+		// stored newest config, same config, current head after kepler
+		{params.BSCGenesisHash, params.BSCChainConfig, &mainetGenesis, headAfterKepler, params.BSCChainConfig, params.BSCGenesisHash, nil},
+	} {
+		// prepare
+		db := rawdb.NewMemoryDatabase()
+		rawdb.WriteCanonicalHash(db, c.storedHash, 0)
+		if c.storedCfg != nil {
+			rawdb.WriteChainConfig(db, c.storedHash, c.storedCfg)
+		}
+		rawdb.WriteHeadHeaderHash(db, c.currentHead.Hash())
+		rawdb.WriteHeader(db, c.currentHead)
+
+		// load
+		loadCfg, loadHash, LoadErr := LoadChainConfig(db, c.newGenesisCfg)
+
+		// spot check
+		if (LoadErr == nil && c.expectedErr != nil) ||
+			(LoadErr != nil && c.expectedErr == nil) ||
+			(LoadErr != nil && c.expectedErr != nil && LoadErr.Error() != c.expectedErr.Error()) {
+			t.Errorf("Case %d, Load error not matching: want = %v , load = %v", i, c.expectedErr, LoadErr)
+		}
+		if loadHash != c.expectedHash {
+			t.Errorf("Case %d, Load Genesis Hash not matching: want = %v , load = %v", i, c.expectedHash, loadHash)
+		}
+		if (loadCfg == nil && c.expectedCfg != nil) ||
+			(loadCfg != nil && c.expectedCfg == nil) ||
+			((loadCfg != nil && c.expectedCfg != nil) && (!configBlockEqual(loadCfg.HertzBlock, c.expectedCfg.HertzBlock) ||
+				!configTimestampEqual(loadCfg.KeplerTime, c.expectedCfg.KeplerTime))) {
+			t.Errorf("Case %d, Load Config not matching:  want = %v , load = %v", i, c.expectedCfg, loadCfg)
+		}
+	}
 }

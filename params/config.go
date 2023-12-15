@@ -1008,19 +1008,19 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 		return newBlockCompatError("hertzfix fork block", c.HertzfixBlock, newcfg.HertzfixBlock)
 	}
 	if isForkTimestampIncompatible(c.ShanghaiTime, newcfg.ShanghaiTime, headTimestamp) {
-		return newTimestampCompatError("Shanghai fork timestamp", c.ShanghaiTime, newcfg.ShanghaiTime)
+		return NewTimestampCompatError("Shanghai fork timestamp", c.ShanghaiTime, newcfg.ShanghaiTime)
 	}
 	if isForkTimestampIncompatible(c.KeplerTime, newcfg.KeplerTime, headTimestamp) {
-		return newTimestampCompatError("Kepler fork timestamp", c.KeplerTime, newcfg.KeplerTime)
+		return NewTimestampCompatError("Kepler fork timestamp", c.KeplerTime, newcfg.KeplerTime)
 	}
 	if isForkTimestampIncompatible(c.CancunTime, newcfg.CancunTime, headTimestamp) {
-		return newTimestampCompatError("Cancun fork timestamp", c.CancunTime, newcfg.CancunTime)
+		return NewTimestampCompatError("Cancun fork timestamp", c.CancunTime, newcfg.CancunTime)
 	}
 	if isForkTimestampIncompatible(c.PragueTime, newcfg.PragueTime, headTimestamp) {
-		return newTimestampCompatError("Prague fork timestamp", c.PragueTime, newcfg.PragueTime)
+		return NewTimestampCompatError("Prague fork timestamp", c.PragueTime, newcfg.PragueTime)
 	}
 	if isForkTimestampIncompatible(c.VerkleTime, newcfg.VerkleTime, headTimestamp) {
-		return newTimestampCompatError("Verkle fork timestamp", c.VerkleTime, newcfg.VerkleTime)
+		return NewTimestampCompatError("Verkle fork timestamp", c.VerkleTime, newcfg.VerkleTime)
 	}
 	return nil
 }
@@ -1127,7 +1127,7 @@ func newBlockCompatError(what string, storedblock, newblock *big.Int) *ConfigCom
 	return err
 }
 
-func newTimestampCompatError(what string, storedtime, newtime *uint64) *ConfigCompatError {
+func NewTimestampCompatError(what string, storedtime, newtime *uint64) *ConfigCompatError {
 	var rew *uint64
 	switch {
 	case storedtime == nil:
@@ -1153,7 +1153,17 @@ func (err *ConfigCompatError) Error() string {
 	if err.StoredBlock != nil {
 		return fmt.Sprintf("mismatching %s in database (have block %d, want block %d, rewindto block %d)", err.What, err.StoredBlock, err.NewBlock, err.RewindToBlock)
 	}
-	return fmt.Sprintf("mismatching %s in database (have timestamp %d, want timestamp %d, rewindto timestamp %d)", err.What, err.StoredTime, err.NewTime, err.RewindToTime)
+
+	var storedTime *big.Int
+	if err.StoredTime != nil {
+		storedTime = big.NewInt(0).SetUint64(*err.StoredTime)
+	}
+	var newTime *big.Int
+	if err.NewTime != nil {
+		newTime = big.NewInt(0).SetUint64(*err.NewTime)
+	}
+
+	return fmt.Sprintf("mismatching %s in database (have timestamp %v, want timestamp %v, rewindto timestamp %d)", err.What, storedTime, newTime, err.RewindToTime)
 }
 
 // Rules wraps ChainConfig and is merely syntactic sugar or can be used for functions
