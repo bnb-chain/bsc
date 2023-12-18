@@ -437,14 +437,13 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 
 func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 	conf := params.GetBuiltInChainConfig(ghash)
-	switch {
-	case conf != nil:
+	if conf != nil {
 		return conf
-	case g != nil:
-		return g.Config // it could be a custom config for QA test, just return
-	default:
-		return params.AllEthashProtocolChanges
 	}
+	if g != nil {
+		return g.Config // it could be a custom config for QA test, just return
+	}
+	return params.AllEthashProtocolChanges
 }
 
 // ToBlock returns the genesis block according to genesis specification.

@@ -419,14 +419,14 @@ var (
 )
 
 func GetBuiltInChainConfig(ghash common.Hash) *ChainConfig {
-	switch {
-	case ghash == MainnetGenesisHash:
+	switch ghash {
+	case MainnetGenesisHash:
 		return MainnetChainConfig
-	case ghash == BSCGenesisHash:
+	case BSCGenesisHash:
 		return BSCChainConfig
-	case ghash == ChapelGenesisHash:
+	case ChapelGenesisHash:
 		return ChapelChainConfig
-	case ghash == RialtoGenesisHash:
+	case RialtoGenesisHash:
 		return RialtoChainConfig
 	default:
 		return nil
