@@ -67,27 +67,6 @@ var (
 	}
 
 	// just for prysm compile pass
-	// RopstenChainConfig contains the chain parameters to run a node on the Ropsten test network.
-	RopstenChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(3),
-		HomesteadBlock:          big.NewInt(0),
-		DAOForkBlock:            nil,
-		DAOForkSupport:          true,
-		EIP150Block:             big.NewInt(0),
-		EIP155Block:             big.NewInt(10),
-		EIP158Block:             big.NewInt(10),
-		ByzantiumBlock:          big.NewInt(1_700_000),
-		ConstantinopleBlock:     big.NewInt(4_230_000),
-		PetersburgBlock:         big.NewInt(4_939_394),
-		IstanbulBlock:           big.NewInt(6_485_846),
-		MuirGlacierBlock:        big.NewInt(7_117_117),
-		BerlinBlock:             big.NewInt(9_812_189),
-		LondonBlock:             big.NewInt(10_499_401),
-		TerminalTotalDifficulty: new(big.Int).SetUint64(50_000_000_000_000_000),
-		Ethash:                  new(EthashConfig),
-	}
-
-	// just for prysm compile pass
 	// SepoliaChainConfig contains the chain parameters to run a node on the Sepolia test network.
 	SepoliaChainConfig = &ChainConfig{
 		ChainID:             big.NewInt(11155111),
@@ -211,8 +190,9 @@ var (
 		},
 	}
 
+	// used to test hard fork upgrade, following https://github.com/bnb-chain/bsc-genesis-contract/blob/master/genesis.json
 	RialtoChainConfig = &ChainConfig{
-		ChainID:             big.NewInt(1417),
+		ChainID:             big.NewInt(714),
 		HomesteadBlock:      big.NewInt(0),
 		EIP150Block:         big.NewInt(0),
 		EIP155Block:         big.NewInt(0),
@@ -222,20 +202,23 @@ var (
 		PetersburgBlock:     big.NewInt(0),
 		IstanbulBlock:       big.NewInt(0),
 		MuirGlacierBlock:    big.NewInt(0),
-		RamanujanBlock:      big.NewInt(400),
+		RamanujanBlock:      big.NewInt(0),
 		NielsBlock:          big.NewInt(0),
-		MirrorSyncBlock:     big.NewInt(400),
-		BrunoBlock:          big.NewInt(400),
-		EulerBlock:          big.NewInt(400),
-		GibbsBlock:          big.NewInt(400),
-		NanoBlock:           nil,
-		MoranBlock:          nil,
-		PlanckBlock:         nil,
-		LubanBlock:          nil,
-		PlatoBlock:          nil,
-		BerlinBlock:         nil,
-		HertzBlock:          nil,
-		HertzfixBlock:       nil,
+		MirrorSyncBlock:     big.NewInt(1),
+		BrunoBlock:          big.NewInt(1),
+		EulerBlock:          big.NewInt(2),
+		NanoBlock:           big.NewInt(3),
+		MoranBlock:          big.NewInt(3),
+		GibbsBlock:          big.NewInt(4),
+		PlanckBlock:         big.NewInt(5),
+		LubanBlock:          big.NewInt(6),
+		PlatoBlock:          big.NewInt(7),
+		BerlinBlock:         big.NewInt(8),
+		LondonBlock:         big.NewInt(8),
+		HertzBlock:          big.NewInt(8),
+		HertzfixBlock:       big.NewInt(8),
+		ShanghaiTime:        newUint64(0),
+		KeplerTime:          newUint64(0),
 
 		Parlia: &ParliaConfig{
 			Period: 3,

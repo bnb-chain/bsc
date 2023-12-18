@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/internal/flags"
@@ -170,6 +171,19 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 // makeFullNode loads geth configuration and creates the Ethereum backend.
 func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	stack, cfg := makeConfigNode(ctx)
+	if ctx.IsSet(utils.RialtoHash.Name) {
+		v := ctx.String(utils.RialtoHash.Name)
+		params.RialtoGenesisHash = common.HexToHash(v)
+	}
+
+	if ctx.IsSet(utils.OverrideShanghai.Name) {
+		v := ctx.Uint64(utils.OverrideShanghai.Name)
+		cfg.Eth.OverrideShanghai = &v
+	}
+	if ctx.IsSet(utils.OverrideKepler.Name) {
+		v := ctx.Uint64(utils.OverrideKepler.Name)
+		cfg.Eth.OverrideKepler = &v
+	}
 	if ctx.IsSet(utils.OverrideCancun.Name) {
 		v := ctx.Uint64(utils.OverrideCancun.Name)
 		cfg.Eth.OverrideCancun = &v

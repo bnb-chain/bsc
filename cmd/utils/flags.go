@@ -290,6 +290,21 @@ var (
 		Value:    &defaultVerifyMode,
 		Category: flags.FastNodeCategory,
 	}
+	RialtoHash = &cli.StringFlag{
+		Name:     "rialtohash",
+		Usage:    "Manually specify the Rialto Genesis Hash, to trigger builtin network logic",
+		Category: flags.EthCategory,
+	}
+	OverrideShanghai = &cli.Uint64Flag{
+		Name:     "override.shanghai",
+		Usage:    "Manually specify the Shanghai fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	OverrideKepler = &cli.Uint64Flag{
+		Name:     "override.kepler",
+		Usage:    "Manually specify the Kepler fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideCancun = &cli.Uint64Flag{
 		Name:     "override.cancun",
 		Usage:    "Manually specify the Cancun fork timestamp, overriding the bundled setting",
