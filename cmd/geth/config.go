@@ -134,6 +134,9 @@ func loadBaseConfig(ctx *cli.Context) gethConfig {
 			utils.Fatalf("%v", err)
 		}
 	}
+	if !utils.ValidateStateScheme(cfg.Eth.StateScheme) {
+		utils.Fatalf("invalid state scheme param in config: %s", cfg.Eth.StateScheme)
+	}
 
 	// Apply flags.
 	utils.SetNodeConfig(ctx, &cfg.Node)
