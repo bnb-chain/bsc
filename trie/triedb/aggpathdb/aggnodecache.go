@@ -55,6 +55,8 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 		cleanMissMeter.Mark(1)
 	}
 
+	start := time.Now()
+	defer nodeDiskTimer.UpdateSince(start)
 	// Try to retrieve the trie node from the disk.
 	var (
 		nBlob []byte

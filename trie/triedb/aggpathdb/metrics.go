@@ -25,6 +25,9 @@ var (
 	cleanWriteMeter = metrics.NewRegisteredMeter("aggpathdb/clean/write", nil)
 	cleanFalseMeter = metrics.NewRegisteredMeter("aggpathdb/clean/false", nil)
 
+	nodeTimer     = metrics.NewRegisteredTimer("aggpathdb/node/time", nil)
+	nodeDiskTimer = metrics.NewRegisteredTimer("aggpathdb/node/disk/time", nil)
+
 	dirtyHitMeter         = metrics.NewRegisteredMeter("aggpathdb/dirty/hit", nil)
 	dirtyMissMeter        = metrics.NewRegisteredMeter("aggpathdb/dirty/miss", nil)
 	dirtyReadMeter        = metrics.NewRegisteredMeter("aggpathdb/dirty/read", nil)

@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -153,6 +154,8 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
+	start := time.Now()
+	defer nodeTimer.UpdateSince(start)
 	if dl.stale {
 		return nil, errSnapshotStale
 	}
@@ -190,6 +193,9 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		cleanMissMeter.Mark(1)
 	}
 	// Try to retrieve the trie node from the disk.
+	diskStart := time.Now()
+	defer nodeDiskTimer.UpdateSince(diskStart)
+
 	var (
 		nBlob []byte
 		nHash common.Hash

@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
@@ -237,6 +238,7 @@ func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, bt ethdb.Batch, cleans *ag
 // Note this function will inject all the clean node into the cleanCache
 func writeAggNodes(cache *aggNodeCache, batch ethdb.Batch, nodes map[string]*AggNode) (total int) {
 	// load the node from clean memory cache and update it, then persist it.
+	w := rlp.NewEncoderBuffer(nil)
 	for key, aggnode := range nodes {
 		owner, aggpath := parseCacheKey([]byte(key))
 		if aggnode.Empty() {
@@ -249,7 +251,8 @@ func writeAggNodes(cache *aggNodeCache, batch ethdb.Batch, nodes map[string]*Agg
 				cache.cleans.Del(cacheKey(owner, aggpath))
 			}
 		} else {
-			nbytes := aggnode.encodeTo()
+			aggnode.encodeToBuffer(&w)
+			nbytes := w.ToBytes()
 			if owner == (common.Hash{}) {
 				rawdb.WriteAccountTrieAggNode(batch, aggpath, nbytes)
 			} else {
@@ -258,6 +261,7 @@ func writeAggNodes(cache *aggNodeCache, batch ethdb.Batch, nodes map[string]*Agg
 			if cache != nil {
 				cache.Set(cacheKey(owner, aggpath), nbytes)
 			}
+			w.Reset(nil)
 		}
 	}
 	return len(nodes)

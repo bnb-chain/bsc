@@ -152,6 +152,27 @@ func (n *AggNode) encodeTo() []byte {
 	offset := w.List()
 
 	if n.root != nil {
+		writeRawNode(&w, n.root.Blob)
+	} else {
+		writeRawNode(&w, nil)
+	}
+	for _, c := range n.childes {
+		if c != nil {
+			writeRawNode(&w, c.Blob)
+		} else {
+			writeRawNode(&w, nil)
+		}
+	}
+	w.ListEnd(offset)
+	result := w.ToBytes()
+	w.Flush()
+	return result
+}
+
+func (n *AggNode) encodeToBuffer(w *rlp.EncoderBuffer) {
+	offset := w.List()
+
+	if n.root != nil {
 		writeRawNode(w, n.root.Blob)
 	} else {
 		writeRawNode(w, nil)
@@ -164,12 +185,9 @@ func (n *AggNode) encodeTo() []byte {
 		}
 	}
 	w.ListEnd(offset)
-	result := w.ToBytes()
-	w.Flush()
-	return result
 }
 
-func writeRawNode(w rlp.EncoderBuffer, n []byte) {
+func writeRawNode(w *rlp.EncoderBuffer, n []byte) {
 	if n == nil {
 		w.Write(rlp.EmptyString)
 	} else {
