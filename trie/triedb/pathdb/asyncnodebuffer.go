@@ -21,9 +21,11 @@ var _ trienodebuffer = &asyncnodebuffer{}
 // asyncnodebuffer implement trienodebuffer interface, and aysnc the nodecache
 // to disk.
 type asyncnodebuffer struct {
-	mux        sync.RWMutex
-	current    *nodecache
-	background *nodecache
+	mux          sync.RWMutex
+	current      *nodecache
+	background   *nodecache
+	stopFlushing uint64
+	flushing     uint64
 }
 
 // newAsyncNodeBuffer initializes the async node buffer with the provided nodes.
@@ -125,6 +127,10 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
+	if atomic.LoadUint64(&a.stopFlushing) == 1 {
+		return nil
+	}
+
 	if force {
 		for {
 			if atomic.LoadUint64(&a.background.immutable) == 1 {
@@ -149,7 +155,9 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 	atomic.StoreUint64(&a.current.immutable, 1)
 	a.current, a.background = a.background, a.current
 
+	atomic.StoreUint64(&a.flushing, 1)
 	go func(persistId uint64) {
+		defer atomic.StoreUint64(&a.flushing, 0)
 		for {
 			err := a.background.flush(db, clean, persistId)
 			if err == nil {
@@ -160,6 +168,15 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 		}
 	}(id)
 	return nil
+}
+
+func (a *asyncnodebuffer) waitAndStopFlushing() {
+	atomic.StoreUint64(&a.stopFlushing, 1)
+	if atomic.LoadUint64(&a.flushing) == 1 {
+		time.Sleep(time.Duration(1) * time.Second)
+		log.Info("waiting background memory table flush to disk")
+	}
+	return
 }
 
 func (a *asyncnodebuffer) getAllNodes() map[common.Hash]map[string]*trienode.Node {

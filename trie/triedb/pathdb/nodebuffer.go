@@ -241,6 +241,10 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	return nil
 }
 
+func (b *nodebuffer) waitAndStopFlushing() {
+	return
+}
+
 // writeNodes writes the trie nodes into the provided database batch.
 // Note this function will also inject all the newly written nodes
 // into clean cache.
