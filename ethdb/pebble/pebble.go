@@ -46,6 +46,9 @@ const (
 	// metricsGatheringInterval specifies the interval to retrieve pebble database
 	// compaction, io and pause stats to report to the user.
 	metricsGatheringInterval = 3 * time.Second
+
+	// numLevels is the level number of pebble sst files
+	numLevels = 7
 )
 
 // Database is a persistent key-value store based on the pebble storage engine.
@@ -196,7 +199,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 			WriteStallBegin: db.onWriteStallBegin,
 			WriteStallEnd:   db.onWriteStallEnd,
 		},
-		Levels: make([]pebble.LevelOptions, 7),
+		Levels: make([]pebble.LevelOptions, numLevels),
 		Logger: panicLogger{}, // TODO(karalabe): Delete when this is upstreamed in Pebble
 	}
 
