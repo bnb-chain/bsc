@@ -137,6 +137,9 @@ func loadBaseConfig(ctx *cli.Context) gethConfig {
 	if !utils.ValidateStateScheme(cfg.Eth.StateScheme) {
 		utils.Fatalf("invalid state scheme param in config: %s", cfg.Eth.StateScheme)
 	}
+	if cfg.Eth.Genesis != nil && cfg.Eth.Genesis.Config != nil {
+		log.Warn("Chain config in the configuration file is ignored!")
+	}
 
 	// Apply flags.
 	utils.SetNodeConfig(ctx, &cfg.Node)

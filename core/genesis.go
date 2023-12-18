@@ -23,8 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"reflect"
-	"regexp"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -399,14 +397,19 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	return newcfg, stored, nil
 }
 
-// LoadChainConfig loads the stored chain config if it is already present in
-// database, otherwise, return the config in the provided genesis specification.
+// LoadChainConfig retrieves the predefined chain configuration for the built-in network.
+// For non-built-in networks, it first attempts to load the stored chain configuration from the database.
+// If the configuration is not present, it returns the configuration specified in the provided genesis specification.
 func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, common.Hash, error) {
 	// Load the stored chain config from the database. It can be nil
 	// in case the database is empty. Notably, we only care about the
 	// chain config corresponds to the canonical chain.
 	stored := rawdb.ReadCanonicalHash(db, 0)
 	if stored != (common.Hash{}) {
+		builtInConf := params.GetBuiltInChainConfig(stored)
+		if builtInConf != nil {
+			return builtInConf, stored, nil
+		}
 		storedcfg := rawdb.ReadChainConfig(db, stored)
 		if storedcfg != nil {
 			return storedcfg, stored, nil
@@ -432,75 +435,15 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 	return params.BSCChainConfig, params.BSCGenesisHash, nil
 }
 
-// For any block or time in g.Config which is nil but the same field in defaultConfig is not
-// set the field in genesis config to the field in defaultConfig.
-// Reflection is used to avoid a long series of if statements with hardcoded block names.
-func (g *Genesis) setDefaultHardforkValues(defaultConfig *params.ChainConfig) {
-	// Regex to match Block names or Time names
-	hardforkPattern := []string{`.*Block$`, `.*Time$`}
-
-	for _, pat := range hardforkPattern {
-		hardforkRegex := regexp.MustCompile(pat)
-
-		// Get reflect values
-		gConfigElem := reflect.ValueOf(g.Config).Elem()
-		defaultConfigElem := reflect.ValueOf(defaultConfig).Elem()
-
-		// Iterate over fields in config
-		for i := 0; i < gConfigElem.NumField(); i++ {
-			gConfigField := gConfigElem.Field(i)
-			defaultConfigField := defaultConfigElem.Field(i)
-			fieldName := gConfigElem.Type().Field(i).Name
-
-			// Use the regex to check if the field is a Block or Time field
-			if gConfigField.Kind() == reflect.Ptr && hardforkRegex.MatchString(fieldName) {
-				if gConfigField.IsNil() {
-					gConfigField.Set(defaultConfigField)
-				}
-			}
-		}
-	}
-}
-
-// Hard fork field specified in config.toml has higher priority, but
-// if it is not specified in config.toml, use the default height in code.
 func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
-	var defaultConfig *params.ChainConfig
-	switch {
-	case ghash == params.MainnetGenesisHash:
-		defaultConfig = params.MainnetChainConfig
-	case ghash == params.BSCGenesisHash:
-		defaultConfig = params.BSCChainConfig
-	case ghash == params.ChapelGenesisHash:
-		defaultConfig = params.ChapelChainConfig
-	case ghash == params.RialtoGenesisHash:
-		defaultConfig = params.RialtoChainConfig
-	default:
-		if g != nil {
-			// it could be a custom config for QA test, just return
-			return g.Config
-		}
-		defaultConfig = params.AllEthashProtocolChanges
+	conf := params.GetBuiltInChainConfig(ghash)
+	if conf != nil {
+		return conf
 	}
-	if g == nil || g.Config == nil {
-		return defaultConfig
+	if g != nil {
+		return g.Config // it could be a custom config for QA test, just return
 	}
-
-	g.setDefaultHardforkValues(defaultConfig)
-
-	// BSC Parlia set up
-	if g.Config.Parlia == nil {
-		g.Config.Parlia = defaultConfig.Parlia
-	} else {
-		if g.Config.Parlia.Period == 0 {
-			g.Config.Parlia.Period = defaultConfig.Parlia.Period
-		}
-		if g.Config.Parlia.Epoch == 0 {
-			g.Config.Parlia.Epoch = defaultConfig.Parlia.Epoch
-		}
-	}
-
-	return g.Config
+	return params.AllEthashProtocolChanges
 }
 
 // ToBlock returns the genesis block according to genesis specification.
