@@ -113,3 +113,98 @@ func (d *Downloader) fetchHeadersByNumber(p *peerConnection, number uint64, amou
 		return *res.Res.(*eth.BlockHeadersPacket), res.Meta.([]common.Hash), nil
 	}
 }
+
+// fetchBodiesByHashes is a blocking version of Peer.RequestBodies
+func (d *Downloader) fetchBodiesByHashes(p *peerConnection, hashes []common.Hash) ([]*types.Body, [][]common.Hash, error) {
+	// Create the response sink and send the network request
+	start := time.Now()
+	resCh := make(chan *eth.Response)
+
+	req, err := p.peer.RequestBodies(hashes, resCh)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer req.Close()
+
+	// Wait until the response arrives, the request is cancelled or times out
+	ttl := d.peers.rates.TargetTimeout()
+
+	timeoutTimer := time.NewTimer(ttl)
+	defer timeoutTimer.Stop()
+
+	select {
+	case <-d.cancelCh:
+		return nil, nil, errCanceled
+
+	case <-timeoutTimer.C:
+		// Header retrieval timed out, update the metrics
+		p.log.Debug("Header request timed out", "elapsed", ttl)
+		headerTimeoutMeter.Mark(1)
+
+		return nil, nil, errTimeout
+
+	case res := <-resCh:
+		// Headers successfully retrieved, update the metrics
+		headerReqTimer.Update(time.Since(start))
+		headerInMeter.Mark(int64(len(*res.Res.(*eth.BlockBodiesPacket))))
+
+		// Don't reject the packet even if it turns out to be bad, downloader will
+		// disconnect the peer on its own terms. Simply delivery the headers to
+		// be processed by the caller
+		res.Done <- nil
+		packets := *res.Res.(*eth.BlockBodiesPacket)
+		bodies := make([]*types.Body, len(packets))
+		for i, p := range packets {
+			bodies[i] = &types.Body{
+				Transactions: p.Transactions,
+				Uncles:       p.Uncles,
+				Withdrawals:  p.Withdrawals,
+			}
+		}
+		hashsets := res.Meta.([][]common.Hash) // {txs hashes, uncle hashes, withdrawal hashes}
+		return bodies, hashsets, nil
+	}
+}
+
+// fetchReceiptsByHashes is a blocking version of Peer.RequestReceipts
+func (d *Downloader) fetchReceiptsByHashes(p *peerConnection, hashes []common.Hash) ([][]*types.Receipt, []common.Hash, error) {
+	// Create the response sink and send the network request
+	start := time.Now()
+	resCh := make(chan *eth.Response)
+
+	req, err := p.peer.RequestReceipts(hashes, resCh)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer req.Close()
+
+	// Wait until the response arrives, the request is cancelled or times out
+	ttl := d.peers.rates.TargetTimeout()
+
+	timeoutTimer := time.NewTimer(ttl)
+	defer timeoutTimer.Stop()
+
+	select {
+	case <-d.cancelCh:
+		return nil, nil, errCanceled
+
+	case <-timeoutTimer.C:
+		// Header retrieval timed out, update the metrics
+		p.log.Debug("Header request timed out", "elapsed", ttl)
+		headerTimeoutMeter.Mark(1)
+
+		return nil, nil, errTimeout
+
+	case res := <-resCh:
+		// Headers successfully retrieved, update the metrics
+		headerReqTimer.Update(time.Since(start))
+		headerInMeter.Mark(int64(len(*res.Res.(*eth.ReceiptsPacket))))
+
+		// Don't reject the packet even if it turns out to be bad, downloader will
+		// disconnect the peer on its own terms. Simply delivery the headers to
+		// be processed by the caller
+		res.Done <- nil
+		hashes := res.Meta.([]common.Hash) // {receipt hashes}
+		return *res.Res.(*eth.ReceiptsPacket), hashes, nil
+	}
+}

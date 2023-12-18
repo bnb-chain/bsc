@@ -588,11 +588,6 @@ func AncientInspect(db ethdb.Database) error {
 
 	log.Info("Inspect ancient prune situation...")
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
-	// if tail is not 0, just overwrite it
-	tail, _ := db.Tail()
-	if tail > 0 {
-		offset = counter(tail)
-	}
 	// Get number of ancient rows inside the freezer.
 	ancients := counter(0)
 	if count, err := db.ItemAmountInAncient(); err != nil {
@@ -606,6 +601,11 @@ func AncientInspect(db ethdb.Database) error {
 		endNumber = 0
 	} else {
 		endNumber = offset + ancients - 1
+	}
+	// if tail is not 0, just overwrite it
+	tail, _ := db.Tail()
+	if tail > 0 {
+		offset = counter(tail)
 	}
 	stats = [][]string{
 		{"Offset/StartBlockNumber", "Offset/StartBlockNumber of ancientDB", offset.String()},

@@ -214,8 +214,8 @@ type BlockChain interface {
 	// LastHistorySegment get last history segment
 	LastHistorySegment(num uint64) *params.HistorySegment
 
-	// WriteCanonicalHeaders just write header into db, it an unsafe interface, just for history segment
-	WriteCanonicalHeaders([]*types.Header, []uint64) error
+	// WriteCanonicalBlockAndReceipt just write header into db, it an unsafe interface, just for history segment
+	WriteCanonicalBlockAndReceipt([]*types.Header, []uint64, []*types.Body, [][]*types.Receipt) error
 
 	// FreezerDBReset reset freezer db to target tail & head
 	FreezerDBReset(tail, head uint64) error
@@ -1779,18 +1779,66 @@ func (d *Downloader) findAncestorFromHistorySegment(p *peerConnection, remoteHei
 		return 0, fmt.Errorf("%w: multiple headers (%d) for single request", errBadPeer, len(headers))
 	}
 
-	// check if it matches local last segment
+	// check if it matches local previous segment
 	h := hashes[0]
 	n := headers[0].Number.Uint64()
-	if d.lastSegment.MatchBlock(h, n) {
-		if !d.blockchain.HasHeader(h, n) {
-			// just write header, td, because it's snap sync, just sync history is enough
-			if err = d.blockchain.WriteCanonicalHeaders(headers, []uint64{d.lastSegment.TD}); err != nil {
-				return 0, err
-			}
-			log.Debug("sync history segment header to local", "number", n, "hash", h, "segment", d.lastSegment)
-		}
+	if !d.lastSegment.MatchBlock(h, n) {
+		return 0, nil
+	}
+
+	if d.blockchain.HasHeader(h, n) {
 		return n, nil
 	}
-	return 0, nil
+
+	body, receipts, err := d.fetchBodyAndReceiptsByHeader(p, headers[0], hashes[0])
+	if err != nil {
+		return 0, err
+	}
+	// just write header, td, because it's snap sync, just sync history is enough
+	if err = d.blockchain.WriteCanonicalBlockAndReceipt(headers, []uint64{d.lastSegment.TD}, []*types.Body{body}, [][]*types.Receipt{receipts}); err != nil {
+		return 0, err
+	}
+	log.Debug("sync history segment header to local", "number", n, "hash", h, "segment", d.lastSegment)
+	return n, nil
+}
+
+func (d *Downloader) fetchBodyAndReceiptsByHeader(p *peerConnection, header *types.Header, h common.Hash) (*types.Body, []*types.Receipt, error) {
+	// download ancient data
+	bodies, bodyHashset, err := d.fetchBodiesByHashes(p, []common.Hash{h})
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(bodies) != 1 {
+		return nil, nil, fmt.Errorf("%w: multiple bodies (%d) for single request", errBadPeer, len(bodies))
+	}
+	if header.TxHash != bodyHashset[0][0] {
+		return nil, nil, fmt.Errorf("%w: fetch body with wrong TxHash %v, expect %v", errBadPeer, bodyHashset[0][0], header.TxHash)
+	}
+	if header.UncleHash != bodyHashset[1][0] {
+		return nil, nil, fmt.Errorf("%w: fetch body with wrong UncleHash %v, expect %v", errBadPeer, bodyHashset[0][1], header.UncleHash)
+	}
+	if header.WithdrawalsHash == nil {
+		if bodies[0].Withdrawals != nil {
+			return nil, nil, fmt.Errorf("%w: fetch body with wrong Withdrawals %v, expect %v", errBadPeer, len(bodies[0].Withdrawals), header.WithdrawalsHash)
+		}
+	} else {
+		if bodies[0].Withdrawals == nil {
+			return nil, nil, fmt.Errorf("%w: fetch body with wrong Withdrawals %v, expect %v", errBadPeer, len(bodies[0].Withdrawals), *header.WithdrawalsHash)
+		}
+		if bodyHashset[2][0] != *header.WithdrawalsHash {
+			return nil, nil, fmt.Errorf("%w: fetch body with wrong Withdrawals %v, expect %v", errBadPeer, bodyHashset[2][0], *header.WithdrawalsHash)
+		}
+	}
+
+	receipts, receiptHashes, err := d.fetchReceiptsByHashes(p, []common.Hash{h})
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(receipts) != 1 {
+		return nil, nil, fmt.Errorf("%w: multiple receipts (%d) for single request", errBadPeer, len(receipts))
+	}
+	if header.ReceiptHash != receiptHashes[0] {
+		return nil, nil, fmt.Errorf("%w: fetch receipts with wrong ReceiptHash %v, expect %v", errBadPeer, receiptHashes[0], header.ReceiptHash)
+	}
+	return bodies[0], receipts[0], nil
 }

@@ -521,3 +521,8 @@ func (c *ChainIndexer) removeSectionHead(section uint64) {
 
 	c.indexDb.Delete(append([]byte("shead"), data[:]...))
 }
+
+// GetSection calculate section from head number
+func (c *ChainIndexer) GetSection(head uint64) uint64 {
+	return (head + 1) / c.sectionSize
+}

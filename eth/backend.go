@@ -222,6 +222,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		if p, ok := eth.engine.(consensus.PoSA); ok {
 			p.SetupHistorySegment(hsm)
 		}
+		if lastSegment != nil {
+			eth.bloomIndexer.AddCheckpoint(eth.bloomIndexer.GetSection(lastSegment.ReGenesisNumber), lastSegment.ReGenesisHash)
+		}
 	}
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)

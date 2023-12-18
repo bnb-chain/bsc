@@ -460,13 +460,19 @@ func (bc *BlockChain) LastHistorySegment(num uint64) *params.HistorySegment {
 	return segment
 }
 
-func (bc *BlockChain) WriteCanonicalHeaders(headers []*types.Header, tds []uint64) error {
+func (bc *BlockChain) WriteCanonicalBlockAndReceipt(headers []*types.Header, tds []uint64, bodies []*types.Body, receipts [][]*types.Receipt) error {
+	batch := bc.db.NewBatch()
 	for i, header := range headers {
 		h := header.Hash()
 		n := header.Number.Uint64()
-		rawdb.WriteTd(bc.db, h, n, new(big.Int).SetUint64(tds[i]))
-		rawdb.WriteHeader(bc.db, header)
-		rawdb.WriteCanonicalHash(bc.db, h, n)
+		rawdb.WriteTd(batch, h, n, new(big.Int).SetUint64(tds[i]))
+		rawdb.WriteHeader(batch, header)
+		rawdb.WriteBody(batch, h, n, bodies[i])
+		rawdb.WriteReceipts(batch, h, n, receipts[i])
+		rawdb.WriteCanonicalHash(batch, h, n)
+	}
+	if err := batch.Write(); err != nil {
+		return err
 	}
 	return nil
 }
