@@ -242,7 +242,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 }
 
 // journal implements the layer interface, marshaling the un-flushed trie nodes
-// along with layer meta data into provided byte buffer.
+// along with layer metadata into provided byte buffer.
 func (dl *diskLayer) journal(w io.Writer) error {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
@@ -355,7 +355,7 @@ func (db *Database) Journal(root common.Hash) error {
 	}
 	start := time.Now()
 
-	// wait and stop the flush trienodebuffer, for async node buffer need fixed diskroot
+	// wait and stop the flush trienodebuffer, for asyncnodebuffer need fixed diskroot
 	disk.buffer.waitAndStopFlushing()
 	// Short circuit if the database is in read only mode.
 	if db.readOnly {

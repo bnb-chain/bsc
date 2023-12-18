@@ -73,7 +73,7 @@ type trienodebuffer interface {
 	// getLayers return the size of cached difflayers.
 	getLayers() uint64
 
-	// waitFlushing will block unit writing the trie nodes of trienodebuffer to disk
+	// waitAndStopFlushing will block unit writing the trie nodes of trienodebuffer to disk.
 	waitAndStopFlushing()
 }
 
