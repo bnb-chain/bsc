@@ -1,4 +1,14 @@
 # Changelog
+## v1.3.7
+FEATURE
+* [\#2067](https://github.com/bnb-chain/bsc/pull/2067) cmd/geth: add check func to validate state scheme
+* [\#2068](https://github.com/bnb-chain/bsc/pull/2068) internal/ethapi: implement eth_getBlockReceipts
+
+BUGFIX
+* [\#2035](https://github.com/bnb-chain/bsc/pull/2035) all: pull snap sync PRs from upstream v1.13.5
+* [\#2072](https://github.com/bnb-chain/bsc/pull/2072) fix: fix the pebble config of level option
+* [\#2078](https://github.com/bnb-chain/bsc/pull/2078) core: LoadChainConfig return the predefined config for built-in networks firstly
+
 ## v1.3.6
 FEATURE
 * [\#2012](https://github.com/bnb-chain/bsc/pull/2012) cmd, core, ethdb: enable Pebble on 32 bits and OpenBSD
