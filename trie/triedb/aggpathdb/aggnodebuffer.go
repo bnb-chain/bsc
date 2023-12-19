@@ -33,28 +33,30 @@ import (
 // write. The content of the aggNodeBuffer must be checked before diving into
 // disk (since it basically is not-yet-written data).
 type aggNodeBuffer struct {
-	layers   uint64              // The number of diff layers aggregated inside
-	size     uint64              // The size of aggregated writes
-	limit    uint64              // The maximum memory allowance in bytes
-	aggNodes map[string]*AggNode // The dirty node set, mapped by owner, aggpath and path
+	layers   uint64                              // The number of diff layers aggregated inside
+	size     uint64                              // The size of aggregated writes
+	limit    uint64                              // The maximum memory allowance in bytes
+	aggNodes map[common.Hash]map[string]*AggNode // The dirty node set, mapped by owner, aggpath and path
 }
 
 func newEmptyAggNodeBuffer(limit int, layers uint64) *aggNodeBuffer {
 	return &aggNodeBuffer{
 		layers:   layers,
 		limit:    uint64(limit),
-		aggNodes: make(map[string]*AggNode),
+		aggNodes: make(map[common.Hash]map[string]*AggNode),
 	}
 }
 
 // newAggNodeBuffer initializes the node buffer with the provided aggNodes.
-func newAggNodeBuffer(limit int, aggNodes map[string]*AggNode, layers uint64) *aggNodeBuffer {
+func newAggNodeBuffer(limit int, aggNodes map[common.Hash]map[string]*AggNode, layers uint64) *aggNodeBuffer {
 	if aggNodes == nil {
-		aggNodes = make(map[string]*AggNode)
+		aggNodes = make(map[common.Hash]map[string]*AggNode)
 	}
 	var size uint64
-	for key, aggnode := range aggNodes {
-		size += uint64(aggnode.Size() + len(key))
+	for _, subset := range aggNodes {
+		for aggpath, aggnode := range subset {
+			size += uint64(aggnode.Size() + len(aggpath))
+		}
 	}
 	b := &aggNodeBuffer{
 		layers:   layers,
@@ -67,18 +69,16 @@ func newAggNodeBuffer(limit int, aggNodes map[string]*AggNode, layers uint64) *a
 
 // node retrieves the trie node with given node info.
 func (b *aggNodeBuffer) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {
-	var (
-		aggnode *AggNode
-		ok      bool
-	)
-	if aggnode, ok = b.aggNodes[string(cacheKey(owner, ToAggPath(path)))]; !ok {
+	subset, ok := b.aggNodes[owner]
+	if !ok {
+		return nil, nil
+	}
+	aggnode, ok := subset[string(ToAggPath(path))]
+	if !ok {
 		return nil, nil
 	}
 
 	n := aggnode.Node(path)
-	if n == nil {
-		return nil, nil
-	}
 
 	if n.Hash != hash {
 		dirtyFalseMeter.Mark(1)
@@ -89,22 +89,23 @@ func (b *aggNodeBuffer) node(owner common.Hash, path []byte, hash common.Hash) (
 }
 
 // aggnode retrieves the agg node with given node info.
-func (b *aggNodeBuffer) aggNode(owner common.Hash, aggPath []byte) *AggNode {
-	var (
-		aggnode *AggNode
-		ok      bool
-	)
-	if aggnode, ok = b.aggNodes[string(cacheKey(owner, aggPath))]; !ok {
-		return nil
+func (b *aggNodeBuffer) aggNode(owner common.Hash, aggpath []byte) (*AggNode, bool) {
+	subset, ok := b.aggNodes[owner]
+	if !ok {
+		return nil, false
+	}
+	aggnode, ok := subset[string(aggpath)]
+	if !ok {
+		return nil, false
 	}
 
-	return aggnode
+	return aggnode, true
 }
 
 // revert is the reverse operation of commit. It also merges the provided aggNodes
 // into the aggNodeBuffer, the difference is that the provided node set should
 // revert the changes made by the last state transition.
-func (b *aggNodeBuffer) revert(db ethdb.KeyValueReader, aggNodes map[string]*AggNode) error {
+func (b *aggNodeBuffer) revert(db ethdb.KeyValueReader, aggNodes map[common.Hash]map[string]*AggNode) error {
 	// Short circuit if no embedded state transition to revert.
 	if b.layers == 0 {
 		return errStateUnrecoverable
@@ -118,39 +119,44 @@ func (b *aggNodeBuffer) revert(db ethdb.KeyValueReader, aggNodes map[string]*Agg
 	}
 	var delta int64
 
-	for key, aggnode := range aggNodes {
-		owner, aggpath := parseCacheKey([]byte(key))
-
-		orig, ok := b.aggNodes[key]
+	for owner, subset := range aggNodes {
+		current, ok := b.aggNodes[owner]
 		if !ok {
-			// There is a special case in MPT that one child is removed from
-			// a fullNode which only has two children, and then a new child
-			// with different position is immediately inserted into the fullNode.
-			// In this case, the clean child of the fullNode will also be
-			// marked as dirty because of node collapse and expansion.
-			//
-			// In case of database rollback, don't panic if this "clean"
-			// node occurs which is not present in buffer.
-			var nbytes []byte
-			if owner == (common.Hash{}) {
-				nbytes = rawdb.ReadAccountTrieAggNode(db, aggpath)
-			} else {
-				nbytes = rawdb.ReadStorageTrieAggNode(db, owner, aggpath)
-			}
-
-			h := newHasher()
-			defer h.release()
-
-			orighash := h.hash(orig.encodeTo())
-
-			// Ignore the clean node in the case described above.
-			if orighash == h.hash(nbytes) {
-				continue
-			}
-			panic(fmt.Sprintf("non-existent node (%x %v) blob: %v", owner, aggpath, crypto.Keccak256Hash(nbytes).Hex()))
+			panic(fmt.Sprintf("non-existent subset (%x)", owner))
 		}
-		b.aggNodes[key] = aggnode
-		delta += int64(aggnode.Size()) - int64(orig.Size())
+		for aggpath, aggnode := range subset {
+			orig, ok := current[aggpath]
+			if !ok {
+				// There is a special case in MPT that one child is removed from
+				// a fullNode which only has two children, and then a new child
+				// with different position is immediately inserted into the fullNode.
+				// In this case, the clean child of the fullNode will also be
+				// marked as dirty because of node collapse and expansion.
+				//
+				// In case of database rollback, don't panic if this "clean"
+				// node occurs which is not present in buffer.
+				var nbytes []byte
+				if owner == (common.Hash{}) {
+					nbytes = rawdb.ReadAccountTrieAggNode(db, []byte(aggpath))
+				} else {
+					nbytes = rawdb.ReadStorageTrieAggNode(db, owner, []byte(aggpath))
+				}
+
+				h := newHasher()
+				defer h.release()
+
+				orighash := h.hash(orig.encodeTo())
+
+				// Ignore the clean node in the case described above.
+				if orighash == h.hash(nbytes) {
+					continue
+				}
+				panic(fmt.Sprintf("non-existent node (%x %v) blob: %v", owner, aggpath, crypto.Keccak256Hash(nbytes).Hex()))
+			}
+			current[aggpath] = aggnode
+			delta += int64(aggnode.Size()) - int64(orig.Size())
+		}
+		b.aggNodes[owner] = current
 	}
 	b.updateSize(delta)
 	return nil
@@ -236,35 +242,38 @@ func (b *aggNodeBuffer) flush(db ethdb.KeyValueStore, bt ethdb.Batch, cleans *ag
 
 // writeAggNodes will persist all agg node into the database
 // Note this function will inject all the clean node into the cleanCache
-func writeAggNodes(cache *aggNodeCache, batch ethdb.Batch, nodes map[string]*AggNode) (total int) {
+func writeAggNodes(cache *aggNodeCache, batch ethdb.Batch, aggnodes map[common.Hash]map[string]*AggNode) (total int) {
 	// load the node from clean memory cache and update it, then persist it.
 	w := rlp.NewEncoderBuffer(nil)
-	for key, aggnode := range nodes {
-		owner, aggpath := parseCacheKey([]byte(key))
-		if aggnode.Empty() {
-			if owner == (common.Hash{}) {
-				rawdb.DeleteAccountTrieAggNode(batch, aggpath)
+
+	for owner, subset := range aggnodes {
+		for aggpath, aggnode := range subset {
+			if aggnode.Empty() {
+				if owner == (common.Hash{}) {
+					rawdb.DeleteAccountTrieAggNode(batch, []byte(aggpath))
+				} else {
+					rawdb.DeleteStorageTrieAggNode(batch, owner, []byte(aggpath))
+				}
+				if cache != nil {
+					cache.cleans.Del(cacheKey(owner, []byte(aggpath)))
+				}
 			} else {
-				rawdb.DeleteStorageTrieAggNode(batch, owner, aggpath)
+				aggnode.encodeToBuffer(&w)
+				nbytes := w.ToBytes()
+				if owner == (common.Hash{}) {
+					rawdb.WriteAccountTrieAggNode(batch, []byte(aggpath), nbytes)
+				} else {
+					rawdb.WriteStorageTrieAggNode(batch, owner, []byte(aggpath), nbytes)
+				}
+				if cache != nil {
+					cache.Set(cacheKey(owner, []byte(aggpath)), nbytes)
+				}
+				w.Reset(nil)
 			}
-			if cache != nil {
-				cache.cleans.Del(cacheKey(owner, aggpath))
-			}
-		} else {
-			aggnode.encodeToBuffer(&w)
-			nbytes := w.ToBytes()
-			if owner == (common.Hash{}) {
-				rawdb.WriteAccountTrieAggNode(batch, aggpath, nbytes)
-			} else {
-				rawdb.WriteStorageTrieAggNode(batch, owner, aggpath, nbytes)
-			}
-			if cache != nil {
-				cache.Set(cacheKey(owner, aggpath), nbytes)
-			}
-			w.Reset(nil)
+			total++
 		}
 	}
-	return len(nodes)
+	return total
 }
 
 // cacheKey constructs the unique key of clean cache.

@@ -157,22 +157,26 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 	if err := r.Decode(&encoded); err != nil {
 		return nil, fmt.Errorf("load disk aggNodes: %v", err)
 	}
-	nodes := make(map[string]*AggNode)
+	aggnodes := make(map[common.Hash]map[string]*AggNode)
 	for _, entry := range encoded {
 		for _, n := range entry.Nodes {
-			ak := cacheKey(entry.Owner, ToAggPath(n.Path))
-			if _, ok := nodes[string(ak)]; !ok {
-				nodes[string(ak)] = &AggNode{}
+			if _, ok := aggnodes[entry.Owner]; !ok {
+				aggnodes[entry.Owner] = make(map[string]*AggNode)
+			}
+			aggpath := ToAggPath(n.Path)
+			if _, ok := aggnodes[entry.Owner][string(aggpath)]; !ok {
+				aggnodes[entry.Owner][string(aggpath)] = &AggNode{}
 			}
 			if len(n.Blob) > 0 {
-				nodes[string(ak)].Update(n.Path, trienode.New(crypto.Keccak256Hash(n.Blob), n.Blob))
+				aggnodes[entry.Owner][string(aggpath)].Update(n.Path, trienode.New(crypto.Keccak256Hash(n.Blob), n.Blob))
 			} else {
-				nodes[string(ak)].Update(n.Path, trienode.NewDeleted())
+				aggnodes[entry.Owner][string(aggpath)].Update(n.Path, trienode.NewDeleted())
 			}
 		}
 	}
 	// Calculate the internal state transitions by id difference.
-	base := newDiskLayer(root, id, db, nil, newAggNodeBuffer(db.bufferSize, nodes, id-stored), newEmptyAggNodeBuffer(db.bufferSize, 0))
+	base := newDiskLayer(root, id, db, nil, newAggNodeBuffer(db.bufferSize, nil, id-stored-1), newEmptyAggNodeBuffer(db.bufferSize, 0))
+	base.commitNodes(aggnodes)
 	return base, nil
 }
 
@@ -263,34 +267,23 @@ func (dl *diskLayer) journal(w io.Writer) error {
 	}
 	// Step three, write all unwritten aggNodes into the journal
 	nodes := make([]journalNodes, 0, len(dl.buffer.aggNodes))
-	for key, an := range dl.buffer.aggNodes {
-		owner, aggpath := parseCacheKey([]byte(key))
+
+	aggnodes := dl.allAggNodes()
+	for owner, subset := range aggnodes {
 		entry := journalNodes{Owner: owner}
-		if an.root != nil {
-			entry.Nodes = append(entry.Nodes, journalNode{Path: aggpath, Blob: an.root.Blob})
-		}
-		for i, n := range an.childes {
-			if n != nil {
-				entry.Nodes = append(entry.Nodes, journalNode{Path: append(aggpath, byte(i)), Blob: n.Blob})
+		for aggpath, aggnode := range subset {
+			if aggnode.root != nil {
+				entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(aggpath), Blob: aggnode.root.Blob})
+			}
+			for i, n := range aggnode.childes {
+				if n != nil {
+					entry.Nodes = append(entry.Nodes, journalNode{Path: append([]byte(aggpath), byte(i)), Blob: n.Blob})
+				}
 			}
 		}
 		nodes = append(nodes, entry)
 	}
-	if !dl.immutableBuffer.empty() {
-		for key, an := range dl.immutableBuffer.aggNodes {
-			owner, aggpath := parseCacheKey([]byte(key))
-			entry := journalNodes{Owner: owner}
-			if an.root != nil {
-				entry.Nodes = append(entry.Nodes, journalNode{Path: aggpath, Blob: an.root.Blob})
-			}
-			for i, n := range an.childes {
-				if n != nil {
-					entry.Nodes = append(entry.Nodes, journalNode{Path: append(aggpath, byte(i)), Blob: n.Blob})
-				}
-			}
-			nodes = append(nodes, entry)
-		}
-	}
+
 	if err := rlp.Encode(w, nodes); err != nil {
 		return err
 	}

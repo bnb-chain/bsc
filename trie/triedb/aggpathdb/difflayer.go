@@ -37,7 +37,7 @@ type diffLayer struct {
 	id       uint64                                    // Corresponding state id
 	block    uint64                                    // Associated block number
 	nodes    map[common.Hash]map[string]*trienode.Node // Cached trie nodes indexed by owner and path
-	aggnodes map[string]*AggNode
+	aggnodes map[common.Hash]map[string]*AggNode
 	states   *triestate.Set // Associated state change set for building history
 	memory   uint64         // Approximate guess as to how much memory we use
 	aggDone  bool
@@ -57,7 +57,7 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 		id:       id,
 		block:    block,
 		nodes:    nodes,
-		aggnodes: make(map[string]*AggNode),
+		aggnodes: make(map[common.Hash]map[string]*AggNode),
 		aggDone:  false,
 		states:   states,
 		parent:   parent,
@@ -71,15 +71,7 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 	}
 
 	go func() {
-		for owner, subset := range nodes {
-			for path, n := range subset {
-				ak := cacheKey(owner, ToAggPath([]byte(path)))
-				if _, ok := dl.aggnodes[string(ak)]; !ok {
-					dl.aggnodes[string(ak)] = &AggNode{}
-				}
-				dl.aggnodes[string(ak)].Update([]byte(path), n)
-			}
-		}
+		dl.aggnodes = aggregatedNodes(nodes)
 		dl.aggDone = true
 	}()
 

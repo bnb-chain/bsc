@@ -187,6 +187,27 @@ func (n *AggNode) encodeToBuffer(w *rlp.EncoderBuffer) {
 	w.ListEnd(offset)
 }
 
+func aggregatedNodes(nodes map[common.Hash]map[string]*trienode.Node) map[common.Hash]map[string]*AggNode {
+	aggnodes := make(map[common.Hash]map[string]*AggNode)
+	for owner, subset := range nodes {
+		current, exist := aggnodes[owner]
+		if !exist {
+			current = make(map[string]*AggNode)
+		}
+		for path, n := range subset {
+			aggpath := ToAggPath([]byte(path))
+			aggnode, ok := current[string(aggpath)]
+			if !ok {
+				aggnode = &AggNode{}
+				current[string(aggpath)] = aggnode
+			}
+			aggnode.Update([]byte(path), n)
+		}
+		aggnodes[owner] = current
+	}
+	return aggnodes
+}
+
 func writeRawNode(w *rlp.EncoderBuffer, n []byte) {
 	if n == nil {
 		w.Write(rlp.EmptyString)
