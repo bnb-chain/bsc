@@ -823,6 +823,10 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 		applySystemContractUpgrade(platoUpgrade[network], blockNumber, statedb, logger)
 	}
 
+	if config.IsOnShanghai(blockNumber, lastBlockTime, blockTime) {
+		logger.Info("Empty upgrade config for shanghai", "height", blockNumber.String())
+	}
+
 	if config.IsOnKepler(blockNumber, lastBlockTime, blockTime) {
 		applySystemContractUpgrade(keplerUpgrade[network], blockNumber, statedb, logger)
 	}

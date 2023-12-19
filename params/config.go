@@ -418,6 +418,21 @@ var (
 	TestRules = TestChainConfig.Rules(new(big.Int), false, 0)
 )
 
+func GetBuiltInChainConfig(ghash common.Hash) *ChainConfig {
+	switch ghash {
+	case MainnetGenesisHash:
+		return MainnetChainConfig
+	case BSCGenesisHash:
+		return BSCChainConfig
+	case ChapelGenesisHash:
+		return ChapelChainConfig
+	case RialtoGenesisHash:
+		return RialtoChainConfig
+	default:
+		return nil
+	}
+}
+
 // NetworkNames are user friendly names to use in the chain spec banner.
 var NetworkNames = map[string]string{
 	MainnetChainConfig.ChainID.String(): "mainnet",
@@ -793,6 +808,15 @@ func (c *ChainConfig) IsOnPlanck(num *big.Int) bool {
 // IsShanghai returns whether time is either equal to the Shanghai fork time or greater.
 func (c *ChainConfig) IsShanghai(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.ShanghaiTime, time)
+}
+
+// IsOnShanghai returns whether currentBlockTime is either equal to the shanghai fork time or greater firstly.
+func (c *ChainConfig) IsOnShanghai(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsShanghai(lastBlockNumber, lastBlockTime) && c.IsShanghai(currentBlockNumber, currentBlockTime)
 }
 
 // IsKepler returns whether time is either equal to the kepler fork time or greater.
