@@ -55,7 +55,7 @@ import (
 var (
 	genesisFlag = flag.String("genesis", "", "Genesis json file to seed the chain with")
 	apiPortFlag = flag.Int("apiport", 8080, "Listener port for the HTTP API connection")
-	rpcEndpoint = flag.String("rpc", "http://127.0.0.1:7777/", "Url to RPC endpoint")
+	wsEndpoint  = flag.String("ws", "http://127.0.0.1:7777/", "Url to ws endpoint")
 
 	netnameFlag = flag.String("faucet.name", "", "Network name to assign to the faucet")
 	payoutFlag  = flag.Int("faucet.amount", 1, "Number of Ethers to pay out per user request")
@@ -170,7 +170,7 @@ func main() {
 		log.Crit("Failed to unlock faucet signer account", "err", err)
 	}
 	// Assemble and start the faucet light service
-	faucet, err := newFaucet(genesis, rpcEndpoint, ks, website.Bytes(), bep2eInfos)
+	faucet, err := newFaucet(genesis, wsEndpoint, ks, website.Bytes(), bep2eInfos)
 	if err != nil {
 		log.Crit("Failed to start faucet", "err", err)
 	}
