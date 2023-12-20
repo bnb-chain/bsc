@@ -47,7 +47,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/gorilla/websocket"
 )
@@ -198,7 +197,6 @@ type bep2eInfo struct {
 // faucet represents a crypto faucet backed by an Ethereum light client.
 type faucet struct {
 	config *params.ChainConfig // Chain configurations for signing
-	stack  *node.Node          // Ethereum protocol stack
 	client *ethclient.Client   // Client connection to the Ethereum chain
 	index  []byte              // Index page to serve up on the web
 
@@ -251,8 +249,8 @@ func newFaucet(genesis *core.Genesis, url *string, ks *keystore.KeyStore, index 
 }
 
 // close terminates the Ethereum connection and tears down the faucet.
-func (f *faucet) close() error {
-	return f.stack.Close()
+func (f *faucet) close() {
+	f.client.Close()
 }
 
 // listenAndServe registers the HTTP handlers for the faucet and boots it up
