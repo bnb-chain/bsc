@@ -333,15 +333,9 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	f.lock.RLock()
 	reqs := f.reqs
 	f.lock.RUnlock()
-	ctx, _ := context.WithTimeout(context.Background(), time.Second)
-	peers, err := f.client.PeerCount(ctx)
-	if err != nil {
-		log.Warn("Failed to get peerCount on init", "err", err)
-	}
 	if err = send(wsconn, map[string]interface{}{
 		"funds":    new(big.Int).Div(balance, ether),
 		"funded":   nonce,
-		"peers":    peers,
 		"requests": reqs,
 	}, 3*time.Second); err != nil {
 		log.Warn("Failed to send initial stats to client", "err", err)
@@ -630,17 +624,10 @@ func (f *faucet) loop() {
 
 			balance := new(big.Int).Div(f.balance, ether)
 
-			ctx, _ := context.WithTimeout(context.Background(), time.Second)
-			peers, err := f.client.PeerCount(ctx)
-			if err != nil {
-				log.Warn("Failed to get peerCount", "err", err)
-			}
-
 			for _, conn := range f.conns {
 				if err := send(conn, map[string]interface{}{
 					"funds":    balance,
 					"funded":   f.nonce,
-					"peers":    peers,
 					"requests": f.reqs,
 				}, time.Second); err != nil {
 					log.Warn("Failed to send stats to client", "err", err)
