@@ -32,6 +32,7 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 	key := cacheKey(owner, aggPath)
 
 	if c.cleans != nil {
+		cleanstart := time.Now()
 		if blob := c.cleans.Get(nil, key); len(blob) > 0 {
 			aggNode, err := DecodeAggNode(blob)
 			if err != nil {
@@ -53,6 +54,7 @@ func (c *aggNodeCache) node(owner common.Hash, path []byte, hash common.Hash) ([
 			log.Error("Unexpected trie node in clean cache", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
 		}
 		cleanMissMeter.Mark(1)
+		nodeCleanCacheTimer.UpdateSince(cleanstart)
 	}
 
 	start := time.Now()

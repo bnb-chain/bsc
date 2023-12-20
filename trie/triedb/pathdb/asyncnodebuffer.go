@@ -206,6 +206,12 @@ func newNodeCache(limit, size uint64, nodes map[common.Hash]map[string]*trienode
 }
 
 func (nc *nodecache) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {
+	start := time.Now()
+	if nc.immutable == 1 {
+		defer nodeImmuBufferTimer.UpdateSince(start)
+	} else {
+		defer nodeBufferTimer.UpdateSince(start)
+	}
 	subset, ok := nc.nodes[owner]
 	if !ok {
 		return nil, nil

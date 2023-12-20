@@ -123,7 +123,9 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		dirtyReadMeter.Mark(int64(len(n.Blob)))
 		return n.Blob, nil
 	}
+	nodeBufferTimer.UpdateSince(start)
 
+	immustart := time.Now()
 	n, err = dl.immutableBuffer.node(owner, path, hash)
 	if err != nil {
 		return nil, err
@@ -135,6 +137,7 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		return n.Blob, nil
 	}
 	dirtyMissMeter.Mark(1)
+	nodeImmuBufferTimer.UpdateSince(immustart)
 
 	// Try to retrieve the trie node from the agg node cache.
 	blob, err := dl.cleans.node(owner, path, hash)
