@@ -1,4 +1,32 @@
 # Changelog
+## v1.3.7
+FEATURE
+* [\#2067](https://github.com/bnb-chain/bsc/pull/2067) cmd/geth: add check func to validate state scheme
+* [\#2068](https://github.com/bnb-chain/bsc/pull/2068) internal/ethapi: implement eth_getBlockReceipts
+
+BUGFIX
+* [\#2035](https://github.com/bnb-chain/bsc/pull/2035) all: pull snap sync PRs from upstream v1.13.5
+* [\#2072](https://github.com/bnb-chain/bsc/pull/2072) fix: fix the pebble config of level option
+* [\#2078](https://github.com/bnb-chain/bsc/pull/2078) core: LoadChainConfig return the predefined config for built-in networks firstly
+
+## v1.3.6
+FEATURE
+* [\#2012](https://github.com/bnb-chain/bsc/pull/2012) cmd, core, ethdb: enable Pebble on 32 bits and OpenBSD
+* [\#2063](https://github.com/bnb-chain/bsc/pull/2063) log: support to disable log rotate by hours
+* [\#2064](https://github.com/bnb-chain/bsc/pull/2064) log: limit rotateHours in range [0,23]
+
+BUGFIX
+* [\#2058](https://github.com/bnb-chain/bsc/pull/2058) params: set default hardfork times
+
+IMPROVEMENT
+* [\#2015](https://github.com/bnb-chain/bsc/pull/2015) cmd, core, eth: change default network from ETH to BSC
+* [\#2036](https://github.com/bnb-chain/bsc/pull/2036) cmd/jsutils: add 2 tools get validator version and block txs number
+* [\#2037](https://github.com/bnb-chain/bsc/pull/2037) core/txpool/legacypool: respect nolocals-setting
+* [\#2042](https://github.com/bnb-chain/bsc/pull/2042) core/systemcontracts: update CommitUrl for keplerUpgrade
+* [\#2043](https://github.com/bnb-chain/bsc/pull/2043) tests/truffle: adapt changes in bsc-genesis-contracts
+* [\#2051](https://github.com/bnb-chain/bsc/pull/2051) core/vote: wait some blocks before voting since mining begin
+* [\#2060](https://github.com/bnb-chain/bsc/pull/2060) cmd/utils: allow HTTPHost and WSHost flags precede
+
 ## v1.3.5
 FEATURE
 * [\#1970](https://github.com/bnb-chain/bsc/pull/1970) core: enable Shanghai EIPs

@@ -23,8 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"reflect"
-	"regexp"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -202,8 +200,8 @@ func CommitGenesisState(db ethdb.Database, triedb *trie.Database, blockhash comm
 		// - private network, can't recover
 		var genesis *Genesis
 		switch blockhash {
-		case params.MainnetGenesisHash:
-			genesis = DefaultGenesisBlock()
+		case params.BSCGenesisHash:
+			genesis = DefaultBSCGenesisBlock()
 		}
 		if genesis != nil {
 			alloc = genesis.Alloc
@@ -318,8 +316,8 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	systemcontracts.GenesisHash = stored
 	if (stored == common.Hash{}) {
 		if genesis == nil {
-			log.Info("Writing default main-net genesis block")
-			genesis = DefaultGenesisBlock()
+			log.Info("Writing default BSC mainnet genesis block")
+			genesis = DefaultBSCGenesisBlock()
 		} else {
 			log.Info("Writing custom genesis block")
 		}
@@ -328,6 +326,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 			return genesis.Config, common.Hash{}, err
 		}
 		applyOverrides(genesis.Config)
+		log.Info("genesis block hash", "hash", block.Hash())
 		return genesis.Config, block.Hash(), nil
 	}
 	// The genesis block is present(perhaps in ancient database) while the
@@ -337,7 +336,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	header := rawdb.ReadHeader(db, stored, 0)
 	if header.Root != types.EmptyRootHash && !triedb.Initialized(header.Root) {
 		if genesis == nil {
-			genesis = DefaultGenesisBlock()
+			genesis = DefaultBSCGenesisBlock()
 		}
 		// Ensure the stored genesis matches with the given one.
 		hash := genesis.ToBlock().Hash()
@@ -398,14 +397,19 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	return newcfg, stored, nil
 }
 
-// LoadChainConfig loads the stored chain config if it is already present in
-// database, otherwise, return the config in the provided genesis specification.
+// LoadChainConfig retrieves the predefined chain configuration for the built-in network.
+// For non-built-in networks, it first attempts to load the stored chain configuration from the database.
+// If the configuration is not present, it returns the configuration specified in the provided genesis specification.
 func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, common.Hash, error) {
 	// Load the stored chain config from the database. It can be nil
 	// in case the database is empty. Notably, we only care about the
 	// chain config corresponds to the canonical chain.
 	stored := rawdb.ReadCanonicalHash(db, 0)
 	if stored != (common.Hash{}) {
+		builtInConf := params.GetBuiltInChainConfig(stored)
+		if builtInConf != nil {
+			return builtInConf, stored, nil
+		}
 		storedcfg := rawdb.ReadChainConfig(db, stored)
 		if storedcfg != nil {
 			return storedcfg, stored, nil
@@ -431,71 +435,15 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 	return params.BSCChainConfig, params.BSCGenesisHash, nil
 }
 
-// For any block in g.Config which is nil but the same block in defaultConfig is not
-// set the block in genesis config to the block in defaultConfig.
-// Reflection is used to avoid a long series of if statements with hardcoded block names.
-func (g *Genesis) setDefaultBlockValues(defaultConfig *params.ChainConfig) {
-	// Regex to match block names
-	blockRegex := regexp.MustCompile(`.*Block$`)
-
-	// Get reflect values
-	gConfigElem := reflect.ValueOf(g.Config).Elem()
-	defaultConfigElem := reflect.ValueOf(defaultConfig).Elem()
-
-	// Iterate over fields in config
-	for i := 0; i < gConfigElem.NumField(); i++ {
-		gConfigField := gConfigElem.Field(i)
-		defaultConfigField := defaultConfigElem.Field(i)
-		fieldName := gConfigElem.Type().Field(i).Name
-
-		// Use the regex to check if the field is a Block field
-		if gConfigField.Kind() == reflect.Ptr && blockRegex.MatchString(fieldName) {
-			if gConfigField.IsNil() {
-				gConfigField.Set(defaultConfigField)
-			}
-		}
-	}
-}
-
-// Hard fork block height specified in config.toml has higher priority, but
-// if it is not specified in config.toml, use the default height in code.
 func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
-	var defaultConfig *params.ChainConfig
-	switch {
-	case ghash == params.MainnetGenesisHash:
-		defaultConfig = params.MainnetChainConfig
-	case ghash == params.BSCGenesisHash:
-		defaultConfig = params.BSCChainConfig
-	case ghash == params.ChapelGenesisHash:
-		defaultConfig = params.ChapelChainConfig
-	case ghash == params.RialtoGenesisHash:
-		defaultConfig = params.RialtoChainConfig
-	default:
-		if g != nil {
-			// it could be a custom config for QA test, just return
-			return g.Config
-		}
-		defaultConfig = params.AllEthashProtocolChanges
+	conf := params.GetBuiltInChainConfig(ghash)
+	if conf != nil {
+		return conf
 	}
-	if g == nil || g.Config == nil {
-		return defaultConfig
+	if g != nil {
+		return g.Config // it could be a custom config for QA test, just return
 	}
-
-	g.setDefaultBlockValues(defaultConfig)
-
-	// BSC Parlia set up
-	if g.Config.Parlia == nil {
-		g.Config.Parlia = defaultConfig.Parlia
-	} else {
-		if g.Config.Parlia.Period == 0 {
-			g.Config.Parlia.Period = defaultConfig.Parlia.Period
-		}
-		if g.Config.Parlia.Epoch == 0 {
-			g.Config.Parlia.Epoch = defaultConfig.Parlia.Epoch
-		}
-	}
-
-	return g.Config
+	return params.AllEthashProtocolChanges
 }
 
 // ToBlock returns the genesis block according to genesis specification.
@@ -608,6 +556,22 @@ func DefaultGenesisBlock() *Genesis {
 	}
 }
 
+// DefaultBSCGenesisBlock returns the BSC mainnet genesis block.
+func DefaultBSCGenesisBlock() *Genesis {
+	alloc := decodePrealloc(bscMainnetAllocData)
+	return &Genesis{
+		Config:     params.BSCChainConfig,
+		Nonce:      0,
+		ExtraData:  hexutil.MustDecode("0x00000000000000000000000000000000000000000000000000000000000000002a7cdd959bfe8d9487b2a43b33565295a698f7e26488aa4d1955ee33403f8ccb1d4de5fb97c7ade29ef9f4360c606c7ab4db26b016007d3ad0ab86a0ee01c3b1283aa067c58eab4709f85e99d46de5fe685b1ded8013785d6623cc18d214320b6bb6475978f3adfc719c99674c072166708589033e2d9afec2be4ec20253b8642161bc3f444f53679c1f3d472f7be8361c80a4c1e7e9aaf001d0877f1cfde218ce2fd7544e0b2cc94692d4a704debef7bcb61328b8f7166496996a7da21cf1f1b04d9b3e26a3d0772d4c407bbe49438ed859fe965b140dcf1aab71a96bbad7cf34b5fa511d8e963dbba288b1960e75d64430b3230294d12c6ab2aac5c2cd68e80b16b581ea0a6e3c511bbd10f4519ece37dc24887e11b55d7ae2f5b9e386cd1b50a4550696d957cb4900f03a82012708dafc9e1b880fd083b32182b869be8e0922b81f8e175ffde54d797fe11eb03f9e3bf75f1d68bf0b8b6fb4e317a0f9d6f03eaf8ce6675bc60d8c4d90829ce8f72d0163c1d5cf348a862d55063035e7a025f4da968de7e4d7e4004197917f4070f1d6caa02bbebaebb5d7e581e4b66559e635f805ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+		GasLimit:   40000000,
+		Difficulty: big.NewInt(1),
+		Mixhash:    common.Hash(hexutil.MustDecode("0x0000000000000000000000000000000000000000000000000000000000000000")),
+		Coinbase:   common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE"),
+		Timestamp:  0x5e9da7ce,
+		Alloc:      alloc,
+	}
+}
+
 // DeveloperGenesisBlock returns the 'geth --dev' genesis block.
 func DeveloperGenesisBlock(gasLimit uint64, faucet common.Address) *Genesis {
 	// Override the default period to the user requested one
@@ -635,13 +599,34 @@ func DeveloperGenesisBlock(gasLimit uint64, faucet common.Address) *Genesis {
 }
 
 func decodePrealloc(data string) GenesisAlloc {
-	var p []struct{ Addr, Balance *big.Int }
+	var p []struct {
+		Addr    *big.Int
+		Balance *big.Int
+		Misc    *struct {
+			Nonce uint64
+			Code  []byte
+			Slots []struct {
+				Key common.Hash
+				Val common.Hash
+			}
+		} `rlp:"optional"`
+	}
 	if err := rlp.NewStream(strings.NewReader(data), 0).Decode(&p); err != nil {
 		panic(err)
 	}
 	ga := make(GenesisAlloc, len(p))
 	for _, account := range p {
-		ga[common.BigToAddress(account.Addr)] = GenesisAccount{Balance: account.Balance}
+		acc := GenesisAccount{Balance: account.Balance}
+		if account.Misc != nil {
+			acc.Nonce = account.Misc.Nonce
+			acc.Code = account.Misc.Code
+
+			acc.Storage = make(map[common.Hash]common.Hash)
+			for _, slot := range account.Misc.Slots {
+				acc.Storage[slot.Key] = slot.Val
+			}
+		}
+		ga[common.BigToAddress(account.Addr)] = acc
 	}
 	return ga
 }

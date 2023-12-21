@@ -19,11 +19,14 @@ package trie
 import (
 	"bytes"
 	"math/big"
+	"math/rand"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/trie/testutil"
+	"golang.org/x/exp/slices"
 )
 
 func TestStackTrieInsertAndHash(t *testing.T) {
@@ -166,12 +169,11 @@ func TestStackTrieInsertAndHash(t *testing.T) {
 			{"13aa", "x___________________________3", "ff0dc70ce2e5db90ee42a4c2ad12139596b890e90eb4e16526ab38fa465b35cf"},
 		},
 	}
-	st := NewStackTrie(nil)
 	for i, test := range tests {
 		// The StackTrie does not allow Insert(), Hash(), Insert(), ...
 		// so we will create new trie for every sequence length of inserts.
 		for l := 1; l <= len(test); l++ {
-			st.Reset()
+			st := NewStackTrie(nil)
 			for j := 0; j < l; j++ {
 				kv := &test[j]
 				if err := st.Update(common.FromHex(kv.K), []byte(kv.V)); err != nil {
@@ -346,47 +348,86 @@ func TestStacktrieNotModifyValues(t *testing.T) {
 	}
 }
 
-// TestStacktrieSerialization tests that the stacktrie works well if we
-// serialize/unserialize it a lot
-func TestStacktrieSerialization(t *testing.T) {
+func buildPartialTree(entries []*kv, t *testing.T) map[string]common.Hash {
 	var (
-		st       = NewStackTrie(nil)
-		nt       = NewEmpty(NewDatabase(rawdb.NewMemoryDatabase(), nil))
-		keyB     = big.NewInt(1)
-		keyDelta = big.NewInt(1)
-		vals     [][]byte
-		keys     [][]byte
+		options = NewStackTrieOptions()
+		nodes   = make(map[string]common.Hash)
 	)
-	getValue := func(i int) []byte {
-		if i%2 == 0 { // large
-			return crypto.Keccak256(big.NewInt(int64(i)).Bytes())
-		} else { //small
-			return big.NewInt(int64(i)).Bytes()
-		}
-	}
-	for i := 0; i < 10; i++ {
-		vals = append(vals, getValue(i))
-		keys = append(keys, common.BigToHash(keyB).Bytes())
-		keyB = keyB.Add(keyB, keyDelta)
-		keyDelta.Add(keyDelta, common.Big1)
-	}
-	for i, k := range keys {
-		nt.Update(k, common.CopyBytes(vals[i]))
-	}
+	var (
+		first int
+		last  = len(entries) - 1
 
-	for i, k := range keys {
-		blob, err := st.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
+		noLeft  bool
+		noRight bool
+	)
+	// Enter split mode if there are at least two elements
+	if rand.Intn(5) != 0 {
+		for {
+			first = rand.Intn(len(entries))
+			last = rand.Intn(len(entries))
+			if first <= last {
+				break
+			}
 		}
-		newSt, err := NewFromBinary(blob, nil)
-		if err != nil {
-			t.Fatal(err)
+		if first != 0 {
+			noLeft = true
 		}
-		st = newSt
-		st.Update(k, common.CopyBytes(vals[i]))
+		if last != len(entries)-1 {
+			noRight = true
+		}
 	}
-	if have, want := st.Hash(), nt.Hash(); have != want {
-		t.Fatalf("have %#x want %#x", have, want)
+	options = options.WithSkipBoundary(noLeft, noRight, nil)
+	options = options.WithWriter(func(path []byte, hash common.Hash, blob []byte) {
+		nodes[string(path)] = hash
+	})
+	tr := NewStackTrie(options)
+
+	for i := first; i <= last; i++ {
+		tr.MustUpdate(entries[i].k, entries[i].v)
+	}
+	tr.Commit()
+	return nodes
+}
+
+func TestPartialStackTrie(t *testing.T) {
+	for round := 0; round < 100; round++ {
+		var (
+			n       = rand.Intn(100) + 1
+			entries []*kv
+		)
+		for i := 0; i < n; i++ {
+			var val []byte
+			if rand.Intn(3) == 0 {
+				val = testutil.RandBytes(3)
+			} else {
+				val = testutil.RandBytes(32)
+			}
+			entries = append(entries, &kv{
+				k: testutil.RandBytes(32),
+				v: val,
+			})
+		}
+		slices.SortFunc(entries, (*kv).cmp)
+
+		var (
+			nodes   = make(map[string]common.Hash)
+			options = NewStackTrieOptions().WithWriter(func(path []byte, hash common.Hash, blob []byte) {
+				nodes[string(path)] = hash
+			})
+		)
+		tr := NewStackTrie(options)
+
+		for i := 0; i < len(entries); i++ {
+			tr.MustUpdate(entries[i].k, entries[i].v)
+		}
+		tr.Commit()
+
+		for j := 0; j < 100; j++ {
+			for path, hash := range buildPartialTree(entries, t) {
+				if nodes[path] != hash {
+					t.Errorf("%v, want %x, got %x", []byte(path), nodes[path], hash)
+				}
+			}
+		}
 	}
 }

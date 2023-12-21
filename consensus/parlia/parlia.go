@@ -241,6 +241,7 @@ func New(
 ) *Parlia {
 	// get parlia config
 	parliaConfig := chainConfig.Parlia
+	log.Info("Parlia", "chainConfig", chainConfig)
 
 	// Set any missing consensus parameters to their defaults
 	if parliaConfig != nil && parliaConfig.Epoch == 0 {

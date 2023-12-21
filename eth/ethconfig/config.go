@@ -56,10 +56,10 @@ var LightClientGPO = gasprice.Config{
 	IgnorePrice: gasprice.DefaultIgnorePrice,
 }
 
-// Defaults contains default settings for use on the Ethereum main net.
+// Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
 	SyncMode:           downloader.SnapSync,
-	NetworkId:          1,
+	NetworkId:          56,
 	TxLookupLimit:      2350000,
 	TransactionHistory: 2350000,
 	StateHistory:       params.FullImmutabilityThreshold,

@@ -51,7 +51,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth"
-
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/filters"
@@ -165,13 +164,13 @@ var (
 	}
 	NetworkIdFlag = &cli.Uint64Flag{
 		Name:     "networkid",
-		Usage:    "Explicitly set network id (integer)(For testnets: use --goerli, --sepolia instead)",
+		Usage:    "Explicitly set network id (integer)(For testnets: use --goerli, --sepolia, --holesky instead)",
 		Value:    ethconfig.Defaults.NetworkId,
 		Category: flags.EthCategory,
 	}
-	MainnetFlag = &cli.BoolFlag{
-		Name:     "mainnet",
-		Usage:    "Ethereum mainnet",
+	BSCMainnetFlag = &cli.BoolFlag{
+		Name:     "bsc",
+		Usage:    "BSC mainnet",
 		Category: flags.EthCategory,
 	}
 	DeveloperFlag = &cli.BoolFlag{
@@ -1113,22 +1112,17 @@ var (
 	// TestnetFlags is the flag group of all built-in supported testnets.
 	TestnetFlags = []cli.Flag{}
 	// NetworkFlags is the flag group of all built-in supported networks.
-	NetworkFlags = append([]cli.Flag{MainnetFlag}, TestnetFlags...)
+	NetworkFlags = append([]cli.Flag{BSCMainnetFlag}, TestnetFlags...)
 
 	// DatabasePathFlags is the flag group of all database path flags.
 	DatabasePathFlags = []cli.Flag{
 		DataDirFlag,
 		AncientFlag,
 		RemoteDBFlag,
+		DBEngineFlag,
 		HttpHeaderFlag,
 	}
 )
-
-func init() {
-	if rawdb.PebbleEnabled {
-		DatabasePathFlags = append(DatabasePathFlags, DBEngineFlag)
-	}
-}
 
 // MakeDataDir retrieves the currently requested data directory, terminating
 // if none (or the empty string) is specified. If the node is starting a testnet,
@@ -1259,8 +1253,10 @@ func SplitAndTrim(input string) (ret []string) {
 // setHTTP creates the HTTP RPC listener interface string from the set
 // command line flags, returning empty if the HTTP endpoint is disabled.
 func setHTTP(ctx *cli.Context, cfg *node.Config) {
-	if ctx.Bool(HTTPEnabledFlag.Name) && cfg.HTTPHost == "" {
-		cfg.HTTPHost = "127.0.0.1"
+	if ctx.Bool(HTTPEnabledFlag.Name) {
+		if cfg.HTTPHost == "" {
+			cfg.HTTPHost = "127.0.0.1"
+		}
 		if ctx.IsSet(HTTPListenAddrFlag.Name) {
 			cfg.HTTPHost = ctx.String(HTTPListenAddrFlag.Name)
 		}
@@ -1324,8 +1320,10 @@ func setGraphQL(ctx *cli.Context, cfg *node.Config) {
 // setWS creates the WebSocket RPC listener interface string from the set
 // command line flags, returning empty if the HTTP endpoint is disabled.
 func setWS(ctx *cli.Context, cfg *node.Config) {
-	if ctx.Bool(WSEnabledFlag.Name) && cfg.WSHost == "" {
-		cfg.WSHost = "127.0.0.1"
+	if ctx.Bool(WSEnabledFlag.Name) {
+		if cfg.WSHost == "" {
+			cfg.WSHost = "127.0.0.1"
+		}
 		if ctx.IsSet(WSListenAddrFlag.Name) {
 			cfg.WSHost = ctx.String(WSListenAddrFlag.Name)
 		}
@@ -1845,7 +1843,7 @@ func CheckExclusive(ctx *cli.Context, args ...interface{}) {
 // SetEthConfig applies eth-related command line flags to the config.
 func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Avoid conflicting network flags
-	CheckExclusive(ctx, MainnetFlag, DeveloperFlag)
+	CheckExclusive(ctx, BSCMainnetFlag, DeveloperFlag)
 	CheckExclusive(ctx, LightServeFlag, SyncModeFlag, "light")
 	CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag) // Can't use both ephemeral unlocked and external signer
 
@@ -1941,7 +1939,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	// Parse state scheme, abort the process if it's not compatible.
 	chaindb := tryMakeReadOnlyDatabase(ctx, stack)
-	scheme, err := ParseStateScheme(ctx, chaindb)
+	scheme, err := ResolveStateScheme(ctx, cfg.StateScheme, chaindb)
 	chaindb.Close()
 	if err != nil {
 		Fatalf("%v", err)
@@ -2034,12 +2032,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	// Override any default configs for hard coded networks.
 	switch {
-	case ctx.Bool(MainnetFlag.Name):
+	case ctx.Bool(BSCMainnetFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
-			cfg.NetworkId = 1
+			cfg.NetworkId = 56
 		}
-		cfg.Genesis = core.DefaultGenesisBlock()
-		SetDNSDiscoveryDefaults(cfg, params.MainnetGenesisHash)
+		cfg.Genesis = core.DefaultBSCGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.BSCGenesisHash)
 	case ctx.Bool(DeveloperFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 1337
@@ -2399,8 +2397,8 @@ func DialRPCWithHeaders(endpoint string, headers []string) (*rpc.Client, error) 
 func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	var genesis *core.Genesis
 	switch {
-	case ctx.Bool(MainnetFlag.Name):
-		genesis = core.DefaultGenesisBlock()
+	case ctx.Bool(BSCMainnetFlag.Name):
+		genesis = core.DefaultBSCGenesisBlock()
 	case ctx.Bool(DeveloperFlag.Name):
 		Fatalf("Developer chains are ephemeral")
 	}
@@ -2487,6 +2485,52 @@ func MakeConsolePreloads(ctx *cli.Context) []string {
 	return preloads
 }
 
+// ResolveStateScheme resolve state scheme from CLI flag, config file and persistent state.
+// The differences between ResolveStateScheme and ParseStateScheme are:
+// - ResolveStateScheme adds config to compare with CLI and persistent state to ensure correctness.
+// - ResolveStateScheme is only used in SetEthConfig function.
+//
+// 1. If config isn't provided, write hash mode to config by default, so in current function, config is nonempty.
+// 2. If persistent state and cli is empty, use config param.
+// 3. If persistent state is empty, provide CLI flag and config, choose CLI to return.
+// 4. If persistent state is nonempty and CLI isn't provided, persistent state should be equal to config.
+// 5. If all three items are provided: if any two of the three are not equal, return error.
+func ResolveStateScheme(ctx *cli.Context, stateSchemeCfg string, disk ethdb.Database) (string, error) {
+	stored := rawdb.ReadStateScheme(disk)
+	if stored == "" {
+		// there is no persistent state data in disk db(e.g. geth init)
+		if !ctx.IsSet(StateSchemeFlag.Name) {
+			log.Info("State scheme set by config", "scheme", stateSchemeCfg)
+			return stateSchemeCfg, nil
+		}
+		// if both CLI flag and config are set, choose CLI
+		scheme := ctx.String(StateSchemeFlag.Name)
+		if !ValidateStateScheme(scheme) {
+			return "", fmt.Errorf("invalid state scheme param in CLI: %s", scheme)
+		}
+		log.Info("State scheme set by CLI", "scheme", scheme)
+		return scheme, nil
+	}
+	if !ctx.IsSet(StateSchemeFlag.Name) {
+		if stored != stateSchemeCfg {
+			return "", fmt.Errorf("incompatible state scheme, stored: %s, config: %s", stored, stateSchemeCfg)
+		}
+		log.Info("State scheme set to already existing", "scheme", stored)
+		return stored, nil
+	}
+	scheme := ctx.String(StateSchemeFlag.Name)
+	if !ValidateStateScheme(scheme) {
+		return "", fmt.Errorf("invalid state scheme param in CLI: %s", scheme)
+	}
+	// if there is persistent state data in disk db, and CLI flag, config are set,
+	// when they all are different, return error
+	if scheme != stored || scheme != stateSchemeCfg || stored != stateSchemeCfg {
+		return "", fmt.Errorf("incompatible state scheme, stored: %s, config: %s, CLI: %s", stored, stateSchemeCfg, scheme)
+	}
+	log.Info("All are provided, state scheme set to already existing", "scheme", stored)
+	return stored, nil
+}
+
 // ParseStateScheme resolves scheme identifier from CLI flag. If the provided
 // state scheme is not compatible with the one of persistent scheme, an error
 // will be returned.
@@ -2506,7 +2550,7 @@ func ParseStateScheme(ctx *cli.Context, disk ethdb.Database) (string, error) {
 		if stored == "" {
 			// use default scheme for empty database, flip it when
 			// path mode is chosen as default
-			log.Info("State schema set to default", "scheme", "hash")
+			log.Info("State scheme set to default", "scheme", "hash")
 			return rawdb.HashScheme, nil
 		}
 		log.Info("State scheme set to already existing", "scheme", stored)
@@ -2515,6 +2559,9 @@ func ParseStateScheme(ctx *cli.Context, disk ethdb.Database) (string, error) {
 	// If state scheme is specified, ensure it's compatible with
 	// persistent state.
 	scheme := ctx.String(StateSchemeFlag.Name)
+	if !ValidateStateScheme(scheme) {
+		return "", fmt.Errorf("invalid state scheme param in CLI: %s", scheme)
+	}
 	if stored == "" || scheme == stored {
 		log.Info("State scheme set by user", "scheme", scheme)
 		return scheme, nil
@@ -2544,4 +2591,13 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 		config.PathDB = pathdb.Defaults
 	}
 	return trie.NewDatabase(disk, config)
+}
+
+// ValidateStateScheme used to check state scheme whether is valid.
+// Valid state scheme: hash and path.
+func ValidateStateScheme(stateScheme string) bool {
+	if stateScheme == rawdb.HashScheme || stateScheme == rawdb.PathScheme {
+		return true
+	}
+	return false
 }

@@ -17,15 +17,18 @@ type TimeTicker struct {
 
 // NewTimeTicker creates a TimeTicker that notifies based on rotateHours parameter.
 // if rotateHours is 1 and current time is 11:32 it means that the ticker will tick at 12:00
-// if rotateHours is 5 and current time is 09:12 means that the ticker will tick at 11:00
-func NewTimeTicker(rotateHours int) *TimeTicker {
+// if rotateHours is 2 and current time is 09:12 means that the ticker will tick at 11:00
+// specially, if rotateHours is 0, then no rotation
+func NewTimeTicker(rotateHours uint) *TimeTicker {
 	ch := make(chan time.Time)
 	tt := TimeTicker{
 		stop: make(chan struct{}),
 		C:    ch,
 	}
 
-	tt.startTicker(ch, rotateHours)
+	if rotateHours > 0 {
+		tt.startTicker(ch, rotateHours)
+	}
 
 	return &tt
 }
@@ -34,7 +37,7 @@ func (tt *TimeTicker) Stop() {
 	tt.stop <- struct{}{}
 }
 
-func (tt *TimeTicker) startTicker(ch chan time.Time, rotateHours int) {
+func (tt *TimeTicker) startTicker(ch chan time.Time, rotateHours uint) {
 	go func() {
 		nextRotationHour := getNextRotationHour(time.Now(), rotateHours)
 		ticker := time.NewTicker(time.Second)
@@ -53,7 +56,7 @@ func (tt *TimeTicker) startTicker(ch chan time.Time, rotateHours int) {
 	}()
 }
 
-func getNextRotationHour(now time.Time, delta int) int {
+func getNextRotationHour(now time.Time, delta uint) int {
 	return now.Add(time.Hour * time.Duration(delta)).Hour()
 }
 
@@ -68,7 +71,7 @@ type AsyncFileWriter struct {
 	timeTicker *TimeTicker
 }
 
-func NewAsyncFileWriter(filePath string, maxBytesSize int64, rotateHours int) *AsyncFileWriter {
+func NewAsyncFileWriter(filePath string, maxBytesSize int64, rotateHours uint) *AsyncFileWriter {
 	absFilePath, err := filepath.Abs(filePath)
 	if err != nil {
 		panic(fmt.Sprintf("get file path of logger error. filePath=%s, err=%s", filePath, err))
