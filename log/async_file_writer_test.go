@@ -29,7 +29,7 @@ func TestWriterHourly(t *testing.T) {
 func TestGetNextRotationHour(t *testing.T) {
 	tcs := []struct {
 		now          time.Time
-		delta        int
+		delta        uint
 		expectedHour int
 	}{
 		{
@@ -54,7 +54,7 @@ func TestGetNextRotationHour(t *testing.T) {
 		},
 	}
 
-	test := func(now time.Time, delta, expectedHour int) func(*testing.T) {
+	test := func(now time.Time, delta uint, expectedHour int) func(*testing.T) {
 		return func(t *testing.T) {
 			got := getNextRotationHour(now, delta)
 			if got != expectedHour {
