@@ -190,7 +190,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 	if _, err := chain.InsertChain(bs); err != nil {
 		panic(err)
 	}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 10+blocksNumberSinceMining; i++ {
 		bs, _ = core.GenerateChain(params.TestChainConfig, bs[len(bs)-1], ethash.NewFaker(), db, 1, nil)
 		if _, err := chain.InsertChain(bs); err != nil {
 			panic(err)

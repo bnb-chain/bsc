@@ -71,8 +71,8 @@ func testSetupGenesis(t *testing.T, scheme string) {
 			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
 				return SetupGenesisBlock(db, trie.NewDatabase(db, newDbConfig(scheme)), nil)
 			},
-			wantHash:   params.MainnetGenesisHash,
-			wantConfig: params.MainnetChainConfig,
+			wantHash:   params.BSCGenesisHash,
+			wantConfig: params.BSCChainConfig,
 		},
 		{
 			name: "mainnet block in DB, genesis == nil",
@@ -241,12 +241,12 @@ func TestConfigOrDefault(t *testing.T) {
 	gHash := params.BSCGenesisHash
 	config := defaultGenesis.configOrDefault(gHash)
 
-	if config.ChainID.Cmp(params.MainnetChainConfig.ChainID) != 0 {
+	if config.ChainID.Cmp(params.BSCChainConfig.ChainID) != 0 {
 		t.Errorf("ChainID of resulting config should be %v, but is %v instead", params.BSCChainConfig.ChainID, config.ChainID)
 	}
 
-	if config.HomesteadBlock.Cmp(params.MainnetChainConfig.HomesteadBlock) != 0 {
-		t.Errorf("resulting config should have HomesteadBlock = %v, but instead is %v", params.MainnetChainConfig, config.HomesteadBlock)
+	if config.HomesteadBlock.Cmp(params.BSCChainConfig.HomesteadBlock) != 0 {
+		t.Errorf("resulting config should have HomesteadBlock = %v, but instead is %v", params.BSCChainConfig, config.HomesteadBlock)
 	}
 
 	if config.PlanckBlock == nil {
@@ -255,34 +255,6 @@ func TestConfigOrDefault(t *testing.T) {
 
 	if config.PlanckBlock.Cmp(params.BSCChainConfig.PlanckBlock) != 0 {
 		t.Errorf("resulting config should have PlanckBlock = %v , but instead is %v", params.BSCChainConfig.PlanckBlock, config.PlanckBlock)
-	}
-}
-
-func TestSetDefaultBlockValues(t *testing.T) {
-	genesis := &Genesis{Config: &params.ChainConfig{ChainID: big.NewInt(66), HomesteadBlock: big.NewInt(11)}}
-	genesis.setDefaultBlockValues(params.BSCChainConfig)
-
-	// Make sure the non-nil block was not modified
-	if genesis.Config.HomesteadBlock.Cmp(big.NewInt(11)) != 0 {
-		t.Errorf("Homestead block should not have been modified. HomesteadBlock = %v", genesis.Config.HomesteadBlock)
-	}
-
-	// Spot check a few blocks
-	if genesis.Config.NielsBlock.Cmp(params.BSCChainConfig.NielsBlock) != 0 {
-		t.Errorf("Niels block not matching: in genesis = %v , in defaultConfig = %v", genesis.Config.NielsBlock, params.BSCChainConfig.NielsBlock)
-	}
-
-	if genesis.Config.NanoBlock.Cmp(params.BSCChainConfig.NanoBlock) != 0 {
-		t.Errorf("Nano block not matching: in genesis = %v , in defaultConfig = %v", genesis.Config.NanoBlock, params.BSCChainConfig.NanoBlock)
-	}
-
-	if genesis.Config.PlanckBlock.Cmp(params.BSCChainConfig.PlanckBlock) != 0 {
-		t.Errorf("Nano block not matching: in genesis = %v , in defaultConfig = %v", genesis.Config.PlanckBlock, params.BSCChainConfig.PlanckBlock)
-	}
-
-	// Lastly make sure non-block fields such as ChainID have not been modified
-	if genesis.Config.ChainID.Cmp(big.NewInt(66)) != 0 {
-		t.Errorf("ChainID should not have been modified. ChainID = %v", genesis.Config.ChainID)
 	}
 }
 
