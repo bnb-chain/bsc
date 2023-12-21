@@ -169,7 +169,7 @@ func main() {
 		log.Crit("Failed to unlock faucet signer account", "err", err)
 	}
 	// Assemble and start the faucet light service
-	faucet, err := newFaucet(genesis, wsEndpoint, ks, website.Bytes(), bep2eInfos)
+	faucet, err := newFaucet(genesis, *wsEndpoint, ks, website.Bytes(), bep2eInfos)
 	if err != nil {
 		log.Crit("Failed to start faucet", "err", err)
 	}
@@ -225,12 +225,12 @@ type wsConn struct {
 	wlock sync.Mutex
 }
 
-func newFaucet(genesis *core.Genesis, url *string, ks *keystore.KeyStore, index []byte, bep2eInfos map[string]bep2eInfo) (*faucet, error) {
+func newFaucet(genesis *core.Genesis, url string, ks *keystore.KeyStore, index []byte, bep2eInfos map[string]bep2eInfo) (*faucet, error) {
 	bep2eAbi, err := abi.JSON(strings.NewReader(bep2eAbiJson))
 	if err != nil {
 		return nil, err
 	}
-	client, err := ethclient.Dial(*url)
+	client, err := ethclient.Dial(url)
 	if err != nil {
 		return nil, err
 	}
