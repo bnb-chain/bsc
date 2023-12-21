@@ -1012,6 +1012,7 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 		traceConfig = &config.TraceConfig
 	}
 	results := []map[string]interface{}{}
+	is158 := api.backend.ChainConfig().IsEIP158(block.Number())
 
 	for _, bundle := range args.Bundles {
 		header := block.Header()
@@ -1038,34 +1039,62 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 				return nil, err
 			}
 
+			// Generate the next state snapshot fast without tracing
+			//msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 			txctx := &Context{
-				//BlockHash: blockHash,
-				TxIndex: i,
-				TxHash:  tx.Hash(),
+				BlockHash:   block.Hash(),
+				BlockNumber: block.Number(),
+				TxIndex:     i,
+				TxHash:      tx.Hash(),
 			}
-
-			traceRes, err := api.traceTx(ctx, msg, txctx, vmctx, statedb, traceConfig)
+			res, err := api.traceTx(ctx, msg, txctx, vmctx, statedb, traceConfig)
 			if err != nil {
 				jsonResult := map[string]interface{}{
 					"id":    bundle.Txs[i].Id,
 					"error": fmt.Sprintf("%s", err),
 				}
 				bundleResults = append(bundleResults, jsonResult)
+				continue
 			} else {
 				jsonResult := map[string]interface{}{
 					"id":     bundle.Txs[i].Id,
-					"result": traceRes,
+					"result": res,
 				}
 				bundleResults = append(bundleResults, jsonResult)
 			}
+			//results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
+			// Finalize the state so any modifications are written to the trie
+			// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
+			statedb.Finalise(is158)
 
-			statedb.SetTxContext(tx.Hash(), i)
-			vmenv := vm.NewEVM(vmctx, core.NewEVMTxContext(msg), statedb, api.backend.ChainConfig(), vm.Config{})
-			if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit)); err != nil {
-				//failed = err
-				break
-			}
-			statedb.Finalise(vmenv.ChainConfig().IsEIP158(block.Number()))
+			//txctx := &Context{
+			//	//BlockHash: blockHash,
+			//	TxIndex: i,
+			//	TxHash:  tx.Hash(),
+			//}
+			//
+			//traceRes, err := api.traceTx(ctx, msg, txctx, vmctx, statedb, traceConfig)
+			//if err != nil {
+			//	jsonResult := map[string]interface{}{
+			//		"id":    bundle.Txs[i].Id,
+			//		"error": fmt.Sprintf("%s", err),
+			//	}
+			//	bundleResults = append(bundleResults, jsonResult)
+			//} else {
+			//	jsonResult := map[string]interface{}{
+			//		"id":     bundle.Txs[i].Id,
+			//		"result": traceRes,
+			//	}
+			//	bundleResults = append(bundleResults, jsonResult)
+			//}
+			//
+			//statedb.SetTxContext(tx.Hash(), i)
+			//vmenv := vm.NewEVM(vmctx, core.NewEVMTxContext(msg), statedb, api.backend.ChainConfig(), vm.Config{})
+			//if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit)); err != nil {
+			//	//failed = err
+			//	break
+			//}
+			//statedb.Finalise(vmenv.ChainConfig().IsEIP158(block.Number()))
 		}
 
 		bundleJsonResult["txs"] = bundleResults
