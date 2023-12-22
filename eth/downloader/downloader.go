@@ -152,7 +152,7 @@ type Downloader struct {
 	syncLogTime    time.Time // Time instance when status was last reported
 
 	// history segment feature
-	lastSegment *params.HistorySegment
+	prevSegment *params.HistorySegment
 }
 
 // LightChain encapsulates functions required to synchronise a light chain.
@@ -211,8 +211,8 @@ type BlockChain interface {
 	// with trie nodes.
 	TrieDB() *trie.Database
 
-	// LastHistorySegment get last history segment
-	LastHistorySegment(num uint64) *params.HistorySegment
+	// PrevHistorySegment get last history segment
+	PrevHistorySegment(num uint64) *params.HistorySegment
 
 	// WriteCanonicalBlockAndReceipt just write header into db, it an unsafe interface, just for history segment
 	WriteCanonicalBlockAndReceipt([]*types.Header, []uint64, []*types.Body, [][]*types.Receipt) error
@@ -499,10 +499,10 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 
 	// If the remote peer is lagging behind, no need to sync with it, drop the peer.
 	remoteHeight := remoteHeader.Number.Uint64()
-	// if enable history segment, override lastSegment
-	lastSegment := d.blockchain.LastHistorySegment(remoteHeight)
-	if lastSegment != nil {
-		d.lastSegment = lastSegment
+	// if enable history segment, override prevSegment
+	prevSegment := d.blockchain.PrevHistorySegment(remoteHeight)
+	if prevSegment != nil {
+		d.prevSegment = prevSegment
 	}
 
 	var localHeight uint64
@@ -597,7 +597,7 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 		}
 
 		// if enable history segment, force reset freezer tail
-		if d.lastSegment != nil && localHeight == 0 {
+		if d.prevSegment != nil && localHeight == 0 {
 			if err := d.blockchain.FreezerDBReset(origin, origin); err != nil {
 				return err
 			}
@@ -846,7 +846,7 @@ func (d *Downloader) findAncestor(p *peerConnection, localHeight uint64, remoteH
 	}
 
 	// try to find ancestor from history segment
-	if localHeight == 0 && mode == SnapSync && d.lastSegment != nil {
+	if localHeight == 0 && mode == SnapSync && d.prevSegment != nil {
 		return d.findAncestorFromHistorySegment(p, remoteHeight)
 	}
 
@@ -1762,11 +1762,11 @@ func (d *Downloader) reportSnapSyncProgress(force bool) {
 }
 
 func (d *Downloader) findAncestorFromHistorySegment(p *peerConnection, remoteHeight uint64) (uint64, error) {
-	if d.lastSegment == nil || d.lastSegment.ReGenesisNumber == 0 {
+	if d.prevSegment == nil || d.prevSegment.ReGenesisNumber == 0 {
 		return 0, nil
 	}
 
-	expect := d.lastSegment.ReGenesisNumber
+	expect := d.prevSegment.ReGenesisNumber
 	if expect > remoteHeight {
 		return 0, nil
 	}
@@ -1782,7 +1782,7 @@ func (d *Downloader) findAncestorFromHistorySegment(p *peerConnection, remoteHei
 	// check if it matches local previous segment
 	h := hashes[0]
 	n := headers[0].Number.Uint64()
-	if !d.lastSegment.MatchBlock(h, n) {
+	if !d.prevSegment.MatchBlock(h, n) {
 		return 0, nil
 	}
 
@@ -1795,10 +1795,10 @@ func (d *Downloader) findAncestorFromHistorySegment(p *peerConnection, remoteHei
 		return 0, err
 	}
 	// just write header, td, because it's snap sync, just sync history is enough
-	if err = d.blockchain.WriteCanonicalBlockAndReceipt(headers, []uint64{d.lastSegment.TD}, []*types.Body{body}, [][]*types.Receipt{receipts}); err != nil {
+	if err = d.blockchain.WriteCanonicalBlockAndReceipt(headers, []uint64{d.prevSegment.TD}, []*types.Body{body}, [][]*types.Receipt{receipts}); err != nil {
 		return 0, err
 	}
-	log.Debug("sync history segment header to local", "number", n, "hash", h, "segment", d.lastSegment)
+	log.Debug("sync history segment header to local", "number", n, "hash", h, "segment", d.prevSegment)
 	return n, nil
 }
 

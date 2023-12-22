@@ -449,11 +449,11 @@ func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEve
 	return bc.scope.Track(bc.finalizedHeaderFeed.Subscribe(ch))
 }
 
-func (bc *BlockChain) LastHistorySegment(num uint64) *params.HistorySegment {
+func (bc *BlockChain) PrevHistorySegment(num uint64) *params.HistorySegment {
 	if bc.hsm == nil {
 		return nil
 	}
-	segment, ok := bc.hsm.LastSegmentByNumber(num)
+	segment, ok := bc.hsm.PrevSegmentByNumber(num)
 	if !ok {
 		return nil
 	}

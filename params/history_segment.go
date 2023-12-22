@@ -173,9 +173,9 @@ func (m *HistorySegmentManager) CurSegment(num uint64) *HistorySegment {
 	return &segments[i]
 }
 
-// LastSegment return the current's last segment, because the latest 2 segments is available,
+// PrevSegment return the current's last segment, because the latest 2 segments is available,
 // so user could keep current & prev segment
-func (m *HistorySegmentManager) LastSegment(cur *HistorySegment) (*HistorySegment, bool) {
+func (m *HistorySegmentManager) PrevSegment(cur *HistorySegment) (*HistorySegment, bool) {
 	if cur == nil {
 		return nil, false
 	}
@@ -186,10 +186,10 @@ func (m *HistorySegmentManager) LastSegment(cur *HistorySegment) (*HistorySegmen
 	return &segments[cur.Index-1], true
 }
 
-// LastSegmentByNumber return the current's last segment
-func (m *HistorySegmentManager) LastSegmentByNumber(num uint64) (*HistorySegment, bool) {
+// PrevSegmentByNumber return the current's last segment
+func (m *HistorySegmentManager) PrevSegmentByNumber(num uint64) (*HistorySegment, bool) {
 	cur := m.CurSegment(num)
-	return m.LastSegment(cur)
+	return m.PrevSegment(cur)
 }
 
 func unmarshalHistorySegments(enc string) []HistorySegment {

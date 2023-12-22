@@ -607,7 +607,7 @@ func (f *Freezer) AncientReset(tail, head uint64) error {
 	defer f.writeLock.Unlock()
 
 	for i := range f.tables {
-		nt, err := f.tables[i].resetItems(tail, head)
+		nt, err := f.tables[i].resetItems(tail-f.offset, head-f.offset)
 		if err != nil {
 			return err
 		}

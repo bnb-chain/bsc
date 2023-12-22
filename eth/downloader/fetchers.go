@@ -138,15 +138,15 @@ func (d *Downloader) fetchBodiesByHashes(p *peerConnection, hashes []common.Hash
 
 	case <-timeoutTimer.C:
 		// Header retrieval timed out, update the metrics
-		p.log.Debug("Header request timed out", "elapsed", ttl)
-		headerTimeoutMeter.Mark(1)
+		p.log.Debug("Body request timed out", "elapsed", ttl)
+		bodyTimeoutMeter.Mark(1)
 
 		return nil, nil, errTimeout
 
 	case res := <-resCh:
 		// Headers successfully retrieved, update the metrics
-		headerReqTimer.Update(time.Since(start))
-		headerInMeter.Mark(int64(len(*res.Res.(*eth.BlockBodiesPacket))))
+		bodyReqTimer.Update(time.Since(start))
+		bodyInMeter.Mark(int64(len(*res.Res.(*eth.BlockBodiesPacket))))
 
 		// Don't reject the packet even if it turns out to be bad, downloader will
 		// disconnect the peer on its own terms. Simply delivery the headers to
@@ -190,15 +190,15 @@ func (d *Downloader) fetchReceiptsByHashes(p *peerConnection, hashes []common.Ha
 
 	case <-timeoutTimer.C:
 		// Header retrieval timed out, update the metrics
-		p.log.Debug("Header request timed out", "elapsed", ttl)
-		headerTimeoutMeter.Mark(1)
+		p.log.Debug("Receipt request timed out", "elapsed", ttl)
+		receiptTimeoutMeter.Mark(1)
 
 		return nil, nil, errTimeout
 
 	case res := <-resCh:
 		// Headers successfully retrieved, update the metrics
-		headerReqTimer.Update(time.Since(start))
-		headerInMeter.Mark(int64(len(*res.Res.(*eth.ReceiptsPacket))))
+		receiptReqTimer.Update(time.Since(start))
+		receiptInMeter.Mark(int64(len(*res.Res.(*eth.ReceiptsPacket))))
 
 		// Don't reject the packet even if it turns out to be bad, downloader will
 		// disconnect the peer on its own terms. Simply delivery the headers to

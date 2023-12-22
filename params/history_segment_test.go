@@ -162,15 +162,15 @@ func TestIndexSegment(t *testing.T) {
 		prev *HistorySegment
 		ok   bool
 	)
-	_, ok = hsm.LastSegment(&segments[0])
+	_, ok = hsm.PrevSegment(&segments[0])
 	assert.Equal(t, false, ok)
-	prev, ok = hsm.LastSegment(&segments[1])
+	prev, ok = hsm.PrevSegment(&segments[1])
 	assert.Equal(t, true, ok)
 	assert.Equal(t, &segments[0], prev)
-	prev, ok = hsm.LastSegment(&segments[2])
+	prev, ok = hsm.PrevSegment(&segments[2])
 	assert.Equal(t, true, ok)
 	assert.Equal(t, &segments[1], prev)
-	_, ok = hsm.LastSegment(&HistorySegment{
+	_, ok = hsm.PrevSegment(&HistorySegment{
 		Index: uint64(len(segments)),
 	})
 	assert.Equal(t, false, ok)
