@@ -204,9 +204,8 @@ type subscription struct {
 // EventSystem creates subscriptions, processes events and broadcasts them to the
 // subscription which match the subscription criteria.
 type EventSystem struct {
-	backend  Backend
-	sys      *FilterSystem
-	lastHead *types.Header
+	backend Backend
+	sys     *FilterSystem
 
 	// Subscriptions
 	txsSub             event.Subscription // Subscription for new transaction event
@@ -526,43 +525,6 @@ func (es *EventSystem) handleFinalizedHeaderEvent(filters filterIndex, ev core.F
 	for _, f := range filters[FinalizedHeadersSubscription] {
 		f.headers <- ev.Header
 	}
-}
-
-// filter logs of a single header in light client mode
-func (es *EventSystem) lightFilterLogs(header *types.Header, addresses []common.Address, topics [][]common.Hash, remove bool) []*types.Log {
-	if !bloomFilter(header.Bloom, addresses, topics) {
-		return nil
-	}
-	// Get the logs of the block
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-	cached, err := es.sys.cachedLogElem(ctx, header.Hash(), header.Number.Uint64())
-	if err != nil {
-		return nil
-	}
-	unfiltered := append([]*types.Log{}, cached.logs...)
-	for i, log := range unfiltered {
-		// Don't modify in-cache elements
-		logcopy := *log
-		logcopy.Removed = remove
-		// Swap copy in-place
-		unfiltered[i] = &logcopy
-	}
-	logs := filterLogs(unfiltered, nil, nil, addresses, topics)
-	// Txhash is already resolved
-	if len(logs) > 0 && logs[0].TxHash != (common.Hash{}) {
-		return logs
-	}
-	// Resolve txhash
-	body, err := es.sys.cachedGetBody(ctx, cached, header.Hash(), header.Number.Uint64())
-	if err != nil {
-		return nil
-	}
-	for _, log := range logs {
-		// logs are already copied, safe to modify
-		log.TxHash = body.Transactions[log.TxIndex].Hash()
-	}
-	return logs
 }
 
 // eventLoop (un)installs filters and processes mux events.
