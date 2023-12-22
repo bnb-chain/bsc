@@ -965,6 +965,7 @@ type GroupBundle struct {
 	Txs         []SimulatedTx   `json:"txs"`
 	BlockNumber rpc.BlockNumber `json:"blockNumber"`
 	Timestamp   uint64          `json:"timestamp"`
+	Miner       common.Address  `json:"miner"`
 }
 
 type TraceCallBundleArgs struct {
@@ -1013,6 +1014,7 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 	}
 	results := []map[string]interface{}{}
 	is158 := api.backend.ChainConfig().IsEIP158(block.Number())
+	emptyAddress := common.Address{}
 
 	for _, bundle := range args.Bundles {
 		header := block.Header()
@@ -1021,6 +1023,9 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 		}
 		if bundle.Timestamp != 0 {
 			header.Time = bundle.Timestamp
+		}
+		if bundle.Miner != emptyAddress {
+			header.Coinbase = bundle.Miner
 		}
 
 		vmctx := core.NewEVMBlockContext(header, api.chainContext(ctx), nil)
