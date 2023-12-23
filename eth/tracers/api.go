@@ -970,6 +970,7 @@ type GroupBundle struct {
 
 type TraceCallBundleArgs struct {
 	Bundles                []GroupBundle         `json:"bundles"`
+	SaveState              bool                  `json:"saveState"`
 	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
 	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
 	Timestamp              uint64                `json:"timestamp"`
@@ -1070,7 +1071,9 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 			//results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
 			// Finalize the state so any modifications are written to the trie
 			// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
-			statedb.Finalise(is158)
+			if args.SaveState {
+				statedb.Finalise(is158)
+			}
 
 			//txctx := &Context{
 			//	//BlockHash: blockHash,
