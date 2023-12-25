@@ -1177,8 +1177,11 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 	// update validators every day
 	if p.chainConfig.IsFeynman(header.Number, header.Time) && isBreatheBlock(parent.Time, header.Time) {
-		if err := p.updateValidatorSetV2(state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
-			return err
+		// we should avoid update validators in the Feynman upgrade block
+		if !p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+			if err := p.updateValidatorSetV2(state, header, cx, txs, receipts, systemTxs, usedGas, false); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1257,8 +1260,11 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 
 	// update validators every day
 	if p.chainConfig.IsFeynman(header.Number, header.Time) && isBreatheBlock(parent.Time, header.Time) {
-		if err := p.updateValidatorSetV2(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
-			return nil, nil, err
+		// we should avoid update validators in the Feynman upgrade block
+		if !p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+			if err := p.updateValidatorSetV2(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 
