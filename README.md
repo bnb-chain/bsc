@@ -149,15 +149,8 @@ unzip testnet.zip
 #### 3. Download snapshot
 Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-snapshots). Follow the guide to structure your files.
 
-Note: if you can not download the chaindata snapshot and want to sync from genesis, you have to generate the genesis block first, you have already get the genesis.json in Step 2.
-So just run: 
-``` shell
-## It will init genesis with Hash-Base Storage Scheme by default.
-geth --datadir <datadir> init ./genesis.json
+Note: If you encounter difficulties downloading the chaindata snapshot and prefer to synchronize from the genesis block on the Chapel testnet, remember to include the additional flag `--chapel` when initially launching Geth.
 
-## It will init genesis with Path-Base Storage Scheme.
-geth --datadir <datadir> --state.scheme path init ./genesis.json
-```
 #### 4. Start a full node
 ```shell
 ./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0

@@ -572,6 +572,22 @@ func DefaultBSCGenesisBlock() *Genesis {
 	}
 }
 
+// DefaultChapelGenesisBlock returns the BSC mainnet genesis block.
+func DefaultChapelGenesisBlock() *Genesis {
+	alloc := decodePrealloc(bscChapelAllocData)
+	return &Genesis{
+		Config:     params.ChapelChainConfig,
+		Nonce:      0,
+		ExtraData:  hexutil.MustDecode("0x00000000000000000000000000000000000000000000000000000000000000001284214b9b9c85549ab3d2b972df0deef66ac2c9b71b214cb885500844365e95cd9942c7276e7fd8a2959d3f95eae5dc7d70144ce1b73b403b7eb6e0980a75ecd1309ea12fa2ed87a8744fbfc9b863d535552c16704d214347f29fa77f77da6d75d7c752f474cf03cceff28abc65c9cbae594f725c80e12d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+		GasLimit:   40000000,
+		Difficulty: big.NewInt(1),
+		Mixhash:    common.Hash(hexutil.MustDecode("0x0000000000000000000000000000000000000000000000000000000000000000")),
+		Coinbase:   common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE"),
+		Timestamp:  0x5e9da7ce,
+		Alloc:      alloc,
+	}
+}
+
 // DeveloperGenesisBlock returns the 'geth --dev' genesis block.
 func DeveloperGenesisBlock(gasLimit uint64, faucet common.Address) *Genesis {
 	// Override the default period to the user requested one
