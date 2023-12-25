@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	exlru "github.com/hashicorp/golang-lru"
 	"golang.org/x/crypto/sha3"
 
@@ -58,6 +59,10 @@ import (
 )
 
 var (
+	badBlockRecords      = mapset.NewSet[common.Hash]()
+	badBlockRecordslimit = 1000
+	badBlockGauge        = metrics.NewRegisteredGauge("chain/insert/badBlock", nil)
+
 	headBlockGauge     = metrics.NewRegisteredGauge("chain/head/block", nil)
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
 	headFastBlockGauge = metrics.NewRegisteredGauge("chain/head/receipt", nil)
@@ -2918,15 +2923,22 @@ func summarizeBadBlock(block *types.Block, receipts []*types.Receipt, config *pa
 	if vcs != "" {
 		vcs = fmt.Sprintf("\nVCS: %s", vcs)
 	}
+
+	if badBlockRecords.Cardinality() < badBlockRecordslimit {
+		badBlockRecords.Add(block.Hash())
+		badBlockGauge.Update(int64(badBlockRecords.Cardinality()))
+	}
+
 	return fmt.Sprintf(`
 ########## BAD BLOCK #########
 Block: %v (%#x)
+Miner: %v
 Error: %v
 Platform: %v%v
 Chain config: %#v
 Receipts: %v
 ##############################
-`, block.Number(), block.Hash(), err, platform, vcs, config, receiptString)
+`, block.Number(), block.Hash(), block.Coinbase(), err, platform, vcs, config, receiptString)
 }
 
 // InsertHeaderChain attempts to insert the given header chain in to the local
