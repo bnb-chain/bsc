@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli/v2"
 )
@@ -383,13 +384,27 @@ func inspectTrie(ctx *cli.Context) error {
 			log.Error("Empty root hash")
 		}
 		fmt.Printf("ReadBlockHeader, root: %v, blocknum: %v\n", trieRootHash, blockNumber)
-		triedb := trie.NewDatabase(db, nil)
+
+		dbScheme := rawdb.ReadStateScheme(db)
+		var config *trie.Config
+		if dbScheme == rawdb.PathScheme {
+			config = &trie.Config{
+				PathDB: pathdb.ReadOnly,
+			}
+		} else if dbScheme == rawdb.HashScheme {
+			config = trie.HashDefaults
+		}
+
+		triedb := trie.NewDatabase(db, config)
 		theTrie, err := trie.New(trie.TrieID(trieRootHash), triedb)
 		if err != nil {
 			fmt.Printf("fail to new trie tree, err: %v, rootHash: %v\n", err, trieRootHash.String())
 			return err
 		}
 		theInspect, err := trie.NewInspector(theTrie, triedb, trieRootHash, blockNumber, jobnum)
+		if err != nil {
+			return err
+		}
 		theInspect.Run()
 		theInspect.DisplayResult()
 	}

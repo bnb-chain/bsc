@@ -31,7 +31,6 @@ type Inspector struct {
 	stateRootHash   common.Hash
 	blocknum        uint64
 	root            node               // root of triedb
-	num             uint64             // block number
 	result          *TotalTrieTreeStat // inspector result
 	totalNum        uint64
 	concurrentQueue chan struct{}
@@ -195,7 +194,6 @@ func (inspect *Inspector) SubConcurrentTraversal(theTrie *Trie, theTrieTreeStat 
 	inspect.ConcurrentTraversal(theTrie, theTrieTreeStat, theNode, height, path)
 	<-inspect.concurrentQueue
 	inspect.wg.Done()
-	return
 }
 
 func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *TrieTreeStat, theNode node, height uint32, path []byte) {
@@ -212,25 +210,24 @@ func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *Tr
 
 	switch current := (theNode).(type) {
 	case *shortNode:
-		path = append(path, current.Key...)
-		inspect.ConcurrentTraversal(theTrie, theTrieTreeStat, current.Val, height+1, path)
-		path = path[:len(path)-len(current.Key)]
+		inspect.ConcurrentTraversal(theTrie, theTrieTreeStat, current.Val, height, append(path, current.Key...))
 	case *fullNode:
 		for idx, child := range current.Children {
 			if child == nil {
 				continue
 			}
-			childPath := path
-			childPath = append(childPath, byte(idx))
+			childPath := append(path, byte(idx))
 			if len(inspect.concurrentQueue)*2 < cap(inspect.concurrentQueue) {
 				inspect.wg.Add(1)
-				go inspect.SubConcurrentTraversal(theTrie, theTrieTreeStat, child, height+1, childPath)
+				dst := make([]byte, len(childPath))
+				copy(dst, childPath)
+				go inspect.SubConcurrentTraversal(theTrie, theTrieTreeStat, child, height+1, dst)
 			} else {
 				inspect.ConcurrentTraversal(theTrie, theTrieTreeStat, child, height+1, childPath)
 			}
 		}
 	case hashNode:
-		n, err := theTrie.resloveWithoutTrack(current, nil)
+		n, err := theTrie.resloveWithoutTrack(current, path)
 		if err != nil {
 			fmt.Printf("Resolve HashNode error: %v, TrieRoot: %v, Height: %v, Path: %v\n", err, theTrie.Hash().String(), height+1, path)
 			return
@@ -266,7 +263,6 @@ func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *Tr
 		panic(errors.New("Invalid node type to traverse."))
 	}
 	theTrieTreeStat.AtomicAdd(theNode, height)
-	return
 }
 
 func (inspect *Inspector) DisplayResult() {
@@ -304,6 +300,5 @@ func (inspect *Inspector) DisplayResult() {
 		}
 		stat, _ := inspect.result.theTrieTreeStats.Get(cntHash[1])
 		stat.Display(cntHash[1], "ContractTrie")
-		i++
 	}
 }
