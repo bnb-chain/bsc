@@ -30,61 +30,12 @@ type Inspector struct {
 	db              *Database
 	stateRootHash   common.Hash
 	blocknum        uint64
-	root            node               // root of triedb
-	result          *TotalTrieTreeStat // inspector result
+	root            node // root of triedb
 	totalNum        uint64
 	concurrentQueue chan struct{}
 	wg              sync.WaitGroup
-}
-
-type RWMap struct {
-	sync.RWMutex
-	m map[uint64]*TrieTreeStat
-}
-
-func NewRWMap() *RWMap {
-	return &RWMap{
-		m: make(map[uint64]*TrieTreeStat, 1),
-	}
-}
-func (m *RWMap) Get(k uint64) (*TrieTreeStat, bool) {
-	m.RLock()
-	defer m.RUnlock()
-	v, existed := m.m[k]
-	return v, existed
-}
-
-func (m *RWMap) Set(k uint64, v *TrieTreeStat) {
-	m.Lock()
-	defer m.Unlock()
-	m.m[k] = v
-}
-
-func (m *RWMap) Delete(k uint64) {
-	m.Lock()
-	defer m.Unlock()
-	delete(m.m, k)
-}
-
-func (m *RWMap) Len() int {
-	m.RLock()
-	defer m.RUnlock()
-	return len(m.m)
-}
-
-func (m *RWMap) Each(f func(k uint64, v *TrieTreeStat) bool) {
-	m.RLock()
-	defer m.RUnlock()
-
-	for k, v := range m.m {
-		if !f(k, v) {
-			return
-		}
-	}
-}
-
-type TotalTrieTreeStat struct {
-	theTrieTreeStats RWMap
+	statLock        sync.RWMutex
+	result          map[string]*TrieTreeStat
 }
 
 type TrieTreeStat struct {
@@ -115,9 +66,14 @@ func (trieStat *TrieTreeStat) AtomicAdd(theNode node, height uint32) {
 	}
 }
 
-func (trieStat *TrieTreeStat) Display(rootHash uint64, treeType string) {
+func (trieStat *TrieTreeStat) Display(ownerAddress string, treeType string) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"TrieType", "Level", "ShortNodeCnt", "FullNodeCnt", "ValueNodeCnt"})
+	table.SetHeader([]string{"-", "Level", "ShortNodeCnt", "FullNodeCnt", "ValueNodeCnt"})
+	if ownerAddress == "" {
+		table.SetCaption(true, fmt.Sprintf("%v", treeType))
+	} else {
+		table.SetCaption(true, fmt.Sprintf("%v-%v", treeType, ownerAddress))
+	}
 	table.SetAlignment(1)
 	for i := 0; i < len(trieStat.theNodeStatByLevel); i++ {
 		nodeStat := trieStat.theNodeStatByLevel[i]
@@ -129,7 +85,7 @@ func (trieStat *TrieTreeStat) Display(rootHash uint64, treeType string) {
 		})
 	}
 	table.AppendBulk([][]string{
-		{fmt.Sprintf("%v-%v", treeType, rootHash), "Total", trieStat.totalNodeStat.ShortNodeCount(), trieStat.totalNodeStat.FullNodeCount(), trieStat.totalNodeStat.ValueNodeCount()},
+		{"Total", "-", trieStat.totalNodeStat.ShortNodeCount(), trieStat.totalNodeStat.FullNodeCount(), trieStat.totalNodeStat.ValueNodeCount()},
 	})
 	table.Render()
 }
@@ -160,14 +116,12 @@ func NewInspector(tr *Trie, db *Database, stateRootHash common.Hash, blocknum ui
 	}
 
 	ins := &Inspector{
-		trie:          tr,
-		db:            db,
-		stateRootHash: stateRootHash,
-		blocknum:      blocknum,
-		root:          tr.root,
-		result: &TotalTrieTreeStat{
-			theTrieTreeStats: *NewRWMap(),
-		},
+		trie:            tr,
+		db:              db,
+		stateRootHash:   stateRootHash,
+		blocknum:        blocknum,
+		root:            tr.root,
+		result:          make(map[string]*TrieTreeStat),
 		totalNum:        (uint64)(0),
 		concurrentQueue: make(chan struct{}, jobnum),
 		wg:              sync.WaitGroup{},
@@ -179,10 +133,11 @@ func NewInspector(tr *Trie, db *Database, stateRootHash common.Hash, blocknum ui
 // Run statistics, external call
 func (inspect *Inspector) Run() {
 	accountTrieStat := new(TrieTreeStat)
-	roothash := inspect.trie.Hash().Big().Uint64()
 	path := make([]byte, 0)
 
-	inspect.result.theTrieTreeStats.Set(roothash, accountTrieStat)
+	if _, ok := inspect.result[""]; !ok {
+		inspect.result[""] = accountTrieStat
+	}
 	log.Info("Find Account Trie Tree", "rootHash: ", inspect.trie.Hash().String(), "BlockNum: ", inspect.blocknum)
 	inspect.ConcurrentTraversal(inspect.trie, accountTrieStat, inspect.root, 0, path)
 	inspect.wg.Wait()
@@ -252,8 +207,13 @@ func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *Tr
 		}
 		trieStat := new(TrieTreeStat)
 		trieStat.is_account_trie = false
-		subRootHash := contractTrie.Hash().Big().Uint64()
-		inspect.result.theTrieTreeStats.Set(subRootHash, trieStat)
+
+		inspect.statLock.Lock()
+		if _, ok := inspect.result[ownerAddress.String()]; !ok {
+			inspect.result[ownerAddress.String()] = trieStat
+		}
+		inspect.statLock.Unlock()
+
 		contractPath := make([]byte, 0)
 		// log.Info("Find Contract Trie Tree, rootHash: ", contractTrie.Hash().String(), "")
 		inspect.wg.Add(1)
@@ -266,38 +226,46 @@ func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *Tr
 
 func (inspect *Inspector) DisplayResult() {
 	// display root hash
-	roothash := inspect.trie.Hash().Big().Uint64()
-	rootStat, _ := inspect.result.theTrieTreeStats.Get(roothash)
-	rootStat.Display(roothash, "AccountTrie")
+	if _, ok := inspect.result[""]; !ok {
+		log.Info("Display result error", "missing account trie")
+		return
+	}
+	inspect.result[""].Display("", "AccountTrie")
 
+	type SortedTrie struct {
+		totalNum     uint64
+		ownerAddress string
+	}
 	// display contract trie
-	trieNodeNums := make([][]uint64, 0, inspect.result.theTrieTreeStats.Len()-1)
+	var sortedTriesByNums []SortedTrie
 	var totalContactsNodeStat NodeStat
 	var contractTrieCnt uint64 = 0
-	inspect.result.theTrieTreeStats.Each(func(rootHash uint64, stat *TrieTreeStat) bool {
-		if rootHash == roothash {
-			return true
+
+	for ownerAddress, stat := range inspect.result {
+		if ownerAddress == "" {
+			continue
 		}
 		contractTrieCnt++
 		totalContactsNodeStat.ShortNodeCnt += stat.totalNodeStat.ShortNodeCnt
 		totalContactsNodeStat.FullNodeCnt += stat.totalNodeStat.FullNodeCnt
 		totalContactsNodeStat.ValueNodeCnt += stat.totalNodeStat.ValueNodeCnt
 		totalNodeCnt := stat.totalNodeStat.ShortNodeCnt + stat.totalNodeStat.ValueNodeCnt + stat.totalNodeStat.FullNodeCnt
-		trieNodeNums = append(trieNodeNums, []uint64{totalNodeCnt, rootHash})
-		return true
-	})
-
-	fmt.Printf("Contract Trie, total trie num: %v, ShortNodeCnt: %v, FullNodeCnt: %v, ValueNodeCnt: %v\n",
-		contractTrieCnt, totalContactsNodeStat.ShortNodeCnt, totalContactsNodeStat.FullNodeCnt, totalContactsNodeStat.ValueNodeCnt)
-	sort.Slice(trieNodeNums, func(i, j int) bool {
-		return trieNodeNums[i][0] > trieNodeNums[j][0]
+		sortedTriesByNums = append(sortedTriesByNums, SortedTrie{totalNum: totalNodeCnt, ownerAddress: ownerAddress})
+	}
+	sort.Slice(sortedTriesByNums, func(i, j int) bool {
+		return sortedTriesByNums[i].totalNum > sortedTriesByNums[j].totalNum
 	})
 	// only display top 5
-	for i, cntHash := range trieNodeNums {
+	for i, t := range sortedTriesByNums {
 		if i > 5 {
 			break
 		}
-		stat, _ := inspect.result.theTrieTreeStats.Get(cntHash[1])
-		stat.Display(cntHash[1], "ContractTrie")
+		if stat, ok := inspect.result[t.ownerAddress]; !ok {
+			log.Error("Storage trie stat not found", "ownerAddress", t.ownerAddress)
+		} else {
+			stat.Display(t.ownerAddress, "ContractTrie")
+		}
 	}
+	fmt.Printf("Contract Trie, total trie num: %v, ShortNodeCnt: %v, FullNodeCnt: %v, ValueNodeCnt: %v\n",
+		contractTrieCnt, totalContactsNodeStat.ShortNodeCnt, totalContactsNodeStat.FullNodeCnt, totalContactsNodeStat.ValueNodeCnt)
 }
