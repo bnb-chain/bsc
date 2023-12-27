@@ -2514,7 +2514,7 @@ func ParseStateScheme(ctx *cli.Context, disk ethdb.Database) (string, error) {
 			log.Info("State scheme set to default", "scheme", rawdb.HashScheme)
 			return rawdb.HashScheme, nil
 		}
-		log.Info("State scheme set to already existing", "scheme", stored)
+		log.Info("State scheme set to already existing disk db", "scheme", stored)
 		return stored, nil // reuse scheme of persistent scheme
 	}
 	// If state scheme is specified, ensure it's compatible with persistent state.
@@ -2522,7 +2522,7 @@ func ParseStateScheme(ctx *cli.Context, disk ethdb.Database) (string, error) {
 		log.Info("State scheme set by user", "scheme", provided)
 		return provided, nil
 	}
-	return "", fmt.Errorf("incompatible state scheme, stored: %s, provided: %s", stored, provided)
+	return "", fmt.Errorf("incompatible state scheme, db stored: %s, user provided: %s", stored, provided)
 }
 
 // MakeTrieDatabase constructs a trie database based on the configured scheme.
@@ -2561,7 +2561,9 @@ func compareCLIWithConfig(ctx *cli.Context) (string, error) {
 		}
 	}
 	if !ctx.IsSet(StateSchemeFlag.Name) {
-		log.Info("Use config state scheme", "config", cfgScheme)
+		if cfgScheme != "" {
+			log.Info("Use config state scheme", "config", cfgScheme)
+		}
 		// we don't validate cfgScheme because it's already checked in cmd/geth/loadBaseConfig
 		return cfgScheme, nil
 	}
