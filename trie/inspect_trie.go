@@ -42,39 +42,38 @@ type RWMap struct {
 	m map[uint64]*TrieTreeStat
 }
 
-// 新建一个RWMap
 func NewRWMap() *RWMap {
 	return &RWMap{
 		m: make(map[uint64]*TrieTreeStat, 1),
 	}
 }
-func (m *RWMap) Get(k uint64) (*TrieTreeStat, bool) { //从map中读取一个值
+func (m *RWMap) Get(k uint64) (*TrieTreeStat, bool) {
 	m.RLock()
 	defer m.RUnlock()
-	v, existed := m.m[k] // 在锁的保护下从map中读取
+	v, existed := m.m[k]
 	return v, existed
 }
 
-func (m *RWMap) Set(k uint64, v *TrieTreeStat) { // 设置一个键值对
-	m.Lock() // 锁保护
+func (m *RWMap) Set(k uint64, v *TrieTreeStat) {
+	m.Lock()
 	defer m.Unlock()
 	m.m[k] = v
 }
 
-func (m *RWMap) Delete(k uint64) { //删除一个键
-	m.Lock() // 锁保护
+func (m *RWMap) Delete(k uint64) {
+	m.Lock()
 	defer m.Unlock()
 	delete(m.m, k)
 }
 
-func (m *RWMap) Len() int { // map的长度
-	m.RLock() // 锁保护
+func (m *RWMap) Len() int {
+	m.RLock()
 	defer m.RUnlock()
 	return len(m.m)
 }
 
-func (m *RWMap) Each(f func(k uint64, v *TrieTreeStat) bool) { // 遍历map
-	m.RLock() //遍历期间一直持有读锁
+func (m *RWMap) Each(f func(k uint64, v *TrieTreeStat) bool) {
+	m.RLock()
 	defer m.RUnlock()
 
 	for k, v := range m.m {
@@ -184,7 +183,7 @@ func (inspect *Inspector) Run() {
 	path := make([]byte, 0)
 
 	inspect.result.theTrieTreeStats.Set(roothash, accountTrieStat)
-	log.Info("Find Account Trie Tree, rootHash: ", inspect.trie.Hash().String(), "BlockNum: ", inspect.blocknum)
+	log.Info("Find Account Trie Tree", "rootHash: ", inspect.trie.Hash().String(), "BlockNum: ", inspect.blocknum)
 	inspect.ConcurrentTraversal(inspect.trie, accountTrieStat, inspect.root, 0, path)
 	inspect.wg.Wait()
 }
