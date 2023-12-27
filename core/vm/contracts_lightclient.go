@@ -12,8 +12,10 @@ import (
 	cmn "github.com/tendermint/tendermint/libs/common"
 
 	//nolint:staticcheck
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	v1 "github.com/ethereum/go-ethereum/core/vm/lightclient/v1"
 	v2 "github.com/ethereum/go-ethereum/core/vm/lightclient/v2"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -421,6 +423,7 @@ func (c *secp256k1SignatureRecover) Run(input []byte) (result []byte, err error)
 		return nil, fmt.Errorf("invalid input")
 	}
 
+	log.Warn("!!!DEBUG!! secp256k1SignatureRecover", "input", hexutil.Encode(input))
 	return c.runTMSecp256k1Signature(
 		input[:tmPubKeyLength],
 		input[tmPubKeyLength:tmPubKeyLength+tmSignatureLength],
@@ -431,8 +434,10 @@ func (c *secp256k1SignatureRecover) Run(input []byte) (result []byte, err error)
 func (c *secp256k1SignatureRecover) runTMSecp256k1Signature(pubkey, signatureStr, msgHash []byte) (result []byte, err error) {
 	tmPubKey := secp256k1.PubKeySecp256k1(pubkey)
 	ok := tmPubKey.VerifyBytesWithMsgHash(msgHash, signatureStr)
+	log.Warn("!!!DEBUG!! secp256k1SignatureRecover", "ok", ok)
 	if !ok {
 		return nil, fmt.Errorf("invalid signature")
 	}
+	log.Warn("!!!DEBUG!! secp256k1SignatureRecover", "address", hexutil.Encode(tmPubKey.Address().Bytes()))
 	return tmPubKey.Address().Bytes(), nil
 }

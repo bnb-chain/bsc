@@ -1172,10 +1172,13 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if parent == nil {
 		return errors.New("parent not found")
 	}
+
+	log.Info("!!! DEBUG Finalize block time", "number", header.Number, "time", header.Time, "parent time", parent.Time)
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
 		if err != nil {
 			log.Error("init feynman contract failed", "error", err)
+			return err
 		}
 	}
 
@@ -1242,11 +1245,13 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 
 	err := p.distributeIncoming(p.val, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
 	if err != nil {
+		log.Error("p.distributeIncoming failed", "err", err)
 		return nil, nil, err
 	}
 
 	if p.chainConfig.IsPlato(header.Number) {
 		if err := p.distributeFinalityReward(chain, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
+			log.Error("p.p.distributeFinalityReward after Plato failed", "err", err)
 			return nil, nil, err
 		}
 	}
@@ -1255,10 +1260,12 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if parent == nil {
 		return nil, nil, errors.New("parent not found")
 	}
+	log.Info("!!! DEBUG FinalizeAndAssemble block time", "number", header.Number, "time", header.Time, "parent time", parent.Time)
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
 		if err != nil {
 			log.Error("init feynman contract failed", "error", err)
+			return nil, nil, err
 		}
 	}
 
@@ -1267,6 +1274,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		// we should avoid update validators in the Feynman upgrade block
 		if !p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 			if err := p.updateValidatorSetV2(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
+				log.Error("p.updateValidatorSetV2 after Feynman failed", "err", err)
 				return nil, nil, err
 			}
 		}

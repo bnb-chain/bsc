@@ -974,6 +974,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	fees := work.state.GetBalance(consensus.SystemAddress)
 	block, _, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, nil, work.receipts, params.withdrawals)
 	if err != nil {
+		log.Error("!!!DEBUG!!! Failed to assemble block in generateWork", "err", err)
 		return nil, nil, err
 	}
 	return block, fees, nil
@@ -1176,6 +1177,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		finalizeStart := time.Now()
 		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, env.txs, nil, env.receipts, nil)
 		if err != nil {
+			log.Error("!!!DEBUG!!! Failed to assemble block in commit", "err", err)
 			return err
 		}
 		// env.receipts = receipts
