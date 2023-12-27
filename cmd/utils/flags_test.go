@@ -126,7 +126,7 @@ func Test_parseConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := parseConfig(tt.fn())
+			result, err := scanConfigForStateScheme(tt.fn())
 			if tt.wantedIsErr {
 				assert.Contains(t, err.Error(), tt.wantedErrStr)
 			} else {
@@ -184,7 +184,7 @@ func Test_parseString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := parseString(tt.arg); got != tt.wantResult {
+			if got := indexStateScheme(tt.arg); got != tt.wantResult {
 				t.Errorf("parseString() = %v, want %v", got, tt.wantResult)
 			}
 		})

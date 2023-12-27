@@ -139,7 +139,7 @@ func loadBaseConfig(ctx *cli.Context) gethConfig {
 	scheme := cfg.Eth.StateScheme
 	if scheme != "" {
 		if !rawdb.ValidateStateScheme(scheme) {
-			utils.Fatalf("invalid state scheme param in config: %s", scheme)
+			utils.Fatalf("Invalid state scheme param in config: %s", scheme)
 		}
 	}
 	if cfg.Eth.Genesis != nil && cfg.Eth.Genesis.Config != nil {

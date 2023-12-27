@@ -2555,8 +2555,9 @@ func compareCLIWithConfig(ctx *cli.Context) (string, error) {
 		err       error
 	)
 	if file := ctx.String("config"); file != "" {
-		if cfgScheme, err = parseConfig(file); err != nil {
-			log.Error("failed to parse config file", "error", err)
+		// we don't validate cfgScheme because it's already checked in cmd/geth/loadBaseConfig
+		if cfgScheme, err = scanConfigForStateScheme(file); err != nil {
+			log.Error("Failed to parse config file", "error", err)
 			return "", err
 		}
 	}
@@ -2564,7 +2565,6 @@ func compareCLIWithConfig(ctx *cli.Context) (string, error) {
 		if cfgScheme != "" {
 			log.Info("Use config state scheme", "config", cfgScheme)
 		}
-		// we don't validate cfgScheme because it's already checked in cmd/geth/loadBaseConfig
 		return cfgScheme, nil
 	}
 
@@ -2579,7 +2579,7 @@ func compareCLIWithConfig(ctx *cli.Context) (string, error) {
 	return "", fmt.Errorf("incompatible state scheme, CLI: %s, config: %s", cliScheme, cfgScheme)
 }
 
-func parseConfig(file string) (string, error) {
+func scanConfigForStateScheme(file string) (string, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return "", err
@@ -2591,7 +2591,7 @@ func parseConfig(file string) (string, error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.Contains(line, targetStr) {
-			return parseString(line), nil
+			return indexStateScheme(line), nil
 		}
 	}
 
@@ -2601,7 +2601,7 @@ func parseConfig(file string) (string, error) {
 	return "", nil
 }
 
-func parseString(str string) string {
+func indexStateScheme(str string) string {
 	i1 := strings.Index(str, "\"")
 	i2 := strings.LastIndex(str, "\"")
 
