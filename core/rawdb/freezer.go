@@ -124,6 +124,13 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 
 	// Create the tables.
 	for name, disableSnappy := range tables {
+		// try to recreate idx files when enable prune ancient before
+		if offset > 0 && readonly {
+			table, err := newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, false)
+			if err == nil {
+				table.Close()
+			}
+		}
 		table, err := newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, readonly)
 		if err != nil {
 			for _, table := range freezer.tables {
