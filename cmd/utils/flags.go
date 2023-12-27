@@ -437,9 +437,10 @@ var (
 		Category: flags.TxPoolCategory,
 	}
 	TxPoolReannounceTimeFlag = &cli.DurationFlag{
-		Name:  "txpool.reannouncetime",
-		Usage: "Duration for announcing local pending transactions again (default = 10 years, minimum = 1 minute)",
-		Value: ethconfig.Defaults.TxPool.ReannounceTime,
+		Name:     "txpool.reannouncetime",
+		Usage:    "Duration for announcing local pending transactions again (default = 10 years, minimum = 1 minute)",
+		Value:    ethconfig.Defaults.TxPool.ReannounceTime,
+		Category: flags.TxPoolCategory,
 	}
 	// Blob transaction pool settings
 	BlobPoolDataDirFlag = &cli.StringFlag{
@@ -515,7 +516,7 @@ var (
 	PruneAncientDataFlag = &cli.BoolFlag{
 		Name:     "pruneancient",
 		Usage:    "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 	CacheLogSizeFlag = &cli.IntFlag{
 		Name:     "cache.blocklogs",
@@ -576,10 +577,10 @@ var (
 		Category: flags.MinerCategory,
 	}
 	MinerNewPayloadTimeout = &cli.DurationFlag{
-		Name:  "miner.newpayload-timeout",
-		Usage: "Specify the maximum time allowance for creating a new payload",
-		Value: ethconfig.Defaults.Miner.NewPayloadTimeout,
-		// Category: flags.MinerCategory,
+		Name:     "miner.newpayload-timeout",
+		Usage:    "Specify the maximum time allowance for creating a new payload",
+		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
+		Category: flags.MinerCategory,
 	}
 
 	// Account settings
@@ -1061,7 +1062,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	BlockAmountReserved = &cli.Uint64Flag{
 		Name:     "block-amount-reserved",
 		Usage:    "Sets the expected remained amount of blocks for offline block prune",
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 
 	CheckSnapshotWithMPT = &cli.BoolFlag{
@@ -1073,7 +1074,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	EnableDoubleSignMonitorFlag = &cli.BoolFlag{
 		Name:     "monitor.doublesign",
 		Usage:    "Enable double sign monitor to check whether any validator signs multiple blocks",
-		Category: flags.FastFinalityCategory,
+		Category: flags.MinerCategory,
 	}
 
 	VotingEnabledFlag = &cli.BoolFlag{
