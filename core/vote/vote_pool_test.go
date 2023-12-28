@@ -78,15 +78,15 @@ func newTestBackend() *testBackend {
 func (b *testBackend) IsMining() bool           { return true }
 func (b *testBackend) EventMux() *event.TypeMux { return b.eventMux }
 
-func (p *mockPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, header *types.Header) (uint64, common.Hash, error) {
-	parentHeader := chain.GetHeaderByHash(header.ParentHash)
+func (p *mockPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, headers []*types.Header) (uint64, common.Hash, error) {
+	parentHeader := chain.GetHeaderByHash(headers[len(headers)-1].ParentHash)
 	if parentHeader == nil {
 		return 0, common.Hash{}, fmt.Errorf("unexpected error")
 	}
 	return parentHeader.Number.Uint64(), parentHeader.Hash(), nil
 }
 
-func (p *mockInvalidPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, header *types.Header) (uint64, common.Hash, error) {
+func (p *mockInvalidPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, headers []*types.Header) (uint64, common.Hash, error) {
 	return 0, common.Hash{}, fmt.Errorf("not supported")
 }
 

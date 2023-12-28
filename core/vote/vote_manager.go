@@ -218,7 +218,7 @@ func (voteManager *VoteManager) loop() {
 // A validator must not vote within the span of its other votes . (Rule 2)
 // Validators always vote for their canonical chain’s latest block. (Rule 3)
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
-	sourceNumber, sourceHash, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, header)
+	sourceNumber, sourceHash, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{header})
 	if err != nil {
 		log.Error("failed to get the highest justified number and hash at cur header", "curHeader's BlockNumber", header.Number, "curHeader's BlockHash", header.Hash())
 		return false, 0, common.Hash{}
