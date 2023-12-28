@@ -92,6 +92,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*LightEthereum, error) {
 		return nil, err
 	}
 	var overrides core.ChainOverrides
+	if config.OverrideShanghai != nil {
+		overrides.OverrideShanghai = config.OverrideShanghai
+	}
+	if config.OverrideKepler != nil {
+		overrides.OverrideKepler = config.OverrideKepler
+	}
 	if config.OverrideCancun != nil {
 		overrides.OverrideCancun = config.OverrideCancun
 	}

@@ -165,13 +165,18 @@ var (
 	}
 	NetworkIdFlag = &cli.Uint64Flag{
 		Name:     "networkid",
-		Usage:    "Explicitly set network id (integer)(For testnets: use --goerli, --sepolia, --holesky instead)",
+		Usage:    "Explicitly set network id (integer)(For testnets: use --chapel instead)",
 		Value:    ethconfig.Defaults.NetworkId,
 		Category: flags.EthCategory,
 	}
 	BSCMainnetFlag = &cli.BoolFlag{
-		Name:     "bsc",
+		Name:     "mainnet",
 		Usage:    "BSC mainnet",
+		Category: flags.EthCategory,
+	}
+	ChapelFlag = &cli.BoolFlag{
+		Name:     "chapel",
+		Usage:    "Chapel network: pre-configured Proof-of-Stake-Authority BSC test network",
 		Category: flags.EthCategory,
 	}
 	DeveloperFlag = &cli.BoolFlag{
@@ -285,6 +290,21 @@ var (
 						with other peers."`,
 		Value:    &defaultVerifyMode,
 		Category: flags.FastNodeCategory,
+	}
+	RialtoHash = &cli.StringFlag{
+		Name:     "rialtohash",
+		Usage:    "Manually specify the Rialto Genesis Hash, to trigger builtin network logic",
+		Category: flags.EthCategory,
+	}
+	OverrideShanghai = &cli.Uint64Flag{
+		Name:     "override.shanghai",
+		Usage:    "Manually specify the Shanghai fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	OverrideKepler = &cli.Uint64Flag{
+		Name:     "override.kepler",
+		Usage:    "Manually specify the Kepler fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
 	}
 	OverrideCancun = &cli.Uint64Flag{
 		Name:     "override.cancun",
@@ -432,9 +452,10 @@ var (
 		Category: flags.TxPoolCategory,
 	}
 	TxPoolReannounceTimeFlag = &cli.DurationFlag{
-		Name:  "txpool.reannouncetime",
-		Usage: "Duration for announcing local pending transactions again (default = 10 years, minimum = 1 minute)",
-		Value: ethconfig.Defaults.TxPool.ReannounceTime,
+		Name:     "txpool.reannouncetime",
+		Usage:    "Duration for announcing local pending transactions again (default = 10 years, minimum = 1 minute)",
+		Value:    ethconfig.Defaults.TxPool.ReannounceTime,
+		Category: flags.TxPoolCategory,
 	}
 	// Blob transaction pool settings
 	BlobPoolDataDirFlag = &cli.StringFlag{
@@ -510,7 +531,7 @@ var (
 	PruneAncientDataFlag = &cli.BoolFlag{
 		Name:     "pruneancient",
 		Usage:    "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 	CacheLogSizeFlag = &cli.IntFlag{
 		Name:     "cache.blocklogs",
@@ -571,10 +592,10 @@ var (
 		Category: flags.MinerCategory,
 	}
 	MinerNewPayloadTimeout = &cli.DurationFlag{
-		Name:  "miner.newpayload-timeout",
-		Usage: "Specify the maximum time allowance for creating a new payload",
-		Value: ethconfig.Defaults.Miner.NewPayloadTimeout,
-		// Category: flags.MinerCategory,
+		Name:     "miner.newpayload-timeout",
+		Usage:    "Specify the maximum time allowance for creating a new payload",
+		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
+		Category: flags.MinerCategory,
 	}
 
 	// Account settings
@@ -1056,7 +1077,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	BlockAmountReserved = &cli.Uint64Flag{
 		Name:     "block-amount-reserved",
 		Usage:    "Sets the expected remained amount of blocks for offline block prune",
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 
 	CheckSnapshotWithMPT = &cli.BoolFlag{
@@ -1068,7 +1089,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	EnableDoubleSignMonitorFlag = &cli.BoolFlag{
 		Name:     "monitor.doublesign",
 		Usage:    "Enable double sign monitor to check whether any validator signs multiple blocks",
-		Category: flags.FastFinalityCategory,
+		Category: flags.MinerCategory,
 	}
 
 	VotingEnabledFlag = &cli.BoolFlag{
@@ -1110,7 +1131,9 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 
 var (
 	// TestnetFlags is the flag group of all built-in supported testnets.
-	TestnetFlags = []cli.Flag{}
+	TestnetFlags = []cli.Flag{
+		ChapelFlag,
+	}
 	// NetworkFlags is the flag group of all built-in supported networks.
 	NetworkFlags = append([]cli.Flag{BSCMainnetFlag}, TestnetFlags...)
 
@@ -1843,7 +1866,7 @@ func CheckExclusive(ctx *cli.Context, args ...interface{}) {
 // SetEthConfig applies eth-related command line flags to the config.
 func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Avoid conflicting network flags
-	CheckExclusive(ctx, BSCMainnetFlag, DeveloperFlag)
+	CheckExclusive(ctx, BSCMainnetFlag, DeveloperFlag, ChapelFlag)
 	CheckExclusive(ctx, LightServeFlag, SyncModeFlag, "light")
 	CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag) // Can't use both ephemeral unlocked and external signer
 
@@ -2038,6 +2061,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 		cfg.Genesis = core.DefaultBSCGenesisBlock()
 		SetDNSDiscoveryDefaults(cfg, params.BSCGenesisHash)
+	case ctx.Bool(ChapelFlag.Name):
+		if !ctx.IsSet(NetworkIdFlag.Name) {
+			cfg.NetworkId = 97
+		}
+		cfg.Genesis = core.DefaultChapelGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.ChapelGenesisHash)
 	case ctx.Bool(DeveloperFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 1337
@@ -2399,6 +2428,8 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	switch {
 	case ctx.Bool(BSCMainnetFlag.Name):
 		genesis = core.DefaultBSCGenesisBlock()
+	case ctx.Bool(ChapelFlag.Name):
+		genesis = core.DefaultChapelGenesisBlock()
 	case ctx.Bool(DeveloperFlag.Name):
 		Fatalf("Developer chains are ephemeral")
 	}

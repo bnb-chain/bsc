@@ -39,7 +39,7 @@ const (
 	DeprecatedCategory   = "ALIASED (deprecated)"
 	FastNodeCategory     = "FAST NODE"
 	FastFinalityCategory = "FAST FINALITY"
-	HistoryCategory      = "HISTORY"
+	BlockHistoryCategory = "BLOCK HISTORY MANAGEMENT"
 )
 
 func init() {
