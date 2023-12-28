@@ -274,10 +274,13 @@ func (e *GenesisMismatchError) Error() string {
 	return fmt.Sprintf("database contains incompatible genesis (have %x, new %x)", e.Stored, e.New)
 }
 
-// ChainOverrides contains the changes to chain config.
+// ChainOverrides contains the changes to chain config
+// Typically, these modifications involve hardforks that are not enabled on the BSC mainnet, intended for testing purposes.
 type ChainOverrides struct {
-	OverrideCancun *uint64
-	OverrideVerkle *uint64
+	OverrideShanghai *uint64
+	OverrideKepler   *uint64
+	OverrideCancun   *uint64
+	OverrideVerkle   *uint64
 }
 
 // SetupGenesisBlock writes or updates the genesis block in db.
@@ -303,6 +306,12 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	}
 	applyOverrides := func(config *params.ChainConfig) {
 		if config != nil {
+			if overrides != nil && overrides.OverrideShanghai != nil {
+				config.ShanghaiTime = overrides.OverrideShanghai
+			}
+			if overrides != nil && overrides.OverrideKepler != nil {
+				config.KeplerTime = overrides.OverrideKepler
+			}
 			if overrides != nil && overrides.OverrideCancun != nil {
 				config.CancunTime = overrides.OverrideCancun
 			}
