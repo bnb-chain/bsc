@@ -992,6 +992,13 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 	if err != nil {
 		return nil, err
 	}
+
+	// Prepare base state
+	//parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()), block.ParentHash())
+	//if err != nil {
+	//	return nil, err
+	//}
+
 	// try to recompute the state
 	reexec := defaultTraceReexec
 	if config != nil && config.Reexec != nil {
@@ -1038,7 +1045,7 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 		bundleJsonResult["timestamp"] = header.Time
 
 		for i, encodedTx := range bundle.Txs {
-			tx := encodedTx.ToTransaction()
+			//tx := encodedTx.ToTransaction()
 
 			msg, err := encodedTx.ToMessage(api.backend.RPCGasCap(), block.BaseFee())
 			if err != nil {
@@ -1047,13 +1054,13 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 
 			// Generate the next state snapshot fast without tracing
 			//msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
-			txctx := &Context{
-				BlockHash:   block.Hash(),
-				BlockNumber: new(big.Int).Set(header.Number),
-				TxIndex:     i,
-				TxHash:      tx.Hash(),
-			}
-			res, err := api.traceTx(ctx, msg, txctx, vmctx, statedb, traceConfig)
+			//txctx := &Context{
+			//	BlockHash:   block.Hash(),
+			//	BlockNumber: new(big.Int).Set(header.Number),
+			//	TxIndex:     i,
+			//	TxHash:      tx.Hash(),
+			//}
+			res, err := api.traceTx(ctx, msg, new(Context), vmctx, statedb, traceConfig)
 			if err != nil {
 				jsonResult := map[string]interface{}{
 					"id":    bundle.Txs[i].Id,
