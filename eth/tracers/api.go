@@ -1026,17 +1026,27 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 
 	for _, bundle := range args.Bundles {
 		header := block.Header()
-		if bundle.BlockNumber != 0 {
-			header.Number = big.NewInt(int64(bundle.BlockNumber))
-		}
-		if bundle.Timestamp != 0 {
-			header.Time = bundle.Timestamp
-		}
-		if bundle.Miner != emptyAddress {
-			header.Coinbase = bundle.Miner
-		}
+		//if bundle.BlockNumber != 0 {
+		//	header.Number = big.NewInt(int64(bundle.BlockNumber))
+		//}
+		//if bundle.Timestamp != 0 {
+		//	header.Time = bundle.Timestamp
+		//}
+		//if bundle.Miner != emptyAddress {
+		//	header.Coinbase = bundle.Miner
+		//}
 
 		vmctx := core.NewEVMBlockContext(header, api.chainContext(ctx), nil)
+
+		if bundle.BlockNumber != 0 {
+			vmctx.BlockNumber = big.NewInt(int64(bundle.BlockNumber))
+		}
+		if bundle.Timestamp != 0 {
+			vmctx.Time = bundle.Timestamp
+		}
+		if bundle.Miner != emptyAddress {
+			vmctx.Coinbase = bundle.Miner
+		}
 
 		bundleResults := []map[string]interface{}{}
 		bundleJsonResult := map[string]interface{}{}
@@ -1060,7 +1070,7 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 			//	TxIndex:     i,
 			//	TxHash:      tx.Hash(),
 			//}
-			res, err := api.traceTx(ctx, msg, new(Context), vmctx, statedb, traceConfig)
+			res, err := api.traceTx(ctx, msg, &Context{}, vmctx, statedb, traceConfig)
 			if err != nil {
 				jsonResult := map[string]interface{}{
 					"id":    bundle.Txs[i].Id,
