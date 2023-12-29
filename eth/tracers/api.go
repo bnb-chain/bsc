@@ -1009,11 +1009,15 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 		return nil, err
 	}
 	defer release()
+
+	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+
 	// Apply the customized state rules if required.
 	if config != nil {
 		if err := config.StateOverrides.Apply(statedb); err != nil {
 			return nil, err
 		}
+		config.BlockOverrides.Apply(&vmctx)
 	}
 
 	var traceConfig *TraceConfig
@@ -1022,7 +1026,8 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 	}
 	results := []map[string]interface{}{}
 	is158 := api.backend.ChainConfig().IsEIP158(block.Number())
-	emptyAddress := common.Address{}
+	//emptyAddress := common.Address{}
+
 
 	for _, bundle := range args.Bundles {
 		header := block.Header()
@@ -1036,17 +1041,21 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 		//	header.Coinbase = bundle.Miner
 		//}
 
-		vmctx := core.NewEVMBlockContext(header, api.chainContext(ctx), nil)
-
-		if bundle.BlockNumber != 0 {
-			vmctx.BlockNumber = big.NewInt(int64(bundle.BlockNumber))
-		}
-		if bundle.Timestamp != 0 {
-			vmctx.Time = bundle.Timestamp
-		}
-		if bundle.Miner != emptyAddress {
-			vmctx.Coinbase = bundle.Miner
-		}
+		//vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+		//
+		//if config != nil {
+		//	config.BlockOverrides.Apply(&vmctx)
+		//}
+		//
+		//if bundle.BlockNumber != 0 {
+		//	vmctx.BlockNumber = big.NewInt(int64(bundle.BlockNumber))
+		//}
+		//if bundle.Timestamp != 0 {
+		//	vmctx.Time = bundle.Timestamp
+		//}
+		//if bundle.Miner != emptyAddress {
+		//	vmctx.Coinbase = bundle.Miner
+		//}
 
 		bundleResults := []map[string]interface{}{}
 		bundleJsonResult := map[string]interface{}{}
