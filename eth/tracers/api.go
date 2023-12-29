@@ -1049,7 +1049,7 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 			//msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 			txctx := &Context{
 				BlockHash:   block.Hash(),
-				BlockNumber: block.Number(),
+				BlockNumber: new(big.Int).Set(header.Number),
 				TxIndex:     i,
 				TxHash:      tx.Hash(),
 			}
