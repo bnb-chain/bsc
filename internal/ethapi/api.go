@@ -2875,14 +2875,14 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 	if len(args.Bundles) == 0 {
 		return nil, errors.New("bundles missing")
 	}
-	blockHeader, _ := s.b.HeaderByNumber(context.Background(), rpc.LatestBlockNumber)
-	var blockNumber *big.Int
-	// blockNumber = big.NewInt(int64(args.BlockNumber));
-	if args.BlockNumber == 0 {
-		blockNumber = blockHeader.Number
-	} else {
-		blockNumber = big.NewInt(int64(args.BlockNumber))
-	}
+	//blockHeader, _ := s.b.HeaderByNumber(context.Background(), rpc.LatestBlockNumber)
+	//var blockNumber *big.Int
+	//// blockNumber = big.NewInt(int64(args.BlockNumber));
+	//if args.BlockNumber == 0 {
+	//	blockNumber = blockHeader.Number
+	//} else {
+	//	blockNumber = big.NewInt(int64(args.BlockNumber))
+	//}
 
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
@@ -2891,10 +2891,12 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 		timeoutMilliSeconds = *args.Timeout
 	}
 	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
-	state, parent, err := s.b.StateAndHeaderByNumber(ctx, rpc.LatestBlockNumber)
+	state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
 	if state == nil || err != nil {
 		return nil, err
 	}
+
+	blockNumber := big.NewInt(int64(args.BlockNumber))
 
 	timestamp := parent.Time + 1
 	if args.Timestamp != nil {
@@ -2957,7 +2959,7 @@ func (s *BundleAPI) CallGroupBundle(ctx context.Context, args CallGroupBundleArg
 		bundleTimestamp := parent.Time + 1
 		var bundleBlockNumber *big.Int
 		if bundle.BlockNumber == 0 {
-			bundleBlockNumber = blockHeader.Number
+			bundleBlockNumber = header.Number
 		} else {
 			bundleBlockNumber = big.NewInt(int64(bundle.BlockNumber))
 		}
