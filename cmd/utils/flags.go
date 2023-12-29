@@ -1133,31 +1133,31 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:     "history-segment",
 		Usage:    "Enable history segment feature, it will auto prune history segments by hard-code segment hash",
 		Value:    false,
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 	HistorySegCustomFlag = &cli.StringFlag{
 		Name:     "history-segment.custom",
 		Usage:    "Specific history segments custom definition",
 		Value:    "./history_segments.json",
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 	HistorySegOutputFlag = &cli.StringFlag{
 		Name:     "history-segment.output",
 		Usage:    "Specific history segments output file",
 		Value:    "./history_segments.json",
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 	BoundStartBlockFlag = &cli.Uint64Flag{
 		Name:     "history-segment.boundstart",
 		Usage:    "Specific history segments BoundStartBlock, it indicate segment1 start block",
 		Value:    params.BoundStartBlock,
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 	HistorySegmentLengthFlag = &cli.Uint64Flag{
 		Name:     "history-segment.segmentlen",
 		Usage:    "Specific history segments HistorySegmentLength",
 		Value:    params.HistorySegmentLength,
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 )
 
