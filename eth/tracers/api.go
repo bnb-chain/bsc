@@ -1065,28 +1065,28 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 		//if bundle.BlockNumber != 0 {
 		//	header.Number = big.NewInt(int64(bundle.BlockNumber))
 		//}
-		if bundle.Timestamp != 0 {
-			header.Time = bundle.Timestamp
-		}
-		if bundle.Miner != emptyAddress {
-			header.Coinbase = bundle.Miner
-		}
+		//if bundle.Timestamp != 0 {
+		//	header.Time = bundle.Timestamp
+		//}
+		//if bundle.Miner != emptyAddress {
+		//	header.Coinbase = bundle.Miner
+		//}
 
 		vmctx := core.NewEVMBlockContext(header, api.chainContext(ctx), nil)
 		//
-		if config != nil {
-			config.BlockOverrides.Apply(&vmctx)
-		}
+		//if config != nil {
+		//	config.BlockOverrides.Apply(&vmctx)
+		//}
 		//
-		//if bundle.BlockNumber != 0 {
-		//	vmctx.BlockNumber = big.NewInt(int64(bundle.BlockNumber))
-		//}
-		//if bundle.Timestamp != 0 {
-		//	vmctx.Time = bundle.Timestamp
-		//}
-		//if bundle.Miner != emptyAddress {
-		//	vmctx.Coinbase = bundle.Miner
-		//}
+		if bundle.BlockNumber != 0 {
+			vmctx.BlockNumber = big.NewInt(int64(bundle.BlockNumber))
+		}
+		if bundle.Timestamp != 0 {
+			vmctx.Time = bundle.Timestamp
+		}
+		if bundle.Miner != emptyAddress {
+			vmctx.Coinbase = bundle.Miner
+		}
 
 		bundleResults := []map[string]interface{}{}
 		bundleJsonResult := map[string]interface{}{}
