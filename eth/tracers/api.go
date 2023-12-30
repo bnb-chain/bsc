@@ -1010,14 +1010,45 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 	}
 	defer release()
 
-	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+	//timestamp := parent.Time + 1
+	//if args.Timestamp != nil {
+	//	timestamp = *args.Timestamp
+	//}
+	//coinbase := parent.Coinbase
+	//if args.Coinbase != nil {
+	//	coinbase = common.HexToAddress(*args.Coinbase)
+	//}
+	//difficulty := parent.Difficulty
+	//if args.Difficulty != nil {
+	//	difficulty = args.Difficulty
+	//}
+	//gasLimit := parent.GasLimit
+	//if args.GasLimit != nil {
+	//	gasLimit = *args.GasLimit
+	//}
+	// var baseFee *big.Int
+	// if args.BaseFee != nil {
+	// 	baseFee = args.BaseFee
+	// }
+	//header := block.Header()
+	//header := &types.Header{
+	//	ParentHash: block.ParentHash(),
+	//	BaseFee:    big.NewInt(0).Set(parent.BaseFee),
+	//	Number:     blockNumber,
+	//	GasLimit:   gasLimit,
+	//	Time:       timestamp,
+	//	Difficulty: difficulty,
+	//	Coinbase:   coinbase,
+	//}
+	//
+	//vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 
 	// Apply the customized state rules if required.
 	if config != nil {
 		if err := config.StateOverrides.Apply(statedb); err != nil {
 			return nil, err
 		}
-		config.BlockOverrides.Apply(&vmctx)
+		//config.BlockOverrides.Apply(&vmctx)
 	}
 
 	var traceConfig *TraceConfig
@@ -1026,22 +1057,22 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 	}
 	results := []map[string]interface{}{}
 	is158 := api.backend.ChainConfig().IsEIP158(block.Number())
-	//emptyAddress := common.Address{}
+	emptyAddress := common.Address{}
 
 
 	for _, bundle := range args.Bundles {
 		header := block.Header()
-		//if bundle.BlockNumber != 0 {
-		//	header.Number = big.NewInt(int64(bundle.BlockNumber))
-		//}
-		//if bundle.Timestamp != 0 {
-		//	header.Time = bundle.Timestamp
-		//}
-		//if bundle.Miner != emptyAddress {
-		//	header.Coinbase = bundle.Miner
-		//}
+		if bundle.BlockNumber != 0 {
+			header.Number = big.NewInt(int64(bundle.BlockNumber))
+		}
+		if bundle.Timestamp != 0 {
+			header.Time = bundle.Timestamp
+		}
+		if bundle.Miner != emptyAddress {
+			header.Coinbase = bundle.Miner
+		}
 
-		//vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+		vmctx := core.NewEVMBlockContext(header, api.chainContext(ctx), nil)
 		//
 		//if config != nil {
 		//	config.BlockOverrides.Apply(&vmctx)
