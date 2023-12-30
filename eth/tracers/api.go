@@ -1062,9 +1062,9 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 
 	for _, bundle := range args.Bundles {
 		header := block.Header()
-		if bundle.BlockNumber != 0 {
-			header.Number = big.NewInt(int64(bundle.BlockNumber))
-		}
+		//if bundle.BlockNumber != 0 {
+		//	header.Number = big.NewInt(int64(bundle.BlockNumber))
+		//}
 		if bundle.Timestamp != 0 {
 			header.Time = bundle.Timestamp
 		}
@@ -1074,9 +1074,9 @@ func (api *API) TraceCallBundle(ctx context.Context, args TraceCallBundleArgs, b
 
 		vmctx := core.NewEVMBlockContext(header, api.chainContext(ctx), nil)
 		//
-		//if config != nil {
-		//	config.BlockOverrides.Apply(&vmctx)
-		//}
+		if config != nil {
+			config.BlockOverrides.Apply(&vmctx)
+		}
 		//
 		//if bundle.BlockNumber != 0 {
 		//	vmctx.BlockNumber = big.NewInt(int64(bundle.BlockNumber))
