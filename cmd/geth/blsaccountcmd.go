@@ -14,7 +14,6 @@ import (
 	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
 	"github.com/prysmaticlabs/prysm/v4/encoding/bytesutil"
 	"github.com/prysmaticlabs/prysm/v4/io/prompt"
-	"github.com/prysmaticlabs/prysm/v4/proto/eth/service"
 	"github.com/prysmaticlabs/prysm/v4/validator/accounts"
 	"github.com/prysmaticlabs/prysm/v4/validator/accounts/iface"
 	"github.com/prysmaticlabs/prysm/v4/validator/accounts/petnames"
@@ -443,7 +442,7 @@ func blsAccountImport(ctx *cli.Context) error {
 		utils.Fatalf("Import BLS account failed: %v.", err)
 	}
 	// len(statuses)==len(Keystores) when err==nil
-	if statuses[0].Status == service.ImportedKeystoreStatus_ERROR {
+	if statuses[0].Status == keymanager.StatusError {
 		fmt.Printf("Could not import keystore: %v.", statuses[0].Message)
 	} else {
 		fmt.Println("Successfully import BLS account.")
