@@ -113,7 +113,7 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 // GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`.
 func (hc *HeaderChain) GetJustifiedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
-		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(hc, header)
+		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(hc, []*types.Header{header})
 		if err == nil {
 			return justifiedBlockNumber
 		}

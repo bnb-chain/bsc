@@ -637,7 +637,7 @@ func (bc *BlockChain) empty() bool {
 // GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`.
 func (bc *BlockChain) GetJustifiedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(bc, header)
+		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(bc, []*types.Header{header})
 		if err == nil {
 			return justifiedBlockNumber
 		}

@@ -436,7 +436,7 @@ func (lc *LightChain) CurrentHeader() *types.Header {
 // GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`
 func (lc *LightChain) GetJustifiedNumber(header *types.Header) uint64 {
 	if p, ok := lc.engine.(consensus.PoSA); ok {
-		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(lc.hc, header)
+		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(lc.hc, []*types.Header{header})
 		if err == nil {
 			return justifiedBlockNumber
 		}
