@@ -18,6 +18,7 @@
 package utils
 
 import (
+	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
@@ -330,7 +331,6 @@ var (
 	StateSchemeFlag = &cli.StringFlag{
 		Name:     "state.scheme",
 		Usage:    "Scheme to use for storing ethereum state ('hash' or 'path')",
-		Value:    rawdb.HashScheme,
 		Category: flags.StateCategory,
 	}
 	PathDBSyncFlag = &cli.BoolFlag{
@@ -1962,7 +1962,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	// Parse state scheme, abort the process if it's not compatible.
 	chaindb := tryMakeReadOnlyDatabase(ctx, stack)
-	scheme, err := ResolveStateScheme(ctx, cfg.StateScheme, chaindb)
+	scheme, err := ParseStateScheme(ctx, chaindb)
 	chaindb.Close()
 	if err != nil {
 		Fatalf("%v", err)
@@ -2516,88 +2516,44 @@ func MakeConsolePreloads(ctx *cli.Context) []string {
 	return preloads
 }
 
-// ResolveStateScheme resolve state scheme from CLI flag, config file and persistent state.
-// The differences between ResolveStateScheme and ParseStateScheme are:
-// - ResolveStateScheme adds config to compare with CLI and persistent state to ensure correctness.
-// - ResolveStateScheme is only used in SetEthConfig function.
+// ParseStateScheme checks if the specified state scheme is compatible with
+// the stored state.
 //
-// 1. If config isn't provided, write hash mode to config by default, so in current function, config is nonempty.
-// 2. If persistent state and cli is empty, use config param.
-// 3. If persistent state is empty, provide CLI flag and config, choose CLI to return.
-// 4. If persistent state is nonempty and CLI isn't provided, persistent state should be equal to config.
-// 5. If all three items are provided: if any two of the three are not equal, return error.
-func ResolveStateScheme(ctx *cli.Context, stateSchemeCfg string, disk ethdb.Database) (string, error) {
-	stored := rawdb.ReadStateScheme(disk)
-	if stored == "" {
-		// there is no persistent state data in disk db(e.g. geth init)
-		if !ctx.IsSet(StateSchemeFlag.Name) {
-			log.Info("State scheme set by config", "scheme", stateSchemeCfg)
-			return stateSchemeCfg, nil
-		}
-		// if both CLI flag and config are set, choose CLI
-		scheme := ctx.String(StateSchemeFlag.Name)
-		if !ValidateStateScheme(scheme) {
-			return "", fmt.Errorf("invalid state scheme param in CLI: %s", scheme)
-		}
-		log.Info("State scheme set by CLI", "scheme", scheme)
-		return scheme, nil
-	}
-	if !ctx.IsSet(StateSchemeFlag.Name) {
-		if stored != stateSchemeCfg {
-			return "", fmt.Errorf("incompatible state scheme, stored: %s, config: %s", stored, stateSchemeCfg)
-		}
-		log.Info("State scheme set to already existing", "scheme", stored)
-		return stored, nil
-	}
-	scheme := ctx.String(StateSchemeFlag.Name)
-	if !ValidateStateScheme(scheme) {
-		return "", fmt.Errorf("invalid state scheme param in CLI: %s", scheme)
-	}
-	// if there is persistent state data in disk db, and CLI flag, config are set,
-	// when they all are different, return error
-	if scheme != stored || scheme != stateSchemeCfg || stored != stateSchemeCfg {
-		return "", fmt.Errorf("incompatible state scheme, stored: %s, config: %s, CLI: %s", stored, stateSchemeCfg, scheme)
-	}
-	log.Info("All are provided, state scheme set to already existing", "scheme", stored)
-	return stored, nil
-}
-
-// ParseStateScheme resolves scheme identifier from CLI flag. If the provided
-// state scheme is not compatible with the one of persistent scheme, an error
-// will be returned.
+//   - If the provided scheme is none, use the scheme consistent with persistent
+//     state, or fallback to hash-based scheme if state is empty.
 //
-//   - none: use the scheme consistent with persistent state, or fallback
-//     to hash-based scheme if state is empty.
-//   - hash: use hash-based scheme or error out if not compatible with
-//     persistent state scheme.
-//   - path: use path-based scheme or error out if not compatible with
-//     persistent state scheme.
+//   - If the provided scheme is hash, use hash-based scheme or error out if not
+//     compatible with persistent state scheme.
+//
+//   - If the provided scheme is path: use path-based scheme or error out if not
+//     compatible with persistent state scheme.
 func ParseStateScheme(ctx *cli.Context, disk ethdb.Database) (string, error) {
 	// If state scheme is not specified, use the scheme consistent
 	// with persistent state, or fallback to hash mode if database
 	// is empty.
+	provided, err := compareCLIWithConfig(ctx)
+	if err != nil {
+		log.Error("failed to compare CLI with config", "error", err)
+		return "", err
+	}
+
 	stored := rawdb.ReadStateScheme(disk)
-	if !ctx.IsSet(StateSchemeFlag.Name) {
+	if provided == "" {
 		if stored == "" {
 			// use default scheme for empty database, flip it when
 			// path mode is chosen as default
-			log.Info("State scheme set to default", "scheme", "hash")
+			log.Info("State scheme set to default", "scheme", rawdb.HashScheme)
 			return rawdb.HashScheme, nil
 		}
-		log.Info("State scheme set to already existing", "scheme", stored)
+		log.Info("State scheme set to already existing disk db", "scheme", stored)
 		return stored, nil // reuse scheme of persistent scheme
 	}
-	// If state scheme is specified, ensure it's compatible with
-	// persistent state.
-	scheme := ctx.String(StateSchemeFlag.Name)
-	if !ValidateStateScheme(scheme) {
-		return "", fmt.Errorf("invalid state scheme param in CLI: %s", scheme)
+	// If state scheme is specified, ensure it's compatible with persistent state.
+	if stored == "" || provided == stored {
+		log.Info("State scheme set by user", "scheme", provided)
+		return provided, nil
 	}
-	if stored == "" || scheme == stored {
-		log.Info("State scheme set by user", "scheme", scheme)
-		return scheme, nil
-	}
-	return "", fmt.Errorf("incompatible state scheme, stored: %s, provided: %s", stored, scheme)
+	return "", fmt.Errorf("incompatible state scheme, db stored: %s, user provided: %s", stored, provided)
 }
 
 // MakeTrieDatabase constructs a trie database based on the configured scheme.
@@ -2624,11 +2580,64 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 	return trie.NewDatabase(disk, config)
 }
 
-// ValidateStateScheme used to check state scheme whether is valid.
-// Valid state scheme: hash and path.
-func ValidateStateScheme(stateScheme string) bool {
-	if stateScheme == rawdb.HashScheme || stateScheme == rawdb.PathScheme {
-		return true
+func compareCLIWithConfig(ctx *cli.Context) (string, error) {
+	var (
+		cfgScheme string
+		err       error
+	)
+	if file := ctx.String("config"); file != "" {
+		// we don't validate cfgScheme because it's already checked in cmd/geth/loadBaseConfig
+		if cfgScheme, err = scanConfigForStateScheme(file); err != nil {
+			log.Error("Failed to parse config file", "error", err)
+			return "", err
+		}
 	}
-	return false
+	if !ctx.IsSet(StateSchemeFlag.Name) {
+		if cfgScheme != "" {
+			log.Info("Use config state scheme", "config", cfgScheme)
+		}
+		return cfgScheme, nil
+	}
+
+	cliScheme := ctx.String(StateSchemeFlag.Name)
+	if !rawdb.ValidateStateScheme(cliScheme) {
+		return "", fmt.Errorf("invalid state scheme in CLI: %s", cliScheme)
+	}
+	if cfgScheme == "" || cliScheme == cfgScheme {
+		log.Info("Use CLI state scheme", "CLI", cliScheme)
+		return cliScheme, nil
+	}
+	return "", fmt.Errorf("incompatible state scheme, CLI: %s, config: %s", cliScheme, cfgScheme)
+}
+
+func scanConfigForStateScheme(file string) (string, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	targetStr := "StateScheme"
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, targetStr) {
+			return indexStateScheme(line), nil
+		}
+	}
+
+	if err = scanner.Err(); err != nil {
+		return "", err
+	}
+	return "", nil
+}
+
+func indexStateScheme(str string) string {
+	i1 := strings.Index(str, "\"")
+	i2 := strings.LastIndex(str, "\"")
+
+	if i1 != -1 && i2 != -1 && i1 < i2 {
+		return str[i1+1 : i2]
+	}
+	return ""
 }
