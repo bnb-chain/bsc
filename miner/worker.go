@@ -711,7 +711,11 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		env.gasPool.SubGas(params.SystemTxsGas * 5)
+		if w.chain.Config().IsFeynman(env.header.Number, env.header.Time) {
+			env.gasPool.SubGas(params.SystemTxsGas * 40) // 20,000,000
+		} else {
+			env.gasPool.SubGas(params.SystemTxsGas * 5)
+		}
 	}
 
 	var coalescedLogs []*types.Log
