@@ -1924,7 +1924,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if cfg.SyncMode == downloader.FullSync {
 			cfg.PruneAncientData = ctx.Bool(PruneAncientDataFlag.Name)
 		} else {
-			log.Crit("pruneancient parameter didn't take effect for current syncmode")
+			log.Crit("pruneancient parameter is only used with syncmode=full mode")
 		}
 	}
 	if gcmode := ctx.String(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
@@ -1961,13 +1961,15 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.StateHistory = ctx.Uint64(StateHistoryFlag.Name)
 	}
 	// Parse state scheme, abort the process if it's not compatible.
-	chaindb := tryMakeReadOnlyDatabase(ctx, stack)
-	scheme, err := ParseStateScheme(ctx, chaindb)
-	chaindb.Close()
-	if err != nil {
-		Fatalf("%v", err)
+	// chaindb := tryMakeReadOnlyDatabase(ctx, stack)
+	// scheme, err := ParseStateScheme(ctx, chaindb)
+	// chaindb.Close()
+	// if err != nil {
+	// 	Fatalf("%v", err)
+	// }
+	if ctx.IsSet(StateSchemeFlag.Name) {
+		cfg.StateScheme = ctx.String(StateSchemeFlag.Name)
 	}
-	cfg.StateScheme = scheme
 
 	// Parse transaction history flag, if user is still using legacy config
 	// file with 'TxLookupLimit' configured, copy the value to 'TransactionHistory'.
@@ -2120,13 +2122,14 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if ctx.IsSet(DataDirFlag.Name) {
 			// If datadir doesn't exist we need to open db in write-mode
 			// so leveldb can create files.
-			readonly := true
-			if !common.FileExist(stack.ResolvePath("chaindata")) {
-				readonly = false
-			}
+			// readonly := true
+			// if !common.FileExist(stack.ResolvePath("chaindata")) {
+			// 	readonly = false
+			// }
 			// Check if we have an already initialized chain and fall back to
-			// that if so. Otherwise we need to generate a new genesis spec.
-			chaindb := MakeChainDatabase(ctx, stack, readonly, false)
+			// that if so. Otherwise, we need to generate a new genesis spec.
+			// chaindb := MakeChainDatabase(ctx, stack, readonly, false)
+			chaindb := tryMakeReadOnlyDatabase(ctx, stack)
 			if rawdb.ReadCanonicalHash(chaindb, 0) != (common.Hash{}) {
 				cfg.Genesis = nil // fallback to db content
 			}
@@ -2351,6 +2354,7 @@ func SplitTagsFlag(tagsFlag string) map[string]string {
 
 // MakeChainDatabase open an LevelDB using the flags passed to the client and will hard crash if it fails.
 func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
+	log.Info("MakeChainDatabase", "readonly", readonly, "disableFreeze", disableFreeze)
 	var (
 		cache   = ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
 		handles = MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name))

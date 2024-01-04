@@ -520,9 +520,11 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 		log.Info("db is pruned, forcefully set pruneancient flag for db")
 		o.PruneAncientData = true
 	}
+	o.PruneAncientData = true
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
+	log.Info("print open options", "options", o)
 	frdb, err := NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData)
 	if err != nil {
 		kvdb.Close()
