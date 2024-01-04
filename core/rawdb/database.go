@@ -516,6 +516,10 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 	if err != nil {
 		return nil, err
 	}
+	if ReadAncientType(kvdb) == PruneFreezerType {
+		log.Info("db is pruned, forcefully set pruneancient flag for db")
+		o.PruneAncientData = true
+	}
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
