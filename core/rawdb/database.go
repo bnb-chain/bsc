@@ -520,7 +520,6 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 		log.Info("db is pruned, forcefully set pruneancient flag for db")
 		o.PruneAncientData = true
 	}
-	o.PruneAncientData = true
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
@@ -562,6 +561,7 @@ func (s *stat) Size() string {
 func (s *stat) Count() string {
 	return s.count.String()
 }
+
 func AncientInspect(db ethdb.Database) error {
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
 	// Get number of ancient rows inside the freezer.
