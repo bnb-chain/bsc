@@ -517,13 +517,13 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 		return nil, err
 	}
 	if ReadAncientType(kvdb) == PruneFreezerType {
-		log.Info("db is pruned, forcefully set pruneancient flag for db")
+		log.Warn("Disk db is pruned, forcefully set PruneAncientData to true")
 		o.PruneAncientData = true
 	}
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
-	log.Info("print open options", "options", o)
+	log.Info("print open options", "detail", o)
 	frdb, err := NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData)
 	if err != nil {
 		kvdb.Close()

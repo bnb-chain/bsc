@@ -2349,7 +2349,6 @@ func SplitTagsFlag(tagsFlag string) map[string]string {
 
 // MakeChainDatabase open an LevelDB using the flags passed to the client and will hard crash if it fails.
 func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
-	log.Info("MakeChainDatabase", "readonly", readonly, "disableFreeze", disableFreeze)
 	var (
 		cache   = ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
 		handles = MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name))

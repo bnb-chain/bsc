@@ -135,12 +135,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	chainDb, err := stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
 		config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff, config.PruneAncientData)
 	if err != nil {
-		log.Error("print OpenAndMergeDatabase error", "error", err)
 		return nil, err
 	}
 	config.StateScheme, err = rawdb.ParseStateScheme(config.StateScheme, chainDb)
 	if err != nil {
-		log.Error("print ParseStateScheme error", "error", err)
 		return nil, err
 	}
 	// Redistribute memory allocation from in-memory trie node garbage collection
