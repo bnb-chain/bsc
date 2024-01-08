@@ -114,6 +114,7 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 	} else if !locked {
 		return nil, errors.New("locking failed")
 	}
+	log.Info("NewFreezer", "offset", offset)
 	// Open all the supported data tables
 	freezer := &Freezer{
 		readonly:     readonly,
@@ -138,11 +139,9 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 	if freezer.readonly {
 		// In readonly mode only validate, don't truncate.
 		// validate also sets `freezer.frozen`.
-		log.Info("freezer is read only")
 		err = freezer.validate()
 	} else {
 		// Truncate all tables to common length.
-		log.Info("freezer repairs")
 		err = freezer.repair()
 	}
 	if err != nil {
@@ -153,11 +152,13 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 		return nil, err
 	}
 
+	log.Info("NewFreezer 111", "frozen", freezer.frozen.Load(), "tail", freezer.tail.Load())
 	// Some blocks in ancientDB may have already been frozen and been pruned, so adding the offset to
 	// represent the absolute number of blocks already frozen.
 	freezer.frozen.Add(offset)
 	freezer.tail.Add(offset)
 
+	log.Info("NewFreezer 222", "frozen", freezer.frozen.Load(), "tail", freezer.tail.Load())
 	// Create the write batch.
 	freezer.writeBatch = newFreezerBatch(freezer)
 

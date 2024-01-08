@@ -219,12 +219,41 @@ func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, 
 
 // resolveChainFreezerDir is a helper function which resolves the absolute path
 // of chain freezer by considering backward compatibility.
-func resolveChainFreezerDir(ancient string) string {
+func resolveChainFreezerDir(ancient string, pruned bool) string {
 	// Check if the chain freezer is already present in the specified
 	// sub folder, if not then two possibilities:
 	// - chain freezer is not initialized
 	// - chain freezer exists in legacy location (root ancient folder)
 	freezer := path.Join(ancient, chainFreezerName)
+	if pruned {
+		log.Info("1", "freezer", freezer)
+		if common.FileExist(freezer) {
+			log.Info("2")
+			if err := os.RemoveAll(freezer); err != nil && !os.IsNotExist(err) {
+				log.Info("3")
+				log.Crit("Failed to remove the ancient/chain dir", "path", freezer, "error", err)
+			}
+			log.Info("4")
+			return freezer
+		} else {
+			state := path.Join(ancient, stateFreezerName)
+			log.Info("5", "state", state)
+			if common.FileExist(state) {
+				log.Info("6")
+				return freezer
+			}
+			if common.FileExist(ancient) {
+				log.Info("7")
+				if err := os.RemoveAll(ancient); err != nil && !os.IsNotExist(err) {
+					log.Crit("Failed to remove the ancient dir", "path", ancient, "error", err)
+				}
+			}
+			log.Info("8")
+			return freezer
+		}
+	}
+
+	log.Info("9")
 	if !common.FileExist(freezer) {
 		if !common.FileExist(ancient) {
 			// The entire ancient store is not initialized, still use the sub
@@ -254,7 +283,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	}
 
 	if pruneAncientData && !disableFreeze && !readonly {
-		frdb, err := newPrunedFreezer(resolveChainFreezerDir(ancient), db, offset)
+		frdb, err := newPrunedFreezer(resolveChainFreezerDir(ancient, pruneAncientData), db, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +292,9 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		if !readonly {
 			WriteAncientType(db, PruneFreezerType)
 		}
+		log.Info("NewDatabaseWithFreezer", "ancient", ancient)
 		return &freezerdb{
+			ancientRoot:   ancient,
 			KeyValueStore: db,
 			AncientStore:  frdb,
 		}, nil
@@ -278,7 +309,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	}
 
 	// Create the idle freezer instance
-	frdb, err := newChainFreezer(resolveChainFreezerDir(ancient), namespace, readonly, offset)
+	frdb, err := newChainFreezer(resolveChainFreezerDir(ancient, false), namespace, readonly, offset)
 	if err != nil {
 		printChainMetadata(db)
 		return nil, err
@@ -365,7 +396,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			// freezer.
 		}
 	}
-	// no prune ancinet start success
+	// no prune ancient start success
 	if !readonly {
 		WriteAncientType(db, EntireFreezerType)
 	}
@@ -517,13 +548,13 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 		return nil, err
 	}
 	if ReadAncientType(kvdb) == PruneFreezerType {
-		log.Warn("Disk db is pruned, forcefully set PruneAncientData to true")
-		o.PruneAncientData = true
+		if !o.PruneAncientData {
+			log.Warn("Disk db is pruned")
+		}
 	}
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
-	log.Info("print open options", "detail", o)
 	frdb, err := NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData)
 	if err != nil {
 		kvdb.Close()

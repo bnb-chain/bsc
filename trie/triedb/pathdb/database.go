@@ -179,6 +179,15 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		}
 		db.freezer = freezer
 
+		a, err := freezer.Ancients()
+		if err != nil {
+			log.Error("print freezer ancients error", "error", err)
+		}
+		tail, err := freezer.Tail()
+		if err != nil {
+			log.Error("print freezer fail error", "error", err)
+		}
+		log.Info("Path db freezer", "directory", ancient, "ancients", a, "tail", tail)
 		// Truncate the extra state histories above in freezer in case
 		// it's not aligned with the disk layer.
 		pruned, err := truncateFromHead(db.diskdb, freezer, db.tree.bottom().stateID())

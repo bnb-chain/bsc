@@ -128,7 +128,7 @@ func InspectFreezerTable(ancient string, freezerName string, tableName string, s
 	)
 	switch freezerName {
 	case chainFreezerName:
-		path, tables = resolveChainFreezerDir(ancient), chainFreezerNoSnappy
+		path, tables = resolveChainFreezerDir(ancient, false), chainFreezerNoSnappy
 	default:
 		return fmt.Errorf("unknown freezer, supported ones: %v", freezers)
 	}
