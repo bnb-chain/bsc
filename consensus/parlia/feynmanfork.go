@@ -18,11 +18,12 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// TODO: revert to normal value
+// TODO: SecondsPerDay represents the seconds in a day, it should be 86400
+// We set it to 60 for testing purpose and we will change it back to 86400 when launching
 // const SecondsPerDay uint64 = 86400
 const SecondsPerDay uint64 = 60
 
-// the parmas should be blocks' time which are timestamp
+// the params should be two blocks' time(timestamp)
 func sameDayInUTC(first, second uint64) bool {
 	return first/SecondsPerDay == second/SecondsPerDay
 }
