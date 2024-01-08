@@ -1391,12 +1391,25 @@ const validatorSetABIBeforeLuban = `
 ]
 `
 
-// TODO: update ABI
+// TODO: update ABI to the latest version
 const validatorSetABI = `
 [
   {
     "type": "receive",
     "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "BC_FUSION_CHANNELID",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -1413,6 +1426,19 @@ const validatorSetABI = `
   },
   {
     "type": "function",
+    "name": "BLOCK_FEES_RATIO_SCALE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "BURN_ADDRESS",
     "inputs": [],
     "outputs": [
@@ -1420,19 +1446,6 @@ const validatorSetABI = `
         "name": "",
         "type": "address",
         "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "BURN_RATIO_SCALE",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -1609,6 +1622,19 @@ const validatorSetABI = `
   {
     "type": "function",
     "name": "GOV_HUB_ADDR",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "GOV_TOKEN_ADDR",
     "inputs": [],
     "outputs": [
       {
@@ -1816,6 +1842,19 @@ const validatorSetABI = `
   },
   {
     "type": "function",
+    "name": "STAKE_CREDIT_ADDR",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "STAKE_HUB_ADDR",
     "inputs": [],
     "outputs": [
@@ -1868,13 +1907,13 @@ const validatorSetABI = `
   },
   {
     "type": "function",
-    "name": "SYSTEM_REWARD_RATIO_SCALE",
+    "name": "TIMELOCK_ADDR",
     "inputs": [],
     "outputs": [
       {
         "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -2433,19 +2472,6 @@ const validatorSetABI = `
   },
   {
     "type": "function",
-    "name": "jailValidator",
-    "inputs": [
-      {
-        "name": "consensusAddress",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "maintainSlashScale",
     "inputs": [],
     "outputs": [
@@ -2592,6 +2618,19 @@ const validatorSetABI = `
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "removeTmpMigratedValidator",
+    "inputs": [
+      {
+        "name": "validator",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -3919,7 +3958,7 @@ const slashABI = `
 ]
 `
 
-// TODO: update ABI
+// TODO: update ABI to the latest version
 const stakeABI = `
 [
   {
@@ -3928,7 +3967,20 @@ const stakeABI = `
   },
   {
     "type": "function",
-    "name": "BREATH_BLOCK_INTERVAL",
+    "name": "BC_FUSION_CHANNELID",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "BREATHE_BLOCK_INTERVAL",
     "inputs": [],
     "outputs": [
       {
@@ -3954,7 +4006,7 @@ const stakeABI = `
   },
   {
     "type": "function",
-    "name": "INIT_LOCK_AMOUNT",
+    "name": "LOCK_AMOUNT",
     "inputs": [],
     "outputs": [
       {
@@ -3974,6 +4026,19 @@ const stakeABI = `
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "STAKING_CHANNELID",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "stateMutability": "view"
@@ -4058,6 +4123,44 @@ const stakeABI = `
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "consensusExpiration",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "consensusToOperator",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -4321,44 +4424,6 @@ const stakeABI = `
   },
   {
     "type": "function",
-    "name": "getOperatorAddressByConsensusAddress",
-    "inputs": [
-      {
-        "name": "consensusAddress",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getOperatorAddressByVoteAddress",
-    "inputs": [
-      {
-        "name": "voteAddress",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "getValidatorBasicInfo",
     "inputs": [
       {
@@ -4567,6 +4632,100 @@ const stakeABI = `
   },
   {
     "type": "function",
+    "name": "getValidators",
+    "inputs": [
+      {
+        "name": "offset",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "limit",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "operatorAddrs",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "creditAddrs",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "totalLength",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "handleAckPackage",
+    "inputs": [
+      {
+        "name": "channelId",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "msgBytes",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "handleFailAckPackage",
+    "inputs": [
+      {
+        "name": "channelId",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "msgBytes",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "handleSynPackage",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "msgBytes",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "initialize",
     "inputs": [],
     "outputs": [],
@@ -4590,7 +4749,7 @@ const stakeABI = `
     "name": "maliciousVoteSlash",
     "inputs": [
       {
-        "name": "_voteAddr",
+        "name": "voteAddress",
         "type": "bytes",
         "internalType": "bytes"
       }
@@ -4601,6 +4760,19 @@ const stakeABI = `
   {
     "type": "function",
     "name": "maxElectedValidators",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "maxFelonyBetweenBreatheBlock",
     "inputs": [],
     "outputs": [
       {
@@ -4812,6 +4984,44 @@ const stakeABI = `
     "stateMutability": "nonpayable"
   },
   {
+    "type": "function",
+    "name": "voteExpiration",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "voteToOperator",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
     "type": "event",
     "name": "Claimed",
     "inputs": [
@@ -4847,7 +5057,7 @@ const stakeABI = `
         "internalType": "address"
       },
       {
-        "name": "commissionRate",
+        "name": "newCommissionRate",
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
@@ -4927,6 +5137,68 @@ const stakeABI = `
         "type": "uint8",
         "indexed": false,
         "internalType": "uint8"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MigrateFailed",
+    "inputs": [
+      {
+        "name": "operatorAddress",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "delegator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "bnbAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "status",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "enum StakeHub.StakeMigrationStatus"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MigrateSuccess",
+    "inputs": [
+      {
+        "name": "operatorAddress",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "delegator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "bnbAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -5195,8 +5467,32 @@ const stakeABI = `
     "anonymous": false
   },
   {
+    "type": "event",
+    "name": "unexpectedPackage",
+    "inputs": [
+      {
+        "name": "channelId",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "msgBytes",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "type": "error",
     "name": "AlreadySlashed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ConsensusAddressExpired",
     "inputs": []
   },
   {
@@ -5207,6 +5503,11 @@ const stakeABI = `
   {
     "type": "error",
     "name": "DuplicateConsensusAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DuplicateMoniker",
     "inputs": []
   },
   {
@@ -5241,6 +5542,11 @@ const stakeABI = `
   },
   {
     "type": "error",
+    "name": "InvalidSynPackage",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidValue",
     "inputs": [
       {
@@ -5267,7 +5573,7 @@ const stakeABI = `
   },
   {
     "type": "error",
-    "name": "NoMoreFelonyToday",
+    "name": "NoMoreFelonyAllowed",
     "inputs": []
   },
   {
@@ -5355,6 +5661,11 @@ const stakeABI = `
   {
     "type": "error",
     "name": "ValidatorNotJailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "VoteAddressExpired",
     "inputs": []
   },
   {
