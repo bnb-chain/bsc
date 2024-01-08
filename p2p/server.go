@@ -74,6 +74,10 @@ var (
 	errServerStopped       = errors.New("server stopped")
 	errEncHandshakeError   = errors.New("rlpx enc error")
 	errProtoHandshakeError = errors.New("rlpx proto error")
+
+	// magicEnodeID is a special enode ID that can be used to disconnect all peers
+	// enode://1dd9d65c4552b5eb43d5ad55a2ee3f56c6cbc1c64a5c8d659f51fcd51bace24351232b8d7821617d2b29b54b81cdefb9b3e9c37d7fd5f63270bcc9e1a6f6a439
+	magicEnodeID = enode.ID{52, 49, 195, 147, 158, 30, 226, 166, 52, 94, 151, 106, 130, 52, 249, 135, 1, 82, 214, 72, 121, 243, 11, 194, 114, 160, 116, 246, 133, 158, 117, 232}
 )
 
 // Config holds Server options.
@@ -367,8 +371,16 @@ func (srv *Server) RemovePeer(node *enode.Node) {
 		ch  chan *PeerEvent
 		sub event.Subscription
 	)
+
 	// Disconnect the peer on the main loop.
 	srv.doPeerOp(func(peers map[enode.ID]*Peer) {
+		// Special case: sending a disconnect request with a hardcoded enode ID will reset the disconnect enode set
+		if node.ID() == magicEnodeID {
+			srv.disconnectEnodeSet = make(map[enode.ID]struct{})
+			srv.log.Debug("Reset disconnect enode set")
+			return
+		}
+
 		srv.dialsched.removeStatic(node)
 		if peer := peers[node.ID()]; peer != nil {
 			ch = make(chan *PeerEvent, 1)
