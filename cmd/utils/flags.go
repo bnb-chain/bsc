@@ -18,6 +18,7 @@
 package utils
 
 import (
+	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
@@ -62,7 +63,6 @@ import (
 	"github.com/ethereum/go-ethereum/graphql"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/internal/flags"
-	"github.com/ethereum/go-ethereum/les"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/metrics/exp"
@@ -164,13 +164,18 @@ var (
 	}
 	NetworkIdFlag = &cli.Uint64Flag{
 		Name:     "networkid",
-		Usage:    "Explicitly set network id (integer)(For testnets: use --goerli, --sepolia, --holesky instead)",
+		Usage:    "Explicitly set network id (integer)(For testnets: use --chapel instead)",
 		Value:    ethconfig.Defaults.NetworkId,
 		Category: flags.EthCategory,
 	}
 	BSCMainnetFlag = &cli.BoolFlag{
-		Name:     "bsc",
+		Name:     "mainnet",
 		Usage:    "BSC mainnet",
+		Category: flags.EthCategory,
+	}
+	ChapelFlag = &cli.BoolFlag{
+		Name:     "chapel",
+		Usage:    "Chapel network: pre-configured Proof-of-Stake-Authority BSC test network",
 		Category: flags.EthCategory,
 	}
 	DeveloperFlag = &cli.BoolFlag{
@@ -285,6 +290,21 @@ var (
 		Value:    &defaultVerifyMode,
 		Category: flags.FastNodeCategory,
 	}
+	RialtoHash = &cli.StringFlag{
+		Name:     "rialtohash",
+		Usage:    "Manually specify the Rialto Genesis Hash, to trigger builtin network logic",
+		Category: flags.EthCategory,
+	}
+	OverrideShanghai = &cli.Uint64Flag{
+		Name:     "override.shanghai",
+		Usage:    "Manually specify the Shanghai fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	OverrideKepler = &cli.Uint64Flag{
+		Name:     "override.kepler",
+		Usage:    "Manually specify the Kepler fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideCancun = &cli.Uint64Flag{
 		Name:     "override.cancun",
 		Usage:    "Manually specify the Cancun fork timestamp, overriding the bundled setting",
@@ -297,7 +317,7 @@ var (
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
 		Name:     "syncmode",
-		Usage:    `Blockchain sync mode ("snap", "full" or "light")`,
+		Usage:    `Blockchain sync mode ("snap" or "full")`,
 		Value:    &defaultSyncMode,
 		Category: flags.StateCategory,
 	}
@@ -310,7 +330,6 @@ var (
 	StateSchemeFlag = &cli.StringFlag{
 		Name:     "state.scheme",
 		Usage:    "Scheme to use for storing ethereum state ('hash' or 'path')",
-		Value:    rawdb.HashScheme,
 		Category: flags.StateCategory,
 	}
 	PathDBSyncFlag = &cli.BoolFlag{
@@ -330,41 +349,6 @@ var (
 		Usage:    "Number of recent blocks to maintain transactions index for (default = about one year, 0 = entire chain)",
 		Value:    ethconfig.Defaults.TransactionHistory,
 		Category: flags.StateCategory,
-	}
-	// Light server and client settings
-	LightServeFlag = &cli.IntFlag{
-		Name:     "light.serve",
-		Usage:    "Maximum percentage of time allowed for serving LES requests (multi-threaded processing allows values over 100)",
-		Value:    ethconfig.Defaults.LightServ,
-		Category: flags.LightCategory,
-	}
-	LightIngressFlag = &cli.IntFlag{
-		Name:     "light.ingress",
-		Usage:    "Incoming bandwidth limit for serving light clients (kilobytes/sec, 0 = unlimited)",
-		Value:    ethconfig.Defaults.LightIngress,
-		Category: flags.LightCategory,
-	}
-	LightEgressFlag = &cli.IntFlag{
-		Name:     "light.egress",
-		Usage:    "Outgoing bandwidth limit for serving light clients (kilobytes/sec, 0 = unlimited)",
-		Value:    ethconfig.Defaults.LightEgress,
-		Category: flags.LightCategory,
-	}
-	LightMaxPeersFlag = &cli.IntFlag{
-		Name:     "light.maxpeers",
-		Usage:    "Maximum number of light clients to serve, or light servers to attach to",
-		Value:    ethconfig.Defaults.LightPeers,
-		Category: flags.LightCategory,
-	}
-	LightNoPruneFlag = &cli.BoolFlag{
-		Name:     "light.nopruning",
-		Usage:    "Disable ancient light chain data pruning",
-		Category: flags.LightCategory,
-	}
-	LightNoSyncServeFlag = &cli.BoolFlag{
-		Name:     "light.nosyncserve",
-		Usage:    "Enables serving light clients before syncing",
-		Category: flags.LightCategory,
 	}
 	// Transaction pool settings
 	TxPoolLocalsFlag = &cli.StringFlag{
@@ -432,9 +416,10 @@ var (
 		Category: flags.TxPoolCategory,
 	}
 	TxPoolReannounceTimeFlag = &cli.DurationFlag{
-		Name:  "txpool.reannouncetime",
-		Usage: "Duration for announcing local pending transactions again (default = 10 years, minimum = 1 minute)",
-		Value: ethconfig.Defaults.TxPool.ReannounceTime,
+		Name:     "txpool.reannouncetime",
+		Usage:    "Duration for announcing local pending transactions again (default = 10 years, minimum = 1 minute)",
+		Value:    ethconfig.Defaults.TxPool.ReannounceTime,
+		Category: flags.TxPoolCategory,
 	}
 	// Blob transaction pool settings
 	BlobPoolDataDirFlag = &cli.StringFlag{
@@ -510,7 +495,7 @@ var (
 	PruneAncientDataFlag = &cli.BoolFlag{
 		Name:     "pruneancient",
 		Usage:    "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 	CacheLogSizeFlag = &cli.IntFlag{
 		Name:     "cache.blocklogs",
@@ -571,10 +556,10 @@ var (
 		Category: flags.MinerCategory,
 	}
 	MinerNewPayloadTimeout = &cli.DurationFlag{
-		Name:  "miner.newpayload-timeout",
-		Usage: "Specify the maximum time allowance for creating a new payload",
-		Value: ethconfig.Defaults.Miner.NewPayloadTimeout,
-		// Category: flags.MinerCategory,
+		Name:     "miner.newpayload-timeout",
+		Usage:    "Specify the maximum time allowance for creating a new payload",
+		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
+		Category: flags.MinerCategory,
 	}
 
 	// Account settings
@@ -1056,7 +1041,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	BlockAmountReserved = &cli.Uint64Flag{
 		Name:     "block-amount-reserved",
 		Usage:    "Sets the expected remained amount of blocks for offline block prune",
-		Category: flags.HistoryCategory,
+		Category: flags.BlockHistoryCategory,
 	}
 
 	CheckSnapshotWithMPT = &cli.BoolFlag{
@@ -1068,7 +1053,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	EnableDoubleSignMonitorFlag = &cli.BoolFlag{
 		Name:     "monitor.doublesign",
 		Usage:    "Enable double sign monitor to check whether any validator signs multiple blocks",
-		Category: flags.FastFinalityCategory,
+		Category: flags.MinerCategory,
 	}
 
 	VotingEnabledFlag = &cli.BoolFlag{
@@ -1110,7 +1095,9 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 
 var (
 	// TestnetFlags is the flag group of all built-in supported testnets.
-	TestnetFlags = []cli.Flag{}
+	TestnetFlags = []cli.Flag{
+		ChapelFlag,
+	}
 	// NetworkFlags is the flag group of all built-in supported networks.
 	NetworkFlags = append([]cli.Flag{BSCMainnetFlag}, TestnetFlags...)
 
@@ -1357,25 +1344,25 @@ func setIPC(ctx *cli.Context, cfg *node.Config) {
 	}
 }
 
-// setLes configures the les server and ultra light client settings from the command line flags.
+// setLes shows the deprecation warnings for LES flags.
 func setLes(ctx *cli.Context, cfg *ethconfig.Config) {
 	if ctx.IsSet(LightServeFlag.Name) {
-		cfg.LightServ = ctx.Int(LightServeFlag.Name)
+		log.Warn("The light server has been deprecated, please remove this flag", "flag", LightServeFlag.Name)
 	}
 	if ctx.IsSet(LightIngressFlag.Name) {
-		cfg.LightIngress = ctx.Int(LightIngressFlag.Name)
+		log.Warn("The light server has been deprecated, please remove this flag", "flag", LightIngressFlag.Name)
 	}
 	if ctx.IsSet(LightEgressFlag.Name) {
-		cfg.LightEgress = ctx.Int(LightEgressFlag.Name)
+		log.Warn("The light server has been deprecated, please remove this flag", "flag", LightEgressFlag.Name)
 	}
 	if ctx.IsSet(LightMaxPeersFlag.Name) {
-		cfg.LightPeers = ctx.Int(LightMaxPeersFlag.Name)
+		log.Warn("The light server has been deprecated, please remove this flag", "flag", LightMaxPeersFlag.Name)
 	}
 	if ctx.IsSet(LightNoPruneFlag.Name) {
-		cfg.LightNoPrune = ctx.Bool(LightNoPruneFlag.Name)
+		log.Warn("The light server has been deprecated, please remove this flag", "flag", LightNoPruneFlag.Name)
 	}
 	if ctx.IsSet(LightNoSyncServeFlag.Name) {
-		cfg.LightNoSyncServe = ctx.Bool(LightNoSyncServeFlag.Name)
+		log.Warn("The light server has been deprecated, please remove this flag", "flag", LightNoSyncServeFlag.Name)
 	}
 }
 
@@ -1486,27 +1473,8 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	setBootstrapNodes(ctx, cfg)
 	setBootstrapNodesV5(ctx, cfg)
 
-	lightClient := ctx.String(SyncModeFlag.Name) == "light"
-	lightServer := (ctx.Int(LightServeFlag.Name) != 0)
-
-	lightPeers := ctx.Int(LightMaxPeersFlag.Name)
-	if lightClient && !ctx.IsSet(LightMaxPeersFlag.Name) {
-		// dynamic default - for clients we use 1/10th of the default for servers
-		lightPeers /= 10
-	}
-
 	if ctx.IsSet(MaxPeersFlag.Name) {
 		cfg.MaxPeers = ctx.Int(MaxPeersFlag.Name)
-		if lightServer && !ctx.IsSet(LightMaxPeersFlag.Name) {
-			cfg.MaxPeers += lightPeers
-		}
-	} else {
-		if lightServer {
-			cfg.MaxPeers += lightPeers
-		}
-		if lightClient && ctx.IsSet(LightMaxPeersFlag.Name) && cfg.MaxPeers < lightPeers {
-			cfg.MaxPeers = lightPeers
-		}
 	}
 	// if max peers per ip is not set, use max peers
 	if cfg.MaxPeersPerIP <= 0 {
@@ -1517,35 +1485,20 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 		cfg.MaxPeersPerIP = ctx.Int(MaxPeersPerIPFlag.Name)
 	}
 
-	if !(lightClient || lightServer) {
-		lightPeers = 0
-	}
-	ethPeers := cfg.MaxPeers - lightPeers
-	if lightClient {
-		ethPeers = 0
-	}
-	log.Info("Maximum peer count", "ETH", ethPeers, "LES", lightPeers, "total", cfg.MaxPeers)
+	ethPeers := cfg.MaxPeers
+	log.Info("Maximum peer count", "ETH", ethPeers, "total", cfg.MaxPeers)
 
 	if ctx.IsSet(MaxPendingPeersFlag.Name) {
 		cfg.MaxPendingPeers = ctx.Int(MaxPendingPeersFlag.Name)
 	}
-	if ctx.IsSet(NoDiscoverFlag.Name) || lightClient {
+	if ctx.IsSet(NoDiscoverFlag.Name) {
 		cfg.NoDiscovery = true
 	}
 
-	// Disallow --nodiscover when used in conjunction with light mode.
-	if (lightClient || lightServer) && ctx.Bool(NoDiscoverFlag.Name) {
-		Fatalf("Cannot use --" + NoDiscoverFlag.Name + " in light client or light server mode")
-	}
 	CheckExclusive(ctx, DiscoveryV4Flag, NoDiscoverFlag)
 	CheckExclusive(ctx, DiscoveryV5Flag, NoDiscoverFlag)
 	cfg.DiscoveryV4 = ctx.Bool(DiscoveryV4Flag.Name)
 	cfg.DiscoveryV5 = ctx.Bool(DiscoveryV5Flag.Name)
-
-	// If we're running a light client or server, force enable the v5 peer discovery.
-	if lightClient || lightServer {
-		cfg.DiscoveryV5 = true
-	}
 
 	if netrestrict := ctx.String(NetrestrictFlag.Name); netrestrict != "" {
 		list, err := netutil.ParseNetlist(netrestrict)
@@ -1678,12 +1631,7 @@ func setBLSWalletDir(ctx *cli.Context, cfg *node.Config) {
 	}
 }
 
-func setGPO(ctx *cli.Context, cfg *gasprice.Config, light bool) {
-	// If we are running the light client, apply another group
-	// settings for gas oracle.
-	if light {
-		*cfg = ethconfig.LightClientGPO
-	}
+func setGPO(ctx *cli.Context, cfg *gasprice.Config) {
 	if ctx.IsSet(GpoBlocksFlag.Name) {
 		cfg.Blocks = ctx.Int(GpoBlocksFlag.Name)
 	}
@@ -1844,12 +1792,11 @@ func CheckExclusive(ctx *cli.Context, args ...interface{}) {
 func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Avoid conflicting network flags
 	CheckExclusive(ctx, BSCMainnetFlag, DeveloperFlag)
-	CheckExclusive(ctx, LightServeFlag, SyncModeFlag, "light")
 	CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag) // Can't use both ephemeral unlocked and external signer
 
 	// Set configurations from CLI flags
 	setEtherbase(ctx, cfg)
-	setGPO(ctx, &cfg.GPO, ctx.String(SyncModeFlag.Name) == "light")
+	setGPO(ctx, &cfg.GPO)
 	setTxPool(ctx, &cfg.TxPool)
 	setMiner(ctx, &cfg.Miner)
 	setRequiredBlocks(ctx, cfg)
@@ -1939,7 +1886,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	// Parse state scheme, abort the process if it's not compatible.
 	chaindb := tryMakeReadOnlyDatabase(ctx, stack)
-	scheme, err := ResolveStateScheme(ctx, cfg.StateScheme, chaindb)
+	scheme, err := ParseStateScheme(ctx, chaindb)
 	chaindb.Close()
 	if err != nil {
 		Fatalf("%v", err)
@@ -1962,9 +1909,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.TransactionHistory != 0 {
 		cfg.TransactionHistory = 0
 		log.Warn("Disabled transaction unindexing for archive node")
-	}
-	if ctx.IsSet(LightServeFlag.Name) && cfg.TransactionHistory != 0 {
-		log.Warn("LES server cannot serve old transaction status and cannot connect below les/4 protocol version if transaction lookup index is limited")
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheTrieFlag.Name) {
 		cfg.TrieCleanCache = ctx.Int(CacheFlag.Name) * ctx.Int(CacheTrieFlag.Name) / 100
@@ -2038,6 +1982,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 		cfg.Genesis = core.DefaultBSCGenesisBlock()
 		SetDNSDiscoveryDefaults(cfg, params.BSCGenesisHash)
+	case ctx.Bool(ChapelFlag.Name):
+		if !ctx.IsSet(NetworkIdFlag.Name) {
+			cfg.NetworkId = 97
+		}
+		cfg.Genesis = core.DefaultChapelGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.ChapelGenesisHash)
 	case ctx.Bool(DeveloperFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 1337
@@ -2128,9 +2078,6 @@ func SetDNSDiscoveryDefaults(cfg *ethconfig.Config, genesis common.Hash) {
 		return // already set through flags/config
 	}
 	protocol := "all"
-	if cfg.SyncMode == downloader.LightSync {
-		protocol = "les"
-	}
 	if url := params.KnownDNSNetwork(genesis, protocol); url != "" {
 		cfg.EthDiscoveryURLs = []string{url}
 		cfg.SnapDiscoveryURLs = cfg.EthDiscoveryURLs
@@ -2140,26 +2087,11 @@ func SetDNSDiscoveryDefaults(cfg *ethconfig.Config, genesis common.Hash) {
 }
 
 // RegisterEthService adds an Ethereum client to the stack.
-// The second return value is the full node instance, which may be nil if the
-// node is running as a light client.
+// The second return value is the full node instance.
 func RegisterEthService(stack *node.Node, cfg *ethconfig.Config) (ethapi.Backend, *eth.Ethereum) {
-	if cfg.SyncMode == downloader.LightSync {
-		backend, err := les.New(stack, cfg)
-		if err != nil {
-			Fatalf("Failed to register the Ethereum service: %v", err)
-		}
-		stack.RegisterAPIs(tracers.APIs(backend.ApiBackend))
-		return backend.ApiBackend, nil
-	}
 	backend, err := eth.New(stack, cfg)
 	if err != nil {
 		Fatalf("Failed to register the Ethereum service: %v", err)
-	}
-	if cfg.LightServ > 0 {
-		_, err := les.NewLesServer(stack, backend, cfg)
-		if err != nil {
-			Fatalf("Failed to create the LES server: %v", err)
-		}
 	}
 	stack.RegisterAPIs(tracers.APIs(backend.APIBackend))
 	return backend.APIBackend, backend
@@ -2209,13 +2141,12 @@ func EnableMinerInfo(ctx *cli.Context, minerConfig miner.Config) SetupMetricsOpt
 
 // RegisterFilterAPI adds the eth log filtering RPC API to the node.
 func RegisterFilterAPI(stack *node.Node, backend ethapi.Backend, ethcfg *ethconfig.Config) *filters.FilterSystem {
-	isLightClient := ethcfg.SyncMode == downloader.LightSync
 	filterSystem := filters.NewFilterSystem(backend, filters.Config{
 		LogCacheSize: ethcfg.FilterLogCacheSize,
 	})
 	stack.RegisterAPIs([]rpc.API{{
 		Namespace: "eth",
-		Service:   filters.NewFilterAPI(filterSystem, isLightClient, ethcfg.RangeLimit),
+		Service:   filters.NewFilterAPI(filterSystem, ethcfg.RangeLimit),
 	}})
 	return filterSystem
 }
@@ -2399,6 +2330,8 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	switch {
 	case ctx.Bool(BSCMainnetFlag.Name):
 		genesis = core.DefaultBSCGenesisBlock()
+	case ctx.Bool(ChapelFlag.Name):
+		genesis = core.DefaultChapelGenesisBlock()
 	case ctx.Bool(DeveloperFlag.Name):
 		Fatalf("Developer chains are ephemeral")
 	}
@@ -2485,88 +2418,44 @@ func MakeConsolePreloads(ctx *cli.Context) []string {
 	return preloads
 }
 
-// ResolveStateScheme resolve state scheme from CLI flag, config file and persistent state.
-// The differences between ResolveStateScheme and ParseStateScheme are:
-// - ResolveStateScheme adds config to compare with CLI and persistent state to ensure correctness.
-// - ResolveStateScheme is only used in SetEthConfig function.
+// ParseStateScheme checks if the specified state scheme is compatible with
+// the stored state.
 //
-// 1. If config isn't provided, write hash mode to config by default, so in current function, config is nonempty.
-// 2. If persistent state and cli is empty, use config param.
-// 3. If persistent state is empty, provide CLI flag and config, choose CLI to return.
-// 4. If persistent state is nonempty and CLI isn't provided, persistent state should be equal to config.
-// 5. If all three items are provided: if any two of the three are not equal, return error.
-func ResolveStateScheme(ctx *cli.Context, stateSchemeCfg string, disk ethdb.Database) (string, error) {
-	stored := rawdb.ReadStateScheme(disk)
-	if stored == "" {
-		// there is no persistent state data in disk db(e.g. geth init)
-		if !ctx.IsSet(StateSchemeFlag.Name) {
-			log.Info("State scheme set by config", "scheme", stateSchemeCfg)
-			return stateSchemeCfg, nil
-		}
-		// if both CLI flag and config are set, choose CLI
-		scheme := ctx.String(StateSchemeFlag.Name)
-		if !ValidateStateScheme(scheme) {
-			return "", fmt.Errorf("invalid state scheme param in CLI: %s", scheme)
-		}
-		log.Info("State scheme set by CLI", "scheme", scheme)
-		return scheme, nil
-	}
-	if !ctx.IsSet(StateSchemeFlag.Name) {
-		if stored != stateSchemeCfg {
-			return "", fmt.Errorf("incompatible state scheme, stored: %s, config: %s", stored, stateSchemeCfg)
-		}
-		log.Info("State scheme set to already existing", "scheme", stored)
-		return stored, nil
-	}
-	scheme := ctx.String(StateSchemeFlag.Name)
-	if !ValidateStateScheme(scheme) {
-		return "", fmt.Errorf("invalid state scheme param in CLI: %s", scheme)
-	}
-	// if there is persistent state data in disk db, and CLI flag, config are set,
-	// when they all are different, return error
-	if scheme != stored || scheme != stateSchemeCfg || stored != stateSchemeCfg {
-		return "", fmt.Errorf("incompatible state scheme, stored: %s, config: %s, CLI: %s", stored, stateSchemeCfg, scheme)
-	}
-	log.Info("All are provided, state scheme set to already existing", "scheme", stored)
-	return stored, nil
-}
-
-// ParseStateScheme resolves scheme identifier from CLI flag. If the provided
-// state scheme is not compatible with the one of persistent scheme, an error
-// will be returned.
+//   - If the provided scheme is none, use the scheme consistent with persistent
+//     state, or fallback to hash-based scheme if state is empty.
 //
-//   - none: use the scheme consistent with persistent state, or fallback
-//     to hash-based scheme if state is empty.
-//   - hash: use hash-based scheme or error out if not compatible with
-//     persistent state scheme.
-//   - path: use path-based scheme or error out if not compatible with
-//     persistent state scheme.
+//   - If the provided scheme is hash, use hash-based scheme or error out if not
+//     compatible with persistent state scheme.
+//
+//   - If the provided scheme is path: use path-based scheme or error out if not
+//     compatible with persistent state scheme.
 func ParseStateScheme(ctx *cli.Context, disk ethdb.Database) (string, error) {
 	// If state scheme is not specified, use the scheme consistent
 	// with persistent state, or fallback to hash mode if database
 	// is empty.
+	provided, err := compareCLIWithConfig(ctx)
+	if err != nil {
+		log.Error("failed to compare CLI with config", "error", err)
+		return "", err
+	}
+
 	stored := rawdb.ReadStateScheme(disk)
-	if !ctx.IsSet(StateSchemeFlag.Name) {
+	if provided == "" {
 		if stored == "" {
 			// use default scheme for empty database, flip it when
 			// path mode is chosen as default
-			log.Info("State scheme set to default", "scheme", "hash")
+			log.Info("State scheme set to default", "scheme", rawdb.HashScheme)
 			return rawdb.HashScheme, nil
 		}
-		log.Info("State scheme set to already existing", "scheme", stored)
+		log.Info("State scheme set to already existing disk db", "scheme", stored)
 		return stored, nil // reuse scheme of persistent scheme
 	}
-	// If state scheme is specified, ensure it's compatible with
-	// persistent state.
-	scheme := ctx.String(StateSchemeFlag.Name)
-	if !ValidateStateScheme(scheme) {
-		return "", fmt.Errorf("invalid state scheme param in CLI: %s", scheme)
+	// If state scheme is specified, ensure it's compatible with persistent state.
+	if stored == "" || provided == stored {
+		log.Info("State scheme set by user", "scheme", provided)
+		return provided, nil
 	}
-	if stored == "" || scheme == stored {
-		log.Info("State scheme set by user", "scheme", scheme)
-		return scheme, nil
-	}
-	return "", fmt.Errorf("incompatible state scheme, stored: %s, provided: %s", stored, scheme)
+	return "", fmt.Errorf("incompatible state scheme, db stored: %s, user provided: %s", stored, provided)
 }
 
 // MakeTrieDatabase constructs a trie database based on the configured scheme.
@@ -2593,11 +2482,64 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 	return trie.NewDatabase(disk, config)
 }
 
-// ValidateStateScheme used to check state scheme whether is valid.
-// Valid state scheme: hash and path.
-func ValidateStateScheme(stateScheme string) bool {
-	if stateScheme == rawdb.HashScheme || stateScheme == rawdb.PathScheme {
-		return true
+func compareCLIWithConfig(ctx *cli.Context) (string, error) {
+	var (
+		cfgScheme string
+		err       error
+	)
+	if file := ctx.String("config"); file != "" {
+		// we don't validate cfgScheme because it's already checked in cmd/geth/loadBaseConfig
+		if cfgScheme, err = scanConfigForStateScheme(file); err != nil {
+			log.Error("Failed to parse config file", "error", err)
+			return "", err
+		}
 	}
-	return false
+	if !ctx.IsSet(StateSchemeFlag.Name) {
+		if cfgScheme != "" {
+			log.Info("Use config state scheme", "config", cfgScheme)
+		}
+		return cfgScheme, nil
+	}
+
+	cliScheme := ctx.String(StateSchemeFlag.Name)
+	if !rawdb.ValidateStateScheme(cliScheme) {
+		return "", fmt.Errorf("invalid state scheme in CLI: %s", cliScheme)
+	}
+	if cfgScheme == "" || cliScheme == cfgScheme {
+		log.Info("Use CLI state scheme", "CLI", cliScheme)
+		return cliScheme, nil
+	}
+	return "", fmt.Errorf("incompatible state scheme, CLI: %s, config: %s", cliScheme, cfgScheme)
+}
+
+func scanConfigForStateScheme(file string) (string, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	targetStr := "StateScheme"
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, targetStr) {
+			return indexStateScheme(line), nil
+		}
+	}
+
+	if err = scanner.Err(); err != nil {
+		return "", err
+	}
+	return "", nil
+}
+
+func indexStateScheme(str string) string {
+	i1 := strings.Index(str, "\"")
+	i2 := strings.LastIndex(str, "\"")
+
+	if i1 != -1 && i2 != -1 && i1 < i2 {
+		return str[i1+1 : i2]
+	}
+	return ""
 }
