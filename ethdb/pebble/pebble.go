@@ -156,8 +156,15 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 	// including a frozen memory table and another live one.
 	memTableLimit := 2
 	memTableSize := cache * 1024 * 1024 / 2 / memTableLimit
-	if memTableSize > maxMemTableSize {
-		memTableSize = maxMemTableSize
+
+	// The memory table size is currently capped at maxMemTableSize-1 due to a
+	// known bug in the pebble where maxMemTableSize is not recognized as a
+	// valid size.
+	//
+	// TODO use the maxMemTableSize as the maximum table size once the issue
+	// in pebble is fixed.
+	if memTableSize >= maxMemTableSize {
+		memTableSize = maxMemTableSize - 1
 	}
 
 	logger.Info("Allocated cache and file handles", "cache", common.StorageSize(cache*1024*1024),
