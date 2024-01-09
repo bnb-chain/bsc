@@ -147,11 +147,8 @@ func (inspect *Inspector) Run() {
 		ticker := time.NewTicker(30 * time.Second)
 		go func() {
 			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					inspect.db.Cap(DEFAULT_TRIEDBCACHE_SIZE)
-				}
+			for range ticker.C {
+				inspect.db.Cap(DEFAULT_TRIEDBCACHE_SIZE)
 			}
 		}()
 	}
