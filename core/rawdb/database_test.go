@@ -15,3 +15,30 @@
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 package rawdb
+
+import "testing"
+
+func Test_resolveChainFreezerDir(t *testing.T) {
+	tests := []struct {
+		name         string
+		fn           func()
+		ancient      string
+		pruned       bool
+		wantedResult string
+	}{
+		{
+			name: "1",
+			fn: func() {
+
+			},
+			ancient:      "",
+			pruned:       true,
+			wantedResult: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+		})
+	}
+}

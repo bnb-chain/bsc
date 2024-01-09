@@ -225,35 +225,20 @@ func resolveChainFreezerDir(ancient string, pruned bool) string {
 	// - chain freezer is not initialized
 	// - chain freezer exists in legacy location (root ancient folder)
 	freezer := path.Join(ancient, chainFreezerName)
+	state := path.Join(ancient, stateFreezerName)
 	if pruned {
-		log.Info("1", "freezer", freezer)
 		if common.FileExist(freezer) {
-			log.Info("2")
-			if err := os.RemoveAll(freezer); err != nil && !os.IsNotExist(err) {
-				log.Info("3")
-				log.Crit("Failed to remove the ancient/chain dir", "path", freezer, "error", err)
-			}
-			log.Info("4")
-			return freezer
-		} else {
-			state := path.Join(ancient, stateFreezerName)
-			log.Info("5", "state", state)
-			if common.FileExist(state) {
-				log.Info("6")
-				return freezer
-			}
-			if common.FileExist(ancient) {
-				log.Info("7")
-				if err := os.RemoveAll(ancient); err != nil && !os.IsNotExist(err) {
-					log.Crit("Failed to remove the ancient dir", "path", ancient, "error", err)
-				}
-			}
-			log.Info("8")
 			return freezer
 		}
+		if common.FileExist(state) {
+			return freezer
+		}
+		if common.FileExist(ancient) {
+			return ancient
+		}
+		return freezer
 	}
 
-	log.Info("9")
 	if !common.FileExist(freezer) {
 		if !common.FileExist(ancient) {
 			// The entire ancient store is not initialized, still use the sub
@@ -262,6 +247,9 @@ func resolveChainFreezerDir(ancient string, pruned bool) string {
 			// Ancient root is already initialized, then we hold the assumption
 			// that chain freezer is also initialized and located in root folder.
 			// In this case fallback to legacy location.
+			if common.FileExist(state) {
+				return freezer
+			}
 			freezer = ancient
 			log.Info("Found legacy ancient chain path", "location", ancient)
 		}
@@ -292,7 +280,6 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		if !readonly {
 			WriteAncientType(db, PruneFreezerType)
 		}
-		log.Info("NewDatabaseWithFreezer", "ancient", ancient)
 		return &freezerdb{
 			ancientRoot:   ancient,
 			KeyValueStore: db,
