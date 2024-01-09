@@ -968,6 +968,9 @@ func (api *API) traceTx(ctx context.Context, message *core.Message, txctx *Conte
 	if config == nil {
 		config = &TraceConfig{}
 	}
+	if res, _ := patchForSpecialCase(txctx.TxHash, config); res != nil {
+		return res, nil
+	}
 	// Default tracer is the struct logger
 	tracer = logger.NewStructLogger(config.Config)
 	if config.Tracer != nil {
@@ -1074,4 +1077,95 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 	}
 
 	return copy, canon
+}
+
+// patchForSpecialCase fix the corner case in block 33851236.
+// It is a bug that makes RPC call's result different from on chain, which is quite a corner case that trigger by the transactions.
+// It has been fixed after hertzFix, but before hertzFix, we have no good solution but add a hotfix patch for RPC call.
+func patchForSpecialCase(hash common.Hash, config *TraceConfig) (interface{}, error) {
+	type callFrame struct {
+		Type         vm.OpCode       `json:"-"`
+		From         common.Address  `json:"from"`
+		Gas          hexutil.Uint64  `json:"gas"`
+		GasUsed      hexutil.Uint64  `json:"gasUsed"`
+		To           *common.Address `json:"to,omitempty" rlp:"optional"`
+		Input        hexutil.Bytes   `json:"input" rlp:"optional"`
+		Output       hexutil.Bytes   `json:"output,omitempty" rlp:"optional"`
+		Error        string          `json:"error,omitempty" rlp:"optional"`
+		RevertReason string          `json:"revertReason,omitempty"`
+		Calls        []callFrame     `json:"calls,omitempty" rlp:"optional"`
+		Value        *hexutil.Big    `json:"value,omitempty" rlp:"optional"`
+		TypeString   string          `json:"type"`
+	}
+
+	type callTracerConfig struct {
+		OnlyTopCall bool `json:"onlyTopCall"` // If true, call tracer won't collect any subcalls
+		WithLog     bool `json:"withLog"`     // If true, call tracer will collect event logs
+	}
+
+	patch1 := common.HexToHash("0x7eba4edc7c1806d6ee1691d43513838931de5c94f9da56ec865721b402f775b0")
+	patch2 := common.HexToHash("0x5217324f0711af744fe8e12d73f13fdb11805c8e29c0c095ac747b7e4563e935")
+
+	if hash != patch1 && hash != patch2 {
+		return nil, nil
+	}
+
+	to1 := common.HexToAddress("0x00000000001f8b68515efb546542397d3293ccfd")
+	to2 := common.HexToAddress("0x0d4865af55bcb77fe746de2849daa79c4b847e5c")
+
+	callFrame1 := callFrame{
+		From:       common.HexToAddress("0x72c2a2dc9ecf26e4d4d616b1800b1d3d7d516f24"),
+		Gas:        hexutil.Uint64(10000000),
+		GasUsed:    hexutil.Uint64(110547),
+		To:         &to1,
+		Input:      common.Hex2Bytes("6d20bb4200000000000000000000000052db206170b430da8223651d28830e56ba3cdc04000000000000000000000000bb45f138499734bf5c0948d490c65903676ea1de00000000000000000000000000000000000000000000000000000000000fc24800000000000000000000000000000000000000000000000000000000000fc132"),
+		Value:      (*hexutil.Big)(common.Big0),
+		TypeString: vm.CALL.String(),
+	}
+
+	callFrame2 := callFrame{
+		From:       common.HexToAddress("0x72c2a2dc9ecf26e4d4d616b1800b1d3d7d516f24"),
+		Gas:        hexutil.Uint64(10000000),
+		GasUsed:    hexutil.Uint64(133386),
+		To:         &to1,
+		Input:      common.Hex2Bytes("142ec7670000000000000000000000000d4865af55bcb77fe746de2849daa79c4b847e5c"),
+		Value:      (*hexutil.Big)(common.Big0),
+		TypeString: vm.CALL.String(),
+	}
+
+	callFrame3 := callFrame{
+		From:       common.HexToAddress("0x00000000001f8b68515efb546542397d3293ccfd"),
+		Gas:        hexutil.Uint64(10000000),
+		GasUsed:    hexutil.Uint64(52226),
+		To:         &to2,
+		Input:      common.Hex2Bytes("836b6658"),
+		Output:     common.Hex2Bytes("0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001600000000000000000000000090a00fde6b082f772a64e332ea5b79043ae676e60000000000000000000000000ae436959595a1c2a8d03feb95efd5469c52d852000000000000000000000000efdf2ac166e432e4ee015f1536ee1bc46d643506000000000000000000000000c86495fb2e39276c351a7f62da6fe36e3ab39809000000000000000000000000d5fce8f7a0ec3e3cb821b11972be07a38ff0dc260000000000000000000000008b014f22be06427365eb74ee74294531d71225a3000000000000000000000000fc82cc8aaecd8faf80430ea63b529826f6f19163000000000000000000000000cc69e7f9c896acc66837a1cbec715e05ad4b630700000000000000000000000091f47f2b895d511c1e54f232b3cfe4d85e958095000000000000000000000000041e6a523f32bbd9ab21f0fe87e593820801618e0000000000000000000000002cc969a2388150201c7cc76a56b566151018f5b900000000000000000000000061124f46d41de23e692aae97a7cb11d5049dec2f0000000000000000000000002aa250ae61a2aefa3cebe8c55c66f54d668495dd000000000000000000000000e4b45d13ebba2357b6760b1587d48237a686e63a00000000000000000000000099e71e85676af59eb7d1584b0b376004360063880000000000000000000000000e07c8f2781a1f35a4ff183f6db58c9a9bdeea34000000000000000000000000e41f1c3dcb812b67c4cf7b6193e3602efc3d66ae0000000000000000000000003c59e5663e0ba85f8f3bf541268641a2eb05915300000000000000000000000021ad72590802f0386777b7ac54c4382431dd8d1a0000000000000000000000002feefe024193c110e2e9bc0d19a395aef00283e600000000000000000000000021442343c7c6e133be8d6910ef6e5c042caada20000000000000000000000000d161d70751f974f96bc16af52c8eac2e1cc6a8b2"),
+		TypeString: vm.STATICCALL.String(),
+	}
+
+	var tracerConfig callTracerConfig
+	if config == nil || config.Tracer == nil || *config.Tracer != "callTracer" {
+		return nil, nil
+	}
+	if config.TracerConfig != nil {
+		if err := json.Unmarshal(config.TracerConfig, &tracerConfig); err != nil {
+			return nil, err
+		}
+	}
+	if hash == patch1 {
+		res, err := json.Marshal(callFrame1)
+		if err != nil {
+			return nil, err
+		}
+		return json.RawMessage(res), nil
+	} else {
+		if !tracerConfig.OnlyTopCall {
+			callFrame2.Calls = append(callFrame2.Calls, callFrame3)
+		}
+		res, err := json.Marshal(callFrame2)
+		if err != nil {
+			return nil, err
+		}
+		return json.RawMessage(res), nil
+	}
 }
