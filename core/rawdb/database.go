@@ -219,43 +219,60 @@ func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, 
 
 // resolveChainFreezerDir is a helper function which resolves the absolute path
 // of chain freezer by considering backward compatibility.
-func resolveChainFreezerDir(ancient string, pruned bool) string {
+func resolveChainFreezerDir(ancient string) string {
 	// Check if the chain freezer is already present in the specified
 	// sub folder, if not then two possibilities:
 	// - chain freezer is not initialized
 	// - chain freezer exists in legacy location (root ancient folder)
 	freezer := path.Join(ancient, chainFreezerName)
 	state := path.Join(ancient, stateFreezerName)
-	if pruned {
-		if common.FileExist(freezer) {
-			return freezer
-		}
-		if common.FileExist(state) {
-			return freezer
-		}
-		if common.FileExist(ancient) {
-			return ancient
-		}
+	if common.FileExist(freezer) {
 		return freezer
 	}
-
-	if !common.FileExist(freezer) {
-		if !common.FileExist(ancient) {
-			// The entire ancient store is not initialized, still use the sub
-			// folder for initialization.
-		} else {
-			// Ancient root is already initialized, then we hold the assumption
-			// that chain freezer is also initialized and located in root folder.
-			// In this case fallback to legacy location.
-			if common.FileExist(state) {
-				return freezer
-			}
-			freezer = ancient
-			log.Info("Found legacy ancient chain path", "location", ancient)
-		}
+	if common.FileExist(state) {
+		return freezer
+	}
+	if common.FileExist(ancient) {
+		log.Info("Found legacy ancient chain path", "location", ancient)
+		freezer = ancient
 	}
 	return freezer
 }
+
+// TODO: will delete later, please ignore
+// func resolveChainFreezerDir(ancient string, pruned bool) string {
+// 	freezer := path.Join(ancient, chainFreezerName)
+// 	state := path.Join(ancient, stateFreezerName)
+// 	if pruned {
+// 		if common.FileExist(freezer) {
+// 			return freezer
+// 		}
+// 		if common.FileExist(state) {
+// 			return freezer
+// 		}
+// 		if common.FileExist(ancient) {
+// 			return ancient
+// 		}
+// 		return freezer
+// 	}
+//
+// 	if !common.FileExist(freezer) {
+// 		if !common.FileExist(ancient) {
+// 			// The entire ancient store is not initialized, still use the sub
+// 			// folder for initialization.
+// 		} else {
+// 			// Ancient root is already initialized, then we hold the assumption
+// 			// that chain freezer is also initialized and located in root folder.
+// 			// In this case fallback to legacy location.
+// 			if common.FileExist(state) {
+// 				return freezer
+// 			}
+// 			freezer = ancient
+// 			log.Info("Found legacy ancient chain path", "location", ancient)
+// 		}
+// 	}
+// 	return freezer
+// }
 
 // NewDatabaseWithFreezer creates a high level database on top of a given key-
 // value data store with a freezer moving immutable chain segments into cold
@@ -271,7 +288,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	}
 
 	if pruneAncientData && !disableFreeze && !readonly {
-		frdb, err := newPrunedFreezer(resolveChainFreezerDir(ancient, pruneAncientData), db, offset)
+		frdb, err := newPrunedFreezer(resolveChainFreezerDir(ancient), db, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -296,7 +313,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	}
 
 	// Create the idle freezer instance
-	frdb, err := newChainFreezer(resolveChainFreezerDir(ancient, false), namespace, readonly, offset)
+	frdb, err := newChainFreezer(resolveChainFreezerDir(ancient), namespace, readonly, offset)
 	if err != nil {
 		printChainMetadata(db)
 		return nil, err
