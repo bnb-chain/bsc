@@ -1848,7 +1848,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if cfg.SyncMode == downloader.FullSync {
 			cfg.PruneAncientData = ctx.Bool(PruneAncientDataFlag.Name)
 		} else {
-			log.Crit("pruneancient parameter didn't take effect for current syncmode")
+			log.Crit("pruneancient parameter can only be used with syncmode=full")
 		}
 	}
 	if gcmode := ctx.String(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
@@ -1884,9 +1884,11 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(StateHistoryFlag.Name) {
 		cfg.StateHistory = ctx.Uint64(StateHistoryFlag.Name)
 	}
-	if ctx.IsSet(StateSchemeFlag.Name) {
-		cfg.StateScheme = ctx.String(StateSchemeFlag.Name)
+	scheme, err := compareCLIWithConfig(ctx)
+	if err != nil {
+		Fatalf("%v", err)
 	}
+	cfg.StateScheme = scheme
 	// Parse transaction history flag, if user is still using legacy config
 	// file with 'TxLookupLimit' configured, copy the value to 'TransactionHistory'.
 	if cfg.TransactionHistory == ethconfig.Defaults.TransactionHistory && cfg.TxLookupLimit != ethconfig.Defaults.TxLookupLimit {
@@ -2040,7 +2042,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 				readonly = false
 			}
 			// Check if we have an already initialized chain and fall back to
-			// that if so. Otherwise we need to generate a new genesis spec.
+			// that if so. Otherwise, we need to generate a new genesis spec.
 			chaindb := MakeChainDatabase(ctx, stack, readonly, false)
 			if rawdb.ReadCanonicalHash(chaindb, 0) != (common.Hash{}) {
 				cfg.Genesis = nil // fallback to db content
@@ -2275,6 +2277,8 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 
 // tryMakeReadOnlyDatabase try to open the chain database in read-only mode,
 // or fallback to write mode if the database is not initialized.
+//
+//nolint:unused
 func tryMakeReadOnlyDatabase(ctx *cli.Context, stack *node.Node) ethdb.Database {
 	// If datadir doesn't exist we need to open db in write-mode
 	// so database engine can create files.
@@ -2349,7 +2353,11 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	if gcmode := ctx.String(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
 		Fatalf("--%s must be either 'full' or 'archive'", GCModeFlag.Name)
 	}
-	scheme, err := rawdb.ParseStateScheme(ctx.String(StateSchemeFlag.Name), chainDb)
+	provided, err := compareCLIWithConfig(ctx)
+	if err != nil {
+		Fatalf("%v", err)
+	}
+	scheme, err := rawdb.ParseStateScheme(provided, chainDb)
 	if err != nil {
 		Fatalf("%v", err)
 	}
@@ -2417,7 +2425,11 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 	config := &trie.Config{
 		Preimages: preimage,
 	}
-	scheme, err := rawdb.ParseStateScheme(ctx.String(StateSchemeFlag.Name), disk)
+	provided, err := compareCLIWithConfig(ctx)
+	if err != nil {
+		Fatalf("%v", err)
+	}
+	scheme, err := rawdb.ParseStateScheme(provided, disk)
 	if err != nil {
 		Fatalf("%v", err)
 	}
