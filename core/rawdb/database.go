@@ -219,6 +219,10 @@ func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, 
 
 // resolveChainFreezerDir is a helper function which resolves the absolute path
 // of chain freezer by considering backward compatibility.
+//
+// rules:
+// 1. in path mode, block data is stored in chain dir and state data is in state dir.
+// 2. in hash mode, block data is stored in chain dir or ancient dir(before big merge), no state dir.
 func resolveChainFreezerDir(ancient string) string {
 	// Check if the chain freezer is already present in the specified
 	// sub folder, if not then two possibilities:

@@ -338,7 +338,7 @@ func ParseStateScheme(provided string, disk ethdb.Database) (string, error) {
 			log.Info("State schema set to default", "scheme", "hash")
 			return HashScheme, nil
 		}
-		log.Info("State scheme set to already existing", "scheme", stored)
+		log.Info("State scheme set to already existing disk db", "scheme", stored)
 		return stored, nil // reuse scheme of persistent scheme
 	}
 	// If state scheme is specified, ensure it's compatible with
@@ -347,5 +347,5 @@ func ParseStateScheme(provided string, disk ethdb.Database) (string, error) {
 		log.Info("State scheme set by user", "scheme", provided)
 		return provided, nil
 	}
-	return "", fmt.Errorf("incompatible state scheme, stored: %s, provided: %s", stored, provided)
+	return "", fmt.Errorf("incompatible state scheme, stored: %s, user provided: %s", stored, provided)
 }

@@ -36,7 +36,8 @@ func Test_resolveChainFreezerDir(t *testing.T) {
 		wantedResult string
 	}{
 		{
-			name: "run geth in pruned mode and chain dir is existent",
+			// chain dir is existent, so it should be returned.
+			name: "1",
 			fn: func(dir string) string {
 				path := fmt.Sprintf("%s%s", dir, mockChainFreezerPath)
 				if err := os.MkdirAll(path, 0700); err != nil {
@@ -47,7 +48,9 @@ func Test_resolveChainFreezerDir(t *testing.T) {
 			wantedResult: mockChainFreezerPath,
 		},
 		{
-			name: "run geth in path and pruned mode; chain is nonexistent and state is existent",
+			// chain dir is nonexistent and state dir is existent; so chain
+			// dir should be returned.
+			name: "2",
 			fn: func(dir string) string {
 				path := fmt.Sprintf("%s%s", dir, mockStateFreezerPath)
 				if err := os.MkdirAll(path, 0700); err != nil {
@@ -58,7 +61,9 @@ func Test_resolveChainFreezerDir(t *testing.T) {
 			wantedResult: mockChainFreezerPath,
 		},
 		{
-			name: "run geth in hash and pruned mode; ancient block data locates in ancient dir",
+			// both chain dir and state dir are nonexistent, if ancient dir is
+			// existent, so ancient dir should be returned.
+			name: "3",
 			fn: func(dir string) string {
 				path := fmt.Sprintf("%s%s", dir, mockAncientFreezerPath)
 				if err := os.MkdirAll(path, 0700); err != nil {
@@ -69,52 +74,13 @@ func Test_resolveChainFreezerDir(t *testing.T) {
 			wantedResult: mockAncientFreezerPath,
 		},
 		{
-			name: "run geth in pruned mode and there is no ancient dir",
+			// ancient dir is nonexistent, so chain dir should be returned.
+			name: "4",
 			fn: func(dir string) string {
 				return fmt.Sprintf("%s%s", dir, mockAncientFreezerPath)
 			},
 			wantedResult: mockChainFreezerPath,
 		},
-		{
-			name: "run geth in non-pruned mode; ancient is existent and state dir is nonexistent",
-			fn: func(dir string) string {
-				path := fmt.Sprintf("%s%s", dir, mockAncientFreezerPath)
-				if err := os.MkdirAll(path, 0700); err != nil {
-					t.Fatalf("Failed to mkdir all dirs, error: %v", err)
-				}
-				return fmt.Sprintf("%s%s", dir, mockAncientFreezerPath)
-			},
-			wantedResult: mockAncientFreezerPath,
-		},
-		// {
-		// 	name: "run geth in non-pruned mode and chain dir is existent",
-		// 	fn: func(dir string) string {
-		// 		path := fmt.Sprintf("%s%s", dir, mockChainFreezerPath)
-		// 		if err := os.MkdirAll(path, 0700); err != nil {
-		// 			t.Fatalf("Failed to mkdir all dirs, error: %v", err)
-		// 		}
-		// 		return fmt.Sprintf("%s%s", dir, mockAncientFreezerPath)
-		// 	},
-		// 	wantedResult: mockChainFreezerPath,
-		// },
-		// {
-		// 	name: "run geth in non-pruned mode, ancient and chain dir is nonexistent",
-		// 	fn: func(dir string) string {
-		// 		return fmt.Sprintf("%s%s", dir, mockAncientFreezerPath)
-		// 	},
-		// 	wantedResult: mockChainFreezerPath,
-		// },
-		// {
-		// 	name: "run geth in non-pruned mode; ancient dir is existent, chain and state dir is nonexistent",
-		// 	fn: func(dir string) string {
-		// 		path := fmt.Sprintf("%s%s", dir, mockStateFreezerPath)
-		// 		if err := os.MkdirAll(path, 0700); err != nil {
-		// 			t.Fatalf("Failed to mkdir all dirs, error: %v", err)
-		// 		}
-		// 		return fmt.Sprintf("%s%s", dir, mockAncientFreezerPath)
-		// 	},
-		// 	wantedResult: mockChainFreezerPath,
-		// },
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
