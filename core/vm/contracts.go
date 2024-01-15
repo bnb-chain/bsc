@@ -1430,7 +1430,7 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	}
 
 	// basic check
-	if header1.Number.Uint64() != header2.Number.Uint64() {
+	if header1.Number.Cmp(header2.Number) != 0 {
 		return nil, ErrExecutionReverted
 	}
 	if header1.ParentHash != header2.ParentHash {
