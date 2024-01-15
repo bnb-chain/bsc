@@ -54,6 +54,7 @@ func newTrieReader(stateRoot, owner common.Hash, db *Database) (*trieReader, err
 	}
 	reader, err := db.Reader(stateRoot)
 	if err != nil {
+		log.Error("Failed to newTrieReader")
 		return nil, &MissingNodeError{Owner: owner, NodeHash: stateRoot, err: err}
 	}
 	return &trieReader{owner: owner, reader: reader}, nil
@@ -72,14 +73,17 @@ func (r *trieReader) node(path []byte, hash common.Hash) ([]byte, error) {
 	// Perform the logics in tests for preventing trie node access.
 	if r.banned != nil {
 		if _, ok := r.banned[string(path)]; ok {
+			log.Error("banned")
 			return nil, &MissingNodeError{Owner: r.owner, NodeHash: hash, Path: path}
 		}
 	}
 	if r.reader == nil {
+		log.Error("trieReader reader is nil")
 		return nil, &MissingNodeError{Owner: r.owner, NodeHash: hash, Path: path}
 	}
 	blob, err := r.reader.Node(r.owner, path, hash)
 	if err != nil || len(blob) == 0 {
+		log.Error("Failed to call trieReader Node", "length", len(blob))
 		return nil, &MissingNodeError{Owner: r.owner, NodeHash: hash, Path: path, err: err}
 	}
 	return blob, nil

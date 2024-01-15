@@ -364,3 +364,13 @@ func (db *Database) Head() common.Hash {
 	}
 	return pdb.Head()
 }
+
+// ContainDiffLayer returns whether root is existent.
+func (db *Database) ContainDiffLayer(root common.Hash) bool {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("not supported")
+		return false
+	}
+	return pdb.ContainDiffLayer(root)
+}

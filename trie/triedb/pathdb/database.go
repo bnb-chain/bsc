@@ -441,3 +441,27 @@ func (db *Database) Head() common.Hash {
 	defer db.lock.Unlock()
 	return db.tree.front()
 }
+
+// ContainDiffLayer returns whether root is existent.
+func (db *Database) ContainDiffLayer(root common.Hash) bool {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	log.Info("print all layer tree", "all", db.tree.layers)
+	bottom := db.tree.bottom()
+	if l := db.tree.get(root); l != nil {
+		if l.rootHash() == bottom.rootHash() {
+			log.Info("root hash is equal to disk layer root")
+		} else {
+			log.Info("root hash locates in diff layer")
+		}
+		return true
+	}
+	_, err := bottom.Node(common.Hash{}, []byte(""), root)
+	if err != nil {
+		log.Error("Failed to retrieve root hash in disk layer", "hash", root, "error", err)
+		return false
+	}
+	log.Info("root hash locates in disk layer node buffer")
+	return true
+}

@@ -265,6 +265,9 @@ func (dl *diskLayer) journal(w io.Writer) error {
 	for owner, subset := range bufferNodes {
 		entry := journalNodes{Owner: owner}
 		for path, node := range subset {
+			if owner == (common.Hash{}) && path == "" {
+				log.Info("node is in disk layer node buffer", "owner", owner, "path", path, "node hash", node.Hash.String())
+			}
 			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
 		}
 		nodes = append(nodes, entry)
@@ -272,7 +275,7 @@ func (dl *diskLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, nodes); err != nil {
 		return err
 	}
-	log.Debug("Journaled pathdb disk layer", "root", dl.root, "nodes", len(bufferNodes))
+	log.Info("Journaled pathdb disk layer", "root", dl.root, "nodes", len(bufferNodes))
 	return nil
 }
 
@@ -329,7 +332,7 @@ func (dl *diffLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, storage); err != nil {
 		return err
 	}
-	log.Debug("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
+	log.Info("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
 	return nil
 }
 

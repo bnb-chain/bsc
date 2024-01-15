@@ -44,6 +44,8 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 	"github.com/urfave/cli/v2"
 )
 
@@ -590,38 +592,10 @@ func exportPreimages(ctx *cli.Context) error {
 }
 
 func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, ethdb.Database, common.Hash, error) {
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
-	var header *types.Header
 	if ctx.NArg() > 1 {
 		return nil, nil, common.Hash{}, fmt.Errorf("expected 1 argument (number or hash), got %d", ctx.NArg())
 	}
-	if ctx.NArg() == 1 {
-		arg := ctx.Args().First()
-		if hashish(arg) {
-			hash := common.HexToHash(arg)
-			if number := rawdb.ReadHeaderNumber(db, hash); number != nil {
-				header = rawdb.ReadHeader(db, hash, *number)
-			} else {
-				return nil, nil, common.Hash{}, fmt.Errorf("block %x not found", hash)
-			}
-		} else {
-			number, err := strconv.ParseUint(arg, 10, 64)
-			if err != nil {
-				return nil, nil, common.Hash{}, err
-			}
-			if hash := rawdb.ReadCanonicalHash(db, number); hash != (common.Hash{}) {
-				header = rawdb.ReadHeader(db, hash, number)
-			} else {
-				return nil, nil, common.Hash{}, fmt.Errorf("header for block %d not found", number)
-			}
-		}
-	} else {
-		// Use latest
-		header = rawdb.ReadHeadHeader(db)
-	}
-	if header == nil {
-		return nil, nil, common.Hash{}, errors.New("no head block found")
-	}
+
 	startArg := common.FromHex(ctx.String(utils.StartKeyFlag.Name))
 	var start common.Hash
 	switch len(startArg) {
@@ -640,6 +614,90 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 		OnlyWithAddresses: !ctx.Bool(utils.IncludeIncompletesFlag.Name),
 		Start:             start.Bytes(),
 		Max:               ctx.Uint64(utils.DumpLimitFlag.Name),
+	}
+
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	scheme, err := utils.ParseStateScheme(ctx, db)
+	if err != nil {
+		return nil, nil, common.Hash{}, fmt.Errorf("failed to parse state scheme: %v", err)
+	}
+	var header *types.Header
+	if scheme == rawdb.PathScheme {
+		triedb := trie.NewDatabase(db, &trie.Config{PathDB: pathdb.ReadOnly})
+		if ctx.NArg() == 1 {
+			arg := ctx.Args().First()
+			if hashish(arg) {
+				hash := common.HexToHash(arg)
+				if number := rawdb.ReadHeaderNumber(db, hash); number != nil {
+					header = rawdb.ReadHeader(db, hash, *number)
+					if header == nil {
+						return nil, nil, common.Hash{}, fmt.Errorf("no head block found")
+					}
+					if contain := triedb.ContainDiffLayer(header.Root); !contain {
+						return nil, nil, common.Hash{}, fmt.Errorf("PBSS doesn't contain specified MPT root hash for block hash %x", hash)
+					}
+				} else {
+					return nil, nil, common.Hash{}, fmt.Errorf("block hash %x not found", hash)
+				}
+			} else {
+				number, err := strconv.ParseUint(arg, 10, 64)
+				if err != nil {
+					return nil, nil, common.Hash{}, err
+				}
+				if hash := rawdb.ReadCanonicalHash(db, number); hash != (common.Hash{}) {
+					header = rawdb.ReadHeader(db, hash, number)
+					if header == nil {
+						return nil, nil, common.Hash{}, fmt.Errorf("no head block found")
+					}
+					if contain := triedb.ContainDiffLayer(header.Root); !contain {
+						return nil, nil, common.Hash{}, fmt.Errorf("PBSS doesn't contain specified MPT root hash for block number %d", number)
+					}
+				} else {
+					return nil, nil, common.Hash{}, fmt.Errorf("block number %x not found", number)
+				}
+			}
+		} else {
+			if stateRoot := triedb.Head(); stateRoot != (common.Hash{}) {
+				if contain := triedb.ContainDiffLayer(stateRoot); !contain {
+					return nil, nil, common.Hash{}, fmt.Errorf("PBSS doesn't contain specified state root %x", stateRoot)
+				}
+				log.Info("State dump configured", "mpt root hash", stateRoot,
+					"skipcode", conf.SkipCode, "skipstorage", conf.SkipStorage,
+					"start", hexutil.Encode(conf.Start), "limit", conf.Max)
+				return conf, db, stateRoot, nil
+			} else {
+				return nil, nil, common.Hash{}, fmt.Errorf("no top state root hash in path db")
+			}
+		}
+	} else {
+		if ctx.NArg() == 1 {
+			arg := ctx.Args().First()
+			if hashish(arg) {
+				hash := common.HexToHash(arg)
+				if number := rawdb.ReadHeaderNumber(db, hash); number != nil {
+					header = rawdb.ReadHeader(db, hash, *number)
+				} else {
+					return nil, nil, common.Hash{}, fmt.Errorf("block %x not found", hash)
+				}
+			} else {
+				number, err := strconv.ParseUint(arg, 10, 64)
+				if err != nil {
+					return nil, nil, common.Hash{}, err
+				}
+				if hash := rawdb.ReadCanonicalHash(db, number); hash != (common.Hash{}) {
+					header = rawdb.ReadHeader(db, hash, number)
+				} else {
+					return nil, nil, common.Hash{}, fmt.Errorf("header for block %d not found", number)
+				}
+			}
+		} else {
+			// Use latest
+			header = rawdb.ReadHeadHeader(db)
+		}
+	}
+
+	if header == nil {
+		return nil, nil, common.Hash{}, errors.New("no head block found")
 	}
 	log.Info("State dump configured", "block", header.Number, "hash", header.Hash().Hex(),
 		"skipcode", conf.SkipCode, "skipstorage", conf.SkipStorage,
