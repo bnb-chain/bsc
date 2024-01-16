@@ -169,7 +169,7 @@ type Config struct {
 	// is used to dial outbound peer connections.
 	Dialer NodeDialer `toml:"-"`
 
-	// If NoDial is true, the server will not dial any peers.
+	// If NoDial is true, the server will not dial any peers, except for pre-configured static nodes.
 	NoDial bool `toml:",omitempty"`
 
 	// If EnableMsgEvents is set then the server will emit PeerEvents
@@ -676,7 +676,10 @@ func (srv *Server) SetFilter(f forkid.Filter) {
 }
 
 func (srv *Server) maxDialedConns() (limit int) {
-	if srv.NoDial || srv.MaxPeers == 0 {
+	if srv.NoDial {
+		return len(srv.StaticNodes) + len(srv.VerifyNodes)
+	}
+	if srv.MaxPeers == 0 {
 		return 0
 	}
 	if srv.DialRatio == 0 {
