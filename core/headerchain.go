@@ -137,9 +137,7 @@ func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 // GetFinalizedHeader returns the highest finalized header before the specific block.
 func (hc *HeaderChain) GetFinalizedHeader(header *types.Header) *types.Header {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
-		if finalizedHeader := p.GetFinalizedHeader(hc, header); finalizedHeader != nil {
-			return finalizedHeader
-		}
+		return p.GetFinalizedHeader(hc, header)
 	}
 
 	return nil

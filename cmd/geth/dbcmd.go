@@ -257,7 +257,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 	}
 	ancientInspectCmd = &cli.Command{
 		Action: ancientInspect,
-		Name:   "inspect-ancient",
+		Name:   "inspect-reserved-oldest-blocks",
 		Flags: []cli.Flag{
 			utils.DataDirFlag,
 		},

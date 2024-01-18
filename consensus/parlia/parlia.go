@@ -1557,8 +1557,7 @@ func (p *Parlia) Close() error {
 
 // GetConsensusData load the header's last snapshot for history segment
 func (p *Parlia) GetConsensusData(chain consensus.ChainHeaderReader, header *types.Header) ([]byte, error) {
-	number := header.Number.Uint64()
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
 	if err != nil {
 		return nil, err
 	}

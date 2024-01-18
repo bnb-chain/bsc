@@ -728,8 +728,8 @@ func exportSegment(ctx *cli.Context) error {
 	if _, ok := engine.(consensus.PoSA); !ok {
 		return errors.New("cannot generate history segment because consensus engine is not PoSA")
 	}
-	if !chainConfig.IsLuban(latest.Number) {
-		return errors.New("luban hard fork is not enabled , cannot generate history segment")
+	if !chainConfig.IsPlato(latest.Number) {
+		return errors.New("plato hard fork is not enabled , cannot generate history segment")
 	}
 
 	var (
@@ -737,7 +737,7 @@ func exportSegment(ctx *cli.Context) error {
 		historySegmentLength = params.HistorySegmentLength
 	)
 	switch genesisHash {
-	case params.BSCGenesisHash, params.ChapelGenesisHash, params.RialtoGenesisHash:
+	case params.BSCGenesisHash, params.ChapelGenesisHash:
 		boundStartBlock = params.BoundStartBlock
 		historySegmentLength = params.HistorySegmentLength
 	default:
@@ -750,6 +750,9 @@ func exportSegment(ctx *cli.Context) error {
 	}
 	if boundStartBlock == 0 || historySegmentLength == 0 {
 		return fmt.Errorf("wrong params, boundStartBlock: %v, historySegmentLength: %v", boundStartBlock, historySegmentLength)
+	}
+	if chainConfig.Parlia != nil && (boundStartBlock%chainConfig.Parlia.Epoch != 0 || historySegmentLength%chainConfig.Parlia.Epoch != 0) {
+		return fmt.Errorf("please ensure that the parameters is an integer multiple of parlia epoch, boundStartBlock: %v, historySegmentLength: %v", boundStartBlock, historySegmentLength)
 	}
 
 	latestNum := latest.Number.Uint64()
@@ -803,7 +806,8 @@ func exportSegment(ctx *cli.Context) error {
 		segment.TD = headerChain.GetTd(segment.ReGenesisHash, segment.ReGenesisNumber).Uint64()
 		// if using posa consensus, just get snapshot as consensus data
 		if p, ok := engine.(consensus.PoSA); ok {
-			enc, err := p.GetConsensusData(headerChain, ft)
+			parent := headerChain.GetHeader(ft.ParentHash, ft.Number.Uint64()-1)
+			enc, err := p.GetConsensusData(headerChain, parent)
 			if err != nil {
 				return err
 			}
