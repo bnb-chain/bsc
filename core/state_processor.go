@@ -25,11 +25,11 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning
@@ -73,12 +73,15 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
 		misc.ApplyDAOHardFork(statedb)
 	}
-	// Handle upgrade build-in system contract code
-	lastBlock := p.bc.GetBlockByHash(block.ParentHash())
-	if lastBlock == nil {
-		return statedb, nil, nil, 0, fmt.Errorf("could not get parent block")
+
+	if !p.config.IsFeynman(block.Number(), block.Time()) {
+		// Handle upgrade build-in system contract code
+		lastBlock := p.bc.GetBlockByHash(block.ParentHash())
+		if lastBlock == nil {
+			return statedb, nil, nil, 0, fmt.Errorf("could not get parent block")
+		}
+		systemcontracts.UpgradeBuildInSystemContract(p.config, blockNumber, lastBlock.Time(), block.Time(), statedb)
 	}
-	systemcontracts.UpgradeBuildInSystemContract(p.config, blockNumber, lastBlock.Time(), block.Time(), statedb)
 
 	var (
 		context = NewEVMBlockContext(header, p.bc, nil)
@@ -129,6 +132,15 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	withdrawals := block.Withdrawals()
 	if len(withdrawals) > 0 && !p.config.IsShanghai(block.Number(), block.Time()) {
 		return nil, nil, nil, 0, errors.New("withdrawals before shanghai")
+	}
+
+	if p.config.IsFeynman(block.Number(), block.Time()) {
+		// Handle upgrade build-in system contract code
+		lastBlock := p.bc.GetBlockByHash(block.ParentHash())
+		if lastBlock == nil {
+			return statedb, nil, nil, 0, fmt.Errorf("could not get parent block")
+		}
+		systemcontracts.UpgradeBuildInSystemContract(p.config, blockNumber, lastBlock.Time(), block.Time(), statedb)
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
