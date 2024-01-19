@@ -26,12 +26,12 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 )
 
 // BlockGen creates blocks for testing.
@@ -308,7 +308,11 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		if config.DAOForkSupport && config.DAOForkBlock != nil && config.DAOForkBlock.Cmp(b.header.Number) == 0 {
 			misc.ApplyDAOHardFork(statedb)
 		}
-		systemcontracts.UpgradeBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb)
+
+		if !config.IsFeynman(b.header.Number, b.header.Time) {
+			systemcontracts.UpgradeBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb)
+		}
+
 		// Execute any user modifications to the block
 		if gen != nil {
 			gen(i, b)

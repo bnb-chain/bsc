@@ -134,15 +134,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		return nil, nil, nil, 0, errors.New("withdrawals before shanghai")
 	}
 
-	if p.config.IsFeynman(block.Number(), block.Time()) {
-		// Handle upgrade build-in system contract code
-		lastBlock := p.bc.GetBlockByHash(block.ParentHash())
-		if lastBlock == nil {
-			return statedb, nil, nil, 0, fmt.Errorf("could not get parent block")
-		}
-		systemcontracts.UpgradeBuildInSystemContract(p.config, blockNumber, lastBlock.Time(), block.Time(), statedb)
-	}
-
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), withdrawals, &receipts, &systemTxs, usedGas)
 	if err != nil {
