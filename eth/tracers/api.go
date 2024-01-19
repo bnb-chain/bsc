@@ -45,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 )
 
 const (
@@ -610,6 +611,11 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 			return api.traceBlockParallel(ctx, block, statedb, config)
 		}
 	}
+
+	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+	}
+
 	// Native tracers have low overhead
 	var (
 		txs       = block.Transactions()
