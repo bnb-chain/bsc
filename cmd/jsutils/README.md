@@ -1,7 +1,7 @@
 ## Requirement
 
-- nodejs: v20.10.0
-- npm: v10.2.3
+- nodejs >= v16.20.2
+- npm >=  v8.19.4
 
 ## Prepare
 Recommend use [nvm](https://github.com/nvm-sh/nvm) to manage node version.
@@ -21,5 +21,5 @@ testnet validators version
 ```
 Transaction count
 ```bash
-node gettxcount.js --rpc ${url} --startNum ${start} --endNum ${end}
+node gettxcount.js --rpc ${url} --startNum ${start} --endNum ${end} --miner ${miner} (optional)
 ```
