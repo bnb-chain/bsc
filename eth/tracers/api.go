@@ -612,22 +612,36 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 		}
 	}
 
+	// upgrade build-in system contract before trace if Feynman is not enabled
 	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
 		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
 	}
 
 	// Native tracers have low overhead
 	var (
-		txs       = block.Transactions()
-		blockHash = block.Hash()
-		is158     = api.backend.ChainConfig().IsEIP158(block.Number())
-		blockCtx  = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-		signer    = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
-		results   = make([]*txTraceResult, len(txs))
+		txs            = block.Transactions()
+		blockHash      = block.Hash()
+		is158          = api.backend.ChainConfig().IsEIP158(block.Number())
+		blockCtx       = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+		signer         = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+		results        = make([]*txTraceResult, len(txs))
+		beforeSystemTx = true
 	)
 	for i, tx := range txs {
 		// Generate the next state snapshot fast without tracing
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
+		// We need to upgrade build-in system contract before systemTx if Feynman is enabled
+		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
+			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
+				if beforeSystemTx {
+					if api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+						systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+					}
+					beforeSystemTx = false
+				}
+			}
+		}
+
 		txctx := &Context{
 			BlockHash:   blockHash,
 			BlockNumber: block.Number(),
