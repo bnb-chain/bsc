@@ -19,6 +19,7 @@ func preHertzConfig() *params.ChainConfig {
 	config.LondonBlock = nil
 	config.BerlinBlock = nil
 	config.HertzBlock = nil
+	config.HertzfixBlock = nil
 	return &config
 }
 

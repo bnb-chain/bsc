@@ -48,7 +48,7 @@ import (
 )
 
 const (
-	inMemorySnapshots  = 128  // Number of recent snapshots to keep in memory
+	inMemorySnapshots  = 256  // Number of recent snapshots to keep in memory
 	inMemorySignatures = 4096 // Number of recent block signatures to keep in memory
 
 	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
@@ -241,6 +241,7 @@ func New(
 ) *Parlia {
 	// get parlia config
 	parliaConfig := chainConfig.Parlia
+	log.Info("Parlia", "chainConfig", chainConfig)
 
 	// Set any missing consensus parameters to their defaults
 	if parliaConfig != nil && parliaConfig.Epoch == 0 {
@@ -446,7 +447,11 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	// The source block should be the highest justified block.
 	sourceNumber := attestation.Data.SourceNumber
 	sourceHash := attestation.Data.SourceHash
-	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, parent)
+	headers := []*types.Header{parent}
+	if len(parents) > 0 {
+		headers = parents
+	}
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, headers)
 	if err != nil {
 		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
 	}
@@ -680,7 +685,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		// If we're at the genesis, snapshot the initial state. Alternatively if we have
 		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
 		// consider the checkpoint trusted and snapshot it.
-		if number == 0 || (number%p.config.Epoch == 0 && (len(headers) > params.FullImmutabilityThreshold)) {
+		if number == 0 || (number%p.config.Epoch == 0 && (len(headers) > params.FullImmutabilityThreshold/10)) {
 			checkpoint := chain.GetHeaderByNumber(number)
 			if checkpoint != nil {
 				// get checkpoint data
@@ -694,10 +699,12 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 
 				// new snapshot
 				snap = newSnapshot(p.config, p.signatures, number, hash, validators, voteAddrs, p.ethAPI)
-				if err := snap.store(p.db); err != nil {
-					return nil, err
+				if snap.Number%checkpointInterval == 0 { // snapshot will only be loaded when snap.Number%checkpointInterval == 0
+					if err := snap.store(p.db); err != nil {
+						return nil, err
+					}
+					log.Info("Stored checkpoint snapshot to disk", "number", number, "hash", hash)
 				}
-				log.Info("Stored checkpoint snapshot to disk", "number", number, "hash", hash)
 				break
 			}
 		}
@@ -828,6 +835,13 @@ func (p *Parlia) prepareValidators(header *types.Header) error {
 		}
 	} else {
 		header.Extra = append(header.Extra, byte(len(newValidators)))
+		if p.chainConfig.IsOnLuban(header.Number) {
+			voteAddressMap = make(map[common.Address]*types.BLSPublicKey, len(newValidators))
+			var zeroBlsKey types.BLSPublicKey
+			for _, validator := range newValidators {
+				voteAddressMap[validator] = &zeroBlsKey
+			}
+		}
 		for _, validator := range newValidators {
 			header.Extra = append(header.Extra, validator.Bytes()...)
 			header.Extra = append(header.Extra, voteAddressMap[validator].Bytes()...)
@@ -861,7 +875,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 
 	// Prepare vote attestation
 	// Prepare vote data
-	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, parent)
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{parent})
 	if err != nil {
 		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
 	}
@@ -989,6 +1003,13 @@ func (p *Parlia) verifyValidators(header *types.Header) error {
 			return errMismatchingEpochValidators
 		}
 		validatorsBytes = make([]byte, validatorsNumber*validatorBytesLength)
+		if p.chainConfig.IsOnLuban(header.Number) {
+			voteAddressMap = make(map[common.Address]*types.BLSPublicKey, len(newValidators))
+			var zeroBlsKey types.BLSPublicKey
+			for _, validator := range newValidators {
+				voteAddressMap[validator] = &zeroBlsKey
+			}
+		}
 		for i, validator := range newValidators {
 			copy(validatorsBytes[i*validatorBytesLength:], validator.Bytes())
 			copy(validatorsBytes[i*validatorBytesLength+common.AddressLength:], voteAddressMap[validator].Bytes())
@@ -1249,7 +1270,7 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 		return fmt.Errorf("target number mismatch")
 	}
 
-	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, header)
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{header})
 	if err != nil {
 		log.Error("failed to get the highest justified number and hash", "headerNumber", header.Number, "headerHash", header.Hash())
 		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
@@ -1556,7 +1577,8 @@ func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, he
 	state.SetBalance(consensus.SystemAddress, big.NewInt(0))
 	state.AddBalance(coinbase, balance)
 
-	doDistributeSysReward := state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
+	doDistributeSysReward := !p.chainConfig.IsKepler(header.Number, header.Time) &&
+		state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
 	if doDistributeSysReward {
 		var rewards = new(big.Int)
 		rewards = rewards.Rsh(balance, systemRewardPercent)
@@ -1733,20 +1755,22 @@ func (p *Parlia) applyTransaction(
 	return nil
 }
 
-// GetJustifiedNumberAndHash returns the highest justified block's number and hash on the branch including and before `header`
-func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, header *types.Header) (uint64, common.Hash, error) {
-	if chain == nil || header == nil {
+// GetJustifiedNumberAndHash retrieves the number and hash of the highest justified block
+// within the branch including `headers` and utilizing the latest element as the head.
+func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, headers []*types.Header) (uint64, common.Hash, error) {
+	if chain == nil || len(headers) == 0 || headers[len(headers)-1] == nil {
 		return 0, common.Hash{}, fmt.Errorf("illegal chain or header")
 	}
-	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	head := headers[len(headers)-1]
+	snap, err := p.snapshot(chain, head.Number.Uint64(), head.Hash(), headers)
 	if err != nil {
 		log.Error("Unexpected error when getting snapshot",
-			"error", err, "blockNumber", header.Number.Uint64(), "blockHash", header.Hash())
+			"error", err, "blockNumber", head.Number.Uint64(), "blockHash", head.Hash())
 		return 0, common.Hash{}, err
 	}
 
 	if snap.Attestation == nil {
-		if p.chainConfig.IsLuban(header.Number) {
+		if p.chainConfig.IsLuban(head.Number) {
 			log.Debug("once one attestation generated, attestation of snap would not be nil forever basically")
 		}
 		return 0, chain.GetHeaderByNumber(0).Hash(), nil

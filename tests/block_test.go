@@ -30,7 +30,7 @@ func TestBlockchain(t *testing.T) {
 	// For speedier CI-runs, the line below can be uncommented, so those are skipped.
 	// For now, in hardfork-times (Berlin), we run the tests both as StateTests and
 	// as blockchain tests, since the latter also covers things like receipt root
-	bt.skipLoad(`^GeneralStateTests/`)
+	// bt.skipLoad(`^GeneralStateTests/`)
 
 	// Skip random failures due to selfish mining test
 	bt.skipLoad(`.*bcForgedTest/bcForkUncle\.json`)
@@ -44,6 +44,7 @@ func TestBlockchain(t *testing.T) {
 	bt.slow(`.*/bcWalletTest/`)
 
 	// Very slow test
+	bt.skipLoad(`^GeneralStateTests/VMTests/vmPerformance/.*`)
 	bt.skipLoad(`.*/stTimeConsuming/.*`)
 	// test takes a lot for time and goes easily OOM because of sha3 calculation on a huge range,
 	// using 4.6 TGas

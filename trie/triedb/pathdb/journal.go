@@ -242,7 +242,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 }
 
 // journal implements the layer interface, marshaling the un-flushed trie nodes
-// along with layer meta data into provided byte buffer.
+// along with layer metadata into provided byte buffer.
 func (dl *diskLayer) journal(w io.Writer) error {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
@@ -338,6 +338,10 @@ func (dl *diffLayer) journal(w io.Writer) error {
 // flattening everything down (bad for reorgs). And this function will mark the
 // database as read-only to prevent all following mutation to disk.
 func (db *Database) Journal(root common.Hash) error {
+	// Run the journaling
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
 	// Retrieve the head layer to journal from.
 	l := db.tree.get(root)
 	if l == nil {
@@ -351,10 +355,8 @@ func (db *Database) Journal(root common.Hash) error {
 	}
 	start := time.Now()
 
-	// Run the journaling
-	db.lock.Lock()
-	defer db.lock.Unlock()
-
+	// wait and stop the flush trienodebuffer, for asyncnodebuffer need fixed diskroot
+	disk.buffer.waitAndStopFlushing()
 	// Short circuit if the database is in read only mode.
 	if db.readOnly {
 		return errSnapshotReadOnly

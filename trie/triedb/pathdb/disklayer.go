@@ -72,6 +72,9 @@ type trienodebuffer interface {
 
 	// getLayers return the size of cached difflayers.
 	getLayers() uint64
+
+	// waitAndStopFlushing will block unit writing the trie nodes of trienodebuffer to disk.
+	waitAndStopFlushing()
 }
 
 func NewTrieNodeBuffer(sync bool, limit int, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) trienodebuffer {

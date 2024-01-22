@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -218,25 +219,28 @@ func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, 
 
 // resolveChainFreezerDir is a helper function which resolves the absolute path
 // of chain freezer by considering backward compatibility.
+//
+// rules:
+// 1. in path mode, block data is stored in chain dir and state data is in state dir.
+// 2. in hash mode, block data is stored in chain dir or ancient dir(before big merge), no state dir.
 func resolveChainFreezerDir(ancient string) string {
 	// Check if the chain freezer is already present in the specified
 	// sub folder, if not then two possibilities:
 	// - chain freezer is not initialized
 	// - chain freezer exists in legacy location (root ancient folder)
-	freezer := path.Join(ancient, chainFreezerName)
-	if !common.FileExist(freezer) {
-		if !common.FileExist(ancient) {
-			// The entire ancient store is not initialized, still use the sub
-			// folder for initialization.
-		} else {
-			// Ancient root is already initialized, then we hold the assumption
-			// that chain freezer is also initialized and located in root folder.
-			// In this case fallback to legacy location.
-			freezer = ancient
-			log.Info("Found legacy ancient chain path", "location", ancient)
-		}
+	chain := path.Join(ancient, chainFreezerName)
+	state := path.Join(ancient, stateFreezerName)
+	if common.FileExist(chain) {
+		return chain
 	}
-	return freezer
+	if common.FileExist(state) {
+		return chain
+	}
+	if common.FileExist(ancient) {
+		log.Info("Found legacy ancient chain path", "location", ancient)
+		chain = ancient
+	}
+	return chain
 }
 
 // NewDatabaseWithFreezer creates a high level database on top of a given key-
@@ -263,6 +267,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			WriteAncientType(db, PruneFreezerType)
 		}
 		return &freezerdb{
+			ancientRoot:   ancient,
 			KeyValueStore: db,
 			AncientStore:  frdb,
 		}, nil
@@ -335,7 +340,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 							break
 						}
 					}
-					// We are about to exit on error. Print database metdata beore exiting
+					// We are about to exit on error. Print database metdata before exiting
 					printChainMetadata(db)
 					return nil, fmt.Errorf("gap in the chain between ancients [0 - #%d] and leveldb [#%d - #%d] ",
 						frozen-1, number, head)
@@ -364,7 +369,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			// freezer.
 		}
 	}
-	// no prune ancinet start success
+	// no prune ancient start success
 	if !readonly {
 		WriteAncientType(db, EntireFreezerType)
 	}
@@ -425,6 +430,16 @@ func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, ancient 
 	return frdb, nil
 }
 
+// NewPebbleDBDatabase creates a persistent key-value database without a freezer
+// moving immutable chain segments into cold storage.
+func NewPebbleDBDatabase(file string, cache int, handles int, namespace string, readonly bool) (ethdb.Database, error) {
+	db, err := pebble.New(file, cache, handles, namespace, readonly)
+	if err != nil {
+		return nil, err
+	}
+	return NewDatabase(db), nil
+}
+
 const (
 	dbPebble  = "pebble"
 	dbLeveldb = "leveldb"
@@ -480,12 +495,8 @@ func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 		return nil, fmt.Errorf("db.engine choice was %v but found pre-existing %v database in specified data directory", o.Type, existingDb)
 	}
 	if o.Type == dbPebble || existingDb == dbPebble {
-		if PebbleEnabled {
-			log.Info("Using pebble as the backing database")
-			return NewPebbleDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
-		} else {
-			return nil, errors.New("db.engine 'pebble' not supported on this platform")
-		}
+		log.Info("Using pebble as the backing database")
+		return NewPebbleDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
 	}
 	if o.Type == dbLeveldb || existingDb == dbLeveldb {
 		log.Info("Using leveldb as the backing database")
@@ -493,10 +504,8 @@ func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	}
 	// No pre-existing database, no user-requested one either. Default to Pebble
 	// on supported platforms and LevelDB on anything else.
-	// if PebbleEnabled {
 	// 	log.Info("Defaulting to pebble as the backing database")
 	// 	return NewPebbleDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
-	// }
 	log.Info("Defaulting to leveldb as the backing database")
 	return NewLevelDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
 }
@@ -510,6 +519,11 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 	kvdb, err := openKeyValueDatabase(o)
 	if err != nil {
 		return nil, err
+	}
+	if ReadAncientType(kvdb) == PruneFreezerType {
+		if !o.PruneAncientData {
+			log.Warn("Disk db is pruned")
+		}
 	}
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
@@ -551,6 +565,7 @@ func (s *stat) Size() string {
 func (s *stat) Count() string {
 	return s.count.String()
 }
+
 func AncientInspect(db ethdb.Database) error {
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
 	// Get number of ancient rows inside the freezer.

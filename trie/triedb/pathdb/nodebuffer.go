@@ -221,7 +221,7 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 		start = time.Now()
 		// Although the calculation of b.size has been as accurate as possible,
 		// some omissions were still found during testing and code review, but
-		// we are still not sure it is completely accurate. For better protection,
+		// we are still not sure if it is completely accurate. For better protection,
 		// some redundancy is added here.
 		batch = db.NewBatchWithSize(int(float64(b.size) * DefaultBatchRedundancyRate))
 	)
@@ -240,6 +240,8 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	b.reset()
 	return nil
 }
+
+func (b *nodebuffer) waitAndStopFlushing() {}
 
 // writeNodes writes the trie nodes into the provided database batch.
 // Note this function will also inject all the newly written nodes

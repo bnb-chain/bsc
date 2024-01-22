@@ -61,7 +61,7 @@ Many of the below are the same as or similar to go-ethereum.
 
 For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
 
-Building `geth` requires both a Go (version 1.20 or later) and a C compiler (GCC 5 or higher). You can install
+Building `geth` requires both a Go (version 1.21 or later) and a C compiler (GCC 5 or higher). You can install
 them using your favourite package manager. Once the dependencies are installed, run
 
 ```shell
@@ -110,15 +110,15 @@ on how you can run your own `geth` instance.
 
 The hardware must meet certain requirements to run a full node on mainnet:
 - VPS running recent versions of Mac OS X, Linux, or Windows.
-- IMPORTANT 2.5 TB(May 2023) of free disk space, solid-state drive(SSD), gp3, 8k IOPS, 250 MB/S throughput, read latency <1ms. (if node is started with snap sync, it will need NVMe SSD)
+- IMPORTANT 3 TB(Dec 2023) of free disk space, solid-state drive(SSD), gp3, 8k IOPS, 500 MB/S throughput, read latency <1ms. (if node is started with snap sync, it will need NVMe SSD)
 - 16 cores of CPU and 64 GB of memory (RAM)
-- Suggest m5zn.3xlarge instance type on AWS, c2-standard-16 on Google cloud.
+- Suggest m5zn.6xlarge or r7iz.4xlarge instance type on AWS, c2-standard-16 on Google cloud.
 - A broadband Internet connection with upload/download speeds of 5 MB/S
 
 The requirement for testnet:
 - VPS running recent versions of Mac OS X, Linux, or Windows.
 - 500G of storage for testnet.
-- 4 cores of CPU and 8 gigabytes of memory (RAM).
+- 4 cores of CPU and 16 gigabytes of memory (RAM).
 
 ### Steps to Run a Fullnode
 
@@ -149,14 +149,19 @@ unzip testnet.zip
 #### 3. Download snapshot
 Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-snapshots). Follow the guide to structure your files.
 
-Note: if you can not download the chaindata snapshot and want to sync from genesis, you have to generate the genesis block first, you have already get the genesis.json in Step 2.
-So just run: `geth --datadir <datadir> init ./genesis.json`
+Note: If you encounter difficulties downloading the chaindata snapshot and prefer to synchronize from the genesis block on the Chapel testnet, remember to include the additional flag `--chapel` when initially launching Geth.
+
 #### 4. Start a full node
 ```shell
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0
 
 ## It is recommand to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --txlookuplimit 0 --tries-verify-mode none
+## It will run with Hash-Base Storage Scheme by default
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none
+
+## It runs fullnode with Path-Base Storage Scheme. 
+## It will enable inline state prune, keeping the latest 90000 blocks' history state by default.
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none --state.scheme path
 ```
 
 #### 5. Monitor node status
