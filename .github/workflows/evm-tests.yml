@@ -1,4 +1,4 @@
-name: Unit Test
+name: EVM Test
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
       - develop
 
 jobs:
-  unit-test:
+  evm-test:
     strategy:
       matrix:
         go-version: [1.21.x]
@@ -43,12 +43,14 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Unit Test
+    - name: EVM Test
       env:
         CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
         CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
         ANDROID_HOME: "" # Skip android test
       run: |
+        git submodule update --init --depth 1 --recursive
         go mod download
-        make test
-
+        cd tests
+        sed -i -e 's/\/\/ bt.skipLoad/bt.skipLoad/g' block_test.go
+        bash -x run-evm-tests.sh

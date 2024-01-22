@@ -49,7 +49,7 @@ var (
 	dialSuccessMeter    metrics.Meter = metrics.NilMeter{}
 	dialConnectionError metrics.Meter = metrics.NilMeter{}
 
-	// handshake error meters
+	// dial error meters
 	dialTooManyPeers        = metrics.NewRegisteredMeter("p2p/dials/error/saturated", nil)
 	dialAlreadyConnected    = metrics.NewRegisteredMeter("p2p/dials/error/known", nil)
 	dialSelf                = metrics.NewRegisteredMeter("p2p/dials/error/self", nil)
@@ -57,6 +57,15 @@ var (
 	dialUnexpectedIdentity  = metrics.NewRegisteredMeter("p2p/dials/error/id/unexpected", nil)
 	dialEncHandshakeError   = metrics.NewRegisteredMeter("p2p/dials/error/rlpx/enc", nil)
 	dialProtoHandshakeError = metrics.NewRegisteredMeter("p2p/dials/error/rlpx/proto", nil)
+
+	// serve error meters
+	serveTooManyPeers        = metrics.NewRegisteredMeter("p2p/serves/error/saturated", nil)
+	serveAlreadyConnected    = metrics.NewRegisteredMeter("p2p/serves/error/known", nil)
+	serveSelf                = metrics.NewRegisteredMeter("p2p/serves/error/self", nil)
+	serveUselessPeer         = metrics.NewRegisteredMeter("p2p/serves/error/useless", nil)
+	serveUnexpectedIdentity  = metrics.NewRegisteredMeter("p2p/serves/error/id/unexpected", nil)
+	serveEncHandshakeError   = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/enc", nil)
+	serveProtoHandshakeError = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/proto", nil)
 )
 
 func init() {
@@ -96,6 +105,33 @@ func markDialError(err error) {
 		dialEncHandshakeError.Mark(1)
 	case errProtoHandshakeError:
 		dialProtoHandshakeError.Mark(1)
+	}
+}
+
+// markServeError matches errors that occur while setting up a serve connection
+// to the corresponding meter.
+func markServeError(err error) {
+	if !metrics.Enabled {
+		return
+	}
+	if err2 := errors.Unwrap(err); err2 != nil {
+		err = err2
+	}
+	switch err {
+	case DiscTooManyPeers:
+		serveTooManyPeers.Mark(1)
+	case DiscAlreadyConnected:
+		serveAlreadyConnected.Mark(1)
+	case DiscSelf:
+		serveSelf.Mark(1)
+	case DiscUselessPeer:
+		serveUselessPeer.Mark(1)
+	case DiscUnexpectedIdentity:
+		serveUnexpectedIdentity.Mark(1)
+	case errEncHandshakeError:
+		serveEncHandshakeError.Mark(1)
+	case errProtoHandshakeError:
+		serveProtoHandshakeError.Mark(1)
 	}
 }
 

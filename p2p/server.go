@@ -169,7 +169,7 @@ type Config struct {
 	// is used to dial outbound peer connections.
 	Dialer NodeDialer `toml:"-"`
 
-	// If NoDial is true, the server will not dial any peers.
+	// If NoDial is true, the server will not dial any peers, except for pre-configured static nodes.
 	NoDial bool `toml:",omitempty"`
 
 	// If EnableMsgEvents is set then the server will emit PeerEvents
@@ -225,7 +225,8 @@ type Server struct {
 	checkpointAddPeer       chan *conn
 
 	// State of run loop and listenLoop.
-	inboundHistory expHeap
+	inboundHistory     expHeap
+	disconnectEnodeSet map[enode.ID]struct{}
 }
 
 type peerOpFunc func(map[enode.ID]*Peer)
@@ -513,6 +514,7 @@ func (srv *Server) Start() (err error) {
 	srv.removetrusted = make(chan *enode.Node)
 	srv.peerOp = make(chan peerOpFunc)
 	srv.peerOpDone = make(chan struct{})
+	srv.disconnectEnodeSet = make(map[enode.ID]struct{})
 
 	if err := srv.setupLocalNode(); err != nil {
 		return err
@@ -674,7 +676,10 @@ func (srv *Server) SetFilter(f forkid.Filter) {
 }
 
 func (srv *Server) maxDialedConns() (limit int) {
-	if srv.NoDial || srv.MaxPeers == 0 {
+	if srv.NoDial {
+		return len(srv.StaticNodes) + len(srv.VerifyNodes)
+	}
+	if srv.MaxPeers == 0 {
 		return 0
 	}
 	if srv.DialRatio == 0 {
@@ -836,6 +841,9 @@ running:
 		case pd := <-srv.delpeer:
 			// A peer disconnected.
 			d := common.PrettyDuration(mclock.Now() - pd.created)
+			if !pd.requested && pd.err == DiscRequested {
+				srv.disconnectEnodeSet[pd.ID()] = struct{}{}
+			}
 			delete(peers, pd.ID())
 			srv.log.Debug("Removing p2p peer", "peercount", len(peers), "id", pd.ID(), "duration", d, "req", pd.requested, "err", pd.err)
 			srv.dialsched.peerRemoved(pd.rw)
@@ -889,6 +897,11 @@ func (srv *Server) addPeerChecks(peers map[enode.ID]*Peer, inboundCount int, c *
 	if len(srv.Protocols) > 0 && countMatchingProtocols(srv.Protocols, c.caps) == 0 {
 		return DiscUselessPeer
 	}
+
+	if _, ok := srv.disconnectEnodeSet[c.node.ID()]; ok {
+		return errors.New("explicitly disconnected peer previously")
+	}
+
 	// Repeat the post-handshake checks because the
 	// peer set might have changed since those checks were performed.
 	return srv.postHandshakeChecks(peers, inboundCount, c)
@@ -967,6 +980,7 @@ func (srv *Server) checkInboundConn(remoteIP net.IP) error {
 	if remoteIP == nil {
 		return nil
 	}
+
 	// Reject connections that do not match NetRestrict.
 	if srv.NetRestrict != nil && !srv.NetRestrict.Contains(remoteIP) {
 		return fmt.Errorf("not in netrestrict list")
@@ -1003,6 +1017,8 @@ func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) 
 	if err != nil {
 		if !c.is(inboundConn) {
 			markDialError(err)
+		} else {
+			markServeError(err)
 		}
 		c.close(err)
 	}

@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	exlru "github.com/hashicorp/golang-lru"
 	"golang.org/x/crypto/sha3"
 
@@ -41,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -58,6 +60,10 @@ import (
 )
 
 var (
+	badBlockRecords      = mapset.NewSet[common.Hash]()
+	badBlockRecordslimit = 1000
+	badBlockGauge        = metrics.NewRegisteredGauge("chain/insert/badBlock", nil)
+
 	headBlockGauge     = metrics.NewRegisteredGauge("chain/head/block", nil)
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
 	headFastBlockGauge = metrics.NewRegisteredGauge("chain/head/receipt", nil)
@@ -323,6 +329,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
+	systemcontracts.GenesisHash = genesisHash
 	log.Info("Initialised chain configuration", "config", chainConfig)
 	// Description of chainConfig is empty now
 	/*
@@ -632,7 +639,7 @@ func (bc *BlockChain) empty() bool {
 // GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`.
 func (bc *BlockChain) GetJustifiedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(bc, header)
+		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(bc, []*types.Header{header})
 		if err == nil {
 			return justifiedBlockNumber
 		}
@@ -1013,11 +1020,6 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 	}
 	log.Info("Committed new head block", "number", block.Number(), "hash", hash)
 	return nil
-}
-
-// StateAtWithSharedPool returns a new mutable state based on a particular point in time with sharedStorage
-func (bc *BlockChain) StateAtWithSharedPool(root common.Hash) (*state.StateDB, error) {
-	return state.NewWithSharedPool(root, bc.stateCache, bc.snaps)
 }
 
 // Reset purges the entire blockchain, restoring it to its genesis state.
@@ -2918,15 +2920,22 @@ func summarizeBadBlock(block *types.Block, receipts []*types.Receipt, config *pa
 	if vcs != "" {
 		vcs = fmt.Sprintf("\nVCS: %s", vcs)
 	}
+
+	if badBlockRecords.Cardinality() < badBlockRecordslimit {
+		badBlockRecords.Add(block.Hash())
+		badBlockGauge.Update(int64(badBlockRecords.Cardinality()))
+	}
+
 	return fmt.Sprintf(`
 ########## BAD BLOCK #########
 Block: %v (%#x)
+Miner: %v
 Error: %v
 Platform: %v%v
 Chain config: %#v
 Receipts: %v
 ##############################
-`, block.Number(), block.Hash(), err, platform, vcs, config, receiptString)
+`, block.Number(), block.Hash(), block.Coinbase(), err, platform, vcs, config, receiptString)
 }
 
 // InsertHeaderChain attempts to insert the given header chain in to the local

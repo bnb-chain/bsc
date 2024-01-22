@@ -71,7 +71,7 @@ func (bc *BlockChain) CurrentSafeBlock() *types.Header {
 		if currentHeader == nil {
 			return nil
 		}
-		_, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(bc, currentHeader)
+		_, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(bc, []*types.Header{currentHeader})
 		if err == nil {
 			return bc.GetHeaderByHash(justifiedBlockHash)
 		}

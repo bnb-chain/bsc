@@ -650,7 +650,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	prevEnv *environment) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
-	state, err := w.chain.StateAtWithSharedPool(parent.Root)
+	state, err := w.chain.StateAt(parent.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -711,11 +711,7 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		if w.chain.Config().IsEuler(env.header.Number) {
-			env.gasPool.SubGas(params.SystemTxsGas * 3)
-		} else {
-			env.gasPool.SubGas(params.SystemTxsGas)
-		}
+		env.gasPool.SubGas(params.SystemTxsGas)
 	}
 
 	var coalescedLogs []*types.Log
@@ -894,10 +890,10 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Set baseFee and GasLimit if we are on an EIP-1559 chain
 	if w.chainConfig.IsLondon(header.Number) {
 		header.BaseFee = eip1559.CalcBaseFee(w.chainConfig, parent)
-		// if !w.chainConfig.IsLondon(parent.Number) {
-		// 	parentGasLimit := parent.GasLimit * w.chainConfig.ElasticityMultiplier()
-		// 	header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
-		// }
+		if w.chainConfig.Parlia == nil && !w.chainConfig.IsLondon(parent.Number) {
+			parentGasLimit := parent.GasLimit * w.chainConfig.ElasticityMultiplier()
+			header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
+		}
 	}
 	// Run the consensus preparation with the default or customized consensus engine.
 	if err := w.engine.Prepare(w.chain, header); err != nil {

@@ -44,13 +44,11 @@ func TestBlockchain(t *testing.T) {
 	bt.slow(`.*/bcWalletTest/`)
 
 	// Very slow test
+	bt.skipLoad(`^GeneralStateTests/VMTests/vmPerformance/.*`)
 	bt.skipLoad(`.*/stTimeConsuming/.*`)
 	// test takes a lot for time and goes easily OOM because of sha3 calculation on a huge range,
 	// using 4.6 TGas
 	bt.skipLoad(`.*randomStatetest94.json.*`)
-
-	bt.runonly(`^GeneralStateTests/Shanghai`)
-	bt.runonly(`^Pyspecs/shanghai/eip3.*`)
 
 	bt.walk(t, blockTestDir, func(t *testing.T, name string, test *BlockTest) {
 		if err := bt.checkFailure(t, test.Run(false, rawdb.HashScheme, nil)); err != nil {

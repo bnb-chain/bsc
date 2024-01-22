@@ -1781,9 +1781,7 @@ func TestRPCGetBlockOrHeader(t *testing.T) {
 }
 */
 
-func TestRPCGetTransactionReceipt(t *testing.T) {
-	t.Parallel()
-
+func setupReceiptBackend(t *testing.T, genBlocks int) (*testBackend, []common.Hash) {
 	// Initialize test accounts
 	var (
 		acc1Key, _ = crypto.HexToECDSA("8a1f9a8f95be41cd7ccb6168179afb4504aefe388d1e14474d32c45c72ce7b7a")
@@ -1809,10 +1807,9 @@ func TestRPCGetTransactionReceipt(t *testing.T) {
 				contract: {Balance: big.NewInt(params.Ether), Code: common.FromHex("0x608060405234801561001057600080fd5b506004361061002b5760003560e01c8063a9059cbb14610030575b600080fd5b61004a6004803603810190610045919061016a565b610060565b60405161005791906101c5565b60405180910390f35b60008273ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef846040516100bf91906101ef565b60405180910390a36001905092915050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b6000610101826100d6565b9050919050565b610111816100f6565b811461011c57600080fd5b50565b60008135905061012e81610108565b92915050565b6000819050919050565b61014781610134565b811461015257600080fd5b50565b6000813590506101648161013e565b92915050565b60008060408385031215610181576101806100d1565b5b600061018f8582860161011f565b92505060206101a085828601610155565b9150509250929050565b60008115159050919050565b6101bf816101aa565b82525050565b60006020820190506101da60008301846101b6565b92915050565b6101e981610134565b82525050565b600060208201905061020460008301846101e0565b9291505056fea2646970667358221220b469033f4b77b9565ee84e0a2f04d496b18160d26034d54f9487e57788fd36d564736f6c63430008120033")},
 			},
 		}
-		genBlocks = 5
-		signer    = types.LatestSignerForChainID(params.TestChainConfig.ChainID)
-		txHashes  = make([]common.Hash, genBlocks)
-		gasPrice  = big.NewInt(3e9) // 3Gwei
+		signer   = types.LatestSignerForChainID(params.TestChainConfig.ChainID)
+		txHashes = make([]common.Hash, genBlocks)
+		gasPrice = big.NewInt(3e9) // 3Gwei
 	)
 	backend := newTestBackend(t, genBlocks, genesis, func(i int, b *core.BlockGen) {
 		var (
@@ -1854,16 +1851,16 @@ func TestRPCGetTransactionReceipt(t *testing.T) {
 			txHashes[i] = tx.Hash()
 		}
 	})
-	api := NewTransactionAPI(backend, new(AddrLocker))
-	blockHashes := make([]common.Hash, genBlocks+1)
-	ctx := context.Background()
-	for i := 0; i <= genBlocks; i++ {
-		header, err := backend.HeaderByNumber(ctx, rpc.BlockNumber(i))
-		if err != nil {
-			t.Errorf("failed to get block: %d err: %v", i, err)
-		}
-		blockHashes[i] = header.Hash()
-	}
+	return backend, txHashes
+}
+
+func TestRPCGetTransactionReceipt(t *testing.T) {
+	t.Parallel()
+
+	var (
+		backend, txHashes = setupReceiptBackend(t, 5)
+		api               = NewTransactionAPI(backend, new(AddrLocker))
+	)
 
 	var testSuite = []struct {
 		txHash common.Hash
@@ -2003,6 +2000,105 @@ func TestRPCGetTransactionReceipt(t *testing.T) {
 			err    error
 		)
 		result, err = api.GetTransactionReceipt(context.Background(), tt.txHash)
+		if err != nil {
+			t.Errorf("test %d: want no error, have %v", i, err)
+			continue
+		}
+		data, err := json.Marshal(result)
+		if err != nil {
+			t.Errorf("test %d: json marshal error", i)
+			continue
+		}
+		want, have := tt.want, string(data)
+		require.JSONEqf(t, want, have, "test %d: json not match, want: %s, have: %s", i, want, have)
+	}
+}
+
+func TestRPCGetBlockReceipts(t *testing.T) {
+	t.Parallel()
+
+	var (
+		genBlocks  = 5
+		backend, _ = setupReceiptBackend(t, genBlocks)
+		api        = NewBlockChainAPI(backend)
+	)
+	blockHashes := make([]common.Hash, genBlocks+1)
+	ctx := context.Background()
+	for i := 0; i <= genBlocks; i++ {
+		header, err := backend.HeaderByNumber(ctx, rpc.BlockNumber(i))
+		if err != nil {
+			t.Errorf("failed to get block: %d err: %v", i, err)
+		}
+		blockHashes[i] = header.Hash()
+	}
+
+	var testSuite = []struct {
+		test rpc.BlockNumberOrHash
+		want string
+	}{
+		// 0. block without any txs(hash)
+		{
+			test: rpc.BlockNumberOrHashWithHash(blockHashes[0], false),
+			want: `[]`,
+		},
+		// 1. block without any txs(number)
+		{
+			test: rpc.BlockNumberOrHashWithNumber(0),
+			want: `[]`,
+		},
+		// 2. earliest tag
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.EarliestBlockNumber),
+			want: `[]`,
+		},
+		// 3. latest tag
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+			want: `[{"blockHash":"0xde2f10e5c44cb6158aa7fbc70e98da70f51ee72f29c7a28fc30bf37e992655f7","blockNumber":"0x5","contractAddress":"0xfdaa97661a584d977b4d3abb5370766ff5b86a18","cumulativeGasUsed":"0xe01a","effectiveGasPrice":"0xb2d05e00","from":"0x703c4b2bd70c169f5717101caee543299fc946c7","gasUsed":"0xe01a","logs":[],"logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","status":"0x1","to":null,"transactionHash":"0x1b420e5f43f9620364d175d798acbd61d6f76ed8ea8ed7e0f93e4332ab8399b2","transactionIndex":"0x0","type":"0x1"}]`,
+		},
+		// 4. block with legacy transfer tx(hash)
+		{
+			test: rpc.BlockNumberOrHashWithHash(blockHashes[1], false),
+			want: `[{"blockHash":"0xcf5e82a62028debbeecba9a6a7cbeaed67b431800a4250a60943101a611d179a","blockNumber":"0x1","contractAddress":null,"cumulativeGasUsed":"0x5208","effectiveGasPrice":"0xb2d05e00","from":"0x703c4b2bd70c169f5717101caee543299fc946c7","gasUsed":"0x5208","logs":[],"logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","status":"0x1","to":"0x0d3ab14bbad3d99f4203bd7a11acb94882050e7e","transactionHash":"0xf875edfe4579e2a5e1ad45c4d802c1e5abbca19561398e9c58c41dabd86a3aa6","transactionIndex":"0x0","type":"0x0"}]`,
+		},
+		// 5. block with contract create tx(number)
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(2)),
+			want: `[{"blockHash":"0x739ed5e516e6b2b0fa16f22a335a371a1fac616bc394b7454fdf07a0fd10db30","blockNumber":"0x2","contractAddress":"0xae9bea628c4ce503dcfd7e305cab4e29e7476592","cumulativeGasUsed":"0xcf4e","effectiveGasPrice":"0xb2d05e00","from":"0x703c4b2bd70c169f5717101caee543299fc946c7","gasUsed":"0xcf4e","logs":[],"logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","status":"0x1","to":null,"transactionHash":"0xd7a2d56946b13872c0064d0af803fa7b2a7f6be74023cf9ce6337c0dc5b06813","transactionIndex":"0x0","type":"0x0"}]`,
+		},
+		// 6. block with legacy contract call tx(hash)
+		{
+			test: rpc.BlockNumberOrHashWithHash(blockHashes[3], false),
+			want: `[{"blockHash":"0x07545649b5df1cd84de57265fa5acdb473a1a033bf51c43d61c6183b13487f19","blockNumber":"0x3","contractAddress":null,"cumulativeGasUsed":"0x5e28","effectiveGasPrice":"0xb2d05e00","from":"0x703c4b2bd70c169f5717101caee543299fc946c7","gasUsed":"0x5e28","logs":[{"address":"0x0000000000000000000000000000000000031ec7","topics":["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef","0x000000000000000000000000703c4b2bd70c169f5717101caee543299fc946c7","0x0000000000000000000000000000000000000000000000000000000000000003"],"data":"0x000000000000000000000000000000000000000000000000000000000000000d","blockNumber":"0x3","transactionHash":"0x2c660ba194f0e2de5bbb4e2f38a15fe9f263dd5e5c524d45be4834755b2c2a8c","transactionIndex":"0x0","blockHash":"0x07545649b5df1cd84de57265fa5acdb473a1a033bf51c43d61c6183b13487f19","logIndex":"0x0","removed":false}],"logsBloom":"0x00000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000800000000000000008000000000000000000000000000000000020000000080000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000400000000002000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000","status":"0x1","to":"0x0000000000000000000000000000000000031ec7","transactionHash":"0x2c660ba194f0e2de5bbb4e2f38a15fe9f263dd5e5c524d45be4834755b2c2a8c","transactionIndex":"0x0","type":"0x0"}]`,
+		},
+		// 7. block with dynamic fee tx(number)
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(4)),
+			want: `[{"blockHash":"0x2a78cbbc361402d352baf99afcd8d57b34df182ed44819ca6bf0a1ceedc94a1e","blockNumber":"0x4","contractAddress":null,"cumulativeGasUsed":"0x538d","effectiveGasPrice":"0xb2d05e00","from":"0x703c4b2bd70c169f5717101caee543299fc946c7","gasUsed":"0x538d","logs":[],"logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","status":"0x0","to":"0x0000000000000000000000000000000000031ec7","transactionHash":"0x395e5326a196a53e961b8f406b706049288d8f92e467f95677ced981fa3a40ce","transactionIndex":"0x0","type":"0x2"}]`,
+		},
+		// 8. block is empty
+		{
+			test: rpc.BlockNumberOrHashWithHash(common.Hash{}, false),
+			want: `null`,
+		},
+		// 9. block is not found
+		{
+			test: rpc.BlockNumberOrHashWithHash(common.HexToHash("deadbeef"), false),
+			want: `null`,
+		},
+		// 10. block is not found
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(genBlocks + 1)),
+			want: `null`,
+		},
+	}
+
+	for i, tt := range testSuite {
+		var (
+			result interface{}
+			err    error
+		)
+		result, err = api.GetBlockReceipts(context.Background(), tt.test)
 		if err != nil {
 			t.Errorf("test %d: want no error, have %v", i, err)
 			continue

@@ -241,6 +241,7 @@ func New(
 ) *Parlia {
 	// get parlia config
 	parliaConfig := chainConfig.Parlia
+	log.Info("Parlia", "chainConfig", chainConfig)
 
 	// Set any missing consensus parameters to their defaults
 	if parliaConfig != nil && parliaConfig.Epoch == 0 {
@@ -446,7 +447,11 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	// The source block should be the highest justified block.
 	sourceNumber := attestation.Data.SourceNumber
 	sourceHash := attestation.Data.SourceHash
-	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, parent)
+	headers := []*types.Header{parent}
+	if len(parents) > 0 {
+		headers = parents
+	}
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, headers)
 	if err != nil {
 		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
 	}
@@ -870,7 +875,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 
 	// Prepare vote attestation
 	// Prepare vote data
-	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, parent)
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{parent})
 	if err != nil {
 		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
 	}
@@ -1265,7 +1270,7 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 		return fmt.Errorf("target number mismatch")
 	}
 
-	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, header)
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{header})
 	if err != nil {
 		log.Error("failed to get the highest justified number and hash", "headerNumber", header.Number, "headerHash", header.Hash())
 		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
@@ -1750,20 +1755,22 @@ func (p *Parlia) applyTransaction(
 	return nil
 }
 
-// GetJustifiedNumberAndHash returns the highest justified block's number and hash on the branch including and before `header`
-func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, header *types.Header) (uint64, common.Hash, error) {
-	if chain == nil || header == nil {
+// GetJustifiedNumberAndHash retrieves the number and hash of the highest justified block
+// within the branch including `headers` and utilizing the latest element as the head.
+func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, headers []*types.Header) (uint64, common.Hash, error) {
+	if chain == nil || len(headers) == 0 || headers[len(headers)-1] == nil {
 		return 0, common.Hash{}, fmt.Errorf("illegal chain or header")
 	}
-	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	head := headers[len(headers)-1]
+	snap, err := p.snapshot(chain, head.Number.Uint64(), head.Hash(), headers)
 	if err != nil {
 		log.Error("Unexpected error when getting snapshot",
-			"error", err, "blockNumber", header.Number.Uint64(), "blockHash", header.Hash())
+			"error", err, "blockNumber", head.Number.Uint64(), "blockHash", head.Hash())
 		return 0, common.Hash{}, err
 	}
 
 	if snap.Attestation == nil {
-		if p.chainConfig.IsLuban(header.Number) {
+		if p.chainConfig.IsLuban(head.Number) {
 			log.Debug("once one attestation generated, attestation of snap would not be nil forever basically")
 		}
 		return 0, chain.GetHeaderByNumber(0).Hash(), nil
