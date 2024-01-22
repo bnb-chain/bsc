@@ -913,8 +913,10 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		return nil, err
 	}
 
-	// Handle upgrade build-in system contract code
-	systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state)
+	if !w.chainConfig.IsFeynman(header.Number, header.Time) {
+		// Handle upgrade build-in system contract code
+		systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state)
+	}
 
 	return env, nil
 }

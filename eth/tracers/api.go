@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
@@ -522,12 +523,18 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 	}
 	defer release()
 
+	// upgrade build-in system contract before tracing non-system tx if Feynman is not enabled
+	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+	}
+
 	var (
 		roots              []common.Hash
 		signer             = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
 		chainConfig        = api.backend.ChainConfig()
 		vmctx              = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 		deleteEmptyObjects = chainConfig.IsEIP158(block.Number())
+		beforeSystemTx     = true
 	)
 	for i, tx := range block.Transactions() {
 		if err := ctx.Err(); err != nil {
@@ -545,6 +552,11 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 				if balance.Cmp(common.Big0) > 0 {
 					statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
 					statedb.AddBalance(vmctx.Coinbase, balance)
+				}
+
+				if beforeSystemTx && api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+					systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+					beforeSystemTx = false
 				}
 			}
 		}
@@ -602,6 +614,11 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	}
 	defer release()
 
+	// upgrade build-in system contract before tracing non-system tx if Feynman is not enabled
+	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+	}
+
 	// JS tracers have high overhead. In this case run a parallel
 	// process that generates states in one thread and traces txes
 	// in separate worker threads.
@@ -610,18 +627,33 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 			return api.traceBlockParallel(ctx, block, statedb, config)
 		}
 	}
+
 	// Native tracers have low overhead
 	var (
-		txs       = block.Transactions()
-		blockHash = block.Hash()
-		is158     = api.backend.ChainConfig().IsEIP158(block.Number())
-		blockCtx  = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-		signer    = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
-		results   = make([]*txTraceResult, len(txs))
+		txs            = block.Transactions()
+		blockHash      = block.Hash()
+		is158          = api.backend.ChainConfig().IsEIP158(block.Number())
+		blockCtx       = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+		signer         = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+		results        = make([]*txTraceResult, len(txs))
+		beforeSystemTx = true
 	)
 	for i, tx := range txs {
+		// upgrade build-in system contract before tracing system tx if Feynman is enabled
+		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
+			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
+				if beforeSystemTx {
+					if api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+						systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+					}
+					beforeSystemTx = false
+				}
+			}
+		}
+
 		// Generate the next state snapshot fast without tracing
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
+
 		txctx := &Context{
 			BlockHash:   blockHash,
 			BlockNumber: block.Number(),
@@ -682,10 +714,36 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 		})
 	}
 
+	// upgrade build-in system contract before tracing non-system tx if Feynman is not enabled
+	parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
+	if err != nil {
+		return nil, err
+	}
+	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+	}
+
 	// Feed the transactions into the tracers and return
-	var failed error
+	var (
+		failed         error
+		beforeSystemTx = true
+	)
 txloop:
 	for i, tx := range txs {
+		var isSystem bool
+		// upgrade build-in system contract before tracing system tx if Feynman is enabled
+		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
+			isSystem, _ = posa.IsSystemTransaction(tx, block.Header())
+			if isSystem {
+				if beforeSystemTx {
+					if api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+						systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+					}
+					beforeSystemTx = false
+				}
+			}
+		}
+
 		// Send the trace task over for execution
 		task := &txTraceTask{statedb: statedb.Copy(), index: i}
 		select {
@@ -697,13 +755,11 @@ txloop:
 
 		// Generate the next state snapshot fast without tracing
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
-		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
-			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
-				balance := statedb.GetBalance(consensus.SystemAddress)
-				if balance.Cmp(common.Big0) > 0 {
-					statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
-					statedb.AddBalance(block.Header().Coinbase, balance)
-				}
+		if isSystem {
+			balance := statedb.GetBalance(consensus.SystemAddress)
+			if balance.Cmp(common.Big0) > 0 {
+				statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
+				statedb.AddBalance(block.Header().Coinbase, balance)
 			}
 		}
 		statedb.SetTxContext(tx.Hash(), i)
@@ -754,6 +810,11 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 	}
 	defer release()
 
+	// upgrade build-in system contract before tracing non-system tx if Feynman is not enabled
+	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+	}
+
 	// Retrieve the tracing configurations, or use default values
 	var (
 		logConfig logger.Config
@@ -782,7 +843,23 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		// Note: This copies the config, to not screw up the main config
 		chainConfig, canon = overrideConfig(chainConfig, config.Overrides)
 	}
+
+	beforeSystemTx := true
 	for i, tx := range block.Transactions() {
+		// upgrade build-in system contract before tracing system tx if Feynman is enabled
+		var isSystem bool
+		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
+			isSystem, _ = posa.IsSystemTransaction(tx, block.Header())
+			if isSystem {
+				if beforeSystemTx {
+					if api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+						systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+					}
+					beforeSystemTx = false
+				}
+			}
+		}
+
 		// Prepare the transaction for un-traced execution
 		var (
 			msg, _    = core.TransactionToMessage(tx, signer, block.BaseFee())
@@ -814,13 +891,11 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		}
 		// Execute the transaction and flush any traces to disk
 		vmenv := vm.NewEVM(vmctx, txContext, statedb, chainConfig, vmConf)
-		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
-			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
-				balance := statedb.GetBalance(consensus.SystemAddress)
-				if balance.Cmp(common.Big0) > 0 {
-					statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
-					statedb.AddBalance(vmctx.Coinbase, balance)
-				}
+		if isSystem {
+			balance := statedb.GetBalance(consensus.SystemAddress)
+			if balance.Cmp(common.Big0) > 0 {
+				statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
+				statedb.AddBalance(vmctx.Coinbase, balance)
 			}
 		}
 		statedb.SetTxContext(tx.Hash(), i)
@@ -887,6 +962,22 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 	}
 	defer release()
 
+	parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
+	if err != nil {
+		return nil, err
+	}
+	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+		// upgrade build-in system contract before trace if Feynman is not enabled
+		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+	} else {
+		// upgrade build-in system contract before trace system tx if Feynman is enabled
+		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
+			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
+				systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+			}
+		}
+	}
+
 	txctx := &Context{
 		BlockHash:   blockHash,
 		BlockNumber: block.Number(),
@@ -933,6 +1024,15 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 		return nil, err
 	}
 	defer release()
+
+	// upgrade build-in system contract before tracing if Feynman is not enabled
+	parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
+	if err != nil {
+		return nil, err
+	}
+	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+	}
 
 	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 	// Apply the customization rules if required.

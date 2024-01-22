@@ -1126,6 +1126,15 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 	cx := chainContext{Chain: chain, parlia: p}
 
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return errors.New("parent not found")
+	}
+
+	if p.chainConfig.IsFeynman(header.Number, header.Time) {
+		systemcontracts.UpgradeBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state)
+	}
+
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	if header.Number.Cmp(common.Big1) == 0 {
 		err := p.initContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
@@ -1168,10 +1177,6 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 
-	parent := chain.GetHeaderByHash(header.ParentHash)
-	if parent == nil {
-		return errors.New("parent not found")
-	}
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
 		if err != nil {
@@ -1207,6 +1212,16 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if receipts == nil {
 		receipts = make([]*types.Receipt, 0)
 	}
+
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return nil, nil, errors.New("parent not found")
+	}
+
+	if p.chainConfig.IsFeynman(header.Number, header.Time) {
+		systemcontracts.UpgradeBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state)
+	}
+
 	if header.Number.Cmp(common.Big1) == 0 {
 		err := p.initContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
 		if err != nil {
@@ -1251,10 +1266,6 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 	}
 
-	parent := chain.GetHeaderByHash(header.ParentHash)
-	if parent == nil {
-		return nil, nil, errors.New("parent not found")
-	}
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
 		if err != nil {
