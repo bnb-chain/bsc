@@ -617,9 +617,13 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 	}
 
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
-	scheme, err := utils.ParseStateScheme(ctx, db)
+	provided, err := utils.CompareStateSchemeCLIWithConfig(ctx)
 	if err != nil {
-		return nil, nil, common.Hash{}, fmt.Errorf("failed to parse state scheme: %v", err)
+		return nil, nil, common.Hash{}, err
+	}
+	scheme, err := rawdb.ParseStateScheme(provided, db)
+	if err != nil {
+		return nil, nil, common.Hash{}, err
 	}
 	var header *types.Header
 	if scheme == rawdb.PathScheme {
@@ -633,7 +637,7 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 					if header == nil {
 						return nil, nil, common.Hash{}, fmt.Errorf("no head block found")
 					}
-					if contain := triedb.ContainDiffLayer(header.Root); !contain {
+					if contain := triedb.ContainRootHash(header.Root); !contain {
 						return nil, nil, common.Hash{}, fmt.Errorf("PBSS doesn't contain specified MPT root hash for block hash %x", hash)
 					}
 				} else {
@@ -649,7 +653,7 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 					if header == nil {
 						return nil, nil, common.Hash{}, fmt.Errorf("no head block found")
 					}
-					if contain := triedb.ContainDiffLayer(header.Root); !contain {
+					if contain := triedb.ContainRootHash(header.Root); !contain {
 						return nil, nil, common.Hash{}, fmt.Errorf("PBSS doesn't contain specified MPT root hash for block number %d", number)
 					}
 				} else {
@@ -658,12 +662,13 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 			}
 		} else {
 			if stateRoot := triedb.Head(); stateRoot != (common.Hash{}) {
-				if contain := triedb.ContainDiffLayer(stateRoot); !contain {
+				if contain := triedb.ContainRootHash(stateRoot); !contain {
 					return nil, nil, common.Hash{}, fmt.Errorf("PBSS doesn't contain specified state root %x", stateRoot)
 				}
-				log.Info("State dump configured", "mpt root hash", stateRoot,
-					"skipcode", conf.SkipCode, "skipstorage", conf.SkipStorage,
-					"start", hexutil.Encode(conf.Start), "limit", conf.Max)
+				conf.StateScheme = rawdb.PathScheme
+				log.Info("State dump configured", "mpt root hash", stateRoot, "skipcode", conf.SkipCode,
+					"skipstorage", conf.SkipStorage, "start", hexutil.Encode(conf.Start), "limit", conf.Max,
+					"state scheme", conf.StateScheme)
 				return conf, db, stateRoot, nil
 			} else {
 				return nil, nil, common.Hash{}, fmt.Errorf("no top state root hash in path db")
@@ -699,9 +704,10 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 	if header == nil {
 		return nil, nil, common.Hash{}, errors.New("no head block found")
 	}
+	conf.StateScheme = scheme
 	log.Info("State dump configured", "block", header.Number, "hash", header.Hash().Hex(),
-		"skipcode", conf.SkipCode, "skipstorage", conf.SkipStorage,
-		"start", hexutil.Encode(conf.Start), "limit", conf.Max)
+		"skipcode", conf.SkipCode, "skipstorage", conf.SkipStorage, "start", hexutil.Encode(conf.Start),
+		"limit", conf.Max, "state scheme", conf.StateScheme)
 	return conf, db, header.Root, nil
 }
 

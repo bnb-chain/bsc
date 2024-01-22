@@ -355,7 +355,7 @@ func (db *Database) SetBufferSize(size int) error {
 }
 
 // Head return the top non-fork difflayer/disklayer root hash for rewinding.
-// It's only supported by path-based database and will return an error for
+// It's only supported by path-based database and will return empty hash for
 // others.
 func (db *Database) Head() common.Hash {
 	pdb, ok := db.backend.(*pathdb.Database)
@@ -365,12 +365,14 @@ func (db *Database) Head() common.Hash {
 	return pdb.Head()
 }
 
-// ContainDiffLayer returns whether root is existent.
-func (db *Database) ContainDiffLayer(root common.Hash) bool {
+// ContainRootHash returns whether MPT root hash is existent.
+// It's only supported by path-based database and will return false for
+// others.
+func (db *Database) ContainRootHash(root common.Hash) bool {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
 		log.Error("not supported")
 		return false
 	}
-	return pdb.ContainDiffLayer(root)
+	return pdb.ContainRootHash(root)
 }

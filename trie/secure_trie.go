@@ -19,7 +19,6 @@ package trie
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
@@ -68,7 +67,6 @@ func NewStateTrie(id *ID, db *Database) (*StateTrie, error) {
 	}
 	trie, err := New(id, db)
 	if err != nil {
-		log.Error("NewStateTrie")
 		return nil, err
 	}
 	return &StateTrie{trie: *trie, preimages: db.preimages}, nil

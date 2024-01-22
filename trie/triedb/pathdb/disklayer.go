@@ -199,10 +199,8 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	)
 	if owner == (common.Hash{}) {
 		nBlob, nHash = rawdb.ReadAccountTrieNode(dl.db.diskdb, path)
-		log.Info("owner is empty", "owner", owner, "path", path, "expect", hash, "got", nHash, "blob", nBlob)
 	} else {
 		nBlob, nHash = rawdb.ReadStorageTrieNode(dl.db.diskdb, owner, path)
-		log.Info("owner is nonempty", "owner", owner, "path", path, "expect", hash, "got", nHash, "blob", nBlob)
 	}
 	if nHash != hash {
 		diskFalseMeter.Mark(1)

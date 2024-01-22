@@ -23,6 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -37,6 +38,7 @@ type DumpConfig struct {
 	OnlyWithAddresses bool
 	Start             []byte
 	Max               uint64
+	StateScheme       string
 }
 
 // DumpCollector interface which the state trie calls during iteration
@@ -177,7 +179,13 @@ func (s *StateDB) DumpToCollector(c DumpCollector, conf *DumpConfig) (nextKey []
 		}
 		if !conf.SkipStorage {
 			account.Storage = make(map[common.Hash]string)
-			tr, err := obj.getTrie()
+			var tr Trie
+			if conf.StateScheme == rawdb.PathScheme {
+				tr, err = trie.NewStateTrie(trie.StorageTrieID(obj.db.originalRoot, common.BytesToHash(it.Key),
+					obj.data.Root), obj.db.db.TrieDB())
+			} else {
+				tr, err = obj.getTrie()
+			}
 			if err != nil {
 				log.Error("Failed to load storage trie", "err", err)
 				continue

@@ -82,7 +82,6 @@ func (t *Trie) Copy() *Trie {
 func New(id *ID, db *Database) (*Trie, error) {
 	reader, err := newTrieReader(id.StateRoot, id.Owner, db)
 	if err != nil {
-		log.Error("Failed to newTrieReader")
 		return nil, err
 	}
 	trie := &Trie{
@@ -93,7 +92,6 @@ func New(id *ID, db *Database) (*Trie, error) {
 	if id.Root != (common.Hash{}) && id.Root != types.EmptyRootHash {
 		rootnode, err := trie.resolveAndTrack(id.Root[:], nil)
 		if err != nil {
-			log.Error("Failed to resolveAndTrack")
 			return nil, err
 		}
 		trie.root = rootnode
@@ -589,7 +587,6 @@ func (t *Trie) resolve(n node, prefix []byte) (node, error) {
 func (t *Trie) resolveAndTrack(n hashNode, prefix []byte) (node, error) {
 	blob, err := t.reader.node(prefix, common.BytesToHash(n))
 	if err != nil {
-		log.Error("resolveAndTrack failed to call node")
 		return nil, err
 	}
 	t.tracer.onRead(prefix, blob)
