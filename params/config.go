@@ -225,9 +225,7 @@ var (
 		HertzfixBlock:       big.NewInt(8),
 		ShanghaiTime:        newUint64(0),
 		KeplerTime:          newUint64(0),
-
-		// TODO
-		FeynmanTime: nil,
+		FeynmanTime:         newUint64(0),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
