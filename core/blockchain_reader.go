@@ -448,3 +448,35 @@ func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscr
 func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEvent) event.Subscription {
 	return bc.scope.Track(bc.finalizedHeaderFeed.Subscribe(ch))
 }
+
+func (bc *BlockChain) PrevHistorySegment(num uint64) *params.HistorySegment {
+	if bc.hsm == nil {
+		return nil
+	}
+	segment, ok := bc.hsm.PrevSegmentByNumber(num)
+	if !ok {
+		return nil
+	}
+	return segment
+}
+
+func (bc *BlockChain) WriteCanonicalBlockAndReceipt(headers []*types.Header, tds []uint64, bodies []*types.Body, receipts [][]*types.Receipt) error {
+	batch := bc.db.NewBatch()
+	for i, header := range headers {
+		h := header.Hash()
+		n := header.Number.Uint64()
+		rawdb.WriteTd(batch, h, n, new(big.Int).SetUint64(tds[i]))
+		rawdb.WriteHeader(batch, header)
+		rawdb.WriteBody(batch, h, n, bodies[i])
+		rawdb.WriteReceipts(batch, h, n, receipts[i])
+		rawdb.WriteCanonicalHash(batch, h, n)
+	}
+	if err := batch.Write(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (bc *BlockChain) FreezerDBReset(tail, head uint64) error {
+	return bc.db.AncientReset(tail, head)
+}

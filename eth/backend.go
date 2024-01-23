@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -215,6 +216,20 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
+	var (
+		hsm         *params.HistorySegmentManager
+		prevSegment *params.HistorySegment
+	)
+	if config.HistorySegmentEnabled {
+		hsm, prevSegment, err = GetHistorySegmentAndPrevSegment(chainDb, genesisHash, config.HistorySegmentCustomFile)
+		if err != nil {
+			return nil, err
+		}
+		if p, ok := eth.engine.(consensus.PoSA); ok {
+			p.SetupHistorySegment(hsm)
+		}
+		eth.bloomIndexer.SetupHistorySegment(hsm)
+	}
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
 	var dbVer = "<nil>"
@@ -265,7 +280,23 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	peers := newPeerSet()
 	bcOps = append(bcOps, core.EnableBlockValidator(chainConfig, eth.engine, config.TriesVerifyMode, peers))
-	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, eth.shouldPreserve, &config.TransactionHistory, bcOps...)
+	txLookupLimit := &config.TransactionHistory
+	// if enable HistorySegment, just skip txLookupLimit params,
+	// may cause regenerate tx index, but it will also generate new block index
+	if config.HistorySegmentEnabled {
+		txLookupLimit = nil
+	}
+	bcOps = append(bcOps, func(bc *core.BlockChain) (*core.BlockChain, error) {
+		// if enable history segment, try prune ancient data when restart
+		if config.HistorySegmentEnabled {
+			if err = truncateAncientTail(chainDb, prevSegment); err != nil {
+				return nil, err
+			}
+			bc.SetupHistorySegment(hsm)
+		}
+		return bc, nil
+	})
+	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, eth.shouldPreserve, txLookupLimit, bcOps...)
 	if err != nil {
 		return nil, err
 	}
@@ -379,6 +410,47 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.shutdownTracker.MarkStartup()
 
 	return eth, nil
+}
+
+func GetHistorySegmentAndPrevSegment(db ethdb.Database, genesisHash common.Hash, CustomPath string) (*params.HistorySegmentManager, *params.HistorySegment, error) {
+	td := rawdb.ReadTd(db, genesisHash, 0)
+	hsm, err := params.NewHistorySegmentManager(&params.HistorySegmentConfig{
+		CustomPath: CustomPath,
+		Genesis:    params.NewHistoryBlock(0, genesisHash, td.Uint64()),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// get latest 2 segments
+	latestHeader := rawdb.ReadHeadHeader(db)
+	prevSegment, ok := hsm.PrevSegmentByNumber(latestHeader.Number.Uint64())
+	if !ok {
+		log.Warn("there is no enough history to prune", "head", latestHeader.Number)
+		return hsm, nil, nil
+	}
+
+	// check segment if match hard code
+	if err = rawdb.AvailableHistorySegment(db, prevSegment); err != nil {
+		log.Warn("there is no available history to prune", "head", latestHeader.Number)
+		return hsm, nil, nil
+	}
+	return hsm, prevSegment, nil
+}
+
+func truncateAncientTail(db ethdb.Database, prevSegment *params.HistorySegment) error {
+	if prevSegment == nil {
+		return nil
+	}
+
+	pruneTail := prevSegment.ReGenesisNumber
+	start := time.Now()
+	old, err := db.TruncateTail(pruneTail)
+	if err != nil {
+		return err
+	}
+	log.Info("TruncateTail in freezerDB", "old", old, "now", pruneTail, "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
 }
 
 func makeExtraData(extra []byte) []byte {

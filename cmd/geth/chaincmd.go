@@ -30,6 +30,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/consensus"
+
+	"github.com/ethereum/go-ethereum/params"
+
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
+
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -191,6 +197,36 @@ It's deprecated, please use "geth db export" instead.
 		}, utils.DatabasePathFlags),
 		Description: `
 This command dumps out the state for a given block (or latest, if none provided).
+`,
+	}
+	exportSegmentCommand = &cli.Command{
+		Action:    exportSegment,
+		Name:      "export-segment",
+		Usage:     "Export history segments from start block",
+		ArgsUsage: "",
+		Flags: flags.Merge([]cli.Flag{
+			utils.CacheFlag,
+			utils.SyncModeFlag,
+			utils.HistorySegOutputFlag,
+			utils.BoundStartBlockFlag,
+			utils.HistorySegmentLengthFlag,
+		}, utils.DatabasePathFlags),
+		Description: `
+This command export history segments from start block.
+`,
+	}
+	pruneHistorySegmentsCommand = &cli.Command{
+		Action:    pruneHistorySegments,
+		Name:      "prune-history-segments",
+		Usage:     "Prune all history segments, it only keep latest 2 segments",
+		ArgsUsage: "",
+		Flags: flags.Merge([]cli.Flag{
+			utils.CacheFlag,
+			utils.SyncModeFlag,
+			utils.HistorySegCustomFlag,
+		}, utils.DatabasePathFlags),
+		Description: `
+Prune all history segments, it only keep latest 2 segments.
 `,
 	}
 )
@@ -675,8 +711,206 @@ func dump(ctx *cli.Context) error {
 	return nil
 }
 
+func exportSegment(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer db.Close()
+
+	genesisHash := rawdb.ReadCanonicalHash(db, 0)
+	td := rawdb.ReadTd(db, genesisHash, 0)
+	chainConfig, engine, headerChain, err := simpleHeaderChain(db, genesisHash)
+	if err != nil {
+		return err
+	}
+	latest := headerChain.CurrentHeader()
+	if _, ok := engine.(consensus.PoSA); !ok {
+		return errors.New("cannot generate history segment because consensus engine is not PoSA")
+	}
+	if !chainConfig.IsPlato(latest.Number) {
+		return errors.New("plato hard fork is not enabled , cannot generate history segment")
+	}
+
+	var (
+		boundStartBlock      = params.BoundStartBlock
+		historySegmentLength = params.HistorySegmentLength
+	)
+	switch genesisHash {
+	case params.BSCGenesisHash, params.ChapelGenesisHash:
+		boundStartBlock = params.BoundStartBlock
+		historySegmentLength = params.HistorySegmentLength
+	default:
+		if ctx.IsSet(utils.BoundStartBlockFlag.Name) {
+			boundStartBlock = ctx.Uint64(utils.BoundStartBlockFlag.Name)
+		}
+		if ctx.IsSet(utils.HistorySegmentLengthFlag.Name) {
+			historySegmentLength = ctx.Uint64(utils.HistorySegmentLengthFlag.Name)
+		}
+	}
+	if boundStartBlock == 0 || historySegmentLength == 0 {
+		return fmt.Errorf("wrong params, boundStartBlock: %v, historySegmentLength: %v", boundStartBlock, historySegmentLength)
+	}
+	if chainConfig.Parlia != nil && (boundStartBlock%chainConfig.Parlia.Epoch != 0 || historySegmentLength%chainConfig.Parlia.Epoch != 0) {
+		return fmt.Errorf("please ensure that the parameters is an integer multiple of parlia epoch, boundStartBlock: %v, historySegmentLength: %v", boundStartBlock, historySegmentLength)
+	}
+
+	latestNum := latest.Number.Uint64()
+	if latestNum < params.FullImmutabilityThreshold || latestNum < boundStartBlock {
+		return errors.New("current chain is too short, less than BoundStartBlock")
+	}
+
+	start := time.Now()
+	target := latestNum - params.FullImmutabilityThreshold
+	log.Info("start export segment", "from", boundStartBlock, "to", target, "boundStartBlock", boundStartBlock,
+		"historySegmentLength", historySegmentLength, "chainCfg", chainConfig)
+	segments := []params.HistorySegment{
+		{
+			Index:           0,
+			ReGenesisNumber: 0,
+			ReGenesisHash:   genesisHash,
+			TD:              td.Uint64(),
+		},
+	}
+	// try find finalized block in every segment boundary
+	for num := boundStartBlock; num <= target; num += historySegmentLength {
+		// align the segment start at parlia's epoch
+		if chainConfig.Parlia != nil {
+			num -= num % chainConfig.Parlia.Epoch
+		}
+		var fs, ft *types.Header
+		for next := num + 1; next <= target; next++ {
+			fs = headerChain.GetHeaderByNumber(next)
+			ft = headerChain.GetFinalizedHeader(fs)
+			if ft == nil {
+				continue
+			}
+			if ft.Number.Uint64() >= num {
+				break
+			}
+		}
+		if ft == nil || fs == nil {
+			// if there cannot found any finalized block, just skip
+			break
+		}
+		if ft.Number.Uint64() < num {
+			// cannot find expect finality blocks, just skip
+			break
+		}
+		log.Info("found segment boundary", "startAt", ft.Number, "FinalityAt", fs.Number)
+		segment := params.HistorySegment{
+			Index:           uint64(len(segments)),
+			ReGenesisNumber: ft.Number.Uint64(),
+			ReGenesisHash:   ft.Hash(),
+		}
+		segment.TD = headerChain.GetTd(segment.ReGenesisHash, segment.ReGenesisNumber).Uint64()
+		// if using posa consensus, just get snapshot as consensus data
+		if p, ok := engine.(consensus.PoSA); ok {
+			parent := headerChain.GetHeader(ft.ParentHash, ft.Number.Uint64()-1)
+			enc, err := p.GetConsensusData(headerChain, parent)
+			if err != nil {
+				return err
+			}
+			segment.ConsensusData = hexutil.Encode(enc)
+		}
+		segments = append(segments, segment)
+	}
+	if err = params.ValidateHistorySegments(params.NewHistoryBlock(0, genesisHash, td.Uint64()), segments); err != nil {
+		return err
+	}
+	output, err := json.MarshalIndent(segments, "", "    ")
+	if err != nil {
+		return err
+	}
+	log.Info("Generate History Segment done", "count", len(segments), "elapsed", common.PrettyDuration(time.Since(start)))
+
+	out := ctx.String(utils.HistorySegOutputFlag.Name)
+	outFile, err := os.OpenFile(out, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+	_, err = outFile.Write(output)
+	if err != nil {
+		return err
+	}
+	log.Info("write history segment success", "path", out)
+	return nil
+}
+
+func pruneHistorySegments(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer db.Close()
+
+	genesisHash := rawdb.ReadCanonicalHash(db, 0)
+	td := rawdb.ReadTd(db, genesisHash, 0)
+	_, _, headerChain, err := simpleHeaderChain(db, genesisHash)
+	if err != nil {
+		return err
+	}
+	cfg := &params.HistorySegmentConfig{
+		CustomPath: "",
+		Genesis:    params.NewHistoryBlock(0, genesisHash, td.Uint64()),
+	}
+	if ctx.IsSet(utils.HistorySegCustomFlag.Name) {
+		cfg.CustomPath = ctx.String(utils.HistorySegCustomFlag.Name)
+	}
+	hsm, err := params.NewHistorySegmentManager(cfg)
+	if err != nil {
+		return err
+	}
+
+	// get latest 2 segments
+	latestHeader := headerChain.CurrentHeader()
+	curSegment := hsm.CurSegment(latestHeader.Number.Uint64())
+	prevSegment, ok := hsm.PrevSegment(curSegment)
+	if !ok {
+		return fmt.Errorf("there is no enough history to prune, cur: %v", &curSegment)
+	}
+
+	// check segment if match hard code
+	if err = rawdb.AvailableHistorySegment(db, curSegment, prevSegment); err != nil {
+		return err
+	}
+
+	pruneTail := prevSegment.ReGenesisNumber
+	log.Info("The older history will be pruned", "prevSegment", prevSegment, "curSegment", curSegment, "pruneTail", pruneTail)
+	if err = rawdb.PruneTxLookupToTail(db, pruneTail); err != nil {
+		return err
+	}
+
+	start := time.Now()
+	old, err := db.TruncateTail(pruneTail)
+	if err != nil {
+		return err
+	}
+	log.Info("TruncateTail in freezerDB", "old", old, "now", pruneTail, "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
 // hashish returns true for strings that look like hashes.
 func hashish(x string) bool {
 	_, err := strconv.Atoi(x)
 	return err != nil
+}
+
+func simpleHeaderChain(db ethdb.Database, genesisHash common.Hash) (*params.ChainConfig, consensus.Engine, *core.HeaderChain, error) {
+	chainConfig := rawdb.ReadChainConfig(db, genesisHash)
+	if chainConfig == nil {
+		return nil, nil, nil, errors.New("failed to load chainConfig")
+	}
+	engine, err := ethconfig.CreateConsensusEngine(chainConfig, db, nil, genesisHash)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	headerChain, err := core.NewHeaderChain(db, chainConfig, engine, func() bool {
+		return true
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return chainConfig, engine, headerChain, nil
 }

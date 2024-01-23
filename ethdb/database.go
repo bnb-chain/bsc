@@ -136,6 +136,9 @@ type AncientWriter interface {
 	// The second argument is a function that takes a raw entry and returns it
 	// in the newest format.
 	MigrateTable(string, func([]byte) ([]byte, error)) error
+
+	// AncientReset reset ancient items
+	AncientReset(tail, head uint64) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.

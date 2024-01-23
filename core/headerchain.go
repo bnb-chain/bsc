@@ -134,6 +134,15 @@ func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 	return 0
 }
 
+// GetFinalizedHeader returns the highest finalized header before the specific block.
+func (hc *HeaderChain) GetFinalizedHeader(header *types.Header) *types.Header {
+	if p, ok := hc.engine.(consensus.PoSA); ok {
+		return p.GetFinalizedHeader(hc, header)
+	}
+
+	return nil
+}
+
 // GetBlockNumber retrieves the block number belonging to the given hash
 // from the cache or database
 func (hc *HeaderChain) GetBlockNumber(hash common.Hash) *uint64 {

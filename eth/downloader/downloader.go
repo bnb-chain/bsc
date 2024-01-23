@@ -150,6 +150,9 @@ type Downloader struct {
 	syncStartBlock uint64    // Head snap block when Geth was started
 	syncStartTime  time.Time // Time instance when chain sync started
 	syncLogTime    time.Time // Time instance when status was last reported
+
+	// history segment feature
+	prevSegment *params.HistorySegment
 }
 
 // LightChain encapsulates functions required to synchronise a light chain.
@@ -207,6 +210,15 @@ type BlockChain interface {
 	// TrieDB retrieves the low level trie database used for interacting
 	// with trie nodes.
 	TrieDB() *trie.Database
+
+	// PrevHistorySegment get last history segment
+	PrevHistorySegment(num uint64) *params.HistorySegment
+
+	// WriteCanonicalBlockAndReceipt just write header into db, it an unsafe interface, just for history segment
+	WriteCanonicalBlockAndReceipt([]*types.Header, []uint64, []*types.Body, [][]*types.Receipt) error
+
+	// FreezerDBReset reset freezer db to target tail & head
+	FreezerDBReset(tail, head uint64) error
 }
 
 type DownloadOption func(downloader *Downloader) *Downloader
@@ -229,6 +241,9 @@ func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchai
 		SnapSyncer:     snap.NewSyncer(stateDb, chain.TrieDB().Scheme()),
 		stateSyncStart: make(chan *stateSync),
 		syncStartBlock: chain.CurrentSnapBlock().Number.Uint64(),
+	}
+	for _, op := range options {
+		dl = op(dl)
 	}
 
 	go dl.stateFetcher()
@@ -484,6 +499,12 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 
 	// If the remote peer is lagging behind, no need to sync with it, drop the peer.
 	remoteHeight := remoteHeader.Number.Uint64()
+	// if enable history segment, override prevSegment
+	prevSegment := d.blockchain.PrevHistorySegment(remoteHeight)
+	if prevSegment != nil {
+		d.prevSegment = prevSegment
+	}
+
 	var localHeight uint64
 	switch mode {
 	case FullSync:
@@ -498,6 +519,7 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 	if err != nil {
 		return err
 	}
+	log.Debug("sync from peer", "local", localHeight, "remote", remoteHeight, "origin", origin, "peer", p.peer)
 
 	if localHeight >= remoteHeight {
 		// if remoteHeader does not exist in local chain, will move on to insert it as a side chain.
@@ -570,6 +592,13 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 		// Rewind the ancient store and blockchain if reorg happens.
 		if origin+1 < frozen {
 			if err := d.lightchain.SetHead(origin); err != nil {
+				return err
+			}
+		}
+
+		// if enable history segment, force reset freezer tail
+		if d.prevSegment != nil && localHeight == 0 {
+			if err := d.blockchain.FreezerDBReset(origin, origin); err != nil {
 				return err
 			}
 		}
@@ -814,6 +843,11 @@ func (d *Downloader) findAncestor(p *peerConnection, localHeight uint64, remoteH
 		if floor < int64(d.genesis)-1 {
 			floor = int64(d.genesis) - 1
 		}
+	}
+
+	// try to find ancestor from history segment
+	if localHeight == 0 && mode == SnapSync && d.prevSegment != nil {
+		return d.findAncestorFromHistorySegment(p, remoteHeight)
 	}
 
 	ancestor, err := d.findAncestorSpanSearch(p, mode, remoteHeight, localHeight, floor)
@@ -1725,4 +1759,86 @@ func (d *Downloader) reportSnapSyncProgress(force bool) {
 	)
 	log.Info("Syncing: chain download in progress", "synced", progress, "chain", syncedBytes, "headers", headers, "bodies", bodies, "receipts", receipts, "eta", common.PrettyDuration(eta))
 	d.syncLogTime = time.Now()
+}
+
+func (d *Downloader) findAncestorFromHistorySegment(p *peerConnection, remoteHeight uint64) (uint64, error) {
+	if d.prevSegment == nil || d.prevSegment.ReGenesisNumber == 0 {
+		return 0, nil
+	}
+
+	expect := d.prevSegment.ReGenesisNumber
+	if expect > remoteHeight {
+		return 0, nil
+	}
+	headers, hashes, err := d.fetchHeadersByNumber(p, expect, 1, 0, false)
+	if err != nil {
+		return 0, err
+	}
+	// Make sure the peer actually gave something valid
+	if len(headers) != 1 {
+		return 0, fmt.Errorf("%w: multiple headers (%d) for single request", errBadPeer, len(headers))
+	}
+
+	// check if it matches local previous segment
+	h := hashes[0]
+	n := headers[0].Number.Uint64()
+	if !d.prevSegment.MatchBlock(h, n) {
+		return 0, nil
+	}
+
+	if d.blockchain.HasHeader(h, n) {
+		return n, nil
+	}
+
+	body, receipts, err := d.fetchBodyAndReceiptsByHeader(p, headers[0], hashes[0])
+	if err != nil {
+		return 0, err
+	}
+	// just write header, td, because it's snap sync, just sync history is enough
+	if err = d.blockchain.WriteCanonicalBlockAndReceipt(headers, []uint64{d.prevSegment.TD}, []*types.Body{body}, [][]*types.Receipt{receipts}); err != nil {
+		return 0, err
+	}
+	log.Debug("sync history segment header to local", "number", n, "hash", h, "segment", d.prevSegment)
+	return n, nil
+}
+
+func (d *Downloader) fetchBodyAndReceiptsByHeader(p *peerConnection, header *types.Header, h common.Hash) (*types.Body, []*types.Receipt, error) {
+	// download ancient data
+	bodies, bodyHashset, err := d.fetchBodiesByHashes(p, []common.Hash{h})
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(bodies) != 1 {
+		return nil, nil, fmt.Errorf("%w: multiple bodies (%d) for single request", errBadPeer, len(bodies))
+	}
+	if header.TxHash != bodyHashset[0][0] {
+		return nil, nil, fmt.Errorf("%w: fetch body with wrong TxHash %v, expect %v", errBadPeer, bodyHashset[0][0], header.TxHash)
+	}
+	if header.UncleHash != bodyHashset[1][0] {
+		return nil, nil, fmt.Errorf("%w: fetch body with wrong UncleHash %v, expect %v", errBadPeer, bodyHashset[0][1], header.UncleHash)
+	}
+	if header.WithdrawalsHash == nil {
+		if bodies[0].Withdrawals != nil {
+			return nil, nil, fmt.Errorf("%w: fetch body with wrong Withdrawals %v, expect %v", errBadPeer, len(bodies[0].Withdrawals), header.WithdrawalsHash)
+		}
+	} else {
+		if bodies[0].Withdrawals == nil {
+			return nil, nil, fmt.Errorf("%w: fetch body with wrong Withdrawals %v, expect %v", errBadPeer, len(bodies[0].Withdrawals), *header.WithdrawalsHash)
+		}
+		if bodyHashset[2][0] != *header.WithdrawalsHash {
+			return nil, nil, fmt.Errorf("%w: fetch body with wrong Withdrawals %v, expect %v", errBadPeer, bodyHashset[2][0], *header.WithdrawalsHash)
+		}
+	}
+
+	receipts, receiptHashes, err := d.fetchReceiptsByHashes(p, []common.Hash{h})
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(receipts) != 1 {
+		return nil, nil, fmt.Errorf("%w: multiple receipts (%d) for single request", errBadPeer, len(receipts))
+	}
+	if header.ReceiptHash != receiptHashes[0] {
+		return nil, nil, fmt.Errorf("%w: fetch receipts with wrong ReceiptHash %v, expect %v", errBadPeer, receiptHashes[0], header.ReceiptHash)
+	}
+	return bodies[0], receipts[0], nil
 }

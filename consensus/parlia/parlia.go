@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -230,6 +231,9 @@ type Parlia struct {
 
 	// The fields below are for testing only
 	fakeDiff bool // Skip difficulty verifications
+
+	// history segment, it provides history segment's consensus data to prevent generate snap from older headers
+	hsm *params.HistorySegmentManager
 }
 
 // New creates a Parlia consensus engine.
@@ -284,6 +288,10 @@ func New(
 	}
 
 	return c
+}
+
+func (p *Parlia) SetupHistorySegment(hsm *params.HistorySegmentManager) {
+	p.hsm = hsm
 }
 
 func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
@@ -681,6 +689,11 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				break
 			}
 		}
+		// check history consensus data, load snapshot
+		if s, ok := p.findSnapFromHistorySegment(hash, number); ok {
+			snap = s
+			break
+		}
 
 		// If we're at the genesis, snapshot the initial state. Alternatively if we have
 		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
@@ -753,6 +766,36 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		log.Trace("Stored snapshot to disk", "number", snap.Number, "hash", snap.Hash)
 	}
 	return snap, err
+}
+
+func (p *Parlia) findSnapFromHistorySegment(hash common.Hash, number uint64) (*Snapshot, bool) {
+	if p.hsm == nil {
+		return nil, false
+	}
+	segment := p.hsm.CurSegment(number + 1)
+	if segment.ReGenesisNumber != number+1 {
+		return nil, false
+	}
+	var tmp Snapshot
+	enc, err := hexutil.Decode(segment.ConsensusData)
+	if err != nil {
+		log.Warn("Try load snapshot from history segment, wrong hex", "number", number, "hash", hash, "err", err)
+		return nil, false
+	}
+	err = json.Unmarshal(enc, &tmp)
+	if err != nil {
+		log.Warn("Try load snapshot from history segment, wrong encode", "number", number, "hash", hash, "err", err)
+		return nil, false
+	}
+	if tmp.Number != number || tmp.Hash != hash {
+		return nil, false
+	}
+
+	tmp.config = p.config
+	tmp.sigCache = p.signatures
+	tmp.ethAPI = p.ethAPI
+	log.Debug("found history segment snapshot", "number", number, "hash", hash, "segment", segment)
+	return &tmp, true
 }
 
 // VerifyUncles implements consensus.Engine, always returning an error for any
@@ -1514,6 +1557,19 @@ func (p *Parlia) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 // Close implements consensus.Engine. It's a noop for parlia as there are no background threads.
 func (p *Parlia) Close() error {
 	return nil
+}
+
+// GetConsensusData load the header's last snapshot for history segment
+func (p *Parlia) GetConsensusData(chain consensus.ChainHeaderReader, header *types.Header) ([]byte, error) {
+	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil {
+		return nil, err
+	}
+	enc, err := json.Marshal(snap)
+	if err != nil {
+		return nil, err
+	}
+	return enc, nil
 }
 
 // ==========================  interaction with contract/account =========

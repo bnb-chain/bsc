@@ -204,6 +204,13 @@ func (f *ResettableFreezer) TruncateTail(tail uint64) (uint64, error) {
 	return f.freezer.TruncateTail(tail)
 }
 
+func (f *ResettableFreezer) AncientReset(tail, head uint64) error {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	return f.freezer.AncientReset(tail, head)
+}
+
 // Sync flushes all data tables to disk.
 func (f *ResettableFreezer) Sync() error {
 	f.lock.RLock()

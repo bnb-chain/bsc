@@ -1091,6 +1091,38 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
 		Category: flags.FastFinalityCategory,
 	}
+
+	// History segment
+	HistorySegEnabledFlag = &cli.BoolFlag{
+		Name:     "history-segment",
+		Usage:    "Enable history segment feature, it will auto prune history segments by hard-code segment hash",
+		Value:    false,
+		Category: flags.BlockHistoryCategory,
+	}
+	HistorySegCustomFlag = &cli.StringFlag{
+		Name:     "history-segment.custom",
+		Usage:    "Specific history segments custom definition",
+		Value:    "./history_segments.json",
+		Category: flags.BlockHistoryCategory,
+	}
+	HistorySegOutputFlag = &cli.StringFlag{
+		Name:     "history-segment.output",
+		Usage:    "Specific history segments output file",
+		Value:    "./history_segments.json",
+		Category: flags.BlockHistoryCategory,
+	}
+	BoundStartBlockFlag = &cli.Uint64Flag{
+		Name:     "history-segment.boundstart",
+		Usage:    "Specific history segments BoundStartBlock, it indicate segment1 start block",
+		Value:    params.BoundStartBlock,
+		Category: flags.BlockHistoryCategory,
+	}
+	HistorySegmentLengthFlag = &cli.Uint64Flag{
+		Name:     "history-segment.segmentlen",
+		Usage:    "Specific history segments HistorySegmentLength",
+		Value:    params.HistorySegmentLength,
+		Category: flags.BlockHistoryCategory,
+	}
 )
 
 var (
@@ -2064,6 +2096,14 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	log.Info("Initializing the KZG library", "backend", ctx.String(CryptoKZGFlag.Name))
 	if err := kzg4844.UseCKZG(ctx.String(CryptoKZGFlag.Name) == "ckzg"); err != nil {
 		Fatalf("Failed to set KZG library implementation to %s: %v", ctx.String(CryptoKZGFlag.Name), err)
+	}
+
+	// parse History Segment flags
+	if ctx.IsSet(HistorySegEnabledFlag.Name) {
+		cfg.HistorySegmentEnabled = ctx.Bool(HistorySegEnabledFlag.Name)
+	}
+	if ctx.IsSet(HistorySegCustomFlag.Name) {
+		cfg.HistorySegmentCustomFile = ctx.String(HistorySegCustomFlag.Name)
 	}
 }
 

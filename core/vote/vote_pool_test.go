@@ -106,6 +106,20 @@ func (m *mockInvalidPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader,
 	return true
 }
 
+func (m *mockPOSA) GetConsensusData(chain consensus.ChainHeaderReader, header *types.Header) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *mockInvalidPOSA) GetConsensusData(chain consensus.ChainHeaderReader, header *types.Header) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *mockPOSA) SetupHistorySegment(hsm *params.HistorySegmentManager) {
+}
+
+func (m *mockInvalidPOSA) SetupHistorySegment(hsm *params.HistorySegmentManager) {
+}
+
 func (pool *VotePool) verifyStructureSizeOfVotePool(receivedVotes, curVotes, futureVotes, curVotesPq, futureVotesPq int) bool {
 	for i := 0; i < timeThreshold; i++ {
 		time.Sleep(1 * time.Second)

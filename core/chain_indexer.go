@@ -25,6 +25,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/params"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -92,6 +94,8 @@ type ChainIndexer struct {
 	checkpointSections uint64      // Number of sections covered by the checkpoint
 	checkpointHead     common.Hash // Section head belonging to the checkpoint
 
+	hsm *params.HistorySegmentManager // HistorySegmentManager only produce last 2 segments when enabled
+
 	throttling time.Duration // Disk throttling to prevent a heavy upgrade from hogging resources
 
 	log  log.Logger
@@ -141,6 +145,14 @@ func (c *ChainIndexer) AddCheckpoint(section uint64, shead common.Hash) {
 
 	c.setSectionHead(section, shead)
 	c.setValidSections(section + 1)
+}
+
+// SetupHistorySegment set HistorySegmentManager for later use
+func (c *ChainIndexer) SetupHistorySegment(hsm *params.HistorySegmentManager) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	c.hsm = hsm
 }
 
 // Start creates a goroutine to feed chain head events into the indexer for
@@ -334,6 +346,10 @@ func (c *ChainIndexer) updateLoop() {
 				if section > 0 {
 					oldHead = c.SectionHead(section - 1)
 				}
+				// if there is a available history segment, fast-forward to the next section
+				if c.hsm != nil && section == 0 {
+					section, oldHead = c.fastForwardByHistorySegment(section, oldHead)
+				}
 				// Process the newly defined section in the background
 				c.lock.Unlock()
 				newHead, err := c.processSection(section, oldHead)
@@ -380,6 +396,19 @@ func (c *ChainIndexer) updateLoop() {
 			c.lock.Unlock()
 		}
 	}
+}
+
+func (c *ChainIndexer) fastForwardByHistorySegment(section uint64, oldHead common.Hash) (uint64, common.Hash) {
+	prevSegment, ok := c.hsm.PrevSegmentByNumber(c.knownSections * c.sectionSize)
+	if !ok {
+		return section, oldHead
+	}
+	if prevSegment.ReGenesisNumber > 0 && section <= (prevSegment.ReGenesisNumber+1)/c.sectionSize {
+		section = (prevSegment.ReGenesisNumber+1)/c.sectionSize + 1
+		oldHead = rawdb.ReadCanonicalHash(c.chainDb, section*c.sectionSize-1)
+		c.setSectionHead(section-1, oldHead)
+	}
+	return section, oldHead
 }
 
 // processSection processes an entire section by calling backend functions while
