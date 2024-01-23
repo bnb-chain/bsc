@@ -41,7 +41,7 @@ func SigToPub(hash, sig []byte) (*ecdsa.PublicKey, error) {
 		return nil, err
 	}
 
-	x, y := elliptic.Unmarshal(S256(), s)
+	x, y := elliptic.Unmarshal(S256(), s) //nolint:all, TODO
 	return &ecdsa.PublicKey{Curve: S256(), X: x, Y: y}, nil
 }
 

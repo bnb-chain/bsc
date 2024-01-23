@@ -233,7 +233,7 @@ func initGenesis(ctx *cli.Context) error {
 		if err != nil {
 			utils.Fatalf("Failed to write genesis block: %v", err)
 		}
-		log.Info("Successfully wrote genesis state", "database", name, "hash", hash)
+		log.Info(fmt.Sprintf("Successfully wrote genesis state    database=%v    hash=%v", name, hash))
 	}
 	return nil
 }
@@ -655,7 +655,7 @@ func dump(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	triedb := utils.MakeTrieDatabase(ctx, db, true, false) // always enable preimage lookup
+	triedb := utils.MakeTrieDatabase(ctx, db, true, true) // always enable preimage lookup
 	defer triedb.Close()
 
 	state, err := state.New(root, state.NewDatabaseWithNodeDB(db, triedb), nil)

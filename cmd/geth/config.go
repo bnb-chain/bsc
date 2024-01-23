@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"unicode"
 
+	"github.com/naoina/toml"
 	"github.com/urfave/cli/v2"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -32,6 +33,8 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/internal/flags"
@@ -40,7 +43,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/naoina/toml"
 )
 
 var (
@@ -54,8 +56,9 @@ var (
 	}
 
 	configFileFlag = &cli.StringFlag{
-		Name:  "config",
-		Usage: "TOML configuration file",
+		Name:     "config",
+		Usage:    "TOML configuration file",
+		Category: flags.EthCategory,
 	}
 )
 
@@ -134,8 +137,12 @@ func loadBaseConfig(ctx *cli.Context) gethConfig {
 			utils.Fatalf("%v", err)
 		}
 	}
-	if !utils.ValidateStateScheme(cfg.Eth.StateScheme) {
-		utils.Fatalf("invalid state scheme param in config: %s", cfg.Eth.StateScheme)
+
+	scheme := cfg.Eth.StateScheme
+	if scheme != "" {
+		if !rawdb.ValidateStateScheme(scheme) {
+			utils.Fatalf("Invalid state scheme param in config: %s", scheme)
+		}
 	}
 	if cfg.Eth.Genesis != nil && cfg.Eth.Genesis.Config != nil {
 		log.Warn("Chain config in the configuration file is ignored!")
@@ -170,6 +177,19 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 // makeFullNode loads geth configuration and creates the Ethereum backend.
 func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	stack, cfg := makeConfigNode(ctx)
+	if ctx.IsSet(utils.RialtoHash.Name) {
+		v := ctx.String(utils.RialtoHash.Name)
+		params.RialtoGenesisHash = common.HexToHash(v)
+	}
+
+	if ctx.IsSet(utils.OverrideShanghai.Name) {
+		v := ctx.Uint64(utils.OverrideShanghai.Name)
+		cfg.Eth.OverrideShanghai = &v
+	}
+	if ctx.IsSet(utils.OverrideKepler.Name) {
+		v := ctx.Uint64(utils.OverrideKepler.Name)
+		cfg.Eth.OverrideKepler = &v
+	}
 	if ctx.IsSet(utils.OverrideCancun.Name) {
 		v := ctx.Uint64(utils.OverrideCancun.Name)
 		cfg.Eth.OverrideCancun = &v

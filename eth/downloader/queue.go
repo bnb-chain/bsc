@@ -645,7 +645,7 @@ func (q *queue) expire(peer string, pendPool map[string]*fetchRequest, taskQueue
 	// as there's no order of events that should lead to such expirations.
 	req := pendPool[peer]
 	if req == nil {
-		log.Error("Expired request does not exist", "peer", peer)
+		log.Trace("Expired request does not exist", "peer", peer)
 		return 0
 	}
 	delete(pendPool, peer)

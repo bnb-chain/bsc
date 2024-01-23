@@ -42,21 +42,11 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/ethstats"
-	"github.com/ethereum/go-ethereum/internal/version"
-	"github.com/ethereum/go-ethereum/les"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/gorilla/websocket"
 )
@@ -64,10 +54,7 @@ import (
 var (
 	genesisFlag = flag.String("genesis", "", "Genesis json file to seed the chain with")
 	apiPortFlag = flag.Int("apiport", 8080, "Listener port for the HTTP API connection")
-	ethPortFlag = flag.Int("ethport", 30303, "Listener port for the devp2p connection")
-	bootFlag    = flag.String("bootnodes", "", "Comma separated bootnode enode URLs to seed with")
-	netFlag     = flag.Uint64("network", 0, "Network ID to use for the Ethereum protocol")
-	statsFlag   = flag.String("ethstats", "", "Ethstats network monitoring auth string")
+	wsEndpoint  = flag.String("ws", "http://127.0.0.1:7777/", "Url to ws endpoint")
 
 	netnameFlag = flag.String("faucet.name", "", "Network name to assign to the faucet")
 	payoutFlag  = flag.Int("faucet.amount", 1, "Number of Ethers to pay out per user request")
@@ -163,15 +150,6 @@ func main() {
 	if err != nil {
 		log.Crit("Failed to read genesis block contents", "genesis", *genesisFlag, "err", err)
 	}
-	// Convert the bootnodes to internal enode representations
-	var enodes []*enode.Node
-	for _, boot := range strings.Split(*bootFlag, ",") {
-		if url, err := enode.Parse(enode.ValidSchemes, boot); err == nil {
-			enodes = append(enodes, url)
-		} else {
-			log.Error("Failed to parse bootnode URL", "url", boot, "err", err)
-		}
-	}
 	// Load up the account key and decrypt its password
 	blob, err := os.ReadFile(*accPassFlag)
 	if err != nil {
@@ -191,7 +169,7 @@ func main() {
 		log.Crit("Failed to unlock faucet signer account", "err", err)
 	}
 	// Assemble and start the faucet light service
-	faucet, err := newFaucet(genesis, *ethPortFlag, enodes, *netFlag, *statsFlag, ks, website.Bytes(), bep2eInfos)
+	faucet, err := newFaucet(genesis, *wsEndpoint, ks, website.Bytes(), bep2eInfos)
 	if err != nil {
 		log.Crit("Failed to start faucet", "err", err)
 	}
@@ -219,7 +197,6 @@ type bep2eInfo struct {
 // faucet represents a crypto faucet backed by an Ethereum light client.
 type faucet struct {
 	config *params.ChainConfig // Chain configurations for signing
-	stack  *node.Node          // Ethereum protocol stack
 	client *ethclient.Client   // Client connection to the Ethereum chain
 	index  []byte              // Index page to serve up on the web
 
@@ -248,65 +225,18 @@ type wsConn struct {
 	wlock sync.Mutex
 }
 
-func newFaucet(genesis *core.Genesis, port int, enodes []*enode.Node, network uint64, stats string, ks *keystore.KeyStore, index []byte, bep2eInfos map[string]bep2eInfo) (*faucet, error) {
-	// Assemble the raw devp2p protocol stack
-	git, _ := version.VCS()
-	stack, err := node.New(&node.Config{
-		Name:    "geth",
-		Version: params.VersionWithCommit(git.Commit, git.Date),
-		DataDir: filepath.Join(os.Getenv("HOME"), ".faucet"),
-		NoUSB:   true,
-		P2P: p2p.Config{
-			NAT:              nat.Any(),
-			NoDiscovery:      true,
-			DiscoveryV5:      true,
-			ListenAddr:       fmt.Sprintf(":%d", port),
-			MaxPeers:         25,
-			BootstrapNodesV5: enodes,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
+func newFaucet(genesis *core.Genesis, url string, ks *keystore.KeyStore, index []byte, bep2eInfos map[string]bep2eInfo) (*faucet, error) {
 	bep2eAbi, err := abi.JSON(strings.NewReader(bep2eAbiJson))
 	if err != nil {
 		return nil, err
 	}
-	// Assemble the Ethereum light client protocol
-	cfg := ethconfig.Defaults
-	cfg.SyncMode = downloader.LightSync
-	cfg.NetworkId = network
-	cfg.Genesis = genesis
-	utils.SetDNSDiscoveryDefaults(&cfg, genesis.ToBlock().Hash())
-
-	lesBackend, err := les.New(stack, &cfg)
+	client, err := ethclient.Dial(url)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to register the Ethereum service: %w", err)
-	}
-
-	// Assemble the ethstats monitoring and reporting service'
-	if stats != "" {
-		if err := ethstats.New(stack, lesBackend.ApiBackend, lesBackend.Engine(), stats); err != nil {
-			return nil, err
-		}
-	}
-	// Boot up the client and ensure it connects to bootnodes
-	if err := stack.Start(); err != nil {
 		return nil, err
 	}
-	for _, boot := range enodes {
-		old, err := enode.Parse(enode.ValidSchemes, boot.String())
-		if err == nil {
-			stack.Server().AddPeer(old)
-		}
-	}
-	// Attach to the client and retrieve and interesting metadatas
-	api := stack.Attach()
-	client := ethclient.NewClient(api)
 
 	return &faucet{
 		config:     genesis.Config,
-		stack:      stack,
 		client:     client,
 		index:      index,
 		keystore:   ks,
@@ -319,8 +249,8 @@ func newFaucet(genesis *core.Genesis, port int, enodes []*enode.Node, network ui
 }
 
 // close terminates the Ethereum connection and tears down the faucet.
-func (f *faucet) close() error {
-	return f.stack.Close()
+func (f *faucet) close() {
+	f.client.Close()
 }
 
 // listenAndServe registers the HTTP handlers for the faucet and boots it up
@@ -342,7 +272,7 @@ func (f *faucet) webHandler(w http.ResponseWriter, r *http.Request) {
 
 // apiHandler handles requests for Ether grants and transaction statuses.
 func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{}
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -406,7 +336,6 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	if err = send(wsconn, map[string]interface{}{
 		"funds":    new(big.Int).Div(balance, ether),
 		"funded":   nonce,
-		"peers":    f.stack.Server().PeerCount(),
 		"requests": reqs,
 	}, 3*time.Second); err != nil {
 		log.Warn("Failed to send initial stats to client", "err", err)
@@ -694,13 +623,11 @@ func (f *faucet) loop() {
 			log.Info("Updated faucet state", "number", head.Number, "hash", head.Hash(), "age", common.PrettyAge(timestamp), "balance", f.balance, "nonce", f.nonce, "price", f.price)
 
 			balance := new(big.Int).Div(f.balance, ether)
-			peers := f.stack.Server().PeerCount()
 
 			for _, conn := range f.conns {
 				if err := send(conn, map[string]interface{}{
 					"funds":    balance,
 					"funded":   f.nonce,
-					"peers":    peers,
 					"requests": f.reqs,
 				}, time.Second); err != nil {
 					log.Warn("Failed to send stats to client", "err", err)

@@ -30,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -63,9 +62,9 @@ type Genesis struct {
 	Number        uint64      `json:"number"`
 	GasUsed       uint64      `json:"gasUsed"`
 	ParentHash    common.Hash `json:"parentHash"`
-	BaseFee       *big.Int    `json:"baseFeePerGas"`                             // EIP-1559
-	ExcessBlobGas *uint64     `json:"excessBlobGas,omitempty" toml:",omitempty"` // EIP-4844, TODO(Nathan): remove tag `omitempty` after cancun fork
-	BlobGasUsed   *uint64     `json:"blobGasUsed,omitempty" toml:",omitempty"`   // EIP-4844, TODO(Nathan): remove tag `omitempty` after cancun fork
+	BaseFee       *big.Int    `json:"baseFeePerGas"`           // EIP-1559
+	ExcessBlobGas *uint64     `json:"excessBlobGas,omitempty"` // EIP-4844, TODO(Nathan): remove tag `omitempty` after cancun fork
+	BlobGasUsed   *uint64     `json:"blobGasUsed,omitempty"`   // EIP-4844, TODO(Nathan): remove tag `omitempty` after cancun fork
 }
 
 func ReadGenesis(db ethdb.Database) (*Genesis, error) {
@@ -121,8 +120,8 @@ func (ga *GenesisAlloc) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// deriveHash computes the state root according to the genesis specification.
-func (ga *GenesisAlloc) deriveHash() (common.Hash, error) {
+// hash computes the state root according to the genesis specification.
+func (ga *GenesisAlloc) hash() (common.Hash, error) {
 	// Create an ephemeral in-memory database for computing hash,
 	// all the derived states will be discarded to not pollute disk.
 	db := state.NewDatabase(rawdb.NewMemoryDatabase())
@@ -143,9 +142,9 @@ func (ga *GenesisAlloc) deriveHash() (common.Hash, error) {
 	return root, err
 }
 
-// flush is very similar with deriveHash, but the main difference is
-// all the generated states will be persisted into the given database.
-// Also, the genesis state specification will be flushed as well.
+// flush is very similar with hash, but the main difference is all the generated
+// states will be persisted into the given database. Also, the genesis state
+// specification will be flushed as well.
 func (ga *GenesisAlloc) flush(db ethdb.Database, triedb *trie.Database, blockhash common.Hash) error {
 	trieConfig := triedb.Config()
 	if trieConfig != nil {
@@ -274,10 +273,13 @@ func (e *GenesisMismatchError) Error() string {
 	return fmt.Sprintf("database contains incompatible genesis (have %x, new %x)", e.Stored, e.New)
 }
 
-// ChainOverrides contains the changes to chain config.
+// ChainOverrides contains the changes to chain config
+// Typically, these modifications involve hardforks that are not enabled on the BSC mainnet, intended for testing purposes.
 type ChainOverrides struct {
-	OverrideCancun *uint64
-	OverrideVerkle *uint64
+	OverrideShanghai *uint64
+	OverrideKepler   *uint64
+	OverrideCancun   *uint64
+	OverrideVerkle   *uint64
 }
 
 // SetupGenesisBlock writes or updates the genesis block in db.
@@ -303,6 +305,12 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	}
 	applyOverrides := func(config *params.ChainConfig) {
 		if config != nil {
+			if overrides != nil && overrides.OverrideShanghai != nil {
+				config.ShanghaiTime = overrides.OverrideShanghai
+			}
+			if overrides != nil && overrides.OverrideKepler != nil {
+				config.KeplerTime = overrides.OverrideKepler
+			}
 			if overrides != nil && overrides.OverrideCancun != nil {
 				config.CancunTime = overrides.OverrideCancun
 			}
@@ -313,7 +321,6 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 	}
 	// Just commit the new block if there is no stored genesis block.
 	stored := rawdb.ReadCanonicalHash(db, 0)
-	systemcontracts.GenesisHash = stored
 	if (stored == common.Hash{}) {
 		if genesis == nil {
 			log.Info("Writing default BSC mainnet genesis block")
@@ -448,7 +455,7 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 
 // ToBlock returns the genesis block according to genesis specification.
 func (g *Genesis) ToBlock() *types.Block {
-	root, err := g.Alloc.deriveHash()
+	root, err := g.Alloc.hash()
 	if err != nil {
 		panic(err)
 	}
@@ -563,6 +570,22 @@ func DefaultBSCGenesisBlock() *Genesis {
 		Config:     params.BSCChainConfig,
 		Nonce:      0,
 		ExtraData:  hexutil.MustDecode("0x00000000000000000000000000000000000000000000000000000000000000002a7cdd959bfe8d9487b2a43b33565295a698f7e26488aa4d1955ee33403f8ccb1d4de5fb97c7ade29ef9f4360c606c7ab4db26b016007d3ad0ab86a0ee01c3b1283aa067c58eab4709f85e99d46de5fe685b1ded8013785d6623cc18d214320b6bb6475978f3adfc719c99674c072166708589033e2d9afec2be4ec20253b8642161bc3f444f53679c1f3d472f7be8361c80a4c1e7e9aaf001d0877f1cfde218ce2fd7544e0b2cc94692d4a704debef7bcb61328b8f7166496996a7da21cf1f1b04d9b3e26a3d0772d4c407bbe49438ed859fe965b140dcf1aab71a96bbad7cf34b5fa511d8e963dbba288b1960e75d64430b3230294d12c6ab2aac5c2cd68e80b16b581ea0a6e3c511bbd10f4519ece37dc24887e11b55d7ae2f5b9e386cd1b50a4550696d957cb4900f03a82012708dafc9e1b880fd083b32182b869be8e0922b81f8e175ffde54d797fe11eb03f9e3bf75f1d68bf0b8b6fb4e317a0f9d6f03eaf8ce6675bc60d8c4d90829ce8f72d0163c1d5cf348a862d55063035e7a025f4da968de7e4d7e4004197917f4070f1d6caa02bbebaebb5d7e581e4b66559e635f805ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+		GasLimit:   40000000,
+		Difficulty: big.NewInt(1),
+		Mixhash:    common.Hash(hexutil.MustDecode("0x0000000000000000000000000000000000000000000000000000000000000000")),
+		Coinbase:   common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE"),
+		Timestamp:  0x5e9da7ce,
+		Alloc:      alloc,
+	}
+}
+
+// DefaultChapelGenesisBlock returns the BSC mainnet genesis block.
+func DefaultChapelGenesisBlock() *Genesis {
+	alloc := decodePrealloc(bscChapelAllocData)
+	return &Genesis{
+		Config:     params.ChapelChainConfig,
+		Nonce:      0,
+		ExtraData:  hexutil.MustDecode("0x00000000000000000000000000000000000000000000000000000000000000001284214b9b9c85549ab3d2b972df0deef66ac2c9b71b214cb885500844365e95cd9942c7276e7fd8a2959d3f95eae5dc7d70144ce1b73b403b7eb6e0980a75ecd1309ea12fa2ed87a8744fbfc9b863d535552c16704d214347f29fa77f77da6d75d7c752f474cf03cceff28abc65c9cbae594f725c80e12d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
 		GasLimit:   40000000,
 		Difficulty: big.NewInt(1),
 		Mixhash:    common.Hash(hexutil.MustDecode("0x0000000000000000000000000000000000000000000000000000000000000000")),

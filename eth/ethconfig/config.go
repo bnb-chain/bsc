@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -48,14 +47,6 @@ var FullNodeGPO = gasprice.Config{
 	IgnorePrice:     gasprice.DefaultIgnorePrice,
 }
 
-// LightClientGPO contains default gasprice oracle settings for light client.
-var LightClientGPO = gasprice.Config{
-	Blocks:      2,
-	Percentile:  60,
-	MaxPrice:    gasprice.DefaultMaxPrice,
-	IgnorePrice: gasprice.DefaultIgnorePrice,
-}
-
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
 	SyncMode:           downloader.SnapSync,
@@ -63,7 +54,6 @@ var Defaults = Config{
 	TxLookupLimit:      2350000,
 	TransactionHistory: 2350000,
 	StateHistory:       params.FullImmutabilityThreshold,
-	StateScheme:        rawdb.HashScheme,
 	LightPeers:         100,
 	DatabaseCache:      512,
 	TrieCleanCache:     154,
@@ -113,8 +103,8 @@ type Config struct {
 	NoPruning           bool // Whether to disable pruning and flush everything to disk
 	NoPrefetch          bool
 	DirectBroadcast     bool
-	DisableSnapProtocol bool //Whether disable snap protocol
-	EnableTrustProtocol bool //Whether enable trust protocol
+	DisableSnapProtocol bool // Whether disable snap protocol
+	EnableTrustProtocol bool // Whether enable trust protocol
 	PipeCommit          bool
 	RangeLimit          bool
 
@@ -122,8 +112,12 @@ type Config struct {
 	TxLookupLimit      uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 	TransactionHistory uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 	StateHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
-	StateScheme        string `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
 	PathSyncFlush      bool   `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
+
+	// State scheme represents the scheme used to store ethereum states and trie
+	// nodes on top. It can be 'hash', 'path', or none which means use the scheme
+	// consistent with persistent state.
+	StateScheme string `toml:",omitempty"`
 
 	// RequiredBlocks is a set of block number -> hash mappings which must be in the
 	// canonical chain of all remote peers. Setting the option makes geth verify the
@@ -191,6 +185,12 @@ type Config struct {
 	// RPCTxFeeCap is the global transaction fee(price * gaslimit) cap for
 	// send-transaction variants. The unit is ether.
 	RPCTxFeeCap float64
+
+	// OverrideShanghai (TODO: remove after the fork)
+	OverrideShanghai *uint64 `toml:",omitempty"`
+
+	// OverrideKepler (TODO: remove after the fork)
+	OverrideKepler *uint64 `toml:",omitempty"`
 
 	// OverrideCancun (TODO: remove after the fork)
 	OverrideCancun *uint64 `toml:",omitempty"`

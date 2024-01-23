@@ -378,8 +378,11 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 
 	// If the items in freezer is less than the block amount that we want to reserve, it is not enough, should stop.
 	if itemsOfAncient < p.BlockAmountReserved {
-		log.Error("the number of old blocks is not enough to reserve,", "ancient items", itemsOfAncient, "the amount specified", p.BlockAmountReserved)
+		log.Error("the number of old blocks is not enough to reserve", "ancient items", itemsOfAncient, "the amount specified", p.BlockAmountReserved)
 		return errors.New("the number of old blocks is not enough to reserve")
+	} else if itemsOfAncient == p.BlockAmountReserved {
+		log.Error("the number of old blocks is the same to be reserved", "ancient items", itemsOfAncient, "the amount specified", p.BlockAmountReserved)
+		return errors.New("the number of old blocks is the same to be reserved")
 	}
 
 	var oldOffSet uint64
