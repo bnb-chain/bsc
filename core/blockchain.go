@@ -239,13 +239,7 @@ type BlockChain struct {
 	flushInterval atomic.Int64                     // Time interval (processing time) after which to flush a state
 	triedb        *trie.Database                   // The database handler for maintaining trie nodes.
 	stateCache    state.Database                   // State database to reuse between imports (contains state cache)
-
-	// txLookupLimit is the maximum number of blocks from head whose tx indices
-	// are reserved:
-	//  * 0:   means no limit and regenerate any missing indexes
-	//  * N:   means N block limit [HEAD-N+1, HEAD] and delete extra indexes
-	//  * nil: disable tx reindexer/deleter, but still index new blocks
-	txLookupLimit uint64
+	txIndexer     *txIndexer                       // Transaction indexer, might be nil if not enabled
 	triesInMemory uint64
 
 	hc                  *HeaderChain
@@ -544,12 +538,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 		rawdb.WriteChainConfig(db, genesisHash, chainConfig)
 	}
-	// Start tx indexer/unindexer if required.
+	// Start tx indexer if it's enabled.
 	if txLookupLimit != nil {
-		bc.txLookupLimit = *txLookupLimit
-
-		bc.wg.Add(1)
-		go bc.maintainTxIndex()
+		bc.txIndexer = newTxIndexer(*txLookupLimit, bc)
 	}
 	return bc, nil
 }
@@ -1139,7 +1130,10 @@ func (bc *BlockChain) stopWithoutSaving() {
 	if !bc.stopping.CompareAndSwap(false, true) {
 		return
 	}
-
+	// Signal shutdown tx indexer.
+	if bc.txIndexer != nil {
+		bc.txIndexer.close()
+	}
 	// Unsubscribe all subscriptions registered from blockchain.
 	bc.scope.Close()
 
@@ -1379,11 +1373,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		// generated.
 		var batch = bc.db.NewBatch()
 		for i, block := range blockChain {
-			if bc.txLookupLimit == 0 || ancientLimit <= bc.txLookupLimit || block.NumberU64() >= ancientLimit-bc.txLookupLimit {
-				rawdb.WriteTxLookupEntriesByBlock(batch, block)
-			} else if rawdb.ReadTxIndexTail(bc.db) != nil {
-				rawdb.WriteTxLookupEntriesByBlock(batch, block)
-			}
+			bc.txIndexer.WriteTxIndexByBlock(batch, block, ancientLimit)
 			stats.processed++
 
 			if batch.ValueSize() > ethdb.IdealBatchSize || i == len(blockChain)-1 {
@@ -1503,16 +1493,8 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 	}
 	// Write the tx index tail (block number from where we index) before write any live blocks
 	if len(liveBlocks) > 0 && liveBlocks[0].NumberU64() == ancientLimit+1 {
-		// The tx index tail can only be one of the following two options:
-		// * 0: all ancient blocks have been indexed
-		// * ancient-limit: the indices of blocks before ancient-limit are ignored
-		if tail := rawdb.ReadTxIndexTail(bc.db); tail == nil {
-			if bc.txLookupLimit == 0 || ancientLimit <= bc.txLookupLimit {
-				rawdb.WriteTxIndexTail(bc.db, 0)
-			} else {
-				rawdb.WriteTxIndexTail(bc.db, ancientLimit-bc.txLookupLimit)
-			}
-		}
+		bc.txIndexer.writeTxIndexTail(ancientLimit)
+
 	}
 	if len(liveBlocks) > 0 {
 		if n, err := writeLive(liveBlocks, liveReceipts); err != nil {
@@ -2807,88 +2789,6 @@ func (bc *BlockChain) skipBlock(err error, it *insertIterator) bool {
 	return false
 }
 
-// indexBlocks reindexes or unindexes transactions depending on user configuration
-func (bc *BlockChain) indexBlocks(tail *uint64, head uint64, done chan struct{}) {
-	defer func() { close(done) }()
-
-	// The tail flag is not existent, it means the node is just initialized
-	// and all blocks(may from ancient store) are not indexed yet.
-	if tail == nil {
-		from := uint64(0)
-		if bc.txLookupLimit != 0 && head >= bc.txLookupLimit {
-			from = head - bc.txLookupLimit + 1
-		}
-		rawdb.IndexTransactions(bc.db, from, head+1, bc.quit)
-		return
-	}
-	// The tail flag is existent, but the whole chain is required to be indexed.
-	if bc.txLookupLimit == 0 || head < bc.txLookupLimit {
-		if *tail > 0 {
-			// It can happen when chain is rewound to a historical point which
-			// is even lower than the indexes tail, recap the indexing target
-			// to new head to avoid reading non-existent block bodies.
-			end := *tail
-			if end > head+1 {
-				end = head + 1
-			}
-			rawdb.IndexTransactions(bc.db, 0, end, bc.quit)
-		}
-		return
-	}
-	// Update the transaction index to the new chain state
-	if head-bc.txLookupLimit+1 < *tail {
-		// Reindex a part of missing indices and rewind index tail to HEAD-limit
-		rawdb.IndexTransactions(bc.db, head-bc.txLookupLimit+1, *tail, bc.quit)
-	} else {
-		// Unindex a part of stale indices and forward index tail to HEAD-limit
-		rawdb.UnindexTransactions(bc.db, *tail, head-bc.txLookupLimit+1, bc.quit)
-	}
-}
-
-// maintainTxIndex is responsible for the construction and deletion of the
-// transaction index.
-//
-// User can use flag `txlookuplimit` to specify a "recentness" block, below
-// which ancient tx indices get deleted. If `txlookuplimit` is 0, it means
-// all tx indices will be reserved.
-//
-// The user can adjust the txlookuplimit value for each launch after sync,
-// Geth will automatically construct the missing indices or delete the extra
-// indices.
-func (bc *BlockChain) maintainTxIndex() {
-	defer bc.wg.Done()
-
-	// Listening to chain events and manipulate the transaction indexes.
-	var (
-		done   chan struct{}                  // Non-nil if background unindexing or reindexing routine is active.
-		headCh = make(chan ChainHeadEvent, 1) // Buffered to avoid locking up the event feed
-	)
-	sub := bc.SubscribeChainHeadEvent(headCh)
-	if sub == nil {
-		return
-	}
-	defer sub.Unsubscribe()
-	log.Info("Initialized transaction indexer", "limit", bc.TxLookupLimit())
-
-	for {
-		select {
-		case head := <-headCh:
-			if done == nil {
-				done = make(chan struct{})
-				go bc.indexBlocks(rawdb.ReadTxIndexTail(bc.db), head.Block.NumberU64(), done)
-			}
-		case <-done:
-			done = nil
-		case <-bc.quit:
-			if done != nil {
-				log.Info("Waiting background transaction indexer to exit")
-				<-done
-			}
-			return
-		}
-	}
-}
-
 func (bc *BlockChain) isCachedBadBlock(block *types.Block) bool {
 	if timeAt, exist := bc.badBlockCache.Get(block.Hash()); exist {
 		if time.Since(timeAt) >= badBlockCacheExpire {
@@ -3115,4 +3015,9 @@ func (bc *BlockChain) SetTrieFlushInterval(interval time.Duration) {
 // GetTrieFlushInterval gets the in-memroy tries flush interval
 func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
+}
+
+// EnsureTxLookupLimit user uses the same txlookup limit.
+func (bc *BlockChain) EnsureTxLookupLimit() {
+	bc.txIndexer.EnsureTxLookupLimit()
 }
