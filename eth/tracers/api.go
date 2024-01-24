@@ -714,13 +714,9 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 		})
 	}
 
-	// upgrade build-in system contract before tracing non-system tx if Feynman is not enabled
 	parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
 	if err != nil {
 		return nil, err
-	}
-	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
-		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
 	}
 
 	// Feed the transactions into the tracers and return
@@ -828,11 +824,12 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 
 	// Execute transaction, either tracing all or just the requested one
 	var (
-		dumps       []string
-		signer      = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
-		chainConfig = api.backend.ChainConfig()
-		vmctx       = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-		canon       = true
+		dumps          []string
+		signer         = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+		chainConfig    = api.backend.ChainConfig()
+		vmctx          = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+		canon          = true
+		beforeSystemTx = true
 	)
 	// Check if there are any overrides: the caller may wish to enable a future
 	// fork when executing this block. Note, such overrides are only applicable to the
@@ -844,13 +841,16 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		chainConfig, canon = overrideConfig(chainConfig, config.Overrides)
 	}
 
-	beforeSystemTx := true
 	for i, tx := range block.Transactions() {
 		// upgrade build-in system contract before tracing system tx if Feynman is enabled
-		var isSystem bool
 		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
-			isSystem, _ = posa.IsSystemTransaction(tx, block.Header())
-			if isSystem {
+			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
+				balance := statedb.GetBalance(consensus.SystemAddress)
+				if balance.Cmp(common.Big0) > 0 {
+					statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
+					statedb.AddBalance(vmctx.Coinbase, balance)
+				}
+
 				if beforeSystemTx {
 					if api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
 						systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
@@ -891,13 +891,6 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		}
 		// Execute the transaction and flush any traces to disk
 		vmenv := vm.NewEVM(vmctx, txContext, statedb, chainConfig, vmConf)
-		if isSystem {
-			balance := statedb.GetBalance(consensus.SystemAddress)
-			if balance.Cmp(common.Big0) > 0 {
-				statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
-				statedb.AddBalance(vmctx.Coinbase, balance)
-			}
-		}
 		statedb.SetTxContext(tx.Hash(), i)
 		_, err = core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if writer != nil {
