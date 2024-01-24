@@ -30,6 +30,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/olekukonko/tablewriter"
+	"github.com/urfave/cli/v2"
+
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -46,7 +49,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
-	"github.com/urfave/cli/v2"
 )
 
 var (
@@ -193,6 +195,21 @@ It's deprecated, please use "geth db export" instead.
 		}, utils.DatabasePathFlags),
 		Description: `
 This command dumps out the state for a given block (or latest, if none provided).
+If you use "dump" command in path mode, please firstly use "dump-roothash" command to get all available state root hash.
+`,
+	}
+	dumpRootHashCommand = &cli.Command{
+		Action: dumpAllRootHashInPath,
+		Name:   "dump-roothash",
+		Usage:  "Dump all available state root hash in path mode",
+		Flags: flags.Merge([]cli.Flag{
+			utils.StateSchemeFlag,
+		}, utils.DatabasePathFlags),
+		Description: `
+The dump-roothash command dump all available state root hash in path mode.
+If you use "dump" command in path mode, please note that it only keeps at most 129 blocks which belongs to diffLayer or diskLayer.
+Therefore, you must specify the blockNumber or blockHash that locates in diffLayer or diskLayer.
+"geth" will print all available blockNumber and related block state root hash, and you can query block hash by block number.
 `,
 	}
 )
@@ -596,6 +613,54 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 		return nil, nil, common.Hash{}, fmt.Errorf("expected 1 argument (number or hash), got %d", ctx.NArg())
 	}
 
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	scheme, err := rawdb.ParseStateScheme(ctx.String(utils.StateSchemeFlag.Name), db)
+	if err != nil {
+		return nil, nil, common.Hash{}, err
+	}
+	if scheme == rawdb.PathScheme {
+		fmt.Println("You are using geth dump in path mode, please use `geth dump-roothash` command to get all available blocks.")
+	}
+
+	header := &types.Header{}
+	if ctx.NArg() == 1 {
+		arg := ctx.Args().First()
+		if hashish(arg) {
+			hash := common.HexToHash(arg)
+			if number := rawdb.ReadHeaderNumber(db, hash); number != nil {
+				header = rawdb.ReadHeader(db, hash, *number)
+			} else {
+				return nil, nil, common.Hash{}, fmt.Errorf("block %x not found", hash)
+			}
+		} else {
+			number, err := strconv.ParseUint(arg, 10, 64)
+			if err != nil {
+				return nil, nil, common.Hash{}, err
+			}
+			if hash := rawdb.ReadCanonicalHash(db, number); hash != (common.Hash{}) {
+				header = rawdb.ReadHeader(db, hash, number)
+			} else {
+				return nil, nil, common.Hash{}, fmt.Errorf("header for block %d not found", number)
+			}
+		}
+	} else {
+		// Use latest
+		if scheme == rawdb.PathScheme {
+			triedb := trie.NewDatabase(db, &trie.Config{PathDB: pathdb.ReadOnly})
+			defer triedb.Close()
+			if stateRoot := triedb.Head(); stateRoot != (common.Hash{}) {
+				header.Root = stateRoot
+			} else {
+				return nil, nil, common.Hash{}, fmt.Errorf("no top state root hash in path db")
+			}
+		} else {
+			header = rawdb.ReadHeadHeader(db)
+		}
+	}
+	if header == nil {
+		return nil, nil, common.Hash{}, errors.New("no head block found")
+	}
+
 	startArg := common.FromHex(ctx.String(utils.StartKeyFlag.Name))
 	var start common.Hash
 	switch len(startArg) {
@@ -608,101 +673,13 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 	default:
 		return nil, nil, common.Hash{}, fmt.Errorf("invalid start argument: %x. 20 or 32 hex-encoded bytes required", startArg)
 	}
+
 	var conf = &state.DumpConfig{
 		SkipCode:          ctx.Bool(utils.ExcludeCodeFlag.Name),
 		SkipStorage:       ctx.Bool(utils.ExcludeStorageFlag.Name),
 		OnlyWithAddresses: !ctx.Bool(utils.IncludeIncompletesFlag.Name),
 		Start:             start.Bytes(),
 		Max:               ctx.Uint64(utils.DumpLimitFlag.Name),
-	}
-
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
-	provided, err := utils.CompareStateSchemeCLIWithConfig(ctx)
-	if err != nil {
-		return nil, nil, common.Hash{}, err
-	}
-	scheme, err := rawdb.ParseStateScheme(provided, db)
-	if err != nil {
-		return nil, nil, common.Hash{}, err
-	}
-	var header *types.Header
-	if scheme == rawdb.PathScheme {
-		triedb := trie.NewDatabase(db, &trie.Config{PathDB: pathdb.ReadOnly})
-		if ctx.NArg() == 1 {
-			arg := ctx.Args().First()
-			if hashish(arg) {
-				hash := common.HexToHash(arg)
-				if number := rawdb.ReadHeaderNumber(db, hash); number != nil {
-					header = rawdb.ReadHeader(db, hash, *number)
-					if header == nil {
-						return nil, nil, common.Hash{}, fmt.Errorf("no head block found")
-					}
-					if contain := triedb.ContainRootHash(header.Root); !contain {
-						return nil, nil, common.Hash{}, fmt.Errorf("PBSS doesn't contain specified MPT root hash for block hash %x", hash)
-					}
-				} else {
-					return nil, nil, common.Hash{}, fmt.Errorf("block hash %x not found", hash)
-				}
-			} else {
-				number, err := strconv.ParseUint(arg, 10, 64)
-				if err != nil {
-					return nil, nil, common.Hash{}, err
-				}
-				if hash := rawdb.ReadCanonicalHash(db, number); hash != (common.Hash{}) {
-					header = rawdb.ReadHeader(db, hash, number)
-					if header == nil {
-						return nil, nil, common.Hash{}, fmt.Errorf("no head block found")
-					}
-					if contain := triedb.ContainRootHash(header.Root); !contain {
-						return nil, nil, common.Hash{}, fmt.Errorf("PBSS doesn't contain specified MPT root hash for block number %d", number)
-					}
-				} else {
-					return nil, nil, common.Hash{}, fmt.Errorf("block number %x not found", number)
-				}
-			}
-		} else {
-			if stateRoot := triedb.Head(); stateRoot != (common.Hash{}) {
-				if contain := triedb.ContainRootHash(stateRoot); !contain {
-					return nil, nil, common.Hash{}, fmt.Errorf("PBSS doesn't contain specified state root %x", stateRoot)
-				}
-				conf.StateScheme = rawdb.PathScheme
-				log.Info("State dump configured", "mpt root hash", stateRoot, "skipcode", conf.SkipCode,
-					"skipstorage", conf.SkipStorage, "start", hexutil.Encode(conf.Start), "limit", conf.Max,
-					"state scheme", conf.StateScheme)
-				return conf, db, stateRoot, nil
-			} else {
-				return nil, nil, common.Hash{}, fmt.Errorf("no top state root hash in path db")
-			}
-		}
-	} else {
-		if ctx.NArg() == 1 {
-			arg := ctx.Args().First()
-			if hashish(arg) {
-				hash := common.HexToHash(arg)
-				if number := rawdb.ReadHeaderNumber(db, hash); number != nil {
-					header = rawdb.ReadHeader(db, hash, *number)
-				} else {
-					return nil, nil, common.Hash{}, fmt.Errorf("block %x not found", hash)
-				}
-			} else {
-				number, err := strconv.ParseUint(arg, 10, 64)
-				if err != nil {
-					return nil, nil, common.Hash{}, err
-				}
-				if hash := rawdb.ReadCanonicalHash(db, number); hash != (common.Hash{}) {
-					header = rawdb.ReadHeader(db, hash, number)
-				} else {
-					return nil, nil, common.Hash{}, fmt.Errorf("header for block %d not found", number)
-				}
-			}
-		} else {
-			// Use latest
-			header = rawdb.ReadHeadHeader(db)
-		}
-	}
-
-	if header == nil {
-		return nil, nil, common.Hash{}, errors.New("no head block found")
 	}
 	conf.StateScheme = scheme
 	log.Info("State dump configured", "block", header.Number, "hash", header.Hash().Hex(),
@@ -736,6 +713,29 @@ func dump(ctx *cli.Context) error {
 		}
 		fmt.Println(string(state.Dump(conf)))
 	}
+	return nil
+}
+
+func dumpAllRootHashInPath(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	defer db.Close()
+	triedb := trie.NewDatabase(db, &trie.Config{PathDB: pathdb.ReadOnly})
+	defer triedb.Close()
+
+	scheme, err := rawdb.ParseStateScheme(ctx.String(utils.StateSchemeFlag.Name), db)
+	if err != nil {
+		return err
+	}
+	if scheme == rawdb.HashScheme {
+		return errors.New("incorrect state scheme, you should use it in path mode")
+	}
+
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Block Number", "Block State Root Hash"})
+	table.AppendBulk(triedb.GetAllRooHash())
+	table.Render()
 	return nil
 }
 

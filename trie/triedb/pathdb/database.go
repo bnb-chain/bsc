@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -442,25 +444,23 @@ func (db *Database) Head() common.Hash {
 	return db.tree.front()
 }
 
-// ContainRootHash returns whether MPT root hash is existent.
-func (db *Database) ContainRootHash(root common.Hash) bool {
+// GetAllRooHash returns all diffLayer and diskLayer root hash
+func (db *Database) GetAllRooHash() [][]string {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	bottom := db.tree.bottom()
-	if l := db.tree.get(root); l != nil {
-		if l.rootHash() == bottom.rootHash() {
-			log.Info("root hash is equal to disk layer root")
-		} else {
-			log.Info("root hash locates in diff layer")
+	data := make([][]string, 0, len(db.tree.layers))
+	for _, v := range db.tree.layers {
+		if dl, ok := v.(*diffLayer); ok {
+			data = append(data, []string{fmt.Sprintf("%d", dl.block), dl.rootHash().String()})
 		}
-		return true
 	}
-	_, err := bottom.Node(common.Hash{}, []byte(""), root)
-	if err != nil {
-		log.Error("Failed to retrieve root hash in disk layer node buffer", "hash", root, "error", err)
-		return false
-	}
-	log.Info("root hash locates in disk layer node buffer")
-	return true
+	sort.Slice(data, func(i, j int) bool {
+		block1, _ := strconv.Atoi(data[i][0])
+		block2, _ := strconv.Atoi(data[j][0])
+		return block1 > block2
+	})
+
+	data = append(data, []string{"-1", db.tree.bottom().rootHash().String()})
+	return data
 }

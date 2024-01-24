@@ -365,14 +365,14 @@ func (db *Database) Head() common.Hash {
 	return pdb.Head()
 }
 
-// ContainRootHash returns whether MPT root hash is existent.
-// It's only supported by path-based database and will return false for
+// GetAllHash returns all MPT root hash in diffLayer and diskLayer.
+// It's only supported by path-based database and will return nil for
 // others.
-func (db *Database) ContainRootHash(root common.Hash) bool {
+func (db *Database) GetAllRooHash() [][]string {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
-		log.Error("not supported")
-		return false
+		log.Error("Not supported")
+		return nil
 	}
-	return pdb.ContainRootHash(root)
+	return pdb.GetAllRooHash()
 }
