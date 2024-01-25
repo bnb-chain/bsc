@@ -1884,7 +1884,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(StateHistoryFlag.Name) {
 		cfg.StateHistory = ctx.Uint64(StateHistoryFlag.Name)
 	}
-	scheme, err := compareCLIWithConfig(ctx)
+	scheme, err := CompareStateSchemeCLIWithConfig(ctx)
 	if err != nil {
 		Fatalf("%v", err)
 	}
@@ -2353,7 +2353,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	if gcmode := ctx.String(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
 		Fatalf("--%s must be either 'full' or 'archive'", GCModeFlag.Name)
 	}
-	provided, err := compareCLIWithConfig(ctx)
+	provided, err := CompareStateSchemeCLIWithConfig(ctx)
 	if err != nil {
 		Fatalf("%v", err)
 	}
@@ -2425,7 +2425,7 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 	config := &trie.Config{
 		Preimages: preimage,
 	}
-	provided, err := compareCLIWithConfig(ctx)
+	provided, err := CompareStateSchemeCLIWithConfig(ctx)
 	if err != nil {
 		Fatalf("%v", err)
 	}
@@ -2448,7 +2448,8 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 	return trie.NewDatabase(disk, config)
 }
 
-func compareCLIWithConfig(ctx *cli.Context) (string, error) {
+// CompareStateSchemeCLIWithConfig compare state scheme in CLI with config whether are equal.
+func CompareStateSchemeCLIWithConfig(ctx *cli.Context) (string, error) {
 	var (
 		cfgScheme string
 		err       error

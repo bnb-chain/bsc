@@ -59,6 +59,7 @@ func (api *DebugAPI) DumpBlock(blockNr rpc.BlockNumber) (state.Dump, error) {
 		if stateDb == nil {
 			return state.Dump{}, errors.New("pending state is not available")
 		}
+		opts.StateScheme = stateDb.Database().TrieDB().Scheme()
 		return stateDb.RawDump(opts), nil
 	}
 	var header *types.Header
@@ -83,6 +84,7 @@ func (api *DebugAPI) DumpBlock(blockNr rpc.BlockNumber) (state.Dump, error) {
 	if err != nil {
 		return state.Dump{}, err
 	}
+	opts.StateScheme = stateDb.Database().TrieDB().Scheme()
 	return stateDb.RawDump(opts), nil
 }
 
@@ -188,6 +190,7 @@ func (api *DebugAPI) AccountRange(blockNrOrHash rpc.BlockNumberOrHash, start hex
 		OnlyWithAddresses: !incompletes,
 		Start:             start,
 		Max:               uint64(maxResults),
+		StateScheme:       stateDb.Database().TrieDB().Scheme(),
 	}
 	if maxResults > AccountRangeMaxResults || maxResults <= 0 {
 		opts.Max = AccountRangeMaxResults
