@@ -65,9 +65,6 @@ const (
 
 	// Maximum amount of time allowed for writing a complete message.
 	frameWriteTimeout = 20 * time.Second
-
-	// Maximum time to wait before stop the p2p server
-	stopTimeout = 5 * time.Second
 )
 
 var (
@@ -448,18 +445,7 @@ func (srv *Server) Stop() {
 	}
 	close(srv.quit)
 	srv.lock.Unlock()
-
-	stopChan := make(chan struct{})
-	go func() {
-		srv.loopWG.Wait()
-		close(stopChan)
-	}()
-
-	select {
-	case <-stopChan:
-	case <-time.After(stopTimeout):
-		srv.log.Warn("stop p2p server timeout, forcing stop")
-	}
+	srv.loopWG.Wait()
 }
 
 // sharedUDPConn implements a shared connection. Write sends messages to the underlying connection while read returns
