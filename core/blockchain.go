@@ -267,6 +267,7 @@ type BlockChain struct {
 	highestVerifiedHeader atomic.Pointer[types.Header]
 	currentBlock          atomic.Pointer[types.Header] // Current head of the chain
 	currentSnapBlock      atomic.Pointer[types.Header] // Current head of snap-sync
+	currentFinalBlock     atomic.Pointer[types.Header] // Latest (consensus) finalized block
 
 	bodyCache     *lru.Cache[common.Hash, *types.Body]
 	bodyRLPCache  *lru.Cache[common.Hash, rlp.RawValue]
@@ -797,6 +798,18 @@ func (bc *BlockChain) tryRewindBadBlocks() {
 	}
 }
 
+// SetFinalized sets the finalized block.
+func (bc *BlockChain) SetFinalized(header *types.Header) {
+	bc.currentFinalBlock.Store(header)
+	if header != nil {
+		rawdb.WriteFinalizedBlockHash(bc.db, header.Hash())
+		finalizedBlockGauge.Update(int64(header.Number.Uint64()))
+	} else {
+		rawdb.WriteFinalizedBlockHash(bc.db, common.Hash{})
+		finalizedBlockGauge.Update(0)
+	}
+}
+
 // setHeadBeyondRoot rewinds the local chain to a new head with the extra condition
 // that the rewind must pass the specified state root. This method is meant to be
 // used when rewinding with snapshots enabled to ensure that we go back further than
@@ -905,7 +918,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			bc.currentBlock.Store(newHeadBlock.Header())
 			headBlockGauge.Update(int64(newHeadBlock.NumberU64()))
 			justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(newHeadBlock.Header())))
-			finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(newHeadBlock.Header())))
+			bc.SetFinalized(newHeadBlock.Header())
 		}
 		// Rewind the snap block in a simpleton way to the target head
 		if currentSnapBlock := bc.CurrentSnapBlock(); currentSnapBlock != nil && header.Number.Uint64() < currentSnapBlock.Number.Uint64() {
@@ -1126,7 +1139,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	bc.currentBlock.Store(block.Header())
 	headBlockGauge.Update(int64(block.NumberU64()))
 	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(block.Header())))
-	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
+	bc.SetFinalized(block.Header())
 }
 
 // stopWithoutSaving stops the blockchain service. If any imports are currently in progress
