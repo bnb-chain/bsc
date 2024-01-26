@@ -65,9 +65,6 @@ const (
 
 	// Maximum amount of time allowed for writing a complete message.
 	frameWriteTimeout = 20 * time.Second
-
-	// Maximum time to wait before stop the p2p server
-	stopTimeout = 5 * time.Second
 )
 
 var (
@@ -457,7 +454,7 @@ func (srv *Server) Stop() {
 
 	select {
 	case <-stopChan:
-	case <-time.After(stopTimeout):
+	case <-time.After(defaultDialTimeout): // we should use defaultDialTimeout as we can dial just before the shutdown
 		srv.log.Warn("stop p2p server timeout, forcing stop")
 	}
 }
