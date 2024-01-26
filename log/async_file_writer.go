@@ -3,12 +3,17 @@ package log
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+const backupTimeFormat = "2006-01-02_15"
 
 type TimeTicker struct {
 	stop chan struct{}
@@ -69,9 +74,11 @@ type AsyncFileWriter struct {
 	buf        chan []byte
 	stop       chan struct{}
 	timeTicker *TimeTicker
+
+	maxBackups int
 }
 
-func NewAsyncFileWriter(filePath string, maxBytesSize int64, rotateHours uint) *AsyncFileWriter {
+func NewAsyncFileWriter(filePath string, maxBytesSize int64, maxBackups int, rotateHours uint) *AsyncFileWriter {
 	absFilePath, err := filepath.Abs(filePath)
 	if err != nil {
 		panic(fmt.Sprintf("get file path of logger error. filePath=%s, err=%s", filePath, err))
@@ -81,6 +88,7 @@ func NewAsyncFileWriter(filePath string, maxBytesSize int64, rotateHours uint) *
 		filePath:   absFilePath,
 		buf:        make(chan []byte, maxBytesSize),
 		stop:       make(chan struct{}),
+		maxBackups: maxBackups,
 		timeTicker: NewTimeTicker(rotateHours),
 	}
 }
@@ -110,6 +118,8 @@ func (w *AsyncFileWriter) initLogFile() error {
 	if err != nil {
 		return err
 	}
+
+	_ = w.clearBackups()
 
 	return nil
 }
@@ -222,5 +232,95 @@ func (w *AsyncFileWriter) flushAndClose() error {
 }
 
 func (w *AsyncFileWriter) timeFilePath(filePath string) string {
-	return filePath + "." + time.Now().Format("2006-01-02_15")
+	return filePath + "." + time.Now().Format(backupTimeFormat)
+}
+
+func (w *AsyncFileWriter) dir() string {
+	return filepath.Dir(w.filePath)
+}
+
+// oldLogFiles returns the list of backup log files stored in the same
+// directory as the current log file, sorted by ModTime
+func (w *AsyncFileWriter) oldLogFiles() ([]logInfo, error) {
+	files, err := os.ReadDir(w.dir())
+	if err != nil {
+		return nil, fmt.Errorf("can't read log file directory: %s", err)
+	}
+	logFiles := []logInfo{}
+
+	prefix := filepath.Base(w.filePath)
+
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		k := f.Name()
+		if t, err := w.timeFromName(k, prefix); err == nil {
+			logFiles = append(logFiles, logInfo{t, f})
+		}
+	}
+
+	sort.Sort(byFormatTime(logFiles))
+
+	return logFiles, nil
+}
+
+// logInfo is a convenience struct to return the filename and its embedded
+// timestamp.
+type logInfo struct {
+	timestamp time.Time
+	fs.DirEntry
+}
+
+// byFormatTime sorts by newest time formatted in the name.
+type byFormatTime []logInfo
+
+func (b byFormatTime) Less(i, j int) bool {
+	return b[i].timestamp.After(b[j].timestamp)
+}
+
+func (b byFormatTime) Swap(i, j int) {
+	b[i], b[j] = b[j], b[i]
+}
+
+func (b byFormatTime) Len() int {
+	return len(b)
+}
+
+func (w *AsyncFileWriter) timeFromName(filename, prefix string) (time.Time, error) {
+	if !strings.HasPrefix(filename, prefix) || len(filename) == len(prefix) {
+		return time.Time{}, errors.New("mismatched prefix")
+	}
+	ts := filename[len(prefix)+1:]
+	a, _ := time.Parse(backupTimeFormat, ts)
+	return a, nil
+}
+
+func (w *AsyncFileWriter) clearBackups() error {
+	if w.maxBackups == 0 {
+		return nil
+	}
+	files, err := w.oldLogFiles()
+	if err != nil {
+		return err
+	}
+	var remove []logInfo
+	if w.maxBackups > 0 && w.maxBackups < len(files) {
+		preserved := make(map[string]bool)
+		for _, f := range files {
+			fn := f.Name()
+			preserved[fn] = true
+
+			if len(preserved) > w.maxBackups {
+				remove = append(remove, f)
+			}
+		}
+	}
+	for _, f := range remove {
+		errRemove := os.Remove(filepath.Join(w.dir(), f.Name()))
+		if err == nil && errRemove != nil {
+			err = errRemove
+		}
+	}
+	return err
 }
