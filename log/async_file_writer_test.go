@@ -2,7 +2,6 @@ package log
 
 import (
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -82,12 +81,10 @@ func TestClearBackups(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		name = w.filePath + "." + fakeCurrentTime.Format(backupTimeFormat)
 		_ = os.WriteFile(name, data, 0700)
-		fakeCurrentTime = fakeCurrentTime.Add(time.Hour * 1)
+		fakeCurrentTime = fakeCurrentTime.Add(-time.Hour * 1)
 	}
-	oldFiles, _ := w.oldLogFiles()
-	assert.True(t, len(oldFiles) == 5)
+	oldFile := w.oldFile(w.filePath, w.maxBackups)
 	w.clearBackups()
-	remainFiles, _ := w.oldLogFiles()
-	assert.True(t, len(remainFiles) == 1)
-	assert.Equal(t, remainFiles[0].Name(), filepath.Base(name))
+	_, err := os.Stat(oldFile)
+	assert.True(t, os.IsNotExist(err))
 }
