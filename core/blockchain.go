@@ -1372,20 +1372,22 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		// range. In this case, all tx indices of newly imported blocks should be
 		// generated.
 		var batch = bc.db.NewBatch()
-		for i, block := range blockChain {
-			bc.txIndexer.WriteTxIndexByBlock(batch, block, ancientLimit)
-			stats.processed++
+		if bc.txIndexer != nil {
+			for i, block := range blockChain {
+				bc.txIndexer.WriteTxIndexByBlock(batch, block, ancientLimit)
+				stats.processed++
 
-			if batch.ValueSize() > ethdb.IdealBatchSize || i == len(blockChain)-1 {
-				size += int64(batch.ValueSize())
-				if err = batch.Write(); err != nil {
-					snapBlock := bc.CurrentSnapBlock().Number.Uint64()
-					if _, err := bc.db.TruncateHead(snapBlock + 1); err != nil {
-						log.Error("Can't truncate ancient store after failed insert", "err", err)
+				if batch.ValueSize() > ethdb.IdealBatchSize || i == len(blockChain)-1 {
+					size += int64(batch.ValueSize())
+					if err = batch.Write(); err != nil {
+						snapBlock := bc.CurrentSnapBlock().Number.Uint64()
+						if _, err := bc.db.TruncateHead(snapBlock + 1); err != nil {
+							log.Error("Can't truncate ancient store after failed insert", "err", err)
+						}
+						return 0, err
 					}
-					return 0, err
+					batch.Reset()
 				}
-				batch.Reset()
 			}
 		}
 
@@ -1492,9 +1494,8 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		}
 	}
 	// Write the tx index tail (block number from where we index) before write any live blocks
-	if len(liveBlocks) > 0 && liveBlocks[0].NumberU64() == ancientLimit+1 {
+	if len(liveBlocks) > 0 && bc.txIndexer != nil && liveBlocks[0].NumberU64() == ancientLimit+1 {
 		bc.txIndexer.writeTxIndexTail(ancientLimit)
-
 	}
 	if len(liveBlocks) > 0 {
 		if n, err := writeLive(liveBlocks, liveReceipts); err != nil {
@@ -3019,5 +3020,7 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 
 // EnsureTxLookupLimit user uses the same txlookup limit.
 func (bc *BlockChain) EnsureTxLookupLimit() {
-	bc.txIndexer.EnsureTxLookupLimit()
+	if bc.txIndexer != nil {
+		bc.txIndexer.EnsureTxLookupLimit()
+	}
 }
