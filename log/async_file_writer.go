@@ -72,7 +72,8 @@ type AsyncFileWriter struct {
 	stop       chan struct{}
 	timeTicker *TimeTicker
 
-	maxBackups int
+	rotateHours uint
+	maxBackups  int
 }
 
 func NewAsyncFileWriter(filePath string, maxBytesSize int64, maxBackups int, rotateHours uint) *AsyncFileWriter {
@@ -82,11 +83,12 @@ func NewAsyncFileWriter(filePath string, maxBytesSize int64, maxBackups int, rot
 	}
 
 	return &AsyncFileWriter{
-		filePath:   absFilePath,
-		buf:        make(chan []byte, maxBytesSize),
-		stop:       make(chan struct{}),
-		maxBackups: maxBackups,
-		timeTicker: NewTimeTicker(rotateHours),
+		filePath:    absFilePath,
+		buf:         make(chan []byte, maxBytesSize),
+		stop:        make(chan struct{}),
+		rotateHours: rotateHours,
+		maxBackups:  maxBackups,
+		timeTicker:  NewTimeTicker(rotateHours),
 	}
 }
 
@@ -115,8 +117,6 @@ func (w *AsyncFileWriter) initLogFile() error {
 	if err != nil {
 		return err
 	}
-
-	_ = w.clearBackups()
 
 	return nil
 }
@@ -185,6 +185,9 @@ func (w *AsyncFileWriter) rotateFile() {
 		if err := w.initLogFile(); err != nil {
 			fmt.Fprintf(os.Stderr, "init log file error. err=%s", err)
 		}
+		if err := w.removeExpiredFile(); err != nil {
+			fmt.Fprintf(os.Stderr, "remove expired file error. err=%s", err)
+		}
 	default:
 	}
 }
@@ -232,15 +235,19 @@ func (w *AsyncFileWriter) timeFilePath(filePath string) string {
 	return filePath + "." + time.Now().Format(backupTimeFormat)
 }
 
-func (w *AsyncFileWriter) oldFile(filePath string, maxBackups int) string {
+func (w *AsyncFileWriter) getExpiredFile(filePath string, maxBackups int, rotateHours uint) string {
+	if rotateHours > 0 {
+		maxBackups = int(rotateHours) * maxBackups
+	}
 	return filePath + "." + time.Now().Add(-time.Hour*time.Duration(maxBackups)).Format(backupTimeFormat)
 }
 
-func (w *AsyncFileWriter) clearBackups() error {
+func (w *AsyncFileWriter) removeExpiredFile() error {
 	if w.maxBackups == 0 {
 		return nil
 	}
-	oldFilepath := w.oldFile(w.filePath, w.maxBackups)
+
+	oldFilepath := w.getExpiredFile(w.filePath, w.maxBackups, w.rotateHours)
 	_, err := os.Stat(oldFilepath)
 	if os.IsNotExist(err) {
 		return nil

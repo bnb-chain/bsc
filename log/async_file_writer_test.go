@@ -83,8 +83,8 @@ func TestClearBackups(t *testing.T) {
 		_ = os.WriteFile(name, data, 0700)
 		fakeCurrentTime = fakeCurrentTime.Add(-time.Hour * 1)
 	}
-	oldFile := w.oldFile(w.filePath, w.maxBackups)
-	w.clearBackups()
+	oldFile := w.getExpiredFile(w.filePath, w.maxBackups, w.rotateHours)
+	w.removeExpiredFile()
 	_, err := os.Stat(oldFile)
 	assert.True(t, os.IsNotExist(err))
 }
