@@ -1751,7 +1751,6 @@ func (p *Parlia) applyTransaction(
 	receipt.BlockNumber = header.Number
 	receipt.TransactionIndex = uint(state.TxIndex())
 	*receipts = append(*receipts, receipt)
-	state.SetNonce(msg.From(), nonce+1)
 	return nil
 }
 
@@ -1975,6 +1974,8 @@ func applyMessage(
 	// about the transaction and calling mechanisms.
 	vmenv := vm.NewEVM(context, vm.TxContext{Origin: msg.From(), GasPrice: big.NewInt(0)}, state, chainConfig, vm.Config{})
 	// Apply the transaction to the current state (included in the env)
+	// Increment the nonce for the next transaction
+	state.SetNonce(msg.From(), state.GetNonce(msg.From())+1)
 	ret, returnGas, err := vmenv.Call(
 		vm.AccountRef(msg.From()),
 		*msg.To(),
