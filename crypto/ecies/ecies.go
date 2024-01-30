@@ -95,7 +95,7 @@ func ImportECDSA(prv *ecdsa.PrivateKey) *PrivateKey {
 // Generate an elliptic curve public / private keypair. If params is nil,
 // the recommended default parameters for the key will be chosen.
 func GenerateKey(rand io.Reader, curve elliptic.Curve, params *ECIESParams) (prv *PrivateKey, err error) {
-	pb, x, y, err := elliptic.GenerateKey(curve, rand)
+	pb, x, y, err := elliptic.GenerateKey(curve, rand) //nolint:all //TODO
 	if err != nil {
 		return
 	}
@@ -255,7 +255,7 @@ func Encrypt(rand io.Reader, pub *PublicKey, m, s1, s2 []byte) (ct []byte, err e
 
 	d := messageTag(params.Hash, Km, em, s2)
 
-	Rb := elliptic.Marshal(pub.Curve, R.PublicKey.X, R.PublicKey.Y)
+	Rb := elliptic.Marshal(pub.Curve, R.PublicKey.X, R.PublicKey.Y) //nolint:all //TODO
 	ct = make([]byte, len(Rb)+len(em)+len(d))
 	copy(ct, Rb)
 	copy(ct[len(Rb):], em)
@@ -297,7 +297,7 @@ func (prv *PrivateKey) Decrypt(c, s1, s2 []byte) (m []byte, err error) {
 
 	R := new(PublicKey)
 	R.Curve = prv.PublicKey.Curve
-	R.X, R.Y = elliptic.Unmarshal(R.Curve, c[:rLen])
+	R.X, R.Y = elliptic.Unmarshal(R.Curve, c[:rLen]) //nolint:all //TODO
 	if R.X == nil {
 		return nil, ErrInvalidPublicKey
 	}

@@ -355,7 +355,7 @@ func (db *Database) SetBufferSize(size int) error {
 }
 
 // Head return the top non-fork difflayer/disklayer root hash for rewinding.
-// It's only supported by path-based database and will return an error for
+// It's only supported by path-based database and will return empty hash for
 // others.
 func (db *Database) Head() common.Hash {
 	pdb, ok := db.backend.(*pathdb.Database)
@@ -363,4 +363,16 @@ func (db *Database) Head() common.Hash {
 		return common.Hash{}
 	}
 	return pdb.Head()
+}
+
+// GetAllHash returns all MPT root hash in diffLayer and diskLayer.
+// It's only supported by path-based database and will return nil for
+// others.
+func (db *Database) GetAllRooHash() [][]string {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+		return nil
+	}
+	return pdb.GetAllRooHash()
 }

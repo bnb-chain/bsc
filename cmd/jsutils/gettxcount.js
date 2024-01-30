@@ -4,6 +4,7 @@ import program from "commander";
 program.option("--rpc <rpc>", "Rpc");
 program.option("--startNum <startNum>", "start num")
 program.option("--endNum <endNum>", "end num")
+program.option("--miner <miner>", "miner", "")
 program.parse(process.argv);
 
 const provider = new ethers.JsonRpcProvider(program.rpc)
@@ -13,13 +14,19 @@ const main = async () => {
     let num = 0;
     console.log("Find the max txs count between", program.startNum, "and", program.endNum);
     for (let i = program.startNum; i < program.endNum; i++) {
-         let x = await provider.send("eth_getBlockTransactionCountByNumber", [
+        if (program.miner !== "") {
+            let blockData = await provider.getBlock(Number(i))
+            if (program.miner !== blockData.miner) {
+                continue
+            }
+        }
+        let x = await provider.send("eth_getBlockTransactionCountByNumber", [
             ethers.toQuantity(i)]);
-         let a = ethers.toNumber(x)
-         if (a > txCount) {
-             num = i;
-             txCount = a;
-         }
+        let a = ethers.toNumber(x)
+        if (a > txCount) {
+            num = i;
+            txCount = a;
+        }
     }
     console.log("BlockNum = ", num, "TxCount =", txCount);
 };
