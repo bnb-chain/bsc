@@ -12,10 +12,16 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/olekukonko/tablewriter"
+
+	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/types"
+	"golang.org/x/sync/semaphore"
 )
 
 type Account struct {
@@ -26,16 +32,17 @@ type Account struct {
 }
 
 type Inspector struct {
-	trie            *Trie // traverse trie
-	db              *Database
-	stateRootHash   common.Hash
-	blocknum        uint64
-	root            node // root of triedb
-	totalNum        uint64
-	concurrentQueue chan struct{}
-	wg              sync.WaitGroup
-	statLock        sync.RWMutex
-	result          map[string]*TrieTreeStat
+	trie           *Trie // traverse trie
+	db             *Database
+	stateRootHash  common.Hash
+	blocknum       uint64
+	root           node // root of triedb
+	totalNum       uint64
+	wg             sync.WaitGroup
+	statLock       sync.RWMutex
+	result         map[string]*TrieTreeStat
+	sem            *semaphore.Weighted
+	eoaAccountNums uint64
 }
 
 type TrieTreeStat struct {
@@ -116,15 +123,16 @@ func NewInspector(tr *Trie, db *Database, stateRootHash common.Hash, blocknum ui
 	}
 
 	ins := &Inspector{
-		trie:            tr,
-		db:              db,
-		stateRootHash:   stateRootHash,
-		blocknum:        blocknum,
-		root:            tr.root,
-		result:          make(map[string]*TrieTreeStat),
-		totalNum:        (uint64)(0),
-		concurrentQueue: make(chan struct{}, jobnum),
-		wg:              sync.WaitGroup{},
+		trie:           tr,
+		db:             db,
+		stateRootHash:  stateRootHash,
+		blocknum:       blocknum,
+		root:           tr.root,
+		result:         make(map[string]*TrieTreeStat),
+		totalNum:       (uint64)(0),
+		wg:             sync.WaitGroup{},
+		sem:            semaphore.NewWeighted(int64(jobnum)),
+		eoaAccountNums: 0,
 	}
 
 	return ins, nil
@@ -132,21 +140,30 @@ func NewInspector(tr *Trie, db *Database, stateRootHash common.Hash, blocknum ui
 
 // Run statistics, external call
 func (inspect *Inspector) Run() {
-	accountTrieStat := new(TrieTreeStat)
-	path := make([]byte, 0)
+	accountTrieStat := &TrieTreeStat{
+		is_account_trie: true,
+	}
+	if inspect.db.Scheme() == rawdb.HashScheme {
+		ticker := time.NewTicker(30 * time.Second)
+		go func() {
+			defer ticker.Stop()
+			for range ticker.C {
+				inspect.db.Cap(DEFAULT_TRIEDBCACHE_SIZE)
+			}
+		}()
+	}
 
 	if _, ok := inspect.result[""]; !ok {
 		inspect.result[""] = accountTrieStat
 	}
 	log.Info("Find Account Trie Tree", "rootHash: ", inspect.trie.Hash().String(), "BlockNum: ", inspect.blocknum)
-	inspect.ConcurrentTraversal(inspect.trie, accountTrieStat, inspect.root, 0, path)
+
+	inspect.ConcurrentTraversal(inspect.trie, accountTrieStat, inspect.root, 0, []byte{})
 	inspect.wg.Wait()
 }
 
 func (inspect *Inspector) SubConcurrentTraversal(theTrie *Trie, theTrieTreeStat *TrieTreeStat, theNode node, height uint32, path []byte) {
-	inspect.concurrentQueue <- struct{}{}
 	inspect.ConcurrentTraversal(theTrie, theTrieTreeStat, theNode, height, path)
-	<-inspect.concurrentQueue
 	inspect.wg.Done()
 }
 
@@ -154,7 +171,7 @@ func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *Tr
 	// print process progress
 	total_num := atomic.AddUint64(&inspect.totalNum, 1)
 	if total_num%100000 == 0 {
-		fmt.Printf("Complete progress: %v, go routines Num: %v, inspect concurrentQueue: %v\n", total_num, runtime.NumGoroutine(), len(inspect.concurrentQueue))
+		fmt.Printf("Complete progress: %v, go routines Num: %v\n", total_num, runtime.NumGoroutine())
 	}
 
 	// nil node
@@ -171,7 +188,7 @@ func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *Tr
 				continue
 			}
 			childPath := append(path, byte(idx))
-			if len(inspect.concurrentQueue)*2 < cap(inspect.concurrentQueue) {
+			if inspect.sem.TryAcquire(1) {
 				inspect.wg.Add(1)
 				dst := make([]byte, len(childPath))
 				copy(dst, childPath)
@@ -196,17 +213,22 @@ func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *Tr
 		if err := rlp.Decode(bytes.NewReader(current), &account); err != nil {
 			break
 		}
-		if account.Root == (common.Hash{}) {
+		if common.BytesToHash(account.CodeHash) == types.EmptyCodeHash {
+			inspect.eoaAccountNums++
+		}
+		if account.Root == (common.Hash{}) || account.Root == types.EmptyRootHash {
 			break
 		}
 		ownerAddress := common.BytesToHash(hexToCompact(path))
 		contractTrie, err := New(StorageTrieID(inspect.stateRootHash, ownerAddress, account.Root), inspect.db)
 		if err != nil {
-			// fmt.Printf("New contract trie node: %v, error: %v, Height: %v, Path: %v\n", theNode, err, height, path)
+			fmt.Printf("New contract trie node: %v, error: %v, Height: %v, Path: %v\n", theNode, err, height, path)
 			break
 		}
-		trieStat := new(TrieTreeStat)
-		trieStat.is_account_trie = false
+		contractTrie.tracer.reset()
+		trieStat := &TrieTreeStat{
+			is_account_trie: false,
+		}
 
 		inspect.statLock.Lock()
 		if _, ok := inspect.result[ownerAddress.String()]; !ok {
@@ -214,10 +236,9 @@ func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *Tr
 		}
 		inspect.statLock.Unlock()
 
-		contractPath := make([]byte, 0)
 		// log.Info("Find Contract Trie Tree, rootHash: ", contractTrie.Hash().String(), "")
 		inspect.wg.Add(1)
-		go inspect.SubConcurrentTraversal(contractTrie, trieStat, contractTrie.root, 0, contractPath)
+		go inspect.SubConcurrentTraversal(contractTrie, trieStat, contractTrie.root, 0, []byte{})
 	default:
 		panic(errors.New("Invalid node type to traverse."))
 	}
@@ -255,6 +276,7 @@ func (inspect *Inspector) DisplayResult() {
 	sort.Slice(sortedTriesByNums, func(i, j int) bool {
 		return sortedTriesByNums[i].totalNum > sortedTriesByNums[j].totalNum
 	})
+	fmt.Println("EOA accounts num: ", inspect.eoaAccountNums)
 	// only display top 5
 	for i, t := range sortedTriesByNums {
 		if i > 5 {

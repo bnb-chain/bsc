@@ -57,7 +57,7 @@ func newPrunedFreezer(datadir string, db ethdb.KeyValueStore, offset uint64) (*p
 
 	// delete ancient dir
 	if err := os.RemoveAll(datadir); err != nil && !os.IsNotExist(err) {
-		log.Warn("remove the ancient dir failed.", "path", datadir, "error", err)
+		log.Warn("Failed to remove the ancient dir", "path", datadir, "error", err)
 		return nil, err
 	}
 	log.Info("Opened ancientdb with nodata mode", "database", datadir, "frozen", freezer.frozen)

@@ -219,25 +219,28 @@ func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, 
 
 // resolveChainFreezerDir is a helper function which resolves the absolute path
 // of chain freezer by considering backward compatibility.
+//
+// rules:
+// 1. in path mode, block data is stored in chain dir and state data is in state dir.
+// 2. in hash mode, block data is stored in chain dir or ancient dir(before big merge), no state dir.
 func resolveChainFreezerDir(ancient string) string {
 	// Check if the chain freezer is already present in the specified
 	// sub folder, if not then two possibilities:
 	// - chain freezer is not initialized
 	// - chain freezer exists in legacy location (root ancient folder)
-	freezer := path.Join(ancient, chainFreezerName)
-	if !common.FileExist(freezer) {
-		if !common.FileExist(ancient) {
-			// The entire ancient store is not initialized, still use the sub
-			// folder for initialization.
-		} else {
-			// Ancient root is already initialized, then we hold the assumption
-			// that chain freezer is also initialized and located in root folder.
-			// In this case fallback to legacy location.
-			freezer = ancient
-			log.Info("Found legacy ancient chain path", "location", ancient)
-		}
+	chain := path.Join(ancient, chainFreezerName)
+	state := path.Join(ancient, stateFreezerName)
+	if common.FileExist(chain) {
+		return chain
 	}
-	return freezer
+	if common.FileExist(state) {
+		return chain
+	}
+	if common.FileExist(ancient) {
+		log.Info("Found legacy ancient chain path", "location", ancient)
+		chain = ancient
+	}
+	return chain
 }
 
 // NewDatabaseWithFreezer creates a high level database on top of a given key-
@@ -264,6 +267,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			WriteAncientType(db, PruneFreezerType)
 		}
 		return &freezerdb{
+			ancientRoot:   ancient,
 			KeyValueStore: db,
 			AncientStore:  frdb,
 		}, nil
@@ -336,7 +340,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 							break
 						}
 					}
-					// We are about to exit on error. Print database metdata beore exiting
+					// We are about to exit on error. Print database metdata before exiting
 					printChainMetadata(db)
 					return nil, fmt.Errorf("gap in the chain between ancients [0 - #%d] and leveldb [#%d - #%d] ",
 						frozen-1, number, head)
@@ -365,7 +369,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			// freezer.
 		}
 	}
-	// no prune ancinet start success
+	// no prune ancient start success
 	if !readonly {
 		WriteAncientType(db, EntireFreezerType)
 	}
@@ -516,6 +520,11 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 	if err != nil {
 		return nil, err
 	}
+	if ReadAncientType(kvdb) == PruneFreezerType {
+		if !o.PruneAncientData {
+			log.Warn("Disk db is pruned")
+		}
+	}
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
@@ -556,6 +565,7 @@ func (s *stat) Size() string {
 func (s *stat) Count() string {
 	return s.count.String()
 }
+
 func AncientInspect(db ethdb.Database) error {
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
 	// Get number of ancient rows inside the freezer.
