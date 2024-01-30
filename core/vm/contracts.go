@@ -222,6 +222,8 @@ var PrecompiledContractsCancun = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidatePlato{},
 	common.BytesToAddress([]byte{102}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidate{},
+	common.BytesToAddress([]byte{104}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{105}): &secp256k1SignatureRecover{},
 }
 
 // PrecompiledContractsFeynman contains the default set of pre-compiled Ethereum
@@ -316,10 +318,10 @@ func init() {
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
-	case rules.IsFeynman:
-		return PrecompiledAddressesFeynman
 	case rules.IsCancun:
 		return PrecompiledAddressesCancun
+	case rules.IsFeynman:
+		return PrecompiledAddressesFeynman
 	case rules.IsHertz:
 		return PrecompiledAddressesHertz
 	case rules.IsPlato:
