@@ -31,7 +31,7 @@ const (
 	// freezerRecheckInterval is the frequency to check the key-value database for
 	// chain progression that might permit new blocks to be frozen into immutable
 	// storage.
-	freezerRecheckInterval = time.Minute
+	freezerRecheckInterval = 15 * time.Second
 
 	// freezerBatchLimit is the maximum number of blocks to freeze in one batch
 	// before doing an fsync and deleting it from the key-value store.
