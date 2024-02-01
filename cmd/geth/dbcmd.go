@@ -609,9 +609,11 @@ func dbCompact(ctx *cli.Context) error {
 		return err
 	}
 
-	if err := separateTrieDB.Compact(nil, nil); err != nil {
-		log.Error("Compact err", "error", err)
-		return err
+	if separateTrieDB != nil {
+		if err := separateTrieDB.Compact(nil, nil); err != nil {
+			log.Error("Compact err", "error", err)
+			return err
+		}
 	}
 
 	log.Info("Stats after compaction")
