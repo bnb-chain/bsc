@@ -45,6 +45,7 @@ func (p *Parlia) initializeFeynmanContract(state *state.StateDB, header *types.H
 		systemcontracts.GovernorContract,
 		systemcontracts.GovTokenContract,
 		systemcontracts.TimelockContract,
+		systemcontracts.TokenRecoverPortalContract,
 	}
 	// get packed data
 	data, err := p.stakeHubABI.Pack(method)
