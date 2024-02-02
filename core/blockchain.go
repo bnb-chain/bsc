@@ -166,20 +166,20 @@ type CacheConfig struct {
 	StateScheme         string        // Scheme used to store ethereum states and merkle tree nodes on top
 	PathSyncFlush       bool          // Whether sync flush the trienodebuffer of pathdb to disk.
 
-	SnapshotNoBuild    bool                // Whether the background generation is allowed
-	SnapshotWait       bool                // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
-	SeparateTrieConfig *SeparateTrieConfig // The configuration of the separated single trie database
+	SnapshotNoBuild   bool                 // Whether the background generation is allowed
+	SnapshotWait      bool                 // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
+	StateDiskDBConfig *StateDatabaseConfig // The configuration of the separated single trie database
 }
 
-// SeparateTrieConfig contains the configuration values of the separated single trie database
-type SeparateTrieConfig struct {
-	SeparateDBHandles int    // The handler num used by the separated trie db
-	SeparateDBCache   int    // The cache size used by the separated trie db
-	SeparateDBEngine  string // The db engine (pebble or leveldb) used by the separated trie db
-	TrieDataDir       string // The directory of the separated trie db
-	TrieNameSpace     string // The namespace of the separated trie db
-	SeparateDBAncient string // The ancient directory of the separated trie db
-	PruneAncientData  bool
+// StateDatabaseConfig contains the configuration values of the separated single state database
+type StateDatabaseConfig struct {
+	StateHandles     int    // The handler num used by the separated state db
+	StateCache       int    // The cache size used by the separated state db
+	StateEngine      string // The db engine (pebble or leveldb) used by the separated state db
+	StateDataDir     string // The directory of the separated state db
+	NameSpace        string // The namespace of the separated state db
+	StateAncient     string // The ancient directory of the separated state db
+	PruneAncientData bool
 }
 
 // triedbConfig derives the configures for trie database.
@@ -373,18 +373,18 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 
 	// Open trie database with provided config
 	var triedb *trie.Database
-	if cacheConfig.SeparateTrieConfig != nil {
-		separatedTrieConfig := cacheConfig.SeparateTrieConfig
-		separatedTrieDir := separatedTrieConfig.TrieDataDir
+	if cacheConfig.StateDiskDBConfig != nil {
+		separatedTrieConfig := cacheConfig.StateDiskDBConfig
+		separatedTrieDir := separatedTrieConfig.StateDataDir
 		log.Info("node run with separated trie database", "directory", separatedTrieDir)
 		// open the separated db to init the trie database which only store the trie data
-		separateDB, dbErr := rawdb.Open(rawdb.OpenOptions{
-			Type:              separatedTrieConfig.SeparateDBEngine,
+		statediskdb, dbErr := rawdb.Open(rawdb.OpenOptions{
+			Type:              separatedTrieConfig.StateEngine,
 			Directory:         separatedTrieDir,
-			AncientsDirectory: filepath.Join(separatedTrieDir, separatedTrieConfig.SeparateDBAncient),
-			Namespace:         separatedTrieConfig.TrieNameSpace,
-			Cache:             separatedTrieConfig.SeparateDBCache,
-			Handles:           separatedTrieConfig.SeparateDBHandles,
+			AncientsDirectory: filepath.Join(separatedTrieDir, separatedTrieConfig.StateAncient),
+			Namespace:         separatedTrieConfig.NameSpace,
+			Cache:             separatedTrieConfig.StateCache,
+			Handles:           separatedTrieConfig.StateHandles,
 			ReadOnly:          false,
 			DisableFreeze:     false,
 			IsLastOffset:      false,
@@ -395,7 +395,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			log.Error("Failed to separate trie database", "err", dbErr)
 			return nil, dbErr
 		}
-		triedb = trie.NewDatabase(separateDB, cacheConfig.triedbConfig())
+		triedb = trie.NewDatabase(statediskdb, cacheConfig.triedbConfig())
 	} else {
 		triedb = trie.NewDatabase(db, cacheConfig.triedbConfig())
 	}

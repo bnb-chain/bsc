@@ -300,16 +300,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			ancientDir = "ancient"
 		}
 		// Allocate partial handles and cache to this separated database.
-		separateDir := filepath.Join(stack.ResolvePath("chaindata"), "state")
-		separatedDBConfig := &core.SeparateTrieConfig{
-			SeparateDBHandles: int(float64(config.DatabaseHandles) * 0.5),
-			SeparateDBCache:   int(float64(config.DatabaseCache) * 0.5),
-			SeparateDBEngine:  stack.Config().DBEngine,
-			TrieDataDir:       separateDir,
-			TrieNameSpace:     SeparateTrieNamespace,
-			SeparateDBAncient: ancientDir,
+		stateDirectory := filepath.Join(stack.ResolvePath("chaindata"), "state")
+		stateDBConfig := &core.StateDatabaseConfig{
+			StateHandles: int(float64(config.DatabaseHandles) * 0.5),
+			StateCache:   int(float64(config.DatabaseCache) * 0.5),
+			StateEngine:  stack.Config().DBEngine,
+			StateDataDir: stateDirectory,
+			NameSpace:    SeparateTrieNamespace,
+			StateAncient: ancientDir,
 		}
-		cacheConfig.SeparateTrieConfig = separatedDBConfig
+		cacheConfig.StateDiskDBConfig = stateDBConfig
 	}
 
 	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, eth.shouldPreserve, &config.TransactionHistory, bcOps...)

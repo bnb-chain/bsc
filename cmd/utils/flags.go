@@ -93,7 +93,7 @@ var (
 		Value:    flags.DirectoryString(node.DefaultDataDir()),
 		Category: flags.EthCategory,
 	}
-	SeparateDBFlag = &cli.BoolFlag{
+	SeparateTrieFlag = &cli.BoolFlag{
 		Name: "separatetrie",
 		Usage: "Enable a separated trie database, it will be created within a subdirectory called state, " +
 			"Users can copy this state directory to another directory or disk, and then create a symbolic link to the state directory under the chaindata",
@@ -1118,7 +1118,7 @@ var (
 		DBEngineFlag,
 		StateSchemeFlag,
 		HttpHeaderFlag,
-		SeparateDBFlag,
+		SeparateTrieFlag,
 	}
 )
 
@@ -1640,7 +1640,7 @@ func SetDataDir(ctx *cli.Context, cfg *node.Config) {
 	case ctx.Bool(DeveloperFlag.Name):
 		cfg.DataDir = "" // unless explicitly requested, use memory databases
 	}
-	if ctx.IsSet(SeparateDBFlag.Name) {
+	if ctx.IsSet(SeparateTrieFlag.Name) {
 		cfg.EnableSeparateTrie = true
 	}
 }
@@ -2331,11 +2331,11 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 	return chainDb
 }
 
-// MakeSeparateTrieDB open a separate trie database using the flags passed to the client and will hard crash if it fails.
-func MakeSeparateTrieDB(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
+// MakeStateDataBase open a separate trie database using the flags passed to the client and will hard crash if it fails.
+func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
 	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
 	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name))
-	trieDb, err := stack.OpenTrieDataBase("chaindata", cache, handles, "", readonly, disableFreeze, false, false)
+	trieDb, err := stack.OpenStateDataBase("chaindata", cache, handles, "", readonly, disableFreeze, false, false)
 	if err != nil {
 		Fatalf("Failed to open separate trie database: %v", err)
 	}

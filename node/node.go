@@ -840,10 +840,10 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 	return db, err
 }
 
-// OpenTrieDataBase opens an existing database to store the trie data with the given name (or
+// OpenStateDataBase opens an existing database to store the trie data with the given name (or
 // creates one if no previous can be found) from within the node's data directory.
 // This function is only used in scenarios where the separate db is used.
-func (n *Node) OpenTrieDataBase(name string, cache, handles int, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
+func (n *Node) OpenStateDataBase(name string, cache, handles int, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	if n.state == closedState {

@@ -685,18 +685,7 @@ func traverseRawState(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer chaindb.Close()
 
-<<<<<<< HEAD
 	triedb := utils.MakeTrieDatabase(ctx, chaindb, false, true, false)
-=======
-	var triedb *trie.Database
-	if stack.HasSeparateTrieDir() {
-		separateTrie := utils.MakeSeparateTrieDB(ctx, stack, true, false)
-		defer separateTrie.Close()
-		triedb = utils.MakeTrieDatabase(ctx, separateTrie, false, true)
-	} else {
-		triedb = utils.MakeTrieDatabase(ctx, chaindb, false, true)
-	}
->>>>>>> b5a9db378 (refactor: delete the trie datadir flag and make it fixed)
 	defer triedb.Close()
 
 	headBlock := rawdb.ReadHeadBlock(chaindb)
@@ -860,18 +849,7 @@ func dumpState(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-<<<<<<< HEAD
 	triedb := utils.MakeTrieDatabase(ctx, db, false, true, false)
-=======
-
-	var separateTrie ethdb.Database
-	if stack.HasSeparateTrieDir() {
-		separateTrie = utils.MakeSeparateTrieDB(ctx, stack, true, false)
-		defer separateTrie.Close()
-	}
-
-	triedb := utils.MakeTrieDatabase(ctx, db, false, true)
->>>>>>> b5a9db378 (refactor: delete the trie datadir flag and make it fixed)
 	defer triedb.Close()
 
 	snapConfig := snapshot.Config{
@@ -881,17 +859,7 @@ func dumpState(ctx *cli.Context) error {
 		AsyncBuild: false,
 	}
 	triesInMemory := ctx.Uint64(utils.TriesInMemoryFlag.Name)
-<<<<<<< HEAD
 	snaptree, err := snapshot.New(snapConfig, db, triedb, root, int(triesInMemory), false)
-=======
-
-	var snaptree *snapshot.Tree
-	if separateTrie != nil {
-		snaptree, err = snapshot.New(snapConfig, db, trie.NewDatabase(separateTrie, nil), root, int(triesInMemory), false)
-	} else {
-		snaptree, err = snapshot.New(snapConfig, db, trie.NewDatabase(db, nil), root, int(triesInMemory), false)
-	}
->>>>>>> b5a9db378 (refactor: delete the trie datadir flag and make it fixed)
 	if err != nil {
 		return err
 	}
