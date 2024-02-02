@@ -849,6 +849,9 @@ func (n *Node) OpenStateDataBase(name string, cache, handles int, namespace stri
 	if n.state == closedState {
 		return nil, ErrNodeStopped
 	}
+	if n.config.DataDir == "" {
+		return nil, ErrSeprateDBDatadir
+	}
 	var db ethdb.Database
 	var err error
 	separateDir := filepath.Join(n.ResolvePath(name), "state")

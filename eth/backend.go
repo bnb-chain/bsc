@@ -69,8 +69,8 @@ import (
 )
 
 const (
-	SeparateDBNamespace   = "eth/separatedb/chaindata/"
-	SeparateTrieNamespace = "eth/triedb/chaindata/"
+	ChainDBNamespace = "eth/db/chaindata/"
+	StateDBNamespace = "eth/db/statedata/"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -145,13 +145,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		// It is the separated db which contain snapshot, meta and block data with no trie data storing in it.
 		// Allocate partial handles and cache to this separate database because it is not a complete database.
 		chainDb, err = stack.OpenAndMergeDatabase("chaindata", int(float64(config.DatabaseCache)*0.6), int(float64(config.DatabaseHandles)*0.6),
-			config.DatabaseFreezer, config.DatabaseDiff, SeparateDBNamespace, false, config.PersistDiff, config.PruneAncientData)
+			config.DatabaseFreezer, config.DatabaseDiff, ChainDBNamespace, false, config.PersistDiff, config.PruneAncientData)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		chainDb, err = stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
-			config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff, config.PruneAncientData)
+			config.DatabaseFreezer, config.DatabaseDiff, ChainDBNamespace, false, config.PersistDiff, config.PruneAncientData)
 		if err != nil {
 			return nil, err
 		}
@@ -306,7 +306,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			StateCache:   int(float64(config.DatabaseCache) * 0.5),
 			StateEngine:  stack.Config().DBEngine,
 			StateDataDir: stateDirectory,
-			NameSpace:    SeparateTrieNamespace,
+			NameSpace:    StateDBNamespace,
 			StateAncient: ancientDir,
 		}
 		cacheConfig.StateDiskDBConfig = stateDBConfig
