@@ -110,7 +110,8 @@ type Ethereum struct {
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
-	votePool *vote.VotePool
+	votePool    *vote.VotePool
+	voteManager *vote.VoteManager
 }
 
 // New creates a new Ethereum object (including the
@@ -334,7 +335,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			blsPasswordPath := stack.ResolvePath(conf.BLSPasswordFile)
 			blsWalletPath := stack.ResolvePath(conf.BLSWalletDir)
 			voteJournalPath := stack.ResolvePath(conf.VoteJournalDir)
-			if _, err := vote.NewVoteManager(eth, eth.blockchain, votePool, voteJournalPath, blsPasswordPath, blsWalletPath, posa); err != nil {
+			if eth.voteManager, err = vote.NewVoteManager(eth, eth.blockchain, votePool, voteJournalPath, blsPasswordPath, blsWalletPath, posa); err != nil {
 				log.Error("Failed to Initialize voteManager", "err", err)
 				return nil, err
 			}
@@ -559,6 +560,13 @@ func (s *Ethereum) StartMining() error {
 			minerInfo := metrics.Get("miner-info")
 			if minerInfo != nil {
 				minerInfo.(metrics.Label).Value()["Etherbase"] = eb.String()
+			}
+			// if enable vote, init the signer
+			if s.config.Miner.VoteEnable {
+				if err := s.voteManager.SetupSigner(); err != nil {
+					log.Error("Cannot setup signer for vote manager", "err", err)
+					return fmt.Errorf("vote manager's signer error: %v", err)
+				}
 			}
 		}
 		// If mining is started, we can disable the transaction rejection mechanism

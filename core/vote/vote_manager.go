@@ -43,25 +43,24 @@ type VoteManager struct {
 	journal *VoteJournal
 
 	engine consensus.PoSA
+
+	// signer config
+	blsPasswordPath string
+	blsWalletPath   string
+	lock            sync.RWMutex
 }
 
 func NewVoteManager(eth Backend, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
 	voteManager := &VoteManager{
-		eth:         eth,
-		chain:       chain,
-		chainHeadCh: make(chan core.ChainHeadEvent, chainHeadChanSize),
-		syncVoteCh:  make(chan core.NewVoteEvent, voteBufferForPut),
-		pool:        pool,
-		engine:      engine,
+		eth:             eth,
+		chain:           chain,
+		chainHeadCh:     make(chan core.ChainHeadEvent, chainHeadChanSize),
+		syncVoteCh:      make(chan core.NewVoteEvent, voteBufferForPut),
+		pool:            pool,
+		engine:          engine,
+		blsPasswordPath: blsPasswordPath,
+		blsWalletPath:   blsWalletPath,
 	}
-
-	// Create voteSigner.
-	voteSigner, err := NewVoteSigner(blsPasswordPath, blsWalletPath)
-	if err != nil {
-		return nil, err
-	}
-	log.Info("Create voteSigner successfully")
-	voteManager.signer = voteSigner
 
 	// Create voteJournal
 	voteJournal, err := NewVoteJournal(journalPath)
@@ -78,6 +77,19 @@ func NewVoteManager(eth Backend, chain *core.BlockChain, pool *VotePool, journal
 	go voteManager.loop()
 
 	return voteManager, nil
+}
+
+func (voteManager *VoteManager) SetupSigner() error {
+	// Create voteSigner.
+	voteSigner, err := NewVoteSigner(voteManager.blsPasswordPath, voteManager.blsWalletPath)
+	if err != nil {
+		return err
+	}
+	voteManager.lock.Lock()
+	defer voteManager.lock.Unlock()
+	log.Info("Create voteSigner successfully")
+	voteManager.signer = voteSigner
+	return nil
 }
 
 func (voteManager *VoteManager) loop() {
@@ -176,7 +188,7 @@ func (voteManager *VoteManager) loop() {
 				voteMessage.Data.SourceNumber = sourceNumber
 				voteMessage.Data.SourceHash = sourceHash
 
-				if err := voteManager.signer.SignVote(voteMessage); err != nil {
+				if err := voteManager.signVote(voteMessage); err != nil {
 					log.Error("Failed to sign vote", "err", err, "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 					votesSigningErrorCounter.Inc(1)
 					continue
@@ -271,4 +283,13 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 	// Since the header subscribed to is the canonical chain, so this rule is satisfied by default.
 	log.Debug("All three rules check passed")
 	return true, sourceNumber, sourceHash
+}
+
+func (voteManager *VoteManager) signVote(vote *types.VoteEnvelope) error {
+	voteManager.lock.RLock()
+	defer voteManager.lock.RUnlock()
+	if voteManager.signer == nil {
+		return fmt.Errorf("signer is nil")
+	}
+	return voteManager.signer.SignVote(vote)
 }

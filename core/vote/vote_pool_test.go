@@ -179,6 +179,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}
+	voteManager.SetupSigner()
 
 	voteJournal := voteManager.journal
 
