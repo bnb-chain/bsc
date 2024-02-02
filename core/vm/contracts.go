@@ -1398,16 +1398,19 @@ func (c *verifyDoubleSignEvidence) RequiredGas(input []byte) uint64 {
 	return params.DoubleSignEvidenceVerifyGas
 }
 
-var (
-	extraSeal          = 65
-	errInvalidEvidence = errors.New("invalid double sign evidence")
-)
-
 type DoubleSignEvidence struct {
 	ChainId      *big.Int
 	HeaderBytes1 []byte
 	HeaderBytes2 []byte
 }
+
+const (
+	extraSeal = 65
+)
+
+var (
+	errInvalidEvidence = errors.New("invalid double sign evidence")
+)
 
 // Run input: rlp encoded DoubleSignEvidence
 // return:
