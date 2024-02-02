@@ -139,7 +139,8 @@ type Database struct {
 	// readOnly is the flag whether the mutation is allowed to be applied.
 	// It will be set automatically when the database is journaled during
 	// the shutdown to reject all following unexpected mutations.
-	readOnly   bool                     // Indicator if database is opened in read only mode
+	readOnly   bool                     // Flag if database is opened in read only mode
+	waitSync   bool                     // Flag if database is deactivated due to initial state sync
 	bufferSize int                      // Memory allowance (in bytes) for caching dirty nodes
 	config     *Config                  // Configuration for database
 	diskdb     ethdb.Database           // Persistent storage for matured trie nodes
@@ -181,14 +182,37 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		}
 		db.freezer = freezer
 
-		// Truncate the extra state histories above in freezer in case
-		// it's not aligned with the disk layer.
-		pruned, err := truncateFromHead(db.diskdb, freezer, db.tree.bottom().stateID())
-		if err != nil {
-			log.Crit("Failed to truncate extra state histories", "err", err)
+		diskLayerID := db.tree.bottom().stateID()
+		if diskLayerID == 0 {
+			// Reset the entire state histories in case the trie database is
+			// not initialized yet, as these state histories are not expected.
+			frozen, err := db.freezer.Ancients()
+			if err != nil {
+				log.Crit("Failed to retrieve head of state history", "err", err)
+			}
+			if frozen != 0 {
+				err := db.freezer.Reset()
+				if err != nil {
+					log.Crit("Failed to reset state histories", "err", err)
+				}
+				log.Info("Truncated extraneous state history")
+			}
+		} else {
+			// Truncate the extra state histories above in freezer in case
+			// it's not aligned with the disk layer.
+			pruned, err := truncateFromHead(db.diskdb, freezer, diskLayerID)
+			if err != nil {
+				log.Crit("Failed to truncate extra state histories", "err", err)
+			}
+			if pruned != 0 {
+				log.Warn("Truncated extra state histories", "number", pruned)
+			}
 		}
-		if pruned != 0 {
-			log.Warn("Truncated extra state histories", "number", pruned)
+	}
+	// Disable database in case node is still in the initial state sync stage.
+	if rawdb.ReadSnapSyncStatusFlag(diskdb) == rawdb.StateSyncRunning && !db.readOnly {
+		if err := db.Disable(); err != nil {
+			log.Crit("Failed to disable database", "err", err) // impossible to happen
 		}
 	}
 	log.Warn("Path-based state scheme is an experimental feature", "sync", db.config.SyncFlush)
@@ -216,9 +240,9 @@ func (db *Database) Update(root common.Hash, parentRoot common.Hash, block uint6
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	// Short circuit if the database is in read only mode.
-	if db.readOnly {
-		return errSnapshotReadOnly
+	// Short circuit if the mutation is not allowed.
+	if err := db.modifyAllowed(); err != nil {
+		return err
 	}
 	if err := db.tree.add(root, parentRoot, block, nodes, states); err != nil {
 		return err
@@ -239,45 +263,59 @@ func (db *Database) Commit(root common.Hash, report bool) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	// Short circuit if the database is in read only mode.
-	if db.readOnly {
-		return errSnapshotReadOnly
+	// Short circuit if the mutation is not allowed.
+	if err := db.modifyAllowed(); err != nil {
+		return err
 	}
 	return db.tree.cap(root, 0)
 }
 
-// Reset rebuilds the database with the specified state as the base.
-//
-//   - if target state is empty, clear the stored state and all layers on top
-//   - if target state is non-empty, ensure the stored state matches with it
-//     and clear all other layers on top.
-func (db *Database) Reset(root common.Hash) error {
+// Disable deactivates the database and invalidates all available state layers
+// as stale to prevent access to the persistent state, which is in the syncing
+// stage.
+func (db *Database) Disable() error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
 	// Short circuit if the database is in read only mode.
 	if db.readOnly {
-		return errSnapshotReadOnly
+		return errDatabaseReadOnly
 	}
-	batch := db.diskdb.NewBatch()
-	root = types.TrieRootHash(root)
-	if root == types.EmptyRootHash {
-		// Empty state is requested as the target, nuke out
-		// the root node and leave all others as dangling.
-		rawdb.DeleteAccountTrieNode(batch, nil)
-	} else {
-		// Ensure the requested state is existent before any
-		// action is applied.
-		_, hash := rawdb.ReadAccountTrieNode(db.diskdb, nil)
-		if hash != root {
-			return fmt.Errorf("state is mismatched, local: %x, target: %x", hash, root)
-		}
+	// Prevent duplicated disable operation.
+	if db.waitSync {
+		log.Error("Reject duplicated disable operation")
+		return nil
 	}
-	// Mark the disk layer as stale before applying any mutation.
+	db.waitSync = true
+
+	// Mark the disk layer as stale to prevent access to persistent state.
 	db.tree.bottom().markStale()
 
+	// Write the initial sync flag to persist it across restarts.
+	rawdb.WriteSnapSyncStatusFlag(db.diskdb, rawdb.StateSyncRunning)
+	log.Info("Disabled trie database due to state sync")
+	return nil
+}
+
+// Enable activates database and resets the state tree with the provided persistent
+// state root once the state sync is finished.
+func (db *Database) Enable(root common.Hash) error {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	// Short circuit if the database is in read only mode.
+	if db.readOnly {
+		return errDatabaseReadOnly
+	}
+	// Ensure the provided state root matches the stored one.
+	root = types.TrieRootHash(root)
+	_, stored := rawdb.ReadAccountTrieNode(db.diskdb, nil)
+	if stored != root {
+		return fmt.Errorf("state root mismatch: stored %x, synced %x", stored, root)
+	}
 	// Drop the stale state journal in persistent database and
 	// reset the persistent state id back to zero.
+	batch := db.diskdb.NewBatch()
 	rawdb.DeleteTrieJournal(batch)
 	rawdb.WritePersistentStateID(batch, 0)
 	if err := batch.Write(); err != nil {
@@ -296,6 +334,10 @@ func (db *Database) Reset(root common.Hash) error {
 	// with **empty clean cache and node buffer**.
 	dl := newDiskLayer(root, 0, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nil, 0))
 	db.tree.reset(dl)
+
+	// Re-enable the database as the final step.
+	db.waitSync = false
+	rawdb.WriteSnapSyncStatusFlag(db.diskdb, rawdb.StateSyncFinished)
 	log.Info("Rebuilt trie database", "root", root)
 	return nil
 }
@@ -308,7 +350,10 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 	defer db.lock.Unlock()
 
 	// Short circuit if rollback operation is not supported.
-	if db.readOnly || db.freezer == nil {
+	if err := db.modifyAllowed(); err != nil {
+		return err
+	}
+	if db.freezer == nil {
 		return errors.New("state rollback is non-supported")
 	}
 	// Short circuit if the target state is not recoverable.
@@ -416,6 +461,9 @@ func (db *Database) Initialized(genesisRoot common.Hash) bool {
 			inited = true
 		}
 	})
+	if !inited {
+		inited = rawdb.ReadSnapSyncStatusFlag(db.diskdb) != rawdb.StateSyncUnknown
+	}
 	return inited
 }
 
@@ -442,6 +490,18 @@ func (db *Database) Head() common.Hash {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 	return db.tree.front()
+}
+
+// modifyAllowed returns the indicator if mutation is allowed. This function
+// assumes the db.lock is already held.
+func (db *Database) modifyAllowed() error {
+	if db.readOnly {
+		return errDatabaseReadOnly
+	}
+	if db.waitSync {
+		return errDatabaseWaitSync
+	}
+	return nil
 }
 
 // GetAllRooHash returns all diffLayer and diskLayer root hash

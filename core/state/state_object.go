@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"math/big"
 	"sync"
 	"time"
 
@@ -30,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/holiman/uint256"
 )
 
 type Code []byte
@@ -100,7 +100,10 @@ func (s *stateObject) empty() bool {
 
 // newObject creates a state object.
 func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *stateObject {
-	origin := acct
+	var (
+		origin  = acct
+		created = acct == nil // true if the account was not existent
+	)
 	if acct == nil {
 		acct = types.NewEmptyStateAccount()
 	}
@@ -120,6 +123,7 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 		originStorage:       make(Storage),
 		pendingStorage:      make(Storage),
 		dirtyStorage:        make(Storage),
+		created:             created,
 	}
 }
 
@@ -154,7 +158,7 @@ func (s *stateObject) getTrie() (Trie, error) {
 		//	s.trie = s.db.prefetcher.trie(s.addrHash, s.data.Root)
 		// }
 		// if s.trie == nil {
-		tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root)
+		tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root, s.db.trie)
 		if err != nil {
 			return nil, err
 		}
@@ -298,12 +302,17 @@ func (s *stateObject) finalise(prefetch bool) {
 	}
 }
 
-// updateTrie writes cached storage modifications into the object's storage trie.
-// It will return nil if the trie has not been loaded and no changes have been
-// made. An error will be returned if the trie can't be loaded/updated correctly.
+// updateTrie is responsible for persisting cached storage changes into the
+// object's storage trie. In case the storage trie is not yet loaded, this
+// function will load the trie automatically. If any issues arise during the
+// loading or updating of the trie, an error will be returned. Furthermore,
+// this function will return the mutated storage trie, or nil if there is no
+// storage change at all.
 func (s *stateObject) updateTrie() (Trie, error) {
 	// Make sure all dirty slots are finalized into the pending storage area
-	s.finalise(false) // Don't prefetch anymore, pull directly if need be
+	s.finalise(false)
+
+	// Short circuit if nothing changed, don't bother with hashing anything
 	if len(s.pendingStorage) == 0 {
 		return s.trie, nil
 	}
@@ -326,7 +335,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		s.db.setError(err)
 		return nil, err
 	}
-	// Insert all the pending updates into the trie
+	// Insert all the pending storage updates into the trie
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
 	dirtyStorage := make(map[common.Hash][]byte)
 	for key, value := range s.pendingStorage {
@@ -383,11 +392,11 @@ func (s *stateObject) updateTrie() (Trie, error) {
 			khash := crypto.HashData(hasher, key[:])
 
 			// rlp-encoded value to be used by the snapshot
-			var snapshotVal []byte
+			var encoded []byte
 			if len(value) != 0 {
-				snapshotVal, _ = rlp.EncodeToBytes(value)
+				encoded, _ = rlp.EncodeToBytes(value)
 			}
-			storage[khash] = snapshotVal // snapshotVal will be nil if it's deleted
+			storage[khash] = encoded // encoded will be nil if it's deleted
 
 			// Track the original value of slot only if it's mutated first time
 			prev := s.originStorage[key]
@@ -408,15 +417,12 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	if s.db.prefetcher != nil {
 		s.db.prefetcher.used(s.addrHash, s.data.Root, usedStorage)
 	}
-
-	if len(s.pendingStorage) > 0 {
-		s.pendingStorage = make(Storage)
-	}
+	s.pendingStorage = make(Storage) // reset pending map
 	return tr, nil
 }
 
-// UpdateRoot sets the trie root to the current root hash of. An error
-// will be returned if trie root hash is not computed correctly.
+// updateRoot flushes all cached storage mutations to trie, recalculating the
+// new storage trie root.
 func (s *stateObject) updateRoot() {
 	// If node runs in no trie mode, set root to empty.
 	defer func() {
@@ -425,12 +431,10 @@ func (s *stateObject) updateRoot() {
 		}
 	}()
 
+	// Flush cached storage mutations into trie, short circuit if any error
+	// is occurred or there is not change in the trie.
 	tr, err := s.updateTrie()
-	if err != nil {
-		return
-	}
-	// If nothing changed, don't bother with hashing anything
-	if tr == nil {
+	if err != nil || tr == nil {
 		return
 	}
 	// Track the amount of time wasted on hashing the storage trie
@@ -444,14 +448,12 @@ func (s *stateObject) updateRoot() {
 	s.data.Root = tr.Hash()
 }
 
-// commit returns the changes made in storage trie and updates the account data.
+// commit obtains a set of dirty storage trie nodes and updates the account data.
+// The returned set can be nil if nothing to commit. This function assumes all
+// storage mutations have already been flushed into trie by updateRoot.
 func (s *stateObject) commit() (*trienode.NodeSet, error) {
-	tr, err := s.updateTrie()
-	if err != nil {
-		return nil, err
-	}
-	// If nothing changed, don't bother with committing anything
-	if tr == nil {
+	// Short circuit if trie is not even loaded, don't bother with committing anything
+	if s.trie == nil {
 		s.origin = s.data.Copy()
 		return nil, nil
 	}
@@ -459,7 +461,10 @@ func (s *stateObject) commit() (*trienode.NodeSet, error) {
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.db.StorageCommits += time.Since(start) }(time.Now())
 	}
-	root, nodes, err := tr.Commit(false)
+	// The trie is currently in an open state and could potentially contain
+	// cached mutations. Call commit to acquire a set of nodes that have been
+	// modified, the set can be nil if nothing to commit.
+	root, nodes, err := s.trie.Commit(false)
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +477,7 @@ func (s *stateObject) commit() (*trienode.NodeSet, error) {
 
 // AddBalance adds amount to s's balance.
 // It is used to add funds to the destination account of a transfer.
-func (s *stateObject) AddBalance(amount *big.Int) {
+func (s *stateObject) AddBalance(amount *uint256.Int) {
 	// EIP161: We must check emptiness for the objects such that the account
 	// clearing (0,0,0 objects) can take effect.
 	if amount.Sign() == 0 {
@@ -481,27 +486,27 @@ func (s *stateObject) AddBalance(amount *big.Int) {
 		}
 		return
 	}
-	s.SetBalance(new(big.Int).Add(s.Balance(), amount))
+	s.SetBalance(new(uint256.Int).Add(s.Balance(), amount))
 }
 
 // SubBalance removes amount from s's balance.
 // It is used to remove funds from the origin account of a transfer.
-func (s *stateObject) SubBalance(amount *big.Int) {
+func (s *stateObject) SubBalance(amount *uint256.Int) {
 	if amount.Sign() == 0 {
 		return
 	}
-	s.SetBalance(new(big.Int).Sub(s.Balance(), amount))
+	s.SetBalance(new(uint256.Int).Sub(s.Balance(), amount))
 }
 
-func (s *stateObject) SetBalance(amount *big.Int) {
+func (s *stateObject) SetBalance(amount *uint256.Int) {
 	s.db.journal.append(balanceChange{
 		account: &s.address,
-		prev:    new(big.Int).Set(s.data.Balance),
+		prev:    new(uint256.Int).Set(s.data.Balance),
 	})
 	s.setBalance(amount)
 }
 
-func (s *stateObject) setBalance(amount *big.Int) {
+func (s *stateObject) setBalance(amount *uint256.Int) {
 	s.data.Balance = amount
 }
 
@@ -600,10 +605,14 @@ func (s *stateObject) CodeHash() []byte {
 	return s.data.CodeHash
 }
 
-func (s *stateObject) Balance() *big.Int {
+func (s *stateObject) Balance() *uint256.Int {
 	return s.data.Balance
 }
 
 func (s *stateObject) Nonce() uint64 {
 	return s.data.Nonce
+}
+
+func (s *stateObject) Root() common.Hash {
+	return s.data.Root
 }

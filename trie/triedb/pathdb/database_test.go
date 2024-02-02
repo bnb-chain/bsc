@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math/big"
 	"math/rand"
 	"testing"
 
@@ -32,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie/testutil"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
+	"github.com/holiman/uint256"
 )
 
 func updateTrie(addrHash common.Hash, root common.Hash, dirties, cleans map[common.Hash][]byte) (common.Hash, *trienode.NodeSet) {
@@ -53,7 +53,7 @@ func updateTrie(addrHash common.Hash, root common.Hash, dirties, cleans map[comm
 func generateAccount(storageRoot common.Hash) types.StateAccount {
 	return types.StateAccount{
 		Nonce:    uint64(rand.Intn(100)),
-		Balance:  big.NewInt(rand.Int63()),
+		Balance:  uint256.NewInt(rand.Uint64()),
 		CodeHash: testutil.RandBytes(32),
 		Root:     storageRoot,
 	}
@@ -443,38 +443,39 @@ func TestDatabaseRecoverable(t *testing.T) {
 	}
 }
 
-func TestReset(t *testing.T) {
-	var (
-		tester = newTester(t, 0)
-		index  = tester.bottomIndex()
-	)
+func TestDisable(t *testing.T) {
+	tester := newTester(t, 0)
 	defer tester.release()
 
-	// Reset database to unknown target, should reject it
-	if err := tester.db.Reset(testutil.RandomHash()); err == nil {
-		t.Fatal("Failed to reject invalid reset")
+	_, stored := rawdb.ReadAccountTrieNode(tester.db.diskdb, nil)
+	if err := tester.db.Disable(); err != nil {
+		t.Fatal("Failed to deactivate database")
 	}
-	// Reset database to state persisted in the disk
-	if err := tester.db.Reset(types.EmptyRootHash); err != nil {
-		t.Fatalf("Failed to reset database %v", err)
+	if err := tester.db.Enable(types.EmptyRootHash); err == nil {
+		t.Fatalf("Invalid activation should be rejected")
 	}
+	if err := tester.db.Enable(stored); err != nil {
+		t.Fatal("Failed to activate database")
+	}
+
 	// Ensure journal is deleted from disk
 	if blob := rawdb.ReadTrieJournal(tester.db.diskdb); len(blob) != 0 {
 		t.Fatal("Failed to clean journal")
 	}
 	// Ensure all trie histories are removed
-	for i := 0; i <= index; i++ {
-		_, err := readHistory(tester.db.freezer, uint64(i+1))
-		if err == nil {
-			t.Fatalf("Failed to clean state history, index %d", i+1)
-		}
+	n, err := tester.db.freezer.Ancients()
+	if err != nil {
+		t.Fatal("Failed to clean state history")
+	}
+	if n != 0 {
+		t.Fatal("Failed to clean state history")
 	}
 	// Verify layer tree structure, single disk layer is expected
 	if tester.db.tree.len() != 1 {
 		t.Fatalf("Extra layer kept %d", tester.db.tree.len())
 	}
-	if tester.db.tree.bottom().rootHash() != types.EmptyRootHash {
-		t.Fatalf("Root hash is not matched exp %x got %x", types.EmptyRootHash, tester.db.tree.bottom().rootHash())
+	if tester.db.tree.bottom().rootHash() != stored {
+		t.Fatalf("Root hash is not matched exp %x got %x", stored, tester.db.tree.bottom().rootHash())
 	}
 }
 

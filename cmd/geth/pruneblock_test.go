@@ -69,6 +69,19 @@ func TestOfflineBlockPrune(t *testing.T) {
 	testOfflineBlockPruneWithAmountReserved(t, 100)
 }
 
+func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
+	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
+	if err != nil {
+		return nil, err
+	}
+	frdb, err := NewDatabaseWithFreezer(kvdb, ancient, namespace, readonly, disableFreeze, isLastOffset, pruneAncientData)
+	if err != nil {
+		kvdb.Close()
+		return nil, err
+	}
+	return frdb, nil
+}
+
 func testOfflineBlockPruneWithAmountReserved(t *testing.T, amountReserved uint64) {
 	datadir := t.TempDir()
 

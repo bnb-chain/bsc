@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/holiman/uint256"
 )
 
 // noopReleaser is returned in case there is no operation expected
@@ -257,8 +258,8 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 		if posa, ok := eth.Engine().(consensus.PoSA); ok && msg.From == context.Coinbase &&
 			posa.IsSystemContract(msg.To) && msg.GasPrice.Cmp(big.NewInt(0)) == 0 {
 			balance := statedb.GetBalance(consensus.SystemAddress)
-			if balance.Cmp(common.Big0) > 0 {
-				statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
+			if balance.Cmp(common.U2560) > 0 {
+				statedb.SetBalance(consensus.SystemAddress, uint256.NewInt(0))
 				statedb.AddBalance(context.Coinbase, balance)
 			}
 		}

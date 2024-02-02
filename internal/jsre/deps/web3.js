@@ -1033,7 +1033,7 @@ var formatOutputInt = function (param) {
  *
  * @method formatOutputUInt
  * @param {SolidityParam}
- * @returns {BigNumeber} right-aligned output bytes formatted to uint
+ * @returns {BigNumber} right-aligned output bytes formatted to uint
  */
 var formatOutputUInt = function (param) {
     var value = param.staticPart() || "0";
@@ -3994,6 +3994,8 @@ var outputSyncingFormatter = function(result) {
     result.healedBytecodeBytes = utils.toDecimal(result.healedBytecodeBytes);
     result.healingTrienodes = utils.toDecimal(result.healingTrienodes);
     result.healingBytecode = utils.toDecimal(result.healingBytecode);
+    result.txIndexFinishedBlocks = utils.toDecimal(result.txIndexFinishedBlocks);
+    result.txIndexRemainingBlocks = utils.toDecimal(result.txIndexRemainingBlocks);
 
     return result;
 };

@@ -418,7 +418,6 @@ type bigModExp struct {
 }
 
 var (
-	big0      = big.NewInt(0)
 	big1      = big.NewInt(1)
 	big3      = big.NewInt(3)
 	big4      = big.NewInt(4)
@@ -1281,11 +1280,11 @@ func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
 
 	if pubKeyNumber > 1 {
 		if !sig.FastAggregateVerify(pubKeys, msg) {
-			return big0.Bytes(), nil
+			return common.Big0.Bytes(), nil
 		}
 	} else {
 		if !sig.Verify(pubKeys[0], msgBytes) {
-			return big0.Bytes(), nil
+			return common.Big0.Bytes(), nil
 		}
 	}
 
