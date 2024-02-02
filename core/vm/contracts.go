@@ -1398,15 +1398,19 @@ func (c *verifyDoubleSignEvidence) RequiredGas(input []byte) uint64 {
 	return params.DoubleSignEvidenceVerifyGas
 }
 
-var (
-	extraSeal = 65
-)
-
 type DoubleSignEvidence struct {
 	ChainId      *big.Int
 	HeaderBytes1 []byte
 	HeaderBytes2 []byte
 }
+
+const (
+	extraSeal = 65
+)
+
+var (
+	errInvalidEvidence = errors.New("invalid double sign evidence")
+)
 
 // Run input: rlp encoded DoubleSignEvidence
 // return:
@@ -1432,27 +1436,30 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	}
 
 	// basic check
+	if len(header1.Number.Bytes()) > 32 || len(header2.Number.Bytes()) > 32 { // block number should be less than 2^256
+		return nil, errInvalidEvidence
+	}
 	if header1.Number.Cmp(header2.Number) != 0 {
-		return nil, ErrExecutionReverted
+		return nil, errInvalidEvidence
 	}
 	if header1.ParentHash != header2.ParentHash {
-		return nil, ErrExecutionReverted
+		return nil, errInvalidEvidence
 	}
 
 	if len(header1.Extra) < extraSeal || len(header2.Extra) < extraSeal {
-		return nil, ErrExecutionReverted
+		return nil, errInvalidEvidence
 	}
 	sig1 := header1.Extra[len(header1.Extra)-extraSeal:]
 	sig2 := header2.Extra[len(header2.Extra)-extraSeal:]
 	if bytes.Equal(sig1, sig2) {
-		return nil, ErrExecutionReverted
+		return nil, errInvalidEvidence
 	}
 
 	// check sig
 	msgHash1 := types.SealHash(header1, evidence.ChainId)
 	msgHash2 := types.SealHash(header2, evidence.ChainId)
 	if bytes.Equal(msgHash1.Bytes(), msgHash2.Bytes()) {
-		return nil, ErrExecutionReverted
+		return nil, errInvalidEvidence
 	}
 	pubkey1, err := secp256k1.RecoverPubkey(msgHash1.Bytes(), sig1)
 	if err != nil {
@@ -1463,7 +1470,7 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 		return nil, ErrExecutionReverted
 	}
 	if !bytes.Equal(pubkey1, pubkey2) {
-		return nil, ErrExecutionReverted
+		return nil, errInvalidEvidence
 	}
 
 	returnBz := make([]byte, 52) // 20 + 32
