@@ -231,16 +231,16 @@ func initGenesis(ctx *cli.Context) error {
 		overrides.OverrideVerkle = &v
 	}
 	for _, name := range []string{"chaindata", "lightchaindata"} {
-		chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false, false, false)
+		chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false, false, false, false)
 		if err != nil {
 			utils.Fatalf("Failed to open database: %v", err)
 		}
 		defer chaindb.Close()
 
 		var triedb *trie.Database
-		// if the trie data dir has been set , new trie db with a new trie database
+		// if the trie data dir has been set, new trie db with a new state database
 		if ctx.IsSet(utils.SeparateTrieFlag.Name) {
-			statediskdb, dbErr := stack.OpenStateDataBase(name, 0, 0, "", false, false, false, false)
+			statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name, 0, 0, "", "", false, false, false, false, true)
 			if dbErr != nil {
 				utils.Fatalf("Failed to open separate trie database: %v", dbErr)
 			}

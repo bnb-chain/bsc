@@ -2323,7 +2323,7 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 	case ctx.String(SyncModeFlag.Name) == "light":
 		chainDb, err = stack.OpenDatabase("lightchaindata", cache, handles, "", readonly)
 	default:
-		chainDb, err = stack.OpenDatabaseWithFreezer("chaindata", cache, handles, ctx.String(AncientFlag.Name), "", readonly, disableFreeze, false, false)
+		chainDb, err = stack.OpenDatabaseWithFreezer("chaindata", cache, handles, ctx.String(AncientFlag.Name), "", readonly, disableFreeze, false, false, false)
 	}
 	if err != nil {
 		Fatalf("Could not open database: %v", err)
@@ -2335,11 +2335,11 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
 	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
 	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name))
-	trieDb, err := stack.OpenStateDataBase("chaindata", cache, handles, "", readonly, disableFreeze, false, false)
+	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata", cache, handles, "", "", readonly, disableFreeze, false, false, true)
 	if err != nil {
 		Fatalf("Failed to open separate trie database: %v", err)
 	}
-	return trieDb
+	return statediskdb
 }
 
 // tryMakeReadOnlyDatabase try to open the chain database in read-only mode,
