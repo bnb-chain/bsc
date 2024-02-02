@@ -1399,7 +1399,8 @@ func (c *verifyDoubleSignEvidence) RequiredGas(input []byte) uint64 {
 }
 
 var (
-	extraSeal = 65
+	extraSeal  = 65
+	maxUnit256 = new(big.Int).SetUint64(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff)
 )
 
 type DoubleSignEvidence struct {
@@ -1432,6 +1433,9 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	}
 
 	// basic check
+	if header1.Number.Cmp(maxUnit256) == 1 || header2.Number.Cmp(maxUnit256) == 1 {
+		return nil, ErrExecutionReverted
+	}
 	if header1.Number.Cmp(header2.Number) != 0 {
 		return nil, ErrExecutionReverted
 	}
