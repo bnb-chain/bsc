@@ -633,29 +633,19 @@ func blsAccountDelete(ctx *cli.Context) error {
 
 // blsAccountGenerateProof generate ownership proof for a selected BLS account.
 func blsAccountGenerateProof(ctx *cli.Context) error {
-	if ctx.Args().Len() == 0 {
-		utils.Fatalf("No BLS account specified.")
+	pubkeyString := ctx.Args().First()
+	if pubkeyString == "" {
+		utils.Fatalf("BLS account must be given as argument.")
 	}
-	var filteredPubKeys []bls.PublicKey
-	for _, str := range ctx.Args().Slice() {
-		pkString := str
-		if strings.Contains(pkString, "0x") {
-			pkString = pkString[2:]
-		}
-		pubKeyBytes, err := hex.DecodeString(pkString)
-		if err != nil {
-			utils.Fatalf("Could not decode string %s as hex.", pkString)
-		}
-		blsPublicKey, err := bls.PublicKeyFromBytes(pubKeyBytes)
-		if err != nil {
-			utils.Fatalf("%#x is not a valid BLS public key.", pubKeyBytes)
-		}
-		filteredPubKeys = append(filteredPubKeys, blsPublicKey)
+	pubkeyBz, err := hex.DecodeString(strings.TrimPrefix(pubkeyString, "0x"))
+	if err != nil {
+		utils.Fatalf("Could not decode string %s as hex.", pubkeyString)
 	}
-	if len(filteredPubKeys) > 1 {
-		utils.Fatalf("Only support one BLS account specified.")
+	blsPublicKey, err := bls.PublicKeyFromBytes(pubkeyBz)
+	if err != nil {
+		utils.Fatalf("%#x is not a valid BLS public key.", pubkeyBz)
 	}
-	pubkeyBz := filteredPubKeys[0].Marshal()
+	blsPublicKeyBz := blsPublicKey.Marshal()
 
 	cfg := gethConfig{Node: defaultNodeConfig()}
 	// Load config file.
@@ -692,10 +682,10 @@ func blsAccountGenerateProof(ctx *cli.Context) error {
 	chainId := new(big.Int).SetInt64(chainIdInt64)
 	paddedChainIdBytes := make([]byte, 32)
 	copy(paddedChainIdBytes[32-len(chainId.Bytes()):], chainId.Bytes())
-	msgHash := crypto.Keccak256(append(pubkeyBz, paddedChainIdBytes...))
+	msgHash := crypto.Keccak256(append(blsPublicKeyBz, paddedChainIdBytes...))
 
 	req := &validatorpb.SignRequest{
-		PublicKey:   pubkeyBz,
+		PublicKey:   blsPublicKeyBz,
 		SigningRoot: msgHash,
 	}
 	sig, err := km.Sign(context.Background(), req)

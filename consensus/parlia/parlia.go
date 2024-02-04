@@ -1136,6 +1136,13 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		systemcontracts.UpgradeBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state)
 	}
 
+	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
+		if err != nil {
+			log.Error("init feynman contract failed", "error", err)
+		}
+	}
+
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	if header.Number.Cmp(common.Big1) == 0 {
 		err := p.initContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
@@ -1178,13 +1185,6 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 
-	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
-		if err != nil {
-			log.Error("init feynman contract failed", "error", err)
-		}
-	}
-
 	// update validators every day
 	if p.chainConfig.IsFeynman(header.Number, header.Time) && isBreatheBlock(parent.Time, header.Time) {
 		// we should avoid update validators in the Feynman upgrade block
@@ -1221,6 +1221,13 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 
 	if p.chainConfig.IsFeynman(header.Number, header.Time) {
 		systemcontracts.UpgradeBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state)
+	}
+
+	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+		err := p.initializeFeynmanContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
+		if err != nil {
+			log.Error("init feynman contract failed", "error", err)
+		}
 	}
 
 	if header.Number.Cmp(common.Big1) == 0 {
@@ -1264,13 +1271,6 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if p.chainConfig.IsPlato(header.Number) {
 		if err := p.distributeFinalityReward(chain, state, header, cx, &txs, &receipts, nil, &header.GasUsed, true); err != nil {
 			return nil, nil, err
-		}
-	}
-
-	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-		err := p.initializeFeynmanContract(state, header, cx, &txs, &receipts, nil, &header.GasUsed, true)
-		if err != nil {
-			log.Error("init feynman contract failed", "error", err)
 		}
 	}
 
