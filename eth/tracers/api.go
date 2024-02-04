@@ -1038,12 +1038,14 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	defer release()
 
 	// upgrade build-in system contract before tracing if Feynman is not enabled
-	parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
-	if err != nil {
-		return nil, err
-	}
-	if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
-		systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+	if block.NumberU64() > 0 {
+		parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
+		if err != nil {
+			return nil, err
+		}
+		if !api.backend.ChainConfig().IsFeynman(block.Number(), block.Time()) {
+			systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb)
+		}
 	}
 
 	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)

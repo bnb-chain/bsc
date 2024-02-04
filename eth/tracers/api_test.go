@@ -217,18 +217,18 @@ func TestTraceCall(t *testing.T) {
 		expectErr   error
 		expect      string
 	}{
-		// // Standard JSON trace upon the genesis, plain transfer.
-		// {
-		// 	blockNumber: rpc.BlockNumber(0),
-		// 	call: ethapi.TransactionArgs{
-		// 		From:  &accounts[0].addr,
-		// 		To:    &accounts[1].addr,
-		// 		Value: (*hexutil.Big)(big.NewInt(1000)),
-		// 	},
-		// 	config:    nil,
-		// 	expectErr: nil,
-		// 	expect:    `{"gas":21000,"failed":false,"returnValue":"","structLogs":[]}`,
-		// },
+		// Standard JSON trace upon the genesis, plain transfer.
+		{
+			blockNumber: rpc.BlockNumber(0),
+			call: ethapi.TransactionArgs{
+				From:  &accounts[0].addr,
+				To:    &accounts[1].addr,
+				Value: (*hexutil.Big)(big.NewInt(1000)),
+			},
+			config:    nil,
+			expectErr: nil,
+			expect:    `{"gas":21000,"failed":false,"returnValue":"","structLogs":[]}`,
+		},
 		// Standard JSON trace upon the head, plain transfer.
 		{
 			blockNumber: rpc.BlockNumber(genBlocks),
