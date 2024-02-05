@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	// maxBidPerBuilder is the max bid number per builder
-	maxBidPerBuilder = 3
+	// maxBidPerBuilderPerBlock is the max bid number per builder
+	maxBidPerBuilderPerBlock = 3
 
 	commitInterruptBetterBid = 1
 )
@@ -93,7 +93,7 @@ type bidSimulator struct {
 	newBidCh chan *types.Bid
 
 	pendingMu sync.RWMutex
-	pending   map[common.Hash]map[common.Address]map[common.Hash]struct{} // prevBlockHash -> builder -> bidHash -> struct{}
+	pending   map[uint64]map[common.Address]map[common.Hash]struct{} // blockNumber -> builder -> bidHash -> struct{}
 
 	bestBidMu sync.RWMutex
 	bestBid   map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime
@@ -120,7 +120,7 @@ func newBidSimulator(
 		builders:      make(map[common.Address]*ethclient.Client),
 		simBidCh:      make(chan *simBidReq),
 		newBidCh:      make(chan *types.Bid),
-		pending:       make(map[common.Hash]map[common.Address]map[common.Hash]struct{}),
+		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
 		bestBid:       make(map[common.Hash]*BidRuntime),
 		simulatingBid: make(map[common.Hash]*BidRuntime),
 	}
@@ -392,9 +392,9 @@ func (b *bidSimulator) bidMustBefore(parentHash common.Hash) time.Time {
 }
 
 func (b *bidSimulator) clearLoop() {
-	clearFn := func(parentHash common.Hash) {
+	clearFn := func(parentHash common.Hash, blockNumber uint64) {
 		b.pendingMu.Lock()
-		delete(b.pending, parentHash)
+		delete(b.pending, blockNumber)
 		b.pendingMu.Unlock()
 
 		b.bestBidMu.Lock()
@@ -402,6 +402,12 @@ func (b *bidSimulator) clearLoop() {
 			bid.env.discard()
 		}
 		delete(b.bestBid, parentHash)
+		for k, v := range b.bestBid {
+			if v.bid.BlockNumber <= blockNumber-core.TriesInMemory {
+				v.env.discard()
+				delete(b.bestBid, k)
+			}
+		}
 		b.bestBidMu.Unlock()
 
 		b.simBidMu.Lock()
@@ -409,6 +415,12 @@ func (b *bidSimulator) clearLoop() {
 			bid.env.discard()
 		}
 		delete(b.simulatingBid, parentHash)
+		for k, v := range b.simulatingBid {
+			if v.bid.BlockNumber <= blockNumber-core.TriesInMemory {
+				v.env.discard()
+				delete(b.simulatingBid, k)
+			}
+		}
 		b.simBidMu.Unlock()
 	}
 
@@ -420,7 +432,7 @@ func (b *bidSimulator) clearLoop() {
 				continue
 			}
 
-			clearFn(head.Block.ParentHash())
+			clearFn(head.Block.ParentHash(), head.Block.NumberU64())
 		}
 	}
 }
@@ -445,31 +457,31 @@ func (b *bidSimulator) sendBid(ctx context.Context, bid *types.Bid) error {
 
 func (b *bidSimulator) pendingCheck(bid *types.Bid) error {
 	var (
-		builder    = bid.Builder
-		parentHash = bid.ParentHash
+		builder     = bid.Builder
+		blockNumber = bid.BlockNumber
 	)
 
 	b.pendingMu.Lock()
 	defer b.pendingMu.Unlock()
 
 	// check if bid exists or if builder sends too many bids
-	if _, ok := b.pending[parentHash]; !ok {
-		b.pending[parentHash] = make(map[common.Address]map[common.Hash]struct{})
+	if _, ok := b.pending[blockNumber]; !ok {
+		b.pending[blockNumber] = make(map[common.Address]map[common.Hash]struct{})
 	}
 
-	if _, ok := b.pending[parentHash][builder]; !ok {
-		b.pending[parentHash][builder] = make(map[common.Hash]struct{})
+	if _, ok := b.pending[blockNumber][builder]; !ok {
+		b.pending[blockNumber][builder] = make(map[common.Hash]struct{})
 	}
 
-	if _, ok := b.pending[parentHash][builder][bid.Hash()]; ok {
+	if _, ok := b.pending[blockNumber][builder][bid.Hash()]; ok {
 		return errors.New("bid already exists")
 	}
 
-	if len(b.pending[parentHash][builder]) >= maxBidPerBuilder {
+	if len(b.pending[blockNumber][builder]) >= maxBidPerBuilderPerBlock {
 		return errors.New("too many bids")
 	}
 
-	b.pending[parentHash][builder][bid.Hash()] = struct{}{}
+	b.pending[blockNumber][builder][bid.Hash()] = struct{}{}
 
 	return nil
 }
