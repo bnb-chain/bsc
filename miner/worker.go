@@ -24,6 +24,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru"
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
@@ -40,8 +43,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
-	lru "github.com/hashicorp/golang-lru"
-	"github.com/holiman/uint256"
 )
 
 const (
@@ -162,9 +163,14 @@ type getWorkReq struct {
 	result chan *newPayloadResult // non-blocking channel
 }
 
+type bidFetcher interface {
+	GetBestBid(parentHash common.Hash) *BidRuntime
+}
+
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
+	bidFetcher  bidFetcher
 	prefetcher  core.Prefetcher
 	config      *Config
 	chainConfig *params.ChainConfig
@@ -287,7 +293,12 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	if init {
 		worker.startCh <- struct{}{}
 	}
+
 	return worker
+}
+
+func (w *worker) setBestBidFetcher(fetcher bidFetcher) {
+	w.bidFetcher = fetcher
 }
 
 // setEtherbase sets the etherbase used to initialize the block coinbase field.
@@ -1218,6 +1229,24 @@ LOOP:
 			bestReward = balance
 		}
 	}
+
+	// when out-turn, use bestWork to prevent bundle leakage.
+	// when in-turn, compare with remote work.
+	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
+
+		if bestBid != nil && bestReward.CmpBig(bestBid.packedBlockReward) < 0 {
+			// localValidatorReward is the reward for the validator self by the local block.
+			localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(w.config.Mev.ValidatorCommission))
+			localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
+
+			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
+			if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
+				bestWork = bestBid.env
+			}
+		}
+	}
+
 	w.commit(bestWork, w.fullTaskHook, true, start)
 
 	// Swap out the old work with the new one, terminating any leftover
@@ -1226,6 +1255,12 @@ LOOP:
 		w.current.discard()
 	}
 	w.current = bestWork
+}
+
+// inTurn return true if the current worker is in turn.
+func (w *worker) inTurn() bool {
+	validator, _ := w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
+	return validator != common.Address{} && validator == w.etherbase()
 }
 
 // commit runs any post-transaction state modifications, assembles the final block
