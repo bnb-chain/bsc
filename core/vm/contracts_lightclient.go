@@ -408,23 +408,23 @@ func (c *secp256k1SignatureRecover) RequiredGas(input []byte) uint64 {
 }
 
 const (
-	tmPubKeyLength           uint8 = 33
-	tmSignatureLength        uint8 = 64
-	tmSignatureMsgHashLength uint8 = 32
+	secp256k1PubKeyLength           uint8 = 33
+	secp256k1SignatureLength        uint8 = 64
+	secp256k1SignatureMsgHashLength uint8 = 32
 )
 
 // input:
-// | tmPubKey | tmSignature  |  tmSignatureMsgHash  |
+// | PubKey | Signature  |  SignatureMsgHash  |
 // | 33 bytes |  64 bytes    |       32 bytes       |
 func (c *secp256k1SignatureRecover) Run(input []byte) (result []byte, err error) {
-	if len(input) != int(tmPubKeyLength)+int(tmSignatureLength)+int(tmSignatureMsgHashLength) {
+	if len(input) != int(secp256k1PubKeyLength)+int(secp256k1SignatureLength)+int(secp256k1SignatureMsgHashLength) {
 		return nil, fmt.Errorf("invalid input")
 	}
 
 	return c.runTMSecp256k1Signature(
-		input[:tmPubKeyLength],
-		input[tmPubKeyLength:tmPubKeyLength+tmSignatureLength],
-		input[tmPubKeyLength+tmSignatureLength:],
+		input[:secp256k1PubKeyLength],
+		input[secp256k1PubKeyLength:secp256k1PubKeyLength+secp256k1SignatureLength],
+		input[secp256k1PubKeyLength+secp256k1SignatureLength:],
 	)
 }
 
