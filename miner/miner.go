@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/panjf2000/ants/v2"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -56,6 +58,8 @@ type Config struct {
 
 	NewPayloadTimeout      time.Duration // The maximum time allowance for creating a new payload
 	DisableVoteAttestation bool          // Whether to skip assembling vote attestation
+
+	Mev MevConfig // Mev configuration
 }
 
 // DefaultConfig contains default settings for miner.
@@ -70,6 +74,8 @@ var DefaultConfig = Config{
 	Recommit:          3 * time.Second,
 	NewPayloadTimeout: 2 * time.Second,
 	DelayLeftOver:     50 * time.Millisecond,
+
+	Mev: MevConfig{Enabled: false},
 }
 
 // Miner creates blocks and searches for proof-of-work values.
@@ -81,6 +87,9 @@ type Miner struct {
 	startCh chan struct{}
 	stopCh  chan struct{}
 	worker  *worker
+
+	bidSimulator *bidSimulator
+	antsPool     *ants.Pool
 
 	wg sync.WaitGroup
 }
@@ -95,6 +104,16 @@ func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *even
 		stopCh:  make(chan struct{}),
 		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, false),
 	}
+	antsPool, err := ants.NewPool(MevRoutineLimit)
+	if err != nil {
+		// could never happen
+		panic(fmt.Sprintf("Miner: failed to create ants pool, %v", err))
+	}
+	miner.antsPool = antsPool
+
+	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, chainConfig, eth.BlockChain(), miner.worker)
+	miner.worker.setBestBidFetcher(miner.bidSimulator)
+
 	miner.wg.Add(1)
 	go miner.update()
 	return miner
@@ -129,6 +148,7 @@ func (miner *Miner) update() {
 			case downloader.StartEvent:
 				wasMining := miner.Mining()
 				miner.worker.stop()
+				miner.bidSimulator.stop()
 				canStart = false
 				if wasMining {
 					// Resume mining after sync was finished
@@ -141,6 +161,7 @@ func (miner *Miner) update() {
 				canStart = true
 				if shouldStart {
 					miner.worker.start()
+					miner.bidSimulator.start()
 				}
 				miner.worker.syncing.Store(false)
 
@@ -148,6 +169,7 @@ func (miner *Miner) update() {
 				canStart = true
 				if shouldStart {
 					miner.worker.start()
+					miner.bidSimulator.start()
 				}
 				miner.worker.syncing.Store(false)
 
@@ -157,13 +179,16 @@ func (miner *Miner) update() {
 		case <-miner.startCh:
 			if canStart {
 				miner.worker.start()
+				miner.bidSimulator.start()
 			}
 			shouldStart = true
 		case <-miner.stopCh:
 			shouldStart = false
 			miner.worker.stop()
+			miner.bidSimulator.stop()
 		case <-miner.exitCh:
 			miner.worker.close()
+			miner.bidSimulator.close()
 			return
 		}
 	}
@@ -178,12 +203,17 @@ func (miner *Miner) Stop() {
 }
 
 func (miner *Miner) Close() {
+	miner.antsPool.Release()
 	close(miner.exitCh)
 	miner.wg.Wait()
 }
 
 func (miner *Miner) Mining() bool {
 	return miner.worker.isRunning()
+}
+
+func (miner *Miner) InTurn() bool {
+	return miner.worker.inTurn()
 }
 
 func (miner *Miner) Hashrate() uint64 {
