@@ -293,6 +293,11 @@ func init() {
 }
 
 func main() {
+	HARD_FORK_DELAY := int64(300)
+	os.Setenv("HARD_FORK_DELAY", fmt.Sprintf("%d", HARD_FORK_DELAY))
+	os.Setenv("hardforkTime", fmt.Sprintf("%d", time.Now().Unix()+HARD_FORK_DELAY))
+	fmt.Println("HARD_FORK_DELAY", os.Getenv("HARD_FORK_DELAY"))
+	fmt.Println("hardforkTime", os.Getenv("hardforkTime"))
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -951,6 +951,13 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	if w.chainConfig.IsCancun(header.Number, header.Time) {
 		var excessBlobGas uint64
 		if w.chainConfig.IsCancun(parent.Number, parent.Time) {
+			// todo Satyajit -> The below 2 if statements shouldn't be required. So investigate it and the code should work without them
+			if parent.ExcessBlobGas == nil {
+				parent.ExcessBlobGas = new(uint64)
+			}
+			if parent.BlobGasUsed == nil {
+				parent.BlobGasUsed = new(uint64)
+			}
 			excessBlobGas = eip4844.CalcExcessBlobGas(*parent.ExcessBlobGas, *parent.BlobGasUsed)
 		} else {
 			// For the first post-fork block, both parent.data_gas_used and parent.excess_data_gas are evaluated as 0
