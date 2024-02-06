@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/event"
@@ -776,22 +777,31 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 	return db, err
 }
 
-func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, diff, namespace string, readonly, persistDiff, pruneAncientData bool) (ethdb.Database, error) {
-	chainDataHandles := handles
-	if persistDiff {
-		chainDataHandles = handles * chainDataHandlesPercentage / 100
+func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool, config *ethconfig.Config) (ethdb.Database, error) {
+	chainDataHandles := config.DatabaseHandles
+	if config.PersistDiff {
+		chainDataHandles = config.DatabaseHandles * chainDataHandlesPercentage / 100
 	}
-	chainDB, err := n.OpenDatabaseWithFreezer(name, cache, chainDataHandles, freezer, namespace, readonly, false, false, pruneAncientData)
+	chainDB, err := n.OpenDatabaseWithFreezer(name, config.DatabaseCache, chainDataHandles, config.DatabaseFreezer, namespace, readonly, false, false, config.PruneAncientData)
 	if err != nil {
 		return nil, err
 	}
-	if persistDiff {
-		diffStore, err := n.OpenDiffDatabase(name, handles-chainDataHandles, diff, namespace, readonly)
+	if config.PersistDiff {
+		diffStore, err := n.OpenDiffDatabase(name, config.DatabaseHandles-chainDataHandles, config.DatabaseDiff, namespace, readonly)
 		if err != nil {
 			chainDB.Close()
 			return nil, err
 		}
 		chainDB.SetDiffStore(diffStore)
+	}
+
+	if config.SeparateDB {
+		blockStore, err := n.OpenDiffDatabase(name, config.DatabaseHandles-chainDataHandles, config.DatabaseDiff, namespace, readonly)
+		if err != nil {
+			chainDB.Close()
+			return nil, err
+		}
+		chainDB.SetDiffStore(blockStore)
 	}
 	return chainDB, nil
 }

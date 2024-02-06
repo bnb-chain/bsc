@@ -1415,15 +1415,15 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		}
 
 		// Delete block data from the main database.
-		batch.Reset()
+		blockBatch := bc.db.BlockStore().NewBatch()
 		canonHashes := make(map[common.Hash]struct{})
 		for _, block := range blockChain {
 			canonHashes[block.Hash()] = struct{}{}
 			if block.NumberU64() == 0 {
 				continue
 			}
-			rawdb.DeleteCanonicalHash(batch, block.NumberU64())
-			rawdb.DeleteBlockWithoutNumber(batch, block.Hash(), block.NumberU64())
+			rawdb.DeleteCanonicalHash(blockBatch, block.NumberU64())
+			rawdb.DeleteBlockWithoutNumber(blockBatch, block.Hash(), block.NumberU64())
 		}
 		// Delete side chain hash-to-number mappings.
 		for _, nh := range rawdb.ReadAllHashesInRange(bc.db, first.NumberU64(), last.NumberU64()) {
@@ -1431,7 +1431,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 				rawdb.DeleteHeader(batch, nh.Hash, nh.Number)
 			}
 		}
-		if err := batch.Write(); err != nil {
+		if err := blockBatch.Write(); err != nil {
 			return 0, err
 		}
 		return 0, nil

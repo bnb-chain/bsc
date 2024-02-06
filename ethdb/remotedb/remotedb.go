@@ -32,6 +32,22 @@ type Database struct {
 	remote *rpc.Client
 }
 
+func (db *Database) BlockStoreReader() ethdb.KeyValueReader {
+	return db
+}
+
+func (db *Database) BlockStoreWriter() ethdb.KeyValueWriter {
+	return db
+}
+
+func (db *Database) BlockStore() ethdb.KeyValueStore {
+	return db
+}
+
+func (db *Database) SetBlockStore(block ethdb.KeyValueStore) {
+	panic("not supported")
+}
+
 func (db *Database) Has(key []byte) (bool, error) {
 	if _, err := db.Get(key); err != nil {
 		return false, nil

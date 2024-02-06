@@ -155,11 +155,25 @@ type AncientStater interface {
 	AncientDatadir() (string, error)
 }
 
+type BlockStore interface {
+	BlockStore() KeyValueStore
+	SetBlockStore(block KeyValueStore)
+}
+
+type BlockStoreReader interface {
+	BlockStoreReader() KeyValueReader
+}
+
+type BlockStoreWriter interface {
+	BlockStoreWriter() KeyValueWriter
+}
+
 // Reader contains the methods required to read data from both key-value as well as
 // immutable ancient data.
 type Reader interface {
 	KeyValueReader
 	AncientReader
+	BlockStoreReader
 }
 
 // Writer contains the methods required to write data to both key-value as well as
@@ -167,6 +181,7 @@ type Reader interface {
 type Writer interface {
 	KeyValueWriter
 	AncientWriter
+	BlockStoreWriter
 }
 
 // Stater contains the methods required to retrieve states from both key-value as well as
@@ -195,6 +210,7 @@ type Database interface {
 	Reader
 	Writer
 	DiffStore
+	BlockStore
 	Batcher
 	Iteratee
 	Stater

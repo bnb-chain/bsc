@@ -304,7 +304,7 @@ func ReadHeaderRange(db ethdb.Reader, number uint64, count uint64) []rlp.RawValu
 		// If we need to read live blocks, we need to figure out the hash first
 		hash := ReadCanonicalHash(db, number)
 		for ; i >= limit && count > 0; i-- {
-			if data, _ := db.Get(headerKey(i, hash)); len(data) > 0 {
+			if data, _ := db.BlockStoreReader().Get(headerKey(i, hash)); len(data) > 0 {
 				rlpHeaders = append(rlpHeaders, data)
 				// Get the parent hash for next query
 				hash = types.HeaderParentHashFromRLP(data)
@@ -341,7 +341,7 @@ func ReadHeaderRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValu
 			return nil
 		}
 		// If not, try reading from leveldb
-		data, _ = db.Get(headerKey(number, hash))
+		data, _ = db.BlockStoreReader().Get(headerKey(number, hash))
 		return nil
 	})
 	return data
@@ -352,7 +352,7 @@ func HasHeader(db ethdb.Reader, hash common.Hash, number uint64) bool {
 	if isCanon(db, number, hash) {
 		return true
 	}
-	if has, err := db.Has(headerKey(number, hash)); !has || err != nil {
+	if has, err := db.BlockStoreReader().Has(headerKey(number, hash)); !has || err != nil {
 		return false
 	}
 	return true

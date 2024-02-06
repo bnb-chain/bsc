@@ -27,6 +27,22 @@ type table struct {
 	prefix string
 }
 
+func (t *table) BlockStoreReader() ethdb.KeyValueReader {
+	return t
+}
+
+func (t *table) BlockStoreWriter() ethdb.KeyValueWriter {
+	return t
+}
+
+func (t *table) BlockStore() ethdb.KeyValueStore {
+	return t
+}
+
+func (t *table) SetBlockStore(block ethdb.KeyValueStore) {
+	panic("not implement")
+}
+
 // NewTable returns a database object that prefixes all keys with a given string.
 func NewTable(db ethdb.Database, prefix string) ethdb.Database {
 	return &table{

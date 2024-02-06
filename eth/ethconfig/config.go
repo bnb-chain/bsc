@@ -149,6 +149,10 @@ type Config struct {
 	// the oldest unpruned block number.
 	PruneAncientData bool
 
+	// SeparateDB is an optional config and disabled by default. This is an experimental feature to separate chain
+	// data with data schema and isolated storage.
+	SeparateDB bool
+
 	TrieCleanCache  int
 	TrieDirtyCache  int
 	TrieTimeout     time.Duration

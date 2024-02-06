@@ -52,6 +52,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		PersistDiff             bool
 		DiffBlock               uint64
 		PruneAncientData        bool
+		SeparateDB        		bool
 		TrieCleanCache          int
 		TrieDirtyCache          int
 		TrieTimeout             time.Duration
@@ -110,6 +111,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.PersistDiff = c.PersistDiff
 	enc.DiffBlock = c.DiffBlock
 	enc.PruneAncientData = c.PruneAncientData
+	enc.SeparateDB = c.SeparateDB
 	enc.TrieCleanCache = c.TrieCleanCache
 	enc.TrieDirtyCache = c.TrieDirtyCache
 	enc.TrieTimeout = c.TrieTimeout
@@ -172,6 +174,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		PersistDiff             *bool
 		DiffBlock               *uint64
 		PruneAncientData        *bool
+		SeparateDB 				*bool
 		TrieCleanCache          *int
 		TrieDirtyCache          *int
 		TrieTimeout             *time.Duration
@@ -302,6 +305,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.PruneAncientData != nil {
 		c.PruneAncientData = *dec.PruneAncientData
+	}
+	if dec.SeparateDB != nil {
+		c.SeparateDB = *dec.PruneAncientData
 	}
 	if dec.TrieCleanCache != nil {
 		c.TrieCleanCache = *dec.TrieCleanCache

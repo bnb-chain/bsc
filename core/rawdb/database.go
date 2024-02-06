@@ -41,7 +41,20 @@ type freezerdb struct {
 	ancientRoot string
 	ethdb.KeyValueStore
 	ethdb.AncientStore
-	diffStore ethdb.KeyValueStore
+	diffStore  ethdb.KeyValueStore
+	blockStore ethdb.KeyValueStore
+}
+
+func (frdb *freezerdb) BlockStoreReader() ethdb.KeyValueReader {
+	if frdb.blockStore == nil {
+		return frdb
+	}
+	return frdb
+}
+
+func (frdb *freezerdb) BlockStoreWriter() ethdb.KeyValueWriter {
+	//TODO implement me
+	panic("implement me")
 }
 
 // AncientDatadir returns the path of root ancient directory.
@@ -64,6 +77,11 @@ func (frdb *freezerdb) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if frdb.blockStore != nil {
+		if err := frdb.diffStore.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if len(errs) != 0 {
 		return fmt.Errorf("%v", errs)
 	}
@@ -79,6 +97,17 @@ func (frdb *freezerdb) SetDiffStore(diff ethdb.KeyValueStore) {
 		frdb.diffStore.Close()
 	}
 	frdb.diffStore = diff
+}
+
+func (frdb *freezerdb) BlockStore() ethdb.KeyValueStore {
+	return frdb.diffStore
+}
+
+func (frdb *freezerdb) SetBlockStore(diff ethdb.KeyValueStore) {
+	if frdb.blockStore != nil {
+		frdb.blockStore.Close()
+	}
+	frdb.blockStore = diff
 }
 
 // Freeze is a helper method used for external testing to trigger and block until
@@ -104,7 +133,33 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
-	diffStore ethdb.KeyValueStore
+	diffStore  ethdb.KeyValueStore
+	blockStore ethdb.KeyValueStore
+}
+
+func (db *nofreezedb) BlockStoreWriter() ethdb.KeyValueWriter {
+	if db.blockStore != nil {
+		return db.blockStore
+	}
+	return db
+}
+
+func (db *nofreezedb) BlockStore() ethdb.KeyValueStore {
+	if db.blockStore != nil {
+		return db.blockStore
+	}
+	return db
+}
+
+func (db *nofreezedb) SetBlockStore(block ethdb.KeyValueStore) {
+	db.blockStore = block
+}
+
+func (db *nofreezedb) BlockStoreReader() ethdb.KeyValueReader {
+	if db.blockStore != nil {
+		return db.blockStore
+	}
+	return db
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.

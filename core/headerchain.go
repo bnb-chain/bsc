@@ -240,7 +240,7 @@ func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) {
 		newTD       = new(big.Int).Set(ptd) // Total difficulty of inserted chain
 		inserted    []rawdb.NumberHash      // Ephemeral lookup of number/hash for the chain
 		parentKnown = true                  // Set to true to force hc.HasHeader check the first iteration
-		batch       = hc.chainDb.NewBatch()
+		batch       = hc.chainDb.BlockStore().NewBatch()
 	)
 	for i, header := range headers {
 		var hash common.Hash
