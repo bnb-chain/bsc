@@ -9,7 +9,7 @@ find_files() {
         -o -path './crypto/bn256' \
         -o -path '*/vendor/*' \
       \) -prune \
-    \) -name '*.go'
+    \) -name '*.go' -not -name '*_rlp.go'
 }
 
 GOFMT="gofmt -s -w"

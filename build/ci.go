@@ -354,13 +354,14 @@ func doLint(cmdline []string) {
 
 	linter := downloadLinter(*cachedir)
 	lflags := []string{"run", "--config", ".golangci.yml"}
+	build.MustRunCommand("./build/goimports.sh")
 	build.MustRunCommand(linter, append(lflags, packages...)...)
 	fmt.Println("You have achieved perfection.")
 }
 
 // downloadLinter downloads and unpacks golangci-lint.
 func downloadLinter(cachedir string) string {
-	const version = "1.52.2"
+	const version = "1.55.2"
 
 	csdb := build.MustLoadChecksums("build/checksums.txt")
 	arch := runtime.GOARCH
