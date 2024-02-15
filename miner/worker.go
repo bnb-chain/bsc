@@ -884,18 +884,13 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		}
 		timestamp = parent.Time + 1
 	}
-
-	coinbase := genParams.coinbase
-	if coinbase == (common.Address{}) {
-		coinbase = w.etherbase()
-	}
 	// Construct the sealing block header.
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
 		GasLimit:   core.CalcGasLimit(parent.GasLimit, w.config.GasCeil),
 		Time:       timestamp,
-		Coinbase:   coinbase,
+		Coinbase:   genParams.coinbase,
 	}
 	// Set the extra field.
 	if len(w.extra) != 0 {
@@ -921,7 +916,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
 	// since clique algorithm can modify the coinbase field in header.
-	env, err := w.makeEnv(parent, header, coinbase, genParams.prevWork)
+	env, err := w.makeEnv(parent, header, genParams.coinbase, genParams.prevWork)
 	if err != nil {
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
@@ -1161,7 +1156,7 @@ LOOP:
 
 	// when out-turn, use bestWork to prevent bundle leakage.
 	// when in-turn, compare with remote work.
-	if bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
 		if bestBid != nil && bestBid.packedBlockReward.Cmp(bestReward) > 0 {

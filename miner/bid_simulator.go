@@ -56,6 +56,7 @@ var (
 
 type WorkPreparer interface {
 	prepareWork(params *generateParams) (*environment, error)
+	etherbase() common.Address
 }
 
 // simBidReq is the request for simulating a bid
@@ -539,6 +540,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	// prepareWork will start trie prefetching
 	if bidRuntime.env, err = b.workPreparer.prepareWork(&generateParams{
 		parentHash: bidRuntime.bid.ParentHash,
+		coinbase:   b.workPreparer.etherbase(),
 	}); err != nil {
 		return
 	}
