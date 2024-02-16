@@ -1629,7 +1629,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	return valSet, voteAddrMap, nil
 }
 
-// slash spoiled validators
+// distributeIncoming distributes system incoming of the block
 func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool) error {
 	coinbase := header.Coinbase
@@ -1719,7 +1719,7 @@ func (p *Parlia) distributeToSystem(amount *big.Int, state *state.StateDB, heade
 	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
 }
 
-// slash spoiled validators
+// distributeToValidator deposits validator reward to validator contract
 func (p *Parlia) distributeToValidator(amount *big.Int, validator common.Address,
 	state *state.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool) error {
