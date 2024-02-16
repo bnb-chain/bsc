@@ -1768,7 +1768,14 @@ func (s *BlockChainAPI) CreateAccessList(ctx context.Context, args TransactionAr
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
 	}
-	acl, gasUsed, vmerr, err := AccessList(ctx, s.b, bNrOrHash, args)
+
+	db, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, bNrOrHash)
+	if db == nil || err != nil {
+		return nil, err
+	}
+	statedb := db.Copy()
+
+	acl, gasUsed, vmerr, err := AccessList(ctx, s.b, statedb, header, args)
 	if err != nil {
 		return nil, err
 	}
@@ -1779,15 +1786,43 @@ func (s *BlockChainAPI) CreateAccessList(ctx context.Context, args TransactionAr
 	return result, nil
 }
 
+func (s *BlockChainAPI) CreateMultipleAccessList(ctx context.Context, argsList []TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash) ([]*accessListResult, error) {
+	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
+	if blockNrOrHash != nil {
+		bNrOrHash = *blockNrOrHash
+	}
+
+	db, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, bNrOrHash)
+	if db == nil || err != nil {
+		return nil, err
+	}
+	statedb := db.Copy()
+
+	var results []*accessListResult
+	for _, args := range argsList {
+		acl, gasUsed, vmerr, err := AccessList(ctx, s.b, statedb, header, args)
+		if err != nil {
+			return nil, err
+		}
+
+		result := &accessListResult{Accesslist: &acl, GasUsed: hexutil.Uint64(gasUsed)}
+		if vmerr != nil {
+			result.Error = vmerr.Error()
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
 // AccessList creates an access list for the given transaction.
 // If the accesslist creation fails an error is returned.
 // If the transaction itself fails, an vmErr is returned.
-func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, args TransactionArgs) (acl types.AccessList, gasUsed uint64, vmErr error, err error) {
-	// Retrieve the execution context
-	db, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
-	if db == nil || err != nil {
-		return nil, 0, nil, err
-	}
+func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types.Header, args TransactionArgs) (acl types.AccessList, gasUsed uint64, vmErr error, err error) {
+	// If the gas amount is not set, extract this as it will depend on access
+	// lists and we'll need to reestimate every time
+	nogas := args.Gas == nil
 
 	// Ensure any missing fields are filled, extract the recipient and input data
 	if err := args.setDefaults(ctx, b, true); err != nil {
@@ -1813,8 +1848,15 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		accessList := prevTracer.AccessList()
 		log.Trace("Creating access list", "input", accessList)
 
-		// Copy the original db so we don't modify it
-		statedb := db.Copy()
+		// If no gas amount was specified, each unique access list needs it's own
+		// gas calculation. This is quite expensive, but we need to be accurate
+		// and it's convered by the sender only anyway.
+		if nogas {
+			args.Gas = nil
+			if err := args.setDefaults(ctx, b); err != nil {
+				return nil, 0, nil, err // shouldn't happen, just in case
+			}
+		}
 		// Set the accesslist to the last al
 		args.AccessList = &accessList
 		msg, err := args.ToMessage(b.RPCGasCap(), header.BaseFee)
@@ -1825,7 +1867,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, args.from(), to, precompiles)
 		config := vm.Config{Tracer: tracer, NoBaseFee: true}
-		vmenv := b.GetEVM(ctx, msg, statedb, header, &config, nil)
+		vmenv := b.GetEVM(ctx, msg, db, header, &config, nil)
 		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)

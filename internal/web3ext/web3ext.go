@@ -599,6 +599,12 @@ web3._extend({
 			inputFormatter: [null, web3._extend.formatters.inputBlockNumberFormatter],
 		}),
 		new web3._extend.Method({
+			name: 'createMultipleAccessList',
+			call: 'eth_createMultipleAccessList',
+			params: 2,
+			inputFormatter: [null, web3._extend.formatters.inputBlockNumberFormatter],
+		}),
+		new web3._extend.Method({
 			name: 'getLogs',
 			call: 'eth_getLogs',
 			params: 1,
