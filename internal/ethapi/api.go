@@ -1838,6 +1838,7 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 
 	// Ensure any missing fields are filled, extract the recipient and input data
 	if err := args.setDefaults(ctx, b); err != nil {
+		fmt.Printf("error setDefaults\n")
 		return nil, 0, nil, err
 	}
 
