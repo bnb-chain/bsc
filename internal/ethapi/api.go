@@ -1840,6 +1840,9 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 	if err := args.setDefaults(ctx, b); err != nil {
 		return nil, 0, nil, err
 	}
+
+	fmt.Printf("after setDefaults\n")
+	
 	var to common.Address
 	if args.To != nil {
 		to = *args.To
