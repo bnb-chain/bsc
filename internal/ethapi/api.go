@@ -1853,6 +1853,9 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 	if args.AccessList != nil {
 		prevTracer = logger.NewAccessListTracer(*args.AccessList, args.from(), to, precompiles)
 	}
+
+	var i int
+	i = 0
 	for {
 		// Retrieve the current access list to expand
 		accessList := prevTracer.AccessList()
@@ -1874,7 +1877,8 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 			return nil, 0, nil, err
 		}
 
-		fmt.Printf("nonce before %d", db.GetNonce(vm.AccountRef(msg.From).Address()))
+		fmt.Printf("nonce before %d, i: %d\n", db.GetNonce(vm.AccountRef(msg.From).Address()), i)
+		i += 1
 
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, args.from(), to, precompiles)
@@ -1885,7 +1889,8 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
 		}
 
-		fmt.Printf("nonce after %d", db.GetNonce(vm.AccountRef(msg.From).Address()))
+		fmt.Printf("nonce after %d, i: %d\n", db.GetNonce(vm.AccountRef(msg.From).Address()), i)
+		i += 1
 
 		// update state
 		if b.ChainConfig().IsByzantium(header.Number) {
