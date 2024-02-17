@@ -1834,6 +1834,8 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 	// lists and we'll need to reestimate every time
 	nogas := args.Gas == nil
 
+	fmt.Printf("AccessList\n")
+
 	// Ensure any missing fields are filled, extract the recipient and input data
 	if err := args.setDefaults(ctx, b); err != nil {
 		return nil, 0, nil, err
@@ -1853,6 +1855,9 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 	if args.AccessList != nil {
 		prevTracer = logger.NewAccessListTracer(*args.AccessList, args.from(), to, precompiles)
 	}
+
+
+	fmt.Printf("before cycle\n")
 
 	var i int
 	i = 0
