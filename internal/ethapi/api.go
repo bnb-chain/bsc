@@ -1864,7 +1864,7 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 			return nil, 0, nil, err
 		}
 
-		fmt.Printf("nonce after %d", db.GetNonce(vm.AccountRef(msg.From).Address()))
+		fmt.Printf("nonce before %d", db.GetNonce(vm.AccountRef(msg.From).Address()))
 
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, args.from(), to, precompiles)
