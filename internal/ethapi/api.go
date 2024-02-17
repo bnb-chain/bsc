@@ -1824,14 +1824,10 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 	// lists and we'll need to reestimate every time
 	nogas := args.Gas == nil
 
-	fmt.Printf("AccessList\n")
-
 	// Ensure any missing fields are filled, extract the recipient and input data
 	if err := args.setDefaults(ctx, b, true); err != nil {
 		return nil, 0, nil, err
 	}
-
-	fmt.Printf("after setDefaults\n")
 	
 	var to common.Address
 	if args.To != nil {
@@ -1849,11 +1845,6 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 		prevTracer = logger.NewAccessListTracer(*args.AccessList, args.from(), to, precompiles)
 	}
 
-
-	fmt.Printf("before cycle\n")
-
-	var i int
-	i = 0
 	for {
 		// Retrieve the current access list to expand
 		accessList := prevTracer.AccessList()
@@ -1875,9 +1866,6 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 			return nil, 0, nil, err
 		}
 
-		fmt.Printf("nonce before %d, i: %d\n", db.GetNonce(vm.AccountRef(msg.From).Address()), i)
-		i += 1
-
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, args.from(), to, precompiles)
 		config := vm.Config{Tracer: tracer, NoBaseFee: true}
@@ -1885,16 +1873,6 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
-		}
-
-		fmt.Printf("nonce after %d, i: %d\n", db.GetNonce(vm.AccountRef(msg.From).Address()), i)
-		i += 1
-
-		// update state
-		if b.ChainConfig().IsByzantium(header.Number) {
-			db.Finalise(true)
-		} else {
-			db.IntermediateRoot(b.ChainConfig().IsEIP158(header.Number)).Bytes()
 		}
 
 		if tracer.Equal(prevTracer) {
