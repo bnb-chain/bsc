@@ -1872,6 +1872,14 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
 		}
+
+		// update state
+		if b.ChainConfig().IsByzantium(header.Number) {
+			db.Finalise(true)
+		} else {
+			db.IntermediateRoot(b.ChainConfig().IsEIP158(header.Number)).Bytes()
+		}
+
 		if tracer.Equal(prevTracer) {
 			return accessList, res.UsedGas, res.Err, nil
 		}
