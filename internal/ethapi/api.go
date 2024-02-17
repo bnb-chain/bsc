@@ -1864,7 +1864,7 @@ func AccessList(ctx context.Context, b Backend, db *state.StateDB, header *types
 		// and it's convered by the sender only anyway.
 		if nogas {
 			args.Gas = nil
-			if err := args.setDefaults(ctx, b); err != nil {
+			if err := args.setDefaults(ctx, b, true); err != nil {
 				return nil, 0, nil, err // shouldn't happen, just in case
 			}
 		}
