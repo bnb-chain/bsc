@@ -1,4 +1,18 @@
 # Changelog
+## v1.3.9
+FEATURE
+* [\#2186](https://github.com/bnb-chain/bsc/pull/2186) log: support maxBackups in config.toml
+
+BUGFIX
+* [\#2160](https://github.com/bnb-chain/bsc/pull/2160) cmd: fix dump cli cannot work in path mode
+* [\#2183](https://github.com/bnb-chain/bsc/pull/2183) p2p: resolved deadlock on p2p server shutdown
+
+IMPROVEMENT
+* [\#2177](https://github.com/bnb-chain/bsc/pull/0000) build(deps): bump github.com/quic-go/quic-go from 0.39.3 to 0.39.4
+* [\#2185](https://github.com/bnb-chain/bsc/pull/2185) consensus/parlia: set nonce before evm run
+* [\#2190](https://github.com/bnb-chain/bsc/pull/2190) fix(legacypool): deprecate already known error
+* [\#2195](https://github.com/bnb-chain/bsc/pull/2195) eth/fetcher: downgrade state tx log
+
 ## v1.3.8
 FEATURE
 * [\#2074](https://github.com/bnb-chain/bsc/pull/2074) faucet: new faucet client
