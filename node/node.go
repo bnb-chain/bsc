@@ -789,10 +789,30 @@ func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, di
 	if persistDiff {
 		chainDataHandles = handles * chainDataHandlesPercentage / 100
 	}
+	var statediskdb ethdb.Database
+	var err error
+	// Open the separated state database if the state directory exists
+	if n.HasSeparateTrieDir() {
+		// Allocate half of the  handles and cache to this separate state data database
+		statediskdb, err = n.OpenDatabaseWithFreezer(name, int(float64(cache)*0.5), int(float64(chainDataHandles)*0.5), "", "eth/db/statedata/", readonly, false, false, pruneAncientData, true)
+		if err != nil {
+			return nil, err
+		}
+
+		// Reduce the handles and cache to this separate database because it is not a complete database with no trie data storing in it.
+		cache = int(float64(cache) * 0.6)
+		chainDataHandles = int(float64(chainDataHandles) * 0.6)
+	}
+
 	chainDB, err := n.OpenDatabaseWithFreezer(name, cache, chainDataHandles, freezer, namespace, readonly, false, false, pruneAncientData, false)
 	if err != nil {
 		return nil, err
 	}
+
+	if statediskdb != nil {
+		chainDB.SetStateStore(statediskdb)
+	}
+
 	if persistDiff {
 		diffStore, err := n.OpenDiffDatabase(name, handles-chainDataHandles, diff, namespace, readonly)
 		if err != nil {
@@ -825,7 +845,6 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 	} else {
 		var dirName, ancientDirName string
 		if isSeparateStateDB {
-			// set the directory name as state when opening a separate database,
 			dirName = filepath.Join(n.ResolvePath(name), "state")
 			ancientDirName = filepath.Join(dirName, "ancient")
 		} else {

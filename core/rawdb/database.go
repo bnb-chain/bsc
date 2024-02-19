@@ -41,7 +41,8 @@ type freezerdb struct {
 	ancientRoot string
 	ethdb.KeyValueStore
 	ethdb.AncientStore
-	diffStore ethdb.KeyValueStore
+	diffStore  ethdb.KeyValueStore
+	stateStore ethdb.Database
 }
 
 // AncientDatadir returns the path of root ancient directory.
@@ -64,6 +65,11 @@ func (frdb *freezerdb) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if frdb.stateStore != nil {
+		if err := frdb.stateStore.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if len(errs) != 0 {
 		return fmt.Errorf("%v", errs)
 	}
@@ -79,6 +85,17 @@ func (frdb *freezerdb) SetDiffStore(diff ethdb.KeyValueStore) {
 		frdb.diffStore.Close()
 	}
 	frdb.diffStore = diff
+}
+
+func (frdb *freezerdb) StateStore() ethdb.Database {
+	return frdb.stateStore
+}
+
+func (frdb *freezerdb) SetStateStore(state ethdb.Database) {
+	if frdb.stateStore != nil {
+		frdb.stateStore.Close()
+	}
+	frdb.stateStore = state
 }
 
 // Freeze is a helper method used for external testing to trigger and block until
@@ -104,7 +121,8 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
-	diffStore ethdb.KeyValueStore
+	diffStore  ethdb.KeyValueStore
+	stateStore ethdb.Database
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.
@@ -168,6 +186,14 @@ func (db *nofreezedb) DiffStore() ethdb.KeyValueStore {
 
 func (db *nofreezedb) SetDiffStore(diff ethdb.KeyValueStore) {
 	db.diffStore = diff
+}
+
+func (db *nofreezedb) StateStore() ethdb.Database {
+	return db.stateStore
+}
+
+func (db *nofreezedb) SetStateStore(state ethdb.Database) {
+	db.stateStore = state
 }
 
 func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {

@@ -189,12 +189,18 @@ type DiffStore interface {
 	SetDiffStore(diff KeyValueStore)
 }
 
+type StateStore interface {
+	StateStore() Database
+	SetStateStore(state Database)
+}
+
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the chain freezer.
 type Database interface {
 	Reader
 	Writer
 	DiffStore
+	StateStore
 	Batcher
 	Iteratee
 	Stater

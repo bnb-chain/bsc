@@ -311,6 +311,28 @@ func ReadStateScheme(db ethdb.Reader) string {
 	return HashScheme
 }
 
+// ReadStateSchemeByStateDB reads the state scheme of persistent state from state disk db, or none
+// if the state is not present in database
+func ReadStateSchemeByStateDB(db, statediskdb ethdb.Reader) string {
+	// Check if state in path-based scheme is present
+	blob, _ := ReadAccountTrieNode(statediskdb, nil)
+	if len(blob) != 0 {
+		return PathScheme
+	}
+	// In a hash-based scheme, the genesis state is consistently stored
+	// on the disk. To assess the scheme of the persistent state, it
+	// suffices to inspect the scheme of the genesis state.
+	header := ReadHeader(db, ReadCanonicalHash(db, 0), 0)
+	if header == nil {
+		return "" // empty datadir
+	}
+	blob = ReadLegacyTrieNode(statediskdb, header.Root)
+	if len(blob) == 0 {
+		return "" // no state in disk
+	}
+	return HashScheme
+}
+
 // ValidateStateScheme used to check state scheme whether is valid.
 // Valid state scheme: hash and path.
 func ValidateStateScheme(stateScheme string) bool {
@@ -335,7 +357,12 @@ func ParseStateScheme(provided string, disk ethdb.Database) (string, error) {
 	// If state scheme is not specified, use the scheme consistent
 	// with persistent state, or fallback to hash mode if database
 	// is empty.
-	stored := ReadStateScheme(disk)
+	var stored string
+	if disk.StateStore() != nil {
+		stored = ReadStateSchemeByStateDB(disk, disk.StateStore())
+	} else {
+		stored = ReadStateScheme(disk)
+	}
 	if provided == "" {
 		if stored == "" {
 			// use default scheme for empty database, flip it when

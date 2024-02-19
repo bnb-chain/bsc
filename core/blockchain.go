@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -372,33 +371,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	var err error
 
 	// Open trie database with provided config
-	var triedb *trie.Database
-	if cacheConfig.StateDiskDBConfig != nil {
-		separatedTrieConfig := cacheConfig.StateDiskDBConfig
-		separatedTrieDir := separatedTrieConfig.StateDataDir
-		log.Info("node run with separated trie database", "directory", separatedTrieDir)
-		// open the separated db to init the trie database which only store the trie data
-		statediskdb, dbErr := rawdb.Open(rawdb.OpenOptions{
-			Type:              separatedTrieConfig.StateEngine,
-			Directory:         separatedTrieDir,
-			AncientsDirectory: filepath.Join(separatedTrieDir, separatedTrieConfig.StateAncient),
-			Namespace:         separatedTrieConfig.NameSpace,
-			Cache:             separatedTrieConfig.StateCache,
-			Handles:           separatedTrieConfig.StateHandles,
-			ReadOnly:          false,
-			DisableFreeze:     false,
-			IsLastOffset:      false,
-			PruneAncientData:  separatedTrieConfig.PruneAncientData,
-		})
-
-		if dbErr != nil {
-			log.Error("Failed to separate trie database", "err", dbErr)
-			return nil, dbErr
-		}
-		triedb = trie.NewDatabase(statediskdb, cacheConfig.triedbConfig())
-	} else {
-		triedb = trie.NewDatabase(db, cacheConfig.triedbConfig())
-	}
+	triedb := trie.NewDatabase(db, cacheConfig.triedbConfig())
 	bc.triedb = triedb
 	// Setup the genesis block, commit the provided genesis specification
 	// to database if the genesis block is not present yet, or load the
