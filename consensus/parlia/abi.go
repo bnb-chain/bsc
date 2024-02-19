@@ -2238,7 +2238,7 @@ const validatorSetABI = `
     "name": "getCurrentValidatorIndex",
     "inputs": [
       {
-        "name": "_validator",
+        "name": "validator",
         "type": "address",
         "internalType": "address"
       }
@@ -2925,6 +2925,19 @@ const validatorSetABI = `
     "inputs": [
       {
         "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "tmpValidatorSetUpdated",
+    "inputs": [
+      {
+        "name": "validatorsNum",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -4058,19 +4071,6 @@ const stakeABI = `
   },
   {
     "type": "function",
-    "name": "assetProtector",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "blackList",
     "inputs": [
       {
@@ -4434,24 +4434,9 @@ const stakeABI = `
     ],
     "outputs": [
       {
-        "name": "consensusAddress",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "creditContract",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "createdTime",
         "type": "uint256",
         "internalType": "uint256"
-      },
-      {
-        "name": "voteAddress",
-        "type": "bytes",
-        "internalType": "bytes"
       },
       {
         "name": "jailed",
@@ -4498,6 +4483,44 @@ const stakeABI = `
             "internalType": "uint64"
           }
         ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getValidatorConsensusAddress",
+    "inputs": [
+      {
+        "name": "operatorAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "consensusAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getValidatorCreditContract",
+    "inputs": [
+      {
+        "name": "operatorAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "creditContract",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -4626,6 +4649,25 @@ const stakeABI = `
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getValidatorVoteAddress",
+    "inputs": [
+      {
+        "name": "operatorAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "voteAddress",
+        "type": "bytes",
+        "internalType": "bytes"
       }
     ],
     "stateMutability": "view"
@@ -5023,6 +5065,19 @@ const stakeABI = `
   },
   {
     "type": "event",
+    "name": "BlackListed",
+    "inputs": [
+      {
+        "name": "target",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Claimed",
     "inputs": [
       {
@@ -5164,10 +5219,10 @@ const stakeABI = `
         "internalType": "uint256"
       },
       {
-        "name": "status",
+        "name": "respCode",
         "type": "uint8",
         "indexed": false,
-        "internalType": "enum StakeHub.StakeMigrationStatus"
+        "internalType": "enum StakeHub.StakeMigrationRespCode"
       }
     ],
     "anonymous": false
@@ -5226,6 +5281,25 @@ const stakeABI = `
     "type": "event",
     "name": "Paused",
     "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ProtectorChanged",
+    "inputs": [
+      {
+        "name": "oldProtector",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newProtector",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
     "anonymous": false
   },
   {
@@ -5317,6 +5391,38 @@ const stakeABI = `
   },
   {
     "type": "event",
+    "name": "StakeCreditInitialized",
+    "inputs": [
+      {
+        "name": "operatorAddress",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "creditContract",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UnBlackListed",
+    "inputs": [
+      {
+        "name": "target",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Undelegated",
     "inputs": [
       {
@@ -5342,6 +5448,25 @@ const stakeABI = `
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UnexpectedPackage",
+    "inputs": [
+      {
+        "name": "channelId",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "msgBytes",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
       }
     ],
     "anonymous": false
@@ -5467,23 +5592,9 @@ const stakeABI = `
     "anonymous": false
   },
   {
-    "type": "event",
-    "name": "unexpectedPackage",
-    "inputs": [
-      {
-        "name": "channelId",
-        "type": "uint8",
-        "indexed": false,
-        "internalType": "uint8"
-      },
-      {
-        "name": "msgBytes",
-        "type": "bytes",
-        "indexed": false,
-        "internalType": "bytes"
-      }
-    ],
-    "anonymous": false
+    "type": "error",
+    "name": "AlreadyPaused",
+    "inputs": []
   },
   {
     "type": "error",
@@ -5578,12 +5689,17 @@ const stakeABI = `
   },
   {
     "type": "error",
-    "name": "OnlyAssetProtector",
+    "name": "NotPaused",
     "inputs": []
   },
   {
     "type": "error",
     "name": "OnlyCoinbase",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OnlyProtector",
     "inputs": []
   },
   {
@@ -5619,11 +5735,6 @@ const stakeABI = `
   },
   {
     "type": "error",
-    "name": "StakeHubPaused",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "TransferFailed",
     "inputs": []
   },
@@ -5655,7 +5766,7 @@ const stakeABI = `
   },
   {
     "type": "error",
-    "name": "ValidatorNotExist",
+    "name": "ValidatorNotExisted",
     "inputs": []
   },
   {
