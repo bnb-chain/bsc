@@ -10,6 +10,7 @@ on:
     branches: 
       - master
       - develop
+      - blobtx
 
 jobs:
   golang-lint:
