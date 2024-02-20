@@ -794,7 +794,7 @@ func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, di
 	// Open the separated state database if the state directory exists
 	if n.HasSeparateTrieDir() {
 		// Allocate half of the  handles and cache to this separate state data database
-		statediskdb, err = n.OpenDatabaseWithFreezer(name, int(float64(cache)*0.5), int(float64(chainDataHandles)*0.5), "", "eth/db/statedata/", readonly, false, false, pruneAncientData, true)
+		statediskdb, err = n.OpenDatabaseWithFreezer(name, cache/2, chainDataHandles/2, "", "eth/db/statedata/", readonly, false, false, pruneAncientData, true)
 		if err != nil {
 			return nil, err
 		}

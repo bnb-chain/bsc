@@ -645,13 +645,13 @@ func inspectTrieData(key, value []byte, legacyTries, accountTries, storageTries,
 
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
-func InspectDatabase(db ethdb.Database, separateDB ethdb.Database, keyPrefix, keyStart []byte) error {
+func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
 
 	var trieIter ethdb.Iterator
-	if separateDB != nil {
-		trieIter = separateDB.NewIterator(keyPrefix, nil)
+	if db.StateStore() != nil {
+		trieIter = db.StateStore().NewIterator(keyPrefix, nil)
 		defer trieIter.Release()
 	}
 	var (
@@ -841,7 +841,7 @@ func InspectDatabase(db ethdb.Database, separateDB ethdb.Database, keyPrefix, ke
 
 	// inspect ancient state in separate trie db if exist
 	if trieIter != nil {
-		stateAncients, err := inspectFreezers(separateDB)
+		stateAncients, err := inspectFreezers(db.StateStore())
 		if err != nil {
 			return err
 		}

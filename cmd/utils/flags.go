@@ -2324,6 +2324,11 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 		chainDb, err = stack.OpenDatabase("lightchaindata", cache, handles, "", readonly)
 	default:
 		chainDb, err = stack.OpenDatabaseWithFreezer("chaindata", cache, handles, ctx.String(AncientFlag.Name), "", readonly, disableFreeze, false, false, false)
+		// set the separate state database
+		if stack.HasSeparateTrieDir() && err == nil {
+			statediskdb := MakeStateDataBase(ctx, stack, readonly, false)
+			chainDb.SetStateStore(statediskdb)
+		}
 	}
 	if err != nil {
 		Fatalf("Could not open database: %v", err)
@@ -2334,7 +2339,7 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 // MakeStateDataBase open a separate state database using the flags passed to the client and will hard crash if it fails.
 func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
 	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
-	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name))
+	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) / 2
 	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata", cache, handles, "", "", readonly, disableFreeze, false, false, true)
 	if err != nil {
 		Fatalf("Failed to open separate trie database: %v", err)
@@ -2424,7 +2429,6 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	if err != nil {
 		Fatalf("%v", err)
 	}
-
 	cache := &core.CacheConfig{
 		TrieCleanLimit:      ethconfig.Defaults.TrieCleanCache,
 		TrieCleanNoPrefetch: ctx.Bool(CacheNoPrefetchFlag.Name),
@@ -2437,7 +2441,6 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 		StateScheme:         scheme,
 		StateHistory:        ctx.Uint64(StateHistoryFlag.Name),
 	}
-
 	if cache.TrieDirtyDisabled && !cache.Preimages {
 		cache.Preimages = true
 		log.Info("Enabling recording of key preimages since archive mode is used")

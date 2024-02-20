@@ -358,7 +358,7 @@ func ParseStateScheme(provided string, disk ethdb.Database) (string, error) {
 	// with persistent state, or fallback to hash mode if database
 	// is empty.
 	var stored string
-	if disk.StateStore() != nil {
+	if disk != nil && disk.StateStore() != nil {
 		stored = ReadStateSchemeByStateDB(disk, disk.StateStore())
 	} else {
 		stored = ReadStateScheme(disk)
