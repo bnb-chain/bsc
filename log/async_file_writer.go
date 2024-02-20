@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const backupTimeFormat = "2006-01-02_15"
+
 type TimeTicker struct {
 	stop chan struct{}
 	C    <-chan time.Time
@@ -69,19 +71,24 @@ type AsyncFileWriter struct {
 	buf        chan []byte
 	stop       chan struct{}
 	timeTicker *TimeTicker
+
+	rotateHours uint
+	maxBackups  int
 }
 
-func NewAsyncFileWriter(filePath string, maxBytesSize int64, rotateHours uint) *AsyncFileWriter {
+func NewAsyncFileWriter(filePath string, maxBytesSize int64, maxBackups int, rotateHours uint) *AsyncFileWriter {
 	absFilePath, err := filepath.Abs(filePath)
 	if err != nil {
 		panic(fmt.Sprintf("get file path of logger error. filePath=%s, err=%s", filePath, err))
 	}
 
 	return &AsyncFileWriter{
-		filePath:   absFilePath,
-		buf:        make(chan []byte, maxBytesSize),
-		stop:       make(chan struct{}),
-		timeTicker: NewTimeTicker(rotateHours),
+		filePath:    absFilePath,
+		buf:         make(chan []byte, maxBytesSize),
+		stop:        make(chan struct{}),
+		rotateHours: rotateHours,
+		maxBackups:  maxBackups,
+		timeTicker:  NewTimeTicker(rotateHours),
 	}
 }
 
@@ -178,6 +185,9 @@ func (w *AsyncFileWriter) rotateFile() {
 		if err := w.initLogFile(); err != nil {
 			fmt.Fprintf(os.Stderr, "init log file error. err=%s", err)
 		}
+		if err := w.removeExpiredFile(); err != nil {
+			fmt.Fprintf(os.Stderr, "remove expired file error. err=%s", err)
+		}
 	default:
 	}
 }
@@ -222,5 +232,29 @@ func (w *AsyncFileWriter) flushAndClose() error {
 }
 
 func (w *AsyncFileWriter) timeFilePath(filePath string) string {
-	return filePath + "." + time.Now().Format("2006-01-02_15")
+	return filePath + "." + time.Now().Format(backupTimeFormat)
+}
+
+func (w *AsyncFileWriter) getExpiredFile(filePath string, maxBackups int, rotateHours uint) string {
+	if rotateHours > 0 {
+		maxBackups = int(rotateHours) * maxBackups
+	}
+	return filePath + "." + time.Now().Add(-time.Hour*time.Duration(maxBackups)).Format(backupTimeFormat)
+}
+
+func (w *AsyncFileWriter) removeExpiredFile() error {
+	if w.maxBackups == 0 {
+		return nil
+	}
+
+	oldFilepath := w.getExpiredFile(w.filePath, w.maxBackups, w.rotateHours)
+	_, err := os.Stat(oldFilepath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	errRemove := os.Remove(oldFilepath)
+	if err != nil {
+		return errRemove
+	}
+	return err
 }

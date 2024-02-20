@@ -18,7 +18,6 @@
 package utils
 
 import (
-	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
@@ -1884,7 +1883,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(StateHistoryFlag.Name) {
 		cfg.StateHistory = ctx.Uint64(StateHistoryFlag.Name)
 	}
-	scheme, err := compareCLIWithConfig(ctx)
+	scheme, err := ParseCLIAndConfigStateScheme(ctx.String(StateSchemeFlag.Name), cfg.StateScheme)
 	if err != nil {
 		Fatalf("%v", err)
 	}
@@ -2353,11 +2352,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	if gcmode := ctx.String(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
 		Fatalf("--%s must be either 'full' or 'archive'", GCModeFlag.Name)
 	}
-	provided, err := compareCLIWithConfig(ctx)
-	if err != nil {
-		Fatalf("%v", err)
-	}
-	scheme, err := rawdb.ParseStateScheme(provided, chainDb)
+	scheme, err := rawdb.ParseStateScheme(ctx.String(StateSchemeFlag.Name), chainDb)
 	if err != nil {
 		Fatalf("%v", err)
 	}
@@ -2425,11 +2420,7 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 	config := &trie.Config{
 		Preimages: preimage,
 	}
-	provided, err := compareCLIWithConfig(ctx)
-	if err != nil {
-		Fatalf("%v", err)
-	}
-	scheme, err := rawdb.ParseStateScheme(provided, disk)
+	scheme, err := rawdb.ParseStateScheme(ctx.String(StateSchemeFlag.Name), disk)
 	if err != nil {
 		Fatalf("%v", err)
 	}
@@ -2448,26 +2439,15 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 	return trie.NewDatabase(disk, config)
 }
 
-func compareCLIWithConfig(ctx *cli.Context) (string, error) {
-	var (
-		cfgScheme string
-		err       error
-	)
-	if file := ctx.String("config"); file != "" {
-		// we don't validate cfgScheme because it's already checked in cmd/geth/loadBaseConfig
-		if cfgScheme, err = scanConfigForStateScheme(file); err != nil {
-			log.Error("Failed to parse config file", "error", err)
-			return "", err
-		}
-	}
-	if !ctx.IsSet(StateSchemeFlag.Name) {
+// ParseCLIAndConfigStateScheme parses state scheme in CLI and config.
+func ParseCLIAndConfigStateScheme(cliScheme, cfgScheme string) (string, error) {
+	if cliScheme == "" {
 		if cfgScheme != "" {
 			log.Info("Use config state scheme", "config", cfgScheme)
 		}
 		return cfgScheme, nil
 	}
 
-	cliScheme := ctx.String(StateSchemeFlag.Name)
 	if !rawdb.ValidateStateScheme(cliScheme) {
 		return "", fmt.Errorf("invalid state scheme in CLI: %s", cliScheme)
 	}
@@ -2476,36 +2456,4 @@ func compareCLIWithConfig(ctx *cli.Context) (string, error) {
 		return cliScheme, nil
 	}
 	return "", fmt.Errorf("incompatible state scheme, CLI: %s, config: %s", cliScheme, cfgScheme)
-}
-
-func scanConfigForStateScheme(file string) (string, error) {
-	f, err := os.Open(file)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	targetStr := "StateScheme"
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.Contains(line, targetStr) {
-			return indexStateScheme(line), nil
-		}
-	}
-
-	if err = scanner.Err(); err != nil {
-		return "", err
-	}
-	return "", nil
-}
-
-func indexStateScheme(str string) string {
-	i1 := strings.Index(str, "\"")
-	i2 := strings.LastIndex(str, "\"")
-
-	if i1 != -1 && i2 != -1 && i1 < i2 {
-		return str[i1+1 : i2]
-	}
-	return ""
 }
