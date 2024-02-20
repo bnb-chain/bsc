@@ -18,6 +18,7 @@ package types
 
 import (
 	"bytes"
+	"github.com/stretchr/testify/assert"
 	"math/big"
 	"reflect"
 	"testing"
@@ -192,6 +193,39 @@ func TestEIP2718BlockEncoding(t *testing.T) {
 	if !bytes.Equal(ourBlockEnc, blockEnc) {
 		t.Errorf("encoded block mismatch:\ngot:  %x\nwant: %x", ourBlockEnc, blockEnc)
 	}
+}
+
+func TestEIP4844BlockEncoding(t *testing.T) {
+	tmp := uint64(10000)
+	h := Header{
+		ParentHash:       common.HexToHash("0xb60aef25ac1462d29d30c9d510d0e7be87382ac94ceca24cd66d29ad6efdc076"),
+		UncleHash:        common.HexToHash("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"),
+		Coinbase:         common.HexToAddress("0x70f657164e5b75689b64b7fd1fa275f334f28e18"),
+		Root:             common.HexToHash("0x270657d19ad0be68f564e76d7e5dedf6eb39478f45317bf61034fd863046484b"),
+		TxHash:           common.HexToHash("0x7ae624153142e61339a61ebbaa297654ca07dd58e59b05b34bfeefacba0ac34e"),
+		ReceiptHash:      common.HexToHash("0xd76c75f7431e82027a64d9c9f7d6cd8dc195f6c1efed6e04fa36816d0ab30d0b"),
+		Bloom:            Bloom{},
+		Difficulty:       big.NewInt(1),
+		Number:           big.NewInt(36295817),
+		GasLimit:         140000000,
+		GasUsed:          7828582,
+		Time:             uint64(1426516743),
+		Extra:            common.Hex2Bytes("0x5ba3225c4e91e2a02f0e696cc4d992f91db2a53fc738f94adbb8a104088a921d"),
+		MixDigest:        common.Hash{},
+		Nonce:            BlockNonce{},
+		BaseFee:          big.NewInt(1),
+		WithdrawalsHash:  nil,
+		BlobGasUsed:      &tmp,
+		ExcessBlobGas:    &tmp,
+		ParentBeaconRoot: nil,
+	}
+
+	enc, err := rlp.EncodeToBytes(&h)
+	assert.NoError(t, err)
+	var nh Header
+	err = rlp.DecodeBytes(enc, &nh)
+	assert.NoError(t, err)
+	assert.Equal(t, h, nh)
 }
 
 func TestUncleHash(t *testing.T) {
