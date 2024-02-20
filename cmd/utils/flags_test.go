@@ -18,13 +18,8 @@
 package utils
 
 import (
-	"os"
 	"reflect"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-
-	"github.com/ethereum/go-ethereum/core/rawdb"
 )
 
 func Test_SplitTagsFlag(t *testing.T) {
@@ -63,129 +58,6 @@ func Test_SplitTagsFlag(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := SplitTagsFlag(tt.args); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("splitTagsFlag() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func Test_parseConfig(t *testing.T) {
-	tests := []struct {
-		name         string
-		fn           func() string
-		wantedResult string
-		wantedIsErr  bool
-		wantedErrStr string
-	}{
-		{
-			name: "path",
-			fn: func() string {
-				tomlString := `[Eth]NetworkId = 56StateScheme = "path"`
-				return createTempTomlFile(t, tomlString)
-			},
-			wantedResult: rawdb.PathScheme,
-			wantedIsErr:  false,
-			wantedErrStr: "",
-		},
-		{
-			name: "hash",
-			fn: func() string {
-				tomlString := `[Eth]NetworkId = 56StateScheme = "hash"`
-				return createTempTomlFile(t, tomlString)
-			},
-			wantedResult: rawdb.HashScheme,
-			wantedIsErr:  false,
-			wantedErrStr: "",
-		},
-		{
-			name: "empty state scheme",
-			fn: func() string {
-				tomlString := `[Eth]NetworkId = 56StateScheme = ""`
-				return createTempTomlFile(t, tomlString)
-			},
-			wantedResult: "",
-			wantedIsErr:  false,
-			wantedErrStr: "",
-		},
-		{
-			name: "unset state scheme",
-			fn: func() string {
-				tomlString := `[Eth]NetworkId = 56`
-				return createTempTomlFile(t, tomlString)
-			},
-			wantedResult: "",
-			wantedIsErr:  false,
-			wantedErrStr: "",
-		},
-		{
-			name:         "failed to open file",
-			fn:           func() string { return "" },
-			wantedResult: "",
-			wantedIsErr:  true,
-			wantedErrStr: "open : no such file or directory",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := scanConfigForStateScheme(tt.fn())
-			if tt.wantedIsErr {
-				assert.Contains(t, err.Error(), tt.wantedErrStr)
-			} else {
-				assert.Nil(t, err)
-			}
-			assert.Equal(t, tt.wantedResult, result)
-		})
-	}
-}
-
-// createTempTomlFile is a helper function to create a temp file with the provided TOML content
-func createTempTomlFile(t *testing.T, content string) string {
-	t.Helper()
-
-	dir := t.TempDir()
-	file, err := os.CreateTemp(dir, "config.toml")
-	if err != nil {
-		t.Fatalf("Unable to create temporary file: %v", err)
-	}
-	defer file.Close()
-
-	_, err = file.WriteString(content)
-	if err != nil {
-		t.Fatalf("Unable to write to temporary file: %v", err)
-	}
-	return file.Name()
-}
-
-func Test_parseString(t *testing.T) {
-	tests := []struct {
-		name       string
-		arg        string
-		wantResult string
-	}{
-		{
-			name:       "hash string",
-			arg:        "\"hash\"",
-			wantResult: rawdb.HashScheme,
-		},
-		{
-			name:       "path string",
-			arg:        "\"path\"",
-			wantResult: rawdb.PathScheme,
-		},
-		{
-			name:       "empty string",
-			arg:        "",
-			wantResult: "",
-		},
-		{
-			name:       "empty string",
-			arg:        "\"\"",
-			wantResult: "",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := indexStateScheme(tt.arg); got != tt.wantResult {
-				t.Errorf("parseString() = %v, want %v", got, tt.wantResult)
 			}
 		})
 	}

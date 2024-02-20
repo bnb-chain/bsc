@@ -335,7 +335,7 @@ func ParseStateScheme(provided string, disk ethdb.Database) (string, error) {
 		if stored == "" {
 			// use default scheme for empty database, flip it when
 			// path mode is chosen as default
-			log.Info("State schema set to default", "scheme", "hash")
+			log.Info("State scheme set to default", "scheme", "hash")
 			return HashScheme, nil
 		}
 		log.Info("State scheme set to already existing disk db", "scheme", stored)
