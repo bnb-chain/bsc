@@ -188,6 +188,8 @@ It's deprecated, please use "geth db export" instead.
 			utils.IterativeOutputFlag,
 			utils.ExcludeCodeFlag,
 			utils.ExcludeStorageFlag,
+			utils.ExcludeContractFlag,
+			utils.ExcludeEOAFlag,
 			utils.IncludeIncompletesFlag,
 			utils.StartKeyFlag,
 			utils.DumpLimitFlag,
@@ -677,14 +679,16 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 	var conf = &state.DumpConfig{
 		SkipCode:          ctx.Bool(utils.ExcludeCodeFlag.Name),
 		SkipStorage:       ctx.Bool(utils.ExcludeStorageFlag.Name),
+		SkipContract:      ctx.Bool(utils.ExcludeContractFlag.Name),
+		SkipEOA:           ctx.Bool(utils.ExcludeEOAFlag.Name),
 		OnlyWithAddresses: !ctx.Bool(utils.IncludeIncompletesFlag.Name),
 		Start:             start.Bytes(),
 		Max:               ctx.Uint64(utils.DumpLimitFlag.Name),
 	}
 	conf.StateScheme = scheme
 	log.Info("State dump configured", "block", header.Number, "hash", header.Hash().Hex(),
-		"skipcode", conf.SkipCode, "skipstorage", conf.SkipStorage, "start", hexutil.Encode(conf.Start),
-		"limit", conf.Max, "state scheme", conf.StateScheme)
+		"skipcode", conf.SkipCode, "skipstorage", conf.SkipStorage, "skipcontract", conf.SkipContract,
+		"skipeoa", conf.SkipEOA, "start", hexutil.Encode(conf.Start), "limit", conf.Max)
 	return conf, db, header.Root, nil
 }
 
