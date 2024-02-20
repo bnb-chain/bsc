@@ -702,8 +702,8 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	// announce local pending transactions again
 	h.wg.Add(1)
 	h.reannoTxsCh = make(chan core.ReannoTxsEvent, txChanSize)
-	//h.reannoTxsSub = h.txpool.SubscribeReannoTxsEvent(h.reannoTxsCh)
-	//go h.txReannounceLoop()
+	h.reannoTxsSub = h.txpool.SubscribeReannoTxsEvent(h.reannoTxsCh)
+	go h.txReannounceLoop()
 
 	// broadcast mined blocks
 	h.wg.Add(1)
