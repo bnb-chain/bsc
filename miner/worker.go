@@ -1043,7 +1043,6 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
-
 	return &newPayloadResult{
 		block:    block,
 		fees:     fees.ToBig(),
