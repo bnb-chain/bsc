@@ -555,14 +555,14 @@ func TestTransactionPendingReannounce(t *testing.T) {
 
 	sink := newTestHandler()
 	defer sink.close()
-	sink.handler.acceptTxs.Store(true) // mark synced to accept transactions
+	sink.handler.synced.Store(true) // mark synced to accept transactions
 
 	sourcePipe, sinkPipe := p2p.MsgPipe()
 	defer sourcePipe.Close()
 	defer sinkPipe.Close()
 
-	sourcePeer := eth.NewPeer(eth.ETH66, p2p.NewPeer(enode.ID{0}, "", nil), sourcePipe, source.txpool)
-	sinkPeer := eth.NewPeer(eth.ETH66, p2p.NewPeer(enode.ID{0}, "", nil), sinkPipe, sink.txpool)
+	sourcePeer := eth.NewPeer(eth.ETH67, p2p.NewPeer(enode.ID{0}, "", nil), sourcePipe, source.txpool)
+	sinkPeer := eth.NewPeer(eth.ETH67, p2p.NewPeer(enode.ID{0}, "", nil), sinkPipe, sink.txpool)
 	defer sourcePeer.Close()
 	defer sinkPeer.Close()
 
@@ -575,7 +575,7 @@ func TestTransactionPendingReannounce(t *testing.T) {
 
 	// Subscribe transaction pools
 	txCh := make(chan core.NewTxsEvent, 1024)
-	sub := sink.txpool.SubscribeNewTxsEvent(txCh)
+	sub := sink.txpool.SubscribeTransactions(txCh, false)
 	defer sub.Unsubscribe()
 
 	txs := make([]*types.Transaction, 64)
@@ -783,8 +783,8 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 		}
 		uniPort++
 
-		src := eth.NewPeer(eth.ETH66, peer1, p2pSrc, handler.txpool)
-		sink := eth.NewPeer(eth.ETH66, peer2, p2pSink, handler.txpool)
+		src := eth.NewPeer(eth.ETH67, peer1, p2pSrc, handler.txpool)
+		sink := eth.NewPeer(eth.ETH67, peer2, p2pSink, handler.txpool)
 		defer src.Close()
 		defer sink.Close()
 

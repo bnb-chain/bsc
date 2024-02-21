@@ -594,8 +594,15 @@ func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts, b
 		log.Warn("transaction and receipt count mismatch")
 		return
 	}
+	blockBaseFee := block.BaseFee()
+	if blockBaseFee == nil {
+		blockBaseFee = big.NewInt(0)
+	}
 	for i, receipt := range receipts {
-		receipt.EffectiveGasPrice = txs[i].EffectiveGasTipValue(block.BaseFee()) // basefee is supposed to be nil or zero
+		receipt.EffectiveGasPrice = big.NewInt(0).Add(blockBaseFee, txs[i].EffectiveGasTipValue(blockBaseFee))
+		if receipt.Logs == nil {
+			receipt.Logs = []*types.Log{}
+		}
 	}
 
 	bc.receiptsCache.Add(hash, receipts)
@@ -1131,7 +1138,6 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	headBlockGauge.Update(int64(block.NumberU64()))
 	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(block.Header())))
 	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
-
 }
 
 // stopWithoutSaving stops the blockchain service. If any imports are currently in progress

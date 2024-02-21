@@ -534,8 +534,8 @@ func (test *snapshotTest) checkEqual(state, checkstate *StateDB) error {
 func TestTouchDelete(t *testing.T) {
 	s := newStateEnv()
 	s.state.getOrNewStateObject(common.Address{})
-	state.Finalise(false)
-	state.AccountsIntermediateRoot()
+	s.state.Finalise(false)
+	s.state.AccountsIntermediateRoot()
 	root, _, _ := s.state.Commit(0, nil)
 	s.state, _ = New(root, s.state.db, s.state.snaps)
 

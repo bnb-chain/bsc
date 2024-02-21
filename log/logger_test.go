@@ -137,8 +137,6 @@ func TestLoggerOutput(t *testing.T) {
 	}
 }
 
-const termTimeFormat = "01-02|15:04:05.000"
-
 func BenchmarkAppendFormat(b *testing.B) {
 	var now = time.Now()
 	b.Run("fmt time.Format", func(b *testing.B) {

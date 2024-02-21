@@ -324,6 +324,32 @@ loop:
 			if have, want := msg.ProtocolVersion, c.ourHighestProtoVersion; have != uint32(want) {
 				return fmt.Errorf("wrong protocol version: have %v, want %v", have, want)
 			}
+			// make sure eth protocol version is set for negotiation
+			if c.negotiatedProtoVersion == 0 {
+				return errors.New("eth protocol version must be set in Conn")
+			}
+			if status == nil {
+				// default status message
+				status = &eth.StatusPacket{
+					ProtocolVersion: uint32(c.negotiatedProtoVersion),
+					NetworkID:       chain.config.ChainID.Uint64(),
+					TD:              chain.TD(),
+					Head:            chain.blocks[chain.Len()-1].Hash(),
+					Genesis:         chain.blocks[0].Hash(),
+					ForkID:          chain.ForkID(),
+				}
+			}
+			if err := c.Write(ethProto, eth.StatusMsg, status); err != nil {
+				return fmt.Errorf("write to connection failed: %v", err)
+			}
+		case eth.UpgradeStatusMsg + +protoOffset(ethProto):
+			msg := new(eth.UpgradeStatusPacket)
+			if err := rlp.DecodeBytes(data, &msg); err != nil {
+				return fmt.Errorf("error decoding status packet: %w", err)
+			}
+			if err := c.Write(ethProto, eth.UpgradeStatusMsg, msg); err != nil {
+				return fmt.Errorf("write to connection failed: %v", err)
+			}
 			break loop
 		case discMsg:
 			var msg []p2p.DiscReason
@@ -339,23 +365,6 @@ loop:
 			return fmt.Errorf("bad status message: code %d", code)
 		}
 	}
-	// make sure eth protocol version is set for negotiation
-	if c.negotiatedProtoVersion == 0 {
-		return errors.New("eth protocol version must be set in Conn")
-	}
-	if status == nil {
-		// default status message
-		status = &eth.StatusPacket{
-			ProtocolVersion: uint32(c.negotiatedProtoVersion),
-			NetworkID:       chain.config.ChainID.Uint64(),
-			TD:              chain.TD(),
-			Head:            chain.blocks[chain.Len()-1].Hash(),
-			Genesis:         chain.blocks[0].Hash(),
-			ForkID:          chain.ForkID(),
-		}
-	}
-	if err := c.Write(ethProto, eth.StatusMsg, status); err != nil {
-		return fmt.Errorf("write to connection failed: %v", err)
-	}
+
 	return nil
 }

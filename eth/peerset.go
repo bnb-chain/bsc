@@ -290,7 +290,6 @@ func (ps *peerSet) waitTrustExtension(peer *eth.Peer) (*trust.Peer, error) {
 		ps.lock.Unlock()
 		return nil, errPeerWaitTimeout
 	}
-
 }
 
 // waitBscExtension blocks until all satellite protocols are connected and tracked

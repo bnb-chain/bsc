@@ -170,7 +170,7 @@ func TestFilters(t *testing.T) {
 				contract:  {Balance: big.NewInt(0), Code: bytecode},
 				contract2: {Balance: big.NewInt(0), Code: bytecode},
 			},
-			BaseFee: big.NewInt(params.InitialBaseFeeForEthMainnet),
+			BaseFee: big.NewInt(params.InitialBaseFee),
 		}
 	)
 

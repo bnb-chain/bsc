@@ -208,7 +208,7 @@ func TestGraphQLBlockSerializationEIP2718(t *testing.T) {
 			To:       &dad,
 			Value:    big.NewInt(100),
 			Gas:      50000,
-			GasPrice: big.NewInt(params.InitialBaseFeeForEthMainnet),
+			GasPrice: big.NewInt(params.InitialBaseFee),
 		})
 		gen.AddTx(tx)
 		tx, _ = types.SignNewTx(key, signer, &types.AccessListTx{
@@ -216,7 +216,7 @@ func TestGraphQLBlockSerializationEIP2718(t *testing.T) {
 			Nonce:    uint64(1),
 			To:       &dad,
 			Gas:      30000,
-			GasPrice: big.NewInt(params.InitialBaseFeeForEthMainnet),
+			GasPrice: big.NewInt(params.InitialBaseFee),
 			Value:    big.NewInt(50),
 			AccessList: types.AccessList{{
 				Address:     dad,
@@ -303,11 +303,11 @@ func TestGraphQLConcurrentResolvers(t *testing.T) {
 
 	var tx *types.Transaction
 	handler, chain := newGQLService(t, stack, false, genesis, 1, func(i int, gen *core.BlockGen) {
-		tx, _ = types.SignNewTx(key, signer, &types.LegacyTx{To: &dad, Gas: 100000, GasPrice: big.NewInt(params.InitialBaseFeeForEthMainnet)})
+		tx, _ = types.SignNewTx(key, signer, &types.LegacyTx{To: &dad, Gas: 100000, GasPrice: big.NewInt(params.InitialBaseFee)})
 		gen.AddTx(tx)
-		tx, _ = types.SignNewTx(key, signer, &types.LegacyTx{To: &dad, Nonce: 1, Gas: 100000, GasPrice: big.NewInt(params.InitialBaseFeeForEthMainnet)})
+		tx, _ = types.SignNewTx(key, signer, &types.LegacyTx{To: &dad, Nonce: 1, Gas: 100000, GasPrice: big.NewInt(params.InitialBaseFee)})
 		gen.AddTx(tx)
-		tx, _ = types.SignNewTx(key, signer, &types.LegacyTx{To: &dad, Nonce: 2, Gas: 100000, GasPrice: big.NewInt(params.InitialBaseFeeForEthMainnet)})
+		tx, _ = types.SignNewTx(key, signer, &types.LegacyTx{To: &dad, Nonce: 2, Gas: 100000, GasPrice: big.NewInt(params.InitialBaseFee)})
 		gen.AddTx(tx)
 	})
 	// start node
@@ -389,7 +389,7 @@ func TestWithdrawals(t *testing.T) {
 	defer stack.Close()
 
 	handler, _ := newGQLService(t, stack, true, genesis, 1, func(i int, gen *core.BlockGen) {
-		tx, _ := types.SignNewTx(key, signer, &types.LegacyTx{To: &common.Address{}, Gas: 100000, GasPrice: big.NewInt(params.InitialBaseFeeForEthMainnet)})
+		tx, _ := types.SignNewTx(key, signer, &types.LegacyTx{To: &common.Address{}, Gas: 100000, GasPrice: big.NewInt(params.InitialBaseFee)})
 		gen.AddTx(tx)
 		gen.AddWithdrawal(&types.Withdrawal{
 			Validator: 5,

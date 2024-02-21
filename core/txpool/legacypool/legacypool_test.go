@@ -2554,7 +2554,7 @@ func TestTransactionPendingReannouce(t *testing.T) {
 
 	key, _ := crypto.GenerateKey()
 	account := crypto.PubkeyToAddress(key.PublicKey)
-	pool.currentState.AddBalance(account, big.NewInt(1000000))
+	pool.currentState.AddBalance(account, uint256.NewInt(1000000))
 
 	events := make(chan core.ReannoTxsEvent, testTxPoolConfig.AccountQueue)
 	sub := pool.reannoTxFeed.Subscribe(events)

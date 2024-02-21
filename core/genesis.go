@@ -477,7 +477,11 @@ func (g *Genesis) ToBlock() *types.Block {
 		if g.BaseFee != nil {
 			head.BaseFee = g.BaseFee
 		} else {
-			head.BaseFee = new(big.Int).SetUint64(params.InitialBaseFee)
+			if g.Config.Parlia != nil {
+				head.BaseFee = new(big.Int).SetUint64(params.InitialBaseFeeForBSC)
+			} else {
+				head.BaseFee = new(big.Int).SetUint64(params.InitialBaseFee)
+			}
 		}
 	}
 	var withdrawals []*types.Withdrawal

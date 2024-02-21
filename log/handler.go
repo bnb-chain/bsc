@@ -210,5 +210,4 @@ func RotatingFileHandler(filePath string, limit uint, maxBackups uint, level str
 	fileWriter := NewAsyncFileWriter(filePath, int64(limit), int(maxBackups), rotateHours)
 	fileWriter.Start()
 	return LogfmtHandlerWithLevel(fileWriter, logLevel)
-
 }

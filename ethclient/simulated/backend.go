@@ -17,22 +17,30 @@
 package simulated
 
 import (
+	"context"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/catalyst"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
+
+// TransactionConditionalSender injects the conditional transaction into the pending pool for execution after verification.
+type TransactionConditionalSender interface {
+	SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts ethapi.TransactionOpts) error
+}
 
 // Client exposes the methods provided by the Ethereum RPC client.
 type Client interface {
@@ -50,6 +58,7 @@ type Client interface {
 	ethereum.TransactionReader
 	ethereum.TransactionSender
 	ethereum.ChainIDReader
+	TransactionConditionalSender
 }
 
 // simClient wraps ethclient. This exists to prevent extracting ethclient.Client

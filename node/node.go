@@ -124,7 +124,6 @@ func New(conf *Config) (*Node, error) {
 			}
 
 			log.SetDefault(log.NewLogger(log.RotatingFileHandler(logFilePath, *conf.LogConfig.MaxBytesSize, maxBackups, *conf.LogConfig.Level, rotateHours)))
-
 		}
 	}
 	if conf.Logger == nil {

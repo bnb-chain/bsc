@@ -1433,7 +1433,7 @@ func TestInvalidAnnounceMetadata(t *testing.T) {
 		init: func() *TxFetcher {
 			return NewTxFetcher(
 				func(common.Hash) bool { return false },
-				func(txs []*types.Transaction) []error {
+				func(peer string, txs []*types.Transaction) []error {
 					return make([]error, len(txs))
 				},
 				func(string, []common.Hash) error { return nil },
@@ -1998,7 +1998,7 @@ func containsHash(slice []common.Hash, hash common.Hash) bool {
 func TestTransactionForgotten(t *testing.T) {
 	fetcher := NewTxFetcher(
 		func(common.Hash) bool { return false },
-		func(txs []*types.Transaction) []error {
+		func(peer string, txs []*types.Transaction) []error {
 			errs := make([]error, len(txs))
 			for i := 0; i < len(errs); i++ {
 				errs[i] = txpool.ErrUnderpriced

@@ -289,12 +289,12 @@ func TestFreezerConcurrentReadonly(t *testing.T) {
 	tables := map[string]bool{"a": true}
 	dir := t.TempDir()
 
-	f, err := NewFreezer(dir, "", false, 2049, tables)
+	f, err := NewFreezer(dir, "", false, 0, 2049, tables)
 	if err != nil {
 		t.Fatal("can't open freezer", err)
 	}
 	var item = make([]byte, 1024)
-	batch := f.tables["a"].newBatch()
+	batch := f.tables["a"].newBatch(0)
 	items := uint64(10)
 	for i := uint64(0); i < items; i++ {
 		require.NoError(t, batch.AppendRaw(i, item))
@@ -315,7 +315,7 @@ func TestFreezerConcurrentReadonly(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			f, err := NewFreezer(dir, "", true, 2049, tables)
+			f, err := NewFreezer(dir, "", true, 0, 2049, tables)
 			if err == nil {
 				fs[i] = f
 			} else {

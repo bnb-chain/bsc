@@ -271,8 +271,24 @@ var genesis = &core.Genesis{
 	Alloc:     core.GenesisAlloc{testAddr: {Balance: testBalance}},
 	ExtraData: []byte("test genesis"),
 	Timestamp: 9000,
-	BaseFee:   big.NewInt(params.InitialBaseFee),
+	BaseFee:   big.NewInt(params.InitialBaseFeeForBSC),
 }
+
+var testTx1 = types.MustSignNewTx(testKey, types.LatestSigner(genesis.Config), &types.LegacyTx{
+	Nonce:    254,
+	Value:    big.NewInt(12),
+	GasPrice: testGasPrice,
+	Gas:      params.TxGas,
+	To:       &common.Address{2},
+})
+
+var testTx2 = types.MustSignNewTx(testKey, types.LatestSigner(genesis.Config), &types.LegacyTx{
+	Nonce:    255,
+	Value:    big.NewInt(8),
+	GasPrice: testGasPrice,
+	Gas:      params.TxGas,
+	To:       &common.Address{2},
+})
 
 type testTransactionParam struct {
 	to       common.Address
@@ -359,6 +375,11 @@ func generateTestChain() []*types.Block {
 				}
 			}
 		}
+		// for testTransactionInBlock
+		if i+1 == testBlockNum {
+			block.AddTxWithChain(chain, testTx1)
+			block.AddTxWithChain(chain, testTx2)
+		}
 	}
 	gblock := genesis.MustCommit(db, trie.NewDatabase(db, nil))
 	engine := ethash.NewFaker()
@@ -400,13 +421,13 @@ func TestEthClient(t *testing.T) {
 		"CallContractAtHash": {
 			func(t *testing.T) { testCallContractAtHash(t, client) },
 		},
+		// DO not have TestAtFunctions now, because we do not have pending block now
 		// "AtFunctions": {
 		// 	func(t *testing.T) { testAtFunctions(t, client) },
 		// },
 		"TestSendTransactionConditional": {
 			func(t *testing.T) { testSendTransactionConditional(t, client) },
 		},
-		// DO not have TestAtFunctions now, because we do not have pending block now
 	}
 
 	t.Parallel()
@@ -526,7 +547,7 @@ func testTransactionInBlock(t *testing.T, client *rpc.Client) {
 	}
 
 	// Test tx in block found.
-	tx, err := ec.TransactionInBlock(context.Background(), block.Hash(), 0)
+	tx, err := ec.TransactionInBlock(context.Background(), block.Hash(), 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -534,7 +555,7 @@ func testTransactionInBlock(t *testing.T, client *rpc.Client) {
 		t.Fatalf("unexpected transaction: %v", tx)
 	}
 
-	tx, err = ec.TransactionInBlock(context.Background(), block.Hash(), 1)
+	tx, err = ec.TransactionInBlock(context.Background(), block.Hash(), 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -652,8 +673,8 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 			},
 		},
 		BaseFee: []*big.Int{
-			big.NewInt(params.InitialBaseFee),
-			big.NewInt(params.InitialBaseFee),
+			big.NewInt(params.InitialBaseFeeForBSC),
+			big.NewInt(params.InitialBaseFeeForBSC),
 		},
 		GasUsedRatio: []float64{0.008912678667376286},
 	}
@@ -719,143 +740,12 @@ func testCallContract(t *testing.T, client *rpc.Client) {
 func testSendTransactionConditional(t *testing.T, client *rpc.Client) {
 	ec := NewClient(client)
 
-	block, err := ec.HeaderByNumber(context.Background(), big.NewInt(1))
-	if err != nil {
-		t.Fatalf("BlockByNumber error: %v", err)
-	}
-
-	// send a transaction for some interesting pending status
-	sendTransaction(ec)
-	time.Sleep(100 * time.Millisecond)
-
-	// Check pending transaction count
-	pending, err := ec.PendingTransactionCount(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if pending != 1 {
-		t.Fatalf("unexpected pending, wanted 1 got: %v", pending)
-	}
-	// Query balance
-	balance, err := ec.BalanceAt(context.Background(), testAddr, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	hashBalance, err := ec.BalanceAtHash(context.Background(), testAddr, block.Hash())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if balance.Cmp(hashBalance) == 0 {
-		t.Fatalf("unexpected balance at hash: %v %v", balance, hashBalance)
-	}
-	penBalance, err := ec.PendingBalanceAt(context.Background(), testAddr)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if balance.Cmp(penBalance) == 0 {
-		t.Fatalf("unexpected balance: %v %v", balance, penBalance)
-	}
-	// NonceAt
-	nonce, err := ec.NonceAt(context.Background(), testAddr, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	hashNonce, err := ec.NonceAtHash(context.Background(), testAddr, block.Hash())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if hashNonce == nonce {
-		t.Fatalf("unexpected nonce at hash: %v %v", nonce, hashNonce)
-	}
-	penNonce, err := ec.PendingNonceAt(context.Background(), testAddr)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if penNonce != nonce+1 {
-		t.Fatalf("unexpected nonce: %v %v", nonce, penNonce)
-	}
-	// StorageAt
-	storage, err := ec.StorageAt(context.Background(), testAddr, common.Hash{}, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	hashStorage, err := ec.StorageAtHash(context.Background(), testAddr, common.Hash{}, block.Hash())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !bytes.Equal(storage, hashStorage) {
-		t.Fatalf("unexpected storage at hash: %v %v", storage, hashStorage)
-	}
-	penStorage, err := ec.PendingStorageAt(context.Background(), testAddr, common.Hash{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !bytes.Equal(storage, penStorage) {
-		t.Fatalf("unexpected storage: %v %v", storage, penStorage)
-	}
-	// CodeAt
-	code, err := ec.CodeAt(context.Background(), testAddr, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	hashCode, err := ec.CodeAtHash(context.Background(), common.Address{}, block.Hash())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !bytes.Equal(code, hashCode) {
-		t.Fatalf("unexpected code at hash: %v %v", code, hashCode)
-	}
-	penCode, err := ec.PendingCodeAt(context.Background(), testAddr)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !bytes.Equal(code, penCode) {
-		t.Fatalf("unexpected code: %v %v", code, penCode)
+	if err := sendTransactionConditional(ec); err != nil {
+		t.Fatalf("error: %v", err)
 	}
 }
 
-func testTransactionSender(t *testing.T, client *rpc.Client) {
-	ec := NewClient(client)
-	ctx := context.Background()
-
-	// Retrieve testTx1 via RPC.
-	block2, err := ec.HeaderByNumber(ctx, big.NewInt(2))
-	if err != nil {
-		t.Fatal("can't get block 1:", err)
-	}
-	tx1, err := ec.TransactionInBlock(ctx, block2.Hash(), 0)
-	if err != nil {
-		t.Fatal("can't get tx:", err)
-	}
-	if tx1.Hash() != testTx1.Hash() {
-		t.Fatalf("wrong tx hash %v, want %v", tx1.Hash(), testTx1.Hash())
-	}
-
-	// The sender address is cached in tx1, so no additional RPC should be required in
-	// TransactionSender. Ensure the server is not asked by canceling the context here.
-	canceledCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	<-canceledCtx.Done() // Ensure the close of the Done channel
-	sender1, err := ec.TransactionSender(canceledCtx, tx1, block2.Hash(), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sender1 != testAddr {
-		t.Fatal("wrong sender:", sender1)
-	}
-
-	// Now try to get the sender of testTx2, which was not fetched through RPC.
-	// TransactionSender should query the server here.
-	sender2, err := ec.TransactionSender(ctx, testTx2, block2.Hash(), 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sender2 != testAddr {
-		t.Fatal("wrong sender:", sender2)
-	}
-}
-
-func sendTransaction(ec *Client) error {
+func sendTransactionConditional(ec *Client) error {
 	chainID, err := ec.ChainID(context.Background())
 	if err != nil {
 		return err

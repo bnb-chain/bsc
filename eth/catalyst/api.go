@@ -665,16 +665,6 @@ func (api *ConsensusAPI) delayPayloadImport(block *types.Block) (engine.PayloadS
 	return engine.PayloadStatusV1{Status: engine.SYNCING}, nil
 }
 
-// setInvalidAncestor is a callback for the downloader to notify us if a bad block
-// is encountered during the async sync.
-func (api *ConsensusAPI) setInvalidAncestor(invalid *types.Header, origin *types.Header) {
-	api.invalidLock.Lock()
-	defer api.invalidLock.Unlock()
-
-	api.invalidTipsets[origin.Hash()] = invalid
-	api.invalidBlocksHits[invalid.Hash()]++
-}
-
 // checkInvalidAncestor checks whether the specified chain end links to a known
 // bad ancestor. If yes, it constructs the payload failure response to return.
 func (api *ConsensusAPI) checkInvalidAncestor(check common.Hash, head common.Hash) *engine.PayloadStatusV1 {
