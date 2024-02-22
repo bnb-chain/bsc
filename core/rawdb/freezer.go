@@ -365,6 +365,7 @@ func (f *Freezer) validate() error {
 	)
 	// Hack to get boundary of any table
 	for kind, table := range f.tables {
+		// TODO(GalaIO): blobs table must be skipped
 		head = table.items.Load()
 		tail = table.itemHidden.Load()
 		name = kind
@@ -372,6 +373,7 @@ func (f *Freezer) validate() error {
 	}
 	// Now check every table against those boundaries.
 	for kind, table := range f.tables {
+		// TODO(GalaIO): blobs table is special for freezerDB, it must be 0 before cancun, and match head with others after cancun.
 		if head != table.items.Load() {
 			return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, table.items.Load(), head)
 		}
@@ -391,6 +393,7 @@ func (f *Freezer) repair() error {
 		tail = uint64(0)
 	)
 	for _, table := range f.tables {
+		// TODO(GalaIO): blobs table must be skipped
 		items := table.items.Load()
 		if head > items {
 			head = items
@@ -401,6 +404,7 @@ func (f *Freezer) repair() error {
 		}
 	}
 	for _, table := range f.tables {
+		// TODO(GalaIO): blobs table is special for freezerDB, it must be 0 before cancun, and match head with others after cancun.
 		if err := table.truncateHead(head); err != nil {
 			return err
 		}

@@ -785,7 +785,7 @@ func WriteBlock(db ethdb.KeyValueWriter, block *types.Block) {
 }
 
 // WriteAncientBlocks writes entire block data into ancient store and returns the total written size.
-func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
+func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int, blobs []types.BlobTxSidecars) (int64, error) {
 	var (
 		tdSum      = new(big.Int).Set(td)
 		stReceipts []*types.ReceiptForStorage
@@ -801,7 +801,12 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 			if i > 0 {
 				tdSum.Add(tdSum, header.Difficulty)
 			}
-			if err := writeAncientBlock(op, block, header, stReceipts, tdSum); err != nil {
+			// TODO(GalaIO): blob is empty before cancun
+			var subBlobs types.BlobTxSidecars
+			if len(blobs) > 0 {
+				subBlobs = blobs[i]
+			}
+			if err := writeAncientBlock(op, block, header, stReceipts, tdSum, subBlobs); err != nil {
 				return err
 			}
 		}
@@ -809,7 +814,57 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 	})
 }
 
-func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int) error {
+// ReadBlobsRLP retrieves all the transaction blobs belonging to a block in RLP encoding.
+func ReadBlobsRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
+	var data []byte
+	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
+		// Check if the data is in ancients
+		if isCanon(reader, number, hash) {
+			data, _ = reader.Ancient(ChainFreezerBlobTable, number)
+			return nil
+		}
+		// If not, try reading from leveldb
+		data, _ = db.Get(blockBlobsKey(number, hash))
+		return nil
+	})
+	return data
+}
+
+// ReadRawBlobs retrieves all the transaction blobs belonging to a block.
+func ReadRawBlobs(db ethdb.Reader, hash common.Hash, number uint64) types.BlobTxSidecars {
+	data := ReadBlobsRLP(db, hash, number)
+	if len(data) == 0 {
+		return nil
+	}
+	var ret types.BlobTxSidecars
+	if err := rlp.DecodeBytes(data, &ret); err != nil {
+		log.Error("Invalid blob array RLP", "hash", hash, "err", err)
+		return nil
+	}
+	return ret
+}
+
+// WriteBlobs stores all the transaction blobs belonging to a block.
+// It could input nil for empty blobs.
+func WriteBlobs(db ethdb.KeyValueWriter, hash common.Hash, number uint64, blobs types.BlobTxSidecars) {
+	bytes, err := rlp.EncodeToBytes(blobs)
+	if err != nil {
+		log.Crit("Failed to encode block blobs", "err", err)
+	}
+	// Store the flattened receipt slice
+	if err := db.Put(blockBlobsKey(number, hash), bytes); err != nil {
+		log.Crit("Failed to store block blobs", "err", err)
+	}
+}
+
+// DeleteBlobs removes all blob data associated with a block hash.
+func DeleteBlobs(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
+	if err := db.Delete(blockBlobsKey(number, hash)); err != nil {
+		log.Crit("Failed to delete block blobs", "err", err)
+	}
+}
+
+func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int, blobs types.BlobTxSidecars) error {
 	num := block.NumberU64()
 	if err := op.AppendRaw(ChainFreezerHashTable, num, block.Hash().Bytes()); err != nil {
 		return fmt.Errorf("can't add block %d hash: %v", num, err)
@@ -825,6 +880,12 @@ func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *type
 	}
 	if err := op.Append(ChainFreezerDifficultyTable, num, td); err != nil {
 		return fmt.Errorf("can't append block %d total difficulty: %v", num, err)
+	}
+	// TODO(GalaIO): blobs may nil before cancun fork
+	if len(blobs) > 0 {
+		if err := op.Append(ChainFreezerBlobTable, num, blobs); err != nil {
+			return fmt.Errorf("can't append block %d blobs: %v", num, err)
+		}
 	}
 	return nil
 }

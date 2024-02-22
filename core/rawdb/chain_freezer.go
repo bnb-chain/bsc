@@ -156,6 +156,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		if limit-first > freezerBatchLimit {
 			limit = first + freezerBatchLimit
 		}
+		// TODO(GalaIO): implement blobs prune later
 		ancients, err := f.freezeRange(nfdb, first, limit)
 		if err != nil {
 			log.Error("Error in block freeze operation", "err", err)
@@ -276,6 +277,11 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			if len(td) == 0 {
 				return fmt.Errorf("total difficulty missing, can't freeze block %d", number)
 			}
+			// TODO(GalaIO): blobs may nil before cancun fork
+			blobs := ReadBlobsRLP(nfdb, hash, number)
+			//if len(blobs) == 0 {
+			//	return fmt.Errorf("block blobs missing, can't freeze block %d", number)
+			//}
 
 			// Write to the batch.
 			if err := op.AppendRaw(ChainFreezerHashTable, number, hash[:]); err != nil {
@@ -292,6 +298,11 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			}
 			if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
 				return fmt.Errorf("can't write td to Freezer: %v", err)
+			}
+			if len(blobs) > 0 {
+				if err := op.AppendRaw(ChainFreezerBlobTable, number, blobs); err != nil {
+					return fmt.Errorf("can't write blobs to Freezer: %v", err)
+				}
 			}
 
 			hashes = append(hashes, hash)
