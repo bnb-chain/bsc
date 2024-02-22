@@ -1361,7 +1361,10 @@ func (s *BlockChainAPI) CallBundle(ctx context.Context, args CallBundleArgs) (ma
 		Time:       timestamp,
 		Difficulty: difficulty,
 		Coinbase:   coinbase,
+		BaseFee: parent.BaseFee,
 	}
+
+	fmt.Println(parent.BaseFee)
 
 	// Setup context so it may be cancelled the call has completed
 	// or, in case of unmetered gas, setup a context with a timeout.
