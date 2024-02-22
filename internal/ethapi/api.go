@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -1252,6 +1253,197 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	}
 
 	return doCall(ctx, b, args, state, header, overrides, blockOverrides, timeout, globalGasCap)
+}
+
+func newRevertError(result *core.ExecutionResult) *revertError {
+	reason, errUnpack := abi.UnpackRevert(result.Revert())
+	err := errors.New("execution reverted")
+	if errUnpack == nil {
+		err = fmt.Errorf("execution reverted: %v", reason)
+	}
+	return &revertError{
+		error:  err,
+		reason: hexutil.Encode(result.Revert()),
+	}
+}
+
+// revertError is an API error that encompasses an EVM revertal with JSON error
+// code and a binary data blob.
+type revertError struct {
+	error
+	reason string // revert reason hex encoded
+}
+
+// ErrorCode returns the JSON error code for a revertal.
+// See: https://github.com/ethereum/wiki/wiki/JSON-RPC-Error-Codes-Improvement-Proposal
+func (e *revertError) ErrorCode() int {
+	return 3
+}
+
+// ErrorData returns the hex encoded revert reason.
+func (e *revertError) ErrorData() interface{} {
+	return e.reason
+}
+
+// CallBundleArgs represents the arguments for a call.
+type CallBundleArgs struct {
+	Txs                    []hexutil.Bytes       `json:"txs"`
+	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
+	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
+	Coinbase               *string               `json:"coinbase"`
+	Timestamp              *uint64               `json:"timestamp"`
+	Timeout                *int64                `json:"timeout"`
+	GasLimit               *uint64               `json:"gasLimit"`
+	Difficulty             *big.Int              `json:"difficulty"`
+	SimulationLogs         bool                  `json:"simulationLogs"`
+	StateOverrides         *StateOverride        `json:"stateOverrides"`
+}
+
+// CallBundle will simulate a bundle of transactions at the top of a given block
+// number with the state of another (or the same) block. This can be used to
+// simulate future blocks with the current state, or it can be used to simulate
+// a past block.
+// The sender is responsible for signing the transactions and using the correct
+// nonce and ensuring validity
+func (s *BlockChainAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[string]interface{}, error) {
+	if len(args.Txs) == 0 {
+		return nil, errors.New("bundle missing txs")
+	}
+	if args.BlockNumber == 0 {
+		return nil, errors.New("bundle missing blockNumber")
+	}
+
+	var txs types.Transactions
+
+	for _, encodedTx := range args.Txs {
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			return nil, err
+		}
+		txs = append(txs, tx)
+	}
+	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+
+	timeoutMilliSeconds := int64(5000)
+	if args.Timeout != nil {
+		timeoutMilliSeconds = *args.Timeout
+	}
+	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
+	state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	if err := args.StateOverrides.Apply(state); err != nil {
+		return nil, err
+	}
+	blockNumber := big.NewInt(int64(args.BlockNumber))
+
+	timestamp := parent.Time + 1
+	if args.Timestamp != nil {
+		timestamp = *args.Timestamp
+	}
+	coinbase := parent.Coinbase
+	if args.Coinbase != nil {
+		coinbase = common.HexToAddress(*args.Coinbase)
+	}
+	difficulty := parent.Difficulty
+	if args.Difficulty != nil {
+		difficulty = args.Difficulty
+	}
+	gasLimit := parent.GasLimit
+	if args.GasLimit != nil {
+		gasLimit = *args.GasLimit
+	}
+	header := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     blockNumber,
+		GasLimit:   gasLimit,
+		Time:       timestamp,
+		Difficulty: difficulty,
+		Coinbase:   coinbase,
+	}
+
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		_, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		_, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	vmconfig := vm.Config{}
+
+	// Setup the gas pool (also for unmetered requests)
+	// and apply the message.
+	gp := new(core.GasPool).AddGas(math.MaxUint64)
+
+	results := []map[string]interface{}{}
+
+	bundleHash := sha3.NewLegacyKeccak256()
+	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, timestamp)
+	var totalGasUsed uint64
+	gasFees := new(big.Int)
+	for _, tx := range txs {
+		// state.Prepare(tx.Hash(), i)
+
+		receipt, result, err := core.ApplyTransaction(s.b.ChainConfig(), s.b.Chain(), &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
+		if err != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		}
+
+		txHash := tx.Hash().String()
+		from, err := types.Sender(signer, tx)
+		if err != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		}
+		to := "0x"
+		if tx.To() != nil {
+			to = tx.To().String()
+		}
+		jsonResult := map[string]interface{}{
+			"txHash":      txHash,
+			"gasUsed":     receipt.GasUsed,
+			"fromAddress": from.String(),
+			"toAddress":   to,
+		}
+		totalGasUsed += receipt.GasUsed
+		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice())
+		gasFees.Add(gasFees, gasFeesTx)
+		bundleHash.Write(tx.Hash().Bytes())
+		if result.Err != nil {
+			jsonResult["error"] = result.Err.Error()
+			revert := result.Revert()
+			if len(revert) > 0 {
+				jsonResult["revert"] = string(revert)
+			}
+		} else {
+			dst := make([]byte, hex.EncodedLen(len(result.Return())))
+			hex.Encode(dst, result.Return())
+			jsonResult["value"] = "0x" + string(dst)
+		}
+		// if simulation logs are requested append it to logs
+		if args.SimulationLogs {
+			jsonResult["logs"] = receipt.Logs
+		}
+		jsonResult["gasFees"] = gasFeesTx.String()
+		jsonResult["gasPrice"] = tx.GasPrice().String()
+		jsonResult["gasUsed"] = receipt.GasUsed
+		results = append(results, jsonResult)
+	}
+
+	ret := map[string]interface{}{}
+	ret["results"] = results
+	ret["gasFees"] = gasFees.String()
+	ret["bundleGasPrice"] = new(big.Int).Div(gasFees, big.NewInt(int64(totalGasUsed))).String()
+	ret["totalGasUsed"] = totalGasUsed
+	ret["stateBlockNumber"] = parent.Number.Int64()
+
+	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
+	return ret, nil
 }
 
 // Call executes the given transaction on the state for the given block number.
