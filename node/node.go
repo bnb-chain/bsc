@@ -90,7 +90,6 @@ func New(conf *Config) (*Node, error) {
 		}
 		conf.DataDir = absdatadir
 	}
-
 	if conf.LogConfig != nil {
 		if conf.LogConfig.TermTimeFormat != nil && *conf.LogConfig.TermTimeFormat != "" {
 			log.SetTermTimeFormat(*conf.LogConfig.TermTimeFormat)
@@ -178,10 +177,6 @@ func New(conf *Config) (*Node, error) {
 	node.config.checkLegacyFiles()
 	if node.server.Config.NodeDatabase == "" {
 		node.server.Config.NodeDatabase = node.config.NodeDB()
-	}
-
-	if conf.EnableSeparateTrie {
-		node.config.enableSeparateTrie()
 	}
 
 	// Check HTTP/WS prefixes are valid.

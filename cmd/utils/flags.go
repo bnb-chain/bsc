@@ -1640,9 +1640,6 @@ func SetDataDir(ctx *cli.Context, cfg *node.Config) {
 	case ctx.Bool(DeveloperFlag.Name):
 		cfg.DataDir = "" // unless explicitly requested, use memory databases
 	}
-	if ctx.IsSet(SeparateTrieFlag.Name) {
-		cfg.EnableSeparateTrie = true
-	}
 }
 
 func setVoteJournalDir(ctx *cli.Context, cfg *node.Config) {

@@ -511,7 +511,6 @@ func checkStateContent(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
-
 	var (
 		it        = rawdb.NewKeyLengthIterator(db.NewIterator(prefix, start), 32)
 		hasher    = crypto.NewKeccakState()
