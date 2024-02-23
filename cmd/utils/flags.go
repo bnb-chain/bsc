@@ -1953,6 +1953,11 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if cfg.TriesVerifyMode.NeedRemoteVerify() {
 			cfg.EnableTrustProtocol = true
 		}
+		// A node without trie is not able to provide snap data, so it should disable snap protocol.
+		if cfg.TriesVerifyMode != core.LocalVerify {
+			log.Info("Automatically disables snap protocol due to verify mode", "mode", cfg.TriesVerifyMode)
+			cfg.DisableSnapProtocol = true
+		}
 
 		if cfg.SyncMode == downloader.SnapSync && cfg.TriesVerifyMode.NoTries() {
 			log.Warn("Only local TriesVerifyMode can support snap sync, resetting to full sync", "mode", cfg.TriesVerifyMode)
