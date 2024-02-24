@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -1369,4 +1370,99 @@ func TestRandom(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
+}
+
+func TestResetItems(t *testing.T) {
+	t.Parallel()
+	rm, wm, sg := metrics.NewMeter(), metrics.NewMeter(), metrics.NewGauge()
+	fname := fmt.Sprintf("truncate-tail-%d", rand.Uint64())
+
+	// Fill table
+	f, err := newTable(os.TempDir(), fname, rm, wm, sg, 40, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write 7 x 20 bytes, splitting out into four files
+	batch := f.newBatch(0)
+	require.NoError(t, batch.AppendRaw(0, getChunk(20, 0xFF)))
+	require.NoError(t, batch.AppendRaw(1, getChunk(20, 0xEE)))
+	require.NoError(t, batch.AppendRaw(2, getChunk(20, 0xdd)))
+	require.NoError(t, batch.AppendRaw(3, getChunk(20, 0xcc)))
+	require.NoError(t, batch.AppendRaw(4, getChunk(20, 0xbb)))
+	require.NoError(t, batch.AppendRaw(5, getChunk(20, 0xaa)))
+	require.NoError(t, batch.AppendRaw(6, getChunk(20, 0x11)))
+	require.NoError(t, batch.commit())
+
+	// nothing to do, all the items should still be there.
+	f, err = f.resetItems(0, 7)
+	assert.NoError(t, err)
+	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieve(t, f, map[uint64][]byte{
+		0: getChunk(20, 0xFF),
+		1: getChunk(20, 0xEE),
+		2: getChunk(20, 0xdd),
+		3: getChunk(20, 0xcc),
+		4: getChunk(20, 0xbb),
+		5: getChunk(20, 0xaa),
+		6: getChunk(20, 0x11),
+	})
+
+	f, err = f.resetItems(1, 5)
+	assert.NoError(t, err)
+	_, err = f.resetItems(0, 5)
+	assert.Error(t, err)
+	_, err = f.resetItems(1, 6)
+	assert.Error(t, err)
+
+	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieveError(t, f, map[uint64]error{
+		0: errOutOfBounds,
+	})
+	checkRetrieve(t, f, map[uint64][]byte{
+		1: getChunk(20, 0xEE),
+		2: getChunk(20, 0xdd),
+		3: getChunk(20, 0xcc),
+		4: getChunk(20, 0xbb),
+	})
+
+	f, err = f.resetItems(4, 4)
+	assert.NoError(t, err)
+	checkRetrieveError(t, f, map[uint64]error{
+		4: errOutOfBounds,
+	})
+
+	batch = f.newBatch(0)
+	require.Error(t, batch.AppendRaw(0, getChunk(20, 0xa0)))
+	require.NoError(t, batch.AppendRaw(4, getChunk(20, 0xa4)))
+	require.NoError(t, batch.AppendRaw(5, getChunk(20, 0xa5)))
+	require.NoError(t, batch.commit())
+	fmt.Println(f.dumpIndexString(0, 1000))
+
+	// Reopen the table, the deletion information should be persisted as well
+	f.Close()
+	f, err = newTable(os.TempDir(), fname, rm, wm, sg, 40, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieveError(t, f, map[uint64]error{
+		0: errOutOfBounds,
+	})
+	checkRetrieve(t, f, map[uint64][]byte{
+		4: getChunk(20, 0xa4),
+		5: getChunk(20, 0xa5),
+	})
+
+	// truncate all, the entire freezer should be deleted
+	f.truncateTail(6)
+	checkRetrieveError(t, f, map[uint64]error{
+		0: errOutOfBounds,
+		1: errOutOfBounds,
+		2: errOutOfBounds,
+		3: errOutOfBounds,
+		4: errOutOfBounds,
+		5: errOutOfBounds,
+		6: errOutOfBounds,
+	})
 }

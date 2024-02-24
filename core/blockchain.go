@@ -1358,8 +1358,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		if first.NumberU64() == 1 {
 			if frozen, _ := bc.db.Ancients(); frozen == 0 {
 				td := bc.genesisBlock.Difficulty()
-				// TODO(GalaIO): when sync the history block, it needs store blobs too.
-				writeSize, err := rawdb.WriteAncientBlocks(bc.db, []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, td, nil)
+				writeSize, err := rawdb.WriteAncientBlocks(bc.db, []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, td)
 				if err != nil {
 					log.Error("Error writing genesis to ancients", "err", err)
 					return 0, err
@@ -1377,8 +1376,15 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Write all chain data to ancients.
 		td := bc.GetTd(first.Hash(), first.NumberU64())
+		// TODO(GalaIO): if you just back fill blob, you need check blob ancient and reset it
+		//if isCancun() && rawdb.EmptyBlobAncient(bc.db) {
+		//	rawdb.ResetBlobAncient(bc.db, first.NumberU64())
+		//}
 		// TODO(GalaIO): when sync the history block, it needs store blobs too.
-		writeSize, err := rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td, nil)
+		//if isCancun() {
+		//	writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db, blockChain, receiptChain, td, blobs)
+		//}
+		writeSize, err := rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td)
 		if err != nil {
 			log.Error("Error importing chain data to ancients", "err", err)
 			return 0, err
@@ -1456,6 +1462,10 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			// Write all the data out into the database
 			rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
 			rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
+			// TODO(GalaIO): if enable cancun, need write blobs
+			//if isCancun() {
+			//rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), blobs)
+			//}
 
 			// Write everything belongs to the blocks into the database. So that
 			// we can ensure all components of body is completed(body, receipts)
@@ -1567,6 +1577,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
+		// TODO(GalaIO): if enable cancun, need write blobs
+		//if iscancun(){
+		//rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), blobs)
+		//}
 		rawdb.WritePreimages(blockBatch, state.Preimages())
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)

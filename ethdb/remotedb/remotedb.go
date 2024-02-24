@@ -24,6 +24,7 @@ package remotedb
 import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -114,6 +115,10 @@ func (db *Database) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, e
 	panic("not supported")
 }
 
+func (db *Database) AncientReset(tail, head uint64) error {
+	panic("not supported")
+}
+
 func (db *Database) TruncateHead(n uint64) (uint64, error) {
 	panic("not supported")
 }
@@ -127,6 +132,10 @@ func (db *Database) Sync() error {
 }
 
 func (db *Database) MigrateTable(s string, f func([]byte) ([]byte, error)) error {
+	panic("not supported")
+}
+
+func (db *Database) TableAncients(kind string) (uint64, error) {
 	panic("not supported")
 }
 
@@ -161,6 +170,14 @@ func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
 func (db *Database) Close() error {
 	db.remote.Close()
 	return nil
+}
+
+func (db *Database) AncientFreeze(src ethdb.KeyValueStore, chainCfg *params.ChainConfig) {
+	panic("not supported")
+}
+
+func (db *Database) ResetTable(kind string, tail, head uint64) error {
+	panic("not supported")
 }
 
 func New(client *rpc.Client) ethdb.Database {

@@ -195,6 +195,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		overrides.OverrideFeynman = config.OverrideFeynman
 	}
 
+	// startup ancient freeze
+	chainDb.AncientFreeze(chainDb, chainConfig)
+
 	networkID := config.NetworkId
 	if networkID == 0 {
 		networkID = chainConfig.ChainID.Uint64()

@@ -18,6 +18,7 @@ package rawdb
 
 import (
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // table is a wrapper around a database that prefixes each key access with a pre-
@@ -134,6 +135,14 @@ func (t *table) AncientDatadir() (string, error) {
 	return t.db.AncientDatadir()
 }
 
+func (t *table) TableAncients(kind string) (uint64, error) {
+	return t.db.TableAncients(kind)
+}
+
+func (t *table) ResetTable(kind string, tail, head uint64) error {
+	return t.db.ResetTable(kind, tail, head)
+}
+
 // Put inserts the given value into the database at a prefixed version of the
 // provided key.
 func (t *table) Put(key []byte, value []byte) error {
@@ -223,6 +232,9 @@ func (t *table) NewBatchWithSize(size int) ethdb.Batch {
 // happened on the database.
 func (t *table) NewSnapshot() (ethdb.Snapshot, error) {
 	return t.db.NewSnapshot()
+}
+
+func (t *table) AncientFreeze(src ethdb.KeyValueStore, chainCfg *params.ChainConfig) {
 }
 
 // tableBatch is a wrapper around a database batch that prefixes each key access

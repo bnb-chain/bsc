@@ -2,6 +2,8 @@ package types
 
 import (
 	"crypto/ecdsa"
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/stretchr/testify/assert"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -87,4 +89,27 @@ func createEmptyBlobTx(key *ecdsa.PrivateKey, withSidecar bool) *Transaction {
 	}
 	signer := NewCancunSigner(blobtx.ChainID.ToBig())
 	return MustSignNewTx(key, signer, blobtx)
+}
+
+func TestBlobTxSidecars_Encode(t *testing.T) {
+	bs := BlobTxSidecars{
+		&BlobTxSidecar{
+			Blobs:       []kzg4844.Blob{emptyBlob},
+			Commitments: []kzg4844.Commitment{emptyBlobCommit},
+			Proofs:      []kzg4844.Proof{emptyBlobProof},
+		},
+		&BlobTxSidecar{
+			Blobs:       []kzg4844.Blob{emptyBlob},
+			Commitments: []kzg4844.Commitment{emptyBlobCommit},
+			Proofs:      []kzg4844.Proof{emptyBlobProof},
+		},
+		nil,
+	}
+
+	enc, err := rlp.EncodeToBytes(bs)
+	assert.NoError(t, err)
+	var nbs BlobTxSidecars
+	err = rlp.DecodeBytes(enc, &nbs)
+	assert.NoError(t, err)
+	assert.Equal(t, bs, nbs)
 }

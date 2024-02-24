@@ -360,6 +360,20 @@ func ReadHeader(db ethdb.Reader, hash common.Hash, number uint64) *types.Header 
 	return header
 }
 
+// ReadHeaderAndRaw retrieves the block header corresponding to the hash.
+func ReadHeaderAndRaw(db ethdb.Reader, hash common.Hash, number uint64) (*types.Header, rlp.RawValue) {
+	data := ReadHeaderRLP(db, hash, number)
+	if len(data) == 0 {
+		return nil, nil
+	}
+	header := new(types.Header)
+	if err := rlp.DecodeBytes(data, header); err != nil {
+		log.Error("Invalid block header RLP", "hash", hash, "err", err)
+		return nil, nil
+	}
+	return header, data
+}
+
 // WriteHeader stores a block header into the database and also stores the hash-
 // to-number mapping.
 func WriteHeader(db ethdb.KeyValueWriter, header *types.Header) {
@@ -785,7 +799,7 @@ func WriteBlock(db ethdb.KeyValueWriter, block *types.Block) {
 }
 
 // WriteAncientBlocks writes entire block data into ancient store and returns the total written size.
-func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int, blobs []types.BlobTxSidecars) (int64, error) {
+func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
 	var (
 		tdSum      = new(big.Int).Set(td)
 		stReceipts []*types.ReceiptForStorage
@@ -801,12 +815,40 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 			if i > 0 {
 				tdSum.Add(tdSum, header.Difficulty)
 			}
-			// TODO(GalaIO): blob is empty before cancun
-			var subBlobs types.BlobTxSidecars
-			if len(blobs) > 0 {
-				subBlobs = blobs[i]
+			if err := writeAncientBlock(op, block, header, stReceipts, tdSum); err != nil {
+				return err
 			}
-			if err := writeAncientBlock(op, block, header, stReceipts, tdSum, subBlobs); err != nil {
+		}
+		return nil
+	})
+}
+
+// WriteAncientBlocksWithBlobs writes entire block data into ancient store and returns the total written size.
+// Attention: The caller must set blobs after cancun
+func WriteAncientBlocksWithBlobs(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int, blobs []types.BlobTxSidecars) (int64, error) {
+	// do some sanity check
+	if len(blocks) != len(blobs) {
+		return 0, fmt.Errorf("the blobs len is different with blobks, %v:%v", len(blobs), len(blocks))
+	}
+	if len(blocks) != len(receipts) {
+		return 0, fmt.Errorf("the receipts len is different with blobks, %v:%v", len(receipts), len(blocks))
+	}
+	var (
+		tdSum      = new(big.Int).Set(td)
+		stReceipts []*types.ReceiptForStorage
+	)
+	return db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		for i, block := range blocks {
+			// Convert receipts to storage format and sum up total difficulty.
+			stReceipts = stReceipts[:0]
+			for _, receipt := range receipts[i] {
+				stReceipts = append(stReceipts, (*types.ReceiptForStorage)(receipt))
+			}
+			header := block.Header()
+			if i > 0 {
+				tdSum.Add(tdSum, header.Difficulty)
+			}
+			if err := writeAncientBlockWithBlob(op, block, header, stReceipts, tdSum, blobs[i]); err != nil {
 				return err
 			}
 		}
@@ -847,12 +889,12 @@ func ReadRawBlobs(db ethdb.Reader, hash common.Hash, number uint64) types.BlobTx
 // WriteBlobs stores all the transaction blobs belonging to a block.
 // It could input nil for empty blobs.
 func WriteBlobs(db ethdb.KeyValueWriter, hash common.Hash, number uint64, blobs types.BlobTxSidecars) {
-	bytes, err := rlp.EncodeToBytes(blobs)
+	data, err := rlp.EncodeToBytes(blobs)
 	if err != nil {
 		log.Crit("Failed to encode block blobs", "err", err)
 	}
 	// Store the flattened receipt slice
-	if err := db.Put(blockBlobsKey(number, hash), bytes); err != nil {
+	if err := db.Put(blockBlobsKey(number, hash), data); err != nil {
 		log.Crit("Failed to store block blobs", "err", err)
 	}
 }
@@ -864,7 +906,7 @@ func DeleteBlobs(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	}
 }
 
-func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int, blobs types.BlobTxSidecars) error {
+func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int) error {
 	num := block.NumberU64()
 	if err := op.AppendRaw(ChainFreezerHashTable, num, block.Hash().Bytes()); err != nil {
 		return fmt.Errorf("can't add block %d hash: %v", num, err)
@@ -881,12 +923,22 @@ func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *type
 	if err := op.Append(ChainFreezerDifficultyTable, num, td); err != nil {
 		return fmt.Errorf("can't append block %d total difficulty: %v", num, err)
 	}
-	// TODO(GalaIO): blobs may nil before cancun fork
-	if len(blobs) > 0 {
-		if err := op.Append(ChainFreezerBlobTable, num, blobs); err != nil {
-			return fmt.Errorf("can't append block %d blobs: %v", num, err)
-		}
+	return nil
+}
+
+func writeAncientBlob(op ethdb.AncientWriteOp, num uint64, blobs types.BlobTxSidecars) error {
+	if err := op.Append(ChainFreezerBlobTable, num, blobs); err != nil {
+		return fmt.Errorf("can't append block %d blobs: %v", num, err)
 	}
+	return nil
+}
+
+// writeAncientBlockWithBlob writes entire block data into ancient store and returns the total written size.
+// Attention: The caller must set blobs after cancun
+func writeAncientBlockWithBlob(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int, blobs types.BlobTxSidecars) error {
+	num := block.NumberU64()
+	writeAncientBlock(op, block, header, receipts, td)
+	writeAncientBlob(op, num, blobs)
 	return nil
 }
 
@@ -896,6 +948,7 @@ func DeleteBlock(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	DeleteHeader(db, hash, number)
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
+	DeleteBlobs(db, hash, number) // it is safe to delete non-exist blob
 }
 
 // DeleteBlockWithoutNumber removes all block data associated with a hash, except
@@ -905,6 +958,7 @@ func DeleteBlockWithoutNumber(db ethdb.KeyValueWriter, hash common.Hash, number 
 	deleteHeaderWithoutNumber(db, hash, number)
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
+	DeleteBlobs(db, hash, number)
 }
 
 const badBlockToKeep = 10

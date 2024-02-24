@@ -224,6 +224,12 @@ func (f *Freezer) Ancients() (uint64, error) {
 	return f.frozen.Load(), nil
 }
 
+func (f *Freezer) TableAncients(kind string) (uint64, error) {
+	f.writeLock.RLock()
+	defer f.writeLock.RUnlock()
+	return f.tables[kind].items.Load(), nil
+}
+
 // ItemAmountInAncient returns the actual length of current ancientDB.
 func (f *Freezer) ItemAmountInAncient() (uint64, error) {
 	return f.frozen.Load() - atomic.LoadUint64(&f.offset), nil
@@ -365,7 +371,10 @@ func (f *Freezer) validate() error {
 	)
 	// Hack to get boundary of any table
 	for kind, table := range f.tables {
-		// TODO(GalaIO): blobs table must be skipped
+		// blobs table need be skipped
+		if kind == ChainFreezerBlobTable {
+			continue
+		}
 		head = table.items.Load()
 		tail = table.itemHidden.Load()
 		name = kind
@@ -373,7 +382,21 @@ func (f *Freezer) validate() error {
 	}
 	// Now check every table against those boundaries.
 	for kind, table := range f.tables {
-		// TODO(GalaIO): blobs table is special for freezerDB, it must be 0 before cancun, and match head with others after cancun.
+		// blobs table is special for freezerDB
+		if kind == ChainFreezerBlobTable {
+			bh := table.items.Load()
+			if bh == 0 {
+				continue
+			}
+			if bh != head {
+				return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, bh, head)
+			}
+			bt := table.itemHidden.Load()
+			if tail > bt {
+				return fmt.Errorf("freezer tables %s and %s have differing tail: %d != %d", kind, name, bt, tail)
+			}
+			continue
+		}
 		if head != table.items.Load() {
 			return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, table.items.Load(), head)
 		}
@@ -392,8 +415,11 @@ func (f *Freezer) repair() error {
 		head = uint64(math.MaxUint64)
 		tail = uint64(0)
 	)
-	for _, table := range f.tables {
-		// TODO(GalaIO): blobs table must be skipped
+	for kind, table := range f.tables {
+		// blobs table need be skipped
+		if kind == ChainFreezerBlobTable {
+			continue
+		}
 		items := table.items.Load()
 		if head > items {
 			head = items
@@ -403,8 +429,11 @@ func (f *Freezer) repair() error {
 			tail = hidden
 		}
 	}
-	for _, table := range f.tables {
-		// TODO(GalaIO): blobs table is special for freezerDB, it must be 0 before cancun, and match head with others after cancun.
+	for kind, table := range f.tables {
+		// blobs table is special for freezerDB
+		if kind == ChainFreezerBlobTable && table.items.Load() == 0 {
+			continue
+		}
 		if err := table.truncateHead(head); err != nil {
 			return err
 		}
@@ -604,5 +633,32 @@ func (f *Freezer) MigrateTable(kind string, convert convertLegacyFn) error {
 	if err := os.Remove(migrationPath); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (f *Freezer) ResetTable(kind string, tail, head uint64) error {
+	if f.readonly {
+		return errReadOnly
+	}
+	f.writeLock.Lock()
+	defer f.writeLock.Unlock()
+
+	nt, err := f.tables[kind].resetItems(tail-f.offset, head-f.offset)
+	if err != nil {
+		return err
+	}
+	f.tables[kind] = nt
+
+	if err := f.repair(); err != nil {
+		for _, table := range f.tables {
+			table.Close()
+		}
+		return err
+	}
+
+	f.frozen.Add(f.offset)
+	f.tail.Add(f.offset)
+	f.writeBatch = newFreezerBatch(f)
+	log.Info("Reset Table", "tail", f.tail.Load(), "frozen", f.frozen.Load())
 	return nil
 }

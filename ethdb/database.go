@@ -17,7 +17,10 @@
 // Package ethdb defines the interfaces for an Ethereum data store.
 package ethdb
 
-import "io"
+import (
+	"github.com/ethereum/go-ethereum/params"
+	"io"
+)
 
 // KeyValueReader wraps the Has and Get method of a backing data store.
 type KeyValueReader interface {
@@ -88,6 +91,9 @@ type AncientReaderOp interface {
 	// Ancients returns the ancient item numbers in the ancient store.
 	Ancients() (uint64, error)
 
+	// TableAncients returns the ancient item numbers in the certain table.
+	TableAncients(kind string) (uint64, error)
+
 	// Tail returns the number of first stored item in the freezer.
 	// This number can also be interpreted as the total deleted item numbers.
 	Tail() (uint64, error)
@@ -136,6 +142,13 @@ type AncientWriter interface {
 	// The second argument is a function that takes a raw entry and returns it
 	// in the newest format.
 	MigrateTable(string, func([]byte) ([]byte, error)) error
+
+	// ResetTable it allows reset to tail=head
+	ResetTable(kind string, tail, head uint64) error
+}
+
+type AncientFreezer interface {
+	AncientFreeze(src KeyValueStore, chainCfg *params.ChainConfig)
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.
@@ -200,5 +213,6 @@ type Database interface {
 	Stater
 	Compacter
 	Snapshotter
+	AncientFreezer
 	io.Closer
 }

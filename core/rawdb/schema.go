@@ -205,7 +205,7 @@ func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 	return append(append(blockReceiptsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
 }
 
-// blockBlobsKey = BlockBlobsPrefix + num (uint64 big endian) + hash
+// blockBlobsKey = BlockBlobsPrefix + blockNumber (uint64 big endian) + blockHash
 func blockBlobsKey(number uint64, hash common.Hash) []byte {
 	return append(append(BlockBlobsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
 }

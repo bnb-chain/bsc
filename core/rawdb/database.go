@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/params"
 	"os"
 	"path"
 	"path/filepath"
@@ -41,6 +42,7 @@ type freezerdb struct {
 	ancientRoot string
 	ethdb.KeyValueStore
 	ethdb.AncientStore
+	ethdb.AncientFreezer
 	diffStore ethdb.KeyValueStore
 }
 
@@ -101,6 +103,10 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 	return nil
 }
 
+func (frdb *freezerdb) AncientFreeze(src ethdb.KeyValueStore, chainCfg *params.ChainConfig) {
+	frdb.AncientFreezer.AncientFreeze(src, chainCfg)
+}
+
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
@@ -145,6 +151,10 @@ func (db *nofreezedb) AncientSize(kind string) (uint64, error) {
 // ModifyAncients is not supported.
 func (db *nofreezedb) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, error) {
 	return 0, errNotSupported
+}
+
+func (db *nofreezedb) AncientReset(tail, head uint64) error {
+	return errNotSupported
 }
 
 // TruncateHead returns an error as we don't have a backing chain freezer.
@@ -199,6 +209,17 @@ func (db *nofreezedb) MigrateTable(kind string, convert convertLegacyFn) error {
 // AncientDatadir returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
+}
+
+func (db *nofreezedb) TableAncients(kind string) (uint64, error) {
+	return 0, errNotSupported
+}
+
+func (db *nofreezedb) AncientFreeze(src ethdb.KeyValueStore, chainCfg *params.ChainConfig) {
+}
+
+func (db *nofreezedb) ResetTable(kind string, tail, head uint64) error {
+	return errNotSupported
 }
 
 // NewDatabase creates a high level database on top of a given key-value data
@@ -261,15 +282,14 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		if err != nil {
 			return nil, err
 		}
-
-		go frdb.freeze()
 		if !readonly {
 			WriteAncientType(db, PruneFreezerType)
 		}
 		return &freezerdb{
-			ancientRoot:   ancient,
-			KeyValueStore: db,
-			AncientStore:  frdb,
+			ancientRoot:    ancient,
+			KeyValueStore:  db,
+			AncientStore:   frdb,
+			AncientFreezer: frdb,
 		}, nil
 	}
 
@@ -373,18 +393,11 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	if !readonly {
 		WriteAncientType(db, EntireFreezerType)
 	}
-	// Freezer is consistent with the key-value database, permit combining the two
-	if !disableFreeze && !frdb.readonly {
-		frdb.wg.Add(1)
-		go func() {
-			frdb.freeze(db)
-			frdb.wg.Done()
-		}()
-	}
 	return &freezerdb{
-		ancientRoot:   ancient,
-		KeyValueStore: db,
-		AncientStore:  frdb,
+		ancientRoot:    ancient,
+		KeyValueStore:  db,
+		AncientStore:   frdb,
+		AncientFreezer: frdb,
 	}, nil
 }
 

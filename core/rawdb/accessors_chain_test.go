@@ -420,7 +420,7 @@ func TestBlockBlobsStorage(t *testing.T) {
 	db := NewMemoryDatabase()
 
 	// Create a live block since we need metadata to reconstruct the receipt
-	genBlobs := makeBlkBlob(1, 2)
+	genBlobs := makeBlkBlobs(1, 2)
 	tx1 := types.NewTx(&types.BlobTx{
 		ChainID:    new(uint256.Int).SetUint64(1),
 		GasTipCap:  new(uint256.Int),
@@ -449,7 +449,7 @@ func TestBlockBlobsStorage(t *testing.T) {
 
 	blkHash := common.BytesToHash([]byte{0x03, 0x14})
 	body := &types.Body{Transactions: types.Transactions{tx1, tx2}}
-	blobs := types.BlobTxSidecars{tx1.BlobTxSidecar(), nil}
+	blobs := types.BlobTxSidecars{tx1.BlobTxSidecar()}
 
 	// Check that no blobs entries are in a pristine database
 	if bs := ReadRawBlobs(db, blkHash, 0); len(bs) != 0 {
@@ -459,7 +459,7 @@ func TestBlockBlobsStorage(t *testing.T) {
 	WriteBlobs(db, blkHash, 0, blobs)
 
 	if bs := ReadRawBlobs(db, blkHash, 0); len(bs) == 0 {
-		t.Fatalf("no receipts returned")
+		t.Fatalf("no blobs returned")
 	} else {
 		if err := checkBlobsRLP(bs, blobs); err != nil {
 			t.Fatalf(err.Error())
@@ -545,7 +545,7 @@ func TestAncientStorage(t *testing.T) {
 	}
 
 	// Write and verify the header in the database
-	WriteAncientBlocks(db, []*types.Block{block}, []types.Receipts{nil}, big.NewInt(100), nil)
+	WriteAncientBlocks(db, []*types.Block{block}, []types.Receipts{nil}, big.NewInt(100))
 
 	if blob := ReadHeaderRLP(db, hash, number); len(blob) == 0 {
 		t.Fatalf("no header returned")
@@ -683,7 +683,7 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 		blocks := allBlocks[i : i+length]
 		receipts := batchReceipts[:length]
 		blobs := batchBlobs[:length]
-		writeSize, err := WriteAncientBlocks(db, blocks, receipts, td, blobs)
+		writeSize, err := WriteAncientBlocksWithBlobs(db, blocks, receipts, td, blobs)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -745,7 +745,7 @@ func makeTestReceipts(n int, nPerBlock int) []types.Receipts {
 	return allReceipts
 }
 
-func makeBlkBlob(n, nPerTx int) types.BlobTxSidecars {
+func makeBlkBlobs(n, nPerTx int) types.BlobTxSidecars {
 	if n <= 0 {
 		return nil
 	}
@@ -756,8 +756,8 @@ func makeBlkBlob(n, nPerTx int) types.BlobTxSidecars {
 		proofs := make([]kzg4844.Proof, nPerTx)
 		for i := 0; i < nPerTx; i++ {
 			io.ReadFull(rand2.Reader, blobs[i][:])
-			io.ReadFull(rand2.Reader, commitments[i][:])
-			io.ReadFull(rand2.Reader, proofs[i][:])
+			commitments[i], _ = kzg4844.BlobToCommitment(blobs[i])
+			proofs[i], _ = kzg4844.ComputeBlobProof(blobs[i], commitments[i])
 		}
 		ret[i] = &types.BlobTxSidecar{
 			Blobs:       blobs,
@@ -772,7 +772,7 @@ func makeBlkBlob(n, nPerTx int) types.BlobTxSidecars {
 func makeTestBlobs(n int, nPerBlock int) []types.BlobTxSidecars {
 	allBlobs := make([]types.BlobTxSidecars, n)
 	for i := 0; i < n; i++ {
-		allBlobs[i] = makeBlkBlob(nPerBlock, i%3)
+		allBlobs[i] = makeBlkBlobs(nPerBlock, i%3)
 	}
 	return allBlobs
 }
@@ -1012,7 +1012,7 @@ func TestHeadersRLPStorage(t *testing.T) {
 	}
 	var receipts []types.Receipts = make([]types.Receipts, 100)
 	// Write first half to ancients
-	WriteAncientBlocks(db, chain[:50], receipts[:50], big.NewInt(100), nil)
+	WriteAncientBlocks(db, chain[:50], receipts[:50], big.NewInt(100))
 	// Write second half to db
 	for i := 50; i < 100; i++ {
 		WriteCanonicalHash(db, chain[i].Hash(), chain[i].NumberU64())

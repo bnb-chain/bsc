@@ -312,6 +312,10 @@ func (f *prunedfreezer) freeze() {
 	}
 }
 
+func (f *prunedfreezer) AncientFreeze(src ethdb.KeyValueStore, chainCfg *params.ChainConfig) {
+	go f.freeze()
+}
+
 func (f *prunedfreezer) ReadAncients(fn func(ethdb.AncientReaderOp) error) (err error) {
 	return fn(f)
 }
@@ -322,4 +326,12 @@ func (f *prunedfreezer) AncientRange(kind string, start, count, maxBytes uint64)
 
 func (f *prunedfreezer) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, error) {
 	return 0, errNotSupported
+}
+
+func (f *prunedfreezer) TableAncients(kind string) (uint64, error) {
+	return 0, errNotSupported
+}
+
+func (f *prunedfreezer) ResetTable(kind string, tail, head uint64) error {
+	return errNotSupported
 }
