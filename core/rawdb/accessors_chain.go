@@ -825,7 +825,7 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 
 // WriteAncientBlocksWithBlobs writes entire block data into ancient store and returns the total written size.
 // Attention: The caller must set blobs after cancun
-func WriteAncientBlocksWithBlobs(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int, blobs []types.BlobTxSidecars) (int64, error) {
+func WriteAncientBlocksWithBlobs(db ethdb.AncientStore, blocks []*types.Block, receipts []types.Receipts, td *big.Int, blobs []types.BlobTxSidecars) (int64, error) {
 	// do some sanity check
 	if len(blocks) != len(blobs) {
 		return 0, fmt.Errorf("the blobs len is different with blobks, %v:%v", len(blobs), len(blocks))
@@ -833,6 +833,18 @@ func WriteAncientBlocksWithBlobs(db ethdb.AncientWriter, blocks []*types.Block, 
 	if len(blocks) != len(receipts) {
 		return 0, fmt.Errorf("the receipts len is different with blobks, %v:%v", len(receipts), len(blocks))
 	}
+
+	// try check if it needs to reset blob ancient
+	emptyBlob, err := EmptyBlobAncient(db)
+	if err != nil {
+		return 0, err
+	}
+	if emptyBlob {
+		if err := ResetBlobAncient(db, blocks[0].NumberU64()); err != nil {
+			return 0, err
+		}
+	}
+
 	var (
 		tdSum      = new(big.Int).Set(td)
 		stReceipts []*types.ReceiptForStorage

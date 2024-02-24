@@ -110,6 +110,7 @@ const (
 	blockCacheLimit     = 256
 	diffLayerCacheLimit = 1024
 	receiptsCacheLimit  = 10000
+	blobsCacheLimit     = 10000
 	txLookupCacheLimit  = 1024
 	maxBadBlockLimit    = 16
 	maxFutureBlocks     = 256
@@ -277,11 +278,15 @@ type BlockChain struct {
 	receiptsCache *lru.Cache[common.Hash, []*types.Receipt]
 	blockCache    *lru.Cache[common.Hash, *types.Block]
 	txLookupCache *lru.Cache[common.Hash, txLookup]
+	blobsCache    *lru.Cache[common.Hash, types.BlobTxSidecars]
 
 	// future blocks are blocks added for later processing
 	futureBlocks *lru.Cache[common.Hash, *types.Block]
 	// Cache for the blocks that failed to pass MPT root verification
 	badBlockCache *lru.Cache[common.Hash, time.Time]
+
+	// blobs
+	receivedBlobsCache sync.Map // it saves received blobs for validation & storage
 
 	// trusted diff layers
 	diffLayerCache             *exlru.Cache                          // Cache for the diffLayers
@@ -358,6 +363,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		bodyCache:          lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
 		bodyRLPCache:       lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
+		blobsCache:         lru.NewCache[common.Hash, types.BlobTxSidecars](blobsCacheLimit),
 		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
@@ -645,6 +651,11 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 
 func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
 	bc.blockCache.Add(hash, block)
+	// try cache blob too
+	blob, ok := bc.receivedBlobsCache.Load(hash)
+	if ok {
+		bc.blobsCache.Add(hash, blob.(types.BlobTxSidecars))
+	}
 }
 
 // empty returns an indicator whether the blockchain is empty.
@@ -989,6 +1000,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	bc.bodyCache.Purge()
 	bc.bodyRLPCache.Purge()
 	bc.receiptsCache.Purge()
+	bc.blobsCache.Purge()
 	bc.blockCache.Purge()
 	bc.txLookupCache.Purge()
 	bc.futureBlocks.Purge()
@@ -1376,10 +1388,6 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Write all chain data to ancients.
 		td := bc.GetTd(first.Hash(), first.NumberU64())
-		// TODO(GalaIO): if you just back fill blob, you need check blob ancient and reset it
-		//if isCancun() && rawdb.EmptyBlobAncient(bc.db) {
-		//	rawdb.ResetBlobAncient(bc.db, first.NumberU64())
-		//}
 		// TODO(GalaIO): when sync the history block, it needs store blobs too.
 		//if isCancun() {
 		//	writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db, blockChain, receiptChain, td, blobs)
@@ -1463,8 +1471,8 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
 			rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
 			// TODO(GalaIO): if enable cancun, need write blobs
-			//if isCancun() {
-			//rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), blobs)
+			//if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			//	rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), blobs)
 			//}
 
 			// Write everything belongs to the blocks into the database. So that
@@ -1535,6 +1543,12 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	batch := bc.db.NewBatch()
 	rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), td)
 	rawdb.WriteBlock(batch, block)
+	// if enable cancun, it needs to write blobs too
+	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+		blobs, _ := bc.receivedBlobsCache.Load(block.Hash())
+		rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), blobs.(types.BlobTxSidecars))
+		bc.receivedBlobsCache.Delete(block.Hash())
+	}
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
@@ -1577,10 +1591,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
-		// TODO(GalaIO): if enable cancun, need write blobs
-		//if iscancun(){
-		//rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), blobs)
-		//}
+		// if enable cancun, it needs to write blobs too
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			blobs, _ := bc.receivedBlobsCache.Load(block.Hash())
+			rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), blobs.(types.BlobTxSidecars))
+			bc.receivedBlobsCache.Delete(block.Hash())
+		}
 		rawdb.WritePreimages(blockBatch, state.Preimages())
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
@@ -1818,6 +1834,7 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 // racey behaviour. If a sidechain import is in progress, and the historic state
 // is imported, but then new canon-head is added before the actual sidechain
 // completes, then the historic state could be pruned again
+// TODO(GalaIO): if enable cancun, it must set received blob cache for check, remove cache when failed
 func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error) {
 	// If the chain is terminating, don't even bother starting up.
 	if bc.insertStopped() {
@@ -1944,6 +1961,19 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 	}
 
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
+		// TODO(GalaIO): check blob data available first
+		//if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+		//	if posa, ok := bc.engine.(consensus.PoSA); ok {
+		//		blobs, exist := bc.receivedBlobsCache.Load(block.Hash())
+		//		if !exist {
+		//			return it.index, fmt.Errorf("cannot find the target block's blob info, block: %v, hash: %v", block.NumberU64(), block.Hash())
+		//		}
+		//		if err = posa.IsDataAvailable(bc, block, blobs.(types.BlobTxSidecars)); err != nil {
+		//			return it.index, err
+		//		}
+		//	}
+		//}
+
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
 			log.Debug("Abort during block processing")

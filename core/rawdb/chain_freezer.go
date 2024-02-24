@@ -157,7 +157,6 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, chainCfg *params.ChainConf
 		if limit-first > freezerBatchLimit {
 			limit = first + freezerBatchLimit
 		}
-		// TODO(GalaIO): implement blobs prune later
 		ancients, err := f.freezeRange(nfdb, first, limit, chainCfg)
 		if err != nil {
 			log.Error("Error in block freeze operation", "err", err)
@@ -245,10 +244,30 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, chainCfg *params.ChainConf
 		}
 		log.Debug("Deep froze chain segment", context...)
 
+		// try prune blob data after cancun fork
+		if chainCfg.IsCancun(head.Number, head.Time) {
+			f.tryPruneBlobAncient(*number)
+		}
+
 		// Avoid database thrashing with tiny writes
 		if frozen-first < freezerBatchLimit {
 			backoff = true
 		}
+	}
+}
+
+func (f *chainFreezer) tryPruneBlobAncient(num uint64) {
+	if num <= params.BlobLocalAvailableThreshold {
+		return
+	}
+	expectTail := num - params.BlobLocalAvailableThreshold
+	h, err := f.TableAncients(ChainFreezerBlobTable)
+	if err != nil {
+		log.Error("Cannot get blob ancient head when prune", "block", num)
+		return
+	}
+	if err = f.ResetTable(ChainFreezerBlobTable, expectTail, h); err != nil {
+		log.Error("Cannot prune blob ancient", "block", num, "expectTail", expectTail)
 	}
 }
 

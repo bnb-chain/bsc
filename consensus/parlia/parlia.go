@@ -350,6 +350,12 @@ func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 	return abort, results
 }
 
+// IsDataAvailable it checks that the blobTx block has available blob data
+// TODO(GalaIO): implement it later
+func (p *Parlia) IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block, blobs types.BlobTxSidecars) error {
+	return nil
+}
+
 // getValidatorBytesFromHeader returns the validators bytes extracted from the header's extra field if exists.
 // The validators bytes would be contained only in the epoch block's header, and its each validator bytes length is fixed.
 // On luban fork, we introduce vote attestation into the header's extra field, so extra format is different from before.
