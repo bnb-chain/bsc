@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
@@ -1580,7 +1579,14 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 		verified    chan struct{}
 		snapUpdated chan struct{}
 		incomplete  map[common.Address]struct{}
-		nodes       = trienode.NewMergedNodeSet()
+
+		// Un-flushed trie nodes
+		nodes = trienode.NewMergedNodeSet()
+
+		// Un-flushed contract codes
+		addresses  []common.Address
+		codeHashes []common.Hash
+		codes      [][]byte
 	)
 
 	if s.snap != nil {
@@ -1739,12 +1745,14 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 
 	commitFuncs := []func() error{
 		func() error {
-			codeWriter := s.db.DiskDB().NewBatch()
 			for addr := range s.stateObjectsDirty {
 				if obj := s.stateObjects[addr]; !obj.deleted {
 					// Write any contract code associated with the state object
 					if obj.code != nil && obj.dirtyCode {
-						rawdb.WriteCode(codeWriter, common.BytesToHash(obj.CodeHash()), obj.code)
+						// Collect dirty contract codes for later write in a single batch.
+						addresses = append(addresses, addr)
+						codeHashes = append(codeHashes, common.BytesToHash(obj.CodeHash()))
+						codes = append(codes, obj.code)
 						obj.dirtyCode = false
 						if s.snap != nil {
 							diffLayer.Codes = append(diffLayer.Codes, types.DiffCode{
@@ -1752,20 +1760,12 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 								Code: obj.code,
 							})
 						}
-						if codeWriter.ValueSize() > ethdb.IdealBatchSize {
-							if err := codeWriter.Write(); err != nil {
-								return err
-							}
-							codeWriter.Reset()
-						}
+
 					}
 				}
 			}
-			if codeWriter.ValueSize() > 0 {
-				if err := codeWriter.Write(); err != nil {
-					log.Crit("Failed to commit dirty codes", "error", err)
-					return err
-				}
+			if err := s.db.WriteCodes(addresses, codeHashes, codes); err != nil {
+				return err
 			}
 			return nil
 		},
