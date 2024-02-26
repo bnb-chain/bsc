@@ -18,8 +18,9 @@ package rawdb
 
 import (
 	"fmt"
-	"golang.org/x/exp/slices"
 	"sync/atomic"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -33,7 +34,7 @@ const freezerBatchBufferLimit = 2 * 1024 * 1024
 // freezerBatch is a write operation of multiple items on a freezer.
 type freezerBatch struct {
 	tables             map[string]*freezerTableBatch
-	additionTableKinds []string
+	additionTableKinds []string // additionTableKinds are post-filled tables that start as empty
 }
 
 func newFreezerBatch(f *Freezer) *freezerBatch {

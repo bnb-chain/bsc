@@ -946,8 +946,12 @@ func writeAncientBlob(op ethdb.AncientWriteOp, num uint64, blobs types.BlobTxSid
 // Attention: The caller must set blobs after cancun
 func writeAncientBlockWithBlob(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int, blobs types.BlobTxSidecars) error {
 	num := block.NumberU64()
-	writeAncientBlock(op, block, header, receipts, td)
-	writeAncientBlob(op, num, blobs)
+	if err := writeAncientBlock(op, block, header, receipts, td); err != nil {
+		return err
+	}
+	if err := writeAncientBlob(op, num, blobs); err != nil {
+		return err
+	}
 	return nil
 }
 

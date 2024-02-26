@@ -78,7 +78,7 @@ type Freezer struct {
 	closeOnce    sync.Once
 	offset       uint64 // Starting BlockNumber in current freezer
 
-	additionTableKinds []string
+	additionTableKinds []string // additionTableKinds are post-filled tables that start as empty
 }
 
 // NewChainFreezer is a small utility method around NewFreezer that sets the

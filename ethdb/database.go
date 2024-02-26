@@ -145,7 +145,9 @@ type AncientWriter interface {
 	ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error
 }
 
+// AncientFreezer defines the help functions for freezing ancient data
 type AncientFreezer interface {
+	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
 	SetupFreezerEnv(chainCfg *params.ChainConfig) error
 }
 

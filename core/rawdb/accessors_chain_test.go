@@ -21,13 +21,14 @@ import (
 	rand2 "crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"io"
 	"math/big"
 	"math/rand"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/holiman/uint256"
