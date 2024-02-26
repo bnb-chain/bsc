@@ -50,6 +50,8 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	switch {
 	case evm.chainRules.IsCancun:
 		precompiles = PrecompiledContractsCancun
+	case evm.chainRules.IsFeynman:
+		precompiles = PrecompiledContractsFeynman
 	case evm.chainRules.IsHertz:
 		precompiles = PrecompiledContractsHertz
 	case evm.chainRules.IsPlato:
