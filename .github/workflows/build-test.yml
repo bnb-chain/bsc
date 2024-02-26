@@ -7,7 +7,7 @@ on:
       - develop
 
   pull_request:
-    branches: 
+    branches:
       - master
       - develop
 
@@ -47,5 +47,3 @@ jobs:
       run: |
         go mod download
         make geth
-
-

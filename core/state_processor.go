@@ -73,12 +73,15 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
 		misc.ApplyDAOHardFork(statedb)
 	}
-	// Handle upgrade build-in system contract code
+
 	lastBlock := p.bc.GetBlockByHash(block.ParentHash())
 	if lastBlock == nil {
 		return statedb, nil, nil, 0, fmt.Errorf("could not get parent block")
 	}
-	systemcontracts.UpgradeBuildInSystemContract(p.config, blockNumber, lastBlock.Time(), block.Time(), statedb)
+	if !p.config.IsFeynman(block.Number(), block.Time()) {
+		// Handle upgrade build-in system contract code
+		systemcontracts.UpgradeBuildInSystemContract(p.config, blockNumber, lastBlock.Time(), block.Time(), statedb)
+	}
 
 	var (
 		context = NewEVMBlockContext(header, p.bc, nil)
