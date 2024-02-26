@@ -186,9 +186,7 @@ var (
 		// UnixTime: 1702972800 is December 19, 2023 8:00:00 AM UTC
 		ShanghaiTime: newUint64(1702972800),
 		KeplerTime:   newUint64(1702972800),
-
-		// TODO
-		FeynmanTime: nil,
+		FeynmanTime:  newUint64(1710136800),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
