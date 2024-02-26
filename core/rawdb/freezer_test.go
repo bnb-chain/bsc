@@ -370,7 +370,7 @@ func TestFreezer_AdditionTables(t *testing.T) {
 	f, err = NewFreezer(dir, "", false, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true}, "a1")
 	require.NoError(t, err)
 	frozen, err := f.Ancients()
-	f.ResetTable("a1", frozen, frozen)
+	f.ResetTable("a1", frozen, frozen, true)
 	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		if err := op.AppendRaw("o1", 2, item); err != nil {
 			return err
@@ -384,9 +384,9 @@ func TestFreezer_AdditionTables(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	actual, err := f.Ancient("a1", 1)
+	_, err = f.Ancient("a1", 1)
 	require.Error(t, err)
-	actual, err = f.Ancient("a1", 2)
+	actual, err := f.Ancient("a1", 2)
 	require.NoError(t, err)
 	require.Equal(t, item, actual)
 	require.NoError(t, f.Close())

@@ -196,7 +196,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// startup ancient freeze
-	chainDb.AncientFreeze(chainDb, chainConfig)
+	if err = chainDb.SetupFreezerEnv(chainConfig); err != nil {
+		return nil, err
+	}
 
 	networkID := config.NetworkId
 	if networkID == 0 {

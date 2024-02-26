@@ -2,13 +2,13 @@ package types
 
 import (
 	"crypto/ecdsa"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 )
 
@@ -103,13 +103,12 @@ func TestBlobTxSidecars_Encode(t *testing.T) {
 			Commitments: []kzg4844.Commitment{emptyBlobCommit},
 			Proofs:      []kzg4844.Proof{emptyBlobProof},
 		},
-		nil,
 	}
 
 	enc, err := rlp.EncodeToBytes(bs)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	var nbs BlobTxSidecars
 	err = rlp.DecodeBytes(enc, &nbs)
-	assert.NoError(t, err)
-	assert.Equal(t, bs, nbs)
+	require.NoError(t, err)
+	require.Equal(t, bs, nbs)
 }

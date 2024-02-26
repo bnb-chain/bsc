@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -1396,7 +1395,7 @@ func TestResetItems(t *testing.T) {
 
 	// nothing to do, all the items should still be there.
 	f, err = f.resetItems(0, 7)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	fmt.Println(f.dumpIndexString(0, 1000))
 	checkRetrieve(t, f, map[uint64][]byte{
 		0: getChunk(20, 0xFF),
@@ -1409,11 +1408,11 @@ func TestResetItems(t *testing.T) {
 	})
 
 	f, err = f.resetItems(1, 5)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = f.resetItems(0, 5)
-	assert.Error(t, err)
+	require.Error(t, err)
 	_, err = f.resetItems(1, 6)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	fmt.Println(f.dumpIndexString(0, 1000))
 	checkRetrieveError(t, f, map[uint64]error{
@@ -1427,7 +1426,7 @@ func TestResetItems(t *testing.T) {
 	})
 
 	f, err = f.resetItems(4, 4)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	checkRetrieveError(t, f, map[uint64]error{
 		4: errOutOfBounds,
 	})

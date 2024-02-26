@@ -187,11 +187,11 @@ func (f *ResettableFreezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) 
 	return f.freezer.ModifyAncients(fn)
 }
 
-func (f *ResettableFreezer) TableAncients(kind string) (uint64, error) {
+func (f *ResettableFreezer) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 
-	return f.freezer.TableAncients(kind)
+	return f.freezer.ResetTable(kind, tail, head, onlyEmpty)
 }
 
 // TruncateHead discards any recent data above the provided threshold number.
@@ -227,12 +227,6 @@ func (f *ResettableFreezer) MigrateTable(kind string, convert convertLegacyFn) e
 	defer f.lock.RUnlock()
 
 	return f.freezer.MigrateTable(kind, convert)
-}
-
-func (f *ResettableFreezer) ResetTable(kind string, tail, head uint64) error {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-	return f.freezer.ResetTable(kind, tail, head)
 }
 
 // cleanup removes the directory located in the specified path

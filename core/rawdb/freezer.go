@@ -19,13 +19,14 @@ package rawdb
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"math"
 	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -670,7 +671,7 @@ func (f *Freezer) MigrateTable(kind string, convert convertLegacyFn) error {
 	return nil
 }
 
-func (f *Freezer) ResetTable(kind string, tail, head uint64) error {
+func (f *Freezer) ResetTable(kind string, tail, head uint64, onlyEmpty bool) error {
 	if f.readonly {
 		return errReadOnly
 	}
@@ -680,6 +681,17 @@ func (f *Freezer) ResetTable(kind string, tail, head uint64) error {
 
 	f.writeLock.Lock()
 	defer f.writeLock.Unlock()
+	if tail < f.offset || head < f.offset {
+		return errors.New("the input tail&head is less than offset")
+	}
+	if _, exist := f.tables[kind]; !exist {
+		return errors.New("you reset a non-exist table")
+	}
+	// if you reset a non empty table just skip
+	if onlyEmpty && !EmptyTable(f.tables[kind]) {
+		return nil
+	}
+
 	nt, err := f.tables[kind].resetItems(tail-f.offset, head-f.offset)
 	if err != nil {
 		return err

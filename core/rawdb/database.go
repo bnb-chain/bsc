@@ -20,12 +20,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/params"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/olekukonko/tablewriter"
 
@@ -103,8 +104,8 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 	return nil
 }
 
-func (frdb *freezerdb) AncientFreeze(src ethdb.KeyValueStore, chainCfg *params.ChainConfig) {
-	frdb.AncientFreezer.AncientFreeze(src, chainCfg)
+func (frdb *freezerdb) SetupFreezerEnv(chainCfg *params.ChainConfig) error {
+	return frdb.AncientFreezer.SetupFreezerEnv(chainCfg)
 }
 
 // nofreezedb is a database wrapper that disables freezer data retrievals.
@@ -153,7 +154,7 @@ func (db *nofreezedb) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, e
 	return 0, errNotSupported
 }
 
-func (db *nofreezedb) AncientReset(tail, head uint64) error {
+func (db *nofreezedb) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
 	return errNotSupported
 }
 
@@ -211,15 +212,8 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
 
-func (db *nofreezedb) TableAncients(kind string) (uint64, error) {
-	return 0, errNotSupported
-}
-
-func (db *nofreezedb) AncientFreeze(src ethdb.KeyValueStore, chainCfg *params.ChainConfig) {
-}
-
-func (db *nofreezedb) ResetTable(kind string, tail, head uint64) error {
-	return errNotSupported
+func (db *nofreezedb) SetupFreezerEnv(chainCfg *params.ChainConfig) error {
+	return nil
 }
 
 // NewDatabase creates a high level database on top of a given key-value data
@@ -282,6 +276,8 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		if err != nil {
 			return nil, err
 		}
+
+		go frdb.freeze()
 		if !readonly {
 			WriteAncientType(db, PruneFreezerType)
 		}
@@ -392,6 +388,14 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	// no prune ancient start success
 	if !readonly {
 		WriteAncientType(db, EntireFreezerType)
+	}
+	// Freezer is consistent with the key-value database, permit combining the two
+	if !disableFreeze && !frdb.readonly {
+		frdb.wg.Add(1)
+		go func() {
+			frdb.freeze(db)
+			frdb.wg.Done()
+		}()
 	}
 	return &freezerdb{
 		ancientRoot:    ancient,

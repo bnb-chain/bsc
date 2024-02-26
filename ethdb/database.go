@@ -18,8 +18,9 @@
 package ethdb
 
 import (
-	"github.com/ethereum/go-ethereum/params"
 	"io"
+
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // KeyValueReader wraps the Has and Get method of a backing data store.
@@ -91,9 +92,6 @@ type AncientReaderOp interface {
 	// Ancients returns the ancient item numbers in the ancient store.
 	Ancients() (uint64, error)
 
-	// TableAncients returns the ancient item numbers in the certain table.
-	TableAncients(kind string) (uint64, error)
-
 	// Tail returns the number of first stored item in the freezer.
 	// This number can also be interpreted as the total deleted item numbers.
 	Tail() (uint64, error)
@@ -143,12 +141,12 @@ type AncientWriter interface {
 	// in the newest format.
 	MigrateTable(string, func([]byte) ([]byte, error)) error
 
-	// ResetTable it allows reset to tail=head
-	ResetTable(kind string, tail, head uint64) error
+	// ResetTable will reset certain table to new boundary
+	ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error
 }
 
 type AncientFreezer interface {
-	AncientFreeze(src KeyValueStore, chainCfg *params.ChainConfig)
+	SetupFreezerEnv(chainCfg *params.ChainConfig) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.

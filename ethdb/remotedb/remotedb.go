@@ -115,6 +115,10 @@ func (db *Database) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, e
 	panic("not supported")
 }
 
+func (db *Database) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
+	panic("not supported")
+}
+
 func (db *Database) AncientReset(tail, head uint64) error {
 	panic("not supported")
 }
@@ -132,10 +136,6 @@ func (db *Database) Sync() error {
 }
 
 func (db *Database) MigrateTable(s string, f func([]byte) ([]byte, error)) error {
-	panic("not supported")
-}
-
-func (db *Database) TableAncients(kind string) (uint64, error) {
 	panic("not supported")
 }
 
@@ -172,11 +172,7 @@ func (db *Database) Close() error {
 	return nil
 }
 
-func (db *Database) AncientFreeze(src ethdb.KeyValueStore, chainCfg *params.ChainConfig) {
-	panic("not supported")
-}
-
-func (db *Database) ResetTable(kind string, tail, head uint64) error {
+func (db *Database) SetupFreezerEnv(chainCfg *params.ChainConfig) error {
 	panic("not supported")
 }
 

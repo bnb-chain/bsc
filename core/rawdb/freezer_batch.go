@@ -18,6 +18,7 @@ package rawdb
 
 import (
 	"fmt"
+	"golang.org/x/exp/slices"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common/math"
@@ -31,11 +32,15 @@ const freezerBatchBufferLimit = 2 * 1024 * 1024
 
 // freezerBatch is a write operation of multiple items on a freezer.
 type freezerBatch struct {
-	tables map[string]*freezerTableBatch
+	tables             map[string]*freezerTableBatch
+	additionTableKinds []string
 }
 
 func newFreezerBatch(f *Freezer) *freezerBatch {
-	batch := &freezerBatch{tables: make(map[string]*freezerTableBatch, len(f.tables))}
+	batch := &freezerBatch{
+		tables:             make(map[string]*freezerTableBatch, len(f.tables)),
+		additionTableKinds: f.additionTableKinds,
+	}
 	for kind, table := range f.tables {
 		batch.tables[kind] = table.newBatch(f.offset)
 	}
@@ -65,6 +70,10 @@ func (batch *freezerBatch) commit() (item uint64, writeSize int64, err error) {
 	// Check that count agrees on all batches.
 	item = uint64(math.MaxUint64)
 	for name, tb := range batch.tables {
+		// skip empty addition tables
+		if slices.Contains(batch.additionTableKinds, name) && EmptyTable(tb.t) {
+			continue
+		}
 		if item < math.MaxUint64 && tb.curItem != item {
 			return 0, 0, fmt.Errorf("table %s is at item %d, want %d", name, tb.curItem, item)
 		}

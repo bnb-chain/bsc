@@ -1593,9 +1593,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
 		// if enable cancun, it needs to write blobs too
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-			blobs, _ := bc.receivedBlobsCache.Load(block.Hash())
-			rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), blobs.(types.BlobTxSidecars))
-			bc.receivedBlobsCache.Delete(block.Hash())
+			blobs, exist := bc.receivedBlobsCache.Load(block.Hash())
+			if exist {
+				rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), blobs.(types.BlobTxSidecars))
+			} else {
+				rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), nil)
+				bc.receivedBlobsCache.Delete(block.Hash())
+			}
 		}
 		rawdb.WritePreimages(blockBatch, state.Preimages())
 		if err := blockBatch.Write(); err != nil {

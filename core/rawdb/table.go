@@ -102,6 +102,10 @@ func (t *table) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (int64, erro
 	return t.db.ModifyAncients(fn)
 }
 
+func (t *table) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
+	return t.db.ResetTable(kind, tail, head, onlyEmpty)
+}
+
 func (t *table) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return t.db.ReadAncients(fn)
 }
@@ -133,14 +137,6 @@ func (t *table) MigrateTable(kind string, convert convertLegacyFn) error {
 // AncientDatadir returns the ancient datadir of the underlying database.
 func (t *table) AncientDatadir() (string, error) {
 	return t.db.AncientDatadir()
-}
-
-func (t *table) TableAncients(kind string) (uint64, error) {
-	return t.db.TableAncients(kind)
-}
-
-func (t *table) ResetTable(kind string, tail, head uint64) error {
-	return t.db.ResetTable(kind, tail, head)
 }
 
 // Put inserts the given value into the database at a prefixed version of the
@@ -234,7 +230,8 @@ func (t *table) NewSnapshot() (ethdb.Snapshot, error) {
 	return t.db.NewSnapshot()
 }
 
-func (t *table) AncientFreeze(src ethdb.KeyValueStore, chainCfg *params.ChainConfig) {
+func (t *table) SetupFreezerEnv(chainCfg *params.ChainConfig) error {
+	return nil
 }
 
 // tableBatch is a wrapper around a database batch that prefixes each key access
