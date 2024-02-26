@@ -92,13 +92,13 @@ type Database struct {
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	// Sanitize the config and use the default one if it's not specified.
 	var dbScheme string
-	var statediskdb ethdb.Database
+	var triediskdb ethdb.Database
 	if diskdb != nil && diskdb.StateStore() != nil {
 		dbScheme = rawdb.ReadStateSchemeByStateDB(diskdb, diskdb.StateStore())
-		statediskdb = diskdb.StateStore()
+		triediskdb = diskdb.StateStore()
 	} else {
 		dbScheme = rawdb.ReadStateScheme(diskdb)
-		statediskdb = diskdb
+		triediskdb = diskdb
 	}
 
 	if config == nil {
@@ -119,11 +119,11 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	}
 	var preimages *preimageStore
 	if config.Preimages {
-		preimages = newPreimageStore(statediskdb)
+		preimages = newPreimageStore(triediskdb)
 	}
 	db := &Database{
 		config:    config,
-		diskdb:    statediskdb,
+		diskdb:    triediskdb,
 		preimages: preimages,
 	}
 	/*
@@ -132,25 +132,25 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	 * 3. Last, use the default scheme, namely hash scheme
 	 */
 	if config.HashDB != nil {
-		if rawdb.ReadStateScheme(statediskdb) == rawdb.PathScheme {
+		if rawdb.ReadStateScheme(triediskdb) == rawdb.PathScheme {
 			log.Warn("incompatible state scheme", "old", rawdb.PathScheme, "new", rawdb.HashScheme)
 		}
-		db.backend = hashdb.New(statediskdb, config.HashDB, mptResolver{})
+		db.backend = hashdb.New(triediskdb, config.HashDB, mptResolver{})
 	} else if config.PathDB != nil {
-		if rawdb.ReadStateScheme(statediskdb) == rawdb.HashScheme {
+		if rawdb.ReadStateScheme(triediskdb) == rawdb.HashScheme {
 			log.Warn("incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
 		}
-		db.backend = pathdb.New(statediskdb, config.PathDB)
+		db.backend = pathdb.New(triediskdb, config.PathDB)
 	} else if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {
 		if config.PathDB == nil {
 			config.PathDB = pathdb.Defaults
 		}
-		db.backend = pathdb.New(statediskdb, config.PathDB)
+		db.backend = pathdb.New(triediskdb, config.PathDB)
 	} else {
 		if config.HashDB == nil {
 			config.HashDB = hashdb.Defaults
 		}
-		db.backend = hashdb.New(statediskdb, config.HashDB, mptResolver{})
+		db.backend = hashdb.New(triediskdb, config.HashDB, mptResolver{})
 	}
 	return db
 }

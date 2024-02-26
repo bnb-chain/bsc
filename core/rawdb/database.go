@@ -629,20 +629,6 @@ func PruneHashTrieNodeInDataBase(db ethdb.Database) error {
 	return nil
 }
 
-func inspectTrieData(key, value []byte, legacyTries, accountTries, storageTries, stateLookups *stat) {
-	size := common.StorageSize(len(key) + len(value))
-	switch {
-	case IsLegacyTrieNode(key, value):
-		legacyTries.Add(size)
-	case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
-		stateLookups.Add(size)
-	case IsAccountTrieNode(key):
-		accountTries.Add(size)
-	case IsStorageTrieNode(key):
-		storageTries.Add(size)
-	}
-}
-
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
 func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
@@ -783,17 +769,32 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				value = trieIter.Value()
 				size  = common.StorageSize(len(key) + len(value))
 			)
-			inspectTrieData(key, value, &legacyTries, &accountTries, &storageTries, &stateLookups)
-			for _, meta := range [][]byte{
-				fastTrieProgressKey, persistentStateIDKey, trieJournalKey} {
-				if bytes.Equal(key, meta) {
-					metadata.Add(size)
-					break
+
+			switch {
+			case IsLegacyTrieNode(key, value):
+				legacyTries.Add(size)
+			case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
+				stateLookups.Add(size)
+			case IsAccountTrieNode(key):
+				accountTries.Add(size)
+			case IsStorageTrieNode(key):
+				storageTries.Add(size)
+			default:
+				var accounted bool
+				for _, meta := range [][]byte{
+					fastTrieProgressKey, persistentStateIDKey, trieJournalKey} {
+					if bytes.Equal(key, meta) {
+						metadata.Add(size)
+						break
+					}
+				}
+				if !accounted {
+					unaccounted.Add(size)
 				}
 			}
 			count++
 			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
-				log.Info("Inspecting separate database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+				log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
 				logged = time.Now()
 			}
 		}
