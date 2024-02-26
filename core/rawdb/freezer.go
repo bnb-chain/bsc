@@ -19,6 +19,7 @@ package rawdb
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/exp/slices"
 	"math"
 	"os"
 	"path/filepath"
@@ -75,12 +76,14 @@ type Freezer struct {
 	instanceLock *flock.Flock             // File-system lock to prevent double opens
 	closeOnce    sync.Once
 	offset       uint64 // Starting BlockNumber in current freezer
+
+	additionTableKinds []string
 }
 
 // NewChainFreezer is a small utility method around NewFreezer that sets the
 // default parameters for the chain storage.
 func NewChainFreezer(datadir string, namespace string, readonly bool, offset uint64) (*Freezer, error) {
-	return NewFreezer(datadir, namespace, readonly, offset, freezerTableSize, chainFreezerNoSnappy)
+	return NewFreezer(datadir, namespace, readonly, offset, freezerTableSize, chainFreezerNoSnappy, ChainFreezerBlobTable)
 }
 
 // NewFreezer creates a freezer instance for maintaining immutable ordered
@@ -88,7 +91,8 @@ func NewChainFreezer(datadir string, namespace string, readonly bool, offset uin
 //
 // The 'tables' argument defines the data tables. If the value of a map
 // entry is true, snappy compression is disabled for the table.
-func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32, tables map[string]bool) (*Freezer, error) {
+// additionTables indicates the new add tables for freezerDB, it has some special rules.
+func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32, tables map[string]bool, additionTables ...string) (*Freezer, error) {
 	// Create the initial freezer object
 	var (
 		readMeter  = metrics.NewRegisteredMeter(namespace+"ancient/read", nil)
@@ -120,15 +124,24 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 	}
 	// Open all the supported data tables
 	freezer := &Freezer{
-		readonly:     readonly,
-		tables:       make(map[string]*freezerTable),
-		instanceLock: lock,
-		offset:       offset,
+		readonly:           readonly,
+		tables:             make(map[string]*freezerTable),
+		instanceLock:       lock,
+		offset:             offset,
+		additionTableKinds: additionTables,
 	}
 
 	// Create the tables.
 	for name, disableSnappy := range tables {
-		table, err := newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, readonly)
+		var (
+			table *freezerTable
+			err   error
+		)
+		if slices.Contains(additionTables, name) {
+			table, err = openAdditionTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, readonly)
+		} else {
+			table, err = newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, readonly)
+		}
 		if err != nil {
 			for _, table := range freezer.tables {
 				table.Close()
@@ -165,6 +178,20 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 
 	log.Info("Opened ancient database", "database", datadir, "readonly", readonly, "frozen", freezer.frozen.Load())
 	return freezer, nil
+}
+
+// openAdditionTable create table, it will auto create new files when it was first initialized
+func openAdditionTable(datadir, name string, readMeter, writeMeter metrics.Meter, sizeGauge metrics.Gauge, maxTableSize uint32, disableSnappy, readonly bool) (*freezerTable, error) {
+	if readonly {
+		f, err := newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, false)
+		if err != nil {
+			return nil, err
+		}
+		if err = f.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, readonly)
 }
 
 // Close terminates the chain freezer, unmapping all the data files.
@@ -371,8 +398,8 @@ func (f *Freezer) validate() error {
 	)
 	// Hack to get boundary of any table
 	for kind, table := range f.tables {
-		// blobs table need be skipped
-		if kind == ChainFreezerBlobTable {
+		// addition tables is special cases
+		if slices.Contains(f.additionTableKinds, kind) {
 			continue
 		}
 		head = table.items.Load()
@@ -382,18 +409,18 @@ func (f *Freezer) validate() error {
 	}
 	// Now check every table against those boundaries.
 	for kind, table := range f.tables {
-		// blobs table is special for freezerDB
-		if kind == ChainFreezerBlobTable {
-			bh := table.items.Load()
-			if bh == 0 {
+		// check addition tables, try to align with exist tables
+		if slices.Contains(f.additionTableKinds, kind) {
+			// if the table is empty, just skip
+			if EmptyTable(table) {
 				continue
 			}
-			if bh != head {
-				return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, bh, head)
+			// otherwise, just align head
+			if head != table.items.Load() {
+				return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, table.items.Load(), head)
 			}
-			bt := table.itemHidden.Load()
-			if tail > bt {
-				return fmt.Errorf("freezer tables %s and %s have differing tail: %d != %d", kind, name, bt, tail)
+			if tail > table.itemHidden.Load() {
+				return fmt.Errorf("freezer tables %s and %s have differing tail: %d != %d", kind, name, table.itemHidden.Load(), tail)
 			}
 			continue
 		}
@@ -416,8 +443,15 @@ func (f *Freezer) repair() error {
 		tail = uint64(0)
 	)
 	for kind, table := range f.tables {
-		// blobs table need be skipped
-		if kind == ChainFreezerBlobTable {
+		// addition tables only align head
+		if slices.Contains(f.additionTableKinds, kind) {
+			if EmptyTable(table) {
+				continue
+			}
+			items := table.items.Load()
+			if head > items {
+				head = items
+			}
 			continue
 		}
 		items := table.items.Load()
@@ -430,8 +464,8 @@ func (f *Freezer) repair() error {
 		}
 	}
 	for kind, table := range f.tables {
-		// blobs table is special for freezerDB
-		if kind == ChainFreezerBlobTable && table.items.Load() == 0 {
+		//  try to align with exist tables, skip empty table
+		if slices.Contains(f.additionTableKinds, kind) && EmptyTable(table) {
 			continue
 		}
 		if err := table.truncateHead(head); err != nil {
@@ -640,9 +674,12 @@ func (f *Freezer) ResetTable(kind string, tail, head uint64) error {
 	if f.readonly {
 		return errReadOnly
 	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+
 	f.writeLock.Lock()
 	defer f.writeLock.Unlock()
-
 	nt, err := f.tables[kind].resetItems(tail-f.offset, head-f.offset)
 	if err != nil {
 		return err
@@ -661,4 +698,8 @@ func (f *Freezer) ResetTable(kind string, tail, head uint64) error {
 	f.writeBatch = newFreezerBatch(f)
 	log.Info("Reset Table", "tail", f.tail.Load(), "frozen", f.frozen.Load())
 	return nil
+}
+
+func EmptyTable(t *freezerTable) bool {
+	return t.items.Load() == 0
 }

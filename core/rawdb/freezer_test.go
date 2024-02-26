@@ -334,6 +334,72 @@ func TestFreezerConcurrentReadonly(t *testing.T) {
 	}
 }
 
+func TestFreezer_AdditionTables(t *testing.T) {
+	dir := t.TempDir()
+	// Open non-readonly freezer and fill individual tables
+	// with different amount of data.
+	f, err := NewFreezer(dir, "", false, 0, 2049, map[string]bool{"o1": true, "o2": true})
+	if err != nil {
+		t.Fatal("can't open freezer", err)
+	}
+
+	var item = make([]byte, 1024)
+	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		if err := op.AppendRaw("o1", 0, item); err != nil {
+			return err
+		}
+		if err := op.AppendRaw("o1", 1, item); err != nil {
+			return err
+		}
+		if err := op.AppendRaw("o2", 0, item); err != nil {
+			return err
+		}
+		if err := op.AppendRaw("o2", 1, item); err != nil {
+			return err
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// check read only
+	f, err = NewFreezer(dir, "", true, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true}, "a1")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	f, err = NewFreezer(dir, "", false, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true}, "a1")
+	require.NoError(t, err)
+	frozen, err := f.Ancients()
+	f.ResetTable("a1", frozen, frozen)
+	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		if err := op.AppendRaw("o1", 2, item); err != nil {
+			return err
+		}
+		if err := op.AppendRaw("o2", 2, item); err != nil {
+			return err
+		}
+		if err := op.AppendRaw("a1", 2, item); err != nil {
+			return err
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	actual, err := f.Ancient("a1", 1)
+	require.Error(t, err)
+	actual, err = f.Ancient("a1", 2)
+	require.NoError(t, err)
+	require.Equal(t, item, actual)
+	require.NoError(t, f.Close())
+
+	// reopen and read
+	f, err = NewFreezer(dir, "", true, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true}, "a1")
+	require.NoError(t, err)
+	actual, err = f.Ancient("a1", 2)
+	require.NoError(t, err)
+	require.Equal(t, item, actual)
+	require.NoError(t, f.Close())
+}
+
 func newFreezerForTesting(t *testing.T, tables map[string]bool) (*Freezer, string) {
 	t.Helper()
 

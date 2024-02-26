@@ -231,7 +231,7 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 // NewFreezerDb only create a freezer without statedb.
 func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*Freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
-	frdb, err := NewFreezer(frz, namespace, readonly, newOffSet, freezerTableSize, chainFreezerNoSnappy)
+	frdb, err := NewFreezer(frz, namespace, readonly, newOffSet, freezerTableSize, chainFreezerNoSnappy, ChainFreezerBlobTable)
 	if err != nil {
 		return nil, err
 	}
