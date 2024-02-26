@@ -257,18 +257,21 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, chainCfg *params.ChainConf
 }
 
 func (f *chainFreezer) tryPruneBlobAncient(num uint64) {
-	if num <= params.BlobLocalAvailableThreshold {
+	threshold := uint64(params.BlobLocalAvailableThreshold + params.BlobLocalAvailableExtraThreshold)
+	if num <= threshold {
 		return
 	}
-	expectTail := num - params.BlobLocalAvailableThreshold
+	expectTail := num - threshold
 	h, err := f.TableAncients(ChainFreezerBlobTable)
 	if err != nil {
 		log.Error("Cannot get blob ancient head when prune", "block", num)
 		return
 	}
+	start := time.Now()
 	if err = f.ResetTable(ChainFreezerBlobTable, expectTail, h); err != nil {
 		log.Error("Cannot prune blob ancient", "block", num, "expectTail", expectTail)
 	}
+	log.Info("Chain freezer prune useless blobs, now ancient data is", "from", expectTail, "to", num, "cost", common.PrettyDuration(time.Since(start)))
 }
 
 func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64, chainCfg *params.ChainConfig) (hashes []common.Hash, err error) {
