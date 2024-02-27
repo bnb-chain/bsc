@@ -189,6 +189,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle
 	}
+	if config.OverrideFeynman != nil {
+		chainConfig.FeynmanTime = config.OverrideFeynman
+		overrides.OverrideFeynman = config.OverrideFeynman
+	}
 
 	eth := &Ethereum{
 		config:            config,

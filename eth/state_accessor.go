@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
@@ -239,12 +240,37 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 	if err != nil {
 		return nil, vm.BlockContext{}, nil, nil, err
 	}
+	// upgrade build-in system contract before normal txs if Feynman is not enabled
+	if !eth.blockchain.Config().IsFeynman(block.Number(), block.Time()) {
+		systemcontracts.UpgradeBuildInSystemContract(eth.blockchain.Config(), block.Number(), parent.Time(), block.Time(), statedb)
+	}
 	if txIndex == 0 && len(block.Transactions()) == 0 {
 		return nil, vm.BlockContext{}, statedb, release, nil
 	}
 	// Recompute transactions up to the target index.
-	signer := types.MakeSigner(eth.blockchain.Config(), block.Number(), block.Time())
+	var (
+		signer         = types.MakeSigner(eth.blockchain.Config(), block.Number(), block.Time())
+		beforeSystemTx = true
+	)
 	for idx, tx := range block.Transactions() {
+		// upgrade build-in system contract before system txs if Feynman is enabled
+		if beforeSystemTx {
+			if posa, ok := eth.Engine().(consensus.PoSA); ok {
+				if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
+					balance := statedb.GetBalance(consensus.SystemAddress)
+					if balance.Cmp(common.Big0) > 0 {
+						statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
+						statedb.AddBalance(block.Header().Coinbase, balance)
+					}
+
+					if eth.blockchain.Config().IsFeynman(block.Number(), block.Time()) {
+						systemcontracts.UpgradeBuildInSystemContract(eth.blockchain.Config(), block.Number(), parent.Time(), block.Time(), statedb)
+					}
+					beforeSystemTx = false
+				}
+			}
+		}
+
 		// Assemble the transaction call message and return if the requested offset
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		txContext := core.NewEVMTxContext(msg)
@@ -254,14 +280,6 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 		}
 		// Not yet the searched for transaction, execute on top of the current state
 		vmenv := vm.NewEVM(context, txContext, statedb, eth.blockchain.Config(), vm.Config{})
-		if posa, ok := eth.Engine().(consensus.PoSA); ok && msg.From == context.Coinbase &&
-			posa.IsSystemContract(msg.To) && msg.GasPrice.Cmp(big.NewInt(0)) == 0 {
-			balance := statedb.GetBalance(consensus.SystemAddress)
-			if balance.Cmp(common.Big0) > 0 {
-				statedb.SetBalance(consensus.SystemAddress, big.NewInt(0))
-				statedb.AddBalance(context.Coinbase, balance)
-			}
-		}
 		statedb.SetTxContext(tx.Hash(), idx)
 		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
 			return nil, vm.BlockContext{}, nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)

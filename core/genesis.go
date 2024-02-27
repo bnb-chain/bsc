@@ -280,6 +280,7 @@ type ChainOverrides struct {
 	OverrideKepler   *uint64
 	OverrideCancun   *uint64
 	OverrideVerkle   *uint64
+	OverrideFeynman  *uint64
 }
 
 // SetupGenesisBlock writes or updates the genesis block in db.
@@ -316,6 +317,9 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *trie.Database, gen
 			}
 			if overrides != nil && overrides.OverrideVerkle != nil {
 				config.VerkleTime = overrides.OverrideVerkle
+			}
+			if overrides != nil && overrides.OverrideFeynman != nil {
+				config.FeynmanTime = overrides.OverrideFeynman
 			}
 		}
 	}
