@@ -1,4 +1,8 @@
 # Changelog
+## v1.3.10
+FEATURE
+* [\#2047](https://github.com/bnb-chain/bsc/pull/2047) feat: add new fork block and precompile contract for BEP294 and BEP299
+
 ## v1.3.9
 FEATURE
 * [\#2186](https://github.com/bnb-chain/bsc/pull/2186) log: support maxBackups in config.toml
