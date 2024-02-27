@@ -832,10 +832,10 @@ func WriteAncientBlocksWithBlobs(db ethdb.AncientStore, blocks []*types.Block, r
 
 	// do some sanity check
 	if len(blocks) != len(blobs) {
-		return 0, fmt.Errorf("the blobs len is different with blobks, %v:%v", len(blobs), len(blocks))
+		return 0, fmt.Errorf("the blobs len is different with blocks, %v:%v", len(blobs), len(blocks))
 	}
 	if len(blocks) != len(receipts) {
-		return 0, fmt.Errorf("the receipts len is different with blobks, %v:%v", len(receipts), len(blocks))
+		return 0, fmt.Errorf("the receipts len is different with blocks, %v:%v", len(receipts), len(blocks))
 	}
 	// try reset empty blob ancient table
 	if err := ResetEmptyBlobAncientTable(db, blocks[0].NumberU64()); err != nil {

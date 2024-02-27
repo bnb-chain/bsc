@@ -351,8 +351,41 @@ func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 }
 
 // IsDataAvailable it checks that the blobTx block has available blob data
-// TODO(GalaIO): implement it later
 func (p *Parlia) IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block, blobs types.BlobTxSidecars) error {
+	if !p.chainConfig.IsCancun(block.Number(), block.Time()) {
+		return nil
+	}
+	// only required to check within BlobLocalAvailableThreshold block's DA
+	currentHeader := chain.CurrentHeader()
+	if block.NumberU64() < currentHeader.Number.Uint64()-params.BlobLocalAvailableThreshold {
+		return nil
+	}
+
+	// alloc block's versionedHashes
+	versionedHashes := make([][]common.Hash, 0, len(block.Transactions()))
+	for _, tx := range block.Transactions() {
+		versionedHashes = append(versionedHashes, tx.BlobHashes())
+	}
+	if len(versionedHashes) != len(blobs) {
+		return errors.New("blobs do not match the versionedHashes length")
+	}
+
+	// check blob amount
+	blobCnt := 0
+	for _, h := range versionedHashes {
+		blobCnt += len(h)
+	}
+	if blobCnt > params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob {
+		return fmt.Errorf("too many blobs in block: have %d, permitted %d", blobCnt, params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob)
+	}
+
+	// check blob and versioned hash
+	for i := range versionedHashes {
+		if err := validateBlobSidecar(versionedHashes[i], blobs[i]); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

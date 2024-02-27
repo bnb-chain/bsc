@@ -1965,19 +1965,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 	}
 
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
-		// TODO(GalaIO): check blob data available first
-		//if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-		//	if posa, ok := bc.engine.(consensus.PoSA); ok {
-		//		blobs, exist := bc.receivedBlobsCache.Load(block.Hash())
-		//		if !exist {
-		//			return it.index, fmt.Errorf("cannot find the target block's blob info, block: %v, hash: %v", block.NumberU64(), block.Hash())
-		//		}
-		//		if err = posa.IsDataAvailable(bc, block, blobs.(types.BlobTxSidecars)); err != nil {
-		//			return it.index, err
-		//		}
-		//	}
-		//}
-
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
 			log.Debug("Abort during block processing")
@@ -2033,6 +2020,20 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		parent := it.previous()
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
+		}
+
+		// check blob data available first
+		// TODO(GalaIO): move IsDataAvailable combine into verifyHeaders?
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			if posa, ok := bc.engine.(consensus.PoSA); ok {
+				blobs, exist := bc.receivedBlobsCache.Load(block.Hash())
+				if !exist {
+					return it.index, fmt.Errorf("cannot find the target block's blob info, block: %v, hash: %v", block.NumberU64(), block.Hash())
+				}
+				if err = posa.IsDataAvailable(bc, block, blobs.(types.BlobTxSidecars)); err != nil {
+					return it.index, err
+				}
+			}
 		}
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
