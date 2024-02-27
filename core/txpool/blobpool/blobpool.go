@@ -313,6 +313,8 @@ type BlobPool struct {
 
 	discoverFeed event.Feed // Event feed to send out new tx events on pool discovery (reorg excluded)
 	insertFeed   event.Feed // Event feed to send out new tx events on pool inclusion (reorg included)
+	reannoTxFeed event.Feed // Event feed for announcing transactions again
+	scope        event.SubscriptionScope
 
 	lock sync.RWMutex // Mutex protecting the pool during reorg handling
 }
@@ -1502,7 +1504,7 @@ func (p *BlobPool) SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs bool
 // SubscribeReannoTxsEvent registers a subscription of ReannoTxsEvent and
 // starts sending event to the given channel.
 func (pool *BlobPool) SubscribeReannoTxsEvent(ch chan<- core.ReannoTxsEvent) event.Subscription {
-	panic("not supported")
+	return pool.scope.Track(pool.reannoTxFeed.Subscribe(ch))
 }
 
 // Nonce returns the next nonce of an account, with all transactions executable

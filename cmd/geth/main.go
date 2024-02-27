@@ -93,7 +93,7 @@ var (
 		utils.BlobPoolPriceBumpFlag,
 		utils.SyncModeFlag,
 		utils.TriesVerifyModeFlag,
-		utils.SyncTargetFlag,
+		// utils.SyncTargetFlag,
 		utils.ExitWhenSyncedFlag,
 		utils.GCModeFlag,
 		utils.SnapshotFlag,

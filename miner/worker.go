@@ -1127,7 +1127,7 @@ LOOP:
 		sub := w.eth.TxPool().SubscribeTransactions(txsCh, true)
 		// if TxPool has been stopped, `sub` would be nil, it could happen on shutdown.
 		if sub == nil {
-			log.Info("commitWork SubscribeNewTxsEvent return nil")
+			log.Info("commitWork SubscribeTransactions return nil")
 		} else {
 			defer sub.Unsubscribe()
 		}

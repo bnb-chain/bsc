@@ -342,7 +342,7 @@ loop:
 			if err := c.Write(ethProto, eth.StatusMsg, status); err != nil {
 				return fmt.Errorf("write to connection failed: %v", err)
 			}
-		case eth.UpgradeStatusMsg + +protoOffset(ethProto):
+		case eth.UpgradeStatusMsg + protoOffset(ethProto):
 			msg := new(eth.UpgradeStatusPacket)
 			if err := rlp.DecodeBytes(data, &msg); err != nil {
 				return fmt.Errorf("error decoding status packet: %w", err)
