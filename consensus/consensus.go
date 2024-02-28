@@ -154,5 +154,5 @@ type PoSA interface {
 	GetFinalizedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
 	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool
-	IsDataAvailable(chain ChainHeaderReader, block *types.Block, blobs types.BlobTxSidecars) error
+	IsDataAvailable(chain ChainHeaderReader, block *types.Block) error
 }

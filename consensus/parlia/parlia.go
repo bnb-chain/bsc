@@ -351,7 +351,7 @@ func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 }
 
 // IsDataAvailable it checks that the blobTx block has available blob data
-func (p *Parlia) IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block, blobs types.BlobTxSidecars) error {
+func (p *Parlia) IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) error {
 	if !p.chainConfig.IsCancun(block.Number(), block.Time()) {
 		return nil
 	}
@@ -366,6 +366,7 @@ func (p *Parlia) IsDataAvailable(chain consensus.ChainHeaderReader, block *types
 	for _, tx := range block.Transactions() {
 		versionedHashes = append(versionedHashes, tx.BlobHashes())
 	}
+	blobs := block.Blobs()
 	if len(versionedHashes) != len(blobs) {
 		return errors.New("blobs do not match the versionedHashes length")
 	}

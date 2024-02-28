@@ -285,9 +285,6 @@ type BlockChain struct {
 	// Cache for the blocks that failed to pass MPT root verification
 	badBlockCache *lru.Cache[common.Hash, time.Time]
 
-	// blobs
-	receivedBlobsCache sync.Map // it saves received blobs for validation & storage
-
 	// trusted diff layers
 	diffLayerCache             *exlru.Cache                          // Cache for the diffLayers
 	diffLayerChanCache         *exlru.Cache                          // Cache for the difflayer channel
@@ -651,11 +648,6 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 
 func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
 	bc.blockCache.Add(hash, block)
-	// try cache blob too
-	blob, ok := bc.receivedBlobsCache.Load(hash)
-	if ok {
-		bc.blobsCache.Add(hash, blob.(types.BlobTxSidecars))
-	}
 }
 
 // empty returns an indicator whether the blockchain is empty.
@@ -1545,9 +1537,7 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	rawdb.WriteBlock(batch, block)
 	// if enable cancun, it needs to write blobs too
 	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-		blobs, _ := bc.receivedBlobsCache.Load(block.Hash())
-		rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), blobs.(types.BlobTxSidecars))
-		bc.receivedBlobsCache.Delete(block.Hash())
+		rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), block.Blobs())
 	}
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
@@ -1593,13 +1583,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
 		// if enable cancun, it needs to write blobs too
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-			blobs, exist := bc.receivedBlobsCache.Load(block.Hash())
-			if exist {
-				rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), blobs.(types.BlobTxSidecars))
-			} else {
-				rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), nil)
-				bc.receivedBlobsCache.Delete(block.Hash())
-			}
+			rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), block.Blobs())
 		}
 		rawdb.WritePreimages(blockBatch, state.Preimages())
 		if err := blockBatch.Write(); err != nil {
@@ -2026,11 +2010,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		// TODO(GalaIO): move IsDataAvailable combine into verifyHeaders?
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			if posa, ok := bc.engine.(consensus.PoSA); ok {
-				blobs, exist := bc.receivedBlobsCache.Load(block.Hash())
-				if !exist {
-					return it.index, fmt.Errorf("cannot find the target block's blob info, block: %v, hash: %v", block.NumberU64(), block.Hash())
-				}
-				if err = posa.IsDataAvailable(bc, block, blobs.(types.BlobTxSidecars)); err != nil {
+				if err = posa.IsDataAvailable(bc, block); err != nil {
 					return it.index, err
 				}
 			}

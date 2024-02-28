@@ -2,6 +2,7 @@ package types
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -93,23 +94,54 @@ func createEmptyBlobTx(key *ecdsa.PrivateKey, withSidecar bool) *Transaction {
 }
 
 func TestBlobTxSidecars_Encode(t *testing.T) {
-	bs := BlobTxSidecars{
-		&BlobTxSidecar{
-			Blobs:       []kzg4844.Blob{emptyBlob},
-			Commitments: []kzg4844.Commitment{emptyBlobCommit},
-			Proofs:      []kzg4844.Proof{emptyBlobProof},
+	tests := []struct {
+		raw BlobTxSidecars
+		err bool
+	}{
+		{
+			raw: BlobTxSidecars{
+				&BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+				&BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+			},
+			err: false,
 		},
-		&BlobTxSidecar{
-			Blobs:       []kzg4844.Blob{emptyBlob},
-			Commitments: []kzg4844.Commitment{emptyBlobCommit},
-			Proofs:      []kzg4844.Proof{emptyBlobProof},
+		{
+			raw: BlobTxSidecars{
+				&BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+				nil,
+			},
+			err: true,
+		},
+		{
+			raw: BlobTxSidecars{},
+			err: false,
 		},
 	}
 
-	enc, err := rlp.EncodeToBytes(bs)
-	require.NoError(t, err)
-	var nbs BlobTxSidecars
-	err = rlp.DecodeBytes(enc, &nbs)
-	require.NoError(t, err)
-	require.Equal(t, bs, nbs)
+	for i, item := range tests {
+		t.Run(fmt.Sprintf("case%d", i), func(t *testing.T) {
+			enc, err := rlp.EncodeToBytes(item.raw)
+			require.NoError(t, err)
+			var nbs BlobTxSidecars
+			err = rlp.DecodeBytes(enc, &nbs)
+			if item.err {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, item.raw, nbs)
+		})
+	}
 }
