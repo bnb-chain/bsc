@@ -24,7 +24,6 @@ package remotedb
 import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -172,7 +171,7 @@ func (db *Database) Close() error {
 	return nil
 }
 
-func (db *Database) SetupFreezerEnv(chainCfg *params.ChainConfig) error {
+func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	panic("not supported")
 }
 

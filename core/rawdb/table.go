@@ -18,7 +18,6 @@ package rawdb
 
 import (
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 // table is a wrapper around a database that prefixes each key access with a pre-
@@ -230,7 +229,7 @@ func (t *table) NewSnapshot() (ethdb.Snapshot, error) {
 	return t.db.NewSnapshot()
 }
 
-func (t *table) SetupFreezerEnv(chainCfg *params.ChainConfig) error {
+func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return nil
 }
 

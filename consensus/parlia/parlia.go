@@ -355,9 +355,9 @@ func (p *Parlia) IsDataAvailable(chain consensus.ChainHeaderReader, block *types
 	if !p.chainConfig.IsCancun(block.Number(), block.Time()) {
 		return nil
 	}
-	// only required to check within BlobLocalAvailableThreshold block's DA
+	// only required to check within BlobReserveThreshold block's DA
 	currentHeader := chain.CurrentHeader()
-	if block.NumberU64() < currentHeader.Number.Uint64()-params.BlobLocalAvailableThreshold {
+	if block.NumberU64() < currentHeader.Number.Uint64()-params.BlobReserveThreshold {
 		return nil
 	}
 

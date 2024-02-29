@@ -26,8 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/params"
-
 	"github.com/olekukonko/tablewriter"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -104,8 +102,8 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 	return nil
 }
 
-func (frdb *freezerdb) SetupFreezerEnv(chainCfg *params.ChainConfig) error {
-	return frdb.AncientFreezer.SetupFreezerEnv(chainCfg)
+func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return frdb.AncientFreezer.SetupFreezerEnv(env)
 }
 
 // nofreezedb is a database wrapper that disables freezer data retrievals.
@@ -212,7 +210,7 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
 
-func (db *nofreezedb) SetupFreezerEnv(chainCfg *params.ChainConfig) error {
+func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return nil
 }
 

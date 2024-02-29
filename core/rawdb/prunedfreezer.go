@@ -312,7 +312,7 @@ func (f *prunedfreezer) freeze() {
 	}
 }
 
-func (f *prunedfreezer) SetupFreezerEnv(chainCfg *params.ChainConfig) error {
+func (f *prunedfreezer) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return nil
 }
 

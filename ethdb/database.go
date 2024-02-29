@@ -145,10 +145,15 @@ type AncientWriter interface {
 	ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error
 }
 
+type FreezerEnv struct {
+	ChainCfg         *params.ChainConfig
+	BlobExtraReserve int64
+}
+
 // AncientFreezer defines the help functions for freezing ancient data
 type AncientFreezer interface {
 	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
-	SetupFreezerEnv(chainCfg *params.ChainConfig) error
+	SetupFreezerEnv(env *FreezerEnv) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.
