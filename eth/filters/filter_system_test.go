@@ -833,7 +833,7 @@ func TestVoteSubscription(t *testing.T) {
 		backend, sys = newTestFilterSystem(t, db, Config{Timeout: 5 * time.Minute})
 		api          = NewFilterAPI(sys, false)
 		votes        = []*types.VoteEnvelope{
-			&types.VoteEnvelope{
+			{
 				VoteAddress: types.BLSPublicKey{},
 				Signature:   types.BLSSignature{},
 				Data: &types.VoteData{
@@ -843,7 +843,7 @@ func TestVoteSubscription(t *testing.T) {
 					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(1)))),
 				},
 			},
-			&types.VoteEnvelope{
+			{
 				VoteAddress: types.BLSPublicKey{},
 				Signature:   types.BLSSignature{},
 				Data: &types.VoteData{
@@ -853,7 +853,7 @@ func TestVoteSubscription(t *testing.T) {
 					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(2)))),
 				},
 			},
-			&types.VoteEnvelope{
+			{
 				VoteAddress: types.BLSPublicKey{},
 				Signature:   types.BLSSignature{},
 				Data: &types.VoteData{
@@ -863,7 +863,7 @@ func TestVoteSubscription(t *testing.T) {
 					TargetHash:   common.BytesToHash(common.Hex2Bytes(string(rune(3)))),
 				},
 			},
-			&types.VoteEnvelope{
+			{
 				VoteAddress: types.BLSPublicKey{},
 				Signature:   types.BLSSignature{},
 				Data: &types.VoteData{
