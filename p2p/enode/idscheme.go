@@ -18,7 +18,7 @@ package enode
 
 import (
 	"crypto/ecdsa"
-	"fmt"
+	"errors"
 	"io"
 
 	"github.com/ethereum/go-ethereum/common/math"
