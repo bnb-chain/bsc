@@ -1520,7 +1520,7 @@ func (s *BlockChainAPI) replay(ctx context.Context, block *types.Block, accounts
 // GetDiffAccountsWithScope returns detailed changes of some interested accounts in a specific block number.
 func (s *BlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, blockNr rpc.BlockNumber, accounts []common.Address) (*types.DiffAccountsInBlock, error) {
 	if s.b.Chain() == nil {
-		return nil, fmt.Errorf("blockchain not support get diff accounts")
+		return nil, errors.New("blockchain not support get diff accounts")
 	}
 
 	block, err := s.b.BlockByNumber(ctx, blockNr)
@@ -2005,7 +2005,7 @@ func (s *TransactionAPI) GetTransactionReceiptsByBlockNumber(ctx context.Context
 	}
 	txs := block.Transactions()
 	if len(txs) != len(receipts) {
-		return nil, fmt.Errorf("txs length doesn't equal to receipts' length")
+		return nil, errors.New("txs length doesn't equal to receipts' length")
 	}
 
 	txReceipts := make([]map[string]interface{}, 0, len(txs))
