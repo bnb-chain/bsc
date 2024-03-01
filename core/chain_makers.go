@@ -569,6 +569,10 @@ func (cm *chainMaker) GetHeaderByHash(hash common.Hash) *types.Header {
 	return b.Header()
 }
 
+func (cm *chainMaker) GenesisHeader() *types.Header {
+	panic("not supported")
+}
+
 func (cm *chainMaker) GetHeader(hash common.Hash, number uint64) *types.Header {
 	return cm.GetHeaderByNumber(number)
 }

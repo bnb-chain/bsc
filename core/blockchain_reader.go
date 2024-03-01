@@ -322,7 +322,7 @@ func (bc *BlockChain) GetTd(hash common.Hash, number uint64) *big.Int {
 
 // HasState checks if state trie is fully present in the database or not.
 func (bc *BlockChain) HasState(hash common.Hash) bool {
-	if bc.stateCache.NoTries() {
+	if bc.NoTries() {
 		return bc.snaps != nil && bc.snaps.Snapshot(hash) != nil
 	}
 	if bc.pipeCommit && bc.snaps != nil {
@@ -416,6 +416,11 @@ func (bc *BlockChain) GasLimit() uint64 {
 // Genesis retrieves the chain's genesis block.
 func (bc *BlockChain) Genesis() *types.Block {
 	return bc.genesisBlock
+}
+
+// GenesisHeader retrieves the chain's genesis block header.
+func (bc *BlockChain) GenesisHeader() *types.Header {
+	return bc.genesisBlock.Header()
 }
 
 // TxIndexProgress returns the transaction indexing progress.
