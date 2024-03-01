@@ -20,6 +20,7 @@ import (
 	"container/heap"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
