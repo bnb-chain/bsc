@@ -3058,7 +3058,7 @@ func (bc *BlockChain) GetTrustedDiffLayer(blockHash common.Hash) *types.DiffLaye
 
 func CalculateDiffHash(d *types.DiffLayer) (common.Hash, error) {
 	if d == nil {
-		return common.Hash{}, fmt.Errorf("nil diff layer")
+		return common.Hash{}, errors.New("nil diff layer")
 	}
 
 	diff := &types.ExtDiffLayer{

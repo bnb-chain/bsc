@@ -3,6 +3,7 @@ package parlia
 import (
 	"container/heap"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -159,7 +160,7 @@ func (p *Parlia) getValidatorElectionInfo(blockNr rpc.BlockNumberOrHash) ([]Vali
 		return nil, err
 	}
 	if totalLength.Int64() != int64(len(validators)) || totalLength.Int64() != int64(len(votingPowers)) || totalLength.Int64() != int64(len(voteAddrs)) {
-		return nil, fmt.Errorf("validator length not match")
+		return nil, errors.New("validator length not match")
 	}
 
 	validatorItems := make([]ValidatorItem, len(validators))

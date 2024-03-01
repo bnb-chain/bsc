@@ -2,7 +2,7 @@ package vote
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"time"
 
@@ -38,7 +38,7 @@ func NewVoteSigner(blsPasswordPath, blsWalletPath string) (*VoteSigner, error) {
 	}
 	if !dirExists {
 		log.Error("BLS wallet did not exists.")
-		return nil, fmt.Errorf("BLS wallet did not exists")
+		return nil, errors.New("BLS wallet did not exists")
 	}
 
 	walletPassword, err := os.ReadFile(blsPasswordPath)

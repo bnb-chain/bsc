@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/tendermint/tendermint/crypto/ed25519"
@@ -97,7 +98,7 @@ func (cs ConsensusState) EncodeConsensusState() ([]byte, error) {
 
 	pos := uint64(0)
 	if uint64(len(cs.ChainID)) > chainIDLength {
-		return nil, fmt.Errorf("chainID length should be no more than 32")
+		return nil, errors.New("chainID length should be no more than 32")
 	}
 	copy(encodingBytes[pos:pos+chainIDLength], cs.ChainID)
 	pos += chainIDLength
@@ -115,7 +116,7 @@ func (cs ConsensusState) EncodeConsensusState() ([]byte, error) {
 		validator := cs.NextValidatorSet.Validators[index]
 		pubkey, ok := validator.PubKey.(ed25519.PubKeyEd25519)
 		if !ok {
-			return nil, fmt.Errorf("invalid pubkey type")
+			return nil, errors.New("invalid pubkey type")
 		}
 
 		copy(encodingBytes[pos:pos+validatorPubkeyLength], pubkey[:])
@@ -177,16 +178,16 @@ func (h *Header) Validate(chainID string) error {
 		return err
 	}
 	if h.ValidatorSet == nil {
-		return fmt.Errorf("invalid header: validator set is nil")
+		return errors.New("invalid header: validator set is nil")
 	}
 	if h.NextValidatorSet == nil {
-		return fmt.Errorf("invalid header: next validator set is nil")
+		return errors.New("invalid header: next validator set is nil")
 	}
 	if !bytes.Equal(h.ValidatorsHash, h.ValidatorSet.Hash()) {
-		return fmt.Errorf("invalid header: validator set does not match hash")
+		return errors.New("invalid header: validator set does not match hash")
 	}
 	if !bytes.Equal(h.NextValidatorsHash, h.NextValidatorSet.Hash()) {
-		return fmt.Errorf("invalid header: next validator set does not match hash")
+		return errors.New("invalid header: next validator set does not match hash")
 	}
 	return nil
 }
