@@ -651,7 +651,7 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 			if stateRoot := triedb.Head(); stateRoot != (common.Hash{}) {
 				header.Root = stateRoot
 			} else {
-				return nil, nil, common.Hash{}, fmt.Errorf("no top state root hash in path db")
+				return nil, nil, common.Hash{}, errors.New("no top state root hash in path db")
 			}
 		} else {
 			header = rawdb.ReadHeadHeader(db)

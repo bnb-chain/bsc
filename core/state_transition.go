@@ -382,10 +382,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	if st.evm.ChainConfig().IsNano(st.evm.Context.BlockNumber) {
 		for _, blackListAddr := range types.NanoBlackList {
 			if blackListAddr == msg.From {
-				return nil, fmt.Errorf("block blacklist account")
+				return nil, errors.New("block blacklist account")
 			}
 			if msg.To != nil && *msg.To == blackListAddr {
-				return nil, fmt.Errorf("block blacklist account")
+				return nil, errors.New("block blacklist account")
 			}
 		}
 	}
