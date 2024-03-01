@@ -21,6 +21,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/base32"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"strings"

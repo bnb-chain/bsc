@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"math/big"
 

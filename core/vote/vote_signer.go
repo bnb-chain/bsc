@@ -2,7 +2,6 @@ package vote
 
 import (
 	"context"
-	"errors"
 	"os"
 	"time"
 
