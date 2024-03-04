@@ -101,6 +101,10 @@ func (t *table) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (int64, erro
 	return t.db.ModifyAncients(fn)
 }
 
+func (t *table) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
+	return t.db.ResetTable(kind, tail, head, onlyEmpty)
+}
+
 func (t *table) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return t.db.ReadAncients(fn)
 }
@@ -235,6 +239,10 @@ func (t *table) NewBatchWithSize(size int) ethdb.Batch {
 // happened on the database.
 func (t *table) NewSnapshot() (ethdb.Snapshot, error) {
 	return t.db.NewSnapshot()
+}
+
+func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return nil
 }
 
 // tableBatch is a wrapper around a database batch that prefixes each key access

@@ -41,6 +41,7 @@ type freezerdb struct {
 	ancientRoot string
 	ethdb.KeyValueStore
 	ethdb.AncientStore
+	ethdb.AncientFreezer
 	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
 }
@@ -125,6 +126,10 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 	return nil
 }
 
+func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return frdb.AncientFreezer.SetupFreezerEnv(env)
+}
+
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
@@ -170,6 +175,10 @@ func (db *nofreezedb) AncientSize(kind string) (uint64, error) {
 // ModifyAncients is not supported.
 func (db *nofreezedb) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, error) {
 	return 0, errNotSupported
+}
+
+func (db *nofreezedb) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
+	return errNotSupported
 }
 
 // TruncateHead returns an error as we don't have a backing chain freezer.
@@ -241,6 +250,10 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
 
+func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return nil
+}
+
 // NewDatabase creates a high level database on top of a given key-value data
 // store without a freezer moving immutable chain segments into cold storage.
 func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
@@ -250,7 +263,7 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 // NewFreezerDb only create a freezer without statedb.
 func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*Freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
-	frdb, err := NewFreezer(frz, namespace, readonly, newOffSet, freezerTableSize, chainFreezerNoSnappy)
+	frdb, err := NewFreezer(frz, namespace, readonly, newOffSet, freezerTableSize, chainFreezerNoSnappy, ChainFreezerBlobTable)
 	if err != nil {
 		return nil, err
 	}
@@ -307,9 +320,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			WriteAncientType(db, PruneFreezerType)
 		}
 		return &freezerdb{
-			ancientRoot:   ancient,
-			KeyValueStore: db,
-			AncientStore:  frdb,
+			ancientRoot:    ancient,
+			KeyValueStore:  db,
+			AncientStore:   frdb,
+			AncientFreezer: frdb,
 		}, nil
 	}
 
@@ -422,9 +436,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		}()
 	}
 	return &freezerdb{
-		ancientRoot:   ancient,
-		KeyValueStore: db,
-		AncientStore:  frdb,
+		ancientRoot:    ancient,
+		KeyValueStore:  db,
+		AncientStore:   frdb,
+		AncientFreezer: frdb,
 	}, nil
 }
 

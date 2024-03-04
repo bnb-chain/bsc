@@ -1100,6 +1100,13 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
 		Category: flags.FastFinalityCategory,
 	}
+
+	// Blob setting
+	BlobExtraReserveFlag = &cli.Int64Flag{
+		Name:  "blob.extra-reserve",
+		Usage: "Extra reserve threshold for blob, blob never expires when -1 is set, default 28800",
+		Value: params.BlobExtraReserveThreshold,
+	}
 )
 
 var (
@@ -2118,6 +2125,11 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	log.Info("Initializing the KZG library", "backend", ctx.String(CryptoKZGFlag.Name))
 	if err := kzg4844.UseCKZG(ctx.String(CryptoKZGFlag.Name) == "ckzg"); err != nil {
 		Fatalf("Failed to set KZG library implementation to %s: %v", ctx.String(CryptoKZGFlag.Name), err)
+	}
+
+	// blob setting
+	if ctx.IsSet(BlobExtraReserveFlag.Name) {
+		cfg.BlobExtraReserve = ctx.Int64(BlobExtraReserveFlag.Name)
 	}
 }
 

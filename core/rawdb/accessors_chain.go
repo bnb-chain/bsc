@@ -360,6 +360,20 @@ func ReadHeader(db ethdb.Reader, hash common.Hash, number uint64) *types.Header 
 	return header
 }
 
+// ReadHeaderAndRaw retrieves the block header corresponding to the hash.
+func ReadHeaderAndRaw(db ethdb.Reader, hash common.Hash, number uint64) (*types.Header, rlp.RawValue) {
+	data := ReadHeaderRLP(db, hash, number)
+	if len(data) == 0 {
+		return nil, nil
+	}
+	header := new(types.Header)
+	if err := rlp.DecodeBytes(data, header); err != nil {
+		log.Error("Invalid block header RLP", "hash", hash, "err", err)
+		return nil, nil
+	}
+	return header, data
+}
+
 // WriteHeader stores a block header into the database and also stores the hash-
 // to-number mapping.
 func WriteHeader(db ethdb.KeyValueWriter, header *types.Header) {
@@ -809,6 +823,98 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 	})
 }
 
+// WriteAncientBlocksWithBlobs writes entire block data into ancient store and returns the total written size.
+// Attention: The caller must set blobs after cancun
+func WriteAncientBlocksWithBlobs(db ethdb.AncientStore, blocks []*types.Block, receipts []types.Receipts, td *big.Int, blobs []types.BlobTxSidecars) (int64, error) {
+	if len(blocks) == 0 {
+		return 0, nil
+	}
+
+	// do some sanity check
+	if len(blocks) != len(blobs) {
+		return 0, fmt.Errorf("the blobs len is different with blocks, %v:%v", len(blobs), len(blocks))
+	}
+	if len(blocks) != len(receipts) {
+		return 0, fmt.Errorf("the receipts len is different with blocks, %v:%v", len(receipts), len(blocks))
+	}
+	// try reset empty blob ancient table
+	if err := ResetEmptyBlobAncientTable(db, blocks[0].NumberU64()); err != nil {
+		return 0, err
+	}
+
+	var (
+		tdSum      = new(big.Int).Set(td)
+		stReceipts []*types.ReceiptForStorage
+	)
+	return db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		for i, block := range blocks {
+			// Convert receipts to storage format and sum up total difficulty.
+			stReceipts = stReceipts[:0]
+			for _, receipt := range receipts[i] {
+				stReceipts = append(stReceipts, (*types.ReceiptForStorage)(receipt))
+			}
+			header := block.Header()
+			if i > 0 {
+				tdSum.Add(tdSum, header.Difficulty)
+			}
+			if err := writeAncientBlockWithBlob(op, block, header, stReceipts, tdSum, blobs[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// ReadBlobsRLP retrieves all the transaction blobs belonging to a block in RLP encoding.
+func ReadBlobsRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
+	var data []byte
+	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
+		// Check if the data is in ancients
+		if isCanon(reader, number, hash) {
+			data, _ = reader.Ancient(ChainFreezerBlobTable, number)
+			return nil
+		}
+		// If not, try reading from leveldb
+		data, _ = db.Get(blockBlobsKey(number, hash))
+		return nil
+	})
+	return data
+}
+
+// ReadRawBlobs retrieves all the transaction blobs belonging to a block.
+func ReadRawBlobs(db ethdb.Reader, hash common.Hash, number uint64) types.BlobTxSidecars {
+	data := ReadBlobsRLP(db, hash, number)
+	if len(data) == 0 {
+		return nil
+	}
+	var ret types.BlobTxSidecars
+	if err := rlp.DecodeBytes(data, &ret); err != nil {
+		log.Error("Invalid blob array RLP", "hash", hash, "err", err)
+		return nil
+	}
+	return ret
+}
+
+// WriteBlobs stores all the transaction blobs belonging to a block.
+// It could input nil for empty blobs.
+func WriteBlobs(db ethdb.KeyValueWriter, hash common.Hash, number uint64, blobs types.BlobTxSidecars) {
+	data, err := rlp.EncodeToBytes(blobs)
+	if err != nil {
+		log.Crit("Failed to encode block blobs", "err", err)
+	}
+	// Store the flattened receipt slice
+	if err := db.Put(blockBlobsKey(number, hash), data); err != nil {
+		log.Crit("Failed to store block blobs", "err", err)
+	}
+}
+
+// DeleteBlobs removes all blob data associated with a block hash.
+func DeleteBlobs(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
+	if err := db.Delete(blockBlobsKey(number, hash)); err != nil {
+		log.Crit("Failed to delete block blobs", "err", err)
+	}
+}
+
 func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int) error {
 	num := block.NumberU64()
 	if err := op.AppendRaw(ChainFreezerHashTable, num, block.Hash().Bytes()); err != nil {
@@ -829,12 +935,33 @@ func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *type
 	return nil
 }
 
+func writeAncientBlob(op ethdb.AncientWriteOp, num uint64, blobs types.BlobTxSidecars) error {
+	if err := op.Append(ChainFreezerBlobTable, num, blobs); err != nil {
+		return fmt.Errorf("can't append block %d blobs: %v", num, err)
+	}
+	return nil
+}
+
+// writeAncientBlockWithBlob writes entire block data into ancient store and returns the total written size.
+// Attention: The caller must set blobs after cancun
+func writeAncientBlockWithBlob(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int, blobs types.BlobTxSidecars) error {
+	num := block.NumberU64()
+	if err := writeAncientBlock(op, block, header, receipts, td); err != nil {
+		return err
+	}
+	if err := writeAncientBlob(op, num, blobs); err != nil {
+		return err
+	}
+	return nil
+}
+
 // DeleteBlock removes all block data associated with a hash.
 func DeleteBlock(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	DeleteReceipts(db, hash, number)
 	DeleteHeader(db, hash, number)
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
+	DeleteBlobs(db, hash, number) // it is safe to delete non-exist blob
 }
 
 // DeleteBlockWithoutNumber removes all block data associated with a hash, except
@@ -844,6 +971,7 @@ func DeleteBlockWithoutNumber(db ethdb.KeyValueWriter, hash common.Hash, number 
 	deleteHeaderWithoutNumber(db, hash, number)
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
+	DeleteBlobs(db, hash, number)
 }
 
 const badBlockToKeep = 10

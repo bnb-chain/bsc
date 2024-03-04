@@ -232,6 +232,9 @@ type Block struct {
 	// inter-peer block relay.
 	ReceivedAt   time.Time
 	ReceivedFrom interface{}
+
+	// blobs provides DA check
+	blobs BlobTxSidecars
 }
 
 // "external" block encoding. used for eth protocol, etc.
@@ -451,6 +454,10 @@ func (b *Block) SanityCheck() error {
 	return b.header.SanityCheck()
 }
 
+func (b *Block) Blobs() BlobTxSidecars {
+	return b.blobs
+}
+
 type writeCounter uint64
 
 func (c *writeCounter) Write(b []byte) (int, error) {
@@ -508,6 +515,17 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 	if withdrawals != nil {
 		block.withdrawals = make([]*Withdrawal, len(withdrawals))
 		copy(block.withdrawals, withdrawals)
+	}
+	return block
+}
+
+// WithBlobs returns a block containing the given blobs.
+func (b *Block) WithBlobs(blobs BlobTxSidecars) *Block {
+	block := &Block{
+		header:       b.header,
+		transactions: b.transactions,
+		uncles:       b.uncles,
+		blobs:        blobs,
 	}
 	return block
 }

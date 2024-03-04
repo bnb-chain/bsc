@@ -350,6 +350,46 @@ func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 	return abort, results
 }
 
+// IsDataAvailable it checks that the blobTx block has available blob data
+func (p *Parlia) IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) error {
+	if !p.chainConfig.IsCancun(block.Number(), block.Time()) {
+		return nil
+	}
+	// only required to check within BlobReserveThreshold block's DA
+	currentHeader := chain.CurrentHeader()
+	if block.NumberU64() < currentHeader.Number.Uint64()-params.BlobReserveThreshold {
+		return nil
+	}
+
+	// alloc block's versionedHashes
+	versionedHashes := make([][]common.Hash, 0, len(block.Transactions()))
+	for _, tx := range block.Transactions() {
+		versionedHashes = append(versionedHashes, tx.BlobHashes())
+	}
+	blobs := block.Blobs()
+	if len(versionedHashes) != len(blobs) {
+		return errors.New("blobs do not match the versionedHashes length")
+	}
+
+	// check blob amount
+	blobCnt := 0
+	for _, h := range versionedHashes {
+		blobCnt += len(h)
+	}
+	if blobCnt > params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob {
+		return fmt.Errorf("too many blobs in block: have %d, permitted %d", blobCnt, params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob)
+	}
+
+	// check blob and versioned hash
+	for i := range versionedHashes {
+		if err := validateBlobSidecar(versionedHashes[i], blobs[i]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // getValidatorBytesFromHeader returns the validators bytes extracted from the header's extra field if exists.
 // The validators bytes would be contained only in the epoch block's header, and its each validator bytes length is fixed.
 // On luban fork, we introduce vote attestation into the header's extra field, so extra format is different from before.
@@ -583,14 +623,6 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return err
 	}
 
-	// Verify existence / non-existence of withdrawalsHash.
-	if header.WithdrawalsHash != nil {
-		return fmt.Errorf("invalid withdrawalsHash: have %x, expected nil", header.WithdrawalsHash)
-	}
-	// Verify the existence / non-existence of cancun-specific header fields
-	if header.ParentBeaconRoot != nil {
-		return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
-	}
 	cancun := chain.Config().IsCancun(header.Number, header.Time)
 	if !cancun {
 		switch {
@@ -598,8 +630,20 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
 		case header.BlobGasUsed != nil:
 			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
+		case header.ParentBeaconRoot != nil:
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+		case header.WithdrawalsHash != nil:
+			return fmt.Errorf("invalid WithdrawalsHash, have %#x, expected nil", header.WithdrawalsHash)
 		}
 	} else {
+		switch {
+		case header.ParentBeaconRoot != nil:
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+		// types.EmptyWithdrawalsHash represents a empty value when EIP-4895 enabled,
+		// here, EIP-4895 still be disabled, value expected to be `common.Hash{}` is only to feet the demand of rlp encode/decode
+		case header.WithdrawalsHash == nil || *header.WithdrawalsHash != common.Hash{}:
+			return errors.New("header has wrong WithdrawalsHash")
+		}
 		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
 			return err
 		}
