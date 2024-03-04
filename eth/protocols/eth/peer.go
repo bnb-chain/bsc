@@ -81,6 +81,10 @@ type Peer struct {
 	queuedBlocks    chan *blockPropagation // Queue of blocks to broadcast to the peer
 	queuedBlockAnns chan *types.Block      // Queue of blocks to announce to the peer
 
+	knownBlockAndBlobs  *knownCache                   // Set of blockandblob hashes known to be known by this peer
+	queuedBlockAndBlobs chan *blockAndBlobPropagation // Queue of blocks to broadcast to the peer
+	// todo 4844 queuedBlockAndBlobsAnns ?
+
 	txpool      TxPool             // Transaction pool used by the broadcasters for liveness checks
 	knownTxs    *knownCache        // Set of transaction hashes known to be known by this peer
 	txBroadcast chan []common.Hash // Channel used to queue transaction propagation requests
@@ -320,6 +324,18 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
 		Block: block,
 		TD:    td,
+	})
+}
+
+// SendNewBlock propagates an entire block to a remote peer.
+func (p *Peer) SendNewBlockAndBlob(block *types.Block, td *big.Int, version uint32, sidecars types.BlobTxSidecars) error {
+	// Mark all the block hash as known, but ensure we don't overflow our limits
+	p.knownBlockAndBlobs.Add(block.Hash()) // todo 4844 check if adding only the block hash is okay
+	return p2p.Send(p.rw, NewBlockWithBlobMsg, &NewBlockWithBlobPacket{
+		Block:    block,
+		TD:       td,
+		Version:  version,
+		Sidecars: sidecars,
 	})
 }
 

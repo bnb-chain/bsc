@@ -37,12 +37,27 @@ type blockPropagation struct {
 	td    *big.Int
 }
 
+// blockPropagation is a block propagation event, waiting for its turn in the
+// broadcast queue.
+type blockAndBlobPropagation struct {
+	block    *types.Block
+	td       *big.Int
+	sidecars types.BlobTxSidecars
+	version  uint32
+}
+
 // broadcastBlocks is a write loop that multiplexes blocks and block announcements
 // to the remote peer. The goal is to have an async writer that does not lock up
 // node internals and at the same time rate limits queued data.
 func (p *Peer) broadcastBlocks() {
 	for {
 		select {
+		case prop := <-p.queuedBlockAndBlobs:
+			if err := p.SendNewBlockAndBlob(prop.block, prop.td, prop.version, prop.sidecars); err != nil {
+				return
+			}
+			p.Log().Trace("Propagated blockandblob", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td)
+
 		case prop := <-p.queuedBlocks:
 			if err := p.SendNewBlock(prop.block, prop.td); err != nil {
 				return

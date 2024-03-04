@@ -67,6 +67,9 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	case *eth.NewBlockPacket:
 		return h.handleBlockBroadcast(peer, packet.Block, packet.TD)
 
+	case *eth.NewBlockWithBlobPacket:
+		return h.handleBlockWithBlobBroadcast(peer, packet.Block, packet.TD, packet.Version, packet.Sidecars)
+
 	case *eth.NewPooledTransactionHashesPacket67:
 		return h.txFetcher.Notify(peer.ID(), nil, nil, *packet)
 
@@ -125,6 +128,34 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 	if h.merger.PoSFinalized() {
 		return errors.New("disallowed block broadcast")
 	}
+	// Schedule the block for import
+	h.blockFetcher.Enqueue(peer.ID(), block)
+
+	// Assuming the block is importable by the peer, but possibly not yet done so,
+	// calculate the head hash and TD that the peer truly must have.
+	var (
+		trueHead = block.ParentHash()
+		trueTD   = new(big.Int).Sub(td, block.Difficulty())
+	)
+	// Update the peer's total difficulty if better than the previous
+	if _, td := peer.Head(); trueTD.Cmp(td) > 0 {
+		peer.SetHead(trueHead, trueTD)
+		h.chainSync.handlePeerEvent()
+	}
+	return nil
+}
+
+// handleBlockBroadcast is invoked from a peer's message handler when it transmits a
+// block broadcast for the local node to process.
+func (h *ethHandler) handleBlockWithBlobBroadcast(peer *eth.Peer, block *types.Block, td *big.Int, version uint32, sidecars types.BlobTxSidecars) error {
+	// Drop all incoming block announces from the p2p network if
+	// the chain already entered the pos stage and disconnect the
+	// remote peer.
+	if h.merger.PoSFinalized() {
+		return errors.New("disallowed block broadcast")
+	}
+	// todo 4844 here enqueue in a fetcher that fetcher both block and blob
+	// todo OR have a separate fetcher for blobs that takes sidecars and saves
 	// Schedule the block for import
 	h.blockFetcher.Enqueue(peer.ID(), block)
 
