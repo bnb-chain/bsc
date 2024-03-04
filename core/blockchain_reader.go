@@ -247,6 +247,23 @@ func (bc *BlockChain) GetReceiptsByHash(hash common.Hash) types.Receipts {
 	return receipts
 }
 
+// GetBlobsByHash retrieves the blobs for all transactions in a given block.
+func (bc *BlockChain) GetBlobsByHash(hash common.Hash) types.BlobTxSidecars {
+	if blobs, ok := bc.blobsCache.Get(hash); ok {
+		return blobs
+	}
+	number := rawdb.ReadHeaderNumber(bc.db, hash)
+	if number == nil {
+		return nil
+	}
+	blobs := rawdb.ReadRawBlobs(bc.db, hash, *number)
+	if blobs == nil {
+		return nil
+	}
+	bc.blobsCache.Add(hash, blobs)
+	return blobs
+}
+
 // GetUnclesInChain retrieves all the uncles from a given block backwards until
 // a specific distance is reached.
 func (bc *BlockChain) GetUnclesInChain(block *types.Block, length int) []*types.Header {

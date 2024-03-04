@@ -440,10 +440,20 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 		if td == nil {
 			return consensus.ErrUnknownAncestor
 		}
-		// Write into new ancient_back db.
-		if _, err := rawdb.WriteAncientBlocks(frdbBack, []*types.Block{block}, []types.Receipts{receipts}, td); err != nil {
-			log.Error("failed to write new ancient", "error", err)
-			return err
+		// if there has blobs, it needs to back up too.
+		blobs := rawdb.ReadRawBlobs(chainDb, blockHash, blockNumber)
+		if blobs != nil {
+			// Write into new ancient_back db.
+			if _, err := rawdb.WriteAncientBlocksWithBlobs(frdbBack, []*types.Block{block}, []types.Receipts{receipts}, td, []types.BlobTxSidecars{blobs}); err != nil {
+				log.Error("failed to write new ancient", "error", err)
+				return err
+			}
+		} else {
+			// Write into new ancient_back db.
+			if _, err := rawdb.WriteAncientBlocks(frdbBack, []*types.Block{block}, []types.Receipts{receipts}, td); err != nil {
+				log.Error("failed to write new ancient", "error", err)
+				return err
+			}
 		}
 		// Print the log every 5s for better trace.
 		if common.PrettyDuration(time.Since(start)) > common.PrettyDuration(5*time.Second) {
