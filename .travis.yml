@@ -9,18 +9,6 @@ jobs:
         - azure-osx
 
   include:
-    # This builder only tests code linters on latest version of Go
-    - stage: lint
-      os: linux
-      dist: bionic
-      go: 1.21.x
-      env:
-        - lint
-      git:
-        submodules: false # avoid cloning ethereum/tests
-      script:
-        - go run build/ci.go lint
-
     # These builders create the Docker sub-images for multi-arch push and each
     # will attempt to push the multi-arch image if they are the last builder
     - stage: build
@@ -66,7 +54,6 @@ jobs:
       go: 1.21.x
       env:
         - azure-linux
-        - GO111MODULE=on
       git:
         submodules: false # avoid cloning ethereum/tests
       addons:
@@ -97,15 +84,17 @@ jobs:
     - stage: build
       if: type = push
       os: osx
+      osx_image: xcode14.2
       go: 1.21.x
       env:
         - azure-osx
-        - GO111MODULE=on
       git:
         submodules: false # avoid cloning ethereum/tests
       script:
         - go run build/ci.go install -dlgo
         - go run build/ci.go archive -type tar -signer OSX_SIGNING_KEY -signify SIGNIFY_KEY -upload gethstore/builds
+        - go run build/ci.go install -dlgo -arch arm64
+        - go run build/ci.go archive -arch arm64 -type tar -signer OSX_SIGNING_KEY -signify SIGNIFY_KEY -upload gethstore/builds
 
     # These builders run the tests
     - stage: build
@@ -113,10 +102,8 @@ jobs:
       arch: amd64
       dist: bionic
       go: 1.21.x
-      env:
-        - GO111MODULE=on
       script:
-        - go run build/ci.go test $TEST_PACKAGES
+        - travis_wait 30 go run build/ci.go test $TEST_PACKAGES
 
     - stage: build
       if: type = pull_request
@@ -124,19 +111,15 @@ jobs:
       arch: arm64
       dist: bionic
       go: 1.20.x
-      env:
-        - GO111MODULE=on
       script:
-        - go run build/ci.go test $TEST_PACKAGES
+        - travis_wait 30 go run build/ci.go test $TEST_PACKAGES
 
     - stage: build
       os: linux
       dist: bionic
       go: 1.20.x
-      env:
-        - GO111MODULE=on
       script:
-        - go run build/ci.go test $TEST_PACKAGES
+        - travis_wait 30 go run build/ci.go test $TEST_PACKAGES
 
     # This builder does the Ubuntu PPA nightly uploads
     - stage: build
@@ -146,7 +129,6 @@ jobs:
       go: 1.21.x
       env:
         - ubuntu-ppa
-        - GO111MODULE=on
       git:
         submodules: false # avoid cloning ethereum/tests
       addons:
@@ -170,7 +152,6 @@ jobs:
       go: 1.21.x
       env:
         - azure-purge
-        - GO111MODULE=on
       git:
         submodules: false # avoid cloning ethereum/tests
       script:
@@ -182,8 +163,6 @@ jobs:
       os: linux
       dist: bionic
       go: 1.21.x
-      env:
-        - GO111MODULE=on
       script:
-        - go run build/ci.go test  -race $TEST_PACKAGES
+        - travis_wait 30 go run build/ci.go test  -race $TEST_PACKAGES
 

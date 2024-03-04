@@ -31,8 +31,8 @@ func (g Genesis) MarshalJSON() ([]byte, error) {
 		GasUsed       math.HexOrDecimal64                         `json:"gasUsed"`
 		ParentHash    common.Hash                                 `json:"parentHash"`
 		BaseFee       *math.HexOrDecimal256                       `json:"baseFeePerGas"`
-		ExcessBlobGas *math.HexOrDecimal64                        `json:"excessBlobGas,omitempty" toml:",omitempty"`
-		BlobGasUsed   *math.HexOrDecimal64                        `json:"blobGasUsed,omitempty" toml:",omitempty"`
+		ExcessBlobGas *math.HexOrDecimal64                        `json:"excessBlobGas"`
+		BlobGasUsed   *math.HexOrDecimal64                        `json:"blobGasUsed"`
 	}
 	var enc Genesis
 	enc.Config = g.Config
@@ -74,8 +74,8 @@ func (g *Genesis) UnmarshalJSON(input []byte) error {
 		GasUsed       *math.HexOrDecimal64                        `json:"gasUsed"`
 		ParentHash    *common.Hash                                `json:"parentHash"`
 		BaseFee       *math.HexOrDecimal256                       `json:"baseFeePerGas"`
-		ExcessBlobGas *math.HexOrDecimal64                        `json:"excessBlobGas,omitempty" toml:",omitempty"`
-		BlobGasUsed   *math.HexOrDecimal64                        `json:"blobGasUsed,omitempty" toml:",omitempty"`
+		ExcessBlobGas *math.HexOrDecimal64                        `json:"excessBlobGas"`
+		BlobGasUsed   *math.HexOrDecimal64                        `json:"blobGasUsed"`
 	}
 	var dec Genesis
 	if err := json.Unmarshal(input, &dec); err != nil {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
+	"github.com/holiman/uint256"
 	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
 	"github.com/willf/bitset"
 	"golang.org/x/crypto/sha3"
@@ -75,7 +76,7 @@ var (
 	diffInTurn = big.NewInt(2)            // Block difficulty for in-turn signatures
 	diffNoTurn = big.NewInt(1)            // Block difficulty for out-of-turn signatures
 	// 100 native token
-	maxSystemBalance                  = new(big.Int).Mul(big.NewInt(100), big.NewInt(params.Ether))
+	maxSystemBalance                  = new(uint256.Int).Mul(uint256.NewInt(100), uint256.NewInt(params.Ether))
 	verifyVoteAttestationErrorCounter = metrics.NewRegisteredCounter("parlia/verifyVoteAttestation/error", nil)
 	updateAttestationErrorCounter     = metrics.NewRegisteredCounter("parlia/updateAttestation/error", nil)
 	validVotesfromSelfCounter         = metrics.NewRegisteredCounter("parlia/VerifyVote/self", nil)
@@ -586,8 +587,24 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	if header.WithdrawalsHash != nil {
 		return fmt.Errorf("invalid withdrawalsHash: have %x, expected nil", header.WithdrawalsHash)
 	}
-	// Verify the existence / non-existence of excessBlobGas
+	// Verify the existence / non-existence of cancun-specific header fields
+	if header.ParentBeaconRoot != nil {
+		return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+	}
 	cancun := chain.Config().IsCancun(header.Number, header.Time)
+	if !cancun {
+		switch {
+		case header.ExcessBlobGas != nil:
+			return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
+		case header.BlobGasUsed != nil:
+			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
+		}
+	} else {
+		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
+			return err
+		}
+	}
+
 	if !cancun && header.ExcessBlobGas != nil {
 		return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
 	}
@@ -974,7 +991,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 
 	header.Extra = header.Extra[:extraVanity-nextForkHashSize]
-	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, number, header.Time)
+	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, number, header.Time)
 	header.Extra = append(header.Extra, nextForkHash[:]...)
 
 	if err := p.prepareValidators(header); err != nil {
@@ -1115,7 +1132,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if err != nil {
 		return err
 	}
-	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, number, header.Time)
+	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, number, header.Time)
 	if !snap.isMajorityFork(hex.EncodeToString(nextForkHash[:])) {
 		log.Debug("there is a possible fork, and your client is not the majority. Please check...", "nextForkHash", hex.EncodeToString(nextForkHash[:]))
 	}
@@ -1611,7 +1628,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
-	}, blockNr, nil, nil)
+	}, &blockNr, nil, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1634,19 +1651,19 @@ func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, he
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool) error {
 	coinbase := header.Coinbase
 	balance := state.GetBalance(consensus.SystemAddress)
-	if balance.Cmp(common.Big0) <= 0 {
+	if balance.Cmp(common.U2560) <= 0 {
 		return nil
 	}
-	state.SetBalance(consensus.SystemAddress, big.NewInt(0))
+	state.SetBalance(consensus.SystemAddress, common.U2560)
 	state.AddBalance(coinbase, balance)
 
 	doDistributeSysReward := !p.chainConfig.IsKepler(header.Number, header.Time) &&
 		state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
 	if doDistributeSysReward {
-		rewards := new(big.Int)
+		rewards := new(uint256.Int)
 		rewards = rewards.Rsh(balance, systemRewardPercent)
-		if rewards.Cmp(common.Big0) > 0 {
-			err := p.distributeToSystem(rewards, state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
+		if rewards.Cmp(common.U2560) > 0 {
+			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
 			if err != nil {
 				return err
 			}
@@ -1655,7 +1672,7 @@ func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, he
 		}
 	}
 	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
-	return p.distributeToValidator(balance, val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
+	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
 }
 
 // slash spoiled validators
@@ -1988,7 +2005,7 @@ func applyMessage(
 		*msg.To(),
 		msg.Data(),
 		msg.Gas(),
-		msg.Value(),
+		uint256.MustFromBig(msg.Value()),
 	)
 	if err != nil {
 		log.Error("apply message failed", "msg", string(ret), "err", err)

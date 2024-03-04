@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -194,6 +195,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		overrides.OverrideFeynman = config.OverrideFeynman
 	}
 
+	networkID := config.NetworkId
+	if networkID == 0 {
+		networkID = chainConfig.ChainID.Uint64()
+	}
 	eth := &Ethereum{
 		config:            config,
 		merger:            consensus.NewMerger(chainDb),
@@ -201,7 +206,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		eventMux:          stack.EventMux(),
 		accountManager:    stack.AccountManager(),
 		closeBloomHandler: make(chan struct{}),
-		networkID:         config.NetworkId,
+		networkID:         networkID,
 		gasPrice:          config.Miner.GasPrice,
 		etherbase:         config.Miner.Etherbase,
 		bloomRequests:     make(chan chan *bloombits.Retrieval),
@@ -225,7 +230,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if bcVersion != nil {
 		dbVer = fmt.Sprintf("%d", *bcVersion)
 	}
-	log.Info("Initialising Ethereum protocol", "network", config.NetworkId, "dbversion", dbVer)
+	log.Info("Initialising Ethereum protocol", "network", networkID, "dbversion", dbVer)
 
 	if !config.SkipBcVersionCheck {
 		if bcVersion != nil && *bcVersion > core.BlockChainVersion {
@@ -278,16 +283,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.BlobPool.Datadir != "" {
 		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
 	}
-	// TODO(Nathan): blob is not ready now, it will cause panic.
-	// blobPool := blobpool.New(config.BlobPool, eth.blockchain)
+	blobPool := blobpool.New(config.BlobPool, eth.blockchain)
 
 	if config.TxPool.Journal != "" {
 		config.TxPool.Journal = stack.ResolvePath(config.TxPool.Journal)
 	}
 	legacyPool := legacypool.New(config.TxPool, eth.blockchain)
 
-	// TODO(Nathan): eth.txPool, err = txpool.New(new(big.Int).SetUint64(config.TxPool.PriceLimit), eth.blockchain, []txpool.SubPool{legacyPool, blobPool})
-	eth.txPool, err = txpool.New(new(big.Int).SetUint64(config.TxPool.PriceLimit), eth.blockchain, []txpool.SubPool{legacyPool})
+	eth.txPool, err = txpool.New(new(big.Int).SetUint64(config.TxPool.PriceLimit), eth.blockchain, []txpool.SubPool{legacyPool, blobPool})
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +301,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		Chain:                  eth.blockchain,
 		TxPool:                 eth.txPool,
 		Merger:                 eth.merger,
-		Network:                config.NetworkId,
+		Network:                networkID,
 		Sync:                   config.SyncMode,
 		BloomCache:             uint64(cacheLimit),
 		EventMux:               eth.eventMux,
@@ -372,7 +375,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// Start the RPC service
-	eth.netRPCService = ethapi.NewNetAPI(eth.p2pServer, config.NetworkId)
+	eth.netRPCService = ethapi.NewNetAPI(eth.p2pServer, networkID)
 
 	// Register the backend on the node
 	stack.RegisterAPIs(eth.APIs())
@@ -420,7 +423,7 @@ func (s *Ethereum) APIs() []rpc.API {
 			Service:   NewMinerAPI(s),
 		}, {
 			Namespace: "eth",
-			Service:   downloader.NewDownloaderAPI(s.handler.downloader, s.eventMux),
+			Service:   downloader.NewDownloaderAPI(s.handler.downloader, s.blockchain, s.eventMux),
 		}, {
 			Namespace: "eth",
 			Service:   filters.NewFilterAPI(filters.NewFilterSystem(s.APIBackend, filters.Config{}), s.config.RangeLimit),
@@ -496,7 +499,7 @@ func (s *Ethereum) shouldPreserve(header *types.Header) bool {
 	// r5   A      [X] F G
 	// r6    [X]
 	//
-	// In the round5, the inturn signer E is offline, so the worst case
+	// In the round5, the in-turn signer E is offline, so the worst case
 	// is A, F and G sign the block of round5 and reject the block of opponents
 	// and in the round6, the last available signer B is offline, the whole
 	// network is stuck.
@@ -600,7 +603,7 @@ func (s *Ethereum) Engine() consensus.Engine           { return s.engine }
 func (s *Ethereum) ChainDb() ethdb.Database            { return s.chainDb }
 func (s *Ethereum) IsListening() bool                  { return true } // Always listening
 func (s *Ethereum) Downloader() *downloader.Downloader { return s.handler.downloader }
-func (s *Ethereum) Synced() bool                       { return s.handler.acceptTxs.Load() }
+func (s *Ethereum) Synced() bool                       { return s.handler.synced.Load() }
 func (s *Ethereum) SetSynced()                         { s.handler.enableSyncedFeatures() }
 func (s *Ethereum) ArchiveMode() bool                  { return s.config.NoPruning }
 func (s *Ethereum) BloomIndexer() *core.ChainIndexer   { return s.bloomIndexer }
