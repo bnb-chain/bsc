@@ -26,6 +26,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -75,12 +77,14 @@ type Freezer struct {
 	instanceLock *flock.Flock             // File-system lock to prevent double opens
 	closeOnce    sync.Once
 	offset       uint64 // Starting BlockNumber in current freezer
+
+	additionTableKinds []string // additionTableKinds are post-filled tables that start as empty
 }
 
 // NewChainFreezer is a small utility method around NewFreezer that sets the
 // default parameters for the chain storage.
 func NewChainFreezer(datadir string, namespace string, readonly bool, offset uint64) (*Freezer, error) {
-	return NewFreezer(datadir, namespace, readonly, offset, freezerTableSize, chainFreezerNoSnappy)
+	return NewFreezer(datadir, namespace, readonly, offset, freezerTableSize, chainFreezerNoSnappy, ChainFreezerBlobTable)
 }
 
 // NewFreezer creates a freezer instance for maintaining immutable ordered
@@ -88,7 +92,8 @@ func NewChainFreezer(datadir string, namespace string, readonly bool, offset uin
 //
 // The 'tables' argument defines the data tables. If the value of a map
 // entry is true, snappy compression is disabled for the table.
-func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32, tables map[string]bool) (*Freezer, error) {
+// additionTables indicates the new add tables for freezerDB, it has some special rules.
+func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32, tables map[string]bool, additionTables ...string) (*Freezer, error) {
 	// Create the initial freezer object
 	var (
 		readMeter  = metrics.NewRegisteredMeter(namespace+"ancient/read", nil)
@@ -120,15 +125,24 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 	}
 	// Open all the supported data tables
 	freezer := &Freezer{
-		readonly:     readonly,
-		tables:       make(map[string]*freezerTable),
-		instanceLock: lock,
-		offset:       offset,
+		readonly:           readonly,
+		tables:             make(map[string]*freezerTable),
+		instanceLock:       lock,
+		offset:             offset,
+		additionTableKinds: additionTables,
 	}
 
 	// Create the tables.
 	for name, disableSnappy := range tables {
-		table, err := newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, readonly)
+		var (
+			table *freezerTable
+			err   error
+		)
+		if slices.Contains(additionTables, name) {
+			table, err = openAdditionTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, readonly)
+		} else {
+			table, err = newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, readonly)
+		}
 		if err != nil {
 			for _, table := range freezer.tables {
 				table.Close()
@@ -165,6 +179,20 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 
 	log.Info("Opened ancient database", "database", datadir, "readonly", readonly, "frozen", freezer.frozen.Load())
 	return freezer, nil
+}
+
+// openAdditionTable create table, it will auto create new files when it was first initialized
+func openAdditionTable(datadir, name string, readMeter, writeMeter metrics.Meter, sizeGauge metrics.Gauge, maxTableSize uint32, disableSnappy, readonly bool) (*freezerTable, error) {
+	if readonly {
+		f, err := newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, false)
+		if err != nil {
+			return nil, err
+		}
+		if err = f.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, readonly)
 }
 
 // Close terminates the chain freezer, unmapping all the data files.
@@ -222,6 +250,12 @@ func (f *Freezer) AncientRange(kind string, start, count, maxBytes uint64) ([][]
 // Ancients returns the length of the frozen items.
 func (f *Freezer) Ancients() (uint64, error) {
 	return f.frozen.Load(), nil
+}
+
+func (f *Freezer) TableAncients(kind string) (uint64, error) {
+	f.writeLock.RLock()
+	defer f.writeLock.RUnlock()
+	return f.tables[kind].items.Load(), nil
 }
 
 // ItemAmountInAncient returns the actual length of current ancientDB.
@@ -365,6 +399,10 @@ func (f *Freezer) validate() error {
 	)
 	// Hack to get boundary of any table
 	for kind, table := range f.tables {
+		// addition tables is special cases
+		if slices.Contains(f.additionTableKinds, kind) {
+			continue
+		}
 		head = table.items.Load()
 		tail = table.itemHidden.Load()
 		name = kind
@@ -372,6 +410,21 @@ func (f *Freezer) validate() error {
 	}
 	// Now check every table against those boundaries.
 	for kind, table := range f.tables {
+		// check addition tables, try to align with exist tables
+		if slices.Contains(f.additionTableKinds, kind) {
+			// if the table is empty, just skip
+			if EmptyTable(table) {
+				continue
+			}
+			// otherwise, just align head
+			if head != table.items.Load() {
+				return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, table.items.Load(), head)
+			}
+			if tail > table.itemHidden.Load() {
+				return fmt.Errorf("freezer tables %s and %s have differing tail: %d != %d", kind, name, table.itemHidden.Load(), tail)
+			}
+			continue
+		}
 		if head != table.items.Load() {
 			return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, table.items.Load(), head)
 		}
@@ -390,7 +443,18 @@ func (f *Freezer) repair() error {
 		head = uint64(math.MaxUint64)
 		tail = uint64(0)
 	)
-	for _, table := range f.tables {
+	for kind, table := range f.tables {
+		// addition tables only align head
+		if slices.Contains(f.additionTableKinds, kind) {
+			if EmptyTable(table) {
+				continue
+			}
+			items := table.items.Load()
+			if head > items {
+				head = items
+			}
+			continue
+		}
 		items := table.items.Load()
 		if head > items {
 			head = items
@@ -400,7 +464,11 @@ func (f *Freezer) repair() error {
 			tail = hidden
 		}
 	}
-	for _, table := range f.tables {
+	for kind, table := range f.tables {
+		//  try to align with exist tables, skip empty table
+		if slices.Contains(f.additionTableKinds, kind) && EmptyTable(table) {
+			continue
+		}
 		if err := table.truncateHead(head); err != nil {
 			return err
 		}
@@ -601,4 +669,49 @@ func (f *Freezer) MigrateTable(kind string, convert convertLegacyFn) error {
 		return err
 	}
 	return nil
+}
+
+func (f *Freezer) ResetTable(kind string, tail, head uint64, onlyEmpty bool) error {
+	if f.readonly {
+		return errReadOnly
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+
+	f.writeLock.Lock()
+	defer f.writeLock.Unlock()
+	if tail < f.offset || head < f.offset {
+		return errors.New("the input tail&head is less than offset")
+	}
+	if _, exist := f.tables[kind]; !exist {
+		return errors.New("you reset a non-exist table")
+	}
+	// if you reset a non empty table just skip
+	if onlyEmpty && !EmptyTable(f.tables[kind]) {
+		return nil
+	}
+
+	nt, err := f.tables[kind].resetItems(tail-f.offset, head-f.offset)
+	if err != nil {
+		return err
+	}
+	f.tables[kind] = nt
+
+	if err := f.repair(); err != nil {
+		for _, table := range f.tables {
+			table.Close()
+		}
+		return err
+	}
+
+	f.frozen.Add(f.offset)
+	f.tail.Add(f.offset)
+	f.writeBatch = newFreezerBatch(f)
+	log.Info("Reset Table", "tail", f.tail.Load(), "frozen", f.frozen.Load())
+	return nil
+}
+
+func EmptyTable(t *freezerTable) bool {
+	return t.items.Load() == 0
 }
