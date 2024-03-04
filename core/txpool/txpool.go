@@ -70,8 +70,11 @@ type TxPool struct {
 	reservations map[common.Address]SubPool // Map with the account to pool reservations
 	reserveLock  sync.Mutex                 // Lock protecting the account reservations
 
-	subs event.SubscriptionScope // Subscription scope to unscubscribe all on shutdown
+	subs event.SubscriptionScope // Subscription scope to unsubscribe all on shutdown
 	quit chan chan error         // Quit channel to tear down the head updater
+	term chan struct{}           // Termination channel to detect a closed pool
+
+	sync chan chan error // Testing / simulator channel to block until internal reset is done
 }
 
 // New creates a new transaction pool to gather, sort and filter inbound
@@ -86,6 +89,8 @@ func New(gasTip *big.Int, chain BlockChain, subpools []SubPool) (*TxPool, error)
 		subpools:     subpools,
 		reservations: make(map[common.Address]SubPool),
 		quit:         make(chan chan error),
+		term:         make(chan struct{}),
+		sync:         make(chan chan error),
 	}
 	for i, subpool := range subpools {
 		if err := subpool.Init(gasTip, head, pool.reserver(i, subpool)); err != nil {
@@ -155,13 +160,15 @@ func (p *TxPool) Close() error {
 	if err := <-errc; err != nil {
 		errs = append(errs, err)
 	}
-
 	// Terminate each subpool
 	for _, subpool := range p.subpools {
 		if err := subpool.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
+	// Unsubscribe anyone still listening for tx events
+	p.subs.Close()
+
 	if len(errs) > 0 {
 		return fmt.Errorf("subpool close errors: %v", errs)
 	}
@@ -172,6 +179,9 @@ func (p *TxPool) Close() error {
 // outside blockchain events as well as for various reporting and transaction
 // eviction events.
 func (p *TxPool) loop(head *types.Header, chain BlockChain) {
+	// Close the termination marker when the pool stops
+	defer close(p.term)
+
 	// Subscribe to chain head events to trigger subpool resets
 	var (
 		newHeadCh  = make(chan core.ChainHeadEvent)
@@ -188,13 +198,23 @@ func (p *TxPool) loop(head *types.Header, chain BlockChain) {
 	var (
 		resetBusy = make(chan struct{}, 1) // Allow 1 reset to run concurrently
 		resetDone = make(chan *types.Header)
+
+		resetForced bool       // Whether a forced reset was requested, only used in simulator mode
+		resetWaiter chan error // Channel waiting on a forced reset, only used in simulator mode
 	)
+	// Notify the live reset waiter to not block if the txpool is closed.
+	defer func() {
+		if resetWaiter != nil {
+			resetWaiter <- errors.New("pool already terminated")
+			resetWaiter = nil
+		}
+	}()
 	var errc chan error
 	for errc == nil {
 		// Something interesting might have happened, run a reset if there is
 		// one needed but none is running. The resetter will run on its own
 		// goroutine to allow chain head events to be consumed contiguously.
-		if newHead != oldHead {
+		if newHead != oldHead || resetForced {
 			// Try to inject a busy marker and start a reset if successful
 			select {
 			case resetBusy <- struct{}{}:
@@ -206,8 +226,17 @@ func (p *TxPool) loop(head *types.Header, chain BlockChain) {
 					resetDone <- newHead
 				}(oldHead, newHead)
 
+				// If the reset operation was explicitly requested, consider it
+				// being fulfilled and drop the request marker. If it was not,
+				// this is a noop.
+				resetForced = false
+
 			default:
-				// Reset already running, wait until it finishes
+				// Reset already running, wait until it finishes.
+				//
+				// Note, this will not drop any forced reset request. If a forced
+				// reset was requested, but we were busy, then when the currently
+				// running reset finishes, a new one will be spun up.
 			}
 		}
 		// Wait for the next chain head event or a previous reset finish
@@ -221,8 +250,26 @@ func (p *TxPool) loop(head *types.Header, chain BlockChain) {
 			oldHead = head
 			<-resetBusy
 
+			// If someone is waiting for a reset to finish, notify them, unless
+			// the forced op is still pending. In that case, wait another round
+			// of resets.
+			if resetWaiter != nil && !resetForced {
+				resetWaiter <- nil
+				resetWaiter = nil
+			}
+
 		case errc = <-p.quit:
 			// Termination requested, break out on the next loop round
+
+		case syncc := <-p.sync:
+			// Transaction pool is running inside a simulator, and we are about
+			// to create a new block. Request a forced sync operation to ensure
+			// that any running reset operation finishes to make block imports
+			// deterministic. On top of that, run a new reset operation to make
+			// transaction insertions deterministic instead of being stuck in a
+			// queue waiting for a reset.
+			resetForced = true
+			resetWaiter = syncc
 		}
 	}
 	// Notify the closer of termination (no error possible for now)
@@ -249,7 +296,7 @@ func (p *TxPool) Has(hash common.Hash) bool {
 }
 
 // Get returns a transaction if it is contained in the pool, or nil otherwise.
-func (p *TxPool) Get(hash common.Hash) *Transaction {
+func (p *TxPool) Get(hash common.Hash) *types.Transaction {
 	for _, subpool := range p.subpools {
 		if tx := subpool.Get(hash); tx != nil {
 			return tx
@@ -261,14 +308,14 @@ func (p *TxPool) Get(hash common.Hash) *Transaction {
 // Add enqueues a batch of transactions into the pool if they are valid. Due
 // to the large transaction churn, add may postpone fully integrating the tx
 // to a later point to batch multiple ones together.
-func (p *TxPool) Add(txs []*Transaction, local bool, sync bool) []error {
+func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool) []error {
 	// Split the input transactions between the subpools. It shouldn't really
 	// happen that we receive merged batches, but better graceful than strange
 	// errors.
 	//
 	// We also need to track how the transactions were split across the subpools,
 	// so we can piece back the returned errors into the original order.
-	txsets := make([][]*Transaction, len(p.subpools))
+	txsets := make([][]*types.Transaction, len(p.subpools))
 	splits := make([]int, len(txs))
 
 	for i, tx := range txs {
@@ -277,7 +324,7 @@ func (p *TxPool) Add(txs []*Transaction, local bool, sync bool) []error {
 
 		// Try to find a subpool that accepts the transaction
 		for j, subpool := range p.subpools {
-			if subpool.Filter(tx.Tx) {
+			if subpool.Filter(tx) {
 				txsets[j] = append(txsets[j], tx)
 				splits[i] = j
 				break
@@ -316,12 +363,12 @@ func (p *TxPool) Pending(enforceTips bool) map[common.Address][]*LazyTransaction
 	return txs
 }
 
-// SubscribeNewTxsEvent registers a subscription of NewTxsEvent and starts sending
-// events to the given channel.
-func (p *TxPool) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
+// SubscribeTransactions registers a subscription for new transaction events,
+// supporting feeding only newly seen or also resurrected transactions.
+func (p *TxPool) SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs bool) event.Subscription {
 	subs := make([]event.Subscription, 0, len(p.subpools))
 	for _, subpool := range p.subpools {
-		sub := subpool.SubscribeTransactions(ch)
+		sub := subpool.SubscribeTransactions(ch, reorgs)
 		if sub != nil { // sub will be nil when subpool have been shut down
 			subs = append(subs, sub)
 		}
@@ -329,7 +376,7 @@ func (p *TxPool) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscrip
 	return p.subs.Track(event.JoinSubscriptions(subs...))
 }
 
-// SubscribeNewTxsEvent registers a subscription of NewTxsEvent and starts sending
+// SubscribeReannoTxsEvent registers a subscription of ReannoTxsEvent and starts sending
 // events to the given channel.
 func (p *TxPool) SubscribeReannoTxsEvent(ch chan<- core.ReannoTxsEvent) event.Subscription {
 	subs := make([]event.Subscription, 0, len(p.subpools))
@@ -420,7 +467,7 @@ func (p *TxPool) Locals() []common.Address {
 }
 
 // Status returns the known status (unknown/pending/queued) of a transaction
-// identified by their hashes.
+// identified by its hash.
 func (p *TxPool) Status(hash common.Hash) TxStatus {
 	for _, subpool := range p.subpools {
 		if status := subpool.Status(hash); status != TxStatusUnknown {
@@ -428,4 +475,21 @@ func (p *TxPool) Status(hash common.Hash) TxStatus {
 		}
 	}
 	return TxStatusUnknown
+}
+
+// Sync is a helper method for unit tests or simulator runs where the chain events
+// are arriving in quick succession, without any time in between them to run the
+// internal background reset operations. This method will run an explicit reset
+// operation to ensure the pool stabilises, thus avoiding flakey behavior.
+//
+// Note, do not use this in production / live code. In live code, the pool is
+// meant to reset on a separate thread to avoid DoS vectors.
+func (p *TxPool) Sync() error {
+	sync := make(chan error)
+	select {
+	case p.sync <- sync:
+		return <-sync
+	case <-p.term:
+		return errors.New("pool already terminated")
+	}
 }

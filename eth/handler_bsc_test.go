@@ -65,11 +65,11 @@ func testSendVotes(t *testing.T, protocol uint) {
 	protos := []p2p.Protocol{
 		{
 			Name:    "eth",
-			Version: eth.ETH66,
+			Version: eth.ETH67,
 		},
 		{
 			Name:    "eth",
-			Version: eth.ETH67,
+			Version: eth.ETH68,
 		},
 		{
 			Name:    "bsc",
@@ -79,11 +79,11 @@ func testSendVotes(t *testing.T, protocol uint) {
 	caps := []p2p.Cap{
 		{
 			Name:    "eth",
-			Version: eth.ETH66,
+			Version: eth.ETH67,
 		},
 		{
 			Name:    "eth",
-			Version: eth.ETH67,
+			Version: eth.ETH68,
 		},
 		{
 			Name:    "bsc",
@@ -175,11 +175,11 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	protos := []p2p.Protocol{
 		{
 			Name:    "eth",
-			Version: eth.ETH66,
+			Version: eth.ETH67,
 		},
 		{
 			Name:    "eth",
-			Version: eth.ETH67,
+			Version: eth.ETH68,
 		},
 		{
 			Name:    "bsc",
@@ -189,11 +189,11 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	caps := []p2p.Cap{
 		{
 			Name:    "eth",
-			Version: eth.ETH66,
+			Version: eth.ETH67,
 		},
 		{
 			Name:    "eth",
-			Version: eth.ETH67,
+			Version: eth.ETH68,
 		},
 		{
 			Name:    "bsc",
