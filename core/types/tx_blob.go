@@ -52,6 +52,8 @@ type BlobTx struct {
 	S *uint256.Int `json:"s" gencodec:"required"`
 }
 
+type BlobTxSidecars []*BlobTxSidecar
+
 // BlobTxSidecar contains the blobs of a blob transaction.
 type BlobTxSidecar struct {
 	Blobs       []kzg4844.Blob       // Blobs needed by the blob pool

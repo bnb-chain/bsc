@@ -1005,6 +1005,9 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		}
 		header.BlobGasUsed = new(uint64)
 		header.ExcessBlobGas = &excessBlobGas
+		if w.chainConfig.Parlia != nil {
+			header.WithdrawalsHash = new(common.Hash)
+		}
 		if w.chainConfig.Parlia == nil {
 			header.ParentBeaconRoot = genParams.beaconRoot
 		}
