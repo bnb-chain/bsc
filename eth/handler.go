@@ -795,8 +795,15 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		} else {
 			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
 		}
+		// todo 4844 if it is post Cancun then send both block and blobs
+		isCancun := h.chain.Config().IsCancun(block.Number(), block.Time())
+
 		for _, peer := range transfer {
-			peer.AsyncSendNewBlock(block, td)
+			if isCancun {
+				peer.AsyncSendNewBlock(block, td)
+			} else {
+				peer.AsyncSendNewBlockAndBlob(block, td, 0, block.Blobs()) // todo 4844 set version somewhere else rather than hardcoding
+			}
 		}
 
 		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))

@@ -103,22 +103,24 @@ type Peer struct {
 // version.
 func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Peer {
 	peer := &Peer{
-		id:              p.ID().String(),
-		Peer:            p,
-		rw:              rw,
-		version:         version,
-		knownTxs:        newKnownCache(maxKnownTxs),
-		knownBlocks:     newKnownCache(maxKnownBlocks),
-		queuedBlocks:    make(chan *blockPropagation, maxQueuedBlocks),
-		queuedBlockAnns: make(chan *types.Block, maxQueuedBlockAnns),
-		txBroadcast:     make(chan []common.Hash),
-		txAnnounce:      make(chan []common.Hash),
-		reqDispatch:     make(chan *request),
-		reqCancel:       make(chan *cancel),
-		resDispatch:     make(chan *response),
-		txpool:          txpool,
-		term:            make(chan struct{}),
-		txTerm:          make(chan struct{}),
+		id:                  p.ID().String(),
+		Peer:                p,
+		rw:                  rw,
+		version:             version,
+		knownTxs:            newKnownCache(maxKnownTxs),
+		knownBlocks:         newKnownCache(maxKnownBlocks),
+		knownBlockAndBlobs:  newKnownCache(maxKnownBlocks),
+		queuedBlocks:        make(chan *blockPropagation, maxQueuedBlocks),
+		queuedBlockAndBlobs: make(chan *blockAndBlobPropagation, maxQueuedBlocks),
+		queuedBlockAnns:     make(chan *types.Block, maxQueuedBlockAnns),
+		txBroadcast:         make(chan []common.Hash),
+		txAnnounce:          make(chan []common.Hash),
+		reqDispatch:         make(chan *request),
+		reqCancel:           make(chan *cancel),
+		resDispatch:         make(chan *response),
+		txpool:              txpool,
+		term:                make(chan struct{}),
+		txTerm:              make(chan struct{}),
 	}
 	// Start up all the broadcasters
 	go peer.broadcastBlocks()
@@ -346,6 +348,18 @@ func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 	case p.queuedBlocks <- &blockPropagation{block: block, td: td}:
 		// Mark all the block hash as known, but ensure we don't overflow our limits
 		p.knownBlocks.Add(block.Hash())
+	default:
+		p.Log().Debug("Dropping block propagation", "number", block.NumberU64(), "hash", block.Hash())
+	}
+}
+
+// AsyncSendNewBlock queues an entire block for propagation to a remote peer. If
+// the peer's broadcast queue is full, the event is silently dropped.
+func (p *Peer) AsyncSendNewBlockAndBlob(block *types.Block, td *big.Int, version uint32, sidecars types.BlobTxSidecars) {
+	select {
+	case p.queuedBlockAndBlobs <- &blockAndBlobPropagation{block: block, td: td, version: version, sidecars: sidecars}:
+		// Mark all the block hash as known, but ensure we don't overflow our limits
+		p.knownBlockAndBlobs.Add(block.Hash())
 	default:
 		p.Log().Debug("Dropping block propagation", "number", block.NumberU64(), "hash", block.Hash())
 	}

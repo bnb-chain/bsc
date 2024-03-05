@@ -161,6 +161,8 @@ func (c *Conn) ReadEth() (any, error) {
 			msg = new(eth.BlockBodiesPacket)
 		case eth.NewBlockMsg:
 			msg = new(eth.NewBlockPacket)
+		case eth.NewBlockWithBlobMsg:
+			msg = new(eth.NewBlockWithBlobPacket)
 		case eth.NewBlockHashesMsg:
 			msg = new(eth.NewBlockHashesPacket)
 		case eth.TransactionsMsg:
