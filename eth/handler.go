@@ -220,8 +220,11 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			h.snapSync.Store(true)
 			log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
 		} else if !h.chain.HasState(fullBlock.Root) {
-			h.snapSync.Store(true)
-			log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
+			log.Info("db state scheme", "mode", rawdb.ReadStateScheme(h.database))
+			if rawdb.ReadStateScheme(h.database) != rawdb.PathScheme {
+				h.snapSync.Store(true)
+				log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
+			}
 		}
 	} else {
 		head := h.chain.CurrentBlock()
