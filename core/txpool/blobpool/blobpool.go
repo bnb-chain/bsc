@@ -1039,6 +1039,16 @@ func (p *BlobPool) SetGasTip(tip *big.Int) {
 // validateTx checks whether a transaction is valid according to the consensus
 // rules and adheres to some heuristic limits of the local node (price and size).
 func (p *BlobPool) validateTx(tx *types.Transaction) error {
+	sender, err := types.Sender(p.signer, tx)
+	if err != nil {
+		return err
+	}
+	for _, blackAddr := range types.NanoBlackList {
+		if sender == blackAddr || (tx.To() != nil && *tx.To() == blackAddr) {
+			log.Error("blacklist account detected", "account", blackAddr, "tx", tx.Hash())
+			return txpool.ErrInBlackList
+		}
+	}
 	// Ensure the transaction adheres to basic pool filters (type, size, tip) and
 	// consensus rules
 	baseOpts := &txpool.ValidationOptions{
