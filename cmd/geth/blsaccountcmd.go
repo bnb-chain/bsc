@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
 	"github.com/prysmaticlabs/prysm/v4/encoding/bytesutil"
 	"github.com/prysmaticlabs/prysm/v4/io/prompt"
+	validatorpb "github.com/prysmaticlabs/prysm/v4/proto/prysm/v1alpha1/validator-client"
 	"github.com/prysmaticlabs/prysm/v4/validator/accounts"
 	"github.com/prysmaticlabs/prysm/v4/validator/accounts/iface"
 	"github.com/prysmaticlabs/prysm/v4/validator/accounts/petnames"
@@ -25,6 +27,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/signer/core"
 )
@@ -45,6 +48,10 @@ var (
 		Name:     "importedaccountpassword",
 		Usage:    "Password file path for the imported BLS account , which contains the password to get the private key by decrypting the keystore file",
 		Category: flags.AccountCategory,
+	}
+	chainIdFlag = &cli.Int64Flag{
+		Name:  "chain-id",
+		Usage: "The chain id of the network that the validator will be created at",
 	}
 )
 
@@ -187,6 +194,22 @@ Print summary of existing BLS accounts in the current BLS wallet.`,
 	geth bls account delete
 
 Delete the selected BLS account from the BLS wallet.`,
+					},
+					{
+						Name:      "generate-proof",
+						Usage:     "Generate ownership proof for the selected BLS account from the BLS wallet",
+						Action:    blsAccountGenerateProof,
+						ArgsUsage: "<BLS pubkey>",
+						Category:  "BLS ACCOUNT COMMANDS",
+						Flags: []cli.Flag{
+							utils.DataDirFlag,
+							utils.BLSPasswordFileFlag,
+							chainIdFlag,
+						},
+						Description: `
+	geth bls account generate-proof
+
+Generate ownership proof for the selected BLS account from the BLS wallet. The proof is used to prove the ownership of the BLS account when creating validator on BSC after feynman upgrade.`,
 					},
 				},
 			},
@@ -604,6 +627,77 @@ func blsAccountDelete(ctx *cli.Context) error {
 	}); err != nil {
 		utils.Fatalf("Delete account failed: %v.", err)
 	}
+
+	return nil
+}
+
+// blsAccountGenerateProof generate ownership proof for a selected BLS account.
+func blsAccountGenerateProof(ctx *cli.Context) error {
+	addrString := ctx.Args().First()
+	if addrString == "" {
+		utils.Fatalf("Operator account must be given as argument.")
+	}
+	addr := common.HexToAddress(addrString)
+
+	blsPubkeyString := ctx.Args().Get(1)
+	if blsPubkeyString == "" {
+		utils.Fatalf("BLS pubkey must be given as argument.")
+	}
+	blsPubkeyBz, err := hex.DecodeString(strings.TrimPrefix(blsPubkeyString, "0x"))
+	if err != nil {
+		utils.Fatalf("Could not decode string %s as hex.", blsPubkeyString)
+	}
+	blsPublicKey, err := bls.PublicKeyFromBytes(blsPubkeyBz)
+	if err != nil {
+		utils.Fatalf("%#x is not a valid BLS public key.", blsPubkeyBz)
+	}
+
+	cfg := gethConfig{Node: defaultNodeConfig()}
+	// Load config file.
+	if file := ctx.String(configFileFlag.Name); file != "" {
+		if err := loadConfig(file, &cfg); err != nil {
+			utils.Fatalf("%v", err)
+		}
+	}
+	utils.SetNodeConfig(ctx, &cfg.Node)
+
+	walletDir := filepath.Join(cfg.Node.DataDir, BLSWalletPath)
+	dirExists, err := wallet.Exists(walletDir)
+	if err != nil || !dirExists {
+		utils.Fatalf("BLS wallet not exists.")
+	}
+
+	walletPassword := utils.GetPassPhraseWithList("Enter the password for your BLS wallet.", false, 0, utils.MakePasswordListFromPath(ctx.String(utils.BLSPasswordFileFlag.Name)))
+	w, err := wallet.OpenWallet(context.Background(), &wallet.Config{
+		WalletDir:      walletDir,
+		WalletPassword: walletPassword,
+	})
+	if err != nil {
+		utils.Fatalf("Open BLS wallet failed: %v.", err)
+	}
+	km, err := w.InitializeKeymanager(context.Background(), iface.InitKeymanagerConfig{ListenForChanges: false})
+	if err != nil {
+		utils.Fatalf("Initialize key manager failed: %v.", err)
+	}
+
+	chainIdInt64 := ctx.Int64(chainIdFlag.Name)
+	if chainIdInt64 == 0 {
+		utils.Fatalf("Chain id is required.")
+	}
+	chainId := new(big.Int).SetInt64(chainIdInt64)
+	paddedChainIdBytes := make([]byte, 32)
+	copy(paddedChainIdBytes[32-len(chainId.Bytes()):], chainId.Bytes())
+	msgHash := crypto.Keccak256(append(addr.Bytes(), append(blsPublicKey.Marshal(), paddedChainIdBytes...)...))
+
+	req := &validatorpb.SignRequest{
+		PublicKey:   blsPublicKey.Marshal(),
+		SigningRoot: msgHash,
+	}
+	sig, err := km.Sign(context.Background(), req)
+	if err != nil {
+		utils.Fatalf("Generate signature failed: %v.", err)
+	}
+	fmt.Printf("Proof: %#x\n", sig.Marshal())
 
 	return nil
 }

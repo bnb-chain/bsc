@@ -1,4 +1,87 @@
 # Changelog
+## v1.4.0
+#### RPC
+[internal/ethapi: implement eth_getBlockReceipts (#27702)](https://github.com/bnb-chain/bsc/commit/f1801a9feda8f81532c92077d2c9a8b785fd699b)
+[eth, rpc: add configurable option for wsMessageSizeLimit (#27801)](https://github.com/bnb-chain/bsc/commit/705a51e566bc9215975d08f27d23ddab7baa9dd7)
+[api/bind: add CallOpts.BlockHash to allow calling contracts at a specific block hash (#28084)](https://github.com/bnb-chain/bsc/commit/b85c86022e130a76eeb588a5b36e97149b342188)
+[internal/ethapi: eth_call block parameter is optional (#28165)](https://github.com/bnb-chain/bsc/commit/adb9b319c9c61f092755000bf0fc4b3349f5cbbc)
+[internal/ethapi: ethSendTransaction check baseFee (#27834)](https://github.com/bnb-chain/bsc/commit/54a400ee717caf44603fac390314747c5592ee1b)
+#### Command
+[cmd/utils: fix a startup issue on deleted chaindata but dangling ancients(#27989)](https://github.com/bnb-chain/bsc/commit/00fead91c4f58bc7f56f81512280d3120860989c)
+[cmd/geth, internal/flags, go.mod: colorize cli help, support env vars(#28103)](https://github.com/bnb-chain/bsc/commit/d9fbb71d631d1ad0fb1846042e4c50ab893a6fbf)
+[cmd/rlpdump: add -pos flag, displaying byte positions (#28785)](https://github.com/bnb-chain/bsc/commit/1485814f89d8206bb4a1c8e10a4a2893920f683a)
+[cmd/geth: make it possible to autopilot removedb (#28725)](https://github.com/bnb-chain/bsc/commit/1010a79c7cbcdb4741e9f30e8cdc19c679ad7377)
+#### Flag
+[cmd/utils: restore support for txlookuplimit flag (#27917)](https://github.com/bnb-chain/bsc/commit/68855216c903eea9f952a1a7a56e69ea285f284b)
+[cmd/utils, eth: disallow invalid snap sync / snapshot flag combos (#28657)](https://github.com/bnb-chain/bsc/commit/d98d70f670297a4bfa86db1a67a9c024f7186f43)
+#### Client
+[ethclient: use 'input', not 'data' as field for transaction input (#28078)](https://github.com/bnb-chain/bsc/commit/5cf53f51ac556cfff2aee9d405efd336298a3aca)
+[ethclient: fix forwarding 1559 gas fields (#28462)](https://github.com/bnb-chain/bsc/commit/e91cdb49beb4b2a3872b5f2548bf2d6559e4f561)
+[ethclient/simulated: implement new sim backend (#28202)](https://github.com/bnb-chain/bsc/commit/2d08c9900996b5e798f40a3cc6b47f4e51dc487d)
+[ethclient: apply accessList field in toCallArg (#28832)](https://github.com/bnb-chain/bsc/commit/1c488298c807f4daa3cbe260efb88b81902a903d) 
+#### Tracer
+[eth/tracers: add position field for callTracer logs (#28389)](https://github.com/bnb-chain/bsc/commit/b1cec853bef98acc750298b1c9b8165f2ac6ce5a)
+[eth/tracers: tx-level state in debug_traceCall (#28460)](https://github.com/bnb-chain/bsc/commit/5fb8ebc9ecb226b84181420b9871c5f61cf4f77d)
+#### Txpool
+[eth/fetcher: allow underpriced transactions in after timeout (#28097)](https://github.com/bnb-chain/bsc/commit/2b7bc2c36b0d0efc83e62ba8e13723b943c4fa6e)
+#### Sync
+[eth/downloader: prevent pivot moves after state commit (#28126)](https://github.com/bnb-chain/bsc/commit/4fa3db49a1e485b8d110c87de6a44f460b45bb9a)
+[core, eth/downloader: fix genesis state missing due to state sync (#28124)](https://github.com/bnb-chain/bsc/commit/c53b0fef2ab8e2a00257b898cad5174e6b73f5fc)
+[core, accounts, eth, trie: handle genesis state missing (#28171)](https://github.com/bnb-chain/bsc/commit/73f5bcb75b562fcb3c109dd9c51f21956bc1f1f4)
+[eth/protocols/snap: fix snap sync failure on empty storage range (#28306)](https://github.com/bnb-chain/bsc/commit/1cb3b6aee4a16ab8e684da63f3cfcd9b961c43af)
+[core, eth, trie: filter out boundary nodes and remove dangling nodes in stacktrie (#28327)](https://github.com/bnb-chain/bsc/commit/ab04aeb855605de51dd1e933f45eb84ad877e715)
+[core, core/rawdb, eth/sync: no tx indexing during snap sync (#28703)](https://github.com/bnb-chain/bsc/commit/78a3c32ef4deb7755e3367e183639b66242654f7)
+#### PBSS Related
+[core/rawdb: skip pathdb state inspection in hashdb mode (#28108)](https://github.com/bnb-chain/bsc/commit/8d38b1fe62950e8675795abf63b7c978415ab7ba)
+[eth: abort on api operations not available in pbss-mode (#28104)](https://github.com/bnb-chain/bsc/commit/b9b99a12e5159c746ef04b7c8febc4db66817b72)
+[trie: remove internal nodes between shortNode and child in path mode (#28163)](https://github.com/bnb-chain/bsc/commit/4773dcbc81aac9d330df29446283361f5a7062c7)
+[trie/triedb/pathdb: improve dirty node flushing trigger (#28426)](https://github.com/bnb-chain/bsc/commit/ea2e66a58e48ef63566d5274c4a875e817a1cd39) 
+[core/rawdb: fsync the index file after each freezer write (#28483)](https://github.com/bnb-chain/bsc/commit/326fa00759d959061035becc9514660c24897053) 
+[trie: remove inconsistent trie nodes during sync in path mode (#28595)](https://github.com/bnb-chain/bsc/commit/e206d3f8975bd98cc86d14055dca40f996bacc60)
+[core, cmd, trie: fix the condition of pathdb initialization (#28718)](https://github.com/bnb-chain/bsc/commit/cca94792a4112687ce23e7041b95ccc7f4bf6123) 
+#### GraphQL
+[graphql: validate block params (#27876](https://github.com/bnb-chain/bsc/commit/5e89ff4d6b0df4bd54d20d90bee5a16abef6b9bc)
+[graphql: always set content-type to application/json (#28417)](https://github.com/bnb-chain/bsc/commit/2d7dba024d76603398907a595da98ad4df81b858)
+#### Cancun
+[core/types: support for optional blob sidecar in BlobTx (#27841)](https://github.com/bnb-chain/bsc/commit/2a6beb6a39d7cb3c5906dd4465d65da6efcc73cd)
+[core, params, beacon/engine: implement EIP 4788 BeaconRoot (#27849)](https://github.com/bnb-chain/bsc/commit/b8d38e76ef07c99d338c7bcd485881850382a58f) 
+[miner: add to build block with EIP-4844 blobs (#27875)](https://github.com/bnb-chain/bsc/commit/feb8f416acc3f067ecc8cbdabb8e70679547737a)
+[core: implement BLOBBASEFEE opcode (0x4a) (#28098)](https://github.com/bnb-chain/bsc/commit/c39cbc1a78aa275523c1b0ff9d21b16ba7bfa486)
+[core, eth, miner: start propagating and consuming blob txs (#28243)](https://github.com/bnb-chain/bsc/commit/a8a9c8e4b00c5b9f84242181839234b8e9fd54e3)
+[eth/fetcher: throttle tx fetches to 128KB responses (#28304)](https://github.com/bnb-chain/bsc/commit/a6deb2d994e644300bac43455b1c954976e7382e)
+[crypto/kzg4844: use the new trusted setup file and format (#28383)](https://github.com/bnb-chain/bsc/commit/a6a0ae45b69a95b38b7cb2d085e7833c88b72164)
+[internal/ethapi: handle blobs in API methods (#28786)](https://github.com/bnb-chain/bsc/commit/e5d5e09faae48dac3723634e2b1813e4f2e89535)
+#### P2P
+[cmd/devp2p, eth: drop eth/66 (#28239)](https://github.com/bnb-chain/bsc/commit/bc6d184872889224480cf9df58b0539b210ffa9e) 
+[cmd/devp2p: use bootnodes as crawl input (#28139)](https://github.com/bnb-chain/bsc/commit/41a0ad9f03ae8e8389fbe40131f4e6930b5beac5)
+[p2p/discover: add liveness check in collectTableNodes (#28686)](https://github.com/bnb-chain/bsc/commit/5b22a472d6aaaa17daf0543b5914ca1f2f5518a7)
+#### Test
+[build, tests: add execution-spec-tests (#26985)](https://github.com/bnb-chain/bsc/commit/f174ddba7af5c150ecad37430c167194d66d75f1) 
+[tests/fuzzers: update fuzzers to be based on go-native fuzzing (#28352)](https://github.com/bnb-chain/bsc/commit/d10a2f6ab727f79a0acff29c8147d54c5e4689ec) 
+[tests/fuzzers: move fuzzers into native packages (#28467)](https://github.com/bnb-chain/bsc/commit/2391fbc676d7464bd42e248155558a2bcd6ecf64)
+#### Clear Up
+[eth/downloader: remove header rollback mechanism (#28147)](https://github.com/bnb-chain/bsc/commit/b85c183ea7417e973dbbccd27b3fb7d7097b87dd)
+#### Others
+[core/forkid: correctly compute forkid when timestamp fork is activated in genesis (#27895)](https://github.com/bnb-chain/bsc/commit/32fde3f838d604fdeb7a3ada4f8e02d78301b83d)
+[core/vm/runtime: Add Random field to config (#28001)](https://github.com/bnb-chain/bsc/commit/0ba2d3cfa4e4a0a76cd457b8dc0f49bf1a79b723)
+[core/rawdb: no need to run truncateFile for readonly mode (#28145)](https://github.com/bnb-chain/bsc/commit/545f4c5547178bc8bde6af08b3ccaf68ca27f2c0)
+[core/bloombits: fix deadlock when matcher session hits an error (#28184)](https://github.com/bnb-chain/bsc/commit/c2cfe35f121cb88650b4d90c958bcc4214d0ce7f) 
+[core/state, tests: fix memory leak via fastcache (#28387)](https://github.com/bnb-chain/bsc/commit/c1d5a012ea4b824e902db14e47bf147d727c2657)
+[internal/ethapi: compact db missing key starts with 0xff (#28207)](https://github.com/bnb-chain/bsc/commit/46c850a9411d7ff15c1a0342fe29f359e6c390ae)
+[internal/ethapi: fix codehash lookup in eth_getProof (#28357)](https://github.com/bnb-chain/bsc/commit/8b99ad46027a455971ccf9bd1f425b9c58ec5855) 
+[eth: set networkID to chainID by default (#28250)](https://github.com/bnb-chain/bsc/commit/4d9f3cd5d751efccd501b08ab6cf38a83b5e2858)
+[eth: fix potential hang in waitSnapExtension (#28744)](https://github.com/bnb-chain/bsc/commit/18e154eaa24d5f7a8b3c48983ad591e6c10963ca)
+[metrics, cmd/geth: informational metrics (prometheus, influxdb, opentsb (#24877)](https://github.com/bnb-chain/bsc/commit/53f3c2ae656cd860a700751b6c5f81ca9c66503d)
+[ethdb/pebble: don't double-close iterator inside pebbleIterator (#28566)](https://github.com/bnb-chain/bsc/commit/6489a0dd1f98e9ce1c64c2eae93c8a88df7ae674)
+[trie/triedb/hashdb: take lock around access to dirties cache (#28542)](https://github.com/bnb-chain/bsc/commit/fa0df76f3cfd186a1f06f2b80aa5dbb89555b009) 
+[accounts: properly close managed wallets when closing manager (#28710)](https://github.com/bnb-chain/bsc/commit/d3452a22cc871306c62de52d19295914141863c0)
+[event: fix Resubscribe deadlock when unsubscribing after inner sub ends (#28359)](https://github.com/bnb-chain/bsc/commit/ffc6a0f36edda396a8421cf7a3c0feb88be20d0b)
+[all: replace log15 with slog (#28187)](https://github.com/bnb-chain/bsc/commit/28e73717016cdc9ebdb5fdb3474cfbd3bd2d2524)
+
+## v1.3.10
+FEATURE
+* [\#2047](https://github.com/bnb-chain/bsc/pull/2047) feat: add new fork block and precompile contract for BEP294 and BEP299
+
 ## v1.3.9
 FEATURE
 * [\#2186](https://github.com/bnb-chain/bsc/pull/2186) log: support maxBackups in config.toml

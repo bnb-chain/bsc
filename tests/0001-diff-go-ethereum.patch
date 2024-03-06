@@ -1,16 +1,5 @@
-From a1fe21e9b999b60705b7310737f2b6bbb680969d Mon Sep 17 00:00:00 2001
-From: buddh0 <galaxystroller@gmail.com>
-Date: Mon, 8 Jan 2024 17:16:29 +0800
-Subject: [PATCH] diff go-ethereum
-
----
- core/vm/contracts.go      | 3 ---
- core/vm/jump_table.go     | 2 +-
- params/protocol_params.go | 8 ++++----
- 3 files changed, 5 insertions(+), 8 deletions(-)
-
 diff --git a/core/vm/contracts.go b/core/vm/contracts.go
-index 482c020a6..7d9a59a92 100644
+index 36d33e41c..adb10883e 100644
 --- a/core/vm/contracts.go
 +++ b/core/vm/contracts.go
 @@ -78,9 +78,6 @@ var PrecompiledContractsIstanbul = map[common.Address]PrecompiledContract{
@@ -24,10 +13,10 @@ index 482c020a6..7d9a59a92 100644
  
  var PrecompiledContractsNano = map[common.Address]PrecompiledContract{
 diff --git a/core/vm/jump_table.go b/core/vm/jump_table.go
-index 38a0a7653..702b18661 100644
+index 70c543f14..65716f944 100644
 --- a/core/vm/jump_table.go
 +++ b/core/vm/jump_table.go
-@@ -90,7 +90,7 @@ func newCancunInstructionSet() JumpTable {
+@@ -91,7 +91,7 @@ func newCancunInstructionSet() JumpTable {
  }
  
  func newShanghaiInstructionSet() JumpTable {
@@ -37,11 +26,11 @@ index 38a0a7653..702b18661 100644
  	enable3860(&instructionSet) // Limit and meter initcode
  
 diff --git a/params/protocol_params.go b/params/protocol_params.go
-index 2b5cf8996..e14a2f414 100644
+index b32b4d943..8b544af08 100644
 --- a/params/protocol_params.go
 +++ b/params/protocol_params.go
-@@ -19,7 +19,7 @@ package params
- import "math/big"
+@@ -23,7 +23,7 @@ import (
+ )
  
  const (
 -	GasLimitBoundDivisor uint64 = 256                // The bound divisor of the gas limit, used in update calculations.
@@ -49,19 +38,3 @@ index 2b5cf8996..e14a2f414 100644
  	MinGasLimit          uint64 = 5000               // Minimum the gas limit may ever be.
  	MaxGasLimit          uint64 = 0x7fffffffffffffff // Maximum the gas limit (2^63-1).
  	GenesisGasLimit      uint64 = 4712388            // Gas limit of the Genesis block.
-@@ -122,9 +122,9 @@ const (
- 	// Introduced in Tangerine Whistle (Eip 150)
- 	CreateBySelfdestructGas uint64 = 25000
- 
--	DefaultBaseFeeChangeDenominator = 8 // Bounds the amount the base fee can change between blocks.
--	DefaultElasticityMultiplier     = 2 // Bounds the maximum gas limit an EIP-1559 block may have.
--	InitialBaseFee                  = 0 // Initial base fee for EIP-1559 blocks.
-+	DefaultBaseFeeChangeDenominator = 8          // Bounds the amount the base fee can change between blocks.
-+	DefaultElasticityMultiplier     = 2          // Bounds the maximum gas limit an EIP-1559 block may have.
-+	InitialBaseFee                  = 1000000000 // Initial base fee for EIP-1559 blocks.
- 
- 	MaxCodeSize     = 24576           // Maximum bytecode to permit for a contract
- 	MaxInitCodeSize = 2 * MaxCodeSize // Maximum initcode to permit in a creation transaction and create instructions
--- 
-2.41.0
-

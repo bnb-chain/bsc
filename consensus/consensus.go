@@ -38,6 +38,9 @@ type ChainHeaderReader interface {
 	// Config retrieves the blockchain's chain configuration.
 	Config() *params.ChainConfig
 
+	// GenesisHeader retrieves the chain's genesis block header.
+	GenesisHeader() *types.Header
+
 	// CurrentHeader retrieves the current header from the local chain.
 	CurrentHeader() *types.Header
 

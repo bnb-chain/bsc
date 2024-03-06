@@ -22,7 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"math/big"
+	"io"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -362,12 +363,17 @@ func TestRandomCases(t *testing.T) {
 		{op: 1, key: common.Hex2Bytes("980c393656413a15c8da01978ed9f89feb80b502f58f2d640e3a2f5f7a99a7018f1b573befd92053ac6f78fca4a87268"), value: common.Hex2Bytes("")}, // step 24
 		{op: 1, key: common.Hex2Bytes("fd"), value: common.Hex2Bytes("")},                                                                                               // step 25
 	}
-	runRandTest(rt)
+	if err := runRandTest(rt); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // randTest performs random trie operations.
 // Instances of this test are created by Generate.
 type randTest []randTestStep
+
+// compile-time interface check
+var _ quick.Generator = (randTest)(nil)
 
 type randTestStep struct {
 	op    int
@@ -389,33 +395,45 @@ const (
 )
 
 func (randTest) Generate(r *rand.Rand, size int) reflect.Value {
+	var finishedFn = func() bool {
+		size--
+		return size == 0
+	}
+	return reflect.ValueOf(generateSteps(finishedFn, r))
+}
+
+func generateSteps(finished func() bool, r io.Reader) randTest {
 	var allKeys [][]byte
+	var one = []byte{0}
 	genKey := func() []byte {
-		if len(allKeys) < 2 || r.Intn(100) < 10 {
+		r.Read(one)
+		if len(allKeys) < 2 || one[0]%100 > 90 {
 			// new key
-			key := make([]byte, r.Intn(50))
+			size := one[0] % 50
+			key := make([]byte, size)
 			r.Read(key)
 			allKeys = append(allKeys, key)
 			return key
 		}
 		// use existing key
-		return allKeys[r.Intn(len(allKeys))]
+		idx := int(one[0]) % len(allKeys)
+		return allKeys[idx]
 	}
-
 	var steps randTest
-	for i := 0; i < size; i++ {
-		step := randTestStep{op: r.Intn(opMax)}
+	for !finished() {
+		r.Read(one)
+		step := randTestStep{op: int(one[0]) % opMax}
 		switch step.op {
 		case opUpdate:
 			step.key = genKey()
 			step.value = make([]byte, 8)
-			binary.BigEndian.PutUint64(step.value, uint64(i))
+			binary.BigEndian.PutUint64(step.value, uint64(len(steps)))
 		case opGet, opDelete, opProve:
 			step.key = genKey()
 		}
 		steps = append(steps, step)
 	}
-	return reflect.ValueOf(steps)
+	return steps
 }
 
 func verifyAccessList(old *Trie, new *Trie, set *trienode.NodeSet) error {
@@ -460,7 +478,12 @@ func verifyAccessList(old *Trie, new *Trie, set *trienode.NodeSet) error {
 	return nil
 }
 
-func runRandTest(rt randTest) bool {
+// runRandTestBool coerces error to boolean, for use in quick.Check
+func runRandTestBool(rt randTest) bool {
+	return runRandTest(rt) == nil
+}
+
+func runRandTest(rt randTest) error {
 	var scheme = rawdb.HashScheme
 	if rand.Intn(2) == 0 {
 		scheme = rawdb.PathScheme
@@ -513,12 +536,12 @@ func runRandTest(rt randTest) bool {
 			newtr, err := New(TrieID(root), triedb)
 			if err != nil {
 				rt[i].err = err
-				return false
+				return err
 			}
 			if nodes != nil {
 				if err := verifyAccessList(origTrie, newtr, nodes); err != nil {
 					rt[i].err = err
-					return false
+					return err
 				}
 			}
 			tr = newtr
@@ -587,14 +610,14 @@ func runRandTest(rt randTest) bool {
 		}
 		// Abort the test on error.
 		if rt[i].err != nil {
-			return false
+			return rt[i].err
 		}
 	}
-	return true
+	return nil
 }
 
 func TestRandom(t *testing.T) {
-	if err := quick.Check(runRandTest, nil); err != nil {
+	if err := quick.Check(runRandTestBool, nil); err != nil {
 		if cerr, ok := err.(*quick.CheckError); ok {
 			t.Fatalf("random test iteration %d failed: %s", cerr.Count, spew.Sdump(cerr.In))
 		}
@@ -614,7 +637,9 @@ func benchGet(b *testing.B) {
 	k := make([]byte, 32)
 	for i := 0; i < benchElemCount; i++ {
 		binary.LittleEndian.PutUint64(k, uint64(i))
-		trie.MustUpdate(k, k)
+		v := make([]byte, 32)
+		binary.LittleEndian.PutUint64(v, uint64(i))
+		trie.MustUpdate(k, v)
 	}
 	binary.LittleEndian.PutUint64(k, benchElemCount/2)
 
@@ -630,8 +655,10 @@ func benchUpdate(b *testing.B, e binary.ByteOrder) *Trie {
 	k := make([]byte, 32)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
+		v := make([]byte, 32)
 		e.PutUint64(k, uint64(i))
-		trie.MustUpdate(k, k)
+		e.PutUint64(v, uint64(i))
+		trie.MustUpdate(k, v)
 	}
 	return trie
 }
@@ -769,7 +796,7 @@ func makeAccounts(size int) (addresses [][20]byte, accounts [][]byte) {
 		numBytes := random.Uint32() % 33 // [0, 32] bytes
 		balanceBytes := make([]byte, numBytes)
 		random.Read(balanceBytes)
-		balance := new(big.Int).SetBytes(balanceBytes)
+		balance := new(uint256.Int).SetBytes(balanceBytes)
 		data, _ := rlp.EncodeToBytes(&types.StateAccount{Nonce: nonce, Balance: balance, Root: root, CodeHash: code})
 		accounts[i] = data
 	}
@@ -1180,4 +1207,18 @@ func TestDecodeNode(t *testing.T) {
 		prng.Read(elems)
 		decodeNode(hash, elems)
 	}
+}
+
+func FuzzTrie(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var steps = 500
+		var input = bytes.NewReader(data)
+		var finishedFn = func() bool {
+			steps--
+			return steps < 0 || input.Len() == 0
+		}
+		if err := runRandTest(generateSteps(finishedFn, input)); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
