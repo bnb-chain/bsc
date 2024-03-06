@@ -155,11 +155,16 @@ type AncientStater interface {
 	AncientDatadir() (string, error)
 }
 
+type StateStoreReader interface {
+	StateStoreReader() Reader
+}
+
 // Reader contains the methods required to read data from both key-value as well as
 // immutable ancient data.
 type Reader interface {
 	KeyValueReader
 	AncientReader
+	StateStoreReader
 }
 
 // Writer contains the methods required to write data to both key-value as well as

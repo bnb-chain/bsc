@@ -45,6 +45,13 @@ type freezerdb struct {
 	stateStore ethdb.Database
 }
 
+func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
+	if frdb.stateStore == nil {
+		return frdb
+	}
+	return frdb.stateStore
+}
+
 // AncientDatadir returns the path of root ancient directory.
 func (frdb *freezerdb) AncientDatadir() (string, error) {
 	return frdb.ancientRoot, nil
@@ -194,6 +201,13 @@ func (db *nofreezedb) StateStore() ethdb.Database {
 
 func (db *nofreezedb) SetStateStore(state ethdb.Database) {
 	db.stateStore = state
+}
+
+func (db *nofreezedb) StateStoreReader() ethdb.Reader {
+	if db.stateStore != nil {
+		return db.stateStore
+	}
+	return db
 }
 
 func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {

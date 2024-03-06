@@ -420,12 +420,7 @@ func inspectTrie(ctx *cli.Context) error {
 		}
 		fmt.Printf("ReadBlockHeader, root: %v, blocknum: %v\n", trieRootHash, blockNumber)
 
-		var dbScheme string
-		if db.StateStore() != nil {
-			dbScheme = rawdb.ReadStateSchemeByStateDB(db, db.StateStore())
-		} else {
-			dbScheme = rawdb.ReadStateScheme(db)
-		}
+		dbScheme := rawdb.ReadStateScheme(db)
 		var config *trie.Config
 		if dbScheme == rawdb.PathScheme {
 			config = &trie.Config{

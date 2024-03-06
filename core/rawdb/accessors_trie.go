@@ -288,13 +288,13 @@ func DeleteTrieNode(db ethdb.KeyValueWriter, owner common.Hash, path []byte, has
 // if the state is not present in database.
 func ReadStateScheme(db ethdb.Reader) string {
 	// Check if state in path-based scheme is present
-	blob, _ := ReadAccountTrieNode(db, nil)
+	blob, _ := ReadAccountTrieNode(db.StateStoreReader(), nil)
 	if len(blob) != 0 {
 		return PathScheme
 	}
 	// The root node might be deleted during the initial snap sync, check
 	// the persistent state id then.
-	if id := ReadPersistentStateID(db); id != 0 {
+	if id := ReadPersistentStateID(db.StateStoreReader()); id != 0 {
 		return PathScheme
 	}
 	// In a hash-based scheme, the genesis state is consistently stored
@@ -304,29 +304,7 @@ func ReadStateScheme(db ethdb.Reader) string {
 	if header == nil {
 		return "" // empty datadir
 	}
-	blob = ReadLegacyTrieNode(db, header.Root)
-	if len(blob) == 0 {
-		return "" // no state in disk
-	}
-	return HashScheme
-}
-
-// ReadStateSchemeByStateDB reads the state scheme of persistent state from state disk db, or none
-// if the state is not present in database
-func ReadStateSchemeByStateDB(db, statediskdb ethdb.Reader) string {
-	// Check if state in path-based scheme is present
-	blob, _ := ReadAccountTrieNode(statediskdb, nil)
-	if len(blob) != 0 {
-		return PathScheme
-	}
-	// In a hash-based scheme, the genesis state is consistently stored
-	// on the disk. To assess the scheme of the persistent state, it
-	// suffices to inspect the scheme of the genesis state.
-	header := ReadHeader(db, ReadCanonicalHash(db, 0), 0)
-	if header == nil {
-		return "" // empty datadir
-	}
-	blob = ReadLegacyTrieNode(statediskdb, header.Root)
+	blob = ReadLegacyTrieNode(db.StateStoreReader(), header.Root)
 	if len(blob) == 0 {
 		return "" // no state in disk
 	}
@@ -357,12 +335,7 @@ func ParseStateScheme(provided string, disk ethdb.Database) (string, error) {
 	// If state scheme is not specified, use the scheme consistent
 	// with persistent state, or fallback to hash mode if database
 	// is empty.
-	var stored string
-	if disk != nil && disk.StateStore() != nil {
-		stored = ReadStateSchemeByStateDB(disk, disk.StateStore())
-	} else {
-		stored = ReadStateScheme(disk)
-	}
+	stored := ReadStateScheme(disk)
 	if provided == "" {
 		if stored == "" {
 			// use default scheme for empty database, flip it when

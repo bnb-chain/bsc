@@ -91,7 +91,8 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 			infos = append(infos, info)
 
 		case StateFreezerName:
-			if ReadStateScheme(db) != PathScheme {
+			if
+			ReadStateScheme(db) != PathScheme {
 				continue
 			}
 			datadir, err := db.AncientDatadir()

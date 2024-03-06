@@ -789,7 +789,7 @@ func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, di
 	// Open the separated state database if the state directory exists
 	if n.HasSeparateTrieDir() {
 		// Allocate half of the  handles and cache to this separate state data database
-		statediskdb, err = n.OpenDatabaseWithFreezer(name, cache/2, chainDataHandles/2, "", "eth/db/statedata/", readonly, false, false, pruneAncientData, true)
+		statediskdb, err = n.OpenDatabaseWithFreezer(name+"/state", cache/2, chainDataHandles/2, "", "eth/db/statedata/", readonly, false, false, pruneAncientData, true)
 		if err != nil {
 			return nil, err
 		}
@@ -838,18 +838,10 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 		}
 		db = rawdb.NewMemoryDatabase()
 	} else {
-		var dirName, ancientDirName string
-		if isSeparateStateDB {
-			dirName = filepath.Join(n.ResolvePath(name), "state")
-			ancientDirName = filepath.Join(dirName, "ancient")
-		} else {
-			dirName = n.ResolvePath(name)
-			ancientDirName = n.ResolveAncient(name, ancient)
-		}
 		db, err = rawdb.Open(rawdb.OpenOptions{
 			Type:              n.config.DBEngine,
-			Directory:         dirName,
-			AncientsDirectory: ancientDirName,
+			Directory:         n.ResolvePath(name),
+			AncientsDirectory: n.ResolveAncient(name, ancient),
 			Namespace:         namespace,
 			Cache:             cache,
 			Handles:           handles,

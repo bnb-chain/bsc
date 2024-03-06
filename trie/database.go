@@ -91,16 +91,13 @@ type Database struct {
 // the legacy hash-based scheme is used by default.
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	// Sanitize the config and use the default one if it's not specified.
-	var dbScheme string
 	var triediskdb ethdb.Database
 	if diskdb != nil && diskdb.StateStore() != nil {
-		dbScheme = rawdb.ReadStateSchemeByStateDB(diskdb, diskdb.StateStore())
 		triediskdb = diskdb.StateStore()
 	} else {
-		dbScheme = rawdb.ReadStateScheme(diskdb)
 		triediskdb = diskdb
 	}
-
+	dbScheme := rawdb.ReadStateScheme(diskdb)
 	if config == nil {
 		if dbScheme == rawdb.PathScheme {
 			config = &Config{

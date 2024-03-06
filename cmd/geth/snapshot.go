@@ -441,14 +441,8 @@ func pruneState(ctx *cli.Context) error {
 		BloomSize: ctx.Uint64(utils.BloomFilterSizeFlag.Name),
 	}
 
-	if chaindb.StateStore() != nil {
-		if rawdb.ReadStateSchemeByStateDB(chaindb, chaindb.StateStore()) != rawdb.HashScheme {
-			log.Crit("Offline pruning is not required for path scheme")
-		}
-	} else {
-		if rawdb.ReadStateScheme(chaindb) != rawdb.HashScheme {
-			log.Crit("Offline pruning is not required for path scheme")
-		}
+	if rawdb.ReadStateScheme(chaindb) != rawdb.HashScheme {
+		log.Crit("Offline pruning is not required for path scheme")
 	}
 
 	pruner, err := pruner.NewPruner(chaindb, prunerconfig, ctx.Uint64(utils.TriesInMemoryFlag.Name))
