@@ -126,15 +126,16 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 	}
 
 	if force {
-		for {
-			if atomic.LoadUint64(&a.background.immutable) == 1 {
-				time.Sleep(time.Duration(DefaultBackgroundFlushInterval) * time.Second)
-				log.Info("waiting background memory table flushed into disk for forcing flush node buffer")
-				continue
-			}
-			atomic.StoreUint64(&a.current.immutable, 1)
-			return a.current.flush(db, clean, id)
-		}
+		// for {
+		// 	if atomic.LoadUint64(&a.background.immutable) == 1 {
+		// 		time.Sleep(time.Duration(DefaultBackgroundFlushInterval) * time.Second)
+		// 		log.Info("waiting background memory table flushed into disk for forcing flush node buffer")
+		// 		continue
+		// 	}
+		// 	atomic.StoreUint64(&a.current.immutable, 1)
+		// 	return a.current.flush(db, clean, id)
+		// }
+		return nil
 	}
 
 	if a.current.size < a.current.limit {

@@ -256,29 +256,24 @@ func ReadStateHistory(db ethdb.AncientReaderOp, id uint64) ([]byte, []byte, []by
 // history starts from one(zero for initial state).
 func WriteStateHistory(db ethdb.AncientWriter, id uint64, meta []byte, accountIndex []byte, storageIndex []byte, accounts []byte, storages []byte) {
 	db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
-		err := op.AppendRaw(stateHistoryMeta, id-1, meta)
-		if err != nil {
-			log.Error("WriteStateHistory failed", "err", err)
+		if err := op.AppendRaw(stateHistoryMeta, id-1, meta); err != nil {
+			log.Error("Failed to write meta state history", "err", err)
 			return err
 		}
-		err = op.AppendRaw(stateHistoryAccountIndex, id-1, accountIndex)
-		if err != nil {
-			log.Error("WriteStateHistory failed", "err", err)
+		if err := op.AppendRaw(stateHistoryAccountIndex, id-1, accountIndex); err != nil {
+			log.Error("Failed to write account index state history", "err", err)
 			return err
 		}
-		err = op.AppendRaw(stateHistoryStorageIndex, id-1, storageIndex)
-		if err != nil {
-			log.Error("WriteStateHistory failed", "err", err)
+		if err := op.AppendRaw(stateHistoryStorageIndex, id-1, storageIndex); err != nil {
+			log.Error("Failed to write storage index state history", "err", err)
 			return err
 		}
-		err = op.AppendRaw(stateHistoryAccountData, id-1, accounts)
-		if err != nil {
-			log.Error("WriteStateHistory failed", "err", err)
+		if err := op.AppendRaw(stateHistoryAccountData, id-1, accounts); err != nil {
+			log.Error("Failed to write account data state history", "err", err)
 			return err
 		}
-		err = op.AppendRaw(stateHistoryStorageData, id-1, storages)
-		if err != nil {
-			log.Error("WriteStateHistory failed", "err", err)
+		if err := op.AppendRaw(stateHistoryStorageData, id-1, storages); err != nil {
+			log.Error("Failed to write storage data state history", "err", err)
 			return err
 		}
 		return nil
