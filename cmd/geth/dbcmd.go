@@ -1119,13 +1119,13 @@ func hbss2pbss(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, false, false)
 	db.Sync()
-	statediskdb := db.StateStore()
+	stateDiskDb := db.StateStore()
 	defer db.Close()
 
 	// convert hbss trie node to pbss trie node
 	var lastStateID uint64
-	if statediskdb != nil {
-		lastStateID = rawdb.ReadPersistentStateID(statediskdb)
+	if stateDiskDb != nil {
+		lastStateID = rawdb.ReadPersistentStateID(stateDiskDb)
 	} else {
 		lastStateID = rawdb.ReadPersistentStateID(db)
 	}
@@ -1180,8 +1180,8 @@ func hbss2pbss(ctx *cli.Context) error {
 	}
 
 	// repair state ancient offset
-	if statediskdb != nil {
-		lastStateID = rawdb.ReadPersistentStateID(statediskdb)
+	if stateDiskDb != nil {
+		lastStateID = rawdb.ReadPersistentStateID(stateDiskDb)
 	} else {
 		lastStateID = rawdb.ReadPersistentStateID(db)
 	}
@@ -1203,8 +1203,8 @@ func hbss2pbss(ctx *cli.Context) error {
 		return err
 	}
 	// prune hbss trie node
-	if statediskdb != nil {
-		err = rawdb.PruneHashTrieNodeInDataBase(statediskdb)
+	if stateDiskDb != nil {
+		err = rawdb.PruneHashTrieNodeInDataBase(stateDiskDb)
 	} else {
 		err = rawdb.PruneHashTrieNodeInDataBase(db)
 	}
