@@ -157,7 +157,7 @@ func (h *ethHandler) handleBlockWithBlobBroadcast(peer *eth.Peer, block *types.B
 	// todo 4844 here enqueue in a fetcher that fetcher both block and blob
 	// todo OR have a separate fetcher for blobs that takes sidecars and saves
 	// Schedule the block for import
-	h.blockFetcher.Enqueue(peer.ID(), block)
+	h.blockFetcher.Enqueue(peer.ID(), block.WithBlobs(sidecars))
 
 	// Assuming the block is importable by the peer, but possibly not yet done so,
 	// calculate the head hash and TD that the peer truly must have.
