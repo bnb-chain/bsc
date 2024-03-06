@@ -648,6 +648,9 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 
 func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
 	bc.blockCache.Add(hash, block)
+	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+		bc.blobsCache.Add(hash, block.Blobs())
+	}
 }
 
 // empty returns an indicator whether the blockchain is empty.
@@ -1535,7 +1538,7 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	batch := bc.db.NewBatch()
 	rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), td)
 	rawdb.WriteBlock(batch, block)
-	// if enable cancun, it needs to write blobs too
+	// if cancun is enabled, here need to write blobs too
 	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 		rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), block.Blobs())
 	}
@@ -1581,7 +1584,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
-		// if enable cancun, it needs to write blobs too
+		// if cancun is enabled, here need to write blobs too
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), block.Blobs())
 		}
@@ -2316,7 +2319,9 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 		if block == nil {
 			log.Crit("Importing heavy sidechain block is nil", "hash", hashes[i], "number", numbers[i])
 		}
-
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			block = block.WithBlobs(bc.GetBlobsByHash(hashes[i]))
+		}
 		blocks = append(blocks, block)
 		memory += block.Size()
 
@@ -2387,6 +2392,9 @@ func (bc *BlockChain) recoverAncestors(block *types.Block) (common.Hash, error) 
 			b = block
 		} else {
 			b = bc.GetBlock(hashes[i], numbers[i])
+		}
+		if bc.chainConfig.IsCancun(b.Number(), b.Time()) {
+			b = b.WithBlobs(bc.GetBlobsByHash(b.Hash()))
 		}
 		if _, err := bc.insertChain(types.Blocks{b}, false); err != nil {
 			return b.ParentHash(), err
@@ -2826,6 +2834,7 @@ func (bc *BlockChain) isCachedBadBlock(block *types.Block) bool {
 }
 
 // reportBlock logs a bad block error.
+// bad block need not save receipts & blobs.
 func (bc *BlockChain) reportBlock(block *types.Block, receipts types.Receipts, err error) {
 	rawdb.WriteBadBlock(bc.db, block)
 	log.Error(summarizeBadBlock(block, receipts, bc.Config(), err))
