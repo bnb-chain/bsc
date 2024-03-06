@@ -609,7 +609,6 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 	}
 
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
-	defer db.Close()
 	scheme, err := rawdb.ParseStateScheme(ctx.String(utils.StateSchemeFlag.Name), db)
 	if err != nil {
 		return nil, nil, common.Hash{}, err
@@ -618,7 +617,7 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 		fmt.Println("You are using geth dump in path mode, please use `geth dump-roothash` command to get all available blocks.")
 	}
 
-	var header *types.Header
+	header := &types.Header{}
 	if ctx.NArg() == 1 {
 		arg := ctx.Args().First()
 		if hashish(arg) {

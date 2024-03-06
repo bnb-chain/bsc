@@ -601,7 +601,7 @@ func dbCompact(ctx *cli.Context) error {
 	log.Info("Stats after compaction")
 	showLeveldbStats(db)
 	if statediskdb != nil {
-		fmt.Println("show stats of state store")
+		fmt.Println("show stats of state store after compaction")
 		showLeveldbStats(statediskdb)
 	}
 	return nil
