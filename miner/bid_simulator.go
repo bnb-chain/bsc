@@ -570,7 +570,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		// Start executing the transaction
 		bidRuntime.env.state.SetTxContext(tx.Hash(), bidRuntime.env.tcount)
 
-		_, err = bidRuntime.commitTransaction(b.chain, b.chainConfig, tx)
+		err = bidRuntime.commitTransaction(b.chain, b.chainConfig, tx)
 		if err != nil {
 			log.Error("BidSimulator: failed to commit tx", "bidHash", bidRuntime.bid.Hash(), "tx", tx.Hash(), "err", err)
 			err = fmt.Errorf("invalid tx in bid, %v", err)
@@ -643,25 +643,46 @@ func (r *BidRuntime) packReward(validatorCommission uint64) {
 	r.packedValidatorReward.Sub(r.packedValidatorReward, r.bid.BuilderFee)
 }
 
-func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction) (
-	*types.Receipt, error,
-) {
+func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction) error {
 	var (
 		env  = r.env
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
+		sc   *types.BlobTxSidecar
 	)
+
+	if tx.Type() == types.BlobTxType {
+		sc := tx.BlobTxSidecar()
+		if sc == nil {
+			return errors.New("blob transaction without blobs in miner")
+		}
+		// Checking against blob gas limit: It's kind of ugly to perform this check here, but there
+		// isn't really a better place right now. The blob gas limit is checked at block validation time
+		// and not during execution. This means core.ApplyTransaction will not return an error if the
+		// tx has too many blobs. So we have to explicitly check it here.
+		if (env.blobs+len(sc.Blobs))*params.BlobTxBlobGasPerBlob > params.MaxBlobGasPerBlock {
+			return errors.New("max data blobs reached")
+		}
+	}
 
 	receipt, err := core.ApplyTransaction(chainConfig, chain, &env.coinbase, env.gasPool, env.state, env.header, tx,
 		&env.header.GasUsed, *chain.GetVMConfig(), core.NewReceiptBloomGenerator())
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
-		return nil, err
+		return err
 	}
 
-	env.txs = append(env.txs, tx)
-	env.receipts = append(env.receipts, receipt)
+	if tx.Type() == types.BlobTxType {
+		env.txs = append(env.txs, tx.WithoutBlobTxSidecar())
+		env.receipts = append(env.receipts, receipt)
+		env.sidecars = append(env.sidecars, sc)
+		env.blobs += len(sc.Blobs)
+		*env.header.BlobGasUsed += receipt.BlobGasUsed
+	} else {
+		env.txs = append(env.txs, tx)
+		env.receipts = append(env.receipts, receipt)
+	}
 
-	return receipt, nil
+	return nil
 }
