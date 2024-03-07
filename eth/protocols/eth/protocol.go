@@ -64,7 +64,6 @@ const (
 	UpgradeStatusMsg              = 0x0b // Protocol messages overloaded in eth/66
 	GetReceiptsMsg                = 0x0f
 	ReceiptsMsg                   = 0x10
-	NewBlockWithBlobMsg           = 0xc
 )
 
 var (
@@ -230,7 +229,7 @@ type NewBlockWithBlobPacket struct {
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
-func (request *NewBlockPacket) sanityCheck() error {
+func (request *NewBlockPacket) SanityCheck() error {
 	if err := request.Block.SanityCheck(); err != nil {
 		return err
 	}
@@ -243,7 +242,7 @@ func (request *NewBlockPacket) sanityCheck() error {
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
-func (request *NewBlockWithBlobPacket) sanityCheck() error {
+func (request *NewBlockWithBlobPacket) SanityCheck() error {
 	if err := request.Block.SanityCheck(); err != nil {
 		return err
 	}
@@ -410,8 +409,8 @@ func (*BlockBodiesResponse) Kind() byte   { return BlockBodiesMsg }
 func (*NewBlockPacket) Name() string { return "NewBlock" }
 func (*NewBlockPacket) Kind() byte   { return NewBlockMsg }
 
-func (*NewBlockWithBlobPacket) Name() string { return "NewBlockWithBlob" }
-func (*NewBlockWithBlobPacket) Kind() byte   { return NewBlockWithBlobMsg }
+func (*NewBlockWithBlobPacket) Name() string { return "NewBlock" }
+func (*NewBlockWithBlobPacket) Kind() byte   { return NewBlockMsg }
 
 func (*NewPooledTransactionHashesPacket67) Name() string { return "NewPooledTransactionHashes" }
 func (*NewPooledTransactionHashesPacket67) Kind() byte   { return NewPooledTransactionHashesMsg }
