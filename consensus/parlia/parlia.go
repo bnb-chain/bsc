@@ -356,8 +356,12 @@ func (p *Parlia) IsDataAvailable(chain consensus.ChainHeaderReader, block *types
 		return nil
 	}
 	// only required to check within BlobReserveThreshold block's DA
-	currentHeader := chain.CurrentHeader()
-	if block.NumberU64() < currentHeader.Number.Uint64()-params.BlobReserveThreshold {
+	highest := chain.ChasingHead()
+	current := chain.CurrentHeader()
+	if highest == nil || highest.Number.Cmp(current.Number) < 0 {
+		highest = current
+	}
+	if block.NumberU64() < highest.Number.Uint64()-params.BlobReserveThreshold {
 		return nil
 	}
 

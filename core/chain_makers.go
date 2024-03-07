@@ -591,3 +591,7 @@ func (cm *chainMaker) GetTd(hash common.Hash, number uint64) *big.Int {
 func (cm *chainMaker) GetHighestVerifiedHeader() *types.Header {
 	panic("not supported")
 }
+
+func (cm *chainMaker) ChasingHead() *types.Header {
+	panic("not supported")
+}
