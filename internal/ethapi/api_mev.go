@@ -27,7 +27,7 @@ func NewMevAPI(b Backend) *MevAPI {
 // SendBid receives bid from the builders.
 // If mev is not running or bid is invalid, return error.
 // Otherwise, creates a builder bid for the given argument, submit it to the miner.
-func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, error) {
+func (m *MevAPI) SendBid(ctx context.Context, args *types.BidArgs) (common.Hash, error) {
 	if !m.b.MevRunning() {
 		return common.Hash{}, types.ErrMevNotRunning
 	}
@@ -94,14 +94,14 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 		}
 	}
 
-	return m.b.SendBid(ctx, &args)
+	return m.b.SendBid(ctx, args)
 }
 
 func (m *MevAPI) BestBidGasFee(_ context.Context, parentHash common.Hash) *big.Int {
 	return m.b.BestBidGasFee(parentHash)
 }
 
-func (m *MevAPI) Params() types.MevParams {
+func (m *MevAPI) Params() *types.MevParams {
 	return m.b.MevParams()
 }
 

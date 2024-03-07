@@ -742,6 +742,26 @@ func (ec *Client) SendBid(ctx context.Context, args types.BidArgs) (common.Hash,
 	return hash, nil
 }
 
+// BestBidGasFee returns the gas fee of the best bid for the given parent hash.
+func (ec *Client) BestBidGasFee(ctx context.Context, parentHash common.Hash) (*big.Int, error) {
+	var fee *big.Int
+	err := ec.c.CallContext(ctx, &fee, "mev_bestBidGasFee", parentHash)
+	if err != nil {
+		return nil, err
+	}
+	return fee, nil
+}
+
+// MevParams returns the static params of mev
+func (ec *Client) MevParams(ctx context.Context) (*types.MevParams, error) {
+	var params types.MevParams
+	err := ec.c.CallContext(ctx, &params, "mev_params")
+	if err != nil {
+		return nil, err
+	}
+	return &params, err
+}
+
 func toBlockNumArg(number *big.Int) string {
 	if number == nil {
 		return "latest"

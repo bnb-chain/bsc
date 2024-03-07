@@ -416,8 +416,8 @@ func (b *backendMock) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent)
 func (b *backendMock) Engine() consensus.Engine { return nil }
 
 func (b *backendMock) MevRunning() bool { return false }
-func (b *backendMock) MevParams() types.MevParams {
-	return types.MevParams{}
+func (b *backendMock) MevParams() *types.MevParams {
+	return &types.MevParams{}
 }
 func (b *backendMock) StartMev()                                                  {}
 func (b *backendMock) StopMev()                                                   {}

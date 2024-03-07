@@ -635,8 +635,8 @@ func (b testBackend) ServiceFilter(ctx context.Context, session *bloombits.Match
 }
 
 func (b *testBackend) MevRunning() bool { return false }
-func (b *testBackend) MevParams() types.MevParams {
-	return types.MevParams{}
+func (b *testBackend) MevParams() *types.MevParams {
+	return &types.MevParams{}
 }
 func (b *testBackend) StartMev()                                                  {}
 func (b *testBackend) StopMev()                                                   {}

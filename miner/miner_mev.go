@@ -28,7 +28,7 @@ var DefaultMevConfig = MevConfig{
 	SentryURL:             "",
 	Builders:              nil,
 	ValidatorCommission:   100,
-	BidSimulationLeftOver: 100 * time.Millisecond,
+	BidSimulationLeftOver: 50 * time.Millisecond,
 }
 
 // MevRunning return true if mev is running.
@@ -97,14 +97,14 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 func (miner *Miner) BestPackedBlockReward(parentHash common.Hash) *big.Int {
 	bidRuntime := miner.bidSimulator.GetBestBid(parentHash)
 	if bidRuntime == nil {
-		return nil
+		return big.NewInt(0)
 	}
 
 	return bidRuntime.packedBlockReward
 }
 
-func (miner *Miner) MevParams() types.MevParams {
-	return types.MevParams{
+func (miner *Miner) MevParams() *types.MevParams {
+	return &types.MevParams{
 		ValidatorCommission:   miner.worker.config.Mev.ValidatorCommission,
 		BidSimulationLeftOver: miner.worker.config.Mev.BidSimulationLeftOver,
 	}
