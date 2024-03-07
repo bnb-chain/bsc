@@ -355,13 +355,13 @@ func (p *Parlia) IsDataAvailable(chain consensus.ChainHeaderReader, block *types
 	if !p.chainConfig.IsCancun(block.Number(), block.Time()) {
 		return nil
 	}
-	// only required to check within BlobReserveThreshold block's DA
+	// only required to check within MinBlocksForBlobRequests block's DA
 	highest := chain.ChasingHead()
 	current := chain.CurrentHeader()
 	if highest == nil || highest.Number.Cmp(current.Number) < 0 {
 		highest = current
 	}
-	if block.NumberU64() < highest.Number.Uint64()-params.BlobReserveThreshold {
+	if block.NumberU64() < highest.Number.Uint64()-params.MinBlocksForBlobRequests {
 		return nil
 	}
 
