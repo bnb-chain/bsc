@@ -189,7 +189,7 @@ var eth68 = map[uint64]msgHandler{
 	GetBlockHeadersMsg:            handleGetBlockHeaders,
 	BlockHeadersMsg:               handleBlockHeaders,
 	GetBlockBodiesMsg:             handleGetBlockBodies,
-	BlockBodiesMsg:                handleBlockBodies,
+	BlockBodiesMsg:                handleBlockBodies, // todo 4844
 	GetReceiptsMsg:                handleGetReceipts,
 	ReceiptsMsg:                   handleReceipts,
 	GetPooledTransactionsMsg:      handleGetPooledTransactions,
