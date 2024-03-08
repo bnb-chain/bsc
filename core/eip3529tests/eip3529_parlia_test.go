@@ -20,6 +20,10 @@ func preHertzConfig() *params.ChainConfig {
 	config.BerlinBlock = nil
 	config.HertzBlock = nil
 	config.HertzfixBlock = nil
+	config.ShanghaiTime = nil
+	config.KeplerTime = nil
+	config.FeynmanTime = nil
+	config.CancunTime = nil
 	return &config
 }
 

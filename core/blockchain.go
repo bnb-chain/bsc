@@ -1866,8 +1866,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 	}()
 
 	// check block data available first
-	if index, err := CheckDataAvailableInBatch(bc, chain); err != nil {
-		return index, err
+	if bc.chainConfig.Parlia != nil {
+		if index, err := CheckDataAvailableInBatch(bc, chain); err != nil {
+			return index, err
+		}
 	}
 
 	// Start the parallel header verifier
