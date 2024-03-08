@@ -414,3 +414,19 @@ func (b *backendMock) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent)
 }
 
 func (b *backendMock) Engine() consensus.Engine { return nil }
+
+func (b *backendMock) MevRunning() bool { return false }
+func (b *backendMock) MevParams() *types.MevParams {
+	return &types.MevParams{}
+}
+func (b *backendMock) StartMev()                                                  {}
+func (b *backendMock) StopMev()                                                   {}
+func (b *backendMock) AddBuilder(builder common.Address, builderUrl string) error { return nil }
+func (b *backendMock) RemoveBuilder(builder common.Address) error                 { return nil }
+func (b *backendMock) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
+	panic("implement me")
+}
+func (b *backendMock) MinerInTurn() bool { return false }
+func (b *backendMock) BestBidGasFee(parentHash common.Hash) *big.Int {
+	panic("implement me")
+}

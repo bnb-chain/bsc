@@ -338,6 +338,13 @@ func (s *Snapshot) inturn(validator common.Address) bool {
 	return validators[offset] == validator
 }
 
+// inturnValidator returns the validator at a given block height.
+func (s *Snapshot) inturnValidator() common.Address {
+	validators := s.validators()
+	offset := (s.Number + 1) % uint64(len(validators))
+	return validators[offset]
+}
+
 func (s *Snapshot) enoughDistance(validator common.Address, header *types.Header) bool {
 	idx := s.indexOfVal(validator)
 	if idx < 0 {

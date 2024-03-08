@@ -30,6 +30,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -50,9 +54,6 @@ import (
 	"github.com/ethereum/go-ethereum/internal/blocktest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/holiman/uint256"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 )
 
 func testTransactionMarshal(t *testing.T, tests []txData, config *params.ChainConfig) {
@@ -630,6 +631,23 @@ func (b testBackend) SubscribePendingLogsEvent(ch chan<- []*types.Log) event.Sub
 }
 func (b testBackend) BloomStatus() (uint64, uint64) { panic("implement me") }
 func (b testBackend) ServiceFilter(ctx context.Context, session *bloombits.MatcherSession) {
+	panic("implement me")
+}
+
+func (b *testBackend) MevRunning() bool { return false }
+func (b *testBackend) MevParams() *types.MevParams {
+	return &types.MevParams{}
+}
+func (b *testBackend) StartMev()                                                  {}
+func (b *testBackend) StopMev()                                                   {}
+func (b *testBackend) AddBuilder(builder common.Address, builderUrl string) error { return nil }
+func (b *testBackend) RemoveBuilder(builder common.Address) error                 { return nil }
+func (b *testBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
+	panic("implement me")
+}
+func (b *testBackend) MinerInTurn() bool { return false }
+func (b *testBackend) BestBidGasFee(parentHash common.Hash) *big.Int {
+	//TODO implement me
 	panic("implement me")
 }
 
