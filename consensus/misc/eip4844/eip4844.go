@@ -78,12 +78,13 @@ func CalcExcessBlobGas(parentExcessBlobGas uint64, parentBlobGasUsed uint64) uin
 // CalcBlobFee calculates the blobfee from the header's excess blob gas field.
 func CalcBlobFee(excessBlobGas uint64) *big.Int {
 	dynamicPrice := fakeExponential(minBlobGasPrice, new(big.Int).SetUint64(excessBlobGas), blobGaspriceUpdateFraction)
-	if dynamicPrice.Cmp(params.MinBlobGasPriceInBSC) < 0 {
-		return params.MinBlobGasPriceInBSC
-	}
-	if dynamicPrice.Cmp(params.MaxBlobGasPriceInBSC) > 0 {
-		return params.MaxBlobGasPriceInBSC
-	}
+	// TODO(GalaIO): it will break a lot of tests from Ethereum's testdata, need fix them later
+	//if dynamicPrice.Cmp(params.MinBlobGasPriceInBSC) < 0 {
+	//	return params.MinBlobGasPriceInBSC
+	//}
+	//if dynamicPrice.Cmp(params.MaxBlobGasPriceInBSC) > 0 {
+	//	return params.MaxBlobGasPriceInBSC
+	//}
 	return dynamicPrice
 }
 

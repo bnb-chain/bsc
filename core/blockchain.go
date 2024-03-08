@@ -1864,6 +1864,12 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			}
 		}
 	}()
+
+	// check block data available first
+	if index, err := CheckDataAvailableInBatch(bc, chain); err != nil {
+		return index, err
+	}
+
 	// Start the parallel header verifier
 	headers := make([]*types.Header, len(chain))
 	for i, block := range chain {
@@ -2022,15 +2028,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
 
-		// check blob data available first
-		// TODO(GalaIO): move IsDataAvailable combine into verifyHeaders?
-		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-			if posa, ok := bc.engine.(consensus.PoSA); ok {
-				if err = posa.IsDataAvailable(bc, block); err != nil {
-					return it.index, err
-				}
-			}
-		}
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err
