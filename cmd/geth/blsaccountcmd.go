@@ -199,7 +199,7 @@ Delete the selected BLS account from the BLS wallet.`,
 						Name:      "generate-proof",
 						Usage:     "Generate ownership proof for the selected BLS account from the BLS wallet",
 						Action:    blsAccountGenerateProof,
-						ArgsUsage: "<BLS pubkey>",
+						ArgsUsage: "<operator address> <BLS pubkey>",
 						Category:  "BLS ACCOUNT COMMANDS",
 						Flags: []cli.Flag{
 							utils.DataDirFlag,

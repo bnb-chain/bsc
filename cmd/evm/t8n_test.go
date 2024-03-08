@@ -263,7 +263,6 @@ func TestT8n(t *testing.T) {
 			output: t8nOutput{alloc: true, result: true},
 			expOut: "exp.json",
 		},
-		// TODO(Nathan): Cancun not ready
 		{ // Cancun tests
 			base: "./testdata/28",
 			input: t8nInput{
