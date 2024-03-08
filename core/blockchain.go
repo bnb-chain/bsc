@@ -1824,6 +1824,7 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 // completes, then the historic state could be pruned again
 // TODO(GalaIO): if enable cancun, it must set received blob cache for check, remove cache when failed
 func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error) {
+	// todo 4844 after cancun the blocks should have sidecars!
 	// If the chain is terminating, don't even bother starting up.
 	if bc.insertStopped() {
 		return 0, nil
