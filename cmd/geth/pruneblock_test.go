@@ -42,7 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 var (
@@ -152,7 +152,7 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 	}
 	defer db.Close()
 
-	triedb := trie.NewDatabase(db, nil)
+	triedb := triedb.NewDatabase(db, nil)
 	defer triedb.Close()
 
 	genesis := gspec.MustCommit(db, triedb)

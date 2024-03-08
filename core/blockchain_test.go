@@ -922,7 +922,7 @@ func testFastVsFullChains(t *testing.T, scheme string) {
 		funds   = big.NewInt(1000000000000000)
 		gspec   = &Genesis{
 			Config:  params.TestChainConfig,
-			Alloc:   GenesisAlloc{address: {Balance: funds}},
+			Alloc:   types.GenesisAlloc{address: {Balance: funds}},
 			BaseFee: big.NewInt(params.InitialBaseFee),
 		}
 		signer = types.LatestSigner(gspec.Config)
@@ -1055,7 +1055,7 @@ func testLightVsFastVsFullChainHeads(t *testing.T, scheme string) {
 		funds   = big.NewInt(1000000000000000)
 		gspec   = &Genesis{
 			Config:  params.TestChainConfig,
-			Alloc:   GenesisAlloc{address: {Balance: funds}},
+			Alloc:   types.GenesisAlloc{address: {Balance: funds}},
 			BaseFee: big.NewInt(params.InitialBaseFee),
 		}
 	)
@@ -1175,7 +1175,7 @@ func testChainTxReorgs(t *testing.T, scheme string) {
 		gspec   = &Genesis{
 			Config:   params.TestChainConfig,
 			GasLimit: 3141592,
-			Alloc: GenesisAlloc{
+			Alloc: types.GenesisAlloc{
 				addr1: {Balance: big.NewInt(1000000000000000)},
 				addr2: {Balance: big.NewInt(1000000000000000)},
 				addr3: {Balance: big.NewInt(1000000000000000)},
@@ -1290,7 +1290,7 @@ func testLogReorgs(t *testing.T, scheme string) {
 
 		// this code generates a log
 		code   = common.Hex2Bytes("60606040525b7f24ec1d3ff24c2f6ff210738839dbc339cd45a5294d85c79361016243157aae7b60405180905060405180910390a15b600a8060416000396000f360606040526008565b00")
-		gspec  = &Genesis{Config: params.TestChainConfig, Alloc: GenesisAlloc{addr1: {Balance: big.NewInt(10000000000000000)}}}
+		gspec  = &Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{addr1: {Balance: big.NewInt(10000000000000000)}}}
 		signer = types.LatestSigner(gspec.Config)
 	)
 
@@ -1347,7 +1347,7 @@ func testLogRebirth(t *testing.T, scheme string) {
 	var (
 		key1, _       = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 		addr1         = crypto.PubkeyToAddress(key1.PublicKey)
-		gspec         = &Genesis{Config: params.TestChainConfig, Alloc: GenesisAlloc{addr1: {Balance: big.NewInt(10000000000000000)}}}
+		gspec         = &Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{addr1: {Balance: big.NewInt(10000000000000000)}}}
 		signer        = types.LatestSigner(gspec.Config)
 		engine        = ethash.NewFaker()
 		blockchain, _ = NewBlockChain(rawdb.NewMemoryDatabase(), DefaultCacheConfigWithScheme(scheme), gspec, nil, engine, vm.Config{}, nil, nil)
@@ -1429,7 +1429,7 @@ func testSideLogRebirth(t *testing.T, scheme string) {
 	var (
 		key1, _       = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 		addr1         = crypto.PubkeyToAddress(key1.PublicKey)
-		gspec         = &Genesis{Config: params.TestChainConfig, Alloc: GenesisAlloc{addr1: {Balance: big.NewInt(10000000000000000)}}}
+		gspec         = &Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{addr1: {Balance: big.NewInt(10000000000000000)}}}
 		signer        = types.LatestSigner(gspec.Config)
 		blockchain, _ = NewBlockChain(rawdb.NewMemoryDatabase(), DefaultCacheConfigWithScheme(scheme), gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 	)
@@ -1526,7 +1526,7 @@ func testReorgSideEvent(t *testing.T, scheme string) {
 		addr1   = crypto.PubkeyToAddress(key1.PublicKey)
 		gspec   = &Genesis{
 			Config: params.TestChainConfig,
-			Alloc:  GenesisAlloc{addr1: {Balance: big.NewInt(10000000000000000)}},
+			Alloc:  types.GenesisAlloc{addr1: {Balance: big.NewInt(10000000000000000)}},
 		}
 		signer = types.LatestSigner(gspec.Config)
 	)
@@ -1669,7 +1669,7 @@ func testEIP155Transition(t *testing.T, scheme string) {
 				EIP155Block:    big.NewInt(2),
 				HomesteadBlock: new(big.Int),
 			},
-			Alloc: GenesisAlloc{address: {Balance: funds}, deleteAddr: {Balance: new(big.Int)}},
+			Alloc: types.GenesisAlloc{address: {Balance: funds}, deleteAddr: {Balance: new(big.Int)}},
 		}
 	)
 	genDb, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, func(i int, block *BlockGen) {
@@ -1784,7 +1784,7 @@ func testEIP161AccountRemoval(t *testing.T, scheme string) {
 				EIP150Block:    new(big.Int),
 				EIP158Block:    big.NewInt(2),
 			},
-			Alloc: GenesisAlloc{address: {Balance: funds}},
+			Alloc: types.GenesisAlloc{address: {Balance: funds}},
 		}
 	)
 	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, block *BlockGen) {
@@ -2015,7 +2015,7 @@ func testBlockchainRecovery(t *testing.T, scheme string) {
 		key, _  = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 		address = crypto.PubkeyToAddress(key.PublicKey)
 		funds   = big.NewInt(1000000000)
-		gspec   = &Genesis{Config: params.TestChainConfig, Alloc: GenesisAlloc{address: {Balance: funds}}}
+		gspec   = &Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{address: {Balance: funds}}}
 	)
 	height := uint64(1024)
 	_, blocks, receipts := GenerateChainWithGenesis(gspec, ethash.NewFaker(), int(height), nil)
@@ -2220,7 +2220,7 @@ func testSideImport(t *testing.T, numCanonBlocksInSidechain, blocksBetweenCommon
 
 		gspec = &Genesis{
 			Config:  &chainConfig,
-			Alloc:   GenesisAlloc{addr: {Balance: big.NewInt(math.MaxInt64)}},
+			Alloc:   types.GenesisAlloc{addr: {Balance: big.NewInt(math.MaxInt64)}},
 			BaseFee: big.NewInt(params.InitialBaseFee),
 		}
 		signer     = types.LatestSigner(gspec.Config)
@@ -2815,7 +2815,7 @@ func benchmarkLargeNumberOfValueToNonexisting(b *testing.B, numTxs, numBlocks in
 		bankFunds       = big.NewInt(100000000000000000)
 		gspec           = &Genesis{
 			Config: params.TestChainConfig,
-			Alloc: GenesisAlloc{
+			Alloc: types.GenesisAlloc{
 				testBankAddress: {Balance: bankFunds},
 				common.HexToAddress("0xc0de"): {
 					Code:    []byte{0x60, 0x01, 0x50},
@@ -2993,7 +2993,7 @@ func testDeleteCreateRevert(t *testing.T, scheme string) {
 		funds   = big.NewInt(100000000000000000)
 		gspec   = &Genesis{
 			Config: params.TestChainConfig,
-			Alloc: GenesisAlloc{
+			Alloc: types.GenesisAlloc{
 				address: {Balance: funds},
 				// The address 0xAAAAA selfdestructs if called
 				aa: {
@@ -3117,7 +3117,7 @@ func testDeleteRecreateSlots(t *testing.T, scheme string) {
 
 	gspec := &Genesis{
 		Config: params.TestChainConfig,
-		Alloc: GenesisAlloc{
+		Alloc: types.GenesisAlloc{
 			address: {Balance: funds},
 			// The address 0xAAAAA selfdestructs if called
 			aa: {
@@ -3203,7 +3203,7 @@ func testDeleteRecreateAccount(t *testing.T, scheme string) {
 
 	gspec := &Genesis{
 		Config: params.TestChainConfig,
-		Alloc: GenesisAlloc{
+		Alloc: types.GenesisAlloc{
 			address: {Balance: funds},
 			// The address 0xAAAAA selfdestructs if called
 			aa: {
@@ -3324,7 +3324,7 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 	t.Logf("Destination address: %x\n", aa)
 	gspec := &Genesis{
 		Config: params.TestChainConfig,
-		Alloc: GenesisAlloc{
+		Alloc: types.GenesisAlloc{
 			address: {Balance: funds},
 			// The address 0xAAAAA selfdestructs if called
 			aa: {
@@ -3519,7 +3519,7 @@ func testInitThenFailCreateContract(t *testing.T, scheme string) {
 
 	gspec := &Genesis{
 		Config: params.TestChainConfig,
-		Alloc: GenesisAlloc{
+		Alloc: types.GenesisAlloc{
 			address: {Balance: funds},
 			// The address aa has some funds
 			aa: {Balance: big.NewInt(100000)},
@@ -3603,7 +3603,7 @@ func testEIP2718TransitionWithConfig(t *testing.T, scheme string, config *params
 		funds   = big.NewInt(1000000000000000)
 		gspec   = &Genesis{
 			Config: config,
-			Alloc: GenesisAlloc{
+			Alloc: types.GenesisAlloc{
 				address: {Balance: funds},
 				// The address 0xAAAA sloads 0x00 and 0x01
 				aa: {
@@ -3688,7 +3688,7 @@ func testEIP1559Transition(t *testing.T, scheme string) {
 		config  = *params.AllEthashProtocolChanges
 		gspec   = &Genesis{
 			Config: &config,
-			Alloc: GenesisAlloc{
+			Alloc: types.GenesisAlloc{
 				addr1: {Balance: funds},
 				addr2: {Balance: funds},
 				// The address 0xAAAA sloads 0x00 and 0x01
@@ -3829,7 +3829,7 @@ func testSetCanonical(t *testing.T, scheme string) {
 		funds   = big.NewInt(100000000000000000)
 		gspec   = &Genesis{
 			Config:  params.TestChainConfig,
-			Alloc:   GenesisAlloc{address: {Balance: funds}},
+			Alloc:   types.GenesisAlloc{address: {Balance: funds}},
 			BaseFee: big.NewInt(params.InitialBaseFee),
 		}
 		signer = types.LatestSigner(gspec.Config)
@@ -3946,7 +3946,7 @@ func testCanonicalHashMarker(t *testing.T, scheme string) {
 		var (
 			gspec = &Genesis{
 				Config:  params.TestChainConfig,
-				Alloc:   GenesisAlloc{},
+				Alloc:   types.GenesisAlloc{},
 				BaseFee: big.NewInt(params.InitialBaseFee),
 			}
 			engine = ethash.NewFaker()
@@ -4059,7 +4059,7 @@ func testCreateThenDelete(t *testing.T, config *params.ChainConfig) {
 	}...)
 	gspec := &Genesis{
 		Config: config,
-		Alloc: GenesisAlloc{
+		Alloc: types.GenesisAlloc{
 			address: {Balance: funds},
 		},
 	}
@@ -4145,7 +4145,7 @@ func TestDeleteThenCreate(t *testing.T) {
 
 	gspec := &Genesis{
 		Config: params.TestChainConfig,
-		Alloc: GenesisAlloc{
+		Alloc: types.GenesisAlloc{
 			address: {Balance: funds},
 		},
 	}
@@ -4257,7 +4257,7 @@ func TestTransientStorageReset(t *testing.T) {
 	}...)
 	gspec := &Genesis{
 		Config: params.TestChainConfig,
-		Alloc: GenesisAlloc{
+		Alloc: types.GenesisAlloc{
 			address: {Balance: funds},
 		},
 	}
@@ -4325,7 +4325,7 @@ func TestEIP3651(t *testing.T) {
 		config  = *params.AllEthashProtocolChanges
 		gspec   = &Genesis{
 			Config: &config,
-			Alloc: GenesisAlloc{
+			Alloc: types.GenesisAlloc{
 				addr1: {Balance: funds},
 				addr2: {Balance: funds},
 				// The address 0xAAAA sloads 0x00 and 0x01

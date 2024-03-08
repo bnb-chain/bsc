@@ -39,7 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 // Verify that Client implements the ethereum interfaces.
@@ -268,7 +268,7 @@ var (
 
 var genesis = &core.Genesis{
 	Config:    params.AllEthashProtocolChanges,
-	Alloc:     core.GenesisAlloc{testAddr: {Balance: testBalance}},
+	Alloc:     types.GenesisAlloc{testAddr: {Balance: testBalance}},
 	ExtraData: []byte("test genesis"),
 	Timestamp: 9000,
 	BaseFee:   big.NewInt(params.InitialBaseFeeForBSC),
@@ -340,7 +340,7 @@ func generateTestChain() []*types.Block {
 	signer := types.HomesteadSigner{}
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
-	genesis.MustCommit(db, trie.NewDatabase(db, nil))
+	genesis.MustCommit(db, triedb.NewDatabase(db, nil))
 	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFaker(), vm.Config{}, nil, nil, core.EnablePersistDiff(860000))
 	generate := func(i int, block *core.BlockGen) {
 		block.OffsetTime(5)
@@ -381,7 +381,7 @@ func generateTestChain() []*types.Block {
 			block.AddTxWithChain(chain, testTx2)
 		}
 	}
-	gblock := genesis.MustCommit(db, trie.NewDatabase(db, nil))
+	gblock := genesis.MustCommit(db, triedb.NewDatabase(db, nil))
 	engine := ethash.NewFaker()
 	blocks, _ := core.GenerateChain(genesis.Config, gblock, engine, db, testBlockNum, generate)
 	blocks = append([]*types.Block{gblock}, blocks...)
