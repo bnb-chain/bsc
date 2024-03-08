@@ -219,7 +219,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			}
 			h.snapSync.Store(true)
 			log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
-		} else if !h.chain.NoTries() && !h.chain.HasState(fullBlock.Root) {
+		} else if !h.chain.HasState(fullBlock.Root) {
 			h.snapSync.Store(true)
 			log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
 		}
@@ -997,4 +997,7 @@ func (h *handler) enableSyncedFeatures() {
 		log.Info("Snap sync complete, auto disabling")
 		h.snapSync.Store(false)
 	}
+	// if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
+	// 	h.chain.TrieDB().SetBufferSize(pathdb.DefaultBufferSize)
+	// }
 }

@@ -289,6 +289,12 @@ func (ps *peerSet) waitTrustExtension(peer *eth.Peer) (*trust.Peer, error) {
 		delete(ps.trustWait, id)
 		ps.lock.Unlock()
 		return nil, errPeerWaitTimeout
+
+	case <-ps.quitCh:
+		ps.lock.Lock()
+		delete(ps.trustWait, id)
+		ps.lock.Unlock()
+		return nil, errPeerSetClosed
 	}
 }
 
@@ -348,6 +354,12 @@ func (ps *peerSet) waitBscExtension(peer *eth.Peer) (*bsc.Peer, error) {
 				}
 			}
 		}
+
+	case <-ps.quitCh:
+		ps.lock.Lock()
+		delete(ps.bscWait, id)
+		ps.lock.Unlock()
+		return nil, errPeerSetClosed
 	}
 }
 

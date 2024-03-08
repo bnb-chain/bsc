@@ -134,6 +134,10 @@ func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 	return 0
 }
 
+func (hc *HeaderChain) GenesisHeader() *types.Header {
+	panic("not supported")
+}
+
 // GetBlockNumber retrieves the block number belonging to the given hash
 // from the cache or database
 func (hc *HeaderChain) GetBlockNumber(hash common.Hash) *uint64 {

@@ -212,7 +212,7 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 	// We are in a full sync, but the associated head state is missing. To complete
 	// the head state, forcefully rerun the snap sync. Note it doesn't mean the
 	// persistent state is corrupted, just mismatch with the head block.
-	if !cs.handler.chain.NoTries() && !cs.handler.chain.HasState(head.Root) {
+	if !cs.handler.chain.HasState(head.Root) {
 		block := cs.handler.chain.CurrentSnapBlock()
 		td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
 		log.Info("Reenabled snap sync as chain is stateless")

@@ -291,7 +291,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.BlobPool.Datadir != "" {
 		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
 	}
-
 	blobPool := blobpool.New(config.BlobPool, eth.blockchain)
 
 	if config.TxPool.Journal != "" {
@@ -310,7 +309,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		Chain:                  eth.blockchain,
 		TxPool:                 eth.txPool,
 		Merger:                 eth.merger,
-		Network:                config.NetworkId,
+		Network:                networkID,
 		Sync:                   config.SyncMode,
 		BloomCache:             uint64(cacheLimit),
 		EventMux:               eth.eventMux,

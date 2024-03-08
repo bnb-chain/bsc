@@ -98,7 +98,6 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 			if err != nil {
 				return nil, err
 			}
-			// TODO, offset=0?
 			f, err := NewStateFreezer(datadir, true, 0)
 			if err != nil {
 				return nil, err
