@@ -67,6 +67,10 @@ import (
 	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 )
 
+const (
+	ChainDBNamespace = "eth/db/chaindata/"
+)
+
 // Config contains the configuration options of the ETH protocol.
 // Deprecated: use ethconfig.Config instead.
 type Config = ethconfig.Config
@@ -134,7 +138,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// Assemble the Ethereum object
 	chainDb, err := stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
-		config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff, config.PruneAncientData)
+		config.DatabaseFreezer, config.DatabaseDiff, ChainDBNamespace, false, config.PersistDiff, config.PruneAncientData)
 	if err != nil {
 		return nil, err
 	}

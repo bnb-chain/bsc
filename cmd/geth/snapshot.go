@@ -436,13 +436,15 @@ func pruneState(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
 	defer chaindb.Close()
 
-	if rawdb.ReadStateScheme(chaindb) != rawdb.HashScheme {
-		log.Crit("Offline pruning is not required for path scheme")
-	}
 	prunerconfig := pruner.Config{
 		Datadir:   stack.ResolvePath(""),
 		BloomSize: ctx.Uint64(utils.BloomFilterSizeFlag.Name),
 	}
+
+	if rawdb.ReadStateScheme(chaindb) != rawdb.HashScheme {
+		log.Crit("Offline pruning is not required for path scheme")
+	}
+
 	pruner, err := pruner.NewPruner(chaindb, prunerconfig, ctx.Uint64(utils.TriesInMemoryFlag.Name))
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)
