@@ -124,7 +124,7 @@ func (c *iavlMerkleProofValidate) Run(input []byte) (result []byte, err error) {
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
 
-// tmHeaderValidate implemented as a native contract.
+// tmHeaderValidateNano implemented as a native contract.
 type tmHeaderValidateNano struct{}
 
 func (c *tmHeaderValidateNano) RequiredGas(input []byte) uint64 {
