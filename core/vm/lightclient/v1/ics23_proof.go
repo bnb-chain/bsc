@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/bnb-chain/ics23"
@@ -71,7 +72,7 @@ func (op CommitmentOp) GetKey() []byte {
 // in the CommitmentOp and return the CommitmentRoot of the proof.
 func (op CommitmentOp) Run(args [][]byte) ([][]byte, error) {
 	if _, ok := op.Proof.Proof.(*ics23.CommitmentProof_Exist); !ok {
-		return nil, fmt.Errorf("only exist proof supported")
+		return nil, errors.New("only exist proof supported")
 	}
 
 	// calculate root from proof

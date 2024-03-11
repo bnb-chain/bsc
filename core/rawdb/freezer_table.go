@@ -1004,7 +1004,7 @@ func (t *freezerTable) ResetItemsOffset(virtualTail uint64) error {
 	}
 
 	if stat.Size() == 0 {
-		return fmt.Errorf("Stat size is zero when ResetVirtualTail.")
+		return errors.New("Stat size is zero when ResetVirtualTail.")
 	}
 
 	var firstIndex indexEntry

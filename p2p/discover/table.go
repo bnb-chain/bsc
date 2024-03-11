@@ -26,6 +26,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	mrand "math/rand"
 	"net"
@@ -383,7 +384,7 @@ func (tab *Table) doRevalidate(done chan<- struct{}) {
 			if tab.enrFilter != nil {
 				if !tab.enrFilter(n.Record()) {
 					tab.log.Trace("ENR record filter out", "id", last.ID(), "addr", last.addr())
-					err = fmt.Errorf("filtered node")
+					err = errors.New("filtered node")
 				}
 			}
 			last = &node{Node: *n, addedAt: last.addedAt, livenessChecks: last.livenessChecks}

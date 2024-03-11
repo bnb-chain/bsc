@@ -20,6 +20,7 @@ import (
 	"container/heap"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -81,13 +82,13 @@ func (b *testBackend) EventMux() *event.TypeMux { return b.eventMux }
 func (p *mockPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, headers []*types.Header) (uint64, common.Hash, error) {
 	parentHeader := chain.GetHeaderByHash(headers[len(headers)-1].ParentHash)
 	if parentHeader == nil {
-		return 0, common.Hash{}, fmt.Errorf("unexpected error")
+		return 0, common.Hash{}, errors.New("unexpected error")
 	}
 	return parentHeader.Number.Uint64(), parentHeader.Hash(), nil
 }
 
 func (p *mockInvalidPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, headers []*types.Header) (uint64, common.Hash, error) {
-	return 0, common.Hash{}, fmt.Errorf("not supported")
+	return 0, common.Hash{}, errors.New("not supported")
 }
 
 func (m *mockPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
