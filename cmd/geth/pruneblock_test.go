@@ -51,7 +51,7 @@ var (
 	key, _                      = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	address                     = crypto.PubkeyToAddress(key.PublicKey)
 	balance                     = big.NewInt(100000000000000000)
-	gspec                       = &core.Genesis{Config: params.TestChainConfig, Alloc: core.GenesisAlloc{address: {Balance: balance}}, BaseFee: big.NewInt(params.InitialBaseFee)}
+	gspec                       = &core.Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{address: {Balance: balance}}, BaseFee: big.NewInt(params.InitialBaseFee)}
 	signer                      = types.LatestSigner(gspec.Config)
 	config                      = &core.CacheConfig{
 		TrieCleanLimit: 256,

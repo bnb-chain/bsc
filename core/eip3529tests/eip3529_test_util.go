@@ -33,7 +33,7 @@ func TestGasUsage(t *testing.T, config *params.ChainConfig, engine consensus.Eng
 		balanceBefore = big.NewInt(1000000000000000)
 		gspec         = &core.Genesis{
 			Config: config,
-			Alloc: core.GenesisAlloc{
+			Alloc: types.GenesisAlloc{
 				address: {Balance: balanceBefore},
 				aa: {
 					Code:    bytecode,

@@ -819,6 +819,17 @@ LOOP:
 			signal = commitInterruptOutOfGas
 			break
 		}
+		if stopTimer != nil {
+			select {
+			case <-stopTimer.C:
+				log.Info("Not enough time for further transactions", "txs", len(env.txs))
+				stopTimer.Reset(0) // re-active the timer, in case it will be used later.
+				signal = commitInterruptTimeout
+				break LOOP
+			default:
+			}
+		}
+
 		// If we don't have enough blob space for any further blob transactions,
 		// skip that list altogether
 		if !blobTxs.Empty() && env.blobs*params.BlobTxBlobGasPerBlob >= params.MaxBlobGasPerBlock {
@@ -848,17 +859,6 @@ LOOP:
 		}
 		if ltx == nil {
 			break
-		}
-
-		if stopTimer != nil {
-			select {
-			case <-stopTimer.C:
-				log.Info("Not enough time for further transactions", "txs", len(env.txs))
-				stopTimer.Reset(0) // re-active the timer, in case it will be used later.
-				signal = commitInterruptTimeout
-				break LOOP
-			default:
-			}
 		}
 
 		// If we don't have enough space for the next transaction, skip the account.
