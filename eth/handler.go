@@ -46,6 +46,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 const (
@@ -802,7 +803,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			if isCancun {
 				peer.AsyncSendNewBlock(block, td)
 			} else {
-				peer.AsyncSendNewBlockAndBlob(block, td, 0, block.Blobs()) // todo 4844 set version somewhere else rather than hardcoding
+				peer.AsyncSendNewBlockAndBlob(block, td, params.BlobVersion, block.Blobs())
 			}
 		}
 

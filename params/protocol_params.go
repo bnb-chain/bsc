@@ -186,6 +186,7 @@ const (
 
 	BlobReserveThreshold      = 18 * (24 * 3600) / 3 // it keeps blob data available for 18 days in local.
 	BlobExtraReserveThreshold = 1 * (24 * 3600) / 3  // it adds more time for expired blobs for some request cases, like expiry blob when remote peer is syncing, default 1 day.
+	BlobVersion               = 0
 )
 
 // Gas discount table for BLS12-381 G1 and G2 multi exponentiation operations

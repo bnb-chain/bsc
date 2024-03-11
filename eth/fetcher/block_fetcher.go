@@ -803,7 +803,7 @@ func (f *BlockFetcher) enqueue(peer string, header *types.Header, block *types.B
 		hash, number = block.Hash(), block.NumberU64()
 	}
 	// Ensure the peer isn't DOSing us
-	count := f.queues[peer] + 1 // todo 4844 this is a random checkpoint but ensure that block has sidecars here
+	count := f.queues[peer] + 1
 	if count > blockLimit {
 		log.Debug("Discarded delivered header or block, exceeded allowance", "peer", peer, "number", number, "hash", hash, "limit", blockLimit)
 		blockBroadcastDOSMeter.Mark(1)
