@@ -295,9 +295,10 @@ type BlockBodiesRLPPacket struct {
 
 // BlockBody represents the data content of a single block.
 type BlockBody struct {
-	Transactions []*types.Transaction // Transactions contained within a block
-	Uncles       []*types.Header      // Uncles contained within a block
-	Withdrawals  []*types.Withdrawal  `rlp:"optional"` // Withdrawals contained within a block
+	Transactions []*types.Transaction   // Transactions contained within a block
+	Uncles       []*types.Header        // Uncles contained within a block
+	Withdrawals  []*types.Withdrawal    `rlp:"optional"` // Withdrawals contained within a block
+	Sidecars     []*types.BlobTxSidecar `rlp:"optional"` // Sidecars contained within a block
 }
 
 // Unpack retrieves the transactions and uncles from the range packet and returns
