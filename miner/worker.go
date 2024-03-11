@@ -774,7 +774,7 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 
 	stopPrefetchCh := make(chan struct{})
 	defer close(stopPrefetchCh)
-	// prefetch txs from all pending txs
+	// prefetch plainTxs txs, don't bother to prefetch a few blobTxs
 	txsPrefetch := plainTxs.Copy()
 	tx := txsPrefetch.PeekWithUnwrap()
 	if tx != nil {

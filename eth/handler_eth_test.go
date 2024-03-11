@@ -307,7 +307,7 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 	}
 }
 
-func TestWaitSnapExtensionTimout67(t *testing.T) { testWaitSnapExtensionTimout(t, eth.ETH67) }
+func TestWaitSnapExtensionTimout68(t *testing.T) { testWaitSnapExtensionTimout(t, eth.ETH68) }
 
 func testWaitSnapExtensionTimout(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -344,7 +344,7 @@ func testWaitSnapExtensionTimout(t *testing.T, protocol uint) {
 	}
 }
 
-func TestWaitBscExtensionTimout67(t *testing.T) { testWaitBscExtensionTimout(t, eth.ETH67) }
+func TestWaitBscExtensionTimout68(t *testing.T) { testWaitBscExtensionTimout(t, eth.ETH68) }
 
 func testWaitBscExtensionTimout(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -553,8 +553,8 @@ func TestTransactionPendingReannounce(t *testing.T) {
 	defer sourcePipe.Close()
 	defer sinkPipe.Close()
 
-	sourcePeer := eth.NewPeer(eth.ETH67, p2p.NewPeer(enode.ID{0}, "", nil), sourcePipe, source.txpool)
-	sinkPeer := eth.NewPeer(eth.ETH67, p2p.NewPeer(enode.ID{0}, "", nil), sinkPipe, sink.txpool)
+	sourcePeer := eth.NewPeer(eth.ETH68, p2p.NewPeer(enode.ID{0}, "", nil), sourcePipe, source.txpool)
+	sinkPeer := eth.NewPeer(eth.ETH68, p2p.NewPeer(enode.ID{0}, "", nil), sinkPipe, sink.txpool)
 	defer sourcePeer.Close()
 	defer sinkPeer.Close()
 
@@ -774,8 +774,8 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 		}
 		uniPort++
 
-		src := eth.NewPeer(eth.ETH67, peer1, p2pSrc, handler.txpool)
-		sink := eth.NewPeer(eth.ETH67, peer2, p2pSink, handler.txpool)
+		src := eth.NewPeer(eth.ETH68, peer1, p2pSrc, handler.txpool)
+		sink := eth.NewPeer(eth.ETH68, peer2, p2pSink, handler.txpool)
 		defer src.Close()
 		defer sink.Close()
 

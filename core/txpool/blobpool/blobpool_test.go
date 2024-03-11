@@ -1360,7 +1360,9 @@ func benchmarkPoolPending(b *testing.B, datacap uint64) {
 		statedb.AddBalance(addr, uint256.NewInt(1_000_000_000))
 		pool.add(tx)
 	}
-	statedb.Commit(0, true)
+	statedb.Finalise(true)
+	statedb.AccountsIntermediateRoot()
+	statedb.Commit(0, nil)
 	defer pool.Close()
 
 	// Benchmark assembling the pending

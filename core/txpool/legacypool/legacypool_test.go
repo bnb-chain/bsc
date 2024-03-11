@@ -2544,7 +2544,7 @@ func TestTransactionPendingReannouce(t *testing.T) {
 	reannounceInterval = time.Second
 
 	pool := New(config, blockchain)
-	pool.Init(new(big.Int).SetUint64(config.PriceLimit), blockchain.CurrentBlock(), makeAddressReserver())
+	pool.Init(config.PriceLimit, blockchain.CurrentBlock(), makeAddressReserver())
 	// Modify ReannounceTime to trigger quicker.
 	pool.config.ReannounceTime = time.Second
 	defer pool.Close()
