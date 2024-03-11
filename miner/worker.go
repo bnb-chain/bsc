@@ -969,7 +969,9 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		}
 		header.BlobGasUsed = new(uint64)
 		header.ExcessBlobGas = &excessBlobGas
-		header.ParentBeaconRoot = genParams.beaconRoot
+		if w.chainConfig.Parlia == nil {
+			header.ParentBeaconRoot = genParams.beaconRoot
+		}
 	}
 	// Run the consensus preparation with the default or customized consensus engine.
 	if err := w.engine.Prepare(w.chain, header); err != nil {
