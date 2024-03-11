@@ -80,7 +80,7 @@ func CheckNoGoroutines(key, value string) error {
 	var pb bytes.Buffer
 	profiler := pprof.Lookup("goroutine")
 	if profiler == nil {
-		return fmt.Errorf("unable to find profile")
+		return errors.New("unable to find profile")
 	}
 	err := profiler.WriteTo(&pb, 0)
 	if err != nil {

@@ -93,6 +93,12 @@ type Database struct {
 // the legacy hash-based scheme is used by default.
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	// Sanitize the config and use the default one if it's not specified.
+	var triediskdb ethdb.Database
+	if diskdb != nil && diskdb.StateStore() != nil {
+		triediskdb = diskdb.StateStore()
+	} else {
+		triediskdb = diskdb
+	}
 	dbScheme := rawdb.ReadStateScheme(diskdb)
 	if config == nil {
 		if dbScheme == rawdb.PathScheme {
@@ -112,11 +118,11 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	}
 	var preimages *preimageStore
 	if config.Preimages {
-		preimages = newPreimageStore(diskdb)
+		preimages = newPreimageStore(triediskdb)
 	}
 	db := &Database{
 		config:    config,
-		diskdb:    diskdb,
+		diskdb:    triediskdb,
 		preimages: preimages,
 	}
 	/*
@@ -125,20 +131,20 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	 * 3. Last, use the default scheme, namely hash scheme
 	 */
 	if config.HashDB != nil {
-		if rawdb.ReadStateScheme(diskdb) == rawdb.PathScheme {
+		if rawdb.ReadStateScheme(triediskdb) == rawdb.PathScheme {
 			log.Warn("incompatible state scheme", "old", rawdb.PathScheme, "new", rawdb.HashScheme)
 		}
-		db.backend = hashdb.New(diskdb, config.HashDB, trie.MerkleResolver{})
+		db.backend = hashdb.New(triediskdb, config.HashDB, trie.MerkleResolver{})
 	} else if config.PathDB != nil {
-		if rawdb.ReadStateScheme(diskdb) == rawdb.HashScheme {
+		if rawdb.ReadStateScheme(triediskdb) == rawdb.HashScheme {
 			log.Warn("incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
 		}
-		db.backend = pathdb.New(diskdb, config.PathDB)
+		db.backend = pathdb.New(triediskdb, config.PathDB)
 	} else if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {
 		if config.PathDB == nil {
 			config.PathDB = pathdb.Defaults
 		}
-		db.backend = pathdb.New(diskdb, config.PathDB)
+		db.backend = pathdb.New(triediskdb, config.PathDB)
 	} else {
 		var resolver hashdb.ChildResolver
 		if config.IsVerkle {
@@ -150,7 +156,7 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		if config.HashDB == nil {
 			config.HashDB = hashdb.Defaults
 		}
-		db.backend = hashdb.New(diskdb, config.HashDB, resolver)
+		db.backend = hashdb.New(triediskdb, config.HashDB, resolver)
 	}
 	return db
 }

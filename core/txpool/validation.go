@@ -18,6 +18,7 @@ package txpool
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -126,7 +127,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 		// data match up before doing any expensive validations
 		hashes := tx.BlobHashes()
 		if len(hashes) == 0 {
-			return fmt.Errorf("blobless blob transaction")
+			return errors.New("blobless blob transaction")
 		}
 		if len(hashes) > params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob {
 			return fmt.Errorf("too many blobs in transaction: have %d, permitted %d", len(hashes), params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob)

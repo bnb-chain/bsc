@@ -266,6 +266,15 @@ func initGenesis(ctx *cli.Context) error {
 		}
 		defer chaindb.Close()
 
+		// if the trie data dir has been set, new trie db with a new state database
+		if ctx.IsSet(utils.SeparateDBFlag.Name) {
+			statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false, false, false, false)
+			if dbErr != nil {
+				utils.Fatalf("Failed to open separate trie database: %v", dbErr)
+			}
+			chaindb.SetStateStore(statediskdb)
+		}
+
 		triedb := utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
 		defer triedb.Close()
 
@@ -717,7 +726,6 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 	}
 
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
-	defer db.Close()
 	scheme, err := rawdb.ParseStateScheme(ctx.String(utils.StateSchemeFlag.Name), db)
 	if err != nil {
 		return nil, nil, common.Hash{}, err
@@ -726,7 +734,7 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 		fmt.Println("You are using geth dump in path mode, please use `geth dump-roothash` command to get all available blocks.")
 	}
 
-	var header *types.Header
+	header := &types.Header{}
 	if ctx.NArg() == 1 {
 		arg := ctx.Args().First()
 		if hashish(arg) {
@@ -755,7 +763,7 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 			if stateRoot := triedb.Head(); stateRoot != (common.Hash{}) {
 				header.Root = stateRoot
 			} else {
-				return nil, nil, common.Hash{}, fmt.Errorf("no top state root hash in path db")
+				return nil, nil, common.Hash{}, errors.New("no top state root hash in path db")
 			}
 		} else {
 			header = rawdb.ReadHeadHeader(db)

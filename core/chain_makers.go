@@ -456,7 +456,9 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 		excessBlobGas := eip4844.CalcExcessBlobGas(parentExcessBlobGas, parentBlobGasUsed)
 		header.ExcessBlobGas = &excessBlobGas
 		header.BlobGasUsed = new(uint64)
-		header.ParentBeaconRoot = new(common.Hash)
+		if cm.config.Parlia == nil {
+			header.ParentBeaconRoot = new(common.Hash)
+		}
 	}
 	return header
 }
