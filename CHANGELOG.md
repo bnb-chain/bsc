@@ -1,4 +1,15 @@
 # Changelog
+## v1.4.1
+FEATURE
+NA
+
+BUGFIX
+* [\#2258](https://github.com/bnb-chain/bsc/pull/2258) core: skip checking state root existence when do snapsync by fast node
+* [\#2252](https://github.com/bnb-chain/bsc/pull/2252) fix: add missing args of `bls account generate-proof` cmd (#2252)
+
+IMPROVEMENT
+NA
+
 ## v1.4.0
 #### RPC
 [internal/ethapi: implement eth_getBlockReceipts (#27702)](https://github.com/bnb-chain/bsc/commit/f1801a9feda8f81532c92077d2c9a8b785fd699b)
