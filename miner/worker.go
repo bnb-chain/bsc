@@ -641,12 +641,6 @@ func (w *worker) resultLoop() {
 			writeBlockTimer.UpdateSince(start)
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
-			// todo 4844 -> Here block and blobs need to be boradcasted using NewBlockWithBlobMsg
-			// The idea is the following:
-			// - We listen for NewBlockWithBlobMsg and its handler is handleNewBlockWithBlob.
-			// - Then in handleNewBlockWithBlob() function where we decode it to NewBlockWithBlobPacket. Then we have block and sidecars. Then we can individually call or implement logic of handleNewBlock and handleNewSidecars (which will be newly created).
-			// - The Handle function ((h *ethHandler) Handle) will need changing as well.
-			// Broadcast the block and announce chain insertion event
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
 		case <-w.exitCh:
