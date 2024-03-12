@@ -272,6 +272,7 @@ type BlockChain struct {
 	highestVerifiedHeader atomic.Pointer[types.Header]
 	currentBlock          atomic.Pointer[types.Header] // Current head of the chain
 	currentSnapBlock      atomic.Pointer[types.Header] // Current head of snap-sync
+	chasingHead           atomic.Pointer[types.Header]
 
 	bodyCache     *lru.Cache[common.Hash, *types.Body]
 	bodyRLPCache  *lru.Cache[common.Hash, rlp.RawValue]
@@ -393,6 +394,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	bc.highestVerifiedHeader.Store(nil)
 	bc.currentBlock.Store(nil)
 	bc.currentSnapBlock.Store(nil)
+	bc.chasingHead.Store(nil)
 
 	// Update chain info data metrics
 	chainInfoGauge.Update(metrics.GaugeInfoValue{"chain_id": bc.chainConfig.ChainID.String()})
@@ -649,6 +651,9 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 
 func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
 	bc.blockCache.Add(hash, block)
+	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+		bc.blobsCache.Add(hash, block.Blobs())
+	}
 }
 
 // empty returns an indicator whether the blockchain is empty.
@@ -1038,6 +1043,16 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 	return nil
 }
 
+// UpdateChasingHead update remote best chain head, used by DA check now.
+func (bc *BlockChain) UpdateChasingHead(head *types.Header) {
+	bc.chasingHead.Store(head)
+}
+
+// ChasingHead return the best chain head of peers.
+func (bc *BlockChain) ChasingHead() *types.Header {
+	return bc.chasingHead.Load()
+}
+
 // Reset purges the entire blockchain, restoring it to its genesis state.
 func (bc *BlockChain) Reset() error {
 	return bc.ResetWithGenesisBlock(bc.genesisBlock)
@@ -1381,8 +1396,9 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Write all chain data to ancients.
 		td := bc.GetTd(first.Hash(), first.NumberU64())
-		// TODO(GalaIO): when sync the history block, it needs store blobs too.
+		// TODO(GalaIO): when sync the history block, it needs check DA & store blobs too.
 		//if isCancun() {
+		//  posa.IsDataAvailable()
 		//	writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db, blockChain, receiptChain, td, blobs)
 		//}
 		writeSize, err := rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td)
@@ -1463,8 +1479,9 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			// Write all the data out into the database
 			rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
 			rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
-			// TODO(GalaIO): if enable cancun, need write blobs
+			// TODO(GalaIO): if enable cancun, need check DA & write blobs
 			//if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			//  posa.IsDataAvailable()
 			//	rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), blobs)
 			//}
 
@@ -1536,7 +1553,7 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	batch := bc.db.NewBatch()
 	rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), td)
 	rawdb.WriteBlock(batch, block)
-	// if enable cancun, it needs to write blobs too
+	// if cancun is enabled, here need to write blobs too
 	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 		rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), block.Blobs())
 	}
@@ -1582,7 +1599,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
-		// if enable cancun, it needs to write blobs too
+		// if cancun is enabled, here need to write blobs too
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), block.Blobs())
 		}
@@ -1823,7 +1840,6 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 // racey behaviour. If a sidechain import is in progress, and the historic state
 // is imported, but then new canon-head is added before the actual sidechain
 // completes, then the historic state could be pruned again
-// TODO(GalaIO): if enable cancun, it must set received blob cache for check, remove cache when failed
 func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error) {
 	// If the chain is terminating, don't even bother starting up.
 	if bc.insertStopped() {
@@ -1849,6 +1865,14 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			}
 		}
 	}()
+
+	// check block data available first
+	if bc.chainConfig.Parlia != nil {
+		if index, err := CheckDataAvailableInBatch(bc, chain); err != nil {
+			return index, err
+		}
+	}
+
 	// Start the parallel header verifier
 	headers := make([]*types.Header, len(chain))
 	for i, block := range chain {
@@ -2007,15 +2031,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
 
-		// check blob data available first
-		// TODO(GalaIO): move IsDataAvailable combine into verifyHeaders?
-		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-			if posa, ok := bc.engine.(consensus.PoSA); ok {
-				if err = posa.IsDataAvailable(bc, block); err != nil {
-					return it.index, err
-				}
-			}
-		}
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err
@@ -2317,7 +2332,9 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 		if block == nil {
 			log.Crit("Importing heavy sidechain block is nil", "hash", hashes[i], "number", numbers[i])
 		}
-
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			block = block.WithBlobs(bc.GetBlobsByHash(hashes[i]))
+		}
 		blocks = append(blocks, block)
 		memory += block.Size()
 
@@ -2389,6 +2406,9 @@ func (bc *BlockChain) recoverAncestors(block *types.Block) (common.Hash, error) 
 		} else {
 			b = bc.GetBlock(hashes[i], numbers[i])
 		}
+		if bc.chainConfig.IsCancun(b.Number(), b.Time()) {
+			b = b.WithBlobs(bc.GetBlobsByHash(b.Hash()))
+		}
 		if _, err := bc.insertChain(types.Blocks{b}, false); err != nil {
 			return b.ParentHash(), err
 		}
@@ -2402,7 +2422,7 @@ func (bc *BlockChain) collectLogs(b *types.Block, removed bool) []*types.Log {
 	var blobGasPrice *big.Int
 	excessBlobGas := b.ExcessBlobGas()
 	if excessBlobGas != nil {
-		blobGasPrice = eip4844.CalcBlobFee(*excessBlobGas)
+		blobGasPrice = eip4844.CalcBlobFee(*excessBlobGas, bc.chainConfig)
 	}
 	receipts := rawdb.ReadRawReceipts(bc.db, b.Hash(), b.NumberU64())
 	if err := receipts.DeriveFields(bc.chainConfig, b.Hash(), b.NumberU64(), b.Time(), b.BaseFee(), blobGasPrice, b.Transactions()); err != nil {
@@ -2835,6 +2855,7 @@ func (bc *BlockChain) isCachedBadBlock(block *types.Block) bool {
 }
 
 // reportBlock logs a bad block error.
+// bad block need not save receipts & blobs.
 func (bc *BlockChain) reportBlock(block *types.Block, receipts types.Receipts, err error) {
 	rawdb.WriteBadBlock(bc.db, block)
 	log.Error(summarizeBadBlock(block, receipts, bc.Config(), err))

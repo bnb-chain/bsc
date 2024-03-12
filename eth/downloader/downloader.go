@@ -206,6 +206,9 @@ type BlockChain interface {
 	// TrieDB retrieves the low level trie database used for interacting
 	// with trie nodes.
 	TrieDB() *triedb.Database
+
+	// UpdateChasingHead update remote best chain head, used by DA check now.
+	UpdateChasingHead(head *types.Header)
 }
 
 type DownloadOption func(downloader *Downloader) *Downloader
@@ -591,6 +594,8 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 	} else if mode == FullSync {
 		fetchers = append(fetchers, func() error { return d.processFullSyncContent(ttd, beaconMode) })
 	}
+	// update the chasing head
+	d.blockchain.UpdateChasingHead(remoteHeader)
 	return d.spawnSync(fetchers)
 }
 

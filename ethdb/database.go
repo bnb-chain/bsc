@@ -147,7 +147,7 @@ type AncientWriter interface {
 
 type FreezerEnv struct {
 	ChainCfg         *params.ChainConfig
-	BlobExtraReserve int64
+	BlobExtraReserve uint64
 }
 
 // AncientFreezer defines the help functions for freezing ancient data
