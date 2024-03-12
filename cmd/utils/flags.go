@@ -1097,10 +1097,10 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	}
 
 	// Blob setting
-	BlobExtraReserveFlag = &cli.Int64Flag{
+	BlobExtraReserveFlag = &cli.Uint64Flag{
 		Name:  "blob.extra-reserve",
-		Usage: "Extra reserve threshold for blob, blob never expires when -1 is set, default 28800",
-		Value: params.BlobExtraReserveThreshold,
+		Usage: "Extra reserve threshold for blob, blob never expires when 0 is set, default 28800",
+		Value: params.DefaultExtraReserveForBlobRequests,
 	}
 )
 
@@ -2124,7 +2124,11 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 
 	// blob setting
 	if ctx.IsSet(BlobExtraReserveFlag.Name) {
-		cfg.BlobExtraReserve = ctx.Int64(BlobExtraReserveFlag.Name)
+		extraReserve := ctx.Uint64(BlobExtraReserveFlag.Name)
+		if extraReserve > 0 && extraReserve < params.DefaultExtraReserveForBlobRequests {
+			extraReserve = params.DefaultExtraReserveForBlobRequests
+		}
+		cfg.BlobExtraReserve = extraReserve
 	}
 }
 

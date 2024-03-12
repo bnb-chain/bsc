@@ -60,4 +60,7 @@ var (
 	// input transaction of non-blob type when a blob transaction from this sender
 	// remains pending (and vice-versa).
 	ErrAlreadyReserved = errors.New("address already reserved")
+
+	// ErrInBlackList is returned if the transaction send by banned address
+	ErrInBlackList = errors.New("sender or to in black list")
 )

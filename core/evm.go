@@ -18,6 +18,9 @@ package core
 
 import (
 	"math/big"
+	"reflect"
+
+	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -35,6 +38,9 @@ type ChainContext interface {
 
 	// GetHeader returns the header corresponding to the hash/number argument pair.
 	GetHeader(common.Hash, uint64) *types.Header
+
+	// Config retrieves the chain config.
+	Config() *params.ChainConfig
 }
 
 // NewEVMBlockContext creates a new context for use in the EVM.
@@ -56,7 +62,7 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		baseFee = new(big.Int).Set(header.BaseFee)
 	}
 	if header.ExcessBlobGas != nil {
-		blobBaseFee = eip4844.CalcBlobFee(*header.ExcessBlobGas)
+		blobBaseFee = eip4844.CalcBlobFee(*header.ExcessBlobGas, getChainConfig(chain))
 	}
 	if header.Difficulty.Cmp(common.Big0) == 0 {
 		random = &header.MixDigest
@@ -138,4 +144,11 @@ func CanTransfer(db vm.StateDB, addr common.Address, amount *uint256.Int) bool {
 func Transfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.Int) {
 	db.SubBalance(sender, amount)
 	db.AddBalance(recipient, amount)
+}
+
+func getChainConfig(bc ChainContext) *params.ChainConfig {
+	if bc == nil || reflect.ValueOf(bc).IsNil() {
+		return nil
+	}
+	return bc.Config()
 }
