@@ -531,11 +531,6 @@ func (b *Block) WithBlobs(blobs BlobTxSidecars) *Block {
 	return block
 }
 
-// WithBlobs returns a block containing the given blobs.
-func (b *Block) WithSidecarVersion(version uint32) {
-	b.blobVersion = version
-}
-
 // Hash returns the keccak256 hash of b's header.
 // The hash is computed on the first call and cached thereafter.
 func (b *Block) Hash() common.Hash {

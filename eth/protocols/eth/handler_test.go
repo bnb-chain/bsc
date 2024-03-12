@@ -556,13 +556,11 @@ func TestHandleNewBlock(t *testing.T) {
 	dataNil := NewBlockPacket{
 		Block:    block,
 		TD:       big.NewInt(1),
-		Version:  nil,
 		Sidecars: nil,
 	}
 	dataNonNil := NewBlockPacket{
 		Block:    block,
 		TD:       big.NewInt(1),
-		Version:  v,
 		Sidecars: &sidecars,
 	}
 	sizeNonNil, rNonNil, _ := rlp.EncodeToReader(dataNonNil)

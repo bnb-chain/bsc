@@ -43,7 +43,6 @@ type blockAndBlobPropagation struct {
 	block    *types.Block
 	td       *big.Int
 	sidecars types.BlobTxSidecars
-	version  uint32
 }
 
 // broadcastBlocks is a write loop that multiplexes blocks and block announcements
@@ -53,7 +52,7 @@ func (p *Peer) broadcastBlocks() {
 	for {
 		select {
 		case prop := <-p.queuedBlockAndBlobs:
-			if err := p.SendNewBlockAndBlob(prop.block, prop.td, prop.version, prop.sidecars); err != nil {
+			if err := p.SendNewBlockAndBlob(prop.block, prop.td, prop.sidecars); err != nil {
 				return
 			}
 			p.Log().Trace("Propagated blockandblob", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td)

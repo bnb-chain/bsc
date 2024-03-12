@@ -330,13 +330,12 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 }
 
 // SendNewBlock propagates an entire block to a remote peer.
-func (p *Peer) SendNewBlockAndBlob(block *types.Block, td *big.Int, version uint32, sidecars types.BlobTxSidecars) error {
+func (p *Peer) SendNewBlockAndBlob(block *types.Block, td *big.Int, sidecars types.BlobTxSidecars) error {
 	// Mark all the block hash as known, but ensure we don't overflow our limits
 	p.knownBlockAndBlobs.Add(block.Hash()) // todo 4844 check if adding only the block hash is okay
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
 		Block:    block,
 		TD:       td,
-		Version:  &version,
 		Sidecars: &sidecars,
 	})
 }
@@ -357,7 +356,7 @@ func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 // the peer's broadcast queue is full, the event is silently dropped.
 func (p *Peer) AsyncSendNewBlockAndBlob(block *types.Block, td *big.Int, version uint32, sidecars types.BlobTxSidecars) {
 	select {
-	case p.queuedBlockAndBlobs <- &blockAndBlobPropagation{block: block, td: td, version: version, sidecars: sidecars}:
+	case p.queuedBlockAndBlobs <- &blockAndBlobPropagation{block: block, td: td, sidecars: sidecars}:
 		// Mark all the block hash as known, but ensure we don't overflow our limits
 		p.knownBlockAndBlobs.Add(block.Hash())
 	default:

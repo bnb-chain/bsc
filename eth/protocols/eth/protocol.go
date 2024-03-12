@@ -218,7 +218,6 @@ type BlockHeadersRLPPacket struct {
 type NewBlockPacket struct {
 	Block    *types.Block
 	TD       *big.Int
-	Version  *uint32               `rlp:"optional"`
 	Sidecars *types.BlobTxSidecars `rlp:"optional"`
 }
 
