@@ -235,6 +235,8 @@ func init() {
 		initNetworkCommand,
 		importCommand,
 		exportCommand,
+		importHistoryCommand,
+		exportHistoryCommand,
 		importPreimagesCommand,
 		removedbCommand,
 		dumpCommand,

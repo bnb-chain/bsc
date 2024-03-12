@@ -146,7 +146,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 
 	genesis := &core.Genesis{
 		Config: params.TestChainConfig,
-		Alloc:  core.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
 	}
 
 	mux := new(event.TypeMux)

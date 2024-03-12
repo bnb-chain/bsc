@@ -202,6 +202,7 @@ type worker struct {
 	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
 	coinbase common.Address
 	extra    []byte
+	tip      *uint256.Int // Minimum tip needed for non-local transaction to include them
 
 	pendingMu    sync.RWMutex
 	pendingTasks map[common.Hash]*task
@@ -250,6 +251,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		isLocalBlock:       isLocalBlock,
 		coinbase:           config.Etherbase,
 		extra:              config.ExtraData,
+		tip:                uint256.MustFromBig(config.GasPrice),
 		pendingTasks:       make(map[common.Hash]*task),
 		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
 		newWorkCh:          make(chan *newWorkReq),
@@ -326,6 +328,13 @@ func (w *worker) setExtra(extra []byte) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.extra = extra
+}
+
+// setGasTip sets the minimum miner tip needed to include a non-local transaction.
+func (w *worker) setGasTip(tip *big.Int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.tip = uint256.MustFromBig(tip)
 }
 
 // setRecommitInterval updates the interval for miner sealing work recommitting.
@@ -758,7 +767,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 	return receipt, err
 }
 
-func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAndNonce,
+func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transactionsByPriceAndNonce,
 	interruptCh chan int32, stopTimer *time.Timer) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
@@ -769,15 +778,15 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 	var coalescedLogs []*types.Log
 	// initialize bloom processors
 	processorCapacity := 100
-	if txs.CurrentSize() < processorCapacity {
-		processorCapacity = txs.CurrentSize()
+	if plainTxs.CurrentSize() < processorCapacity {
+		processorCapacity = plainTxs.CurrentSize()
 	}
 	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
 
 	stopPrefetchCh := make(chan struct{})
 	defer close(stopPrefetchCh)
-	// prefetch txs from all pending txs
-	txsPrefetch := txs.Copy()
+	// prefetch plainTxs txs, don't bother to prefetch a few blobTxs
+	txsPrefetch := plainTxs.Copy()
 	tx := txsPrefetch.PeekWithUnwrap()
 	if tx != nil {
 		txCurr := &tx
@@ -820,11 +829,38 @@ LOOP:
 			default:
 			}
 		}
-		// Retrieve the next transaction and abort if all done
-		ltx := txs.Peek()
+
+		// If we don't have enough blob space for any further blob transactions,
+		// skip that list altogether
+		if !blobTxs.Empty() && env.blobs*params.BlobTxBlobGasPerBlob >= params.MaxBlobGasPerBlock {
+			log.Trace("Not enough blob space for further blob transactions")
+			blobTxs.Clear()
+			// Fall though to pick up any plain txs
+		}
+		// Retrieve the next transaction and abort if all done.
+		var (
+			ltx *txpool.LazyTransaction
+			txs *transactionsByPriceAndNonce
+		)
+		pltx, ptip := plainTxs.Peek()
+		bltx, btip := blobTxs.Peek()
+
+		switch {
+		case pltx == nil:
+			txs, ltx = blobTxs, bltx
+		case bltx == nil:
+			txs, ltx = plainTxs, pltx
+		default:
+			if ptip.Lt(btip) {
+				txs, ltx = blobTxs, bltx
+			} else {
+				txs, ltx = plainTxs, pltx
+			}
+		}
 		if ltx == nil {
 			break
 		}
+
 		// If we don't have enough space for the next transaction, skip the account.
 		if env.gasPool.Gas() < ltx.Gas {
 			log.Trace("Not enough gas left for transaction", "hash", ltx.Hash, "left", env.gasPool.Gas(), "needed", ltx.Gas)
@@ -1004,39 +1040,65 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer) (err error) {
-	// Split the pending transactions into locals and remotes
-	// Fill the block with all available pending transactions.
-	pending := w.eth.TxPool().Pending(false)
+	w.mu.RLock()
+	tip := w.tip
+	w.mu.RUnlock()
+
+	// Retrieve the pending transactions pre-filtered by the 1559/4844 dynamic fees
+	filter := txpool.PendingFilter{
+		MinTip: tip,
+	}
+	if env.header.BaseFee != nil {
+		filter.BaseFee = uint256.MustFromBig(env.header.BaseFee)
+	}
+	if env.header.ExcessBlobGas != nil {
+		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(*env.header.ExcessBlobGas))
+	}
+	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
+	pendingPlainTxs := w.eth.TxPool().Pending(filter)
+
+	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
+	pendingBlobTxs := w.eth.TxPool().Pending(filter)
 
 	// Split the pending transactions into locals and remotes.
-	localTxs, remoteTxs := make(map[common.Address][]*txpool.LazyTransaction), pending
+	localPlainTxs, remotePlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
+	localBlobTxs, remoteBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
+
 	for _, account := range w.eth.TxPool().Locals() {
-		if txs := remoteTxs[account]; len(txs) > 0 {
-			delete(remoteTxs, account)
-			localTxs[account] = txs
+		if txs := remotePlainTxs[account]; len(txs) > 0 {
+			delete(remotePlainTxs, account)
+			localPlainTxs[account] = txs
+		}
+		if txs := remoteBlobTxs[account]; len(txs) > 0 {
+			delete(remoteBlobTxs, account)
+			localBlobTxs[account] = txs
 		}
 	}
-
 	// Fill the block with all available pending transactions.
-	if len(localTxs) > 0 {
-		txs := newTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
-		err = w.commitTransactions(env, txs, interruptCh, stopTimer)
-		// we will abort here when:
-		//   1.new block was imported
-		//   2.out of Gas, no more transaction can be added.
-		//   3.the mining timer has expired, stop adding transactions.
-		//   4.interrupted resubmit timer, which is by default 10s.
-		//     resubmit is for PoW only, can be deleted for PoS consensus later
-		if err != nil {
-			return
+	// we will abort when:
+	//   1.new block was imported
+	//   2.out of Gas, no more transaction can be added.
+	//   3.the mining timer has expired, stop adding transactions.
+	//   4.interrupted resubmit timer, which is by default 10s.
+	//     resubmit is for PoW only, can be deleted for PoS consensus later
+	if len(localPlainTxs) > 0 || len(localBlobTxs) > 0 {
+		plainTxs := newTransactionsByPriceAndNonce(env.signer, localPlainTxs, env.header.BaseFee)
+		blobTxs := newTransactionsByPriceAndNonce(env.signer, localBlobTxs, env.header.BaseFee)
+
+		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
+			return err
 		}
 	}
-	if len(remoteTxs) > 0 {
-		txs := newTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
-		err = w.commitTransactions(env, txs, interruptCh, stopTimer)
+	if len(remotePlainTxs) > 0 || len(remoteBlobTxs) > 0 {
+		plainTxs := newTransactionsByPriceAndNonce(env.signer, remotePlainTxs, env.header.BaseFee)
+		blobTxs := newTransactionsByPriceAndNonce(env.signer, remoteBlobTxs, env.header.BaseFee)
+
+		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
+			return err
+		}
 	}
 
-	return
+	return nil
 }
 
 // generateWork generates a sealing block based on the given parameters.

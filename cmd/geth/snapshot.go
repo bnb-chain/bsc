@@ -45,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 	cli "github.com/urfave/cli/v2"
 )
 
@@ -244,7 +245,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		NoBuild:    true,
 		AsyncBuild: false,
 	}
-	snaptree, err := snapshot.New(snapconfig, chaindb, trie.NewDatabase(chaindb, nil), headBlock.Root(), TriesInMemory, false)
+	snaptree, err := snapshot.New(snapconfig, chaindb, triedb.NewDatabase(chaindb, nil), headBlock.Root(), TriesInMemory, false)
 	if err != nil {
 		log.Error("snaptree error", "err", err)
 		return nil, err // The relevant snapshot(s) might not exist

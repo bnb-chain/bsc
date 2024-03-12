@@ -155,7 +155,7 @@ func (bnh *BlockNumberOrHash) UnmarshalJSON(data []byte) error {
 	err := json.Unmarshal(data, &e)
 	if err == nil {
 		if e.BlockNumber != nil && e.BlockHash != nil {
-			return fmt.Errorf("cannot specify both BlockHash and BlockNumber, choose one or the other")
+			return errors.New("cannot specify both BlockHash and BlockNumber, choose one or the other")
 		}
 		bnh.BlockNumber = e.BlockNumber
 		bnh.BlockHash = e.BlockHash

@@ -19,7 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 
 	"github.com/google/pprof/profile"
 )
@@ -37,7 +37,7 @@ func TestPrefetchLeaking(t *testing.T) {
 			Alloc:   GenesisAlloc{address: {Balance: funds}},
 			BaseFee: big.NewInt(params.InitialBaseFee),
 		}
-		triedb  = trie.NewDatabase(gendb, nil)
+		triedb  = triedb.NewDatabase(gendb, nil)
 		genesis = gspec.MustCommit(gendb, triedb)
 		signer  = types.LatestSigner(gspec.Config)
 	)

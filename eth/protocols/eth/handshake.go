@@ -72,7 +72,7 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	}
 	p.td, p.head = status.TD, status.Head
 
-	if p.version >= ETH67 {
+	if p.version >= ETH68 {
 		var upgradeStatus UpgradeStatusPacket // safe to read after two values have been received from errc
 		if extension == nil {
 			extension = &UpgradeStatusExtension{}

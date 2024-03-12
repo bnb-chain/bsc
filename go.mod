@@ -12,6 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.45
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.43
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.30.2
+	github.com/bnb-chain/fastssz v0.1.2
 	github.com/bnb-chain/ics23 v0.1.0
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/cespare/cp v1.1.1
@@ -28,7 +29,7 @@ require (
 	github.com/fatih/color v1.13.0
 	github.com/fatih/structs v1.1.0
 	github.com/fjl/gencodec v0.0.0-20230517082657-f9840df7b83e
-	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
+	github.com/fjl/memsize v0.0.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08
 	github.com/gballet/go-verkle v0.1.1-0.20231031103413-a67434b50f46
@@ -43,7 +44,7 @@ require (
 	github.com/graph-gophers/graphql-go v1.3.0
 	github.com/hashicorp/go-bexpr v0.1.10
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d
-	github.com/holiman/billy v0.0.0-20230718173358-1c7e68d277a7
+	github.com/holiman/billy v0.0.0-20240216141850-2abb0c79d3c4
 	github.com/holiman/bloomfilter/v2 v2.0.3
 	github.com/holiman/uint256 v1.2.4
 	github.com/huin/goupnp v1.3.0
