@@ -3585,10 +3585,19 @@ func TestEIP2718TransitionWithTestChainConfig(t *testing.T) {
 	testEIP2718TransitionWithConfig(t, rawdb.HashScheme, params.TestChainConfig)
 }
 
+func preShanghaiConfig() *params.ChainConfig {
+	config := *params.ParliaTestChainConfig
+	config.ShanghaiTime = nil
+	config.KeplerTime = nil
+	config.FeynmanTime = nil
+	config.CancunTime = nil
+	return &config
+}
+
 // TestEIP2718TransitionWithParliaConfig tests EIP-2718 with Parlia Config.
 func TestEIP2718TransitionWithParliaConfig(t *testing.T) {
-	testEIP2718TransitionWithConfig(t, rawdb.HashScheme, params.ParliaTestChainConfig)
-	testEIP2718TransitionWithConfig(t, rawdb.PathScheme, params.ParliaTestChainConfig)
+	testEIP2718TransitionWithConfig(t, rawdb.HashScheme, preShanghaiConfig())
+	testEIP2718TransitionWithConfig(t, rawdb.PathScheme, preShanghaiConfig())
 }
 
 // testEIP2718TransitionWithConfig tests EIP02718 with given ChainConfig.

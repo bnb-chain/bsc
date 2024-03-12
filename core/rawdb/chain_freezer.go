@@ -263,12 +263,12 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 }
 
 func (f *chainFreezer) tryPruneBlobAncient(env *ethdb.FreezerEnv, num uint64) {
-	extraReserve := getExtraReserveFromEnv(env)
+	extraReserve := getBlobExtraReserveFromEnv(env)
 	// It means that there is no need for pruning
-	if extraReserve < 0 {
+	if extraReserve == 0 {
 		return
 	}
-	reserveThreshold := uint64(params.BlobReserveThreshold + extraReserve)
+	reserveThreshold := params.MinBlocksForBlobRequests + extraReserve
 	if num <= reserveThreshold {
 		return
 	}
@@ -285,9 +285,9 @@ func (f *chainFreezer) tryPruneBlobAncient(env *ethdb.FreezerEnv, num uint64) {
 	log.Info("Chain freezer prune useless blobs, now ancient data is", "from", expectTail, "to", num, "cost", common.PrettyDuration(time.Since(start)))
 }
 
-func getExtraReserveFromEnv(env *ethdb.FreezerEnv) int64 {
+func getBlobExtraReserveFromEnv(env *ethdb.FreezerEnv) uint64 {
 	if env == nil {
-		return params.BlobExtraReserveThreshold
+		return params.DefaultExtraReserveForBlobRequests
 	}
 	return env.BlobExtraReserve
 }

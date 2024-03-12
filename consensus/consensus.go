@@ -58,6 +58,9 @@ type ChainHeaderReader interface {
 
 	// GetHighestVerifiedHeader retrieves the highest header verified.
 	GetHighestVerifiedHeader() *types.Header
+
+	// ChasingHead return the best chain head of peers.
+	ChasingHead() *types.Header
 }
 
 type VotePool interface {
@@ -157,5 +160,4 @@ type PoSA interface {
 	GetFinalizedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
 	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool
-	IsDataAvailable(chain ChainHeaderReader, block *types.Block) error
 }
