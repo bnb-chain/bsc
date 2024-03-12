@@ -216,20 +216,14 @@ type BlockHeadersRLPPacket struct {
 
 // NewBlockPacket is the network packet for the block propagation message.
 type NewBlockPacket struct {
-	Block *types.Block
-	TD    *big.Int
-}
-
-type NewBlockWithBlobPacket struct {
-	Block   *types.Block
-	TD      *big.Int
-	Version uint32 // 0: followed by sidecar array
-	// others: invalid, undefined right now
-	Sidecars types.BlobTxSidecars // each BlobTx will have a BlobTxSidecar
+	Block    *types.Block
+	TD       *big.Int
+	Version  *uint32              `rlp:"optional"`
+	Sidecars types.BlobTxSidecars `rlp:"optional"`
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
-func (request *NewBlockPacket) SanityCheck() error {
+func (request *NewBlockPacket) sanityCheck() error {
 	if err := request.Block.SanityCheck(); err != nil {
 		return err
 	}
@@ -238,26 +232,15 @@ func (request *NewBlockPacket) SanityCheck() error {
 	if tdlen := request.TD.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large block TD: bitlen %d", tdlen)
 	}
-	return nil
-}
-
-// sanityCheck verifies that the values are reasonable, as a DoS protection
-func (request *NewBlockWithBlobPacket) SanityCheck() error {
-	if err := request.Block.SanityCheck(); err != nil {
-		return err
-	}
-	//TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
-	// larger, it will still fit within 100 bits
-	if tdlen := request.TD.BitLen(); tdlen > 100 {
-		return fmt.Errorf("too large block TD: bitlen %d", tdlen)
-	}
-	// todo 4844 do full sanity check for blob
-	for _, sidecar := range request.Sidecars {
-		lProofs := len(sidecar.Proofs)
-		lBlobs := len(sidecar.Blobs)
-		lCommitments := len(sidecar.Commitments)
-		if lProofs != lBlobs || lProofs != lCommitments || lCommitments != lBlobs {
-			return fmt.Errorf("mismatch of lengths of sidecar proofs %d, blobs %d, commitments %d", lProofs, lBlobs, lCommitments)
+	if len(request.Sidecars) > 0 {
+		// todo 4844 do full sanity check for blob
+		for _, sidecar := range request.Sidecars {
+			lProofs := len(sidecar.Proofs)
+			lBlobs := len(sidecar.Blobs)
+			lCommitments := len(sidecar.Commitments)
+			if lProofs != lBlobs || lProofs != lCommitments || lCommitments != lBlobs {
+				return fmt.Errorf("mismatch of lengths of sidecar proofs %d, blobs %d, commitments %d", lProofs, lBlobs, lCommitments)
+			}
 		}
 	}
 	return nil
@@ -409,9 +392,6 @@ func (*BlockBodiesResponse) Kind() byte   { return BlockBodiesMsg }
 
 func (*NewBlockPacket) Name() string { return "NewBlock" }
 func (*NewBlockPacket) Kind() byte   { return NewBlockMsg }
-
-func (*NewBlockWithBlobPacket) Name() string { return "NewBlock" }
-func (*NewBlockWithBlobPacket) Kind() byte   { return NewBlockMsg }
 
 func (*NewPooledTransactionHashesPacket67) Name() string { return "NewPooledTransactionHashes" }
 func (*NewPooledTransactionHashesPacket67) Kind() byte   { return NewPooledTransactionHashesMsg }

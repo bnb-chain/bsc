@@ -290,59 +290,33 @@ func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
 	return backend.Handle(peer, ann)
 }
 
-type BlockPacket interface {
-	GetBlock() *types.Block
-	SanityCheck() error
-	Name() string
-	Kind() byte
-}
-
-// Implement the GetBlock method for both packet types
-func (p *NewBlockPacket) GetBlock() *types.Block {
-	return p.Block
-}
-
-func (p *NewBlockWithBlobPacket) GetBlock() *types.Block {
-	return p.Block
-}
-
 func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
-	var packet BlockPacket
-
-	// First, try to decode as NewBlockPacket
-	nbp := new(NewBlockPacket)
-	if err := msg.Decode(nbp); err == nil {
-		packet = nbp
-	} else {
-		// If that fails, try to decode as NewBlockWithBlobPacket
-		nbbp := new(NewBlockWithBlobPacket)
-		if err := msg.Decode(nbbp); err != nil {
-			return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
-		}
-		packet = nbbp
+	// Retrieve and decode the propagated block
+	ann := new(NewBlockPacket)
+	if err := msg.Decode(ann); err != nil {
+		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 
 	// Now that we have our packet, perform operations using the interface methods
-	if err := packet.SanityCheck(); err != nil {
+	if err := ann.sanityCheck(); err != nil {
 		return err
 	}
 
-	block := packet.GetBlock()
-	if hash := types.CalcUncleHash(block.Uncles()); hash != block.UncleHash() {
-		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", block.UncleHash())
+	if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() {
+		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}
-	if hash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil)); hash != block.TxHash() {
-		log.Warn("Propagated block has invalid body", "have", hash, "exp", block.TxHash())
+	if hash := types.DeriveSha(ann.Block.Transactions(), trie.NewStackTrie(nil)); hash != ann.Block.TxHash() {
+		log.Warn("Propagated block has invalid body", "have", hash, "exp", ann.Block.TxHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}
-	block.ReceivedAt = msg.Time()
-	block.ReceivedFrom = peer
+	ann.Block.ReceivedAt = msg.Time()
+	ann.Block.ReceivedFrom = peer
 
 	// Mark the peer as owning the block
-	peer.markBlock(block.Hash())
+	peer.markBlock(ann.Block.Hash())
 
-	return backend.Handle(peer, packet)
+	return backend.Handle(peer, ann)
 }
 
 func handleBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {

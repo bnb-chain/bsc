@@ -234,7 +234,8 @@ type Block struct {
 	ReceivedFrom interface{}
 
 	// blobs provides DA check
-	blobs BlobTxSidecars
+	blobs       BlobTxSidecars
+	blobVersion uint32
 }
 
 // "external" block encoding. used for eth protocol, etc.
@@ -528,6 +529,11 @@ func (b *Block) WithBlobs(blobs BlobTxSidecars) *Block {
 		blobs:        blobs,
 	}
 	return block
+}
+
+// WithBlobs returns a block containing the given blobs.
+func (b *Block) WithSidecarVersion(version uint32) {
+	b.blobVersion = version
 }
 
 // Hash returns the keccak256 hash of b's header.

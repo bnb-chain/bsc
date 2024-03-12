@@ -800,7 +800,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		isCancun := h.chain.Config().IsCancun(block.Number(), block.Time())
 
 		for _, peer := range transfer {
-			if isCancun {
+			if !isCancun {
 				peer.AsyncSendNewBlock(block, td)
 			} else {
 				peer.AsyncSendNewBlockAndBlob(block, td, params.BlobVersion, block.Blobs())
