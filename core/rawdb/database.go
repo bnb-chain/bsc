@@ -650,7 +650,7 @@ func AncientInspect(db ethdb.Database) error {
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
 	// Get number of ancient rows inside the freezer.
 	ancients := counter(0)
-	if count, err := db.ItemAmountInAncient(); err != nil {
+	if count, err := db.BlockStore().ItemAmountInAncient(); err != nil {
 		log.Error("failed to get the items amount in ancientDB", "err", err)
 		return err
 	} else {
@@ -696,6 +696,48 @@ func PruneHashTrieNodeInDataBase(db ethdb.Database) error {
 	}
 	log.Info("Pruning hash-base state trie nodes", "Complete progress", total_num)
 	return nil
+}
+
+type DataType int
+
+const (
+	StateDataType DataType = iota
+	BlockDataType
+	ChainDataType
+	Unknown
+)
+
+func DataTypeByKey(key []byte) DataType {
+	switch {
+	// state
+	case IsLegacyTrieNode(key, key),
+		bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength,
+		IsAccountTrieNode(key),
+		IsStorageTrieNode(key):
+		return StateDataType
+
+	// block
+	case bytes.HasPrefix(key, headerPrefix) && len(key) == (len(headerPrefix)+8+common.HashLength),
+		bytes.HasPrefix(key, blockBodyPrefix) && len(key) == (len(blockBodyPrefix)+8+common.HashLength),
+		bytes.HasPrefix(key, blockReceiptsPrefix) && len(key) == (len(blockReceiptsPrefix)+8+common.HashLength),
+		bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix),
+		bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix),
+		bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
+		return BlockDataType
+	default:
+		for _, meta := range [][]byte{
+			fastTrieProgressKey, persistentStateIDKey, trieJournalKey, snapSyncStatusFlagKey} {
+			if bytes.Equal(key, meta) {
+				return StateDataType
+			}
+		}
+		for _, meta := range [][]byte{headHeaderKey, headFinalizedBlockKey} {
+			if bytes.Equal(key, meta) {
+				return BlockDataType
+			}
+		}
+		return ChainDataType
+	}
 }
 
 // InspectDatabase traverses the entire database and checks the size
@@ -874,12 +916,12 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				logged = time.Now()
 			}
 		}
+		log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
 	// inspect separate block db
 	if blockIter != nil {
 		count = 0
 		logged = time.Now()
-		log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		for blockIter.Next() {
 			var (
@@ -921,6 +963,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				logged = time.Now()
 			}
 		}
+		log.Info("Inspecting separate block database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
 	// Display the database statistic of key-value store.
 	stats := [][]string{
@@ -1020,6 +1063,29 @@ func ReadChainMetadata(db ethdb.KeyValueStore) [][]string {
 		{"headBlockHash", fmt.Sprintf("%v", ReadHeadBlockHash(db))},
 		{"headFastBlockHash", fmt.Sprintf("%v", ReadHeadFastBlockHash(db))},
 		{"headHeaderHash", fmt.Sprintf("%v", ReadHeadHeaderHash(db))},
+		{"lastPivotNumber", pp(ReadLastPivotNumber(db))},
+		{"len(snapshotSyncStatus)", fmt.Sprintf("%d bytes", len(ReadSnapshotSyncStatus(db)))},
+		{"snapshotDisabled", fmt.Sprintf("%v", ReadSnapshotDisabled(db))},
+		{"snapshotJournal", fmt.Sprintf("%d bytes", len(ReadSnapshotJournal(db)))},
+		{"snapshotRecoveryNumber", pp(ReadSnapshotRecoveryNumber(db))},
+		{"snapshotRoot", fmt.Sprintf("%v", ReadSnapshotRoot(db))},
+		{"txIndexTail", pp(ReadTxIndexTail(db))},
+	}
+	return data
+}
+
+func ReadChainMetadataCmd(db ethdb.Database) [][]string {
+	pp := func(val *uint64) string {
+		if val == nil {
+			return "<nil>"
+		}
+		return fmt.Sprintf("%d (%#x)", *val, *val)
+	}
+	data := [][]string{
+		{"databaseVersion", pp(ReadDatabaseVersion(db))},
+		{"headBlockHash", fmt.Sprintf("%v", ReadHeadBlockHash(db.BlockStore()))},
+		{"headFastBlockHash", fmt.Sprintf("%v", ReadHeadFastBlockHash(db))},
+		{"headHeaderHash", fmt.Sprintf("%v", ReadHeadHeaderHash(db.BlockStore()))},
 		{"lastPivotNumber", pp(ReadLastPivotNumber(db))},
 		{"len(snapshotSyncStatus)", fmt.Sprintf("%d bytes", len(ReadSnapshotSyncStatus(db)))},
 		{"snapshotDisabled", fmt.Sprintf("%v", ReadSnapshotDisabled(db))},

@@ -355,7 +355,15 @@ func pruneBlock(ctx *cli.Context) error {
 	if !ctx.IsSet(utils.AncientFlag.Name) {
 		return errors.New("datadir.ancient must be set")
 	} else {
-		oldAncientPath = ctx.String(utils.AncientFlag.Name)
+		if stack.CheckIfMultiDataBase() {
+			ancientPath := ctx.String(utils.AncientFlag.Name)
+			index := strings.LastIndex(ancientPath, "/ancient/chain")
+			if index != -1 {
+				oldAncientPath = ancientPath[:index] + "/block/ancient/chain"
+			}
+		} else {
+			oldAncientPath = ctx.String(utils.AncientFlag.Name)
+		}
 		if !filepath.IsAbs(oldAncientPath) {
 			// force absolute paths, which often fail due to the splicing of relative paths
 			return errors.New("datadir.ancient not abs path")

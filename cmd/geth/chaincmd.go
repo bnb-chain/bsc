@@ -479,6 +479,13 @@ func dumpGenesis(ctx *cli.Context) error {
 			}
 			continue
 		}
+		// set the separate state & block database
+		if stack.CheckIfMultiDataBase() && err == nil {
+			stateDiskDb := utils.MakeStateDataBase(ctx, stack, true, false)
+			db.SetStateStore(stateDiskDb)
+			blockDb := utils.MakeBlockDatabase(ctx, stack, true, false)
+			db.SetBlockStore(blockDb)
+		}
 		genesis, err := core.ReadGenesis(db)
 		if err != nil {
 			utils.Fatalf("failed to read genesis: %s", err)
