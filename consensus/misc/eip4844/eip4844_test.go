@@ -61,14 +61,20 @@ func TestCalcBlobFee(t *testing.T) {
 	tests := []struct {
 		excessBlobGas uint64
 		blobfee       int64
+		config        *params.ChainConfig
 	}{
-		{0, 1},
-		{2314057, 1},
-		{2314058, 2},
-		{10 * 1024 * 1024, 23},
+		{0, 1, nil},
+		{2314057, 1, nil},
+		{2314058, 2, nil},
+		{10 * 1024 * 1024, 23, nil},
+		{0, params.MinBlobGasPriceInBSC.Int64(), params.ParliaTestChainConfig},
+		{555 * params.BlobTxBlobGasPerBlob, params.MinBlobGasPriceInBSC.Int64(), params.ParliaTestChainConfig},
+		{556 * params.BlobTxBlobGasPerBlob, 3021819819, params.ParliaTestChainConfig},
+		{627 * params.BlobTxBlobGasPerBlob, 49077044416, params.ParliaTestChainConfig},
+		{628 * params.BlobTxBlobGasPerBlob, params.MaxBlobGasPriceInBSC.Int64(), params.ParliaTestChainConfig},
 	}
 	for i, tt := range tests {
-		have := CalcBlobFee(tt.excessBlobGas)
+		have := CalcBlobFee(tt.excessBlobGas, tt.config)
 		if have.Int64() != tt.blobfee {
 			t.Errorf("test %d: blobfee mismatch: have %v want %v", i, have, tt.blobfee)
 		}

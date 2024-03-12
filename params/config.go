@@ -265,6 +265,10 @@ var (
 		LondonBlock:         big.NewInt(0),
 		HertzBlock:          big.NewInt(0),
 		HertzfixBlock:       big.NewInt(0),
+		ShanghaiTime:        newUint64(0),
+		KeplerTime:          newUint64(0),
+		FeynmanTime:         newUint64(0),
+		CancunTime:          newUint64(0),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,

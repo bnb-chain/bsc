@@ -251,7 +251,7 @@ func (args *TransactionArgs) setCancunFeeDefaults(ctx context.Context, head *typ
 			excessBlobGas = *head.ExcessBlobGas
 		}
 		// ExcessBlobGas must be set for a Cancun block.
-		blobBaseFee := eip4844.CalcBlobFee(excessBlobGas)
+		blobBaseFee := eip4844.CalcBlobFee(excessBlobGas, b.ChainConfig())
 		// Set the max fee to be 2 times larger than the previous block's blob base fee.
 		// The additional slack allows the tx to not become invalidated if the base
 		// fee is rising.
