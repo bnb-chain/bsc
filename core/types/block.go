@@ -234,8 +234,7 @@ type Block struct {
 	ReceivedFrom interface{}
 
 	// blobs provides DA check
-	blobs       BlobTxSidecars
-	blobVersion uint32
+	blobs BlobTxSidecars
 }
 
 // "external" block encoding. used for eth protocol, etc.
