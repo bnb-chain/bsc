@@ -337,7 +337,7 @@ func (p *Peer) SendNewBlockAndBlob(block *types.Block, td *big.Int, version uint
 		Block:    block,
 		TD:       td,
 		Version:  &version,
-		Sidecars: sidecars,
+		Sidecars: &sidecars,
 	})
 }
 

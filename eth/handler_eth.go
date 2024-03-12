@@ -130,7 +130,7 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	sidecars := packet.Sidecars
 	version := packet.Version
 	if sidecars != nil {
-		block = block.WithBlobs(sidecars)
+		block = block.WithBlobs(*sidecars)
 	}
 	if version != nil {
 		block.WithSidecarVersion(*version)

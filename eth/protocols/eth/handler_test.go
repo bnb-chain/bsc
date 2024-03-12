@@ -563,7 +563,7 @@ func TestHandleNewBlock(t *testing.T) {
 		Block:    block,
 		TD:       big.NewInt(1),
 		Version:  v,
-		Sidecars: sidecars,
+		Sidecars: &sidecars,
 	}
 	sizeNonNil, rNonNil, _ := rlp.EncodeToReader(dataNonNil)
 	sizeNil, rNil, _ := rlp.EncodeToReader(dataNil)
