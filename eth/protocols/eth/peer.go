@@ -354,7 +354,7 @@ func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 
 // AsyncSendNewBlock queues an entire block for propagation to a remote peer. If
 // the peer's broadcast queue is full, the event is silently dropped.
-func (p *Peer) AsyncSendNewBlockAndBlob(block *types.Block, td *big.Int, version uint32, sidecars types.BlobTxSidecars) {
+func (p *Peer) AsyncSendNewBlockAndBlob(block *types.Block, td *big.Int, sidecars types.BlobTxSidecars) {
 	select {
 	case p.queuedBlockAndBlobs <- &blockAndBlobPropagation{block: block, td: td, sidecars: sidecars}:
 		// Mark all the block hash as known, but ensure we don't overflow our limits
