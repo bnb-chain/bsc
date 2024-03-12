@@ -561,7 +561,7 @@ func TestHandleNewBlock(t *testing.T) {
 	dataNonNil := NewBlockPacket{
 		Block:    block,
 		TD:       big.NewInt(1),
-		Sidecars: &sidecars,
+		Sidecars: sidecars,
 	}
 	sizeNonNil, rNonNil, _ := rlp.EncodeToReader(dataNonNil)
 	sizeNil, rNil, _ := rlp.EncodeToReader(dataNil)

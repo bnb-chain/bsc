@@ -218,7 +218,7 @@ type BlockHeadersRLPPacket struct {
 type NewBlockPacket struct {
 	Block    *types.Block
 	TD       *big.Int
-	Sidecars *types.BlobTxSidecars `rlp:"optional"`
+	Sidecars []*types.BlobTxSidecar `rlp:"optional"`
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
@@ -231,19 +231,19 @@ func (request *NewBlockPacket) sanityCheck() error {
 	if tdlen := request.TD.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large block TD: bitlen %d", tdlen)
 	}
-	if request.Sidecars != nil {
-		if len(*request.Sidecars) > 0 {
-			// todo 4844 do full sanity check for blob
-			for _, sidecar := range *request.Sidecars {
-				lProofs := len(sidecar.Proofs)
-				lBlobs := len(sidecar.Blobs)
-				lCommitments := len(sidecar.Commitments)
-				if lProofs != lBlobs || lProofs != lCommitments || lCommitments != lBlobs {
-					return fmt.Errorf("mismatch of lengths of sidecar proofs %d, blobs %d, commitments %d", lProofs, lBlobs, lCommitments)
-				}
+
+	if len(request.Sidecars) > 0 {
+		// todo 4844 do full sanity check for blob
+		for _, sidecar := range request.Sidecars {
+			lProofs := len(sidecar.Proofs)
+			lBlobs := len(sidecar.Blobs)
+			lCommitments := len(sidecar.Commitments)
+			if lProofs != lBlobs || lProofs != lCommitments || lCommitments != lBlobs {
+				return fmt.Errorf("mismatch of lengths of sidecar proofs %d, blobs %d, commitments %d", lProofs, lBlobs, lCommitments)
 			}
 		}
 	}
+
 	return nil
 }
 

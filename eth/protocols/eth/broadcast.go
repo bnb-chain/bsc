@@ -33,16 +33,9 @@ const (
 // blockPropagation is a block propagation event, waiting for its turn in the
 // broadcast queue.
 type blockPropagation struct {
-	block *types.Block
-	td    *big.Int
-}
-
-// blockPropagation is a block propagation event, waiting for its turn in the
-// broadcast queue.
-type blockAndBlobPropagation struct {
 	block    *types.Block
 	td       *big.Int
-	sidecars types.BlobTxSidecars
+	sidecars types.BlobTxSidecars `rlp:"optional"`
 }
 
 // broadcastBlocks is a write loop that multiplexes blocks and block announcements
@@ -51,17 +44,15 @@ type blockAndBlobPropagation struct {
 func (p *Peer) broadcastBlocks() {
 	for {
 		select {
-		case prop := <-p.queuedBlockAndBlobs:
-			if err := p.SendNewBlockAndBlob(prop.block, prop.td, prop.sidecars); err != nil {
-				return
-			}
-			p.Log().Trace("Propagated blockandblob", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td, "sidecars", prop.sidecars.Len())
-
 		case prop := <-p.queuedBlocks:
 			if err := p.SendNewBlock(prop.block, prop.td); err != nil {
 				return
 			}
-			p.Log().Trace("Propagated block", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td)
+			if len(prop.sidecars) > 0 {
+				p.Log().Trace("Propagated block", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td, "sidecars", prop.sidecars.Len())
+			} else {
+				p.Log().Trace("Propagated block", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td)
+			}
 
 		case block := <-p.queuedBlockAnns:
 			if err := p.SendNewBlockHashes([]common.Hash{block.Hash()}, []uint64{block.NumberU64()}); err != nil {

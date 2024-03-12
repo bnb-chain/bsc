@@ -794,14 +794,9 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		} else {
 			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
 		}
-		isCancun := h.chain.Config().IsCancun(block.Number(), block.Time())
 
 		for _, peer := range transfer {
-			if !isCancun {
-				peer.AsyncSendNewBlock(block, td)
-			} else {
-				peer.AsyncSendNewBlockAndBlob(block, td, block.Blobs())
-			}
+			peer.AsyncSendNewBlock(block, td)
 		}
 
 		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
