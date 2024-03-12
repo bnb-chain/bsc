@@ -451,6 +451,7 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 		}
 		return nil
 	})
+
 	return hashes, err
 }
 

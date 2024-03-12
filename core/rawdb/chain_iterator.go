@@ -80,7 +80,7 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 	}
 	batch.Reset()
 
-	WriteHeadHeaderHash(db, hash)
+	WriteHeadHeaderHash(db.BlockStore(), hash)
 	WriteHeadFastBlockHash(db, hash)
 	log.Info("Initialized database from freezer", "blocks", frozen, "elapsed", common.PrettyDuration(time.Since(start)))
 }
@@ -122,7 +122,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 		}
 		defer close(rlpCh)
 		for n != end {
-			data := ReadCanonicalBodyRLP(db, n)
+			data := ReadCanonicalBodyRLP(db.BlockStore(), n)
 			// Feed the block to the aggregator, or abort on interrupt
 			select {
 			case rlpCh <- &numberRlp{n, data}:

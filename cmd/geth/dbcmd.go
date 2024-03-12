@@ -396,8 +396,8 @@ func inspectTrie(ctx *cli.Context) error {
 	var headerBlockHash common.Hash
 	if ctx.NArg() >= 1 {
 		if ctx.Args().Get(0) == "latest" {
-			headerHash := rawdb.ReadHeadHeaderHash(db)
-			blockNumber = *(rawdb.ReadHeaderNumber(db, headerHash))
+			headerHash := rawdb.ReadHeadHeaderHash(db.BlockStore())
+			blockNumber = *(rawdb.ReadHeaderNumber(db.BlockStore(), headerHash))
 		} else if ctx.Args().Get(0) == "snapshot" {
 			trieRootHash = rawdb.ReadSnapshotRoot(db)
 			blockNumber = math.MaxUint64
@@ -573,9 +573,11 @@ func dbStats(ctx *cli.Context) error {
 	defer db.Close()
 
 	showLeveldbStats(db)
-	if db.StateStore() != nil {
+	if stack.CheckIfMultiDataBase() {
 		fmt.Println("show stats of state store")
 		showLeveldbStats(db.StateStore())
+		fmt.Println("show stats of block store")
+		showLeveldbStats(db.BlockStore())
 	}
 
 	return nil
@@ -591,10 +593,11 @@ func dbCompact(ctx *cli.Context) error {
 	log.Info("Stats before compaction")
 	showLeveldbStats(db)
 
-	statediskdb := db.StateStore()
-	if statediskdb != nil {
+	if stack.CheckIfMultiDataBase() {
 		fmt.Println("show stats of state store")
-		showLeveldbStats(statediskdb)
+		showLeveldbStats(db.StateStore())
+		fmt.Println("show stats of block store")
+		showLeveldbStats(db.BlockStore())
 	}
 
 	log.Info("Triggering compaction")
@@ -603,8 +606,12 @@ func dbCompact(ctx *cli.Context) error {
 		return err
 	}
 
-	if statediskdb != nil {
-		if err := statediskdb.Compact(nil, nil); err != nil {
+	if stack.CheckIfMultiDataBase() {
+		if err := db.BlockStore().Compact(nil, nil); err != nil {
+			log.Error("Compact err", "error", err)
+			return err
+		}
+		if err := db.BlockStore().Compact(nil, nil); err != nil {
 			log.Error("Compact err", "error", err)
 			return err
 		}
@@ -612,9 +619,11 @@ func dbCompact(ctx *cli.Context) error {
 
 	log.Info("Stats after compaction")
 	showLeveldbStats(db)
-	if statediskdb != nil {
+	if stack.CheckIfMultiDataBase() {
 		fmt.Println("show stats of state store after compaction")
-		showLeveldbStats(statediskdb)
+		showLeveldbStats(db.StateStore())
+		fmt.Println("show stats of block store after compaction")
+		showLeveldbStats(db.BlockStore())
 	}
 	return nil
 }
@@ -636,17 +645,21 @@ func dbGet(ctx *cli.Context) error {
 		return err
 	}
 
-	statediskdb := db.StateStore()
 	data, err := db.Get(key)
 	if err != nil {
-		// if separate trie db exist, try to get it from separate db
-		if statediskdb != nil {
-			statedata, dberr := statediskdb.Get(key)
+		if stack.CheckIfMultiDataBase() {
+			// if chainDb don't exist, try to get it from multidatabase
+			stateData, dberr := db.StateStore().Get(key)
 			if dberr == nil {
-				fmt.Printf("key %#x: %#x\n", key, statedata)
+				fmt.Printf("key %#x: %#x\n", key, stateData)
+				return nil
+			}
+			if blockData, dberr := db.BlockStore().Get(key); dberr != nil {
+				fmt.Printf("key %#x: %#x\n", key, blockData)
 				return nil
 			}
 		}
+
 		log.Info("Get operation failed", "key", fmt.Sprintf("%#x", key), "error", err)
 		return err
 	}
@@ -940,7 +953,6 @@ func dbDumpTrie(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
-
 	triedb := utils.MakeTrieDatabase(ctx, db, false, true, false)
 	defer triedb.Close()
 
@@ -1224,8 +1236,8 @@ func hbss2pbss(ctx *cli.Context) error {
 		log.Info("hbss2pbss triedb", "scheme", triedb.Scheme())
 		defer triedb.Close()
 
-		headerHash := rawdb.ReadHeadHeaderHash(db)
-		blockNumber := rawdb.ReadHeaderNumber(db, headerHash)
+		headerHash := rawdb.ReadHeadHeaderHash(db.BlockStore())
+		blockNumber := rawdb.ReadHeaderNumber(db.BlockStore(), headerHash)
 		if blockNumber == nil {
 			log.Error("read header number failed.")
 			return fmt.Errorf("read header number failed")
