@@ -216,7 +216,6 @@ func handleGetBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 // exposed to allow external packages to test protocol behavior.
 func ServiceGetBlockBodiesQuery(chain *core.BlockChain, query GetBlockBodiesRequest) []rlp.RawValue {
 	// Gather blocks until the fetch or network limits is reached
-	// todo 4844 maybe check if cancun, then send accordingly
 	var (
 		bytes  int
 		bodies []rlp.RawValue
@@ -226,11 +225,24 @@ func ServiceGetBlockBodiesQuery(chain *core.BlockChain, query GetBlockBodiesRequ
 			lookups >= 2*maxBodiesServe {
 			break
 		}
-		// todo 4844 maybe use GetHeaderByHash() to know if it is post cancun
-		if data := chain.GetBodyRLP(hash); len(data) != 0 {
-			bodies = append(bodies, data)
-			bytes += len(data)
+		body := chain.GetBody(hash)
+		if body == nil {
+			continue
 		}
+		blobs := chain.GetBlobsByHash(hash)
+		bodyWithBlobs := &BlockBody{
+			Transactions: body.Transactions,
+			Uncles:       body.Uncles,
+			Withdrawals:  body.Withdrawals,
+			Sidecars:     blobs,
+		}
+		enc, err := rlp.EncodeToBytes(bodyWithBlobs)
+		if err != nil {
+			log.Error("block body encode err", "hash", hash, "err", err)
+			continue
+		}
+		bodies = append(bodies, enc)
+		bytes += len(enc)
 	}
 	return bodies
 }
@@ -350,7 +362,6 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 			txsHashes        = make([]common.Hash, len(res.BlockBodiesResponse))
 			uncleHashes      = make([]common.Hash, len(res.BlockBodiesResponse))
 			withdrawalHashes = make([]common.Hash, len(res.BlockBodiesResponse))
-			sidecarsHashes   = make([]common.Hash, len(res.BlockBodiesResponse))
 		)
 		hasher := trie.NewStackTrie(nil)
 		for i, body := range res.BlockBodiesResponse {
@@ -359,11 +370,8 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 			if body.Withdrawals != nil {
 				withdrawalHashes[i] = types.DeriveSha(types.Withdrawals(body.Withdrawals), hasher)
 			}
-			if body.Sidecars != nil {
-				sidecarsHashes[i] = types.DeriveSha(types.BlobTxSidecars(body.Sidecars), hasher)
-			}
 		}
-		return [][]common.Hash{txsHashes, uncleHashes, withdrawalHashes, sidecarsHashes}
+		return [][]common.Hash{txsHashes, uncleHashes, withdrawalHashes}
 	}
 	return peer.dispatchResponse(&Response{
 		id:   res.RequestId,

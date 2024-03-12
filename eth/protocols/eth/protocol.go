@@ -287,17 +287,18 @@ type BlockBody struct {
 
 // Unpack retrieves the transactions and uncles from the range packet and returns
 // them in a split flat format that's more consistent with the internal data structures.
-func (p *BlockBodiesResponse) Unpack() ([][]*types.Transaction, [][]*types.Header, [][]*types.Withdrawal) {
+func (p *BlockBodiesResponse) Unpack() ([][]*types.Transaction, [][]*types.Header, [][]*types.Withdrawal, [][]*types.BlobTxSidecar) {
 	// TODO(matt): add support for withdrawals to fetchers
 	var (
 		txset         = make([][]*types.Transaction, len(*p))
 		uncleset      = make([][]*types.Header, len(*p))
 		withdrawalset = make([][]*types.Withdrawal, len(*p))
+		sidecarset    = make([][]*types.BlobTxSidecar, len(*p))
 	)
 	for i, body := range *p {
-		txset[i], uncleset[i], withdrawalset[i] = body.Transactions, body.Uncles, body.Withdrawals
+		txset[i], uncleset[i], withdrawalset[i], sidecarset[i] = body.Transactions, body.Uncles, body.Withdrawals, body.Sidecars
 	}
-	return txset, uncleset, withdrawalset
+	return txset, uncleset, withdrawalset, sidecarset
 }
 
 // GetReceiptsRequest represents a block receipts query.

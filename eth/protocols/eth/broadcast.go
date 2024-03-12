@@ -55,7 +55,7 @@ func (p *Peer) broadcastBlocks() {
 			if err := p.SendNewBlockAndBlob(prop.block, prop.td, prop.sidecars); err != nil {
 				return
 			}
-			p.Log().Trace("Propagated blockandblob", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td)
+			p.Log().Trace("Propagated blockandblob", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td, "sidecars", prop.sidecars.Len())
 
 		case prop := <-p.queuedBlocks:
 			if err := p.SendNewBlock(prop.block, prop.td); err != nil {
