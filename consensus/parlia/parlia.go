@@ -435,7 +435,7 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 		return nil
 	}
 	if attestation.Data == nil {
-		return fmt.Errorf("invalid attestation, vote data is nil")
+		return errors.New("invalid attestation, vote data is nil")
 	}
 	if len(attestation.Extra) > types.MaxAttestationExtraLength {
 		return fmt.Errorf("invalid attestation, too large extra length: %d", len(attestation.Extra))
@@ -464,7 +464,7 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	}
 	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, headers)
 	if err != nil {
-		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
+		return errors.New("unexpected error when getting the highest justified number and hash")
 	}
 	if sourceNumber != justifiedBlockNumber || sourceHash != justifiedBlockHash {
 		return fmt.Errorf("invalid attestation, source mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
@@ -486,7 +486,7 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	validators := snap.validators()
 	validatorsBitSet := bitset.From([]uint64{uint64(attestation.VoteAddressSet)})
 	if validatorsBitSet.Count() > uint(len(validators)) {
-		return fmt.Errorf("invalid attestation, vote number larger than validators number")
+		return errors.New("invalid attestation, vote number larger than validators number")
 	}
 	votedAddrs := make([]bls.PublicKey, 0, validatorsBitSet.Count())
 	for index, val := range validators {
@@ -503,7 +503,7 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 
 	// The valid voted validators should be no less than 2/3 validators.
 	if len(votedAddrs) < cmath.CeilDiv(len(snap.Validators)*2, 3) {
-		return fmt.Errorf("invalid attestation, not enough validators voted")
+		return errors.New("invalid attestation, not enough validators voted")
 	}
 
 	// Verify the aggregated signature.
@@ -512,7 +512,7 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 		return fmt.Errorf("BLS signature converts failed: %v", err)
 	}
 	if !aggSig.FastAggregateVerify(votedAddrs, attestation.Data.Hash()) {
-		return fmt.Errorf("invalid attestation, signature verify failed")
+		return errors.New("invalid attestation, signature verify failed")
 	}
 
 	return nil
@@ -600,18 +600,6 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
 		}
 	} else {
-		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
-			return err
-		}
-	}
-
-	if !cancun && header.ExcessBlobGas != nil {
-		return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
-	}
-	if !cancun && header.BlobGasUsed != nil {
-		return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
-	}
-	if cancun {
 		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
 			return err
 		}
@@ -904,7 +892,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	// Prepare vote data
 	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{parent})
 	if err != nil {
-		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
+		return errors.New("unexpected error when getting the highest justified number and hash")
 	}
 	attestation := &types.VoteAttestation{
 		Data: &types.VoteData{
@@ -941,7 +929,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	validatorsBitSet := bitset.From([]uint64{uint64(attestation.VoteAddressSet)})
 	if validatorsBitSet.Count() < uint(len(signatures)) {
 		log.Warn(fmt.Sprintf("assembleVoteAttestation, check VoteAddress Set failed, expected:%d, real:%d", len(signatures), validatorsBitSet.Count()))
-		return fmt.Errorf("invalid attestation, check VoteAddress Set failed")
+		return errors.New("invalid attestation, check VoteAddress Set failed")
 	}
 
 	// Append attestation to header extra field.
@@ -958,6 +946,16 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	header.Extra = append(header.Extra, extraSealBytes...)
 
 	return nil
+}
+
+// NextInTurnValidator return the next in-turn validator for header
+func (p *Parlia) NextInTurnValidator(chain consensus.ChainHeaderReader, header *types.Header) (common.Address, error) {
+	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	return snap.inturnValidator(), nil
 }
 
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
@@ -1344,27 +1342,27 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 	header := chain.GetHeaderByHash(targetHash)
 	if header == nil {
 		log.Warn("BlockHeader at current voteBlockNumber is nil", "targetNumber", targetNumber, "targetHash", targetHash)
-		return fmt.Errorf("BlockHeader at current voteBlockNumber is nil")
+		return errors.New("BlockHeader at current voteBlockNumber is nil")
 	}
 	if header.Number.Uint64() != targetNumber {
 		log.Warn("unexpected target number", "expect", header.Number.Uint64(), "real", targetNumber)
-		return fmt.Errorf("target number mismatch")
+		return errors.New("target number mismatch")
 	}
 
 	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{header})
 	if err != nil {
 		log.Error("failed to get the highest justified number and hash", "headerNumber", header.Number, "headerHash", header.Hash())
-		return fmt.Errorf("unexpected error when getting the highest justified number and hash")
+		return errors.New("unexpected error when getting the highest justified number and hash")
 	}
 	if vote.Data.SourceNumber != justifiedBlockNumber || vote.Data.SourceHash != justifiedBlockHash {
-		return fmt.Errorf("vote source block mismatch")
+		return errors.New("vote source block mismatch")
 	}
 
 	number := header.Number.Uint64()
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		log.Error("failed to get the snapshot from consensus", "error", err)
-		return fmt.Errorf("failed to get the snapshot from consensus")
+		return errors.New("failed to get the snapshot from consensus")
 	}
 
 	validators := snap.Validators
@@ -1379,7 +1377,7 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 		}
 	}
 
-	return fmt.Errorf("vote verification failed")
+	return errors.New("vote verification failed")
 }
 
 // Authorize injects a private key into the consensus engine to mint new blocks
@@ -1838,7 +1836,7 @@ func (p *Parlia) applyTransaction(
 // within the branch including `headers` and utilizing the latest element as the head.
 func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, headers []*types.Header) (uint64, common.Hash, error) {
 	if chain == nil || len(headers) == 0 || headers[len(headers)-1] == nil {
-		return 0, common.Hash{}, fmt.Errorf("illegal chain or header")
+		return 0, common.Hash{}, errors.New("illegal chain or header")
 	}
 	head := headers[len(headers)-1]
 	snap, err := p.snapshot(chain, head.Number.Uint64(), head.Hash(), headers)

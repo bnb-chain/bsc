@@ -45,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 	cli "github.com/urfave/cli/v2"
 )
 
@@ -244,7 +245,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		NoBuild:    true,
 		AsyncBuild: false,
 	}
-	snaptree, err := snapshot.New(snapconfig, chaindb, trie.NewDatabase(chaindb, nil), headBlock.Root(), TriesInMemory, false)
+	snaptree, err := snapshot.New(snapconfig, chaindb, triedb.NewDatabase(chaindb, nil), headBlock.Root(), TriesInMemory, false)
 	if err != nil {
 		log.Error("snaptree error", "err", err)
 		return nil, err // The relevant snapshot(s) might not exist
@@ -436,13 +437,15 @@ func pruneState(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
 	defer chaindb.Close()
 
-	if rawdb.ReadStateScheme(chaindb) != rawdb.HashScheme {
-		log.Crit("Offline pruning is not required for path scheme")
-	}
 	prunerconfig := pruner.Config{
 		Datadir:   stack.ResolvePath(""),
 		BloomSize: ctx.Uint64(utils.BloomFilterSizeFlag.Name),
 	}
+
+	if rawdb.ReadStateScheme(chaindb) != rawdb.HashScheme {
+		log.Crit("Offline pruning is not required for path scheme")
+	}
+
 	pruner, err := pruner.NewPruner(chaindb, prunerconfig, ctx.Uint64(utils.TriesInMemoryFlag.Name))
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)

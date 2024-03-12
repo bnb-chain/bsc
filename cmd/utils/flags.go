@@ -69,9 +69,9 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
-	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
+	"github.com/ethereum/go-ethereum/triedb"
+	"github.com/ethereum/go-ethereum/triedb/hashdb"
+	"github.com/ethereum/go-ethereum/triedb/pathdb"
 	"github.com/fatih/structs"
 	pcsclite "github.com/gballet/go-libpcsclite"
 	gopsutil "github.com/shirou/gopsutil/mem"
@@ -91,6 +91,12 @@ var (
 		Name:     "datadir",
 		Usage:    "Data directory for the databases and keystore",
 		Value:    flags.DirectoryString(node.DefaultDataDir()),
+		Category: flags.EthCategory,
+	}
+	SeparateDBFlag = &cli.BoolFlag{
+		Name: "separatedb",
+		Usage: "Enable a separated trie database, it will be created within a subdirectory called state, " +
+			"Users can copy this state directory to another directory or disk, and then create a symbolic link to the state directory under the chaindata",
 		Category: flags.EthCategory,
 	}
 	DirectBroadcastFlag = &cli.BoolFlag{
@@ -1112,6 +1118,7 @@ var (
 		DBEngineFlag,
 		StateSchemeFlag,
 		HttpHeaderFlag,
+		SeparateDBFlag,
 	}
 )
 
@@ -2314,11 +2321,27 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 		chainDb, err = stack.OpenDatabase("lightchaindata", cache, handles, "", readonly)
 	default:
 		chainDb, err = stack.OpenDatabaseWithFreezer("chaindata", cache, handles, ctx.String(AncientFlag.Name), "", readonly, disableFreeze, false, false)
+		// set the separate state database
+		if stack.IsSeparatedDB() && err == nil {
+			stateDiskDb := MakeStateDataBase(ctx, stack, readonly, false)
+			chainDb.SetStateStore(stateDiskDb)
+		}
 	}
 	if err != nil {
 		Fatalf("Could not open database: %v", err)
 	}
 	return chainDb
+}
+
+// MakeStateDataBase open a separate state database using the flags passed to the client and will hard crash if it fails.
+func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
+	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
+	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) / 2
+	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata/state", cache, handles, "", "", readonly, disableFreeze, false, false)
+	if err != nil {
+		Fatalf("Failed to open separate trie database: %v", err)
+	}
+	return statediskdb
 }
 
 // tryMakeReadOnlyDatabase try to open the chain database in read-only mode,
@@ -2463,8 +2486,8 @@ func MakeConsolePreloads(ctx *cli.Context) []string {
 }
 
 // MakeTrieDatabase constructs a trie database based on the configured scheme.
-func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, readOnly bool, isVerkle bool) *trie.Database {
-	config := &trie.Config{
+func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, readOnly bool, isVerkle bool) *triedb.Database {
+	config := &triedb.Config{
 		Preimages: preimage,
 		IsVerkle:  isVerkle,
 	}
@@ -2477,14 +2500,14 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 		// ignore the parameter silently. TODO(rjl493456442)
 		// please config it if read mode is implemented.
 		config.HashDB = hashdb.Defaults
-		return trie.NewDatabase(disk, config)
+		return triedb.NewDatabase(disk, config)
 	}
 	if readOnly {
 		config.PathDB = pathdb.ReadOnly
 	} else {
 		config.PathDB = pathdb.Defaults
 	}
-	return trie.NewDatabase(disk, config)
+	return triedb.NewDatabase(disk, config)
 }
 
 // ParseCLIAndConfigStateScheme parses state scheme in CLI and config.

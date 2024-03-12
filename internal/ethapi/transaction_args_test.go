@@ -153,14 +153,14 @@ func TestSetFeeDefaults(t *testing.T) {
 			"legacy",
 			&TransactionArgs{MaxFeePerGas: maxFee},
 			nil,
-			errors.New("maxFeePerGas and maxPriorityFeePerGas and maxFeePerBlobGas are not valid before London is active"),
+			errors.New("maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"),
 		},
 		{
 			"dynamic fee tx pre-London, priorityFee set",
 			"legacy",
 			&TransactionArgs{MaxPriorityFeePerGas: fortytwo},
 			nil,
-			errors.New("maxFeePerGas and maxPriorityFeePerGas and maxFeePerBlobGas are not valid before London is active"),
+			errors.New("maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"),
 		},
 		{
 			"dynamic fee tx, maxFee < priorityFee",
@@ -208,20 +208,6 @@ func TestSetFeeDefaults(t *testing.T) {
 		},
 		// EIP-4844
 		{
-			"set maxFeePerBlobGas pre cancun",
-			"london",
-			&TransactionArgs{BlobFeeCap: fortytwo},
-			nil,
-			errors.New("maxFeePerBlobGas is not valid before Cancun is active"),
-		},
-		{
-			"set maxFeePerBlobGas pre london",
-			"legacy",
-			&TransactionArgs{BlobFeeCap: fortytwo},
-			nil,
-			errors.New("maxFeePerGas and maxPriorityFeePerGas and maxFeePerBlobGas are not valid before London is active"),
-		},
-		{
 			"set gas price and maxFee for blob transaction",
 			"cancun",
 			&TransactionArgs{GasPrice: fortytwo, MaxFeePerGas: maxFee, BlobHashes: []common.Hash{}},
@@ -235,6 +221,13 @@ func TestSetFeeDefaults(t *testing.T) {
 			&TransactionArgs{BlobHashes: []common.Hash{}, BlobFeeCap: (*hexutil.Big)(big.NewInt(4)), MaxFeePerGas: maxFee, MaxPriorityFeePerGas: fortytwo},
 			nil,
 		},
+		{
+			"fill maxFeePerBlobGas when dynamic fees are set",
+			"cancun",
+			&TransactionArgs{BlobHashes: []common.Hash{}, MaxFeePerGas: maxFee, MaxPriorityFeePerGas: fortytwo},
+			&TransactionArgs{BlobHashes: []common.Hash{}, BlobFeeCap: (*hexutil.Big)(big.NewInt(4)), MaxFeePerGas: maxFee, MaxPriorityFeePerGas: fortytwo},
+			nil,
+		},
 	}
 
 	ctx := context.Background()
@@ -244,11 +237,16 @@ func TestSetFeeDefaults(t *testing.T) {
 		}
 		got := test.in
 		err := got.setFeeDefaults(ctx, b)
-		if err != nil && err.Error() == test.err.Error() {
-			// Test threw expected error.
+		if err != nil {
+			if test.err == nil {
+				t.Fatalf("test %d (%s): unexpected error: %s", i, test.name, err)
+			} else if err.Error() != test.err.Error() {
+				t.Fatalf("test %d (%s): unexpected error: (got: %s, want: %s)", i, test.name, err, test.err)
+			}
+			// Matching error.
 			continue
-		} else if err != nil {
-			t.Fatalf("test %d (%s): unexpected error: %s", i, test.name, err)
+		} else if test.err != nil {
+			t.Fatalf("test %d (%s): expected error: %s", i, test.name, test.err)
 		}
 		if !reflect.DeepEqual(got, test.want) {
 			t.Fatalf("test %d (%s): did not fill defaults as expected: (got: %v, want: %v)", i, test.name, got, test.want)
@@ -414,3 +412,19 @@ func (b *backendMock) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent)
 }
 
 func (b *backendMock) Engine() consensus.Engine { return nil }
+
+func (b *backendMock) MevRunning() bool { return false }
+func (b *backendMock) MevParams() *types.MevParams {
+	return &types.MevParams{}
+}
+func (b *backendMock) StartMev()                                                  {}
+func (b *backendMock) StopMev()                                                   {}
+func (b *backendMock) AddBuilder(builder common.Address, builderUrl string) error { return nil }
+func (b *backendMock) RemoveBuilder(builder common.Address) error                 { return nil }
+func (b *backendMock) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
+	panic("implement me")
+}
+func (b *backendMock) MinerInTurn() bool { return false }
+func (b *backendMock) BestBidGasFee(parentHash common.Hash) *big.Int {
+	panic("implement me")
+}

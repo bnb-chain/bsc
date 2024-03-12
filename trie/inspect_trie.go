@@ -15,8 +15,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/triedb/database"
 	"github.com/olekukonko/tablewriter"
 
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -31,9 +33,15 @@ type Account struct {
 	CodeHash []byte
 }
 
+type Database interface {
+	database.Database
+	Scheme() string
+	Cap(limit common.StorageSize) error
+	DiskDB() ethdb.Database
+}
 type Inspector struct {
 	trie           *Trie // traverse trie
-	db             *Database
+	db             Database
 	stateRootHash  common.Hash
 	blocknum       uint64
 	root           node // root of triedb
@@ -113,7 +121,7 @@ func (nodeStat *NodeStat) ValueNodeCount() string {
 }
 
 // NewInspector return a inspector obj
-func NewInspector(tr *Trie, db *Database, stateRootHash common.Hash, blocknum uint64, jobnum uint64) (*Inspector, error) {
+func NewInspector(tr *Trie, db Database, stateRootHash common.Hash, blocknum uint64, jobnum uint64) (*Inspector, error) {
 	if tr == nil {
 		return nil, errors.New("trie is nil")
 	}
