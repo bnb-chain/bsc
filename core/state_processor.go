@@ -113,6 +113,12 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 				continue
 			}
 		}
+		if p.config.IsCancun(block.Number(), block.Time()) {
+			if len(systemTxs) > 0 {
+				// systemTxs should be always at the end of block.
+				return statedb, nil, nil, 0, fmt.Errorf("normal tx %d [%v] after systemTx", i, tx.Hash().Hex())
+			}
+		}
 
 		msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 		if err != nil {
