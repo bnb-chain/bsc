@@ -1962,6 +1962,10 @@ func (c chainContext) Engine() consensus.Engine {
 	return c.parlia
 }
 
+func (c chainContext) Config() *params.ChainConfig {
+	return c.Chain.Config()
+}
+
 func (c chainContext) GetHeader(hash common.Hash, number uint64) *types.Header {
 	return c.Chain.GetHeader(hash, number)
 }
