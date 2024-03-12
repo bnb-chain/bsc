@@ -623,14 +623,6 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return err
 	}
 
-	// Verify existence / non-existence of withdrawalsHash.
-	if header.WithdrawalsHash != nil {
-		return fmt.Errorf("invalid withdrawalsHash: have %x, expected nil", header.WithdrawalsHash)
-	}
-	// Verify the existence / non-existence of cancun-specific header fields
-	if header.ParentBeaconRoot != nil {
-		return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
-	}
 	cancun := chain.Config().IsCancun(header.Number, header.Time)
 	if !cancun {
 		switch {
@@ -647,7 +639,9 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		switch {
 		case header.ParentBeaconRoot != nil:
 			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
-		case *header.WithdrawalsHash != common.Hash{}:
+		// types.EmptyWithdrawalsHash represents a empty value when EIP-4895 enabled,
+		// here, EIP-4895 still be disabled, value expected to be `common.Hash{}` is only to feet the demand of rlp encode/decode
+		case header.WithdrawalsHash == nil || *header.WithdrawalsHash != common.Hash{}:
 			return errors.New("header has wrong WithdrawalsHash")
 		}
 		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
