@@ -316,9 +316,8 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 // the peer's broadcast queue is full, the event is silently dropped.
 func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
 	bp := &blockPropagation{
-		block:    block,
-		td:       td,
-		sidecars: block.Blobs(),
+		block: block,
+		td:    td,
 	}
 
 	select {
