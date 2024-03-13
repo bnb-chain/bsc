@@ -85,7 +85,7 @@ type txPool interface {
 
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
-	Pending(enforceTips bool) map[common.Address][]*txpool.LazyTransaction
+	Pending(filter txpool.PendingFilter) map[common.Address][]*txpool.LazyTransaction
 
 	// SubscribeTransactions subscribes to new transaction events. The subscriber
 	// can decide whether to receive notifications only for newly seen transactions
@@ -794,6 +794,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		} else {
 			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
 		}
+
 		for _, peer := range transfer {
 			peer.AsyncSendNewBlock(block, td)
 		}

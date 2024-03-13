@@ -1,4 +1,46 @@
 # Changelog
+## v1.4.2
+### Feature
+* [\#2021](https://github.com/bnb-chain/bsc/pull/2021) feat: support separate trie database
+* [\#2224](https://github.com/bnb-chain/bsc/pull/2224) feat: support MEV
+
+### BUGFIX
+* [\#2268](https://github.com/bnb-chain/bsc/pull/2268) fix: ensure EIP-4788 not supported with Parlia Engine
+
+### Cancun Code Merge
+#### 4844 related
+[internal/ethapi: add support for blobs in eth_fillTransaction (#28839)](https://github.com/bnb-chain/bsc/commit/ac5aa672d3b85a1f74667a65a15398f072aa0b2a)
+[internal/ethapi: fix defaults for blob fields (#29037)](https://github.com/bnb-chain/bsc/commit/b47cf8fe1de4f97ce38417d8136a58812734a7a9)
+[ethereum, ethclient: add blob transaction fields in CallMsg (#28989)](https://github.com/bnb-chain/bsc/commit/9d537f543990d9013d73433dc58fd0e985d9b2b6)
+[core/txpool/blobpool: post-crash cleanup and addition/removal metrics(#28914)](https://github.com/bnb-chain/bsc/commit/62affdc9c5ea6f1a73fde42ac5ee5c9795877f88)
+[core/txpool/blobpool: update the blob db with corruption handling (#29001)](https://github.com/bnb-chain/bsc/commit/3c30de219f92120248b7b7aeeb2bef82305e9627)
+[core/txpool, eth, miner: pre-filter dynamic fees during pending tx retrieval (#29005)](https://github.com/bnb-chain/bsc/commit/593e303485473d9b9194792e4556a451c44dcc6c)
+[core/txpool, miner: speed up blob pool pending retrievals (#29008)](https://github.com/bnb-chain/bsc/commit/6fb0d0992bd4eb91faf1e081b3c4aa46adb0ef7d)
+[core/txpool, eth, miner: retrieve plain and blob txs separately (#29026)](https://github.com/bnb-chain/bsc/commit/f4852b8ddc8bef962d34210a4f7774b95767e421)
+[core/txpool: reject blob txs with blob fee cap below the minimum (#29081)](https://github.com/bnb-chain/bsc/commit/32d4d6e6160432be1cb9780a43253deda7708ced)
+[core/txpool/blobpool: reduce default database cap for rollout (#29090)](https://github.com/bnb-chain/bsc/commit/63aaac81007ad46b208570c17cae78b7f60931d4) 
+#### Clean Ups
+[cmd/devp2p, eth: drop support for eth/67 (#28956)](https://github.com/bnb-chain/bsc/commit/8a76a814a2b9e5b4c1a4c6de44cd702536104507)
+[all: remove the dependency from trie to triedb (#28824)](https://github.com/bnb-chain/bsc/commit/fe91d476ba3e29316b6dc99b6efd4a571481d888)
+#### Others
+[eth, miner: fix enforcing the minimum miner tip (#28933)](https://github.com/bnb-chain/bsc/commit/16ce7bf50fa71c907d1dc6504ed32a9161e71351)
+[cmd,internal/era: implement export-history subcommand(#26621)](https://github.com/bnb-chain/bsc/commit/1f50aa76318689c6e74d0c3b4f31421bf7382fc7)
+[node, rpc: add configurable HTTP request limit (#28948)](https://github.com/bnb-chain/bsc/commit/69f5d5ba1fe355ff7e3dee5a0c7e662cd82f1071)
+[tests: fix goroutine leak related to state snapshot generation (#28974)](https://github.com/bnb-chain/bsc/commit/8321fe2fda0b44d6df3750bcee28b8627525173b)
+[internal/ethapi:fix zero rpc gas cap in eth_createAccessList (#28846)](https://github.com/bnb-chain/bsc/commit/b87b9b45331f87fb1da379c5f17a81ebc3738c6e)
+[eth/tracers: Fix callTracer logs on onlyTopCall == true (#29068)](https://github.com/bnb-chain/bsc/commit/5a0f468f8cb15b939bd85445d33c614a36942a8e)
+
+## v1.4.1
+FEATURE
+NA
+
+BUGFIX
+* [\#2258](https://github.com/bnb-chain/bsc/pull/2258) core: skip checking state root existence when do snapsync by fast node
+* [\#2252](https://github.com/bnb-chain/bsc/pull/2252) fix: add missing args of `bls account generate-proof` cmd (#2252)
+
+IMPROVEMENT
+NA
+
 ## v1.4.0
 #### RPC
 [internal/ethapi: implement eth_getBlockReceipts (#27702)](https://github.com/bnb-chain/bsc/commit/f1801a9feda8f81532c92077d2c9a8b785fd699b)

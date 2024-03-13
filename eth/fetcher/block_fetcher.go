@@ -576,7 +576,8 @@ func (f *BlockFetcher) loop() {
 					case res := <-resCh:
 						res.Done <- nil
 						// Ignoring withdrawals here, since the block fetcher is not used post-merge.
-						txs, uncles, _ := res.Res.(*eth.BlockBodiesResponse).Unpack()
+						// todo 4844 is it ok to ignore sidecars here too?
+						txs, uncles, _, _ := res.Res.(*eth.BlockBodiesResponse).Unpack()
 						f.FilterBodies(peer, txs, uncles, time.Now())
 
 					case <-timeout.C:

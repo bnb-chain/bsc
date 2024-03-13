@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -39,7 +40,8 @@ import (
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
+	"github.com/ethereum/go-ethereum/triedb"
+	"github.com/ethereum/go-ethereum/triedb/pathdb"
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli/v2"
 )
@@ -381,7 +383,6 @@ func inspectTrie(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
-
 	var headerBlockHash common.Hash
 	if ctx.NArg() >= 1 {
 		if ctx.Args().Get(0) == "latest" {
@@ -411,7 +412,7 @@ func inspectTrie(ctx *cli.Context) error {
 		if blockNumber != math.MaxUint64 {
 			headerBlockHash = rawdb.ReadCanonicalHash(db, blockNumber)
 			if headerBlockHash == (common.Hash{}) {
-				return fmt.Errorf("ReadHeadBlockHash empry hash")
+				return errors.New("ReadHeadBlockHash empry hash")
 			}
 			blockHeader := rawdb.ReadHeader(db, headerBlockHash, blockNumber)
 			trieRootHash = blockHeader.Root
@@ -422,16 +423,16 @@ func inspectTrie(ctx *cli.Context) error {
 		fmt.Printf("ReadBlockHeader, root: %v, blocknum: %v\n", trieRootHash, blockNumber)
 
 		dbScheme := rawdb.ReadStateScheme(db)
-		var config *trie.Config
+		var config *triedb.Config
 		if dbScheme == rawdb.PathScheme {
-			config = &trie.Config{
+			config = &triedb.Config{
 				PathDB: pathdb.ReadOnly,
 			}
 		} else if dbScheme == rawdb.HashScheme {
-			config = trie.HashDefaults
+			config = triedb.HashDefaults
 		}
 
-		triedb := trie.NewDatabase(db, config)
+		triedb := triedb.NewDatabase(db, config)
 		theTrie, err := trie.New(trie.TrieID(trieRootHash), triedb)
 		if err != nil {
 			fmt.Printf("fail to new trie tree, err: %v, rootHash: %v\n", err, trieRootHash.String())
@@ -562,6 +563,11 @@ func dbStats(ctx *cli.Context) error {
 	defer db.Close()
 
 	showLeveldbStats(db)
+	if db.StateStore() != nil {
+		fmt.Println("show stats of state store")
+		showLeveldbStats(db.StateStore())
+	}
+
 	return nil
 }
 
@@ -575,13 +581,31 @@ func dbCompact(ctx *cli.Context) error {
 	log.Info("Stats before compaction")
 	showLeveldbStats(db)
 
+	statediskdb := db.StateStore()
+	if statediskdb != nil {
+		fmt.Println("show stats of state store")
+		showLeveldbStats(statediskdb)
+	}
+
 	log.Info("Triggering compaction")
 	if err := db.Compact(nil, nil); err != nil {
-		log.Info("Compact err", "error", err)
+		log.Error("Compact err", "error", err)
 		return err
 	}
+
+	if statediskdb != nil {
+		if err := statediskdb.Compact(nil, nil); err != nil {
+			log.Error("Compact err", "error", err)
+			return err
+		}
+	}
+
 	log.Info("Stats after compaction")
 	showLeveldbStats(db)
+	if statediskdb != nil {
+		fmt.Println("show stats of state store after compaction")
+		showLeveldbStats(statediskdb)
+	}
 	return nil
 }
 
@@ -602,8 +626,17 @@ func dbGet(ctx *cli.Context) error {
 		return err
 	}
 
+	statediskdb := db.StateStore()
 	data, err := db.Get(key)
 	if err != nil {
+		// if separate trie db exist, try to get it from separate db
+		if statediskdb != nil {
+			statedata, dberr := statediskdb.Get(key)
+			if dberr == nil {
+				fmt.Printf("key %#x: %#x\n", key, statedata)
+				return nil
+			}
+		}
 		log.Info("Get operation failed", "key", fmt.Sprintf("%#x", key), "error", err)
 		return err
 	}
@@ -619,8 +652,14 @@ func dbTrieGet(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false, false)
-	defer db.Close()
+	var db ethdb.Database
+	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	if chaindb.StateStore() != nil {
+		db = chaindb.StateStore()
+	} else {
+		db = chaindb
+	}
+	defer chaindb.Close()
 
 	scheme := ctx.String(utils.StateSchemeFlag.Name)
 	if scheme == "" {
@@ -685,8 +724,14 @@ func dbTrieDelete(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false, false)
-	defer db.Close()
+	var db ethdb.Database
+	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	if chaindb.StateStore() != nil {
+		db = chaindb.StateStore()
+	} else {
+		db = chaindb
+	}
+	defer chaindb.Close()
 
 	scheme := ctx.String(utils.StateSchemeFlag.Name)
 	if scheme == "" {
@@ -1076,13 +1121,19 @@ func hbss2pbss(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, false, false)
 	db.Sync()
+	stateDiskDb := db.StateStore()
 	defer db.Close()
 
 	// convert hbss trie node to pbss trie node
-	lastStateID := rawdb.ReadPersistentStateID(db)
+	var lastStateID uint64
+	if stateDiskDb != nil {
+		lastStateID = rawdb.ReadPersistentStateID(stateDiskDb)
+	} else {
+		lastStateID = rawdb.ReadPersistentStateID(db)
+	}
 	if lastStateID == 0 || force {
-		config := trie.HashDefaults
-		triedb := trie.NewDatabase(db, config)
+		config := triedb.HashDefaults
+		triedb := triedb.NewDatabase(db, config)
 		triedb.Cap(0)
 		log.Info("hbss2pbss triedb", "scheme", triedb.Scheme())
 		defer triedb.Close()
@@ -1102,7 +1153,7 @@ func hbss2pbss(ctx *cli.Context) error {
 		if *blockNumber != math.MaxUint64 {
 			headerBlockHash = rawdb.ReadCanonicalHash(db, *blockNumber)
 			if headerBlockHash == (common.Hash{}) {
-				return fmt.Errorf("ReadHeadBlockHash empty hash")
+				return errors.New("ReadHeadBlockHash empty hash")
 			}
 			blockHeader := rawdb.ReadHeader(db, headerBlockHash, *blockNumber)
 			trieRootHash = blockHeader.Root
@@ -1110,7 +1161,7 @@ func hbss2pbss(ctx *cli.Context) error {
 		}
 		if (trieRootHash == common.Hash{}) {
 			log.Error("Empty root hash")
-			return fmt.Errorf("Empty root hash.")
+			return errors.New("Empty root hash.")
 		}
 
 		id := trie.StateTrieID(trieRootHash)
@@ -1131,18 +1182,34 @@ func hbss2pbss(ctx *cli.Context) error {
 	}
 
 	// repair state ancient offset
-	lastStateID = rawdb.ReadPersistentStateID(db)
+	if stateDiskDb != nil {
+		lastStateID = rawdb.ReadPersistentStateID(stateDiskDb)
+	} else {
+		lastStateID = rawdb.ReadPersistentStateID(db)
+	}
+
 	if lastStateID == 0 {
 		log.Error("Convert hbss to pbss trie node error. The last state id is still 0")
 	}
-	ancient := stack.ResolveAncient("chaindata", ctx.String(utils.AncientFlag.Name))
+
+	var ancient string
+	if db.StateStore() != nil {
+		dirName := filepath.Join(stack.ResolvePath("chaindata"), "state")
+		ancient = filepath.Join(dirName, "ancient")
+	} else {
+		ancient = stack.ResolveAncient("chaindata", ctx.String(utils.AncientFlag.Name))
+	}
 	err = rawdb.ResetStateFreezerTableOffset(ancient, lastStateID)
 	if err != nil {
 		log.Error("Reset state freezer table offset failed", "error", err)
 		return err
 	}
 	// prune hbss trie node
-	err = rawdb.PruneHashTrieNodeInDataBase(db)
+	if stateDiskDb != nil {
+		err = rawdb.PruneHashTrieNodeInDataBase(stateDiskDb)
+	} else {
+		err = rawdb.PruneHashTrieNodeInDataBase(db)
+	}
 	if err != nil {
 		log.Error("Prune Hash trie node in database failed", "error", err)
 		return err

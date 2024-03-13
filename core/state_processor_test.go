@@ -122,12 +122,12 @@ func TestStateProcessorErrors(t *testing.T) {
 			db    = rawdb.NewMemoryDatabase()
 			gspec = &Genesis{
 				Config: config,
-				Alloc: GenesisAlloc{
-					common.HexToAddress("0x71562b71999873DB5b286dF957af199Ec94617F7"): GenesisAccount{
+				Alloc: types.GenesisAlloc{
+					common.HexToAddress("0x71562b71999873DB5b286dF957af199Ec94617F7"): types.Account{
 						Balance: big.NewInt(1000000000000000000), // 1 ether
 						Nonce:   0,
 					},
-					common.HexToAddress("0xfd0810DD14796680f72adf1a371963d0745BCc64"): GenesisAccount{
+					common.HexToAddress("0xfd0810DD14796680f72adf1a371963d0745BCc64"): types.Account{
 						Balance: big.NewInt(1000000000000000000), // 1 ether
 						Nonce:   math.MaxUint64,
 					},
@@ -286,8 +286,8 @@ func TestStateProcessorErrors(t *testing.T) {
 					IstanbulBlock:       big.NewInt(0),
 					MuirGlacierBlock:    big.NewInt(0),
 				},
-				Alloc: GenesisAlloc{
-					common.HexToAddress("0x71562b71999873DB5b286dF957af199Ec94617F7"): GenesisAccount{
+				Alloc: types.GenesisAlloc{
+					common.HexToAddress("0x71562b71999873DB5b286dF957af199Ec94617F7"): types.Account{
 						Balance: big.NewInt(1000000000000000000), // 1 ether
 						Nonce:   0,
 					},
@@ -324,8 +324,8 @@ func TestStateProcessorErrors(t *testing.T) {
 			db    = rawdb.NewMemoryDatabase()
 			gspec = &Genesis{
 				Config: config,
-				Alloc: GenesisAlloc{
-					common.HexToAddress("0x71562b71999873DB5b286dF957af199Ec94617F7"): GenesisAccount{
+				Alloc: types.GenesisAlloc{
+					common.HexToAddress("0x71562b71999873DB5b286dF957af199Ec94617F7"): types.Account{
 						Balance: big.NewInt(1000000000000000000), // 1 ether
 						Nonce:   0,
 						Code:    common.FromHex("0xB0B0FACE"),
@@ -419,7 +419,9 @@ func GenerateBadBlock(parent *types.Block, engine consensus.Engine, txs types.Tr
 		header.BlobGasUsed = &used
 
 		beaconRoot := common.HexToHash("0xbeac00")
-		header.ParentBeaconRoot = &beaconRoot
+		if config.Parlia == nil {
+			header.ParentBeaconRoot = &beaconRoot
+		}
 	}
 	// Assemble and return the final block for sealing
 	if config.IsShanghai(header.Number, header.Time) {

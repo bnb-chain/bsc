@@ -493,14 +493,16 @@ func (n *Node) startRPC() error {
 			jwtSecret:              secret,
 			batchItemLimit:         engineAPIBatchItemLimit,
 			batchResponseSizeLimit: engineAPIBatchResponseSizeLimit,
+			httpBodyLimit:          engineAPIBodyLimit,
 		}
-		if err := server.enableRPC(allAPIs, httpConfig{
+		err := server.enableRPC(allAPIs, httpConfig{
 			CorsAllowedOrigins: DefaultAuthCors,
 			Vhosts:             n.config.AuthVirtualHosts,
 			Modules:            DefaultAuthModules,
 			prefix:             DefaultAuthPrefix,
 			rpcEndpointConfig:  sharedConfig,
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 		servers = append(servers, server)
@@ -784,10 +786,30 @@ func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, di
 	if persistDiff {
 		chainDataHandles = handles * chainDataHandlesPercentage / 100
 	}
+	var statediskdb ethdb.Database
+	var err error
+	// Open the separated state database if the state directory exists
+	if n.IsSeparatedDB() {
+		// Allocate half of the  handles and cache to this separate state data database
+		statediskdb, err = n.OpenDatabaseWithFreezer(name+"/state", cache/2, chainDataHandles/2, "", "eth/db/statedata/", readonly, false, false, pruneAncientData)
+		if err != nil {
+			return nil, err
+		}
+
+		// Reduce the handles and cache to this separate database because it is not a complete database with no trie data storing in it.
+		cache = int(float64(cache) * 0.6)
+		chainDataHandles = int(float64(chainDataHandles) * 0.6)
+	}
+
 	chainDB, err := n.OpenDatabaseWithFreezer(name, cache, chainDataHandles, freezer, namespace, readonly, false, false, pruneAncientData)
 	if err != nil {
 		return nil, err
 	}
+
+	if statediskdb != nil {
+		chainDB.SetStateStore(statediskdb)
+	}
+
 	if persistDiff {
 		diffStore, err := n.OpenDiffDatabase(name, handles-chainDataHandles, diff, namespace, readonly)
 		if err != nil {
@@ -833,6 +855,16 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 		db = n.wrapDatabase(db)
 	}
 	return db, err
+}
+
+// IsSeparatedDB check the state subdirectory of db, if subdirectory exists, return true
+func (n *Node) IsSeparatedDB() bool {
+	separateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
+	fileInfo, err := os.Stat(separateDir)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return fileInfo.IsDir()
 }
 
 func (n *Node) OpenDiffDatabase(name string, handles int, diff, namespace string, readonly bool) (*leveldb.Database, error) {

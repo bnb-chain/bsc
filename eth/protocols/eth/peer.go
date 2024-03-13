@@ -95,7 +95,7 @@ type Peer struct {
 	lock   sync.RWMutex  // Mutex protecting the internal fields
 }
 
-// NewPeer create a wrapper for a network connection and negotiated  protocol
+// NewPeer creates a wrapper for a network connection and negotiated  protocol
 // version.
 func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Peer {
 	peer := &Peer{
@@ -234,29 +234,17 @@ func (p *Peer) AsyncSendTransactions(hashes []common.Hash) {
 	}
 }
 
-// sendPooledTransactionHashes66 sends transaction hashes to the peer and includes
-// them in its transaction hash set for future reference.
-//
-// This method is a helper used by the async transaction announcer. Don't call it
-// directly as the queueing (memory) and transmission (bandwidth) costs should
-// not be managed directly.
-func (p *Peer) sendPooledTransactionHashes66(hashes []common.Hash) error {
-	// Mark all the transactions as known, but ensure we don't overflow our limits
-	p.knownTxs.Add(hashes...)
-	return p2p.Send(p.rw, NewPooledTransactionHashesMsg, NewPooledTransactionHashesPacket67(hashes))
-}
-
-// sendPooledTransactionHashes68 sends transaction hashes (tagged with their type
+// sendPooledTransactionHashes sends transaction hashes (tagged with their type
 // and size) to the peer and includes them in its transaction hash set for future
 // reference.
 //
 // This method is a helper used by the async transaction announcer. Don't call it
 // directly as the queueing (memory) and transmission (bandwidth) costs should
 // not be managed directly.
-func (p *Peer) sendPooledTransactionHashes68(hashes []common.Hash, types []byte, sizes []uint32) error {
+func (p *Peer) sendPooledTransactionHashes(hashes []common.Hash, types []byte, sizes []uint32) error {
 	// Mark all the transactions as known, but ensure we don't overflow our limits
 	p.knownTxs.Add(hashes...)
-	return p2p.Send(p.rw, NewPooledTransactionHashesMsg, NewPooledTransactionHashesPacket68{Types: types, Sizes: sizes, Hashes: hashes})
+	return p2p.Send(p.rw, NewPooledTransactionHashesMsg, NewPooledTransactionHashesPacket{Types: types, Sizes: sizes, Hashes: hashes})
 }
 
 // AsyncSendPooledTransactionHashes queues a list of transactions hashes to eventually
@@ -318,16 +306,23 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	// Mark all the block hash as known, but ensure we don't overflow our limits
 	p.knownBlocks.Add(block.Hash())
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
-		Block: block,
-		TD:    td,
+		Block:    block,
+		TD:       td,
+		Sidecars: block.Blobs(),
 	})
 }
 
 // AsyncSendNewBlock queues an entire block for propagation to a remote peer. If
 // the peer's broadcast queue is full, the event is silently dropped.
 func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
+	bp := &blockPropagation{
+		block:    block,
+		td:       td,
+		sidecars: block.Blobs(),
+	}
+
 	select {
-	case p.queuedBlocks <- &blockPropagation{block: block, td: td}:
+	case p.queuedBlocks <- bp:
 		// Mark all the block hash as known, but ensure we don't overflow our limits
 		p.knownBlocks.Add(block.Hash())
 	default:

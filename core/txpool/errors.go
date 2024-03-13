@@ -55,6 +55,12 @@ var (
 	// one. Future transactions should only be able to replace other future transactions.
 	ErrFutureReplacePending = errors.New("future transaction tries to replace pending")
 
+	// ErrAlreadyReserved is returned if the sender address has a pending transaction
+	// in a different subpool. For example, this error is returned in response to any
+	// input transaction of non-blob type when a blob transaction from this sender
+	// remains pending (and vice-versa).
+	ErrAlreadyReserved = errors.New("address already reserved")
+
 	// ErrInBlackList is returned if the transaction send by banned address
 	ErrInBlackList = errors.New("sender or to in black list")
 )

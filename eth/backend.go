@@ -64,7 +64,11 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
+	"github.com/ethereum/go-ethereum/triedb/pathdb"
+)
+
+const (
+	ChainDBNamespace = "eth/db/chaindata/"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -134,7 +138,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// Assemble the Ethereum object
 	chainDb, err := stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
-		config.DatabaseFreezer, config.DatabaseDiff, "eth/db/chaindata/", false, config.PersistDiff, config.PruneAncientData)
+		config.DatabaseFreezer, config.DatabaseDiff, ChainDBNamespace, false, config.PersistDiff, config.PruneAncientData)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +302,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	legacyPool := legacypool.New(config.TxPool, eth.blockchain)
 
-	eth.txPool, err = txpool.New(new(big.Int).SetUint64(config.TxPool.PriceLimit), eth.blockchain, []txpool.SubPool{legacyPool, blobPool})
+	eth.txPool, err = txpool.New(config.TxPool.PriceLimit, eth.blockchain, []txpool.SubPool{legacyPool, blobPool})
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +339,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				parlia.VotePool = votePool
 			}
 		} else {
-			return nil, fmt.Errorf("Engine is not Parlia type")
+			return nil, errors.New("Engine is not Parlia type")
 		}
 		log.Info("Create votePool successfully")
 		eth.handler.votepool = votePool

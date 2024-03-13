@@ -297,7 +297,7 @@ func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction)
 }
 
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
-	pending := b.eth.txPool.Pending(false)
+	pending := b.eth.txPool.Pending(txpool.PendingFilter{})
 	var txs types.Transactions
 	for _, batch := range pending {
 		for _, lazy := range batch {
@@ -455,4 +455,40 @@ func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, re
 
 func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (*core.Message, vm.BlockContext, *state.StateDB, tracers.StateReleaseFunc, error) {
 	return b.eth.stateAtTransaction(ctx, block, txIndex, reexec)
+}
+
+func (b *EthAPIBackend) MevRunning() bool {
+	return b.Miner().MevRunning()
+}
+
+func (b *EthAPIBackend) MevParams() *types.MevParams {
+	return b.Miner().MevParams()
+}
+
+func (b *EthAPIBackend) StartMev() {
+	b.Miner().StartMev()
+}
+
+func (b *EthAPIBackend) StopMev() {
+	b.Miner().StopMev()
+}
+
+func (b *EthAPIBackend) AddBuilder(builder common.Address, url string) error {
+	return b.Miner().AddBuilder(builder, url)
+}
+
+func (b *EthAPIBackend) RemoveBuilder(builder common.Address) error {
+	return b.Miner().RemoveBuilder(builder)
+}
+
+func (b *EthAPIBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
+	return b.Miner().SendBid(ctx, bid)
+}
+
+func (b *EthAPIBackend) BestBidGasFee(parentHash common.Hash) *big.Int {
+	return b.Miner().BestPackedBlockReward(parentHash)
+}
+
+func (b *EthAPIBackend) MinerInTurn() bool {
+	return b.Miner().InTurn()
 }

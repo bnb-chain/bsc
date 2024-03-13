@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -78,7 +79,7 @@ func parseExtra(hexData string) (*Extra, error) {
 	// decode hex into bytes
 	data, err := hex.DecodeString(strings.TrimPrefix(hexData, "0x"))
 	if err != nil {
-		return nil, fmt.Errorf("invalid hex data")
+		return nil, errors.New("invalid hex data")
 	}
 
 	// parse ExtraVanity and ExtraSeal
@@ -99,7 +100,7 @@ func parseExtra(hexData string) (*Extra, error) {
 			validatorNum := int(data[0])
 			validatorBytesTotalLength := validatorNumberSize + validatorNum*validatorBytesLength
 			if dataLength < validatorBytesTotalLength {
-				return nil, fmt.Errorf("parse validators failed")
+				return nil, errors.New("parse validators failed")
 			}
 			extra.ValidatorSize = uint8(validatorNum)
 			data = data[validatorNumberSize:]
@@ -117,7 +118,7 @@ func parseExtra(hexData string) (*Extra, error) {
 		// parse Vote Attestation
 		if dataLength > 0 {
 			if err := rlp.Decode(bytes.NewReader(data), &extra.VoteAttestation); err != nil {
-				return nil, fmt.Errorf("parse voteAttestation failed")
+				return nil, errors.New("parse voteAttestation failed")
 			}
 			if extra.ValidatorSize > 0 {
 				validatorsBitSet := bitset.From([]uint64{uint64(extra.VoteAddressSet)})

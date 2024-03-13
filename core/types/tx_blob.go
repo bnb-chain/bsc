@@ -43,7 +43,7 @@ type BlobTx struct {
 	BlobHashes []common.Hash
 
 	// A blob transaction can optionally contain blobs. This field must be set when BlobTx
-	// is used to create a transaction for sigining.
+	// is used to create a transaction for signing.
 	Sidecar *BlobTxSidecar `rlp:"-"`
 
 	// Signature values
@@ -53,6 +53,15 @@ type BlobTx struct {
 }
 
 type BlobTxSidecars []*BlobTxSidecar
+
+// Len returns the length of s.
+func (s BlobTxSidecars) Len() int { return len(s) }
+
+// EncodeIndex encodes the i'th BlobTxSidecar to w. Note that this does not check for errors
+// because we assume that BlobTxSidecars will only ever contain valid sidecars
+func (s BlobTxSidecars) EncodeIndex(i int, w *bytes.Buffer) {
+	rlp.Encode(w, s[i])
+}
 
 // BlobTxSidecar contains the blobs of a blob transaction.
 type BlobTxSidecar struct {

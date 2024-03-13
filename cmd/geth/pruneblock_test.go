@@ -42,7 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 var (
@@ -51,7 +51,7 @@ var (
 	key, _                      = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	address                     = crypto.PubkeyToAddress(key.PublicKey)
 	balance                     = big.NewInt(100000000000000000)
-	gspec                       = &core.Genesis{Config: params.TestChainConfig, Alloc: core.GenesisAlloc{address: {Balance: balance}}, BaseFee: big.NewInt(params.InitialBaseFee)}
+	gspec                       = &core.Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{address: {Balance: balance}}, BaseFee: big.NewInt(params.InitialBaseFee)}
 	signer                      = types.LatestSigner(gspec.Config)
 	config                      = &core.CacheConfig{
 		TrieCleanLimit: 256,
@@ -152,7 +152,7 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 	}
 	defer db.Close()
 
-	triedb := trie.NewDatabase(db, nil)
+	triedb := triedb.NewDatabase(db, nil)
 	defer triedb.Close()
 
 	genesis := gspec.MustCommit(db, triedb)

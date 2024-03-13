@@ -69,6 +69,12 @@ var (
 )
 
 func createEmptyBlobTx(key *ecdsa.PrivateKey, withSidecar bool) *Transaction {
+	blobtx := createEmptyBlobTxInner(withSidecar)
+	signer := NewCancunSigner(blobtx.ChainID.ToBig())
+	return MustSignNewTx(key, signer, blobtx)
+}
+
+func createEmptyBlobTxInner(withSidecar bool) *BlobTx {
 	sidecar := &BlobTxSidecar{
 		Blobs:       []kzg4844.Blob{emptyBlob},
 		Commitments: []kzg4844.Commitment{emptyBlobCommit},
@@ -89,8 +95,60 @@ func createEmptyBlobTx(key *ecdsa.PrivateKey, withSidecar bool) *Transaction {
 	if withSidecar {
 		blobtx.Sidecar = sidecar
 	}
-	signer := NewCancunSigner(blobtx.ChainID.ToBig())
-	return MustSignNewTx(key, signer, blobtx)
+	return blobtx
+}
+
+func TestBlobTxSidecars_Encode(t *testing.T) {
+	tests := []struct {
+		raw BlobTxSidecars
+		err bool
+	}{
+		{
+			raw: BlobTxSidecars{
+				&BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+				&BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+			},
+			err: false,
+		},
+		{
+			raw: BlobTxSidecars{
+				&BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+				nil,
+			},
+			err: true,
+		},
+		{
+			raw: BlobTxSidecars{},
+			err: false,
+		},
+	}
+
+	for i, item := range tests {
+		t.Run(fmt.Sprintf("case%d", i), func(t *testing.T) {
+			enc, err := rlp.EncodeToBytes(item.raw)
+			require.NoError(t, err)
+			var nbs BlobTxSidecars
+			err = rlp.DecodeBytes(enc, &nbs)
+			if item.err {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, item.raw, nbs)
+		})
+	}
 }
 
 func TestBlobTxSidecars_Encode(t *testing.T) {

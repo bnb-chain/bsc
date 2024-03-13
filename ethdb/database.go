@@ -173,11 +173,16 @@ type AncientStater interface {
 	AncientDatadir() (string, error)
 }
 
+type StateStoreReader interface {
+	StateStoreReader() Reader
+}
+
 // Reader contains the methods required to read data from both key-value as well as
 // immutable ancient data.
 type Reader interface {
 	KeyValueReader
 	AncientReader
+	StateStoreReader
 }
 
 // Writer contains the methods required to write data to both key-value as well as
@@ -207,12 +212,18 @@ type DiffStore interface {
 	SetDiffStore(diff KeyValueStore)
 }
 
+type StateStore interface {
+	StateStore() Database
+	SetStateStore(state Database)
+}
+
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the chain freezer.
 type Database interface {
 	Reader
 	Writer
 	DiffStore
+	StateStore
 	Batcher
 	Iteratee
 	Stater

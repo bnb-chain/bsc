@@ -18,6 +18,7 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"sort"
@@ -747,7 +748,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 		if s.trie == nil {
 			tr, err := s.db.OpenTrie(s.originalRoot)
 			if err != nil {
-				s.setError(fmt.Errorf("failed to open trie tree"))
+				s.setError(errors.New("failed to open trie tree"))
 				return nil
 			}
 			s.trie = tr
@@ -1003,7 +1004,7 @@ func (s *StateDB) WaitPipeVerification() error {
 	// Need to wait for the parent trie to commit
 	if s.snap != nil {
 		if valid := s.snap.WaitAndGetVerifyRes(); !valid {
-			return fmt.Errorf("verification on parent snap failed")
+			return errors.New("verification on parent snap failed")
 		}
 	}
 	return nil
