@@ -626,7 +626,6 @@ func TestHandleNewBlock(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func makeBlkBlobs(n, nPerTx int) types.BlobTxSidecars {
