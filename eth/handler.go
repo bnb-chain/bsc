@@ -794,6 +794,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		} else {
 			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
 		}
+
 		for _, peer := range transfer {
 			peer.AsyncSendNewBlock(block, td)
 		}
