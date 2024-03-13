@@ -217,7 +217,7 @@ type BlockHeadersRLPPacket struct {
 type NewBlockPacket struct {
 	Block    *types.Block
 	TD       *big.Int
-	Sidecars []*types.BlobTxSidecar `rlp:"optional"`
+	Sidecars types.BlobTxSidecars `rlp:"optional"`
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
