@@ -1336,6 +1336,14 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		}
 	}
 
+	// check DA after cancun
+	lastBlk := blockChain[len(blockChain)-1]
+	if bc.chainConfig.Parlia != nil && bc.chainConfig.IsCancun(lastBlk.Number(), lastBlk.Time()) {
+		if _, err := CheckDataAvailableInBatch(bc, blockChain); err != nil {
+			return 0, err
+		}
+	}
+
 	var (
 		stats = struct{ processed, ignored int32 }{}
 		start = time.Now()
@@ -1396,12 +1404,15 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Write all chain data to ancients.
 		td := bc.GetTd(first.Hash(), first.NumberU64())
-		// TODO(GalaIO): when sync the history block, it needs check DA & store blobs too.
-		//if isCancun() {
-		//  posa.IsDataAvailable()
-		//	writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db, blockChain, receiptChain, td, blobs)
-		//}
-		writeSize, err := rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td)
+		var (
+			writeSize int64
+			err       error
+		)
+		if !bc.chainConfig.IsCancun(last.Number(), last.Time()) {
+			writeSize, err = rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td)
+		} else {
+			writeSize, err = rawdb.WriteAncientBlocksAfterCancun(bc.db, bc.chainConfig, blockChain, receiptChain, td)
+		}
 		if err != nil {
 			log.Error("Error importing chain data to ancients", "err", err)
 			return 0, err
@@ -1479,11 +1490,9 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			// Write all the data out into the database
 			rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
 			rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
-			// TODO(GalaIO): if enable cancun, need check DA & write blobs
-			//if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-			//  posa.IsDataAvailable()
-			//	rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), blobs)
-			//}
+			if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+				rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), block.Blobs())
+			}
 
 			// Write everything belongs to the blocks into the database. So that
 			// we can ensure all components of body is completed(body, receipts)

@@ -59,6 +59,8 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		log.Info("IsDataAvailable", "block", block.Number(), "hash", block.Hash(), "highest", highest.Number, "blobs", len(block.Blobs()), "err", err)
 	}()
 	if block.NumberU64()+params.MinBlocksForBlobRequests < highest.Number.Uint64() {
+		// if we needn't check DA of this block, just clean it
+		block.CleanBlobs()
 		return nil
 	}
 
@@ -96,6 +98,10 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 }
 
 func CheckDataAvailableInBatch(chainReader consensus.ChainHeaderReader, chain types.Blocks) (int, error) {
+	if len(chain) == 1 {
+		return 0, IsDataAvailable(chainReader, chain[0])
+	}
+
 	var (
 		wg   sync.WaitGroup
 		errs sync.Map
