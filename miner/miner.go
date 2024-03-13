@@ -18,14 +18,17 @@
 package miner
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -41,6 +44,7 @@ import (
 type Backend interface {
 	BlockChain() *core.BlockChain
 	TxPool() *txpool.TxPool
+	AccountManager() *accounts.Manager
 }
 
 // Config is the configuration parameters of mining.
@@ -53,6 +57,8 @@ type Config struct {
 	GasPrice      *big.Int       // Minimum gas price for mining a transaction
 	Recommit      time.Duration  // The time interval for miner to re-create mining work.
 	VoteEnable    bool           // Whether to vote when mining
+
+	MevGasPriceFloor int64 `toml:",omitempty"`
 
 	NewPayloadTimeout      time.Duration // The maximum time allowance for creating a new payload
 	DisableVoteAttestation bool          // Whether to skip assembling vote attestation
@@ -176,7 +182,7 @@ func (miner *Miner) update() {
 		case <-miner.stopCh:
 			shouldStart = false
 			miner.worker.stop()
-			miner.bidSimulator.stop()
+			miner.bidSimulator.start()
 		case <-miner.exitCh:
 			miner.worker.close()
 			miner.bidSimulator.close()
@@ -294,4 +300,52 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	return miner.worker.buildPayload(args)
+}
+
+func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
+	parent := miner.eth.BlockChain().CurrentBlock()
+	timestamp := time.Now().Unix()
+	if parent.Time >= uint64(timestamp) {
+		timestamp = int64(parent.Time + 1)
+	}
+
+	header := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     new(big.Int).Add(parent.Number, common.Big1),
+		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.worker.config.GasCeil),
+		Extra:      miner.worker.extra,
+		Time:       uint64(timestamp),
+		Coinbase:   miner.worker.etherbase(),
+	}
+
+	// Set baseFee and GasLimit if we are on an EIP-1559 chain
+	if miner.worker.chainConfig.IsLondon(header.Number) {
+		header.BaseFee = eip1559.CalcBaseFee(miner.worker.chainConfig, parent)
+	}
+
+	if err := miner.worker.engine.Prepare(miner.eth.BlockChain(), header); err != nil {
+		return nil, err
+	}
+
+	state, err := miner.eth.BlockChain().StateAt(parent.Root)
+	if err != nil {
+		return nil, err
+	}
+
+	env := &environment{
+		header: header,
+		state:  state.Copy(),
+		signer: types.MakeSigner(miner.worker.chainConfig, header.Number, header.Time),
+	}
+
+	s, err := miner.worker.simulateBundles(env, []*types.Bundle{bundle})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(s) == 0 {
+		return nil, errors.New("no valid sim result")
+	}
+
+	return s[0].BundleGasPrice, nil
 }

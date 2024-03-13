@@ -385,6 +385,8 @@ func (b *backendMock) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.S
 	return nil
 }
 func (b *backendMock) SendTx(ctx context.Context, signedTx *types.Transaction) error { return nil }
+func (b *backendMock) SendBundle(ctx context.Context, bundle *types.Bundle) error    { return nil }
+func (b *backendMock) BundlePrice() *big.Int                                         { return nil }
 func (b *backendMock) GetTransaction(ctx context.Context, txHash common.Hash) (bool, *types.Transaction, common.Hash, uint64, uint64, error) {
 	return false, nil, [32]byte{}, 0, 0, nil
 }

@@ -351,6 +351,29 @@ func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool) []error {
 	return errs
 }
 
+// AddBundle enqueues a bundle into the pool if it is valid.
+func (p *TxPool) AddBundle(bundle *types.Bundle) error {
+	// Try to find a sub pool that accepts the bundle
+	for _, subpool := range p.subpools {
+		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
+			if bundleSubpool.FilterBundle(bundle) {
+				return bundleSubpool.AddBundle(bundle)
+			}
+		}
+	}
+	return errors.New("no subpool accepts the bundle")
+}
+
+// PruneBundle removes a bundle from the pool.
+func (p *TxPool) PruneBundle(hash common.Hash) {
+	for _, subpool := range p.subpools {
+		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
+			bundleSubpool.PruneBundle(hash)
+			return // Only one subpool can have the bundle
+		}
+	}
+}
+
 // Pending retrieves all currently processable transactions, grouped by origin
 // account and sorted by nonce.
 //
@@ -364,6 +387,26 @@ func (p *TxPool) Pending(filter PendingFilter) map[common.Address][]*LazyTransac
 		}
 	}
 	return txs
+}
+
+// PendingBundles retrieves all currently processable bundles.
+func (p *TxPool) PendingBundles(blockNumber uint64, blockTimestamp uint64) []*types.Bundle {
+	for _, subpool := range p.subpools {
+		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
+			return bundleSubpool.PendingBundles(blockNumber, blockTimestamp)
+		}
+	}
+	return nil
+}
+
+// AllBundles returns all the bundles currently in the pool
+func (p *TxPool) AllBundles() []*types.Bundle {
+	for _, subpool := range p.subpools {
+		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
+			return bundleSubpool.AllBundles()
+		}
+	}
+	return nil
 }
 
 // SubscribeTransactions registers a subscription for new transaction events,

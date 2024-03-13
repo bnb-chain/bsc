@@ -21,6 +21,10 @@ type MevConfig struct {
 	Builders              []BuilderConfig // The list of builders
 	ValidatorCommission   uint64          // 100 means 1%
 	BidSimulationLeftOver time.Duration
+
+	BuilderEnabled bool              // Whether to enable bidder or not
+	Validators     []ValidatorConfig // The list of validators
+	BuilderAccount common.Address    // The account of the bidder
 }
 
 var DefaultMevConfig = MevConfig{
@@ -29,6 +33,9 @@ var DefaultMevConfig = MevConfig{
 	Builders:              nil,
 	ValidatorCommission:   100,
 	BidSimulationLeftOver: 50 * time.Millisecond,
+	BuilderEnabled:        false,
+	Validators:            nil,
+	BuilderAccount:        common.Address{},
 }
 
 // MevRunning return true if mev is running.
