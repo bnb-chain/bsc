@@ -823,6 +823,81 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 	})
 }
 
+// WriteAncientBlocksAfterCancun writes entire block data into ancient store and returns the total written size.
+func WriteAncientBlocksAfterCancun(db ethdb.AncientStore, config *params.ChainConfig, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
+	if len(blocks) == 0 {
+		return 0, nil
+	}
+
+	cancunIndex := -1
+	for i, block := range blocks {
+		if config.IsCancun(block.Number(), block.Time()) {
+			cancunIndex = i
+			break
+		}
+	}
+	log.Info("WriteAncientBlocksAfterCancun", "startAt", blocks[0].Number(), "cancunIndex", cancunIndex, "len", len(blocks))
+	if cancunIndex < 0 {
+		return WriteAncientBlocks(db, blocks, receipts, td)
+	}
+
+	// if there has pre-cancun and post-cancun blocks, write them separately
+	var (
+		tdSum      = new(big.Int).Set(td)
+		stReceipts []*types.ReceiptForStorage
+	)
+
+	// write pre-cancun blocks
+	preBlocks := blocks[:cancunIndex]
+	preReceipts := receipts[:cancunIndex]
+	preSize, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		for i, block := range preBlocks {
+			// Convert receipts to storage format and sum up total difficulty.
+			stReceipts = stReceipts[:0]
+			for _, receipt := range preReceipts[i] {
+				stReceipts = append(stReceipts, (*types.ReceiptForStorage)(receipt))
+			}
+			header := block.Header()
+			if i > 0 {
+				tdSum.Add(tdSum, header.Difficulty)
+			}
+			if err := writeAncientBlock(op, block, header, stReceipts, tdSum); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return preSize, err
+	}
+
+	// write post-cancun blocks
+	postBlocks := blocks[cancunIndex:]
+	postReceipts := receipts[cancunIndex:]
+	// try reset empty blob ancient table
+	if err := ResetEmptyBlobAncientTable(db, postBlocks[0].NumberU64()); err != nil {
+		return 0, err
+	}
+	postSize, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		for i, block := range postBlocks {
+			// Convert receipts to storage format and sum up total difficulty.
+			stReceipts = stReceipts[:0]
+			for _, receipt := range postReceipts[i] {
+				stReceipts = append(stReceipts, (*types.ReceiptForStorage)(receipt))
+			}
+			header := block.Header()
+			if i > 0 {
+				tdSum.Add(tdSum, header.Difficulty)
+			}
+			if err := writeAncientBlockWithBlob(op, block, header, stReceipts, tdSum, block.Blobs()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return preSize + postSize, err
+}
+
 // WriteAncientBlocksWithBlobs writes entire block data into ancient store and returns the total written size.
 // Attention: The caller must set blobs after cancun
 func WriteAncientBlocksWithBlobs(db ethdb.AncientStore, blocks []*types.Block, receipts []types.Receipts, td *big.Int, blobs []types.BlobTxSidecars) (int64, error) {

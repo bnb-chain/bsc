@@ -62,7 +62,7 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 	}
 	if header.ExcessBlobGas != nil {
 		var config *params.ChainConfig
-		if chain != nil {
+		if !common.IsNil(chain) {
 			config = chain.Config()
 		}
 		blobBaseFee = eip4844.CalcBlobFee(*header.ExcessBlobGas, config)

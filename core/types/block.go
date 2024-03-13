@@ -458,6 +458,10 @@ func (b *Block) Blobs() BlobTxSidecars {
 	return b.sidecars
 }
 
+func (b *Block) CleanBlobs() {
+	b.blobs = nil
+}
+
 type writeCounter uint64
 
 func (c *writeCounter) Write(b []byte) (int, error) {

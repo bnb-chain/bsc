@@ -827,6 +827,9 @@ func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListH
 			if want := *header.BlobGasUsed / params.BlobTxBlobGasPerBlob; uint64(blobs) != want { // div because the header is surely good vs the body might be bloated
 				return errInvalidBody
 			}
+			if blobs > params.MaxBlobGasPerBlock {
+				return errInvalidBody
+			}
 		} else {
 			if blobs != 0 {
 				return errInvalidBody

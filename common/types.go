@@ -475,3 +475,16 @@ func (d *Decimal) UnmarshalJSON(input []byte) error {
 		return err
 	}
 }
+
+// IsNil uses reflect to distinguish data that is truly nil.
+func IsNil(i interface{}) bool {
+	if i == nil {
+		return true
+	}
+
+	switch reflect.TypeOf(i).Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.UnsafePointer, reflect.Interface, reflect.Slice:
+		return reflect.ValueOf(i).IsNil()
+	}
+	return false
+}

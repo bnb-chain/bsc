@@ -52,6 +52,9 @@ type BlockGen struct {
 	withdrawals []*types.Withdrawal
 
 	engine consensus.Engine
+
+	// extra data of block
+	blobs types.BlobTxSidecars
 }
 
 // SetCoinbase sets the coinbase of the generated block.
@@ -171,6 +174,11 @@ func (b *BlockGen) AddUncheckedTx(tx *types.Transaction) {
 	b.txs = append(b.txs, tx)
 }
 
+// AddBlobSidecar add block's blob sidecar for DA checking.
+func (b *BlockGen) AddBlobSidecar(sidecar *types.BlobTxSidecar) {
+	b.blobs = append(b.blobs, sidecar)
+}
+
 // Number returns the block number of the block being generated.
 func (b *BlockGen) Number() *big.Int {
 	return new(big.Int).Set(b.header.Number)
@@ -184,6 +192,15 @@ func (b *BlockGen) Timestamp() uint64 {
 // BaseFee returns the EIP-1559 base fee of the block being generated.
 func (b *BlockGen) BaseFee() *big.Int {
 	return new(big.Int).Set(b.header.BaseFee)
+}
+
+// ExcessBlobGas returns the EIP-4844 ExcessBlobGas of the block.
+func (b *BlockGen) ExcessBlobGas() uint64 {
+	excessBlobGas := b.header.ExcessBlobGas
+	if excessBlobGas == nil {
+		return 0
+	}
+	return *excessBlobGas
 }
 
 // Gas returns the amount of gas left in the current block.
@@ -354,6 +371,9 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			block, _, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, b.txs, b.uncles, b.receipts, b.withdrawals)
 			if err != nil {
 				panic(err)
+			}
+			if config.Parlia != nil && config.IsCancun(block.Number(), block.Time()) {
+				block = block.WithBlobs(b.blobs)
 			}
 
 			// Write state changes to db
