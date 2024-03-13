@@ -1503,7 +1503,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		}
 
 		select {
-		case results <- block.WithSeal(header):
+		case results <- block.WithSeal(header).WithBlobs(block.Blobs()):
 		default:
 			log.Warn("Sealing result is not read by miner", "sealhash", types.SealHash(header, p.chainConfig.ChainID))
 		}
