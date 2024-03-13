@@ -224,10 +224,24 @@ func ServiceGetBlockBodiesQuery(chain *core.BlockChain, query GetBlockBodiesRequ
 			lookups >= 2*maxBodiesServe {
 			break
 		}
-		if data := chain.GetBodyRLP(hash); len(data) != 0 {
-			bodies = append(bodies, data)
-			bytes += len(data)
+		body := chain.GetBody(hash)
+		if body == nil {
+			continue
 		}
+		blobs := chain.GetBlobsByHash(hash)
+		bodyWithBlobs := &BlockBody{
+			Transactions: body.Transactions,
+			Uncles:       body.Uncles,
+			Withdrawals:  body.Withdrawals,
+			Sidecars:     blobs,
+		}
+		enc, err := rlp.EncodeToBytes(bodyWithBlobs)
+		if err != nil {
+			log.Error("block body encode err", "hash", hash, "err", err)
+			continue
+		}
+		bodies = append(bodies, enc)
+		bytes += len(enc)
 	}
 	return bodies
 }
@@ -293,9 +307,12 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(ann); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
+
+	// Now that we have our packet, perform operations using the interface methods
 	if err := ann.sanityCheck(); err != nil {
 		return err
 	}
+
 	if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() {
 		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
