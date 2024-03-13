@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -74,7 +73,7 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 	}
 	blobs := block.Blobs()
 	if len(versionedHashes) != len(blobs) {
-		return errors.New("blobs do not match the versionedHashes length")
+		return fmt.Errorf("blob info mismatch: blobs %d, versionedHashes:%d", len(blobs), len(versionedHashes))
 	}
 
 	// check blob amount
