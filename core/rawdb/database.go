@@ -860,6 +860,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				value = trieIter.Value()
 				size  = common.StorageSize(len(key) + len(value))
 			)
+			total += size
 
 			switch {
 			case IsLegacyTrieNode(key, value):
@@ -903,6 +904,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				value = blockIter.Value()
 				size  = common.StorageSize(len(key) + len(value))
 			)
+			total += size
 
 			switch {
 			case bytes.HasPrefix(key, headerPrefix) && len(key) == (len(headerPrefix)+8+common.HashLength):
