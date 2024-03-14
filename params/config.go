@@ -864,7 +864,7 @@ func (c *ChainConfig) IsOnFeynmanFix(currentBlockNumber *big.Int, lastBlockTime 
 	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
 		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
 	}
-	return !c.IsFeynman(lastBlockNumber, lastBlockTime) && c.IsFeynman(currentBlockNumber, currentBlockTime)
+	return !c.IsFeynmanFix(lastBlockNumber, lastBlockTime) && c.IsFeynmanFix(currentBlockNumber, currentBlockTime)
 }
 
 // IsCancun returns whether num is either equal to the Cancun fork time or greater.

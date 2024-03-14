@@ -1,4 +1,8 @@
 # Changelog
+## v1.3.11
+BUGFIX
+* [\#2288](https://github.com/bnb-chain/bsc/pull/2288) fix: add FeynmanFix upgrade for a testnet issue
+
 ## v1.3.10
 FEATURE
 * [\#2047](https://github.com/bnb-chain/bsc/pull/2047) feat: add new fork block and precompile contract for BEP294 and BEP299
