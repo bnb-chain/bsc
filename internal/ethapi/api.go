@@ -1010,6 +1010,59 @@ func (s *BlockChainAPI) GetBlockReceipts(ctx context.Context, blockNrOrHash rpc.
 	return result, nil
 }
 
+func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) ([]map[string]interface{}, error) {
+	block, err := s.b.BlockByNumberOrHash(ctx, blockNrOrHash)
+	if block == nil || err != nil {
+		// When the block doesn't exist, the RPC method should return JSON null
+		// as per specification.
+		return nil, nil
+	}
+	blobSidecars, err := s.b.GetBlobSidecars(ctx, block.Hash())
+	if err != nil {
+		return nil, err
+	}
+	result := make([]map[string]interface{}, len(blobSidecars))
+	blobIndex := 0
+	for txIndex, tx := range block.Transactions() {
+		if tx.Type() == types.BlobTxType {
+			result[blobIndex] = marshalBlobSidecar(blobSidecars[blobIndex], block.Hash(), block.NumberU64(), tx, txIndex)
+			blobIndex++
+		}
+		if blobIndex >= len(blobSidecars) {
+			return nil, nil
+		}
+	}
+	return result, nil
+}
+
+func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.Hash) (map[string]interface{}, error) {
+	tx, blockHash, blockNumber, Index := rawdb.ReadTransaction(s.b.ChainDb(), hash)
+	if tx == nil {
+		return nil, nil
+	}
+	block, err := s.b.BlockByHash(ctx, blockHash)
+	if block == nil || err != nil {
+		// When the block doesn't exist, the RPC method should return JSON null
+		// as per specification.
+		return nil, nil
+	}
+	blobSidecars, err := s.b.GetBlobSidecars(ctx, blockHash)
+	if err != nil {
+		return nil, err
+	}
+	blobIndex := 0
+	for txIndex, tx := range block.Transactions() {
+		if txIndex > int(Index) {
+			break
+		}
+		if tx.Type() == types.BlobTxType {
+			blobIndex++
+		}
+	}
+	result := marshalBlobSidecar(blobSidecars[blobIndex], blockHash, blockNumber, block.Transaction(hash), int(Index))
+	return result, nil
+}
+
 // OverrideAccount indicates the overriding fields of account during the execution
 // of a message call.
 // Note, state and stateDiff can't be specified at the same time. If state is
@@ -2101,6 +2154,17 @@ func marshalReceipt(receipt *types.Receipt, blockHash common.Hash, blockNumber u
 	// If the ContractAddress is 20 0x0 bytes, assume it is not a contract creation
 	if receipt.ContractAddress != (common.Address{}) {
 		fields["contractAddress"] = receipt.ContractAddress
+	}
+	return fields
+}
+
+func marshalBlobSidecar(blobSidecar *types.BlobTxSidecar, blockHash common.Hash, blockNumber uint64, tx *types.Transaction, txIndex int) map[string]interface{} {
+	fields := map[string]interface{}{
+		"blockHash":        blockHash,
+		"blockNumber":      hexutil.Uint64(blockNumber),
+		"transactionHash":  tx.Hash(),
+		"transactionIndex": hexutil.Uint64(txIndex),
+		"blobSidecar":      blobSidecar,
 	}
 	return fields
 }
