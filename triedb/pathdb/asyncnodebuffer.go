@@ -72,7 +72,7 @@ func (a *asyncnodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node
 
 	err := a.current.commit(nodes)
 	if err != nil {
-		log.Crit("[BUG] failed to commit nodes to asyncnodebuffer", "error", err)
+		log.Crit("[BUG] Failed to commit nodes to asyncnodebuffer", "error", err)
 	}
 	return a
 }
@@ -87,7 +87,7 @@ func (a *asyncnodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]
 	var err error
 	a.current, err = a.current.merge(a.background)
 	if err != nil {
-		log.Crit("[BUG] failed to merge node cache under revert async node buffer", "error", err)
+		log.Crit("[BUG] Failed to merge node cache under revert async node buffer", "error", err)
 	}
 	a.background.reset()
 	return a.current.revert(db, nodes)
@@ -129,7 +129,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 		for {
 			if atomic.LoadUint64(&a.background.immutable) == 1 {
 				time.Sleep(time.Duration(DefaultBackgroundFlushInterval) * time.Second)
-				log.Info("waiting background memory table flushed into disk for forcing flush node buffer")
+				log.Info("Waiting background memory table flushed into disk for forcing flush node buffer")
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
@@ -155,10 +155,10 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 		for {
 			err := a.background.flush(db, clean, persistID)
 			if err == nil {
-				log.Debug("succeed to flush background nodecache to disk", "state_id", persistID)
+				log.Debug("Succeed to flush background nodecache to disk", "state_id", persistID)
 				return
 			}
-			log.Error("failed to flush background nodecache to disk", "state_id", persistID, "error", err)
+			log.Error("Failed to flush background nodecache to disk", "state_id", persistID, "error", err)
 		}
 	}(id)
 	return nil
@@ -168,7 +168,7 @@ func (a *asyncnodebuffer) waitAndStopFlushing() {
 	a.stopFlushing.Store(true)
 	for a.isFlushing.Load() {
 		time.Sleep(time.Second)
-		log.Warn("waiting background memory table flushed into disk")
+		log.Warn("Waiting background memory table flushed into disk")
 	}
 }
 
@@ -178,7 +178,7 @@ func (a *asyncnodebuffer) getAllNodes() map[common.Hash]map[string]*trienode.Nod
 
 	cached, err := a.current.merge(a.background)
 	if err != nil {
-		log.Crit("[BUG] failed to merge node cache under revert async node buffer", "error", err)
+		log.Crit("[BUG] Failed to merge node cache under revert async node buffer", "error", err)
 	}
 	return cached.nodes
 }
