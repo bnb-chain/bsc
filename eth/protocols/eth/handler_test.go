@@ -592,10 +592,6 @@ func TestHandleNewBlock(t *testing.T) {
 	protos := []p2p.Protocol{
 		{
 			Name:    "eth",
-			Version: ETH67,
-		},
-		{
-			Name:    "eth",
 			Version: ETH68,
 		},
 		{
@@ -604,10 +600,6 @@ func TestHandleNewBlock(t *testing.T) {
 		},
 	}
 	caps := []p2p.Cap{
-		{
-			Name:    "eth",
-			Version: ETH67,
-		},
 		{
 			Name:    "eth",
 			Version: ETH68,
