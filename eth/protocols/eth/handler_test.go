@@ -551,17 +551,15 @@ func TestHandleNewBlock(t *testing.T) {
 		ReceiptHash: types.EmptyReceiptsHash,
 	})
 	dataNil := NewBlockPacket{
-		Block:    block,
-		TD:       big.NewInt(1),
-		Sidecars: nil,
+		Block: block,
+		TD:    big.NewInt(1),
 	}
+	sizeNil, rNil, _ := rlp.EncodeToReader(dataNil)
 	dataNonNil := NewBlockPacket{
-		Block:    block,
-		TD:       big.NewInt(1),
-		Sidecars: sidecars,
+		Block: block.WithBlobs(sidecars),
+		TD:    big.NewInt(1),
 	}
 	sizeNonNil, rNonNil, _ := rlp.EncodeToReader(dataNonNil)
-	sizeNil, rNil, _ := rlp.EncodeToReader(dataNil)
 
 	// Define the test cases
 	testCases := []struct {
@@ -592,10 +590,6 @@ func TestHandleNewBlock(t *testing.T) {
 	protos := []p2p.Protocol{
 		{
 			Name:    "eth",
-			Version: ETH67,
-		},
-		{
-			Name:    "eth",
 			Version: ETH68,
 		},
 		{
@@ -604,10 +598,6 @@ func TestHandleNewBlock(t *testing.T) {
 		},
 	}
 	caps := []p2p.Cap{
-		{
-			Name:    "eth",
-			Version: ETH67,
-		},
 		{
 			Name:    "eth",
 			Version: ETH68,

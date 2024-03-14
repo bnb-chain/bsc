@@ -215,9 +215,8 @@ type BlockHeadersRLPPacket struct {
 
 // NewBlockPacket is the network packet for the block propagation message.
 type NewBlockPacket struct {
-	Block    *types.Block
-	TD       *big.Int
-	Sidecars []*types.BlobTxSidecar `rlp:"optional"`
+	Block *types.Block
+	TD    *big.Int
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
@@ -231,15 +230,13 @@ func (request *NewBlockPacket) sanityCheck() error {
 		return fmt.Errorf("too large block TD: bitlen %d", tdlen)
 	}
 
-	if len(request.Sidecars) > 0 {
-		// todo 4844 do full sanity check for blob
-		for _, sidecar := range request.Sidecars {
-			lProofs := len(sidecar.Proofs)
-			lBlobs := len(sidecar.Blobs)
-			lCommitments := len(sidecar.Commitments)
-			if lProofs != lBlobs || lProofs != lCommitments || lCommitments != lBlobs {
-				return fmt.Errorf("mismatch of lengths of sidecar proofs %d, blobs %d, commitments %d", lProofs, lBlobs, lCommitments)
-			}
+	// todo 4844 do full sanity check for blob
+	for _, sidecar := range request.Block.Blobs() {
+		lProofs := len(sidecar.Proofs)
+		lBlobs := len(sidecar.Blobs)
+		lCommitments := len(sidecar.Commitments)
+		if lProofs != lBlobs || lProofs != lCommitments || lCommitments != lBlobs {
+			return fmt.Errorf("mismatch of lengths of sidecar proofs %d, blobs %d, commitments %d", lProofs, lBlobs, lCommitments)
 		}
 	}
 
