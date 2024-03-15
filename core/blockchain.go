@@ -2008,7 +2008,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			go throwaway.TriePrefetchInAdvance(block, signer)
 		}
 
-		//Process block using the parent state as reference point
+		// Process block using the parent state as reference point
 		if bc.pipeCommit {
 			statedb.EnablePipeCommit()
 		}

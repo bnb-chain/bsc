@@ -31,7 +31,7 @@ truffle-test:
 	docker build . -f ./docker/Dockerfile.truffle -t truffle-test
 	docker-compose -f ./tests/truffle/docker-compose.yml up genesis
 	docker-compose -f ./tests/truffle/docker-compose.yml up -d bsc-rpc bsc-validator1
-	sleep 30
+	sleep 200
 	docker-compose -f ./tests/truffle/docker-compose.yml up --exit-code-from truffle-test truffle-test
 	docker-compose -f ./tests/truffle/docker-compose.yml down
 
