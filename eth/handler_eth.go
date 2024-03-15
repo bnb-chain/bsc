@@ -126,7 +126,7 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	td := packet.TD
 	sidecars := packet.Sidecars
 	if sidecars != nil {
-		block = block.WithBlobs(sidecars)
+		block = block.WithSidecars(sidecars)
 	}
 
 	// Schedule the block for import

@@ -127,7 +127,7 @@ func TestIsDataAvailable(t *testing.T) {
 
 	for i, item := range tests {
 		if item.withSidecar {
-			item.block = item.block.WithBlobs(collectBlobsFromTxs(item.block.Transactions()))
+			item.block = item.block.WithSidecars(collectBlobsFromTxs(item.block.Transactions()))
 		}
 		hr.setChasingHead(item.chasingHead)
 		err := IsDataAvailable(hr, item.block)
@@ -234,7 +234,7 @@ func TestCheckDataAvailableInBatch(t *testing.T) {
 
 	for i, item := range tests {
 		for j, block := range item.chain {
-			item.chain[j] = block.WithBlobs(collectBlobsFromTxs(block.Transactions()))
+			item.chain[j] = block.WithSidecars(collectBlobsFromTxs(block.Transactions()))
 		}
 		index, err := CheckDataAvailableInBatch(hr, item.chain)
 		if item.err {

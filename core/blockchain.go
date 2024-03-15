@@ -279,7 +279,7 @@ type BlockChain struct {
 	receiptsCache *lru.Cache[common.Hash, []*types.Receipt]
 	blockCache    *lru.Cache[common.Hash, *types.Block]
 	txLookupCache *lru.Cache[common.Hash, txLookup]
-	blobsCache    *lru.Cache[common.Hash, types.BlobTxSidecars]
+	sidecarsCache *lru.Cache[common.Hash, types.BlobTxSidecars]
 
 	// future blocks are blocks added for later processing
 	futureBlocks *lru.Cache[common.Hash, *types.Block]
@@ -362,7 +362,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		bodyCache:          lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
 		bodyRLPCache:       lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
-		blobsCache:         lru.NewCache[common.Hash, types.BlobTxSidecars](blobsCacheLimit),
+		sidecarsCache:      lru.NewCache[common.Hash, types.BlobTxSidecars](blobsCacheLimit),
 		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
@@ -652,7 +652,7 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
 	bc.blockCache.Add(hash, block)
 	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-		bc.blobsCache.Add(hash, block.Blobs())
+		bc.sidecarsCache.Add(hash, block.Sidecars())
 	}
 }
 
@@ -998,7 +998,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	bc.bodyCache.Purge()
 	bc.bodyRLPCache.Purge()
 	bc.receiptsCache.Purge()
-	bc.blobsCache.Purge()
+	bc.sidecarsCache.Purge()
 	bc.blockCache.Purge()
 	bc.txLookupCache.Purge()
 	bc.futureBlocks.Purge()
@@ -1491,7 +1491,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
 			rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
 			if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-				rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), block.Blobs())
+				rawdb.WriteBlobSidecars(batch, block.Hash(), block.NumberU64(), block.Sidecars())
 			}
 
 			// Write everything belongs to the blocks into the database. So that
@@ -1562,9 +1562,9 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	batch := bc.db.NewBatch()
 	rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), td)
 	rawdb.WriteBlock(batch, block)
-	// if cancun is enabled, here need to write blobs too
+	// if cancun is enabled, here need to write sidecars too
 	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-		rawdb.WriteBlobs(batch, block.Hash(), block.NumberU64(), block.Blobs())
+		rawdb.WriteBlobSidecars(batch, block.Hash(), block.NumberU64(), block.Sidecars())
 	}
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
@@ -1608,9 +1608,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
-		// if cancun is enabled, here need to write blobs too
+		// if cancun is enabled, here need to write sidecars too
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-			rawdb.WriteBlobs(blockBatch, block.Hash(), block.NumberU64(), block.Blobs())
+			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
 		rawdb.WritePreimages(blockBatch, state.Preimages())
 		if err := blockBatch.Write(); err != nil {
@@ -2342,7 +2342,7 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 			log.Crit("Importing heavy sidechain block is nil", "hash", hashes[i], "number", numbers[i])
 		}
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-			block = block.WithBlobs(bc.GetBlobsByHash(hashes[i]))
+			block = block.WithSidecars(bc.GetSidecarsByHash(hashes[i]))
 		}
 		blocks = append(blocks, block)
 		memory += block.Size()
@@ -2416,7 +2416,7 @@ func (bc *BlockChain) recoverAncestors(block *types.Block) (common.Hash, error) 
 			b = bc.GetBlock(hashes[i], numbers[i])
 		}
 		if bc.chainConfig.IsCancun(b.Number(), b.Time()) {
-			b = b.WithBlobs(bc.GetBlobsByHash(b.Hash()))
+			b = b.WithSidecars(bc.GetSidecarsByHash(b.Hash()))
 		}
 		if _, err := bc.insertChain(types.Blocks{b}, false); err != nil {
 			return b.ParentHash(), err
@@ -2864,7 +2864,7 @@ func (bc *BlockChain) isCachedBadBlock(block *types.Block) bool {
 }
 
 // reportBlock logs a bad block error.
-// bad block need not save receipts & blobs.
+// bad block need not save receipts & sidecars.
 func (bc *BlockChain) reportBlock(block *types.Block, receipts types.Receipts, err error) {
 	rawdb.WriteBadBlock(bc.db, block)
 	log.Error(summarizeBadBlock(block, receipts, bc.Config(), err))

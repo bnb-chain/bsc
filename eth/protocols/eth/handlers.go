@@ -228,14 +228,14 @@ func ServiceGetBlockBodiesQuery(chain *core.BlockChain, query GetBlockBodiesRequ
 		if body == nil {
 			continue
 		}
-		blobs := chain.GetBlobsByHash(hash)
-		bodyWithBlobs := &BlockBody{
+		sidecars := chain.GetSidecarsByHash(hash)
+		bodyWithSidecars := &BlockBody{
 			Transactions: body.Transactions,
 			Uncles:       body.Uncles,
 			Withdrawals:  body.Withdrawals,
-			Sidecars:     blobs,
+			Sidecars:     sidecars,
 		}
-		enc, err := rlp.EncodeToBytes(bodyWithBlobs)
+		enc, err := rlp.EncodeToBytes(bodyWithSidecars)
 		if err != nil {
 			log.Error("block body encode err", "hash", hash, "err", err)
 			continue

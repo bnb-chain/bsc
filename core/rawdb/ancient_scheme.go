@@ -35,19 +35,19 @@ const (
 	// ChainFreezerDifficultyTable indicates the name of the freezer total difficulty table.
 	ChainFreezerDifficultyTable = "diffs"
 
-	// ChainFreezerBlobTable indicates the name of the freezer total blob table.
-	ChainFreezerBlobTable = "blobs"
+	// ChainFreezerBlobSidecarTable indicates the name of the freezer total blob table.
+	ChainFreezerBlobSidecarTable = "blobs"
 )
 
 // chainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
 // Hashes and difficulties don't compress well.
 var chainFreezerNoSnappy = map[string]bool{
-	ChainFreezerHeaderTable:     false,
-	ChainFreezerHashTable:       true,
-	ChainFreezerBodiesTable:     false,
-	ChainFreezerReceiptTable:    false,
-	ChainFreezerDifficultyTable: true,
-	ChainFreezerBlobTable:       false,
+	ChainFreezerHeaderTable:      false,
+	ChainFreezerHashTable:        true,
+	ChainFreezerBodiesTable:      false,
+	ChainFreezerReceiptTable:     false,
+	ChainFreezerDifficultyTable:  true,
+	ChainFreezerBlobSidecarTable: false,
 }
 
 const (
