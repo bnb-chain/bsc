@@ -226,12 +226,12 @@ var (
 		HertzfixBlock:       big.NewInt(8),
 		ShanghaiTime:        newUint64(0),
 		KeplerTime:          newUint64(0),
-		FeynmanTime:         newUint64(0),
-		FeynmanFixTime:      newUint64(0),
+		FeynmanTime:         _rialto_upgrade_height_,
+		FeynmanFixTime:      _rialto_upgrade_height_,
 
 		Parlia: &ParliaConfig{
-			Period: 3,
-			Epoch:  200,
+			Period: _rialto_parlia_period_,
+			Epoch:  _rialto_parlia_epoch_,
 		},
 	}
 
