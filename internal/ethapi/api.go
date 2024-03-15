@@ -1015,21 +1015,21 @@ func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.B
 	if block == nil || err != nil {
 		// When the block doesn't exist, the RPC method should return JSON null
 		// as per specification.
-		return nil, err
+		return nil, nil
 	}
 	blobSidecars, err := s.b.GetBlobSidecars(ctx, block.Hash())
-	if err != nil {
-		return nil, err
+	if err != nil || len(blobSidecars) == 0 {
+		return nil, nil
 	}
 	result := make([]map[string]interface{}, len(blobSidecars))
-	blobIndex := 0
+	blobIndex := -1
 	for txIndex, tx := range block.Transactions() {
 		if tx.Type() == types.BlobTxType {
-			result[blobIndex] = marshalBlobSidecar(blobSidecars[blobIndex], block.Hash(), block.NumberU64(), tx, txIndex)
 			blobIndex++
-		}
-		if blobIndex >= len(blobSidecars) {
-			break
+			if blobIndex >= len(blobSidecars) {
+				return nil, fmt.Errorf("blobSidecars length mismatch %d", len(blobSidecars))
+			}
+			result[blobIndex] = marshalBlobSidecar(blobSidecars[blobIndex], block.Hash(), block.NumberU64(), tx, txIndex)
 		}
 	}
 	return result, nil
@@ -1044,19 +1044,20 @@ func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.
 	if block == nil || err != nil {
 		// When the block doesn't exist, the RPC method should return JSON null
 		// as per specification.
-		return nil, err
+		return nil, nil
 	}
 	blobSidecars, err := s.b.GetBlobSidecars(ctx, blockHash)
 	if err != nil || len(blobSidecars) == 0 {
-		return nil, err
+		return nil, nil
 	}
 	blobIndex := -1
 	for txIndex, tx := range block.Transactions() {
 		if tx.Type() == types.BlobTxType {
-			blobIndex++
-		}
-		if txIndex == int(Index) {
-			break
+			if txIndex <= int(Index) {
+				blobIndex++
+			} else {
+				return nil, fmt.Errorf("blobSidecars length mismatch %d", len(blobSidecars))
+			}
 		}
 	}
 	result := marshalBlobSidecar(blobSidecars[blobIndex], blockHash, blockNumber, block.Transaction(hash), int(Index))
