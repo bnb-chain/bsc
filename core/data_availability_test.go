@@ -28,7 +28,7 @@ func TestIsDataAvailable(t *testing.T) {
 	}{
 		{
 			block: types.NewBlockWithHeader(&types.Header{
-				Number: big.NewInt(1),
+				Number: big.NewInt(0),
 			}).WithBody(types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -43,7 +43,7 @@ func TestIsDataAvailable(t *testing.T) {
 		},
 		{
 			block: types.NewBlockWithHeader(&types.Header{
-				Number: big.NewInt(1),
+				Number: big.NewInt(0),
 			}).WithBody(types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), nil),
@@ -54,7 +54,7 @@ func TestIsDataAvailable(t *testing.T) {
 		},
 		{
 			block: types.NewBlockWithHeader(&types.Header{
-				Number: big.NewInt(1),
+				Number: big.NewInt(0),
 			}).WithBody(types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -69,7 +69,22 @@ func TestIsDataAvailable(t *testing.T) {
 		},
 		{
 			block: types.NewBlockWithHeader(&types.Header{
-				Number: big.NewInt(1),
+				Number: big.NewInt(0),
+			}).WithBody(types.Transactions{
+				createMockDATx(hr.Config(), nil),
+				createMockDATx(hr.Config(), &types.BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob, emptyBlob, emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit, emptyBlobCommit, emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				}),
+			}, nil),
+			chasingHead: params.FullImmutabilityThreshold + 1,
+			withSidecar: false,
+			err:         false,
+		},
+		{
+			block: types.NewBlockWithHeader(&types.Header{
+				Number: big.NewInt(0),
 			}).WithBody(types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -87,10 +102,9 @@ func TestIsDataAvailable(t *testing.T) {
 			withSidecar: true,
 			err:         false,
 		},
-
 		{
 			block: types.NewBlockWithHeader(&types.Header{
-				Number: big.NewInt(1),
+				Number: big.NewInt(0),
 			}).WithBody(types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -104,7 +118,7 @@ func TestIsDataAvailable(t *testing.T) {
 					Proofs:      []kzg4844.Proof{emptyBlobProof, emptyBlobProof, emptyBlobProof, emptyBlobProof},
 				}),
 			}, nil),
-			chasingHead: params.MinBlocksForBlobRequests + 1,
+			chasingHead: params.MinBlocksForBlobRequests,
 			withSidecar: true,
 			err:         true,
 		},

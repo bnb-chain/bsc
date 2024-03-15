@@ -64,6 +64,13 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		return nil
 	}
 
+	sidecars := block.Sidecars()
+	// there has a very special case that nodes only keep 90000 recent blocks/blobs when it enables --pruneancient flag.
+	// so we just skip these blocks' DA checking.
+	if len(sidecars) == 0 && block.NumberU64()+params.FullImmutabilityThreshold < highest.Number.Uint64() {
+		return nil
+	}
+
 	// alloc block's versionedHashes
 	versionedHashes := make([][]common.Hash, 0, len(block.Transactions()))
 	for _, tx := range block.Transactions() {
@@ -73,7 +80,6 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		}
 		versionedHashes = append(versionedHashes, hashes)
 	}
-	sidecars := block.Sidecars()
 	if len(versionedHashes) != len(sidecars) {
 		return fmt.Errorf("blob info mismatch: sidecars %d, versionedHashes:%d", len(sidecars), len(versionedHashes))
 	}
