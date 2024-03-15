@@ -1056,11 +1056,11 @@ func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.
 			if txIndex <= int(Index) {
 				blobIndex++
 			} else {
-				return nil, fmt.Errorf("blobSidecars length mismatch %d", len(blobSidecars))
+				break
 			}
 		}
 	}
-	result := marshalBlobSidecar(blobSidecars[blobIndex], blockHash, blockNumber, block.Transaction(hash), int(Index))
+	result := marshalBlobSidecar(blobSidecars[blobIndex], blockHash, blockNumber, tx, int(Index))
 	return result, nil
 }
 
