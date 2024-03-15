@@ -58,6 +58,11 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+var emptyBlob = kzg4844.Blob{}
+var emptyBlobCommit, _ = kzg4844.BlobToCommitment(emptyBlob)
+var emptyBlobProof, _ = kzg4844.ComputeBlobProof(emptyBlob, emptyBlobCommit)
+var emptyBlobHash common.Hash = kzg4844.CalcBlobHashV1(sha256.New(), &emptyBlobCommit)
+
 func testTransactionMarshal(t *testing.T, tests []txData, config *params.ChainConfig) {
 	t.Parallel()
 	var (
@@ -1130,10 +1135,6 @@ func TestFillBlobTransaction(t *testing.T) {
 			Config: params.MergedTestChainConfig,
 			Alloc:  types.GenesisAlloc{},
 		}
-		emptyBlob                      = kzg4844.Blob{}
-		emptyBlobCommit, _             = kzg4844.BlobToCommitment(emptyBlob)
-		emptyBlobProof, _              = kzg4844.ComputeBlobProof(emptyBlob, emptyBlobCommit)
-		emptyBlobHash      common.Hash = kzg4844.CalcBlobHashV1(sha256.New(), &emptyBlobCommit)
 	)
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
@@ -1895,7 +1896,7 @@ func setupReceiptBackend(t *testing.T, genBlocks int) (*testBackend, []common.Ha
 				Gas:        params.TxGas,
 				To:         acc2Addr,
 				BlobFeeCap: uint256.NewInt(1),
-				BlobHashes: []common.Hash{{1}},
+				BlobHashes: []common.Hash{emptyBlobHash},
 				Value:      new(uint256.Int),
 			}), signer, acc1Key)
 		}
