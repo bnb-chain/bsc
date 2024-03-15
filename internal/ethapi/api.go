@@ -1036,8 +1036,8 @@ func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.B
 }
 
 func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.Hash) (map[string]interface{}, error) {
-	tx, blockHash, blockNumber, Index := rawdb.ReadTransaction(s.b.ChainDb(), hash)
-	if tx == nil {
+	txTarget, blockHash, blockNumber, Index := rawdb.ReadTransaction(s.b.ChainDb(), hash)
+	if txTarget == nil {
 		return nil, nil
 	}
 	block, err := s.b.BlockByHash(ctx, blockHash)
@@ -1051,16 +1051,16 @@ func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.
 		return nil, nil
 	}
 	blobIndex := -1
+	var result map[string]interface{}
 	for txIndex, tx := range block.Transactions() {
 		if tx.Type() == types.BlobTxType {
-			if txIndex <= int(Index) {
-				blobIndex++
-			} else {
-				break
+			blobIndex++
+			if txIndex == int(Index) {
+				result = marshalBlobSidecar(blobSidecars[blobIndex], blockHash, blockNumber, txTarget, int(Index))
+				return result, nil
 			}
 		}
 	}
-	result := marshalBlobSidecar(blobSidecars[blobIndex], blockHash, blockNumber, tx, int(Index))
 	return result, nil
 }
 
