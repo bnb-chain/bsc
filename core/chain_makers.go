@@ -54,7 +54,7 @@ type BlockGen struct {
 	engine consensus.Engine
 
 	// extra data of block
-	blobs types.BlobTxSidecars
+	sidecars types.BlobTxSidecars
 }
 
 // SetCoinbase sets the coinbase of the generated block.
@@ -176,7 +176,7 @@ func (b *BlockGen) AddUncheckedTx(tx *types.Transaction) {
 
 // AddBlobSidecar add block's blob sidecar for DA checking.
 func (b *BlockGen) AddBlobSidecar(sidecar *types.BlobTxSidecar) {
-	b.blobs = append(b.blobs, sidecar)
+	b.sidecars = append(b.sidecars, sidecar)
 }
 
 // Number returns the block number of the block being generated.
@@ -373,7 +373,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 				panic(err)
 			}
 			if config.Parlia != nil && config.IsCancun(block.Number(), block.Time()) {
-				block = block.WithBlobs(b.blobs)
+				block = block.WithSidecars(b.sidecars)
 			}
 
 			// Write state changes to db

@@ -56,11 +56,11 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		highest = current
 	}
 	defer func() {
-		log.Info("IsDataAvailable", "block", block.Number(), "hash", block.Hash(), "highest", highest.Number, "blobs", len(block.Blobs()), "err", err)
+		log.Info("IsDataAvailable", "block", block.Number(), "hash", block.Hash(), "highest", highest.Number, "sidecars", len(block.Sidecars()), "err", err)
 	}()
 	if block.NumberU64()+params.MinBlocksForBlobRequests < highest.Number.Uint64() {
 		// if we needn't check DA of this block, just clean it
-		block.CleanBlobs()
+		block.CleanSidecars()
 		return nil
 	}
 
@@ -73,9 +73,9 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		}
 		versionedHashes = append(versionedHashes, hashes)
 	}
-	blobs := block.Blobs()
-	if len(versionedHashes) != len(blobs) {
-		return fmt.Errorf("blob info mismatch: blobs %d, versionedHashes:%d", len(blobs), len(versionedHashes))
+	sidecars := block.Sidecars()
+	if len(versionedHashes) != len(sidecars) {
+		return fmt.Errorf("blob info mismatch: sidecars %d, versionedHashes:%d", len(sidecars), len(versionedHashes))
 	}
 
 	// check blob amount
@@ -89,7 +89,7 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 
 	// check blob and versioned hash
 	for i := range versionedHashes {
-		if err := validateBlobSidecar(versionedHashes[i], blobs[i]); err != nil {
+		if err := validateBlobSidecar(versionedHashes[i], sidecars[i]); err != nil {
 			return err
 		}
 	}

@@ -1364,7 +1364,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		// https://github.com/ethereum/go-ethereum/issues/24299
 		env := env.copy()
 
-		block = block.WithBlobs(env.sidecars)
+		block = block.WithSidecars(env.sidecars)
 
 		// If we're post merge, just ignore
 		if !w.isTTDReached(block.Header()) {

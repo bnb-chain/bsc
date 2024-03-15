@@ -723,7 +723,7 @@ func (f *BlockFetcher) loop() {
 						matched = true
 						if f.getBlock(hash) == nil {
 							block := types.NewBlockWithHeader(announce.header).WithBody(task.transactions[i], task.uncles[i])
-							block = block.WithBlobs(task.sidecars[i])
+							block = block.WithSidecars(task.sidecars[i])
 							block.ReceivedAt = task.time
 							blocks = append(blocks, block)
 						} else {
