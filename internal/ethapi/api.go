@@ -1015,7 +1015,7 @@ func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.B
 	if block == nil || err != nil {
 		// When the block doesn't exist, the RPC method should return JSON null
 		// as per specification.
-		return nil, nil
+		return nil, err
 	}
 	blobSidecars, err := s.b.GetBlobSidecars(ctx, block.Hash())
 	if err != nil {
@@ -1029,7 +1029,7 @@ func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.B
 			blobIndex++
 		}
 		if blobIndex >= len(blobSidecars) {
-			return nil, nil
+			break
 		}
 	}
 	return result, nil
@@ -1044,19 +1044,19 @@ func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.
 	if block == nil || err != nil {
 		// When the block doesn't exist, the RPC method should return JSON null
 		// as per specification.
-		return nil, nil
-	}
-	blobSidecars, err := s.b.GetBlobSidecars(ctx, blockHash)
-	if err != nil {
 		return nil, err
 	}
-	blobIndex := 0
+	blobSidecars, err := s.b.GetBlobSidecars(ctx, blockHash)
+	if err != nil || len(blobSidecars) == 0 {
+		return nil, err
+	}
+	blobIndex := -1
 	for txIndex, tx := range block.Transactions() {
-		if txIndex > int(Index) {
-			break
-		}
 		if tx.Type() == types.BlobTxType {
 			blobIndex++
+		}
+		if txIndex == int(Index) {
+			break
 		}
 	}
 	result := marshalBlobSidecar(blobSidecars[blobIndex], blockHash, blockNumber, block.Transaction(hash), int(Index))
@@ -2160,11 +2160,11 @@ func marshalReceipt(receipt *types.Receipt, blockHash common.Hash, blockNumber u
 
 func marshalBlobSidecar(blobSidecar *types.BlobTxSidecar, blockHash common.Hash, blockNumber uint64, tx *types.Transaction, txIndex int) map[string]interface{} {
 	fields := map[string]interface{}{
-		"blockHash":        blockHash,
-		"blockNumber":      hexutil.Uint64(blockNumber),
-		"transactionHash":  tx.Hash(),
-		"transactionIndex": hexutil.Uint64(txIndex),
-		"blobSidecar":      blobSidecar,
+		"blockHash":   blockHash,
+		"blockNumber": hexutil.Uint64(blockNumber),
+		"txHash":      tx.Hash(),
+		"txIndex":     hexutil.Uint64(txIndex),
+		"blobSidecar": blobSidecar,
 	}
 	return fields
 }
