@@ -247,21 +247,21 @@ func (bc *BlockChain) GetReceiptsByHash(hash common.Hash) types.Receipts {
 	return receipts
 }
 
-// GetBlobsByHash retrieves the blobs for all transactions in a given block.
-func (bc *BlockChain) GetBlobsByHash(hash common.Hash) types.BlobTxSidecars {
-	if blobs, ok := bc.blobsCache.Get(hash); ok {
-		return blobs
+// GetSidecarsByHash retrieves the sidecars for all transactions in a given block.
+func (bc *BlockChain) GetSidecarsByHash(hash common.Hash) types.BlobTxSidecars {
+	if sidecars, ok := bc.sidecarsCache.Get(hash); ok {
+		return sidecars
 	}
 	number := rawdb.ReadHeaderNumber(bc.db, hash)
 	if number == nil {
 		return nil
 	}
-	blobs := rawdb.ReadRawBlobs(bc.db, hash, *number)
-	if blobs == nil {
+	sidecars := rawdb.ReadRawBlobSidecars(bc.db, hash, *number)
+	if sidecars == nil {
 		return nil
 	}
-	bc.blobsCache.Add(hash, blobs)
-	return blobs
+	bc.sidecarsCache.Add(hash, sidecars)
+	return sidecars
 }
 
 // GetUnclesInChain retrieves all the uncles from a given block backwards until

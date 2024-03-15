@@ -149,7 +149,7 @@ var (
 	CliqueSnapshotPrefix = []byte("clique-")
 	ParliaSnapshotPrefix = []byte("parlia-")
 
-	BlockBlobsPrefix = []byte("blobs")
+	BlockBlobSidecarsPrefix = []byte("blobs")
 
 	preimageCounter    = metrics.NewRegisteredCounter("db/preimage/total", nil)
 	preimageHitCounter = metrics.NewRegisteredCounter("db/preimage/hits", nil)
@@ -205,9 +205,9 @@ func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 	return append(append(blockReceiptsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
 }
 
-// blockBlobsKey = BlockBlobsPrefix + blockNumber (uint64 big endian) + blockHash
-func blockBlobsKey(number uint64, hash common.Hash) []byte {
-	return append(append(BlockBlobsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
+// blockBlobSidecarsKey = BlockBlobSidecarsPrefix + blockNumber (uint64 big endian) + blockHash
+func blockBlobSidecarsKey(number uint64, hash common.Hash) []byte {
+	return append(append(BlockBlobSidecarsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
 }
 
 // diffLayerKey = diffLayerKeyPrefix + hash
