@@ -454,12 +454,12 @@ func (b *Block) SanityCheck() error {
 	return b.header.SanityCheck()
 }
 
-func (b *Block) Blobs() BlobTxSidecars {
+func (b *Block) Sidecars() BlobTxSidecars {
 	return b.sidecars
 }
 
-func (b *Block) CleanBlobs() {
-	b.blobs = nil
+func (b *Block) CleanSidecars() {
+	b.sidecars = nil
 }
 
 type writeCounter uint64
@@ -523,8 +523,8 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 	return block
 }
 
-// WithBlobs returns a block containing the given blobs.
-func (b *Block) WithBlobs(sidecars BlobTxSidecars) *Block {
+// WithSidecars returns a block containing the given blobs.
+func (b *Block) WithSidecars(sidecars BlobTxSidecars) *Block {
 	block := &Block{
 		header:       b.header,
 		transactions: b.transactions,

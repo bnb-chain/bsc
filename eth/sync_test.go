@@ -185,11 +185,11 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 func checkChainWithBlobs(t *testing.T, chain *core.BlockChain, preCancunBlks, postCancunBlks uint64) {
 	block := chain.GetBlockByNumber(preCancunBlks)
 	require.NotNil(t, block, preCancunBlks)
-	require.Nil(t, chain.GetBlobsByHash(block.Hash()), preCancunBlks)
+	require.Nil(t, chain.GetSidecarsByHash(block.Hash()), preCancunBlks)
 	block = chain.GetBlockByNumber(preCancunBlks + 1)
 	require.NotNil(t, block, preCancunBlks+1)
-	require.NotNil(t, chain.GetBlobsByHash(block.Hash()), preCancunBlks+1)
+	require.NotNil(t, chain.GetSidecarsByHash(block.Hash()), preCancunBlks+1)
 	block = chain.GetBlockByNumber(preCancunBlks + postCancunBlks)
 	require.NotNil(t, block, preCancunBlks+postCancunBlks)
-	require.NotNil(t, chain.GetBlobsByHash(block.Hash()), preCancunBlks+postCancunBlks)
+	require.NotNil(t, chain.GetSidecarsByHash(block.Hash()), preCancunBlks+postCancunBlks)
 }

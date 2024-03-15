@@ -419,11 +419,11 @@ func TestBlockReceiptStorage(t *testing.T) {
 	}
 }
 
-func TestBlockBlobsStorage(t *testing.T) {
+func TestBlockBlobSidecarsStorage(t *testing.T) {
 	db := NewMemoryDatabase()
 
 	// Create a live block since we need metadata to reconstruct the receipt
-	genBlobs := makeBlkBlobs(1, 2)
+	genBlobs := makeBlkSidecars(1, 2)
 	tx1 := types.NewTx(&types.BlobTx{
 		ChainID:    new(uint256.Int).SetUint64(1),
 		GasTipCap:  new(uint256.Int),
@@ -452,26 +452,26 @@ func TestBlockBlobsStorage(t *testing.T) {
 
 	blkHash := common.BytesToHash([]byte{0x03, 0x14})
 	body := &types.Body{Transactions: types.Transactions{tx1, tx2}}
-	blobs := types.BlobTxSidecars{tx1.BlobTxSidecar()}
+	sidecars := types.BlobTxSidecars{tx1.BlobTxSidecar()}
 
-	// Check that no blobs entries are in a pristine database
-	if bs := ReadRawBlobs(db, blkHash, 0); len(bs) != 0 {
-		t.Fatalf("non existent blobs returned: %v", bs)
+	// Check that no sidecars entries are in a pristine database
+	if bs := ReadRawBlobSidecars(db, blkHash, 0); len(bs) != 0 {
+		t.Fatalf("non existent sidecars returned: %v", bs)
 	}
 	WriteBody(db, blkHash, 0, body)
-	WriteBlobs(db, blkHash, 0, blobs)
+	WriteBlobSidecars(db, blkHash, 0, sidecars)
 
-	if bs := ReadRawBlobs(db, blkHash, 0); len(bs) == 0 {
-		t.Fatalf("no blobs returned")
+	if bs := ReadRawBlobSidecars(db, blkHash, 0); len(bs) == 0 {
+		t.Fatalf("no sidecars returned")
 	} else {
-		if err := checkBlobsRLP(bs, blobs); err != nil {
+		if err := checkBlobSidecarsRLP(bs, sidecars); err != nil {
 			t.Fatalf(err.Error())
 		}
 	}
 
-	DeleteBlobs(db, blkHash, 0)
-	if bs := ReadRawBlobs(db, blkHash, 0); len(bs) != 0 {
-		t.Fatalf("deleted blobs returned: %v", bs)
+	DeleteBlobSidecars(db, blkHash, 0)
+	if bs := ReadRawBlobSidecars(db, blkHash, 0); len(bs) != 0 {
+		t.Fatalf("deleted sidecars returned: %v", bs)
 	}
 }
 
@@ -495,7 +495,7 @@ func checkReceiptsRLP(have, want types.Receipts) error {
 	return nil
 }
 
-func checkBlobsRLP(have, want types.BlobTxSidecars) error {
+func checkBlobSidecarsRLP(have, want types.BlobTxSidecars) error {
 	if len(have) != len(want) {
 		return fmt.Errorf("blobs sizes mismatch: have %d, want %d", len(have), len(want))
 	}
@@ -670,7 +670,7 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 	const blockTxs = 20
 	allBlocks := makeTestBlocks(b.N, blockTxs)
 	batchReceipts := makeTestReceipts(batchSize, blockTxs)
-	batchBlobs := makeTestBlobs(batchSize, blockTxs)
+	batchSidecars := makeTestSidecars(batchSize, blockTxs)
 	b.ResetTimer()
 
 	// The benchmark loop writes batches of blocks, but note that the total block count is
@@ -686,8 +686,8 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 
 		blocks := allBlocks[i : i+length]
 		receipts := batchReceipts[:length]
-		blobs := batchBlobs[:length]
-		writeSize, err := WriteAncientBlocksWithBlobs(db, blocks, receipts, td, blobs)
+		sidecars := batchSidecars[:length]
+		writeSize, err := WriteAncientBlocksWithSidecars(db, blocks, receipts, td, sidecars)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -749,7 +749,7 @@ func makeTestReceipts(n int, nPerBlock int) []types.Receipts {
 	return allReceipts
 }
 
-func makeBlkBlobs(n, nPerTx int) types.BlobTxSidecars {
+func makeBlkSidecars(n, nPerTx int) types.BlobTxSidecars {
 	if n <= 0 {
 		return nil
 	}
@@ -772,11 +772,11 @@ func makeBlkBlobs(n, nPerTx int) types.BlobTxSidecars {
 	return ret
 }
 
-// makeTestBlobs creates fake blobs for the ancient write benchmark.
-func makeTestBlobs(n int, nPerBlock int) []types.BlobTxSidecars {
+// makeTestSidecars creates fake blobs for the ancient write benchmark.
+func makeTestSidecars(n int, nPerBlock int) []types.BlobTxSidecars {
 	allBlobs := make([]types.BlobTxSidecars, n)
 	for i := 0; i < n; i++ {
-		allBlobs[i] = makeBlkBlobs(nPerBlock, i%3)
+		allBlobs[i] = makeBlkSidecars(nPerBlock, i%3)
 	}
 	return allBlobs
 }
