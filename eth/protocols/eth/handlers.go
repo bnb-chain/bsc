@@ -366,6 +366,7 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 		for i, body := range res.BlockBodiesResponse {
 			txsHashes[i] = types.DeriveSha(types.Transactions(body.Transactions), hasher)
 			uncleHashes[i] = types.CalcUncleHash(body.Uncles)
+			// Withdrawals may be not nil, but a empty value when Sidecars not empty
 			if len(body.Withdrawals) > 0 {
 				withdrawalHashes[i] = types.DeriveSha(types.Withdrawals(body.Withdrawals), hasher)
 			}
