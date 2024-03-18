@@ -1896,7 +1896,7 @@ func setupReceiptBackend(t *testing.T, genBlocks int) (*testBackend, []common.Ha
 				Gas:        params.TxGas,
 				To:         acc2Addr,
 				BlobFeeCap: uint256.NewInt(1),
-				BlobHashes: []common.Hash{emptyBlobHash},
+				BlobHashes: []common.Hash{{1}},
 				Value:      new(uint256.Int),
 			}), signer, acc1Key)
 
