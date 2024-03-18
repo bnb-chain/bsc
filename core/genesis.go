@@ -281,7 +281,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 	// is initialized with an external ancient store. Commit genesis state
 	// in this case.
 	header := rawdb.ReadHeader(db, stored, 0)
-	if header.Root != types.EmptyRootHash && !triedb.Initialized(header.Root) {
+	if header.Root != types.EmptyRootHash && !triedb.Initialized(header.Root) && !triedb.Config().NoTries {
 		if genesis == nil {
 			genesis = DefaultBSCGenesisBlock()
 		}
