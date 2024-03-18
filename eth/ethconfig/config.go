@@ -200,6 +200,9 @@ type Config struct {
 
 	// OverrideFeynman (TODO: remove after the fork)
 	OverrideFeynman *uint64 `toml:",omitempty"`
+
+	// OverrideFeynmanFix (TODO: remove after the fork)
+	OverrideFeynmanFix *uint64 `toml:",omitempty"`
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.
