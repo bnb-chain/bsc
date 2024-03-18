@@ -110,7 +110,7 @@ const (
 	blockCacheLimit     = 256
 	diffLayerCacheLimit = 1024
 	receiptsCacheLimit  = 10000
-	blobsCacheLimit     = 10000
+	sidecarsCacheLimit  = 1024
 	txLookupCacheLimit  = 1024
 	maxBadBlockLimit    = 16
 	maxFutureBlocks     = 256
@@ -362,7 +362,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		bodyCache:          lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
 		bodyRLPCache:       lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
-		sidecarsCache:      lru.NewCache[common.Hash, types.BlobTxSidecars](blobsCacheLimit),
+		sidecarsCache:      lru.NewCache[common.Hash, types.BlobTxSidecars](sidecarsCacheLimit),
 		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
