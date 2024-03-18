@@ -82,6 +82,7 @@ var (
 	storageHashTimer   = metrics.NewRegisteredTimer("chain/storage/hashes", nil)
 	storageUpdateTimer = metrics.NewRegisteredTimer("chain/storage/updates", nil)
 	storageCommitTimer = metrics.NewRegisteredTimer("chain/storage/commits", nil)
+	totalReadTimer     = metrics.NewRegisteredTimer("chain/storage/totalreads", nil)
 
 	snapshotAccountReadTimer = metrics.NewRegisteredTimer("chain/snapshot/account/reads", nil)
 	snapshotStorageReadTimer = metrics.NewRegisteredTimer("chain/snapshot/storage/reads", nil)
@@ -2219,13 +2220,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		storageUpdateTimer.Update(statedb.StorageUpdates)               // Storage updates are complete(in validation)
 		accountHashTimer.Update(statedb.AccountHashes)                  // Account hashes are complete(in validation)
 		storageHashTimer.Update(statedb.StorageHashes)                  // Storage hashes are complete(in validation)
-		triehash := statedb.AccountHashes + statedb.StorageHashes       // The time spent on tries hashing
-		trieUpdate := statedb.AccountUpdates + statedb.StorageUpdates   // The time spent on tries update
 		trieRead := statedb.SnapshotAccountReads + statedb.AccountReads // The time spent on account read
-		trieRead += statedb.SnapshotStorageReads + statedb.StorageReads // The time spent on storage read
-		blockExecutionTimer.Update(ptime - trieRead)                    // The time spent on EVM processing
-		blockValidationTimer.Update(vtime - (triehash + trieUpdate))    // The time spent on block validation
-
+		trieRead += statedb.SnapshotStorageReads + statedb.StorageReads // The time spent on storage read on
+		totalReadTimer.Update(trieRead)
+		blockExecutionTimer.Update(ptime)  // The time spent on EVM processing
+		blockValidationTimer.Update(vtime) // The time spent on block validation
 		// Write the block to the chain and get the status.
 		var (
 			wstart = time.Now()
