@@ -198,6 +198,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.FeynmanTime = config.OverrideFeynman
 		overrides.OverrideFeynman = config.OverrideFeynman
 	}
+	if config.OverrideFeynmanFix != nil {
+		chainConfig.FeynmanFixTime = config.OverrideFeynmanFix
+		overrides.OverrideFeynmanFix = config.OverrideFeynmanFix
+	}
 
 	networkID := config.NetworkId
 	if networkID == 0 {

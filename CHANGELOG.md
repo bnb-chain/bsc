@@ -120,6 +120,10 @@ NA
 [event: fix Resubscribe deadlock when unsubscribing after inner sub ends (#28359)](https://github.com/bnb-chain/bsc/commit/ffc6a0f36edda396a8421cf7a3c0feb88be20d0b)
 [all: replace log15 with slog (#28187)](https://github.com/bnb-chain/bsc/commit/28e73717016cdc9ebdb5fdb3474cfbd3bd2d2524)
 
+## v1.3.11
+BUGFIX
+* [\#2288](https://github.com/bnb-chain/bsc/pull/2288) fix: add FeynmanFix upgrade for a testnet issue
+
 ## v1.3.10
 FEATURE
 * [\#2047](https://github.com/bnb-chain/bsc/pull/2047) feat: add new fork block and precompile contract for BEP294 and BEP299

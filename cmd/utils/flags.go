@@ -324,6 +324,11 @@ var (
 		Usage:    "Manually specify the Feynman fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideFeynmanFix = &cli.Uint64Flag{
+		Name:     "override.feynmanfix",
+		Usage:    "Manually specify the FeynmanFix fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
 		Name:     "syncmode",
 		Usage:    `Blockchain sync mode ("snap" or "full")`,
