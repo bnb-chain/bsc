@@ -569,7 +569,7 @@ func (b testBackend) GetBlobSidecars(ctx context.Context, hash common.Hash) (typ
 	if header == nil || err != nil {
 		return nil, err
 	}
-	blobSidecars := rawdb.ReadRawBlobs(b.db, hash, header.Number.Uint64())
+	blobSidecars := rawdb.ReadRawBlobSidecars(b.db, hash, header.Number.Uint64())
 	return blobSidecars, nil
 }
 func (b testBackend) GetTd(ctx context.Context, hash common.Hash) *big.Int {
