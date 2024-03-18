@@ -19,6 +19,7 @@ package pathdb
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
@@ -105,6 +106,7 @@ func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, dept
 	defer dl.lock.RUnlock()
 
 	// If the trie node is known locally, return it
+	start := time.Now()
 	subset, ok := dl.nodes[owner]
 	if ok {
 		n, ok := subset[string(path)]
@@ -119,6 +121,7 @@ func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, dept
 			dirtyHitMeter.Mark(1)
 			dirtyNodeHitDepthHist.Update(int64(depth))
 			dirtyReadMeter.Mark(int64(len(n.Blob)))
+			diffNodeTimer.UpdateSince(start)
 			return n.Blob, nil
 		}
 	}

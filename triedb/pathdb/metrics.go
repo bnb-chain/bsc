@@ -30,6 +30,11 @@ var (
 	dirtyWriteMeter       = metrics.NewRegisteredMeter("pathdb/dirty/write", nil)
 	dirtyNodeHitDepthHist = metrics.NewRegisteredHistogram("pathdb/dirty/depth", nil, metrics.NewExpDecaySample(1028, 0.015))
 
+	diffNodeTimer       = metrics.NewRegisteredTimer("pathdb/diff/node/timer", nil)
+	diskBufferNodeTimer = metrics.NewRegisteredTimer("pathdb/disk/buffer/node/timer", nil)
+	diskCleanNodeTimer  = metrics.NewRegisteredTimer("pathdb/disk/clean/node/timer", nil)
+	diskDBNodeTimer     = metrics.NewRegisteredTimer("pathdb/disk/db/node/timer", nil)
+
 	cleanFalseMeter = metrics.NewRegisteredMeter("pathdb/clean/false", nil)
 	dirtyFalseMeter = metrics.NewRegisteredMeter("pathdb/dirty/false", nil)
 	diskFalseMeter  = metrics.NewRegisteredMeter("pathdb/disk/false", nil)

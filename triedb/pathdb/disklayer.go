@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -163,6 +164,7 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	// node buffer first. Note the buffer is lock free since
 	// it's impossible to mutate the buffer before tagging the
 	// layer as stale.
+	bufferNodeStart := time.Now()
 	n, err := dl.buffer.node(owner, path, hash)
 	if err != nil {
 		return nil, err
@@ -170,6 +172,7 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	if n != nil {
 		dirtyHitMeter.Mark(1)
 		dirtyReadMeter.Mark(int64(len(n.Blob)))
+		diskBufferNodeTimer.UpdateSince(bufferNodeStart)
 		return n.Blob, nil
 	}
 	dirtyMissMeter.Mark(1)
@@ -177,11 +180,15 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	// Try to retrieve the trie node from the clean memory cache
 	key := cacheKey(owner, path)
 	if dl.cleans != nil {
+		cleanNodeStart := time.Now()
 		if blob := dl.cleans.Get(nil, key); len(blob) > 0 {
 			h := newHasher()
 			defer h.release()
 
 			got := h.hash(blob)
+
+			diskCleanNodeTimer.UpdateSince(cleanNodeStart)
+
 			if got == hash {
 				cleanHitMeter.Mark(1)
 				cleanReadMeter.Mark(int64(len(blob)))
@@ -194,14 +201,16 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	}
 	// Try to retrieve the trie node from the disk.
 	var (
-		nBlob []byte
-		nHash common.Hash
+		nBlob         []byte
+		nHash         common.Hash
+		diskNodeStart = time.Now()
 	)
 	if owner == (common.Hash{}) {
 		nBlob, nHash = rawdb.ReadAccountTrieNode(dl.db.diskdb, path)
 	} else {
 		nBlob, nHash = rawdb.ReadStorageTrieNode(dl.db.diskdb, owner, path)
 	}
+	diskDBNodeTimer.UpdateSince(diskNodeStart)
 	if nHash != hash {
 		diskFalseMeter.Mark(1)
 		log.Error("Unexpected trie node in disk", "owner", owner, "path", path, "expect", hash, "got", nHash)
