@@ -372,7 +372,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			if err != nil {
 				panic(err)
 			}
-			if config.Parlia != nil && config.IsCancun(block.Number(), block.Time()) {
+			if config.IsCancun(block.Number(), block.Time()) {
 				block = block.WithSidecars(b.sidecars)
 			}
 
