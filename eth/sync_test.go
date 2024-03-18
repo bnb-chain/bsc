@@ -110,7 +110,6 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 	t.Parallel()
 	config := *params.ParliaTestChainConfig
 	cancunTime := (preCancunBlks + 1) * 10
-	config.ShanghaiTime = nil
 	config.CancunTime = &cancunTime
 
 	// Create a full handler and ensure snap sync ends up disabled
