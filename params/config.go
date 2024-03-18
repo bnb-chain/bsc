@@ -184,12 +184,10 @@ var (
 		HertzBlock:          big.NewInt(31103030),
 		HertzfixBlock:       big.NewInt(35682300),
 		// UnixTime: 1702972800 is December 19, 2023 8:00:00 AM UTC
-		ShanghaiTime: newUint64(1702972800),
-		KeplerTime:   newUint64(1702972800),
-		FeynmanTime:  newUint64(1710136800),
-
-		// TODO
-		FeynmanFixTime: nil,
+		ShanghaiTime:   newUint64(1702972800),
+		KeplerTime:     newUint64(1702972800),
+		FeynmanTime:    newUint64(1710136800),
+		FeynmanFixTime: newUint64(1711342800),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
