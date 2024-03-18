@@ -279,6 +279,7 @@ func initGenesis(ctx *cli.Context) error {
 				utils.Fatalf("Failed to open separate block database: %v", err)
 			}
 			chaindb.SetBlockStore(blockdb)
+			log.Warn("Multi-database is an experimental feature")
 		}
 
 		triedb := utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
