@@ -535,6 +535,9 @@ func (b *Block) WithSidecars(sidecars BlobTxSidecars) *Block {
 		withdrawals:  b.withdrawals,
 		sidecars:     sidecars,
 	}
+	if b.withdrawals != nil {
+		block.withdrawals = b.withdrawals
+	}
 	return block
 }
 
