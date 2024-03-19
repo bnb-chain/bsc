@@ -1,4 +1,9 @@
 # Changelog
+
+## v1.3.12
+BUGFIX
+* [\#2305](https://github.com/bnb-chain/bsc/pull/2305) fix: fix the wrong version number
+
 ## v1.3.11
 BUGFIX
 * [\#2288](https://github.com/bnb-chain/bsc/pull/2288) fix: add FeynmanFix upgrade for a testnet issue
