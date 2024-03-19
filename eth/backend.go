@@ -178,14 +178,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	// Override the chain config with provided settings.
 	var overrides core.ChainOverrides
-	if config.OverrideShanghai != nil {
-		chainConfig.ShanghaiTime = config.OverrideShanghai
-		overrides.OverrideShanghai = config.OverrideShanghai
-	}
-	if config.OverrideKepler != nil {
-		chainConfig.KeplerTime = config.OverrideKepler
-		overrides.OverrideKepler = config.OverrideKepler
-	}
 	if config.OverrideCancun != nil {
 		chainConfig.CancunTime = config.OverrideCancun
 		overrides.OverrideCancun = config.OverrideCancun
