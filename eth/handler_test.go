@@ -272,11 +272,11 @@ func newTestParliaHandlerAfterCancun(t *testing.T, config *params.ChainConfig, m
 
 	_, bs, _ := core.GenerateChainWithGenesis(gspec, engine, int(preCancunBlks+postCancunBlks), func(i int, gen *core.BlockGen) {
 		if !config.IsCancun(gen.Number(), gen.Timestamp()) {
-			tx, _ := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas(), config).Uint64(), false)
+			tx, _ := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas()).Uint64(), false)
 			gen.AddTxWithChain(chain, tx)
 			return
 		}
-		tx, sidecar := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas(), config).Uint64(), true)
+		tx, sidecar := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas()).Uint64(), true)
 		gen.AddTxWithChain(chain, tx)
 		gen.AddBlobSidecar(sidecar)
 	})

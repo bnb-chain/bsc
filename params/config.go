@@ -270,6 +270,7 @@ var (
 		ShanghaiTime:        newUint64(0),
 		KeplerTime:          newUint64(0),
 		FeynmanTime:         newUint64(0),
+		FeynmanFixTime:      newUint64(0),
 		CancunTime:          newUint64(0),
 		Parlia: &ParliaConfig{
 			Period: 3,

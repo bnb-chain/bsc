@@ -202,8 +202,3 @@ var (
 	// SystemAddress is where the system-transaction is sent from as per EIP-4788
 	SystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 )
-
-var (
-	MinBlobGasPriceInBSC = new(big.Int).SetUint64(3_000_000_000)  // Price for MinBlobGasPrice, now it's 3 Gwei
-	MaxBlobGasPriceInBSC = new(big.Int).SetUint64(50_000_000_000) // Price for MaxBlobGasPrice, now it's 50 Gwei
-)
