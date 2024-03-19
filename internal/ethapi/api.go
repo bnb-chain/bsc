@@ -2527,6 +2527,16 @@ func (s *NetAPI) Version() string {
 	return fmt.Sprintf("%d", s.networkVersion)
 }
 
+// NodeInfo retrieves all the information we know about the host node at the
+// protocol granularity. This is the same as the `admin_nodeInfo` method.
+func (s *NetAPI) NodeInfo() (*p2p.NodeInfo, error) {
+	server := s.net
+	if server == nil {
+		return nil, errors.New("server not found")
+	}
+	return s.net.NodeInfo(), nil
+}
+
 // checkTxFee is an internal function used to check whether the fee of
 // the given transaction is _reasonable_(under the cap).
 func checkTxFee(gasPrice *big.Int, gas uint64, cap float64) error {
