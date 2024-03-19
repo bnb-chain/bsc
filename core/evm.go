@@ -61,11 +61,7 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		baseFee = new(big.Int).Set(header.BaseFee)
 	}
 	if header.ExcessBlobGas != nil {
-		var config *params.ChainConfig
-		if !common.IsNil(chain) {
-			config = chain.Config()
-		}
-		blobBaseFee = eip4844.CalcBlobFee(*header.ExcessBlobGas, config)
+		blobBaseFee = eip4844.CalcBlobFee(*header.ExcessBlobGas)
 	}
 	if header.Difficulty.Cmp(common.Big0) == 0 {
 		random = &header.MixDigest

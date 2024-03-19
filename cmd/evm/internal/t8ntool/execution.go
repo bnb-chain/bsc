@@ -170,7 +170,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	var excessBlobGas uint64
 	if pre.Env.ExcessBlobGas != nil {
 		excessBlobGas := *pre.Env.ExcessBlobGas
-		vmContext.BlobBaseFee = eip4844.CalcBlobFee(excessBlobGas, chainConfig)
+		vmContext.BlobBaseFee = eip4844.CalcBlobFee(excessBlobGas)
 	} else {
 		// If it is not explicitly defined, but we have the parent values, we try
 		// to calculate it ourselves.
@@ -178,7 +178,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		parentBlobGasUsed := pre.Env.ParentBlobGasUsed
 		if parentExcessBlobGas != nil && parentBlobGasUsed != nil {
 			excessBlobGas = eip4844.CalcExcessBlobGas(*parentExcessBlobGas, *parentBlobGasUsed)
-			vmContext.BlobBaseFee = eip4844.CalcBlobFee(excessBlobGas, chainConfig)
+			vmContext.BlobBaseFee = eip4844.CalcBlobFee(excessBlobGas)
 		}
 	}
 	// If DAO is supported/enabled, we need to handle it here. In geth 'proper', it's

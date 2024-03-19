@@ -26,8 +26,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestBytesConversion(t *testing.T) {
@@ -596,38 +594,4 @@ func BenchmarkPrettyDuration(b *testing.B) {
 		a = x.String()
 	}
 	b.Logf("Post %s", a)
-}
-
-type dummyInterface interface {
-	dummy()
-}
-type dummyImplement struct {
-}
-
-func (d *dummyImplement) dummy() {}
-
-func TestIsNIl(t *testing.T) {
-	convertNilInterface := func(di *dummyImplement) dummyInterface {
-		return di
-	}
-	convertNilChan := func() chan bool {
-		return nil
-	}
-	convertNilSlice := func() []byte {
-		return nil
-	}
-	tests := []struct {
-		i      interface{}
-		expect bool
-	}{
-		{nil, true},
-		{struct{}{}, false},
-		{make(chan bool), false},
-		{convertNilChan(), true},
-		{convertNilSlice(), true},
-		{convertNilInterface(nil), true},
-	}
-	for i, item := range tests {
-		require.Equal(t, item.expect, IsNil(item.i), i)
-	}
 }
