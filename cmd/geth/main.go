@@ -70,8 +70,6 @@ var (
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
-		utils.OverrideShanghai,
-		utils.OverrideKepler,
 		utils.OverrideCancun,
 		utils.OverrideVerkle,
 		utils.OverrideFeynman,
