@@ -315,8 +315,25 @@ var (
 		Category: flags.EthCategory,
 	}
 	OverrideFeynmanFix = &cli.Uint64Flag{
-		Name:     "override.feynmanfix",
-		Usage:    "Manually specify the FeynmanFix fork timestamp, overriding the bundled setting",
+		Name:  "override.feynmanfix",
+		Usage: "Manually specify the FeynmanFix fork timestamp, overriding the bundled setting",
+	}
+	OverrideFullImmutabilityThreshold = &cli.Uint64Flag{
+		Name:     "override.immutabilitythreshold",
+		Usage:    "It is the number of blocks after which a chain segment is considered immutable, only for testing purpose",
+		Value:    params.FullImmutabilityThreshold,
+		Category: flags.EthCategory,
+	}
+	OverrideMinBlocksForBlobRequests = &cli.Uint64Flag{
+		Name:     "override.minforblobrequest",
+		Usage:    "It keeps blob data available for min blocks in local, only for testing purpose",
+		Value:    params.MinBlocksForBlobRequests,
+		Category: flags.EthCategory,
+	}
+	OverrideDefaultExtraReserveForBlobRequests = &cli.Uint64Flag{
+		Name:     "override.defaultextrareserve",
+		Usage:    "It adds more extra time for expired blobs for some request cases, only for testing purpose",
+		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.EthCategory,
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
@@ -1098,9 +1115,10 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 
 	// Blob setting
 	BlobExtraReserveFlag = &cli.Uint64Flag{
-		Name:  "blob.extra-reserve",
-		Usage: "Extra reserve threshold for blob, blob never expires when 0 is set, default 28800",
-		Value: params.DefaultExtraReserveForBlobRequests,
+		Name:     "blob.extra-reserve",
+		Usage:    "Extra reserve threshold for blob, blob never expires when 0 is set, default 28800",
+		Value:    params.DefaultExtraReserveForBlobRequests,
+		Category: flags.MiscCategory,
 	}
 )
 
@@ -2126,6 +2144,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 
 	// blob setting
+	if ctx.IsSet(OverrideDefaultExtraReserveForBlobRequests.Name) {
+		cfg.BlobExtraReserve = ctx.Uint64(OverrideDefaultExtraReserveForBlobRequests.Name)
+	}
 	if ctx.IsSet(BlobExtraReserveFlag.Name) {
 		extraReserve := ctx.Uint64(BlobExtraReserveFlag.Name)
 		if extraReserve > 0 && extraReserve < params.DefaultExtraReserveForBlobRequests {
