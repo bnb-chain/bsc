@@ -2159,7 +2159,7 @@ func marshalReceipt(receipt *types.Receipt, blockHash common.Hash, blockNumber u
 	return fields
 }
 
-func marshalBlobSidecar(blobSidecar *types.BlobTxSidecar, blockHash common.Hash, blockNumber uint64, tx *types.Transaction, txIndex int) map[string]interface{} {
+func marshalBlobSidecar(blobSidecar *types.BlobSidecar, blockHash common.Hash, blockNumber uint64, tx *types.Transaction, txIndex int) map[string]interface{} {
 	fields := map[string]interface{}{
 		"blockHash":   blockHash,
 		"blockNumber": hexutil.Uint64(blockNumber),

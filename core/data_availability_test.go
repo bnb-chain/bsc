@@ -127,7 +127,7 @@ func TestIsDataAvailable(t *testing.T) {
 
 	for i, item := range tests {
 		if item.withSidecar {
-			item.block = item.block.WithSidecars(collectBlobsFromTxs(item.block.Transactions()))
+			item.block = item.block.WithSidecars(collectBlobsFromTxs(item.block.Header(), item.block.Transactions()))
 		}
 		hr.setChasingHead(item.chasingHead)
 		err := IsDataAvailable(hr, item.block)
@@ -234,7 +234,7 @@ func TestCheckDataAvailableInBatch(t *testing.T) {
 
 	for i, item := range tests {
 		for j, block := range item.chain {
-			item.chain[j] = block.WithSidecars(collectBlobsFromTxs(block.Transactions()))
+			item.chain[j] = block.WithSidecars(collectBlobsFromTxs(block.Header(), block.Transactions()))
 		}
 		index, err := CheckDataAvailableInBatch(hr, item.chain)
 		if item.err {
@@ -247,13 +247,17 @@ func TestCheckDataAvailableInBatch(t *testing.T) {
 	}
 }
 
-func collectBlobsFromTxs(txs types.Transactions) types.BlobTxSidecars {
-	sidecars := make(types.BlobTxSidecars, 0, len(txs))
-	for _, tx := range txs {
-		sidecar := tx.BlobTxSidecar()
+func collectBlobsFromTxs(header *types.Header, txs types.Transactions) types.BlobSidecars {
+	sidecars := make(types.BlobSidecars, 0, len(txs))
+	for i, tx := range txs {
+		sidecar := types.NewBlobSidecarFromTx(tx)
 		if sidecar == nil {
 			continue
 		}
+		sidecar.TxIndex = uint64(i)
+		sidecar.TxHash = tx.Hash()
+		sidecar.BlockNumber = header.Number
+		sidecar.BlockHash = header.Hash()
 		sidecars = append(sidecars, sidecar)
 	}
 	return sidecars

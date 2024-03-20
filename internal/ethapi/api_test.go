@@ -569,7 +569,7 @@ func (b testBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.R
 	return receipts, nil
 }
 
-func (b testBackend) GetBlobSidecars(ctx context.Context, hash common.Hash) (types.BlobTxSidecars, error) {
+func (b testBackend) GetBlobSidecars(ctx context.Context, hash common.Hash) (types.BlobSidecars, error) {
 	header, err := b.HeaderByHash(ctx, hash)
 	if header == nil || err != nil {
 		return nil, err
@@ -1916,7 +1916,11 @@ func setupReceiptBackend(t *testing.T, genBlocks int) (*testBackend, []common.Ha
 				BlobHashes: blobHashes,
 				Value:      new(uint256.Int),
 			}), signer, acc1Key)
-			b.AddBlobSidecar(blobSidecars[0])
+			b.AddBlobSidecar(&types.BlobSidecar{
+				BlobTxSidecar: *blobSidecars[0],
+				TxHash:        tx.Hash(),
+				TxIndex:       0,
+			})
 		}
 		if err != nil {
 			t.Errorf("failed to sign tx: %v", err)
@@ -2095,11 +2099,11 @@ func TestRPCGetBlockReceipts(t *testing.T) {
 	}
 }
 
-func makeBlkSidecars(n, nPerTx int) types.BlobTxSidecars {
+func makeBlkSidecars(n, nPerTx int) []*types.BlobTxSidecar {
 	if n <= 0 {
 		return nil
 	}
-	ret := make(types.BlobTxSidecars, n)
+	ret := make([]*types.BlobTxSidecar, n)
 	for i := 0; i < n; i++ {
 		blobs := make([]kzg4844.Blob, nPerTx)
 		commitments := make([]kzg4844.Commitment, nPerTx)

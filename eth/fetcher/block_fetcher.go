@@ -127,11 +127,11 @@ type headerFilterTask struct {
 // bodyFilterTask represents a batch of block bodies (transactions, sidecars and uncles)
 // needing fetcher filtering.
 type bodyFilterTask struct {
-	peer         string                   // The source peer of block bodies
-	transactions [][]*types.Transaction   // Collection of transactions per block bodies
-	uncles       [][]*types.Header        // Collection of uncles per block bodies
-	sidecars     [][]*types.BlobTxSidecar // Collection of sidecars per block bodies
-	time         time.Time                // Arrival time of the blocks' contents
+	peer         string                 // The source peer of block bodies
+	transactions [][]*types.Transaction // Collection of transactions per block bodies
+	uncles       [][]*types.Header      // Collection of uncles per block bodies
+	sidecars     []types.BlobSidecars   // Collection of sidecars per block bodies
+	time         time.Time              // Arrival time of the blocks' contents
 }
 
 // blockOrHeaderInject represents a schedules import operation.
@@ -315,7 +315,7 @@ func (f *BlockFetcher) FilterHeaders(peer string, headers []*types.Header, time 
 
 // FilterBodies extracts all the block bodies that were explicitly requested by
 // the fetcher, returning those that should be handled differently.
-func (f *BlockFetcher) FilterBodies(peer string, transactions [][]*types.Transaction, uncles [][]*types.Header, sidecars [][]*types.BlobTxSidecar, time time.Time) ([][]*types.Transaction, [][]*types.Header, [][]*types.BlobTxSidecar) {
+func (f *BlockFetcher) FilterBodies(peer string, transactions [][]*types.Transaction, uncles [][]*types.Header, sidecars []types.BlobSidecars, time time.Time) ([][]*types.Transaction, [][]*types.Header, []types.BlobSidecars) {
 	log.Trace("Filtering bodies", "peer", peer, "txs", len(transactions), "uncles", len(uncles), "sidecars", len(sidecars))
 
 	// Send the filter channel to the fetcher

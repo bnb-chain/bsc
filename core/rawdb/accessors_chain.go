@@ -900,14 +900,14 @@ func WriteAncientBlocksAfterCancun(db ethdb.AncientStore, config *params.ChainCo
 
 // WriteAncientBlocksWithSidecars writes entire block data into ancient store and returns the total written size.
 // Attention: The caller must set blobs after cancun
-func WriteAncientBlocksWithSidecars(db ethdb.AncientStore, blocks []*types.Block, receipts []types.Receipts, td *big.Int, blobs []types.BlobTxSidecars) (int64, error) {
+func WriteAncientBlocksWithSidecars(db ethdb.AncientStore, blocks []*types.Block, receipts []types.Receipts, td *big.Int, sidecars []types.BlobSidecars) (int64, error) {
 	if len(blocks) == 0 {
 		return 0, nil
 	}
 
 	// do some sanity check
-	if len(blocks) != len(blobs) {
-		return 0, fmt.Errorf("the blobs len is different with blocks, %v:%v", len(blobs), len(blocks))
+	if len(blocks) != len(sidecars) {
+		return 0, fmt.Errorf("the sidecars len is different with blocks, %v:%v", len(sidecars), len(blocks))
 	}
 	if len(blocks) != len(receipts) {
 		return 0, fmt.Errorf("the receipts len is different with blocks, %v:%v", len(receipts), len(blocks))
@@ -932,7 +932,7 @@ func WriteAncientBlocksWithSidecars(db ethdb.AncientStore, blocks []*types.Block
 			if i > 0 {
 				tdSum.Add(tdSum, header.Difficulty)
 			}
-			if err := writeAncientBlockWithSidecar(op, block, header, stReceipts, tdSum, blobs[i]); err != nil {
+			if err := writeAncientBlockWithSidecar(op, block, header, stReceipts, tdSum, sidecars[i]); err != nil {
 				return err
 			}
 		}
@@ -957,12 +957,12 @@ func ReadBlobSidecarsRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.R
 }
 
 // ReadRawBlobSidecars retrieves all the transaction blobs belonging to a block.
-func ReadRawBlobSidecars(db ethdb.Reader, hash common.Hash, number uint64) types.BlobTxSidecars {
+func ReadRawBlobSidecars(db ethdb.Reader, hash common.Hash, number uint64) types.BlobSidecars {
 	data := ReadBlobSidecarsRLP(db, hash, number)
 	if len(data) == 0 {
 		return nil
 	}
-	var ret types.BlobTxSidecars
+	var ret types.BlobSidecars
 	if err := rlp.DecodeBytes(data, &ret); err != nil {
 		log.Error("Invalid blob array RLP", "hash", hash, "err", err)
 		return nil
@@ -972,7 +972,7 @@ func ReadRawBlobSidecars(db ethdb.Reader, hash common.Hash, number uint64) types
 
 // WriteBlobSidecars stores all the transaction blobs belonging to a block.
 // It could input nil for empty blobs.
-func WriteBlobSidecars(db ethdb.KeyValueWriter, hash common.Hash, number uint64, blobs types.BlobTxSidecars) {
+func WriteBlobSidecars(db ethdb.KeyValueWriter, hash common.Hash, number uint64, blobs types.BlobSidecars) {
 	data, err := rlp.EncodeToBytes(blobs)
 	if err != nil {
 		log.Crit("Failed to encode block blobs", "err", err)
@@ -1010,7 +1010,7 @@ func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *type
 	return nil
 }
 
-func writeAncientSidecar(op ethdb.AncientWriteOp, num uint64, blobs types.BlobTxSidecars) error {
+func writeAncientSidecar(op ethdb.AncientWriteOp, num uint64, blobs types.BlobSidecars) error {
 	if err := op.Append(ChainFreezerBlobSidecarTable, num, blobs); err != nil {
 		return fmt.Errorf("can't append block %d blobs: %v", num, err)
 	}
@@ -1019,12 +1019,12 @@ func writeAncientSidecar(op ethdb.AncientWriteOp, num uint64, blobs types.BlobTx
 
 // writeAncientBlockWithSidecar writes entire block data into ancient store and returns the total written size.
 // Attention: The caller must set blobs after cancun
-func writeAncientBlockWithSidecar(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int, blobs types.BlobTxSidecars) error {
+func writeAncientBlockWithSidecar(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int, sidecars types.BlobSidecars) error {
 	num := block.NumberU64()
 	if err := writeAncientBlock(op, block, header, receipts, td); err != nil {
 		return err
 	}
-	if err := writeAncientSidecar(op, num, blobs); err != nil {
+	if err := writeAncientSidecar(op, num, sidecars); err != nil {
 		return err
 	}
 	return nil

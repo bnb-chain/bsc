@@ -452,7 +452,7 @@ func TestBlockBlobSidecarsStorage(t *testing.T) {
 
 	blkHash := common.BytesToHash([]byte{0x03, 0x14})
 	body := &types.Body{Transactions: types.Transactions{tx1, tx2}}
-	sidecars := types.BlobTxSidecars{tx1.BlobTxSidecar()}
+	sidecars := types.BlobSidecars{types.NewBlobSidecarFromTx(tx1)}
 
 	// Check that no sidecars entries are in a pristine database
 	if bs := ReadRawBlobSidecars(db, blkHash, 0); len(bs) != 0 {
@@ -495,7 +495,7 @@ func checkReceiptsRLP(have, want types.Receipts) error {
 	return nil
 }
 
-func checkBlobSidecarsRLP(have, want types.BlobTxSidecars) error {
+func checkBlobSidecarsRLP(have, want types.BlobSidecars) error {
 	if len(have) != len(want) {
 		return fmt.Errorf("blobs sizes mismatch: have %d, want %d", len(have), len(want))
 	}
@@ -749,11 +749,11 @@ func makeTestReceipts(n int, nPerBlock int) []types.Receipts {
 	return allReceipts
 }
 
-func makeBlkSidecars(n, nPerTx int) types.BlobTxSidecars {
+func makeBlkSidecars(n, nPerTx int) []*types.BlobTxSidecar {
 	if n <= 0 {
 		return nil
 	}
-	ret := make(types.BlobTxSidecars, n)
+	ret := make([]*types.BlobTxSidecar, n)
 	for i := 0; i < n; i++ {
 		blobs := make([]kzg4844.Blob, nPerTx)
 		commitments := make([]kzg4844.Commitment, nPerTx)
@@ -773,10 +773,15 @@ func makeBlkSidecars(n, nPerTx int) types.BlobTxSidecars {
 }
 
 // makeTestSidecars creates fake blobs for the ancient write benchmark.
-func makeTestSidecars(n int, nPerBlock int) []types.BlobTxSidecars {
-	allBlobs := make([]types.BlobTxSidecars, n)
+func makeTestSidecars(n int, nPerBlock int) []types.BlobSidecars {
+	allBlobs := make([]types.BlobSidecars, n)
 	for i := 0; i < n; i++ {
-		allBlobs[i] = makeBlkSidecars(nPerBlock, i%3)
+		raws := makeBlkSidecars(nPerBlock, i%3)
+		var sidecars types.BlobSidecars
+		for _, s := range raws {
+			sidecars = append(sidecars, &types.BlobSidecar{BlobTxSidecar: *s})
+		}
+		allBlobs[i] = sidecars
 	}
 	return allBlobs
 }

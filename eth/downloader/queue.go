@@ -71,7 +71,7 @@ type fetchResult struct {
 	Transactions types.Transactions
 	Receipts     types.Receipts
 	Withdrawals  types.Withdrawals
-	Sidecars     types.BlobTxSidecars
+	Sidecars     types.BlobSidecars
 }
 
 func newFetchResult(header *types.Header, fastSync bool, pid string) *fetchResult {
@@ -777,7 +777,7 @@ func (q *queue) DeliverHeaders(id string, headers []*types.Header, hashes []comm
 // also wakes any threads waiting for data delivery.
 func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListHashes []common.Hash,
 	uncleLists [][]*types.Header, uncleListHashes []common.Hash,
-	withdrawalLists [][]*types.Withdrawal, withdrawalListHashes []common.Hash, sidecars [][]*types.BlobTxSidecar) (int, error) {
+	withdrawalLists [][]*types.Withdrawal, withdrawalListHashes []common.Hash, sidecars []types.BlobSidecars) (int, error) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -833,6 +833,13 @@ func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListH
 		} else {
 			if blobs != 0 {
 				return errInvalidBody
+			}
+		}
+
+		// do some sanity check for sidecar
+		for _, sidecar := range sidecars[index] {
+			if err := sidecar.SanityCheck(header.Number, header.Hash()); err != nil {
+				return err
 			}
 		}
 		return nil

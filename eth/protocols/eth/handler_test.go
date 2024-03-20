@@ -542,7 +542,6 @@ func TestHandleNewBlock(t *testing.T) {
 		R:          new(uint256.Int),
 		S:          new(uint256.Int),
 	})
-	sidecars := types.BlobTxSidecars{tx1.BlobTxSidecar()}
 	block := types.NewBlockWithHeader(&types.Header{
 		Number:      big.NewInt(0),
 		Extra:       []byte("test block"),
@@ -550,6 +549,11 @@ func TestHandleNewBlock(t *testing.T) {
 		TxHash:      types.EmptyTxsHash,
 		ReceiptHash: types.EmptyReceiptsHash,
 	})
+	sidecars := types.BlobSidecars{types.NewBlobSidecarFromTx(tx1)}
+	for _, s := range sidecars {
+		s.BlockNumber = block.Number()
+		s.BlockHash = block.Hash()
+	}
 	dataNil := NewBlockPacket{
 		Block:    block,
 		TD:       big.NewInt(1),
@@ -628,11 +632,11 @@ func TestHandleNewBlock(t *testing.T) {
 	}
 }
 
-func makeBlkBlobs(n, nPerTx int) types.BlobTxSidecars {
+func makeBlkBlobs(n, nPerTx int) []*types.BlobTxSidecar {
 	if n <= 0 {
 		return nil
 	}
-	ret := make(types.BlobTxSidecars, n)
+	ret := make([]*types.BlobTxSidecar, n)
 	for i := 0; i < n; i++ {
 		blobs := make([]kzg4844.Blob, nPerTx)
 		commitments := make([]kzg4844.Commitment, nPerTx)

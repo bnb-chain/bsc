@@ -240,7 +240,7 @@ type Block struct {
 	ReceivedFrom interface{}
 
 	// sidecars provides DA check
-	sidecars BlobTxSidecars
+	sidecars BlobSidecars
 }
 
 // "external" block encoding. used for eth protocol, etc.
@@ -460,7 +460,7 @@ func (b *Block) SanityCheck() error {
 	return b.header.SanityCheck()
 }
 
-func (b *Block) Sidecars() BlobTxSidecars {
+func (b *Block) Sidecars() BlobSidecars {
 	return b.sidecars
 }
 
@@ -492,6 +492,17 @@ func NewBlockWithHeader(header *Header) *Block {
 // WithSeal returns a new block with the data from b but the header replaced with
 // the sealed one.
 func (b *Block) WithSeal(header *Header) *Block {
+	// fill sidecars metadata
+	for _, sidecar := range b.sidecars {
+		sidecar.BlockNumber = header.Number
+		sidecar.BlockHash = header.Hash()
+		for i, tx := range b.transactions {
+			if tx.Hash() == sidecar.TxHash {
+				sidecar.TxIndex = uint64(i)
+				break
+			}
+		}
+	}
 	return &Block{
 		header:       CopyHeader(header),
 		transactions: b.transactions,
@@ -533,7 +544,7 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 }
 
 // WithSidecars returns a block containing the given blobs.
-func (b *Block) WithSidecars(sidecars BlobTxSidecars) *Block {
+func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 	block := &Block{
 		header:       b.header,
 		transactions: b.transactions,

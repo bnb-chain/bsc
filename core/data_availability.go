@@ -15,7 +15,7 @@ import (
 )
 
 // validateBlobSidecar it is same as validateBlobSidecar in core/txpool/validation.go
-func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobTxSidecar) error {
+func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobSidecar) error {
 	if len(sidecar.Blobs) != len(hashes) {
 		return fmt.Errorf("invalid number of %d blobs compared to %d blob hashes", len(sidecar.Blobs), len(hashes))
 	}
@@ -64,32 +64,45 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		return nil
 	}
 
-	// alloc block's versionedHashes
-	versionedHashes := make([][]common.Hash, 0, len(block.Transactions()))
-	for _, tx := range block.Transactions() {
-		hashes := tx.BlobHashes()
-		if hashes == nil {
+	sidecars := block.Sidecars()
+	for _, s := range sidecars {
+		if err := s.SanityCheck(block.Number(), block.Hash()); err != nil {
+			return err
+		}
+	}
+	// alloc block's blobTx
+	blobTxs := make([]*types.Transaction, 0, len(sidecars))
+	blobTxIndexes := make([]uint64, 0, len(sidecars))
+	for i, tx := range block.Transactions() {
+		if tx.Type() != types.BlobTxType {
 			continue
 		}
-		versionedHashes = append(versionedHashes, hashes)
+		blobTxs = append(blobTxs, tx)
+		blobTxIndexes = append(blobTxIndexes, uint64(i))
 	}
-	sidecars := block.Sidecars()
-	if len(versionedHashes) != len(sidecars) {
-		return fmt.Errorf("blob info mismatch: sidecars %d, versionedHashes:%d", len(sidecars), len(versionedHashes))
+	if len(blobTxs) != len(sidecars) {
+		return fmt.Errorf("blob info mismatch: sidecars %d, versionedHashes:%d", len(sidecars), len(blobTxs))
 	}
 
 	// check blob amount
 	blobCnt := 0
-	for _, h := range versionedHashes {
-		blobCnt += len(h)
+	for _, s := range sidecars {
+		blobCnt += len(s.Blobs)
 	}
 	if blobCnt > params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob {
 		return fmt.Errorf("too many blobs in block: have %d, permitted %d", blobCnt, params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob)
 	}
 
 	// check blob and versioned hash
-	for i := range versionedHashes {
-		if err := validateBlobSidecar(versionedHashes[i], sidecars[i]); err != nil {
+	for i, tx := range blobTxs {
+		// check sidecar tx related
+		if sidecars[i].TxHash != tx.Hash() {
+			return fmt.Errorf("sidecar's TxHash mismatch with expected transaction, want: %v, have: %v", sidecars[i].TxHash, tx.Hash())
+		}
+		if sidecars[i].TxIndex != blobTxIndexes[i] {
+			return fmt.Errorf("sidecar's TxIndex mismatch with expected transaction, want: %v, have: %v", sidecars[i].TxIndex, blobTxIndexes[i])
+		}
+		if err := validateBlobSidecar(tx.BlobHashes(), sidecars[i]); err != nil {
 			return err
 		}
 	}
