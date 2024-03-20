@@ -29,7 +29,6 @@ var (
 // into the given sealing block. The selection and ordering strategy can be extended in the future.
 func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environment, stopTimer *time.Timer) error {
 	var (
-		pending        map[common.Address][]*txpool.LazyTransaction
 		localPlainTxs  map[common.Address][]*txpool.LazyTransaction
 		remotePlainTxs map[common.Address][]*txpool.LazyTransaction
 		localBlobTxs   map[common.Address][]*txpool.LazyTransaction
@@ -75,7 +74,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 
 		bundles = w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
 
-		log.Info("fill bundles and transactions", "bundles_count", len(bundles), "tx_count", len(pending))
+		log.Info("fill bundles and transactions", "bundles_count", len(bundles), "tx_count", len(localPlainTxs)+len(remotePlainTxs))
 
 		// if no bundles, not necessary to fill transactions
 		if len(bundles) == 0 {
@@ -282,12 +281,12 @@ func (w *worker) generateOrderedBundles(
 func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*types.SimulatedBundle, error) {
 	headerHash := env.header.Hash()
 	simCache := w.bundleCache.GetBundleCache(headerHash)
-	simResult := make([]*types.SimulatedBundle, len(bundles))
+	simResult := make(map[common.Hash]*types.SimulatedBundle)
 
 	var wg sync.WaitGroup
 	for i, bundle := range bundles {
 		if simmed, ok := simCache.GetSimulatedBundle(bundle.Hash()); ok {
-			simResult = append(simResult, simmed)
+			simResult[bundle.Hash()] = simmed
 			continue
 		}
 
@@ -302,7 +301,7 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 				return
 			}
 
-			simResult[idx] = simmed
+			simResult[bundle.Hash()] = simmed
 		}(i, bundle, env.state.Copy())
 	}
 

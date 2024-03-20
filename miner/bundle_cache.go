@@ -68,14 +68,19 @@ func (c *BundleCacheEntry) GetSimulatedBundle(bundle common.Hash) (*types.Simula
 	return nil, false
 }
 
-func (c *BundleCacheEntry) UpdateSimulatedBundles(result []*types.SimulatedBundle, bundles []*types.Bundle) {
+func (c *BundleCacheEntry) UpdateSimulatedBundles(result map[common.Hash]*types.SimulatedBundle, bundles []*types.Bundle) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for i, simBundle := range result {
-		bundleHash := bundles[i].Hash()
-		if simBundle != nil {
-			c.successfulBundles[bundleHash] = simBundle
+	for _, bundle := range bundles {
+		if bundle == nil {
+			continue
+		}
+
+		bundleHash := bundle.Hash()
+
+		if result[bundleHash] != nil {
+			c.successfulBundles[bundleHash] = result[bundleHash]
 		} else {
 			c.failedBundles[bundleHash] = struct{}{}
 		}
