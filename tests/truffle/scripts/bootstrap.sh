@@ -35,7 +35,7 @@ function generate_genesis() {
 function init_genesis_data() {
      node_type=$1
      node_id=$2
-     geth --datadir ${workspace}/storage/${node_id} init ${workspace}/genesis/genesis.json
+     geth --datadir ${workspace}/storage/${node_id} init --state.scheme "hash" ${workspace}/genesis/genesis.json
      cp ${workspace}/config/config-${node_type}.toml  ${workspace}/storage/${node_id}/config.toml
      sed -i -e "s/{{NetworkId}}/${BSC_CHAIN_ID}/g" ${workspace}/storage/${node_id}/config.toml
      if [ "${node_id}" == "bsc-rpc" ]; then
