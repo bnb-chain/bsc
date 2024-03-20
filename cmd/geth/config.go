@@ -199,6 +199,15 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideFeynmanFix.Name)
 		cfg.Eth.OverrideFeynmanFix = &v
 	}
+	if ctx.IsSet(utils.OverrideFullImmutabilityThreshold.Name) {
+		params.FullImmutabilityThreshold = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
+	}
+	if ctx.IsSet(utils.OverrideMinBlocksForBlobRequests.Name) {
+		params.MinBlocksForBlobRequests = ctx.Uint64(utils.OverrideMinBlocksForBlobRequests.Name)
+	}
+	if ctx.IsSet(utils.OverrideDefaultExtraReserveForBlobRequests.Name) {
+		params.DefaultExtraReserveForBlobRequests = ctx.Uint64(utils.OverrideDefaultExtraReserveForBlobRequests.Name)
+	}
 	if ctx.IsSet(utils.SeparateDBFlag.Name) && !stack.IsSeparatedDB() {
 		utils.Fatalf("Failed to locate separate database subdirectory when separatedb parameter has been set")
 	}
