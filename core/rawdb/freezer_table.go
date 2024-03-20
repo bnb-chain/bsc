@@ -406,7 +406,7 @@ func (t *freezerTable) truncateHead(items uint64) error {
 		return nil
 	}
 	if items < t.itemHidden.Load() {
-		return errors.New("truncation below tail")
+		return fmt.Errorf("truncation below tail, name: %v, tail: %v, head: %v, truncate to: %v", t.name, t.itemHidden.Load(), t.items.Load(), items)
 	}
 	// We need to truncate, save the old size for metrics tracking
 	oldSize, err := t.sizeNolock()
