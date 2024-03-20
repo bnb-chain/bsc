@@ -163,7 +163,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		}
 		var env *ethdb.FreezerEnv
 		env, _ = f.freezeEnv.Load().(*ethdb.FreezerEnv)
-		ancients, err := f.freezeRange(nfdb, first, limit, env)
+		ancients, err := f.freezeRangeWithBlobs(nfdb, first, limit, env)
 		if err != nil {
 			log.Error("Error in block freeze operation", "err", err)
 			backoff = true
@@ -292,14 +292,66 @@ func getBlobExtraReserveFromEnv(env *ethdb.FreezerEnv) uint64 {
 	return env.BlobExtraReserve
 }
 
-func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64, env *ethdb.FreezerEnv) (hashes []common.Hash, err error) {
-	hashes = make([]common.Hash, 0, limit-number)
-
-	// try init blob ancient first
-	if err := f.tryInitBlobAncient(nfdb, number, limit, env); err != nil {
-		return nil, err
+func (f *chainFreezer) freezeRangeWithBlobs(nfdb *nofreezedb, number, limit uint64, env *ethdb.FreezerEnv) (hashes []common.Hash, err error) {
+	defer func() {
+		log.Info("freezeRangeWithBlobs", "from", number, "to", limit, "err", err)
+	}()
+	lastHash := ReadCanonicalHash(nfdb, limit)
+	if lastHash == (common.Hash{}) {
+		return nil, fmt.Errorf("canonical hash missing, can't freeze block %d", limit)
+	}
+	last, _ := ReadHeaderAndRaw(nfdb, lastHash, limit)
+	if last == nil {
+		return nil, fmt.Errorf("block header missing, can't freeze block %d", limit)
+	}
+	if !isCancun(env, last.Number, last.Time) {
+		return f.freezeRange(nfdb, number, limit, env)
 	}
 
+	var (
+		cancunNumber uint64
+		found        bool
+	)
+
+	for i := number; i <= limit; i++ {
+		hash := ReadCanonicalHash(nfdb, i)
+		if hash == (common.Hash{}) {
+			return nil, fmt.Errorf("canonical hash missing, can't freeze block %d", i)
+		}
+		h, header := ReadHeaderAndRaw(nfdb, hash, i)
+		if len(header) == 0 {
+			return nil, fmt.Errorf("block header missing, can't freeze block %d", i)
+		}
+		if isCancun(env, h.Number, h.Time) {
+			cancunNumber = i
+			found = true
+			break
+		}
+	}
+	if !found {
+		return f.freezeRange(nfdb, number, limit, env)
+	}
+
+	// freeze pre cancun
+	preHashes, err := f.freezeRange(nfdb, number, cancunNumber-1, env)
+	if err != nil {
+		return preHashes, err
+	}
+
+	if err = ResetEmptyBlobAncientTable(f, cancunNumber); err != nil {
+		return preHashes, err
+	}
+	// freeze post cancun
+	postHashes, err := f.freezeRange(nfdb, cancunNumber, limit, env)
+	hashes = append(preHashes, postHashes...)
+	return hashes, err
+}
+
+func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64, env *ethdb.FreezerEnv) (hashes []common.Hash, err error) {
+	if number > limit {
+		return nil, nil
+	}
+	hashes = make([]common.Hash, 0, limit-number)
 	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		for ; number <= limit; number++ {
 			// Retrieve all the components of the canonical block.
@@ -360,33 +412,6 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64, env *
 	})
 
 	return hashes, err
-}
-
-func (f *chainFreezer) tryInitBlobAncient(nfdb *nofreezedb, number uint64, limit uint64, env *ethdb.FreezerEnv) error {
-	emptyBlobs, err := EmptyBlobAncient(f)
-	if err != nil {
-		return err
-	}
-	if !emptyBlobs {
-		return nil
-	}
-	for ; number <= limit; number++ {
-		hash := ReadCanonicalHash(nfdb, number)
-		if hash == (common.Hash{}) {
-			return fmt.Errorf("canonical hash missing, can't freeze block %d", number)
-		}
-		h, header := ReadHeaderAndRaw(nfdb, hash, number)
-		if len(header) == 0 {
-			return fmt.Errorf("block header missing, can't freeze block %d", number)
-		}
-		if isCancun(env, h.Number, h.Time) {
-			if err = ResetEmptyBlobAncientTable(f, number); err != nil {
-				return err
-			}
-			break
-		}
-	}
-	return nil
 }
 
 // EmptyBlobAncient check if empty in blob ancient, it is used to init blob ancient
