@@ -150,6 +150,12 @@ var (
 		Usage:    "Minimum free disk space in MB, once reached triggers auto shut down (default = --cache.gc converted to MB, 0 = disabled)",
 		Category: flags.EthCategory,
 	}
+	InstanceFlag = &cli.IntFlag{
+		Name:     "instance",
+		Usage:    "Configures the ports to avoid conflicts when running multiple nodes on the same machine. Maximum is 200. Only applicable for: port, authrpc.port, discovery,port, http.port, ws.port",
+		Value:    1,
+		Category: flags.EthCategory,
+	}
 	KeyStoreDirFlag = &flags.DirectoryFlag{
 		Name:     "keystore",
 		Usage:    "Directory for the keystore (default = inside the datadir)",
@@ -1537,6 +1543,7 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 
 // SetNodeConfig applies node-related command line flags to the config.
 func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
+	setInstance(ctx, cfg)
 	SetP2PConfig(ctx, &cfg.P2P)
 	setIPC(ctx, cfg)
 	setHTTP(ctx, cfg)
@@ -2530,4 +2537,25 @@ func ParseCLIAndConfigStateScheme(cliScheme, cfgScheme string) (string, error) {
 		return cliScheme, nil
 	}
 	return "", fmt.Errorf("incompatible state scheme, CLI: %s, config: %s", cliScheme, cfgScheme)
+}
+
+// setInstance configures the port numbers for the given instance.
+func setInstance(ctx *cli.Context, cfg *node.Config) {
+	if ctx.IsSet(InstanceFlag.Name) {
+		cfg.Instance = ctx.Int(InstanceFlag.Name)
+	}
+
+	if cfg.Instance > 200 {
+		Fatalf("Instance number %d is too high, maximum is 200", cfg.Instance)
+	}
+
+	if cfg.Instance == 1 { // using default ports
+		return
+	}
+
+	cfg.AuthPort = node.DefaultConfig.AuthPort + cfg.Instance*100 - 100
+	cfg.HTTPPort = node.DefaultHTTPPort - cfg.Instance + 1
+	cfg.WSPort = node.DefaultWSPort + cfg.Instance*2 - 2
+	cfg.P2P.ListenAddr = fmt.Sprintf(":%d", node.DefaultListenPort+cfg.Instance-1)
+	cfg.P2P.DiscAddr = fmt.Sprintf(":%d", node.DefaultDiscPort+cfg.Instance-1)
 }
