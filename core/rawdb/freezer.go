@@ -344,8 +344,13 @@ func (f *Freezer) TruncateHead(items uint64) (uint64, error) {
 	}
 	for kind, table := range f.tables {
 		err := table.truncateHead(items - f.offset)
-		// if truncate below tail, try reset to it
 		if err == errTruncationBelowTail {
+			// This often happens in chain rewinds, but the blob table is special.
+			// It has the same head, but a different tail from other tables (like bodies, receipts).
+			// So if the chain is rewound to head below the blob's tail, it needs to reset again.
+			if kind != ChainFreezerBlobSidecarTable {
+				return 0, err
+			}
 			nt, err := table.resetItems(items-f.offset, items-f.offset)
 			if err != nil {
 				return 0, err
@@ -480,8 +485,13 @@ func (f *Freezer) repair() error {
 			continue
 		}
 		err := table.truncateHead(head)
-		// if truncate below tail, try reset to it
 		if err == errTruncationBelowTail {
+			// This often happens in chain rewinds, but the blob table is special.
+			// It has the same head, but a different tail from other tables (like bodies, receipts).
+			// So if the chain is rewound to head below the blob's tail, it needs to reset again.
+			if kind != ChainFreezerBlobSidecarTable {
+				return err
+			}
 			nt, err := table.resetItems(head, head)
 			if err != nil {
 				return err
