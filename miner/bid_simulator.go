@@ -11,9 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -40,12 +37,7 @@ const (
 )
 
 var (
-	blockCounter = promauto.NewCounterVec(
-		prometheus.CounterOpts{Namespace: "chain", Subsystem: "head", Name: "builder"}, []string{"builder"})
-
 	bidSimTimer = metrics.NewRegisteredTimer("bid/sim/duration", nil)
-	bidSimErr   = promauto.NewCounterVec(
-		prometheus.CounterOpts{Namespace: "bid", Subsystem: "sim", Name: "err"}, []string{"builder"})
 )
 
 var (
@@ -619,7 +611,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 // reportIssue reports the issue to the mev-sentry
 func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
-	bidSimErr.WithLabelValues(bidRuntime.bid.Builder.String()).Inc()
+	metrics.GetOrRegisterCounter(fmt.Sprintf("bid/err/%v", bidRuntime.bid.Builder), nil).Inc(1)
 
 	cli := b.builders[bidRuntime.bid.Builder]
 	if cli != nil {
