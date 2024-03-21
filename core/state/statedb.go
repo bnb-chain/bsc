@@ -1535,11 +1535,11 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 			}
 
 			tasks := make(chan func())
-			type tastResult struct {
+			type taskResult struct {
 				err     error
 				nodeSet *trienode.NodeSet
 			}
-			taskResults := make(chan tastResult, len(s.stateObjectsDirty))
+			taskResults := make(chan taskResult, len(s.stateObjectsDirty))
 			tasksNum := 0
 			finishCh := make(chan struct{})
 
@@ -1566,13 +1566,13 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 						// Write any storage changes in the state object to its storage trie
 						if !s.noTrie {
 							if set, err := obj.commit(); err != nil {
-								taskResults <- tastResult{err, nil}
+								taskResults <- taskResult{err, nil}
 								return
 							} else {
-								taskResults <- tastResult{nil, set}
+								taskResults <- taskResult{nil, set}
 							}
 						} else {
-							taskResults <- tastResult{nil, nil}
+							taskResults <- taskResult{nil, nil}
 						}
 					}
 					tasksNum++

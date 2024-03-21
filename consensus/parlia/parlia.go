@@ -1988,16 +1988,19 @@ func applyMessage(
 	chainConfig *params.ChainConfig,
 	chainContext core.ChainContext,
 ) (uint64, error) {
-	// TODO(Nathan): state.Prepare should be called here, now accessList related EIP not affect systemtxs
-	// 		 EIP1153 may cause a critical issue in the future
 	// Create a new context to be used in the EVM environment
 	context := core.NewEVMBlockContext(header, chainContext, nil)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	vmenv := vm.NewEVM(context, vm.TxContext{Origin: msg.From(), GasPrice: big.NewInt(0)}, state, chainConfig, vm.Config{})
 	// Apply the transaction to the current state (included in the env)
+	if chainConfig.IsCancun(header.Number, header.Time) {
+		rules := vmenv.ChainConfig().Rules(vmenv.Context.BlockNumber, vmenv.Context.Random != nil, vmenv.Context.Time)
+		state.Prepare(rules, msg.From(), vmenv.Context.Coinbase, msg.To(), vm.ActivePrecompiles(rules), msg.AccessList)
+	}
 	// Increment the nonce for the next transaction
 	state.SetNonce(msg.From(), state.GetNonce(msg.From())+1)
+
 	ret, returnGas, err := vmenv.Call(
 		vm.AccountRef(msg.From()),
 		*msg.To(),
