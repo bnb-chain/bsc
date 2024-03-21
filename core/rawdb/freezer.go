@@ -351,7 +351,9 @@ func (f *Freezer) TruncateHead(items uint64) (uint64, error) {
 				return 0, err
 			}
 			f.tables[kind] = nt
-		} else {
+			continue
+		}
+		if err != nil {
 			return 0, err
 		}
 	}
@@ -485,7 +487,9 @@ func (f *Freezer) repair() error {
 				return err
 			}
 			f.tables[kind] = nt
-		} else {
+			continue
+		}
+		if err != nil {
 			return err
 		}
 		if err := table.truncateTail(tail); err != nil {
