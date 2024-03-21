@@ -231,6 +231,10 @@ func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	return db.db.NewIterator(bytesPrefixRange(prefix, start), nil)
 }
 
+func (db *Database) NewReverseIterator(key []byte) ethdb.Iterator {
+	return nil
+}
+
 // NewSnapshot creates a database snapshot based on the current state.
 // The created snapshot will not be affected by all following mutations
 // happened on the database.

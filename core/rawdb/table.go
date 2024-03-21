@@ -167,6 +167,10 @@ func (t *table) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	}
 }
 
+func (t *table) NewReverseIterator(key []byte) ethdb.Iterator {
+	return nil
+}
+
 // Stat returns a particular internal stat of the database.
 func (t *table) Stat(property string) (string, error) {
 	return t.db.Stat(property)

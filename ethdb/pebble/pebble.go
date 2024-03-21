@@ -639,6 +639,16 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	return &pebbleIterator{iter: iter, moved: true, released: false}
 }
 
+// NewReverseIterator create a binary-alphabetical iterator and seek to the
+// last key/value pair whose key is less than or equal of the given key
+func (d *Database) NewReverseIterator(key []byte) ethdb.Iterator {
+	iter, _ := d.db.NewIter(&pebble.IterOptions{})
+	if !iter.SeekGE(key) || bytes.Compare(iter.Key(), key) > 0 {
+		iter.Prev()
+	}
+	return &pebbleIterator{iter: iter, moved: true, released: false}
+}
+
 // Next moves the iterator to the next key/value pair. It returns whether the
 // iterator is exhausted.
 func (iter *pebbleIterator) Next() bool {
