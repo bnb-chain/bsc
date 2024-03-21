@@ -79,10 +79,10 @@ type trienodebuffer interface {
 
 func NewTrieNodeBuffer(sync bool, limit int, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) trienodebuffer {
 	if sync {
-		log.Info("new sync node buffer", "limit", common.StorageSize(limit), "layers", layers)
+		log.Info("New sync node buffer", "limit", common.StorageSize(limit), "layers", layers)
 		return newNodeBuffer(limit, nodes, layers)
 	}
-	log.Info("new async node buffer", "limit", common.StorageSize(limit), "layers", layers)
+	log.Info("New async node buffer", "limit", common.StorageSize(limit), "layers", layers)
 	return newAsyncNodeBuffer(limit, nodes, layers)
 }
 

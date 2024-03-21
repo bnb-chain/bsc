@@ -1953,6 +1953,11 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if cfg.TriesVerifyMode.NeedRemoteVerify() {
 			cfg.EnableTrustProtocol = true
 		}
+
+		if cfg.SyncMode == downloader.SnapSync && cfg.TriesVerifyMode.NoTries() {
+			log.Warn("Only local TriesVerifyMode can support snap sync, resetting to full sync", "mode", cfg.TriesVerifyMode)
+			cfg.SyncMode = downloader.FullSync
+		}
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheSnapshotFlag.Name) {
 		cfg.SnapshotCache = ctx.Int(CacheFlag.Name) * ctx.Int(CacheSnapshotFlag.Name) / 100
