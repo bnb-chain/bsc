@@ -1296,7 +1296,7 @@ LOOP:
 
 	// when out-turn, use bestWork to prevent bundle leakage.
 	// when in-turn, compare with remote work.
-	builder := bestWork.coinbase
+	from := bestWork.coinbase
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
@@ -1308,12 +1308,12 @@ LOOP:
 			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
 			if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
 				bestWork = bestBid.env
-				builder = bestBid.bid.Builder
+				from = bestBid.bid.Builder
 			}
 		}
 	}
 
-	metrics.GetOrRegisterCounter(fmt.Sprintf("chain/builder/%v", builder), nil).Inc(1)
+	metrics.GetOrRegisterCounter(fmt.Sprintf("block/from/%v", from), nil).Inc(1)
 
 	w.commit(bestWork, w.fullTaskHook, true, start)
 
