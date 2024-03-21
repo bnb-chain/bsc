@@ -3,9 +3,10 @@ package types
 import (
 	"bytes"
 	"errors"
+	"math/big"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
-	"math/big"
 )
 
 type BlobSidecars []*BlobSidecar

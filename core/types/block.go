@@ -496,12 +496,6 @@ func (b *Block) WithSeal(header *Header) *Block {
 	for _, sidecar := range b.sidecars {
 		sidecar.BlockNumber = header.Number
 		sidecar.BlockHash = header.Hash()
-		for i, tx := range b.transactions {
-			if tx.Hash() == sidecar.TxHash {
-				sidecar.TxIndex = uint64(i)
-				break
-			}
-		}
 	}
 	return &Block{
 		header:       CopyHeader(header),
