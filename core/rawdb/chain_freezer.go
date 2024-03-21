@@ -280,7 +280,8 @@ func (f *chainFreezer) tryPruneBlobAncient(env *ethdb.FreezerEnv, num uint64) {
 	}
 	start := time.Now()
 	if err = f.ResetTable(ChainFreezerBlobSidecarTable, expectTail, h, false); err != nil {
-		log.Error("Cannot prune blob ancient", "block", num, "expectTail", expectTail)
+		log.Error("Cannot prune blob ancient", "block", num, "expectTail", expectTail, "err", err)
+		return
 	}
 	log.Info("Chain freezer prune useless blobs, now ancient data is", "from", expectTail, "to", num, "cost", common.PrettyDuration(time.Since(start)))
 }

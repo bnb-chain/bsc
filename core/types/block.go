@@ -193,6 +193,12 @@ func (h *Header) EmptyReceipts() bool {
 	return h.ReceiptHash == EmptyReceiptsHash
 }
 
+// EmptyWithdrawalsHash returns true if there are no WithdrawalsHash for this header/block.
+func (h *Header) EmptyWithdrawalsHash() bool {
+	// TODO(GalaIO): if check EmptyWithdrawalsHash in here?
+	return h.WithdrawalsHash == nil || *h.WithdrawalsHash == common.Hash{}
+}
+
 // Body is a simple (mutable, non-safe) data container for storing and moving
 // a block's data contents (transactions and uncles) together.
 type Body struct {

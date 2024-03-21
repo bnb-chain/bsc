@@ -1534,7 +1534,7 @@ func RPCMarshalHeader(head *types.Header) map[string]interface{} {
 	if head.BaseFee != nil {
 		result["baseFeePerGas"] = (*hexutil.Big)(head.BaseFee)
 	}
-	if head.WithdrawalsHash != nil {
+	if !head.EmptyWithdrawalsHash() {
 		result["withdrawalsRoot"] = head.WithdrawalsHash
 	}
 	if head.BlobGasUsed != nil {
@@ -1578,7 +1578,7 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 		uncleHashes[i] = uncle.Hash()
 	}
 	fields["uncles"] = uncleHashes
-	if block.Header().WithdrawalsHash != nil {
+	if !block.Header().EmptyWithdrawalsHash() {
 		fields["withdrawals"] = block.Withdrawals()
 	}
 	return fields
