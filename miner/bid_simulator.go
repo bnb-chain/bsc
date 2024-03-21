@@ -648,11 +648,11 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		env  = r.env
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
-		sc   *types.BlobTxSidecar
+		sc   *types.BlobSidecar
 	)
 
 	if tx.Type() == types.BlobTxType {
-		sc := tx.BlobTxSidecar()
+		sc := types.NewBlobSidecarFromTx(tx)
 		if sc == nil {
 			return errors.New("blob transaction without blobs in miner")
 		}

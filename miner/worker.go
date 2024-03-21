@@ -90,7 +90,7 @@ type environment struct {
 	header   *types.Header
 	txs      []*types.Transaction
 	receipts []*types.Receipt
-	sidecars []*types.BlobTxSidecar
+	sidecars types.BlobSidecars
 	blobs    int
 }
 
@@ -111,7 +111,7 @@ func (env *environment) copy() *environment {
 	cpy.txs = make([]*types.Transaction, len(env.txs))
 	copy(cpy.txs, env.txs)
 
-	cpy.sidecars = make([]*types.BlobTxSidecar, len(env.sidecars))
+	cpy.sidecars = make(types.BlobSidecars, len(env.sidecars))
 	copy(cpy.sidecars, env.sidecars)
 
 	return cpy
@@ -153,8 +153,8 @@ type newWorkReq struct {
 type newPayloadResult struct {
 	err      error
 	block    *types.Block
-	fees     *big.Int               // total block fees
-	sidecars []*types.BlobTxSidecar // collected blobs of blob transactions
+	fees     *big.Int           // total block fees
+	sidecars types.BlobSidecars // collected blobs of blob transactions
 }
 
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
@@ -727,7 +727,7 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction, rece
 }
 
 func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
-	sc := tx.BlobTxSidecar()
+	sc := types.NewBlobSidecarFromTx(tx)
 	if sc == nil {
 		panic("blob transaction without blobs in miner")
 	}
@@ -743,6 +743,7 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 	if err != nil {
 		return nil, err
 	}
+	sc.TxIndex = uint64(len(env.txs))
 	env.txs = append(env.txs, tx.WithoutBlobTxSidecar())
 	env.receipts = append(env.receipts, receipt)
 	env.sidecars = append(env.sidecars, sc)

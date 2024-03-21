@@ -17,6 +17,7 @@
 package core
 
 import (
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"math/big"
@@ -25,6 +26,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -4427,4 +4432,135 @@ func TestEIP3651(t *testing.T) {
 	if actual.Cmp(expected) != 0 {
 		t.Fatalf("sender balance incorrect: expected %d, got %d", expected, actual)
 	}
+}
+
+type mockParlia struct {
+	consensus.Engine
+}
+
+func (c *mockParlia) Author(header *types.Header) (common.Address, error) {
+	return header.Coinbase, nil
+}
+
+func (c *mockParlia) VerifyUncles(chain consensus.ChainReader, block *types.Block) error {
+	return nil
+}
+
+func (c *mockParlia) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
+	return nil
+}
+
+func (c *mockParlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header) (chan<- struct{}, <-chan error) {
+	abort := make(chan<- struct{})
+	results := make(chan error, len(headers))
+	for i := 0; i < len(headers); i++ {
+		results <- nil
+	}
+	return abort, results
+}
+
+func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, _ *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal,
+	_ *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64) (err error) {
+	return
+}
+
+func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction,
+	uncles []*types.Header, receipts []*types.Receipt, withdrawals []*types.Withdrawal) (*types.Block, []*types.Receipt, error) {
+	// Finalize block
+	c.Finalize(chain, header, state, &txs, uncles, nil, nil, nil, nil)
+
+	// Assign the final state root to header.
+	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+
+	// Header seems complete, assemble into a block and return
+	return types.NewBlock(header, txs, uncles, receipts, trie.NewStackTrie(nil)), receipts, nil
+}
+
+func (c *mockParlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
+	return big.NewInt(1)
+}
+
+func TestParliaBlobFeeReward(t *testing.T) {
+	// Have N headers in the freezer
+	frdir := t.TempDir()
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false, false, false)
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend")
+	}
+	config := params.ParliaTestChainConfig
+	gspec := &Genesis{
+		Config: config,
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: new(big.Int).SetUint64(10 * params.Ether)}},
+	}
+	engine := &mockParlia{}
+	chain, _ := NewBlockChain(db, nil, gspec, nil, engine, vm.Config{}, nil, nil)
+	signer := types.LatestSigner(config)
+
+	_, bs, _ := GenerateChainWithGenesis(gspec, engine, 1, func(i int, gen *BlockGen) {
+		tx, _ := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas()).Uint64(), false)
+		gen.AddTxWithChain(chain, tx)
+		tx, sidecar := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas()).Uint64(), true)
+		gen.AddTxWithChain(chain, tx)
+		gen.AddBlobSidecar(&types.BlobSidecar{
+			BlobTxSidecar: *sidecar,
+			TxIndex:       1,
+			TxHash:        tx.Hash(),
+		})
+	})
+	if _, err := chain.InsertChain(bs); err != nil {
+		panic(err)
+	}
+
+	stateDB, err := chain.State()
+	if err != nil {
+		panic(err)
+	}
+	expect := new(big.Int)
+	for _, block := range bs {
+		receipts := chain.GetReceiptsByHash(block.Hash())
+		for _, receipt := range receipts {
+			if receipt.BlobGasPrice != nil {
+				blob := receipt.BlobGasPrice.Mul(receipt.BlobGasPrice, new(big.Int).SetUint64(receipt.BlobGasUsed))
+				expect.Add(expect, blob)
+			}
+			plain := receipt.EffectiveGasPrice.Mul(receipt.EffectiveGasPrice, new(big.Int).SetUint64(receipt.GasUsed))
+			expect.Add(expect, plain)
+		}
+	}
+	actual := stateDB.GetBalance(params.SystemAddress)
+	require.Equal(t, expect.Uint64(), actual.Uint64())
+}
+
+func makeMockTx(config *params.ChainConfig, signer types.Signer, key *ecdsa.PrivateKey, nonce uint64, baseFee uint64, blobBaseFee uint64, isBlobTx bool) (*types.Transaction, *types.BlobTxSidecar) {
+	if !isBlobTx {
+		raw := &types.DynamicFeeTx{
+			ChainID:   config.ChainID,
+			Nonce:     nonce,
+			GasTipCap: big.NewInt(10),
+			GasFeeCap: new(big.Int).SetUint64(baseFee + 10),
+			Gas:       params.TxGas,
+			To:        &common.Address{0x00},
+			Value:     big.NewInt(0),
+		}
+		tx, _ := types.SignTx(types.NewTx(raw), signer, key)
+		return tx, nil
+	}
+	sidecar := &types.BlobTxSidecar{
+		Blobs:       []kzg4844.Blob{emptyBlob, emptyBlob},
+		Commitments: []kzg4844.Commitment{emptyBlobCommit, emptyBlobCommit},
+		Proofs:      []kzg4844.Proof{emptyBlobProof, emptyBlobProof},
+	}
+	raw := &types.BlobTx{
+		ChainID:    uint256.MustFromBig(config.ChainID),
+		Nonce:      nonce,
+		GasTipCap:  uint256.NewInt(10),
+		GasFeeCap:  uint256.NewInt(baseFee + 10),
+		Gas:        params.TxGas,
+		To:         common.Address{0x00},
+		Value:      uint256.NewInt(0),
+		BlobFeeCap: uint256.NewInt(blobBaseFee),
+		BlobHashes: sidecar.BlobHashes(),
+	}
+	tx, _ := types.SignTx(types.NewTx(raw), signer, key)
+	return tx, sidecar
 }

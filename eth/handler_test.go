@@ -278,7 +278,11 @@ func newTestParliaHandlerAfterCancun(t *testing.T, config *params.ChainConfig, m
 		}
 		tx, sidecar := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas()).Uint64(), true)
 		gen.AddTxWithChain(chain, tx)
-		gen.AddBlobSidecar(sidecar)
+		gen.AddBlobSidecar(&types.BlobSidecar{
+			BlobTxSidecar: *sidecar,
+			TxIndex:       0,
+			TxHash:        tx.Hash(),
+		})
 	})
 	if _, err := chain.InsertChain(bs); err != nil {
 		panic(err)

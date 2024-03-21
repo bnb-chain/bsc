@@ -248,7 +248,7 @@ func (bc *BlockChain) GetReceiptsByHash(hash common.Hash) types.Receipts {
 }
 
 // GetSidecarsByHash retrieves the sidecars for all transactions in a given block.
-func (bc *BlockChain) GetSidecarsByHash(hash common.Hash) types.BlobTxSidecars {
+func (bc *BlockChain) GetSidecarsByHash(hash common.Hash) types.BlobSidecars {
 	if sidecars, ok := bc.sidecarsCache.Get(hash); ok {
 		return sidecars
 	}

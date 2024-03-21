@@ -279,7 +279,7 @@ type BlockChain struct {
 	receiptsCache *lru.Cache[common.Hash, []*types.Receipt]
 	blockCache    *lru.Cache[common.Hash, *types.Block]
 	txLookupCache *lru.Cache[common.Hash, txLookup]
-	sidecarsCache *lru.Cache[common.Hash, types.BlobTxSidecars]
+	sidecarsCache *lru.Cache[common.Hash, types.BlobSidecars]
 
 	// future blocks are blocks added for later processing
 	futureBlocks *lru.Cache[common.Hash, *types.Block]
@@ -362,7 +362,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		bodyCache:          lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
 		bodyRLPCache:       lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
-		sidecarsCache:      lru.NewCache[common.Hash, types.BlobTxSidecars](sidecarsCacheLimit),
+		sidecarsCache:      lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
 		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),

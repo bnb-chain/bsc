@@ -100,11 +100,11 @@ func createEmptyBlobTxInner(withSidecar bool) *BlobTx {
 
 func TestBlobTxSidecars_Encode(t *testing.T) {
 	tests := []struct {
-		raw BlobTxSidecars
+		raw []*BlobTxSidecar
 		err bool
 	}{
 		{
-			raw: BlobTxSidecars{
+			raw: []*BlobTxSidecar{
 				&BlobTxSidecar{
 					Blobs:       []kzg4844.Blob{emptyBlob},
 					Commitments: []kzg4844.Commitment{emptyBlobCommit},
@@ -119,7 +119,7 @@ func TestBlobTxSidecars_Encode(t *testing.T) {
 			err: false,
 		},
 		{
-			raw: BlobTxSidecars{
+			raw: []*BlobTxSidecar{
 				&BlobTxSidecar{
 					Blobs:       []kzg4844.Blob{emptyBlob},
 					Commitments: []kzg4844.Commitment{emptyBlobCommit},
@@ -130,7 +130,7 @@ func TestBlobTxSidecars_Encode(t *testing.T) {
 			err: true,
 		},
 		{
-			raw: BlobTxSidecars{},
+			raw: []*BlobTxSidecar{},
 			err: false,
 		},
 	}
@@ -139,7 +139,7 @@ func TestBlobTxSidecars_Encode(t *testing.T) {
 		t.Run(fmt.Sprintf("case%d", i), func(t *testing.T) {
 			enc, err := rlp.EncodeToBytes(item.raw)
 			require.NoError(t, err)
-			var nbs BlobTxSidecars
+			var nbs []*BlobTxSidecar
 			err = rlp.DecodeBytes(enc, &nbs)
 			if item.err {
 				require.Error(t, err)
