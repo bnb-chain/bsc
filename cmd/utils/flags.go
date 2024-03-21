@@ -305,16 +305,6 @@ var (
 		Usage:    "Manually specify the Rialto Genesis Hash, to trigger builtin network logic",
 		Category: flags.EthCategory,
 	}
-	OverrideShanghai = &cli.Uint64Flag{
-		Name:     "override.shanghai",
-		Usage:    "Manually specify the Shanghai fork timestamp, overriding the bundled setting",
-		Category: flags.EthCategory,
-	}
-	OverrideKepler = &cli.Uint64Flag{
-		Name:     "override.kepler",
-		Usage:    "Manually specify the Kepler fork timestamp, overriding the bundled setting",
-		Category: flags.EthCategory,
-	}
 	OverrideCancun = &cli.Uint64Flag{
 		Name:     "override.cancun",
 		Usage:    "Manually specify the Cancun fork timestamp, overriding the bundled setting",
@@ -328,6 +318,11 @@ var (
 	OverrideFeynman = &cli.Uint64Flag{
 		Name:     "override.feynman",
 		Usage:    "Manually specify the Feynman fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	OverrideFeynmanFix = &cli.Uint64Flag{
+		Name:     "override.feynmanfix",
+		Usage:    "Manually specify the FeynmanFix fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
@@ -1945,6 +1940,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.TransactionHistory != 0 {
 		cfg.TransactionHistory = 0
 		log.Warn("Disabled transaction unindexing for archive node")
+
+		cfg.StateScheme = rawdb.HashScheme
+		log.Warn("Forcing hash state-scheme for archive mode")
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheTrieFlag.Name) {
 		cfg.TrieCleanCache = ctx.Int(CacheFlag.Name) * ctx.Int(CacheTrieFlag.Name) / 100
@@ -1961,6 +1959,11 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		// to verify blocks from verify nodes, then it should enable trust protocol.
 		if cfg.TriesVerifyMode.NeedRemoteVerify() {
 			cfg.EnableTrustProtocol = true
+		}
+
+		if cfg.SyncMode == downloader.SnapSync && cfg.TriesVerifyMode.NoTries() {
+			log.Warn("Only local TriesVerifyMode can support snap sync, resetting to full sync", "mode", cfg.TriesVerifyMode)
+			cfg.SyncMode = downloader.FullSync
 		}
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheSnapshotFlag.Name) {
@@ -2093,7 +2096,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			if rawdb.ReadCanonicalHash(chaindb, 0) != (common.Hash{}) {
 				cfg.Genesis = nil // fallback to db content
 
-				//validate genesis has PoS enabled in block 0
+				// validate genesis has PoS enabled in block 0
 				genesis, err := core.ReadGenesis(chaindb)
 				if err != nil {
 					Fatalf("Could not read genesis from database: %v", err)

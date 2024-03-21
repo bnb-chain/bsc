@@ -132,12 +132,12 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	 */
 	if config.HashDB != nil {
 		if rawdb.ReadStateScheme(triediskdb) == rawdb.PathScheme {
-			log.Warn("incompatible state scheme", "old", rawdb.PathScheme, "new", rawdb.HashScheme)
+			log.Warn("Incompatible state scheme", "old", rawdb.PathScheme, "new", rawdb.HashScheme)
 		}
 		db.backend = hashdb.New(triediskdb, config.HashDB, trie.MerkleResolver{})
 	} else if config.PathDB != nil {
 		if rawdb.ReadStateScheme(triediskdb) == rawdb.HashScheme {
-			log.Warn("incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
+			log.Warn("Incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
 		}
 		db.backend = pathdb.New(triediskdb, config.PathDB)
 	} else if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {

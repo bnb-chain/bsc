@@ -316,9 +316,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
 	}
-	if cacheConfig.TriesInMemory != 128 {
-		log.Warn("TriesInMemory isn't the default value(128), you need specify exact same TriesInMemory when prune data",
-			"triesInMemory", cacheConfig.TriesInMemory)
+	if cacheConfig.StateScheme == rawdb.HashScheme && cacheConfig.TriesInMemory != 128 {
+		log.Warn("TriesInMemory isn't the default value (128), you need specify the same TriesInMemory when pruning data",
+			"triesInMemory", cacheConfig.TriesInMemory, "scheme", cacheConfig.StateScheme)
 	}
 
 	diffLayerCache, _ := exlru.New(diffLayerCacheLimit)
@@ -2008,7 +2008,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			go throwaway.TriePrefetchInAdvance(block, signer)
 		}
 
-		//Process block using the parent state as reference point
+		// Process block using the parent state as reference point
 		if bc.pipeCommit {
 			statedb.EnablePipeCommit()
 		}
