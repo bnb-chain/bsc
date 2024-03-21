@@ -342,8 +342,23 @@ func (f *Freezer) TruncateHead(items uint64) (uint64, error) {
 	if oitems <= items {
 		return oitems, nil
 	}
-	for _, table := range f.tables {
-		if err := table.truncateHead(items - f.offset); err != nil {
+	for kind, table := range f.tables {
+		err := table.truncateHead(items - f.offset)
+		if err == errTruncationBelowTail {
+			// This often happens in chain rewinds, but the blob table is special.
+			// It has the same head, but a different tail from other tables (like bodies, receipts).
+			// So if the chain is rewound to head below the blob's tail, it needs to reset again.
+			if kind != ChainFreezerBlobSidecarTable {
+				return 0, err
+			}
+			nt, err := table.resetItems(items-f.offset, items-f.offset)
+			if err != nil {
+				return 0, err
+			}
+			f.tables[kind] = nt
+			continue
+		}
+		if err != nil {
 			return 0, err
 		}
 	}
@@ -469,7 +484,22 @@ func (f *Freezer) repair() error {
 		if slices.Contains(f.additionTableKinds, kind) && EmptyTable(table) {
 			continue
 		}
-		if err := table.truncateHead(head); err != nil {
+		err := table.truncateHead(head)
+		if err == errTruncationBelowTail {
+			// This often happens in chain rewinds, but the blob table is special.
+			// It has the same head, but a different tail from other tables (like bodies, receipts).
+			// So if the chain is rewound to head below the blob's tail, it needs to reset again.
+			if kind != ChainFreezerBlobSidecarTable {
+				return err
+			}
+			nt, err := table.resetItems(head, head)
+			if err != nil {
+				return err
+			}
+			f.tables[kind] = nt
+			continue
+		}
+		if err != nil {
 			return err
 		}
 		if err := table.truncateTail(tail); err != nil {
@@ -708,7 +738,7 @@ func (f *Freezer) ResetTable(kind string, tail, head uint64, onlyEmpty bool) err
 	f.frozen.Add(f.offset)
 	f.tail.Add(f.offset)
 	f.writeBatch = newFreezerBatch(f)
-	log.Info("Reset Table", "tail", f.tail.Load(), "frozen", f.frozen.Load())
+	log.Info("Reset Table", "kind", kind, "tail", f.tables[kind].itemHidden.Load(), "frozen", f.tables[kind].items.Load())
 	return nil
 }
 

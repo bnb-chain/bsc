@@ -49,7 +49,7 @@ var (
 	maxQueuedHeaders            = 32 * 1024                         // [eth/62] Maximum number of headers to queue for import (DOS protection)
 	maxHeadersProcess           = 2048                              // Number of header download results to import at once into the chain
 	maxResultsProcess           = 2048                              // Number of content download results to import at once into the chain
-	fullMaxForkAncestry  uint64 = params.FullImmutabilityThreshold  // Maximum chain reorganisation (locally redeclared so tests can reduce it)
+	FullMaxForkAncestry  uint64 = params.FullImmutabilityThreshold  // Maximum chain reorganisation (locally redeclared so tests can reduce it)
 	lightMaxForkAncestry uint64 = params.LightImmutabilityThreshold // Maximum chain reorganisation (locally redeclared so tests can reduce it)
 
 	reorgProtThreshold   = 48 // Threshold number of recent blocks to disable mini reorg protection
@@ -550,8 +550,8 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 
 		// Legacy sync, use the best announcement we have from the remote peer.
 		// TODO(karalabe): Drop this pathway.
-		if remoteHeight > fullMaxForkAncestry+1 {
-			d.ancientLimit = remoteHeight - fullMaxForkAncestry - 1
+		if remoteHeight > FullMaxForkAncestry+1 {
+			d.ancientLimit = remoteHeight - FullMaxForkAncestry - 1
 		} else {
 			d.ancientLimit = 0
 		}
@@ -789,7 +789,7 @@ func (d *Downloader) findAncestor(p *peerConnection, localHeight uint64, remoteH
 	p.log.Debug("Looking for common ancestor", "local", localHeight, "remote", remoteHeight)
 
 	// Recap floor value for binary search
-	maxForkAncestry := fullMaxForkAncestry
+	maxForkAncestry := FullMaxForkAncestry
 	if d.getMode() == LightSync {
 		maxForkAncestry = lightMaxForkAncestry
 	}

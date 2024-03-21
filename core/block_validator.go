@@ -96,7 +96,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 		},
 		func() error {
 			// Withdrawals are present after the Shanghai fork.
-			if (header.WithdrawalsHash != nil && *header.WithdrawalsHash != common.Hash{}) {
+			if !header.EmptyWithdrawalsHash() {
 				// Withdrawals list must be present in body after Shanghai.
 				if block.Withdrawals() == nil {
 					return errors.New("missing withdrawals in block body")
