@@ -1296,6 +1296,7 @@ LOOP:
 
 	// when out-turn, use bestWork to prevent bundle leakage.
 	// when in-turn, compare with remote work.
+	local := true
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
@@ -1307,8 +1308,14 @@ LOOP:
 			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
 			if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
 				bestWork = bestBid.env
+				local = false
+				blockCounter.WithLabelValues(bestBid.bid.Builder.String()).Inc()
 			}
 		}
+	}
+
+	if local {
+		blockCounter.WithLabelValues("local").Inc()
 	}
 
 	w.commit(bestWork, w.fullTaskHook, true, start)

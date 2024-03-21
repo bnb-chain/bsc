@@ -11,6 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -18,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner/builderclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -36,10 +40,17 @@ const (
 )
 
 var (
-	diffInTurn = big.NewInt(2) // the difficulty of a block that proposed by an in-turn validator
+	blockCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{Namespace: "chain", Subsystem: "head", Name: "builder"}, []string{"builder"})
+
+	bidSimTimer = metrics.NewRegisteredTimer("bid/sim/duration", nil)
+	bidSimErr   = promauto.NewCounterVec(
+		prometheus.CounterOpts{Namespace: "bid", Subsystem: "sim", Name: "err"}, []string{"builder"})
 )
 
 var (
+	diffInTurn = big.NewInt(2) // the difficulty of a block that proposed by an in-turn validator
+
 	dialer = &net.Dialer{
 		Timeout:   time.Second,
 		KeepAlive: 60 * time.Second,
@@ -503,6 +514,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// ensure simulation exited then start next simulation
 	b.SetSimulatingBid(parentHash, bidRuntime)
+	start := time.Now()
 
 	defer func(simStart time.Time) {
 		logCtx := []any{
@@ -532,6 +544,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 
 		b.RemoveSimulatingBid(parentHash)
+		bidSimTimer.UpdateSince(start)
 	}(time.Now())
 
 	// prepareWork will configure header with a suitable time according to consensus
@@ -606,6 +619,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 // reportIssue reports the issue to the mev-sentry
 func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
+	bidSimErr.WithLabelValues(bidRuntime.bid.Builder.String()).Inc()
+
 	cli := b.builders[bidRuntime.bid.Builder]
 	if cli != nil {
 		cli.ReportIssue(context.Background(), &types.BidIssue{
