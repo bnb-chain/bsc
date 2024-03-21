@@ -465,7 +465,7 @@ func (b *Block) Sidecars() BlobSidecars {
 }
 
 func (b *Block) CleanSidecars() {
-	b.sidecars = nil
+	b.sidecars = make(BlobSidecars, 0)
 }
 
 type writeCounter uint64

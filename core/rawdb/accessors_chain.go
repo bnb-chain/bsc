@@ -800,121 +800,18 @@ func WriteBlock(db ethdb.KeyValueWriter, block *types.Block) {
 
 // WriteAncientBlocks writes entire block data into ancient store and returns the total written size.
 func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
-	var (
-		tdSum      = new(big.Int).Set(td)
-		stReceipts []*types.ReceiptForStorage
-	)
-	return db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
-		for i, block := range blocks {
-			// Convert receipts to storage format and sum up total difficulty.
-			stReceipts = stReceipts[:0]
-			for _, receipt := range receipts[i] {
-				stReceipts = append(stReceipts, (*types.ReceiptForStorage)(receipt))
-			}
-			header := block.Header()
-			if i > 0 {
-				tdSum.Add(tdSum, header.Difficulty)
-			}
-			if err := writeAncientBlock(op, block, header, stReceipts, tdSum); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-// WriteAncientBlocksAfterCancun writes entire block data into ancient store and returns the total written size.
-func WriteAncientBlocksAfterCancun(db ethdb.AncientStore, config *params.ChainConfig, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
-	if len(blocks) == 0 {
-		return 0, nil
-	}
-
 	cancunIndex := -1
 	for i, block := range blocks {
-		if config.IsCancun(block.Number(), block.Time()) {
+		if block.Sidecars() != nil {
 			cancunIndex = i
 			break
 		}
 	}
-	log.Info("WriteAncientBlocksAfterCancun", "startAt", blocks[0].Number(), "cancunIndex", cancunIndex, "len", len(blocks))
-	if cancunIndex < 0 {
-		return WriteAncientBlocks(db, blocks, receipts, td)
-	}
-
-	// if there has pre-cancun and post-cancun blocks, write them separately
-	var (
-		tdSum      = new(big.Int).Set(td)
-		stReceipts []*types.ReceiptForStorage
-	)
-
-	// write pre-cancun blocks
-	preBlocks := blocks[:cancunIndex]
-	preReceipts := receipts[:cancunIndex]
-	preSize, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
-		for i, block := range preBlocks {
-			// Convert receipts to storage format and sum up total difficulty.
-			stReceipts = stReceipts[:0]
-			for _, receipt := range preReceipts[i] {
-				stReceipts = append(stReceipts, (*types.ReceiptForStorage)(receipt))
-			}
-			header := block.Header()
-			if i > 0 {
-				tdSum.Add(tdSum, header.Difficulty)
-			}
-			if err := writeAncientBlock(op, block, header, stReceipts, tdSum); err != nil {
-				return err
-			}
+	log.Info("WriteAncientBlocks", "startAt", blocks[0].Number(), "cancunIndex", cancunIndex, "len", len(blocks))
+	if cancunIndex >= 0 {
+		if err := ResetEmptyBlobAncientTable(db, blocks[cancunIndex].NumberU64()); err != nil {
+			return 0, err
 		}
-		return nil
-	})
-	if err != nil {
-		return preSize, err
-	}
-
-	// write post-cancun blocks
-	postBlocks := blocks[cancunIndex:]
-	postReceipts := receipts[cancunIndex:]
-	// try reset empty blob ancient table
-	if err := ResetEmptyBlobAncientTable(db, postBlocks[0].NumberU64()); err != nil {
-		return 0, err
-	}
-	postSize, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
-		for i, block := range postBlocks {
-			// Convert receipts to storage format and sum up total difficulty.
-			stReceipts = stReceipts[:0]
-			for _, receipt := range postReceipts[i] {
-				stReceipts = append(stReceipts, (*types.ReceiptForStorage)(receipt))
-			}
-			header := block.Header()
-			if i > 0 {
-				tdSum.Add(tdSum, header.Difficulty)
-			}
-			if err := writeAncientBlockWithSidecar(op, block, header, stReceipts, tdSum, block.Sidecars()); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	return preSize + postSize, err
-}
-
-// WriteAncientBlocksWithSidecars writes entire block data into ancient store and returns the total written size.
-// Attention: The caller must set blobs after cancun
-func WriteAncientBlocksWithSidecars(db ethdb.AncientStore, blocks []*types.Block, receipts []types.Receipts, td *big.Int, sidecars []types.BlobSidecars) (int64, error) {
-	if len(blocks) == 0 {
-		return 0, nil
-	}
-
-	// do some sanity check
-	if len(blocks) != len(sidecars) {
-		return 0, fmt.Errorf("the sidecars len is different with blocks, %v:%v", len(sidecars), len(blocks))
-	}
-	if len(blocks) != len(receipts) {
-		return 0, fmt.Errorf("the receipts len is different with blocks, %v:%v", len(receipts), len(blocks))
-	}
-	// try reset empty blob ancient table
-	if err := ResetEmptyBlobAncientTable(db, blocks[0].NumberU64()); err != nil {
-		return 0, err
 	}
 
 	var (
@@ -932,7 +829,7 @@ func WriteAncientBlocksWithSidecars(db ethdb.AncientStore, blocks []*types.Block
 			if i > 0 {
 				tdSum.Add(tdSum, header.Difficulty)
 			}
-			if err := writeAncientBlockWithSidecar(op, block, header, stReceipts, tdSum, sidecars[i]); err != nil {
+			if err := writeAncientBlock(op, block, header, stReceipts, tdSum); err != nil {
 				return err
 			}
 		}
@@ -1007,25 +904,10 @@ func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *type
 	if err := op.Append(ChainFreezerDifficultyTable, num, td); err != nil {
 		return fmt.Errorf("can't append block %d total difficulty: %v", num, err)
 	}
-	return nil
-}
-
-func writeAncientSidecar(op ethdb.AncientWriteOp, num uint64, blobs types.BlobSidecars) error {
-	if err := op.Append(ChainFreezerBlobSidecarTable, num, blobs); err != nil {
-		return fmt.Errorf("can't append block %d blobs: %v", num, err)
-	}
-	return nil
-}
-
-// writeAncientBlockWithSidecar writes entire block data into ancient store and returns the total written size.
-// Attention: The caller must set blobs after cancun
-func writeAncientBlockWithSidecar(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int, sidecars types.BlobSidecars) error {
-	num := block.NumberU64()
-	if err := writeAncientBlock(op, block, header, receipts, td); err != nil {
-		return err
-	}
-	if err := writeAncientSidecar(op, num, sidecars); err != nil {
-		return err
+	if block.Sidecars() != nil {
+		if err := op.Append(ChainFreezerBlobSidecarTable, num, block.Sidecars()); err != nil {
+			return fmt.Errorf("can't append block %d blobs: %v", num, err)
+		}
 	}
 	return nil
 }

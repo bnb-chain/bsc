@@ -1408,12 +1408,8 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			writeSize int64
 			err       error
 		)
-		if !bc.chainConfig.IsCancun(last.Number(), last.Time()) {
-			log.Info("WriteAncientBlocks", "startAt", blockChain[0].Number(), "last", last.Number())
-			writeSize, err = rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td)
-		} else {
-			writeSize, err = rawdb.WriteAncientBlocksAfterCancun(bc.db, bc.chainConfig, blockChain, receiptChain, td)
-		}
+		writeSize, err = rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td)
+
 		if err != nil {
 			log.Error("Error importing chain data to ancients", "err", err)
 			return 0, err

@@ -1361,6 +1361,10 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		// env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
+		// If Cancun enabled, sidecars can't be nil then.
+		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
+			env.sidecars = make(types.BlobSidecars, 0)
+		}
 		// Create a local environment copy, avoid the data race with snapshot state.
 		// https://github.com/ethereum/go-ethereum/issues/24299
 		env := env.copy()
