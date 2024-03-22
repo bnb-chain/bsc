@@ -363,11 +363,12 @@ func TestFreezer_AdditionTables(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	// check read only
-	f, err = NewFreezer(dir, "", true, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true}, "a1")
+	additionTables = []string{"a1"}
+	f, err = NewFreezer(dir, "", true, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	f, err = NewFreezer(dir, "", false, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true}, "a1")
+	f, err = NewFreezer(dir, "", false, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
 	require.NoError(t, err)
 	frozen, _ := f.Ancients()
 	f.ResetTable("a1", frozen, frozen, true)
@@ -392,7 +393,7 @@ func TestFreezer_AdditionTables(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	// reopen and read
-	f, err = NewFreezer(dir, "", true, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true}, "a1")
+	f, err = NewFreezer(dir, "", true, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
 	require.NoError(t, err)
 	actual, err = f.Ancient("a1", 2)
 	require.NoError(t, err)

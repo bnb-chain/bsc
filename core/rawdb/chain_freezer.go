@@ -418,15 +418,6 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 	return hashes, err
 }
 
-// EmptyBlobAncient check if empty in blob ancient, it is used to init blob ancient
-func EmptyBlobAncient(f *chainFreezer) (bool, error) {
-	frozen, err := f.TableAncients(ChainFreezerBlobSidecarTable)
-	if err != nil {
-		return false, err
-	}
-	return frozen == 0, nil
-}
-
 func (f *chainFreezer) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	f.freezeEnv.Store(env)
 	return nil

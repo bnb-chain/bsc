@@ -50,6 +50,8 @@ var chainFreezerNoSnappy = map[string]bool{
 	ChainFreezerBlobSidecarTable: false,
 }
 
+var additionTables = []string{ChainFreezerBlobSidecarTable}
+
 const (
 	// stateHistoryTableSize defines the maximum size of freezer data files.
 	stateHistoryTableSize = 2 * 1000 * 1000 * 1000
