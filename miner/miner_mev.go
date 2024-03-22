@@ -107,5 +107,6 @@ func (miner *Miner) MevParams() *types.MevParams {
 	return &types.MevParams{
 		ValidatorCommission:   miner.worker.config.Mev.ValidatorCommission,
 		BidSimulationLeftOver: miner.worker.config.Mev.BidSimulationLeftOver,
+		GasCeil:               miner.worker.config.GasCeil,
 	}
 }
