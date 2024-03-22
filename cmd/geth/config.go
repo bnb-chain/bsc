@@ -199,8 +199,8 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideFeynmanFix.Name)
 		cfg.Eth.OverrideFeynmanFix = &v
 	}
-	if ctx.IsSet(utils.SeparateDBFlag.Name) && !stack.IsSeparatedDB() {
-		utils.Fatalf("Failed to locate separate database subdirectory when separatedb parameter has been set")
+	if ctx.IsSet(utils.MultiDataBaseFlag.Name) && !stack.CheckIfMultiDataBase() {
+		utils.Fatalf("Failed to locate multi-database subdirectory when multi-database parameter has been set")
 	}
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)
 

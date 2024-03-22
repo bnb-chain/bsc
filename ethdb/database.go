@@ -159,12 +159,26 @@ type StateStoreReader interface {
 	StateStoreReader() Reader
 }
 
+type BlockStore interface {
+	BlockStore() Database
+	SetBlockStore(block Database)
+}
+
+type BlockStoreReader interface {
+	BlockStoreReader() Reader
+}
+
+type BlockStoreWriter interface {
+	BlockStoreWriter() Writer
+}
+
 // Reader contains the methods required to read data from both key-value as well as
 // immutable ancient data.
 type Reader interface {
 	KeyValueReader
 	AncientReader
 	StateStoreReader
+	BlockStoreReader
 }
 
 // Writer contains the methods required to write data to both key-value as well as
@@ -172,6 +186,7 @@ type Reader interface {
 type Writer interface {
 	KeyValueWriter
 	AncientWriter
+	BlockStoreWriter
 }
 
 // Stater contains the methods required to retrieve states from both key-value as well as
@@ -206,6 +221,7 @@ type Database interface {
 	Writer
 	DiffStore
 	StateStore
+	BlockStore
 	Batcher
 	Iteratee
 	Stater
