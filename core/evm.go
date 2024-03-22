@@ -19,8 +19,6 @@ package core
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/params"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
@@ -37,9 +35,6 @@ type ChainContext interface {
 
 	// GetHeader returns the header corresponding to the hash/number argument pair.
 	GetHeader(common.Hash, uint64) *types.Header
-
-	// Config retrieves the chain config.
-	Config() *params.ChainConfig
 }
 
 // NewEVMBlockContext creates a new context for use in the EVM.

@@ -236,10 +236,6 @@ func (d *dummyChain) Engine() consensus.Engine {
 	return nil
 }
 
-func (d *dummyChain) Config() *params.ChainConfig {
-	return nil
-}
-
 // GetHeader returns the hash corresponding to their hash.
 func (d *dummyChain) GetHeader(h common.Hash, n uint64) *types.Header {
 	d.counter++
