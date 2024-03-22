@@ -545,7 +545,7 @@ func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
 	}
-	if b.sidecars != nil {
+	if sidecars != nil {
 		block.sidecars = make(BlobSidecars, len(sidecars))
 		copy(block.sidecars, sidecars)
 	}

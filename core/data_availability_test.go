@@ -279,6 +279,10 @@ func (r *mockDAHeaderReader) setChasingHead(h uint64) {
 	r.chasingHead = h
 }
 
+func (r *mockDAHeaderReader) Config() *params.ChainConfig {
+	return r.config
+}
+
 func (r *mockDAHeaderReader) CurrentHeader() *types.Header {
 	return &types.Header{
 		Number: new(big.Int).SetUint64(r.chasingHead),
