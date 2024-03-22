@@ -1030,6 +1030,7 @@ func (t *freezerTable) ResetItemsOffset(virtualTail uint64) error {
 }
 
 // resetItems reset freezer table head & tail
+// only used for ChainFreezerBlobSidecarTable now
 func (t *freezerTable) resetItems(tail, head uint64) (*freezerTable, error) {
 	if t.readonly {
 		return nil, errors.New("resetItems in readonly mode")

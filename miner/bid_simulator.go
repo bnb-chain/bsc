@@ -674,6 +674,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	}
 
 	if tx.Type() == types.BlobTxType {
+		sc.TxIndex = uint64(len(env.txs))
 		env.txs = append(env.txs, tx.WithoutBlobTxSidecar())
 		env.receipts = append(env.receipts, receipt)
 		env.sidecars = append(env.sidecars, sc)

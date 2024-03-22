@@ -33,14 +33,12 @@ const freezerBatchBufferLimit = 2 * 1024 * 1024
 
 // freezerBatch is a write operation of multiple items on a freezer.
 type freezerBatch struct {
-	tables             map[string]*freezerTableBatch
-	additionTableKinds []string // additionTableKinds are post-filled tables that start as empty
+	tables map[string]*freezerTableBatch
 }
 
 func newFreezerBatch(f *Freezer) *freezerBatch {
 	batch := &freezerBatch{
-		tables:             make(map[string]*freezerTableBatch, len(f.tables)),
-		additionTableKinds: f.additionTableKinds,
+		tables: make(map[string]*freezerTableBatch, len(f.tables)),
 	}
 	for kind, table := range f.tables {
 		batch.tables[kind] = table.newBatch(f.offset)
@@ -72,7 +70,7 @@ func (batch *freezerBatch) commit() (item uint64, writeSize int64, err error) {
 	item = uint64(math.MaxUint64)
 	for name, tb := range batch.tables {
 		// skip empty addition tables
-		if slices.Contains(batch.additionTableKinds, name) && EmptyTable(tb.t) {
+		if slices.Contains(additionTables, name) && EmptyTable(tb.t) {
 			continue
 		}
 		if item < math.MaxUint64 && tb.curItem != item {
