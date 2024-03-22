@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -46,9 +47,17 @@ func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobSidecar) error
 
 // IsDataAvailable it checks that the blobTx block has available blob data
 func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err error) {
+	// refer logic in ValidateBody
 	if !chain.Config().IsCancun(block.Number(), block.Time()) {
-		return nil
+		if block.Sidecars() == nil {
+			return nil
+		} else {
+			return errors.New("sidecars present in block body before cancun")
+		}
+	} else if block.Sidecars() == nil {
+		return errors.New("missing sidecars in block body after cancun")
 	}
+
 	// only required to check within MinBlocksForBlobRequests block's DA
 	highest := chain.ChasingHead()
 	current := chain.CurrentHeader()
