@@ -20,6 +20,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/stretchr/testify/require"
+
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
@@ -92,4 +96,99 @@ func testSnapSyncDisabling(t *testing.T, ethVer uint, snapVer uint) {
 	if empty.handler.snapSync.Load() {
 		t.Fatalf("snap sync not disabled after successful synchronisation")
 	}
+}
+
+func TestFullSyncWithBlobs(t *testing.T) {
+	testChainSyncWithBlobs(t, downloader.FullSync, 128, 128)
+}
+
+func TestSnapSyncWithBlobs(t *testing.T) {
+	testChainSyncWithBlobs(t, downloader.SnapSync, 128, 128)
+}
+
+func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlks, postCancunBlks uint64) {
+	t.Parallel()
+	config := *params.ParliaTestChainConfig
+	cancunTime := (preCancunBlks + 1) * 10
+	config.CancunTime = &cancunTime
+
+	// Create a full handler and ensure snap sync ends up disabled
+	full := newTestParliaHandlerAfterCancun(t, &config, mode, preCancunBlks, postCancunBlks)
+	defer full.close()
+	if downloader.SnapSync == mode && full.handler.snapSync.Load() {
+		t.Fatalf("snap sync not disabled on non-empty blockchain")
+	}
+
+	// check blocks and blobs
+	checkChainWithBlobs(t, full.chain, preCancunBlks, postCancunBlks)
+
+	// Create an empty handler and ensure it's in snap sync mode
+	empty := newTestParliaHandlerAfterCancun(t, &config, mode, 0, 0)
+	defer empty.close()
+	if downloader.SnapSync == mode && !empty.handler.snapSync.Load() {
+		t.Fatalf("snap sync disabled on pristine blockchain")
+	}
+
+	// Sync up the two handlers via both `eth` and `snap`
+	ethVer := uint(eth.ETH68)
+	snapVer := uint(snap.SNAP1)
+
+	// Sync up the two handlers via both `eth` and `snap`
+	caps := []p2p.Cap{{Name: "eth", Version: ethVer}, {Name: "snap", Version: snapVer}}
+
+	emptyPipeEth, fullPipeEth := p2p.MsgPipe()
+	defer emptyPipeEth.Close()
+	defer fullPipeEth.Close()
+
+	emptyPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{1}, "", caps), emptyPipeEth, empty.txpool)
+	fullPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{2}, "", caps), fullPipeEth, full.txpool)
+	defer emptyPeerEth.Close()
+	defer fullPeerEth.Close()
+
+	go empty.handler.runEthPeer(emptyPeerEth, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(empty.handler), peer)
+	})
+	go full.handler.runEthPeer(fullPeerEth, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(full.handler), peer)
+	})
+
+	emptyPipeSnap, fullPipeSnap := p2p.MsgPipe()
+	defer emptyPipeSnap.Close()
+	defer fullPipeSnap.Close()
+
+	emptyPeerSnap := snap.NewPeer(snapVer, p2p.NewPeer(enode.ID{1}, "", caps), emptyPipeSnap)
+	fullPeerSnap := snap.NewPeer(snapVer, p2p.NewPeer(enode.ID{2}, "", caps), fullPipeSnap)
+
+	go empty.handler.runSnapExtension(emptyPeerSnap, func(peer *snap.Peer) error {
+		return snap.Handle((*snapHandler)(empty.handler), peer)
+	})
+	go full.handler.runSnapExtension(fullPeerSnap, func(peer *snap.Peer) error {
+		return snap.Handle((*snapHandler)(full.handler), peer)
+	})
+	// Wait a bit for the above handlers to start
+	time.Sleep(250 * time.Millisecond)
+
+	// Check that snap sync was disabled
+	op := peerToSyncOp(mode, empty.handler.peers.peerWithHighestTD())
+	if err := empty.handler.doSync(op); err != nil {
+		t.Fatal("sync failed:", err)
+	}
+	if !empty.handler.synced.Load() {
+		t.Fatalf("full sync not done after successful synchronisation")
+	}
+
+	// check blocks and blobs
+	checkChainWithBlobs(t, empty.chain, preCancunBlks, postCancunBlks)
+}
+
+func checkChainWithBlobs(t *testing.T, chain *core.BlockChain, preCancunBlks, postCancunBlks uint64) {
+	block := chain.GetBlockByNumber(preCancunBlks)
+	require.NotNil(t, block, preCancunBlks)
+	require.Nil(t, chain.GetSidecarsByHash(block.Hash()), preCancunBlks)
+	block = chain.GetBlockByNumber(preCancunBlks + 1)
+	require.NotNil(t, block, preCancunBlks+1)
+	require.NotNil(t, chain.GetSidecarsByHash(block.Hash()), preCancunBlks+1)
+	block = chain.GetBlockByNumber(preCancunBlks + postCancunBlks)
+	require.NotNil(t, block, preCancunBlks+postCancunBlks)
+	require.NotNil(t, chain.GetSidecarsByHash(block.Hash()), preCancunBlks+postCancunBlks)
 }

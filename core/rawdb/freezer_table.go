@@ -44,6 +44,8 @@ var (
 
 	// errNotSupported is returned if the database doesn't support the required operation.
 	errNotSupported = errors.New("this operation is not supported")
+
+	errTruncationBelowTail = errors.New("truncation below tail")
 )
 
 // indexEntry contains the number/id of the file that the data resides in, as well as the
@@ -406,7 +408,7 @@ func (t *freezerTable) truncateHead(items uint64) error {
 		return nil
 	}
 	if items < t.itemHidden.Load() {
-		return errors.New("truncation below tail")
+		return errTruncationBelowTail
 	}
 	// We need to truncate, save the old size for metrics tracking
 	oldSize, err := t.sizeNolock()
@@ -1025,4 +1027,56 @@ func (t *freezerTable) ResetItemsOffset(virtualTail uint64) error {
 	log.Info("Reset Index", "filenum", t.index.Name(), "offset", firstIndex2.offset)
 
 	return nil
+}
+
+// resetItems reset freezer table head & tail
+// only used for ChainFreezerBlobSidecarTable now
+func (t *freezerTable) resetItems(tail, head uint64) (*freezerTable, error) {
+	if t.readonly {
+		return nil, errors.New("resetItems in readonly mode")
+	}
+	itemHidden := t.itemHidden.Load()
+	items := t.items.Load()
+	if tail != head && (itemHidden > tail || items < head) {
+		return nil, errors.New("cannot reset to non-exist range")
+	}
+
+	var err error
+	if tail != head {
+		if err = t.truncateHead(head); err != nil {
+			return nil, err
+		}
+		if err = t.truncateTail(tail); err != nil {
+			return nil, err
+		}
+		return t, nil
+	}
+
+	// if tail == head, it means table reset to 0 item
+	t.releaseFilesAfter(t.tailId-1, true)
+	t.head.Close()
+	os.Remove(t.head.Name())
+	t.index.Close()
+	os.Remove(t.index.Name())
+	t.meta.Close()
+	os.Remove(t.meta.Name())
+
+	var idxName string
+	if t.noCompression {
+		idxName = fmt.Sprintf("%s.ridx", t.name) // raw index file
+	} else {
+		idxName = fmt.Sprintf("%s.cidx", t.name) // compressed index file
+	}
+	index, err := openFreezerFileForAppend(filepath.Join(t.path, idxName))
+	if err != nil {
+		return nil, err
+	}
+	tailIndex := indexEntry{
+		offset: uint32(tail),
+	}
+	if _, err = index.Write(tailIndex.append(nil)); err != nil {
+		return nil, err
+	}
+
+	return newFreezerTable(t.path, t.name, t.noCompression, t.readonly)
 }

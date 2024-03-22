@@ -17,9 +17,16 @@
 package eth
 
 import (
+	"crypto/ecdsa"
 	"math/big"
 	"sort"
 	"sync"
+	"testing"
+
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
+	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/trie"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -202,6 +209,108 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 	}
 }
 
+type mockParlia struct {
+	consensus.Engine
+}
+
+func (c *mockParlia) Author(header *types.Header) (common.Address, error) {
+	return header.Coinbase, nil
+}
+
+func (c *mockParlia) VerifyUncles(chain consensus.ChainReader, block *types.Block) error {
+	return nil
+}
+
+func (c *mockParlia) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
+	return nil
+}
+
+func (c *mockParlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header) (chan<- struct{}, <-chan error) {
+	abort := make(chan<- struct{})
+	results := make(chan error, len(headers))
+	for i := 0; i < len(headers); i++ {
+		results <- nil
+	}
+	return abort, results
+}
+
+func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, _ *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal,
+	_ *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64) (err error) {
+	return
+}
+
+func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction,
+	uncles []*types.Header, receipts []*types.Receipt, withdrawals []*types.Withdrawal) (*types.Block, []*types.Receipt, error) {
+	// Finalize block
+	c.Finalize(chain, header, state, &txs, uncles, nil, nil, nil, nil)
+
+	// Assign the final state root to header.
+	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+
+	// Header seems complete, assemble into a block and return
+	return types.NewBlock(header, txs, uncles, receipts, trie.NewStackTrie(nil)), receipts, nil
+}
+
+func (c *mockParlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
+	return big.NewInt(1)
+}
+
+func newTestParliaHandlerAfterCancun(t *testing.T, config *params.ChainConfig, mode downloader.SyncMode, preCancunBlks, postCancunBlks uint64) *testHandler {
+	// Have N headers in the freezer
+	frdir := t.TempDir()
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false, false, false)
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend")
+	}
+	gspec := &core.Genesis{
+		Config: config,
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: new(big.Int).SetUint64(10 * params.Ether)}},
+	}
+	engine := &mockParlia{}
+	chain, _ := core.NewBlockChain(db, nil, gspec, nil, engine, vm.Config{}, nil, nil)
+	signer := types.LatestSigner(config)
+
+	_, bs, _ := core.GenerateChainWithGenesis(gspec, engine, int(preCancunBlks+postCancunBlks), func(i int, gen *core.BlockGen) {
+		if !config.IsCancun(gen.Number(), gen.Timestamp()) {
+			tx, _ := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas()).Uint64(), false)
+			gen.AddTxWithChain(chain, tx)
+			return
+		}
+		tx, sidecar := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas()).Uint64(), true)
+		gen.AddTxWithChain(chain, tx)
+		gen.AddBlobSidecar(&types.BlobSidecar{
+			BlobTxSidecar: *sidecar,
+			TxIndex:       0,
+			TxHash:        tx.Hash(),
+		})
+	})
+	if _, err := chain.InsertChain(bs); err != nil {
+		panic(err)
+	}
+	txpool := newTestTxPool()
+	votepool := newTestVotePool()
+
+	handler, _ := newHandler(&handlerConfig{
+		Database:   db,
+		Chain:      chain,
+		TxPool:     txpool,
+		Merger:     consensus.NewMerger(rawdb.NewMemoryDatabase()),
+		VotePool:   votepool,
+		Network:    1,
+		Sync:       mode,
+		BloomCache: 1,
+	})
+	handler.Start(1000, 3)
+
+	return &testHandler{
+		db:       db,
+		chain:    chain,
+		txpool:   txpool,
+		votepool: votepool,
+		handler:  handler,
+	}
+}
+
 // close tears down the handler and all its internal constructs.
 func (b *testHandler) close() {
 	b.handler.Stop()
@@ -248,4 +357,44 @@ func (t *testVotePool) GetVotes() []*types.VoteEnvelope {
 
 func (t *testVotePool) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {
 	return t.voteFeed.Subscribe(ch)
+}
+
+var (
+	emptyBlob          = kzg4844.Blob{}
+	emptyBlobCommit, _ = kzg4844.BlobToCommitment(emptyBlob)
+	emptyBlobProof, _  = kzg4844.ComputeBlobProof(emptyBlob, emptyBlobCommit)
+)
+
+func makeMockTx(config *params.ChainConfig, signer types.Signer, key *ecdsa.PrivateKey, nonce uint64, baseFee uint64, blobBaseFee uint64, isBlobTx bool) (*types.Transaction, *types.BlobTxSidecar) {
+	if !isBlobTx {
+		raw := &types.DynamicFeeTx{
+			ChainID:   config.ChainID,
+			Nonce:     nonce,
+			GasTipCap: big.NewInt(10),
+			GasFeeCap: new(big.Int).SetUint64(baseFee + 10),
+			Gas:       params.TxGas,
+			To:        &common.Address{0x00},
+			Value:     big.NewInt(0),
+		}
+		tx, _ := types.SignTx(types.NewTx(raw), signer, key)
+		return tx, nil
+	}
+	sidecar := &types.BlobTxSidecar{
+		Blobs:       []kzg4844.Blob{emptyBlob, emptyBlob},
+		Commitments: []kzg4844.Commitment{emptyBlobCommit, emptyBlobCommit},
+		Proofs:      []kzg4844.Proof{emptyBlobProof, emptyBlobProof},
+	}
+	raw := &types.BlobTx{
+		ChainID:    uint256.MustFromBig(config.ChainID),
+		Nonce:      nonce,
+		GasTipCap:  uint256.NewInt(10),
+		GasFeeCap:  uint256.NewInt(baseFee + 10),
+		Gas:        params.TxGas,
+		To:         common.Address{0x00},
+		Value:      uint256.NewInt(0),
+		BlobFeeCap: uint256.NewInt(blobBaseFee),
+		BlobHashes: sidecar.BlobHashes(),
+	}
+	tx, _ := types.SignTx(types.NewTx(raw), signer, key)
+	return tx, sidecar
 }
