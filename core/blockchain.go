@@ -1404,11 +1404,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Write all chain data to ancients.
 		td := bc.GetTd(first.Hash(), first.NumberU64())
-		var (
-			writeSize int64
-			err       error
-		)
-		writeSize, err = rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td)
+		writeSize, err := rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td)
 
 		if err != nil {
 			log.Error("Error importing chain data to ancients", "err", err)

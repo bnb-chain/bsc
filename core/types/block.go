@@ -544,10 +544,10 @@ func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
-		sidecars:     sidecars,
 	}
-	if b.withdrawals != nil {
-		block.withdrawals = b.withdrawals
+	if b.sidecars != nil {
+		block.sidecars = make(BlobSidecars, len(sidecars))
+		copy(block.sidecars, sidecars)
 	}
 	return block
 }
