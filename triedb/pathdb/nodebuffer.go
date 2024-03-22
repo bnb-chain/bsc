@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 var _ trienodebuffer = &nodebuffer{}
@@ -39,6 +40,16 @@ type nodebuffer struct {
 	size   uint64                                    // The size of aggregated writes
 	limit  uint64                                    // The maximum memory allowance in bytes
 	nodes  map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
+}
+
+func (b *nodebuffer) account(hash common.Hash) ([]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (b *nodebuffer) storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 // newNodeBuffer initializes the node buffer with the provided nodes.
@@ -82,7 +93,7 @@ func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*tr
 // the ownership of the nodes map which belongs to the bottom-most diff layer.
 // It will just hold the node references from the given map which are safe to
 // copy.
-func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) trienodebuffer {
+func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node, set *triestate.Set) trienodebuffer {
 	var (
 		delta         int64
 		overwrite     int64

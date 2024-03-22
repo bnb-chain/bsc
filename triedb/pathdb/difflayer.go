@@ -96,6 +96,41 @@ func (dl *diffLayer) parentLayer() layer {
 	return dl.parent
 }
 
+func (dl *diffLayer) Account(hash common.Hash) ([]byte, error) {
+	// Hold the lock, ensure the parent won't be changed during the
+	// state accessing.
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	if data, ok := dl.states.LatestAccounts[hash]; ok {
+		return data, nil
+	}
+
+	if _, ok := dl.states.DestructSet[hash]; ok {
+		return nil, nil
+	}
+	return dl.parent.Account(hash)
+}
+
+func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	// Hold the lock, ensure the parent won't be changed during the
+	// state accessing.
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	if storage, ok := dl.states.LatestStorages[accountHash]; ok {
+		if data, ok := storage[storageHash]; ok {
+			return data, nil
+		}
+	}
+
+	if _, ok := dl.states.DestructSet[accountHash]; ok {
+		return nil, nil
+	}
+
+	return dl.parent.Storage(accountHash, storageHash)
+}
+
 // node retrieves the node with provided node information. It's the internal
 // version of Node function with additional accessed layer tracked. No error
 // will be returned if node is not found.

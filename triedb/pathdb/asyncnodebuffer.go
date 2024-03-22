@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -27,6 +28,34 @@ type asyncnodebuffer struct {
 	background   *nodecache
 	isFlushing   atomic.Bool
 	stopFlushing atomic.Bool
+}
+
+func (a *asyncnodebuffer) account(hash common.Hash) ([]byte, error) {
+	a.mux.RLock()
+	defer a.mux.RUnlock()
+
+	node, err := a.current.account(hash)
+	if err != nil {
+		return nil, err
+	}
+	if node == nil {
+		return a.background.account(hash)
+	}
+	return node, nil
+}
+
+func (a *asyncnodebuffer) storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	a.mux.RLock()
+	defer a.mux.RUnlock()
+
+	node, err := a.current.storage(accountHash, storageHash)
+	if err != nil {
+		return nil, err
+	}
+	if node == nil {
+		return a.background.storage(accountHash, storageHash)
+	}
+	return node, nil
 }
 
 // newAsyncNodeBuffer initializes the async node buffer with the provided nodes.
@@ -66,11 +95,11 @@ func (a *asyncnodebuffer) node(owner common.Hash, path []byte, hash common.Hash)
 // the ownership of the nodes map which belongs to the bottom-most diff layer.
 // It will just hold the node references from the given map which are safe to
 // copy.
-func (a *asyncnodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) trienodebuffer {
+func (a *asyncnodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node, set *triestate.Set) trienodebuffer {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
-	err := a.current.commit(nodes)
+	err := a.current.commit(nodes, set)
 	if err != nil {
 		log.Crit("[BUG] Failed to commit nodes to asyncnodebuffer", "error", err)
 	}
@@ -198,11 +227,17 @@ func (a *asyncnodebuffer) getSize() (uint64, uint64) {
 }
 
 type nodecache struct {
-	layers    uint64                                    // The number of diff layers aggregated inside
-	size      uint64                                    // The size of aggregated writes
-	limit     uint64                                    // The maximum memory allowance in bytes
-	nodes     map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
-	immutable uint64                                    // The flag equal 1, flush nodes to disk background
+	layers uint64                                    // The number of diff layers aggregated inside
+	size   uint64                                    // The size of aggregated writes
+	limit  uint64                                    // The maximum memory allowance in bytes
+	nodes  map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
+
+	// latest account and storage
+	LatestAccounts map[common.Hash][]byte
+	LatestStorages map[common.Hash]map[common.Hash][]byte
+	DestructSet    map[common.Hash]struct{}
+
+	immutable uint64 // The flag equal 1, flush nodes to disk background
 }
 
 func newNodeCache(limit, size uint64, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) *nodecache {
@@ -213,6 +248,30 @@ func newNodeCache(limit, size uint64, nodes map[common.Hash]map[string]*trienode
 		nodes:     nodes,
 		immutable: 0,
 	}
+}
+
+func (nc *nodecache) account(hash common.Hash) ([]byte, error) {
+	if data, ok := nc.LatestAccounts[hash]; ok {
+		return data, nil
+	}
+
+	if _, ok := nc.DestructSet[hash]; ok {
+		return nil, nil
+	}
+	return nil, nil
+}
+
+func (nc *nodecache) storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	if storage, ok := nc.LatestStorages[accountHash]; ok {
+		if data, ok := storage[storageHash]; ok {
+			return data, nil
+		}
+	}
+
+	if _, ok := nc.DestructSet[storageHash]; ok {
+		return nil, nil
+	}
+	return nil, nil
 }
 
 func (nc *nodecache) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {
@@ -232,7 +291,7 @@ func (nc *nodecache) node(owner common.Hash, path []byte, hash common.Hash) (*tr
 	return n, nil
 }
 
-func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node) error {
+func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node, set *triestate.Set) error {
 	if atomic.LoadUint64(&nc.immutable) == 1 {
 		return errWriteImmutable
 	}
@@ -270,6 +329,10 @@ func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node) err
 		}
 		nc.nodes[owner] = current
 	}
+	nc.LatestAccounts = set.LatestAccounts
+	nc.LatestStorages = set.LatestStorages
+	nc.DestructSet = set.DestructSet
+
 	nc.updateSize(delta)
 	nc.layers++
 	gcNodesMeter.Mark(overwrite)

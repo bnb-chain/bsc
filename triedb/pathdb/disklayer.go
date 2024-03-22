@@ -44,7 +44,7 @@ type trienodebuffer interface {
 	// the ownership of the nodes map which belongs to the bottom-most diff layer.
 	// It will just hold the node references from the given map which are safe to
 	// copy.
-	commit(nodes map[common.Hash]map[string]*trienode.Node) trienodebuffer
+	commit(nodes map[common.Hash]map[string]*trienode.Node, set *triestate.Set) trienodebuffer
 
 	// revert is the reverse operation of commit. It also merges the provided nodes
 	// into the trienodebuffer, the difference is that the provided node set should
@@ -74,6 +74,10 @@ type trienodebuffer interface {
 	// getLayers return the size of cached difflayers.
 	getLayers() uint64
 
+	account(hash common.Hash) ([]byte, error)
+
+	storage(accountHash, storageHash common.Hash) ([]byte, error)
+
 	// waitAndStopFlushing will block unit writing the trie nodes of trienodebuffer to disk.
 	waitAndStopFlushing()
 }
@@ -89,13 +93,14 @@ func NewTrieNodeBuffer(sync bool, limit int, nodes map[common.Hash]map[string]*t
 
 // diskLayer is a low level persistent layer built on top of a key-value store.
 type diskLayer struct {
-	root   common.Hash      // Immutable, root hash to which this layer was made for
-	id     uint64           // Immutable, corresponding state id
-	db     *Database        // Path-based trie database
-	cleans *fastcache.Cache // GC friendly memory cache of clean node RLPs
-	buffer trienodebuffer   // Node buffer to aggregate writes
-	stale  bool             // Signals that the layer became stale (state progressed)
-	lock   sync.RWMutex     // Lock used to protect stale flag
+	root        common.Hash      // Immutable, root hash to which this layer was made for
+	id          uint64           // Immutable, corresponding state id
+	db          *Database        // Path-based trie database
+	cleans      *fastcache.Cache // GC friendly memory cache of clean node RLPs
+	stateCleans *fastcache.Cache // GC friendly memory cache of clean account/storage RLPs
+	buffer      trienodebuffer   // Node buffer to aggregate writes
+	stale       bool             // Signals that the layer became stale (state progressed)
+	lock        sync.RWMutex     // Lock used to protect stale flag
 }
 
 // newDiskLayer creates a new disk layer based on the passing arguments.
@@ -149,6 +154,40 @@ func (dl *diskLayer) markStale() {
 		panic("triedb disk layer is stale") // we've committed into the same base from two children, boom
 	}
 	dl.stale = true
+}
+
+func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
+	// Hold the lock, ensure the parent won't be changed during the
+	// state accessing.
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	// TODO: seek from dirty node buffer
+	data, err := dl.buffer.account(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	if data != nil {
+		return data, nil
+	}
+
+	// TODO: seek from clean cache
+
+	// TODO: seek from diskdb
+	return nil, nil
+}
+
+func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	// Hold the lock, ensure the parent won't be changed during the
+	// state accessing.
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	// TODO: seek from dirty node buffer
+	// TODO: seek from clean cache
+	// TODO: seek from diskdb
+	return nil, nil
 }
 
 // Node implements the layer interface, retrieving the trie node with the
@@ -274,7 +313,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// Construct a new disk layer by merging the nodes from the provided diff
 	// layer, and flush the content in disk layer if there are too many nodes
 	// cached. The clean cache is inherited from the original disk layer.
-	ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer.commit(bottom.nodes))
+	ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.cleans, dl.buffer.commit(bottom.nodes, bottom.states))
 
 	// In a unique scenario where the ID of the oldest history object (after tail
 	// truncation) surpasses the persisted state ID, we take the necessary action

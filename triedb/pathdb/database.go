@@ -92,6 +92,13 @@ type layer interface {
 	// This is meant to be used during shutdown to persist the layer without
 	// flattening everything down (bad for reorgs).
 	journal(w io.Writer) error
+
+	// Account directly retrieves the account data associated with a particular hash
+	Account(hash common.Hash) ([]byte, error)
+
+	// Storage directly retrieves the storage data associated with a particular hash,
+	// within a particular account.
+	Storage(accountHash, storageHash common.Hash) ([]byte, error)
 }
 
 // Config contains the settings for database.
