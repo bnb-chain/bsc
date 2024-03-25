@@ -851,7 +851,6 @@ func testInvalidNumberAnnouncement(t *testing.T, light bool) {
 				continue
 			case <-time.After(1 * time.Second):
 				t.Fatal("announce timeout")
-				return
 			}
 		}
 	}
