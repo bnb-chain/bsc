@@ -128,8 +128,8 @@ func mustDecodeNode(hash, buf []byte) node {
 	return n
 }
 
-// CheckLeafNode return the Key and Val part of the shorNode
-func CheckLeafNode(hash, value []byte) ([]byte, []byte) {
+// GetPrefixOfLeafNode return the Key and Val part of the shorNode
+func GetPrefixOfLeafNode(hash, value []byte) ([]byte, []byte) {
 	n := mustDecodeNode(hash, value)
 	if sn, ok := n.(*shortNode); ok {
 		if val, ok := sn.Val.(valueNode); ok {

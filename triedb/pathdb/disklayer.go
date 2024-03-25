@@ -17,6 +17,8 @@
 package pathdb
 
 import (
+	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -28,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 	"golang.org/x/crypto/sha3"
@@ -278,6 +281,31 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		cleanWriteMeter.Mark(int64(len(nBlob)))
 	}
 	return nBlob, nil
+}
+
+// readAccountTrie read value of the account leaf node directly from the db
+func (dl *diskLayer) readAccountTrie(hash common.Hash) []byte {
+	nBlob, leftKey, nHash := rawdb.ReadAccountTrieNodeOfLeft(dl.db.diskdb, hash.Bytes())
+	val, prefix := trie.GetPrefixOfLeafNode(nHash.Bytes(), nBlob)
+	log.Info("short node info ", "prefix:", hex.EncodeToString(prefix), "value:", hex.EncodeToString(val))
+	joinKey := [][]byte{leftKey, prefix}
+	if bytes.Compare(bytes.Join(joinKey, []byte{}), hash.Bytes()) == 0 {
+		return val
+	}
+	return nil
+}
+
+// readStorageTrie  return value of the storage leaf node directly from the db
+func (dl *diskLayer) readStorageTrie(accountHash, storageHash common.Hash) []byte {
+	key := storageHash.Bytes()
+	nBlob, leftKey, nHash := rawdb.ReadStorageTrieNodeOfLeft(dl.db.diskdb, accountHash, key)
+	val, prefix := trie.GetPrefixOfLeafNode(nHash.Bytes(), nBlob)
+	log.Info("short node info ", "prefix:", hex.EncodeToString(prefix), "value:", hex.EncodeToString(val))
+	joinKey := [][]byte{leftKey, prefix}
+	if bytes.Compare(bytes.Join(joinKey, []byte{}), key) == 0 {
+		return val
+	}
+	return nil
 }
 
 // update implements the layer interface, returning a new diff layer on top
