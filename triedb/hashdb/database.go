@@ -661,3 +661,11 @@ func (reader *reader) Node(owner common.Hash, path []byte, hash common.Hash) ([]
 	blob, _ := reader.db.node(hash)
 	return blob, nil
 }
+
+func (reader *reader) Account(accountHash common.Hash) ([]byte, error) {
+	panic("unimplemented method")
+}
+
+func (reader *reader) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	panic("unimplemented method")
+}

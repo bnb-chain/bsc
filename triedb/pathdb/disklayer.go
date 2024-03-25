@@ -118,7 +118,9 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *cleanCache,
 	// or reuse the provided cache if it is not nil (inherited from
 	// the original disk layer).
 	if cleans == nil && db.config.CleanCacheSize != 0 {
-		cleans.nodes = fastcache.New(db.config.CleanCacheSize)
+		cleans = &cleanCache{}
+		cleans.nodes = fastcache.New(db.config.CleanCacheSize * 3 / 4)
+		cleans.accounts = fastcache.New(db.config.CleanCacheSize / 4)
 	}
 	return &diskLayer{
 		root:   root,
@@ -188,7 +190,7 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 	}
 
 	// TODO: seek from diskdb
-	return nil, nil
+	return dl.readAccountTrie(hash), nil
 }
 
 func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
@@ -208,7 +210,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	// TODO: seek from clean cache
 
 	// TODO: seek from diskdb
-	return nil, nil
+	return dl.readStorageTrie(accountHash, storageHash), nil
 }
 
 // Node implements the layer interface, retrieving the trie node with the
@@ -292,7 +294,7 @@ func (dl *diskLayer) readAccountTrie(hash common.Hash) []byte {
 	}
 	diskAccountLeftNodeTimer.UpdateSince(start)
 	val, prefix := trie.GetPrefixOfLeafNode(nHash.Bytes(), nBlob)
-	log.Info("short node info ", "prefix:", hex.EncodeToString(prefix), "value:", hex.EncodeToString(val))
+	log.Info("short node info ", "account hash", hash.String(), "leftKey", common.BytesToHash(leftKey).String(), "prefix:", common.BytesToHash(prefix).String())
 	joinKey := [][]byte{leftKey, prefix}
 	if bytes.Compare(bytes.Join(joinKey, []byte{}), hash.Bytes()) == 0 {
 		readAccLeftNodeTimer.UpdateSince(start)

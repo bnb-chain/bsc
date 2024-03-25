@@ -755,7 +755,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 		}
 		start := time.Now()
 		var err error
-		data, err = s.trie.GetAccount(addr)
+		data, err = s.trie.GetAccount(addr, true)
 		if metrics.EnabledExpensive {
 			s.AccountReads += time.Since(start)
 		}

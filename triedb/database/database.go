@@ -26,6 +26,12 @@ type Reader interface {
 	// node path and the corresponding node hash. No error will be returned
 	// if the node is not found.
 	Node(owner common.Hash, path []byte, hash common.Hash) ([]byte, error)
+
+	// Account retrieves the account with the provided account hash,
+	Account(hash common.Hash) ([]byte, error)
+
+	// Storage retrieves the storage key-value with the provided account hash,
+	Storage(accountHash, storageHash common.Hash) ([]byte, error)
 }
 
 // PreimageStore wraps the methods of a backing store for reading and writing

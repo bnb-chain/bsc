@@ -35,11 +35,11 @@ func (t *EmptyTrie) GetKey(shaKey []byte) []byte {
 	return nil
 }
 
-func (t *EmptyTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
+func (t *EmptyTrie) GetStorage(_ common.Address, key []byte, direct bool) ([]byte, error) {
 	return nil, nil
 }
 
-func (t *EmptyTrie) GetAccount(address common.Address) (*types.StateAccount, error) {
+func (t *EmptyTrie) GetAccount(address common.Address, direct bool) (*types.StateAccount, error) {
 	return nil, nil
 }
 

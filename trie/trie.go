@@ -680,3 +680,14 @@ func (t *Trie) Size() int {
 func (t *Trie) Owner() common.Hash {
 	return t.owner
 }
+
+func (t *Trie) GetDirectly(key []byte) ([]byte, error) {
+	if t.reader.reader == nil {
+		return nil, nil
+	}
+	if t.owner == (common.Hash{}) {
+		return t.reader.reader.Account(common.BytesToHash(key))
+	} else {
+		return t.reader.reader.Storage(t.owner, common.BytesToHash(key))
+	}
+}

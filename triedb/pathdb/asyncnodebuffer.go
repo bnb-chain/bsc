@@ -241,11 +241,15 @@ type nodecache struct {
 
 func newNodeCache(limit, size uint64, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) *nodecache {
 	return &nodecache{
-		layers:    layers,
-		size:      size,
-		limit:     limit,
-		nodes:     nodes,
-		immutable: 0,
+		layers: layers,
+		size:   size,
+		limit:  limit,
+		nodes:  nodes,
+
+		LatestAccounts: make(map[common.Hash][]byte),
+		LatestStorages: make(map[common.Hash]map[common.Hash][]byte),
+		DestructSet:    make(map[common.Hash]struct{}),
+		immutable:      0,
 	}
 }
 

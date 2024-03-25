@@ -133,7 +133,7 @@ func GetPrefixOfLeafNode(hash, value []byte) ([]byte, []byte) {
 	n := mustDecodeNode(hash, value)
 	if sn, ok := n.(*shortNode); ok {
 		if val, ok := sn.Val.(valueNode); ok {
-			return val, sn.Key
+			return val, hexToCompact(sn.Key)
 		}
 	}
 	return nil, nil
