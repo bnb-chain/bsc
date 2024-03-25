@@ -72,3 +72,10 @@ func (b HookedBatch) Delete(key []byte) error {
 	}
 	return b.Batch.Delete(key)
 }
+
+func (b HookedBatch) DeleteRange(start, end []byte) error {
+	if b.OnDelete != nil {
+		b.OnDelete(start)
+	}
+	return b.Batch.DeleteRange(start, end)
+}
