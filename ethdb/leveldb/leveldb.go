@@ -207,6 +207,10 @@ func (db *Database) Delete(key []byte) error {
 	return db.db.Delete(key, nil)
 }
 
+func (db *Database) DeleteRange(start, end []byte) error {
+	panic("not supported")
+}
+
 // NewBatch creates a write-only key-value store that buffers changes to its host
 // database until a final write is called.
 func (db *Database) NewBatch() ethdb.Batch {
@@ -409,6 +413,10 @@ func (b *batch) Delete(key []byte) error {
 	b.b.Delete(key)
 	b.size += len(key)
 	return nil
+}
+
+func (b *batch) DeleteRange(start, end []byte) error {
+	panic("not supported")
 }
 
 // ValueSize retrieves the amount of data queued up for writing.

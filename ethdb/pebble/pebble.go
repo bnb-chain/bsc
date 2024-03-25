@@ -335,6 +335,14 @@ func (d *Database) Delete(key []byte) error {
 	}
 	return d.db.Delete(key, nil)
 }
+func (d *Database) DeleteRange(start, end []byte) error {
+	d.quitLock.RLock()
+	defer d.quitLock.RUnlock()
+	if d.closed {
+		return pebble.ErrClosed
+	}
+	return d.db.DeleteRange(start, end, nil)
+}
 
 // NewBatch creates a write-only key-value store that buffers changes to its host
 // database until a final write is called.
@@ -572,6 +580,13 @@ func (b *batch) Put(key, value []byte) error {
 func (b *batch) Delete(key []byte) error {
 	b.b.Delete(key, nil)
 	b.size += len(key)
+	return nil
+}
+
+func (b *batch) DeleteRange(start, end []byte) error {
+	b.b.DeleteRange(start, end, nil)
+	b.size += len(start)
+	b.size += len(end)
 	return nil
 }
 
