@@ -329,8 +329,23 @@ func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node, set
 		}
 		nc.nodes[owner] = current
 	}
-	nc.LatestAccounts = set.LatestAccounts
-	nc.LatestStorages = set.LatestStorages
+
+	// Delete the whole deleted account
+	for h := range set.DestructSet {
+		delete(nc.LatestStorages, h)
+		delete(nc.LatestAccounts, h)
+	}
+	for h, acc := range set.LatestAccounts {
+		nc.LatestAccounts[h] = acc
+	}
+	for h, storages := range set.LatestStorages {
+		if _, ok := nc.LatestStorages[h]; !ok {
+			nc.LatestStorages[h] = make(map[common.Hash][]byte)
+		}
+		for k, v := range storages {
+			nc.LatestStorages[h][k] = v
+		}
+	}
 	nc.DestructSet = set.DestructSet
 
 	nc.updateSize(delta)
@@ -384,6 +399,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	if err := batch.Write(); err != nil {
 		return err
 	}
+
 	commitBytesMeter.Mark(int64(size))
 	commitNodesMeter.Mark(int64(nodes))
 	commitTimeTimer.UpdateSince(start)
