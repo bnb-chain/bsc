@@ -72,7 +72,3 @@ func (b HookedBatch) Delete(key []byte) error {
 	}
 	return b.Batch.Delete(key)
 }
-
-func (b *HookedBatch) DeleteRange(start, end []byte) error {
-	panic("not supported")
-}

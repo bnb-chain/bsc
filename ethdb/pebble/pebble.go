@@ -335,6 +335,9 @@ func (d *Database) Delete(key []byte) error {
 	}
 	return d.db.Delete(key, nil)
 }
+
+// DeleteRange deletes all of the keys (and values) in the range [start,end)
+// (inclusive on start, exclusive on end).
 func (d *Database) DeleteRange(start, end []byte) error {
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
