@@ -74,8 +74,10 @@ type trienodebuffer interface {
 	// getLayers return the size of cached difflayers.
 	getLayers() uint64
 
+	// account return the value of the specify account
 	account(hash common.Hash) ([]byte, error)
 
+	// storage return the value of the specify account and storage key
 	storage(accountHash, storageHash common.Hash) ([]byte, error)
 
 	// waitAndStopFlushing will block unit writing the trie nodes of trienodebuffer to disk.
@@ -177,6 +179,10 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 	}
 
 	// TODO: seek from clean cache
+	data = dl.cleans.accounts.Get(nil, hash.Bytes())
+	if data != nil {
+		return data, nil
+	}
 
 	// TODO: seek from diskdb
 	return nil, nil
@@ -189,7 +195,15 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	defer dl.lock.RUnlock()
 
 	// TODO: seek from dirty node buffer
+	data, err := dl.buffer.storage(accountHash, storageHash)
+	if err != nil {
+		return nil, err
+	}
+	if data != nil {
+		return data, nil
+	}
 	// TODO: seek from clean cache
+
 	// TODO: seek from diskdb
 	return nil, nil
 }
