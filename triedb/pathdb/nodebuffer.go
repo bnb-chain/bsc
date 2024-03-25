@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -212,14 +211,14 @@ func (b *nodebuffer) empty() bool {
 
 // setSize sets the buffer size to the provided number, and invokes a flush
 // operation if the current memory usage exceeds the new limit.
-func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *cleanCache, id uint64) error {
 	b.limit = uint64(size)
 	return b.flush(db, clean, id, false)
 }
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error {
+func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64, force bool) error {
 	if b.size <= b.limit && !force {
 		return nil
 	}
@@ -257,7 +256,7 @@ func (b *nodebuffer) waitAndStopFlushing() {}
 // writeNodes writes the trie nodes into the provided database batch.
 // Note this function will also inject all the newly written nodes
 // into clean cache.
-func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node, clean *fastcache.Cache) (total int) {
+func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.Node, clean *cleanCache) (total int) {
 	for owner, subset := range nodes {
 		for path, n := range subset {
 			if n.IsDeleted() {
@@ -267,7 +266,7 @@ func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.No
 					rawdb.DeleteStorageTrieNode(batch, owner, []byte(path))
 				}
 				if clean != nil {
-					clean.Del(cacheKey(owner, []byte(path)))
+					clean.nodes.Del(cacheKey(owner, []byte(path)))
 				}
 			} else {
 				if owner == (common.Hash{}) {
@@ -276,7 +275,7 @@ func writeNodes(batch ethdb.Batch, nodes map[common.Hash]map[string]*trienode.No
 					rawdb.WriteStorageTrieNode(batch, owner, []byte(path), n.Blob)
 				}
 				if clean != nil {
-					clean.Set(cacheKey(owner, []byte(path)), n.Blob)
+					clean.nodes.Set(cacheKey(owner, []byte(path)), n.Blob)
 				}
 			}
 		}

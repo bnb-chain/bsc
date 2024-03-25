@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -123,7 +122,7 @@ func (a *asyncnodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]
 }
 
 // setSize is unsupported in asyncnodebuffer, due to the double buffer, blocking will occur.
-func (a *asyncnodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+func (a *asyncnodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *cleanCache, id uint64) error {
 	return errors.New("not supported")
 }
 
@@ -146,7 +145,7 @@ func (a *asyncnodebuffer) empty() bool {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error {
+func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64, force bool) error {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
@@ -377,7 +376,7 @@ func (nc *nodecache) empty() bool {
 	return nc.layers == 0
 }
 
-func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64) error {
 	if atomic.LoadUint64(&nc.immutable) != 1 {
 		return errFlushMutable
 	}
@@ -393,6 +392,11 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	)
 	nodes := writeNodes(batch, nc.nodes, clean)
 	rawdb.WritePersistentStateID(batch, id)
+
+	// delete all kv for destructSet
+	for accHash, _ := range nc.DestructSet {
+		rawdb.DeleteStorageTrie(batch, accHash)
+	}
 
 	// Flush all mutations in a single batch
 	size := batch.ValueSize()

@@ -53,11 +53,11 @@ type trienodebuffer interface {
 
 	// flush persists the in-memory dirty trie node into the disk if the configured
 	// memory threshold is reached. Note, all data must be written atomically.
-	flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error
+	flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64, force bool) error
 
 	// setSize sets the buffer size to the provided number, and invokes a flush
 	// operation if the current memory usage exceeds the new limit.
-	setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error
+	setSize(size int, db ethdb.KeyValueStore, clean *cleanCache, id uint64) error
 
 	// reset cleans up the disk cache.
 	reset()
@@ -82,6 +82,11 @@ type trienodebuffer interface {
 	waitAndStopFlushing()
 }
 
+type cleanCache struct {
+	nodes    *fastcache.Cache
+	accounts *fastcache.Cache
+}
+
 func NewTrieNodeBuffer(sync bool, limit int, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) trienodebuffer {
 	if sync {
 		log.Info("New sync node buffer", "limit", common.StorageSize(limit), "layers", layers)
@@ -93,23 +98,22 @@ func NewTrieNodeBuffer(sync bool, limit int, nodes map[common.Hash]map[string]*t
 
 // diskLayer is a low level persistent layer built on top of a key-value store.
 type diskLayer struct {
-	root        common.Hash      // Immutable, root hash to which this layer was made for
-	id          uint64           // Immutable, corresponding state id
-	db          *Database        // Path-based trie database
-	cleans      *fastcache.Cache // GC friendly memory cache of clean node RLPs
-	stateCleans *fastcache.Cache // GC friendly memory cache of clean account/storage RLPs
-	buffer      trienodebuffer   // Node buffer to aggregate writes
-	stale       bool             // Signals that the layer became stale (state progressed)
-	lock        sync.RWMutex     // Lock used to protect stale flag
+	root   common.Hash    // Immutable, root hash to which this layer was made for
+	id     uint64         // Immutable, corresponding state id
+	db     *Database      // Path-based trie database
+	cleans *cleanCache    // GC friendly memory cache of clean node RLPs
+	buffer trienodebuffer // Node buffer to aggregate writes
+	stale  bool           // Signals that the layer became stale (state progressed)
+	lock   sync.RWMutex   // Lock used to protect stale flag
 }
 
 // newDiskLayer creates a new disk layer based on the passing arguments.
-func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *fastcache.Cache, buffer trienodebuffer) *diskLayer {
+func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *cleanCache, buffer trienodebuffer) *diskLayer {
 	// Initialize a clean cache if the memory allowance is not zero
 	// or reuse the provided cache if it is not nil (inherited from
 	// the original disk layer).
 	if cleans == nil && db.config.CleanCacheSize != 0 {
-		cleans = fastcache.New(db.config.CleanCacheSize)
+		cleans.nodes = fastcache.New(db.config.CleanCacheSize)
 	}
 	return &diskLayer{
 		root:   root,
@@ -220,7 +224,7 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	key := cacheKey(owner, path)
 	if dl.cleans != nil {
 		cleanNodeStart := time.Now()
-		if blob := dl.cleans.Get(nil, key); len(blob) > 0 {
+		if blob := dl.cleans.nodes.Get(nil, key); len(blob) > 0 {
 			h := newHasher()
 			defer h.release()
 
@@ -256,7 +260,7 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		return nil, newUnexpectedNodeError("disk", hash, nHash, owner, path, nBlob)
 	}
 	if dl.cleans != nil && len(nBlob) > 0 {
-		dl.cleans.Set(key, nBlob)
+		dl.cleans.nodes.Set(key, nBlob)
 		cleanWriteMeter.Mark(int64(len(nBlob)))
 	}
 	return nBlob, nil
@@ -418,7 +422,7 @@ func (dl *diskLayer) resetCache() {
 		return
 	}
 	if dl.cleans != nil {
-		dl.cleans.Reset()
+		dl.cleans.nodes.Reset()
 	}
 }
 

@@ -238,7 +238,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		}
 		storages[entry.Account] = set
 	}
-	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete)), r)
+	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete, nil, nil, nil)), r)
 }
 
 // journal implements the layer interface, marshaling the un-flushed trie nodes

@@ -18,6 +18,7 @@ package rawdb
 
 import (
 	"fmt"
+	"math/big"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -110,6 +111,13 @@ func WriteAccountTrieNode(db ethdb.KeyValueWriter, path []byte, node []byte) {
 func DeleteAccountTrieNode(db ethdb.KeyValueWriter, path []byte) {
 	if err := db.Delete(accountTrieNodeKey(path)); err != nil {
 		log.Crit("Failed to delete account trie node", "err", err)
+	}
+}
+
+func DeleteStorageTrie(db ethdb.KeyValueWriter, accountHash common.Hash) {
+	nextAcountHash := common.BigToHash(new(big.Int).SetUint64(accountHash.Big().Uint64() + 1))
+	if err := db.DeleteRange(storageTrieNodeKey(accountHash, nil), storageTrieNodeKey(nextAcountHash, nil)); err != nil {
+		log.Crit("Failed to delete storage trie", "err", err)
 	}
 }
 
