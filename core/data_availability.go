@@ -65,7 +65,7 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		highest = current
 	}
 	defer func() {
-		log.Info("IsDataAvailable", "block", block.Number(), "hash", block.Hash(), "highest", highest.Number, "sidecars", len(block.Sidecars()), "err", err)
+		log.Debug("IsDataAvailable", "block", block.Number(), "hash", block.Hash(), "highest", highest.Number, "sidecars", len(block.Sidecars()), "err", err)
 	}()
 	if block.NumberU64()+params.MinBlocksForBlobRequests < highest.Number.Uint64() {
 		// if we needn't check DA of this block, just clean it

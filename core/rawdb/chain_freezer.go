@@ -312,9 +312,8 @@ func (f *chainFreezer) freezeRangeWithBlobs(nfdb *nofreezedb, number, limit uint
 
 	var (
 		cancunNumber uint64
-		found        bool
+		preHashes    []common.Hash
 	)
-
 	for i := number; i <= limit; i++ {
 		hash := ReadCanonicalHash(nfdb, i)
 		if hash == (common.Hash{}) {
@@ -326,16 +325,12 @@ func (f *chainFreezer) freezeRangeWithBlobs(nfdb *nofreezedb, number, limit uint
 		}
 		if isCancun(env, h.Number, h.Time) {
 			cancunNumber = i
-			found = true
 			break
 		}
 	}
-	if !found {
-		return f.freezeRange(nfdb, number, limit)
-	}
 
 	// freeze pre cancun
-	preHashes, err := f.freezeRange(nfdb, number, cancunNumber-1)
+	preHashes, err = f.freezeRange(nfdb, number, cancunNumber-1)
 	if err != nil {
 		return preHashes, err
 	}

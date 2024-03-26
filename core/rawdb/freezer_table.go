@@ -1035,14 +1035,15 @@ func (t *freezerTable) resetItems(tail, head uint64) (*freezerTable, error) {
 	if t.readonly {
 		return nil, errors.New("resetItems in readonly mode")
 	}
+
 	itemHidden := t.itemHidden.Load()
 	items := t.items.Load()
-	if tail != head && (itemHidden > tail || items < head) {
+	if tail > head || (tail < head && (itemHidden > tail || items < head)) {
 		return nil, errors.New("cannot reset to non-exist range")
 	}
 
 	var err error
-	if tail != head {
+	if tail < head {
 		if err = t.truncateHead(head); err != nil {
 			return nil, err
 		}
@@ -1052,15 +1053,27 @@ func (t *freezerTable) resetItems(tail, head uint64) (*freezerTable, error) {
 		return t, nil
 	}
 
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
 	// if tail == head, it means table reset to 0 item
-	t.releaseFilesAfter(t.tailId-1, true)
+	// remove all data files
 	t.head.Close()
-	os.Remove(t.head.Name())
+	t.releaseFilesAfter(0, true)
+	t.releaseFile(0)
+
+	// reset meta data file
+	if err := writeMetadata(t.meta, newMetadata(items)); err != nil {
+		return nil, err
+	}
+	if err := t.meta.Sync(); err != nil {
+		return nil, err
+	}
+	t.meta.Close()
+
+	// reset the index file
 	t.index.Close()
 	os.Remove(t.index.Name())
-	t.meta.Close()
-	os.Remove(t.meta.Name())
-
 	var idxName string
 	if t.noCompression {
 		idxName = fmt.Sprintf("%s.ridx", t.name) // raw index file
@@ -1072,11 +1085,16 @@ func (t *freezerTable) resetItems(tail, head uint64) (*freezerTable, error) {
 		return nil, err
 	}
 	tailIndex := indexEntry{
-		offset: uint32(tail),
+		filenum: 0,
+		offset:  uint32(tail),
 	}
 	if _, err = index.Write(tailIndex.append(nil)); err != nil {
 		return nil, err
 	}
+	if err := index.Sync(); err != nil {
+		return nil, err
+	}
+	index.Close()
 
 	return newFreezerTable(t.path, t.name, t.noCompression, t.readonly)
 }
