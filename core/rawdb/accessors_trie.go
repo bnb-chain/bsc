@@ -19,6 +19,7 @@ package rawdb
 import (
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -78,20 +79,35 @@ func ReadAccountTrieNode(db ethdb.KeyValueReader, path []byte) ([]byte, common.H
 	return data, h.hash(data)
 }
 
-func ReadAccountTrieNodeOfLeft(db ethdb.Database, key []byte) ([]byte, []byte, []byte, common.Hash) {
-	it := db.NewReverseIterator(trieNodeAccountPrefix, nil, accountTrieNodeKey(key))
+func ReadAccountFromTrieDirectly(db ethdb.Database, key []byte) ([]byte, []byte, common.Hash) {
+	it := db.NewIterator(trieNodeAccountPrefix, nil)
 	defer it.Release()
-	log.Info("left node key", "triekey", common.Bytes2Hex(accountTrieNodeKey(key)), "key", common.Bytes2Hex(it.Key()))
-	pathKey := make([]byte, len(it.Key()))
-	copy(pathKey, it.Key())
-	// todo pre judge
-	data, err := db.Get(pathKey)
-	if err != nil {
-		return nil, nil, nil, common.Hash{}
+
+	it.Seek(accountTrieNodeKey(encodeNibbles(key)))
+	if it.Error() == nil {
+		dbKey := it.Key()
+		log.Info("ReadAccountFromTrieDirectly", "dbKey", common.Bytes2Hex(dbKey), "target key", common.Bytes2Hex(accountTrieNodeKey(encodeNibbles(key))))
+		if strings.HasPrefix(string(accountTrieNodeKey(encodeNibbles(key))), string(dbKey)) {
+			data := it.Value()
+			h := newHasher()
+			defer h.release()
+			return data, dbKey[1:], h.hash(data)
+
+		}
 	}
-	h := newHasher()
-	defer h.release()
-	return data, pathKey, accountTrieNodeKey(key), h.hash(data)
+	return nil, nil, common.Hash{}
+
+	//log.Info("left node key", "triekey", common.Bytes2Hex(accountTrieNodeKey(key)), "key", common.Bytes2Hex(it.Key()))
+	//pathKey := make([]byte, len(it.Key()))
+	//copy(pathKey, it.Key())
+	//// todo pre judge
+	//data, err := db.Get(pathKey)
+	//if err != nil {
+	//	return nil, nil, nil, common.Hash{}
+	//}
+	//h := newHasher()
+	//defer h.release()
+	//return data, pathKey, accountTrieNodeKey(key), h.hash(data)
 }
 
 // HasAccountTrieNode checks the account trie node presence with the specified
@@ -149,18 +165,23 @@ func ReadStorageTrieNode(db ethdb.KeyValueReader, accountHash common.Hash, path 
 	return data, h.hash(data)
 }
 
-func ReadStorageTrieNodeOfLeft(db ethdb.Database, accountHash common.Hash, key []byte) ([]byte, []byte, []byte, common.Hash) {
-	it := db.NewReverseIterator(trieNodeStoragePrefix, nil, storageTrieNodeKey(accountHash, key))
+func ReadStorageFromTrieDirectly(db ethdb.Database, accountHash common.Hash, key []byte) ([]byte, []byte, common.Hash) {
+	it := db.NewIterator(trieNodeStoragePrefix, nil)
 	defer it.Release()
-	pathKey := make([]byte, len(it.Key()))
-	copy(pathKey, it.Key())
-	data, err := db.Get(pathKey)
-	if err != nil {
-		return nil, nil, nil, common.Hash{}
+
+	it.Seek(storageTrieNodeKey(accountHash, key))
+	if it.Error() == nil {
+		dbKey := it.Key()
+		if strings.HasPrefix(string(dbKey), string(storageTrieNodeKey(accountHash, key))) {
+			data := it.Value()
+			h := newHasher()
+			defer h.release()
+			return data, dbKey[1:], h.hash(data)
+		}
+
 	}
-	h := newHasher()
-	defer h.release()
-	return data, pathKey, storageTrieNodeKey(accountHash, key), h.hash(data)
+	return nil, nil, common.Hash{}
+
 }
 
 // HasStorageTrieNode checks the storage trie node presence with the provided
@@ -389,4 +410,13 @@ func ParseStateScheme(provided string, disk ethdb.Database) (string, error) {
 		return provided, nil
 	}
 	return "", fmt.Errorf("incompatible state scheme, stored: %s, user provided: %s", stored, provided)
+}
+
+func encodeNibbles(bytes []byte) []byte {
+	nibbles := make([]byte, len(bytes)*2)
+	for i, b := range bytes {
+		nibbles[i*2] = b >> 4     // 取字节高4位
+		nibbles[i*2+1] = b & 0x0F // 取字节低4位
+	}
+	return nibbles
 }

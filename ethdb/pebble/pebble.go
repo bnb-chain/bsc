@@ -645,6 +645,10 @@ type pebbleIterator struct {
 	released bool
 }
 
+func (iter *pebbleIterator) Seek(key []byte) bool {
+	return iter.iter.SeekLT(key)
+}
+
 // NewIterator creates a binary-alphabetical iterator over a subset
 // of database content with a particular key prefix, starting at a particular
 // initial key (or after, if it does not exist).

@@ -179,10 +179,6 @@ func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	}
 }
 
-func (db *Database) NewReverseIterator(prefix, start, key []byte) ethdb.Iterator {
-	return nil
-}
-
 // NewSnapshot creates a database snapshot based on the current state.
 // The created snapshot will not be affected by all following mutations
 // happened on the database.
@@ -298,6 +294,11 @@ type iterator struct {
 	index  int
 	keys   []string
 	values [][]byte
+}
+
+func (it *iterator) Seek(key []byte) bool {
+	//TODO implement me
+	panic("implement me")
 }
 
 // Next moves the iterator to the next key/value pair. It returns whether the

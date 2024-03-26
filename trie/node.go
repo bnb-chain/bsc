@@ -134,11 +134,11 @@ func DecodeLeafNode(hash, path, value []byte) ([]byte, []byte) {
 	if sn, ok := n.(*shortNode); ok {
 		if val, ok := sn.Val.(valueNode); ok {
 			// remove the prefix key of path
-			key := append(path[1:], sn.Key...)
+			key := append(path, sn.Key...)
 			if hasTerm(key) {
 				key = key[:len(key)-1]
 			}
-			return val, hexToKeybytes(append(path[1:], sn.Key...))
+			return val, hexToKeybytes(append(path, sn.Key...))
 		}
 	}
 	return nil, nil

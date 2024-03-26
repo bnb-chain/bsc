@@ -330,6 +330,10 @@ type tableIterator struct {
 	prefix string
 }
 
+func (iter *tableIterator) Seek(key []byte) bool {
+	panic("not supported.")
+}
+
 // Next moves the iterator to the next key/value pair. It returns whether the
 // iterator is exhausted.
 func (iter *tableIterator) Next() bool {

@@ -33,6 +33,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/filter"
+	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
@@ -232,11 +233,9 @@ func (db *Database) NewBatchWithSize(size int) ethdb.Batch {
 // of database content with a particular key prefix, starting at a particular
 // initial key (or after, if it does not exist).
 func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
-	return db.db.NewIterator(bytesPrefixRange(prefix, start), nil)
-}
-
-func (db *Database) NewReverseIterator(prefix, start, key []byte) ethdb.Iterator {
-	return nil
+	iter := db.db.NewIterator(bytesPrefixRange(prefix, start), nil)
+	iter.First()
+	return &leveldbIterator{iter: iter, moved: true, released: false}
 }
 
 // NewSnapshot creates a database snapshot based on the current state.
@@ -494,4 +493,41 @@ func (snap *snapshot) Get(key []byte) ([]byte, error) {
 // be called multiple times without causing error.
 func (snap *snapshot) Release() {
 	snap.db.Release()
+}
+
+// leveldbIterator is a wrapper of underlying iterator in storage engine.
+// The purpose of this structure is to implement the missing APIs.
+//
+// The pebble iterator is not thread-safe.
+type leveldbIterator struct {
+	iter     iterator.Iterator
+	moved    bool
+	released bool
+}
+
+func (iter *leveldbIterator) Next() bool {
+	return iter.iter.Next()
+}
+
+func (iter *leveldbIterator) Error() error {
+	return iter.iter.Error()
+}
+
+func (iter *leveldbIterator) Key() []byte {
+	return iter.iter.Key()
+}
+
+func (iter *leveldbIterator) Value() []byte {
+	return iter.iter.Value()
+}
+
+func (iter *leveldbIterator) Release() {
+	if !iter.released {
+		iter.iter.Release()
+		iter.released = true
+	}
+}
+
+func (iter *leveldbIterator) Seek(key []byte) bool {
+	panic("Not supported!")
 }

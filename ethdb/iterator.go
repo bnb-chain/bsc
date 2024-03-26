@@ -44,6 +44,9 @@ type Iterator interface {
 	// may change on the next call to Next.
 	Value() []byte
 
+	// Seek moves the iterator to the target key/value pair. Only support Lower-bound
+	Seek(key []byte) bool
+
 	// Release releases associated resources. Release should always succeed and can
 	// be called multiple times without causing error.
 	Release()
@@ -58,6 +61,4 @@ type Iteratee interface {
 	// Note: This method assumes that the prefix is NOT part of the start, so there's
 	// no need for the caller to prepend the prefix to the start
 	NewIterator(prefix []byte, start []byte) Iterator
-
-	NewReverseIterator(prefix, start, compareKey []byte) Iterator
 }
