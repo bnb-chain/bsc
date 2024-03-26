@@ -25,13 +25,19 @@ type ValidatorConfig struct {
 	URL     string
 }
 
+type validator struct {
+	*validatorclient.Client
+	BidSimulationLeftOver time.Duration
+	GasCeil               uint64
+}
+
 type Bidder struct {
 	config        *MevConfig
 	delayLeftOver time.Duration
 	engine        consensus.Engine
 	chain         *core.BlockChain
 
-	validators map[common.Address]*validatorclient.Client // validator address -> validatorclient.Client
+	validators map[common.Address]*validator // address -> validator
 
 	bestWorksMu sync.RWMutex
 	bestWorks   map[int64]*environment
@@ -50,7 +56,7 @@ func NewBidder(config *MevConfig, delayLeftOver time.Duration, engine consensus.
 		delayLeftOver: delayLeftOver,
 		engine:        engine,
 		chain:         eth.BlockChain(),
-		validators:    make(map[common.Address]*validatorclient.Client),
+		validators:    make(map[common.Address]*validator),
 		bestWorks:     make(map[int64]*environment),
 		newBidCh:      make(chan *environment, 10),
 		exitCh:        make(chan struct{}),
@@ -74,7 +80,17 @@ func NewBidder(config *MevConfig, delayLeftOver time.Duration, engine consensus.
 			continue
 		}
 
-		b.validators[v.Address] = cl
+		params, err := cl.MevParams(context.Background())
+		if err != nil {
+			log.Error("Bidder: failed to get mev params", "url", v.URL, "err", err)
+			continue
+		}
+
+		b.validators[v.Address] = &validator{
+			Client:                cl,
+			BidSimulationLeftOver: params.BidSimulationLeftOver,
+			GasCeil:               params.GasCeil,
+		}
 	}
 
 	if len(b.validators) == 0 {
@@ -107,8 +123,12 @@ func (b *Bidder) mainLoop() {
 
 				bidNum = 0
 				parentHeader := b.chain.GetHeaderByHash(work.header.ParentHash)
+				var bidSimulationLeftOver time.Duration
+				if b.validators[work.coinbase] != nil {
+					bidSimulationLeftOver = b.validators[work.coinbase].BidSimulationLeftOver
+				}
 				betterBidBefore = bidutil.BidBetterBefore(parentHeader, b.chain.Config().Parlia.Period, b.delayLeftOver,
-					b.config.BidSimulationLeftOver)
+					bidSimulationLeftOver)
 
 				if time.Now().After(betterBidBefore) {
 					timer.Reset(0)
