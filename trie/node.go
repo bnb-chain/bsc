@@ -128,15 +128,15 @@ func mustDecodeNode(hash, buf []byte) node {
 	return n
 }
 
-// GetPrefixOfLeafNode return the Key and Val part of the shorNode
-func GetPrefixOfLeafNode(hash, value []byte) ([]byte, []byte) {
+// DecodeLeafNode return the Key and Val part of the shorNode
+func DecodeLeafNode(hash, path, value []byte) ([]byte, []byte, []byte) {
 	n := mustDecodeNode(hash, value)
 	if sn, ok := n.(*shortNode); ok {
 		if val, ok := sn.Val.(valueNode); ok {
-			return val, hexToCompact(sn.Key)
+			return val, hexToRaw(sn.Key), hexToCompact(path[1:])
 		}
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
 // mustDecodeNodeUnsafe is a wrapper of decodeNodeUnsafe and panic if any error is

@@ -78,18 +78,20 @@ func ReadAccountTrieNode(db ethdb.KeyValueReader, path []byte) ([]byte, common.H
 	return data, h.hash(data)
 }
 
-func ReadAccountTrieNodeOfLeft(db ethdb.Database, key []byte) ([]byte, []byte, common.Hash) {
+func ReadAccountTrieNodeOfLeft(db ethdb.Database, key []byte) ([]byte, []byte, []byte, common.Hash) {
 	it := db.NewReverseIterator(trieNodeAccountPrefix, nil, accountTrieNodeKey(key))
 	defer it.Release()
-	leftKey := make([]byte, len(it.Key()))
-	copy(leftKey, it.Key())
-	data, err := db.Get(leftKey)
+	log.Info("left node key", "triekey", common.Bytes2Hex(accountTrieNodeKey(key)), "key", common.Bytes2Hex(it.Key()))
+	pathKey := make([]byte, len(it.Key()))
+	copy(pathKey, it.Key())
+	// todo pre judge
+	data, err := db.Get(pathKey)
 	if err != nil {
-		return nil, nil, common.Hash{}
+		return nil, nil, nil, common.Hash{}
 	}
 	h := newHasher()
 	defer h.release()
-	return data, leftKey, h.hash(data)
+	return data, pathKey, accountTrieNodeKey(key), h.hash(data)
 }
 
 // HasAccountTrieNode checks the account trie node presence with the specified
@@ -147,18 +149,18 @@ func ReadStorageTrieNode(db ethdb.KeyValueReader, accountHash common.Hash, path 
 	return data, h.hash(data)
 }
 
-func ReadStorageTrieNodeOfLeft(db ethdb.Database, accountHash common.Hash, key []byte) ([]byte, []byte, common.Hash) {
+func ReadStorageTrieNodeOfLeft(db ethdb.Database, accountHash common.Hash, key []byte) ([]byte, []byte, []byte, common.Hash) {
 	it := db.NewReverseIterator(trieNodeStoragePrefix, nil, storageTrieNodeKey(accountHash, key))
 	defer it.Release()
-	leftKey := make([]byte, len(it.Key()))
-	copy(leftKey, it.Key())
-	data, err := db.Get(leftKey)
+	pathKey := make([]byte, len(it.Key()))
+	copy(pathKey, it.Key())
+	data, err := db.Get(pathKey)
 	if err != nil {
-		return nil, nil, common.Hash{}
+		return nil, nil, nil, common.Hash{}
 	}
 	h := newHasher()
 	defer h.release()
-	return data, leftKey, h.hash(data)
+	return data, pathKey, storageTrieNodeKey(accountHash, key), h.hash(data)
 }
 
 // HasStorageTrieNode checks the storage trie node presence with the provided
