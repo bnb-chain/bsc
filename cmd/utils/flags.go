@@ -150,6 +150,12 @@ var (
 		Usage:    "Minimum free disk space in MB, once reached triggers auto shut down (default = --cache.gc converted to MB, 0 = disabled)",
 		Category: flags.EthCategory,
 	}
+	InstanceFlag = &cli.IntFlag{
+		Name:     "instance",
+		Usage:    "Configures the ports to avoid conflicts when running multiple nodes on the same machine. Maximum is 200. Only applicable for: port, authrpc.port, discovery,port, http.port, ws.port",
+		Value:    1,
+		Category: flags.EthCategory,
+	}
 	KeyStoreDirFlag = &flags.DirectoryFlag{
 		Name:     "keystore",
 		Usage:    "Directory for the keystore (default = inside the datadir)",
@@ -299,16 +305,6 @@ var (
 		Usage:    "Manually specify the Rialto Genesis Hash, to trigger builtin network logic",
 		Category: flags.EthCategory,
 	}
-	OverrideShanghai = &cli.Uint64Flag{
-		Name:     "override.shanghai",
-		Usage:    "Manually specify the Shanghai fork timestamp, overriding the bundled setting",
-		Category: flags.EthCategory,
-	}
-	OverrideKepler = &cli.Uint64Flag{
-		Name:     "override.kepler",
-		Usage:    "Manually specify the Kepler fork timestamp, overriding the bundled setting",
-		Category: flags.EthCategory,
-	}
 	OverrideCancun = &cli.Uint64Flag{
 		Name:     "override.cancun",
 		Usage:    "Manually specify the Cancun fork timestamp, overriding the bundled setting",
@@ -322,6 +318,28 @@ var (
 	OverrideFeynman = &cli.Uint64Flag{
 		Name:     "override.feynman",
 		Usage:    "Manually specify the Feynman fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	OverrideFeynmanFix = &cli.Uint64Flag{
+		Name:  "override.feynmanfix",
+		Usage: "Manually specify the FeynmanFix fork timestamp, overriding the bundled setting",
+	}
+	OverrideFullImmutabilityThreshold = &cli.Uint64Flag{
+		Name:     "override.immutabilitythreshold",
+		Usage:    "It is the number of blocks after which a chain segment is considered immutable, only for testing purpose",
+		Value:    params.FullImmutabilityThreshold,
+		Category: flags.EthCategory,
+	}
+	OverrideMinBlocksForBlobRequests = &cli.Uint64Flag{
+		Name:     "override.minforblobrequest",
+		Usage:    "It keeps blob data available for min blocks in local, only for testing purpose",
+		Value:    params.MinBlocksForBlobRequests,
+		Category: flags.EthCategory,
+	}
+	OverrideDefaultExtraReserveForBlobRequests = &cli.Uint64Flag{
+		Name:     "override.defaultextrareserve",
+		Usage:    "It adds more extra time for expired blobs for some request cases, only for testing purpose",
+		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.EthCategory,
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
@@ -1100,6 +1118,14 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
 		Category: flags.FastFinalityCategory,
 	}
+
+	// Blob setting
+	BlobExtraReserveFlag = &cli.Uint64Flag{
+		Name:     "blob.extra-reserve",
+		Usage:    "Extra reserve threshold for blob, blob never expires when 0 is set, default 28800",
+		Value:    params.DefaultExtraReserveForBlobRequests,
+		Category: flags.MiscCategory,
+	}
 )
 
 var (
@@ -1542,6 +1568,7 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 
 // SetNodeConfig applies node-related command line flags to the config.
 func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
+	setInstance(ctx, cfg)
 	SetP2PConfig(ctx, &cfg.P2P)
 	setIPC(ctx, cfg)
 	setHTTP(ctx, cfg)
@@ -1938,6 +1965,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.TransactionHistory != 0 {
 		cfg.TransactionHistory = 0
 		log.Warn("Disabled transaction unindexing for archive node")
+
+		cfg.StateScheme = rawdb.HashScheme
+		log.Warn("Forcing hash state-scheme for archive mode")
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheTrieFlag.Name) {
 		cfg.TrieCleanCache = ctx.Int(CacheFlag.Name) * ctx.Int(CacheTrieFlag.Name) / 100
@@ -1954,6 +1984,16 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		// to verify blocks from verify nodes, then it should enable trust protocol.
 		if cfg.TriesVerifyMode.NeedRemoteVerify() {
 			cfg.EnableTrustProtocol = true
+		}
+		// A node without trie is not able to provide snap data, so it should disable snap protocol.
+		if cfg.TriesVerifyMode != core.LocalVerify {
+			log.Info("Automatically disables snap protocol due to verify mode", "mode", cfg.TriesVerifyMode)
+			cfg.DisableSnapProtocol = true
+		}
+
+		if cfg.SyncMode == downloader.SnapSync && cfg.TriesVerifyMode.NoTries() {
+			log.Warn("Only local TriesVerifyMode can support snap sync, resetting to full sync", "mode", cfg.TriesVerifyMode)
+			cfg.SyncMode = downloader.FullSync
 		}
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheSnapshotFlag.Name) {
@@ -2086,7 +2126,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			if rawdb.ReadCanonicalHash(chaindb, 0) != (common.Hash{}) {
 				cfg.Genesis = nil // fallback to db content
 
-				//validate genesis has PoS enabled in block 0
+				// validate genesis has PoS enabled in block 0
 				genesis, err := core.ReadGenesis(chaindb)
 				if err != nil {
 					Fatalf("Could not read genesis from database: %v", err)
@@ -2118,6 +2158,18 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	log.Info("Initializing the KZG library", "backend", ctx.String(CryptoKZGFlag.Name))
 	if err := kzg4844.UseCKZG(ctx.String(CryptoKZGFlag.Name) == "ckzg"); err != nil {
 		Fatalf("Failed to set KZG library implementation to %s: %v", ctx.String(CryptoKZGFlag.Name), err)
+	}
+
+	// blob setting
+	if ctx.IsSet(OverrideDefaultExtraReserveForBlobRequests.Name) {
+		cfg.BlobExtraReserve = ctx.Uint64(OverrideDefaultExtraReserveForBlobRequests.Name)
+	}
+	if ctx.IsSet(BlobExtraReserveFlag.Name) {
+		extraReserve := ctx.Uint64(BlobExtraReserveFlag.Name)
+		if extraReserve > 0 && extraReserve < params.DefaultExtraReserveForBlobRequests {
+			extraReserve = params.DefaultExtraReserveForBlobRequests
+		}
+		cfg.BlobExtraReserve = extraReserve
 	}
 }
 
@@ -2527,4 +2579,25 @@ func ParseCLIAndConfigStateScheme(cliScheme, cfgScheme string) (string, error) {
 		return cliScheme, nil
 	}
 	return "", fmt.Errorf("incompatible state scheme, CLI: %s, config: %s", cliScheme, cfgScheme)
+}
+
+// setInstance configures the port numbers for the given instance.
+func setInstance(ctx *cli.Context, cfg *node.Config) {
+	if ctx.IsSet(InstanceFlag.Name) {
+		cfg.Instance = ctx.Int(InstanceFlag.Name)
+	}
+
+	if cfg.Instance > 200 {
+		Fatalf("Instance number %d is too high, maximum is 200", cfg.Instance)
+	}
+
+	if cfg.Instance == 1 { // using default ports
+		return
+	}
+
+	cfg.AuthPort = node.DefaultConfig.AuthPort + cfg.Instance*100 - 100
+	cfg.HTTPPort = node.DefaultHTTPPort - cfg.Instance + 1
+	cfg.WSPort = node.DefaultWSPort + cfg.Instance*2 - 2
+	cfg.P2P.ListenAddr = fmt.Sprintf(":%d", node.DefaultListenPort+cfg.Instance-1)
+	cfg.P2P.DiscAddr = fmt.Sprintf(":%d", node.DefaultDiscPort+cfg.Instance-1)
 }

@@ -1,8 +1,8 @@
 diff --git a/core/vm/contracts.go b/core/vm/contracts.go
-index 36d33e41c..adb10883e 100644
+index 5988bb15f..c92cbf542 100644
 --- a/core/vm/contracts.go
 +++ b/core/vm/contracts.go
-@@ -78,9 +78,6 @@ var PrecompiledContractsIstanbul = map[common.Address]PrecompiledContract{
+@@ -83,9 +83,6 @@ var PrecompiledContractsIstanbul = map[common.Address]PrecompiledContract{
  	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
  	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
  	common.BytesToAddress([]byte{9}): &blake2F{},
@@ -12,6 +12,20 @@ index 36d33e41c..adb10883e 100644
  }
  
  var PrecompiledContractsNano = map[common.Address]PrecompiledContract{
+@@ -238,13 +235,6 @@ var PrecompiledContractsCancun = map[common.Address]PrecompiledContract{
+ 	common.BytesToAddress([]byte{8}):    &bn256PairingIstanbul{},
+ 	common.BytesToAddress([]byte{9}):    &blake2F{},
+ 	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
+-
+-	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
+-	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidatePlato{},
+-	common.BytesToAddress([]byte{102}): &blsSignatureVerify{},
+-	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidateHertz{},
+-	common.BytesToAddress([]byte{104}): &verifyDoubleSignEvidence{},
+-	common.BytesToAddress([]byte{105}): &secp256k1SignatureRecover{},
+ }
+ 
+ // PrecompiledContractsBLS contains the set of pre-compiled Ethereum
 diff --git a/core/vm/jump_table.go b/core/vm/jump_table.go
 index 70c543f14..65716f944 100644
 --- a/core/vm/jump_table.go
@@ -26,7 +40,7 @@ index 70c543f14..65716f944 100644
  	enable3860(&instructionSet) // Limit and meter initcode
  
 diff --git a/params/protocol_params.go b/params/protocol_params.go
-index b32b4d943..8b544af08 100644
+index b84fa148f..97bf6c4d2 100644
 --- a/params/protocol_params.go
 +++ b/params/protocol_params.go
 @@ -23,7 +23,7 @@ import (

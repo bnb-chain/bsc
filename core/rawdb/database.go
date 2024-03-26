@@ -41,6 +41,7 @@ type freezerdb struct {
 	ancientRoot string
 	ethdb.KeyValueStore
 	ethdb.AncientStore
+	ethdb.AncientFreezer
 	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
 }
@@ -125,6 +126,10 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 	return nil
 }
 
+func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return frdb.AncientFreezer.SetupFreezerEnv(env)
+}
+
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
@@ -170,6 +175,10 @@ func (db *nofreezedb) AncientSize(kind string) (uint64, error) {
 // ModifyAncients is not supported.
 func (db *nofreezedb) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, error) {
 	return 0, errNotSupported
+}
+
+func (db *nofreezedb) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
+	return errNotSupported
 }
 
 // TruncateHead returns an error as we don't have a backing chain freezer.
@@ -241,6 +250,10 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
 
+func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return nil
+}
+
 // NewDatabase creates a high level database on top of a given key-value data
 // store without a freezer moving immutable chain segments into cold storage.
 func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
@@ -307,9 +320,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			WriteAncientType(db, PruneFreezerType)
 		}
 		return &freezerdb{
-			ancientRoot:   ancient,
-			KeyValueStore: db,
-			AncientStore:  frdb,
+			ancientRoot:    ancient,
+			KeyValueStore:  db,
+			AncientStore:   frdb,
+			AncientFreezer: frdb,
 		}, nil
 	}
 
@@ -422,9 +436,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		}()
 	}
 	return &freezerdb{
-		ancientRoot:   ancient,
-		KeyValueStore: db,
-		AncientStore:  frdb,
+		ancientRoot:    ancient,
+		KeyValueStore:  db,
+		AncientStore:   frdb,
+		AncientFreezer: frdb,
 	}, nil
 }
 
@@ -506,7 +521,7 @@ type OpenOptions struct {
 //
 //	                      type == null          type != null
 //	                   +----------------------------------------
-//	db is non-existent |  leveldb default  |  specified type
+//	db is non-existent |  pebble default  |  specified type
 //	db is existent     |  from db         |  specified type (if compatible)
 func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	// Reject any unsupported database type
@@ -527,12 +542,9 @@ func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 		log.Info("Using leveldb as the backing database")
 		return NewLevelDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
 	}
-	// No pre-existing database, no user-requested one either. Default to Pebble
-	// on supported platforms and LevelDB on anything else.
-	// 	log.Info("Defaulting to pebble as the backing database")
-	// 	return NewPebbleDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
-	log.Info("Defaulting to leveldb as the backing database")
-	return NewLevelDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
+	// No pre-existing database, no user-requested one either. Default to Pebble.
+	log.Info("Defaulting to pebble as the backing database")
+	return NewPebbleDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly, o.Ephemeral)
 }
 
 // Open opens both a disk-based key-value database such as leveldb or pebble, but also
@@ -884,6 +896,62 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	if unaccounted.size > 0 {
 		log.Error("Database contains unaccounted data", "size", unaccounted.size, "count", unaccounted.count)
 	}
+	return nil
+}
+
+func DeleteTrieState(db ethdb.Database) error {
+	var (
+		it     ethdb.Iterator
+		batch  = db.NewBatch()
+		start  = time.Now()
+		logged = time.Now()
+		count  int64
+		key    []byte
+	)
+
+	prefixKeys := map[string]func([]byte) bool{
+		string(trieNodeAccountPrefix): IsAccountTrieNode,
+		string(trieNodeStoragePrefix): IsStorageTrieNode,
+		string(stateIDPrefix):         func(key []byte) bool { return len(key) == len(stateIDPrefix)+common.HashLength },
+	}
+
+	for prefix, isValid := range prefixKeys {
+		it = db.NewIterator([]byte(prefix), nil)
+
+		for it.Next() {
+			key = it.Key()
+			if !isValid(key) {
+				continue
+			}
+
+			batch.Delete(it.Key())
+			if batch.ValueSize() > ethdb.IdealBatchSize {
+				if err := batch.Write(); err != nil {
+					it.Release()
+					return err
+				}
+				batch.Reset()
+			}
+
+			count++
+			if time.Since(logged) > 8*time.Second {
+				log.Info("Deleting trie state", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+				logged = time.Now()
+			}
+		}
+
+		it.Release()
+	}
+
+	if batch.ValueSize() > 0 {
+		if err := batch.Write(); err != nil {
+			return err
+		}
+		batch.Reset()
+	}
+
+	log.Info("Deleted trie state", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+
 	return nil
 }
 

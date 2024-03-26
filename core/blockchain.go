@@ -110,6 +110,7 @@ const (
 	blockCacheLimit     = 256
 	diffLayerCacheLimit = 1024
 	receiptsCacheLimit  = 10000
+	sidecarsCacheLimit  = 1024
 	txLookupCacheLimit  = 1024
 	maxBadBlockLimit    = 16
 	maxFutureBlocks     = 256
@@ -271,12 +272,14 @@ type BlockChain struct {
 	highestVerifiedHeader atomic.Pointer[types.Header]
 	currentBlock          atomic.Pointer[types.Header] // Current head of the chain
 	currentSnapBlock      atomic.Pointer[types.Header] // Current head of snap-sync
+	chasingHead           atomic.Pointer[types.Header]
 
 	bodyCache     *lru.Cache[common.Hash, *types.Body]
 	bodyRLPCache  *lru.Cache[common.Hash, rlp.RawValue]
 	receiptsCache *lru.Cache[common.Hash, []*types.Receipt]
 	blockCache    *lru.Cache[common.Hash, *types.Block]
 	txLookupCache *lru.Cache[common.Hash, txLookup]
+	sidecarsCache *lru.Cache[common.Hash, types.BlobSidecars]
 
 	// future blocks are blocks added for later processing
 	futureBlocks *lru.Cache[common.Hash, *types.Block]
@@ -316,9 +319,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
 	}
-	if cacheConfig.TriesInMemory != 128 {
-		log.Warn("TriesInMemory isn't the default value(128), you need specify exact same TriesInMemory when prune data",
-			"triesInMemory", cacheConfig.TriesInMemory)
+	if cacheConfig.StateScheme == rawdb.HashScheme && cacheConfig.TriesInMemory != 128 {
+		log.Warn("TriesInMemory isn't the default value (128), you need specify the same TriesInMemory when pruning data",
+			"triesInMemory", cacheConfig.TriesInMemory, "scheme", cacheConfig.StateScheme)
 	}
 
 	diffLayerCache, _ := exlru.New(diffLayerCacheLimit)
@@ -359,6 +362,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		bodyCache:          lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
 		bodyRLPCache:       lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
+		sidecarsCache:      lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
 		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
@@ -390,6 +394,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	bc.highestVerifiedHeader.Store(nil)
 	bc.currentBlock.Store(nil)
 	bc.currentSnapBlock.Store(nil)
+	bc.chasingHead.Store(nil)
 
 	// Update chain info data metrics
 	chainInfoGauge.Update(metrics.GaugeInfoValue{"chain_id": bc.chainConfig.ChainID.String()})
@@ -646,6 +651,9 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 
 func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
 	bc.blockCache.Add(hash, block)
+	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+		bc.sidecarsCache.Add(hash, block.Sidecars())
+	}
 }
 
 // empty returns an indicator whether the blockchain is empty.
@@ -990,6 +998,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	bc.bodyCache.Purge()
 	bc.bodyRLPCache.Purge()
 	bc.receiptsCache.Purge()
+	bc.sidecarsCache.Purge()
 	bc.blockCache.Purge()
 	bc.txLookupCache.Purge()
 	bc.futureBlocks.Purge()
@@ -1032,6 +1041,16 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 	}
 	log.Info("Committed new head block", "number", block.Number(), "hash", hash)
 	return nil
+}
+
+// UpdateChasingHead update remote best chain head, used by DA check now.
+func (bc *BlockChain) UpdateChasingHead(head *types.Header) {
+	bc.chasingHead.Store(head)
+}
+
+// ChasingHead return the best chain head of peers.
+func (bc *BlockChain) ChasingHead() *types.Header {
+	return bc.chasingHead.Load()
 }
 
 // Reset purges the entire blockchain, restoring it to its genesis state.
@@ -1317,6 +1336,14 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		}
 	}
 
+	// check DA after cancun
+	lastBlk := blockChain[len(blockChain)-1]
+	if bc.chainConfig.Parlia != nil && bc.chainConfig.IsCancun(lastBlk.Number(), lastBlk.Time()) {
+		if _, err := CheckDataAvailableInBatch(bc, blockChain); err != nil {
+			return 0, err
+		}
+	}
+
 	var (
 		stats = struct{ processed, ignored int32 }{}
 		start = time.Now()
@@ -1378,6 +1405,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		// Write all chain data to ancients.
 		td := bc.GetTd(first.Hash(), first.NumberU64())
 		writeSize, err := rawdb.WriteAncientBlocks(bc.db, blockChain, receiptChain, td)
+
 		if err != nil {
 			log.Error("Error importing chain data to ancients", "err", err)
 			return 0, err
@@ -1455,6 +1483,9 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			// Write all the data out into the database
 			rawdb.WriteBody(batch, block.Hash(), block.NumberU64(), block.Body())
 			rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
+			if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+				rawdb.WriteBlobSidecars(batch, block.Hash(), block.NumberU64(), block.Sidecars())
+			}
 
 			// Write everything belongs to the blocks into the database. So that
 			// we can ensure all components of body is completed(body, receipts)
@@ -1524,6 +1555,10 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	batch := bc.db.NewBatch()
 	rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), td)
 	rawdb.WriteBlock(batch, block)
+	// if cancun is enabled, here need to write sidecars too
+	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+		rawdb.WriteBlobSidecars(batch, block.Hash(), block.NumberU64(), block.Sidecars())
+	}
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
@@ -1566,6 +1601,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
+		// if cancun is enabled, here need to write sidecars too
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
+		}
 		rawdb.WritePreimages(blockBatch, state.Preimages())
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
@@ -1828,6 +1867,14 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			}
 		}
 	}()
+
+	// check block data available first
+	if bc.chainConfig.Parlia != nil {
+		if index, err := CheckDataAvailableInBatch(bc, chain); err != nil {
+			return index, err
+		}
+	}
+
 	// Start the parallel header verifier
 	headers := make([]*types.Header, len(chain))
 	for i, block := range chain {
@@ -1985,6 +2032,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
+
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err
@@ -2008,7 +2056,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			go throwaway.TriePrefetchInAdvance(block, signer)
 		}
 
-		//Process block using the parent state as reference point
+		// Process block using the parent state as reference point
 		if bc.pipeCommit {
 			statedb.EnablePipeCommit()
 		}
@@ -2286,7 +2334,9 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 		if block == nil {
 			log.Crit("Importing heavy sidechain block is nil", "hash", hashes[i], "number", numbers[i])
 		}
-
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			block = block.WithSidecars(bc.GetSidecarsByHash(hashes[i]))
+		}
 		blocks = append(blocks, block)
 		memory += block.Size()
 
@@ -2357,6 +2407,9 @@ func (bc *BlockChain) recoverAncestors(block *types.Block) (common.Hash, error) 
 			b = block
 		} else {
 			b = bc.GetBlock(hashes[i], numbers[i])
+		}
+		if bc.chainConfig.IsCancun(b.Number(), b.Time()) {
+			b = b.WithSidecars(bc.GetSidecarsByHash(b.Hash()))
 		}
 		if _, err := bc.insertChain(types.Blocks{b}, false); err != nil {
 			return b.ParentHash(), err
@@ -2804,6 +2857,7 @@ func (bc *BlockChain) isCachedBadBlock(block *types.Block) bool {
 }
 
 // reportBlock logs a bad block error.
+// bad block need not save receipts & sidecars.
 func (bc *BlockChain) reportBlock(block *types.Block, receipts types.Receipts, err error) {
 	rawdb.WriteBadBlock(bc.db, block)
 	log.Error(summarizeBadBlock(block, receipts, bc.Config(), err))

@@ -306,8 +306,9 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	// Mark all the block hash as known, but ensure we don't overflow our limits
 	p.knownBlocks.Add(block.Hash())
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
-		Block: block,
-		TD:    td,
+		Block:    block,
+		TD:       td,
+		Sidecars: block.Sidecars(),
 	})
 }
 

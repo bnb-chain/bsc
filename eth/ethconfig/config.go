@@ -71,7 +71,8 @@ var Defaults = Config{
 	RPCGasCap:          50000000,
 	RPCEVMTimeout:      5 * time.Second,
 	GPO:                FullNodeGPO,
-	RPCTxFeeCap:        1, // 1 ether
+	RPCTxFeeCap:        1,                                         // 1 ether
+	BlobExtraReserve:   params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -188,12 +189,6 @@ type Config struct {
 	// send-transaction variants. The unit is ether.
 	RPCTxFeeCap float64
 
-	// OverrideShanghai (TODO: remove after the fork)
-	OverrideShanghai *uint64 `toml:",omitempty"`
-
-	// OverrideKepler (TODO: remove after the fork)
-	OverrideKepler *uint64 `toml:",omitempty"`
-
 	// OverrideCancun (TODO: remove after the fork)
 	OverrideCancun *uint64 `toml:",omitempty"`
 
@@ -202,6 +197,12 @@ type Config struct {
 
 	// OverrideFeynman (TODO: remove after the fork)
 	OverrideFeynman *uint64 `toml:",omitempty"`
+
+	// OverrideFeynmanFix (TODO: remove after the fork)
+	OverrideFeynmanFix *uint64 `toml:",omitempty"`
+
+	// blob setting
+	BlobExtraReserve uint64
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.

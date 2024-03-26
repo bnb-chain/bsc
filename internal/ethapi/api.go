@@ -1010,6 +1010,48 @@ func (s *BlockChainAPI) GetBlockReceipts(ctx context.Context, blockNrOrHash rpc.
 	return result, nil
 }
 
+func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) ([]map[string]interface{}, error) {
+	header, err := s.b.HeaderByNumberOrHash(ctx, blockNrOrHash)
+	if header == nil || err != nil {
+		// When the block doesn't exist, the RPC method should return JSON null
+		// as per specification.
+		return nil, nil
+	}
+	blobSidecars, err := s.b.GetBlobSidecars(ctx, header.Hash())
+	if err != nil || len(blobSidecars) == 0 {
+		return nil, nil
+	}
+	result := make([]map[string]interface{}, len(blobSidecars))
+	for i, sidecar := range blobSidecars {
+		result[i] = marshalBlobSidecar(sidecar)
+	}
+	return result, nil
+}
+
+func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.Hash) (map[string]interface{}, error) {
+	txTarget, blockHash, _, Index := rawdb.ReadTransaction(s.b.ChainDb(), hash)
+	if txTarget == nil {
+		return nil, nil
+	}
+	block, err := s.b.BlockByHash(ctx, blockHash)
+	if block == nil || err != nil {
+		// When the block doesn't exist, the RPC method should return JSON null
+		// as per specification.
+		return nil, nil
+	}
+	blobSidecars, err := s.b.GetBlobSidecars(ctx, blockHash)
+	if err != nil || len(blobSidecars) == 0 {
+		return nil, nil
+	}
+	for _, sidecar := range blobSidecars {
+		if sidecar.TxIndex == Index {
+			return marshalBlobSidecar(sidecar), nil
+		}
+	}
+
+	return nil, nil
+}
+
 // OverrideAccount indicates the overriding fields of account during the execution
 // of a message call.
 // Note, state and stateDiff can't be specified at the same time. If state is
@@ -1475,7 +1517,7 @@ func RPCMarshalHeader(head *types.Header) map[string]interface{} {
 	if head.BaseFee != nil {
 		result["baseFeePerGas"] = (*hexutil.Big)(head.BaseFee)
 	}
-	if head.WithdrawalsHash != nil {
+	if !head.EmptyWithdrawalsHash() {
 		result["withdrawalsRoot"] = head.WithdrawalsHash
 	}
 	if head.BlobGasUsed != nil {
@@ -1519,7 +1561,7 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 		uncleHashes[i] = uncle.Hash()
 	}
 	fields["uncles"] = uncleHashes
-	if block.Header().WithdrawalsHash != nil {
+	if !block.Header().EmptyWithdrawalsHash() {
 		fields["withdrawals"] = block.Withdrawals()
 	}
 	return fields
@@ -2100,6 +2142,17 @@ func marshalReceipt(receipt *types.Receipt, blockHash common.Hash, blockNumber u
 	return fields
 }
 
+func marshalBlobSidecar(sidecar *types.BlobSidecar) map[string]interface{} {
+	fields := map[string]interface{}{
+		"blockHash":   sidecar.BlockHash,
+		"blockNumber": hexutil.EncodeUint64(sidecar.BlockNumber.Uint64()),
+		"txHash":      sidecar.TxHash,
+		"txIndex":     hexutil.EncodeUint64(sidecar.TxIndex),
+		"blobSidecar": sidecar.BlobTxSidecar,
+	}
+	return fields
+}
+
 // sign is a helper function that signs a transaction with the private key of the given address.
 func (s *TransactionAPI) sign(addr common.Address, tx *types.Transaction) (*types.Transaction, error) {
 	// Look up the wallet containing the requested signer
@@ -2525,6 +2578,16 @@ func (s *NetAPI) PeerCount() hexutil.Uint {
 // Version returns the current ethereum protocol version.
 func (s *NetAPI) Version() string {
 	return fmt.Sprintf("%d", s.networkVersion)
+}
+
+// NodeInfo retrieves all the information we know about the host node at the
+// protocol granularity. This is the same as the `admin_nodeInfo` method.
+func (s *NetAPI) NodeInfo() (*p2p.NodeInfo, error) {
+	server := s.net
+	if server == nil {
+		return nil, errors.New("server not found")
+	}
+	return s.net.NodeInfo(), nil
 }
 
 // checkTxFee is an internal function used to check whether the fee of

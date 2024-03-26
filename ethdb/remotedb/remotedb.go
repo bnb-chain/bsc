@@ -126,6 +126,14 @@ func (db *Database) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, e
 	panic("not supported")
 }
 
+func (db *Database) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
+	panic("not supported")
+}
+
+func (db *Database) AncientReset(tail, head uint64) error {
+	panic("not supported")
+}
+
 func (db *Database) TruncateHead(n uint64) (uint64, error) {
 	panic("not supported")
 }
@@ -173,6 +181,10 @@ func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
 func (db *Database) Close() error {
 	db.remote.Close()
 	return nil
+}
+
+func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	panic("not supported")
 }
 
 func New(client *rpc.Client) ethdb.Database {

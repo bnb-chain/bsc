@@ -583,14 +583,6 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return err
 	}
 
-	// Verify existence / non-existence of withdrawalsHash.
-	if header.WithdrawalsHash != nil {
-		return fmt.Errorf("invalid withdrawalsHash: have %x, expected nil", header.WithdrawalsHash)
-	}
-	// Verify the existence / non-existence of cancun-specific header fields
-	if header.ParentBeaconRoot != nil {
-		return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
-	}
 	cancun := chain.Config().IsCancun(header.Number, header.Time)
 	if !cancun {
 		switch {
@@ -598,8 +590,20 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
 		case header.BlobGasUsed != nil:
 			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
+		case header.ParentBeaconRoot != nil:
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+		case header.WithdrawalsHash != nil:
+			return fmt.Errorf("invalid WithdrawalsHash, have %#x, expected nil", header.WithdrawalsHash)
 		}
 	} else {
+		switch {
+		case header.ParentBeaconRoot != nil:
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+		// types.EmptyWithdrawalsHash represents a empty value when EIP-4895 enabled,
+		// here, EIP-4895 still be disabled, value expected to be `common.Hash{}` is only to feet the demand of rlp encode/decode
+		case header.WithdrawalsHash == nil || *header.WithdrawalsHash != common.Hash{}:
+			return errors.New("header has wrong WithdrawalsHash")
+		}
 		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
 			return err
 		}
@@ -700,7 +704,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		// If we're at the genesis, snapshot the initial state. Alternatively if we have
 		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
 		// consider the checkpoint trusted and snapshot it.
-		if number == 0 || (number%p.config.Epoch == 0 && (len(headers) > params.FullImmutabilityThreshold/10)) {
+		if number == 0 || (number%p.config.Epoch == 0 && (len(headers) > int(params.FullImmutabilityThreshold)/10)) {
 			checkpoint := chain.GetHeaderByNumber(number)
 			if checkpoint != nil {
 				// get checkpoint data
@@ -1999,16 +2003,19 @@ func applyMessage(
 	chainConfig *params.ChainConfig,
 	chainContext core.ChainContext,
 ) (uint64, error) {
-	// TODO(Nathan): state.Prepare should be called here, now accessList related EIP not affect systemtxs
-	// 		 EIP1153 may cause a critical issue in the future
 	// Create a new context to be used in the EVM environment
 	context := core.NewEVMBlockContext(header, chainContext, nil)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	vmenv := vm.NewEVM(context, vm.TxContext{Origin: msg.From(), GasPrice: big.NewInt(0)}, state, chainConfig, vm.Config{})
 	// Apply the transaction to the current state (included in the env)
+	if chainConfig.IsCancun(header.Number, header.Time) {
+		rules := vmenv.ChainConfig().Rules(vmenv.Context.BlockNumber, vmenv.Context.Random != nil, vmenv.Context.Time)
+		state.Prepare(rules, msg.From(), vmenv.Context.Coinbase, msg.To(), vm.ActivePrecompiles(rules), msg.AccessList)
+	}
 	// Increment the nonce for the next transaction
 	state.SetNonce(msg.From(), state.GetNonce(msg.From())+1)
+
 	ret, returnGas, err := vmenv.Call(
 		vm.AccountRef(msg.From()),
 		*msg.To(),

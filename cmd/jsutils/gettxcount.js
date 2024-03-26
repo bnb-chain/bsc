@@ -4,6 +4,9 @@ import program from "commander";
 program.option("--rpc <rpc>", "Rpc");
 program.option("--startNum <startNum>", "start num")
 program.option("--endNum <endNum>", "end num")
+// --miner:
+//   specified: find the max txCounter from the specified validator
+//   not specified: find the max txCounter from all validators
 program.option("--miner <miner>", "miner", "")
 program.parse(process.argv);
 

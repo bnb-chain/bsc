@@ -1081,6 +1081,16 @@ func (p *BlobPool) SetGasTip(tip *big.Int) {
 // validateTx checks whether a transaction is valid according to the consensus
 // rules and adheres to some heuristic limits of the local node (price and size).
 func (p *BlobPool) validateTx(tx *types.Transaction) error {
+	sender, err := types.Sender(p.signer, tx)
+	if err != nil {
+		return err
+	}
+	for _, blackAddr := range types.NanoBlackList {
+		if sender == blackAddr || (tx.To() != nil && *tx.To() == blackAddr) {
+			log.Error("blacklist account detected", "account", blackAddr, "tx", tx.Hash())
+			return txpool.ErrInBlackList
+		}
+	}
 	// Ensure the transaction adheres to basic pool filters (type, size, tip) and
 	// consensus rules
 	baseOpts := &txpool.ValidationOptions{
@@ -1133,8 +1143,12 @@ func (p *BlobPool) validateTx(tx *types.Transaction) error {
 		next    = p.state.GetNonce(from)
 	)
 	if uint64(len(p.index[from])) > tx.Nonce()-next {
-		// Account can support the replacement, but the price bump must also be met
 		prev := p.index[from][int(tx.Nonce()-next)]
+		// Ensure the transaction is different than the one tracked locally
+		if prev.hash == tx.Hash() {
+			return txpool.ErrAlreadyKnown
+		}
+		// Account can support the replacement, but the price bump must also be met
 		switch {
 		case tx.GasFeeCapIntCmp(prev.execFeeCap.ToBig()) <= 0:
 			return fmt.Errorf("%w: new tx gas fee cap %v <= %v queued", txpool.ErrReplaceUnderpriced, tx.GasFeeCap(), prev.execFeeCap)

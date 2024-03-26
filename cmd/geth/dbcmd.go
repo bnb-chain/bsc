@@ -76,6 +76,7 @@ Remove blockchain and state databases`,
 			dbCompactCmd,
 			dbGetCmd,
 			dbDeleteCmd,
+			dbDeleteTrieStateCmd,
 			dbInspectTrieCmd,
 			dbPutCmd,
 			dbGetSlotsCmd,
@@ -205,6 +206,15 @@ corruption if it is aborted during execution'!`,
 		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: `This command deletes the specified database key from the database.
 WARNING: This is a low-level operation which may cause database corruption!`,
+	}
+	dbDeleteTrieStateCmd = &cli.Command{
+		Action: dbDeleteTrieState,
+		Name:   "delete-trie-state",
+		Usage:  "Delete all trie state key-value pairs from the database and the ancient state. Does not support hash-based state scheme.",
+		Flags: flags.Merge([]cli.Flag{
+			utils.SyncModeFlag,
+		}, utils.NetworkFlags, utils.DatabaseFlags),
+		Description: `This command deletes all trie state key-value pairs from the database and the ancient state.`,
 	}
 	dbPutCmd = &cli.Command{
 		Action:    dbPut,
@@ -807,6 +817,82 @@ func dbDelete(ctx *cli.Context) error {
 		log.Info("Delete operation returned an error", "key", fmt.Sprintf("%#x", key), "error", err)
 		return err
 	}
+	return nil
+}
+
+// dbDeleteTrieState deletes all trie state related key-value pairs from the database and the ancient state store.
+func dbDeleteTrieState(ctx *cli.Context) error {
+	if ctx.NArg() > 0 {
+		return fmt.Errorf("no arguments required")
+	}
+
+	stack, config := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer db.Close()
+
+	var (
+		err   error
+		start = time.Now()
+	)
+
+	// If separate trie db exists, delete all files in the db folder
+	if db.StateStore() != nil {
+		statePath := filepath.Join(stack.ResolvePath("chaindata"), "state")
+		log.Info("Removing separate trie database", "path", statePath)
+		err = filepath.Walk(statePath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if path != statePath {
+				fileInfo, err := os.Lstat(path)
+				if err != nil {
+					return err
+				}
+				if !fileInfo.IsDir() {
+					os.Remove(path)
+				}
+			}
+			return nil
+		})
+		log.Info("Separate trie database deleted", "err", err, "elapsed", common.PrettyDuration(time.Since(start)))
+		return err
+	}
+
+	// Delete KV pairs from the database
+	err = rawdb.DeleteTrieState(db)
+	if err != nil {
+		return err
+	}
+
+	// Remove the full node ancient database
+	dbPath := config.Eth.DatabaseFreezer
+	switch {
+	case dbPath == "":
+		dbPath = filepath.Join(stack.ResolvePath("chaindata"), "ancient/state")
+	case !filepath.IsAbs(dbPath):
+		dbPath = config.Node.ResolvePath(dbPath)
+	}
+
+	if !common.FileExist(dbPath) {
+		return nil
+	}
+
+	log.Info("Removing ancient state database", "path", dbPath)
+	start = time.Now()
+	filepath.Walk(dbPath, func(path string, info os.FileInfo, err error) error {
+		if dbPath == path {
+			return nil
+		}
+		if !info.IsDir() {
+			os.Remove(path)
+			return nil
+		}
+		return filepath.SkipDir
+	})
+	log.Info("State database successfully deleted", "path", dbPath, "elapsed", common.PrettyDuration(time.Since(start)))
+
 	return nil
 }
 

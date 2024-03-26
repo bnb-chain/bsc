@@ -364,6 +364,9 @@ func (b *backendMock) PendingBlockAndReceipts() (*types.Block, types.Receipts) {
 func (b *backendMock) GetReceipts(ctx context.Context, hash common.Hash) (types.Receipts, error) {
 	return nil, nil
 }
+func (b *backendMock) GetBlobSidecars(ctx context.Context, hash common.Hash) (types.BlobSidecars, error) {
+	return nil, nil
+}
 func (b *backendMock) GetLogs(ctx context.Context, blockHash common.Hash, number uint64) ([][]*types.Log, error) {
 	return nil, nil
 }

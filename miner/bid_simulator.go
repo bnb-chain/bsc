@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner/builderclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -36,10 +37,12 @@ const (
 )
 
 var (
-	diffInTurn = big.NewInt(2) // the difficulty of a block that proposed by an in-turn validator
+	bidSimTimer = metrics.NewRegisteredTimer("bid/sim/duration", nil)
 )
 
 var (
+	diffInTurn = big.NewInt(2) // the difficulty of a block that proposed by an in-turn validator
+
 	dialer = &net.Dialer{
 		Timeout:   time.Second,
 		KeepAlive: 60 * time.Second,
@@ -503,6 +506,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// ensure simulation exited then start next simulation
 	b.SetSimulatingBid(parentHash, bidRuntime)
+	start := time.Now()
 
 	defer func(simStart time.Time) {
 		logCtx := []any{
@@ -532,6 +536,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 
 		b.RemoveSimulatingBid(parentHash)
+		bidSimTimer.UpdateSince(start)
 	}(time.Now())
 
 	// prepareWork will configure header with a suitable time according to consensus
@@ -606,6 +611,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 // reportIssue reports the issue to the mev-sentry
 func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
+	metrics.GetOrRegisterCounter(fmt.Sprintf("bid/err/%v", bidRuntime.bid.Builder), nil).Inc(1)
+
 	cli := b.builders[bidRuntime.bid.Builder]
 	if cli != nil {
 		cli.ReportIssue(context.Background(), &types.BidIssue{
@@ -648,11 +655,11 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		env  = r.env
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
-		sc   *types.BlobTxSidecar
+		sc   *types.BlobSidecar
 	)
 
 	if tx.Type() == types.BlobTxType {
-		sc := tx.BlobTxSidecar()
+		sc := types.NewBlobSidecarFromTx(tx)
 		if sc == nil {
 			return errors.New("blob transaction without blobs in miner")
 		}
@@ -674,6 +681,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	}
 
 	if tx.Type() == types.BlobTxType {
+		sc.TxIndex = uint64(len(env.txs))
 		env.txs = append(env.txs, tx.WithoutBlobTxSidecar())
 		env.receipts = append(env.receipts, receipt)
 		env.sidecars = append(env.sidecars, sc)

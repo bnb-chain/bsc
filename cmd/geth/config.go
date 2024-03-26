@@ -26,6 +26,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/ethereum/go-ethereum/eth/downloader"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -183,14 +185,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		params.RialtoGenesisHash = common.HexToHash(v)
 	}
 
-	if ctx.IsSet(utils.OverrideShanghai.Name) {
-		v := ctx.Uint64(utils.OverrideShanghai.Name)
-		cfg.Eth.OverrideShanghai = &v
-	}
-	if ctx.IsSet(utils.OverrideKepler.Name) {
-		v := ctx.Uint64(utils.OverrideKepler.Name)
-		cfg.Eth.OverrideKepler = &v
-	}
 	if ctx.IsSet(utils.OverrideCancun.Name) {
 		v := ctx.Uint64(utils.OverrideCancun.Name)
 		cfg.Eth.OverrideCancun = &v
@@ -202,6 +196,20 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.OverrideFeynman.Name) {
 		v := ctx.Uint64(utils.OverrideFeynman.Name)
 		cfg.Eth.OverrideFeynman = &v
+	}
+	if ctx.IsSet(utils.OverrideFeynmanFix.Name) {
+		v := ctx.Uint64(utils.OverrideFeynmanFix.Name)
+		cfg.Eth.OverrideFeynmanFix = &v
+	}
+	if ctx.IsSet(utils.OverrideFullImmutabilityThreshold.Name) {
+		params.FullImmutabilityThreshold = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
+		downloader.FullMaxForkAncestry = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
+	}
+	if ctx.IsSet(utils.OverrideMinBlocksForBlobRequests.Name) {
+		params.MinBlocksForBlobRequests = ctx.Uint64(utils.OverrideMinBlocksForBlobRequests.Name)
+	}
+	if ctx.IsSet(utils.OverrideDefaultExtraReserveForBlobRequests.Name) {
+		params.DefaultExtraReserveForBlobRequests = ctx.Uint64(utils.OverrideDefaultExtraReserveForBlobRequests.Name)
 	}
 	if ctx.IsSet(utils.SeparateDBFlag.Name) && !stack.IsSeparatedDB() {
 		utils.Fatalf("Failed to locate separate database subdirectory when separatedb parameter has been set")

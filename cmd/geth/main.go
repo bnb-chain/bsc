@@ -70,11 +70,13 @@ var (
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
-		utils.OverrideShanghai,
-		utils.OverrideKepler,
 		utils.OverrideCancun,
 		utils.OverrideVerkle,
 		utils.OverrideFeynman,
+		utils.OverrideFeynmanFix,
+		utils.OverrideFullImmutabilityThreshold,
+		utils.OverrideMinBlocksForBlobRequests,
+		utils.OverrideDefaultExtraReserveForBlobRequests,
 		utils.EnablePersonal,
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
@@ -144,6 +146,7 @@ var (
 		utils.NoDiscoverFlag,
 		utils.DiscoveryV4Flag,
 		utils.DiscoveryV5Flag,
+		utils.InstanceFlag,
 		utils.LegacyDiscoveryV5Flag, // deprecated
 		utils.NetrestrictFlag,
 		utils.NodeKeyFileFlag,
@@ -172,6 +175,7 @@ var (
 		utils.VoteJournalDirFlag,
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
+		utils.BlobExtraReserveFlag,
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{
