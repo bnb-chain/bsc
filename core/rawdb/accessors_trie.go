@@ -86,28 +86,18 @@ func ReadAccountFromTrieDirectly(db ethdb.Database, key []byte) ([]byte, []byte,
 	it.Seek(accountTrieNodeKey(encodeNibbles(key)))
 	if it.Error() == nil {
 		dbKey := it.Key()
-		log.Info("ReadAccountFromTrieDirectly", "dbKey", common.Bytes2Hex(dbKey), "target key", common.Bytes2Hex(accountTrieNodeKey(encodeNibbles(key))))
 		if strings.HasPrefix(string(accountTrieNodeKey(encodeNibbles(key))), string(dbKey)) {
 			data := it.Value()
 			h := newHasher()
 			defer h.release()
 			return data, dbKey[1:], h.hash(data)
-
+		} else {
+			log.Warn("ReadAccountFromTrieDirectly", "dbKey", common.Bytes2Hex(dbKey), "target key", common.Bytes2Hex(accountTrieNodeKey(encodeNibbles(key))))
 		}
+	} else {
+		log.Error("ReadAccountFromTrieDirectly", "iterater error", it.Error())
 	}
 	return nil, nil, common.Hash{}
-
-	//log.Info("left node key", "triekey", common.Bytes2Hex(accountTrieNodeKey(key)), "key", common.Bytes2Hex(it.Key()))
-	//pathKey := make([]byte, len(it.Key()))
-	//copy(pathKey, it.Key())
-	//// todo pre judge
-	//data, err := db.Get(pathKey)
-	//if err != nil {
-	//	return nil, nil, nil, common.Hash{}
-	//}
-	//h := newHasher()
-	//defer h.release()
-	//return data, pathKey, accountTrieNodeKey(key), h.hash(data)
 }
 
 // HasAccountTrieNode checks the account trie node presence with the specified

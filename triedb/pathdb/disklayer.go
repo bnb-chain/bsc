@@ -293,13 +293,13 @@ func (dl *diskLayer) readAccountTrie(hash common.Hash) []byte {
 		return nil
 	}
 	diskAccountLeftNodeTimer.UpdateSince(start)
-	log.Info("DecodeLeafNode", "pathKey", common.Bytes2Hex(path), "accountKeyHash", nHash.String())
 	val, key := trie.DecodeLeafNode(nHash.Bytes(), path, nBlob)
-	log.Info("account short node info ", "account hash", hash.String(), "gotten key", hex.EncodeToString(key), "path", common.Bytes2Hex(path))
 
 	if bytes.Compare(key, hash.Bytes()) == 0 {
 		readAccLeftNodeTimer.UpdateSince(start)
 		return val
+	} else {
+		log.Warn("account short node info ", "account hash", hash.String(), "gotten key", hex.EncodeToString(key), "path", common.Bytes2Hex(path))
 	}
 	return nil
 }
