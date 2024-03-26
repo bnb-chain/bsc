@@ -831,7 +831,7 @@ func (bc *BlockChain) tryRewindBadBlocks() {
 	}
 }
 
-// rewindPathHead implements the logic of rewindHead in the context of hash scheme.
+// rewindHashHead implements the logic of rewindHead in the context of hash scheme.
 func (bc *BlockChain) rewindHashHead(head *types.Header, root common.Hash) (*types.Header, uint64) {
 	var (
 		limit      uint64                             // The oldest block that will be searched for this rewinding
