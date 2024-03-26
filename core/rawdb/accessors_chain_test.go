@@ -687,7 +687,7 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 		blocks := allBlocks[i : i+length]
 		receipts := batchReceipts[:length]
 		for j := 0; j < length; j++ {
-			blocks[i+j].WithSidecars(batchSidecars[j])
+			blocks[i+j] = blocks[i+j].WithSidecars(batchSidecars[j])
 		}
 		writeSize, err := WriteAncientBlocks(db, blocks, receipts, td)
 		if err != nil {
