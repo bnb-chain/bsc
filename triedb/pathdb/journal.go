@@ -18,9 +18,12 @@ package pathdb
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -72,11 +75,16 @@ type journalStorage struct {
 
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
-	journal := rawdb.ReadTrieJournal(db.diskdb)
-	if len(journal) == 0 {
+	fd, err := os.Open(db.config.JournalPath + JournalFile)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, errMissJournal
 	}
-	r := rlp.NewStream(bytes.NewReader(journal), 0)
+	if err != nil {
+		return nil, err
+	}
+	defer fd.Close()
+
+	r := rlp.NewStream(fd, 0)
 
 	// Firstly, resolve the first element as the journal version
 	version, err := r.Uint64()
@@ -138,14 +146,25 @@ func (db *Database) loadLayers() layer {
 func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 	// Resolve disk layer root
 	var root common.Hash
-	if err := r.Decode(&root); err != nil {
+	var length uint64
+	if err := r.Decode(&length); err != nil {
+		return nil, fmt.Errorf("load disk length: %v", err)
+	}
+
+	var journalBuf []byte
+	if err := r.Decode(&journalBuf); err != nil {
+		return nil, fmt.Errorf("load disk journal: %v", err)
+	}
+
+	rBuf := rlp.NewStream(bytes.NewReader(journalBuf), 1024*1024)
+	if err := rBuf.Decode(&root); err != nil {
 		return nil, fmt.Errorf("load disk root: %v", err)
 	}
 	// Resolve the state id of disk layer, it can be different
 	// with the persistent id tracked in disk, the id distance
 	// is the number of transitions aggregated in disk layer.
 	var id uint64
-	if err := r.Decode(&id); err != nil {
+	if err := rBuf.Decode(&id); err != nil {
 		return nil, fmt.Errorf("load state id: %v", err)
 	}
 	stored := rawdb.ReadPersistentStateID(db.diskdb)
@@ -154,7 +173,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 	}
 	// Resolve nodes cached in node buffer
 	var encoded []journalNodes
-	if err := r.Decode(&encoded); err != nil {
+	if err := rBuf.Decode(&encoded); err != nil {
 		return nil, fmt.Errorf("load disk nodes: %v", err)
 	}
 	nodes := make(map[common.Hash]map[string]*trienode.Node)
@@ -169,6 +188,17 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		}
 		nodes[entry.Owner] = subset
 	}
+
+	var shaSum [32]byte
+	if err := r.Decode(&shaSum); err != nil {
+		return nil, fmt.Errorf("load shasum: %v", err)
+	}
+
+	expectSum := sha256.Sum256(journalBuf)
+	if shaSum != expectSum {
+		return nil, fmt.Errorf("expect shaSum: %v, real:%v", expectSum, shaSum)
+	}
+
 	// Calculate the internal state transitions by id difference.
 	base := newDiskLayer(root, id, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nodes, id-stored))
 	return base, nil
@@ -179,7 +209,22 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 	// Read the next diff journal entry
 	var root common.Hash
-	if err := r.Decode(&root); err != nil {
+	var length uint64
+	if err := r.Decode(&length); err != nil {
+		// The first read may fail with EOF, marking the end of the journal
+		if err == io.EOF {
+			return parent, nil
+		}
+		return nil, fmt.Errorf("load disk length : %v", err)
+	}
+	var journalBuf []byte
+	if err := r.Decode(&journalBuf); err != nil {
+		return nil, fmt.Errorf("load disk journal buffer: %v", err)
+	}
+
+	rBuf := rlp.NewStream(bytes.NewReader(journalBuf), 1024*1024)
+
+	if err := rBuf.Decode(&root); err != nil {
 		// The first read may fail with EOF, marking the end of the journal
 		if err == io.EOF {
 			return parent, nil
@@ -187,12 +232,12 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		return nil, fmt.Errorf("load diff root: %v", err)
 	}
 	var block uint64
-	if err := r.Decode(&block); err != nil {
+	if err := rBuf.Decode(&block); err != nil {
 		return nil, fmt.Errorf("load block number: %v", err)
 	}
 	// Read in-memory trie nodes from journal
 	var encoded []journalNodes
-	if err := r.Decode(&encoded); err != nil {
+	if err := rBuf.Decode(&encoded); err != nil {
 		return nil, fmt.Errorf("load diff nodes: %v", err)
 	}
 	nodes := make(map[common.Hash]map[string]*trienode.Node)
@@ -215,13 +260,13 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		storages   = make(map[common.Address]map[common.Hash][]byte)
 		incomplete = make(map[common.Address]struct{})
 	)
-	if err := r.Decode(&jaccounts); err != nil {
+	if err := rBuf.Decode(&jaccounts); err != nil {
 		return nil, fmt.Errorf("load diff accounts: %v", err)
 	}
 	for i, addr := range jaccounts.Addresses {
 		accounts[addr] = jaccounts.Accounts[i]
 	}
-	if err := r.Decode(&jstorages); err != nil {
+	if err := rBuf.Decode(&jstorages); err != nil {
 		return nil, fmt.Errorf("load diff storages: %v", err)
 	}
 	for _, entry := range jstorages {
@@ -238,6 +283,15 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		}
 		storages[entry.Account] = set
 	}
+	var shaSum [32]byte
+	if err := r.Decode(&shaSum); err != nil {
+		return nil, fmt.Errorf("load shasum: %v", err)
+	}
+
+	expectSum := sha256.Sum256(journalBuf)
+	if shaSum != expectSum {
+		return nil, fmt.Errorf("expect shaSum: %v, real:%v", expectSum, shaSum)
+	}
 	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete)), r)
 }
 
@@ -247,16 +301,19 @@ func (dl *diskLayer) journal(w io.Writer) error {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
+	// Create a buffer to store encoded data
+	journalBuf := new(bytes.Buffer)
+
 	// Ensure the layer didn't get stale
 	if dl.stale {
 		return errSnapshotStale
 	}
 	// Step one, write the disk root into the journal.
-	if err := rlp.Encode(w, dl.root); err != nil {
+	if err := rlp.Encode(journalBuf, dl.root); err != nil {
 		return err
 	}
 	// Step two, write the corresponding state id into the journal
-	if err := rlp.Encode(w, dl.id); err != nil {
+	if err := rlp.Encode(journalBuf, dl.id); err != nil {
 		return err
 	}
 	// Step three, write all unwritten nodes into the journal
@@ -269,7 +326,19 @@ func (dl *diskLayer) journal(w io.Writer) error {
 		}
 		nodes = append(nodes, entry)
 	}
-	if err := rlp.Encode(w, nodes); err != nil {
+	if err := rlp.Encode(journalBuf, nodes); err != nil {
+		return err
+	}
+
+	// Store the journal buf into w and calculate checksum
+	if err := rlp.Encode(w, uint64(journalBuf.Len())); err != nil {
+		return err
+	}
+	shasum := sha256.Sum256(journalBuf.Bytes())
+	if err := rlp.Encode(w, journalBuf.Bytes()); err != nil {
+		return err
+	}
+	if err := rlp.Encode(w, shasum); err != nil {
 		return err
 	}
 	log.Debug("Journaled pathdb disk layer", "root", dl.root, "nodes", len(bufferNodes))
@@ -286,11 +355,13 @@ func (dl *diffLayer) journal(w io.Writer) error {
 	if err := dl.parent.journal(w); err != nil {
 		return err
 	}
+	// Create a buffer to store encoded data
+	journalBuf := new(bytes.Buffer)
 	// Everything below was journaled, persist this layer too
-	if err := rlp.Encode(w, dl.root); err != nil {
+	if err := rlp.Encode(journalBuf, dl.root); err != nil {
 		return err
 	}
-	if err := rlp.Encode(w, dl.block); err != nil {
+	if err := rlp.Encode(journalBuf, dl.block); err != nil {
 		return err
 	}
 	// Write the accumulated trie nodes into buffer
@@ -302,7 +373,7 @@ func (dl *diffLayer) journal(w io.Writer) error {
 		}
 		nodes = append(nodes, entry)
 	}
-	if err := rlp.Encode(w, nodes); err != nil {
+	if err := rlp.Encode(journalBuf, nodes); err != nil {
 		return err
 	}
 	// Write the accumulated state changes into buffer
@@ -311,7 +382,7 @@ func (dl *diffLayer) journal(w io.Writer) error {
 		jacct.Addresses = append(jacct.Addresses, addr)
 		jacct.Accounts = append(jacct.Accounts, account)
 	}
-	if err := rlp.Encode(w, jacct); err != nil {
+	if err := rlp.Encode(journalBuf, jacct); err != nil {
 		return err
 	}
 	storage := make([]journalStorage, 0, len(dl.states.Storages))
@@ -326,10 +397,22 @@ func (dl *diffLayer) journal(w io.Writer) error {
 		}
 		storage = append(storage, entry)
 	}
-	if err := rlp.Encode(w, storage); err != nil {
+	if err := rlp.Encode(journalBuf, storage); err != nil {
 		return err
 	}
-	log.Debug("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
+
+	// Store the journal buf into w and calculate checksum
+	if err := rlp.Encode(w, uint64(journalBuf.Len())); err != nil {
+		return err
+	}
+	shasum := sha256.Sum256(journalBuf.Bytes())
+	if err := rlp.Encode(w, journalBuf.Bytes()); err != nil {
+		return err
+	}
+	if err := rlp.Encode(w, shasum); err != nil {
+		return err
+	}
+	log.Info("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
 	return nil
 }
 
@@ -362,7 +445,19 @@ func (db *Database) Journal(root common.Hash) error {
 		return errDatabaseReadOnly
 	}
 	// Firstly write out the metadata of journal
-	journal := new(bytes.Buffer)
+	journalFilePath := db.config.JournalPath + JournalFile
+
+	if _, err := os.Stat(journalFilePath); err == nil {
+		if err = os.Remove(journalFilePath); err != nil {
+			return fmt.Errorf("error removing existing file:%v", err)
+		}
+	}
+	journal, err := os.OpenFile(journalFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer journal.Close()
+
 	if err := rlp.Encode(journal, journalVersion); err != nil {
 		return err
 	}
@@ -381,10 +476,15 @@ func (db *Database) Journal(root common.Hash) error {
 		return err
 	}
 	// Store the journal into the database and return
-	rawdb.WriteTrieJournal(db.diskdb, journal.Bytes())
+	fileInfo, err := journal.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat journal,%v", err)
+	}
+
+	journalSize := fileInfo.Size()
 
 	// Set the db in read only mode to reject all following mutations
 	db.readOnly = true
-	log.Info("Persisted dirty state to disk", "size", common.StorageSize(journal.Len()), "elapsed", common.PrettyDuration(time.Since(start)))
+	log.Info("Persisted dirty state to disk", "size", common.StorageSize(journalSize), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }

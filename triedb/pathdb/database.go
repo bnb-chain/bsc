@@ -62,6 +62,8 @@ const (
 	// DefaultBatchRedundancyRate defines the batch size, compatible write
 	// size calculation is inaccurate
 	DefaultBatchRedundancyRate = 1.1
+
+	JournalFile = "state.journal"
 )
 
 // layer is the interface implemented by all state layers which includes some
@@ -101,6 +103,7 @@ type Config struct {
 	CleanCacheSize int    // Maximum memory allowance (in bytes) for caching clean nodes
 	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty nodes
 	ReadOnly       bool   // Flag whether the database is opened in read only mode.
+	JournalPath    string // Path of the journal
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -315,7 +318,7 @@ func (db *Database) Enable(root common.Hash) error {
 	// Drop the stale state journal in persistent database and
 	// reset the persistent state id back to zero.
 	batch := db.diskdb.NewBatch()
-	rawdb.DeleteTrieJournal(batch)
+	rawdb.DeleteTrieJournal(db.config.JournalPath + JournalFile)
 	rawdb.WritePersistentStateID(batch, 0)
 	if err := batch.Write(); err != nil {
 		return err
@@ -379,7 +382,7 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 		// disk layer won't be accessible from outside.
 		db.tree.reset(dl)
 	}
-	rawdb.DeleteTrieJournal(db.diskdb)
+	rawdb.DeleteTrieJournal(db.config.JournalPath + JournalFile)
 	_, err := truncateFromHead(db.diskdb, db.freezer, dl.stateID())
 	if err != nil {
 		return err

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"runtime"
 	"sync"
 
@@ -254,6 +255,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		vmConfig = vm.Config{
 			EnablePreimageRecording: config.EnablePreimageRecording,
 		}
+		journalPath = filepath.Join(stack.ResolvePath("chaindata"), "ancient/state")
 		cacheConfig = &core.CacheConfig{
 			TrieCleanLimit:      config.TrieCleanCache,
 			TrieCleanNoPrefetch: config.NoPrefetch,
@@ -267,6 +269,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			StateHistory:        config.StateHistory,
 			StateScheme:         config.StateScheme,
 			PathSyncFlush:       config.PathSyncFlush,
+			JournalPath:         journalPath,
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
