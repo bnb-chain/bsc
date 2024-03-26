@@ -51,15 +51,6 @@ func hexToCompact(hex []byte) []byte {
 	return buf
 }
 
-func hexToRaw(hex []byte) []byte {
-	if hasTerm(hex) {
-		hex = hex[:len(hex)-1]
-	}
-	buf := make([]byte, len(hex)/2+1)
-	decodeNibbles(hex, buf[1:])
-	return buf
-}
-
 // hexToCompactInPlace places the compact key in input buffer, returning the compacted key.
 func hexToCompactInPlace(hex []byte) []byte {
 	var (

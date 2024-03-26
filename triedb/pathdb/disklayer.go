@@ -293,9 +293,9 @@ func (dl *diskLayer) readAccountTrie(hash common.Hash) []byte {
 		return nil
 	}
 	diskAccountLeftNodeTimer.UpdateSince(start)
-	val, prefix, path := trie.DecodeLeafNode(nHash.Bytes(), pathKey, nBlob)
-	log.Info("account short node info ", "account hash", hash.String(), "path",
-		common.Bytes2Hex(path), "prefix:", hex.EncodeToString(prefix), "key:",
+	log.Info("DecodeLeafNode", "pathKey", common.Bytes2Hex(pathKey), "accountKeyHash", nHash.String())
+	val, key := trie.DecodeLeafNode(nHash.Bytes(), pathKey, nBlob)
+	log.Info("account short node info ", "account hash", hash.String(), "gotten key", hex.EncodeToString(key), "key:",
 		hex.EncodeToString(accountkey), "path2", common.Bytes2Hex(pathKey))
 
 	/*
@@ -307,8 +307,7 @@ func (dl *diskLayer) readAccountTrie(hash common.Hash) []byte {
 		}
 	*/
 	accoutHashStr := hex.EncodeToString(accountkey)
-	if strings.Contains(accoutHashStr, common.Bytes2Hex(path)) &&
-		strings.Contains(accoutHashStr, common.Bytes2Hex(prefix)) {
+	if strings.Contains(accoutHashStr, common.Bytes2Hex(key)) {
 		log.Info("path succ")
 		readAccLeftNodeTimer.UpdateSince(start)
 		return val
@@ -325,8 +324,8 @@ func (dl *diskLayer) readStorageTrie(accountHash, storageHash common.Hash) []byt
 		return nil
 	}
 	diskStorageLeftNodeTimer.UpdateSince(start)
-	val, prefix, path := trie.DecodeLeafNode(nHash.Bytes(), pathKey, nBlob)
-	log.Info("storage short node info ", "prefix:", hex.EncodeToString(prefix), "value:", hex.EncodeToString(val))
+	val, key := trie.DecodeLeafNode(nHash.Bytes(), pathKey, nBlob)
+	log.Info("storage short node info ", "key:", hex.EncodeToString(key), "value:", hex.EncodeToString(val))
 	/*
 		joinKey := [][]byte{path, prefix}
 		if bytes.Compare(bytes.Join(joinKey, []byte{}), storageHashKey[1:]) == 0 {
@@ -336,8 +335,7 @@ func (dl *diskLayer) readStorageTrie(accountHash, storageHash common.Hash) []byt
 
 	*/
 	accoutHashStr := hex.EncodeToString(storageHashKey)
-	if strings.Contains(accoutHashStr, common.Bytes2Hex(path)) &&
-		strings.Contains(accoutHashStr, common.Bytes2Hex(prefix)) {
+	if strings.Contains(accoutHashStr, common.Bytes2Hex(key)) {
 		log.Info("path succ")
 		readStorageLeftNodeTTimer.UpdateSince(start)
 		return val
