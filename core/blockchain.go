@@ -1341,6 +1341,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 	lastBlk := blockChain[len(blockChain)-1]
 	if bc.chainConfig.Parlia != nil && bc.chainConfig.IsCancun(lastBlk.Number(), lastBlk.Time()) {
 		if _, err := CheckDataAvailableInBatch(bc, blockChain); err != nil {
+			log.Debug("CheckDataAvailableInBatch", "err", err)
 			return 0, err
 		}
 	}
