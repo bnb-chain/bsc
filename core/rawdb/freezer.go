@@ -348,7 +348,7 @@ func (f *Freezer) TruncateHead(items uint64) (uint64, error) {
 			if kind != ChainFreezerBlobSidecarTable {
 				return 0, err
 			}
-			nt, err := table.resetItems(items-f.offset, items-f.offset)
+			nt, err := table.resetItems(items - f.offset)
 			if err != nil {
 				return 0, err
 			}
@@ -489,7 +489,7 @@ func (f *Freezer) repair() error {
 			if kind != ChainFreezerBlobSidecarTable {
 				return err
 			}
-			nt, err := table.resetItems(head, head)
+			nt, err := table.resetItems(head)
 			if err != nil {
 				return err
 			}
@@ -720,11 +720,20 @@ func (f *Freezer) ResetTable(kind string, tail, head uint64, onlyEmpty bool) err
 		return nil
 	}
 
-	nt, err := f.tables[kind].resetItems(tail-f.offset, head-f.offset)
-	if err != nil {
-		return err
+	if tail != head {
+		if err := f.tables[kind].truncateHead(head); err != nil {
+			return err
+		}
+		if err := f.tables[kind].truncateTail(tail); err != nil {
+			return err
+		}
+	} else {
+		nt, err := f.tables[kind].resetItems(head - f.offset)
+		if err != nil {
+			return err
+		}
+		f.tables[kind] = nt
 	}
-	f.tables[kind] = nt
 
 	if err := f.repair(); err != nil {
 		for _, table := range f.tables {

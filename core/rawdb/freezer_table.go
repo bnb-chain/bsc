@@ -1029,34 +1029,22 @@ func (t *freezerTable) ResetItemsOffset(virtualTail uint64) error {
 	return nil
 }
 
-// resetItems reset freezer table head & tail
+// resetItems reset freezer table to 0 items with head `headAndTail`
 // only used for ChainFreezerBlobSidecarTable now
-func (t *freezerTable) resetItems(tail, head uint64) (*freezerTable, error) {
+func (t *freezerTable) resetItems(headAndTail uint64) (*freezerTable, error) {
 	if t.readonly {
 		return nil, errors.New("resetItems in readonly mode")
 	}
 
 	itemHidden := t.itemHidden.Load()
 	items := t.items.Load()
-	if tail > head || (tail < head && (itemHidden > tail || items < head)) {
+	if itemHidden > headAndTail || items < headAndTail {
 		return nil, errors.New("cannot reset to non-exist range")
-	}
-
-	var err error
-	if tail < head {
-		if err = t.truncateHead(head); err != nil {
-			return nil, err
-		}
-		if err = t.truncateTail(tail); err != nil {
-			return nil, err
-		}
-		return t, nil
 	}
 
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	// if tail == head, it means table reset to 0 item
 	// remove all data files
 	t.head.Close()
 	t.releaseFilesAfter(0, true)
@@ -1086,7 +1074,7 @@ func (t *freezerTable) resetItems(tail, head uint64) (*freezerTable, error) {
 	}
 	tailIndex := indexEntry{
 		filenum: 0,
-		offset:  uint32(tail),
+		offset:  uint32(headAndTail),
 	}
 	if _, err = index.Write(tailIndex.append(nil)); err != nil {
 		return nil, err
