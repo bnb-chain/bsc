@@ -145,11 +145,10 @@ var (
 		HertzBlock:          big.NewInt(31302048),
 		HertzfixBlock:       big.NewInt(34140700),
 		// UnixTime: 1705996800 is January 23, 2024 8:00:00 AM UTC
-		ShanghaiTime: newUint64(1705996800),
-		KeplerTime:   newUint64(1705996800),
-
-		// TODO
-		FeynmanTime: nil,
+		ShanghaiTime:   newUint64(1705996800),
+		KeplerTime:     newUint64(1705996800),
+		FeynmanTime:    newUint64(1713419340),
+		FeynmanFixTime: newUint64(1713419340),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
