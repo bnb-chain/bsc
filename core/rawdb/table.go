@@ -171,7 +171,7 @@ func (t *table) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	}
 }
 
-func (t *table) NewReverseIterator(key []byte) ethdb.Iterator {
+func (t *table) NewReverseIterator(prefix, start, key []byte) ethdb.Iterator {
 	return nil
 }
 

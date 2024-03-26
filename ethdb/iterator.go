@@ -59,5 +59,5 @@ type Iteratee interface {
 	// no need for the caller to prepend the prefix to the start
 	NewIterator(prefix []byte, start []byte) Iterator
 
-	NewReverseIterator(compareKey []byte) Iterator
+	NewReverseIterator(prefix, start, compareKey []byte) Iterator
 }
