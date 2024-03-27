@@ -415,7 +415,7 @@ func TestFreezer_AdditionTables(t *testing.T) {
 	require.NoError(t, err)
 
 	// recheck additional table boundary
-	actual, err = f.Ancient("a1", 2)
+	_, err = f.Ancient("a1", 2)
 	require.Error(t, err)
 	actual, err = f.Ancient("a1", 3)
 	require.NoError(t, err)
