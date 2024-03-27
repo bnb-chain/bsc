@@ -2230,7 +2230,7 @@ func EnableBuildInfo(gitCommit, gitDate string) SetupMetricsOption {
 	}
 }
 
-func EnableMinerInfo(ctx *cli.Context, minerConfig miner.Config) SetupMetricsOption {
+func EnableMinerInfo(ctx *cli.Context, minerConfig *miner.Config) SetupMetricsOption {
 	return func() {
 		if ctx.Bool(MiningEnabledFlag.Name) {
 			// register miner info into metrics
@@ -2253,10 +2253,13 @@ func RegisterFilterAPI(stack *node.Node, backend ethapi.Backend, ethcfg *ethconf
 	return filterSystem
 }
 
-func EnableNodeInfo(poolConfig legacypool.Config) SetupMetricsOption {
+func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) SetupMetricsOption {
 	return func() {
 		// register node info into metrics
 		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
+			"Enode":        nodeInfo.Enode,
+			"ENR":          nodeInfo.ENR,
+			"ID":           nodeInfo.ID,
 			"PriceLimit":   poolConfig.PriceLimit,
 			"PriceBump":    poolConfig.PriceBump,
 			"AccountSlots": poolConfig.AccountSlots,

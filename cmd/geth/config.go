@@ -245,8 +245,8 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	git, _ := version.VCS()
 	utils.SetupMetrics(ctx,
 		utils.EnableBuildInfo(git.Commit, git.Date),
-		utils.EnableMinerInfo(ctx, cfg.Eth.Miner),
-		utils.EnableNodeInfo(cfg.Eth.TxPool),
+		utils.EnableMinerInfo(ctx, &cfg.Eth.Miner),
+		utils.EnableNodeInfo(&cfg.Eth.TxPool, stack.Server().NodeInfo()),
 	)
 	return stack, backend
 }
