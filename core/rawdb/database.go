@@ -20,13 +20,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/olekukonko/tablewriter"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -34,7 +34,11 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/olekukonko/tablewriter"
 )
+
+const JournalFile = "state.journal"
 
 // freezerdb is a database wrapper that enables freezer data retrievals.
 type freezerdb struct {
@@ -44,6 +48,8 @@ type freezerdb struct {
 	ethdb.AncientFreezer
 	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
+	dbPath     string
+	journalfd  *os.File
 }
 
 func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
@@ -130,11 +136,57 @@ func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return frdb.AncientFreezer.SetupFreezerEnv(env)
 }
 
+func (frdb *freezerdb) NewJournalWriter() io.Writer {
+	var err error
+	frdb.journalfd, err = os.OpenFile(frdb.dbPath+"/"+JournalFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil
+	}
+	return frdb.journalfd
+}
+
+func (frdb *freezerdb) NewJournalReader() *rlp.Stream {
+	var err error
+	frdb.journalfd, err = os.Open(frdb.dbPath + "/" + JournalFile)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return nil
+	}
+	return rlp.NewStream(frdb.journalfd, 0)
+}
+
+func (frdb *freezerdb) JournalWriterSync() {
+}
+
+func (frdb *freezerdb) JournalDelete() {
+	path := frdb.dbPath + "/" + JournalFile
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return
+	}
+	errRemove := os.Remove(path)
+	if errRemove != nil {
+		log.Crit("Failed to remote tries journal", "err", err)
+	}
+}
+
+func (frdb *freezerdb) JournalClose() {
+	frdb.journalfd.Close()
+}
+
+func (frdb *freezerdb) JournalSize() uint64 {
+	return 1000
+}
+
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
 	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
+	dbPath     string
+	journalBuf bytes.Buffer
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.
@@ -250,6 +302,37 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
 
+func (db *nofreezedb) NewJournalWriter() io.Writer {
+	// Create a buffer to store encoded data
+	return &db.journalBuf
+}
+
+func (db *nofreezedb) NewJournalReader() *rlp.Stream {
+	journal := ReadTrieJournal(db.stateStore)
+	if len(journal) == 0 {
+		return nil
+	}
+	return rlp.NewStream(bytes.NewReader(journal), 0)
+}
+
+func (db *nofreezedb) JournalWriterSync() {
+	WriteTrieJournal(db, db.journalBuf.Bytes())
+	db.journalBuf.Reset()
+}
+
+func (db *nofreezedb) JournalDelete() {
+	if err := db.Delete(trieJournalKey); err != nil {
+		log.Crit("Failed to remove tries journal", "err", err)
+	}
+}
+
+func (db *nofreezedb) JournalClose() {
+}
+
+func (db *nofreezedb) JournalSize() uint64 {
+	return 1000
+}
+
 func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return nil
 }
@@ -324,6 +407,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			KeyValueStore:  db,
 			AncientStore:   frdb,
 			AncientFreezer: frdb,
+			dbPath:         ancient,
 		}, nil
 	}
 

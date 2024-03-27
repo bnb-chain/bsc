@@ -62,8 +62,6 @@ const (
 	// DefaultBatchRedundancyRate defines the batch size, compatible write
 	// size calculation is inaccurate
 	DefaultBatchRedundancyRate = 1.1
-
-	JournalFile = "state.journal"
 )
 
 // layer is the interface implemented by all state layers which includes some
@@ -317,7 +315,7 @@ func (db *Database) Enable(root common.Hash) error {
 	// Drop the stale state journal in persistent database and
 	// reset the persistent state id back to zero.
 	batch := db.diskdb.NewBatch()
-	rawdb.DeleteTrieJournal(db.journalPath())
+	db.diskdb.JournalDelete()
 	rawdb.WritePersistentStateID(batch, 0)
 	if err := batch.Write(); err != nil {
 		return err
@@ -381,7 +379,7 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 		// disk layer won't be accessible from outside.
 		db.tree.reset(dl)
 	}
-	rawdb.DeleteTrieJournal(db.journalPath())
+	db.diskdb.JournalDelete()
 	_, err := truncateFromHead(db.diskdb, db.freezer, dl.stateID())
 	if err != nil {
 		return err
@@ -503,13 +501,6 @@ func (db *Database) modifyAllowed() error {
 		return errDatabaseWaitSync
 	}
 	return nil
-}
-
-// journalPath returns the indicator if mutation is allowed. This function
-// assumes the db.lock is already held.
-func (db *Database) journalPath() string {
-	dataDir, _ := db.diskdb.AncientDatadir()
-	return dataDir + "/" + JournalFile
 }
 
 // GetAllRooHash returns all diffLayer and diskLayer root hash

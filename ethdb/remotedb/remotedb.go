@@ -24,7 +24,9 @@ package remotedb
 import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
+	"io"
 )
 
 // Database is a key-value lookup for a remote database via debug_dbGet.
@@ -181,6 +183,30 @@ func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
 func (db *Database) Close() error {
 	db.remote.Close()
 	return nil
+}
+
+func (db *Database) NewJournalWriter() io.Writer {
+	panic("not supported")
+}
+
+func (db *Database) NewJournalReader() *rlp.Stream {
+	panic("not supported")
+}
+
+func (db *Database) JournalWriterSync() {
+	panic("not supported")
+}
+
+func (db *Database) JournalDelete() {
+	panic("not supported")
+}
+
+func (db *Database) JournalClose() {
+	panic("not supported")
+}
+
+func (db *Database) JournalSize() uint64 {
+	panic("not supported")
 }
 
 func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error {

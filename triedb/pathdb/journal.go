@@ -22,8 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -75,16 +73,7 @@ type journalStorage struct {
 
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
-	fd, err := os.Open(db.journalPath())
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, errMissJournal
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer fd.Close()
-
-	r := rlp.NewStream(fd, 0)
+	r := db.diskdb.NewJournalReader()
 
 	// Firstly, resolve the first element as the journal version
 	version, err := r.Uint64()
@@ -445,18 +434,9 @@ func (db *Database) Journal(root common.Hash) error {
 		return errDatabaseReadOnly
 	}
 	// Firstly write out the metadata of journal
-	journalFilePath := db.journalPath()
-
-	if _, err := os.Stat(journalFilePath); err == nil {
-		if err = os.Remove(journalFilePath); err != nil {
-			return fmt.Errorf("error removing existing file:%v", err)
-		}
-	}
-	journal, err := os.OpenFile(journalFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return err
-	}
-	defer journal.Close()
+	db.diskdb.JournalDelete()
+	journal := db.diskdb.NewJournalWriter()
+	defer db.diskdb.JournalClose()
 
 	if err := rlp.Encode(journal, journalVersion); err != nil {
 		return err
@@ -476,15 +456,18 @@ func (db *Database) Journal(root common.Hash) error {
 		return err
 	}
 	// Store the journal into the database and return
-	fileInfo, err := journal.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to stat journal,%v", err)
-	}
-
-	journalSize := fileInfo.Size()
+	//fileInfo, err := journal.Stat()
+	//if err != nil {
+	//	return fmt.Errorf("failed to stat journal,%v", err)
+	//}
+	//
+	//journalSize := fileInfo.Size()
+	//
+	//db.diskdb.JournalWriterSync()
+	//fileInfo := db.diskdb
 
 	// Set the db in read only mode to reject all following mutations
 	db.readOnly = true
-	log.Info("Persisted dirty state to disk", "size", common.StorageSize(journalSize), "elapsed", common.PrettyDuration(time.Since(start)))
+	log.Info("Persisted dirty state to disk", "size", common.StorageSize(1000), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
