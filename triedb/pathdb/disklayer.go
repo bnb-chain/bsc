@@ -91,8 +91,8 @@ type trienodebuffer interface {
 }
 
 type cleanCache struct {
-	nodes    *fastcache.Cache
-	accounts *fastcache.Cache
+	nodes        *fastcache.Cache
+	latestStates *fastcache.Cache
 }
 
 func NewTrieNodeBuffer(sync bool, limit int,
@@ -127,7 +127,7 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *cleanCache,
 	if cleans == nil && db.config.CleanCacheSize != 0 {
 		cleans = &cleanCache{}
 		cleans.nodes = fastcache.New(db.config.CleanCacheSize * 3 / 4)
-		cleans.accounts = fastcache.New(db.config.CleanCacheSize / 4)
+		cleans.latestStates = fastcache.New(db.config.CleanCacheSize / 4)
 	}
 	return &diskLayer{
 		root:   root,
@@ -191,7 +191,7 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 	}
 
 	// TODO: seek from clean cache
-	data = dl.cleans.accounts.Get(nil, hash.Bytes())
+	data = dl.cleans.latestStates.Get(nil, hash.Bytes())
 	if data != nil {
 		return data, nil
 	}

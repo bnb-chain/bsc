@@ -449,8 +449,11 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 	nodes := writeNodes(batch, nc.nodes, clean)
 	rawdb.WritePersistentStateID(batch, id)
 
+	for h, _ := range nc.DestructSet {
+		clean.latestStates.Del(h.Bytes())
+	}
 	for h, acc := range nc.LatestAccounts {
-		clean.accounts.Set(h.Bytes(), acc)
+		clean.latestStates.Set(h.Bytes(), acc)
 	}
 
 	// Flush all mutations in a single batch
