@@ -141,8 +141,11 @@ type AncientWriter interface {
 	// in the newest format.
 	MigrateTable(string, func([]byte) ([]byte, error)) error
 
-	// ResetTable will reset certain table to new boundary
-	ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error
+	// TruncateTableTail will truncate certain table to new tail
+	TruncateTableTail(kind string, tail uint64) (uint64, error)
+
+	// ResetTable will reset certain table with new start point
+	ResetTable(kind string, startAt uint64, onlyEmpty bool) error
 }
 
 type FreezerEnv struct {

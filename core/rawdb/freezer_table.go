@@ -1029,29 +1029,22 @@ func (t *freezerTable) ResetItemsOffset(virtualTail uint64) error {
 	return nil
 }
 
-// resetItems reset freezer table to 0 items with head `headAndTail`
+// resetItems reset freezer table to 0 items with new startAt
 // only used for ChainFreezerBlobSidecarTable now
-func (t *freezerTable) resetItems(headAndTail uint64) (*freezerTable, error) {
+func (t *freezerTable) resetItems(startAt uint64) (*freezerTable, error) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
 	if t.readonly {
 		return nil, errors.New("resetItems in readonly mode")
 	}
-
-	itemHidden := t.itemHidden.Load()
-	items := t.items.Load()
-	if itemHidden > headAndTail || items < headAndTail {
-		return nil, errors.New("cannot reset to non-exist range")
-	}
-
-	t.lock.Lock()
-	defer t.lock.Unlock()
 
 	// remove all data files
 	t.head.Close()
 	t.releaseFilesAfter(0, true)
 	t.releaseFile(0)
 
-	// reset meta data file
-	if err := writeMetadata(t.meta, newMetadata(items)); err != nil {
+	// overwrite metadata file
+	if err := writeMetadata(t.meta, newMetadata(startAt)); err != nil {
 		return nil, err
 	}
 	if err := t.meta.Sync(); err != nil {
@@ -1059,7 +1052,7 @@ func (t *freezerTable) resetItems(headAndTail uint64) (*freezerTable, error) {
 	}
 	t.meta.Close()
 
-	// reset the index file
+	// recreate the index file
 	t.index.Close()
 	os.Remove(t.index.Name())
 	var idxName string
@@ -1074,7 +1067,7 @@ func (t *freezerTable) resetItems(headAndTail uint64) (*freezerTable, error) {
 	}
 	tailIndex := indexEntry{
 		filenum: 0,
-		offset:  uint32(headAndTail),
+		offset:  uint32(startAt),
 	}
 	if _, err = index.Write(tailIndex.append(nil)); err != nil {
 		return nil, err

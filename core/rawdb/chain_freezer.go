@@ -273,13 +273,8 @@ func (f *chainFreezer) tryPruneBlobAncient(env *ethdb.FreezerEnv, num uint64) {
 		return
 	}
 	expectTail := num - reserveThreshold
-	h, err := f.TableAncients(ChainFreezerBlobSidecarTable)
-	if err != nil {
-		log.Error("Cannot get blob ancient head when prune", "block", num)
-		return
-	}
 	start := time.Now()
-	if err = f.ResetTable(ChainFreezerBlobSidecarTable, expectTail, h, false); err != nil {
+	if _, err := f.TruncateTableTail(ChainFreezerBlobSidecarTable, expectTail); err != nil {
 		log.Error("Cannot prune blob ancient", "block", num, "expectTail", expectTail, "err", err)
 		return
 	}
@@ -427,5 +422,5 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 }
 
 func ResetEmptyBlobAncientTable(db ethdb.AncientWriter, next uint64) error {
-	return db.ResetTable(ChainFreezerBlobSidecarTable, next, next, true)
+	return db.ResetTable(ChainFreezerBlobSidecarTable, next, true)
 }

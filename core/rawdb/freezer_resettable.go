@@ -187,13 +187,6 @@ func (f *ResettableFreezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) 
 	return f.freezer.ModifyAncients(fn)
 }
 
-func (f *ResettableFreezer) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.freezer.ResetTable(kind, tail, head, onlyEmpty)
-}
-
 // TruncateHead discards any recent data above the provided threshold number.
 // It returns the previous head number.
 func (f *ResettableFreezer) TruncateHead(items uint64) (uint64, error) {
@@ -210,6 +203,22 @@ func (f *ResettableFreezer) TruncateTail(tail uint64) (uint64, error) {
 	defer f.lock.RUnlock()
 
 	return f.freezer.TruncateTail(tail)
+}
+
+// TruncateTableTail will truncate certain table to new tail
+func (f *ResettableFreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	return f.freezer.TruncateTableTail(kind, tail)
+}
+
+// ResetTable will reset certain table with new start point
+func (f *ResettableFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	return f.freezer.ResetTable(kind, startAt, onlyEmpty)
 }
 
 // Sync flushes all data tables to disk.
