@@ -219,11 +219,22 @@ type StateStore interface {
 }
 
 type Journal interface {
+	// NewJournalWriter creates a new journal writer.
 	NewJournalWriter() io.Writer
+
+	// NewJournalReader creates a new journal reader.
 	NewJournalReader() (*rlp.Stream, error)
+
+	// JournalWriterSync flushes the journal writer.
 	JournalWriterSync()
+
+	// JournalDelete deletes the journal.
 	JournalDelete()
+
+	// JournalClose closes the journal.
 	JournalClose()
+
+	// JournalSize returns the size of the journal.
 	JournalSize() uint64
 }
 

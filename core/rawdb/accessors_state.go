@@ -18,6 +18,7 @@ package rawdb
 
 import (
 	"encoding/binary"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -153,11 +154,10 @@ func WriteTrieJournal(db ethdb.KeyValueWriter, journal []byte) {
 
 // DeleteTrieJournal deletes the serialized in-memory trie nodes of layers saved at
 // the last shutdown.
-func DeleteTrieJournal(db ethdb.Database) {
+func DeleteTrieJournal(db ethdb.KeyValueWriter) {
 	if err := db.Delete(trieJournalKey); err != nil {
 		log.Crit("Failed to remove tries journal", "err", err)
 	}
-	//db.JournalDelete()
 }
 
 // ReadStateHistoryMeta retrieves the metadata corresponding to the specified

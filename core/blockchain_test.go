@@ -20,7 +20,6 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"math/rand"
 	"os"
@@ -798,7 +797,6 @@ func TestReorgBadBlockHashes(t *testing.T) {
 
 func testReorgBadHashes(t *testing.T, full bool, scheme string, pipeline bool) {
 	// Create a pristine chain and database
-	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
 	genDb, gspec, blockchain, err := newCanonical(ethash.NewFaker(), 0, full, scheme, pipeline)
 	if err != nil {
 		t.Fatalf("failed to create pristine chain: %v", err)
