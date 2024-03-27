@@ -160,19 +160,6 @@ func DeleteTrieJournal(db ethdb.Database) {
 	//db.JournalDelete()
 }
 
-//// DeleteTrieJournal deletes the serialized in-memory trie nodes of layers saved at
-//// the last shutdown.
-//func DeleteTrieJournal(path string) {
-//	_, err := os.Stat(path)
-//	if os.IsNotExist(err) {
-//		return
-//	}
-//	errRemove := os.Remove(path)
-//	if errRemove != nil {
-//		log.Crit("Failed to remote tries journal", "err", err)
-//	}
-//}
-
 // ReadStateHistoryMeta retrieves the metadata corresponding to the specified
 // state history. Compute the position of state history in freezer by minus
 // one since the id of first state history starts from one(zero for initial

@@ -189,7 +189,7 @@ func (db *Database) NewJournalWriter() io.Writer {
 	panic("not supported")
 }
 
-func (db *Database) NewJournalReader() *rlp.Stream {
+func (db *Database) NewJournalReader() (*rlp.Stream, error) {
 	panic("not supported")
 }
 

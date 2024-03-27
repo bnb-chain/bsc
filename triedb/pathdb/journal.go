@@ -73,7 +73,10 @@ type journalStorage struct {
 
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
-	r := db.diskdb.NewJournalReader()
+	r, err := db.diskdb.NewJournalReader()
+	if err != nil {
+		return nil, err
+	}
 
 	// Firstly, resolve the first element as the journal version
 	version, err := r.Uint64()

@@ -247,7 +247,7 @@ func (t *table) NewJournalWriter() io.Writer {
 	panic("not supported")
 }
 
-func (t *table) NewJournalReader() *rlp.Stream {
+func (t *table) NewJournalReader() (*rlp.Stream, error) {
 	panic("not supported")
 }
 

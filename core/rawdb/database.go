@@ -38,6 +38,10 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
+var (
+	errMissJournal = errors.New("journal not found")
+)
+
 const JournalFile = "state.journal"
 
 // freezerdb is a database wrapper that enables freezer data retrievals.
@@ -138,23 +142,28 @@ func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 
 func (frdb *freezerdb) NewJournalWriter() io.Writer {
 	var err error
-	frdb.journalfd, err = os.OpenFile(frdb.dbPath+"/"+JournalFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	path := frdb.dbPath + "/" + JournalFile
+	frdb.journalfd, err = os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil
 	}
+	log.Info("NewJournalReader", "path", path)
 	return frdb.journalfd
 }
 
-func (frdb *freezerdb) NewJournalReader() *rlp.Stream {
+func (frdb *freezerdb) NewJournalReader() (*rlp.Stream, error) {
 	var err error
-	frdb.journalfd, err = os.Open(frdb.dbPath + "/" + JournalFile)
+	path := frdb.dbPath + "/" + JournalFile
+	log.Info("NewJournalReader", "path", path)
+
+	frdb.journalfd, err = os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil
+		return nil, errMissJournal
 	}
 	if err != nil {
-		return nil
+		return nil, errMissJournal
 	}
-	return rlp.NewStream(frdb.journalfd, 0)
+	return rlp.NewStream(frdb.journalfd, 0), nil
 }
 
 func (frdb *freezerdb) JournalWriterSync() {
@@ -307,12 +316,12 @@ func (db *nofreezedb) NewJournalWriter() io.Writer {
 	return &db.journalBuf
 }
 
-func (db *nofreezedb) NewJournalReader() *rlp.Stream {
+func (db *nofreezedb) NewJournalReader() (*rlp.Stream, error) {
 	journal := ReadTrieJournal(db.stateStore)
 	if len(journal) == 0 {
-		return nil
+		return nil, errMissJournal
 	}
-	return rlp.NewStream(bytes.NewReader(journal), 0)
+	return rlp.NewStream(bytes.NewReader(journal), 0), nil
 }
 
 func (db *nofreezedb) JournalWriterSync() {
@@ -383,7 +392,7 @@ func resolveChainFreezerDir(ancient string) string {
 // value data store with a freezer moving immutable chain segments into cold
 // storage. The passed ancient indicates the path of root ancient directory
 // where the chain freezer can be opened.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, dbPath, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
 	var offset uint64
 	// The offset of ancientDB should be handled differently in different scenarios.
 	if isLastOffset {
@@ -649,7 +658,7 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
-	frdb, err := NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData)
+	frdb, err := NewDatabaseWithFreezer(kvdb, o.Directory, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData)
 	if err != nil {
 		kvdb.Close()
 		return nil, err

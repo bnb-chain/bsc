@@ -220,7 +220,7 @@ type StateStore interface {
 
 type Journal interface {
 	NewJournalWriter() io.Writer
-	NewJournalReader() *rlp.Stream
+	NewJournalReader() (*rlp.Stream, error)
 	JournalWriterSync()
 	JournalDelete()
 	JournalClose()
