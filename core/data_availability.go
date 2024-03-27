@@ -48,13 +48,10 @@ func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobSidecar) error
 func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err error) {
 	// refer logic in ValidateBody
 	if !chain.Config().IsCancun(block.Number(), block.Time()) {
-		if block.Sidecars() == nil {
-			return nil
-		} else {
+		if block.Sidecars() != nil {
 			return errors.New("sidecars present in block body before cancun")
 		}
-	} else if block.Sidecars() == nil {
-		return errors.New("missing sidecars in block body after cancun")
+		return nil
 	}
 
 	// only required to check within MinBlocksForBlobRequests block's DA
@@ -69,6 +66,10 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		return nil
 	}
 
+	// if sidecar is nil, just clean it. And it will be used for saving in ancient.
+	if block.Sidecars() == nil {
+		block.CleanSidecars()
+	}
 	sidecars := block.Sidecars()
 	for _, s := range sidecars {
 		if err := s.SanityCheck(block.Number(), block.Hash()); err != nil {
