@@ -734,9 +734,6 @@ func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error 
 	if f.readonly {
 		return errReadOnly
 	}
-	if err := f.Sync(); err != nil {
-		return err
-	}
 
 	t, exist := f.tables[kind]
 	if !exist {
@@ -746,6 +743,10 @@ func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error 
 	// if you reset a non empty table just skip
 	if onlyEmpty && !EmptyTable(t) {
 		return nil
+	}
+
+	if err := f.Sync(); err != nil {
+		return err
 	}
 	nt, err := t.resetItems(startAt - f.offset)
 	if err != nil {
