@@ -19,7 +19,7 @@ package native
 import (
 	"encoding/json"
 	"math/big"
-	"strconv"
+	"strings"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -47,17 +47,17 @@ func init() {
 //	}
 type fourByteTracer struct {
 	noopTracer
-	ids               map[string]int   // ids aggregates the 4byte ids found
-	interrupt         atomic.Bool      // Atomic flag to signal execution interruption
-	reason            error            // Textual reason for the interruption
-	activePrecompiles []common.Address // Updated on CaptureStart based on given rules
+	ids               map[string]string // ids aggregates the 4byte ids found
+	interrupt         atomic.Bool       // Atomic flag to signal execution interruption
+	reason            error             // Textual reason for the interruption
+	activePrecompiles []common.Address  // Updated on CaptureStart based on given rules
 }
 
 // newFourByteTracer returns a native go tracer which collects
 // 4 byte-identifiers of a tx, and implements vm.EVMLogger.
 func newFourByteTracer(ctx *tracers.Context, _ json.RawMessage) (tracers.Tracer, error) {
 	t := &fourByteTracer{
-		ids: make(map[string]int),
+		ids: make(map[string]string),
 	}
 	return t, nil
 }
@@ -73,9 +73,14 @@ func (t *fourByteTracer) isPrecompiled(addr common.Address) bool {
 }
 
 // store saves the given identifier and datasize.
-func (t *fourByteTracer) store(id []byte, size int) {
-	key := bytesToHex(id) + "-" + strconv.Itoa(size)
-	t.ids[key] += 1
+func (t *fourByteTracer) store(input []byte, to common.Address) {
+	key := to.Bytes()
+	t.ids[bytesToHex(key)] = bytesToHex(input)
+}
+
+func (t *fourByteTracer) storeStart(input []byte, to common.Address) {
+	key := bytesToHex(input[0:4])
+	t.ids[key] = bytesToHex(input[0:4])
 }
 
 // CaptureStart implements the EVMLogger interface to initialize the tracing operation.
@@ -86,7 +91,7 @@ func (t *fourByteTracer) CaptureStart(env *vm.EVM, from common.Address, to commo
 
 	// Save the outer calldata also
 	if len(input) >= 4 {
-		t.store(input[0:4], len(input)-4)
+		t.storeStart(input, to)
 	}
 }
 
@@ -108,7 +113,9 @@ func (t *fourByteTracer) CaptureEnter(op vm.OpCode, from common.Address, to comm
 	if t.isPrecompiled(to) {
 		return
 	}
-	t.store(input[0:4], len(input)-4)
+	if strings.EqualFold(bytesToHex(input[0:4]), "0x022c0d9f") || strings.EqualFold(bytesToHex(input[0:4]), "0x128acb08") {
+		t.store(input, to)
+	}
 }
 
 func (*fourByteTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}

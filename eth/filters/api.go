@@ -172,6 +172,8 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				latest := api.sys.backend.CurrentHeader()
 				for _, tx := range txs {
+					// rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig)
+					// notifier.Notify(rpcSub.ID, rpcTx)
 					if fullTx != nil && *fullTx {
 						rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig)
 						notifier.Notify(rpcSub.ID, rpcTx)
