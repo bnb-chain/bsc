@@ -158,6 +158,7 @@ func (t *Trie) get(origNode node, key []byte, pos int) (value []byte, newnode no
 	case nil:
 		return nil, nil, false, nil
 	case valueNode:
+		log.Info("Trie get resolveAndTrack", "key", common.Bytes2Hex(key), "path", common.Bytes2Hex(key[:pos]), "node", n.String())
 		return n, n, false, nil
 	case *shortNode:
 		if len(key)-pos < len(n.Key) || !bytes.Equal(n.Key, key[pos:pos+len(n.Key)]) {
@@ -179,6 +180,7 @@ func (t *Trie) get(origNode node, key []byte, pos int) (value []byte, newnode no
 		return value, n, didResolve, err
 	case hashNode:
 		child, err := t.resolveAndTrack(n, key[:pos])
+		log.Info("Trie get resolveAndTrack", "key", common.Bytes2Hex(key), "path", common.Bytes2Hex(key[:pos]), "node", n.String())
 		if err != nil {
 			return nil, n, true, err
 		}

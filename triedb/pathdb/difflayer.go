@@ -69,6 +69,7 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 	if states != nil {
 		dl.memory += uint64(states.Size())
 	}
+	log.Info("NewDifflayer", "accounts", states.DebugString())
 	dirtyWriteMeter.Mark(size)
 	diffLayerNodesMeter.Mark(int64(count))
 	diffLayerBytesMeter.Mark(int64(dl.memory))

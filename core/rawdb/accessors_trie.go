@@ -92,7 +92,7 @@ func ReadAccountFromTrieDirectly(db ethdb.Database, key []byte) ([]byte, []byte,
 			defer h.release()
 			return data, dbKey[1:], h.hash(data)
 		} else {
-			log.Warn("ReadAccountFromTrieDirectly", "dbKey", common.Bytes2Hex(dbKey), "target key", common.Bytes2Hex(accountTrieNodeKey(encodeNibbles(key))))
+			log.Debug("ReadAccountFromTrieDirectly", "dbKey", common.Bytes2Hex(dbKey), "target key", common.Bytes2Hex(accountTrieNodeKey(encodeNibbles(key))))
 		}
 	} else {
 		log.Error("ReadAccountFromTrieDirectly", "iterater error", it.Error())

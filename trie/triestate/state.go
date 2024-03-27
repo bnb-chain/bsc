@@ -19,6 +19,7 @@ package triestate
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -80,6 +81,17 @@ func New(accounts map[common.Address][]byte, storages map[common.Address]map[com
 		LatestStorages: latestStorage,
 		DestructSet:    destructSet,
 	}
+}
+
+func (s *Set) DebugString() string {
+	ss := strings.Builder{}
+	for hash, val := range s.LatestAccounts {
+		ss.WriteString(fmt.Sprintf("{AccountHash: %s, value: %s}", hash.String(), common.Bytes2Hex(val)))
+	}
+	for hash, _ := range s.DestructSet {
+		ss.WriteString(fmt.Sprintf("{DestructAccountHash: %s}", hash.String()))
+	}
+	return ss.String()
 }
 
 // Size returns the approximate memory size occupied by the set.
