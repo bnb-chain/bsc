@@ -74,6 +74,9 @@ type trienodebuffer interface {
 	// getAllNodes return all the trie nodes are cached in trienodebuffer.
 	getAllNodes() map[common.Hash]map[string]*trienode.Node
 
+	// getLatestStates return all the latest states(account, storage, destructSet) are cached in trienodebuffer.
+	getLatestStates() *triestate.Set
+
 	// getLayers return the size of cached difflayers.
 	getLayers() uint64
 
@@ -92,13 +95,17 @@ type cleanCache struct {
 	accounts *fastcache.Cache
 }
 
-func NewTrieNodeBuffer(sync bool, limit int, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) trienodebuffer {
+func NewTrieNodeBuffer(sync bool, limit int,
+	nodes map[common.Hash]map[string]*trienode.Node,
+	latestAccounts map[common.Hash][]byte,
+	latestStorages map[common.Hash]map[common.Hash][]byte,
+	destructSet map[common.Hash]struct{}, layers uint64) trienodebuffer {
 	if sync {
 		log.Info("New sync node buffer", "limit", common.StorageSize(limit), "layers", layers)
 		return newNodeBuffer(limit, nodes, layers)
 	}
-	log.Info("New async node buffer", "limit", common.StorageSize(limit), "layers", layers)
-	return newAsyncNodeBuffer(limit, nodes, layers)
+	log.Info("new async node buffer", "limit", common.StorageSize(limit), "layers", layers)
+	return newAsyncNodeBuffer(limit, nodes, latestAccounts, latestStorages, destructSet, layers)
 }
 
 // diskLayer is a low level persistent layer built on top of a key-value store.

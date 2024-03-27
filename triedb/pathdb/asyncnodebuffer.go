@@ -58,7 +58,12 @@ func (a *asyncnodebuffer) storage(accountHash, storageHash common.Hash) ([]byte,
 }
 
 // newAsyncNodeBuffer initializes the async node buffer with the provided nodes.
-func newAsyncNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) *asyncnodebuffer {
+func newAsyncNodeBuffer(limit int,
+	nodes map[common.Hash]map[string]*trienode.Node,
+	latestAccounts map[common.Hash][]byte,
+	latestStorages map[common.Hash]map[common.Hash][]byte,
+	destructSet map[common.Hash]struct{},
+	layers uint64) *asyncnodebuffer {
 	if nodes == nil {
 		nodes = make(map[common.Hash]map[string]*trienode.Node)
 	}
@@ -70,8 +75,8 @@ func newAsyncNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.No
 	}
 
 	return &asyncnodebuffer{
-		current:    newNodeCache(uint64(limit), size, nodes, layers),
-		background: newNodeCache(uint64(limit), 0, make(map[common.Hash]map[string]*trienode.Node), 0),
+		current:    newNodeCache(uint64(limit), size, nodes, latestAccounts, latestStorages, destructSet, layers),
+		background: newNodeCache(uint64(limit), 0, make(map[common.Hash]map[string]*trienode.Node), nil, nil, nil, 0),
 	}
 }
 
@@ -211,6 +216,33 @@ func (a *asyncnodebuffer) getAllNodes() map[common.Hash]map[string]*trienode.Nod
 	return cached.nodes
 }
 
+func (a *asyncnodebuffer) getLatestStates() *triestate.Set {
+	a.mux.Lock()
+	defer a.mux.Unlock()
+
+	res := triestate.New(nil, nil, nil, a.background.LatestAccounts, a.background.LatestStorages, a.background.DestructSet)
+
+	for accHash, _ := range a.current.DestructSet {
+		delete(res.LatestAccounts, accHash)
+		delete(res.LatestStorages, accHash)
+		res.DestructSet[accHash] = struct{}{}
+	}
+
+	for accHash, v := range a.current.LatestAccounts {
+		res.LatestAccounts[accHash] = v
+	}
+	for accHash, storages := range a.current.LatestStorages {
+		if _, ok := res.LatestStorages[accHash]; !ok {
+			res.LatestStorages[accHash] = storages
+		} else {
+			for h, v := range storages {
+				res.LatestStorages[accHash][h] = v
+			}
+		}
+	}
+	return res
+}
+
 func (a *asyncnodebuffer) getLayers() uint64 {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
@@ -239,16 +271,30 @@ type nodecache struct {
 	immutable uint64 // The flag equal 1, flush nodes to disk background
 }
 
-func newNodeCache(limit, size uint64, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) *nodecache {
+func newNodeCache(limit, size uint64,
+	nodes map[common.Hash]map[string]*trienode.Node,
+	latestAccounts map[common.Hash][]byte,
+	latestStorages map[common.Hash]map[common.Hash][]byte,
+	destructSet map[common.Hash]struct{},
+	layers uint64) *nodecache {
+	if latestStorages == nil {
+		latestStorages = make(map[common.Hash]map[common.Hash][]byte)
+	}
+	if latestAccounts == nil {
+		latestAccounts = make(map[common.Hash][]byte)
+	}
+	if destructSet == nil {
+		destructSet = make(map[common.Hash]struct{})
+	}
 	return &nodecache{
 		layers: layers,
 		size:   size,
 		limit:  limit,
 		nodes:  nodes,
 
-		LatestAccounts: make(map[common.Hash][]byte),
-		LatestStorages: make(map[common.Hash]map[common.Hash][]byte),
-		DestructSet:    make(map[common.Hash]struct{}),
+		LatestAccounts: latestAccounts,
+		LatestStorages: latestStorages,
+		DestructSet:    destructSet,
 		immutable:      0,
 	}
 }

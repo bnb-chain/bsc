@@ -70,6 +70,24 @@ type journalStorage struct {
 	Slots      [][]byte
 }
 
+// journalDestruct is an account deletion entry in a diffLayer's disk journal.
+type journalDestruct struct {
+	Hash common.Hash
+}
+
+// journalAccount is an account entry in a diffLayer's disk journal.
+type journalLatestAccount struct {
+	Hash common.Hash
+	Blob []byte
+}
+
+// journalStorage is an account's storage map in a diffLayer's disk journal.
+type journalLatestStorage struct {
+	Hash common.Hash
+	Keys []common.Hash
+	Vals [][]byte
+}
+
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	journal := rawdb.ReadTrieJournal(db.diskdb)
@@ -130,7 +148,8 @@ func (db *Database) loadLayers() layer {
 		log.Info("Failed to load journal, discard it", "err", err)
 	}
 	// Return single layer with persistent state.
-	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nil, 0))
+	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil,
+		NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nil, nil, nil, nil, 0))
 }
 
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
@@ -169,8 +188,43 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		}
 		nodes[entry.Owner] = subset
 	}
+
+	// Resolve latest states
+	var (
+		jdestructSet    []journalDestruct
+		jlatestAccounts []journalLatestAccount
+		jlatestStorage  []journalLatestStorage
+
+		latestAccounts = make(map[common.Hash][]byte)
+		latestStorages = make(map[common.Hash]map[common.Hash][]byte)
+		destructSet    = make(map[common.Hash]struct{})
+	)
+	if err := r.Decode(&jdestructSet); err != nil {
+		return nil, fmt.Errorf("load destrctSet: %v", err)
+	}
+	for _, entry := range jdestructSet {
+		destructSet[entry.Hash] = struct{}{}
+	}
+
+	if err := r.Decode(&jlatestAccounts); err != nil {
+		return nil, fmt.Errorf("load latest accounts: %v", err)
+	}
+	for _, entry := range jlatestAccounts {
+		latestAccounts[entry.Hash] = entry.Blob
+	}
+
+	if err := r.Decode(&jlatestStorage); err != nil {
+		return nil, fmt.Errorf("load latest accounts: %v", err)
+	}
+	for _, entry := range jlatestStorage {
+		latestStorages[entry.Hash] = make(map[common.Hash][]byte)
+		for i, key := range entry.Keys {
+			latestStorages[entry.Hash][key] = entry.Vals[i]
+		}
+	}
 	// Calculate the internal state transitions by id difference.
-	base := newDiskLayer(root, id, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nodes, id-stored))
+	base := newDiskLayer(root, id, db, nil,
+		NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nodes, latestAccounts, latestStorages, destructSet, id-stored))
 	return base, nil
 }
 
@@ -214,6 +268,14 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		accounts   = make(map[common.Address][]byte)
 		storages   = make(map[common.Address]map[common.Hash][]byte)
 		incomplete = make(map[common.Address]struct{})
+
+		jdestructSet    []journalDestruct
+		jlatestAccounts []journalLatestAccount
+		jlatestStorage  []journalLatestStorage
+
+		latestAccounts = make(map[common.Hash][]byte)
+		latestStorages = make(map[common.Hash]map[common.Hash][]byte)
+		destructSet    = make(map[common.Hash]struct{})
 	)
 	if err := r.Decode(&jaccounts); err != nil {
 		return nil, fmt.Errorf("load diff accounts: %v", err)
@@ -238,7 +300,32 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		}
 		storages[entry.Account] = set
 	}
-	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete, nil, nil, nil)), r)
+
+	if err := r.Decode(&jdestructSet); err != nil {
+		return nil, fmt.Errorf("load destrctSet: %v", err)
+	}
+	for _, entry := range jdestructSet {
+		destructSet[entry.Hash] = struct{}{}
+	}
+
+	if err := r.Decode(&jlatestAccounts); err != nil {
+		return nil, fmt.Errorf("load latest accounts: %v", err)
+	}
+	for _, entry := range jlatestAccounts {
+		latestAccounts[entry.Hash] = entry.Blob
+	}
+
+	if err := r.Decode(&jlatestStorage); err != nil {
+		return nil, fmt.Errorf("load latest accounts: %v", err)
+	}
+	for _, entry := range jlatestStorage {
+		latestStorages[entry.Hash] = make(map[common.Hash][]byte)
+		for i, key := range entry.Keys {
+			latestStorages[entry.Hash][key] = entry.Vals[i]
+		}
+	}
+	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes,
+		triestate.New(accounts, storages, incomplete, latestAccounts, latestStorages, destructSet)), r)
 }
 
 // journal implements the layer interface, marshaling the un-flushed trie nodes
@@ -270,6 +357,37 @@ func (dl *diskLayer) journal(w io.Writer) error {
 		nodes = append(nodes, entry)
 	}
 	if err := rlp.Encode(w, nodes); err != nil {
+		return err
+	}
+	// Step four, write all latest account/storage/destructSet into the journal
+	latestStates := dl.buffer.getLatestStates()
+	// Write latest accounts/storages/destructSet into buffer
+	destructs := make([]journalDestruct, 0, len(latestStates.DestructSet))
+	for hash := range latestStates.DestructSet {
+		destructs = append(destructs, journalDestruct{Hash: hash})
+	}
+	if err := rlp.Encode(w, destructs); err != nil {
+		return err
+	}
+
+	latestAccounts := make([]journalLatestAccount, 0, len(latestStates.LatestAccounts))
+	for hash, blob := range latestStates.LatestAccounts {
+		latestAccounts = append(latestAccounts, journalLatestAccount{Hash: hash, Blob: blob})
+	}
+	if err := rlp.Encode(w, latestAccounts); err != nil {
+		return err
+	}
+	latestStorage := make([]journalLatestStorage, 0, len(latestStates.LatestStorages))
+	for hash, slots := range latestStates.LatestStorages {
+		keys := make([]common.Hash, 0, len(slots))
+		vals := make([][]byte, 0, len(slots))
+		for key, val := range slots {
+			keys = append(keys, key)
+			vals = append(vals, val)
+		}
+		latestStorage = append(latestStorage, journalLatestStorage{Hash: hash, Keys: keys, Vals: vals})
+	}
+	if err := rlp.Encode(w, latestStorage); err != nil {
 		return err
 	}
 	log.Debug("Journaled pathdb disk layer", "root", dl.root, "nodes", len(bufferNodes))
@@ -329,6 +447,37 @@ func (dl *diffLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, storage); err != nil {
 		return err
 	}
+
+	// Write latest accounts/storages/destructSet into buffer
+	destructs := make([]journalDestruct, 0, len(dl.states.DestructSet))
+	for hash := range dl.states.DestructSet {
+		destructs = append(destructs, journalDestruct{Hash: hash})
+	}
+	if err := rlp.Encode(w, destructs); err != nil {
+		return err
+	}
+
+	latestAccounts := make([]journalLatestAccount, 0, len(dl.states.LatestAccounts))
+	for hash, blob := range dl.states.LatestAccounts {
+		latestAccounts = append(latestAccounts, journalLatestAccount{Hash: hash, Blob: blob})
+	}
+	if err := rlp.Encode(w, latestAccounts); err != nil {
+		return err
+	}
+	latestStorage := make([]journalLatestStorage, 0, len(dl.states.LatestStorages))
+	for hash, slots := range dl.states.LatestStorages {
+		keys := make([]common.Hash, 0, len(slots))
+		vals := make([][]byte, 0, len(slots))
+		for key, val := range slots {
+			keys = append(keys, key)
+			vals = append(vals, val)
+		}
+		latestStorage = append(latestStorage, journalLatestStorage{Hash: hash, Keys: keys, Vals: vals})
+	}
+	if err := rlp.Encode(w, latestStorage); err != nil {
+		return err
+	}
+
 	log.Debug("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
 	return nil
 }

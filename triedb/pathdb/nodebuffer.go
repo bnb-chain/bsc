@@ -41,6 +41,10 @@ type nodebuffer struct {
 	nodes  map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
 }
 
+func (b *nodebuffer) getLatestStates() *triestate.Set {
+	panic("Not supported")
+}
+
 func (b *nodebuffer) account(hash common.Hash) ([]byte, error) {
 	//TODO implement me
 	panic("implement me")

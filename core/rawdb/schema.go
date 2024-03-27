@@ -73,6 +73,9 @@ var (
 	// trieJournalKey tracks the in-memory trie node layers across restarts.
 	trieJournalKey = []byte("TrieJournal")
 
+	// snapshotJournalKey tracks the in-memory diff layers across restarts.
+	trieAccountsJournalKey = []byte("TrieAccountsJournal")
+
 	// txIndexTailKey tracks the oldest block whose transactions have been indexed.
 	txIndexTailKey = []byte("TransactionIndexTail")
 
