@@ -63,7 +63,7 @@ const (
 	// size calculation is inaccurate
 	DefaultBatchRedundancyRate = 1.1
 
-	JournalFile = "/state.journal"
+	JournalFile = "state.journal"
 )
 
 // layer is the interface implemented by all state layers which includes some
@@ -103,7 +103,6 @@ type Config struct {
 	CleanCacheSize int    // Maximum memory allowance (in bytes) for caching clean nodes
 	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty nodes
 	ReadOnly       bool   // Flag whether the database is opened in read only mode.
-	JournalPath    string // Path of the journal
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -318,11 +317,7 @@ func (db *Database) Enable(root common.Hash) error {
 	// Drop the stale state journal in persistent database and
 	// reset the persistent state id back to zero.
 	batch := db.diskdb.NewBatch()
-	datadir, err := db.diskdb.AncientDatadir()
-	if err != nil {
-		return err
-	}
-	rawdb.DeleteTrieJournal(datadir + JournalFile)
+	rawdb.DeleteTrieJournal(db.journalPath())
 	rawdb.WritePersistentStateID(batch, 0)
 	if err := batch.Write(); err != nil {
 		return err
@@ -386,12 +381,8 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 		// disk layer won't be accessible from outside.
 		db.tree.reset(dl)
 	}
-	datadir, err := db.diskdb.AncientDatadir()
-	if err != nil {
-		return err
-	}
-	rawdb.DeleteTrieJournal(datadir + JournalFile)
-	_, err = truncateFromHead(db.diskdb, db.freezer, dl.stateID())
+	rawdb.DeleteTrieJournal(db.journalPath())
+	_, err := truncateFromHead(db.diskdb, db.freezer, dl.stateID())
 	if err != nil {
 		return err
 	}
@@ -512,6 +503,13 @@ func (db *Database) modifyAllowed() error {
 		return errDatabaseWaitSync
 	}
 	return nil
+}
+
+// journalPath returns the indicator if mutation is allowed. This function
+// assumes the db.lock is already held.
+func (db *Database) journalPath() string {
+	dataDir, _ := db.diskdb.AncientDatadir()
+	return dataDir + "/" + JournalFile
 }
 
 // GetAllRooHash returns all diffLayer and diskLayer root hash
