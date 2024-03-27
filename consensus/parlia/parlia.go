@@ -701,10 +701,8 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 			}
 		}
 
-		// If we're at the genesis, snapshot the initial state. Alternatively if we have
-		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
-		// consider the checkpoint trusted and snapshot it.
-		if number == 0 || (number%p.config.Epoch == 0 && (len(headers) > int(params.FullImmutabilityThreshold)/10)) {
+		// If we're at the genesis, snapshot the initial state.
+		if number == 0 {
 			checkpoint := chain.GetHeaderByNumber(number)
 			if checkpoint != nil {
 				// get checkpoint data
@@ -718,12 +716,10 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 
 				// new snapshot
 				snap = newSnapshot(p.config, p.signatures, number, hash, validators, voteAddrs, p.ethAPI)
-				if snap.Number%checkpointInterval == 0 { // snapshot will only be loaded when snap.Number%checkpointInterval == 0
-					if err := snap.store(p.db); err != nil {
-						return nil, err
-					}
-					log.Info("Stored checkpoint snapshot to disk", "number", number, "hash", hash)
+				if err := snap.store(p.db); err != nil {
+					return nil, err
 				}
+				log.Info("Stored checkpoint snapshot to disk", "number", number, "hash", hash)
 				break
 			}
 		}
