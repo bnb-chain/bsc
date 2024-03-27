@@ -75,7 +75,11 @@ type journalStorage struct {
 
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
-	fd, err := os.Open(db.config.JournalPath + JournalFile)
+	datadir, err := db.diskdb.AncientDatadir()
+	if err != nil {
+		return nil, err
+	}
+	fd, err := os.Open(datadir + JournalFile)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, errMissJournal
 	}
@@ -445,7 +449,11 @@ func (db *Database) Journal(root common.Hash) error {
 		return errDatabaseReadOnly
 	}
 	// Firstly write out the metadata of journal
-	journalFilePath := db.config.JournalPath + JournalFile
+	datadir, err := db.diskdb.AncientDatadir()
+	if err != nil {
+		return err
+	}
+	journalFilePath := datadir + JournalFile
 
 	if _, err := os.Stat(journalFilePath); err == nil {
 		if err = os.Remove(journalFilePath); err != nil {
