@@ -1182,7 +1182,6 @@ func (s *StateDB) AccountsIntermediateRoot() {
 				// ensure we capture state clearing.
 				s.AccountMux.Lock()
 				s.accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
-				log.Info("AccountsIntermediateRoot", "hash", obj.addrHash.String(), "data", common.Bytes2Hex(s.accounts[obj.addrHash]))
 				s.AccountMux.Unlock()
 
 				wg.Done()

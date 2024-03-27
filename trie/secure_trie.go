@@ -17,9 +17,6 @@
 package trie
 
 import (
-	"bytes"
-	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -116,21 +113,19 @@ func (t *StateTrie) GetAccount(address common.Address, direct bool) (*types.Stat
 	)
 	if direct {
 		res, err = t.trie.GetDirectly(t.hashKey(address.Bytes()))
-		res1, err1 := t.trie.Get(t.hashKey(address.Bytes()))
-		if err == nil && err1 == nil {
-			if bytes.Compare(res, res1) != 0 {
-				panic(fmt.Sprintf("GetAccount error, target: %s, len res: %s, len res1: %s", common.Bytes2Hex(t.hashKey(address.Bytes())), common.Bytes2Hex(res), common.Bytes2Hex(res1)))
-			}
+		if res == nil || err != nil {
+			return nil, err
 		}
+		return types.FullAccount(res)
 	} else {
 		res, err = t.trie.Get(t.hashKey(address.Bytes()))
+		if res == nil || err != nil {
+			return nil, err
+		}
+		ret := new(types.StateAccount)
+		err = rlp.DecodeBytes(res, ret)
+		return ret, err
 	}
-	if res == nil || err != nil {
-		return nil, err
-	}
-	ret := new(types.StateAccount)
-	err = rlp.DecodeBytes(res, ret)
-	return ret, err
 }
 
 // GetAccountByHash does the same thing as GetAccount, however it expects an
