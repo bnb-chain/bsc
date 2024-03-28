@@ -162,7 +162,7 @@ func ReadStorageFromTrieDirectly(db ethdb.Database, accountHash common.Hash, key
 	it.Seek(storageTrieNodeKey(accountHash, key))
 	if it.Error() == nil {
 		dbKey := it.Key()
-		if strings.HasPrefix(string(dbKey), string(storageTrieNodeKey(accountHash, key))) {
+		if strings.HasPrefix(string(storageTrieNodeKey(accountHash, key)), string(dbKey)) {
 			data := it.Value()
 			h := newHasher()
 			defer h.release()
@@ -171,7 +171,6 @@ func ReadStorageFromTrieDirectly(db ethdb.Database, accountHash common.Hash, key
 
 	}
 	return nil, nil, common.Hash{}
-
 }
 
 // HasStorageTrieNode checks the storage trie node presence with the provided

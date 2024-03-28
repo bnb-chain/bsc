@@ -96,6 +96,16 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte, direct bool) ([]byt
 	)
 	if direct {
 		enc, err = t.trie.GetDirectly(t.hashKey(key))
+		if err != nil || len(enc) == 0 {
+			return nil, err
+		}
+		enc1, err1 := t.trie.Get(t.hashKey(key))
+		if err1 != nil || len(enc1) == 0 {
+			return nil, err1
+		}
+		if bytes.Compare(enc, enc1) != 0 {
+			panic("storage mismatch")
+		}
 	} else {
 		enc, err = t.trie.Get(t.hashKey(key))
 	}
