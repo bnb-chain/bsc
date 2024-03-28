@@ -321,7 +321,7 @@ func (dl *diskLayer) readStorageTrie(accountHash, storageHash common.Hash) []byt
 	}
 	diskStorageLeftNodeTimer.UpdateSince(start)
 	val, key := trie.DecodeLeafNode(nHash.Bytes(), path[common.HashLength:], nBlob)
-	log.Info("storage short node info ", "key:", hex.EncodeToString(key), "value:", hex.EncodeToString(val))
+	// log.Info("storage short node info ", "key:", hex.EncodeToString(key), "value:", hex.EncodeToString(val))
 	if bytes.Compare(storageHash.Bytes(), key) == 0 {
 		return val
 	}
