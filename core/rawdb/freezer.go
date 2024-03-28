@@ -700,12 +700,12 @@ func (f *Freezer) MigrateTable(kind string, convert convertLegacyFn) error {
 
 // TruncateTableTail will truncate certain table to new tail
 func (f *Freezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
-	f.writeLock.Lock()
-	defer f.writeLock.Unlock()
-
 	if f.readonly {
 		return 0, errReadOnly
 	}
+
+	f.writeLock.Lock()
+	defer f.writeLock.Unlock()
 
 	if !slices.Contains(additionTables, kind) {
 		return 0, errors.New("only new added table could be truncated independently")
@@ -728,12 +728,12 @@ func (f *Freezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 // ResetTable will reset certain table with new start point
 // only used for ChainFreezerBlobSidecarTable now
 func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
-	f.writeLock.Lock()
-	defer f.writeLock.Unlock()
-
 	if f.readonly {
 		return errReadOnly
 	}
+
+	f.writeLock.Lock()
+	defer f.writeLock.Unlock()
 
 	t, exist := f.tables[kind]
 	if !exist {

@@ -252,7 +252,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv)
 		// try prune blob data after cancun fork
 		if isCancun(env, head.Number, head.Time) {
-			f.tryPruneBlobAncient(env, *number)
+			f.tryPruneBlobAncientTable(env, *number)
 		}
 
 		// Avoid database thrashing with tiny writes
@@ -262,7 +262,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 	}
 }
 
-func (f *chainFreezer) tryPruneBlobAncient(env *ethdb.FreezerEnv, num uint64) {
+func (f *chainFreezer) tryPruneBlobAncientTable(env *ethdb.FreezerEnv, num uint64) {
 	extraReserve := getBlobExtraReserveFromEnv(env)
 	// It means that there is no need for pruning
 	if extraReserve == 0 {
