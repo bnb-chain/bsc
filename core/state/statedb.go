@@ -1618,7 +1618,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 
 				if root != origin {
 					start := time.Now()
-					stateSet := triestate.New(s.accountsOrigin, s.storagesOrigin, incomplete, s.accounts, s.storages, s.convertAccountSet(s.stateObjectsDestruct))
+					stateSet := triestate.New(s.accountsOrigin, s.storagesOrigin, incomplete, s.mustConvertSlmAccount(s.accounts), s.storages, s.convertAccountSet(s.stateObjectsDestruct))
 					if err := s.db.TrieDB().Update(root, origin, block, nodes, stateSet); err != nil {
 						return err
 					}
@@ -1895,6 +1895,18 @@ func (s *StateDB) convertAccountSet(set map[common.Address]*types.StateAccount) 
 		} else {
 			ret[obj.addrHash] = struct{}{}
 		}
+	}
+	return ret
+}
+
+func (s *StateDB) mustConvertSlmAccount(slmAccounts map[common.Hash][]byte) map[common.Hash][]byte {
+	ret := make(map[common.Hash][]byte)
+	for h, acc := range slmAccounts {
+		fullAccount, err := types.FullAccountRLP(acc)
+		if err != nil {
+			panic(fmt.Sprintf("mustConvertSlmAccount, acc: %v", common.Bytes2Hex(acc)))
+		}
+		ret[h] = fullAccount
 	}
 	return ret
 }

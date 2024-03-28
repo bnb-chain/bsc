@@ -17,6 +17,9 @@
 package trie
 
 import (
+	"bytes"
+	"fmt"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -116,7 +119,21 @@ func (t *StateTrie) GetAccount(address common.Address, direct bool) (*types.Stat
 		if res == nil || err != nil {
 			return nil, err
 		}
-		return types.FullAccount(res)
+		ret := new(types.StateAccount)
+		err = rlp.DecodeBytes(res, ret)
+
+		res1, err1 := t.trie.Get(t.hashKey(address.Bytes()))
+		if res1 == nil || err1 != nil {
+			return nil, err
+		}
+		ret1 := new(types.StateAccount)
+		err = rlp.DecodeBytes(res, ret1)
+
+		if bytes.Compare(res, res1) == 0 {
+			return ret, nil
+		} else {
+			panic(fmt.Sprintf("direct: %v, trie: %v", ret, ret1))
+		}
 	} else {
 		res, err = t.trie.Get(t.hashKey(address.Bytes()))
 		if res == nil || err != nil {
