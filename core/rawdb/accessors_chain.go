@@ -839,7 +839,6 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 		if err != nil {
 			return preSize, err
 		}
-		blocks = blocks[cancunIndex:]
 	}
 
 	// It will reset blob ancient table at cancunIndex
@@ -847,6 +846,7 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 		if err = ResetEmptyBlobAncientTable(db, blocks[cancunIndex].NumberU64()); err != nil {
 			return 0, err
 		}
+		blocks = blocks[cancunIndex:]
 	}
 
 	postSize, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
