@@ -1029,38 +1029,32 @@ func (t *freezerTable) ResetItemsOffset(virtualTail uint64) error {
 	return nil
 }
 
-// resetItems reset freezer table head & tail
+// resetItems reset freezer table to 0 items with new startAt
 // only used for ChainFreezerBlobSidecarTable now
-func (t *freezerTable) resetItems(tail, head uint64) (*freezerTable, error) {
+func (t *freezerTable) resetItems(startAt uint64) (*freezerTable, error) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
 	if t.readonly {
 		return nil, errors.New("resetItems in readonly mode")
 	}
-	itemHidden := t.itemHidden.Load()
-	items := t.items.Load()
-	if tail != head && (itemHidden > tail || items < head) {
-		return nil, errors.New("cannot reset to non-exist range")
-	}
 
-	var err error
-	if tail != head {
-		if err = t.truncateHead(head); err != nil {
-			return nil, err
-		}
-		if err = t.truncateTail(tail); err != nil {
-			return nil, err
-		}
-		return t, nil
-	}
-
-	// if tail == head, it means table reset to 0 item
-	t.releaseFilesAfter(t.tailId-1, true)
+	// remove all data files
 	t.head.Close()
-	os.Remove(t.head.Name())
+	t.releaseFilesAfter(0, true)
+	t.releaseFile(0)
+
+	// overwrite metadata file
+	if err := writeMetadata(t.meta, newMetadata(startAt)); err != nil {
+		return nil, err
+	}
+	if err := t.meta.Sync(); err != nil {
+		return nil, err
+	}
+	t.meta.Close()
+
+	// recreate the index file
 	t.index.Close()
 	os.Remove(t.index.Name())
-	t.meta.Close()
-	os.Remove(t.meta.Name())
-
 	var idxName string
 	if t.noCompression {
 		idxName = fmt.Sprintf("%s.ridx", t.name) // raw index file
@@ -1072,11 +1066,16 @@ func (t *freezerTable) resetItems(tail, head uint64) (*freezerTable, error) {
 		return nil, err
 	}
 	tailIndex := indexEntry{
-		offset: uint32(tail),
+		filenum: 0,
+		offset:  uint32(startAt),
 	}
 	if _, err = index.Write(tailIndex.append(nil)); err != nil {
 		return nil, err
 	}
+	if err := index.Sync(); err != nil {
+		return nil, err
+	}
+	index.Close()
 
 	return newFreezerTable(t.path, t.name, t.noCompression, t.readonly)
 }

@@ -798,8 +798,9 @@ func WriteBlock(db ethdb.KeyValueWriter, block *types.Block) {
 	WriteHeader(db, block.Header())
 }
 
-// WriteAncientBlocks writes entire block data into ancient store and returns the total written size.
-func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
+// WriteAncientBlocksWithBlobs writes entire block data with blobs into ancient store and returns the total written size.
+func WriteAncientBlocksWithBlobs(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
+	// find cancun index, it's used for new added blob ancient table
 	cancunIndex := -1
 	for i, block := range blocks {
 		if block.Sidecars() != nil {
@@ -808,12 +809,39 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 		}
 	}
 	log.Info("WriteAncientBlocks", "startAt", blocks[0].Number(), "cancunIndex", cancunIndex, "len", len(blocks))
-	if cancunIndex >= 0 {
-		if err := ResetEmptyBlobAncientTable(db, blocks[cancunIndex].NumberU64()); err != nil {
-			return 0, err
+
+	var (
+		tdSum   = new(big.Int).Set(td)
+		preSize int64
+		err     error
+	)
+	if cancunIndex > 0 {
+		preSize, err = WriteAncientBlocks(db, blocks[:cancunIndex], receipts[:cancunIndex], td)
+		if err != nil {
+			return preSize, err
 		}
+		for i, block := range blocks[:cancunIndex] {
+			if i > 0 {
+				tdSum.Add(tdSum, block.Difficulty())
+			}
+		}
+		tdSum.Add(tdSum, blocks[cancunIndex].Difficulty())
 	}
 
+	// It will reset blob ancient table at cancunIndex
+	if cancunIndex >= 0 {
+		if err = ResetEmptyBlobAncientTable(db, blocks[cancunIndex].NumberU64()); err != nil {
+			return 0, err
+		}
+		blocks = blocks[cancunIndex:]
+		receipts = receipts[cancunIndex:]
+	}
+	postSize, err := WriteAncientBlocks(db, blocks, receipts, tdSum)
+	return preSize + postSize, err
+}
+
+// WriteAncientBlocks writes entire block data into ancient store and returns the total written size.
+func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
 	var (
 		tdSum      = new(big.Int).Set(td)
 		stReceipts []*types.ReceiptForStorage
@@ -853,8 +881,8 @@ func ReadBlobSidecarsRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.R
 	return data
 }
 
-// ReadRawBlobSidecars retrieves all the transaction blobs belonging to a block.
-func ReadRawBlobSidecars(db ethdb.Reader, hash common.Hash, number uint64) types.BlobSidecars {
+// ReadBlobSidecars retrieves all the transaction blobs belonging to a block.
+func ReadBlobSidecars(db ethdb.Reader, hash common.Hash, number uint64) types.BlobSidecars {
 	data := ReadBlobSidecarsRLP(db, hash, number)
 	if len(data) == 0 {
 		return nil

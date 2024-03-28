@@ -328,6 +328,12 @@ func (f *prunedfreezer) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64,
 	return 0, errNotSupported
 }
 
-func (f *prunedfreezer) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
+// TruncateTableTail will truncate certain table to new tail
+func (f *prunedfreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	return 0, errNotSupported
+}
+
+// ResetTable will reset certain table with new start point
+func (f *prunedfreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
 	return errNotSupported
 }

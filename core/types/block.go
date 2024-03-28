@@ -183,7 +183,7 @@ func (h *Header) SanityCheck() error {
 // that is: no transactions, no uncles and no withdrawals.
 func (h *Header) EmptyBody() bool {
 	if h.WithdrawalsHash != nil {
-		return h.TxHash == EmptyTxsHash && *h.WithdrawalsHash == EmptyWithdrawalsHash
+		return h.TxHash == EmptyTxsHash && (*h.WithdrawalsHash == EmptyWithdrawalsHash || *h.WithdrawalsHash == common.Hash{})
 	}
 	return h.TxHash == EmptyTxsHash && h.UncleHash == EmptyUncleHash
 }

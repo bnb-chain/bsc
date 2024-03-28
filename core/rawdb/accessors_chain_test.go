@@ -455,13 +455,13 @@ func TestBlockBlobSidecarsStorage(t *testing.T) {
 	sidecars := types.BlobSidecars{types.NewBlobSidecarFromTx(tx1)}
 
 	// Check that no sidecars entries are in a pristine database
-	if bs := ReadRawBlobSidecars(db, blkHash, 0); len(bs) != 0 {
+	if bs := ReadBlobSidecars(db, blkHash, 0); len(bs) != 0 {
 		t.Fatalf("non existent sidecars returned: %v", bs)
 	}
 	WriteBody(db, blkHash, 0, body)
 	WriteBlobSidecars(db, blkHash, 0, sidecars)
 
-	if bs := ReadRawBlobSidecars(db, blkHash, 0); len(bs) == 0 {
+	if bs := ReadBlobSidecars(db, blkHash, 0); len(bs) == 0 {
 		t.Fatalf("no sidecars returned")
 	} else {
 		if err := checkBlobSidecarsRLP(bs, sidecars); err != nil {
@@ -470,7 +470,7 @@ func TestBlockBlobSidecarsStorage(t *testing.T) {
 	}
 
 	DeleteBlobSidecars(db, blkHash, 0)
-	if bs := ReadRawBlobSidecars(db, blkHash, 0); len(bs) != 0 {
+	if bs := ReadBlobSidecars(db, blkHash, 0); len(bs) != 0 {
 		t.Fatalf("deleted sidecars returned: %v", bs)
 	}
 }

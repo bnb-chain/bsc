@@ -121,7 +121,7 @@ func TestIsDataAvailable(t *testing.T) {
 			}, nil),
 			chasingHead: params.MinBlocksForBlobRequests + 1,
 			withSidecar: false,
-			err:         true,
+			err:         false,
 		},
 	}
 
