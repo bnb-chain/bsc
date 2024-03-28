@@ -83,8 +83,7 @@ func ReadAccountFromTrieDirectly(db ethdb.Database, key []byte) ([]byte, []byte,
 	it := db.NewIterator(trieNodeAccountPrefix, nil)
 	defer it.Release()
 
-	it.Seek(accountTrieNodeKey(encodeNibbles(key)))
-	if it.Error() == nil {
+	if it.Seek(accountTrieNodeKey(encodeNibbles(key))) && it.Error() == nil {
 		dbKey := it.Key()
 		if strings.HasPrefix(string(accountTrieNodeKey(encodeNibbles(key))), string(dbKey)) {
 			data := it.Value()
@@ -159,8 +158,7 @@ func ReadStorageFromTrieDirectly(db ethdb.Database, accountHash common.Hash, key
 	it := db.NewIterator(storageTrieNodeKey(accountHash, []byte("")), nil)
 	defer it.Release()
 
-	it.Seek(storageTrieNodeKey(accountHash, encodeNibbles(key)))
-	if it.Error() == nil {
+	if it.Seek(storageTrieNodeKey(accountHash, encodeNibbles(key))) && it.Error() == nil {
 		dbKey := it.Key()
 		if strings.HasPrefix(string(storageTrieNodeKey(accountHash, encodeNibbles(key))), string(dbKey)) {
 			data := it.Value()
