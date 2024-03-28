@@ -836,6 +836,9 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 			}
 			return nil
 		})
+		if err != nil {
+			return preSize, err
+		}
 		blocks = blocks[cancunIndex:]
 	}
 
