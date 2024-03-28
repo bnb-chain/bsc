@@ -17,7 +17,10 @@
 package rawdb
 
 import (
+	"io"
+
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // table is a wrapper around a database that prefixes each key access with a pre-
@@ -239,6 +242,30 @@ func (t *table) NewBatchWithSize(size int) ethdb.Batch {
 // happened on the database.
 func (t *table) NewSnapshot() (ethdb.Snapshot, error) {
 	return t.db.NewSnapshot()
+}
+
+func (t *table) NewJournalWriter() io.Writer {
+	panic("not supported")
+}
+
+func (t *table) NewJournalReader() (*rlp.Stream, error) {
+	panic("not supported")
+}
+
+func (t *table) JournalWriterSync() {
+	panic("not supported")
+}
+
+func (t *table) JournalDelete() {
+	panic("not supported")
+}
+
+func (t *table) JournalClose() {
+	panic("not supported")
+}
+
+func (t *table) JournalSize() uint64 {
+	panic("not supported")
 }
 
 func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv) error {

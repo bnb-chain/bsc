@@ -21,6 +21,7 @@ import (
 	"io"
 
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // KeyValueReader wraps the Has and Get method of a backing data store.
@@ -217,11 +218,32 @@ type StateStore interface {
 	SetStateStore(state Database)
 }
 
+type Journal interface {
+	// NewJournalWriter creates a new journal writer.
+	NewJournalWriter() io.Writer
+
+	// NewJournalReader creates a new journal reader.
+	NewJournalReader() (*rlp.Stream, error)
+
+	// JournalWriterSync flushes the journal writer.
+	JournalWriterSync()
+
+	// JournalDelete deletes the journal.
+	JournalDelete()
+
+	// JournalClose closes the journal.
+	JournalClose()
+
+	// JournalSize returns the size of the journal.
+	JournalSize() uint64
+}
+
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the chain freezer.
 type Database interface {
 	Reader
 	Writer
+	Journal
 	DiffStore
 	StateStore
 	Batcher
