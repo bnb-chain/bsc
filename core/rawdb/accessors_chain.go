@@ -798,8 +798,8 @@ func WriteBlock(db ethdb.KeyValueWriter, block *types.Block) {
 	WriteHeader(db, block.Header())
 }
 
-// WriteAncientBlocks writes entire block data into ancient store and returns the total written size.
-func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
+// WriteAncientBlocksWithBlobs writes entire block data with blobs into ancient store and returns the total written size.
+func WriteAncientBlocksWithBlobs(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
 	// find cancun index, it's used for new added blob ancient table
 	cancunIndex := -1
 	for i, block := range blocks {
@@ -811,34 +811,21 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 	log.Info("WriteAncientBlocks", "startAt", blocks[0].Number(), "cancunIndex", cancunIndex, "len", len(blocks))
 
 	var (
-		tdSum      = new(big.Int).Set(td)
-		stReceipts []*types.ReceiptForStorage
-		preSize    int64
-		err        error
+		tdSum   = new(big.Int).Set(td)
+		preSize int64
+		err     error
 	)
-
-	// handle pre-cancun blocks
 	if cancunIndex > 0 {
-		preSize, err = db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
-			for i, block := range blocks[:cancunIndex] {
-				// Convert receipts to storage format and sum up total difficulty.
-				stReceipts = stReceipts[:0]
-				for _, receipt := range receipts[i] {
-					stReceipts = append(stReceipts, (*types.ReceiptForStorage)(receipt))
-				}
-				header := block.Header()
-				if i > 0 {
-					tdSum.Add(tdSum, header.Difficulty)
-				}
-				if err := writeAncientBlock(op, block, header, stReceipts, tdSum); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
+		preSize, err = WriteAncientBlocks(db, blocks[:cancunIndex], receipts[:cancunIndex], td)
 		if err != nil {
 			return preSize, err
 		}
+		for i, block := range blocks[:cancunIndex] {
+			if i > 0 {
+				tdSum.Add(tdSum, block.Difficulty())
+			}
+		}
+		tdSum.Add(tdSum, blocks[cancunIndex].Difficulty())
 	}
 
 	// It will reset blob ancient table at cancunIndex
@@ -847,9 +834,19 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 			return 0, err
 		}
 		blocks = blocks[cancunIndex:]
+		receipts = receipts[cancunIndex:]
 	}
+	postSize, err := WriteAncientBlocks(db, blocks, receipts, tdSum)
+	return preSize + postSize, err
+}
 
-	postSize, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+// WriteAncientBlocks writes entire block data into ancient store and returns the total written size.
+func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
+	var (
+		tdSum      = new(big.Int).Set(td)
+		stReceipts []*types.ReceiptForStorage
+	)
+	return db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		for i, block := range blocks {
 			// Convert receipts to storage format and sum up total difficulty.
 			stReceipts = stReceipts[:0]
@@ -866,8 +863,6 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 		}
 		return nil
 	})
-
-	return preSize + postSize, err
 }
 
 // ReadBlobSidecarsRLP retrieves all the transaction blobs belonging to a block in RLP encoding.
