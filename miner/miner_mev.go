@@ -17,6 +17,7 @@ type BuilderConfig struct {
 
 type MevConfig struct {
 	Enabled               bool            // Whether to enable Mev or not
+	BidFeeCeil            uint64          // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
 	Builders              []BuilderConfig // The list of builders
 	ValidatorCommission   uint64          // 100 means 1%
@@ -108,5 +109,6 @@ func (miner *Miner) MevParams() *types.MevParams {
 		ValidatorCommission:   miner.worker.config.Mev.ValidatorCommission,
 		BidSimulationLeftOver: miner.worker.config.Mev.BidSimulationLeftOver,
 		GasCeil:               miner.worker.config.GasCeil,
+		BidFeeCeil:            miner.worker.config.Mev.BidFeeCeil,
 	}
 }
