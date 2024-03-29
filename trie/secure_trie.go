@@ -96,22 +96,29 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte, direct bool) ([]byt
 	)
 	if direct {
 		enc, err = t.trie.GetDirectly(t.hashKey(key))
-		if err != nil || len(enc) == 0 {
-			return nil, err
-		}
 		enc1, err1 := t.trie.Get(t.hashKey(key))
-		if err1 != nil || len(enc1) == 0 {
-			return nil, err1
+		if (err == nil && err1 != nil) || (err != nil && err1 != nil) {
+			panic(fmt.Errorf("err: %v, err1%v", err, err1))
+		} else if err != nil && err1 != nil {
+			return nil, fmt.Errorf("err: %v, err1%v", err, err1)
 		}
-		if bytes.Compare(enc, enc1) != 0 {
-			panic("storage mismatch")
+
+		if enc == nil && enc1 == nil {
+			return nil, nil
+		} else if (enc == nil && enc1 != nil) || (enc != nil && enc1 == nil) {
+			panic(fmt.Sprintf("direct: %v, trie: %v", common.Bytes2Hex(enc), common.Bytes2Hex(enc1)))
+		} else {
+			if bytes.Compare(enc, enc1) != 0 {
+				panic("storage mismatch")
+			}
 		}
 	} else {
 		enc, err = t.trie.Get(t.hashKey(key))
+		if err != nil || len(enc) == 0 {
+			return nil, err
+		}
 	}
-	if err != nil || len(enc) == 0 {
-		return nil, err
-	}
+
 	_, content, _, err := rlp.Split(enc)
 	return content, err
 }
@@ -126,22 +133,27 @@ func (t *StateTrie) GetAccount(address common.Address, direct bool) (*types.Stat
 	)
 	if direct {
 		res, err = t.trie.GetDirectly(t.hashKey(address.Bytes()))
-		if res == nil || err != nil {
-			return nil, err
+		res1, err1 := t.trie.Get(t.hashKey(address.Bytes()))
+
+		if (err == nil && err1 != nil) || (err != nil && err1 != nil) {
+			panic(fmt.Errorf("err: %v, err1%v", err, err1))
+		} else if err != nil && err1 != nil {
+			return nil, fmt.Errorf("err: %v, err1%v", err, err1)
 		}
+		if res == nil && res1 == nil {
+			return nil, nil
+		} else if (res == nil && res1 != nil) || (res != nil && res1 == nil) {
+			panic(fmt.Sprintf("direct: %v, trie: %v", common.Bytes2Hex(res), common.Bytes2Hex(res1)))
+		}
+
 		ret := new(types.StateAccount)
 		err = rlp.DecodeBytes(res, ret)
-
-		res1, err1 := t.trie.Get(t.hashKey(address.Bytes()))
-		if res1 == nil || err1 != nil {
-			return nil, err
-		}
-		ret1 := new(types.StateAccount)
-		err = rlp.DecodeBytes(res, ret1)
 
 		if bytes.Compare(res, res1) == 0 {
 			return ret, nil
 		} else {
+			ret1 := new(types.StateAccount)
+			err = rlp.DecodeBytes(res, ret1)
 			panic(fmt.Sprintf("direct: %v, trie: %v", ret, ret1))
 		}
 	} else {
