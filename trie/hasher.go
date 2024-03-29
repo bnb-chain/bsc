@@ -101,7 +101,7 @@ func (h *hasher) hashShortNodeChildren(n *shortNode) (collapsed, cached *shortNo
 	// Unless the child is a valuenode or hashnode, hash it
 	switch n.Val.(type) {
 	case *fullNode, *shortNode:
-		collapsed.Val, cached.Val = h.hash(n.Val, true)
+		collapsed.Val, cached.Val = h.hash(n.Val, false)
 	}
 	return collapsed, cached
 }
@@ -117,7 +117,7 @@ func (h *hasher) hashFullNodeChildren(n *fullNode) (collapsed *fullNode, cached 
 			go func(i int) {
 				hasher := newHasher(false)
 				if child := n.Children[i]; child != nil {
-					collapsed.Children[i], cached.Children[i] = hasher.hash(child, true)
+					collapsed.Children[i], cached.Children[i] = hasher.hash(child, false)
 				} else {
 					collapsed.Children[i] = nilValueNode
 				}
@@ -129,7 +129,7 @@ func (h *hasher) hashFullNodeChildren(n *fullNode) (collapsed *fullNode, cached 
 	} else {
 		for i := 0; i < 16; i++ {
 			if child := n.Children[i]; child != nil {
-				collapsed.Children[i], cached.Children[i] = h.hash(child, true)
+				collapsed.Children[i], cached.Children[i] = h.hash(child, false)
 			} else {
 				collapsed.Children[i] = nilValueNode
 			}

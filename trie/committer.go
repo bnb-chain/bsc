@@ -135,6 +135,10 @@ func (c *committer) store(path []byte, n node) node {
 		if ok {
 			c.nodes.AddNode(path, trienode.NewDeleted())
 		}
+
+		// redundancy store for get Account/Storage from trie database directly
+		nhash := common.BytesToHash(hash)
+		c.nodes.AddNode(path, trienode.New(nhash, nodeToBytes(n)))
 		return n
 	}
 	// Collect the dirty node to nodeset for return.

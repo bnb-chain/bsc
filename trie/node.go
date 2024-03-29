@@ -143,15 +143,6 @@ func DecodeLeafNode(hash, path, value []byte) ([]byte, []byte) {
 		} else {
 			panic(fmt.Sprintf("invalid short node encode: %v", n.fstring("")))
 		}
-	//case *fullNode:
-	//	enc := rawdb.EncodeNibbles(hash)
-	//	indByte := enc[len(path) : len(path)+1]
-	//	tn := sn.Children[indByte[0]]
-	//	if tsn, ok := tn.(*shortNode); ok {
-	//		if val, ok := tsn.Val.(valueNode); ok {
-	//			return val, hexToKeybytes(append(append(path, indByte...), tsn.Key...))
-	//		}
-	//	}
 	default:
 		panic(fmt.Sprintf("invalid node type: %v", n.fstring("")))
 	}
