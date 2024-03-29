@@ -83,15 +83,15 @@ func ReadAccountFromTrieDirectly(db ethdb.Database, key []byte) ([]byte, []byte,
 	it := db.NewIterator(trieNodeAccountPrefix, nil)
 	defer it.Release()
 
-	if it.Seek(accountTrieNodeKey(encodeNibbles(key))) && it.Error() == nil {
+	if it.Seek(accountTrieNodeKey(EncodeNibbles(key))) && it.Error() == nil {
 		dbKey := it.Key()
-		if strings.HasPrefix(string(accountTrieNodeKey(encodeNibbles(key))), string(dbKey)) {
+		if strings.HasPrefix(string(accountTrieNodeKey(EncodeNibbles(key))), string(dbKey)) {
 			data := it.Value()
 			h := newHasher()
 			defer h.release()
 			return data, dbKey[1:], h.hash(data)
 		} else {
-			log.Debug("ReadAccountFromTrieDirectly", "dbKey", common.Bytes2Hex(dbKey), "target key", common.Bytes2Hex(accountTrieNodeKey(encodeNibbles(key))))
+			log.Debug("ReadAccountFromTrieDirectly", "dbKey", common.Bytes2Hex(dbKey), "target key", common.Bytes2Hex(accountTrieNodeKey(EncodeNibbles(key))))
 		}
 	} else {
 		log.Error("ReadAccountFromTrieDirectly", "iterater error", it.Error())
@@ -155,12 +155,12 @@ func ReadStorageTrieNode(db ethdb.KeyValueReader, accountHash common.Hash, path 
 }
 
 func ReadStorageFromTrieDirectly(db ethdb.Database, accountHash common.Hash, key []byte) ([]byte, []byte, common.Hash) {
-	it := db.NewIterator(storageTrieNodeKey(accountHash, []byte("")), nil)
+	it := db.NewIterator(trieNodeStoragePrefix, nil)
 	defer it.Release()
 
-	if it.Seek(storageTrieNodeKey(accountHash, encodeNibbles(key))) && it.Error() == nil {
+	if it.Seek(storageTrieNodeKey(accountHash, EncodeNibbles(key))) && it.Error() == nil {
 		dbKey := it.Key()
-		if strings.HasPrefix(string(storageTrieNodeKey(accountHash, encodeNibbles(key))), string(dbKey)) {
+		if strings.HasPrefix(string(storageTrieNodeKey(accountHash, EncodeNibbles(key))), string(dbKey)) {
 			data := it.Value()
 			h := newHasher()
 			defer h.release()
@@ -398,7 +398,7 @@ func ParseStateScheme(provided string, disk ethdb.Database) (string, error) {
 	return "", fmt.Errorf("incompatible state scheme, stored: %s, user provided: %s", stored, provided)
 }
 
-func encodeNibbles(bytes []byte) []byte {
+func EncodeNibbles(bytes []byte) []byte {
 	nibbles := make([]byte, len(bytes)*2)
 	for i, b := range bytes {
 		nibbles[i*2] = b >> 4     // 取字节高4位

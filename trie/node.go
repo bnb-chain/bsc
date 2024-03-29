@@ -131,7 +131,8 @@ func mustDecodeNode(hash, buf []byte) node {
 // DecodeLeafNode return the Key and Val part of the shorNode
 func DecodeLeafNode(hash, path, value []byte) ([]byte, []byte) {
 	n := mustDecodeNode(hash, value)
-	if sn, ok := n.(*shortNode); ok {
+	switch sn := n.(type) {
+	case *shortNode:
 		if val, ok := sn.Val.(valueNode); ok {
 			// remove the prefix key of path
 			key := append(path, sn.Key...)
@@ -139,7 +140,20 @@ func DecodeLeafNode(hash, path, value []byte) ([]byte, []byte) {
 				key = key[:len(key)-1]
 			}
 			return val, hexToKeybytes(append(path, sn.Key...))
+		} else {
+			panic(fmt.Sprintf("invalid short node encode: %v", n.fstring("")))
 		}
+	//case *fullNode:
+	//	enc := rawdb.EncodeNibbles(hash)
+	//	indByte := enc[len(path) : len(path)+1]
+	//	tn := sn.Children[indByte[0]]
+	//	if tsn, ok := tn.(*shortNode); ok {
+	//		if val, ok := tsn.Val.(valueNode); ok {
+	//			return val, hexToKeybytes(append(append(path, indByte...), tsn.Key...))
+	//		}
+	//	}
+	default:
+		panic(fmt.Sprintf("invalid node type: %v", n.fstring("")))
 	}
 	return nil, nil
 }

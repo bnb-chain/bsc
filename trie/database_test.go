@@ -33,6 +33,16 @@ type testReader struct {
 	nodes  []*trienode.MergedNodeSet // sorted from new to old
 }
 
+func (r *testReader) Account(hash common.Hash) ([]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *testReader) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 // Node implements database.Reader interface, retrieving trie node with
 // all available cached layers.
 func (r *testReader) Node(owner common.Hash, path []byte, hash common.Hash) ([]byte, error) {

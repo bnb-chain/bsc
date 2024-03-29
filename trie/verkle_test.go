@@ -71,7 +71,7 @@ func TestVerkleTreeReadWrite(t *testing.T) {
 	}
 
 	for addr, acct := range accounts {
-		stored, err := tr.GetAccount(addr)
+		stored, err := tr.GetAccount(addr, false)
 		if err != nil {
 			t.Fatalf("Failed to get account, %v", err)
 		}
@@ -79,7 +79,7 @@ func TestVerkleTreeReadWrite(t *testing.T) {
 			t.Fatal("account is not matched")
 		}
 		for key, val := range storages[addr] {
-			stored, err := tr.GetStorage(addr, key.Bytes())
+			stored, err := tr.GetStorage(addr, key.Bytes(), false)
 			if err != nil {
 				t.Fatalf("Failed to get storage, %v", err)
 			}
