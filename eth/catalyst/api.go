@@ -874,7 +874,7 @@ func getBody(block *types.Block) *engine.ExecutionPayloadBodyV1 {
 	}
 
 	// Post-shanghai withdrawals MUST be set to empty slice instead of nil
-	if withdrawals == nil && !block.Header().EmptyWithdrawalsHash() {
+	if withdrawals == nil && block.Header().WithdrawalsHash != nil {
 		withdrawals = make([]*types.Withdrawal, 0)
 	}
 

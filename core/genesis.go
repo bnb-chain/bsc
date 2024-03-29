@@ -446,7 +446,7 @@ func (g *Genesis) ToBlock() *types.Block {
 		}
 		if conf.IsCancun(num, g.Timestamp) {
 			if conf.Parlia != nil {
-				head.WithdrawalsHash = new(common.Hash)
+				head.WithdrawalsHash = &types.EmptyWithdrawalsHash
 			}
 
 			// EIP-4788: The parentBeaconBlockRoot of the genesis block is always
