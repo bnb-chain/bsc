@@ -183,7 +183,7 @@ func (h *Header) SanityCheck() error {
 // that is: no transactions, no uncles and no withdrawals.
 func (h *Header) EmptyBody() bool {
 	if h.WithdrawalsHash != nil {
-		return h.TxHash == EmptyTxsHash && (*h.WithdrawalsHash == EmptyWithdrawalsHash || *h.WithdrawalsHash == common.Hash{})
+		return h.TxHash == EmptyTxsHash && *h.WithdrawalsHash == EmptyWithdrawalsHash
 	}
 	return h.TxHash == EmptyTxsHash && h.UncleHash == EmptyUncleHash
 }
@@ -195,8 +195,7 @@ func (h *Header) EmptyReceipts() bool {
 
 // EmptyWithdrawalsHash returns true if there are no WithdrawalsHash for this header/block.
 func (h *Header) EmptyWithdrawalsHash() bool {
-	// TODO(GalaIO): if check EmptyWithdrawalsHash in here?
-	return h.WithdrawalsHash == nil || *h.WithdrawalsHash == common.Hash{}
+	return h.WithdrawalsHash == nil || *h.WithdrawalsHash == EmptyWithdrawalsHash
 }
 
 // Body is a simple (mutable, non-safe) data container for storing and moving

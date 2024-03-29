@@ -600,8 +600,8 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		case header.ParentBeaconRoot != nil:
 			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
 		// types.EmptyWithdrawalsHash represents a empty value when EIP-4895 enabled,
-		// here, EIP-4895 still be disabled, value expected to be `common.Hash{}` is only to feet the demand of rlp encode/decode
-		case header.WithdrawalsHash == nil || *header.WithdrawalsHash != common.Hash{}:
+		// here, EIP-4895 still be disabled, value expected to be `types.EmptyWithdrawalsHash` is only to feet the demand of rlp encode/decode
+		case header.WithdrawalsHash == nil || *header.WithdrawalsHash != types.EmptyWithdrawalsHash:
 			return errors.New("header has wrong WithdrawalsHash")
 		}
 		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
