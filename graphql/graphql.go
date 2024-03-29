@@ -1041,7 +1041,7 @@ func (b *Block) WithdrawalsRoot(ctx context.Context) (*common.Hash, error) {
 		return nil, err
 	}
 	// Pre-shanghai blocks
-	if header.EmptyWithdrawalsHash() {
+	if header.WithdrawalsHash == nil {
 		return nil, nil
 	}
 	return header.WithdrawalsHash, nil
