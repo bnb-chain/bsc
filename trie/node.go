@@ -140,11 +140,7 @@ func DecodeLeafNode(hash, path, value []byte) ([]byte, []byte) {
 				key = key[:len(key)-1]
 			}
 			return val, hexToKeybytes(append(path, sn.Key...))
-		} else {
-			panic(fmt.Sprintf("invalid short node encode: %v", n.fstring("")))
 		}
-	default:
-		panic(fmt.Sprintf("invalid node type: %v", n.fstring("")))
 	}
 	return nil, nil
 }
