@@ -65,12 +65,6 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 			return common.Hash{}, types.NewInvalidBidError("builder fee should not be less than 0")
 		}
 
-		if builderFee.Cmp(common.Big0) == 0 {
-			if len(args.PayBidTx) != 0 || args.PayBidTxGasUsed != 0 {
-				return common.Hash{}, types.NewInvalidPayBidTxError("payBidTx should be nil when builder fee is 0")
-			}
-		}
-
 		if builderFee.Cmp(rawBid.GasFee) >= 0 {
 			return common.Hash{}, types.NewInvalidBidError("builder fee must be less than gas fee")
 		}
@@ -82,16 +76,12 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 				return common.Hash{}, types.NewInvalidBidError(
 					fmt.Sprintf("transfer tx gas used must be no more than %v", TransferTxGasLimit))
 			}
+		}
+	}
 
-			if (len(args.PayBidTx) == 0 && args.PayBidTxGasUsed != 0) ||
-				(len(args.PayBidTx) != 0 && args.PayBidTxGasUsed == 0) {
-				return common.Hash{}, types.NewInvalidPayBidTxError("non-aligned payBidTx and payBidTxGasUsed")
-			}
-		}
-	} else {
-		if len(args.PayBidTx) != 0 || args.PayBidTxGasUsed != 0 {
-			return common.Hash{}, types.NewInvalidPayBidTxError("payBidTx should be nil when builder fee is nil")
-		}
+	if (len(args.PayBidTx) == 0 && args.PayBidTxGasUsed != 0) ||
+		(len(args.PayBidTx) != 0 && args.PayBidTxGasUsed == 0) {
+		return common.Hash{}, types.NewInvalidPayBidTxError("non-aligned payBidTx and payBidTxGasUsed")
 	}
 
 	return m.b.SendBid(ctx, &args)
