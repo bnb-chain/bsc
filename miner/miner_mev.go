@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 type BuilderConfig struct {
@@ -17,6 +18,7 @@ type BuilderConfig struct {
 
 type MevConfig struct {
 	Enabled               bool            // Whether to enable Mev or not
+	BuilderFeeCeil        string          // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
 	Builders              []BuilderConfig // The list of builders
 	ValidatorCommission   uint64          // 100 means 1%
@@ -104,9 +106,16 @@ func (miner *Miner) BestPackedBlockReward(parentHash common.Hash) *big.Int {
 }
 
 func (miner *Miner) MevParams() *types.MevParams {
+	builderFeeCeil, ok := big.NewInt(0).SetString(miner.worker.config.Mev.BuilderFeeCeil, 10)
+	if !ok {
+		log.Error("failed to parse builder fee ceil", "BuilderFeeCeil", miner.worker.config.Mev.BuilderFeeCeil)
+		return nil
+	}
+
 	return &types.MevParams{
 		ValidatorCommission:   miner.worker.config.Mev.ValidatorCommission,
 		BidSimulationLeftOver: miner.worker.config.Mev.BidSimulationLeftOver,
 		GasCeil:               miner.worker.config.GasCeil,
+		BuilderFeeCeil:        builderFeeCeil,
 	}
 }
