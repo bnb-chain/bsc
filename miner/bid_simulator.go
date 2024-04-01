@@ -615,11 +615,13 @@ func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
 
 	cli := b.builders[bidRuntime.bid.Builder]
 	if cli != nil {
-		cli.ReportIssue(context.Background(), &types.BidIssue{
+		err = cli.ReportIssue(context.Background(), &types.BidIssue{
 			Validator: bidRuntime.env.header.Coinbase,
 			Builder:   bidRuntime.bid.Builder,
+			BidHash:   bidRuntime.bid.Hash(),
 			Message:   err.Error(),
 		})
+		log.Error("BidSimulator: failed to report issue", "builder", bidRuntime.bid.Builder, "err", err)
 	}
 }
 
