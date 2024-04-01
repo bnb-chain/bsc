@@ -45,12 +45,12 @@ func (b *nodebuffer) getLatestStates() *triestate.Set {
 	panic("Not supported")
 }
 
-func (b *nodebuffer) account(hash common.Hash) ([]byte, error) {
+func (b *nodebuffer) account(hash common.Hash) ([]byte, bool) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (b *nodebuffer) storage(accountHash, storageHash common.Hash) ([]byte, error) {
+func (b *nodebuffer) storage(accountHash, storageHash common.Hash) ([]byte, bool) {
 	//TODO implement me
 	panic("implement me")
 }

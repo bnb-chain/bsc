@@ -106,7 +106,7 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte, direct bool) ([]byt
 		if enc == nil && enc1 == nil {
 			return nil, nil
 		} else if (enc == nil && enc1 != nil) || (enc != nil && enc1 == nil) {
-			panic(fmt.Sprintf("direct: %v, trie: %v", common.Bytes2Hex(enc), common.Bytes2Hex(enc1)))
+			panic(fmt.Sprintf("account, %s, key: %s, direct: %v, trie: %v", t.trie.Owner().String(), common.Bytes2Hex(t.hashKey(key)), common.Bytes2Hex(enc), common.Bytes2Hex(enc1)))
 		} else {
 			if bytes.Compare(enc, enc1) != 0 {
 				panic("storage mismatch")

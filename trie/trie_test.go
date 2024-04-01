@@ -848,7 +848,9 @@ func (s *spongeDb) Put(key []byte, value []byte) error {
 }
 func (s *spongeDb) NewIterator(prefix []byte, start []byte) ethdb.Iterator { panic("implement me") }
 
-func (s *spongeDb) NewReverseIterator(prefix, start, key []byte) ethdb.Iterator { panic("implement me") }
+func (s *spongeDb) NewReverseIterator(prefix, start, key []byte) ethdb.Iterator {
+	panic("implement me")
+}
 
 func (s *spongeDb) Flush() {
 	// Bottom-up, the longest path first

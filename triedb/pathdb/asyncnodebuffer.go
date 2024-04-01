@@ -29,32 +29,24 @@ type asyncnodebuffer struct {
 	stopFlushing atomic.Bool
 }
 
-func (a *asyncnodebuffer) account(hash common.Hash) ([]byte, error) {
+func (a *asyncnodebuffer) account(hash common.Hash) ([]byte, bool) {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 
-	node, err := a.current.account(hash)
-	if err != nil {
-		return nil, err
+	if node, exist := a.current.account(hash); exist {
+		return node, exist
 	}
-	if node == nil {
-		return a.background.account(hash)
-	}
-	return node, nil
+	return a.background.account(hash)
 }
 
-func (a *asyncnodebuffer) storage(accountHash, storageHash common.Hash) ([]byte, error) {
+func (a *asyncnodebuffer) storage(accountHash, storageHash common.Hash) ([]byte, bool) {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 
-	node, err := a.current.storage(accountHash, storageHash)
-	if err != nil {
-		return nil, err
+	if node, exist := a.current.storage(accountHash, storageHash); exist {
+		return node, exist
 	}
-	if node == nil {
-		return a.background.storage(accountHash, storageHash)
-	}
-	return node, nil
+	return a.background.storage(accountHash, storageHash)
 }
 
 // newAsyncNodeBuffer initializes the async node buffer with the provided nodes.
@@ -293,34 +285,33 @@ func newNodeCache(limit, size uint64,
 		nodes:  nodes,
 
 		LatestAccounts: latestAccounts,
-		LatestStorages: latestStorages,
-		DestructSet:    destructSet,
-		immutable:      0,
+		LatestStorages: latestStorages, DestructSet: destructSet,
+		immutable: 0,
 	}
 }
 
-func (nc *nodecache) account(hash common.Hash) ([]byte, error) {
+func (nc *nodecache) account(hash common.Hash) ([]byte, bool) {
 	if data, ok := nc.LatestAccounts[hash]; ok {
-		return data, nil
+		return data, true
 	}
 
 	if _, ok := nc.DestructSet[hash]; ok {
-		return nil, nil
+		return nil, true
 	}
-	return nil, nil
+	return nil, false
 }
 
-func (nc *nodecache) storage(accountHash, storageHash common.Hash) ([]byte, error) {
+func (nc *nodecache) storage(accountHash, storageHash common.Hash) ([]byte, bool) {
 	if storage, ok := nc.LatestStorages[accountHash]; ok {
 		if data, ok := storage[storageHash]; ok {
-			return data, nil
+			return data, true
 		}
 	}
 
 	if _, ok := nc.DestructSet[storageHash]; ok {
-		return nil, nil
+		return nil, true
 	}
-	return nil, nil
+	return nil, false
 }
 
 func (nc *nodecache) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {

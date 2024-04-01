@@ -81,10 +81,10 @@ type trienodebuffer interface {
 	getLayers() uint64
 
 	// account return the value of the specify account
-	account(hash common.Hash) ([]byte, error)
+	account(hash common.Hash) ([]byte, bool)
 
 	// storage return the value of the specify account and storage key
-	storage(accountHash, storageHash common.Hash) ([]byte, error)
+	storage(accountHash, storageHash common.Hash) ([]byte, bool)
 
 	// waitAndStopFlushing will block unit writing the trie nodes of trienodebuffer to disk.
 	waitAndStopFlushing()
@@ -181,17 +181,12 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 	defer dl.lock.RUnlock()
 
 	// TODO: seek from dirty node buffer
-	data, err := dl.buffer.account(hash)
-	if err != nil {
-		return nil, err
-	}
-
-	if data != nil {
+	if data, exist := dl.buffer.account(hash); exist {
 		return data, nil
 	}
 
 	// TODO: seek from clean cache
-	data = dl.cleans.latestStates.Get(nil, hash.Bytes())
+	data := dl.cleans.latestStates.Get(nil, hash.Bytes())
 	if data != nil {
 		return data, nil
 	}
@@ -207,11 +202,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	defer dl.lock.RUnlock()
 
 	// TODO: seek from dirty node buffer
-	data, err := dl.buffer.storage(accountHash, storageHash)
-	if err != nil {
-		return nil, err
-	}
-	if data != nil {
+	if data, exist := dl.buffer.storage(accountHash, storageHash); exist {
 		return data, nil
 	}
 	// TODO: seek from clean cache
@@ -321,7 +312,6 @@ func (dl *diskLayer) readStorageTrie(accountHash, storageHash common.Hash) []byt
 	}
 	diskStorageLeftNodeTimer.UpdateSince(start)
 	val, key := trie.DecodeLeafNode(nHash.Bytes(), path[common.HashLength:], nBlob)
-	// log.Info("storage short node info ", "key:", hex.EncodeToString(key), "value:", hex.EncodeToString(val))
 	if bytes.Compare(storageHash.Bytes(), key) == 0 {
 		return val
 	}
