@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
@@ -139,6 +140,7 @@ func (c *committer) store(path []byte, n node) node {
 		// redundancy store for get Account/Storage from trie database directly
 		nhash := common.BytesToHash(hash)
 		c.nodes.AddNode(path, trienode.New(nhash, nodeToBytes(n)))
+		log.Info("Store embedded node", "path=", path, "node= ", n)
 		return n
 	}
 	// Collect the dirty node to nodeset for return.
