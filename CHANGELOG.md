@@ -1,4 +1,7 @@
 # Changelog
+## v1.3.13
+* [\#2358](https://github.com/bnb-chain/bsc/pull/2358) doc: add Feynman upgrade for mainnet
+* [\#2335](https://github.com/bnb-chain/bsc/pull/2335) upgrade: update system contracts bytes code and hardfork time of Feynman upgrade
 
 ## v1.3.12
 BUGFIX
