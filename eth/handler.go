@@ -33,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/monitor"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
-	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
@@ -219,7 +218,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			}
 			h.snapSync.Store(true)
 			log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
-		} else if !h.chain.HasState(fullBlock.Root) {
+		} else if !h.chain.NoTries() && !h.chain.HasState(fullBlock.Root) {
 			h.snapSync.Store(true)
 			log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
 		}
@@ -332,7 +331,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	addTxs := func(peer string, txs []*types.Transaction) []error {
 		errors := h.txpool.Add(txs, false, false)
 		for _, err := range errors {
-			if err == legacypool.ErrInBlackList {
+			if err == txpool.ErrInBlackList {
 				accountBlacklistPeerCounter.Inc(1)
 				p := h.peers.peer(peer)
 				if p != nil {
@@ -795,6 +794,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		} else {
 			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
 		}
+
 		for _, peer := range transfer {
 			peer.AsyncSendNewBlock(block, td)
 		}

@@ -215,8 +215,9 @@ type BlockHeadersRLPPacket struct {
 
 // NewBlockPacket is the network packet for the block propagation message.
 type NewBlockPacket struct {
-	Block *types.Block
-	TD    *big.Int
+	Block    *types.Block
+	TD       *big.Int
+	Sidecars types.BlobSidecars `rlp:"optional"`
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
@@ -229,6 +230,15 @@ func (request *NewBlockPacket) sanityCheck() error {
 	if tdlen := request.TD.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large block TD: bitlen %d", tdlen)
 	}
+
+	if len(request.Sidecars) > 0 {
+		for _, sidecar := range request.Sidecars {
+			if err := sidecar.SanityCheck(request.Block.Number(), request.Block.Hash()); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -267,21 +277,23 @@ type BlockBody struct {
 	Transactions []*types.Transaction // Transactions contained within a block
 	Uncles       []*types.Header      // Uncles contained within a block
 	Withdrawals  []*types.Withdrawal  `rlp:"optional"` // Withdrawals contained within a block
+	Sidecars     types.BlobSidecars   `rlp:"optional"` // Sidecars contained within a block
 }
 
 // Unpack retrieves the transactions and uncles from the range packet and returns
 // them in a split flat format that's more consistent with the internal data structures.
-func (p *BlockBodiesResponse) Unpack() ([][]*types.Transaction, [][]*types.Header, [][]*types.Withdrawal) {
+func (p *BlockBodiesResponse) Unpack() ([][]*types.Transaction, [][]*types.Header, [][]*types.Withdrawal, []types.BlobSidecars) {
 	// TODO(matt): add support for withdrawals to fetchers
 	var (
 		txset         = make([][]*types.Transaction, len(*p))
 		uncleset      = make([][]*types.Header, len(*p))
 		withdrawalset = make([][]*types.Withdrawal, len(*p))
+		sidecarset    = make([]types.BlobSidecars, len(*p))
 	)
 	for i, body := range *p {
-		txset[i], uncleset[i], withdrawalset[i] = body.Transactions, body.Uncles, body.Withdrawals
+		txset[i], uncleset[i], withdrawalset[i], sidecarset[i] = body.Transactions, body.Uncles, body.Withdrawals, body.Sidecars
 	}
-	return txset, uncleset, withdrawalset
+	return txset, uncleset, withdrawalset, sidecarset
 }
 
 // GetReceiptsRequest represents a block receipts query.

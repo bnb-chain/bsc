@@ -2,11 +2,15 @@ package types
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 )
 
@@ -92,4 +96,57 @@ func createEmptyBlobTxInner(withSidecar bool) *BlobTx {
 		blobtx.Sidecar = sidecar
 	}
 	return blobtx
+}
+
+func TestBlobTxSidecars_Encode(t *testing.T) {
+	tests := []struct {
+		raw []*BlobTxSidecar
+		err bool
+	}{
+		{
+			raw: []*BlobTxSidecar{
+				&BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+				&BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+			},
+			err: false,
+		},
+		{
+			raw: []*BlobTxSidecar{
+				&BlobTxSidecar{
+					Blobs:       []kzg4844.Blob{emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+				nil,
+			},
+			err: true,
+		},
+		{
+			raw: []*BlobTxSidecar{},
+			err: false,
+		},
+	}
+
+	for i, item := range tests {
+		t.Run(fmt.Sprintf("case%d", i), func(t *testing.T) {
+			enc, err := rlp.EncodeToBytes(item.raw)
+			require.NoError(t, err)
+			var nbs []*BlobTxSidecar
+			err = rlp.DecodeBytes(enc, &nbs)
+			if item.err {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, item.raw, nbs)
+		})
+	}
 }

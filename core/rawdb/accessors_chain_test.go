@@ -18,13 +18,20 @@ package rawdb
 
 import (
 	"bytes"
+	rand2 "crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math/big"
 	"math/rand"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -412,6 +419,62 @@ func TestBlockReceiptStorage(t *testing.T) {
 	}
 }
 
+func TestBlockBlobSidecarsStorage(t *testing.T) {
+	db := NewMemoryDatabase()
+
+	// Create a live block since we need metadata to reconstruct the receipt
+	genBlobs := makeBlkSidecars(1, 2)
+	tx1 := types.NewTx(&types.BlobTx{
+		ChainID:    new(uint256.Int).SetUint64(1),
+		GasTipCap:  new(uint256.Int),
+		GasFeeCap:  new(uint256.Int),
+		Gas:        0,
+		Value:      new(uint256.Int),
+		Data:       nil,
+		BlobFeeCap: new(uint256.Int),
+		BlobHashes: []common.Hash{common.HexToHash("0x34ec6e64f9cda8fe0451a391e4798085a3ef51a65ed1bfb016e34fc1a2028f8f"), common.HexToHash("0xb9a412e875f29fac436acde234f954e91173c4cf79814f6dcf630d8a6345747f")},
+		Sidecar:    genBlobs[0],
+		V:          new(uint256.Int),
+		R:          new(uint256.Int),
+		S:          new(uint256.Int),
+	})
+	tx2 := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   new(big.Int).SetUint64(1),
+		GasTipCap: new(big.Int),
+		GasFeeCap: new(big.Int),
+		Gas:       0,
+		Value:     new(big.Int),
+		Data:      nil,
+		V:         new(big.Int),
+		R:         new(big.Int),
+		S:         new(big.Int),
+	})
+
+	blkHash := common.BytesToHash([]byte{0x03, 0x14})
+	body := &types.Body{Transactions: types.Transactions{tx1, tx2}}
+	sidecars := types.BlobSidecars{types.NewBlobSidecarFromTx(tx1)}
+
+	// Check that no sidecars entries are in a pristine database
+	if bs := ReadBlobSidecars(db, blkHash, 0); len(bs) != 0 {
+		t.Fatalf("non existent sidecars returned: %v", bs)
+	}
+	WriteBody(db, blkHash, 0, body)
+	WriteBlobSidecars(db, blkHash, 0, sidecars)
+
+	if bs := ReadBlobSidecars(db, blkHash, 0); len(bs) == 0 {
+		t.Fatalf("no sidecars returned")
+	} else {
+		if err := checkBlobSidecarsRLP(bs, sidecars); err != nil {
+			t.Fatalf(err.Error())
+		}
+	}
+
+	DeleteBlobSidecars(db, blkHash, 0)
+	if bs := ReadBlobSidecars(db, blkHash, 0); len(bs) != 0 {
+		t.Fatalf("deleted sidecars returned: %v", bs)
+	}
+}
+
 func checkReceiptsRLP(have, want types.Receipts) error {
 	if len(have) != len(want) {
 		return fmt.Errorf("receipts sizes mismatch: have %d, want %d", len(have), len(want))
@@ -427,6 +490,26 @@ func checkReceiptsRLP(have, want types.Receipts) error {
 		}
 		if !bytes.Equal(rlpHave, rlpWant) {
 			return fmt.Errorf("receipt #%d: receipt mismatch: have %s, want %s", i, hex.EncodeToString(rlpHave), hex.EncodeToString(rlpWant))
+		}
+	}
+	return nil
+}
+
+func checkBlobSidecarsRLP(have, want types.BlobSidecars) error {
+	if len(have) != len(want) {
+		return fmt.Errorf("blobs sizes mismatch: have %d, want %d", len(have), len(want))
+	}
+	for i := 0; i < len(want); i++ {
+		rlpHave, err := rlp.EncodeToBytes(have[i])
+		if err != nil {
+			return err
+		}
+		rlpWant, err := rlp.EncodeToBytes(want[i])
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(rlpHave, rlpWant) {
+			return fmt.Errorf("blob #%d: receipt mismatch: have %s, want %s", i, hex.EncodeToString(rlpHave), hex.EncodeToString(rlpWant))
 		}
 	}
 	return nil
@@ -465,7 +548,8 @@ func TestAncientStorage(t *testing.T) {
 	}
 
 	// Write and verify the header in the database
-	WriteAncientBlocks(db, []*types.Block{block}, []types.Receipts{nil}, big.NewInt(100))
+	_, err = WriteAncientBlocks(db, []*types.Block{block}, []types.Receipts{nil}, big.NewInt(100))
+	require.NoError(t, err)
 
 	if blob := ReadHeaderRLP(db, hash, number); len(blob) == 0 {
 		t.Fatalf("no header returned")
@@ -586,6 +670,7 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 	const blockTxs = 20
 	allBlocks := makeTestBlocks(b.N, blockTxs)
 	batchReceipts := makeTestReceipts(batchSize, blockTxs)
+	batchSidecars := makeTestSidecars(batchSize, blockTxs)
 	b.ResetTimer()
 
 	// The benchmark loop writes batches of blocks, but note that the total block count is
@@ -601,6 +686,9 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 
 		blocks := allBlocks[i : i+length]
 		receipts := batchReceipts[:length]
+		for j := 0; j < length; j++ {
+			blocks[i+j] = blocks[i+j].WithSidecars(batchSidecars[j])
+		}
 		writeSize, err := WriteAncientBlocks(db, blocks, receipts, td)
 		if err != nil {
 			b.Fatal(err)
@@ -661,6 +749,43 @@ func makeTestReceipts(n int, nPerBlock int) []types.Receipts {
 		allReceipts[i] = receipts
 	}
 	return allReceipts
+}
+
+func makeBlkSidecars(n, nPerTx int) []*types.BlobTxSidecar {
+	if n <= 0 {
+		return nil
+	}
+	ret := make([]*types.BlobTxSidecar, n)
+	for i := 0; i < n; i++ {
+		blobs := make([]kzg4844.Blob, nPerTx)
+		commitments := make([]kzg4844.Commitment, nPerTx)
+		proofs := make([]kzg4844.Proof, nPerTx)
+		for i := 0; i < nPerTx; i++ {
+			io.ReadFull(rand2.Reader, blobs[i][:])
+			commitments[i], _ = kzg4844.BlobToCommitment(blobs[i])
+			proofs[i], _ = kzg4844.ComputeBlobProof(blobs[i], commitments[i])
+		}
+		ret[i] = &types.BlobTxSidecar{
+			Blobs:       blobs,
+			Commitments: commitments,
+			Proofs:      proofs,
+		}
+	}
+	return ret
+}
+
+// makeTestSidecars creates fake blobs for the ancient write benchmark.
+func makeTestSidecars(n int, nPerBlock int) []types.BlobSidecars {
+	allBlobs := make([]types.BlobSidecars, n)
+	for i := 0; i < n; i++ {
+		raws := makeBlkSidecars(nPerBlock, i%3)
+		var sidecars types.BlobSidecars
+		for _, s := range raws {
+			sidecars = append(sidecars, &types.BlobSidecar{BlobTxSidecar: *s})
+		}
+		allBlobs[i] = sidecars
+	}
+	return allBlobs
 }
 
 type fullLogRLP struct {

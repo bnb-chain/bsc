@@ -1370,3 +1370,76 @@ func TestRandom(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestResetItems(t *testing.T) {
+	t.Parallel()
+	rm, wm, sg := metrics.NewMeter(), metrics.NewMeter(), metrics.NewGauge()
+	fname := fmt.Sprintf("truncate-tail-%d", rand.Uint64())
+
+	// Fill table
+	f, err := newTable(os.TempDir(), fname, rm, wm, sg, 40, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write 7 x 20 bytes, splitting out into four files
+	batch := f.newBatch(0)
+	require.NoError(t, batch.AppendRaw(0, getChunk(20, 0x00)))
+	require.NoError(t, batch.AppendRaw(1, getChunk(20, 0x11)))
+	require.NoError(t, batch.AppendRaw(2, getChunk(20, 0x22)))
+	require.NoError(t, batch.AppendRaw(3, getChunk(20, 0x33)))
+	require.NoError(t, batch.AppendRaw(4, getChunk(20, 0x44)))
+	require.NoError(t, batch.AppendRaw(5, getChunk(20, 0x55)))
+	require.NoError(t, batch.AppendRaw(6, getChunk(20, 0x66)))
+	require.NoError(t, batch.commit())
+
+	// nothing to do, all the items should still be there.
+	f, err = f.resetItems(0)
+	require.NoError(t, err)
+	f, err = f.resetItems(8)
+	require.NoError(t, err)
+	f, err = f.resetItems(7)
+	require.NoError(t, err)
+	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieveError(t, f, map[uint64]error{
+		0: errOutOfBounds,
+		6: errOutOfBounds,
+	})
+
+	// append
+	batch = f.newBatch(0)
+	require.Error(t, batch.AppendRaw(0, getChunk(20, 0xa0)))
+	require.NoError(t, batch.AppendRaw(7, getChunk(20, 0x77)))
+	require.NoError(t, batch.AppendRaw(8, getChunk(20, 0x88)))
+	require.NoError(t, batch.AppendRaw(9, getChunk(20, 0x99)))
+	require.NoError(t, batch.commit())
+	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieve(t, f, map[uint64][]byte{
+		7: getChunk(20, 0x77),
+		9: getChunk(20, 0x99),
+	})
+
+	// Reopen the table, the deletion information should be persisted as well
+	f.Close()
+	f, err = newTable(os.TempDir(), fname, rm, wm, sg, 40, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieveError(t, f, map[uint64]error{
+		0:  errOutOfBounds,
+		6:  errOutOfBounds,
+		10: errOutOfBounds,
+	})
+	checkRetrieve(t, f, map[uint64][]byte{
+		7: getChunk(20, 0x77),
+		9: getChunk(20, 0x99),
+	})
+
+	// truncate all, the entire freezer should be deleted
+	f.truncateTail(10)
+	checkRetrieveError(t, f, map[uint64]error{
+		0: errOutOfBounds,
+		9: errOutOfBounds,
+	})
+}

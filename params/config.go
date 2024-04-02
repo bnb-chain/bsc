@@ -148,11 +148,12 @@ var (
 		HertzBlock:          big.NewInt(31302048),
 		HertzfixBlock:       big.NewInt(34140700),
 		// UnixTime: 1705996800 is January 23, 2024 8:00:00 AM UTC
-		ShanghaiTime: newUint64(1705996800),
-		KeplerTime:   newUint64(1705996800),
-
-		// TODO
-		FeynmanTime: nil,
+		ShanghaiTime:   newUint64(1705996800),
+		KeplerTime:     newUint64(1705996800),
+		FeynmanTime:    newUint64(1713419340),
+		FeynmanFixTime: newUint64(1713419340),
+		// TODO(GalaIO): enable cancun fork time later
+		//CancunTime: newUint64(),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -191,6 +192,8 @@ var (
 		KeplerTime:     newUint64(1702972800),
 		FeynmanTime:    newUint64(1710136800),
 		FeynmanFixTime: newUint64(1711342800),
+		// TODO(GalaIO): enable cancun fork time later
+		//CancunTime: newUint64(),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -229,6 +232,7 @@ var (
 		KeplerTime:          newUint64(0),
 		FeynmanTime:         newUint64(0),
 		FeynmanFixTime:      newUint64(0),
+		CancunTime:          newUint64(0),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -262,6 +266,11 @@ var (
 		LondonBlock:         big.NewInt(0),
 		HertzBlock:          big.NewInt(0),
 		HertzfixBlock:       big.NewInt(0),
+		ShanghaiTime:        newUint64(0),
+		KeplerTime:          newUint64(0),
+		FeynmanTime:         newUint64(0),
+		FeynmanFixTime:      newUint64(0),
+		CancunTime:          newUint64(0),
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -599,7 +608,12 @@ func (c *ChainConfig) String() string {
 		FeynmanFixTime = big.NewInt(0).SetUint64(*c.FeynmanFixTime)
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, Engine: %v}",
+	var CancunTime *big.Int
+	if c.CancunTime != nil {
+		CancunTime = big.NewInt(0).SetUint64(*c.CancunTime)
+	}
+
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -635,6 +649,7 @@ func (c *ChainConfig) String() string {
 		KeplerTime,
 		FeynmanTime,
 		FeynmanFixTime,
+		CancunTime,
 		engine,
 	)
 }
@@ -964,7 +979,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "keplerTime", timestamp: c.KeplerTime},
 		{name: "feynmanTime", timestamp: c.FeynmanTime},
 		{name: "feynmanFixTime", timestamp: c.FeynmanFixTime},
-		{name: "cancunTime", timestamp: c.CancunTime, optional: true},
+		{name: "cancunTime", timestamp: c.CancunTime},
 		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 	} {

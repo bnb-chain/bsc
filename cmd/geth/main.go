@@ -74,6 +74,9 @@ var (
 		utils.OverrideVerkle,
 		utils.OverrideFeynman,
 		utils.OverrideFeynmanFix,
+		utils.OverrideFullImmutabilityThreshold,
+		utils.OverrideMinBlocksForBlobRequests,
+		utils.OverrideDefaultExtraReserveForBlobRequests,
 		utils.EnablePersonal,
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
@@ -172,6 +175,7 @@ var (
 		utils.VoteJournalDirFlag,
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
+		utils.BlobExtraReserveFlag,
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{

@@ -1053,7 +1053,7 @@ func (b *Block) Withdrawals(ctx context.Context) (*[]*Withdrawal, error) {
 		return nil, err
 	}
 	// Pre-shanghai blocks
-	if block.Header().WithdrawalsHash == nil {
+	if block.Header().EmptyWithdrawalsHash() {
 		return nil, nil
 	}
 	ret := make([]*Withdrawal, 0, len(block.Withdrawals()))

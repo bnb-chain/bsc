@@ -96,7 +96,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 		},
 		func() error {
 			// Withdrawals are present after the Shanghai fork.
-			if header.WithdrawalsHash != nil {
+			if !header.EmptyWithdrawalsHash() {
 				// Withdrawals list must be present in body after Shanghai.
 				if block.Withdrawals() == nil {
 					return errors.New("missing withdrawals in block body")
@@ -104,7 +104,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 				if hash := types.DeriveSha(block.Withdrawals(), trie.NewStackTrie(nil)); hash != *header.WithdrawalsHash {
 					return fmt.Errorf("withdrawals root hash mismatch (header value %x, calculated %x)", *header.WithdrawalsHash, hash)
 				}
-			} else if block.Withdrawals() != nil {
+			} else if len(block.Withdrawals()) != 0 { // Withdrawals turn into empty from nil when BlockBody has Sidecars
 				// Withdrawals are not allowed prior to shanghai fork
 				return errors.New("withdrawals present in block body")
 			}

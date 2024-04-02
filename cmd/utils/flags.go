@@ -321,8 +321,25 @@ var (
 		Category: flags.EthCategory,
 	}
 	OverrideFeynmanFix = &cli.Uint64Flag{
-		Name:     "override.feynmanfix",
-		Usage:    "Manually specify the FeynmanFix fork timestamp, overriding the bundled setting",
+		Name:  "override.feynmanfix",
+		Usage: "Manually specify the FeynmanFix fork timestamp, overriding the bundled setting",
+	}
+	OverrideFullImmutabilityThreshold = &cli.Uint64Flag{
+		Name:     "override.immutabilitythreshold",
+		Usage:    "It is the number of blocks after which a chain segment is considered immutable, only for testing purpose",
+		Value:    params.FullImmutabilityThreshold,
+		Category: flags.EthCategory,
+	}
+	OverrideMinBlocksForBlobRequests = &cli.Uint64Flag{
+		Name:     "override.minforblobrequest",
+		Usage:    "It keeps blob data available for min blocks in local, only for testing purpose",
+		Value:    params.MinBlocksForBlobRequests,
+		Category: flags.EthCategory,
+	}
+	OverrideDefaultExtraReserveForBlobRequests = &cli.Uint64Flag{
+		Name:     "override.defaultextrareserve",
+		Usage:    "It adds more extra time for expired blobs for some request cases, only for testing purpose",
+		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.EthCategory,
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
@@ -1100,6 +1117,14 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:     "vote-journal-path",
 		Usage:    "Path for the voteJournal dir in fast finality feature (default = inside the datadir)",
 		Category: flags.FastFinalityCategory,
+	}
+
+	// Blob setting
+	BlobExtraReserveFlag = &cli.Uint64Flag{
+		Name:     "blob.extra-reserve",
+		Usage:    "Extra reserve threshold for blob, blob never expires when 0 is set, default 28800",
+		Value:    params.DefaultExtraReserveForBlobRequests,
+		Category: flags.MiscCategory,
 	}
 )
 
@@ -2134,6 +2159,18 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if err := kzg4844.UseCKZG(ctx.String(CryptoKZGFlag.Name) == "ckzg"); err != nil {
 		Fatalf("Failed to set KZG library implementation to %s: %v", ctx.String(CryptoKZGFlag.Name), err)
 	}
+
+	// blob setting
+	if ctx.IsSet(OverrideDefaultExtraReserveForBlobRequests.Name) {
+		cfg.BlobExtraReserve = ctx.Uint64(OverrideDefaultExtraReserveForBlobRequests.Name)
+	}
+	if ctx.IsSet(BlobExtraReserveFlag.Name) {
+		extraReserve := ctx.Uint64(BlobExtraReserveFlag.Name)
+		if extraReserve > 0 && extraReserve < params.DefaultExtraReserveForBlobRequests {
+			extraReserve = params.DefaultExtraReserveForBlobRequests
+		}
+		cfg.BlobExtraReserve = extraReserve
+	}
 }
 
 // SetDNSDiscoveryDefaults configures DNS discovery with the given URL if
@@ -2193,7 +2230,7 @@ func EnableBuildInfo(gitCommit, gitDate string) SetupMetricsOption {
 	}
 }
 
-func EnableMinerInfo(ctx *cli.Context, minerConfig miner.Config) SetupMetricsOption {
+func EnableMinerInfo(ctx *cli.Context, minerConfig *miner.Config) SetupMetricsOption {
 	return func() {
 		if ctx.Bool(MiningEnabledFlag.Name) {
 			// register miner info into metrics
@@ -2216,10 +2253,13 @@ func RegisterFilterAPI(stack *node.Node, backend ethapi.Backend, ethcfg *ethconf
 	return filterSystem
 }
 
-func EnableNodeInfo(poolConfig legacypool.Config) SetupMetricsOption {
+func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) SetupMetricsOption {
 	return func() {
 		// register node info into metrics
 		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
+			"Enode":        nodeInfo.Enode,
+			"ENR":          nodeInfo.ENR,
+			"ID":           nodeInfo.ID,
 			"PriceLimit":   poolConfig.PriceLimit,
 			"PriceBump":    poolConfig.PriceBump,
 			"AccountSlots": poolConfig.AccountSlots,

@@ -26,6 +26,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/ethereum/go-ethereum/eth/downloader"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -199,6 +201,16 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideFeynmanFix.Name)
 		cfg.Eth.OverrideFeynmanFix = &v
 	}
+	if ctx.IsSet(utils.OverrideFullImmutabilityThreshold.Name) {
+		params.FullImmutabilityThreshold = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
+		downloader.FullMaxForkAncestry = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
+	}
+	if ctx.IsSet(utils.OverrideMinBlocksForBlobRequests.Name) {
+		params.MinBlocksForBlobRequests = ctx.Uint64(utils.OverrideMinBlocksForBlobRequests.Name)
+	}
+	if ctx.IsSet(utils.OverrideDefaultExtraReserveForBlobRequests.Name) {
+		params.DefaultExtraReserveForBlobRequests = ctx.Uint64(utils.OverrideDefaultExtraReserveForBlobRequests.Name)
+	}
 	if ctx.IsSet(utils.SeparateDBFlag.Name) && !stack.IsSeparatedDB() {
 		utils.Fatalf("Failed to locate separate database subdirectory when separatedb parameter has been set")
 	}
@@ -233,8 +245,8 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	git, _ := version.VCS()
 	utils.SetupMetrics(ctx,
 		utils.EnableBuildInfo(git.Commit, git.Date),
-		utils.EnableMinerInfo(ctx, cfg.Eth.Miner),
-		utils.EnableNodeInfo(cfg.Eth.TxPool),
+		utils.EnableMinerInfo(ctx, &cfg.Eth.Miner),
+		utils.EnableNodeInfo(&cfg.Eth.TxPool, stack.Server().NodeInfo()),
 	)
 	return stack, backend
 }

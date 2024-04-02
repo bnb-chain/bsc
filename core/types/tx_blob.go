@@ -54,9 +54,9 @@ type BlobTx struct {
 
 // BlobTxSidecar contains the blobs of a blob transaction.
 type BlobTxSidecar struct {
-	Blobs       []kzg4844.Blob       // Blobs needed by the blob pool
-	Commitments []kzg4844.Commitment // Commitments needed by the blob pool
-	Proofs      []kzg4844.Proof      // Proofs needed by the blob pool
+	Blobs       []kzg4844.Blob       `json:"blobs"`       // Blobs needed by the blob pool
+	Commitments []kzg4844.Commitment `json:"commitments"` // Commitments needed by the blob pool
+	Proofs      []kzg4844.Proof      `json:"proofs"`      // Proofs needed by the blob pool
 }
 
 // BlobHashes computes the blob hashes of the given blobs.

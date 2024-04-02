@@ -130,6 +130,26 @@ func (ec *Client) BlockReceipts(ctx context.Context, blockNrOrHash rpc.BlockNumb
 	return r, err
 }
 
+// BlobSidecars return the Sidecars of a given block number or hash.
+func (ec *Client) BlobSidecars(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) ([]*types.BlobTxSidecar, error) {
+	var r []*types.BlobTxSidecar
+	err := ec.c.CallContext(ctx, &r, "eth_getBlobSidecars", blockNrOrHash.String())
+	if err == nil && r == nil {
+		return nil, ethereum.NotFound
+	}
+	return r, err
+}
+
+// BlobSidecarByTxHash return a sidecar of a given blob transaction
+func (ec *Client) BlobSidecarByTxHash(ctx context.Context, hash common.Hash) (*types.BlobTxSidecar, error) {
+	var r *types.BlobTxSidecar
+	err := ec.c.CallContext(ctx, &r, "eth_getBlockSidecarByTxHash", hash)
+	if err == nil && r == nil {
+		return nil, ethereum.NotFound
+	}
+	return r, err
+}
+
 type rpcBlock struct {
 	Hash         common.Hash         `json:"hash"`
 	Transactions []rpcTransaction    `json:"transactions"`

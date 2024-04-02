@@ -57,7 +57,7 @@ var pregenerated bool
 
 func init() {
 	// Reduce some of the parameters to make the tester faster
-	fullMaxForkAncestry = 10000
+	FullMaxForkAncestry = 10000
 	lightMaxForkAncestry = 10000
 	blockCacheMaxItems = 1024
 	fsHeaderSafetyNet = 256
@@ -65,7 +65,7 @@ func init() {
 
 	testChainBase = newTestChain(blockCacheMaxItems+200, testGenesis)
 
-	var forkLen = int(fullMaxForkAncestry + 50)
+	var forkLen = int(FullMaxForkAncestry + 50)
 	var wg sync.WaitGroup
 
 	// Generate the test chains to seed the peers with

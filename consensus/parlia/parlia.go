@@ -583,14 +583,6 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return err
 	}
 
-	// Verify existence / non-existence of withdrawalsHash.
-	if header.WithdrawalsHash != nil {
-		return fmt.Errorf("invalid withdrawalsHash: have %x, expected nil", header.WithdrawalsHash)
-	}
-	// Verify the existence / non-existence of cancun-specific header fields
-	if header.ParentBeaconRoot != nil {
-		return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
-	}
 	cancun := chain.Config().IsCancun(header.Number, header.Time)
 	if !cancun {
 		switch {
@@ -598,8 +590,20 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
 		case header.BlobGasUsed != nil:
 			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
+		case header.ParentBeaconRoot != nil:
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+		case header.WithdrawalsHash != nil:
+			return fmt.Errorf("invalid WithdrawalsHash, have %#x, expected nil", header.WithdrawalsHash)
 		}
 	} else {
+		switch {
+		case header.ParentBeaconRoot != nil:
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+		// types.EmptyWithdrawalsHash represents a empty value when EIP-4895 enabled,
+		// here, EIP-4895 still be disabled, value expected to be `types.EmptyWithdrawalsHash` is only to feet the demand of rlp encode/decode
+		case header.WithdrawalsHash == nil || *header.WithdrawalsHash != types.EmptyWithdrawalsHash:
+			return errors.New("header has wrong WithdrawalsHash")
+		}
 		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
 			return err
 		}
@@ -697,10 +701,8 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 			}
 		}
 
-		// If we're at the genesis, snapshot the initial state. Alternatively if we have
-		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
-		// consider the checkpoint trusted and snapshot it.
-		if number == 0 || (number%p.config.Epoch == 0 && (len(headers) > params.FullImmutabilityThreshold/10)) {
+		// If we're at the genesis, snapshot the initial state.
+		if number == 0 {
 			checkpoint := chain.GetHeaderByNumber(number)
 			if checkpoint != nil {
 				// get checkpoint data
@@ -714,12 +716,10 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 
 				// new snapshot
 				snap = newSnapshot(p.config, p.signatures, number, hash, validators, voteAddrs, p.ethAPI)
-				if snap.Number%checkpointInterval == 0 { // snapshot will only be loaded when snap.Number%checkpointInterval == 0
-					if err := snap.store(p.db); err != nil {
-						return nil, err
-					}
-					log.Info("Stored checkpoint snapshot to disk", "number", number, "hash", hash)
+				if err := snap.store(p.db); err != nil {
+					return nil, err
 				}
+				log.Info("Stored checkpoint snapshot to disk", "number", number, "hash", hash)
 				break
 			}
 		}

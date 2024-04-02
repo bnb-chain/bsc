@@ -445,6 +445,10 @@ func (g *Genesis) ToBlock() *types.Block {
 			withdrawals = make([]*types.Withdrawal, 0)
 		}
 		if conf.IsCancun(num, g.Timestamp) {
+			if conf.Parlia != nil {
+				head.WithdrawalsHash = &types.EmptyWithdrawalsHash
+			}
+
 			// EIP-4788: The parentBeaconBlockRoot of the genesis block is always
 			// the zero hash. This is because the genesis block does not have a parent
 			// by definition.

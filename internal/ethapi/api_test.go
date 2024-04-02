@@ -58,6 +58,11 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+var emptyBlob = kzg4844.Blob{}
+var emptyBlobCommit, _ = kzg4844.BlobToCommitment(emptyBlob)
+var emptyBlobProof, _ = kzg4844.ComputeBlobProof(emptyBlob, emptyBlobCommit)
+var emptyBlobHash common.Hash = kzg4844.CalcBlobHashV1(sha256.New(), &emptyBlobCommit)
+
 func testTransactionMarshal(t *testing.T, tests []txData, config *params.ChainConfig) {
 	t.Parallel()
 	var (
@@ -562,6 +567,15 @@ func (b testBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.R
 	}
 	receipts := rawdb.ReadReceipts(b.db, hash, header.Number.Uint64(), header.Time, b.chain.Config())
 	return receipts, nil
+}
+
+func (b testBackend) GetBlobSidecars(ctx context.Context, hash common.Hash) (types.BlobSidecars, error) {
+	header, err := b.HeaderByHash(ctx, hash)
+	if header == nil || err != nil {
+		return nil, err
+	}
+	blobSidecars := rawdb.ReadBlobSidecars(b.db, hash, header.Number.Uint64())
+	return blobSidecars, nil
 }
 func (b testBackend) GetTd(ctx context.Context, hash common.Hash) *big.Int {
 	if b.pending != nil && hash == b.pending.Hash() {
@@ -1121,10 +1135,6 @@ func TestFillBlobTransaction(t *testing.T) {
 			Config: params.MergedTestChainConfig,
 			Alloc:  types.GenesisAlloc{},
 		}
-		emptyBlob                      = kzg4844.Blob{}
-		emptyBlobCommit, _             = kzg4844.BlobToCommitment(emptyBlob)
-		emptyBlobProof, _              = kzg4844.ComputeBlobProof(emptyBlob, emptyBlobCommit)
-		emptyBlobHash      common.Hash = kzg4844.CalcBlobHashV1(sha256.New(), &emptyBlobCommit)
 	)
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
@@ -1889,6 +1899,28 @@ func setupReceiptBackend(t *testing.T, genBlocks int) (*testBackend, []common.Ha
 				BlobHashes: []common.Hash{{1}},
 				Value:      new(uint256.Int),
 			}), signer, acc1Key)
+
+		case 6:
+			// blob tx with blobSidecar
+			blobSidecars := makeBlkSidecars(1, 1)
+			blobHashes := blobSidecars[0].BlobHashes()
+			fee := big.NewInt(500)
+			fee.Add(fee, b.BaseFee())
+			tx, err = types.SignTx(types.NewTx(&types.BlobTx{
+				Nonce:      uint64(i),
+				GasTipCap:  uint256.NewInt(1),
+				GasFeeCap:  uint256.MustFromBig(fee),
+				Gas:        params.TxGas,
+				To:         acc2Addr,
+				BlobFeeCap: uint256.NewInt(1),
+				BlobHashes: blobHashes,
+				Value:      new(uint256.Int),
+			}), signer, acc1Key)
+			b.AddBlobSidecar(&types.BlobSidecar{
+				BlobTxSidecar: *blobSidecars[0],
+				TxHash:        tx.Hash(),
+				TxIndex:       0,
+			})
 		}
 		if err != nil {
 			t.Errorf("failed to sign tx: %v", err)
@@ -2064,6 +2096,156 @@ func TestRPCGetBlockReceipts(t *testing.T) {
 			continue
 		}
 		testRPCResponseWithFile(t, i, result, "eth_getBlockReceipts", tt.file)
+	}
+}
+
+func makeBlkSidecars(n, nPerTx int) []*types.BlobTxSidecar {
+	if n <= 0 {
+		return nil
+	}
+	ret := make([]*types.BlobTxSidecar, n)
+	for i := 0; i < n; i++ {
+		blobs := make([]kzg4844.Blob, nPerTx)
+		commitments := make([]kzg4844.Commitment, nPerTx)
+		proofs := make([]kzg4844.Proof, nPerTx)
+		for i := 0; i < nPerTx; i++ {
+			commitments[i], _ = kzg4844.BlobToCommitment(blobs[i])
+			proofs[i], _ = kzg4844.ComputeBlobProof(blobs[i], commitments[i])
+		}
+		ret[i] = &types.BlobTxSidecar{
+			Blobs:       blobs,
+			Commitments: commitments,
+			Proofs:      proofs,
+		}
+	}
+	return ret
+}
+
+func TestRPCGetBlobSidecars(t *testing.T) {
+	t.Parallel()
+	var (
+		genBlocks  = 7
+		backend, _ = setupReceiptBackend(t, genBlocks)
+		api        = NewBlockChainAPI(backend)
+	)
+	blockHashes := make([]common.Hash, genBlocks+1)
+	ctx := context.Background()
+	for i := 0; i <= genBlocks; i++ {
+		header, err := backend.HeaderByNumber(ctx, rpc.BlockNumber(i))
+		if err != nil {
+			t.Errorf("failed to get block: %d err: %v", i, err)
+		}
+		blockHashes[i] = header.Hash()
+	}
+
+	var testSuite = []struct {
+		test rpc.BlockNumberOrHash
+		file string
+	}{
+		// 1. block without any txs(number)
+		{
+			test: rpc.BlockNumberOrHashWithNumber(0),
+			file: "number-1",
+		},
+		// 2. earliest tag
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.EarliestBlockNumber),
+			file: "tag-earliest",
+		},
+		// 3. latest tag
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+			file: "tag-latest",
+		},
+		// 4. block is empty
+		{
+			test: rpc.BlockNumberOrHashWithHash(common.Hash{}, false),
+			file: "hash-empty",
+		},
+		// 5. block is not found
+		{
+			test: rpc.BlockNumberOrHashWithHash(common.HexToHash("deadbeef"), false),
+			file: "hash-notfound",
+		},
+		// 6. block is not found
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(genBlocks + 1)),
+			file: "block-notfound",
+		},
+		// 7. block with blob tx
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(6)),
+			file: "block-with-blob-tx",
+		},
+		// 8. block with sidecar
+		{
+			test: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(7)),
+			file: "block-with-blobSidecars",
+		},
+	}
+
+	for i, tt := range testSuite {
+		var (
+			result interface{}
+			err    error
+		)
+		result, err = api.GetBlobSidecars(context.Background(), tt.test)
+		if err != nil {
+			t.Errorf("test %d: want no error, have %v", i, err)
+			continue
+		}
+		testRPCResponseWithFile(t, i, result, "eth_getBlobSidecars", tt.file)
+	}
+}
+
+func TestGetBlobSidecarByTxHash(t *testing.T) {
+	t.Parallel()
+	var (
+		backend, txHashs = setupReceiptBackend(t, 7)
+		api              = NewBlockChainAPI(backend)
+	)
+	var testSuite = []struct {
+		test common.Hash
+		file string
+	}{
+		// 0. txHash is empty
+		{
+			test: common.Hash{},
+			file: "hash-empty",
+		},
+		// 1. txHash is not found
+		{
+			test: common.HexToHash("deadbeef"),
+			file: "hash-notfound",
+		},
+		// 2. txHash is not blob tx
+		{
+			test: common.HexToHash("deadbeef"),
+			file: "not-blob-tx",
+		},
+		// 3. block with blob tx without sidecar
+		{
+			test: txHashs[5],
+			file: "block-with-blob-tx",
+		},
+		// 4. block with sidecar
+		{
+			test: txHashs[6],
+			file: "block-with-blobSidecars",
+		},
+	}
+
+	for i, tt := range testSuite {
+		var (
+			result interface{}
+			err    error
+		)
+		result, err = api.GetBlobSidecarByTxHash(context.Background(), tt.test)
+		if err != nil {
+			t.Errorf("test %d: want no error, have %v", i, err)
+			continue
+		}
+		testRPCResponseWithFile(t, i, result, "eth_getBlobSidecarByTxHash", tt.file)
 	}
 }
 

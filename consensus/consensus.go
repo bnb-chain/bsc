@@ -58,6 +58,9 @@ type ChainHeaderReader interface {
 
 	// GetHighestVerifiedHeader retrieves the highest header verified.
 	GetHighestVerifiedHeader() *types.Header
+
+	// ChasingHead return the best chain head of peers.
+	ChasingHead() *types.Header
 }
 
 type VotePool interface {

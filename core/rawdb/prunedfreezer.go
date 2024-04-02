@@ -312,6 +312,10 @@ func (f *prunedfreezer) freeze() {
 	}
 }
 
+func (f *prunedfreezer) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return nil
+}
+
 func (f *prunedfreezer) ReadAncients(fn func(ethdb.AncientReaderOp) error) (err error) {
 	return fn(f)
 }
@@ -322,4 +326,14 @@ func (f *prunedfreezer) AncientRange(kind string, start, count, maxBytes uint64)
 
 func (f *prunedfreezer) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, error) {
 	return 0, errNotSupported
+}
+
+// TruncateTableTail will truncate certain table to new tail
+func (f *prunedfreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	return 0, errNotSupported
+}
+
+// ResetTable will reset certain table with new start point
+func (f *prunedfreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	return errNotSupported
 }
