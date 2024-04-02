@@ -443,8 +443,13 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 	for h, _ := range nc.DestructSet {
 		clean.latestStates.Del(h.Bytes())
 	}
+
 	for h, acc := range nc.LatestAccounts {
-		clean.latestStates.Set(h.Bytes(), acc)
+		if acc == nil {
+			clean.latestStates.Del(h.Bytes())
+		} else {
+			clean.latestStates.Set(h.Bytes(), acc)
+		}
 	}
 
 	// Flush all mutations in a single batch
