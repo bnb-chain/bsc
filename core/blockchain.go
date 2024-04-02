@@ -412,7 +412,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// Make sure the state associated with the block is available, or log out
 	// if there is no available state, waiting for state sync.
 	head := bc.CurrentBlock()
-	if !bc.NoTries() && !bc.HasState(head.Root) {
+	if !bc.HasState(head.Root) {
 		if head.Number.Uint64() == 0 {
 			// The genesis state is missing, which is only possible in the path-based
 			// scheme. This situation occurs when the initial state sync is not finished
