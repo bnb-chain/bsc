@@ -1717,9 +1717,9 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	rawdb.WriteBlock(blockBatch, block)
 	// if cancun is enabled, here need to write sidecars too
 	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-		rawdb.WriteBlobSidecars(batch, block.Hash(), block.NumberU64(), block.Sidecars())
+		rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 	}
-	if err := batch.Write(); err != nil {
+	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
 	return nil

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -184,6 +185,9 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			continue
 		}
 
+		headNum := f.readHeadNumber(db)
+		hash := ReadHeadBlockHash(nfdb)
+		head := ReadHeader(nfdb, hash, headNum)
 		threshold, err := f.freezeThreshold(nfdb)
 		if err != nil {
 			backoff = true
@@ -208,7 +212,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			last = freezerBatchLimit + first - 1
 		}
 
-		ancients, err := f.freezeRangeWithBlobs(nfdb, first, limit)
+		ancients, err := f.freezeRangeWithBlobs(nfdb, first, last)
 		if err != nil {
 			log.Error("Error in block freeze operation", "err", err)
 			backoff = true
@@ -296,7 +300,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv)
 		// try prune blob data after cancun fork
 		if isCancun(env, head.Number, head.Time) {
-			f.tryPruneBlobAncientTable(env, *number)
+			f.tryPruneBlobAncientTable(env, headNum)
 		}
 
 		// Avoid database thrashing with tiny writes
