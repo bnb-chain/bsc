@@ -1,4 +1,24 @@
 # Changelog
+## v1.4.4
+### FEATURE
+* [\#2279](https://github.com/bnb-chain/bsc/pull/2279) BlobTx: implement EIP-4844 on BSC
+* [\#2337](https://github.com/bnb-chain/bsc/pull/2337) 4844: bugfix and improve
+* [\#2339](https://github.com/bnb-chain/bsc/pull/2339) fix: missing block asigment WithSidecars
+* [\#2350](https://github.com/bnb-chain/bsc/pull/2350) cancun: change empty withdrawHash value of header
+* [\#2335](https://github.com/bnb-chain/bsc/pull/2335) upgrade: update system contracts bytes code and hardfork time of Feynman upgrade
+* [\#2323](https://github.com/bnb-chain/bsc/pull/2323) feat: export GasCeil in mev_params
+* [\#2357](https://github.com/bnb-chain/bsc/pull/2357) feat: add bid fee ceil in mev_params
+
+### IMPROVEMENT
+* [\#2321](https://github.com/bnb-chain/bsc/pull/2321) test: use full syncmode to run rpc node
+* [\#2338](https://github.com/bnb-chain/bsc/pull/2338) cmd: include more node info in metrics
+* [\#2342](https://github.com/bnb-chain/bsc/pull/2342) p2p: add metrics for inbound/outbound peers
+* [\#2334](https://github.com/bnb-chain/bsc/pull/2334) core: improve chain rewinding mechanism
+* [\#2352](https://github.com/bnb-chain/bsc/pull/2352) core: fix block report when chain is not setHead
+
+### BUGFIX
+NA
+
 ## v1.4.3
 ### FEATURE
 * [\#2241](https://github.com/bnb-chain/bsc/pull/2241) cmd/utils, core/rawdb, triedb/pathdb: flip hash to path scheme
