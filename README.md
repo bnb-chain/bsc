@@ -1,311 +1,83 @@
-## BNB Smart Chain
+## Overview
 
-The goal of BNB Smart Chain is to bring programmability and interoperability to BNB Beacon Chain. In order to embrace the existing popular community and advanced technology, it will bring huge benefits by staying compatible with all the existing smart contracts on Ethereum and Ethereum tooling. And to achieve that, the easiest solution is to develop based on go-ethereum fork, as we respect the great work of Ethereum very much.
+The BSC network has introduced the [Builder API Specification](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP322.md) to establish a fair and unified MEV market. Previously, BSC clients lacked native support for validators to integrate with multiple MEV providers at once. The network became unstable because of the many different versions of the client software being used. The latest BSC client adopts the [Proposer-Builder Separation](https://ethereum.org/en/roadmap/pbs/) model. Within this unified framework, several aspects of the BSC network have been improved:
 
-BNB Smart Chain starts its development based on go-ethereum fork. So you may see many toolings, binaries and also docs are based on Ethereum ones, such as the name “geth”.
+- Stability: Validators only need to use the official client to seamlessly integrate with various Builders.
+- Economy: Builders that can enter without permission promote healthy market competition. Validators can extract more value by integrating with more builders, which benefits delegators as well.
+- Transparency: This specification aims to bring transparency to the BSC MEV market, exposing profit distribution among stakeholders to the public.
 
-[![API Reference](
-https://pkg.go.dev/badge/github.com/ethereum/go-ethereum
-)](https://pkg.go.dev/github.com/ethereum/go-ethereum?tab=doc)
-[![Discord](https://img.shields.io/badge/discord-join%20chat-blue.svg)](https://discord.gg/z2VpC455eU)
+This project represents a minimal implementation of the protocol and is provided as is. We make no guarantees regarding its functionality or security.
 
-But from that baseline of EVM compatible, BNB Smart Chain introduces  a system of 21 validators with Proof of Staked Authority (PoSA) consensus that can support short block time and lower fees. The most bonded validator candidates of staking will become validators and produce blocks. The double-sign detection and other slashing logic guarantee security, stability, and chain finality.
+## What is MEV and PBS
 
-Cross-chain transfer and other communication are possible due to native support of interoperability. Relayers and on-chain contracts are developed to support that. BNB Beacon Chain DEX remains a liquid venue of the exchange of assets on both chains. This dual-chain architecture will be ideal for users to take advantage of the fast trading on one side and build their decentralized apps on the other side. **The BNB Smart Chain** will be:
+MEV, also known as Maximum (or Miner) Extractable Value, can be described as the measure of total value that may be extracted from transaction ordering. Common examples include arbitraging swaps on decentralized exchanges or identifying opportunities to liquidate DeFi positions. Maximizing MEV requires advanced technical expertise and custom software integrated into regular validators. The returns are likely higher with centralized operators.
 
-- **A self-sovereign blockchain**: Provides security and safety with elected validators.
-- **EVM-compatible**: Supports all the existing Ethereum tooling along with faster finality and cheaper transaction fees.
-- **Interoperable**: Comes with efficient native dual chain communication; Optimized for scaling high-performance dApps that require fast and smooth user experience.
-- **Distributed with on-chain governance**: Proof of Staked Authority brings in decentralization and community participants. As the native token, BNB will serve as both the gas of smart contract execution and tokens for staking.
+Proposer-builder separation(PBS) solves this problem by reconfiguring the economics of MEV. Block builders create blocks and submit them to the block proposer, and the block proposer simply chooses the most profitable one, paying a fee to the block builder. This means even if a small group of specialized block builders dominate MEV extraction, the reward still goes to any validator on the network.
 
-More details in [White Paper](https://www.bnbchain.org/en#smartChain).
+## How it Works on BSC
 
-## Key features
+![PBS Workflow](./docs/assets/pbs_workflow.png)
 
-### Proof of Staked Authority 
-Although Proof-of-Work (PoW) has been approved as a practical mechanism to implement a decentralized network, it is not friendly to the environment and also requires a large size of participants to maintain the security. 
+The figure above illustrates the basic workflow of PBS operating on the BSC network.
 
-Proof-of-Authority(PoA) provides some defense to 51% attack, with improved efficiency and tolerance to certain levels of Byzantine players (malicious or hacked). 
-Meanwhile, the PoA protocol is most criticized for being not as decentralized as PoW, as the validators, i.e. the nodes that take turns to produce blocks, have all the authorities and are prone to corruption and security attacks.
+- MEV Searchers are independent network participants who detect profitable MEV opportunities and submit their transactions to builders. Transactions from searchers are usually bundled together and included in a block, or none of them will be included.
+- The builder collects transactions from various sources to create an unsealed block and offer it to the block proposer. The builder will specify in the request the amount of fees the proposer needs to pay to the builder if this block is adopted. The unsealed block from the builder is also called a block bid as it may request tips.
+- The proposer chooses the most profitable block from multiple builders, and pays the fee to the builder by appending a payment transaction at the end of the block.
 
-Other blockchains, such as EOS and Cosmos both, introduce different types of Deputy Proof of Stake (DPoS) to allow the token holders to vote and elect the validator set. It increases the decentralization and favors community governance. 
+A new component called "Sentry" has been introduced to enhance network security and account isolation. It assists proposers in communicating with builders and enables payment processing.
 
-To combine DPoS and PoA for consensus, BNB Smart Chain implement a novel consensus engine called Parlia that:
+## What is More
 
-1. Blocks are produced by a limited set of validators.
-2. Validators take turns to produce blocks in a PoA manner, similar to Ethereum's Clique consensus engine.
-3. Validator set are elected in and out based on a staking based governance on BNB Beacon Chain.
-4. The validator set change is relayed via a cross-chain communication mechanism.
-5. Parlia consensus engine will interact with a set of [system contracts](https://docs.bnbchain.org/docs/learn/system-contract) to achieve liveness slash, revenue distributing and validator set renewing func.
+The PBS model on BSC differs in several aspects from its implementation on Ethereum. This is primarily due to：
 
- 
-### Light Client of BNB Beacon Chain
+1. Different Trust Model. Validators in the BNB Smart Chain are considered more trustworthy, as it requires substantial BNB delegation and must maintain a high reputation. This stands in contrast to Ethereum, where becoming an Ethereum validator is much easier, the barrier to becoming a validator is very low (i.e., 32 ETH).
+2. Different Consensus Algorithms. In Ethereum, a block header is transferred from a builder to a validator for signing, allowing the block to be broadcasted to the network without disclosing the transactions to the validator. In contrast, in BSC, creating a valid block header requires executing transactions and system contract calls (such as transferring reward and depositing to the validator set contract), making it impossible for builders to propose the whole block.
+3. Different Blocking Time. With a shorter block time of 3 seconds in BSC compared to Ethereum's 12 seconds, designing for time efficiency becomes crucial.
 
-To achieve the cross-chain communication from BNB Beacon Chain to BNB Smart Chain, need introduce a on-chain light client verification algorithm.
-It contains two parts:
+These differences have led to different designs on BSC's PBS regarding payment, interaction, and APIs. For more design philosophy, please refer to [BEP322:Builder API Specification for BNB Smart Chain](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP322.md).
 
-1. [Stateless Precompiled contracts](https://github.com/bnb-chain/bsc/blob/master/core/vm/contracts_lightclient.go) to do tendermint header verification and Merkle Proof verification.
-2. [Stateful solidity contracts](https://github.com/bnb-chain/bsc-genesis-contract/blob/master/contracts/TendermintLightClient.sol) to store validator set and trusted appHash.  
+## Integration Guide for Builder
 
-## Native Token
+The [Builder API Specification](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP322.md) defines the standard interface that builders should implement, while the specific implementation is left open to MEV API providers. The BNB Chain community offers a [simple implementation](https://github.com/bnb-chain/bsc-builder) example for reference.
 
-BNB will run on BNB Smart Chain in the same way as ETH runs on Ethereum so that it remains as `native token` for BSC. This means,
-BNB will be used to:
+### Customize Builder
 
-1. pay `gas` to deploy or invoke Smart Contract on BSC
-2. perform cross-chain operations, such as transfer token assets across BNB Smart Chain and BNB Beacon Chain.
+Although the builder offers great flexibility, there are still some essential standards that must be followed:
 
-## Building the source
+1. The builder needs to set up a builder account, which is used to sign the block bid and receive fees. The builder can ask for a tip (builder fee) on the block that it sends to the sentry. If the block is finally selected, the builder account will receive the tip.
+2. The builder needs to implement the mev_reportIssue API to receive the errors report from validators.
+3. In order to prevent transaction leakage, the builder can only send block bids to the in-turn validator.
+4. At most 3 block bids are allowed to be sent at the same height from the same builder.
 
-Many of the below are the same as or similar to go-ethereum.
+Here are some sentry APIs that may interest a builder:
 
-For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
+1. `mev_bestBidGasFee`. It will return the current most profitable reward that the validator received among all the blocks received from all builders. The reward is calculated as: `gasFee*(1 - commissionRate) - tipToBuilder`. A builder may compare the `bestBidGasFee` with a local one and then decide to send the block bid or not.
+2. `mev_params`. It will return the `BidSimulationLeftOver`,`ValidatorCommission`, `GasCeil` and `BidFeeCeil` settings on the validator. If the current time is after `(except block time - BidSimulationLeftOver)`, then there is no need to send block bids anymore; `ValidatorCommission` and `BidFeeCeil` helps the builder to build its fee charge strategy. The `GasCeil` helps a builder know when to stop adding more transactions.
 
-Building `geth` requires both a Go (version 1.21 or later) and a C compiler (GCC 5 or higher). You can install
-them using your favourite package manager. Once the dependencies are installed, run
+Builders have the freedom to define various aspects like pricing models for users, creating intuitive APIs, and define the bundle verification rules.
 
-```shell
-make geth
+### Setup with Example Builder
+
+Step 1: Find Validator Information
+For validators that open MEV integration, the public information is shown at [bsc-mev-info](https://github.com/bnb-chain/bsc-mev-info). Builders can also provide information here to the validator.
+
+Step 2: Set up Builder.
+The builder must sign the bid using an account, such as the etherbase account specified in the config.toml file.
+
+```toml
+[Eth.Miner.Mev]
+BuilderEnabled = true # open bid sending
+BuilderAccount = "0x..." # builder address which signs bid, usually it is the same as etherbase address
+
+# Configure the validator node list, including the address of the validator and the public URL. The public URL refers to the sentry service.
+[[Eth.Miner.Mev.Validators]]
+Address = "0x23707D3D71E31e4Cb5B4A9816DfBDCA6455B52B3"
+URL = "https://bsc-fuji.io"
+
+[[Eth.Miner.Mev.Validators]]
+Address = "0x..."
+URL = "https://bsc-mathwallet.io"
 ```
-
-or, to build the full suite of utilities:
-
-```shell
-make all
-```
-
-If you get such error when running the node with self built binary:
-```shell
-Caught SIGILL in blst_cgo_init, consult <blst>/bindinds/go/README.md.
-```
-please try to add the following environment variables and build again:
-```shell
-export CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
-export CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
-```
-
-## Executables
-
-The bsc project comes with several wrappers/executables found in the `cmd`
-directory.
-
-|  Command   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| :--------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`geth`** | Main BNB Smart Chain client binary. It is the entry point into the BSC network (main-, test- or private net), capable of running as a full node (default), archive node (retaining all historical state) or a light node (retrieving data live). It has the same and more RPC and other interface as go-ethereum and can be used by other processes as a gateway into the BSC network via JSON RPC endpoints exposed on top of HTTP, WebSocket and/or IPC transports. `geth --help` and the [CLI page](https://geth.ethereum.org/docs/interface/command-line-options) for command line options. |
-|   `clef`   | Stand-alone signing tool, which can be used as a backend signer for `geth`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-|  `devp2p`  | Utilities to interact with nodes on the networking layer, without running a full blockchain.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-|  `abigen`  | Source code generator to convert Ethereum contract definitions into easy to use, compile-time type-safe Go packages. It operates on plain [Ethereum contract ABIs](https://docs.soliditylang.org/en/develop/abi-spec.html) with expanded functionality if the contract bytecode is also available. However, it also accepts Solidity source files, making development much more streamlined. Please see our [Native DApps](https://geth.ethereum.org/docs/dapp/native-bindings) page for details.                                                                                               |
-| `bootnode` | Stripped down version of our Ethereum client implementation that only takes part in the network node discovery protocol, but does not run any of the higher level application protocols. It can be used as a lightweight bootstrap node to aid in finding peers in private networks.                                                                                                                                                                                                                                                                                                            |
-|   `evm`    | Developer utility version of the EVM (Ethereum Virtual Machine) that is capable of running bytecode snippets within a configurable environment and execution mode. Its purpose is to allow isolated, fine-grained debugging of EVM opcodes (e.g. `evm --code 60ff60ff --debug run`).                                                                                                                                                                                                                                                                                                            |
-| `rlpdump`  | Developer utility tool to convert binary RLP ([Recursive Length Prefix](https://ethereum.org/en/developers/docs/data-structures-and-encoding/rlp)) dumps (data encoding used by the Ethereum protocol both network as well as consensus wise) to user-friendlier hierarchical representation (e.g. `rlpdump --hex CE0183FFFFFFC4C304050583616263`).                                                                                                                                                                                                                                                                                 |
-
-## Running `geth`
-
-Going through all the possible command line flags is out of scope here (please consult our
-[CLI Wiki page](https://geth.ethereum.org/docs/fundamentals/command-line-options)),
-but we've enumerated a few common parameter combos to get you up to speed quickly
-on how you can run your own `geth` instance.
-
-### Hardware Requirements
-
-The hardware must meet certain requirements to run a full node on mainnet:
-- VPS running recent versions of Mac OS X, Linux, or Windows.
-- IMPORTANT 3 TB(Dec 2023) of free disk space, solid-state drive(SSD), gp3, 8k IOPS, 500 MB/S throughput, read latency <1ms. (if node is started with snap sync, it will need NVMe SSD)
-- 16 cores of CPU and 64 GB of memory (RAM)
-- Suggest m5zn.6xlarge or r7iz.4xlarge instance type on AWS, c2-standard-16 on Google cloud.
-- A broadband Internet connection with upload/download speeds of 5 MB/S
-
-The requirement for testnet:
-- VPS running recent versions of Mac OS X, Linux, or Windows.
-- 500G of storage for testnet.
-- 4 cores of CPU and 16 gigabytes of memory (RAM).
-
-### Steps to Run a Fullnode
-
-#### 1. Download the pre-build binaries
-```shell
-# Linux
-wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep geth_linux |cut -d\" -f4)
-mv geth_linux geth
-chmod -v u+x geth
-
-# MacOS
-wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep geth_mac |cut -d\" -f4)
-mv geth_macos geth
-chmod -v u+x geth
-```
-
-#### 2. Download the config files
-```shell
-//== mainnet
-wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep mainnet |cut -d\" -f4)
-unzip mainnet.zip
-
-//== testnet
-wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep testnet |cut -d\" -f4)
-unzip testnet.zip
-```
-
-#### 3. Download snapshot
-Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-snapshots). Follow the guide to structure your files.
-
-Note: If you encounter difficulties downloading the chaindata snapshot and prefer to synchronize from the genesis block on the Chapel testnet, remember to include the additional flag `--chapel` when initially launching Geth.
-
-#### 4. Start a full node
-```shell
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0
-
-## It is recommand to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency
-## It will run with Hash-Base Storage Scheme by default
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none
-
-## It runs fullnode with Path-Base Storage Scheme. 
-## It will enable inline state prune, keeping the latest 90000 blocks' history state by default.
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none --state.scheme path
-```
-
-#### 5. Monitor node status
-
-Monitor the log from **./node/bsc.log** by default. When the node has started syncing, should be able to see the following output:
-```shell
-t=2022-09-08T13:00:27+0000 lvl=info msg="Imported new chain segment"             blocks=1    txs=177   mgas=17.317   elapsed=31.131ms    mgasps=556.259  number=21,153,429 hash=0x42e6b54ba7106387f0650defc62c9ace3160b427702dab7bd1c5abb83a32d8db dirty="0.00 B"
-t=2022-09-08T13:00:29+0000 lvl=info msg="Imported new chain segment"             blocks=1    txs=251   mgas=39.638   elapsed=68.827ms    mgasps=575.900  number=21,153,430 hash=0xa3397b273b31b013e43487689782f20c03f47525b4cd4107c1715af45a88796e dirty="0.00 B"
-t=2022-09-08T13:00:33+0000 lvl=info msg="Imported new chain segment"             blocks=1    txs=197   mgas=19.364   elapsed=34.663ms    mgasps=558.632  number=21,153,431 hash=0x0c7872b698f28cb5c36a8a3e1e315b1d31bda6109b15467a9735a12380e2ad14 dirty="0.00 B"
-```
-
-#### 6. Interact with fullnode
-Start up `geth`'s built-in interactive [JavaScript console](https://geth.ethereum.org/docs/interface/javascript-console),
-(via the trailing `console` subcommand) through which you can interact using [`web3` methods](https://web3js.readthedocs.io/en/) 
-(note: the `web3` version bundled within `geth` is very old, and not up to date with official docs),
-as well as `geth`'s own [management APIs](https://geth.ethereum.org/docs/rpc/server).
-This tool is optional and if you leave it out you can always attach to an already running
-`geth` instance with `geth attach`.
-
-#### 7. More
-
-More details about [running a node](https://docs.bnbchain.org/docs/validator/fullnode) and [becoming a validator](https://docs.bnbchain.org/docs/validator/create-val)
-
-*Note: Although some internal protective measures prevent transactions from
-crossing over between the main network and test network, you should always
-use separate accounts for play and real money. Unless you manually move
-accounts, `geth` will by default correctly separate the two networks and will not make any
-accounts available between them.*
-
-### Configuration
-
-As an alternative to passing the numerous flags to the `geth` binary, you can also pass a
-configuration file via:
-
-```shell
-$ geth --config /path/to/your_config.toml
-```
-
-To get an idea of how the file should look like you can use the `dumpconfig` subcommand to
-export your existing configuration:
-
-```shell
-$ geth --your-favourite-flags dumpconfig
-```
-
-### Programmatically interfacing `geth` nodes
-
-As a developer, sooner rather than later you'll want to start interacting with `geth` and the
-BSC network via your own programs and not manually through the console. To aid
-this, `geth` has built-in support for a JSON-RPC based APIs ([standard APIs](https://ethereum.github.io/execution-apis/api-documentation/)
-and [`geth` specific APIs](https://geth.ethereum.org/docs/interacting-with-geth/rpc)).
-These can be exposed via HTTP, WebSockets and IPC (UNIX sockets on UNIX based
-platforms, and named pipes on Windows).
-
-The IPC interface is enabled by default and exposes all the APIs supported by `geth`,
-whereas the HTTP and WS interfaces need to manually be enabled and only expose a
-subset of APIs due to security reasons. These can be turned on/off and configured as
-you'd expect.
-
-HTTP based JSON-RPC API options:
-
-* `--http` Enable the HTTP-RPC server
-* `--http.addr` HTTP-RPC server listening interface (default: `localhost`)
-* `--http.port` HTTP-RPC server listening port (default: `8545`)
-* `--http.api` API's offered over the HTTP-RPC interface (default: `eth,net,web3`)
-* `--http.corsdomain` Comma separated list of domains from which to accept cross origin requests (browser enforced)
-* `--ws` Enable the WS-RPC server
-* `--ws.addr` WS-RPC server listening interface (default: `localhost`)
-* `--ws.port` WS-RPC server listening port (default: `8546`)
-* `--ws.api` API's offered over the WS-RPC interface (default: `eth,net,web3`)
-* `--ws.origins` Origins from which to accept WebSocket requests
-* `--ipcdisable` Disable the IPC-RPC server
-* `--ipcapi` API's offered over the IPC-RPC interface (default: `admin,debug,eth,miner,net,personal,txpool,web3`)
-* `--ipcpath` Filename for IPC socket/pipe within the datadir (explicit paths escape it)
-
-You'll need to use your own programming environments' capabilities (libraries, tools, etc) to
-connect via HTTP, WS or IPC to a `geth` node configured with the above flags and you'll
-need to speak [JSON-RPC](https://www.jsonrpc.org/specification) on all transports. You
-can reuse the same connection for multiple requests!
-
-**Note: Please understand the security implications of opening up an HTTP/WS based
-transport before doing so! Hackers on the internet are actively trying to subvert
-BSC nodes with exposed APIs! Further, all browser tabs can access locally
-running web servers, so malicious web pages could try to subvert locally available
-APIs!**
-
-### Operating a private network
-- [BSC-Deploy](https://github.com/bnb-chain/node-deploy/): deploy tool for setting up both BNB Beacon Chain, BNB Smart Chain and the cross chain infrastructure between them.
-- [BSC-Docker](https://github.com/bnb-chain/bsc-docker): deploy tool for setting up local BSC cluster in container.
-
-
-## Running a bootnode
-
-Bootnodes are super-lightweight nodes that are not behind a NAT and are running just discovery protocol. When you start up a node it should log your enode, which is a public identifier that others can use to connect to your node. 
-
-First the bootnode requires a key, which can be created with the following command, which will save a key to boot.key:
-
-```
-bootnode -genkey boot.key
-```
-
-This key can then be used to generate a bootnode as follows:
-
-```
-bootnode -nodekey boot.key -addr :30311 -network bsc
-```
-
-The choice of port passed to -addr is arbitrary. 
-The bootnode command returns the following logs to the terminal, confirming that it is running:
-
-```
-enode://3063d1c9e1b824cfbb7c7b6abafa34faec6bb4e7e06941d218d760acdd7963b274278c5c3e63914bd6d1b58504c59ec5522c56f883baceb8538674b92da48a96@127.0.0.1:0?discport=30311
-Note: you're using cmd/bootnode, a developer tool.
-We recommend using a regular node as bootstrap node for production deployments.
-INFO [08-21|11:11:30.687] New local node record                    seq=1,692,616,290,684 id=2c9af1742f8f85ce ip=<nil> udp=0 tcp=0
-INFO [08-21|12:11:30.753] New local node record                    seq=1,692,616,290,685 id=2c9af1742f8f85ce ip=54.217.128.118 udp=30311 tcp=0
-INFO [09-01|02:46:26.234] New local node record                    seq=1,692,616,290,686 id=2c9af1742f8f85ce ip=34.250.32.100  udp=30311 tcp=0
-```
-
-## Contribution
-
-Thank you for considering helping out with the source code! We welcome contributions
-from anyone on the internet, and are grateful for even the smallest of fixes!
-
-If you'd like to contribute to bsc, please fork, fix, commit and send a pull request
-for the maintainers to review and merge into the main code base. If you wish to submit
-more complex changes though, please check up with the core devs first on [our discord channel](https://discord.gg/bnbchain)
-to ensure those changes are in line with the general philosophy of the project and/or get
-some early feedback which can make both your efforts much lighter as well as our review
-and merge procedures quick and simple.
-
-Please make sure your contributions adhere to our coding guidelines:
-
- * Code must adhere to the official Go [formatting](https://golang.org/doc/effective_go.html#formatting)
-   guidelines (i.e. uses [gofmt](https://golang.org/cmd/gofmt/)).
- * Code must be documented adhering to the official Go [commentary](https://golang.org/doc/effective_go.html#commentary)
-   guidelines.
- * Pull requests need to be based on and opened against the `master` branch.
- * Commit messages should be prefixed with the package(s) they modify.
-   * E.g. "eth, rpc: make trace configs optional"
-
-Please see the [Developers' Guide](https://geth.ethereum.org/docs/developers/geth-developer/dev-guide)
-for more details on configuring your environment, managing project dependencies, and
-testing procedures.
 
 ## License
 
