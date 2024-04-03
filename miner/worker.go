@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 
@@ -1045,7 +1046,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
-func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer) (err error) {
+func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer, bidTxs mapset.Set[common.Hash]) (err error) {
 	w.mu.RLock()
 	tip := w.tip
 	w.mu.RUnlock()
@@ -1080,6 +1081,30 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 			localBlobTxs[account] = txs
 		}
 	}
+
+	if bidTxs != nil {
+		filterBidTxs := func(commonTxs map[common.Address][]*txpool.LazyTransaction) {
+			for acc, txs := range commonTxs {
+				for i := len(txs) - 1; i >= 0; i-- {
+					if bidTxs.Contains(txs[i].Hash) {
+						txs = txs[i+1:]
+						break
+					}
+				}
+				if len(txs) == 0 {
+					delete(commonTxs, acc)
+				} else {
+					commonTxs[acc] = txs
+				}
+			}
+		}
+
+		filterBidTxs(localPlainTxs)
+		filterBidTxs(localBlobTxs)
+		filterBidTxs(remotePlainTxs)
+		filterBidTxs(remoteBlobTxs)
+	}
+
 	// Fill the block with all available pending transactions.
 	// we will abort when:
 	//   1.new block was imported
@@ -1116,7 +1141,7 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 	defer work.discard()
 
 	if !params.noTxs {
-		err := w.fillTransactions(nil, work, nil)
+		err := w.fillTransactions(nil, work, nil, nil)
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
@@ -1216,7 +1241,7 @@ LOOP:
 
 		// Fill pending transactions from the txpool into the block.
 		fillStart := time.Now()
-		err = w.fillTransactions(interruptCh, work, stopTimer)
+		err = w.fillTransactions(interruptCh, work, stopTimer, nil)
 		fillDuration := time.Since(fillStart)
 		switch {
 		case errors.Is(err, errBlockInterruptedByNewHead):
