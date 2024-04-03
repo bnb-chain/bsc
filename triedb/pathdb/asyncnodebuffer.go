@@ -308,7 +308,7 @@ func (nc *nodecache) storage(accountHash, storageHash common.Hash) ([]byte, bool
 		}
 	}
 
-	if _, ok := nc.DestructSet[storageHash]; ok {
+	if _, ok := nc.DestructSet[accountHash]; ok {
 		return nil, true
 	}
 	return nil, false
