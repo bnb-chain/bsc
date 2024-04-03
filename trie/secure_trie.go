@@ -97,20 +97,27 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte, direct bool) ([]byt
 	if direct {
 		enc, err = t.trie.GetDirectly(t.hashKey(key))
 		enc1, err1 := t.trie.Get(t.hashKey(key))
-		if (err == nil && err1 != nil) || (err != nil && err1 != nil) {
-			panic(fmt.Errorf("err: %v, err1%v", err, err1))
-		} else if err != nil && err1 != nil {
-			return nil, fmt.Errorf("err: %v, err1%v", err, err1)
+		if err != nil || err1 != nil {
+			panic(fmt.Sprintf("GetAccount error, err: %v, err1: %v", err, err1))
 		}
 
-		if enc == nil && enc1 == nil {
+		if len(enc) == 0 && len(enc1) == 0 {
 			return nil, nil
-		} else if (enc == nil && enc1 != nil) || (enc != nil && enc1 == nil) {
-			panic(fmt.Sprintf("account, %s, key: %s, direct: %v, trie: %v", t.trie.Owner().String(), common.Bytes2Hex(t.hashKey(key)), common.Bytes2Hex(enc), common.Bytes2Hex(enc1)))
-		} else {
-			if bytes.Compare(enc, enc1) != 0 {
-				panic("storage mismatch")
+		}
+
+		if bytes.Compare(enc, enc1) != 0 {
+			_, content, _, err := rlp.Split(enc)
+			if err != nil {
+				panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, err: %v",
+					len(enc), len(enc1), err))
 			}
+			_, content1, _, err := rlp.Split(enc1)
+			if err != nil {
+				panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, err: %v",
+					len(enc), len(enc1), err))
+			}
+			panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, content: %s, content1: %s",
+				len(enc), len(enc1), common.Bytes2Hex(content), common.Bytes2Hex(content1)))
 		}
 	} else {
 		enc, err = t.trie.Get(t.hashKey(key))
@@ -135,27 +142,32 @@ func (t *StateTrie) GetAccount(address common.Address, direct bool) (*types.Stat
 		res, err = t.trie.GetDirectly(t.hashKey(address.Bytes()))
 		res1, err1 := t.trie.Get(t.hashKey(address.Bytes()))
 
-		if (err == nil && err1 != nil) || (err != nil && err1 != nil) {
-			panic(fmt.Errorf("err: %v, err1%v", err, err1))
-		} else if err != nil && err1 != nil {
-			return nil, fmt.Errorf("err: %v, err1%v", err, err1)
+		if err != nil || err1 != nil {
+			panic(fmt.Sprintf("GetAccount error, err: %v, err1: %v", err, err1))
 		}
+
 		if res == nil && res1 == nil {
 			return nil, nil
-		} else if (res == nil && res1 != nil) || (res != nil && res1 == nil) {
-			panic(fmt.Sprintf("direct: %v, trie: %v", common.Bytes2Hex(res), common.Bytes2Hex(res1)))
+		}
+
+		if bytes.Compare(res, res1) != 0 {
+			ret := new(types.StateAccount)
+			err = rlp.DecodeBytes(res, ret)
+			if err != nil {
+				panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, err: %v", len(res), len(res1), err))
+			}
+			ret1 := new(types.StateAccount)
+			err = rlp.DecodeBytes(res, ret1)
+			if err != nil {
+				panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, err: %v", len(res), len(res1), err1))
+			}
+			panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, acc: %v, acc1: %v", len(res), len(res1), ret, ret1))
 		}
 
 		ret := new(types.StateAccount)
 		err = rlp.DecodeBytes(res, ret)
+		return ret, err
 
-		if bytes.Compare(res, res1) == 0 {
-			return ret, nil
-		} else {
-			ret1 := new(types.StateAccount)
-			err = rlp.DecodeBytes(res, ret1)
-			panic(fmt.Sprintf("direct: %v, trie: %v", ret, ret1))
-		}
 	} else {
 		res, err = t.trie.Get(t.hashKey(address.Bytes()))
 		if res == nil || err != nil {

@@ -380,12 +380,19 @@ func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node, set
 		nc.LatestAccounts[h] = acc
 	}
 	for h, storages := range set.LatestStorages {
-		if _, ok := nc.LatestStorages[h]; !ok {
-			nc.LatestStorages[h] = make(map[common.Hash][]byte)
+		currents, ok := nc.LatestStorages[h]
+		if !ok {
+			currents = make(map[common.Hash][]byte)
+			for k, v := range storages {
+				currents[k] = v
+			}
+			nc.LatestStorages[h] = currents
+			continue
 		}
 		for k, v := range storages {
-			nc.LatestStorages[h][k] = v
+			currents[k] = v
 		}
+		nc.LatestStorages[h] = currents
 	}
 
 	nc.updateSize(delta)
