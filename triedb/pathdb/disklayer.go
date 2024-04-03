@@ -180,14 +180,11 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
-	// TODO: seek from dirty node buffer
 	if data, exist := dl.buffer.account(hash); exist {
 		return data, nil
 	}
 
-	// TODO: seek from clean cache
-	data := dl.cleans.latestStates.Get(nil, hash.Bytes())
-	if data != nil {
+	if data, ok := dl.cleans.latestStates.HasGet(nil, hash.Bytes()); ok {
 		return data, nil
 	}
 
@@ -201,13 +198,11 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
-	// TODO: seek from dirty node buffer
 	if data, exist := dl.buffer.storage(accountHash, storageHash); exist {
 		return data, nil
 	}
 	// TODO: seek from clean cache
 
-	// TODO: seek from diskdb
 	return dl.readStorageTrie(accountHash, storageHash), nil
 }
 

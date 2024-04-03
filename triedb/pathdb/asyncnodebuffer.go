@@ -411,6 +411,9 @@ func (nc *nodecache) reset() {
 	nc.layers = 0
 	nc.size = 0
 	nc.nodes = make(map[common.Hash]map[string]*trienode.Node)
+	nc.LatestAccounts = make(map[common.Hash][]byte)
+	nc.LatestStorages = make(map[common.Hash]map[common.Hash][]byte)
+	nc.DestructSet = make(map[common.Hash]struct{})
 }
 
 func (nc *nodecache) empty() bool {
@@ -432,25 +435,16 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 		batch = db.NewBatchWithSize(int(float64(nc.size) * DefaultBatchRedundancyRate))
 	)
 	// delete all kv for destructSet first to keep latest for disk nodes
-	for accHash, _ := range nc.DestructSet {
-		rawdb.DeleteStorageTrie(batch, accHash)
+	for h, _ := range nc.DestructSet {
+		rawdb.DeleteStorageTrie(batch, h)
+		clean.latestStates.Set(h.Bytes(), nil)
 	}
-
+	for h, acc := range nc.LatestAccounts {
+		clean.latestStates.Set(h.Bytes(), acc)
+	}
 	// write all the nodes
 	nodes := writeNodes(batch, nc.nodes, clean)
 	rawdb.WritePersistentStateID(batch, id)
-
-	for h, _ := range nc.DestructSet {
-		clean.latestStates.Del(h.Bytes())
-	}
-
-	for h, acc := range nc.LatestAccounts {
-		if acc == nil {
-			clean.latestStates.Del(h.Bytes())
-		} else {
-			clean.latestStates.Set(h.Bytes(), acc)
-		}
-	}
 
 	// Flush all mutations in a single batch
 	size := batch.ValueSize()
