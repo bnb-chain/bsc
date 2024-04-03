@@ -1631,7 +1631,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			rawdb.WriteBody(blockBatch, block.Hash(), block.NumberU64(), block.Body())
 			rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receiptChain[i])
 			if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-				rawdb.WriteBlobSidecars(batch, block.Hash(), block.NumberU64(), block.Sidecars())
+				rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 			}
 
 			// Write everything belongs to the blocks into the database. So that

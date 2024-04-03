@@ -891,7 +891,7 @@ func ReadBlobSidecarsRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.R
 			return nil
 		}
 		// If not, try reading from leveldb
-		data, _ = db.Get(blockBlobSidecarsKey(number, hash))
+		data, _ = db.BlockStoreReader().Get(blockBlobSidecarsKey(number, hash))
 		return nil
 	})
 	return data
