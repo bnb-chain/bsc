@@ -343,6 +343,14 @@ func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node, set
 	)
 	for owner, subset := range nodes {
 		current, exist := nc.nodes[owner]
+		// Delete those trie nodes, which belong to a storage trie deleted
+		if owner != (common.Hash{}) && set != nil {
+			if _, ok := set.DestructSet[owner]; ok {
+				// TODO
+				// Need to record these delete nodes for disk layer recovery
+				delete(nc.nodes, owner)
+			}
+		}
 		if !exist {
 			// Allocate a new map for the subset instead of claiming it directly
 			// from the passed map to avoid potential concurrent map read/write.
