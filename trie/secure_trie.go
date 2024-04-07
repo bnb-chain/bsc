@@ -98,7 +98,7 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte, direct bool) ([]byt
 		enc, err = t.trie.GetDirectly(t.hashKey(key))
 		enc1, err1 := t.trie.Get(t.hashKey(key))
 		if err != nil || err1 != nil {
-			panic(fmt.Sprintf("GetAccount error, err: %v, err1: %v", err, err1))
+			panic(fmt.Sprintf("GetStorage error, err: %v, err1: %v", err, err1))
 		}
 
 		if len(enc) == 0 && len(enc1) == 0 {
@@ -108,15 +108,15 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte, direct bool) ([]byt
 		if bytes.Compare(enc, enc1) != 0 {
 			_, content, _, err := rlp.Split(enc)
 			if err != nil {
-				panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, err: %v",
+				panic(fmt.Sprintf("Storage mismatch, len(enc): %d, len(enc1): %d, err: %v",
 					len(enc), len(enc1), err))
 			}
 			_, content1, _, err := rlp.Split(enc1)
 			if err != nil {
-				panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, err: %v",
+				panic(fmt.Sprintf("Storage mismatch, len(enc): %d, len(enc1): %d, err: %v",
 					len(enc), len(enc1), err))
 			}
-			panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, content: %s, content1: %s",
+			panic(fmt.Sprintf("Storage mismatch, len(enc): %d, len(enc1): %d, content: %s, content1: %s",
 				len(enc), len(enc1), common.Bytes2Hex(content), common.Bytes2Hex(content1)))
 		}
 	} else {
