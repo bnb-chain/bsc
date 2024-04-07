@@ -35,10 +35,12 @@ import (
 	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
@@ -690,6 +692,13 @@ func dbTrieGet(ctx *cli.Context) error {
 			}
 			nodeVal, hash := rawdb.ReadAccountTrieNode(db, pathKey)
 			log.Info("TrieGet result ", "PathKey", common.Bytes2Hex(pathKey), "Hash: ", hash, "node: ", trie.NodeString(hash.Bytes(), nodeVal))
+
+			val, _ := trie.DecodeLeafNode(hash.Bytes(), pathKey, nodeVal)
+			if val != nil {
+				ret := new(types.StateAccount)
+				err = rlp.DecodeBytes(val, ret)
+				log.Info("TrieGet Account", "StateAcocunt", ret)
+			}
 		} else if ctx.NArg() == 2 {
 			owner, err = hexutil.Decode(ctx.Args().Get(0))
 			if err != nil {
