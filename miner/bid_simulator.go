@@ -621,7 +621,10 @@ func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
 			BidHash:   bidRuntime.bid.Hash(),
 			Message:   err.Error(),
 		})
-		log.Error("BidSimulator: failed to report issue", "builder", bidRuntime.bid.Builder, "err", err)
+
+		if err != nil {
+			log.Error("BidSimulator: failed to report issue", "builder", bidRuntime.bid.Builder, "err", err)
+		}
 	}
 }
 
