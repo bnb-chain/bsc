@@ -341,17 +341,34 @@ func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node, set
 		overwrite     int64
 		overwriteSize int64
 	)
+	// Delete the whole deleted account
+	for h := range set.DestructSet {
+		delete(nc.LatestStorages, h)
+		delete(nc.LatestAccounts, h)
+		delete(nc.nodes, h)
+		nc.DestructSet[h] = struct{}{}
+	}
+	for h, acc := range set.LatestAccounts {
+		nc.LatestAccounts[h] = acc
+	}
+	for h, storages := range set.LatestStorages {
+		currents, ok := nc.LatestStorages[h]
+		if !ok {
+			currents = make(map[common.Hash][]byte)
+			for k, v := range storages {
+				currents[k] = v
+			}
+			nc.LatestStorages[h] = currents
+			continue
+		}
+		for k, v := range storages {
+			currents[k] = v
+		}
+		nc.LatestStorages[h] = currents
+	}
+
 	for owner, subset := range nodes {
 		current, exist := nc.nodes[owner]
-		// Delete those trie nodes, which belong to a storage trie deleted
-		if owner != (common.Hash{}) && set != nil {
-			if _, ok := set.DestructSet[owner]; ok {
-				// TODO
-				// Need to record these delete nodes for disk layer recovery
-				delete(nc.nodes, owner)
-				continue
-			}
-		}
 		if !exist {
 			// Allocate a new map for the subset instead of claiming it directly
 			// from the passed map to avoid potential concurrent map read/write.
@@ -377,31 +394,6 @@ func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node, set
 			current[path] = n
 		}
 		nc.nodes[owner] = current
-	}
-
-	// Delete the whole deleted account
-	for h := range set.DestructSet {
-		delete(nc.LatestStorages, h)
-		delete(nc.LatestAccounts, h)
-		nc.DestructSet[h] = struct{}{}
-	}
-	for h, acc := range set.LatestAccounts {
-		nc.LatestAccounts[h] = acc
-	}
-	for h, storages := range set.LatestStorages {
-		currents, ok := nc.LatestStorages[h]
-		if !ok {
-			currents = make(map[common.Hash][]byte)
-			for k, v := range storages {
-				currents[k] = v
-			}
-			nc.LatestStorages[h] = currents
-			continue
-		}
-		for k, v := range storages {
-			currents[k] = v
-		}
-		nc.LatestStorages[h] = currents
 	}
 
 	nc.updateSize(delta)
