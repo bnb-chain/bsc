@@ -349,6 +349,7 @@ func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node, set
 				// TODO
 				// Need to record these delete nodes for disk layer recovery
 				delete(nc.nodes, owner)
+				continue
 			}
 		}
 		if !exist {
