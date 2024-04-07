@@ -185,9 +185,6 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			continue
 		}
 
-		headNum := f.readHeadNumber(db)
-		hash := ReadHeadBlockHash(nfdb)
-		head := ReadHeader(nfdb, hash, headNum)
 		threshold, err := f.freezeThreshold(nfdb)
 		if err != nil {
 			backoff = true
@@ -298,9 +295,27 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		log.Debug("Deep froze chain segment", context...)
 
 		env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv)
+		hash := ReadHeadBlockHash(nfdb)
+		if hash == (common.Hash{}) {
+			log.Debug("Current full block hash unavailable") // new chain, empty database
+			backoff = true
+			continue
+		}
+		number := ReadHeaderNumber(nfdb, hash)
+		if number == nil {
+			log.Error("Current full block number unavailable", "hash", hash)
+			backoff = true
+			continue
+		}
+		head := ReadHeader(nfdb, hash, *number)
+		if head == nil {
+			log.Error("Current full block unavailable", "number", *number, "hash", hash)
+			backoff = true
+			continue
+		}
 		// try prune blob data after cancun fork
 		if isCancun(env, head.Number, head.Time) {
-			f.tryPruneBlobAncientTable(env, headNum)
+			f.tryPruneBlobAncientTable(env, *number)
 		}
 
 		// Avoid database thrashing with tiny writes
