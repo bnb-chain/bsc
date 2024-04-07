@@ -73,6 +73,7 @@ type journalStorage struct {
 
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
+	start := time.Now()
 	r, err := db.diskdb.NewJournalReader()
 	defer db.diskdb.JournalClose()
 
@@ -110,7 +111,7 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Info("Loaded layer journal", "diskroot", diskRoot, "diffhead", head.rootHash())
+	log.Info("Loaded layer journal", "diskroot", diskRoot, "diffhead", head.rootHash(), "elapsed", common.PrettyDuration(time.Since(start)))
 	return head, nil
 }
 
