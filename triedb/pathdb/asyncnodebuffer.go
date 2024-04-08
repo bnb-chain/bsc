@@ -355,11 +355,6 @@ func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node, set
 		currents, ok := nc.LatestStorages[h]
 		if !ok {
 			currents = make(map[common.Hash][]byte)
-			for k, v := range storages {
-				currents[k] = v
-			}
-			nc.LatestStorages[h] = currents
-			continue
 		}
 		for k, v := range storages {
 			currents[k] = v

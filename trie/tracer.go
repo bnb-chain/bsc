@@ -120,10 +120,16 @@ func (t *tracer) deletedNodes() []string {
 		// It's possible a few deleted nodes were embedded
 		// in their parent before, the deletions can be no
 		// effect by deleting nothing, filter them out.
-		_, ok := t.accessList[path]
-		if !ok {
-			continue
-		}
+
+		// Note(fynn): In order to read the account/storage
+		// directly from triedb, redundant storage is made
+		// for the embedded node in committer.store, so it
+		// cannot be filtered out here.
+
+		// _, ok := t.accessList[path]
+		// if !ok {
+		//  	continue
+		// }
 		paths = append(paths, path)
 	}
 	return paths
