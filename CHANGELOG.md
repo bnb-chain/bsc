@@ -1,4 +1,15 @@
 # Changelog
+## v1.4.5
+### FEATURE
+* [\#2378](https://github.com/bnb-chain/bsc/pull/2378) config: setup Testnet Tycho(Cancun) hardfork date
+
+### IMPROVEMENT
+* [\#2333](https://github.com/bnb-chain/bsc/pull/2333) remove code that will not be executed
+* [\#2369](https://github.com/bnb-chain/bsc/pull/2369) core: stateDb has no trie and no snap return err
+
+### BUGFIX
+* [\#2359](https://github.com/bnb-chain/bsc/pull/2359) triedb: do not open state freezer under notries
+
 ## v1.4.4
 ### FEATURE
 * [\#2279](https://github.com/bnb-chain/bsc/pull/2279) BlobTx: implement EIP-4844 on BSC
