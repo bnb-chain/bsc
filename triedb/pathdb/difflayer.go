@@ -59,11 +59,7 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 		states: states,
 		parent: parent,
 	}
-	for acc, subset := range nodes {
-		if _, ok := states.DestructSet[acc]; ok {
-			delete(nodes, acc)
-			continue
-		}
+	for _, subset := range nodes {
 		for path, n := range subset {
 			dl.memory += uint64(n.Size() + len(path))
 			size += int64(len(n.Blob) + len(path))
