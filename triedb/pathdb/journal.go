@@ -74,6 +74,23 @@ type journalStorage struct {
 	Slots      [][]byte
 }
 
+type Journal interface {
+	// newJournalWriter creates a new journal writer.
+	newJournalWriter() io.WriteCloser
+
+	// newJournalReader creates a new journal reader.
+	newJournalReader() (io.ReadCloser, error)
+
+	// Sync flushes the journal writer.
+	Sync()
+
+	// Delete deletes the journal.
+	Delete()
+
+	// Size returns the size of the journal.
+	Size() uint64
+}
+
 // journalKV is used to store the journal as a single KV in database.
 type journalKV struct {
 	Journal
@@ -96,6 +113,96 @@ func (w *nopWriteCloser) Close() error { return nil }
 // NopWriteCloser returns a nopWriteCloser.
 func NopWriteCloser(w io.Writer) io.WriteCloser {
 	return &nopWriteCloser{w}
+}
+
+func newJournal(file string, db ethdb.Database) Journal {
+	if len(file) == 0 {
+		return &journalKV{
+			diskdb: db,
+		}
+	} else {
+		return &journalFile{
+			filePath: file,
+		}
+	}
+}
+
+func (kv *journalKV) newJournalWriter() io.WriteCloser {
+	return NopWriteCloser(&kv.journalBuf)
+}
+
+func (kv *journalKV) newJournalReader() (io.ReadCloser, error) {
+	journal := rawdb.ReadTrieJournal(kv.diskdb)
+	if len(journal) == 0 {
+		return nil, errMissJournal
+	}
+
+	return io.NopCloser(bytes.NewBuffer(journal)), nil
+}
+
+func (kv *journalKV) Sync() {
+	rawdb.WriteTrieJournal(kv.diskdb, kv.journalBuf.Bytes())
+	kv.journalBuf.Reset()
+}
+
+func (kv *journalKV) Delete() {
+	rawdb.DeleteTrieJournal(kv.diskdb)
+}
+
+func (kv *journalKV) Size() uint64 {
+	return uint64(kv.journalBuf.Len())
+}
+
+// newJournalWriter creates a new journal writer.
+func (f *journalFile) newJournalWriter() io.WriteCloser {
+	fd, err := os.OpenFile(f.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil
+	}
+	return fd
+}
+
+// newJournalReader creates a new journal reader.
+func (f *journalFile) newJournalReader() (io.ReadCloser, error) {
+	fd, err := os.Open(f.filePath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, errMissJournal
+	}
+	if err != nil {
+		return nil, err
+	}
+	return fd, nil
+}
+
+// Sync flushes the journal writer.
+func (f *journalFile) Sync() {
+}
+
+// Delete deletes the journal.
+func (f *journalFile) Delete() {
+	file := f.filePath
+	_, err := os.Stat(file)
+	if os.IsNotExist(err) {
+		return
+	}
+	errRemove := os.Remove(file)
+	if errRemove != nil {
+		log.Crit("Failed to remove tries journal", "journal path", file, "err", err)
+	}
+}
+
+// Size returns the size of the journal.
+func (f *journalFile) Size() uint64 {
+	fd, err := os.Open(f.filePath)
+	if err != nil {
+		return 0
+	}
+	defer fd.Close()
+	fileInfo, err := fd.Stat()
+	if err != nil {
+		log.Crit("Failed to stat journal", "err", err)
+	}
+	return uint64(fileInfo.Size())
 }
 
 // loadJournal tries to parse the layer journal from the disk.
@@ -503,111 +610,4 @@ func (db *Database) Journal(root common.Hash) error {
 	db.readOnly = true
 	log.Info("Persisted dirty state to disk", "size", common.StorageSize(journalSize), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
-}
-
-type Journal interface {
-	// newJournalWriter creates a new journal writer.
-	newJournalWriter() io.WriteCloser
-
-	// newJournalReader creates a new journal reader.
-	newJournalReader() (io.ReadCloser, error)
-
-	// Sync flushes the journal writer.
-	Sync()
-
-	// Delete deletes the journal.
-	Delete()
-
-	// Size returns the size of the journal.
-	Size() uint64
-}
-
-func newJournal(file string, db ethdb.Database) Journal {
-	if len(file) == 0 {
-		return &journalKV{
-			diskdb: db,
-		}
-	} else {
-		return &journalFile{
-			filePath: file,
-		}
-	}
-}
-
-func (kv *journalKV) newJournalWriter() io.WriteCloser {
-	return NopWriteCloser(&kv.journalBuf)
-}
-
-func (kv *journalKV) newJournalReader() (io.ReadCloser, error) {
-	journal := rawdb.ReadTrieJournal(kv.diskdb)
-	if len(journal) == 0 {
-		return nil, errMissJournal
-	}
-
-	return io.NopCloser(bytes.NewBuffer(journal)), nil
-}
-
-func (kv *journalKV) Sync() {
-	rawdb.WriteTrieJournal(kv.diskdb, kv.journalBuf.Bytes())
-	kv.journalBuf.Reset()
-}
-
-func (kv *journalKV) Delete() {
-	rawdb.DeleteTrieJournal(kv.diskdb)
-}
-
-func (kv *journalKV) Size() uint64 {
-	return uint64(kv.journalBuf.Len())
-}
-
-// newJournalWriter creates a new journal writer.
-func (f *journalFile) newJournalWriter() io.WriteCloser {
-	fd, err := os.OpenFile(f.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil
-	}
-	return fd
-}
-
-// newJournalReader creates a new journal reader.
-func (f *journalFile) newJournalReader() (io.ReadCloser, error) {
-	fd, err := os.Open(f.filePath)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, errMissJournal
-	}
-	if err != nil {
-		return nil, err
-	}
-	return fd, nil
-}
-
-// Sync flushes the journal writer.
-func (f *journalFile) Sync() {
-}
-
-// Delete deletes the journal.
-func (f *journalFile) Delete() {
-	file := f.filePath
-	_, err := os.Stat(file)
-	if os.IsNotExist(err) {
-		return
-	}
-	errRemove := os.Remove(file)
-	if errRemove != nil {
-		log.Crit("Failed to remove tries journal", "journal path", file, "err", err)
-	}
-}
-
-// Size returns the size of the journal.
-func (f *journalFile) Size() uint64 {
-	fd, err := os.Open(f.filePath)
-	if err != nil {
-		return 0
-	}
-	defer fd.Close()
-	fileInfo, err := fd.Stat()
-	if err != nil {
-		log.Crit("Failed to stat journal", "err", err)
-	}
-	return uint64(fileInfo.Size())
 }
