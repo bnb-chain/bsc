@@ -543,9 +543,6 @@ func (db *journalDB) JournalWriterSync() {
 
 func (db *journalDB) JournalDelete() {
 	rawdb.DeleteTrieJournal(db.diskdb)
-	//if err := db.diskdb.Delete(trieJournalKey); err != nil {
-	//	log.Crit("Failed to remove tries journal", "err", err)
-	//}
 }
 
 func (db *journalDB) JournalClose() {
@@ -568,7 +565,6 @@ func (wal *journalWAL) NewJournalWriter() io.Writer {
 // NewJournalReader creates a new journal reader.
 func (wal *journalWAL) NewJournalReader() (*rlp.Stream, error) {
 	var err error
-
 	wal.journalFd, err = os.Open(wal.journalFile)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, errMissJournal

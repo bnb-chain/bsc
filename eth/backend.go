@@ -70,6 +70,7 @@ import (
 const (
 	ChainDBNamespace = "eth/db/chaindata/"
 	JournalFile      = "state.journal"
+	ChainData        = "chaindata"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -138,7 +139,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// Assemble the Ethereum object
-	chainDb, err := stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
+	chainDb, err := stack.OpenAndMergeDatabase(ChainData, config.DatabaseCache, config.DatabaseHandles,
 		config.DatabaseFreezer, config.DatabaseDiff, ChainDBNamespace, false, config.PersistDiff, config.PruneAncientData)
 	if err != nil {
 		return nil, err
@@ -252,12 +253,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	}
 	var journalFile string
+	var path string
 	if config.EnableJournalFile {
 		if stack.IsSeparatedDB() {
-			journalFile = node.StateDBNamespace + JournalFile
+			path = ChainData + "/state"
 		} else {
-			journalFile = ChainDBNamespace + JournalFile
+			path = ChainData
 		}
+		journalFile = stack.ResolvePath(path) + "/" + JournalFile
 		log.Info("journalFile", "file", journalFile)
 	}
 	var (

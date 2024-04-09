@@ -35,12 +35,6 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
-var (
-	errMissJournal = errors.New("journal not found")
-)
-
-const JournalFile = "state.journal"
-
 // freezerdb is a database wrapper that enables freezer data retrievals.
 type freezerdb struct {
 	ancientRoot string
@@ -49,8 +43,6 @@ type freezerdb struct {
 	ethdb.AncientFreezer
 	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
-	dbPath     string
-	journalFd  *os.File
 }
 
 func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
@@ -142,7 +134,6 @@ type nofreezedb struct {
 	ethdb.KeyValueStore
 	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
-	journalBuf bytes.Buffer
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.
@@ -314,7 +305,7 @@ func resolveChainFreezerDir(ancient string) string {
 // value data store with a freezer moving immutable chain segments into cold
 // storage. The passed ancient indicates the path of root ancient directory
 // where the chain freezer can be opened.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, dbPath, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
 	var offset uint64
 	// The offset of ancientDB should be handled differently in different scenarios.
 	if isLastOffset {
@@ -338,7 +329,6 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, dbPath, ancient string, name
 			KeyValueStore:  db,
 			AncientStore:   frdb,
 			AncientFreezer: frdb,
-			dbPath:         dbPath,
 		}, nil
 	}
 
@@ -455,7 +445,6 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, dbPath, ancient string, name
 		KeyValueStore:  db,
 		AncientStore:   frdb,
 		AncientFreezer: frdb,
-		dbPath:         dbPath,
 	}, nil
 }
 
@@ -581,7 +570,7 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
-	frdb, err := NewDatabaseWithFreezer(kvdb, o.Directory, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData)
+	frdb, err := NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData)
 	if err != nil {
 		kvdb.Close()
 		return nil, err
