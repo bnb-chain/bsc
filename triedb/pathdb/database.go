@@ -101,6 +101,7 @@ type Config struct {
 	CleanCacheSize int    // Maximum memory allowance (in bytes) for caching clean nodes
 	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty nodes
 	ReadOnly       bool   // Flag whether the database is opened in read only mode.
+	NoTries        bool
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -174,7 +175,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 	// Because the freezer can only be opened once at the same time, this
 	// mechanism also ensures that at most one **non-readOnly** database
 	// is opened at the same time to prevent accidental mutation.
-	if ancient, err := diskdb.AncientDatadir(); err == nil && ancient != "" && !db.readOnly {
+	if ancient, err := diskdb.AncientDatadir(); err == nil && ancient != "" && !db.readOnly && !config.NoTries {
 		offset := uint64(0) // differ from in block data, only metadata is used in state data
 		freezer, err := rawdb.NewStateFreezer(ancient, false, offset)
 		if err != nil {
