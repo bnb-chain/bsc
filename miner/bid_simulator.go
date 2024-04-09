@@ -506,8 +506,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		builder     = bidRuntime.bid.Builder
 
 		bidTxs   = bidRuntime.bid.Txs
-		bidLen   = len(bidTxs)
-		payBidTx = bidTxs[bidLen-1]
+		bidTxLen = len(bidTxs)
+		payBidTx = bidTxs[bidTxLen-1]
 
 		err     error
 		success bool
@@ -582,7 +582,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		default:
 		}
 
-		if bidRuntime.env.tcount == bidLen-1 {
+		if bidRuntime.env.tcount == bidTxLen-1 {
 			break
 		}
 
