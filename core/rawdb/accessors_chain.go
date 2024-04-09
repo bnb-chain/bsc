@@ -808,7 +808,7 @@ func WriteAncientBlocksWithBlobs(db ethdb.AncientWriter, blocks []*types.Block, 
 			break
 		}
 	}
-	log.Info("WriteAncientBlocks", "startAt", blocks[0].Number(), "cancunIndex", cancunIndex, "len", len(blocks))
+	log.Debug("WriteAncientBlocks", "startAt", blocks[0].Number(), "cancunIndex", cancunIndex, "len", len(blocks))
 
 	var (
 		tdSum   = new(big.Int).Set(td)

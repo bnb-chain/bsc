@@ -297,7 +297,7 @@ func (f *chainFreezer) tryPruneBlobAncientTable(env *ethdb.FreezerEnv, num uint6
 		log.Error("Cannot prune blob ancient", "block", num, "expectTail", expectTail, "err", err)
 		return
 	}
-	log.Info("Chain freezer prune useless blobs, now ancient data is", "from", expectTail, "to", num, "cost", common.PrettyDuration(time.Since(start)))
+	log.Debug("Chain freezer prune useless blobs, now ancient data is", "from", expectTail, "to", num, "cost", common.PrettyDuration(time.Since(start)))
 }
 
 func getBlobExtraReserveFromEnv(env *ethdb.FreezerEnv) uint64 {
@@ -308,9 +308,6 @@ func getBlobExtraReserveFromEnv(env *ethdb.FreezerEnv) uint64 {
 }
 
 func (f *chainFreezer) freezeRangeWithBlobs(nfdb *nofreezedb, number, limit uint64) (hashes []common.Hash, err error) {
-	defer func() {
-		log.Info("freezeRangeWithBlobs", "from", number, "to", limit, "err", err)
-	}()
 	lastHash := ReadCanonicalHash(nfdb, limit)
 	if lastHash == (common.Hash{}) {
 		return nil, fmt.Errorf("canonical hash missing, can't freeze block %d", limit)
