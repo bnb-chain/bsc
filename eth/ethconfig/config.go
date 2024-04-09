@@ -158,6 +158,8 @@ type Config struct {
 	TriesVerifyMode core.VerifyMode
 	Preimages       bool
 
+	EnableJournalFile bool
+
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int
 

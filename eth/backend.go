@@ -69,6 +69,7 @@ import (
 
 const (
 	ChainDBNamespace = "eth/db/chaindata/"
+	JournalFile      = "state.journal"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -250,6 +251,15 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			rawdb.WriteDatabaseVersion(chainDb, core.BlockChainVersion)
 		}
 	}
+	var journalFile string
+	if config.EnableJournalFile {
+		if stack.IsSeparatedDB() {
+			journalFile = node.StateDBNamespace + JournalFile
+		} else {
+			journalFile = ChainDBNamespace + JournalFile
+		}
+		log.Info("journalFile", "file", journalFile)
+	}
 	var (
 		vmConfig = vm.Config{
 			EnablePreimageRecording: config.EnablePreimageRecording,
@@ -267,6 +277,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			StateHistory:        config.StateHistory,
 			StateScheme:         config.StateScheme,
 			PathSyncFlush:       config.PathSyncFlush,
+			JournalFile:         journalFile,
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)

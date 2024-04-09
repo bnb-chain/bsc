@@ -365,6 +365,12 @@ var (
 		Value:    false,
 		Category: flags.StateCategory,
 	}
+	EnableJournalFileFlag = &cli.BoolFlag{
+		Name:     "enable-journal-file",
+		Usage:    "Enable journal file to store to wal file when shutdown",
+		Value:    false,
+		Category: flags.StateCategory,
+	}
 	StateHistoryFlag = &cli.Uint64Flag{
 		Name:     "history.state",
 		Usage:    "Number of recent blocks to retain state history for (default = 90,000 blocks, 0 = entire chain)",
@@ -1962,6 +1968,10 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(PathDBSyncFlag.Name) {
 		cfg.PathSyncFlush = true
 	}
+	if ctx.IsSet(EnableJournalFileFlag.Name) {
+		cfg.EnableJournalFile = true
+	}
+
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.TransactionHistory != 0 {
 		cfg.TransactionHistory = 0
 		log.Warn("Disabled transaction unindexing for archive node")

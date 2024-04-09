@@ -20,8 +20,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -34,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/olekukonko/tablewriter"
 )
 
@@ -138,71 +135,6 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 
 func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return frdb.AncientFreezer.SetupFreezerEnv(env)
-}
-
-func (frdb *freezerdb) journalPath() string {
-	return frdb.dbPath + "/" + JournalFile
-}
-
-// NewJournalWriter creates a new journal writer.
-func (frdb *freezerdb) NewJournalWriter() io.Writer {
-	var err error
-	path := frdb.journalPath()
-	frdb.journalFd, err = os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil
-	}
-	return frdb.journalFd
-}
-
-// NewJournalReader creates a new journal reader.
-func (frdb *freezerdb) NewJournalReader() (*rlp.Stream, error) {
-	var err error
-	path := frdb.journalPath()
-
-	frdb.journalFd, err = os.Open(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, errMissJournal
-	}
-	if err != nil {
-		return nil, err
-	}
-	return rlp.NewStream(frdb.journalFd, 0), nil
-}
-
-// JournalWriterSync flushes the journal writer.
-func (frdb *freezerdb) JournalWriterSync() {
-}
-
-// JournalDelete deletes the journal.
-func (frdb *freezerdb) JournalDelete() {
-	path := frdb.journalPath()
-	_, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		return
-	}
-	errRemove := os.Remove(path)
-	if errRemove != nil {
-		log.Crit("Failed to remove tries journal", "path", path, "err", err)
-	}
-}
-
-// JournalClose closes the journal.
-func (frdb *freezerdb) JournalClose() {
-	frdb.journalFd.Close()
-}
-
-// JournalSize returns the size of the journal.
-func (frdb *freezerdb) JournalSize() uint64 {
-	if frdb.journalFd != nil {
-		fileInfo, err := frdb.journalFd.Stat()
-		if err != nil {
-			log.Crit("Failed to stat journal", "err", err)
-		}
-		return uint64(fileInfo.Size())
-	}
-
-	return 0
 }
 
 // nofreezedb is a database wrapper that disables freezer data retrievals.
@@ -330,44 +262,6 @@ func (db *nofreezedb) MigrateTable(kind string, convert convertLegacyFn) error {
 // AncientDatadir returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
-}
-
-func (db *nofreezedb) NewJournalWriter() io.Writer {
-	return &db.journalBuf
-}
-
-func (db *nofreezedb) stateDB() ethdb.Database {
-	var stateDb ethdb.Database = db
-	if db.stateStore != nil {
-		stateDb = db.stateStore
-	}
-	return stateDb
-}
-
-func (db *nofreezedb) NewJournalReader() (*rlp.Stream, error) {
-	journal := ReadTrieJournal(db.stateDB())
-	if len(journal) == 0 {
-		return nil, errMissJournal
-	}
-	return rlp.NewStream(bytes.NewReader(journal), 0), nil
-}
-
-func (db *nofreezedb) JournalWriterSync() {
-	WriteTrieJournal(db.stateDB(), db.journalBuf.Bytes())
-	db.journalBuf.Reset()
-}
-
-func (db *nofreezedb) JournalDelete() {
-	if err := db.Delete(trieJournalKey); err != nil {
-		log.Crit("Failed to remove tries journal", "err", err)
-	}
-}
-
-func (db *nofreezedb) JournalClose() {
-}
-
-func (db *nofreezedb) JournalSize() uint64 {
-	return uint64(db.journalBuf.Len())
 }
 
 func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {

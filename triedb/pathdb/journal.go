@@ -22,12 +22,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -71,11 +74,25 @@ type journalStorage struct {
 	Slots      [][]byte
 }
 
+// journalDB
+type journalDB struct {
+	Journal
+	journalBuf bytes.Buffer
+	diskdb     ethdb.Database // Persistent storage for matured trie nodes
+}
+
+// journalWAL
+type journalWAL struct {
+	Journal
+	journalFile string
+	journalFd   *os.File
+}
+
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	start := time.Now()
-	r, err := db.diskdb.NewJournalReader()
-	defer db.diskdb.JournalClose()
+	r, err := db.journal.NewJournalReader()
+	defer db.journal.JournalClose()
 
 	if err != nil {
 		return nil, err
@@ -442,9 +459,9 @@ func (db *Database) Journal(root common.Hash) error {
 		return errDatabaseReadOnly
 	}
 	// Firstly write out the metadata of journal
-	db.diskdb.JournalDelete()
-	journal := db.diskdb.NewJournalWriter()
-	defer db.diskdb.JournalClose()
+	db.journal.JournalDelete()
+	journal := db.journal.NewJournalWriter()
+	defer db.journal.JournalClose()
 
 	if err := rlp.Encode(journal, journalVersion); err != nil {
 		return err
@@ -466,11 +483,133 @@ func (db *Database) Journal(root common.Hash) error {
 
 	// Store the journal into the database and return
 	// JournalSize returns the size of the journal in bytes, It must be called before JournalWriterSync.
-	journalSize := db.diskdb.JournalSize()
-	db.diskdb.JournalWriterSync()
+	journalSize := db.journal.JournalSize()
+	db.journal.JournalWriterSync()
 
 	// Set the db in read only mode to reject all following mutations
 	db.readOnly = true
 	log.Info("Persisted dirty state to disk", "size", common.StorageSize(journalSize), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
+}
+
+type Journal interface {
+	// NewJournalWriter creates a new journal writer.
+	NewJournalWriter() io.Writer
+
+	// NewJournalReader creates a new journal reader.
+	NewJournalReader() (*rlp.Stream, error)
+
+	// JournalWriterSync flushes the journal writer.
+	JournalWriterSync()
+
+	// JournalDelete deletes the journal.
+	JournalDelete()
+
+	// JournalClose closes the journal.
+	JournalClose()
+
+	// JournalSize returns the size of the journal.
+	JournalSize() uint64
+}
+
+func newJournal(journalFile string, db ethdb.Database) Journal {
+	if len(journalFile) == 0 {
+		return &journalDB{
+			diskdb: db,
+		}
+	} else {
+		return &journalWAL{
+			journalFile: journalFile,
+		}
+	}
+}
+
+func (db *journalDB) NewJournalWriter() io.Writer {
+	return &db.journalBuf
+}
+
+func (db *journalDB) NewJournalReader() (*rlp.Stream, error) {
+	journal := rawdb.ReadTrieJournal(db.diskdb)
+	if len(journal) == 0 {
+		return nil, errMissJournal
+	}
+	return rlp.NewStream(bytes.NewReader(journal), 0), nil
+}
+
+func (db *journalDB) JournalWriterSync() {
+	rawdb.WriteTrieJournal(db.diskdb, db.journalBuf.Bytes())
+	db.journalBuf.Reset()
+}
+
+func (db *journalDB) JournalDelete() {
+	rawdb.DeleteTrieJournal(db.diskdb)
+	//if err := db.diskdb.Delete(trieJournalKey); err != nil {
+	//	log.Crit("Failed to remove tries journal", "err", err)
+	//}
+}
+
+func (db *journalDB) JournalClose() {
+}
+
+func (db *journalDB) JournalSize() uint64 {
+	return uint64(db.journalBuf.Len())
+}
+
+// NewJournalWriter creates a new journal writer.
+func (wal *journalWAL) NewJournalWriter() io.Writer {
+	var err error
+	wal.journalFd, err = os.OpenFile(wal.journalFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil
+	}
+	return wal.journalFd
+}
+
+// NewJournalReader creates a new journal reader.
+func (wal *journalWAL) NewJournalReader() (*rlp.Stream, error) {
+	var err error
+
+	wal.journalFd, err = os.Open(wal.journalFile)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, errMissJournal
+	}
+	if err != nil {
+		return nil, err
+	}
+	return rlp.NewStream(wal.journalFd, 0), nil
+}
+
+// JournalWriterSync flushes the journal writer.
+func (wal *journalWAL) JournalWriterSync() {
+}
+
+// JournalDelete deletes the journal.
+func (wal *journalWAL) JournalDelete() {
+	file := wal.journalFile
+	_, err := os.Stat(file)
+	if os.IsNotExist(err) {
+		return
+	}
+	errRemove := os.Remove(file)
+	if errRemove != nil {
+		log.Crit("Failed to remove tries journal", "journal path", file, "err", err)
+	}
+}
+
+// JournalClose closes the journal.
+func (wal *journalWAL) JournalClose() {
+	wal.journalFd.Close()
+}
+
+// JournalSize returns the size of the journal.
+func (wal *journalWAL) JournalSize() uint64 {
+	if wal.journalFd != nil {
+		fileInfo, err := wal.journalFd.Stat()
+		if err != nil {
+			log.Crit("Failed to stat journal", "err", err)
+		}
+		return uint64(fileInfo.Size())
+	}
+
+	return 0
 }

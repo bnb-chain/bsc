@@ -103,6 +103,7 @@ var (
 		utils.TransactionHistoryFlag,
 		utils.StateHistoryFlag,
 		utils.PathDBSyncFlag,
+		utils.EnableJournalFileFlag,
 		utils.LightServeFlag,       // deprecated
 		utils.LightIngressFlag,     // deprecated
 		utils.LightEgressFlag,      // deprecated
