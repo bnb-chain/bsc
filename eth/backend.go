@@ -254,14 +254,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	var journalFile string
 	var path string
-	if config.EnableJournalFile {
+	if config.JournalFileEnabled {
 		if stack.IsSeparatedDB() {
 			path = ChainData + "/state"
 		} else {
 			path = ChainData
 		}
 		journalFile = stack.ResolvePath(path) + "/" + JournalFile
-		log.Info("journalFile", "file", journalFile)
 	}
 	var (
 		vmConfig = vm.Config{

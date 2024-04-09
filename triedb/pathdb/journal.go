@@ -74,14 +74,14 @@ type journalStorage struct {
 	Slots      [][]byte
 }
 
-// journalDB
+// journalDB is a journal implementation that stores the journal in db.
 type journalDB struct {
 	Journal
-	journalBuf bytes.Buffer
+	journalBuf bytes.Buffer   // Used for temporary storage in memory, and finally uniformly written to the database during sync.
 	diskdb     ethdb.Database // Persistent storage for matured trie nodes
 }
 
-// journalWAL
+// journalWAL is a journal implementation that stores the journal in a file.
 type journalWAL struct {
 	Journal
 	journalFile string

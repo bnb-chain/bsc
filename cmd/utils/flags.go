@@ -365,9 +365,9 @@ var (
 		Value:    false,
 		Category: flags.StateCategory,
 	}
-	EnableJournalFileFlag = &cli.BoolFlag{
-		Name:     "enable-journal-file",
-		Usage:    "Enable journal file to store to wal file when shutdown",
+	JournalFileFlag = &cli.BoolFlag{
+		Name:     "journalfile",
+		Usage:    "Enable the in-memory trie node layers to store to wal file when shutdown in pbss (default = false)",
 		Value:    false,
 		Category: flags.StateCategory,
 	}
@@ -1968,8 +1968,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(PathDBSyncFlag.Name) {
 		cfg.PathSyncFlush = true
 	}
-	if ctx.IsSet(EnableJournalFileFlag.Name) {
-		cfg.EnableJournalFile = true
+	if ctx.IsSet(JournalFileFlag.Name) {
+		cfg.JournalFileEnabled = true
 	}
 
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.TransactionHistory != 0 {
