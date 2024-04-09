@@ -96,13 +96,13 @@ type layer interface {
 
 // Config contains the settings for database.
 type Config struct {
-	SyncFlush      bool   // Flag of trienodebuffer sync flush cache to disk
-	StateHistory   uint64 // Number of recent blocks to maintain state history for
-	CleanCacheSize int    // Maximum memory allowance (in bytes) for caching clean nodes
-	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty nodes
-	ReadOnly       bool   // Flag whether the database is opened in read only mode.
-	NoTries        bool
-	JournalFile    string // Journal file's path
+	SyncFlush       bool   // Flag of trienodebuffer sync flush cache to disk
+	StateHistory    uint64 // Number of recent blocks to maintain state history for
+	CleanCacheSize  int    // Maximum memory allowance (in bytes) for caching clean nodes
+	DirtyCacheSize  int    // Maximum memory allowance (in bytes) for caching dirty nodes
+	ReadOnly        bool   // Flag whether the database is opened in read only mode.
+	NoTries         bool
+	JournalFilePath string
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -167,7 +167,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		config:     config,
 		diskdb:     diskdb,
 	}
-	db.journal = newJournal(config.JournalFile, diskdb)
+	db.journal = newJournal(config.JournalFilePath, diskdb)
 
 	// Construct the layer tree by resolving the in-disk singleton state
 	// and in-memory layer journal.

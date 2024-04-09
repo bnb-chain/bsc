@@ -185,11 +185,11 @@ func (c *CacheConfig) triedbConfig() *triedb.Config {
 	}
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
-			SyncFlush:      c.PathSyncFlush,
-			StateHistory:   c.StateHistory,
-			CleanCacheSize: c.TrieCleanLimit * 1024 * 1024,
-			DirtyCacheSize: c.TrieDirtyLimit * 1024 * 1024,
-			JournalFile:    c.JournalFile,
+			SyncFlush:       c.PathSyncFlush,
+			StateHistory:    c.StateHistory,
+			CleanCacheSize:  c.TrieCleanLimit * 1024 * 1024,
+			DirtyCacheSize:  c.TrieDirtyLimit * 1024 * 1024,
+			JournalFilePath: c.JournalFile,
 		}
 	}
 	return config

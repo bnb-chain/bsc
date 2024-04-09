@@ -35,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
-	"github.com/go-git/go-git/v5/utils/ioutil"
 )
 
 var (
@@ -85,7 +84,18 @@ type journalKV struct {
 // journalFile is used to store trie journal into a file.
 type journalFile struct {
 	Journal
-	file string // the file used to store the TrieJournal
+	filePath string
+}
+
+type nopWriteCloser struct {
+	io.Writer
+}
+
+func (w *nopWriteCloser) Close() error { return nil }
+
+// NopWriteCloser returns a nopWriteCloser.
+func NopWriteCloser(w io.Writer) io.WriteCloser {
+	return &nopWriteCloser{w}
 }
 
 // loadJournal tries to parse the layer journal from the disk.
@@ -519,13 +529,13 @@ func newJournal(file string, db ethdb.Database) Journal {
 		}
 	} else {
 		return &journalFile{
-			file: file,
+			filePath: file,
 		}
 	}
 }
 
 func (kv *journalKV) newJournalWriter() io.WriteCloser {
-	return ioutil.WriteNopCloser(&kv.journalBuf)
+	return NopWriteCloser(&kv.journalBuf)
 }
 
 func (kv *journalKV) newJournalReader() (io.ReadCloser, error) {
@@ -552,7 +562,7 @@ func (kv *journalKV) Size() uint64 {
 
 // newJournalWriter creates a new journal writer.
 func (f *journalFile) newJournalWriter() io.WriteCloser {
-	fd, err := os.OpenFile(f.file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	fd, err := os.OpenFile(f.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil
 	}
@@ -561,7 +571,7 @@ func (f *journalFile) newJournalWriter() io.WriteCloser {
 
 // newJournalReader creates a new journal reader.
 func (f *journalFile) newJournalReader() (io.ReadCloser, error) {
-	fd, err := os.Open(f.file)
+	fd, err := os.Open(f.filePath)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, errMissJournal
 	}
@@ -577,7 +587,7 @@ func (f *journalFile) Sync() {
 
 // Delete deletes the journal.
 func (f *journalFile) Delete() {
-	file := f.file
+	file := f.filePath
 	_, err := os.Stat(file)
 	if os.IsNotExist(err) {
 		return
@@ -590,7 +600,7 @@ func (f *journalFile) Delete() {
 
 // Size returns the size of the journal.
 func (f *journalFile) Size() uint64 {
-	fd, err := os.Open(f.file)
+	fd, err := os.Open(f.filePath)
 	if err != nil {
 		return 0
 	}
