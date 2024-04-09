@@ -102,7 +102,7 @@ type Config struct {
 	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty nodes
 	ReadOnly       bool   // Flag whether the database is opened in read only mode.
 	NoTries        bool
-	JournalFile    string // whether enable TrieJournal store in wal
+	JournalFile    string // whether enable TrieJournal store in journal file
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -320,7 +320,7 @@ func (db *Database) Enable(root common.Hash) error {
 	// Drop the stale state journal in persistent database and
 	// reset the persistent state id back to zero.
 	batch := db.diskdb.NewBatch()
-	db.journal.JournalDelete()
+	db.journal.Delete()
 	rawdb.WritePersistentStateID(batch, 0)
 	if err := batch.Write(); err != nil {
 		return err
@@ -384,7 +384,7 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 		// disk layer won't be accessible from outside.
 		db.tree.reset(dl)
 	}
-	db.journal.JournalDelete()
+	db.journal.Delete()
 	_, err := truncateFromHead(db.diskdb, db.freezer, dl.stateID())
 	if err != nil {
 		return err

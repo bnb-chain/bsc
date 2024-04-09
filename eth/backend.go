@@ -69,7 +69,7 @@ import (
 
 const (
 	ChainDBNamespace = "eth/db/chaindata/"
-	JournalFile      = "state.journal"
+	JournalFile      = "trie.journal"
 	ChainData        = "chaindata"
 )
 
@@ -252,8 +252,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			rawdb.WriteDatabaseVersion(chainDb, core.BlockChainVersion)
 		}
 	}
-	var journalFile string
-	var path string
+	var (
+		journalFile string
+		path        string
+	)
 	if config.JournalFileEnabled {
 		if stack.IsSeparatedDB() {
 			path = ChainData + "/state"

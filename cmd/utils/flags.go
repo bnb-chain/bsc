@@ -367,7 +367,7 @@ var (
 	}
 	JournalFileFlag = &cli.BoolFlag{
 		Name:     "journalfile",
-		Usage:    "Enable the in-memory trie node layers to store to wal file when shutdown in pbss (default = false)",
+		Usage:    "Enable journal file to store the TrieJournal when shutdown in pbss (default = false)",
 		Value:    false,
 		Category: flags.StateCategory,
 	}
