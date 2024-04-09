@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
+	"github.com/go-git/go-git/v5/utils/ioutil"
 )
 
 var (
@@ -74,29 +75,31 @@ type journalStorage struct {
 	Slots      [][]byte
 }
 
-// journalKV is a journal implementation that stores the journal in db as a single kv.
+// journalKV is used to store the journal as a single KV in database.
 type journalKV struct {
 	Journal
-	journalBuf bytes.Buffer   // Used for temporary storage in memory, and finally uniformly written to the database during sync.
-	diskdb     ethdb.Database // Persistent storage for matured trie nodes
+	journalBuf bytes.Buffer
+	diskdb     ethdb.Database
 }
 
-// journalFile is a journal implementation that stores the journal in a file.
+// journalFile is used to store trie journal into a file.
 type journalFile struct {
 	Journal
-	file string   // the file used to store the TrieJournal
-	fd   *os.File // the file's fd
+	file string // the file used to store the TrieJournal
 }
 
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	start := time.Now()
-	r, err := db.journal.newJournalReader()
-	defer db.journal.Close()
+	reader, err := db.journal.newJournalReader()
 
 	if err != nil {
 		return nil, err
 	}
+	if reader != nil {
+		defer reader.Close()
+	}
+	r := rlp.NewStream(reader, 0)
 
 	// Firstly, resolve the first element as the journal version
 	version, err := r.Uint64()
@@ -461,7 +464,7 @@ func (db *Database) Journal(root common.Hash) error {
 	// Firstly write out the metadata of journal
 	db.journal.Delete()
 	journal := db.journal.newJournalWriter()
-	defer db.journal.Close()
+	defer journal.Close()
 
 	if err := rlp.Encode(journal, journalVersion); err != nil {
 		return err
@@ -494,19 +497,16 @@ func (db *Database) Journal(root common.Hash) error {
 
 type Journal interface {
 	// newJournalWriter creates a new journal writer.
-	newJournalWriter() io.Writer
+	newJournalWriter() io.WriteCloser
 
 	// newJournalReader creates a new journal reader.
-	newJournalReader() (*rlp.Stream, error)
+	newJournalReader() (io.ReadCloser, error)
 
 	// Sync flushes the journal writer.
 	Sync()
 
 	// Delete deletes the journal.
 	Delete()
-
-	// Close closes the journal.
-	Close()
 
 	// Size returns the size of the journal.
 	Size() uint64
@@ -524,16 +524,17 @@ func newJournal(file string, db ethdb.Database) Journal {
 	}
 }
 
-func (kv *journalKV) newJournalWriter() io.Writer {
-	return &kv.journalBuf
+func (kv *journalKV) newJournalWriter() io.WriteCloser {
+	return ioutil.WriteNopCloser(&kv.journalBuf)
 }
 
-func (kv *journalKV) newJournalReader() (*rlp.Stream, error) {
+func (kv *journalKV) newJournalReader() (io.ReadCloser, error) {
 	journal := rawdb.ReadTrieJournal(kv.diskdb)
 	if len(journal) == 0 {
 		return nil, errMissJournal
 	}
-	return rlp.NewStream(bytes.NewReader(journal), 0), nil
+
+	return io.NopCloser(bytes.NewBuffer(journal)), nil
 }
 
 func (kv *journalKV) Sync() {
@@ -545,34 +546,29 @@ func (kv *journalKV) Delete() {
 	rawdb.DeleteTrieJournal(kv.diskdb)
 }
 
-func (kv *journalKV) Close() {
-}
-
 func (kv *journalKV) Size() uint64 {
 	return uint64(kv.journalBuf.Len())
 }
 
 // newJournalWriter creates a new journal writer.
-func (f *journalFile) newJournalWriter() io.Writer {
-	var err error
-	f.fd, err = os.OpenFile(f.file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+func (f *journalFile) newJournalWriter() io.WriteCloser {
+	fd, err := os.OpenFile(f.file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil
 	}
-	return f.fd
+	return fd
 }
 
 // newJournalReader creates a new journal reader.
-func (f *journalFile) newJournalReader() (*rlp.Stream, error) {
-	var err error
-	f.fd, err = os.Open(f.file)
+func (f *journalFile) newJournalReader() (io.ReadCloser, error) {
+	fd, err := os.Open(f.file)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, errMissJournal
 	}
 	if err != nil {
 		return nil, err
 	}
-	return rlp.NewStream(f.fd, 0), nil
+	return fd, nil
 }
 
 // Sync flushes the journal writer.
@@ -592,20 +588,16 @@ func (f *journalFile) Delete() {
 	}
 }
 
-// Close closes the journal.
-func (f *journalFile) Close() {
-	f.fd.Close()
-}
-
 // Size returns the size of the journal.
 func (f *journalFile) Size() uint64 {
-	if f.fd != nil {
-		fileInfo, err := f.fd.Stat()
-		if err != nil {
-			log.Crit("Failed to stat journal", "err", err)
-		}
-		return uint64(fileInfo.Size())
+	fd, err := os.Open(f.file)
+	if err != nil {
+		return 0
 	}
-
-	return 0
+	defer fd.Close()
+	fileInfo, err := fd.Stat()
+	if err != nil {
+		log.Crit("Failed to stat journal", "err", err)
+	}
+	return uint64(fileInfo.Size())
 }

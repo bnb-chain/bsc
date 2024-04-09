@@ -102,7 +102,7 @@ type Config struct {
 	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty nodes
 	ReadOnly       bool   // Flag whether the database is opened in read only mode.
 	NoTries        bool
-	JournalFile    string // whether enable TrieJournal store in journal file
+	JournalFile    string // Journal file's path
 }
 
 // sanitize checks the provided user configurations and changes anything that's

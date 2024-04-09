@@ -367,7 +367,7 @@ var (
 	}
 	JournalFileFlag = &cli.BoolFlag{
 		Name:     "journalfile",
-		Usage:    "Enable journal file to store the TrieJournal when shutdown in pbss (default = false)",
+		Usage:    "Enable using journal file to store the TrieJournal instead of KVDB in pbss (default = false)",
 		Value:    false,
 		Category: flags.StateCategory,
 	}

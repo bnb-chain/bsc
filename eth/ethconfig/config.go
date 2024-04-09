@@ -119,7 +119,7 @@ type Config struct {
 	// consistent with persistent state.
 	StateScheme        string `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
 	PathSyncFlush      bool   `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
-	JournalFileEnabled bool   // Enable the TrieJournal to store to journal file when shutdown
+	JournalFileEnabled bool   // Whether the TrieJournal is stored using journal file
 
 	// RequiredBlocks is a set of block number -> hash mappings which must be in the
 	// canonical chain of all remote peers. Setting the option makes geth verify the
