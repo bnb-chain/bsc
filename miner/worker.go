@@ -1087,12 +1087,13 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 			for acc, txs := range commonTxs {
 				for i := len(txs) - 1; i >= 0; i-- {
 					if bidTxs.Contains(txs[i].Hash) {
-						commonTxs[acc] = txs[i+1:]
+						if i == len(txs)-1 {
+							delete(commonTxs, acc)
+						} else {
+							commonTxs[acc] = txs[i+1:]
+						}
 						break
 					}
-				}
-				if len(commonTxs[acc]) == 0 {
-					delete(commonTxs, acc)
 				}
 			}
 		}
