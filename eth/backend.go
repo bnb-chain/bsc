@@ -281,7 +281,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			StateHistory:        config.StateHistory,
 			StateScheme:         config.StateScheme,
 			PathSyncFlush:       config.PathSyncFlush,
-			JournalFile:         journalFile,
+			JournalFilePath:     journalFile,
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
