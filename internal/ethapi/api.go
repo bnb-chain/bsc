@@ -1018,7 +1018,7 @@ func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.B
 		return nil, nil
 	}
 	blobSidecars, err := s.b.GetBlobSidecars(ctx, header.Hash())
-	if err != nil || len(blobSidecars) == 0 {
+	if err != nil {
 		return nil, nil
 	}
 	result := make([]map[string]interface{}, len(blobSidecars))
