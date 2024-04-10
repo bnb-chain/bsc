@@ -1367,6 +1367,10 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		// env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
+		if block.Header().EmptyWithdrawalsHash() {
+			block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
+		}
+
 		// If Cancun enabled, sidecars can't be nil then.
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
 			env.sidecars = make(types.BlobSidecars, 0)
