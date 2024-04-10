@@ -724,7 +724,7 @@ func (f *BlockFetcher) loop() {
 						if f.getBlock(hash) == nil {
 							block := types.NewBlockWithHeader(announce.header).WithBody(task.transactions[i], task.uncles[i])
 							if block.Header().EmptyWithdrawalsHash() {
-								block.WithWithdrawals(make([]*types.Withdrawal, 0))
+								block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
 							}
 							block = block.WithSidecars(task.sidecars[i])
 							block.ReceivedAt = task.time

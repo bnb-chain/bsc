@@ -1368,7 +1368,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
 		if block.Header().EmptyWithdrawalsHash() {
-			block.WithWithdrawals(make([]*types.Withdrawal, 0))
+			block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
 		}
 
 		// If Cancun enabled, sidecars can't be nil then.

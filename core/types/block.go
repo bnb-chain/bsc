@@ -193,7 +193,7 @@ func (h *Header) EmptyReceipts() bool {
 	return h.ReceiptHash == EmptyReceiptsHash
 }
 
-// EmptyWithdrawalsHash returns true if there are no WithdrawalsHash for this header/block.
+// EmptyWithdrawalsHash returns true if the WithdrawalsHash is EmptyWithdrawalsHash.
 func (h *Header) EmptyWithdrawalsHash() bool {
 	return h.WithdrawalsHash != nil && *h.WithdrawalsHash == EmptyWithdrawalsHash
 }
