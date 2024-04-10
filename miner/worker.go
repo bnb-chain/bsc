@@ -1331,15 +1331,27 @@ LOOP:
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
+		if bestBid != nil {
+			log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
+				"localBlockReward", bestReward.String(),
+				"bidBlockReward", bestBid.packedBlockReward.String())
+		}
+
 		if bestBid != nil && bestReward.CmpBig(bestBid.packedBlockReward) < 0 {
 			// localValidatorReward is the reward for the validator self by the local block.
 			localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(w.config.Mev.ValidatorCommission))
 			localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
 
+			log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
+				"localValidatorReward", localValidatorReward.String(),
+				"bidValidatorReward", bestBid.packedValidatorReward.String())
+
 			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
 			if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
 				bestWork = bestBid.env
 				from = bestBid.bid.Builder
+
+				log.Debug("BidSimulator: bid win", "block", bestWork.header.Number.Uint64(), "bid", bestBid.bid.Hash())
 			}
 		}
 	}

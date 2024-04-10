@@ -311,6 +311,8 @@ func (b *bidSimulator) newBidLoop() {
 
 	// commit aborts in-flight bid execution with given signal and resubmits a new one.
 	commit := func(reason int32, bidRuntime *BidRuntime) {
+		log.Debug("BidSimulator: start", "bidHash", bidRuntime.bid.Hash().Hex())
+
 		// if the left time is not enough to do simulation, return
 		var simDuration time.Duration
 		if lastBid := b.GetBestBid(bidRuntime.bid.ParentHash); lastBid != nil && lastBid.duration != 0 {
@@ -318,6 +320,7 @@ func (b *bidSimulator) newBidLoop() {
 		}
 
 		if time.Until(b.bidMustBefore(bidRuntime.bid.ParentHash)) <= simDuration*leftOverTimeRate/leftOverTimeScale {
+			log.Debug("BidSimulator: abort commit, not enough time to simulate", "bidHash", bidRuntime.bid.Hash().Hex())
 			return
 		}
 
@@ -349,6 +352,7 @@ func (b *bidSimulator) newBidLoop() {
 
 			if expectedValidatorReward.Cmp(big.NewInt(0)) < 0 {
 				// damage self profit, ignore
+				log.Debug("BidSimulator: invalid bid, validator reward is less than 0, ignore", "bidHash", newBid.Hash().Hex())
 				continue
 			}
 
@@ -378,6 +382,7 @@ func (b *bidSimulator) newBidLoop() {
 					continue
 				}
 
+				log.Debug("BidSimulator: lower reward, ignore", "bidHash", newBid.Hash().Hex())
 				continue
 			}
 
@@ -389,6 +394,7 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
+			log.Debug("BidSimulator: lower reward, ignore", "bidHash", newBid.Hash().Hex())
 		case <-b.exitCh:
 			return
 		}
@@ -535,7 +541,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 		if err != nil {
 			logCtx = append(logCtx, "err", err)
-			log.Debug("bid simulation failed", logCtx...)
+			log.Info("BidSimulator: simulation failed", logCtx...)
 
 			go b.reportIssue(bidRuntime, err)
 		}
@@ -606,7 +612,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if b.config.GreedyMergeTx {
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 		if delay != nil && *delay > 0 {
-			log.Debug("BidSimulator: GreedyMergeTx stopTimer", "block", bidRuntime.env.header.Number,
+			log.Debug("BidSimulator: greedy merge tx stopTimer", "block", bidRuntime.env.header.Number,
 				"header time", time.Until(time.Unix(int64(bidRuntime.env.header.Time), 0)),
 				"commit delay", *delay, "DelayLeftOver", b.delayLeftOver)
 
@@ -618,9 +624,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			}
 
 			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, stopTimer, bidTxsSet)
-			if fillErr != nil {
-				log.Debug("BidSimulator: GreedyMergeTx fillTransactions", "block", bidRuntime.env.header.Number, "err", fillErr)
-			}
+			log.Info("BidSimulator: greedy merge tx fill transactions", "block", bidRuntime.env.header.Number,
+				"tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
 			// recalculate the packed reward
 			bidRuntime.packReward(b.config.ValidatorCommission)
