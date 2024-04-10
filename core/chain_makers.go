@@ -372,6 +372,9 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			if err != nil {
 				panic(err)
 			}
+			if block.Header().EmptyWithdrawalsHash() {
+				block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
+			}
 			if config.IsCancun(block.Number(), block.Time()) {
 				for _, s := range b.sidecars {
 					s.BlockNumber = block.Number()
