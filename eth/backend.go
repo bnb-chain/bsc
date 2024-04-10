@@ -69,7 +69,7 @@ import (
 
 const (
 	ChainDBNamespace = "eth/db/chaindata/"
-	JournalFile      = "trie.journal"
+	JournalFileName  = "trie.journal"
 	ChainData        = "chaindata"
 )
 
@@ -253,8 +253,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	}
 	var (
-		journalFile string
-		path        string
+		journalFilePath string
+		path            string
 	)
 	if config.JournalFileEnabled {
 		if stack.IsSeparatedDB() {
@@ -262,7 +262,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		} else {
 			path = ChainData
 		}
-		journalFile = stack.ResolvePath(path) + "/" + JournalFile
+		journalFilePath = stack.ResolvePath(path) + "/" + JournalFileName
 	}
 	var (
 		vmConfig = vm.Config{
@@ -281,7 +281,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			StateHistory:        config.StateHistory,
 			StateScheme:         config.StateScheme,
 			PathSyncFlush:       config.PathSyncFlush,
-			JournalFilePath:     journalFile,
+			JournalFilePath:     journalFilePath,
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)

@@ -588,7 +588,6 @@ func (db *Database) Journal(root common.Hash) error {
 	}
 
 	// Store the journal into the database and return
-	// Size returns the size of the journal in bytes, It must be called before Sync.
 	journalSize := journal.Size()
 
 	// Set the db in read only mode to reject all following mutations

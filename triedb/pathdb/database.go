@@ -167,7 +167,6 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		config:     config,
 		diskdb:     diskdb,
 	}
-
 	// Construct the layer tree by resolving the in-disk singleton state
 	// and in-memory layer journal.
 	db.tree = newLayerTree(db.loadLayers())
