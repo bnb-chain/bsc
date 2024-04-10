@@ -1018,7 +1018,7 @@ func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.B
 		return nil, nil
 	}
 	blobSidecars, err := s.b.GetBlobSidecars(ctx, header.Hash())
-	if err != nil {
+	if err != nil || blobSidecars == nil {
 		return nil, nil
 	}
 	result := make([]map[string]interface{}, len(blobSidecars))
@@ -1040,7 +1040,7 @@ func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.
 		return nil, nil
 	}
 	blobSidecars, err := s.b.GetBlobSidecars(ctx, blockHash)
-	if err != nil || len(blobSidecars) == 0 {
+	if err != nil || blobSidecars == nil || len(blobSidecars) == 0 {
 		return nil, nil
 	}
 	for _, sidecar := range blobSidecars {
