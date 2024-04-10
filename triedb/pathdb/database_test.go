@@ -299,7 +299,7 @@ func (t *tester) generate(parent common.Hash) (common.Hash, *trienode.MergedNode
 			}
 		}
 	}
-	return root, ctx.nodes, triestate.New(ctx.accountOrigin, ctx.storageOrigin, nil)
+	return root, ctx.nodes, triestate.New(ctx.accountOrigin, ctx.storageOrigin, nil, ctx.accounts, ctx.storages, nil)
 }
 
 // lastRoot returns the latest root hash, or empty if nothing is cached.
@@ -324,10 +324,18 @@ func (t *tester) verifyState(root common.Hash) error {
 		if err != nil || !bytes.Equal(blob, account) {
 			return fmt.Errorf("account is mismatched: %w", err)
 		}
+		blob, err = reader.Account(addrHash)
+		if err != nil || !bytes.Equal(blob, account) {
+			return fmt.Errorf("account is mismatched: %w", err)
+		}
 	}
 	for addrHash, slots := range t.snapStorages[root] {
 		for hash, slot := range slots {
 			blob, err := reader.Node(addrHash, hash.Bytes(), crypto.Keccak256Hash(slot))
+			if err != nil || !bytes.Equal(blob, slot) {
+				return fmt.Errorf("slot is mismatched: %w", err)
+			}
+			blob, err = reader.Storage(addrHash, hash)
 			if err != nil || !bytes.Equal(blob, slot) {
 				return fmt.Errorf("slot is mismatched: %w", err)
 			}

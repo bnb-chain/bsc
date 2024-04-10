@@ -105,7 +105,8 @@ func (a *asyncnodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node
 // revert is the reverse operation of commit. It also merges the provided nodes
 // into the nodebuffer, the difference is that the provided node set should
 // revert the changes made by the last state transition.
-func (a *asyncnodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node) error {
+func (a *asyncnodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node,
+	accounts map[common.Hash][]byte, storages map[common.Hash]map[common.Hash][]byte) error {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
@@ -115,7 +116,7 @@ func (a *asyncnodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]
 		log.Crit("[BUG] Failed to merge node cache under revert async node buffer", "error", err)
 	}
 	a.background.reset()
-	return a.current.revert(db, nodes)
+	return a.current.revert(db, nodes, accounts, storages)
 }
 
 // setSize is unsupported in asyncnodebuffer, due to the double buffer, blocking will occur.
@@ -285,8 +286,9 @@ func newNodeCache(limit, size uint64,
 		nodes:  nodes,
 
 		LatestAccounts: latestAccounts,
-		LatestStorages: latestStorages, DestructSet: destructSet,
-		immutable: 0,
+		LatestStorages: latestStorages,
+		DestructSet:    destructSet,
+		immutable:      0,
 	}
 }
 
@@ -497,6 +499,10 @@ func (nc *nodecache) merge(nc1 *nodecache) (*nodecache, error) {
 	res.layers = immutable.layers + mutable.layers
 	res.limit = immutable.limit
 	res.nodes = make(map[common.Hash]map[string]*trienode.Node)
+	res.LatestAccounts = make(map[common.Hash][]byte)
+	res.LatestStorages = make(map[common.Hash]map[common.Hash][]byte)
+	res.DestructSet = make(map[common.Hash]struct{})
+	// merge nodes
 	for acc, subTree := range immutable.nodes {
 		if _, ok := res.nodes[acc]; !ok {
 			res.nodes[acc] = make(map[string]*trienode.Node)
@@ -514,10 +520,45 @@ func (nc *nodecache) merge(nc1 *nodecache) (*nodecache, error) {
 			res.nodes[acc][path] = node
 		}
 	}
+	// merge plain account and storage
+	for acc, _ := range immutable.DestructSet {
+		res.DestructSet[acc] = struct{}{}
+	}
+	for acc, val := range immutable.LatestAccounts {
+		res.LatestAccounts[acc] = val
+	}
+	for acc, storages := range immutable.LatestStorages {
+		if _, ok := res.LatestStorages[acc]; !ok {
+			res.LatestStorages[acc] = make(map[common.Hash][]byte)
+		}
+		for k, v := range storages {
+			res.LatestStorages[acc][k] = v
+		}
+	}
+
+	for acc, _ := range mutable.DestructSet {
+		delete(res.LatestAccounts, acc)
+		delete(res.LatestStorages, acc)
+		delete(res.nodes, acc)
+		res.DestructSet[acc] = struct{}{}
+	}
+	for acc, val := range mutable.LatestAccounts {
+		res.LatestAccounts[acc] = val
+	}
+	for acc, storages := range mutable.LatestStorages {
+		if _, ok := res.LatestStorages[acc]; !ok {
+			res.LatestStorages[acc] = make(map[common.Hash][]byte)
+		}
+		for k, v := range storages {
+			res.LatestStorages[acc][k] = v
+		}
+	}
+
 	return res, nil
 }
 
-func (nc *nodecache) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node) error {
+func (nc *nodecache) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node,
+	accounts map[common.Hash][]byte, storages map[common.Hash]map[common.Hash][]byte) error {
 	if atomic.LoadUint64(&nc.immutable) == 1 {
 		return errRevertImmutable
 	}
@@ -566,6 +607,17 @@ func (nc *nodecache) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 			delta += int64(len(n.Blob)) - int64(len(orig.Blob))
 		}
 	}
+	for acc, val := range accounts {
+		nc.LatestAccounts[acc] = val
+	}
+	for acc, set := range storages {
+		if _, ok := nc.LatestStorages[acc]; !ok {
+			nc.LatestStorages[acc] = make(map[common.Hash][]byte)
+		}
+		for k, v := range set {
+			nc.LatestStorages[acc][k] = v
+		}
+	}
 	nc.updateSize(delta)
 	return nil
 }
@@ -575,11 +627,14 @@ func copyNodeCache(n *nodecache) *nodecache {
 		return nil
 	}
 	nc := &nodecache{
-		layers:    n.layers,
-		size:      n.size,
-		limit:     n.limit,
-		immutable: atomic.LoadUint64(&n.immutable),
-		nodes:     make(map[common.Hash]map[string]*trienode.Node),
+		layers:         n.layers,
+		size:           n.size,
+		limit:          n.limit,
+		immutable:      atomic.LoadUint64(&n.immutable),
+		nodes:          make(map[common.Hash]map[string]*trienode.Node),
+		LatestAccounts: make(map[common.Hash][]byte),
+		LatestStorages: make(map[common.Hash]map[common.Hash][]byte),
+		DestructSet:    make(map[common.Hash]struct{}),
 	}
 	for acc, subTree := range n.nodes {
 		if _, ok := nc.nodes[acc]; !ok {
@@ -588,6 +643,22 @@ func copyNodeCache(n *nodecache) *nodecache {
 		for path, node := range subTree {
 			nc.nodes[acc][path] = node
 		}
+	}
+	for acc, _ := range n.DestructSet {
+		nc.DestructSet[acc] = struct{}{}
+	}
+	for acc, val := range n.LatestAccounts {
+		nc.LatestAccounts[acc] = val
+	}
+	for acc, sets := range n.LatestStorages {
+		current, ok := n.LatestStorages[acc]
+		if !ok {
+			current = make(map[common.Hash][]byte)
+		}
+		for k, v := range sets {
+			current[k] = v
+		}
+		nc.LatestStorages[acc] = current
 	}
 	return nc
 }

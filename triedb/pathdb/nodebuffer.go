@@ -140,7 +140,8 @@ func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node, set
 // revert is the reverse operation of commit. It also merges the provided nodes
 // into the nodebuffer, the difference is that the provided node set should
 // revert the changes made by the last state transition.
-func (b *nodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node) error {
+func (b *nodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node,
+	_ map[common.Hash][]byte, _ map[common.Hash]map[common.Hash][]byte) error {
 	// Short circuit if no embedded state transition to revert.
 	if b.layers == 0 {
 		return errStateUnrecoverable

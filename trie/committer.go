@@ -18,6 +18,7 @@ package trie
 
 import (
 	"fmt"
+
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -143,8 +144,7 @@ func (c *committer) store(path []byte, n node) node {
 				c.nodes.AddNode(path, trienode.New(nhash, nodeToBytes(n)))
 			}
 		}
-		log.Info("Store embedded node", "path=", path, "node= ", n)
-		// fmt.Println("Store embedded node", "path=", path, "node= ", n)
+		log.Debug("Store embedded node", "path=", common.Bytes2Hex(path), "node= ", n)
 		return n
 	}
 	// Collect the dirty node to nodeset for return.

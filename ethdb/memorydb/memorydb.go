@@ -18,6 +18,7 @@
 package memorydb
 
 import (
+	"bytes"
 	"errors"
 	"sort"
 	"strings"
@@ -297,8 +298,25 @@ type iterator struct {
 }
 
 func (it *iterator) Seek(key []byte) bool {
-	//TODO implement me
-	panic("implement me")
+	if it.index <= 0 {
+		return false
+	}
+	for {
+		if it.index >= len(it.keys) {
+			return false
+		}
+		if bytes.Compare([]byte(it.keys[it.index]), key) < 0 {
+			it.index++
+			continue
+		} else {
+			if it.index == 0 {
+				return false
+			}
+			it.index--
+			return true
+		}
+	}
+
 }
 
 // Next moves the iterator to the next key/value pair. It returns whether the

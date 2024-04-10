@@ -52,7 +52,7 @@ type trienodebuffer interface {
 	// revert is the reverse operation of commit. It also merges the provided nodes
 	// into the trienodebuffer, the difference is that the provided node set should
 	// revert the changes made by the last state transition.
-	revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node) error
+	revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node, accounts map[common.Hash][]byte, storages map[common.Hash]map[common.Hash][]byte) error
 
 	// flush persists the in-memory dirty trie node into the disk if the configured
 	// memory threshold is reached. Note, all data must be written atomically.
@@ -406,7 +406,7 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 	// Apply the reverse state changes upon the current state. This must
 	// be done before holding the lock in order to access state in "this"
 	// layer.
-	nodes, err := triestate.Apply(h.meta.parent, h.meta.root, h.accounts, h.storages, loader)
+	nodes, latestAccounts, latestStorages, err := triestate.Apply(h.meta.parent, h.meta.root, h.accounts, h.storages, loader)
 	if err != nil {
 		return nil, err
 	}
@@ -422,7 +422,7 @@ func (dl *diskLayer) revert(h *history, loader triestate.TrieLoader) (*diskLayer
 	// needs to be reverted is not yet flushed and cached in node
 	// buffer, otherwise, manipulate persistent state directly.
 	if !dl.buffer.empty() {
-		err := dl.buffer.revert(dl.db.diskdb, nodes)
+		err := dl.buffer.revert(dl.db.diskdb, nodes, latestAccounts, latestStorages)
 		if err != nil {
 			return nil, err
 		}
