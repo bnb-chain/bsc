@@ -442,10 +442,20 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 	// delete all kv for destructSet first to keep latest for disk nodes
 	for h, _ := range nc.DestructSet {
 		rawdb.DeleteStorageTrie(batch, h)
-		clean.latestStates.Set(h.Bytes(), nil)
+		clean.plainAccounts.Set(h.Bytes(), nil)
+	}
+	if len(nc.DestructSet) != 0 {
+		// reset the plain storage to avoid stale storage state
+		clean.plainStorages.Reset()
 	}
 	for h, acc := range nc.LatestAccounts {
-		clean.latestStates.Set(h.Bytes(), acc)
+		clean.plainAccounts.Set(h.Bytes(), acc)
+	}
+
+	for h, storages := range nc.LatestStorages {
+		for k, v := range storages {
+			clean.plainStorages.Set(append(h.Bytes(), k.Bytes()...), v)
+		}
 	}
 	// write all the nodes
 	nodes := writeNodes(batch, nc.nodes, clean)

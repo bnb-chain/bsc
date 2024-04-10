@@ -91,8 +91,9 @@ type trienodebuffer interface {
 }
 
 type cleanCache struct {
-	nodes        *fastcache.Cache
-	latestStates *fastcache.Cache
+	nodes         *fastcache.Cache
+	plainAccounts *fastcache.Cache
+	plainStorages *fastcache.Cache
 }
 
 func NewTrieNodeBuffer(sync bool, limit int,
@@ -126,8 +127,11 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *cleanCache,
 	// the original disk layer).
 	if cleans == nil && db.config.CleanCacheSize != 0 {
 		cleans = &cleanCache{}
-		cleans.nodes = fastcache.New(db.config.CleanCacheSize * 3 / 4)
-		cleans.latestStates = fastcache.New(db.config.CleanCacheSize / 4)
+		cleans.nodes = fastcache.New(db.config.CleanCacheSize * 1 / 2)
+		cleans.plainAccounts = fastcache.New(db.config.CleanCacheSize * 1 / 4)
+		cleans.plainStorages = fastcache.New(db.config.CleanCacheSize * 1 / 4)
+		log.Info("Allocate clean cache in disklayer", "nodes", common.StorageSize(db.config.CleanCacheSize*1/2),
+			"plainAccount", common.StorageSize(db.config.CleanCacheSize*1/4), "plainStorage", common.StorageSize(db.config.CleanCacheSize*1/4))
 	}
 	return &diskLayer{
 		root:   root,
@@ -184,11 +188,10 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 		return data, nil
 	}
 
-	if data, ok := dl.cleans.latestStates.HasGet(nil, hash.Bytes()); ok {
+	if data, ok := dl.cleans.plainAccounts.HasGet(nil, hash.Bytes()); ok {
 		return data, nil
 	}
 
-	// TODO: seek from diskdb
 	return dl.readAccountTrie(hash), nil
 }
 
@@ -201,7 +204,10 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	if data, exist := dl.buffer.storage(accountHash, storageHash); exist {
 		return data, nil
 	}
-	// TODO: seek from clean cache
+
+	if data, ok := dl.cleans.plainStorages.HasGet(nil, append(accountHash.Bytes(), storageHash.Bytes()...)); ok {
+		return data, nil
+	}
 
 	return dl.readStorageTrie(accountHash, storageHash), nil
 }
