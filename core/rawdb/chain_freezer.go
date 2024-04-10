@@ -308,6 +308,9 @@ func getBlobExtraReserveFromEnv(env *ethdb.FreezerEnv) uint64 {
 }
 
 func (f *chainFreezer) freezeRangeWithBlobs(nfdb *nofreezedb, number, limit uint64) (hashes []common.Hash, err error) {
+	defer func() {
+		log.Debug("freezeRangeWithBlobs", "from", number, "to", limit, "err", err)
+	}()
 	lastHash := ReadCanonicalHash(nfdb, limit)
 	if lastHash == (common.Hash{}) {
 		return nil, fmt.Errorf("canonical hash missing, can't freeze block %d", limit)
