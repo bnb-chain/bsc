@@ -74,141 +74,127 @@ type journalStorage struct {
 	Slots      [][]byte
 }
 
-type Journal interface {
-	// newJournalWriter creates a new journal writer.
-	newJournalWriter() io.WriteCloser
+type JournalWriter interface {
+	io.Writer
 
-	// newJournalReader creates a new journal reader.
-	newJournalReader() (io.ReadCloser, error)
-
-	// Sync flushes the journal writer.
-	Sync()
-
-	// Delete deletes the journal.
-	Delete()
-
-	// Size returns the size of the journal.
+	Close()
 	Size() uint64
 }
 
-// journalKV is used to store the journal as a single KV in database.
-type journalKV struct {
-	Journal
+type JournalReader interface {
+	io.Reader
+	Close()
+}
+
+type JournalFileWriter struct {
+	JournalWriter
+	file *os.File
+}
+
+type JournalFileReader struct {
+	JournalReader
+	file *os.File
+}
+type JournalKVWriter struct {
+	JournalWriter
 	journalBuf bytes.Buffer
 	diskdb     ethdb.Database
 }
 
-// journalFile is used to store trie journal into a file.
-type journalFile struct {
-	Journal
-	filePath string
+type JournalKVReader struct {
+	JournalReader
+	journalBuf *bytes.Buffer
 }
 
-type nopWriteCloser struct {
-	io.Writer
+// Write appends b directly to the encoder output.
+func (fw *JournalFileWriter) Write(b []byte) (int, error) {
+	return fw.file.Write(b)
 }
 
-func (w *nopWriteCloser) Close() error { return nil }
-
-// NopWriteCloser returns a nopWriteCloser.
-func NopWriteCloser(w io.Writer) io.WriteCloser {
-	return &nopWriteCloser{w}
+func (fw *JournalFileWriter) Close() {
 }
 
-func newJournal(file string, db ethdb.Database) Journal {
-	if len(file) == 0 {
-		return &journalKV{
-			diskdb: db,
-		}
-	} else {
-		return &journalFile{
-			filePath: file,
-		}
-	}
-}
-
-func (kv *journalKV) newJournalWriter() io.WriteCloser {
-	return NopWriteCloser(&kv.journalBuf)
-}
-
-func (kv *journalKV) newJournalReader() (io.ReadCloser, error) {
-	journal := rawdb.ReadTrieJournal(kv.diskdb)
-	if len(journal) == 0 {
-		return nil, errMissJournal
-	}
-
-	return io.NopCloser(bytes.NewBuffer(journal)), nil
-}
-
-func (kv *journalKV) Sync() {
-	rawdb.WriteTrieJournal(kv.diskdb, kv.journalBuf.Bytes())
-	kv.journalBuf.Reset()
-}
-
-func (kv *journalKV) Delete() {
-	rawdb.DeleteTrieJournal(kv.diskdb)
-}
-
-func (kv *journalKV) Size() uint64 {
-	return uint64(kv.journalBuf.Len())
-}
-
-// newJournalWriter creates a new journal writer.
-func (f *journalFile) newJournalWriter() io.WriteCloser {
-	fd, err := os.OpenFile(f.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil
-	}
-	return fd
-}
-
-// newJournalReader creates a new journal reader.
-func (f *journalFile) newJournalReader() (io.ReadCloser, error) {
-	fd, err := os.Open(f.filePath)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, errMissJournal
-	}
-	if err != nil {
-		return nil, err
-	}
-	return fd, nil
-}
-
-// Sync flushes the journal writer.
-func (f *journalFile) Sync() {
-}
-
-// Delete deletes the journal.
-func (f *journalFile) Delete() {
-	file := f.filePath
-	_, err := os.Stat(file)
-	if os.IsNotExist(err) {
-		return
-	}
-	errRemove := os.Remove(file)
-	if errRemove != nil {
-		log.Crit("Failed to remove tries journal", "journal path", file, "err", err)
-	}
-}
-
-// Size returns the size of the journal.
-func (f *journalFile) Size() uint64 {
-	fd, err := os.Open(f.filePath)
-	if err != nil {
+func (fw *JournalFileWriter) Size() uint64 {
+	if fw.file == nil {
 		return 0
 	}
-	defer fd.Close()
-	fileInfo, err := fd.Stat()
+	fileInfo, err := fw.file.Stat()
 	if err != nil {
 		log.Crit("Failed to stat journal", "err", err)
 	}
 	return uint64(fileInfo.Size())
 }
 
+func (kw *JournalKVWriter) Write(b []byte) (int, error) {
+	return kw.journalBuf.Write(b)
+}
+
+func (kw *JournalKVWriter) Close() {
+	rawdb.WriteTrieJournal(kw.diskdb, kw.journalBuf.Bytes())
+	kw.journalBuf.Reset()
+}
+
+func (kw *JournalKVWriter) Size() uint64 {
+	return uint64(kw.journalBuf.Len())
+}
+
+func (fr *JournalFileReader) Read(p []byte) (n int, err error) {
+	return fr.file.Read(p)
+}
+
+func (fr *JournalFileReader) Close() {
+}
+
+func (kr *JournalKVReader) Read(p []byte) (n int, err error) {
+	return kr.journalBuf.Read(p)
+}
+
+func (kr *JournalKVReader) Close() {
+}
+
+func newJournalWriter(file string, db ethdb.Database) JournalWriter {
+	if len(file) == 0 {
+		return &JournalKVWriter{
+			diskdb: db,
+		}
+	} else {
+		fd, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return nil
+		}
+		return &JournalFileWriter{
+			file: fd,
+		}
+	}
+}
+
+func newJournalReader(file string, db ethdb.Database) (JournalReader, error) {
+	if len(file) == 0 {
+		journal := rawdb.ReadTrieJournal(db)
+		if len(journal) == 0 {
+			return nil, errMissJournal
+		}
+		return &JournalKVReader{
+			journalBuf: bytes.NewBuffer(journal),
+		}, nil
+	} else {
+		fd, err := os.Open(file)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, errMissJournal
+		}
+		if err != nil {
+			return nil, err
+		}
+		return &JournalFileReader{
+			file: fd,
+		}, nil
+	}
+}
+
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	start := time.Now()
-	reader, err := db.journal.newJournalReader()
+	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb)
 
 	if err != nil {
 		return nil, err
@@ -424,7 +410,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 	if shaSum != expectSum {
 		return nil, fmt.Errorf("expect shaSum: %v, real:%v", expectSum, shaSum)
 	}
-	log.Info("Loaded diff layer journal", "root", root, "parent", parent.rootHash(), "id", parent.stateID()+1, "block", block)
+	log.Debug("Loaded diff layer journal", "root", root, "parent", parent.rootHash(), "id", parent.stateID()+1, "block", block)
 
 	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete)), r)
 }
@@ -546,7 +532,7 @@ func (dl *diffLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, shasum); err != nil {
 		return err
 	}
-	log.Info("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
+	log.Debug("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
 	return nil
 }
 
@@ -579,8 +565,8 @@ func (db *Database) Journal(root common.Hash) error {
 		return errDatabaseReadOnly
 	}
 	// Firstly write out the metadata of journal
-	db.journal.Delete()
-	journal := db.journal.newJournalWriter()
+	db.DeleteTrieJournal()
+	journal := newJournalWriter(db.config.JournalFilePath, db.diskdb)
 	defer journal.Close()
 
 	if err := rlp.Encode(journal, journalVersion); err != nil {
@@ -603,8 +589,7 @@ func (db *Database) Journal(root common.Hash) error {
 
 	// Store the journal into the database and return
 	// Size returns the size of the journal in bytes, It must be called before Sync.
-	journalSize := db.journal.Size()
-	db.journal.Sync()
+	journalSize := journal.Size()
 
 	// Set the db in read only mode to reject all following mutations
 	db.readOnly = true

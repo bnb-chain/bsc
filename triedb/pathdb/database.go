@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"sync"
@@ -149,7 +150,6 @@ type Database struct {
 	tree       *layerTree               // The group for all known layers
 	freezer    *rawdb.ResettableFreezer // Freezer for storing trie histories, nil possible in tests
 	lock       sync.RWMutex             // Lock to prevent mutations from happening at the same time
-	journal    Journal
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -167,7 +167,6 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		config:     config,
 		diskdb:     diskdb,
 	}
-	db.journal = newJournal(config.JournalFilePath, diskdb)
 
 	// Construct the layer tree by resolving the in-disk singleton state
 	// and in-memory layer journal.
@@ -320,7 +319,7 @@ func (db *Database) Enable(root common.Hash) error {
 	// Drop the stale state journal in persistent database and
 	// reset the persistent state id back to zero.
 	batch := db.diskdb.NewBatch()
-	db.journal.Delete()
+	db.DeleteTrieJournal()
 	rawdb.WritePersistentStateID(batch, 0)
 	if err := batch.Write(); err != nil {
 		return err
@@ -384,7 +383,7 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 		// disk layer won't be accessible from outside.
 		db.tree.reset(dl)
 	}
-	db.journal.Delete()
+	db.DeleteTrieJournal()
 	_, err := truncateFromHead(db.diskdb, db.freezer, dl.stateID())
 	if err != nil {
 		return err
@@ -527,4 +526,21 @@ func (db *Database) GetAllRooHash() [][]string {
 
 	data = append(data, []string{"-1", db.tree.bottom().rootHash().String()})
 	return data
+}
+
+func (db *Database) DeleteTrieJournal() error {
+	filePath := db.config.JournalFilePath
+	if len(filePath) == 0 {
+		rawdb.DeleteTrieJournal(db.diskdb)
+	} else {
+		_, err := os.Stat(filePath)
+		if os.IsNotExist(err) {
+			return err
+		}
+		errRemove := os.Remove(filePath)
+		if errRemove != nil {
+			log.Crit("Failed to remove tries journal", "journal path", filePath, "err", err)
+		}
+	}
+	return nil
 }
