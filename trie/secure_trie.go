@@ -17,9 +17,6 @@
 package trie
 
 import (
-	"bytes"
-	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -96,36 +93,12 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte, direct bool) ([]byt
 	)
 	if direct {
 		enc, err = t.trie.GetDirectly(t.hashKey(key))
-		enc1, err1 := t.trie.Get(t.hashKey(key))
-		if err != nil || err1 != nil {
-			panic(fmt.Sprintf("GetStorage error, err: %v, err1: %v", err, err1))
-		}
-
-		if len(enc) == 0 && len(enc1) == 0 {
-			return nil, nil
-		}
-
-		if bytes.Compare(enc, enc1) != 0 {
-			_, content, _, err := rlp.Split(enc)
-			if err != nil {
-				panic(fmt.Sprintf("Storage mismatch, account:%s, key: %s, len(enc): %d, len(enc1): %d, err: %v",
-					t.trie.Owner().String(), common.Bytes2Hex(t.hashKey(key)), len(enc), len(enc1), err))
-			}
-			_, content1, _, err := rlp.Split(enc1)
-			if err != nil {
-				panic(fmt.Sprintf("Storage mismatch,  account:%s, key: %s, len(enc): %d, len(enc1): %d, err: %v",
-					t.trie.Owner().String(), common.Bytes2Hex(t.hashKey(key)), len(enc), len(enc1), err))
-			}
-			panic(fmt.Sprintf("Storage mismatch, account:%s, key: %s, len(enc): %d, len(enc1): %d, content: %s, content1: %s",
-				t.trie.Owner().String(), common.Bytes2Hex(t.hashKey(key)), len(enc), len(enc1), common.Bytes2Hex(content), common.Bytes2Hex(content1)))
-		}
 	} else {
 		enc, err = t.trie.Get(t.hashKey(key))
-		if err != nil || len(enc) == 0 {
-			return nil, err
-		}
 	}
-
+	if err != nil || len(enc) == 0 {
+		return nil, err
+	}
 	_, content, _, err := rlp.Split(enc)
 	return content, err
 }
@@ -140,43 +113,15 @@ func (t *StateTrie) GetAccount(address common.Address, direct bool) (*types.Stat
 	)
 	if direct {
 		res, err = t.trie.GetDirectly(t.hashKey(address.Bytes()))
-		res1, err1 := t.trie.Get(t.hashKey(address.Bytes()))
-
-		if err != nil || err1 != nil {
-			panic(fmt.Sprintf("GetAccount error, err: %v, err1: %v", err, err1))
-		}
-
-		if res == nil && res1 == nil {
-			return nil, nil
-		}
-
-		if bytes.Compare(res, res1) != 0 {
-			ret := new(types.StateAccount)
-			err = rlp.DecodeBytes(res, ret)
-			if err != nil {
-				panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, err: %v", len(res), len(res1), err))
-			}
-			ret1 := new(types.StateAccount)
-			err = rlp.DecodeBytes(res, ret1)
-			if err != nil {
-				panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, err: %v", len(res), len(res1), err1))
-			}
-			panic(fmt.Sprintf("Account mismatch, len(res): %d, len(res1): %d, acc: %v, acc1: %v", len(res), len(res1), ret, ret1))
-		}
-
-		ret := new(types.StateAccount)
-		err = rlp.DecodeBytes(res, ret)
-		return ret, err
-
 	} else {
 		res, err = t.trie.Get(t.hashKey(address.Bytes()))
-		if res == nil || err != nil {
-			return nil, err
-		}
-		ret := new(types.StateAccount)
-		err = rlp.DecodeBytes(res, ret)
-		return ret, err
 	}
+	if res == nil || err != nil {
+		return nil, err
+	}
+	ret := new(types.StateAccount)
+	err = rlp.DecodeBytes(res, ret)
+	return ret, err
 }
 
 // GetAccountByHash does the same thing as GetAccount, however it expects an
