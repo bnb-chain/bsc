@@ -195,7 +195,7 @@ func (h *Header) EmptyReceipts() bool {
 
 // EmptyWithdrawalsHash returns true if there are no WithdrawalsHash for this header/block.
 func (h *Header) EmptyWithdrawalsHash() bool {
-	return h.WithdrawalsHash == nil || *h.WithdrawalsHash == EmptyWithdrawalsHash
+	return h.WithdrawalsHash != nil && *h.WithdrawalsHash == EmptyWithdrawalsHash
 }
 
 // Body is a simple (mutable, non-safe) data container for storing and moving

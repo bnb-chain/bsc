@@ -576,7 +576,7 @@ func (f *BlockFetcher) loop() {
 					select {
 					case res := <-resCh:
 						res.Done <- nil
-						// Ignoring withdrawals here, since the block fetcher is not used post-merge.
+						// Ignoring withdrawals here, will set it to empty later if EmptyWithdrawalsHash in header.
 						txs, uncles, _, sidecars := res.Res.(*eth.BlockBodiesResponse).Unpack()
 						f.FilterBodies(peer, txs, uncles, sidecars, time.Now())
 
@@ -723,6 +723,9 @@ func (f *BlockFetcher) loop() {
 						matched = true
 						if f.getBlock(hash) == nil {
 							block := types.NewBlockWithHeader(announce.header).WithBody(task.transactions[i], task.uncles[i])
+							if block.Header().EmptyWithdrawalsHash() {
+								block.WithWithdrawals(make([]*types.Withdrawal, 0))
+							}
 							block = block.WithSidecars(task.sidecars[i])
 							block.ReceivedAt = task.time
 							blocks = append(blocks, block)
