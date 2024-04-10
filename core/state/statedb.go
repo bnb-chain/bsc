@@ -1448,32 +1448,39 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 		if prev.Root == types.EmptyRootHash {
 			continue
 		}
-		// Remove storage slots belong to the account.
-		aborted, slots, set, err := s.deleteStorage(addr, addrHash, prev.Root)
-		if err != nil {
-			return nil, fmt.Errorf("failed to delete storage, err: %w", err)
-		}
-		// The storage is too huge to handle, skip it but mark as incomplete.
-		// For case (d), the account is resurrected might with a few slots
-		// created. In this case, wipe the entire storage state diff because
-		// of aborted deletion.
-		if aborted {
-			incomplete[addr] = struct{}{}
-			delete(s.storagesOrigin, addr)
-			continue
-		}
-		if s.storagesOrigin[addr] == nil {
-			s.storagesOrigin[addr] = slots
-		} else {
-			// It can overwrite the data in s.storagesOrigin[addrHash] set by
-			// 'object.updateTrie'.
-			for key, val := range slots {
-				s.storagesOrigin[addr][key] = val
+
+		// The storages will be deleted by DeleteRange in PathDB
+		incomplete[addr] = struct{}{}
+		delete(s.storagesOrigin, addr)
+
+		/*
+			// Remove storage slots belong to the account.
+			aborted, slots, set, err := s.deleteStorage(addr, addrHash, prev.Root)
+			if err != nil {
+				return nil, fmt.Errorf("failed to delete storage, err: %w", err)
 			}
-		}
-		if err := nodes.Merge(set); err != nil {
-			return nil, err
-		}
+			// The storage is too huge to handle, skip it but mark as incomplete.
+			// For case (d), the account is resurrected might with a few slots
+			// created. In this case, wipe the entire storage state diff because
+			// of aborted deletion.
+			if aborted {
+				incomplete[addr] = struct{}{}
+				delete(s.storagesOrigin, addr)
+				continue
+			}
+			if s.storagesOrigin[addr] == nil {
+				s.storagesOrigin[addr] = slots
+			} else {
+				// It can overwrite the data in s.storagesOrigin[addrHash] set by
+				// 'object.updateTrie'.
+				for key, val := range slots {
+					s.storagesOrigin[addr][key] = val
+				}
+			}
+			if err := nodes.Merge(set); err != nil {
+				return nil, err
+			}
+		*/
 	}
 	return incomplete, nil
 }
