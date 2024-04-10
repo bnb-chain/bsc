@@ -17,6 +17,7 @@
 package rawdb
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -40,6 +41,10 @@ const (
 	// freezerBatchLimit is the maximum number of blocks to freeze in one batch
 	// before doing an fsync and deleting it from the key-value store.
 	freezerBatchLimit = 30000
+)
+
+var (
+	missFreezerEnvErr = errors.New("missing freezer env error")
 )
 
 // chainFreezer is a wrapper of freezer with additional chain freezing feature.
@@ -119,6 +124,20 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 				return
 			}
 		}
+
+		// check freezer env first, it must wait a while when the env is necessary
+		err := f.checkFreezerEnv()
+		if err == missFreezerEnvErr {
+			log.Warn("Freezer need related env, may wait for a while", "err", err)
+			backoff = true
+			continue
+		}
+		if err != nil {
+			log.Error("Freezer check FreezerEnv err", "err", err)
+			backoff = true
+			continue
+		}
+
 		// Retrieve the freezing threshold.
 		hash := ReadHeadBlockHash(nfdb)
 		if hash == (common.Hash{}) {
@@ -278,7 +297,7 @@ func (f *chainFreezer) tryPruneBlobAncientTable(env *ethdb.FreezerEnv, num uint6
 		log.Error("Cannot prune blob ancient", "block", num, "expectTail", expectTail, "err", err)
 		return
 	}
-	log.Info("Chain freezer prune useless blobs, now ancient data is", "from", expectTail, "to", num, "cost", common.PrettyDuration(time.Since(start)))
+	log.Debug("Chain freezer prune useless blobs, now ancient data is", "from", expectTail, "to", num, "cost", common.PrettyDuration(time.Since(start)))
 }
 
 func getBlobExtraReserveFromEnv(env *ethdb.FreezerEnv) uint64 {
@@ -290,7 +309,7 @@ func getBlobExtraReserveFromEnv(env *ethdb.FreezerEnv) uint64 {
 
 func (f *chainFreezer) freezeRangeWithBlobs(nfdb *nofreezedb, number, limit uint64) (hashes []common.Hash, err error) {
 	defer func() {
-		log.Info("freezeRangeWithBlobs", "from", number, "to", limit, "err", err)
+		log.Debug("freezeRangeWithBlobs", "from", number, "to", limit, "err", err)
 	}()
 	lastHash := ReadCanonicalHash(nfdb, limit)
 	if lastHash == (common.Hash{}) {
@@ -410,6 +429,21 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 
 func (f *chainFreezer) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	f.freezeEnv.Store(env)
+	return nil
+}
+
+func (f *chainFreezer) checkFreezerEnv() error {
+	_, exist := f.freezeEnv.Load().(*ethdb.FreezerEnv)
+	if exist {
+		return nil
+	}
+	blobFrozen, err := f.TableAncients(ChainFreezerBlobSidecarTable)
+	if err != nil {
+		return err
+	}
+	if blobFrozen > 0 {
+		return missFreezerEnvErr
+	}
 	return nil
 }
 

@@ -765,7 +765,7 @@ func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error 
 	f.frozen.Add(f.offset)
 	f.tail.Add(f.offset)
 	f.writeBatch = newFreezerBatch(f)
-	log.Info("Reset Table", "kind", kind, "tail", f.tables[kind].itemHidden.Load(), "frozen", f.tables[kind].items.Load())
+	log.Debug("Reset Table", "kind", kind, "tail", f.tables[kind].itemHidden.Load(), "frozen", f.tables[kind].items.Load())
 	return nil
 }
 
