@@ -87,22 +87,18 @@ type JournalReader interface {
 }
 
 type JournalFileWriter struct {
-	JournalWriter
 	file *os.File
 }
 
 type JournalFileReader struct {
-	JournalReader
 	file *os.File
 }
 type JournalKVWriter struct {
-	JournalWriter
 	journalBuf bytes.Buffer
 	diskdb     ethdb.Database
 }
 
 type JournalKVReader struct {
-	JournalReader
 	journalBuf *bytes.Buffer
 }
 
@@ -532,7 +528,7 @@ func (dl *diffLayer) journal(w io.Writer) error {
 	if err := rlp.Encode(w, shasum); err != nil {
 		return err
 	}
-	log.Debug("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
+	log.Info("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
 	return nil
 }
 
