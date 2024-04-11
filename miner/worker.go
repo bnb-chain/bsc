@@ -1067,21 +1067,6 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
 	pendingBlobTxs := w.eth.TxPool().Pending(filter)
 
-	// Split the pending transactions into locals and remotes.
-	localPlainTxs, remotePlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
-	localBlobTxs, remoteBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
-
-	for _, account := range w.eth.TxPool().Locals() {
-		if txs := remotePlainTxs[account]; len(txs) > 0 {
-			delete(remotePlainTxs, account)
-			localPlainTxs[account] = txs
-		}
-		if txs := remoteBlobTxs[account]; len(txs) > 0 {
-			delete(remoteBlobTxs, account)
-			localBlobTxs[account] = txs
-		}
-	}
-
 	if bidTxs != nil {
 		filterBidTxs := func(commonTxs map[common.Address][]*txpool.LazyTransaction) {
 			for acc, txs := range commonTxs {
@@ -1098,10 +1083,23 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 			}
 		}
 
-		filterBidTxs(localPlainTxs)
-		filterBidTxs(localBlobTxs)
-		filterBidTxs(remotePlainTxs)
-		filterBidTxs(remoteBlobTxs)
+		filterBidTxs(pendingPlainTxs)
+		filterBidTxs(pendingBlobTxs)
+	}
+
+	// Split the pending transactions into locals and remotes.
+	localPlainTxs, remotePlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
+	localBlobTxs, remoteBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
+
+	for _, account := range w.eth.TxPool().Locals() {
+		if txs := remotePlainTxs[account]; len(txs) > 0 {
+			delete(remotePlainTxs, account)
+			localPlainTxs[account] = txs
+		}
+		if txs := remoteBlobTxs[account]; len(txs) > 0 {
+			delete(remoteBlobTxs, account)
+			localBlobTxs[account] = txs
+		}
 	}
 
 	// Fill the block with all available pending transactions.
