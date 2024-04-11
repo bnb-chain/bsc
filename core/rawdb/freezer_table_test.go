@@ -1384,59 +1384,40 @@ func TestResetItems(t *testing.T) {
 
 	// Write 7 x 20 bytes, splitting out into four files
 	batch := f.newBatch(0)
-	require.NoError(t, batch.AppendRaw(0, getChunk(20, 0xFF)))
-	require.NoError(t, batch.AppendRaw(1, getChunk(20, 0xEE)))
-	require.NoError(t, batch.AppendRaw(2, getChunk(20, 0xdd)))
-	require.NoError(t, batch.AppendRaw(3, getChunk(20, 0xcc)))
-	require.NoError(t, batch.AppendRaw(4, getChunk(20, 0xbb)))
-	require.NoError(t, batch.AppendRaw(5, getChunk(20, 0xaa)))
-	require.NoError(t, batch.AppendRaw(6, getChunk(20, 0x11)))
+	require.NoError(t, batch.AppendRaw(0, getChunk(20, 0x00)))
+	require.NoError(t, batch.AppendRaw(1, getChunk(20, 0x11)))
+	require.NoError(t, batch.AppendRaw(2, getChunk(20, 0x22)))
+	require.NoError(t, batch.AppendRaw(3, getChunk(20, 0x33)))
+	require.NoError(t, batch.AppendRaw(4, getChunk(20, 0x44)))
+	require.NoError(t, batch.AppendRaw(5, getChunk(20, 0x55)))
+	require.NoError(t, batch.AppendRaw(6, getChunk(20, 0x66)))
 	require.NoError(t, batch.commit())
 
 	// nothing to do, all the items should still be there.
-	f, err = f.resetItems(0, 7)
+	f, err = f.resetItems(0)
 	require.NoError(t, err)
-	fmt.Println(f.dumpIndexString(0, 1000))
-	checkRetrieve(t, f, map[uint64][]byte{
-		0: getChunk(20, 0xFF),
-		1: getChunk(20, 0xEE),
-		2: getChunk(20, 0xdd),
-		3: getChunk(20, 0xcc),
-		4: getChunk(20, 0xbb),
-		5: getChunk(20, 0xaa),
-		6: getChunk(20, 0x11),
-	})
-
-	f, err = f.resetItems(1, 5)
+	f, err = f.resetItems(8)
 	require.NoError(t, err)
-	_, err = f.resetItems(0, 5)
-	require.Error(t, err)
-	_, err = f.resetItems(1, 6)
-	require.Error(t, err)
-
+	f, err = f.resetItems(7)
+	require.NoError(t, err)
 	fmt.Println(f.dumpIndexString(0, 1000))
 	checkRetrieveError(t, f, map[uint64]error{
 		0: errOutOfBounds,
-	})
-	checkRetrieve(t, f, map[uint64][]byte{
-		1: getChunk(20, 0xEE),
-		2: getChunk(20, 0xdd),
-		3: getChunk(20, 0xcc),
-		4: getChunk(20, 0xbb),
+		6: errOutOfBounds,
 	})
 
-	f, err = f.resetItems(4, 4)
-	require.NoError(t, err)
-	checkRetrieveError(t, f, map[uint64]error{
-		4: errOutOfBounds,
-	})
-
+	// append
 	batch = f.newBatch(0)
 	require.Error(t, batch.AppendRaw(0, getChunk(20, 0xa0)))
-	require.NoError(t, batch.AppendRaw(4, getChunk(20, 0xa4)))
-	require.NoError(t, batch.AppendRaw(5, getChunk(20, 0xa5)))
+	require.NoError(t, batch.AppendRaw(7, getChunk(20, 0x77)))
+	require.NoError(t, batch.AppendRaw(8, getChunk(20, 0x88)))
+	require.NoError(t, batch.AppendRaw(9, getChunk(20, 0x99)))
 	require.NoError(t, batch.commit())
 	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieve(t, f, map[uint64][]byte{
+		7: getChunk(20, 0x77),
+		9: getChunk(20, 0x99),
+	})
 
 	// Reopen the table, the deletion information should be persisted as well
 	f.Close()
@@ -1446,22 +1427,19 @@ func TestResetItems(t *testing.T) {
 	}
 	fmt.Println(f.dumpIndexString(0, 1000))
 	checkRetrieveError(t, f, map[uint64]error{
-		0: errOutOfBounds,
+		0:  errOutOfBounds,
+		6:  errOutOfBounds,
+		10: errOutOfBounds,
 	})
 	checkRetrieve(t, f, map[uint64][]byte{
-		4: getChunk(20, 0xa4),
-		5: getChunk(20, 0xa5),
+		7: getChunk(20, 0x77),
+		9: getChunk(20, 0x99),
 	})
 
 	// truncate all, the entire freezer should be deleted
-	f.truncateTail(6)
+	f.truncateTail(10)
 	checkRetrieveError(t, f, map[uint64]error{
 		0: errOutOfBounds,
-		1: errOutOfBounds,
-		2: errOutOfBounds,
-		3: errOutOfBounds,
-		4: errOutOfBounds,
-		5: errOutOfBounds,
-		6: errOutOfBounds,
+		9: errOutOfBounds,
 	})
 }

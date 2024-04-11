@@ -348,7 +348,7 @@ func (f *Freezer) TruncateHead(items uint64) (uint64, error) {
 			if kind != ChainFreezerBlobSidecarTable {
 				return 0, err
 			}
-			nt, err := table.resetItems(items-f.offset, items-f.offset)
+			nt, err := table.resetItems(items - f.offset)
 			if err != nil {
 				return 0, err
 			}
@@ -489,7 +489,7 @@ func (f *Freezer) repair() error {
 			if kind != ChainFreezerBlobSidecarTable {
 				return err
 			}
-			nt, err := table.resetItems(head, head)
+			nt, err := table.resetItems(head)
 			if err != nil {
 				return err
 			}
@@ -698,34 +698,63 @@ func (f *Freezer) MigrateTable(kind string, convert convertLegacyFn) error {
 	return nil
 }
 
-// only used for ChainFreezerBlobSidecarTable now
-func (f *Freezer) ResetTable(kind string, tail, head uint64, onlyEmpty bool) error {
+// TruncateTableTail will truncate certain table to new tail
+func (f *Freezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	if f.readonly {
-		return errReadOnly
-	}
-	if err := f.Sync(); err != nil {
-		return err
+		return 0, errReadOnly
 	}
 
 	f.writeLock.Lock()
 	defer f.writeLock.Unlock()
-	if tail < f.offset || head < f.offset {
-		return errors.New("the input tail&head is less than offset")
+
+	if !slices.Contains(additionTables, kind) {
+		return 0, errors.New("only new added table could be truncated independently")
 	}
-	if _, exist := f.tables[kind]; !exist {
+	if tail < f.offset {
+		return 0, errors.New("the input tail&head is less than offset")
+	}
+	t, exist := f.tables[kind]
+	if !exist {
+		return 0, errors.New("you reset a non-exist table")
+	}
+
+	old := t.itemHidden.Load() + f.offset
+	if err := t.truncateTail(tail - f.offset); err != nil {
+		return 0, err
+	}
+	return old, nil
+}
+
+// ResetTable will reset certain table with new start point
+// only used for ChainFreezerBlobSidecarTable now
+func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	if f.readonly {
+		return errReadOnly
+	}
+
+	f.writeLock.Lock()
+	defer f.writeLock.Unlock()
+
+	t, exist := f.tables[kind]
+	if !exist {
 		return errors.New("you reset a non-exist table")
 	}
+
 	// if you reset a non empty table just skip
-	if onlyEmpty && !EmptyTable(f.tables[kind]) {
+	if onlyEmpty && !EmptyTable(t) {
 		return nil
 	}
 
-	nt, err := f.tables[kind].resetItems(tail-f.offset, head-f.offset)
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	nt, err := t.resetItems(startAt - f.offset)
 	if err != nil {
 		return err
 	}
 	f.tables[kind] = nt
 
+	// repair all tables with same tail & head
 	if err := f.repair(); err != nil {
 		for _, table := range f.tables {
 			table.Close()
@@ -736,7 +765,7 @@ func (f *Freezer) ResetTable(kind string, tail, head uint64, onlyEmpty bool) err
 	f.frozen.Add(f.offset)
 	f.tail.Add(f.offset)
 	f.writeBatch = newFreezerBatch(f)
-	log.Info("Reset Table", "kind", kind, "tail", f.tables[kind].itemHidden.Load(), "frozen", f.tables[kind].items.Load())
+	log.Debug("Reset Table", "kind", kind, "tail", f.tables[kind].itemHidden.Load(), "frozen", f.tables[kind].items.Load())
 	return nil
 }
 

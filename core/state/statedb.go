@@ -1896,6 +1896,10 @@ func (s *StateDB) convertAccountSet(set map[common.Address]*types.StateAccount) 
 	return ret
 }
 
+func (s *StateDB) GetSnap() snapshot.Snapshot {
+	return s.snap
+}
+
 // copySet returns a deep-copied set.
 func copySet[k comparable](set map[k][]byte) map[k][]byte {
 	copied := make(map[k][]byte, len(set))

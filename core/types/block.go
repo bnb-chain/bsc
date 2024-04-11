@@ -193,10 +193,9 @@ func (h *Header) EmptyReceipts() bool {
 	return h.ReceiptHash == EmptyReceiptsHash
 }
 
-// EmptyWithdrawalsHash returns true if there are no WithdrawalsHash for this header/block.
+// EmptyWithdrawalsHash returns true if the WithdrawalsHash is EmptyWithdrawalsHash.
 func (h *Header) EmptyWithdrawalsHash() bool {
-	// TODO(GalaIO): if check EmptyWithdrawalsHash in here?
-	return h.WithdrawalsHash == nil || *h.WithdrawalsHash == common.Hash{}
+	return h.WithdrawalsHash != nil && *h.WithdrawalsHash == EmptyWithdrawalsHash
 }
 
 // Body is a simple (mutable, non-safe) data container for storing and moving

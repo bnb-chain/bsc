@@ -101,8 +101,14 @@ func (t *table) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (int64, erro
 	return t.db.ModifyAncients(fn)
 }
 
-func (t *table) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
-	return t.db.ResetTable(kind, tail, head, onlyEmpty)
+// TruncateTableTail will truncate certain table to new tail
+func (t *table) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	return t.db.TruncateTableTail(kind, tail)
+}
+
+// ResetTable will reset certain table with new start point
+func (t *table) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	return t.db.ResetTable(kind, startAt, onlyEmpty)
 }
 
 func (t *table) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {

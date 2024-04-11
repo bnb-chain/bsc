@@ -1018,7 +1018,7 @@ func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.B
 		return nil, nil
 	}
 	blobSidecars, err := s.b.GetBlobSidecars(ctx, header.Hash())
-	if err != nil || len(blobSidecars) == 0 {
+	if err != nil || blobSidecars == nil {
 		return nil, nil
 	}
 	result := make([]map[string]interface{}, len(blobSidecars))
@@ -1040,7 +1040,7 @@ func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.
 		return nil, nil
 	}
 	blobSidecars, err := s.b.GetBlobSidecars(ctx, blockHash)
-	if err != nil || len(blobSidecars) == 0 {
+	if err != nil || blobSidecars == nil || len(blobSidecars) == 0 {
 		return nil, nil
 	}
 	for _, sidecar := range blobSidecars {
@@ -1517,7 +1517,7 @@ func RPCMarshalHeader(head *types.Header) map[string]interface{} {
 	if head.BaseFee != nil {
 		result["baseFeePerGas"] = (*hexutil.Big)(head.BaseFee)
 	}
-	if !head.EmptyWithdrawalsHash() {
+	if head.WithdrawalsHash != nil {
 		result["withdrawalsRoot"] = head.WithdrawalsHash
 	}
 	if head.BlobGasUsed != nil {
@@ -1561,7 +1561,7 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 		uncleHashes[i] = uncle.Hash()
 	}
 	fields["uncles"] = uncleHashes
-	if !block.Header().EmptyWithdrawalsHash() {
+	if block.Header().WithdrawalsHash != nil {
 		fields["withdrawals"] = block.Withdrawals()
 	}
 	return fields

@@ -81,7 +81,7 @@ func newFetchResult(header *types.Header, fastSync bool, pid string) *fetchResul
 	}
 	if !header.EmptyBody() {
 		item.pending.Store(item.pending.Load() | (1 << bodyType))
-	} else if !header.EmptyWithdrawalsHash() {
+	} else if header.WithdrawalsHash != nil {
 		item.Withdrawals = make(types.Withdrawals, 0)
 	}
 	if fastSync && !header.EmptyReceipts() {
@@ -788,9 +788,9 @@ func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListH
 		if uncleListHashes[index] != header.UncleHash {
 			return errInvalidBody
 		}
-		if header.EmptyWithdrawalsHash() {
+		if header.WithdrawalsHash == nil {
 			// nil hash means that withdrawals should not be present in body
-			if len(withdrawalLists[index]) != 0 {
+			if withdrawalLists[index] != nil {
 				return errInvalidBody
 			}
 		} else { // non-nil hash: body must have withdrawals
@@ -827,7 +827,7 @@ func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListH
 			if want := *header.BlobGasUsed / params.BlobTxBlobGasPerBlob; uint64(blobs) != want { // div because the header is surely good vs the body might be bloated
 				return errInvalidBody
 			}
-			if blobs > params.MaxBlobGasPerBlock {
+			if blobs > params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob {
 				return errInvalidBody
 			}
 		} else {

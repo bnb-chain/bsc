@@ -177,10 +177,6 @@ func (db *nofreezedb) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, e
 	return 0, errNotSupported
 }
 
-func (db *nofreezedb) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
-	return errNotSupported
-}
-
 // TruncateHead returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) TruncateHead(items uint64) (uint64, error) {
 	return 0, errNotSupported
@@ -189,6 +185,16 @@ func (db *nofreezedb) TruncateHead(items uint64) (uint64, error) {
 // TruncateTail returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) TruncateTail(items uint64) (uint64, error) {
 	return 0, errNotSupported
+}
+
+// TruncateTableTail will truncate certain table to new tail
+func (db *nofreezedb) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	return 0, errNotSupported
+}
+
+// ResetTable will reset certain table with new start point
+func (db *nofreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	return errNotSupported
 }
 
 // Sync returns an error as we don't have a backing chain freezer.

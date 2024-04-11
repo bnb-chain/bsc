@@ -126,10 +126,6 @@ func (db *Database) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, e
 	panic("not supported")
 }
 
-func (db *Database) ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error {
-	panic("not supported")
-}
-
 func (db *Database) AncientReset(tail, head uint64) error {
 	panic("not supported")
 }
@@ -139,6 +135,16 @@ func (db *Database) TruncateHead(n uint64) (uint64, error) {
 }
 
 func (db *Database) TruncateTail(n uint64) (uint64, error) {
+	panic("not supported")
+}
+
+// TruncateTableTail will truncate certain table to new tail
+func (db *Database) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	panic("not supported")
+}
+
+// ResetTable will reset certain table with new start point
+func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
 	panic("not supported")
 }
 
