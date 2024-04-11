@@ -1876,6 +1876,17 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 	return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
 }
 
+// SetValidator set the validator of parlia engine
+// It is used for builder
+func (p *Parlia) SetValidator(val common.Address) {
+	if val == (common.Address{}) {
+		return
+	}
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.val = val
+}
+
 // ===========================     utility function        ==========================
 func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Address) uint64 {
 	if snap.inturn(val) {

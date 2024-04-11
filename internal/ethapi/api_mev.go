@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 const (
@@ -108,4 +109,13 @@ func (m *MevAPI) Params() *types.MevParams {
 // Running returns true if mev is running
 func (m *MevAPI) Running() bool {
 	return m.b.MevRunning()
+}
+
+// ReportIssue is served by builder, for receiving issue from validators
+func (m *MevAPI) ReportIssue(_ context.Context, args *types.BidIssue) error {
+	log.Error("received issue", "bidHash", args.BidHash, "message", args.Message)
+
+	// take some action to handle the issue, e.g. add metric, send alert, etc.
+
+	return nil
 }

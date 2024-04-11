@@ -772,6 +772,11 @@ func (ec *Client) BestBidGasFee(ctx context.Context, parentHash common.Hash) (*b
 	return fee, nil
 }
 
+// SendBundle sends a bundle
+func (ec *Client) SendBundle(ctx context.Context, args *types.SendBundleArgs) error {
+	return ec.c.CallContext(ctx, nil, "eth_sendBundle", args)
+}
+
 // MevParams returns the static params of mev
 func (ec *Client) MevParams(ctx context.Context) (*types.MevParams, error) {
 	var params types.MevParams

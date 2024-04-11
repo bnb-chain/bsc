@@ -612,6 +612,12 @@ func (b testBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Su
 func (b testBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
 	panic("implement me")
 }
+func (b testBackend) SendBundle(ctx context.Context, bundle *types.Bundle) error {
+	panic("implement me")
+}
+func (b testBackend) BundlePrice() *big.Int {
+	panic("implement me")
+}
 func (b testBackend) GetTransaction(ctx context.Context, txHash common.Hash) (bool, *types.Transaction, common.Hash, uint64, uint64, error) {
 	tx, blockHash, blockNumber, index := rawdb.ReadTransaction(b.db, txHash)
 	return true, tx, blockHash, blockNumber, index, nil
