@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 
@@ -1045,7 +1046,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
-func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer) (err error) {
+func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer, bidTxs mapset.Set[common.Hash]) (err error) {
 	w.mu.RLock()
 	tip := w.tip
 	w.mu.RUnlock()
@@ -1066,6 +1067,26 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
 	pendingBlobTxs := w.eth.TxPool().Pending(filter)
 
+	if bidTxs != nil {
+		filterBidTxs := func(commonTxs map[common.Address][]*txpool.LazyTransaction) {
+			for acc, txs := range commonTxs {
+				for i := len(txs) - 1; i >= 0; i-- {
+					if bidTxs.Contains(txs[i].Hash) {
+						if i == len(txs)-1 {
+							delete(commonTxs, acc)
+						} else {
+							commonTxs[acc] = txs[i+1:]
+						}
+						break
+					}
+				}
+			}
+		}
+
+		filterBidTxs(pendingPlainTxs)
+		filterBidTxs(pendingBlobTxs)
+	}
+
 	// Split the pending transactions into locals and remotes.
 	localPlainTxs, remotePlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
 	localBlobTxs, remoteBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
@@ -1080,6 +1101,7 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 			localBlobTxs[account] = txs
 		}
 	}
+
 	// Fill the block with all available pending transactions.
 	// we will abort when:
 	//   1.new block was imported
@@ -1116,7 +1138,7 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 	defer work.discard()
 
 	if !params.noTxs {
-		err := w.fillTransactions(nil, work, nil)
+		err := w.fillTransactions(nil, work, nil, nil)
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
@@ -1216,7 +1238,7 @@ LOOP:
 
 		// Fill pending transactions from the txpool into the block.
 		fillStart := time.Now()
-		err = w.fillTransactions(interruptCh, work, stopTimer)
+		err = w.fillTransactions(interruptCh, work, stopTimer, nil)
 		fillDuration := time.Since(fillStart)
 		switch {
 		case errors.Is(err, errBlockInterruptedByNewHead):
@@ -1307,15 +1329,27 @@ LOOP:
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
+		if bestBid != nil {
+			log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
+				"localBlockReward", bestReward.String(),
+				"bidBlockReward", bestBid.packedBlockReward.String())
+		}
+
 		if bestBid != nil && bestReward.CmpBig(bestBid.packedBlockReward) < 0 {
 			// localValidatorReward is the reward for the validator self by the local block.
 			localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(w.config.Mev.ValidatorCommission))
 			localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
 
+			log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
+				"localValidatorReward", localValidatorReward.String(),
+				"bidValidatorReward", bestBid.packedValidatorReward.String())
+
 			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
 			if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
 				bestWork = bestBid.env
 				from = bestBid.bid.Builder
+
+				log.Debug("BidSimulator: bid win", "block", bestWork.header.Number.Uint64(), "bid", bestBid.bid.Hash())
 			}
 		}
 	}
