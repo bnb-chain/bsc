@@ -93,6 +93,7 @@ type JournalFileWriter struct {
 type JournalFileReader struct {
 	file *os.File
 }
+
 type JournalKVWriter struct {
 	journalBuf bytes.Buffer
 	diskdb     ethdb.Database
@@ -563,7 +564,7 @@ func (db *Database) Journal(root common.Hash) error {
 		return errDatabaseReadOnly
 	}
 	// Firstly write out the metadata of journal
-	db.DeleteTrieJournal()
+	db.DeleteTrieJournal(db.diskdb)
 	journal := newJournalWriter(db.config.JournalFilePath, db.diskdb)
 	defer journal.Close()
 
@@ -584,7 +585,6 @@ func (db *Database) Journal(root common.Hash) error {
 	if err := l.journal(journal); err != nil {
 		return err
 	}
-
 	// Store the journal into the database and return
 	journalSize := journal.Size()
 

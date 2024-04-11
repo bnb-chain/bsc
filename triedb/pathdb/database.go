@@ -318,7 +318,7 @@ func (db *Database) Enable(root common.Hash) error {
 	// Drop the stale state journal in persistent database and
 	// reset the persistent state id back to zero.
 	batch := db.diskdb.NewBatch()
-	db.DeleteTrieJournal()
+	db.DeleteTrieJournal(batch)
 	rawdb.WritePersistentStateID(batch, 0)
 	if err := batch.Write(); err != nil {
 		return err
@@ -382,7 +382,7 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 		// disk layer won't be accessible from outside.
 		db.tree.reset(dl)
 	}
-	db.DeleteTrieJournal()
+	db.DeleteTrieJournal(db.diskdb)
 	_, err := truncateFromHead(db.diskdb, db.freezer, dl.stateID())
 	if err != nil {
 		return err
@@ -527,10 +527,10 @@ func (db *Database) GetAllRooHash() [][]string {
 	return data
 }
 
-func (db *Database) DeleteTrieJournal() error {
+func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
 	filePath := db.config.JournalFilePath
 	if len(filePath) == 0 {
-		rawdb.DeleteTrieJournal(db.diskdb)
+		rawdb.DeleteTrieJournal(writer)
 	} else {
 		_, err := os.Stat(filePath)
 		if os.IsNotExist(err) {
