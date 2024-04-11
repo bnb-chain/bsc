@@ -108,6 +108,7 @@ func (fw *JournalFileWriter) Write(b []byte) (int, error) {
 }
 
 func (fw *JournalFileWriter) Close() {
+	fw.file.Close()
 }
 
 func (fw *JournalFileWriter) Size() uint64 {
@@ -139,6 +140,7 @@ func (fr *JournalFileReader) Read(p []byte) (n int, err error) {
 }
 
 func (fr *JournalFileReader) Close() {
+	fr.file.Close()
 }
 
 func (kr *JournalKVReader) Read(p []byte) (n int, err error) {
