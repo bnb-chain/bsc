@@ -192,7 +192,9 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 		return data, nil
 	}
 
-	return dl.readAccountTrie(hash), nil
+	blob := dl.readAccountTrie(hash)
+	dl.cleans.plainAccounts.Set(hash.Bytes(), blob)
+	return blob, nil
 }
 
 func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
@@ -209,7 +211,9 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 		return data, nil
 	}
 
-	return dl.readStorageTrie(accountHash, storageHash), nil
+	blob := dl.readStorageTrie(accountHash, storageHash)
+	dl.cleans.plainStorages.Set(append(accountHash.Bytes(), storageHash.Bytes()...), blob)
+	return blob, nil
 }
 
 // Node implements the layer interface, retrieving the trie node with the

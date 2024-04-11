@@ -56,4 +56,15 @@ var (
 	historyBuildTimeMeter  = metrics.NewRegisteredTimer("pathdb/history/time", nil)
 	historyDataBytesMeter  = metrics.NewRegisteredMeter("pathdb/history/bytes/data", nil)
 	historyIndexBytesMeter = metrics.NewRegisteredMeter("pathdb/history/bytes/index", nil)
+
+	snapshotBloomIndexTimer = metrics.NewRegisteredResettingTimer("pathdb/bloom/index", nil)
+	snapshotBloomErrorGauge = metrics.NewRegisteredGaugeFloat64("pathdb/bloom/error", nil)
+
+	snapshotBloomAccountTrueHitMeter  = metrics.NewRegisteredMeter("pathdb/bloom/account/truehit", nil)
+	snapshotBloomAccountFalseHitMeter = metrics.NewRegisteredMeter("pathdb/bloom/account/falsehit", nil)
+	snapshotBloomAccountMissMeter     = metrics.NewRegisteredMeter("pathdb/bloom/account/miss", nil)
+
+	snapshotBloomStorageTrueHitMeter  = metrics.NewRegisteredMeter("pathdb/bloom/storage/truehit", nil)
+	snapshotBloomStorageFalseHitMeter = metrics.NewRegisteredMeter("pathdb/bloom/storage/falsehit", nil)
+	snapshotBloomStorageMissMeter     = metrics.NewRegisteredMeter("pathdb/bloom/storage/miss", nil)
 )
