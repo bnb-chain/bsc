@@ -1,4 +1,4 @@
-package systemcontracts
+package main
 
 import (
 	"encoding/hex"
@@ -9,20 +9,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-
-	"github.com/ethereum/go-ethereum/core/systemcontracts/bruno"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/euler"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/feynman"
-	feynmanFix "github.com/ethereum/go-ethereum/core/systemcontracts/feynman_fix"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/gibbs"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/kepler"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/luban"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/mirror"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/moran"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/niels"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/planck"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/plato"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/ramanujan"
 )
 
 type UpgradeConfig struct {
