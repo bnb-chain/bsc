@@ -1,7 +1,7 @@
 package moran
-	
+
 import _ "embed"
-	
+
 // contract codes for Mainnet upgrade
 var (
 	//go:embed mainnet/RelayerHubContract

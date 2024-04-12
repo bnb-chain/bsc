@@ -1,7 +1,7 @@
 package kepler
-	
+
 import _ "embed"
-	
+
 // contract codes for Mainnet upgrade
 var (
 	//go:embed mainnet/ValidatorContract

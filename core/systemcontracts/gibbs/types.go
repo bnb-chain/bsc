@@ -1,7 +1,7 @@
 package gibbs
-	
+
 import _ "embed"
-	
+
 // contract codes for Chapel upgrade
 var (
 	//go:embed chapel/TokenHubContract
