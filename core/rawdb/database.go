@@ -1147,7 +1147,7 @@ func ReadChainMetadata(db ethdb.KeyValueStore) [][]string {
 	return data
 }
 
-func ReadChainMetadataCmd(db ethdb.Database) [][]string {
+func ReadChainMetadataFromMultiDatabase(db ethdb.Database) [][]string {
 	pp := func(val *uint64) string {
 		if val == nil {
 			return "<nil>"

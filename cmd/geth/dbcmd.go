@@ -1197,7 +1197,7 @@ func showMetaData(ctx *cli.Context) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error accessing ancients: %v", err)
 	}
-	data := rawdb.ReadChainMetadataCmd(db)
+	data := rawdb.ReadChainMetadataFromMultiDatabase(db)
 	data = append(data, []string{"frozen", fmt.Sprintf("%d items", ancients)})
 	data = append(data, []string{"snapshotGenerator", snapshot.ParseGeneratorStatus(rawdb.ReadSnapshotGenerator(db))})
 	if b := rawdb.ReadHeadBlock(db); b != nil {

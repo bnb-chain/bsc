@@ -822,12 +822,12 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		disableChainDbFreeze = true
 
 		// Allocate half of the  handles and chainDbCache to this separate state data database
-		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, true, false, config.PruneAncientData)
+		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/state/", readonly, true, false, config.PruneAncientData)
 		if err != nil {
 			return nil, err
 		}
 
-		blockDb, err = n.OpenDatabaseWithFreezer(name+"/block", blockDbCacheSize, blockDbHandlesSize, "", "eth/db/blockdata/", readonly, false, false, config.PruneAncientData)
+		blockDb, err = n.OpenDatabaseWithFreezer(name+"/block", blockDbCacheSize, blockDbHandlesSize, "", "eth/db/block/", readonly, false, false, config.PruneAncientData)
 		if err != nil {
 			return nil, err
 		}
@@ -915,7 +915,7 @@ func (n *Node) CheckIfMultiDataBase() bool {
 	} else if !stateExist && !blockExist {
 		return false
 	} else {
-		panic("block datadir is missing")
+		panic("data corruption! missing block or state dir.")
 	}
 }
 
