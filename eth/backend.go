@@ -256,7 +256,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		path            string
 	)
 	if config.JournalFileEnabled {
-		if stack.IsSeparatedDB() {
+		if stack.CheckIfMultiDataBase() {
 			path = ChainData + "/state"
 		} else {
 			path = ChainData
