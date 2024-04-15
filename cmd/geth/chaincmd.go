@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/era"
 	"github.com/ethereum/go-ethereum/internal/flags"
@@ -500,10 +501,16 @@ func importChain(ctx *cli.Context) error {
 	// Start system runtime metrics collection
 	go metrics.CollectProcessMetrics(3 * time.Second)
 
-	stack, _ := makeConfigNode(ctx)
+	stack, cfg := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chain, db := utils.MakeChain(ctx, stack, false)
+	backend, err := eth.New(stack, &cfg.Eth)
+	if err != nil {
+		return err
+	}
+
+	chain := backend.BlockChain()
+	db := backend.ChainDb()
 	defer db.Close()
 
 	// Start periodically gathering memory profiles
