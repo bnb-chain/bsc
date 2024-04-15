@@ -260,14 +260,14 @@ func (db *Database) loadLayers() layer {
 
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
 // a new disk layer on it.
-func (db *Database) loadDiskLayer(r *rlp.Stream, file bool) (layer, error) {
+func (db *Database) loadDiskLayer(r *rlp.Stream, journalFile bool) (layer, error) {
 	// Resolve disk layer root
 	var (
 		root               common.Hash
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if file {
+	if journalFile {
 		var length uint64
 		if err := r.Decode(&length); err != nil {
 			return nil, fmt.Errorf("load disk length: %v", err)
@@ -312,7 +312,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, file bool) (layer, error) {
 		nodes[entry.Owner] = subset
 	}
 
-	if file {
+	if journalFile {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
@@ -331,14 +331,14 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, file bool) (layer, error) {
 
 // loadDiffLayer reads the next sections of a layer journal, reconstructing a new
 // diff and verifying that it can be linked to the requested parent.
-func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, file bool) (layer, error) {
+func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, journalFile bool) (layer, error) {
 	// Read the next diff journal entry
 	var (
 		root               common.Hash
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if file {
+	if journalFile {
 		var length uint64
 		if err := r.Decode(&length); err != nil {
 			// The first read may fail with EOF, marking the end of the journal
@@ -415,7 +415,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, file bool) (layer
 		storages[entry.Account] = set
 	}
 
-	if file {
+	if journalFile {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
@@ -434,7 +434,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, file bool) (layer
 
 // journal implements the layer interface, marshaling the un-flushed trie nodes
 // along with layer metadata into provided byte buffer.
-func (dl *diskLayer) journal(w io.Writer, file bool) error {
+func (dl *diskLayer) journal(w io.Writer, journalFile bool) error {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
@@ -468,7 +468,7 @@ func (dl *diskLayer) journal(w io.Writer, file bool) error {
 	}
 
 	// Store the journal buf into w and calculate checksum
-	if file {
+	if journalFile {
 		if err := rlp.Encode(w, uint64(journalBuf.Len())); err != nil {
 			return err
 		}
@@ -491,12 +491,12 @@ func (dl *diskLayer) journal(w io.Writer, file bool) error {
 
 // journal implements the layer interface, writing the memory layer contents
 // into a buffer to be stored in the database as the layer journal.
-func (dl *diffLayer) journal(w io.Writer, file bool) error {
+func (dl *diffLayer) journal(w io.Writer, journalFile bool) error {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
 	// journal the parent first
-	if err := dl.parent.journal(w, file); err != nil {
+	if err := dl.parent.journal(w, journalFile); err != nil {
 		return err
 	}
 	// Create a buffer to store encoded data
@@ -546,7 +546,7 @@ func (dl *diffLayer) journal(w io.Writer, file bool) error {
 	}
 
 	// Store the journal buf into w and calculate checksum
-	if file {
+	if journalFile {
 		if err := rlp.Encode(w, uint64(journalBuf.Len())); err != nil {
 			return err
 		}
