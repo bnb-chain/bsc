@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -449,7 +450,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 		clean.plainStorages.Reset()
 	}
 	for h, acc := range nc.LatestAccounts {
-		clean.plainAccounts.Set(h.Bytes(), acc)
+		clean.plainAccounts.Set(h.Bytes(), types.FullToSlimAccountRLP(acc))
 	}
 
 	for h, storages := range nc.LatestStorages {

@@ -18,6 +18,7 @@ package types
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -87,6 +88,17 @@ func SlimAccountRLP(account StateAccount) []byte {
 	return data
 }
 
+func FullToSlimAccountRLP(data []byte) []byte {
+	if data == nil {
+		return nil
+	}
+	var account StateAccount
+	if err := rlp.DecodeBytes(data, &account); err != nil {
+		panic(fmt.Sprintf("full to slim account rlp failed, err %v", err))
+	}
+	return SlimAccountRLP(account)
+}
+
 // FullAccount decodes the data on the 'slim RLP' format and returns
 // the consensus format account.
 func FullAccount(data []byte) (*StateAccount, error) {
@@ -118,4 +130,15 @@ func FullAccountRLP(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	return rlp.EncodeToBytes(account)
+}
+
+func MustFullAccountRLP(data []byte) []byte {
+	if data == nil {
+		return nil
+	}
+	val, err := FullAccountRLP(data)
+	if err != nil {
+		panic(fmt.Sprintf("must full account rlp faield, err %v", err))
+	}
+	return val
 }

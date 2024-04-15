@@ -27,6 +27,7 @@ import (
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -127,11 +128,14 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *cleanCache,
 	// the original disk layer).
 	if cleans == nil && db.config.CleanCacheSize != 0 {
 		cleans = &cleanCache{}
-		cleans.nodes = fastcache.New(db.config.CleanCacheSize * 1 / 2)
-		cleans.plainAccounts = fastcache.New(db.config.CleanCacheSize * 1 / 4)
-		cleans.plainStorages = fastcache.New(db.config.CleanCacheSize * 1 / 4)
-		log.Info("Allocate clean cache in disklayer", "nodes", common.StorageSize(db.config.CleanCacheSize*1/2),
-			"plainAccount", common.StorageSize(db.config.CleanCacheSize*1/4), "plainStorage", common.StorageSize(db.config.CleanCacheSize*1/4))
+		nodeCacheSize := db.config.CleanCacheSize * 42 / 100
+		plainAccountsCacheSize := db.config.CleanCacheSize * 58 / 100 * 1 / 4
+		plainStoragesCacheSize := db.config.CleanCacheSize * 58 / 100 * 3 / 4
+		cleans.nodes = fastcache.New(nodeCacheSize)
+		cleans.plainAccounts = fastcache.New(plainAccountsCacheSize)
+		cleans.plainStorages = fastcache.New(plainStoragesCacheSize)
+		log.Info("Allocate clean cache in disklayer", "nodes", common.StorageSize(nodeCacheSize),
+			"plainAccount", common.StorageSize(plainAccountsCacheSize), "plainStorage", common.StorageSize(plainStoragesCacheSize))
 	}
 	return &diskLayer{
 		root:   root,
@@ -189,11 +193,11 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 	}
 
 	if data, ok := dl.cleans.plainAccounts.HasGet(nil, hash.Bytes()); ok {
-		return data, nil
+		return types.MustFullAccountRLP(data), nil
 	}
 
 	blob := dl.readAccountTrie(hash)
-	dl.cleans.plainAccounts.Set(hash.Bytes(), blob)
+	dl.cleans.plainAccounts.Set(hash.Bytes(), types.FullToSlimAccountRLP(blob))
 	return blob, nil
 }
 
