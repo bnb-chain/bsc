@@ -302,15 +302,16 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 // readAccountTrie return value of the account leaf node directly from the db
 func (dl *diskLayer) readAccountTrie(hash common.Hash) []byte {
 	start := time.Now()
+	defer func() {
+		readAndDecodeAccountTimer.UpdateSince(start)
+	}()
 	nBlob, path, nHash := rawdb.ReadAccountFromTrieDirectly(dl.db.diskdb, hash.Bytes())
+	diskReadAccountTimer.UpdateSince(start)
 	if nBlob == nil {
 		return nil
 	}
-	diskAccountLeftNodeTimer.UpdateSince(start)
 	val, key := trie.DecodeLeafNode(nHash.Bytes(), path, nBlob)
-
 	if bytes.Compare(key, hash.Bytes()) == 0 {
-		readAccLeftNodeTimer.UpdateSince(start)
 		return val
 	} else {
 		log.Debug("account short node info ", "account hash", hash.String(), "gotten key", hex.EncodeToString(key), "path", common.Bytes2Hex(path))
@@ -321,17 +322,20 @@ func (dl *diskLayer) readAccountTrie(hash common.Hash) []byte {
 // readStorageTrie return value of the storage leaf node directly from the db
 func (dl *diskLayer) readStorageTrie(accountHash, storageHash common.Hash) []byte {
 	start := time.Now()
+	defer func() {
+		readAndDecodeStorageTimer.UpdateSince(start)
+	}()
 	key := storageHash.Bytes()
 	nBlob, path, nHash := rawdb.ReadStorageFromTrieDirectly(dl.db.diskdb, accountHash, key)
+	diskReadStorageTimer.UpdateSince(start)
 	if nBlob == nil {
 		return nil
 	}
-	diskStorageLeftNodeTimer.UpdateSince(start)
+
 	val, key := trie.DecodeLeafNode(nHash.Bytes(), path[common.HashLength:], nBlob)
 	if bytes.Compare(storageHash.Bytes(), key) == 0 {
 		return val
 	}
-
 	return nil
 }
 
