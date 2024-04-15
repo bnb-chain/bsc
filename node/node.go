@@ -77,6 +77,8 @@ const (
 
 const chainDataHandlesPercentage = 80
 
+const StateDBNamespace = "eth/db/statedata/"
+
 // New creates a new P2P node, ready for protocol registration.
 func New(conf *Config) (*Node, error) {
 	// Copy config and resolve the datadir so future changes to the current
@@ -791,7 +793,7 @@ func (n *Node) OpenAndMergeDatabase(name string, cache, handles int, freezer, di
 	// Open the separated state database if the state directory exists
 	if n.IsSeparatedDB() {
 		// Allocate half of the  handles and cache to this separate state data database
-		statediskdb, err = n.OpenDatabaseWithFreezer(name+"/state", cache/2, chainDataHandles/2, "", "eth/db/statedata/", readonly, false, false, pruneAncientData)
+		statediskdb, err = n.OpenDatabaseWithFreezer(name+"/state", cache/2, chainDataHandles/2, "", StateDBNamespace, readonly, false, false, pruneAncientData)
 		if err != nil {
 			return nil, err
 		}
