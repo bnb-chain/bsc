@@ -24,6 +24,16 @@ var (
 	cleanReadMeter  = metrics.NewRegisteredMeter("pathdb/clean/read", nil)
 	cleanWriteMeter = metrics.NewRegisteredMeter("pathdb/clean/write", nil)
 
+	trieCleanStorageHitMeter  = metrics.NewRegisteredMeter("pathdb/clean/storage/hit", nil)
+	trieCleanStorageMissMeter = metrics.NewRegisteredMeter("path/clean/storage/miss", nil)
+	trieDirtyStorageHitMeter  = metrics.NewRegisteredMeter("pathdb/dirty/storage/hit", nil)
+	trieDirtyStorageMissMeter = metrics.NewRegisteredMeter("path/dirty/storage/miss", nil)
+
+	trieCleanAccountHitMeter  = metrics.NewRegisteredMeter("pathdb/clean/account/hit", nil)
+	trieCleanAccountMissMeter = metrics.NewRegisteredMeter("path/clean/account/miss", nil)
+	trieDirtyAccountHitMeter  = metrics.NewRegisteredMeter("pathdb/dirty/account/hit", nil)
+	trieDirtyAccountMissMeter = metrics.NewRegisteredMeter("path/dirty/account/miss", nil)
+
 	dirtyHitMeter         = metrics.NewRegisteredMeter("pathdb/dirty/hit", nil)
 	dirtyMissMeter        = metrics.NewRegisteredMeter("pathdb/dirty/miss", nil)
 	dirtyReadMeter        = metrics.NewRegisteredMeter("pathdb/dirty/read", nil)

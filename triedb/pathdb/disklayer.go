@@ -189,13 +189,16 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 	defer dl.lock.RUnlock()
 
 	if data, exist := dl.buffer.account(hash); exist {
+		trieDirtyAccountHitMeter.Mark(1)
 		return data, nil
 	}
-
+	trieDirtyAccountMissMeter.Mark(1)
 	if data, ok := dl.cleans.plainAccounts.HasGet(nil, hash.Bytes()); ok {
+		trieCleanAccountHitMeter.Mark(1)
 		return types.MustFullAccountRLP(data), nil
 	}
 
+	trieCleanAccountMissMeter.Mark(1)
 	blob := dl.readAccountTrie(hash)
 	dl.cleans.plainAccounts.Set(hash.Bytes(), types.FullToSlimAccountRLP(blob))
 	return blob, nil
@@ -208,13 +211,17 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	defer dl.lock.RUnlock()
 
 	if data, exist := dl.buffer.storage(accountHash, storageHash); exist {
+		trieDirtyStorageHitMeter.Mark(1)
 		return data, nil
 	}
 
+	trieDirtyStorageMissMeter.Mark(1)
 	if data, ok := dl.cleans.plainStorages.HasGet(nil, append(accountHash.Bytes(), storageHash.Bytes()...)); ok {
+		trieCleanStorageHitMeter.Mark(1)
 		return data, nil
 	}
 
+	trieCleanStorageMissMeter.Mark(1)
 	blob := dl.readStorageTrie(accountHash, storageHash)
 	dl.cleans.plainStorages.Set(append(accountHash.Bytes(), storageHash.Bytes()...), blob)
 	return blob, nil

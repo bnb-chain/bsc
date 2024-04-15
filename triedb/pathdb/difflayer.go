@@ -245,10 +245,12 @@ func (dl *diffLayer) account(hash common.Hash) ([]byte, error) {
 	defer dl.lock.RUnlock()
 
 	if data, ok := dl.states.LatestAccounts[hash]; ok {
+		trieDirtyAccountHitMeter.Mark(1)
 		return data, nil
 	}
 
 	if _, ok := dl.states.DestructSet[hash]; ok {
+		trieDirtyAccountHitMeter.Mark(1)
 		return nil, nil
 	}
 
@@ -285,11 +287,13 @@ func (dl *diffLayer) storage(accountHash, storageHash common.Hash) ([]byte, erro
 
 	if storage, ok := dl.states.LatestStorages[accountHash]; ok {
 		if data, ok := storage[storageHash]; ok {
+			trieDirtyStorageHitMeter.Mark(1)
 			return data, nil
 		}
 	}
 
 	if _, ok := dl.states.DestructSet[accountHash]; ok {
+		trieDirtyStorageHitMeter.Mark(1)
 		return nil, nil
 	}
 	// Storage slot unknown to this diff, resolve from parent
