@@ -7,15 +7,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/trie/triestate"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 var _ trienodebuffer = &asyncnodebuffer{}
@@ -445,20 +445,39 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 		rawdb.DeleteStorageTrie(batch, h)
 		clean.plainAccounts.Set(h.Bytes(), nil)
 	}
+	var wg sync.WaitGroup
 	if len(nc.DestructSet) != 0 {
-		// reset the plain storage to avoid stale storage state
-		clean.plainStorages.Reset()
-		log.Info("Reset plain storages clean cache duo to the destructSet")
-	}
-	for h, acc := range nc.LatestAccounts {
-		clean.plainAccounts.Set(h.Bytes(), types.FullToSlimAccountRLP(acc))
+		wg.Add(1)
+		go func() {
+			st := time.Now()
+			for h := range nc.DestructSet {
+				// delete from the clean cache
+				it := rawdb.IterateStorageTrieNodes(db, h)
+				for it.Next() {
+					if it.Value() != nil {
+						h := newHasher()
+						defer h.release()
+						_, key := trie.DecodeLeafNode(h.hash(it.Value()).Bytes(), it.Key()[1+common.HashLength:], it.Value())
+						if len(key) != common.HashLength {
+							clean.plainStorages.Del(key)
+						}
+					}
+				}
+				it.Release()
+			}
+			log.Info("handle deletion of plain storage", "elapsed", time.Since(st).String())
+			for h, acc := range nc.LatestAccounts {
+				clean.plainAccounts.Set(h.Bytes(), types.FullToSlimAccountRLP(acc))
+			}
+			for h, storages := range nc.LatestStorages {
+				for k, v := range storages {
+					clean.plainStorages.Set(append(h.Bytes(), k.Bytes()...), v)
+				}
+			}
+			wg.Done()
+		}()
 	}
 
-	for h, storages := range nc.LatestStorages {
-		for k, v := range storages {
-			clean.plainStorages.Set(append(h.Bytes(), k.Bytes()...), v)
-		}
-	}
 	// write all the nodes
 	nodes := writeNodes(batch, nc.nodes, clean)
 	rawdb.WritePersistentStateID(batch, id)
@@ -469,6 +488,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 		return err
 	}
 
+	wg.Wait()
 	commitBytesMeter.Mark(int64(size))
 	commitNodesMeter.Mark(int64(nodes))
 	commitTimeTimer.UpdateSince(start)

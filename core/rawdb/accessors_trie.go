@@ -182,6 +182,10 @@ func HasStorageTrieNode(db ethdb.KeyValueReader, accountHash common.Hash, path [
 	return h.hash(data) == hash
 }
 
+func IterateStorageTrieNodes(db ethdb.Iteratee, accoundHash common.Hash) ethdb.Iterator {
+	return db.NewIterator(storageTrieNodeKey(accoundHash, nil), nil)
+}
+
 // ExistsStorageTrieNode checks the presence of the storage trie node with the
 // specified account hash and node path, regardless of the node hash.
 func ExistsStorageTrieNode(db ethdb.KeyValueReader, accountHash common.Hash, path []byte) bool {
