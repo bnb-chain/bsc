@@ -136,8 +136,8 @@ func DeleteAccountTrieNode(db ethdb.KeyValueWriter, path []byte) {
 }
 
 func DeleteStorageTrie(db ethdb.KeyValueWriter, accountHash common.Hash) {
-	nextAcountHash := common.BigToHash(accountHash.Big().Add(accountHash.Big(), big.NewInt(1)))
-	if err := db.DeleteRange(storageTrieNodeKey(accountHash, nil), storageTrieNodeKey(nextAcountHash, nil)); err != nil {
+	nextAccountHash := common.BigToHash(accountHash.Big().Add(accountHash.Big(), big.NewInt(1)))
+	if err := db.DeleteRange(storageTrieNodeKey(accountHash, nil), storageTrieNodeKey(nextAccountHash, nil)); err != nil {
 		log.Crit("Failed to delete storage trie", "err", err)
 	}
 }
