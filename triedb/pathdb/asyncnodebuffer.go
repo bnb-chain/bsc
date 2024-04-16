@@ -450,6 +450,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 		wg.Add(1)
 		go func() {
 			st := time.Now()
+			nums := 0
 			for h := range nc.DestructSet {
 				// delete from the clean cache
 				it := rawdb.IterateStorageTrieNodes(db, h)
@@ -459,13 +460,14 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 						defer h.release()
 						_, key := trie.DecodeLeafNode(h.hash(it.Value()).Bytes(), it.Key()[1+common.HashLength:], it.Value())
 						if len(key) != common.HashLength {
+							nums++
 							clean.plainStorages.Del(key)
 						}
 					}
 				}
 				it.Release()
 			}
-			log.Info("handle deletion of plain storage", "elapsed", time.Since(st).String())
+			log.Info("handle deletion of plain storage", "elapsed", time.Since(st).String(), "deleted nums", nums)
 			for h, acc := range nc.LatestAccounts {
 				clean.plainAccounts.Set(h.Bytes(), types.FullToSlimAccountRLP(acc))
 			}

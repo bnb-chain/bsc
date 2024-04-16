@@ -90,10 +90,13 @@ var (
 
 	triedbCommitTimer = metrics.NewRegisteredTimer("chain/triedb/commits", nil)
 
-	blockInsertTimer     = metrics.NewRegisteredTimer("chain/inserts", nil)
-	blockValidationTimer = metrics.NewRegisteredTimer("chain/validation", nil)
-	blockExecutionTimer  = metrics.NewRegisteredTimer("chain/execution", nil)
-	blockWriteTimer      = metrics.NewRegisteredTimer("chain/write", nil)
+	blockInsertTimer      = metrics.NewRegisteredTimer("chain/inserts", nil)
+	blockValidationTimer  = metrics.NewRegisteredTimer("chain/validation", nil)
+	blockExecutionTimer   = metrics.NewRegisteredTimer("chain/execution", nil)
+	blockWriteTimer       = metrics.NewRegisteredTimer("chain/write", nil)
+	blockTimer            = metrics.NewRegisteredTimer("chain/block", nil)
+	blockAfterSizeTimer   = metrics.NewRegisteredTimer("chain/block/size", nil)
+	blockAfterInsertTimer = metrics.NewRegisteredTimer("chain/block/insert", nil)
 
 	blockReorgMeter     = metrics.NewRegisteredMeter("chain/reorg/executes", nil)
 	blockReorgAddMeter  = metrics.NewRegisteredMeter("chain/reorg/add", nil)
@@ -2103,6 +2106,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 	}
 
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
+		st := time.Now()
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
 			log.Debug("Abort during block processing")
@@ -2250,6 +2254,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 
 		blockWriteTimer.Update(time.Since(wstart))
 		blockInsertTimer.UpdateSince(start)
+		blockAfterInsertTimer.UpdateSince(st)
 
 		// Report the import stats before returning the various results
 		stats.processed++
@@ -2260,6 +2265,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			snapDiffItems, snapBufItems, _ = bc.snaps.Size()
 		}
 		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
+		blockAfterSizeTimer.UpdateSince(st)
 		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, status == CanonStatTy)
 
 		if !setHead {
@@ -2296,6 +2302,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 				"root", block.Root())
 		}
 		bc.chainBlockFeed.Send(ChainHeadEvent{block})
+		blockTimer.UpdateSince(st)
 	}
 
 	// Any blocks remaining here? The only ones we care about are the future ones
