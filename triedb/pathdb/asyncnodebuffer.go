@@ -448,6 +448,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 	if len(nc.DestructSet) != 0 {
 		// reset the plain storage to avoid stale storage state
 		clean.plainStorages.Reset()
+		log.Info("Reset plain storages clean cache duo to the destructSet")
 	}
 	for h, acc := range nc.LatestAccounts {
 		clean.plainAccounts.Set(h.Bytes(), types.FullToSlimAccountRLP(acc))
