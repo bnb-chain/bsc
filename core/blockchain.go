@@ -2229,6 +2229,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		totalReadTimer.Update(trieRead)
 		blockExecutionTimer.Update(ptime)  // The time spent on EVM processing
 		blockValidationTimer.Update(vtime) // The time spent on block validation
+
+		// Duo to the asynchronous of the cap in pathdb, Size() will have a lock competition problem with the cap(),
+		// and it will wait until cap completed. So get size in advance before chain write.
+		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
+
 		// Write the block to the chain and get the status.
 		var (
 			wstart = time.Now()
@@ -2264,7 +2269,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		if bc.snaps != nil {
 			snapDiffItems, snapBufItems, _ = bc.snaps.Size()
 		}
-		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
 		blockAfterSizeTimer.UpdateSince(st)
 		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, status == CanonStatTy)
 
