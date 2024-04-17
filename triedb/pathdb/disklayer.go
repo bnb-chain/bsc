@@ -188,6 +188,10 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
+	if dl.stale {
+		return nil, errSnapshotStale
+	}
+
 	if data, exist := dl.buffer.account(hash); exist {
 		trieDirtyAccountHitMeter.Mark(1)
 		return data, nil
@@ -209,6 +213,10 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	// state accessing.
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
+
+	if dl.stale {
+		return nil, errSnapshotStale
+	}
 
 	if data, exist := dl.buffer.storage(accountHash, storageHash); exist {
 		trieDirtyStorageHitMeter.Mark(1)
