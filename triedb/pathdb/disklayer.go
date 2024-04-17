@@ -310,6 +310,7 @@ func (dl *diskLayer) readAccountTrie(hash common.Hash) []byte {
 	if nBlob == nil {
 		return nil
 	}
+	dl.cleans.nodes.Set(cacheKey(common.Hash{}, path[:]), nBlob)
 	val, key := trie.DecodeLeafNode(nHash.Bytes(), path, nBlob)
 	if bytes.Compare(key, hash.Bytes()) == 0 {
 		return val
@@ -331,6 +332,7 @@ func (dl *diskLayer) readStorageTrie(accountHash, storageHash common.Hash) []byt
 	if nBlob == nil {
 		return nil
 	}
+	dl.cleans.nodes.Set(cacheKey(accountHash, path[common.HashLength:]), nBlob)
 
 	val, key := trie.DecodeLeafNode(nHash.Bytes(), path[common.HashLength:], nBlob)
 	if bytes.Compare(storageHash.Bytes(), key) == 0 {
