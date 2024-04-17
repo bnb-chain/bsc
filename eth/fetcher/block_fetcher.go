@@ -363,7 +363,6 @@ func (f *BlockFetcher) loop() {
 		}
 		// Import any queued blocks that could potentially fit
 		height := f.chainHeight()
-		finalizedHeight := f.chainFinalizedHeight()
 		for !f.queue.Empty() {
 			op := f.queue.PopItem()
 			hash := op.hash()
@@ -380,6 +379,7 @@ func (f *BlockFetcher) loop() {
 				break
 			}
 			// Otherwise if fresh and still unknown, try and import
+			finalizedHeight := f.chainFinalizedHeight()
 			if (number+maxUncleDist < height) || number <= finalizedHeight || (f.light && f.getHeader(hash) != nil) || (!f.light && f.getBlock(hash) != nil) {
 				f.forgetBlock(hash)
 				continue
