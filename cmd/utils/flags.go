@@ -224,7 +224,7 @@ var (
 	// hbss2pbss command options
 	ForceFlag = &cli.BoolFlag{
 		Name:  "force",
-		Usage: "Force convert hbss trie node to pbss trie node. Ingore any metadata",
+		Usage: "Force convert hbss trie node to pbss trie node. Ignore any metadata",
 		Value: false,
 	}
 	// Dump command options.
