@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -180,6 +181,8 @@ type Config struct {
 	// Logger is a custom logger to use with the p2p.Server.
 	Logger log.Logger `toml:",omitempty"`
 
+	PeerFilterPatterns []string
+
 	clock mclock.Clock
 }
 
@@ -210,7 +213,8 @@ type Server struct {
 	discmix   *enode.FairMix
 	dialsched *dialScheduler
 
-	forkFilter forkid.Filter
+	forkFilter     forkid.Filter
+	peerNameFilter []*regexp.Regexp
 
 	// This is read by the NAT port mapping loop.
 	portMappingRegister chan *portMapping
@@ -539,6 +543,15 @@ func (srv *Server) Start() (err error) {
 		return err
 	}
 	srv.setupDialScheduler()
+
+	if srv.PeerFilterPatterns != nil {
+		pat, err := compilePeerFilterPatterns(srv.PeerFilterPatterns)
+		if err != nil {
+			log.Error("Failed to compile peer filter patterns", "err", err)
+			pat = nil
+		}
+		srv.peerNameFilter = pat
+	}
 
 	srv.loopWG.Add(1)
 	go srv.run()
@@ -916,6 +929,14 @@ func (srv *Server) addPeerChecks(peers map[enode.ID]*Peer, inboundCount int, c *
 		return errors.New("explicitly disconnected peer previously")
 	}
 
+	if srv.peerNameFilter != nil {
+		for _, re := range srv.peerNameFilter {
+			if re.MatchString(c.name) {
+				return errors.New("peer name matches filter")
+			}
+		}
+	}
+
 	// Repeat the post-handshake checks because the
 	// peer set might have changed since those checks were performed.
 	return srv.postHandshakeChecks(peers, inboundCount, c)
@@ -1225,4 +1246,16 @@ func (srv *Server) PeersInfo() []*PeerInfo {
 		}
 	}
 	return infos
+}
+
+func compilePeerFilterPatterns(pat []string) ([]*regexp.Regexp, error) {
+	var filters []*regexp.Regexp
+	for _, filter := range pat {
+		r, err := regexp.Compile(filter)
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, r)
+	}
+	return filters, nil
 }

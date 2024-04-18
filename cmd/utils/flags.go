@@ -882,6 +882,11 @@ var (
 		Usage:    "Disables the peer discovery mechanism (manual peer addition)",
 		Category: flags.NetworkingCategory,
 	}
+	PeerFilterPatternsFlag = &cli.StringSliceFlag{
+		Name:     "peerfilter",
+		Usage:    "Disallow peers connection if peer name matches the given regular expressions",
+		Category: flags.NetworkingCategory,
+	}
 	DiscoveryV4Flag = &cli.BoolFlag{
 		Name:     "discovery.v4",
 		Aliases:  []string{"discv4"},
@@ -1547,6 +1552,9 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	}
 	if ctx.IsSet(NoDiscoverFlag.Name) {
 		cfg.NoDiscovery = true
+	}
+	if ctx.IsSet(PeerFilterPatternsFlag.Name) {
+		cfg.PeerFilterPatterns = ctx.StringSlice(PeerFilterPatternsFlag.Name)
 	}
 
 	CheckExclusive(ctx, DiscoveryV4Flag, NoDiscoverFlag)
