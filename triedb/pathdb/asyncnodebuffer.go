@@ -443,7 +443,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 	// delete all kv for destructSet first to keep latest for disk nodes
 	for h, _ := range nc.DestructSet {
 		rawdb.DeleteStorageTrie(batch, h)
-		clean.plainAccounts.Set(h.Bytes(), nil)
+		clean.plainStates.Set(h.Bytes(), nil)
 	}
 	var wg sync.WaitGroup
 	if len(nc.DestructSet) != 0 {
@@ -461,7 +461,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 						_, key := trie.DecodeLeafNode(h.hash(it.Value()).Bytes(), it.Key()[1+common.HashLength:], it.Value())
 						if len(key) != common.HashLength {
 							nums++
-							clean.plainStorages.Del(key)
+							clean.plainStates.Del(key)
 						}
 					}
 				}
@@ -469,11 +469,11 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 			}
 			log.Info("handle deletion of plain storage", "elapsed", time.Since(st).String(), "deleted nums", nums)
 			for h, acc := range nc.LatestAccounts {
-				clean.plainAccounts.Set(h.Bytes(), types.FullToSlimAccountRLP(acc))
+				clean.plainStates.Set(h.Bytes(), types.FullToSlimAccountRLP(acc))
 			}
 			for h, storages := range nc.LatestStorages {
 				for k, v := range storages {
-					clean.plainStorages.Set(append(h.Bytes(), k.Bytes()...), v)
+					clean.plainStates.Set(append(h.Bytes(), k.Bytes()...), v)
 				}
 			}
 			wg.Done()

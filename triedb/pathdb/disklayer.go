@@ -92,9 +92,8 @@ type trienodebuffer interface {
 }
 
 type cleanCache struct {
-	nodes         *fastcache.Cache
-	plainAccounts *fastcache.Cache
-	plainStorages *fastcache.Cache
+	nodes       *fastcache.Cache
+	plainStates *fastcache.Cache
 }
 
 func NewTrieNodeBuffer(sync bool, limit int,
@@ -129,13 +128,11 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *cleanCache,
 	if cleans == nil && db.config.CleanCacheSize != 0 {
 		cleans = &cleanCache{}
 		nodeCacheSize := db.config.CleanCacheSize * 42 / 100
-		plainAccountsCacheSize := db.config.CleanCacheSize * 58 / 100 * 1 / 4
-		plainStoragesCacheSize := db.config.CleanCacheSize * 58 / 100 * 3 / 4
+		plainStatesCacheSize := db.config.CleanCacheSize * 58 / 100 * 1 / 4
 		cleans.nodes = fastcache.New(nodeCacheSize)
-		cleans.plainAccounts = fastcache.New(plainAccountsCacheSize)
-		cleans.plainStorages = fastcache.New(plainStoragesCacheSize)
+		cleans.plainStates = fastcache.New(plainStatesCacheSize)
 		log.Info("Allocate clean cache in disklayer", "nodes", common.StorageSize(nodeCacheSize),
-			"plainAccount", common.StorageSize(plainAccountsCacheSize), "plainStorage", common.StorageSize(plainStoragesCacheSize))
+			"plainStates", common.StorageSize(plainStatesCacheSize))
 	}
 	return &diskLayer{
 		root:   root,
@@ -197,14 +194,14 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 		return data, nil
 	}
 	trieDirtyAccountMissMeter.Mark(1)
-	if data, ok := dl.cleans.plainAccounts.HasGet(nil, hash.Bytes()); ok {
+	if data, ok := dl.cleans.plainStates.HasGet(nil, hash.Bytes()); ok {
 		trieCleanAccountHitMeter.Mark(1)
 		return types.MustFullAccountRLP(data), nil
 	}
 
 	trieCleanAccountMissMeter.Mark(1)
 	blob := dl.readAccountTrie(hash)
-	dl.cleans.plainAccounts.Set(hash.Bytes(), types.FullToSlimAccountRLP(blob))
+	dl.cleans.plainStates.Set(hash.Bytes(), types.FullToSlimAccountRLP(blob))
 	return blob, nil
 }
 
@@ -224,14 +221,14 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	}
 
 	trieDirtyStorageMissMeter.Mark(1)
-	if data, ok := dl.cleans.plainStorages.HasGet(nil, append(accountHash.Bytes(), storageHash.Bytes()...)); ok {
+	if data, ok := dl.cleans.plainStates.HasGet(nil, append(accountHash.Bytes(), storageHash.Bytes()...)); ok {
 		trieCleanStorageHitMeter.Mark(1)
 		return data, nil
 	}
 
 	trieCleanStorageMissMeter.Mark(1)
 	blob := dl.readStorageTrie(accountHash, storageHash)
-	dl.cleans.plainStorages.Set(append(accountHash.Bytes(), storageHash.Bytes()...), blob)
+	dl.cleans.plainStates.Set(append(accountHash.Bytes(), storageHash.Bytes()...), blob)
 	return blob, nil
 }
 
