@@ -536,7 +536,7 @@ func (db *Database) GetAllRooHash() [][]string {
 	return data
 }
 
-func (db *Database) JournalTypeConfig() JournalType {
+func (db *Database) DetermineJournalTypeByConfig() JournalType {
 	if db.config.JournalFile {
 		return JournalFileType
 	} else {
@@ -544,7 +544,7 @@ func (db *Database) JournalTypeConfig() JournalType {
 	}
 }
 
-func (db *Database) CheckJournalType() JournalType {
+func (db *Database) DetermineJournalTypeByStorage() JournalType {
 	if journal := rawdb.ReadTrieJournal(db.diskdb); len(journal) != 0 {
 		return JournalKVType
 	}

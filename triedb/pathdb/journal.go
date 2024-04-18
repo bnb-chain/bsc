@@ -195,7 +195,7 @@ func newJournalReader(file string, db ethdb.Database, journalType JournalType) (
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	start := time.Now()
-	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, db.CheckJournalType())
+	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, db.DetermineJournalTypeByStorage())
 
 	if err != nil {
 		return nil, err
@@ -269,7 +269,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if db.CheckJournalType() == JournalFileType {
+	if db.DetermineJournalTypeByStorage() == JournalFileType {
 		if err := r.Decode(&journalEncodedBuff); err != nil {
 			return nil, fmt.Errorf("load disk journal: %v", err)
 		}
@@ -310,7 +310,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		nodes[entry.Owner] = subset
 	}
 
-	if db.CheckJournalType() == JournalFileType {
+	if db.DetermineJournalTypeByStorage() == JournalFileType {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
@@ -336,7 +336,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if db.CheckJournalType() == JournalFileType {
+	if db.DetermineJournalTypeByStorage() == JournalFileType {
 		if err := r.Decode(&journalEncodedBuff); err != nil {
 			// The first read may fail with EOF, marking the end of the journal
 			if err == io.EOF {
@@ -409,7 +409,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		storages[entry.Account] = set
 	}
 
-	if db.CheckJournalType() == JournalFileType {
+	if db.DetermineJournalTypeByStorage() == JournalFileType {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
@@ -585,7 +585,7 @@ func (db *Database) Journal(root common.Hash) error {
 	}
 	// Firstly write out the metadata of journal
 	db.DeleteTrieJournal(db.diskdb)
-	journal := newJournalWriter(db.config.JournalFilePath, db.diskdb, db.JournalTypeConfig())
+	journal := newJournalWriter(db.config.JournalFilePath, db.diskdb, db.DetermineJournalTypeByConfig())
 	defer journal.Close()
 
 	if err := rlp.Encode(journal, journalVersion); err != nil {
@@ -602,7 +602,7 @@ func (db *Database) Journal(root common.Hash) error {
 		return err
 	}
 	// Finally write out the journal of each layer in reverse order.
-	if err := l.journal(journal, db.JournalTypeConfig()); err != nil {
+	if err := l.journal(journal, db.DetermineJournalTypeByConfig()); err != nil {
 		return err
 	}
 	// Store the journal into the database and return
