@@ -29,8 +29,10 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -327,6 +329,25 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		return nil, err
 	}
 
+	// Apply EIP-4844, EIP-4788.
+	if miner.worker.chainConfig.IsCancun(header.Number, header.Time) {
+		var excessBlobGas uint64
+		if miner.worker.chainConfig.IsCancun(parent.Number, parent.Time) {
+			excessBlobGas = eip4844.CalcExcessBlobGas(*parent.ExcessBlobGas, *parent.BlobGasUsed)
+		} else {
+			// For the first post-fork block, both parent.data_gas_used and parent.excess_data_gas are evaluated as 0
+			excessBlobGas = eip4844.CalcExcessBlobGas(0, 0)
+		}
+		header.BlobGasUsed = new(uint64)
+		header.ExcessBlobGas = &excessBlobGas
+		if miner.worker.chainConfig.Parlia != nil {
+			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
+		}
+		// if miner.worker.chainConfig.Parlia == nil {
+		// 	header.ParentBeaconRoot = genParams.beaconRoot
+		// }
+	}
+
 	state, err := miner.eth.BlockChain().StateAt(parent.Root)
 	if err != nil {
 		return nil, err
@@ -336,6 +357,11 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		header: header,
 		state:  state.Copy(),
 		signer: types.MakeSigner(miner.worker.chainConfig, header.Number, header.Time),
+	}
+
+	if !miner.worker.chainConfig.IsFeynman(header.Number, header.Time) {
+		// Handle upgrade build-in system contract code
+		systemcontracts.UpgradeBuildInSystemContract(miner.worker.chainConfig, header.Number, parent.Time, header.Time, env.state)
 	}
 
 	s, err := miner.worker.simulateBundles(env, []*types.Bundle{bundle})
