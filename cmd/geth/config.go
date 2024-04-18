@@ -211,9 +211,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.OverrideDefaultExtraReserveForBlobRequests.Name) {
 		params.DefaultExtraReserveForBlobRequests = ctx.Uint64(utils.OverrideDefaultExtraReserveForBlobRequests.Name)
 	}
-	if ctx.IsSet(utils.SeparateDBFlag.Name) && !stack.IsSeparatedDB() {
-		utils.Fatalf("Failed to locate separate database subdirectory when separatedb parameter has been set")
-	}
+
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)
 
 	// Create gauge with geth system and build information
