@@ -65,6 +65,14 @@ const (
 	DefaultBatchRedundancyRate = 1.1
 )
 
+type JournalType int
+
+const (
+	JournalNone JournalType = iota
+	JournalKVType
+	JournalFileType
+)
+
 // layer is the interface implemented by all state layers which includes some
 // public methods and some additional methods for internal usage.
 type layer interface {
@@ -92,7 +100,7 @@ type layer interface {
 	// journal commits an entire diff hierarchy to disk into a single journal entry.
 	// This is meant to be used during shutdown to persist the layer without
 	// flattening everything down (bad for reorgs).
-	journal(w io.Writer, journalFile bool) error
+	journal(w io.Writer, journalType JournalType) error
 }
 
 // Config contains the settings for database.
@@ -104,6 +112,7 @@ type Config struct {
 	ReadOnly        bool   // Flag whether the database is opened in read only mode.
 	NoTries         bool
 	JournalFilePath string
+	JournalFile     bool
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -527,15 +536,31 @@ func (db *Database) GetAllRooHash() [][]string {
 	return data
 }
 
-func (db *Database) IsEnableJournalFile() bool {
-	return len(db.config.JournalFilePath) != 0
+func (db *Database) JournalTypeConfig() JournalType {
+	if db.config.JournalFile {
+		return JournalFileType
+	} else {
+		return JournalKVType
+	}
+}
+
+func (db *Database) CheckJournalType() JournalType {
+	if journal := rawdb.ReadTrieJournal(db.diskdb); len(journal) != 0 {
+		return JournalKVType
+	}
+
+	if fileInfo, stateErr := os.Stat(db.config.JournalFilePath); stateErr == nil && !fileInfo.IsDir() {
+		return JournalFileType
+	}
+
+	return JournalKVType
 }
 
 func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
-	filePath := db.config.JournalFilePath
-	if len(filePath) == 0 {
+	if db.JournalTypeConfig() == JournalKVType {
 		rawdb.DeleteTrieJournal(writer)
 	} else {
+		filePath := db.config.JournalFilePath
 		_, err := os.Stat(filePath)
 		if os.IsNotExist(err) {
 			return err
