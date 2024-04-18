@@ -714,7 +714,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	r.env.state.SetTxContext(tx.Hash(), r.env.tcount)
 
 	if tx.Type() == types.BlobTxType {
-		sc := types.NewBlobSidecarFromTx(tx)
+		sc = types.NewBlobSidecarFromTx(tx)
 		if sc == nil {
 			return errors.New("blob transaction without blobs in miner")
 		}
