@@ -557,18 +557,17 @@ func (db *Database) CheckJournalType() JournalType {
 }
 
 func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
-	if db.JournalTypeConfig() == JournalKVType {
-		rawdb.DeleteTrieJournal(writer)
-	} else {
-		filePath := db.config.JournalFilePath
-		_, err := os.Stat(filePath)
-		if os.IsNotExist(err) {
-			return err
-		}
-		errRemove := os.Remove(filePath)
-		if errRemove != nil {
-			log.Crit("Failed to remove tries journal", "journal path", filePath, "err", err)
-		}
+	// delete from jounal kv
+	rawdb.DeleteTrieJournal(writer)
+
+	// delete from journal file, may not exist
+	filePath := db.config.JournalFilePath
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil
+	}
+	errRemove := os.Remove(filePath)
+	if errRemove != nil {
+		log.Crit("Failed to remove tries journal", "journal path", filePath, "err", errRemove)
 	}
 	return nil
 }
