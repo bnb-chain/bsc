@@ -414,7 +414,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// Make sure the state associated with the block is available, or log out
 	// if there is no available state, waiting for state sync.
 	head := bc.CurrentBlock()
-	if !bc.NoTries() && !bc.HasState(head.Root) {
+	if !bc.HasState(head.Root) {
 		if head.Number.Uint64() == 0 {
 			// The genesis state is missing, which is only possible in the path-based
 			// scheme. This situation occurs when the initial state sync is not finished
@@ -430,7 +430,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			if bc.cacheConfig.SnapshotLimit > 0 {
 				diskRoot = rawdb.ReadSnapshotRoot(bc.db)
 			}
-			if bc.triedb.Scheme() == rawdb.PathScheme {
+			if bc.triedb.Scheme() == rawdb.PathScheme && !bc.NoTries() {
 				recoverable, _ := bc.triedb.Recoverable(diskRoot)
 				if !bc.HasState(diskRoot) && !recoverable {
 					diskRoot = bc.triedb.Head()
@@ -993,7 +993,7 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 // then block number zero is returned, indicating that snapshot recovery is disabled
 // and the whole snapshot should be auto-generated in case of head mismatch.
 func (bc *BlockChain) rewindHead(head *types.Header, root common.Hash) (*types.Header, uint64) {
-	if bc.triedb.Scheme() == rawdb.PathScheme {
+	if bc.triedb.Scheme() == rawdb.PathScheme && !bc.NoTries() {
 		return bc.rewindPathHead(head, root)
 	}
 	return bc.rewindHashHead(head, root)
@@ -1030,6 +1030,19 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		// block. Note, depth equality is permitted to allow using SetHead as a
 		// chain reparation mechanism without deleting any data!
 		if currentBlock := bc.CurrentBlock(); currentBlock != nil && header.Number.Uint64() <= currentBlock.Number.Uint64() {
+			// load bc.snaps for the judge `HasState`
+			if bc.NoTries() {
+				if bc.cacheConfig.SnapshotLimit > 0 {
+					snapconfig := snapshot.Config{
+						CacheSize:  bc.cacheConfig.SnapshotLimit,
+						NoBuild:    bc.cacheConfig.SnapshotNoBuild,
+						AsyncBuild: !bc.cacheConfig.SnapshotWait,
+					}
+					bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, header.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
+				}
+				defer func() { bc.snaps = nil }()
+			}
+
 			var newHeadBlock *types.Header
 			newHeadBlock, rootNumber = bc.rewindHead(header, root)
 			rawdb.WriteHeadBlockHash(db, newHeadBlock.Hash())
