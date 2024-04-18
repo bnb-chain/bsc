@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -35,9 +36,9 @@ func (s *PrivateTxBundleAPI) BundlePrice(ctx context.Context) *big.Int {
 
 // SendBundle will add the signed transaction to the transaction pool.
 // The sender is responsible for signing the transaction and using the correct nonce and ensuring validity
-func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args types.SendBundleArgs) error {
+func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args types.SendBundleArgs) (common.Hash, error) {
 	if len(args.Txs) == 0 {
-		return newBundleError(errors.New("bundle missing txs"))
+		return common.Hash{}, newBundleError(errors.New("bundle missing txs"))
 	}
 
 	currentHeader := s.b.CurrentHeader()
@@ -48,22 +49,22 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args types.SendBund
 	}
 
 	if args.MaxBlockNumber != 0 && args.MaxBlockNumber > currentHeader.Number.Uint64()+MaxBundleAliveBlock {
-		return newBundleError(errors.New("the maxBlockNumber should not be lager than currentBlockNum + 100"))
+		return common.Hash{}, newBundleError(errors.New("the maxBlockNumber should not be lager than currentBlockNum + 100"))
 	}
 
 	if args.MaxTimestamp != nil && args.MinTimestamp != nil && *args.MaxTimestamp != 0 && *args.MinTimestamp != 0 {
 		if *args.MaxTimestamp <= *args.MinTimestamp {
-			return newBundleError(errors.New("the maxTimestamp should not be less than minTimestamp"))
+			return common.Hash{}, newBundleError(errors.New("the maxTimestamp should not be less than minTimestamp"))
 		}
 	}
 
 	if args.MaxTimestamp != nil && *args.MaxTimestamp != 0 && *args.MaxTimestamp < currentHeader.Time {
-		return newBundleError(errors.New("the maxTimestamp should not be less than currentBlockTimestamp"))
+		return common.Hash{}, newBundleError(errors.New("the maxTimestamp should not be less than currentBlockTimestamp"))
 	}
 
 	if (args.MaxTimestamp != nil && *args.MaxTimestamp > currentHeader.Time+MaxBundleAliveTime) ||
 		(args.MinTimestamp != nil && *args.MinTimestamp > currentHeader.Time+MaxBundleAliveTime) {
-		return newBundleError(errors.New("the minTimestamp/maxTimestamp should not be later than currentBlockTimestamp + 5 minutes"))
+		return common.Hash{}, newBundleError(errors.New("the minTimestamp/maxTimestamp should not be later than currentBlockTimestamp + 5 minutes"))
 	}
 
 	var txs types.Transactions
@@ -71,7 +72,7 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args types.SendBund
 	for _, encodedTx := range args.Txs {
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {
-			return err
+			return common.Hash{}, err
 		}
 		txs = append(txs, tx)
 	}
@@ -94,7 +95,12 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args types.SendBund
 		RevertingTxHashes: args.RevertingTxHashes,
 	}
 
-	return s.b.SendBundle(ctx, bundle)
+	err := s.b.SendBundle(ctx, bundle)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	return bundle.Hash(), nil
 }
 
 func newBundleError(err error) *bundleError {
