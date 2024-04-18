@@ -459,7 +459,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *cleanCache, id uint64)
 						h := newHasher()
 						defer h.release()
 						_, key := trie.DecodeLeafNode(h.hash(it.Value()).Bytes(), it.Key()[1+common.HashLength:], it.Value())
-						if len(key) != common.HashLength {
+						if key != nil {
 							nums++
 							clean.plainStates.Del(key)
 						}
