@@ -82,7 +82,6 @@ var (
 	storageHashTimer   = metrics.NewRegisteredTimer("chain/storage/hashes", nil)
 	storageUpdateTimer = metrics.NewRegisteredTimer("chain/storage/updates", nil)
 	storageCommitTimer = metrics.NewRegisteredTimer("chain/storage/commits", nil)
-	totalReadTimer     = metrics.NewRegisteredTimer("chain/storage/totalreads", nil)
 
 	snapshotAccountReadTimer = metrics.NewRegisteredTimer("chain/snapshot/account/reads", nil)
 	snapshotStorageReadTimer = metrics.NewRegisteredTimer("chain/snapshot/storage/reads", nil)
@@ -90,13 +89,10 @@ var (
 
 	triedbCommitTimer = metrics.NewRegisteredTimer("chain/triedb/commits", nil)
 
-	blockInsertTimer      = metrics.NewRegisteredTimer("chain/inserts", nil)
-	blockValidationTimer  = metrics.NewRegisteredTimer("chain/validation", nil)
-	blockExecutionTimer   = metrics.NewRegisteredTimer("chain/execution", nil)
-	blockWriteTimer       = metrics.NewRegisteredTimer("chain/write", nil)
-	blockTimer            = metrics.NewRegisteredTimer("chain/block", nil)
-	blockAfterSizeTimer   = metrics.NewRegisteredTimer("chain/block/size", nil)
-	blockAfterInsertTimer = metrics.NewRegisteredTimer("chain/block/insert", nil)
+	blockInsertTimer     = metrics.NewRegisteredTimer("chain/inserts", nil)
+	blockValidationTimer = metrics.NewRegisteredTimer("chain/validation", nil)
+	blockExecutionTimer  = metrics.NewRegisteredTimer("chain/execution", nil)
+	blockWriteTimer      = metrics.NewRegisteredTimer("chain/write", nil)
 
 	blockReorgMeter     = metrics.NewRegisteredMeter("chain/reorg/executes", nil)
 	blockReorgAddMeter  = metrics.NewRegisteredMeter("chain/reorg/add", nil)
@@ -2106,7 +2102,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 	}
 
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
-		st := time.Now()
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
 			log.Debug("Abort during block processing")
@@ -2226,9 +2221,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		storageHashTimer.Update(statedb.StorageHashes)                  // Storage hashes are complete(in validation)
 		trieRead := statedb.SnapshotAccountReads + statedb.AccountReads // The time spent on account read
 		trieRead += statedb.SnapshotStorageReads + statedb.StorageReads // The time spent on storage read on
-		totalReadTimer.Update(trieRead)
-		blockExecutionTimer.Update(ptime)  // The time spent on EVM processing
-		blockValidationTimer.Update(vtime) // The time spent on block validation
+		blockExecutionTimer.Update(ptime)                               // The time spent on EVM processing
+		blockValidationTimer.Update(vtime)                              // The time spent on block validation
 
 		// Duo to the asynchronous of the cap in pathdb, Size() will have a lock competition problem with the cap(),
 		// and it will wait until cap completed. So get size in advance before chain write.
@@ -2259,7 +2253,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 
 		blockWriteTimer.Update(time.Since(wstart))
 		blockInsertTimer.UpdateSince(start)
-		blockAfterInsertTimer.UpdateSince(st)
 
 		// Report the import stats before returning the various results
 		stats.processed++
@@ -2269,7 +2262,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		if bc.snaps != nil {
 			snapDiffItems, snapBufItems, _ = bc.snaps.Size()
 		}
-		blockAfterSizeTimer.UpdateSince(st)
 		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, status == CanonStatTy)
 
 		if !setHead {
@@ -2306,7 +2298,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 				"root", block.Root())
 		}
 		bc.chainBlockFeed.Send(ChainHeadEvent{block})
-		blockTimer.UpdateSince(st)
 	}
 
 	// Any blocks remaining here? The only ones we care about are the future ones
