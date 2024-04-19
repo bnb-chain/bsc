@@ -67,6 +67,8 @@ var (
 	headBlockGauge     = metrics.NewRegisteredGauge("chain/head/block", nil)
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
 	headFastBlockGauge = metrics.NewRegisteredGauge("chain/head/receipt", nil)
+	headHashGauge      = metrics.NewRegisteredGaugeInfo("chain/head/hash", nil)
+	headMinerGauge     = metrics.NewRegisteredGaugeInfo("chain/head/miner", nil)
 
 	justifiedBlockGauge = metrics.NewRegisteredGauge("chain/head/justified", nil)
 	finalizedBlockGauge = metrics.NewRegisteredGauge("chain/head/finalized", nil)
@@ -2296,6 +2298,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		bc.cacheReceipts(block.Hash(), receipts, block)
 
 		// Update the metrics touched during block commit
+		headHashGauge.Update(metrics.GaugeInfoValue{"head_hash": block.Hash().String()})
+		headMinerGauge.Update(metrics.GaugeInfoValue{"head_miner": block.Coinbase().String()})
+
 		accountCommitTimer.Update(statedb.AccountCommits)   // Account commits are complete, we can mark them
 		storageCommitTimer.Update(statedb.StorageCommits)   // Storage commits are complete, we can mark them
 		snapshotCommitTimer.Update(statedb.SnapshotCommits) // Snapshot commits are complete, we can mark them
