@@ -151,8 +151,9 @@ func (kr *JournalKVReader) Read(p []byte) (n int, err error) {
 func (kr *JournalKVReader) Close() {
 }
 
-func newJournalWriter(file string, db ethdb.Database) JournalWriter {
-	if len(file) == 0 {
+func newJournalWriter(file string, db ethdb.Database, journalType JournalType) JournalWriter {
+	log.Info("New journal writer", "path", file, "journalType", journalType)
+	if journalType == JournalKVType {
 		return &JournalKVWriter{
 			diskdb: db,
 		}
@@ -167,8 +168,9 @@ func newJournalWriter(file string, db ethdb.Database) JournalWriter {
 	}
 }
 
-func newJournalReader(file string, db ethdb.Database) (JournalReader, error) {
-	if len(file) == 0 {
+func newJournalReader(file string, db ethdb.Database, journalType JournalType) (JournalReader, error) {
+	log.Info("New journal reader", "path", file, "journalType", journalType)
+	if journalType == JournalKVType {
 		journal := rawdb.ReadTrieJournal(db)
 		if len(journal) == 0 {
 			return nil, errMissJournal
@@ -193,7 +195,7 @@ func newJournalReader(file string, db ethdb.Database) (JournalReader, error) {
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	start := time.Now()
-	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb)
+	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, db.DetermineJournalTypeForReader())
 
 	if err != nil {
 		return nil, err
@@ -267,7 +269,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if db.IsEnableJournalFile() {
+	if db.DetermineJournalTypeForReader() == JournalFileType {
 		if err := r.Decode(&journalEncodedBuff); err != nil {
 			return nil, fmt.Errorf("load disk journal: %v", err)
 		}
@@ -308,7 +310,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		nodes[entry.Owner] = subset
 	}
 
-	if db.IsEnableJournalFile() {
+	if db.DetermineJournalTypeForReader() == JournalFileType {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
@@ -334,7 +336,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if db.IsEnableJournalFile() {
+	if db.DetermineJournalTypeForReader() == JournalFileType {
 		if err := r.Decode(&journalEncodedBuff); err != nil {
 			// The first read may fail with EOF, marking the end of the journal
 			if err == io.EOF {
@@ -407,7 +409,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		storages[entry.Account] = set
 	}
 
-	if db.IsEnableJournalFile() {
+	if db.DetermineJournalTypeForReader() == JournalFileType {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
@@ -426,7 +428,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 
 // journal implements the layer interface, marshaling the un-flushed trie nodes
 // along with layer metadata into provided byte buffer.
-func (dl *diskLayer) journal(w io.Writer, journalFile bool) error {
+func (dl *diskLayer) journal(w io.Writer, journalType JournalType) error {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
@@ -460,7 +462,7 @@ func (dl *diskLayer) journal(w io.Writer, journalFile bool) error {
 	}
 
 	// Store the journal buf into w and calculate checksum
-	if journalFile {
+	if journalType == JournalFileType {
 		shasum := sha256.Sum256(journalBuf.Bytes())
 		if err := rlp.Encode(w, journalBuf.Bytes()); err != nil {
 			return err
@@ -480,12 +482,12 @@ func (dl *diskLayer) journal(w io.Writer, journalFile bool) error {
 
 // journal implements the layer interface, writing the memory layer contents
 // into a buffer to be stored in the database as the layer journal.
-func (dl *diffLayer) journal(w io.Writer, journalFile bool) error {
+func (dl *diffLayer) journal(w io.Writer, journalType JournalType) error {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
 	// journal the parent first
-	if err := dl.parent.journal(w, journalFile); err != nil {
+	if err := dl.parent.journal(w, journalType); err != nil {
 		return err
 	}
 	// Create a buffer to store encoded data
@@ -535,7 +537,7 @@ func (dl *diffLayer) journal(w io.Writer, journalFile bool) error {
 	}
 
 	// Store the journal buf into w and calculate checksum
-	if journalFile {
+	if journalType == JournalFileType {
 		shasum := sha256.Sum256(journalBuf.Bytes())
 		if err := rlp.Encode(w, journalBuf.Bytes()); err != nil {
 			return err
@@ -583,7 +585,7 @@ func (db *Database) Journal(root common.Hash) error {
 	}
 	// Firstly write out the metadata of journal
 	db.DeleteTrieJournal(db.diskdb)
-	journal := newJournalWriter(db.config.JournalFilePath, db.diskdb)
+	journal := newJournalWriter(db.config.JournalFilePath, db.diskdb, db.DetermineJournalTypeForWriter())
 	defer journal.Close()
 
 	if err := rlp.Encode(journal, journalVersion); err != nil {
@@ -600,7 +602,7 @@ func (db *Database) Journal(root common.Hash) error {
 		return err
 	}
 	// Finally write out the journal of each layer in reverse order.
-	if err := l.journal(journal, db.IsEnableJournalFile()); err != nil {
+	if err := l.journal(journal, db.DetermineJournalTypeForWriter()); err != nil {
 		return err
 	}
 	// Store the journal into the database and return

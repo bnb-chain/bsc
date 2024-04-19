@@ -139,7 +139,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// Assemble the Ethereum object
-	chainDb, err := stack.OpenAndMergeDatabase("chaindata", ChainDBNamespace, false, config)
+	chainDb, err := stack.OpenAndMergeDatabase(ChainData, ChainDBNamespace, false, config)
 	if err != nil {
 		return nil, err
 	}
@@ -255,14 +255,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		journalFilePath string
 		path            string
 	)
-	if config.JournalFileEnabled {
-		if stack.CheckIfMultiDataBase() {
-			path = ChainData + "/state"
-		} else {
-			path = ChainData
-		}
-		journalFilePath = stack.ResolvePath(path) + "/" + JournalFileName
+	if stack.CheckIfMultiDataBase() {
+		path = ChainData + "/state"
+	} else {
+		path = ChainData
 	}
+	journalFilePath = stack.ResolvePath(path) + "/" + JournalFileName
 	var (
 		vmConfig = vm.Config{
 			EnablePreimageRecording: config.EnablePreimageRecording,
@@ -281,6 +279,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			StateScheme:         config.StateScheme,
 			PathSyncFlush:       config.PathSyncFlush,
 			JournalFilePath:     journalFilePath,
+			JournalFile:         config.JournalFileEnabled,
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
