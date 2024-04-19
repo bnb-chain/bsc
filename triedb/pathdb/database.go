@@ -68,8 +68,7 @@ const (
 type JournalType int
 
 const (
-	JournalNone JournalType = iota
-	JournalKVType
+	JournalKVType JournalType = iota
 	JournalFileType
 )
 
@@ -536,7 +535,8 @@ func (db *Database) GetAllRooHash() [][]string {
 	return data
 }
 
-func (db *Database) DetermineJournalTypeByConfig() JournalType {
+// DetermineJournalTypeForWriter is used when persisting the journal. It determines JournalType based on the config passed in by the Config.
+func (db *Database) DetermineJournalTypeForWriter() JournalType {
 	if db.config.JournalFile {
 		return JournalFileType
 	} else {
@@ -544,7 +544,8 @@ func (db *Database) DetermineJournalTypeByConfig() JournalType {
 	}
 }
 
-func (db *Database) DetermineJournalTypeByStorage() JournalType {
+// DetermineJournalTypeForReader is used when loading the journal. It loads based on whether JournalKV or JournalFile currently exists.
+func (db *Database) DetermineJournalTypeForReader() JournalType {
 	if journal := rawdb.ReadTrieJournal(db.diskdb); len(journal) != 0 {
 		return JournalKVType
 	}
@@ -557,7 +558,7 @@ func (db *Database) DetermineJournalTypeByStorage() JournalType {
 }
 
 func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
-	// delete from jounal kv
+	// To prevent any remnants of old journals after converting from JournalKV to JournalFile or vice versa, all deletions must be completed.
 	rawdb.DeleteTrieJournal(writer)
 
 	// delete from journal file, may not exist
