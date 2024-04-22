@@ -714,10 +714,10 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	r.env.state.SetTxContext(tx.Hash(), r.env.tcount)
 
 	if tx.Type() == types.BlobTxType {
-		sc = types.NewBlobSidecarFromTx(tx)
-		if sc == nil {
-			return errors.New("blob transaction without blobs in miner")
+		if len(r.env.sidecars) == 0 {
+			return errors.New("blob transaction without blobs in block body")
 		}
+		sc, r.env.sidecars = r.env.sidecars[0], r.env.sidecars[1:]
 		// Checking against blob gas limit: It's kind of ugly to perform this check here, but there
 		// isn't really a better place right now. The blob gas limit is checked at block validation time
 		// and not during execution. This means core.ApplyTransaction will not return an error if the
