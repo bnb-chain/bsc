@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -74,6 +75,20 @@ var (
 	bloomAccountHasherOffset  = 0
 	bloomStorageHasherOffset  = 0
 )
+
+func init() {
+	// Init the bloom offsets in the range [0:24] (requires 8 bytes)
+	bloomDestructHasherOffset = rand.Intn(25)
+	bloomAccountHasherOffset = rand.Intn(25)
+	bloomStorageHasherOffset = rand.Intn(25)
+
+	// The destruct and account blooms must be different, as the storage slots
+	// will check for destruction too for every bloom miss. It should not collide
+	// with modified accounts.
+	for bloomAccountHasherOffset == bloomDestructHasherOffset {
+		bloomAccountHasherOffset = rand.Intn(25)
+	}
+}
 
 // diffLayer represents a collection of modifications made to the in-memory tries
 // along with associated state changes after running a block on top.
