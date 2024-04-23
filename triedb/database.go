@@ -393,7 +393,7 @@ func (db *Database) Head() common.Hash {
 	return pdb.Head()
 }
 
-// GetAllHash returns all MPT root hash in diffLayer and diskLayer.
+// GetAllRooHash returns all MPT root hash in diffLayer and diskLayer.
 // It's only supported by path-based database and will return nil for
 // others.
 func (db *Database) GetAllRooHash() [][]string {
