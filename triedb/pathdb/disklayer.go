@@ -127,8 +127,8 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, cleans *cleanCache,
 	// the original disk layer).
 	if cleans == nil && db.config.CleanCacheSize != 0 {
 		cleans = &cleanCache{}
-		nodeCacheSize := db.config.CleanCacheSize * 42 / 100
-		plainStatesCacheSize := db.config.CleanCacheSize * 58 / 100 * 1 / 4
+		nodeCacheSize := db.config.CleanCacheSize * 43 / 100
+		plainStatesCacheSize := db.config.CleanCacheSize * 57 / 100
 		cleans.nodes = fastcache.New(nodeCacheSize)
 		cleans.plainStates = fastcache.New(plainStatesCacheSize)
 		log.Info("Allocate clean cache in disklayer", "nodes", common.StorageSize(nodeCacheSize),
