@@ -92,8 +92,9 @@ type diffLayer struct {
 	parent layer        // Parent layer modified by this one, never nil, **can be changed**
 	lock   sync.RWMutex // Lock used to protect parent
 
-	diffed *bloomfilter.Filter // Bloom filter tracking all the diffed items up to the disk layer
-	origin *diskLayer          // Base disk layer to directly use on bloom misses
+	diffed     *bloomfilter.Filter // Bloom filter tracking all the diffed items up to the disk layer
+	selfDiffed *bloomfilter.Filter // Bloom filter tracking all the diffed items of the diff layer
+	origin     *diskLayer          // Base disk layer to directly use on bloom misses
 }
 
 // newDiffLayer creates a new diff layer on top of an existing layer.
@@ -172,19 +173,31 @@ func (dl *diffLayer) rebloom(origin *diskLayer) {
 		dl.diffed, _ = parent.diffed.Copy()
 		parent.lock.RUnlock()
 	} else {
-		dl.diffed, _ = bloomfilter.New(uint64(bloomSize), uint64(bloomFuncs))
-	}
-	// Iterate over all the accounts and storage slots and index them
-	for h := range dl.states.DestructSet {
-		dl.diffed.AddHash(destructBloomHash(h))
-	}
-	for h := range dl.states.LatestAccounts {
-		dl.diffed.AddHash(accountBloomHash(h))
-	}
-	for accountHash, slots := range dl.states.LatestStorages {
-		for storageHash := range slots {
-			dl.diffed.AddHash(storageBloomHash(accountHash, storageHash))
+		if dl.selfDiffed == nil {
+			dl.diffed, _ = bloomfilter.New(uint64(bloomSize), uint64(bloomFuncs))
+		} else {
+			dl.diffed, _ = dl.selfDiffed.NewCompatible()
 		}
+	}
+
+	if dl.selfDiffed == nil {
+		dl.selfDiffed, _ = dl.diffed.NewCompatible()
+		// Iterate over all the accounts and storage slots and index them
+		for h := range dl.states.DestructSet {
+			dl.selfDiffed.AddHash(destructBloomHash(h))
+		}
+		for h := range dl.states.LatestAccounts {
+			dl.selfDiffed.AddHash(accountBloomHash(h))
+		}
+		for accountHash, slots := range dl.states.LatestStorages {
+			for storageHash := range slots {
+				dl.selfDiffed.AddHash(storageBloomHash(accountHash, storageHash))
+			}
+		}
+	}
+	err := dl.diffed.UnionInPlace(dl.selfDiffed)
+	if err != nil {
+		log.Error("diff layer bloom filter failed to union in place", "id", dl.id, "err", err)
 	}
 
 	// Calculate the current false positive rate and update the error rate meter.
