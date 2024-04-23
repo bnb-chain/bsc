@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -274,6 +275,10 @@ var (
 	PrecompiledAddressesIstanbul  []common.Address
 	PrecompiledAddressesByzantium []common.Address
 	PrecompiledAddressesHomestead []common.Address
+)
+
+var (
+	doubleSignCounter = metrics.NewRegisteredCounter("vm/contracts/doublesign", nil)
 )
 
 func init() {
@@ -1477,6 +1482,8 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	evidenceHeightBz := header1.Number.Bytes()
 	copy(returnBz[:20], signerAddr)
 	copy(returnBz[52-len(evidenceHeightBz):], evidenceHeightBz)
+
+	doubleSignCounter.Inc(1)
 
 	return returnBz, nil
 }
