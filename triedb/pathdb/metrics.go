@@ -34,6 +34,16 @@ var (
 	trieDirtyAccountHitMeter  = metrics.NewRegisteredMeter("pathdb/dirty/account/hit", nil)
 	trieDirtyAccountMissMeter = metrics.NewRegisteredMeter("path/dirty/account/miss", nil)
 
+	trieDiffLayerStorageHitMeter  = metrics.NewRegisteredMeter("pathdb/difflayer/storage/hit", nil)
+	trieDiffLayerStorageMissMeter = metrics.NewRegisteredMeter("pathdb/difflayer/storage/miss", nil)
+	trieDiffLayerAccountHitMeter  = metrics.NewRegisteredMeter("pathdb/difflayer/account/hit", nil)
+	trieDiffLayerAccountMissMeter = metrics.NewRegisteredMeter("pathdb/difflayer/account/miss", nil)
+
+	trieDiskLayerStorageHitMeter  = metrics.NewRegisteredMeter("pathdb/disklayer/storage/hit", nil)
+	trieDiskLayerStorageMissMeter = metrics.NewRegisteredMeter("pathdb/disklayer/storage/miss", nil)
+	trieDiskLayerAccountHitMeter  = metrics.NewRegisteredMeter("pathdb/disklayer/account/hit", nil)
+	trieDiskLayerAccountMissMeter = metrics.NewRegisteredMeter("pathdb/disklayer/account/miss", nil)
+
 	dirtyHitMeter         = metrics.NewRegisteredMeter("pathdb/dirty/hit", nil)
 	dirtyMissMeter        = metrics.NewRegisteredMeter("pathdb/dirty/miss", nil)
 	dirtyReadMeter        = metrics.NewRegisteredMeter("pathdb/dirty/read", nil)

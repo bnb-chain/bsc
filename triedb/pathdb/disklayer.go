@@ -184,18 +184,20 @@ func (dl *diskLayer) Account(hash common.Hash) ([]byte, error) {
 	// state accessing.
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
-
 	if dl.stale {
 		return nil, errSnapshotStale
 	}
 
+	trieDiffLayerAccountMissMeter.Mark(1)
 	if data, exist := dl.buffer.account(hash); exist {
 		trieDirtyAccountHitMeter.Mark(1)
+		trieDiskLayerAccountHitMeter.Mark(1)
 		return data, nil
 	}
 	trieDirtyAccountMissMeter.Mark(1)
 	if data, ok := dl.cleans.plainStates.HasGet(nil, hash.Bytes()); ok {
 		trieCleanAccountHitMeter.Mark(1)
+		trieDiskLayerAccountHitMeter.Mark(1)
 		return types.MustFullAccountRLP(data), nil
 	}
 
@@ -215,13 +217,16 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 		return nil, errSnapshotStale
 	}
 
+	trieDiffLayerStorageMissMeter.Mark(1)
 	if data, exist := dl.buffer.storage(accountHash, storageHash); exist {
+		trieDiskLayerStorageHitMeter.Mark(1)
 		trieDirtyStorageHitMeter.Mark(1)
 		return data, nil
 	}
 
 	trieDirtyStorageMissMeter.Mark(1)
 	if data, ok := dl.cleans.plainStates.HasGet(nil, append(accountHash.Bytes(), storageHash.Bytes()...)); ok {
+		trieDiskLayerStorageHitMeter.Mark(1)
 		trieCleanStorageHitMeter.Mark(1)
 		return data, nil
 	}
