@@ -21,11 +21,13 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -47,6 +49,13 @@ const HashScheme = "hash"
 // area of the disk with good data locality property. But this scheme needs to rely
 // on extra state diffs to survive deep reorg.
 const PathScheme = "path"
+
+var (
+	diskGetAccountTimer  = metrics.NewRegisteredTimer("pathdb/disk/account/read/timer", nil)
+	diskGetStorageTimer  = metrics.NewRegisteredTimer("pathdb/disk/storage/read/timer", nil)
+	diskSeekAccountTimer = metrics.NewRegisteredTimer("pathdb/disk/account/seek/timer", nil)
+	diskSeekStorageTimer = metrics.NewRegisteredTimer("pathdb/disk/storage/seek/timer", nil)
+)
 
 // hasher is used to compute the sha256 hash of the provided data.
 type hasher struct{ sha crypto.KeccakState }
@@ -83,10 +92,14 @@ func ReadAccountFromTrieDirectly(db ethdb.Database, key []byte) ([]byte, []byte,
 	it := db.NewIterator(nil, nil)
 	defer it.Release()
 
+	startSeek := time.Now()
 	if it.Seek(accountTrieNodeKey(EncodeNibbles(key))) && it.Error() == nil {
+		diskSeekAccountTimer.Update(time.Since(startSeek))
+		start := time.Now()
 		dbKey := common.CopyBytes(it.Key())
 		if strings.HasPrefix(string(accountTrieNodeKey(EncodeNibbles(key))), string(dbKey)) {
 			data := common.CopyBytes(it.Value())
+			diskGetAccountTimer.Update(time.Since(start))
 			return data, dbKey[1:], common.Hash{}
 		} else {
 			log.Debug("ReadAccountFromTrieDirectly", "dbKey", common.Bytes2Hex(dbKey), "target key", common.Bytes2Hex(accountTrieNodeKey(EncodeNibbles(key))))
@@ -156,10 +169,14 @@ func ReadStorageFromTrieDirectly(db ethdb.Database, accountHash common.Hash, key
 	it := db.NewIterator(nil, nil)
 	defer it.Release()
 
+	startSeek := time.Now()
 	if it.Seek(storageTrieNodeKey(accountHash, EncodeNibbles(key))) && it.Error() == nil {
+		diskSeekStorageTimer.Update(time.Since(startSeek))
 		dbKey := common.CopyBytes(it.Key())
+		start := time.Now()
 		if strings.HasPrefix(string(storageTrieNodeKey(accountHash, EncodeNibbles(key))), string(dbKey)) {
 			data := common.CopyBytes(it.Value())
+			diskGetStorageTimer.Update(time.Since(start))
 			return data, dbKey[1:], common.Hash{}
 		}
 	}
