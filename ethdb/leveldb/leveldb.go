@@ -238,6 +238,10 @@ func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	return &leveldbIterator{iter: iter, moved: true, released: false}
 }
 
+func (db *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
+	panic("not supported!")
+}
+
 // NewSnapshot creates a database snapshot based on the current state.
 // The created snapshot will not be affected by all following mutations
 // happened on the database.

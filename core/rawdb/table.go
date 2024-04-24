@@ -170,6 +170,9 @@ func (t *table) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 		prefix: t.prefix,
 	}
 }
+func (t *table) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
+	panic("not supported!")
+}
 
 func (t *table) NewReverseIterator(prefix, start, key []byte) ethdb.Iterator {
 	return nil

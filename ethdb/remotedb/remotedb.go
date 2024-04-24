@@ -32,6 +32,10 @@ type Database struct {
 	remote *rpc.Client
 }
 
+func (db *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
+	panic("not supported!")
+}
+
 func (db *Database) Has(key []byte) (bool, error) {
 	if _, err := db.Get(key); err != nil {
 		return false, nil

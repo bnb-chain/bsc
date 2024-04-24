@@ -84,19 +84,19 @@ var (
 	// database.
 	fastTxLookupLimitKey = []byte("FastTransactionLookupLimit")
 
-	//offSet of new updated ancientDB.
+	// offSet of new updated ancientDB.
 	offSetOfCurrentAncientFreezer = []byte("offSetOfCurrentAncientFreezer")
 
-	//offSet of the ancientDB before updated version.
+	// offSet of the ancientDB before updated version.
 	offSetOfLastAncientFreezer = []byte("offSetOfLastAncientFreezer")
 
-	//frozenOfAncientDBKey tracks the block number for ancientDB to save.
+	// frozenOfAncientDBKey tracks the block number for ancientDB to save.
 	frozenOfAncientDBKey = []byte("FrozenOfAncientDB")
 
-	//LastSafePointBlockKey tracks the block number for block state that write disk
+	// LastSafePointBlockKey tracks the block number for block state that write disk
 	LastSafePointBlockKey = []byte("LastSafePointBlockNumber")
 
-	//PruneAncientFlag flag whether prune ancient
+	// PruneAncientFlag flag whether prune ancient
 	pruneAncientKey = []byte("PruneAncientFlag")
 
 	// badBlockKey tracks the list of bad blocks seen by local
@@ -298,6 +298,10 @@ func storageTrieNodeKey(accountHash common.Hash, path []byte) []byte {
 	n += copy(buf[n:], accountHash.Bytes())
 	copy(buf[n:], path)
 	return buf
+}
+
+func storageTrieNodePrefix(accountHash common.Hash) []byte {
+	return append(trieNodeStoragePrefix, accountHash.Bytes()...)
 }
 
 // IsLegacyTrieNode reports whether a provided database entry is a legacy trie

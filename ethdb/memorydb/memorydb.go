@@ -50,6 +50,10 @@ type Database struct {
 	lock sync.RWMutex
 }
 
+func (db *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
+	panic("not supported!")
+}
+
 // New returns a wrapped map with all the required database interface methods
 // implemented.
 func New() *Database {
