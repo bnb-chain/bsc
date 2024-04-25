@@ -20,10 +20,11 @@ import (
 	"container/heap"
 	"math/big"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/holiman/uint256"
 )
 
 // txWithMinerFee wraps a transaction with its gas price or effective miner gasTipCap
@@ -205,11 +206,11 @@ func (t *transactionsByPriceAndNonce) Forward(tx *types.Transaction) {
 		}
 		return
 	}
-	//check whether target tx exists in t.heads
+	// check whether target tx exists in t.heads
 	for _, head := range t.heads {
 		if head.tx != nil && head.tx.Resolve() != nil {
 			if tx == head.tx.Tx {
-				//shift t to the position one after tx
+				// shift t to the position one after tx
 				txTmp := t.PeekWithUnwrap()
 				for txTmp != tx {
 					t.Shift()
@@ -220,13 +221,13 @@ func (t *transactionsByPriceAndNonce) Forward(tx *types.Transaction) {
 			}
 		}
 	}
-	//get the sender address of tx
+	// get the sender address of tx
 	acc, _ := types.Sender(t.signer, tx)
-	//check whether target tx exists in t.txs
+	// check whether target tx exists in t.txs
 	if txs, ok := t.txs[acc]; ok {
 		for _, txLazyTmp := range txs {
 			if txLazyTmp != nil && txLazyTmp.Resolve() != nil {
-				//found the same pointer in t.txs as tx and then shift t to the position one after tx
+				// found the same pointer in t.txs as tx and then shift t to the position one after tx
 				if tx == txLazyTmp.Tx {
 					txTmp := t.PeekWithUnwrap()
 					for txTmp != tx {

@@ -9,6 +9,13 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+const (
+	// MaxBundleAliveBlock is the max alive block for bundle
+	MaxBundleAliveBlock = 100
+	// MaxBundleAliveTime is the max alive time for bundle
+	MaxBundleAliveTime = 5 * 60 // second
+)
+
 // SendBundleArgs represents the arguments for a call.
 type SendBundleArgs struct {
 	Txs               []hexutil.Bytes `json:"txs"`

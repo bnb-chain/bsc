@@ -28,6 +28,8 @@ var (
 // fillTransactions retrieves the pending bundles and transactions from the txpool and fills them
 // into the given sealing block. The selection and ordering strategy can be extended in the future.
 func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environment, stopTimer *time.Timer) error {
+	env.state.StopPrefetcher() // no need to prefetch txs for a builder
+
 	var (
 		localPlainTxs  map[common.Address][]*txpool.LazyTransaction
 		remotePlainTxs map[common.Address][]*txpool.LazyTransaction
@@ -35,6 +37,32 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 		remoteBlobTxs  map[common.Address][]*txpool.LazyTransaction
 		bundles        []*types.Bundle
 	)
+
+	// commit bundles
+	{
+		bundles = w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
+
+		// if no bundles, not necessary to fill transactions
+		if len(bundles) == 0 {
+			return errors.New("no bundles in bundle pool")
+		}
+
+		txs, bundle, err := w.generateOrderedBundles(env, bundles)
+		if err != nil {
+			log.Error("fail to generate ordered bundles", "err", err)
+			return err
+		}
+
+		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
+			log.Error("fail to commit bundles", "err", err)
+			return err
+		}
+
+		env.profit.Add(env.profit, bundle.EthSentToSystem)
+		log.Info("fill bundles", "bundles_count", len(bundles))
+	}
+
+	// commit normal transactions
 	{
 		w.mu.RLock()
 		tip := w.tip
@@ -71,33 +99,8 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 				localBlobTxs[account] = txs
 			}
 		}
-
-		bundles = w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
-
-		log.Info("fill bundles and transactions", "bundles_count", len(bundles), "tx_count", len(localPlainTxs)+len(remotePlainTxs))
-
-		// if no bundles, not necessary to fill transactions
-		if len(bundles) == 0 {
-			return errors.New("no bundles in bundle pool")
-		}
+		log.Info("fill transactions", "plain_txs_count", len(localPlainTxs)+len(remotePlainTxs), "blob_txs_count", len(localBlobTxs)+len(remoteBlobTxs))
 	}
-
-	{
-		txs, bundle, err := w.generateOrderedBundles(env, bundles)
-		if err != nil {
-			log.Error("fail to generate ordered bundles", "err", err)
-			return err
-		}
-
-		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
-			log.Error("fail to commit bundles", "err", err)
-			return err
-		}
-
-		env.profit.Add(env.profit, bundle.EthSentToSystem)
-	}
-
-	env.state.StopPrefetcher() // no need to prefetch txs for a builder
 
 	// Fill the block with all available pending transactions.
 	// we will abort when:
@@ -122,6 +125,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return err
 		}
 	}
+	log.Info("fill bundles and transactions done", "total_txs_count", len(env.txs))
 	return nil
 }
 
