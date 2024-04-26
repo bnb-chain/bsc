@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"math/rand"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -2035,13 +2034,8 @@ func applyMessage(
 // proposalKey build a key which is a combination of the block number and the proposer address.
 func proposalKey(header types.Header) string {
 
-	slotKey := uintToString(header.Number.Uint64())
-	proposerIndexKey := uintToString(header.Coinbase.Big().Uint64())
+	slotKey := header.Number.String()
+	proposerIndexKey := header.Coinbase.String()
 
 	return slotKey + ":" + proposerIndexKey
-}
-
-// Turns a uint64 value to a string representation.
-func uintToString(val uint64) string {
-	return strconv.FormatUint(val, 10)
 }
