@@ -552,6 +552,10 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if success {
 			bidRuntime.duration = time.Since(simStart)
 
+			if len(b.newBidCh) > 0 {
+				return
+			}
+
 			select {
 			case b.newBidCh <- bidRuntime.bid:
 				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
