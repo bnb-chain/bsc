@@ -552,6 +552,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if success {
 			bidRuntime.duration = time.Since(simStart)
 
+			// only recommit self bid when newBidCh is empty
 			if len(b.newBidCh) > 0 {
 				return
 			}
@@ -667,7 +668,11 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
-	// recommit last best bid
+	// only recommit last best bid when newBidCh is empty
+	if len(b.newBidCh) > 0 {
+		return
+	}
+
 	select {
 	case b.newBidCh <- bestBid.bid:
 		log.Debug("BidSimulator: recommit last bid", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
