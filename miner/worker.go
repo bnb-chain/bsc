@@ -115,6 +115,7 @@ func (env *environment) copy() *environment {
 	if env.sidecars != nil {
 		cpy.sidecars = make(types.BlobSidecars, len(env.sidecars))
 		copy(cpy.sidecars, env.sidecars)
+		cpy.blobs = env.blobs
 	}
 
 	return cpy
@@ -1420,7 +1421,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 			select {
 			case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now()}:
 				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-					"txs", env.tcount, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+					"txs", env.tcount, "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 			case <-w.exitCh:
 				log.Info("Worker has exited")
