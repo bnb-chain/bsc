@@ -48,8 +48,9 @@ import (
 )
 
 const (
-	inMemorySnapshots  = 256  // Number of recent snapshots to keep in memory
-	inMemorySignatures = 4096 // Number of recent block signatures to keep in memory
+	inMemorySnapshots  = 256   // Number of recent snapshots to keep in memory
+	inMemorySignatures = 4096  // Number of recent block signatures to keep in memory
+	inMemoryHeaders    = 86400 // Number of recent headers to keep in memory for double sign detection
 
 	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
 	defaultEpochLength = uint64(100) // Default number of blocks of checkpoint to update validatorSet from contract
@@ -267,7 +268,7 @@ func New(
 	if err != nil {
 		panic(err)
 	}
-	recentHeaders, err := lru.NewARC(inMemorySignatures)
+	recentHeaders, err := lru.NewARC(inMemoryHeaders)
 	if err != nil {
 		panic(err)
 	}
