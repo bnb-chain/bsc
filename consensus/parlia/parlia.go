@@ -218,9 +218,9 @@ type Parlia struct {
 	genesisHash common.Hash
 	db          ethdb.Database // Database to store and retrieve snapshot checkpoints
 
-	recentSnaps      *lru.ARCCache // Snapshots for recent block to speed up
-	signatures       *lru.ARCCache // Signatures of recent blocks to speed up mining
-	recentHeadersMap map[string]types.Header
+	recentSnaps   *lru.ARCCache // Snapshots for recent block to speed up
+	signatures    *lru.ARCCache // Signatures of recent blocks to speed up mining
+	recentHeaders *lru.ARCCache //
 	// Recent headers to check for double signing: key includes block number and miner. value is the block header
 	// If same key's value already exists for different block header roots then double sign is detected
 
@@ -268,7 +268,10 @@ func New(
 	if err != nil {
 		panic(err)
 	}
-	recentHeadersMap := make(map[string]types.Header)
+	recentHeaders, err := lru.NewARC(inMemorySignatures)
+	if err != nil {
+		panic(err)
+	}
 	vABIBeforeLuban, err := abi.JSON(strings.NewReader(validatorSetABIBeforeLuban))
 	if err != nil {
 		panic(err)
@@ -292,7 +295,7 @@ func New(
 		db:                         db,
 		ethAPI:                     ethAPI,
 		recentSnaps:                recentSnaps,
-		recentHeadersMap:           recentHeadersMap,
+		recentHeaders:              recentHeaders,
 		signatures:                 signatures,
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
@@ -820,13 +823,15 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 		return errUnauthorizedValidator(signer.String())
 	}
 
-	// todo check for double sign & add to cache
+	// check for double sign & add to cache
 	key := proposalKey(*header)
-	value, ok := p.recentHeadersMap[key]
+
+	value, ok := p.recentHeaders.Get(key)
 	if ok {
 		doubleSignCounter.Inc(1)
+	} else {
+		p.recentHeaders.Add(key, value)
 	}
-	p.recentHeadersMap[key] = value
 
 	if snap.SignRecently(signer) {
 		return errRecentlySigned
