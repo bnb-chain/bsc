@@ -2431,7 +2431,7 @@ func MakeBlockDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 }
 
 func PathDBConfigAddJournalFilePath(stack *node.Node, config *pathdb.Config) *pathdb.Config {
-	path := stack.ResolvePath("chaindata") + "/" + eth.JournalFileName
+	path := fmt.Sprintf("%s/%s", stack.ResolvePath("chaindata"), eth.JournalFileName)
 	config.JournalFilePath = path
 	return config
 }
@@ -2599,7 +2599,7 @@ func MakeTrieDatabase(ctx *cli.Context, stack *node.Node, disk ethdb.Database, p
 	} else {
 		config.PathDB = pathdb.Defaults
 	}
-	config.PathDB.JournalFilePath = stack.ResolvePath("chaindata") + "/" + eth.JournalFileName
+	config.PathDB.JournalFilePath = fmt.Sprintf("%s/%s", stack.ResolvePath("chaindata"), eth.JournalFileName)
 	return triedb.NewDatabase(disk, config)
 }
 
