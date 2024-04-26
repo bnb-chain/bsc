@@ -2033,9 +2033,5 @@ func applyMessage(
 
 // proposalKey build a key which is a combination of the block number and the proposer address.
 func proposalKey(header types.Header) string {
-
-	slotKey := header.Number.String()
-	proposerIndexKey := header.Coinbase.String()
-
-	return slotKey + ":" + proposerIndexKey
+	return header.ParentHash.String() + header.Coinbase.String()
 }
