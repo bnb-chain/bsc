@@ -106,12 +106,12 @@ Remove blockchain and state databases`,
 	dbInspectTrieCmd = &cli.Command{
 		Action:    inspectTrie,
 		Name:      "inspect-trie",
-		ArgsUsage: "<blocknum> <jobnum>",
+		ArgsUsage: "<blocknum> <jobnum> <topn>",
 		Flags: []cli.Flag{
 			utils.DataDirFlag,
 			utils.SyncModeFlag,
 		},
-		Usage:       "Inspect the MPT tree of the account and contract.",
+		Usage:       "Inspect the MPT tree of the account and contract. the blocknum arg can be latest/snapshot/number.",
 		Description: `This commands iterates the entrie WorldState.`,
 	}
 	dbCheckStateContentCmd = &cli.Command{
@@ -386,6 +386,7 @@ func inspectTrie(ctx *cli.Context) error {
 		blockNumber  uint64
 		trieRootHash common.Hash
 		jobnum       uint64
+		topN         uint64
 	)
 
 	stack, _ := makeConfigNode(ctx)
@@ -411,11 +412,24 @@ func inspectTrie(ctx *cli.Context) error {
 
 		if ctx.NArg() == 1 {
 			jobnum = 1000
+			topN = 10
+		} else if ctx.NArg() == 2 {
+			var err error
+			jobnum, err = strconv.ParseUint(ctx.Args().Get(1), 10, 64)
+			if err != nil {
+				return fmt.Errorf("failed to Parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
+			}
+			topN = 10
 		} else {
 			var err error
 			jobnum, err = strconv.ParseUint(ctx.Args().Get(1), 10, 64)
 			if err != nil {
 				return fmt.Errorf("failed to Parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
+			}
+
+			topN, err = strconv.ParseUint(ctx.Args().Get(2), 10, 64)
+			if err != nil {
+				return fmt.Errorf("failed to Parse topn, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
 			}
 		}
 
@@ -437,6 +451,7 @@ func inspectTrie(ctx *cli.Context) error {
 		if dbScheme == rawdb.PathScheme {
 			config = &triedb.Config{
 				PathDB: utils.PathDBConfigAddJournalFilePath(stack, pathdb.ReadOnly),
+				Cache:  0,
 			}
 		} else if dbScheme == rawdb.HashScheme {
 			config = triedb.HashDefaults
@@ -448,7 +463,7 @@ func inspectTrie(ctx *cli.Context) error {
 			fmt.Printf("fail to new trie tree, err: %v, rootHash: %v\n", err, trieRootHash.String())
 			return err
 		}
-		theInspect, err := trie.NewInspector(theTrie, triedb, trieRootHash, blockNumber, jobnum)
+		theInspect, err := trie.NewInspector(theTrie, triedb, trieRootHash, blockNumber, jobnum, int(topN))
 		if err != nil {
 			return err
 		}
