@@ -552,9 +552,10 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if success {
 			bidRuntime.duration = time.Since(simStart)
 
-			if len(b.newBidCh) == 0 {
+			select {
+			case b.newBidCh <- bidRuntime.bid:
 				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
-				b.newBidCh <- bidRuntime.bid
+			default:
 			}
 		}
 	}(time.Now())
@@ -660,6 +661,13 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		b.SetBestBid(bidRuntime.bid.ParentHash, bidRuntime)
 		success = true
 		return
+	}
+
+	// recommit last best bid
+	select {
+	case b.newBidCh <- bestBid.bid:
+		log.Debug("BidSimulator: recommit last bid", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
+	default:
 	}
 }
 
