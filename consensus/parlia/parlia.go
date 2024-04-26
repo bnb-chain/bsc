@@ -2032,9 +2032,7 @@ func applyMessage(
 	return msg.Gas() - returnGas, err
 }
 
-// proposalKey build a key which is a combination of the slot and the proposer index.
-// If a validator proposes several blocks for the same slot, then several (potentially slashable)
-// proposals will correspond to the same key.
+// proposalKey build a key which is a combination of the block number and the proposer address.
 func proposalKey(header types.Header) string {
 
 	slotKey := uintToString(header.Number.Uint64())
