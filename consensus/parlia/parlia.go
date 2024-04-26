@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"math/rand"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +81,7 @@ var (
 	verifyVoteAttestationErrorCounter = metrics.NewRegisteredCounter("parlia/verifyVoteAttestation/error", nil)
 	updateAttestationErrorCounter     = metrics.NewRegisteredCounter("parlia/updateAttestation/error", nil)
 	validVotesfromSelfCounter         = metrics.NewRegisteredCounter("parlia/VerifyVote/self", nil)
+	doubleSignCounter                 = metrics.NewRegisteredCounter("parlia/doublesign", nil)
 
 	systemContracts = map[common.Address]bool{
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
@@ -216,8 +218,11 @@ type Parlia struct {
 	genesisHash common.Hash
 	db          ethdb.Database // Database to store and retrieve snapshot checkpoints
 
-	recentSnaps *lru.ARCCache // Snapshots for recent block to speed up
-	signatures  *lru.ARCCache // Signatures of recent blocks to speed up mining
+	recentSnaps      *lru.ARCCache // Snapshots for recent block to speed up
+	signatures       *lru.ARCCache // Signatures of recent blocks to speed up mining
+	recentHeadersMap map[string]types.Header
+	// Recent headers to check for double signing: key includes block number and miner. value is the block header
+	// If same key's value already exists for different block header roots then double sign is detected
 
 	signer types.Signer
 
@@ -263,6 +268,7 @@ func New(
 	if err != nil {
 		panic(err)
 	}
+	recentHeadersMap := make(map[string]types.Header)
 	vABIBeforeLuban, err := abi.JSON(strings.NewReader(validatorSetABIBeforeLuban))
 	if err != nil {
 		panic(err)
@@ -286,6 +292,7 @@ func New(
 		db:                         db,
 		ethAPI:                     ethAPI,
 		recentSnaps:                recentSnaps,
+		recentHeadersMap:           recentHeadersMap,
 		signatures:                 signatures,
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
@@ -812,6 +819,14 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	if _, ok := snap.Validators[signer]; !ok {
 		return errUnauthorizedValidator(signer.String())
 	}
+
+	// todo check for double sign & add to cache
+	key := proposalKey(*header)
+	value, ok := p.recentHeadersMap[key]
+	if ok {
+		doubleSignCounter.Inc(1)
+	}
+	p.recentHeadersMap[key] = value
 
 	if snap.SignRecently(signer) {
 		return errRecentlySigned
@@ -2010,4 +2025,20 @@ func applyMessage(
 		log.Error("apply message failed", "msg", string(ret), "err", err)
 	}
 	return msg.Gas() - returnGas, err
+}
+
+// proposalKey build a key which is a combination of the slot and the proposer index.
+// If a validator proposes several blocks for the same slot, then several (potentially slashable)
+// proposals will correspond to the same key.
+func proposalKey(header types.Header) string {
+
+	slotKey := uintToString(header.Number.Uint64())
+	proposerIndexKey := uintToString(header.Coinbase.Big().Uint64())
+
+	return slotKey + ":" + proposerIndexKey
+}
+
+// Turns a uint64 value to a string representation.
+func uintToString(val uint64) string {
+	return strconv.FormatUint(val, 10)
 }
