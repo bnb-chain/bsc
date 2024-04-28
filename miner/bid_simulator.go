@@ -249,6 +249,12 @@ func (b *bidSimulator) SetBestBid(prevBlockHash common.Hash, bid *BidRuntime) {
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
 
+	// must discard the environment of the last best bid, otherwise it will cause memory leak
+	last := b.bestBid[prevBlockHash]
+	if last != nil && last.env != nil {
+		last.env.discard()
+	}
+
 	b.bestBid[prevBlockHash] = bid
 }
 
@@ -623,11 +629,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if b.config.GreedyMergeTx {
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 		if delay != nil && *delay > 0 {
-			log.Debug("BidSimulator: greedy merge stopTimer", "block", bidRuntime.env.header.Number,
-				"builder", bidRuntime.bid.Builder,
-				"header time", time.Until(time.Unix(int64(bidRuntime.env.header.Time), 0)),
-				"commit delay", *delay, "DelayLeftOver", b.delayLeftOver)
-
 			stopTimer := time.NewTimer(*delay)
 
 			bidTxsSet := mapset.NewSet[common.Hash]()
@@ -636,7 +637,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			}
 
 			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, stopTimer, bidTxsSet)
-			log.Info("BidSimulator: greedy merge stopped", "block", bidRuntime.env.header.Number,
+			log.Trace("BidSimulator: greedy merge stopped", "block", bidRuntime.env.header.Number,
 				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
 			// recalculate the packed reward
