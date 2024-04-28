@@ -354,7 +354,7 @@ func (b *bidSimulator) newBidLoop() {
 				packedValidatorReward:   big.NewInt(0),
 			}
 
-			// TODO(renee-) opt bid comparation
+			// TODO(renee-) opt bid comparison
 
 			simulatingBid := b.GetSimulatingBid(newBid.ParentHash)
 			// simulatingBid is nil means there is no bid in simulation
