@@ -251,7 +251,7 @@ func (b *bidSimulator) SetBestBid(prevBlockHash common.Hash, bid *BidRuntime) {
 
 	// must discard the environment of the last best bid, otherwise it will cause memory leak
 	last := b.bestBid[prevBlockHash]
-	if last != nil {
+	if last != nil && last.env != nil {
 		last.env.discard()
 	}
 
