@@ -249,6 +249,12 @@ func (b *bidSimulator) SetBestBid(prevBlockHash common.Hash, bid *BidRuntime) {
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
 
+	// must discard the environment of the last best bid, otherwise it will cause memory leak
+	last := b.bestBid[prevBlockHash]
+	if last != nil {
+		last.env.discard()
+	}
+
 	b.bestBid[prevBlockHash] = bid
 }
 
