@@ -333,6 +333,11 @@ func (beacon *Beacon) verifyHeaders(chain consensus.ChainHeaderReader, headers [
 	return abort, results
 }
 
+// CurrentTurnTerm return the turnTerm at the latest block
+func (beacon *Beacon) CurrentTurnTerm(chain consensus.ChainHeaderReader) (turnTerm *uint64, err error) {
+	return nil, errors.New("not implemented")
+}
+
 // NextInTurnValidator return the next in-turn validator for header
 func (beacon *Beacon) NextInTurnValidator(chain consensus.ChainHeaderReader, header *types.Header) (common.Address, error) {
 	return common.Address{}, errors.New("not implemented")

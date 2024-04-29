@@ -54,10 +54,12 @@ const (
 
 	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
 	defaultEpochLength = uint64(100) // Default number of blocks of checkpoint to update validatorSet from contract
+	defaultTurnTerm    = uint64(1)   // Default consecutive number of blocks a validator receives priority for block production
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal        = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
 	nextForkHashSize = 4  // Fixed number of extra-data suffix bytes reserved for nextForkHash.
+	turnTermSize     = 1  // Fixed number of extra-data suffix bytes reserved for turnTerm
 
 	validatorBytesLengthBeforeLuban = common.AddressLength
 	validatorBytesLength            = common.AddressLength + types.BLSPublicKeyLength
@@ -135,6 +137,10 @@ var (
 	// errMismatchingEpochValidators is returned if a sprint block contains a
 	// list of validators different than the one the local node calculated.
 	errMismatchingEpochValidators = errors.New("mismatching validator list on epoch block")
+
+	// errMismatchingEpochTurnTerm is returned if a sprint block contains a
+	// turn term different than the one the local node calculated.
+	errMismatchingEpochTurnTerm = errors.New("mismatching turn term on epoch block")
 
 	// errInvalidDifficulty is returned if the difficulty of a block is missing.
 	errInvalidDifficulty = errors.New("invalid difficulty")
@@ -365,6 +371,7 @@ func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 // On luban fork, we introduce vote attestation into the header's extra field, so extra format is different from before.
 // Before luban fork: |---Extra Vanity---|---Validators Bytes (or Empty)---|---Extra Seal---|
 // After luban fork:  |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
+// After bohr fork:   |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Turn Term (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
 func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) []byte {
 	if len(header.Extra) <= extraVanity+extraSeal {
 		return nil
@@ -381,11 +388,15 @@ func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.Chain
 		return nil
 	}
 	num := int(header.Extra[extraVanity])
-	if num == 0 || len(header.Extra) <= extraVanity+extraSeal+num*validatorBytesLength {
-		return nil
-	}
 	start := extraVanity + validatorNumberSize
 	end := start + num*validatorBytesLength
+	extraMinLen := end + extraSeal
+	if chainConfig.IsBohr(header.Number, header.Time) {
+		extraMinLen += turnTermSize
+	}
+	if num == 0 || len(header.Extra) < extraMinLen {
+		return nil
+	}
 	return header.Extra[start:end]
 }
 
@@ -404,11 +415,14 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 		attestationBytes = header.Extra[extraVanity : len(header.Extra)-extraSeal]
 	} else {
 		num := int(header.Extra[extraVanity])
-		if len(header.Extra) <= extraVanity+extraSeal+validatorNumberSize+num*validatorBytesLength {
+		start := extraVanity + validatorNumberSize + num*validatorBytesLength
+		if chainConfig.IsBohr(header.Number, header.Time) {
+			start += turnTermSize
+		}
+		end := len(header.Extra) - extraSeal
+		if end <= start {
 			return nil, nil
 		}
-		start := extraVanity + validatorNumberSize + num*validatorBytesLength
-		end := len(header.Extra) - extraSeal
 		attestationBytes = header.Extra[start:end]
 	}
 
@@ -884,6 +898,35 @@ func (p *Parlia) prepareValidators(header *types.Header) error {
 	return nil
 }
 
+func (p *Parlia) prepareTurnTerm(chain consensus.ChainHeaderReader, header *types.Header) error {
+	if header.Number.Uint64()%p.config.Epoch != 0 ||
+		!p.chainConfig.IsBohr(header.Number, header.Time) {
+		return nil
+	}
+
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return errors.New("parent not found")
+	}
+
+	if p.chainConfig.IsBohr(parent.Number, parent.Time) {
+		turnTerm, err := p.getTurnTerm(parent)
+		if err != nil {
+			return err
+		}
+		if turnTerm == nil {
+			return errors.New("unexpected error when getTurnTerm")
+		}
+		header.Extra = append(header.Extra, byte(int(turnTerm.Int64())))
+		log.Debug("prepareTurnTerm", "turnTerm", turnTerm.Int64())
+	} else {
+		log.Debug("prepareTurnTerm", "turnTerm", "defaultTurnTerm")
+		header.Extra = append(header.Extra, byte(int(defaultTurnTerm)))
+	}
+
+	return nil
+}
+
 func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header) error {
 	if !p.chainConfig.IsLuban(header.Number) || header.Number.Uint64() < 2 {
 		return nil
@@ -967,6 +1010,16 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	return nil
 }
 
+// CurrentTurnTerm return the turnTerm at the latest block
+func (p *Parlia) CurrentTurnTerm(chain consensus.ChainHeaderReader) (turnTerm *uint64, err error) {
+	currentHeader := chain.CurrentHeader()
+	snap, err := p.snapshot(chain, currentHeader.Number.Uint64(), currentHeader.Hash(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return &snap.TurnTerm, nil
+}
+
 // NextInTurnValidator return the next in-turn validator for header
 func (p *Parlia) NextInTurnValidator(chain consensus.ChainHeaderReader, header *types.Header) (common.Address, error) {
 	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
@@ -1015,6 +1068,9 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		return err
 	}
 
+	if err := p.prepareTurnTerm(chain, header); err != nil {
+		return err
+	}
 	// add extra seal space
 	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
 
@@ -1063,6 +1119,42 @@ func (p *Parlia) verifyValidators(header *types.Header) error {
 		return errMismatchingEpochValidators
 	}
 	return nil
+}
+
+func (p *Parlia) verifyTurnTerm(chain consensus.ChainHeaderReader, header *types.Header) error {
+	if header.Number.Uint64()%p.config.Epoch != 0 ||
+		!p.chainConfig.IsBohr(header.Number, header.Time) {
+		return nil
+	}
+
+	turnTermFromHeader, err := parseTurnTerm(header, p.chainConfig, p.config)
+	if err != nil {
+		return err
+	}
+	if turnTermFromHeader != nil {
+		parent := chain.GetHeaderByHash(header.ParentHash)
+		if parent == nil {
+			return errors.New("parent not found")
+		}
+
+		if p.chainConfig.IsBohr(parent.Number, parent.Time) {
+			turnTermFromContract, err := p.getTurnTerm(parent)
+			if err != nil {
+				return err
+			}
+			if turnTermFromContract != nil && uint8(turnTermFromContract.Int64()) == *turnTermFromHeader {
+				log.Debug("verifyTurnTerm", "turnTerm", turnTermFromContract.Int64())
+				return nil
+			}
+		} else {
+			if uint8(defaultTurnTerm) == *turnTermFromHeader {
+				log.Debug("verifyTurnTerm", "turnTerm", "defaultTurnTerm")
+				return nil
+			}
+		}
+	}
+
+	return errMismatchingEpochTurnTerm
 }
 
 func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header,
@@ -1159,6 +1251,10 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		return err
 	}
 
+	if err := p.verifyTurnTerm(chain, header); err != nil {
+		return err
+	}
+
 	cx := chainContext{Chain: chain, parlia: p}
 
 	parent := chain.GetHeaderByHash(header.ParentHash)
@@ -1185,7 +1281,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 	if header.Difficulty.Cmp(diffInTurn) != 0 {
-		spoiledVal := snap.supposeValidator()
+		spoiledVal := snap.inturnValidator()
 		signedRecently := false
 		if p.chainConfig.IsPlato(header.Number) {
 			signedRecently = snap.SignRecently(spoiledVal)
@@ -1276,7 +1372,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		if err != nil {
 			return nil, nil, err
 		}
-		spoiledVal := snap.supposeValidator()
+		spoiledVal := snap.inturnValidator()
 		signedRecently := false
 		if p.chainConfig.IsPlato(header.Number) {
 			signedRecently = snap.SignRecently(spoiledVal)
@@ -1900,31 +1996,24 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 // ===========================     utility function        ==========================
 func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Address) uint64 {
 	if snap.inturn(val) {
+		log.Debug("backOffTime", "blockNumber", header.Number, "in turn validator", val)
 		return 0
 	} else {
 		delay := initialBackOffTime
 		validators := snap.validators()
 		if p.chainConfig.IsPlanck(header.Number) {
-			// reverse the key/value of snap.Recents to get recentsMap
-			recentsMap := make(map[common.Address]uint64, len(snap.Recents))
-			bound := uint64(0)
-			if n, limit := header.Number.Uint64(), uint64(len(validators)/2+1); n > limit {
-				bound = n - limit
-			}
-			for seen, recent := range snap.Recents {
-				if seen <= bound {
-					continue
-				}
-				recentsMap[recent] = seen
+			counts := snap.countRecents()
+			for addr, seenTimes := range counts {
+				log.Debug("backOffTime", "blockNumber", header.Number, "validator", addr, "seenTimes", seenTimes)
 			}
 
 			// The backOffTime does not matter when a validator has signed recently.
-			if _, ok := recentsMap[val]; ok {
+			if snap.signRecentlyByCounts(val, counts) {
 				return 0
 			}
 
-			inTurnAddr := validators[(snap.Number+1)%uint64(len(validators))]
-			if _, ok := recentsMap[inTurnAddr]; ok {
+			inTurnAddr := snap.inturnValidator()
+			if snap.signRecentlyByCounts(inTurnAddr, counts) {
 				log.Debug("in turn validator has recently signed, skip initialBackOffTime",
 					"inTurnAddr", inTurnAddr)
 				delay = 0
@@ -1933,7 +2022,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 			// Exclude the recently signed validators
 			temp := make([]common.Address, 0, len(validators))
 			for _, addr := range validators {
-				if _, ok := recentsMap[addr]; ok {
+				if snap.signRecentlyByCounts(addr, counts) {
 					continue
 				}
 				temp = append(temp, addr)

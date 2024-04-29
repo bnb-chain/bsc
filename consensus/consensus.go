@@ -97,6 +97,9 @@ type Engine interface {
 	// rules of a given engine.
 	VerifyUncles(chain ChainReader, block *types.Block) error
 
+	// CurrentTurnTerm return the turnTerm at the latest block
+	CurrentTurnTerm(chain ChainHeaderReader) (turnTerm *uint64, err error)
+
 	// NextInTurnValidator return the next in-turn validator for header
 	NextInTurnValidator(chain ChainHeaderReader, header *types.Header) (common.Address, error)
 

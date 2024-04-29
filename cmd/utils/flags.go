@@ -349,6 +349,12 @@ var (
 		Value:    params.BreatheBlockInterval,
 		Category: flags.EthCategory,
 	}
+	OverrideUseRandTurnTerm = &cli.BoolFlag{
+		Name:     "override.useRandTurnTerm",
+		Usage:    "It use random values for turn terms instead of reading from the contract, only for testing purpose",
+		Value:    params.UseRandTurnTerm,
+		Category: flags.EthCategory,
+	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
 		Name:     "syncmode",
 		Usage:    `Blockchain sync mode ("snap" or "full")`,

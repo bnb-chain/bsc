@@ -511,6 +511,11 @@ func (c *Clique) verifySeal(snap *Snapshot, header *types.Header, parents []*typ
 	return nil
 }
 
+// CurrentTurnTerm return the turnTerm at the latest block
+func (c *Clique) CurrentTurnTerm(chain consensus.ChainHeaderReader) (turnTerm *uint64, err error) {
+	return nil, errors.New("not implemented")
+}
+
 // NextInTurnValidator return the next in-turn validator for header
 func (c *Clique) NextInTurnValidator(chain consensus.ChainHeaderReader, header *types.Header) (common.Address, error) {
 	return common.Address{}, errors.New("not implemented")
