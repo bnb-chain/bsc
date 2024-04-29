@@ -2,6 +2,7 @@ package miner
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -37,7 +38,8 @@ type Bidder struct {
 	engine        consensus.Engine
 	chain         *core.BlockChain
 
-	validators map[common.Address]*validator // address -> validator
+	validatorsMu sync.RWMutex
+	validators   map[common.Address]*validator // address -> validator
 
 	bestWorksMu sync.RWMutex
 	bestWorks   map[int64]*environment
@@ -74,31 +76,16 @@ func NewBidder(config *MevConfig, delayLeftOver time.Duration, engine consensus.
 	b.wallet = wallet
 
 	for _, v := range config.Validators {
-		cl, err := validatorclient.DialOptions(context.Background(), v.URL, rpc.WithHTTPClient(client))
-		if err != nil {
-			log.Error("Bidder: failed to dial validator", "url", v.URL, "err", err)
-			continue
-		}
-
-		params, err := cl.MevParams(context.Background())
-		if err != nil {
-			log.Error("Bidder: failed to get mev params", "url", v.URL, "err", err)
-			continue
-		}
-
-		b.validators[v.Address] = &validator{
-			Client:                cl,
-			BidSimulationLeftOver: params.BidSimulationLeftOver,
-			GasCeil:               params.GasCeil,
-		}
+		b.register(v)
 	}
 
 	if len(b.validators) == 0 {
 		log.Warn("Bidder: No valid validators")
 	}
 
-	b.wg.Add(1)
+	b.wg.Add(2)
 	go b.mainLoop()
+	go b.reconnectLoop()
 
 	return b
 }
@@ -124,9 +111,11 @@ func (b *Bidder) mainLoop() {
 				bidNum = 0
 				parentHeader := b.chain.GetHeaderByHash(work.header.ParentHash)
 				var bidSimulationLeftOver time.Duration
+				b.validatorsMu.RLock()
 				if b.validators[work.coinbase] != nil {
 					bidSimulationLeftOver = b.validators[work.coinbase].BidSimulationLeftOver
 				}
+				b.validatorsMu.RUnlock()
 				betterBidBefore = bidutil.BidBetterBefore(parentHeader, b.chain.Config().Parlia.Period, b.delayLeftOver,
 					bidSimulationLeftOver)
 
@@ -157,12 +146,61 @@ func (b *Bidder) mainLoop() {
 	}
 }
 
-func (b *Bidder) registered(validator common.Address) bool {
+func (b *Bidder) reconnectLoop() {
+	defer b.wg.Done()
+
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			for _, v := range b.config.Validators {
+				if b.isRegistered(v.Address) {
+					continue
+				}
+
+				b.register(v)
+			}
+		case <-b.exitCh:
+			return
+		}
+	}
+}
+
+func (b *Bidder) isRegistered(validator common.Address) bool {
+	b.validatorsMu.RLock()
+	defer b.validatorsMu.RUnlock()
 	_, ok := b.validators[validator]
 	return ok
 }
 
+func (b *Bidder) register(cfg ValidatorConfig) {
+	b.validatorsMu.Lock()
+	defer b.validatorsMu.Unlock()
+
+	cl, err := validatorclient.DialOptions(context.Background(), cfg.URL, rpc.WithHTTPClient(client))
+	if err != nil {
+		log.Error("Bidder: failed to dial validator", "url", cfg.URL, "err", err)
+		return
+	}
+
+	params, err := cl.MevParams(context.Background())
+	if err != nil {
+		log.Error("Bidder: failed to get mev params", "url", cfg.URL, "err", err)
+		return
+	}
+
+	b.validators[cfg.Address] = &validator{
+		Client:                cl,
+		BidSimulationLeftOver: params.BidSimulationLeftOver,
+		GasCeil:               params.GasCeil,
+	}
+}
+
 func (b *Bidder) unregister(validator common.Address) {
+	b.validatorsMu.Lock()
+	defer b.validatorsMu.Unlock()
 	delete(b.validators, validator)
 }
 
@@ -188,11 +226,14 @@ func (b *Bidder) exit() {
 // 2. send bid to validator
 func (b *Bidder) bid(work *environment) {
 	var (
-		cli     = b.validators[work.coinbase]
 		parent  = b.chain.CurrentBlock()
 		bidArgs types.BidArgs
+		cli     *validator
 	)
 
+	b.validatorsMu.RLock()
+	cli = b.validators[work.coinbase]
+	b.validatorsMu.RUnlock()
 	if cli == nil {
 		log.Info("Bidder: validator not integrated", "validator", work.coinbase)
 		return
@@ -238,7 +279,8 @@ func (b *Bidder) bid(work *environment) {
 		b.deleteBestWork(work)
 		log.Error("Bidder: bidding failed", "err", err)
 
-		bidErr, ok := err.(rpc.Error)
+		var bidErr rpc.Error
+		ok := errors.As(err, &bidErr)
 		if ok && bidErr.ErrorCode() == types.MevNotRunningError {
 			b.unregister(work.coinbase)
 		}
