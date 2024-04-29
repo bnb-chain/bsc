@@ -50,7 +50,7 @@ import (
 const (
 	inMemorySnapshots  = 256   // Number of recent snapshots to keep in memory
 	inMemorySignatures = 4096  // Number of recent block signatures to keep in memory
-	inMemoryHeaders    = 86400 // Number of recent headers to keep in memory for double sign detection
+	inMemoryHeaders    = 86400 // Number of recent headers to keep in memory for double sign detection,
 
 	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
 	defaultEpochLength = uint64(100) // Default number of blocks of checkpoint to update validatorSet from contract
@@ -819,18 +819,19 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 		return errCoinBaseMisMatch
 	}
 
-	if _, ok := snap.Validators[signer]; !ok {
-		return errUnauthorizedValidator(signer.String())
-	}
-
 	// check for double sign & add to cache
 	key := proposalKey(*header)
-
-	value, ok := p.recentHeaders.Get(key)
-	if ok {
+	preHash, ok := p.recentHeaders.Get(key)
+	if ok && preHash != header.Hash() {
 		doubleSignCounter.Inc(1)
+		log.Warn("DoubleSign detected", " block", header.Number, " miner", header.Coinbase,
+			"hash1", preHash.(common.Hash), "hash2", header.Hash())
 	} else {
-		p.recentHeaders.Add(key, value)
+		p.recentHeaders.Add(key, header.Hash())
+	}
+
+	if _, ok := snap.Validators[signer]; !ok {
+		return errUnauthorizedValidator(signer.String())
 	}
 
 	if snap.SignRecently(signer) {
