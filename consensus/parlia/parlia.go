@@ -16,7 +16,7 @@ import (
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
-	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/willf/bitset"
 	"golang.org/x/crypto/sha3"
 
@@ -48,8 +48,9 @@ import (
 )
 
 const (
-	inMemorySnapshots  = 256  // Number of recent snapshots to keep in memory
-	inMemorySignatures = 4096 // Number of recent block signatures to keep in memory
+	inMemorySnapshots  = 256   // Number of recent snapshots to keep in memory
+	inMemorySignatures = 4096  // Number of recent block signatures to keep in memory
+	inMemoryHeaders    = 86400 // Number of recent headers to keep in memory for double sign detection,
 
 	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
 	defaultEpochLength = uint64(100) // Default number of blocks of checkpoint to update validatorSet from contract
@@ -80,6 +81,7 @@ var (
 	verifyVoteAttestationErrorCounter = metrics.NewRegisteredCounter("parlia/verifyVoteAttestation/error", nil)
 	updateAttestationErrorCounter     = metrics.NewRegisteredCounter("parlia/updateAttestation/error", nil)
 	validVotesfromSelfCounter         = metrics.NewRegisteredCounter("parlia/VerifyVote/self", nil)
+	doubleSignCounter                 = metrics.NewRegisteredCounter("parlia/doublesign", nil)
 
 	systemContracts = map[common.Address]bool{
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
@@ -216,8 +218,11 @@ type Parlia struct {
 	genesisHash common.Hash
 	db          ethdb.Database // Database to store and retrieve snapshot checkpoints
 
-	recentSnaps *lru.ARCCache // Snapshots for recent block to speed up
-	signatures  *lru.ARCCache // Signatures of recent blocks to speed up mining
+	recentSnaps   *lru.ARCCache // Snapshots for recent block to speed up
+	signatures    *lru.ARCCache // Signatures of recent blocks to speed up mining
+	recentHeaders *lru.ARCCache //
+	// Recent headers to check for double signing: key includes block number and miner. value is the block header
+	// If same key's value already exists for different block header roots then double sign is detected
 
 	signer types.Signer
 
@@ -263,6 +268,10 @@ func New(
 	if err != nil {
 		panic(err)
 	}
+	recentHeaders, err := lru.NewARC(inMemoryHeaders)
+	if err != nil {
+		panic(err)
+	}
 	vABIBeforeLuban, err := abi.JSON(strings.NewReader(validatorSetABIBeforeLuban))
 	if err != nil {
 		panic(err)
@@ -286,6 +295,7 @@ func New(
 		db:                         db,
 		ethAPI:                     ethAPI,
 		recentSnaps:                recentSnaps,
+		recentHeaders:              recentHeaders,
 		signatures:                 signatures,
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
@@ -807,6 +817,17 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 
 	if signer != header.Coinbase {
 		return errCoinBaseMisMatch
+	}
+
+	// check for double sign & add to cache
+	key := proposalKey(*header)
+	preHash, ok := p.recentHeaders.Get(key)
+	if ok && preHash != header.Hash() {
+		doubleSignCounter.Inc(1)
+		log.Warn("DoubleSign detected", " block", header.Number, " miner", header.Coinbase,
+			"hash1", preHash.(common.Hash), "hash2", header.Hash())
+	} else {
+		p.recentHeaders.Add(key, header.Hash())
 	}
 
 	if _, ok := snap.Validators[signer]; !ok {
@@ -2010,4 +2031,9 @@ func applyMessage(
 		log.Error("apply message failed", "msg", string(ret), "err", err)
 	}
 	return msg.Gas() - returnGas, err
+}
+
+// proposalKey build a key which is a combination of the block number and the proposer address.
+func proposalKey(header types.Header) string {
+	return header.ParentHash.String() + header.Coinbase.String()
 }

@@ -69,6 +69,8 @@ import (
 
 const (
 	ChainDBNamespace = "eth/db/chaindata/"
+	JournalFileName  = "trie.journal"
+	ChainData        = "chaindata"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -137,8 +139,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// Assemble the Ethereum object
-	chainDb, err := stack.OpenAndMergeDatabase("chaindata", config.DatabaseCache, config.DatabaseHandles,
-		config.DatabaseFreezer, config.DatabaseDiff, ChainDBNamespace, false, config.PersistDiff, config.PruneAncientData)
+	chainDb, err := stack.OpenAndMergeDatabase(ChainData, ChainDBNamespace, false, config)
 	if err != nil {
 		return nil, err
 	}
@@ -251,6 +252,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	}
 	var (
+		journalFilePath string
+		path            string
+	)
+	if stack.CheckIfMultiDataBase() {
+		path = ChainData + "/state"
+	} else {
+		path = ChainData
+	}
+	journalFilePath = stack.ResolvePath(path) + "/" + JournalFileName
+	var (
 		vmConfig = vm.Config{
 			EnablePreimageRecording: config.EnablePreimageRecording,
 		}
@@ -267,6 +278,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			StateHistory:        config.StateHistory,
 			StateScheme:         config.StateScheme,
 			PathSyncFlush:       config.PathSyncFlush,
+			JournalFilePath:     journalFilePath,
+			JournalFile:         config.JournalFileEnabled,
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)

@@ -155,7 +155,7 @@ Note: If you encounter difficulties downloading the chaindata snapshot and prefe
 ```shell
 ./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0
 
-## It is recommand to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency
+## It is recommend to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency
 ## It will run with Hash-Base Storage Scheme by default
 ./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none
 

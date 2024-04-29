@@ -165,6 +165,6 @@ func BenchmarkJournal(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		layer.journal(new(bytes.Buffer))
+		layer.journal(new(bytes.Buffer), JournalKVType)
 	}
 }
