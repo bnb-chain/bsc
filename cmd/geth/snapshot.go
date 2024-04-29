@@ -409,7 +409,7 @@ func pruneBlock(ctx *cli.Context) error {
 	}
 
 	if _, err := os.Stat(newAncientPath); err == nil {
-		// No file lock found for old ancientDB but new ancientDB exsisted, indicating the geth was interrupted
+		// No file lock found for old ancientDB but new ancientDB existed, indicating the geth was interrupted
 		// after old ancientDB removal, this happened after backup successfully, so just rename the new ancientDB
 		if err := blockpruner.AncientDbReplacer(); err != nil {
 			log.Error("Failed to rename new ancient directory")
