@@ -305,6 +305,7 @@ type BlobPool struct {
 	head   *types.Header  // Current head of the chain
 	state  *state.StateDB // Current state at the head of the chain
 	gasTip *uint256.Int   // Currently accepted minimum gas tip
+	maxGas uint64         // Currently accepted max gas, it will be modified by MinerAPI
 
 	lookup map[common.Hash]uint64           // Lookup table mapping hashes to tx billy entries
 	index  map[common.Address][]*blobTxMeta // Blob transactions grouped by accounts, sorted by nonce
@@ -1098,6 +1099,7 @@ func (p *BlobPool) validateTx(tx *types.Transaction) error {
 		Accept:  1 << types.BlobTxType,
 		MaxSize: txMaxSize,
 		MinTip:  p.gasTip.ToBig(),
+		MaxGas:  p.GetMaxGas(),
 	}
 	if err := txpool.ValidateTransaction(tx, p.head, p.signer, baseOpts); err != nil {
 		return err
@@ -1670,4 +1672,16 @@ func (p *BlobPool) Status(hash common.Hash) txpool.TxStatus {
 		return txpool.TxStatusPending
 	}
 	return txpool.TxStatusUnknown
+}
+
+func (p *BlobPool) SetMaxGas(maxGas uint64) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.maxGas = maxGas
+}
+
+func (p *BlobPool) GetMaxGas() uint64 {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	return p.maxGas
 }
