@@ -219,7 +219,7 @@ type LegacyPool struct {
 	scope        event.SubscriptionScope
 	signer       types.Signer
 	mu           sync.RWMutex
-	maxGas       uint64 // Currently accepted max gas, it will be modified by MinerAPI
+	maxGas       atomic.Uint64 // Currently accepted max gas, it will be modified by MinerAPI
 
 	currentHead   atomic.Pointer[types.Header] // Current head of the blockchain
 	currentState  *state.StateDB               // Current state in the blockchain head
@@ -1772,15 +1772,11 @@ func (pool *LegacyPool) demoteUnexecutables() {
 }
 
 func (pool *LegacyPool) GetMaxGas() uint64 {
-	pool.mu.RLock()
-	defer pool.mu.RUnlock()
-	return pool.maxGas
+	return pool.maxGas.Load()
 }
 
 func (pool *LegacyPool) SetMaxGas(maxGas uint64) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-	pool.maxGas = maxGas
+	pool.maxGas.Store(maxGas)
 }
 
 // addressByHeartbeat is an account address tagged with its last activity timestamp.

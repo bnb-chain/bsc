@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -305,7 +306,7 @@ type BlobPool struct {
 	head   *types.Header  // Current head of the chain
 	state  *state.StateDB // Current state at the head of the chain
 	gasTip *uint256.Int   // Currently accepted minimum gas tip
-	maxGas uint64         // Currently accepted max gas, it will be modified by MinerAPI
+	maxGas atomic.Uint64  // Currently accepted max gas, it will be modified by MinerAPI
 
 	lookup map[common.Hash]uint64           // Lookup table mapping hashes to tx billy entries
 	index  map[common.Address][]*blobTxMeta // Blob transactions grouped by accounts, sorted by nonce
@@ -1675,13 +1676,9 @@ func (p *BlobPool) Status(hash common.Hash) txpool.TxStatus {
 }
 
 func (p *BlobPool) SetMaxGas(maxGas uint64) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	p.maxGas = maxGas
+	p.maxGas.Store(maxGas)
 }
 
 func (p *BlobPool) GetMaxGas() uint64 {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	return p.maxGas
+	return p.maxGas.Load()
 }
