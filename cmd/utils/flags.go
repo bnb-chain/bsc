@@ -93,10 +93,10 @@ var (
 		Value:    flags.DirectoryString(node.DefaultDataDir()),
 		Category: flags.EthCategory,
 	}
-	SeparateDBFlag = &cli.BoolFlag{
-		Name: "separatedb",
-		Usage: "Enable a separated trie database, it will be created within a subdirectory called state, " +
-			"Users can copy this state directory to another directory or disk, and then create a symbolic link to the state directory under the chaindata",
+	MultiDataBaseFlag = &cli.BoolFlag{
+		Name: "multidatabase",
+		Usage: "Enable a separated state and block database, it will be created within two subdirectory called state and block, " +
+			"Users can copy this state or block directory to another directory or disk, and then create a symbolic link to the state directory under the chaindata",
 		Category: flags.EthCategory,
 	}
 	DirectBroadcastFlag = &cli.BoolFlag{
@@ -224,7 +224,7 @@ var (
 	// hbss2pbss command options
 	ForceFlag = &cli.BoolFlag{
 		Name:  "force",
-		Usage: "Force convert hbss trie node to pbss trie node. Ingore any metadata",
+		Usage: "Force convert hbss trie node to pbss trie node. Ignore any metadata",
 		Value: false,
 	}
 	// Dump command options.
@@ -362,6 +362,12 @@ var (
 	PathDBSyncFlag = &cli.BoolFlag{
 		Name:     "pathdb.sync",
 		Usage:    "sync flush nodes cache to disk in path schema",
+		Value:    false,
+		Category: flags.StateCategory,
+	}
+	JournalFileFlag = &cli.BoolFlag{
+		Name:     "journalfile",
+		Usage:    "Enable using journal file to store the TrieJournal instead of KVDB in pbss (default = false)",
 		Value:    false,
 		Category: flags.StateCategory,
 	}
@@ -876,6 +882,11 @@ var (
 		Usage:    "Disables the peer discovery mechanism (manual peer addition)",
 		Category: flags.NetworkingCategory,
 	}
+	PeerFilterPatternsFlag = &cli.StringSliceFlag{
+		Name:     "peerfilter",
+		Usage:    "Disallow peers connection if peer name matches the given regular expressions",
+		Category: flags.NetworkingCategory,
+	}
 	DiscoveryV4Flag = &cli.BoolFlag{
 		Name:     "discovery.v4",
 		Aliases:  []string{"discv4"},
@@ -1144,7 +1155,7 @@ var (
 		DBEngineFlag,
 		StateSchemeFlag,
 		HttpHeaderFlag,
-		SeparateDBFlag,
+		MultiDataBaseFlag,
 	}
 )
 
@@ -1541,6 +1552,9 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	}
 	if ctx.IsSet(NoDiscoverFlag.Name) {
 		cfg.NoDiscovery = true
+	}
+	if ctx.IsSet(PeerFilterPatternsFlag.Name) {
+		cfg.PeerFilterPatterns = ctx.StringSlice(PeerFilterPatternsFlag.Name)
 	}
 
 	CheckExclusive(ctx, DiscoveryV4Flag, NoDiscoverFlag)
@@ -1962,6 +1976,10 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(PathDBSyncFlag.Name) {
 		cfg.PathSyncFlush = true
 	}
+	if ctx.IsSet(JournalFileFlag.Name) {
+		cfg.JournalFileEnabled = true
+	}
+
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.TransactionHistory != 0 {
 		cfg.TransactionHistory = 0
 		log.Warn("Disabled transaction unindexing for archive node")
@@ -2377,9 +2395,11 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 	default:
 		chainDb, err = stack.OpenDatabaseWithFreezer("chaindata", cache, handles, ctx.String(AncientFlag.Name), "", readonly, disableFreeze, false, false)
 		// set the separate state database
-		if stack.IsSeparatedDB() && err == nil {
+		if stack.CheckIfMultiDataBase() && err == nil {
 			stateDiskDb := MakeStateDataBase(ctx, stack, readonly, false)
 			chainDb.SetStateStore(stateDiskDb)
+			blockDb := MakeBlockDatabase(ctx, stack, readonly, false)
+			chainDb.SetBlockStore(blockDb)
 		}
 	}
 	if err != nil {
@@ -2391,12 +2411,29 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 // MakeStateDataBase open a separate state database using the flags passed to the client and will hard crash if it fails.
 func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
 	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
-	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) / 2
+	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * 90 / 100
 	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata/state", cache, handles, "", "", readonly, disableFreeze, false, false)
 	if err != nil {
 		Fatalf("Failed to open separate trie database: %v", err)
 	}
 	return statediskdb
+}
+
+// MakeBlockDatabase open a separate block database using the flags passed to the client and will hard crash if it fails.
+func MakeBlockDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
+	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
+	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) / 10
+	blockDb, err := stack.OpenDatabaseWithFreezer("chaindata/block", cache, handles, "", "", readonly, disableFreeze, false, false)
+	if err != nil {
+		Fatalf("Failed to open separate block database: %v", err)
+	}
+	return blockDb
+}
+
+func PathDBConfigAddJournalFilePath(stack *node.Node, config *pathdb.Config) *pathdb.Config {
+	path := fmt.Sprintf("%s/%s", stack.ResolvePath("chaindata"), eth.JournalFileName)
+	config.JournalFilePath = path
+	return config
 }
 
 // tryMakeReadOnlyDatabase try to open the chain database in read-only mode,
@@ -2541,7 +2578,7 @@ func MakeConsolePreloads(ctx *cli.Context) []string {
 }
 
 // MakeTrieDatabase constructs a trie database based on the configured scheme.
-func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, readOnly bool, isVerkle bool) *triedb.Database {
+func MakeTrieDatabase(ctx *cli.Context, stack *node.Node, disk ethdb.Database, preimage bool, readOnly bool, isVerkle bool) *triedb.Database {
 	config := &triedb.Config{
 		Preimages: preimage,
 		IsVerkle:  isVerkle,
@@ -2562,6 +2599,7 @@ func MakeTrieDatabase(ctx *cli.Context, disk ethdb.Database, preimage bool, read
 	} else {
 		config.PathDB = pathdb.Defaults
 	}
+	config.PathDB.JournalFilePath = fmt.Sprintf("%s/%s", stack.ResolvePath("chaindata"), eth.JournalFileName)
 	return triedb.NewDatabase(disk, config)
 }
 

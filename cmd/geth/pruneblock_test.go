@@ -178,10 +178,11 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 
 	// Force run a freeze cycle
 	type freezer interface {
-		Freeze(threshold uint64) error
+		Freeze() error
 		Ancients() (uint64, error)
 	}
-	db.(freezer).Freeze(10)
+	blockchain.SetFinalized(blocks[len(blocks)-1].Header())
+	db.(freezer).Freeze()
 
 	frozen, err := db.Ancients()
 	//make sure there're frozen items
