@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
+
+	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
@@ -12,6 +15,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
+)
+
+var (
+	daCheckTimer = metrics.NewRegisteredTimer("chain/dacheck", nil)
 )
 
 // validateBlobSidecar it is same as validateBlobSidecar in core/txpool/validation.go
@@ -46,6 +53,10 @@ func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobSidecar) error
 
 // IsDataAvailable it checks that the blobTx block has available blob data
 func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err error) {
+	defer func(start time.Time) {
+		daCheckTimer.Update(time.Since(start))
+	}(time.Now())
+
 	// refer logic in ValidateBody
 	if !chain.Config().IsCancun(block.Number(), block.Time()) {
 		if block.Sidecars() != nil {

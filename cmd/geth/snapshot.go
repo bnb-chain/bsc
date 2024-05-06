@@ -355,7 +355,15 @@ func pruneBlock(ctx *cli.Context) error {
 	if !ctx.IsSet(utils.AncientFlag.Name) {
 		return errors.New("datadir.ancient must be set")
 	} else {
-		oldAncientPath = ctx.String(utils.AncientFlag.Name)
+		if stack.CheckIfMultiDataBase() {
+			ancientPath := ctx.String(utils.AncientFlag.Name)
+			index := strings.LastIndex(ancientPath, "/ancient/chain")
+			if index != -1 {
+				oldAncientPath = ancientPath[:index] + "/block/ancient/chain"
+			}
+		} else {
+			oldAncientPath = ctx.String(utils.AncientFlag.Name)
+		}
 		if !filepath.IsAbs(oldAncientPath) {
 			// force absolute paths, which often fail due to the splicing of relative paths
 			return errors.New("datadir.ancient not abs path")
@@ -524,7 +532,7 @@ func verifyState(ctx *cli.Context) error {
 		log.Error("Failed to load head block")
 		return errors.New("no head block")
 	}
-	triedb := utils.MakeTrieDatabase(ctx, chaindb, false, true, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
 	snapConfig := snapshot.Config{
@@ -579,7 +587,7 @@ func traverseState(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer chaindb.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, chaindb, false, true, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
 	headBlock := rawdb.ReadHeadBlock(chaindb)
@@ -688,7 +696,7 @@ func traverseRawState(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer chaindb.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, chaindb, false, true, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
 	headBlock := rawdb.ReadHeadBlock(chaindb)
@@ -852,7 +860,8 @@ func dumpState(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	triedb := utils.MakeTrieDatabase(ctx, db, false, true, false)
+	defer db.Close()
+	triedb := utils.MakeTrieDatabase(ctx, stack, db, false, true, false)
 	defer triedb.Close()
 
 	snapConfig := snapshot.Config{
@@ -935,7 +944,7 @@ func snapshotExportPreimages(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer chaindb.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, chaindb, false, true, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
 	var root common.Hash

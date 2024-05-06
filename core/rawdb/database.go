@@ -26,14 +26,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olekukonko/tablewriter"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/olekukonko/tablewriter"
 )
 
 // freezerdb is a database wrapper that enables freezer data retrievals.
@@ -44,6 +43,7 @@ type freezerdb struct {
 	ethdb.AncientFreezer
 	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
+	blockStore ethdb.Database
 }
 
 func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
@@ -51,6 +51,18 @@ func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
 		return frdb
 	}
 	return frdb.stateStore
+}
+
+func (frdb *freezerdb) BlockStoreReader() ethdb.Reader {
+	if frdb.blockStore == nil {
+		return frdb
+	}
+	return frdb.blockStore
+}
+
+func (frdb *freezerdb) BlockStoreWriter() ethdb.Writer {
+	//TODO implement me
+	panic("implement me")
 }
 
 // AncientDatadir returns the path of root ancient directory.
@@ -75,6 +87,11 @@ func (frdb *freezerdb) Close() error {
 	}
 	if frdb.stateStore != nil {
 		if err := frdb.stateStore.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if frdb.blockStore != nil {
+		if err := frdb.blockStore.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -106,19 +123,28 @@ func (frdb *freezerdb) SetStateStore(state ethdb.Database) {
 	frdb.stateStore = state
 }
 
+func (frdb *freezerdb) BlockStore() ethdb.Database {
+	if frdb.blockStore != nil {
+		return frdb.blockStore
+	} else {
+		return frdb
+	}
+}
+
+func (frdb *freezerdb) SetBlockStore(block ethdb.Database) {
+	if frdb.blockStore != nil {
+		frdb.blockStore.Close()
+	}
+	frdb.blockStore = block
+}
+
 // Freeze is a helper method used for external testing to trigger and block until
 // a freeze cycle completes, without having to sleep for a minute to trigger the
 // automatic background run.
-func (frdb *freezerdb) Freeze(threshold uint64) error {
+func (frdb *freezerdb) Freeze() error {
 	if frdb.AncientStore.(*chainFreezer).readonly {
 		return errReadOnly
 	}
-	// Set the freezer threshold to a temporary value
-	defer func(old uint64) {
-		frdb.AncientStore.(*chainFreezer).threshold.Store(old)
-	}(frdb.AncientStore.(*chainFreezer).threshold.Load())
-	frdb.AncientStore.(*chainFreezer).threshold.Store(threshold)
-
 	// Trigger a freeze cycle and block until it's done
 	trigger := make(chan struct{}, 1)
 	frdb.AncientStore.(*chainFreezer).trigger <- trigger
@@ -135,6 +161,7 @@ type nofreezedb struct {
 	ethdb.KeyValueStore
 	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
+	blockStore ethdb.Database
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.
@@ -221,6 +248,31 @@ func (db *nofreezedb) SetStateStore(state ethdb.Database) {
 func (db *nofreezedb) StateStoreReader() ethdb.Reader {
 	if db.stateStore != nil {
 		return db.stateStore
+	}
+	return db
+}
+
+func (db *nofreezedb) BlockStore() ethdb.Database {
+	if db.blockStore != nil {
+		return db.blockStore
+	}
+	return db
+}
+
+func (db *nofreezedb) SetBlockStore(block ethdb.Database) {
+	db.blockStore = block
+}
+
+func (db *nofreezedb) BlockStoreReader() ethdb.Reader {
+	if db.blockStore != nil {
+		return db.blockStore
+	}
+	return db
+}
+
+func (db *nofreezedb) BlockStoreWriter() ethdb.Writer {
+	if db.blockStore != nil {
+		return db.blockStore
 	}
 	return db
 }
@@ -429,6 +481,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			// freezer.
 		}
 	}
+
 	// no prune ancient start success
 	if !readonly {
 		WriteAncientType(db, EntireFreezerType)
@@ -518,6 +571,7 @@ type OpenOptions struct {
 	DisableFreeze    bool
 	IsLastOffset     bool
 	PruneAncientData bool
+
 	// Ephemeral means that filesystem sync operations should be avoided: data integrity in the face of
 	// a crash is not important. This option should typically be used in tests.
 	Ephemeral bool
@@ -613,7 +667,7 @@ func AncientInspect(db ethdb.Database) error {
 	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
 	// Get number of ancient rows inside the freezer.
 	ancients := counter(0)
-	if count, err := db.ItemAmountInAncient(); err != nil {
+	if count, err := db.BlockStore().ItemAmountInAncient(); err != nil {
 		log.Error("failed to get the items amount in ancientDB", "err", err)
 		return err
 	} else {
@@ -661,6 +715,48 @@ func PruneHashTrieNodeInDataBase(db ethdb.Database) error {
 	return nil
 }
 
+type DataType int
+
+const (
+	StateDataType DataType = iota
+	BlockDataType
+	ChainDataType
+	Unknown
+)
+
+func DataTypeByKey(key []byte) DataType {
+	switch {
+	// state
+	case IsLegacyTrieNode(key, key),
+		bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength,
+		IsAccountTrieNode(key),
+		IsStorageTrieNode(key):
+		return StateDataType
+
+	// block
+	case bytes.HasPrefix(key, headerPrefix) && len(key) == (len(headerPrefix)+8+common.HashLength),
+		bytes.HasPrefix(key, blockBodyPrefix) && len(key) == (len(blockBodyPrefix)+8+common.HashLength),
+		bytes.HasPrefix(key, blockReceiptsPrefix) && len(key) == (len(blockReceiptsPrefix)+8+common.HashLength),
+		bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix),
+		bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix),
+		bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
+		return BlockDataType
+	default:
+		for _, meta := range [][]byte{
+			fastTrieProgressKey, persistentStateIDKey, trieJournalKey, snapSyncStatusFlagKey} {
+			if bytes.Equal(key, meta) {
+				return StateDataType
+			}
+		}
+		for _, meta := range [][]byte{headHeaderKey, headFinalizedBlockKey} {
+			if bytes.Equal(key, meta) {
+				return BlockDataType
+			}
+		}
+		return ChainDataType
+	}
+}
+
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
 func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
@@ -668,9 +764,14 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	defer it.Release()
 
 	var trieIter ethdb.Iterator
+	var blockIter ethdb.Iterator
 	if db.StateStore() != nil {
 		trieIter = db.StateStore().NewIterator(keyPrefix, nil)
 		defer trieIter.Release()
+	}
+	if db.BlockStore() != db {
+		blockIter = db.BlockStore().NewIterator(keyPrefix, nil)
+		defer blockIter.Release()
 	}
 	var (
 		count  int64
@@ -801,6 +902,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				value = trieIter.Value()
 				size  = common.StorageSize(len(key) + len(value))
 			)
+			total += size
 
 			switch {
 			case IsLegacyTrieNode(key, value):
@@ -814,9 +916,10 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			default:
 				var accounted bool
 				for _, meta := range [][]byte{
-					fastTrieProgressKey, persistentStateIDKey, trieJournalKey} {
+					fastTrieProgressKey, persistentStateIDKey, trieJournalKey, snapSyncStatusFlagKey} {
 					if bytes.Equal(key, meta) {
 						metadata.Add(size)
+						accounted = true
 						break
 					}
 				}
@@ -830,6 +933,54 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				logged = time.Now()
 			}
 		}
+		log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+	}
+	// inspect separate block db
+	if blockIter != nil {
+		count = 0
+		logged = time.Now()
+
+		for blockIter.Next() {
+			var (
+				key   = blockIter.Key()
+				value = blockIter.Value()
+				size  = common.StorageSize(len(key) + len(value))
+			)
+			total += size
+
+			switch {
+			case bytes.HasPrefix(key, headerPrefix) && len(key) == (len(headerPrefix)+8+common.HashLength):
+				headers.Add(size)
+			case bytes.HasPrefix(key, blockBodyPrefix) && len(key) == (len(blockBodyPrefix)+8+common.HashLength):
+				bodies.Add(size)
+			case bytes.HasPrefix(key, blockReceiptsPrefix) && len(key) == (len(blockReceiptsPrefix)+8+common.HashLength):
+				receipts.Add(size)
+			case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix):
+				tds.Add(size)
+			case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix):
+				numHashPairings.Add(size)
+			case bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
+				hashNumPairings.Add(size)
+			default:
+				var accounted bool
+				for _, meta := range [][]byte{headHeaderKey, headFinalizedBlockKey} {
+					if bytes.Equal(key, meta) {
+						metadata.Add(size)
+						accounted = true
+						break
+					}
+				}
+				if !accounted {
+					unaccounted.Add(size)
+				}
+			}
+			count++
+			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
+				log.Info("Inspecting separate block database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+				logged = time.Now()
+			}
+		}
+		log.Info("Inspecting separate block database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
 	// Display the database statistic of key-value store.
 	stats := [][]string{
@@ -856,7 +1007,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Light client", "Bloom trie nodes", bloomTrieNodes.Size(), bloomTrieNodes.Count()},
 	}
 	// Inspect all registered append-only file store then.
-	ancients, err := inspectFreezers(db)
+	ancients, err := inspectFreezers(db.BlockStore())
 	if err != nil {
 		return err
 	}
@@ -985,6 +1136,29 @@ func ReadChainMetadata(db ethdb.KeyValueStore) [][]string {
 		{"headBlockHash", fmt.Sprintf("%v", ReadHeadBlockHash(db))},
 		{"headFastBlockHash", fmt.Sprintf("%v", ReadHeadFastBlockHash(db))},
 		{"headHeaderHash", fmt.Sprintf("%v", ReadHeadHeaderHash(db))},
+		{"lastPivotNumber", pp(ReadLastPivotNumber(db))},
+		{"len(snapshotSyncStatus)", fmt.Sprintf("%d bytes", len(ReadSnapshotSyncStatus(db)))},
+		{"snapshotDisabled", fmt.Sprintf("%v", ReadSnapshotDisabled(db))},
+		{"snapshotJournal", fmt.Sprintf("%d bytes", len(ReadSnapshotJournal(db)))},
+		{"snapshotRecoveryNumber", pp(ReadSnapshotRecoveryNumber(db))},
+		{"snapshotRoot", fmt.Sprintf("%v", ReadSnapshotRoot(db))},
+		{"txIndexTail", pp(ReadTxIndexTail(db))},
+	}
+	return data
+}
+
+func ReadChainMetadataFromMultiDatabase(db ethdb.Database) [][]string {
+	pp := func(val *uint64) string {
+		if val == nil {
+			return "<nil>"
+		}
+		return fmt.Sprintf("%d (%#x)", *val, *val)
+	}
+	data := [][]string{
+		{"databaseVersion", pp(ReadDatabaseVersion(db))},
+		{"headBlockHash", fmt.Sprintf("%v", ReadHeadBlockHash(db.BlockStore()))},
+		{"headFastBlockHash", fmt.Sprintf("%v", ReadHeadFastBlockHash(db))},
+		{"headHeaderHash", fmt.Sprintf("%v", ReadHeadHeaderHash(db.BlockStore()))},
 		{"lastPivotNumber", pp(ReadLastPivotNumber(db))},
 		{"len(snapshotSyncStatus)", fmt.Sprintf("%d bytes", len(ReadSnapshotSyncStatus(db)))},
 		{"snapshotDisabled", fmt.Sprintf("%v", ReadSnapshotDisabled(db))},

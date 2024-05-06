@@ -18,10 +18,11 @@ type BuilderConfig struct {
 
 type MevConfig struct {
 	Enabled               bool            // Whether to enable Mev or not
+	GreedyMergeTx         bool            // Whether to merge local transactions to the bid
 	BuilderFeeCeil        string          // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
 	Builders              []BuilderConfig // The list of builders
-	ValidatorCommission   uint64          // 100 means 1%
+	ValidatorCommission   uint64          // 100 means the validator claims 1% from block reward
 	BidSimulationLeftOver time.Duration
 
 	BuilderEnabled bool              // Whether to enable bidder or not
