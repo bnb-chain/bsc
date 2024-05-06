@@ -773,8 +773,20 @@ func (ec *Client) BestBidGasFee(ctx context.Context, parentHash common.Hash) (*b
 }
 
 // SendBundle sends a bundle
-func (ec *Client) SendBundle(ctx context.Context, args *types.SendBundleArgs) error {
-	return ec.c.CallContext(ctx, nil, "eth_sendBundle", args)
+func (ec *Client) SendBundle(ctx context.Context, args types.SendBundleArgs) (common.Hash, error) {
+	var hash common.Hash
+	err := ec.c.CallContext(ctx, &hash, "eth_sendBundle", args)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	return hash, nil
+}
+
+// BundlePrice returns the price of a bundle
+func (ec *Client) BundlePrice(ctx context.Context) *big.Int {
+	var price *big.Int
+	_ = ec.c.CallContext(ctx, &price, "eth_bundlePrice")
+	return price
 }
 
 // MevParams returns the static params of mev
