@@ -306,14 +306,19 @@ func (b *EthAPIBackend) SendBundle(ctx context.Context, bundle *types.Bundle) er
 
 func (b *EthAPIBackend) BundlePrice() *big.Int {
 	bundles := b.eth.txPool.AllBundles()
+	gasFloor := big.NewInt(b.eth.config.Miner.MevGasPriceFloor)
+
+	if len(bundles) == 0 {
+		return gasFloor
+	}
 
 	sort.SliceStable(bundles, func(i, j int) bool {
 		return bundles[j].Price.Cmp(bundles[i].Price) < 0
 	})
 
-	gasFloor := big.NewInt(b.eth.config.Miner.MevGasPriceFloor)
 	idx := len(bundles) / 2
-	if bundles[idx].Price.Cmp(gasFloor) < 0 {
+
+	if bundles[idx] == nil || bundles[idx].Price.Cmp(gasFloor) < 0 {
 		return gasFloor
 	}
 
