@@ -150,14 +150,15 @@ type Database struct {
 	// readOnly is the flag whether the mutation is allowed to be applied.
 	// It will be set automatically when the database is journaled during
 	// the shutdown to reject all following unexpected mutations.
-	readOnly   bool                     // Flag if database is opened in read only mode
-	waitSync   bool                     // Flag if database is deactivated due to initial state sync
-	bufferSize int                      // Memory allowance (in bytes) for caching dirty nodes
-	config     *Config                  // Configuration for database
-	diskdb     ethdb.Database           // Persistent storage for matured trie nodes
-	tree       *layerTree               // The group for all known layers
-	freezer    *rawdb.ResettableFreezer // Freezer for storing trie histories, nil possible in tests
-	lock       sync.RWMutex             // Lock to prevent mutations from happening at the same time
+	readOnly             bool                     // Flag if database is opened in read only mode
+	waitSync             bool                     // Flag if database is deactivated due to initial state sync
+	bufferSize           int                      // Memory allowance (in bytes) for caching dirty nodes
+	config               *Config                  // Configuration for database
+	diskdb               ethdb.Database           // Persistent storage for matured trie nodes
+	tree                 *layerTree               // The group for all known layers
+	freezer              *rawdb.ResettableFreezer // Freezer for storing trie histories, nil possible in tests
+	lock                 sync.RWMutex             // Lock to prevent mutations from happening at the same time
+	journalTypeForReader JournalType
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -544,17 +545,23 @@ func (db *Database) DetermineJournalTypeForWriter() JournalType {
 	}
 }
 
-// DetermineJournalTypeForReader is used when loading the journal. It loads based on whether JournalKV or JournalFile currently exists.
-func (db *Database) DetermineJournalTypeForReader() JournalType {
+// JournalTypeForReader is used when loading the journal. It loads based on whether JournalKV or JournalFile currently exists.
+func (db *Database) JournalTypeForReader() JournalType {
+	return db.journalTypeForReader
+}
+
+func (db *Database) DetermineJournalTypeForReader() {
 	if journal := rawdb.ReadTrieJournal(db.diskdb); len(journal) != 0 {
-		return JournalKVType
+		db.journalTypeForReader = JournalKVType
+		return
 	}
 
 	if fileInfo, stateErr := os.Stat(db.config.JournalFilePath); stateErr == nil && !fileInfo.IsDir() {
-		return JournalFileType
+		db.journalTypeForReader = JournalFileType
+		return
 	}
 
-	return JournalKVType
+	db.journalTypeForReader = JournalKVType
 }
 
 func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {

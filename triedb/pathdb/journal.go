@@ -195,7 +195,8 @@ func newJournalReader(file string, db ethdb.Database, journalType JournalType) (
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	start := time.Now()
-	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, db.DetermineJournalTypeForReader())
+	db.DetermineJournalTypeForReader()
+	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, db.JournalTypeForReader())
 
 	if err != nil {
 		return nil, err
@@ -269,7 +270,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if db.DetermineJournalTypeForReader() == JournalFileType {
+	if db.JournalTypeForReader() == JournalFileType {
 		if err := r.Decode(&journalEncodedBuff); err != nil {
 			return nil, fmt.Errorf("load disk journal: %v", err)
 		}
@@ -310,7 +311,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		nodes[entry.Owner] = subset
 	}
 
-	if db.DetermineJournalTypeForReader() == JournalFileType {
+	if db.JournalTypeForReader() == JournalFileType {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
@@ -336,7 +337,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if db.DetermineJournalTypeForReader() == JournalFileType {
+	if db.JournalTypeForReader() == JournalFileType {
 		if err := r.Decode(&journalEncodedBuff); err != nil {
 			// The first read may fail with EOF, marking the end of the journal
 			if err == io.EOF {
@@ -409,7 +410,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		storages[entry.Account] = set
 	}
 
-	if db.DetermineJournalTypeForReader() == JournalFileType {
+	if db.JournalTypeForReader() == JournalFileType {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
