@@ -545,23 +545,17 @@ func (db *Database) DetermineJournalTypeForWriter() JournalType {
 	}
 }
 
-// JournalTypeForReader is used when loading the journal. It loads based on whether JournalKV or JournalFile currently exists.
-func (db *Database) JournalTypeForReader() JournalType {
-	return db.journalTypeForReader
-}
-
-func (db *Database) DetermineJournalTypeForReader() {
+// DetermineJournalTypeForReader is used when loading the journal. It loads based on whether JournalKV or JournalFile currently exists.
+func (db *Database) DetermineJournalTypeForReader() JournalType {
 	if journal := rawdb.ReadTrieJournal(db.diskdb); len(journal) != 0 {
-		db.journalTypeForReader = JournalKVType
-		return
+		return JournalKVType
 	}
 
 	if fileInfo, stateErr := os.Stat(db.config.JournalFilePath); stateErr == nil && !fileInfo.IsDir() {
-		db.journalTypeForReader = JournalFileType
-		return
+		return JournalFileType
 	}
 
-	db.journalTypeForReader = JournalKVType
+	return JournalKVType
 }
 
 func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
