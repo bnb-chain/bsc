@@ -150,15 +150,14 @@ type Database struct {
 	// readOnly is the flag whether the mutation is allowed to be applied.
 	// It will be set automatically when the database is journaled during
 	// the shutdown to reject all following unexpected mutations.
-	readOnly             bool                     // Flag if database is opened in read only mode
-	waitSync             bool                     // Flag if database is deactivated due to initial state sync
-	bufferSize           int                      // Memory allowance (in bytes) for caching dirty nodes
-	config               *Config                  // Configuration for database
-	diskdb               ethdb.Database           // Persistent storage for matured trie nodes
-	tree                 *layerTree               // The group for all known layers
-	freezer              *rawdb.ResettableFreezer // Freezer for storing trie histories, nil possible in tests
-	lock                 sync.RWMutex             // Lock to prevent mutations from happening at the same time
-	journalTypeForReader JournalType
+	readOnly   bool                     // Flag if database is opened in read only mode
+	waitSync   bool                     // Flag if database is deactivated due to initial state sync
+	bufferSize int                      // Memory allowance (in bytes) for caching dirty nodes
+	config     *Config                  // Configuration for database
+	diskdb     ethdb.Database           // Persistent storage for matured trie nodes
+	tree       *layerTree               // The group for all known layers
+	freezer    *rawdb.ResettableFreezer // Freezer for storing trie histories, nil possible in tests
+	lock       sync.RWMutex             // Lock to prevent mutations from happening at the same time
 }
 
 // New attempts to load an already existing layer from a persistent key-value
