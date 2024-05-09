@@ -22,6 +22,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/crypto/secp256r1"
 	"math/big"
 
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
@@ -239,12 +240,13 @@ var PrecompiledContractsCancun = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{9}):    &blake2F{},
 	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
 
-	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
-	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidatePlato{},
-	common.BytesToAddress([]byte{102}): &blsSignatureVerify{},
-	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidateHertz{},
-	common.BytesToAddress([]byte{104}): &verifyDoubleSignEvidence{},
-	common.BytesToAddress([]byte{105}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{100}):      &tmHeaderValidate{},
+	common.BytesToAddress([]byte{101}):      &iavlMerkleProofValidatePlato{},
+	common.BytesToAddress([]byte{102}):      &blsSignatureVerify{},
+	common.BytesToAddress([]byte{103}):      &cometBFTLightBlockValidateHertz{},
+	common.BytesToAddress([]byte{104}):      &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{105}):      &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x01, 00}): &p256Verify{},
 }
 
 // PrecompiledContractsBLS contains the set of pre-compiled Ethereum
@@ -1479,4 +1481,38 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 	copy(returnBz[52-len(evidenceHeightBz):], evidenceHeightBz)
 
 	return returnBz, nil
+}
+
+// P256VERIFY (secp256r1 signature verification)
+// implemented as a native contract
+type p256Verify struct{}
+
+// RequiredGas returns the gas required to execute the precompiled contract
+func (c *p256Verify) RequiredGas(input []byte) uint64 {
+	return params.P256VerifyGas
+}
+
+// Run executes the precompiled contract with given 160 bytes of param, returning the output and the used gas
+func (c *p256Verify) Run(input []byte) ([]byte, error) {
+	// Required input length is 160 bytes
+	const p256VerifyInputLength = 160
+	// Check the input length
+	if len(input) != p256VerifyInputLength {
+		// Input length is invalid
+		return nil, nil
+	}
+
+	// Extract the hash, r, s, x, y from the input
+	hash := input[0:32]
+	r, s := new(big.Int).SetBytes(input[32:64]), new(big.Int).SetBytes(input[64:96])
+	x, y := new(big.Int).SetBytes(input[96:128]), new(big.Int).SetBytes(input[128:160])
+
+	// Verify the secp256r1 signature
+	if secp256r1.Verify(hash, r, s, x, y) {
+		// Signature is valid
+		return common.LeftPadBytes(common.Big1.Bytes(), 32), nil
+	} else {
+		// Signature is invalid
+		return nil, nil
+	}
 }
