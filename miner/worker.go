@@ -329,6 +329,12 @@ func (w *worker) setGasCeil(ceil uint64) {
 	w.config.GasCeil = ceil
 }
 
+func (w *worker) getGasCeil() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.config.GasCeil
+}
+
 // setExtra sets the content used to initialize the block extra field.
 func (w *worker) setExtra(extra []byte) {
 	w.mu.Lock()
