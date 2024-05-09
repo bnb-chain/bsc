@@ -105,12 +105,12 @@ func TestBlobTxSidecars_Encode(t *testing.T) {
 	}{
 		{
 			raw: []*BlobTxSidecar{
-				&BlobTxSidecar{
+				{
 					Blobs:       []kzg4844.Blob{emptyBlob},
 					Commitments: []kzg4844.Commitment{emptyBlobCommit},
 					Proofs:      []kzg4844.Proof{emptyBlobProof},
 				},
-				&BlobTxSidecar{
+				{
 					Blobs:       []kzg4844.Blob{emptyBlob},
 					Commitments: []kzg4844.Commitment{emptyBlobCommit},
 					Proofs:      []kzg4844.Proof{emptyBlobProof},
@@ -120,7 +120,7 @@ func TestBlobTxSidecars_Encode(t *testing.T) {
 		},
 		{
 			raw: []*BlobTxSidecar{
-				&BlobTxSidecar{
+				{
 					Blobs:       []kzg4844.Blob{emptyBlob},
 					Commitments: []kzg4844.Commitment{emptyBlobCommit},
 					Proofs:      []kzg4844.Proof{emptyBlobProof},

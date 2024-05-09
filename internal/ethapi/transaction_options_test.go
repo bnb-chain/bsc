@@ -31,7 +31,7 @@ func TestTransactionOptsJSONUnMarshalTrip(t *testing.T) {
 			false,
 			ethapi.TransactionOpts{
 				KnownAccounts: map[common.Address]ethapi.AccountStorage{
-					common.HexToAddress("0x6b3A8798E5Fb9fC5603F3aB5eA2e8136694e55d0"): ethapi.AccountStorage{
+					common.HexToAddress("0x6b3A8798E5Fb9fC5603F3aB5eA2e8136694e55d0"): {
 						StorageRoot: ptr(common.HexToHash("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563")),
 					},
 				},
@@ -43,7 +43,7 @@ func TestTransactionOptsJSONUnMarshalTrip(t *testing.T) {
 			false,
 			ethapi.TransactionOpts{
 				KnownAccounts: map[common.Address]ethapi.AccountStorage{
-					common.HexToAddress("0x6b3A8798E5Fb9fC5603F3aB5eA2e8136694e55d0"): ethapi.AccountStorage{
+					common.HexToAddress("0x6b3A8798E5Fb9fC5603F3aB5eA2e8136694e55d0"): {
 						StorageRoot: nil,
 						StorageSlots: map[common.Hash]common.Hash{
 							common.HexToHash("0xc65a7bb8d6351c1cf70c95a316cc6a92839c986682d98bc35f958f4883f9d2a8"): common.HexToHash("0x"),
