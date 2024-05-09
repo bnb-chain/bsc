@@ -147,13 +147,11 @@ var (
 		LondonBlock:         big.NewInt(31302048),
 		HertzBlock:          big.NewInt(31302048),
 		HertzfixBlock:       big.NewInt(34140700),
-		// UnixTime: 1705996800 is January 23, 2024 8:00:00 AM UTC
-		ShanghaiTime:   newUint64(1705996800),
-		KeplerTime:     newUint64(1705996800),
-		FeynmanTime:    newUint64(1713419340),
-		FeynmanFixTime: newUint64(1713419340),
-		// TODO(GalaIO): enable cancun fork time later
-		//CancunTime: newUint64(),
+		ShanghaiTime:        newUint64(1705996800), // 2024-01-23 08:00:00 AM UTC
+		KeplerTime:          newUint64(1705996800), // 2024-01-23 08:00:00 AM UTC
+		FeynmanTime:         newUint64(1713419340), // 2024-04-18 05:49:00 AM UTC
+		FeynmanFixTime:      newUint64(1713419340), // 2024-04-18 05:49:00 AM UTC
+		CancunTime:          newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
 
 		Parlia: &ParliaConfig{
 			Period: 3,
