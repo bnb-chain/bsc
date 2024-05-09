@@ -1,4 +1,18 @@
 # Changelog
+## v1.4.7
+### FEATURE
+* [\#2439](https://github.com/bnb-chain/bsc/pull/2439) config: setup Mainnet Tycho(Cancun) hardfork date
+
+### IMPROVEMENT
+* [\#2396](https://github.com/bnb-chain/bsc/pull/2396) metrics: add blockInsertMgaspsGauge to trace mgasps
+* [\#2411](https://github.com/bnb-chain/bsc/pull/2411) build(deps): bump golang.org/x/net from 0.19.0 to 0.23.0
+* [\#2435](https://github.com/bnb-chain/bsc/pull/2435) txpool: limit max gas when mining is enabled
+* [\#2438](https://github.com/bnb-chain/bsc/pull/2438) fix: performance issue when load journal
+* [\#2440](https://github.com/bnb-chain/bsc/pull/2440) nancy: add files .nancy-ignore
+
+### BUGFIX
+NA
+
 ## v1.4.6
 ### FEATURE
 * [\#2227](https://github.com/bnb-chain/bsc/pull/2227) core: separated databases for block data
