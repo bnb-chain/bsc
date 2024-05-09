@@ -181,7 +181,7 @@ func (h2p *Hbss2Pbss) ConcurrentTraversal(theTrie *Trie, theNode node, path []by
 	}
 }
 
-// copy from trie/Commiter (*committer).commit
+// copy from trie/Committer (*committer).commit
 func (h2p *Hbss2Pbss) commitChildren(path []byte, n *fullNode) [17]node {
 	var children [17]node
 	for i := 0; i < 16; i++ {
