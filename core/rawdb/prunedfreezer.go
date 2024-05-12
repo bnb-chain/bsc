@@ -29,7 +29,7 @@ type prunedfreezer struct {
 	closeOnce    sync.Once
 }
 
-// newNoDataFreezer creates a chain freezer that deletes data enough ‘old’.
+// newPrunedFreezer creates a chain freezer that deletes data enough ‘old’.
 func newPrunedFreezer(datadir string, db ethdb.KeyValueStore, offset uint64) (*prunedfreezer, error) {
 	if info, err := os.Lstat(datadir); !os.IsNotExist(err) {
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -173,7 +173,7 @@ func (f *prunedfreezer) AppendAncient(number uint64, hash, header, body, receipt
 	return nil
 }
 
-// TruncateAncients discards any recent data above the provided threshold number, always success.
+// TruncateHead discards any recent data above the provided threshold number, always success.
 func (f *prunedfreezer) TruncateHead(items uint64) (uint64, error) {
 	preHead := atomic.LoadUint64(&f.frozen)
 	if preHead > items {
