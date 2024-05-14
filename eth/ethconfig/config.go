@@ -194,12 +194,6 @@ type Config struct {
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
 
-	// OverrideFeynman (TODO: remove after the fork)
-	OverrideFeynman *uint64 `toml:",omitempty"`
-
-	// OverrideFeynmanFix (TODO: remove after the fork)
-	OverrideFeynmanFix *uint64 `toml:",omitempty"`
-
 	// blob setting
 	BlobExtraReserve uint64
 }

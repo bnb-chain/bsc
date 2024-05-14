@@ -315,15 +315,6 @@ var (
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
-	OverrideFeynman = &cli.Uint64Flag{
-		Name:     "override.feynman",
-		Usage:    "Manually specify the Feynman fork timestamp, overriding the bundled setting",
-		Category: flags.EthCategory,
-	}
-	OverrideFeynmanFix = &cli.Uint64Flag{
-		Name:  "override.feynmanfix",
-		Usage: "Manually specify the FeynmanFix fork timestamp, overriding the bundled setting",
-	}
 	OverrideFullImmutabilityThreshold = &cli.Uint64Flag{
 		Name:     "override.immutabilitythreshold",
 		Usage:    "It is the number of blocks after which a chain segment is considered immutable, only for testing purpose",
