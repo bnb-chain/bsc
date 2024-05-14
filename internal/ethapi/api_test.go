@@ -2139,48 +2139,63 @@ func TestRPCGetBlobSidecars(t *testing.T) {
 	}
 
 	var testSuite = []struct {
-		test rpc.BlockNumberOrHash
-		file string
+		test     rpc.BlockNumberOrHash
+		fullBlob bool
+		file     string
 	}{
 		// 1. block without any txs(number)
 		{
-			test: rpc.BlockNumberOrHashWithNumber(0),
-			file: "number-1",
+			test:     rpc.BlockNumberOrHashWithNumber(0),
+			fullBlob: true,
+			file:     "number-1",
 		},
 		// 2. earliest tag
 		{
-			test: rpc.BlockNumberOrHashWithNumber(rpc.EarliestBlockNumber),
-			file: "tag-earliest",
+			test:     rpc.BlockNumberOrHashWithNumber(rpc.EarliestBlockNumber),
+			fullBlob: true,
+			file:     "tag-earliest",
 		},
 		// 3. latest tag
 		{
-			test: rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
-			file: "tag-latest",
+			test:     rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
+			fullBlob: true,
+			file:     "tag-latest",
 		},
 		// 4. block is empty
 		{
-			test: rpc.BlockNumberOrHashWithHash(common.Hash{}, false),
-			file: "hash-empty",
+			test:     rpc.BlockNumberOrHashWithHash(common.Hash{}, false),
+			fullBlob: true,
+			file:     "hash-empty",
 		},
 		// 5. block is not found
 		{
-			test: rpc.BlockNumberOrHashWithHash(common.HexToHash("deadbeef"), false),
-			file: "hash-notfound",
+			test:     rpc.BlockNumberOrHashWithHash(common.HexToHash("deadbeef"), false),
+			fullBlob: true,
+			file:     "hash-notfound",
 		},
 		// 6. block is not found
 		{
-			test: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(genBlocks + 1)),
-			file: "block-notfound",
+			test:     rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(genBlocks + 1)),
+			fullBlob: true,
+			file:     "block-notfound",
 		},
 		// 7. block with blob tx
 		{
-			test: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(6)),
-			file: "block-with-blob-tx",
+			test:     rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(6)),
+			fullBlob: true,
+			file:     "block-with-blob-tx",
 		},
 		// 8. block with sidecar
 		{
-			test: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(7)),
-			file: "block-with-blobSidecars",
+			test:     rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(7)),
+			fullBlob: true,
+			file:     "block-with-blobSidecars",
+		},
+		// 9. block with sidecar but show little
+		{
+			test:     rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(7)),
+			fullBlob: false,
+			file:     "block-with-blobSidecars-show-little",
 		},
 	}
 
@@ -2189,7 +2204,7 @@ func TestRPCGetBlobSidecars(t *testing.T) {
 			result interface{}
 			err    error
 		)
-		result, err = api.GetBlobSidecars(context.Background(), tt.test)
+		result, err = api.GetBlobSidecars(context.Background(), tt.test, tt.fullBlob)
 		if err != nil {
 			t.Errorf("test %d: want no error, have %v", i, err)
 			continue
@@ -2205,33 +2220,45 @@ func TestGetBlobSidecarByTxHash(t *testing.T) {
 		api              = NewBlockChainAPI(backend)
 	)
 	var testSuite = []struct {
-		test common.Hash
-		file string
+		test     common.Hash
+		fullBlob bool
+		file     string
 	}{
 		// 0. txHash is empty
 		{
-			test: common.Hash{},
-			file: "hash-empty",
+			test:     common.Hash{},
+			fullBlob: true,
+			file:     "hash-empty",
 		},
 		// 1. txHash is not found
 		{
-			test: common.HexToHash("deadbeef"),
-			file: "hash-notfound",
+			test:     common.HexToHash("deadbeef"),
+			fullBlob: true,
+			file:     "hash-notfound",
 		},
 		// 2. txHash is not blob tx
 		{
-			test: common.HexToHash("deadbeef"),
-			file: "not-blob-tx",
+			test:     common.HexToHash("deadbeef"),
+			fullBlob: true,
+			file:     "not-blob-tx",
 		},
 		// 3. block with blob tx without sidecar
 		{
-			test: txHashs[5],
-			file: "block-with-blob-tx",
+			test:     txHashs[5],
+			fullBlob: true,
+			file:     "block-with-blob-tx",
 		},
 		// 4. block with sidecar
 		{
-			test: txHashs[6],
-			file: "block-with-blobSidecars",
+			test:     txHashs[6],
+			fullBlob: true,
+			file:     "block-with-blobSidecars",
+		},
+		// 4. block show part blobs
+		{
+			test:     txHashs[6],
+			fullBlob: false,
+			file:     "block-with-blobSidecars-show-little",
 		},
 	}
 
@@ -2240,7 +2267,7 @@ func TestGetBlobSidecarByTxHash(t *testing.T) {
 			result interface{}
 			err    error
 		)
-		result, err = api.GetBlobSidecarByTxHash(context.Background(), tt.test)
+		result, err = api.GetBlobSidecarByTxHash(context.Background(), tt.test, tt.fullBlob)
 		if err != nil {
 			t.Errorf("test %d: want no error, have %v", i, err)
 			continue
