@@ -62,7 +62,6 @@ type stat struct {
 }
 
 type trieStat struct {
-	lock            sync.RWMutex
 	owner           common.Hash
 	totalNodeStat   nodeStat
 	nodeStatByLevel [16]nodeStat
@@ -140,7 +139,7 @@ func (trieStat *trieStat) Display(ownerAddress string, treeType string) string {
 	}
 	table.SetAlignment(1)
 
-	for i, _ := range trieStat.nodeStatByLevel {
+	for i := range trieStat.nodeStatByLevel {
 		if trieStat.nodeStatByLevel[i].IsEmpty() {
 			continue
 		}
@@ -191,7 +190,6 @@ func NewInspector(tr *Trie, db Database, stateRootHash common.Hash, blockNum uin
 
 // Run statistics, external call
 func (s *Inspector) Run() {
-
 	ticker := time.NewTicker(30 * time.Second)
 	go func() {
 		defer ticker.Stop()
@@ -304,14 +302,9 @@ func (s *Inspector) DisplayResult() {
 	fmt.Println(s.results.account.Display("", "AccountTrie"))
 	fmt.Println("EOA accounts num: ", s.eoaAccountNums)
 
-	type SortedTrie struct {
-		totalNum     uint64
-		ownerAddress string
-	}
 	// display contract trie
 	for _, st := range s.results.storageTopN {
-		fmt.Printf(st.Display(st.owner.String(), "StorageTrie"))
-
+		fmt.Println(st.Display(st.owner.String(), "StorageTrie"))
 	}
 	fmt.Printf("Contract Trie, total trie num: %v, ShortNodeCnt: %v, FullNodeCnt: %v, ValueNodeCnt: %v\n",
 		s.results.storageTrieNum, s.results.storageTotal.ShortNodeCnt.Load(), s.results.storageTotal.FullNodeCnt.Load(), s.results.storageTotal.ValueNodeCnt.Load())

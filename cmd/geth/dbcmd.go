@@ -111,7 +111,7 @@ Remove blockchain and state databases`,
 			utils.DataDirFlag,
 			utils.SyncModeFlag,
 		},
-		Usage:       "Inspect the MPT tree of the account and contract. the blocknum arg can be latest/snapshot/number.",
+		Usage:       "Inspect the MPT tree of the account and contract. 'blocknum' can be latest/snapshot/number. 'topn' means output the top N storage tries info ranked by the total number of TrieNodes",
 		Description: `This commands iterates the entrie WorldState.`,
 	}
 	dbCheckStateContentCmd = &cli.Command{
