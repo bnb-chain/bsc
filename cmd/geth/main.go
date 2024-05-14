@@ -74,8 +74,6 @@ var (
 		utils.RialtoHash,
 		utils.OverrideCancun,
 		utils.OverrideVerkle,
-		utils.OverrideFeynman,
-		utils.OverrideFeynmanFix,
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,
 		utils.OverrideDefaultExtraReserveForBlobRequests,
