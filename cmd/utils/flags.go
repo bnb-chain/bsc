@@ -333,6 +333,12 @@ var (
 		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.EthCategory,
 	}
+	OverrideBreatheBlockInterval = &cli.Uint64Flag{
+		Name:     "override.breatheblockinterval",
+		Usage:    "It changes the interval between breathe blocks, only for testing purpose",
+		Value:    params.BreatheBlockInterval,
+		Category: flags.EthCategory,
+	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
 		Name:     "syncmode",
 		Usage:    `Blockchain sync mode ("snap" or "full")`,
