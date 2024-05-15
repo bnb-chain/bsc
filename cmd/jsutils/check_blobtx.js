@@ -1,11 +1,12 @@
 import { ethers } from "ethers";
 import program from "commander";
 
-
+// depends on ethjs v6.11.0+ for 4844, https://github.com/ethers-io/ethers.js/releases/tag/v6.11.0
+// BSC testnet enabled 4844 on block: 39539137
 // Usage:
 //   nvm use 20
-//   node check_blobtx.js --rpc https://data-seed-prebsc-1-s1.binance.org:8545 --startNum 40345993
-//   node check_blobtx.js --rpc https://data-seed-prebsc-1-s1.binance.org:8545 --startNum 40345993 --endNum 40345994
+//   node check_blobtx.js --rpc https://data-seed-prebsc-1-s1.binance.org:8545 --startNum 39539137
+//   node check_blobtx.js --rpc https://data-seed-prebsc-1-s1.binance.org:8545 --startNum 39539137 --endNum 40345994
 program.option("--rpc <Rpc>", "Rpc Server URL");
 program.option("--startNum <Num>", "start block", 0);
 program.option("--endNum <Num>", "end block", 0);
@@ -29,13 +30,16 @@ const main = async () => {
     }
 
     for (let i = startBlock; i <= endBlock; i++) {
-        console.log("startBlock:",startBlock, "endBlock:", endBlock, "curBlock", i);
         let blockData = await provider.getBlock(i);
+        console.log("startBlock:",startBlock, "endBlock:", endBlock, "curBlock", i, "blobGasUsed", blockData.blobGasUsed);
+        if (blockData.blobGasUsed == 0) {
+            continue
+        }
         for  (let txIndex = 0; txIndex<= blockData.transactions.length - 1; txIndex++) {
             let txHash = blockData.transactions[txIndex]
             let txData =  await provider.getTransaction(txHash);
             if (txData.type == 3) {
-                console.log("block:",i, " txIndex:", txIndex, " txHash:", txHash, "txType(BlobTx):", txData.type);
+                console.log("BlobTx in block:",i, " txIndex:", txIndex, " txHash:", txHash);
             }
         }
     }
