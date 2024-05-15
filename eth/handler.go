@@ -330,7 +330,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 				checkErrs <- core.IsDataAvailable(h.chain, block)
 			}()
 
-			for i := 0; i < len(checkErrs); i++ {
+			for i := 0; i < cap(checkErrs); i++ {
 				err := <-checkErrs
 				if err != nil {
 					log.Error("Propagating invalid block", "number", block.Number(), "hash", block.Hash(), "err", err)
