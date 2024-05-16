@@ -2204,7 +2204,7 @@ func TestRPCGetBlobSidecars(t *testing.T) {
 			result interface{}
 			err    error
 		)
-		result, err = api.GetBlobSidecars(context.Background(), tt.test, tt.fullBlob)
+		result, err = api.GetBlobSidecars(context.Background(), tt.test, &tt.fullBlob)
 		if err != nil {
 			t.Errorf("test %d: want no error, have %v", i, err)
 			continue
@@ -2254,7 +2254,7 @@ func TestGetBlobSidecarByTxHash(t *testing.T) {
 			fullBlob: true,
 			file:     "block-with-blobSidecars",
 		},
-		// 4. block show part blobs
+		// 5. block show part blobs
 		{
 			test:     txHashs[6],
 			fullBlob: false,
@@ -2267,7 +2267,7 @@ func TestGetBlobSidecarByTxHash(t *testing.T) {
 			result interface{}
 			err    error
 		)
-		result, err = api.GetBlobSidecarByTxHash(context.Background(), tt.test, tt.fullBlob)
+		result, err = api.GetBlobSidecarByTxHash(context.Background(), tt.test, &tt.fullBlob)
 		if err != nil {
 			t.Errorf("test %d: want no error, have %v", i, err)
 			continue
