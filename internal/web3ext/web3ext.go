@@ -612,12 +612,12 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'getBlockReceipts',
 			call: 'eth_getBlockReceipts',
-			params: 1,
+			params: 2,
 		}),
 		new web3._extend.Method({
 			name: 'getBlobSidecars',
 			call: 'eth_getBlobSidecars',
-			params: 1,
+			params: 2,
 		}),
 		new web3._extend.Method({
 			name: 'getBlobSidecarByTxHash',
