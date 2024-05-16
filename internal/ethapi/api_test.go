@@ -2224,42 +2224,42 @@ func TestGetBlobSidecarByTxHash(t *testing.T) {
 		fullBlob bool
 		file     string
 	}{
-		//// 0. txHash is empty
-		//{
-		//	test:     common.Hash{},
-		//	fullBlob: true,
-		//	file:     "hash-empty",
-		//},
-		//// 1. txHash is not found
-		//{
-		//	test:     common.HexToHash("deadbeef"),
-		//	fullBlob: true,
-		//	file:     "hash-notfound",
-		//},
-		//// 2. txHash is not blob tx
-		//{
-		//	test:     common.HexToHash("deadbeef"),
-		//	fullBlob: true,
-		//	file:     "not-blob-tx",
-		//},
-		//// 3. block with blob tx without sidecar
-		//{
-		//	test:     txHashs[5],
-		//	fullBlob: true,
-		//	file:     "block-with-blob-tx",
-		//},
+		// 0. txHash is empty
+		{
+			test:     common.Hash{},
+			fullBlob: true,
+			file:     "hash-empty",
+		},
+		// 1. txHash is not found
+		{
+			test:     common.HexToHash("deadbeef"),
+			fullBlob: true,
+			file:     "hash-notfound",
+		},
+		// 2. txHash is not blob tx
+		{
+			test:     common.HexToHash("deadbeef"),
+			fullBlob: true,
+			file:     "not-blob-tx",
+		},
+		// 3. block with blob tx without sidecar
+		{
+			test:     txHashs[5],
+			fullBlob: true,
+			file:     "block-with-blob-tx",
+		},
 		// 4. block with sidecar
 		{
 			test:     txHashs[6],
 			fullBlob: true,
 			file:     "block-with-blobSidecars",
 		},
-		//// 5. block show part blobs
-		//{
-		//	test:     txHashs[6],
-		//	fullBlob: false,
-		//	file:     "block-with-blobSidecars-show-little",
-		//},
+		// 5. block show part blobs
+		{
+			test:     txHashs[6],
+			fullBlob: false,
+			file:     "block-with-blobSidecars-show-little",
+		},
 	}
 
 	for i, tt := range testSuite {
