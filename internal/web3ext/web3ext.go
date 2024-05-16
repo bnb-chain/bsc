@@ -617,12 +617,12 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'getBlobSidecars',
 			call: 'eth_getBlobSidecars',
-			params: 2,
+			params: 1,
 		}),
 		new web3._extend.Method({
 			name: 'getBlobSidecarByTxHash',
 			call: 'eth_getBlobSidecarByTxHash',
-			params: 2,
+			params: 1,
 		}),
 	],
 	properties: [
