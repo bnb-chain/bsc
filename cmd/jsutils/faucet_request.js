@@ -1,11 +1,9 @@
 import { ethers } from "ethers";
 import program from "commander";
 
-// depends on ethjs v6.11.0+ for 4844, https://github.com/ethers-io/ethers.js/releases/tag/v6.11.0
 // Usage:
-//   nvm use 20
-//   node faucet_request.js --rpc https://data-seed-prebsc-1-s1.binance.org:8545 --startNum 39539137
-//   node faucet_request.js --rpc https://data-seed-prebsc-1-s1.binance.org:8545 --startNum 39539137 --endNum 40345994
+//   node faucet_request.js --rpc localhost:8545 --startNum 39539137
+//   node faucet_request.js --rpc localhost:8545 --startNum 39539137 --endNum 40345994
 program.option("--rpc <Rpc>", "Rpc Server URL");
 program.option("--startNum <Num>", "start block", 0);
 program.option("--endNum <Num>", "end block", 0);
