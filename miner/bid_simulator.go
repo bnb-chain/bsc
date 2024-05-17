@@ -78,6 +78,7 @@ type simBidReq struct {
 type bidSimulator struct {
 	config        *MevConfig
 	delayLeftOver time.Duration
+	minGasPrice   *big.Int
 	chain         *core.BlockChain
 	chainConfig   *params.ChainConfig
 	engine        consensus.Engine
@@ -114,6 +115,7 @@ type bidSimulator struct {
 func newBidSimulator(
 	config *MevConfig,
 	delayLeftOver time.Duration,
+	minGasPrice *big.Int,
 	chain *core.BlockChain,
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
@@ -122,6 +124,7 @@ func newBidSimulator(
 	b := &bidSimulator{
 		config:        config,
 		delayLeftOver: delayLeftOver,
+		minGasPrice:   minGasPrice,
 		chain:         chain,
 		chainConfig:   chainConfig,
 		engine:        engine,
@@ -592,6 +595,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
+	// commit transactions in bid
 	for _, tx := range bidRuntime.bid.Txs {
 		select {
 		case <-interruptCh:
@@ -617,15 +621,32 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 	}
 
-	bidRuntime.packReward(b.config.ValidatorCommission)
-
-	// return if bid is invalid, reportIssue issue to mev-sentry/builder if simulation is fully done
-	if !bidRuntime.validReward() {
-		err = errors.New("reward does not achieve the expectation")
-		return
+	// check if bid reward is valid
+	{
+		bidRuntime.packReward(b.config.ValidatorCommission)
+		if !bidRuntime.validReward() {
+			err = errors.New("reward does not achieve the expectation")
+			return
+		}
 	}
 
-	// fill transactions from mempool
+	// check if bid gas price is lower than min gas price
+	{
+		bidGasUsed := uint64(0)
+		bidGasFee := bidRuntime.env.state.GetBalance(consensus.SystemAddress)
+
+		for _, receipt := range bidRuntime.env.receipts {
+			bidGasUsed += receipt.GasUsed
+		}
+
+		bidGasPrice := new(big.Int).Div(bidGasFee.ToBig(), new(big.Int).SetUint64(bidGasUsed))
+		if bidGasPrice.Cmp(b.minGasPrice) < 0 {
+			err = errors.New("bid gas price is lower than min gas price")
+			return
+		}
+	}
+
+	// if enable greedy merge, fill bid env with transactions from mempool
 	if b.config.GreedyMergeTx {
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 		if delay != nil && *delay > 0 {
@@ -645,6 +666,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 	}
 
+	// commit payBidTx at the end of the block
 	bidRuntime.env.gasPool.AddGas(params.PayBidTxGasLimit)
 	err = bidRuntime.commitTransaction(b.chain, b.chainConfig, payBidTx)
 	if err != nil {
