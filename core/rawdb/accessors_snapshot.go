@@ -18,10 +18,12 @@ package rawdb
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 )
 
 // ReadSnapshotDisabled retrieves if the snapshot maintenance is disabled.
@@ -74,6 +76,10 @@ func DeleteSnapshotRoot(db ethdb.KeyValueWriter) {
 
 // ReadAccountSnapshot retrieves the snapshot entry of an account trie leaf.
 func ReadAccountSnapshot(db ethdb.KeyValueReader, hash common.Hash) []byte {
+	if metrics.EnabledExpensive {
+		start := time.Now()
+		defer func() { rawdbGetAccountSnapNodeTimer.UpdateSince(start) }()
+	}
 	data, _ := db.Get(accountSnapshotKey(hash))
 	return data
 }
@@ -94,6 +100,10 @@ func DeleteAccountSnapshot(db ethdb.KeyValueWriter, hash common.Hash) {
 
 // ReadStorageSnapshot retrieves the snapshot entry of an storage trie leaf.
 func ReadStorageSnapshot(db ethdb.KeyValueReader, accountHash, storageHash common.Hash) []byte {
+	if metrics.EnabledExpensive {
+		start := time.Now()
+		defer func() { rawdbGetStorageSnapNodeTimer.UpdateSince(start) }()
+	}
 	data, _ := db.Get(storageSnapshotKey(accountHash, storageHash))
 	return data
 }
