@@ -42,11 +42,11 @@ func (b *BidArgs) ToBid(builder common.Address, signer Signer) (*Bid, error) {
 		return nil, err
 	}
 
-	if len(b.RawBid.NonRevertible) > len(txs) {
+	if len(b.RawBid.UnRevertible) > len(txs) {
 		return nil, fmt.Errorf("expect NonRevertible no more than %d", len(txs))
 	}
-	nonRevertibleHashes := mapset.NewThreadUnsafeSetWithSize[common.Hash](len(b.RawBid.NonRevertible))
-	nonRevertibleHashes.Append(b.RawBid.NonRevertible...)
+	unRevertibleHashes := mapset.NewThreadUnsafeSetWithSize[common.Hash](len(b.RawBid.UnRevertible))
+	unRevertibleHashes.Append(b.RawBid.UnRevertible...)
 
 	if len(b.PayBidTx) != 0 {
 		var payBidTx = new(Transaction)
@@ -59,15 +59,15 @@ func (b *BidArgs) ToBid(builder common.Address, signer Signer) (*Bid, error) {
 	}
 
 	bid := &Bid{
-		Builder:       builder,
-		BlockNumber:   b.RawBid.BlockNumber,
-		ParentHash:    b.RawBid.ParentHash,
-		Txs:           txs,
-		NonRevertible: nonRevertibleHashes,
-		GasUsed:       b.RawBid.GasUsed + b.PayBidTxGasUsed,
-		GasFee:        b.RawBid.GasFee,
-		BuilderFee:    b.RawBid.BuilderFee,
-		rawBid:        *b.RawBid,
+		Builder:      builder,
+		BlockNumber:  b.RawBid.BlockNumber,
+		ParentHash:   b.RawBid.ParentHash,
+		Txs:          txs,
+		UnRevertible: unRevertibleHashes,
+		GasUsed:      b.RawBid.GasUsed + b.PayBidTxGasUsed,
+		GasFee:       b.RawBid.GasFee,
+		BuilderFee:   b.RawBid.BuilderFee,
+		rawBid:       *b.RawBid,
 	}
 
 	if bid.BuilderFee == nil {
@@ -79,13 +79,13 @@ func (b *BidArgs) ToBid(builder common.Address, signer Signer) (*Bid, error) {
 
 // RawBid represents a raw bid from builder directly.
 type RawBid struct {
-	BlockNumber   uint64          `json:"blockNumber"`
-	ParentHash    common.Hash     `json:"parentHash"`
-	Txs           []hexutil.Bytes `json:"txs"`
-	NonRevertible []common.Hash   `json:"nonRevertible"`
-	GasUsed       uint64          `json:"gasUsed"`
-	GasFee        *big.Int        `json:"gasFee"`
-	BuilderFee    *big.Int        `json:"builderFee"`
+	BlockNumber  uint64          `json:"blockNumber"`
+	ParentHash   common.Hash     `json:"parentHash"`
+	Txs          []hexutil.Bytes `json:"txs"`
+	UnRevertible []common.Hash   `json:"unRevertible"`
+	GasUsed      uint64          `json:"gasUsed"`
+	GasFee       *big.Int        `json:"gasFee"`
+	BuilderFee   *big.Int        `json:"builderFee"`
 
 	hash atomic.Value
 }
@@ -164,14 +164,14 @@ func (b *RawBid) Hash() common.Hash {
 
 // Bid represents a bid.
 type Bid struct {
-	Builder       common.Address
-	BlockNumber   uint64
-	ParentHash    common.Hash
-	Txs           Transactions
-	NonRevertible mapset.Set[common.Hash]
-	GasUsed       uint64
-	GasFee        *big.Int
-	BuilderFee    *big.Int
+	Builder      common.Address
+	BlockNumber  uint64
+	ParentHash   common.Hash
+	Txs          Transactions
+	UnRevertible mapset.Set[common.Hash]
+	GasUsed      uint64
+	GasFee       *big.Int
+	BuilderFee   *big.Int
 
 	rawBid RawBid
 }

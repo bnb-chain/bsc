@@ -609,7 +609,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			break
 		}
 
-		err = bidRuntime.commitTransaction(b.chain, b.chainConfig, tx, bidRuntime.bid.NonRevertible.Contains(tx.Hash()))
+		err = bidRuntime.commitTransaction(b.chain, b.chainConfig, tx, bidRuntime.bid.UnRevertible.Contains(tx.Hash()))
 		if err != nil {
 			log.Error("BidSimulator: failed to commit tx", "bidHash", bidRuntime.bid.Hash(), "tx", tx.Hash(), "err", err)
 			err = fmt.Errorf("invalid tx in bid, %v", err)
@@ -727,12 +727,10 @@ func (r *BidRuntime) packReward(validatorCommission uint64) {
 	r.packedValidatorReward.Sub(r.packedValidatorReward, r.bid.BuilderFee)
 }
 
-func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction, noRevertible bool) error {
+func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction, unRevertible bool) error {
 	var (
-		env  = r.env
-		snap = env.state.Snapshot()
-		gp   = env.gasPool.Gas()
-		sc   *types.BlobSidecar
+		env = r.env
+		sc  *types.BlobSidecar
 	)
 
 	// Start executing the transaction
@@ -755,12 +753,8 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	receipt, err := core.ApplyTransaction(chainConfig, chain, &env.coinbase, env.gasPool, env.state, env.header, tx,
 		&env.header.GasUsed, *chain.GetVMConfig(), core.NewReceiptBloomGenerator())
 	if err != nil {
-		env.state.RevertToSnapshot(snap)
-		env.gasPool.SetGas(gp)
 		return err
-	} else if noRevertible && receipt.Status == types.ReceiptStatusFailed {
-		env.state.RevertToSnapshot(snap)
-		env.gasPool.SetGas(gp)
+	} else if unRevertible && receipt.Status == types.ReceiptStatusFailed {
 		return errors.New("no revertible transaction failed")
 	}
 
