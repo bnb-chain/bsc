@@ -37,8 +37,8 @@ type Config struct {
 
 // DefaultConfig is the default config for metrics used in go-ethereum.
 var DefaultConfig = Config{
-	Enabled:          false,
-	EnabledExpensive: false,
+	Enabled:          true,
+	EnabledExpensive: true,
 	HTTP:             "127.0.0.1",
 	Port:             6060,
 	EnableInfluxDB:   false,

@@ -21,12 +21,20 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/triedb/database"
+)
+
+var (
+	trieGetTimer         = metrics.NewRegisteredTimer("trie/get/time", nil)
+	trieReaderGetTimer   = metrics.NewRegisteredTimer("trie/reader/get/time", nil)
+	trieReaderTotalTimer = metrics.NewRegisteredTimer("trie/reader/total/time", nil)
 )
 
 // Trie is a Merkle Patricia Trie. Use New to create a trie that sits on
@@ -146,6 +154,10 @@ func (t *Trie) Get(key []byte) ([]byte, error) {
 	if t.committed {
 		return nil, ErrCommitted
 	}
+	if metrics.EnabledExpensive {
+		start := time.Now()
+		defer func() { trieGetTimer.UpdateSince(start) }()
+	}
 	value, newroot, didResolve, err := t.get(t.root, keybytesToHex(key), 0)
 	if err == nil && didResolve {
 		t.root = newroot
@@ -178,7 +190,11 @@ func (t *Trie) get(origNode node, key []byte, pos int) (value []byte, newnode no
 		}
 		return value, n, didResolve, err
 	case hashNode:
+		start := time.Now()
 		child, err := t.resolveAndTrack(n, key[:pos])
+		if metrics.EnabledExpensive {
+			trieReaderGetTimer.UpdateSince(start)
+		}
 		if err != nil {
 			return nil, n, true, err
 		}
@@ -586,6 +602,10 @@ func (t *Trie) resolve(n node, prefix []byte) (node, error) {
 // node's original value. The rlp-encoded blob is preferred to be loaded from
 // database because it's easy to decode node while complex to encode node to blob.
 func (t *Trie) resolveAndTrack(n hashNode, prefix []byte) (node, error) {
+	if metrics.EnabledExpensive {
+		start := time.Now()
+		defer func() { trieReaderTotalTimer.UpdateSince(start) }()
+	}
 	blob, err := t.reader.node(prefix, common.BytesToHash(n))
 	if err != nil {
 		return nil, err

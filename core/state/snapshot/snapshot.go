@@ -236,7 +236,7 @@ func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, roo
 		snap.layers[head.Root()] = head
 		head = head.Parent()
 	}
-	log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root)
+	log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root, "snapshot_cache_size", common.StorageSize(config.CacheSize)*1024*1024)
 	return snap, nil
 }
 
