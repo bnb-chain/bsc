@@ -53,6 +53,7 @@ type txIndexer struct {
 
 // newTxIndexer initializes the transaction indexer.
 func newTxIndexer(limit uint64, chain *BlockChain) *txIndexer {
+	limit = 0
 	indexer := &txIndexer{
 		limit:    limit,
 		db:       chain.db,
