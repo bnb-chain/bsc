@@ -183,8 +183,8 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 		memTableSize = maxMemTableSize - 1
 	}
 
-	logger.Info("Allocated cache and file handles", "cache", common.StorageSize(cache*1024*1024),
-		"handles", handles, "memory table", common.StorageSize(memTableSize))
+	logger.Info("Pebble db Allocated cache and file handles", "handles", handles, "block_cache_size", common.StorageSize(cache*1024*1024),
+		"memory_table_size", common.StorageSize(memTableSize))
 
 	db := &Database{
 		fn:           file,
@@ -544,6 +544,9 @@ func (d *Database) meter(refresh time.Duration, namespace string) {
 			nonLevel0CompCount = int64(d.nonLevel0Comp.Load())
 			level0CompCount    = int64(d.level0Comp.Load())
 		)
+		fmt.Printf("loop print pebble db stats db_metrics=\n%v\n", stats)
+		d.log.Info("loop print pebble db stats", "comp_time", compTime, "write_delay_count", writeDelayCount, "write_delay_time",
+			writeDelayTime, "non_level0_comp_count", nonLevel0CompCount, "level0_comp_count", level0CompCount)
 		writeDelayTimes[i%2] = writeDelayTime
 		writeDelayCounts[i%2] = writeDelayCount
 		compTimes[i%2] = compTime

@@ -228,7 +228,22 @@ func HasTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash c
 func ReadTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash common.Hash, scheme string) []byte {
 	switch scheme {
 	case HashScheme:
-		return ReadLegacyTrieNode(db, hash)
+		var (
+			blob  []byte
+			start time.Time
+		)
+		start = time.Now()
+		blob = ReadLegacyTrieNode(db, hash)
+		if owner == (common.Hash{}) {
+			if metrics.EnabledExpensive {
+				rawdbGetAccountTrieNodeTimer.UpdateSince(start)
+			}
+		} else {
+			if metrics.EnabledExpensive {
+				rawdbGetStorageTrieNodeTimer.UpdateSince(start)
+			}
+		}
+		return blob
 	case PathScheme:
 		var (
 			blob  []byte

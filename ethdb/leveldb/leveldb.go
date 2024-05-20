@@ -111,12 +111,18 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 func NewCustom(file string, namespace string, customize func(options *opt.Options)) (*Database, error) {
 	options := configureOptions(customize)
 	logger := log.New("database", file)
-	usedCache := options.GetBlockCacheCapacity() + options.GetWriteBuffer()*2
-	logCtx := []interface{}{"cache", common.StorageSize(usedCache), "handles", options.GetOpenFilesCacheCapacity()}
+	// usedCache := options.GetBlockCacheCapacity() + options.GetWriteBuffer()*2
+	logCtx := []interface{}{"handles", options.GetOpenFilesCacheCapacity()}
 	if options.ReadOnly {
 		logCtx = append(logCtx, "readonly", "true")
 	}
-	logger.Info("Allocated cache and file handles", logCtx...)
+	if options.BlockCacheCapacity != 0 {
+		logCtx = append(logCtx, "block_cache_size", common.StorageSize(options.BlockCacheCapacity))
+	}
+	if options.WriteBuffer != 0 {
+		logCtx = append(logCtx, "memory_table_size", common.StorageSize(options.WriteBuffer))
+	}
+	logger.Info("Level db Allocated cache and file handles", logCtx...)
 
 	// Open the db and recover any potential corruptions
 	db, err := leveldb.OpenFile(file, options)
@@ -313,6 +319,8 @@ func (db *Database) meter(refresh time.Duration, namespace string) {
 			merr = err
 			continue
 		}
+		fmt.Printf("loop print level db stats db_metrics=\n%v\n", stats)
+		db.log.Info("loop print level db stats", "stats", stats)
 		// Iterate over all the leveldbTable rows, and accumulate the entries
 		for j := 0; j < len(compactions[i%2]); j++ {
 			compactions[i%2][j] = 0
