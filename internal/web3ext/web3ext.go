@@ -660,6 +660,30 @@ web3._extend({
 			call: 'miner_stop'
 		}),
 		new web3._extend.Method({
+			name: 'mevRunning',
+			call: 'miner_mevRunning'
+		}),
+		new web3._extend.Method({
+			name: 'startMev',
+			call: 'miner_startMev'
+		}),
+		new web3._extend.Method({
+			name: 'stopMev',
+			call: 'miner_stopMev'
+		}),
+		new web3._extend.Method({
+			name: 'addBuilder',
+			call: 'miner_addBuilder',
+			params: 2,
+			inputFormatter: [web3._extend.formatters.inputAddressFormatter, null]
+		}),
+		new web3._extend.Method({
+			name: 'removeBuilder',
+			call: 'miner_removeBuilder',
+			params: 1,
+			inputFormatter: [web3._extend.formatters.inputAddressFormatter]
+		}),
+		new web3._extend.Method({
 			name: 'setEtherbase',
 			call: 'miner_setEtherbase',
 			params: 1,
