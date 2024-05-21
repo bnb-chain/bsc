@@ -576,7 +576,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	}
 	// Start tx indexer if it's enabled.
 	if txLookupLimit != nil {
-		bc.txIndexer = newTxIndexer(*txLookupLimit, bc)
+		// bc.txIndexer = newTxIndexer(*txLookupLimit, bc)
 	}
 	return bc, nil
 }
