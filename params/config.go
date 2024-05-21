@@ -270,7 +270,6 @@ var (
 		FeynmanTime:         newUint64(0),
 		FeynmanFixTime:      newUint64(0),
 		CancunTime:          newUint64(0),
-		HaberTime:           newUint64(0),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
