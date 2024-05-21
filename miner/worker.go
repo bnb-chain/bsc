@@ -97,7 +97,8 @@ type environment struct {
 	sidecars types.BlobSidecars
 	blobs    int
 
-	profit *big.Int // block gas fee + BNBSentToSystem
+	profit       *big.Int // block gas fee + BNBSentToSystem
+	UnRevertible []common.Hash
 }
 
 // copy creates a deep copy of environment.
