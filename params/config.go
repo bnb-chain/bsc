@@ -152,7 +152,7 @@ var (
 		FeynmanTime:         newUint64(1713419340), // 2024-04-18 05:49:00 AM UTC
 		FeynmanFixTime:      newUint64(1713419340), // 2024-04-18 05:49:00 AM UTC
 		CancunTime:          newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
-		HaberTime:           nil,
+		HaberTime:           newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -191,7 +191,7 @@ var (
 		FeynmanTime:         newUint64(1710136800), // 2024-03-11 6:00:00 AM UTC
 		FeynmanFixTime:      newUint64(1711342800), // 2024-03-25 5:00:00 AM UTC
 		CancunTime:          newUint64(1713330442), // 2024-04-17 05:07:22 AM UTC
-		HaberTime:           nil,
+		HaberTime:           newUint64(1717049220), // 2024-05-30 06:07:00 AM UTC
 
 		Parlia: &ParliaConfig{
 			Period: 3,
