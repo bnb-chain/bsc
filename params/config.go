@@ -152,6 +152,7 @@ var (
 		FeynmanTime:         newUint64(1713419340), // 2024-04-18 05:49:00 AM UTC
 		FeynmanFixTime:      newUint64(1713419340), // 2024-04-18 05:49:00 AM UTC
 		CancunTime:          newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
+		HaberTime:           nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -190,6 +191,7 @@ var (
 		FeynmanTime:         newUint64(1710136800), // 2024-03-11 6:00:00 AM UTC
 		FeynmanFixTime:      newUint64(1711342800), // 2024-03-25 5:00:00 AM UTC
 		CancunTime:          newUint64(1713330442), // 2024-04-17 05:07:22 AM UTC
+		HaberTime:           nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -229,6 +231,7 @@ var (
 		FeynmanTime:         newUint64(0),
 		FeynmanFixTime:      newUint64(0),
 		CancunTime:          newUint64(0),
+		HaberTime:           newUint64(0),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -267,6 +270,8 @@ var (
 		FeynmanTime:         newUint64(0),
 		FeynmanFixTime:      newUint64(0),
 		CancunTime:          newUint64(0),
+		HaberTime:           newUint64(0),
+
 		Parlia: &ParliaConfig{
 			Period: 3,
 			Epoch:  200,
@@ -504,6 +509,7 @@ type ChainConfig struct {
 	FeynmanTime    *uint64 `json:"feynmanTime,omitempty"`    // Feynman switch time (nil = no fork, 0 = already activated)
 	FeynmanFixTime *uint64 `json:"feynmanFixTime,omitempty"` // FeynmanFix switch time (nil = no fork, 0 = already activated)
 	CancunTime     *uint64 `json:"cancunTime,omitempty"`     // Cancun switch time (nil = no fork, 0 = already on cancun)
+	HaberTime      *uint64 `json:"haberTime,omitempty"`      // Haber switch time (nil = no fork, 0 = already on haber)
 	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
 	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
@@ -913,6 +919,11 @@ func (c *ChainConfig) IsCancun(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.CancunTime, time)
 }
 
+// IsHaber returns whether time is either equal to the Haber fork time or greater.
+func (c *ChainConfig) IsHaber(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.HaberTime, time)
+}
+
 // IsPrague returns whether num is either equal to the Prague fork time or greater.
 func (c *ChainConfig) IsPrague(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.PragueTime, time)
@@ -1305,8 +1316,8 @@ type Rules struct {
 	IsPlato                                                 bool
 	IsHertz                                                 bool
 	IsHertzfix                                              bool
-	IsShanghai, IsKepler, IsFeynman, IsCancun, IsPrague     bool
-	IsVerkle                                                bool
+	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
+	IsPrague, IsVerkle                                      bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -1341,6 +1352,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsKepler:         c.IsKepler(num, timestamp),
 		IsFeynman:        c.IsFeynman(num, timestamp),
 		IsCancun:         c.IsCancun(num, timestamp),
+		IsHaber:          c.IsHaber(num, timestamp),
 		IsPrague:         c.IsPrague(num, timestamp),
 		IsVerkle:         c.IsVerkle(num, timestamp),
 	}

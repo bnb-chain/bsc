@@ -73,6 +73,7 @@ var (
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
 		utils.OverrideCancun,
+		utils.OverrideHaber,
 		utils.OverrideVerkle,
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,

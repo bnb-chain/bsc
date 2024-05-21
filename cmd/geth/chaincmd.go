@@ -63,6 +63,7 @@ var (
 		Flags: flags.Merge([]cli.Flag{
 			utils.CachePreimagesFlag,
 			utils.OverrideCancun,
+			utils.OverrideHaber,
 			utils.OverrideVerkle,
 		}, utils.DatabaseFlags),
 		Description: `
@@ -255,6 +256,10 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverrideCancun.Name) {
 		v := ctx.Uint64(utils.OverrideCancun.Name)
 		overrides.OverrideCancun = &v
+	}
+	if ctx.IsSet(utils.OverrideHaber.Name) {
+		v := ctx.Uint64(utils.OverrideHaber.Name)
+		overrides.OverrideHaber = &v
 	}
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
