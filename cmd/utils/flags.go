@@ -310,6 +310,11 @@ var (
 		Usage:    "Manually specify the Cancun fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideHaber = &cli.Uint64Flag{
+		Name:     "override.haber",
+		Usage:    "Manually specify the Haber fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideVerkle = &cli.Uint64Flag{
 		Name:     "override.verkle",
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
