@@ -769,7 +769,9 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		trieIter = db.StateStore().NewIterator(keyPrefix, nil)
 		defer trieIter.Release()
 	}
-	if db.BlockStore() != db {
+
+	blockStore := db.BlockStore()
+	if _, ok := blockStore.(*freezerdb); !ok {
 		blockIter = db.BlockStore().NewIterator(keyPrefix, nil)
 		defer blockIter.Release()
 	}
