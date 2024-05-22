@@ -183,6 +183,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.CancunTime = config.OverrideCancun
 		overrides.OverrideCancun = config.OverrideCancun
 	}
+	if config.OverrideHaber != nil {
+		chainConfig.HaberTime = config.OverrideHaber
+		overrides.OverrideHaber = config.OverrideHaber
+	}
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle

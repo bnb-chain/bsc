@@ -1,4 +1,15 @@
 # Changelog
+## v1.4.8
+### FEATURE
+* [\#2483](https://github.com/bnb-chain/bsc/pull/2483) core/vm: add secp256r1 into PrecompiledContractsHaber
+* [\#2400](https://github.com/bnb-chain/bsc/pull/2400) RIP-7212: Precompile for secp256r1 Curve Support
+
+### IMPROVEMENT
+NA
+
+### BUGFIX
+NA
+
 ## v1.4.7
 ### FEATURE
 * [\#2439](https://github.com/bnb-chain/bsc/pull/2439) config: setup Mainnet Tycho(Cancun) hardfork date

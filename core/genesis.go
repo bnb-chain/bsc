@@ -217,6 +217,7 @@ func (e *GenesisMismatchError) Error() string {
 // Typically, these modifications involve hardforks that are not enabled on the BSC mainnet, intended for testing purposes.
 type ChainOverrides struct {
 	OverrideCancun *uint64
+	OverrideHaber  *uint64
 	OverrideVerkle *uint64
 }
 
@@ -245,6 +246,9 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 		if config != nil {
 			if overrides != nil && overrides.OverrideCancun != nil {
 				config.CancunTime = overrides.OverrideCancun
+			}
+			if overrides != nil && overrides.OverrideHaber != nil {
+				config.HaberTime = overrides.OverrideHaber
 			}
 			if overrides != nil && overrides.OverrideVerkle != nil {
 				config.VerkleTime = overrides.OverrideVerkle
