@@ -47,7 +47,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/triedb/pathdb"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -115,7 +114,7 @@ type votePool interface {
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	NodeID         		   enode.ID   		// P2P node ID used for tx propagation topology
+	NodeID                 enode.ID         // P2P node ID used for tx propagation topology
 	Database               ethdb.Database   // Database for direct sync insertions
 	Chain                  *core.BlockChain // Blockchain to serve data from
 	TxPool                 txPool           // Transaction pool to propagate from
@@ -132,7 +131,7 @@ type handlerConfig struct {
 }
 
 type handler struct {
-	nodeID     			   enode.ID
+	nodeID                 enode.ID
 	networkID              uint64
 	forkFilter             forkid.Filter // Fork ID filter, constant across the lifetime of the node
 	disablePeerTxBroadcast bool
@@ -190,7 +189,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		config.PeerSet = newPeerSet() // Nicety initialization for tests
 	}
 	h := &handler{
-		nodeID:         		config.NodeID,
+		nodeID:                 config.NodeID,
 		networkID:              config.Network,
 		forkFilter:             forkid.NewFilter(config.Chain),
 		disablePeerTxBroadcast: config.DisablePeerTxBroadcast,
