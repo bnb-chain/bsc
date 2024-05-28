@@ -111,13 +111,13 @@ func (indexer *txIndexer) run(tail *uint64, head uint64, stop chan struct{}, don
 	}
 	// The tail flag is existent, adjust the index range according to configured
 	// limit and the latest chain head.
-	if head-indexer.limit+1 < *tail {
-		// Reindex a part of missing indices and rewind index tail to HEAD-limit
-		rawdb.IndexTransactions(indexer.db, head-indexer.limit+1, *tail, stop, true)
-	} else {
-		// Unindex a part of stale indices and forward index tail to HEAD-limit
-		rawdb.UnindexTransactions(indexer.db, *tail, head-indexer.limit+1, stop, false)
-	}
+	//if head-indexer.limit+1 < *tail {
+	//	// Reindex a part of missing indices and rewind index tail to HEAD-limit
+	//	rawdb.IndexTransactions(indexer.db, head-indexer.limit+1, *tail, stop, true)
+	//} else {
+	//	// Unindex a part of stale indices and forward index tail to HEAD-limit
+	//	rawdb.UnindexTransactions(indexer.db, *tail, head-indexer.limit+1, stop, false)
+	//}
 }
 
 // loop is the scheduler of the indexer, assigning indexing/unindexing tasks depending
