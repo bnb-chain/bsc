@@ -198,42 +198,66 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			last      uint64 // the last block to freeze
 		)
 
-		// Retrieve the freezing threshold.
-		hash := ReadHeadBlockHash(nfdb)
-		if hash == (common.Hash{}) {
-			log.Debug("Current full block hash unavailable") // new chain, empty database
-			backoff = true
-			continue
-		}
-		number := ReadHeaderNumber(nfdb, hash)
-		threshold = f.threshold.Load()
-		frozen = f.frozen.Load()
-		switch {
-		case number == nil:
-			log.Error("Current full block number unavailable", "hash", hash)
-			backoff = true
-			continue
+		// use finalized block as the chain freeze indicator was used for multiDatabase feature, if multiDatabase is false, keep 9W blocks in db
+		if f.multiDatabase {
+			threshold, err = f.freezeThreshold(nfdb)
+			if err != nil {
+				backoff = true
+				log.Debug("Current full block not old enough to freeze", "err", err)
+				continue
+			}
+			frozen = f.frozen.Load()
 
-		case *number < threshold:
-			log.Debug("Current full block not old enough to freeze", "number", *number, "hash", hash, "delay", threshold)
-			backoff = true
-			continue
+			// Short circuit if the blocks below threshold are already frozen.
+			if frozen != 0 && frozen-1 >= threshold {
+				backoff = true
+				log.Debug("Ancient blocks frozen already", "threshold", threshold, "frozen", frozen)
+				continue
+			}
 
-		case *number-threshold <= frozen:
-			log.Debug("Ancient blocks frozen already", "number", *number, "hash", hash, "frozen", frozen)
-			backoff = true
-			continue
-		}
-		head := ReadHeader(nfdb, hash, *number)
-		if head == nil {
-			log.Error("Current full block unavailable", "number", *number, "hash", hash)
-			backoff = true
-			continue
-		}
-		first, _ = f.Ancients()
-		last = *number - threshold
-		if last-first > freezerBatchLimit {
-			last = first + freezerBatchLimit
+			first = frozen
+			last = threshold
+			if last-first+1 > freezerBatchLimit {
+				last = freezerBatchLimit + first - 1
+			}
+		} else {
+			// Retrieve the freezing threshold.
+			hash := ReadHeadBlockHash(nfdb)
+			if hash == (common.Hash{}) {
+				log.Debug("Current full block hash unavailable") // new chain, empty database
+				backoff = true
+				continue
+			}
+			number := ReadHeaderNumber(nfdb, hash)
+			threshold = f.threshold.Load()
+			frozen = f.frozen.Load()
+			switch {
+			case number == nil:
+				log.Error("Current full block number unavailable", "hash", hash)
+				backoff = true
+				continue
+
+			case *number < threshold:
+				log.Debug("Current full block not old enough to freeze", "number", *number, "hash", hash, "delay", threshold)
+				backoff = true
+				continue
+
+			case *number-threshold <= frozen:
+				log.Debug("Ancient blocks frozen already", "number", *number, "hash", hash, "frozen", frozen)
+				backoff = true
+				continue
+			}
+			head := ReadHeader(nfdb, hash, *number)
+			if head == nil {
+				log.Error("Current full block unavailable", "number", *number, "hash", hash)
+				backoff = true
+				continue
+			}
+			first, _ = f.Ancients()
+			last = *number - threshold
+			if last-first > freezerBatchLimit {
+				last = first + freezerBatchLimit
+			}
 		}
 		// Seems we have data ready to be frozen, process in usable batches
 		var (
@@ -326,6 +350,24 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		log.Debug("Deep froze chain segment", context...)
 
 		env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv)
+		hash := ReadHeadBlockHash(nfdb)
+		if hash == (common.Hash{}) {
+			log.Debug("Current full block hash unavailable") // new chain, empty database
+			backoff = true
+			continue
+		}
+		number := ReadHeaderNumber(nfdb, hash)
+		if number == nil {
+			log.Error("Current full block number unavailable", "hash", hash)
+			backoff = true
+			continue
+		}
+		head := ReadHeader(nfdb, hash, *number)
+		if head == nil {
+			log.Error("Current full block unavailable", "number", *number, "hash", hash)
+			backoff = true
+			continue
+		}
 		// try prune blob data after cancun fork
 		if isCancun(env, head.Number, head.Time) {
 			f.tryPruneBlobAncientTable(env, *number)
