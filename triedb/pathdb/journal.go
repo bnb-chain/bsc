@@ -152,12 +152,13 @@ func (kr *JournalKVReader) Close() {
 }
 
 func newJournalWriter(file string, db ethdb.Database, journalType JournalType) JournalWriter {
-	log.Info("New journal writer", "path", file, "journalType", journalType)
 	if journalType == JournalKVType {
+		log.Info("New journal writer for journal kv")
 		return &JournalKVWriter{
 			diskdb: db,
 		}
 	} else {
+		log.Info("New journal writer for journal file", "path", file)
 		fd, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			return nil
@@ -169,8 +170,8 @@ func newJournalWriter(file string, db ethdb.Database, journalType JournalType) J
 }
 
 func newJournalReader(file string, db ethdb.Database, journalType JournalType) (JournalReader, error) {
-	log.Info("New journal reader", "path", file, "journalType", journalType)
 	if journalType == JournalKVType {
+		log.Info("New journal reader for journal kv")
 		journal := rawdb.ReadTrieJournal(db)
 		if len(journal) == 0 {
 			return nil, errMissJournal
@@ -179,6 +180,7 @@ func newJournalReader(file string, db ethdb.Database, journalType JournalType) (
 			journalBuf: bytes.NewBuffer(journal),
 		}, nil
 	} else {
+		log.Info("New journal reader for journal file", "path", file)
 		fd, err := os.Open(file)
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, errMissJournal
