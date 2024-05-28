@@ -24,12 +24,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/rlp"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -196,6 +196,10 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			threshold uint64
 			first     uint64 // the first block to freeze
 			last      uint64 // the last block to freeze
+
+			hash   common.Hash
+			number *uint64
+			head   *types.Header
 		)
 
 		// use finalized block as the chain freeze indicator was used for multiDatabase feature, if multiDatabase is false, keep 9W blocks in db
@@ -215,6 +219,25 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 				continue
 			}
 
+			hash = ReadHeadBlockHash(nfdb)
+			if hash == (common.Hash{}) {
+				log.Debug("Current full block hash unavailable") // new chain, empty database
+				backoff = true
+				continue
+			}
+			number = ReadHeaderNumber(nfdb, hash)
+			if number == nil {
+				log.Error("Current full block number unavailable", "hash", hash)
+				backoff = true
+				continue
+			}
+			head = ReadHeader(nfdb, hash, *number)
+			if head == nil {
+				log.Error("Current full block unavailable", "number", *number, "hash", hash)
+				backoff = true
+				continue
+			}
+
 			first = frozen
 			last = threshold
 			if last-first+1 > freezerBatchLimit {
@@ -222,13 +245,13 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			}
 		} else {
 			// Retrieve the freezing threshold.
-			hash := ReadHeadBlockHash(nfdb)
+			hash = ReadHeadBlockHash(nfdb)
 			if hash == (common.Hash{}) {
 				log.Debug("Current full block hash unavailable") // new chain, empty database
 				backoff = true
 				continue
 			}
-			number := ReadHeaderNumber(nfdb, hash)
+			number = ReadHeaderNumber(nfdb, hash)
 			threshold = f.threshold.Load()
 			frozen = f.frozen.Load()
 			switch {
@@ -247,7 +270,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 				backoff = true
 				continue
 			}
-			head := ReadHeader(nfdb, hash, *number)
+			head = ReadHeader(nfdb, hash, *number)
 			if head == nil {
 				log.Error("Current full block unavailable", "number", *number, "hash", hash)
 				backoff = true
@@ -350,24 +373,6 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		log.Debug("Deep froze chain segment", context...)
 
 		env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv)
-		hash := ReadHeadBlockHash(nfdb)
-		if hash == (common.Hash{}) {
-			log.Debug("Current full block hash unavailable") // new chain, empty database
-			backoff = true
-			continue
-		}
-		number := ReadHeaderNumber(nfdb, hash)
-		if number == nil {
-			log.Error("Current full block number unavailable", "hash", hash)
-			backoff = true
-			continue
-		}
-		head := ReadHeader(nfdb, hash, *number)
-		if head == nil {
-			log.Error("Current full block unavailable", "number", *number, "hash", hash)
-			backoff = true
-			continue
-		}
 		// try prune blob data after cancun fork
 		if isCancun(env, head.Number, head.Time) {
 			f.tryPruneBlobAncientTable(env, *number)
