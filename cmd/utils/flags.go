@@ -1082,6 +1082,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:     "block-amount-reserved",
 		Usage:    "Sets the expected remained amount of blocks for offline block prune",
 		Category: flags.BlockHistoryCategory,
+		Value:    params.FullImmutabilityThreshold,
 	}
 
 	CheckSnapshotWithMPT = &cli.BoolFlag{
