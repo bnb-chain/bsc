@@ -328,9 +328,6 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 
 type emptyfreezedb struct {
 	ethdb.KeyValueStore
-	diffStore  ethdb.KeyValueStore
-	stateStore ethdb.Database
-	blockStore ethdb.Database
 }
 
 // HasAncient returns nil for pruned db that we don't have a backing chain freezer.
@@ -405,6 +402,7 @@ func (db *emptyfreezedb) SetStateStore(state ethdb.Database)    {}
 func (db *emptyfreezedb) StateStoreReader() ethdb.Reader        { return db }
 func (db *emptyfreezedb) BlockStore() ethdb.Database            { return db }
 func (db *emptyfreezedb) SetBlockStore(block ethdb.Database)    {}
+func (db *emptyfreezedb) HasSeparateBlockStore() bool           { return false }
 func (db *emptyfreezedb) BlockStoreReader() ethdb.Reader        { return db }
 func (db *emptyfreezedb) BlockStoreWriter() ethdb.Writer        { return db }
 func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
@@ -483,7 +481,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 
 	// This case is used for someone who wants to execute geth db inspect CLI in a pruned db
 	if !disableFreeze && readonly && ReadAncientType(db) == PruneFreezerType {
-		log.Warn("Disk db is pruned, return an empty freezer db which is used for CLI")
+		log.Warn("Disk db is pruned, using an empty freezer db for CLI")
 		return NewEmptyFreezeDB(db), nil
 	}
 
