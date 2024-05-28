@@ -47,4 +47,7 @@ var (
 	historyBuildTimeMeter  = metrics.NewRegisteredTimer("pathdb/history/time", nil)
 	historyDataBytesMeter  = metrics.NewRegisteredMeter("pathdb/history/bytes/data", nil)
 	historyIndexBytesMeter = metrics.NewRegisteredMeter("pathdb/history/bytes/index", nil)
+
+	pathGetDiffLayerTimer = metrics.NewRegisteredTimer("pathdb/get/difflayer/time", nil)
+	pathGetDiskLayerTimer = metrics.NewRegisteredTimer("pathdb/get/disklayer/time", nil)
 )

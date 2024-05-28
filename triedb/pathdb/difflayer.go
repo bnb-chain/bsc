@@ -19,6 +19,7 @@ package pathdb
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
@@ -104,6 +105,8 @@ func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, dept
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
+	start := time.Now()
+
 	// If the trie node is known locally, return it
 	subset, ok := dl.nodes[owner]
 	if ok {
@@ -114,14 +117,18 @@ func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, dept
 			if n.Hash != hash {
 				dirtyFalseMeter.Mark(1)
 				log.Error("Unexpected trie node in diff layer", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
+				pathGetDiffLayerTimer.UpdateSince(start)
 				return nil, newUnexpectedNodeError("diff", hash, n.Hash, owner, path, n.Blob)
 			}
 			dirtyHitMeter.Mark(1)
 			dirtyNodeHitDepthHist.Update(int64(depth))
 			dirtyReadMeter.Mark(int64(len(n.Blob)))
+			pathGetDiffLayerTimer.UpdateSince(start)
 			return n.Blob, nil
 		}
 	}
+	pathGetDiffLayerTimer.UpdateSince(start)
+
 	// Trie node unknown to this layer, resolve from parent
 	if diff, ok := dl.parent.(*diffLayer); ok {
 		return diff.node(owner, path, hash, depth+1)
