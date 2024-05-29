@@ -18,6 +18,7 @@ package ethapi
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -1437,6 +1438,94 @@ func (s *BlockChainAPI) Call(ctx context.Context, args TransactionArgs, blockNrO
 		return nil, newRevertError(result.Revert())
 	}
 	return result.Return(), result.Err
+}
+
+// single multicall makes a single call, given a header and state
+// returns an object containing the return data, or error if one occured
+// the result should be merged together later by multicall function
+func DoSingleMulticall(ctx context.Context, b Backend, args TransactionArgs, state *state.StateDB, header *types.Header, timeout time.Duration, globalGasCap uint64) map[string]interface{} {
+	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	// Get a new instance of the EVM.
+	msg, err := args.ToMessage(globalGasCap, header.BaseFee)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err,
+		}
+	}
+	evm := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true}, nil)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err,
+		}
+	}
+	// Wait for the context to be done and cancel the evm. Even if the
+	// EVM has finished, cancelling may be done (repeatedly)
+	gopool.Submit(func() {
+		<-ctx.Done()
+		evm.Cancel()
+	})
+
+	// Execute the message.
+	gp := new(core.GasPool).AddGas(math.MaxUint64)
+	result, err := core.ApplyMessage(evm, msg, gp)
+
+	// If the timer caused an abort, return an appropriate error message
+	if evm.Cancelled() {
+		return map[string]interface{}{
+			"error": fmt.Errorf("execution aborted (timeout = %v)", timeout),
+		}
+	}
+	if err != nil {
+		return map[string]interface{}{
+			"error": fmt.Errorf("err: %w", err),
+		}
+	}
+	if len(result.Revert()) > 0 {
+		revertErr := newRevertError(result.Revert())
+		data, _ := json.Marshal(&revertErr)
+		var result map[string]interface{}
+		json.Unmarshal(data, &result)
+		return result
+	}
+	if result.Err != nil {
+		return map[string]interface{}{
+			"error": "execution reverted",
+		}
+	}
+	return map[string]interface{}{
+		"data": hexutil.Bytes(result.Return()),
+	}
+}
+
+// multicall makes multiple eth_calls, on one state set by the provided block and overrides.
+// returns an array of results [{data: 0x...}], and errors per call tx. the entire call fails if the requested state couldnt be found or overrides failed to be applied
+func (s *BlockChainAPI) Multicall(ctx context.Context, txs []TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride) ([]map[string]interface{}, error) {
+	results := []map[string]interface{}{}
+	state, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	if err := overrides.Apply(state); err != nil {
+		return nil, err
+	}
+	for _, tx := range txs {
+		thisState := state.Copy() // copy the state, because while eth_calls shouldnt change state, theres nothing stopping someobdy from making a state changing call
+		results = append(results, DoSingleMulticall(ctx, s.b, tx, thisState, header, s.b.RPCEVMTimeout(), s.b.RPCGasCap()))
+	}
+	return results, nil
 }
 
 // DoEstimateGas returns the lowest possible gas limit that allows the transaction to run
