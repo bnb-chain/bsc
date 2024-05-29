@@ -70,8 +70,10 @@ const (
 )
 
 var (
-	writeBlockTimer    = metrics.NewRegisteredTimer("worker/writeblock", nil)
-	finalizeBlockTimer = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
+	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
+	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
+	fillTxFnTimer        = metrics.NewRegisteredTimer("worker/filltransactions/all", nil)
+	fillTxFnPartialTimer = metrics.NewRegisteredTimer("worker/filltransactions/partial", nil)
 
 	errBlockInterruptedByNewHead   = errors.New("new head arrived while building block")
 	errBlockInterruptedByRecommit  = errors.New("recommit interrupt while building block")
@@ -1056,6 +1058,8 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer, bidTxs mapset.Set[common.Hash]) (err error) {
+	start := time.Now()
+
 	w.mu.RLock()
 	tip := w.tip
 	w.mu.RUnlock()
@@ -1110,6 +1114,7 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 			localBlobTxs[account] = txs
 		}
 	}
+	fillTxFnPartialTimer.UpdateSince(start)
 
 	// Fill the block with all available pending transactions.
 	// we will abort when:
@@ -1134,6 +1139,7 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 			return err
 		}
 	}
+	fillTxFnTimer.UpdateSince(start)
 
 	return nil
 }
