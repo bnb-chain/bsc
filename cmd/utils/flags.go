@@ -315,6 +315,11 @@ var (
 		Usage:    "Manually specify the Haber fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideBohr = &cli.Uint64Flag{
+		Name:     "override.bohr",
+		Usage:    "Manually specify the Bohr fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideVerkle = &cli.Uint64Flag{
 		Name:     "override.verkle",
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
