@@ -55,6 +55,8 @@ const (
 
 	// txReannoMaxNum is the maximum number of transactions a reannounce action can include.
 	txReannoMaxNum = 1024
+
+	maxBufferSize = 1000 // maximum size of tx buffer
 )
 
 var (
@@ -798,7 +800,11 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 			underpricedTxMeter.Mark(1)
 
 			pool.bufferLock.Lock()
-			pool.buffer = append(pool.buffer, tx)
+			if len(pool.buffer) < maxBufferSize {
+				pool.buffer = append(pool.buffer, tx)
+			} else {
+				log.Warn("Buffer is full, discarding transaction", "hash", hash)
+			}
 			pool.bufferLock.Unlock()
 
 			return false, txpool.ErrUnderpriced
@@ -824,7 +830,11 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 			underpricedTxMeter.Mark(1)
 
 			pool.bufferLock.Lock()
-			pool.buffer = append(pool.buffer, dropTx)
+			if len(pool.buffer) < maxBufferSize {
+				pool.buffer = append(pool.buffer, dropTx)
+			} else {
+				log.Warn("Buffer is full, discarding transaction", "hash", hash)
+			}
 			pool.bufferLock.Unlock()
 		}
 
