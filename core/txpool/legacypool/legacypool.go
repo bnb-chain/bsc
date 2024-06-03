@@ -361,7 +361,7 @@ func (pool *LegacyPool) loop() {
 		evict      = time.NewTicker(evictionInterval)
 		reannounce = time.NewTicker(reannounceInterval)
 		journal    = time.NewTicker(pool.config.Rejournal)
-		readd      = time.NewTicker(time.Minute) // Add a ticker to re-add buffered transactions periodically
+		readd      = time.NewTicker(time.Minute) // ticker to re-add buffered transactions periodically
 	)
 	defer report.Stop()
 	defer evict.Stop()
