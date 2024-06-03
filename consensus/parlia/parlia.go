@@ -1010,16 +1010,6 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	return nil
 }
 
-// CurrentTurnTerm return the turnTerm at the latest block
-func (p *Parlia) CurrentTurnTerm(chain consensus.ChainHeaderReader) (turnTerm *uint64, err error) {
-	currentHeader := chain.CurrentHeader()
-	snap, err := p.snapshot(chain, currentHeader.Number.Uint64(), currentHeader.Hash(), nil)
-	if err != nil {
-		return nil, err
-	}
-	return &snap.TurnTerm, nil
-}
-
 // NextInTurnValidator return the next in-turn validator for header
 func (p *Parlia) NextInTurnValidator(chain consensus.ChainHeaderReader, header *types.Header) (common.Address, error) {
 	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)

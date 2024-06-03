@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -342,10 +343,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				}
 			}
 			if chainConfig.IsBohr(header.Number, header.Time) {
-				getClearKey := func(blockNumber uint64) uint64 {
-					return 1<<63 | (blockNumber / s.config.Epoch) // impossible used as a block number
-				}
-				epochClearKey := getClearKey(number)
+				epochClearKey := math.MaxUint64 - header.Number.Uint64()/s.config.Epoch // impossible used as a block number
 				// in a epoch, after the first validator set switch, minerHistoryCheckLen() may become larger,
 				// so the unexpected second switch will happen, don't clear up the `Recents` in this kind of scene.
 				if _, ok := snap.Recents[epochClearKey]; !ok {
