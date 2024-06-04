@@ -406,7 +406,7 @@ func inspectTrie(ctx *cli.Context) error {
 			var err error
 			blockNumber, err = strconv.ParseUint(ctx.Args().Get(0), 10, 64)
 			if err != nil {
-				return fmt.Errorf("failed to Parse blocknum, Args[0]: %v, err: %v", ctx.Args().Get(0), err)
+				return fmt.Errorf("failed to parse blocknum, Args[0]: %v, err: %v", ctx.Args().Get(0), err)
 			}
 		}
 
@@ -417,26 +417,26 @@ func inspectTrie(ctx *cli.Context) error {
 			var err error
 			jobnum, err = strconv.ParseUint(ctx.Args().Get(1), 10, 64)
 			if err != nil {
-				return fmt.Errorf("failed to Parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
+				return fmt.Errorf("failed to parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
 			}
 			topN = 10
 		} else {
 			var err error
 			jobnum, err = strconv.ParseUint(ctx.Args().Get(1), 10, 64)
 			if err != nil {
-				return fmt.Errorf("failed to Parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
+				return fmt.Errorf("failed to parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
 			}
 
 			topN, err = strconv.ParseUint(ctx.Args().Get(2), 10, 64)
 			if err != nil {
-				return fmt.Errorf("failed to Parse topn, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
+				return fmt.Errorf("failed to parse topn, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
 			}
 		}
 
 		if blockNumber != math.MaxUint64 {
 			headerBlockHash = rawdb.ReadCanonicalHash(db, blockNumber)
 			if headerBlockHash == (common.Hash{}) {
-				return errors.New("ReadHeadBlockHash empry hash")
+				return errors.New("ReadHeadBlockHash empty hash")
 			}
 			blockHeader := rawdb.ReadHeader(db, headerBlockHash, blockNumber)
 			trieRootHash = blockHeader.Root
@@ -508,7 +508,7 @@ func ancientInspect(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, true)
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 	return rawdb.AncientInspect(db)
 }
