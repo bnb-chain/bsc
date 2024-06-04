@@ -301,6 +301,7 @@ type BlockChain struct {
 	diffLayerFreezerBlockLimit uint64
 
 	wg            sync.WaitGroup
+	dbWg          sync.WaitGroup
 	quit          chan struct{} // shutdown signal, closed in Stop.
 	stopping      atomic.Bool   // false if chain is running, true when stopped
 	procInterrupt atomic.Bool   // interrupt signaler for block processing
@@ -1298,19 +1299,33 @@ func (bc *BlockChain) ExportN(w io.Writer, first uint64, last uint64) error {
 //
 // Note, this function assumes that the `mu` mutex is held!
 func (bc *BlockChain) writeHeadBlock(block *types.Block) {
-	// Add the block to the canonical chain number scheme and mark as the head
-	rawdb.WriteCanonicalHash(bc.db.BlockStore(), block.Hash(), block.NumberU64())
-	rawdb.WriteHeadHeaderHash(bc.db.BlockStore(), block.Hash())
-	rawdb.WriteHeadBlockHash(bc.db.BlockStore(), block.Hash())
+	bc.dbWg.Add(2)
+	go func() {
+		defer bc.dbWg.Done()
+		// Add the block to the canonical chain number scheme and mark as the head
+		blockBatch := bc.db.BlockStore().NewBatch()
 
-	batch := bc.db.NewBatch()
-	rawdb.WriteHeadFastBlockHash(batch, block.Hash())
-	rawdb.WriteTxLookupEntriesByBlock(batch, block)
+		rawdb.WriteCanonicalHash(blockBatch, block.Hash(), block.NumberU64())
+		rawdb.WriteHeadHeaderHash(blockBatch, block.Hash())
+		rawdb.WriteHeadBlockHash(blockBatch, block.Hash())
+		// Flush the whole batch into the disk, exit the node if failed
+		if err := blockBatch.Write(); err != nil {
+			log.Crit("Failed to update chain indexes and markers", "err", err)
+		}
+	}()
+	go func() {
+		defer bc.dbWg.Done()
 
-	// Flush the whole batch into the disk, exit the node if failed
-	if err := batch.Write(); err != nil {
-		log.Crit("Failed to update chain indexes and markers", "err", err)
-	}
+		batch := bc.db.NewBatch()
+		rawdb.WriteHeadFastBlockHash(batch, block.Hash())
+		rawdb.WriteTxLookupEntriesByBlock(batch, block)
+
+		// Flush the whole batch into the disk, exit the node if failed
+		if err := batch.Write(); err != nil {
+			log.Crit("Failed to update chain indexes and markers", "err", err)
+		}
+	}()
+
 	// Update all in-memory chain markers in the last step
 	bc.hc.SetCurrentHeader(block.Header())
 
@@ -1321,6 +1336,8 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	headBlockGauge.Update(int64(block.NumberU64()))
 	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(block.Header())))
 	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
+
+	bc.dbWg.Wait()
 }
 
 // stopWithoutSaving stops the blockchain service. If any imports are currently in progress
