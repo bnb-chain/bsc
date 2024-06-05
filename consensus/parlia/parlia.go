@@ -128,6 +128,10 @@ var (
 	// invalid list of validators (i.e. non divisible by 20 bytes).
 	errInvalidSpanValidators = errors.New("invalid validator list on sprint end block")
 
+	// errInvalidTurnTerm is returned if a block contains an
+	// invalid term of turn (i.e. no data left after parsing validators).
+	errInvalidTurnTerm = errors.New("invalid turnTerm")
+
 	// errInvalidMixDigest is returned if a block's mix digest is non-zero.
 	errInvalidMixDigest = errors.New("non-zero mix digest")
 

@@ -468,12 +468,12 @@ func parseTurnTerm(header *types.Header, chainConfig *params.ChainConfig, parlia
 	}
 
 	if len(header.Extra) <= extraVanity+extraSeal {
-		return nil, errors.New("invalid turnTerm")
+		return nil, errInvalidSpanValidators
 	}
 	num := int(header.Extra[extraVanity])
 	pos := extraVanity + validatorNumberSize + num*validatorBytesLength
 	if len(header.Extra) <= pos {
-		return nil, errors.New("invalid turnTerm")
+		return nil, errInvalidTurnTerm
 	}
 	turnterm := header.Extra[pos]
 	return &turnterm, nil
