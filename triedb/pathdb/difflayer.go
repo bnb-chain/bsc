@@ -20,12 +20,54 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 )
+
+type HashIndex struct {
+	cache map[common.Hash]*trienode.Node
+	lock  sync.RWMutex
+}
+
+func (h *HashIndex) Set(hash common.Hash, node *trienode.Node) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	h.cache[hash] = node
+}
+
+func (h *HashIndex) Get(hash common.Hash) *trienode.Node {
+	h.lock.RUnlock()
+	defer h.lock.RUnlock()
+
+	if n, ok := h.cache[hash]; ok {
+		return n
+	}
+	return nil
+}
+
+func (h *HashIndex) Del(hash common.Hash) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	delete(h.cache, hash)
+}
+
+func (h *HashIndex) Remove(ly layer) {
+	dl, ok := ly.(*diffLayer)
+	if !ok {
+		return
+	}
+	go func() {
+		for _, subset := range dl.nodes {
+			for _, node := range subset {
+				h.Del(node.Hash)
+			}
+		}
+	}()
+}
 
 // diffLayer represents a collection of modifications made to the in-memory tries
 // along with associated state changes after running a block on top.
@@ -41,7 +83,7 @@ type diffLayer struct {
 	states *triestate.Set                            // Associated state change set for building history
 	memory uint64                                    // Approximate guess as to how much memory we use
 
-	cache *fastcache.Cache
+	cache *HashIndex
 
 	parent layer        // Parent layer modified by this one, never nil, **can be changed**
 	lock   sync.RWMutex // Lock used to protect parent
@@ -64,11 +106,13 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 	if pdl, ok := parent.(*diffLayer); ok && pdl.cache != nil {
 		dl.cache = pdl.cache
 	} else {
-		dl.cache = fastcache.New(1024 * 1024 * 1024)
+		dl.cache = &HashIndex{
+			cache: make(map[common.Hash]*trienode.Node),
+		}
 	}
 	for _, subset := range nodes {
 		for path, n := range subset {
-			dl.cache.Set(n.Hash[:], n.Blob)
+			dl.cache.Set(n.Hash, n)
 			dl.memory += uint64(n.Size() + len(path))
 			size += int64(len(n.Blob) + len(path))
 		}
@@ -142,22 +186,24 @@ func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, dept
 // Node implements the layer interface, retrieving the trie node blob with the
 // provided node information. No error will be returned if the node is not found.
 func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]byte, error) {
-	if blob := dl.cache.Get(nil, hash[:]); blob != nil {
+	if n := dl.cache.Get(hash); n != nil {
 		dirtyHitMeter.Mark(1)
-		dirtyReadMeter.Mark(int64(len(blob)))
-		return blob, nil
+		dirtyReadMeter.Mark(int64(len(n.Blob)))
+		return n.Blob, nil
 	}
 
+	parent := dl.parent
 	for {
-		parent := dl.parent
 		if disk, ok := parent.(*diskLayer); ok {
 			blob, err := disk.Node(owner, path, hash)
 			if err != nil {
+				log.Warn("hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash)
 				return dl.node(owner, path, hash, 0)
 			} else {
 				return blob, nil
 			}
 		}
+		parent = parent.parentLayer()
 	}
 	//return dl.node(owner, path, hash, 0)
 }
