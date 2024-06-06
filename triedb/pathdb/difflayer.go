@@ -31,14 +31,20 @@ type HashIndex struct {
 	cache map[common.Hash]*trienode.Node
 }
 
-func (h *HashIndex) Length() int {
+func (h *HashIndex) length() int {
+	if h == nil {
+		return 0
+	}
 	h.lock.RLock()
 	defer h.lock.RUnlock()
 
 	return len(h.cache)
 }
 
-func (h *HashIndex) Set(hash common.Hash, node *trienode.Node) {
+func (h *HashIndex) set(hash common.Hash, node *trienode.Node) {
+	if h == nil {
+		return
+	}
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -46,6 +52,9 @@ func (h *HashIndex) Set(hash common.Hash, node *trienode.Node) {
 }
 
 func (h *HashIndex) Get(hash common.Hash) *trienode.Node {
+	if h == nil {
+		return nil
+	}
 	h.lock.RLock()
 	defer h.lock.RUnlock()
 
@@ -55,7 +64,10 @@ func (h *HashIndex) Get(hash common.Hash) *trienode.Node {
 	return nil
 }
 
-func (h *HashIndex) Del(hash common.Hash) {
+func (h *HashIndex) del(hash common.Hash) {
+	if h == nil {
+		return
+	}
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -63,19 +75,25 @@ func (h *HashIndex) Del(hash common.Hash) {
 }
 
 func (h *HashIndex) Add(ly layer) {
+	if h == nil {
+		return
+	}
 	dl, ok := ly.(*diffLayer)
 	if !ok {
 		return
 	}
 	for _, subset := range dl.nodes {
 		for _, node := range subset {
-			h.Set(node.Hash, node)
+			h.set(node.Hash, node)
 		}
 	}
-	log.Info("Add difflayer to hash map", "root", ly.rootHash(), "map_len", h.Length())
+	log.Debug("Add difflayer to hash map", "root", ly.rootHash(), "map_len", h.length())
 }
 
 func (h *HashIndex) Remove(ly layer) {
+	if h == nil {
+		return
+	}
 	dl, ok := ly.(*diffLayer)
 	if !ok {
 		return
@@ -83,10 +101,10 @@ func (h *HashIndex) Remove(ly layer) {
 	go func() {
 		for _, subset := range dl.nodes {
 			for _, node := range subset {
-				h.Del(node.Hash)
+				h.del(node.Hash)
 			}
 		}
-		log.Info("Remove difflayer from hash map", "root", ly.rootHash(), "map_len", h.Length())
+		log.Debug("Remove difflayer from hash map", "root", ly.rootHash(), "map_len", h.length())
 	}()
 }
 
@@ -222,7 +240,7 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 				// This is a bad case with a very low probability. The same trienode exists
 				// in different difflayers and can be cleared from the map in advance. In
 				// this case, the 128-layer difflayer is queried again.
-				log.Info("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String())
+				log.Debug("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String())
 				return dl.node(owner, path, hash, 0)
 			} else {
 				return blob, nil
