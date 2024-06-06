@@ -2,12 +2,14 @@ package parlia
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	mrand "math/rand"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -16,9 +18,38 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-func (p *Parlia) getTurnTerm(header *types.Header) (turnTerm *big.Int, err error) {
+func (p *Parlia) getTurnTerm(chain consensus.ChainHeaderReader, header *types.Header) (*uint8, error) {
+	if header.Number.Uint64()%p.config.Epoch != 0 ||
+		!p.chainConfig.IsBohr(header.Number, header.Time) {
+		return nil, nil
+	}
+
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return nil, errors.New("parent not found")
+	}
+
+	var turnTerm uint8
+	if p.chainConfig.IsBohr(parent.Number, parent.Time) {
+		turnTermFromContract, err := p.getTurnTermFromContract(parent)
+		if err != nil {
+			return nil, err
+		}
+		if turnTermFromContract == nil {
+			return nil, errors.New("unexpected error when getTurnTermFromContract")
+		}
+		turnTerm = uint8(turnTermFromContract.Int64())
+	} else {
+		turnTerm = uint8(defaultTurnTerm)
+	}
+	log.Debug("getTurnTerm", "turnTerm", turnTerm)
+
+	return &turnTerm, nil
+}
+
+func (p *Parlia) getTurnTermFromContract(header *types.Header) (turnTerm *big.Int, err error) {
 	if params.UseRandTurnTerm {
-		return p.getRandTurnTerm(header)
+		return p.getRandTurnTerm(header) // used as a mock to get turnTerm from the contract
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

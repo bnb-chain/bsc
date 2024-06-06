@@ -903,29 +903,13 @@ func (p *Parlia) prepareValidators(header *types.Header) error {
 }
 
 func (p *Parlia) prepareTurnTerm(chain consensus.ChainHeaderReader, header *types.Header) error {
-	if header.Number.Uint64()%p.config.Epoch != 0 ||
-		!p.chainConfig.IsBohr(header.Number, header.Time) {
-		return nil
+	turnTerm, err := p.getTurnTerm(chain, header)
+	if err != nil {
+		return err
 	}
 
-	parent := chain.GetHeaderByHash(header.ParentHash)
-	if parent == nil {
-		return errors.New("parent not found")
-	}
-
-	if p.chainConfig.IsBohr(parent.Number, parent.Time) {
-		turnTerm, err := p.getTurnTerm(parent)
-		if err != nil {
-			return err
-		}
-		if turnTerm == nil {
-			return errors.New("unexpected error when getTurnTerm")
-		}
-		header.Extra = append(header.Extra, byte(int(turnTerm.Int64())))
-		log.Debug("prepareTurnTerm", "turnTerm", turnTerm.Int64())
-	} else {
-		log.Debug("prepareTurnTerm", "turnTerm", "defaultTurnTerm")
-		header.Extra = append(header.Extra, byte(int(defaultTurnTerm)))
+	if turnTerm != nil {
+		header.Extra = append(header.Extra, *turnTerm)
 	}
 
 	return nil
@@ -1126,25 +1110,13 @@ func (p *Parlia) verifyTurnTerm(chain consensus.ChainHeaderReader, header *types
 		return err
 	}
 	if turnTermFromHeader != nil {
-		parent := chain.GetHeaderByHash(header.ParentHash)
-		if parent == nil {
-			return errors.New("parent not found")
+		turnTerm, err := p.getTurnTerm(chain, header)
+		if err != nil {
+			return err
 		}
-
-		if p.chainConfig.IsBohr(parent.Number, parent.Time) {
-			turnTermFromContract, err := p.getTurnTerm(parent)
-			if err != nil {
-				return err
-			}
-			if turnTermFromContract != nil && uint8(turnTermFromContract.Int64()) == *turnTermFromHeader {
-				log.Debug("verifyTurnTerm", "turnTerm", turnTermFromContract.Int64())
-				return nil
-			}
-		} else {
-			if uint8(defaultTurnTerm) == *turnTermFromHeader {
-				log.Debug("verifyTurnTerm", "turnTerm", "defaultTurnTerm")
-				return nil
-			}
+		if turnTerm != nil && *turnTerm == *turnTermFromHeader {
+			log.Debug("verifyTurnTerm", "turnTerm", *turnTerm)
+			return nil
 		}
 	}
 
