@@ -37,7 +37,6 @@ func (h *HashIndex) length() int {
 	}
 	h.lock.RLock()
 	defer h.lock.RUnlock()
-
 	return len(h.cache)
 }
 
@@ -47,7 +46,6 @@ func (h *HashIndex) set(hash common.Hash, node *trienode.Node) {
 	}
 	h.lock.Lock()
 	defer h.lock.Unlock()
-
 	h.cache[hash] = node
 }
 
@@ -57,7 +55,6 @@ func (h *HashIndex) Get(hash common.Hash) *trienode.Node {
 	}
 	h.lock.RLock()
 	defer h.lock.RUnlock()
-
 	if n, ok := h.cache[hash]; ok {
 		return n
 	}
@@ -70,7 +67,6 @@ func (h *HashIndex) del(hash common.Hash) {
 	}
 	h.lock.Lock()
 	defer h.lock.Unlock()
-
 	delete(h.cache, hash)
 }
 
@@ -78,7 +74,6 @@ func (h *HashIndex) Add(ly layer) {
 	if h == nil {
 		return
 	}
-
 	dl, ok := ly.(*diffLayer)
 	if !ok {
 		return
@@ -95,7 +90,6 @@ func (h *HashIndex) Remove(ly layer) {
 	if h == nil {
 		return
 	}
-	
 	dl, ok := ly.(*diffLayer)
 	if !ok {
 		return
@@ -237,7 +231,7 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	parent := dl.parent
 	for {
 		if disk, ok := parent.(*diskLayer); ok {
-			blob, err := disk.Node(owner, path, hash)
+			blob, err := disk.NodeByLogger(owner, path, hash, log.Debug)
 			if err != nil {
 				// This is a bad case with a very low probability. The same trienode exists
 				// in different difflayers and can be cleared from the map in advance. In
