@@ -83,6 +83,7 @@ func (h *HashIndex) Add(ly layer) {
 			h.set(node.Hash, node)
 		}
 	}
+	diffHashCacheLengthGauge.Update(int64(h.length()))
 	log.Debug("Add difflayer to hash map", "root", ly.rootHash(), "map_len", h.length())
 }
 
@@ -100,6 +101,7 @@ func (h *HashIndex) Remove(ly layer) {
 				h.del(node.Hash)
 			}
 		}
+		diffHashCacheLengthGauge.Update(int64(h.length()))
 		log.Debug("Remove difflayer from hash map", "root", ly.rootHash(), "map_len", h.length())
 	}()
 }
