@@ -319,13 +319,9 @@ func (b *bidSimulator) newBidLoop() {
 	// commit aborts in-flight bid execution with given signal and resubmits a new one.
 	commit := func(reason int32, bidRuntime *BidRuntime) {
 		// if the left time is not enough to do simulation, return
-		var simDuration time.Duration
-		if lastBid := b.GetBestBid(bidRuntime.bid.ParentHash); lastBid != nil && lastBid.duration != 0 {
-			simDuration = lastBid.duration
-		}
-
-		if time.Until(b.bidMustBefore(bidRuntime.bid.ParentHash)) <= simDuration*leftOverTimeRate/leftOverTimeScale {
-			log.Debug("BidSimulator: abort commit, not enough time to simulate",
+		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
+		if delay == nil || *delay <= 0 {
+			log.Info("BidSimulator: abort commit, not enough time to simulate",
 				"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 			return
 		}
@@ -370,6 +366,7 @@ func (b *bidSimulator) newBidLoop() {
 				expectedValidatorReward: expectedValidatorReward,
 				packedBlockReward:       big.NewInt(0),
 				packedValidatorReward:   big.NewInt(0),
+				finished:                make(chan struct{}),
 			}
 
 			simulatingBid := b.GetSimulatingBid(newBid.ParentHash)
@@ -530,7 +527,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// ensure simulation exited then start next simulation
 	b.SetSimulatingBid(parentHash, bidRuntime)
-	start := time.Now()
 
 	defer func(simStart time.Time) {
 		logCtx := []any{
@@ -556,10 +552,11 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 
 		b.RemoveSimulatingBid(parentHash)
-		bidSimTimer.UpdateSince(start)
+		close(bidRuntime.finished)
 
 		if success {
 			bidRuntime.duration = time.Since(simStart)
+			bidSimTimer.UpdateSince(simStart)
 
 			// only recommit self bid when newBidCh is empty
 			if len(b.newBidCh) > 0 {
@@ -733,6 +730,7 @@ type BidRuntime struct {
 	packedBlockReward     *big.Int
 	packedValidatorReward *big.Int
 
+	finished chan struct{}
 	duration time.Duration
 }
 
