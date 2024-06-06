@@ -104,6 +104,11 @@ func (tree *layerTree) add(root common.Hash, parentRoot common.Hash, block uint6
 	}
 	l := parent.update(root, parent.stateID()+1, block, nodes.Flatten(), states)
 
+	if l.cache != nil {
+		// Before adding layertree, update the hash cache.
+		l.cache.Add(l)
+	}
+
 	tree.lock.Lock()
 	tree.layers[l.rootHash()] = l
 	tree.lock.Unlock()
@@ -183,7 +188,10 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 		df, exit := tree.layers[root]
 		if exit {
 			if dl, ok := df.(*diffLayer); ok {
-				dl.cache.Remove(dl)
+				if dl.cache != nil {
+					// Clean up the hash cache of the child difflayer corresponding to the stale parent.
+					dl.cache.Remove(dl)
+				}
 			}
 		}
 		delete(tree.layers, root)

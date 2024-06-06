@@ -27,8 +27,15 @@ import (
 )
 
 type HashIndex struct {
-	cache map[common.Hash]*trienode.Node
 	lock  sync.RWMutex
+	cache map[common.Hash]*trienode.Node
+}
+
+func (h *HashIndex) Length() int {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
+	return len(h.cache)
 }
 
 func (h *HashIndex) Set(hash common.Hash, node *trienode.Node) {
@@ -39,7 +46,7 @@ func (h *HashIndex) Set(hash common.Hash, node *trienode.Node) {
 }
 
 func (h *HashIndex) Get(hash common.Hash) *trienode.Node {
-	h.lock.RUnlock()
+	h.lock.RLock()
 	defer h.lock.RUnlock()
 
 	if n, ok := h.cache[hash]; ok {
@@ -55,6 +62,19 @@ func (h *HashIndex) Del(hash common.Hash) {
 	delete(h.cache, hash)
 }
 
+func (h *HashIndex) Add(ly layer) {
+	dl, ok := ly.(*diffLayer)
+	if !ok {
+		return
+	}
+	for _, subset := range dl.nodes {
+		for _, node := range subset {
+			h.Set(node.Hash, node)
+		}
+	}
+	log.Info("Add difflayer to hash map", "root", ly.rootHash(), "map_len", h.Length())
+}
+
 func (h *HashIndex) Remove(ly layer) {
 	dl, ok := ly.(*diffLayer)
 	if !ok {
@@ -66,6 +86,7 @@ func (h *HashIndex) Remove(ly layer) {
 				h.Del(node.Hash)
 			}
 		}
+		log.Info("Remove difflayer from hash map", "root", ly.rootHash(), "map_len", h.Length())
 	}()
 }
 
@@ -112,7 +133,6 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 	}
 	for _, subset := range nodes {
 		for path, n := range subset {
-			dl.cache.Set(n.Hash, n)
 			dl.memory += uint64(n.Size() + len(path))
 			size += int64(len(n.Blob) + len(path))
 		}
@@ -187,6 +207,8 @@ func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, dept
 // provided node information. No error will be returned if the node is not found.
 func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]byte, error) {
 	if n := dl.cache.Get(hash); n != nil {
+		// The query from the hash map is fastpath,
+		// avoiding recursive query of 128 difflayers.
 		dirtyHitMeter.Mark(1)
 		dirtyReadMeter.Mark(int64(len(n.Blob)))
 		return n.Blob, nil
@@ -197,7 +219,10 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		if disk, ok := parent.(*diskLayer); ok {
 			blob, err := disk.Node(owner, path, hash)
 			if err != nil {
-				log.Warn("hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash)
+				// This is a bad case with a very low probability. The same trienode exists
+				// in different difflayers and can be cleared from the map in advance. In
+				// this case, the 128-layer difflayer is queried again.
+				log.Info("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String())
 				return dl.node(owner, path, hash, 0)
 			} else {
 				return blob, nil
@@ -205,7 +230,6 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		}
 		parent = parent.parentLayer()
 	}
-	//return dl.node(owner, path, hash, 0)
 }
 
 // update implements the layer interface, creating a new layer on top of the
