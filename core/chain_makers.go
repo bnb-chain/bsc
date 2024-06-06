@@ -119,7 +119,7 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 	if b.gasPool == nil {
 		b.SetCoinbase(common.Address{})
 	}
-	b.statedb.SetTxContext(tx.Hash(), len(b.txs))
+	b.statedb.SetTxContext(tx.Hash(), len(b.txs), 0)
 	receipt, err := ApplyTransaction(b.cm.config, bc, &b.header.Coinbase, b.gasPool, b.statedb, b.header, tx, &b.header.GasUsed, vmConfig, NewReceiptBloomGenerator())
 	if err != nil {
 		panic(err)

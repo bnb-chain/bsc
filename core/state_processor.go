@@ -99,6 +99,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// initialise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
+	statedb.ResetMVStates(len(block.Transactions()))
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
@@ -125,7 +126,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			bloomProcessors.Close()
 			return statedb, nil, nil, 0, err
 		}
-		statedb.SetTxContext(tx.Hash(), i)
+		statedb.SetTxContext(tx.Hash(), i, 0)
 
 		receipt, err := applyTransaction(msg, p.config, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, bloomProcessors)
 		if err != nil {
@@ -136,6 +137,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		receipts = append(receipts, receipt)
 	}
 	bloomProcessors.Close()
+	// analysis TxDAG
 
 	// Fail if Shanghai not enabled and len(withdrawals) is non-zero.
 	withdrawals := block.Withdrawals()
@@ -159,6 +161,7 @@ func applyTransaction(msg *Message, config *params.ChainConfig, gp *GasPool, sta
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
+	statedb.ResetRWSet()
 
 	// Apply the transaction to the current state (included in the env).
 	result, err := ApplyMessage(evm, msg, gp)
@@ -172,6 +175,9 @@ func applyTransaction(msg *Message, config *params.ChainConfig, gp *GasPool, sta
 		statedb.Finalise(true)
 	} else {
 		root = statedb.IntermediateRoot(config.IsEIP158(blockNumber)).Bytes()
+	}
+	if err := statedb.FinalizeRWSet(); err != nil {
+		return nil, err
 	}
 	*usedGas += result.UsedGas
 

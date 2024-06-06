@@ -1824,7 +1824,7 @@ func (p *Parlia) applyTransaction(
 		// move to next
 		*receivedTxs = (*receivedTxs)[1:]
 	}
-	state.SetTxContext(expectedTx.Hash(), len(*txs))
+	state.SetTxContext(expectedTx.Hash(), len(*txs), 0)
 	gasUsed, err := applyMessage(msg, state, header, p.chainConfig, chainContext)
 	if err != nil {
 		return err

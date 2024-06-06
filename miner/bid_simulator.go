@@ -756,7 +756,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	)
 
 	// Start executing the transaction
-	r.env.state.SetTxContext(tx.Hash(), r.env.tcount)
+	r.env.state.SetTxContext(tx.Hash(), r.env.tcount, 0)
 
 	if tx.Type() == types.BlobTxType {
 		sc = types.NewBlobSidecarFromTx(tx)

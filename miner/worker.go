@@ -903,7 +903,7 @@ LOOP:
 			continue
 		}
 		// Start executing the transaction
-		env.state.SetTxContext(tx.Hash(), env.tcount)
+		env.state.SetTxContext(tx.Hash(), env.tcount, 0)
 
 		logs, err := w.commitTransaction(env, tx, bloomProcessors)
 		switch {
