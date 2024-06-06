@@ -78,6 +78,7 @@ func (h *HashIndex) Add(ly layer) {
 	if h == nil {
 		return
 	}
+
 	dl, ok := ly.(*diffLayer)
 	if !ok {
 		return
@@ -94,6 +95,7 @@ func (h *HashIndex) Remove(ly layer) {
 	if h == nil {
 		return
 	}
+	
 	dl, ok := ly.(*diffLayer)
 	if !ok {
 		return
@@ -121,8 +123,7 @@ type diffLayer struct {
 	nodes  map[common.Hash]map[string]*trienode.Node // Cached trie nodes indexed by owner and path
 	states *triestate.Set                            // Associated state change set for building history
 	memory uint64                                    // Approximate guess as to how much memory we use
-
-	cache *HashIndex
+	cache  *HashIndex                                // trienode cache by hash key.
 
 	parent layer        // Parent layer modified by this one, never nil, **can be changed**
 	lock   sync.RWMutex // Lock used to protect parent
@@ -227,10 +228,11 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	if n := dl.cache.Get(hash); n != nil {
 		// The query from the hash map is fastpath,
 		// avoiding recursive query of 128 difflayers.
-		dirtyHitMeter.Mark(1)
-		dirtyReadMeter.Mark(int64(len(n.Blob)))
+		diffHashCacheHitMeter.Mark(1)
+		diffHashCacheReadMeter.Mark(int64(len(n.Blob)))
 		return n.Blob, nil
 	}
+	diffHashCacheMissMeter.Mark(1)
 
 	parent := dl.parent
 	for {
@@ -240,6 +242,7 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 				// This is a bad case with a very low probability. The same trienode exists
 				// in different difflayers and can be cleared from the map in advance. In
 				// this case, the 128-layer difflayer is queried again.
+				diffHashCacheSlowPathMeter.Mark(1)
 				log.Debug("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String())
 				return dl.node(owner, path, hash, 0)
 			} else {
