@@ -29,11 +29,6 @@ import (
 const (
 	// maxBidPerBuilderPerBlock is the max bid number per builder
 	maxBidPerBuilderPerBlock = 3
-
-	// leftOverTimeRate is the rate of left over time to simulate a bid
-	leftOverTimeRate = 11
-	// leftOverTimeScale is the scale of left over time to simulate a bid
-	leftOverTimeScale = 10
 )
 
 var (
