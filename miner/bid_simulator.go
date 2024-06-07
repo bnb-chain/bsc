@@ -394,11 +394,6 @@ func (b *bidSimulator) newBidLoop() {
 	}
 }
 
-func (b *bidSimulator) bidMustBefore(parentHash common.Hash) time.Time {
-	parentHeader := b.chain.GetHeaderByHash(parentHash)
-	return bidutil.BidMustBefore(parentHeader, b.chainConfig.Parlia.Period, b.delayLeftOver)
-}
-
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
 	parentHeader := b.chain.GetHeaderByHash(parentHash)
 	return bidutil.BidBetterBefore(parentHeader, b.chainConfig.Parlia.Period, b.delayLeftOver, b.config.BidSimulationLeftOver)
