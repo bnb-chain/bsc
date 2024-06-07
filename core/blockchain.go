@@ -670,7 +670,7 @@ func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
 // into node seamlessly.
 func (bc *BlockChain) empty() bool {
 	genesis := bc.genesisBlock.Hash()
-	for _, hash := range []common.Hash{rawdb.ReadHeadBlockHash(bc.db.BlockStore()), rawdb.ReadHeadHeaderHash(bc.db.BlockStore()), rawdb.ReadHeadFastBlockHash(bc.db)} {
+	for _, hash := range []common.Hash{rawdb.ReadHeadBlockHash(bc.db.BlockStore()), rawdb.ReadHeadHeaderHash(bc.db.BlockStore()), rawdb.ReadHeadFastBlockHash(bc.db.BlockStore())} {
 		if hash != genesis {
 			return false
 		}
@@ -739,7 +739,7 @@ func (bc *BlockChain) loadLastState() error {
 	bc.currentSnapBlock.Store(headBlock.Header())
 	headFastBlockGauge.Update(int64(headBlock.NumberU64()))
 
-	if head := rawdb.ReadHeadFastBlockHash(bc.db); head != (common.Hash{}) {
+	if head := rawdb.ReadHeadFastBlockHash(bc.db.BlockStore()); head != (common.Hash{}) {
 		if block := bc.GetBlockByHash(head); block != nil {
 			bc.currentSnapBlock.Store(block.Header())
 			headFastBlockGauge.Update(int64(block.NumberU64()))
@@ -1308,6 +1308,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 		rawdb.WriteCanonicalHash(blockBatch, block.Hash(), block.NumberU64())
 		rawdb.WriteHeadHeaderHash(blockBatch, block.Hash())
 		rawdb.WriteHeadBlockHash(blockBatch, block.Hash())
+		rawdb.WriteHeadFastBlockHash(blockBatch, block.Hash())
 		// Flush the whole batch into the disk, exit the node if failed
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to update chain indexes and markers", "err", err)
@@ -1317,7 +1318,6 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 		defer bc.dbWg.Done()
 
 		batch := bc.db.NewBatch()
-		rawdb.WriteHeadFastBlockHash(batch, block.Hash())
 		rawdb.WriteTxLookupEntriesByBlock(batch, block)
 
 		// Flush the whole batch into the disk, exit the node if failed
@@ -1548,7 +1548,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			} else if !reorg {
 				return false
 			}
-			rawdb.WriteHeadFastBlockHash(bc.db, head.Hash())
+			rawdb.WriteHeadFastBlockHash(bc.db.BlockStore(), head.Hash())
 			bc.currentSnapBlock.Store(head.Header())
 			headFastBlockGauge.Update(int64(head.NumberU64()))
 			return true

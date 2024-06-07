@@ -1282,7 +1282,7 @@ func ReadChainMetadataFromMultiDatabase(db ethdb.Database) [][]string {
 	data := [][]string{
 		{"databaseVersion", pp(ReadDatabaseVersion(db))},
 		{"headBlockHash", fmt.Sprintf("%v", ReadHeadBlockHash(db.BlockStore()))},
-		{"headFastBlockHash", fmt.Sprintf("%v", ReadHeadFastBlockHash(db))},
+		{"headFastBlockHash", fmt.Sprintf("%v", ReadHeadFastBlockHash(db.BlockStore()))},
 		{"headHeaderHash", fmt.Sprintf("%v", ReadHeadHeaderHash(db.BlockStore()))},
 		{"lastPivotNumber", pp(ReadLastPivotNumber(db))},
 		{"len(snapshotSyncStatus)", fmt.Sprintf("%d bytes", len(ReadSnapshotSyncStatus(db)))},

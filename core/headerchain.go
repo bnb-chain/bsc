@@ -668,7 +668,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// first then remove the relative data from the database.
 		//
 		// Update head first(head fast block, head full block) before deleting the data.
-		markerBatch := hc.chainDb.NewBatch()
+		markerBatch := hc.chainDb.BlockStore().NewBatch()
 		if updateFn != nil {
 			newHead, force := updateFn(markerBatch, parent)
 			if force && ((headTime > 0 && newHead.Time < headTime) || (headTime == 0 && newHead.Number.Uint64() < headBlock)) {
