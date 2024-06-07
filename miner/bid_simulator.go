@@ -318,14 +318,6 @@ func (b *bidSimulator) newBidLoop() {
 
 	// commit aborts in-flight bid execution with given signal and resubmits a new one.
 	commit := func(reason int32, bidRuntime *BidRuntime) {
-		// if the left time is not enough to do simulation, return
-		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
-		if delay == nil || *delay <= 0 {
-			log.Info("BidSimulator: abort commit, not enough time to simulate",
-				"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
-			return
-		}
-
 		if interruptCh != nil {
 			// each commit work will have its own interruptCh to stop work with a reason
 			interruptCh <- reason
@@ -577,6 +569,14 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		parentHash: bidRuntime.bid.ParentHash,
 		coinbase:   b.bidWorker.etherbase(),
 	}); err != nil {
+		return
+	}
+
+	// if the left time is not enough to do simulation, return
+	delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
+	if delay == nil || *delay <= 0 {
+		log.Info("BidSimulator: abort commit, not enough time to simulate",
+			"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 		return
 	}
 
