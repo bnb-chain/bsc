@@ -1791,7 +1791,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		rawdb.WritePreimages(bc.db, state.Preimages())
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
@@ -1799,6 +1798,11 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		// if cancun is enabled, here need to write sidecars too
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
+		}
+		if bc.db.StateStore() != nil {
+			rawdb.WritePreimages(bc.db.StateStore(), state.Preimages())
+		} else {
+			rawdb.WritePreimages(blockBatch, state.Preimages())
 		}
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
