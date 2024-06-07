@@ -29,11 +29,6 @@ import (
 const (
 	// maxBidPerBuilderPerBlock is the max bid number per builder
 	maxBidPerBuilderPerBlock = 3
-
-	// leftOverTimeRate is the rate of left over time to simulate a bid
-	leftOverTimeRate = 11
-	// leftOverTimeScale is the scale of left over time to simulate a bid
-	leftOverTimeScale = 10
 )
 
 var (
@@ -318,18 +313,6 @@ func (b *bidSimulator) newBidLoop() {
 
 	// commit aborts in-flight bid execution with given signal and resubmits a new one.
 	commit := func(reason int32, bidRuntime *BidRuntime) {
-		// if the left time is not enough to do simulation, return
-		var simDuration time.Duration
-		if lastBid := b.GetBestBid(bidRuntime.bid.ParentHash); lastBid != nil && lastBid.duration != 0 {
-			simDuration = lastBid.duration
-		}
-
-		if time.Until(b.bidMustBefore(bidRuntime.bid.ParentHash)) <= simDuration*leftOverTimeRate/leftOverTimeScale {
-			log.Debug("BidSimulator: abort commit, not enough time to simulate",
-				"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
-			return
-		}
-
 		if interruptCh != nil {
 			// each commit work will have its own interruptCh to stop work with a reason
 			interruptCh <- reason
@@ -370,6 +353,7 @@ func (b *bidSimulator) newBidLoop() {
 				expectedValidatorReward: expectedValidatorReward,
 				packedBlockReward:       big.NewInt(0),
 				packedValidatorReward:   big.NewInt(0),
+				finished:                make(chan struct{}),
 			}
 
 			simulatingBid := b.GetSimulatingBid(newBid.ParentHash)
@@ -408,11 +392,6 @@ func (b *bidSimulator) newBidLoop() {
 			return
 		}
 	}
-}
-
-func (b *bidSimulator) bidMustBefore(parentHash common.Hash) time.Time {
-	parentHeader := b.chain.GetHeaderByHash(parentHash)
-	return bidutil.BidMustBefore(parentHeader, b.chainConfig.Parlia.Period, b.delayLeftOver)
 }
 
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
@@ -530,7 +509,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// ensure simulation exited then start next simulation
 	b.SetSimulatingBid(parentHash, bidRuntime)
-	start := time.Now()
 
 	defer func(simStart time.Time) {
 		logCtx := []any{
@@ -556,10 +534,11 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 
 		b.RemoveSimulatingBid(parentHash)
-		bidSimTimer.UpdateSince(start)
+		close(bidRuntime.finished)
 
 		if success {
 			bidRuntime.duration = time.Since(simStart)
+			bidSimTimer.UpdateSince(simStart)
 
 			// only recommit self bid when newBidCh is empty
 			if len(b.newBidCh) > 0 {
@@ -580,6 +559,14 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		parentHash: bidRuntime.bid.ParentHash,
 		coinbase:   b.bidWorker.etherbase(),
 	}); err != nil {
+		return
+	}
+
+	// if the left time is not enough to do simulation, return
+	delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
+	if delay == nil || *delay <= 0 {
+		log.Info("BidSimulator: abort commit, not enough time to simulate",
+			"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 		return
 	}
 
@@ -650,14 +637,12 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if b.config.GreedyMergeTx {
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 		if delay != nil && *delay > 0 {
-			stopTimer := time.NewTimer(*delay)
-
 			bidTxsSet := mapset.NewSet[common.Hash]()
 			for _, tx := range bidRuntime.bid.Txs {
 				bidTxsSet.Add(tx.Hash())
 			}
 
-			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, stopTimer, bidTxsSet)
+			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, nil, bidTxsSet)
 			log.Trace("BidSimulator: greedy merge stopped", "block", bidRuntime.env.header.Number,
 				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
@@ -733,6 +718,7 @@ type BidRuntime struct {
 	packedBlockReward     *big.Int
 	packedValidatorReward *big.Int
 
+	finished chan struct{}
 	duration time.Duration
 }
 
