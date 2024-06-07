@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 	"golang.org/x/exp/slices"
 	"sort"
@@ -390,7 +391,10 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet) error {
 
 	for k, v := range rwSet.writeSet {
 		// ignore no changed write record
-		if isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
+		if rwSet.readSet[k] == nil || v == nil {
+			log.Info("FulfillRWSet find nil", "k", k)
+		}
+		if rwSet.readSet[k] != nil && isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
 			delete(rwSet.writeSet, k)
 			continue
 		}
