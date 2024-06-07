@@ -647,14 +647,12 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if b.config.GreedyMergeTx {
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 		if delay != nil && *delay > 0 {
-			stopTimer := time.NewTimer(*delay)
-
 			bidTxsSet := mapset.NewSet[common.Hash]()
 			for _, tx := range bidRuntime.bid.Txs {
 				bidTxsSet.Add(tx.Hash())
 			}
 
-			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, stopTimer, bidTxsSet)
+			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, nil, bidTxsSet)
 			log.Trace("BidSimulator: greedy merge stopped", "block", bidRuntime.env.header.Number,
 				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
