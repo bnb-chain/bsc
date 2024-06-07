@@ -52,7 +52,7 @@ func NewTxDAG(txLen int) *TxDAG {
 }
 
 func (d *TxDAG) String() string {
-	exePaths := d.findAllPaths()
+	exePaths := d.travelExecutionPaths()
 	builder := strings.Builder{}
 	for _, path := range exePaths {
 		builder.WriteString(fmt.Sprintf("%v\n", path))
@@ -60,7 +60,7 @@ func (d *TxDAG) String() string {
 	return builder.String()
 }
 
-func (d *TxDAG) findAllPaths() [][]int {
+func (d *TxDAG) travelExecutionPaths() [][]int {
 	// regenerate TxDAG
 	nd := NewTxDAG(len(d.TxDeps))
 	for i, txDep := range d.TxDeps {
@@ -71,7 +71,7 @@ func (d *TxDAG) findAllPaths() [][]int {
 		}
 
 		// recover to relation 0
-		for j := 0; j < len(d.TxDeps); j++ {
+		for j := 0; j < i; j++ {
 			if !txDep.Exist(j) {
 				nd.TxDeps[i].AppendDep(j)
 			}
@@ -81,12 +81,12 @@ func (d *TxDAG) findAllPaths() [][]int {
 
 	// travel tx deps with BFS
 	for i := len(nd.TxDeps) - 1; i >= 0; i-- {
-		exePaths = append(exePaths, findExecutionPath(nd.TxDeps, i))
+		exePaths = append(exePaths, travelTargetPath(nd.TxDeps, i))
 	}
 	return exePaths
 }
 
-func findExecutionPath(deps []TxDep, from int) []int {
+func travelTargetPath(deps []TxDep, from int) []int {
 	q := make([]int, 0, len(deps))
 	path := make([]int, 0, len(deps))
 
@@ -143,6 +143,9 @@ type RWSet struct {
 	ver      StateVersion
 	readSet  map[RWKey]*ReadRecord
 	writeSet map[RWKey]*WriteRecord
+
+	// some flags
+	mustSerial bool
 }
 
 func NewRWSet(ver StateVersion) *RWSet {
@@ -200,6 +203,11 @@ func (s *RWSet) ReadSet() map[RWKey]*ReadRecord {
 
 func (s *RWSet) WriteSet() map[RWKey]*WriteRecord {
 	return s.writeSet
+}
+
+func (s *RWSet) WithSerialFlag() *RWSet {
+	s.mustSerial = true
+	return s
 }
 
 func (s *RWSet) String() string {
@@ -399,6 +407,10 @@ func (s *MVStates) ResolveDAG() *TxDAG {
 	txDAG := NewTxDAG(len(rwSets))
 	for i := len(rwSets) - 1; i >= 0; i-- {
 		txDAG.TxDeps[i].TxIndexes = []int{}
+		if rwSets[i].mustSerial {
+			txDAG.TxDeps[i].Relation = 1
+			continue
+		}
 		readSet := rwSets[i].ReadSet()
 		// check if there has written op before i
 		for j := 0; j < i; j++ {

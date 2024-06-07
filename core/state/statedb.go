@@ -1924,7 +1924,7 @@ func (s *StateDB) GetSnap() snapshot.Snapshot {
 }
 
 func (s *StateDB) BeforeTxTransition() {
-	log.Info("BeforeTxTransition", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
+	log.Debug("BeforeTxTransition", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
 	if s.mvStates == nil {
 		return
 	}
@@ -1952,13 +1952,13 @@ func (s *StateDB) RecordWrite(key types.RWKey, val interface{}) {
 }
 
 func (s *StateDB) ResetMVStates(txCount int) {
-	log.Info("ResetMVStates", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
+	log.Debug("ResetMVStates", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
 	s.mvStates = types.NewMVStates(txCount)
 	s.rwSet = nil
 }
 
 func (s *StateDB) FinaliseRWSet() error {
-	log.Info("FinaliseRWSet", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
+	log.Debug("FinaliseRWSet", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
 	if s.mvStates == nil || s.rwSet == nil {
 		return nil
 	}
@@ -2017,22 +2017,17 @@ func (s *StateDB) MVStates2TxDAG() *types.TxDAG {
 		return nil
 	}
 
-	rwSets := s.mvStates.RWSets()
-	txDAG := types.NewTxDAG(len(rwSets))
-	for i := len(rwSets) - 1; i > 0; i-- {
-		readSet := rwSets[i].ReadSet()
-		// check if there has written op before i
-		for j := 0; j < i; j++ {
-			for k, _ := range rwSets[j].WriteSet() {
-				if _, ok := readSet[k]; ok {
-					txDAG.TxDeps[i].AppendDep(j)
-					break
-				}
-			}
-		}
-	}
+	return s.mvStates.ResolveDAG()
+}
 
-	return txDAG
+func (s *StateDB) RecordSystemTxRWSet(index int) {
+	if s.mvStates == nil {
+		return
+	}
+	s.mvStates.FulfillRWSet(types.NewRWSet(types.StateVersion{
+		TxIndex:       index,
+		TxIncarnation: 0,
+	}).WithSerialFlag())
 }
 
 // copySet returns a deep-copied set.

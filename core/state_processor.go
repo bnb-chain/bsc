@@ -111,6 +111,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 				bloomProcessors.Close()
 				return statedb, nil, nil, 0, err
 			} else if isSystemTx {
+				statedb.RecordSystemTxRWSet(i)
 				systemTxs = append(systemTxs, tx)
 				continue
 			}
