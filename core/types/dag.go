@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/holiman/uint256"
 	"golang.org/x/exp/slices"
 	"sort"
 	"strings"
@@ -262,14 +263,14 @@ func AccountStateKey(account common.Address, state AccountState) RWKey {
 
 func StorageStateKey(account common.Address, state common.Hash) RWKey {
 	var key RWKey
-	key[0] = AccountStatePrefix
+	key[0] = StorageStatePrefix
 	copy(key[1:], account.Bytes())
 	copy(key[1+common.AddressLength:], state.Bytes())
 	return key
 }
 
-func (key *RWKey) IsAccountState() bool {
-	return AccountStatePrefix == key[0]
+func (key *RWKey) IsAccountState() (bool, AccountState) {
+	return AccountStatePrefix == key[0], AccountState(key[1+common.AddressLength])
 }
 
 func (key *RWKey) IsStorageState() bool {
@@ -389,7 +390,7 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet) error {
 
 	for k, v := range rwSet.writeSet {
 		// ignore no changed write record
-		if rwSet.readSet[k].Val == v.Val {
+		if isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
 			delete(rwSet.writeSet, k)
 			continue
 		}
@@ -400,6 +401,43 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet) error {
 	}
 	s.rwSets[index] = rwSet
 	return nil
+}
+
+func isEqualRWVal(key RWKey, src interface{}, compared interface{}) bool {
+	if ok, state := key.IsAccountState(); ok {
+		switch state {
+		case AccountBalance:
+			//if !isNil(src) && !isNil(compared) {
+			//	return src.(*uint256.Int).Eq(compared.(*uint256.Int))
+			//}
+			//return src == compared
+			if src != nil && compared != nil {
+				return equalUint256(src.(*uint256.Int), compared.(*uint256.Int))
+			}
+			return src == compared
+		case AccountNonce:
+			return src.(uint64) == compared.(uint64)
+		case AccountCodeHash:
+			if src != nil && compared != nil {
+				return slices.Equal(src.([]byte), compared.([]byte))
+			}
+			return src == compared
+		}
+		return false
+	}
+
+	if src != nil && compared != nil {
+		return src.(common.Hash) == compared.(common.Hash)
+	}
+	return src == compared
+}
+
+func equalUint256(s, c *uint256.Int) bool {
+	if s != nil && c != nil {
+		return s.Eq(c)
+	}
+
+	return s == c
 }
 
 func (s *MVStates) ResolveDAG() *TxDAG {
@@ -413,7 +451,10 @@ func (s *MVStates) ResolveDAG() *TxDAG {
 		}
 		readSet := rwSets[i].ReadSet()
 		// check if there has written op before i
+		// TODO: check suicide
+		// add read address flag, it only for check suicide quickly, and cannot for other scenarios.
 		for j := 0; j < i; j++ {
+			// check tx dependency, only check key, skip version
 			for k, _ := range rwSets[j].WriteSet() {
 				if _, ok := readSet[k]; ok {
 					txDAG.TxDeps[i].AppendDep(j)
