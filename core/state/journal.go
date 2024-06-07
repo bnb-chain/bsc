@@ -164,7 +164,7 @@ func (ch createObjectChange) dirtied() *common.Address {
 func (ch resetObjectChange) revert(s *StateDB) {
 	s.setStateObject(ch.prev)
 	if !ch.prevdestruct {
-		delete(s.stateObjectsDestruct, ch.prev.address)
+		s.deleteStateObjectsDestruct(ch.prev.address)
 	}
 	if ch.prevAccount != nil {
 		s.accounts[ch.prev.addrHash] = ch.prevAccount

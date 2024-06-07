@@ -19,6 +19,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -145,7 +146,11 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		return nil, nil, nil, 0, errors.New("withdrawals before shanghai")
 	}
 
+	dag := statedb.MVStates2TxDAG()
+	log.Info("MVStates2TxDAG", "block", block.NumberU64(), "dag", dag)
+
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
+	// TODO: system txs must execute at last
 	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), withdrawals, &receipts, &systemTxs, usedGas)
 	if err != nil {
 		return statedb, receipts, allLogs, *usedGas, err
@@ -161,7 +166,6 @@ func applyTransaction(msg *Message, config *params.ChainConfig, gp *GasPool, sta
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
-	statedb.ResetRWSet()
 
 	// Apply the transaction to the current state (included in the env).
 	result, err := ApplyMessage(evm, msg, gp)
@@ -175,9 +179,6 @@ func applyTransaction(msg *Message, config *params.ChainConfig, gp *GasPool, sta
 		statedb.Finalise(true)
 	} else {
 		root = statedb.IntermediateRoot(config.IsEIP158(blockNumber)).Bytes()
-	}
-	if err := statedb.FinalizeRWSet(); err != nil {
-		return nil, err
 	}
 	*usedGas += result.UsedGas
 

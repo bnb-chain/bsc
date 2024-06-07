@@ -95,10 +95,11 @@ type StateDB struct {
 
 	// This map holds 'live' objects, which will get modified while processing
 	// a state transition.
-	stateObjects         map[common.Address]*stateObject
-	stateObjectsPending  map[common.Address]struct{}            // State objects finalized but not yet written to the trie
-	stateObjectsDirty    map[common.Address]struct{}            // State objects modified in the current execution
-	stateObjectsDestruct map[common.Address]*types.StateAccount // State objects destructed in the block along with its previous value
+	stateObjects              map[common.Address]*stateObject
+	stateObjectsPending       map[common.Address]struct{}            // State objects finalized but not yet written to the trie
+	stateObjectsDirty         map[common.Address]struct{}            // State objects modified in the current execution
+	stateObjectsDestruct      map[common.Address]*types.StateAccount // State objects destructed in the block along with its previous value
+	stateObjectsDestructDirty map[common.Address]*types.StateAccount
 
 	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
 	writeOnSharedStorage bool         // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
@@ -115,10 +116,15 @@ type StateDB struct {
 	refund uint64
 
 	// The tx context and all occurred logs in the scope of transaction.
-	thash   common.Hash
-	txIndex int
-	logs    map[common.Hash][]*types.Log
-	logSize uint
+	thash         common.Hash
+	txIndex       int
+	txIncarnation int
+	logs          map[common.Hash][]*types.Log
+	logSize       uint
+
+	// parallel EVM related
+	rwSet    *types.RWSet
+	mvStates *types.MVStates
 
 	// Preimages occurred seen by VM in the scope of block.
 	preimages map[common.Hash][]byte
@@ -173,23 +179,24 @@ func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*St
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	sdb := &StateDB{
-		db:                   db,
-		originalRoot:         root,
-		snaps:                snaps,
-		accounts:             make(map[common.Hash][]byte),
-		storages:             make(map[common.Hash]map[common.Hash][]byte),
-		accountsOrigin:       make(map[common.Address][]byte),
-		storagesOrigin:       make(map[common.Address]map[common.Hash][]byte),
-		stateObjects:         make(map[common.Address]*stateObject, defaultNumOfSlots),
-		stateObjectsPending:  make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateObjectsDirty:    make(map[common.Address]struct{}, defaultNumOfSlots),
-		stateObjectsDestruct: make(map[common.Address]*types.StateAccount, defaultNumOfSlots),
-		logs:                 make(map[common.Hash][]*types.Log),
-		preimages:            make(map[common.Hash][]byte),
-		journal:              newJournal(),
-		accessList:           newAccessList(),
-		transientStorage:     newTransientStorage(),
-		hasher:               crypto.NewKeccakState(),
+		db:                        db,
+		originalRoot:              root,
+		snaps:                     snaps,
+		accounts:                  make(map[common.Hash][]byte),
+		storages:                  make(map[common.Hash]map[common.Hash][]byte),
+		accountsOrigin:            make(map[common.Address][]byte),
+		storagesOrigin:            make(map[common.Address]map[common.Hash][]byte),
+		stateObjects:              make(map[common.Address]*stateObject, defaultNumOfSlots),
+		stateObjectsPending:       make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateObjectsDirty:         make(map[common.Address]struct{}, defaultNumOfSlots),
+		stateObjectsDestruct:      make(map[common.Address]*types.StateAccount, defaultNumOfSlots),
+		stateObjectsDestructDirty: make(map[common.Address]*types.StateAccount, defaultNumOfSlots),
+		logs:                      make(map[common.Hash][]*types.Log),
+		preimages:                 make(map[common.Hash][]byte),
+		journal:                   newJournal(),
+		accessList:                newAccessList(),
+		transientStorage:          newTransientStorage(),
+		hasher:                    crypto.NewKeccakState(),
 	}
 
 	if sdb.snaps != nil {
@@ -581,8 +588,8 @@ func (s *StateDB) SetStorage(addr common.Address, storage map[common.Hash]common
 	//
 	// TODO(rjl493456442) this function should only be supported by 'unwritable'
 	// state and all mutations made should all be discarded afterwards.
-	if _, ok := s.stateObjectsDestruct[addr]; !ok {
-		s.stateObjectsDestruct[addr] = nil
+	if _, ok := s.queryStateObjectsDestruct(addr); !ok {
+		s.tagStateObjectsDestruct(addr, nil)
 	}
 	stateObject := s.getOrNewStateObject(addr)
 	for k, v := range storage {
@@ -606,7 +613,7 @@ func (s *StateDB) SelfDestruct(addr common.Address) {
 		prevbalance: new(uint256.Int).Set(stateObject.Balance()),
 	})
 	stateObject.markSelfdestructed()
-	stateObject.data.Balance = new(uint256.Int)
+	stateObject.setBalance(new(uint256.Int))
 }
 
 func (s *StateDB) Selfdestruct6780(addr common.Address) {
@@ -798,9 +805,9 @@ func (s *StateDB) createObject(addr common.Address) (newobj, prev *stateObject) 
 		// account and storage data should be cleared as well. Note, it must
 		// be done here, otherwise the destruction event of "original account"
 		// will be lost.
-		_, prevdestruct := s.stateObjectsDestruct[prev.address]
+		_, prevdestruct := s.queryStateObjectsDestruct(prev.address)
 		if !prevdestruct {
-			s.stateObjectsDestruct[prev.address] = prev.origin
+			s.tagStateObjectsDestruct(prev.address, prev.origin)
 		}
 		// There may be some cached account/storage data already since IntermediateRoot
 		// will be called for each transaction before byzantium fork which will always
@@ -841,7 +848,7 @@ func (s *StateDB) createObject(addr common.Address) (newobj, prev *stateObject) 
 func (s *StateDB) CreateAccount(addr common.Address) {
 	newObj, prev := s.createObject(addr)
 	if prev != nil {
-		newObj.setBalance(prev.data.Balance)
+		newObj.setBalance(prev.Balance())
 	}
 }
 
@@ -869,15 +876,16 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		originalRoot: s.originalRoot,
 		// fullProcessed:        s.fullProcessed,
 		// pipeCommit:           s.pipeCommit,
-		accounts:             make(map[common.Hash][]byte),
-		storages:             make(map[common.Hash]map[common.Hash][]byte),
-		accountsOrigin:       make(map[common.Address][]byte),
-		storagesOrigin:       make(map[common.Address]map[common.Hash][]byte),
-		stateObjects:         make(map[common.Address]*stateObject, len(s.journal.dirties)),
-		stateObjectsPending:  make(map[common.Address]struct{}, len(s.stateObjectsPending)),
-		stateObjectsDirty:    make(map[common.Address]struct{}, len(s.journal.dirties)),
-		stateObjectsDestruct: make(map[common.Address]*types.StateAccount, len(s.stateObjectsDestruct)),
-		storagePool:          s.storagePool,
+		accounts:                  make(map[common.Hash][]byte),
+		storages:                  make(map[common.Hash]map[common.Hash][]byte),
+		accountsOrigin:            make(map[common.Address][]byte),
+		storagesOrigin:            make(map[common.Address]map[common.Hash][]byte),
+		stateObjects:              make(map[common.Address]*stateObject, len(s.journal.dirties)),
+		stateObjectsPending:       make(map[common.Address]struct{}, len(s.stateObjectsPending)),
+		stateObjectsDirty:         make(map[common.Address]struct{}, len(s.journal.dirties)),
+		stateObjectsDestruct:      make(map[common.Address]*types.StateAccount, len(s.stateObjectsDestruct)),
+		stateObjectsDestructDirty: make(map[common.Address]*types.StateAccount, len(s.stateObjectsDestructDirty)),
+		storagePool:               s.storagePool,
 		// writeOnSharedStorage: s.writeOnSharedStorage,
 		refund:    s.refund,
 		logs:      make(map[common.Hash][]*types.Log, len(s.logs)),
@@ -929,6 +937,9 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	for addr, value := range s.stateObjectsDestruct {
 		state.stateObjectsDestruct[addr] = value
 	}
+	for addr, value := range s.stateObjectsDestructDirty {
+		state.stateObjectsDestructDirty[addr] = value
+	}
 	// Deep copy the state changes made in the scope of block
 	// along with their original values.
 	state.accounts = copySet(s.accounts)
@@ -967,6 +978,12 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		// know that they need to explicitly terminate an active copy).
 		state.prefetcher = state.prefetcher.copy()
 	}
+
+	// parallel EVM related
+	if s.mvStates != nil {
+		state.mvStates = s.mvStates
+	}
+
 	return state
 }
 
@@ -1015,6 +1032,11 @@ func (s *StateDB) WaitPipeVerification() error {
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 	addressesToPrefetch := make([][]byte, 0, len(s.journal.dirties))
+	// finalise stateObjectsDestruct
+	for addr, acc := range s.stateObjectsDestructDirty {
+		s.stateObjectsDestruct[addr] = acc
+	}
+	s.stateObjectsDestructDirty = make(map[common.Address]*types.StateAccount)
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]
 		if !exist {
@@ -1249,9 +1271,10 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 // SetTxContext sets the current transaction hash and index which are
 // used when the EVM emits new state logs. It should be invoked before
 // transaction execution.
-func (s *StateDB) SetTxContext(thash common.Hash, ti int) {
+func (s *StateDB) SetTxContext(thash common.Hash, txIndex int, incarnation int) {
 	s.thash = thash
-	s.txIndex = ti
+	s.txIndex = txIndex
+	s.txIncarnation = incarnation
 	s.accessList = nil // can't delete this line now, because StateDB.Prepare is not called before processsing a system transaction
 }
 
@@ -1898,6 +1921,118 @@ func (s *StateDB) convertAccountSet(set map[common.Address]*types.StateAccount) 
 
 func (s *StateDB) GetSnap() snapshot.Snapshot {
 	return s.snap
+}
+
+func (s *StateDB) BeforeTxTransition() {
+	log.Info("BeforeTxTransition", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
+	if s.mvStates == nil {
+		return
+	}
+	s.rwSet = types.NewRWSet(types.StateVersion{
+		TxIndex:       s.txIndex,
+		TxIncarnation: s.txIncarnation,
+	})
+}
+
+func (s *StateDB) RecordRead(key types.RWKey, val interface{}) {
+	if s.mvStates == nil || s.rwSet == nil {
+		return
+	}
+	// TODO: read from MVStates, record with ver
+	s.rwSet.RecordRead(key, types.StateVersion{
+		TxIndex: -1,
+	}, val)
+}
+
+func (s *StateDB) RecordWrite(key types.RWKey, val interface{}) {
+	if s.mvStates == nil || s.rwSet == nil {
+		return
+	}
+	s.rwSet.RecordWrite(key, val)
+}
+
+func (s *StateDB) ResetMVStates(txCount int) {
+	log.Info("ResetMVStates", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
+	s.mvStates = types.NewMVStates(txCount)
+	s.rwSet = nil
+}
+
+func (s *StateDB) FinaliseRWSet() error {
+	log.Info("FinaliseRWSet", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
+	if s.mvStates == nil || s.rwSet == nil {
+		return nil
+	}
+	// finalise stateObjectsDestruct
+	for addr, acc := range s.stateObjectsDestructDirty {
+		s.stateObjectsDestruct[addr] = acc
+		s.RecordWrite(types.AccountStateKey(addr, types.AccountSuicide), struct{}{})
+	}
+	for addr := range s.journal.dirties {
+		obj, exist := s.stateObjects[addr]
+		if !exist {
+			continue
+		}
+		if obj.selfDestructed || obj.empty() {
+			// We need to maintain account deletions explicitly (will remain
+			// set indefinitely). Note only the first occurred self-destruct
+			// event is tracked.
+			if _, ok := s.stateObjectsDestruct[obj.address]; !ok {
+				s.RecordWrite(types.AccountStateKey(addr, types.AccountSuicide), struct{}{})
+			}
+		} else {
+			// finalise account & storages
+			obj.finaliseRWSet()
+		}
+	}
+	ver := types.StateVersion{
+		TxIndex:       s.txIndex,
+		TxIncarnation: s.txIncarnation,
+	}
+	if ver != s.rwSet.Version() {
+		return errors.New("you finalize a wrong ver of RWSet")
+	}
+
+	log.Info("FinaliseRWSet", "rwset", s.rwSet)
+	return s.mvStates.FulfillRWSet(s.rwSet)
+}
+
+func (s *StateDB) queryStateObjectsDestruct(addr common.Address) (*types.StateAccount, bool) {
+	if acc, ok := s.stateObjectsDestructDirty[addr]; ok {
+		return acc, ok
+	}
+	acc, ok := s.stateObjectsDestruct[addr]
+	return acc, ok
+}
+
+func (s *StateDB) tagStateObjectsDestruct(addr common.Address, acc *types.StateAccount) {
+	s.stateObjectsDestructDirty[addr] = acc
+}
+
+func (s *StateDB) deleteStateObjectsDestruct(addr common.Address) {
+	delete(s.stateObjectsDestructDirty, addr)
+}
+
+func (s *StateDB) MVStates2TxDAG() *types.TxDAG {
+	if s.mvStates == nil {
+		return nil
+	}
+
+	rwSets := s.mvStates.RWSets()
+	txDAG := types.NewTxDAG(len(rwSets))
+	for i := len(rwSets) - 1; i > 0; i-- {
+		readSet := rwSets[i].ReadSet()
+		// check if there has written op before i
+		for j := 0; j < i; j++ {
+			for k, _ := range rwSets[j].WriteSet() {
+				if _, ok := readSet[k]; ok {
+					txDAG.TxDeps[i].AppendDep(j)
+					break
+				}
+			}
+		}
+	}
+
+	return txDAG
 }
 
 // copySet returns a deep-copied set.

@@ -1,8 +1,13 @@
 package types
 
 import (
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"github.com/ethereum/go-ethereum/common"
+	"golang.org/x/exp/slices"
+	"sort"
+	"strings"
 	"sync"
 )
 
@@ -15,6 +20,20 @@ type TxDep struct {
 	TxIndexes []int
 }
 
+func (d *TxDep) AppendDep(i int) {
+	d.TxIndexes = append(d.TxIndexes, i)
+}
+
+func (d *TxDep) Exist(i int) bool {
+	for _, index := range d.TxIndexes {
+		if index == i {
+			return true
+		}
+	}
+
+	return false
+}
+
 // TxDAG indicate how to use the dependency of txs
 type TxDAG struct {
 	// The TxDAG type
@@ -23,6 +42,70 @@ type TxDAG struct {
 	Type uint8
 	// Tx Dependency List, the list index is equal to TxIndex
 	TxDeps []TxDep
+}
+
+func NewTxDAG(txLen int) *TxDAG {
+	return &TxDAG{
+		Type:   0,
+		TxDeps: make([]TxDep, txLen),
+	}
+}
+
+func (d *TxDAG) String() string {
+	exePaths := d.findAllPaths()
+	builder := strings.Builder{}
+	for _, path := range exePaths {
+		builder.WriteString(fmt.Sprintf("%v\n", path))
+	}
+	return builder.String()
+}
+
+func (d *TxDAG) findAllPaths() [][]int {
+	// regenerate TxDAG
+	nd := NewTxDAG(len(d.TxDeps))
+	for i, txDep := range d.TxDeps {
+		nd.TxDeps[i].Relation = 0
+		if txDep.Relation == 0 {
+			nd.TxDeps[i] = txDep
+			continue
+		}
+
+		// recover to relation 0
+		for j := 0; j < len(d.TxDeps); j++ {
+			if !txDep.Exist(j) {
+				nd.TxDeps[i].AppendDep(j)
+			}
+		}
+	}
+	exePaths := make([][]int, 0)
+
+	// travel tx deps with BFS
+	for i := len(nd.TxDeps) - 1; i >= 0; i-- {
+		exePaths = append(exePaths, findExecutionPath(nd.TxDeps, i))
+	}
+	return exePaths
+}
+
+func findExecutionPath(deps []TxDep, from int) []int {
+	q := make([]int, 0, len(deps))
+	path := make([]int, 0, len(deps))
+
+	q = append(q, from)
+	path = append(path, from)
+	for len(q) > 0 {
+		t := make([]int, 0, len(deps))
+		for _, i := range q {
+			for _, dep := range deps[i].TxIndexes {
+				if !slices.Contains(path, dep) {
+					path = append(path, dep)
+					t = append(t, dep)
+				}
+			}
+		}
+		q = t
+	}
+	sort.Ints(path)
+	return path
 }
 
 type ValidatorExtraItem struct {
@@ -70,7 +153,7 @@ func NewRWSet(ver StateVersion) *RWSet {
 	}
 }
 
-func (s *RWSet) RecordRead(key RWKey, ver StateVersion, val []byte) {
+func (s *RWSet) RecordRead(key RWKey, ver StateVersion, val interface{}) {
 	// only record the first read version
 	if _, exist := s.readSet[key]; exist {
 		return
@@ -119,6 +202,32 @@ func (s *RWSet) WriteSet() map[RWKey]*WriteRecord {
 	return s.writeSet
 }
 
+func (s *RWSet) String() string {
+	builder := strings.Builder{}
+	builder.WriteString(fmt.Sprintf("tx: %v, inc: %v\nreadSet: [", s.ver.TxIndex, s.ver.TxIncarnation))
+	i := 0
+	for key, _ := range s.readSet {
+		if i > 0 {
+			builder.WriteString(fmt.Sprintf(", %v", key.String()))
+			continue
+		}
+		builder.WriteString(fmt.Sprintf("%v", key.String()))
+		i++
+	}
+	builder.WriteString("]\nwriteSet: [")
+	i = 0
+	for key, _ := range s.writeSet {
+		if i > 0 {
+			builder.WriteString(fmt.Sprintf(", %v", key.String()))
+			continue
+		}
+		builder.WriteString(fmt.Sprintf("%v", key.String()))
+		i++
+	}
+	builder.WriteString("]\n")
+	return builder.String()
+}
+
 const (
 	AccountStatePrefix = 'a'
 	StorageStatePrefix = 's'
@@ -131,7 +240,7 @@ type AccountState byte
 const (
 	AccountNonce AccountState = iota
 	AccountBalance
-	AccountCode
+	AccountCodeHash
 	AccountSuicide
 )
 
@@ -157,6 +266,10 @@ func (key *RWKey) IsAccountState() bool {
 
 func (key *RWKey) IsStorageState() bool {
 	return StorageStatePrefix == key[0]
+}
+
+func (key *RWKey) String() string {
+	return hex.EncodeToString(key[:])
 }
 
 type PendingWrite struct {
@@ -196,7 +309,7 @@ func (w *PendingWrites) Append(pw *PendingWrite) {
 	}
 
 	w.list = append(w.list, pw)
-	for i := len(w.list) - 1; i > 0; i++ {
+	for i := len(w.list) - 1; i > 0; i-- {
 		if w.list[i].TxIndex() > w.list[i-1].TxIndex() {
 			break
 		}
@@ -257,7 +370,7 @@ func (s *MVStates) RWSet(index int) *RWSet {
 
 func (s *MVStates) FulfillRWSet(rwSet *RWSet) error {
 	s.lock.Lock()
-	defer s.lock.RLock()
+	defer s.lock.Unlock()
 	index := rwSet.ver.TxIndex
 	if index >= len(s.rwSets) {
 		return errors.New("refill out of bound")
@@ -267,6 +380,11 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet) error {
 	}
 
 	for k, v := range rwSet.writeSet {
+		// ignore no changed write record
+		if rwSet.readSet[k].Val == v.Val {
+			delete(rwSet.writeSet, k)
+			continue
+		}
 		if _, exist := s.pendingWriteSet[k]; !exist {
 			s.pendingWriteSet[k] = NewPendingWrites()
 		}
@@ -274,4 +392,24 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet) error {
 	}
 	s.rwSets[index] = rwSet
 	return nil
+}
+
+func (s *MVStates) ResolveDAG() *TxDAG {
+	rwSets := s.RWSets()
+	txDAG := NewTxDAG(len(rwSets))
+	for i := len(rwSets) - 1; i >= 0; i-- {
+		txDAG.TxDeps[i].TxIndexes = []int{}
+		readSet := rwSets[i].ReadSet()
+		// check if there has written op before i
+		for j := 0; j < i; j++ {
+			for k, _ := range rwSets[j].WriteSet() {
+				if _, ok := readSet[k]; ok {
+					txDAG.TxDeps[i].AppendDep(j)
+					break
+				}
+			}
+		}
+	}
+
+	return txDAG
 }
