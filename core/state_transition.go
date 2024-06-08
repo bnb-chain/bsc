@@ -449,7 +449,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	}
 
 	// stop record rw set in here
-	if err := st.state.FinaliseRWSet(); err != nil {
+	if err := st.state.FinaliseRWSet(st.gasUsed()); err != nil {
 		return nil, err
 	}
 	var gasRefund uint64

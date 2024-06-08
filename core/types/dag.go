@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // TxDep store the current tx dependency relation with other txs
@@ -54,8 +55,8 @@ func NewTxDAG(txLen int) *TxDAG {
 }
 
 func (d *TxDAG) String() string {
-	exePaths := d.travelExecutionPaths()
 	builder := strings.Builder{}
+	exePaths := d.travelExecutionPaths()
 	for _, path := range exePaths {
 		builder.WriteString(fmt.Sprintf("%v\n", path))
 	}
@@ -82,10 +83,68 @@ func (d *TxDAG) travelExecutionPaths() [][]int {
 	exePaths := make([][]int, 0)
 
 	// travel tx deps with BFS
-	for i := len(nd.TxDeps) - 1; i >= 0; i-- {
+	for i := 0; i < len(nd.TxDeps); i++ {
 		exePaths = append(exePaths, travelTargetPath(nd.TxDeps, i))
 	}
 	return exePaths
+}
+
+func EvaluateTxDAG(dag *TxDAG, stats []*ExeStat) string {
+	if len(stats) != len(dag.TxDeps) {
+		return ""
+	}
+	sb := strings.Builder{}
+	paths := dag.travelExecutionPaths()
+	// Attention: with the worst schedule, it means the path is executed in sequential
+	// if using best schedule, it will reduce a lot by executing previous txs in parallel
+	var (
+		maxTime int64
+		maxGas  uint64
+		maxRead int
+		maxPath []int
+	)
+	for i, path := range paths {
+		if stats[i].mustSerialFlag {
+			continue
+		}
+		t, g, r := int64(0), uint64(0), 0
+		for _, index := range path {
+			t += stats[index].costTime
+			g += stats[index].usedGas
+			r += stats[index].readCount
+		}
+		sb.WriteString(fmt.Sprintf("Tx%v, %.3fms|%vgas|%vreads\npath: %v\n", i, float64(t)/1000, g, r, path))
+		if t > maxTime {
+			maxTime = t
+			maxGas = g
+			maxRead = r
+			maxPath = path
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("LongestParallelPath, %.3fms|%vgas|%vreads\npath: %v\n", float64(maxTime)/1000, maxGas, maxRead, maxPath))
+	// serial path
+	var (
+		sTime int64
+		sGas  uint64
+		sRead int
+		sPath []int
+	)
+	for i, stat := range stats {
+		if stat.mustSerialFlag {
+			continue
+		}
+		sPath = append(sPath, i)
+		sTime += stat.costTime
+		sGas += stat.usedGas
+		sRead += stat.readCount
+	}
+	if sTime == 0 {
+		return ""
+	}
+	sb.WriteString(fmt.Sprintf("LongestSerialPath, %.3fms|%vgas|%vreads\npath: %v\n", float64(sTime)/1000, sGas, sRead, sPath))
+	sb.WriteString(fmt.Sprintf("Estimated saving: %.3fms, %.2f%%\n", float64(sTime-maxTime)/1000, float64(sTime-maxTime)/float64(sTime)*100))
+	return sb.String()
 }
 
 func travelTargetPath(deps []TxDep, from int) []int {
@@ -355,6 +414,7 @@ func (w *PendingWrites) FindLastWrite(txIndex int) *PendingWrite {
 
 type MVStates struct {
 	rwSets          []*RWSet
+	stats           []*ExeStat
 	pendingWriteSet map[RWKey]*PendingWrites
 	lock            sync.RWMutex
 }
@@ -362,6 +422,7 @@ type MVStates struct {
 func NewMVStates(txCount int) *MVStates {
 	return &MVStates{
 		rwSets:          make([]*RWSet, txCount),
+		stats:           make([]*ExeStat, txCount),
 		pendingWriteSet: make(map[RWKey]*PendingWrites, txCount*8),
 	}
 }
@@ -372,13 +433,19 @@ func (s *MVStates) RWSets() []*RWSet {
 	return s.rwSets
 }
 
+func (s *MVStates) Stats() []*ExeStat {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return s.stats
+}
+
 func (s *MVStates) RWSet(index int) *RWSet {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	return s.rwSets[index]
 }
 
-func (s *MVStates) FulfillRWSet(rwSet *RWSet) error {
+func (s *MVStates) FulfillRWSet(rwSet *RWSet, stat *ExeStat) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	index := rwSet.ver.TxIndex
@@ -388,11 +455,17 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet) error {
 	if s := s.rwSets[index]; s != nil {
 		return errors.New("refill a exist RWSet")
 	}
+	if stat != nil {
+		if stat.txIndex != index {
+			return errors.New("wrong execution stat")
+		}
+		s.stats[index] = stat
+	}
 
 	for k, v := range rwSet.writeSet {
 		// ignore no changed write record
 		if rwSet.readSet[k] == nil || v == nil {
-			log.Info("FulfillRWSet find nil", "k", k)
+			log.Info("FulfillRWSet find read nil", "k", k.String())
 		}
 		if rwSet.readSet[k] != nil && isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
 			delete(rwSet.writeSet, k)
@@ -469,4 +542,44 @@ func (s *MVStates) ResolveDAG() *TxDAG {
 	}
 
 	return txDAG
+}
+
+type ExeStat struct {
+	txIndex        int
+	usedGas        uint64
+	readCount      int
+	startTime      int64
+	costTime       int64
+	mustSerialFlag bool
+}
+
+func NewExeStat(txIndex int) *ExeStat {
+	return &ExeStat{
+		txIndex: txIndex,
+	}
+}
+
+func (s *ExeStat) Begin() *ExeStat {
+	s.startTime = time.Now().UnixMicro()
+	return s
+}
+
+func (s *ExeStat) Done() *ExeStat {
+	s.costTime = time.Now().UnixMicro() - s.startTime
+	return s
+}
+
+func (s *ExeStat) WithSerialFlag() *ExeStat {
+	s.mustSerialFlag = true
+	return s
+}
+
+func (s *ExeStat) WithGas(gas uint64) *ExeStat {
+	s.usedGas = gas
+	return s
+}
+
+func (s *ExeStat) WithRead(rc int) *ExeStat {
+	s.readCount = rc
+	return s
 }

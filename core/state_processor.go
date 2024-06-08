@@ -19,7 +19,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -147,8 +146,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		return nil, nil, nil, 0, errors.New("withdrawals before shanghai")
 	}
 
-	dag := statedb.MVStates2TxDAG()
-	log.Info("MVStates2TxDAG", "block", block.NumberU64(), "dag", dag)
+	dag, stats := statedb.MVStates2TxDAG()
+	//log.Info("MVStates2TxDAG", "block", block.NumberU64(), "tx", len(block.Transactions()), "dag", dag)
+	fmt.Printf("MVStates2TxDAG, block: %v, tx: %v\n", block.NumberU64(), len(block.Transactions()))
+	fmt.Print(types.EvaluateTxDAG(dag, stats))
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	// TODO: system txs must execute at last

@@ -125,6 +125,7 @@ type StateDB struct {
 	// parallel EVM related
 	rwSet    *types.RWSet
 	mvStates *types.MVStates
+	es       *types.ExeStat
 
 	// Preimages occurred seen by VM in the scope of block.
 	preimages map[common.Hash][]byte
@@ -1932,6 +1933,7 @@ func (s *StateDB) BeforeTxTransition() {
 		TxIndex:       s.txIndex,
 		TxIncarnation: s.txIncarnation,
 	})
+	s.es = types.NewExeStat(s.txIndex).Begin()
 }
 
 func (s *StateDB) RecordRead(key types.RWKey, val interface{}) {
@@ -1957,10 +1959,14 @@ func (s *StateDB) ResetMVStates(txCount int) {
 	s.rwSet = nil
 }
 
-func (s *StateDB) FinaliseRWSet() error {
+func (s *StateDB) FinaliseRWSet(usedGas uint64) error {
 	log.Debug("FinaliseRWSet", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
 	if s.mvStates == nil || s.rwSet == nil {
 		return nil
+	}
+	// record stat first
+	if s.es != nil {
+		s.es.Done().WithGas(usedGas).WithRead(len(s.rwSet.ReadSet()))
 	}
 	// finalise stateObjectsDestruct
 	for addr, acc := range s.stateObjectsDestructDirty {
@@ -1977,6 +1983,7 @@ func (s *StateDB) FinaliseRWSet() error {
 			// set indefinitely). Note only the first occurred self-destruct
 			// event is tracked.
 			if _, ok := s.stateObjectsDestruct[obj.address]; !ok {
+				log.Info("FinaliseRWSet find Destruct", "tx", s.txIndex, "addr", addr)
 				s.RecordWrite(types.AccountStateKey(addr, types.AccountSuicide), struct{}{})
 			}
 		} else {
@@ -1992,8 +1999,8 @@ func (s *StateDB) FinaliseRWSet() error {
 		return errors.New("you finalize a wrong ver of RWSet")
 	}
 
-	log.Info("FinaliseRWSet", "rwset", s.rwSet)
-	return s.mvStates.FulfillRWSet(s.rwSet)
+	log.Debug("FinaliseRWSet", "rwset", s.rwSet)
+	return s.mvStates.FulfillRWSet(s.rwSet, s.es)
 }
 
 func (s *StateDB) queryStateObjectsDestruct(addr common.Address) (*types.StateAccount, bool) {
@@ -2012,12 +2019,12 @@ func (s *StateDB) deleteStateObjectsDestruct(addr common.Address) {
 	delete(s.stateObjectsDestructDirty, addr)
 }
 
-func (s *StateDB) MVStates2TxDAG() *types.TxDAG {
+func (s *StateDB) MVStates2TxDAG() (*types.TxDAG, []*types.ExeStat) {
 	if s.mvStates == nil {
-		return nil
+		return nil, nil
 	}
 
-	return s.mvStates.ResolveDAG()
+	return s.mvStates.ResolveDAG(), s.mvStates.Stats()
 }
 
 func (s *StateDB) RecordSystemTxRWSet(index int) {
@@ -2027,7 +2034,7 @@ func (s *StateDB) RecordSystemTxRWSet(index int) {
 	s.mvStates.FulfillRWSet(types.NewRWSet(types.StateVersion{
 		TxIndex:       index,
 		TxIncarnation: 0,
-	}).WithSerialFlag())
+	}).WithSerialFlag(), types.NewExeStat(index).WithSerialFlag())
 }
 
 // copySet returns a deep-copied set.

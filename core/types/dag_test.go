@@ -19,6 +19,19 @@ func TestTxDAG(t *testing.T) {
 	t.Log(dag.String())
 }
 
+func TestEvaluateTxDAG(t *testing.T) {
+	dag := mockSystemTxDAG()
+	stats := make([]*ExeStat, len(dag.TxDeps))
+	for i, dep := range dag.TxDeps {
+		stats[i] = NewExeStat(i).WithGas(uint64(i)).WithRead(i)
+		stats[i].costTime = int64(i)
+		if dep.Relation == 1 {
+			stats[i].WithSerialFlag()
+		}
+	}
+	t.Log(EvaluateTxDAG(dag, stats))
+}
+
 func TestSimpleMVStates2TxDAG(t *testing.T) {
 	ms := NewMVStates(10)
 
