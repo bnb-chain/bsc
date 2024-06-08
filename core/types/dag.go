@@ -89,40 +89,52 @@ func (d *TxDAG) travelExecutionPaths() [][]int {
 	return exePaths
 }
 
-func EvaluateTxDAG(dag *TxDAG, stats []*ExeStat) string {
+func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 	if len(stats) != len(dag.TxDeps) {
 		return ""
 	}
 	sb := strings.Builder{}
 	paths := dag.travelExecutionPaths()
-	// Attention: with the worst schedule, it means the path is executed in sequential
-	// if using best schedule, it will reduce a lot by executing previous txs in parallel
+	// Attention: this is based on best schedule, it will reduce a lot by executing previous txs in parallel
+	// It assumes that there is no parallel thread limit
 	var (
 		maxTime int64
 		maxGas  uint64
 		maxRead int
 		maxPath []int
+		txTimes = make([]int64, len(dag.TxDeps))
 	)
+
 	for i, path := range paths {
 		if stats[i].mustSerialFlag {
 			continue
 		}
-		t, g, r := int64(0), uint64(0), 0
-		for _, index := range path {
-			t += stats[index].costTime
-			g += stats[index].usedGas
-			r += stats[index].readCount
+
+		// find the biggest cost time from dependency txs
+		for j := 0; j < len(path)-1; j++ {
+			if txTimes[j] > txTimes[i] {
+				txTimes[i] = txTimes[j]
+			}
 		}
-		sb.WriteString(fmt.Sprintf("Tx%v, %.3fms|%vgas|%vreads\npath: %v\n", i, float64(t)/1000, g, r, path))
-		if t > maxTime {
-			maxTime = t
+		txTimes[i] += stats[i].costTime
+		var (
+			g uint64
+			r int
+		)
+		for _, j := range path {
+			g += stats[j].usedGas
+			r += stats[j].readCount
+		}
+		sb.WriteString(fmt.Sprintf("Tx%v, %.2fms|%vgas|%vreads\npath: %v\n", i, float64(txTimes[i])/1000, g, r, path))
+		if txTimes[i] > maxTime {
+			maxTime = txTimes[i]
 			maxGas = g
 			maxRead = r
 			maxPath = path
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("LongestParallelPath, %.3fms|%vgas|%vreads\npath: %v\n", float64(maxTime)/1000, maxGas, maxRead, maxPath))
+	sb.WriteString(fmt.Sprintf("LongestParallelPath, %.2fms|%vgas|%vreads\npath: %v\n", float64(maxTime)/1000, maxGas, maxRead, maxPath))
 	// serial path
 	var (
 		sTime int64
@@ -142,8 +154,8 @@ func EvaluateTxDAG(dag *TxDAG, stats []*ExeStat) string {
 	if sTime == 0 {
 		return ""
 	}
-	sb.WriteString(fmt.Sprintf("LongestSerialPath, %.3fms|%vgas|%vreads\npath: %v\n", float64(sTime)/1000, sGas, sRead, sPath))
-	sb.WriteString(fmt.Sprintf("Estimated saving: %.3fms, %.2f%%\n", float64(sTime-maxTime)/1000, float64(sTime-maxTime)/float64(sTime)*100))
+	sb.WriteString(fmt.Sprintf("LongestSerialPath, %.2fms|%vgas|%vreads\npath: %v\n", float64(sTime)/1000, sGas, sRead, sPath))
+	sb.WriteString(fmt.Sprintf("Estimated saving: %.2fms, %.2f%%, %.2fX\n", float64(sTime-maxTime)/1000, float64(sTime-maxTime)/float64(sTime)*100, float64(sTime)/float64(maxTime)))
 	return sb.String()
 }
 
@@ -465,7 +477,8 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet, stat *ExeStat) error {
 	for k, v := range rwSet.writeSet {
 		// ignore no changed write record
 		if rwSet.readSet[k] == nil || v == nil {
-			log.Info("FulfillRWSet find read nil", "k", k.String())
+			// TODO: check if it's correct? read nil, write
+			log.Info("FulfillRWSet find read nil", "k", k.String(), "read", rwSet.readSet[k] == nil, "write", v == nil)
 		}
 		if rwSet.readSet[k] != nil && isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
 			delete(rwSet.writeSet, k)
@@ -517,7 +530,7 @@ func equalUint256(s, c *uint256.Int) bool {
 	return s == c
 }
 
-func (s *MVStates) ResolveDAG() *TxDAG {
+func (s *MVStates) ResolveTxDAG() *TxDAG {
 	rwSets := s.RWSets()
 	txDAG := NewTxDAG(len(rwSets))
 	for i := len(rwSets) - 1; i >= 0; i-- {
@@ -527,6 +540,7 @@ func (s *MVStates) ResolveDAG() *TxDAG {
 			continue
 		}
 		readSet := rwSets[i].ReadSet()
+		// TODO: check if there are RW with system address
 		// check if there has written op before i
 		// TODO: check suicide
 		// add read address flag, it only for check suicide quickly, and cannot for other scenarios.
@@ -545,11 +559,12 @@ func (s *MVStates) ResolveDAG() *TxDAG {
 }
 
 type ExeStat struct {
-	txIndex        int
-	usedGas        uint64
-	readCount      int
-	startTime      int64
-	costTime       int64
+	txIndex   int
+	usedGas   uint64
+	readCount int
+	startTime int64
+	costTime  int64
+	// TODO: consider system tx, gas fee issues, may need to use different flag
 	mustSerialFlag bool
 }
 

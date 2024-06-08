@@ -1983,6 +1983,7 @@ func (s *StateDB) FinaliseRWSet(usedGas uint64) error {
 			// set indefinitely). Note only the first occurred self-destruct
 			// event is tracked.
 			if _, ok := s.stateObjectsDestruct[obj.address]; !ok {
+				// TODO: check Destruct issue, need check conflict too.
 				log.Info("FinaliseRWSet find Destruct", "tx", s.txIndex, "addr", addr)
 				s.RecordWrite(types.AccountStateKey(addr, types.AccountSuicide), struct{}{})
 			}
@@ -2024,7 +2025,7 @@ func (s *StateDB) MVStates2TxDAG() (*types.TxDAG, []*types.ExeStat) {
 		return nil, nil
 	}
 
-	return s.mvStates.ResolveDAG(), s.mvStates.Stats()
+	return s.mvStates.ResolveTxDAG(), s.mvStates.Stats()
 }
 
 func (s *StateDB) RecordSystemTxRWSet(index int) {

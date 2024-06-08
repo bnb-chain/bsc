@@ -148,8 +148,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	dag, stats := statedb.MVStates2TxDAG()
 	//log.Info("MVStates2TxDAG", "block", block.NumberU64(), "tx", len(block.Transactions()), "dag", dag)
-	fmt.Printf("MVStates2TxDAG, block: %v, tx: %v\n", block.NumberU64(), len(block.Transactions()))
-	fmt.Print(types.EvaluateTxDAG(dag, stats))
+	fmt.Printf("MVStates2TxDAG, block: %v|%v, tx: %v\n", block.NumberU64(), block.Hash(), len(block.Transactions()))
+	fmt.Print(types.EvaluateTxDAGPerformance(dag, stats))
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	// TODO: system txs must execute at last
