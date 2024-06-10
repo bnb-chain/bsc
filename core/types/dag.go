@@ -319,7 +319,8 @@ type RWKey [1 + common.AddressLength + common.HashLength]byte
 type AccountState byte
 
 const (
-	AccountNonce AccountState = iota
+	AccountSelf AccountState = iota
+	AccountNonce
 	AccountBalance
 	AccountCodeHash
 	AccountSuicide
@@ -345,12 +346,36 @@ func (key *RWKey) IsAccountState() (bool, AccountState) {
 	return AccountStatePrefix == key[0], AccountState(key[1+common.AddressLength])
 }
 
+func (key *RWKey) IsAccountSelf() bool {
+	ok, s := key.IsAccountState()
+	if !ok {
+		return false
+	}
+	return s == AccountSelf
+}
+
+func (key *RWKey) IsAccountSuicide() bool {
+	ok, s := key.IsAccountState()
+	if !ok {
+		return false
+	}
+	return s == AccountSuicide
+}
+
+func (key *RWKey) ToAccountSelf() RWKey {
+	return AccountStateKey(key.Addr(), AccountSelf)
+}
+
 func (key *RWKey) IsStorageState() bool {
 	return StorageStatePrefix == key[0]
 }
 
 func (key *RWKey) String() string {
 	return hex.EncodeToString(key[:])
+}
+
+func (key *RWKey) Addr() common.Address {
+	return common.BytesToAddress(key[1 : 1+common.AddressLength])
 }
 
 type PendingWrite struct {
@@ -476,10 +501,7 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet, stat *ExeStat) error {
 
 	for k, v := range rwSet.writeSet {
 		// ignore no changed write record
-		if rwSet.readSet[k] == nil || v == nil {
-			// TODO: check if it's correct? read nil, write
-			log.Info("FulfillRWSet find read nil", "k", k.String(), "read", rwSet.readSet[k] == nil, "write", v == nil)
-		}
+		checkRWSetInconsistent(k, rwSet.readSet, rwSet.writeSet)
 		if rwSet.readSet[k] != nil && isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
 			delete(rwSet.writeSet, k)
 			continue
@@ -493,14 +515,32 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet, stat *ExeStat) error {
 	return nil
 }
 
+func checkRWSetInconsistent(k RWKey, readSet map[RWKey]*ReadRecord, writeSet map[RWKey]*WriteRecord) bool {
+	var (
+		readOk  bool
+		writeOk bool
+	)
+
+	if k.IsAccountSuicide() {
+		_, readOk = readSet[k.ToAccountSelf()]
+	} else {
+		_, readOk = readSet[k]
+	}
+
+	_, writeOk = writeSet[k]
+	if !readOk || !writeOk {
+		// TODO: check if it's correct? read nil, write non-nil
+		log.Info("checkRWSetInconsistent find inconsistent", "k", k.String(), "read", readOk, "write", writeOk)
+		return true
+	}
+
+	return false
+}
+
 func isEqualRWVal(key RWKey, src interface{}, compared interface{}) bool {
 	if ok, state := key.IsAccountState(); ok {
 		switch state {
 		case AccountBalance:
-			//if !isNil(src) && !isNil(compared) {
-			//	return src.(*uint256.Int).Eq(compared.(*uint256.Int))
-			//}
-			//return src == compared
 			if src != nil && compared != nil {
 				return equalUint256(src.(*uint256.Int), compared.(*uint256.Int))
 			}
@@ -542,20 +582,32 @@ func (s *MVStates) ResolveTxDAG() *TxDAG {
 		readSet := rwSets[i].ReadSet()
 		// TODO: check if there are RW with system address
 		// check if there has written op before i
-		// TODO: check suicide
-		// add read address flag, it only for check suicide quickly, and cannot for other scenarios.
 		for j := 0; j < i; j++ {
-			// check tx dependency, only check key, skip version
-			for k, _ := range rwSets[j].WriteSet() {
-				if _, ok := readSet[k]; ok {
-					txDAG.TxDeps[i].AppendDep(j)
-					break
-				}
+			if checkDependency(rwSets[j].writeSet, readSet) {
+				txDAG.TxDeps[i].AppendDep(j)
 			}
 		}
 	}
 
 	return txDAG
+}
+
+func checkDependency(writeSet map[RWKey]*WriteRecord, readSet map[RWKey]*ReadRecord) bool {
+	// check tx dependency, only check key, skip version
+	for k, _ := range writeSet {
+		// check suicide, add read address flag, it only for check suicide quickly, and cannot for other scenarios.
+		if k.IsAccountSuicide() {
+			if _, ok := readSet[k.ToAccountSelf()]; ok {
+				return true
+			}
+			continue
+		}
+		if _, ok := readSet[k]; ok {
+			return true
+		}
+	}
+
+	return false
 }
 
 type ExeStat struct {

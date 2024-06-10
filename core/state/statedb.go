@@ -438,6 +438,7 @@ func (s *StateDB) GetBalance(addr common.Address) *uint256.Int {
 	if stateObject != nil {
 		return stateObject.Balance()
 	}
+	s.RecordRead(types.AccountStateKey(addr, types.AccountBalance), common.U2560)
 	return common.U2560
 }
 
@@ -448,6 +449,7 @@ func (s *StateDB) GetNonce(addr common.Address) uint64 {
 		return stateObject.Nonce()
 	}
 
+	s.RecordRead(types.AccountStateKey(addr, types.AccountNonce), 0)
 	return 0
 }
 
@@ -495,6 +497,7 @@ func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 	if stateObject != nil {
 		return common.BytesToHash(stateObject.CodeHash())
 	}
+	s.RecordRead(types.AccountStateKey(addr, types.AccountCodeHash), common.Hash{})
 	return common.Hash{}
 }
 
@@ -504,6 +507,7 @@ func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
 	if stateObject != nil {
 		return stateObject.GetState(hash)
 	}
+	s.RecordRead(types.StorageStateKey(addr, hash), common.Hash{})
 	return common.Hash{}
 }
 
@@ -709,6 +713,7 @@ func (s *StateDB) deleteStateObject(obj *stateObject) {
 // the object is not found or was deleted in this execution context. If you need
 // to differentiate between non-existent/just-deleted, use getDeletedStateObject.
 func (s *StateDB) getStateObject(addr common.Address) *stateObject {
+	s.RecordRead(types.AccountStateKey(addr, types.AccountSelf), struct{}{})
 	if obj := s.getDeletedStateObject(addr); obj != nil && !obj.deleted {
 		return obj
 	}
@@ -830,6 +835,9 @@ func (s *StateDB) createObject(addr common.Address) (newobj, prev *stateObject) 
 		delete(s.storagesOrigin, prev.address)
 	}
 	s.setStateObject(newobj)
+	s.RecordWrite(types.AccountStateKey(addr, types.AccountNonce), uint64(0))
+	s.RecordWrite(types.AccountStateKey(addr, types.AccountBalance), new(uint256.Int))
+	s.RecordWrite(types.AccountStateKey(addr, types.AccountCodeHash), types.EmptyCodeHash.Bytes())
 	if prev != nil && !prev.deleted {
 		return newobj, prev
 	}
