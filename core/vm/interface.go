@@ -79,6 +79,8 @@ type StateDB interface {
 
 	AddLog(*types.Log)
 	AddPreimage(common.Hash, []byte)
+
+	// parallel DAG related
 	BeforeTxTransition()
 	FinaliseRWSet(uint64) error
 }

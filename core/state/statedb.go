@@ -433,23 +433,27 @@ func (s *StateDB) Empty(addr common.Address) bool {
 }
 
 // GetBalance retrieves the balance from the given address or 0 if object not found
-func (s *StateDB) GetBalance(addr common.Address) *uint256.Int {
+func (s *StateDB) GetBalance(addr common.Address) (ret *uint256.Int) {
+	defer func() {
+		s.RecordRead(types.AccountStateKey(addr, types.AccountBalance), ret)
+	}()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Balance()
 	}
-	s.RecordRead(types.AccountStateKey(addr, types.AccountBalance), common.U2560)
 	return common.U2560
 }
 
 // GetNonce retrieves the nonce from the given address or 0 if object not found
-func (s *StateDB) GetNonce(addr common.Address) uint64 {
+func (s *StateDB) GetNonce(addr common.Address) (ret uint64) {
+	defer func() {
+		s.RecordRead(types.AccountStateKey(addr, types.AccountNonce), ret)
+	}()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Nonce()
 	}
 
-	s.RecordRead(types.AccountStateKey(addr, types.AccountNonce), 0)
 	return 0
 }
 
@@ -492,27 +496,34 @@ func (s *StateDB) GetCodeSize(addr common.Address) int {
 	return 0
 }
 
-func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
+func (s *StateDB) GetCodeHash(addr common.Address) (ret common.Hash) {
+	defer func() {
+		s.RecordRead(types.AccountStateKey(addr, types.AccountCodeHash), ret)
+	}()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return common.BytesToHash(stateObject.CodeHash())
 	}
-	s.RecordRead(types.AccountStateKey(addr, types.AccountCodeHash), common.Hash{})
 	return common.Hash{}
 }
 
 // GetState retrieves a value from the given account's storage trie.
-func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
+func (s *StateDB) GetState(addr common.Address, hash common.Hash) (ret common.Hash) {
+	defer func() {
+		s.RecordRead(types.StorageStateKey(addr, hash), ret)
+	}()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.GetState(hash)
 	}
-	s.RecordRead(types.StorageStateKey(addr, hash), common.Hash{})
 	return common.Hash{}
 }
 
 // GetCommittedState retrieves a value from the given account's committed storage trie.
-func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) common.Hash {
+func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) (ret common.Hash) {
+	defer func() {
+		s.RecordRead(types.StorageStateKey(addr, hash), ret)
+	}()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.GetCommittedState(hash)
@@ -541,6 +552,7 @@ func (s *StateDB) HasSelfDestructed(addr common.Address) bool {
 func (s *StateDB) AddBalance(addr common.Address, amount *uint256.Int) {
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
+		s.RecordRead(types.AccountStateKey(addr, types.AccountBalance), stateObject.Balance())
 		stateObject.AddBalance(amount)
 	}
 }
@@ -549,6 +561,7 @@ func (s *StateDB) AddBalance(addr common.Address, amount *uint256.Int) {
 func (s *StateDB) SubBalance(addr common.Address, amount *uint256.Int) {
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
+		s.RecordRead(types.AccountStateKey(addr, types.AccountBalance), stateObject.Balance())
 		stateObject.SubBalance(amount)
 	}
 }
@@ -713,7 +726,6 @@ func (s *StateDB) deleteStateObject(obj *stateObject) {
 // the object is not found or was deleted in this execution context. If you need
 // to differentiate between non-existent/just-deleted, use getDeletedStateObject.
 func (s *StateDB) getStateObject(addr common.Address) *stateObject {
-	s.RecordRead(types.AccountStateKey(addr, types.AccountSelf), struct{}{})
 	if obj := s.getDeletedStateObject(addr); obj != nil && !obj.deleted {
 		return obj
 	}
@@ -725,6 +737,7 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 // flag set. This is needed by the state journal to revert to the correct s-
 // destructed object instead of wiping all knowledge about the state object.
 func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
+	s.RecordRead(types.AccountStateKey(addr, types.AccountSelf), struct{}{})
 	// Prefer live objects if any is available
 	if obj := s.stateObjects[addr]; obj != nil {
 		return obj
@@ -835,9 +848,6 @@ func (s *StateDB) createObject(addr common.Address) (newobj, prev *stateObject) 
 		delete(s.storagesOrigin, prev.address)
 	}
 	s.setStateObject(newobj)
-	s.RecordWrite(types.AccountStateKey(addr, types.AccountNonce), uint64(0))
-	s.RecordWrite(types.AccountStateKey(addr, types.AccountBalance), new(uint256.Int))
-	s.RecordWrite(types.AccountStateKey(addr, types.AccountCodeHash), types.EmptyCodeHash.Bytes())
 	if prev != nil && !prev.deleted {
 		return newobj, prev
 	}

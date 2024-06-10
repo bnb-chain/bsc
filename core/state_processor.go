@@ -19,6 +19,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -100,6 +101,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
 	statedb.ResetMVStates(len(block.Transactions()))
+	log.Debug("ResetMVStates", "block", block.NumberU64(), "txs", len(block.Transactions()))
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)

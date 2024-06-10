@@ -118,7 +118,7 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 		storageMap = db.GetStorage(address)
 	}
 
-	return &stateObject{
+	s := &stateObject{
 		db:                  db,
 		address:             address,
 		addrHash:            crypto.Keccak256Hash(address[:]),
@@ -130,6 +130,13 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 		dirtyStorage:        make(Storage),
 		created:             created,
 	}
+
+	// dirty data
+	s.dirtyBalance = acct.Balance.Clone()
+	s.dirtyNonce = new(uint64)
+	*s.dirtyNonce = acct.Nonce
+	s.dirtyCodeHash = acct.CodeHash
+	return s
 }
 
 // EncodeRLP implements rlp.Encoder.
@@ -209,10 +216,7 @@ func (s *stateObject) setOriginStorage(key common.Hash, value common.Hash) {
 }
 
 // GetCommittedState retrieves a value from the committed account storage trie.
-func (s *stateObject) GetCommittedState(key common.Hash) (ret common.Hash) {
-	defer func() {
-		s.db.RecordRead(types.StorageStateKey(s.address, key), ret)
-	}()
+func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 	// If we have a pending write or clean cached, return that
 	if value, pending := s.pendingStorage[key]; pending {
 		return value
@@ -652,7 +656,6 @@ func (s *stateObject) CodeHash() []byte {
 		return s.dirtyCodeHash
 	}
 	ret := s.data.CodeHash
-	s.db.RecordRead(types.AccountStateKey(s.address, types.AccountCodeHash), ret)
 	return ret
 }
 
@@ -661,7 +664,6 @@ func (s *stateObject) Balance() *uint256.Int {
 		return s.dirtyBalance
 	}
 	ret := s.data.Balance
-	s.db.RecordRead(types.AccountStateKey(s.address, types.AccountBalance), ret.Clone())
 	return ret
 }
 
@@ -670,7 +672,6 @@ func (s *stateObject) Nonce() uint64 {
 		return *s.dirtyNonce
 	}
 	ret := s.data.Nonce
-	s.db.RecordRead(types.AccountStateKey(s.address, types.AccountNonce), ret)
 	return ret
 }
 

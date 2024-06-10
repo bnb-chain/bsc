@@ -206,8 +206,7 @@ type ReadRecord struct {
 
 // WriteRecord keep latest state value & change count
 type WriteRecord struct {
-	Val   interface{}
-	Count int
+	Val interface{}
 }
 
 // RWSet record all read & write set in txs
@@ -244,26 +243,11 @@ func (s *RWSet) RecordWrite(key RWKey, val interface{}) {
 	wr, exist := s.writeSet[key]
 	if !exist {
 		s.writeSet[key] = &WriteRecord{
-			Val:   val,
-			Count: 1,
+			Val: val,
 		}
 		return
 	}
 	wr.Val = val
-	wr.Count++
-}
-
-func (s *RWSet) RevertWrite(key RWKey, val []byte) {
-	wr, exist := s.writeSet[key]
-	if !exist {
-		return
-	}
-	if wr.Count == 1 {
-		delete(s.writeSet, key)
-		return
-	}
-	wr.Val = val
-	wr.Count--
 }
 
 func (s *RWSet) Version() StateVersion {
@@ -501,7 +485,7 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet, stat *ExeStat) error {
 
 	for k, v := range rwSet.writeSet {
 		// ignore no changed write record
-		checkRWSetInconsistent(k, rwSet.readSet, rwSet.writeSet)
+		//checkRWSetInconsistent(index, k, rwSet.readSet, rwSet.writeSet)
 		if rwSet.readSet[k] != nil && isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
 			delete(rwSet.writeSet, k)
 			continue
@@ -515,7 +499,7 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet, stat *ExeStat) error {
 	return nil
 }
 
-func checkRWSetInconsistent(k RWKey, readSet map[RWKey]*ReadRecord, writeSet map[RWKey]*WriteRecord) bool {
+func checkRWSetInconsistent(index int, k RWKey, readSet map[RWKey]*ReadRecord, writeSet map[RWKey]*WriteRecord) bool {
 	var (
 		readOk  bool
 		writeOk bool
@@ -529,8 +513,8 @@ func checkRWSetInconsistent(k RWKey, readSet map[RWKey]*ReadRecord, writeSet map
 
 	_, writeOk = writeSet[k]
 	if !readOk || !writeOk {
-		// TODO: check if it's correct? read nil, write non-nil
-		log.Info("checkRWSetInconsistent find inconsistent", "k", k.String(), "read", readOk, "write", writeOk)
+		// check if it's correct? read nil, write non-nil
+		log.Info("checkRWSetInconsistent find inconsistent", "tx", index, "k", k.String(), "read", readOk, "write", writeOk)
 		return true
 	}
 
