@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/log"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -150,7 +151,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	dag, stats := statedb.MVStates2TxDAG()
 	//log.Info("MVStates2TxDAG", "block", block.NumberU64(), "tx", len(block.Transactions()), "dag", dag)
-	fmt.Printf("MVStates2TxDAG, block: %v|%v, tx: %v\n", block.NumberU64(), block.Hash(), len(block.Transactions()))
+	fmt.Printf("MVStates2TxDAG, block: %v|%v, tx: %v, time: %v\n", block.NumberU64(), block.Hash(), len(block.Transactions()), time.Now().Format(time.DateTime))
 	fmt.Print(types.EvaluateTxDAGPerformance(dag, stats))
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
