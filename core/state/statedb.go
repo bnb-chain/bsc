@@ -498,7 +498,7 @@ func (s *StateDB) GetCodeSize(addr common.Address) int {
 
 func (s *StateDB) GetCodeHash(addr common.Address) (ret common.Hash) {
 	defer func() {
-		s.RecordRead(types.AccountStateKey(addr, types.AccountCodeHash), ret)
+		s.RecordRead(types.AccountStateKey(addr, types.AccountCodeHash), ret.Bytes())
 	}()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
