@@ -45,6 +45,7 @@ type ValidationOptions struct {
 	Accept  uint8    // Bitmap of transaction types that should be accepted for the calling pool
 	MaxSize uint64   // Maximum size of a transaction that the caller can meaningfully handle
 	MinTip  *big.Int // Minimum gas tip needed to allow a transaction into the caller pool
+	MaxGas  uint64   // Max acceptable transaction gas in the txpool
 }
 
 // ValidateTransaction is a helper method to check whether a transaction is valid
@@ -86,6 +87,12 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if head.GasLimit < tx.Gas() {
 		return ErrGasLimit
 	}
+
+	// Ensure the transaction doesn't exceed the current miner max acceptable limit gas
+	if opts.MaxGas > 0 && opts.MaxGas < tx.Gas() {
+		return ErrGasLimit
+	}
+
 	// Sanity check for extremely large numbers (supported by RLP or RPC)
 	if tx.GasFeeCap().BitLen() > 256 {
 		return core.ErrFeeCapVeryHigh

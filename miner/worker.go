@@ -66,6 +66,9 @@ const (
 	// the current 4 mining loops could have asynchronous risk of mining block with
 	// save height, keep recently mined blocks to avoid double sign for safety,
 	recentMinedCacheLimit = 20
+
+	// the default to wait for the mev miner to finish
+	waitMEVMinerEndTimeLimit = 50 * time.Millisecond
 )
 
 var (
@@ -175,6 +178,7 @@ type getWorkReq struct {
 
 type bidFetcher interface {
 	GetBestBid(parentHash common.Hash) *BidRuntime
+	GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime
 }
 
 // worker is the main object which takes care of submitting new work to consensus engine
@@ -341,6 +345,12 @@ func (w *worker) setGasCeil(ceil uint64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.config.GasCeil = ceil
+}
+
+func (w *worker) getGasCeil() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.config.GasCeil
 }
 
 // setExtra sets the content used to initialize the block extra field.
@@ -1376,6 +1386,15 @@ LOOP:
 	// when in-turn, compare with remote work.
 	from := bestWork.coinbase
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+		if pendingBid := w.bidFetcher.GetSimulatingBid(bestWork.header.ParentHash); pendingBid != nil {
+			waitBidTimer := time.NewTimer(waitMEVMinerEndTimeLimit)
+			defer waitBidTimer.Stop()
+			select {
+			case <-waitBidTimer.C:
+			case <-pendingBid.finished:
+			}
+		}
+
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
 		if bestBid != nil {

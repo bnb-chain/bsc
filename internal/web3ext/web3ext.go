@@ -617,12 +617,12 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'getBlobSidecars',
 			call: 'eth_getBlobSidecars',
-			params: 1,
+			params: 2,
 		}),
 		new web3._extend.Method({
 			name: 'getBlobSidecarByTxHash',
 			call: 'eth_getBlobSidecarByTxHash',
-			params: 1,
+			params: 2,
 		}),
 	],
 	properties: [
@@ -658,6 +658,30 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'stop',
 			call: 'miner_stop'
+		}),
+		new web3._extend.Method({
+			name: 'mevRunning',
+			call: 'miner_mevRunning'
+		}),
+		new web3._extend.Method({
+			name: 'startMev',
+			call: 'miner_startMev'
+		}),
+		new web3._extend.Method({
+			name: 'stopMev',
+			call: 'miner_stopMev'
+		}),
+		new web3._extend.Method({
+			name: 'addBuilder',
+			call: 'miner_addBuilder',
+			params: 2,
+			inputFormatter: [web3._extend.formatters.inputAddressFormatter, null]
+		}),
+		new web3._extend.Method({
+			name: 'removeBuilder',
+			call: 'miner_removeBuilder',
+			params: 1,
+			inputFormatter: [web3._extend.formatters.inputAddressFormatter]
 		}),
 		new web3._extend.Method({
 			name: 'setEtherbase',

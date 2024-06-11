@@ -184,17 +184,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.CancunTime = config.OverrideCancun
 		overrides.OverrideCancun = config.OverrideCancun
 	}
+	if config.OverrideHaber != nil {
+		chainConfig.HaberTime = config.OverrideHaber
+		overrides.OverrideHaber = config.OverrideHaber
+	}
+	if config.OverrideBohr != nil {
+		chainConfig.BohrTime = config.OverrideBohr
+		overrides.OverrideBohr = config.OverrideBohr
+	}
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle
-	}
-	if config.OverrideFeynman != nil {
-		chainConfig.FeynmanTime = config.OverrideFeynman
-		overrides.OverrideFeynman = config.OverrideFeynman
-	}
-	if config.OverrideFeynmanFix != nil {
-		chainConfig.FeynmanFixTime = config.OverrideFeynmanFix
-		overrides.OverrideFeynmanFix = config.OverrideFeynmanFix
 	}
 
 	// startup ancient freeze

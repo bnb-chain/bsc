@@ -1,0 +1,1 @@
+CVE-2024-34478 # "CWE-754: Improper Check for Unusual or Exceptional Conditions." This vulnerability is BTC only, BSC does not have the issue.
