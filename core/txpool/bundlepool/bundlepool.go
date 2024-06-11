@@ -218,8 +218,6 @@ func (p *BundlePool) Reset(oldHead, newHead *types.Header) {
 func (p *BundlePool) SetGasTip(tip *big.Int) {}
 
 func (p *BundlePool) SetMaxGas(maxGas uint64) {
-	//TODO implement me
-	panic("implement me")
 }
 
 // Has returns an indicator whether subpool has a transaction cached with the
