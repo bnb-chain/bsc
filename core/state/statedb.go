@@ -1951,7 +1951,23 @@ func (s *StateDB) BeforeTxTransition() {
 		TxIndex:       s.txIndex,
 		TxIncarnation: s.txIncarnation,
 	})
+}
+
+func (s *StateDB) BeginTxStat() {
+	if s.mvStates == nil {
+		return
+	}
 	s.es = types.NewExeStat(s.txIndex).Begin()
+}
+
+func (s *StateDB) StopTxStat(usedGas uint64) {
+	if s.mvStates == nil {
+		return
+	}
+	// record stat first
+	if s.es != nil {
+		s.es.Done().WithGas(usedGas).WithRead(len(s.rwSet.ReadSet()))
+	}
 }
 
 func (s *StateDB) RecordRead(key types.RWKey, val interface{}) {
@@ -1977,14 +1993,10 @@ func (s *StateDB) ResetMVStates(txCount int) {
 	s.rwSet = nil
 }
 
-func (s *StateDB) FinaliseRWSet(usedGas uint64) error {
+func (s *StateDB) FinaliseRWSet() error {
 	log.Debug("FinaliseRWSet", "mvStates", s.mvStates == nil, "rwSet", s.rwSet == nil)
 	if s.mvStates == nil || s.rwSet == nil {
 		return nil
-	}
-	// record stat first
-	if s.es != nil {
-		s.es.Done().WithGas(usedGas).WithRead(len(s.rwSet.ReadSet()))
 	}
 	// finalise stateObjectsDestruct
 	for addr, acc := range s.stateObjectsDestructDirty {

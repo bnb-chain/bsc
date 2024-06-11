@@ -82,7 +82,7 @@ type StateDB interface {
 
 	// parallel DAG related
 	BeforeTxTransition()
-	FinaliseRWSet(uint64) error
+	FinaliseRWSet() error
 }
 
 // CallContext provides a basic interface for the EVM calling conventions. The EVM
