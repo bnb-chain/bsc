@@ -1305,14 +1305,13 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 		defer bc.dbWg.Done()
 		// Add the block to the canonical chain number scheme and mark as the head
 		blockBatch := bc.db.BlockStore().NewBatch()
-
 		rawdb.WriteCanonicalHash(blockBatch, block.Hash(), block.NumberU64())
 		rawdb.WriteHeadHeaderHash(blockBatch, block.Hash())
 		rawdb.WriteHeadBlockHash(blockBatch, block.Hash())
 		rawdb.WriteHeadFastBlockHash(blockBatch, block.Hash())
 		// Flush the whole batch into the disk, exit the node if failed
 		if err := blockBatch.Write(); err != nil {
-			log.Crit("Failed to update chain indexes and markers", "err", err)
+			log.Crit("Failed to update chain indexes and markers in block db", "err", err)
 		}
 	}()
 	go func() {
@@ -1323,7 +1322,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 
 		// Flush the whole batch into the disk, exit the node if failed
 		if err := batch.Write(); err != nil {
-			log.Crit("Failed to update chain indexes and markers", "err", err)
+			log.Crit("Failed to update chain indexes in chain db", "err", err)
 		}
 	}()
 
