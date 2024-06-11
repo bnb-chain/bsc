@@ -2309,8 +2309,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		blockInsertTimer.UpdateSince(start)
 		// TODO: temporary add time metrics
 		fmt.Printf("block: %v, import: %.2fms, exe: %.2fms, valid: %.2fms, accountRead: %.2fms, storageRead: %.2fms, validHash: %.2fms, validUpdate: %.2fms\n",
-			block.NumberU64(), float64(time.Since(start).Microseconds())/1000, float64((ptime-trieRead).Microseconds()/1000),
-			float64((vtime-(triehash+trieUpdate)).Microseconds())/1000, float64((statedb.SnapshotAccountReads+statedb.AccountReads).Microseconds())/1000,
+			block.NumberU64(), float64(time.Since(start).Microseconds())/1000, float64(ptime.Microseconds()/1000),
+			float64(vtime.Microseconds())/1000, float64((statedb.SnapshotAccountReads+statedb.AccountReads).Microseconds())/1000,
 			float64((statedb.SnapshotStorageReads+statedb.StorageReads).Microseconds())/1000, float64(triehash.Microseconds())/1000, float64(trieUpdate.Microseconds())/1000)
 
 		// Report the import stats before returning the various results
