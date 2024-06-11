@@ -146,8 +146,16 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 		if err != nil {
 			return err
 		}
+		for _, ly := range tree.layers {
+			if dl, ok := ly.(*diffLayer); ok {
+				// Clean up difflayer hash cache.
+				dl.cache.Remove(dl)
+				log.Info("Cleanup difflayer hash cache", "diff_root", dl.root.String())
+			}
+		}
 		// Replace the entire layer tree with the flat base
 		tree.layers = map[common.Hash]layer{base.rootHash(): base}
+		log.Info("Cap all difflayers to disklayer", "disk_root", base.rootHash().String())
 		return nil
 	}
 	// Dive until we run out of layers or reach the persistent database
@@ -199,6 +207,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 				// Clean up the hash cache of the child difflayer corresponding to the stale parent.
 				// include re-org case.
 				dl.cache.Remove(dl)
+				log.Info("Cleanup difflayer hash cache due to reorg", "diff_root", dl.root.String())
 			}
 		}
 		delete(tree.layers, root)
@@ -206,6 +215,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 			remove(child)
 		}
 		delete(children, root)
+		log.Info("Remove stale child layer due to reorg", "disk_root", root.String())
 	}
 	for root, layer := range tree.layers {
 		if dl, ok := layer.(*diskLayer); ok && dl.isStale() {
