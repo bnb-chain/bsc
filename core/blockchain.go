@@ -2307,16 +2307,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 
 		blockWriteTimer.Update(time.Since(wstart) - statedb.AccountCommits - statedb.StorageCommits - statedb.SnapshotCommits - statedb.TrieDBCommits)
 		blockInsertTimer.UpdateSince(start)
-		// TODO: temporary add time metrics
-		dag, exrStats := statedb.MVStates2TxDAG()
-		//log.Info("MVStates2TxDAG", "block", block.NumberU64(), "tx", len(block.Transactions()), "dag", dag)
-		fmt.Printf("MVStates2TxDAG, block: %v|%v, tx: %v, time: %v\n", block.NumberU64(), block.Hash(), len(block.Transactions()), time.Now().Format(time.DateTime))
-		fmt.Print(types.EvaluateTxDAGPerformance(dag, exrStats))
-		fmt.Printf("block: %v, import: %.2fms, execution: %.2fms, validation: %.2fms, accountRead: %.2fms, storageRead: %.2fms, validHash: %.2fms, validUpdate: %.2fms\n",
-			block.NumberU64(), float64(time.Since(start).Microseconds())/1000, float64(ptime.Microseconds()/1000),
-			float64(vtime.Microseconds())/1000, float64((statedb.SnapshotAccountReads+statedb.AccountReads).Microseconds())/1000,
-			float64((statedb.SnapshotStorageReads+statedb.StorageReads).Microseconds())/1000, float64(triehash.Microseconds())/1000, float64(trieUpdate.Microseconds())/1000)
-
 		// Report the import stats before returning the various results
 		stats.processed++
 		stats.usedGas += usedGas

@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"math/big"
+	"time"
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning
@@ -59,6 +60,7 @@ func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consen
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
 func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
+	start := time.Now()
 	var (
 		usedGas     = new(uint64)
 		header      = block.Header()
@@ -100,7 +102,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
 	statedb.ResetMVStates(len(block.Transactions()))
-	log.Debug("ResetMVStates", "block", block.NumberU64(), "txs", len(block.Transactions()))
+	log.Info("ResetMVStates", "block", block.NumberU64(), "txs", len(block.Transactions()))
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
@@ -145,6 +147,16 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if len(withdrawals) > 0 && !p.config.IsShanghai(block.Number(), block.Time()) {
 		return nil, nil, nil, 0, errors.New("withdrawals before shanghai")
 	}
+
+	// TODO: temporary add time metrics
+	dag, exrStats := statedb.MVStates2TxDAG()
+	eTime := time.Since(start)
+	//log.Info("MVStates2TxDAG", "block", block.NumberU64(), "tx", len(block.Transactions()), "dag", dag)
+	fmt.Printf("MVStates2TxDAG, block: %v|%v, tx: %v, time: %v\n", block.NumberU64(), block.Hash(), len(block.Transactions()), time.Now().Format(time.DateTime))
+	fmt.Print(types.EvaluateTxDAGPerformance(dag, exrStats))
+	fmt.Printf("block: %v, execution: %.2fms, accountRead: %.2fms, storageRead: %.2fms\n",
+		block.NumberU64(), float64(eTime.Microseconds())/1000, float64((statedb.SnapshotAccountReads+statedb.AccountReads).Microseconds())/1000,
+		float64((statedb.SnapshotStorageReads+statedb.StorageReads).Microseconds())/1000)
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	// TODO: system txs must execute at last
