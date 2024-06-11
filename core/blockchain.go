@@ -1300,6 +1300,7 @@ func (bc *BlockChain) ExportN(w io.Writer, first uint64, last uint64) error {
 // Note, this function assumes that the `mu` mutex is held!
 func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	bc.dbWg.Add(2)
+	defer bc.dbWg.Wait()
 	go func() {
 		defer bc.dbWg.Done()
 		// Add the block to the canonical chain number scheme and mark as the head
@@ -1336,8 +1337,6 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	headBlockGauge.Update(int64(block.NumberU64()))
 	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(block.Header())))
 	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
-
-	bc.dbWg.Wait()
 }
 
 // stopWithoutSaving stops the blockchain service. If any imports are currently in progress
