@@ -239,7 +239,7 @@ func (f *Freezer) Ancient(kind string, number uint64) ([]byte, error) {
 //   - if maxBytes is not specified, 'count' items will be returned if they are present.
 func (f *Freezer) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
 	if table := f.tables[kind]; table != nil {
-		return table.RetrieveItems(start, count, maxBytes)
+		return table.RetrieveItems(start-f.offset, count, maxBytes)
 	}
 	return nil, errUnknownTable
 }
@@ -252,7 +252,7 @@ func (f *Freezer) Ancients() (uint64, error) {
 func (f *Freezer) TableAncients(kind string) (uint64, error) {
 	f.writeLock.RLock()
 	defer f.writeLock.RUnlock()
-	return f.tables[kind].items.Load(), nil
+	return f.tables[kind].items.Load() + f.offset, nil
 }
 
 // ItemAmountInAncient returns the actual length of current ancientDB.

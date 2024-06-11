@@ -36,7 +36,7 @@ To combine DPoS and PoA for consensus, BNB Smart Chain implement a novel consens
 2. Validators take turns to produce blocks in a PoA manner, similar to Ethereum's Clique consensus engine.
 3. Validator set are elected in and out based on a staking based governance on BNB Beacon Chain.
 4. The validator set change is relayed via a cross-chain communication mechanism.
-5. Parlia consensus engine will interact with a set of [system contracts](https://docs.bnbchain.org/docs/learn/system-contract) to achieve liveness slash, revenue distributing and validator set renewing func.
+5. Parlia consensus engine will interact with a set of [system contracts](https://docs.bnbchain.org/bnb-smart-chain/staking/overview/#system-contracts) to achieve liveness slash, revenue distributing and validator set renewing func.
 
  
 ### Light Client of BNB Beacon Chain
@@ -183,7 +183,7 @@ This tool is optional and if you leave it out you can always attach to an alread
 
 #### 7. More
 
-More details about [running a node](https://docs.bnbchain.org/docs/validator/fullnode) and [becoming a validator](https://docs.bnbchain.org/docs/validator/create-val)
+More details about [running a node](https://docs.bnbchain.org/bnb-smart-chain/developers/node_operators/full_node/) and [becoming a validator](https://docs.bnbchain.org/bnb-smart-chain/validator/create-val/)
 
 *Note: Although some internal protective measures prevent transactions from
 crossing over between the main network and test network, you should always

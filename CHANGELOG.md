@@ -1,4 +1,26 @@
 # Changelog
+## v1.4.9
+### FEATURE
+* [\#2463](https://github.com/bnb-chain/bsc/pull/2463)  utils: add check_blobtx.js
+* [\#2470](https://github.com/bnb-chain/bsc/pull/2470)  jsutils: faucet successful requests within blocks
+* [\#2467](https://github.com/bnb-chain/bsc/pull/2467)  internal/ethapi: add optional parameter for blobSidecars
+
+### IMPROVEMENT
+* [\#2462](https://github.com/bnb-chain/bsc/pull/2462)  cmd/utils: add a flag to change breathe block interval for testing
+* [\#2497](https://github.com/bnb-chain/bsc/pull/2497)  params/config: add Bohr hardfork
+* [\#2479](https://github.com/bnb-chain/bsc/pull/2479)  dev: ensure consistency in BPS bundle result
+
+### BUGFIX
+* [\#2461](https://github.com/bnb-chain/bsc/pull/2461)  eth/handler: check lists in body before broadcast blocks
+* [\#2455](https://github.com/bnb-chain/bsc/pull/2455)  cmd: fix memory leak when big dataset
+* [\#2466](https://github.com/bnb-chain/bsc/pull/2466)  sync: fix some sync issues caused by prune-block.
+* [\#2475](https://github.com/bnb-chain/bsc/pull/2475)  fix: move mev op to MinerAPI & add command to console
+* [\#2473](https://github.com/bnb-chain/bsc/pull/2473)  fix: limit the gas price of the mev bid
+* [\#2484](https://github.com/bnb-chain/bsc/pull/2484)  fix: fix inspect database error
+* [\#2481](https://github.com/bnb-chain/bsc/pull/2481)  fix: keep 9W blocks in ancient db when prune block
+* [\#2495](https://github.com/bnb-chain/bsc/pull/2495)  fix: add an empty freeze db
+* [\#2507](https://github.com/bnb-chain/bsc/pull/2507)  fix: waiting for the last simulation before pick best bid
+
 ## v1.4.8
 ### FEATURE
 * [\#2483](https://github.com/bnb-chain/bsc/pull/2483) core/vm: add secp256r1 into PrecompiledContractsHaber

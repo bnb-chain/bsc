@@ -315,6 +315,11 @@ var (
 		Usage:    "Manually specify the Haber fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideBohr = &cli.Uint64Flag{
+		Name:     "override.bohr",
+		Usage:    "Manually specify the Bohr fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideVerkle = &cli.Uint64Flag{
 		Name:     "override.verkle",
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
@@ -1082,6 +1087,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:     "block-amount-reserved",
 		Usage:    "Sets the expected remained amount of blocks for offline block prune",
 		Category: flags.BlockHistoryCategory,
+		Value:    params.FullImmutabilityThreshold,
 	}
 
 	CheckSnapshotWithMPT = &cli.BoolFlag{

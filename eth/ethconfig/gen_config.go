@@ -72,6 +72,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		RPCTxFeeCap             float64
 		OverrideCancun          *uint64 `toml:",omitempty"`
 		OverrideHaber           *uint64 `toml:",omitempty"`
+		OverrideBohr            *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        uint64
 	}
@@ -131,6 +132,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
 	enc.OverrideCancun = c.OverrideCancun
 	enc.OverrideHaber = c.OverrideHaber
+	enc.OverrideBohr = c.OverrideBohr
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	return &enc, nil
@@ -194,6 +196,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		RPCTxFeeCap             *float64
 		OverrideCancun          *uint64 `toml:",omitempty"`
 		OverrideHaber           *uint64 `toml:",omitempty"`
+		OverrideBohr            *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        *uint64
 	}
@@ -365,6 +368,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.OverrideHaber != nil {
 		c.OverrideHaber = dec.OverrideHaber
+	}
+	if dec.OverrideBohr != nil {
+		c.OverrideBohr = dec.OverrideBohr
 	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle

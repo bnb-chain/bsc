@@ -43,9 +43,11 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
+	"github.com/ethereum/go-ethereum/triedb/pathdb"
 	cli "github.com/urfave/cli/v2"
 )
 
@@ -245,7 +247,16 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		NoBuild:    true,
 		AsyncBuild: false,
 	}
-	snaptree, err := snapshot.New(snapconfig, chaindb, triedb.NewDatabase(chaindb, nil), headBlock.Root(), TriesInMemory, false)
+	dbScheme := rawdb.ReadStateScheme(chaindb)
+	var config *triedb.Config
+	if dbScheme == rawdb.PathScheme {
+		config = &triedb.Config{
+			PathDB: utils.PathDBConfigAddJournalFilePath(stack, pathdb.ReadOnly),
+		}
+	} else if dbScheme == rawdb.HashScheme {
+		config = triedb.HashDefaults
+	}
+	snaptree, err := snapshot.New(snapconfig, chaindb, triedb.NewDatabase(chaindb, config), headBlock.Root(), TriesInMemory, false)
 	if err != nil {
 		log.Error("snaptree error", "err", err)
 		return nil, err // The relevant snapshot(s) might not exist
@@ -333,6 +344,9 @@ func pruneBlock(ctx *cli.Context) error {
 	stack, config = makeConfigNode(ctx)
 	defer stack.Close()
 	blockAmountReserved = ctx.Uint64(utils.BlockAmountReserved.Name)
+	if blockAmountReserved < params.FullImmutabilityThreshold {
+		return fmt.Errorf("block-amount-reserved must be greater than or equal to %d", params.FullImmutabilityThreshold)
+	}
 	chaindb, err = accessDb(ctx, stack)
 	if err != nil {
 		return err
