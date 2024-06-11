@@ -90,7 +90,7 @@ func (d *TxDAG) travelExecutionPaths() [][]int {
 }
 
 func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
-	if len(stats) != len(dag.TxDeps) {
+	if len(stats) != len(dag.TxDeps) || len(dag.TxDeps) == 0 {
 		return ""
 	}
 	sb := strings.Builder{}
