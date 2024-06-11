@@ -1088,7 +1088,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				hashNumPairings.Add(size)
 			default:
 				var accounted bool
-				for _, meta := range [][]byte{headHeaderKey, headFinalizedBlockKey} {
+				for _, meta := range [][]byte{headHeaderKey, headFinalizedBlockKey, headBlockKey, headFastBlockKey} {
 					if bytes.Equal(key, meta) {
 						metadata.Add(size)
 						accounted = true
