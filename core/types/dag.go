@@ -114,14 +114,15 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 
 		// find the biggest cost time from dependency txs
 		for j := 0; j < len(path)-1; j++ {
-			if txTimes[j] > txTimes[i] {
-				txTimes[i] = txTimes[j]
+			prev := path[j]
+			if txTimes[prev] > txTimes[i] {
+				txTimes[i] = txTimes[prev]
 			}
-			if txGases[j] > txGases[i] {
-				txGases[i] = txGases[j]
+			if txGases[prev] > txGases[i] {
+				txGases[i] = txGases[prev]
 			}
-			if txReads[j] > txReads[i] {
-				txReads[i] = txReads[j]
+			if txReads[prev] > txReads[i] {
+				txReads[i] = txReads[prev]
 			}
 		}
 		txTimes[i] += stats[i].costTime
