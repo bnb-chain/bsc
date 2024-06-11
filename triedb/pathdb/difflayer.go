@@ -137,7 +137,6 @@ type diffLayer struct {
 	nodes  map[common.Hash]map[string]*trienode.Node // Cached trie nodes indexed by owner and path
 	states *triestate.Set                            // Associated state change set for building history
 	memory uint64                                    // Approximate guess as to how much memory we use
-	origin *diskLayer                                // The disklayer corresponding to the current difflayer, initialized when created and never modified.
 	cache  *HashNodeCache                            // trienode cache by hash key.
 
 	parent layer        // Parent layer modified by this one, never nil, **can be changed**
@@ -159,16 +158,9 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 		parent: parent,
 	}
 
-	switch l := parent.(type) {
-	case *diskLayer:
-		dl.origin = l
-	case *diffLayer:
-		dl.origin = l.origin
-		dl.cache = l.cache
-	default:
-		panic("unknown parent type")
-	}
-	if dl.cache == nil {
+	if pdl, ok := parent.(*diffLayer); ok && pdl.cache != nil {
+		dl.cache = pdl.cache
+	} else {
 		dl.cache = &HashNodeCache{
 			cache: make(map[common.Hash]*RefTrieNode),
 		}
@@ -258,23 +250,24 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	}
 	diffHashCacheMissMeter.Mark(1)
 
-	if dl.origin != nil {
-		blob, err := dl.origin.Node(owner, path, hash)
-		if err != nil {
-			// This is a bad case with a very low probability.
-			// Reading the difflayer cache and reading the disklayer are not in the same lock,
-			// so in extreme cases, both reading the difflayer cache and reading the disklayer may fail.
-			// In this case, fallback to the original 128-layer recursive difflayer query path.
-			diffHashCacheSlowPathMeter.Mark(1)
-			log.Debug("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String())
-			return dl.node(owner, path, hash, 0)
-		} else {
-			// skip difflayer query, which is fastpath.
-			return blob, nil
+	parent := dl.parent
+	for {
+		if disk, ok := parent.(*diskLayer); ok {
+			blob, err := disk.Node(owner, path, hash)
+			if err != nil {
+				// This is a bad case with a very low probability.
+				// Reading the difflayer cache and reading the disklayer are not in the same lock,
+				// so in extreme cases, both reading the difflayer cache and reading the disklayer may fail.
+				// In this case, fallback to the original 128-layer recursive difflayer query path.
+				diffHashCacheSlowPathMeter.Mark(1)
+				log.Info("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String())
+				return dl.node(owner, path, hash, 0)
+			} else {
+				return blob, nil
+			}
 		}
+		parent = parent.parentLayer()
 	}
-	diffHashCacheSlowPathMeter.Mark(1)
-	return dl.node(owner, path, hash, 0)
 }
 
 // update implements the layer interface, creating a new layer on top of the
