@@ -223,7 +223,7 @@ func (s *Snapshot) versionHistoryCheckLen() uint64 {
 }
 
 func (s *Snapshot) minerHistoryCheckLen() uint64 {
-	return (uint64(len(s.Validators)) / 2) * s.TurnTerm
+	return (uint64(len(s.Validators))/2+1)*s.TurnTerm - 1
 }
 
 func (s *Snapshot) countRecents() map[common.Address]uint64 {
