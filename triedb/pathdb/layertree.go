@@ -140,6 +140,16 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 	tree.lock.Lock()
 	defer tree.lock.Unlock()
 
+	defer func() {
+		log.Info("Succeed to cap", "root", root.String(), "layers", layers, "layer_tree_len", len(tree.layers))
+		for _, ly := range tree.layers {
+			if dl, ok := ly.(*diffLayer); ok {
+				log.Info("Print cache", "cache_length", dl.cache.length())
+				break
+			}
+		}
+	}()
+
 	// If full commit was requested, flatten the diffs and merge onto disk
 	if layers == 0 {
 		base, err := diff.persist(true)
@@ -150,7 +160,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 			if dl, ok := ly.(*diffLayer); ok {
 				// Clean up difflayer hash cache.
 				dl.cache.Remove(dl)
-				log.Info("Cleanup difflayer hash cache", "diff_root", dl.root.String())
+				log.Info("Cleanup difflayer hash cache", "diff_root", dl.root.String(), "diff_block_number", dl.block)
 			}
 		}
 		// Replace the entire layer tree with the flat base
@@ -207,7 +217,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 				// Clean up the hash cache of the child difflayer corresponding to the stale parent.
 				// include re-org case.
 				dl.cache.Remove(dl)
-				log.Info("Cleanup difflayer hash cache due to reorg", "diff_root", dl.root.String())
+				log.Info("Cleanup difflayer hash cache due to reorg", "diff_root", dl.root.String(), "diff_block_number", dl.block)
 			}
 		}
 		delete(tree.layers, root)
@@ -215,11 +225,11 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 			remove(child)
 		}
 		delete(children, root)
-		log.Info("Remove stale child layer due to reorg", "disk_root", root.String())
 	}
 	for root, layer := range tree.layers {
 		if dl, ok := layer.(*diskLayer); ok && dl.isStale() {
 			remove(root)
+			log.Info("Remove stale the disklayer", "disk_root", dl.root.String())
 		}
 	}
 	return nil
