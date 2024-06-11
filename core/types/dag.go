@@ -101,8 +101,8 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 		maxGasIndex  int
 		maxGas       uint64
 		maxTimeIndex int
-		maxTime      int64
-		txTimes      = make([]int64, len(dag.TxDeps))
+		maxTime      time.Duration
+		txTimes      = make([]time.Duration, len(dag.TxDeps))
 		txGases      = make([]uint64, len(dag.TxDeps))
 		txReads      = make([]int, len(dag.TxDeps))
 	)
@@ -128,7 +128,7 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 		txGases[i] += stats[i].usedGas
 		txReads[i] += stats[i].readCount
 
-		sb.WriteString(fmt.Sprintf("Tx%v, %.2fms|%vgas|%vreads\npath: %v\n", i, float64(txTimes[i])/1000, txGases[i], txReads[i], path))
+		sb.WriteString(fmt.Sprintf("Tx%v, %.2fms|%vgas|%vreads\npath: %v\n", i, float64(txTimes[i].Microseconds())/1000, txGases[i], txReads[i], path))
 		// try to find max gas
 		if txGases[i] > maxGas {
 			maxGas = txGases[i]
@@ -140,11 +140,11 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("LargestGasPath: %.2fms|%vgas|%vreads\npath: %v\n", float64(txTimes[maxGasIndex])/1000, txGases[maxGasIndex], txReads[maxGasIndex], paths[maxGasIndex]))
-	sb.WriteString(fmt.Sprintf("LongestTimePath: %.2fms|%vgas|%vreads\npath: %v\n", float64(txTimes[maxTimeIndex])/1000, txGases[maxTimeIndex], txReads[maxTimeIndex], paths[maxTimeIndex]))
+	sb.WriteString(fmt.Sprintf("LargestGasPath: %.2fms|%vgas|%vreads\npath: %v\n", float64(txTimes[maxGasIndex].Microseconds())/1000, txGases[maxGasIndex], txReads[maxGasIndex], paths[maxGasIndex]))
+	sb.WriteString(fmt.Sprintf("LongestTimePath: %.2fms|%vgas|%vreads\npath: %v\n", float64(txTimes[maxTimeIndex].Microseconds())/1000, txGases[maxTimeIndex], txReads[maxTimeIndex], paths[maxTimeIndex]))
 	// serial path
 	var (
-		sTime int64
+		sTime time.Duration
 		sGas  uint64
 		sRead int
 		sPath []int
@@ -161,9 +161,9 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 	if sTime == 0 {
 		return ""
 	}
-	sb.WriteString(fmt.Sprintf("SerialPath: %.2fms|%vgas|%vreads\npath: %v\n", float64(sTime)/1000, sGas, sRead, sPath))
-	maxParaTime := txTimes[maxGasIndex]
-	sb.WriteString(fmt.Sprintf("Estimated saving: %.2fms, %.2f%%, %.2fX\n", float64(sTime-maxParaTime)/1000, float64(sTime-maxParaTime)/float64(sTime)*100, float64(sTime)/float64(maxParaTime)))
+	sb.WriteString(fmt.Sprintf("SerialPath: %.2fms|%vgas|%vreads\npath: %v\n", float64(sTime.Microseconds())/1000, sGas, sRead, sPath))
+	maxParaTime := txTimes[maxTimeIndex]
+	sb.WriteString(fmt.Sprintf("Estimated saving: %.2fms, %.2f%%, %.2fX\n", float64((sTime-maxParaTime).Microseconds())/1000, float64(sTime-maxParaTime)/float64(sTime)*100, float64(sTime)/float64(maxParaTime)))
 	return sb.String()
 }
 
@@ -607,8 +607,8 @@ type ExeStat struct {
 	txIndex   int
 	usedGas   uint64
 	readCount int
-	startTime int64
-	costTime  int64
+	startTime time.Time
+	costTime  time.Duration
 	// TODO: consider system tx, gas fee issues, may need to use different flag
 	mustSerialFlag bool
 }
@@ -620,12 +620,12 @@ func NewExeStat(txIndex int) *ExeStat {
 }
 
 func (s *ExeStat) Begin() *ExeStat {
-	s.startTime = time.Now().UnixMicro()
+	s.startTime = time.Now()
 	return s
 }
 
 func (s *ExeStat) Done() *ExeStat {
-	s.costTime = time.Now().UnixMicro() - s.startTime
+	s.costTime = time.Since(s.startTime)
 	return s
 }
 

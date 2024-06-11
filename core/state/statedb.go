@@ -1953,11 +1953,11 @@ func (s *StateDB) BeforeTxTransition() {
 	})
 }
 
-func (s *StateDB) BeginTxStat() {
+func (s *StateDB) BeginTxStat(index int) {
 	if s.mvStates == nil {
 		return
 	}
-	s.es = types.NewExeStat(s.txIndex).Begin()
+	s.es = types.NewExeStat(index).Begin()
 }
 
 func (s *StateDB) StopTxStat(usedGas uint64) {

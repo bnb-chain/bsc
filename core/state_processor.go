@@ -108,6 +108,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	systemTxs := make([]*types.Transaction, 0, 2)
 	start := time.Now()
 	for i, tx := range block.Transactions() {
+		statedb.BeginTxStat(i)
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
 				bloomProcessors.Close()
@@ -131,17 +132,18 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			return statedb, nil, nil, 0, err
 		}
 		statedb.SetTxContext(tx.Hash(), i, 0)
-		statedb.BeginTxStat()
 
 		receipt, err := applyTransaction(msg, p.config, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, bloomProcessors)
 		if err != nil {
 			bloomProcessors.Close()
 			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
-		statedb.StopTxStat(receipt.GasUsed)
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
+		statedb.StopTxStat(receipt.GasUsed)
 	}
+	eTime := time.Since(start)
+	// this bloomProcessors may take ~20ms
 	bloomProcessors.Close()
 
 	// Fail if Shanghai not enabled and len(withdrawals) is non-zero.
@@ -151,7 +153,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 
 	// TODO: temporary add time metrics
-	eTime := time.Since(start)
 	dag, exrStats := statedb.MVStates2TxDAG()
 	//log.Info("MVStates2TxDAG", "block", block.NumberU64(), "tx", len(block.Transactions()), "dag", dag)
 	fmt.Printf("MVStates2TxDAG, block: %v|%v, tx: %v, time: %v\n", block.NumberU64(), block.Hash(), len(block.Transactions()), time.Now().Format(time.DateTime))
