@@ -152,12 +152,13 @@ func (kr *JournalKVReader) Close() {
 }
 
 func newJournalWriter(file string, db ethdb.Database, journalType JournalType) JournalWriter {
-	log.Info("New journal writer", "path", file, "journalType", journalType)
 	if journalType == JournalKVType {
+		log.Info("New journal writer for journal kv")
 		return &JournalKVWriter{
 			diskdb: db,
 		}
 	} else {
+		log.Info("New journal writer for journal file", "path", file)
 		fd, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			return nil
@@ -169,8 +170,8 @@ func newJournalWriter(file string, db ethdb.Database, journalType JournalType) J
 }
 
 func newJournalReader(file string, db ethdb.Database, journalType JournalType) (JournalReader, error) {
-	log.Info("New journal reader", "path", file, "journalType", journalType)
 	if journalType == JournalKVType {
+		log.Info("New journal reader for journal kv")
 		journal := rawdb.ReadTrieJournal(db)
 		if len(journal) == 0 {
 			return nil, errMissJournal
@@ -179,6 +180,7 @@ func newJournalReader(file string, db ethdb.Database, journalType JournalType) (
 			journalBuf: bytes.NewBuffer(journal),
 		}, nil
 	} else {
+		log.Info("New journal reader for journal file", "path", file)
 		fd, err := os.Open(file)
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, errMissJournal
@@ -195,7 +197,8 @@ func newJournalReader(file string, db ethdb.Database, journalType JournalType) (
 // loadJournal tries to parse the layer journal from the disk.
 func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	start := time.Now()
-	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, db.DetermineJournalTypeForReader())
+	journalTypeForReader := db.DetermineJournalTypeForReader()
+	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, journalTypeForReader)
 
 	if err != nil {
 		return nil, err
@@ -226,12 +229,12 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 		return nil, fmt.Errorf("%w want %x got %x", errUnmatchedJournal, root, diskRoot)
 	}
 	// Load the disk layer from the journal
-	base, err := db.loadDiskLayer(r)
+	base, err := db.loadDiskLayer(r, journalTypeForReader)
 	if err != nil {
 		return nil, err
 	}
 	// Load all the diff layers from the journal
-	head, err := db.loadDiffLayer(base, r)
+	head, err := db.loadDiffLayer(base, r, journalTypeForReader)
 	if err != nil {
 		return nil, err
 	}
@@ -262,14 +265,14 @@ func (db *Database) loadLayers() layer {
 
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
 // a new disk layer on it.
-func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
+func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalType) (layer, error) {
 	// Resolve disk layer root
 	var (
 		root               common.Hash
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if db.DetermineJournalTypeForReader() == JournalFileType {
+	if journalTypeForReader == JournalFileType {
 		if err := r.Decode(&journalEncodedBuff); err != nil {
 			return nil, fmt.Errorf("load disk journal: %v", err)
 		}
@@ -310,7 +313,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 		nodes[entry.Owner] = subset
 	}
 
-	if db.DetermineJournalTypeForReader() == JournalFileType {
+	if journalTypeForReader == JournalFileType {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
@@ -329,14 +332,14 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 
 // loadDiffLayer reads the next sections of a layer journal, reconstructing a new
 // diff and verifying that it can be linked to the requested parent.
-func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
+func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, journalTypeForReader JournalType) (layer, error) {
 	// Read the next diff journal entry
 	var (
 		root               common.Hash
 		journalBuf         *rlp.Stream
 		journalEncodedBuff []byte
 	)
-	if db.DetermineJournalTypeForReader() == JournalFileType {
+	if journalTypeForReader == JournalFileType {
 		if err := r.Decode(&journalEncodedBuff); err != nil {
 			// The first read may fail with EOF, marking the end of the journal
 			if err == io.EOF {
@@ -409,7 +412,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		storages[entry.Account] = set
 	}
 
-	if db.DetermineJournalTypeForReader() == JournalFileType {
+	if journalTypeForReader == JournalFileType {
 		var shaSum [32]byte
 		if err := r.Decode(&shaSum); err != nil {
 			return nil, fmt.Errorf("load shasum: %v", err)
@@ -423,7 +426,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 
 	log.Debug("Loaded diff layer journal", "root", root, "parent", parent.rootHash(), "id", parent.stateID()+1, "block", block)
 
-	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete)), r)
+	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete)), r, journalTypeForReader)
 }
 
 // journal implements the layer interface, marshaling the un-flushed trie nodes

@@ -209,6 +209,9 @@ type BlockChain interface {
 
 	// UpdateChasingHead update remote best chain head, used by DA check now.
 	UpdateChasingHead(head *types.Header)
+
+	// AncientTail retrieves the tail the ancients blocks
+	AncientTail() (uint64, error)
 }
 
 type DownloadOption func(downloader *Downloader) *Downloader
@@ -797,6 +800,11 @@ func (d *Downloader) findAncestor(p *peerConnection, localHeight uint64, remoteH
 		// We're above the max reorg threshold, find the earliest fork point
 		floor = int64(localHeight - maxForkAncestry)
 	}
+	// if we have pruned too much history, reset the floor
+	if tail, err := d.blockchain.AncientTail(); err == nil && tail > uint64(floor) {
+		floor = int64(tail)
+	}
+
 	// If we're doing a light sync, ensure the floor doesn't go below the CHT, as
 	// all headers before that point will be missing.
 	if mode == LightSync {

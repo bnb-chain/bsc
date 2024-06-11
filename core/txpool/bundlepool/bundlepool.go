@@ -217,6 +217,11 @@ func (p *BundlePool) Reset(oldHead, newHead *types.Header) {
 // transaction, and drops all transactions below this threshold.
 func (p *BundlePool) SetGasTip(tip *big.Int) {}
 
+func (p *BundlePool) SetMaxGas(maxGas uint64) {
+	//TODO implement me
+	panic("implement me")
+}
+
 // Has returns an indicator whether subpool has a transaction cached with the
 // given hash.
 func (p *BundlePool) Has(hash common.Hash) bool {

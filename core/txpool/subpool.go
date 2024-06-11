@@ -166,6 +166,9 @@ type SubPool interface {
 	// Status returns the known status (unknown/pending/queued) of a transaction
 	// identified by their hashes.
 	Status(hash common.Hash) TxStatus
+
+	// SetMaxGas limit max acceptable tx gas when mine is enabled
+	SetMaxGas(maxGas uint64)
 }
 
 type BundleSubpool interface {

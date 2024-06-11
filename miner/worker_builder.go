@@ -375,6 +375,12 @@ func (w *worker) mergeBundles(
 
 		mergedBundle.BundleGasFees.Add(mergedBundle.BundleGasFees, simulatedBundle.BundleGasFees)
 		mergedBundle.BundleGasUsed += simulatedBundle.BundleGasUsed
+
+		for _, tx := range includedTxs {
+			if !containsHash(bundle.OriginalBundle.RevertingTxHashes, tx.Hash()) {
+				env.UnRevertible = append(env.UnRevertible, tx.Hash())
+			}
+		}
 	}
 
 	if len(includedTxs) == 0 {

@@ -382,7 +382,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 	log.Info("chainDB opened successfully")
 
 	// Get the number of items in old ancient db.
-	itemsOfAncient, err := chainDb.ItemAmountInAncient()
+	itemsOfAncient, err := chainDb.BlockStore().ItemAmountInAncient()
 	log.Info("the number of items in ancientDB is ", "itemsOfAncient", itemsOfAncient)
 
 	// If we can't access the freezer or it's empty, abort.
@@ -402,7 +402,7 @@ func (p *BlockPruner) backUpOldDb(name string, cache, handles int, namespace str
 
 	var oldOffSet uint64
 	if interrupt {
-		// The interrupt scecario within this function is specific for old and new ancientDB exsisted concurrently,
+		// The interrupt scecario within this function is specific for old and new ancientDB existed concurrently,
 		// should use last version of offset for oldAncientDB, because current offset is
 		// actually of the new ancientDB_Backup, but what we want is the offset of ancientDB being backup.
 		oldOffSet = rawdb.ReadOffSetOfLastAncientFreezer(chainDb)

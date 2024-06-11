@@ -75,7 +75,7 @@ func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, ancient 
 	if err != nil {
 		return nil, err
 	}
-	frdb, err := rawdb.NewDatabaseWithFreezer(kvdb, ancient, namespace, readonly, disableFreeze, isLastOffset, pruneAncientData)
+	frdb, err := rawdb.NewDatabaseWithFreezer(kvdb, ancient, namespace, readonly, disableFreeze, isLastOffset, pruneAncientData, false)
 	if err != nil {
 		kvdb.Close()
 		return nil, err
@@ -178,11 +178,10 @@ func BlockchainCreator(t *testing.T, chaindbPath, AncientPath string, blockRemai
 
 	// Force run a freeze cycle
 	type freezer interface {
-		Freeze() error
+		Freeze(threshold uint64) error
 		Ancients() (uint64, error)
 	}
-	blockchain.SetFinalized(blocks[len(blocks)-1].Header())
-	db.(freezer).Freeze()
+	db.(freezer).Freeze(10)
 
 	frozen, err := db.Ancients()
 	//make sure there're frozen items

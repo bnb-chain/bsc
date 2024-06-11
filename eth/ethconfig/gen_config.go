@@ -32,11 +32,12 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		EnableTrustProtocol     bool
 		PipeCommit              bool
 		RangeLimit              bool
-		TxLookupLimit           uint64                 `toml:",omitempty"`
-		TransactionHistory      uint64                 `toml:",omitempty"`
-		StateHistory            uint64                 `toml:",omitempty"`
-		StateScheme             string                 `toml:",omitempty"`
-		PathSyncFlush           bool                   `toml:",omitempty"`
+		TxLookupLimit           uint64 `toml:",omitempty"`
+		TransactionHistory      uint64 `toml:",omitempty"`
+		StateHistory            uint64 `toml:",omitempty"`
+		StateScheme             string `toml:",omitempty"`
+		PathSyncFlush           bool   `toml:",omitempty"`
+		JournalFileEnabled      bool
 		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
 		LightServ               int                    `toml:",omitempty"`
 		LightIngress            int                    `toml:",omitempty"`
@@ -70,9 +71,10 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		RPCEVMTimeout           time.Duration
 		RPCTxFeeCap             float64
 		OverrideCancun          *uint64 `toml:",omitempty"`
+		OverrideHaber           *uint64 `toml:",omitempty"`
+		OverrideBohr            *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
-		OverrideFeynman         *uint64 `toml:",omitempty"`
-		OverrideFeynmanFix      *uint64 `toml:",omitempty"`
+		BlobExtraReserve        uint64
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -95,6 +97,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.StateHistory = c.StateHistory
 	enc.StateScheme = c.StateScheme
 	enc.PathSyncFlush = c.PathSyncFlush
+	enc.JournalFileEnabled = c.JournalFileEnabled
 	enc.RequiredBlocks = c.RequiredBlocks
 	enc.LightServ = c.LightServ
 	enc.LightIngress = c.LightIngress
@@ -128,9 +131,10 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RPCEVMTimeout = c.RPCEVMTimeout
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
 	enc.OverrideCancun = c.OverrideCancun
+	enc.OverrideHaber = c.OverrideHaber
+	enc.OverrideBohr = c.OverrideBohr
 	enc.OverrideVerkle = c.OverrideVerkle
-	enc.OverrideFeynman = c.OverrideFeynman
-	enc.OverrideFeynmanFix = c.OverrideFeynmanFix
+	enc.BlobExtraReserve = c.BlobExtraReserve
 	return &enc, nil
 }
 
@@ -152,11 +156,12 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		EnableTrustProtocol     *bool
 		PipeCommit              *bool
 		RangeLimit              *bool
-		TxLookupLimit           *uint64                `toml:",omitempty"`
-		TransactionHistory      *uint64                `toml:",omitempty"`
-		StateHistory            *uint64                `toml:",omitempty"`
-		StateScheme             *string                `toml:",omitempty"`
-		PathSyncFlush           *bool                  `toml:",omitempty"`
+		TxLookupLimit           *uint64 `toml:",omitempty"`
+		TransactionHistory      *uint64 `toml:",omitempty"`
+		StateHistory            *uint64 `toml:",omitempty"`
+		StateScheme             *string `toml:",omitempty"`
+		PathSyncFlush           *bool   `toml:",omitempty"`
+		JournalFileEnabled      *bool
 		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
 		LightServ               *int                   `toml:",omitempty"`
 		LightIngress            *int                   `toml:",omitempty"`
@@ -190,9 +195,10 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		RPCEVMTimeout           *time.Duration
 		RPCTxFeeCap             *float64
 		OverrideCancun          *uint64 `toml:",omitempty"`
+		OverrideHaber           *uint64 `toml:",omitempty"`
+		OverrideBohr            *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
-		OverrideFeynman         *uint64 `toml:",omitempty"`
-		OverrideFeynmanFix      *uint64 `toml:",omitempty"`
+		BlobExtraReserve        *uint64
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -257,6 +263,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.PathSyncFlush != nil {
 		c.PathSyncFlush = *dec.PathSyncFlush
+	}
+	if dec.JournalFileEnabled != nil {
+		c.JournalFileEnabled = *dec.JournalFileEnabled
 	}
 	if dec.RequiredBlocks != nil {
 		c.RequiredBlocks = dec.RequiredBlocks
@@ -357,14 +366,17 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.OverrideCancun != nil {
 		c.OverrideCancun = dec.OverrideCancun
 	}
+	if dec.OverrideHaber != nil {
+		c.OverrideHaber = dec.OverrideHaber
+	}
+	if dec.OverrideBohr != nil {
+		c.OverrideBohr = dec.OverrideBohr
+	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle
 	}
-	if dec.OverrideFeynman != nil {
-		c.OverrideFeynman = dec.OverrideFeynman
-	}
-	if dec.OverrideFeynmanFix != nil {
-		c.OverrideFeynmanFix = dec.OverrideFeynmanFix
+	if dec.BlobExtraReserve != nil {
+		c.BlobExtraReserve = *dec.BlobExtraReserve
 	}
 	return nil
 }

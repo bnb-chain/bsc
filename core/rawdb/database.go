@@ -61,7 +61,7 @@ func (frdb *freezerdb) BlockStoreReader() ethdb.Reader {
 }
 
 func (frdb *freezerdb) BlockStoreWriter() ethdb.Writer {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
@@ -138,13 +138,22 @@ func (frdb *freezerdb) SetBlockStore(block ethdb.Database) {
 	frdb.blockStore = block
 }
 
+func (frdb *freezerdb) HasSeparateBlockStore() bool {
+	return frdb.blockStore != nil
+}
+
 // Freeze is a helper method used for external testing to trigger and block until
 // a freeze cycle completes, without having to sleep for a minute to trigger the
 // automatic background run.
-func (frdb *freezerdb) Freeze() error {
+func (frdb *freezerdb) Freeze(threshold uint64) error {
 	if frdb.AncientStore.(*chainFreezer).readonly {
 		return errReadOnly
 	}
+	// Set the freezer threshold to a temporary value
+	defer func(old uint64) {
+		frdb.AncientStore.(*chainFreezer).threshold.Store(old)
+	}(frdb.AncientStore.(*chainFreezer).threshold.Load())
+	frdb.AncientStore.(*chainFreezer).threshold.Store(threshold)
 	// Trigger a freeze cycle and block until it's done
 	trigger := make(chan struct{}, 1)
 	frdb.AncientStore.(*chainFreezer).trigger <- trigger
@@ -184,7 +193,7 @@ func (db *nofreezedb) Ancients() (uint64, error) {
 	return 0, errNotSupported
 }
 
-// Ancients returns an error as we don't have a backing chain freezer.
+// ItemAmountInAncient returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) ItemAmountInAncient() (uint64, error) {
 	return 0, errNotSupported
 }
@@ -263,6 +272,10 @@ func (db *nofreezedb) SetBlockStore(block ethdb.Database) {
 	db.blockStore = block
 }
 
+func (db *nofreezedb) HasSeparateBlockStore() bool {
+	return db.blockStore != nil
+}
+
 func (db *nofreezedb) BlockStoreReader() ethdb.Reader {
 	if db.blockStore != nil {
 		return db.blockStore
@@ -318,6 +331,110 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 	return &nofreezedb{KeyValueStore: db}
 }
 
+type emptyfreezedb struct {
+	ethdb.KeyValueStore
+}
+
+// HasAncient returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) HasAncient(kind string, number uint64) (bool, error) {
+	return false, nil
+}
+
+// Ancient returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) Ancient(kind string, number uint64) ([]byte, error) {
+	return nil, nil
+}
+
+// AncientRange returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) AncientRange(kind string, start, max, maxByteSize uint64) ([][]byte, error) {
+	return nil, nil
+}
+
+// Ancients returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) Ancients() (uint64, error) {
+	return 0, nil
+}
+
+// ItemAmountInAncient returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) ItemAmountInAncient() (uint64, error) {
+	return 0, nil
+}
+
+// Tail returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) Tail() (uint64, error) {
+	return 0, nil
+}
+
+// AncientSize returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) AncientSize(kind string) (uint64, error) {
+	return 0, nil
+}
+
+// ModifyAncients returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) ModifyAncients(func(ethdb.AncientWriteOp) error) (int64, error) {
+	return 0, nil
+}
+
+// TruncateHead returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) TruncateHead(items uint64) (uint64, error) {
+	return 0, nil
+}
+
+// TruncateTail returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) TruncateTail(items uint64) (uint64, error) {
+	return 0, nil
+}
+
+// TruncateTableTail returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	return 0, nil
+}
+
+// ResetTable returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	return nil
+}
+
+// Sync returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) Sync() error {
+	return nil
+}
+
+func (db *emptyfreezedb) DiffStore() ethdb.KeyValueStore        { return db }
+func (db *emptyfreezedb) SetDiffStore(diff ethdb.KeyValueStore) {}
+func (db *emptyfreezedb) StateStore() ethdb.Database            { return db }
+func (db *emptyfreezedb) SetStateStore(state ethdb.Database)    {}
+func (db *emptyfreezedb) StateStoreReader() ethdb.Reader        { return db }
+func (db *emptyfreezedb) BlockStore() ethdb.Database            { return db }
+func (db *emptyfreezedb) SetBlockStore(block ethdb.Database)    {}
+func (db *emptyfreezedb) HasSeparateBlockStore() bool           { return false }
+func (db *emptyfreezedb) BlockStoreReader() ethdb.Reader        { return db }
+func (db *emptyfreezedb) BlockStoreWriter() ethdb.Writer        { return db }
+func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
+	return nil
+}
+func (db *emptyfreezedb) AncientOffSet() uint64 { return 0 }
+
+// MigrateTable returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) MigrateTable(kind string, convert convertLegacyFn) error {
+	return nil
+}
+
+// AncientDatadir returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) AncientDatadir() (string, error) {
+	return "", nil
+}
+func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return nil
+}
+
+// NewEmptyFreezeDB is used for CLI such as `geth db inspect` in pruned db that we don't
+// have a backing chain freezer.
+// WARNING: it must be only used in the above case.
+func NewEmptyFreezeDB(db ethdb.KeyValueStore) ethdb.Database {
+	return &emptyfreezedb{KeyValueStore: db}
+}
+
 // NewFreezerDb only create a freezer without statedb.
 func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*Freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
@@ -358,13 +475,19 @@ func resolveChainFreezerDir(ancient string) string {
 // value data store with a freezer moving immutable chain segments into cold
 // storage. The passed ancient indicates the path of root ancient directory
 // where the chain freezer can be opened.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData, multiDatabase bool) (ethdb.Database, error) {
 	var offset uint64
 	// The offset of ancientDB should be handled differently in different scenarios.
 	if isLastOffset {
 		offset = ReadOffSetOfLastAncientFreezer(db)
 	} else {
 		offset = ReadOffSetOfCurrentAncientFreezer(db)
+	}
+
+	// This case is used for someone who wants to execute geth db inspect CLI in a pruned db
+	if !disableFreeze && readonly && ReadAncientType(db) == PruneFreezerType {
+		log.Warn("Disk db is pruned, using an empty freezer db for CLI")
+		return NewEmptyFreezeDB(db), nil
 	}
 
 	if pruneAncientData && !disableFreeze && !readonly {
@@ -394,7 +517,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	}
 
 	// Create the idle freezer instance
-	frdb, err := newChainFreezer(resolveChainFreezerDir(ancient), namespace, readonly, offset)
+	frdb, err := newChainFreezer(resolveChainFreezerDir(ancient), namespace, readonly, offset, multiDatabase)
 	if err != nil {
 		printChainMetadata(db)
 		return nil, err
@@ -575,6 +698,8 @@ type OpenOptions struct {
 	// Ephemeral means that filesystem sync operations should be avoided: data integrity in the face of
 	// a crash is not important. This option should typically be used in tests.
 	Ephemeral bool
+
+	MultiDataBase bool
 }
 
 // openKeyValueDatabase opens a disk-based key-value database, e.g. leveldb or pebble.
@@ -619,13 +744,13 @@ func Open(o OpenOptions) (ethdb.Database, error) {
 	}
 	if ReadAncientType(kvdb) == PruneFreezerType {
 		if !o.PruneAncientData {
-			log.Warn("Disk db is pruned")
+			log.Warn("NOTICE: You're opening a pruned disk db!")
 		}
 	}
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
-	frdb, err := NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData)
+	frdb, err := NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData, o.MultiDataBase)
 	if err != nil {
 		kvdb.Close()
 		return nil, err
@@ -769,7 +894,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		trieIter = db.StateStore().NewIterator(keyPrefix, nil)
 		defer trieIter.Release()
 	}
-	if db.BlockStore() != db {
+	if db.HasSeparateBlockStore() {
 		blockIter = db.BlockStore().NewIterator(keyPrefix, nil)
 		defer blockIter.Release()
 	}

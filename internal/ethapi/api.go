@@ -1010,7 +1010,11 @@ func (s *BlockChainAPI) GetBlockReceipts(ctx context.Context, blockNrOrHash rpc.
 	return result, nil
 }
 
-func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) ([]map[string]interface{}, error) {
+func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash, fullBlob *bool) ([]map[string]interface{}, error) {
+	showBlob := true
+	if fullBlob != nil {
+		showBlob = *fullBlob
+	}
 	header, err := s.b.HeaderByNumberOrHash(ctx, blockNrOrHash)
 	if header == nil || err != nil {
 		// When the block doesn't exist, the RPC method should return JSON null
@@ -1023,12 +1027,16 @@ func (s *BlockChainAPI) GetBlobSidecars(ctx context.Context, blockNrOrHash rpc.B
 	}
 	result := make([]map[string]interface{}, len(blobSidecars))
 	for i, sidecar := range blobSidecars {
-		result[i] = marshalBlobSidecar(sidecar)
+		result[i] = marshalBlobSidecar(sidecar, showBlob)
 	}
 	return result, nil
 }
 
-func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.Hash) (map[string]interface{}, error) {
+func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.Hash, fullBlob *bool) (map[string]interface{}, error) {
+	showBlob := true
+	if fullBlob != nil {
+		showBlob = *fullBlob
+	}
 	txTarget, blockHash, _, Index := rawdb.ReadTransaction(s.b.ChainDb(), hash)
 	if txTarget == nil {
 		return nil, nil
@@ -1045,7 +1053,7 @@ func (s *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash common.
 	}
 	for _, sidecar := range blobSidecars {
 		if sidecar.TxIndex == Index {
-			return marshalBlobSidecar(sidecar), nil
+			return marshalBlobSidecar(sidecar, showBlob), nil
 		}
 	}
 
@@ -2142,13 +2150,31 @@ func marshalReceipt(receipt *types.Receipt, blockHash common.Hash, blockNumber u
 	return fields
 }
 
-func marshalBlobSidecar(sidecar *types.BlobSidecar) map[string]interface{} {
+func marshalBlobSidecar(sidecar *types.BlobSidecar, fullBlob bool) map[string]interface{} {
 	fields := map[string]interface{}{
 		"blockHash":   sidecar.BlockHash,
 		"blockNumber": hexutil.EncodeUint64(sidecar.BlockNumber.Uint64()),
 		"txHash":      sidecar.TxHash,
 		"txIndex":     hexutil.EncodeUint64(sidecar.TxIndex),
-		"blobSidecar": sidecar.BlobTxSidecar,
+	}
+	fields["blobSidecar"] = marshalBlob(sidecar.BlobTxSidecar, fullBlob)
+	return fields
+}
+
+func marshalBlob(blobTxSidecar types.BlobTxSidecar, fullBlob bool) map[string]interface{} {
+	fields := map[string]interface{}{
+		"blobs":       blobTxSidecar.Blobs,
+		"commitments": blobTxSidecar.Commitments,
+		"proofs":      blobTxSidecar.Proofs,
+	}
+	if !fullBlob {
+		var blobs []common.Hash
+		for _, blob := range blobTxSidecar.Blobs {
+			var value common.Hash
+			copy(value[:], blob[:32])
+			blobs = append(blobs, value)
+		}
+		fields["blobs"] = blobs
 	}
 	return fields
 }

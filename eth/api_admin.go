@@ -24,7 +24,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -141,32 +140,4 @@ func (api *AdminAPI) ImportChain(file string) (bool, error) {
 		blocks = blocks[:0]
 	}
 	return true, nil
-}
-
-// MevRunning returns true if the validator accept bids from builder
-func (api *AdminAPI) MevRunning() bool {
-	return api.eth.APIBackend.MevRunning()
-}
-
-// StartMev starts mev. It notifies the miner to start to receive bids.
-func (api *AdminAPI) StartMev() {
-	api.eth.APIBackend.StartMev()
-}
-
-// StopMev stops mev. It notifies the miner to stop receiving bids from this moment,
-// but the bids before this moment would still been taken into consideration by mev.
-func (api *AdminAPI) StopMev() {
-	api.eth.APIBackend.StopMev()
-}
-
-// AddBuilder adds a builder to the bid simulator.
-// url is the endpoint of the builder, for example, "https://mev-builder.amazonaws.com",
-// if validator is equipped with sentry, ignore the url.
-func (api *AdminAPI) AddBuilder(builder common.Address, url string) error {
-	return api.eth.APIBackend.AddBuilder(builder, url)
-}
-
-// RemoveBuilder removes a builder from the bid simulator.
-func (api *AdminAPI) RemoveBuilder(builder common.Address) error {
-	return api.eth.APIBackend.RemoveBuilder(builder)
 }
