@@ -495,10 +495,11 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet, stat *ExeStat) error {
 	for k, v := range rwSet.writeSet {
 		// ignore no changed write record
 		checkRWSetInconsistent(index, k, rwSet.readSet, rwSet.writeSet)
-		if rwSet.readSet[k] != nil && isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
-			delete(rwSet.writeSet, k)
-			continue
-		}
+		// this will be handled by state object
+		//if rwSet.readSet[k] != nil && isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
+		//	delete(rwSet.writeSet, k)
+		//	continue
+		//}
 		if _, exist := s.pendingWriteSet[k]; !exist {
 			s.pendingWriteSet[k] = NewPendingWrites()
 		}

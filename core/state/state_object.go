@@ -19,6 +19,7 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"golang.org/x/exp/slices"
 	"io"
 	"sync"
 	"time"
@@ -131,11 +132,13 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 		created:             created,
 	}
 
-	// dirty data
-	s.dirtyBalance = acct.Balance.Clone()
-	s.dirtyNonce = new(uint64)
-	*s.dirtyNonce = acct.Nonce
-	s.dirtyCodeHash = acct.CodeHash
+	// dirty data when create a new account
+	if acct == nil {
+		s.dirtyBalance = acct.Balance.Clone()
+		s.dirtyNonce = new(uint64)
+		*s.dirtyNonce = acct.Nonce
+		s.dirtyCodeHash = acct.CodeHash
+	}
 	return s
 }
 
@@ -328,15 +331,20 @@ func (s *stateObject) finalise(prefetch bool) {
 
 func (s *stateObject) finaliseRWSet() {
 	for key, value := range s.dirtyStorage {
+		// three are some unclean dirtyStorage from previous reverted txs, it will skip finalise
+		// so add a new rule, if val has no change, then skip it
+		if value == s.GetCommittedState(key) {
+			continue
+		}
 		s.db.RecordWrite(types.StorageStateKey(s.address, key), value)
 	}
-	if s.dirtyNonce != nil {
+	if s.dirtyNonce != nil && *s.dirtyNonce != s.data.Nonce {
 		s.db.RecordWrite(types.AccountStateKey(s.address, types.AccountNonce), *s.dirtyNonce)
 	}
-	if s.dirtyBalance != nil {
+	if s.dirtyBalance != nil && !s.dirtyBalance.Eq(s.data.Balance) {
 		s.db.RecordWrite(types.AccountStateKey(s.address, types.AccountBalance), s.dirtyBalance.Clone())
 	}
-	if s.dirtyCodeHash != nil {
+	if s.dirtyCodeHash != nil && !slices.Equal(s.dirtyCodeHash, s.data.CodeHash) {
 		s.db.RecordWrite(types.AccountStateKey(s.address, types.AccountCodeHash), s.dirtyCodeHash)
 	}
 }
