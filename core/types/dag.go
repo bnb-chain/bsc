@@ -511,6 +511,7 @@ func checkRWSetInconsistent(index int, k RWKey, readSet map[RWKey]*ReadRecord, w
 	var (
 		readOk  bool
 		writeOk bool
+		r       *WriteRecord
 	)
 
 	if k.IsAccountSuicide() {
@@ -519,10 +520,10 @@ func checkRWSetInconsistent(index int, k RWKey, readSet map[RWKey]*ReadRecord, w
 		_, readOk = readSet[k]
 	}
 
-	_, writeOk = writeSet[k]
-	if !readOk || !writeOk {
+	r, writeOk = writeSet[k]
+	if readOk != writeOk {
 		// check if it's correct? read nil, write non-nil
-		log.Info("checkRWSetInconsistent find inconsistent", "tx", index, "k", k.String(), "read", readOk, "write", writeOk)
+		log.Info("checkRWSetInconsistent find inconsistent", "tx", index, "k", k.String(), "read", readOk, "write", writeOk, "val", r.Val)
 		return true
 	}
 
