@@ -266,13 +266,14 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 			// so in extreme cases, both reading the difflayer cache and reading the disklayer may fail.
 			// In this case, fallback to the original 128-layer recursive difflayer query path.
 			diffHashCacheSlowPathMeter.Mark(1)
-			log.Warn("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String())
+			log.Debug("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String())
 			return dl.node(owner, path, hash, 0)
 		} else {
 			// skip difflayer query, which is fastpath.
 			return blob, nil
 		}
 	}
+	diffHashCacheSlowPathMeter.Mark(1)
 	return dl.node(owner, path, hash, 0)
 }
 
