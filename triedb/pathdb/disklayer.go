@@ -150,9 +150,9 @@ func (dl *diskLayer) markStale() {
 	dl.stale = true
 }
 
-type loggerFunc func(string, ...interface{})
-
-func (dl *diskLayer) NodeByLogger(owner common.Hash, path []byte, hash common.Hash, logger loggerFunc) ([]byte, error) {
+// Node implements the layer interface, retrieving the trie node with the
+// provided node info. No error will be returned if the node is not found.
+func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]byte, error) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
@@ -165,7 +165,7 @@ func (dl *diskLayer) NodeByLogger(owner common.Hash, path []byte, hash common.Ha
 	// layer as stale.
 	n, err := dl.buffer.node(owner, path, hash)
 	if err != nil {
-		logger("Unexpected trie node in clean cache", "error", err)
+		log.Error("Unexpected trie node in clean cache", "error", err)
 		return nil, err
 	}
 	if n != nil {
@@ -189,7 +189,7 @@ func (dl *diskLayer) NodeByLogger(owner common.Hash, path []byte, hash common.Ha
 				return blob, nil
 			}
 			cleanFalseMeter.Mark(1)
-			logger("Unexpected trie node in clean cache", "owner", owner, "path", path, "expect", hash, "got", got)
+			log.Error("Unexpected trie node in clean cache", "owner", owner, "path", path, "expect", hash, "got", got)
 		}
 		cleanMissMeter.Mark(1)
 	}
@@ -205,7 +205,7 @@ func (dl *diskLayer) NodeByLogger(owner common.Hash, path []byte, hash common.Ha
 	}
 	if nHash != hash {
 		diskFalseMeter.Mark(1)
-		logger("Unexpected trie node in disk", "owner", owner, "path", path, "expect", hash, "got", nHash)
+		log.Error("Unexpected trie node in disk", "owner", owner, "path", path, "expect", hash, "got", nHash)
 		return nil, newUnexpectedNodeError("disk", hash, nHash, owner, path, nBlob)
 	}
 	if dl.cleans != nil && len(nBlob) > 0 {
@@ -213,12 +213,6 @@ func (dl *diskLayer) NodeByLogger(owner common.Hash, path []byte, hash common.Ha
 		cleanWriteMeter.Mark(int64(len(nBlob)))
 	}
 	return nBlob, nil
-}
-
-// Node implements the layer interface, retrieving the trie node with the
-// provided node info. No error will be returned if the node is not found.
-func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]byte, error) {
-	return dl.NodeByLogger(owner, path, hash, log.Error)
 }
 
 // update implements the layer interface, returning a new diff layer on top

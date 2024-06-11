@@ -51,9 +51,20 @@ func (tree *layerTree) reset(head layer) {
 	tree.lock.Lock()
 	defer tree.lock.Unlock()
 
+	for _, ly := range tree.layers {
+		if dl, ok := ly.(*diffLayer); ok {
+			// Clean up the hash cache of the child difflayer corresponding to difflayer.
+			dl.cache.Remove(dl)
+		}
+	}
+
 	var layers = make(map[common.Hash]layer)
 	for head != nil {
 		layers[head.rootHash()] = head
+		if dl, ok := head.(*diffLayer); ok {
+			// Add the hash cache of the child difflayer corresponding to difflayer.
+			dl.cache.Add(dl)
+		}
 		head = head.parentLayer()
 	}
 	tree.layers = layers
@@ -186,6 +197,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 		if df, exist := tree.layers[root]; exist {
 			if dl, ok := df.(*diffLayer); ok {
 				// Clean up the hash cache of the child difflayer corresponding to the stale parent.
+				// include re-org case.
 				dl.cache.Remove(dl)
 			}
 		}
