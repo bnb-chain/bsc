@@ -165,7 +165,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		config.TrieDirtyCache = pathdb.MaxDirtyBufferSize / 1024 / 1024
 	}
 	log.Info("Allocated memory caches",
-		"state_schema", config.StateScheme,
+		"state_scheme", config.StateScheme,
 		"trie_clean_cache", common.StorageSize(config.TrieCleanCache)*1024*1024,
 		"trie_dirty_cache", common.StorageSize(config.TrieDirtyCache)*1024*1024,
 		"snapshot_cache", common.StorageSize(config.SnapshotCache)*1024*1024)
