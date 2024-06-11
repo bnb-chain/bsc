@@ -98,11 +98,13 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 	// Attention: this is based on best schedule, it will reduce a lot by executing previous txs in parallel
 	// It assumes that there is no parallel thread limit
 	var (
-		maxTime int64
-		maxGas  uint64
-		maxRead int
-		maxPath []int
-		txTimes = make([]int64, len(dag.TxDeps))
+		maxGasIndex  int
+		maxGas       uint64
+		maxTimeIndex int
+		maxTime      int64
+		txTimes      = make([]int64, len(dag.TxDeps))
+		txGases      = make([]uint64, len(dag.TxDeps))
+		txReads      = make([]int, len(dag.TxDeps))
 	)
 
 	for i, path := range paths {
@@ -115,26 +117,31 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 			if txTimes[j] > txTimes[i] {
 				txTimes[i] = txTimes[j]
 			}
+			if txGases[j] > txGases[i] {
+				txGases[i] = txGases[j]
+			}
+			if txReads[j] > txReads[i] {
+				txReads[i] = txReads[j]
+			}
 		}
 		txTimes[i] += stats[i].costTime
-		var (
-			g uint64
-			r int
-		)
-		for _, j := range path {
-			g += stats[j].usedGas
-			r += stats[j].readCount
+		txGases[i] += stats[i].usedGas
+		txReads[i] += stats[i].readCount
+
+		sb.WriteString(fmt.Sprintf("Tx%v, %.2fms|%vgas|%vreads\npath: %v\n", i, float64(txTimes[i])/1000, txGases[i], txReads[i], path))
+		// try to find max gas
+		if txGases[i] > maxGas {
+			maxGas = txGases[i]
+			maxGasIndex = i
 		}
-		sb.WriteString(fmt.Sprintf("Tx%v, %.2fms|%vgas|%vreads\npath: %v\n", i, float64(txTimes[i])/1000, g, r, path))
 		if txTimes[i] > maxTime {
 			maxTime = txTimes[i]
-			maxGas = g
-			maxRead = r
-			maxPath = path
+			maxTimeIndex = i
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("LongestParallelPath, %.2fms|%vgas|%vreads\npath: %v\n", float64(maxTime)/1000, maxGas, maxRead, maxPath))
+	sb.WriteString(fmt.Sprintf("LargestGasPath: %.2fms|%vgas|%vreads\npath: %v\n", float64(txTimes[maxGasIndex])/1000, txGases[maxGasIndex], txReads[maxGasIndex], paths[maxGasIndex]))
+	sb.WriteString(fmt.Sprintf("LongestTimePath: %.2fms|%vgas|%vreads\npath: %v\n", float64(txTimes[maxTimeIndex])/1000, txGases[maxTimeIndex], txReads[maxTimeIndex], paths[maxTimeIndex]))
 	// serial path
 	var (
 		sTime int64
@@ -154,8 +161,9 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 	if sTime == 0 {
 		return ""
 	}
-	sb.WriteString(fmt.Sprintf("LongestSerialPath, %.2fms|%vgas|%vreads\npath: %v\n", float64(sTime)/1000, sGas, sRead, sPath))
-	sb.WriteString(fmt.Sprintf("Estimated saving: %.2fms, %.2f%%, %.2fX\n", float64(sTime-maxTime)/1000, float64(sTime-maxTime)/float64(sTime)*100, float64(sTime)/float64(maxTime)))
+	sb.WriteString(fmt.Sprintf("SerialPath: %.2fms|%vgas|%vreads\npath: %v\n", float64(sTime)/1000, sGas, sRead, sPath))
+	maxParaTime := txTimes[maxGasIndex]
+	sb.WriteString(fmt.Sprintf("Estimated saving: %.2fms, %.2f%%, %.2fX\n", float64(sTime-maxParaTime)/1000, float64(sTime-maxParaTime)/float64(sTime)*100, float64(sTime)/float64(maxParaTime)))
 	return sb.String()
 }
 
@@ -485,7 +493,7 @@ func (s *MVStates) FulfillRWSet(rwSet *RWSet, stat *ExeStat) error {
 
 	for k, v := range rwSet.writeSet {
 		// ignore no changed write record
-		//checkRWSetInconsistent(index, k, rwSet.readSet, rwSet.writeSet)
+		checkRWSetInconsistent(index, k, rwSet.readSet, rwSet.writeSet)
 		if rwSet.readSet[k] != nil && isEqualRWVal(k, rwSet.readSet[k].Val, v.Val) {
 			delete(rwSet.writeSet, k)
 			continue
