@@ -110,14 +110,14 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 		return ""
 	}
 	sb := strings.Builder{}
-	sb.WriteString("TxDAG:")
+	sb.WriteString("TxDAG:\n")
 	for i, dep := range dag.TxDeps {
 		if stats[i].mustSerialFlag {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("%v: %v", i, dep.TxIndexes))
+		sb.WriteString(fmt.Sprintf("%v: %v\n", i, dep.TxIndexes))
 	}
-	sb.WriteString("Parallel Execution Path:")
+	sb.WriteString("Parallel Execution Path:\n")
 	paths := dag.travelExecutionPaths()
 	// Attention: this is based on best schedule, it will reduce a lot by executing previous txs in parallel
 	// It assumes that there is no parallel thread limit
