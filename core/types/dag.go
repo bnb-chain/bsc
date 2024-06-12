@@ -46,6 +46,8 @@ type TxDAG struct {
 	Type uint8
 	// Tx Dependency List, the list index is equal to TxIndex
 	TxDeps []TxDep
+	// It indicates the scheduling priority of the transactions
+	SchedulePriority []int
 }
 
 func NewTxDAG(txLen int) *TxDAG {
@@ -108,6 +110,14 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 		return ""
 	}
 	sb := strings.Builder{}
+	sb.WriteString("TxDAG:")
+	for i, dep := range dag.TxDeps {
+		if stats[i].mustSerialFlag {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("%v: %v", i, dep.TxIndexes))
+	}
+	sb.WriteString("Parallel Execution Path:")
 	paths := dag.travelExecutionPaths()
 	// Attention: this is based on best schedule, it will reduce a lot by executing previous txs in parallel
 	// It assumes that there is no parallel thread limit
@@ -165,7 +175,7 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 		txReads[i] += stats[i].readCount
 
 		//sb.WriteString(fmt.Sprintf("Tx%v, %.2fms|%vgas|%vreads\npath: %v\n", i, float64(txTimes[i].Microseconds())/1000, txGases[i], txReads[i], path))
-		sb.WriteString(fmt.Sprintf("%v\n", path))
+		sb.WriteString(fmt.Sprintf("%v: %v\n", i, path))
 		// try to find max gas
 		if txGases[i] > maxGas {
 			maxGas = txGases[i]

@@ -204,6 +204,8 @@ type Body struct {
 	Transactions []*Transaction
 	Uncles       []*Header
 	Withdrawals  []*Withdrawal `rlp:"optional"`
+	// TODO: add TxDAG in block body
+	//TxDAG        *TxDAG        `rlp:"optional"`
 }
 
 // Block represents an Ethereum block.
