@@ -127,18 +127,23 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 		if stats[i].mustSerialFlag {
 			continue
 		}
-		if len(path) == 1 {
+		if len(path) <= 1 {
 			noDepdencyCount++
 			totalNoDepMeter.Mark(1)
-		} else if len(path) == 3 {
+		}
+		if len(path) <= 3 {
 			total2DepMeter.Mark(1)
-		} else if len(path) == 5 {
+		}
+		if len(path) <= 5 {
 			total4DepMeter.Mark(1)
-		} else if len(path) == 9 {
+		}
+		if len(path) <= 9 {
 			total8DepMeter.Mark(1)
-		} else if len(path) == 17 {
+		}
+		if len(path) <= 17 {
 			total16DepMeter.Mark(1)
-		} else if len(path) == 33 {
+		}
+		if len(path) <= 33 {
 			total32DepMeter.Mark(1)
 		}
 
