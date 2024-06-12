@@ -26,12 +26,17 @@ import (
 	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
-type HashIndex struct {
-	lock  sync.RWMutex
-	cache map[common.Hash]*trienode.Node
+type RefTrieNode struct {
+	refCount uint32
+	node     *trienode.Node
 }
 
-func (h *HashIndex) length() int {
+type HashNodeCache struct {
+	lock  sync.RWMutex
+	cache map[common.Hash]*RefTrieNode
+}
+
+func (h *HashNodeCache) length() int {
 	if h == nil {
 		return 0
 	}
@@ -40,37 +45,50 @@ func (h *HashIndex) length() int {
 	return len(h.cache)
 }
 
-func (h *HashIndex) set(hash common.Hash, node *trienode.Node) {
+func (h *HashNodeCache) set(hash common.Hash, node *trienode.Node) {
 	if h == nil {
 		return
 	}
 	h.lock.Lock()
 	defer h.lock.Unlock()
-	h.cache[hash] = node
+	if n, ok := h.cache[hash]; ok {
+		n.refCount++
+	} else {
+		h.cache[hash] = &RefTrieNode{1, node}
+	}
 }
 
-func (h *HashIndex) Get(hash common.Hash) *trienode.Node {
+func (h *HashNodeCache) Get(hash common.Hash) *trienode.Node {
 	if h == nil {
 		return nil
 	}
 	h.lock.RLock()
 	defer h.lock.RUnlock()
 	if n, ok := h.cache[hash]; ok {
-		return n
+		return n.node
 	}
 	return nil
 }
 
-func (h *HashIndex) del(hash common.Hash) {
+func (h *HashNodeCache) del(hash common.Hash) {
 	if h == nil {
 		return
 	}
 	h.lock.Lock()
 	defer h.lock.Unlock()
-	delete(h.cache, hash)
+	n, ok := h.cache[hash]
+	if !ok {
+		return
+	}
+	if n.refCount > 0 {
+		n.refCount--
+	}
+	if n.refCount == 0 {
+		delete(h.cache, hash)
+	}
 }
 
-func (h *HashIndex) Add(ly layer) {
+func (h *HashNodeCache) Add(ly layer) {
 	if h == nil {
 		return
 	}
@@ -78,16 +96,17 @@ func (h *HashIndex) Add(ly layer) {
 	if !ok {
 		return
 	}
+	beforeAdd := h.length()
 	for _, subset := range dl.nodes {
 		for _, node := range subset {
 			h.set(node.Hash, node)
 		}
 	}
 	diffHashCacheLengthGauge.Update(int64(h.length()))
-	log.Debug("Add difflayer to hash map", "root", ly.rootHash(), "map_len", h.length())
+	log.Debug("Add difflayer to hash map", "root", ly.rootHash(), "block_number", dl.block, "map_len", h.length(), "add_delta", h.length()-beforeAdd)
 }
 
-func (h *HashIndex) Remove(ly layer) {
+func (h *HashNodeCache) Remove(ly layer) {
 	if h == nil {
 		return
 	}
@@ -96,13 +115,14 @@ func (h *HashIndex) Remove(ly layer) {
 		return
 	}
 	go func() {
+		beforeDel := h.length()
 		for _, subset := range dl.nodes {
 			for _, node := range subset {
 				h.del(node.Hash)
 			}
 		}
 		diffHashCacheLengthGauge.Update(int64(h.length()))
-		log.Debug("Remove difflayer from hash map", "root", ly.rootHash(), "map_len", h.length())
+		log.Debug("Remove difflayer from hash map", "root", ly.rootHash(), "block_number", dl.block, "map_len", h.length(), "del_delta", beforeDel-h.length())
 	}()
 }
 
@@ -119,8 +139,10 @@ type diffLayer struct {
 	nodes  map[common.Hash]map[string]*trienode.Node // Cached trie nodes indexed by owner and path
 	states *triestate.Set                            // Associated state change set for building history
 	memory uint64                                    // Approximate guess as to how much memory we use
-	cache  *HashIndex                                // trienode cache by hash key.
+	cache  *HashNodeCache                            // trienode cache by hash key. cache is immutable, but cache's item can be add/del.
 
+	// mutables
+	origin *diskLayer   // The current difflayer corresponds to the underlying disklayer and is updated during cap.
 	parent layer        // Parent layer modified by this one, never nil, **can be changed**
 	lock   sync.RWMutex // Lock used to protect parent
 }
@@ -139,13 +161,20 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 		states: states,
 		parent: parent,
 	}
-	if pdl, ok := parent.(*diffLayer); ok && pdl.cache != nil {
-		dl.cache = pdl.cache
-	} else {
-		dl.cache = &HashIndex{
-			cache: make(map[common.Hash]*trienode.Node),
+
+	switch l := parent.(type) {
+	case *diskLayer:
+		dl.origin = l
+		dl.cache = &HashNodeCache{
+			cache: make(map[common.Hash]*RefTrieNode),
 		}
+	case *diffLayer:
+		dl.origin = l.originDiskLayer()
+		dl.cache = l.cache
+	default:
+		panic("unknown parent type")
 	}
+
 	for _, subset := range nodes {
 		for path, n := range subset {
 			dl.memory += uint64(n.Size() + len(path))
@@ -161,6 +190,12 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 	diffLayerBytesMeter.Mark(int64(dl.memory))
 	log.Debug("Created new diff layer", "id", id, "block", block, "nodes", count, "size", common.StorageSize(dl.memory), "root", dl.root)
 	return dl
+}
+
+func (dl *diffLayer) originDiskLayer() *diskLayer {
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+	return dl.origin
 }
 
 // rootHash implements the layer interface, returning the root hash of
@@ -230,23 +265,24 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	}
 	diffHashCacheMissMeter.Mark(1)
 
-	parent := dl.parent
-	for {
-		if disk, ok := parent.(*diskLayer); ok {
-			blob, err := disk.NodeByLogger(owner, path, hash, log.Debug)
-			if err != nil {
-				// This is a bad case with a very low probability. The same trienode exists
-				// in different difflayers and can be cleared from the map in advance. In
-				// this case, the 128-layer difflayer is queried again.
-				diffHashCacheSlowPathMeter.Mark(1)
-				log.Debug("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String())
-				return dl.node(owner, path, hash, 0)
-			} else {
-				return blob, nil
-			}
+	persistLayer := dl.originDiskLayer()
+	if persistLayer != nil {
+		blob, err := persistLayer.Node(owner, path, hash)
+		if err != nil {
+			// This is a bad case with a very low probability.
+			// r/w the difflayer cache and r/w the disklayer are not in the same lock,
+			// so in extreme cases, both reading the difflayer cache and reading the disklayer may fail, eg, disklayer is stale.
+			// In this case, fallback to the original 128-layer recursive difflayer query path.
+			diffHashCacheSlowPathMeter.Mark(1)
+			log.Debug("Retry difflayer due to query origin failed", "owner", owner, "path", path, "hash", hash.String(), "error", err)
+			return dl.node(owner, path, hash, 0)
+		} else { // This is the fastpath.
+			return blob, nil
 		}
-		parent = parent.parentLayer()
 	}
+	diffHashCacheSlowPathMeter.Mark(1)
+	log.Debug("Retry difflayer due to origin is nil", "owner", owner, "path", path, "hash", hash.String())
+	return dl.node(owner, path, hash, 0)
 }
 
 // update implements the layer interface, creating a new layer on top of the
