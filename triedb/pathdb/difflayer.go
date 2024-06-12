@@ -270,18 +270,18 @@ func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		blob, err := persistLayer.Node(owner, path, hash)
 		if err != nil {
 			// This is a bad case with a very low probability.
-			// Reading the difflayer cache and reading the disklayer are not in the same lock,
-			// so in extreme cases, both reading the difflayer cache and reading the disklayer may fail.
+			// r/w the difflayer cache and r/w the disklayer are not in the same lock,
+			// so in extreme cases, both reading the difflayer cache and reading the disklayer may fail, eg, disklayer is stale.
 			// In this case, fallback to the original 128-layer recursive difflayer query path.
 			diffHashCacheSlowPathMeter.Mark(1)
-			log.Info("Hash map and disklayer mismatch, retry difflayer", "owner", owner, "path", path, "hash", hash.String(), "error", err)
+			log.Debug("Retry difflayer due to query origin failed", "owner", owner, "path", path, "hash", hash.String(), "error", err)
 			return dl.node(owner, path, hash, 0)
-		} else {
+		} else { // This is the fastpath.
 			return blob, nil
 		}
 	}
 	diffHashCacheSlowPathMeter.Mark(1)
-	log.Info("retry difflayer due to origin is nil", "owner", owner, "path", path, "hash", hash.String())
+	log.Debug("Retry difflayer due to origin is nil", "owner", owner, "path", path, "hash", hash.String())
 	return dl.node(owner, path, hash, 0)
 }
 
