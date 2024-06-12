@@ -165,7 +165,6 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 	// layer as stale.
 	n, err := dl.buffer.node(owner, path, hash)
 	if err != nil {
-		log.Error("Unexpected trie node in clean cache", "error", err)
 		return nil, err
 	}
 	if n != nil {
