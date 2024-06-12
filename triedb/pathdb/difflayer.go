@@ -139,11 +139,10 @@ type diffLayer struct {
 	nodes  map[common.Hash]map[string]*trienode.Node // Cached trie nodes indexed by owner and path
 	states *triestate.Set                            // Associated state change set for building history
 	memory uint64                                    // Approximate guess as to how much memory we use
+	cache  *HashNodeCache                            // trienode cache by hash key. cache is immutable, but cache's item can be add/del.
 
 	// mutables
-	cache  *HashNodeCache // trienode cache by hash key.
-	origin *diskLayer     // The current difflayer corresponds to the underlying disklayer and is updated during cap.
-
+	origin *diskLayer   // The current difflayer corresponds to the underlying disklayer and is updated during cap.
 	parent layer        // Parent layer modified by this one, never nil, **can be changed**
 	lock   sync.RWMutex // Lock used to protect parent
 }
@@ -166,17 +165,14 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 	switch l := parent.(type) {
 	case *diskLayer:
 		dl.origin = l
-	case *diffLayer:
-		dl.origin = l.origin
-		dl.cache = l.cache
-	default:
-		panic("unknown parent type")
-	}
-
-	if dl.cache == nil {
 		dl.cache = &HashNodeCache{
 			cache: make(map[common.Hash]*RefTrieNode),
 		}
+	case *diffLayer:
+		dl.origin = l.originDiskLayer()
+		dl.cache = l.cache
+	default:
+		panic("unknown parent type")
 	}
 
 	for _, subset := range nodes {
