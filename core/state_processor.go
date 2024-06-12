@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"math/big"
 	"time"
@@ -51,6 +52,12 @@ func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consen
 		engine: engine,
 	}
 }
+
+var (
+	dagExecutionTimer   = metrics.NewRegisteredTimer("dag/executiontime", nil)
+	dagAccountReadTimer = metrics.NewRegisteredTimer("dag/accountreadtime", nil)
+	dagStorageReadTimer = metrics.NewRegisteredTimer("dag/storagereadtime", nil)
+)
 
 // Process processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb and applying any rewards to both
@@ -161,6 +168,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		block.NumberU64(), float64(eTime.Microseconds())/1000, float64((statedb.SnapshotAccountReads+statedb.AccountReads).Microseconds())/1000,
 		float64((statedb.SnapshotStorageReads+statedb.StorageReads).Microseconds())/1000)
 
+	dagExecutionTimer.Update(eTime)
+	dagAccountReadTimer.Update(statedb.SnapshotAccountReads + statedb.AccountReads)
+	dagStorageReadTimer.Update(statedb.SnapshotStorageReads + statedb.StorageReads)
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	// TODO: system txs must execute at last
 	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), withdrawals, &receipts, &systemTxs, usedGas)

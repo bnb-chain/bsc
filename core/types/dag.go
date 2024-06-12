@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/holiman/uint256"
 	"golang.org/x/exp/slices"
 	"sort"
@@ -89,6 +90,19 @@ func (d *TxDAG) travelExecutionPaths() [][]int {
 	return exePaths
 }
 
+var (
+	longestTimeTimer = metrics.NewRegisteredTimer("dag/longesttime", nil)
+	longestGasTimer  = metrics.NewRegisteredTimer("dag/longestgas", nil)
+	serialTimeTimer  = metrics.NewRegisteredTimer("dag/serialtime", nil)
+	totalTxMeter     = metrics.NewRegisteredMeter("dag/txcnt", nil)
+	totalNoDepMeter  = metrics.NewRegisteredMeter("dag/nodepcntcnt", nil)
+	total2DepMeter   = metrics.NewRegisteredMeter("dag/2depcntcnt", nil)
+	total4DepMeter   = metrics.NewRegisteredMeter("dag/4depcntcnt", nil)
+	total8DepMeter   = metrics.NewRegisteredMeter("dag/8depcntcnt", nil)
+	total16DepMeter  = metrics.NewRegisteredMeter("dag/16depcntcnt", nil)
+	total32DepMeter  = metrics.NewRegisteredMeter("dag/32depcntcnt", nil)
+)
+
 func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 	if len(stats) != len(dag.TxDeps) || len(dag.TxDeps) == 0 {
 		return ""
@@ -108,12 +122,24 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 		noDepdencyCount int
 	)
 
+	totalTxMeter.Mark(int64(len(dag.TxDeps)))
 	for i, path := range paths {
 		if stats[i].mustSerialFlag {
 			continue
 		}
 		if len(path) == 1 {
 			noDepdencyCount++
+			totalNoDepMeter.Mark(1)
+		} else if len(path) == 3 {
+			total2DepMeter.Mark(1)
+		} else if len(path) == 5 {
+			total4DepMeter.Mark(1)
+		} else if len(path) == 9 {
+			total8DepMeter.Mark(1)
+		} else if len(path) == 17 {
+			total16DepMeter.Mark(1)
+		} else if len(path) == 33 {
+			total32DepMeter.Mark(1)
 		}
 
 		// find the biggest cost time from dependency txs
@@ -148,6 +174,8 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 
 	sb.WriteString(fmt.Sprintf("LargestGasPath: %.2fms|%vgas|%vreads\npath: %v\n", float64(txTimes[maxGasIndex].Microseconds())/1000, txGases[maxGasIndex], txReads[maxGasIndex], paths[maxGasIndex]))
 	sb.WriteString(fmt.Sprintf("LongestTimePath: %.2fms|%vgas|%vreads\npath: %v\n", float64(txTimes[maxTimeIndex].Microseconds())/1000, txGases[maxTimeIndex], txReads[maxTimeIndex], paths[maxTimeIndex]))
+	longestTimeTimer.Update(txTimes[maxTimeIndex])
+	longestGasTimer.Update(txTimes[maxGasIndex])
 	// serial path
 	var (
 		sTime time.Duration
@@ -172,6 +200,7 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 	sb.WriteString(fmt.Sprintf("Estimated saving: %.2fms, %.2f%%, %.2fX, noDepCnt: %v|%.2f%%\n",
 		float64((sTime-maxParaTime).Microseconds())/1000, float64(sTime-maxParaTime)/float64(sTime)*100,
 		float64(sTime)/float64(maxParaTime), noDepdencyCount, float64(noDepdencyCount)/float64(len(dag.TxDeps))*100))
+	serialTimeTimer.Update(sTime)
 	return sb.String()
 }
 
