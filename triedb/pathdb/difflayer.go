@@ -103,7 +103,7 @@ func (h *HashNodeCache) Add(ly layer) {
 		}
 	}
 	diffHashCacheLengthGauge.Update(int64(h.length()))
-	log.Info("Add difflayer to hash map", "root", ly.rootHash(), "block_number", dl.block, "map_len", h.length(), "add_delta", h.length()-beforeAdd)
+	log.Debug("Add difflayer to hash map", "root", ly.rootHash(), "block_number", dl.block, "map_len", h.length(), "add_delta", h.length()-beforeAdd)
 }
 
 func (h *HashNodeCache) Remove(ly layer) {
@@ -122,7 +122,7 @@ func (h *HashNodeCache) Remove(ly layer) {
 			}
 		}
 		diffHashCacheLengthGauge.Update(int64(h.length()))
-		log.Info("Remove difflayer from hash map", "root", ly.rootHash(), "block_number", dl.block, "map_len", h.length(), "del_delta", beforeDel-h.length())
+		log.Debug("Remove difflayer from hash map", "root", ly.rootHash(), "block_number", dl.block, "map_len", h.length(), "del_delta", beforeDel-h.length())
 	}()
 }
 

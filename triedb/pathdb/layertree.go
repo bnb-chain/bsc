@@ -53,7 +53,7 @@ func (tree *layerTree) reset(head layer) {
 
 	for _, ly := range tree.layers {
 		if dl, ok := ly.(*diffLayer); ok {
-			// Clean up the hash cache of the child difflayer corresponding to difflayer.
+			// Clean up the hash cache of difflayers due to reset.
 			dl.cache.Remove(dl)
 		}
 	}
@@ -62,7 +62,7 @@ func (tree *layerTree) reset(head layer) {
 	for head != nil {
 		layers[head.rootHash()] = head
 		if dl, ok := head.(*diffLayer); ok {
-			// Add the hash cache of the child difflayer corresponding to difflayer.
+			// Add the hash cache of difflayers due to reset.
 			dl.cache.Add(dl)
 		}
 		head = head.parentLayer()
@@ -109,6 +109,10 @@ func (tree *layerTree) add(root common.Hash, parentRoot common.Hash, block uint6
 	if root == parentRoot {
 		return errors.New("layer cycle")
 	}
+	if tree.get(root) != nil {
+		log.Info("Skip add repeated difflayer", "root", root.String(), "block_id", block)
+		return nil
+	}
 	parent := tree.get(parentRoot)
 	if parent == nil {
 		return fmt.Errorf("triedb parent [%#x] layer missing", parentRoot)
@@ -140,16 +144,6 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 	tree.lock.Lock()
 	defer tree.lock.Unlock()
 
-	defer func() {
-		log.Info("Succeed to cap", "root", root.String(), "layers", layers, "layer_tree_len", len(tree.layers))
-		for _, ly := range tree.layers {
-			if dl, ok := ly.(*diffLayer); ok {
-				log.Info("Print cache", "cache_length", dl.cache.length())
-				break
-			}
-		}
-	}()
-
 	// If full commit was requested, flatten the diffs and merge onto disk
 	if layers == 0 {
 		base, err := diff.persist(true)
@@ -158,7 +152,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 		}
 		for _, ly := range tree.layers {
 			if dl, ok := ly.(*diffLayer); ok {
-				// Clean up difflayer hash cache.
+				// Clean up difflayer hash cache due to cap all.
 				dl.cache.Remove(dl)
 				log.Info("Cleanup difflayer hash cache", "diff_root", dl.root.String(), "diff_block_number", dl.block)
 			}
@@ -229,7 +223,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 	for root, layer := range tree.layers {
 		if dl, ok := layer.(*diskLayer); ok && dl.isStale() {
 			remove(root)
-			log.Info("Remove stale the disklayer", "disk_root", dl.root.String())
+			log.Debug("Remove stale the disklayer", "disk_root", dl.root.String())
 		}
 	}
 	return nil
