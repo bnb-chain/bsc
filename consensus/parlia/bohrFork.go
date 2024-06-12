@@ -48,8 +48,12 @@ func (p *Parlia) getTurnTerm(chain consensus.ChainHeaderReader, header *types.He
 }
 
 func (p *Parlia) getTurnTermFromContract(header *types.Header) (turnTerm *big.Int, err error) {
-	if params.UseRandTurnTerm {
-		return p.getRandTurnTerm(header) // used as a mock to get turnTerm from the contract
+	// mock to get turnTerm from the contract
+	if params.FixedTurnTerm >= 1 && params.FixedTurnTerm <= 9 {
+		if params.FixedTurnTerm == 2 {
+			return p.getRandTurnTerm(header)
+		}
+		return big.NewInt(int64(params.FixedTurnTerm)), nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

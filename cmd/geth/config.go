@@ -214,8 +214,8 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.OverrideBreatheBlockInterval.Name) {
 		params.BreatheBlockInterval = ctx.Uint64(utils.OverrideBreatheBlockInterval.Name)
 	}
-	if ctx.IsSet(utils.OverrideUseRandTurnTerm.Name) {
-		params.UseRandTurnTerm = ctx.Bool(utils.OverrideUseRandTurnTerm.Name)
+	if ctx.IsSet(utils.OverrideFixedTurnTerm.Name) {
+		params.FixedTurnTerm = ctx.Uint64(utils.OverrideFixedTurnTerm.Name)
 	}
 
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)

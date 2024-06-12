@@ -80,7 +80,7 @@ var (
 		utils.OverrideMinBlocksForBlobRequests,
 		utils.OverrideDefaultExtraReserveForBlobRequests,
 		utils.OverrideBreatheBlockInterval,
-		utils.OverrideUseRandTurnTerm,
+		utils.OverrideFixedTurnTerm,
 		utils.EnablePersonal,
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
