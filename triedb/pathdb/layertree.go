@@ -228,11 +228,18 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 	}
 
 	if persisted != nil {
-		if diff, ok := tree.layers[root].(*diffLayer); ok {
-			diff.lock.Lock()
-			diff.origin = persisted
-			diff.lock.Unlock()
+		var updateOriginFunc func(root common.Hash)
+		updateOriginFunc = func(root common.Hash) {
+			if diff, ok := tree.layers[root].(*diffLayer); ok {
+				diff.lock.Lock()
+				diff.origin = persisted
+				diff.lock.Unlock()
+			}
+			for _, child := range children[root] {
+				updateOriginFunc(child)
+			}
 		}
+		updateOriginFunc(persisted.root)
 	}
 
 	return nil
