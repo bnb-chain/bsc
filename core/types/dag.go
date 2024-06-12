@@ -98,18 +98,22 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 	// Attention: this is based on best schedule, it will reduce a lot by executing previous txs in parallel
 	// It assumes that there is no parallel thread limit
 	var (
-		maxGasIndex  int
-		maxGas       uint64
-		maxTimeIndex int
-		maxTime      time.Duration
-		txTimes      = make([]time.Duration, len(dag.TxDeps))
-		txGases      = make([]uint64, len(dag.TxDeps))
-		txReads      = make([]int, len(dag.TxDeps))
+		maxGasIndex     int
+		maxGas          uint64
+		maxTimeIndex    int
+		maxTime         time.Duration
+		txTimes         = make([]time.Duration, len(dag.TxDeps))
+		txGases         = make([]uint64, len(dag.TxDeps))
+		txReads         = make([]int, len(dag.TxDeps))
+		noDepdencyCount int
 	)
 
 	for i, path := range paths {
 		if stats[i].mustSerialFlag {
 			continue
+		}
+		if len(path) == 1 {
+			noDepdencyCount++
 		}
 
 		// find the biggest cost time from dependency txs
@@ -129,7 +133,8 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 		txGases[i] += stats[i].usedGas
 		txReads[i] += stats[i].readCount
 
-		sb.WriteString(fmt.Sprintf("Tx%v, %.2fms|%vgas|%vreads\npath: %v\n", i, float64(txTimes[i].Microseconds())/1000, txGases[i], txReads[i], path))
+		//sb.WriteString(fmt.Sprintf("Tx%v, %.2fms|%vgas|%vreads\npath: %v\n", i, float64(txTimes[i].Microseconds())/1000, txGases[i], txReads[i], path))
+		sb.WriteString(fmt.Sprintf("%v\n", path))
 		// try to find max gas
 		if txGases[i] > maxGas {
 			maxGas = txGases[i]
@@ -164,7 +169,9 @@ func EvaluateTxDAGPerformance(dag *TxDAG, stats []*ExeStat) string {
 	}
 	sb.WriteString(fmt.Sprintf("SerialPath: %.2fms|%vgas|%vreads\npath: %v\n", float64(sTime.Microseconds())/1000, sGas, sRead, sPath))
 	maxParaTime := txTimes[maxTimeIndex]
-	sb.WriteString(fmt.Sprintf("Estimated saving: %.2fms, %.2f%%, %.2fX\n", float64((sTime-maxParaTime).Microseconds())/1000, float64(sTime-maxParaTime)/float64(sTime)*100, float64(sTime)/float64(maxParaTime)))
+	sb.WriteString(fmt.Sprintf("Estimated saving: %.2fms, %.2f%%, %.2fX, noDepCnt: %v|%.2f%%\n",
+		float64((sTime-maxParaTime).Microseconds())/1000, float64(sTime-maxParaTime)/float64(sTime)*100,
+		float64(sTime)/float64(maxParaTime), noDepdencyCount, float64(noDepdencyCount)/float64(len(dag.TxDeps))*100))
 	return sb.String()
 }
 
