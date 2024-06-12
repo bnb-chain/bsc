@@ -152,14 +152,13 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 		}
 		for _, ly := range tree.layers {
 			if dl, ok := ly.(*diffLayer); ok {
-				// Clean up difflayer hash cache due to cap all.
 				dl.cache.Remove(dl)
-				log.Info("Cleanup difflayer hash cache", "diff_root", dl.root.String(), "diff_block_number", dl.block)
+				log.Debug("Cleanup difflayer hash cache due to cap all", "diff_root", dl.root.String(), "diff_block_number", dl.block)
 			}
 		}
 		// Replace the entire layer tree with the flat base
 		tree.layers = map[common.Hash]layer{base.rootHash(): base}
-		log.Info("Cap all difflayers to disklayer", "disk_root", base.rootHash().String())
+		log.Debug("Cap all difflayers to disklayer", "disk_root", base.rootHash().String())
 		return nil
 	}
 	// Dive until we run out of layers or reach the persistent database
@@ -172,6 +171,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 			return nil
 		}
 	}
+	var persisted *diskLayer
 	// We're out of layers, flatten anything below, stopping if it's the disk or if
 	// the memory limit is not yet exceeded.
 	switch parent := diff.parentLayer().(type) {
@@ -192,6 +192,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 		diff.parent = base
 
 		diff.lock.Unlock()
+		persisted = base.(*diskLayer)
 
 	default:
 		panic(fmt.Sprintf("unknown data layer in triedb: %T", parent))
@@ -208,10 +209,9 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 	remove = func(root common.Hash) {
 		if df, exist := tree.layers[root]; exist {
 			if dl, ok := df.(*diffLayer); ok {
-				// Clean up the hash cache of the child difflayer corresponding to the stale parent.
-				// include re-org case.
+				// Clean up the hash cache of the child difflayer corresponding to the stale parent, include the re-org case.
 				dl.cache.Remove(dl)
-				log.Info("Cleanup difflayer hash cache due to reorg", "diff_root", dl.root.String(), "diff_block_number", dl.block)
+				log.Debug("Cleanup difflayer hash cache due to reorg", "diff_root", dl.root.String(), "diff_block_number", dl.block)
 			}
 		}
 		delete(tree.layers, root)
@@ -226,6 +226,15 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 			log.Debug("Remove stale the disklayer", "disk_root", dl.root.String())
 		}
 	}
+
+	if persisted != nil {
+		if diff, ok := tree.layers[root].(*diffLayer); ok {
+			diff.lock.Lock()
+			diff.origin = persisted
+			diff.lock.Unlock()
+		}
+	}
+
 	return nil
 }
 
