@@ -19,11 +19,6 @@ import (
 )
 
 func (p *Parlia) getTurnTerm(chain consensus.ChainHeaderReader, header *types.Header) (*uint8, error) {
-	if header.Number.Uint64()%p.config.Epoch != 0 ||
-		!p.chainConfig.IsBohr(header.Number, header.Time) {
-		return nil, nil
-	}
-
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
 		return nil, errors.New("parent not found")

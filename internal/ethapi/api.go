@@ -882,7 +882,7 @@ func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFin
 	if err != nil { // impossible
 		return nil, err
 	}
-	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized*int64((currentTurnTerm)))
+	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized*int64(currentTurnTerm))
 
 	return s.GetHeaderByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber))
 }
@@ -909,7 +909,7 @@ func (s *BlockChainAPI) GetFinalizedBlock(ctx context.Context, probabilisticFina
 	if err != nil { // impossible
 		return nil, err
 	}
-	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized*int64((currentTurnTerm)))
+	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized*int64(currentTurnTerm))
 
 	return s.GetBlockByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber), fullTx)
 }

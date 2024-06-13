@@ -54,7 +54,7 @@ const (
 
 	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
 	defaultEpochLength = uint64(100) // Default number of blocks of checkpoint to update validatorSet from contract
-	defaultTurnTerm    = uint64(1)   // Default consecutive number of blocks a validator receives priority for block production
+	defaultTurnTerm    = uint8(1)    // Default consecutive number of blocks a validator receives priority for block production
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal        = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
@@ -903,6 +903,11 @@ func (p *Parlia) prepareValidators(header *types.Header) error {
 }
 
 func (p *Parlia) prepareTurnTerm(chain consensus.ChainHeaderReader, header *types.Header) error {
+	if header.Number.Uint64()%p.config.Epoch != 0 ||
+		!p.chainConfig.IsBohr(header.Number, header.Time) {
+		return nil
+	}
+
 	turnTerm, err := p.getTurnTerm(chain, header)
 	if err != nil {
 		return err

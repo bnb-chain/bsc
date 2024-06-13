@@ -44,7 +44,7 @@ type Snapshot struct {
 
 	Number           uint64                            `json:"number"`                // Block number where the snapshot was created
 	Hash             common.Hash                       `json:"hash"`                  // Block hash where the snapshot was created
-	TurnTerm         uint64                            `json:"turn_term"`             // Term of `turn`, meaning the consecutive number of blocks a validator receives priority for block production
+	TurnTerm         uint8                             `json:"turn_term"`             // Term of `turn`, meaning the consecutive number of blocks a validator receives priority for block production
 	Validators       map[common.Address]*ValidatorInfo `json:"validators"`            // Set of authorized validators at this moment
 	Recents          map[uint64]common.Address         `json:"recents"`               // Set of recent validators for spam protections
 	RecentForkHashes map[uint64]string                 `json:"recent_fork_hashes"`    // Set of recent forkHash
@@ -219,20 +219,20 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 }
 
 func (s *Snapshot) versionHistoryCheckLen() uint64 {
-	return uint64(len(s.Validators)) * s.TurnTerm
+	return uint64(len(s.Validators)) * uint64(s.TurnTerm)
 }
 
 func (s *Snapshot) minerHistoryCheckLen() uint64 {
-	return (uint64(len(s.Validators))/2+1)*s.TurnTerm - 1
+	return (uint64(len(s.Validators))/2+1)*uint64(s.TurnTerm) - 1
 }
 
-func (s *Snapshot) countRecents() map[common.Address]uint64 {
+func (s *Snapshot) countRecents() map[common.Address]uint8 {
 	leftHistoryBound := uint64(0) // the bound is excluded
 	checkHistoryLength := s.minerHistoryCheckLen()
 	if s.Number > checkHistoryLength {
 		leftHistoryBound = s.Number - checkHistoryLength
 	}
-	counts := make(map[common.Address]uint64, len(s.Validators))
+	counts := make(map[common.Address]uint8, len(s.Validators))
 	for seen, recent := range s.Recents {
 		if seen <= leftHistoryBound || recent == (common.Address{}) {
 			continue
@@ -242,7 +242,7 @@ func (s *Snapshot) countRecents() map[common.Address]uint64 {
 	return counts
 }
 
-func (s *Snapshot) signRecentlyByCounts(validator common.Address, counts map[common.Address]uint64) bool {
+func (s *Snapshot) signRecentlyByCounts(validator common.Address, counts map[common.Address]uint8) bool {
 	if seenTimes, ok := counts[validator]; ok && seenTimes >= s.TurnTerm {
 		if seenTimes > s.TurnTerm {
 			log.Warn("produce more blocks than expected!", "validator", validator, "seenTimes", seenTimes)
@@ -323,7 +323,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				return nil, err
 			}
 			if turnTerm != nil {
-				snap.TurnTerm = uint64(*turnTerm)
+				snap.TurnTerm = *turnTerm
 				log.Debug("validator set switch", "turnTerm", *turnTerm)
 			}
 
@@ -398,7 +398,7 @@ func (s *Snapshot) inturn(validator common.Address) bool {
 // inturnValidator returns the validator at a given block height.
 func (s *Snapshot) inturnValidator() common.Address {
 	validators := s.validators()
-	offset := (s.Number + 1) / s.TurnTerm % uint64(len(validators))
+	offset := (s.Number + 1) / uint64(s.TurnTerm) % uint64(len(validators))
 	return validators[offset]
 }
 
