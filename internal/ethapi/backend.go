@@ -115,6 +115,8 @@ type Backend interface {
 	AddBuilder(builder common.Address, builderUrl string) error
 	// RemoveBuilder removes a builder from the bid simulator.
 	RemoveBuilder(builder common.Address) error
+	// HasBuilder returns true if the builder is in the builder list.
+	HasBuilder(builder common.Address) bool
 	// SendBid receives bid from the builders.
 	SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error)
 	// BestBidGasFee returns the gas fee of the best bid for the given parent hash.

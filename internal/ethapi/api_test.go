@@ -650,7 +650,8 @@ func (b testBackend) ServiceFilter(ctx context.Context, session *bloombits.Match
 	panic("implement me")
 }
 
-func (b *testBackend) MevRunning() bool { return false }
+func (b *testBackend) MevRunning() bool                       { return false }
+func (b *testBackend) HasBuilder(builder common.Address) bool { return false }
 func (b *testBackend) MevParams() *types.MevParams {
 	return &types.MevParams{}
 }

@@ -752,6 +752,13 @@ func (ec *Client) MevRunning(ctx context.Context) (bool, error) {
 	return result, err
 }
 
+// HasBuilder returns whether the builder is registered
+func (ec *Client) HasBuilder(ctx context.Context, address common.Address) (bool, error) {
+	var result bool
+	err := ec.c.CallContext(ctx, &result, "mev_hasBuilder", address)
+	return result, err
+}
+
 // SendBid sends a bid
 func (ec *Client) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, error) {
 	var hash common.Hash
