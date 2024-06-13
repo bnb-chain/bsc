@@ -825,18 +825,14 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		drop, success := pool.priced.Discard(pool.all.Slots()-int(pool.config.GlobalSlots+pool.config.GlobalQueue)+numSlots(tx), isLocal)
 
 		// Add dropped transactions to the buffer
-		for _, dropTx := range drop {
-			log.Trace("Buffering discarded transaction", "hash", dropTx.Hash(), "gasTipCap", dropTx.GasTipCap(), "gasFeeCap", dropTx.GasFeeCap())
-			underpricedTxMeter.Mark(1)
-
-			pool.bufferLock.Lock()
-			if len(pool.buffer) < maxBufferSize {
-				pool.buffer = append(pool.buffer, dropTx)
-			} else {
-				log.Warn("Buffer is full, discarding transaction", "hash", hash)
-			}
-			pool.bufferLock.Unlock()
+		pool.bufferLock.Lock()
+		availableSpace := maxBufferSize - len(pool.buffer)
+		// Determine how many elements to take from drop
+		if availableSpace > len(drop) {
+			availableSpace = len(drop)
 		}
+		pool.buffer = append(pool.buffer, drop[:availableSpace]...)
+		pool.bufferLock.Unlock()
 
 		// Special case, we still can't make the room for the new remote one.
 		if !isLocal && !success {
@@ -1823,6 +1819,8 @@ func (pool *LegacyPool) readdBufferedTransactions() {
 	}
 
 	var readded []*types.Transaction
+
+	pool.bufferLock.Lock()
 	for _, tx := range pool.buffer {
 		// Check if adding this transaction will exceed the pool capacity
 		if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
@@ -1833,6 +1831,7 @@ func (pool *LegacyPool) readdBufferedTransactions() {
 			readded = append(readded, tx)
 		}
 	}
+	pool.bufferLock.Unlock()
 
 	// Remove successfully re-added transactions from the buffer
 	if len(readded) > 0 {
