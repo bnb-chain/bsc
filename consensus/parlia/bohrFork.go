@@ -35,7 +35,7 @@ func (p *Parlia) getTurnTerm(chain consensus.ChainHeaderReader, header *types.He
 		}
 		turnTerm = uint8(turnTermFromContract.Int64())
 	} else {
-		turnTerm = uint8(defaultTurnTerm)
+		turnTerm = defaultTurnTerm
 	}
 	log.Debug("getTurnTerm", "turnTerm", turnTerm)
 
