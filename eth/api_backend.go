@@ -484,6 +484,10 @@ func (b *EthAPIBackend) RemoveBuilder(builder common.Address) error {
 	return b.Miner().RemoveBuilder(builder)
 }
 
+func (b *EthAPIBackend) HasBuilder(builder common.Address) bool {
+	return b.Miner().HasBuilder(builder)
+}
+
 func (b *EthAPIBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
 	return b.Miner().SendBid(ctx, bid)
 }
