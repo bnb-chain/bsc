@@ -268,9 +268,8 @@ type BlockStats struct {
 // included in the canonical one where as GetBlockByNumber always represents the
 // canonical chain.
 type BlockChain struct {
-	chainConfig *params.ChainConfig // Chain & network configuration
-	cacheConfig *CacheConfig        // Cache configuration for pruning
-
+	chainConfig   *params.ChainConfig              // Chain & network configuration
+	cacheConfig   *CacheConfig                     // Cache configuration for pruning
 	db            ethdb.Database                   // Low level persistent database to store final content in
 	snaps         *snapshot.Tree                   // Snapshot tree for fast trie leaf access
 	triegc        *prque.Prque[int64, common.Hash] // Priority queue mapping block numbers to tries to gc
@@ -337,6 +336,9 @@ type BlockChain struct {
 	processor  Processor // Block transaction processor interface
 	forker     *ForkChoice
 	vmConfig   vm.Config
+
+	// Cache among blocks
+	cacheAmongBlocks *state.CacheAmongBlocks
 
 	// monitor
 	doubleSignMonitor *monitor.DoubleSignMonitor
@@ -580,6 +582,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			return nil, err
 		}
 	}
+
+	// Initialise cache among blocks
 	// Start future block processor.
 	bc.wg.Add(1)
 	go bc.updateFutureBlocks()
@@ -609,6 +613,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if txLookupLimit != nil {
 		bc.txIndexer = newTxIndexer(*txLookupLimit, bc)
 	}
+
 	return bc, nil
 }
 
@@ -2251,7 +2256,21 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
 
-		statedb, err := state.NewWithSharedPool(parent.Root, bc.statedb)
+		if bc.cacheAmongBlocks == nil {
+			bc.cacheAmongBlocks = state.NewCacheAmongBlocks(parent.Root)
+		}
+		// Check whether the cache pool among blocks can be used, if parent root is the same, use it
+		// Else drop and reset the cache.
+		if parent.Root != bc.cacheAmongBlocks.GetRoot() {
+			log.Info("root is not same with cache root", "parent root:", parent.Root,
+				"cache root", bc.cacheAmongBlocks.GetRoot())
+			bc.cacheAmongBlocks.Reset()
+		}
+
+		//log.Info("new state db with cache", "cache root", bc.cacheAmongBlocks.GetRoot())
+		statedb, err := state.NewWithCacheAmongBlocks(parent.Root, bc.statedb, bc.cacheAmongBlocks)
+
+		//	statedb, err := state.NewWithSharedPool(parent.Root, bc.statedb)
 		if err != nil {
 			return nil, it.index, err
 		}

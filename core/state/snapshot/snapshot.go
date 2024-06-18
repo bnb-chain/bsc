@@ -68,9 +68,14 @@ var (
 	snapshotBloomIndexTimer = metrics.NewRegisteredResettingTimer("state/snapshot/bloom/index", nil)
 	snapshotBloomErrorGauge = metrics.NewRegisteredGaugeFloat64("state/snapshot/bloom/error", nil)
 
-	snapshotBloomAccountTrueHitMeter  = metrics.NewRegisteredMeter("state/snapshot/bloom/account/truehit", nil)
-	snapshotBloomAccountFalseHitMeter = metrics.NewRegisteredMeter("state/snapshot/bloom/account/falsehit", nil)
-	snapshotBloomAccountMissMeter     = metrics.NewRegisteredMeter("state/snapshot/bloom/account/miss", nil)
+	snapshotBloomAccountTrueHitMeter   = metrics.NewRegisteredMeter("state/snapshot/bloom/account/truehit", nil)
+	snapshotBloomAccountFalseHitMeter  = metrics.NewRegisteredMeter("state/snapshot/bloom/account/falsehit", nil)
+	snapshotBloomAccountMissMeter      = metrics.NewRegisteredMeter("state/snapshot/bloom/account/miss", nil)
+	SnapshotBlockCacheAccountMissMeter = metrics.NewRegisteredMeter("state/snapshot/cacheblock/account/miss", nil)
+	SnapshotBlockCacheAccountHitMeter  = metrics.NewRegisteredMeter("state/snapshot/cacheblock/account/hit", nil)
+
+	SnapshotBlockCacheStorageMissMeter = metrics.NewRegisteredMeter("state/snapshot/cacheblock/storage/miss", nil)
+	SnapshotBlockCacheStorageHitMeter  = metrics.NewRegisteredMeter("state/snapshot/cacheblock/storage/hit", nil)
 
 	snapshotBloomStorageTrueHitMeter  = metrics.NewRegisteredMeter("state/snapshot/bloom/storage/truehit", nil)
 	snapshotBloomStorageFalseHitMeter = metrics.NewRegisteredMeter("state/snapshot/bloom/storage/falsehit", nil)
@@ -364,7 +369,7 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, accounts ma
 	defer t.lock.Unlock()
 
 	t.layers[snap.root] = snap
-	log.Debug("Snapshot updated", "blockRoot", blockRoot)
+	//log.Info("Snapshot updated", "blockRoot", blockRoot)
 	return nil
 }
 
@@ -408,6 +413,7 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 	if layers == 0 {
 		// If full commit was requested, flatten the diffs and merge onto disk
 		diff.lock.RLock()
+		log.Info("diff layer faltten happen")
 		base := diffToDisk(diff.flatten().(*diffLayer))
 		diff.lock.RUnlock()
 
