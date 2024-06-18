@@ -2038,7 +2038,7 @@ func (s *BlockChainAPI) CreateAccessList(ctx context.Context, args TransactionAr
 	return result, nil
 }
 
-func (s *BlockChainAPI) CreateMultipleAccessList(ctx context.Context, argsList []TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash) ([]*accessListResult, error) {
+func (s *BlockChainAPI) CreateMultipleAccessList(ctx context.Context, argsList []TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash, stateOverrides *StateOverride) ([]*accessListResult, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
@@ -2046,6 +2046,9 @@ func (s *BlockChainAPI) CreateMultipleAccessList(ctx context.Context, argsList [
 
 	db, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, bNrOrHash)
 	if db == nil || err != nil {
+		return nil, err
+	}
+	if err := stateOverrides.Apply(db); err != nil {
 		return nil, err
 	}
 	statedb := db.Copy()
