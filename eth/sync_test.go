@@ -151,6 +151,8 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 	go full.handler.runEthPeer(fullPeerEth, func(peer *eth.Peer) error {
 		return eth.Handle((*ethHandler)(full.handler), peer)
 	})
+	// Wait a bit for the above handlers to start
+	time.Sleep(250 * time.Millisecond)
 
 	emptyPipeSnap, fullPipeSnap := p2p.MsgPipe()
 	defer emptyPipeSnap.Close()
