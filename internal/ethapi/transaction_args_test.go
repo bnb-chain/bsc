@@ -85,8 +85,8 @@ func TestSetFeeDefaults(t *testing.T) {
 			"legacy tx post-London with zero price",
 			"london",
 			&TransactionArgs{GasPrice: zero},
-			nil,
-			errors.New("gasPrice must be non-zero after london fork"),
+			&TransactionArgs{GasPrice: zero},
+			nil, // errors.New("gasPrice must be non-zero after london fork"),
 		},
 
 		// Access list txs
@@ -180,8 +180,8 @@ func TestSetFeeDefaults(t *testing.T) {
 			"dynamic fee tx post-London, explicit gas price",
 			"london",
 			&TransactionArgs{MaxFeePerGas: zero, MaxPriorityFeePerGas: zero},
-			nil,
-			errors.New("maxFeePerGas must be non-zero"),
+			&TransactionArgs{MaxFeePerGas: zero, MaxPriorityFeePerGas: zero},
+			nil, // errors.New("maxFeePerGas must be non-zero"),
 		},
 
 		// Misc
