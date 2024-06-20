@@ -633,6 +633,9 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 		go source.handler.runEthPeer(sourcePeer, func(peer *eth.Peer) error {
 			return eth.Handle((*ethHandler)(source.handler), peer)
 		})
+		// Wait a bit for the above handlers to start
+		time.Sleep(100 * time.Millisecond)
+
 		if err := sinkPeer.Handshake(1, td, genesis.Hash(), genesis.Hash(), forkid.NewIDWithChain(source.chain), forkid.NewFilter(source.chain), nil); err != nil {
 			t.Fatalf("failed to run protocol handshake")
 		}
