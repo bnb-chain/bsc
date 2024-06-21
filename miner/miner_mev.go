@@ -100,6 +100,14 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 		return common.Hash{}, err
 	}
 
+	log.Info("bid received",
+		"block", bid.BlockNumber,
+		"from", bid.Builder,
+		"tx", len(bid.Txs),
+		"fee", bid.GasFee,
+		"hash", bid.Hash(),
+	)
+
 	return bid.Hash(), nil
 }
 

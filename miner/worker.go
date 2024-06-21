@@ -1371,7 +1371,19 @@ LOOP:
 				bestWork = bestBid.env
 				from = bestBid.bid.Builder
 
-				log.Debug("BidSimulator: bid win", "block", bestWork.header.Number.Uint64(), "bid", bestBid.bid.Hash())
+				log.Info("builder block",
+					"number", bestWork.header.Number.Uint64(),
+					"builder", bestBid.bid.Builder,
+					"blockReward", bestBid.blockReward(),
+					"builderContribute", bestBid.blockRewardFromBuilder(),
+					"builderPercentage", new(big.Int).Div(
+						new(big.Int).Mul(
+							bestBid.blockRewardFromBuilder(),
+							big.NewInt(100),
+						),
+						bestBid.blockReward(),
+					),
+				)
 			}
 		}
 	}

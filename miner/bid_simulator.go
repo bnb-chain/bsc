@@ -347,42 +347,19 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-				expectedBlockReward:     expectedBlockReward,
-				expectedValidatorReward: expectedValidatorReward,
-				packedBlockReward:       big.NewInt(0),
-				packedValidatorReward:   big.NewInt(0),
-				finished:                make(chan struct{}),
-			}
+			bidRuntime := newBidRuntime(newBid, expectedBlockReward, expectedValidatorReward)
 
-			simulatingBid := b.GetSimulatingBid(newBid.ParentHash)
-			// simulatingBid is nil means there is no bid in simulation
-			if simulatingBid == nil {
-				// bestBid is nil means bid is the first bid
-				bestBid := b.GetBestBid(newBid.ParentHash)
-				if bestBid == nil {
+			// simulatingBid will be nil if there is no bid in simulation, compare with the bestBid instead
+			if simulatingBid := b.GetSimulatingBid(newBid.ParentHash); simulatingBid != nil {
+				// simulatingBid always better than bestBid, so only compare with simulatingBid if a simulatingBid exists
+				if bidRuntime.betterThan(simulatingBid) {
 					commit(commitInterruptBetterBid, bidRuntime)
-					continue
 				}
-
-				// if bestBid is not nil, check if newBid is better than bestBid
-				if bidRuntime.expectedBlockReward.Cmp(bestBid.expectedBlockReward) >= 0 &&
-					bidRuntime.expectedValidatorReward.Cmp(bestBid.expectedValidatorReward) >= 0 {
-					// if both reward are better than last simulating newBid, commit for simulation
+			} else {
+				// bestBid is nil means the bid is the first bid, otherwise the bid should compare with the bestBid
+				if bestBid := b.GetBestBid(newBid.ParentHash); bestBid == nil || bidRuntime.betterThan(bestBid) {
 					commit(commitInterruptBetterBid, bidRuntime)
-					continue
 				}
-
-				log.Debug("BidSimulator: lower reward, ignore",
-					"builder", bidRuntime.bid.Builder, "bidHash", newBid.Hash().Hex())
-				continue
-			}
-
-			// simulatingBid must be better than bestBid, if newBid is better than simulatingBid, commit for simulation
-			if bidRuntime.expectedBlockReward.Cmp(simulatingBid.expectedBlockReward) >= 0 &&
-				bidRuntime.expectedValidatorReward.Cmp(simulatingBid.expectedValidatorReward) >= 0 {
-				// if both reward are better than last simulating newBid, commit for simulation
-				commit(commitInterruptBetterBid, bidRuntime)
-				continue
 			}
 
 			log.Debug("BidSimulator: lower reward, ignore", "builder", newBid.Builder, "bidHash", newBid.Hash().Hex())
@@ -608,7 +585,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// check if bid reward is valid
 	{
-		bidRuntime.packReward(b.config.ValidatorCommission)
+		bidRuntime.packReward(b.config.ValidatorCommission, true)
 		if !bidRuntime.validReward() {
 			err = errors.New("reward does not achieve the expectation")
 			return
@@ -645,7 +622,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
 			// recalculate the packed reward
-			bidRuntime.packReward(b.config.ValidatorCommission)
+			bidRuntime.packReward(b.config.ValidatorCommission, false)
 		}
 	}
 
@@ -662,9 +639,26 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	bestBid := b.GetBestBid(parentHash)
 
 	if bestBid == nil {
+		log.Info("bid compare [first]", "updateBest", true, "from", bidRuntime.bid.Builder, "hash", bidRuntime.bid.Hash().Hex())
 		b.SetBestBid(bidRuntime.bid.ParentHash, bidRuntime)
 		success = true
 		return
+	}
+
+	// ignore same best bid recommit
+	if bidRuntime.bid.Hash() != bestBid.bid.Hash() {
+		log.Info("bid compare",
+			"updateBest", bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) >= 0,
+
+			"bidHash", bidRuntime.bid.Hash().TerminalString(),
+			"currBestHash", bestBid.bid.Hash().TerminalString(),
+
+			"bidBlockFee", bidRuntime.packedBlockReward,
+			"currBestBlockFee", bestBid.packedBlockReward,
+
+			"bidTotalTx", bidRuntime.env.tcount,
+			"currBestTotalTx", bestBid.env.tcount,
+		)
 	}
 
 	// this is the simplest strategy: best for all the delegators.
@@ -713,11 +707,29 @@ type BidRuntime struct {
 	expectedBlockReward     *big.Int
 	expectedValidatorReward *big.Int
 
-	packedBlockReward     *big.Int
-	packedValidatorReward *big.Int
+	packedBlockReward            *big.Int
+	packedValidatorReward        *big.Int
+	packedBlockRewardFromBuilder *big.Int
 
 	finished chan struct{}
 	duration time.Duration
+}
+
+func newBidRuntime(bid *types.Bid, expectedBlockReward, expectedValidatorReward *big.Int) *BidRuntime {
+	return &BidRuntime{
+		bid:                          bid,
+		expectedBlockReward:          expectedBlockReward,
+		expectedValidatorReward:      expectedValidatorReward,
+		packedBlockReward:            big.NewInt(0),
+		packedValidatorReward:        big.NewInt(0),
+		packedBlockRewardFromBuilder: big.NewInt(0),
+		finished:                     make(chan struct{}),
+	}
+}
+
+func (r *BidRuntime) betterThan(other *BidRuntime) bool {
+	return other == nil || (r.expectedBlockReward.Cmp(other.expectedBlockReward) >= 0 &&
+		r.expectedValidatorReward.Cmp(other.expectedValidatorReward) >= 0)
 }
 
 func (r *BidRuntime) validReward() bool {
@@ -726,11 +738,14 @@ func (r *BidRuntime) validReward() bool {
 }
 
 // packReward calculates packedBlockReward and packedValidatorReward
-func (r *BidRuntime) packReward(validatorCommission uint64) {
+func (r *BidRuntime) packReward(validatorCommission uint64, pureBuilder bool) {
 	r.packedBlockReward = r.env.state.GetBalance(consensus.SystemAddress).ToBig()
 	r.packedValidatorReward = new(big.Int).Mul(r.packedBlockReward, big.NewInt(int64(validatorCommission)))
 	r.packedValidatorReward.Div(r.packedValidatorReward, big.NewInt(10000))
 	r.packedValidatorReward.Sub(r.packedValidatorReward, r.bid.BuilderFee)
+	if pureBuilder {
+		r.packedBlockRewardFromBuilder = new(big.Int).Set(r.packedBlockReward)
+	}
 }
 
 func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction, unRevertible bool) error {
@@ -779,4 +794,12 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	r.env.tcount++
 
 	return nil
+}
+
+func (r *BidRuntime) blockRewardFromBuilder() *big.Int {
+	return new(big.Int).Set(r.packedBlockRewardFromBuilder)
+}
+
+func (r *BidRuntime) blockReward() *big.Int {
+	return new(big.Int).Set(r.packedBlockReward)
 }
