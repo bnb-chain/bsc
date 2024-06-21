@@ -1,4 +1,20 @@
 # Changelog
+## v1.4.10
+### FEATURE
+NA
+
+### IMPROVEMENT
+* [\#2512](https://github.com/bnb-chain/bsc/pull/2512) feat: add mev helper params and func
+* [\#2508](https://github.com/bnb-chain/bsc/pull/2508) perf: speedup pbss trienode read
+* [\#2509](https://github.com/bnb-chain/bsc/pull/2509) perf: optimize chain commit performance for multi-database
+* [\#2451](https://github.com/bnb-chain/bsc/pull/2451) core/forkchoice: improve stability when inturn block not generate
+
+### BUGFIX
+* [\#2518](https://github.com/bnb-chain/bsc/pull/2518) fix: remove zero gasprice check for BSC
+* [\#2519](https://github.com/bnb-chain/bsc/pull/2519) UT: random failure of TestSnapSyncWithBlobs
+* [\#2515](https://github.com/bnb-chain/bsc/pull/2515) fix getBlobSidecars by ethclient
+* [\#2525](https://github.com/bnb-chain/bsc/pull/2525) fix: ensure empty withdrawals after cancun before broadcast
+
 ## v1.4.9
 ### FEATURE
 * [\#2463](https://github.com/bnb-chain/bsc/pull/2463)  utils: add check_blobtx.js
