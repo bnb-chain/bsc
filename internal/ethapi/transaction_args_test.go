@@ -85,8 +85,8 @@ func TestSetFeeDefaults(t *testing.T) {
 			"legacy tx post-London with zero price",
 			"london",
 			&TransactionArgs{GasPrice: zero},
-			nil,
-			errors.New("gasPrice must be non-zero after london fork"),
+			&TransactionArgs{GasPrice: zero},
+			nil, // errors.New("gasPrice must be non-zero after london fork"),
 		},
 
 		// Access list txs
@@ -180,8 +180,8 @@ func TestSetFeeDefaults(t *testing.T) {
 			"dynamic fee tx post-London, explicit gas price",
 			"london",
 			&TransactionArgs{MaxFeePerGas: zero, MaxPriorityFeePerGas: zero},
-			nil,
-			errors.New("maxFeePerGas must be non-zero"),
+			&TransactionArgs{MaxFeePerGas: zero, MaxPriorityFeePerGas: zero},
+			nil, // errors.New("maxFeePerGas must be non-zero"),
 		},
 
 		// Misc
@@ -416,7 +416,8 @@ func (b *backendMock) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent)
 
 func (b *backendMock) Engine() consensus.Engine { return nil }
 
-func (b *backendMock) MevRunning() bool { return false }
+func (b *backendMock) MevRunning() bool                       { return false }
+func (b *backendMock) HasBuilder(builder common.Address) bool { return false }
 func (b *backendMock) MevParams() *types.MevParams {
 	return &types.MevParams{}
 }

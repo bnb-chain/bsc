@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 type BuilderConfig struct {
@@ -57,6 +58,11 @@ func (miner *Miner) AddBuilder(builder common.Address, url string) error {
 // RemoveBuilder removes a builder from the bid simulator.
 func (miner *Miner) RemoveBuilder(builderAddr common.Address) error {
 	return miner.bidSimulator.RemoveBuilder(builderAddr)
+}
+
+// HasBuilder returns true if the builder is in the builder list.
+func (miner *Miner) HasBuilder(builder common.Address) bool {
+	return miner.bidSimulator.ExistBuilder(builder)
 }
 
 func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common.Hash, error) {
@@ -117,6 +123,8 @@ func (miner *Miner) MevParams() *types.MevParams {
 		ValidatorCommission:   miner.worker.config.Mev.ValidatorCommission,
 		BidSimulationLeftOver: miner.worker.config.Mev.BidSimulationLeftOver,
 		GasCeil:               miner.worker.config.GasCeil,
+		GasPrice:              miner.worker.config.GasPrice,
 		BuilderFeeCeil:        builderFeeCeil,
+		Version:               params.Version,
 	}
 }

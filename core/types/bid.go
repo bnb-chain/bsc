@@ -193,5 +193,7 @@ type MevParams struct {
 	ValidatorCommission   uint64 // 100 means 1%
 	BidSimulationLeftOver time.Duration
 	GasCeil               uint64
+	GasPrice              *big.Int // Minimum avg gas price for bid block
 	BuilderFeeCeil        *big.Int
+	Version               string
 }

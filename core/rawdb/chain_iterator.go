@@ -81,7 +81,7 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 	batch.Reset()
 
 	WriteHeadHeaderHash(db.BlockStore(), hash)
-	WriteHeadFastBlockHash(db, hash)
+	WriteHeadFastBlockHash(db.BlockStore(), hash)
 	log.Info("Initialized database from freezer", "blocks", frozen, "elapsed", common.PrettyDuration(time.Since(start)))
 }
 
