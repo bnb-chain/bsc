@@ -88,6 +88,10 @@ func (m *MevAPI) Params() *types.MevParams {
 	return m.b.MevParams()
 }
 
+func (m *MevAPI) HasBuilder(builder common.Address) bool {
+	return m.b.HasBuilder(builder)
+}
+
 // Running returns true if mev is running
 func (m *MevAPI) Running() bool {
 	return m.b.MevRunning()

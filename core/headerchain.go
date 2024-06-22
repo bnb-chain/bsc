@@ -668,7 +668,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// first then remove the relative data from the database.
 		//
 		// Update head first(head fast block, head full block) before deleting the data.
-		markerBatch := hc.chainDb.NewBatch()
+		markerBatch := hc.chainDb.BlockStore().NewBatch()
 		if updateFn != nil {
 			newHead, force := updateFn(markerBatch, parent)
 			if force && ((headTime > 0 && newHead.Time < headTime) || (headTime == 0 && newHead.Number.Uint64() < headBlock)) {
@@ -677,7 +677,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 			}
 		}
 		// Update head header then.
-		rawdb.WriteHeadHeaderHash(hc.chainDb.BlockStore(), parentHash)
+		rawdb.WriteHeadHeaderHash(markerBatch, parentHash)
 		if err := markerBatch.Write(); err != nil {
 			log.Crit("Failed to update chain markers", "error", err)
 		}

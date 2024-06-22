@@ -873,7 +873,7 @@ func DataTypeByKey(key []byte) DataType {
 				return StateDataType
 			}
 		}
-		for _, meta := range [][]byte{headHeaderKey, headFinalizedBlockKey} {
+		for _, meta := range [][]byte{headHeaderKey, headFinalizedBlockKey, headBlockKey, headFastBlockKey} {
 			if bytes.Equal(key, meta) {
 				return BlockDataType
 			}
@@ -1088,7 +1088,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				hashNumPairings.Add(size)
 			default:
 				var accounted bool
-				for _, meta := range [][]byte{headHeaderKey, headFinalizedBlockKey} {
+				for _, meta := range [][]byte{headHeaderKey, headFinalizedBlockKey, headBlockKey, headFastBlockKey} {
 					if bytes.Equal(key, meta) {
 						metadata.Add(size)
 						accounted = true
@@ -1282,7 +1282,7 @@ func ReadChainMetadataFromMultiDatabase(db ethdb.Database) [][]string {
 	data := [][]string{
 		{"databaseVersion", pp(ReadDatabaseVersion(db))},
 		{"headBlockHash", fmt.Sprintf("%v", ReadHeadBlockHash(db.BlockStore()))},
-		{"headFastBlockHash", fmt.Sprintf("%v", ReadHeadFastBlockHash(db))},
+		{"headFastBlockHash", fmt.Sprintf("%v", ReadHeadFastBlockHash(db.BlockStore()))},
 		{"headHeaderHash", fmt.Sprintf("%v", ReadHeadHeaderHash(db.BlockStore()))},
 		{"lastPivotNumber", pp(ReadLastPivotNumber(db))},
 		{"len(snapshotSyncStatus)", fmt.Sprintf("%d bytes", len(ReadSnapshotSyncStatus(db)))},

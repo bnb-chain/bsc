@@ -731,9 +731,6 @@ func (f *BlockFetcher) loop() {
 						matched = true
 						if f.getBlock(hash) == nil {
 							block := types.NewBlockWithHeader(announce.header).WithBody(task.transactions[i], task.uncles[i])
-							if block.Header().EmptyWithdrawalsHash() {
-								block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
-							}
 							block = block.WithSidecars(task.sidecars[i])
 							block.ReceivedAt = task.time
 							blocks = append(blocks, block)
@@ -917,6 +914,10 @@ func (f *BlockFetcher) importBlocks(op *blockOrHeaderInject) {
 			f.done <- hash
 			f.requeue <- op
 			return
+		}
+
+		if block.Header().EmptyWithdrawalsHash() {
+			block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
 		}
 
 		defer func() { f.done <- hash }()

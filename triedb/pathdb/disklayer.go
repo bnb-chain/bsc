@@ -286,6 +286,9 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		}
 		log.Debug("Pruned state history", "items", pruned, "tailid", oldest)
 	}
+
+	// The bottom has been eaten by disklayer, releasing the hash cache of bottom difflayer.
+	bottom.cache.Remove(bottom)
 	return ndl, nil
 }
 
