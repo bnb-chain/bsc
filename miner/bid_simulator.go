@@ -420,7 +420,9 @@ func (b *bidSimulator) clearLoop() {
 
 		b.simBidMu.Lock()
 		if bid, ok := b.simulatingBid[parentHash]; ok {
-			bid.env.discard()
+			if bid.env != nil {
+				bid.env.discard()
+			}
 		}
 		delete(b.simulatingBid, parentHash)
 		for k, v := range b.simulatingBid {
