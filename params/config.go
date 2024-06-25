@@ -153,6 +153,7 @@ var (
 		FeynmanFixTime:      newUint64(1713419340), // 2024-04-18 05:49:00 AM UTC
 		CancunTime:          newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
 		HaberTime:           newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
+		HaberFixTime:        newUint64(1720591588), // 2024-07-10 06:06:28 AM UTC
 		BohrTime:            nil,
 
 		Parlia: &ParliaConfig{
@@ -193,6 +194,7 @@ var (
 		FeynmanFixTime:      newUint64(1711342800), // 2024-03-25 5:00:00 AM UTC
 		CancunTime:          newUint64(1713330442), // 2024-04-17 05:07:22 AM UTC
 		HaberTime:           newUint64(1716962820), // 2024-05-29 06:07:00 AM UTC
+		HaberFixTime:        newUint64(1719986788), // 2024-07-03 06:06:28 AM UTC
 		BohrTime:            nil,
 
 		Parlia: &ParliaConfig{
@@ -1193,6 +1195,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	}
 	if isForkTimestampIncompatible(c.HaberFixTime, newcfg.HaberFixTime, headTimestamp) {
 		return newTimestampCompatError("HaberFix fork timestamp", c.HaberFixTime, newcfg.HaberFixTime)
+	}
+	if isForkTimestampIncompatible(c.BohrTime, newcfg.BohrTime, headTimestamp) {
+		return newTimestampCompatError("Bohr fork timestamp", c.BohrTime, newcfg.BohrTime)
 	}
 	if isForkTimestampIncompatible(c.PragueTime, newcfg.PragueTime, headTimestamp) {
 		return newTimestampCompatError("Prague fork timestamp", c.PragueTime, newcfg.PragueTime)
