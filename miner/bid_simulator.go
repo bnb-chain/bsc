@@ -347,6 +347,9 @@ func (b *bidSimulator) newBidLoop() {
 
 			bidRuntime, err := newBidRuntime(newBid.bid, b.config.ValidatorCommission)
 			if err != nil {
+				if newBid.feedback != nil {
+					newBid.feedback <- err
+				}
 				continue
 			}
 
@@ -747,7 +750,7 @@ func newBidRuntime(newBid *types.Bid, validatorCommission uint64) (*BidRuntime, 
 		// damage self profit, ignore
 		log.Debug("BidSimulator: invalid bid, validator reward is less than 0, ignore",
 			"builder", newBid.Builder, "bidHash", newBid.Hash().Hex())
-		return nil, errors.New("validator reward is less than 0")
+		return nil, fmt.Errorf("validator reward is less than 0, value: %s, commissionConfig: %d", expectedValidatorReward, validatorCommission)
 	}
 
 	bidRuntime := &BidRuntime{
