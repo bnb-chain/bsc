@@ -4,17 +4,16 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
-
 	"github.com/ethereum/go-ethereum/core/systemcontracts/bruno"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/euler"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/feynman"
 	feynmanFix "github.com/ethereum/go-ethereum/core/systemcontracts/feynman_fix"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/gibbs"
+	haberFix "github.com/ethereum/go-ethereum/core/systemcontracts/haber_fix"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/kepler"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/luban"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/mirror"
@@ -23,6 +22,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/planck"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/plato"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/ramanujan"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 type UpgradeConfig struct {
@@ -75,6 +76,8 @@ var (
 	feynmanUpgrade = make(map[string]*Upgrade)
 
 	feynmanFixUpgrade = make(map[string]*Upgrade)
+
+	haberFixUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -701,6 +704,38 @@ func init() {
 			},
 		},
 	}
+
+	haberFixUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "haberFix",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b743ce3f1f1e94c349b175cd6593bc263463b33b",
+				Code:         haberFix.MainnetValidatorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(SlashContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b743ce3f1f1e94c349b175cd6593bc263463b33b",
+				Code:         haberFix.MainnetSlashContract,
+			},
+		},
+	}
+
+	haberFixUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "haberFix",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b743ce3f1f1e94c349b175cd6593bc263463b33b",
+				Code:         haberFix.ChapelValidatorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(SlashContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b743ce3f1f1e94c349b175cd6593bc263463b33b",
+				Code:         haberFix.ChapelSlashContract,
+			},
+		},
+	}
 }
 
 func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb *state.StateDB) {
@@ -777,6 +812,10 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 		applySystemContractUpgrade(feynmanFixUpgrade[network], blockNumber, statedb, logger)
 	}
 
+	if config.IsOnHaberFix(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(haberFixUpgrade[network], blockNumber, statedb, logger)
+	}
+
 	/*
 		apply other upgrades
 	*/
@@ -799,7 +838,7 @@ func applySystemContractUpgrade(upgrade *Upgrade, blockNumber *big.Int, statedb 
 			}
 		}
 
-		newContractCode, err := hex.DecodeString(cfg.Code)
+		newContractCode, err := hex.DecodeString(strings.TrimSpace(cfg.Code))
 		if err != nil {
 			panic(fmt.Errorf("failed to decode new contract code: %s", err.Error()))
 		}
