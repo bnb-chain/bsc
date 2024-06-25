@@ -68,6 +68,12 @@ type simBidReq struct {
 	interruptCh chan int32
 }
 
+// newBidPackage is the warp of a new bid and a feedback channel
+type newBidPackage struct {
+	bid      *types.Bid
+	feedback chan error
+}
+
 // bidSimulator is in charge of receiving bid from builders, reporting issue to builders.
 // And take care of bid simulation, rewards computing, best bid maintaining.
 type bidSimulator struct {
@@ -95,7 +101,7 @@ type bidSimulator struct {
 
 	// channels
 	simBidCh chan *simBidReq
-	newBidCh chan *types.Bid
+	newBidCh chan newBidPackage
 
 	pendingMu sync.RWMutex
 	pending   map[uint64]map[common.Address]map[common.Hash]struct{} // blockNumber -> builder -> bidHash -> struct{}
@@ -128,7 +134,7 @@ func newBidSimulator(
 		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
 		builders:      make(map[common.Address]*builderclient.Client),
 		simBidCh:      make(chan *simBidReq),
-		newBidCh:      make(chan *types.Bid, 100),
+		newBidCh:      make(chan newBidPackage, 100),
 		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
 		bestBid:       make(map[common.Hash]*BidRuntime),
 		simulatingBid: make(map[common.Hash]*BidRuntime),
@@ -327,6 +333,10 @@ func (b *bidSimulator) newBidLoop() {
 		}
 	}
 
+	genReplyReason := func(betterBid *BidRuntime) error {
+		return fmt.Errorf("bid discarded, current bestBid is [blockReward: %s, validatorReward: %s]", betterBid.expectedBlockReward, betterBid.expectedValidatorReward)
+	}
+
 	for {
 		select {
 		case newBid := <-b.newBidCh:
@@ -334,24 +344,32 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			bidRuntime, err := newBidRuntime(newBid, b.config.ValidatorCommission)
+			bidRuntime, err := newBidRuntime(newBid.bid, b.config.ValidatorCommission)
 			if err != nil {
-				log.Debug("BidSimulator: invalid bid", "err", err, "builder", newBid.Builder, "bidHash", newBid.Hash().Hex())
 				continue
 			}
 
+			var replyErr error
 			// simulatingBid will be nil if there is no bid in simulation, compare with the bestBid instead
-			if simulatingBid := b.GetSimulatingBid(newBid.ParentHash); simulatingBid != nil {
+			if simulatingBid := b.GetSimulatingBid(newBid.bid.ParentHash); simulatingBid != nil {
 				// simulatingBid always better than bestBid, so only compare with simulatingBid if a simulatingBid exists
 				if bidRuntime.isExpectedBetterThan(simulatingBid) {
 					commit(commitInterruptBetterBid, bidRuntime)
+				} else {
+					replyErr = genReplyReason(simulatingBid)
 				}
 			} else {
 				// bestBid is nil means the bid is the first bid, otherwise the bid should compare with the bestBid
-				if bestBid := b.GetBestBid(newBid.ParentHash); bestBid == nil ||
+				if bestBid := b.GetBestBid(newBid.bid.ParentHash); bestBid == nil ||
 					bidRuntime.isExpectedBetterThan(bestBid) {
 					commit(commitInterruptBetterBid, bidRuntime)
+				} else {
+					replyErr = genReplyReason(bestBid)
 				}
+			}
+
+			if newBid.feedback != nil {
+				newBid.feedback <- replyErr
 			}
 
 		case <-b.exitCh:
@@ -408,10 +426,14 @@ func (b *bidSimulator) clearLoop() {
 func (b *bidSimulator) sendBid(_ context.Context, bid *types.Bid) error {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
+
+	replyCh := make(chan error)
+	b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh}
+	b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
+
 	select {
-	case b.newBidCh <- bid:
-		b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
-		return nil
+	case reply := <-replyCh:
+		return reply
 	case <-timer.C:
 		return types.ErrMevBusy
 	}
@@ -508,7 +530,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			}
 
 			select {
-			case b.newBidCh <- bidRuntime.bid:
+			case b.newBidCh <- newBidPackage{bid: bidRuntime.bid}:
 				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 			default:
 			}
@@ -644,7 +666,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	select {
-	case b.newBidCh <- bestBid.bid:
+	case b.newBidCh <- newBidPackage{bid: bestBid.bid}:
 		log.Debug("BidSimulator: recommit last bid", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 	default:
 	}
@@ -694,6 +716,8 @@ func newBidRuntime(newBid *types.Bid, validatorCommission uint64) (*BidRuntime, 
 
 	if expectedValidatorReward.Cmp(big.NewInt(0)) < 0 {
 		// damage self profit, ignore
+		log.Debug("BidSimulator: invalid bid, validator reward is less than 0, ignore",
+			"builder", newBid.Builder, "bidHash", newBid.Hash().Hex())
 		return nil, errors.New("validator reward is less than 0")
 	}
 
