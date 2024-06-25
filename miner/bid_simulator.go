@@ -737,7 +737,6 @@ type BidRuntime struct {
 }
 
 func newBidRuntime(newBid *types.Bid, validatorCommission uint64) (*BidRuntime, error) {
-
 	// check the block reward and validator reward of the newBid
 	expectedBlockReward := newBid.GasFee
 	expectedValidatorReward := new(big.Int).Mul(expectedBlockReward, big.NewInt(int64(validatorCommission)))
