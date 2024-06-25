@@ -442,8 +442,13 @@ func (b *bidSimulator) sendBid(_ context.Context, bid *types.Bid) error {
 	defer timer.Stop()
 
 	replyCh := make(chan error)
-	b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh}
-	b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
+
+	select {
+	case b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh}:
+		b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
+	case <-timer.C:
+		return types.ErrMevBusy
+	}
 
 	select {
 	case reply := <-replyCh:
