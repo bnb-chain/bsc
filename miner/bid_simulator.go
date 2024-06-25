@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -370,6 +371,16 @@ func (b *bidSimulator) newBidLoop() {
 
 			if newBid.feedback != nil {
 				newBid.feedback <- replyErr
+
+				log.Info("[BID ARRIVED]",
+					"block", newBid.bid.BlockNumber,
+					"builder", newBid.bid.Builder,
+					"accepted", replyErr == nil,
+					"blockReward", weiToEtherStringF6(bidRuntime.expectedBlockReward),
+					"validatorReward", weiToEtherStringF6(bidRuntime.expectedValidatorReward),
+					"tx", len(newBid.bid.Txs),
+					"hash", newBid.bid.Hash().TerminalString(),
+				)
 			}
 
 		case <-b.exitCh:
@@ -479,6 +490,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	var (
+		startTS = time.Now()
+
 		blockNumber = bidRuntime.bid.BlockNumber
 		parentHash  = bidRuntime.bid.ParentHash
 		builder     = bidRuntime.bid.Builder
@@ -535,7 +548,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			default:
 			}
 		}
-	}(time.Now())
+	}(startTS)
 
 	// prepareWork will configure header with a suitable time according to consensus
 	// prepareWork will start trie prefetching
@@ -646,11 +659,28 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	bestBid := b.GetBestBid(parentHash)
-
 	if bestBid == nil {
+		log.Info("[BID RESULT]", "win", "true[first]", "builder", bidRuntime.bid.Builder, "hash", bidRuntime.bid.Hash().TerminalString())
 		b.SetBestBid(bidRuntime.bid.ParentHash, bidRuntime)
 		success = true
 		return
+	}
+
+	if bidRuntime.bid.Hash() != bestBid.bid.Hash() {
+		log.Info("[BID RESULT]",
+			"win", bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) >= 0,
+
+			"bidHash", bidRuntime.bid.Hash().TerminalString(),
+			"bestHash", bestBid.bid.Hash().TerminalString(),
+
+			"bidGasFee", weiToEtherStringF6(bidRuntime.packedBlockReward),
+			"bestGasFee", weiToEtherStringF6(bestBid.packedBlockReward),
+
+			"bidBlockTx", bidRuntime.env.tcount,
+			"bestBlockTx", bestBid.env.tcount,
+
+			"simElapsed", time.Since(startTS),
+		)
 	}
 
 	// this is the simplest strategy: best for all the delegators.
@@ -797,4 +827,9 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	r.env.tcount++
 
 	return nil
+}
+
+func weiToEtherStringF6(wei *big.Int) string {
+	f, _ := new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(params.Ether)).Float64()
+	return strconv.FormatFloat(f, 'f', 6, 64)
 }
