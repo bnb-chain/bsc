@@ -334,8 +334,8 @@ func (b *bidSimulator) newBidLoop() {
 		}
 	}
 
-	genReplyReason := func(betterBid *BidRuntime) error {
-		return fmt.Errorf("bid discarded, current bestBid is [blockReward: %s, validatorReward: %s]", betterBid.expectedBlockReward, betterBid.expectedValidatorReward)
+	genDiscardedReply := func(betterBid *BidRuntime) error {
+		return fmt.Errorf("bid is discarded, current bestBid is [blockReward: %s, validatorReward: %s]", betterBid.expectedBlockReward, betterBid.expectedValidatorReward)
 	}
 
 	for {
@@ -360,7 +360,7 @@ func (b *bidSimulator) newBidLoop() {
 				if bidRuntime.isExpectedBetterThan(simulatingBid) {
 					commit(commitInterruptBetterBid, bidRuntime)
 				} else {
-					replyErr = genReplyReason(simulatingBid)
+					replyErr = genDiscardedReply(simulatingBid)
 				}
 			} else {
 				// bestBid is nil means the bid is the first bid, otherwise the bid should compare with the bestBid
@@ -368,7 +368,7 @@ func (b *bidSimulator) newBidLoop() {
 					bidRuntime.isExpectedBetterThan(bestBid) {
 					commit(commitInterruptBetterBid, bidRuntime)
 				} else {
-					replyErr = genReplyReason(bestBid)
+					replyErr = genDiscardedReply(bestBid)
 				}
 			}
 
