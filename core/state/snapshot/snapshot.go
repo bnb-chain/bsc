@@ -384,6 +384,9 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 	}
 	snap := parent.(snapshot).Update(blockRoot, destructs, accounts, storage, verified)
 
+	log.Info("Add cache due to new difflayer", "diff_root", snap.root, "diff_version", snap.diffLayerID)
+	snap.AddToCache()
+
 	// Save the new snapshot for later
 	t.lock.Lock()
 	defer t.lock.Unlock()
@@ -436,6 +439,13 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 		base := diffToDisk(diff.flatten().(*diffLayer))
 		diff.lock.RUnlock()
 
+		for _, ly := range t.layers {
+			if diff, ok := ly.(*diffLayer); ok {
+				log.Info("Cleanup cache due to layers=0", "diff_root", diff.root, "diff_version", diff.diffLayerID)
+				diff.RemoveFromCache()
+			}
+		}
+
 		// Replace the entire snapshot tree with the flat base
 		t.layers = map[common.Hash]snapshot{base.root: base}
 		return nil
@@ -452,6 +462,12 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 	}
 	var remove func(root common.Hash)
 	remove = func(root common.Hash) {
+		if df, exist := t.layers[root]; exist {
+			if diff, ok := df.(*diffLayer); ok {
+				log.Info("Cleanup cache due to reorg", "diff_root", diff.root, "diff_version", diff.diffLayerID)
+				diff.RemoveFromCache()
+			}
+		}
 		delete(t.layers, root)
 		for _, child := range children[root] {
 			remove(child)
@@ -519,6 +535,10 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		// write lock on grandparent.
 		flattened := parent.flatten().(*diffLayer)
 		t.layers[flattened.root] = flattened
+
+		// the new flatten difflayer will cause multiple versions of the cache to be out of order. so need resorted multi-version cache.
+		log.Info("Add cache due to flatten", "diff_root", flattened.root, "diff_version", flattened.diffLayerID)
+		flattened.AddToCache()
 
 		// Invoke the hook if it's registered. Ugly hack.
 		if t.onFlatten != nil {
@@ -686,6 +706,8 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		res.genAbort = make(chan chan *generatorStats)
 		go res.generate(stats)
 	}
+	log.Info("Cleanup cache due to bottom difflayer is eaten by disklayer", "diff_root", bottom.root, "diff_version", bottom.diffLayerID)
+	bottom.RemoveFromCache()
 	return res
 }
 
