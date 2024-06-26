@@ -18,6 +18,8 @@ package rawdb
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -98,6 +100,18 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 			if err != nil {
 				return nil, err
 			}
+
+			file, err := os.Open(filepath.Join(datadir, StateFreezerName))
+			if err != nil {
+				return nil, err
+			}
+			defer file.Close()
+			// if state freezer folder has been pruned, there is no need for inspection
+			_, err = file.Readdirnames(1)
+			if err == io.EOF {
+				continue
+			}
+
 			f, err := NewStateFreezer(datadir, true, 0)
 			if err != nil {
 				return nil, err
