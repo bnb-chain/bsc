@@ -1123,7 +1123,7 @@ func (api *API) traceTx(ctx context.Context, message *core.Message, txctx *Conte
 	var intrinsicGas uint64 = 0
 	// Run the transaction with tracing enabled.
 	if isSystemTx {
-		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, false, true, true, false)
+		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, message.AuthList, false, true, true, false)
 	}
 
 	// Call Prepare to clear out the statedb access list
