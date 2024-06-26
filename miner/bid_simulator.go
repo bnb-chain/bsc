@@ -441,7 +441,7 @@ func (b *bidSimulator) sendBid(_ context.Context, bid *types.Bid) error {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
 
-	replyCh := make(chan error)
+	replyCh := make(chan error, 1)
 
 	select {
 	case b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh}:
