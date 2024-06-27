@@ -349,10 +349,10 @@ var (
 		Value:    params.BreatheBlockInterval,
 		Category: flags.EthCategory,
 	}
-	OverrideFixedTurnTerm = &cli.Uint64Flag{
-		Name:     "override.fixedturnterm",
-		Usage:    "It use fixed or random values for turn terms instead of reading from the contract, only for testing purpose",
-		Value:    params.FixedTurnTerm,
+	OverrideFixedTurnLength = &cli.Uint64Flag{
+		Name:     "override.fixedturnlength",
+		Usage:    "It use fixed or random values for turn length instead of reading from the contract, only for testing purpose",
+		Value:    params.FixedTurnLength,
 		Category: flags.EthCategory,
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{

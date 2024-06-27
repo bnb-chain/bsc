@@ -2308,7 +2308,7 @@ const validatorSetABI = `
   },
   {
     "inputs": [],
-    "name": "getTurnTerm",
+    "name": "getTurnLength",
     "outputs": [
       {
         "internalType": "uint256",

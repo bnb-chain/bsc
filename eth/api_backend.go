@@ -441,7 +441,7 @@ func (b *EthAPIBackend) Engine() consensus.Engine {
 	return b.eth.engine
 }
 
-func (b *EthAPIBackend) CurrentTurnTerm() (turnTerm uint8, err error) {
+func (b *EthAPIBackend) CurrentTurnLength() (turnLength uint8, err error) {
 	if p, ok := b.eth.engine.(*parlia.Parlia); ok {
 		service := p.APIs(b.Chain())[0].Service
 		snap, err := service.(*parlia.API).GetSnapshot(nil)
@@ -449,7 +449,7 @@ func (b *EthAPIBackend) CurrentTurnTerm() (turnTerm uint8, err error) {
 			return 0, err
 		}
 
-		return snap.TurnTerm, nil
+		return snap.TurnLength, nil
 	}
 
 	return 1, nil

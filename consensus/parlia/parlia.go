@@ -54,12 +54,12 @@ const (
 
 	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
 	defaultEpochLength = uint64(100) // Default number of blocks of checkpoint to update validatorSet from contract
-	defaultTurnTerm    = uint8(1)    // Default consecutive number of blocks a validator receives priority for block production
+	defaultTurnLength  = uint8(1)    // Default consecutive number of blocks a validator receives priority for block production
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal        = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
 	nextForkHashSize = 4  // Fixed number of extra-data suffix bytes reserved for nextForkHash.
-	turnTermSize     = 1  // Fixed number of extra-data suffix bytes reserved for turnTerm
+	turnLengthSize   = 1  // Fixed number of extra-data suffix bytes reserved for turnLength
 
 	validatorBytesLengthBeforeLuban = common.AddressLength
 	validatorBytesLength            = common.AddressLength + types.BLSPublicKeyLength
@@ -128,9 +128,9 @@ var (
 	// invalid list of validators (i.e. non divisible by 20 bytes).
 	errInvalidSpanValidators = errors.New("invalid validator list on sprint end block")
 
-	// errInvalidTurnTerm is returned if a block contains an
-	// invalid term of turn (i.e. no data left after parsing validators).
-	errInvalidTurnTerm = errors.New("invalid turnTerm")
+	// errInvalidTurnLength is returned if a block contains an
+	// invalid length of turn (i.e. no data left after parsing validators).
+	errInvalidTurnLength = errors.New("invalid turnLength")
 
 	// errInvalidMixDigest is returned if a block's mix digest is non-zero.
 	errInvalidMixDigest = errors.New("non-zero mix digest")
@@ -142,9 +142,9 @@ var (
 	// list of validators different than the one the local node calculated.
 	errMismatchingEpochValidators = errors.New("mismatching validator list on epoch block")
 
-	// errMismatchingEpochTurnTerm is returned if a sprint block contains a
-	// turn term different than the one the local node calculated.
-	errMismatchingEpochTurnTerm = errors.New("mismatching turn term on epoch block")
+	// errMismatchingEpochTurnLength is returned if a sprint block contains a
+	// turn length different than the one the local node calculated.
+	errMismatchingEpochTurnLength = errors.New("mismatching turn length on epoch block")
 
 	// errInvalidDifficulty is returned if the difficulty of a block is missing.
 	errInvalidDifficulty = errors.New("invalid difficulty")
@@ -375,7 +375,7 @@ func (p *Parlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 // On luban fork, we introduce vote attestation into the header's extra field, so extra format is different from before.
 // Before luban fork: |---Extra Vanity---|---Validators Bytes (or Empty)---|---Extra Seal---|
 // After luban fork:  |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
-// After bohr fork:   |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Turn Term (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
+// After bohr fork:   |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Turn Length (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
 func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) []byte {
 	if len(header.Extra) <= extraVanity+extraSeal {
 		return nil
@@ -396,7 +396,7 @@ func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.Chain
 	end := start + num*validatorBytesLength
 	extraMinLen := end + extraSeal
 	if chainConfig.IsBohr(header.Number, header.Time) {
-		extraMinLen += turnTermSize
+		extraMinLen += turnLengthSize
 	}
 	if num == 0 || len(header.Extra) < extraMinLen {
 		return nil
@@ -421,7 +421,7 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 		num := int(header.Extra[extraVanity])
 		start := extraVanity + validatorNumberSize + num*validatorBytesLength
 		if chainConfig.IsBohr(header.Number, header.Time) {
-			start += turnTermSize
+			start += turnLengthSize
 		}
 		end := len(header.Extra) - extraSeal
 		if end <= start {
@@ -902,19 +902,19 @@ func (p *Parlia) prepareValidators(header *types.Header) error {
 	return nil
 }
 
-func (p *Parlia) prepareTurnTerm(chain consensus.ChainHeaderReader, header *types.Header) error {
+func (p *Parlia) prepareTurnLength(chain consensus.ChainHeaderReader, header *types.Header) error {
 	if header.Number.Uint64()%p.config.Epoch != 0 ||
 		!p.chainConfig.IsBohr(header.Number, header.Time) {
 		return nil
 	}
 
-	turnTerm, err := p.getTurnTerm(chain, header)
+	turnLength, err := p.getTurnLength(chain, header)
 	if err != nil {
 		return err
 	}
 
-	if turnTerm != nil {
-		header.Extra = append(header.Extra, *turnTerm)
+	if turnLength != nil {
+		header.Extra = append(header.Extra, *turnLength)
 	}
 
 	return nil
@@ -1051,7 +1051,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		return err
 	}
 
-	if err := p.prepareTurnTerm(chain, header); err != nil {
+	if err := p.prepareTurnLength(chain, header); err != nil {
 		return err
 	}
 	// add extra seal space
@@ -1104,28 +1104,28 @@ func (p *Parlia) verifyValidators(header *types.Header) error {
 	return nil
 }
 
-func (p *Parlia) verifyTurnTerm(chain consensus.ChainHeaderReader, header *types.Header) error {
+func (p *Parlia) verifyTurnLength(chain consensus.ChainHeaderReader, header *types.Header) error {
 	if header.Number.Uint64()%p.config.Epoch != 0 ||
 		!p.chainConfig.IsBohr(header.Number, header.Time) {
 		return nil
 	}
 
-	turnTermFromHeader, err := parseTurnTerm(header, p.chainConfig, p.config)
+	turnLengthFromHeader, err := parseTurnLength(header, p.chainConfig, p.config)
 	if err != nil {
 		return err
 	}
-	if turnTermFromHeader != nil {
-		turnTerm, err := p.getTurnTerm(chain, header)
+	if turnLengthFromHeader != nil {
+		turnLength, err := p.getTurnLength(chain, header)
 		if err != nil {
 			return err
 		}
-		if turnTerm != nil && *turnTerm == *turnTermFromHeader {
-			log.Debug("verifyTurnTerm", "turnTerm", *turnTerm)
+		if turnLength != nil && *turnLength == *turnLengthFromHeader {
+			log.Debug("verifyTurnLength", "turnLength", *turnLength)
 			return nil
 		}
 	}
 
-	return errMismatchingEpochTurnTerm
+	return errMismatchingEpochTurnLength
 }
 
 func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header,
@@ -1222,7 +1222,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		return err
 	}
 
-	if err := p.verifyTurnTerm(chain, header); err != nil {
+	if err := p.verifyTurnLength(chain, header); err != nil {
 		return err
 	}
 
@@ -1496,9 +1496,9 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 		delay = delay - *leftOver
 	}
 
-	// The blocking time should be no more than half of period when snap.TurnTerm == 1
+	// The blocking time should be no more than half of period when snap.TurnLength == 1
 	timeForMining := time.Duration(p.config.Period) * time.Second / 2
-	if snap.TurnTerm > 1 {
+	if snap.TurnLength > 1 {
 		if snap.lastBlockInOneTurn(header.Number.Uint64()) {
 			// To ensure that the next validator produces and broadcasts blocks in a timely manner,
 			// set the value of timeForMining to a small amount

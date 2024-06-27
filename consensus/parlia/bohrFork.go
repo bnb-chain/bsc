@@ -18,49 +18,49 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-func (p *Parlia) getTurnTerm(chain consensus.ChainHeaderReader, header *types.Header) (*uint8, error) {
+func (p *Parlia) getTurnLength(chain consensus.ChainHeaderReader, header *types.Header) (*uint8, error) {
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
 		return nil, errors.New("parent not found")
 	}
 
-	var turnTerm uint8
+	var turnLength uint8
 	if p.chainConfig.IsBohr(parent.Number, parent.Time) {
-		turnTermFromContract, err := p.getTurnTermFromContract(parent)
+		turnLengthFromContract, err := p.getTurnLengthFromContract(parent)
 		if err != nil {
 			return nil, err
 		}
-		if turnTermFromContract == nil {
-			return nil, errors.New("unexpected error when getTurnTermFromContract")
+		if turnLengthFromContract == nil {
+			return nil, errors.New("unexpected error when getTurnLengthFromContract")
 		}
-		turnTerm = uint8(turnTermFromContract.Int64())
+		turnLength = uint8(turnLengthFromContract.Int64())
 	} else {
-		turnTerm = defaultTurnTerm
+		turnLength = defaultTurnLength
 	}
-	log.Debug("getTurnTerm", "turnTerm", turnTerm)
+	log.Debug("getTurnLength", "turnLength", turnLength)
 
-	return &turnTerm, nil
+	return &turnLength, nil
 }
 
-func (p *Parlia) getTurnTermFromContract(header *types.Header) (turnTerm *big.Int, err error) {
-	// mock to get turnTerm from the contract
-	if params.FixedTurnTerm >= 1 && params.FixedTurnTerm <= 9 {
-		if params.FixedTurnTerm == 2 {
-			return p.getRandTurnTerm(header)
+func (p *Parlia) getTurnLengthFromContract(header *types.Header) (turnLength *big.Int, err error) {
+	// mock to get turnLength from the contract
+	if params.FixedTurnLength >= 1 && params.FixedTurnLength <= 9 {
+		if params.FixedTurnLength == 2 {
+			return p.getRandTurnLength(header)
 		}
-		return big.NewInt(int64(params.FixedTurnTerm)), nil
+		return big.NewInt(int64(params.FixedTurnLength)), nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	method := "getTurnTerm"
+	method := "getTurnLength"
 	toAddress := common.HexToAddress(systemcontracts.ValidatorContract)
 	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
 
 	data, err := p.validatorSetABI.Pack(method)
 	if err != nil {
-		log.Error("Unable to pack tx for getTurnTerm", "error", err)
+		log.Error("Unable to pack tx for getTurnLength", "error", err)
 		return nil, err
 	}
 	msgData := (hexutil.Bytes)(data)
@@ -75,17 +75,17 @@ func (p *Parlia) getTurnTermFromContract(header *types.Header) (turnTerm *big.In
 		return nil, err
 	}
 
-	if err := p.validatorSetABI.UnpackIntoInterface(&turnTerm, method, result); err != nil {
+	if err := p.validatorSetABI.UnpackIntoInterface(&turnLength, method, result); err != nil {
 		return nil, err
 	}
 
-	return turnTerm, nil
+	return turnLength, nil
 }
 
-// getRandTurnTerm returns a random valid value, used to test switching turn terms
-func (p *Parlia) getRandTurnTerm(header *types.Header) (turnTerm *big.Int, err error) {
-	turnTerms := [8]uint8{1, 3, 4, 5, 6, 7, 8, 9}
+// getRandTurnLength returns a random valid value, used to test switching turn length
+func (p *Parlia) getRandTurnLength(header *types.Header) (turnLength *big.Int, err error) {
+	turnLengths := [8]uint8{1, 3, 4, 5, 6, 7, 8, 9}
 	r := mrand.New(mrand.NewSource(int64(header.Time)))
-	termIndex := int(r.Int31n(int32(len(turnTerms))))
-	return big.NewInt(int64(turnTerms[termIndex])), nil
+	lengthIndex := int(r.Int31n(int32(len(turnLengths))))
+	return big.NewInt(int64(turnLengths[lengthIndex])), nil
 }

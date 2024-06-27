@@ -24,7 +24,7 @@ const (
 	BLSPublicKeyLength = 48
 
 	// follow order in extra field
-	// |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Turn Term (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
+	// |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Turn Length (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
 	extraVanityLength    = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
 	validatorNumberSize  = 1  // Fixed number of extra prefix bytes reserved for validator number after Luban
 	validatorBytesLength = common.AddressLength + types.BLSPublicKeyLength
@@ -35,7 +35,7 @@ type Extra struct {
 	ExtraVanity   string
 	ValidatorSize uint8
 	Validators    validatorsAscending
-	TurnTerm      *uint8
+	TurnLength    *uint8
 	*types.VoteAttestation
 	ExtraSeal []byte
 }
@@ -115,10 +115,10 @@ func parseExtra(hexData string) (*Extra, error) {
 			data = data[validatorBytesTotalLength-validatorNumberSize:]
 			dataLength = len(data)
 
-			// parse TurnTerm
+			// parse TurnLength
 			if dataLength > 0 {
 				if data[0] != '\xf8' {
-					extra.TurnTerm = &data[0]
+					extra.TurnLength = &data[0]
 					data = data[1:]
 					dataLength = len(data)
 				}
@@ -158,8 +158,8 @@ func prettyExtra(extra Extra) {
 		}
 	}
 
-	if extra.TurnTerm != nil {
-		fmt.Printf("TurnTerm	:	%d\n", *extra.TurnTerm)
+	if extra.TurnLength != nil {
+		fmt.Printf("TurnLength	:	%d\n", *extra.TurnLength)
 	}
 
 	if extra.VoteAttestation != nil {

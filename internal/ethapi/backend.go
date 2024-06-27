@@ -89,8 +89,8 @@ type Backend interface {
 
 	ChainConfig() *params.ChainConfig
 	Engine() consensus.Engine
-	// CurrentTurnTerm return the turnTerm at the latest block
-	CurrentTurnTerm() (uint8, error)
+	// CurrentTurnLength return the turnLength at the latest block
+	CurrentTurnLength() (uint8, error)
 
 	// This is copied from filters.Backend
 	// eth/filters needs to be initialized from this backend type, so methods needed by
