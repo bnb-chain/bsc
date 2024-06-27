@@ -390,6 +390,11 @@ func (s *Snapshot) validators() []common.Address {
 	return validators
 }
 
+// lastBlockInOneTurn returns if the block at height `blockNumber` is the last block in current turn.
+func (s *Snapshot) lastBlockInOneTurn(blockNumber uint64) bool {
+	return (blockNumber+1)%uint64(s.TurnTerm) == 0
+}
+
 // inturn returns if a validator at a given block height is in-turn or not.
 func (s *Snapshot) inturn(validator common.Address) bool {
 	return s.inturnValidator() == validator
