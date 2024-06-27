@@ -1,4 +1,12 @@
 # Changelog
+
+## v1.4.11
+
+### BUGFIX
+* [\#2534](https://github.com/bnb-chain/bsc/pull/2534) fix: nil pointer when clear simulating bid
+* [\#2535](https://github.com/bnb-chain/bsc/pull/2535) upgrade: add HaberFix hardfork
+
+
 ## v1.4.10
 ### FEATURE
 NA
