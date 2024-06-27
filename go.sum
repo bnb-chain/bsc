@@ -1621,7 +1621,7 @@ github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4 v1.1.3 h1:SxrDVSr+oXuT1
 github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4 v1.1.3/go.mod h1:qiIimacW5NhVRy8o+YxWo9YrecXqDAKKbL0+sOa0SJ4=
 github.com/wealdtech/go-eth2-wallet-types/v2 v2.8.2 h1:264/meVYWt1wFw6Mtn+xwkZkXjID42gNra4rycoiDXI=
 github.com/wealdtech/go-eth2-wallet-types/v2 v2.8.2/go.mod h1:k6kmiKWSWBTd4OxFifTEkPaBLhZspnO2KFD5XJY9nqg=
-github.com/wercker/journalhook v0.0.0-20180428041537-5d0a5ae867b3/go.mod h1:XCsSkdKK4gwBMNrOCZWww0pX6AOt+2gYc5Z6jBRrNVg=
+github.com/wercker/journalhook v0.0.0-20230927020745-64542ffa4117/go.mod h1:XCsSkdKK4gwBMNrOCZWww0pX6AOt+2gYc5Z6jBRrNVg=
 github.com/whyrusleeping/go-keyspace v0.0.0-20160322163242-5b898ac5add1/go.mod h1:8UvriyWtv5Q5EOgjHaSseUEdkQfvwFv1I/In/O2M9gc=
 github.com/whyrusleeping/go-logging v0.0.0-20170515211332-0457bb6b88fc/go.mod h1:bopw91TMyo8J3tvftk8xmU2kPmlrt4nScJQZU2hE5EM=
 github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9/go.mod h1:j4l84WPFclQPj320J9gp0XwNKBb3U0zt5CBqjPp22G4=
