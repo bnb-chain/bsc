@@ -17,8 +17,8 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/cespare/cp v1.1.1
 	github.com/cloudflare/cloudflare-go v0.79.0
-	github.com/cometbft/cometbft v0.37.0
 	github.com/cockroachdb/pebble v1.1.0
+	github.com/cometbft/cometbft v0.37.0
 	github.com/consensys/gnark-crypto v0.12.1
 	github.com/crate-crypto/go-ipa v0.0.0-20231025140028-3c0104f4b233
 	github.com/crate-crypto/go-kzg-4844 v0.7.0
@@ -300,4 +300,5 @@ replace (
 	github.com/grpc-ecosystem/grpc-gateway/v2 => github.com/prysmaticlabs/grpc-gateway/v2 v2.3.1-0.20210702154020-550e1cd83ec1
 	github.com/syndtr/goleveldb v1.0.1 => github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.16
+	github.com/wercker/journalhook v0.0.0-20180428041537-5d0a5ae867b3 => github.com/wercker/journalhook v0.0.0-20230927020745-64542ffa4117
 )
