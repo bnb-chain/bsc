@@ -27,7 +27,10 @@ type NewTxsEvent struct{ Txs []*types.Transaction }
 // ReannoTxsEvent is posted when a batch of local pending transactions exceed a specified duration.
 type ReannoTxsEvent struct{ Txs []*types.Transaction }
 
-// NewMinedBlockEvent is posted when a block has been imported.
+// NewSealedBlockEvent is posted when a block has been sealed.
+type NewSealedBlockEvent struct{ Block *types.Block }
+
+// NewMinedBlockEvent is posted when a block has been mined.
 type NewMinedBlockEvent struct{ Block *types.Block }
 
 // RemovedLogsEvent is posted when a reorg happens
