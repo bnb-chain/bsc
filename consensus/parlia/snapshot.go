@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -267,8 +268,19 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			}
 		}
 		snap.Recents[number] = validator
+		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
+		snap.updateAttestation(header, chainConfig, s.config)
 		// change validator set
 		if number > 0 && number%s.config.Epoch == uint64(len(snap.Validators)/2) {
+			epochKey := math.MaxUint64 - header.Number.Uint64()/s.config.Epoch // impossible used as a block number
+			if chainConfig.IsBohr(header.Number, header.Time) {
+				// after switching the validator set, snap.Validators may become larger,
+				// then the unexpected second switch will happen, just skip it.
+				if _, ok := snap.Recents[epochKey]; ok {
+					continue
+				}
+			}
+
 			checkpointHeader := FindAncientHeader(header, uint64(len(snap.Validators)/2), chain, parents)
 			if checkpointHeader == nil {
 				return nil, consensus.ErrUnknownAncestor
@@ -289,15 +301,22 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 					}
 				}
 			}
-			oldLimit := len(snap.Validators)/2 + 1
-			newLimit := len(newVals)/2 + 1
-			if newLimit < oldLimit {
-				for i := 0; i < oldLimit-newLimit; i++ {
-					delete(snap.Recents, number-uint64(newLimit)-uint64(i))
+			if chainConfig.IsBohr(header.Number, header.Time) {
+				// BEP-404: Clear Miner History when Switching Validators Set
+				snap.Recents = make(map[uint64]common.Address)
+				snap.Recents[epochKey] = common.Address{}
+				log.Debug("Recents are cleared up", "blockNumber", number)
+			} else {
+				oldLimit := len(snap.Validators)/2 + 1
+				newLimit := len(newVals)/2 + 1
+				if newLimit < oldLimit {
+					for i := 0; i < oldLimit-newLimit; i++ {
+						delete(snap.Recents, number-uint64(newLimit)-uint64(i))
+					}
 				}
 			}
-			oldLimit = len(snap.Validators)
-			newLimit = len(newVals)
+			oldLimit := len(snap.Validators)
+			newLimit := len(newVals)
 			if newLimit < oldLimit {
 				for i := 0; i < oldLimit-newLimit; i++ {
 					delete(snap.RecentForkHashes, number-uint64(newLimit)-uint64(i))
@@ -311,10 +330,6 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				}
 			}
 		}
-
-		snap.updateAttestation(header, chainConfig, s.config)
-
-		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
 	}
 	snap.Number += uint64(len(headers))
 	snap.Hash = headers[len(headers)-1].Hash()
