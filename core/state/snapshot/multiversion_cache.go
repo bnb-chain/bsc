@@ -386,8 +386,16 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 	if c == nil {
 		return nil, false, fmt.Errorf("not found, need try difflayer")
 	}
+	start := time.Now()
+	defer func() {
+		diffMultiVersionCacheQueryAccountTimer.Update(time.Since(start))
+	}()
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+	rawStart := time.Now() // exclude lock
+	defer func() {
+		diffMultiVersionCacheRawQueryAccountTimer.Update(time.Since(rawStart))
+	}()
 
 	var (
 		queryAccountItem  *accountCacheItem
@@ -482,8 +490,16 @@ func (c *MultiVersionSnapshotCache) QueryStorage(version uint64, rootHash common
 		return nil, false, fmt.Errorf("not found, need try difflayer")
 	}
 
+	start := time.Now()
+	defer func() {
+		diffMultiVersionCacheQueryStorageTimer.Update(time.Since(start))
+	}()
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+	rawStart := time.Now() // exclude lock
+	defer func() {
+		diffMultiVersionCacheRawQueryStorageTimer.Update(time.Since(rawStart))
+	}()
 
 	var (
 		queryStorageItem  *storageCacheItem
