@@ -17,7 +17,6 @@
 package snapshot
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -365,19 +364,19 @@ func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 
 			{
 				// double check
-				expectedData, expectedErr := dl.accountRLP(hash, 0)
-				if !bytes.Equal(data, expectedData) {
-					log.Error("Has bug",
-						"query_version", dl.diffLayerID,
-						"query_root", dl.root,
-						"account_hash", hash,
-						"actual_hit_disk", needTryDisk,
-						"actual_disk_root", dl.origin.Root(),
-						"actual_data_len", len(data),
-						"expected_data_len", len(expectedData),
-						"actual_error", err,
-						"expected_error", expectedErr)
-				}
+				//expectedData, expectedErr := dl.accountRLP(hash, 0)
+				//if !bytes.Equal(data, expectedData) {
+				//	log.Error("Has bug",
+				//		"query_version", dl.diffLayerID,
+				//		"query_root", dl.root,
+				//		"account_hash", hash,
+				//		"actual_hit_disk", needTryDisk,
+				//		"actual_disk_root", dl.origin.Root(),
+				//		"actual_data_len", len(data),
+				//		"expected_data_len", len(expectedData),
+				//		"actual_error", err,
+				//		"expected_error", expectedErr)
+				//}
 			}
 			return data, err
 		}
@@ -477,20 +476,20 @@ func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 
 			{
 				// double check
-				expectedData, expectedErr := dl.storage(accountHash, storageHash, 0)
-				if !bytes.Equal(data, expectedData) {
-					log.Warn("Has bug",
-						"query_version", dl.diffLayerID,
-						"query_root", dl.root,
-						"account_hash", accountHash,
-						"storage_hash", storageHash,
-						"actual_hit_disk", needTryDisk,
-						"actual_disk_root", dl.origin.Root(),
-						"actual_data_len", len(data),
-						"expected_data_len", len(expectedData),
-						"actual_error", err,
-						"expected_error", expectedErr)
-				}
+				//expectedData, expectedErr := dl.storage(accountHash, storageHash, 0)
+				//if !bytes.Equal(data, expectedData) {
+				//	log.Warn("Has bug",
+				//		"query_version", dl.diffLayerID,
+				//		"query_root", dl.root,
+				//		"account_hash", accountHash,
+				//		"storage_hash", storageHash,
+				//		"actual_hit_disk", needTryDisk,
+				//		"actual_disk_root", dl.origin.Root(),
+				//		"actual_data_len", len(data),
+				//		"expected_data_len", len(expectedData),
+				//		"actual_error", err,
+				//		"expected_error", expectedErr)
+				//}
 			}
 			return data, err
 		}
