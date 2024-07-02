@@ -94,11 +94,13 @@ type MultiVersionSnapshotCache struct {
 	destructCache    map[common.Hash][]*destructCacheItem
 	accountDataCache map[common.Hash][]*accountCacheItem
 	storageDataCache map[common.Hash]map[common.Hash][]*storageCacheItem
-	minVersion       uint64 // bottom version
+	minVersion       uint64
 	diffLayerParent  map[common.Hash]map[common.Hash]struct{}
 	cacheItemNumber  int64
 
 	deltaRemoveQueue []*diffLayer
+
+	bottomFlattenDifflayer *diffLayer // current bottom difflayer.
 }
 
 func NewMultiVersionSnapshotCache() *MultiVersionSnapshotCache {
@@ -127,7 +129,7 @@ func (c *MultiVersionSnapshotCache) checkParent(childRoot common.Hash, parentRoo
 	return true
 }
 
-func (c *MultiVersionSnapshotCache) Add(ly *diffLayer, needResort bool) {
+func (c *MultiVersionSnapshotCache) Add(ly *diffLayer, addFlatten bool) {
 	if c == nil || ly == nil {
 		return
 	}
@@ -148,6 +150,7 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer, needResort bool) {
 		log.Info("Add difflayer to snapshot multiversion cache",
 			"root", ly.root,
 			"version_id", ly.diffLayerID,
+			"add_flatten", addFlatten,
 			"current_cache_item_number", c.cacheItemNumber,
 			"total_cost", common.PrettyDuration(time.Now().Sub(startNode)),
 			"sort_destruct_cost", common.PrettyDuration(step1End.Sub(step1Start)),
@@ -155,82 +158,81 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer, needResort bool) {
 			"sort_storage_cost", common.PrettyDuration(step3End.Sub(step3Start)))
 	}()
 
-	for hash := range ly.destructSet {
-		if multiVersionItems, exist := c.destructCache[hash]; exist {
-			multiVersionItems = append(multiVersionItems, &destructCacheItem{version: ly.diffLayerID, root: ly.root})
-			c.destructCache[hash] = multiVersionItems
-		} else {
-			c.destructCache[hash] = []*destructCacheItem{&destructCacheItem{version: ly.diffLayerID, root: ly.root}}
-		}
-		c.cacheItemNumber++
-		//log.Info("Add destruct to cache",
-		//	"cache_account_hash", hash,
-		//	"cache_version", ly.diffLayerID,
-		//	"cache_root", ly.root)
-	}
-	// sorted by version
-	step1Start = time.Now()
-	if needResort {
-		for hash := range c.destructCache {
-			c.destructCache[hash] = newMultiVersionItemSlice[*destructCacheItem](c.destructCache[hash]).SortByVersion()
-		}
-	}
-	step1End = time.Now()
-
-	for hash, aData := range ly.accountData {
-		if multiVersionItems, exist := c.accountDataCache[hash]; exist {
-			multiVersionItems = append(multiVersionItems, &accountCacheItem{version: ly.diffLayerID, root: ly.root, data: aData})
-			c.accountDataCache[hash] = multiVersionItems
-		} else {
-			c.accountDataCache[hash] = []*accountCacheItem{&accountCacheItem{version: ly.diffLayerID, root: ly.root, data: aData}}
-		}
-		c.cacheItemNumber++
-		//log.Info("Add account to cache",
-		//	"cache_account_hash", hash,
-		//	"cache_version", ly.diffLayerID,
-		//	"cache_root", ly.root,
-		//	"cache_data_len", len(aData))
-	}
-
-	// sorted by version
-	step2Start = time.Now()
-	if needResort {
-		for hash := range c.accountDataCache {
-			c.accountDataCache[hash] = newMultiVersionItemSlice[*accountCacheItem](c.accountDataCache[hash]).SortByVersion()
-		}
-	}
-	step2End = time.Now()
-
-	for accountHash, slots := range ly.storageData {
-		if _, exist := c.storageDataCache[accountHash]; !exist {
-			c.storageDataCache[accountHash] = make(map[common.Hash][]*storageCacheItem)
-		}
-		for storageHash, sData := range slots {
-			if multiVersionItems, exist := c.storageDataCache[accountHash][storageHash]; exist {
-				multiVersionItems = append(multiVersionItems, &storageCacheItem{version: ly.diffLayerID, root: ly.root, data: sData})
-				c.storageDataCache[accountHash][storageHash] = multiVersionItems
+	if !addFlatten {
+		for hash := range ly.destructSet {
+			if multiVersionItems, exist := c.destructCache[hash]; exist {
+				multiVersionItems = append(multiVersionItems, &destructCacheItem{version: ly.diffLayerID, root: ly.root})
+				c.destructCache[hash] = multiVersionItems
 			} else {
-				c.storageDataCache[accountHash][storageHash] = []*storageCacheItem{&storageCacheItem{version: ly.diffLayerID, root: ly.root, data: sData}}
+				c.destructCache[hash] = []*destructCacheItem{&destructCacheItem{version: ly.diffLayerID, root: ly.root}}
 			}
 			c.cacheItemNumber++
-			//log.Info("Add storage to cache",
-			//	"cache_account_hash", accountHash,
-			//	"cache_storage_hash", storageHash,
+			//log.Info("Add destruct to cache",
+			//	"cache_account_hash", hash,
+			//	"cache_version", ly.diffLayerID,
+			//	"cache_root", ly.root)
+		}
+
+		for hash, aData := range ly.accountData {
+			if multiVersionItems, exist := c.accountDataCache[hash]; exist {
+				multiVersionItems = append(multiVersionItems, &accountCacheItem{version: ly.diffLayerID, root: ly.root, data: aData})
+				c.accountDataCache[hash] = multiVersionItems
+			} else {
+				c.accountDataCache[hash] = []*accountCacheItem{&accountCacheItem{version: ly.diffLayerID, root: ly.root, data: aData}}
+			}
+			c.cacheItemNumber++
+			//log.Info("Add account to cache",
+			//	"cache_account_hash", hash,
 			//	"cache_version", ly.diffLayerID,
 			//	"cache_root", ly.root,
-			//	"cache_data_len", len(sData))
+			//	"cache_data_len", len(aData))
 		}
-	}
-	// sorted by version
-	step3Start = time.Now()
-	if needResort {
-		for ahash := range c.storageDataCache {
-			for shash := range c.storageDataCache[ahash] {
-				c.storageDataCache[ahash][shash] = newMultiVersionItemSlice[*storageCacheItem](c.storageDataCache[ahash][shash]).SortByVersion()
+
+		for accountHash, slots := range ly.storageData {
+			if _, exist := c.storageDataCache[accountHash]; !exist {
+				c.storageDataCache[accountHash] = make(map[common.Hash][]*storageCacheItem)
+			}
+			for storageHash, sData := range slots {
+				if multiVersionItems, exist := c.storageDataCache[accountHash][storageHash]; exist {
+					multiVersionItems = append(multiVersionItems, &storageCacheItem{version: ly.diffLayerID, root: ly.root, data: sData})
+					c.storageDataCache[accountHash][storageHash] = multiVersionItems
+				} else {
+					c.storageDataCache[accountHash][storageHash] = []*storageCacheItem{&storageCacheItem{version: ly.diffLayerID, root: ly.root, data: sData}}
+				}
+				c.cacheItemNumber++
+				//log.Info("Add storage to cache",
+				//	"cache_account_hash", accountHash,
+				//	"cache_storage_hash", storageHash,
+				//	"cache_version", ly.diffLayerID,
+				//	"cache_root", ly.root,
+				//	"cache_data_len", len(sData))
 			}
 		}
+	} else { // add flattern need resort
+		// sorted by version
+		step1Start = time.Now()
+		//for hash := range c.destructCache {
+		//	c.destructCache[hash] = newMultiVersionItemSlice[*destructCacheItem](c.destructCache[hash]).SortByVersion()
+		//}
+		step1End = time.Now()
+
+		// sorted by version
+		step2Start = time.Now()
+		//for hash := range c.accountDataCache {
+		//	c.accountDataCache[hash] = newMultiVersionItemSlice[*accountCacheItem](c.accountDataCache[hash]).SortByVersion()
+		//}
+		step2End = time.Now()
+
+		// sorted by version
+		step3Start = time.Now()
+		//for ahash := range c.storageDataCache {
+		//	for shash := range c.storageDataCache[ahash] {
+		//		c.storageDataCache[ahash][shash] = newMultiVersionItemSlice[*storageCacheItem](c.storageDataCache[ahash][shash]).SortByVersion()
+		//	}
+		//}
+		step3End = time.Now()
+		c.bottomFlattenDifflayer = ly
 	}
-	step3End = time.Now()
 
 	if parentDiffLayer, ok := ly.parent.(*diffLayer); ok {
 		if parentLayerParent, exist := c.diffLayerParent[parentDiffLayer.root]; exist {
@@ -245,6 +247,37 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer, needResort bool) {
 		c.diffLayerParent[ly.root][ly.root] = struct{}{}
 	}
 	diffMultiVersionCacheLengthGauge.Update(c.cacheItemNumber)
+}
+
+func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersion uint64, rootHash common.Hash, aHash common.Hash) (directlyReturn bool, data []byte, err error) {
+	if c.bottomFlattenDifflayer == nil {
+		return false, nil, nil
+	}
+	if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+		return false, nil, nil
+	}
+	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
+		return false, nil, nil
+	}
+	// currentVersion == c.bottomFlattenDifflayer.diffLayerID
+	data, err = c.bottomFlattenDifflayer.accountRLP(aHash, 0)
+	return true, data, err
+
+}
+
+func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersion uint64, rootHash common.Hash, aHash common.Hash, sHash common.Hash) (directlyReturn bool, data []byte, err error) {
+	if c.bottomFlattenDifflayer == nil {
+		return false, nil, nil
+	}
+	if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+		return false, nil, nil
+	}
+	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
+		return false, nil, nil
+	}
+	// currentVersion == c.bottomFlattenDifflayer.diffLayerID
+	data, err = c.bottomFlattenDifflayer.storage(aHash, sHash, 0)
+	return true, data, err
 }
 
 func (c *MultiVersionSnapshotCache) loopDelayGC() {
@@ -422,6 +455,11 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 					//	"hit_root_hash", queryAccountItem.root)
 					break
 				}
+				directlyReturn, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
+				if directlyReturn {
+					return data, false, err
+				}
+
 				//log.Info("Try hit account cache",
 				//	"query_version", version,
 				//	"query_root_hash", rootHash,
@@ -528,6 +566,10 @@ func (c *MultiVersionSnapshotCache) QueryStorage(version uint64, rootHash common
 						//	"hit_version", queryStorageItem.version,
 						//	"hit_root_hash", queryStorageItem.root)
 						break
+					}
+					directlyReturn, data, err := c.tryQueryFlattenDiffLayerStorage(multiVersionItems[i].version, rootHash, ahash, shash)
+					if directlyReturn {
+						return data, false, err
 					}
 					//log.Info("Try hit storage cache",
 					//	"query_version", version,
