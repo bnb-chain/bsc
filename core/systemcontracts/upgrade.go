@@ -78,6 +78,8 @@ var (
 	feynmanFixUpgrade = make(map[string]*Upgrade)
 
 	haberFixUpgrade = make(map[string]*Upgrade)
+
+	bohrUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -814,6 +816,10 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	if config.IsOnHaberFix(blockNumber, lastBlockTime, blockTime) {
 		applySystemContractUpgrade(haberFixUpgrade[network], blockNumber, statedb, logger)
+	}
+
+	if config.IsOnBohr(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(bohrUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*
