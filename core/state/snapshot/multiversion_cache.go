@@ -249,44 +249,50 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer, addFlatten bool) {
 	diffMultiVersionCacheLengthGauge.Update(c.cacheItemNumber)
 }
 
-func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersion uint64, rootHash common.Hash, aHash common.Hash) (directlyReturn bool, data []byte, err error) {
-	if c.bottomFlattenDifflayer == nil {
-		return false, nil, nil
-	}
-	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
-		return false, nil, nil
-	}
-	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
-		return false, nil, nil
-	}
-	data, err = c.bottomFlattenDifflayer.accountRLP(aHash, 0)
-	log.Info("Hit account bottom layer",
+func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersion uint64, rootHash common.Hash, aHash common.Hash) (directlyReturn bool, retryDisk bool, data []byte, err error) {
+	log.Info("Try hit account bottom layer",
 		"current_version", currentVersion,
 		"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
 		"root_hash", rootHash,
 		"account_hash", aHash)
-	return true, data, err
+	if c.bottomFlattenDifflayer == nil {
+		return false, false, nil, nil
+	}
+	if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
+		return true, true, nil, nil
+	}
+	if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+		return false, false, nil, nil
+	}
+	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
+		return false, false, nil, nil
+	}
+	data, err = c.bottomFlattenDifflayer.accountRLP(aHash, 0)
+	return true, false, data, err
 
 }
 
-func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersion uint64, rootHash common.Hash, aHash common.Hash, sHash common.Hash) (directlyReturn bool, data []byte, err error) {
+func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersion uint64, rootHash common.Hash, aHash common.Hash, sHash common.Hash) (directlyReturn bool, retryDisk bool, data []byte, err error) {
+	log.Info("Try hit storage bottom layer",
+		"current_version", currentVersion,
+		"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
+		"root_hash", rootHash,
+		"account_hash", aHash,
+		"storage_hash", sHash)
 	if c.bottomFlattenDifflayer == nil {
-		return false, nil, nil
+		return false, false, nil, nil
 	}
-	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
-		return false, nil, nil
+	if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
+		return true, true, nil, nil
+	}
+	if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+		return false, false, nil, nil
 	}
 	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
-		return false, nil, nil
+		return false, false, nil, nil
 	}
 	data, err = c.bottomFlattenDifflayer.storage(aHash, sHash, 0)
-	//log.Info("Hit storage bottom layer",
-	//	"current_version", currentVersion,
-	//	"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
-	//	"root_hash", rootHash,
-	//	"account_hash", aHash,
-	//	"storage_hash", sHash)
-	return true, data, err
+	return true, false, data, err
 }
 
 func (c *MultiVersionSnapshotCache) loopDelayGC() {
@@ -452,9 +458,9 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 				"query_account_hash", ahash,
 				"multi_version_cache_len", len(multiVersionItems))
 			for i := len(multiVersionItems) - 1; i >= 0; i-- {
-				directlyReturn, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
+				directlyReturn, retryDisk, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
 				if directlyReturn {
-					return data, false, err
+					return data, retryDisk, err
 				}
 				if multiVersionItems[i].version <= version &&
 					multiVersionItems[i].version > c.minVersion &&
@@ -490,9 +496,9 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 				"query_account_hash", ahash,
 				"multi_version_cache_len", len(multiVersionItems))
 			for i := len(multiVersionItems) - 1; i >= 0; i-- {
-				directlyReturn, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
+				directlyReturn, tryDisk, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
 				if directlyReturn {
-					return data, false, err
+					return data, tryDisk, err
 				}
 				if multiVersionItems[i].version <= version &&
 					multiVersionItems[i].version > c.minVersion &&
@@ -524,9 +530,9 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 	}
 
 	if queryAccountItem == nil && queryDestructItem == nil {
-		directlyReturn, data, err := c.tryQueryFlattenDiffLayerAccount(0, rootHash, ahash)
+		directlyReturn, tryDisk, data, err := c.tryQueryFlattenDiffLayerAccount(0, rootHash, ahash)
 		if directlyReturn {
-			return data, false, err
+			return data, tryDisk, err
 		}
 		return nil, true, nil
 	}
@@ -571,9 +577,9 @@ func (c *MultiVersionSnapshotCache) QueryStorage(version uint64, rootHash common
 				//	"query_storage_hash", shash,
 				//	"multi_version_cache_len", len(multiVersionItems))
 				for i := len(multiVersionItems) - 1; i >= 0; i-- {
-					directlyReturn, data, err := c.tryQueryFlattenDiffLayerStorage(multiVersionItems[i].version, rootHash, ahash, shash)
+					directlyReturn, tryDisk, data, err := c.tryQueryFlattenDiffLayerStorage(multiVersionItems[i].version, rootHash, ahash, shash)
 					if directlyReturn {
-						return data, false, err
+						return data, tryDisk, err
 					}
 					if multiVersionItems[i].version <= version &&
 						multiVersionItems[i].version > c.minVersion &&
@@ -610,9 +616,9 @@ func (c *MultiVersionSnapshotCache) QueryStorage(version uint64, rootHash common
 			//	"query_storage_hash", shash,
 			//	"multi_version_cache_len", len(multiVersionItems))
 			for i := len(multiVersionItems) - 1; i >= 0; i-- {
-				directlyReturn, data, err := c.tryQueryFlattenDiffLayerStorage(multiVersionItems[i].version, rootHash, ahash, shash)
+				directlyReturn, tryDisk, data, err := c.tryQueryFlattenDiffLayerStorage(multiVersionItems[i].version, rootHash, ahash, shash)
 				if directlyReturn {
-					return data, false, err
+					return data, tryDisk, err
 				}
 				if multiVersionItems[i].version <= version &&
 					multiVersionItems[i].version > c.minVersion &&
@@ -647,9 +653,9 @@ func (c *MultiVersionSnapshotCache) QueryStorage(version uint64, rootHash common
 	}
 
 	if queryStorageItem == nil && queryDestructItem == nil {
-		directlyReturn, data, err := c.tryQueryFlattenDiffLayerStorage(0, rootHash, ahash, shash)
+		directlyReturn, tryDisk, data, err := c.tryQueryFlattenDiffLayerStorage(0, rootHash, ahash, shash)
 		if directlyReturn {
-			return data, false, err
+			return data, tryDisk, err
 		}
 		return nil, true, nil // not founded and need try disklayer
 	}
