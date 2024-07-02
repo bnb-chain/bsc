@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -410,6 +411,7 @@ func (t *Tree) CapLimit() int {
 // survival is only known *after* capping, we need to omit it from the count if
 // we want to ensure that *at least* the requested number of diff layers remain.
 func (t *Tree) Cap(root common.Hash, layers int) error {
+	start := time.Now()
 	// Retrieve the head snapshot to cap from
 	snap := t.Snapshot(root)
 	if snap == nil {
@@ -492,7 +494,7 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 		}
 		rebloom(persisted.root)
 	}
-	log.Debug("Snapshot capped", "root", root)
+	log.Info("Snapshot capped", "root", root, "layers", layers, "total_cost", common.PrettyDuration(time.Now().Sub(start)))
 	return nil
 }
 
