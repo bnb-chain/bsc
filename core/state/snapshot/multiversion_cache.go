@@ -454,6 +454,10 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 				"query_account_hash", ahash,
 				"multi_version_cache_len", len(multiVersionItems))
 			for i := len(multiVersionItems) - 1; i >= 0; i-- {
+				directlyReturn, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
+				if directlyReturn {
+					return data, false, err
+				}
 				if multiVersionItems[i].version <= version &&
 					multiVersionItems[i].version > c.minVersion &&
 					c.checkParent(rootHash, multiVersionItems[i].root) {
@@ -465,10 +469,6 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 						"hit_version", queryAccountItem.version,
 						"hit_root_hash", queryAccountItem.root)
 					break
-				}
-				directlyReturn, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
-				if directlyReturn {
-					return data, false, err
 				}
 
 				log.Info("Try hit account cache",
@@ -565,6 +565,10 @@ func (c *MultiVersionSnapshotCache) QueryStorage(version uint64, rootHash common
 				//	"query_storage_hash", shash,
 				//	"multi_version_cache_len", len(multiVersionItems))
 				for i := len(multiVersionItems) - 1; i >= 0; i-- {
+					directlyReturn, data, err := c.tryQueryFlattenDiffLayerStorage(multiVersionItems[i].version, rootHash, ahash, shash)
+					if directlyReturn {
+						return data, false, err
+					}
 					if multiVersionItems[i].version <= version &&
 						multiVersionItems[i].version > c.minVersion &&
 						c.checkParent(rootHash, multiVersionItems[i].root) {
@@ -578,10 +582,7 @@ func (c *MultiVersionSnapshotCache) QueryStorage(version uint64, rootHash common
 						//	"hit_root_hash", queryStorageItem.root)
 						break
 					}
-					directlyReturn, data, err := c.tryQueryFlattenDiffLayerStorage(multiVersionItems[i].version, rootHash, ahash, shash)
-					if directlyReturn {
-						return data, false, err
-					}
+
 					//log.Info("Try hit storage cache",
 					//	"query_version", version,
 					//	"query_root_hash", rootHash,
