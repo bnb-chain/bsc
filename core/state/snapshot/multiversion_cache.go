@@ -253,7 +253,7 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersi
 	if c.bottomFlattenDifflayer == nil {
 		return false, nil, nil
 	}
-	if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
 		return false, nil, nil
 	}
 	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
@@ -269,7 +269,7 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersi
 	if c.bottomFlattenDifflayer == nil {
 		return false, nil, nil
 	}
-	if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
 		return false, nil, nil
 	}
 	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
