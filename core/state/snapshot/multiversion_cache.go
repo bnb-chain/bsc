@@ -133,7 +133,27 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer) {
 	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	log.Info("Add difflayer to snapshot multiversion cache", "root", ly.root, "version_id", ly.diffLayerID, "current_cache_item_number", c.cacheItemNumber)
+
+	var (
+		startNode  time.Time
+		step1Start time.Time
+		step1End   time.Time
+		step2Start time.Time
+		step2End   time.Time
+		step3Start time.Time
+		step3End   time.Time
+	)
+	startNode = time.Now()
+	defer func() {
+		log.Info("Add difflayer to snapshot multiversion cache",
+			"root", ly.root,
+			"version_id", ly.diffLayerID,
+			"current_cache_item_number", c.cacheItemNumber,
+			"total_cost", common.PrettyDuration(time.Now().Sub(startNode)),
+			"sort_destruct_cost", common.PrettyDuration(step1End.Sub(step1Start)),
+			"sort_account_cost", common.PrettyDuration(step2End.Sub(step2Start)),
+			"sort_storage_cost", common.PrettyDuration(step3End.Sub(step3Start)))
+	}()
 
 	for hash := range ly.destructSet {
 		if multiVersionItems, exist := c.destructCache[hash]; exist {
@@ -149,9 +169,11 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer) {
 		//	"cache_root", ly.root)
 	}
 	// sorted by version
+	step1Start = time.Now()
 	for hash := range c.destructCache {
 		c.destructCache[hash] = newMultiVersionItemSlice[*destructCacheItem](c.destructCache[hash]).SortByVersion()
 	}
+	step1End = time.Now()
 
 	for hash, aData := range ly.accountData {
 		if multiVersionItems, exist := c.accountDataCache[hash]; exist {
@@ -169,9 +191,11 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer) {
 	}
 
 	// sorted by version
+	step2Start = time.Now()
 	for hash := range c.accountDataCache {
 		c.accountDataCache[hash] = newMultiVersionItemSlice[*accountCacheItem](c.accountDataCache[hash]).SortByVersion()
 	}
+	step2End = time.Now()
 
 	for accountHash, slots := range ly.storageData {
 		if _, exist := c.storageDataCache[accountHash]; !exist {
@@ -194,11 +218,13 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer) {
 		}
 	}
 	// sorted by version
+	step3Start = time.Now()
 	for ahash := range c.storageDataCache {
 		for shash := range c.storageDataCache[ahash] {
 			c.storageDataCache[ahash][shash] = newMultiVersionItemSlice[*storageCacheItem](c.storageDataCache[ahash][shash]).SortByVersion()
 		}
 	}
+	step3End = time.Now()
 
 	if parentDiffLayer, ok := ly.parent.(*diffLayer); ok {
 		if parentLayerParent, exist := c.diffLayerParent[parentDiffLayer.root]; exist {
