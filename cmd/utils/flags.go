@@ -487,6 +487,18 @@ var (
 		Value:    1024,
 		Category: flags.PerfCategory,
 	}
+	StartFlag = &cli.IntFlag{
+		Name:     "start",
+		Usage:    "Megabytes of memory allocated to internal caching (default = 4096 mainnet full node, 128 light mode)",
+		Value:    1024,
+		Category: flags.PerfCategory,
+	}
+	EndFlag = &cli.IntFlag{
+		Name:     "end",
+		Usage:    "Megabytes of memory allocated to internal caching (default = 4096 mainnet full node, 128 light mode)",
+		Value:    1024,
+		Category: flags.PerfCategory,
+	}
 	CacheDatabaseFlag = &cli.IntFlag{
 		Name:     "cache.database",
 		Usage:    "Percentage of cache memory allowance to use for database io",

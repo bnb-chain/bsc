@@ -818,6 +818,20 @@ func AncientInspect(db ethdb.Database) error {
 	return nil
 }
 
+func BlocksInspect(db ethdb.Database, start, end uint64) error {
+	for num := start; num < end; num++ {
+		hash := ReadCanonicalHash(db, num)
+		if hash == (common.Hash{}) {
+			return nil
+		}
+		block := ReadBlock(db, hash, num)
+
+		log.Info("blocksInspect", "number", num, "block", block)
+	}
+
+	return nil
+}
+
 func PruneHashTrieNodeInDataBase(db ethdb.Database) error {
 	it := db.NewIterator([]byte{}, []byte{})
 	defer it.Release()

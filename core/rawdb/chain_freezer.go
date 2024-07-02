@@ -297,6 +297,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		if err := f.Sync(); err != nil {
 			log.Crit("Failed to flush frozen tables", "err", err)
 		}
+		WriteFrozenOfAncientFreezer(nfdb, f.frozen.Load())
 		// Wipe out all data from the active database
 		batch := db.NewBatch()
 		for i := 0; i < len(ancients); i++ {

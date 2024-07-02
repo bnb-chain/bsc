@@ -85,6 +85,7 @@ Remove blockchain and state databases`,
 			dbExportCmd,
 			dbMetadataCmd,
 			ancientInspectCmd,
+			blockInspectCmd,
 			// no legacy stored receipts for bsc
 			// dbMigrateFreezerCmd,
 			dbCheckStateContentCmd,
@@ -281,6 +282,18 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		Name:   "inspect-reserved-oldest-blocks",
 		Flags: []cli.Flag{
 			utils.DataDirFlag,
+		},
+		Usage: "Inspect the ancientStore information",
+		Description: `This commands will read current offset from kvdb, which is the current offset and starting BlockNumber
+of ancientStore, will also displays the reserved number of blocks in ancientStore `,
+	}
+	blockInspectCmd = &cli.Command{
+		Action: blockInspect,
+		Name:   "inspect-blocks",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+			utils.EndFlag,
+			utils.StartFlag,
 		},
 		Usage: "Inspect the ancientStore information",
 		Description: `This commands will read current offset from kvdb, which is the current offset and starting BlockNumber
@@ -502,6 +515,19 @@ func inspect(ctx *cli.Context) error {
 	defer db.Close()
 
 	return rawdb.InspectDatabase(db, prefix, start)
+}
+
+func blockInspect(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	defer db.Close()
+	var (
+		start = ctx.Int(utils.StartFlag.Name)
+		end   = ctx.Int(utils.EndFlag.Name)
+	)
+	return rawdb.BlocksInspect(db, uint64(start), uint64(end))
 }
 
 func ancientInspect(ctx *cli.Context) error {
