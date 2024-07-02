@@ -385,7 +385,7 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 	snap := parent.(snapshot).Update(blockRoot, destructs, accounts, storage, verified)
 
 	log.Info("Add cache due to new difflayer", "diff_root", snap.root, "diff_version", snap.diffLayerID)
-	snap.AddToCache()
+	snap.AddToCache(false)
 
 	// Save the new snapshot for later
 	t.lock.Lock()
@@ -538,7 +538,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 
 		// the new flatten difflayer will cause multiple versions of the cache to be out of order. so need resorted multi-version cache.
 		log.Info("Add cache due to flatten", "diff_root", flattened.root, "diff_version", flattened.diffLayerID)
-		flattened.AddToCache()
+		flattened.AddToCache(true)
 
 		// Invoke the hook if it's registered. Ugly hack.
 		if t.onFlatten != nil {

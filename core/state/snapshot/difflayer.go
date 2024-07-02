@@ -197,8 +197,8 @@ func newDiffLayer(parent snapshot, root common.Hash, destructs map[common.Hash]s
 	return dl
 }
 
-func (dl *diffLayer) AddToCache() {
-	dl.multiVersionCache.Add(dl)
+func (dl *diffLayer) AddToCache(needResort bool) {
+	dl.multiVersionCache.Add(dl, needResort)
 }
 
 func (dl *diffLayer) RemoveFromCache() {

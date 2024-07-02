@@ -127,7 +127,7 @@ func (c *MultiVersionSnapshotCache) checkParent(childRoot common.Hash, parentRoo
 	return true
 }
 
-func (c *MultiVersionSnapshotCache) Add(ly *diffLayer) {
+func (c *MultiVersionSnapshotCache) Add(ly *diffLayer, needResort bool) {
 	if c == nil || ly == nil {
 		return
 	}
@@ -170,8 +170,10 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer) {
 	}
 	// sorted by version
 	step1Start = time.Now()
-	for hash := range c.destructCache {
-		c.destructCache[hash] = newMultiVersionItemSlice[*destructCacheItem](c.destructCache[hash]).SortByVersion()
+	if needResort {
+		for hash := range c.destructCache {
+			c.destructCache[hash] = newMultiVersionItemSlice[*destructCacheItem](c.destructCache[hash]).SortByVersion()
+		}
 	}
 	step1End = time.Now()
 
@@ -192,8 +194,10 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer) {
 
 	// sorted by version
 	step2Start = time.Now()
-	for hash := range c.accountDataCache {
-		c.accountDataCache[hash] = newMultiVersionItemSlice[*accountCacheItem](c.accountDataCache[hash]).SortByVersion()
+	if needResort {
+		for hash := range c.accountDataCache {
+			c.accountDataCache[hash] = newMultiVersionItemSlice[*accountCacheItem](c.accountDataCache[hash]).SortByVersion()
+		}
 	}
 	step2End = time.Now()
 
@@ -219,9 +223,11 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer) {
 	}
 	// sorted by version
 	step3Start = time.Now()
-	for ahash := range c.storageDataCache {
-		for shash := range c.storageDataCache[ahash] {
-			c.storageDataCache[ahash][shash] = newMultiVersionItemSlice[*storageCacheItem](c.storageDataCache[ahash][shash]).SortByVersion()
+	if needResort {
+		for ahash := range c.storageDataCache {
+			for shash := range c.storageDataCache[ahash] {
+				c.storageDataCache[ahash][shash] = newMultiVersionItemSlice[*storageCacheItem](c.storageDataCache[ahash][shash]).SortByVersion()
+			}
 		}
 	}
 	step3End = time.Now()
@@ -260,12 +266,7 @@ func (c *MultiVersionSnapshotCache) loopDelayGC() {
 				if gcDifflayer.diffLayerID > c.minVersion {
 					c.minVersion = gcDifflayer.diffLayerID
 				}
-				log.Info("Delay remove difflayer from snapshot multiversion cache",
-					"root", gcDifflayer.root,
-					"version_id", gcDifflayer.diffLayerID,
-					"current_cache_item_number", c.cacheItemNumber,
-					"deleted_difflayer_number", deltaQueueLen,
-					"min_version", c.minVersion)
+				start := time.Now()
 
 				for aHash, multiVersionDestructList := range c.destructCache {
 					for i := 0; i < len(multiVersionDestructList); i++ {
@@ -352,6 +353,14 @@ func (c *MultiVersionSnapshotCache) loopDelayGC() {
 				diffMultiVersionCacheLengthGauge.Update(c.cacheItemNumber)
 				c.deltaRemoveQueue = c.deltaRemoveQueue[batchGCNumber+1:]
 				c.lock.Unlock()
+
+				log.Info("Delay remove difflayer from snapshot multiversion cache",
+					"root", gcDifflayer.root,
+					"version_id", gcDifflayer.diffLayerID,
+					"current_cache_item_number", c.cacheItemNumber,
+					"deleted_difflayer_number", deltaQueueLen,
+					"min_version", c.minVersion,
+					"total_cost", common.PrettyDuration(time.Now().Sub(start)))
 			} else {
 				log.Info("Skip delay gc due to less difflayer in queue", "deleted_difflayer_number", deltaQueueLen)
 			}
