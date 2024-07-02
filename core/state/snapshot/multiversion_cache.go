@@ -448,22 +448,22 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 
 	{
 		if multiVersionItems, exist := c.accountDataCache[ahash]; exist && len(multiVersionItems) != 0 {
-			//log.Info("Try query account cache",
-			//	"query_version", version,
-			//	"query_root_hash", rootHash,
-			//	"query_account_hash", ahash,
-			//	"multi_version_cache_len", len(multiVersionItems))
+			log.Info("Try query account cache",
+				"query_version", version,
+				"query_root_hash", rootHash,
+				"query_account_hash", ahash,
+				"multi_version_cache_len", len(multiVersionItems))
 			for i := len(multiVersionItems) - 1; i >= 0; i-- {
 				if multiVersionItems[i].version <= version &&
 					multiVersionItems[i].version > c.minVersion &&
 					c.checkParent(rootHash, multiVersionItems[i].root) {
 					queryAccountItem = multiVersionItems[i]
-					//log.Info("Account hit account cache",
-					//	"query_version", version,
-					//	"query_root_hash", rootHash,
-					//	"query_account_hash", ahash,
-					//	"hit_version", queryAccountItem.version,
-					//	"hit_root_hash", queryAccountItem.root)
+					log.Info("Account hit account cache",
+						"query_version", version,
+						"query_root_hash", rootHash,
+						"query_account_hash", ahash,
+						"hit_version", queryAccountItem.version,
+						"hit_root_hash", queryAccountItem.root)
 					break
 				}
 				directlyReturn, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
@@ -471,15 +471,15 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 					return data, false, err
 				}
 
-				//log.Info("Try hit account cache",
-				//	"query_version", version,
-				//	"query_root_hash", rootHash,
-				//	"query_account_hash", ahash,
-				//	"try_hit_version", multiVersionItems[i].version,
-				//	"try_hit_root_hash", multiVersionItems[i].root,
-				//	"check_version", multiVersionItems[i].version > c.minVersion,
-				//	"check_parent", c.checkParent(rootHash, multiVersionItems[i].root),
-				//	"check_data_len", len(multiVersionItems[i].data))
+				log.Info("Try hit account cache",
+					"query_version", version,
+					"query_root_hash", rootHash,
+					"query_account_hash", ahash,
+					"try_hit_version", multiVersionItems[i].version,
+					"try_hit_root_hash", multiVersionItems[i].root,
+					"check_version", multiVersionItems[i].version > c.minVersion,
+					"check_parent", c.checkParent(rootHash, multiVersionItems[i].root),
+					"check_data_len", len(multiVersionItems[i].data))
 			}
 		}
 	}
