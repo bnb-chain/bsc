@@ -26,7 +26,6 @@ import (
 	"context"
 	crand "crypto/rand"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	mrand "math/rand"
 	"net"
@@ -381,13 +380,12 @@ func (tab *Table) doRevalidate(done chan<- struct{}) {
 	if last.Seq() < remoteSeq {
 		n, err := tab.net.RequestENR(unwrapNode(last))
 		if err != nil {
+			// if ENR fails we just do not update the node record
 			tab.log.Debug("ENR request failed", "id", last.ID(), "addr", last.addr(), "err", err)
-			errHandle = err
 		} else {
 			if tab.enrFilter != nil {
 				if !tab.enrFilter(n.Record()) {
 					tab.log.Trace("ENR record filter out", "id", last.ID(), "addr", last.addr())
-					errHandle = errors.New("filtered node")
 				}
 			}
 			last = &node{Node: *n, addedAt: last.addedAt, livenessChecks: last.livenessChecks}
