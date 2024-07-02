@@ -256,9 +256,9 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersi
 	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
 		return false, nil, nil
 	}
-	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
-		return false, nil, nil
-	}
+	//if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
+	//	return false, nil, nil
+	//}
 	// currentVersion == c.bottomFlattenDifflayer.diffLayerID
 	data, err = c.bottomFlattenDifflayer.accountRLP(aHash, 0)
 	log.Info("Hit account bottom layer",
@@ -277,9 +277,9 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersi
 	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
 		return false, nil, nil
 	}
-	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
-		return false, nil, nil
-	}
+	//if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
+	//	return false, nil, nil
+	//}
 	// currentVersion == c.bottomFlattenDifflayer.diffLayerID
 	data, err = c.bottomFlattenDifflayer.storage(aHash, sHash, 0)
 	log.Info("Hit storage bottom layer",
