@@ -258,12 +258,15 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersi
 		"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
 		"root_hash", rootHash,
 		"account_hash", aHash)
-	if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
-		return true, true, nil, nil
-	}
-	if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
 		return false, false, nil, nil
 	}
+	//if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
+	//	return true, true, nil, nil
+	//}
+	//if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+	//	return false, false, nil, nil
+	//}
 	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
 		return false, false, nil, nil
 	}
@@ -281,12 +284,15 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersi
 		"root_hash", rootHash,
 		"account_hash", aHash,
 		"storage_hash", sHash)
-	if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
-		return true, true, nil, nil
-	}
-	if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
 		return false, false, nil, nil
 	}
+	//if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
+	//	return true, true, nil, nil
+	//}
+	//if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
+	//	return false, false, nil, nil
+	//}
 	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
 		return false, false, nil, nil
 	}
