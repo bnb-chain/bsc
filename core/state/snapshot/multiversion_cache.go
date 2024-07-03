@@ -258,20 +258,18 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersi
 		"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
 		"root_hash", rootHash,
 		"account_hash", aHash)
-	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
+	if currentVersion > c.bottomFlattenDifflayer.diffLayerID {
 		return false, false, nil, nil
 	}
-	//if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
-	//	return true, true, nil, nil
-	//}
-	//if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
-	//	return false, false, nil, nil
-	//}
-	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
-		return false, false, nil, nil
+	if currentVersion == c.bottomFlattenDifflayer.diffLayerID {
+		if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
+			return false, false, nil, nil
+		}
+		data, err = c.bottomFlattenDifflayer.accountRLP(aHash, 0)
+		return true, false, data, err
 	}
-	data, err = c.bottomFlattenDifflayer.accountRLP(aHash, 0)
-	return true, false, data, err
+	// currentVersion < c.bottomFlattenDifflayer.diffLayerID
+	return false, false, nil, nil
 }
 
 func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersion uint64, rootHash common.Hash, aHash common.Hash, sHash common.Hash) (directlyReturn bool, retryDisk bool, data []byte, err error) {
@@ -284,20 +282,19 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersi
 		"root_hash", rootHash,
 		"account_hash", aHash,
 		"storage_hash", sHash)
-	if currentVersion >= c.bottomFlattenDifflayer.diffLayerID {
+	if currentVersion > c.bottomFlattenDifflayer.diffLayerID {
 		return false, false, nil, nil
 	}
-	//if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
-	//	return true, true, nil, nil
-	//}
-	//if currentVersion != c.bottomFlattenDifflayer.diffLayerID {
-	//	return false, false, nil, nil
-	//}
-	if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
-		return false, false, nil, nil
+	if currentVersion == c.bottomFlattenDifflayer.diffLayerID {
+		if !c.checkParent(rootHash, c.bottomFlattenDifflayer.root) {
+			return false, false, nil, nil
+		}
+		data, err = c.bottomFlattenDifflayer.storage(aHash, sHash, 0)
+		return true, false, data, err
 	}
-	data, err = c.bottomFlattenDifflayer.storage(aHash, sHash, 0)
-	return true, false, data, err
+
+	// currentVersion < c.bottomFlattenDifflayer.diffLayerID
+	return false, false, nil, nil
 }
 
 func (c *MultiVersionSnapshotCache) loopDelayGC() {

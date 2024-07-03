@@ -479,7 +479,7 @@ func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 				// double check
 				expectedData, expectedErr := dl.storage(accountHash, storageHash, 0)
 				if !bytes.Equal(data, expectedData) {
-					log.Warn("Has bug",
+					log.Error("Has bug",
 						"query_version", dl.diffLayerID,
 						"query_root", dl.root,
 						"account_hash", accountHash,
