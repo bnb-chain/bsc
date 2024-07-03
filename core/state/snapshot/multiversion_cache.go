@@ -250,14 +250,14 @@ func (c *MultiVersionSnapshotCache) Add(ly *diffLayer, addFlatten bool) {
 }
 
 func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersion uint64, rootHash common.Hash, aHash common.Hash) (directlyReturn bool, retryDisk bool, data []byte, err error) {
+	if c.bottomFlattenDifflayer == nil {
+		return false, false, nil, nil
+	}
 	log.Info("Try hit account bottom layer",
 		"current_version", currentVersion,
 		"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
 		"root_hash", rootHash,
 		"account_hash", aHash)
-	if c.bottomFlattenDifflayer == nil {
-		return false, false, nil, nil
-	}
 	if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
 		return true, true, nil, nil
 	}
@@ -269,19 +269,18 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersi
 	}
 	data, err = c.bottomFlattenDifflayer.accountRLP(aHash, 0)
 	return true, false, data, err
-
 }
 
 func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersion uint64, rootHash common.Hash, aHash common.Hash, sHash common.Hash) (directlyReturn bool, retryDisk bool, data []byte, err error) {
+	if c.bottomFlattenDifflayer == nil {
+		return false, false, nil, nil
+	}
 	log.Info("Try hit storage bottom layer",
 		"current_version", currentVersion,
 		"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
 		"root_hash", rootHash,
 		"account_hash", aHash,
 		"storage_hash", sHash)
-	if c.bottomFlattenDifflayer == nil {
-		return false, false, nil, nil
-	}
 	if currentVersion < c.bottomFlattenDifflayer.diffLayerID {
 		return true, true, nil, nil
 	}
