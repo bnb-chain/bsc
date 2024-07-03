@@ -253,11 +253,11 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerAccount(currentVersi
 	if c.bottomFlattenDifflayer == nil {
 		return false, false, nil, nil
 	}
-	log.Info("Try hit account bottom layer",
-		"current_version", currentVersion,
-		"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
-		"root_hash", rootHash,
-		"account_hash", aHash)
+	//log.Info("Try hit account bottom layer",
+	//	"current_version", currentVersion,
+	//	"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
+	//	"root_hash", rootHash,
+	//	"account_hash", aHash)
 	if currentVersion > c.bottomFlattenDifflayer.diffLayerID {
 		return false, false, nil, nil
 	}
@@ -276,12 +276,12 @@ func (c *MultiVersionSnapshotCache) tryQueryFlattenDiffLayerStorage(currentVersi
 	if c.bottomFlattenDifflayer == nil {
 		return false, false, nil, nil
 	}
-	log.Info("Try hit storage bottom layer",
-		"current_version", currentVersion,
-		"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
-		"root_hash", rootHash,
-		"account_hash", aHash,
-		"storage_hash", sHash)
+	//log.Info("Try hit storage bottom layer",
+	//	"current_version", currentVersion,
+	//	"flatten_bottom_version", c.bottomFlattenDifflayer.diffLayerID,
+	//	"root_hash", rootHash,
+	//	"account_hash", aHash,
+	//	"storage_hash", sHash)
 	if currentVersion > c.bottomFlattenDifflayer.diffLayerID {
 		return false, false, nil, nil
 	}
@@ -454,11 +454,11 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 
 	{
 		if multiVersionItems, exist := c.accountDataCache[ahash]; exist && len(multiVersionItems) != 0 {
-			log.Info("Try query account cache",
-				"query_version", version,
-				"query_root_hash", rootHash,
-				"query_account_hash", ahash,
-				"multi_version_cache_len", len(multiVersionItems))
+			//log.Info("Try query account cache",
+			//	"query_version", version,
+			//	"query_root_hash", rootHash,
+			//	"query_account_hash", ahash,
+			//	"multi_version_cache_len", len(multiVersionItems))
 			for i := len(multiVersionItems) - 1; i >= 0; i-- {
 				directlyReturn, retryDisk, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
 				if directlyReturn {
@@ -468,35 +468,35 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 					multiVersionItems[i].version > c.minVersion &&
 					c.checkParent(rootHash, multiVersionItems[i].root) {
 					queryAccountItem = multiVersionItems[i]
-					log.Info("Account hit account cache",
-						"query_version", version,
-						"query_root_hash", rootHash,
-						"query_account_hash", ahash,
-						"hit_version", queryAccountItem.version,
-						"hit_root_hash", queryAccountItem.root)
+					//log.Info("Account hit account cache",
+					//	"query_version", version,
+					//	"query_root_hash", rootHash,
+					//	"query_account_hash", ahash,
+					//	"hit_version", queryAccountItem.version,
+					//	"hit_root_hash", queryAccountItem.root)
 					break
 				}
 
-				log.Info("Try hit account cache",
-					"query_version", version,
-					"query_root_hash", rootHash,
-					"query_account_hash", ahash,
-					"try_hit_version", multiVersionItems[i].version,
-					"try_hit_root_hash", multiVersionItems[i].root,
-					"check_version", multiVersionItems[i].version > c.minVersion,
-					"check_parent", c.checkParent(rootHash, multiVersionItems[i].root),
-					"check_data_len", len(multiVersionItems[i].data))
+				//log.Info("Try hit account cache",
+				//	"query_version", version,
+				//	"query_root_hash", rootHash,
+				//	"query_account_hash", ahash,
+				//	"try_hit_version", multiVersionItems[i].version,
+				//	"try_hit_root_hash", multiVersionItems[i].root,
+				//	"check_version", multiVersionItems[i].version > c.minVersion,
+				//	"check_parent", c.checkParent(rootHash, multiVersionItems[i].root),
+				//	"check_data_len", len(multiVersionItems[i].data))
 			}
 		}
 	}
 
 	{
 		if multiVersionItems, exist := c.destructCache[ahash]; exist && len(multiVersionItems) != 0 {
-			log.Info("Try query destruct cache",
-				"query_version", version,
-				"query_root_hash", rootHash,
-				"query_account_hash", ahash,
-				"multi_version_cache_len", len(multiVersionItems))
+			//log.Info("Try query destruct cache",
+			//	"query_version", version,
+			//	"query_root_hash", rootHash,
+			//	"query_account_hash", ahash,
+			//	"multi_version_cache_len", len(multiVersionItems))
 			for i := len(multiVersionItems) - 1; i >= 0; i-- {
 				directlyReturn, tryDisk, data, err := c.tryQueryFlattenDiffLayerAccount(multiVersionItems[i].version, rootHash, ahash)
 				if directlyReturn {
@@ -506,20 +506,20 @@ func (c *MultiVersionSnapshotCache) QueryAccount(version uint64, rootHash common
 					multiVersionItems[i].version > c.minVersion &&
 					c.checkParent(rootHash, multiVersionItems[i].root) {
 					queryDestructItem = multiVersionItems[i]
-					log.Info("Account hit destruct cache",
-						"query_version", version,
-						"query_root_hash", rootHash,
-						"query_account_hash", ahash,
-						"hit_version", queryDestructItem.version,
-						"hit_root_hash", queryDestructItem.root)
+					//log.Info("Account hit destruct cache",
+					//	"query_version", version,
+					//	"query_root_hash", rootHash,
+					//	"query_account_hash", ahash,
+					//	"hit_version", queryDestructItem.version,
+					//	"hit_root_hash", queryDestructItem.root)
 					break
 				}
-				log.Info("Try hit destruct cache",
-					"query_version", version,
-					"query_root_hash", rootHash,
-					"query_account_hash", ahash,
-					"hit_version", multiVersionItems[i].version,
-					"hit_root_hash", multiVersionItems[i].root)
+				//log.Info("Try hit destruct cache",
+				//	"query_version", version,
+				//	"query_root_hash", rootHash,
+				//	"query_account_hash", ahash,
+				//	"hit_version", multiVersionItems[i].version,
+				//	"hit_root_hash", multiVersionItems[i].root)
 			}
 		}
 	}
