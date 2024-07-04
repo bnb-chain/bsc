@@ -252,7 +252,7 @@ func (bc *BlockChain) GetSidecarsByHash(hash common.Hash) types.BlobSidecars {
 	if sidecars, ok := bc.sidecarsCache.Get(hash); ok {
 		return sidecars
 	}
-	number := rawdb.ReadHeaderNumber(bc.db, hash)
+	number := rawdb.ReadHeaderNumber(bc.db.BlockStore(), hash)
 	if number == nil {
 		return nil
 	}

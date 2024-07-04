@@ -40,7 +40,7 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 		return
 	}
 	var (
-		batch  = db.NewBatch()
+		batch  = db.BlockStore().NewBatch()
 		start  = time.Now()
 		logged = start.Add(-7 * time.Second) // Unindex during import is fast, don't double log
 		hash   common.Hash
@@ -122,7 +122,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 		}
 		defer close(rlpCh)
 		for n != end {
-			data := ReadCanonicalBodyRLP(db.BlockStore(), n)
+			data := ReadCanonicalBodyRLP(db, n)
 			// Feed the block to the aggregator, or abort on interrupt
 			select {
 			case rlpCh <- &numberRlp{n, data}:

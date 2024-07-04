@@ -61,8 +61,10 @@ func (frdb *freezerdb) BlockStoreReader() ethdb.Reader {
 }
 
 func (frdb *freezerdb) BlockStoreWriter() ethdb.Writer {
-	// TODO implement me
-	panic("implement me")
+	if frdb.blockStore == nil {
+		return frdb
+	}
+	return frdb.blockStore
 }
 
 // AncientDatadir returns the path of root ancient directory.

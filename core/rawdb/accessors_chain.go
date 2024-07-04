@@ -468,7 +468,7 @@ func ReadCanonicalBodyRLP(db ethdb.Reader, number uint64) rlp.RawValue {
 		// Block is not in ancients, read from leveldb by hash and number.
 		// Note: ReadCanonicalHash cannot be used here because it also
 		// calls ReadAncients internally.
-		hash, _ := db.Get(headerHashKey(number))
+		hash, _ := db.BlockStoreReader().Get(headerHashKey(number))
 		data, _ = db.BlockStoreReader().Get(blockBodyKey(number, common.BytesToHash(hash)))
 		return nil
 	})
@@ -516,6 +516,13 @@ func WriteBody(db ethdb.KeyValueWriter, hash common.Hash, number uint64, body *t
 	WriteBodyRLP(db, hash, number, data)
 }
 
+// DeleteBody removes all block body data associated with a hash.
+func DeleteBody(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
+	if err := db.Delete(blockBodyKey(number, hash)); err != nil {
+		log.Crit("Failed to delete block body", "err", err)
+	}
+}
+
 func WriteDiffLayer(db ethdb.KeyValueWriter, hash common.Hash, layer *types.DiffLayer) {
 	data, err := rlp.EncodeToBytes(layer)
 	if err != nil {
@@ -551,13 +558,6 @@ func ReadDiffLayerRLP(db ethdb.KeyValueReader, blockHash common.Hash) rlp.RawVal
 func DeleteDiffLayer(db ethdb.KeyValueWriter, blockHash common.Hash) {
 	if err := db.Delete(diffLayerKey(blockHash)); err != nil {
 		log.Crit("Failed to delete diffLayer", "err", err)
-	}
-}
-
-// DeleteBody removes all block body data associated with a hash.
-func DeleteBody(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
-	if err := db.Delete(blockBodyKey(number, hash)); err != nil {
-		log.Crit("Failed to delete block body", "err", err)
 	}
 }
 
@@ -884,7 +884,7 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 // ReadBlobSidecarsRLP retrieves all the transaction blobs belonging to a block in RLP encoding.
 func ReadBlobSidecarsRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
 	var data []byte
-	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
+	db.BlockStoreReader().ReadAncients(func(reader ethdb.AncientReaderOp) error {
 		// Check if the data is in ancients
 		if isCanon(reader, number, hash) {
 			data, _ = reader.Ancient(ChainFreezerBlobSidecarTable, number)
