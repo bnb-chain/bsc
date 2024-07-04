@@ -74,6 +74,10 @@ func (f *prunedfreezer) repair(datadir string) error {
 		if err != nil {
 			return err
 		}
+		// blob sidecar can not be same as ancient-tables, it may smaller than others
+		if name == ChainFreezerBlobSidecarTable {
+			continue
+		}
 		items := table.items.Load()
 		if min > items {
 			min = items
