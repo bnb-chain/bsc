@@ -747,7 +747,11 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction, rece
 	env.receipts = append(env.receipts, receipt)
 
 	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-	env.profit.Add(env.profit, gasUsed.Mul(gasUsed, tx.GasPrice()))
+	effectiveTip, err := tx.EffectiveGasTip(env.header.BaseFee)
+	if err != nil {
+		return nil, err
+	}
+	env.profit.Add(env.profit, gasUsed.Mul(gasUsed, effectiveTip))
 
 	return receipt.Logs, nil
 }
@@ -777,7 +781,15 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 	*env.header.BlobGasUsed += receipt.BlobGasUsed
 
 	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-	env.profit.Add(env.profit, gasUsed.Mul(gasUsed, tx.GasPrice()))
+	effectiveTip, err := tx.EffectiveGasTip(env.header.BaseFee)
+	if err != nil {
+		return nil, err
+	}
+	env.profit.Add(env.profit, gasUsed.Mul(gasUsed, effectiveTip))
+
+	blobFee := new(big.Int).SetUint64(receipt.BlobGasUsed)
+	blobFee.Mul(blobFee, receipt.BlobGasPrice)
+	env.profit.Add(env.profit, blobFee)
 
 	return receipt.Logs, nil
 }

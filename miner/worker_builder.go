@@ -441,7 +441,17 @@ func (w *worker) simulateBundle(
 		bundleGasUsed += receipt.GasUsed
 
 		txGasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-		txGasFees := new(big.Int).Mul(txGasUsed, tx.GasPrice())
+		effectiveTip, err := tx.EffectiveGasTip(env.header.BaseFee)
+		if err != nil {
+			return nil, err
+		}
+		txGasFees := new(big.Int).Mul(txGasUsed, effectiveTip)
+
+		if tx.Type() == types.BlobTxType {
+			blobFee := new(big.Int).SetUint64(receipt.BlobGasUsed)
+			blobFee.Mul(blobFee, receipt.BlobGasPrice)
+			txGasFees.Add(txGasFees, blobFee)
+		}
 		bundleGasFees.Add(bundleGasFees, txGasFees)
 		sysBalanceAfter := state.GetBalance(consensus.SystemAddress)
 		sysDelta := new(uint256.Int).Sub(sysBalanceAfter, sysBalanceBefore)
