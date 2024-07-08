@@ -108,7 +108,7 @@ func (f *prunedfreezer) repair(datadir string) error {
 		}
 		table.Close()
 	}
-	items := head - tail
+	items := head - tail + 1
 	log.Info("Read ancientdb item counts", "items", items)
 	offset += items
 
