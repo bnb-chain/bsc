@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -68,24 +70,47 @@ func newPrunedFreezer(datadir string, db ethdb.KeyValueStore, offset uint64) (*p
 func (f *prunedfreezer) repair(datadir string) error {
 	offset := atomic.LoadUint64(&f.frozen)
 	// compatible freezer
-	min := uint64(math.MaxUint64)
+	var (
+		head = uint64(math.MaxUint64)
+		tail = uint64(0)
+	)
 	for name, disableSnappy := range chainFreezerNoSnappy {
-		table, err := newFreezerTable(datadir, name, disableSnappy, false)
+		var (
+			table *freezerTable
+			err   error
+		)
+		if slices.Contains(additionTables, name) {
+			table, err = newAdditionTable(datadir, name, disableSnappy, false)
+		} else {
+			table, err = newFreezerTable(datadir, name, disableSnappy, false)
+		}
 		if err != nil {
 			return err
 		}
-		// blob sidecar can not be same as ancient-tables, it may smaller than others
-		if name == ChainFreezerBlobSidecarTable {
+		// addition tables only align head
+		if slices.Contains(additionTables, name) {
+			if EmptyTable(table) {
+				continue
+			}
+			items := table.items.Load()
+			if head > items {
+				head = items
+			}
 			continue
 		}
 		items := table.items.Load()
-		if min > items {
-			min = items
+		if head > items {
+			head = items
+		}
+		hidden := table.itemHidden.Load()
+		if hidden > tail {
+			tail = hidden
 		}
 		table.Close()
 	}
-	log.Info("Read ancientdb item counts", "items", min)
-	offset += min
+	items := head - tail
+	log.Info("Read ancientdb item counts", "items", items)
+	offset += items
 
 	if frozen := ReadFrozenOfAncientFreezer(f.db); frozen > offset {
 		offset = frozen
