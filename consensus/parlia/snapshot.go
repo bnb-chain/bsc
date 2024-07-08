@@ -309,8 +309,19 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			}
 		}
 		snap.Recents[number] = validator
+		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
+		snap.updateAttestation(header, chainConfig, s.config)
 		// change validator set
 		if number > 0 && number%s.config.Epoch == snap.minerHistoryCheckLen() {
+			epochKey := math.MaxUint64 - header.Number.Uint64()/s.config.Epoch // impossible used as a block number
+			if chainConfig.IsBohr(header.Number, header.Time) {
+				// after switching the validator set, snap.Validators may become larger,
+				// then the unexpected second switch will happen, just skip it.
+				if _, ok := snap.Recents[epochKey]; ok {
+					continue
+				}
+			}
+
 			checkpointHeader := FindAncientHeader(header, snap.minerHistoryCheckLen(), chain, parents)
 			if checkpointHeader == nil {
 				return nil, consensus.ErrUnknownAncestor
@@ -343,14 +354,10 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				}
 			}
 			if chainConfig.IsBohr(header.Number, header.Time) {
-				epochClearKey := math.MaxUint64 - header.Number.Uint64()/s.config.Epoch // impossible used as a block number
-				// in a epoch, after the first validator set switch, minerHistoryCheckLen() may become larger,
-				// so the unexpected second switch will happen, don't clear up the `Recents` in this kind of scene.
-				if _, ok := snap.Recents[epochClearKey]; !ok {
-					snap.Recents = make(map[uint64]common.Address) // without this logic, there will be several off-turn blocks when do validator set switch
-					snap.Recents[epochClearKey] = common.Address{}
-					log.Debug("Recents are cleared up", "blockNumber", number)
-				}
+				// BEP-404: Clear Miner History when Switching Validators Set
+				snap.Recents = make(map[uint64]common.Address)
+				snap.Recents[epochKey] = common.Address{}
+				log.Debug("Recents are cleared up", "blockNumber", number)
 			} else {
 				oldLimit := len(snap.Validators)/2 + 1
 				newLimit := len(newVals)/2 + 1
@@ -371,9 +378,6 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				delete(snap.RecentForkHashes, number-i)
 			}
 		}
-
-		snap.updateAttestation(header, chainConfig, s.config)
-		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
 	}
 	snap.Number += uint64(len(headers))
 	snap.Hash = headers[len(headers)-1].Hash()
