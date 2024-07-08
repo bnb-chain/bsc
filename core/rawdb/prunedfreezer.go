@@ -109,7 +109,7 @@ func (f *prunedfreezer) repair(datadir string) error {
 		table.Close()
 	}
 	items := head - tail
-	log.Info("Read ancientdb item counts", "items", items)
+	log.Info("Read ancientdb item counts", "head", head, "tail", tail, "items", items)
 	offset += items
 
 	if frozen := ReadFrozenOfAncientFreezer(f.db); frozen > offset {
