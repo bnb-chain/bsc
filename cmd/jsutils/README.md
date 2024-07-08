@@ -37,7 +37,7 @@ txCountPerBlock = 3142.81 txCountTotal = 628562 BlockCount = 200 avgBlockTime = 
 txCountPerSecond = 1045.8602329450914 avgGasUsedPerBlock = 250.02062627 avgGasUsedPerSecond =  83.20153952412646
 ```
 
-### 4. Get validators slashCounts
+### 4. Get validators slash count
 ```bash
 node getslashcount.js --Rpc ${ArchiveRpc} --Num ${blockNum}
 ```
