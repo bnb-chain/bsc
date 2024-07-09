@@ -72,8 +72,6 @@ var (
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
-		utils.OverrideCancun,
-		utils.OverrideHaber,
 		utils.OverrideBohr,
 		utils.OverrideVerkle,
 		utils.OverrideFullImmutabilityThreshold,
