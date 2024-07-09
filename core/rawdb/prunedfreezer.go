@@ -68,9 +68,8 @@ func newPrunedFreezer(datadir string, db ethdb.KeyValueStore, offset uint64) (*p
 
 // repair init frozen , compatible disk-ancientdb and pruner-block-tool.
 func (f *prunedfreezer) repair(datadir string) error {
-	offset := atomic.LoadUint64(&f.frozen)
 	// compatible freezer
-	min := uint64(math.MaxUint64)
+	minItems := uint64(math.MaxUint64)
 	for name, disableSnappy := range chainFreezerNoSnappy {
 		var (
 			table *freezerTable
@@ -91,14 +90,13 @@ func (f *prunedfreezer) repair(datadir string) error {
 			}
 		}
 		items := table.items.Load()
-		if min > items {
-			min = items
+		if minItems > items {
+			minItems = items
 		}
 		table.Close()
 	}
-	log.Info("Read ancientdb item counts", "items", min)
-	offset += min
-
+	log.Info("Read ancientdb item counts", "items", minItems)
+	offset := minItems
 	if frozen := ReadFrozenOfAncientFreezer(f.db); frozen > offset {
 		offset = frozen
 	}
