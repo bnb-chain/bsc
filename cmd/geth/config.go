@@ -185,14 +185,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		params.RialtoGenesisHash = common.HexToHash(v)
 	}
 
-	if ctx.IsSet(utils.OverrideCancun.Name) {
-		v := ctx.Uint64(utils.OverrideCancun.Name)
-		cfg.Eth.OverrideCancun = &v
-	}
-	if ctx.IsSet(utils.OverrideHaber.Name) {
-		v := ctx.Uint64(utils.OverrideHaber.Name)
-		cfg.Eth.OverrideHaber = &v
-	}
 	if ctx.IsSet(utils.OverrideBohr.Name) {
 		v := ctx.Uint64(utils.OverrideBohr.Name)
 		cfg.Eth.OverrideBohr = &v
