@@ -420,19 +420,25 @@ func (s *Sync) ProcessNode(result NodeSyncResult) error {
 // Commit flushes the data stored in the internal membatch out to persistent
 // storage, returning any occurred error. The whole data set will be flushed
 // in an atomic database batch.
-func (s *Sync) Commit(dbw ethdb.Batch) error {
+func (s *Sync) Commit(dbw ethdb.Batch, stateBatch ethdb.Batch) error {
 	// Flush the pending node writes into database batch.
 	var (
 		account int
 		storage int
 	)
+	var trieBatch ethdb.Batch
+	if stateBatch != nil {
+		trieBatch = stateBatch
+	} else {
+		trieBatch = dbw
+	}
 	for _, op := range s.membatch.nodes {
 		if op.isDelete() {
 			// node deletion is only supported in path mode.
 			if op.owner == (common.Hash{}) {
-				rawdb.DeleteAccountTrieNode(dbw, op.path)
+				rawdb.DeleteAccountTrieNode(trieBatch, op.path)
 			} else {
-				rawdb.DeleteStorageTrieNode(dbw, op.owner, op.path)
+				rawdb.DeleteStorageTrieNode(trieBatch, op.owner, op.path)
 			}
 			deletionGauge.Inc(1)
 		} else {
@@ -441,7 +447,7 @@ func (s *Sync) Commit(dbw ethdb.Batch) error {
 			} else {
 				storage += 1
 			}
-			rawdb.WriteTrieNode(dbw, op.owner, op.path, op.hash, op.blob, s.scheme)
+			rawdb.WriteTrieNode(trieBatch, op.owner, op.path, op.hash, op.blob, s.scheme)
 		}
 	}
 	accountNodeSyncedGauge.Inc(int64(account))

@@ -118,6 +118,13 @@ func (frdb *freezerdb) StateStore() ethdb.Database {
 	return frdb.stateStore
 }
 
+func (frdb *freezerdb) GetStateStore() ethdb.Database {
+	if frdb.stateStore != nil {
+		return frdb.stateStore
+	}
+	return frdb
+}
+
 func (frdb *freezerdb) SetStateStore(state ethdb.Database) {
 	if frdb.stateStore != nil {
 		frdb.stateStore.Close()
@@ -254,6 +261,13 @@ func (db *nofreezedb) StateStore() ethdb.Database {
 
 func (db *nofreezedb) SetStateStore(state ethdb.Database) {
 	db.stateStore = state
+}
+
+func (db *nofreezedb) GetStateStore() ethdb.Database {
+	if db.stateStore != nil {
+		return db.stateStore
+	}
+	return db
 }
 
 func (db *nofreezedb) StateStoreReader() ethdb.Reader {
@@ -405,6 +419,7 @@ func (db *emptyfreezedb) Sync() error {
 func (db *emptyfreezedb) DiffStore() ethdb.KeyValueStore        { return db }
 func (db *emptyfreezedb) SetDiffStore(diff ethdb.KeyValueStore) {}
 func (db *emptyfreezedb) StateStore() ethdb.Database            { return db }
+func (db *emptyfreezedb) GetStateStore() ethdb.Database         { return db }
 func (db *emptyfreezedb) SetStateStore(state ethdb.Database)    {}
 func (db *emptyfreezedb) StateStoreReader() ethdb.Reader        { return db }
 func (db *emptyfreezedb) BlockStore() ethdb.Database            { return db }

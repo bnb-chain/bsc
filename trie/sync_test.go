@@ -212,7 +212,7 @@ func testIterativeSync(t *testing.T, count int, bypath bool, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -278,7 +278,7 @@ func testIterativeDelayedSync(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -348,7 +348,7 @@ func testIterativeRandomSync(t *testing.T, count int, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -419,7 +419,7 @@ func testIterativeRandomDelayedSync(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -491,7 +491,7 @@ func testDuplicateAvoidanceSync(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -563,7 +563,7 @@ func testIncompleteSync(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -653,7 +653,7 @@ func testSyncOrdering(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -723,7 +723,7 @@ func syncWithHookWriter(t *testing.T, root common.Hash, db ethdb.Database, srcDb
 			}
 		}
 		batch := db.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		if hookWriter != nil {

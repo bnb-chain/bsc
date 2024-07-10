@@ -234,6 +234,7 @@ type DiffStore interface {
 type StateStore interface {
 	StateStore() Database
 	SetStateStore(state Database)
+	GetStateStore() Database
 }
 
 // Database contains all the methods required by the high level database to not
