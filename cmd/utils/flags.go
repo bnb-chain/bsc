@@ -2073,7 +2073,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 		cfg.Genesis = core.DefaultBSCGenesisBlock()
 		SetDNSDiscoveryDefaults(cfg, params.BSCGenesisHash)
-	case ctx.Bool(ChapelFlag.Name):
+	case ctx.Bool(ChapelFlag.Name) || cfg.NetworkId == 97:
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 97
 		}
