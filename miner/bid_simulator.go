@@ -725,7 +725,7 @@ func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
 		})
 
 		if err != nil {
-			log.Error("BidSimulator: failed to report issue", "builder", bidRuntime.bid.Builder, "err", err)
+			log.Warn("BidSimulator: failed to report issue", "builder", bidRuntime.bid.Builder, "err", err)
 		}
 	}
 }
