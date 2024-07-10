@@ -145,7 +145,7 @@ func (voteManager *VoteManager) loop() {
 				nextBlockMinedTime := time.Unix(int64((curHead.Time + p.Period())), 0)
 				timeForBroadcast := 100 * time.Millisecond
 				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
-					log.Debug("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
+					log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
 					continue
 				}
 			}
