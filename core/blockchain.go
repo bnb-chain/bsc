@@ -657,13 +657,6 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 	}
 }
 
-func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
-	bc.blockCache.Add(hash, block)
-	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-		bc.sidecarsCache.Add(hash, block.Sidecars())
-	}
-}
-
 // empty returns an indicator whether the blockchain is empty.
 // Note, it's a special case that we connect a non-empty ancient
 // database with an empty node, so that we can plugin the ancient
@@ -2281,8 +2274,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 		vtime := time.Since(vstart)
 		proctime := time.Since(start) // processing + validation
-
-		bc.cacheBlock(block.Hash(), block)
 
 		// Update the metrics touched during block processing and validation
 		accountReadTimer.Update(statedb.AccountReads)                   // Account reads are complete(in processing)
