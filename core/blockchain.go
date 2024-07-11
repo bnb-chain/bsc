@@ -2387,26 +2387,11 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 	if header == nil || header.Number == nil {
 		return
 	}
-	currentHeader := bc.highestVerifiedHeader.Load()
-	if currentHeader == nil {
+	currentBlock := bc.CurrentBlock()
+	reorg, err := bc.forker.ReorgNeededWithFastFinality(currentBlock, header)
+	if err == nil && reorg {
 		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
-		return
-	}
-
-	newParentTD := bc.GetTd(header.ParentHash, header.Number.Uint64()-1)
-	if newParentTD == nil {
-		newParentTD = big.NewInt(0)
-	}
-	oldParentTD := bc.GetTd(currentHeader.ParentHash, currentHeader.Number.Uint64()-1)
-	if oldParentTD == nil {
-		oldParentTD = big.NewInt(0)
-	}
-	newTD := big.NewInt(0).Add(newParentTD, header.Difficulty)
-	oldTD := big.NewInt(0).Add(oldParentTD, currentHeader.Difficulty)
-
-	if newTD.Cmp(oldTD) > 0 {
-		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
-		return
+		log.Trace("updateHighestVerifiedHeader", "number", header.Number.Uint64(), "hash", header.Hash())
 	}
 }
 
