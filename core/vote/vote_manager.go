@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -139,6 +141,15 @@ func (voteManager *VoteManager) loop() {
 			}
 
 			curHead := cHead.Block.Header()
+			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
+				nextBlockMinedTime := time.Unix(int64((curHead.Time + p.Period())), 0)
+				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
+				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
+					log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
+					continue
+				}
+			}
+
 			// Check if cur validator is within the validatorSet at curHead
 			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead,
 				func(bLSPublicKey *types.BLSPublicKey) bool {
