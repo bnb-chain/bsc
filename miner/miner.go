@@ -377,5 +377,9 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		return nil, errors.New("no valid sim result")
 	}
 
+	if s[0].Err != nil {
+		return nil, s[0].Err
+	}
+
 	return s[0].BundleGasPrice, nil
 }

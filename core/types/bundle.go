@@ -46,6 +46,8 @@ type SimulatedBundle struct {
 	BundleGasPrice  *big.Int
 	BundleGasUsed   uint64
 	EthSentToSystem *big.Int
+
+	Err error
 }
 
 func (bundle *Bundle) Size() uint64 {
