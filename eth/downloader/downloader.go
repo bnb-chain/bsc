@@ -557,8 +557,8 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 		} else {
 			d.ancientLimit = 0
 		}
-		frozen, _ := d.stateDB.Ancients() // Ignore the error here since light client can also hit here.
-		itemAmountInAncient, _ := d.stateDB.ItemAmountInAncient()
+		frozen, _ := d.stateDB.BlockStore().Ancients() // Ignore the error here since light client can also hit here.
+		itemAmountInAncient, _ := d.stateDB.BlockStore().ItemAmountInAncient()
 		// If a part of blockchain data has already been written into active store,
 		// disable the ancient style insertion explicitly.
 		if origin >= frozen && itemAmountInAncient != 0 {
@@ -1670,9 +1670,9 @@ func (d *Downloader) reportSnapSyncProgress(force bool) {
 	}
 	// Don't report anything until we have a meaningful progress
 	var (
-		headerBytes, _  = d.stateDB.AncientSize(rawdb.ChainFreezerHeaderTable)
-		bodyBytes, _    = d.stateDB.AncientSize(rawdb.ChainFreezerBodiesTable)
-		receiptBytes, _ = d.stateDB.AncientSize(rawdb.ChainFreezerReceiptTable)
+		headerBytes, _  = d.stateDB.BlockStore().AncientSize(rawdb.ChainFreezerHeaderTable)
+		bodyBytes, _    = d.stateDB.BlockStore().AncientSize(rawdb.ChainFreezerBodiesTable)
+		receiptBytes, _ = d.stateDB.BlockStore().AncientSize(rawdb.ChainFreezerReceiptTable)
 	)
 	syncedBytes := common.StorageSize(headerBytes + bodyBytes + receiptBytes)
 	if syncedBytes == 0 {
