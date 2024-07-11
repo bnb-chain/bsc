@@ -64,7 +64,6 @@ var (
 			utils.CachePreimagesFlag,
 			utils.OverrideBohr,
 			utils.OverrideVerkle,
-			utils.MultiDataBaseFlag,
 		}, utils.DatabaseFlags),
 		Description: `
 The init command initializes a new genesis block and definition for the network.
