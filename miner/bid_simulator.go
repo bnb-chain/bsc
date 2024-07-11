@@ -544,7 +544,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if success {
 			bidRuntime.duration = time.Since(simStart)
 			bidSimTimer.UpdateSince(simStart)
-			metrics.GetOrRegisterCounter(fmt.Sprintf("bid/sim/count/%d", bidRuntime.bid.BlockNumber), nil).Inc(1)
 
 			// only recommit self bid when newBidCh is empty
 			if len(b.newBidCh) > 0 {
