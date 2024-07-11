@@ -229,7 +229,7 @@ func (batch *syncMemBatch) delNode(owner common.Hash, path []byte) {
 // and reconstructs the trie step by step until all is done.
 type Sync struct {
 	scheme   string                       // Node scheme descriptor used in database.
-	database ethdb.KeyValueReader         // Persistent database to check for existing entries
+	database ethdb.Database               // Persistent database to check for existing entries
 	membatch *syncMemBatch                // Memory buffer to avoid frequent database writes
 	nodeReqs map[string]*nodeRequest      // Pending requests pertaining to a trie node path
 	codeReqs map[common.Hash]*codeRequest // Pending requests pertaining to a code hash
@@ -238,7 +238,7 @@ type Sync struct {
 }
 
 // NewSync creates a new trie data download scheduler.
-func NewSync(root common.Hash, database ethdb.KeyValueReader, callback LeafCallback, scheme string) *Sync {
+func NewSync(root common.Hash, database ethdb.Database, callback LeafCallback, scheme string) *Sync {
 	ts := &Sync{
 		scheme:   scheme,
 		database: database,
@@ -552,9 +552,9 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 				// the performance impact negligible.
 				var exists bool
 				if owner == (common.Hash{}) {
-					exists = rawdb.ExistsAccountTrieNode(s.database, append(inner, key[:i]...))
+					exists = rawdb.ExistsAccountTrieNode(s.database.StateStoreReader(), append(inner, key[:i]...))
 				} else {
-					exists = rawdb.ExistsStorageTrieNode(s.database, owner, append(inner, key[:i]...))
+					exists = rawdb.ExistsStorageTrieNode(s.database.StateStoreReader(), owner, append(inner, key[:i]...))
 				}
 				if exists {
 					s.membatch.delNode(owner, append(inner, key[:i]...))
@@ -693,15 +693,15 @@ func (s *Sync) commitCodeRequest(req *codeRequest) error {
 func (s *Sync) hasNode(owner common.Hash, path []byte, hash common.Hash) (exists bool, inconsistent bool) {
 	// If node is running with hash scheme, check the presence with node hash.
 	if s.scheme == rawdb.HashScheme {
-		return rawdb.HasLegacyTrieNode(s.database, hash), false
+		return rawdb.HasLegacyTrieNode(s.database.StateStoreReader(), hash), false
 	}
 	// If node is running with path scheme, check the presence with node path.
 	var blob []byte
 	var dbHash common.Hash
 	if owner == (common.Hash{}) {
-		blob, dbHash = rawdb.ReadAccountTrieNode(s.database, path)
+		blob, dbHash = rawdb.ReadAccountTrieNode(s.database.StateStoreReader(), path)
 	} else {
-		blob, dbHash = rawdb.ReadStorageTrieNode(s.database, owner, path)
+		blob, dbHash = rawdb.ReadStorageTrieNode(s.database.StateStoreReader(), owner, path)
 	}
 	exists = hash == dbHash
 	inconsistent = !exists && len(blob) != 0
