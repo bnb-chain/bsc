@@ -180,12 +180,6 @@ type StateStoreReader interface {
 	StateStoreReader() Reader
 }
 
-type BlockStore interface {
-	BlockStore() Database
-	SetBlockStore(block Database)
-	HasSeparateBlockStore() bool
-}
-
 type BlockStoreReader interface {
 	BlockStoreReader() Reader
 }
@@ -235,6 +229,12 @@ type StateStore interface {
 	StateStore() Database
 	SetStateStore(state Database)
 	GetStateStore() Database
+}
+
+type BlockStore interface {
+	BlockStore() Database
+	SetBlockStore(block Database)
+	HasSeparateBlockStore() bool
 }
 
 // Database contains all the methods required by the high level database to not
