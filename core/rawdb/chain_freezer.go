@@ -41,6 +41,11 @@ const (
 	// freezerBatchLimit is the maximum number of blocks to freeze in one batch
 	// before doing an fsync and deleting it from the key-value store.
 	freezerBatchLimit = 30000
+
+	// maxWaitFreezerEnvTimes is not critical for most scenarios,
+	// the most cases won't insert block and trigger chain freezing.
+	// But the core.BlockChain instance must init the freezer env for chain freeze.
+	maxWaitFreezerEnvTimes = 3
 )
 
 var (
@@ -58,7 +63,8 @@ type chainFreezer struct {
 	wg      sync.WaitGroup
 	trigger chan chan struct{} // Manual blocking freeze trigger, test determinism
 
-	freezeEnv atomic.Value
+	freezeEnv    atomic.Value
+	waitEnvTimes int
 
 	multiDatabase bool
 }
@@ -273,6 +279,11 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 
 		// check env first before chain freeze, it must wait when the env is necessary
 		if err := f.checkFreezerEnv(); err != nil {
+			f.waitEnvTimes++
+			if f.waitEnvTimes > maxWaitFreezerEnvTimes {
+				log.Warn("Wait freezer env too many times, skip the chain freezing.")
+				return
+			}
 			backoff = true
 			continue
 		}
@@ -539,16 +550,8 @@ func (f *chainFreezer) checkFreezerEnv() error {
 	if exist {
 		return nil
 	}
-	blobFrozen, err := f.TableAncients(ChainFreezerBlobSidecarTable)
-	if err != nil {
-		log.Error("Freezer check FreezerEnv err", "err", err)
-		return err
-	}
-	if blobFrozen > 0 {
-		log.Warn("Freezer need related env, may wait for a while")
-		return missFreezerEnvErr
-	}
-	return nil
+	log.Warn("Freezer need related env, may wait for a while")
+	return missFreezerEnvErr
 }
 
 func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
