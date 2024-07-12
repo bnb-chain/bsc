@@ -436,6 +436,10 @@ func (hc *HeaderChain) GetHighestVerifiedHeader() *types.Header {
 	return nil
 }
 
+func (hc *HeaderChain) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
+	return hc.GetHeaderByHash(hash)
+}
+
 func (hc *HeaderChain) ChasingHead() *types.Header {
 	return nil
 }
