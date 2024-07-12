@@ -1504,7 +1504,7 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 			// set the value of timeForMining to a small amount
 			timeForMining = 500 * time.Millisecond
 		} else {
-			timeForMining = time.Duration(p.config.Period) * time.Second
+			timeForMining = time.Duration(p.config.Period) * time.Second * 2 / 3
 		}
 	}
 	if delay > timeForMining {
