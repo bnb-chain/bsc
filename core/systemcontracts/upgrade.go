@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/bruno"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/euler"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/feynman"
@@ -22,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/planck"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/plato"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/ramanujan"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -39,7 +39,7 @@ type Upgrade struct {
 	Configs     []*UpgradeConfig
 }
 
-type upgradeHook func(blockNumber *big.Int, contractAddr common.Address, statedb *state.StateDB) error
+type upgradeHook func(blockNumber *big.Int, contractAddr common.Address, statedb vm.StateDB) error
 
 const (
 	mainNet    = "Mainnet"
@@ -738,7 +738,7 @@ func init() {
 	}
 }
 
-func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb *state.StateDB) {
+func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB) {
 	if config == nil || blockNumber == nil || statedb == nil {
 		return
 	}
@@ -821,7 +821,7 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 	*/
 }
 
-func applySystemContractUpgrade(upgrade *Upgrade, blockNumber *big.Int, statedb *state.StateDB, logger log.Logger) {
+func applySystemContractUpgrade(upgrade *Upgrade, blockNumber *big.Int, statedb vm.StateDB, logger log.Logger) {
 	if upgrade == nil {
 		logger.Info("Empty upgrade config", "height", blockNumber.String())
 		return
