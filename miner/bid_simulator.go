@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -82,6 +83,7 @@ type bidSimulator struct {
 	delayLeftOver time.Duration
 	minGasPrice   *big.Int
 	chain         *core.BlockChain
+	txpool        *txpool.TxPool
 	chainConfig   *params.ChainConfig
 	engine        consensus.Engine
 	bidWorker     bidWorker
@@ -118,7 +120,7 @@ func newBidSimulator(
 	config *MevConfig,
 	delayLeftOver time.Duration,
 	minGasPrice *big.Int,
-	chain *core.BlockChain,
+	eth Backend,
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
 	bidWorker bidWorker,
@@ -127,7 +129,8 @@ func newBidSimulator(
 		config:        config,
 		delayLeftOver: delayLeftOver,
 		minGasPrice:   minGasPrice,
-		chain:         chain,
+		chain:         eth.BlockChain(),
+		txpool:        eth.TxPool(),
 		chainConfig:   chainConfig,
 		engine:        engine,
 		bidWorker:     bidWorker,
@@ -141,7 +144,7 @@ func newBidSimulator(
 		simulatingBid: make(map[common.Hash]*BidRuntime),
 	}
 
-	b.chainHeadSub = chain.SubscribeChainHeadEvent(b.chainHeadCh)
+	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
 
 	if config.Enabled {
 		b.bidReceiving.Store(true)
@@ -625,16 +628,39 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	// check if bid gas price is lower than min gas price
 	{
 		bidGasUsed := uint64(0)
-		bidGasFee := bidRuntime.env.state.GetBalance(consensus.SystemAddress)
+		bidGasFee := big.NewInt(0)
 
-		for _, receipt := range bidRuntime.env.receipts {
-			bidGasUsed += receipt.GasUsed
+		for i, receipt := range bidRuntime.env.receipts {
+			tx := bidRuntime.env.txs[i]
+			if !b.txpool.Has(tx.Hash()) {
+				bidGasUsed += receipt.GasUsed
+				effectiveTip, er := tx.EffectiveGasTip(bidRuntime.env.header.BaseFee)
+				if er != nil {
+					err = errors.New("failed to calculate effective tip")
+					return
+				}
+
+				if bidRuntime.env.header.BaseFee != nil {
+					effectiveTip.Add(effectiveTip, bidRuntime.env.header.BaseFee)
+				}
+
+				gasFee := new(big.Int).Mul(effectiveTip, new(big.Int).SetUint64(receipt.GasUsed))
+				bidGasFee.Add(bidGasFee, gasFee)
+
+				if tx.Type() == types.BlobTxType {
+					blobFee := new(big.Int).Mul(receipt.BlobGasPrice, new(big.Int).SetUint64(receipt.BlobGasUsed))
+					bidGasFee.Add(bidGasFee, blobFee)
+				}
+			}
 		}
 
-		bidGasPrice := new(big.Int).Div(bidGasFee.ToBig(), new(big.Int).SetUint64(bidGasUsed))
-		if bidGasPrice.Cmp(b.minGasPrice) < 0 {
-			err = errors.New("bid gas price is lower than min gas price")
-			return
+		// if bid txs are all from mempool, do not check gas price
+		if bidGasUsed != 0 {
+			bidGasPrice := new(big.Int).Div(bidGasFee, new(big.Int).SetUint64(bidGasUsed))
+			if bidGasPrice.Cmp(b.minGasPrice) < 0 {
+				err = fmt.Errorf("bid gas price is lower than min gas price, bid:%v, min:%v", bidGasPrice, b.minGasPrice)
+				return
+			}
 		}
 	}
 
