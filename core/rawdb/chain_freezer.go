@@ -44,7 +44,7 @@ const (
 
 	// maxWaitFreezerEnvTimes is not critical for most scenarios,
 	// the most cases won't insert block and trigger chain freezing.
-	// But the core.BlockChain instance must init the freezer env for chain freeze.
+	// But the eth.Backend instance must init the freezer env for chain freeze.
 	maxWaitFreezerEnvTimes = 3
 )
 
