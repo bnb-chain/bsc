@@ -265,22 +265,15 @@ func (w *worker) generateOrderedBundles(
 		return nil, nil, err
 	}
 
-	noErrBundles := make([]*types.SimulatedBundle, 0)
-	for _, v := range simulatedBundles {
-		if v.Err == nil {
-			noErrBundles = append(noErrBundles, v)
-		}
-	}
-
 	// sort bundles according to fresh gas price
-	sort.SliceStable(noErrBundles, func(i, j int) bool {
-		priceI, priceJ := noErrBundles[i].BundleGasPrice, noErrBundles[j].BundleGasPrice
+	sort.SliceStable(simulatedBundles, func(i, j int) bool {
+		priceI, priceJ := simulatedBundles[i].BundleGasPrice, simulatedBundles[j].BundleGasPrice
 
 		return priceI.Cmp(priceJ) >= 0
 	})
 
 	// merge bundles based on iterative state
-	includedTxs, mergedBundle, err := w.mergeBundles(env, noErrBundles)
+	includedTxs, mergedBundle, err := w.mergeBundles(env, simulatedBundles)
 	if err != nil {
 		log.Error("fail to merge bundles", "err", err)
 		return nil, nil, err
@@ -311,8 +304,8 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 			gasPool := prepareGasPool(env.header.GasLimit)
 			simmed, err := w.simulateBundle(env, bundle, state, gasPool, 0, true, true)
 			if err != nil {
-				simmed = &types.SimulatedBundle{Err: err}
 				log.Trace("Error computing gas for a simulateBundle", "error", err)
+				return
 			}
 
 			mu.Lock()

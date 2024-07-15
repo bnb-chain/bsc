@@ -79,7 +79,7 @@ func (c *BundleCacheEntry) UpdateSimulatedBundles(result map[common.Hash]*types.
 
 		bundleHash := bundle.Hash()
 
-		if result[bundleHash] != nil && result[bundleHash].Err == nil {
+		if result[bundleHash] != nil {
 			c.successfulBundles[bundleHash] = result[bundleHash]
 		} else {
 			c.failedBundles[bundleHash] = struct{}{}
