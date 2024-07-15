@@ -34,6 +34,15 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// In BEP-365: Support Multi-Database Based on Data Pattern, the Chaindata will be divided into three stores: BlockStore, TrieStore, and Others,
+// according to data schema and read/write behavior. When using the following data interfaces, you should take note of the following:
+//
+// 1) Block-Related Data: For CanonicalHash, Header, Body, Td, Receipts, and BlobSidecars, the Write, Delete, and Iterator
+// 	operations should carefully ensure that the database being used is BlockStore.
+// 2) Meta-Related Data: For HeaderNumber, HeadHeaderHash, HeadBlockHash, HeadFastBlockHash, and FinalizedBlockHash, the
+// 	Write and Delete operations should carefully ensure that the database being used is BlockStore.
+// 3) Ancient Data: When using a multi-database, Ancient data will use the BlockStore.
+
 // ReadCanonicalHash retrieves the hash assigned to a canonical block number.
 func ReadCanonicalHash(db ethdb.Reader, number uint64) common.Hash {
 	var data []byte

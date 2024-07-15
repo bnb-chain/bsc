@@ -840,7 +840,6 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		if err != nil {
 			return nil, err
 		}
-
 		log.Warn("Multi-database is an experimental feature")
 		chainDB.SetStateStore(stateDiskDb)
 		chainDB.SetBlockStore(blockDb)

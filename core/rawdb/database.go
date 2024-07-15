@@ -535,6 +535,9 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 
 	// Create the idle freezer instance
 	frdb, err := newChainFreezer(resolveChainFreezerDir(ancient), namespace, readonly, offset, multiDatabase)
+
+	// We are creating the freezerdb here because the validation logic for db and freezer below requires certain interfaces
+	// that need a database type. Therefore, we are pre-creating it for subsequent use.
 	freezerDb := &freezerdb{
 		ancientRoot:    ancient,
 		KeyValueStore:  db,
@@ -640,12 +643,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			frdb.wg.Done()
 		}()
 	}
-	return &freezerdb{
-		ancientRoot:    ancient,
-		KeyValueStore:  db,
-		AncientStore:   frdb,
-		AncientFreezer: frdb,
-	}, nil
+	return freezerDb, nil
 }
 
 // NewMemoryDatabase creates an ephemeral in-memory key-value database without a
