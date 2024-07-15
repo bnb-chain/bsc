@@ -280,7 +280,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		// check env first before chain freeze, it must wait when the env is necessary
 		if err := f.checkFreezerEnv(); err != nil {
 			f.waitEnvTimes++
-			if f.waitEnvTimes > maxWaitFreezerEnvTimes {
+			if f.waitEnvTimes >= maxWaitFreezerEnvTimes {
 				log.Warn("Wait freezer env too many times, skip the chain freezing.")
 				return
 			}
