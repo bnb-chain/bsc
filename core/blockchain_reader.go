@@ -231,7 +231,7 @@ func (bc *BlockChain) GetReceiptsByHash(hash common.Hash) types.Receipts {
 	if receipts, ok := bc.receiptsCache.Get(hash); ok {
 		return receipts
 	}
-	number := rawdb.ReadHeaderNumber(bc.db.BlockStore(), hash)
+	number := rawdb.ReadHeaderNumber(bc.db, hash)
 	if number == nil {
 		return nil
 	}
@@ -252,7 +252,7 @@ func (bc *BlockChain) GetSidecarsByHash(hash common.Hash) types.BlobSidecars {
 	if sidecars, ok := bc.sidecarsCache.Get(hash); ok {
 		return sidecars
 	}
-	number := rawdb.ReadHeaderNumber(bc.db.BlockStore(), hash)
+	number := rawdb.ReadHeaderNumber(bc.db, hash)
 	if number == nil {
 		return nil
 	}

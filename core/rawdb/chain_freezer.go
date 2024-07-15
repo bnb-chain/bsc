@@ -91,7 +91,7 @@ func (f *chainFreezer) Close() error {
 
 // readHeadNumber returns the number of chain head block. 0 is returned if the
 // block is unknown or not available yet.
-func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
+func (f *chainFreezer) readHeadNumber(db ethdb.Reader) uint64 {
 	hash := ReadHeadBlockHash(db)
 	if hash == (common.Hash{}) {
 		log.Error("Head block is not reachable")
@@ -107,7 +107,7 @@ func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
 
 // readFinalizedNumber returns the number of finalized block. 0 is returned
 // if the block is unknown or not available yet.
-func (f *chainFreezer) readFinalizedNumber(db ethdb.KeyValueReader) uint64 {
+func (f *chainFreezer) readFinalizedNumber(db ethdb.Reader) uint64 {
 	hash := ReadFinalizedBlockHash(db)
 	if hash == (common.Hash{}) {
 		return 0
@@ -122,7 +122,7 @@ func (f *chainFreezer) readFinalizedNumber(db ethdb.KeyValueReader) uint64 {
 
 // freezeThreshold returns the threshold for chain freezing. It's determined
 // by formula: max(finality, HEAD-params.FullImmutabilityThreshold).
-func (f *chainFreezer) freezeThreshold(db ethdb.KeyValueReader) (uint64, error) {
+func (f *chainFreezer) freezeThreshold(db ethdb.Reader) (uint64, error) {
 	var (
 		head      = f.readHeadNumber(db)
 		final     = f.readFinalizedNumber(db)

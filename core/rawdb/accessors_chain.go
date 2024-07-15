@@ -144,8 +144,8 @@ func ReadAllCanonicalHashes(db ethdb.Iteratee, from uint64, to uint64, limit int
 }
 
 // ReadHeaderNumber returns the header number assigned to a hash.
-func ReadHeaderNumber(db ethdb.KeyValueReader, hash common.Hash) *uint64 {
-	data, _ := db.Get(headerNumberKey(hash))
+func ReadHeaderNumber(db ethdb.MultiDatabaseReader, hash common.Hash) *uint64 {
+	data, _ := db.BlockStoreReader().Get(headerNumberKey(hash))
 	if len(data) != 8 {
 		return nil
 	}
@@ -170,8 +170,8 @@ func DeleteHeaderNumber(db ethdb.KeyValueWriter, hash common.Hash) {
 }
 
 // ReadHeadHeaderHash retrieves the hash of the current canonical head header.
-func ReadHeadHeaderHash(db ethdb.KeyValueReader) common.Hash {
-	data, _ := db.Get(headHeaderKey)
+func ReadHeadHeaderHash(db ethdb.MultiDatabaseReader) common.Hash {
+	data, _ := db.BlockStoreReader().Get(headHeaderKey)
 	if len(data) == 0 {
 		return common.Hash{}
 	}
@@ -186,8 +186,8 @@ func WriteHeadHeaderHash(db ethdb.KeyValueWriter, hash common.Hash) {
 }
 
 // ReadHeadBlockHash retrieves the hash of the current canonical head block.
-func ReadHeadBlockHash(db ethdb.KeyValueReader) common.Hash {
-	data, _ := db.Get(headBlockKey)
+func ReadHeadBlockHash(db ethdb.MultiDatabaseReader) common.Hash {
+	data, _ := db.BlockStoreReader().Get(headBlockKey)
 	if len(data) == 0 {
 		return common.Hash{}
 	}
@@ -202,8 +202,8 @@ func WriteHeadBlockHash(db ethdb.KeyValueWriter, hash common.Hash) {
 }
 
 // ReadHeadFastBlockHash retrieves the hash of the current fast-sync head block.
-func ReadHeadFastBlockHash(db ethdb.KeyValueReader) common.Hash {
-	data, _ := db.Get(headFastBlockKey)
+func ReadHeadFastBlockHash(db ethdb.MultiDatabaseReader) common.Hash {
+	data, _ := db.BlockStoreReader().Get(headFastBlockKey)
 	if len(data) == 0 {
 		return common.Hash{}
 	}
@@ -218,8 +218,8 @@ func WriteHeadFastBlockHash(db ethdb.KeyValueWriter, hash common.Hash) {
 }
 
 // ReadFinalizedBlockHash retrieves the hash of the finalized block.
-func ReadFinalizedBlockHash(db ethdb.KeyValueReader) common.Hash {
-	data, _ := db.Get(headFinalizedBlockKey)
+func ReadFinalizedBlockHash(db ethdb.MultiDatabaseReader) common.Hash {
+	data, _ := db.BlockStoreReader().Get(headFinalizedBlockKey)
 	if len(data) == 0 {
 		return common.Hash{}
 	}
@@ -1093,24 +1093,24 @@ func FindCommonAncestor(db ethdb.Reader, a, b *types.Header) *types.Header {
 
 // ReadHeadHeader returns the current canonical head header.
 func ReadHeadHeader(db ethdb.Reader) *types.Header {
-	headHeaderHash := ReadHeadHeaderHash(db.BlockStoreReader())
+	headHeaderHash := ReadHeadHeaderHash(db)
 	if headHeaderHash == (common.Hash{}) {
 		return nil
 	}
-	headHeaderNumber := ReadHeaderNumber(db.BlockStoreReader(), headHeaderHash)
+	headHeaderNumber := ReadHeaderNumber(db, headHeaderHash)
 	if headHeaderNumber == nil {
 		return nil
 	}
-	return ReadHeader(db.BlockStoreReader(), headHeaderHash, *headHeaderNumber)
+	return ReadHeader(db, headHeaderHash, *headHeaderNumber)
 }
 
 // ReadHeadBlock returns the current canonical head block.
 func ReadHeadBlock(db ethdb.Reader) *types.Block {
-	headBlockHash := ReadHeadBlockHash(db.BlockStoreReader())
+	headBlockHash := ReadHeadBlockHash(db)
 	if headBlockHash == (common.Hash{}) {
 		return nil
 	}
-	headBlockNumber := ReadHeaderNumber(db.BlockStoreReader(), headBlockHash)
+	headBlockNumber := ReadHeaderNumber(db, headBlockHash)
 	if headBlockNumber == nil {
 		return nil
 	}
