@@ -814,59 +814,6 @@ type spongeDb struct {
 	values  map[string]string
 }
 
-func (s *spongeDb) HasAncient(kind string, number uint64) (bool, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *spongeDb) Ancient(kind string, number uint64) ([]byte, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *spongeDb) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *spongeDb) Ancients() (uint64, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *spongeDb) Tail() (uint64, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *spongeDb) AncientSize(kind string) (uint64, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *spongeDb) ItemAmountInAncient() (uint64, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *spongeDb) AncientOffSet() uint64 {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *spongeDb) ReadAncients(fn func(ethdb.AncientReaderOp) error) (err error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *spongeDb) StateStoreReader() ethdb.Reader {
-	return s
-}
-
-func (s *spongeDb) BlockStoreReader() ethdb.Reader {
-	return s
-}
-
 func (s *spongeDb) Has(key []byte) (bool, error)             { panic("implement me") }
 func (s *spongeDb) Get(key []byte) ([]byte, error)           { return nil, errors.New("no such elem") }
 func (s *spongeDb) Delete(key []byte) error                  { panic("implement me") }

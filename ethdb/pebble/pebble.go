@@ -96,16 +96,6 @@ type Database struct {
 	writeOptions *pebble.WriteOptions
 }
 
-func (d *Database) StateStoreReader() ethdb.Reader {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (d *Database) BlockStoreReader() ethdb.Reader {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (d *Database) onCompactionBegin(info pebble.CompactionInfo) {
 	if d.activeComp == 0 {
 		d.compStartTime = time.Now()

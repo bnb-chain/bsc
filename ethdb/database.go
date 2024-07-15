@@ -65,8 +65,6 @@ type KeyValueStore interface {
 	KeyValueReader
 	KeyValueWriter
 	KeyValueStater
-	StateStoreReader
-	BlockStoreReader
 	Batcher
 	Iteratee
 	Compacter
