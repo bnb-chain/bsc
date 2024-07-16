@@ -73,7 +73,6 @@ const validatorMap = new Map([
     ["0xd849d1dF66bFF1c2739B4399425755C2E0fAbbAb","Nexa"],
     ["0xA015d9e9206859c13201BB3D6B324d6634276534","Star"],
     ["0x5ADde0151BfAB27f329e5112c1AeDeed7f0D3692","Veri"],
-    ["0xd6Ab358AD430F65EB4Aa5a1598FF2c34489dcfdE","Saturn"],
     //Chapel
     ["0x08265dA01E1A65d62b903c7B34c08cB389bF3D99","Ararat"],
     ["0x7f5f2cF1aec83bF0c74DF566a41aa7ed65EA84Ea","Kita"],
@@ -109,7 +108,7 @@ const main = async () => {
         let info = await slashIndicator.getSlashIndicator(addr, {blockTag:blockNum})
         let count = ethers.toNumber(info[1])
         totalSlash += count
-        console.log("address:", addr, val, count)
+        console.log("Slash:", count, addr, val)
     }
     console.log("Total slash count", totalSlash)
 };
