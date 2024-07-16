@@ -149,8 +149,6 @@ unzip testnet.zip
 #### 3. Download snapshot
 Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-snapshots). Follow the guide to structure your files.
 
-Note: If you encounter difficulties downloading the chaindata snapshot and prefer to synchronize from the genesis block on the Chapel testnet, remember to include the additional flag `--chapel` when initially launching Geth.
-
 #### 4. Start a full node
 ```shell
 ./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0

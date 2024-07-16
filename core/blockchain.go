@@ -657,13 +657,6 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 	}
 }
 
-func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
-	bc.blockCache.Add(hash, block)
-	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-		bc.sidecarsCache.Add(hash, block.Sidecars())
-	}
-}
-
 // empty returns an indicator whether the blockchain is empty.
 // Note, it's a special case that we connect a non-empty ancient
 // database with an empty node, so that we can plugin the ancient
@@ -2282,8 +2275,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		vtime := time.Since(vstart)
 		proctime := time.Since(start) // processing + validation
 
-		bc.cacheBlock(block.Hash(), block)
-
 		// Update the metrics touched during block processing and validation
 		accountReadTimer.Update(statedb.AccountReads)                   // Account reads are complete(in processing)
 		storageReadTimer.Update(statedb.StorageReads)                   // Storage reads are complete(in processing)
@@ -2396,26 +2387,11 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 	if header == nil || header.Number == nil {
 		return
 	}
-	currentHeader := bc.highestVerifiedHeader.Load()
-	if currentHeader == nil {
+	currentBlock := bc.CurrentBlock()
+	reorg, err := bc.forker.ReorgNeededWithFastFinality(currentBlock, header)
+	if err == nil && reorg {
 		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
-		return
-	}
-
-	newParentTD := bc.GetTd(header.ParentHash, header.Number.Uint64()-1)
-	if newParentTD == nil {
-		newParentTD = big.NewInt(0)
-	}
-	oldParentTD := bc.GetTd(currentHeader.ParentHash, currentHeader.Number.Uint64()-1)
-	if oldParentTD == nil {
-		oldParentTD = big.NewInt(0)
-	}
-	newTD := big.NewInt(0).Add(newParentTD, header.Difficulty)
-	oldTD := big.NewInt(0).Add(oldParentTD, currentHeader.Difficulty)
-
-	if newTD.Cmp(oldTD) > 0 {
-		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
-		return
+		log.Trace("updateHighestVerifiedHeader", "number", header.Number.Uint64(), "hash", header.Hash())
 	}
 }
 
