@@ -44,7 +44,7 @@ func (h *handler) syncTransactions(p *eth.Peer) {
 	if len(hashes) == 0 {
 		return
 	}
-	p.AsyncSendPooledTransactionHashes(hashes)
+	p.AsyncSendPooledTransactionHashes(hashes, false) // todo confirm if false is fine
 }
 
 // syncVotes starts sending all currently pending votes to the given peer.

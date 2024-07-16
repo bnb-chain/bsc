@@ -63,10 +63,11 @@ func (h *nonceHeap) Pop() interface{} {
 // sortedMap is a nonce->transaction hash map with a heap based index to allow
 // iterating over the contents in a nonce-incrementing way.
 type sortedMap struct {
-	items   map[uint64]*types.Transaction // Hash map storing the transaction data
-	index   *nonceHeap                    // Heap of nonces of all the stored transactions (non-strict mode)
-	cache   types.Transactions            // Cache of the transactions already sorted
-	cacheMu sync.Mutex                    // Mutex covering the cache
+	items      map[uint64]*types.Transaction // Hash map storing the transaction data
+	index      *nonceHeap                    // Heap of nonces of all the stored transactions (non-strict mode)
+	cache      types.Transactions            // Cache of the transactions already sorted
+	cacheMu    sync.Mutex                    // Mutex covering the cache
+	staticOnly bool                          // only send this transaction to static peers
 }
 
 // newSortedMap creates a new nonce-sorted transaction map.
@@ -84,7 +85,7 @@ func (m *sortedMap) Get(nonce uint64) *types.Transaction {
 
 // Put inserts a new transaction into the map, also updating the map's nonce
 // index. If a transaction already exists with the same nonce, it's overwritten.
-func (m *sortedMap) Put(tx *types.Transaction) {
+func (m *sortedMap) Put(tx *types.Transaction, static bool) {
 	nonce := tx.Nonce()
 	if m.items[nonce] == nil {
 		heap.Push(m.index, nonce)
@@ -94,6 +95,7 @@ func (m *sortedMap) Put(tx *types.Transaction) {
 		txSortedMapPool.Put(m.cache)
 	}
 	m.items[nonce], m.cache = tx, nil
+	m.staticOnly = static
 	m.cacheMu.Unlock()
 }
 
@@ -360,7 +362,7 @@ func (l *list) Add(tx *types.Transaction, priceBump uint64) (bool, *types.Transa
 	l.totalcost.Add(l.totalcost, cost)
 
 	// Otherwise overwrite the old transaction with the current one
-	l.txs.Put(tx)
+	l.txs.Put(tx, false) // todo putting false as a placeholder
 	if l.costcap.Cmp(cost) < 0 {
 		l.costcap = cost
 	}

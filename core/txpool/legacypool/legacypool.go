@@ -55,6 +55,9 @@ const (
 
 	// txReannoMaxNum is the maximum number of transactions a reannounce action can include.
 	txReannoMaxNum = 1024
+
+	pool2Size = 10000 // todo might have to set it in config
+	pool3Size = 50000
 )
 
 var (
@@ -235,15 +238,29 @@ type LegacyPool struct {
 	all     *lookup                      // All transactions to allow lookups
 	priced  *pricedList                  // All transactions sorted by price
 
+	criticalPathPool map[common.Address]*list // Critical path transactions (Pool 2)
+	localBufferPool  *LRUBuffer               // Local buffer transactions (Pool 3)
+
 	reqResetCh      chan *txpoolResetRequest
 	reqPromoteCh    chan *accountSet
-	queueTxEventCh  chan *types.Transaction
+	queueTxEventCh  chan QueueTxEventCh
 	reorgDoneCh     chan chan struct{}
 	reorgShutdownCh chan struct{}  // requests shutdown of scheduleReorgLoop
 	wg              sync.WaitGroup // tracks loop, scheduleReorgLoop
 	initDoneCh      chan struct{}  // is closed once the pool is initialized (for tests)
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
+}
+
+type QueueTxEventCh struct {
+	tx     *types.Transaction
+	static bool
+}
+
+func newQueueTxEventCh() QueueTxEventCh {
+	return QueueTxEventCh{
+		tx: new(types.Transaction),
+	}
 }
 
 type txpoolResetRequest struct {
@@ -258,20 +275,22 @@ func New(config Config, chain BlockChain) *LegacyPool {
 
 	// Create the transaction pool with its initial settings
 	pool := &LegacyPool{
-		config:          config,
-		chain:           chain,
-		chainconfig:     chain.Config(),
-		signer:          types.LatestSigner(chain.Config()),
-		pending:         make(map[common.Address]*list),
-		queue:           make(map[common.Address]*list),
-		beats:           make(map[common.Address]time.Time),
-		all:             newLookup(),
-		reqResetCh:      make(chan *txpoolResetRequest),
-		reqPromoteCh:    make(chan *accountSet),
-		queueTxEventCh:  make(chan *types.Transaction),
-		reorgDoneCh:     make(chan chan struct{}),
-		reorgShutdownCh: make(chan struct{}),
-		initDoneCh:      make(chan struct{}),
+		config:           config,
+		chain:            chain,
+		chainconfig:      chain.Config(),
+		signer:           types.LatestSigner(chain.Config()),
+		pending:          make(map[common.Address]*list),
+		queue:            make(map[common.Address]*list),
+		beats:            make(map[common.Address]time.Time),
+		all:              newLookup(),
+		reqResetCh:       make(chan *txpoolResetRequest),
+		reqPromoteCh:     make(chan *accountSet),
+		queueTxEventCh:   make(chan QueueTxEventCh),
+		reorgDoneCh:      make(chan chan struct{}),
+		reorgShutdownCh:  make(chan struct{}),
+		initDoneCh:       make(chan struct{}),
+		criticalPathPool: make(map[common.Address]*list),
+		localBufferPool:  NewLRUBuffer(pool3Size),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -283,6 +302,9 @@ func New(config Config, chain BlockChain) *LegacyPool {
 	if !config.NoLocals && config.Journal != "" {
 		pool.journal = newTxJournal(config.Journal)
 	}
+
+	pool.startPeriodicTransfer() // todo (incomplete) Start the periodic transfer routine
+
 	return pool
 }
 
@@ -746,6 +768,20 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		knownTxMeter.Mark(1)
 		return false, txpool.ErrAlreadyKnown
 	}
+
+	pool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
+	//txPoolSizeBeforeCurrentTx := uint64(pool.all.Slots())
+	txPoolSizeAfterCurrentTx := uint64(pool.all.Slots() + numSlots(tx))
+	// pool2Size, pool3Size
+	var includePool1, includePool2, includePool3 bool
+	if txPoolSizeAfterCurrentTx < pool1Size {
+		includePool1 = true
+	} else if (txPoolSizeAfterCurrentTx > pool1Size) && (txPoolSizeAfterCurrentTx <= pool2Size) {
+		includePool2 = true
+	} else {
+		includePool3 = true
+	}
+
 	// Make the local flag. If it's from local source or it's from the network but
 	// the sender is marked as local previously, treat it as the local transaction.
 	isLocal := local || pool.locals.containsTx(tx)
@@ -781,13 +817,23 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 			}
 		}()
 	}
+
 	// If the transaction pool is full, discard underpriced transactions
-	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
+	if uint64(pool.all.Slots()+numSlots(tx)) > pool1Size {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
-			log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
-			underpricedTxMeter.Mark(1)
-			return false, txpool.ErrUnderpriced
+			// todo maybe here pool2 can come into picture.
+			//  lets say it does. Then how can we transfer it to pool2?
+			// todo: check if pool2 can include it. If it can then include or else pool3
+			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, includePool1, includePool2, includePool3)
+			if !addedToAnyPool {
+				log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
+				underpricedTxMeter.Mark(1)
+				return false, err
+				//return false, txpool.ErrUnderpriced
+			}
+			return true, nil
+
 		}
 
 		// We're about to replace a transaction. The reorg does a more thorough
@@ -848,11 +894,14 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		// Nonce already pending, check if required price bump is met
 		inserted, old := list.Add(tx, pool.config.PriceBump)
 		if !inserted {
-			pendingDiscardMeter.Mark(1)
-			return false, txpool.ErrReplaceUnderpriced
+			// todo maybe here we can add to pool2 or pool3?
+			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, false, includePool2, includePool3)
+			//pendingDiscardMeter.Mark(1)
+			return addedToAnyPool, err
 		}
 		// New transaction is better, replace old one
 		if old != nil {
+			// todo maybe here we can add the old to pool2 or pool3?
 			pool.all.Remove(old.Hash())
 			pool.priced.Removed(1)
 			pendingReplaceMeter.Mark(1)
@@ -860,18 +909,31 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		pool.all.Add(tx, isLocal)
 		pool.priced.Put(tx, isLocal)
 		pool.journalTx(from, tx)
-		pool.queueTxEvent(tx)
+		pool.queueTxEvent(tx, false) // todo putting false as placeholder now
 		log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
 		pool.beats[from] = time.Now()
 		return old != nil, nil
 	}
+
 	// New transaction isn't replacing a pending one, push into queue
-	replaced, err = pool.enqueueTx(hash, tx, isLocal, true)
+	replaced, err = pool.addToPool2OrPool3(tx, from, includePool1, includePool2, includePool3)
+
+	//replaced, err = pool.enqueueTx(hash, tx, isLocal, true)
 	if err != nil {
 		return false, err
 	}
+
+	//if uint64(len(pool.pending)) < pool1Size {
+	//	replaced, err = pool.enqueueTx(hash, tx, isLocal, true)
+	//} else if len(pool.criticalPathPool) < pool2Size {
+	//	replaced, err = pool.enqueueTxToCriticalPath(hash, tx, isLocal, true)
+	//} else {
+	//	pool.localBufferPool.Add(tx)
+	//	replaced, err = false, nil
+	//}
+
 	// Mark local addresses and journal local transactions
 	if local && !pool.locals.contains(from) {
 		log.Info("Setting new local account", "address", from)
@@ -885,6 +947,40 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 
 	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
+}
+
+func (pool *LegacyPool) addToPool2OrPool3(tx *types.Transaction, from common.Address, pool1, pool2, pool3 bool) (bool, error) {
+	if pool1 {
+		// todo (check) logic for pool1 related
+		pool.all.Add(tx, pool2)
+		pool.priced.Put(tx, pool2)
+		pool.journalTx(from, tx)
+		pool.queueTxEvent(tx, false)
+		log.Trace("Pooled new executable transaction", "hash", tx.Hash(), "from", from, "to", tx.To())
+
+		// Successful promotion, bump the heartbeat
+		pool.beats[from] = time.Now()
+
+		return true, nil
+	}
+	if pool2 {
+		// todo (check) logic for pool2 related
+		pool.all.Add(tx, pool2)
+		pool.priced.Put(tx, pool2)
+		pool.journalTx(from, tx)
+		pool.queueTxEvent(tx, true)
+		log.Trace("Pooled new executable transaction", "hash", tx.Hash(), "from", from, "to", tx.To())
+
+		// Successful promotion, bump the heartbeat
+		pool.beats[from] = time.Now()
+		return true, nil
+	}
+	if pool3 {
+		// todo (check) logic for pool3
+		pool.localBufferPool.Add(tx)
+		return true, nil
+	}
+	return false, errors.New("could not add to any pool")
 }
 
 // isGapped reports whether the given transaction is immediately executable.
@@ -1248,9 +1344,13 @@ func (pool *LegacyPool) requestPromoteExecutables(set *accountSet) chan struct{}
 }
 
 // queueTxEvent enqueues a transaction event to be sent in the next reorg run.
-func (pool *LegacyPool) queueTxEvent(tx *types.Transaction) {
+func (pool *LegacyPool) queueTxEvent(tx *types.Transaction, static bool) {
+	event := QueueTxEventCh{
+		tx:     tx,
+		static: static,
+	}
 	select {
-	case pool.queueTxEventCh <- tx:
+	case pool.queueTxEventCh <- event:
 	case <-pool.reorgShutdownCh:
 	}
 }
@@ -1304,14 +1404,14 @@ func (pool *LegacyPool) scheduleReorgLoop() {
 			launchNextRun = true
 			pool.reorgDoneCh <- nextDone
 
-		case tx := <-pool.queueTxEventCh:
+		case queue := <-pool.queueTxEventCh:
 			// Queue up the event, but don't schedule a reorg. It's up to the caller to
 			// request one later if they want the events sent.
-			addr, _ := types.Sender(pool.signer, tx)
+			addr, _ := types.Sender(pool.signer, queue.tx)
 			if _, ok := queuedEvents[addr]; !ok {
 				queuedEvents[addr] = newSortedMap()
 			}
-			queuedEvents[addr].Put(tx)
+			queuedEvents[addr].Put(queue.tx, queue.static)
 
 		case <-curDone:
 			curDone = nil
@@ -1397,14 +1497,21 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		if _, ok := events[addr]; !ok {
 			events[addr] = newSortedMap()
 		}
-		events[addr].Put(tx)
+		events[addr].Put(tx, false) // todo putting false as placeholder for now
 	}
 	if len(events) > 0 {
-		var txs []*types.Transaction
+		//var txs []*types.Transaction
 		for _, set := range events {
-			txs = append(txs, set.Flatten()...)
+			// todo problem is that here all transactions are sent at once. Maybe send them in series? But not sure how
+			//  performance will be affected
+			// todo Maybe do the Send() only twice (instead of all events):
+			// 			1. For Static
+			//			2. For non-Static
+			pool.txFeed.Send(core.NewTxsEvent{Txs: set.Flatten(), Static: set.staticOnly})
+			//txs = append(txs, set.Flatten()...)
 		}
-		pool.txFeed.Send(core.NewTxsEvent{Txs: txs})
+
+		//pool.txFeed.Send(core.NewTxsEvent{Txs: txs})
 	}
 }
 
@@ -1587,6 +1694,13 @@ func (pool *LegacyPool) truncatePending() {
 	}
 	if pending <= pool.config.GlobalSlots {
 		return
+	}
+
+	// todo maybe check here if the extra numbers are within pool1 and (pool1+pool2) and in that case
+	//  we can only broadcast to static peers.
+	pool1Size := pool.config.GlobalSlots
+	if (pending > pool1Size) && pending < (pool1Size+pool2Size) {
+
 	}
 
 	pendingBeforeCap := pending
@@ -2037,4 +2151,118 @@ func (t *lookup) RemotesBelowTip(threshold *big.Int) types.Transactions {
 // numSlots calculates the number of slots needed for a single transaction.
 func numSlots(tx *types.Transaction) int {
 	return int((tx.Size() + txSlotSize - 1) / txSlotSize)
+}
+
+func (pool *LegacyPool) enqueueTxToCriticalPath(hash common.Hash, tx *types.Transaction, local bool, addAll bool) (bool, error) {
+	from, _ := types.Sender(pool.signer, tx)
+	if pool.criticalPathPool[from] == nil {
+		pool.criticalPathPool[from] = newList(false)
+	}
+	inserted, old := pool.criticalPathPool[from].Add(tx, pool.config.PriceBump)
+	if !inserted {
+		queuedDiscardMeter.Mark(1)
+		return false, txpool.ErrReplaceUnderpriced
+	}
+	if old != nil {
+		pool.all.Remove(old.Hash())
+		pool.priced.Removed(1)
+		queuedReplaceMeter.Mark(1)
+	} else {
+		queuedGauge.Inc(1)
+	}
+	if pool.all.Get(hash) == nil && !addAll {
+		log.Error("Missing transaction in lookup set, please report the issue", "hash", hash)
+	}
+	if addAll {
+		pool.all.Add(tx, local)
+		pool.priced.Put(tx, local)
+	}
+	if _, exist := pool.beats[from]; !exist {
+		pool.beats[from] = time.Now()
+	}
+	return old != nil, nil
+}
+
+//func getPool2Peers(allPeers, staticPeers []Peer) []Peer {
+//	allWithoutStatic := difference(allPeers, staticPeers)
+//	randomNonStatic := getRandomPeers(allWithoutStatic, MaxNonStaticPeer)
+//	return append(staticPeers, randomNonStatic...)
+//}
+//
+//func broadcastToPeers(tx *types.Transaction, peers []Peer) {
+//	for _, peer := range peers {
+//		peer.SendTransaction(tx)
+//	}
+//}
+//
+//func difference(slice1, slice2 []Peer) []Peer {
+//	m := make(map[Peer]bool)
+//	for _, item := range slice2 {
+//		m[item] = true
+//	}
+//	var diff []Peer
+//	for _, item := range slice1 {
+//		if _, ok := m[item]; !ok {
+//			diff = append(diff, item)
+//		}
+//	}
+//	return diff
+//}
+//
+//func getRandomPeers(peers []Peer, max int) []Peer {
+//	rand.Seed(time.Now().UnixNano())
+//	rand.Shuffle(len(peers), func(i, j int) { peers[i], peers[j] = peers[j], peers[i] })
+//	if len(peers) > max {
+//		return peers[:max]
+//	}
+//	return peers
+//}
+
+func (pool *LegacyPool) startPeriodicTransfer() {
+	ticker := time.NewTicker(time.Minute) // Adjust the interval as needed
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				pool.mu.Lock()
+				pool.transferTransactions()
+				pool.mu.Unlock()
+			case <-pool.reorgShutdownCh:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+}
+
+func (pool *LegacyPool) transferTransactions() {
+	// todo (incomplete) here we check all the transfer logic. So
+	//  if len(pool12) > maxPool1Size && len(pool12) < (maxPool1Size + maxPool2Size) then only broadcast to static peers.
+	//	if len(pool12) > (maxPool1Size + maxPool2Size) then add a new transaction to pool3 only
+
+	maxPool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
+
+	// Transfer transactions from LocalBufferPool (Pool 3) to CriticalPathPool (Pool 2)
+	if len(pool.criticalPathPool) < pool2Size {
+		txs := pool.localBufferPool.Flush(pool2Size - len(pool.criticalPathPool))
+		for _, tx := range txs {
+			_, err := pool.enqueueTxToCriticalPath(tx.Hash(), tx, false, true)
+			if err != nil {
+				log.Error("Failed to transfer transaction from Pool 3 to Pool 2", "err", err)
+			}
+		}
+	}
+
+	// Transfer transactions from CriticalPathPool (Pool 2) to LegacyPool (Pool 1)
+	if uint64(len(pool.pending)) < maxPool1Size {
+		for addr, list := range pool.criticalPathPool {
+			for _, tx := range list.Flatten() {
+				_, err := pool.enqueueTx(tx.Hash(), tx, false, true)
+				if err != nil {
+					log.Error("Failed to transfer transaction from Pool 2 to Pool 1", "err", err)
+				}
+			}
+			delete(pool.criticalPathPool, addr)
+		}
+	}
 }

@@ -838,7 +838,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 // - To a square root of all peers for non-blob transactions
 // - And, separately, as announcements to all peers which are not known to
 // already have the given transaction.
-func (h *handler) BroadcastTransactions(txs types.Transactions) {
+func (h *handler) BroadcastTransactions(txs types.Transactions, staticOnly bool) {
 	var (
 		blobTxs  int // Number of blob transactions to announce only
 		largeTxs int // Number of large transactions to announce only
@@ -876,12 +876,12 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	for peer, hashes := range txset {
 		directPeers++
 		directCount += len(hashes)
-		peer.AsyncSendTransactions(hashes)
+		peer.AsyncSendTransactions(hashes, staticOnly)
 	}
 	for peer, hashes := range annos {
 		annPeers++
 		annCount += len(hashes)
-		peer.AsyncSendPooledTransactionHashes(hashes)
+		peer.AsyncSendPooledTransactionHashes(hashes, staticOnly)
 	}
 	log.Debug("Distributed transactions", "plaintxs", len(txs)-blobTxs-largeTxs, "blobtxs", blobTxs, "largetxs", largeTxs,
 		"bcastpeers", directPeers, "bcastcount", directCount, "annpeers", annPeers, "anncount", annCount)
@@ -899,7 +899,7 @@ func (h *handler) ReannounceTransactions(txs types.Transactions) {
 	peersCount := uint(math.Sqrt(float64(h.peers.len())))
 	peers := h.peers.headPeers(peersCount)
 	for _, peer := range peers {
-		peer.AsyncSendPooledTransactionHashes(hashes)
+		peer.AsyncSendPooledTransactionHashes(hashes, false) // todo keeping it false for now. confirm it.
 	}
 	log.Debug("Transaction reannounce", "txs", len(txs),
 		"announce packs", peersCount, "announced hashes", peersCount*uint(len(hashes)))
@@ -962,7 +962,7 @@ func (h *handler) txBroadcastLoop() {
 	for {
 		select {
 		case event := <-h.txsCh:
-			h.BroadcastTransactions(event.Txs)
+			h.BroadcastTransactions(event.Txs, event.Static) // todo should Static bool be a slice of bools?
 		case <-h.txsSub.Err():
 			return
 		case <-h.stopCh:
