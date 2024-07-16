@@ -52,7 +52,7 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 		if i+count > frozen+offset {
 			count = frozen + offset - i
 		}
-		data, err := db.AncientRange(ChainFreezerHashTable, i, count, 32*count)
+		data, err := db.BlockStore().AncientRange(ChainFreezerHashTable, i, count, 32*count)
 		if err != nil {
 			log.Crit("Failed to init database from freezer", "err", err)
 		}
