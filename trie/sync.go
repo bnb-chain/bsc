@@ -229,7 +229,7 @@ func (batch *syncMemBatch) delNode(owner common.Hash, path []byte) {
 // and reconstructs the trie step by step until all is done.
 type Sync struct {
 	scheme   string                       // Node scheme descriptor used in database.
-	database ethdb.KeyValueReader         // Persistent database to check for existing entries
+	database ethdb.Database               // Persistent database to check for existing entries
 	membatch *syncMemBatch                // Memory buffer to avoid frequent database writes
 	nodeReqs map[string]*nodeRequest      // Pending requests pertaining to a trie node path
 	codeReqs map[common.Hash]*codeRequest // Pending requests pertaining to a code hash
@@ -238,7 +238,7 @@ type Sync struct {
 }
 
 // NewSync creates a new trie data download scheduler.
-func NewSync(root common.Hash, database ethdb.KeyValueReader, callback LeafCallback, scheme string) *Sync {
+func NewSync(root common.Hash, database ethdb.Database, callback LeafCallback, scheme string) *Sync {
 	ts := &Sync{
 		scheme:   scheme,
 		database: database,
@@ -420,7 +420,7 @@ func (s *Sync) ProcessNode(result NodeSyncResult) error {
 // Commit flushes the data stored in the internal membatch out to persistent
 // storage, returning any occurred error. The whole data set will be flushed
 // in an atomic database batch.
-func (s *Sync) Commit(dbw ethdb.Batch) error {
+func (s *Sync) Commit(dbw ethdb.Batch, stateBatch ethdb.Batch) error {
 	// Flush the pending node writes into database batch.
 	var (
 		account int
@@ -430,9 +430,17 @@ func (s *Sync) Commit(dbw ethdb.Batch) error {
 		if op.isDelete() {
 			// node deletion is only supported in path mode.
 			if op.owner == (common.Hash{}) {
-				rawdb.DeleteAccountTrieNode(dbw, op.path)
+				if stateBatch != nil {
+					rawdb.DeleteAccountTrieNode(stateBatch, op.path)
+				} else {
+					rawdb.DeleteAccountTrieNode(dbw, op.path)
+				}
 			} else {
-				rawdb.DeleteStorageTrieNode(dbw, op.owner, op.path)
+				if stateBatch != nil {
+					rawdb.DeleteStorageTrieNode(stateBatch, op.owner, op.path)
+				} else {
+					rawdb.DeleteStorageTrieNode(dbw, op.owner, op.path)
+				}
 			}
 			deletionGauge.Inc(1)
 		} else {
@@ -441,7 +449,11 @@ func (s *Sync) Commit(dbw ethdb.Batch) error {
 			} else {
 				storage += 1
 			}
-			rawdb.WriteTrieNode(dbw, op.owner, op.path, op.hash, op.blob, s.scheme)
+			if stateBatch != nil {
+				rawdb.WriteTrieNode(stateBatch, op.owner, op.path, op.hash, op.blob, s.scheme)
+			} else {
+				rawdb.WriteTrieNode(dbw, op.owner, op.path, op.hash, op.blob, s.scheme)
+			}
 		}
 	}
 	accountNodeSyncedGauge.Inc(int64(account))
@@ -546,9 +558,9 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 				// the performance impact negligible.
 				var exists bool
 				if owner == (common.Hash{}) {
-					exists = rawdb.ExistsAccountTrieNode(s.database, append(inner, key[:i]...))
+					exists = rawdb.ExistsAccountTrieNode(s.database.StateStoreReader(), append(inner, key[:i]...))
 				} else {
-					exists = rawdb.ExistsStorageTrieNode(s.database, owner, append(inner, key[:i]...))
+					exists = rawdb.ExistsStorageTrieNode(s.database.StateStoreReader(), owner, append(inner, key[:i]...))
 				}
 				if exists {
 					s.membatch.delNode(owner, append(inner, key[:i]...))
@@ -687,15 +699,15 @@ func (s *Sync) commitCodeRequest(req *codeRequest) error {
 func (s *Sync) hasNode(owner common.Hash, path []byte, hash common.Hash) (exists bool, inconsistent bool) {
 	// If node is running with hash scheme, check the presence with node hash.
 	if s.scheme == rawdb.HashScheme {
-		return rawdb.HasLegacyTrieNode(s.database, hash), false
+		return rawdb.HasLegacyTrieNode(s.database.StateStoreReader(), hash), false
 	}
 	// If node is running with path scheme, check the presence with node path.
 	var blob []byte
 	var dbHash common.Hash
 	if owner == (common.Hash{}) {
-		blob, dbHash = rawdb.ReadAccountTrieNode(s.database, path)
+		blob, dbHash = rawdb.ReadAccountTrieNode(s.database.StateStoreReader(), path)
 	} else {
-		blob, dbHash = rawdb.ReadStorageTrieNode(s.database, owner, path)
+		blob, dbHash = rawdb.ReadStorageTrieNode(s.database.StateStoreReader(), owner, path)
 	}
 	exists = hash == dbHash
 	inconsistent = !exists && len(blob) != 0

@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
@@ -143,7 +142,7 @@ func TestEmptySync(t *testing.T) {
 	emptyD, _ := New(TrieID(types.EmptyRootHash), dbD)
 
 	for i, trie := range []*Trie{emptyA, emptyB, emptyC, emptyD} {
-		sync := NewSync(trie.Hash(), memorydb.New(), nil, []*testDb{dbA, dbB, dbC, dbD}[i].Scheme())
+		sync := NewSync(trie.Hash(), rawdb.NewMemoryDatabase(), nil, []*testDb{dbA, dbB, dbC, dbD}[i].Scheme())
 		if paths, nodes, codes := sync.Missing(1); len(paths) != 0 || len(nodes) != 0 || len(codes) != 0 {
 			t.Errorf("test %d: content requested for empty trie: %v, %v, %v", i, paths, nodes, codes)
 		}
@@ -212,7 +211,7 @@ func testIterativeSync(t *testing.T, count int, bypath bool, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -278,7 +277,7 @@ func testIterativeDelayedSync(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -348,7 +347,7 @@ func testIterativeRandomSync(t *testing.T, count int, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -419,7 +418,7 @@ func testIterativeRandomDelayedSync(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -491,7 +490,7 @@ func testDuplicateAvoidanceSync(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -563,7 +562,7 @@ func testIncompleteSync(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -653,7 +652,7 @@ func testSyncOrdering(t *testing.T, scheme string) {
 			}
 		}
 		batch := diskdb.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		batch.Write()
@@ -723,7 +722,7 @@ func syncWithHookWriter(t *testing.T, root common.Hash, db ethdb.Database, srcDb
 			}
 		}
 		batch := db.NewBatch()
-		if err := sched.Commit(batch); err != nil {
+		if err := sched.Commit(batch, nil); err != nil {
 			t.Fatalf("failed to commit data: %v", err)
 		}
 		if hookWriter != nil {
