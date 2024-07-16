@@ -41,11 +41,6 @@ const (
 	// freezerBatchLimit is the maximum number of blocks to freeze in one batch
 	// before doing an fsync and deleting it from the key-value store.
 	freezerBatchLimit = 30000
-
-	// maxWaitFreezerEnvTimes is not critical for most scenarios,
-	// the most cases won't insert block and trigger chain freezing.
-	// But the eth.Backend instance must init the freezer env for chain freeze.
-	maxWaitFreezerEnvTimes = 3
 )
 
 var (
@@ -280,8 +275,8 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		// check env first before chain freeze, it must wait when the env is necessary
 		if err := f.checkFreezerEnv(); err != nil {
 			f.waitEnvTimes++
-			if f.waitEnvTimes >= maxWaitFreezerEnvTimes {
-				log.Warn("Wait freezer env too many times, skip the chain freezing.")
+			if f.waitEnvTimes%30 == 0 {
+				log.Warn("Freezer need related env, may wait for a while, and it's not a issue when non-import block", "err", err)
 				return
 			}
 			backoff = true
@@ -550,7 +545,6 @@ func (f *chainFreezer) checkFreezerEnv() error {
 	if exist {
 		return nil
 	}
-	log.Warn("Freezer need related env, may wait for a while")
 	return missFreezerEnvErr
 }
 
