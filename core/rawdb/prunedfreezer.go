@@ -99,10 +99,9 @@ func (f *prunedfreezer) repair(datadir string) error {
 	// If minItems is non-zero, it indicates that the chain freezer was previously enabled, and we should use minItems as the current frozen value.
 	// If minItems is zero, it indicates that the pruneAncient was previously enabled, and we should continue using frozen
 	//	(retrieved from CurrentAncientFreezer) as the current frozen value.
-	var offset uint64
-	if minItems != 0 {
-		offset = minItems
-	} else {
+	offset := minItems
+	if offset == 0 {
+		// no item in ancientDB, init `offset` to the `f.frozen`
 		offset = atomic.LoadUint64(&f.frozen)
 	}
 	log.Info("Read ancientdb item counts", "items", minItems, "offset", offset)
