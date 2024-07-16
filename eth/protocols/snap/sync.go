@@ -2345,11 +2345,11 @@ func (s *Syncer) commitHealer(force bool) {
 		return
 	}
 	batch := s.db.NewBatch()
-	var trieBatch ethdb.Batch
+	var stateBatch ethdb.Batch
 	var err error
 	if s.db.StateStore() != nil {
-		trieBatch = s.db.StateStore().NewBatch()
-		err = s.healer.scheduler.Commit(batch, trieBatch)
+		stateBatch = s.db.StateStore().NewBatch()
+		err = s.healer.scheduler.Commit(batch, stateBatch)
 	} else {
 		err = s.healer.scheduler.Commit(batch, nil)
 	}
@@ -2360,7 +2360,7 @@ func (s *Syncer) commitHealer(force bool) {
 		log.Crit("Failed to persist healing data", "err", err)
 	}
 	if s.db.StateStore() != nil {
-		if err := trieBatch.Write(); err != nil {
+		if err := stateBatch.Write(); err != nil {
 			log.Crit("Failed to persist healing data", "err", err)
 		}
 	}

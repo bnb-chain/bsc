@@ -426,19 +426,21 @@ func (s *Sync) Commit(dbw ethdb.Batch, stateBatch ethdb.Batch) error {
 		account int
 		storage int
 	)
-	var trieBatch ethdb.Batch
-	if stateBatch != nil {
-		trieBatch = stateBatch
-	} else {
-		trieBatch = dbw
-	}
 	for _, op := range s.membatch.nodes {
 		if op.isDelete() {
 			// node deletion is only supported in path mode.
 			if op.owner == (common.Hash{}) {
-				rawdb.DeleteAccountTrieNode(trieBatch, op.path)
+				if stateBatch != nil {
+					rawdb.DeleteAccountTrieNode(stateBatch, op.path)
+				} else {
+					rawdb.DeleteAccountTrieNode(dbw, op.path)
+				}
 			} else {
-				rawdb.DeleteStorageTrieNode(trieBatch, op.owner, op.path)
+				if stateBatch != nil {
+					rawdb.DeleteStorageTrieNode(stateBatch, op.owner, op.path)
+				} else {
+					rawdb.DeleteStorageTrieNode(dbw, op.owner, op.path)
+				}
 			}
 			deletionGauge.Inc(1)
 		} else {
@@ -447,7 +449,11 @@ func (s *Sync) Commit(dbw ethdb.Batch, stateBatch ethdb.Batch) error {
 			} else {
 				storage += 1
 			}
-			rawdb.WriteTrieNode(trieBatch, op.owner, op.path, op.hash, op.blob, s.scheme)
+			if stateBatch != nil {
+				rawdb.WriteTrieNode(stateBatch, op.owner, op.path, op.hash, op.blob, s.scheme)
+			} else {
+				rawdb.WriteTrieNode(dbw, op.owner, op.path, op.hash, op.blob, s.scheme)
+			}
 		}
 	}
 	accountNodeSyncedGauge.Inc(int64(account))
