@@ -749,7 +749,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				blockHash  common.Hash
 			)
 			if number == 0 {
-				checkpoint := chain.GetHeaderByNumber(0)
+				checkpoint = chain.GetHeaderByNumber(0)
 				if checkpoint != nil {
 					blockHash = checkpoint.Hash()
 				}
