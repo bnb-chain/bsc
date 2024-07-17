@@ -642,7 +642,7 @@ func (f *faucet) loop() {
 			f.lock.RUnlock()
 		}
 	}()
-	// Wait for various events and assing to the appropriate background threads
+	// Wait for various events and assign to the appropriate background threads
 	for {
 		select {
 		case head := <-heads:

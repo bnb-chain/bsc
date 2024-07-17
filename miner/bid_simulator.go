@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -68,6 +69,12 @@ type simBidReq struct {
 	interruptCh chan int32
 }
 
+// newBidPackage is the warp of a new bid and a feedback channel
+type newBidPackage struct {
+	bid      *types.Bid
+	feedback chan error
+}
+
 // bidSimulator is in charge of receiving bid from builders, reporting issue to builders.
 // And take care of bid simulation, rewards computing, best bid maintaining.
 type bidSimulator struct {
@@ -95,7 +102,7 @@ type bidSimulator struct {
 
 	// channels
 	simBidCh chan *simBidReq
-	newBidCh chan *types.Bid
+	newBidCh chan newBidPackage
 
 	pendingMu sync.RWMutex
 	pending   map[uint64]map[common.Address]map[common.Hash]struct{} // blockNumber -> builder -> bidHash -> struct{}
@@ -128,7 +135,7 @@ func newBidSimulator(
 		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
 		builders:      make(map[common.Address]*builderclient.Client),
 		simBidCh:      make(chan *simBidReq),
-		newBidCh:      make(chan *types.Bid, 100),
+		newBidCh:      make(chan newBidPackage, 100),
 		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
 		bestBid:       make(map[common.Hash]*BidRuntime),
 		simulatingBid: make(map[common.Hash]*BidRuntime),
@@ -327,6 +334,10 @@ func (b *bidSimulator) newBidLoop() {
 		}
 	}
 
+	genDiscardedReply := func(betterBid *BidRuntime) error {
+		return fmt.Errorf("bid is discarded, current bestBid is [blockReward: %s, validatorReward: %s]", betterBid.expectedBlockReward, betterBid.expectedValidatorReward)
+	}
+
 	for {
 		select {
 		case newBid := <-b.newBidCh:
@@ -334,60 +345,47 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			// check the block reward and validator reward of the newBid
-			expectedBlockReward := newBid.GasFee
-			expectedValidatorReward := new(big.Int).Mul(expectedBlockReward, big.NewInt(int64(b.config.ValidatorCommission)))
-			expectedValidatorReward.Div(expectedValidatorReward, big.NewInt(10000))
-			expectedValidatorReward.Sub(expectedValidatorReward, newBid.BuilderFee)
-
-			if expectedValidatorReward.Cmp(big.NewInt(0)) < 0 {
-				// damage self profit, ignore
-				log.Debug("BidSimulator: invalid bid, validator reward is less than 0, ignore",
-					"builder", newBid.Builder, "bidHash", newBid.Hash().Hex())
-				continue
-			}
-
-			bidRuntime := &BidRuntime{
-				bid:                     newBid,
-				expectedBlockReward:     expectedBlockReward,
-				expectedValidatorReward: expectedValidatorReward,
-				packedBlockReward:       big.NewInt(0),
-				packedValidatorReward:   big.NewInt(0),
-				finished:                make(chan struct{}),
-			}
-
-			simulatingBid := b.GetSimulatingBid(newBid.ParentHash)
-			// simulatingBid is nil means there is no bid in simulation
-			if simulatingBid == nil {
-				// bestBid is nil means bid is the first bid
-				bestBid := b.GetBestBid(newBid.ParentHash)
-				if bestBid == nil {
-					commit(commitInterruptBetterBid, bidRuntime)
-					continue
+			bidRuntime, err := newBidRuntime(newBid.bid, b.config.ValidatorCommission)
+			if err != nil {
+				if newBid.feedback != nil {
+					newBid.feedback <- err
 				}
+				continue
+			}
 
-				// if bestBid is not nil, check if newBid is better than bestBid
-				if bidRuntime.expectedBlockReward.Cmp(bestBid.expectedBlockReward) >= 0 &&
-					bidRuntime.expectedValidatorReward.Cmp(bestBid.expectedValidatorReward) >= 0 {
-					// if both reward are better than last simulating newBid, commit for simulation
+			var replyErr error
+			// simulatingBid will be nil if there is no bid in simulation, compare with the bestBid instead
+			if simulatingBid := b.GetSimulatingBid(newBid.bid.ParentHash); simulatingBid != nil {
+				// simulatingBid always better than bestBid, so only compare with simulatingBid if a simulatingBid exists
+				if bidRuntime.isExpectedBetterThan(simulatingBid) {
 					commit(commitInterruptBetterBid, bidRuntime)
-					continue
+				} else {
+					replyErr = genDiscardedReply(simulatingBid)
 				}
-
-				log.Debug("BidSimulator: lower reward, ignore",
-					"builder", bidRuntime.bid.Builder, "bidHash", newBid.Hash().Hex())
-				continue
+			} else {
+				// bestBid is nil means the bid is the first bid, otherwise the bid should compare with the bestBid
+				if bestBid := b.GetBestBid(newBid.bid.ParentHash); bestBid == nil ||
+					bidRuntime.isExpectedBetterThan(bestBid) {
+					commit(commitInterruptBetterBid, bidRuntime)
+				} else {
+					replyErr = genDiscardedReply(bestBid)
+				}
 			}
 
-			// simulatingBid must be better than bestBid, if newBid is better than simulatingBid, commit for simulation
-			if bidRuntime.expectedBlockReward.Cmp(simulatingBid.expectedBlockReward) >= 0 &&
-				bidRuntime.expectedValidatorReward.Cmp(simulatingBid.expectedValidatorReward) >= 0 {
-				// if both reward are better than last simulating newBid, commit for simulation
-				commit(commitInterruptBetterBid, bidRuntime)
-				continue
+			if newBid.feedback != nil {
+				newBid.feedback <- replyErr
+
+				log.Info("[BID ARRIVED]",
+					"block", newBid.bid.BlockNumber,
+					"builder", newBid.bid.Builder,
+					"accepted", replyErr == nil,
+					"blockReward", weiToEtherStringF6(bidRuntime.expectedBlockReward),
+					"validatorReward", weiToEtherStringF6(bidRuntime.expectedValidatorReward),
+					"tx", len(newBid.bid.Txs),
+					"hash", newBid.bid.Hash().TerminalString(),
+				)
 			}
 
-			log.Debug("BidSimulator: lower reward, ignore", "builder", newBid.Builder, "bidHash", newBid.Hash().Hex())
 		case <-b.exitCh:
 			return
 		}
@@ -442,10 +440,19 @@ func (b *bidSimulator) clearLoop() {
 func (b *bidSimulator) sendBid(_ context.Context, bid *types.Bid) error {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
+
+	replyCh := make(chan error, 1)
+
 	select {
-	case b.newBidCh <- bid:
+	case b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh}:
 		b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
-		return nil
+	case <-timer.C:
+		return types.ErrMevBusy
+	}
+
+	select {
+	case reply := <-replyCh:
+		return reply
 	case <-timer.C:
 		return types.ErrMevBusy
 	}
@@ -491,6 +498,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	var (
+		startTS = time.Now()
+
 		blockNumber = bidRuntime.bid.BlockNumber
 		parentHash  = bidRuntime.bid.ParentHash
 		builder     = bidRuntime.bid.Builder
@@ -542,12 +551,12 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			}
 
 			select {
-			case b.newBidCh <- bidRuntime.bid:
+			case b.newBidCh <- newBidPackage{bid: bidRuntime.bid}:
 				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 			default:
 			}
 		}
-	}(time.Now())
+	}(startTS)
 
 	// prepareWork will configure header with a suitable time according to consensus
 	// prepareWork will start trie prefetching
@@ -633,7 +642,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if b.config.GreedyMergeTx {
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 		if delay != nil && *delay > 0 {
-			bidTxsSet := mapset.NewSet[common.Hash]()
+			bidTxsSet := mapset.NewThreadUnsafeSetWithSize[common.Hash](len(bidRuntime.bid.Txs))
 			for _, tx := range bidRuntime.bid.Txs {
 				bidTxsSet.Add(tx.Hash())
 			}
@@ -658,11 +667,28 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	bestBid := b.GetBestBid(parentHash)
-
 	if bestBid == nil {
+		log.Info("[BID RESULT]", "win", "true[first]", "builder", bidRuntime.bid.Builder, "hash", bidRuntime.bid.Hash().TerminalString())
 		b.SetBestBid(bidRuntime.bid.ParentHash, bidRuntime)
 		success = true
 		return
+	}
+
+	if bidRuntime.bid.Hash() != bestBid.bid.Hash() {
+		log.Info("[BID RESULT]",
+			"win", bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) >= 0,
+
+			"bidHash", bidRuntime.bid.Hash().TerminalString(),
+			"bestHash", bestBid.bid.Hash().TerminalString(),
+
+			"bidGasFee", weiToEtherStringF6(bidRuntime.packedBlockReward),
+			"bestGasFee", weiToEtherStringF6(bestBid.packedBlockReward),
+
+			"bidBlockTx", bidRuntime.env.tcount,
+			"bestBlockTx", bestBid.env.tcount,
+
+			"simElapsed", time.Since(startTS),
+		)
 	}
 
 	// this is the simplest strategy: best for all the delegators.
@@ -678,7 +704,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	select {
-	case b.newBidCh <- bestBid.bid:
+	case b.newBidCh <- newBidPackage{bid: bestBid.bid}:
 		log.Debug("BidSimulator: recommit last bid", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 	default:
 	}
@@ -698,7 +724,7 @@ func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
 		})
 
 		if err != nil {
-			log.Error("BidSimulator: failed to report issue", "builder", bidRuntime.bid.Builder, "err", err)
+			log.Warn("BidSimulator: failed to report issue", "builder", bidRuntime.bid.Builder, "err", err)
 		}
 	}
 }
@@ -718,9 +744,40 @@ type BidRuntime struct {
 	duration time.Duration
 }
 
+func newBidRuntime(newBid *types.Bid, validatorCommission uint64) (*BidRuntime, error) {
+	// check the block reward and validator reward of the newBid
+	expectedBlockReward := newBid.GasFee
+	expectedValidatorReward := new(big.Int).Mul(expectedBlockReward, big.NewInt(int64(validatorCommission)))
+	expectedValidatorReward.Div(expectedValidatorReward, big.NewInt(10000))
+	expectedValidatorReward.Sub(expectedValidatorReward, newBid.BuilderFee)
+
+	if expectedValidatorReward.Cmp(big.NewInt(0)) < 0 {
+		// damage self profit, ignore
+		log.Debug("BidSimulator: invalid bid, validator reward is less than 0, ignore",
+			"builder", newBid.Builder, "bidHash", newBid.Hash().Hex())
+		return nil, fmt.Errorf("validator reward is less than 0, value: %s, commissionConfig: %d", expectedValidatorReward, validatorCommission)
+	}
+
+	bidRuntime := &BidRuntime{
+		bid:                     newBid,
+		expectedBlockReward:     expectedBlockReward,
+		expectedValidatorReward: expectedValidatorReward,
+		packedBlockReward:       big.NewInt(0),
+		packedValidatorReward:   big.NewInt(0),
+		finished:                make(chan struct{}),
+	}
+
+	return bidRuntime, nil
+}
+
 func (r *BidRuntime) validReward() bool {
 	return r.packedBlockReward.Cmp(r.expectedBlockReward) >= 0 &&
 		r.packedValidatorReward.Cmp(r.expectedValidatorReward) >= 0
+}
+
+func (r *BidRuntime) isExpectedBetterThan(other *BidRuntime) bool {
+	return r.expectedBlockReward.Cmp(other.expectedBlockReward) >= 0 &&
+		r.expectedValidatorReward.Cmp(other.expectedValidatorReward) >= 0
 }
 
 // packReward calculates packedBlockReward and packedValidatorReward
@@ -777,4 +834,9 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	r.env.tcount++
 
 	return nil
+}
+
+func weiToEtherStringF6(wei *big.Int) string {
+	f, _ := new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(params.Ether)).Float64()
+	return strconv.FormatFloat(f, 'f', 6, 64)
 }

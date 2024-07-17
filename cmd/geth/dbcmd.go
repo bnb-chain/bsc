@@ -397,8 +397,8 @@ func inspectTrie(ctx *cli.Context) error {
 	var headerBlockHash common.Hash
 	if ctx.NArg() >= 1 {
 		if ctx.Args().Get(0) == "latest" {
-			headerHash := rawdb.ReadHeadHeaderHash(db.BlockStore())
-			blockNumber = *(rawdb.ReadHeaderNumber(db.BlockStore(), headerHash))
+			headerHash := rawdb.ReadHeadHeaderHash(db)
+			blockNumber = *(rawdb.ReadHeaderNumber(db, headerHash))
 		} else if ctx.Args().Get(0) == "snapshot" {
 			trieRootHash = rawdb.ReadSnapshotRoot(db)
 			blockNumber = math.MaxUint64
@@ -1212,7 +1212,7 @@ func showMetaData(ctx *cli.Context) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error accessing ancients: %v", err)
 	}
-	data := rawdb.ReadChainMetadataFromMultiDatabase(db)
+	data := rawdb.ReadChainMetadata(db)
 	data = append(data, []string{"frozen", fmt.Sprintf("%d items", ancients)})
 	data = append(data, []string{"snapshotGenerator", snapshot.ParseGeneratorStatus(rawdb.ReadSnapshotGenerator(db))})
 	if b := rawdb.ReadHeadBlock(db); b != nil {
@@ -1255,7 +1255,7 @@ func hbss2pbss(ctx *cli.Context) error {
 	defer stack.Close()
 
 	db := utils.MakeChainDatabase(ctx, stack, false, false)
-	db.Sync()
+	db.BlockStore().Sync()
 	stateDiskDb := db.StateStore()
 	defer db.Close()
 
@@ -1273,8 +1273,8 @@ func hbss2pbss(ctx *cli.Context) error {
 		log.Info("hbss2pbss triedb", "scheme", triedb.Scheme())
 		defer triedb.Close()
 
-		headerHash := rawdb.ReadHeadHeaderHash(db.BlockStore())
-		blockNumber := rawdb.ReadHeaderNumber(db.BlockStore(), headerHash)
+		headerHash := rawdb.ReadHeadHeaderHash(db)
+		blockNumber := rawdb.ReadHeaderNumber(db, headerHash)
 		if blockNumber == nil {
 			log.Error("read header number failed.")
 			return fmt.Errorf("read header number failed")

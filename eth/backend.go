@@ -185,14 +185,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	// Override the chain config with provided settings.
 	var overrides core.ChainOverrides
-	if config.OverrideCancun != nil {
-		chainConfig.CancunTime = config.OverrideCancun
-		overrides.OverrideCancun = config.OverrideCancun
-	}
-	if config.OverrideHaber != nil {
-		chainConfig.HaberTime = config.OverrideHaber
-		overrides.OverrideHaber = config.OverrideHaber
-	}
 	if config.OverrideBohr != nil {
 		chainConfig.BohrTime = config.OverrideBohr
 		overrides.OverrideBohr = config.OverrideBohr
