@@ -742,8 +742,8 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		// If we're at the genesis, snapshot the initial state. Alternatively if we have
 		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
 		// consider the checkpoint trusted and snapshot it.
-		// even BEP-341 enabled, an offset `p.config.Epoch/2` can ensure getting the right validators.
-		if number == 0 || (number%p.config.Epoch == p.config.Epoch/2 && (len(headers) > int(params.FullImmutabilityThreshold))) {
+		// An offset `p.config.Epoch - 1` can ensure getting the right validators.
+		if number == 0 || ((number+1)%p.config.Epoch == 0 && (len(headers) > int(params.FullImmutabilityThreshold))) {
 			var (
 				checkpoint *types.Header
 				blockHash  common.Hash
@@ -754,7 +754,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 					blockHash = checkpoint.Hash()
 				}
 			} else {
-				checkpoint = chain.GetHeaderByNumber(number - p.config.Epoch/2)
+				checkpoint = chain.GetHeaderByNumber(number + 1 - p.config.Epoch)
 				blockHeader := chain.GetHeaderByNumber(number)
 				if blockHeader != nil {
 					blockHash = blockHeader.Hash()
