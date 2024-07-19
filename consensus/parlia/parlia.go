@@ -2022,7 +2022,11 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 			return 0
 		}
 
-		s := rand.NewSource(int64(snap.Number))
+		randSeed := snap.Number
+		if p.chainConfig.IsBohr(header.Number, header.Time) {
+			randSeed = header.Number.Uint64() / uint64(snap.TurnLength)
+		}
+		s := rand.NewSource(int64(randSeed))
 		r := rand.New(s)
 		n := len(validators)
 		backOffSteps := make([]uint64, 0, n)
