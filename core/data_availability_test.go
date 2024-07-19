@@ -365,6 +365,10 @@ func (r *mockDAHeaderReader) GetHighestVerifiedHeader() *types.Header {
 	panic("not supported")
 }
 
+func (r *mockDAHeaderReader) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
+	panic("not supported")
+}
+
 func createMockDATx(config *params.ChainConfig, sidecar *types.BlobTxSidecar) *types.Transaction {
 	if sidecar == nil {
 		tx := &types.DynamicFeeTx{
