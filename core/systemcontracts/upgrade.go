@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"reflect"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -739,9 +740,10 @@ func init() {
 }
 
 func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB) {
-	if config == nil || blockNumber == nil || statedb == nil {
+	if config == nil || blockNumber == nil || statedb == nil || reflect.ValueOf(statedb).IsNil() {
 		return
 	}
+
 	var network string
 	switch GenesisHash {
 	/* Add mainnet genesis hash */
