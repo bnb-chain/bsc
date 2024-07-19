@@ -121,9 +121,12 @@ func (f *ForkChoice) ReorgNeeded(current *types.Header, extern *types.Header) (b
 		if f.preserve != nil {
 			currentPreserve, externPreserve = f.preserve(current), f.preserve(extern)
 		}
+		doubleSign := (extern.Coinbase == current.Coinbase)
 		reorg = !currentPreserve && (externPreserve ||
 			extern.Time < current.Time ||
-			extern.Time == current.Time && f.rand.Float64() < 0.5)
+			extern.Time == current.Time &&
+				(doubleSign && extern.Hash().Cmp(current.Hash()) < 0 ||
+					!doubleSign && f.rand.Float64() < 0.5))
 	}
 	return reorg, nil
 }
