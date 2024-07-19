@@ -1032,6 +1032,8 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		}
 		if w.chainConfig.Parlia == nil {
 			header.ParentBeaconRoot = genParams.beaconRoot
+		} else if w.chainConfig.IsBohr(header.Number, header.Time) {
+			header.ParentBeaconRoot = new(common.Hash)
 		}
 	}
 	// Could potentially happen if starting to mine in an odd state.

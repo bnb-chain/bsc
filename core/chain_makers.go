@@ -486,7 +486,7 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 		if cm.config.Parlia != nil {
 			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
 		}
-		if cm.config.Parlia == nil {
+		if cm.config.Parlia == nil || cm.config.IsBohr(header.Number, header.Time) {
 			header.ParentBeaconRoot = new(common.Hash)
 		}
 	}
