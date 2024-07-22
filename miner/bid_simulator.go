@@ -409,7 +409,7 @@ func (b *bidSimulator) clearLoop() {
 		}
 		delete(b.bestBid, parentHash)
 		for k, v := range b.bestBid {
-			if v.bid.BlockNumber <= blockNumber-core.TriesInMemory {
+			if v.bid.BlockNumber <= blockNumber-b.chain.TriesInMemory() {
 				v.env.discard()
 				delete(b.bestBid, k)
 			}
@@ -418,7 +418,7 @@ func (b *bidSimulator) clearLoop() {
 
 		b.simBidMu.Lock()
 		for k, v := range b.simulatingBid {
-			if v.bid.BlockNumber <= blockNumber-core.TriesInMemory {
+			if v.bid.BlockNumber <= blockNumber-b.chain.TriesInMemory() {
 				v.env.discard()
 				delete(b.simulatingBid, k)
 			}
