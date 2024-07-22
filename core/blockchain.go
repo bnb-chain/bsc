@@ -1798,6 +1798,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
 		}
+		bc.hc.tdCache.Add(block.Hash(), externTd)
+		bc.blockCache.Add(block.Hash(), block)
+		bc.receiptsCache.Add(block.Hash(), receipts)
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			bc.sidecarsCache.Add(block.Hash(), block.Sidecars())
+		}
 		wg.Done()
 	}()
 
