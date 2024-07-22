@@ -643,19 +643,22 @@ func (f *faucet) loop() {
 			balance := new(big.Int).Div(f.balance, ether)
 
 			for _, conn := range f.conns {
-				if err := send(conn, map[string]interface{}{
-					"funds":    balance,
-					"funded":   f.nonce,
-					"requests": f.reqs,
-				}, time.Second); err != nil {
-					log.Warn("Failed to send stats to client", "err", err)
-					conn.conn.Close()
-					continue
-				}
-				if err := send(conn, head, time.Second); err != nil {
-					log.Warn("Failed to send header to client", "err", err)
-					conn.conn.Close()
-				}
+				go func(conn *wsConn) {
+					if err := send(conn, map[string]interface{}{
+						"funds":    balance,
+						"funded":   f.nonce,
+						"requests": f.reqs,
+					}, time.Second); err != nil {
+						log.Warn("Failed to send stats to client", "err", err)
+						conn.conn.Close()
+						return // Exit the goroutine if the first send fails
+					}
+
+					if err := send(conn, head, time.Second); err != nil {
+						log.Warn("Failed to send header to client", "err", err)
+						conn.conn.Close()
+					}
+				}(conn)
 			}
 			f.lock.RUnlock()
 		}
@@ -674,10 +677,12 @@ func (f *faucet) loop() {
 			// Pending requests updated, stream to clients
 			f.lock.RLock()
 			for _, conn := range f.conns {
-				if err := send(conn, map[string]interface{}{"requests": f.reqs}, time.Second); err != nil {
-					log.Warn("Failed to send requests to client", "err", err)
-					conn.conn.Close()
-				}
+				go func(conn *wsConn) {
+					if err := send(conn, map[string]interface{}{"requests": f.reqs}, time.Second); err != nil {
+						log.Warn("Failed to send requests to client", "err", err)
+						conn.conn.Close()
+					}
+				}(conn)
 			}
 			f.lock.RUnlock()
 		}
