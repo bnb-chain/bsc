@@ -285,6 +285,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 
 	limiter := f.limiter.GetLimiter(ip)
 	if !limiter.Allow() {
+		log.Warn("Too many requests from client: ", "client", ip)
 		http.Error(w, "Too many requests", http.StatusTooManyRequests)
 		return
 	}
