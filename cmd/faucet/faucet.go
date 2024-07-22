@@ -49,6 +49,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/gorilla/websocket"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -216,6 +217,8 @@ type faucet struct {
 
 	bep2eInfos map[string]bep2eInfo
 	bep2eAbi   abi.ABI
+
+	limiter *IPRateLimiter
 }
 
 // wsConn wraps a websocket connection with a write mutex as the underlying
@@ -245,6 +248,7 @@ func newFaucet(genesis *core.Genesis, url string, ks *keystore.KeyStore, index [
 		update:     make(chan struct{}, 1),
 		bep2eInfos: bep2eInfos,
 		bep2eAbi:   bep2eAbi,
+		limiter:    NewIPRateLimiter(rate.Limit(1), 5), // Allow 1 request per second with a burst of 5
 	}, nil
 }
 
@@ -272,6 +276,19 @@ func (f *faucet) webHandler(w http.ResponseWriter, r *http.Request) {
 
 // apiHandler handles requests for Ether grants and transaction statuses.
 func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
+
+	ip := r.RemoteAddr
+	if len(r.Header.Get("X-Forwarded-For")) > 0 {
+		ips := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+		ip = strings.TrimSpace(ips[len(ips)-1])
+	}
+
+	limiter := f.limiter.GetLimiter(ip)
+	if !limiter.Allow() {
+		http.Error(w, "Too many requests", http.StatusTooManyRequests)
+		return
+	}
+
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -900,4 +917,47 @@ func getGenesis(genesisFlag string, goerliFlag bool, sepoliaFlag bool) (*core.Ge
 	default:
 		return nil, errors.New("no genesis flag provided")
 	}
+}
+
+type IPRateLimiter struct {
+	ips map[string]*rate.Limiter
+	mu  *sync.RWMutex
+	r   rate.Limit
+	b   int
+}
+
+func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
+	i := &IPRateLimiter{
+		ips: make(map[string]*rate.Limiter),
+		mu:  &sync.RWMutex{},
+		r:   r,
+		b:   b,
+	}
+
+	return i
+}
+
+func (i *IPRateLimiter) AddIP(ip string) *rate.Limiter {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	limiter := rate.NewLimiter(i.r, i.b)
+
+	i.ips[ip] = limiter
+
+	return limiter
+}
+
+func (i *IPRateLimiter) GetLimiter(ip string) *rate.Limiter {
+	i.mu.Lock()
+	limiter, exists := i.ips[ip]
+
+	if !exists {
+		i.mu.Unlock()
+		return i.AddIP(ip)
+	}
+
+	i.mu.Unlock()
+
+	return limiter
 }

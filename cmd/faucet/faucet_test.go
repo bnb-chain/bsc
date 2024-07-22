@@ -17,9 +17,17 @@
 package main
 
 import (
+	"net/http"
 	"testing"
 
+	"net/http/httptest"
+	"sync"
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
+
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 func TestFacebook(t *testing.T) {
@@ -41,5 +49,77 @@ func TestFacebook(t *testing.T) {
 		if gotAddress != tt.want {
 			t.Fatalf("address wrong, have %v want %v", gotAddress, tt.want)
 		}
+	}
+}
+
+func TestFaucetRateLimiting(t *testing.T) {
+	// Create a minimal mockfaucet instance for testing
+	privateKey, _ := crypto.GenerateKey()
+	faucetAddr := crypto.PubkeyToAddress(privateKey.PublicKey)
+
+	config := &core.Genesis{
+		Alloc: core.GenesisAlloc{
+			faucetAddr: {Balance: common.Big1},
+		},
+	}
+
+	// Create a mockfaucet with rate limiting (1 request per second, burst of 2)
+	f, err := newFaucet(config, "http://localhost:8545", nil, []byte{}, nil)
+	if err != nil {
+		t.Fatalf("Failed to create mockfaucet: %v", err)
+	}
+	f.limiter = NewIPRateLimiter(1, 2)
+
+	// Create a test server
+	server := httptest.NewServer(http.HandlerFunc(f.apiHandler))
+	defer server.Close()
+
+	// Helper function to make a request
+	makeRequest := func() int {
+		resp, err := http.Get(server.URL)
+		if err != nil {
+			t.Fatalf("Failed to send request: %v", err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// Test rapid requests
+	var wg sync.WaitGroup
+	results := make([]int, 5)
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			results[index] = makeRequest()
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Check results
+	successCount := 0
+	rateLimitCount := 0
+	for _, status := range results {
+		if status == http.StatusOK {
+			successCount++
+		} else if status == http.StatusTooManyRequests {
+			rateLimitCount++
+		}
+	}
+
+	// We expect 2 successful requests (due to burst) and 3 rate-limited requests
+	if successCount != 2 || rateLimitCount != 3 {
+		t.Errorf("Expected 2 successful and 3 rate-limited requests, got %d successful and %d rate-limited", successCount, rateLimitCount)
+	}
+
+	// Wait for rate limit to reset
+	time.Sleep(2 * time.Second)
+
+	// Make another request, it should succeed
+	status := makeRequest()
+	if status != http.StatusOK {
+		t.Errorf("Expected success after rate limit reset, got status %d", status)
 	}
 }
