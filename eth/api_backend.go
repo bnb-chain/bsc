@@ -444,12 +444,8 @@ func (b *EthAPIBackend) Engine() consensus.Engine {
 func (b *EthAPIBackend) CurrentTurnLength() (turnLength uint8, err error) {
 	if p, ok := b.eth.engine.(*parlia.Parlia); ok {
 		service := p.APIs(b.Chain())[0].Service
-		snap, err := service.(*parlia.API).GetSnapshot(nil)
-		if err != nil {
-			return 0, err
-		}
-
-		return snap.TurnLength, nil
+		currentHead := rpc.LatestBlockNumber
+		return service.(*parlia.API).GetTurnLength(&currentHead)
 	}
 
 	return 1, nil

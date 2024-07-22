@@ -13,6 +13,8 @@ const main = async () => {
     let gasUsedTotal = 0;
     let inturnBlocks = 0;
     let justifiedBlocks = 0;
+    let turnLength = await provider.send("parlia_getTurnLength", [
+        ethers.toQuantity(program.startNum)]);
     for (let i = program.startNum; i < program.endNum; i++) {
         let txCount = await provider.send("eth_getBlockTransactionCountByNumber", [
             ethers.toQuantity(i)]);
@@ -35,7 +37,7 @@ const main = async () => {
         } else {
             console.log("justified unexpected", "BlockNumber =", i,"justifiedNumber",justifiedNumber)    
         }
-        console.log("BlockNumber =", i, "mod =", i%4, "miner =", header.miner , "difficulty =", difficulty, "txCount =", ethers.toNumber(txCount), "gasUsed", gasUsed, "timestamp", timestamp)
+        console.log("BlockNumber =", i, "mod =", i%turnLength, "miner =", header.miner , "difficulty =", difficulty, "txCount =", ethers.toNumber(txCount), "gasUsed", gasUsed, "timestamp", timestamp)
     }
 
     let blockCount = program.endNum - program.startNum
