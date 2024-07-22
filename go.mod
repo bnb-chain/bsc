@@ -2,8 +2,6 @@ module github.com/ethereum/go-ethereum
 
 go 1.21
 
-toolchain go1.21.5
-
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.0
 	github.com/Microsoft/go-winio v0.6.1
@@ -26,7 +24,7 @@ require (
 	github.com/deckarep/golang-set/v2 v2.5.0
 	github.com/dop251/goja v0.0.0-20230806174421-c933cf95e127
 	github.com/ethereum/c-kzg-4844 v0.4.0
-	github.com/fatih/color v1.13.0
+	github.com/fatih/color v1.14.1
 	github.com/fatih/structs v1.1.0
 	github.com/fjl/gencodec v0.0.0-20230517082657-f9840df7b83e
 	github.com/fjl/memsize v0.0.2
@@ -39,7 +37,7 @@ require (
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb
 	github.com/google/gofuzz v1.2.0
 	github.com/google/pprof v0.0.0-20240207164012-fb44976bdcd5
-	github.com/google/uuid v1.4.0
+	github.com/google/uuid v1.5.0
 	github.com/gorilla/websocket v1.5.1
 	github.com/graph-gophers/graphql-go v1.3.0
 	github.com/hashicorp/go-bexpr v0.1.10
@@ -98,6 +96,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.3.0 // indirect
 	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
+	github.com/allegro/bigcache v1.2.1 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20200805130819-fd197cf57d96 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.13 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.43 // indirect
@@ -233,12 +232,10 @@ require (
 	github.com/prometheus/common v0.47.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/prometheus/prom2json v1.3.0 // indirect
-	github.com/prysmaticlabs/eth2-types v0.0.0-20210303084904-c9735a06829d // indirect
 	github.com/prysmaticlabs/fastssz v0.0.0-20221107182844-78142813af44 // indirect
 	github.com/prysmaticlabs/go-bitfield v0.0.0-20210809151128-385d8c5e3fb7 // indirect
 	github.com/prysmaticlabs/gohashtree v0.0.4-beta // indirect
 	github.com/prysmaticlabs/prombbolt v0.0.0-20210126082820-9b7adba6db7c // indirect
-	github.com/prysmaticlabs/prysm v0.0.0-20220124113610-e26cde5e091b // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/quic-go v0.42.0 // indirect
 	github.com/quic-go/webtransport-go v0.6.0 // indirect
@@ -249,9 +246,10 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/schollz/progressbar/v3 v3.3.4 // indirect
-	github.com/sirupsen/logrus v1.9.0 // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/afero v1.10.0 // indirect
+	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c // indirect
 	github.com/thomaso-mirodin/intmath v0.0.0-20160323211736-5dc6d854e46e // indirect
 	github.com/tidwall/gjson v1.10.2 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -266,7 +264,7 @@ require (
 	github.com/wealdtech/go-eth2-util v1.6.3 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
-	go.etcd.io/bbolt v1.3.7 // indirect
+	go.etcd.io/bbolt v1.3.9 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/dig v1.17.1 // indirect
 	go.uber.org/fx v1.20.1 // indirect
@@ -279,8 +277,10 @@ require (
 	golang.org/x/term v0.18.0 // indirect
 	google.golang.org/api v0.44.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
-	google.golang.org/grpc v1.56.3 // indirect
+	google.golang.org/genproto v0.0.0-20231016165738-49dd2c1f3d0b // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20231012201019-e917dd12ba7a // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20231016165738-49dd2c1f3d0b // indirect
+	google.golang.org/grpc v1.59.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -295,8 +295,7 @@ require (
 )
 
 replace (
-	github.com/btcsuite/btcd => github.com/btcsuite/btcd v0.23.0
-	github.com/cometbft/cometbft => github.com/bnb-chain/greenfield-tendermint v0.0.0-20230417032003-4cda1f296fb2
+	github.com/cometbft/cometbft => github.com/bnb-chain/greenfield-cometbft v1.3.1
 	github.com/grpc-ecosystem/grpc-gateway/v2 => github.com/prysmaticlabs/grpc-gateway/v2 v2.3.1-0.20210702154020-550e1cd83ec1
 	github.com/syndtr/goleveldb v1.0.1 => github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.16

@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -66,28 +68,49 @@ func newPrunedFreezer(datadir string, db ethdb.KeyValueStore, offset uint64) (*p
 
 // repair init frozen , compatible disk-ancientdb and pruner-block-tool.
 func (f *prunedfreezer) repair(datadir string) error {
-	offset := atomic.LoadUint64(&f.frozen)
 	// compatible freezer
-	min := uint64(math.MaxUint64)
+	minItems := uint64(math.MaxUint64)
 	for name, disableSnappy := range chainFreezerNoSnappy {
-		table, err := newFreezerTable(datadir, name, disableSnappy, false)
+		var (
+			table *freezerTable
+			err   error
+		)
+		if slices.Contains(additionTables, name) {
+			table, err = newAdditionTable(datadir, name, disableSnappy, false)
+		} else {
+			table, err = newFreezerTable(datadir, name, disableSnappy, false)
+		}
 		if err != nil {
 			return err
 		}
+		// addition tables only align head
+		if slices.Contains(additionTables, name) {
+			if EmptyTable(table) {
+				continue
+			}
+		}
 		items := table.items.Load()
-		if min > items {
-			min = items
+		if minItems > items {
+			minItems = items
 		}
 		table.Close()
 	}
-	log.Info("Read ancientdb item counts", "items", min)
-	offset += min
 
-	if frozen := ReadFrozenOfAncientFreezer(f.db); frozen > offset {
-		offset = frozen
+	// If minItems is non-zero, it indicates that the chain freezer was previously enabled, and we should use minItems as the current frozen value.
+	// If minItems is zero, it indicates that the pruneAncient was previously enabled, and we should continue using frozen
+	//	(retrieved from CurrentAncientFreezer) as the current frozen value.
+	offset := minItems
+	if offset == 0 {
+		// no item in ancientDB, init `offset` to the `f.frozen`
+		offset = atomic.LoadUint64(&f.frozen)
 	}
+	log.Info("Read ancientdb item counts", "items", minItems, "offset", offset)
 
-	atomic.StoreUint64(&f.frozen, offset)
+	// FrozenOfAncientFreezer is the progress of the last prune-freezer freeze.
+	frozenInDB := ReadFrozenOfAncientFreezer(f.db)
+	maxOffset := max(offset, frozenInDB)
+
+	atomic.StoreUint64(&f.frozen, maxOffset)
 	if err := f.Sync(); err != nil {
 		return nil
 	}
@@ -299,9 +322,8 @@ func (f *prunedfreezer) freeze() {
 				log.Error("Append ancient err", "number", f.frozen, "hash", hash, "err", err)
 				break
 			}
-			if hash != (common.Hash{}) {
-				ancients = append(ancients, hash)
-			}
+			// may include common.Hash{}, will be delete in gcKvStore
+			ancients = append(ancients, hash)
 		}
 		// Batch of blocks have been frozen, flush them before wiping from leveldb
 		if err := f.Sync(); err != nil {

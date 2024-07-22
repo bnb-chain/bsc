@@ -259,23 +259,25 @@ type BlockChain struct {
 	triesInMemory uint64
 	txIndexer     *txIndexer // Transaction indexer, might be nil if not enabled
 
-	hc                  *HeaderChain
-	rmLogsFeed          event.Feed
-	chainFeed           event.Feed
-	chainSideFeed       event.Feed
-	chainHeadFeed       event.Feed
-	chainBlockFeed      event.Feed
-	logsFeed            event.Feed
-	blockProcFeed       event.Feed
-	finalizedHeaderFeed event.Feed
-	scope               event.SubscriptionScope
-	genesisBlock        *types.Block
+	hc                       *HeaderChain
+	rmLogsFeed               event.Feed
+	chainFeed                event.Feed
+	chainSideFeed            event.Feed
+	chainHeadFeed            event.Feed
+	chainBlockFeed           event.Feed
+	logsFeed                 event.Feed
+	blockProcFeed            event.Feed
+	finalizedHeaderFeed      event.Feed
+	highestVerifiedBlockFeed event.Feed
+	scope                    event.SubscriptionScope
+	genesisBlock             *types.Block
 
 	// This mutex synchronizes chain write operations.
 	// Readers don't need to take it, they can just read the database.
 	chainmu *syncx.ClosableMutex
 
 	highestVerifiedHeader atomic.Pointer[types.Header]
+	highestVerifiedBlock  atomic.Pointer[types.Header]
 	currentBlock          atomic.Pointer[types.Header] // Current head of the chain
 	currentSnapBlock      atomic.Pointer[types.Header] // Current head of snap-sync
 	currentFinalBlock     atomic.Pointer[types.Header] // Latest (consensus) finalized block
@@ -400,6 +402,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	}
 
 	bc.highestVerifiedHeader.Store(nil)
+	bc.highestVerifiedBlock.Store(nil)
 	bc.currentBlock.Store(nil)
 	bc.currentSnapBlock.Store(nil)
 	bc.chasingHead.Store(nil)
@@ -462,8 +465,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 	}
 	// Ensure that a previous crash in SetHead doesn't leave extra ancients
-	if frozen, err := bc.db.ItemAmountInAncient(); err == nil && frozen > 0 {
-		frozen, err = bc.db.Ancients()
+	if frozen, err := bc.db.BlockStore().ItemAmountInAncient(); err == nil && frozen > 0 {
+		frozen, err = bc.db.BlockStore().Ancients()
 		if err != nil {
 			return nil, err
 		}
@@ -657,20 +660,13 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 	}
 }
 
-func (bc *BlockChain) cacheBlock(hash common.Hash, block *types.Block) {
-	bc.blockCache.Add(hash, block)
-	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-		bc.sidecarsCache.Add(hash, block.Sidecars())
-	}
-}
-
 // empty returns an indicator whether the blockchain is empty.
 // Note, it's a special case that we connect a non-empty ancient
 // database with an empty node, so that we can plugin the ancient
 // into node seamlessly.
 func (bc *BlockChain) empty() bool {
 	genesis := bc.genesisBlock.Hash()
-	for _, hash := range []common.Hash{rawdb.ReadHeadBlockHash(bc.db.BlockStore()), rawdb.ReadHeadHeaderHash(bc.db.BlockStore()), rawdb.ReadHeadFastBlockHash(bc.db.BlockStore())} {
+	for _, hash := range []common.Hash{rawdb.ReadHeadBlockHash(bc.db), rawdb.ReadHeadHeaderHash(bc.db), rawdb.ReadHeadFastBlockHash(bc.db)} {
 		if hash != genesis {
 			return false
 		}
@@ -706,7 +702,7 @@ func (bc *BlockChain) getFinalizedNumber(header *types.Header) uint64 {
 // assumes that the chain manager mutex is held.
 func (bc *BlockChain) loadLastState() error {
 	// Restore the last known head block
-	head := rawdb.ReadHeadBlockHash(bc.db.BlockStore())
+	head := rawdb.ReadHeadBlockHash(bc.db)
 	if head == (common.Hash{}) {
 		// Corrupt or empty database, init from scratch
 		log.Warn("Empty database, resetting chain")
@@ -728,7 +724,7 @@ func (bc *BlockChain) loadLastState() error {
 
 	// Restore the last known head header
 	headHeader := headBlock.Header()
-	if head := rawdb.ReadHeadHeaderHash(bc.db.BlockStore()); head != (common.Hash{}) {
+	if head := rawdb.ReadHeadHeaderHash(bc.db); head != (common.Hash{}) {
 		if header := bc.GetHeaderByHash(head); header != nil {
 			headHeader = header
 		}
@@ -739,7 +735,7 @@ func (bc *BlockChain) loadLastState() error {
 	bc.currentSnapBlock.Store(headBlock.Header())
 	headFastBlockGauge.Update(int64(headBlock.NumberU64()))
 
-	if head := rawdb.ReadHeadFastBlockHash(bc.db.BlockStore()); head != (common.Hash{}) {
+	if head := rawdb.ReadHeadFastBlockHash(bc.db); head != (common.Hash{}) {
 		if block := bc.GetBlockByHash(head); block != nil {
 			bc.currentSnapBlock.Store(block.Header())
 			headFastBlockGauge.Update(int64(block.NumberU64()))
@@ -1107,7 +1103,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		// intent afterwards is full block importing, delete the chain segment
 		// between the stateful-block and the sethead target.
 		var wipe bool
-		frozen, _ := bc.db.Ancients()
+		frozen, _ := bc.db.BlockStore().Ancients()
 		if headNumber+1 < frozen {
 			wipe = pivot == nil || headNumber >= *pivot
 		}
@@ -1116,11 +1112,11 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	// Rewind the header chain, deleting all block bodies until then
 	delFn := func(db ethdb.KeyValueWriter, hash common.Hash, num uint64) {
 		// Ignore the error here since light client won't hit this path
-		frozen, _ := bc.db.Ancients()
+		frozen, _ := bc.db.BlockStore().Ancients()
 		if num+1 <= frozen {
 			// Truncate all relative data(header, total difficulty, body, receipt
 			// and canonical hash) from ancient store.
-			if _, err := bc.db.TruncateHead(num); err != nil {
+			if _, err := bc.db.BlockStore().TruncateHead(num); err != nil {
 				log.Crit("Failed to truncate ancient data", "number", num, "err", err)
 			}
 			// Remove the hash <-> number mapping from the active store.
@@ -1563,9 +1559,9 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Ensure genesis is in ancients.
 		if first.NumberU64() == 1 {
-			if frozen, _ := bc.db.Ancients(); frozen == 0 {
+			if frozen, _ := bc.db.BlockStore().Ancients(); frozen == 0 {
 				td := bc.genesisBlock.Difficulty()
-				writeSize, err := rawdb.WriteAncientBlocks(bc.db, []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, td)
+				writeSize, err := rawdb.WriteAncientBlocks(bc.db.BlockStore(), []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, td)
 				if err != nil {
 					log.Error("Error writing genesis to ancients", "err", err)
 					return 0, err
@@ -1583,7 +1579,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Write all chain data to ancients.
 		td := bc.GetTd(first.Hash(), first.NumberU64())
-		writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db, blockChain, receiptChain, td)
+		writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db.BlockStore(), blockChain, receiptChain, td)
 		if err != nil {
 			log.Error("Error importing chain data to ancients", "err", err)
 			return 0, err
@@ -1591,7 +1587,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		size += writeSize
 
 		// Sync the ancient store explicitly to ensure all data has been flushed to disk.
-		if err := bc.db.Sync(); err != nil {
+		if err := bc.db.BlockStore().Sync(); err != nil {
 			return 0, err
 		}
 		// Update the current snap block because all block data is now present in DB.
@@ -1599,7 +1595,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		if !updateHead(blockChain[len(blockChain)-1]) {
 			// We end up here if the header chain has reorg'ed, and the blocks/receipts
 			// don't match the canonical chain.
-			if _, err := bc.db.TruncateHead(previousSnapBlock + 1); err != nil {
+			if _, err := bc.db.BlockStore().TruncateHead(previousSnapBlock + 1); err != nil {
 				log.Error("Can't truncate ancient store after failed insert", "err", err)
 			}
 			return 0, errSideChainReceipts
@@ -1619,7 +1615,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			rawdb.DeleteBlockWithoutNumber(blockBatch, block.Hash(), block.NumberU64())
 		}
 		// Delete side chain hash-to-number mappings.
-		for _, nh := range rawdb.ReadAllHashesInRange(bc.db, first.NumberU64(), last.NumberU64()) {
+		for _, nh := range rawdb.ReadAllHashesInRange(bc.db.BlockStore(), first.NumberU64(), last.NumberU64()) {
 			if _, canon := canonHashes[nh.Hash]; !canon {
 				rawdb.DeleteHeader(blockBatch, nh.Hash, nh.Number)
 			}
@@ -1915,24 +1911,32 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 // WriteBlockAndSetHead writes the given block and all associated state to the database,
 // and applies the block as the new chain head.
-func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
+func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool, mux *event.TypeMux) (status WriteStatus, err error) {
 	if !bc.chainmu.TryLock() {
 		return NonStatTy, errChainStopped
 	}
 	defer bc.chainmu.Unlock()
 
-	return bc.writeBlockAndSetHead(block, receipts, logs, state, emitHeadEvent)
+	return bc.writeBlockAndSetHead(block, receipts, logs, state, emitHeadEvent, mux)
 }
 
 // writeBlockAndSetHead is the internal implementation of WriteBlockAndSetHead.
 // This function expects the chain mutex to be held.
-func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
-	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
-		return NonStatTy, err
-	}
+func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool, mux *event.TypeMux) (status WriteStatus, err error) {
 	currentBlock := bc.CurrentBlock()
 	reorg, err := bc.forker.ReorgNeededWithFastFinality(currentBlock, block.Header())
 	if err != nil {
+		return NonStatTy, err
+	}
+	if reorg {
+		bc.highestVerifiedBlock.Store(types.CopyHeader(block.Header()))
+		bc.highestVerifiedBlockFeed.Send(HighestVerifiedBlockEvent{Header: block.Header()})
+		if mux != nil {
+			mux.Post(NewSealedBlockEvent{Block: block})
+		}
+	}
+
+	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
 		return NonStatTy, err
 	}
 	if reorg {
@@ -2282,8 +2286,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		vtime := time.Since(vstart)
 		proctime := time.Since(start) // processing + validation
 
-		bc.cacheBlock(block.Hash(), block)
-
 		// Update the metrics touched during block processing and validation
 		accountReadTimer.Update(statedb.AccountReads)                   // Account reads are complete(in processing)
 		storageReadTimer.Update(statedb.StorageReads)                   // Storage reads are complete(in processing)
@@ -2309,7 +2311,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			// Don't set the head, only insert the block
 			err = bc.writeBlockWithState(block, receipts, statedb)
 		} else {
-			status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false)
+			status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false, nil)
 		}
 		if err != nil {
 			return it.index, err
@@ -2396,26 +2398,11 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 	if header == nil || header.Number == nil {
 		return
 	}
-	currentHeader := bc.highestVerifiedHeader.Load()
-	if currentHeader == nil {
+	currentBlock := bc.CurrentBlock()
+	reorg, err := bc.forker.ReorgNeededWithFastFinality(currentBlock, header)
+	if err == nil && reorg {
 		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
-		return
-	}
-
-	newParentTD := bc.GetTd(header.ParentHash, header.Number.Uint64()-1)
-	if newParentTD == nil {
-		newParentTD = big.NewInt(0)
-	}
-	oldParentTD := bc.GetTd(currentHeader.ParentHash, currentHeader.Number.Uint64()-1)
-	if oldParentTD == nil {
-		oldParentTD = big.NewInt(0)
-	}
-	newTD := big.NewInt(0).Add(newParentTD, header.Difficulty)
-	oldTD := big.NewInt(0).Add(oldParentTD, currentHeader.Difficulty)
-
-	if newTD.Cmp(oldTD) > 0 {
-		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
-		return
+		log.Trace("updateHighestVerifiedHeader", "number", header.Number.Uint64(), "hash", header.Hash())
 	}
 }
 

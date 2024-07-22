@@ -216,8 +216,6 @@ func (e *GenesisMismatchError) Error() string {
 // ChainOverrides contains the changes to chain config
 // Typically, these modifications involve hardforks that are not enabled on the BSC mainnet, intended for testing purposes.
 type ChainOverrides struct {
-	OverrideCancun *uint64
-	OverrideHaber  *uint64
 	OverrideBohr   *uint64
 	OverrideVerkle *uint64
 }
@@ -245,12 +243,6 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 	}
 	applyOverrides := func(config *params.ChainConfig) {
 		if config != nil {
-			if overrides != nil && overrides.OverrideCancun != nil {
-				config.CancunTime = overrides.OverrideCancun
-			}
-			if overrides != nil && overrides.OverrideHaber != nil {
-				config.HaberTime = overrides.OverrideHaber
-			}
 			if overrides != nil && overrides.OverrideBohr != nil {
 				config.BohrTime = overrides.OverrideBohr
 			}
@@ -452,7 +444,7 @@ func (g *Genesis) ToBlock() *types.Block {
 			// EIP-4788: The parentBeaconBlockRoot of the genesis block is always
 			// the zero hash. This is because the genesis block does not have a parent
 			// by definition.
-			if conf.Parlia == nil {
+			if conf.Parlia == nil || conf.IsBohr(num, g.Timestamp) {
 				head.ParentBeaconRoot = new(common.Hash)
 			}
 

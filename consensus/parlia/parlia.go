@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"math/rand"
@@ -317,6 +318,10 @@ func New(
 	return c
 }
 
+func (p *Parlia) Period() uint64 {
+	return p.config.Period
+}
+
 func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
 	// deploy a contract
 	if tx.To() == nil {
@@ -618,20 +623,27 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
 		case header.BlobGasUsed != nil:
 			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
-		case header.ParentBeaconRoot != nil:
-			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
 		case header.WithdrawalsHash != nil:
 			return fmt.Errorf("invalid WithdrawalsHash, have %#x, expected nil", header.WithdrawalsHash)
 		}
 	} else {
 		switch {
-		case header.ParentBeaconRoot != nil:
-			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
 		case !header.EmptyWithdrawalsHash():
 			return errors.New("header has wrong WithdrawalsHash")
 		}
 		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
 			return err
+		}
+	}
+
+	bohr := chain.Config().IsBohr(header.Number, header.Time)
+	if !bohr {
+		if header.ParentBeaconRoot != nil {
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+		}
+	} else {
+		if header.ParentBeaconRoot == nil || *header.ParentBeaconRoot != (common.Hash{}) {
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected zero hash", header.ParentBeaconRoot)
 		}
 	}
 
@@ -1425,7 +1437,7 @@ func (p *Parlia) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *
 func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
 	targetNumber := vote.Data.TargetNumber
 	targetHash := vote.Data.TargetHash
-	header := chain.GetHeaderByHash(targetHash)
+	header := chain.GetVerifiedBlockByHash(targetHash)
 	if header == nil {
 		log.Warn("BlockHeader at current voteBlockNumber is nil", "targetNumber", targetNumber, "targetHash", targetHash)
 		return errors.New("BlockHeader at current voteBlockNumber is nil")
@@ -1666,11 +1678,35 @@ func CalcDifficulty(snap *Snapshot, signer common.Address) *big.Int {
 	return new(big.Int).Set(diffNoTurn)
 }
 
+func encodeSigHeaderWithoutVoteAttestation(w io.Writer, header *types.Header, chainId *big.Int) {
+	err := rlp.Encode(w, []interface{}{
+		chainId,
+		header.ParentHash,
+		header.UncleHash,
+		header.Coinbase,
+		header.Root,
+		header.TxHash,
+		header.ReceiptHash,
+		header.Bloom,
+		header.Difficulty,
+		header.Number,
+		header.GasLimit,
+		header.GasUsed,
+		header.Time,
+		header.Extra[:extraVanity], // this will panic if extra is too short, should check before calling encodeSigHeaderWithoutVoteAttestation
+		header.MixDigest,
+		header.Nonce,
+	})
+	if err != nil {
+		panic("can't encode: " + err.Error())
+	}
+}
+
 // SealHash returns the hash of a block without vote attestation prior to it being sealed.
 // So it's not the real hash of a block, just used as unique id to distinguish task
 func (p *Parlia) SealHash(header *types.Header) (hash common.Hash) {
 	hasher := sha3.NewLegacyKeccak256()
-	types.EncodeSigHeaderWithoutVoteAttestation(hasher, header, p.chainConfig.ChainID)
+	encodeSigHeaderWithoutVoteAttestation(hasher, header, p.chainConfig.ChainID)
 	hasher.Sum(hash[:0])
 	return hash
 }
