@@ -3,6 +3,7 @@ package vote
 import (
 	"bytes"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -19,7 +20,13 @@ import (
 
 const blocksNumberSinceMining = 5 // the number of blocks need to wait before voting, counting from the validator begin to mine
 
+var diffInTurn = big.NewInt(2) // Block difficulty for in-turn signatures
 var votesManagerCounter = metrics.NewRegisteredCounter("votesManager/local", nil)
+var notJustified = metrics.NewRegisteredCounter("votesManager/notJustified", nil)
+var inTurnJustified = metrics.NewRegisteredCounter("votesManager/inTurnJustified", nil)
+var notInTurnJustified = metrics.NewRegisteredCounter("votesManager/notInTurnJustified", nil)
+var continuousJustified = metrics.NewRegisteredCounter("votesManager/continuousJustified", nil)
+var notContinuousJustified = metrics.NewRegisteredCounter("votesManager/notContinuousJustified", nil)
 
 // Backend wraps all methods required for voting.
 type Backend interface {
@@ -155,7 +162,7 @@ func (voteManager *VoteManager) loop() {
 				func(bLSPublicKey *types.BLSPublicKey) bool {
 					return bytes.Equal(voteManager.signer.PubKey[:], bLSPublicKey[:])
 				}) {
-				log.Debug("cur validator is not within the validatorSet at curHead")
+				log.Debug("local validator with voteKey is not within the validatorSet at curHead")
 				continue
 			}
 
@@ -202,6 +209,36 @@ func (voteManager *VoteManager) loop() {
 				voteManager.pool.PutVote(voteMessage)
 				votesManagerCounter.Inc(1)
 			}
+
+			// check the latest justified block, which indicating the stability of the network
+			curJustifiedNumber, _, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{curHead})
+			if err == nil && curJustifiedNumber != 0 {
+				if curJustifiedNumber+1 != curHead.Number.Uint64() {
+					log.Debug("not justified", "blockNumber", curHead.Number.Uint64()-1)
+					notJustified.Inc(1)
+				} else {
+					parent := voteManager.chain.GetHeaderByHash(curHead.ParentHash)
+					if parent != nil {
+						if parent.Difficulty.Cmp(diffInTurn) == 0 {
+							inTurnJustified.Inc(1)
+						} else {
+							log.Debug("not in turn block justified", "blockNumber", parent.Number.Int64(), "blockHash", parent.Hash())
+							notInTurnJustified.Inc(1)
+						}
+
+						lastJustifiedNumber, _, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{parent})
+						if err == nil {
+							if lastJustifiedNumber == 0 || lastJustifiedNumber+1 == curJustifiedNumber {
+								continuousJustified.Inc(1)
+							} else {
+								log.Debug("not continuous block justified", "lastJustified", lastJustifiedNumber, "curJustified", curJustifiedNumber)
+								notContinuousJustified.Inc(1)
+							}
+						}
+					}
+				}
+			}
+
 		case event := <-voteManager.syncVoteCh:
 			voteMessage := event.Vote
 			if voteManager.eth.IsMining() || !bytes.Equal(voteManager.signer.PubKey[:], voteMessage.VoteAddress[:]) {

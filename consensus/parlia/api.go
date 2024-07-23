@@ -88,6 +88,19 @@ func (api *API) GetJustifiedNumber(number *rpc.BlockNumber) (uint64, error) {
 	return snap.Attestation.TargetNumber, nil
 }
 
+func (api *API) GetTurnLength(number *rpc.BlockNumber) (uint8, error) {
+	header := api.getHeader(number)
+	// Ensure we have an actually valid block and return the validators from its snapshot
+	if header == nil {
+		return 0, errUnknownBlock
+	}
+	snap, err := api.parlia.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil || snap.TurnLength == 0 {
+		return 0, err
+	}
+	return snap.TurnLength, nil
+}
+
 func (api *API) GetFinalizedNumber(number *rpc.BlockNumber) (uint64, error) {
 	header := api.getHeader(number)
 	// Ensure we have an actually valid block and return the validators from its snapshot

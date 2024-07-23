@@ -339,6 +339,12 @@ var (
 		Value:    params.BreatheBlockInterval,
 		Category: flags.EthCategory,
 	}
+	OverrideFixedTurnLength = &cli.Uint64Flag{
+		Name:     "override.fixedturnlength",
+		Usage:    "It use fixed or random values for turn length instead of reading from the contract, only for testing purpose",
+		Value:    params.FixedTurnLength,
+		Category: flags.EthCategory,
+	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
 		Name:     "syncmode",
 		Usage:    `Blockchain sync mode ("snap" or "full")`,
