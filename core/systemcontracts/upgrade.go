@@ -771,6 +771,22 @@ func init() {
 			},
 		},
 	}
+
+	bohrUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "bohr",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/04bc57c1876dd543dd3133b2755ba87cc5f1796a",
+				Code:         bohr.RialtoValidatorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/04bc57c1876dd543dd3133b2755ba87cc5f1796a",
+				Code:         bohr.RialtoStakeHubContract,
+			},
+		},
+	}
 }
 
 func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb *state.StateDB) {
