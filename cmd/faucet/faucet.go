@@ -49,6 +49,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/gorilla/websocket"
+	lru "github.com/hashicorp/golang-lru"
 	"golang.org/x/time/rate"
 )
 
@@ -238,6 +239,12 @@ func newFaucet(genesis *core.Genesis, url string, ks *keystore.KeyStore, index [
 		return nil, err
 	}
 
+	// Allow 1 request per minute with burst of 5, and cache up to 10000 IPs
+	limiter, err := NewIPRateLimiter(rate.Limit(1.0), 5, 1000)
+	if err != nil {
+		return nil, err
+	}
+
 	return &faucet{
 		config:     genesis.Config,
 		client:     client,
@@ -248,7 +255,7 @@ func newFaucet(genesis *core.Genesis, url string, ks *keystore.KeyStore, index [
 		update:     make(chan struct{}, 1),
 		bep2eInfos: bep2eInfos,
 		bep2eAbi:   bep2eAbi,
-		limiter:    NewIPRateLimiter(rate.Limit(1), 5), // Allow 1 request per second with a burst of 5
+		limiter:    limiter,
 	}, nil
 }
 
@@ -926,21 +933,26 @@ func getGenesis(genesisFlag string, goerliFlag bool, sepoliaFlag bool) (*core.Ge
 }
 
 type IPRateLimiter struct {
-	ips map[string]*rate.Limiter
+	ips *lru.Cache
 	mu  *sync.RWMutex
 	r   rate.Limit
 	b   int
 }
 
-func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
+func NewIPRateLimiter(r rate.Limit, b int, size int) (*IPRateLimiter, error) {
+	cache, err := lru.New(size)
+	if err != nil {
+		return nil, err
+	}
+
 	i := &IPRateLimiter{
-		ips: make(map[string]*rate.Limiter),
+		ips: cache,
 		mu:  &sync.RWMutex{},
 		r:   r,
 		b:   b,
 	}
 
-	return i
+	return i, nil
 }
 
 func (i *IPRateLimiter) AddIP(ip string) *rate.Limiter {
@@ -949,21 +961,18 @@ func (i *IPRateLimiter) AddIP(ip string) *rate.Limiter {
 
 	limiter := rate.NewLimiter(i.r, i.b)
 
-	i.ips[ip] = limiter
+	i.ips.Add(ip, limiter)
 
 	return limiter
 }
 
 func (i *IPRateLimiter) GetLimiter(ip string) *rate.Limiter {
 	i.mu.Lock()
-	limiter, exists := i.ips[ip]
+	defer i.mu.Unlock()
 
-	if !exists {
-		i.mu.Unlock()
-		return i.AddIP(ip)
+	if limiter, exists := i.ips.Get(ip); exists {
+		return limiter.(*rate.Limiter)
 	}
 
-	i.mu.Unlock()
-
-	return limiter
+	return i.AddIP(ip)
 }

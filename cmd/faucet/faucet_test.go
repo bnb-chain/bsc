@@ -24,7 +24,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
+	"golang.org/x/time/rate"
 
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -53,7 +55,7 @@ func TestFacebook(t *testing.T) {
 }
 
 func TestFaucetRateLimiting(t *testing.T) {
-	// Create a minimal mockfaucet instance for testing
+	// Create a minimal faucet instance for testing
 	privateKey, _ := crypto.GenerateKey()
 	faucetAddr := crypto.PubkeyToAddress(privateKey.PublicKey)
 
@@ -63,12 +65,23 @@ func TestFaucetRateLimiting(t *testing.T) {
 		},
 	}
 
-	// Create a mockfaucet with rate limiting (1 request per second, burst of 2)
-	f, err := newFaucet(config, "http://localhost:8545", nil, []byte{}, nil)
+	// Create a faucet with rate limiting (1 request per second, burst of 2)
+	ks := keystore.NewKeyStore(t.TempDir(), keystore.LightScryptN, keystore.LightScryptP)
+	_, err := ks.NewAccount("password")
 	if err != nil {
-		t.Fatalf("Failed to create mockfaucet: %v", err)
+		t.Fatal(err)
 	}
-	f.limiter = NewIPRateLimiter(1, 2)
+	if len(ks.Accounts()) == 0 {
+		t.Fatalf("No accounts %v", ks)
+	}
+	f, err := newFaucet(config, "http://localhost:8545", ks, []byte{}, nil)
+	if err != nil {
+		t.Fatalf("Failed to create faucet: %v", err)
+	}
+	f.limiter, err = NewIPRateLimiter(rate.Limit(1.0), 1, 2)
+	if err != nil {
+		t.Fatalf("Failed to create NewIPRateLimiter: %v", err)
+	}
 
 	// Create a test server
 	server := httptest.NewServer(http.HandlerFunc(f.apiHandler))
