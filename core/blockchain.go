@@ -1393,7 +1393,7 @@ func (bc *BlockChain) Stop() {
 		if !bc.cacheConfig.TrieDirtyDisabled {
 			triedb := bc.triedb
 			var once sync.Once
-			for _, offset := range []uint64{0, 1, TriesInMemory - 1} {
+			for _, offset := range []uint64{0, 1, bc.TriesInMemory() - 1} {
 				if number := bc.CurrentBlock().Number.Uint64(); number > offset {
 					recent := bc.GetBlockByNumber(number - offset)
 					log.Info("Writing cached state to disk", "block", recent.Number(), "hash", recent.Hash(), "root", recent.Root())
@@ -1831,7 +1831,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 		// Flush limits are not considered for the first TriesInMemory blocks.
 		current := block.NumberU64()
-		if current <= TriesInMemory {
+		if current <= bc.TriesInMemory() {
 			return nil
 		}
 		// If we exceeded our memory allowance, flush matured singleton nodes to disk
