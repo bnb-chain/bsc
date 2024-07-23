@@ -234,7 +234,7 @@ func (s *Snapshot) countRecents() map[common.Address]uint8 {
 	}
 	counts := make(map[common.Address]uint8, len(s.Validators))
 	for seen, recent := range s.Recents {
-		if seen <= leftHistoryBound || recent == (common.Address{}) {
+		if seen <= leftHistoryBound || recent == (common.Address{}) /*when seen == `epochKey`*/ {
 			continue
 		}
 		counts[recent] += 1
@@ -283,7 +283,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 	for _, header := range headers {
 		number := header.Number.Uint64()
 		// Delete the oldest validator from the recent list to allow it signing again
-		if limit := snap.minerHistoryCheckLen() + 1; number >= limit { // `+1` for genesis block which has no miner
+		if limit := snap.minerHistoryCheckLen() + 1; number >= limit {
 			delete(snap.Recents, number-limit)
 		}
 		if limit := snap.versionHistoryCheckLen(); number >= limit {
@@ -404,7 +404,7 @@ func (s *Snapshot) inturn(validator common.Address) bool {
 	return s.inturnValidator() == validator
 }
 
-// inturnValidator returns the validator at a given block height.
+// inturnValidator returns the validator for the following block height.
 func (s *Snapshot) inturnValidator() common.Address {
 	validators := s.validators()
 	offset := (s.Number + 1) / uint64(s.TurnLength) % uint64(len(validators))
