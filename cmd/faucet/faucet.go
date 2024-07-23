@@ -287,7 +287,9 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	ip := r.RemoteAddr
 	if len(r.Header.Get("X-Forwarded-For")) > 0 {
 		ips := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
-		ip = strings.TrimSpace(ips[len(ips)-1])
+		if len(ips) > 0 {
+			ip = strings.TrimSpace(ips[len(ips)-1])
+		}
 	}
 
 	limiter := f.limiter.GetLimiter(ip)
