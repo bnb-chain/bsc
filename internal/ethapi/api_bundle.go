@@ -25,6 +25,29 @@ func (s *PrivateTxBundleAPI) BundlePrice(ctx context.Context) *big.Int {
 	return s.b.BundlePrice()
 }
 
+// SimulateGaslessBundle simulates the execution of a list of transactions with order
+func (s *PrivateTxBundleAPI) SimulateGaslessBundle(_ context.Context, args types.SimulateGaslessBundleArgs) (*types.SimulateGaslessBundleResp, error) {
+	if len(args.Txs) == 0 {
+		return nil, newBundleError(errors.New("bundle missing txs"))
+	}
+
+	var txs types.Transactions
+
+	for _, encodedTx := range args.Txs {
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			return nil, err
+		}
+		txs = append(txs, tx)
+	}
+
+	bundle := &types.Bundle{
+		Txs: txs,
+	}
+
+	return s.b.SimulateGaslessBundle(bundle)
+}
+
 // SendBundle will add the signed transaction to the transaction pool.
 // The sender is responsible for signing the transaction and using the correct nonce and ensuring validity
 func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args types.SendBundleArgs) (common.Hash, error) {

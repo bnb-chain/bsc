@@ -615,6 +615,10 @@ func (b testBackend) SendTx(ctx context.Context, signedTx *types.Transaction) er
 func (b testBackend) SendBundle(ctx context.Context, bundle *types.Bundle) error {
 	panic("implement me")
 }
+func (b *testBackend) SimulateGaslessBundle(bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
+	//TODO implement me
+	panic("implement me")
+}
 func (b testBackend) BundlePrice() *big.Int {
 	panic("implement me")
 }

@@ -438,39 +438,52 @@ func (w *worker) simulateBundle(
 			return nil, err
 		}
 
-		bundleGasUsed += receipt.GasUsed
+		if !w.eth.TxPool().Has(tx.Hash()) {
+			bundleGasUsed += receipt.GasUsed
 
-		txGasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-		effectiveTip, err := tx.EffectiveGasTip(env.header.BaseFee)
-		if err != nil {
-			return nil, err
-		}
-		txGasFees := new(big.Int).Mul(txGasUsed, effectiveTip)
+			txGasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+			effectiveTip, er := tx.EffectiveGasTip(env.header.BaseFee)
+			if er != nil {
+				return nil, er
+			}
 
-		if tx.Type() == types.BlobTxType {
-			blobFee := new(big.Int).SetUint64(receipt.BlobGasUsed)
-			blobFee.Mul(blobFee, receipt.BlobGasPrice)
-			txGasFees.Add(txGasFees, blobFee)
+			if env.header.BaseFee != nil {
+				log.Info("simulate bundle: header base fee", "value", env.header.BaseFee.String())
+				effectiveTip.Add(effectiveTip, env.header.BaseFee)
+			}
+
+			txGasFees := new(big.Int).Mul(txGasUsed, effectiveTip)
+
+			if tx.Type() == types.BlobTxType {
+				blobFee := new(big.Int).SetUint64(receipt.BlobGasUsed)
+				blobFee.Mul(blobFee, receipt.BlobGasPrice)
+				txGasFees.Add(txGasFees, blobFee)
+			}
+			bundleGasFees.Add(bundleGasFees, txGasFees)
+			sysBalanceAfter := state.GetBalance(consensus.SystemAddress)
+			sysDelta := new(uint256.Int).Sub(sysBalanceAfter, sysBalanceBefore)
+			sysDelta.Sub(sysDelta, uint256.MustFromBig(txGasFees))
+			ethSentToSystem.Add(ethSentToSystem, sysDelta.ToBig())
 		}
-		bundleGasFees.Add(bundleGasFees, txGasFees)
-		sysBalanceAfter := state.GetBalance(consensus.SystemAddress)
-		sysDelta := new(uint256.Int).Sub(sysBalanceAfter, sysBalanceBefore)
-		sysDelta.Sub(sysDelta, uint256.MustFromBig(txGasFees))
-		ethSentToSystem.Add(ethSentToSystem, sysDelta.ToBig())
 	}
 
-	bundleGasPrice := new(big.Int).Div(bundleGasFees, new(big.Int).SetUint64(bundleGasUsed))
+	// if all txs in the bundle are from mempool, we accept the bundle without checking gas price
+	bundleGasPrice := big.NewInt(0)
 
-	if bundleGasPrice.Cmp(big.NewInt(w.config.MevGasPriceFloor)) < 0 {
-		err := errBundlePriceTooLow
-		log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
+	if bundleGasUsed != 0 {
+		bundleGasPrice = new(big.Int).Div(bundleGasFees, new(big.Int).SetUint64(bundleGasUsed))
 
-		if prune {
-			log.Warn("prune bundle", "hash", bundle.Hash().String())
-			w.eth.TxPool().PruneBundle(bundle.Hash())
+		if bundleGasPrice.Cmp(big.NewInt(w.config.MevGasPriceFloor)) < 0 {
+			err := errBundlePriceTooLow
+			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
+
+			if prune {
+				log.Warn("prune bundle", "hash", bundle.Hash().String())
+				w.eth.TxPool().PruneBundle(bundle.Hash())
+			}
+
+			return nil, err
 		}
-
-		return nil, err
 	}
 
 	return &types.SimulatedBundle{
@@ -479,6 +492,43 @@ func (w *worker) simulateBundle(
 		BundleGasPrice:  bundleGasPrice,
 		BundleGasUsed:   bundleGasUsed,
 		EthSentToSystem: ethSentToSystem,
+	}, nil
+}
+
+func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
+	result := make([]types.GaslessTxSimResult, 0)
+
+	txIdx := 0
+	for _, tx := range bundle.Txs {
+		env.state.SetTxContext(tx.Hash(), txIdx)
+
+		var (
+			snap  = env.state.Snapshot()
+			gp    = env.gasPool.Gas()
+			valid = true
+		)
+
+		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, env.gasPool, env.state, env.header, tx,
+			&env.header.GasUsed, *w.chain.GetVMConfig())
+		if err != nil {
+			env.state.RevertToSnapshot(snap)
+			env.gasPool.SetGas(gp)
+			valid = false
+			log.Warn("fail to simulate gasless bundle, skipped", "txHash", tx.Hash(), "err", err)
+		} else {
+			txIdx++
+		}
+
+		result = append(result, types.GaslessTxSimResult{
+			Hash:    tx.Hash(),
+			GasUsed: receipt.GasUsed,
+			Valid:   valid,
+		})
+	}
+
+	return &types.SimulateGaslessBundleResp{
+		Results:          result,
+		BasedBlockNumber: env.header.Number.Int64(),
 	}, nil
 }
 

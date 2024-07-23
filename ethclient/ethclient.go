@@ -779,6 +779,16 @@ func (ec *Client) BestBidGasFee(ctx context.Context, parentHash common.Hash) (*b
 	return fee, nil
 }
 
+// SimulateGaslessBundle simulates a gasless bundle
+func (ec *Client) SimulateGaslessBundle(ctx context.Context, args types.SimulateGaslessBundleArgs) (*types.SimulateGaslessBundleResp, error) {
+	var bundle types.SimulateGaslessBundleResp
+	err := ec.c.CallContext(ctx, &bundle, "eth_simulateGaslessBundle", args)
+	if err != nil {
+		return nil, err
+	}
+	return &bundle, nil
+}
+
 // SendBundle sends a bundle
 func (ec *Client) SendBundle(ctx context.Context, args types.SendBundleArgs) (common.Hash, error) {
 	var hash common.Hash

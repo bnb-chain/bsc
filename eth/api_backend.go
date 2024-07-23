@@ -304,6 +304,10 @@ func (b *EthAPIBackend) SendBundle(ctx context.Context, bundle *types.Bundle) er
 	return b.eth.txPool.AddBundle(bundle)
 }
 
+func (b *EthAPIBackend) SimulateGaslessBundle(bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
+	return b.Miner().SimulateGaslessBundle(bundle)
+}
+
 func (b *EthAPIBackend) BundlePrice() *big.Int {
 	bundles := b.eth.txPool.AllBundles()
 	gasFloor := big.NewInt(b.eth.config.Miner.MevGasPriceFloor)
