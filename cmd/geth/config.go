@@ -185,6 +185,10 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		params.RialtoGenesisHash = common.HexToHash(v)
 	}
 
+	if ctx.IsSet(utils.OverridePassedForkTime.Name) {
+		v := ctx.Uint64(utils.OverridePassedForkTime.Name)
+		cfg.Eth.OverridePassedForkTime = &v
+	}
 	if ctx.IsSet(utils.OverrideBohr.Name) {
 		v := ctx.Uint64(utils.OverrideBohr.Name)
 		cfg.Eth.OverrideBohr = &v

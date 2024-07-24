@@ -216,8 +216,9 @@ func (e *GenesisMismatchError) Error() string {
 // ChainOverrides contains the changes to chain config
 // Typically, these modifications involve hardforks that are not enabled on the BSC mainnet, intended for testing purposes.
 type ChainOverrides struct {
-	OverrideBohr   *uint64
-	OverrideVerkle *uint64
+	OverridePassedForkTime *uint64
+	OverrideBohr           *uint64
+	OverrideVerkle         *uint64
 }
 
 // SetupGenesisBlock writes or updates the genesis block in db.
@@ -243,6 +244,15 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 	}
 	applyOverrides := func(config *params.ChainConfig) {
 		if config != nil {
+			if overrides != nil && overrides.OverridePassedForkTime != nil {
+				config.ShanghaiTime = overrides.OverridePassedForkTime
+				config.KeplerTime = overrides.OverridePassedForkTime
+				config.FeynmanTime = overrides.OverridePassedForkTime
+				config.FeynmanFixTime = overrides.OverridePassedForkTime
+				config.CancunTime = overrides.OverridePassedForkTime
+				config.HaberTime = overrides.OverridePassedForkTime
+				config.HaberFixTime = overrides.OverridePassedForkTime
+			}
 			if overrides != nil && overrides.OverrideBohr != nil {
 				config.BohrTime = overrides.OverrideBohr
 			}
