@@ -1798,6 +1798,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
 		}
+		bc.hc.tdCache.Add(block.Hash(), externTd)
+		bc.blockCache.Add(block.Hash(), block)
+		bc.receiptsCache.Add(block.Hash(), receipts)
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+			bc.sidecarsCache.Add(block.Hash(), block.Sidecars())
+		}
 		wg.Done()
 	}()
 
@@ -1908,28 +1914,24 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 // WriteBlockAndSetHead writes the given block and all associated state to the database,
 // and applies the block as the new chain head.
-func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool, mux *event.TypeMux) (status WriteStatus, err error) {
+func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
 	if !bc.chainmu.TryLock() {
 		return NonStatTy, errChainStopped
 	}
 	defer bc.chainmu.Unlock()
 
-	return bc.writeBlockAndSetHead(block, receipts, logs, state, emitHeadEvent, mux)
+	return bc.writeBlockAndSetHead(block, receipts, logs, state, emitHeadEvent)
 }
 
 // writeBlockAndSetHead is the internal implementation of WriteBlockAndSetHead.
 // This function expects the chain mutex to be held.
-func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool, mux *event.TypeMux) (status WriteStatus, err error) {
+func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
+	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
+		return NonStatTy, err
+	}
 	currentBlock := bc.CurrentBlock()
 	reorg, err := bc.forker.ReorgNeededWithFastFinality(currentBlock, block.Header())
 	if err != nil {
-		return NonStatTy, err
-	}
-	if reorg && mux != nil {
-		mux.Post(NewSealedBlockEvent{Block: block})
-	}
-
-	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
 		return NonStatTy, err
 	}
 	if reorg {
@@ -2304,7 +2306,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			// Don't set the head, only insert the block
 			err = bc.writeBlockWithState(block, receipts, statedb)
 		} else {
-			status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false, nil)
+			status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false)
 		}
 		if err != nil {
 			return it.index, err
