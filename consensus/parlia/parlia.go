@@ -1510,14 +1510,8 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 
 	// The blocking time should be no more than half of period when snap.TurnLength == 1
 	timeForMining := time.Duration(p.config.Period) * time.Second / 2
-	if snap.TurnLength > 1 {
-		if snap.lastBlockInOneTurn(header.Number.Uint64()) {
-			// To ensure that the next validator produces and broadcasts blocks in a timely manner,
-			// set the value of timeForMining to a small amount
-			timeForMining = 500 * time.Millisecond
-		} else {
-			timeForMining = time.Duration(p.config.Period) * time.Second * 2 / 3
-		}
+	if !snap.lastBlockInOneTurn(header.Number.Uint64()) {
+		timeForMining = time.Duration(p.config.Period) * time.Second * 2 / 3
 	}
 	if delay > timeForMining {
 		delay = timeForMining
