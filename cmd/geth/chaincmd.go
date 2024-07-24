@@ -62,6 +62,7 @@ var (
 		ArgsUsage: "<genesisPath>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.CachePreimagesFlag,
+			utils.OverrideForkedTime,
 			utils.OverrideBohr,
 			utils.OverrideVerkle,
 			utils.MultiDataBaseFlag,
@@ -253,6 +254,10 @@ func initGenesis(ctx *cli.Context) error {
 	defer stack.Close()
 
 	var overrides core.ChainOverrides
+	if ctx.IsSet(utils.OverrideForkedTime.Name) {
+		v := ctx.Uint64(utils.OverrideForkedTime.Name)
+		overrides.OverrideForkedTime = &v
+	}
 	if ctx.IsSet(utils.OverrideBohr.Name) {
 		v := ctx.Uint64(utils.OverrideBohr.Name)
 		overrides.OverrideBohr = &v
