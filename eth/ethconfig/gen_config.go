@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/blockarchiver"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -75,6 +76,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverrideBohr            *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        uint64
+		BlockArchiverConfig     blockarchiver.BlockArchiverConfig
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -135,6 +137,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideBohr = c.OverrideBohr
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.BlobExtraReserve = c.BlobExtraReserve
+	enc.BlockArchiverConfig = c.BlockArchiverConfig
 	return &enc, nil
 }
 
@@ -199,6 +202,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverrideBohr            *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        *uint64
+		BlockArchiverConfig     *blockarchiver.BlockArchiverConfig
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -377,6 +381,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.BlobExtraReserve != nil {
 		c.BlobExtraReserve = *dec.BlobExtraReserve
+	}
+	if dec.BlockArchiverConfig != nil {
+		c.BlockArchiverConfig = *dec.BlockArchiverConfig
 	}
 	return nil
 }

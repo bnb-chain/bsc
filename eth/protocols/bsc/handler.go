@@ -2,10 +2,8 @@ package bsc
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
@@ -96,33 +94,7 @@ var bsc1 = map[uint64]msgHandler{
 // returning any error.
 func handleMessage(backend Backend, peer *Peer) error {
 	// Read the next message from the remote peer, and ensure it's fully consumed
-	msg, err := peer.rw.ReadMsg()
-	if err != nil {
-		return err
-	}
-	if msg.Size > maxMessageSize {
-		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
-	}
-	defer msg.Discard()
-
-	var handlers = bsc1
-
-	// Track the amount of time it takes to serve the request and run the handler
-	if metrics.Enabled {
-		h := fmt.Sprintf("%s/%s/%d/%#02x", p2p.HandleHistName, ProtocolName, peer.Version(), msg.Code)
-		defer func(start time.Time) {
-			sampler := func() metrics.Sample {
-				return metrics.ResettingSample(
-					metrics.NewExpDecaySample(1028, 0.015),
-				)
-			}
-			metrics.GetOrRegisterHistogramLazy(h, nil, sampler).Update(time.Since(start).Microseconds())
-		}(time.Now())
-	}
-	if handler := handlers[msg.Code]; handler != nil {
-		return handler(backend, msg, peer)
-	}
-	return fmt.Errorf("%w: %v", errInvalidMsgCode, msg.Code)
+	return errNotSupported
 }
 
 func handleVotes(backend Backend, msg Decoder, peer *Peer) error {

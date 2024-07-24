@@ -185,6 +185,10 @@ func handleMessage(backend Backend, peer *Peer) error {
 	if err != nil {
 		return err
 	}
+	if msg.Code != GetBlockBodiesMsg && msg.Code != GetBlockHeadersMsg {
+		return errNotSupported
+	}
+
 	if msg.Size > maxMessageSize {
 		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
 	}

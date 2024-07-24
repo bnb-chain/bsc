@@ -351,7 +351,7 @@ var (
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
 		Name:     "syncmode",
-		Usage:    `Blockchain sync mode ("snap" or "full")`,
+		Usage:    `Blockchain sync mode ("nosync")`,
 		Value:    &defaultSyncMode,
 		Category: flags.StateCategory,
 	}
@@ -389,6 +389,11 @@ var (
 		Usage:    "Number of recent blocks to maintain transactions index for (default = about one year, 0 = entire chain)",
 		Value:    ethconfig.Defaults.TransactionHistory,
 		Category: flags.StateCategory,
+	}
+	// Downloader settings
+	DownloaderDisableSyncFlag = &cli.BoolFlag{
+		Name:  "downloader.nosync",
+		Usage: "Disable synchronization with other peers",
 	}
 	// Transaction pool settings
 	TxPoolLocalsFlag = &cli.StringFlag{

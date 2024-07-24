@@ -74,6 +74,7 @@ var (
 	errNetworkIDMismatch       = errors.New("network ID mismatch")
 	errGenesisMismatch         = errors.New("genesis mismatch")
 	errForkIDRejected          = errors.New("fork ID rejected")
+	errNotSupported            = errors.New("not supported")
 )
 
 // Packet represents a p2p message in the `eth` protocol.

@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core/blockarchiver"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -72,6 +73,8 @@ type HeaderChain struct {
 
 	rand   *mrand.Rand
 	engine consensus.Engine
+
+	blockArchiverService blockarchiver.BlockArchiver
 }
 
 // NewHeaderChain creates a new HeaderChain structure. ProcInterrupt points
@@ -85,7 +88,6 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 	hc := &HeaderChain{
 		config:        config,
 		chainDb:       chainDb,
-		headerCache:   lru.NewCache[common.Hash, *types.Header](headerCacheLimit),
 		tdCache:       lru.NewCache[common.Hash, *big.Int](tdCacheLimit),
 		numberCache:   lru.NewCache[common.Hash, uint64](numberCacheLimit),
 		procInterrupt: procInterrupt,
@@ -96,17 +98,6 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 	if hc.genesisHeader == nil {
 		return nil, ErrNoGenesis
 	}
-	hc.currentHeader.Store(hc.genesisHeader)
-	if head := rawdb.ReadHeadBlockHash(chainDb.BlockStore()); head != (common.Hash{}) {
-		if chead := hc.GetHeaderByHash(head); chead != nil {
-			hc.currentHeader.Store(chead)
-		}
-	}
-	hc.currentHeaderHash = hc.CurrentHeader().Hash()
-	headHeaderGauge.Update(hc.CurrentHeader().Number.Int64())
-	justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(hc.CurrentHeader())))
-	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(hc.CurrentHeader())))
-
 	return hc, nil
 }
 
@@ -139,16 +130,17 @@ func (hc *HeaderChain) GenesisHeader() *types.Header {
 }
 
 // GetBlockNumber retrieves the block number belonging to the given hash
-// from the cache or database
+// from the cache or the remote block archiver.
 func (hc *HeaderChain) GetBlockNumber(hash common.Hash) *uint64 {
 	if cached, ok := hc.numberCache.Get(hash); ok {
 		return &cached
 	}
-	number := rawdb.ReadHeaderNumber(hc.chainDb.BlockStore(), hash)
-	if number != nil {
-		hc.numberCache.Add(hash, *number)
+	_, header, _ := hc.blockArchiverService.GetBlockByHash(hash)
+	if header == nil {
+		return nil
 	}
-	return number
+	number := header.Number.Uint64()
+	return &number
 }
 
 type headerWriteResult struct {
@@ -499,15 +491,24 @@ func (hc *HeaderChain) GetTd(hash common.Hash, number uint64) *big.Int {
 // caching it if found.
 func (hc *HeaderChain) GetHeader(hash common.Hash, number uint64) *types.Header {
 	// Short circuit if the header's already in the cache, retrieve otherwise
-	if header, ok := hc.headerCache.Get(hash); ok {
+	if hash != (common.Hash{}) {
+		if header, ok := hc.headerCache.Get(hash); ok {
+			return header
+		}
+	}
+
+	// the genesis header is stored in DB
+	if number == 0 {
+		header := rawdb.ReadHeader(hc.chainDb, hash, number)
+		if header == nil {
+			return nil
+		}
+		hc.headerCache.Add(hash, header)
 		return header
 	}
-	header := rawdb.ReadHeader(hc.chainDb, hash, number)
-	if header == nil {
-		return nil
-	}
-	// Cache the found header for next time and return
-	hc.headerCache.Add(hash, header)
+
+	// get header from block archiver, and the headerCache will be updated there
+	_, header, _ := hc.blockArchiverService.GetBlockByNumber(number)
 	return header
 }
 
@@ -535,9 +536,12 @@ func (hc *HeaderChain) HasHeader(hash common.Hash, number uint64) bool {
 // caching it (associated with its hash) if found.
 func (hc *HeaderChain) GetHeaderByNumber(number uint64) *types.Header {
 	hash := rawdb.ReadCanonicalHash(hc.chainDb, number)
-	if hash == (common.Hash{}) {
-		return nil
+	// the genesis is stored in DB
+	if number == 0 {
+		return rawdb.ReadHeader(hc.chainDb, hash, number)
 	}
+
+	// get header from blockhub, and the headerCache will be updated there
 	return hc.GetHeader(hash, number)
 }
 
@@ -557,25 +561,16 @@ func (hc *HeaderChain) GetHeadersFrom(number, count uint64) []rlp.RawValue {
 		}
 	}
 	var headers []rlp.RawValue
-	// If we have some of the headers in cache already, use that before going to db.
-	hash := rawdb.ReadCanonicalHash(hc.chainDb, number)
-	if hash == (common.Hash{}) {
-		return nil
-	}
 	for count > 0 {
-		header, ok := hc.headerCache.Get(hash)
-		if !ok {
+		// GetBlockByNumber gets the header from block archiver service, cache is updated there
+		body, header, _ := hc.blockArchiverService.GetBlockByNumber(number)
+		if header == nil || body == nil {
 			break
 		}
 		rlpData, _ := rlp.EncodeToBytes(header)
 		headers = append(headers, rlpData)
-		hash = header.ParentHash
 		count--
 		number--
-	}
-	// Read remaining from db
-	if count > 0 {
-		headers = append(headers, rawdb.ReadHeaderRange(hc.chainDb, number, count)...)
 	}
 	return headers
 }
@@ -596,8 +591,6 @@ func (hc *HeaderChain) SetCurrentHeader(head *types.Header) {
 	hc.currentHeader.Store(head)
 	hc.currentHeaderHash = head.Hash()
 	headHeaderGauge.Update(head.Number.Int64())
-	justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(head)))
-	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(head)))
 }
 
 type (

@@ -7,7 +7,8 @@ on:
       - v*
 
 env:
-  IMAGE_NAME: bsc
+  IMAGE_NAME: bsc-client
+  IMAGE_SOURCE: https://github.com/${{ github.repository }}
 
 jobs:
   # Push image to GitHub Packages.
@@ -21,14 +22,14 @@ jobs:
       - name: Build image
         run: |
             docker build . \
-            --label "org.opencontainers.image.source=${{ secrets.IMAGE_SOURCE }}" \
+            --label "org.opencontainers.image.source=${IMAGE_SOURCE}" \
             --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
             --label "org.opencontainers.image.version=$(git describe --tags --abbrev=0)" \
             --label "org.opencontainers.image.licenses=LGPL-3.0,GPL-3.0" \
             -f ./Dockerfile -t "${IMAGE_NAME}"
 
       - name: Log into registry
-        run: echo "${{ secrets.PACKAGE_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.GH_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push image
         run: |

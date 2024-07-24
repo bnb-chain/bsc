@@ -40,6 +40,7 @@ var (
 	errDecode                  = errors.New("invalid message")
 	errInvalidMsgCode          = errors.New("invalid message code")
 	errProtocolVersionMismatch = errors.New("protocol version mismatch")
+	errNotSupported            = errors.New("not supported")
 )
 
 // Packet represents a p2p message in the `bsc` protocol.

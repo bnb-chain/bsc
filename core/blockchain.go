@@ -28,9 +28,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	mapset "github.com/deckarep/golang-set/v2"
-	exlru "github.com/hashicorp/golang-lru"
 	"golang.org/x/crypto/sha3"
+
+	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/ethereum/go-ethereum/core/blockarchiver"
+	exlru "github.com/hashicorp/golang-lru"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
@@ -56,7 +60,6 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
-	"golang.org/x/exp/slices"
 )
 
 var (
@@ -316,6 +319,10 @@ type BlockChain struct {
 
 	// monitor
 	doubleSignMonitor *monitor.DoubleSignMonitor
+
+	// block archiver service for fetching blocks from blob hub, and it will access the bodyCache, hc.headerCache
+	blockArchiverConfig  *blockarchiver.BlockArchiverConfig
+	blockArchiverService blockarchiver.BlockArchiver
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -367,11 +374,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		quit:               make(chan struct{}),
 		triesInMemory:      cacheConfig.TriesInMemory,
 		chainmu:            syncx.NewClosableMutex(),
-		bodyCache:          lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
 		bodyRLPCache:       lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
+		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
 		sidecarsCache:      lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
-		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
 		badBlockCache:      lru.NewCache[common.Hash, time.Time](maxBadBlockLimit),
@@ -394,14 +400,16 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if err != nil {
 		return nil, err
 	}
-	bc.genesisBlock = bc.GetBlockByNumber(0)
+	genesisBlock := bc.GetBlockByNumber(0)
+
+	bc.genesisBlock = genesisBlock
 	if bc.genesisBlock == nil {
 		return nil, ErrNoGenesis
 	}
 
 	bc.highestVerifiedHeader.Store(nil)
-	bc.currentBlock.Store(nil)
-	bc.currentSnapBlock.Store(nil)
+	bc.currentBlock.Store(genesisBlock.Header())
+	bc.currentSnapBlock.Store(genesisBlock.Header())
 	bc.chasingHead.Store(nil)
 
 	// Update chain info data metrics
@@ -413,131 +421,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if bc.empty() {
 		rawdb.InitDatabaseFromFreezer(bc.db)
 	}
-	// Load blockchain states from disk
-	if err := bc.loadLastState(); err != nil {
-		return nil, err
-	}
-	// Make sure the state associated with the block is available, or log out
-	// if there is no available state, waiting for state sync.
-	head := bc.CurrentBlock()
-	if !bc.HasState(head.Root) {
-		if head.Number.Uint64() == 0 {
-			// The genesis state is missing, which is only possible in the path-based
-			// scheme. This situation occurs when the initial state sync is not finished
-			// yet, or the chain head is rewound below the pivot point. In both scenarios,
-			// there is no possible recovery approach except for rerunning a snap sync.
-			// Do nothing here until the state syncer picks it up.
-			log.Info("Genesis state is missing, wait state sync")
-		} else {
-			// Head state is missing, before the state recovery, find out the
-			// disk layer point of snapshot(if it's enabled). Make sure the
-			// rewound point is lower than disk layer.
-			var diskRoot common.Hash
-			if bc.cacheConfig.SnapshotLimit > 0 {
-				diskRoot = rawdb.ReadSnapshotRoot(bc.db)
-			}
-			if bc.triedb.Scheme() == rawdb.PathScheme && !bc.NoTries() {
-				recoverable, _ := bc.triedb.Recoverable(diskRoot)
-				if !bc.HasState(diskRoot) && !recoverable {
-					diskRoot = bc.triedb.Head()
-				}
-			}
-			if diskRoot != (common.Hash{}) {
-				log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash(), "diskRoot", diskRoot)
 
-				snapDisk, err := bc.setHeadBeyondRoot(head.Number.Uint64(), 0, diskRoot, true)
-				if err != nil {
-					return nil, err
-				}
-				// Chain rewound, persist old snapshot number to indicate recovery procedure
-				if snapDisk != 0 {
-					rawdb.WriteSnapshotRecoveryNumber(bc.db, snapDisk)
-				}
-			} else {
-				log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash())
-				if _, err := bc.setHeadBeyondRoot(head.Number.Uint64(), 0, common.Hash{}, true); err != nil {
-					return nil, err
-				}
-			}
-		}
-	}
-	// Ensure that a previous crash in SetHead doesn't leave extra ancients
-	if frozen, err := bc.db.ItemAmountInAncient(); err == nil && frozen > 0 {
-		frozen, err = bc.db.Ancients()
-		if err != nil {
-			return nil, err
-		}
-		var (
-			needRewind bool
-			low        uint64
-		)
-		// The head full block may be rolled back to a very low height due to
-		// blockchain repair. If the head full block is even lower than the ancient
-		// chain, truncate the ancient store.
-		fullBlock := bc.CurrentBlock()
-		if fullBlock != nil && fullBlock.Hash() != bc.genesisBlock.Hash() && fullBlock.Number.Uint64() < frozen-1 {
-			needRewind = true
-			low = fullBlock.Number.Uint64()
-		}
-		// In snap sync, it may happen that ancient data has been written to the
-		// ancient store, but the LastFastBlock has not been updated, truncate the
-		// extra data here.
-		snapBlock := bc.CurrentSnapBlock()
-		if snapBlock != nil && snapBlock.Number.Uint64() < frozen-1 {
-			needRewind = true
-			if snapBlock.Number.Uint64() < low || low == 0 {
-				low = snapBlock.Number.Uint64()
-			}
-		}
-		if needRewind {
-			log.Error("Truncating ancient chain", "from", bc.CurrentHeader().Number.Uint64(), "to", low)
-			if err := bc.SetHead(low); err != nil {
-				return nil, err
-			}
-		}
-	}
-	// The first thing the node will do is reconstruct the verification data for
-	// the head block (ethash cache or clique voting snapshot). Might as well do
-	// it in advance.
-	bc.engine.VerifyHeader(bc, bc.CurrentHeader())
-
-	// Check the current state of the block hashes and make sure that we do not have any of the bad blocks in our chain
-	for hash := range BadHashes {
-		if header := bc.GetHeaderByHash(hash); header != nil {
-			// get the canonical block corresponding to the offending header's number
-			headerByNumber := bc.GetHeaderByNumber(header.Number.Uint64())
-			// make sure the headerByNumber (if present) is in our current canonical chain
-			if headerByNumber != nil && headerByNumber.Hash() == header.Hash() {
-				log.Error("Found bad hash, rewinding chain", "number", header.Number, "hash", header.ParentHash)
-				if err := bc.SetHead(header.Number.Uint64() - 1); err != nil {
-					return nil, err
-				}
-				log.Error("Chain rewind was successful, resuming normal operation")
-			}
-		}
-	}
-
-	// Load any existing snapshot, regenerating it if loading failed
-	if bc.cacheConfig.SnapshotLimit > 0 {
-		// If the chain was rewound past the snapshot persistent layer (causing
-		// a recovery block number to be persisted to disk), check if we're still
-		// in recovery mode and in that case, don't invalidate the snapshot on a
-		// head mismatch.
-		var recover bool
-
-		head := bc.CurrentBlock()
-		if layer := rawdb.ReadSnapshotRecoveryNumber(bc.db); layer != nil && *layer >= head.Number.Uint64() {
-			log.Warn("Enabling snapshot recovery", "chainhead", head.Number, "diskbase", *layer)
-			recover = true
-		}
-		snapconfig := snapshot.Config{
-			CacheSize:  bc.cacheConfig.SnapshotLimit,
-			Recovery:   recover,
-			NoBuild:    bc.cacheConfig.SnapshotNoBuild,
-			AsyncBuild: !bc.cacheConfig.SnapshotWait,
-		}
-		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
-	}
 	// do options before start any routine
 	for _, option := range options {
 		bc, err = option(bc)
@@ -545,40 +429,37 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			return nil, err
 		}
 	}
-	// Start future block processor.
-	bc.wg.Add(1)
-	go bc.updateFutureBlocks()
+	// blockCacheSize is used when init the below caches
+	// bodyCache, hc.headerCache
+	// the size of the cache is set to the same value.
+	cacheSize := int(bc.blockArchiverConfig.BlockCacheSize)
 
-	// Need persist and prune diff layer
-	if bc.db.DiffStore() != nil {
-		bc.wg.Add(1)
-		go bc.trustedDiffLayerLoop()
-	}
-	if bc.pipeCommit {
-		// check current block and rewind invalid one
-		bc.wg.Add(1)
-		go bc.rewindInvalidHeaderBlockLoop()
+	bc.hc.headerCache = lru.NewCache[common.Hash, *types.Header](cacheSize)
+	bc.bodyCache = lru.NewCache[common.Hash, *types.Body](cacheSize)
+
+	// block archiver service
+	blockArchiverService, err := blockarchiver.NewBlockArchiverService(
+		bc.blockArchiverConfig.RPCAddress,
+		bc.blockArchiverConfig.SPAddress,
+		bc.blockArchiverConfig.BucketName,
+		bc.bodyCache,
+		bc.hc.headerCache,
+		cacheSize,
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	if bc.doubleSignMonitor != nil {
-		bc.wg.Add(1)
-		go bc.startDoubleSignMonitor()
-	}
+	bc.blockArchiverService = blockArchiverService
+	bc.hc.blockArchiverService = blockArchiverService
 
-	// Rewind the chain in case of an incompatible config upgrade.
-	if compat, ok := genesisErr.(*params.ConfigCompatError); ok {
-		log.Warn("Rewinding chain to upgrade configuration", "err", compat)
-		if compat.RewindToTime > 0 {
-			bc.SetHeadWithTimestamp(compat.RewindToTime)
-		} else {
-			bc.SetHead(compat.RewindToBlock)
-		}
-		rawdb.WriteChainConfig(db, genesisHash, chainConfig)
+	// init the current header cache
+	if err = bc.updateCurrentHeader(); err != nil {
+		return nil, err
 	}
-	// Start tx indexer if it's enabled.
-	if txLookupLimit != nil {
-		bc.txIndexer = newTxIndexer(*txLookupLimit, bc)
-	}
+	// The header will be updated periodically in the background
+	go bc.UpdateCurrentHeaderLoop()
+
 	return bc, nil
 }
 
@@ -3152,6 +3033,13 @@ func EnableDoubleSignChecker(bc *BlockChain) (*BlockChain, error) {
 	return bc, nil
 }
 
+func EnableBlockArchiverConfig(config *blockarchiver.BlockArchiverConfig) BlockChainOption {
+	return func(bc *BlockChain) (*BlockChain, error) {
+		bc.blockArchiverConfig = config
+		return bc, nil
+	}
+}
+
 func (bc *BlockChain) GetVerifyResult(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) *VerifyResult {
 	var res VerifyResult
 	res.BlockNumber = blockNumber
@@ -3276,4 +3164,38 @@ func (bc *BlockChain) SetTrieFlushInterval(interval time.Duration) {
 // GetTrieFlushInterval gets the in-memory tries flushAlloc interval
 func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
+}
+
+func (bc *BlockChain) UpdateCurrentHeaderLoop() {
+	ticket := time.NewTicker(30 * time.Second)
+	defer ticket.Stop()
+	for {
+		select {
+		case <-ticket.C:
+			err := bc.updateCurrentHeader()
+			if err != nil {
+				log.Error("failed to update current header", "err", err)
+				continue
+			}
+		case <-bc.quit:
+			return
+		}
+	}
+}
+
+func (bc *BlockChain) updateCurrentHeader() error {
+	block, err := bc.blockArchiverService.GetLatestBlock()
+	if err != nil {
+		return err
+	}
+	header := block.Header()
+
+	bc.hc.SetCurrentHeader(header)
+
+	bc.currentBlock.Store(header)
+	headBlockGauge.Update(int64(header.Number.Uint64()))
+
+	bc.hc.tdCache.Add(block.Hash(), block.TotalDifficulty)
+	log.Info("update current header", "number", header.Number, "hash", header.Hash())
+	return nil
 }

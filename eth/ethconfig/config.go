@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/blockarchiver"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -49,29 +50,30 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
-	SyncMode:           downloader.SnapSync,
-	NetworkId:          0, // enable auto configuration of networkID == chainID
-	TxLookupLimit:      2350000,
-	TransactionHistory: 2350000,
-	StateHistory:       params.FullImmutabilityThreshold,
-	LightPeers:         100,
-	DatabaseCache:      512,
-	TrieCleanCache:     154,
-	TrieDirtyCache:     256,
-	TrieTimeout:        60 * time.Minute,
-	TriesInMemory:      128,
-	TriesVerifyMode:    core.LocalVerify,
-	SnapshotCache:      102,
-	DiffBlock:          uint64(86400),
-	FilterLogCacheSize: 32,
-	Miner:              miner.DefaultConfig,
-	TxPool:             legacypool.DefaultConfig,
-	BlobPool:           blobpool.DefaultConfig,
-	RPCGasCap:          50000000,
-	RPCEVMTimeout:      5 * time.Second,
-	GPO:                FullNodeGPO,
-	RPCTxFeeCap:        1,                                         // 1 ether
-	BlobExtraReserve:   params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
+	SyncMode:            downloader.NoSync,
+	NetworkId:           0, // enable auto configuration of networkID == chainID
+	TxLookupLimit:       2350000,
+	TransactionHistory:  2350000,
+	StateHistory:        params.FullImmutabilityThreshold,
+	LightPeers:          100,
+	DatabaseCache:       512,
+	TrieCleanCache:      154,
+	TrieDirtyCache:      256,
+	TrieTimeout:         60 * time.Minute,
+	TriesInMemory:       128,
+	TriesVerifyMode:     core.LocalVerify,
+	SnapshotCache:       102,
+	DiffBlock:           uint64(86400),
+	FilterLogCacheSize:  32,
+	Miner:               miner.DefaultConfig,
+	TxPool:              legacypool.DefaultConfig,
+	BlobPool:            blobpool.DefaultConfig,
+	RPCGasCap:           50000000,
+	RPCEVMTimeout:       5 * time.Second,
+	GPO:                 FullNodeGPO,
+	RPCTxFeeCap:         1,                                         // 1 ether
+	BlobExtraReserve:    params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
+	BlockArchiverConfig: blockarchiver.DefaultBlockArchiverConfig,
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -202,6 +204,9 @@ type Config struct {
 
 	// blob setting
 	BlobExtraReserve uint64
+
+	// block archive setting
+	BlockArchiverConfig blockarchiver.BlockArchiverConfig
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.

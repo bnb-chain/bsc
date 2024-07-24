@@ -233,10 +233,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			log.Info("Enabled snap sync", "head", head.Number, "hash", head.Hash())
 		}
 	}
-	// If snap sync is requested but snapshots are disabled, fail loudly
-	if h.snapSync.Load() && config.Chain.Snapshots() == nil {
-		return nil, errors.New("snap sync not supported with snapshots disabled")
-	}
 	// Construct the downloader (long sync)
 	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, nil, h.removePeer, h.enableSyncedFeatures)
 
@@ -416,21 +412,9 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	}
 	defer h.decHandlers()
 
-	// If the peer has a `snap` extension, wait for it to connect so we can have
-	// a uniform initialization/teardown mechanism
-	snap, err := h.peers.waitSnapExtension(peer)
-	if err != nil {
-		peer.Log().Error("Snapshot extension barrier failed", "err", err)
-		return err
-	}
 	trust, err := h.peers.waitTrustExtension(peer)
 	if err != nil {
 		peer.Log().Error("Trust extension barrier failed", "err", err)
-		return err
-	}
-	bsc, err := h.peers.waitBscExtension(peer)
-	if err != nil {
-		peer.Log().Error("Bsc extension barrier failed", "err", err)
 		return err
 	}
 
@@ -448,16 +432,6 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		return err
 	}
 	reject := false // reserved peer slots
-	if h.snapSync.Load() {
-		if snap == nil {
-			// If we are running snap-sync, we want to reserve roughly half the peer
-			// slots for peers supporting the snap protocol.
-			// The logic here is; we only allow up to 5 more non-snap peers than snap-peers.
-			if all, snp := h.peers.len(), h.peers.snapLen(); all-snp > snp+5 {
-				reject = true
-			}
-		}
-	}
 	// Ignore maxPeers if this is a trusted peer
 	peerInfo := peer.Peer.Info()
 	if !peerInfo.Network.Trusted {
@@ -486,7 +460,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
 	// Register the peer locally
-	if err := h.peers.registerPeer(peer, snap, trust, bsc); err != nil {
+	if err := h.peers.registerPeer(peer, nil, trust, nil); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
@@ -496,72 +470,11 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	if p == nil {
 		return errors.New("peer dropped during handling")
 	}
-	// Register the peer in the downloader. If the downloader considers it banned, we disconnect
-	if err := h.downloader.RegisterPeer(peer.ID(), peer.Version(), peer); err != nil {
-		peer.Log().Error("Failed to register peer in eth syncer", "err", err)
-		return err
-	}
-	if snap != nil {
-		if err := h.downloader.SnapSyncer.Register(snap); err != nil {
-			peer.Log().Error("Failed to register peer in snap syncer", "err", err)
-			return err
-		}
-	}
-	h.chainSync.handlePeerEvent()
-
-	// Propagate existing transactions and votes. new transactions and votes appearing
-	// after this will be sent via broadcasts.
-	h.syncTransactions(peer)
-	if h.votepool != nil && p.bscExt != nil {
-		h.syncVotes(p.bscExt)
-	}
 
 	// Create a notification channel for pending requests if the peer goes down
 	dead := make(chan struct{})
 	defer close(dead)
 
-	// If we have any explicit peer required block hashes, request them
-	for number, hash := range h.requiredBlocks {
-		resCh := make(chan *eth.Response)
-
-		req, err := peer.RequestHeadersByNumber(number, 1, 0, false, resCh)
-		if err != nil {
-			return err
-		}
-		go func(number uint64, hash common.Hash, req *eth.Request) {
-			// Ensure the request gets cancelled in case of error/drop
-			defer req.Close()
-
-			timeout := time.NewTimer(syncChallengeTimeout)
-			defer timeout.Stop()
-
-			select {
-			case res := <-resCh:
-				headers := ([]*types.Header)(*res.Res.(*eth.BlockHeadersRequest))
-				if len(headers) == 0 {
-					// Required blocks are allowed to be missing if the remote
-					// node is not yet synced
-					res.Done <- nil
-					return
-				}
-				// Validate the header and either drop the peer or continue
-				if len(headers) > 1 {
-					res.Done <- errors.New("too many headers in required block response")
-					return
-				}
-				if headers[0].Number.Uint64() != number || headers[0].Hash() != hash {
-					peer.Log().Info("Required block mismatch, dropping peer", "number", number, "hash", headers[0].Hash(), "want", hash)
-					res.Done <- errors.New("required block mismatch")
-					return
-				}
-				peer.Log().Debug("Peer required block verified", "number", number, "hash", hash)
-				res.Done <- nil
-			case <-timeout.C:
-				peer.Log().Warn("Required block challenge timed out, dropping", "addr", peer.RemoteAddr(), "type", peer.Name())
-				h.removePeer(peer.ID())
-			}
-		}(number, hash, req)
-	}
 	// Handle incoming messages until the connection is torn down
 	return handler(peer)
 }
@@ -670,8 +583,6 @@ func (h *handler) unregisterPeer(id string) {
 	if peer.snapExt != nil {
 		h.downloader.SnapSyncer.Unregister(id)
 	}
-	h.downloader.UnregisterPeer(id)
-	h.txFetcher.Drop(id)
 
 	if err := h.peers.unregisterPeer(id); err != nil {
 		logger.Error("Ethereum peer removal failed", "err", err)
@@ -702,39 +613,6 @@ func (h *handler) unregisterPeer(id string) {
 func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	h.maxPeers = maxPeers
 	h.maxPeersPerIP = maxPeersPerIP
-	// broadcast and announce transactions (only new ones, not resurrected ones)
-	h.wg.Add(1)
-	h.txsCh = make(chan core.NewTxsEvent, txChanSize)
-	h.txsSub = h.txpool.SubscribeTransactions(h.txsCh, false)
-	go h.txBroadcastLoop()
-
-	// broadcast votes
-	if h.votepool != nil {
-		h.wg.Add(1)
-		h.voteCh = make(chan core.NewVoteEvent, voteChanSize)
-		h.votesSub = h.votepool.SubscribeNewVoteEvent(h.voteCh)
-		go h.voteBroadcastLoop()
-
-		if h.maliciousVoteMonitor != nil {
-			h.wg.Add(1)
-			go h.startMaliciousVoteMonitor()
-		}
-	}
-
-	// announce local pending transactions again
-	h.wg.Add(1)
-	h.reannoTxsCh = make(chan core.ReannoTxsEvent, txChanSize)
-	h.reannoTxsSub = h.txpool.SubscribeReannoTxsEvent(h.reannoTxsCh)
-	go h.txReannounceLoop()
-
-	// broadcast mined blocks
-	h.wg.Add(1)
-	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{})
-	go h.minedBroadcastLoop()
-
-	// start sync handlers
-	h.wg.Add(1)
-	go h.chainSync.loop()
 
 	// start peer handler tracker
 	h.wg.Add(1)

@@ -61,6 +61,7 @@ var (
 	errDecode         = errors.New("invalid message")
 	errInvalidMsgCode = errors.New("invalid message code")
 	errBadRequest     = errors.New("bad request")
+	errNotSupported   = errors.New("not supported")
 )
 
 // Packet represents a p2p message in the `snap` protocol.

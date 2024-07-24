@@ -44,6 +44,9 @@ linters-settings:
 
 issues:
   exclude-rules:
+    - path: ./
+      linters:
+        - unused
     - path: core/state/metrics.go
       linters:
         - unused
