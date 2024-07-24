@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/bohr"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/bruno"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/euler"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/feynman"
@@ -735,6 +736,54 @@ func init() {
 				ContractAddr: common.HexToAddress(SlashContract),
 				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b743ce3f1f1e94c349b175cd6593bc263463b33b",
 				Code:         haberFix.ChapelSlashContract,
+			},
+		},
+	}
+
+	bohrUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "bohr",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/04bc57c1876dd543dd3133b2755ba87cc5f1796a",
+				Code:         bohr.MainnetValidatorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/04bc57c1876dd543dd3133b2755ba87cc5f1796a",
+				Code:         bohr.MainnetStakeHubContract,
+			},
+		},
+	}
+
+	bohrUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "bohr",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/04bc57c1876dd543dd3133b2755ba87cc5f1796a",
+				Code:         bohr.ChapelValidatorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/04bc57c1876dd543dd3133b2755ba87cc5f1796a",
+				Code:         bohr.ChapelStakeHubContract,
+			},
+		},
+	}
+
+	bohrUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "bohr",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/04bc57c1876dd543dd3133b2755ba87cc5f1796a",
+				Code:         bohr.RialtoValidatorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/04bc57c1876dd543dd3133b2755ba87cc5f1796a",
+				Code:         bohr.RialtoStakeHubContract,
 			},
 		},
 	}
