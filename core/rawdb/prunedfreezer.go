@@ -284,7 +284,7 @@ func (f *prunedfreezer) freeze() {
 			continue
 
 		case stableStabeNumber > *number:
-			log.Warn("Stable state block biger current full block", "number", stableStabeNumber, "number", *number)
+			log.Warn("Stable state block bigger current full block", "number", stableStabeNumber, "number", *number)
 			backoff = true
 			continue
 		}

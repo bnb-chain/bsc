@@ -289,7 +289,7 @@ func doTest(cmdline []string) {
 		cc       = flag.String("cc", "", "Sets C compiler binary")
 		coverage = flag.Bool("coverage", false, "Whether to record code coverage")
 		verbose  = flag.Bool("v", false, "Whether to log verbosely")
-		timeout  = flag.String("timeout", "10m", `Timeout of runing tests`)
+		timeout  = flag.String("timeout", "10m", `Timeout of running tests`)
 		race     = flag.Bool("race", false, "Execute the race detector")
 		short    = flag.Bool("short", false, "Pass the 'short'-flag to go test")
 		cachedir = flag.String("cachedir", "./build/cache", "directory for caching downloads")
