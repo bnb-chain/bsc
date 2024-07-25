@@ -72,6 +72,7 @@ var (
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
+		utils.OverridePassedForkTime,
 		utils.OverrideBohr,
 		utils.OverrideVerkle,
 		utils.OverrideFullImmutabilityThreshold,

@@ -185,6 +185,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	// Override the chain config with provided settings.
 	var overrides core.ChainOverrides
+	if config.OverridePassedForkTime != nil {
+		chainConfig.ShanghaiTime = config.OverridePassedForkTime
+		chainConfig.KeplerTime = config.OverridePassedForkTime
+		chainConfig.FeynmanTime = config.OverridePassedForkTime
+		chainConfig.FeynmanFixTime = config.OverridePassedForkTime
+		chainConfig.CancunTime = config.OverridePassedForkTime
+		chainConfig.HaberTime = config.OverridePassedForkTime
+		chainConfig.HaberFixTime = config.OverridePassedForkTime
+		overrides.OverridePassedForkTime = config.OverridePassedForkTime
+	}
 	if config.OverrideBohr != nil {
 		chainConfig.BohrTime = config.OverrideBohr
 		overrides.OverrideBohr = config.OverrideBohr

@@ -305,6 +305,11 @@ var (
 		Usage:    "Manually specify the Rialto Genesis Hash, to trigger builtin network logic",
 		Category: flags.EthCategory,
 	}
+	OverridePassedForkTime = &cli.Uint64Flag{
+		Name:     "override.passedforktime",
+		Usage:    "Manually specify the hard fork timestamp except the last one, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideBohr = &cli.Uint64Flag{
 		Name:     "override.bohr",
 		Usage:    "Manually specify the Bohr fork timestamp, overriding the bundled setting",
