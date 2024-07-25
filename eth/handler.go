@@ -729,7 +729,7 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 
 	// broadcast mined blocks
 	h.wg.Add(1)
-	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{}, core.NewSealedBlockEvent{})
+	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{})
 	go h.minedBroadcastLoop()
 
 	// start sync handlers
@@ -946,9 +946,8 @@ func (h *handler) minedBroadcastLoop() {
 			if obj == nil {
 				continue
 			}
-			if ev, ok := obj.Data.(core.NewSealedBlockEvent); ok {
-				h.BroadcastBlock(ev.Block, true) // Propagate block to peers
-			} else if ev, ok := obj.Data.(core.NewMinedBlockEvent); ok {
+			if ev, ok := obj.Data.(core.NewMinedBlockEvent); ok {
+				h.BroadcastBlock(ev.Block, true)  // First propagate block to peers
 				h.BroadcastBlock(ev.Block, false) // Only then announce to the rest
 			}
 		case <-h.stopCh:
