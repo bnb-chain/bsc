@@ -238,7 +238,7 @@ func newFaucet(genesis *core.Genesis, url string, ks *keystore.KeyStore, index [
 		return nil, err
 	}
 
-	// Allow 1 request per minute with burst of 5, and cache up to 10000 IPs
+	// Allow 1 request per minute with burst of 5, and cache up to 1000 IPs
 	limiter, err := NewIPRateLimiter(rate.Limit(1.0), 5, 1000)
 	if err != nil {
 		return nil, err
@@ -290,8 +290,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	limiter := f.limiter.GetLimiter(ip)
-	if !limiter.Allow() {
+	if !f.limiter.GetLimiter(ip).Allow() {
 		log.Warn("Too many requests from client: ", "client", ip)
 		http.Error(w, "Too many requests", http.StatusTooManyRequests)
 		return
