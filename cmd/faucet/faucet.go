@@ -282,7 +282,6 @@ func (f *faucet) webHandler(w http.ResponseWriter, r *http.Request) {
 
 // apiHandler handles requests for Ether grants and transaction statuses.
 func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
-
 	ip := r.RemoteAddr
 	if len(r.Header.Get("X-Forwarded-For")) > 0 {
 		ips := strings.Split(r.Header.Get("X-Forwarded-For"), ",")

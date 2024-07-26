@@ -27,7 +27,6 @@ func NewIPRateLimiter(r rate.Limit, b int, size int) (*IPRateLimiter, error) {
 }
 
 func (i *IPRateLimiter) AddIP(ip string) *rate.Limiter {
-
 	limiter := rate.NewLimiter(i.r, i.b)
 
 	i.ips.Add(ip, limiter)
@@ -36,7 +35,6 @@ func (i *IPRateLimiter) AddIP(ip string) *rate.Limiter {
 }
 
 func (i *IPRateLimiter) GetLimiter(ip string) *rate.Limiter {
-
 	if limiter, exists := i.ips.Get(ip); exists {
 		return limiter.(*rate.Limiter)
 	}
