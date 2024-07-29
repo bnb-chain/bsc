@@ -73,12 +73,6 @@ func convertBlock(block *Block) (*GeneralBlock, error) {
 		return nil, err
 	}
 
-	var withdrawals *common.Hash
-	if block.WithdrawalsRoot != "" {
-		hash := common.HexToHash(block.WithdrawalsRoot)
-		withdrawals = &hash
-	}
-
 	var baseFeePerGas *big.Int
 	if block.BaseFeePerGas != "" {
 		baseFeePerGas, err = HexToBigInt(block.BaseFeePerGas)
@@ -124,7 +118,6 @@ func convertBlock(block *Block) (*GeneralBlock, error) {
 		Extra:            hexutil.MustDecode(block.ExtraData),
 		MixDigest:        common.HexToHash(block.MixHash),
 		Nonce:            types.EncodeNonce(nonce),
-		WithdrawalsHash:  withdrawals,
 		BlobGasUsed:      blobGasUsed,
 		ExcessBlobGas:    excessBlobGas,
 		ParentBeaconRoot: parentBeaconRoot,
