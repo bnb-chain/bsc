@@ -49,6 +49,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/gorilla/websocket"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -216,6 +217,8 @@ type faucet struct {
 
 	bep2eInfos map[string]bep2eInfo
 	bep2eAbi   abi.ABI
+
+	limiter *IPRateLimiter
 }
 
 // wsConn wraps a websocket connection with a write mutex as the underlying
@@ -235,6 +238,12 @@ func newFaucet(genesis *core.Genesis, url string, ks *keystore.KeyStore, index [
 		return nil, err
 	}
 
+	// Allow 1 request per minute with burst of 5, and cache up to 1000 IPs
+	limiter, err := NewIPRateLimiter(rate.Limit(1.0), 5, 1000)
+	if err != nil {
+		return nil, err
+	}
+
 	return &faucet{
 		config:     genesis.Config,
 		client:     client,
@@ -245,6 +254,7 @@ func newFaucet(genesis *core.Genesis, url string, ks *keystore.KeyStore, index [
 		update:     make(chan struct{}, 1),
 		bep2eInfos: bep2eInfos,
 		bep2eAbi:   bep2eAbi,
+		limiter:    limiter,
 	}, nil
 }
 
@@ -272,6 +282,20 @@ func (f *faucet) webHandler(w http.ResponseWriter, r *http.Request) {
 
 // apiHandler handles requests for Ether grants and transaction statuses.
 func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
+	ip := r.RemoteAddr
+	if len(r.Header.Get("X-Forwarded-For")) > 0 {
+		ips := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+		if len(ips) > 0 {
+			ip = strings.TrimSpace(ips[len(ips)-1])
+		}
+	}
+
+	if !f.limiter.GetLimiter(ip).Allow() {
+		log.Warn("Too many requests from client: ", "client", ip)
+		http.Error(w, "Too many requests", http.StatusTooManyRequests)
+		return
+	}
+
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -625,19 +649,22 @@ func (f *faucet) loop() {
 			balance := new(big.Int).Div(f.balance, ether)
 
 			for _, conn := range f.conns {
-				if err := send(conn, map[string]interface{}{
-					"funds":    balance,
-					"funded":   f.nonce,
-					"requests": f.reqs,
-				}, time.Second); err != nil {
-					log.Warn("Failed to send stats to client", "err", err)
-					conn.conn.Close()
-					continue
-				}
-				if err := send(conn, head, time.Second); err != nil {
-					log.Warn("Failed to send header to client", "err", err)
-					conn.conn.Close()
-				}
+				go func(conn *wsConn) {
+					if err := send(conn, map[string]interface{}{
+						"funds":    balance,
+						"funded":   f.nonce,
+						"requests": f.reqs,
+					}, time.Second); err != nil {
+						log.Warn("Failed to send stats to client", "err", err)
+						conn.conn.Close()
+						return // Exit the goroutine if the first send fails
+					}
+
+					if err := send(conn, head, time.Second); err != nil {
+						log.Warn("Failed to send header to client", "err", err)
+						conn.conn.Close()
+					}
+				}(conn)
 			}
 			f.lock.RUnlock()
 		}
@@ -656,10 +683,12 @@ func (f *faucet) loop() {
 			// Pending requests updated, stream to clients
 			f.lock.RLock()
 			for _, conn := range f.conns {
-				if err := send(conn, map[string]interface{}{"requests": f.reqs}, time.Second); err != nil {
-					log.Warn("Failed to send requests to client", "err", err)
-					conn.conn.Close()
-				}
+				go func(conn *wsConn) {
+					if err := send(conn, map[string]interface{}{"requests": f.reqs}, time.Second); err != nil {
+						log.Warn("Failed to send requests to client", "err", err)
+						conn.conn.Close()
+					}
+				}(conn)
 			}
 			f.lock.RUnlock()
 		}
