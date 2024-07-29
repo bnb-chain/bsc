@@ -2029,7 +2029,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 				delay = 0
 			}
 
-			// Exclude the recently signed validators and inTurnAddr
+			// Exclude the recently signed validators and the in turn validator
 			temp := make([]common.Address, 0, len(validators))
 			for _, addr := range validators {
 				if snap.signRecentlyByCounts(addr, counts) {
