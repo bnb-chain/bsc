@@ -2029,11 +2029,16 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 				delay = 0
 			}
 
-			// Exclude the recently signed validators
+			// Exclude the recently signed validators and inTurnAddr
 			temp := make([]common.Address, 0, len(validators))
 			for _, addr := range validators {
 				if snap.signRecentlyByCounts(addr, counts) {
 					continue
+				}
+				if p.chainConfig.IsBohr(header.Number, header.Time) {
+					if addr == inTurnAddr {
+						continue
+					}
 				}
 				temp = append(temp, addr)
 			}
