@@ -822,9 +822,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool1Size {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
-			// todo maybe here pool2 can come into picture.
-			//  lets say it does. Then how can we transfer it to pool2?
-			// todo: check if pool2 can include it. If it can then include or else pool3
 			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, includePool1, includePool2, includePool3)
 			if !addedToAnyPool {
 				log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
@@ -848,6 +845,8 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		// New transaction is better than our worse ones, make room for it.
 		// If it's a local transaction, forcibly discard all available transactions.
 		// Otherwise if we can't make enough room for new one, abort the operation.
+		// todo maybe we don't need to Discard if we can include it in pool2 or pool3
+		//		OR get the discarded transactions and make them part of pool2 or pool3
 		drop, success := pool.priced.Discard(pool.all.Slots()-int(pool.config.GlobalSlots+pool.config.GlobalQueue)+numSlots(tx), isLocal)
 
 		// Special case, we still can't make the room for the new remote one.
@@ -858,6 +857,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		}
 
 		// If the new transaction is a future transaction it should never churn pending transactions
+		// todo WHY THIS CHECK HAPPENS AFTER CALLING DISCARD()??
 		if !isLocal && pool.isGapped(from, tx) {
 			var replacesPending bool
 			for _, dropTx := range drop {
@@ -879,6 +879,8 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 
 		// Kick out the underpriced remote transactions.
 		for _, tx := range drop {
+			// todo pool2 or pool3. Because the new tx is better than transactions of drop but drop transactions still
+			// 		deserve to be part of at least pool2 or pool3.
 			log.Trace("Discarding freshly underpriced transaction", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
 			underpricedTxMeter.Mark(1)
 
@@ -894,9 +896,8 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		// Nonce already pending, check if required price bump is met
 		inserted, old := list.Add(tx, pool.config.PriceBump)
 		if !inserted {
-			// todo maybe here we can add to pool2 or pool3?
 			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, false, includePool2, includePool3)
-			//pendingDiscardMeter.Mark(1)
+			//pendingDiscardMeter.Mark(1) // todo do we need to mark the meter here?
 			return addedToAnyPool, err
 		}
 		// New transaction is better, replace old one
@@ -909,7 +910,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		pool.all.Add(tx, isLocal)
 		pool.priced.Put(tx, isLocal)
 		pool.journalTx(from, tx)
-		pool.queueTxEvent(tx, false) // todo putting false as placeholder now
+		pool.queueTxEvent(tx, includePool2) // todo putting includePool2 for now, check and confirm
 		log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
@@ -924,15 +925,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	if err != nil {
 		return false, err
 	}
-
-	//if uint64(len(pool.pending)) < pool1Size {
-	//	replaced, err = pool.enqueueTx(hash, tx, isLocal, true)
-	//} else if len(pool.criticalPathPool) < pool2Size {
-	//	replaced, err = pool.enqueueTxToCriticalPath(hash, tx, isLocal, true)
-	//} else {
-	//	pool.localBufferPool.Add(tx)
-	//	replaced, err = false, nil
-	//}
 
 	// Mark local addresses and journal local transactions
 	if local && !pool.locals.contains(from) {
@@ -1500,16 +1492,35 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		events[addr].Put(tx, false) // todo putting false as placeholder for now
 	}
 	if len(events) > 0 {
-		//var txs []*types.Transaction
+		staticTxs := make([]*types.Transaction, 0)
+		nonStaticTxs := make([]*types.Transaction, 0)
 		for _, set := range events {
-			// todo problem is that here all transactions are sent at once. Maybe send them in series? But not sure how
-			//  performance will be affected
-			// todo Maybe do the Send() only twice (instead of all events):
-			// 			1. For Static
-			//			2. For non-Static
-			pool.txFeed.Send(core.NewTxsEvent{Txs: set.Flatten(), Static: set.staticOnly})
-			//txs = append(txs, set.Flatten()...)
+			flattenedTxs := set.Flatten()
+			if set.staticOnly {
+				staticTxs = append(staticTxs, flattenedTxs...)
+			} else {
+				nonStaticTxs = append(nonStaticTxs, flattenedTxs...)
+			}
 		}
+		// Send static transactions
+		if len(staticTxs) > 0 {
+			pool.txFeed.Send(core.NewTxsEvent{Txs: staticTxs, Static: true})
+		}
+
+		// Send dynamic transactions
+		if len(nonStaticTxs) > 0 {
+			pool.txFeed.Send(core.NewTxsEvent{Txs: nonStaticTxs, Static: false})
+		}
+		//for _, set := range events {
+		//	// todo problem is that here all transactions are sent at once. Maybe send them in series? But not sure how
+		//	//  performance will be affected
+		//	// todo Maybe do the Send() only twice (instead of all events):
+		//	// 			1. For Static
+		//	//			2. For non-Static
+		//	pool.txFeed.Send(core.NewTxsEvent{Txs: set.Flatten(), Static: set.staticOnly})
+		//	// todo what if pool1 and pool2 are full at this point. Should we include it to pool3?? Probably NO
+		//	//txs = append(txs, set.Flatten()...)
+		//}
 
 		//pool.txFeed.Send(core.NewTxsEvent{Txs: txs})
 	}
