@@ -642,7 +642,9 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
 		}
 	} else {
-		if header.ParentBeaconRoot == nil || *header.ParentBeaconRoot != (common.Hash{}) {
+		if header.ParentBeaconRoot == nil {
+			return fmt.Errorf("invalid parentBeaconRoot, have nil, expected zero hash")
+		} else if *header.ParentBeaconRoot != (common.Hash{}) {
 			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected zero hash", header.ParentBeaconRoot)
 		}
 	}
