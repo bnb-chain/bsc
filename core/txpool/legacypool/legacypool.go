@@ -2142,36 +2142,6 @@ func numSlots(tx *types.Transaction) int {
 	return int((tx.Size() + txSlotSize - 1) / txSlotSize)
 }
 
-func (pool *LegacyPool) enqueueTxToCriticalPath(hash common.Hash, tx *types.Transaction, local bool, addAll bool) (bool, error) {
-	from, _ := types.Sender(pool.signer, tx)
-	if pool.criticalPathPool[from] == nil {
-		pool.criticalPathPool[from] = newList(false)
-	}
-	inserted, old := pool.criticalPathPool[from].Add(tx, pool.config.PriceBump, false)
-	if !inserted {
-		queuedDiscardMeter.Mark(1)
-		return false, txpool.ErrReplaceUnderpriced
-	}
-	if old != nil {
-		pool.all.Remove(old.Hash())
-		pool.priced.Removed(1)
-		queuedReplaceMeter.Mark(1)
-	} else {
-		queuedGauge.Inc(1)
-	}
-	if pool.all.Get(hash) == nil && !addAll {
-		log.Error("Missing transaction in lookup set, please report the issue", "hash", hash)
-	}
-	if addAll {
-		pool.all.Add(tx, local)
-		pool.priced.Put(tx, local)
-	}
-	if _, exist := pool.beats[from]; !exist {
-		pool.beats[from] = time.Now()
-	}
-	return old != nil, nil
-}
-
 func (pool *LegacyPool) startPeriodicTransfer() {
 	ticker := time.NewTicker(time.Minute) // Adjust the interval as needed
 	go func() {
