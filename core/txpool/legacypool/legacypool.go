@@ -56,8 +56,8 @@ const (
 	// txReannoMaxNum is the maximum number of transactions a reannounce action can include.
 	txReannoMaxNum = 1024
 
-	pool2Size = 10000 // todo might have to set it in config // This is in slots and not in no of transactions
-	pool3Size = 50000
+	maxPool2Size = 10000 // todo might have to set it in config // This is in slots and not in no of transactions
+	maxPool3Size = 50000
 )
 
 var (
@@ -290,7 +290,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgShutdownCh:  make(chan struct{}),
 		initDoneCh:       make(chan struct{}),
 		criticalPathPool: make(map[common.Address]*list),
-		localBufferPool:  NewLRUBuffer(pool3Size),
+		localBufferPool:  NewLRUBuffer(maxPool3Size),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -769,14 +769,13 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		return false, txpool.ErrAlreadyKnown
 	}
 
-	pool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
+	maxPool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
 	//txPoolSizeBeforeCurrentTx := uint64(pool.all.Slots())
 	txPoolSizeAfterCurrentTx := uint64(pool.all.Slots() + numSlots(tx))
-	// pool2Size, pool3Size
 	var includePool1, includePool2, includePool3 bool
-	if txPoolSizeAfterCurrentTx < pool1Size {
+	if txPoolSizeAfterCurrentTx < maxPool1Size {
 		includePool1 = true
-	} else if (txPoolSizeAfterCurrentTx > pool1Size) && (txPoolSizeAfterCurrentTx <= pool2Size) {
+	} else if (txPoolSizeAfterCurrentTx > maxPool1Size) && (txPoolSizeAfterCurrentTx <= (maxPool1Size + maxPool2Size)) {
 		includePool2 = true
 	} else {
 		includePool3 = true
@@ -819,7 +818,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	// If the transaction pool is full, discard underpriced transactions
-	if uint64(pool.all.Slots()+numSlots(tx)) > pool1Size {
+	if uint64(pool.all.Slots()+numSlots(tx)) > maxPool1Size {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
 			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, includePool1, includePool2, includePool3)
@@ -2163,8 +2162,8 @@ func (pool *LegacyPool) startPeriodicTransfer() {
 func (pool *LegacyPool) transferTransactions() {
 
 	maxPool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
-	maxPool1Pool2CombinedSize := maxPool1Size + pool2Size
-	extraSizePool2Pool1 := uint64(len(pool.pending)) + uint64(len(pool.queue)) - pool2Size - maxPool1Size
+	maxPool1Pool2CombinedSize := maxPool1Size + maxPool2Size
+	extraSizePool2Pool1 := uint64(len(pool.pending)) + uint64(len(pool.queue)) - maxPool2Size - maxPool1Size
 	if extraSizePool2Pool1 <= 0 {
 		return
 	}
