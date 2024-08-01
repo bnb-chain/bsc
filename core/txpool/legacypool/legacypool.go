@@ -896,13 +896,11 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		// Nonce already pending, check if required price bump is met
 		inserted, old := list.Add(tx, pool.config.PriceBump, includePool2)
 		if !inserted {
-			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, false, includePool2, includePool3)
-			//pendingDiscardMeter.Mark(1) // todo do we need to mark the meter here?
-			return addedToAnyPool, err
+			pendingDiscardMeter.Mark(1)
+			return false, txpool.ErrReplaceUnderpriced
 		}
 		// New transaction is better, replace old one
 		if old != nil {
-			// todo maybe here we can add the old to pool2 or pool3?
 			pool.all.Remove(old.Hash())
 			pool.priced.Removed(1)
 			pendingReplaceMeter.Mark(1)
@@ -910,7 +908,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		pool.all.Add(tx, isLocal)
 		pool.priced.Put(tx, isLocal)
 		pool.journalTx(from, tx)
-		pool.queueTxEvent(tx, includePool2) // todo putting includePool2 for now, check and confirm
+		pool.queueTxEvent(tx, false) // At this point pool1 can incorporate this. So no need for pool2 or pool3
 		log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
@@ -919,9 +917,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	// New transaction isn't replacing a pending one, push into queue
-	replaced, err = pool.addToPool2OrPool3(tx, from, includePool1, includePool2, includePool3)
-
-	//replaced, err = pool.enqueueTx(hash, tx, isLocal, true)
+	replaced, err = pool.enqueueTx(hash, tx, isLocal, true) // At this point pool1 can incorporate this. So no need for pool2 or pool3
 	if err != nil {
 		return false, err
 	}
@@ -1696,15 +1692,6 @@ func (pool *LegacyPool) truncatePending() {
 		return
 	}
 
-	//var addToPool2OrPool3 bool
-	//
-	//// todo maybe check here if the extra numbers are within pool1 and (pool1+pool2) and in that case
-	////  we can only broadcast to static peers.
-	//pool1Size := pool.config.GlobalSlots
-	//if (pending > pool1Size) && pending < (pool1Size+pool2Size) {
-	//	addToPool2OrPool3 = true
-	//}
-
 	pendingBeforeCap := pending
 	// Assemble a spam order to penalize large transactors first
 	spammers := prque.New[int64, common.Address](nil)
@@ -2185,41 +2172,6 @@ func (pool *LegacyPool) enqueueTxToCriticalPath(hash common.Hash, tx *types.Tran
 	return old != nil, nil
 }
 
-//func getPool2Peers(allPeers, staticPeers []Peer) []Peer {
-//	allWithoutStatic := difference(allPeers, staticPeers)
-//	randomNonStatic := getRandomPeers(allWithoutStatic, MaxNonStaticPeer)
-//	return append(staticPeers, randomNonStatic...)
-//}
-//
-//func broadcastToPeers(tx *types.Transaction, peers []Peer) {
-//	for _, peer := range peers {
-//		peer.SendTransaction(tx)
-//	}
-//}
-//
-//func difference(slice1, slice2 []Peer) []Peer {
-//	m := make(map[Peer]bool)
-//	for _, item := range slice2 {
-//		m[item] = true
-//	}
-//	var diff []Peer
-//	for _, item := range slice1 {
-//		if _, ok := m[item]; !ok {
-//			diff = append(diff, item)
-//		}
-//	}
-//	return diff
-//}
-//
-//func getRandomPeers(peers []Peer, max int) []Peer {
-//	rand.Seed(time.Now().UnixNano())
-//	rand.Shuffle(len(peers), func(i, j int) { peers[i], peers[j] = peers[j], peers[i] })
-//	if len(peers) > max {
-//		return peers[:max]
-//	}
-//	return peers
-//}
-
 func (pool *LegacyPool) startPeriodicTransfer() {
 	ticker := time.NewTicker(time.Minute) // Adjust the interval as needed
 	go func() {
@@ -2273,53 +2225,9 @@ func (pool *LegacyPool) transferTransactions() {
 		// use addToPool2OrPool3() function to transfer from pool3 to pool2
 		_, err := pool.addToPool2OrPool3(transaction, from, false, true, false)
 		if err != nil {
-			return
+			// if it never gets added to anything then add it back
+			pool.addToPool2OrPool3(transaction, from, false, false, true)
+			continue
 		}
 	}
-
-	//	// todo logic: If len(pending + queue) or len(all) < (pool1Max+pool2Max) then we have room to put pool3 into pool1/pool2
-	//	// 				In the above case, transfer from pool3 to pool2. Number of transferred transactions = (pool1Max+pool2Max) - len(all)
-	//	//				Pool3 to only pool2 can be transferred. So obviously those transactions are static true.
-	//	// 				Pool2 to pool1 is unclear
-	//
-	//	// todo flush from pool3 and if it never gets added to anything then add it back
-	//	// otherwise determine exactly how many transctions we can accommodate and then flush accordingly
-	//	//for _, transaction := range tx {
-	//	txPoolSizeBeforeCurrentTx := uint64(pool.all.Slots())
-	//	// todo keep extracting from pool3 until txPoolSizeBeforeCurrentTx + numSlots(extractedTransactions) >= (maxPool1Size + maxPool2Size)
-	//	numSlotsExtractedTransactions := 0
-	//	for txPoolSizeBeforeCurrentTx+uint64(numSlotsExtractedTransactions) < (maxPool1Size + uint64(pool2Size)) {
-	//		tx := pool.localBufferPool.Flush(1)
-	//		if len(tx) == 0 {
-	//			break
-	//		}
-	//		numSlotsExtractedTransactions += numSlots(tx[0])
-	//	}
-	//	txPoolSizeAfterCurrentTx := uint64(pool.all.Slots() + numSlots(tx[0]))
-	//	// pool2Size, pool3Size
-	//	var includePool1, includePool2, includePool3 bool
-	//	if txPoolSizeAfterCurrentTx < maxPool1Size {
-	//		includePool1 = true
-	//	} else if (txPoolSizeAfterCurrentTx > maxPool1Size) && (txPoolSizeAfterCurrentTx <= (maxPool1Size + pool2Size)) {
-	//		includePool2 = true
-	//	} else if txPoolSizeAfterCurrentTx > (maxPool1Size+pool2Size) && txPoolSizeAfterCurrentTx < (maxPool1Size+pool2Size+pool3Size) {
-	//		includePool3 = true
-	//	} else {
-	//		return
-	//	}
-	//
-	//	// already validated by this point
-	//	from, _ := types.Sender(pool.signer, tx[0])
-	//
-	//	// use addToPool2OrPool3() function to transfer from pool3 to pool2
-	//	_, err := pool.addToPool2OrPool3(tx[0], from, includePool1, includePool2, includePool3)
-	//	if err != nil {
-	//		return
-	//	}
-	//}
-	//}
-	//}
-
-	// todo do things in terms of slots rather than number of transactions?
-
 }
