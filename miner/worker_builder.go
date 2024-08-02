@@ -503,9 +503,8 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 		env.state.SetTxContext(tx.Hash(), txIdx)
 
 		var (
-			snap  = env.state.Snapshot()
-			gp    = env.gasPool.Gas()
-			valid = true
+			snap = env.state.Snapshot()
+			gp   = env.gasPool.Gas()
 		)
 
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, env.gasPool, env.state, env.header, tx,
@@ -513,21 +512,19 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 		if err != nil {
 			env.state.RevertToSnapshot(snap)
 			env.gasPool.SetGas(gp)
-			valid = false
-			log.Warn("fail to simulate gasless bundle, skipped", "txHash", tx.Hash(), "err", err)
+			log.Error("fail to simulate gasless tx, skipped", "hash", tx.Hash(), "err", err)
 		} else {
 			txIdx++
-		}
 
-		result = append(result, types.GaslessTxSimResult{
-			Hash:    tx.Hash(),
-			GasUsed: receipt.GasUsed,
-			Valid:   valid,
-		})
+			result = append(result, types.GaslessTxSimResult{
+				Hash:    tx.Hash(),
+				GasUsed: receipt.GasUsed,
+			})
+		}
 	}
 
 	return &types.SimulateGaslessBundleResp{
-		Results:          result,
+		ValidResults:     result,
 		BasedBlockNumber: env.header.Number.Int64(),
 	}, nil
 }

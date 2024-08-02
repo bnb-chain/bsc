@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 const InvalidBundleParamError = -38000
@@ -36,7 +37,8 @@ func (s *PrivateTxBundleAPI) SimulateGaslessBundle(_ context.Context, args types
 	for _, encodedTx := range args.Txs {
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {
-			return nil, err
+			log.Error("failed to unmarshal gasless tx", "err", err)
+			continue
 		}
 		txs = append(txs, tx)
 	}

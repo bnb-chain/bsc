@@ -12,10 +12,9 @@ type SimulateGaslessBundleArgs struct {
 type GaslessTxSimResult struct {
 	Hash    common.Hash
 	GasUsed uint64
-	Valid   bool
 }
 
 type SimulateGaslessBundleResp struct {
-	Results          []GaslessTxSimResult
+	ValidResults     []GaslessTxSimResult
 	BasedBlockNumber int64
 }
