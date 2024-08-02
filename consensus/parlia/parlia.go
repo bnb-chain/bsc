@@ -792,11 +792,10 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		headers[i], headers[len(headers)-1-i] = headers[len(headers)-1-i], headers[i]
 	}
 
-	snap, err := snap.apply(headers, chain, parents, p.chainConfig)
+	snap, err := snap.apply(headers, chain, parents, p.chainConfig, p.recentSnaps)
 	if err != nil {
 		return nil, err
 	}
-	p.recentSnaps.Add(snap.Hash, snap)
 
 	// If we've generated a new checkpoint snapshot, save to disk
 	if snap.Number%checkpointInterval == 0 && len(headers) > 0 {
@@ -1152,8 +1151,8 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 
 	head := header
 	accumulatedWeights := make(map[common.Address]uint64)
-	for height := uint64(math.Max(float64(currentHeight-epoch), 1)); height < currentHeight; height++ {
-		head = chain.GetHeaderByNumber(height - 1)
+	for height := currentHeight - 1; height+epoch >= currentHeight && height >= 1; height-- {
+		head = chain.GetHeaderByHash(head.ParentHash)
 		if head == nil {
 			return fmt.Errorf("header is nil at height %d", height)
 		}

@@ -257,7 +257,7 @@ func (s *Snapshot) SignRecently(validator common.Address) bool {
 	return s.signRecentlyByCounts(validator, s.countRecents())
 }
 
-func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig) (*Snapshot, error) {
+func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig, recentSnaps *lru.ARCCache) (*Snapshot, error) {
 	// Allow passing in no headers for cleaner code
 	if len(headers) == 0 {
 		return s, nil
@@ -378,9 +378,16 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				delete(snap.RecentForkHashes, number-i)
 			}
 		}
+		if snap.Number+s.config.Epoch >= headers[len(headers)-1].Number.Uint64() {
+			temp := snap.copy()
+			temp.Number = number
+			temp.Hash = header.Hash()
+			recentSnaps.Add(temp.Hash, temp)
+		}
 	}
 	snap.Number += uint64(len(headers))
 	snap.Hash = headers[len(headers)-1].Hash()
+	recentSnaps.Add(snap.Hash, snap)
 	return snap, nil
 }
 
