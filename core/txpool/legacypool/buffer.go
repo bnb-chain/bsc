@@ -13,6 +13,7 @@ type LRUBuffer struct {
 	buffer   *containerList.List
 	index    map[common.Hash]*containerList.Element
 	mu       sync.Mutex
+	size     int // Total number of slots used
 }
 
 func NewLRUBuffer(capacity int) *LRUBuffer {
@@ -20,6 +21,7 @@ func NewLRUBuffer(capacity int) *LRUBuffer {
 		capacity: capacity,
 		buffer:   containerList.New(),
 		index:    make(map[common.Hash]*containerList.Element),
+		size:     0, // Initialize size to 0
 	}
 }
 
@@ -32,14 +34,20 @@ func (lru *LRUBuffer) Add(tx *types.Transaction) {
 		return
 	}
 
-	if lru.buffer.Len() >= lru.capacity {
+	txSlots := numSlots(tx)
+
+	// Remove elements until there is enough capacity
+	for lru.size+txSlots > lru.capacity && lru.buffer.Len() > 0 {
 		back := lru.buffer.Back()
+		removedTx := back.Value.(*types.Transaction)
 		lru.buffer.Remove(back)
-		delete(lru.index, back.Value.(*types.Transaction).Hash())
+		delete(lru.index, removedTx.Hash())
+		lru.size -= numSlots(removedTx) // Decrease size by the slots of the removed transaction
 	}
 
 	elem := lru.buffer.PushFront(tx)
 	lru.index[tx.Hash()] = elem
+	lru.size += txSlots // Increase size by the slots of the new transaction
 }
 
 func (lru *LRUBuffer) Get(hash common.Hash) (*types.Transaction, bool) {
@@ -61,10 +69,19 @@ func (lru *LRUBuffer) Flush(maxTransactions int) []*types.Transaction {
 	count := 0
 	for count < maxTransactions && lru.buffer.Len() > 0 {
 		back := lru.buffer.Back()
-		txs = append(txs, back.Value.(*types.Transaction))
+		removedTx := back.Value.(*types.Transaction)
+		txs = append(txs, removedTx)
 		lru.buffer.Remove(back)
-		delete(lru.index, back.Value.(*types.Transaction).Hash())
+		delete(lru.index, removedTx.Hash())
+		lru.size -= numSlots(removedTx) // Decrease size by the slots of the removed transaction
 		count++
 	}
 	return txs
+}
+
+// New method to get the current size of the buffer in terms of slots
+func (lru *LRUBuffer) Size() int {
+	lru.mu.Lock()
+	defer lru.mu.Unlock()
+	return lru.size
 }
