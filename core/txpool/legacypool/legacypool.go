@@ -821,14 +821,14 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	if uint64(pool.all.Slots()+numSlots(tx)) > maxPool1Size {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
-			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, includePool1, includePool2, includePool3)
+			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, isLocal, includePool1, includePool2, includePool3)
 			if !addedToAnyPool {
 				log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
 				underpricedTxMeter.Mark(1)
 				return false, err
 				//return false, txpool.ErrUnderpriced
 			}
-			return true, nil
+			return false, nil // since it is not replacing a transaction
 
 		}
 
@@ -872,14 +872,35 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 					pool.priced.Put(dropTx, false)
 				}
 				log.Trace("Discarding future transaction replacing pending tx", "hash", hash)
-				return false, txpool.ErrFutureReplacePending
+				return false, txpool.ErrFutureReplacePending // todo 1 maybe in this case the future transaction can be part of pool3!
 			}
 		}
 
+		// todo calculate total number of slots in drop. Accordingly add them to pool3 (if there is space) or actually drop them
+		// 		helper function for current availability in any pool
+		availableSlotsPool3 := pool.availableSlotsPool3()
+		var remainingDrop []*types.Transaction
+		if availableSlotsPool3 > 0 {
+			// transfer availableSlotsPool3 number of transactions slots from drop to pool3. Actually drop the rest
+			currentSlotsUsed := 0
+			for _, tx := range drop {
+				txSlots := numSlots(tx)
+				if currentSlotsUsed+txSlots <= availableSlotsPool3 {
+					from, _ := types.Sender(pool.signer, tx)
+					pool.addToPool2OrPool3(tx, from, isLocal, false, false, true)
+					currentSlotsUsed += txSlots
+				} else {
+					remainingDrop = append(remainingDrop, tx)
+				}
+			}
+
+		}
+
 		// Kick out the underpriced remote transactions.
-		for _, tx := range drop {
-			// todo pool2 or pool3. Because the new tx is better than transactions of drop but drop transactions still
+		for _, tx := range remainingDrop {
+			// todo 2 pool2 or pool3. Because the new tx is better than transactions of drop but drop transactions still
 			// 		deserve to be part of at least pool2 or pool3.
+			// 	At this point if remainingDrop is non nil then pool3 is full. So these will need to be deleted anyway
 			log.Trace("Discarding freshly underpriced transaction", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
 			underpricedTxMeter.Mark(1)
 
@@ -937,13 +958,18 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 }
 
 // addToPool2OrPool3 adds a transaction to pool1 or pool2 or pool3 depending on which one is asked for
-func (pool *LegacyPool) addToPool2OrPool3(tx *types.Transaction, from common.Address, pool1, pool2, pool3 bool) (bool, error) {
+func (pool *LegacyPool) addToPool2OrPool3(tx *types.Transaction, from common.Address, isLocal bool, pool1, pool2, pool3 bool) (bool, error) {
 	if pool1 {
 		// todo (check) logic for pool1 related
 		pool.all.Add(tx, pool2)
 		pool.priced.Put(tx, pool2)
 		pool.journalTx(from, tx)
 		pool.queueTxEvent(tx, false)
+		// todo check if enqueueTx should be used
+		_, err := pool.enqueueTx(tx.Hash(), tx, isLocal, true) // At this point pool1 can incorporate this. So no need for pool2 or pool3
+		if err != nil {
+			return false, err
+		}
 		log.Trace("Pooled new executable transaction", "hash", tx.Hash(), "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
@@ -2192,11 +2218,27 @@ func (pool *LegacyPool) transferTransactions() {
 		from, _ := types.Sender(pool.signer, transaction)
 
 		// use addToPool2OrPool3() function to transfer from pool3 to pool2
-		_, err := pool.addToPool2OrPool3(transaction, from, false, true, false)
+		_, err := pool.addToPool2OrPool3(transaction, from, true, false, true, false) // todo by default all pool3 transactions are considered local
 		if err != nil {
 			// if it never gets added to anything then add it back
-			pool.addToPool2OrPool3(transaction, from, false, false, true)
+			pool.addToPool2OrPool3(transaction, from, true, false, false, true)
 			continue
 		}
 	}
 }
+
+func (pool *LegacyPool) availableSlotsPool3() int {
+	availableSlots := maxPool3Size - pool.localBufferPool.Size()
+	if availableSlots > 0 {
+		return availableSlots
+	}
+	return 0
+}
+
+//func (pool *LegacyPool) availableSlotsPool2() uin64 {
+//	availableSlots := maxPool2Size - pool.localBufferPool.Size()
+//	if availableSlots > 0 {
+//		return availableSlots
+//	}
+//	return 0
+//}
