@@ -70,8 +70,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		RPCGasCap               uint64
 		RPCEVMTimeout           time.Duration
 		RPCTxFeeCap             float64
-		OverrideCancun          *uint64 `toml:",omitempty"`
-		OverrideHaber           *uint64 `toml:",omitempty"`
+		OverridePassedForkTime      *uint64 `toml:",omitempty"`
 		OverrideBohr            *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        uint64
@@ -130,8 +129,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RPCGasCap = c.RPCGasCap
 	enc.RPCEVMTimeout = c.RPCEVMTimeout
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
-	enc.OverrideCancun = c.OverrideCancun
-	enc.OverrideHaber = c.OverrideHaber
+	enc.OverridePassedForkTime = c.OverridePassedForkTime
 	enc.OverrideBohr = c.OverrideBohr
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.BlobExtraReserve = c.BlobExtraReserve
@@ -194,8 +192,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		RPCGasCap               *uint64
 		RPCEVMTimeout           *time.Duration
 		RPCTxFeeCap             *float64
-		OverrideCancun          *uint64 `toml:",omitempty"`
-		OverrideHaber           *uint64 `toml:",omitempty"`
+		OverridePassedForkTime      *uint64 `toml:",omitempty"`
 		OverrideBohr            *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        *uint64
@@ -363,11 +360,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.RPCTxFeeCap != nil {
 		c.RPCTxFeeCap = *dec.RPCTxFeeCap
 	}
-	if dec.OverrideCancun != nil {
-		c.OverrideCancun = dec.OverrideCancun
-	}
-	if dec.OverrideHaber != nil {
-		c.OverrideHaber = dec.OverrideHaber
+	if dec.OverridePassedForkTime != nil {
+		c.OverridePassedForkTime = dec.OverridePassedForkTime
 	}
 	if dec.OverrideBohr != nil {
 		c.OverrideBohr = dec.OverrideBohr

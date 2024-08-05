@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/bloombits"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -468,6 +469,16 @@ func (b *EthAPIBackend) ServiceFilter(ctx context.Context, session *bloombits.Ma
 
 func (b *EthAPIBackend) Engine() consensus.Engine {
 	return b.eth.engine
+}
+
+func (b *EthAPIBackend) CurrentTurnLength() (turnLength uint8, err error) {
+	if p, ok := b.eth.engine.(*parlia.Parlia); ok {
+		service := p.APIs(b.Chain())[0].Service
+		currentHead := rpc.LatestBlockNumber
+		return service.(*parlia.API).GetTurnLength(&currentHead)
+	}
+
+	return 1, nil
 }
 
 func (b *EthAPIBackend) CurrentHeader() *types.Header {

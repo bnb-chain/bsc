@@ -1,8 +1,19 @@
+From 32329440626abd6e9668c2d5bd2e7b719e951e01 Mon Sep 17 00:00:00 2001
+From: NathanBSC <Nathan.l@nodereal.io>
+Date: Wed, 31 Jul 2024 15:01:28 +0800
+Subject: [PATCH] diff go ethereum
+
+---
+ core/vm/contracts.go      | 10 ----------
+ core/vm/jump_table.go     |  2 +-
+ params/protocol_params.go |  2 +-
+ 3 files changed, 2 insertions(+), 12 deletions(-)
+
 diff --git a/core/vm/contracts.go b/core/vm/contracts.go
-index 5988bb15f..c92cbf542 100644
+index 38a6cac24..7eb29c3ed 100644
 --- a/core/vm/contracts.go
 +++ b/core/vm/contracts.go
-@@ -83,9 +83,6 @@ var PrecompiledContractsIstanbul = map[common.Address]PrecompiledContract{
+@@ -84,9 +84,6 @@ var PrecompiledContractsIstanbul = map[common.Address]PrecompiledContract{
  	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
  	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
  	common.BytesToAddress([]byte{9}): &blake2F{},
@@ -12,7 +23,7 @@ index 5988bb15f..c92cbf542 100644
  }
  
  var PrecompiledContractsNano = map[common.Address]PrecompiledContract{
-@@ -238,13 +235,6 @@ var PrecompiledContractsCancun = map[common.Address]PrecompiledContract{
+@@ -239,13 +236,6 @@ var PrecompiledContractsCancun = map[common.Address]PrecompiledContract{
  	common.BytesToAddress([]byte{8}):    &bn256PairingIstanbul{},
  	common.BytesToAddress([]byte{9}):    &blake2F{},
  	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
@@ -25,7 +36,7 @@ index 5988bb15f..c92cbf542 100644
 -	common.BytesToAddress([]byte{105}): &secp256k1SignatureRecover{},
  }
  
- // PrecompiledContractsBLS contains the set of pre-compiled Ethereum
+ // PrecompiledContractsHaber contains the default set of pre-compiled Ethereum
 diff --git a/core/vm/jump_table.go b/core/vm/jump_table.go
 index 70c543f14..65716f944 100644
 --- a/core/vm/jump_table.go
@@ -40,7 +51,7 @@ index 70c543f14..65716f944 100644
  	enable3860(&instructionSet) // Limit and meter initcode
  
 diff --git a/params/protocol_params.go b/params/protocol_params.go
-index b84fa148f..97bf6c4d2 100644
+index 65b2d942c..bb085512f 100644
 --- a/params/protocol_params.go
 +++ b/params/protocol_params.go
 @@ -23,7 +23,7 @@ import (
@@ -52,3 +63,6 @@ index b84fa148f..97bf6c4d2 100644
  	MinGasLimit          uint64 = 5000               // Minimum the gas limit may ever be.
  	MaxGasLimit          uint64 = 0x7fffffffffffffff // Maximum the gas limit (2^63-1).
  	GenesisGasLimit      uint64 = 4712388            // Gas limit of the Genesis block.
+-- 
+2.41.0
+

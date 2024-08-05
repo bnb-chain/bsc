@@ -231,6 +231,13 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 // ProcessBeaconBlockRoot applies the EIP-4788 system call to the beacon block root
 // contract. This method is exported to be used in tests.
 func ProcessBeaconBlockRoot(beaconRoot common.Hash, vmenv *vm.EVM, statedb *state.StateDB) {
+	// Return immediately if beaconRoot equals the zero hash when using the Parlia engine.
+	if beaconRoot == (common.Hash{}) {
+		if chainConfig := vmenv.ChainConfig(); chainConfig != nil && chainConfig.Parlia != nil {
+			return
+		}
+	}
+
 	// If EIP-4788 is enabled, we need to invoke the beaconroot storage contract with
 	// the new root
 	msg := &Message{

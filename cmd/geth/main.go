@@ -73,14 +73,14 @@ var (
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
-		utils.OverrideCancun,
-		utils.OverrideHaber,
+		utils.OverridePassedForkTime,
 		utils.OverrideBohr,
 		utils.OverrideVerkle,
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,
 		utils.OverrideDefaultExtraReserveForBlobRequests,
 		utils.OverrideBreatheBlockInterval,
+		utils.OverrideFixedTurnLength,
 		utils.EnablePersonal,
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
@@ -128,6 +128,7 @@ var (
 		utils.CacheSnapshotFlag,
 		// utils.CacheNoPrefetchFlag,
 		utils.CachePreimagesFlag,
+		utils.MultiDataBaseFlag,
 		utils.PersistDiffFlag,
 		utils.DiffBlockFlag,
 		utils.PruneAncientDataFlag,
@@ -337,9 +338,6 @@ func prepare(ctx *cli.Context) {
   5. Networking is disabled; there is no listen-address, the maximum number of peers is set
      to 0, and discovery is disabled.
 `)
-
-	case !ctx.IsSet(utils.NetworkIdFlag.Name):
-		log.Info("Starting Geth on BSC mainnet...")
 	}
 	// If we're a full node on mainnet without --cache specified, bump default cache allowance
 	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {

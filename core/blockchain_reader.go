@@ -98,6 +98,15 @@ func (bc *BlockChain) GetHeaderByHash(hash common.Hash) *types.Header {
 	return bc.hc.GetHeaderByHash(hash)
 }
 
+// GetVerifiedBlockByHash retrieves the header of a verified block, it may be only in memory.
+func (bc *BlockChain) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
+	highestVerifiedBlock := bc.highestVerifiedBlock.Load()
+	if highestVerifiedBlock != nil && highestVerifiedBlock.Hash() == hash {
+		return highestVerifiedBlock
+	}
+	return bc.hc.GetHeaderByHash(hash)
+}
+
 // GetHeaderByNumber retrieves a block header from the database by number,
 // caching it (associated with its hash) if found.
 func (bc *BlockChain) GetHeaderByNumber(number uint64) *types.Header {
@@ -231,7 +240,7 @@ func (bc *BlockChain) GetReceiptsByHash(hash common.Hash) types.Receipts {
 	if receipts, ok := bc.receiptsCache.Get(hash); ok {
 		return receipts
 	}
-	number := rawdb.ReadHeaderNumber(bc.db.BlockStore(), hash)
+	number := rawdb.ReadHeaderNumber(bc.db, hash)
 	if number == nil {
 		return nil
 	}
@@ -486,6 +495,11 @@ func (bc *BlockChain) SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Su
 	return bc.scope.Track(bc.chainHeadFeed.Subscribe(ch))
 }
 
+// SubscribeHighestVerifiedBlockEvent registers a subscription of HighestVerifiedBlockEvent.
+func (bc *BlockChain) SubscribeHighestVerifiedHeaderEvent(ch chan<- HighestVerifiedBlockEvent) event.Subscription {
+	return bc.scope.Track(bc.highestVerifiedBlockFeed.Subscribe(ch))
+}
+
 // SubscribeChainBlockEvent registers a subscription of ChainBlockEvent.
 func (bc *BlockChain) SubscribeChainBlockEvent(ch chan<- ChainHeadEvent) event.Subscription {
 	return bc.scope.Track(bc.chainBlockFeed.Subscribe(ch))
@@ -514,7 +528,7 @@ func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEve
 
 // AncientTail retrieves the tail the ancients blocks
 func (bc *BlockChain) AncientTail() (uint64, error) {
-	tail, err := bc.db.Tail()
+	tail, err := bc.db.BlockStore().Tail()
 	if err != nil {
 		return 0, err
 	}
