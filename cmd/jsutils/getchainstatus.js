@@ -107,9 +107,11 @@ function getTopKElements(map, k) {
 
 async function getTopAddr()  {
     let countMap = new Map();
+    let totalTxs = 0
     console.log("Find the top target address, between", program.startNum, "and", program.endNum);
-    for (let i = program.startNum; i < program.endNum; i++) {
+    for (let i = program.startNum; i <= program.endNum; i++) {
         let blockData = await provider.getBlock(Number(i), true)
+        totalTxs += blockData.transactions.length
         for  (let txIndex = blockData.transactions.length - 1; txIndex >= 0; txIndex--) {
             let txData = await blockData.getTransaction(txIndex)
             if (txData.to == null) {
@@ -123,11 +125,12 @@ async function getTopAddr()  {
                 countMap.set(toAddr, 1);
             }
         }
-        console.log("progress:", (program.endNum-i), "blocks left")
+        console.log("progress:", (program.endNum-i), "blocks left", "totalTxs", totalTxs)
     }
     let tops = getTopKElements(countMap, program.topNum)
     tops.forEach((value, key) => {
-        console.log(`${key}, Value: ${value}`);
+        // value: [ '0x40661F989826CC641Ce1601526Bb16a4221412c8', 71 ]
+        console.log(key+":", value[0], " ", value[1], " ", ((value[1]*100)/totalTxs).toFixed(2)+"%");
       });
 };
 
