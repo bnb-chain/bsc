@@ -641,8 +641,9 @@ func (b testBackend) TxPoolContentFrom(addr common.Address) ([]*types.Transactio
 func (b testBackend) SubscribeNewTxsEvent(events chan<- core.NewTxsEvent) event.Subscription {
 	panic("implement me")
 }
-func (b testBackend) ChainConfig() *params.ChainConfig { return b.chain.Config() }
-func (b testBackend) Engine() consensus.Engine         { return b.chain.Engine() }
+func (b testBackend) ChainConfig() *params.ChainConfig  { return b.chain.Config() }
+func (b testBackend) Engine() consensus.Engine          { return b.chain.Engine() }
+func (b testBackend) CurrentTurnLength() (uint8, error) { return 1, nil }
 func (b testBackend) GetLogs(ctx context.Context, blockHash common.Hash, number uint64) ([][]*types.Log, error) {
 	panic("implement me")
 }

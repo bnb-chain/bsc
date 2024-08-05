@@ -185,13 +185,9 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		params.RialtoGenesisHash = common.HexToHash(v)
 	}
 
-	if ctx.IsSet(utils.OverrideCancun.Name) {
-		v := ctx.Uint64(utils.OverrideCancun.Name)
-		cfg.Eth.OverrideCancun = &v
-	}
-	if ctx.IsSet(utils.OverrideHaber.Name) {
-		v := ctx.Uint64(utils.OverrideHaber.Name)
-		cfg.Eth.OverrideHaber = &v
+	if ctx.IsSet(utils.OverridePassedForkTime.Name) {
+		v := ctx.Uint64(utils.OverridePassedForkTime.Name)
+		cfg.Eth.OverridePassedForkTime = &v
 	}
 	if ctx.IsSet(utils.OverrideBohr.Name) {
 		v := ctx.Uint64(utils.OverrideBohr.Name)
@@ -213,6 +209,9 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	}
 	if ctx.IsSet(utils.OverrideBreatheBlockInterval.Name) {
 		params.BreatheBlockInterval = ctx.Uint64(utils.OverrideBreatheBlockInterval.Name)
+	}
+	if ctx.IsSet(utils.OverrideFixedTurnLength.Name) {
+		params.FixedTurnLength = ctx.Uint64(utils.OverrideFixedTurnLength.Name)
 	}
 
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)

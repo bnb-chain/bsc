@@ -59,6 +59,9 @@ type ChainHeaderReader interface {
 	// GetHighestVerifiedHeader retrieves the highest header verified.
 	GetHighestVerifiedHeader() *types.Header
 
+	// GetVerifiedBlockByHash retrieves the highest verified block.
+	GetVerifiedBlockByHash(hash common.Hash) *types.Header
+
 	// ChasingHead return the best chain head of peers.
 	ChasingHead() *types.Header
 }

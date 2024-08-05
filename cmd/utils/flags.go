@@ -305,14 +305,9 @@ var (
 		Usage:    "Manually specify the Rialto Genesis Hash, to trigger builtin network logic",
 		Category: flags.EthCategory,
 	}
-	OverrideCancun = &cli.Uint64Flag{
-		Name:     "override.cancun",
-		Usage:    "Manually specify the Cancun fork timestamp, overriding the bundled setting",
-		Category: flags.EthCategory,
-	}
-	OverrideHaber = &cli.Uint64Flag{
-		Name:     "override.haber",
-		Usage:    "Manually specify the Haber fork timestamp, overriding the bundled setting",
+	OverridePassedForkTime = &cli.Uint64Flag{
+		Name:     "override.passedforktime",
+		Usage:    "Manually specify the hard fork timestamp except the last one, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
 	OverrideBohr = &cli.Uint64Flag{
@@ -347,6 +342,12 @@ var (
 		Name:     "override.breatheblockinterval",
 		Usage:    "It changes the interval between breathe blocks, only for testing purpose",
 		Value:    params.BreatheBlockInterval,
+		Category: flags.EthCategory,
+	}
+	OverrideFixedTurnLength = &cli.Uint64Flag{
+		Name:     "override.fixedturnlength",
+		Usage:    "It use fixed or random values for turn length instead of reading from the contract, only for testing purpose",
+		Value:    params.FixedTurnLength,
 		Category: flags.EthCategory,
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
@@ -1163,7 +1164,6 @@ var (
 		DBEngineFlag,
 		StateSchemeFlag,
 		HttpHeaderFlag,
-		MultiDataBaseFlag,
 	}
 )
 
@@ -2083,7 +2083,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 		cfg.Genesis = core.DefaultBSCGenesisBlock()
 		SetDNSDiscoveryDefaults(cfg, params.BSCGenesisHash)
-	case ctx.Bool(ChapelFlag.Name):
+	case ctx.Bool(ChapelFlag.Name) || cfg.NetworkId == 97:
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 97
 		}
