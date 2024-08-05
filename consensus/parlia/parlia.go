@@ -67,7 +67,7 @@ const (
 	validatorNumberSize             = 1 // Fixed number of extra prefix bytes reserved for validator number after Luban
 
 	wiggleTime         = uint64(1) // second, Random delay (per signer) to allow concurrent signers
-	initialBackOffTime = uint64(1) // second
+	initialBackOffTime = uint64(2) // second
 	processBackOffTime = uint64(1) // second
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
@@ -2009,7 +2009,11 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		log.Debug("backOffTime", "blockNumber", header.Number, "in turn validator", val)
 		return 0
 	} else {
+		// If the in-turn validator has not signed recently, the expected backoff times are [2, 3, 4, ...].
 		delay := initialBackOffTime
+		if !p.chainConfig.IsBohr(header.Number, header.Time) {
+			delay = 1
+		}
 		validators := snap.validators()
 		if p.chainConfig.IsPlanck(header.Number) {
 			counts := snap.countRecents()
@@ -2074,6 +2078,10 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 			backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
 		})
 
+		// If the in-turn validator has signed recently, the expected backoff times are [0, 2, 3, ...].
+		if delay == 0 && idx > 0 && p.chainConfig.IsBohr(header.Number, header.Time) {
+			delay += wiggleTime
+		}
 		delay += backOffSteps[idx] * wiggleTime
 		return delay
 	}
