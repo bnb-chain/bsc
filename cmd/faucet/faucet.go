@@ -280,6 +280,57 @@ func (f *faucet) webHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(f.index)
 }
 
+// captchaVerify handles CAPTCHA token and verification.
+func captchaVerify(conn *websocket.Conn, captchaToken, captchaSecret, captcha string) error {
+	if captchaToken == "" {
+		return nil
+	}
+	form := url.Values{}
+	form.Add("secret", captchaSecret)
+	form.Add("response", captcha)
+
+	res, err := http.PostForm("https://hcaptcha.com/siteverify", form)
+	if err != nil {
+		return sendError(&wsConn{conn: conn}, err)
+	}
+	defer res.Body.Close()
+
+	var result struct {
+		Success bool            `json:"success"`
+		Errors  json.RawMessage `json:"error-codes"`
+	}
+	err = json.NewDecoder(res.Body).Decode(&result)
+	if err != nil || !result.Success {
+		log.Warn("Captcha verification failed", "err", string(result.Errors))
+		return sendError(&wsConn{conn: conn}, errors.New("CAPTCHA verification failed"))
+	}
+	return nil
+}
+
+// getInitialStats gathers initial stats from the network to report.
+func getInitialStats(f *faucet) (*types.Header, *big.Int, uint64, error) {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	if f.head == nil || f.balance == nil {
+		return nil, nil, 0, errors.New("faucet offline")
+	}
+
+	var head *types.Header
+	var balance *big.Int
+	var nonce uint64
+
+	if f.head != nil {
+		head = types.CopyHeader(f.head)
+	}
+	if f.balance != nil {
+		balance = new(big.Int).Set(f.balance)
+	}
+	nonce = f.nonce
+
+	return head, balance, nonce, nil
+}
+
 // apiHandler handles requests for Ether grants and transaction statuses.
 func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	ip := r.RemoteAddr
@@ -313,32 +364,9 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	if err := conn.ReadJSON(&msg); err != nil {
 		return
 	}
-	if *captchaToken != "" {
-		form := url.Values{}
-		form.Add("secret", *captchaSecret)
-		form.Add("response", msg.Captcha)
-
-		res, err := http.PostForm("https://hcaptcha.com/siteverify", form)
-		if err != nil {
-			if err := sendError(&wsConn{conn: conn}, err); err != nil {
-				log.Warn("Failed to send captcha post error to client", "err", err)
-			}
-			return
-		}
-		defer res.Body.Close()
-
-		var result struct {
-			Success bool            `json:"success"`
-			Errors  json.RawMessage `json:"error-codes"`
-		}
-		err = json.NewDecoder(res.Body).Decode(&result)
-		if err != nil || !result.Success {
-			log.Warn("Captcha verification failed", "err", string(result.Errors))
-			if err := sendError(&wsConn{conn: conn}, errors.New("CAPTCHA verification failed")); err != nil {
-				log.Warn("Failed to send CAPTCHA error to client", "err", err)
-			}
-			return
-		}
+	if err := captchaVerify(conn, *captchaToken, *captchaSecret, msg.Captcha); err != nil {
+		log.Warn("Failed to verify captcha", "err", err)
+		return
 	}
 
 	ipsStr := r.Header.Get("X-Forwarded-For")
@@ -363,32 +391,14 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		f.lock.Unlock()
 	}()
 
-	// Gather initial stats from the network to report
-	var (
-		head    *types.Header
-		balance *big.Int
-		nonce   uint64
-	)
-	f.lock.RLock()
-	if f.head != nil {
-		head = types.CopyHeader(f.head)
-	}
-	if f.balance != nil {
-		balance = new(big.Int).Set(f.balance)
-	}
-	nonce = f.nonce
-	f.lock.RUnlock()
-
-	if head == nil || balance == nil {
-		// Report the faucet offline until initial stats are ready
-		if err := sendError(wsconn, errors.New("Faucet offline")); err != nil {
+	head, balance, nonce, err := getInitialStats(f)
+	if err != nil {
+		if err := sendError(wsconn, err); err != nil {
 			log.Warn("Failed to send faucet error to client", "err", err)
-			return
 		}
 		return
 	}
 
-	// Send over the initial stats and the latest header
 	f.lock.RLock()
 	reqs := f.reqs
 	f.lock.RUnlock()
