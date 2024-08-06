@@ -301,9 +301,46 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-
-	// Start tracking the connection and drop at the end
 	defer conn.Close()
+
+	// Handle CAPTCHA verification first
+	var msg struct {
+		URL     string `json:"url"`
+		Tier    uint   `json:"tier"`
+		Captcha string `json:"captcha"`
+		Symbol  string `json:"symbol"`
+	}
+	if err := conn.ReadJSON(&msg); err != nil {
+		return
+	}
+	if *captchaToken != "" {
+		form := url.Values{}
+		form.Add("secret", *captchaSecret)
+		form.Add("response", msg.Captcha)
+
+		res, err := http.PostForm("https://hcaptcha.com/siteverify", form)
+		if err != nil {
+			if err := sendError(&wsConn{conn: conn}, err); err != nil {
+				log.Warn("Failed to send captcha post error to client", "err", err)
+			}
+			return
+		}
+		defer res.Body.Close()
+
+		var result struct {
+			Success bool            `json:"success"`
+			Errors  json.RawMessage `json:"error-codes"`
+		}
+		err = json.NewDecoder(res.Body).Decode(&result)
+		if err != nil || !result.Success {
+			log.Warn("Captcha verification failed", "err", string(result.Errors))
+			if err := sendError(&wsConn{conn: conn}, errors.New("CAPTCHA verification failed")); err != nil {
+				log.Warn("Failed to send CAPTCHA error to client", "err", err)
+			}
+			return
+		}
+	}
+
 	ipsStr := r.Header.Get("X-Forwarded-For")
 	ips := strings.Split(ipsStr, ",")
 	if len(ips) < 2 {
@@ -325,39 +362,37 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		f.lock.Unlock()
 	}()
-	// Gather the initial stats from the network to report
+
+	// Gather initial stats from the network to report
 	var (
 		head    *types.Header
 		balance *big.Int
 		nonce   uint64
 	)
-	for head == nil || balance == nil {
-		// Retrieve the current stats cached by the faucet
-		f.lock.RLock()
-		if f.head != nil {
-			head = types.CopyHeader(f.head)
-		}
-		if f.balance != nil {
-			balance = new(big.Int).Set(f.balance)
-		}
-		nonce = f.nonce
-		f.lock.RUnlock()
-
-		if head == nil || balance == nil {
-			// Report the faucet offline until initial stats are ready
-			//lint:ignore ST1005 This error is to be displayed in the browser
-			if err = sendError(wsconn, errors.New("Faucet offline")); err != nil {
-				log.Warn("Failed to send faucet error to client", "err", err)
-				return
-			}
-			time.Sleep(3 * time.Second)
-		}
+	f.lock.RLock()
+	if f.head != nil {
+		head = types.CopyHeader(f.head)
 	}
+	if f.balance != nil {
+		balance = new(big.Int).Set(f.balance)
+	}
+	nonce = f.nonce
+	f.lock.RUnlock()
+
+	if head == nil || balance == nil {
+		// Report the faucet offline until initial stats are ready
+		if err := sendError(wsconn, errors.New("Faucet offline")); err != nil {
+			log.Warn("Failed to send faucet error to client", "err", err)
+			return
+		}
+		return
+	}
+
 	// Send over the initial stats and the latest header
 	f.lock.RLock()
 	reqs := f.reqs
 	f.lock.RUnlock()
-	if err = send(wsconn, map[string]interface{}{
+	if err := send(wsconn, map[string]interface{}{
 		"funds":    new(big.Int).Div(balance, ether),
 		"funded":   nonce,
 		"requests": reqs,
@@ -365,206 +400,136 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		log.Warn("Failed to send initial stats to client", "err", err)
 		return
 	}
-	if err = send(wsconn, head, 3*time.Second); err != nil {
+	if err := send(wsconn, head, 3*time.Second); err != nil {
 		log.Warn("Failed to send initial header to client", "err", err)
 		return
 	}
-	// Keep reading requests from the websocket until the connection breaks
-	for {
-		// Fetch the next funding request and validate against github
-		var msg struct {
-			URL     string `json:"url"`
-			Tier    uint   `json:"tier"`
-			Captcha string `json:"captcha"`
-			Symbol  string `json:"symbol"`
-		}
-		if err = conn.ReadJSON(&msg); err != nil {
-			return
-		}
-		if !*noauthFlag && !strings.HasPrefix(msg.URL, "https://twitter.com/") && !strings.HasPrefix(msg.URL, "https://www.facebook.com/") {
-			if err = sendError(wsconn, errors.New("URL doesn't link to supported services")); err != nil {
-				log.Warn("Failed to send URL error to client", "err", err)
-				return
-			}
-			continue
-		}
-		if msg.Tier >= uint(*tiersFlag) {
-			//lint:ignore ST1005 This error is to be displayed in the browser
-			if err = sendError(wsconn, errors.New("Invalid funding tier requested")); err != nil {
-				log.Warn("Failed to send tier error to client", "err", err)
-				return
-			}
-			continue
-		}
-		log.Info("Faucet funds requested", "url", msg.URL, "tier", msg.Tier)
 
-		// If captcha verifications are enabled, make sure we're not dealing with a robot
-		if *captchaToken != "" {
-			form := url.Values{}
-			form.Add("secret", *captchaSecret)
-			form.Add("response", msg.Captcha)
+	// Handle request validation and funding
+	if !*noauthFlag && !strings.HasPrefix(msg.URL, "https://twitter.com/") && !strings.HasPrefix(msg.URL, "https://www.facebook.com/") {
+		if err := sendError(wsconn, errors.New("URL doesn't link to supported services")); err != nil {
+			log.Warn("Failed to send URL error to client", "err", err)
+		}
+		return
+	}
 
-			res, err := http.PostForm("https://hcaptcha.com/siteverify", form)
-			if err != nil {
-				if err = sendError(wsconn, err); err != nil {
-					log.Warn("Failed to send captcha post error to client", "err", err)
-					return
-				}
-				continue
-			}
-			var result struct {
-				Success bool            `json:"success"`
-				Errors  json.RawMessage `json:"error-codes"`
-			}
-			err = json.NewDecoder(res.Body).Decode(&result)
-			res.Body.Close()
-			if err != nil {
-				if err = sendError(wsconn, err); err != nil {
-					log.Warn("Failed to send captcha decode error to client", "err", err)
-					return
-				}
-				continue
-			}
-			if !result.Success {
-				log.Warn("Captcha verification failed", "err", string(result.Errors))
-				//lint:ignore ST1005 it's funny and the robot won't mind
-				if err = sendError(wsconn, errors.New("Beep-bop, you're a robot!")); err != nil {
-					log.Warn("Failed to send captcha failure to client", "err", err)
-					return
-				}
-				continue
-			}
+	if msg.Tier >= uint(*tiersFlag) {
+		if err := sendError(wsconn, errors.New("Invalid funding tier requested")); err != nil {
+			log.Warn("Failed to send tier error to client", "err", err)
 		}
-		// Retrieve the Ethereum address to fund, the requesting user and a profile picture
-		var (
-			id       string
-			username string
-			avatar   string
-			address  common.Address
-		)
-		switch {
-		case strings.HasPrefix(msg.URL, "https://gist.github.com/"):
-			if err = sendError(wsconn, errors.New("GitHub authentication discontinued at the official request of GitHub")); err != nil {
-				log.Warn("Failed to send GitHub deprecation to client", "err", err)
+		return
+	}
+
+	log.Info("Faucet funds requested", "url", msg.URL, "tier", msg.Tier)
+
+	var (
+		id       string
+		username string
+		avatar   string
+		address  common.Address
+	)
+	switch {
+	case strings.HasPrefix(msg.URL, "https://gist.github.com/"):
+		if err := sendError(wsconn, errors.New("GitHub authentication discontinued at the official request of GitHub")); err != nil {
+			log.Warn("Failed to send GitHub deprecation to client", "err", err)
+		}
+		return
+	case strings.HasPrefix(msg.URL, "https://plus.google.com/"):
+		if err := sendError(wsconn, errors.New("Google+ authentication discontinued as the service was sunset")); err != nil {
+			log.Warn("Failed to send Google+ deprecation to client", "err", err)
+		}
+		return
+	case strings.HasPrefix(msg.URL, "https://twitter.com/"):
+		id, username, avatar, address, err = authTwitter(msg.URL, *twitterTokenV1Flag, *twitterTokenFlag)
+	case strings.HasPrefix(msg.URL, "https://www.facebook.com/"):
+		username, avatar, address, err = authFacebook(msg.URL)
+		id = username
+	case *noauthFlag:
+		username, avatar, address, err = authNoAuth(msg.URL)
+		id = username
+	default:
+		if err := sendError(wsconn, errors.New("Something funky happened, please open an issue at https://github.com/ethereum/go-ethereum/issues")); err != nil {
+			log.Warn("Failed to send error to client", "err", err)
+		}
+		return
+	}
+	if err != nil {
+		if err := sendError(wsconn, err); err != nil {
+			log.Warn("Failed to send prefix error to client", "err", err)
+		}
+		return
+	}
+
+	log.Info("Faucet request valid", "url", msg.URL, "tier", msg.Tier, "user", username, "address", address)
+
+	// Ensure the user didn't request funds too recently
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	if ipTimeout := f.timeouts[ips[len(ips)-2]]; time.Now().Before(ipTimeout) {
+		if err := sendError(wsconn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(ipTimeout)))); err != nil {
+			log.Warn("Failed to send funding error to client", "err", err)
+		}
+		return
+	}
+
+	if timeout := f.timeouts[id]; time.Now().After(timeout) {
+		var tx *types.Transaction
+		if msg.Symbol == "BNB" {
+			amount := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(*payoutFlag)), ether), big.NewInt(10))
+			amount = new(big.Int).Mul(amount, new(big.Int).Exp(big.NewInt(5), big.NewInt(int64(msg.Tier)), nil))
+			amount = new(big.Int).Div(amount, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(msg.Tier)), nil))
+
+			tx = types.NewTransaction(f.nonce+uint64(len(f.reqs)), address, amount, 21000, f.price, nil)
+		} else {
+			tokenInfo, ok := f.bep2eInfos[msg.Symbol]
+			if !ok {
+				log.Warn("Failed to find symbol", "symbol", msg.Symbol)
 				return
 			}
-			continue
-		case strings.HasPrefix(msg.URL, "https://plus.google.com/"):
-			//lint:ignore ST1005 Google is a company name and should be capitalized.
-			if err = sendError(wsconn, errors.New("Google+ authentication discontinued as the service was sunset")); err != nil {
-				log.Warn("Failed to send Google+ deprecation to client", "err", err)
+			input, err := f.bep2eAbi.Pack("transfer", address, &tokenInfo.Amount)
+			if err != nil {
+				log.Warn("Failed to pack transfer transaction", "err", err)
 				return
 			}
-			continue
-		case strings.HasPrefix(msg.URL, "https://twitter.com/"):
-			id, username, avatar, address, err = authTwitter(msg.URL, *twitterTokenV1Flag, *twitterTokenFlag)
-		case strings.HasPrefix(msg.URL, "https://www.facebook.com/"):
-			username, avatar, address, err = authFacebook(msg.URL)
-			id = username
-		case *noauthFlag:
-			username, avatar, address, err = authNoAuth(msg.URL)
-			id = username
-		default:
-			//lint:ignore ST1005 This error is to be displayed in the browser
-			err = errors.New("Something funky happened, please open an issue at https://github.com/ethereum/go-ethereum/issues")
+			tx = types.NewTransaction(f.nonce+uint64(len(f.reqs)), tokenInfo.Contract, nil, 420000, f.price, input)
 		}
+		signed, err := f.keystore.SignTx(f.account, tx, f.config.ChainID)
 		if err != nil {
-			if err = sendError(wsconn, err); err != nil {
-				log.Warn("Failed to send prefix error to client", "err", err)
-				return
+			if err := sendError(wsconn, err); err != nil {
+				log.Warn("Failed to send transaction creation error to client", "err", err)
 			}
-			continue
-		}
-		log.Info("Faucet request valid", "url", msg.URL, "tier", msg.Tier, "user", username, "address", address)
-
-		// Ensure the user didn't request funds too recently
-		f.lock.Lock()
-		var (
-			fund    bool
-			timeout time.Time
-		)
-
-		if ipTimeout := f.timeouts[ips[len(ips)-2]]; time.Now().Before(ipTimeout) {
-			if err = sendError(wsconn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(ipTimeout)))); err != nil { // nolint: gosimple
-				log.Warn("Failed to send funding error to client", "err", err)
-			}
-			f.lock.Unlock()
-			continue
-		}
-
-		if timeout = f.timeouts[id]; time.Now().After(timeout) {
-			var tx *types.Transaction
-			if msg.Symbol == "BNB" {
-				// User wasn't funded recently, create the funding transaction
-				amount := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(*payoutFlag)), ether), big.NewInt(10))
-				amount = new(big.Int).Mul(amount, new(big.Int).Exp(big.NewInt(5), big.NewInt(int64(msg.Tier)), nil))
-				amount = new(big.Int).Div(amount, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(msg.Tier)), nil))
-
-				tx = types.NewTransaction(f.nonce+uint64(len(f.reqs)), address, amount, 21000, f.price, nil)
-			} else {
-				tokenInfo, ok := f.bep2eInfos[msg.Symbol]
-				if !ok {
-					f.lock.Unlock()
-					log.Warn("Failed to find symbol", "symbol", msg.Symbol)
-					continue
-				}
-				input, err := f.bep2eAbi.Pack("transfer", address, &tokenInfo.Amount)
-				if err != nil {
-					f.lock.Unlock()
-					log.Warn("Failed to pack transfer transaction", "err", err)
-					continue
-				}
-				tx = types.NewTransaction(f.nonce+uint64(len(f.reqs)), tokenInfo.Contract, nil, 420000, f.price, input)
-			}
-			signed, err := f.keystore.SignTx(f.account, tx, f.config.ChainID)
-			if err != nil {
-				f.lock.Unlock()
-				if err = sendError(wsconn, err); err != nil {
-					log.Warn("Failed to send transaction creation error to client", "err", err)
-					return
-				}
-				continue
-			}
-			// Submit the transaction and mark as funded if successful
-			if err := f.client.SendTransaction(context.Background(), signed); err != nil {
-				f.lock.Unlock()
-				if err = sendError(wsconn, err); err != nil {
-					log.Warn("Failed to send transaction transmission error to client", "err", err)
-					return
-				}
-				continue
-			}
-			f.reqs = append(f.reqs, &request{
-				Avatar:  avatar,
-				Account: address,
-				Time:    time.Now(),
-				Tx:      signed,
-			})
-			timeout := time.Duration(*minutesFlag*int(math.Pow(3, float64(msg.Tier)))) * time.Minute
-			grace := timeout / 288 // 24h timeout => 5m grace
-
-			f.timeouts[id] = time.Now().Add(timeout - grace)
-			f.timeouts[ips[len(ips)-2]] = time.Now().Add(timeout - grace)
-			fund = true
-		}
-		f.lock.Unlock()
-
-		// Send an error if too frequent funding, otherwise a success
-		if !fund {
-			if err = sendError(wsconn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(timeout)))); err != nil { // nolint: gosimple
-				log.Warn("Failed to send funding error to client", "err", err)
-				return
-			}
-			continue
-		}
-		if err = sendSuccess(wsconn, fmt.Sprintf("Funding request accepted for %s into %s", username, address.Hex())); err != nil {
-			log.Warn("Failed to send funding success to client", "err", err)
 			return
+		}
+		if err := f.client.SendTransaction(context.Background(), signed); err != nil {
+			if err := sendError(wsconn, err); err != nil {
+				log.Warn("Failed to send transaction transmission error to client", "err", err)
+			}
+			return
+		}
+		f.reqs = append(f.reqs, &request{
+			Avatar:  avatar,
+			Account: address,
+			Time:    time.Now(),
+			Tx:      signed,
+		})
+		timeout := time.Duration(*minutesFlag*int(math.Pow(3, float64(msg.Tier)))) * time.Minute
+		grace := timeout / 288 // 24h timeout => 5m grace
+
+		f.timeouts[id] = time.Now().Add(timeout - grace)
+		f.timeouts[ips[len(ips)-2]] = time.Now().Add(timeout - grace)
+		if err := sendSuccess(wsconn, fmt.Sprintf("Funding request accepted for %s into %s", username, address.Hex())); err != nil {
+			log.Warn("Failed to send funding success to client", "err", err)
 		}
 		select {
 		case f.update <- struct{}{}:
 		default:
 		}
+		return
+	}
+
+	if err := sendError(wsconn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(f.timeouts[id])))); err != nil {
+		log.Warn("Failed to send funding error to client", "err", err)
 	}
 }
 
