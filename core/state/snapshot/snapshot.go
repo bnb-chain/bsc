@@ -205,6 +205,8 @@ type Tree struct {
 //     state trie.
 //   - otherwise, the entire snapshot is considered invalid and will be recreated on
 //     a background thread.
+//
+// TODO:: if use versa, set SnapshotLimit == 0, will forbidden to use
 func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, root common.Hash, cap int, withoutTrie bool) (*Tree, error) {
 	snap := &Tree{
 		config:   config,

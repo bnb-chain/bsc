@@ -232,6 +232,7 @@ func pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 		}
 		log.Info("Database compaction finished", "elapsed", common.PrettyDuration(time.Since(cstart)))
 	}
+	// TODO:: ignore, versa has its own prunner
 	statedb, _ := state.New(common.Hash{}, state.NewDatabase(maindb), nil)
 	for addr, account := range g.Alloc {
 		statedb.AddBalance(addr, uint256.MustFromBig(account.Balance))

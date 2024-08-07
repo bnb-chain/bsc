@@ -349,6 +349,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	}
 	// Re-create statedb instance with new root upon the updated database
 	// for accessing latest states.
+	// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 	statedb, err = state.New(root, statedb.Database(), nil)
 	if err != nil {
 		return nil, nil, nil, NewError(ErrorEVM, fmt.Errorf("could not reopen state: %v", err))
@@ -358,7 +359,9 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 }
 
 func MakePreState(db ethdb.Database, accounts types.GenesisAlloc) *state.StateDB {
+	// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 	sdb := state.NewDatabaseWithConfig(db, &triedb.Config{Preimages: true})
+	// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 	statedb, _ := state.New(types.EmptyRootHash, sdb, nil)
 	for addr, a := range accounts {
 		statedb.SetCode(addr, a.Code)
@@ -372,6 +375,7 @@ func MakePreState(db ethdb.Database, accounts types.GenesisAlloc) *state.StateDB
 	statedb.Finalise(false)
 	statedb.AccountsIntermediateRoot()
 	root, _, _ := statedb.Commit(0, nil)
+	// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 	statedb, _ = state.New(root, sdb, nil)
 	return statedb
 }

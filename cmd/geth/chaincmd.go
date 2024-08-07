@@ -778,6 +778,7 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 		}
 	} else {
 		// Use latest
+		// TODO:: if versa, scheme = VersaScheme
 		if scheme == rawdb.PathScheme {
 			triedb := triedb.NewDatabase(db, &triedb.Config{PathDB: utils.PathDBConfigAddJournalFilePath(stack, pathdb.ReadOnly)})
 			defer triedb.Close()
@@ -833,6 +834,7 @@ func dump(ctx *cli.Context) error {
 	triedb := utils.MakeTrieDatabase(ctx, stack, db, true, true, false) // always enable preimage lookup
 	defer triedb.Close()
 
+	// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 	state, err := state.New(root, state.NewDatabaseWithNodeDB(db, triedb), nil)
 	if err != nil {
 		return err
@@ -850,6 +852,7 @@ func dumpAllRootHashInPath(ctx *cli.Context) error {
 	defer stack.Close()
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
+	// TODO:: ignore cmd
 	triedb := triedb.NewDatabase(db, &triedb.Config{PathDB: utils.PathDBConfigAddJournalFilePath(stack, pathdb.ReadOnly)})
 	defer triedb.Close()
 

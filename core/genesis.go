@@ -126,7 +126,9 @@ func hashAlloc(ga *types.GenesisAlloc, isVerkle bool) (common.Hash, error) {
 	}
 	// Create an ephemeral in-memory database for computing hash,
 	// all the derived states will be discarded to not pollute disk.
+	// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 	db := state.NewDatabaseWithConfig(rawdb.NewMemoryDatabase(), config)
+	// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 	statedb, err := state.New(types.EmptyRootHash, db, nil)
 	if err != nil {
 		return common.Hash{}, err
@@ -154,6 +156,7 @@ func flushAlloc(ga *types.GenesisAlloc, db ethdb.Database, triedb *triedb.Databa
 	if triedbConfig != nil {
 		triedbConfig.NoTries = false
 	}
+	// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb), nil)
 	if err != nil {
 		return err

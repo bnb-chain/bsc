@@ -71,7 +71,9 @@ func (eth *Ethereum) hashState(ctx context.Context, block *types.Block, reexec u
 			// the internal junks created by tracing will be persisted into the disk.
 			// TODO(rjl493456442), clean cache is disabled to prevent memory leak,
 			// please re-enable it for better performance.
+			// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 			database = state.NewDatabaseWithConfig(eth.chainDb, triedb.HashDefaults)
+			// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 			if statedb, err = state.New(block.Root(), database, nil); err == nil {
 				log.Info("Found disk backend for state trie", "root", block.Root(), "number", block.Number())
 				return statedb, noopReleaser, nil
@@ -91,13 +93,16 @@ func (eth *Ethereum) hashState(ctx context.Context, block *types.Block, reexec u
 		// the internal junks created by tracing will be persisted into the disk.
 		// TODO(rjl493456442), clean cache is disabled to prevent memory leak,
 		// please re-enable it for better performance.
+		// TODO:: if use versa, tdb == nil
 		tdb = triedb.NewDatabase(eth.chainDb, triedb.HashDefaults)
+		// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 		database = state.NewDatabaseWithNodeDB(eth.chainDb, tdb)
 
 		// If we didn't check the live database, do check state over ephemeral database,
 		// otherwise we would rewind past a persisted block (specific corner case is
 		// chain tracing from the genesis).
 		if !readOnly {
+			// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 			statedb, err = state.New(current.Root(), database, nil)
 			if err == nil {
 				return statedb, noopReleaser, nil
@@ -116,7 +121,7 @@ func (eth *Ethereum) hashState(ctx context.Context, block *types.Block, reexec u
 				return nil, nil, fmt.Errorf("missing block %v %d", current.ParentHash(), current.NumberU64()-1)
 			}
 			current = parent
-
+			// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 			statedb, err = state.New(current.Root(), database, nil)
 			if err == nil {
 				break
@@ -164,6 +169,7 @@ func (eth *Ethereum) hashState(ctx context.Context, block *types.Block, reexec u
 			return nil, nil, fmt.Errorf("stateAtBlock commit failed, number %d root %v: %w",
 				current.NumberU64(), current.Root().Hex(), err)
 		}
+		// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 		statedb, err = state.New(root, database, nil) // nolint:staticcheck
 		if err != nil {
 			return nil, nil, fmt.Errorf("state reset after block %d failed: %v", current.NumberU64(), err)
