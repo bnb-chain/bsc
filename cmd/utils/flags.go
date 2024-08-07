@@ -305,6 +305,11 @@ var (
 		Usage:    "Manually specify the Rialto Genesis Hash, to trigger builtin network logic",
 		Category: flags.EthCategory,
 	}
+	OverridePassedForkTime = &cli.Uint64Flag{
+		Name:     "override.passedforktime",
+		Usage:    "Manually specify the hard fork timestamp except the last one, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideBohr = &cli.Uint64Flag{
 		Name:     "override.bohr",
 		Usage:    "Manually specify the Bohr fork timestamp, overriding the bundled setting",
@@ -337,6 +342,12 @@ var (
 		Name:     "override.breatheblockinterval",
 		Usage:    "It changes the interval between breathe blocks, only for testing purpose",
 		Value:    params.BreatheBlockInterval,
+		Category: flags.EthCategory,
+	}
+	OverrideFixedTurnLength = &cli.Uint64Flag{
+		Name:     "override.fixedturnlength",
+		Usage:    "It use fixed or random values for turn length instead of reading from the contract, only for testing purpose",
+		Value:    params.FixedTurnLength,
 		Category: flags.EthCategory,
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
@@ -1153,7 +1164,6 @@ var (
 		DBEngineFlag,
 		StateSchemeFlag,
 		HttpHeaderFlag,
-		MultiDataBaseFlag,
 	}
 )
 

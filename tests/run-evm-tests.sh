@@ -11,4 +11,5 @@ echo "PASS",$PASS,"FAIL",$FAIL
 if [ $FAIL -ne 0 ]
 then
     cat fail.log
+    exit 1
 fi

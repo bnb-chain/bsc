@@ -1,11 +1,66 @@
 # Changelog
+## v1.4.13
+
+### BUGFIX
+* [\#2602](https://github.com/bnb-chain/bsc/pull/2602) fix: prune-state when specify --triesInMemory 32
+* [\#2579](https://github.com/bnb-chain/bsc/pull/00025790) fix: only take non-mempool tx to calculate bid price
+
+### FEATURE
+* [\#2634](https://github.com/bnb-chain/bsc/pull/2634) config: setup Testnet Bohr hardfork date
+* [\#2482](https://github.com/bnb-chain/bsc/pull/2482) BEP-341: Validators can produce consecutive blocks
+* [\#2502](https://github.com/bnb-chain/bsc/pull/2502) BEP-402: Complete Missing Fields in Block Header to Generate Signature
+* [\#2558](https://github.com/bnb-chain/bsc/pull/2558) BEP-404: Clear Miner History when Switching Validators Set
+* [\#2605](https://github.com/bnb-chain/bsc/pull/2605) feat: add bohr upgrade contracts bytecode
+* [\#2614](https://github.com/bnb-chain/bsc/pull/2614) fix: update stakehub bytecode after zero address agent issue fixed
+* [\#2608](https://github.com/bnb-chain/bsc/pull/2608) consensus/parlia: modify mining time for last block in one turn
+* [\#2618](https://github.com/bnb-chain/bsc/pull/2618) consensus/parlia: exclude inturn validator when calculate backoffTime
+* [\#2621](https://github.com/bnb-chain/bsc/pull/2621) core: not record zero hash beacon block root with Parlia engine
+
+### IMPROVEMENT
+* [\#2589](https://github.com/bnb-chain/bsc/pull/2589) core/vote: vote before committing state and writing block
+* [\#2596](https://github.com/bnb-chain/bsc/pull/2596) core: improve the network stability when double sign happens
+* [\#2600](https://github.com/bnb-chain/bsc/pull/2600) core: cache block after wroten into db
+* [\#2629](https://github.com/bnb-chain/bsc/pull/2629) utils: add GetTopAddr to analyse large traffic
+* [\#2591](https://github.com/bnb-chain/bsc/pull/2591) consensus/parlia: add GetJustifiedNumber and GetFinalizedNumber
+* [\#2611](https://github.com/bnb-chain/bsc/pull/2611) cmd/utils: add new flag OverridePassedForkTime
+* [\#2603](https://github.com/bnb-chain/bsc/pull/2603) faucet: rate limit initial implementation
+* [\#2622](https://github.com/bnb-chain/bsc/pull/2622) tests: fix evm-test CI
+* [\#2628](https://github.com/bnb-chain/bsc/pull/2628) Makefile: use docker compose v2 instead of v1
+
+## v1.4.12
+
+### BUGFIX
+* [\#2557](https://github.com/bnb-chain/bsc/pull/2557) fix: fix state inspect error after pruned state
+* [\#2562](https://github.com/bnb-chain/bsc/pull/2562) fix: delete unexpected block
+* [\#2566](https://github.com/bnb-chain/bsc/pull/2566) core: avoid to cache block before wroten into db
+* [\#2567](https://github.com/bnb-chain/bsc/pull/2567) fix: fix statedb copy
+* [\#2574](https://github.com/bnb-chain/bsc/pull/2574) core: adapt highestVerifiedHeader to FastFinality
+* [\#2542](https://github.com/bnb-chain/bsc/pull/2542) fix: pruneancient freeze from the previous position when the first time
+* [\#2564](https://github.com/bnb-chain/bsc/pull/2564) fix: the bug of blobsidecars and downloader with multi-database
+* [\#2582](https://github.com/bnb-chain/bsc/pull/2582) fix: remove delete and dangling side chains in prunefreezer
+
+### FEATURE
+* [\#2513](https://github.com/bnb-chain/bsc/pull/2513) cmd/jsutils: add a tool to get performance between a range of blocks
+* [\#2569](https://github.com/bnb-chain/bsc/pull/2569) cmd/jsutils: add a tool to get slash count
+* [\#2583](https://github.com/bnb-chain/bsc/pull/2583) cmd/jsutill: add log about validator name
+
+### IMPROVEMENT
+* [\#2546](https://github.com/bnb-chain/bsc/pull/2546) go.mod: update missing dependency
+* [\#2559](https://github.com/bnb-chain/bsc/pull/2559) nancy: ignore go-retryablehttp@v0.7.4 in .nancy-ignore
+* [\#2556](https://github.com/bnb-chain/bsc/pull/2556) chore: update greenfield cometbft version
+* [\#2561](https://github.com/bnb-chain/bsc/pull/2561) tests: fix unstable test
+* [\#2572](https://github.com/bnb-chain/bsc/pull/2572) core: clearup testflag for Cancun and Haber
+* [\#2573](https://github.com/bnb-chain/bsc/pull/2573) cmd/utils: support use NetworkId to distinguish chapel when do syncing
+* [\#2538](https://github.com/bnb-chain/bsc/pull/2538) feat: enhance bid comparison and reply bidding results && detail logs
+* [\#2568](https://github.com/bnb-chain/bsc/pull/2568) core/vote: not vote if too late for next in turn validator
+* [\#2576](https://github.com/bnb-chain/bsc/pull/2576) miner/worker: broadcast block immediately once sealed
+* [\#2580](https://github.com/bnb-chain/bsc/pull/2580) freezer: Opt freezer env checking
 
 ## v1.4.11
 
 ### BUGFIX
 * [\#2534](https://github.com/bnb-chain/bsc/pull/2534) fix: nil pointer when clear simulating bid
 * [\#2535](https://github.com/bnb-chain/bsc/pull/2535) upgrade: add HaberFix hardfork
-
 
 ## v1.4.10
 ### FEATURE

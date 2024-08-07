@@ -31,13 +31,7 @@ type API struct {
 
 // GetSnapshot retrieves the state snapshot at a given block.
 func (api *API) GetSnapshot(number *rpc.BlockNumber) (*Snapshot, error) {
-	// Retrieve the requested block number (or current if none requested)
-	var header *types.Header
-	if number == nil || *number == rpc.LatestBlockNumber {
-		header = api.chain.CurrentHeader()
-	} else {
-		header = api.chain.GetHeaderByNumber(uint64(number.Int64()))
-	}
+	header := api.getHeader(number)
 	// Ensure we have an actually valid block and return its snapshot
 	if header == nil {
 		return nil, errUnknownBlock
@@ -56,13 +50,7 @@ func (api *API) GetSnapshotAtHash(hash common.Hash) (*Snapshot, error) {
 
 // GetValidators retrieves the list of validators at the specified block.
 func (api *API) GetValidators(number *rpc.BlockNumber) ([]common.Address, error) {
-	// Retrieve the requested block number (or current if none requested)
-	var header *types.Header
-	if number == nil || *number == rpc.LatestBlockNumber {
-		header = api.chain.CurrentHeader()
-	} else {
-		header = api.chain.GetHeaderByNumber(uint64(number.Int64()))
-	}
+	header := api.getHeader(number)
 	// Ensure we have an actually valid block and return the validators from its snapshot
 	if header == nil {
 		return nil, errUnknownBlock
@@ -85,4 +73,66 @@ func (api *API) GetValidatorsAtHash(hash common.Hash) ([]common.Address, error) 
 		return nil, err
 	}
 	return snap.validators(), nil
+}
+
+func (api *API) GetJustifiedNumber(number *rpc.BlockNumber) (uint64, error) {
+	header := api.getHeader(number)
+	// Ensure we have an actually valid block and return the validators from its snapshot
+	if header == nil {
+		return 0, errUnknownBlock
+	}
+	snap, err := api.parlia.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil || snap.Attestation == nil {
+		return 0, err
+	}
+	return snap.Attestation.TargetNumber, nil
+}
+
+func (api *API) GetTurnLength(number *rpc.BlockNumber) (uint8, error) {
+	header := api.getHeader(number)
+	// Ensure we have an actually valid block and return the validators from its snapshot
+	if header == nil {
+		return 0, errUnknownBlock
+	}
+	snap, err := api.parlia.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil || snap.TurnLength == 0 {
+		return 0, err
+	}
+	return snap.TurnLength, nil
+}
+
+func (api *API) GetFinalizedNumber(number *rpc.BlockNumber) (uint64, error) {
+	header := api.getHeader(number)
+	// Ensure we have an actually valid block and return the validators from its snapshot
+	if header == nil {
+		return 0, errUnknownBlock
+	}
+	snap, err := api.parlia.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil || snap.Attestation == nil {
+		return 0, err
+	}
+	return snap.Attestation.SourceNumber, nil
+}
+
+func (api *API) getHeader(number *rpc.BlockNumber) (header *types.Header) {
+	currentHeader := api.chain.CurrentHeader()
+
+	if number == nil || *number == rpc.LatestBlockNumber {
+		header = currentHeader // current if none requested
+	} else if *number == rpc.SafeBlockNumber {
+		justifiedNumber, _, err := api.parlia.GetJustifiedNumberAndHash(api.chain, []*types.Header{currentHeader})
+		if err != nil {
+			return nil
+		}
+		header = api.chain.GetHeaderByNumber(justifiedNumber)
+	} else if *number == rpc.FinalizedBlockNumber {
+		header = api.parlia.GetFinalizedHeader(api.chain, currentHeader)
+	} else if *number == rpc.PendingBlockNumber {
+		return nil // no pending blocks on bsc
+	} else if *number == rpc.EarliestBlockNumber {
+		header = api.chain.GetHeaderByNumber(0)
+	} else {
+		header = api.chain.GetHeaderByNumber(uint64(number.Int64()))
+	}
+	return
 }
