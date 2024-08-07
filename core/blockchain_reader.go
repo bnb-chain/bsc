@@ -396,6 +396,7 @@ func (bc *BlockChain) State() (*state.StateDB, error) {
 
 // StateAt returns a new mutable state based on a particular point in time.
 func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
+	// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 	stateDb, err := state.New(root, bc.stateCache, bc.snaps)
 	if err != nil {
 		return nil, err

@@ -109,6 +109,7 @@ func runStateTest(fname string, cfg vm.Config, jsonOut, dump bool) error {
 						fmt.Fprintf(os.Stderr, "{\"stateRoot\": \"%#x\"}\n", root)
 					}
 					if dump { // Dump any state to aid debugging
+						// TODO:: state.NewDatabase internally compatible with versa is sufficient.
 						cpy, _ := state.New(root, tstate.StateDB.Database(), nil)
 						dump := cpy.RawDump(nil)
 						result.State = &dump

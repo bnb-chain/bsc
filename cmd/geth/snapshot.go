@@ -256,6 +256,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 	} else if dbScheme == rawdb.HashScheme {
 		config = triedb.HashDefaults
 	}
+	// TODO:: ignore snapshot
 	snaptree, err := snapshot.New(snapconfig, chaindb, triedb.NewDatabase(chaindb, config), headBlock.Root(), TriesInMemory, false)
 	if err != nil {
 		log.Error("snaptree error", "err", err)

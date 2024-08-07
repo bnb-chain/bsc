@@ -397,10 +397,12 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 	}
 
 	// Forcibly use hash-based state scheme for retaining all nodes in disk.
+	// TODO:: ignore, only use to UT
 	triedb := triedb.NewDatabase(db, triedb.HashDefaults)
 	defer triedb.Close()
 
 	for i := 0; i < n; i++ {
+		// @TODO:: ignore, it used to UT, state.NewDatabase internally compatible with versa is sufficient.
 		statedb, err := state.New(parent.Root(), state.NewDatabaseWithNodeDB(db, triedb), nil)
 		if err != nil {
 			panic(err)
