@@ -769,9 +769,21 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 
 				// new snapshot
 				snap = newSnapshot(p.config, p.signatures, number, blockHash, validators, voteAddrs, p.ethAPI)
+
+				// get turnLength from headers and use that for new turnLength
+				turnLength, err := parseTurnLength(checkpoint, p.chainConfig, p.config)
+				if err != nil {
+					return nil, err
+				}
+				if turnLength != nil {
+					snap.TurnLength = *turnLength
+				}
+
 				// snap.Recents is currently empty, which affects the following:
 				// a. The function SignRecently - This is acceptable since an empty snap.Recents results in a more lenient check.
 				// b. The function blockTimeVerifyForRamanujanFork - This is also acceptable as it won't be invoked during `snap.apply`.
+
+				// snap.Attestation is nil, but Snapshot.updateAttestation will handle it correctly.
 				if err := snap.store(p.db); err != nil {
 					return nil, err
 				}
