@@ -1,4 +1,31 @@
 # Changelog
+## v1.4.13
+
+### BUGFIX
+* [\#2602](https://github.com/bnb-chain/bsc/pull/2602) fix: prune-state when specify --triesInMemory 32
+* [\#2579](https://github.com/bnb-chain/bsc/pull/00025790) fix: only take non-mempool tx to calculate bid price
+
+### FEATURE
+* [\#2634](https://github.com/bnb-chain/bsc/pull/2634) config: setup Testnet Bohr hardfork date
+* [\#2482](https://github.com/bnb-chain/bsc/pull/2482) BEP-341: Validators can produce consecutive blocks
+* [\#2502](https://github.com/bnb-chain/bsc/pull/2502) BEP-402: Complete Missing Fields in Block Header to Generate Signature
+* [\#2558](https://github.com/bnb-chain/bsc/pull/2558) BEP-404: Clear Miner History when Switching Validators Set
+* [\#2605](https://github.com/bnb-chain/bsc/pull/2605) feat: add bohr upgrade contracts bytecode
+* [\#2614](https://github.com/bnb-chain/bsc/pull/2614) fix: update stakehub bytecode after zero address agent issue fixed
+* [\#2608](https://github.com/bnb-chain/bsc/pull/2608) consensus/parlia: modify mining time for last block in one turn
+* [\#2618](https://github.com/bnb-chain/bsc/pull/2618) consensus/parlia: exclude inturn validator when calculate backoffTime
+* [\#2621](https://github.com/bnb-chain/bsc/pull/2621) core: not record zero hash beacon block root with Parlia engine
+
+### IMPROVEMENT
+* [\#2589](https://github.com/bnb-chain/bsc/pull/2589) core/vote: vote before committing state and writing block
+* [\#2596](https://github.com/bnb-chain/bsc/pull/2596) core: improve the network stability when double sign happens
+* [\#2600](https://github.com/bnb-chain/bsc/pull/2600) core: cache block after wroten into db
+* [\#2629](https://github.com/bnb-chain/bsc/pull/2629) utils: add GetTopAddr to analyse large traffic
+* [\#2591](https://github.com/bnb-chain/bsc/pull/2591) consensus/parlia: add GetJustifiedNumber and GetFinalizedNumber
+* [\#2611](https://github.com/bnb-chain/bsc/pull/2611) cmd/utils: add new flag OverridePassedForkTime
+* [\#2603](https://github.com/bnb-chain/bsc/pull/2603) faucet: rate limit initial implementation
+* [\#2622](https://github.com/bnb-chain/bsc/pull/2622) tests: fix evm-test CI
+* [\#2628](https://github.com/bnb-chain/bsc/pull/2628) Makefile: use docker compose v2 instead of v1
 
 ## v1.4.12
 
@@ -34,7 +61,6 @@
 ### BUGFIX
 * [\#2534](https://github.com/bnb-chain/bsc/pull/2534) fix: nil pointer when clear simulating bid
 * [\#2535](https://github.com/bnb-chain/bsc/pull/2535) upgrade: add HaberFix hardfork
-
 
 ## v1.4.10
 ### FEATURE
