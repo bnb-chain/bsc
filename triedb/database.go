@@ -18,6 +18,7 @@ package triedb
 
 import (
 	"errors"
+	"github.com/ethereum/go-ethereum/triedb/versadb"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -37,9 +38,11 @@ type Config struct {
 	Preimages bool // Flag whether the preimage of node key is recorded
 	Cache     int
 	NoTries   bool
-	IsVerkle  bool           // Flag whether the db is holding a verkle tree
-	HashDB    *hashdb.Config // Configs for hash-based scheme
-	PathDB    *pathdb.Config // Configs for experimental path-based scheme
+	IsVerkle  bool // Flag whether the db is holding a verkle tree
+	IsVersa   bool
+	HashDB    *hashdb.Config  // Configs for hash-based scheme
+	PathDB    *pathdb.Config  // Configs for experimental path-based scheme
+	VersaDB   *versadb.Config // TODO, Richard
 }
 
 // HashDefaults represents a config for using hash-based scheme with
@@ -148,6 +151,11 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 			config.PathDB = pathdb.Defaults
 		}
 		db.backend = pathdb.New(triediskdb, config.PathDB)
+	} else if strings.Compare(dbScheme, rawdb.VersaScheme) == 0 {
+		if config.VersaDB == nil {
+			config.VersaDB = versadb.Defaults
+		}
+		db.backend = versadb.New(triediskdb, config.VersaDB)
 	} else {
 		var resolver hashdb.ChildResolver
 		if config.IsVerkle {
@@ -408,4 +416,9 @@ func (db *Database) GetAllRooHash() [][]string {
 // IsVerkle returns the indicator if the database is holding a verkle tree.
 func (db *Database) IsVerkle() bool {
 	return db.config.IsVerkle
+}
+
+// IsVersionedState returns the indicator if the database is holding a versioned state.
+func (db *Database) IsVersionedState() bool {
+	return db.config.IsVersa
 }

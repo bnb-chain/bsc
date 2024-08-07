@@ -195,6 +195,10 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 	if db.triedb.IsVerkle() {
 		return trie.NewVerkleTrie(root, db.triedb, utils.NewPointCache(commitmentCacheItems))
 	}
+	// TODO, trie handler instead of tree pointer
+	if db.triedb.IsVersionedState() {
+		return trie.NewVersionTrie(root, db.triedb)
+	}
 	tr, err := trie.NewStateTrie(trie.StateTrieID(root), db.triedb)
 	if err != nil {
 		return nil, err
@@ -213,6 +217,10 @@ func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 	// case.
 	if db.triedb.IsVerkle() {
 		return self, nil
+	}
+	// TODO
+	if db.triedb.IsVersionedState() {
+		return trie.NewVersionTrie(root, db.triedb)
 	}
 	tr, err := trie.NewStateTrie(trie.StorageTrieID(stateRoot, crypto.Keccak256Hash(address.Bytes()), root), db.triedb)
 	if err != nil {

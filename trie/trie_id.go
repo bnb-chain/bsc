@@ -23,6 +23,7 @@ type ID struct {
 	StateRoot common.Hash // The root of the corresponding state(block.root)
 	Owner     common.Hash // The contract address hash which the trie belongs to
 	Root      common.Hash // The root hash of trie
+	Version   uint64      // The version of a Versa tree
 }
 
 // StateTrieID constructs an identifier for state trie with the provided state root.

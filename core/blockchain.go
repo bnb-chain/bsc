@@ -20,6 +20,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/triedb/versadb"
 	"io"
 	"math/big"
 	"runtime"
@@ -194,6 +195,11 @@ func (c *CacheConfig) triedbConfig() *triedb.Config {
 			DirtyCacheSize:  c.TrieDirtyLimit * 1024 * 1024,
 			JournalFilePath: c.JournalFilePath,
 			JournalFile:     c.JournalFile,
+		}
+	}
+	if c.StateScheme == rawdb.VersaScheme {
+		config.VersaDB = &versadb.Config{
+			CleanCacheSize: c.TrieCleanLimit * 1024 * 1024,
 		}
 	}
 	return config
