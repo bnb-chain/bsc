@@ -259,23 +259,25 @@ type BlockChain struct {
 	triesInMemory uint64
 	txIndexer     *txIndexer // Transaction indexer, might be nil if not enabled
 
-	hc                  *HeaderChain
-	rmLogsFeed          event.Feed
-	chainFeed           event.Feed
-	chainSideFeed       event.Feed
-	chainHeadFeed       event.Feed
-	chainBlockFeed      event.Feed
-	logsFeed            event.Feed
-	blockProcFeed       event.Feed
-	finalizedHeaderFeed event.Feed
-	scope               event.SubscriptionScope
-	genesisBlock        *types.Block
+	hc                       *HeaderChain
+	rmLogsFeed               event.Feed
+	chainFeed                event.Feed
+	chainSideFeed            event.Feed
+	chainHeadFeed            event.Feed
+	chainBlockFeed           event.Feed
+	logsFeed                 event.Feed
+	blockProcFeed            event.Feed
+	finalizedHeaderFeed      event.Feed
+	highestVerifiedBlockFeed event.Feed
+	scope                    event.SubscriptionScope
+	genesisBlock             *types.Block
 
 	// This mutex synchronizes chain write operations.
 	// Readers don't need to take it, they can just read the database.
 	chainmu *syncx.ClosableMutex
 
 	highestVerifiedHeader atomic.Pointer[types.Header]
+	highestVerifiedBlock  atomic.Pointer[types.Header]
 	currentBlock          atomic.Pointer[types.Header] // Current head of the chain
 	currentSnapBlock      atomic.Pointer[types.Header] // Current head of snap-sync
 	currentFinalBlock     atomic.Pointer[types.Header] // Latest (consensus) finalized block
@@ -400,6 +402,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	}
 
 	bc.highestVerifiedHeader.Store(nil)
+	bc.highestVerifiedBlock.Store(nil)
 	bc.currentBlock.Store(nil)
 	bc.currentSnapBlock.Store(nil)
 	bc.chasingHead.Store(nil)
@@ -1390,7 +1393,7 @@ func (bc *BlockChain) Stop() {
 		if !bc.cacheConfig.TrieDirtyDisabled {
 			triedb := bc.triedb
 			var once sync.Once
-			for _, offset := range []uint64{0, 1, TriesInMemory - 1} {
+			for _, offset := range []uint64{0, 1, bc.TriesInMemory() - 1} {
 				if number := bc.CurrentBlock().Number.Uint64(); number > offset {
 					recent := bc.GetBlockByNumber(number - offset)
 					log.Info("Writing cached state to disk", "block", recent.Number(), "hash", recent.Hash(), "root", recent.Root())
@@ -1828,7 +1831,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 		// Flush limits are not considered for the first TriesInMemory blocks.
 		current := block.NumberU64()
-		if current <= TriesInMemory {
+		if current <= bc.TriesInMemory() {
 			return nil
 		}
 		// If we exceeded our memory allowance, flush matured singleton nodes to disk
@@ -1926,12 +1929,17 @@ func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types
 // writeBlockAndSetHead is the internal implementation of WriteBlockAndSetHead.
 // This function expects the chain mutex to be held.
 func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
-	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
-		return NonStatTy, err
-	}
 	currentBlock := bc.CurrentBlock()
 	reorg, err := bc.forker.ReorgNeededWithFastFinality(currentBlock, block.Header())
 	if err != nil {
+		return NonStatTy, err
+	}
+	if reorg {
+		bc.highestVerifiedBlock.Store(types.CopyHeader(block.Header()))
+		bc.highestVerifiedBlockFeed.Send(HighestVerifiedBlockEvent{Header: block.Header()})
+	}
+
+	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
 		return NonStatTy, err
 	}
 	if reorg {

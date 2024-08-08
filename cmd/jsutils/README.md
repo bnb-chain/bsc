@@ -33,7 +33,7 @@ node get_perf.js --rpc ${url} --startNum ${start} --endNum ${end}
 output as following
 ```bash
 Get the performance between [ 19470 , 19670 )
-txCountPerBlock = 3142.81 txCountTotal = 628562 BlockCount = 200 avgBlockTime = 3.005 inturnBlocksRatio = 0.975
+txCountPerBlock = 3142.81 txCountTotal = 628562 BlockCount = 200 avgBlockTime = 3.005 inturnBlocksRatio = 0.975 justifiedBlocksRatio = 0.98
 txCountPerSecond = 1045.8602329450914 avgGasUsedPerBlock = 250.02062627 avgGasUsedPerSecond =  83.20153952412646
 ```
 

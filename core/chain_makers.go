@@ -486,7 +486,7 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 		if cm.config.Parlia != nil {
 			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
 		}
-		if cm.config.Parlia == nil {
+		if cm.config.Parlia == nil || cm.config.IsBohr(header.Number, header.Time) {
 			header.ParentBeaconRoot = new(common.Hash)
 		}
 	}
@@ -619,6 +619,10 @@ func (cm *chainMaker) GetTd(hash common.Hash, number uint64) *big.Int {
 
 func (cm *chainMaker) GetHighestVerifiedHeader() *types.Header {
 	panic("not supported")
+}
+
+func (cm *chainMaker) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
+	return cm.GetHeaderByHash(hash)
 }
 
 func (cm *chainMaker) ChasingHead() *types.Header {

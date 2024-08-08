@@ -50,3 +50,5 @@ type ChainSideEvent struct {
 }
 
 type ChainHeadEvent struct{ Block *types.Block }
+
+type HighestVerifiedBlockEvent struct{ Header *types.Header }
