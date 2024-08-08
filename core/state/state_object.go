@@ -227,12 +227,26 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		enc   []byte
 		err   error
 		value common.Hash
+		exist bool
 	)
+
 	if s.db.snap != nil {
 		start := time.Now()
-		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
-		if metrics.EnabledExpensive {
-			s.db.SnapshotStorageReads += time.Since(start)
+		storageKey := crypto.Keccak256Hash(key.Bytes())
+		// Try to get from cache among blocks if the cache root is the pre-state root
+		if s.db.cacheAmongBlocks != nil && s.db.cacheAmongBlocks.GetRoot() == s.db.originalRoot {
+			enc, exist = s.db.cacheAmongBlocks.GetStorage(s.addrHash, storageKey)
+			if exist {
+				SnapshotBlockCacheStorageHitMeter.Mark(1)
+			} else {
+				SnapshotBlockCacheStorageMissMeter.Mark(1)
+			}
+		}
+		if !exist {
+			enc, err = s.db.snap.Storage(s.addrHash, storageKey)
+			if metrics.EnabledExpensive {
+				s.db.SnapshotStorageReads += time.Since(start)
+			}
 		}
 		if len(enc) > 0 {
 			_, content, _, err := rlp.Split(enc)

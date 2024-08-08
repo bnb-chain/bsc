@@ -34,4 +34,12 @@ var (
 	slotDeletionCount    = metrics.NewRegisteredMeter("state/delete/storage/slot", nil)
 	slotDeletionSize     = metrics.NewRegisteredMeter("state/delete/storage/size", nil)
 	slotDeletionSkip     = metrics.NewRegisteredGauge("state/delete/storage/skip", nil)
+
+	SnapshotBlockCacheAccountMissMeter = metrics.NewRegisteredMeter("state/snapshot/cacheblock/account/miss", nil)
+	SnapshotBlockCacheAccountHitMeter  = metrics.NewRegisteredMeter("state/snapshot/cacheblock/account/hit", nil)
+	BlockCacheAccountTimer             = metrics.NewRegisteredResettingTimer("state/cacheblock/account/timer", nil)
+	BlockCacheStorageTimer             = metrics.NewRegisteredResettingTimer("state/cacheblock/storage/timer", nil)
+	SnapshotBlockCacheStorageMissMeter = metrics.NewRegisteredMeter("state/snapshot/cacheblock/storage/miss", nil)
+	SnapshotBlockCacheStorageHitMeter  = metrics.NewRegisteredMeter("state/snapshot/cacheblock/storage/hit", nil)
+	SnapshotBlockCacheStoragePurge     = metrics.NewRegisteredMeter("state/snapshot/cacheblock/storage/purge", nil)
 )

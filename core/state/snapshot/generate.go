@@ -68,6 +68,7 @@ func generateSnapshot(diskdb ethdb.KeyValueStore, triedb *triedb.Database, cache
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write initialized state marker", "err", err)
 	}
+	log.Info("use fast cache", "cache size", cache)
 	base := &diskLayer{
 		diskdb:     diskdb,
 		triedb:     triedb,

@@ -66,14 +66,15 @@ type revision struct {
 // must be created with new root and updated database for accessing post-
 // commit states.
 type StateDB struct {
-	db             Database
-	prefetcherLock sync.Mutex
-	prefetcher     *triePrefetcher
-	trie           Trie
-	noTrie         bool
-	hasher         crypto.KeccakState
-	snaps          *snapshot.Tree    // Nil if snapshot is not available
-	snap           snapshot.Snapshot // Nil if snapshot is not available
+	db               Database
+	prefetcherLock   sync.Mutex
+	prefetcher       *triePrefetcher
+	trie             Trie
+	noTrie           bool
+	hasher           crypto.KeccakState
+	snaps            *snapshot.Tree    // Nil if snapshot is not available
+	snap             snapshot.Snapshot // Nil if snapshot is not available
+	cacheAmongBlocks *CacheAmongBlocks
 
 	// originalRoot is the pre-state root, before any changes were made.
 	// It will be updated when the Commit is called.
@@ -158,6 +159,17 @@ type StateDB struct {
 
 	// Testing hooks
 	onCommit func(states *triestate.Set) // Hook invoked when commit is performed
+}
+
+// NewWithCacheAmongBlocks creates a new state with a cache which store the data among blocks
+func NewWithCacheAmongBlocks(root common.Hash, db Database, snaps *snapshot.Tree, cache *CacheAmongBlocks) (*StateDB, error) {
+	statedb, err := New(root, db, snaps)
+	if err != nil {
+		return nil, err
+	}
+
+	statedb.cacheAmongBlocks = cache
+	return statedb, nil
 }
 
 // NewWithSharedPool creates a new state with sharedStorge on layer 1.5
@@ -718,16 +730,36 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 	}
 	// If no live objects are available, attempt to use snapshots
 	var data *types.StateAccount
+	var err error
+	var exist bool
 	if s.snap != nil {
 		start := time.Now()
-		acc, err := s.snap.Account(crypto.HashData(s.hasher, addr.Bytes()))
-		if metrics.EnabledExpensive {
-			s.SnapshotAccountReads += time.Since(start)
-		}
-		if err == nil {
-			if acc == nil {
-				return nil
+		var acc *types.SlimAccount
+		accounthash := crypto.HashData(s.hasher, addr.Bytes())
+		// Try to get from cache among blocks if the cache root is the pre-state root
+		if s.cacheAmongBlocks != nil && s.cacheAmongBlocks.GetRoot() == s.originalRoot {
+			acc, exist = s.cacheAmongBlocks.GetAccount(accounthash)
+			if exist {
+				SnapshotBlockCacheAccountHitMeter.Mark(1)
+				if acc == nil {
+					return nil
+				}
+			} else {
+				SnapshotBlockCacheAccountMissMeter.Mark(1)
 			}
+		}
+		if !exist {
+			acc, err = s.snap.Account(accounthash)
+			if metrics.EnabledExpensive {
+				s.SnapshotAccountReads += time.Since(start)
+			}
+			if err == nil {
+				if acc == nil {
+					return nil
+				}
+			}
+		}
+		if err == nil || exist {
 			data = &types.StateAccount{
 				Nonce:    acc.Nonce,
 				Balance:  acc.Balance,
@@ -893,6 +925,8 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		snaps: s.snaps,
 		snap:  s.snap,
 	}
+
+	state.cacheAmongBlocks = s.cacheAmongBlocks
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
 		// As documented [here](https://github.com/ethereum/go-ethereum/pull/16485#issuecomment-380438527),
@@ -1701,8 +1735,8 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != s.expectedRoot {
+					//	log.Warn("try to update snapshot tree", "parent", parent, "expect root", s.expectedRoot)
 					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages, verified)
-
 					if err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
 					}
@@ -1751,6 +1785,11 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	if root == (common.Hash{}) {
 		root = types.EmptyRootHash
 	}
+
+	if s.cacheAmongBlocks != nil {
+		s.cacheAmongBlocks.SetRoot(root)
+	}
+
 	// Clear all internal flags at the end of commit operation.
 	s.accounts = make(map[common.Hash][]byte)
 	s.storages = make(map[common.Hash]map[common.Hash][]byte)
@@ -1758,21 +1797,41 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	s.storagesOrigin = make(map[common.Address]map[common.Hash][]byte)
 	s.stateObjectsDirty = make(map[common.Address]struct{})
 	s.stateObjectsDestruct = make(map[common.Address]*types.StateAccount)
+	s.cacheAmongBlocks = nil
 	return root, diffLayer, nil
 }
 
 func (s *StateDB) SnapToDiffLayer() ([]common.Address, []types.DiffAccount, []types.DiffStorage) {
 	destructs := make([]common.Address, 0, len(s.stateObjectsDestruct))
-	for account := range s.stateObjectsDestruct {
-		destructs = append(destructs, account)
+	for accountAddr, account := range s.stateObjectsDestruct {
+		destructs = append(destructs, accountAddr)
+		if s.cacheAmongBlocks != nil {
+			obj, exist := s.stateObjects[accountAddr]
+			if !exist {
+				s.cacheAmongBlocks.SetAccount(crypto.Keccak256Hash(accountAddr.Bytes()), []byte(""))
+			} else {
+				s.cacheAmongBlocks.SetAccount(obj.addrHash, []byte(""))
+			}
+			// if it is a CA account, purge the storage cache to avoid reading dirty storage data
+			if account != nil && account.Root != types.EmptyRootHash {
+				SnapshotBlockCacheStoragePurge.Mark(1)
+				s.cacheAmongBlocks.PurgeStorageCache()
+			}
+		}
 	}
+
 	accounts := make([]types.DiffAccount, 0, len(s.accounts))
 	for accountHash, account := range s.accounts {
 		accounts = append(accounts, types.DiffAccount{
 			Account: accountHash,
 			Blob:    account,
 		})
+
+		if s.cacheAmongBlocks != nil {
+			s.cacheAmongBlocks.SetAccount(accountHash, account)
+		}
 	}
+
 	storages := make([]types.DiffStorage, 0, len(s.storages))
 	for accountHash, storage := range s.storages {
 		keys := make([]common.Hash, 0, len(storage))
@@ -1780,6 +1839,9 @@ func (s *StateDB) SnapToDiffLayer() ([]common.Address, []types.DiffAccount, []ty
 		for k, v := range storage {
 			keys = append(keys, k)
 			values = append(values, v)
+			if s.cacheAmongBlocks != nil {
+				s.cacheAmongBlocks.SetStorage(accountHash, k, v)
+			}
 		}
 		storages = append(storages, types.DiffStorage{
 			Account: accountHash,
@@ -1787,6 +1849,7 @@ func (s *StateDB) SnapToDiffLayer() ([]common.Address, []types.DiffAccount, []ty
 			Vals:    values,
 		})
 	}
+
 	return destructs, accounts, storages
 }
 
