@@ -782,6 +782,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				// snap.Recents is currently empty, which affects the following:
 				// a. The function SignRecently - This is acceptable since an empty snap.Recents results in a more lenient check.
 				// b. The function blockTimeVerifyForRamanujanFork - This is also acceptable as it won't be invoked during `snap.apply`.
+				// c. This may cause a mismatch in the slash systemtx, but the transaction list is not verified during `snap.apply`.
 
 				// snap.Attestation is nil, but Snapshot.updateAttestation will handle it correctly.
 				if err := snap.store(p.db); err != nil {
