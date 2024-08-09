@@ -348,8 +348,7 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 			return true
 		}
 	}
-	_, err := bc.stateCache.OpenTrie(hash)
-	return err == nil
+	return bc.stateCache.HasState(hash)
 }
 
 // HasBlockAndState checks if a block and associated state trie is fully present
@@ -396,7 +395,8 @@ func (bc *BlockChain) State() (*state.StateDB, error) {
 
 // StateAt returns a new mutable state based on a particular point in time.
 func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
-	stateDb, err := state.New(root, bc.stateCache, bc.snaps)
+	// new state db with no need commit mode
+	stateDb, err := state.New(root, state.NewDatabaseWithNodeDB(bc.db, bc.triedb, false), bc.snaps)
 	if err != nil {
 		return nil, err
 	}

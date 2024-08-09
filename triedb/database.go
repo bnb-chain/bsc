@@ -20,6 +20,7 @@ import (
 	"errors"
 	"strings"
 
+	versa "github.com/bnb-chain/versioned-state-database"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -30,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/triedb/database"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
+	"github.com/ethereum/go-ethereum/triedb/versiondb"
 )
 
 // Config defines all necessary options for database.
@@ -37,7 +39,9 @@ type Config struct {
 	Preimages bool // Flag whether the preimage of node key is recorded
 	Cache     int
 	NoTries   bool
-	IsVerkle  bool           // Flag whether the db is holding a verkle tree
+	IsVerkle  bool // Flag whether the db is holding a verkle tree
+	IsVersion bool
+	VersionDB *versiondb.Config
 	HashDB    *hashdb.Config // Configs for hash-based scheme
 	PathDB    *pathdb.Config // Configs for experimental path-based scheme
 }
@@ -92,6 +96,16 @@ type Database struct {
 // NewDatabase initializes the trie database with default settings, note
 // the legacy hash-based scheme is used by default.
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
+	if config != nil && config.IsVersion {
+		// TODO:: Wait for debugging to stabilize, and then consider initialization compatibility with other databases
+		db := &Database{
+			config:  config,
+			diskdb:  diskdb,
+			backend: versiondb.New(config.VersionDB),
+		}
+		return db
+	}
+
 	// Sanitize the config and use the default one if it's not specified.
 	var triediskdb ethdb.Database
 	if diskdb != nil && diskdb.StateStore() != nil {
@@ -408,4 +422,13 @@ func (db *Database) GetAllRooHash() [][]string {
 // IsVerkle returns the indicator if the database is holding a verkle tree.
 func (db *Database) IsVerkle() bool {
 	return db.config.IsVerkle
+}
+
+// VersaDB returns versioned database instance, it is useless for hashdb and pathdb
+func (db *Database) VersaDB() versa.Database {
+	vdb, ok := db.backend.(*versiondb.VersionDB)
+	if !ok {
+		log.Crit("only version db support")
+	}
+	return vdb.VersaDB()
 }

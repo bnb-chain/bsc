@@ -18,6 +18,7 @@ package types
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -56,6 +57,11 @@ func (acct *StateAccount) Copy() *StateAccount {
 		Root:     acct.Root,
 		CodeHash: common.CopyBytes(acct.CodeHash),
 	}
+}
+
+func (acct *StateAccount) String() string {
+	return fmt.Sprintf("nonce: %d, balance: %d, root: %s, codeHash: %s",
+		acct.Nonce, acct.Balance, acct.Root.String(), common.Bytes2Hex(acct.CodeHash))
 }
 
 // SlimAccount is a modified version of an Account, where the root is replaced

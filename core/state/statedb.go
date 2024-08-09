@@ -166,12 +166,18 @@ func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*St
 	if err != nil {
 		return nil, err
 	}
-	statedb.storagePool = NewStoragePool()
+	//statedb.storagePool = NewStoragePool()
 	return statedb, nil
 }
 
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
+	if db.Scheme() == rawdb.VersionScheme && snaps != nil {
+		panic("statedb snapshot must be nil in version db.")
+	}
+	// clean up previous traces
+	db.Reset()
+
 	sdb := &StateDB{
 		db:                   db,
 		originalRoot:         root,
@@ -196,6 +202,7 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 		sdb.snap = sdb.snaps.Snapshot(root)
 	}
 
+	// It should only one to open account tree
 	tr, err := db.OpenTrie(root)
 	// return error when 1. failed to open trie and 2. the snap is nil or the snap is not nil and done verification
 	if err != nil && (sdb.snap == nil || sdb.snap.Verified()) {
@@ -222,6 +229,9 @@ func (s *StateDB) TransferPrefetcher(prev *StateDB) {
 	prev.prefetcherLock.Lock()
 	fetcher = prev.prefetcher
 	prev.prefetcher = nil
+	if fetcher != nil {
+		panic("TransferPrefetcher is not nil")
+	}
 	prev.prefetcherLock.Unlock()
 
 	s.prefetcherLock.Lock()
@@ -243,6 +253,8 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 		s.prefetcher = nil
 	}
 	if s.snap != nil {
+		// TODO:: debug code , will be deleted in the future
+		panic("snapshot is not nill, will start prefetch")
 		parent := s.snap.Parent()
 		if parent != nil {
 			s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, parent.Root(), namespace)
@@ -305,6 +317,7 @@ func (s *StateDB) EnablePipeCommit() {
 	if s.snap != nil && s.snaps.Layers() > 1 {
 		// after big merge, disable pipeCommit for now,
 		// because `s.db.TrieDB().Update` should be called after `s.trie.Commit(true)`
+		panic("snapshot is not nil")
 		s.pipeCommit = false
 	}
 }
@@ -323,6 +336,8 @@ func (s *StateDB) MarkFullProcessed() {
 func (s *StateDB) setError(err error) {
 	if s.dbErr == nil {
 		s.dbErr = err
+	} else {
+		s.dbErr = fmt.Errorf(s.dbErr.Error()+", ", err.Error())
 	}
 }
 
@@ -338,6 +353,8 @@ func (s *StateDB) Error() error {
 // Not thread safe
 func (s *StateDB) Trie() (Trie, error) {
 	if s.trie == nil {
+		// TODO:: debug code, will be deleted in the future.
+		panic("state get trie is nil")
 		err := s.WaitPipeVerification()
 		if err != nil {
 			return nil, err
@@ -719,6 +736,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 	// If no live objects are available, attempt to use snapshots
 	var data *types.StateAccount
 	if s.snap != nil {
+		panic("snapshot is not nil")
 		start := time.Now()
 		acc, err := s.snap.Account(crypto.HashData(s.hasher, addr.Bytes()))
 		if metrics.EnabledExpensive {
@@ -743,9 +761,12 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 		}
 	}
 
+	version := InvalidSateObjectVersion
 	// If snapshot unavailable or reading from it failed, load from the database
 	if data == nil {
 		if s.trie == nil {
+			// TODO:: debug code, will be deleted in the future.
+			panic("getDeletedStateObject get trie is nil")
 			tr, err := s.db.OpenTrie(s.originalRoot)
 			if err != nil {
 				s.setError(errors.New("failed to open trie tree"))
@@ -755,7 +776,12 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 		}
 		start := time.Now()
 		var err error
-		data, err = s.trie.GetAccount(addr)
+		if vtr, ok := s.trie.(*VersaTree); ok {
+			version, data, err = vtr.getAccountWithVersion(addr)
+		} else {
+			data, err = s.trie.GetAccount(addr)
+		}
+
 		if metrics.EnabledExpensive {
 			s.AccountReads += time.Since(start)
 		}
@@ -768,7 +794,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 		}
 	}
 	// Insert into the live set
-	obj := newObject(s, addr, data)
+	obj := newObject(s, addr, data, version)
 	s.setStateObject(obj)
 	return obj
 }
@@ -790,7 +816,7 @@ func (s *StateDB) getOrNewStateObject(addr common.Address) *stateObject {
 // the given address, it is overwritten and returned as the second return value.
 func (s *StateDB) createObject(addr common.Address) (newobj, prev *stateObject) {
 	prev = s.getDeletedStateObject(addr) // Note, prev might have been deleted, we need that!
-	newobj = newObject(s, addr, nil)
+	newobj = newObject(s, addr, nil, InvalidSateObjectVersion)
 	if prev == nil {
 		s.journal.append(createObjectChange{account: &addr})
 	} else {
@@ -859,10 +885,12 @@ func (s *StateDB) CopyDoPrefetch() *StateDB {
 // If doPrefetch is true, it tries to reuse the prefetcher, the copied StateDB will do active trie prefetch.
 // otherwise, just do inactive copy trie prefetcher.
 func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
+	db := s.db.Copy()
+	tr := db.CopyTrie(s.trie)
 	// Copy all the basic fields, initialize the memory ones
 	state := &StateDB{
-		db:   s.db,
-		trie: s.db.CopyTrie(s.trie),
+		db:   db,
+		trie: tr,
 		// noTrie:s.noTrie,
 		// expectedRoot:         s.expectedRoot,
 		// stateRoot:            s.stateRoot,
@@ -1003,6 +1031,7 @@ func (s *StateDB) GetRefund() uint64 {
 func (s *StateDB) WaitPipeVerification() error {
 	// Need to wait for the parent trie to commit
 	if s.snap != nil {
+		panic("snapshot is not nil")
 		if valid := s.snap.WaitAndGetVerifyRes(); !valid {
 			return errors.New("verification on parent snap failed")
 		}
@@ -1108,6 +1137,7 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			if s.snap != nil {
+				panic("snapshot is not nil")
 				s.populateSnapStorage(obj)
 				s.accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
 			}
@@ -1210,6 +1240,8 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 		}
 	}
 	if s.trie == nil {
+		// TODO:: debug code, will be deleted in the future.
+		panic("StateIntermediateRoot get trie is nil")
 		tr, err := s.db.OpenTrie(s.originalRoot)
 		if err != nil {
 			panic(fmt.Sprintf("failed to open trie tree %s", s.originalRoot))
@@ -1369,6 +1401,7 @@ func (s *StateDB) deleteStorage(addr common.Address, addrHash common.Hash, root 
 	// generated, or it's internally corrupted. Fallback to the slow
 	// one just in case.
 	if s.snap != nil {
+		panic("snapshot is not nil")
 		aborted, size, slots, nodes, err = s.fastDeleteStorage(addrHash, root)
 	}
 	if s.snap == nil || err != nil {
@@ -1422,7 +1455,8 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 	// considerable time and storage deletion isn't supported in hash mode, thus
 	// preemptively avoiding unnecessary expenses.
 	incomplete := make(map[common.Address]struct{})
-	if s.db.TrieDB().Scheme() == rawdb.HashScheme {
+	// Only pbss need handler incomplete destruction storage trie
+	if s.db.TrieDB().Scheme() != rawdb.PathScheme {
 		return incomplete, nil
 	}
 	for addr, prev := range s.stateObjectsDestruct {
@@ -1498,6 +1532,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	)
 
 	if s.snap != nil {
+		panic("snapshot is not nil")
 		diffLayer = &types.DiffLayer{}
 	}
 	if s.pipeCommit {
@@ -1613,18 +1648,33 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 					origin = types.EmptyRootHash
 				}
 
-				if root != origin {
+				if s.db.Scheme() == rawdb.VersionScheme {
+					// flush and release will occur regardless of whether the root changes
 					start := time.Now()
-					set := triestate.New(s.accountsOrigin, s.storagesOrigin, incomplete)
-					if err := s.db.TrieDB().Update(root, origin, block, nodes, set); err != nil {
+					if err := s.db.Flush(); err != nil {
+						return err
+					}
+					if err := s.db.Release(); err != nil {
 						return err
 					}
 					s.originalRoot = root
 					if metrics.EnabledExpensive {
 						s.TrieDBCommits += time.Since(start)
 					}
-					if s.onCommit != nil {
-						s.onCommit(set)
+				} else {
+					if root != origin {
+						start := time.Now()
+						set := triestate.New(s.accountsOrigin, s.storagesOrigin, incomplete)
+						if err := s.db.TrieDB().Update(root, origin, block, nodes, set); err != nil {
+							return err
+						}
+						s.originalRoot = root
+						if metrics.EnabledExpensive {
+							s.TrieDBCommits += time.Since(start)
+						}
+						if s.onCommit != nil {
+							s.onCommit(set)
+						}
 					}
 				}
 			}
@@ -1663,8 +1713,21 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 					// Write any contract code associated with the state object
 					if obj.code != nil && obj.dirtyCode {
 						rawdb.WriteCode(codeWriter, common.BytesToHash(obj.CodeHash()), obj.code)
+						switch d := s.db.(type) {
+						case *cachingVersaDB:
+							if d.debug != nil {
+								d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
+							}
+						case *cachingDB:
+							if d.debug != nil {
+								d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
+							}
+						default:
+							panic("caching db type error")
+						}
 						obj.dirtyCode = false
 						if s.snap != nil {
+							panic("snapshot is not nil")
 							diffLayer.Codes = append(diffLayer.Codes, types.DiffCode{
 								Hash: common.BytesToHash(obj.CodeHash()),
 								Code: obj.code,
@@ -1690,6 +1753,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 		func() error {
 			// If snapshotting is enabled, update the snapshot tree with this new version
 			if s.snap != nil {
+				panic("snapshot is not nil")
 				if metrics.EnabledExpensive {
 					defer func(start time.Time) { s.SnapshotCommits += time.Since(start) }(time.Now())
 				}

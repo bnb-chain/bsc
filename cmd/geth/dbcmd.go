@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -34,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -91,6 +93,9 @@ Remove blockchain and state databases`,
 			dbHbss2PbssCmd,
 			dbTrieGetCmd,
 			dbTrieDeleteCmd,
+			getVersionDBState,
+			getHashDBState,
+			diffDebugStateDB,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -286,7 +291,140 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		Description: `This commands will read current offset from kvdb, which is the current offset and starting BlockNumber
 of ancientStore, will also displays the reserved number of blocks in ancientStore `,
 	}
+	getVersionDBState = &cli.Command{
+		Action: getDebugVersionState,
+		Name:   "get-debug-version-state",
+		Flags: []cli.Flag{
+			utils.VersionStateDirFlag,
+			utils.BlockNumber,
+		},
+	}
+	getHashDBState = &cli.Command{
+		Action: getDebugHashState,
+		Name:   "get-debug-hash-state",
+		Flags: []cli.Flag{
+			utils.HashStateDirFlag,
+			utils.BlockNumber,
+		},
+	}
+
+	diffDebugStateDB = &cli.Command{
+		Action: diffDebugState,
+		Name:   "diff-debug-state",
+		Flags: []cli.Flag{
+			utils.VersionStateDirFlag,
+			utils.HashStateDirFlag,
+			utils.BlockNumber,
+		},
+	}
 )
+
+func diffDebugState(ctx *cli.Context) error {
+	if !ctx.IsSet(utils.VersionStateDirFlag.Name) {
+		return fmt.Errorf("please set `--versionstatedir` flag")
+	}
+	if !ctx.IsSet(utils.BlockNumber.Name) {
+		return fmt.Errorf("please set `--block` flag")
+	}
+	if !ctx.IsSet(utils.HashStateDirFlag.Name) {
+		return fmt.Errorf("please set `--hashstatedir` flag")
+	}
+	verDir := ctx.String(utils.VersionStateDirFlag.Name)
+	hasDir := ctx.String(utils.HashStateDirFlag.Name)
+	block := ctx.Int64(utils.BlockNumber.Name)
+
+	vdb, err := rawdb.Open(rawdb.OpenOptions{
+		ReadOnly:  true,
+		Type:      "pebble",
+		Directory: verDir,
+	})
+	if err != nil {
+		return err
+	}
+	verData, err := vdb.Get(state.DebugVersionStateKey(block))
+	if err != nil {
+		return err
+	}
+
+	verDebugState := &state.DebugVersionState{}
+	err = json.Unmarshal(verData, verDebugState)
+	if err != nil {
+		return nil
+	}
+
+	hdb, err := rawdb.Open(rawdb.OpenOptions{
+		ReadOnly:  true,
+		Type:      "pebble",
+		Directory: hasDir,
+	})
+	if err != nil {
+		return err
+	}
+	hashData, err := hdb.Get(state.DebugHashStateKey(block))
+	if err != nil {
+		return err
+	}
+	hasDebugState := &state.DebugHashState{}
+	err = json.Unmarshal(hashData, hasDebugState)
+	if err != nil {
+		return err
+	}
+
+	res := state.GenerateDebugStateDiff(verDebugState, hasDebugState)
+	fmt.Println(res)
+
+	return nil
+}
+
+func getDebugVersionState(ctx *cli.Context) error {
+	if !ctx.IsSet(utils.VersionStateDirFlag.Name) {
+		return fmt.Errorf("please set `--versionstatedir` flag")
+	}
+	if !ctx.IsSet(utils.BlockNumber.Name) {
+		return fmt.Errorf("please set `--block` flag")
+	}
+	dir := ctx.String(utils.VersionStateDirFlag.Name)
+	block := ctx.Int64(utils.BlockNumber.Name)
+	db, err := rawdb.Open(rawdb.OpenOptions{
+		ReadOnly:  true,
+		Type:      "pebble",
+		Directory: dir,
+	})
+	if err != nil {
+		return err
+	}
+	data, err := db.Get(state.DebugVersionStateKey(block))
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
+}
+
+func getDebugHashState(ctx *cli.Context) error {
+	if !ctx.IsSet(utils.HashStateDirFlag.Name) {
+		return fmt.Errorf("please set `--hashstatedir` flag")
+	}
+	if !ctx.IsSet(utils.BlockNumber.Name) {
+		return fmt.Errorf("please set `--block` flag")
+	}
+	dir := ctx.String(utils.HashStateDirFlag.Name)
+	block := ctx.Int64(utils.BlockNumber.Name)
+	db, err := rawdb.Open(rawdb.OpenOptions{
+		ReadOnly:  true,
+		Type:      "pebble",
+		Directory: dir,
+	})
+	if err != nil {
+		return err
+	}
+	data, err := db.Get(state.DebugHashStateKey(block))
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
+}
 
 func removeDB(ctx *cli.Context) error {
 	stack, config := makeConfigNode(ctx)
