@@ -123,9 +123,13 @@ type Ethereum struct {
 // New creates a new Ethereum object (including the
 // initialisation of the common Ethereum object)
 func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
+	onlyFullSync := false
 	if config.StateScheme == rawdb.VersionScheme {
 		config.SnapshotCache = 0
 		log.Info("version triedb has forbidden snapshot")
+		onlyFullSync = true
+		config.SyncMode = downloader.FullSync
+		log.Info("version triedb only support full sync")
 	}
 	// Ensure configuration values are compatible and sane
 	if config.SyncMode == downloader.LightSync {
@@ -332,6 +336,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		DirectBroadcast:        config.DirectBroadcast,
 		DisablePeerTxBroadcast: config.DisablePeerTxBroadcast,
 		PeerSet:                peers,
+		OnlyFullSync:           onlyFullSync,
 	}); err != nil {
 		return nil, err
 	}

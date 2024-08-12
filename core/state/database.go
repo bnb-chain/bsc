@@ -81,6 +81,8 @@ type Database interface {
 
 	Copy() Database
 
+	HasState(root common.Hash) bool
+
 	// NoTries returns whether the database has tries storage.
 	NoTries() bool
 }
@@ -335,4 +337,9 @@ func (db *cachingDB) Release() error {
 
 func (db *cachingDB) Copy() Database {
 	return db
+}
+
+func (db *cachingDB) HasState(root common.Hash) bool {
+	_, err := db.OpenTrie(root)
+	return err == nil
 }

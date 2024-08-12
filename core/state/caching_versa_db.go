@@ -93,6 +93,10 @@ func (cv *cachingVersaDB) CopyTrie(tr Trie) Trie {
 	return nil
 }
 
+func (cv *cachingVersaDB) HasState(root common.Hash) bool {
+	return cv.versionDB.HasState(root)
+}
+
 func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 	if cv.hasState.Load() {
 		//TODO:: will change to log.Error after stabilization

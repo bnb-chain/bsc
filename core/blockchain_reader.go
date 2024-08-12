@@ -348,8 +348,7 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 			return true
 		}
 	}
-	_, err := bc.stateCache.OpenTrie(hash)
-	return err == nil
+	return bc.stateCache.HasState(hash)
 }
 
 // HasBlockAndState checks if a block and associated state trie is fully present
