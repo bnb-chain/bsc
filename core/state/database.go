@@ -156,20 +156,22 @@ type Trie interface {
 // NewDatabase creates a backing store for state. The returned database is safe for
 // concurrent use, but does not retain any recent trie nodes in memory. To keep some
 // historical state in memory, use the NewDatabaseWithConfig constructor.
-func NewDatabase(db ethdb.Database) Database {
-	return NewDatabaseWithConfig(db, nil)
+func NewDatabase(db ethdb.Database, needCommit bool) Database {
+	return NewDatabaseWithConfig(db, nil, needCommit)
 }
 
 // NewDatabaseWithConfig creates a backing store for state. The returned database
 // is safe for concurrent use and retains a lot of collapsed RLP trie nodes in a
 // large memory cache.
-func NewDatabaseWithConfig(db ethdb.Database, config *triedb.Config) Database {
+func NewDatabaseWithConfig(db ethdb.Database, config *triedb.Config, needCommit bool) Database {
 	noTries := config != nil && config.NoTries
 
 	triedb := triedb.NewDatabase(db, config)
 	if triedb.Scheme() == rawdb.VersionScheme {
-		// TODO:: S_COMMIT is temp, should come from param
-		return NewVersaDatabase(db, triedb, versa.S_COMMIT)
+		if needCommit {
+			return NewVersaDatabase(db, triedb, versa.S_COMMIT)
+		}
+		return NewVersaDatabase(db, triedb, versa.S_RW)
 	}
 
 	return &cachingDB{
@@ -182,12 +184,14 @@ func NewDatabaseWithConfig(db ethdb.Database, config *triedb.Config) Database {
 }
 
 // NewDatabaseWithNodeDB creates a state database with an already initialized node database.
-func NewDatabaseWithNodeDB(db ethdb.Database, triedb *triedb.Database) Database {
+func NewDatabaseWithNodeDB(db ethdb.Database, triedb *triedb.Database, needCommit bool) Database {
 	noTries := triedb != nil && triedb.Config() != nil && triedb.Config().NoTries
 
 	if triedb.Scheme() == rawdb.VersionScheme {
-		// TODO:: S_COMMIT is temp, should come from param
-		return NewVersaDatabase(db, triedb, versa.S_COMMIT)
+		if needCommit {
+			return NewVersaDatabase(db, triedb, versa.S_COMMIT)
+		}
+		return NewVersaDatabase(db, triedb, versa.S_RW)
 	}
 
 	return &cachingDB{

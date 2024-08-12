@@ -232,7 +232,8 @@ func pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 		}
 		log.Info("Database compaction finished", "elapsed", common.PrettyDuration(time.Since(cstart)))
 	}
-	statedb, _ := state.New(common.Hash{}, state.NewDatabase(maindb), nil)
+	// pruner should be not used to version db
+	statedb, _ := state.New(common.Hash{}, state.NewDatabase(maindb, false), nil)
 	for addr, account := range g.Alloc {
 		statedb.AddBalance(addr, uint256.MustFromBig(account.Balance))
 		statedb.SetCode(addr, account.Code)
