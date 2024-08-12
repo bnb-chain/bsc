@@ -139,8 +139,7 @@ func New(diskdb ethdb.Database, config *Config, resolver ChildResolver) *Databas
 	if config.CleanCacheSize > 0 {
 		cleans = fastcache.New(config.CleanCacheSize)
 	}
-	// TODO:: debug code
-	panic("success to init hash mode triedb")
+	log.Info("success to init hash mode triedb")
 	return &Database{
 		diskdb:   diskdb,
 		resolver: resolver,

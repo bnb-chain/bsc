@@ -226,8 +226,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 			log.Crit("Failed to disable database", "err", err) // impossible to happen
 		}
 	}
-	// TODO:: debug code
-	panic("success to init path mode triedb")
+	log.Info("success to init path mode triedb")
 	return db
 }
 
