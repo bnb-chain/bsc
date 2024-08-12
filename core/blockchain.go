@@ -712,6 +712,10 @@ func (bc *BlockChain) loadLastState() error {
 		log.Warn("Head block missing, resetting chain", "hash", head)
 		return bc.Reset()
 	}
+	if bc.triedb.Scheme() == rawdb.VersionScheme {
+		// TODO:: wait version db support recovery
+		panic("version db must start from empty")
+	}
 
 	// Everything seems to be fine, set as the head block
 	bc.currentBlock.Store(headBlock.Header())

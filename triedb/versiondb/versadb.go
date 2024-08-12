@@ -21,18 +21,27 @@ type VersionDB struct {
 }
 
 func New(config *Config) *VersionDB {
-	cfg := &versa.VersaDBConfig{
-		FlushInterval:     config.FlushInterval,
-		MaxStatesInMem:    config.MaxStatesInMem,
-		EnableHashChecker: config.EnableHashChecker,
+	var (
+		cfg  *versa.VersaDBConfig
+		path = "./version_db" // TODO:: debug code
+	)
+
+	if config != nil {
+		path = config.Path
+		cfg = &versa.VersaDBConfig{
+			FlushInterval:     config.FlushInterval,
+			MaxStatesInMem:    config.MaxStatesInMem,
+			EnableHashChecker: config.EnableHashChecker,
+		}
 	}
-	db, err := versa.NewVersaDB(config.Path, cfg)
+	db, err := versa.NewVersaDB(path, cfg)
 	if err != nil {
 		log.Crit("failed to new version db", "error", err)
 	}
 	v := &VersionDB{
 		db: db,
 	}
+	log.Info("success to init version mode triedb")
 	return v
 }
 
