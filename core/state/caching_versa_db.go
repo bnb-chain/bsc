@@ -52,8 +52,8 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 		panic("account tree has open")
 	}
 
-	// TODO:: if root tree, versa db shouldb ignore check version
-	state, err := cv.versionDB.OpenState(0, root, cv.mode)
+	// TODO:: if root tree, versa db should ignore check version, temp use -1
+	state, err := cv.versionDB.OpenState(-1, root, cv.mode)
 	if err != nil {
 		return nil, err
 	}

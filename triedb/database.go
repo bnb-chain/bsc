@@ -96,7 +96,7 @@ type Database struct {
 // NewDatabase initializes the trie database with default settings, note
 // the legacy hash-based scheme is used by default.
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
-	if config.IsVersion {
+	if config != nil && config.IsVersion {
 		// TODO:: Wait for debugging to stabilize, and then consider initialization compatibility with other databases
 		db := &Database{
 			config:  config,

@@ -12,7 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.30.2
 	github.com/bnb-chain/fastssz v0.1.2
 	github.com/bnb-chain/ics23 v0.1.0
-	github.com/bnb-chain/versioned-state-database v0.0.0-20240809035848-76ffc0e09a92
+	github.com/bnb-chain/versioned-state-database v0.0.0-00010101000000-000000000000
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/cespare/cp v1.1.1
 	github.com/cloudflare/cloudflare-go v0.79.0

@@ -196,6 +196,9 @@ func (c *CacheConfig) triedbConfig() *triedb.Config {
 			JournalFile:     c.JournalFile,
 		}
 	}
+	if c.StateScheme == rawdb.VersionScheme {
+		config.IsVersion = true
+	}
 	return config
 }
 

@@ -174,7 +174,7 @@ func flushAlloc(ga *types.GenesisAlloc, db ethdb.Database, triedb *triedb.Databa
 		return err
 	}
 	// Commit newly generated states into disk if it's not empty.
-	if root != types.EmptyRootHash {
+	if root != types.EmptyRootHash && triedb.Scheme() != rawdb.VersionScheme {
 		if err := triedb.Commit(root, true); err != nil {
 			return err
 		}
