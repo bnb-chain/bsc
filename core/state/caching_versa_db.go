@@ -134,19 +134,19 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 		//TODO:: will change to log.Error after stabilization
 		panic("open account tree, before open storage tree")
 	}
-	if cv.root.Cmp(root) != 0 {
-		panic("account root mismatch, on open storage tree")
+	if cv.root.Cmp(stateRoot) != 0 {
+		panic(fmt.Sprintf("account root mismatch, on open storage tree, actual: %s, expect: %s", root.String(), cv.root.String()))
 	}
 
 	version, account, err := cv.accTree.getAccountWithVersion(address)
 	if err != nil {
 		return nil, err
 	}
-	if account.Root.Cmp(stateRoot) != 0 {
+	if account.Root.Cmp(root) != 0 {
 		return nil, fmt.Errorf("state root mismatch")
 	}
 
-	handler, err := cv.versionDB.OpenTree(cv.state, version, crypto.Keccak256Hash(address.Bytes()), stateRoot)
+	handler, err := cv.versionDB.OpenTree(cv.state, version, crypto.Keccak256Hash(address.Bytes()), root)
 	if err != nil {
 		return nil, err
 	}
@@ -251,8 +251,8 @@ type VersaTree struct {
 	accountTree bool
 
 	// TODO:: debugging, used for logging
-	root      common.Hash
 	stateRoot common.Hash
+	root      common.Hash
 	address   common.Address
 }
 
