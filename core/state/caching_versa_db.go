@@ -42,6 +42,7 @@ func NewVersaDatabase(db ethdb.Database, triedb *triedb.Database, mode versa.Sta
 		codeDB:        db,
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
+		mode:          mode,
 	}
 }
 
@@ -118,15 +119,29 @@ func (cv *cachingVersaDB) Flush() error {
 // Release unique to versa
 func (cv *cachingVersaDB) Release() error {
 	if err := cv.versionDB.CloseState(cv.state); err != nil {
-		return nil
+		return err
 	}
-	cv.release()
+	cv.hasState.Store(false)
+	cv.accTree = nil
+	cv.state = versa.ErrStateHandler
+	cv.root = common.Hash{}
 	return nil
 }
 
-func (cv *cachingVersaDB) release() {
+func (cv *cachingVersaDB) Reset() {
+	if cv.state != versa.ErrStateHandler {
+		if err := cv.versionDB.CloseState(cv.state); err != nil {
+			log.Error("failed to close version db state", "error", err)
+		}
+	}
 	cv.hasState.Store(false)
 	cv.accTree = nil
+	cv.state = versa.ErrStateHandler
+	cv.root = common.Hash{}
+}
+
+func (cv *cachingVersaDB) Scheme() string {
+	return cv.triedb.Scheme()
 }
 
 func (cv *cachingVersaDB) CopyTrie(Trie) Trie {
@@ -259,7 +274,7 @@ func (vt *VersaTree) UpdateContractCode(address common.Address, codeHash common.
 func (vt *VersaTree) Hash() common.Hash {
 	hash, err := vt.db.CalcRootHash(vt.handler)
 	if err != nil {
-		log.Warn("failed to cacl versa tree hash", "error", err)
+		log.Error("failed to cacl versa tree hash", "error", err)
 	}
 	return hash
 }
@@ -269,7 +284,7 @@ func (vt *VersaTree) Commit(_ bool) (common.Hash, *trienode.NodeSet, error) {
 	if err != nil {
 		log.Warn("failed to commit versa tree", "error", err)
 	}
-	return hash, nil, nil
+	return hash, nil, err
 }
 
 func (vt *VersaTree) NodeIterator(startKey []byte) (trie.NodeIterator, error) {

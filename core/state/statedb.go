@@ -172,6 +172,12 @@ func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*St
 
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
+	if db.Scheme() == rawdb.VersionScheme && snaps != nil {
+		panic("statedb snapshot must be nil in version db.")
+	}
+	// clean up previous traces
+	db.Reset()
+
 	sdb := &StateDB{
 		db:                   db,
 		originalRoot:         root,
@@ -196,6 +202,7 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 		sdb.snap = sdb.snaps.Snapshot(root)
 	}
 
+	// It should only one to open account tree
 	tr, err := db.OpenTrie(root)
 	// return error when 1. failed to open trie and 2. the snap is nil or the snap is not nil and done verification
 	if err != nil && (sdb.snap == nil || sdb.snap.Verified()) {
@@ -222,6 +229,9 @@ func (s *StateDB) TransferPrefetcher(prev *StateDB) {
 	prev.prefetcherLock.Lock()
 	fetcher = prev.prefetcher
 	prev.prefetcher = nil
+	if fetcher != nil {
+		panic("TransferPrefetcher is not nil")
+	}
 	prev.prefetcherLock.Unlock()
 
 	s.prefetcherLock.Lock()
@@ -243,6 +253,7 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 		s.prefetcher = nil
 	}
 	if s.snap != nil {
+		panic("snapshot is not nill, will start prefetch")
 		parent := s.snap.Parent()
 		if parent != nil {
 			s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, parent.Root(), namespace)
@@ -338,6 +349,8 @@ func (s *StateDB) Error() error {
 // Not thread safe
 func (s *StateDB) Trie() (Trie, error) {
 	if s.trie == nil {
+		// TODO:: debug code, will be deleted in the future.
+		panic("state get trie is nil")
 		err := s.WaitPipeVerification()
 		if err != nil {
 			return nil, err
@@ -746,6 +759,8 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 	// If snapshot unavailable or reading from it failed, load from the database
 	if data == nil {
 		if s.trie == nil {
+			// TODO:: debug code, will be deleted in the future.
+			panic("getDeletedStateObject get trie is nil")
 			tr, err := s.db.OpenTrie(s.originalRoot)
 			if err != nil {
 				s.setError(errors.New("failed to open trie tree"))
@@ -848,17 +863,23 @@ func (s *StateDB) CreateAccount(addr common.Address) {
 // Copy creates a deep, independent copy of the state.
 // Snapshots of the copied state cannot be applied to the copy.
 func (s *StateDB) Copy() *StateDB {
+	//TODO:: debug code, deleted in the future
+	panic("call statedb copy")
 	return s.copyInternal(false)
 }
 
 // It is mainly for state prefetcher to do trie prefetch right now.
 func (s *StateDB) CopyDoPrefetch() *StateDB {
+	//TODO:: debug code, deleted in the future
+	panic("call statedb copy do prefetch")
 	return s.copyInternal(true)
 }
 
 // If doPrefetch is true, it tries to reuse the prefetcher, the copied StateDB will do active trie prefetch.
 // otherwise, just do inactive copy trie prefetcher.
 func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
+	//TODO:: debug code, deleted in the future
+	panic("call statedb copy internal")
 	// Copy all the basic fields, initialize the memory ones
 	state := &StateDB{
 		db:   s.db,
@@ -1210,6 +1231,8 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 		}
 	}
 	if s.trie == nil {
+		// TODO:: debug code, will be deleted in the future.
+		panic("StateIntermediateRoot get trie is nil")
 		tr, err := s.db.OpenTrie(s.originalRoot)
 		if err != nil {
 			panic(fmt.Sprintf("failed to open trie tree %s", s.originalRoot))
@@ -1422,7 +1445,8 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 	// considerable time and storage deletion isn't supported in hash mode, thus
 	// preemptively avoiding unnecessary expenses.
 	incomplete := make(map[common.Address]struct{})
-	if s.db.TrieDB().Scheme() == rawdb.HashScheme {
+	// Only pbss need handler incomplete destruction storage trie
+	if s.db.TrieDB().Scheme() != rawdb.PathScheme {
 		return incomplete, nil
 	}
 	for addr, prev := range s.stateObjectsDestruct {
@@ -1613,18 +1637,32 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 					origin = types.EmptyRootHash
 				}
 
-				if root != origin {
+				if s.db.Scheme() == rawdb.VersionScheme {
 					start := time.Now()
-					set := triestate.New(s.accountsOrigin, s.storagesOrigin, incomplete)
-					if err := s.db.TrieDB().Update(root, origin, block, nodes, set); err != nil {
+					if err := s.db.Flush(); err != nil {
+						return err
+					}
+					if err := s.db.Release(); err != nil {
 						return err
 					}
 					s.originalRoot = root
 					if metrics.EnabledExpensive {
 						s.TrieDBCommits += time.Since(start)
 					}
-					if s.onCommit != nil {
-						s.onCommit(set)
+				} else {
+					if root != origin {
+						start := time.Now()
+						set := triestate.New(s.accountsOrigin, s.storagesOrigin, incomplete)
+						if err := s.db.TrieDB().Update(root, origin, block, nodes, set); err != nil {
+							return err
+						}
+						s.originalRoot = root
+						if metrics.EnabledExpensive {
+							s.TrieDBCommits += time.Since(start)
+						}
+						if s.onCommit != nil {
+							s.onCommit(set)
+						}
 					}
 				}
 			}

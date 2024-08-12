@@ -511,6 +511,8 @@ func (s *stateObject) setBalance(amount *uint256.Int) {
 }
 
 func (s *stateObject) deepCopy(db *StateDB) *stateObject {
+	//TODO:: debug code, deleted in the future
+	panic("call state object deep copy")
 	obj := &stateObject{
 		db:       db,
 		address:  s.address,

@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 
+	versa "github.com/bnb-chain/versioned-state-database"
 	"github.com/crate-crypto/go-ipa/banderwagon"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
@@ -69,6 +70,14 @@ type Database interface {
 
 	// TrieDB returns the underlying trie database for managing trie nodes.
 	TrieDB() *triedb.Database
+
+	Reset()
+
+	Scheme() string
+
+	Flush() error
+
+	Release() error
 
 	// NoTries returns whether the database has tries storage.
 	NoTries() bool
@@ -157,11 +166,17 @@ func NewDatabase(db ethdb.Database) Database {
 func NewDatabaseWithConfig(db ethdb.Database, config *triedb.Config) Database {
 	noTries := config != nil && config.NoTries
 
+	triedb := triedb.NewDatabase(db, config)
+	if triedb.Scheme() == rawdb.VersionScheme {
+		// TODO:: S_COMMIT is temp, should come from param
+		return NewVersaDatabase(db, triedb, versa.S_COMMIT)
+	}
+
 	return &cachingDB{
 		disk:          db,
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		triedb:        triedb.NewDatabase(db, config),
+		triedb:        triedb,
 		noTries:       noTries,
 	}
 }
@@ -169,6 +184,11 @@ func NewDatabaseWithConfig(db ethdb.Database, config *triedb.Config) Database {
 // NewDatabaseWithNodeDB creates a state database with an already initialized node database.
 func NewDatabaseWithNodeDB(db ethdb.Database, triedb *triedb.Database) Database {
 	noTries := triedb != nil && triedb.Config() != nil && triedb.Config().NoTries
+
+	if triedb.Scheme() == rawdb.VersionScheme {
+		// TODO:: S_COMMIT is temp, should come from param
+		return NewVersaDatabase(db, triedb, versa.S_COMMIT)
+	}
 
 	return &cachingDB{
 		disk:          db,
@@ -289,4 +309,20 @@ func (db *cachingDB) DiskDB() ethdb.KeyValueStore {
 // TrieDB retrieves any intermediate trie-node caching layer.
 func (db *cachingDB) TrieDB() *triedb.Database {
 	return db.triedb
+}
+
+func (db *cachingDB) Reset() {
+	return
+}
+
+func (db *cachingDB) Scheme() string {
+	return db.triedb.Scheme()
+}
+
+func (db *cachingDB) Flush() error {
+	return nil
+}
+
+func (db *cachingDB) Release() error {
+	return nil
 }
