@@ -316,7 +316,7 @@ func ReadStateScheme(db ethdb.Reader) string {
 // ValidateStateScheme used to check state scheme whether is valid.
 // Valid state scheme: hash and path.
 func ValidateStateScheme(stateScheme string) bool {
-	if stateScheme == HashScheme || stateScheme == PathScheme {
+	if stateScheme == HashScheme || stateScheme == PathScheme || stateScheme == VersionScheme {
 		return true
 	}
 	return false

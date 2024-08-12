@@ -353,7 +353,7 @@ var (
 	}
 	StateSchemeFlag = &cli.StringFlag{
 		Name:     "state.scheme",
-		Usage:    "Scheme to use for storing ethereum state ('hash' or 'path')",
+		Usage:    "Scheme to use for storing ethereum state ('hash', 'path', 'version')",
 		Category: flags.StateCategory,
 	}
 	PathDBSyncFlag = &cli.BoolFlag{
@@ -1953,11 +1953,16 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(StateHistoryFlag.Name) {
 		cfg.StateHistory = ctx.Uint64(StateHistoryFlag.Name)
 	}
-	scheme, err := ParseCLIAndConfigStateScheme(ctx.String(StateSchemeFlag.Name), cfg.StateScheme)
-	if err != nil {
-		Fatalf("%v", err)
+	if ctx.String(StateSchemeFlag.Name) != rawdb.VersionScheme {
+		scheme, err := ParseCLIAndConfigStateScheme(ctx.String(StateSchemeFlag.Name), cfg.StateScheme)
+		if err != nil {
+			Fatalf("%v", err)
+		}
+		cfg.StateScheme = scheme
+	} else {
+		cfg.StateScheme = rawdb.VersionScheme
 	}
-	cfg.StateScheme = scheme
+
 	// Parse transaction history flag, if user is still using legacy config
 	// file with 'TxLookupLimit' configured, copy the value to 'TransactionHistory'.
 	if cfg.TransactionHistory == ethconfig.Defaults.TransactionHistory && cfg.TxLookupLimit != ethconfig.Defaults.TxLookupLimit {
