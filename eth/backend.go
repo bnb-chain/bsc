@@ -123,6 +123,10 @@ type Ethereum struct {
 // New creates a new Ethereum object (including the
 // initialisation of the common Ethereum object)
 func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
+	if config.StateScheme == rawdb.VersionScheme {
+		config.SnapshotCache = 0
+		log.Info("version triedb has forbidden snapshot")
+	}
 	// Ensure configuration values are compatible and sane
 	if config.SyncMode == downloader.LightSync {
 		return nil, errors.New("can't run eth.Ethereum in light sync mode, light mode has been deprecated")

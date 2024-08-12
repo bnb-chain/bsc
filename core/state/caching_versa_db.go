@@ -46,6 +46,53 @@ func NewVersaDatabase(db ethdb.Database, triedb *triedb.Database, mode versa.Sta
 	}
 }
 
+func (cv *cachingVersaDB) Copy() Database {
+	cp := &cachingVersaDB{}
+	cp.codeCache = cv.codeCache
+	cp.codeSizeCache = cv.codeSizeCache
+	cp.triedb = cv.triedb
+	cp.versionDB = cv.versionDB
+	cp.codeDB = cv.codeDB
+	cp.mode = versa.S_RW // it is important
+
+	// TODO:: maybe add lock for cv.root
+	if cv.hasState.Load() {
+		_, err := cp.OpenTrie(cv.root)
+		if err != nil {
+			log.Error("failed to open trie in copy caching versa db", "error", err)
+			return cp
+		}
+	}
+	return cp
+}
+
+// CopyTrie is used with Copy()
+func (cv *cachingVersaDB) CopyTrie(tr Trie) Trie {
+	vtr, ok := tr.(*VersaTree)
+	if !ok {
+		panic("caching versa db copy non versa tree")
+	}
+	if vtr.accountTree {
+		if cv.accTree != nil {
+			return cv.accTree
+		}
+		tree, err := cv.OpenTrie(vtr.root)
+		if err != nil {
+			log.Error("failed to open trie in CopyTrie", "error", err)
+			return nil
+		}
+		return tree
+	} else {
+		tree, err := cv.OpenStorageTrie(vtr.stateRoot, vtr.address, vtr.root, nil)
+		if err != nil {
+			log.Error("failed to open storage trie in CopyTrie", "error", err)
+			return nil
+		}
+		return tree
+	}
+	return nil
+}
+
 func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 	if cv.hasState.Load() {
 		//TODO:: will change to log.Error after stabilization
@@ -58,7 +105,7 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 		return nil, err
 	}
 
-	handler, err := cv.versionDB.OpenTree(state, 0, common.Hash{}, root)
+	handler, err := cv.versionDB.OpenTree(state, -1, common.Hash{}, root)
 	if err != nil {
 		return nil, err
 	}
@@ -142,11 +189,6 @@ func (cv *cachingVersaDB) Reset() {
 
 func (cv *cachingVersaDB) Scheme() string {
 	return cv.triedb.Scheme()
-}
-
-func (cv *cachingVersaDB) CopyTrie(Trie) Trie {
-	//TODO:: support in the future
-	return nil
 }
 
 func (cv *cachingVersaDB) ContractCode(addr common.Address, codeHash common.Hash) ([]byte, error) {

@@ -79,6 +79,8 @@ type Database interface {
 
 	Release() error
 
+	Copy() Database
+
 	// NoTries returns whether the database has tries storage.
 	NoTries() bool
 }
@@ -329,4 +331,8 @@ func (db *cachingDB) Flush() error {
 
 func (db *cachingDB) Release() error {
 	return nil
+}
+
+func (db *cachingDB) Copy() Database {
+	return db
 }

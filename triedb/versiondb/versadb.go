@@ -23,7 +23,7 @@ type VersionDB struct {
 func New(config *Config) *VersionDB {
 	var (
 		cfg  *versa.VersaDBConfig
-		path = "./version_db" // TODO:: debug code
+		path = "./node/version_db" // TODO:: debug code
 	)
 
 	if config != nil {

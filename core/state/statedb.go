@@ -864,27 +864,23 @@ func (s *StateDB) CreateAccount(addr common.Address) {
 // Copy creates a deep, independent copy of the state.
 // Snapshots of the copied state cannot be applied to the copy.
 func (s *StateDB) Copy() *StateDB {
-	//TODO:: debug code, deleted in the future
-	panic("call statedb copy")
 	return s.copyInternal(false)
 }
 
 // It is mainly for state prefetcher to do trie prefetch right now.
 func (s *StateDB) CopyDoPrefetch() *StateDB {
-	//TODO:: debug code, deleted in the future
-	panic("call statedb copy do prefetch")
 	return s.copyInternal(true)
 }
 
 // If doPrefetch is true, it tries to reuse the prefetcher, the copied StateDB will do active trie prefetch.
 // otherwise, just do inactive copy trie prefetcher.
 func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
-	//TODO:: debug code, deleted in the future
-	panic("call statedb copy internal")
+	db := s.db.Copy()
+	tr := db.CopyTrie(s.trie)
 	// Copy all the basic fields, initialize the memory ones
 	state := &StateDB{
-		db:   s.db,
-		trie: s.db.CopyTrie(s.trie),
+		db:   db,
+		trie: tr,
 		// noTrie:s.noTrie,
 		// expectedRoot:         s.expectedRoot,
 		// stateRoot:            s.stateRoot,
