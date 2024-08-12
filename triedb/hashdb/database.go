@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -139,6 +140,9 @@ func New(diskdb ethdb.Database, config *Config, resolver ChildResolver) *Databas
 	if config.CleanCacheSize > 0 {
 		cleans = fastcache.New(config.CleanCacheSize)
 	}
+	log.Info("==========hash triedb==========")
+	log.Info(string(debug.Stack()))
+	log.Info("===============================")
 	log.Info("success to init hash mode triedb")
 	return &Database{
 		diskdb:   diskdb,

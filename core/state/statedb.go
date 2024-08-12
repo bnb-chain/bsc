@@ -175,7 +175,6 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 	if db.Scheme() == rawdb.VersionScheme && snaps != nil {
 		panic("statedb snapshot must be nil in version db.")
 	}
-	log.Info("new statedb with type", "scheme", db.Scheme())
 	// clean up previous traces
 	db.Reset()
 
