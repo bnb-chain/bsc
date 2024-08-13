@@ -43,6 +43,7 @@ func NewVersaDatabase(db ethdb.Database, triedb *triedb.Database, mode versa.Sta
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
 		mode:          mode,
+		state:         versa.ErrStateHandler,
 	}
 }
 
@@ -185,6 +186,7 @@ func (cv *cachingVersaDB) Release() error {
 func (cv *cachingVersaDB) Reset() {
 	if cv.state != versa.ErrStateHandler {
 		log.Info("close state reset", "state info", cv.versionDB.ParseStateHandler(cv.state))
+		panic("caching versa db close state in reset, other not is release")
 		if err := cv.versionDB.CloseState(cv.state); err != nil {
 			log.Error("failed to close version db state", "error", err)
 		}
