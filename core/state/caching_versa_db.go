@@ -195,6 +195,14 @@ func (cv *cachingVersaDB) Reset() {
 	cv.root = common.Hash{}
 }
 
+func (cv *cachingVersaDB) ExpiredTree(tr Trie) bool {
+	vtr, ok := tr.(*VersaTree)
+	if !ok {
+		panic("trie type mismatch")
+	}
+	return cv.versionDB.ExpiredTree(vtr.handler)
+}
+
 func (cv *cachingVersaDB) Scheme() string {
 	return cv.triedb.Scheme()
 }
