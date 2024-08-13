@@ -186,8 +186,6 @@ func (cv *cachingVersaDB) Release() error {
 func (cv *cachingVersaDB) Reset() {
 	if cv.state != versa.ErrStateHandler {
 		log.Info("close state reset", "state info", cv.versionDB.ParseStateHandler(cv.state))
-		// TODO:: debug code, will be deleted
-		panic("caching versa db close state in reset, other not is release")
 		if err := cv.versionDB.CloseState(cv.state); err != nil {
 			log.Error("failed to close version db state", "error", err)
 		}
