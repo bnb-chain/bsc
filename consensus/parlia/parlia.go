@@ -1831,6 +1831,8 @@ func (p *Parlia) applyTransaction(
 				actualTx.Gas(),
 				actualTx.GasPrice().String(),
 				hex.EncodeToString(actualTx.Data()))
+			log.Info(res)
+			panic(res)
 			return fmt.Errorf(res)
 			//return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s", expectedHash.String(), actualTx.Hash().String(),
 			//	expectedTx.Nonce(),
