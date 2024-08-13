@@ -322,7 +322,7 @@ func (vt *VersaTree) Hash() common.Hash {
 	hash, err := vt.db.CalcRootHash(vt.handler)
 	if err != nil {
 		// TODO:: debug code, will be change to log error
-		panic(fmt.Sprintf("failed to cacl versa tree hash, error: %s", err.Error()))
+		panic(fmt.Sprintf("failed to cacl versa tree hash, handler: %d， error: %s", vt.handler, err.Error()))
 	}
 	return hash
 }

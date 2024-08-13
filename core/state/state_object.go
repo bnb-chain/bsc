@@ -62,11 +62,12 @@ func (s Storage) Copy() Storage {
 // - Account values as well as storages can be accessed and modified through the object.
 // - Finally, call commit to return the changes of storage trie and update account data.
 type stateObject struct {
-	db       *StateDB
-	address  common.Address      // address of ethereum account
-	addrHash common.Hash         // hash of ethereum address of the account
-	origin   *types.StateAccount // Account original data without any change applied, nil means it was not existent
-	data     types.StateAccount  // Account data with all mutations applied in the scope of block
+	db        *StateDB
+	stateRoot common.Hash
+	address   common.Address      // address of ethereum account
+	addrHash  common.Hash         // hash of ethereum address of the account
+	origin    *types.StateAccount // Account original data without any change applied, nil means it was not existent
+	data      types.StateAccount  // Account data with all mutations applied in the scope of block
 
 	// Write caches.
 	trie Trie // storage trie, which becomes non-nil on first access
@@ -151,7 +152,7 @@ func (s *stateObject) touch() {
 // if it's not loaded previously. An error will be returned if trie can't
 // be loaded.
 func (s *stateObject) getTrie() (Trie, error) {
-	if s.trie == nil {
+	if s.trie == nil || s.stateRoot.Cmp(s.db.originalRoot) != 0 {
 		// Try fetching from prefetcher first
 		// if s.data.Root != types.EmptyRootHash && s.db.prefetcher != nil {
 		// When the miner is creating the pending state, there is no prefetcher
@@ -163,6 +164,7 @@ func (s *stateObject) getTrie() (Trie, error) {
 			return nil, err
 		}
 		s.trie = tr
+		s.stateRoot = s.db.originalRoot
 		// }
 	}
 	return s.trie, nil
