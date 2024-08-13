@@ -1678,6 +1678,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				}
 
 				if s.db.Scheme() == rawdb.VersionScheme {
+					// flush and release will occur regardless of whether the root changes
 					start := time.Now()
 					if err := s.db.Flush(); err != nil {
 						return err
