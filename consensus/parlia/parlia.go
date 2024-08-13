@@ -54,7 +54,7 @@ const (
 	inMemoryHeaders    = 86400 // Number of recent headers to keep in memory for double sign detection,
 
 	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
-	defaultEpochLength = uint64(100) // Default number of blocks of checkpoint to update validatorSet from contract
+	defaultEpochLength = uint64(200) // Default number of blocks of checkpoint to update validatorSet from contract
 	defaultTurnLength  = uint8(1)    // Default consecutive number of blocks a validator receives priority for block production
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
@@ -739,13 +739,28 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 			}
 		}
 
-		// If we're at the genesis, snapshot the initial state.
-		if number == 0 {
-			checkpoint := chain.GetHeaderByNumber(number)
-			if checkpoint != nil {
-				// get checkpoint data
-				hash := checkpoint.Hash()
-
+		// If we're at the genesis, snapshot the initial state. Alternatively if we have
+		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
+		// consider the checkpoint trusted and snapshot it.
+		// An offset `p.config.Epoch - 1` can ensure getting the right validators.
+		if number == 0 || ((number+1)%p.config.Epoch == 0 && (len(headers) > int(params.FullImmutabilityThreshold))) {
+			var (
+				checkpoint *types.Header
+				blockHash  common.Hash
+			)
+			if number == 0 {
+				checkpoint = chain.GetHeaderByNumber(0)
+				if checkpoint != nil {
+					blockHash = checkpoint.Hash()
+				}
+			} else {
+				checkpoint = chain.GetHeaderByNumber(number + 1 - p.config.Epoch)
+				blockHeader := chain.GetHeaderByNumber(number)
+				if blockHeader != nil {
+					blockHash = blockHeader.Hash()
+				}
+			}
+			if checkpoint != nil && blockHash != (common.Hash{}) {
 				// get validators from headers
 				validators, voteAddrs, err := parseValidators(checkpoint, p.chainConfig, p.config)
 				if err != nil {
@@ -753,11 +768,27 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				}
 
 				// new snapshot
-				snap = newSnapshot(p.config, p.signatures, number, hash, validators, voteAddrs, p.ethAPI)
+				snap = newSnapshot(p.config, p.signatures, number, blockHash, validators, voteAddrs, p.ethAPI)
+
+				// get turnLength from headers and use that for new turnLength
+				turnLength, err := parseTurnLength(checkpoint, p.chainConfig, p.config)
+				if err != nil {
+					return nil, err
+				}
+				if turnLength != nil {
+					snap.TurnLength = *turnLength
+				}
+
+				// snap.Recents is currently empty, which affects the following:
+				// a. The function SignRecently - This is acceptable since an empty snap.Recents results in a more lenient check.
+				// b. The function blockTimeVerifyForRamanujanFork - This is also acceptable as it won't be invoked during `snap.apply`.
+				// c. This may cause a mismatch in the slash systemtx, but the transaction list is not verified during `snap.apply`.
+
+				// snap.Attestation is nil, but Snapshot.updateAttestation will handle it correctly.
 				if err := snap.store(p.db); err != nil {
 					return nil, err
 				}
-				log.Info("Stored checkpoint snapshot to disk", "number", number, "hash", hash)
+				log.Info("Stored checkpoint snapshot to disk", "number", number, "hash", blockHash)
 				break
 			}
 		}
