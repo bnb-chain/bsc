@@ -127,7 +127,7 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 	cv.accTree = tree
 	cv.root = root
 
-	log.Info("open trie", "state info", cv.versionDB.ParseTreeHandler(tree.handler))
+	//log.Info("open trie", "state info", cv.versionDB.ParseTreeHandler(tree.handler))
 	return tree, nil
 }
 
@@ -161,7 +161,7 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 		stateRoot: stateRoot,
 		address:   address,
 	}
-	log.Info("open storage tree", "tree handler info", cv.versionDB.ParseTreeHandler(tree.handler))
+	//log.Info("open storage tree", "tree handler info", cv.versionDB.ParseTreeHandler(tree.handler))
 	return tree, nil
 }
 
@@ -172,7 +172,7 @@ func (cv *cachingVersaDB) Flush() error {
 
 // Release unique to versa
 func (cv *cachingVersaDB) Release() error {
-	log.Info("close state", "state info", cv.versionDB.ParseStateHandler(cv.state))
+	//log.Info("close state", "state info", cv.versionDB.ParseStateHandler(cv.state))
 	if err := cv.versionDB.CloseState(cv.state); err != nil {
 		return err
 	}
@@ -185,7 +185,7 @@ func (cv *cachingVersaDB) Release() error {
 
 func (cv *cachingVersaDB) Reset() {
 	if cv.state != versa.ErrStateHandler {
-		log.Info("close state reset", "state info", cv.versionDB.ParseStateHandler(cv.state))
+		//log.Info("close state reset", "state info", cv.versionDB.ParseStateHandler(cv.state))
 		if err := cv.versionDB.CloseState(cv.state); err != nil {
 			log.Error("failed to close version db state", "error", err)
 		}

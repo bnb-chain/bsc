@@ -1496,6 +1496,9 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 }
 
 func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
+	if block != 363 {
+		return
+	}
 	log.Info("================== block start ===============", "number", block)
 	hash := s.IntermediateRoot(deleteEmptyObjects)
 	log.Info("mpt root", "hash", hash)
@@ -1534,9 +1537,7 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 		}
 	}
 	log.Info("================== block end ================", "number", block)
-	if block == 1 {
-		log.Crit("exit....")
-	}
+	log.Crit("exit....")
 }
 
 // Once the state is committed, tries cached in stateDB (including account
