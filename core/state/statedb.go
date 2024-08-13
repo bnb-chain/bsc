@@ -1530,6 +1530,7 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 			log.Info("state object new", "Balance", obj.data.Balance)
 			log.Info("state object new", "Root", obj.data.Root)
 			log.Info("state object new", "CodeHash", common.Bytes2Hex(obj.data.CodeHash))
+			log.Info("-------------------------------------------")
 		}
 	}
 	log.Info("================== block end ================", "number", block)

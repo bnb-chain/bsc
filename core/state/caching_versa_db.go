@@ -300,7 +300,8 @@ func (vt *VersaTree) UpdateAccount(address common.Address, account *types.StateA
 
 func (vt *VersaTree) UpdateStorage(_ common.Address, key, value []byte) error {
 	vt.CheckStorageTree()
-	return vt.db.Put(vt.handler, key, value)
+	v, _ := rlp.EncodeToBytes(value)
+	return vt.db.Put(vt.handler, key, v)
 }
 
 func (vt *VersaTree) DeleteAccount(address common.Address) error {
@@ -320,7 +321,8 @@ func (vt *VersaTree) UpdateContractCode(address common.Address, codeHash common.
 func (vt *VersaTree) Hash() common.Hash {
 	hash, err := vt.db.CalcRootHash(vt.handler)
 	if err != nil {
-		log.Error("failed to cacl versa tree hash", "error", err)
+		// TODO:: debug code, will be change to log error
+		panic(fmt.Sprintf("failed to cacl versa tree hash, error: %s", err.Error()))
 	}
 	return hash
 }
