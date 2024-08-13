@@ -2278,6 +2278,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 		ptime := time.Since(pstart)
 
+		statedb.DebugPrint(block.NumberU64(), true)
+
 		// Validate the state using the default validator
 		vstart := time.Now()
 		if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
