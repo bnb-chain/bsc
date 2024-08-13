@@ -296,11 +296,12 @@ func (vt *VersaTree) getAccountWithVersion(address common.Address) (int64, *type
 
 func (vt *VersaTree) GetStorage(_ common.Address, key []byte) ([]byte, error) {
 	vt.CheckStorageTree()
-	_, res, err := vt.db.Get(vt.handler, key)
-	if res == nil || err != nil {
+	_, enc, err := vt.db.Get(vt.handler, key)
+	if err != nil || len(enc) == 0 {
 		return nil, err
 	}
-	return res, err
+	_, content, _, err := rlp.Split(enc)
+	return content, err
 }
 
 func (vt *VersaTree) UpdateAccount(address common.Address, account *types.StateAccount) error {
