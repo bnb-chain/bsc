@@ -126,6 +126,7 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 	cv.accTree = tree
 	cv.root = root
 
+	log.Info("open trie", "state info", cv.versionDB.ParseStateHandler(cv.state))
 	return tree, nil
 }
 
@@ -159,6 +160,7 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 		stateRoot: stateRoot,
 		address:   address,
 	}
+	log.Info("open storage tree", "tree handler info", cv.versionDB.ParseTreeHandler(tree.handler))
 	return tree, nil
 }
 
@@ -169,6 +171,7 @@ func (cv *cachingVersaDB) Flush() error {
 
 // Release unique to versa
 func (cv *cachingVersaDB) Release() error {
+	log.Info("close state", "state info", cv.versionDB.ParseStateHandler(cv.state))
 	if err := cv.versionDB.CloseState(cv.state); err != nil {
 		return err
 	}
@@ -322,6 +325,7 @@ func (vt *VersaTree) Hash() common.Hash {
 	hash, err := vt.db.CalcRootHash(vt.handler)
 	if err != nil {
 		// TODO:: debug code, will be change to log error
+		log.Info("calc tree root hash", "tree handler info", vt.db.ParseTreeHandler(vt.handler))
 		panic(fmt.Sprintf("failed to cacl versa tree hash, handler: %d， error: %s", vt.handler, err.Error()))
 	}
 	return hash
