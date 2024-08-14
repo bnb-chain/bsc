@@ -196,6 +196,7 @@ func (c *CacheConfig) triedbConfig() *triedb.Config {
 			JournalFile:     c.JournalFile,
 		}
 	}
+	// TODO:: support other versa db config items, currently use the default config
 	if c.StateScheme == rawdb.VersionScheme {
 		config.IsVersion = true
 	}
@@ -1168,6 +1169,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 // SnapSyncCommitHead sets the current head block to the one defined by the hash
 // irrelevant what the chain contents were prior.
 func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
+	// TODO:: temporarily not support for snapsync
 	if bc.triedb.Scheme() == rawdb.VersionScheme {
 		panic("version db not support snap sync")
 	}
@@ -2277,8 +2279,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			return it.index, err
 		}
 		ptime := time.Since(pstart)
-
-		//statedb.DebugPrint(block.NumberU64(), true)
 
 		// Validate the state using the default validator
 		vstart := time.Now()

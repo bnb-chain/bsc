@@ -395,6 +395,7 @@ func (bc *BlockChain) State() (*state.StateDB, error) {
 
 // StateAt returns a new mutable state based on a particular point in time.
 func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
+	// new state db with no need commit mode
 	stateDb, err := state.New(root, state.NewDatabaseWithNodeDB(bc.db, bc.triedb, false), bc.snaps)
 	if err != nil {
 		return nil, err

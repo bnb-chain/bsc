@@ -127,7 +127,6 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 	cv.accTree = tree
 	cv.root = root
 
-	//log.Info("open trie", "state info", cv.versionDB.ParseTreeHandler(tree.handler))
 	return tree, nil
 }
 
@@ -161,7 +160,6 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 		stateRoot: stateRoot,
 		address:   address,
 	}
-	//log.Info("open storage tree", "tree handler info", cv.versionDB.ParseTreeHandler(tree.handler))
 	return tree, nil
 }
 
@@ -185,11 +183,7 @@ func (cv *cachingVersaDB) Release() error {
 
 func (cv *cachingVersaDB) Reset() {
 	if cv.state != versa.ErrStateHandler {
-		//log.Info("close state reset", "state info", cv.versionDB.ParseStateHandler(cv.state))
 		panic(fmt.Sprintf("close state reset, state info %s", cv.versionDB.ParseStateHandler(cv.state)))
-		if err := cv.versionDB.CloseState(cv.state); err != nil {
-			log.Error("failed to close version db state", "error", err)
-		}
 	}
 	cv.hasState.Store(false)
 	cv.accTree = nil
@@ -197,12 +191,12 @@ func (cv *cachingVersaDB) Reset() {
 	cv.root = common.Hash{}
 }
 
-func (cv *cachingVersaDB) ExpiredTree(tr Trie) bool {
+func (cv *cachingVersaDB) HasTreeExpired(tr Trie) bool {
 	vtr, ok := tr.(*VersaTree)
 	if !ok {
 		panic("trie type mismatch")
 	}
-	return cv.versionDB.ExpiredTree(vtr.handler)
+	return cv.versionDB.HasTreeExpired(vtr.handler)
 }
 
 func (cv *cachingVersaDB) Scheme() string {
@@ -360,14 +354,14 @@ func (vt *VersaTree) Prove(key []byte, proofDb ethdb.KeyValueWriter) error {
 	return nil
 }
 
-// TODO:: test code, will be deleted after stabilization
+// TODO:: debug code, will be deleted after stabilization
 func (vt *VersaTree) CheckAccountTree() {
 	if !vt.accountTree {
 		panic("sub tree can't operate account")
 	}
 }
 
-// TODO:: test code, will be deleted after stabilization
+// TODO:: debug code, will be deleted after stabilization
 func (vt *VersaTree) CheckStorageTree() {
 	if vt.accountTree {
 		panic("root tree can't operate storage")

@@ -253,6 +253,7 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 		s.prefetcher = nil
 	}
 	if s.snap != nil {
+		// TODO:: debug code , will be deleted in the future
 		panic("snapshot is not nill, will start prefetch")
 		parent := s.snap.Parent()
 		if parent != nil {

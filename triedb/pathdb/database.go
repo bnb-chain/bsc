@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime/debug"
 	"sort"
 	"strconv"
 	"sync"
@@ -227,9 +226,6 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 			log.Crit("Failed to disable database", "err", err) // impossible to happen
 		}
 	}
-	log.Info("==========path triedb==========")
-	log.Info(string(debug.Stack()))
-	log.Info("===============================")
 	log.Info("success to init path mode triedb")
 	return db
 }

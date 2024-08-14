@@ -217,12 +217,11 @@ func (eth *Ethereum) pathState(block *types.Block) (*state.StateDB, func(), erro
 //   - preferDisk: This arg can be used by the caller to signal that even though the 'base' is
 //     provided, it would be preferable to start from a fresh state, if we have it
 //     on disk.
-//
-// TODO:: support version db
 func (eth *Ethereum) stateAtBlock(ctx context.Context, block *types.Block, reexec uint64, base *state.StateDB, readOnly bool, preferDisk bool) (statedb *state.StateDB, release tracers.StateReleaseFunc, err error) {
 	if eth.blockchain.TrieDB().Scheme() == rawdb.HashScheme {
 		return eth.hashState(ctx, block, reexec, base, readOnly, preferDisk)
 	}
+	// path and version schema use the same interface
 	return eth.pathState(block)
 }
 

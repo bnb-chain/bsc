@@ -1,8 +1,6 @@
 package versiondb
 
 import (
-	"runtime/debug"
-
 	versa "github.com/bnb-chain/versioned-state-database"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -43,9 +41,6 @@ func New(config *Config) *VersionDB {
 	v := &VersionDB{
 		db: db,
 	}
-	log.Info("==========version triedb==========")
-	log.Info(string(debug.Stack()))
-	log.Info("===============================")
 	log.Info("success to init version mode triedb")
 	return v
 }
@@ -55,7 +50,7 @@ func (v *VersionDB) Scheme() string {
 }
 
 func (v *VersionDB) Initialized(genesisRoot common.Hash) bool {
-	return v.db == nil
+	return v.db.HasState(genesisRoot)
 }
 
 func (v *VersionDB) Size() (common.StorageSize, common.StorageSize, common.StorageSize) {

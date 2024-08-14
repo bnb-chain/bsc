@@ -1960,6 +1960,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 		cfg.StateScheme = scheme
 	} else {
+		// TODO:: compatible with cli line and configuration file, currently only supports cli.
 		cfg.StateScheme = rawdb.VersionScheme
 	}
 

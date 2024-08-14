@@ -71,19 +71,26 @@ type Database interface {
 	// TrieDB returns the underlying trie database for managing trie nodes.
 	TrieDB() *triedb.Database
 
-	Reset()
-
+	// Scheme returns triedb scheme, used to distinguish version triedb.
 	Scheme() string
 
+	// Flush used for version caching versa db to commit block state data.
 	Flush() error
 
+	// Release used for caching versa db to release resource.
 	Release() error
 
+	// Reset used for caching versa db to clean up meta data.
+	Reset()
+
+	// Copy used for caching versa db to copy db, main to transfer triedb with rw mode.
 	Copy() Database
 
+	// HasState returns the state data whether in the triedb.
 	HasState(root common.Hash) bool
 
-	ExpiredTree(tr Trie) bool
+	// HasTreeExpired used for caching versa db, whether the state where the opened tree resides has been closed
+	HasTreeExpired(tr Trie) bool
 
 	// NoTries returns whether the database has tries storage.
 	NoTries() bool
@@ -162,8 +169,8 @@ type Trie interface {
 // NewDatabase creates a backing store for state. The returned database is safe for
 // concurrent use, but does not retain any recent trie nodes in memory. To keep some
 // historical state in memory, use the NewDatabaseWithConfig constructor.
-func NewDatabase(db ethdb.Database, needCommit bool) Database {
-	return NewDatabaseWithConfig(db, nil, needCommit)
+func NewDatabase(db ethdb.Database) Database {
+	return NewDatabaseWithConfig(db, nil, false)
 }
 
 // NewDatabaseWithConfig creates a backing store for state. The returned database
@@ -346,6 +353,6 @@ func (db *cachingDB) HasState(root common.Hash) bool {
 	return err == nil
 }
 
-func (db *cachingDB) ExpiredTree(_ Trie) bool {
+func (db *cachingDB) HasTreeExpired(_ Trie) bool {
 	return false
 }

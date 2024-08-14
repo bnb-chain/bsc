@@ -151,7 +151,7 @@ func (s *stateObject) touch() {
 // if it's not loaded previously. An error will be returned if trie can't
 // be loaded.
 func (s *stateObject) getTrie() (Trie, error) {
-	if s.trie == nil || s.db.db.ExpiredTree(s.trie) {
+	if s.trie == nil || s.db.db.HasTreeExpired(s.trie) {
 		// Try fetching from prefetcher first
 		// if s.data.Root != types.EmptyRootHash && s.db.prefetcher != nil {
 		// When the miner is creating the pending state, there is no prefetcher
@@ -512,7 +512,6 @@ func (s *stateObject) setBalance(amount *uint256.Int) {
 
 func (s *stateObject) deepCopy(db *StateDB) *stateObject {
 	//TODO:: debug code, deleted in the future
-	panic("call state object deep copy")
 	obj := &stateObject{
 		db:       db,
 		address:  s.address,
