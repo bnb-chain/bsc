@@ -448,16 +448,6 @@ func (s *StateDB) GetBalance(addr common.Address) *uint256.Int {
 	return common.U2560
 }
 
-// TODO:: debug code , will be deleted
-func (s *StateDB) ParseStateObject(addr common.Address) {
-	stateObject := s.getStateObject(addr)
-	if stateObject == nil {
-		log.Info("ParseStateObject is nil")
-	}
-	vtr := stateObject.trie.(*VersaTree)
-	log.Info(vtr.db.ParseTreeHandler(vtr.handler))
-}
-
 // GetNonce retrieves the nonce from the given address or 0 if object not found
 func (s *StateDB) GetNonce(addr common.Address) uint64 {
 	stateObject := s.getStateObject(addr)
@@ -1537,6 +1527,7 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 		log.Info("state object", "selfDestructed", obj.selfDestructed)
 		log.Info("state object", "deleted", obj.deleted)
 		log.Info("state object", "created", obj.created)
+		log.Info("....................origin state object .......................")
 		if obj.origin != nil {
 			log.Info("state object origin", "Nonce", obj.origin.Nonce)
 			log.Info("state object origin", "Balance", obj.origin.Balance)
@@ -1545,11 +1536,17 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 		} else {
 			log.Info("state object origin is nil")
 		}
+		log.Info("....................new state object.......................")
 		log.Info("state object new", "Nonce", obj.data.Nonce)
 		log.Info("state object new", "Balance", obj.data.Balance)
 		log.Info("state object new", "Root", obj.data.Root)
 		log.Info("state object new", "CodeHash", common.Bytes2Hex(obj.data.CodeHash))
-		log.Info("....................originStorage.......................`")
+		log.Info("....................tree handler.......................")
+		if obj.trie != nil {
+			vtr := obj.trie.(*VersaTree)
+			log.Info("handler", vtr.db.ParseTreeHandler(vtr.handler))
+		}
+		log.Info("....................originStorage.......................")
 		keys := make([]common.Hash, 0)
 		for key := range obj.originStorage {
 			keys = append(keys, key)
