@@ -166,7 +166,7 @@ func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*St
 	if err != nil {
 		return nil, err
 	}
-	statedb.storagePool = NewStoragePool()
+	//statedb.storagePool = NewStoragePool()
 	return statedb, nil
 }
 
