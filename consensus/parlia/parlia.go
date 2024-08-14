@@ -1670,9 +1670,6 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 // distributeIncoming distributes system incoming of the block
 func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool) error {
-
-	state.DebugPrint(header.Number.Uint64(), true)
-
 	coinbase := header.Coinbase
 	balance := state.GetBalance(consensus.SystemAddress)
 	if balance.Cmp(common.U2560) <= 0 {

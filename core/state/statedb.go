@@ -1515,7 +1515,6 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 	})
 
 	for _, addr := range addrs {
-		log.Info("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			log.Info("state object", "address", obj.address)
 			log.Info("state object", "addrHash", obj.addrHash)
@@ -1535,7 +1534,7 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 			log.Info("state object new", "Balance", obj.data.Balance)
 			log.Info("state object new", "Root", obj.data.Root)
 			log.Info("state object new", "CodeHash", common.Bytes2Hex(obj.data.CodeHash))
-			log.Info("...........................................`")
+			log.Info("....................originStorage.......................`")
 			keys := make([]common.Hash, 0)
 			for key := range obj.originStorage {
 				keys = append(keys, key)
@@ -1546,7 +1545,7 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 			for _, k := range keys {
 				log.Info("originStorage,", "key: ", k.String(), "val: ", obj.originStorage[k].String())
 			}
-			log.Info("...........................................")
+			log.Info("....................pendingStorage.......................")
 			keys = make([]common.Hash, 0)
 			for key := range obj.pendingStorage {
 				keys = append(keys, key)
@@ -1557,7 +1556,7 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 			for _, k := range keys {
 				log.Info("originStorage,", "key: ", k.String(), "val: ", obj.pendingStorage[k].String())
 			}
-			log.Info("...........................................")
+			log.Info("..................dirtyStorage.........................")
 			keys = make([]common.Hash, 0)
 			for key := range obj.dirtyStorage {
 				keys = append(keys, key)
