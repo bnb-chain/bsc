@@ -2242,6 +2242,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
 
+		log.Info("+++++++++++++start block", "number", block.NumberU64())
+		defer log.Info("+++++++++++++end block", "number", block.NumberU64())
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return it.index, err

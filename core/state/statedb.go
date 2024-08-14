@@ -317,6 +317,7 @@ func (s *StateDB) EnablePipeCommit() {
 	if s.snap != nil && s.snaps.Layers() > 1 {
 		// after big merge, disable pipeCommit for now,
 		// because `s.db.TrieDB().Update` should be called after `s.trie.Commit(true)`
+		panic("snapshot is not nil")
 		s.pipeCommit = false
 	}
 }
@@ -733,6 +734,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 	// If no live objects are available, attempt to use snapshots
 	var data *types.StateAccount
 	if s.snap != nil {
+		panic("snapshot is not nil")
 		start := time.Now()
 		acc, err := s.snap.Account(crypto.HashData(s.hasher, addr.Bytes()))
 		if metrics.EnabledExpensive {
@@ -1021,6 +1023,7 @@ func (s *StateDB) GetRefund() uint64 {
 func (s *StateDB) WaitPipeVerification() error {
 	// Need to wait for the parent trie to commit
 	if s.snap != nil {
+		panic("snapshot is not nil")
 		if valid := s.snap.WaitAndGetVerifyRes(); !valid {
 			return errors.New("verification on parent snap failed")
 		}
@@ -1126,6 +1129,7 @@ func (s *StateDB) PopulateSnapAccountAndStorage() {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			if s.snap != nil {
+				panic("snapshot is not nil")
 				s.populateSnapStorage(obj)
 				s.accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
 			}
@@ -1389,6 +1393,7 @@ func (s *StateDB) deleteStorage(addr common.Address, addrHash common.Hash, root 
 	// generated, or it's internally corrupted. Fallback to the slow
 	// one just in case.
 	if s.snap != nil {
+		panic("snapshot is not nil")
 		aborted, size, slots, nodes, err = s.fastDeleteStorage(addrHash, root)
 	}
 	if s.snap == nil || err != nil {
@@ -1596,6 +1601,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	)
 
 	if s.snap != nil {
+		panic("snapshot is not nil")
 		diffLayer = &types.DiffLayer{}
 	}
 	if s.pipeCommit {
@@ -1778,6 +1784,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 						rawdb.WriteCode(codeWriter, common.BytesToHash(obj.CodeHash()), obj.code)
 						obj.dirtyCode = false
 						if s.snap != nil {
+							panic("snapshot is not nil")
 							diffLayer.Codes = append(diffLayer.Codes, types.DiffCode{
 								Hash: common.BytesToHash(obj.CodeHash()),
 								Code: obj.code,
@@ -1803,6 +1810,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 		func() error {
 			// If snapshotting is enabled, update the snapshot tree with this new version
 			if s.snap != nil {
+				panic("snapshot is not nil")
 				if metrics.EnabledExpensive {
 					defer func(start time.Time) { s.SnapshotCommits += time.Since(start) }(time.Now())
 				}
