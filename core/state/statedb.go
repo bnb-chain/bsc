@@ -1544,7 +1544,7 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 		log.Info("....................tree handler.......................")
 		if obj.trie != nil {
 			vtr := obj.trie.(*VersaTree)
-			log.Info("handler", vtr.db.ParseTreeHandler(vtr.handler))
+			log.Info(vtr.db.ParseTreeHandler(vtr.handler))
 		}
 		log.Info("....................originStorage.......................")
 		keys := make([]common.Hash, 0)
