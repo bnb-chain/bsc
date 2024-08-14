@@ -1506,7 +1506,7 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 
 	addrs := make([]common.Address, 0)
 	for addr := range s.stateObjectsDirty {
-		if obj := s.stateObjects[addr]; !obj.deleted {
+		if _, ok := s.stateObjects[addr]; ok {
 			addrs = append(addrs, addr)
 		}
 	}
@@ -1515,60 +1515,59 @@ func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
 	})
 
 	for _, addr := range addrs {
-		if obj := s.stateObjects[addr]; !obj.deleted {
-			log.Info("state object", "address", obj.address)
-			log.Info("state object", "addrHash", obj.addrHash)
-			log.Info("state object", "dirtyCode", obj.dirtyCode)
-			log.Info("state object", "selfDestructed", obj.selfDestructed)
-			log.Info("state object", "deleted", obj.deleted)
-			log.Info("state object", "created", obj.created)
-			if obj.origin != nil {
-				log.Info("state object origin", "Nonce", obj.origin.Nonce)
-				log.Info("state object origin", "Balance", obj.origin.Balance)
-				log.Info("state object origin", "Root", obj.origin.Root)
-				log.Info("state object origin", "CodeHash", common.Bytes2Hex(obj.origin.CodeHash))
-			} else {
-				log.Info("state object origin is nil")
-			}
-			log.Info("state object new", "Nonce", obj.data.Nonce)
-			log.Info("state object new", "Balance", obj.data.Balance)
-			log.Info("state object new", "Root", obj.data.Root)
-			log.Info("state object new", "CodeHash", common.Bytes2Hex(obj.data.CodeHash))
-			log.Info("....................originStorage.......................`")
-			keys := make([]common.Hash, 0)
-			for key := range obj.originStorage {
-				keys = append(keys, key)
-			}
-			sort.SliceStable(keys, func(i, j int) bool {
-				return keys[i].Cmp(keys[j]) < 0
-			})
-			for _, k := range keys {
-				log.Info("originStorage,", "key: ", k.String(), "val: ", obj.originStorage[k].String())
-			}
-			log.Info("....................pendingStorage.......................")
-			keys = make([]common.Hash, 0)
-			for key := range obj.pendingStorage {
-				keys = append(keys, key)
-			}
-			sort.SliceStable(keys, func(i, j int) bool {
-				return keys[i].Cmp(keys[j]) < 0
-			})
-			for _, k := range keys {
-				log.Info("originStorage,", "key: ", k.String(), "val: ", obj.pendingStorage[k].String())
-			}
-			log.Info("..................dirtyStorage.........................")
-			keys = make([]common.Hash, 0)
-			for key := range obj.dirtyStorage {
-				keys = append(keys, key)
-			}
-			sort.SliceStable(keys, func(i, j int) bool {
-				return keys[i].Cmp(keys[j]) < 0
-			})
-			for _, k := range keys {
-				log.Info("originStorage,", "key: ", k.String(), "val: ", obj.dirtyStorage[k].String())
-			}
-			log.Info("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+		obj := s.stateObjects[addr]
+		log.Info("state object", "address", obj.address)
+		log.Info("state object", "addrHash", obj.addrHash)
+		log.Info("state object", "dirtyCode", obj.dirtyCode)
+		log.Info("state object", "selfDestructed", obj.selfDestructed)
+		log.Info("state object", "deleted", obj.deleted)
+		log.Info("state object", "created", obj.created)
+		if obj.origin != nil {
+			log.Info("state object origin", "Nonce", obj.origin.Nonce)
+			log.Info("state object origin", "Balance", obj.origin.Balance)
+			log.Info("state object origin", "Root", obj.origin.Root)
+			log.Info("state object origin", "CodeHash", common.Bytes2Hex(obj.origin.CodeHash))
+		} else {
+			log.Info("state object origin is nil")
 		}
+		log.Info("state object new", "Nonce", obj.data.Nonce)
+		log.Info("state object new", "Balance", obj.data.Balance)
+		log.Info("state object new", "Root", obj.data.Root)
+		log.Info("state object new", "CodeHash", common.Bytes2Hex(obj.data.CodeHash))
+		log.Info("....................originStorage.......................`")
+		keys := make([]common.Hash, 0)
+		for key := range obj.originStorage {
+			keys = append(keys, key)
+		}
+		sort.SliceStable(keys, func(i, j int) bool {
+			return keys[i].Cmp(keys[j]) < 0
+		})
+		for _, k := range keys {
+			log.Info("originStorage,", "key: ", k.String(), "val: ", obj.originStorage[k].String())
+		}
+		log.Info("....................pendingStorage.......................")
+		keys = make([]common.Hash, 0)
+		for key := range obj.pendingStorage {
+			keys = append(keys, key)
+		}
+		sort.SliceStable(keys, func(i, j int) bool {
+			return keys[i].Cmp(keys[j]) < 0
+		})
+		for _, k := range keys {
+			log.Info("originStorage,", "key: ", k.String(), "val: ", obj.pendingStorage[k].String())
+		}
+		log.Info("..................dirtyStorage.........................")
+		keys = make([]common.Hash, 0)
+		for key := range obj.dirtyStorage {
+			keys = append(keys, key)
+		}
+		sort.SliceStable(keys, func(i, j int) bool {
+			return keys[i].Cmp(keys[j]) < 0
+		})
+		for _, k := range keys {
+			log.Info("originStorage,", "key: ", k.String(), "val: ", obj.dirtyStorage[k].String())
+		}
+		log.Info("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
 	}
 	log.Info("================== block end ================", "number", block)
 	log.Crit("exit....")
