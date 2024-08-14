@@ -75,6 +75,9 @@ func (cv *cachingVersaDB) CopyTrie(tr Trie) Trie {
 	}
 	if vtr.accountTree {
 		if cv.accTree != nil {
+			if cv.accTree.root.Cmp(vtr.root) != 0 {
+				panic("copy acc trie mismatch")
+			}
 			return cv.accTree
 		}
 		tree, err := cv.OpenTrie(vtr.root)

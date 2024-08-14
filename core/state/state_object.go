@@ -230,6 +230,7 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		value common.Hash
 	)
 	if s.db.snap != nil {
+		panic("snap is not nil")
 		start := time.Now()
 		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
 		if metrics.EnabledExpensive {

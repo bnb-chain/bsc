@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -30,7 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -101,20 +99,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// initialise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
 	statedb.MarkFullProcessed()
-
-	txHash := make([]common.Hash, 0)
-	for _, tx := range block.Transactions() {
-		txHash = append(txHash, tx.Hash())
-	}
-	log.Info("block txs", "number", len(txHash))
-	sort.Slice(txHash, func(i, j int) bool {
-		return txHash[i].Cmp(txHash[j]) > 0
-	})
-
-	for i, hash := range txHash {
-		log.Info("tx", "idx", i, "hash", hash)
-	}
-	log.Info("&&&&&&&&&&&&&&&&&&&")
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)

@@ -448,6 +448,16 @@ func (s *StateDB) GetBalance(addr common.Address) *uint256.Int {
 	return common.U2560
 }
 
+// TODO:: debug code , will be deleted
+func (s *StateDB) ParseStateObject(addr common.Address) {
+	stateObject := s.getStateObject(addr)
+	if stateObject == nil {
+		log.Info("ParseStateObject is nil")
+	}
+	vtr := stateObject.trie.(*VersaTree)
+	log.Info(vtr.db.ParseTreeHandler(vtr.handler))
+}
+
 // GetNonce retrieves the nonce from the given address or 0 if object not found
 func (s *StateDB) GetNonce(addr common.Address) uint64 {
 	stateObject := s.getStateObject(addr)
