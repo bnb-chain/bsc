@@ -110,11 +110,13 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 	// TODO:: if root tree, versa db should ignore check version, temp use -1
 	state, err := cv.versionDB.OpenState(-1, root, cv.mode)
 	if err != nil {
+		log.Error("failed to open state", "error", err)
 		return nil, err
 	}
 
 	handler, err := cv.versionDB.OpenTree(state, -1, common.Hash{}, root)
 	if err != nil {
+		log.Error("failed to open trie", "error", err)
 		return nil, err
 	}
 
@@ -145,6 +147,7 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 
 	version, _, err := cv.accTree.getAccountWithVersion(address)
 	if err != nil {
+		log.Error("failed to open storage trie", "error", err)
 		return nil, err
 	}
 	//if account.Root.Cmp(root) != 0 {
@@ -153,6 +156,7 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 
 	handler, err := cv.versionDB.OpenTree(cv.state, version, crypto.Keccak256Hash(address.Bytes()), root)
 	if err != nil {
+		log.Error("failed to open storage trie", "error", err)
 		return nil, err
 	}
 
@@ -283,6 +287,9 @@ func (vt *VersaTree) GetAccount(address common.Address) (*types.StateAccount, er
 	if err == nil && res != nil {
 		log.Info("get account", "mode", vt.mode, "addr", address.String(), "nonce", res.Nonce, "balance", res.Balance, "root", res.Root.String(), "code", common.Bytes2Hex(res.CodeHash), "version", ver)
 	}
+	if err != nil {
+		log.Error("failed to get account", "error", err)
+	}
 	return res, err
 }
 
@@ -308,6 +315,9 @@ func (vt *VersaTree) GetStorage(address common.Address, key []byte) ([]byte, err
 	}
 	_, content, _, err := rlp.Split(enc)
 	log.Info("get storage", "mode", vt.mode, "handler", vt.handler, "owner", address.String(), "key", common.Bytes2Hex(key), "val", common.Bytes2Hex(content), "stateRoot", vt.stateRoot.String(), "root", vt.root.String(), "version", vt.version)
+	if err != nil {
+		log.Error("failed to get storage", "error", err)
+	}
 	return content, err
 }
 
@@ -315,6 +325,7 @@ func (vt *VersaTree) UpdateAccount(address common.Address, account *types.StateA
 	vt.CheckAccountTree()
 	data, err := rlp.EncodeToBytes(account)
 	if err != nil {
+		log.Error("failed to update account", "error", err)
 		return err
 	}
 	log.Info("update account", "mode", vt.mode, "addr", address.String(), "nonce", account.Nonce, "balance", account.Balance, "root", account.Root.String(), "code", common.Bytes2Hex(account.CodeHash))
@@ -328,17 +339,29 @@ func (vt *VersaTree) UpdateStorage(address common.Address, key, value []byte) er
 	vt.CheckStorageTree()
 	v, _ := rlp.EncodeToBytes(value)
 	log.Info("update storage", "mode", vt.mode, "handler", vt.handler, "owner", address.String(), "key", common.Bytes2Hex(key), "val", common.Bytes2Hex(value), "stateRoot", vt.stateRoot.String(), "root", vt.root.String())
-	return vt.db.Put(vt.handler, key, v)
+	err := vt.db.Put(vt.handler, key, v)
+	if err != nil {
+		log.Error("failed to update storage", "error", err)
+	}
+	return err
 }
 
 func (vt *VersaTree) DeleteAccount(address common.Address) error {
 	vt.CheckAccountTree()
-	return vt.db.Delete(vt.handler, address.Bytes())
+	err := vt.db.Delete(vt.handler, address.Bytes())
+	if err != nil {
+		log.Error("failed to delete account", "error", err)
+	}
+	return err
 }
 
 func (vt *VersaTree) DeleteStorage(_ common.Address, key []byte) error {
 	vt.CheckStorageTree()
-	return vt.db.Delete(vt.handler, key)
+	err := vt.db.Delete(vt.handler, key)
+	if err != nil {
+		log.Error("failed to delete storage", "error", err)
+	}
+	return err
 }
 
 func (vt *VersaTree) UpdateContractCode(address common.Address, codeHash common.Hash, code []byte) error {
