@@ -159,7 +159,7 @@ func (s *stateObject) getTrie() (Trie, error) {
 		// if s.trie == nil {
 		tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root, s.db.trie)
 		if err != nil {
-			panic("open storage storage failed")
+			panic(fmt.Sprintf("open storage storage failed, error: %s", err.Error()))
 			return nil, err
 		}
 		s.trie = tr

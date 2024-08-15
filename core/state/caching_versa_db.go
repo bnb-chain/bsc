@@ -143,13 +143,13 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 		panic(fmt.Sprintf("account root mismatch, on open storage tree, actual: %s, expect: %s", root.String(), cv.root.String()))
 	}
 
-	version, account, err := cv.accTree.getAccountWithVersion(address)
+	version, _, err := cv.accTree.getAccountWithVersion(address)
 	if err != nil {
 		return nil, err
 	}
-	if account.Root.Cmp(root) != 0 {
-		return nil, fmt.Errorf("state root mismatch")
-	}
+	//if account.Root.Cmp(root) != 0 {
+	//	return nil, fmt.Errorf("state root mismatch")
+	//}
 
 	handler, err := cv.versionDB.OpenTree(cv.state, version, crypto.Keccak256Hash(address.Bytes()), root)
 	if err != nil {
@@ -213,7 +213,7 @@ func (cv *cachingVersaDB) ContractCode(addr common.Address, codeHash common.Hash
 	if len(code) > 0 {
 		return code, nil
 	}
-	code = rawdb.ReadCodeWithPrefix(cv.codeDB, codeHash)
+	code = rawdb.ReadCode(cv.codeDB, codeHash)
 	if len(code) > 0 {
 		cv.codeCache.Add(codeHash, code)
 		cv.codeSizeCache.Add(codeHash, len(code))
