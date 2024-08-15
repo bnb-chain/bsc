@@ -192,7 +192,8 @@ func (cv *cachingVersaDB) Release() error {
 
 func (cv *cachingVersaDB) Reset() {
 	if cv.state != versa.ErrStateHandler {
-		panic(fmt.Sprintf("close state reset, state info %s", cv.versionDB.ParseStateHandler(cv.state)))
+		err := cv.versionDB.CloseState(cv.state)
+		log.Error("close state in reset", "error", err)
 	}
 	cv.hasState.Store(false)
 	cv.accTree = nil
