@@ -159,6 +159,7 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 		log.Error("failed to open storage trie", "error", err)
 		return nil, err
 	}
+	log.Info("open storage tree", "address", address.String(), "hash address", crypto.Keccak256Hash(address.Bytes()).String())
 
 	tree := &VersaTree{
 		db:        cv.versionDB,
