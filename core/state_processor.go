@@ -105,12 +105,15 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	systemTxs := make([]*types.Transaction, 0, 2)
 
 	for i, tx := range block.Transactions() {
+		log.Info("%%%%%%%%%%%%%%")
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
 				bloomProcessors.Close()
 				return statedb, nil, nil, 0, err
 			} else if isSystemTx {
 				systemTxs = append(systemTxs, tx)
+				log.Info("tx process", "idx", i, "hash", tx.Hash().String())
+				log.Info("%%%%%%%%%%%%%%")
 				continue
 			}
 		}
@@ -133,8 +136,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			bloomProcessors.Close()
 			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
-		log.Info("%%%%%%%%%%%%%%")
-		log.Info("tx process", "idx", i, "hash", receipt.TxHash.String(), "postRoot", common.Bytes2Hex(receipt.PostState))
+		log.Info("tx process", "idx", i, "hash", receipt.TxHash.String(), "status", receipt.Status, "GasUsed", receipt.GasUsed, "CumulativeGasUsed", receipt.CumulativeGasUsed, "postRoot", common.Bytes2Hex(receipt.PostState))
 		log.Info("%%%%%%%%%%%%%%")
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
