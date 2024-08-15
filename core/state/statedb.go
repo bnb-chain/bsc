@@ -336,6 +336,8 @@ func (s *StateDB) MarkFullProcessed() {
 func (s *StateDB) setError(err error) {
 	if s.dbErr == nil {
 		s.dbErr = err
+	} else {
+		s.dbErr = fmt.Errorf(s.dbErr.Error()+", ", err.Error())
 	}
 }
 
