@@ -26,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -113,7 +112,6 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 	if db != nil && db.storagePool != nil {
 		storageMap = db.GetStorage(address)
 	}
-	log.Info("new state object", "addr", address.String())
 	return &stateObject{
 		db:                  db,
 		address:             address,

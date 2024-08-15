@@ -123,6 +123,7 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 		handler:     handler,
 		accountTree: true,
 		root:        root,
+		mode:        cv.mode,
 	}
 
 	cv.state = state
@@ -162,6 +163,7 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 		root:      root,
 		stateRoot: stateRoot,
 		address:   address,
+		mode:      cv.mode,
 	}
 	return tree, nil
 }
@@ -265,6 +267,7 @@ type VersaTree struct {
 	stateRoot common.Hash
 	root      common.Hash
 	address   common.Address
+	mode      versa.StateMode
 }
 
 func (vt *VersaTree) GetKey(key []byte) []byte {
@@ -276,7 +279,10 @@ func (vt *VersaTree) GetKey(key []byte) []byte {
 }
 
 func (vt *VersaTree) GetAccount(address common.Address) (*types.StateAccount, error) {
-	_, res, err := vt.getAccountWithVersion(address)
+	ver, res, err := vt.getAccountWithVersion(address)
+	if err == nil && res != nil {
+		log.Info("get account", "mode", vt.mode, "addr", address.String(), "nonce", res.Nonce, "balance", res.Balance, "root", res.Root.String(), "code", common.Bytes2Hex(res.CodeHash), "version", ver)
+	}
 	return res, err
 }
 
@@ -288,18 +294,20 @@ func (vt *VersaTree) getAccountWithVersion(address common.Address) (int64, *type
 	}
 	ret := new(types.StateAccount)
 	err = rlp.DecodeBytes(res, ret)
-	log.Info("get account", "addr", address.String(), "nonce", ret.Nonce, "balance", ret.Balance, "root", ret.Root.String(), "code", common.Bytes2Hex(ret.CodeHash), "version", ver)
 	return ver, ret, err
 }
 
-func (vt *VersaTree) GetStorage(addr common.Address, key []byte) ([]byte, error) {
+func (vt *VersaTree) GetStorage(address common.Address, key []byte) ([]byte, error) {
+	if vt.address.Cmp(address) != 0 {
+		panic(fmt.Sprintf("address mismatch in get storage, expect: %s, actul: %s", vt.address.String(), address.String()))
+	}
 	vt.CheckStorageTree()
 	_, enc, err := vt.db.Get(vt.handler, key)
 	if err != nil || len(enc) == 0 {
 		return nil, err
 	}
 	_, content, _, err := rlp.Split(enc)
-	log.Info("get storage", "owner", addr.String(), "key", common.Bytes2Hex(key), "val", common.Bytes2Hex(content), "stateRoot", vt.stateRoot.String(), "root", vt.root.String(), "version", vt.version)
+	log.Info("get storage", "mode", vt.mode, "handler", vt.handler, "owner", address.String(), "key", common.Bytes2Hex(key), "val", common.Bytes2Hex(content), "stateRoot", vt.stateRoot.String(), "root", vt.root.String(), "version", vt.version)
 	return content, err
 }
 
@@ -309,13 +317,17 @@ func (vt *VersaTree) UpdateAccount(address common.Address, account *types.StateA
 	if err != nil {
 		return err
 	}
-	log.Info("update account", "addr", address.String(), "nonce", account.Nonce, "balance", account.Balance, "root", account.Root.String(), "code", common.Bytes2Hex(account.CodeHash))
+	log.Info("update account", "mode", vt.mode, "addr", address.String(), "nonce", account.Nonce, "balance", account.Balance, "root", account.Root.String(), "code", common.Bytes2Hex(account.CodeHash))
 	return vt.db.Put(vt.handler, address.Bytes(), data)
 }
 
-func (vt *VersaTree) UpdateStorage(_ common.Address, key, value []byte) error {
+func (vt *VersaTree) UpdateStorage(address common.Address, key, value []byte) error {
+	if vt.address.Cmp(address) != 0 {
+		panic(fmt.Sprintf("address mismatch in get storage, expect: %s, actul: %s", vt.address.String(), address.String()))
+	}
 	vt.CheckStorageTree()
 	v, _ := rlp.EncodeToBytes(value)
+	log.Info("update storage", "mode", vt.mode, "handler", vt.handler, "owner", address.String(), "key", common.Bytes2Hex(key), "val", common.Bytes2Hex(value), "stateRoot", vt.stateRoot.String(), "root", vt.root.String())
 	return vt.db.Put(vt.handler, key, v)
 }
 
