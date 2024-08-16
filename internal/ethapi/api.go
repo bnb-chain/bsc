@@ -888,13 +888,12 @@ func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, probabilisticFin
 	}
 	confirmedValSet := make(map[common.Address]struct{}, valLen)
 	confirmedValSet[lastHeader.Coinbase] = struct{}{}
-	for count := 1; int64(len(confirmedValSet)) < probabilisticFinalized && count <= int(parliaConfig.Epoch) && lastHeader.Number.Int64() > 0; count++ {
-		parentHeader, err := s.b.HeaderByHash(ctx, lastHeader.ParentHash)
+	for count := 1; int64(len(confirmedValSet)) < probabilisticFinalized && count <= int(parliaConfig.Epoch) && lastHeader.Number.Int64() > 1; count++ {
+		lastHeader, err = s.b.HeaderByHash(ctx, lastHeader.ParentHash)
 		if err != nil { // impossible
 			return 0, err
 		}
-		confirmedValSet[parentHeader.Coinbase] = struct{}{}
-		lastHeader = parentHeader
+		confirmedValSet[lastHeader.Coinbase] = struct{}{}
 	}
 
 	return max(fastFinalizedHeader.Number.Int64(), lastHeader.Number.Int64()), nil
