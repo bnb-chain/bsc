@@ -882,10 +882,11 @@ func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, probabilisticFin
 		return 0, err
 	}
 
-	lastHeader, err := s.b.HeaderByNumber(ctx, rpc.LatestBlockNumber)
+	latestHeader, err := s.b.HeaderByNumber(ctx, rpc.LatestBlockNumber)
 	if err != nil { // impossible
 		return 0, err
 	}
+	lastHeader := latestHeader
 	confirmedValSet := make(map[common.Address]struct{}, valLen)
 	confirmedValSet[lastHeader.Coinbase] = struct{}{}
 	for count := 1; int64(len(confirmedValSet)) < probabilisticFinalized && count <= int(parliaConfig.Epoch) && lastHeader.Number.Int64() > 1; count++ {
@@ -896,7 +897,10 @@ func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, probabilisticFin
 		confirmedValSet[lastHeader.Coinbase] = struct{}{}
 	}
 
-	return max(fastFinalizedHeader.Number.Int64(), lastHeader.Number.Int64()), nil
+	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), lastHeader.Number.Int64())
+	log.Debug("getFinalizedNumber", "LatestBlockNumber", latestHeader.Number.Int64(), "fastFinalizedHeight", fastFinalizedHeader.Number.Int64(),
+		"probabilisticFinalizedHeight", lastHeader.Number.Int64(), "finalizedBlockNumber", finalizedBlockNumber, "len(confirmedValSet)", len(confirmedValSet))
+	return finalizedBlockNumber, nil
 }
 
 // GetFinalizedHeader returns the requested finalized block header.
