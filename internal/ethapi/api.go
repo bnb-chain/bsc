@@ -873,8 +873,8 @@ func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, probabilisticFin
 		return 0, err
 	}
 	valLen := int64(len(curValidators))
-	if probabilisticFinalized < 0 || probabilisticFinalized > valLen {
-		return 0, fmt.Errorf("%d out of range [0,%d]", probabilisticFinalized, valLen)
+	if probabilisticFinalized < 1 || probabilisticFinalized > valLen {
+		return 0, fmt.Errorf("%d out of range [1,%d]", probabilisticFinalized, valLen)
 	}
 
 	fastFinalizedHeader, err := s.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
@@ -899,12 +899,12 @@ func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, probabilisticFin
 
 	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), lastHeader.Number.Int64())
 	log.Debug("getFinalizedNumber", "LatestBlockNumber", latestHeader.Number.Int64(), "fastFinalizedHeight", fastFinalizedHeader.Number.Int64(),
-		"probabilisticFinalizedHeight", lastHeader.Number.Int64(), "finalizedBlockNumber", finalizedBlockNumber, "len(confirmedValSet)", len(confirmedValSet))
+		"probabilisticFinalizedHeight", lastHeader.Number.Int64(), "finalizedBlockNumber", finalizedBlockNumber, "len(confirmedValSet)", len(confirmedValSet), "confirmedValSet", confirmedValSet)
 	return finalizedBlockNumber, nil
 }
 
 // GetFinalizedHeader returns the requested finalized block header.
-//   - probabilisticFinalized should be in range [0,len(currentValidators)],
+//   - probabilisticFinalized should be in range [1,len(currentValidators)],
 //     then the block header with number `max(fastFinalizedHeight, probabilisticFinalizedHeight)` is returned
 //   - The return result is monotonically increasing.
 func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFinalized int64) (map[string]interface{}, error) {
@@ -916,7 +916,7 @@ func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFin
 }
 
 // GetFinalizedBlock returns the requested finalized block.
-//   - probabilisticFinalized should be in range [0,len(currentValidators)],
+//   - probabilisticFinalized should be in range [1,len(currentValidators)],
 //     then the block header with number `max(fastFinalizedHeight, probabilisticFinalizedHeight)` is returned
 //   - When fullTx is true all transactions in the block are returned, otherwise
 //     only the transaction hash is returned.
