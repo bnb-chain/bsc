@@ -2277,7 +2277,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
 		close(interruptCh) // state prefetch can be stopped
 		if err != nil {
-			statedb.DebugPrint(block.NumberU64(), true)
 			bc.reportBlock(block, receipts, err)
 			statedb.StopPrefetcher()
 			return it.index, err
@@ -2290,6 +2289,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			log.Error("validate state failed", "error", err)
 			bc.reportBlock(block, receipts, err)
 			statedb.StopPrefetcher()
+			statedb.DebugPrint(block.NumberU64(), true)
 			return it.index, err
 		}
 		vtime := time.Since(vstart)

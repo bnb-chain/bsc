@@ -1510,7 +1510,7 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 }
 
 func (s *StateDB) DebugPrint(block uint64, deleteEmptyObjects bool) {
-	if block != 1084 {
+	if block != 24611 {
 		return
 	}
 	log.Info("================== block start ===============", "number", block)
