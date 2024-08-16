@@ -181,20 +181,22 @@ func (cv *cachingVersaDB) Flush() error {
 // Release unique to versa
 func (cv *cachingVersaDB) Release() error {
 	//log.Info("close state", "state info", cv.versionDB.ParseStateHandler(cv.state))
-	if err := cv.versionDB.CloseState(cv.state); err != nil {
-		return err
+	if cv.state != versa.ErrStateHandler {
+		if err := cv.versionDB.CloseState(cv.state); err != nil {
+			return err
+		}
+		cv.hasState.Store(false)
+		cv.accTree = nil
+		cv.state = versa.ErrStateHandler
+		cv.root = common.Hash{}
 	}
-	cv.hasState.Store(false)
-	cv.accTree = nil
-	cv.state = versa.ErrStateHandler
-	cv.root = common.Hash{}
 	return nil
 }
 
 func (cv *cachingVersaDB) Reset() {
 	if cv.state != versa.ErrStateHandler {
-		err := cv.versionDB.CloseState(cv.state)
-		log.Error("close state in reset", "error", err)
+		_ = cv.versionDB.CloseState(cv.state)
+		panic("close state in reset")
 	}
 	cv.hasState.Store(false)
 	cv.accTree = nil

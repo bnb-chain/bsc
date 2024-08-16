@@ -2245,13 +2245,14 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		log.Info("+++++++++++++start block", "number", block.NumberU64())
 		defer log.Info("+++++++++++++end block", "number", block.NumberU64())
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
+		defer bc.stateCache.Release()
 		if err != nil {
 			return it.index, err
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
 
 		// Enable prefetching to pull in trie node paths while processing transactions
-		statedb.StartPrefetcher("chain")
+		//statedb.StartPrefetcher("chain")
 		interruptCh := make(chan struct{})
 		// For diff sync, it may fallback to full sync, so we still do prefetch
 		//if len(block.Transactions()) >= prefetchTxNumber {
