@@ -330,13 +330,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	// storage tree version, occurs 53409 block open 1002 storage tree error.
 	if s.db.db.Scheme() == rawdb.VersionScheme {
 		if len(s.pendingStorage) == 0 {
-			if s.version == InvalidSateObjectVersion {
-				return s.trie, nil
-			}
-			// EOA no need update storage tree.
-			if len(s.Code()) == 0 && s.dirtyCode == false &&
-				s.data.Root.Cmp(types.EmptyRootHash) == 0 &&
-				bytes.Compare(s.data.CodeHash, types.EmptyCodeHash.Bytes()) == 0 {
+			if s.data.Root.Cmp(types.EmptyRootHash) == 0 {
 				return s.trie, nil
 			}
 		}
