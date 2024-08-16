@@ -863,17 +863,14 @@ func (s *BlockChainAPI) Health() bool {
 }
 
 // GetFinalizedHeader returns the requested finalized block header.
-//   - probabilisticFinalized should be in range [2,21],
+//   - probabilisticFinalized should be in range [2,189],
 //     then the block header with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
+//   - The return result is monotonically increasing.
 func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFinalized int64) (map[string]interface{}, error) {
-	if probabilisticFinalized < 2 || probabilisticFinalized > 21 {
-		return nil, fmt.Errorf("%d out of range [2,21]", probabilisticFinalized)
+	if probabilisticFinalized < 2 || probabilisticFinalized > 189 {
+		return nil, fmt.Errorf("%d out of range [2,189](189 = 21 * 9)", probabilisticFinalized)
 	}
 
-	currentTurnLength, err := s.b.CurrentTurnLength()
-	if err != nil { // impossible
-		return nil, err
-	}
 	fastFinalizedHeader, err := s.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
 	if err != nil { // impossible
 		return nil, err
@@ -882,25 +879,22 @@ func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFin
 	if err != nil { // impossible
 		return nil, err
 	}
-	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized*int64(currentTurnLength))
+	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized)
 
 	return s.GetHeaderByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber))
 }
 
 // GetFinalizedBlock returns the requested finalized block.
-//   - probabilisticFinalized should be in range [2,21],
+//   - probabilisticFinalized should be in range [2,189],
 //     then the block with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
 //   - When fullTx is true all transactions in the block are returned, otherwise
 //     only the transaction hash is returned.
+//   - The return result is monotonically increasing.
 func (s *BlockChainAPI) GetFinalizedBlock(ctx context.Context, probabilisticFinalized int64, fullTx bool) (map[string]interface{}, error) {
-	if probabilisticFinalized < 2 || probabilisticFinalized > 21 {
-		return nil, fmt.Errorf("%d out of range [2,21]", probabilisticFinalized)
+	if probabilisticFinalized < 2 || probabilisticFinalized > 189 {
+		return nil, fmt.Errorf("%d out of range [2,189](189 = 21 * 9)", probabilisticFinalized)
 	}
 
-	currentTurnLength, err := s.b.CurrentTurnLength()
-	if err != nil { // impossible
-		return nil, err
-	}
 	fastFinalizedHeader, err := s.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
 	if err != nil { // impossible
 		return nil, err
@@ -909,7 +903,7 @@ func (s *BlockChainAPI) GetFinalizedBlock(ctx context.Context, probabilisticFina
 	if err != nil { // impossible
 		return nil, err
 	}
-	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized*int64(currentTurnLength))
+	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized)
 
 	return s.GetBlockByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber), fullTx)
 }
