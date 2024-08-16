@@ -889,7 +889,7 @@ func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValidato
 	lastHeader := latestHeader
 	confirmedValSet := make(map[common.Address]struct{}, valLen)
 	confirmedValSet[lastHeader.Coinbase] = struct{}{}
-	for count := 1; int64(len(confirmedValSet)) < verifiedValidatorNum && count <= int(parliaConfig.Epoch) && lastHeader.Number.Int64() > 1; count++ {
+	for count := 1; int64(len(confirmedValSet)) < verifiedValidatorNum && count <= int(parliaConfig.Epoch) && lastHeader.Number.Int64() > max(fastFinalizedHeader.Number.Int64(), 1); count++ {
 		lastHeader, err = s.b.HeaderByHash(ctx, lastHeader.ParentHash)
 		if err != nil { // impossible
 			return 0, err
@@ -899,7 +899,7 @@ func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValidato
 
 	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), lastHeader.Number.Int64())
 	log.Debug("getFinalizedNumber", "LatestBlockNumber", latestHeader.Number.Int64(), "fastFinalizedHeight", fastFinalizedHeader.Number.Int64(),
-		"probabilisticFinalizedHeight", lastHeader.Number.Int64(), "finalizedBlockNumber", finalizedBlockNumber, "len(confirmedValSet)", len(confirmedValSet), "confirmedValSet", confirmedValSet)
+		"lastHeader", lastHeader.Number.Int64(), "finalizedBlockNumber", finalizedBlockNumber, "len(confirmedValSet)", len(confirmedValSet))
 	return finalizedBlockNumber, nil
 }
 
