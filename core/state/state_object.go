@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -329,6 +330,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	// storage tree, the case lead to 1002 account version mismatch with 1002
 	// storage tree version, occurs 53409 block open 1002 storage tree error.
 	if s.db.db.Scheme() == rawdb.VersionScheme {
+		log.Info("updateTrie no update storage kv", "account_root", s.data.Root.String(), "code_hash", common.BytesToHash(s.data.CodeHash).String())
 		if len(s.pendingStorage) == 0 {
 			if s.data.Root.Cmp(types.EmptyRootHash) == 0 &&
 				bytes.Compare(s.data.CodeHash, types.EmptyCodeHash.Bytes()) == 0 {
