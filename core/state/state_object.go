@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -324,10 +325,28 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	// Make sure all dirty slots are finalized into the pending storage area
 	s.finalise(false)
 
-	// Short circuit if nothing changed, don't bother with hashing anything
-	if len(s.pendingStorage) == 0 {
-		return s.trie, nil
+	// fix 33740 blocks issue, add 1002 contract balance, but not update 1002
+	// storage tree, the case lead to 1002 account version mismatch with 1002
+	// storage tree version, occurs 53409 block open 1002 storage tree error.
+	if s.db.db.Scheme() == rawdb.VersionScheme {
+		if len(s.pendingStorage) == 0 {
+			if s.version == InvalidSateObjectVersion {
+				return s.trie, nil
+			}
+			// EOA no need update storage tree.
+			if len(s.Code()) == 0 && s.dirtyCode == false &&
+				s.data.Root.Cmp(types.EmptyRootHash) == 0 &&
+				bytes.Compare(s.data.CodeHash, types.EmptyCodeHash.Bytes()) == 0 {
+				return s.trie, nil
+			}
+		}
+	} else {
+		// Short circuit if nothing changed, don't bother with hashing anything
+		if len(s.pendingStorage) == 0 {
+			return s.trie, nil
+		}
 	}
+
 	// Track the amount of time wasted on updating the storage trie
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) {
