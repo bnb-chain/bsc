@@ -63,6 +63,7 @@ func (s Storage) Copy() Storage {
 // - Finally, call commit to return the changes of storage trie and update account data.
 type stateObject struct {
 	db       *StateDB
+	version  int64
 	address  common.Address      // address of ethereum account
 	addrHash common.Hash         // hash of ethereum address of the account
 	origin   *types.StateAccount // Account original data without any change applied, nil means it was not existent
@@ -99,7 +100,7 @@ func (s *stateObject) empty() bool {
 }
 
 // newObject creates a state object.
-func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *stateObject {
+func newObject(db *StateDB, address common.Address, acct *types.StateAccount, version int64) *stateObject {
 	var (
 		origin  = acct
 		created = acct == nil // true if the account was not existent
@@ -114,6 +115,7 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 	}
 	return &stateObject{
 		db:                  db,
+		version:             version,
 		address:             address,
 		addrHash:            crypto.Keccak256Hash(address[:]),
 		origin:              origin,
@@ -157,7 +159,16 @@ func (s *stateObject) getTrie() (Trie, error) {
 		//	s.trie = s.db.prefetcher.trie(s.addrHash, s.data.Root)
 		// }
 		// if s.trie == nil {
-		tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root, s.db.trie)
+		var (
+			tr  Trie
+			err error
+		)
+		if s.version == InvalidSateObjectVersion {
+			tr, err = s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root, s.db.trie)
+		} else {
+			tr, err = s.db.db.(*cachingVersaDB).openStorageTreeWithVersion(s.version, s.db.originalRoot, s.address, s.data.Root)
+		}
+
 		if err != nil {
 			panic(fmt.Sprintf("open storage storage failed, error: %s", err.Error()))
 			return nil, err

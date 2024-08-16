@@ -761,6 +761,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 		}
 	}
 
+	version := InvalidSateObjectVersion
 	// If snapshot unavailable or reading from it failed, load from the database
 	if data == nil {
 		if s.trie == nil {
@@ -775,7 +776,12 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 		}
 		start := time.Now()
 		var err error
-		data, err = s.trie.GetAccount(addr)
+		if vtr, ok := s.trie.(*VersaTree); ok {
+			version, data, err = vtr.getAccountWithVersion(addr)
+		} else {
+			data, err = s.trie.GetAccount(addr)
+		}
+
 		if metrics.EnabledExpensive {
 			s.AccountReads += time.Since(start)
 		}
@@ -788,7 +794,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 		}
 	}
 	// Insert into the live set
-	obj := newObject(s, addr, data)
+	obj := newObject(s, addr, data, version)
 	s.setStateObject(obj)
 	return obj
 }
@@ -810,7 +816,7 @@ func (s *StateDB) getOrNewStateObject(addr common.Address) *stateObject {
 // the given address, it is overwritten and returned as the second return value.
 func (s *StateDB) createObject(addr common.Address) (newobj, prev *stateObject) {
 	prev = s.getDeletedStateObject(addr) // Note, prev might have been deleted, we need that!
-	newobj = newObject(s, addr, nil)
+	newobj = newObject(s, addr, nil, InvalidSateObjectVersion)
 	if prev == nil {
 		s.journal.append(createObjectChange{account: &addr})
 	} else {

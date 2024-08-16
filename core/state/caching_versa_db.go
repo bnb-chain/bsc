@@ -8,6 +8,7 @@ import (
 	versa "github.com/bnb-chain/versioned-state-database"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
+	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -18,6 +19,8 @@ import (
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/triedb"
 )
+
+const InvalidSateObjectVersion int64 = math.MinInt64
 
 type cachingVersaDB struct {
 	triedb        *triedb.Database
@@ -137,6 +140,15 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 }
 
 func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash, _ Trie) (Trie, error) {
+	version, _, err := cv.accTree.getAccountWithVersion(address)
+	if err != nil {
+		log.Error("failed to open storage trie", "error", err)
+		return nil, err
+	}
+	return cv.openStorageTreeWithVersion(version, stateRoot, address, root)
+}
+
+func (cv *cachingVersaDB) openStorageTreeWithVersion(version int64, stateRoot common.Hash, address common.Address, root common.Hash) (Trie, error) {
 	if !cv.hasState.Load() {
 		//TODO:: will change to log.Error after stabilization
 		panic("open account tree, before open storage tree")
@@ -144,15 +156,6 @@ func (cv *cachingVersaDB) OpenStorageTrie(stateRoot common.Hash, address common.
 	if cv.root.Cmp(stateRoot) != 0 {
 		panic(fmt.Sprintf("account root mismatch, on open storage tree, actual: %s, expect: %s", root.String(), cv.root.String()))
 	}
-
-	version, _, err := cv.accTree.getAccountWithVersion(address)
-	if err != nil {
-		log.Error("failed to open storage trie", "error", err)
-		return nil, err
-	}
-	//if account.Root.Cmp(root) != 0 {
-	//	return nil, fmt.Errorf("state root mismatch")
-	//}
 
 	handler, err := cv.versionDB.OpenTree(cv.state, version, crypto.Keccak256Hash(address.Bytes()), root)
 	if err != nil {
@@ -287,10 +290,7 @@ func (vt *VersaTree) GetKey(key []byte) []byte {
 }
 
 func (vt *VersaTree) GetAccount(address common.Address) (*types.StateAccount, error) {
-	ver, res, err := vt.getAccountWithVersion(address)
-	if err == nil && res != nil {
-		log.Info("get account", "mode", vt.mode, "addr", address.String(), "nonce", res.Nonce, "balance", res.Balance, "root", res.Root.String(), "code", common.Bytes2Hex(res.CodeHash), "version", ver)
-	}
+	_, res, err := vt.getAccountWithVersion(address)
 	if err != nil {
 		log.Error("failed to get account", "error", err)
 	}
@@ -305,6 +305,7 @@ func (vt *VersaTree) getAccountWithVersion(address common.Address) (int64, *type
 	}
 	ret := new(types.StateAccount)
 	err = rlp.DecodeBytes(res, ret)
+	log.Info("get account", "mode", vt.mode, "addr", address.String(), "nonce", ret.Nonce, "balance", ret.Balance, "root", ret.Root.String(), "code", common.Bytes2Hex(ret.CodeHash), "version", ver)
 	return ver, ret, err
 }
 
