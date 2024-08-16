@@ -862,54 +862,67 @@ func (s *BlockChainAPI) Health() bool {
 	return true
 }
 
-// GetFinalizedHeader returns the requested finalized block header.
-//   - probabilisticFinalized should be in range [2,21],
-//     then the block header with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
-func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFinalized int64) (map[string]interface{}, error) {
-	if probabilisticFinalized < 2 || probabilisticFinalized > 21 {
-		return nil, fmt.Errorf("%d out of range [2,21]", probabilisticFinalized)
+func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, probabilisticFinalized int64) (int64, error) {
+	parliaConfig := s.b.ChainConfig().Parlia
+	if parliaConfig == nil {
+		return 0, fmt.Errorf("only parlia engine supported")
 	}
 
-	currentTurnLength, err := s.b.CurrentTurnLength()
+	curValidators, err := s.b.CurrentValidators()
 	if err != nil { // impossible
-		return nil, err
+		return 0, err
 	}
+	valLen := int64(len(curValidators))
+	if probabilisticFinalized < 0 || probabilisticFinalized > valLen {
+		return 0, fmt.Errorf("%d out of range [0,%d]", probabilisticFinalized, valLen)
+	}
+
 	fastFinalizedHeader, err := s.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
 	if err != nil { // impossible
-		return nil, err
+		return 0, err
 	}
-	latestHeader, err := s.b.HeaderByNumber(ctx, rpc.LatestBlockNumber)
+
+	lastHeader, err := s.b.HeaderByNumber(ctx, rpc.LatestBlockNumber)
+	if err != nil { // impossible
+		return 0, err
+	}
+	confirmedValSet := make(map[common.Address]struct{}, valLen)
+	confirmedValSet[lastHeader.Coinbase] = struct{}{}
+	for count := 1; int64(len(confirmedValSet)) < probabilisticFinalized && count <= int(parliaConfig.Epoch) && lastHeader.Number.Int64() > 0; count++ {
+		parentHeader, err := s.b.HeaderByHash(ctx, lastHeader.ParentHash)
+		if err != nil { // impossible
+			return 0, err
+		}
+		confirmedValSet[parentHeader.Coinbase] = struct{}{}
+		lastHeader = parentHeader
+	}
+
+	return max(fastFinalizedHeader.Number.Int64(), lastHeader.Number.Int64()), nil
+}
+
+// GetFinalizedHeader returns the requested finalized block header.
+//   - probabilisticFinalized should be in range [0,len(currentValidators],
+//     then the block header with number `max(fastFinalizedHeight, probabilisticFinalizedHeight)` is returned
+//   - The return result is monotonically increasing.
+func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFinalized int64) (map[string]interface{}, error) {
+	finalizedBlockNumber, err := s.getFinalizedNumber(ctx, probabilisticFinalized)
 	if err != nil { // impossible
 		return nil, err
 	}
-	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized*int64(currentTurnLength))
-
 	return s.GetHeaderByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber))
 }
 
 // GetFinalizedBlock returns the requested finalized block.
-//   - probabilisticFinalized should be in range [2,21],
-//     then the block with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
+//   - probabilisticFinalized should be in range [0,len(currentValidators],
+//     then the block header with number `max(fastFinalizedHeight, probabilisticFinalizedHeight)` is returned
 //   - When fullTx is true all transactions in the block are returned, otherwise
 //     only the transaction hash is returned.
+//   - The return result is monotonically increasing.
 func (s *BlockChainAPI) GetFinalizedBlock(ctx context.Context, probabilisticFinalized int64, fullTx bool) (map[string]interface{}, error) {
-	if probabilisticFinalized < 2 || probabilisticFinalized > 21 {
-		return nil, fmt.Errorf("%d out of range [2,21]", probabilisticFinalized)
-	}
-
-	currentTurnLength, err := s.b.CurrentTurnLength()
+	finalizedBlockNumber, err := s.getFinalizedNumber(ctx, probabilisticFinalized)
 	if err != nil { // impossible
 		return nil, err
 	}
-	fastFinalizedHeader, err := s.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
-	if err != nil { // impossible
-		return nil, err
-	}
-	latestHeader, err := s.b.HeaderByNumber(ctx, rpc.LatestBlockNumber)
-	if err != nil { // impossible
-		return nil, err
-	}
-	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized*int64(currentTurnLength))
 
 	return s.GetBlockByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber), fullTx)
 }
