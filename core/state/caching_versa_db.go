@@ -357,15 +357,17 @@ func (vt *VersaTree) DeleteAccount(address common.Address) error {
 	if err != nil {
 		log.Error("failed to delete account", "error", err)
 	}
+	log.Info("delete account", "mode", vt.mode, "addr", address.String())
 	return err
 }
 
-func (vt *VersaTree) DeleteStorage(_ common.Address, key []byte) error {
+func (vt *VersaTree) DeleteStorage(address common.Address, key []byte) error {
 	vt.CheckStorageTree()
 	err := vt.db.Delete(vt.handler, key)
 	if err != nil {
 		log.Error("failed to delete storage", "error", err)
 	}
+	log.Info("delete storage", "mode", vt.mode, "handler", vt.handler, "owner", address.String(), "key", common.Bytes2Hex(key), "stateRoot", vt.stateRoot.String(), "root", vt.root.String())
 	return err
 }
 
