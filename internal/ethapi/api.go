@@ -900,7 +900,7 @@ func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, probabilisticFin
 }
 
 // GetFinalizedHeader returns the requested finalized block header.
-//   - probabilisticFinalized should be in range [0,len(currentValidators],
+//   - probabilisticFinalized should be in range [0,len(currentValidators)],
 //     then the block header with number `max(fastFinalizedHeight, probabilisticFinalizedHeight)` is returned
 //   - The return result is monotonically increasing.
 func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFinalized int64) (map[string]interface{}, error) {
@@ -912,7 +912,7 @@ func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFin
 }
 
 // GetFinalizedBlock returns the requested finalized block.
-//   - probabilisticFinalized should be in range [0,len(currentValidators],
+//   - probabilisticFinalized should be in range [0,len(currentValidators)],
 //     then the block header with number `max(fastFinalizedHeight, probabilisticFinalizedHeight)` is returned
 //   - When fullTx is true all transactions in the block are returned, otherwise
 //     only the transaction hash is returned.
