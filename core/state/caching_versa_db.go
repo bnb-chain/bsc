@@ -211,7 +211,7 @@ func (cv *cachingVersaDB) openStorageTreeWithVersion(version int64, stateRoot co
 // Flush unique to versa
 func (cv *cachingVersaDB) Flush() error {
 	err := cv.versionDB.Flush(cv.state)
-	if cv.debug != nil {
+	if err != nil && cv.debug != nil {
 		cv.debug.OnError(fmt.Errorf("failed to flush state, version: %d, root:%s, mode:%d, error: %s",
 			cv.accTree.version, cv.accTree.root.String(), cv.accTree.mode, err.Error()))
 	}
@@ -346,7 +346,7 @@ func (vt *VersaTree) getAccountWithVersion(address common.Address) (int64, *type
 	vt.CheckAccountTree()
 	ver, res, err := vt.db.Get(vt.handler, address.Bytes())
 	if res == nil || err != nil {
-		if vt.debug != nil {
+		if err != nil && vt.debug != nil {
 			vt.debug.OnError(fmt.Errorf("failed to get account, root: %s, address: %s, error: %s",
 				vt.root.String(), address.String(), err.Error()))
 		}
