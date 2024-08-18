@@ -1815,23 +1815,6 @@ func (p *Parlia) applyTransaction(
 		}
 		actualTx := (*receivedTxs)[0]
 		if !bytes.Equal(p.signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {
-			res := fmt.Sprintf("expected tx hash %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s",
-				expectedHash.String(),
-				expectedTx.Nonce(),
-				expectedTx.To().String(),
-				expectedTx.Value().String(),
-				expectedTx.Gas(),
-				expectedTx.GasPrice().String(),
-				hex.EncodeToString(expectedTx.Data()))
-			res += fmt.Sprintf("actual tx hash %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s",
-				actualTx.Hash().String(),
-				actualTx.Nonce(),
-				actualTx.To().String(),
-				actualTx.Value().String(),
-				actualTx.Gas(),
-				actualTx.GasPrice().String(),
-				hex.EncodeToString(actualTx.Data()))
-			log.Info(res)
 			return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s", expectedHash.String(), actualTx.Hash().String(),
 				expectedTx.Nonce(),
 				expectedTx.To().String(),

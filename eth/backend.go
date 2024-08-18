@@ -126,11 +126,15 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	onlyFullSync := false
 	if config.StateScheme == rawdb.VersionScheme {
 		config.SnapshotCache = 0
-		log.Info("version triedb has forbidden snapshot")
 		onlyFullSync = true
 		config.SyncMode = downloader.FullSync
-		log.Info("version triedb only support full sync")
 	}
+
+	// TODO:: debug code
+	config.SnapshotCache = 0
+	onlyFullSync = true
+	config.SyncMode = downloader.FullSync
+
 	// Ensure configuration values are compatible and sane
 	if config.SyncMode == downloader.LightSync {
 		return nil, errors.New("can't run eth.Ethereum in light sync mode, light mode has been deprecated")

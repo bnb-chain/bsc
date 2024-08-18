@@ -1135,6 +1135,11 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.MiscCategory,
 	}
+
+	BlockNumber = &cli.Int64Flag{
+		Name:  "block",
+		Value: int64(0),
+	}
 )
 
 var (

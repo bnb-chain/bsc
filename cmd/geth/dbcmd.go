@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -286,7 +287,40 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		Description: `This commands will read current offset from kvdb, which is the current offset and starting BlockNumber
 of ancientStore, will also displays the reserved number of blocks in ancientStore `,
 	}
+	getVersionDBState = &cli.Command{
+		Action: getDebugVersionState,
+		Name:   "get-debug-version-state",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+			utils.BlockNumber,
+		},
+	}
 )
+
+func getDebugVersionState(ctx *cli.Context) error {
+	if !ctx.IsSet(utils.DataDirFlag.Name) {
+		return fmt.Errorf("please set `--datadir` flag")
+	}
+	if !ctx.IsSet(utils.BlockNumber.Name) {
+		return fmt.Errorf("please set `--block` flag")
+	}
+	dir := ctx.String(utils.DataDirFlag.Name)
+	block := ctx.Int64(utils.BlockNumber.Name)
+	db, err := rawdb.Open(rawdb.OpenOptions{
+		ReadOnly:  true,
+		Type:      "leveldb",
+		Directory: dir,
+	})
+	if err != nil {
+		return err
+	}
+	data, err := db.Get(state.DebugStateKey(block))
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
+}
 
 func removeDB(ctx *cli.Context) error {
 	stack, config := makeConfigNode(ctx)

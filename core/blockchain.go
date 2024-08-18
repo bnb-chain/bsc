@@ -2241,9 +2241,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
-
-		log.Info("+++++++++++++start block", "number", block.NumberU64())
-		defer log.Info("+++++++++++++end block", "number", block.NumberU64())
+		
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		defer bc.stateCache.Release()
 		if err != nil {
@@ -2289,7 +2287,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			log.Error("validate state failed", "error", err)
 			bc.reportBlock(block, receipts, err)
 			statedb.StopPrefetcher()
-			statedb.DebugPrint(block.NumberU64(), true)
 			return it.index, err
 		}
 		vtime := time.Since(vstart)

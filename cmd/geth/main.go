@@ -272,6 +272,7 @@ func init() {
 		blsCommand,
 		// See verkle.go
 		verkleCommand,
+		getVersionDBState,
 	}
 	if logTestCommand != nil {
 		app.Commands = append(app.Commands, logTestCommand)
