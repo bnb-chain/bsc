@@ -308,7 +308,7 @@ func getDebugVersionState(ctx *cli.Context) error {
 	block := ctx.Int64(utils.BlockNumber.Name)
 	db, err := rawdb.Open(rawdb.OpenOptions{
 		ReadOnly:  true,
-		Type:      "leveldb",
+		Type:      "pebble",
 		Directory: dir,
 	})
 	if err != nil {
