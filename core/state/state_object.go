@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -333,12 +332,8 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		if len(s.pendingStorage) == 0 {
 			if s.data.Root.Cmp(types.EmptyRootHash) == 0 &&
 				bytes.Compare(s.data.CodeHash, types.EmptyCodeHash.Bytes()) == 0 {
-				if s.trie == nil {
-					log.Info("updateTrie no update storage kv, return nil trie", "addr", s.address.String(), "account_root", s.data.Root.String(), "code_hash", common.BytesToHash(s.data.CodeHash).String())
-				}
 				return s.trie, nil
 			}
-			log.Info("updateTrie no update storage kv open trie", "addr", s.address.String(), "account_root", s.data.Root.String(), "code_hash", common.BytesToHash(s.data.CodeHash).String())
 		}
 	} else {
 		// Short circuit if nothing changed, don't bother with hashing anything
