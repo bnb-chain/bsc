@@ -315,6 +315,30 @@ func (s *stateObject) finalise(prefetch bool) {
 	}
 }
 
+func (s *stateObject) IsContractAccount() bool {
+	return s.data.Root.Cmp(types.EmptyRootHash) != 0 ||
+		bytes.Compare(s.data.CodeHash, types.EmptyCodeHash.Bytes()) != 0
+}
+
+func (s *stateObject) IsAccountChanged() bool {
+	if s.origin == nil {
+		return true
+	}
+	if s.data.Nonce != s.origin.Nonce {
+		return true
+	}
+	if s.data.Balance.Cmp(s.origin.Balance) != 0 {
+		return true
+	}
+	if s.data.Root.Cmp(s.origin.Root) != 0 {
+		return true
+	}
+	if bytes.Compare(s.data.CodeHash, s.origin.CodeHash) != 0 {
+		return true
+	}
+	return false
+}
+
 // updateTrie is responsible for persisting cached storage changes into the
 // object's storage trie. In case the storage trie is not yet loaded, this
 // function will load the trie automatically. If any issues arise during the
@@ -330,8 +354,10 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	// storage tree version, occurs 53409 block open 1002 storage tree error.
 	if s.db.db.Scheme() == rawdb.VersionScheme {
 		if len(s.pendingStorage) == 0 {
-			if s.data.Root.Cmp(types.EmptyRootHash) == 0 &&
-				bytes.Compare(s.data.CodeHash, types.EmptyCodeHash.Bytes()) == 0 {
+			if !s.IsContractAccount() {
+				return s.trie, nil
+			}
+			if !s.IsAccountChanged() {
 				return s.trie, nil
 			}
 		}
