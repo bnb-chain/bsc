@@ -180,7 +180,7 @@ func GenerateDebugStateDiff(vs *DebugVersionState, hs *DebugHashState) string {
 
 	diff.DiffErrs[VersionState] = make([]string, 0)
 	diff.DiffErrs[HashState] = make([]string, 0)
-	
+
 	diff.diffUpdateAccount(vs.UpdateAccounts, hs.UpdateAccounts)
 	diff.diffDeleteAccount(vs.DeleteAccounts, hs.DeleteAccounts)
 	diff.diffUpdateStorage(vs.UpdateStorage, hs.UpdateStorage)

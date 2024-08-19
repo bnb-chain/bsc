@@ -2242,16 +2242,15 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
 
+		if bc.stateCache.Scheme() != rawdb.VersionScheme {
+			if block.NumberU64() == 2000001 {
+				log.Crit("exit.... path mode, 200w blocks")
+			}
+		}
+
 		bc.stateCache.SetVersion(int64(block.NumberU64()))
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
-		defer func() {
-			bc.stateCache.Release()
-			if bc.stateCache.Scheme() != rawdb.VersionScheme {
-				if block.NumberU64() == 2000000 {
-					log.Crit("exit.... path mode, 200w blocks")
-				}
-			}
-		}()
+		defer bc.stateCache.Release()
 		if err != nil {
 			return it.index, err
 		}
