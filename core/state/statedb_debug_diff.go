@@ -135,10 +135,10 @@ func (df *DebugStateDiff) diffCalcHash(vs map[common.Address]common.Hash, hs map
 			df.DiffCalcHash[VersionState][address] = vch
 		}
 		if vch.Cmp(hch) != 0 {
-			if vch == (common.Hash{}) && hch == types.EmptyRootHash {
+			if vch.Cmp(common.Hash{}) == 0 && hch.Cmp(types.EmptyRootHash) == 0 {
 				continue
 			}
-			if hch == (common.Hash{}) && vch == types.EmptyRootHash {
+			if hch.Cmp(common.Hash{}) == 0 && vch.Cmp(types.EmptyRootHash) == 0 {
 				continue
 			}
 			df.DiffCalcHash[VersionState][address] = vch
