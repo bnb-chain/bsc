@@ -1140,6 +1140,20 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:  "block",
 		Value: int64(0),
 	}
+
+	VersionStateDirFlag = &flags.DirectoryFlag{
+		Name:     "versionstatedir",
+		Usage:    "Data directory for the version databases and keystore",
+		Value:    flags.DirectoryString(node.DefaultDataDir()),
+		Category: flags.EthCategory,
+	}
+
+	HashStateDirFlag = &flags.DirectoryFlag{
+		Name:     "hashstatedir",
+		Usage:    "Data directory for the version databases and keystore",
+		Value:    flags.DirectoryString(node.DefaultDataDir()),
+		Category: flags.EthCategory,
+	}
 )
 
 var (

@@ -34,8 +34,9 @@ type DebugVersionState struct {
 	Version     int64
 	PreState    *versa.StateInfo
 	PostState   *versa.StateInfo
-	AccessTrees []*versa.TreeInfo
-	CommitTrees []versa.TreeHandler
+	AccessTrees map[common.Address][]*versa.TreeInfo
+	CommitTrees map[common.Address][]*versa.TreeInfo
+	CalcHash    map[common.Address]common.Hash
 
 	GetAccounts    []*VersaAccountInfo
 	UpdateAccounts []*VersaAccountInfo
@@ -46,8 +47,8 @@ type DebugVersionState struct {
 	DeleteStorage     []*VersaStorageInfo
 	StorageAddr2Owner map[common.Address]common.Hash
 
-	GetCode    []common.Hash
-	UpdateCode []common.Hash
+	GetCode    map[common.Address][]common.Hash
+	UpdateCode map[common.Address][]common.Hash
 
 	Errs []string
 }
@@ -56,8 +57,9 @@ func NewDebugVersionState(disk ethdb.KeyValueStore, versionDB versa.Database) *D
 	return &DebugVersionState{
 		disk:              disk,
 		versionDB:         versionDB,
-		AccessTrees:       make([]*versa.TreeInfo, 0),
-		CommitTrees:       make([]versa.TreeHandler, 0),
+		AccessTrees:       make(map[common.Address][]*versa.TreeInfo, 0),
+		CommitTrees:       make(map[common.Address][]*versa.TreeInfo, 0),
+		CalcHash:          make(map[common.Address]common.Hash),
 		GetAccounts:       make([]*VersaAccountInfo, 0),
 		UpdateAccounts:    make([]*VersaAccountInfo, 0),
 		DeleteAccounts:    make([]common.Address, 0),
@@ -65,8 +67,9 @@ func NewDebugVersionState(disk ethdb.KeyValueStore, versionDB versa.Database) *D
 		UpdateStorage:     make([]*VersaStorageInfo, 0),
 		DeleteStorage:     make([]*VersaStorageInfo, 0),
 		StorageAddr2Owner: make(map[common.Address]common.Hash),
-		GetCode:           make([]common.Hash, 0),
-		UpdateCode:        make([]common.Hash, 0),
+		GetCode:           make(map[common.Address][]common.Hash, 0),
+		UpdateCode:        make(map[common.Address][]common.Hash, 0),
+		Errs:              make([]string, 0),
 	}
 }
 func (ds *DebugVersionState) SetVersion(version int64) {
@@ -94,7 +97,10 @@ func (ds *DebugVersionState) OnOpenTree(handler versa.TreeHandler, owner common.
 	if err != nil {
 		panic(fmt.Sprintf("failed to get tree info on open tree, err: %s", err.Error()))
 	}
-	ds.AccessTrees = append(ds.AccessTrees, treeInfo)
+	if _, ok := ds.AccessTrees[address]; !ok {
+		ds.AccessTrees[address] = make([]*versa.TreeInfo, 0)
+	}
+	ds.AccessTrees[address] = append(ds.AccessTrees[address], treeInfo)
 	if owner != (common.Hash{}) && address != (common.Address{}) {
 		ds.StorageAddr2Owner[address] = owner
 	}
@@ -159,22 +165,35 @@ func (ds *DebugVersionState) OnDeleteStorage(handler versa.TreeHandler, address 
 	})
 }
 
-func (ds *DebugVersionState) OnGetCode(codeHash common.Hash) {
+func (ds *DebugVersionState) OnGetCode(addr common.Address, codeHash common.Hash) {
 	ds.lock.Lock()
 	defer ds.lock.Unlock()
-	ds.GetCode = append(ds.GetCode, codeHash)
+	ds.GetCode[addr] = append(ds.GetCode[addr], codeHash)
 }
 
-func (ds *DebugVersionState) OnUpdateCode(codeHash common.Hash) {
+func (ds *DebugVersionState) OnUpdateCode(addr common.Address, codeHash common.Hash) {
 	ds.lock.Lock()
 	defer ds.lock.Unlock()
-	ds.UpdateCode = append(ds.UpdateCode, codeHash)
+	ds.UpdateCode[addr] = append(ds.UpdateCode[addr], codeHash)
 }
 
-func (ds *DebugVersionState) OnCommitTree(handler versa.TreeHandler) {
+func (ds *DebugVersionState) OnCalcHash(addr common.Address, root common.Hash) {
 	ds.lock.Lock()
 	defer ds.lock.Unlock()
-	ds.CommitTrees = append(ds.CommitTrees, handler)
+	ds.CalcHash[addr] = root
+}
+
+func (ds *DebugVersionState) OnCommitTree(addr common.Address, handler versa.TreeHandler) {
+	ds.lock.Lock()
+	defer ds.lock.Unlock()
+	treeInfo, err := ds.versionDB.GetTreeInfo(handler)
+	if err != nil {
+		panic(fmt.Sprintf("failed to get tree info on commit tree, err: %s", err.Error()))
+	}
+	if _, ok := ds.CommitTrees[addr]; !ok {
+		ds.CommitTrees[addr] = make([]*versa.TreeInfo, 0)
+	}
+	ds.CommitTrees[addr] = append(ds.CommitTrees[addr], treeInfo)
 }
 
 func (ds *DebugVersionState) OnError(err error) {
@@ -193,19 +212,21 @@ func (ds *DebugVersionState) OnCloseState(handler versa.StateHandler) {
 	}
 	ds.PostState = stateInfo
 
+	ds.sortItems()
+
 	data, err := json.Marshal(ds)
 	if err != nil {
 		panic(fmt.Sprintf("failed to json encode debug info, err: %s", err.Error()))
+	}
+	
+	err = ds.disk.Put(DebugVersionStateKey(ds.Version), data)
+	if err != nil {
+		panic(fmt.Sprintf("failed to put debug version state into disk, err: %s", err.Error()))
 	}
 
 	if len(ds.Errs) != 0 {
 		log.Info("version state occurs error", "debug info", string(data))
 		log.Crit("exit....")
-	}
-
-	err = ds.disk.Put(DebugStateKey(ds.Version), data)
-	if err != nil {
-		panic(fmt.Sprintf("failed to put debug version state into disk, err: %s", err.Error()))
 	}
 }
 
@@ -240,16 +261,9 @@ func (ds *DebugVersionState) sortItems() {
 		}
 		return ds.DeleteStorage[i].Address.Cmp(ds.DeleteStorage[j].Address) < 0
 	})
-
-	sort.Slice(ds.GetCode, func(i, j int) bool {
-		return ds.GetCode[i].Cmp(ds.GetCode[j]) < 0
-	})
-	sort.Slice(ds.UpdateCode, func(i, j int) bool {
-		return ds.UpdateCode[i].Cmp(ds.UpdateCode[j]) < 0
-	})
 }
 
-func DebugStateKey(version int64) []byte {
+func DebugVersionStateKey(version int64) []byte {
 	key := "debug_version_prefix" + strconv.FormatInt(version, 10)
 	return []byte(key)
 }

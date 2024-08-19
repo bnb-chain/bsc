@@ -49,7 +49,6 @@ func NewVersaDatabase(db ethdb.Database, triedb *triedb.Database, mode versa.Sta
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
 		mode:          mode,
 		state:         versa.ErrStateHandler,
-		debug:         NewDebugVersionState(db, triedb.VersaDB()), // TODO:: add config whether enable debug system
 	}
 }
 
@@ -126,14 +125,6 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 			cv.debug.OnError(fmt.Errorf("failed to open state, root:%s, error: %s", root.String(), err.Error()))
 		}
 		return nil, err
-	}
-	if cv.debug != nil {
-		cv.debug.OnOpenState(state)
-		version, err := cv.versionDB.GetStateVersion(state)
-		if err != nil {
-			cv.debug.OnError(fmt.Errorf("failed to get state version, root:%s, error: %s", root.String(), err.Error()))
-		}
-		cv.debug.SetVersion(version)
 	}
 
 	handler, err := cv.versionDB.OpenTree(state, -1, common.Hash{}, root)
@@ -218,6 +209,11 @@ func (cv *cachingVersaDB) Flush() error {
 	return err
 }
 
+func (cv *cachingVersaDB) SetVersion(version int64) {
+	cv.debug = NewDebugVersionState(cv.codeDB, cv.versionDB)
+	cv.debug.Version = version
+}
+
 // Release unique to versa
 func (cv *cachingVersaDB) Release() error {
 	//log.Info("close state", "state info", cv.versionDB.ParseStateHandler(cv.state))
@@ -236,6 +232,7 @@ func (cv *cachingVersaDB) Release() error {
 		cv.accTree = nil
 		cv.state = versa.ErrStateHandler
 		cv.root = common.Hash{}
+		cv.debug = nil
 	}
 	return nil
 }
@@ -265,7 +262,7 @@ func (cv *cachingVersaDB) Scheme() string {
 
 func (cv *cachingVersaDB) ContractCode(addr common.Address, codeHash common.Hash) ([]byte, error) {
 	if cv.debug != nil {
-		cv.debug.OnGetCode(codeHash)
+		cv.debug.OnGetCode(addr, codeHash)
 	}
 	code, _ := cv.codeCache.Get(codeHash)
 	if len(code) > 0 {
@@ -397,8 +394,8 @@ func (vt *VersaTree) UpdateAccount(address common.Address, account *types.StateA
 	data, err := rlp.EncodeToBytes(account)
 	if err != nil {
 		if vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to update account, root: %s, address: %s, error: %s",
-				vt.root.String(), address.String(), err.Error()))
+			vt.debug.OnError(fmt.Errorf("failed to update account, root: %s, address: %s, account: %s, error: %s",
+				vt.root.String(), address.String(), account.String(), err.Error()))
 		}
 		return err
 	}
@@ -469,6 +466,9 @@ func (vt *VersaTree) Hash() common.Hash {
 				vt.root.String(), vt.stateRoot.String(), err.Error()))
 		}
 	}
+	if vt.debug != nil {
+		vt.debug.OnCalcHash(vt.address, hash)
+	}
 	return hash
 }
 
@@ -481,7 +481,7 @@ func (vt *VersaTree) Commit(_ bool) (common.Hash, *trienode.NodeSet, error) {
 		}
 	}
 	if vt.debug != nil {
-		vt.debug.OnCommitTree(vt.handler)
+		vt.debug.OnCommitTree(vt.address, vt.handler)
 	}
 	return hash, nil, err
 }

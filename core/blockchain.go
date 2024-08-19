@@ -2241,7 +2241,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
-		
+
+		bc.stateCache.SetVersion(int64(block.NumberU64()))
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		defer bc.stateCache.Release()
 		if err != nil {

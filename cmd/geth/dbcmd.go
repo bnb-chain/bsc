@@ -92,6 +92,8 @@ Remove blockchain and state databases`,
 			dbHbss2PbssCmd,
 			dbTrieGetCmd,
 			dbTrieDeleteCmd,
+			getVersionDBState,
+			getHashDBState,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -291,15 +293,23 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 		Action: getDebugVersionState,
 		Name:   "get-debug-version-state",
 		Flags: []cli.Flag{
-			utils.DataDirFlag,
+			utils.VersionStateDirFlag,
+			utils.BlockNumber,
+		},
+	}
+	getHashDBState = &cli.Command{
+		Action: getDebugHashState,
+		Name:   "get-debug-version-state",
+		Flags: []cli.Flag{
+			utils.HashStateDirFlag,
 			utils.BlockNumber,
 		},
 	}
 )
 
 func getDebugVersionState(ctx *cli.Context) error {
-	if !ctx.IsSet(utils.DataDirFlag.Name) {
-		return fmt.Errorf("please set `--datadir` flag")
+	if !ctx.IsSet(utils.VersionStateDirFlag.Name) {
+		return fmt.Errorf("please set `--versionstatedir` flag")
 	}
 	if !ctx.IsSet(utils.BlockNumber.Name) {
 		return fmt.Errorf("please set `--block` flag")
@@ -314,7 +324,32 @@ func getDebugVersionState(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	data, err := db.Get(state.DebugStateKey(block))
+	data, err := db.Get(state.DebugVersionStateKey(block))
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
+}
+
+func getDebugHashState(ctx *cli.Context) error {
+	if !ctx.IsSet(utils.HashStateDirFlag.Name) {
+		return fmt.Errorf("please set `--hashstatedir` flag")
+	}
+	if !ctx.IsSet(utils.BlockNumber.Name) {
+		return fmt.Errorf("please set `--block` flag")
+	}
+	dir := ctx.String(utils.DataDirFlag.Name)
+	block := ctx.Int64(utils.BlockNumber.Name)
+	db, err := rawdb.Open(rawdb.OpenOptions{
+		ReadOnly:  true,
+		Type:      "pebble",
+		Directory: dir,
+	})
+	if err != nil {
+		return err
+	}
+	data, err := db.Get(state.DebugHashStateKey(block))
 	if err != nil {
 		return err
 	}
