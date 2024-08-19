@@ -448,7 +448,7 @@ func (b *EthAPIBackend) CurrentValidators() ([]common.Address, error) {
 		return service.(*parlia.API).GetValidators(&currentHead)
 	}
 
-	return []common.Address{}, nil
+	return []common.Address{}, errors.New("not supported")
 }
 
 func (b *EthAPIBackend) CurrentHeader() *types.Header {

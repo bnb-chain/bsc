@@ -89,7 +89,7 @@ type Backend interface {
 
 	ChainConfig() *params.ChainConfig
 	Engine() consensus.Engine
-	// CurrentTurnLength return the list of validator at the latest block
+	// CurrentValidators return the list of validator at the latest block
 	CurrentValidators() ([]common.Address, error)
 
 	// This is copied from filters.Backend

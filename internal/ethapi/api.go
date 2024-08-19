@@ -900,12 +900,13 @@ func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValidato
 	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), lastHeader.Number.Int64())
 	log.Debug("getFinalizedNumber", "LatestBlockNumber", latestHeader.Number.Int64(), "fastFinalizedHeight", fastFinalizedHeader.Number.Int64(),
 		"lastHeader", lastHeader.Number.Int64(), "finalizedBlockNumber", finalizedBlockNumber, "len(confirmedValSet)", len(confirmedValSet))
+
 	return finalizedBlockNumber, nil
 }
 
 // GetFinalizedHeader returns the finalized block header based on the specified parameters.
 //   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)].
-//   - The function calculates `probabilisticFinalizedHeight` as the height of the block verified by `verifiedValidatorNum` validators,
+//   - The function calculates `probabilisticFinalizedHeight` as the highest height of the block verified by `verifiedValidatorNum` validators,
 //     it then returns the block header with a height equal to `max(fastFinalizedHeight, probabilisticFinalizedHeight)`.
 //   - The height of the returned block header is guaranteed to be monotonically increasing.
 func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, verifiedValidatorNum int64) (map[string]interface{}, error) {
@@ -918,7 +919,7 @@ func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, verifiedValidato
 
 // GetFinalizedBlock returns the finalized block based on the specified parameters.
 //   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)].
-//   - The function calculates `probabilisticFinalizedHeight` as the height of the block verified by `verifiedValidatorNum` validators,
+//   - The function calculates `probabilisticFinalizedHeight` as the highest height of the block verified by `verifiedValidatorNum` validators,
 //     it then returns the block with a height equal to `max(fastFinalizedHeight, probabilisticFinalizedHeight)`.
 //   - If `fullTx` is true, the block includes all transactions; otherwise, only transaction hashes are included.
 //   - The height of the returned block is guaranteed to be monotonically increasing.
