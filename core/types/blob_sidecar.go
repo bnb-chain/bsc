@@ -2,10 +2,12 @@ package types
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -51,5 +53,42 @@ func (s *BlobSidecar) SanityCheck(blockNumber *big.Int, blockHash common.Hash) e
 	if len(s.Blobs) != len(s.Proofs) {
 		return errors.New("BlobSidecar has wrong proof length")
 	}
+	return nil
+}
+
+func (s *BlobSidecar) MarshalJSON() ([]byte, error) {
+	fields := map[string]interface{}{
+		"blockHash":   s.BlockHash,
+		"blockNumber": hexutil.EncodeUint64(s.BlockNumber.Uint64()),
+		"txHash":      s.TxHash,
+		"txIndex":     hexutil.EncodeUint64(s.TxIndex),
+	}
+	fields["blobSidecar"] = s.BlobTxSidecar
+	return json.Marshal(fields)
+}
+
+func (s *BlobSidecar) UnmarshalJSON(input []byte) error {
+	type blobSidecar struct {
+		BlobSidecar BlobTxSidecar `json:"blobSidecar"`
+		BlockNumber *hexutil.Big  `json:"blockNumber"`
+		BlockHash   common.Hash   `json:"blockHash"`
+		TxIndex     *hexutil.Big  `json:"txIndex"`
+		TxHash      common.Hash   `json:"txHash"`
+	}
+	var blob blobSidecar
+	if err := json.Unmarshal(input, &blob); err != nil {
+		return err
+	}
+	s.BlobTxSidecar = blob.BlobSidecar
+	if blob.BlockNumber == nil {
+		return errors.New("missing required field 'blockNumber' for BlobSidecar")
+	}
+	s.BlockNumber = blob.BlockNumber.ToInt()
+	s.BlockHash = blob.BlockHash
+	if blob.TxIndex == nil {
+		return errors.New("missing required field 'txIndex' for BlobSidecar")
+	}
+	s.TxIndex = blob.TxIndex.ToInt().Uint64()
+	s.TxHash = blob.TxHash
 	return nil
 }
