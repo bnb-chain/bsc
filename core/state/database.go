@@ -523,6 +523,7 @@ func (ht *HashTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, er
 		return hash, set, err
 	}
 	if ht.debug != nil {
+		ht.debug.OnCalcHash(ht.address, hash)
 		ht.debug.OnCommitTree(ht.address, hash)
 	}
 	return hash, set, nil

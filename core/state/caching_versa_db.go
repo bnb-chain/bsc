@@ -484,6 +484,7 @@ func (vt *VersaTree) Commit(_ bool) (common.Hash, *trienode.NodeSet, error) {
 		}
 	}
 	if vt.debug != nil {
+		vt.debug.OnCalcHash(vt.address, hash)
 		vt.debug.OnCommitTree(vt.address, vt.handler)
 	}
 	return hash, nil, err
