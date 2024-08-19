@@ -2250,8 +2250,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 
 		bc.stateCache.SetVersion(int64(block.NumberU64()))
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
-		defer bc.stateCache.Release()
 		if err != nil {
+			bc.stateCache.Release()
 			return it.index, err
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
@@ -2282,6 +2282,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
 		close(interruptCh) // state prefetch can be stopped
 		if err != nil {
+			bc.stateCache.Release()
 			bc.reportBlock(block, receipts, err)
 			statedb.StopPrefetcher()
 			return it.index, err
@@ -2291,7 +2292,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		// Validate the state using the default validator
 		vstart := time.Now()
 		if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
-			log.Error("validate state failed", "error", err)
+			bc.stateCache.Release()
 			bc.reportBlock(block, receipts, err)
 			statedb.StopPrefetcher()
 			return it.index, err
@@ -2327,8 +2328,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false)
 		}
 		if err != nil {
+			bc.stateCache.Release()
 			return it.index, err
 		}
+		bc.stateCache.Release()
 
 		bc.cacheReceipts(block.Hash(), receipts, block)
 
