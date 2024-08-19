@@ -1715,9 +1715,13 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 						rawdb.WriteCode(codeWriter, common.BytesToHash(obj.CodeHash()), obj.code)
 						switch d := s.db.(type) {
 						case *cachingVersaDB:
-							d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
+							if d.debug != nil {
+								d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
+							}
 						case *cachingDB:
-							d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
+							if d.debug != nil {
+								d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
+							}
 						default:
 							panic("caching db type error")
 						}
