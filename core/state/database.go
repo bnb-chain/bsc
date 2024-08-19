@@ -225,7 +225,7 @@ type cachingDB struct {
 	triedb        *triedb.Database
 	noTries       bool
 
-	debug *HashDebugState
+	debug *DebugHashState
 }
 
 // OpenTrie opens the main account trie at a specific root hash.
@@ -242,9 +242,11 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 		return nil, err
 	}
 	ht := &HashTrie{
-		trie:  tr,
-		root:  root,
-		debug: db.debug,
+		trie:    tr,
+		root:    root,
+		address: common.Address{},
+		owner:   common.Hash{},
+		debug:   db.debug,
 	}
 	db.debug.OnOpenTree(root, common.Hash{}, common.Address{})
 	return ht, nil
@@ -371,7 +373,7 @@ func (db *cachingDB) Release() error {
 }
 
 func (db *cachingDB) SetVersion(version int64) {
-	db.debug = NewHashDebugState(db.disk)
+	db.debug = NewDebugHashState(db.disk)
 	db.debug.Version = version
 }
 
@@ -395,7 +397,7 @@ type HashTrie struct {
 	address  common.Address
 	owner    common.Hash
 
-	debug *HashDebugState
+	debug *DebugHashState
 }
 
 func (ht *HashTrie) GetKey(key []byte) []byte {

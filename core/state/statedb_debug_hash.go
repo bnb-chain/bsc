@@ -12,7 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
-type HashDebugState struct {
+type DebugHashState struct {
 	disk ethdb.KeyValueStore
 	lock sync.Mutex
 
@@ -36,8 +36,8 @@ type HashDebugState struct {
 	Errs []string
 }
 
-func NewHashDebugState(disk ethdb.KeyValueStore) *HashDebugState {
-	return &HashDebugState{
+func NewDebugHashState(disk ethdb.KeyValueStore) *DebugHashState {
+	return &DebugHashState{
 		disk:              disk,
 		AccessTrees:       make(map[common.Address][]common.Hash),
 		CommitTrees:       make(map[common.Address][]common.Hash),
@@ -55,7 +55,7 @@ func NewHashDebugState(disk ethdb.KeyValueStore) *HashDebugState {
 	}
 }
 
-func (hs *HashDebugState) OnOpenTree(root common.Hash, owner common.Hash, address common.Address) {
+func (hs *DebugHashState) OnOpenTree(root common.Hash, owner common.Hash, address common.Address) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 
@@ -65,7 +65,7 @@ func (hs *HashDebugState) OnOpenTree(root common.Hash, owner common.Hash, addres
 	}
 }
 
-func (hs *HashDebugState) OnGetAccount(addr common.Address, acc *types.StateAccount) {
+func (hs *DebugHashState) OnGetAccount(addr common.Address, acc *types.StateAccount) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 	hs.GetAccounts = append(hs.GetAccounts, &VersaAccountInfo{
@@ -74,7 +74,7 @@ func (hs *HashDebugState) OnGetAccount(addr common.Address, acc *types.StateAcco
 	})
 }
 
-func (hs *HashDebugState) OnUpdateAccount(addr common.Address, acc *types.StateAccount) {
+func (hs *DebugHashState) OnUpdateAccount(addr common.Address, acc *types.StateAccount) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 	hs.UpdateAccounts = append(hs.UpdateAccounts, &VersaAccountInfo{
@@ -83,13 +83,13 @@ func (hs *HashDebugState) OnUpdateAccount(addr common.Address, acc *types.StateA
 	})
 }
 
-func (hs *HashDebugState) OnDeleteAccount(address common.Address) {
+func (hs *DebugHashState) OnDeleteAccount(address common.Address) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 	hs.DeleteAccounts = append(hs.DeleteAccounts, address)
 }
 
-func (hs *HashDebugState) OnGetStorage(address common.Address, key []byte, val []byte) {
+func (hs *DebugHashState) OnGetStorage(address common.Address, key []byte, val []byte) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 
@@ -100,7 +100,7 @@ func (hs *HashDebugState) OnGetStorage(address common.Address, key []byte, val [
 	})
 }
 
-func (hs *HashDebugState) OnUpdateStorage(address common.Address, key []byte, val []byte) {
+func (hs *DebugHashState) OnUpdateStorage(address common.Address, key []byte, val []byte) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 
@@ -111,7 +111,7 @@ func (hs *HashDebugState) OnUpdateStorage(address common.Address, key []byte, va
 	})
 }
 
-func (hs *HashDebugState) OnDeleteStorage(address common.Address, key []byte) {
+func (hs *DebugHashState) OnDeleteStorage(address common.Address, key []byte) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 
@@ -121,25 +121,25 @@ func (hs *HashDebugState) OnDeleteStorage(address common.Address, key []byte) {
 	})
 }
 
-func (hs *HashDebugState) OnGetCode(addr common.Address, codeHash common.Hash) {
+func (hs *DebugHashState) OnGetCode(addr common.Address, codeHash common.Hash) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 	hs.GetCode[addr] = append(hs.GetCode[addr], codeHash)
 }
 
-func (hs *HashDebugState) OnUpdateCode(addr common.Address, codeHash common.Hash) {
+func (hs *DebugHashState) OnUpdateCode(addr common.Address, codeHash common.Hash) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 	hs.UpdateCode[addr] = append(hs.UpdateCode[addr], codeHash)
 }
 
-func (hs *HashDebugState) OnCalcHash(addr common.Address, root common.Hash) {
+func (hs *DebugHashState) OnCalcHash(addr common.Address, root common.Hash) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 	hs.CalcHash[addr] = root
 }
 
-func (hs *HashDebugState) OnCommitTree(addr common.Address, root common.Hash) {
+func (hs *DebugHashState) OnCommitTree(addr common.Address, root common.Hash) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 	if _, ok := hs.CommitTrees[addr]; !ok {
@@ -148,13 +148,13 @@ func (hs *HashDebugState) OnCommitTree(addr common.Address, root common.Hash) {
 	hs.CommitTrees[addr] = append(hs.CommitTrees[addr], root)
 }
 
-func (hs *HashDebugState) OnError(err error) {
+func (hs *DebugHashState) OnError(err error) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 	hs.Errs = append(hs.Errs, err.Error())
 }
 
-func (hs *HashDebugState) flush() {
+func (hs *DebugHashState) flush() {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 
@@ -170,7 +170,7 @@ func (hs *HashDebugState) flush() {
 	}
 }
 
-func (hs *HashDebugState) sortItems() {
+func (hs *DebugHashState) sortItems() {
 	sort.Slice(hs.GetAccounts, func(i, j int) bool {
 		return hs.GetAccounts[i].Address.Cmp(hs.GetAccounts[j].Address) < 0
 	})

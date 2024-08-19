@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -94,6 +95,7 @@ Remove blockchain and state databases`,
 			dbTrieDeleteCmd,
 			getVersionDBState,
 			getHashDBState,
+			diffDebugStateDB,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -305,7 +307,74 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 			utils.BlockNumber,
 		},
 	}
+
+	diffDebugStateDB = &cli.Command{
+		Action: diffDebugState,
+		Name:   "diff-debug-state",
+		Flags: []cli.Flag{
+			utils.VersionStateDirFlag,
+			utils.HashStateDirFlag,
+			utils.BlockNumber,
+		},
+	}
 )
+
+func diffDebugState(ctx *cli.Context) error {
+	if !ctx.IsSet(utils.VersionStateDirFlag.Name) {
+		return fmt.Errorf("please set `--versionstatedir` flag")
+	}
+	if !ctx.IsSet(utils.BlockNumber.Name) {
+		return fmt.Errorf("please set `--block` flag")
+	}
+	if !ctx.IsSet(utils.HashStateDirFlag.Name) {
+		return fmt.Errorf("please set `--hashstatedir` flag")
+	}
+	verDir := ctx.String(utils.VersionStateDirFlag.Name)
+	hasDir := ctx.String(utils.HashStateDirFlag.Name)
+	block := ctx.Int64(utils.BlockNumber.Name)
+
+	vdb, err := rawdb.Open(rawdb.OpenOptions{
+		ReadOnly:  true,
+		Type:      "pebble",
+		Directory: verDir,
+	})
+	if err != nil {
+		return err
+	}
+	verData, err := vdb.Get(state.DebugVersionStateKey(block))
+	if err != nil {
+		return err
+	}
+
+	verDebugState := &state.DebugVersionState{}
+	err = json.Unmarshal(verData, verDebugState)
+	if err != nil {
+		return nil
+	}
+
+	hdb, err := rawdb.Open(rawdb.OpenOptions{
+		ReadOnly:  true,
+		Type:      "pebble",
+		Directory: hasDir,
+	})
+	if err != nil {
+		return err
+	}
+	hashData, err := hdb.Get(state.DebugHashStateKey(block))
+	if err != nil {
+		return err
+	}
+	hasDebugState := &state.DebugHashState{}
+	err = json.Unmarshal(hashData, hasDebugState)
+	if err != nil {
+		return err
+	}
+
+	res := state.GenerateDebugStateDiff(verDebugState, hasDebugState)
+	fmt.Println(res)
+
+	return nil
+}
 
 func getDebugVersionState(ctx *cli.Context) error {
 	if !ctx.IsSet(utils.VersionStateDirFlag.Name) {
@@ -314,7 +383,7 @@ func getDebugVersionState(ctx *cli.Context) error {
 	if !ctx.IsSet(utils.BlockNumber.Name) {
 		return fmt.Errorf("please set `--block` flag")
 	}
-	dir := ctx.String(utils.DataDirFlag.Name)
+	dir := ctx.String(utils.VersionStateDirFlag.Name)
 	block := ctx.Int64(utils.BlockNumber.Name)
 	db, err := rawdb.Open(rawdb.OpenOptions{
 		ReadOnly:  true,
@@ -339,7 +408,7 @@ func getDebugHashState(ctx *cli.Context) error {
 	if !ctx.IsSet(utils.BlockNumber.Name) {
 		return fmt.Errorf("please set `--block` flag")
 	}
-	dir := ctx.String(utils.DataDirFlag.Name)
+	dir := ctx.String(utils.HashStateDirFlag.Name)
 	block := ctx.Int64(utils.BlockNumber.Name)
 	db, err := rawdb.Open(rawdb.OpenOptions{
 		ReadOnly:  true,
