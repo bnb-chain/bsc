@@ -19,6 +19,7 @@ package types
 import (
 	"bytes"
 	"crypto/sha256"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -83,6 +84,14 @@ func (sc *BlobTxSidecar) encodedSize() uint64 {
 		proofs += rlp.BytesSize(sc.Proofs[i][:])
 	}
 	return rlp.ListSize(blobs) + rlp.ListSize(commitments) + rlp.ListSize(proofs)
+}
+
+type BlobTxSidecarResp struct {
+	BlobSidecar BlobTxSidecar `json:"blobSidecar"`
+	BlockNumber *hexutil.Big  `json:"blockNumber"`
+	BlockHash   common.Hash   `json:"blockHash"`
+	TxIndex     *hexutil.Big  `json:"txIndex"`
+	TxHash      common.Hash   `json:"txHash"`
 }
 
 // blobTxWithBlobs is used for encoding of transactions when blobs are present.
