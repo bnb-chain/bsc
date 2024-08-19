@@ -126,6 +126,9 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 		}
 		return nil, err
 	}
+	if cv.debug != nil {
+		cv.debug.OnOpenState(state)
+	}
 
 	handler, err := cv.versionDB.OpenTree(state, -1, common.Hash{}, root)
 	if err != nil {

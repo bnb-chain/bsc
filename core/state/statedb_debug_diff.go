@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	versa "github.com/bnb-chain/versioned-state-database"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -20,9 +19,9 @@ type DebugStateDiff struct {
 	DiffUpdateStorage map[string][]*VersaStorageInfo
 	DiffDeleteStorage map[string][]*VersaStorageInfo
 
-	DiffCommitRoot map[string]map[common.Address][]common.Hash
-	OwnerMap       map[common.Address]common.Hash
-	DiffErrs       map[string][]string
+	DiffCalcHash map[string]map[common.Address]common.Hash
+	OwnerMap     map[common.Address]common.Hash
+	DiffErrs     map[string][]string
 }
 
 func (df *DebugStateDiff) diffUpdateAccount(vs []*VersaAccountInfo, hs []*VersaAccountInfo) {
@@ -126,43 +125,31 @@ func (df *DebugStateDiff) diffDeleteStorage(vs []*VersaStorageInfo, hs []*VersaS
 	return
 }
 
-func (df *DebugStateDiff) diffCommit(vs map[common.Address][]*versa.TreeInfo, hs map[common.Address][]common.Hash) {
+func (df *DebugStateDiff) diffCalcHash(vs map[common.Address]common.Hash, hs map[common.Address]common.Hash) {
 	record := make(map[common.Address]struct{})
-	df.DiffCommitRoot[VersionState] = make(map[common.Address][]common.Hash)
-	df.DiffCommitRoot[HashState] = make(map[common.Address][]common.Hash)
-	for address, trees := range vs {
+	for address, vch := range vs {
 		record[address] = struct{}{}
-		if _, ok := hs[address]; !ok {
-			df.DiffCommitRoot[VersionState][address] = make([]common.Hash, 0)
-			for _, tree := range trees {
-				df.DiffCommitRoot[VersionState][address] = append(df.DiffCommitRoot[VersionState][address], tree.Tree.Root)
-			}
+		hch, ok := hs[address]
+		if !ok {
+			df.DiffCalcHash[VersionState][address] = vch
 		}
-		if len(vs[address]) != 1 || len(vs[address]) != 1 {
-			df.DiffCommitRoot[VersionState][address] = make([]common.Hash, 0)
-			for _, tree := range trees {
-				df.DiffCommitRoot[VersionState][address] = append(df.DiffCommitRoot[VersionState][address], tree.Tree.Root)
-			}
-			df.DiffCommitRoot[HashState][address] = hs[address]
-		}
-		if vs[address][0].Tree.Root.Cmp(hs[address][0]) != 0 {
-			df.DiffCommitRoot[VersionState][address] = make([]common.Hash, 0)
-			df.DiffCommitRoot[VersionState][address] = append(df.DiffCommitRoot[VersionState][address], vs[address][0].Tree.Root)
-			df.DiffCommitRoot[HashState][address] = hs[address]
+		if vch.Cmp(hch) != 0 {
+			df.DiffCalcHash[VersionState][address] = vch
+			df.DiffCalcHash[HashState][address] = hch
 		}
 	}
-	for address, _ := range record {
+
+	for address := range record {
 		delete(vs, address)
 		delete(hs, address)
 	}
-	for address, trees := range vs {
-		df.DiffCommitRoot[VersionState][address] = make([]common.Hash, 0)
-		for _, tree := range trees {
-			df.DiffCommitRoot[VersionState][address] = append(df.DiffCommitRoot[VersionState][address], tree.Tree.Root)
-		}
+
+	for address, hash := range vs {
+		df.DiffCalcHash[VersionState][address] = hash
 	}
-	for address, _ := range hs {
-		df.DiffCommitRoot[HashState][address] = hs[address]
+
+	for address, hash := range hs {
+		df.DiffCalcHash[HashState][address] = hash
 	}
 }
 
@@ -174,20 +161,36 @@ func GenerateDebugStateDiff(vs *DebugVersionState, hs *DebugHashState) string {
 		DiffUpdateStorage: make(map[string][]*VersaStorageInfo),
 		DiffDeleteStorage: make(map[string][]*VersaStorageInfo),
 
-		DiffCommitRoot: make(map[string]map[common.Address][]common.Hash),
-		OwnerMap:       make(map[common.Address]common.Hash),
-		DiffErrs:       make(map[string][]string),
+		DiffCalcHash: make(map[string]map[common.Address]common.Hash),
+		OwnerMap:     make(map[common.Address]common.Hash),
+		DiffErrs:     make(map[string][]string),
 	}
+	diff.DiffUpdateAccount[VersionState] = make([]*VersaAccountInfo, 0)
+	diff.DiffUpdateAccount[HashState] = make([]*VersaAccountInfo, 0)
+	diff.DiffDeleteAccount[VersionState] = make([]common.Address, 0)
+	diff.DiffDeleteAccount[HashState] = make([]common.Address, 0)
+
+	diff.DiffUpdateStorage[VersionState] = make([]*VersaStorageInfo, 0)
+	diff.DiffUpdateStorage[HashState] = make([]*VersaStorageInfo, 0)
+	diff.DiffDeleteStorage[VersionState] = make([]*VersaStorageInfo, 0)
+	diff.DiffDeleteStorage[HashState] = make([]*VersaStorageInfo, 0)
+
+	diff.DiffCalcHash[VersionState] = make(map[common.Address]common.Hash)
+	diff.DiffCalcHash[HashState] = make(map[common.Address]common.Hash)
+
+	diff.DiffErrs[VersionState] = make([]string, 0)
+	diff.DiffErrs[HashState] = make([]string, 0)
+	
 	diff.diffUpdateAccount(vs.UpdateAccounts, hs.UpdateAccounts)
 	diff.diffDeleteAccount(vs.DeleteAccounts, hs.DeleteAccounts)
 	diff.diffUpdateStorage(vs.UpdateStorage, hs.UpdateStorage)
 	diff.diffDeleteStorage(vs.DeleteStorage, hs.DeleteStorage)
-	diff.diffCommit(vs.CommitTrees, hs.CommitTrees)
+	diff.diffCalcHash(vs.CalcHash, hs.CalcHash)
 
-	for address, _ := range diff.DiffCommitRoot[VersionState] {
+	for address, _ := range diff.DiffCalcHash[VersionState] {
 		diff.OwnerMap[address] = vs.StorageAddr2Owner[address]
 	}
-	for address, _ := range diff.DiffCommitRoot[HashState] {
+	for address, _ := range diff.DiffCalcHash[HashState] {
 		diff.OwnerMap[address] = hs.StorageAddr2Owner[address]
 	}
 
