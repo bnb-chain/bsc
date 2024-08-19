@@ -168,12 +168,18 @@ func (ds *DebugVersionState) OnDeleteStorage(handler versa.TreeHandler, address 
 func (ds *DebugVersionState) OnGetCode(addr common.Address, codeHash common.Hash) {
 	ds.lock.Lock()
 	defer ds.lock.Unlock()
+	if _, ok := ds.GetCode[addr]; !ok {
+		ds.GetCode[addr] = make([]common.Hash, 0)
+	}
 	ds.GetCode[addr] = append(ds.GetCode[addr], codeHash)
 }
 
 func (ds *DebugVersionState) OnUpdateCode(addr common.Address, codeHash common.Hash) {
 	ds.lock.Lock()
 	defer ds.lock.Unlock()
+	if _, ok := ds.UpdateCode[addr]; !ok {
+		ds.UpdateCode[addr] = make([]common.Hash, 0)
+	}
 	ds.UpdateCode[addr] = append(ds.UpdateCode[addr], codeHash)
 }
 
@@ -218,7 +224,7 @@ func (ds *DebugVersionState) OnCloseState(handler versa.StateHandler) {
 	if err != nil {
 		panic(fmt.Sprintf("failed to json encode debug info, err: %s", err.Error()))
 	}
-	
+
 	err = ds.disk.Put(DebugVersionStateKey(ds.Version), data)
 	if err != nil {
 		panic(fmt.Sprintf("failed to put debug version state into disk, err: %s", err.Error()))

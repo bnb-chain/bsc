@@ -59,6 +59,9 @@ func (hs *DebugHashState) OnOpenTree(root common.Hash, owner common.Hash, addres
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
 
+	if _, ok := hs.AccessTrees[address]; !ok {
+		hs.AccessTrees[address] = make([]common.Hash, 0)
+	}
 	hs.AccessTrees[address] = append(hs.AccessTrees[address], root)
 	if owner != (common.Hash{}) && address != (common.Address{}) {
 		hs.StorageAddr2Owner[address] = owner
@@ -124,12 +127,18 @@ func (hs *DebugHashState) OnDeleteStorage(address common.Address, key []byte) {
 func (hs *DebugHashState) OnGetCode(addr common.Address, codeHash common.Hash) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
+	if _, ok := hs.GetCode[addr]; !ok {
+		hs.GetCode[addr] = make([]common.Hash, 0)
+	}
 	hs.GetCode[addr] = append(hs.GetCode[addr], codeHash)
 }
 
 func (hs *DebugHashState) OnUpdateCode(addr common.Address, codeHash common.Hash) {
 	hs.lock.Lock()
 	defer hs.lock.Unlock()
+	if _, ok := hs.UpdateCode[addr]; !ok {
+		hs.UpdateCode[addr] = make([]common.Hash, 0)
+	}
 	hs.UpdateCode[addr] = append(hs.UpdateCode[addr], codeHash)
 }
 
