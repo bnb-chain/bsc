@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 var (
@@ -134,6 +135,12 @@ func (df *DebugStateDiff) diffCalcHash(vs map[common.Address]common.Hash, hs map
 			df.DiffCalcHash[VersionState][address] = vch
 		}
 		if vch.Cmp(hch) != 0 {
+			if vch == (common.Hash{}) && hch == types.EmptyRootHash {
+				continue
+			}
+			if hch == (common.Hash{}) && vch == types.EmptyRootHash {
+				continue
+			}
 			df.DiffCalcHash[VersionState][address] = vch
 			df.DiffCalcHash[HashState][address] = hch
 		}
@@ -187,11 +194,11 @@ func GenerateDebugStateDiff(vs *DebugVersionState, hs *DebugHashState) string {
 	diff.diffDeleteStorage(vs.DeleteStorage, hs.DeleteStorage)
 	diff.diffCalcHash(vs.CalcHash, hs.CalcHash)
 
-	for address, _ := range diff.DiffCalcHash[VersionState] {
-		diff.OwnerMap[address] = vs.StorageAddr2Owner[address]
-	}
 	for address, _ := range diff.DiffCalcHash[HashState] {
 		diff.OwnerMap[address] = hs.StorageAddr2Owner[address]
+	}
+	for address, _ := range diff.DiffCalcHash[VersionState] {
+		diff.OwnerMap[address] = vs.StorageAddr2Owner[address]
 	}
 
 	if len(vs.Errs) != 0 || len(hs.Errs) != 0 {

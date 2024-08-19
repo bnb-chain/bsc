@@ -63,9 +63,7 @@ func (hs *DebugHashState) OnOpenTree(root common.Hash, owner common.Hash, addres
 		hs.AccessTrees[address] = make([]common.Hash, 0)
 	}
 	hs.AccessTrees[address] = append(hs.AccessTrees[address], root)
-	if owner != (common.Hash{}) && address != (common.Address{}) {
-		hs.StorageAddr2Owner[address] = owner
-	}
+	hs.StorageAddr2Owner[address] = owner
 }
 
 func (hs *DebugHashState) OnGetAccount(addr common.Address, acc *types.StateAccount) {

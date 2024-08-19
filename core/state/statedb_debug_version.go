@@ -101,9 +101,7 @@ func (ds *DebugVersionState) OnOpenTree(handler versa.TreeHandler, owner common.
 		ds.AccessTrees[address] = make([]*versa.TreeInfo, 0)
 	}
 	ds.AccessTrees[address] = append(ds.AccessTrees[address], treeInfo)
-	if owner != (common.Hash{}) && address != (common.Address{}) {
-		ds.StorageAddr2Owner[address] = owner
-	}
+	ds.StorageAddr2Owner[address] = owner
 }
 
 func (ds *DebugVersionState) OnGetAccount(addr common.Address, acc *types.StateAccount) {
