@@ -238,7 +238,9 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 	}
 	tr, err := trie.NewStateTrie(trie.StateTrieID(root), db.triedb)
 	if err != nil {
-		db.debug.OnError(fmt.Errorf("failed to open tree, root: %s, error: %s", root.String(), err.Error()))
+		if db.debug != nil {
+			db.debug.OnError(fmt.Errorf("failed to open tree, root: %s, error: %s", root.String(), err.Error()))
+		}
 		return nil, err
 	}
 	ht := &HashTrie{
@@ -248,7 +250,9 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 		owner:   common.Hash{},
 		debug:   db.debug,
 	}
-	db.debug.OnOpenTree(root, common.Hash{}, common.Address{})
+	if db.debug != nil {
+		db.debug.OnOpenTree(root, common.Hash{}, common.Address{})
+	}
 	return ht, nil
 }
 
@@ -267,8 +271,10 @@ func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 	owner := crypto.Keccak256Hash(address.Bytes())
 	tr, err := trie.NewStateTrie(trie.StorageTrieID(stateRoot, owner, root), db.triedb)
 	if err != nil {
-		db.debug.OnError(fmt.Errorf("failed to storage open tree, stateRoot: %s, address: %s, root: %s, error: %s",
-			stateRoot.String(), address.String(), root.String(), err.Error()))
+		if db.debug != nil {
+			db.debug.OnError(fmt.Errorf("failed to storage open tree, stateRoot: %s, address: %s, root: %s, error: %s",
+				stateRoot.String(), address.String(), root.String(), err.Error()))
+		}
 		return nil, err
 	}
 	ht := &HashTrie{
@@ -279,7 +285,9 @@ func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 		owner:    owner,
 		debug:    db.debug,
 	}
-	db.debug.OnOpenTree(root, owner, address)
+	if db.debug != nil {
+		db.debug.OnOpenTree(root, owner, address)
+	}
 	return ht, nil
 }
 
@@ -297,6 +305,8 @@ func (db *cachingDB) CopyTrie(t Trie) Trie {
 		return t.Copy()
 	case *trie.EmptyTrie:
 		return t.Copy()
+	case *HashTrie:
+		return db.CopyTrie(t.trie)
 	default:
 		panic(fmt.Errorf("unknown trie type %T", t))
 	}
@@ -304,7 +314,9 @@ func (db *cachingDB) CopyTrie(t Trie) Trie {
 
 // ContractCode retrieves a particular contract's code.
 func (db *cachingDB) ContractCode(address common.Address, codeHash common.Hash) ([]byte, error) {
-	db.debug.OnGetCode(address, codeHash)
+	if db.debug != nil {
+		db.debug.OnGetCode(address, codeHash)
+	}
 	code, _ := db.codeCache.Get(codeHash)
 	if len(code) > 0 {
 		return code, nil
@@ -407,63 +419,87 @@ func (ht *HashTrie) GetKey(key []byte) []byte {
 func (ht *HashTrie) GetAccount(address common.Address) (*types.StateAccount, error) {
 	acc, err := ht.trie.GetAccount(address)
 	if err != nil {
-		ht.debug.OnError(fmt.Errorf("failed to get account, address: %s, error: %s", address.String(), err.Error()))
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to get account, address: %s, error: %s", address.String(), err.Error()))
+		}
 		return nil, err
 	}
-	ht.debug.OnGetAccount(address, acc)
+	if ht.debug != nil {
+		ht.debug.OnGetAccount(address, acc)
+	}
 	return acc, nil
 }
 
 func (ht *HashTrie) GetStorage(addr common.Address, key []byte) ([]byte, error) {
 	val, err := ht.trie.GetStorage(addr, key)
 	if err != nil {
-		ht.debug.OnError(fmt.Errorf("failed to get storage, address: %s, error: %s", addr.String(), err.Error()))
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to get storage, address: %s, error: %s", addr.String(), err.Error()))
+		}
 		return val, err
 	}
-	ht.debug.OnGetStorage(addr, key, val)
+	if ht.debug != nil {
+		ht.debug.OnGetStorage(addr, key, val)
+	}
 	return val, err
 }
 
 func (ht *HashTrie) UpdateAccount(address common.Address, account *types.StateAccount) error {
 	err := ht.trie.UpdateAccount(address, account)
 	if err != nil {
-		ht.debug.OnError(fmt.Errorf("failed to update account, address: %s, account: %s, error: %s",
-			address.String(), account.String(), err.Error()))
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to update account, address: %s, account: %s, error: %s",
+				address.String(), account.String(), err.Error()))
+		}
 		return err
 	}
-	ht.debug.OnUpdateAccount(address, account)
+	if ht.debug != nil {
+		ht.debug.OnUpdateAccount(address, account)
+	}
 	return nil
 }
 
 func (ht *HashTrie) UpdateStorage(addr common.Address, key, value []byte) error {
 	err := ht.trie.UpdateStorage(addr, key, value)
 	if err != nil {
-		ht.debug.OnError(fmt.Errorf("failed to update storage, address: %s, key: %s, val: %s, error: %s",
-			addr.String(), common.Bytes2Hex(key), common.Bytes2Hex(value), err.Error()))
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to update storage, address: %s, key: %s, val: %s, error: %s",
+				addr.String(), common.Bytes2Hex(key), common.Bytes2Hex(value), err.Error()))
+		}
 		return err
 	}
-	ht.debug.OnUpdateStorage(addr, key, value)
+	if ht.debug != nil {
+		ht.debug.OnUpdateStorage(addr, key, value)
+	}
 	return nil
 }
 
 func (ht *HashTrie) DeleteAccount(address common.Address) error {
 	err := ht.trie.DeleteAccount(address)
 	if err != nil {
-		ht.debug.OnError(fmt.Errorf("failed to delete account, address: %s, error: %s", address.String(), err.Error()))
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to delete account, address: %s, error: %s", address.String(), err.Error()))
+		}
 		return err
 	}
-	ht.debug.OnDeleteAccount(address)
+	if ht.debug != nil {
+		ht.debug.OnDeleteAccount(address)
+	}
 	return nil
 }
 
 func (ht *HashTrie) DeleteStorage(addr common.Address, key []byte) error {
 	err := ht.trie.DeleteStorage(addr, key)
 	if err != nil {
-		ht.debug.OnError(fmt.Errorf("failed to update storage, address: %s, key: %s, error: %s",
-			addr.String(), common.Bytes2Hex(key), err.Error()))
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to update storage, address: %s, key: %s, error: %s",
+				addr.String(), common.Bytes2Hex(key), err.Error()))
+		}
 		return err
 	}
-	ht.debug.OnDeleteStorage(addr, key)
+	if ht.debug != nil {
+		ht.debug.OnDeleteStorage(addr, key)
+	}
 	return nil
 }
 
@@ -473,7 +509,9 @@ func (ht *HashTrie) UpdateContractCode(address common.Address, codeHash common.H
 
 func (ht *HashTrie) Hash() common.Hash {
 	root := ht.trie.Hash()
-	ht.debug.OnCalcHash(ht.address, root)
+	if ht.debug != nil {
+		ht.debug.OnCalcHash(ht.address, root)
+	}
 	return root
 }
 
@@ -484,7 +522,9 @@ func (ht *HashTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, er
 			ht.address.String(), err.Error()))
 		return hash, set, err
 	}
-	ht.debug.OnCommitTree(ht.address, hash)
+	if ht.debug != nil {
+		ht.debug.OnCommitTree(ht.address, hash)
+	}
 	return hash, set, nil
 }
 
