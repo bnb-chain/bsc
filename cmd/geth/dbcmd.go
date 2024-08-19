@@ -301,7 +301,7 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 	}
 	getHashDBState = &cli.Command{
 		Action: getDebugHashState,
-		Name:   "get-debug-version-state",
+		Name:   "get-debug-hash-state",
 		Flags: []cli.Flag{
 			utils.HashStateDirFlag,
 			utils.BlockNumber,
