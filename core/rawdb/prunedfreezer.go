@@ -68,6 +68,7 @@ func newPrunedFreezer(datadir string, db ethdb.KeyValueStore, offset uint64) (*p
 
 // repair init frozen , compatible disk-ancientdb and pruner-block-tool.
 func (f *prunedfreezer) repair(datadir string) error {
+	offset := atomic.LoadUint64(&f.frozen)
 	// compatible freezer
 	minItems := uint64(math.MaxUint64)
 	for name, disableSnappy := range chainFreezerNoSnappy {
@@ -96,19 +97,14 @@ func (f *prunedfreezer) repair(datadir string) error {
 		table.Close()
 	}
 
-	// If minItems is non-zero, it indicates that the chain freezer was previously enabled, and we should use minItems as the current frozen value.
-	// If minItems is zero, it indicates that the pruneAncient was previously enabled, and we should continue using frozen
-	//	(retrieved from CurrentAncientFreezer) as the current frozen value.
-	offset := minItems
-	if offset == 0 {
-		// no item in ancientDB, init `offset` to the `f.frozen`
-		offset = atomic.LoadUint64(&f.frozen)
-	}
-	log.Info("Read ancientdb item counts", "items", minItems, "offset", offset)
+	// If the dataset has undergone a prune block, the offset is a non-zero value, otherwise the offset is a zero value.
+	// The minItems is the value relative to offset
+	offset += minItems
 
 	// FrozenOfAncientFreezer is the progress of the last prune-freezer freeze.
 	frozenInDB := ReadFrozenOfAncientFreezer(f.db)
 	maxOffset := max(offset, frozenInDB)
+	log.Info("Read ancient db item counts", "items", minItems, "frozen", maxOffset)
 
 	atomic.StoreUint64(&f.frozen, maxOffset)
 	if err := f.Sync(); err != nil {
@@ -161,12 +157,12 @@ func (f *prunedfreezer) AncientOffSet() uint64 {
 
 // MigrateTable processes the entries in a given table in sequence
 // converting them to a new format if they're of an old format.
-func (db *prunedfreezer) MigrateTable(kind string, convert convertLegacyFn) error {
+func (f *prunedfreezer) MigrateTable(kind string, convert convertLegacyFn) error {
 	return errNotSupported
 }
 
 // AncientDatadir returns an error as we don't have a backing chain freezer.
-func (db *prunedfreezer) AncientDatadir() (string, error) {
+func (f *prunedfreezer) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
 
