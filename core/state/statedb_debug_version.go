@@ -14,6 +14,11 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+var (
+	DiffVersionCount = 0
+	DiskVersionCount = 0
+)
+
 type VersaAccountInfo struct {
 	Address common.Address
 	Account *types.StateAccount
@@ -215,6 +220,17 @@ func (ds *DebugVersionState) OnCloseState(handler versa.StateHandler) {
 		panic(fmt.Sprintf("failed to get state info on close state, err: %s", err.Error()))
 	}
 	ds.PostState = stateInfo
+
+	if ds.PreState.Root.Cmp(ds.PostState.Root) != 0 {
+		DiffVersionCount++
+	}
+	oldDiskVersionCount := DiskVersionCount
+	if ds.PostState.IsDiskVersion {
+		DiskVersionCount++
+	}
+	if ds.Version%1000 == 0 || oldDiskVersionCount != DiskVersionCount {
+		log.Info("version state info", "current block", ds.Version, "diff version count", DiffVersionCount, "disk version count", DiskVersionCount)
+	}
 
 	ds.sortItems()
 
