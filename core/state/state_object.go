@@ -357,6 +357,9 @@ func (s *stateObject) updateTrie() (Trie, error) {
 			if !s.IsContractAccount() {
 				return s.trie, nil
 			}
+			if !s.IsAccountChanged() {
+				return s.trie, nil
+			}
 		}
 	} else {
 		// Short circuit if nothing changed, don't bother with hashing anything
