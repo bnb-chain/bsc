@@ -2189,7 +2189,7 @@ func (pool *LegacyPool) transferTransactions() {
 
 	maxPool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
 	maxPool1Pool2CombinedSize := maxPool1Size + maxPool2Size
-	extraSizePool2Pool1 := uint64(len(pool.pending)) + uint64(len(pool.queue)) - maxPool2Size - maxPool1Size
+	extraSizePool2Pool1 := uint64(len(pool.pending)) + uint64(len(pool.queue)) - maxPool1Pool2CombinedSize
 	if extraSizePool2Pool1 <= 0 {
 		return
 	}
