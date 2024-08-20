@@ -171,7 +171,7 @@ func (s *stateObject) getTrie() (Trie, error) {
 		}
 
 		if err != nil {
-			panic(fmt.Sprintf("open storage storage failed, error: %s", err.Error()))
+			panic(fmt.Sprintf("open storage storage failed, addrss: %s, error: %s", s.address.String(), err.Error()))
 			return nil, err
 		}
 		s.trie = tr
