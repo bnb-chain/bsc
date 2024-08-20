@@ -77,6 +77,10 @@ var (
 	fixGasPrice        = flag.Int64("faucet.fixedprice", 0, "Will use fixed gas price if specified")
 	twitterTokenFlag   = flag.String("twitter.token", "", "Bearer token to authenticate with the v2 Twitter API")
 	twitterTokenV1Flag = flag.String("twitter.token.v1", "", "Bearer token to authenticate with the v1.1 Twitter API")
+
+	resendInterval    = 15 * time.Second
+	resendBatchSize   = 3
+	resendMaxGasPrice = big.NewInt(50 * params.GWei)
 )
 
 var (
@@ -378,7 +382,11 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			Captcha string `json:"captcha"`
 			Symbol  string `json:"symbol"`
 		}
+		// not sure if it helps or not, but set a read deadline could help prevent resource leakage
+		// if user did not give response for too long, then the routine will be stuck.
+		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 		if err = conn.ReadJSON(&msg); err != nil {
+			log.Info("read json message failed", "err", err, "ip", ip)
 			return
 		}
 		if !*noauthFlag && !strings.HasPrefix(msg.URL, "https://twitter.com/") && !strings.HasPrefix(msg.URL, "https://www.facebook.com/") {
@@ -396,7 +404,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		log.Info("Faucet funds requested", "url", msg.URL, "tier", msg.Tier)
+		log.Info("Faucet funds requested", "url", msg.URL, "tier", msg.Tier, "ip", ip)
 
 		// If captcha verifications are enabled, make sure we're not dealing with a robot
 		if *captchaToken != "" {
@@ -475,7 +483,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		log.Info("Faucet request valid", "url", msg.URL, "tier", msg.Tier, "user", username, "address", address)
+		log.Info("Faucet request valid", "url", msg.URL, "tier", msg.Tier, "user", username, "address", address, "ip", ip)
 
 		// Ensure the user didn't request funds too recently
 		f.lock.Lock()
@@ -605,9 +613,52 @@ func (f *faucet) refresh(head *types.Header) error {
 	f.lock.Lock()
 	f.head, f.balance = head, balance
 	f.price, f.nonce = price, nonce
-	if len(f.reqs) > 0 && f.reqs[0].Tx.Nonce() > f.nonce {
-		f.reqs = f.reqs[:0]
+	if len(f.reqs) == 0 {
+		log.Debug("refresh len(f.reqs) == 0", "f.nonce", f.nonce)
+		f.lock.Unlock()
+		return nil
 	}
+	if f.reqs[0].Tx.Nonce() == f.nonce {
+		// if the next Tx failed to be included for a certain time(resendInterval), try to
+		// resend it with higher gasPrice, as it could be discarded in the network.
+		// Also resend extra following txs, as they could be discarded as well.
+		if time.Now().After(f.reqs[0].Time.Add(resendInterval)) {
+			for i, req := range f.reqs {
+				if i >= resendBatchSize {
+					break
+				}
+				prePrice := req.Tx.GasPrice()
+				// bump gas price 20% to replace the previous tx
+				newPrice := new(big.Int).Add(prePrice, new(big.Int).Div(prePrice, big.NewInt(5)))
+				if newPrice.Cmp(resendMaxGasPrice) >= 0 {
+					log.Info("resendMaxGasPrice reached", "newPrice", newPrice, "resendMaxGasPrice", resendMaxGasPrice, "nonce", req.Tx.Nonce())
+					break
+				}
+				newTx := types.NewTransaction(req.Tx.Nonce(), *req.Tx.To(), req.Tx.Value(), req.Tx.Gas(), newPrice, req.Tx.Data())
+				newSigned, err := f.keystore.SignTx(f.account, newTx, f.config.ChainID)
+				if err != nil {
+					log.Error("resend sign tx failed", "err", err)
+				}
+				log.Info("reqs[0] Tx has been stuck for a while, trigger resend",
+					"resendInterval", resendInterval, "resendTxSize", resendBatchSize,
+					"preHash", req.Tx.Hash().Hex(), "newHash", newSigned.Hash().Hex(),
+					"newPrice", newPrice, "nonce", req.Tx.Nonce(), "req.Tx.Gas()", req.Tx.Gas())
+				if err := f.client.SendTransaction(context.Background(), newSigned); err != nil {
+					log.Warn("resend tx failed", "err", err)
+					continue
+				}
+				req.Tx = newSigned
+			}
+		}
+	}
+	// it is abnormal that reqs[0] has larger nonce than next expected nonce.
+	// could be caused by reorg? reset it
+	if f.reqs[0].Tx.Nonce() > f.nonce {
+		f.reqs = f.reqs[:0]
+		log.Warn("reset due to nonce gap", "f.nonce", f.nonce, "f.reqs[0].Tx.Nonce()", f.reqs[0].Tx.Nonce())
+	}
+	// remove the reqs if they have smaller nonce, which means it is no longer valid,
+	// either has been accepted or replaced.
 	for len(f.reqs) > 0 && f.reqs[0].Tx.Nonce() < f.nonce {
 		f.reqs = f.reqs[1:]
 	}
