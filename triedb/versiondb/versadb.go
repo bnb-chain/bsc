@@ -2,6 +2,7 @@ package versiondb
 
 import (
 	versa "github.com/bnb-chain/versioned-state-database"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -10,10 +11,9 @@ import (
 )
 
 type Config struct {
-	Path              string
-	FlushInterval     int64
-	MaxStatesInMem    int
-	EnableHashChecker bool
+	Path           string
+	FlushInterval  int64
+	MaxStatesInMem int
 }
 
 type VersionDB struct {
@@ -29,9 +29,8 @@ func New(config *Config) *VersionDB {
 	if config != nil {
 		path = config.Path
 		cfg = &versa.VersaDBConfig{
-			FlushInterval:     config.FlushInterval,
-			MaxStatesInMem:    config.MaxStatesInMem,
-			EnableHashChecker: config.EnableHashChecker,
+			FlushInterval:  config.FlushInterval,
+			MaxStatesInMem: config.MaxStatesInMem,
 		}
 	}
 	db, err := versa.NewVersaDB(path, cfg)
