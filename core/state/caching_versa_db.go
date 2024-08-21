@@ -23,6 +23,7 @@ import (
 const InvalidSateObjectVersion int64 = math.MinInt64
 
 type cachingVersaDB struct {
+	version       int64
 	triedb        *triedb.Database
 	versionDB     versa.Database
 	codeDB        ethdb.KeyValueStore
@@ -119,7 +120,7 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 	}
 
 	// TODO:: if root tree, versa db should ignore check version, temp use -1
-	state, err := cv.versionDB.OpenState(-1, root, cv.mode)
+	state, err := cv.versionDB.OpenState(cv.version, root, cv.mode)
 	if err != nil {
 		if cv.debug != nil {
 			cv.debug.OnError(fmt.Errorf("failed to open state, root:%s, error: %s", root.String(), err.Error()))
@@ -130,7 +131,7 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 		cv.debug.OnOpenState(state)
 	}
 
-	handler, err := cv.versionDB.OpenTree(state, -1, common.Hash{}, root)
+	handler, err := cv.versionDB.OpenTree(state, cv.version, common.Hash{}, root)
 	if err != nil {
 		if cv.debug != nil {
 			cv.debug.OnError(fmt.Errorf("failed to open account trie, root:%s, error: %s", root.String(), err.Error()))
@@ -213,6 +214,7 @@ func (cv *cachingVersaDB) Flush() error {
 }
 
 func (cv *cachingVersaDB) SetVersion(version int64) {
+	cv.version = version - 1
 	cv.debug = NewDebugVersionState(cv.codeDB, cv.versionDB)
 	cv.debug.Version = version
 }
