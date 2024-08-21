@@ -140,6 +140,8 @@ type Config struct {
 	GlobalSlots  uint64 // Maximum number of executable transaction slots for all accounts
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
+	Pool2Slots   uint64
+	Pool3Slots   uint64
 
 	Lifetime       time.Duration // Maximum amount of time non-executable transaction are queued
 	ReannounceTime time.Duration // Duration for announcing local pending transactions again
@@ -272,6 +274,7 @@ type txpoolResetRequest struct {
 func New(config Config, chain BlockChain) *LegacyPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
+	maxPool3Size := config.Pool3Slots
 
 	// Create the transaction pool with its initial settings
 	pool := &LegacyPool{
@@ -290,7 +293,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgShutdownCh:  make(chan struct{}),
 		initDoneCh:       make(chan struct{}),
 		criticalPathPool: make(map[common.Address]*list),
-		localBufferPool:  NewLRUBuffer(maxPool3Size),
+		localBufferPool:  NewLRUBuffer(int(maxPool3Size)),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -770,6 +773,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	maxPool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
+	maxPool2Size := pool.config.Pool2Slots
 	//txPoolSizeBeforeCurrentTx := uint64(pool.all.Slots())
 	txPoolSizeAfterCurrentTx := uint64(pool.all.Slots() + numSlots(tx))
 	var includePool1, includePool2, includePool3 bool
@@ -818,9 +822,9 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	// If the transaction pool is full, discard underpriced transactions
-	if uint64(pool.all.Slots()+numSlots(tx)) > maxPool1Size {
+	if uint64(pool.all.Slots()+numSlots(tx)) > maxPool1Size { // todo 3 maybe a check here for pool2? // try addToPool2OrPool3() and only if unsuccessful then do the other things!!!
 		// If the new transaction is underpriced, don't accept it
-		if !isLocal && pool.priced.Underpriced(tx) {
+		if true || (!isLocal && pool.priced.Underpriced(tx)) {
 			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, isLocal, includePool1, includePool2, includePool3)
 			if !addedToAnyPool {
 				log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
@@ -2188,6 +2192,7 @@ func (pool *LegacyPool) startPeriodicTransfer() {
 func (pool *LegacyPool) transferTransactions() {
 
 	maxPool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
+	maxPool2Size := pool.config.Pool2Slots
 	maxPool1Pool2CombinedSize := maxPool1Size + maxPool2Size
 	extraSizePool2Pool1 := uint64(len(pool.pending)) + uint64(len(pool.queue)) - maxPool1Pool2CombinedSize
 	if extraSizePool2Pool1 <= 0 {
@@ -2228,6 +2233,7 @@ func (pool *LegacyPool) transferTransactions() {
 }
 
 func (pool *LegacyPool) availableSlotsPool3() int {
+	maxPool3Size := int(pool.config.Pool3Slots)
 	availableSlots := maxPool3Size - pool.localBufferPool.Size()
 	if availableSlots > 0 {
 		return availableSlots
