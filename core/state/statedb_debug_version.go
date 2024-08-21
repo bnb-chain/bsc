@@ -221,13 +221,14 @@ func (ds *DebugVersionState) OnCloseState(handler versa.StateHandler) {
 	}
 	ds.PostState = stateInfo
 
+	oldDiskVersionCount := DiskVersionCount
 	if ds.PreState.Root.Cmp(ds.PostState.Root) != 0 {
 		DiffVersionCount++
+		if ds.PostState.IsDiskVersion {
+			DiskVersionCount++
+		}
 	}
-	oldDiskVersionCount := DiskVersionCount
-	if ds.PostState.IsDiskVersion {
-		DiskVersionCount++
-	}
+
 	if ds.Version%1000 == 0 || oldDiskVersionCount != DiskVersionCount {
 		log.Info("version state info", "current block", ds.Version, "diff version count", DiffVersionCount, "disk version count", DiskVersionCount)
 	}
