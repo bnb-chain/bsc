@@ -2032,11 +2032,14 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 func TestDualHeapEviction(t *testing.T) {
 	t.Parallel()
 
+	testTxPoolConfig.Pool3Slots = 5
 	pool, _ := setupPoolWithConfig(eip1559Config)
 	defer pool.Close()
 
 	pool.config.GlobalSlots = 10
 	pool.config.GlobalQueue = 10
+	pool.config.Pool2Slots = 5
+	pool.config.Pool3Slots = 5
 
 	var (
 		highTip, highCap *types.Transaction
@@ -2050,7 +2053,7 @@ func TestDualHeapEviction(t *testing.T) {
 	}
 
 	add := func(urgent bool) {
-		for i := 0; i < 20; i++ {
+		for i := 0; i < 25; i++ {
 			var tx *types.Transaction
 			// Create a test accounts and fund it
 			key, _ := crypto.GenerateKey()
@@ -2066,7 +2069,7 @@ func TestDualHeapEviction(t *testing.T) {
 		}
 		pending, queued := pool.Stats()
 		if pending+queued != 20 {
-			t.Fatalf("transaction count mismatch: have %d, want %d", pending+queued, 10)
+			t.Fatalf("transaction count mismatch: have %d, want %d, pending %d, queued %d", pending+queued, 10, pending, queued)
 		}
 	}
 
