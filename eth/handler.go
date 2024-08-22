@@ -1028,14 +1028,16 @@ type PeerDummy struct {
 
 func (h *handler) printPeerStatus() {
 	go func() {
-
 		statusMap := make(map[string]PeerDummy)
 		for {
 			// run in timer very 1 minue of time
 			time.Sleep(1 * time.Minute)
+			// Create a set to track current peers
+			currentPeers := make(map[string]struct{})
 			// print peer status
 			h.peers.lock.RLock()
 			for _, peer := range h.peers.peers {
+				currentPeers[peer.Peer.ID()] = struct{}{}
 				head, td := peer.Peer.Head()
 				if p, ok := statusMap[peer.Peer.ID()]; ok {
 					if p.Head == head && p.TD.Cmp(td) == 0 {
@@ -1055,15 +1057,27 @@ func (h *handler) printPeerStatus() {
 				}
 			}
 			h.peers.lock.RUnlock()
+
+			// Remove peers from statusMap that are no longer in h.peers.peers
+			for id := range statusMap {
+				if _, exists := currentPeers[id]; !exists {
+					delete(statusMap, id)
+				}
+			}
+
 			var count int
 			for _, peer := range statusMap {
 				if peer.TimeStamp.Before(time.Now().Add(-60 * time.Minute)) {
 					count++
-					log.Warn("XXX peer", peer.ID, "head", peer.Head, "TD", peer.TD, "TimeStamp", peer.TimeStamp)
+					if count == 1 {
+						log.Warn("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+					}
+					log.Warn("peer", peer.ID, "head", peer.Head, "TD", peer.TD, "TimeStamp", peer.TimeStamp)
 				}
 			}
 			if count > 0 {
 				log.Warn("Total peers: ", len(statusMap), "inactive peers: ", count)
+				log.Warn("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
 			}
 		}
 	}()
