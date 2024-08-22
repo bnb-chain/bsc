@@ -96,6 +96,8 @@ type Database interface {
 	NoTries() bool
 
 	SetVersion(version int64)
+
+	GetVersion() int64
 }
 
 // Trie is a Ethereum Merkle Patricia trie.
@@ -387,6 +389,10 @@ func (db *cachingDB) Release() error {
 func (db *cachingDB) SetVersion(version int64) {
 	db.debug = NewDebugHashState(db.disk)
 	db.debug.Version = version
+}
+
+func (db *cachingDB) GetVersion() int64 {
+	return db.debug.Version
 }
 
 func (db *cachingDB) Copy() Database {

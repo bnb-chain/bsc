@@ -171,7 +171,7 @@ func (s *stateObject) getTrie() (Trie, error) {
 		}
 
 		if err != nil {
-			panic(fmt.Sprintf("open storage storage failed, addrss: %s, error: %s", s.address.String(), err.Error()))
+			panic(fmt.Sprintf("open storage storage failed, root version: %d, storage version: %d, addrss: %s, storage root: %s, error: %s", s.db.db.GetVersion(), s.version, s.address.String(), s.data.Root.String(), err.Error()))
 			return nil, err
 		}
 		s.trie = tr
@@ -354,6 +354,9 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	// storage tree version, occurs 53409 block open 1002 storage tree error.
 	if s.db.db.Scheme() == rawdb.VersionScheme {
 		if len(s.pendingStorage) == 0 {
+			// transferring balance to a contract or upgrading the code, but
+			// without updating the storage key, a commit is still required to
+			// increment the version number of the storage tree.
 			if !s.IsContractAccount() {
 				return s.trie, nil
 			}

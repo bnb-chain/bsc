@@ -219,6 +219,10 @@ func (cv *cachingVersaDB) SetVersion(version int64) {
 	cv.debug.Version = version
 }
 
+func (cv *cachingVersaDB) GetVersion() int64 {
+	return cv.version
+}
+
 // Release unique to versa
 func (cv *cachingVersaDB) Release() error {
 	//log.Info("close state", "state info", cv.versionDB.ParseStateHandler(cv.state))
