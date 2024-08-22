@@ -369,6 +369,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.removePeer)
 	h.chainSync = newChainSyncer(h)
+	h.printPeerStatus()
 	return h, nil
 }
 
@@ -1016,4 +1017,54 @@ func (h *handler) enableSyncedFeatures() {
 	// if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
 	// 	h.chain.TrieDB().SetBufferSize(pathdb.DefaultBufferSize)
 	// }
+}
+
+type PeerDummy struct {
+	ID        string
+	Head      common.Hash
+	TD        *big.Int
+	TimeStamp time.Time
+}
+
+func (h *handler) printPeerStatus() {
+	go func() {
+
+		statusMap := make(map[string]PeerDummy)
+		for {
+			// run in timer very 1 minue of time
+			time.Sleep(1 * time.Minute)
+			// print peer status
+			h.peers.lock.RLock()
+			for _, peer := range h.peers.peers {
+				head, td := peer.Peer.Head()
+				if p, ok := statusMap[peer.Peer.ID()]; ok {
+					if p.Head == head && p.TD.Cmp(td) == 0 {
+						continue
+					}
+					p.Head = head
+					p.TD = td
+					p.TimeStamp = time.Now()
+					statusMap[peer.Peer.ID()] = p
+				} else {
+					statusMap[peer.Peer.ID()] = PeerDummy{
+						ID:        peer.Peer.ID(),
+						Head:      head,
+						TD:        td,
+						TimeStamp: time.Now(),
+					}
+				}
+			}
+			h.peers.lock.RUnlock()
+			var count int
+			for _, peer := range statusMap {
+				if peer.TimeStamp.Before(time.Now().Add(-60 * time.Minute)) {
+					count++
+					log.Warn("XXX peer", peer.ID, "head", peer.Head, "TD", peer.TD, "TimeStamp", peer.TimeStamp)
+				}
+			}
+			if count > 0 {
+				log.Warn("Total peers: ", len(statusMap), "inactive peers: ", count)
+			}
+		}
+	}()
 }
