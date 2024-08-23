@@ -2279,7 +2279,9 @@ func RegisterFilterAPI(stack *node.Node, backend ethapi.Backend, ethcfg *ethconf
 	return filterSystem
 }
 
-func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) SetupMetricsOption {
+func EnableNodeInfo(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) SetupMetricsOption {
+	poolConfig := cfg.TxPool
+	nodeInfo := stack.Server().NodeInfo()
 	return func() {
 		// register node info into metrics
 		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
@@ -2293,6 +2295,11 @@ func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) Setup
 			"AccountQueue": poolConfig.AccountQueue,
 			"GlobalQueue":  poolConfig.GlobalQueue,
 			"Lifetime":     poolConfig.Lifetime,
+			"Miner":        ctx.Bool(MiningEnabledFlag.Name),
+			"Mev":          cfg.Miner.Mev.Enabled,
+			"FFVoter":      cfg.Miner.VoteEnable,
+			"PBSS":         cfg.StateScheme == rawdb.PathScheme,
+			"MultiDB":      stack.CheckIfMultiDataBase(),
 		})
 	}
 }
