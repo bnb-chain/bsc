@@ -822,18 +822,23 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	// If the transaction pool is full, discard underpriced transactions
-	if uint64(pool.all.Slots()+numSlots(tx)) > maxPool1Size { // todo 3 maybe a check here for pool2? // try addToPool2OrPool3() and only if unsuccessful then do the other things!!!
+	if uint64(pool.all.Slots()+numSlots(tx)) > maxPool1Size {
+		// todo 3 -> done maybe a check here for pool2? // try addToPool2OrPool3() and only if unsuccessful then do the other things!!!
+		// Try adding to pool2 or pool3 first
 		// If the new transaction is underpriced, don't accept it
-		if true || (!isLocal && pool.priced.Underpriced(tx)) {
+		// todo 5 actually if underpriced then add to pool2 or 3. Otherwise find out which one will be replaced with and that one will go to pool2 or 3
+		if !isLocal && pool.priced.Underpriced(tx) {
 			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, isLocal, includePool1, includePool2, includePool3)
-			if !addedToAnyPool {
-				log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
-				underpricedTxMeter.Mark(1)
-				return false, err
-				//return false, txpool.ErrUnderpriced
+			if addedToAnyPool {
+				return false, nil
 			}
-			return false, nil // since it is not replacing a transaction
+			if err != nil {
+				log.Error("Error while trying to add to pool2 or pool3", "error", err)
+			}
 
+			log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
+			underpricedTxMeter.Mark(1)
+			return false, txpool.ErrUnderpriced
 		}
 
 		// We're about to replace a transaction. The reorg does a more thorough
@@ -915,7 +920,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		}
 	}
 
-	// Try to replace an existing transaction in the pending pool
+	// Try to replace an existing transaction in the pending pool // todo 4 why we are replacing a pending tx if the we can put in pool3 or so?
 	if list := pool.pending[from]; list != nil && list.Contains(tx.Nonce()) {
 		// Nonce already pending, check if required price bump is met
 		inserted, old := list.Add(tx, pool.config.PriceBump, includePool2)
