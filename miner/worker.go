@@ -1116,6 +1116,8 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 			localBlobTxs[account] = txs
 		}
 	}
+	log.Debug("fillTransactions", "len(remotePlainTxs)", len(remotePlainTxs), "len(localPlainTxs)", len(localPlainTxs),
+		"len(remoteBlobTxs)", len(remoteBlobTxs), "len(localBlobTxs)", len(localBlobTxs))
 
 	// Fill the block with all available pending transactions.
 	// we will abort when:

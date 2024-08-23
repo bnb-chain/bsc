@@ -1606,6 +1606,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 			   fast finalized, but it can be tolerated, so just report this error here. */
 			log.Error("Assemble vote attestation failed when sealing", "err", err)
 		}
+		log.Debug("assembleVoteAttestation done", "number", number)
 
 		// Sign all the things!
 		sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, ParliaRLP(header, p.chainConfig.ChainID))
@@ -1632,6 +1633,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 		select {
 		case results <- block.WithSeal(header):
+			log.Debug("Seal done", "number", number)
 		default:
 			log.Warn("Sealing result is not read by miner", "sealhash", types.SealHash(header, p.chainConfig.ChainID))
 		}

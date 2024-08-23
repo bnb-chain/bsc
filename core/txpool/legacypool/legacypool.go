@@ -620,6 +620,7 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) map[common.Address]
 			pending[addr] = lazies
 		}
 	}
+	log.Debug("LegacyPool Pending", "len(pool.pending)", len(pool.pending), "len(pool.queue)", len(pool.queue))
 	return pending
 }
 
