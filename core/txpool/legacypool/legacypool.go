@@ -19,6 +19,7 @@ package legacypool
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"sort"
@@ -892,13 +893,13 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		if availableSlotsPool3 > 0 {
 			// transfer availableSlotsPool3 number of transactions slots from drop to pool3. Actually drop the rest
 			currentSlotsUsed := 0
-			for _, tx := range drop {
+			for _, tx := range drop { // todo 6 maybe heapify this so that important txs from drop are included first! -> may not be necessary
 				txSlots := numSlots(tx)
 				if currentSlotsUsed+txSlots <= availableSlotsPool3 {
 					from, _ := types.Sender(pool.signer, tx)
 					pool.addToPool2OrPool3(tx, from, isLocal, false, false, true)
 					currentSlotsUsed += txSlots
-				} else {
+					//} else {
 					remainingDrop = append(remainingDrop, tx)
 				}
 			}
@@ -946,7 +947,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	// New transaction isn't replacing a pending one, push into queue
-	replaced, err = pool.enqueueTx(hash, tx, isLocal, true) // At this point pool1 can incorporate this. So no need for pool2 or pool3
+	replaced, err = pool.enqueueTx(hash, tx, isLocal, true, includePool2) // At this point pool1 can incorporate this. So no need for pool2 or pool3
 	if err != nil {
 		return false, err
 	}
@@ -962,6 +963,10 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 	pool.journalTx(from, tx)
 
+	if len(pool.pending) > int(maxPool1Size+maxPool2Size) {
+		fmt.Println("pending size exceeded")
+	}
+
 	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
 }
@@ -975,7 +980,7 @@ func (pool *LegacyPool) addToPool2OrPool3(tx *types.Transaction, from common.Add
 		pool.journalTx(from, tx)
 		pool.queueTxEvent(tx, false)
 		// todo check if enqueueTx should be used
-		_, err := pool.enqueueTx(tx.Hash(), tx, isLocal, true) // At this point pool1 can incorporate this. So no need for pool2 or pool3
+		_, err := pool.enqueueTx(tx.Hash(), tx, isLocal, true, false) // At this point pool1 can incorporate this. So no need for pool2 or pool3
 		if err != nil {
 			return false, err
 		}
@@ -987,11 +992,15 @@ func (pool *LegacyPool) addToPool2OrPool3(tx *types.Transaction, from common.Add
 		return true, nil
 	}
 	if pool2 {
-		// todo (check) logic for pool2 related
+		// todo (check) logic for pool2 related , should we put enqueueTx()?? -> Yes we should
 		pool.all.Add(tx, pool2)
 		pool.priced.Put(tx, pool2)
 		pool.journalTx(from, tx)
 		pool.queueTxEvent(tx, true)
+		_, err := pool.enqueueTx(tx.Hash(), tx, isLocal, true, true)
+		if err != nil {
+			return false, err
+		}
 		log.Trace("Pooled new executable transaction", "hash", tx.Hash(), "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
@@ -1033,13 +1042,13 @@ func (pool *LegacyPool) isGapped(from common.Address, tx *types.Transaction) boo
 // enqueueTx inserts a new transaction into the non-executable transaction queue.
 //
 // Note, this method assumes the pool lock is held!
-func (pool *LegacyPool) enqueueTx(hash common.Hash, tx *types.Transaction, local bool, addAll bool) (bool, error) {
+func (pool *LegacyPool) enqueueTx(hash common.Hash, tx *types.Transaction, local bool, addAll bool, static bool) (bool, error) {
 	// Try to insert the transaction into the future queue
 	from, _ := types.Sender(pool.signer, tx) // already validated
 	if pool.queue[from] == nil {
 		pool.queue[from] = newList(false)
 	}
-	inserted, old := pool.queue[from].Add(tx, pool.config.PriceBump, false)
+	inserted, old := pool.queue[from].Add(tx, pool.config.PriceBump, static)
 	if !inserted {
 		// An older transaction was better, discard this
 		queuedDiscardMeter.Mark(1)
@@ -1321,7 +1330,7 @@ func (pool *LegacyPool) removeTx(hash common.Hash, outofbound bool, unreserve bo
 			// Postpone any invalidated transactions
 			for _, tx := range invalids {
 				// Internal shuffle shouldn't touch the lookup set.
-				pool.enqueueTx(tx.Hash(), tx, false, false)
+				pool.enqueueTx(tx.Hash(), tx, false, false, false)
 			}
 			// Update the account nonce if needed
 			pool.pendingNonces.setIfLower(addr, tx.Nonce())
@@ -1880,7 +1889,7 @@ func (pool *LegacyPool) demoteUnexecutables() {
 			log.Trace("Demoting pending transaction", "hash", hash)
 
 			// Internal shuffle shouldn't touch the lookup set.
-			pool.enqueueTx(hash, tx, false, false)
+			pool.enqueueTx(hash, tx, false, false, false)
 		}
 		pendingGauge.Dec(int64(len(olds) + len(drops) + len(invalids)))
 		if pool.locals.contains(addr) {
@@ -1894,7 +1903,7 @@ func (pool *LegacyPool) demoteUnexecutables() {
 				log.Error("Demoting invalidated transaction", "hash", hash)
 
 				// Internal shuffle shouldn't touch the lookup set.
-				pool.enqueueTx(hash, tx, false, false)
+				pool.enqueueTx(hash, tx, false, false, false)
 			}
 			pendingGauge.Dec(int64(len(gapped)))
 		}
@@ -2253,3 +2262,15 @@ func (pool *LegacyPool) availableSlotsPool3() int {
 //	}
 //	return 0
 //}
+
+func (pool *LegacyPool) printTxStats() {
+
+	for _, l := range pool.pending {
+		for _, transaction := range l.txs.items {
+			fmt.Println("Pending:", transaction.Hash().String(), transaction.GasFeeCap(), transaction.GasTipCap())
+		}
+	}
+
+	pool.localBufferPool.PrintTxStats()
+	fmt.Println("----------------------------------------------------")
+}

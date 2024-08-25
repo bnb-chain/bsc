@@ -2,6 +2,7 @@ package legacypool
 
 import (
 	containerList "container/list"
+	"fmt"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -84,4 +85,27 @@ func (lru *LRUBuffer) Size() int {
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
 	return lru.size
+}
+
+// New iterator method to iterate over all transactions
+func (lru *LRUBuffer) Iterate() <-chan *types.Transaction {
+	ch := make(chan *types.Transaction)
+	go func() {
+		lru.mu.Lock()
+		defer lru.mu.Unlock()
+		defer close(ch)
+
+		for e := lru.buffer.Front(); e != nil; e = e.Next() {
+			ch <- e.Value.(*types.Transaction)
+		}
+	}()
+	return ch
+}
+
+func (lru *LRUBuffer) PrintTxStats() {
+	// Iterating over the transactions
+	for tx := range lru.Iterate() {
+		// Print transaction details or process them as needed
+		fmt.Println(tx.Hash().String(), tx.GasFeeCap().String(), tx.GasTipCap().String())
+	}
 }
