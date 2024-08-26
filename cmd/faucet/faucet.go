@@ -81,6 +81,7 @@ var (
 	resendInterval    = 15 * time.Second
 	resendBatchSize   = 3
 	resendMaxGasPrice = big.NewInt(50 * params.GWei)
+	wsReadTimeout     = 5 * time.Minute
 )
 
 var (
@@ -384,7 +385,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// not sure if it helps or not, but set a read deadline could help prevent resource leakage
 		// if user did not give response for too long, then the routine will be stuck.
-		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+		conn.SetReadDeadline(time.Now().Add(wsReadTimeout))
 		if err = conn.ReadJSON(&msg); err != nil {
 			log.Info("read json message failed", "err", err, "ip", ip)
 			return
@@ -654,8 +655,8 @@ func (f *faucet) refresh(head *types.Header) error {
 	// it is abnormal that reqs[0] has larger nonce than next expected nonce.
 	// could be caused by reorg? reset it
 	if f.reqs[0].Tx.Nonce() > f.nonce {
-		f.reqs = f.reqs[:0]
 		log.Warn("reset due to nonce gap", "f.nonce", f.nonce, "f.reqs[0].Tx.Nonce()", f.reqs[0].Tx.Nonce())
+		f.reqs = f.reqs[:0]
 	}
 	// remove the reqs if they have smaller nonce, which means it is no longer valid,
 	// either has been accepted or replaced.
