@@ -2064,21 +2064,18 @@ func TestDualHeapEviction(t *testing.T) {
 
 	add := func(urgent bool) {
 		for i := 0; i < 5; i++ {
-			fmt.Println("i= ", i)
 			var tx *types.Transaction
 			// Create a test accounts and fund it
 			key, _ := crypto.GenerateKey()
 			testAddBalance(pool, crypto.PubkeyToAddress(key.PublicKey), big.NewInt(1000000000000))
 			if urgent {
-				fmt.Printf("i = %d gasFee: %v \n", i, int64(baseFee+1+i))
 				tx = dynamicFeeTx(0, 100000, big.NewInt(int64(baseFee+1+i)), big.NewInt(int64(1+i)), key)
 				if int64(1+i) > highTipValue || (int64(1+i) == highTipValue && int64(baseFee+1+i) > highTip.GasFeeCap().Int64()) {
-					fmt.Println("highTip updated. tip=", int64(1+i), highTipValue)
+					//fmt.Println("highTip updated. tip=", int64(1+i), highTipValue)
 					highTipValue = int64(1 + i)
 					highTip = tx
 				}
 			} else {
-				fmt.Printf("i = %d gasFee: %v \n", i, int64(baseFee+200+i))
 				tx = dynamicFeeTx(0, 100000, big.NewInt(int64(baseFee+200+i)), big.NewInt(1), key)
 				if int64(baseFee+200+i) > highCapValue {
 					//fmt.Println("highCap updated. gasFee=", int64(baseFee+200+i), highCapValue)
