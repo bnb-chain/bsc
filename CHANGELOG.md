@@ -1,4 +1,21 @@
 # Changelog
+## v1.4.14
+
+### BUGFIX
+* [\#2643](https://github.com/bnb-chain/bsc/pull/2643)core: fix cache for receipts
+* [\#2656](https://github.com/bnb-chain/bsc/pull/2656)ethclient: fix BlobSidecars api
+* [\#2657](https://github.com/bnb-chain/bsc/pull/2657)fix: update prunefreezer’s offset when pruneancient and the dataset has pruned block
+
+### FEATURE
+* [\#2661](https://github.com/bnb-chain/bsc/pull/2661)config: setup Mainnet 2 hardfork date: HaberFix & Bohr
+
+### IMPROVEMENT
+* [\#2578](https://github.com/bnb-chain/bsc/pull/2578)core/systemcontracts: use vm.StateDB in UpgradeBuildInSystemContract
+* [\#2649](https://github.com/bnb-chain/bsc/pull/2649)internal/debug: remove memsize
+* [\#2655](https://github.com/bnb-chain/bsc/pull/2655)internal/ethapi: make GetFinalizedHeader monotonically increasing
+* [\#2658](https://github.com/bnb-chain/bsc/pull/2658)core: improve readability of the fork choice logic
+* [\#2665](https://github.com/bnb-chain/bsc/pull/2665)faucet: bump and resend faucet transaction if it has been pending for a while
+
 ## v1.4.13
 
 ### BUGFIX

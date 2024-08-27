@@ -441,14 +441,14 @@ func (b *EthAPIBackend) Engine() consensus.Engine {
 	return b.eth.engine
 }
 
-func (b *EthAPIBackend) CurrentTurnLength() (turnLength uint8, err error) {
+func (b *EthAPIBackend) CurrentValidators() ([]common.Address, error) {
 	if p, ok := b.eth.engine.(*parlia.Parlia); ok {
 		service := p.APIs(b.Chain())[0].Service
 		currentHead := rpc.LatestBlockNumber
-		return service.(*parlia.API).GetTurnLength(&currentHead)
+		return service.(*parlia.API).GetValidators(&currentHead)
 	}
 
-	return 1, nil
+	return []common.Address{}, errors.New("not supported")
 }
 
 func (b *EthAPIBackend) CurrentHeader() *types.Header {
