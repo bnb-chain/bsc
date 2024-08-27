@@ -2050,12 +2050,15 @@ func TestDualHeapEviction(t *testing.T) {
 	var (
 		highTip, highCap *types.Transaction
 		baseFee          int
+		highCapValue     int64
+		highTipValue     int64
 	)
 
 	check := func(tx *types.Transaction, name string) {
 		if pool.all.GetRemote(tx.Hash()) == nil {
 			fmt.Println(highCap.GasFeeCap().String(), highCap.GasTipCap().String(), highTip.GasFeeCap().String(), highTip.GasTipCap().String(), len(pool.pending), len(pool.queue), pool.localBufferPool.size)
-			t.Fatalf("highest %s transaction evicted from the pool, gasPrice: %s", name, highTip.GasPrice().String())
+			pool.printTxStats()
+			t.Fatalf("highest %s transaction evicted from the pool, gasTip: %s, gasFeeCap: %s, hash: %s", name, highTip.GasTipCap().String(), highCap.GasFeeCap().String(), tx.Hash().String())
 		}
 	}
 
@@ -2069,11 +2072,22 @@ func TestDualHeapEviction(t *testing.T) {
 			if urgent {
 				fmt.Printf("i = %d gasFee: %v \n", i, int64(baseFee+1+i))
 				tx = dynamicFeeTx(0, 100000, big.NewInt(int64(baseFee+1+i)), big.NewInt(int64(1+i)), key)
-				highTip = tx
+				if int64(1+i) > highTipValue || (int64(1+i) == highTipValue && int64(baseFee+1+i) > highTip.GasFeeCap().Int64()) {
+					fmt.Println("highTip updated. tip=", int64(1+i), highTipValue)
+					highTipValue = int64(1 + i)
+					highTip = tx
+				}
+				//highTip = tx
 			} else {
 				fmt.Printf("i = %d gasFee: %v \n", i, int64(baseFee+200+i))
 				tx = dynamicFeeTx(0, 100000, big.NewInt(int64(baseFee+200+i)), big.NewInt(1), key)
-				highCap = tx
+				if int64(baseFee+200+i) > highCapValue {
+					fmt.Println("highCap updated. gasFee=", int64(baseFee+200+i), highCapValue)
+					highCapValue = int64(baseFee + 200 + i)
+					highCap = tx
+				}
+				//highCap = tx
+				//fmt.Println("highCap updated. gasFee=", int64(baseFee+200+i))
 			}
 			pool.addRemotesSync([]*types.Transaction{tx})
 			pool.printTxStats()
@@ -2082,7 +2096,7 @@ func TestDualHeapEviction(t *testing.T) {
 			}
 		}
 		pending, queued := pool.Stats()
-		if pending+queued != 5 {
+		if !(pending+queued == 5 || pending+queued == 4) {
 			//t.Fatalf("transaction count mismatch: have %d, want %d, pending %d, queued %d, pool3 %d", pending+queued, 10, pending, queued, pool.localBufferPool.size)
 		}
 	}
@@ -2095,7 +2109,7 @@ func TestDualHeapEviction(t *testing.T) {
 		//check(highCap, "fee cap")
 
 		pool.priced.SetBaseFee(big.NewInt(int64(baseFee)))
-		fmt.Println("add called: 2")
+		fmt.Println("add called: 2, baseFee=", baseFee)
 		add(true)
 
 		fmt.Println("about to check: 1", highCap.GasFeeCap().String(), highCap.GasTipCap().String())
