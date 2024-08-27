@@ -2306,20 +2306,26 @@ func EnableNodeTrack(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) 
 		metrics.NewRegisteredLabel("node-track", nil).Mark(map[string]interface{}{
 			"NodeType":       parseNodeType(),
 			"ENR":            nodeInfo.ENR,
-			"ID":             nodeInfo.ID,
 			"Mining":         ctx.Bool(MiningEnabledFlag.Name),
-			"Etherbase":      cfg.Miner.Etherbase,
+			"Etherbase":      parseEtherbase(cfg),
 			"MiningFeatures": parseMiningFeatures(ctx, cfg),
 			"DBFeatures":     parseDBFeatures(cfg, stack),
 		})
 	}
 }
 
+func parseEtherbase(cfg *ethconfig.Config) string {
+	if cfg.Miner.Etherbase == (common.Address{}) {
+		return ""
+	}
+	return cfg.Miner.Etherbase.String()
+}
+
 func parseNodeType() string {
 	git, _ := version.VCS()
 	version := []string{params.VersionWithMeta}
-	if git.Commit != "" {
-		version = append(version, git.Commit)
+	if len(git.Commit) >= 7 {
+		version = append(version, git.Commit[:7])
 	}
 	if git.Date != "" {
 		version = append(version, git.Date)
