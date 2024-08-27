@@ -278,7 +278,7 @@ func (b *Bidder) bid(work *environment) {
 	_, err := cli.SendBid(context.Background(), bidArgs)
 	if err != nil {
 		b.deleteBestWork(work)
-		log.Error("Bidder: bidding failed", "err", err)
+		log.Error("Bidder: bidding failed", "err", err, "number", work.header.Number, "txs", len(work.txs), "unrevertible", len(work.UnRevertible))
 
 		var bidErr rpc.Error
 		ok := errors.As(err, &bidErr)
