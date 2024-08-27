@@ -35,6 +35,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/internal/version"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -2279,9 +2281,7 @@ func RegisterFilterAPI(stack *node.Node, backend ethapi.Backend, ethcfg *ethconf
 	return filterSystem
 }
 
-func EnableNodeInfo(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) SetupMetricsOption {
-	poolConfig := cfg.TxPool
-	nodeInfo := stack.Server().NodeInfo()
+func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) SetupMetricsOption {
 	return func() {
 		// register node info into metrics
 		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
@@ -2295,13 +2295,63 @@ func EnableNodeInfo(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) S
 			"AccountQueue": poolConfig.AccountQueue,
 			"GlobalQueue":  poolConfig.GlobalQueue,
 			"Lifetime":     poolConfig.Lifetime,
-			"Miner":        ctx.Bool(MiningEnabledFlag.Name),
-			"Mev":          cfg.Miner.Mev.Enabled,
-			"FFVoter":      cfg.Miner.VoteEnable,
-			"PBSS":         cfg.StateScheme == rawdb.PathScheme,
-			"MultiDB":      stack.CheckIfMultiDataBase(),
 		})
 	}
+}
+
+func EnableNodeTrack(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) SetupMetricsOption {
+	nodeInfo := stack.Server().NodeInfo()
+	return func() {
+		// register node info into metrics
+		metrics.NewRegisteredLabel("node-track", nil).Mark(map[string]interface{}{
+			"NodeType":       parseNodeType(),
+			"ENR":            nodeInfo.ENR,
+			"ID":             nodeInfo.ID,
+			"Mining":         ctx.Bool(MiningEnabledFlag.Name),
+			"Etherbase":      cfg.Miner.Etherbase,
+			"MiningFeatures": parseMiningFeatures(ctx, cfg),
+			"DBFeatures":     parseDBFeatures(cfg, stack),
+		})
+	}
+}
+
+func parseNodeType() string {
+	git, _ := version.VCS()
+	version := []string{params.VersionWithMeta}
+	if git.Commit != "" {
+		version = append(version, git.Commit)
+	}
+	if git.Date != "" {
+		version = append(version, git.Date)
+	}
+	arch := []string{runtime.GOOS, runtime.GOARCH}
+	infos := []string{"BSC", strings.Join(version, "-"), strings.Join(arch, "-"), runtime.Version()}
+	return strings.Join(infos, "/")
+}
+
+func parseDBFeatures(cfg *ethconfig.Config, stack *node.Node) string {
+	var features []string
+	if cfg.StateScheme == rawdb.PathScheme {
+		features = append(features, "PBSS")
+	}
+	if stack.CheckIfMultiDataBase() {
+		features = append(features, "MultiDB")
+	}
+	return strings.Join(features, "/")
+}
+
+func parseMiningFeatures(ctx *cli.Context, cfg *ethconfig.Config) string {
+	if !ctx.Bool(MiningEnabledFlag.Name) {
+		return ""
+	}
+	var features []string
+	if cfg.Miner.Mev.Enabled {
+		features = append(features, "MEV")
+	}
+	if cfg.Miner.VoteEnable {
+		features = append(features, "FFVoting")
+	}
+	return strings.Join(features, "/")
 }
 
 func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
