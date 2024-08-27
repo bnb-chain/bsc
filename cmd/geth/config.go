@@ -213,6 +213,9 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.OverrideFixedTurnLength.Name) {
 		params.FixedTurnLength = ctx.Uint64(utils.OverrideFixedTurnLength.Name)
 	}
+	if ctx.IsSet(utils.OverrideFixedVoteInterval.Name) {
+		params.FixedVoteInterval = ctx.Uint64(utils.OverrideFixedVoteInterval.Name)
+	}
 
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)
 

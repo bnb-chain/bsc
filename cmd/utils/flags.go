@@ -350,6 +350,12 @@ var (
 		Value:    params.FixedTurnLength,
 		Category: flags.EthCategory,
 	}
+	OverrideFixedVoteInterval = &cli.Uint64Flag{
+		Name:     "override.fixedvoteinterval",
+		Usage:    "It use fixed values for vote interval, only for testing purpose",
+		Value:    params.FixedVoteInterval,
+		Category: flags.EthCategory,
+	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
 		Name:     "syncmode",
 		Usage:    `Blockchain sync mode ("snap" or "full")`,

@@ -184,7 +184,7 @@ func (s *Snapshot) isMajorityFork(forkHash string) bool {
 	return ally > len(s.RecentForkHashes)/2
 }
 
-func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) {
+func (s *Snapshot) updateAttestation(header *types.Header, chain consensus.ChainHeaderReader, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) {
 	if !chainConfig.IsLuban(header.Number) {
 		return
 	}
@@ -195,13 +195,27 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 		return
 	}
 
+	voteInterval := parliaConfig.VoteInterval(chainConfig)
+	if header.Number.Uint64()%voteInterval != 0 {
+		log.Warn("updateAttestation failed", "Number", header.Number.Uint64(), "voteInterval", voteInterval)
+		return
+	}
+
 	// Headers with bad attestation are accepted before Plato upgrade,
-	// but Attestation of snapshot is only updated when the target block is direct parent of the header
+	// but Attestation of snapshot is only updated when the target block aligns with the voting interval.
 	targetNumber := attestation.Data.TargetNumber
 	targetHash := attestation.Data.TargetHash
-	if targetHash != header.ParentHash || targetNumber+1 != header.Number.Uint64() {
+	expectedBlock := header
+	for i := voteInterval; i > 0; i-- {
+		expectedBlock = chain.GetHeaderByHash(expectedBlock.ParentHash)
+		if expectedBlock == nil {
+			log.Warn("updateAttestation failed", "error", fmt.Errorf("fail to get block: %s", expectedBlock.Hash()))
+		}
+	}
+	expectedBlockHash := expectedBlock.Hash()
+	if targetHash != expectedBlockHash || targetNumber+voteInterval != header.Number.Uint64() {
 		log.Warn("updateAttestation failed", "error", fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
-			header.Number.Uint64()-1, header.ParentHash, targetNumber, targetHash))
+			header.Number.Uint64()-voteInterval, expectedBlockHash, targetNumber, targetHash))
 		updateAttestationErrorCounter.Inc(1)
 		return
 	}
@@ -210,7 +224,7 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 	// Two scenarios for s.Attestation being nil:
 	// 1) The first attestation is assembled.
 	// 2) The snapshot on disk is missing, prompting the creation of a new snapshot using `newSnapshot`.
-	if s.Attestation != nil && attestation.Data.SourceNumber+1 != attestation.Data.TargetNumber {
+	if s.Attestation != nil && attestation.Data.SourceNumber+voteInterval != attestation.Data.TargetNumber {
 		s.Attestation.TargetNumber = attestation.Data.TargetNumber
 		s.Attestation.TargetHash = attestation.Data.TargetHash
 	} else {
@@ -310,7 +324,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 		}
 		snap.Recents[number] = validator
 		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
-		snap.updateAttestation(header, chainConfig, s.config)
+		snap.updateAttestation(header, chain, chainConfig, s.config)
 		// change validator set
 		if number > 0 && number%s.config.Epoch == snap.minerHistoryCheckLen() {
 			epochKey := math.MaxUint64 - header.Number.Uint64()/s.config.Epoch // impossible used as a block number

@@ -197,6 +197,9 @@ var (
 	//                  2 --> use random values to test switching turn length
 	// 0 and other values --> get turn length from contract
 	FixedTurnLength uint64 = 0
+	// used for testing:
+	//				[1,3] --> used as turn length directly
+	FixedVoteInterval uint64 = 0
 )
 
 // Gas discount table for BLS12-381 G1 and G2 multi exponentiation operations

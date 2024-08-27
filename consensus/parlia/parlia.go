@@ -318,6 +318,10 @@ func New(
 	return c
 }
 
+func (p *Parlia) VoteInterval() uint64 {
+	return p.config.VoteInterval(p.chainConfig)
+}
+
 func (p *Parlia) Period() uint64 {
 	return p.config.Period
 }
@@ -964,7 +968,8 @@ func (p *Parlia) prepareTurnLength(chain consensus.ChainHeaderReader, header *ty
 }
 
 func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header) error {
-	if !p.chainConfig.IsLuban(header.Number) || header.Number.Uint64() < 2 {
+	voteInterval := p.VoteInterval()
+	if !p.chainConfig.IsLuban(header.Number) || header.Number.Uint64() < 2 || header.Number.Uint64()%voteInterval != 0 {
 		return nil
 	}
 
@@ -972,23 +977,27 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		return nil
 	}
 
-	// Fetch direct parent's votes
-	parent := chain.GetHeaderByHash(header.ParentHash)
-	if parent == nil {
-		return errors.New("parent not found")
+	// Fetch votes
+	targetBlock := header
+	for i := voteInterval; i > 0; i-- {
+		targetBlock = chain.GetHeaderByHash(targetBlock.ParentHash)
+		if targetBlock == nil {
+			return errors.New("parent not found")
+		}
 	}
-	snap, err := p.snapshot(chain, parent.Number.Uint64()-1, parent.ParentHash, nil)
+
+	snap, err := p.snapshot(chain, targetBlock.Number.Uint64()-1, targetBlock.ParentHash, nil)
 	if err != nil {
 		return err
 	}
-	votes := p.VotePool.FetchVoteByBlockHash(parent.Hash())
+	votes := p.VotePool.FetchVoteByBlockHash(targetBlock.Hash())
 	if len(votes) < cmath.CeilDiv(len(snap.Validators)*2, 3) {
 		return nil
 	}
 
 	// Prepare vote attestation
 	// Prepare vote data
-	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{parent})
+	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{targetBlock})
 	if err != nil {
 		return errors.New("unexpected error when getting the highest justified number and hash")
 	}
@@ -996,8 +1005,8 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		Data: &types.VoteData{
 			SourceNumber: justifiedBlockNumber,
 			SourceHash:   justifiedBlockHash,
-			TargetNumber: parent.Number.Uint64(),
-			TargetHash:   parent.Hash(),
+			TargetNumber: targetBlock.Number.Uint64(),
+			TargetHash:   targetBlock.Hash(),
 		},
 	}
 	// Check vote data from votes

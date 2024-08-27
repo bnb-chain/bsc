@@ -573,6 +573,16 @@ type ParliaConfig struct {
 	Epoch  uint64 `json:"epoch"`  // Epoch length to update validatorSet
 }
 
+func (p *ParliaConfig) VoteInterval(chainConfig *ChainConfig) uint64 {
+	// mock to get VoteInterval
+	if FixedVoteInterval >= 1 && FixedTurnLength <= 3 {
+		return FixedVoteInterval
+	}
+
+	defaultVoteInterval := uint64(1) // Default number of blocks between two voting rounds for Fast Finality
+	return defaultVoteInterval
+}
+
 // String implements the stringer interface, returning the consensus engine details.
 func (b *ParliaConfig) String() string {
 	return "parlia"

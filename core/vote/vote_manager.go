@@ -149,11 +149,17 @@ func (voteManager *VoteManager) loop() {
 
 			curHead := cHead.Header
 			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
-				nextBlockMinedTime := time.Unix(int64((curHead.Time + p.Period())), 0)
-				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
-				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
-					log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
+				if curHead.Number.Uint64()%p.VoteInterval() != 0 {
+					log.Debug("skip voting", "blockCountSinceMining", "Number", curHead.Number.Uint64(), "voteInterval", p.VoteInterval())
 					continue
+				}
+				if p.VoteInterval() == 1 {
+					nextBlockMinedTime := time.Unix(int64((curHead.Time + p.Period())), 0)
+					timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
+					if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
+						log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
+						continue
+					}
 				}
 			}
 
