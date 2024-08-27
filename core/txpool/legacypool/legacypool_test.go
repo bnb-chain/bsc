@@ -2077,47 +2077,33 @@ func TestDualHeapEviction(t *testing.T) {
 					highTipValue = int64(1 + i)
 					highTip = tx
 				}
-				//highTip = tx
 			} else {
 				fmt.Printf("i = %d gasFee: %v \n", i, int64(baseFee+200+i))
 				tx = dynamicFeeTx(0, 100000, big.NewInt(int64(baseFee+200+i)), big.NewInt(1), key)
 				if int64(baseFee+200+i) > highCapValue {
-					fmt.Println("highCap updated. gasFee=", int64(baseFee+200+i), highCapValue)
+					//fmt.Println("highCap updated. gasFee=", int64(baseFee+200+i), highCapValue)
 					highCapValue = int64(baseFee + 200 + i)
 					highCap = tx
 				}
-				//highCap = tx
-				//fmt.Println("highCap updated. gasFee=", int64(baseFee+200+i))
 			}
 			pool.addRemotesSync([]*types.Transaction{tx})
-			pool.printTxStats()
+			//pool.printTxStats()
 			if len(pool.pending) > 5 {
 				fmt.Println("pending has more than 5 elements, i: ", i)
 			}
 		}
 		pending, queued := pool.Stats()
-		if !(pending+queued == 5 || pending+queued == 4) {
-			//t.Fatalf("transaction count mismatch: have %d, want %d, pending %d, queued %d, pool3 %d", pending+queued, 10, pending, queued, pool.localBufferPool.size)
+		if pending+queued != 5 {
+			t.Fatalf("transaction count mismatch: have %d, want %d, pending %d, queued %d, pool3 %d", pending+queued, 5, pending, queued, pool.localBufferPool.size)
 		}
 	}
 
-	fmt.Println("add called: 1")
 	add(false)
 	for baseFee = 0; baseFee <= 1000; baseFee += 100 {
-		//fmt.Println(highCap.GasPrice().String())
-		//fmt.Println("about to check: 0")
-		//check(highCap, "fee cap")
-
 		pool.priced.SetBaseFee(big.NewInt(int64(baseFee)))
-		fmt.Println("add called: 2, baseFee=", baseFee)
 		add(true)
-
-		fmt.Println("about to check: 1", highCap.GasFeeCap().String(), highCap.GasTipCap().String())
 		check(highCap, "fee cap")
-		fmt.Println("add called: 3")
 		add(false)
-
-		fmt.Println("about to check: 2")
 		check(highTip, "effective tip")
 	}
 
