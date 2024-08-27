@@ -49,7 +49,8 @@ func (v *VersionDB) Scheme() string {
 }
 
 func (v *VersionDB) Initialized(genesisRoot common.Hash) bool {
-	return v.db.HasState(genesisRoot)
+	version, _ := v.db.LatestStoreDiskVersionInfo()
+	return version >= 0
 }
 
 func (v *VersionDB) Size() (common.StorageSize, common.StorageSize, common.StorageSize) {

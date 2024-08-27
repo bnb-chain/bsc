@@ -191,33 +191,40 @@ func peerToSyncOp(mode downloader.SyncMode, p *eth.Peer) *chainSyncOp {
 }
 
 func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
-	// If we're in snap sync mode, return that directly
-	if cs.handler.snapSync.Load() {
-		block := cs.handler.chain.CurrentSnapBlock()
-		td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
-		return downloader.SnapSync, td
-	}
-	// We are probably in full sync, but we might have rewound to before the
-	// snap sync pivot, check if we should re-enable snap sync.
 	head := cs.handler.chain.CurrentBlock()
-	if pivot := rawdb.ReadLastPivotNumber(cs.handler.database); pivot != nil {
-		if head.Number.Uint64() < *pivot {
-			if rawdb.ReadAncientType(cs.handler.database) == rawdb.PruneFreezerType {
-				log.Crit("Current rewound to before the fast sync pivot, can't enable pruneancient mode", "current block number", head.Number.Uint64(), "pivot", *pivot)
-			}
+	if cs.handler.chain.TrieDB().Scheme() != rawdb.VersionScheme {
+		// If we're in snap sync mode, return that directly
+		if cs.handler.snapSync.Load() {
 			block := cs.handler.chain.CurrentSnapBlock()
 			td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
 			return downloader.SnapSync, td
 		}
-	}
-	// We are in a full sync, but the associated head state is missing. To complete
-	// the head state, forcefully rerun the snap sync. Note it doesn't mean the
-	// persistent state is corrupted, just mismatch with the head block.
-	if !cs.handler.chain.NoTries() && !cs.handler.chain.HasState(head.Root) {
-		block := cs.handler.chain.CurrentSnapBlock()
-		td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
-		log.Info("Reenabled snap sync as chain is stateless")
-		return downloader.SnapSync, td
+		// We are probably in full sync, but we might have rewound to before the
+		// snap sync pivot, check if we should re-enable snap sync.
+		head = cs.handler.chain.CurrentBlock()
+		if pivot := rawdb.ReadLastPivotNumber(cs.handler.database); pivot != nil {
+			if head.Number.Uint64() < *pivot {
+				if rawdb.ReadAncientType(cs.handler.database) == rawdb.PruneFreezerType {
+					log.Crit("Current rewound to before the fast sync pivot, can't enable pruneancient mode", "current block number", head.Number.Uint64(), "pivot", *pivot)
+				}
+				block := cs.handler.chain.CurrentSnapBlock()
+				td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
+				return downloader.SnapSync, td
+			}
+		}
+		// We are in a full sync, but the associated head state is missing. To complete
+		// the head state, forcefully rerun the snap sync. Note it doesn't mean the
+		// persistent state is corrupted, just mismatch with the head block.
+		if !cs.handler.chain.NoTries() && !cs.handler.chain.HasState(head.Root) {
+			block := cs.handler.chain.CurrentSnapBlock()
+			td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
+			log.Info("Reenabled snap sync as chain is stateless")
+			return downloader.SnapSync, td
+		}
+	} else {
+		if !cs.handler.chain.HasState(head.Root) {
+			panic("version db not support snap sync")
+		}
 	}
 	// Nope, we're really full syncing
 	td := cs.handler.chain.GetTd(head.Hash(), head.Number.Uint64())
