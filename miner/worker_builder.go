@@ -366,21 +366,22 @@ func (w *worker) mergeBundles(
 			continue
 		}
 
-		log.Info("included bundle",
-			"gasUsed", simulatedBundle.BundleGasUsed,
-			"gasPrice", simulatedBundle.BundleGasPrice,
-			"txcount", len(simulatedBundle.OriginalBundle.Txs))
-
 		includedTxs = append(includedTxs, bundle.OriginalBundle.Txs...)
 
 		mergedBundle.BundleGasFees.Add(mergedBundle.BundleGasFees, simulatedBundle.BundleGasFees)
 		mergedBundle.BundleGasUsed += simulatedBundle.BundleGasUsed
 
-		for _, tx := range includedTxs {
+		for _, tx := range bundle.OriginalBundle.Txs {
 			if !containsHash(bundle.OriginalBundle.RevertingTxHashes, tx.Hash()) {
 				env.UnRevertible = append(env.UnRevertible, tx.Hash())
 			}
 		}
+
+		log.Info("included bundle",
+			"gasUsed", simulatedBundle.BundleGasUsed,
+			"gasPrice", simulatedBundle.BundleGasPrice,
+			"txcount", len(simulatedBundle.OriginalBundle.Txs),
+			"unrevertible", len(env.UnRevertible))
 	}
 
 	if len(includedTxs) == 0 {
@@ -448,7 +449,6 @@ func (w *worker) simulateBundle(
 			}
 
 			if env.header.BaseFee != nil {
-				log.Info("simulate bundle: header base fee", "value", env.header.BaseFee.String())
 				effectiveTip.Add(effectiveTip, env.header.BaseFee)
 			}
 
