@@ -57,8 +57,8 @@ const (
 	// txReannoMaxNum is the maximum number of transactions a reannounce action can include.
 	txReannoMaxNum = 1024
 
-	maxPool2Size = 10000 // todo might have to set it in config // This is in slots and not in no of transactions
-	maxPool3Size = 50000
+	//maxPool2Size = 10000 // todo might have to set it in config // This is in slots and not in no of transactions
+	//maxPool3Size = 50000
 )
 
 var (
@@ -778,7 +778,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	//txPoolSizeBeforeCurrentTx := uint64(pool.all.Slots())
 	txPoolSizeAfterCurrentTx := uint64(pool.all.Slots() + numSlots(tx))
 	var includePool1, includePool2, includePool3 bool
-	if txPoolSizeAfterCurrentTx < maxPool1Size {
+	if txPoolSizeAfterCurrentTx <= maxPool1Size {
 		includePool1 = true
 	} else if (txPoolSizeAfterCurrentTx > maxPool1Size) && (txPoolSizeAfterCurrentTx <= (maxPool1Size + maxPool2Size)) {
 		includePool2 = true
@@ -823,13 +823,13 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	// If the transaction pool is full, discard underpriced transactions
-	if uint64(pool.all.Slots()+numSlots(tx)) > maxPool1Size {
-		// todo 3 -> done maybe a check here for pool2? // try addToPool2OrPool3() and only if unsuccessful then do the other things!!!
+	if uint64(pool.all.Slots()+numSlots(tx)) > (maxPool1Size + maxPool2Size) {
+		// todo 3 -> done maybe a check here for pool2? // try addToPool12OrPool3() and only if unsuccessful then do the other things!!!
 		// Try adding to pool2 or pool3 first
 		// If the new transaction is underpriced, don't accept it
 		// todo 5 actually if underpriced then add to pool2 or 3. Otherwise find out which one will be replaced with and that one will go to pool2 or 3
 		if !isLocal && pool.priced.Underpriced(tx) {
-			addedToAnyPool, err := pool.addToPool2OrPool3(tx, from, isLocal, includePool1, includePool2, includePool3)
+			addedToAnyPool, err := pool.addToPool12OrPool3(tx, from, isLocal, includePool1, includePool2, includePool3)
 			if addedToAnyPool {
 				return false, nil
 			}
@@ -856,7 +856,13 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		// Otherwise if we can't make enough room for new one, abort the operation.
 		// todo maybe we don't need to Discard if we can include it in pool2 or pool3
 		//		OR get the discarded transactions and make them part of pool2 or pool3
-		drop, success := pool.priced.Discard(pool.all.Slots()-int(pool.config.GlobalSlots+pool.config.GlobalQueue)+numSlots(tx), isLocal)
+		toBeDiscarded := pool.all.Slots() - int(pool.config.GlobalSlots+pool.config.GlobalQueue+pool.config.Pool2Slots) + numSlots(tx)
+		drop, success := pool.priced.Discard(toBeDiscarded, isLocal)
+		//if !success {
+		//	// If this Discard fails then we can try at least replacing the slots which is the tx worth so that we may still be over the limit but we can accommodate a deserving transaction
+		//	toBeDiscarded = numSlots(tx)
+		//	drop, success = pool.priced.Discard(toBeDiscarded, isLocal)
+		//}
 
 		// Special case, we still can't make the room for the new remote one.
 		if !isLocal && !success {
@@ -897,17 +903,24 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 				txSlots := numSlots(tx)
 				if currentSlotsUsed+txSlots <= availableSlotsPool3 {
 					from, _ := types.Sender(pool.signer, tx)
-					pool.addToPool2OrPool3(tx, from, isLocal, false, false, true)
+					added, _ := pool.addToPool12OrPool3(tx, from, isLocal, false, false, true) // todo once they are removed they should be deleted from the pool1/2 because drop HAS to be dropped from pool1/2 irrespective of if they get added to pool3 or not!
 					currentSlotsUsed += txSlots
 					//} else {
+					//remainingDrop = append(remainingDrop, tx)
+					if !added {
+						remainingDrop = append(remainingDrop, tx)
+					}
+				} else {
 					remainingDrop = append(remainingDrop, tx)
 				}
 			}
 
+		} else {
+			remainingDrop = drop
 		}
 
 		// Kick out the underpriced remote transactions.
-		for _, tx := range remainingDrop {
+		for _, tx := range drop {
 			// todo 2 pool2 or pool3. Because the new tx is better than transactions of drop but drop transactions still
 			// 		deserve to be part of at least pool2 or pool3.
 			// 	At this point if remainingDrop is non nil then pool3 is full. So these will need to be deleted anyway
@@ -971,8 +984,8 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	return replaced, nil
 }
 
-// addToPool2OrPool3 adds a transaction to pool1 or pool2 or pool3 depending on which one is asked for
-func (pool *LegacyPool) addToPool2OrPool3(tx *types.Transaction, from common.Address, isLocal bool, pool1, pool2, pool3 bool) (bool, error) {
+// addToPool12OrPool3 adds a transaction to pool1 or pool2 or pool3 depending on which one is asked for
+func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Address, isLocal bool, pool1, pool2, pool3 bool) (bool, error) {
 	if pool1 {
 		// todo (check) logic for pool1 related
 		pool.all.Add(tx, pool2)
@@ -2236,11 +2249,11 @@ func (pool *LegacyPool) transferTransactions() {
 		}
 		from, _ := types.Sender(pool.signer, transaction)
 
-		// use addToPool2OrPool3() function to transfer from pool3 to pool2
-		_, err := pool.addToPool2OrPool3(transaction, from, true, false, true, false) // todo by default all pool3 transactions are considered local
+		// use addToPool12OrPool3() function to transfer from pool3 to pool2
+		_, err := pool.addToPool12OrPool3(transaction, from, true, false, true, false) // todo by default all pool3 transactions are considered local
 		if err != nil {
 			// if it never gets added to anything then add it back
-			pool.addToPool2OrPool3(transaction, from, true, false, false, true)
+			pool.addToPool12OrPool3(transaction, from, true, false, false, true)
 			continue
 		}
 	}
@@ -2272,5 +2285,6 @@ func (pool *LegacyPool) printTxStats() {
 	}
 
 	pool.localBufferPool.PrintTxStats()
+	fmt.Println("length of all: ", pool.all.Slots())
 	fmt.Println("----------------------------------------------------")
 }
