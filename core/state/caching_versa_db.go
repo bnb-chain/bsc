@@ -36,7 +36,7 @@ type cachingVersaDB struct {
 	mode     versa.StateMode
 	hasState atomic.Bool
 
-	debug *DebugVersionState
+	//debug *DebugVersionState
 }
 
 // NewVersaDatabase should be call by NewDatabaseWithNodeDB
@@ -66,9 +66,9 @@ func (cv *cachingVersaDB) Copy() Database {
 	if cv.hasState.Load() {
 		_, err := cp.OpenTrie(cv.root)
 		if err != nil {
-			if cv.debug != nil {
-				cv.debug.OnError(fmt.Errorf("failed to open trie in copy caching versa db, error: %s", err.Error()))
-			}
+			//if cv.debug != nil {
+			//	cv.debug.OnError(fmt.Errorf("failed to open trie in copy caching versa db, error: %s", err.Error()))
+			//}
 			return cp
 		}
 	}
@@ -90,18 +90,18 @@ func (cv *cachingVersaDB) CopyTrie(tr Trie) Trie {
 		}
 		tree, err := cv.OpenTrie(vtr.root)
 		if err != nil {
-			if cv.debug != nil {
-				cv.debug.OnError(fmt.Errorf("failed to open trie in copy versa trie, error: %s", err.Error()))
-			}
+			//if cv.debug != nil {
+			//	cv.debug.OnError(fmt.Errorf("failed to open trie in copy versa trie, error: %s", err.Error()))
+			//}
 			return nil
 		}
 		return tree
 	} else {
 		tree, err := cv.OpenStorageTrie(vtr.stateRoot, vtr.address, vtr.root, nil)
 		if err != nil {
-			if cv.debug != nil {
-				cv.debug.OnError(fmt.Errorf("failed to open storage trie in copy versa trie, error: %s", err.Error()))
-			}
+			//if cv.debug != nil {
+			//	cv.debug.OnError(fmt.Errorf("failed to open storage trie in copy versa trie, error: %s", err.Error()))
+			//}
 			return nil
 		}
 		return tree
@@ -122,20 +122,20 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 	// TODO:: if root tree, versa db should ignore check version, temp use -1
 	state, err := cv.versionDB.OpenState(cv.version, root, cv.mode)
 	if err != nil {
-		if cv.debug != nil {
-			cv.debug.OnError(fmt.Errorf("failed to open state, root:%s, error: %s", root.String(), err.Error()))
-		}
+		//if cv.debug != nil {
+		//	cv.debug.OnError(fmt.Errorf("failed to open state, root:%s, error: %s", root.String(), err.Error()))
+		//}
 		return nil, err
 	}
-	if cv.debug != nil {
-		cv.debug.OnOpenState(state)
-	}
+	//if cv.debug != nil {
+	//	cv.debug.OnOpenState(state)
+	//}
 
 	handler, err := cv.versionDB.OpenTree(state, cv.version, common.Hash{}, root)
 	if err != nil {
-		if cv.debug != nil {
-			cv.debug.OnError(fmt.Errorf("failed to open account trie, root:%s, error: %s", root.String(), err.Error()))
-		}
+		//if cv.debug != nil {
+		//	cv.debug.OnError(fmt.Errorf("failed to open account trie, root:%s, error: %s", root.String(), err.Error()))
+		//}
 		return nil, err
 	}
 
@@ -145,7 +145,7 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 		accountTree: true,
 		root:        root,
 		mode:        cv.mode,
-		debug:       cv.debug,
+		//debug:       cv.debug,
 	}
 
 	cv.state = state
@@ -153,9 +153,9 @@ func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
 	cv.accTree = tree
 	cv.root = root
 
-	if cv.debug != nil {
-		cv.debug.OnOpenTree(handler, common.Hash{}, common.Address{})
-	}
+	//if cv.debug != nil {
+	//	cv.debug.OnOpenTree(handler, common.Hash{}, common.Address{})
+	//}
 
 	return tree, nil
 }
@@ -180,16 +180,16 @@ func (cv *cachingVersaDB) openStorageTreeWithVersion(version int64, stateRoot co
 	owner := crypto.Keccak256Hash(address.Bytes())
 	handler, err := cv.versionDB.OpenTree(cv.state, version, owner, root)
 	if err != nil {
-		if cv.debug != nil {
-			cv.debug.OnError(fmt.Errorf("failed to open storage trie, version: %d,stateRoot:%s, address:%s, root: %s, error: %s",
-				version, stateRoot.String(), address.String(), root.String(), err.Error()))
-		}
+		//if cv.debug != nil {
+		//	cv.debug.OnError(fmt.Errorf("failed to open storage trie, version: %d,stateRoot:%s, address:%s, root: %s, error: %s",
+		//		version, stateRoot.String(), address.String(), root.String(), err.Error()))
+		//}
 		return nil, err
 	}
 
-	if cv.debug != nil {
-		cv.debug.OnOpenTree(handler, owner, address)
-	}
+	//if cv.debug != nil {
+	//	cv.debug.OnOpenTree(handler, owner, address)
+	//}
 	tree := &VersaTree{
 		db:        cv.versionDB,
 		handler:   handler,
@@ -198,7 +198,7 @@ func (cv *cachingVersaDB) openStorageTreeWithVersion(version int64, stateRoot co
 		stateRoot: root,
 		address:   address,
 		mode:      cv.mode,
-		debug:     cv.debug,
+		//debug:     cv.debug,
 	}
 	return tree, nil
 }
@@ -206,17 +206,17 @@ func (cv *cachingVersaDB) openStorageTreeWithVersion(version int64, stateRoot co
 // Flush unique to versa
 func (cv *cachingVersaDB) Flush() error {
 	err := cv.versionDB.Flush(cv.state)
-	if err != nil && cv.debug != nil {
-		cv.debug.OnError(fmt.Errorf("failed to flush state, version: %d, root:%s, mode:%d, error: %s",
-			cv.accTree.version, cv.accTree.root.String(), cv.accTree.mode, err.Error()))
-	}
+	//if err != nil && cv.debug != nil {
+	//	cv.debug.OnError(fmt.Errorf("failed to flush state, version: %d, root:%s, mode:%d, error: %s",
+	//		cv.accTree.version, cv.accTree.root.String(), cv.accTree.mode, err.Error()))
+	//}
 	return err
 }
 
 func (cv *cachingVersaDB) SetVersion(version int64) {
 	cv.version = version - 1
-	cv.debug = NewDebugVersionState(cv.codeDB, cv.versionDB)
-	cv.debug.Version = version
+	//cv.debug = NewDebugVersionState(cv.codeDB, cv.versionDB)
+	//cv.debug.Version = version
 }
 
 func (cv *cachingVersaDB) GetVersion() int64 {
@@ -227,21 +227,21 @@ func (cv *cachingVersaDB) GetVersion() int64 {
 func (cv *cachingVersaDB) Release() error {
 	//log.Info("close state", "state info", cv.versionDB.ParseStateHandler(cv.state))
 	if cv.state != versa.ErrStateHandler {
-		if cv.debug != nil {
-			cv.debug.OnCloseState(cv.state)
-		}
+		//if cv.debug != nil {
+		//	cv.debug.OnCloseState(cv.state)
+		//}
 		if err := cv.versionDB.CloseState(cv.state); err != nil {
-			if cv.debug != nil {
-				cv.debug.OnError(fmt.Errorf("failed to close state in release, version: %d, root:%s, mode:%d, error: %s",
-					cv.accTree.version, cv.accTree.root.String(), cv.accTree.mode, err.Error()))
-			}
+			//if cv.debug != nil {
+			//	cv.debug.OnError(fmt.Errorf("failed to close state in release, version: %d, root:%s, mode:%d, error: %s",
+			//		cv.accTree.version, cv.accTree.root.String(), cv.accTree.mode, err.Error()))
+			//}
 			return err
 		}
 		cv.hasState.Store(false)
 		cv.accTree = nil
 		cv.state = versa.ErrStateHandler
 		cv.root = common.Hash{}
-		cv.debug = nil
+		//cv.debug = nil
 	}
 	return nil
 }
@@ -270,9 +270,9 @@ func (cv *cachingVersaDB) Scheme() string {
 }
 
 func (cv *cachingVersaDB) ContractCode(addr common.Address, codeHash common.Hash) ([]byte, error) {
-	if cv.debug != nil {
-		cv.debug.OnGetCode(addr, codeHash)
-	}
+	//if cv.debug != nil {
+	//	cv.debug.OnGetCode(addr, codeHash)
+	//}
 	code, _ := cv.codeCache.Get(codeHash)
 	if len(code) > 0 {
 		return code, nil
@@ -326,7 +326,7 @@ type VersaTree struct {
 	handler     versa.TreeHandler
 	version     int64
 	accountTree bool
-	debug       *DebugVersionState
+	//debug       *DebugVersionState
 
 	// TODO:: debugging, used for logging
 	stateRoot common.Hash
@@ -352,23 +352,23 @@ func (vt *VersaTree) getAccountWithVersion(address common.Address) (int64, *type
 	vt.CheckAccountTree()
 	ver, res, err := vt.db.Get(vt.handler, address.Bytes())
 	if res == nil || err != nil {
-		if err != nil && vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to get account, root: %s, address: %s, error: %s",
-				vt.root.String(), address.String(), err.Error()))
-		}
+		//if err != nil && vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to get account, root: %s, address: %s, error: %s",
+		//		vt.root.String(), address.String(), err.Error()))
+		//}
 		return ver, nil, err
 	}
 	ret := new(types.StateAccount)
 	err = rlp.DecodeBytes(res, ret)
 	if err != nil {
-		if vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to rlp decode account, root: %s, address: %s, error: %s",
-				vt.root.String(), address.String(), err.Error()))
-		}
+		//if vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to rlp decode account, root: %s, address: %s, error: %s",
+		//		vt.root.String(), address.String(), err.Error()))
+		//}
 	}
-	if vt.debug != nil {
-		vt.debug.OnGetAccount(address, ret)
-	}
+	//if vt.debug != nil {
+	//	vt.debug.OnGetAccount(address, ret)
+	//}
 	return ver, ret, err
 }
 
@@ -379,22 +379,22 @@ func (vt *VersaTree) GetStorage(address common.Address, key []byte) ([]byte, err
 	vt.CheckStorageTree()
 	_, enc, err := vt.db.Get(vt.handler, key)
 	if err != nil || len(enc) == 0 {
-		if err != nil && vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to get storage, root: %s, stateRoot: %s, address:%s, key: %s, error: %s",
-				vt.root.String(), vt.stateRoot.String(), address.String(), common.Bytes2Hex(key), err.Error()))
-		}
+		//if err != nil && vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to get storage, root: %s, stateRoot: %s, address:%s, key: %s, error: %s",
+		//		vt.root.String(), vt.stateRoot.String(), address.String(), common.Bytes2Hex(key), err.Error()))
+		//}
 		return nil, err
 	}
 	_, content, _, err := rlp.Split(enc)
 	if err != nil {
-		if vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to rlp decode storage, root: %s, stateRoot: %s, address: %s, key: %s,error: %s",
-				vt.root.String(), vt.stateRoot.String(), address.String(), common.Bytes2Hex(key), err.Error()))
-		}
+		//if vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to rlp decode storage, root: %s, stateRoot: %s, address: %s, key: %s,error: %s",
+		//		vt.root.String(), vt.stateRoot.String(), address.String(), common.Bytes2Hex(key), err.Error()))
+		//}
 	}
-	if vt.debug != nil {
-		vt.debug.OnGetStorage(vt.handler, address, key, content)
-	}
+	//if vt.debug != nil {
+	//	vt.debug.OnGetStorage(vt.handler, address, key, content)
+	//}
 	return content, err
 }
 
@@ -402,15 +402,15 @@ func (vt *VersaTree) UpdateAccount(address common.Address, account *types.StateA
 	vt.CheckAccountTree()
 	data, err := rlp.EncodeToBytes(account)
 	if err != nil {
-		if vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to update account, root: %s, address: %s, account: %s, error: %s",
-				vt.root.String(), address.String(), account.String(), err.Error()))
-		}
+		//if vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to update account, root: %s, address: %s, account: %s, error: %s",
+		//		vt.root.String(), address.String(), account.String(), err.Error()))
+		//}
 		return err
 	}
-	if vt.debug != nil {
-		vt.debug.OnUpdateAccount(address, account)
-	}
+	//if vt.debug != nil {
+	//	vt.debug.OnUpdateAccount(address, account)
+	//}
 	return vt.db.Put(vt.handler, address.Bytes(), data)
 }
 
@@ -422,14 +422,14 @@ func (vt *VersaTree) UpdateStorage(address common.Address, key, value []byte) er
 	v, _ := rlp.EncodeToBytes(value)
 	err := vt.db.Put(vt.handler, key, v)
 	if err != nil {
-		if vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to update storage, root: %s, stateRoot: %s, address: %s, key: %s, val: %s, error: %s",
-				vt.root.String(), vt.stateRoot.String(), address.String(), common.Bytes2Hex(key), common.Bytes2Hex(value), err.Error()))
-		}
+		//if vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to update storage, root: %s, stateRoot: %s, address: %s, key: %s, val: %s, error: %s",
+		//		vt.root.String(), vt.stateRoot.String(), address.String(), common.Bytes2Hex(key), common.Bytes2Hex(value), err.Error()))
+		//}
 	}
-	if vt.debug != nil {
-		vt.debug.OnUpdateStorage(vt.handler, address, key, value)
-	}
+	//if vt.debug != nil {
+	//	vt.debug.OnUpdateStorage(vt.handler, address, key, value)
+	//}
 	return err
 }
 
@@ -437,14 +437,14 @@ func (vt *VersaTree) DeleteAccount(address common.Address) error {
 	vt.CheckAccountTree()
 	err := vt.db.Delete(vt.handler, address.Bytes())
 	if err != nil {
-		if vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to delete account, root: %s, address: %s, error: %s",
-				vt.root.String(), address.String(), err.Error()))
-		}
+		//if vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to delete account, root: %s, address: %s, error: %s",
+		//		vt.root.String(), address.String(), err.Error()))
+		//}
 	}
-	if vt.debug != nil {
-		vt.debug.OnDeleteAccount(address)
-	}
+	//if vt.debug != nil {
+	//	vt.debug.OnDeleteAccount(address)
+	//}
 	return err
 }
 
@@ -452,14 +452,14 @@ func (vt *VersaTree) DeleteStorage(address common.Address, key []byte) error {
 	vt.CheckStorageTree()
 	err := vt.db.Delete(vt.handler, key)
 	if err != nil {
-		if vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to delete storage, root: %s, stateRoot: %s, address: %s, key: %s, error: %s",
-				vt.root.String(), vt.stateRoot.String(), address.String(), common.Bytes2Hex(key), err.Error()))
-		}
+		//if vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to delete storage, root: %s, stateRoot: %s, address: %s, key: %s, error: %s",
+		//		vt.root.String(), vt.stateRoot.String(), address.String(), common.Bytes2Hex(key), err.Error()))
+		//}
 	}
-	if vt.debug != nil {
-		vt.debug.OnDeleteStorage(vt.handler, address, key)
-	}
+	//if vt.debug != nil {
+	//	vt.debug.OnDeleteStorage(vt.handler, address, key)
+	//}
 	return err
 }
 
@@ -470,29 +470,29 @@ func (vt *VersaTree) UpdateContractCode(address common.Address, codeHash common.
 func (vt *VersaTree) Hash() common.Hash {
 	hash, err := vt.db.CalcRootHash(vt.handler)
 	if err != nil {
-		if vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to calc root, root: %s, stateRoot%s, error:%s",
-				vt.root.String(), vt.stateRoot.String(), err.Error()))
-		}
+		//if vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to calc root, root: %s, stateRoot%s, error:%s",
+		//		vt.root.String(), vt.stateRoot.String(), err.Error()))
+		//}
 	}
-	if vt.debug != nil {
-		vt.debug.OnCalcHash(vt.address, hash)
-	}
+	//if vt.debug != nil {
+	//	vt.debug.OnCalcHash(vt.address, hash)
+	//}
 	return hash
 }
 
 func (vt *VersaTree) Commit(_ bool) (common.Hash, *trienode.NodeSet, error) {
 	hash, err := vt.db.Commit(vt.handler)
 	if err != nil {
-		if vt.debug != nil {
-			vt.debug.OnError(fmt.Errorf("failed to commit versa tree, root: %s, stateRoot: %s, error: %s",
-				vt.root.String(), vt.stateRoot.String(), err.Error()))
-		}
+		//if vt.debug != nil {
+		//	vt.debug.OnError(fmt.Errorf("failed to commit versa tree, root: %s, stateRoot: %s, error: %s",
+		//		vt.root.String(), vt.stateRoot.String(), err.Error()))
+		//}
 	}
-	if vt.debug != nil {
-		vt.debug.OnCalcHash(vt.address, hash)
-		vt.debug.OnCommitTree(vt.address, vt.handler)
-	}
+	//if vt.debug != nil {
+	//	vt.debug.OnCalcHash(vt.address, hash)
+	//	vt.debug.OnCommitTree(vt.address, vt.handler)
+	//}
 	return hash, nil, err
 }
 

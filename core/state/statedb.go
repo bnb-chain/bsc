@@ -1713,18 +1713,18 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 					// Write any contract code associated with the state object
 					if obj.code != nil && obj.dirtyCode {
 						rawdb.WriteCode(codeWriter, common.BytesToHash(obj.CodeHash()), obj.code)
-						switch d := s.db.(type) {
-						case *cachingVersaDB:
-							if d.debug != nil {
-								d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
-							}
-						case *cachingDB:
-							if d.debug != nil {
-								d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
-							}
-						default:
-							panic("caching db type error")
-						}
+						//switch d := s.db.(type) {
+						//case *cachingVersaDB:
+						//	if d.debug != nil {
+						//		d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
+						//	}
+						//case *cachingDB:
+						//	if d.debug != nil {
+						//		d.debug.OnUpdateCode(obj.address, common.BytesToHash(obj.CodeHash()))
+						//	}
+						//default:
+						//	panic("caching db type error")
+						//}
 						obj.dirtyCode = false
 						if s.snap != nil {
 							panic("snapshot is not nil")
