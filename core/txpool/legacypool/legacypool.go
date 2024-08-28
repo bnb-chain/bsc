@@ -797,6 +797,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 	// already validated by this point
 	from, _ := types.Sender(pool.signer, tx)
+	fmt.Println("from address: ", from.String())
 
 	// If the address is not yet known, request exclusivity to track the account
 	// only by this subpool until all transactions are evicted
@@ -816,6 +817,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 			// by a return statement before running deferred methods. Take care with
 			// removing or subscoping err as it will break this clause.
 			if err != nil {
+				fmt.Println("Just kicking out reserved address: ", from.String())
 				pool.reserve(from, false)
 			}
 		}()
@@ -827,7 +829,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		if !isLocal && pool.priced.Underpriced(tx) {
 			addedToAnyPool, err := pool.addToPool12OrPool3(tx, from, isLocal, includePool1, includePool2, includePool3)
 			if addedToAnyPool {
-				return false, nil
+				return false, txpool.ErrUnderpricedTransferredtoAnotherPool // todo change it to return no error
 			}
 			if err != nil {
 				log.Error("Error while trying to add to pool2 or pool3", "error", err)
@@ -1216,12 +1218,21 @@ func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool) []error 
 func (pool *LegacyPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error, *accountSet) {
 	dirty := newAccountSet(pool.signer)
 	errs := make([]error, len(txs))
+	oldAddress := common.Address{}
+	newAddress := common.Address{}
 	for i, tx := range txs {
+		newAddress, _ = types.Sender(pool.signer, tx)
+		if oldAddress == newAddress {
+			fmt.Println("address repeat ", i)
+		} else {
+			fmt.Println("old address: ", oldAddress.String(), "new address: ", newAddress.String(), "i= ", i)
+		}
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
 		if err == nil && !replaced {
 			dirty.addTx(tx)
 		}
+		oldAddress = newAddress
 	}
 	validTxMeter.Mark(int64(len(dirty.accounts)))
 	return errs, dirty
