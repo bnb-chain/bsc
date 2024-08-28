@@ -797,7 +797,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 	// already validated by this point
 	from, _ := types.Sender(pool.signer, tx)
-	fmt.Println("from address: ", from.String())
 
 	// If the address is not yet known, request exclusivity to track the account
 	// only by this subpool until all transactions are evicted
@@ -817,7 +816,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 			// by a return statement before running deferred methods. Take care with
 			// removing or subscoping err as it will break this clause.
 			if err != nil {
-				fmt.Println("Just kicking out reserved address: ", from.String())
 				pool.reserve(from, false)
 			}
 		}()
@@ -953,10 +951,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		localGauge.Inc(1)
 	}
 	pool.journalTx(from, tx)
-
-	//if len(pool.pending) > int(maxPool1Size+maxPool2Size) {
-	//	fmt.Println("pending size exceeded")
-	//}
 
 	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
@@ -1218,21 +1212,13 @@ func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool) []error 
 func (pool *LegacyPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error, *accountSet) {
 	dirty := newAccountSet(pool.signer)
 	errs := make([]error, len(txs))
-	oldAddress := common.Address{}
-	newAddress := common.Address{}
+
 	for i, tx := range txs {
-		newAddress, _ = types.Sender(pool.signer, tx)
-		if oldAddress == newAddress {
-			fmt.Println("address repeat ", i)
-		} else {
-			fmt.Println("old address: ", oldAddress.String(), "new address: ", newAddress.String(), "i= ", i)
-		}
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
 		if err == nil && !replaced {
 			dirty.addTx(tx)
 		}
-		oldAddress = newAddress
 	}
 	validTxMeter.Mark(int64(len(dirty.accounts)))
 	return errs, dirty

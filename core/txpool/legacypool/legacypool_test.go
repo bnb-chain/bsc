@@ -141,18 +141,15 @@ func makeAddressReserver() txpool.AddressReserver {
 		_, exists := reserved[addr]
 		if reserve {
 			if exists {
-				fmt.Println(addr.String())
 				panic("already reserved")
 			}
 			reserved[addr] = struct{}{}
-			fmt.Println("Just reserved: ", addr.String())
 			return nil
 		}
 		if !exists {
 			panic("not reserved")
 		}
 		delete(reserved, addr)
-		fmt.Println("kicked out reserved address: ", addr.String())
 		return nil
 	}
 }
@@ -2059,7 +2056,7 @@ func TestDualHeapEviction(t *testing.T) {
 
 	check := func(tx *types.Transaction, name string) {
 		if pool.all.GetRemote(tx.Hash()) == nil {
-			fmt.Println(highCap.GasFeeCap().String(), highCap.GasTipCap().String(), highTip.GasFeeCap().String(), highTip.GasTipCap().String(), len(pool.pending), len(pool.queue), pool.localBufferPool.size)
+			//fmt.Println(highCap.GasFeeCap().String(), highCap.GasTipCap().String(), highTip.GasFeeCap().String(), highTip.GasTipCap().String(), len(pool.pending), len(pool.queue), pool.localBufferPool.size)
 			pool.printTxStats()
 			t.Fatalf("highest %s transaction evicted from the pool, gasTip: %s, gasFeeCap: %s, hash: %s", name, highTip.GasTipCap().String(), highCap.GasFeeCap().String(), tx.Hash().String())
 		}
