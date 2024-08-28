@@ -1792,8 +1792,8 @@ func TestUnderpricing(t *testing.T) {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
 	// Ensure that adding an underpriced transaction on block limit fails
-	if err := pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(1), keys[1])); !errors.Is(err, txpool.ErrUnderpriced) {
-		t.Fatalf("adding underpriced pending transaction error mismatch: have %v, want %v", err, txpool.ErrUnderpriced)
+	if err := pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(1), keys[1])); !errors.Is(err, txpool.ErrUnderpricedTransferredtoAnotherPool) {
+		t.Fatalf("adding underpriced pending transaction error mismatch: have %v, want %v", err, txpool.ErrUnderpricedTransferredtoAnotherPool)
 	}
 	// Replace a future transaction with a future transaction
 	if err := pool.addRemoteSync(pricedTransaction(1, 100000, big.NewInt(2), keys[1])); err != nil { // +K1:1 => -K1:1 => Pend K0:0, K0:1, K2:0; Que K1:1
@@ -1811,20 +1811,16 @@ func TestUnderpricing(t *testing.T) {
 	}
 	// Ensure that replacing a pending transaction with a future transaction fails
 	if err := pool.addRemote(pricedTransaction(5, 100000, big.NewInt(6), keys[1])); err != txpool.ErrFutureReplacePending {
-		// todo
 		t.Fatalf("adding future replace transaction error mismatch: have %v, want %v", err, txpool.ErrFutureReplacePending)
 	}
 	pending, queued = pool.Stats()
 	if pending != 2 {
-		// todo
 		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 2)
 	}
 	if queued != 2 {
-		// todo
 		t.Fatalf("queued transactions mismatched: have %d, want %d", queued, 2)
 	}
 	if err := validateEvents(events, 2); err != nil {
-		// todo
 		t.Fatalf("additional event firing failed: %v", err)
 	}
 	if err := validatePoolInternals(pool); err != nil {
