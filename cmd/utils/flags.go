@@ -2303,7 +2303,7 @@ func EnableNodeTrack(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) 
 	nodeInfo := stack.Server().NodeInfo()
 	return func() {
 		// register node info into metrics
-		metrics.NewRegisteredLabel("node-track", nil).Mark(map[string]interface{}{
+		metrics.NewRegisteredLabel("node-stats", nil).Mark(map[string]interface{}{
 			"NodeType":       parseNodeType(),
 			"ENR":            nodeInfo.ENR,
 			"Mining":         ctx.Bool(MiningEnabledFlag.Name),
