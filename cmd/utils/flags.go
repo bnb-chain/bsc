@@ -2343,7 +2343,7 @@ func parseDBFeatures(cfg *ethconfig.Config, stack *node.Node) string {
 	if stack.CheckIfMultiDataBase() {
 		features = append(features, "MultiDB")
 	}
-	return strings.Join(features, "/")
+	return strings.Join(features, "|")
 }
 
 func parseMiningFeatures(ctx *cli.Context, cfg *ethconfig.Config) string {
@@ -2357,7 +2357,7 @@ func parseMiningFeatures(ctx *cli.Context, cfg *ethconfig.Config) string {
 	if cfg.Miner.VoteEnable {
 		features = append(features, "FFVoting")
 	}
-	return strings.Join(features, "/")
+	return strings.Join(features, "|")
 }
 
 func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {
