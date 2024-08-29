@@ -153,8 +153,8 @@ var (
 		FeynmanFixTime:      newUint64(1713419340), // 2024-04-18 05:49:00 AM UTC
 		CancunTime:          newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
 		HaberTime:           newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
-		HaberFixTime:        nil,                   // TBD
-		BohrTime:            nil,
+		HaberFixTime:        newUint64(1727316120), // 2024-09-26 02:02:00 AM UTC
+		BohrTime:            newUint64(1727317200), // 2024-09-26 02:20:00 AM UTC
 
 		Parlia: &ParliaConfig{
 			Period: 3,
