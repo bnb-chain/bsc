@@ -260,12 +260,6 @@ type QueueTxEventCh struct {
 	static bool
 }
 
-func newQueueTxEventCh() QueueTxEventCh {
-	return QueueTxEventCh{
-		tx: new(types.Transaction),
-	}
-}
-
 type txpoolResetRequest struct {
 	oldHead, newHead *types.Header
 }
@@ -895,7 +889,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 					currentSlotsUsed += txSlots
 				}
 			}
-
 		}
 
 		// Kick out the underpriced remote transactions.
@@ -2237,16 +2230,7 @@ func (pool *LegacyPool) availableSlotsPool3() int {
 	return 0
 }
 
-//func (pool *LegacyPool) availableSlotsPool2() uin64 {
-//	availableSlots := maxPool2Size - pool.localBufferPool.Size()
-//	if availableSlots > 0 {
-//		return availableSlots
-//	}
-//	return 0
-//}
-
 func (pool *LegacyPool) printTxStats() {
-
 	for _, l := range pool.pending {
 		for _, transaction := range l.txs.items {
 			fmt.Println("Pending:", transaction.Hash().String(), transaction.GasFeeCap(), transaction.GasTipCap())
