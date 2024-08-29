@@ -899,7 +899,7 @@ func (h *handler) ReannounceTransactions(txs types.Transactions) {
 	peersCount := uint(math.Sqrt(float64(h.peers.len())))
 	peers := h.peers.headPeers(peersCount)
 	for _, peer := range peers {
-		peer.AsyncSendPooledTransactionHashes(hashes, false) // todo keeping it false for now. confirm it.
+		peer.AsyncSendPooledTransactionHashes(hashes, false) // todo keeping it false for now. Reannounce never really happens
 	}
 	log.Debug("Transaction reannounce", "txs", len(txs),
 		"announce packs", peersCount, "announced hashes", peersCount*uint(len(hashes)))
@@ -962,7 +962,7 @@ func (h *handler) txBroadcastLoop() {
 	for {
 		select {
 		case event := <-h.txsCh:
-			h.BroadcastTransactions(event.Txs, event.Static) // todo should Static bool be a slice of bools?
+			h.BroadcastTransactions(event.Txs, event.Static)
 		case <-h.txsSub.Err():
 			return
 		case <-h.stopCh:

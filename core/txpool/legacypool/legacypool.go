@@ -411,7 +411,7 @@ func (pool *LegacyPool) loop() {
 				}
 				// Any non-locals old enough should be removed
 				if time.Since(pool.beats[addr]) > pool.config.Lifetime {
-					list := pool.queue[addr].Flatten()
+					list, _ := pool.queue[addr].Flatten()
 					for _, tx := range list {
 						pool.removeTx(tx.Hash(), true, true)
 					}
@@ -422,25 +422,27 @@ func (pool *LegacyPool) loop() {
 
 		case <-reannounce.C:
 			pool.mu.RLock()
-			reannoTxs := func() []*types.Transaction {
+			reannoTxs, _ := func() ([]*types.Transaction, []bool) {
 				txs := make([]*types.Transaction, 0)
+				statics := make([]bool, 0)
 				for addr, list := range pool.pending {
 					if !pool.locals.contains(addr) {
 						continue
 					}
-
-					for _, tx := range list.Flatten() {
+					transactions, static := list.Flatten()
+					for _, tx := range transactions {
 						// Default ReannounceTime is 10 years, won't announce by default.
 						if time.Since(tx.Time()) < pool.config.ReannounceTime {
 							break
 						}
 						txs = append(txs, tx)
+						statics = append(statics, static)
 						if len(txs) >= txReannoMaxNum {
-							return txs
+							return txs, statics
 						}
 					}
 				}
-				return txs
+				return txs, statics
 			}()
 			pool.mu.RUnlock()
 			if len(reannoTxs) > 0 {
@@ -559,11 +561,11 @@ func (pool *LegacyPool) Content() (map[common.Address][]*types.Transaction, map[
 
 	pending := make(map[common.Address][]*types.Transaction, len(pool.pending))
 	for addr, list := range pool.pending {
-		pending[addr] = list.Flatten()
+		pending[addr], _ = list.Flatten()
 	}
 	queued := make(map[common.Address][]*types.Transaction, len(pool.queue))
 	for addr, list := range pool.queue {
-		queued[addr] = list.Flatten()
+		queued[addr], _ = list.Flatten()
 	}
 	return pending, queued
 }
@@ -576,11 +578,11 @@ func (pool *LegacyPool) ContentFrom(addr common.Address) ([]*types.Transaction, 
 
 	var pending []*types.Transaction
 	if list, ok := pool.pending[addr]; ok {
-		pending = list.Flatten()
+		pending, _ = list.Flatten()
 	}
 	var queued []*types.Transaction
 	if list, ok := pool.queue[addr]; ok {
-		queued = list.Flatten()
+		queued, _ = list.Flatten()
 	}
 	return pending, queued
 }
@@ -612,7 +614,7 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) map[common.Address]
 	}
 	pending := make(map[common.Address][]*txpool.LazyTransaction, len(pool.pending))
 	for addr, list := range pool.pending {
-		txs := list.Flatten()
+		txs, _ := list.Flatten()
 
 		// If the miner requests tip enforcement, cap the lists now
 		if minTipBig != nil && !pool.locals.contains(addr) {
@@ -658,10 +660,12 @@ func (pool *LegacyPool) local() map[common.Address]types.Transactions {
 	txs := make(map[common.Address]types.Transactions)
 	for addr := range pool.locals.accounts {
 		if pending := pool.pending[addr]; pending != nil {
-			txs[addr] = append(txs[addr], pending.Flatten()...)
+			transactions, _ := pending.Flatten()
+			txs[addr] = append(txs[addr], transactions...)
 		}
 		if queued := pool.queue[addr]; queued != nil {
-			txs[addr] = append(txs[addr], queued.Flatten()...)
+			transactions, _ := queued.Flatten()
+			txs[addr] = append(txs[addr], transactions...)
 		}
 	}
 	return txs
@@ -1486,7 +1490,7 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		// Update all accounts to the latest known pending nonce
 		nonces := make(map[common.Address]uint64, len(pool.pending))
 		for addr, list := range pool.pending {
-			highestPending := list.LastElement()
+			highestPending, _ := list.LastElement()
 			nonces[addr] = highestPending.Nonce() + 1
 		}
 		pool.pendingNonces.setAll(nonces)
@@ -1511,7 +1515,7 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		staticTxs := make([]*types.Transaction, 0)
 		nonStaticTxs := make([]*types.Transaction, 0)
 		for _, set := range events {
-			flattenedTxs := set.Flatten()
+			flattenedTxs, _ := set.Flatten()
 			if set.staticOnly {
 				staticTxs = append(staticTxs, flattenedTxs...)
 			} else {
@@ -1814,7 +1818,8 @@ func (pool *LegacyPool) truncateQueue() {
 
 		// Drop all transactions if they are less than the overflow
 		if size := uint64(list.Len()); size <= drop {
-			for _, tx := range list.Flatten() {
+			transactions, _ := list.Flatten()
+			for _, tx := range transactions {
 				pool.removeTx(tx.Hash(), true, true)
 			}
 			drop -= size
@@ -1822,7 +1827,7 @@ func (pool *LegacyPool) truncateQueue() {
 			continue
 		}
 		// Otherwise drop only last few transactions
-		txs := list.Flatten()
+		txs, _ := list.Flatten()
 		for i := len(txs) - 1; i >= 0 && drop > 0; i-- {
 			pool.removeTx(txs[i].Hash(), true, true)
 			drop--

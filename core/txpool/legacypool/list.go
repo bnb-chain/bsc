@@ -255,7 +255,7 @@ func (m *sortedMap) Len() int {
 	return len(m.items)
 }
 
-func (m *sortedMap) flatten() types.Transactions {
+func (m *sortedMap) flatten() (types.Transactions, bool) {
 	m.cacheMu.Lock()
 	defer m.cacheMu.Unlock()
 	// If the sorting was not cached yet, create and cache it
@@ -272,25 +272,25 @@ func (m *sortedMap) flatten() types.Transactions {
 		}
 		sort.Sort(types.TxByNonce(m.cache))
 	}
-	return m.cache
+	return m.cache, m.staticOnly
 }
 
 // Flatten creates a nonce-sorted slice of transactions based on the loosely
 // sorted internal representation. The result of the sorting is cached in case
 // it's requested again before any modifications are made to the contents.
-func (m *sortedMap) Flatten() types.Transactions {
-	cache := m.flatten()
+func (m *sortedMap) Flatten() (types.Transactions, bool) {
+	cache, static := m.flatten()
 	// Copy the cache to prevent accidental modification
 	txs := make(types.Transactions, len(cache))
 	copy(txs, cache)
-	return txs
+	return txs, static
 }
 
 // LastElement returns the last element of a flattened list, thus, the
 // transaction with the highest nonce
-func (m *sortedMap) LastElement() *types.Transaction {
-	cache := m.flatten()
-	return cache[len(cache)-1]
+func (m *sortedMap) LastElement() (*types.Transaction, bool) {
+	cache, static := m.flatten()
+	return cache[len(cache)-1], static
 }
 
 // list is a "list" of transactions belonging to an account, sorted by account
@@ -362,7 +362,7 @@ func (l *list) Add(tx *types.Transaction, priceBump uint64, static bool) (bool, 
 	l.totalcost.Add(l.totalcost, cost)
 
 	// Otherwise overwrite the old transaction with the current one
-	l.txs.Put(tx, static) // todo putting false as a placeholder
+	l.txs.Put(tx, static)
 	if l.costcap.Cmp(cost) < 0 {
 		l.costcap = cost
 	}
@@ -477,13 +477,13 @@ func (l *list) Empty() bool {
 // Flatten creates a nonce-sorted slice of transactions based on the loosely
 // sorted internal representation. The result of the sorting is cached in case
 // it's requested again before any modifications are made to the contents.
-func (l *list) Flatten() types.Transactions {
+func (l *list) Flatten() (types.Transactions, bool) {
 	return l.txs.Flatten()
 }
 
 // LastElement returns the last element of a flattened list, thus, the
 // transaction with the highest nonce
-func (l *list) LastElement() *types.Transaction {
+func (l *list) LastElement() (*types.Transaction, bool) {
 	return l.txs.LastElement()
 }
 

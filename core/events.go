@@ -24,7 +24,7 @@ import (
 // NewTxsEvent is posted when a batch of transactions enters the transaction pool.
 type NewTxsEvent struct {
 	Txs []*types.Transaction
-	// todo Static bool is Whether to send to only Static peer or not.
+	// Static bool is Whether to send to only Static peer or not.
 	// This is because at high traffic we still want to broadcast transactions to at least some peers so that we
 	// minimize the transaction lost.
 	Static bool

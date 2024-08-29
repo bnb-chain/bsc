@@ -223,7 +223,7 @@ func (p *Peer) SendTransactions(txs types.Transactions) error {
 // propagate to a remote peer. The number of pending sends are capped (new ones
 // will force old sends to be dropped)
 func (p *Peer) AsyncSendTransactions(hashes []common.Hash, staticOnly bool) {
-	// todo p.Peer.Info().Network.Static bool decides if pool2 transaction will be broadcasted to that peer or not
+	// p.Peer.Info().Network.Static bool decides if pool2 transaction will be broadcasted to that peer or not
 	select {
 	case <-p.txTerm:
 		p.Log().Debug("Dropping transaction propagation", "count", len(hashes))
