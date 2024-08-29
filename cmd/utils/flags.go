@@ -449,6 +449,18 @@ var (
 		Value:    ethconfig.Defaults.TxPool.GlobalQueue,
 		Category: flags.TxPoolCategory,
 	}
+	TxPoolPool2SlotsFlag = &cli.Uint64Flag{
+		Name:     "txpool.pool2slots",
+		Usage:    "Maximum number of transaction slots in pool 2",
+		Value:    ethconfig.Defaults.TxPool.Pool2Slots,
+		Category: flags.TxPoolCategory,
+	}
+	TxPoolPool3SlotsFlag = &cli.Uint64Flag{
+		Name:     "txpool.pool3slots",
+		Usage:    "Maximum number of transaction slots in pool 3",
+		Value:    ethconfig.Defaults.TxPool.Pool3Slots,
+		Category: flags.TxPoolCategory,
+	}
 	TxPoolLifetimeFlag = &cli.DurationFlag{
 		Name:     "txpool.lifetime",
 		Usage:    "Maximum amount of time non-executable transaction are queued",
@@ -1762,6 +1774,12 @@ func setTxPool(ctx *cli.Context, cfg *legacypool.Config) {
 	if ctx.IsSet(TxPoolGlobalQueueFlag.Name) {
 		cfg.GlobalQueue = ctx.Uint64(TxPoolGlobalQueueFlag.Name)
 	}
+	if ctx.IsSet(TxPoolPool2SlotsFlag.Name) {
+		cfg.Pool2Slots = ctx.Uint64(TxPoolPool2SlotsFlag.Name)
+	}
+	if ctx.IsSet(TxPoolPool3SlotsFlag.Name) {
+		cfg.Pool3Slots = ctx.Uint64(TxPoolPool3SlotsFlag.Name)
+	}
 	if ctx.IsSet(TxPoolLifetimeFlag.Name) {
 		cfg.Lifetime = ctx.Duration(TxPoolLifetimeFlag.Name)
 	}
@@ -2292,6 +2310,8 @@ func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) Setup
 			"GlobalSlots":  poolConfig.GlobalSlots,
 			"AccountQueue": poolConfig.AccountQueue,
 			"GlobalQueue":  poolConfig.GlobalQueue,
+			"Pool2Slots":   poolConfig.Pool2Slots,
+			"Pool3Slots":   poolConfig.Pool3Slots,
 			"Lifetime":     poolConfig.Lifetime,
 		})
 	}

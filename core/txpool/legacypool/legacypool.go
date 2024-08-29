@@ -56,9 +56,6 @@ const (
 
 	// txReannoMaxNum is the maximum number of transactions a reannounce action can include.
 	txReannoMaxNum = 1024
-
-	//maxPool2Size = 10000 // todo might have to set it in config // This is in slots and not in no of transactions
-	//maxPool3Size = 50000
 )
 
 var (
@@ -141,8 +138,8 @@ type Config struct {
 	GlobalSlots  uint64 // Maximum number of executable transaction slots for all accounts
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
-	Pool2Slots   uint64
-	Pool3Slots   uint64
+	Pool2Slots   uint64 // Maximum number of transaction slots in pool 2
+	Pool3Slots   uint64 // Maximum number of transaction slots in pool 3
 
 	Lifetime       time.Duration // Maximum amount of time non-executable transaction are queued
 	ReannounceTime time.Duration // Duration for announcing local pending transactions again
@@ -160,6 +157,8 @@ var DefaultConfig = Config{
 	GlobalSlots:  4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
 	AccountQueue: 64,
 	GlobalQueue:  1024,
+	Pool2Slots:   1024,
+	Pool3Slots:   1024,
 
 	Lifetime:       3 * time.Hour,
 	ReannounceTime: 10 * 365 * 24 * time.Hour,
@@ -196,6 +195,14 @@ func (config *Config) sanitize() Config {
 	if conf.GlobalQueue < 1 {
 		log.Warn("Sanitizing invalid txpool global queue", "provided", conf.GlobalQueue, "updated", DefaultConfig.GlobalQueue)
 		conf.GlobalQueue = DefaultConfig.GlobalQueue
+	}
+	if conf.Pool2Slots < 1 {
+		log.Warn("Sanitizing invalid txpool pool 2 slots", "provided", conf.Pool2Slots, "updated", DefaultConfig.Pool2Slots)
+		conf.Pool2Slots = DefaultConfig.Pool2Slots
+	}
+	if conf.Pool3Slots < 1 {
+		log.Warn("Sanitizing invalid txpool pool 3 slots", "provided", conf.Pool3Slots, "updated", DefaultConfig.Pool3Slots)
+		conf.Pool3Slots = DefaultConfig.Pool3Slots
 	}
 	if conf.Lifetime < 1 {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultConfig.Lifetime)
@@ -826,7 +833,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		if !isLocal && pool.priced.Underpriced(tx) {
 			addedToAnyPool, err := pool.addToPool12OrPool3(tx, from, isLocal, includePool1, includePool2, includePool3)
 			if addedToAnyPool {
-				return false, txpool.ErrUnderpricedTransferredtoAnotherPool // todo change it to return no error
+				return false, txpool.ErrUnderpricedTransferredtoAnotherPool // The reserve code expects named error formatting
 			}
 			if err != nil {
 				log.Error("Error while trying to add to pool2 or pool3", "error", err)
@@ -876,7 +883,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 					pool.priced.Put(dropTx, false)
 				}
 				log.Trace("Discarding future transaction replacing pending tx", "hash", hash)
-				return false, txpool.ErrFutureReplacePending // todo 1 maybe in this case the future transaction can be part of pool3!
+				return false, txpool.ErrFutureReplacePending // todo 1 maybe in this case the future transaction can be part of pool3?
 			}
 		}
 
@@ -2218,7 +2225,7 @@ func (pool *LegacyPool) transferTransactions() {
 		from, _ := types.Sender(pool.signer, transaction)
 
 		// use addToPool12OrPool3() function to transfer from pool3 to pool2
-		_, err := pool.addToPool12OrPool3(transaction, from, true, false, true, false) // todo by default all pool3 transactions are considered local
+		_, err := pool.addToPool12OrPool3(transaction, from, true, false, true, false) // by default all pool3 transactions are considered local
 		if err != nil {
 			// if it never gets added to anything then add it back
 			pool.addToPool12OrPool3(transaction, from, true, false, false, true)
