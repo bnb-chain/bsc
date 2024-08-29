@@ -422,7 +422,7 @@ func (b *backendMock) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent)
 
 func (b *backendMock) Engine() consensus.Engine { return nil }
 
-func (b *backendMock) CurrentTurnLength() (uint8, error) { return 1, nil }
+func (b *backendMock) CurrentValidators() ([]common.Address, error) { return []common.Address{}, nil }
 
 func (b *backendMock) MevRunning() bool                       { return false }
 func (b *backendMock) HasBuilder(builder common.Address) bool { return false }
