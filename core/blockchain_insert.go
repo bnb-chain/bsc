@@ -64,6 +64,7 @@ func (st *insertStats) report(chain []*types.Block, index int, snapDiffItems, sn
 			"blocks", st.processed, "txs", txs, "blobs", blobs, "mgas", float64(st.usedGas) / 1000000,
 			"elapsed", common.PrettyDuration(elapsed), "mgasps", mgasps,
 		}
+		mGasPsGauge.Update(int64(mgasps))
 		blockInsertMgaspsGauge.Update(int64(mgasps))
 		if timestamp := time.Unix(int64(end.Time()), 0); time.Since(timestamp) > time.Minute {
 			context = append(context, []interface{}{"age", common.PrettyAge(timestamp)}...)
