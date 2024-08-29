@@ -102,8 +102,8 @@ func weiToEtherStringF2(wei *big.Int) string {
 func main() {
 	// Parse the flags and set up the logger to print everything requested
 	flag.Parse()
-	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.FromLegacyLevel(*logFlag), true)))
-
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.FromLegacyLevel(*logFlag), false)))
+	log.Info("faucet started")
 	// Construct the payout tiers
 	amounts := make([]string, *tiersFlag)
 	for i := 0; i < *tiersFlag; i++ {
@@ -535,8 +535,8 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				if balanceMainnet.Cmp(minMainnetBalance) < 0 {
 					f.lock.Unlock()
-					log.Warn("insufficient enough BNB on BSC mainnet", "address", mainnetAddr,
-						"balanceMainnet", balanceMainnet, "minimum mainnet BNB request", minMainnetBalance)
+					log.Warn("insufficient BNB on BSC mainnet", "address", mainnetAddr,
+						"balanceMainnet", balanceMainnet, "minMainnetBalance", minMainnetBalance)
 					// Send an error if failed to meet the minimum balance requirement
 					if err = sendError(wsconn, fmt.Errorf("%s, insufficient BNB on BSC mainnet(should >=%sBNB)",
 						address.Hex(), weiToEtherStringF2(minMainnetBalance))); err != nil {
