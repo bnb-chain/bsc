@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -228,7 +229,33 @@ func ServiceGetBlockBodiesQuery(chain *core.BlockChain, query GetBlockBodiesRequ
 		if body == nil {
 			continue
 		}
+		header := chain.GetHeaderByHash(hash)
+		if header == nil {
+			continue
+		}
+
 		sidecars := chain.GetSidecarsByHash(hash)
+		// Only check for sidecars validity when necessary
+		highest := chain.ChasingHead()
+		current := chain.CurrentHeader()
+		if highest == nil || highest.Number.Cmp(current.Number) < 0 {
+			highest = current
+		}
+		if header.Number.Uint64()+params.MinBlocksForBlobRequests >= highest.Number.Uint64() {
+			var blobTxs int
+			for _, tx := range body.Transactions {
+				if tx.Type() == types.BlobTxType {
+					blobTxs++
+				}
+			}
+			if blobTxs > 0 {
+				if len(sidecars) != blobTxs {
+					log.Warn("Failed to get block sidecars", "blob-txs", blobTxs, "sidecars", len(sidecars), "block", hash)
+					continue
+				}
+			}
+		}
+
 		bodyWithSidecars := &BlockBody{
 			Transactions: body.Transactions,
 			Uncles:       body.Uncles,
