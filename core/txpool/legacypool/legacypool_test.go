@@ -1930,7 +1930,10 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 	defer pool.Close()
 
 	pool.config.GlobalSlots = 2
-	pool.config.GlobalQueue = 2
+	pool.config.GlobalQueue = 1
+
+	pool.config.Pool2Slots = 1
+	pool.config.Pool3Slots = 1
 
 	// Keep track of transaction events to ensure all executables get announced
 	events := make(chan core.NewTxsEvent, 32)
@@ -1995,8 +1998,8 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 	if pending != 2 {
 		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 2)
 	}
-	if queued != 2 {
-		t.Fatalf("queued transactions mismatched: have %d, want %d", queued, 2)
+	if queued != 1 {
+		t.Fatalf("queued transactions mismatched: have %d, want %d", queued, 1)
 	}
 	if err := validateEvents(events, 2); err != nil {
 		t.Fatalf("additional event firing failed: %v", err)
