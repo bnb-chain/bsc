@@ -467,36 +467,55 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 	}
 	// Ensure that a previous crash in SetHead doesn't leave extra ancients
-	if frozen, err := bc.db.BlockStore().ItemAmountInAncient(); err == nil && frozen > 0 {
-		frozen, err = bc.db.BlockStore().Ancients()
+	if bc.triedb.Scheme() != rawdb.VersionScheme {
+		if frozen, err := bc.db.BlockStore().ItemAmountInAncient(); err == nil && frozen > 0 {
+			frozen, err = bc.db.BlockStore().Ancients()
+			if err != nil {
+				return nil, err
+			}
+			var (
+				needRewind bool
+				low        uint64
+			)
+			// The head full block may be rolled back to a very low height due to
+			// blockchain repair. If the head full block is even lower than the ancient
+			// chain, truncate the ancient store.
+			fullBlock := bc.CurrentBlock()
+			if fullBlock != nil && fullBlock.Hash() != bc.genesisBlock.Hash() && fullBlock.Number.Uint64() < frozen-1 {
+				needRewind = true
+				low = fullBlock.Number.Uint64()
+			}
+			// In snap sync, it may happen that ancient data has been written to the
+			// ancient store, but the LastFastBlock has not been updated, truncate the
+			// extra data here.
+			snapBlock := bc.CurrentSnapBlock()
+			if snapBlock != nil && snapBlock.Number.Uint64() < frozen-1 {
+				needRewind = true
+				if snapBlock.Number.Uint64() < low || low == 0 {
+					low = snapBlock.Number.Uint64()
+				}
+			}
+			if needRewind {
+				log.Error("Truncating ancient chain", "from", bc.CurrentHeader().Number.Uint64(), "to", low)
+				if err := bc.SetHead(low); err != nil {
+					return nil, err
+				}
+			}
+		}
+	} else {
+		//TODO:: need consider the offline and inline prune block
+		frozen, err := bc.db.BlockStore().Ancients()
 		if err != nil {
 			return nil, err
 		}
-		var (
-			needRewind bool
-			low        uint64
-		)
-		// The head full block may be rolled back to a very low height due to
-		// blockchain repair. If the head full block is even lower than the ancient
-		// chain, truncate the ancient store.
+		items, err := bc.db.BlockStore().ItemAmountInAncient()
+		if err != nil {
+			return nil, err
+		}
 		fullBlock := bc.CurrentBlock()
-		if fullBlock != nil && fullBlock.Hash() != bc.genesisBlock.Hash() && fullBlock.Number.Uint64() < frozen-1 {
-			needRewind = true
-			low = fullBlock.Number.Uint64()
-		}
-		// In snap sync, it may happen that ancient data has been written to the
-		// ancient store, but the LastFastBlock has not been updated, truncate the
-		// extra data here.
-		snapBlock := bc.CurrentSnapBlock()
-		if snapBlock != nil && snapBlock.Number.Uint64() < frozen-1 {
-			needRewind = true
-			if snapBlock.Number.Uint64() < low || low == 0 {
-				low = snapBlock.Number.Uint64()
-			}
-		}
-		if needRewind {
-			log.Error("Truncating ancient chain", "from", bc.CurrentHeader().Number.Uint64(), "to", low)
-			if err := bc.SetHead(low); err != nil {
+		log.Info("version mode rewind ancient store", "target", fullBlock.Number.Uint64(), "old head", frozen, "items", items, "offset", bc.db.BlockStore().AncientOffSet())
+		if frozen >= fullBlock.Number.Uint64() {
+			if _, err = bc.db.BlockStore().TruncateTail(fullBlock.Number.Uint64()); err != nil {
 				return nil, err
 			}
 		}
