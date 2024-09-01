@@ -124,6 +124,7 @@ type handlerConfig struct {
 	DirectBroadcast        bool
 	DisablePeerTxBroadcast bool
 	PeerSet                *peerSet
+	OnlyFullSync           bool
 }
 
 type handler struct {
@@ -202,35 +203,37 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		handlerStartCh:         make(chan struct{}),
 		stopCh:                 make(chan struct{}),
 	}
-	if config.Sync == downloader.FullSync {
-		// The database seems empty as the current block is the genesis. Yet the snap
-		// block is ahead, so snap sync was enabled for this node at a certain point.
-		// The scenarios where this can happen is
-		// * if the user manually (or via a bad block) rolled back a snap sync node
-		//   below the sync point.
-		// * the last snap sync is not finished while user specifies a full sync this
-		//   time. But we don't have any recent state for full sync.
-		// In these cases however it's safe to reenable snap sync.
-		fullBlock, snapBlock := h.chain.CurrentBlock(), h.chain.CurrentSnapBlock()
-		if fullBlock.Number.Uint64() == 0 && snapBlock.Number.Uint64() > 0 {
-			if rawdb.ReadAncientType(h.database) == rawdb.PruneFreezerType {
-				log.Crit("Fast Sync not finish, can't enable pruneancient mode")
+	if !config.OnlyFullSync {
+		if config.Sync == downloader.FullSync {
+			// The database seems empty as the current block is the genesis. Yet the snap
+			// block is ahead, so snap sync was enabled for this node at a certain point.
+			// The scenarios where this can happen is
+			// * if the user manually (or via a bad block) rolled back a snap sync node
+			//   below the sync point.
+			// * the last snap sync is not finished while user specifies a full sync this
+			//   time. But we don't have any recent state for full sync.
+			// In these cases however it's safe to reenable snap sync.
+			fullBlock, snapBlock := h.chain.CurrentBlock(), h.chain.CurrentSnapBlock()
+			if fullBlock.Number.Uint64() == 0 && snapBlock.Number.Uint64() > 0 {
+				if rawdb.ReadAncientType(h.database) == rawdb.PruneFreezerType {
+					log.Crit("Fast Sync not finish, can't enable pruneancient mode")
+				}
+				h.snapSync.Store(true)
+				log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
+			} else if !h.chain.NoTries() && !h.chain.HasState(fullBlock.Root) {
+				h.snapSync.Store(true)
+				log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
 			}
-			h.snapSync.Store(true)
-			log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
-		} else if !h.chain.NoTries() && !h.chain.HasState(fullBlock.Root) {
-			h.snapSync.Store(true)
-			log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
-		}
-	} else {
-		head := h.chain.CurrentBlock()
-		if head.Number.Uint64() > 0 && h.chain.HasState(head.Root) {
-			// Print warning log if database is not empty to run snap sync.
-			log.Warn("Switch sync mode from snap sync to full sync", "reason", "snap sync complete")
 		} else {
-			// If snap sync was requested and our database is empty, grant it
-			h.snapSync.Store(true)
-			log.Info("Enabled snap sync", "head", head.Number, "hash", head.Hash())
+			head := h.chain.CurrentBlock()
+			if head.Number.Uint64() > 0 && h.chain.HasState(head.Root) {
+				// Print warning log if database is not empty to run snap sync.
+				log.Warn("Switch sync mode from snap sync to full sync", "reason", "snap sync complete")
+			} else {
+				// If snap sync was requested and our database is empty, grant it
+				h.snapSync.Store(true)
+				log.Info("Enabled snap sync", "head", head.Number, "hash", head.Hash())
+			}
 		}
 	}
 	// If snap sync is requested but snapshots are disabled, fail loudly
