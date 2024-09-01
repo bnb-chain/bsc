@@ -81,6 +81,7 @@ type triePrefetcher struct {
 
 // newTriePrefetcher
 func newTriePrefetcher(db Database, root, rootParent common.Hash, namespace string) *triePrefetcher {
+	panic("prefetcher not support")
 	prefix := triePrefetchMetricsPrefix + namespace
 	p := &triePrefetcher{
 		db:         db,

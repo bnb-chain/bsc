@@ -361,6 +361,8 @@ func geth(ctx *cli.Context) error {
 	defer stack.Close()
 
 	startNode(ctx, stack, backend, false)
+	// TODO:: debug code , will be deleted in the future
+	debug.StartPProf("127.0.0.1:7060", !ctx.IsSet("metrics.addr"))
 	stack.Wait()
 	return nil
 }

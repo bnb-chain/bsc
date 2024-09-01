@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -63,6 +64,7 @@ func (s Storage) Copy() Storage {
 // - Finally, call commit to return the changes of storage trie and update account data.
 type stateObject struct {
 	db       *StateDB
+	version  int64
 	address  common.Address      // address of ethereum account
 	addrHash common.Hash         // hash of ethereum address of the account
 	origin   *types.StateAccount // Account original data without any change applied, nil means it was not existent
@@ -99,7 +101,7 @@ func (s *stateObject) empty() bool {
 }
 
 // newObject creates a state object.
-func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *stateObject {
+func newObject(db *StateDB, address common.Address, acct *types.StateAccount, version int64) *stateObject {
 	var (
 		origin  = acct
 		created = acct == nil // true if the account was not existent
@@ -112,9 +114,9 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 	if db != nil && db.storagePool != nil {
 		storageMap = db.GetStorage(address)
 	}
-
 	return &stateObject{
 		db:                  db,
+		version:             version,
 		address:             address,
 		addrHash:            crypto.Keccak256Hash(address[:]),
 		origin:              origin,
@@ -158,8 +160,18 @@ func (s *stateObject) getTrie() (Trie, error) {
 		//	s.trie = s.db.prefetcher.trie(s.addrHash, s.data.Root)
 		// }
 		// if s.trie == nil {
-		tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root, s.db.trie)
+		var (
+			tr  Trie
+			err error
+		)
+		if s.version == InvalidSateObjectVersion {
+			tr, err = s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root, s.db.trie)
+		} else {
+			tr, err = s.db.db.(*cachingVersaDB).openStorageTreeWithVersion(s.version, s.db.originalRoot, s.address, s.data.Root)
+		}
+
 		if err != nil {
+			panic(fmt.Sprintf("open storage storage failed, root version: %d, storage version: %d, addrss: %s, storage root: %s, error: %s", s.db.db.GetVersion(), s.version, s.address.String(), s.data.Root.String(), err.Error()))
 			return nil, err
 		}
 		s.trie = tr
@@ -229,6 +241,7 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		value common.Hash
 	)
 	if s.db.snap != nil {
+		panic("snap is not nil")
 		start := time.Now()
 		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
 		if metrics.EnabledExpensive {
@@ -302,6 +315,30 @@ func (s *stateObject) finalise(prefetch bool) {
 	}
 }
 
+func (s *stateObject) IsContractAccount() bool {
+	return s.data.Root.Cmp(types.EmptyRootHash) != 0 ||
+		bytes.Compare(s.data.CodeHash, types.EmptyCodeHash.Bytes()) != 0
+}
+
+func (s *stateObject) IsAccountChanged() bool {
+	if s.origin == nil {
+		return true
+	}
+	if s.data.Nonce != s.origin.Nonce {
+		return true
+	}
+	if s.data.Balance.Cmp(s.origin.Balance) != 0 {
+		return true
+	}
+	if s.data.Root.Cmp(s.origin.Root) != 0 {
+		return true
+	}
+	if bytes.Compare(s.data.CodeHash, s.origin.CodeHash) != 0 {
+		return true
+	}
+	return false
+}
+
 // updateTrie is responsible for persisting cached storage changes into the
 // object's storage trie. In case the storage trie is not yet loaded, this
 // function will load the trie automatically. If any issues arise during the
@@ -312,10 +349,28 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	// Make sure all dirty slots are finalized into the pending storage area
 	s.finalise(false)
 
-	// Short circuit if nothing changed, don't bother with hashing anything
-	if len(s.pendingStorage) == 0 {
-		return s.trie, nil
+	// fix 33740 blocks issue, add 1002 contract balance, but not update 1002
+	// storage tree, the case lead to 1002 account version mismatch with 1002
+	// storage tree version, occurs 53409 block open 1002 storage tree error.
+	if s.db.db.Scheme() == rawdb.VersionScheme {
+		if len(s.pendingStorage) == 0 {
+			// transferring balance to a contract or upgrading the code, but
+			// without updating the storage key, a commit is still required to
+			// increment the version number of the storage tree.
+			if !s.IsContractAccount() {
+				return s.trie, nil
+			}
+			//if !s.IsAccountChanged() {
+			//	return s.trie, nil
+			//}
+		}
+	} else {
+		// Short circuit if nothing changed, don't bother with hashing anything
+		if len(s.pendingStorage) == 0 {
+			return s.trie, nil
+		}
 	}
+
 	// Track the amount of time wasted on updating the storage trie
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) {
@@ -511,6 +566,7 @@ func (s *stateObject) setBalance(amount *uint256.Int) {
 }
 
 func (s *stateObject) deepCopy(db *StateDB) *stateObject {
+	//TODO:: debug code, deleted in the future
 	obj := &stateObject{
 		db:       db,
 		address:  s.address,

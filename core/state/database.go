@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 
+	versa "github.com/bnb-chain/versioned-state-database"
 	"github.com/crate-crypto/go-ipa/banderwagon"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
@@ -70,8 +71,33 @@ type Database interface {
 	// TrieDB returns the underlying trie database for managing trie nodes.
 	TrieDB() *triedb.Database
 
+	// Scheme returns triedb scheme, used to distinguish version triedb.
+	Scheme() string
+
+	// Flush used for version caching versa db to commit block state data.
+	Flush() error
+
+	// Release used for caching versa db to release resource.
+	Release() error
+
+	// Reset used for caching versa db to clean up meta data.
+	Reset()
+
+	// Copy used for caching versa db to copy db, main to transfer triedb with rw mode.
+	Copy() Database
+
+	// HasState returns the state data whether in the triedb.
+	HasState(root common.Hash) bool
+
+	// HasTreeExpired used for caching versa db, whether the state where the opened tree resides has been closed
+	HasTreeExpired(tr Trie) bool
+
 	// NoTries returns whether the database has tries storage.
 	NoTries() bool
+
+	SetVersion(version int64)
+
+	GetVersion() int64
 }
 
 // Trie is a Ethereum Merkle Patricia trie.
@@ -148,27 +174,42 @@ type Trie interface {
 // concurrent use, but does not retain any recent trie nodes in memory. To keep some
 // historical state in memory, use the NewDatabaseWithConfig constructor.
 func NewDatabase(db ethdb.Database) Database {
-	return NewDatabaseWithConfig(db, nil)
+	return NewDatabaseWithConfig(db, nil, false)
 }
 
 // NewDatabaseWithConfig creates a backing store for state. The returned database
 // is safe for concurrent use and retains a lot of collapsed RLP trie nodes in a
 // large memory cache.
-func NewDatabaseWithConfig(db ethdb.Database, config *triedb.Config) Database {
+func NewDatabaseWithConfig(db ethdb.Database, config *triedb.Config, needCommit bool) Database {
 	noTries := config != nil && config.NoTries
+
+	triedb := triedb.NewDatabase(db, config)
+	if triedb.Scheme() == rawdb.VersionScheme {
+		if needCommit {
+			return NewVersaDatabase(db, triedb, versa.S_COMMIT)
+		}
+		return NewVersaDatabase(db, triedb, versa.S_RW)
+	}
 
 	return &cachingDB{
 		disk:          db,
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		triedb:        triedb.NewDatabase(db, config),
+		triedb:        triedb,
 		noTries:       noTries,
 	}
 }
 
 // NewDatabaseWithNodeDB creates a state database with an already initialized node database.
-func NewDatabaseWithNodeDB(db ethdb.Database, triedb *triedb.Database) Database {
+func NewDatabaseWithNodeDB(db ethdb.Database, triedb *triedb.Database, needCommit bool) Database {
 	noTries := triedb != nil && triedb.Config() != nil && triedb.Config().NoTries
+
+	if triedb.Scheme() == rawdb.VersionScheme {
+		if needCommit {
+			return NewVersaDatabase(db, triedb, versa.S_COMMIT)
+		}
+		return NewVersaDatabase(db, triedb, versa.S_RW)
+	}
 
 	return &cachingDB{
 		disk:          db,
@@ -185,6 +226,8 @@ type cachingDB struct {
 	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
 	triedb        *triedb.Database
 	noTries       bool
+
+	debug *DebugHashState
 }
 
 // OpenTrie opens the main account trie at a specific root hash.
@@ -197,9 +240,22 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 	}
 	tr, err := trie.NewStateTrie(trie.StateTrieID(root), db.triedb)
 	if err != nil {
+		if db.debug != nil {
+			db.debug.OnError(fmt.Errorf("failed to open tree, root: %s, error: %s", root.String(), err.Error()))
+		}
 		return nil, err
 	}
-	return tr, nil
+	ht := &HashTrie{
+		trie:    tr,
+		root:    root,
+		address: common.Address{},
+		owner:   common.Hash{},
+		debug:   db.debug,
+	}
+	if db.debug != nil {
+		db.debug.OnOpenTree(root, common.Hash{}, common.Address{})
+	}
+	return ht, nil
 }
 
 // OpenStorageTrie opens the storage trie of an account.
@@ -214,11 +270,27 @@ func (db *cachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 	if db.triedb.IsVerkle() {
 		return self, nil
 	}
-	tr, err := trie.NewStateTrie(trie.StorageTrieID(stateRoot, crypto.Keccak256Hash(address.Bytes()), root), db.triedb)
+	owner := crypto.Keccak256Hash(address.Bytes())
+	tr, err := trie.NewStateTrie(trie.StorageTrieID(stateRoot, owner, root), db.triedb)
 	if err != nil {
+		if db.debug != nil {
+			db.debug.OnError(fmt.Errorf("failed to storage open tree, stateRoot: %s, address: %s, root: %s, error: %s",
+				stateRoot.String(), address.String(), root.String(), err.Error()))
+		}
 		return nil, err
 	}
-	return tr, nil
+	ht := &HashTrie{
+		trie:     tr,
+		root:     stateRoot,
+		statRoot: root,
+		address:  address,
+		owner:    owner,
+		debug:    db.debug,
+	}
+	if db.debug != nil {
+		db.debug.OnOpenTree(root, owner, address)
+	}
+	return ht, nil
 }
 
 func (db *cachingDB) NoTries() bool {
@@ -235,6 +307,8 @@ func (db *cachingDB) CopyTrie(t Trie) Trie {
 		return t.Copy()
 	case *trie.EmptyTrie:
 		return t.Copy()
+	case *HashTrie:
+		return db.CopyTrie(t.trie)
 	default:
 		panic(fmt.Errorf("unknown trie type %T", t))
 	}
@@ -242,6 +316,9 @@ func (db *cachingDB) CopyTrie(t Trie) Trie {
 
 // ContractCode retrieves a particular contract's code.
 func (db *cachingDB) ContractCode(address common.Address, codeHash common.Hash) ([]byte, error) {
+	if db.debug != nil {
+		db.debug.OnGetCode(address, codeHash)
+	}
 	code, _ := db.codeCache.Get(codeHash)
 	if len(code) > 0 {
 		return code, nil
@@ -289,4 +366,179 @@ func (db *cachingDB) DiskDB() ethdb.KeyValueStore {
 // TrieDB retrieves any intermediate trie-node caching layer.
 func (db *cachingDB) TrieDB() *triedb.Database {
 	return db.triedb
+}
+
+func (db *cachingDB) Reset() {
+	return
+}
+
+func (db *cachingDB) Scheme() string {
+	return db.triedb.Scheme()
+}
+
+func (db *cachingDB) Flush() error {
+	return nil
+}
+
+func (db *cachingDB) Release() error {
+	db.debug.flush()
+	db.debug = nil
+	return nil
+}
+
+func (db *cachingDB) SetVersion(version int64) {
+	db.debug = NewDebugHashState(db.disk)
+	db.debug.Version = version
+}
+
+func (db *cachingDB) GetVersion() int64 {
+	return db.debug.Version
+}
+
+func (db *cachingDB) Copy() Database {
+	return db
+}
+
+func (db *cachingDB) HasState(root common.Hash) bool {
+	_, err := db.OpenTrie(root)
+	return err == nil
+}
+
+func (db *cachingDB) HasTreeExpired(_ Trie) bool {
+	return false
+}
+
+type HashTrie struct {
+	trie     Trie
+	root     common.Hash
+	statRoot common.Hash
+	address  common.Address
+	owner    common.Hash
+
+	debug *DebugHashState
+}
+
+func (ht *HashTrie) GetKey(key []byte) []byte {
+	return ht.trie.GetKey(key)
+}
+
+func (ht *HashTrie) GetAccount(address common.Address) (*types.StateAccount, error) {
+	acc, err := ht.trie.GetAccount(address)
+	if err != nil {
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to get account, address: %s, error: %s", address.String(), err.Error()))
+		}
+		return nil, err
+	}
+	if ht.debug != nil {
+		ht.debug.OnGetAccount(address, acc)
+	}
+	return acc, nil
+}
+
+func (ht *HashTrie) GetStorage(addr common.Address, key []byte) ([]byte, error) {
+	val, err := ht.trie.GetStorage(addr, key)
+	if err != nil {
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to get storage, address: %s, error: %s", addr.String(), err.Error()))
+		}
+		return val, err
+	}
+	if ht.debug != nil {
+		ht.debug.OnGetStorage(addr, key, val)
+	}
+	return val, err
+}
+
+func (ht *HashTrie) UpdateAccount(address common.Address, account *types.StateAccount) error {
+	err := ht.trie.UpdateAccount(address, account)
+	if err != nil {
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to update account, address: %s, account: %s, error: %s",
+				address.String(), account.String(), err.Error()))
+		}
+		return err
+	}
+	if ht.debug != nil {
+		ht.debug.OnUpdateAccount(address, account)
+	}
+	return nil
+}
+
+func (ht *HashTrie) UpdateStorage(addr common.Address, key, value []byte) error {
+	err := ht.trie.UpdateStorage(addr, key, value)
+	if err != nil {
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to update storage, address: %s, key: %s, val: %s, error: %s",
+				addr.String(), common.Bytes2Hex(key), common.Bytes2Hex(value), err.Error()))
+		}
+		return err
+	}
+	if ht.debug != nil {
+		ht.debug.OnUpdateStorage(addr, key, value)
+	}
+	return nil
+}
+
+func (ht *HashTrie) DeleteAccount(address common.Address) error {
+	err := ht.trie.DeleteAccount(address)
+	if err != nil {
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to delete account, address: %s, error: %s", address.String(), err.Error()))
+		}
+		return err
+	}
+	if ht.debug != nil {
+		ht.debug.OnDeleteAccount(address)
+	}
+	return nil
+}
+
+func (ht *HashTrie) DeleteStorage(addr common.Address, key []byte) error {
+	err := ht.trie.DeleteStorage(addr, key)
+	if err != nil {
+		if ht.debug != nil {
+			ht.debug.OnError(fmt.Errorf("failed to update storage, address: %s, key: %s, error: %s",
+				addr.String(), common.Bytes2Hex(key), err.Error()))
+		}
+		return err
+	}
+	if ht.debug != nil {
+		ht.debug.OnDeleteStorage(addr, key)
+	}
+	return nil
+}
+
+func (ht *HashTrie) UpdateContractCode(address common.Address, codeHash common.Hash, code []byte) error {
+	return ht.trie.UpdateContractCode(address, codeHash, code)
+}
+
+func (ht *HashTrie) Hash() common.Hash {
+	root := ht.trie.Hash()
+	if ht.debug != nil {
+		ht.debug.OnCalcHash(ht.address, root)
+	}
+	return root
+}
+
+func (ht *HashTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
+	hash, set, err := ht.trie.Commit(collectLeaf)
+	if err != nil {
+		ht.debug.OnError(fmt.Errorf("failed to commit tree, address: %s, error: %s",
+			ht.address.String(), err.Error()))
+		return hash, set, err
+	}
+	if ht.debug != nil {
+		ht.debug.OnCalcHash(ht.address, hash)
+		ht.debug.OnCommitTree(ht.address, hash)
+	}
+	return hash, set, nil
+}
+
+func (ht *HashTrie) NodeIterator(startKey []byte) (trie.NodeIterator, error) {
+	return ht.trie.NodeIterator(startKey)
+}
+
+func (ht *HashTrie) Prove(key []byte, proofDb ethdb.KeyValueWriter) error {
+	return ht.trie.Prove(key, proofDb)
 }

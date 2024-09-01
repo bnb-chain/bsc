@@ -126,7 +126,10 @@ func hashAlloc(ga *types.GenesisAlloc, isVerkle bool) (common.Hash, error) {
 	}
 	// Create an ephemeral in-memory database for computing hash,
 	// all the derived states will be discarded to not pollute disk.
-	db := state.NewDatabaseWithConfig(rawdb.NewMemoryDatabase(), config)
+	db := state.NewDatabaseWithConfig(rawdb.NewMemoryDatabase(), config, true)
+	log.Info("genesis calc root hash use hash mode triedb")
+	db.SetVersion(0)
+	defer db.Release()
 	statedb, err := state.New(types.EmptyRootHash, db, nil)
 	if err != nil {
 		return common.Hash{}, err
@@ -154,7 +157,10 @@ func flushAlloc(ga *types.GenesisAlloc, db ethdb.Database, triedb *triedb.Databa
 	if triedbConfig != nil {
 		triedbConfig.NoTries = false
 	}
-	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseWithNodeDB(db, triedb), nil)
+	cachingdb := state.NewDatabaseWithNodeDB(db, triedb, true)
+	cachingdb.SetVersion(0)
+	defer cachingdb.Release()
+	statedb, err := state.New(types.EmptyRootHash, cachingdb, nil)
 	if err != nil {
 		return err
 	}
@@ -174,7 +180,7 @@ func flushAlloc(ga *types.GenesisAlloc, db ethdb.Database, triedb *triedb.Databa
 		return err
 	}
 	// Commit newly generated states into disk if it's not empty.
-	if root != types.EmptyRootHash {
+	if root != types.EmptyRootHash && triedb.Scheme() != rawdb.VersionScheme {
 		if err := triedb.Commit(root, true); err != nil {
 			return err
 		}

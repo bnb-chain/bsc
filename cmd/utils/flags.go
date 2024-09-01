@@ -353,7 +353,7 @@ var (
 	}
 	StateSchemeFlag = &cli.StringFlag{
 		Name:     "state.scheme",
-		Usage:    "Scheme to use for storing ethereum state ('hash' or 'path')",
+		Usage:    "Scheme to use for storing ethereum state ('hash', 'path', 'version')",
 		Category: flags.StateCategory,
 	}
 	PathDBSyncFlag = &cli.BoolFlag{
@@ -1134,6 +1134,25 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "Extra reserve threshold for blob, blob never expires when 0 is set, default 28800",
 		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.MiscCategory,
+	}
+
+	BlockNumber = &cli.Int64Flag{
+		Name:  "block",
+		Value: int64(0),
+	}
+
+	VersionStateDirFlag = &flags.DirectoryFlag{
+		Name:     "versionstatedir",
+		Usage:    "Data directory for the version databases and keystore",
+		Value:    flags.DirectoryString(node.DefaultDataDir()),
+		Category: flags.EthCategory,
+	}
+
+	HashStateDirFlag = &flags.DirectoryFlag{
+		Name:     "hashstatedir",
+		Usage:    "Data directory for the version databases and keystore",
+		Value:    flags.DirectoryString(node.DefaultDataDir()),
+		Category: flags.EthCategory,
 	}
 )
 
@@ -1953,11 +1972,17 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(StateHistoryFlag.Name) {
 		cfg.StateHistory = ctx.Uint64(StateHistoryFlag.Name)
 	}
-	scheme, err := ParseCLIAndConfigStateScheme(ctx.String(StateSchemeFlag.Name), cfg.StateScheme)
-	if err != nil {
-		Fatalf("%v", err)
+	if ctx.String(StateSchemeFlag.Name) != rawdb.VersionScheme {
+		scheme, err := ParseCLIAndConfigStateScheme(ctx.String(StateSchemeFlag.Name), cfg.StateScheme)
+		if err != nil {
+			Fatalf("%v", err)
+		}
+		cfg.StateScheme = scheme
+	} else {
+		// TODO:: compatible with cli line and configuration file, currently only supports cli.
+		cfg.StateScheme = rawdb.VersionScheme
 	}
-	cfg.StateScheme = scheme
+
 	// Parse transaction history flag, if user is still using legacy config
 	// file with 'TxLookupLimit' configured, copy the value to 'TransactionHistory'.
 	if cfg.TransactionHistory == ethconfig.Defaults.TransactionHistory && cfg.TxLookupLimit != ethconfig.Defaults.TxLookupLimit {
