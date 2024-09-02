@@ -92,10 +92,13 @@ var (
 
 	triedbCommitTimer = metrics.NewRegisteredTimer("chain/triedb/commits", nil)
 
-	blockInsertTimer     = metrics.NewRegisteredTimer("chain/inserts", nil)
-	blockValidationTimer = metrics.NewRegisteredTimer("chain/validation", nil)
-	blockExecutionTimer  = metrics.NewRegisteredTimer("chain/execution", nil)
-	blockWriteTimer      = metrics.NewRegisteredTimer("chain/write", nil)
+	blockInsertTimer          = metrics.NewRegisteredTimer("chain/inserts", nil)
+	blockValidationTimer      = metrics.NewRegisteredTimer("chain/validation", nil)
+	blockExecutionTimer       = metrics.NewRegisteredTimer("chain/execution", nil)
+	blockWriteTimer           = metrics.NewRegisteredTimer("chain/write", nil)
+	blockValidationTotalTimer = metrics.NewRegisteredTimer("chain/total/validation", nil)
+	blockExecutionTotalTimer  = metrics.NewRegisteredTimer("chain/total/execution", nil)
+	blockWriteTotalTimer      = metrics.NewRegisteredTimer("chain/total/write", nil)
 
 	blockReorgMeter     = metrics.NewRegisteredMeter("chain/reorg/executes", nil)
 	blockReorgAddMeter  = metrics.NewRegisteredMeter("chain/reorg/add", nil)
@@ -2269,6 +2272,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			statedb.StopPrefetcher()
 			return it.index, err
 		}
+		blockExecutionTotalTimer.UpdateSince(pstart)
+
 		ptime := time.Since(pstart)
 
 		// Validate the state using the default validator
@@ -2279,6 +2284,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			statedb.StopPrefetcher()
 			return it.index, err
 		}
+		blockValidationTotalTimer.UpdateSince(vstart)
+
 		vtime := time.Since(vstart)
 		proctime := time.Since(start) // processing + validation
 
@@ -2312,6 +2319,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		if err != nil {
 			return it.index, err
 		}
+		blockWriteTotalTimer.UpdateSince(wstart)
 
 		bc.cacheReceipts(block.Hash(), receipts, block)
 
