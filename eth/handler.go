@@ -483,13 +483,13 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		h.peersPerIP[remoteIP] = h.peersPerIP[remoteIP] + 1
 		h.peerPerIPLock.Unlock()
 	}
-	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
 	// Register the peer locally
 	if err := h.peers.registerPeer(peer, snap, trust, bsc); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
+	peer.Log().Debug("Ethereum peer connected", "name", peer.Name(), "peers.len", h.peers.len())
 	defer h.unregisterPeer(peer.ID())
 
 	p := h.peers.peer(peer.ID())
@@ -632,7 +632,7 @@ func (h *handler) runBscExtension(peer *bsc.Peer, handler bsc.Handler) error {
 				bsc.EgressRegistrationErrorMeter.Mark(1)
 			}
 		}
-		peer.Log().Error("Bsc extension registration failed", "err", err)
+		peer.Log().Error("Bsc extension registration failed", "err", err, "name", peer.Name())
 		return err
 	}
 	return handler(peer)
