@@ -204,6 +204,7 @@ func handleMessage(backend Backend, peer *Peer) error {
 			metrics.GetOrRegisterHistogramLazy(h, nil, sampler).Update(time.Since(start).Microseconds())
 		}(time.Now())
 	}
+	peer.Log().Debug("handleMessage in `eth`", "msg.Code", msg.Code)
 	if handler := handlers[msg.Code]; handler != nil {
 		return handler(backend, msg, peer)
 	}

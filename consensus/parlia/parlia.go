@@ -66,9 +66,9 @@ const (
 	validatorBytesLength            = common.AddressLength + types.BLSPublicKeyLength
 	validatorNumberSize             = 1 // Fixed number of extra prefix bytes reserved for validator number after Luban
 
-	wiggleTime         = uint64(1) // second, Random delay (per signer) to allow concurrent signers
-	initialBackOffTime = uint64(1) // second
-	processBackOffTime = uint64(1) // second
+	wiggleTime                   = uint64(1) // second, Random delay (per signer) to allow concurrent signers
+	initialBackOffTime           = uint64(1) // second
+	earlyBroadCastForInTurnBlock = uint64(1) // second
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
@@ -560,8 +560,12 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return errUnknownBlock
 	}
 
+	var earlyBroadCast uint64
+	if header.Difficulty.Cmp(diffInTurn) == 0 {
+		earlyBroadCast = earlyBroadCastForInTurnBlock
+	}
 	// Don't waste time checking blocks from the future
-	if header.Time > uint64(time.Now().Unix()) {
+	if header.Time > uint64(time.Now().Unix())+earlyBroadCast {
 		return consensus.ErrFutureBlock
 	}
 	// Check that the extra-data contains the vanity, validators and signature.
@@ -1529,6 +1533,10 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 	}
 	delay := p.delayForRamanujanFork(snap, header)
 
+	if header.Difficulty.Cmp(diffInTurn) == 0 {
+		delay -= time.Duration(earlyBroadCastForInTurnBlock) * time.Second
+	}
+
 	if *leftOver >= time.Duration(p.config.Period)*time.Second {
 		// ignore invalid leftOver
 		log.Error("Delay invalid argument", "leftOver", leftOver.String(), "Period", p.config.Period)
@@ -1539,10 +1547,10 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 		delay = delay - *leftOver
 	}
 
-	// The blocking time should be no more than half of period when snap.TurnLength == 1
+	// The blocking time should be no more than half of period for the last block in one turn
 	timeForMining := time.Duration(p.config.Period) * time.Second / 2
 	if !snap.lastBlockInOneTurn(header.Number.Uint64()) {
-		timeForMining = time.Duration(p.config.Period) * time.Second * 2 / 3
+		timeForMining = time.Duration(p.config.Period) * time.Second
 	}
 	if delay > timeForMining {
 		delay = timeForMining
@@ -1588,6 +1596,9 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 	// Sweet, the protocol permits us to sign the block, wait for our time
 	delay := p.delayForRamanujanFork(snap, header)
+	if header.Difficulty.Cmp(diffInTurn) == 0 {
+		delay -= time.Duration(earlyBroadCastForInTurnBlock) * time.Second
+	}
 
 	log.Info("Sealing block with", "number", number, "delay", delay, "headerDifficulty", header.Difficulty, "val", val.Hex())
 
@@ -1616,12 +1627,15 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		copy(header.Extra[len(header.Extra)-extraSeal:], sig)
 
 		if p.shouldWaitForCurrentBlockProcess(chain, header, snap) {
-			log.Info("Waiting for received in turn block to process")
+			highestVerifiedHeader := chain.GetHighestVerifiedHeader()
+			// including time for writing and committing blocks
+			waitProcessEstimate := math.Ceil(float64(highestVerifiedHeader.GasUsed) / float64(100_000_000))
+			log.Info("Waiting for received in turn block to process", "waitProcessEstimate(Seconds)", waitProcessEstimate)
 			select {
 			case <-stop:
 				log.Info("Received block process finished, abort block seal")
 				return
-			case <-time.After(time.Duration(processBackOffTime) * time.Second):
+			case <-time.After(time.Duration(waitProcessEstimate) * time.Second):
 				if chain.CurrentHeader().Number.Uint64() >= header.Number.Uint64() {
 					log.Info("Process backoff time exhausted, and current header has updated to abort this seal")
 					return
@@ -1632,6 +1646,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 		select {
 		case results <- block.WithSeal(header):
+			log.Debug("Seal done", "number", number)
 		default:
 			log.Warn("Sealing result is not read by miner", "sealhash", types.SealHash(header, p.chainConfig.ChainID))
 		}

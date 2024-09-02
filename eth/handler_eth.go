@@ -108,6 +108,7 @@ func (h *ethHandler) handleBlockAnnounces(peer *eth.Peer, hashes []common.Hash, 
 	}
 
 	for i := 0; i < len(unknownHashes); i++ {
+		peer.Log().Debug("handleBlockAnnounces", "number", unknownNumbers[i], "hash", unknownHashes[i])
 		h.blockFetcher.Notify(peer.ID(), unknownHashes[i], unknownNumbers[i], time.Now(), peer.RequestOneHeader, peer.RequestBodies)
 	}
 	return nil
@@ -130,6 +131,7 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	}
 
 	// Schedule the block for import
+	peer.Log().Debug("handleBlockBroadcast", "number", block.NumberU64(), "hash", block.Hash())
 	h.blockFetcher.Enqueue(peer.ID(), block)
 
 	// Assuming the block is importable by the peer, but possibly not yet done so,

@@ -1784,7 +1784,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// should be written atomically. BlockBatch is used for containing all components.
 	wg := sync.WaitGroup{}
 	wg.Add(1)
+	var wtime time.Duration
 	go func() {
+		wstart := time.Now()
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
@@ -1808,6 +1810,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			bc.sidecarsCache.Add(block.Hash(), block.Sidecars())
 		}
 		wg.Done()
+		wtime = time.Since(wstart)
 	}()
 
 	tryCommitTrieDB := func() error {
@@ -1890,11 +1893,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		wg2.Wait()
 		return nil
 	}
+	cstart := time.Now()
 	// Commit all cached state changes into underlying memory database.
 	_, diffLayer, err := state.Commit(block.NumberU64(), bc.tryRewindBadBlocks, tryCommitTrieDB)
 	if err != nil {
 		return err
 	}
+	ctime := time.Since(cstart)
 
 	// Ensure no empty block body
 	if diffLayer != nil && block.Header().TxHash != types.EmptyRootHash {
@@ -1912,6 +1917,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		go bc.cacheDiffLayer(diffLayer, diffLayerCh)
 	}
 	wg.Wait()
+	log.Debug("writeBlockWithState", "writeBlockCost", common.PrettyDuration(wtime), "commitBlockCost", common.PrettyDuration(ctime))
 	return nil
 }
 
@@ -2403,7 +2409,7 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 	reorg, err := bc.forker.ReorgNeededWithFastFinality(currentBlock, header)
 	if err == nil && reorg {
 		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
-		log.Trace("updateHighestVerifiedHeader", "number", header.Number.Uint64(), "hash", header.Hash())
+		log.Debug("updateHighestVerifiedHeader", "number", header.Number.Uint64(), "hash", header.Hash())
 	}
 }
 

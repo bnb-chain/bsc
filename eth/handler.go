@@ -815,7 +815,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		if h.directBroadcast {
 			transfer = peers[:]
 		} else {
-			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
+			transfer = peers[:min(2*int(math.Sqrt(float64(len(peers)))), len(peers))]
 		}
 
 		for _, peer := range transfer {
