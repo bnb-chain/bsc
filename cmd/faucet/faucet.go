@@ -83,7 +83,7 @@ var (
 	resendBatchSize   = 3
 	resendMaxGasPrice = big.NewInt(50 * params.GWei)
 	wsReadTimeout     = 5 * time.Minute
-	minMainnetBalance = big.NewInt(5 * 1e7 * params.GWei) // 0.05 bnb
+	minMainnetBalance = big.NewInt(2 * 1e6 * params.GWei) // 0.002 bnb
 )
 
 var (
@@ -94,9 +94,9 @@ var (
 //go:embed faucet.html
 var websiteTmpl string
 
-func weiToEtherStringF2(wei *big.Int) string {
+func weiToEtherStringFx(wei *big.Int, prec int) string {
 	f, _ := new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(params.Ether)).Float64()
-	return strconv.FormatFloat(f, 'f', 2, 64)
+	return strconv.FormatFloat(f, 'f', prec, 64)
 }
 
 func main() {
@@ -538,8 +538,8 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 					log.Warn("insufficient BNB on BSC mainnet", "address", mainnetAddr,
 						"balanceMainnet", balanceMainnet, "minMainnetBalance", minMainnetBalance)
 					// Send an error if failed to meet the minimum balance requirement
-					if err = sendError(wsconn, fmt.Errorf("insufficient BNB on BSC mainnet(require >=%sBNB)",
-						weiToEtherStringF2(minMainnetBalance))); err != nil {
+					if err = sendError(wsconn, fmt.Errorf("insufficient BNB on BSC mainnet        (require >=%sBNB)",
+						weiToEtherStringFx(minMainnetBalance, 3))); err != nil {
 						log.Warn("Failed to send mainnet minimum balance error to client", "err", err)
 						return
 					}
