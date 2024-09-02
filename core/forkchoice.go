@@ -86,8 +86,15 @@ func (f *ForkChoice) ReorgNeeded(current *types.Header, extern *types.Header) (b
 		localTD  = f.chain.GetTd(current.Hash(), current.Number.Uint64())
 		externTd = f.chain.GetTd(extern.Hash(), extern.Number.Uint64())
 	)
-	if localTD == nil || externTd == nil {
+	if localTD == nil {
 		return false, errors.New("missing td")
+	}
+	if externTd == nil {
+		ptd := f.chain.GetTd(extern.ParentHash, extern.Number.Uint64()-1)
+		if ptd == nil {
+			return false, consensus.ErrUnknownAncestor
+		}
+		externTd = new(big.Int).Add(ptd, extern.Difficulty)
 	}
 	// Accept the new header as the chain head if the transition
 	// is already triggered. We assume all the headers after the
@@ -114,9 +121,19 @@ func (f *ForkChoice) ReorgNeeded(current *types.Header, extern *types.Header) (b
 		if f.preserve != nil {
 			currentPreserve, externPreserve = f.preserve(current), f.preserve(extern)
 		}
-		reorg = !currentPreserve && (externPreserve ||
-			extern.Time < current.Time ||
-			extern.Time == current.Time && f.rand.Float64() < 0.5)
+		choiceRules := func() bool {
+			if extern.Time == current.Time {
+				doubleSign := (extern.Coinbase == current.Coinbase)
+				if doubleSign {
+					return extern.Hash().Cmp(current.Hash()) < 0
+				} else {
+					return f.rand.Float64() < 0.5
+				}
+			} else {
+				return extern.Time < current.Time
+			}
+		}
+		reorg = !currentPreserve && (externPreserve || choiceRules())
 	}
 	return reorg, nil
 }

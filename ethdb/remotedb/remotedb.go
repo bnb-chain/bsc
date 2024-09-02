@@ -122,6 +122,10 @@ func (db *Database) SetStateStore(state ethdb.Database) {
 	panic("not supported")
 }
 
+func (db *Database) GetStateStore() ethdb.Database {
+	panic("not supported")
+}
+
 func (db *Database) StateStoreReader() ethdb.Reader {
 	return db
 }

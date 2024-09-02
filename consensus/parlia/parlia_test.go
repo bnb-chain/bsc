@@ -22,22 +22,44 @@ func TestImpactOfValidatorOutOfService(t *testing.T) {
 	testCases := []struct {
 		totalValidators int
 		downValidators  int
+		turnLength      int
 	}{
-		{3, 1},
-		{5, 2},
-		{10, 1},
-		{10, 4},
-		{21, 1},
-		{21, 3},
-		{21, 5},
-		{21, 10},
+		{3, 1, 1},
+		{5, 2, 1},
+		{10, 1, 2},
+		{10, 4, 2},
+		{21, 1, 3},
+		{21, 3, 3},
+		{21, 5, 4},
+		{21, 10, 5},
 	}
 	for _, tc := range testCases {
-		simulateValidatorOutOfService(tc.totalValidators, tc.downValidators)
+		simulateValidatorOutOfService(tc.totalValidators, tc.downValidators, tc.turnLength)
 	}
 }
 
-func simulateValidatorOutOfService(totalValidators int, downValidators int) {
+// refer Snapshot.SignRecently
+func signRecently(idx int, recents map[uint64]int, turnLength int) bool {
+	recentSignTimes := 0
+	for _, signIdx := range recents {
+		if signIdx == idx {
+			recentSignTimes += 1
+		}
+	}
+	return recentSignTimes >= turnLength
+}
+
+// refer Snapshot.minerHistoryCheckLen
+func minerHistoryCheckLen(totalValidators int, turnLength int) uint64 {
+	return uint64(totalValidators/2+1)*uint64(turnLength) - 1
+}
+
+// refer Snapshot.inturnValidator
+func inturnValidator(totalValidators int, turnLength int, height int) int {
+	return height / turnLength % totalValidators
+}
+
+func simulateValidatorOutOfService(totalValidators int, downValidators int, turnLength int) {
 	downBlocks := 10000
 	recoverBlocks := 10000
 	recents := make(map[uint64]int)
@@ -55,12 +77,7 @@ func simulateValidatorOutOfService(totalValidators int, downValidators int) {
 		delete(validators, down[i])
 	}
 	isRecentSign := func(idx int) bool {
-		for _, signIdx := range recents {
-			if signIdx == idx {
-				return true
-			}
-		}
-		return false
+		return signRecently(idx, recents, turnLength)
 	}
 	isInService := func(idx int) bool {
 		return validators[idx]
@@ -68,10 +85,10 @@ func simulateValidatorOutOfService(totalValidators int, downValidators int) {
 
 	downDelay := uint64(0)
 	for h := 1; h <= downBlocks; h++ {
-		if limit := uint64(totalValidators/2 + 1); uint64(h) >= limit {
+		if limit := minerHistoryCheckLen(totalValidators, turnLength) + 1; uint64(h) >= limit {
 			delete(recents, uint64(h)-limit)
 		}
-		proposer := h % totalValidators
+		proposer := inturnValidator(totalValidators, turnLength, h)
 		if !isInService(proposer) || isRecentSign(proposer) {
 			candidates := make(map[int]bool, totalValidators/2)
 			for v := range validators {
@@ -99,10 +116,10 @@ func simulateValidatorOutOfService(totalValidators int, downValidators int) {
 	recoverDelay := uint64(0)
 	lastseen := downBlocks
 	for h := downBlocks + 1; h <= downBlocks+recoverBlocks; h++ {
-		if limit := uint64(totalValidators/2 + 1); uint64(h) >= limit {
+		if limit := minerHistoryCheckLen(totalValidators, turnLength) + 1; uint64(h) >= limit {
 			delete(recents, uint64(h)-limit)
 		}
-		proposer := h % totalValidators
+		proposer := inturnValidator(totalValidators, turnLength, h)
 		if !isInService(proposer) || isRecentSign(proposer) {
 			lastseen = h
 			candidates := make(map[int]bool, totalValidators/2)

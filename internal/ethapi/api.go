@@ -862,48 +862,72 @@ func (s *BlockChainAPI) Health() bool {
 	return true
 }
 
-// GetFinalizedHeader returns the requested finalized block header.
-//   - probabilisticFinalized should be in range [2,21],
-//     then the block header with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
-func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, probabilisticFinalized int64) (map[string]interface{}, error) {
-	if probabilisticFinalized < 2 || probabilisticFinalized > 21 {
-		return nil, fmt.Errorf("%d out of range [2,21]", probabilisticFinalized)
+func (s *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValidatorNum int64) (int64, error) {
+	parliaConfig := s.b.ChainConfig().Parlia
+	if parliaConfig == nil {
+		return 0, fmt.Errorf("only parlia engine supported")
 	}
 
-	var err error
+	curValidators, err := s.b.CurrentValidators()
+	if err != nil { // impossible
+		return 0, err
+	}
+	valLen := int64(len(curValidators))
+	if verifiedValidatorNum < 1 || verifiedValidatorNum > valLen {
+		return 0, fmt.Errorf("%d out of range [1,%d]", verifiedValidatorNum, valLen)
+	}
+
 	fastFinalizedHeader, err := s.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
 	if err != nil { // impossible
-		return nil, err
+		return 0, err
 	}
+
 	latestHeader, err := s.b.HeaderByNumber(ctx, rpc.LatestBlockNumber)
+	if err != nil { // impossible
+		return 0, err
+	}
+	lastHeader := latestHeader
+	confirmedValSet := make(map[common.Address]struct{}, valLen)
+	confirmedValSet[lastHeader.Coinbase] = struct{}{}
+	for count := 1; int64(len(confirmedValSet)) < verifiedValidatorNum && count <= int(parliaConfig.Epoch) && lastHeader.Number.Int64() > max(fastFinalizedHeader.Number.Int64(), 1); count++ {
+		lastHeader, err = s.b.HeaderByHash(ctx, lastHeader.ParentHash)
+		if err != nil { // impossible
+			return 0, err
+		}
+		confirmedValSet[lastHeader.Coinbase] = struct{}{}
+	}
+
+	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), lastHeader.Number.Int64())
+	log.Debug("getFinalizedNumber", "LatestBlockNumber", latestHeader.Number.Int64(), "fastFinalizedHeight", fastFinalizedHeader.Number.Int64(),
+		"lastHeader", lastHeader.Number.Int64(), "finalizedBlockNumber", finalizedBlockNumber, "len(confirmedValSet)", len(confirmedValSet))
+
+	return finalizedBlockNumber, nil
+}
+
+// GetFinalizedHeader returns the finalized block header based on the specified parameters.
+//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)].
+//   - The function calculates `probabilisticFinalizedHeight` as the highest height of the block verified by `verifiedValidatorNum` validators,
+//     it then returns the block header with a height equal to `max(fastFinalizedHeight, probabilisticFinalizedHeight)`.
+//   - The height of the returned block header is guaranteed to be monotonically increasing.
+func (s *BlockChainAPI) GetFinalizedHeader(ctx context.Context, verifiedValidatorNum int64) (map[string]interface{}, error) {
+	finalizedBlockNumber, err := s.getFinalizedNumber(ctx, verifiedValidatorNum)
 	if err != nil { // impossible
 		return nil, err
 	}
-	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized)
-
 	return s.GetHeaderByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber))
 }
 
-// GetFinalizedBlock returns the requested finalized block.
-//   - probabilisticFinalized should be in range [2,21],
-//     then the block with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
-//   - When fullTx is true all transactions in the block are returned, otherwise
-//     only the transaction hash is returned.
-func (s *BlockChainAPI) GetFinalizedBlock(ctx context.Context, probabilisticFinalized int64, fullTx bool) (map[string]interface{}, error) {
-	if probabilisticFinalized < 2 || probabilisticFinalized > 21 {
-		return nil, fmt.Errorf("%d out of range [2,21]", probabilisticFinalized)
-	}
-
-	var err error
-	fastFinalizedHeader, err := s.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
+// GetFinalizedBlock returns the finalized block based on the specified parameters.
+//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)].
+//   - The function calculates `probabilisticFinalizedHeight` as the highest height of the block verified by `verifiedValidatorNum` validators,
+//     it then returns the block with a height equal to `max(fastFinalizedHeight, probabilisticFinalizedHeight)`.
+//   - If `fullTx` is true, the block includes all transactions; otherwise, only transaction hashes are included.
+//   - The height of the returned block is guaranteed to be monotonically increasing.
+func (s *BlockChainAPI) GetFinalizedBlock(ctx context.Context, verifiedValidatorNum int64, fullTx bool) (map[string]interface{}, error) {
+	finalizedBlockNumber, err := s.getFinalizedNumber(ctx, verifiedValidatorNum)
 	if err != nil { // impossible
 		return nil, err
 	}
-	latestHeader, err := s.b.HeaderByNumber(ctx, rpc.LatestBlockNumber)
-	if err != nil { // impossible
-		return nil, err
-	}
-	finalizedBlockNumber := max(fastFinalizedHeader.Number.Int64(), latestHeader.Number.Int64()-probabilisticFinalized)
 
 	return s.GetBlockByNumber(ctx, rpc.BlockNumber(finalizedBlockNumber), fullTx)
 }

@@ -39,6 +39,9 @@ var (
 	// errSnapshotReleased is returned if callers want to retrieve data from a
 	// released snapshot.
 	errSnapshotReleased = errors.New("snapshot released")
+
+	// errNotSupported is returned if the database doesn't support the required operation.
+	errNotSupported = errors.New("this operation is not supported")
 )
 
 // Database is an ephemeral key-value store. Apart from basic data storage
@@ -47,6 +50,84 @@ var (
 type Database struct {
 	db   map[string][]byte
 	lock sync.RWMutex
+
+	stateStore ethdb.Database
+	blockStore ethdb.Database
+}
+
+func (db *Database) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) TruncateHead(n uint64) (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) TruncateTail(n uint64) (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) Sync() error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) HasAncient(kind string, number uint64) (bool, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) Ancient(kind string, number uint64) ([]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) Ancients() (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) Tail() (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) AncientSize(kind string) (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) ItemAmountInAncient() (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) AncientOffSet() uint64 {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) ReadAncients(fn func(ethdb.AncientReaderOp) error) (err error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 // New returns a wrapped map with all the required database interface methods
@@ -202,6 +283,37 @@ func (db *Database) Len() int {
 	defer db.lock.RUnlock()
 
 	return len(db.db)
+}
+
+func (db *Database) StateStoreReader() ethdb.Reader {
+	if db.stateStore == nil {
+		return db
+	}
+	return db.stateStore
+}
+
+func (db *Database) BlockStoreReader() ethdb.Reader {
+	if db.blockStore == nil {
+		return db
+	}
+	return db.blockStore
+}
+
+func (db *Database) BlockStoreWriter() ethdb.Writer {
+	if db.blockStore == nil {
+		return db
+	}
+	return db.blockStore
+}
+
+// convertLegacyFn takes a raw freezer entry in an older format and
+// returns it in the new format.
+type convertLegacyFn = func([]byte) ([]byte, error)
+
+// MigrateTable processes the entries in a given table in sequence
+// converting them to a new format if they're of an old format.
+func (db *Database) MigrateTable(kind string, convert convertLegacyFn) error {
+	return errNotSupported
 }
 
 // keyvalue is a key-value tuple tagged with a deletion field to allow creating

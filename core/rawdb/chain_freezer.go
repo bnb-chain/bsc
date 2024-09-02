@@ -58,7 +58,8 @@ type chainFreezer struct {
 	wg      sync.WaitGroup
 	trigger chan chan struct{} // Manual blocking freeze trigger, test determinism
 
-	freezeEnv atomic.Value
+	freezeEnv    atomic.Value
+	waitEnvTimes int
 
 	multiDatabase bool
 }
@@ -91,7 +92,7 @@ func (f *chainFreezer) Close() error {
 
 // readHeadNumber returns the number of chain head block. 0 is returned if the
 // block is unknown or not available yet.
-func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
+func (f *chainFreezer) readHeadNumber(db ethdb.Reader) uint64 {
 	hash := ReadHeadBlockHash(db)
 	if hash == (common.Hash{}) {
 		log.Error("Head block is not reachable")
@@ -107,7 +108,7 @@ func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
 
 // readFinalizedNumber returns the number of finalized block. 0 is returned
 // if the block is unknown or not available yet.
-func (f *chainFreezer) readFinalizedNumber(db ethdb.KeyValueReader) uint64 {
+func (f *chainFreezer) readFinalizedNumber(db ethdb.Reader) uint64 {
 	hash := ReadFinalizedBlockHash(db)
 	if hash == (common.Hash{}) {
 		return 0
@@ -122,7 +123,7 @@ func (f *chainFreezer) readFinalizedNumber(db ethdb.KeyValueReader) uint64 {
 
 // freezeThreshold returns the threshold for chain freezing. It's determined
 // by formula: max(finality, HEAD-params.FullImmutabilityThreshold).
-func (f *chainFreezer) freezeThreshold(db ethdb.KeyValueReader) (uint64, error) {
+func (f *chainFreezer) freezeThreshold(db ethdb.Reader) (uint64, error) {
 	var (
 		head      = f.readHeadNumber(db)
 		final     = f.readFinalizedNumber(db)
@@ -178,19 +179,6 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			}
 		}
 
-		// check freezer env first, it must wait a while when the env is necessary
-		err := f.checkFreezerEnv()
-		if err == missFreezerEnvErr {
-			log.Warn("Freezer need related env, may wait for a while", "err", err)
-			backoff = true
-			continue
-		}
-		if err != nil {
-			log.Error("Freezer check FreezerEnv err", "err", err)
-			backoff = true
-			continue
-		}
-
 		var (
 			frozen    uint64
 			threshold uint64
@@ -200,6 +188,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			hash   common.Hash
 			number *uint64
 			head   *types.Header
+			err    error
 		)
 
 		// use finalized block as the chain freeze indicator was used for multiDatabase feature, if multiDatabase is false, keep 9W blocks in db
@@ -282,6 +271,18 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 				last = first + freezerBatchLimit
 			}
 		}
+
+		// check env first before chain freeze, it must wait when the env is necessary
+		if err := f.checkFreezerEnv(); err != nil {
+			f.waitEnvTimes++
+			if f.waitEnvTimes%30 == 0 {
+				log.Warn("Freezer need related env, may wait for a while, and it's not a issue when non-import block", "err", err)
+				return
+			}
+			backoff = true
+			continue
+		}
+
 		// Seems we have data ready to be frozen, process in usable batches
 		var (
 			start = time.Now()
@@ -544,14 +545,7 @@ func (f *chainFreezer) checkFreezerEnv() error {
 	if exist {
 		return nil
 	}
-	blobFrozen, err := f.TableAncients(ChainFreezerBlobSidecarTable)
-	if err != nil {
-		return err
-	}
-	if blobFrozen > 0 {
-		return missFreezerEnvErr
-	}
-	return nil
+	return missFreezerEnvErr
 }
 
 func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {

@@ -97,7 +97,7 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 		return nil, ErrNoGenesis
 	}
 	hc.currentHeader.Store(hc.genesisHeader)
-	if head := rawdb.ReadHeadBlockHash(chainDb.BlockStore()); head != (common.Hash{}) {
+	if head := rawdb.ReadHeadBlockHash(chainDb); head != (common.Hash{}) {
 		if chead := hc.GetHeaderByHash(head); chead != nil {
 			hc.currentHeader.Store(chead)
 		}
@@ -144,7 +144,7 @@ func (hc *HeaderChain) GetBlockNumber(hash common.Hash) *uint64 {
 	if cached, ok := hc.numberCache.Get(hash); ok {
 		return &cached
 	}
-	number := rawdb.ReadHeaderNumber(hc.chainDb.BlockStore(), hash)
+	number := rawdb.ReadHeaderNumber(hc.chainDb, hash)
 	if number != nil {
 		hc.numberCache.Add(hash, *number)
 	}
@@ -436,6 +436,10 @@ func (hc *HeaderChain) GetHighestVerifiedHeader() *types.Header {
 	return nil
 }
 
+func (hc *HeaderChain) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
+	return hc.GetHeaderByHash(hash)
+}
+
 func (hc *HeaderChain) ChasingHead() *types.Header {
 	return nil
 }
@@ -691,7 +695,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// we don't end up with dangling daps in the database
 		var nums []uint64
 		if origin {
-			for n := num + 1; len(rawdb.ReadAllHashes(hc.chainDb, n)) > 0; n++ {
+			for n := num + 1; len(rawdb.ReadAllHashes(hc.chainDb.BlockStore(), n)) > 0; n++ {
 				nums = append([]uint64{n}, nums...) // suboptimal, but we don't really expect this path
 			}
 			origin = false
@@ -701,7 +705,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// Remove the related data from the database on all sidechains
 		for _, num := range nums {
 			// Gather all the side fork hashes
-			hashes := rawdb.ReadAllHashes(hc.chainDb, num)
+			hashes := rawdb.ReadAllHashes(hc.chainDb.BlockStore(), num)
 			if len(hashes) == 0 {
 				// No hashes in the database whatsoever, probably frozen already
 				hashes = append(hashes, hdr.Hash())
