@@ -538,8 +538,8 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 					log.Warn("insufficient BNB on BSC mainnet", "address", mainnetAddr,
 						"balanceMainnet", balanceMainnet, "minMainnetBalance", minMainnetBalance)
 					// Send an error if failed to meet the minimum balance requirement
-					if err = sendError(wsconn, fmt.Errorf("%s, insufficient BNB on BSC mainnet(should >=%sBNB)",
-						address.Hex(), weiToEtherStringF2(minMainnetBalance))); err != nil {
+					if err = sendError(wsconn, fmt.Errorf("insufficient BNB on BSC mainnet(require >=%sBNB)",
+						weiToEtherStringF2(minMainnetBalance))); err != nil {
 						log.Warn("Failed to send mainnet minimum balance error to client", "err", err)
 						return
 					}
