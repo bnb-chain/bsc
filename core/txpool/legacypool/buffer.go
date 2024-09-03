@@ -87,8 +87,8 @@ func (lru *LRUBuffer) Size() int {
 	return lru.size
 }
 
-// New iterator method to iterate over all transactions
-func (lru *LRUBuffer) Iterate() <-chan *types.Transaction {
+// New iterator method to iterate over all transactions, ONLY used for printing and debugging
+func (lru *LRUBuffer) iterate() <-chan *types.Transaction {
 	ch := make(chan *types.Transaction)
 	go func() {
 		lru.mu.Lock()
@@ -104,7 +104,7 @@ func (lru *LRUBuffer) Iterate() <-chan *types.Transaction {
 
 func (lru *LRUBuffer) PrintTxStats() {
 	// Iterating over the transactions
-	for tx := range lru.Iterate() {
+	for tx := range lru.iterate() {
 		// Print transaction details or process them as needed
 		fmt.Println(tx.Hash().String(), tx.GasFeeCap().String(), tx.GasTipCap().String())
 	}
