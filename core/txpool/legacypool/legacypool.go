@@ -250,8 +250,7 @@ type LegacyPool struct {
 	all     *lookup                      // All transactions to allow lookups
 	priced  *pricedList                  // All transactions sorted by price
 
-	criticalPathPool map[common.Address]*list // Critical path transactions (Pool 2)
-	localBufferPool  *LRUBuffer               // Local buffer transactions (Pool 3)
+	localBufferPool *LRUBuffer // Local buffer transactions (Pool 3)
 
 	reqResetCh      chan *txpoolResetRequest
 	reqPromoteCh    chan *accountSet
@@ -282,22 +281,21 @@ func New(config Config, chain BlockChain) *LegacyPool {
 
 	// Create the transaction pool with its initial settings
 	pool := &LegacyPool{
-		config:           config,
-		chain:            chain,
-		chainconfig:      chain.Config(),
-		signer:           types.LatestSigner(chain.Config()),
-		pending:          make(map[common.Address]*list),
-		queue:            make(map[common.Address]*list),
-		beats:            make(map[common.Address]time.Time),
-		all:              newLookup(),
-		reqResetCh:       make(chan *txpoolResetRequest),
-		reqPromoteCh:     make(chan *accountSet),
-		queueTxEventCh:   make(chan QueueTxEventCh),
-		reorgDoneCh:      make(chan chan struct{}),
-		reorgShutdownCh:  make(chan struct{}),
-		initDoneCh:       make(chan struct{}),
-		criticalPathPool: make(map[common.Address]*list),
-		localBufferPool:  NewLRUBuffer(int(maxPool3Size)),
+		config:          config,
+		chain:           chain,
+		chainconfig:     chain.Config(),
+		signer:          types.LatestSigner(chain.Config()),
+		pending:         make(map[common.Address]*list),
+		queue:           make(map[common.Address]*list),
+		beats:           make(map[common.Address]time.Time),
+		all:             newLookup(),
+		reqResetCh:      make(chan *txpoolResetRequest),
+		reqPromoteCh:    make(chan *accountSet),
+		queueTxEventCh:  make(chan QueueTxEventCh),
+		reorgDoneCh:     make(chan chan struct{}),
+		reorgShutdownCh: make(chan struct{}),
+		initDoneCh:      make(chan struct{}),
+		localBufferPool: NewLRUBuffer(int(maxPool3Size)),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
