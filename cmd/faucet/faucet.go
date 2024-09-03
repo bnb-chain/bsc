@@ -401,7 +401,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		// if user did not give response for too long, then the routine will be stuck.
 		conn.SetReadDeadline(time.Now().Add(wsReadTimeout))
 		if err = conn.ReadJSON(&msg); err != nil {
-			log.Info("read json message failed", "err", err, "ip", ip)
+			log.Debug("read json message failed", "err", err, "ip", ip)
 			return
 		}
 		if !*noauthFlag && !strings.HasPrefix(msg.URL, "https://twitter.com/") && !strings.HasPrefix(msg.URL, "https://www.facebook.com/") {
@@ -498,7 +498,6 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		log.Info("Faucet request valid", "url", msg.URL, "tier", msg.Tier, "user", username, "address", address, "ip", ip)
 
 		// check #2: check IP and ID(address) to ensure the user didn't request funds too recently,
 		f.lock.Lock()
@@ -513,6 +512,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				log.Warn("Failed to send funding error to client", "err", err)
 				return
 			}
+			log.Info("too frequent funding(ip)", "Wait", common.PrettyDuration(time.Until(timeout)), "ip", ips[len(ips)-2], "ipsStr", ipsStr)
 			continue
 		}
 		if timeout = f.timeouts[id]; time.Now().Before(timeout) {
@@ -522,6 +522,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				log.Warn("Failed to send funding error to client", "err", err)
 				return
 			}
+			log.Info("too frequent funding(id)", "Wait", common.PrettyDuration(time.Until(timeout)), "id", id)
 			continue
 		}
 		// check #3: minimum mainnet balance check, internal error will bypass the check to avoid blocking the faucet service
@@ -547,6 +548,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		log.Info("Faucet request valid", "url", msg.URL, "tier", msg.Tier, "user", username, "address", address, "ip", ip)
 
 		// now, it is ok to send tBNB or other tokens
 		var tx *types.Transaction
