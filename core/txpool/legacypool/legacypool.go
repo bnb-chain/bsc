@@ -141,8 +141,9 @@ type Config struct {
 	Pool2Slots   uint64 // Maximum number of transaction slots in pool 2
 	Pool3Slots   uint64 // Maximum number of transaction slots in pool 3
 
-	Lifetime       time.Duration // Maximum amount of time non-executable transaction are queued
-	ReannounceTime time.Duration // Duration for announcing local pending transactions again
+	Lifetime              time.Duration // Maximum amount of time non-executable transaction are queued
+	ReannounceTime        time.Duration // Duration for announcing local pending transactions again
+	InterPoolTransferTime time.Duration // Attempt to transfer from pool3 to pool2 every this much time
 }
 
 // DefaultConfig contains the default configurations for the transaction pool.
@@ -160,8 +161,9 @@ var DefaultConfig = Config{
 	Pool2Slots:   1024,
 	Pool3Slots:   1024,
 
-	Lifetime:       3 * time.Hour,
-	ReannounceTime: 10 * 365 * 24 * time.Hour,
+	Lifetime:              3 * time.Hour,
+	ReannounceTime:        10 * 365 * 24 * time.Hour,
+	InterPoolTransferTime: time.Minute,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -308,7 +310,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		pool.journal = newTxJournal(config.Journal)
 	}
 
-	pool.startPeriodicTransfer() // todo (incomplete) Start the periodic transfer routine
+	pool.startPeriodicTransfer(config.InterPoolTransferTime) // todo (incomplete) Start the periodic transfer routine
 
 	return pool
 }
@@ -2174,8 +2176,12 @@ func numSlots(tx *types.Transaction) int {
 	return int((tx.Size() + txSlotSize - 1) / txSlotSize)
 }
 
-func (pool *LegacyPool) startPeriodicTransfer() {
+func (pool *LegacyPool) startPeriodicTransfer(t time.Duration) {
 	ticker := time.NewTicker(time.Minute) // Adjust the interval as needed
+	if t != 0 {
+		ticker.Reset(t)
+	}
+
 	go func() {
 		for {
 			select {
@@ -2213,6 +2219,8 @@ func (pool *LegacyPool) transferTransactions() {
 		return
 	}
 
+	log.Debug("Will attempt to transfer from pool3 to pool2", "transactions", extraTransactions)
+
 	tx := pool.localBufferPool.Flush(int(extraTransactions))
 	if len(tx) == 0 {
 		return
@@ -2231,6 +2239,7 @@ func (pool *LegacyPool) transferTransactions() {
 			pool.addToPool12OrPool3(transaction, from, true, false, false, true)
 			continue
 		}
+		log.Debug("Transferred from pool3 to pool2", "transactions", transaction.Hash().String())
 	}
 }
 
