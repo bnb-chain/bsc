@@ -964,9 +964,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 // addToPool12OrPool3 adds a transaction to pool1 or pool2 or pool3 depending on which one is asked for
 func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Address, isLocal bool, pool1, pool2, pool3 bool) (bool, error) {
 	if pool1 {
-		// todo (check) logic for pool1 related
-		pool.all.Add(tx, pool2)
-		pool.priced.Put(tx, pool2)
 		pool.journalTx(from, tx)
 		pool.queueTxEvent(tx, false)
 		_, err := pool.enqueueTx(tx.Hash(), tx, isLocal, true, false) // At this point pool1 can incorporate this. So no need for pool2 or pool3
@@ -981,8 +978,6 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 		return true, nil
 	}
 	if pool2 {
-		pool.all.Add(tx, pool2)
-		pool.priced.Put(tx, pool2)
 		pool.journalTx(from, tx)
 		pool.queueTxEvent(tx, true)
 		_, err := pool.enqueueTx(tx.Hash(), tx, isLocal, true, true)
@@ -2197,20 +2192,20 @@ func (pool *LegacyPool) startPeriodicTransfer(t time.Duration) {
 
 // transferTransactions mainly moves from pool 3 to pool 2
 func (pool *LegacyPool) transferTransactions() {
-	maxPool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
-	maxPool2Size := pool.config.Pool2Slots
+	maxPool1Size := int(pool.config.GlobalSlots + pool.config.GlobalQueue)
+	maxPool2Size := int(pool.config.Pool2Slots)
 	maxPool1Pool2CombinedSize := maxPool1Size + maxPool2Size
-	extraSizePool2Pool1 := uint64(len(pool.pending)) + uint64(len(pool.queue)) - maxPool1Pool2CombinedSize
+	extraSizePool2Pool1 := maxPool1Pool2CombinedSize - int(uint64(len(pool.pending))+uint64(len(pool.queue)))
 	if extraSizePool2Pool1 <= 0 {
 		return
 	}
 
 	currentPool1Pool2Size := pool.all.Slots()
-	canTransferPool3ToPool2 := maxPool1Pool2CombinedSize > uint64(currentPool1Pool2Size)
+	canTransferPool3ToPool2 := maxPool1Pool2CombinedSize > currentPool1Pool2Size
 	if !canTransferPool3ToPool2 {
 		return
 	}
-	extraSlots := maxPool1Pool2CombinedSize - uint64(currentPool1Pool2Size)
+	extraSlots := maxPool1Pool2CombinedSize - currentPool1Pool2Size
 	extraTransactions := extraSlots / 4 // Since maximum slots per transaction is 4
 	// So now we can  take out extraTransactions number of transactions from pool3 and put in pool2
 	if extraTransactions < 1 {
@@ -2225,7 +2220,7 @@ func (pool *LegacyPool) transferTransactions() {
 	}
 
 	for _, transaction := range tx {
-		if !(uint64(pool.all.Slots()) < maxPool1Pool2CombinedSize) {
+		if !(pool.all.Slots() < maxPool1Pool2CombinedSize) {
 			break
 		}
 		from, _ := types.Sender(pool.signer, transaction)

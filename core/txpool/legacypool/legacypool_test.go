@@ -2256,7 +2256,7 @@ func TestReplacement(t *testing.T) {
 
 func TestTransferTransactions(t *testing.T) {
 	t.Parallel()
-
+	testTxPoolConfig.InterPoolTransferTime = 5 * time.Second
 	pool, _ := setupPoolWithConfig(eip1559Config)
 	defer pool.Close()
 
@@ -2265,6 +2265,7 @@ func TestTransferTransactions(t *testing.T) {
 
 	pool.config.Pool2Slots = 1
 	pool.config.Pool3Slots = 1
+	pool.config.InterPoolTransferTime = 5 * time.Second
 
 	// Create a number of test accounts and fund them
 	keys := make([]*ecdsa.PrivateKey, 4)
@@ -2276,7 +2277,7 @@ func TestTransferTransactions(t *testing.T) {
 	tx := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[0])
 	from, _ := types.Sender(pool.signer, tx)
 	pool.addToPool12OrPool3(tx, from, true, false, false, true)
-	time.Sleep(2 * time.Minute)
+	time.Sleep(10 * time.Second)
 	pending, queue := pool.Stats()
 	if pending != 0 {
 		t.Errorf("pending transactions mismatched: have %d, want %d", pending, 0)
@@ -2284,6 +2285,27 @@ func TestTransferTransactions(t *testing.T) {
 	if queue != 1 {
 		t.Errorf("queued transactions mismatched: have %d, want %d", queue, 1)
 	}
+
+	tx2 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[1])
+	from2, _ := types.Sender(pool.signer, tx2)
+	pool.addToPool12OrPool3(tx2, from2, true, false, false, true)
+	time.Sleep(2 * time.Second)
+	pending, queue = pool.Stats()
+	if pending != 0 {
+		t.Errorf("pending transactions mismatched: have %d, want %d", pending, 0)
+	}
+	if queue != 1 {
+		t.Errorf("queued transactions mismatched: have %d, want %d", queue, 1)
+	}
+	time.Sleep(3 * time.Second)
+	pending, queue = pool.Stats()
+	if pending != 0 {
+		t.Errorf("pending transactions mismatched: have %d, want %d", pending, 0)
+	}
+	if queue != 1 {
+		t.Errorf("queued transactions mismatched: have %d, want %d", queue, 1)
+	}
+
 }
 
 // Tests that the pool rejects replacement dynamic fee transactions that don't
