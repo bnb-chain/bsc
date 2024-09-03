@@ -198,7 +198,7 @@ func (config *Config) sanitize() Config {
 		log.Warn("Sanitizing invalid txpool global queue", "provided", conf.GlobalQueue, "updated", DefaultConfig.GlobalQueue)
 		conf.GlobalQueue = DefaultConfig.GlobalQueue
 	}
-	if conf.Pool2Slots < 1 {
+	if conf.Pool2Slots < 0 {
 		log.Warn("Sanitizing invalid txpool pool 2 slots", "provided", conf.Pool2Slots, "updated", DefaultConfig.Pool2Slots)
 		conf.Pool2Slots = DefaultConfig.Pool2Slots
 	}

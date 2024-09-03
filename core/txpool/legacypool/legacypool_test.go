@@ -1740,6 +1740,7 @@ func TestRepricingKeepsLocals(t *testing.T) {
 func TestUnderpricing(t *testing.T) {
 	t.Parallel()
 	testTxPoolConfig.Pool3Slots = 5
+	testTxPoolConfig.Pool2Slots = 0
 
 	// Create the pool to test the pricing enforcement with
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
