@@ -320,22 +320,26 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 
 	broadcastBlockWithCheck := func(block *types.Block, propagate bool) {
+		// All the block fetcher activities should be disabled
+		// after the transition. Print the warning log.
+		if h.merger.PoSFinalized() {
+			log.Warn("Unexpected validation activity", "hash", block.Hash(), "number", block.Number())
+			return
+		}
+		// Reject all the PoS style headers in the first place. No matter
+		// the chain has finished the transition or not, the PoS headers
+		// should only come from the trusted consensus layer instead of
+		// p2p network.
+		if beacon, ok := h.chain.Engine().(*beacon.Beacon); ok {
+			if beacon.IsPoSHeader(block.Header()) {
+				log.Warn("unexpected post-merge header")
+				return
+			}
+		}
 		if propagate {
-			checkErrs := make(chan error, 2)
-
-			go func() {
-				checkErrs <- core.ValidateListsInBody(block)
-			}()
-			go func() {
-				checkErrs <- core.IsDataAvailable(h.chain, block)
-			}()
-
-			for i := 0; i < cap(checkErrs); i++ {
-				err := <-checkErrs
-				if err != nil {
-					log.Error("Propagating invalid block", "number", block.Number(), "hash", block.Hash(), "err", err)
-					return
-				}
+			if err := core.IsDataAvailable(h.chain, block); err != nil {
+				log.Error("Propagating block with invalid sidecars", "number", block.Number(), "hash", block.Hash(), "err", err)
+				return
 			}
 		}
 		h.BroadcastBlock(block, propagate)
