@@ -246,6 +246,10 @@ func (db *Database) Reader(root common.Hash) (layer, error) {
 // The passed in maps(nodes, states) will be retained to avoid copying everything.
 // Therefore, these maps must not be changed afterwards.
 func (db *Database) Update(root common.Hash, parentRoot common.Hash, block uint64, nodes *trienode.MergedNodeSet, states *triestate.Set) error {
+	defer func(start time.Time) {
+		PbssUpdateDiffQPS.Mark(1)
+		PbssUpdateDiffTime.UpdateSince(start)
+	}(time.Now())
 	// Hold the lock to prevent concurrent mutations.
 	db.lock.Lock()
 	defer db.lock.Unlock()

@@ -53,4 +53,7 @@ var (
 	diffHashCacheMissMeter     = metrics.NewRegisteredMeter("pathdb/difflayer/hashcache/miss", nil)
 	diffHashCacheSlowPathMeter = metrics.NewRegisteredMeter("pathdb/difflayer/hashcache/slowpath", nil)
 	diffHashCacheLengthGauge   = metrics.NewRegisteredGauge("pathdb/difflayer/hashcache/size", nil)
+
+	PbssUpdateDiffQPS  = metrics.NewRegisteredMeter("pbss/difflayer/update/qps", nil)
+	PbssUpdateDiffTime = metrics.NewRegisteredTimer("pbss/difflayer/update/time", nil)
 )

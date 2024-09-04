@@ -17,11 +17,46 @@
 package trie
 
 import (
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/triedb/database"
+)
+
+var (
+	StateTreeOpenQPS  = metrics.NewRegisteredMeter("state/tree/open/qps", nil)
+	StateTreeOpenTime = metrics.NewRegisteredTimer("state/tree/open/time", nil)
+
+	StateTreeGetQPS         = metrics.NewRegisteredMeter("state/tree/get/qps", nil)
+	StateTreeGetTime        = metrics.NewRegisteredTimer("state/tree/get/time", nil)
+	StateAccountTreeGetQPS  = metrics.NewRegisteredMeter("state/tree/account/get/qps", nil)
+	StateAccountTreeGetTime = metrics.NewRegisteredTimer("state/tree/account/get/time", nil)
+	StateStorageTreeGetQPS  = metrics.NewRegisteredMeter("state/tree/storage/get/qps", nil)
+	StateStorageTreeGetTime = metrics.NewRegisteredTimer("state/tree/storage/get/time", nil)
+
+	StateTreePutQPS         = metrics.NewRegisteredMeter("state/tree/put/qps", nil)
+	StateTreePutTime        = metrics.NewRegisteredTimer("state/tree/put/time", nil)
+	StateAccountTreePutQPS  = metrics.NewRegisteredMeter("state/tree/account/put/qps", nil)
+	StateAccountTreePutTime = metrics.NewRegisteredTimer("state/tree/account/put/time", nil)
+	StateStorageTreePutQPS  = metrics.NewRegisteredMeter("state/tree/storage/put/qps", nil)
+	StateStorageTreePutTime = metrics.NewRegisteredTimer("state/tree/storage/put/time", nil)
+
+	StateTreeDelQPS         = metrics.NewRegisteredMeter("state/tree/del/qps", nil)
+	StateTreeDelTime        = metrics.NewRegisteredTimer("state/tree/del/time", nil)
+	StateAccountTreeDelQPS  = metrics.NewRegisteredMeter("state/tree/account/del/qps", nil)
+	StateAccountTreeDelTime = metrics.NewRegisteredTimer("state/tree/account/del/time", nil)
+	StateStorageTreeDelQPS  = metrics.NewRegisteredMeter("state/tree/storage/del/qps", nil)
+	StateStorageTreeDelTime = metrics.NewRegisteredTimer("state/tree/storage/del/time", nil)
+
+	StateTreeCommitQPS  = metrics.NewRegisteredMeter("state/tree/commit/qps", nil)
+	StateTreeCommitTime = metrics.NewRegisteredTimer("state/tree/commit/time", nil)
+
+	StateTreeCalcQPS  = metrics.NewRegisteredMeter("state/tree/calc/qps", nil)
+	StateTreeCalcTime = metrics.NewRegisteredTimer("state/tree/calc/time", nil)
 )
 
 // SecureTrie is the old name of StateTrie.
@@ -63,6 +98,11 @@ type StateTrie struct {
 // trie is initially empty. Otherwise, New will panic if db is nil
 // and returns MissingNodeError if the root node cannot be found.
 func NewStateTrie(id *ID, db database.Database) (*StateTrie, error) {
+	defer func(start time.Time) {
+		StateTreeOpenQPS.Mark(1)
+		StateTreeOpenTime.UpdateSince(start)
+	}(time.Now())
+
 	if db == nil {
 		panic("trie.NewStateTrie called without a database")
 	}
@@ -87,6 +127,12 @@ func (t *StateTrie) MustGet(key []byte) []byte {
 // If the specified storage slot is not in the trie, nil will be returned.
 // If a trie node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
+	defer func(start time.Time) {
+		StateTreeGetQPS.Mark(1)
+		StateTreeGetTime.UpdateSince(start)
+		StateStorageTreeGetQPS.Mark(1)
+		StateStorageTreeGetTime.UpdateSince(start)
+	}(time.Now())
 	enc, err := t.trie.Get(t.hashKey(key))
 	if err != nil || len(enc) == 0 {
 		return nil, err
@@ -99,6 +145,12 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
 // If the specified account is not in the trie, nil will be returned.
 // If a trie node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) GetAccount(address common.Address) (*types.StateAccount, error) {
+	defer func(start time.Time) {
+		StateTreeGetQPS.Mark(1)
+		StateTreeGetTime.UpdateSince(start)
+		StateAccountTreeGetQPS.Mark(1)
+		StateAccountTreeGetTime.UpdateSince(start)
+	}(time.Now())
 	res, err := t.trie.Get(t.hashKey(address.Bytes()))
 	if res == nil || err != nil {
 		return nil, err
@@ -153,6 +205,12 @@ func (t *StateTrie) MustUpdate(key, value []byte) {
 //
 // If a node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) UpdateStorage(_ common.Address, key, value []byte) error {
+	defer func(start time.Time) {
+		StateTreePutQPS.Mark(1)
+		StateTreePutTime.UpdateSince(start)
+		StateStorageTreePutQPS.Mark(1)
+		StateStorageTreePutTime.UpdateSince(start)
+	}(time.Now())
 	hk := t.hashKey(key)
 	v, _ := rlp.EncodeToBytes(value)
 	err := t.trie.Update(hk, v)
@@ -165,6 +223,12 @@ func (t *StateTrie) UpdateStorage(_ common.Address, key, value []byte) error {
 
 // UpdateAccount will abstract the write of an account to the secure trie.
 func (t *StateTrie) UpdateAccount(address common.Address, acc *types.StateAccount) error {
+	defer func(start time.Time) {
+		StateTreePutQPS.Mark(1)
+		StateTreePutTime.UpdateSince(start)
+		StateAccountTreePutQPS.Mark(1)
+		StateAccountTreePutTime.UpdateSince(start)
+	}(time.Now())
 	hk := t.hashKey(address.Bytes())
 	data, err := rlp.EncodeToBytes(acc)
 	if err != nil {
@@ -193,6 +257,12 @@ func (t *StateTrie) MustDelete(key []byte) {
 // If the specified trie node is not in the trie, nothing will be changed.
 // If a node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) DeleteStorage(_ common.Address, key []byte) error {
+	defer func(start time.Time) {
+		StateTreeDelQPS.Mark(1)
+		StateTreeDelTime.UpdateSince(start)
+		StateStorageTreeDelQPS.Mark(1)
+		StateStorageTreeDelTime.UpdateSince(start)
+	}(time.Now())
 	hk := t.hashKey(key)
 	delete(t.getSecKeyCache(), string(hk))
 	return t.trie.Delete(hk)
@@ -200,6 +270,12 @@ func (t *StateTrie) DeleteStorage(_ common.Address, key []byte) error {
 
 // DeleteAccount abstracts an account deletion from the trie.
 func (t *StateTrie) DeleteAccount(address common.Address) error {
+	defer func(start time.Time) {
+		StateTreeDelQPS.Mark(1)
+		StateTreeDelTime.UpdateSince(start)
+		StateAccountTreeDelQPS.Mark(1)
+		StateAccountTreeDelTime.UpdateSince(start)
+	}(time.Now())
 	hk := t.hashKey(address.Bytes())
 	delete(t.getSecKeyCache(), string(hk))
 	return t.trie.Delete(hk)
@@ -222,6 +298,10 @@ func (t *StateTrie) GetKey(shaKey []byte) []byte {
 // Once the trie is committed, it's not usable anymore. A new trie must
 // be created with new root and updated trie database for following usage
 func (t *StateTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
+	defer func(start time.Time) {
+		StateTreeCommitQPS.Mark(1)
+		StateTreeCommitTime.UpdateSince(start)
+	}(time.Now())
 	// Write all the pre-images to the actual disk database
 	if len(t.getSecKeyCache()) > 0 {
 		preimages := make(map[common.Hash][]byte)
@@ -238,6 +318,10 @@ func (t *StateTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, er
 // Hash returns the root hash of StateTrie. It does not write to the
 // database and can be used even if the trie doesn't have one.
 func (t *StateTrie) Hash() common.Hash {
+	defer func(start time.Time) {
+		StateTreeCalcQPS.Mark(1)
+		StateTreeCalcTime.UpdateSince(start)
+	}(time.Now())
 	return t.trie.Hash()
 }
 
