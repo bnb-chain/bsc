@@ -87,7 +87,7 @@ type Database interface {
 	Copy() Database
 
 	// HasState returns the state data whether in the triedb.
-	HasState(root common.Hash) bool
+	HasState(version int64, root common.Hash) bool
 
 	// HasTreeExpired used for caching versa db, whether the state where the opened tree resides has been closed
 	HasTreeExpired(tr Trie) bool
@@ -402,7 +402,7 @@ func (db *cachingDB) Copy() Database {
 	return db
 }
 
-func (db *cachingDB) HasState(root common.Hash) bool {
+func (db *cachingDB) HasState(_ int64, root common.Hash) bool {
 	_, err := db.OpenTrie(root)
 	return err == nil
 }

@@ -1367,11 +1367,11 @@ func (s *BlockChainAPI) needToReplay(ctx context.Context, block *types.Block, ac
 	if err != nil {
 		return false, fmt.Errorf("block not found for block number (%d): %v", block.NumberU64()-1, err)
 	}
-	parentState, err := s.b.Chain().StateAt(parent.Root())
+	parentState, err := s.b.Chain().StateAt(parent.Number().Int64(), parent.Root())
 	if err != nil {
 		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64()-1, err)
 	}
-	currentState, err := s.b.Chain().StateAt(block.Root())
+	currentState, err := s.b.Chain().StateAt(parent.Number().Int64(), block.Root())
 	if err != nil {
 		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64(), err)
 	}
@@ -1397,7 +1397,7 @@ func (s *BlockChainAPI) replay(ctx context.Context, block *types.Block, accounts
 	if err != nil {
 		return nil, nil, fmt.Errorf("block not found for block number (%d): %v", block.NumberU64()-1, err)
 	}
-	statedb, err := s.b.Chain().StateAt(parent.Root())
+	statedb, err := s.b.Chain().StateAt(parent.Number().Int64(), parent.Root())
 	if err != nil {
 		return nil, nil, fmt.Errorf("state not found for block number (%d): %v", block.NumberU64()-1, err)
 	}

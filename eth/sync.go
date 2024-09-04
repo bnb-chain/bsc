@@ -17,6 +17,7 @@
 package eth
 
 import (
+	"fmt"
 	"math/big"
 	"time"
 
@@ -215,15 +216,15 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 		// We are in a full sync, but the associated head state is missing. To complete
 		// the head state, forcefully rerun the snap sync. Note it doesn't mean the
 		// persistent state is corrupted, just mismatch with the head block.
-		if !cs.handler.chain.NoTries() && !cs.handler.chain.HasState(head.Root) {
+		if !cs.handler.chain.NoTries() && !cs.handler.chain.HasState(head.Number.Int64(), head.Root) {
 			block := cs.handler.chain.CurrentSnapBlock()
 			td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
 			log.Info("Reenabled snap sync as chain is stateless")
 			return downloader.SnapSync, td
 		}
 	} else {
-		if !cs.handler.chain.HasState(head.Root) {
-			panic("version db not support snap sync")
+		if !cs.handler.chain.HasState(head.Number.Int64(), head.Root) {
+			panic(fmt.Sprintf("version db not support snap sync, version: %d, root: %s", head.Number.Int64(), head.Root))
 		}
 	}
 	// Nope, we're really full syncing

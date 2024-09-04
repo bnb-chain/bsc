@@ -220,13 +220,13 @@ func newHandler(config *handlerConfig) (*handler, error) {
 				}
 				h.snapSync.Store(true)
 				log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
-			} else if !h.chain.NoTries() && !h.chain.HasState(fullBlock.Root) {
+			} else if !h.chain.NoTries() && !h.chain.HasState(fullBlock.Number.Int64(), fullBlock.Root) {
 				h.snapSync.Store(true)
 				log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
 			}
 		} else {
 			head := h.chain.CurrentBlock()
-			if head.Number.Uint64() > 0 && h.chain.HasState(head.Root) {
+			if head.Number.Uint64() > 0 && h.chain.HasState(head.Number.Int64(), head.Root) {
 				// Print warning log if database is not empty to run snap sync.
 				log.Warn("Switch sync mode from snap sync to full sync", "reason", "snap sync complete")
 			} else {

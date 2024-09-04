@@ -18,6 +18,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -338,7 +339,7 @@ func (bc *BlockChain) GetTd(hash common.Hash, number uint64) *big.Int {
 }
 
 // HasState checks if state trie is fully present in the database or not.
-func (bc *BlockChain) HasState(hash common.Hash) bool {
+func (bc *BlockChain) HasState(number int64, hash common.Hash) bool {
 	if bc.NoTries() {
 		return bc.snaps != nil && bc.snaps.Snapshot(hash) != nil
 	}
@@ -348,18 +349,24 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 			return true
 		}
 	}
-	return bc.stateCache.HasState(hash)
+	return bc.stateCache.HasState(number, hash)
 }
 
 // HasBlockAndState checks if a block and associated state trie is fully present
 // in the database or not, caching it if present.
-func (bc *BlockChain) HasBlockAndState(hash common.Hash, number uint64) bool {
+func (bc *BlockChain) HasBlockAndState(hash common.Hash, number int64) bool {
 	// Check first that the block itself is known
-	block := bc.GetBlock(hash, number)
-	if block == nil {
-		return false
+	var root common.Hash
+	if number < 0 {
+		root = types.EmptyRootHash
+	} else {
+		block := bc.GetBlock(hash, uint64(number))
+		if block == nil {
+			return false
+		}
+		root = block.Root()
 	}
-	return bc.HasState(block.Root())
+	return bc.HasState(number, root)
 }
 
 // stateRecoverable checks if the specified state is recoverable.
@@ -390,13 +397,19 @@ func (bc *BlockChain) ContractCodeWithPrefix(hash common.Hash) ([]byte, error) {
 
 // State returns a new mutable state based on the current HEAD block.
 func (bc *BlockChain) State() (*state.StateDB, error) {
-	return bc.StateAt(bc.CurrentBlock().Root)
+	return bc.StateAt(bc.CurrentBlock().Number.Int64(), bc.CurrentBlock().Root)
 }
 
 // StateAt returns a new mutable state based on a particular point in time.
-func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
+func (bc *BlockChain) StateAt(number int64, root common.Hash) (*state.StateDB, error) {
 	// new state db with no need commit mode
-	stateDb, err := state.New(root, state.NewDatabaseWithNodeDB(bc.db, bc.triedb, false), bc.snaps)
+	has := bc.HasState(number, root)
+	if !has {
+		return nil, fmt.Errorf(fmt.Sprintf("do not has state, verison: %d, root: %s", number, root.String()))
+	}
+	sdb := state.NewDatabaseWithNodeDB(bc.db, bc.triedb, false)
+	sdb.SetVersion(number)
+	stateDb, err := state.New(root, sdb, bc.snaps)
 	if err != nil {
 		return nil, err
 	}

@@ -60,6 +60,7 @@ func (cv *cachingVersaDB) Copy() Database {
 	cp.triedb = cv.triedb
 	cp.versionDB = cv.versionDB
 	cp.codeDB = cv.codeDB
+	cp.version = cv.version
 	cp.mode = versa.S_RW // it is important
 
 	// TODO:: maybe add lock for cv.root
@@ -109,8 +110,8 @@ func (cv *cachingVersaDB) CopyTrie(tr Trie) Trie {
 	return nil
 }
 
-func (cv *cachingVersaDB) HasState(root common.Hash) bool {
-	return cv.versionDB.HasState(root)
+func (cv *cachingVersaDB) HasState(version int64, root common.Hash) bool {
+	return cv.versionDB.HasState(version, root)
 }
 
 func (cv *cachingVersaDB) OpenTrie(root common.Hash) (Trie, error) {
@@ -214,7 +215,7 @@ func (cv *cachingVersaDB) Flush() error {
 }
 
 func (cv *cachingVersaDB) SetVersion(version int64) {
-	cv.version = version - 1
+	cv.version = version
 	//cv.debug = NewDebugVersionState(cv.codeDB, cv.versionDB)
 	//cv.debug.Version = version
 }

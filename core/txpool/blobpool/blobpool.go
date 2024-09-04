@@ -366,9 +366,9 @@ func (p *BlobPool) Init(gasTip uint64, head *types.Header, reserve txpool.Addres
 	// Initialize the state with head block, or fallback to empty one in
 	// case the head state is not available (might occur when node is not
 	// fully synced).
-	state, err := p.chain.StateAt(head.Root)
+	state, err := p.chain.StateAt(head.Number.Int64(), head.Root)
 	if err != nil {
-		state, err = p.chain.StateAt(types.EmptyRootHash)
+		state, err = p.chain.StateAt(-1, types.EmptyRootHash)
 	}
 	if err != nil {
 		return err
@@ -793,7 +793,7 @@ func (p *BlobPool) Reset(oldHead, newHead *types.Header) {
 		resettimeHist.Update(time.Since(start).Nanoseconds())
 	}(time.Now())
 
-	statedb, err := p.chain.StateAt(newHead.Root)
+	statedb, err := p.chain.StateAt(newHead.Number.Int64(), newHead.Root)
 	if err != nil {
 		log.Error("Failed to reset blobpool state", "err", err)
 		return

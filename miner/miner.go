@@ -245,7 +245,7 @@ func (miner *Miner) Pending() (*types.Block, *state.StateDB) {
 	if block == nil {
 		return nil, nil
 	}
-	stateDb, err := miner.worker.chain.StateAt(block.Root)
+	stateDb, err := miner.worker.chain.StateAt(block.Number.Int64(), block.Root)
 	if err != nil {
 		return nil, nil
 	}

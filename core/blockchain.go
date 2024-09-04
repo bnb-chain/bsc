@@ -346,6 +346,15 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// Open trie database with provided config
 	triedb := triedb.NewDatabase(db, cacheConfig.triedbConfig())
 
+	if triedb.Scheme() == rawdb.VersionScheme {
+		vdb := triedb.VersaDB()
+		ver, root := vdb.LatestStoreDiskVersionInfo()
+		if ver == -1 {
+			rawdb.WriteCanonicalHash(db, common.Hash{}, 0)
+		}
+		log.Info("version db latest version info", "version", ver, "root", root.String())
+	}
+
 	// Setup the genesis block, commit the provided genesis specification
 	// to database if the genesis block is not present yet, or load the
 	// stored one from database.
@@ -429,7 +438,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// if there is no available state, waiting for state sync.
 	head := bc.CurrentBlock()
 	if bc.triedb.Scheme() != rawdb.VersionScheme {
-		if !bc.HasState(head.Root) {
+		if !bc.HasState(head.Number.Int64(), head.Root) {
 			if head.Number.Uint64() == 0 {
 				// The genesis state is missing, which is only possible in the path-based
 				// scheme. This situation occurs when the initial state sync is not finished
@@ -447,7 +456,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 				}
 				if bc.triedb.Scheme() == rawdb.PathScheme && !bc.NoTries() {
 					recoverable, _ := bc.triedb.Recoverable(diskRoot)
-					if !bc.HasState(diskRoot) && !recoverable {
+					if !bc.HasState(0, diskRoot) && !recoverable {
 						diskRoot = bc.triedb.Head()
 					}
 				}
@@ -989,7 +998,7 @@ func (bc *BlockChain) rewindHashHead(head *types.Header, root common.Hash) (*typ
 		}
 		// If the associated state is not reachable, continue searching
 		// backwards until an available state is found.
-		if !bc.HasState(head.Root) {
+		if !bc.HasState(head.Number.Int64(), head.Root) {
 			// If the chain is gapped in the middle, return the genesis
 			// block as the new chain head.
 			parent := bc.GetHeader(head.ParentHash, head.Number.Uint64()-1)
@@ -1029,7 +1038,7 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 
 		// noState represents if the target state requested for search
 		// is unavailable and impossible to be recovered.
-		noState = !bc.HasState(root) && !bc.stateRecoverable(root)
+		noState = !bc.HasState(head.Number.Int64(), root) && !bc.stateRecoverable(root)
 
 		start  = time.Now() // Timestamp the rewinding is restarted
 		logged = time.Now() // Timestamp last progress log was printed
@@ -1050,13 +1059,13 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 		// If the root threshold hasn't been crossed but the available
 		// state is reached, quickly determine if the target state is
 		// possible to be reached or not.
-		if !beyondRoot && noState && bc.HasState(head.Root) {
+		if !beyondRoot && noState && bc.HasState(head.Number.Int64(), head.Root) {
 			beyondRoot = true
 			log.Info("Disable the search for unattainable state", "root", root)
 		}
 		// Check if the associated state is available or recoverable if
 		// the requested root has already been crossed.
-		if beyondRoot && (bc.HasState(head.Root) || bc.stateRecoverable(head.Root)) {
+		if beyondRoot && (bc.HasState(head.Number.Int64(), head.Root) || bc.stateRecoverable(head.Root)) {
 			break
 		}
 		// If pivot block is reached, return the genesis block as the
@@ -1083,7 +1092,7 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 		}
 	}
 	// Recover if the target state if it's not available yet.
-	if !bc.HasState(head.Root) {
+	if !bc.HasState(head.Number.Int64(), head.Root) {
 		if err := bc.triedb.Recover(head.Root); err != nil {
 			log.Crit("Failed to rollback state", "err", err)
 		}
@@ -1178,7 +1187,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			// the pivot point. In this scenario, there is no possible recovery
 			// approach except for rerunning a snap sync. Do nothing here until the
 			// state syncer picks it up.
-			if !bc.HasState(newHeadBlock.Root) {
+			if !bc.HasState(newHeadBlock.Number.Int64(), newHeadBlock.Root) {
 				if newHeadBlock.Number.Uint64() != 0 {
 					log.Crit("Chain is stateless at a non-genesis block")
 				}
@@ -1290,7 +1299,7 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 			return err
 		}
 	}
-	if !bc.NoTries() && !bc.HasState(root) {
+	if !bc.NoTries() && !bc.HasState(0, root) {
 		return fmt.Errorf("non existent state [%x..]", root[:4])
 	}
 	// If all checks out, manually set the head block.
@@ -2347,7 +2356,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
 
-		bc.stateCache.SetVersion(int64(block.NumberU64()))
+		bc.stateCache.SetVersion(int64(block.NumberU64()) - 1)
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			bc.stateCache.Release()
@@ -2615,7 +2624,7 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 		numbers []uint64
 	)
 	parent := it.previous()
-	for parent != nil && !bc.HasState(parent.Root) {
+	for parent != nil && !bc.HasState(parent.Number.Int64(), parent.Root) {
 		if bc.stateRecoverable(parent.Root) {
 			if err := bc.triedb.Recover(parent.Root); err != nil {
 				return 0, err
@@ -2682,7 +2691,7 @@ func (bc *BlockChain) recoverAncestors(block *types.Block) (common.Hash, error) 
 		numbers []uint64
 		parent  = block
 	)
-	for parent != nil && !bc.HasState(parent.Root()) {
+	for parent != nil && !bc.HasState(parent.Number().Int64(), parent.Root()) {
 		if bc.stateRecoverable(parent.Root()) {
 			if err := bc.triedb.Recover(parent.Root()); err != nil {
 				return common.Hash{}, err
@@ -2953,7 +2962,7 @@ func (bc *BlockChain) SetCanonical(head *types.Block) (common.Hash, error) {
 	defer bc.chainmu.Unlock()
 
 	// Re-execute the reorged chain in case the head state is missing.
-	if !bc.HasState(head.Root()) {
+	if !bc.HasState(head.Number().Int64(), head.Root()) {
 		if latestValidHash, err := bc.recoverAncestors(head); err != nil {
 			return latestValidHash, err
 		}

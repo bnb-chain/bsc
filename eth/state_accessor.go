@@ -55,7 +55,7 @@ func (eth *Ethereum) hashState(ctx context.Context, block *types.Block, reexec u
 		// The state is available in live database, create a reference
 		// on top to prevent garbage collection and return a release
 		// function to deref it.
-		if statedb, err = eth.blockchain.StateAt(block.Root()); err == nil {
+		if statedb, err = eth.blockchain.StateAt(block.Number().Int64(), block.Root()); err == nil {
 			eth.blockchain.TrieDB().Reference(block.Root(), common.Hash{})
 			return statedb, func() {
 				eth.blockchain.TrieDB().Dereference(block.Root())
@@ -185,7 +185,7 @@ func (eth *Ethereum) hashState(ctx context.Context, block *types.Block, reexec u
 
 func (eth *Ethereum) pathState(block *types.Block) (*state.StateDB, func(), error) {
 	// Check if the requested state is available in the live chain.
-	statedb, err := eth.blockchain.StateAt(block.Root())
+	statedb, err := eth.blockchain.StateAt(block.Number().Int64(), block.Root())
 	if err == nil {
 		return statedb, noopReleaser, nil
 	}

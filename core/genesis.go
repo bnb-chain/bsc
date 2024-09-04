@@ -158,7 +158,7 @@ func flushAlloc(ga *types.GenesisAlloc, db ethdb.Database, triedb *triedb.Databa
 		triedbConfig.NoTries = false
 	}
 	cachingdb := state.NewDatabaseWithNodeDB(db, triedb, true)
-	cachingdb.SetVersion(0)
+	cachingdb.SetVersion(-1)
 	defer cachingdb.Release()
 	statedb, err := state.New(types.EmptyRootHash, cachingdb, nil)
 	if err != nil {
@@ -274,6 +274,8 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 		log.Info("genesis block hash", "hash", block.Hash())
 		return genesis.Config, block.Hash(), nil
 	}
+	log.Info("init genesis", "stored root", stored.String())
+	
 	// The genesis block is present(perhaps in ancient database) while the
 	// state database is not initialized yet. It can happen that the node
 	// is initialized with an external ancient store. Commit genesis state

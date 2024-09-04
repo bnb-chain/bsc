@@ -103,7 +103,7 @@ func ValidateListsInBody(block *types.Block) error {
 // validated at this point.
 func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	// Check whether the block is already imported.
-	if v.bc.HasBlockAndState(block.Hash(), block.NumberU64()) {
+	if v.bc.HasBlockAndState(block.Hash(), block.Number().Int64()) {
 		return ErrKnownBlock
 	}
 	if v.bc.isCachedBadBlock(block) {
@@ -149,7 +149,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 			return nil
 		},
 		func() error {
-			if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
+			if !v.bc.HasBlockAndState(block.ParentHash(), block.Number().Int64()-1) {
 				if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
 					return consensus.ErrUnknownAncestor
 				}
