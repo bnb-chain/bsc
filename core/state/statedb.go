@@ -1177,6 +1177,10 @@ func (s *StateDB) populateSnapStorage(obj *stateObject) bool {
 }
 
 func (s *StateDB) AccountsIntermediateRoot() {
+	defer func(start time.Time) {
+		storageIntermediateRootTimer.UpdateSince(start)
+	}(time.Now())
+
 	tasks := make(chan func())
 	finishCh := make(chan struct{})
 	defer close(finishCh)
@@ -1221,6 +1225,9 @@ func (s *StateDB) AccountsIntermediateRoot() {
 }
 
 func (s *StateDB) StateIntermediateRoot() common.Hash {
+	defer func(start time.Time) {
+		accountIntermediateRootTimer.UpdateSince(start)
+	}(time.Now())
 	// If there was a trie prefetcher operating, it gets aborted and irrevocably
 	// modified after we start retrieving tries. Remove it from the statedb after
 	// this round of use.

@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -39,6 +40,12 @@ func EnableRemoteVerifyManager(remoteValidator *remoteVerifyManager) BlockValida
 		return bv
 	}
 }
+
+var (
+	validateBloomTimer   = metrics.NewRegisteredTimer("validate/bloom/time", nil)
+	validateReceiptTimer = metrics.NewRegisteredTimer("validate/receipt/time", nil)
+	validateRootTimer    = metrics.NewRegisteredTimer("validate/root/time", nil)
+)
 
 // BlockValidator is responsible for validating block headers, uncles and
 // processed state.
@@ -184,6 +191,10 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	// For valid blocks this should always validate to true.
 	validateFuns := []func() error{
 		func() error {
+			defer func(start time.Time) {
+				validateBloomTimer.UpdateSince(start)
+			}(time.Now())
+
 			rbloom := types.CreateBloom(receipts)
 			if rbloom != header.Bloom {
 				return fmt.Errorf("invalid bloom (remote: %x  local: %x)", header.Bloom, rbloom)
@@ -191,6 +202,9 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			return nil
 		},
 		func() error {
+			defer func(start time.Time) {
+				validateReceiptTimer.UpdateSince(start)
+			}(time.Now())
 			receiptSha := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 			if receiptSha != header.ReceiptHash {
 				return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
@@ -209,6 +223,9 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		})
 	} else {
 		validateFuns = append(validateFuns, func() error {
+			defer func(start time.Time) {
+				validateRootTimer.UpdateSince(start)
+			}(time.Now())
 			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
 			}

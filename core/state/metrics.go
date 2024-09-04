@@ -34,4 +34,7 @@ var (
 	slotDeletionCount    = metrics.NewRegisteredMeter("state/delete/storage/slot", nil)
 	slotDeletionSize     = metrics.NewRegisteredMeter("state/delete/storage/size", nil)
 	slotDeletionSkip     = metrics.NewRegisteredGauge("state/delete/storage/skip", nil)
+
+	accountIntermediateRootTimer = metrics.NewRegisteredTimer("state/account/intermediate/root/time", nil)
+	storageIntermediateRootTimer = metrics.NewRegisteredTimer("state/storage/intermediate/root/time", nil)
 )
