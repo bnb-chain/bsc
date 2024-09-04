@@ -73,7 +73,7 @@ func (api *MinerAPI) SetGasPrice(gasPrice hexutil.Big) bool {
 // SetGasLimit sets the gaslimit to target towards during mining.
 func (api *MinerAPI) SetGasLimit(gasLimit hexutil.Uint64) bool {
 	api.e.Miner().SetGasCeil(uint64(gasLimit))
-	if api.e.Miner().Mining() && uint64(gasLimit) > params.SystemTxsGas {
+	if uint64(gasLimit) > params.SystemTxsGas {
 		api.e.TxPool().SetMaxGas(uint64(gasLimit) - params.SystemTxsGas)
 	}
 	return true
