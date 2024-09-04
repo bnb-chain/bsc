@@ -95,8 +95,9 @@ var (
 var websiteTmpl string
 
 func weiToEtherStringFx(wei *big.Int, prec int) string {
-	f, _ := new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(params.Ether)).Float64()
-	return strconv.FormatFloat(f, 'f', prec, 64)
+	etherValue := new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(params.Ether))
+	// Format the big.Float directly to a string with the specified precision
+	return etherValue.Text('f', prec)
 }
 
 func main() {
