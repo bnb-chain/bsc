@@ -21,7 +21,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 	"sort"
 
@@ -185,24 +184,9 @@ func (s *Snapshot) isMajorityFork(forkHash string) bool {
 }
 
 func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) {
-	if !chainConfig.IsLuban(header.Number) {
-		return
-	}
-
 	// The attestation should have been checked in verify header, update directly
 	attestation, _ := getVoteAttestationFromHeader(header, chainConfig, parliaConfig)
 	if attestation == nil {
-		return
-	}
-
-	// Headers with bad attestation are accepted before Plato upgrade,
-	// but Attestation of snapshot is only updated when the target block is direct parent of the header
-	targetNumber := attestation.Data.TargetNumber
-	targetHash := attestation.Data.TargetHash
-	if targetHash != header.ParentHash || targetNumber+1 != header.Number.Uint64() {
-		log.Warn("updateAttestation failed", "error", fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
-			header.Number.Uint64()-1, header.ParentHash, targetNumber, targetHash))
-		updateAttestationErrorCounter.Inc(1)
 		return
 	}
 
