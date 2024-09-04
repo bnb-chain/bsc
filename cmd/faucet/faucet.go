@@ -501,10 +501,6 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 
 		// check #2: check IP and ID(address) to ensure the user didn't request funds too recently,
 		f.lock.Lock()
-		var (
-			fund    bool
-			timeout time.Time
-		)
 
 		if ipTimeout := f.timeouts[ips[len(ips)-2]]; time.Now().Before(ipTimeout) {
 			f.lock.Unlock()
@@ -512,17 +508,17 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				log.Warn("Failed to send funding error to client", "err", err)
 				return
 			}
-			log.Info("too frequent funding(ip)", "Wait", common.PrettyDuration(time.Until(timeout)), "ip", ips[len(ips)-2], "ipsStr", ipsStr)
+			log.Info("too frequent funding(ip)", "TimeLeft", common.PrettyDuration(time.Until(ipTimeout)), "ip", ips[len(ips)-2], "ipsStr", ipsStr)
 			continue
 		}
-		if timeout = f.timeouts[id]; time.Now().Before(timeout) {
+		if idTimeout := f.timeouts[id]; time.Now().Before(idTimeout) {
 			f.lock.Unlock()
 			// Send an error if too frequent funding, otherwise a success
-			if err = sendError(wsconn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(timeout)))); err != nil { // nolint: gosimple
+			if err = sendError(wsconn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(idTimeout)))); err != nil { // nolint: gosimple
 				log.Warn("Failed to send funding error to client", "err", err)
 				return
 			}
-			log.Info("too frequent funding(id)", "Wait", common.PrettyDuration(time.Until(timeout)), "id", id)
+			log.Info("too frequent funding(id)", "TimeLeft", common.PrettyDuration(time.Until(idTimeout)), "id", id)
 			continue
 		}
 		// check #3: minimum mainnet balance check, internal error will bypass the check to avoid blocking the faucet service
@@ -603,18 +599,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 
 		f.timeouts[id] = time.Now().Add(timeoutInt64 - grace)
 		f.timeouts[ips[len(ips)-2]] = time.Now().Add(timeoutInt64 - grace)
-		fund = true
-
 		f.lock.Unlock()
-
-		// Send an error if too frequent funding, otherwise a success
-		if !fund {
-			if err = sendError(wsconn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(timeout)))); err != nil { // nolint: gosimple
-				log.Warn("Failed to send funding error to client", "err", err)
-				return
-			}
-			continue
-		}
 		if err = sendSuccess(wsconn, fmt.Sprintf("Funding request accepted for %s into %s", username, address.Hex())); err != nil {
 			log.Warn("Failed to send funding success to client", "err", err)
 			return
