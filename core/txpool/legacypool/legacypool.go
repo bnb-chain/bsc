@@ -198,10 +198,6 @@ func (config *Config) sanitize() Config {
 		log.Warn("Sanitizing invalid txpool global queue", "provided", conf.GlobalQueue, "updated", DefaultConfig.GlobalQueue)
 		conf.GlobalQueue = DefaultConfig.GlobalQueue
 	}
-	if conf.Pool2Slots < 0 {
-		log.Warn("Sanitizing invalid txpool pool 2 slots", "provided", conf.Pool2Slots, "updated", DefaultConfig.Pool2Slots)
-		conf.Pool2Slots = DefaultConfig.Pool2Slots
-	}
 	if conf.Pool3Slots < 1 {
 		log.Warn("Sanitizing invalid txpool pool 3 slots", "provided", conf.Pool3Slots, "updated", DefaultConfig.Pool3Slots)
 		conf.Pool3Slots = DefaultConfig.Pool3Slots
@@ -2214,7 +2210,7 @@ func (pool *LegacyPool) transferTransactions() {
 
 	log.Debug("Will attempt to transfer from pool3 to pool2", "transactions", extraTransactions)
 
-	tx := pool.localBufferPool.Flush(int(extraTransactions))
+	tx := pool.localBufferPool.Flush(extraTransactions)
 	if len(tx) == 0 {
 		return
 	}

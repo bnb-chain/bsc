@@ -2306,7 +2306,6 @@ func TestTransferTransactions(t *testing.T) {
 	if queue != 1 {
 		t.Errorf("queued transactions mismatched: have %d, want %d", queue, 1)
 	}
-
 }
 
 // Tests that the pool rejects replacement dynamic fee transactions that don't
