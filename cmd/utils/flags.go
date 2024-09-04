@@ -37,6 +37,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/ethereum/go-ethereum/beacon/fakebeacon"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 	"github.com/ethereum/go-ethereum/core"
@@ -1145,6 +1146,25 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "Extra reserve threshold for blob, blob never expires when 0 is set, default 28800",
 		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.MiscCategory,
+	}
+
+	// Fake beacon
+	FakeBeaconEnabledFlag = &cli.BoolFlag{
+		Name:     "fake-beacon",
+		Usage:    "Enable the HTTP-RPC server of fake-beacon",
+		Category: flags.APICategory,
+	}
+	FakeBeaconAddrFlag = &cli.StringFlag{
+		Name:     "fake-beacon.addr",
+		Usage:    "HTTP-RPC server listening addr of fake-beacon",
+		Value:    fakebeacon.DefaultAddr,
+		Category: flags.APICategory,
+	}
+	FakeBeaconPortFlag = &cli.IntFlag{
+		Name:     "fake-beacon.port",
+		Usage:    "HTTP-RPC server listening port of fake-beacon",
+		Value:    fakebeacon.DefaultPort,
+		Category: flags.APICategory,
 	}
 )
 
