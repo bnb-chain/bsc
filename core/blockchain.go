@@ -773,25 +773,32 @@ func (bc *BlockChain) loadLastState() error {
 		headBlock = bc.GetBlockByHash(head)
 
 		versa := bc.triedb.VersaDB()
-		archiveVersion, _ := versa.LatestStoreDiskVersionInfo()
-		// empty chain
+		archiveVersion, archiveRoot := versa.LatestStoreDiskVersionInfo()
+		// first start
 		if archiveVersion == -1 {
 			archiveVersion = 0
+			archiveRoot = bc.genesisBlock.Root()
 		}
 
 		if int64(headBlock.NumberU64()) < archiveVersion {
 			log.Crit("versa db disk version large than header block", "head number", headBlock.NumberU64(), "versa archive number", archiveVersion)
 		}
-		log.Info("begin rewind versa db head", "target", archiveVersion)
+		log.Info("begin rewind versa db head", "target_number", archiveVersion, "target_root", archiveRoot.String(), "head_number", headBlock.NumberU64(), "head_root", headBlock.Root().String())
 		for {
-			if int64(headBlock.NumberU64()) == archiveVersion {
+			if int64(headBlock.NumberU64()) == archiveVersion && archiveRoot.Cmp(headBlock.Root()) == 0 {
 				rawdb.WriteCanonicalHash(bc.db, headBlock.Hash(), headBlock.NumberU64())
 				rawdb.WriteHeadHeaderHash(bc.db, headBlock.Hash())
 				rawdb.WriteHeadBlockHash(bc.db, headBlock.Hash())
 				rawdb.WriteHeadFastBlockHash(bc.db, headBlock.Hash())
 				log.Info("reset versa db head block", "number", headBlock.NumberU64(), "hash", headBlock.Hash())
 				break
+			} else if int64(headBlock.NumberU64()) == archiveVersion {
+				log.Crit("rewinding meet same number", "target_number", archiveVersion, "target_root", archiveRoot.String(), "head_number", headBlock.NumberU64(), "head_root", headBlock.Root().String())
+			} else if archiveRoot.Cmp(headBlock.Root()) == 0 {
+				log.Info("rewinding meet same root", "target_number", archiveVersion, "target_root", archiveRoot.String(), "head_number", headBlock.NumberU64(), "head_root", headBlock.Root().String())
 			}
+
+			log.Info("rewinding", "target_number", archiveVersion, "target_root", archiveRoot.String(), "head_number", headBlock.NumberU64(), "head_root", headBlock.Root().String())
 			headBlock = rawdb.ReadBlock(bc.db, headBlock.ParentHash(), headBlock.NumberU64()-1)
 			if headBlock == nil {
 				panic("versa db rewind head is nil")
@@ -2338,12 +2345,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		parent := it.previous()
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
-		}
-
-		if bc.stateCache.Scheme() != rawdb.VersionScheme {
-			if block.NumberU64() == 2000001 {
-				log.Crit("exit.... path mode, 200w blocks")
-			}
 		}
 
 		bc.stateCache.SetVersion(int64(block.NumberU64()))
