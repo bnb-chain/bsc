@@ -1661,9 +1661,9 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 					if err := s.db.Flush(); err != nil {
 						return err
 					}
-					if err := s.db.Release(); err != nil {
-						return err
-					}
+					//if err := s.db.Release(); err != nil {
+					//	return err
+					//}
 					s.originalRoot = root
 					if metrics.EnabledExpensive {
 						s.TrieDBCommits += time.Since(start)
