@@ -172,6 +172,8 @@ type handler struct {
 
 	handlerStartCh chan struct{}
 	handlerDoneCh  chan struct{}
+
+	blackList *blackList
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
@@ -702,6 +704,7 @@ func (h *handler) unregisterPeer(id string) {
 func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	h.maxPeers = maxPeers
 	h.maxPeersPerIP = maxPeersPerIP
+	h.blackList = NewBlackList(maxPeers, 1*time.Hour, 3)
 	// broadcast and announce transactions (only new ones, not resurrected ones)
 	h.wg.Add(1)
 	h.txsCh = make(chan core.NewTxsEvent, txChanSize)
