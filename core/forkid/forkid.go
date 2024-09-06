@@ -45,11 +45,11 @@ var (
 	ErrLocalIncompatibleOrStale = errors.New("local incompatible or needs update")
 )
 
-// timestampThreshold is the Ethereum mainnet genesis timestamp. It is used to
+// timestampThreshold is the BSC mainnet/chapel genesis timestamp. It is used to
 // differentiate if a forkid.next field is a block number or a timestamp. Whilst
 // very hacky, something's needed to split the validation during the transition
 // period (block forks -> time forks).
-const timestampThreshold = 1438269973
+const timestampThreshold = 1587390414 // 0x5e9da7ce
 
 // Blockchain defines all necessary method to build a forkID.
 type Blockchain interface {
