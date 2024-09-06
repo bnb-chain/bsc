@@ -104,6 +104,8 @@ var (
 	queuedGauge  = metrics.NewRegisteredGauge("txpool/queued", nil)
 	localGauge   = metrics.NewRegisteredGauge("txpool/local", nil)
 	slotsGauge   = metrics.NewRegisteredGauge("txpool/slots", nil)
+	pool2Gauge   = metrics.NewRegisteredGauge("txpool/pool2", nil)
+	pool3Gauge   = metrics.NewRegisteredGauge("txpool/pool3", nil)
 
 	reheapTimer = metrics.NewRegisteredTimer("txpool/reheap", nil)
 )
@@ -968,7 +970,9 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 		}
 		dirty := newAccountSet(pool.signer)
 		dirty.addTx(tx)
-		<-pool.requestPromoteExecutables(dirty)
+		go func() {
+			<-pool.requestPromoteExecutables(dirty)
+		}()
 		log.Trace("Pooled new executable transaction", "hash", tx.Hash(), "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
@@ -985,7 +989,10 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 		}
 		dirty := newAccountSet(pool.signer)
 		dirty.addTx(tx)
-		<-pool.requestPromoteExecutables(dirty)
+		pool2Gauge.Inc(1)
+		go func() {
+			<-pool.requestPromoteExecutables(dirty)
+		}()
 		log.Trace("Pooled new executable transaction", "hash", tx.Hash(), "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
@@ -994,6 +1001,7 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 	}
 	if pool3 {
 		pool.localBufferPool.Add(tx)
+		pool3Gauge.Inc(1)
 		return true, nil
 	}
 	return false, errors.New("could not add to any pool")
