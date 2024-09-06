@@ -966,6 +966,9 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 		if err != nil {
 			return false, err
 		}
+		dirty := newAccountSet(pool.signer)
+		dirty.addTx(tx)
+		<-pool.requestPromoteExecutables(dirty)
 		log.Trace("Pooled new executable transaction", "hash", tx.Hash(), "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
@@ -980,6 +983,9 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 		if err != nil {
 			return false, err
 		}
+		dirty := newAccountSet(pool.signer)
+		dirty.addTx(tx)
+		<-pool.requestPromoteExecutables(dirty)
 		log.Trace("Pooled new executable transaction", "hash", tx.Hash(), "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
