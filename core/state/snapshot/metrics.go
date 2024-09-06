@@ -50,4 +50,12 @@ var (
 	snapStorageWriteCounter = metrics.NewRegisteredCounter("state/snapshot/generation/duration/storage/write", nil)
 	// snapStorageCleanCounter measures time spent on deleting storages
 	snapStorageCleanCounter = metrics.NewRegisteredCounter("state/snapshot/generation/duration/storage/clean", nil)
+
+	snapGetTimer = metrics.NewRegisteredTimer("snap/get/time", nil)
+	snapGetQPS   = metrics.NewRegisteredMeter("snap/get/qps", nil)
+
+	snapGetAccountTimer = metrics.NewRegisteredTimer("snap/account/get/time", nil)
+	snapGetAccountQPS   = metrics.NewRegisteredMeter("snap/account/get/qps", nil)
+	snapGetStorageTimer = metrics.NewRegisteredTimer("snap/storage/get/time", nil)
+	snapGetStorageQPS   = metrics.NewRegisteredMeter("snap/storage/get/qps", nil)
 )
