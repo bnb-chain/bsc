@@ -54,6 +54,16 @@ type revision struct {
 	journalIndex int
 }
 
+var (
+	stateDBGetTimer = metrics.NewRegisteredTimer("statedb/get/time", nil)
+	stateDBGetQPS   = metrics.NewRegisteredMeter("statedb/get/qps", nil)
+
+	stateDBGetAccountTimer = metrics.NewRegisteredTimer("statedb/account/get/time", nil)
+	stateDBGetAccountQPS   = metrics.NewRegisteredMeter("statedb/account/get/qps", nil)
+	stateDBGetStorageTimer = metrics.NewRegisteredTimer("statedb/storage/get/time", nil)
+	stateDBGetStorageQPS   = metrics.NewRegisteredMeter("statedb/storage/get/qps", nil)
+)
+
 // StateDB structs within the ethereum protocol are used to store anything
 // within the merkle trie. StateDBs take care of caching and storing
 // nested states. It's the general query interface to retrieve:
@@ -716,6 +726,14 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 	if obj := s.stateObjects[addr]; obj != nil {
 		return obj
 	}
+
+	defer func(start time.Time) {
+		stateDBGetTimer.UpdateSince(start)
+		stateDBGetQPS.Mark(1)
+		stateDBGetAccountTimer.UpdateSince(start)
+		stateDBGetAccountQPS.Mark(1)
+	}(time.Now())
+
 	// If no live objects are available, attempt to use snapshots
 	var data *types.StateAccount
 	if s.snap != nil {
