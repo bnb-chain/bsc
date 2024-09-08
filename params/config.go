@@ -155,6 +155,8 @@ var (
 		HaberTime:           newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
 		HaberFixTime:        newUint64(1727316120), // 2024-09-26 02:02:00 AM UTC
 		BohrTime:            newUint64(1727317200), // 2024-09-26 02:20:00 AM UTC
+		// TODO
+		PascalTime: newUint64(0),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -196,6 +198,8 @@ var (
 		HaberTime:           newUint64(1716962820), // 2024-05-29 06:07:00 AM UTC
 		HaberFixTime:        newUint64(1719986788), // 2024-07-03 06:06:28 AM UTC
 		BohrTime:            newUint64(1724116996), // 2024-08-20 01:23:16 AM UTC
+		// TODO
+		PascalTime: newUint64(0),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -238,6 +242,8 @@ var (
 		HaberTime:           newUint64(0),
 		HaberFixTime:        newUint64(0),
 		BohrTime:            newUint64(0),
+		// TODO
+		PascalTime: newUint64(0),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -517,6 +523,7 @@ type ChainConfig struct {
 	HaberTime      *uint64 `json:"haberTime,omitempty"`      // Haber switch time (nil = no fork, 0 = already on haber)
 	HaberFixTime   *uint64 `json:"haberFixTime,omitempty"`   // HaberFix switch time (nil = no fork, 0 = already on haberFix)
 	BohrTime       *uint64 `json:"bohrTime,omitempty"`       // Bohr switch time (nil = no fork, 0 = already on bohr)
+	PascalTime     *uint64 `json:"pascalTime,omitempty"`     // Pascal switch time (nil = no fork, 0 = already on pascal)
 	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
 	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
@@ -637,7 +644,12 @@ func (c *ChainConfig) String() string {
 		BohrTime = big.NewInt(0).SetUint64(*c.BohrTime)
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, Engine: %v}",
+	var PascalTime *big.Int
+	if c.PascalTime != nil {
+		PascalTime = big.NewInt(0).SetUint64(*c.PascalTime)
+	}
+
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -677,6 +689,7 @@ func (c *ChainConfig) String() string {
 		HaberTime,
 		HaberFixTime,
 		BohrTime,
+		PascalTime,
 		engine,
 	)
 }
@@ -977,6 +990,20 @@ func (c *ChainConfig) IsOnBohr(currentBlockNumber *big.Int, lastBlockTime uint64
 	return !c.IsBohr(lastBlockNumber, lastBlockTime) && c.IsBohr(currentBlockNumber, currentBlockTime)
 }
 
+// IsPascal returns whether time is either equal to the Pascal fork time or greater.
+func (c *ChainConfig) IsPascal(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.PascalTime, time)
+}
+
+// IsOnPascal returns whether currentBlockTime is either equal to the Pascal fork time or greater firstly.
+func (c *ChainConfig) IsOnPascal(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsPascal(lastBlockNumber, lastBlockTime) && c.IsPascal(currentBlockNumber, currentBlockTime)
+}
+
 // IsPrague returns whether num is either equal to the Prague fork time or greater.
 func (c *ChainConfig) IsPrague(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.PragueTime, time)
@@ -1043,6 +1070,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "haberTime", timestamp: c.HaberTime},
 		{name: "haberFixTime", timestamp: c.HaberFixTime},
 		{name: "bohrTime", timestamp: c.BohrTime},
+		{name: "pascalTime", timestamp: c.PascalTime},
 		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 	} {
@@ -1198,6 +1226,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	}
 	if isForkTimestampIncompatible(c.BohrTime, newcfg.BohrTime, headTimestamp) {
 		return newTimestampCompatError("Bohr fork timestamp", c.BohrTime, newcfg.BohrTime)
+	}
+	if isForkTimestampIncompatible(c.PascalTime, newcfg.PascalTime, headTimestamp) {
+		return newTimestampCompatError("Pascal fork timestamp", c.PascalTime, newcfg.PascalTime)
 	}
 	if isForkTimestampIncompatible(c.PragueTime, newcfg.PragueTime, headTimestamp) {
 		return newTimestampCompatError("Prague fork timestamp", c.PragueTime, newcfg.PragueTime)
