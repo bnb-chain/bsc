@@ -252,6 +252,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 				config.CancunTime = overrides.OverridePassedForkTime
 				config.HaberTime = overrides.OverridePassedForkTime
 				config.HaberFixTime = overrides.OverridePassedForkTime
+				config.PascalTime = overrides.OverridePassedForkTime
 			}
 			if overrides != nil && overrides.OverrideBohr != nil {
 				config.BohrTime = overrides.OverrideBohr
