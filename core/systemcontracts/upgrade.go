@@ -1064,7 +1064,6 @@ func init() {
 			},
 		},
 	}
-
 }
 
 func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB) {

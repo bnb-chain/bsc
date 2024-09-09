@@ -218,6 +218,7 @@ func (e *GenesisMismatchError) Error() string {
 type ChainOverrides struct {
 	OverridePassedForkTime *uint64
 	OverrideBohr           *uint64
+	OverridePascal         *uint64
 	OverrideVerkle         *uint64
 }
 
@@ -252,10 +253,12 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 				config.CancunTime = overrides.OverridePassedForkTime
 				config.HaberTime = overrides.OverridePassedForkTime
 				config.HaberFixTime = overrides.OverridePassedForkTime
-				config.PascalTime = overrides.OverridePassedForkTime
 			}
 			if overrides != nil && overrides.OverrideBohr != nil {
 				config.BohrTime = overrides.OverrideBohr
+			}
+			if overrides != nil && overrides.OverridePascal != nil {
+				config.PascalTime = overrides.OverridePascal
 			}
 			if overrides != nil && overrides.OverrideVerkle != nil {
 				config.VerkleTime = overrides.OverrideVerkle

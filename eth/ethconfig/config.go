@@ -194,6 +194,9 @@ type Config struct {
 	// OverrideBohr (TODO: remove after the fork)
 	OverrideBohr *uint64 `toml:",omitempty"`
 
+	// OverridePascal (TODO: remove after the fork)
+	OverridePascal *uint64 `toml:",omitempty"`
+
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
 
