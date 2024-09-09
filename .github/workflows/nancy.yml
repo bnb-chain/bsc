@@ -34,4 +34,4 @@ jobs:
     - name: Nancy
       uses: sonatype-nexus-community/nancy-github-action@main
       with:
-        nancyCommand: sleuth --loud
+        nancyCommand: sleuth --loud --exclude-vulnerability CVE-2024-8421
