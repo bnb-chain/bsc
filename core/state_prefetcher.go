@@ -49,7 +49,6 @@ func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine conse
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to pre-cache transaction signatures and state trie nodes.
 func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{}) {
-	panic("prefetcher not support")
 	var (
 		header = block.Header()
 		signer = types.MakeSigner(p.config, header.Number, header.Time)

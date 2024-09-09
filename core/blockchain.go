@@ -2368,18 +2368,18 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		//statedb.StartPrefetcher("chain")
 		interruptCh := make(chan struct{})
 		// For diff sync, it may fallback to full sync, so we still do prefetch
-		//if len(block.Transactions()) >= prefetchTxNumber {
-		//	// do Prefetch in a separate goroutine to avoid blocking the critical path
-		//
-		//	// 1.do state prefetch for snapshot cache
-		//	throwaway := statedb.CopyDoPrefetch()
-		//	go bc.prefetcher.Prefetch(block, throwaway, &bc.vmConfig, interruptCh)
-		//
-		//	// 2.do trie prefetch for MPT trie node cache
-		//	// it is for the big state trie tree, prefetch based on transaction's From/To address.
-		//	// trie prefetcher is thread safe now, ok to prefetch in a separate routine
-		//	go throwaway.TriePrefetchInAdvance(block, signer)
-		//}
+		if len(block.Transactions()) >= prefetchTxNumber {
+			// do Prefetch in a separate goroutine to avoid blocking the critical path
+
+			//1.do state prefetch for snapshot cache
+			throwaway := statedb.CopyDoPrefetch()
+			go bc.prefetcher.Prefetch(block, throwaway, &bc.vmConfig, interruptCh)
+
+			//	// 2.do trie prefetch for MPT trie node cache
+			//	// it is for the big state trie tree, prefetch based on transaction's From/To address.
+			//	// trie prefetcher is thread safe now, ok to prefetch in a separate routine
+			//	go throwaway.TriePrefetchInAdvance(block, signer)
+		}
 
 		// Process block using the parent state as reference point
 		if bc.pipeCommit {
