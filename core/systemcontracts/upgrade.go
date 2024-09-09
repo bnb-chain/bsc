@@ -808,7 +808,7 @@ func init() {
 			{
 				ContractAddr: common.HexToAddress(SystemRewardContract),
 				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3ad33b14299342779506125594db9660e993f3f8",
-				Code:         pascal.MainnetSystemContract,
+				Code:         pascal.MainnetSystemRewardContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(LightClientContract),
@@ -878,7 +878,7 @@ func init() {
 			{
 				ContractAddr: common.HexToAddress(TokenRecoverPortalContract),
 				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3ad33b14299342779506125594db9660e993f3f8",
-				Code:         pascal.MainnetTokenRecoverContract,
+				Code:         pascal.MainnetTokenRecoverPortalContract,
 			},
 		},
 	}
@@ -899,7 +899,7 @@ func init() {
 			{
 				ContractAddr: common.HexToAddress(SystemRewardContract),
 				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3ad33b14299342779506125594db9660e993f3f8",
-				Code:         pascal.ChapelSystemContract,
+				Code:         pascal.ChapelSystemRewardContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(LightClientContract),
@@ -969,7 +969,7 @@ func init() {
 			{
 				ContractAddr: common.HexToAddress(TokenRecoverPortalContract),
 				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3ad33b14299342779506125594db9660e993f3f8",
-				Code:         pascal.ChapelTokenRecoverContract,
+				Code:         pascal.ChapelTokenRecoverPortalContract,
 			},
 		},
 	}
@@ -990,7 +990,7 @@ func init() {
 			{
 				ContractAddr: common.HexToAddress(SystemRewardContract),
 				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3ad33b14299342779506125594db9660e993f3f8",
-				Code:         pascal.RialtoSystemContract,
+				Code:         pascal.RialtoSystemRewardContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(LightClientContract),
@@ -1060,7 +1060,7 @@ func init() {
 			{
 				ContractAddr: common.HexToAddress(TokenRecoverPortalContract),
 				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3ad33b14299342779506125594db9660e993f3f8",
-				Code:         pascal.RialtoTokenRecoverContract,
+				Code:         pascal.RialtoTokenRecoverPortalContract,
 			},
 		},
 	}

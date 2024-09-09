@@ -11,8 +11,8 @@ var (
 	//go:embed mainnet/SlashContract
 	MainnetSlashContract string
 
-	//go:embed mainnet/SystemContract
-	MainnetSystemContract string
+	//go:embed mainnet/SystemRewardContract
+	MainnetSystemRewardContract string
 
 	//go:embed mainnet/LightClientContract
 	MainnetLightClientContract string
@@ -53,8 +53,8 @@ var (
 	//go:embed mainnet/TimelockContract
 	MainnetTimelockContract string
 
-	//go:embed mainnet/TokenRecoverContract
-	MainnetTokenRecoverContract string
+	//go:embed mainnet/TokenRecoverPortalContract
+	MainnetTokenRecoverPortalContract string
 )
 
 // contract codes for Chapel upgrade
@@ -66,8 +66,8 @@ var (
 	//go:embed chapel/SlashContract
 	ChapelSlashContract string
 
-	//go:embed chapel/SystemContract
-	ChapelSystemContract string
+	//go:embed chapel/SystemRewardContract
+	ChapelSystemRewardContract string
 
 	//go:embed chapel/LightClientContract
 	ChapelLightClientContract string
@@ -108,8 +108,8 @@ var (
 	//go:embed chapel/TimelockContract
 	ChapelTimelockContract string
 
-	//go:embed chapel/TokenRecoverContract
-	ChapelTokenRecoverContract string
+	//go:embed chapel/TokenRecoverPortalContract
+	ChapelTokenRecoverPortalContract string
 )
 
 // contract codes for Rialto upgrade
@@ -121,8 +121,8 @@ var (
 	//go:embed rialto/SlashContract
 	RialtoSlashContract string
 
-	//go:embed rialto/SystemContract
-	RialtoSystemContract string
+	//go:embed rialto/SystemRewardContract
+	RialtoSystemRewardContract string
 
 	//go:embed rialto/LightClientContract
 	RialtoLightClientContract string
@@ -163,6 +163,6 @@ var (
 	//go:embed rialto/TimelockContract
 	RialtoTimelockContract string
 
-	//go:embed rialto/TokenRecoverContract
-	RialtoTokenRecoverContract string
+	//go:embed rialto/TokenRecoverPortalContract
+	RialtoTokenRecoverPortalContract string
 )
