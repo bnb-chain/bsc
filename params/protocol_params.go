@@ -23,6 +23,8 @@ import (
 )
 
 const (
+	MaxMessageSize uint32 = 10 * 1024 * 1024 // MaxMessageSize is the maximum cap on the size of a eth protocol message.
+
 	GasLimitBoundDivisor uint64 = 256                // The bound divisor of the gas limit, used in update calculations.
 	MinGasLimit          uint64 = 5000               // Minimum the gas limit may ever be.
 	MaxGasLimit          uint64 = 0x7fffffffffffffff // Maximum the gas limit (2^63-1).
