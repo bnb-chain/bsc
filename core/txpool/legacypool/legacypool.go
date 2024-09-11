@@ -248,7 +248,7 @@ type LegacyPool struct {
 	all     *lookup                      // All transactions to allow lookups
 	priced  *pricedList                  // All transactions sorted by price
 
-	localBufferPool *LRUBuffer // Local buffer transactions (Pool 3)
+	localBufferPool Pool3 // Local buffer transactions (Pool 3)
 
 	reqResetCh      chan *txpoolResetRequest
 	reqPromoteCh    chan *accountSet
@@ -293,7 +293,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
-		localBufferPool: NewLRUBuffer(int(maxPool3Size)),
+		localBufferPool: NewLRUBufferFastCache(int(maxPool3Size)),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -1001,7 +1001,6 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 	}
 	if pool3 {
 		pool.localBufferPool.Add(tx)
-		pool3Gauge.Inc(1)
 		return true, nil
 	}
 	return false, errors.New("could not add to any pool")
@@ -1686,6 +1685,9 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 		}
 		log.Trace("Promoted queued transactions", "count", len(promoted))
 		queuedGauge.Dec(int64(len(readies)))
+		if list.txs.staticOnly {
+			pool2Gauge.Dec(int64(len(readies)))
+		}
 
 		// Drop all transactions over the allowed limit
 		var caps types.Transactions
@@ -1701,6 +1703,9 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 		// Mark all the items dropped as removed
 		pool.priced.Removed(len(forwards) + len(drops) + len(caps))
 		queuedGauge.Dec(int64(len(forwards) + len(drops) + len(caps)))
+		if list.txs.staticOnly {
+			pool2Gauge.Dec(int64(len(forwards) + len(drops) + len(caps)))
+		}
 		if pool.locals.contains(addr) {
 			localGauge.Dec(int64(len(forwards) + len(drops) + len(caps)))
 		}
@@ -2216,7 +2221,7 @@ func (pool *LegacyPool) transferTransactions() {
 		return
 	}
 	extraSlots := maxPool1Pool2CombinedSize - currentPool1Pool2Size
-	extraTransactions := extraSlots / 4 // Since maximum slots per transaction is 4
+	extraTransactions := (extraSlots + 3) / 4 // Since maximum slots per transaction is 4
 	// So now we can  take out extraTransactions number of transactions from pool3 and put in pool2
 	if extraTransactions < 1 {
 		return
@@ -2240,8 +2245,11 @@ func (pool *LegacyPool) transferTransactions() {
 		if err != nil {
 			// if it never gets added to anything then add it back
 			pool.addToPool12OrPool3(transaction, from, true, false, false, true)
+			//slots := int64(numSlots(transaction))
+			pool2Gauge.Dec(1)
 			continue
 		}
+		pool2Gauge.Inc(1)
 		log.Debug("Transferred from pool3 to pool2", "transactions", transaction.Hash().String())
 	}
 }

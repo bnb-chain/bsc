@@ -1926,6 +1926,7 @@ func TestStableUnderpricing(t *testing.T) {
 // Note, local transactions are never allowed to be dropped.
 func TestUnderpricingDynamicFee(t *testing.T) {
 	t.Parallel()
+	testTxPoolConfig.InterPoolTransferTime = 5 * time.Second
 
 	pool, _ := setupPoolWithConfig(eip1559Config)
 	defer pool.Close()
@@ -2090,7 +2091,7 @@ func TestDualHeapEviction(t *testing.T) {
 		}
 		pending, queued := pool.Stats()
 		if pending+queued != 5 {
-			t.Fatalf("transaction count mismatch: have %d, want %d, pending %d, queued %d, pool3 %d", pending+queued, 5, pending, queued, pool.localBufferPool.size)
+			t.Fatalf("transaction count mismatch: have %d, want %d, pending %d, queued %d, pool3 %d", pending+queued, 5, pending, queued, pool.localBufferPool.Size())
 		}
 	}
 
@@ -2261,7 +2262,7 @@ func TestTransferTransactions(t *testing.T) {
 	pool, _ := setupPoolWithConfig(eip1559Config)
 	defer pool.Close()
 
-	pool.config.GlobalSlots = 2
+	pool.config.GlobalSlots = 1
 	pool.config.GlobalQueue = 1
 
 	pool.config.Pool2Slots = 1
@@ -2269,7 +2270,7 @@ func TestTransferTransactions(t *testing.T) {
 	pool.config.InterPoolTransferTime = 5 * time.Second
 
 	// Create a number of test accounts and fund them
-	keys := make([]*ecdsa.PrivateKey, 4)
+	keys := make([]*ecdsa.PrivateKey, 5)
 	for i := 0; i < len(keys); i++ {
 		keys[i], _ = crypto.GenerateKey()
 		testAddBalance(pool, crypto.PubkeyToAddress(keys[i].PublicKey), big.NewInt(1000000))
@@ -2278,34 +2279,71 @@ func TestTransferTransactions(t *testing.T) {
 	tx := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[0])
 	from, _ := types.Sender(pool.signer, tx)
 	pool.addToPool12OrPool3(tx, from, true, false, false, true)
-	time.Sleep(10 * time.Second)
+	time.Sleep(6 * time.Second)
 	pending, queue := pool.Stats()
-	if pending != 0 {
+	if pending != 1 {
 		t.Errorf("pending transactions mismatched: have %d, want %d", pending, 0)
 	}
-	if queue != 1 {
+	if queue != 0 {
 		t.Errorf("queued transactions mismatched: have %d, want %d", queue, 1)
 	}
 
 	tx2 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[1])
 	from2, _ := types.Sender(pool.signer, tx2)
 	pool.addToPool12OrPool3(tx2, from2, true, false, false, true)
-	time.Sleep(2 * time.Second)
+	time.Sleep(6 * time.Second)
 	pending, queue = pool.Stats()
-	if pending != 0 {
+	if pending != 2 {
 		t.Errorf("pending transactions mismatched: have %d, want %d", pending, 0)
 	}
-	if queue != 1 {
+	if queue != 0 {
 		t.Errorf("queued transactions mismatched: have %d, want %d", queue, 1)
 	}
-	time.Sleep(3 * time.Second)
+
+	tx3 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[2])
+	from3, _ := types.Sender(pool.signer, tx3)
+	pool.addToPool12OrPool3(tx3, from3, true, false, false, true)
+	time.Sleep(6 * time.Second)
 	pending, queue = pool.Stats()
-	if pending != 0 {
+	if pending != 3 {
 		t.Errorf("pending transactions mismatched: have %d, want %d", pending, 0)
 	}
-	if queue != 1 {
+	if queue != 0 {
 		t.Errorf("queued transactions mismatched: have %d, want %d", queue, 1)
 	}
+
+	tx4 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[3])
+	from4, _ := types.Sender(pool.signer, tx4)
+	pool.addToPool12OrPool3(tx4, from4, true, false, false, true)
+	time.Sleep(6 * time.Second)
+	pending, queue = pool.Stats()
+	if pending != 3 {
+		t.Errorf("pending transactions mismatched: have %d, want %d", pending, 0)
+	}
+	if queue != 0 {
+		t.Errorf("queued transactions mismatched: have %d, want %d", queue, 1)
+	}
+	bufferSize := pool.localBufferPool.Size()
+	if bufferSize != 1 {
+		t.Errorf("buffer transactions mismatched: have %d, want %d", bufferSize, 1)
+	}
+
+	tx5 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[4])
+	from5, _ := types.Sender(pool.signer, tx5)
+	pool.addToPool12OrPool3(tx5, from5, true, false, false, true)
+	time.Sleep(6 * time.Second)
+	pending, queue = pool.Stats()
+	if pending != 3 {
+		t.Errorf("pending transactions mismatched: have %d, want %d", pending, 0)
+	}
+	if queue != 0 {
+		t.Errorf("queued transactions mismatched: have %d, want %d", queue, 1)
+	}
+	bufferSize = pool.localBufferPool.Size()
+	if bufferSize != 2 {
+		t.Errorf("buffer transactions mismatched: have %d, want %d", bufferSize, 1)
+	}
+
 }
 
 // Tests that the pool rejects replacement dynamic fee transactions that don't

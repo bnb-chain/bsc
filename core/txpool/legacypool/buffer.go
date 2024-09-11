@@ -49,6 +49,8 @@ func (lru *LRUBuffer) Add(tx *types.Transaction) {
 	elem := lru.buffer.PushFront(tx)
 	lru.index[tx.Hash()] = elem
 	lru.size += txSlots // Increase size by the slots of the new transaction
+	// Update pool3Gauge
+	pool3Gauge.Inc(1)
 }
 
 func (lru *LRUBuffer) Get(hash common.Hash) (*types.Transaction, bool) {
@@ -76,6 +78,8 @@ func (lru *LRUBuffer) Flush(maxTransactions int) []*types.Transaction {
 		delete(lru.index, removedTx.Hash())
 		lru.size -= numSlots(removedTx) // Decrease size by the slots of the removed transaction
 		count++
+		// Update pool3Gauge
+		pool3Gauge.Dec(1)
 	}
 	return txs
 }
