@@ -864,6 +864,9 @@ func (h *handler) BroadcastTransactions(txs types.Transactions, staticOnly bool)
 		default:
 			numDirect = int(math.Sqrt(float64(len(peers))))
 		}
+		if staticOnly {
+			numDirect = int(math.Cbrt(float64(len(peers))))
+		}
 		// Send the tx unconditionally to a subset of our peers
 		for _, peer := range peers[:numDirect] {
 			txset[peer] = append(txset[peer], tx.Hash())
