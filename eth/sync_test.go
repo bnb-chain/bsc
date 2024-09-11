@@ -89,7 +89,7 @@ func testSnapSyncDisabling(t *testing.T, ethVer uint, snapVer uint) {
 	time.Sleep(250 * time.Millisecond)
 
 	// Check that snap sync was disabled
-	op := peerToSyncOp(downloader.SnapSync, empty.handler.peers.peerWithHighestTD())
+	op := peerToSyncOp(downloader.SnapSync, empty.handler.peers.peerWithHighestHead())
 	if err := empty.handler.doSync(op); err != nil {
 		t.Fatal("sync failed:", err)
 	}
@@ -171,7 +171,7 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	op := peerToSyncOp(mode, empty.handler.peers.peerWithHighestTD())
+	op := peerToSyncOp(mode, empty.handler.peers.peerWithHighestHead())
 	if err := empty.handler.doSync(op); err != nil {
 		t.Fatal("sync failed:", err)
 	}

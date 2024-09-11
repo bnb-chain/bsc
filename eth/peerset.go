@@ -23,12 +23,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cometbft/cometbft/libs/rand"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 )
 
@@ -515,24 +517,55 @@ func (ps *peerSet) snapLen() int {
 	return ps.snapPeers
 }
 
-// peerWithHighestTD retrieves the known peer with the currently highest total
-// difficulty, but below the given PoS switchover threshold.
-func (ps *peerSet) peerWithHighestTD() *eth.Peer {
+// peerWithHighestHead retrieves the known peer with the currently highest head
+func (ps *peerSet) peerWithHighestHead() *eth.Peer {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
 
-	var (
-		bestPeer *eth.Peer
-		bestTd   *big.Int
-	)
+	var knowJustifiedPeers, notKnowJustifiedPeers []*ethPeer
 	for _, p := range ps.peers {
 		if p.Lagging() {
 			continue
 		}
-		if _, td := p.Head(); bestPeer == nil || td.Cmp(bestTd) > 0 {
+		if _, justifiedNumber, td := p.Head(); justifiedNumber != nil {
+			knowJustifiedPeers = append(knowJustifiedPeers, p)
+			log.Trace("peerWithHighestHead", "id", p.Peer.ID(), "justifiedNumber", *justifiedNumber, "td", td.Uint64())
+		} else {
+			notKnowJustifiedPeers = append(notKnowJustifiedPeers, p)
+			log.Trace("peerWithHighestHead", "id", p.Peer.ID(), "td", td.Uint64())
+		}
+	}
+
+	var (
+		bestPeer      *eth.Peer
+		bestJustified *uint64
+		bestTd        *big.Int
+		randUint      = rand.Uint()
+	)
+	for _, p := range knowJustifiedPeers {
+		if _, justifiedNumber, td := p.Head(); bestPeer == nil {
+			bestPeer, bestJustified, bestTd = p.Peer, justifiedNumber, td
+		} else if *justifiedNumber > *bestJustified {
+			bestPeer, bestJustified = p.Peer, justifiedNumber
+			if td.Cmp(bestTd) > 0 {
+				bestTd = td // may be not equal `to bestPeer.td`
+			}
+		} else if *justifiedNumber == *bestJustified {
+			if td.Cmp(bestTd) > 0 || (td.Cmp(bestTd) == 0 && randUint%2 == 0) {
+				bestPeer, bestTd = p.Peer, td
+			}
+		}
+	}
+	// if some nodes does not have justified number, back to behavior without fast finality
+	for _, p := range notKnowJustifiedPeers {
+		if _, _, td := p.Head(); bestPeer == nil || td.Cmp(bestTd) > 0 || (td.Cmp(bestTd) == 0 && randUint%2 == 0) {
 			bestPeer, bestTd = p.Peer, td
 		}
 	}
+	if bestPeer != nil {
+		log.Trace("peerWithHighestHead|selected", "id", bestPeer.Peer.ID(), "td", bestTd.Uint64())
+	}
+
 	return bestPeer
 }
 

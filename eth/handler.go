@@ -436,14 +436,15 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 
 	// Execute the Ethereum handshake
 	var (
-		genesis = h.chain.Genesis()
-		head    = h.chain.CurrentHeader()
-		hash    = head.Hash()
-		number  = head.Number.Uint64()
-		td      = h.chain.GetTd(hash, number)
+		genesis         = h.chain.Genesis()
+		head            = h.chain.CurrentHeader()
+		justifiedNumber = h.chain.GetJustifiedNumber(head)
+		hash            = head.Hash()
+		number          = head.Number.Uint64()
+		td              = h.chain.GetTd(hash, number)
 	)
 	forkID := forkid.NewID(h.chain.Config(), genesis, number, head.Time)
-	if err := peer.Handshake(h.networkID, td, hash, genesis.Hash(), forkID, h.forkFilter, &eth.UpgradeStatusExtension{DisablePeerTxBroadcast: h.disablePeerTxBroadcast}); err != nil {
+	if err := peer.Handshake(h.networkID, justifiedNumber, td, hash, genesis.Hash(), forkID, h.forkFilter, &eth.UpgradeStatusExtension{DisablePeerTxBroadcast: h.disablePeerTxBroadcast}); err != nil {
 		peer.Log().Debug("Ethereum handshake failed", "err", err)
 		return err
 	}
@@ -920,7 +921,7 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 	headBlock := h.chain.CurrentBlock()
 	currentTD := h.chain.GetTd(headBlock.Hash(), headBlock.Number.Uint64())
 	for _, peer := range peers {
-		_, peerTD := peer.Head()
+		_, _, peerTD := peer.Head()
 		deltaTD := new(big.Int).Abs(new(big.Int).Sub(currentTD, peerTD))
 		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 && peer.bscExt != nil {
 			voteMap[peer] = vote
