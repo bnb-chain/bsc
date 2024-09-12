@@ -500,7 +500,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// check #2: check IP and ID(address) to ensure the user didn't request funds too recently,
+		// check #2: check IP and ID(address) to ensure the user didn't request funds too frequently
 		f.lock.Lock()
 
 		if ipTimeout := f.timeouts[ips[len(ips)-2]]; time.Now().Before(ipTimeout) {
