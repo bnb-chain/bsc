@@ -8,3 +8,9 @@ This is to support some projects with customized tokens that they want to integr
 We will review the request, and once it is approved, the faucet tool will start to support the customized token and list it on https://www.bnbchain.org/en/testnet-faucet.
 
 # 2.Token List
+## 2.1.DemoToken
+- symbol: DEMO
+- amount: 10000000000000000000
+- icon: ./demotoken.png
+- addr: https://testnet.bscscan.com/address/0xe15c158d768c306dae87b96430a94f884333e55d
+- fundTx: [0xa499dc9aaf918aff0507538a8aa80a88d0af6ca15054e6acc57b69c651945280](https://testnet.bscscan.com/tx/0x2a3f334b6ca756b64331bdec9e6cf3207ac50a4839fda6379e909de4d9a194ca)
