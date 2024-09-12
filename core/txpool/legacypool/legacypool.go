@@ -306,7 +306,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		pool.journal = newTxJournal(config.Journal)
 	}
 
-	pool.startPeriodicTransfer(config.InterPoolTransferTime) // todo (incomplete) Start the periodic transfer routine
+	//pool.startPeriodicTransfer(config.InterPoolTransferTime)
 
 	return pool
 }
@@ -831,7 +831,8 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		if !isLocal && pool.priced.Underpriced(tx) {
 			addedToAnyPool, err := pool.addToPool12OrPool3(tx, from, isLocal, includePool1, includePool2, includePool3)
 			if addedToAnyPool {
-				return false, txpool.ErrUnderpricedTransferredtoAnotherPool // The reserve code expects named error formatting
+				//return false, txpool.ErrUnderpricedTransferredtoAnotherPool // The reserve code expects named error formatting
+				return false, nil
 			}
 			if err != nil {
 				log.Error("Error while trying to add to pool2 or pool3", "error", err)
@@ -1001,6 +1002,7 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 	}
 	if pool3 {
 		pool.localBufferPool.Add(tx)
+		log.Debug("adding to pool3", "transaction", tx.Hash().String())
 		return true, nil
 	}
 	return false, errors.New("could not add to any pool")
@@ -1225,7 +1227,7 @@ func (pool *LegacyPool) addTxsLocked(txs []*types.Transaction, local bool) ([]er
 	for i, tx := range txs {
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
-		if err == nil && !replaced {
+		if err == nil && !replaced { // todo ensure err is nil for certain case in add() where there is actually no error
 			dirty.addTx(tx)
 		}
 	}
@@ -1483,6 +1485,10 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 			promoteAddrs = append(promoteAddrs, addr)
 		}
 	}
+
+	// Transfer transactions from pool3 to pool2 for new block import
+	pool.transferTransactions()
+
 	// Check for pending transactions for every account that sent new ones
 	promoted := pool.promoteExecutables(promoteAddrs)
 
@@ -2234,24 +2240,7 @@ func (pool *LegacyPool) transferTransactions() {
 		return
 	}
 
-	for _, transaction := range tx {
-		if !(pool.all.Slots() < maxPool1Pool2CombinedSize) {
-			break
-		}
-		from, _ := types.Sender(pool.signer, transaction)
-
-		// use addToPool12OrPool3() function to transfer from pool3 to pool2
-		_, err := pool.addToPool12OrPool3(transaction, from, true, false, true, false) // by default all pool3 transactions are considered local
-		if err != nil {
-			// if it never gets added to anything then add it back
-			pool.addToPool12OrPool3(transaction, from, true, false, false, true)
-			//slots := int64(numSlots(transaction))
-			pool2Gauge.Dec(1)
-			continue
-		}
-		pool2Gauge.Inc(1)
-		log.Debug("Transferred from pool3 to pool2", "transactions", transaction.Hash().String())
-	}
+	pool.Add(tx, true, false)
 }
 
 func (pool *LegacyPool) availableSlotsPool3() int {

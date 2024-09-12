@@ -30,7 +30,7 @@ var (
 	// configured for the transaction pool.
 	ErrUnderpriced = errors.New("transaction underpriced")
 
-	// ErrUnderpriced is returned if a transaction's gas price is below the minimum
+	// ErrUnderpricedTransferredtoAnotherPool is returned if a transaction's gas price is below the minimum
 	// configured for the transaction pool.
 	ErrUnderpricedTransferredtoAnotherPool = errors.New("transaction underpriced, so it is either in pool2 or pool3")
 
