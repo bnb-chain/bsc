@@ -29,11 +29,20 @@ func New(config *Config) *VersionDB {
 	if config != nil {
 		path = config.Path
 		cfg = &versa.VersaDBConfig{
-			FlushInterval:  config.FlushInterval,
-			MaxStatesInMem: config.MaxStatesInMem,
+			FlushInterval:    2000,
+			MaxStatesInMem:   128,
+			MemLowWaterMark:  40,
+			MemHighWaterMark: 60,
+			MemEvictInternal: 200,
 		}
 	}
-	db, err := versa.NewVersaDB(path, cfg)
+	db, err := versa.NewVersaDB(path, &versa.VersaDBConfig{
+		FlushInterval:    2000,
+		MaxStatesInMem:   128,
+		MemLowWaterMark:  40,
+		MemHighWaterMark: 60,
+		MemEvictInternal: 200,
+	})
 	if err != nil {
 		log.Crit("failed to new version db", "error", err)
 	}
