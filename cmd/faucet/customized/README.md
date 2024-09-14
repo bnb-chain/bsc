@@ -11,6 +11,6 @@ We will review the request, and once it is approved, the faucet tool will start 
 ## 2.1.DemoToken
 - symbol: DIN
 - amount: 9999000000000000000000
-- icon: ./demotoken.png
+- icon: ./DIN.png
 - addr: https://testnet.bscscan.com/address/0xb8b40FcC5B4519Dba0E07Ac8821884CE90BdE677
 - fundTx: [0x17fc4c1db133830c7c146a0d41ca1df31cb446989ec11b382d58bb6176d6fde3](https://testnet.bscscan.com/tx/0x17fc4c1db133830c7c146a0d41ca1df31cb446989ec11b382d58bb6176d6fde3)
