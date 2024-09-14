@@ -223,6 +223,14 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		return common.Hash{}
 	}
 	// If no live objects are available, attempt to use snapshots
+
+	defer func(start time.Time) {
+		stateDBGetTimer.UpdateSince(start)
+		stateDBGetQPS.Mark(1)
+		stateDBGetStorageTimer.UpdateSince(start)
+		stateDBGetStorageQPS.Mark(1)
+	}(time.Now())
+
 	var (
 		enc   []byte
 		err   error
