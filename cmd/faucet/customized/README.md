@@ -12,4 +12,3 @@ This is to support some projects with customized tokens that they want to integr
 - amount: 10000000000000000000
 - icon: ./demotoken.png
 - addr: https://testnet.bscscan.com/address/0xe15c158d768c306dae87b96430a94f884333e55d
-- fundTx:
