@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -197,11 +198,15 @@ func (dl *diskLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]b
 		nBlob []byte
 		nHash common.Hash
 	)
+	// TODO:
+	trieNodeQPS.Mark(1)
+	startLoadTrieNode := time.Now()
 	if owner == (common.Hash{}) {
 		nBlob, nHash = rawdb.ReadAccountTrieNode(dl.db.diskdb, path)
 	} else {
 		nBlob, nHash = rawdb.ReadStorageTrieNode(dl.db.diskdb, owner, path)
 	}
+	trieNodeTime.Mark(time.Since(startLoadTrieNode).Nanoseconds())
 	if nHash != hash {
 		diskFalseMeter.Mark(1)
 		log.Error("Unexpected trie node in disk", "owner", owner, "path", path, "expect", hash, "got", nHash)
