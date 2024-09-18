@@ -872,7 +872,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 				return false, txpool.ErrFutureReplacePending // todo 1 maybe in this case the future transaction can be part of pool3?
 			}
 		}
-		
+
 		pool.addToPool3(drop, isLocal)
 
 		// Kick out the underpriced remote transactions.
@@ -971,8 +971,7 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 		pool.beats[from] = time.Now()
 
 		return true, nil
-	}
-	if pool2 {
+	} else if pool2 {
 		pool.journalTx(from, tx)
 		pool.queueTxEvent(tx, true)
 		_, err := pool.enqueueTx(tx.Hash(), tx, isLocal, true, true)
@@ -990,8 +989,7 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 		// Successful promotion, bump the heartbeat
 		pool.beats[from] = time.Now()
 		return true, nil
-	}
-	if pool3 {
+	} else if pool3 {
 		pool.localBufferPool.Add(tx)
 		log.Debug("adding to pool3", "transaction", tx.Hash().String())
 		return true, nil
