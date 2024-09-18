@@ -5,6 +5,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/require"
 )
 
 // Helper function to create a dummy transaction of specified size
@@ -16,18 +17,11 @@ func createDummyTransaction(size int) *types.Transaction {
 func TestNewLRUBuffer(t *testing.T) {
 	capacity := 10
 	lru := NewLRUBuffer(capacity)
-	if lru.capacity != capacity {
-		t.Errorf("expected capacity %d, got %d", capacity, lru.capacity)
-	}
-	if lru.buffer.Len() != 0 {
-		t.Errorf("expected buffer length 0, got %d", lru.buffer.Len())
-	}
-	if len(lru.index) != 0 {
-		t.Errorf("expected index length 0, got %d", len(lru.index))
-	}
-	if lru.size != 0 {
-		t.Errorf("expected size 0, got %d", lru.size)
-	}
+
+	require.Equal(t, capacity, lru.capacity, "expected capacity to match")
+	require.Zero(t, lru.buffer.Len(), "expected buffer length to be zero")
+	require.Zero(t, len(lru.index), "expected index length to be zero")
+	require.Zero(t, lru.size, "expected size to be zero")
 }
 
 func TestAddAndGet(t *testing.T) {
@@ -39,19 +33,15 @@ func TestAddAndGet(t *testing.T) {
 	lru.Add(tx1)
 	lru.Add(tx2)
 
-	if lru.Size() != 2 {
-		t.Errorf("expected size 2, got %d", lru.Size())
-	}
+	require.Equal(t, 2, lru.Size(), "expected size to be 2")
 
 	retrievedTx, ok := lru.Get(tx1.Hash())
-	if !ok || retrievedTx.Hash() != tx1.Hash() {
-		t.Errorf("failed to retrieve tx1")
-	}
+	require.True(t, ok, "expected to retrieve tx1")
+	require.Equal(t, tx1.Hash(), retrievedTx.Hash(), "retrieved tx1 hash does not match")
 
 	retrievedTx, ok = lru.Get(tx2.Hash())
-	if !ok || retrievedTx.Hash() != tx2.Hash() {
-		t.Errorf("failed to retrieve tx2")
-	}
+	require.True(t, ok, "expected to retrieve tx2")
+	require.Equal(t, tx2.Hash(), retrievedTx.Hash(), "retrieved tx2 hash does not match")
 }
 
 func TestBufferCapacity(t *testing.T) {
@@ -64,19 +54,13 @@ func TestBufferCapacity(t *testing.T) {
 	lru.Add(tx1)
 	lru.Add(tx2)
 
-	if lru.Size() != 2 {
-		t.Errorf("expected size 2, got %d", lru.Size())
-	}
+	require.Equal(t, 2, lru.Size(), "expected size to be 2")
 
 	lru.Add(tx3)
 
-	if lru.Size() != 2 {
-		t.Errorf("expected size 2 after adding tx3, got %d", lru.Size())
-	}
-
-	if _, ok := lru.Get(tx1.Hash()); ok {
-		t.Errorf("expected tx1 to be evicted")
-	}
+	require.Equal(t, 2, lru.Size(), "expected size to remain 2 after adding tx3")
+	_, ok := lru.Get(tx1.Hash())
+	require.False(t, ok, "expected tx1 to be evicted")
 }
 
 func TestFlush(t *testing.T) {
@@ -92,15 +76,11 @@ func TestFlush(t *testing.T) {
 
 	flushedTxs := lru.Flush(2)
 
-	if len(flushedTxs) != 2 {
-		t.Errorf("expected to flush 2 transactions, got %d", len(flushedTxs))
-	}
+	require.Len(t, flushedTxs, 2, "expected to flush 2 transactions")
 
 	expectedSize := 1
 	actualSize := lru.Size()
-	if expectedSize != actualSize {
-		t.Errorf("expected size after flush %d, got %d", expectedSize, actualSize)
-	}
+	require.Equal(t, expectedSize, actualSize, "expected size after flush to match")
 }
 
 func TestSize(t *testing.T) {
@@ -110,17 +90,11 @@ func TestSize(t *testing.T) {
 	tx2 := createDummyTransaction(1500) // 2 slots
 
 	lru.Add(tx1)
-	if lru.Size() != 1 {
-		t.Errorf("expected size 1, got %d", lru.Size())
-	}
+	require.Equal(t, 1, lru.Size(), "expected size to be 1")
 
 	lru.Add(tx2)
-	if lru.Size() != 2 {
-		t.Errorf("expected size 2, got %d", lru.Size())
-	}
+	require.Equal(t, 2, lru.Size(), "expected size to be 2")
 
 	lru.Flush(1)
-	if lru.Size() != 1 {
-		t.Errorf("expected size 1 after flush, got %d", lru.Size())
-	}
+	require.Equal(t, 1, lru.Size(), "expected size to be 1 after flush")
 }

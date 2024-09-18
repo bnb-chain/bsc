@@ -143,9 +143,8 @@ type Config struct {
 	Pool2Slots   uint64 // Maximum number of transaction slots in pool 2
 	Pool3Slots   uint64 // Maximum number of transaction slots in pool 3
 
-	Lifetime              time.Duration // Maximum amount of time non-executable transaction are queued
-	ReannounceTime        time.Duration // Duration for announcing local pending transactions again
-	InterPoolTransferTime time.Duration // Attempt to transfer from pool3 to pool2 every this much time
+	Lifetime       time.Duration // Maximum amount of time non-executable transaction are queued
+	ReannounceTime time.Duration // Duration for announcing local pending transactions again
 }
 
 // DefaultConfig contains the default configurations for the transaction pool.
@@ -163,9 +162,8 @@ var DefaultConfig = Config{
 	Pool2Slots:   1024,
 	Pool3Slots:   1024,
 
-	Lifetime:              3 * time.Hour,
-	ReannounceTime:        10 * 365 * 24 * time.Hour,
-	InterPoolTransferTime: time.Minute,
+	Lifetime:       3 * time.Hour,
+	ReannounceTime: 10 * 365 * 24 * time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -200,10 +198,7 @@ func (config *Config) sanitize() Config {
 		log.Warn("Sanitizing invalid txpool global queue", "provided", conf.GlobalQueue, "updated", DefaultConfig.GlobalQueue)
 		conf.GlobalQueue = DefaultConfig.GlobalQueue
 	}
-	if conf.Pool3Slots < 1 {
-		log.Warn("Sanitizing invalid txpool pool 3 slots", "provided", conf.Pool3Slots, "updated", DefaultConfig.Pool3Slots)
-		conf.Pool3Slots = DefaultConfig.Pool3Slots
-	}
+
 	if conf.Lifetime < 1 {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultConfig.Lifetime)
 		conf.Lifetime = DefaultConfig.Lifetime
@@ -305,8 +300,6 @@ func New(config Config, chain BlockChain) *LegacyPool {
 	if !config.NoLocals && config.Journal != "" {
 		pool.journal = newTxJournal(config.Journal)
 	}
-
-	//pool.startPeriodicTransfer(config.InterPoolTransferTime)
 
 	return pool
 }
@@ -542,6 +535,17 @@ func (pool *LegacyPool) Stats() (int, int) {
 	defer pool.mu.RUnlock()
 
 	return pool.stats()
+}
+
+func (pool *LegacyPool) StatsPool3() int {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	if pool.localBufferPool == nil {
+		return 0
+	}
+
+	return pool.localBufferPool.Size()
 }
 
 // stats retrieves the current pool stats, namely the number of pending and the
@@ -780,14 +784,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	maxPool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
 	maxPool2Size := pool.config.Pool2Slots
 	txPoolSizeAfterCurrentTx := uint64(pool.all.Slots() + numSlots(tx))
-	var includePool1, includePool2, includePool3 bool
-	if txPoolSizeAfterCurrentTx <= maxPool1Size {
-		includePool1 = true
-	} else if (txPoolSizeAfterCurrentTx > maxPool1Size) && (txPoolSizeAfterCurrentTx <= (maxPool1Size + maxPool2Size)) {
-		includePool2 = true
-	} else {
-		includePool3 = true
-	}
 
 	// Make the local flag. If it's from local source or it's from the network but
 	// the sender is marked as local previously, treat it as the local transaction.
@@ -829,15 +825,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	if txPoolSizeAfterCurrentTx > (maxPool1Size + maxPool2Size) {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
-			addedToAnyPool, err := pool.addToPool12OrPool3(tx, from, isLocal, includePool1, includePool2, includePool3)
-			if addedToAnyPool {
-				//return false, txpool.ErrUnderpricedTransferredtoAnotherPool // The reserve code expects named error formatting
-				return false, nil
-			}
-			if err != nil {
-				log.Error("Error while trying to add to pool2 or pool3", "error", err)
-			}
-
 			log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
 			underpricedTxMeter.Mark(1)
 			return false, txpool.ErrUnderpriced
@@ -885,22 +872,8 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 				return false, txpool.ErrFutureReplacePending // todo 1 maybe in this case the future transaction can be part of pool3?
 			}
 		}
-
-		// calculate total number of slots in drop. Accordingly add them to pool3 (if there is space)
-		// all members of drop will be dropped from pool1/2 regardless of whether they get added to pool3 or not
-		availableSlotsPool3 := pool.availableSlotsPool3()
-		if availableSlotsPool3 > 0 {
-			// transfer availableSlotsPool3 number of transactions slots from drop to pool3
-			currentSlotsUsed := 0
-			for _, tx := range drop {
-				txSlots := numSlots(tx)
-				if currentSlotsUsed+txSlots <= availableSlotsPool3 {
-					from, _ := types.Sender(pool.signer, tx)
-					pool.addToPool12OrPool3(tx, from, isLocal, false, false, true)
-					currentSlotsUsed += txSlots
-				}
-			}
-		}
+		
+		pool.addToPool3(drop, isLocal)
 
 		// Kick out the underpriced remote transactions.
 		for _, tx := range drop {
@@ -917,7 +890,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	// Try to replace an existing transaction in the pending pool
 	if list := pool.pending[from]; list != nil && list.Contains(tx.Nonce()) {
 		// Nonce already pending, check if required price bump is met
-		inserted, old := list.Add(tx, pool.config.PriceBump, includePool2)
+		inserted, old := list.Add(tx, pool.config.PriceBump, false)
 		if !inserted {
 			pendingDiscardMeter.Mark(1)
 			return false, txpool.ErrReplaceUnderpriced
@@ -940,7 +913,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	// New transaction isn't replacing a pending one, push into queue
-	replaced, err = pool.enqueueTx(hash, tx, isLocal, true, includePool2) // At this point pool1 can incorporate this. So no need for pool2 or pool3
+	replaced, err = pool.enqueueTx(hash, tx, isLocal, true, true) // At this point pool1 can incorporate this. So no need for pool2 or pool3
 	if err != nil {
 		return false, err
 	}
@@ -958,6 +931,24 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 
 	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
+}
+
+func (pool *LegacyPool) addToPool3(drop types.Transactions, isLocal bool) {
+	// calculate total number of slots in drop. Accordingly add them to pool3 (if there is space)
+	// all members of drop will be dropped from pool1/2 regardless of whether they get added to pool3 or not
+	availableSlotsPool3 := pool.availableSlotsPool3()
+	if availableSlotsPool3 > 0 {
+		// transfer availableSlotsPool3 number of transactions slots from drop to pool3
+		currentSlotsUsed := 0
+		for _, tx := range drop {
+			txSlots := numSlots(tx)
+			if currentSlotsUsed+txSlots <= availableSlotsPool3 {
+				from, _ := types.Sender(pool.signer, tx)
+				pool.addToPool12OrPool3(tx, from, isLocal, false, false, true)
+				currentSlotsUsed += txSlots
+			}
+		}
+	}
 }
 
 // addToPool12OrPool3 adds a transaction to pool1 or pool2 or pool3 depending on which one is asked for
@@ -1486,8 +1477,8 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		}
 	}
 
-	// Transfer transactions from pool3 to pool2 for new block import
-	pool.transferTransactions()
+	//// Transfer transactions from pool3 to pool2 for new block import
+	//pool.transferTransactions()
 
 	// Check for pending transactions for every account that sent new ones
 	promoted := pool.promoteExecutables(promoteAddrs)
@@ -1521,6 +1512,9 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 	pool.changesSinceReorg = 0 // Reset change counter
 	pool.mu.Unlock()
 
+	// Transfer transactions from pool3 to pool2 for new block import
+	pool.transferTransactions()
+
 	// Notify subsystems for newly added transactions
 	for _, tx := range promoted {
 		addr, _ := types.Sender(pool.signer, tx)
@@ -1542,11 +1536,13 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		}
 		// Send static transactions
 		if len(staticTxs) > 0 {
+			fmt.Println("New txevent emitted for static ", staticTxs[0].Hash())
 			pool.txFeed.Send(core.NewTxsEvent{Txs: staticTxs, Static: true})
 		}
 
 		// Send dynamic transactions
 		if len(nonStaticTxs) > 0 {
+			fmt.Println("New txevent emitted for non static ", nonStaticTxs[0].Hash())
 			pool.txFeed.Send(core.NewTxsEvent{Txs: nonStaticTxs, Static: false})
 		}
 	}
@@ -2255,7 +2251,8 @@ func (pool *LegacyPool) availableSlotsPool3() int {
 func (pool *LegacyPool) printTxStats() {
 	for _, l := range pool.pending {
 		for _, transaction := range l.txs.items {
-			fmt.Println("Pending:", transaction.Hash().String(), transaction.GasFeeCap(), transaction.GasTipCap())
+			from, _ := types.Sender(pool.signer, transaction)
+			fmt.Println("from: ", from, " Pending:", transaction.Hash().String(), transaction.GasFeeCap(), transaction.GasTipCap())
 		}
 	}
 
