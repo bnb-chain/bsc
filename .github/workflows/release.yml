@@ -81,28 +81,28 @@ jobs:
       # ==============================
 
       - name: Upload Linux Build
-        uses: actions/upload-artifact@v4.1.7
+        uses: actions/upload-artifact@v4.3.3
         if: matrix.os == 'ubuntu-latest'
         with:
           name: linux
           path: ./build/bin/geth
 
       - name: Upload MacOS Build
-        uses: actions/upload-artifact@v4.1.7
+        uses: actions/upload-artifact@v4.3.3
         if: matrix.os == 'macos-latest'
         with:
           name: macos
           path: ./build/bin/geth
       
       - name: Upload Windows Build
-        uses: actions/upload-artifact@v4.1.7
+        uses: actions/upload-artifact@v4.3.3
         if: matrix.os == 'windows-latest'
         with:
           name: windows
           path: ./build/bin/geth.exe
 
       - name: Upload ARM-64 Build
-        uses: actions/upload-artifact@v4.1.7
+        uses: actions/upload-artifact@v4.3.3
         if: matrix.os == 'ubuntu-latest'
         with:
           name: arm64
