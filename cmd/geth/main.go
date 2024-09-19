@@ -232,6 +232,12 @@ var (
 		utils.MetricsInfluxDBBucketFlag,
 		utils.MetricsInfluxDBOrganizationFlag,
 	}
+
+	fakeBeaconFlags = []cli.Flag{
+		utils.FakeBeaconEnabledFlag,
+		utils.FakeBeaconAddrFlag,
+		utils.FakeBeaconPortFlag,
+	}
 )
 
 var app = flags.NewApp("the go-ethereum command line interface")
@@ -286,6 +292,7 @@ func init() {
 		consoleFlags,
 		debug.Flags,
 		metricsFlags,
+		fakeBeaconFlags,
 	)
 	flags.AutoEnvVars(app.Flags, "GETH")
 
@@ -443,22 +450,23 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 	}
 
 	// Start auxiliary services if enabled
+	ethBackend, ok := backend.(*eth.EthAPIBackend)
+	gasCeil := ethBackend.Miner().GasCeil()
+	if gasCeil > params.SystemTxsGas {
+		ethBackend.TxPool().SetMaxGas(gasCeil - params.SystemTxsGas)
+	}
 	if ctx.Bool(utils.MiningEnabledFlag.Name) {
 		// Mining only makes sense if a full Ethereum node is running
 		if ctx.String(utils.SyncModeFlag.Name) == "light" {
 			utils.Fatalf("Light clients do not support mining")
 		}
-		ethBackend, ok := backend.(*eth.EthAPIBackend)
+
 		if !ok {
 			utils.Fatalf("Ethereum service not running")
 		}
 		// Set the gas price to the limits from the CLI and start mining
 		gasprice := flags.GlobalBig(ctx, utils.MinerGasPriceFlag.Name)
 		ethBackend.TxPool().SetGasTip(gasprice)
-		gasCeil := ethBackend.Miner().GasCeil()
-		if gasCeil > params.SystemTxsGas {
-			ethBackend.TxPool().SetMaxGas(gasCeil - params.SystemTxsGas)
-		}
 		if err := ethBackend.StartMining(); err != nil {
 			utils.Fatalf("Failed to start mining: %v", err)
 		}

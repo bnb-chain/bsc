@@ -321,21 +321,14 @@ func newHandler(config *handlerConfig) (*handler, error) {
 
 	broadcastBlockWithCheck := func(block *types.Block, propagate bool) {
 		if propagate {
-			checkErrs := make(chan error, 2)
-
-			go func() {
-				checkErrs <- core.ValidateListsInBody(block)
-			}()
-			go func() {
-				checkErrs <- core.IsDataAvailable(h.chain, block)
-			}()
-
-			for i := 0; i < cap(checkErrs); i++ {
-				err := <-checkErrs
-				if err != nil {
-					log.Error("Propagating invalid block", "number", block.Number(), "hash", block.Hash(), "err", err)
-					return
-				}
+			if !(block.Header().WithdrawalsHash == nil && block.Withdrawals() == nil) &&
+				!(block.Header().EmptyWithdrawalsHash() && block.Withdrawals() != nil && len(block.Withdrawals()) == 0) {
+				log.Error("Propagated block has invalid withdrawals")
+				return
+			}
+			if err := core.IsDataAvailable(h.chain, block); err != nil {
+				log.Error("Propagating block with invalid sidecars", "number", block.Number(), "hash", block.Hash(), "err", err)
+				return
 			}
 		}
 		h.BroadcastBlock(block, propagate)
@@ -483,13 +476,13 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		h.peersPerIP[remoteIP] = h.peersPerIP[remoteIP] + 1
 		h.peerPerIPLock.Unlock()
 	}
-	peer.Log().Debug("Ethereum peer connected", "name", peer.Name())
 
 	// Register the peer locally
 	if err := h.peers.registerPeer(peer, snap, trust, bsc); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
+	peer.Log().Debug("Ethereum peer connected", "name", peer.Name(), "peers.len", h.peers.len())
 	defer h.unregisterPeer(peer.ID())
 
 	p := h.peers.peer(peer.ID())
@@ -632,7 +625,7 @@ func (h *handler) runBscExtension(peer *bsc.Peer, handler bsc.Handler) error {
 				bsc.EgressRegistrationErrorMeter.Mark(1)
 			}
 		}
-		peer.Log().Error("Bsc extension registration failed", "err", err)
+		peer.Log().Error("Bsc extension registration failed", "err", err, "name", peer.Name())
 		return err
 	}
 	return handler(peer)

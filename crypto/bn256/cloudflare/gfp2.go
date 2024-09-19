@@ -1,7 +1,7 @@
 package bn256
 
 // For details of the algorithms used, see "Multiplication and Squaring on
-// Pairing-Friendly Fields, Devegili et al.
+// Pairing-Friendly Fields", Devegili et al.
 // http://eprint.iacr.org/2006/471.pdf.
 
 // gfP2 implements a field of size p² as a quadratic extension of the base field
