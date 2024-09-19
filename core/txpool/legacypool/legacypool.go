@@ -270,7 +270,6 @@ type txpoolResetRequest struct {
 func New(config Config, chain BlockChain) *LegacyPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
-	maxPool3Size := config.Pool3Slots
 
 	// Create the transaction pool with its initial settings
 	pool := &LegacyPool{
@@ -288,7 +287,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
-		localBufferPool: NewLRUBufferFastCache(int(maxPool3Size)),
+		localBufferPool: NewLRUBufferFastCache(int(config.Pool3Slots)),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -993,8 +992,9 @@ func (pool *LegacyPool) addToPool12OrPool3(tx *types.Transaction, from common.Ad
 		pool.localBufferPool.Add(tx)
 		log.Debug("adding to pool3", "transaction", tx.Hash().String())
 		return true, nil
+	} else {
+		return false, errors.New("could not add to any pool")
 	}
-	return false, errors.New("could not add to any pool")
 }
 
 // isGapped reports whether the given transaction is immediately executable.
