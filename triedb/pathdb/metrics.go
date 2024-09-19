@@ -56,4 +56,7 @@ var (
 
 	PbssUpdateDiffQPS  = metrics.NewRegisteredMeter("pbss/difflayer/update/qps", nil)
 	PbssUpdateDiffTime = metrics.NewRegisteredTimer("pbss/difflayer/update/time", nil)
+
+	trieNodeQPS  = metrics.NewRegisteredMeter("pbss/trie/node/qps", nil)
+	trieNodeTime = metrics.NewRegisteredMeter("pbss/trie/node/time", nil)
 )

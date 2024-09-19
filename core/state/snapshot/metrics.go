@@ -51,6 +51,9 @@ var (
 	// snapStorageCleanCounter measures time spent on deleting storages
 	snapStorageCleanCounter = metrics.NewRegisteredCounter("state/snapshot/generation/duration/storage/clean", nil)
 
+	snapNodeQPS  = metrics.NewRegisteredMeter("pbss/snap/node/qps", nil)
+	snapNodeTime = metrics.NewRegisteredMeter("pbss/snap/node/time", nil)
+
 	snapGetTimer = metrics.NewRegisteredTimer("snap/get/time", nil)
 	snapGetQPS   = metrics.NewRegisteredMeter("snap/get/qps", nil)
 
