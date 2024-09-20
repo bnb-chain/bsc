@@ -148,12 +148,14 @@ func runCmd(ctx *cli.Context) error {
 	}
 
 	db := rawdb.NewMemoryDatabase()
+	// TODO:: ignore cmd, if use versa if should be nil, if triedb is not used later in this func
 	triedb := triedb.NewDatabase(db, &triedb.Config{
 		Preimages: preimages,
 		HashDB:    hashdb.Defaults,
 	})
 	defer triedb.Close()
 	genesis := genesisConfig.MustCommit(db, triedb)
+	// TODO:: ignore cmd, internally compatible with versa is sufficient.
 	sdb := state.NewDatabaseWithNodeDB(db, triedb)
 	statedb, _ = state.New(genesis.Root(), sdb, nil)
 	chainConfig = genesisConfig.Config

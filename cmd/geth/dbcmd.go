@@ -457,6 +457,7 @@ func inspectTrie(ctx *cli.Context) error {
 			config = triedb.HashDefaults
 		}
 
+		// TODO:: ignore cmd
 		triedb := triedb.NewDatabase(db, config)
 		theTrie, err := trie.New(trie.TrieID(trieRootHash), triedb)
 		if err != nil {
@@ -1268,6 +1269,7 @@ func hbss2pbss(ctx *cli.Context) error {
 	}
 	if lastStateID == 0 || force {
 		config := triedb.HashDefaults
+		// TODO:: ignore cmd
 		triedb := triedb.NewDatabase(db, config)
 		triedb.Cap(0)
 		log.Info("hbss2pbss triedb", "scheme", triedb.Scheme())

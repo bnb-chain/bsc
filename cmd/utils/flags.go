@@ -2589,6 +2589,7 @@ func MakeTrieDatabase(ctx *cli.Context, stack *node.Node, disk ethdb.Database, p
 		// ignore the parameter silently. TODO(rjl493456442)
 		// please config it if read mode is implemented.
 		config.HashDB = hashdb.Defaults
+		// TODO::skip MakeTrieDatabase
 		return triedb.NewDatabase(disk, config)
 	}
 	if readOnly {
@@ -2597,6 +2598,7 @@ func MakeTrieDatabase(ctx *cli.Context, stack *node.Node, disk ethdb.Database, p
 		config.PathDB = pathdb.Defaults
 	}
 	config.PathDB.JournalFilePath = fmt.Sprintf("%s/%s", stack.ResolvePath("chaindata"), eth.JournalFileName)
+	// TODO::skip MakeTrieDatabase
 	return triedb.NewDatabase(disk, config)
 }
 
