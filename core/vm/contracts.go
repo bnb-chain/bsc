@@ -274,27 +274,43 @@ var PrecompiledContractsHaber = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{},
 }
 
-// PrecompiledContractsP256Verify contains the precompiled Ethereum
-// contract specified in EIP-7212. This is exported for testing purposes.
-var PrecompiledContractsP256Verify = map[common.Address]PrecompiledContract{
+// PrecompiledContractsPrague contains the set of pre-compiled Ethereum
+// contracts used in the Prague release.
+var PrecompiledContractsPrague = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{1}):    &ecrecover{},
+	common.BytesToAddress([]byte{2}):    &sha256hash{},
+	common.BytesToAddress([]byte{3}):    &ripemd160hash{},
+	common.BytesToAddress([]byte{4}):    &dataCopy{},
+	common.BytesToAddress([]byte{5}):    &bigModExp{eip2565: true},
+	common.BytesToAddress([]byte{6}):    &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{7}):    &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{8}):    &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{9}):    &blake2F{},
+	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
+	common.BytesToAddress([]byte{0x0b}): &bls12381G1Add{},
+	common.BytesToAddress([]byte{0x0c}): &bls12381G1Mul{},
+	common.BytesToAddress([]byte{0x0d}): &bls12381G1MultiExp{},
+	common.BytesToAddress([]byte{0x0e}): &bls12381G2Add{},
+	common.BytesToAddress([]byte{0x0f}): &bls12381G2Mul{},
+	common.BytesToAddress([]byte{0x10}): &bls12381G2MultiExp{},
+	common.BytesToAddress([]byte{0x11}): &bls12381Pairing{},
+	common.BytesToAddress([]byte{0x12}): &bls12381MapG1{},
+	common.BytesToAddress([]byte{0x13}): &bls12381MapG2{},
+
+	common.BytesToAddress([]byte{100}): &tmHeaderValidate{},
+	common.BytesToAddress([]byte{101}): &iavlMerkleProofValidatePlato{},
+	common.BytesToAddress([]byte{102}): &blsSignatureVerify{},
+	common.BytesToAddress([]byte{103}): &cometBFTLightBlockValidateHertz{},
+	common.BytesToAddress([]byte{104}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{105}): &secp256k1SignatureRecover{},
+
 	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{},
 }
 
-// PrecompiledContractsBLS contains the set of pre-compiled Ethereum
-// contracts specified in EIP-2537. These are exported for testing purposes.
-var PrecompiledContractsBLS = map[common.Address]PrecompiledContract{
-	common.BytesToAddress([]byte{10}): &bls12381G1Add{},
-	common.BytesToAddress([]byte{11}): &bls12381G1Mul{},
-	common.BytesToAddress([]byte{12}): &bls12381G1MultiExp{},
-	common.BytesToAddress([]byte{13}): &bls12381G2Add{},
-	common.BytesToAddress([]byte{14}): &bls12381G2Mul{},
-	common.BytesToAddress([]byte{15}): &bls12381G2MultiExp{},
-	common.BytesToAddress([]byte{16}): &bls12381Pairing{},
-	common.BytesToAddress([]byte{17}): &bls12381MapG1{},
-	common.BytesToAddress([]byte{18}): &bls12381MapG2{},
-}
+var PrecompiledContractsBLS = PrecompiledContractsPrague
 
 var (
+	PrecompiledAddressesPrague    []common.Address
 	PrecompiledAddressesHaber     []common.Address
 	PrecompiledAddressesCancun    []common.Address
 	PrecompiledAddressesFeynman   []common.Address
@@ -350,11 +366,16 @@ func init() {
 	for k := range PrecompiledContractsHaber {
 		PrecompiledAddressesHaber = append(PrecompiledAddressesHaber, k)
 	}
+	for k := range PrecompiledContractsPrague {
+		PrecompiledAddressesPrague = append(PrecompiledAddressesPrague, k)
+	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	case rules.IsPrague:
+		return PrecompiledAddressesPrague
 	case rules.IsHaber:
 		return PrecompiledAddressesHaber
 	case rules.IsCancun:
