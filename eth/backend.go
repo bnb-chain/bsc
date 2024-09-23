@@ -203,6 +203,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.PascalTime = config.OverridePascal
 		overrides.OverridePascal = config.OverridePascal
 	}
+	if config.OverridePrague != nil {
+		chainConfig.PragueTime = config.OverridePrague
+		overrides.OverridePrague = config.OverridePrague
+	}
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle
