@@ -157,6 +157,7 @@ var (
 		BohrTime:            newUint64(1727317200), // 2024-09-26 02:20:00 AM UTC
 		// TODO
 		PascalTime: nil,
+		PragueTime: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -200,6 +201,7 @@ var (
 		BohrTime:            newUint64(1724116996), // 2024-08-20 01:23:16 AM UTC
 		// TODO
 		PascalTime: nil,
+		PragueTime: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -244,6 +246,7 @@ var (
 		BohrTime:            newUint64(0),
 		// TODO
 		PascalTime: newUint64(0),
+		PragueTime: newUint64(0),
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -649,7 +652,12 @@ func (c *ChainConfig) String() string {
 		PascalTime = big.NewInt(0).SetUint64(*c.PascalTime)
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, Engine: %v}",
+	var PragueTime *big.Int
+	if c.PragueTime != nil {
+		PragueTime = big.NewInt(0).SetUint64(*c.PragueTime)
+	}
+
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -690,6 +698,7 @@ func (c *ChainConfig) String() string {
 		HaberFixTime,
 		BohrTime,
 		PascalTime,
+		PragueTime,
 		engine,
 	)
 }
@@ -1071,7 +1080,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "haberFixTime", timestamp: c.HaberFixTime},
 		{name: "bohrTime", timestamp: c.BohrTime},
 		{name: "pascalTime", timestamp: c.PascalTime},
-		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
+		{name: "pragueTime", timestamp: c.PragueTime},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 	} {
 		if lastFork.name != "" {
@@ -1413,7 +1422,7 @@ type Rules struct {
 	IsHertz                                                 bool
 	IsHertzfix                                              bool
 	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
-	IsBohr, IsPrague, IsVerkle                              bool
+	IsBohr, IsPascal, IsPrague, IsVerkle                    bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -1450,6 +1459,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsCancun:         c.IsCancun(num, timestamp),
 		IsHaber:          c.IsHaber(num, timestamp),
 		IsBohr:           c.IsBohr(num, timestamp),
+		IsPascal:         c.IsPascal(num, timestamp),
 		IsPrague:         c.IsPrague(num, timestamp),
 		IsVerkle:         c.IsVerkle(num, timestamp),
 	}

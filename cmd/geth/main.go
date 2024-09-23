@@ -75,6 +75,7 @@ var (
 		utils.OverridePassedForkTime,
 		utils.OverrideBohr,
 		utils.OverridePascal,
+		utils.OverridePrague,
 		utils.OverrideVerkle,
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,
