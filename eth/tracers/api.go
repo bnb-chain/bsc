@@ -402,16 +402,22 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 				failed = err
 				break
 			}
-			// Clean out any pending release functions of trace state. Note this
-			// step must be done after constructing tracing state, because the
-			// tracing state of block next depends on the parent state and construction
-			// may fail if we release too early.
-			tracker.callReleases()
 
 			// upgrade build-in system contract before normal txs if Feynman is not enabled
 			if !api.backend.ChainConfig().IsFeynman(next.Number(), next.Time()) {
 				systemcontracts.UpgradeBuildInSystemContract(api.backend.ChainConfig(), next.Number(), block.Time(), next.Time(), statedb)
 			}
+			// Insert parent hash in history contract.
+			if api.backend.ChainConfig().IsPrague(next.Number(), next.Time()) {
+				context := core.NewEVMBlockContext(next.Header(), api.chainContext(ctx), nil)
+				vmenv := vm.NewEVM(context, vm.TxContext{}, statedb, api.backend.ChainConfig(), vm.Config{})
+				core.ProcessParentBlockHash(next.ParentHash(), vmenv, statedb)
+			}
+			// Clean out any pending release functions of trace state. Note this
+			// step must be done after constructing tracing state, because the
+			// tracing state of block next depends on the parent state and construction
+			// may fail if we release too early.
+			tracker.callReleases()
 
 			// Send the block over to the concurrent tracers (if not in the fast-forward phase)
 			txs := next.Transactions()
@@ -562,6 +568,9 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 		deleteEmptyObjects = chainConfig.IsEIP158(block.Number())
 		beforeSystemTx     = true
 	)
+	if chainConfig.IsPrague(block.Number(), block.Time()) {
+		core.ProcessParentBlockHash(block.ParentHash(), vm.NewEVM(vmctx, vm.TxContext{}, statedb, chainConfig, vm.Config{}), statedb)
+	}
 	for i, tx := range block.Transactions() {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -664,6 +673,10 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 		results        = make([]*txTraceResult, len(txs))
 		beforeSystemTx = true
 	)
+	if api.backend.ChainConfig().IsPrague(block.Number(), block.Time()) {
+		vmenv := vm.NewEVM(blockCtx, vm.TxContext{}, statedb, api.backend.ChainConfig(), vm.Config{})
+		core.ProcessParentBlockHash(block.ParentHash(), vmenv, statedb)
+	}
 	for i, tx := range txs {
 		// upgrade build-in system contract before system txs if Feynman is enabled
 		if beforeSystemTx {
@@ -869,6 +882,10 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		chainConfig, canon = overrideConfig(chainConfig, config.Overrides)
 	}
 
+	if chainConfig.IsPrague(block.Number(), block.Time()) {
+		vmenv := vm.NewEVM(vmctx, vm.TxContext{}, statedb, chainConfig, vm.Config{})
+		core.ProcessParentBlockHash(block.ParentHash(), vmenv, statedb)
+	}
 	for i, tx := range block.Transactions() {
 		// upgrade build-in system contract before system txs if Feynman is enabled
 		if beforeSystemTx {
