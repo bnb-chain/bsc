@@ -1042,10 +1042,8 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		return nil, err
 	}
 
-	if !w.chainConfig.IsFeynman(header.Number, header.Time) {
-		// Handle upgrade build-in system contract code
-		systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state)
-	}
+	// Handle upgrade build-in system contract code
+	systemcontracts.ModifyBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
 
 	if header.ParentBeaconRoot != nil {
 		context := core.NewEVMBlockContext(header, w.chain, nil)

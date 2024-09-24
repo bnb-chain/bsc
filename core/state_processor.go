@@ -76,10 +76,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if lastBlock == nil {
 		return nil, errors.New("could not get parent block")
 	}
-	if !p.config.IsFeynman(block.Number(), block.Time()) {
-		// Handle upgrade build-in system contract code
-		systemcontracts.UpgradeBuildInSystemContract(p.config, blockNumber, lastBlock.Time, block.Time(), statedb)
-	}
+	// Handle upgrade build-in system contract code
+	systemcontracts.ModifyBuildInSystemContract(p.config, blockNumber, lastBlock.Time, block.Time(), statedb, true)
 
 	var (
 		context vm.BlockContext

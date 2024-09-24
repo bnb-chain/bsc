@@ -363,9 +363,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			misc.ApplyDAOHardFork(statedb)
 		}
 
-		if !config.IsFeynman(b.header.Number, b.header.Time) {
-			systemcontracts.UpgradeBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb)
-		}
+		systemcontracts.ModifyBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true)
 
 		// Execute any user modifications to the block
 		if gen != nil {
