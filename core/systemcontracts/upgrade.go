@@ -1066,7 +1066,27 @@ func init() {
 	}
 }
 
-func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB) {
+func HandleBuildInContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB, atBlockBegin bool) {
+	if atBlockBegin {
+		if !config.IsFeynman(blockNumber, lastBlockTime) {
+			// Handle upgrade build-in system contract code
+			upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
+		}
+		// TODO: `HandleBuildInContract` not suitable in a dir naming `systemcontracts`?
+		// HistoryStorageAddress is not a system contract and can't be upgraded
+		if config.IsOnPrague(blockNumber, lastBlockTime, blockTime) {
+			statedb.SetCode(params.HistoryStorageAddress, params.HistoryStorageCode)
+			statedb.SetNonce(params.HistoryStorageAddress, 1)
+			log.Info("Apply upgrade prague", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
+		}
+	} else {
+		if config.IsFeynman(blockNumber, lastBlockTime) {
+			upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
+		}
+	}
+}
+
+func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB) {
 	if config == nil || blockNumber == nil || statedb == nil || reflect.ValueOf(statedb).IsNil() {
 		return
 	}
