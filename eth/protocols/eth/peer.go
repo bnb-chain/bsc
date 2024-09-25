@@ -235,6 +235,9 @@ func (p *Peer) AsyncSendTransactions(hashes []common.Hash, staticOnly bool) {
 			case p.txBroadcast <- hashes:
 				// Mark all the transactions as known, but ensure we don't overflow our limits
 				p.knownTxs.Add(hashes...)
+				if staticOnly && p.Peer.Info().Network.Static {
+					p.Log().Debug("Sent pool-2 transaction", "count", len(hashes))
+				}
 			default:
 				// Handle the case when the channel is full or not ready
 				p.Log().Debug("Unable to send transactions, channel full or not ready", "count", len(hashes))
