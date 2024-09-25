@@ -287,7 +287,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
-		localBufferPool: NewLRUBufferFastCache(int(config.Pool3Slots)),
+		localBufferPool: NewTxPool3Heap(), // NewLRUBufferFastCache(int(config.Pool3Slots)),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -1540,7 +1540,8 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 
 		// Send dynamic transactions
 		if len(nonStaticTxs) > 0 {
-			fmt.Println("New txevent emitted for non static ", nonStaticTxs[0].Hash())
+			from, _ := types.Sender(pool.signer, nonStaticTxs[0])
+			fmt.Println("New txevent emitted for non static ", nonStaticTxs[0].Hash(), len(nonStaticTxs), from.String())
 			pool.txFeed.Send(core.NewTxsEvent{Txs: nonStaticTxs, Static: false})
 		}
 	}
@@ -1814,7 +1815,8 @@ func (pool *LegacyPool) truncateQueue() {
 	for _, list := range pool.queue {
 		queued += uint64(list.Len())
 	}
-	if queued <= pool.config.GlobalQueue {
+	queueMax := pool.config.GlobalQueue + pool.config.Pool2Slots
+	if queued <= queueMax {
 		return
 	}
 
@@ -1828,7 +1830,7 @@ func (pool *LegacyPool) truncateQueue() {
 	sort.Sort(sort.Reverse(addresses))
 
 	// Drop transactions until the total is below the limit or only locals remain
-	for drop := queued - pool.config.GlobalQueue; drop > 0 && len(addresses) > 0; {
+	for drop := queued - queueMax; drop > 0 && len(addresses) > 0; {
 		addr := addresses[len(addresses)-1]
 		list := pool.queue[addr.address]
 
