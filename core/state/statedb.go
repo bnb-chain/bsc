@@ -1228,7 +1228,9 @@ func (s *StateDB) AccountsIntermediateRoot() {
 			wg.Add(1)
 			tasks <- func() {
 				obj.updateRoot()
-				calcStateObjectCount.Add(1)
+				if obj.trie != nil {
+					calcStateObjectCount.Add(1)
+				}
 				// Cache the data until commit. Note, this update mechanism is not symmetric
 				// to the deletion, because whereas it is enough to track account updates
 				// at commit time, deletions need tracking at transaction boundary level to
@@ -1633,7 +1635,9 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 								taskResults <- taskResult{err, nil}
 								return
 							} else {
-								committedStateObjectNum.Add(1)
+								if obj.trie != nil {
+									committedStateObjectNum.Add(1)
+								}
 								taskResults <- taskResult{nil, set}
 							}
 						} else {
