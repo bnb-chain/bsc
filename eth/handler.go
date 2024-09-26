@@ -851,8 +851,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		txset = make(map[*ethPeer][]common.Hash) // Set peer->hash to transfer directly
 		annos = make(map[*ethPeer][]common.Hash) // Set peer->hash to announce
 	)
-	// for pool2 it is p = static+sqrt(peers) is total available.
-	// Send tx to sqrt(p) and announce to (p - sqrt(p)) peers
+
 	// Broadcast transactions to a batch of peers not knowing about it
 	for _, tx := range txs {
 		peers := h.peers.peersWithoutTransaction(tx.Hash())
@@ -866,7 +865,6 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		default:
 			numDirect = int(math.Sqrt(float64(len(peers))))
 		}
-
 		// Send the tx unconditionally to a subset of our peers
 		for _, peer := range peers[:numDirect] {
 			txset[peer] = append(txset[peer], tx.Hash())

@@ -224,6 +224,9 @@ func (p *Peer) SendTransactions(txs types.Transactions) error {
 // will force old sends to be dropped)
 func (p *Peer) AsyncSendTransactions(hashes []common.Hash) {
 	select {
+	case p.txBroadcast <- hashes:
+		// Mark all the transactions as known, but ensure we don't overflow our limits
+		p.knownTxs.Add(hashes...)
 	case <-p.txTerm:
 		p.Log().Debug("Dropping transaction propagation", "count", len(hashes))
 	case <-p.term:
