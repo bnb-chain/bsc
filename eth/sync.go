@@ -35,26 +35,16 @@ const (
 
 // syncTransactions starts sending all currently pending transactions to the given peer.
 func (h *handler) syncTransactions(p *eth.Peer) {
-	var hashesFalse []common.Hash
-	var hashesTrue []common.Hash
-
+	var hashes []common.Hash
 	for _, batch := range h.txpool.Pending(txpool.PendingFilter{OnlyPlainTxs: true}) {
 		for _, tx := range batch {
-			if tx.Static {
-				hashesTrue = append(hashesTrue, tx.Hash)
-			} else {
-				hashesFalse = append(hashesFalse, tx.Hash)
-			}
+			hashes = append(hashes, tx.Hash)
 		}
 	}
-
-	if len(hashesFalse) > 0 {
-		p.AsyncSendPooledTransactionHashes(hashesFalse, false)
+	if len(hashes) == 0 {
+		return
 	}
-
-	if len(hashesTrue) > 0 {
-		p.AsyncSendPooledTransactionHashes(hashesTrue, true)
-	}
+	p.AsyncSendPooledTransactionHashes(hashes)
 }
 
 // syncVotes starts sending all currently pending votes to the given peer.

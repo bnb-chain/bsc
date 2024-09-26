@@ -63,11 +63,10 @@ func (h *nonceHeap) Pop() interface{} {
 // sortedMap is a nonce->transaction hash map with a heap based index to allow
 // iterating over the contents in a nonce-incrementing way.
 type sortedMap struct {
-	items      map[uint64]*types.Transaction // Hash map storing the transaction data
-	index      *nonceHeap                    // Heap of nonces of all the stored transactions (non-strict mode)
-	cache      types.Transactions            // Cache of the transactions already sorted
-	cacheMu    sync.Mutex                    // Mutex covering the cache
-	staticOnly bool                          // only send this transaction to static peers
+	items   map[uint64]*types.Transaction // Hash map storing the transaction data
+	index   *nonceHeap                    // Heap of nonces of all the stored transactions (non-strict mode)
+	cache   types.Transactions            // Cache of the transactions already sorted
+	cacheMu sync.Mutex                    // Mutex covering the cache
 }
 
 // newSortedMap creates a new nonce-sorted transaction map.
@@ -85,7 +84,7 @@ func (m *sortedMap) Get(nonce uint64) *types.Transaction {
 
 // Put inserts a new transaction into the map, also updating the map's nonce
 // index. If a transaction already exists with the same nonce, it's overwritten.
-func (m *sortedMap) Put(tx *types.Transaction, static bool) {
+func (m *sortedMap) Put(tx *types.Transaction) {
 	nonce := tx.Nonce()
 	if m.items[nonce] == nil {
 		heap.Push(m.index, nonce)
@@ -95,7 +94,6 @@ func (m *sortedMap) Put(tx *types.Transaction, static bool) {
 		txSortedMapPool.Put(m.cache)
 	}
 	m.items[nonce], m.cache = tx, nil
-	m.staticOnly = static
 	m.cacheMu.Unlock()
 }
 
@@ -255,7 +253,7 @@ func (m *sortedMap) Len() int {
 	return len(m.items)
 }
 
-func (m *sortedMap) flatten() (types.Transactions, bool) {
+func (m *sortedMap) flatten() types.Transactions {
 	m.cacheMu.Lock()
 	defer m.cacheMu.Unlock()
 	// If the sorting was not cached yet, create and cache it
@@ -272,25 +270,25 @@ func (m *sortedMap) flatten() (types.Transactions, bool) {
 		}
 		sort.Sort(types.TxByNonce(m.cache))
 	}
-	return m.cache, m.staticOnly
+	return m.cache
 }
 
 // Flatten creates a nonce-sorted slice of transactions based on the loosely
 // sorted internal representation. The result of the sorting is cached in case
 // it's requested again before any modifications are made to the contents.
-func (m *sortedMap) Flatten() (types.Transactions, bool) {
-	cache, static := m.flatten()
+func (m *sortedMap) Flatten() types.Transactions {
+	cache := m.flatten()
 	// Copy the cache to prevent accidental modification
 	txs := make(types.Transactions, len(cache))
 	copy(txs, cache)
-	return txs, static
+	return txs
 }
 
 // LastElement returns the last element of a flattened list, thus, the
 // transaction with the highest nonce
-func (m *sortedMap) LastElement() (*types.Transaction, bool) {
-	cache, static := m.flatten()
-	return cache[len(cache)-1], static
+func (m *sortedMap) LastElement() *types.Transaction {
+	cache := m.flatten()
+	return cache[len(cache)-1]
 }
 
 // list is a "list" of transactions belonging to an account, sorted by account
@@ -362,7 +360,7 @@ func (l *list) Add(tx *types.Transaction, priceBump uint64, static bool) (bool, 
 	l.totalcost.Add(l.totalcost, cost)
 
 	// Otherwise overwrite the old transaction with the current one
-	l.txs.Put(tx, static)
+	l.txs.Put(tx)
 	if l.costcap.Cmp(cost) < 0 {
 		l.costcap = cost
 	}
@@ -477,13 +475,13 @@ func (l *list) Empty() bool {
 // Flatten creates a nonce-sorted slice of transactions based on the loosely
 // sorted internal representation. The result of the sorting is cached in case
 // it's requested again before any modifications are made to the contents.
-func (l *list) Flatten() (types.Transactions, bool) {
+func (l *list) Flatten() types.Transactions {
 	return l.txs.Flatten()
 }
 
 // LastElement returns the last element of a flattened list, thus, the
 // transaction with the highest nonce
-func (l *list) LastElement() (*types.Transaction, bool) {
+func (l *list) LastElement() *types.Transaction {
 	return l.txs.LastElement()
 }
 

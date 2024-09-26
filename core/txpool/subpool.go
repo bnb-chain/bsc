@@ -41,8 +41,6 @@ type LazyTransaction struct {
 
 	Gas     uint64 // Amount of gas required by the transaction
 	BlobGas uint64 // Amount of blob gas required by the transaction
-
-	Static bool // To specify whether to broadcast it to static peers or not
 }
 
 // Resolve retrieves the full transaction belonging to a lazy handle if it is still

@@ -222,29 +222,12 @@ func (p *Peer) SendTransactions(txs types.Transactions) error {
 // AsyncSendTransactions queues a list of transactions (by hash) to eventually
 // propagate to a remote peer. The number of pending sends are capped (new ones
 // will force old sends to be dropped)
-func (p *Peer) AsyncSendTransactions(hashes []common.Hash, staticOnly bool) {
-	// p.Peer.Info().Network.Static bool decides if pool2 transaction will be broadcasted to that peer or not
+func (p *Peer) AsyncSendTransactions(hashes []common.Hash) {
 	select {
 	case <-p.txTerm:
 		p.Log().Debug("Dropping transaction propagation", "count", len(hashes))
 	case <-p.term:
 		p.Log().Debug("Dropping transaction propagation", "count", len(hashes))
-	default:
-		if (staticOnly && p.Peer.Info().Network.Static) || !staticOnly {
-			select {
-			case p.txBroadcast <- hashes:
-				// Mark all the transactions as known, but ensure we don't overflow our limits
-				p.knownTxs.Add(hashes...)
-				if staticOnly && p.Peer.Info().Network.Static {
-					p.Log().Debug("Sent pool-2 transaction", "count", len(hashes))
-				}
-			default:
-				// Handle the case when the channel is full or not ready
-				p.Log().Debug("Unable to send transactions, channel full or not ready", "count", len(hashes))
-			}
-		} else {
-			p.Log().Debug("Not sending transactions as peer not static", "count", len(hashes))
-		}
 	}
 }
 
@@ -264,25 +247,15 @@ func (p *Peer) sendPooledTransactionHashes(hashes []common.Hash, types []byte, s
 // AsyncSendPooledTransactionHashes queues a list of transactions hashes to eventually
 // announce to a remote peer.  The number of pending sends are capped (new ones
 // will force old sends to be dropped)
-func (p *Peer) AsyncSendPooledTransactionHashes(hashes []common.Hash, staticOnly bool) {
+func (p *Peer) AsyncSendPooledTransactionHashes(hashes []common.Hash) {
 	select {
+	case p.txAnnounce <- hashes:
+		// Mark all the transactions as known, but ensure we don't overflow our limits
+		p.knownTxs.Add(hashes...)
 	case <-p.txTerm:
 		p.Log().Debug("Dropping transaction announcement", "count", len(hashes))
 	case <-p.term:
 		p.Log().Debug("Dropping transaction announcement", "count", len(hashes))
-	default:
-		if (staticOnly && p.Peer.Info().Network.Static) || !staticOnly {
-			select {
-			case p.txAnnounce <- hashes:
-				// Mark all the transactions as known, but ensure we don't overflow our limits
-				p.knownTxs.Add(hashes...)
-			default:
-				// Handle the case when the channel is full or not ready
-				p.Log().Debug("Unable to send transactions, channel full or not ready", "count", len(hashes))
-			}
-		} else {
-			p.Log().Debug("Not sending transactions as peer not static", "count", len(hashes))
-		}
 	}
 }
 

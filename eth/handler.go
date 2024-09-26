@@ -838,7 +838,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 // - To a square root of all peers for non-blob transactions
 // - And, separately, as announcements to all peers which are not known to
 // already have the given transaction.
-func (h *handler) BroadcastTransactions(txs types.Transactions, staticOnly bool) {
+func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	var (
 		blobTxs  int // Number of blob transactions to announce only
 		largeTxs int // Number of large transactions to announce only
@@ -866,9 +866,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions, staticOnly bool)
 		default:
 			numDirect = int(math.Sqrt(float64(len(peers))))
 		}
-		if staticOnly {
-			numDirect = int(math.Sqrt(math.Sqrt(float64(len(peers)))))
-		}
+
 		// Send the tx unconditionally to a subset of our peers
 		for _, peer := range peers[:numDirect] {
 			txset[peer] = append(txset[peer], tx.Hash())
@@ -881,12 +879,12 @@ func (h *handler) BroadcastTransactions(txs types.Transactions, staticOnly bool)
 	for peer, hashes := range txset {
 		directPeers++
 		directCount += len(hashes)
-		peer.AsyncSendTransactions(hashes, staticOnly)
+		peer.AsyncSendTransactions(hashes)
 	}
 	for peer, hashes := range annos {
 		annPeers++
 		annCount += len(hashes)
-		peer.AsyncSendPooledTransactionHashes(hashes, staticOnly)
+		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
 	log.Debug("Distributed transactions", "plaintxs", len(txs)-blobTxs-largeTxs, "blobtxs", blobTxs, "largetxs", largeTxs,
 		"bcastpeers", directPeers, "bcastcount", directCount, "annpeers", annPeers, "anncount", annCount)
@@ -904,7 +902,7 @@ func (h *handler) ReannounceTransactions(txs types.Transactions) {
 	peersCount := uint(math.Sqrt(float64(h.peers.len())))
 	peers := h.peers.headPeers(peersCount)
 	for _, peer := range peers {
-		peer.AsyncSendPooledTransactionHashes(hashes, false) // todo keeping it false for now. Reannounce never really happens
+		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
 	log.Debug("Transaction reannounce", "txs", len(txs),
 		"announce packs", peersCount, "announced hashes", peersCount*uint(len(hashes)))
@@ -967,7 +965,7 @@ func (h *handler) txBroadcastLoop() {
 	for {
 		select {
 		case event := <-h.txsCh:
-			h.BroadcastTransactions(event.Txs, event.Static)
+			h.BroadcastTransactions(event.Txs)
 		case <-h.txsSub.Err():
 			return
 		case <-h.stopCh:
