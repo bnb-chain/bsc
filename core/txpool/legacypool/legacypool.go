@@ -465,7 +465,6 @@ func (pool *LegacyPool) Close() error {
 // Reset implements txpool.SubPool, allowing the legacy pool's internal state to be
 // kept in sync with the main transaction pool's internal state.
 func (pool *LegacyPool) Reset(oldHead, newHead *types.Header) {
-	fmt.Println("Reset request")
 	wait := pool.requestReset(oldHead, newHead)
 	<-wait
 }
@@ -841,7 +840,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		}
 
 		// If the new transaction is a future transaction it should never churn pending transactions
-		// todo WHY THIS CHECK HAPPENS AFTER CALLING DISCARD()??
 		if !isLocal && pool.isGapped(from, tx) {
 			var replacesPending bool
 			for _, dropTx := range drop {
@@ -857,7 +855,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 					pool.priced.Put(dropTx, false)
 				}
 				log.Trace("Discarding future transaction replacing pending tx", "hash", hash)
-				return false, txpool.ErrFutureReplacePending // todo 1 maybe in this case the future transaction can be part of pool3?
+				return false, txpool.ErrFutureReplacePending
 			}
 		}
 
@@ -892,7 +890,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		pool.all.Add(tx, isLocal)
 		pool.priced.Put(tx, isLocal)
 		pool.journalTx(from, tx)
-		pool.queueTxEvent(tx, false)
+		pool.queueTxEvent(tx)
 		log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
 
 		// Successful promotion, bump the heartbeat
@@ -923,24 +921,24 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 
 func (pool *LegacyPool) addToPool3(drop types.Transactions, isLocal bool) {
 	// calculate total number of slots in drop. Accordingly add them to pool3 (if there is space)
-	// all members of drop will be dropped from pool1/2 regardless of whether they get added to pool3 or not
 	availableSlotsPool3 := pool.availableSlotsPool3()
 	if availableSlotsPool3 > 0 {
 		// transfer availableSlotsPool3 number of transactions slots from drop to pool3
 		currentSlotsUsed := 0
-		for _, tx := range drop {
+		for i, tx := range drop {
 			txSlots := numSlots(tx)
 			if currentSlotsUsed+txSlots <= availableSlotsPool3 {
 				from, _ := types.Sender(pool.signer, tx)
-				//pool.addToPool12OrPool3(tx, from, isLocal, false, false, true)
 				pool.localBufferPool.Add(tx)
 				log.Debug("adding to pool3", "transaction", tx.Hash().String(), "from", from.String())
 				currentSlotsUsed += txSlots
+			} else {
+				log.Debug("not all got added to pool3", "totalAdded", i+1)
+				return
 			}
 		}
 	} else {
 		log.Debug("adding to pool3 unsuccessful", "availableSlotsPool3", availableSlotsPool3)
-		fmt.Println("adding to pool3 unsuccessful")
 	}
 }
 
@@ -1163,7 +1161,7 @@ func (pool *LegacyPool) addTxsLocked(txs []*types.Transaction, local bool) ([]er
 	for i, tx := range txs {
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
-		if err == nil && !replaced { // todo ensure err is nil for certain case in add() where there is actually no error
+		if err == nil && !replaced {
 			dirty.addTx(tx)
 		}
 	}
@@ -1306,7 +1304,7 @@ func (pool *LegacyPool) requestPromoteExecutables(set *accountSet) chan struct{}
 }
 
 // queueTxEvent enqueues a transaction event to be sent in the next reorg run.
-func (pool *LegacyPool) queueTxEvent(tx *types.Transaction, static bool) {
+func (pool *LegacyPool) queueTxEvent(tx *types.Transaction) {
 	select {
 	case pool.queueTxEventCh <- tx:
 	case <-pool.reorgShutdownCh:
@@ -1391,7 +1389,6 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		reorgDurationTimer.Update(time.Since(t0))
 	}(time.Now())
 	defer close(done)
-	fmt.Println("runReorg called")
 	var promoteAddrs []common.Address
 	if dirtyAccounts != nil && reset == nil {
 		// Only dirty accounts need to be promoted, unless we're resetting.
@@ -1573,7 +1570,6 @@ func (pool *LegacyPool) reset(oldHead, newHead *types.Header) {
 // future queue to the set of pending transactions. During this process, all
 // invalidated transactions (low nonce, low balance) are deleted.
 func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.Transaction {
-	fmt.Println("promoteExecutables called")
 	// Track the promoted transactions to broadcast them at once
 	var promoted []*types.Transaction
 
@@ -1609,7 +1605,6 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 			}
 		}
 		log.Trace("Promoted queued transactions", "count", len(promoted))
-		fmt.Println("promoting")
 		queuedGauge.Dec(int64(len(readies)))
 
 		// Drop all transactions over the allowed limit
@@ -2127,7 +2122,7 @@ func (pool *LegacyPool) startPeriodicTransfer(t time.Duration) {
 	}()
 }
 
-// transferTransactions mainly moves from pool 3 to pool 2
+// transferTransactions mainly moves from pool3 to pool1
 func (pool *LegacyPool) transferTransactions() {
 	maxPool1Size := int(pool.config.GlobalSlots + pool.config.GlobalQueue)
 	extraSizePool1 := maxPool1Size - int(uint64(len(pool.pending))+uint64(len(pool.queue)))
@@ -2153,7 +2148,6 @@ func (pool *LegacyPool) transferTransactions() {
 	if len(tx) == 0 {
 		return
 	}
-	fmt.Println("transferring tranasction")
 
 	pool.Add(tx, true, false)
 }
