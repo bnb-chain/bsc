@@ -18,6 +18,7 @@ package trie
 
 import (
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -182,6 +183,11 @@ func (h *hasher) encodedBytes() []byte {
 
 // hashData hashes the provided data
 func (h *hasher) hashData(data []byte) hashNode {
+	defer func(start time.Time) {
+		hashQPS.Mark(1)
+		hashTime.Mark(time.Since(start).Nanoseconds())
+	}(time.Now())
+
 	n := make(hashNode, 32)
 	h.sha.Reset()
 	h.sha.Write(data)
