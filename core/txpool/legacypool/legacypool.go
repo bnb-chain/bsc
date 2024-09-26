@@ -279,7 +279,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
-		localBufferPool: NewTxPool3Heap(), // NewLRUBufferFastCache(int(config.Pool3Slots)),
+		localBufferPool: NewTxPool3Heap(),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -417,8 +417,7 @@ func (pool *LegacyPool) loop() {
 					if !pool.locals.contains(addr) {
 						continue
 					}
-					transactions := list.Flatten()
-					for _, tx := range transactions {
+					for _, tx := range list.Flatten() {
 						// Default ReannounceTime is 10 years, won't announce by default.
 						if time.Since(tx.Time()) < pool.config.ReannounceTime {
 							break
@@ -526,7 +525,7 @@ func (pool *LegacyPool) Stats() (int, int) {
 	return pool.stats()
 }
 
-func (pool *LegacyPool) StatsPool3() int {
+func (pool *LegacyPool) statsPool3() int {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
@@ -658,12 +657,10 @@ func (pool *LegacyPool) local() map[common.Address]types.Transactions {
 	txs := make(map[common.Address]types.Transactions)
 	for addr := range pool.locals.accounts {
 		if pending := pool.pending[addr]; pending != nil {
-			transactions := pending.Flatten()
-			txs[addr] = append(txs[addr], transactions...)
+			txs[addr] = append(txs[addr], pending.Flatten()...)
 		}
 		if queued := pool.queue[addr]; queued != nil {
-			transactions := queued.Flatten()
-			txs[addr] = append(txs[addr], transactions...)
+			txs[addr] = append(txs[addr], queued.Flatten()...)
 		}
 	}
 	return txs
@@ -1753,8 +1750,7 @@ func (pool *LegacyPool) truncateQueue() {
 
 		// Drop all transactions if they are less than the overflow
 		if size := uint64(list.Len()); size <= drop {
-			transactions := list.Flatten()
-			for _, tx := range transactions {
+			for _, tx := range list.Flatten() {
 				pool.removeTx(tx.Hash(), true, true)
 			}
 			drop -= size
