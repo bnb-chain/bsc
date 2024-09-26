@@ -519,7 +519,7 @@ func (s *stateObject) updateRoot() {
 // The returned set can be nil if nothing to commit. This function assumes all
 // storage mutations have already been flushed into trie by updateRoot.
 func (s *stateObject) commit() (*trienode.NodeSet, error) {
-	if s.IsContractAccount() && s.trie == nil {
+	if s.IsContractAccount() && s.trie == nil && s.db.db.GetVersion() != 0 {
 		panic(fmt.Sprintf("not open contract account, owner: %s, r_version: %d, c_version: %d, root: %s",
 			s.address.String(), s.db.db.GetVersion(), s.version, s.Root().String()))
 	}
