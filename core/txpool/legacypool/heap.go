@@ -58,9 +58,9 @@ type TxPool3Heap struct {
 	sequence uint64 // Monotonically increasing sequence number
 }
 
-func NewTxPool3Heap() *TxPool3Heap {
+func NewTxPool3Heap(estimatedMaxSize uint64) *TxPool3Heap {
 	return &TxPool3Heap{
-		txHeap:   make(txHeap, 0),
+		txHeap:   make(txHeap, 0, estimatedMaxSize),
 		index:    make(map[common.Hash]*txHeapItem),
 		sequence: 0,
 	}

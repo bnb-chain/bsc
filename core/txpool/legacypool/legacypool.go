@@ -279,7 +279,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
-		localBufferPool: NewTxPool3Heap(),
+		localBufferPool: NewTxPool3Heap(config.Pool3Slots),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
