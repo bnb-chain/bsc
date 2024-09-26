@@ -398,6 +398,10 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		s.db.setError(err)
 		return nil, err
 	}
+	if len(s.pendingStorage) == 0 {
+		return s.trie, nil
+	}
+
 	// Insert all the pending storage updates into the trie
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
 	dirtyStorage := make(map[common.Hash][]byte)
@@ -515,6 +519,11 @@ func (s *stateObject) updateRoot() {
 // The returned set can be nil if nothing to commit. This function assumes all
 // storage mutations have already been flushed into trie by updateRoot.
 func (s *stateObject) commit() (*trienode.NodeSet, error) {
+	if s.IsContractAccount() && s.trie == nil {
+		panic(fmt.Sprintf("not open contract account, owner: %s, r_version: %d, c_version: %d, root: %s",
+			s.address.String(), s.db.db.GetVersion(), s.version, s.Root().String()))
+	}
+
 	// Short circuit if trie is not even loaded, don't bother with committing anything
 	if s.trie == nil {
 		s.origin = s.data.Copy()
