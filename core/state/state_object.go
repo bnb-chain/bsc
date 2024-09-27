@@ -417,22 +417,35 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		}
 		dirtyStorage[key] = v
 	}
+
+	storages := make(map[string][]byte)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for key, value := range dirtyStorage {
+			//TODO:: add version schema check
+			//if len(value) == 0 {
+			//	if err := tr.DeleteStorage(s.address, key[:]); err != nil {
+			//		s.db.setError(err)
+			//	}
+			//	s.db.StorageDeleted += 1
+			//} else {
+			//	if err := tr.UpdateStorage(s.address, key[:], value); err != nil {
+			//		s.db.setError(err)
+			//	}
+			//	s.db.StorageUpdated += 1
+			//}
 			if len(value) == 0 {
-				if err := tr.DeleteStorage(s.address, key[:]); err != nil {
-					s.db.setError(err)
-				}
-				s.db.StorageDeleted += 1
+				storages[string(key[:])] = nil
 			} else {
-				if err := tr.UpdateStorage(s.address, key[:], value); err != nil {
-					s.db.setError(err)
-				}
-				s.db.StorageUpdated += 1
+				v, _ := rlp.EncodeToBytes(value)
+				storages[string(key[:])] = v
 			}
+			if err := tr.WriteBatch(storages); err != nil {
+				s.db.setError(err)
+			}
+
 			// Cache the items for preloading
 			usedStorage = append(usedStorage, common.CopyBytes(key[:]))
 		}

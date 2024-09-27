@@ -31,6 +31,11 @@ func NewEmptyTrie() *EmptyTrie {
 	return &EmptyTrie{}
 }
 
+func (t *EmptyTrie) WriteBatch(values map[string][]byte) error {
+	panic("EmptyTrie not support WriteBatch")
+	return nil
+}
+
 func (t *EmptyTrie) GetKey(shaKey []byte) []byte {
 	return nil
 }

@@ -73,6 +73,11 @@ func NewStateTrie(id *ID, db database.Database) (*StateTrie, error) {
 	return &StateTrie{trie: *trie, db: db}, nil
 }
 
+func (t *StateTrie) WriteBatch(values map[string][]byte) error {
+	panic("StateTrie not support WriteBatch")
+	return nil
+}
+
 // MustGet returns the value for key stored in the trie.
 // The value bytes must not be modified by the caller.
 //

@@ -415,6 +415,10 @@ func (vt *VersaTree) UpdateAccount(address common.Address, account *types.StateA
 	return vt.db.Put(vt.handler, address.Bytes(), data)
 }
 
+func (vt *VersaTree) WriteBatch(values map[string][]byte) error {
+	return vt.db.WriteBatch(vt.handler, values)
+}
+
 func (vt *VersaTree) UpdateStorage(address common.Address, key, value []byte) error {
 	if vt.address.Cmp(address) != 0 {
 		panic(fmt.Sprintf("address mismatch in get storage, expect: %s, actul: %s", vt.address.String(), address.String()))

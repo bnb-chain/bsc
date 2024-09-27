@@ -143,6 +143,8 @@ type Trie interface {
 	// to be moved to the stateWriter interface when the latter is ready.
 	UpdateContractCode(address common.Address, codeHash common.Hash, code []byte) error
 
+	WriteBatch(values map[string][]byte) error
+
 	// Hash returns the root hash of the trie. It does not write to the database and
 	// can be used even if the trie doesn't have one.
 	Hash() common.Hash

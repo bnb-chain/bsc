@@ -69,6 +69,11 @@ func NewVerkleTrie(root common.Hash, db database.Database, cache *utils.PointCac
 	}, nil
 }
 
+func (t *VerkleTrie) WriteBatch(values map[string][]byte) error {
+	panic("VerkleTrie not support WriteBatch")
+	return nil
+}
+
 // GetKey returns the sha3 preimage of a hashed key that was previously used
 // to store a value.
 func (t *VerkleTrie) GetKey(key []byte) []byte {
