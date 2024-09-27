@@ -100,10 +100,7 @@ func (s *stateObject) empty() bool {
 
 // newObject creates a state object.
 func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *stateObject {
-	var (
-		origin  = acct
-		created = acct == nil // true if the account was not existent
-	)
+	origin := acct
 	if acct == nil {
 		acct = types.NewEmptyStateAccount()
 	}
@@ -123,7 +120,6 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 		originStorage:       make(Storage),
 		pendingStorage:      make(Storage),
 		dirtyStorage:        make(Storage),
-		created:             created,
 	}
 }
 
@@ -300,6 +296,10 @@ func (s *stateObject) finalise(prefetch bool) {
 	if len(s.dirtyStorage) > 0 {
 		s.dirtyStorage = make(Storage)
 	}
+	// Revoke the flag at the end of the transaction. It finalizes the status
+	// of the newly-created object as it's no longer eligible for self-destruct
+	// by EIP-6780. For non-newly-created objects, it's a no-op.
+	s.created = false
 }
 
 // updateTrie is responsible for persisting cached storage changes into the
@@ -528,6 +528,7 @@ func (s *stateObject) deepCopy(db *StateDB) *stateObject {
 	obj.selfDestructed = s.selfDestructed
 	obj.dirtyCode = s.dirtyCode
 	obj.deleted = s.deleted
+	obj.created = s.created
 	return obj
 }
 

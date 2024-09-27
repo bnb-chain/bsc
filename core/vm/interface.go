@@ -28,6 +28,7 @@ import (
 // StateDB is an EVM database for full state querying.
 type StateDB interface {
 	CreateAccount(common.Address)
+	CreateContract(common.Address)
 
 	SubBalance(common.Address, *uint256.Int)
 	AddBalance(common.Address, *uint256.Int)
