@@ -191,9 +191,6 @@ type Config struct {
 	// OverridePassedForkTime
 	OverridePassedForkTime *uint64 `toml:",omitempty"`
 
-	// OverrideBohr (TODO: remove after the fork)
-	OverrideBohr *uint64 `toml:",omitempty"`
-
 	// OverridePascal (TODO: remove after the fork)
 	OverridePascal *uint64 `toml:",omitempty"`
 

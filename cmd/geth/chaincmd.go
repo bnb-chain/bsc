@@ -63,7 +63,6 @@ var (
 		Flags: flags.Merge([]cli.Flag{
 			utils.CachePreimagesFlag,
 			utils.OverridePassedForkTime,
-			utils.OverrideBohr,
 			utils.OverridePascal,
 			utils.OverridePrague,
 			utils.OverrideVerkle,
@@ -259,10 +258,6 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverridePassedForkTime.Name) {
 		v := ctx.Uint64(utils.OverridePassedForkTime.Name)
 		overrides.OverridePassedForkTime = &v
-	}
-	if ctx.IsSet(utils.OverrideBohr.Name) {
-		v := ctx.Uint64(utils.OverrideBohr.Name)
-		overrides.OverrideBohr = &v
 	}
 	if ctx.IsSet(utils.OverridePascal.Name) {
 		v := ctx.Uint64(utils.OverridePascal.Name)

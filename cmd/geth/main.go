@@ -73,7 +73,6 @@ var (
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
 		utils.OverridePassedForkTime,
-		utils.OverrideBohr,
 		utils.OverridePascal,
 		utils.OverridePrague,
 		utils.OverrideVerkle,

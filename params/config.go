@@ -244,9 +244,9 @@ var (
 		HaberTime:           newUint64(0),
 		HaberFixTime:        newUint64(0),
 		BohrTime:            newUint64(0),
-		// TODO
-		PascalTime: newUint64(0),
-		PragueTime: newUint64(0),
+		// TODO: set them to `0` when passed on the mainnet
+		PascalTime: nil,
+		PragueTime: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
