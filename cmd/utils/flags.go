@@ -313,11 +313,6 @@ var (
 		Usage:    "Manually specify the hard fork timestamps which have passed on the mainnet, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
-	OverrideBohr = &cli.Uint64Flag{
-		Name:     "override.bohr",
-		Usage:    "Manually specify the Bohr fork timestamp, overriding the bundled setting",
-		Category: flags.EthCategory,
-	}
 	OverridePascal = &cli.Uint64Flag{
 		Name:     "override.pascal",
 		Usage:    "Manually specify the Pascal fork timestamp, overriding the bundled setting",
