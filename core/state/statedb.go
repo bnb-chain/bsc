@@ -23,7 +23,6 @@ import (
 	"runtime"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -1226,7 +1225,6 @@ func (s *StateDB) AccountsIntermediateRoot() {
 		}()
 	}
 
-	var calcStateObjectCount atomic.Int64
 	// Although naively it makes sense to retrieve the account trie and then do
 	// the contract storage and account updates sequentially, that short circuits
 	// the account prefetcher. Instead, let's process all the storage updates
@@ -1237,9 +1235,6 @@ func (s *StateDB) AccountsIntermediateRoot() {
 			wg.Add(1)
 			tasks <- func() {
 				obj.updateRoot()
-				if obj.trie != nil {
-					calcStateObjectCount.Add(1)
-				}
 				// Cache the data until commit. Note, this update mechanism is not symmetric
 				// to the deletion, because whereas it is enough to track account updates
 				// at commit time, deletions need tracking at transaction boundary level to
@@ -1253,7 +1248,6 @@ func (s *StateDB) AccountsIntermediateRoot() {
 		}
 	}
 	wg.Wait()
-	log.Info("versa calc root state object", "count", calcStateObjectCount.Load(), "version", s.db.GetVersion()+1)
 }
 
 func (s *StateDB) StateIntermediateRoot() common.Hash {
@@ -1638,7 +1632,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				}()
 			}
 
-			var committedStateObjectNum atomic.Int64
 			for addr := range s.stateObjectsDirty {
 				if obj := s.stateObjects[addr]; !obj.deleted {
 					tasks <- func() {
@@ -1648,9 +1641,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 								taskResults <- taskResult{err, nil}
 								return
 							} else {
-								if obj.trie != nil {
-									committedStateObjectNum.Add(1)
-								}
 								taskResults <- taskResult{nil, set}
 							}
 						} else {
@@ -1733,7 +1723,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				}
 			}
 			wg.Wait()
-			log.Info("versa commit state object", "count", committedStateObjectNum.Load(), "version", s.db.GetVersion()+1)
 			return nil
 		}()
 
