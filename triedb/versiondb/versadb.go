@@ -37,7 +37,7 @@ func New(config *Config) *VersionDB {
 	//	}
 	//	_ = cfg
 	//}
-	db, err := versa.NewVersaDB(path, nil)
+	db, err := versa.NewVersaDB(path, &versa.VersaDBConfig{})
 	if err != nil {
 		log.Crit("failed to new version db", "error", err)
 	}
