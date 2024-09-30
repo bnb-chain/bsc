@@ -679,7 +679,7 @@ func (s *StateDB) GetTransientState(addr common.Address, key common.Hash) common
 //
 
 // updateStateObject writes the given object to the trie.
-func (s *StateDB) updateStateObject(obj *stateObject, accounts map[string][]byte) {
+func (s *StateDB) updateStateObject(obj *stateObject) {
 	if s.noTrie {
 		return
 	}
@@ -689,16 +689,10 @@ func (s *StateDB) updateStateObject(obj *stateObject, accounts map[string][]byte
 	}
 	// Encode the account and update the account trie
 	addr := obj.Address()
-	//if err := s.trie.UpdateAccount(addr, &obj.data); err != nil {
-	//	s.setError(fmt.Errorf("updateStateObject (%x) error: %v", addr[:], err))
-	//}
-
-	data, err := rlp.EncodeToBytes(&obj.data)
-	if err != nil {
-		s.setError(fmt.Errorf("rlp updateStateObject (%x) error: %v", addr[:], err))
+	if err := s.trie.UpdateAccount(addr, &obj.data); err != nil {
+		s.setError(fmt.Errorf("updateStateObject (%x) error: %v", addr[:], err))
 	}
 
-	accounts[string(addr.Bytes())] = data
 	if obj.dirtyCode {
 		s.trie.UpdateContractCode(obj.Address(), common.BytesToHash(obj.CodeHash()), obj.code)
 	}
@@ -716,7 +710,7 @@ func (s *StateDB) updateStateObject(obj *stateObject, accounts map[string][]byte
 }
 
 // deleteStateObject removes the given object from the state trie.
-func (s *StateDB) deleteStateObject(obj *stateObject, accounts map[string][]byte) {
+func (s *StateDB) deleteStateObject(obj *stateObject) {
 	if s.noTrie {
 		return
 	}
@@ -727,10 +721,9 @@ func (s *StateDB) deleteStateObject(obj *stateObject, accounts map[string][]byte
 	// Delete the account from the trie
 	addr := obj.Address()
 
-	accounts[string(addr.Bytes())] = nil
-	//if err := s.trie.DeleteAccount(addr); err != nil {
-	//	s.setError(fmt.Errorf("deleteStateObject (%x) error: %v", addr[:], err))
-	//}
+	if err := s.trie.DeleteAccount(addr); err != nil {
+		s.setError(fmt.Errorf("deleteStateObject (%x) error: %v", addr[:], err))
+	}
 }
 
 // getStateObject retrieves a state object given by the address, returning nil if
@@ -1282,22 +1275,18 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 		s.trie = tr
 	}
 
-	accounts := make(map[string][]byte)
 	usedAddrs := make([][]byte, 0, len(s.stateObjectsPending))
 	if !s.noTrie {
 		for addr := range s.stateObjectsPending {
 			if obj := s.stateObjects[addr]; obj.deleted {
-				s.deleteStateObject(obj, accounts)
+				s.deleteStateObject(obj)
 			} else {
-				s.updateStateObject(obj, accounts)
+				s.updateStateObject(obj)
 			}
 			usedAddrs = append(usedAddrs, common.CopyBytes(addr[:])) // Copy needed for closure
 		}
 		if prefetcher != nil {
 			prefetcher.used(common.Hash{}, s.originalRoot, usedAddrs)
-		}
-		if err := s.trie.WriteBatch(accounts); err != nil {
-			s.setError(fmt.Errorf("WriteBatchStateObject error: %v", err))
 		}
 	}
 

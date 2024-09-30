@@ -22,28 +22,22 @@ type VersionDB struct {
 
 func New(config *Config) *VersionDB {
 	var (
-		cfg  *versa.VersaDBConfig
+		//cfg  *versa.VersaDBConfig
 		path = "./node/version_db" // TODO:: debug code
 	)
 
-	if config != nil {
-		path = config.Path
-		cfg = &versa.VersaDBConfig{
-			FlushInterval:    2000,
-			MaxStatesInMem:   128,
-			MemLowWaterMark:  10,
-			MemHighWaterMark: 20,
-			MemEvictInternal: 200,
-		}
-		_ = cfg
-	}
-	db, err := versa.NewVersaDB(path, &versa.VersaDBConfig{
-		FlushInterval:    2000,
-		MaxStatesInMem:   128,
-		MemLowWaterMark:  10,
-		MemHighWaterMark: 20,
-		MemEvictInternal: 200,
-	})
+	//if config != nil {
+	//	path = config.Path
+	//	cfg = &versa.VersaDBConfig{
+	//		FlushInterval:    2000,
+	//		MaxStatesInMem:   128,
+	//		MemLowWaterMark:  10,
+	//		MemHighWaterMark: 20,
+	//		MemEvictInternal: 200,
+	//	}
+	//	_ = cfg
+	//}
+	db, err := versa.NewVersaDB(path, nil)
 	if err != nil {
 		log.Crit("failed to new version db", "error", err)
 	}
