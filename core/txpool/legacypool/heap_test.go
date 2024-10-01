@@ -28,7 +28,7 @@ func TestNewTxPool3Heap(t *testing.T) {
 }
 
 func TestTxPool3HeapAdd(t *testing.T) {
-	pool := NewTxPool3Heap(0)
+	pool := NewTxPool3Heap(1)
 	tx := createTestTx(1, big.NewInt(1000))
 
 	pool.Add(tx)
@@ -44,7 +44,7 @@ func TestTxPool3HeapAdd(t *testing.T) {
 }
 
 func TestTxPool3HeapGet(t *testing.T) {
-	pool := NewTxPool3Heap(0)
+	pool := NewTxPool3Heap(1)
 	tx := createTestTx(1, big.NewInt(1000))
 	pool.Add(tx)
 
@@ -63,7 +63,7 @@ func TestTxPool3HeapGet(t *testing.T) {
 }
 
 func TestTxPool3HeapRemove(t *testing.T) {
-	pool := NewTxPool3Heap(0)
+	pool := NewTxPool3Heap(1)
 	tx := createTestTx(1, big.NewInt(1000))
 	pool.Add(tx)
 
@@ -80,7 +80,7 @@ func TestTxPool3HeapRemove(t *testing.T) {
 }
 
 func TestTxPool3HeapPopN(t *testing.T) {
-	pool := NewTxPool3Heap(0)
+	pool := NewTxPool3Heap(3)
 	tx1 := createTestTx(1, big.NewInt(1000))
 	tx2 := createTestTx(2, big.NewInt(2000))
 	tx3 := createTestTx(3, big.NewInt(3000))
@@ -116,7 +116,7 @@ func TestTxPool3HeapPopN(t *testing.T) {
 }
 
 func TestTxPool3HeapOrdering(t *testing.T) {
-	pool := NewTxPool3Heap(0)
+	pool := NewTxPool3Heap(3)
 	tx1 := createTestTx(1, big.NewInt(1000))
 	tx2 := createTestTx(2, big.NewInt(2000))
 	tx3 := createTestTx(3, big.NewInt(3000))
@@ -136,7 +136,7 @@ func TestTxPool3HeapOrdering(t *testing.T) {
 }
 
 func TestTxPool3HeapLen(t *testing.T) {
-	pool := NewTxPool3Heap(0)
+	pool := NewTxPool3Heap(2)
 	if pool.Len() != 0 {
 		t.Errorf("New pool should have length 0, got %d", pool.Len())
 	}
@@ -168,27 +168,33 @@ func createRandomTestTx() *types.Transaction {
 	return types.NewTransaction(nonce, to, amount, gasLimit, gasPrice, data)
 }
 
+func createRandomTestTxs(n int) []*types.Transaction {
+	txs := make([]*types.Transaction, n)
+	for i := 0; i < n; i++ {
+		txs[i] = createRandomTestTx()
+	}
+	return txs
+}
+
 // goos: darwin
 // goarch: arm64
 // pkg: github.com/ethereum/go-ethereum/core/txpool/legacypool
-// BenchmarkTxPool3HeapAdd-8   	   45870	     24270 ns/op
+// BenchmarkTxPool3HeapAdd-8              	  813326	      2858 ns/op
 func BenchmarkTxPool3HeapAdd(b *testing.B) {
-	pool := NewTxPool3Heap(0)
+	pool := NewTxPool3Heap(uint64(b.N))
+	txs := createRandomTestTxs(b.N)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tx := createRandomTestTx()
-		pool.Add(tx)
+		pool.Add(txs[i])
 	}
 }
 
-// BenchmarkTxPool3HeapGet-8   	34522438	        37.05 ns/op
+// BenchmarkTxPool3HeapGet-8              	32613938	        35.63 ns/op
 func BenchmarkTxPool3HeapGet(b *testing.B) {
-	pool := NewTxPool3Heap(0)
-	txs := make([]*types.Transaction, 1000)
-	for i := 0; i < 1000; i++ {
-		tx := createRandomTestTx()
+	pool := NewTxPool3Heap(1000)
+	txs := createRandomTestTxs(1000)
+	for _, tx := range txs {
 		pool.Add(tx)
-		txs[i] = tx
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -196,14 +202,12 @@ func BenchmarkTxPool3HeapGet(b *testing.B) {
 	}
 }
 
-// BenchmarkTxPool3HeapRemove-8   	 2643650	       539.2 ns/op
+// BenchmarkTxPool3HeapRemove-8           	 3020841	       417.8 ns/op
 func BenchmarkTxPool3HeapRemove(b *testing.B) {
-	pool := NewTxPool3Heap(0)
-	txs := make([]*types.Transaction, b.N)
-	for i := 0; i < b.N; i++ {
-		tx := createRandomTestTx()
+	pool := NewTxPool3Heap(uint64(b.N))
+	txs := createRandomTestTxs(b.N)
+	for _, tx := range txs {
 		pool.Add(tx)
-		txs[i] = tx
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -211,11 +215,11 @@ func BenchmarkTxPool3HeapRemove(b *testing.B) {
 	}
 }
 
-// BenchmarkTxPool3HeapPopN-8   	47899808	        23.80 ns/op
-func BenchmarkTxPool3HeapPopN(b *testing.B) {
-	pool := NewTxPool3Heap(0)
-	for i := 0; i < 1000; i++ {
-		tx := createRandomTestTx()
+// BenchmarkTxPool3HeapFlush-8            	42963656	        29.90 ns/op
+func BenchmarkTxPool3HeapFlush(b *testing.B) {
+	pool := NewTxPool3Heap(1000)
+	txs := createRandomTestTxs(1000)
+	for _, tx := range txs {
 		pool.Add(tx)
 	}
 	b.ResetTimer()
@@ -224,11 +228,11 @@ func BenchmarkTxPool3HeapPopN(b *testing.B) {
 	}
 }
 
-// BenchmarkTxPool3HeapLen-8   	86149902	        13.32 ns/op
+// BenchmarkTxPool3HeapLen-8              	79147188	        20.07 ns/op
 func BenchmarkTxPool3HeapLen(b *testing.B) {
-	pool := NewTxPool3Heap(0)
-	for i := 0; i < 1000; i++ {
-		tx := createRandomTestTx()
+	pool := NewTxPool3Heap(1000)
+	txs := createRandomTestTxs(1000)
+	for _, tx := range txs {
 		pool.Add(tx)
 	}
 	b.ResetTimer()
@@ -237,26 +241,25 @@ func BenchmarkTxPool3HeapLen(b *testing.B) {
 	}
 }
 
-// BenchmarkTxPool3HeapAddRemove-8   	   46156	     25019 ns/op
+// BenchmarkTxPool3HeapAddRemove-8        	  902896	      1546 ns/op
 func BenchmarkTxPool3HeapAddRemove(b *testing.B) {
-	pool := NewTxPool3Heap(0)
+	pool := NewTxPool3Heap(uint64(b.N))
+	txs := createRandomTestTxs(b.N)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tx := createRandomTestTx()
-		pool.Add(tx)
-		pool.Remove(tx.Hash())
+		pool.Add(txs[i])
+		pool.Remove(txs[i].Hash())
 	}
 }
 
-// BenchmarkTxPool3HeapAddPopN-8   	     470	   2377928 ns/op pool.PopN(100)
-// BenchmarkTxPool3HeapAddPopN-8   	    4694	    285026 ns/op pool.PopN(10)
-func BenchmarkTxPool3HeapAddPopN(b *testing.B) {
-	pool := NewTxPool3Heap(0)
+// BenchmarkTxPool3HeapAddFlush-8         	   84417	     14899 ns/op
+func BenchmarkTxPool3HeapAddFlush(b *testing.B) {
+	pool := NewTxPool3Heap(uint64(b.N * 10))
+	txs := createRandomTestTxs(b.N * 10)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 10; j++ {
-			tx := createRandomTestTx()
-			pool.Add(tx)
+			pool.Add(txs[i*10+j])
 		}
 		pool.Flush(10)
 	}
