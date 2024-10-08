@@ -2,8 +2,9 @@
 //   https://github.com/trezor/trezor-common/blob/master/protob/messages.proto
 // dated 28.05.2019, commit 893fd219d4a01bcffa0cd9cfa631856371ec5aa9.
 
-syntax = "proto2";
+syntax = "proto3";
 package hw.trezor.messages;
+option go_package = "accounts/usbwallet/trezor";
 
 /**
  * Messages for TREZOR communication

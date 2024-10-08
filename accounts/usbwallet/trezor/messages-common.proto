@@ -2,8 +2,9 @@
 //   https://github.com/trezor/trezor-common/blob/master/protob/messages-common.proto
 // dated 28.05.2019, commit 893fd219d4a01bcffa0cd9cfa631856371ec5aa9.
 
-syntax = "proto2";
+syntax = "proto3";
 package hw.trezor.messages.common;
+option go_package = "accounts/usbwallet/trezor";
 
 /**
  * Response: Success of the previous request
@@ -21,6 +22,7 @@ message Failure {
     optional FailureType code = 1;  // computer-readable definition of the error state
     optional string message = 2;    // human-readable message of the error state
     enum FailureType {
+        Failure_UNSPECIFIED = 0;
         Failure_UnexpectedMessage = 1;
         Failure_ButtonExpected = 2;
         Failure_DataError = 3;
@@ -49,6 +51,7 @@ message ButtonRequest {
     * Type of button request
     */
     enum ButtonRequestType {
+        ButtonRequest_UNSPECIFIED = 0;
         ButtonRequest_Other = 1;
         ButtonRequest_FeeOverThreshold = 2;
         ButtonRequest_ConfirmOutput = 3;
@@ -85,6 +88,7 @@ message PinMatrixRequest {
     * Type of PIN request
     */
     enum PinMatrixRequestType {
+        PinMatrixRequestType_UNSPECIFIED = 0;
         PinMatrixRequestType_Current = 1;
         PinMatrixRequestType_NewFirst = 2;
         PinMatrixRequestType_NewSecond = 3;
@@ -96,7 +100,8 @@ message PinMatrixRequest {
  * @auxend
  */
 message PinMatrixAck {
-    required string pin = 1;    // matrix encoded PIN entered by user
+    // required
+    string pin = 1;    // matrix encoded PIN entered by user
 }
 
 /**
@@ -138,10 +143,14 @@ message PassphraseStateAck {
  * @embed
  */
 message HDNodeType {
-    required uint32 depth = 1;
-    required uint32 fingerprint = 2;
-    required uint32 child_num = 3;
-    required bytes chain_code = 4;
+    // required
+    uint32 depth = 1;
+    // required
+    uint32 fingerprint = 2;
+    // required
+    uint32 child_num = 3;
+    // required
+    bytes chain_code = 4;
     optional bytes private_key = 5;
     optional bytes public_key = 6;
 }
