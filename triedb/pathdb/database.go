@@ -194,6 +194,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		db.freezer = freezer
 
 		diskLayerID := db.tree.bottom().stateID()
+		log.Info("disklayer id", "id", diskLayerID)
 		if diskLayerID == 0 {
 			// Reset the entire state histories in case the trie database is
 			// not initialized yet, as these state histories are not expected.
