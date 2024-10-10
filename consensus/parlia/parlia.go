@@ -1816,14 +1816,15 @@ func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, he
 	if doDistributeSysReward {
 		rewards := new(uint256.Int)
 		rewards = rewards.Rsh(balance, systemRewardPercent)
-		state.SetBalance(consensus.SystemAddress, balance.Sub(balance, rewards))
-		state.AddBalance(coinbase, rewards)
 		if rewards.Cmp(common.U2560) > 0 {
+			state.SetBalance(consensus.SystemAddress, balance.Sub(balance, rewards))
+			state.AddBalance(coinbase, rewards)
 			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
 			if err != nil {
 				return err
 			}
 			log.Trace("distribute to system reward pool", "block hash", header.Hash(), "amount", rewards)
+			balance = balance.Sub(balance, rewards)
 		}
 	}
 	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
