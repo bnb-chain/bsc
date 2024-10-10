@@ -1806,14 +1806,11 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool) error {
 	coinbase := header.Coinbase
-	balance := state.GetBalance(consensus.SystemAddress)
-	if balance.Cmp(common.U2560) <= 0 {
-		return nil
-	}
 
 	doDistributeSysReward := !p.chainConfig.IsKepler(header.Number, header.Time) &&
 		state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
 	if doDistributeSysReward {
+		balance := state.GetBalance(consensus.SystemAddress)
 		rewards := new(uint256.Int)
 		rewards = rewards.Rsh(balance, systemRewardPercent)
 		if rewards.Cmp(common.U2560) > 0 {
@@ -1824,13 +1821,16 @@ func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, he
 				return err
 			}
 			log.Trace("distribute to system reward pool", "block hash", header.Hash(), "amount", rewards)
-			balance = balance.Sub(balance, rewards)
 		}
 	}
-	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
 
-	state.AddBalance(coinbase, state.GetBalance(consensus.SystemAddress))
+	balance := state.GetBalance(consensus.SystemAddress)
+	if balance.Cmp(common.U2560) <= 0 {
+		return nil
+	}
 	state.SetBalance(consensus.SystemAddress, common.U2560)
+	state.AddBalance(coinbase, balance)
+	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
 	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
 }
 
