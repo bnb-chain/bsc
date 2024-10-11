@@ -3,6 +3,7 @@ package ethapi
 import (
 	"bytes"
 	"errors"
+
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 )
