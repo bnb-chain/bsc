@@ -30,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
@@ -39,7 +38,7 @@ import (
 
 // TransactionConditionalSender injects the conditional transaction into the pending pool for execution after verification.
 type TransactionConditionalSender interface {
-	SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts ethapi.TransactionOpts) error
+	SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts types.TransactionOpts) error
 }
 
 // Client exposes the methods provided by the Ethereum RPC client.

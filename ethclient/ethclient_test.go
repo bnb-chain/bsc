@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -770,9 +769,9 @@ func sendTransactionConditional(ec *Client) error {
 	}
 
 	root := common.HexToHash("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
-	return ec.SendTransactionConditional(context.Background(), tx, ethapi.TransactionOpts{
-		KnownAccounts: map[common.Address]ethapi.AccountStorage{
-			testAddr: ethapi.AccountStorage{
+	return ec.SendTransactionConditional(context.Background(), tx, types.TransactionOpts{
+		KnownAccounts: map[common.Address]types.AccountStorage{
+			testAddr: types.AccountStorage{
 				StorageRoot: &root,
 			},
 		},
