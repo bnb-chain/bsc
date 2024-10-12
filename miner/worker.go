@@ -99,6 +99,7 @@ type environment struct {
 
 	profit       *big.Int // block gas fee + BNBSentToSystem
 	UnRevertible []common.Hash
+	duration     time.Duration
 }
 
 // copy creates a deep copy of environment.
@@ -1311,6 +1312,7 @@ LOOP:
 		fillStart := time.Now()
 		err = w.fillTransactionsAndBundles(interruptCh, work, stopTimer)
 		fillDuration := time.Since(fillStart)
+		work.duration = fillDuration
 		switch {
 		case errors.Is(err, errBlockInterruptedByNewHead):
 			// work.discard()

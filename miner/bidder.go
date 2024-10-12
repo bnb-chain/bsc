@@ -278,7 +278,8 @@ func (b *Bidder) bid(work *environment) {
 	_, err := cli.SendBid(context.Background(), bidArgs)
 	if err != nil {
 		b.deleteBestWork(work)
-		log.Error("Bidder: bidding failed", "err", err, "number", work.header.Number, "txcount", len(work.txs), "unrevertible", len(work.UnRevertible))
+		log.Error("Bidder: bidding failed", "err", err, "number", work.header.Number, "txcount", len(work.txs),
+			"unrevertible", len(work.UnRevertible), "packing_duration", work.duration.Milliseconds())
 
 		var bidErr rpc.Error
 		ok := errors.As(err, &bidErr)
@@ -290,7 +291,8 @@ func (b *Bidder) bid(work *environment) {
 	}
 
 	b.deleteBestWork(work)
-	log.Info("Bidder: bidding success", "number", work.header.Number, "txs", len(work.txs))
+	log.Info("Bidder: bidding success", "number", work.header.Number, "txs", len(work.txs),
+		"packing_duration", work.duration.Milliseconds())
 }
 
 // isBestWork returns the work is better than the current best work
