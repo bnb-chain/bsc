@@ -1944,7 +1944,6 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 	keys := make([]*ecdsa.PrivateKey, 4)
 	for i := 0; i < len(keys); i++ {
 		keys[i], _ = crypto.GenerateKey()
-		fmt.Println("key ", i, "is ", crypto.PubkeyToAddress(keys[i].PublicKey).String())
 		testAddBalance(pool, crypto.PubkeyToAddress(keys[i].PublicKey), big.NewInt(1000000))
 	}
 
@@ -1960,7 +1959,6 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 	// Import the batch and that both pending and queued transactions match up
 	pool.addRemotes(txs) // Pend K0:0, K0:1; Que K1:1
 	pool.addLocal(ltx)   // +K2:0 => Pend K0:0, K0:1, K2:0; Que K1:1
-	fmt.Println("pool.addLocal(ltx) done")
 	pending, queued := pool.Stats()
 	if pending != 3 {
 		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 3)
@@ -1968,11 +1966,9 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 	if queued != 1 {
 		t.Fatalf("queued transactions mismatched: have %d, want %d", queued, 1)
 	}
-	fmt.Println("before validateEvents")
 	if err := validateEvents(events, 3); err != nil {
 		t.Fatalf("original event firing failed: %v", err)
 	}
-	fmt.Println("after validateEvents")
 	if err := validatePoolInternals(pool); err != nil {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
@@ -1997,8 +1993,6 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 	if err := pool.addRemoteSync(tx); err != nil { // +K1:3, -K1:0 => Pend K0:0 K2:0; Que K1:2 K1:3
 		t.Fatalf("failed to add well priced transaction: %v", err)
 	}
-	fmt.Println("Stats before before validateEvents")
-	pool.printTxStats()
 	pending, queued = pool.Stats()
 	if pending != 2 {
 		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 2)
@@ -2006,13 +2000,9 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 	if queued != 2 {
 		t.Fatalf("queued transactions mismatched: have %d, want %d", queued, 1)
 	}
-	fmt.Println("Stats before validateEvents")
-	pool.printTxStats()
 	if err := validateEvents(events, 2); err != nil { // todo make it 4...After this validateEvents the pending becomes 3?!
 		t.Fatalf("additional event firing failed: %v", err)
 	}
-	fmt.Println("Stats after validateEvents")
-	pool.printTxStats()
 	if err := validatePoolInternals(pool); err != nil {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
@@ -2063,8 +2053,6 @@ func TestDualHeapEviction(t *testing.T) {
 
 	check := func(tx *types.Transaction, name string) {
 		if pool.all.GetRemote(tx.Hash()) == nil {
-			//fmt.Println(highCap.GasFeeCap().String(), highCap.GasTipCap().String(), highTip.GasFeeCap().String(), highTip.GasTipCap().String(), len(pool.pending), len(pool.queue), pool.localBufferPool.size)
-			pool.printTxStats()
 			t.Fatalf("highest %s transaction evicted from the pool, gasTip: %s, gasFeeCap: %s, hash: %s", name, highTip.GasTipCap().String(), highCap.GasFeeCap().String(), tx.Hash().String())
 		}
 	}
@@ -2078,23 +2066,17 @@ func TestDualHeapEviction(t *testing.T) {
 			if urgent {
 				tx = dynamicFeeTx(0, 100000, big.NewInt(int64(baseFee+1+i)), big.NewInt(int64(1+i)), key)
 				if int64(1+i) > highTipValue || (int64(1+i) == highTipValue && int64(baseFee+1+i) > highTip.GasFeeCap().Int64()) {
-					//fmt.Println("highTip updated. tip=", int64(1+i), highTipValue)
 					highTipValue = int64(1 + i)
 					highTip = tx
 				}
 			} else {
 				tx = dynamicFeeTx(0, 100000, big.NewInt(int64(baseFee+200+i)), big.NewInt(1), key)
 				if int64(baseFee+200+i) > highCapValue {
-					//fmt.Println("highCap updated. gasFee=", int64(baseFee+200+i), highCapValue)
 					highCapValue = int64(baseFee + 200 + i)
 					highCap = tx
 				}
 			}
 			pool.addRemotesSync([]*types.Transaction{tx})
-			//pool.printTxStats()
-			if len(pool.pending) > 5 {
-				fmt.Println("pending has more than 5 elements, i: ", i)
-			}
 		}
 		pending, queued := pool.Stats()
 		if pending+queued != 4 {
@@ -2276,7 +2258,6 @@ func TestTransferTransactions(t *testing.T) {
 	keys := make([]*ecdsa.PrivateKey, 5)
 	for i := 0; i < len(keys); i++ {
 		keys[i], _ = crypto.GenerateKey()
-		fmt.Println(crypto.PubkeyToAddress(keys[i].PublicKey))
 		testAddBalance(pool, crypto.PubkeyToAddress(keys[i].PublicKey), big.NewInt(1000000))
 	}
 
