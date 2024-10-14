@@ -35,8 +35,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/internal/version"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/ethereum/go-ethereum/beacon/fakebeacon"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 	"github.com/ethereum/go-ethereum/core"
@@ -307,12 +310,17 @@ var (
 	}
 	OverridePassedForkTime = &cli.Uint64Flag{
 		Name:     "override.passedforktime",
-		Usage:    "Manually specify the hard fork timestamp except the last one, overriding the bundled setting",
+		Usage:    "Manually specify the hard fork timestamps which have passed on the mainnet, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
-	OverrideBohr = &cli.Uint64Flag{
-		Name:     "override.bohr",
-		Usage:    "Manually specify the Bohr fork timestamp, overriding the bundled setting",
+	OverridePascal = &cli.Uint64Flag{
+		Name:     "override.pascal",
+		Usage:    "Manually specify the Pascal fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	OverridePrague = &cli.Uint64Flag{
+		Name:     "override.prague",
+		Usage:    "Manually specify the Prague fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
 	OverrideVerkle = &cli.Uint64Flag{
@@ -1151,6 +1159,25 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "Extra reserve threshold for blob, blob never expires when 0 is set, default 28800",
 		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.MiscCategory,
+	}
+
+	// Fake beacon
+	FakeBeaconEnabledFlag = &cli.BoolFlag{
+		Name:     "fake-beacon",
+		Usage:    "Enable the HTTP-RPC server of fake-beacon",
+		Category: flags.APICategory,
+	}
+	FakeBeaconAddrFlag = &cli.StringFlag{
+		Name:     "fake-beacon.addr",
+		Usage:    "HTTP-RPC server listening addr of fake-beacon",
+		Value:    fakebeacon.DefaultAddr,
+		Category: flags.APICategory,
+	}
+	FakeBeaconPortFlag = &cli.IntFlag{
+		Name:     "fake-beacon.port",
+		Usage:    "HTTP-RPC server listening port of fake-beacon",
+		Value:    fakebeacon.DefaultPort,
+		Category: flags.APICategory,
 	}
 )
 
@@ -2305,6 +2332,67 @@ func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) Setup
 			"Lifetime":          poolConfig.Lifetime,
 		})
 	}
+}
+
+func EnableNodeTrack(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) SetupMetricsOption {
+	nodeInfo := stack.Server().NodeInfo()
+	return func() {
+		// register node info into metrics
+		metrics.NewRegisteredLabel("node-stats", nil).Mark(map[string]interface{}{
+			"NodeType":       parseNodeType(),
+			"ENR":            nodeInfo.ENR,
+			"Mining":         ctx.Bool(MiningEnabledFlag.Name),
+			"Etherbase":      parseEtherbase(cfg),
+			"MiningFeatures": parseMiningFeatures(ctx, cfg),
+			"DBFeatures":     parseDBFeatures(cfg, stack),
+		})
+	}
+}
+
+func parseEtherbase(cfg *ethconfig.Config) string {
+	if cfg.Miner.Etherbase == (common.Address{}) {
+		return ""
+	}
+	return cfg.Miner.Etherbase.String()
+}
+
+func parseNodeType() string {
+	git, _ := version.VCS()
+	version := []string{params.VersionWithMeta}
+	if len(git.Commit) >= 7 {
+		version = append(version, git.Commit[:7])
+	}
+	if git.Date != "" {
+		version = append(version, git.Date)
+	}
+	arch := []string{runtime.GOOS, runtime.GOARCH}
+	infos := []string{"BSC", strings.Join(version, "-"), strings.Join(arch, "-"), runtime.Version()}
+	return strings.Join(infos, "/")
+}
+
+func parseDBFeatures(cfg *ethconfig.Config, stack *node.Node) string {
+	var features []string
+	if cfg.StateScheme == rawdb.PathScheme {
+		features = append(features, "PBSS")
+	}
+	if stack.CheckIfMultiDataBase() {
+		features = append(features, "MultiDB")
+	}
+	return strings.Join(features, "|")
+}
+
+func parseMiningFeatures(ctx *cli.Context, cfg *ethconfig.Config) string {
+	if !ctx.Bool(MiningEnabledFlag.Name) {
+		return ""
+	}
+	var features []string
+	if cfg.Miner.Mev.Enabled {
+		features = append(features, "MEV")
+	}
+	if cfg.Miner.VoteEnable {
+		features = append(features, "FFVoting")
+	}
+	return strings.Join(features, "|")
 }
 
 func SetupMetrics(ctx *cli.Context, options ...SetupMetricsOption) {

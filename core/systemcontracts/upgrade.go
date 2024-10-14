@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/mirror"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/moran"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/niels"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/pascal"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/planck"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/plato"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/ramanujan"
@@ -82,6 +83,8 @@ var (
 	haberFixUpgrade = make(map[string]*Upgrade)
 
 	bohrUpgrade = make(map[string]*Upgrade)
+
+	pascalUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -773,18 +776,275 @@ func init() {
 		},
 	}
 
-	bohrUpgrade[rialtoNet] = &Upgrade{
-		UpgradeName: "bohr",
+	pascalUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "pascal",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/398c9364aad5261c1ecd90ac3ab2df89b65c45e3",
-				Code:         bohr.RialtoValidatorContract,
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetValidatorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(SlashContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetSlashContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(SystemRewardContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetSystemRewardContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(LightClientContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetLightClientContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TokenHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetTokenHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(RelayerIncentivizeContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetRelayerIncentivizeContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(RelayerHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetRelayerHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetGovHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TokenManagerContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetTokenManagerContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(CrossChainContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetCrossChainContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakingContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetStakingContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/398c9364aad5261c1ecd90ac3ab2df89b65c45e3",
-				Code:         bohr.RialtoStakeHubContract,
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetStakeHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakeCreditContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetStakeCreditContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovernorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetGovernorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovTokenContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetGovTokenContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TimelockContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetTimelockContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TokenRecoverPortalContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.MainnetTokenRecoverPortalContract,
+			},
+		},
+	}
+
+	pascalUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "pascal",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelValidatorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(SlashContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelSlashContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(SystemRewardContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelSystemRewardContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(LightClientContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelLightClientContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TokenHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelTokenHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(RelayerIncentivizeContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelRelayerIncentivizeContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(RelayerHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelRelayerHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelGovHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TokenManagerContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelTokenManagerContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(CrossChainContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelCrossChainContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakingContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelStakingContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelStakeHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakeCreditContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelStakeCreditContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovernorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelGovernorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovTokenContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelGovTokenContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TimelockContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelTimelockContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TokenRecoverPortalContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.ChapelTokenRecoverPortalContract,
+			},
+		},
+	}
+
+	pascalUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "pascal",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoValidatorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(SlashContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoSlashContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(SystemRewardContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoSystemRewardContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(LightClientContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoLightClientContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TokenHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoTokenHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(RelayerIncentivizeContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoRelayerIncentivizeContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(RelayerHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoRelayerHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoGovHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TokenManagerContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoTokenManagerContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(CrossChainContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoCrossChainContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakingContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoStakingContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoStakeHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(StakeCreditContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoStakeCreditContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovernorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoGovernorContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovTokenContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoGovTokenContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TimelockContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoTimelockContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(TokenRecoverPortalContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/020c0459e37d1f9d635c1cff86dd1099ab1383fa",
+				Code:         pascal.RialtoTokenRecoverPortalContract,
 			},
 		},
 	}
@@ -871,6 +1131,10 @@ func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	if config.IsOnBohr(blockNumber, lastBlockTime, blockTime) {
 		applySystemContractUpgrade(bohrUpgrade[network], blockNumber, statedb, logger)
+	}
+
+	if config.IsOnPascal(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(pascalUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*

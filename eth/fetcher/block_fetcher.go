@@ -868,9 +868,9 @@ func (f *BlockFetcher) importHeaders(op *blockOrHeaderInject) {
 		parent := f.getHeader(header.ParentHash)
 		if parent == nil {
 			log.Debug("Unknown parent of propagated header", "peer", peer, "number", header.Number, "hash", hash, "parent", header.ParentHash)
-			time.Sleep(reQueueBlockTimeout)
 			// forget block first, then re-queue
 			f.done <- hash
+			time.Sleep(reQueueBlockTimeout)
 			f.requeue <- op
 			return
 		}
@@ -909,9 +909,9 @@ func (f *BlockFetcher) importBlocks(op *blockOrHeaderInject) {
 		parent := f.getBlock(block.ParentHash())
 		if parent == nil {
 			log.Debug("Unknown parent of propagated block", "peer", peer, "number", block.Number(), "hash", hash, "parent", block.ParentHash())
-			time.Sleep(reQueueBlockTimeout)
 			// forget block first, then re-queue
 			f.done <- hash
+			time.Sleep(reQueueBlockTimeout)
 			f.requeue <- op
 			return
 		}

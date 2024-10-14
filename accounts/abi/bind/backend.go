@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
 )
 
 var (
@@ -101,7 +100,7 @@ type ContractTransactor interface {
 	PendingNonceAt(ctx context.Context, account common.Address) (uint64, error)
 
 	// SendTransactionConditional injects the conditional transaction into the pending pool for execution after verification.
-	SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts ethapi.TransactionOpts) error
+	SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts types.TransactionOpts) error
 }
 
 // DeployBackend wraps the operations needed by WaitMined and WaitDeployed.

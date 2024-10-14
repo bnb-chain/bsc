@@ -193,11 +193,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.CancunTime = config.OverridePassedForkTime
 		chainConfig.HaberTime = config.OverridePassedForkTime
 		chainConfig.HaberFixTime = config.OverridePassedForkTime
+		chainConfig.BohrTime = config.OverridePassedForkTime
 		overrides.OverridePassedForkTime = config.OverridePassedForkTime
 	}
-	if config.OverrideBohr != nil {
-		chainConfig.BohrTime = config.OverrideBohr
-		overrides.OverrideBohr = config.OverrideBohr
+	if config.OverridePascal != nil {
+		chainConfig.PascalTime = config.OverridePascal
+		overrides.OverridePascal = config.OverridePascal
+	}
+	if config.OverridePrague != nil {
+		chainConfig.PragueTime = config.OverridePrague
+		overrides.OverridePrague = config.OverridePrague
 	}
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
