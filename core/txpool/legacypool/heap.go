@@ -61,7 +61,7 @@ func (h *txHeap) Pop() interface{} {
 	return item
 }
 
-type TxPool3Heap struct {
+type TxOverflowPoolHeap struct {
 	txHeap    txHeap
 	index     map[common.Hash]*txHeapItem
 	mu        sync.RWMutex
@@ -69,15 +69,15 @@ type TxPool3Heap struct {
 	totalSize int
 }
 
-func NewTxPool3Heap(estimatedMaxSize uint64) *TxPool3Heap {
-	return &TxPool3Heap{
+func NewTxOverflowPoolHeap(estimatedMaxSize uint64) *TxOverflowPoolHeap {
+	return &TxOverflowPoolHeap{
 		txHeap:  make(txHeap, 0, estimatedMaxSize),
 		index:   make(map[common.Hash]*txHeapItem, estimatedMaxSize),
 		maxSize: estimatedMaxSize,
 	}
 }
 
-func (tp *TxPool3Heap) Add(tx *types.Transaction) {
+func (tp *TxOverflowPoolHeap) Add(tx *types.Transaction) {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 
@@ -94,6 +94,7 @@ func (tp *TxPool3Heap) Add(tx *types.Transaction) {
 		}
 		delete(tp.index, oldestItem.tx.Hash())
 		tp.totalSize -= numSlots(oldestItem.tx)
+		OverflowPoolGauge.Dec(1)
 	}
 
 	item := &txHeapItem{
@@ -103,9 +104,10 @@ func (tp *TxPool3Heap) Add(tx *types.Transaction) {
 	heap.Push(&tp.txHeap, item)
 	tp.index[tx.Hash()] = item
 	tp.totalSize += numSlots(tx)
+	OverflowPoolGauge.Inc(1)
 }
 
-func (tp *TxPool3Heap) Get(hash common.Hash) (*types.Transaction, bool) {
+func (tp *TxOverflowPoolHeap) Get(hash common.Hash) (*types.Transaction, bool) {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	if item, ok := tp.index[hash]; ok {
@@ -114,17 +116,18 @@ func (tp *TxPool3Heap) Get(hash common.Hash) (*types.Transaction, bool) {
 	return nil, false
 }
 
-func (tp *TxPool3Heap) Remove(hash common.Hash) {
+func (tp *TxOverflowPoolHeap) Remove(hash common.Hash) {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 	if item, ok := tp.index[hash]; ok {
 		heap.Remove(&tp.txHeap, item.index)
 		delete(tp.index, hash)
 		tp.totalSize -= numSlots(item.tx)
+		OverflowPoolGauge.Dec(1)
 	}
 }
 
-func (tp *TxPool3Heap) Flush(n int) []*types.Transaction {
+func (tp *TxOverflowPoolHeap) Flush(n int) []*types.Transaction {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 	if n > tp.txHeap.Len() {
@@ -140,22 +143,24 @@ func (tp *TxPool3Heap) Flush(n int) []*types.Transaction {
 		delete(tp.index, item.tx.Hash())
 		tp.totalSize -= numSlots(item.tx)
 	}
+
+	OverflowPoolGauge.Dec(int64(n))
 	return txs
 }
 
-func (tp *TxPool3Heap) Len() int {
+func (tp *TxOverflowPoolHeap) Len() int {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	return tp.txHeap.Len()
 }
 
-func (tp *TxPool3Heap) Size() int {
+func (tp *TxOverflowPoolHeap) Size() int {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	return tp.totalSize
 }
 
-func (tp *TxPool3Heap) PrintTxStats() {
+func (tp *TxOverflowPoolHeap) PrintTxStats() {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	for _, item := range tp.txHeap {

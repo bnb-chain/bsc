@@ -100,11 +100,11 @@ var (
 	// that this number is pretty low, since txpool reorgs happen very frequently.
 	dropBetweenReorgHistogram = metrics.NewRegisteredHistogram("txpool/dropbetweenreorg", nil, metrics.NewExpDecaySample(1028, 0.015))
 
-	pendingGauge = metrics.NewRegisteredGauge("txpool/pending", nil)
-	queuedGauge  = metrics.NewRegisteredGauge("txpool/queued", nil)
-	localGauge   = metrics.NewRegisteredGauge("txpool/local", nil)
-	slotsGauge   = metrics.NewRegisteredGauge("txpool/slots", nil)
-	pool3Gauge   = metrics.NewRegisteredGauge("txpool/pool3", nil)
+	pendingGauge      = metrics.NewRegisteredGauge("txpool/pending", nil)
+	queuedGauge       = metrics.NewRegisteredGauge("txpool/queued", nil)
+	localGauge        = metrics.NewRegisteredGauge("txpool/local", nil)
+	slotsGauge        = metrics.NewRegisteredGauge("txpool/slots", nil)
+	OverflowPoolGauge = metrics.NewRegisteredGauge("txpool/overflowpool", nil)
 
 	reheapTimer = metrics.NewRegisteredTimer("txpool/reheap", nil)
 )
@@ -135,11 +135,11 @@ type Config struct {
 	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
 
-	AccountSlots uint64 // Number of executable transaction slots guaranteed per account
-	GlobalSlots  uint64 // Maximum number of executable transaction slots for all accounts
-	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
-	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
-	Pool3Slots   uint64 // Maximum number of transaction slots in pool 3
+	AccountSlots      uint64 // Number of executable transaction slots guaranteed per account
+	GlobalSlots       uint64 // Maximum number of executable transaction slots for all accounts
+	AccountQueue      uint64 // Maximum number of non-executable transaction slots permitted per account
+	GlobalQueue       uint64 // Maximum number of non-executable transaction slots for all accounts
+	OverflowPoolSlots uint64 // Maximum number of transaction slots in overflow pool
 
 	Lifetime       time.Duration // Maximum amount of time non-executable transaction are queued
 	ReannounceTime time.Duration // Duration for announcing local pending transactions again
@@ -153,11 +153,11 @@ var DefaultConfig = Config{
 	PriceLimit: 1,
 	PriceBump:  10,
 
-	AccountSlots: 16,
-	GlobalSlots:  4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
-	AccountQueue: 64,
-	GlobalQueue:  1024,
-	Pool3Slots:   1024,
+	AccountSlots:      16,
+	GlobalSlots:       4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
+	AccountQueue:      64,
+	GlobalQueue:       1024,
+	OverflowPoolSlots: 1024,
 
 	Lifetime:       3 * time.Hour,
 	ReannounceTime: 10 * 365 * 24 * time.Hour,
@@ -240,7 +240,7 @@ type LegacyPool struct {
 	all     *lookup                      // All transactions to allow lookups
 	priced  *pricedList                  // All transactions sorted by price
 
-	localBufferPool Pool3 // Local buffer transactions (Pool 3)
+	localBufferPool OverflowPool // Local buffer transactions
 
 	reqResetCh      chan *txpoolResetRequest
 	reqPromoteCh    chan *accountSet
@@ -279,7 +279,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
-		localBufferPool: NewTxPool3Heap(config.Pool3Slots),
+		localBufferPool: NewTxOverflowPoolHeap(config.OverflowPoolSlots),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -525,7 +525,7 @@ func (pool *LegacyPool) Stats() (int, int) {
 	return pool.stats()
 }
 
-func (pool *LegacyPool) statsPool3() int {
+func (pool *LegacyPool) statsOverflowPool() int {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
@@ -766,7 +766,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		return false, txpool.ErrAlreadyKnown
 	}
 
-	maxPool1Size := pool.config.GlobalSlots + pool.config.GlobalQueue
+	maxMainPoolSize := pool.config.GlobalSlots + pool.config.GlobalQueue
 	txPoolSizeAfterCurrentTx := uint64(pool.all.Slots() + numSlots(tx))
 
 	// Make the local flag. If it's from local source or it's from the network but
@@ -806,7 +806,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	// If the transaction pool is full, discard underpriced transactions
-	if txPoolSizeAfterCurrentTx > maxPool1Size {
+	if txPoolSizeAfterCurrentTx > maxMainPoolSize {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
 			log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
@@ -856,7 +856,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 			}
 		}
 
-		pool.addToPool3(drop, isLocal)
+		pool.addToOverflowPool(drop, isLocal)
 
 		// Kick out the underpriced remote transactions.
 		for _, tx := range drop {
@@ -916,26 +916,26 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	return replaced, nil
 }
 
-func (pool *LegacyPool) addToPool3(drop types.Transactions, isLocal bool) {
-	// calculate total number of slots in drop. Accordingly add them to pool3 (if there is space)
-	availableSlotsPool3 := pool.availableSlotsPool3()
-	if availableSlotsPool3 > 0 {
-		// transfer availableSlotsPool3 number of transactions slots from drop to pool3
+func (pool *LegacyPool) addToOverflowPool(drop types.Transactions, isLocal bool) {
+	// calculate total number of slots in drop. Accordingly add them to OverflowPool (if there is space)
+	availableSlotsOverflowPool := pool.availableSlotsOverflowPool()
+	if availableSlotsOverflowPool > 0 {
+		// transfer availableSlotsOverflowPool number of transactions slots from drop to OverflowPool
 		currentSlotsUsed := 0
 		for i, tx := range drop {
 			txSlots := numSlots(tx)
-			if currentSlotsUsed+txSlots <= availableSlotsPool3 {
+			if currentSlotsUsed+txSlots <= availableSlotsOverflowPool {
 				from, _ := types.Sender(pool.signer, tx)
 				pool.localBufferPool.Add(tx)
-				log.Debug("adding to pool3", "transaction", tx.Hash().String(), "from", from.String())
+				log.Debug("adding to OverflowPool", "transaction", tx.Hash().String(), "from", from.String())
 				currentSlotsUsed += txSlots
 			} else {
-				log.Debug("not all got added to pool3", "totalAdded", i+1)
+				log.Debug("not all got added to OverflowPool", "totalAdded", i+1)
 				return
 			}
 		}
 	} else {
-		log.Debug("adding to pool3 unsuccessful", "availableSlotsPool3", availableSlotsPool3)
+		log.Debug("adding to OverflowPool unsuccessful", "availableSlotsOverflowPool", availableSlotsOverflowPool)
 	}
 }
 
@@ -1444,7 +1444,7 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 	pool.changesSinceReorg = 0 // Reset change counter
 	pool.mu.Unlock()
 
-	// Transfer transactions from pool3 to pool1 for new block import
+	// Transfer transactions from OverflowPool to MainPool for new block import
 	pool.transferTransactions()
 
 	// Notify subsystems for newly added transactions
@@ -2118,27 +2118,27 @@ func (pool *LegacyPool) startPeriodicTransfer(t time.Duration) {
 	}()
 }
 
-// transferTransactions mainly moves from pool3 to pool1
+// transferTransactions mainly moves from OverflowPool to MainPool
 func (pool *LegacyPool) transferTransactions() {
-	maxPool1Size := int(pool.config.GlobalSlots + pool.config.GlobalQueue)
-	extraSizePool1 := maxPool1Size - int(uint64(len(pool.pending))+uint64(len(pool.queue)))
-	if extraSizePool1 <= 0 {
+	maxMainPoolSize := int(pool.config.GlobalSlots + pool.config.GlobalQueue)
+	extraSizeMainPool := maxMainPoolSize - int(uint64(len(pool.pending))+uint64(len(pool.queue)))
+	if extraSizeMainPool <= 0 {
 		return
 	}
 
-	currentPool1Size := pool.all.Slots()
-	canTransferPool3ToPool1 := maxPool1Size > currentPool1Size
-	if !canTransferPool3ToPool1 {
+	currentMainPoolSize := pool.all.Slots()
+	canTransferOverflowPoolToMainPool := maxMainPoolSize > currentMainPoolSize
+	if !canTransferOverflowPoolToMainPool {
 		return
 	}
-	extraSlots := maxPool1Size - currentPool1Size
+	extraSlots := maxMainPoolSize - currentMainPoolSize
 	extraTransactions := (extraSlots + 3) / 4 // Since maximum slots per transaction is 4
-	// So now we can  take out extraTransactions number of transactions from pool3 and put in pool1
+	// So now we can  take out extraTransactions number of transactions from OverflowPool and put in MainPool
 	if extraTransactions < 1 {
 		return
 	}
 
-	log.Debug("Will attempt to transfer from pool3 to pool1", "transactions", extraTransactions)
+	log.Debug("Will attempt to transfer from OverflowPool to MainPool", "transactions", extraTransactions)
 
 	tx := pool.localBufferPool.Flush(extraTransactions)
 	if len(tx) == 0 {
@@ -2148,9 +2148,9 @@ func (pool *LegacyPool) transferTransactions() {
 	pool.Add(tx, true, false)
 }
 
-func (pool *LegacyPool) availableSlotsPool3() int {
-	maxPool3Size := int(pool.config.Pool3Slots)
-	availableSlots := maxPool3Size - pool.localBufferPool.Size()
+func (pool *LegacyPool) availableSlotsOverflowPool() int {
+	maxOverflowPoolSize := int(pool.config.OverflowPoolSlots)
+	availableSlots := maxOverflowPoolSize - pool.localBufferPool.Size()
 	if availableSlots > 0 {
 		return availableSlots
 	}

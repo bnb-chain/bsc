@@ -450,10 +450,10 @@ var (
 		Value:    ethconfig.Defaults.TxPool.GlobalQueue,
 		Category: flags.TxPoolCategory,
 	}
-	TxPoolPool3SlotsFlag = &cli.Uint64Flag{
-		Name:     "txpool.pool3slots",
-		Usage:    "Maximum number of transaction slots in pool 3",
-		Value:    ethconfig.Defaults.TxPool.Pool3Slots,
+	TxPoolOverflowPoolSlotsFlag = &cli.Uint64Flag{
+		Name:     "txpool.overflowpoolslots",
+		Usage:    "Maximum number of transaction slots in overflow pool",
+		Value:    ethconfig.Defaults.TxPool.OverflowPoolSlots,
 		Category: flags.TxPoolCategory,
 	}
 	TxPoolLifetimeFlag = &cli.DurationFlag{
@@ -1768,8 +1768,8 @@ func setTxPool(ctx *cli.Context, cfg *legacypool.Config) {
 	if ctx.IsSet(TxPoolGlobalQueueFlag.Name) {
 		cfg.GlobalQueue = ctx.Uint64(TxPoolGlobalQueueFlag.Name)
 	}
-	if ctx.IsSet(TxPoolPool3SlotsFlag.Name) {
-		cfg.Pool3Slots = ctx.Uint64(TxPoolPool3SlotsFlag.Name)
+	if ctx.IsSet(TxPoolOverflowPoolSlotsFlag.Name) {
+		cfg.OverflowPoolSlots = ctx.Uint64(TxPoolOverflowPoolSlotsFlag.Name)
 	}
 	if ctx.IsSet(TxPoolLifetimeFlag.Name) {
 		cfg.Lifetime = ctx.Duration(TxPoolLifetimeFlag.Name)
@@ -2292,17 +2292,17 @@ func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) Setup
 	return func() {
 		// register node info into metrics
 		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
-			"Enode":        nodeInfo.Enode,
-			"ENR":          nodeInfo.ENR,
-			"ID":           nodeInfo.ID,
-			"PriceLimit":   poolConfig.PriceLimit,
-			"PriceBump":    poolConfig.PriceBump,
-			"AccountSlots": poolConfig.AccountSlots,
-			"GlobalSlots":  poolConfig.GlobalSlots,
-			"AccountQueue": poolConfig.AccountQueue,
-			"GlobalQueue":  poolConfig.GlobalQueue,
-			"Pool3Slots":   poolConfig.Pool3Slots,
-			"Lifetime":     poolConfig.Lifetime,
+			"Enode":             nodeInfo.Enode,
+			"ENR":               nodeInfo.ENR,
+			"ID":                nodeInfo.ID,
+			"PriceLimit":        poolConfig.PriceLimit,
+			"PriceBump":         poolConfig.PriceBump,
+			"AccountSlots":      poolConfig.AccountSlots,
+			"GlobalSlots":       poolConfig.GlobalSlots,
+			"AccountQueue":      poolConfig.AccountQueue,
+			"GlobalQueue":       poolConfig.GlobalQueue,
+			"OverflowPoolSlots": poolConfig.OverflowPoolSlots,
+			"Lifetime":          poolConfig.Lifetime,
 		})
 	}
 }

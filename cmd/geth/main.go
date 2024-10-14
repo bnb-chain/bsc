@@ -91,7 +91,7 @@ var (
 		utils.TxPoolGlobalSlotsFlag,
 		utils.TxPoolAccountQueueFlag,
 		utils.TxPoolGlobalQueueFlag,
-		utils.TxPoolPool3SlotsFlag,
+		utils.TxPoolOverflowPoolSlotsFlag,
 		utils.TxPoolLifetimeFlag,
 		utils.TxPoolReannounceTimeFlag,
 		utils.BlobPoolDataDirFlag,

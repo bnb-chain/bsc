@@ -1740,7 +1740,7 @@ func TestRepricingKeepsLocals(t *testing.T) {
 // Note, local transactions are never allowed to be dropped.
 func TestUnderpricing(t *testing.T) {
 	t.Parallel()
-	testTxPoolConfig.Pool3Slots = 5
+	testTxPoolConfig.OverflowPoolSlots = 5
 
 	// Create the pool to test the pricing enforcement with
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
@@ -1933,7 +1933,7 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 	pool.config.GlobalSlots = 2
 	pool.config.GlobalQueue = 2
 
-	pool.config.Pool3Slots = 0
+	pool.config.OverflowPoolSlots = 0
 
 	// Keep track of transaction events to ensure all executables get announced
 	events := make(chan core.NewTxsEvent, 32)
@@ -2046,13 +2046,13 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 func TestDualHeapEviction(t *testing.T) {
 	t.Parallel()
 
-	testTxPoolConfig.Pool3Slots = 1
+	testTxPoolConfig.OverflowPoolSlots = 1
 	pool, _ := setupPoolWithConfig(eip1559Config)
 	defer pool.Close()
 
 	pool.config.GlobalSlots = 2
 	pool.config.GlobalQueue = 2
-	pool.config.Pool3Slots = 1
+	pool.config.OverflowPoolSlots = 1
 
 	var (
 		highTip, highCap *types.Transaction
@@ -2098,7 +2098,7 @@ func TestDualHeapEviction(t *testing.T) {
 		}
 		pending, queued := pool.Stats()
 		if pending+queued != 4 {
-			t.Fatalf("transaction count mismatch: have %d, want %d, pending %d, queued %d, pool3 %d", pending+queued, 5, pending, queued, pool.localBufferPool.Size())
+			t.Fatalf("transaction count mismatch: have %d, want %d, pending %d, queued %d, OverflowPool %d", pending+queued, 5, pending, queued, pool.localBufferPool.Size())
 		}
 	}
 
@@ -2264,14 +2264,13 @@ func TestReplacement(t *testing.T) {
 }
 
 func TestTransferTransactions(t *testing.T) {
-	// todo do runReorg() as only during that time the transfer of transctions occur
 	t.Parallel()
 	pool, _ := setupPoolWithConfig(eip1559Config)
 	defer pool.Close()
 
 	pool.config.GlobalSlots = 1
 	pool.config.GlobalQueue = 2
-	pool.config.Pool3Slots = 1
+	pool.config.OverflowPoolSlots = 1
 
 	// Create a number of test accounts and fund them
 	keys := make([]*ecdsa.PrivateKey, 5)
@@ -2283,30 +2282,30 @@ func TestTransferTransactions(t *testing.T) {
 
 	tx := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[0])
 	from, _ := types.Sender(pool.signer, tx)
-	pool.addToPool3([]*types.Transaction{tx}, true)
+	pool.addToOverflowPool([]*types.Transaction{tx}, true)
 	pending, queue := pool.Stats()
 
 	assert.Equal(t, 0, pending, "pending transactions mismatched")
 	assert.Equal(t, 0, queue, "queued transactions mismatched")
-	assert.Equal(t, 1, pool.statsPool3(), "pool3 size unexpected")
+	assert.Equal(t, 1, pool.statsOverflowPool(), "OverflowPool size unexpected")
 
 	tx2 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[1])
-	pool.addToPool3([]*types.Transaction{tx2}, true)
-	assert.Equal(t, 1, pool.statsPool3(), "pool3 size unexpected")
+	pool.addToOverflowPool([]*types.Transaction{tx2}, true)
+	assert.Equal(t, 1, pool.statsOverflowPool(), "OverflowPool size unexpected")
 	<-pool.requestPromoteExecutables(newAccountSet(pool.signer, from))
 	pending, queue = pool.Stats()
 
 	assert.Equal(t, 0, pending, "pending transactions mismatched")
 	assert.Equal(t, 1, queue, "queued transactions mismatched")
-	assert.Equal(t, 0, pool.statsPool3(), "pool3 size unexpected")
+	assert.Equal(t, 0, pool.statsOverflowPool(), "OverflowPool size unexpected")
 
 	tx3 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[2])
-	pool.addToPool3([]*types.Transaction{tx3}, true)
+	pool.addToOverflowPool([]*types.Transaction{tx3}, true)
 	pending, queue = pool.Stats()
 
 	assert.Equal(t, 1, pending, "pending transactions mismatched")
 	assert.Equal(t, 0, queue, "queued transactions mismatched")
-	assert.Equal(t, 1, pool.statsPool3(), "pool3 size unexpected")
+	assert.Equal(t, 1, pool.statsOverflowPool(), "OverflowPool size unexpected")
 }
 
 // Tests that the pool rejects replacement dynamic fee transactions that don't

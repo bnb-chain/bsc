@@ -5,8 +5,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// Pool3 is an interface representing a transaction buffer
-type Pool3 interface {
+// OverflowPool is an interface representing a transaction buffer
+type OverflowPool interface {
 	Add(tx *types.Transaction)                       // Adds a transaction to the buffer
 	Get(hash common.Hash) (*types.Transaction, bool) // Retrieves a transaction by hash
 	Flush(maxTransactions int) []*types.Transaction  // Flushes up to maxTransactions transactions
