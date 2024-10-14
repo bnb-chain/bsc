@@ -119,11 +119,7 @@ func (b *Bidder) mainLoop() {
 				betterBidBefore = bidutil.BidBetterBefore(parentHeader, b.chain.Config().Parlia.Period, b.delayLeftOver,
 					bidSimulationLeftOver)
 
-				if time.Now().After(betterBidBefore) {
-					timer.Reset(0)
-				} else {
-					timer.Reset(time.Until(betterBidBefore) / time.Duration(maxBid))
-				}
+				timer.Reset(0)
 			}
 			if bidNum < maxBid && b.isBestWork(work) {
 				// update the bestWork and do bid
