@@ -195,7 +195,6 @@ func (config *Config) sanitize() Config {
 		log.Warn("Sanitizing invalid txpool global queue", "provided", conf.GlobalQueue, "updated", DefaultConfig.GlobalQueue)
 		conf.GlobalQueue = DefaultConfig.GlobalQueue
 	}
-
 	if conf.Lifetime < 1 {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultConfig.Lifetime)
 		conf.Lifetime = DefaultConfig.Lifetime
@@ -291,7 +290,6 @@ func New(config Config, chain BlockChain) *LegacyPool {
 	if !config.NoLocals && config.Journal != "" {
 		pool.journal = newTxJournal(config.Journal)
 	}
-
 	return pool
 }
 
@@ -765,7 +763,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		knownTxMeter.Mark(1)
 		return false, txpool.ErrAlreadyKnown
 	}
-
 	// Make the local flag. If it's from local source or it's from the network but
 	// the sender is marked as local previously, treat it as the local transaction.
 	isLocal := local || pool.locals.containsTx(tx)
@@ -801,7 +798,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 			}
 		}()
 	}
-
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
@@ -890,13 +886,11 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		pool.beats[from] = time.Now()
 		return old != nil, nil
 	}
-
 	// New transaction isn't replacing a pending one, push into queue
 	replaced, err = pool.enqueueTx(hash, tx, isLocal, true)
 	if err != nil {
 		return false, err
 	}
-
 	// Mark local addresses and journal local transactions
 	if local && !pool.locals.contains(from) {
 		log.Info("Setting new local account", "address", from)
@@ -1150,7 +1144,6 @@ func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool) []error 
 func (pool *LegacyPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error, *accountSet) {
 	dirty := newAccountSet(pool.signer)
 	errs := make([]error, len(txs))
-
 	for i, tx := range txs {
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
@@ -1407,7 +1400,6 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 			promoteAddrs = append(promoteAddrs, addr)
 		}
 	}
-
 	// Check for pending transactions for every account that sent new ones
 	promoted := pool.promoteExecutables(promoteAddrs)
 
@@ -1614,7 +1606,6 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 		// Mark all the items dropped as removed
 		pool.priced.Removed(len(forwards) + len(drops) + len(caps))
 		queuedGauge.Dec(int64(len(forwards) + len(drops) + len(caps)))
-
 		if pool.locals.contains(addr) {
 			localGauge.Dec(int64(len(forwards) + len(drops) + len(caps)))
 		}
