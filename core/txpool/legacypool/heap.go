@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// txHeapItem implements the Interface interface of heap so that it can be heapified
+// txHeapItem implements the Interface interface (https://pkg.go.dev/container/heap#Interface) of heap so that it can be heapified
 type txHeapItem struct {
 	tx        *types.Transaction
 	timestamp int64 // Unix timestamp (nanoseconds) of when the transaction was added

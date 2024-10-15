@@ -766,9 +766,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		return false, txpool.ErrAlreadyKnown
 	}
 
-	maxMainPoolSize := pool.config.GlobalSlots + pool.config.GlobalQueue
-	txPoolSizeAfterCurrentTx := uint64(pool.all.Slots() + numSlots(tx))
-
 	// Make the local flag. If it's from local source or it's from the network but
 	// the sender is marked as local previously, treat it as the local transaction.
 	isLocal := local || pool.locals.containsTx(tx)
@@ -806,7 +803,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	}
 
 	// If the transaction pool is full, discard underpriced transactions
-	if txPoolSizeAfterCurrentTx > maxMainPoolSize {
+	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
 			log.Trace("Discarding underpriced transaction", "hash", hash, "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
@@ -826,8 +823,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		// New transaction is better than our worse ones, make room for it.
 		// If it's a local transaction, forcibly discard all available transactions.
 		// Otherwise if we can't make enough room for new one, abort the operation.
-		toBeDiscarded := pool.all.Slots() - int(pool.config.GlobalSlots+pool.config.GlobalQueue) + numSlots(tx)
-		drop, success := pool.priced.Discard(toBeDiscarded, isLocal)
+		drop, success := pool.priced.Discard(pool.all.Slots()-int(pool.config.GlobalSlots+pool.config.GlobalQueue)+numSlots(tx), isLocal)
 
 		// Special case, we still can't make the room for the new remote one.
 		if !isLocal && !success {
@@ -1727,8 +1723,7 @@ func (pool *LegacyPool) truncateQueue() {
 	for _, list := range pool.queue {
 		queued += uint64(list.Len())
 	}
-	queueMax := pool.config.GlobalQueue
-	if queued <= queueMax {
+	if queued <= pool.config.GlobalQueue {
 		return
 	}
 
@@ -1742,7 +1737,7 @@ func (pool *LegacyPool) truncateQueue() {
 	sort.Sort(sort.Reverse(addresses))
 
 	// Drop transactions until the total is below the limit or only locals remain
-	for drop := queued - queueMax; drop > 0 && len(addresses) > 0; {
+	for drop := queued - pool.config.GlobalQueue; drop > 0 && len(addresses) > 0; {
 		addr := addresses[len(addresses)-1]
 		list := pool.queue[addr.address]
 
@@ -2097,27 +2092,6 @@ func numSlots(tx *types.Transaction) int {
 	return int((tx.Size() + txSlotSize - 1) / txSlotSize)
 }
 
-func (pool *LegacyPool) startPeriodicTransfer(t time.Duration) {
-	ticker := time.NewTicker(time.Minute) // Adjust the interval as needed
-	if t != 0 {
-		ticker.Reset(t)
-	}
-
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				pool.mu.Lock()
-				pool.transferTransactions()
-				pool.mu.Unlock()
-			case <-pool.reorgShutdownCh:
-				ticker.Stop()
-				return
-			}
-		}
-	}()
-}
-
 // transferTransactions mainly moves from OverflowPool to MainPool
 func (pool *LegacyPool) transferTransactions() {
 	maxMainPoolSize := int(pool.config.GlobalSlots + pool.config.GlobalQueue)
@@ -2133,19 +2107,14 @@ func (pool *LegacyPool) transferTransactions() {
 	}
 	extraSlots := maxMainPoolSize - currentMainPoolSize
 	extraTransactions := (extraSlots + 3) / 4 // Since maximum slots per transaction is 4
-	// So now we can  take out extraTransactions number of transactions from OverflowPool and put in MainPool
-	if extraTransactions < 1 {
-		return
-	}
-
 	log.Debug("Will attempt to transfer from OverflowPool to MainPool", "transactions", extraTransactions)
 
-	tx := pool.localBufferPool.Flush(extraTransactions)
-	if len(tx) == 0 {
+	txs := pool.localBufferPool.Flush(extraTransactions)
+	if len(txs) == 0 {
 		return
 	}
 
-	pool.Add(tx, true, false)
+	pool.Add(txs, true, false)
 }
 
 func (pool *LegacyPool) availableSlotsOverflowPool() int {
@@ -2157,7 +2126,7 @@ func (pool *LegacyPool) availableSlotsOverflowPool() int {
 	return 0
 }
 
-func (pool *LegacyPool) printTxStats() {
+func (pool *LegacyPool) PrintTxStats() {
 	for _, l := range pool.pending {
 		for _, transaction := range l.txs.items {
 			from, _ := types.Sender(pool.signer, transaction)
