@@ -91,6 +91,13 @@ type StatusPacket struct {
 	Head            common.Hash
 	Genesis         common.Hash
 	ForkID          forkid.ID
+
+	// step 1: add the optional `JustifiedNumber` in client
+	// step 2: after one hard fork, all nodes can pase new `StatusPacket`, then pass `JustifiedNumber` in StatusMsg in a maintenance release
+	// step 3: after another hard fork, all nodes send StatusMsg with `JustifiedNumber` now, then refuse StatusMsg without `JustifiedNumber` in a maintenance release
+
+	// Step 1
+	JustifiedNumber *uint64 `rlp:"optional"`
 }
 
 type UpgradeStatusExtension struct {

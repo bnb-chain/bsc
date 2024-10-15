@@ -125,7 +125,7 @@ func testSendVotes(t *testing.T, protocol uint) {
 		td      = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 	)
 	time.Sleep(200 * time.Millisecond)
-	if err := remoteEth.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
+	if err := remoteEth.Handshake(1, 0, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
 		t.Fatalf("failed to run protocol handshake: %d", err)
 	}
 	// After the handshake completes, the source handler should stream the sink
@@ -227,7 +227,7 @@ func testRecvVotes(t *testing.T, protocol uint) {
 		td      = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 	)
 	time.Sleep(200 * time.Millisecond)
-	if err := remoteEth.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
+	if err := remoteEth.Handshake(1, 0, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
 		t.Fatalf("failed to run protocol handshake: %d", err)
 	}
 

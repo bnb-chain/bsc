@@ -156,11 +156,12 @@ type downloadTesterPeer struct {
 func (dlp *downloadTesterPeer) MarkLagging() {
 }
 
-// Head constructs a function to retrieve a peer's current head hash
-// and total difficulty.
-func (dlp *downloadTesterPeer) Head() (common.Hash, *big.Int) {
+// Head constructs a function to retrieve a peer's current head hash,
+// justifiedNumber and total difficulty.
+func (dlp *downloadTesterPeer) Head() (common.Hash, *uint64, *big.Int) {
 	head := dlp.chain.CurrentBlock()
-	return head.Hash(), dlp.chain.GetTd(head.Hash(), head.Number.Uint64())
+	justifiedNumber := dlp.chain.GetJustifiedNumber(head)
+	return head.Hash(), &justifiedNumber, dlp.chain.GetTd(head.Hash(), head.Number.Uint64())
 }
 
 func unmarshalRlpHeaders(rlpdata []rlp.RawValue) []*types.Header {

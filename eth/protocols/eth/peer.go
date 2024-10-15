@@ -73,9 +73,10 @@ type Peer struct {
 	version         uint              // Protocol version negotiated
 	statusExtension *UpgradeStatusExtension
 
-	lagging bool        // lagging peer is still connected, but won't be used to sync.
-	head    common.Hash // Latest advertised head block hash
-	td      *big.Int    // Latest advertised head block total difficulty
+	lagging         bool        // lagging peer is still connected, but won't be used to sync.
+	head            common.Hash // Latest advertised head block hash
+	justifiedNumber *uint64     // Latest advertised justified block number
+	td              *big.Int    // Latest advertised head block total difficulty
 
 	knownBlocks     *knownCache            // Set of block hashes known to be known by this peer
 	queuedBlocks    chan *blockPropagation // Queue of blocks to broadcast to the peer
@@ -160,21 +161,30 @@ func (p *Peer) MarkLagging() {
 	p.lagging = true
 }
 
-// Head retrieves the current head hash and total difficulty of the peer.
-func (p *Peer) Head() (hash common.Hash, td *big.Int) {
+// Head retrieves the current head hash, justifiedNumber and total difficulty of the peer.
+func (p *Peer) Head() (hash common.Hash, justifiedNumber *uint64, td *big.Int) {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
 	copy(hash[:], p.head[:])
-	return hash, new(big.Int).Set(p.td)
+	if p.justifiedNumber != nil {
+		tmp := *p.justifiedNumber
+		justifiedNumber = &tmp
+	}
+	return hash, justifiedNumber, new(big.Int).Set(p.td)
 }
 
-// SetHead updates the head hash and total difficulty of the peer.
-func (p *Peer) SetHead(hash common.Hash, td *big.Int) {
+// SetHead updates the head hash, justifiedNumber and total difficulty of the peer.
+func (p *Peer) SetHead(hash common.Hash, justifiedNumber *uint64, td *big.Int) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.lagging = false
 	copy(p.head[:], hash[:])
+	p.justifiedNumber = nil
+	if justifiedNumber != nil {
+		tmp := *justifiedNumber
+		p.justifiedNumber = &tmp
+	}
 	p.td.Set(td)
 }
 

@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
@@ -135,13 +136,38 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	// Assuming the block is importable by the peer, but possibly not yet done so,
 	// calculate the head hash and TD that the peer truly must have.
 	var (
-		trueHead = block.ParentHash()
-		trueTD   = new(big.Int).Sub(td, block.Difficulty())
+		trueHead            = block.ParentHash()
+		trueJustifiedNumber *uint64
+		trueTD              = new(big.Int).Sub(td, block.Difficulty())
 	)
-	// Update the peer's total difficulty if better than the previous
-	if _, td := peer.Head(); trueTD.Cmp(td) > 0 {
-		peer.SetHead(trueHead, trueTD)
-		h.chainSync.handlePeerEvent()
+	if trueHeadHeader := h.chain.GetHeaderByHash(trueHead); trueHeadHeader != nil {
+		// If the trueHeadHeader is not found in the local chain, GetJustifiedNumber will return 0.
+		// Ignore cases where GetJustifiedNumber actually returns 0, as this only occurs in a self-test environment.
+		if tmp := h.chain.GetJustifiedNumber(trueHeadHeader); tmp != 0 {
+			trueJustifiedNumber = &tmp
+		}
 	}
+	// Update the peer's justifiedNumber and total difficulty if better than the previous
+	if _, justifiedNumber, td := peer.Head(); trueJustifiedNumber != nil && justifiedNumber != nil {
+		if *trueJustifiedNumber > *justifiedNumber ||
+			(*trueJustifiedNumber == *justifiedNumber && trueTD.Cmp(td) > 0) {
+			peer.SetHead(trueHead, trueJustifiedNumber, trueTD)
+			h.chainSync.handlePeerEvent()
+			log.Trace("handleBlockBroadcast|SetHead", "justifiedNumber", *justifiedNumber, "td", td.Uint64(), "trueHead", trueHead, "trueJustifiedNumber", *trueJustifiedNumber, "trueTD", trueTD.Uint64())
+		}
+	} else {
+		// back to behavior without fast finality
+		if trueTD.Cmp(td) > 0 {
+			peer.SetHead(trueHead, trueJustifiedNumber, trueTD)
+			h.chainSync.handlePeerEvent()
+
+			if trueJustifiedNumber == nil {
+				log.Trace("handleBlockBroadcast|SetHead", "trueHead", trueHead, "trueJustifiedNumber", nil, "trueTD", trueTD.Uint64(), "td", td.Uint64())
+			} else {
+				log.Trace("handleBlockBroadcast|SetHead", "trueHead", trueHead, "trueJustifiedNumber", *trueJustifiedNumber, "trueTD", trueTD.Uint64(), "td", td.Uint64())
+			}
+		}
+	}
+
 	return nil
 }

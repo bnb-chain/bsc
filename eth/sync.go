@@ -68,10 +68,11 @@ type chainSyncer struct {
 
 // chainSyncOp is a scheduled sync operation.
 type chainSyncOp struct {
-	mode downloader.SyncMode
-	peer *eth.Peer
-	td   *big.Int
-	head common.Hash
+	mode            downloader.SyncMode
+	peer            *eth.Peer
+	justifiedNumber *uint64
+	td              *big.Int
+	head            common.Hash
 }
 
 // newChainSyncer creates a chainSyncer.
@@ -163,16 +164,17 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	if cs.handler.peers.len() < minPeers {
 		return nil
 	}
-	// We have enough peers, pick the one with the highest TD, but avoid going
-	// over the terminal total difficulty. Above that we expect the consensus
+	// We have enough peers, pick the one with the highest Head. Above that we expect the consensus
 	// clients to direct the chain head to sync to.
-	peer := cs.handler.peers.peerWithHighestTD()
+	peer := cs.handler.peers.peerWithHighestHead()
 	if peer == nil {
 		return nil
 	}
-	mode, ourTD := cs.modeAndLocalHead()
+	mode, ourJustifiedNumber, ourTD := cs.modeAndLocalHead()
 	op := peerToSyncOp(mode, peer)
-	if op.td.Cmp(ourTD) <= 0 {
+	// TODO: op.td.Cmp(ourTD) <= 0 --> op.td.Cmp(ourTD) < 0?
+	if (op.justifiedNumber == nil && op.td.Cmp(ourTD) <= 0) ||
+		(op.justifiedNumber != nil && (*op.justifiedNumber < *ourJustifiedNumber || (*op.justifiedNumber == *ourJustifiedNumber && op.td.Cmp(ourTD) <= 0))) {
 		// We seem to be in sync according to the legacy rules. In the merge
 		// world, it can also mean we're stuck on the merge block, waiting for
 		// a beacon client. In the latter case, notify the user.
@@ -186,16 +188,16 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 }
 
 func peerToSyncOp(mode downloader.SyncMode, p *eth.Peer) *chainSyncOp {
-	peerHead, peerTD := p.Head()
-	return &chainSyncOp{mode: mode, peer: p, td: peerTD, head: peerHead}
+	peerHead, peerJustifiedNumber, peerTD := p.Head()
+	return &chainSyncOp{mode: mode, peer: p, justifiedNumber: peerJustifiedNumber, td: peerTD, head: peerHead}
 }
 
-func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
+func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *uint64, *big.Int) {
 	// If we're in snap sync mode, return that directly
 	if cs.handler.snapSync.Load() {
 		block := cs.handler.chain.CurrentSnapBlock()
 		td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
-		return downloader.SnapSync, td
+		return downloader.SnapSync, nil, td
 	}
 	// We are probably in full sync, but we might have rewound to before the
 	// snap sync pivot, check if we should re-enable snap sync.
@@ -207,7 +209,7 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 			}
 			block := cs.handler.chain.CurrentSnapBlock()
 			td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
-			return downloader.SnapSync, td
+			return downloader.SnapSync, nil, td
 		}
 	}
 	// We are in a full sync, but the associated head state is missing. To complete
@@ -217,11 +219,12 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 		block := cs.handler.chain.CurrentSnapBlock()
 		td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
 		log.Info("Reenabled snap sync as chain is stateless")
-		return downloader.SnapSync, td
+		return downloader.SnapSync, nil, td
 	}
 	// Nope, we're really full syncing
+	justifiedNumber := cs.handler.chain.GetJustifiedNumber(head)
 	td := cs.handler.chain.GetTd(head.Hash(), head.Number.Uint64())
-	return downloader.FullSync, td
+	return downloader.FullSync, &justifiedNumber, td
 }
 
 // startSync launches doSync in a new goroutine.
