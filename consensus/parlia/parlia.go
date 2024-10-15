@@ -1806,27 +1806,30 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool) error {
 	coinbase := header.Coinbase
+
+	doDistributeSysReward := !p.chainConfig.IsKepler(header.Number, header.Time) &&
+		state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
+	if doDistributeSysReward {
+		balance := state.GetBalance(consensus.SystemAddress)
+		rewards := new(uint256.Int)
+		rewards = rewards.Rsh(balance, systemRewardPercent)
+		if rewards.Cmp(common.U2560) > 0 {
+			state.SetBalance(consensus.SystemAddress, balance.Sub(balance, rewards))
+			state.AddBalance(coinbase, rewards)
+			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
+			if err != nil {
+				return err
+			}
+			log.Trace("distribute to system reward pool", "block hash", header.Hash(), "amount", rewards)
+		}
+	}
+
 	balance := state.GetBalance(consensus.SystemAddress)
 	if balance.Cmp(common.U2560) <= 0 {
 		return nil
 	}
 	state.SetBalance(consensus.SystemAddress, common.U2560)
 	state.AddBalance(coinbase, balance)
-
-	doDistributeSysReward := !p.chainConfig.IsKepler(header.Number, header.Time) &&
-		state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
-	if doDistributeSysReward {
-		rewards := new(uint256.Int)
-		rewards = rewards.Rsh(balance, systemRewardPercent)
-		if rewards.Cmp(common.U2560) > 0 {
-			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
-			if err != nil {
-				return err
-			}
-			log.Trace("distribute to system reward pool", "block hash", header.Hash(), "amount", rewards)
-			balance = balance.Sub(balance, rewards)
-		}
-	}
 	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
 	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
 }
