@@ -2247,12 +2247,12 @@ func TestReplacement(t *testing.T) {
 
 func TestTransferTransactions(t *testing.T) {
 	t.Parallel()
+	testTxPoolConfig.OverflowPoolSlots = 1
 	pool, _ := setupPoolWithConfig(eip1559Config)
 	defer pool.Close()
 
 	pool.config.GlobalSlots = 1
 	pool.config.GlobalQueue = 2
-	pool.config.OverflowPoolSlots = 1
 
 	// Create a number of test accounts and fund them
 	keys := make([]*ecdsa.PrivateKey, 5)

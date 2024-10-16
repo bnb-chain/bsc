@@ -157,7 +157,7 @@ var DefaultConfig = Config{
 	GlobalSlots:       4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
 	AccountQueue:      64,
 	GlobalQueue:       1024,
-	OverflowPoolSlots: 1024,
+	OverflowPoolSlots: 0,
 
 	Lifetime:       3 * time.Hour,
 	ReannounceTime: 10 * 365 * 24 * time.Hour,
@@ -239,7 +239,7 @@ type LegacyPool struct {
 	all     *lookup                      // All transactions to allow lookups
 	priced  *pricedList                  // All transactions sorted by price
 
-	localBufferPool OverflowPool // Local buffer transactions
+	localBufferPool *TxOverflowPool // Local buffer transactions
 
 	reqResetCh      chan *txpoolResetRequest
 	reqPromoteCh    chan *accountSet
@@ -2083,23 +2083,23 @@ func numSlots(tx *types.Transaction) int {
 	return int((tx.Size() + txSlotSize - 1) / txSlotSize)
 }
 
-// transferTransactions mainly moves from OverflowPool to MainPool
+// transferTransactions moves transactions from OverflowPool to MainPool
 func (pool *LegacyPool) transferTransactions() {
+	// Fail fast if the overflow pool is empty
+	if pool.localBufferPool.Size() == 0 {
+		return
+	}
+
 	maxMainPoolSize := int(pool.config.GlobalSlots + pool.config.GlobalQueue)
-	extraSizeMainPool := maxMainPoolSize - int(uint64(len(pool.pending))+uint64(len(pool.queue)))
-	if extraSizeMainPool <= 0 {
-		return
-	}
-
+	// Use pool.all.Slots() to get the total slots used by all transactions
 	currentMainPoolSize := pool.all.Slots()
-	canTransferOverflowPoolToMainPool := maxMainPoolSize > currentMainPoolSize
-	if !canTransferOverflowPoolToMainPool {
+	if currentMainPoolSize >= maxMainPoolSize {
 		return
 	}
-	extraSlots := maxMainPoolSize - currentMainPoolSize
-	extraTransactions := (extraSlots + 3) / 4 // Since maximum slots per transaction is 4
-	log.Debug("Will attempt to transfer from OverflowPool to MainPool", "transactions", extraTransactions)
 
+	extraSlots := maxMainPoolSize - currentMainPoolSize
+	extraTransactions := (extraSlots + 3) / 4 // Since a transaction can take up to 4 slots
+	log.Debug("Will attempt to transfer from OverflowPool to MainPool", "transactions", extraTransactions)
 	txs := pool.localBufferPool.Flush(extraTransactions)
 	if len(txs) == 0 {
 		return

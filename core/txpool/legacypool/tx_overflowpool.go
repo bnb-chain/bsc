@@ -61,7 +61,7 @@ func (h *txHeap) Pop() interface{} {
 	return item
 }
 
-type TxOverflowPoolHeap struct {
+type TxOverflowPool struct {
 	txHeap    txHeap
 	index     map[common.Hash]*txHeapItem
 	mu        sync.RWMutex
@@ -69,15 +69,15 @@ type TxOverflowPoolHeap struct {
 	totalSize int
 }
 
-func NewTxOverflowPoolHeap(estimatedMaxSize uint64) *TxOverflowPoolHeap {
-	return &TxOverflowPoolHeap{
+func NewTxOverflowPoolHeap(estimatedMaxSize uint64) *TxOverflowPool {
+	return &TxOverflowPool{
 		txHeap:  make(txHeap, 0, estimatedMaxSize),
 		index:   make(map[common.Hash]*txHeapItem, estimatedMaxSize),
 		maxSize: estimatedMaxSize,
 	}
 }
 
-func (tp *TxOverflowPoolHeap) Add(tx *types.Transaction) {
+func (tp *TxOverflowPool) Add(tx *types.Transaction) {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 
@@ -107,7 +107,7 @@ func (tp *TxOverflowPoolHeap) Add(tx *types.Transaction) {
 	OverflowPoolGauge.Inc(1)
 }
 
-func (tp *TxOverflowPoolHeap) Get(hash common.Hash) (*types.Transaction, bool) {
+func (tp *TxOverflowPool) Get(hash common.Hash) (*types.Transaction, bool) {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	if item, ok := tp.index[hash]; ok {
@@ -116,7 +116,7 @@ func (tp *TxOverflowPoolHeap) Get(hash common.Hash) (*types.Transaction, bool) {
 	return nil, false
 }
 
-func (tp *TxOverflowPoolHeap) Remove(hash common.Hash) {
+func (tp *TxOverflowPool) Remove(hash common.Hash) {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 	if item, ok := tp.index[hash]; ok {
@@ -127,7 +127,7 @@ func (tp *TxOverflowPoolHeap) Remove(hash common.Hash) {
 	}
 }
 
-func (tp *TxOverflowPoolHeap) Flush(n int) []*types.Transaction {
+func (tp *TxOverflowPool) Flush(n int) []*types.Transaction {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 	if n > tp.txHeap.Len() {
@@ -148,19 +148,19 @@ func (tp *TxOverflowPoolHeap) Flush(n int) []*types.Transaction {
 	return txs
 }
 
-func (tp *TxOverflowPoolHeap) Len() int {
+func (tp *TxOverflowPool) Len() int {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	return tp.txHeap.Len()
 }
 
-func (tp *TxOverflowPoolHeap) Size() int {
+func (tp *TxOverflowPool) Size() int {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	return tp.totalSize
 }
 
-func (tp *TxOverflowPoolHeap) PrintTxStats() {
+func (tp *TxOverflowPool) PrintTxStats() {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	for _, item := range tp.txHeap {
