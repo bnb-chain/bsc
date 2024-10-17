@@ -19,7 +19,6 @@ package legacypool
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"math/big"
 	"sort"
@@ -100,11 +99,10 @@ var (
 	// that this number is pretty low, since txpool reorgs happen very frequently.
 	dropBetweenReorgHistogram = metrics.NewRegisteredHistogram("txpool/dropbetweenreorg", nil, metrics.NewExpDecaySample(1028, 0.015))
 
-	pendingGauge      = metrics.NewRegisteredGauge("txpool/pending", nil)
-	queuedGauge       = metrics.NewRegisteredGauge("txpool/queued", nil)
-	localGauge        = metrics.NewRegisteredGauge("txpool/local", nil)
-	slotsGauge        = metrics.NewRegisteredGauge("txpool/slots", nil)
-	OverflowPoolGauge = metrics.NewRegisteredGauge("txpool/overflowpool", nil)
+	pendingGauge = metrics.NewRegisteredGauge("txpool/pending", nil)
+	queuedGauge  = metrics.NewRegisteredGauge("txpool/queued", nil)
+	localGauge   = metrics.NewRegisteredGauge("txpool/local", nil)
+	slotsGauge   = metrics.NewRegisteredGauge("txpool/slots", nil)
 
 	reheapTimer = metrics.NewRegisteredTimer("txpool/reheap", nil)
 )
@@ -135,11 +133,10 @@ type Config struct {
 	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
 
-	AccountSlots      uint64 // Number of executable transaction slots guaranteed per account
-	GlobalSlots       uint64 // Maximum number of executable transaction slots for all accounts
-	AccountQueue      uint64 // Maximum number of non-executable transaction slots permitted per account
-	GlobalQueue       uint64 // Maximum number of non-executable transaction slots for all accounts
-	OverflowPoolSlots uint64 // Maximum number of transaction slots in overflow pool
+	AccountSlots uint64 // Number of executable transaction slots guaranteed per account
+	GlobalSlots  uint64 // Maximum number of executable transaction slots for all accounts
+	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
+	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
 	Lifetime       time.Duration // Maximum amount of time non-executable transaction are queued
 	ReannounceTime time.Duration // Duration for announcing local pending transactions again
@@ -153,11 +150,10 @@ var DefaultConfig = Config{
 	PriceLimit: 1,
 	PriceBump:  10,
 
-	AccountSlots:      16,
-	GlobalSlots:       4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
-	AccountQueue:      64,
-	GlobalQueue:       1024,
-	OverflowPoolSlots: 0,
+	AccountSlots: 16,
+	GlobalSlots:  4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
+	AccountQueue: 64,
+	GlobalQueue:  1024,
 
 	Lifetime:       3 * time.Hour,
 	ReannounceTime: 10 * 365 * 24 * time.Hour,
@@ -239,8 +235,6 @@ type LegacyPool struct {
 	all     *lookup                      // All transactions to allow lookups
 	priced  *pricedList                  // All transactions sorted by price
 
-	localBufferPool *TxOverflowPool // Local buffer transactions
-
 	reqResetCh      chan *txpoolResetRequest
 	reqPromoteCh    chan *accountSet
 	queueTxEventCh  chan *types.Transaction
@@ -278,7 +272,6 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
-		localBufferPool: NewTxOverflowPoolHeap(config.OverflowPoolSlots),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -415,6 +408,7 @@ func (pool *LegacyPool) loop() {
 					if !pool.locals.contains(addr) {
 						continue
 					}
+
 					for _, tx := range list.Flatten() {
 						// Default ReannounceTime is 10 years, won't announce by default.
 						if time.Since(tx.Time()) < pool.config.ReannounceTime {
@@ -521,17 +515,6 @@ func (pool *LegacyPool) Stats() (int, int) {
 	defer pool.mu.RUnlock()
 
 	return pool.stats()
-}
-
-func (pool *LegacyPool) statsOverflowPool() int {
-	pool.mu.RLock()
-	defer pool.mu.RUnlock()
-
-	if pool.localBufferPool == nil {
-		return 0
-	}
-
-	return pool.localBufferPool.Size()
 }
 
 // stats retrieves the current pool stats, namely the number of pending and the
@@ -848,8 +831,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 			}
 		}
 
-		pool.addToOverflowPool(drop, isLocal)
-
 		// Kick out the underpriced remote transactions.
 		for _, tx := range drop {
 			log.Trace("Discarding freshly underpriced transaction", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
@@ -904,29 +885,6 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 
 	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
-}
-
-func (pool *LegacyPool) addToOverflowPool(drop types.Transactions, isLocal bool) {
-	// calculate total number of slots in drop. Accordingly add them to OverflowPool (if there is space)
-	availableSlotsOverflowPool := pool.availableSlotsOverflowPool()
-	if availableSlotsOverflowPool > 0 {
-		// transfer availableSlotsOverflowPool number of transactions slots from drop to OverflowPool
-		currentSlotsUsed := 0
-		for i, tx := range drop {
-			txSlots := numSlots(tx)
-			if currentSlotsUsed+txSlots <= availableSlotsOverflowPool {
-				from, _ := types.Sender(pool.signer, tx)
-				pool.localBufferPool.Add(tx)
-				log.Debug("adding to OverflowPool", "transaction", tx.Hash().String(), "from", from.String())
-				currentSlotsUsed += txSlots
-			} else {
-				log.Debug("not all got added to OverflowPool", "totalAdded", i+1)
-				return
-			}
-		}
-	} else {
-		log.Debug("adding to OverflowPool unsuccessful", "availableSlotsOverflowPool", availableSlotsOverflowPool)
-	}
 }
 
 // isGapped reports whether the given transaction is immediately executable.
@@ -1375,6 +1333,7 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		reorgDurationTimer.Update(time.Since(t0))
 	}(time.Now())
 	defer close(done)
+
 	var promoteAddrs []common.Address
 	if dirtyAccounts != nil && reset == nil {
 		// Only dirty accounts need to be promoted, unless we're resetting.
@@ -1431,9 +1390,6 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 	dropBetweenReorgHistogram.Update(int64(pool.changesSinceReorg))
 	pool.changesSinceReorg = 0 // Reset change counter
 	pool.mu.Unlock()
-
-	// Transfer transactions from OverflowPool to MainPool for new block import
-	pool.transferTransactions()
 
 	// Notify subsystems for newly added transactions
 	for _, tx := range promoted {
@@ -2081,51 +2037,4 @@ func (t *lookup) RemotesBelowTip(threshold *big.Int) types.Transactions {
 // numSlots calculates the number of slots needed for a single transaction.
 func numSlots(tx *types.Transaction) int {
 	return int((tx.Size() + txSlotSize - 1) / txSlotSize)
-}
-
-// transferTransactions moves transactions from OverflowPool to MainPool
-func (pool *LegacyPool) transferTransactions() {
-	// Fail fast if the overflow pool is empty
-	if pool.localBufferPool.Size() == 0 {
-		return
-	}
-
-	maxMainPoolSize := int(pool.config.GlobalSlots + pool.config.GlobalQueue)
-	// Use pool.all.Slots() to get the total slots used by all transactions
-	currentMainPoolSize := pool.all.Slots()
-	if currentMainPoolSize >= maxMainPoolSize {
-		return
-	}
-
-	extraSlots := maxMainPoolSize - currentMainPoolSize
-	extraTransactions := (extraSlots + 3) / 4 // Since a transaction can take up to 4 slots
-	log.Debug("Will attempt to transfer from OverflowPool to MainPool", "transactions", extraTransactions)
-	txs := pool.localBufferPool.Flush(extraTransactions)
-	if len(txs) == 0 {
-		return
-	}
-
-	pool.Add(txs, true, false)
-}
-
-func (pool *LegacyPool) availableSlotsOverflowPool() int {
-	maxOverflowPoolSize := int(pool.config.OverflowPoolSlots)
-	availableSlots := maxOverflowPoolSize - pool.localBufferPool.Size()
-	if availableSlots > 0 {
-		return availableSlots
-	}
-	return 0
-}
-
-func (pool *LegacyPool) PrintTxStats() {
-	for _, l := range pool.pending {
-		for _, transaction := range l.txs.items {
-			from, _ := types.Sender(pool.signer, transaction)
-			fmt.Println("from: ", from, " Pending:", transaction.Hash().String(), transaction.GasFeeCap(), transaction.GasTipCap())
-		}
-	}
-
-	pool.localBufferPool.PrintTxStats()
-	fmt.Println("length of all: ", pool.all.Slots())
-	fmt.Println("----------------------------------------------------")
 }
