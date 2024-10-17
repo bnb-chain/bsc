@@ -490,7 +490,23 @@ func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 	return common.Hash{}
 }
 
-// GetState retrieves a value from the given account's storage trie.
+func (s *StateDB) ResolveCode(addr common.Address) []byte {
+	stateObject := s.resolveStateObject(addr)
+	if stateObject != nil {
+		return stateObject.Code()
+	}
+	return nil
+}
+
+func (s *StateDB) ResolveCodeHash(addr common.Address) common.Hash {
+	stateObject := s.resolveStateObject(addr)
+	if stateObject != nil {
+		return common.BytesToHash(stateObject.CodeHash())
+	}
+	return common.Hash{}
+}
+
+// GetState retrieves the value associated with the specific key.
 func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
@@ -773,6 +789,18 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 	return obj
 }
 
+func (s *StateDB) resolveStateObject(addr common.Address) *stateObject {
+	obj := s.getStateObject(addr)
+	if obj == nil {
+		return nil
+	}
+	addr, ok := types.ParseDelegation(obj.Code())
+	if !ok {
+		return obj
+	}
+	return s.getStateObject(addr)
+}
+
 func (s *StateDB) setStateObject(object *stateObject) {
 	s.stateObjects[object.Address()] = object
 }
@@ -842,6 +870,18 @@ func (s *StateDB) CreateAccount(addr common.Address) {
 	newObj, prev := s.createObject(addr)
 	if prev != nil {
 		newObj.setBalance(prev.data.Balance)
+	}
+}
+
+// CreateContract is used whenever a contract is created. This may be preceded
+// by CreateAccount, but that is not required if it already existed in the
+// state due to funds sent beforehand.
+// This operation sets the 'created'-flag, which is required in order to
+// correctly handle EIP-6780 'delete-in-same-transaction' logic.
+func (s *StateDB) CreateContract(addr common.Address) {
+	obj := s.getStateObject(addr)
+	if !obj.created {
+		obj.created = true
 	}
 }
 
@@ -1045,7 +1085,6 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		} else {
 			obj.finalise(true) // Prefetch slots in the background
 		}
-		obj.created = false
 		s.stateObjectsPending[addr] = struct{}{}
 		s.stateObjectsDirty[addr] = struct{}{}
 
@@ -1812,6 +1851,10 @@ func (s *StateDB) Prepare(rules params.Rules, sender, coinbase common.Address, d
 		al.AddAddress(sender)
 		if dst != nil {
 			al.AddAddress(*dst)
+			// TODO: is this right?
+			if addr, ok := types.ParseDelegation(s.GetCode(*dst)); ok {
+				al.AddAddress(addr)
+			}
 			// If it's a create-tx, the destination will be added inside evm.create
 		}
 		for _, addr := range precompiles {
