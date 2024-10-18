@@ -68,7 +68,6 @@ const (
 
 	wiggleTime         = uint64(1) // second, Random delay (per signer) to allow concurrent signers
 	initialBackOffTime = uint64(1) // second
-	processBackOffTime = uint64(1) // second
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
@@ -1616,12 +1615,15 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		copy(header.Extra[len(header.Extra)-extraSeal:], sig)
 
 		if p.shouldWaitForCurrentBlockProcess(chain, header, snap) {
-			log.Info("Waiting for received in turn block to process")
+			highestVerifiedHeader := chain.GetHighestVerifiedHeader()
+			// including time for writing and committing blocks
+			waitProcessEstimate := math.Ceil(float64(highestVerifiedHeader.GasUsed) / float64(100_000_000))
+			log.Info("Waiting for received in turn block to process", "waitProcessEstimate(Seconds)", waitProcessEstimate)
 			select {
 			case <-stop:
 				log.Info("Received block process finished, abort block seal")
 				return
-			case <-time.After(time.Duration(processBackOffTime) * time.Second):
+			case <-time.After(time.Duration(waitProcessEstimate) * time.Second):
 				if chain.CurrentHeader().Number.Uint64() >= header.Number.Uint64() {
 					log.Info("Process backoff time exhausted, and current header has updated to abort this seal")
 					return

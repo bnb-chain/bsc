@@ -100,6 +100,8 @@ var (
 	blockReorgAddMeter  = metrics.NewRegisteredMeter("chain/reorg/add", nil)
 	blockReorgDropMeter = metrics.NewRegisteredMeter("chain/reorg/drop", nil)
 
+	blockRecvTimeDiffGauge = metrics.NewRegisteredGauge("chain/block/recvtimediff", nil)
+
 	errStateRootVerificationFailed = errors.New("state root verification failed")
 	errInsertionInterrupted        = errors.New("insertion is interrupted")
 	errChainStopped                = errors.New("blockchain is stopped")
@@ -2055,6 +2057,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		return 0, nil
 	}
 
+	if len(chain) > 0 {
+		blockRecvTimeDiffGauge.Update(time.Now().Unix() - int64(chain[0].Time()))
+	}
 	// Start a parallel signature recovery (signer will fluke on fork transition, minimal perf loss)
 	signer := types.MakeSigner(bc.chainConfig, chain[0].Number(), chain[0].Time())
 	go SenderCacher.RecoverFromBlocks(signer, chain)
