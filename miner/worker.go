@@ -1061,15 +1061,18 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		return nil, err
 	}
 
-	if !w.chainConfig.IsFeynman(header.Number, header.Time) {
-		// Handle upgrade build-in system contract code
-		systemcontracts.UpgradeBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state)
-	}
+	// Handle upgrade build-in system contract code
+	systemcontracts.HandleBuildInContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
 
 	if header.ParentBeaconRoot != nil {
 		context := core.NewEVMBlockContext(header, w.chain, nil)
 		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
 		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv, env.state)
+	}
+	if w.chainConfig.IsPrague(header.Number, header.Time) {
+		context := core.NewEVMBlockContext(header, w.chain, nil)
+		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
+		core.ProcessParentBlockHash(header.ParentHash, vmenv, env.state)
 	}
 
 	env.size = uint32(env.header.Size())

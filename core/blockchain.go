@@ -177,11 +177,12 @@ type CacheConfig struct {
 }
 
 // triedbConfig derives the configures for trie database.
-func (c *CacheConfig) triedbConfig() *triedb.Config {
+func (c *CacheConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	config := &triedb.Config{
 		Cache:     c.TrieCleanLimit,
 		Preimages: c.Preimages,
 		NoTries:   c.NoTries,
+		IsVerkle:  isVerkle,
 	}
 	if c.StateScheme == rawdb.HashScheme {
 		config.HashDB = &hashdb.Config{
@@ -340,7 +341,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	diffLayerChanCache, _ := exlru.New(diffLayerCacheLimit)
 
 	// Open trie database with provided config
-	triedb := triedb.NewDatabase(db, cacheConfig.triedbConfig())
+	triedb := triedb.NewDatabase(db, cacheConfig.triedbConfig(false))
 
 	// Setup the genesis block, commit the provided genesis specification
 	// to database if the genesis block is not present yet, or load the
