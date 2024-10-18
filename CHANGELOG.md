@@ -1,4 +1,26 @@
 # Changelog
+## v1.4.15
+### BUGFIX
+* [\#2680](https://github.com/bnb-chain/bsc/pull/2680) txpool: apply miner's gasceil to txpool
+* [\#2688](https://github.com/bnb-chain/bsc/pull/2688) txpool: set default GasCeil from 30M to 0
+* [\#2696](https://github.com/bnb-chain/bsc/pull/2696) miner: limit block size to eth protocol msg size
+* [\#2684](https://github.com/bnb-chain/bsc/pull/2684) eth: Add sidecars when available to broadcasted current block
+
+### FEATURE
+* [\#2672](https://github.com/bnb-chain/bsc/pull/2672) faucet: with mainnet balance check, 0.002BNB at least
+* [\#2678](https://github.com/bnb-chain/bsc/pull/2678) beaconserver: simulated beacon api server for op-stack
+* [\#2687](https://github.com/bnb-chain/bsc/pull/2687) faucet: support customized token
+* [\#2698](https://github.com/bnb-chain/bsc/pull/2698) faucet: add example for custimized token
+* [\#2706](https://github.com/bnb-chain/bsc/pull/2706) faucet: update DIN token faucet support
+
+### IMPROVEMENT
+* [\#2677](https://github.com/bnb-chain/bsc/pull/2677) log: add some p2p log
+* [\#2679](https://github.com/bnb-chain/bsc/pull/2679) build(deps): bump actions/download-artifact in /.github/workflows
+* [\#2662](https://github.com/bnb-chain/bsc/pull/2662) metrics: add some extra feature flags as node stats
+* [\#2675](https://github.com/bnb-chain/bsc/pull/2675) fetcher: Sleep after marking block as done when requeuing
+* [\#2695](https://github.com/bnb-chain/bsc/pull/2695) CI: nancy ignore CVE-2024-8421
+* [\#2689](https://github.com/bnb-chain/bsc/pull/2689) consensus/parlia: wait more time when processing huge blocks
+
 ## v1.4.14
 
 ### BUGFIX
