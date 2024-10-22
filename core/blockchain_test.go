@@ -51,8 +51,7 @@ import (
 // So we can deterministically seed different blockchains
 var (
 	canonicalSeed = 1
-	forkSeed1     = 2
-	forkSeed2     = 3
+	forkSeed      = 2
 
 	TestTriesInMemory = 128
 )
@@ -61,19 +60,15 @@ var (
 // chain. Depending on the full flag, it creates either a full block chain or a
 // header only chain. The database and genesis specification for block generation
 // are also returned in case more test blocks are needed later.
-func newCanonical(engine consensus.Engine, n int, full bool, scheme string, pipeline bool) (ethdb.Database, *Genesis, *BlockChain, error) {
+func newCanonical(engine consensus.Engine, n int, full bool, scheme string) (ethdb.Database, *Genesis, *BlockChain, error) {
 	var (
 		genesis = &Genesis{
 			BaseFee: big.NewInt(params.InitialBaseFee),
 			Config:  params.AllEthashProtocolChanges,
 		}
 	)
-
 	// Initialize a fresh chain with only a genesis block
 	var ops []BlockChainOption
-	if pipeline {
-		ops = append(ops, EnablePipelineCommit)
-	}
 	blockchain, _ := NewBlockChain(rawdb.NewMemoryDatabase(), DefaultCacheConfigWithScheme(scheme), genesis, nil, engine, vm.Config{}, nil, nil, ops...)
 	// Create and inject the requested chain
 	if n == 0 {
@@ -96,53 +91,9 @@ func newGwei(n int64) *big.Int {
 }
 
 // Test fork of length N starting from block i
-func testInvalidStateRootBlockImport(t *testing.T, blockchain *BlockChain, i, n int, pipeline bool) {
+func testFork(t *testing.T, blockchain *BlockChain, i, n int, full bool, comparator func(td1, td2 *big.Int), scheme string) {
 	// Copy old chain up to #i into a new db
-	db, _, blockchain2, err := newCanonical(ethash.NewFaker(), i, true, rawdb.HashScheme, pipeline)
-	if err != nil {
-		t.Fatal("could not make new canonical in testFork", err)
-	}
-	defer blockchain2.Stop()
-
-	// Assert the chains have the same header/block at #i
-	hash1 := blockchain.GetBlockByNumber(uint64(i)).Hash()
-	hash2 := blockchain2.GetBlockByNumber(uint64(i)).Hash()
-	if hash1 != hash2 {
-		t.Errorf("chain content mismatch at %d: have hash %v, want hash %v", i, hash2, hash1)
-	}
-	// Extend the newly created chain
-	blockChainB := makeBlockChain(blockchain2.chainConfig, blockchain2.GetBlockByHash(blockchain2.CurrentBlock().Hash()), n, ethash.NewFaker(), db, forkSeed1)
-	for idx, block := range blockChainB {
-		block.SetRoot(common.Hash{0: byte(forkSeed1), 19: byte(idx)})
-	}
-	previousBlock := blockchain.CurrentBlock()
-	// Sanity check that the forked chain can be imported into the original
-	if _, err := blockchain.InsertChain(blockChainB); err == nil {
-		t.Fatalf("failed to report insert error")
-	}
-
-	time.Sleep(2 * rewindBadBlockInterval)
-	latestBlock := blockchain.CurrentBlock()
-	if latestBlock.Hash() != previousBlock.Hash() || latestBlock.Number.Uint64() != previousBlock.Number.Uint64() {
-		t.Fatalf("rewind do not take effect")
-	}
-	db, _, blockchain3, err := newCanonical(ethash.NewFaker(), i, true, rawdb.HashScheme, pipeline)
-	if err != nil {
-		t.Fatal("could not make new canonical in testFork", err)
-	}
-	defer blockchain3.Stop()
-
-	blockChainC := makeBlockChain(blockchain3.chainConfig, blockchain3.GetBlockByHash(blockchain3.CurrentBlock().Hash()), n, ethash.NewFaker(), db, forkSeed2)
-
-	if _, err := blockchain.InsertChain(blockChainC); err != nil {
-		t.Fatalf("failed to insert forking chain: %v", err)
-	}
-}
-
-// Test fork of length N starting from block i
-func testFork(t *testing.T, blockchain *BlockChain, i, n int, full bool, comparator func(td1, td2 *big.Int), scheme string, pipeline bool) {
-	// Copy old chain up to #i into a new db
-	genDb, _, blockchain2, err := newCanonical(ethash.NewFaker(), i, full, scheme, pipeline)
+	genDb, _, blockchain2, err := newCanonical(ethash.NewFaker(), i, full, scheme)
 	if err != nil {
 		t.Fatal("could not make new canonical in testFork", err)
 	}
@@ -166,12 +117,12 @@ func testFork(t *testing.T, blockchain *BlockChain, i, n int, full bool, compara
 		headerChainB []*types.Header
 	)
 	if full {
-		blockChainB = makeBlockChain(blockchain2.chainConfig, blockchain2.GetBlockByHash(blockchain2.CurrentBlock().Hash()), n, ethash.NewFaker(), genDb, forkSeed1)
+		blockChainB = makeBlockChain(blockchain2.chainConfig, blockchain2.GetBlockByHash(blockchain2.CurrentBlock().Hash()), n, ethash.NewFaker(), genDb, forkSeed)
 		if _, err := blockchain2.InsertChain(blockChainB); err != nil {
 			t.Fatalf("failed to insert forking chain: %v", err)
 		}
 	} else {
-		headerChainB = makeHeaderChain(blockchain2.chainConfig, blockchain2.CurrentHeader(), n, ethash.NewFaker(), genDb, forkSeed1)
+		headerChainB = makeHeaderChain(blockchain2.chainConfig, blockchain2.CurrentHeader(), n, ethash.NewFaker(), genDb, forkSeed)
 		if _, err := blockchain2.InsertHeaderChain(headerChainB); err != nil {
 			t.Fatalf("failed to insert forking chain: %v", err)
 		}
@@ -182,7 +133,7 @@ func testFork(t *testing.T, blockchain *BlockChain, i, n int, full bool, compara
 	if full {
 		cur := blockchain.CurrentBlock()
 		tdPre = blockchain.GetTd(cur.Hash(), cur.Number.Uint64())
-		if err := testBlockChainImport(blockChainB, pipeline, blockchain); err != nil {
+		if err := testBlockChainImport(blockChainB, blockchain); err != nil {
 			t.Fatalf("failed to import forked block chain: %v", err)
 		}
 		last := blockChainB[len(blockChainB)-1]
@@ -202,7 +153,7 @@ func testFork(t *testing.T, blockchain *BlockChain, i, n int, full bool, compara
 
 // testBlockChainImport tries to process a chain of blocks, writing them into
 // the database if successful.
-func testBlockChainImport(chain types.Blocks, pipelineCommit bool, blockchain *BlockChain) error {
+func testBlockChainImport(chain types.Blocks, blockchain *BlockChain) error {
 	for _, block := range chain {
 		// Try and process the block
 		err := blockchain.engine.VerifyHeader(blockchain, block.Header())
@@ -220,9 +171,6 @@ func testBlockChainImport(chain types.Blocks, pipelineCommit bool, blockchain *B
 			return err
 		}
 		statedb.SetExpectedStateRoot(block.Root())
-		if pipelineCommit {
-			statedb.EnablePipeCommit()
-		}
 		statedb, receipts, _, usedGas, err := blockchain.processor.Process(block, statedb, vm.Config{})
 		if err != nil {
 			blockchain.reportBlock(block, receipts, err)
@@ -262,26 +210,13 @@ func testHeaderChainImport(chain []*types.Header, blockchain *BlockChain) error 
 	return nil
 }
 
-func TestBlockImportVerification(t *testing.T) {
-	length := 5
-
-	// Make first chain starting from genesis
-	_, _, processor, err := newCanonical(ethash.NewFaker(), length, true, rawdb.HashScheme, true)
-	if err != nil {
-		t.Fatalf("failed to make new canonical chain: %v", err)
-	}
-	defer processor.Stop()
-	// Start fork from current height
-	processor, _ = EnablePipelineCommit(processor)
-	testInvalidStateRootBlockImport(t, processor, length, 10, true)
-}
 func TestLastBlock(t *testing.T) {
 	testLastBlock(t, rawdb.HashScheme)
 	testLastBlock(t, rawdb.PathScheme)
 }
 
 func testLastBlock(t *testing.T, scheme string) {
-	genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 0, true, scheme, false)
+	genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 0, true, scheme)
 	if err != nil {
 		t.Fatalf("failed to create pristine chain: %v", err)
 	}
@@ -300,7 +235,7 @@ func testLastBlock(t *testing.T, scheme string) {
 // The chain is reorged to whatever specified.
 func testInsertAfterMerge(t *testing.T, blockchain *BlockChain, i, n int, full bool, scheme string) {
 	// Copy old chain up to #i into a new db
-	genDb, _, blockchain2, err := newCanonical(ethash.NewFaker(), i, full, scheme, false)
+	genDb, _, blockchain2, err := newCanonical(ethash.NewFaker(), i, full, scheme)
 	if err != nil {
 		t.Fatal("could not make new canonical in testFork", err)
 	}
@@ -321,7 +256,7 @@ func testInsertAfterMerge(t *testing.T, blockchain *BlockChain, i, n int, full b
 
 	// Extend the newly created chain
 	if full {
-		blockChainB := makeBlockChain(blockchain2.chainConfig, blockchain2.GetBlockByHash(blockchain2.CurrentBlock().Hash()), n, ethash.NewFaker(), genDb, forkSeed1)
+		blockChainB := makeBlockChain(blockchain2.chainConfig, blockchain2.GetBlockByHash(blockchain2.CurrentBlock().Hash()), n, ethash.NewFaker(), genDb, forkSeed)
 		if _, err := blockchain2.InsertChain(blockChainB); err != nil {
 			t.Fatalf("failed to insert forking chain: %v", err)
 		}
@@ -332,7 +267,7 @@ func testInsertAfterMerge(t *testing.T, blockchain *BlockChain, i, n int, full b
 			t.Fatalf("failed to reorg to the given chain")
 		}
 	} else {
-		headerChainB := makeHeaderChain(blockchain2.chainConfig, blockchain2.CurrentHeader(), n, ethash.NewFaker(), genDb, forkSeed1)
+		headerChainB := makeHeaderChain(blockchain2.chainConfig, blockchain2.CurrentHeader(), n, ethash.NewFaker(), genDb, forkSeed)
 		if _, err := blockchain2.InsertHeaderChain(headerChainB); err != nil {
 			t.Fatalf("failed to insert forking chain: %v", err)
 		}
@@ -348,21 +283,20 @@ func testInsertAfterMerge(t *testing.T, blockchain *BlockChain, i, n int, full b
 // Tests that given a starting canonical chain of a given size, it can be extended
 // with various length chains.
 func TestExtendCanonicalHeaders(t *testing.T) {
-	testExtendCanonical(t, false, rawdb.HashScheme, false)
-	testExtendCanonical(t, false, rawdb.PathScheme, false)
+	testExtendCanonical(t, false, rawdb.HashScheme)
+	testExtendCanonical(t, false, rawdb.PathScheme)
 }
 
 func TestExtendCanonicalBlocks(t *testing.T) {
-	testExtendCanonical(t, true, rawdb.HashScheme, false)
-	testExtendCanonical(t, true, rawdb.PathScheme, false)
-	testExtendCanonical(t, true, rawdb.HashScheme, true)
+	testExtendCanonical(t, true, rawdb.HashScheme)
+	testExtendCanonical(t, true, rawdb.PathScheme)
 }
 
-func testExtendCanonical(t *testing.T, full bool, scheme string, pipeline bool) {
+func testExtendCanonical(t *testing.T, full bool, scheme string) {
 	length := 5
 
 	// Make first chain starting from genesis
-	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme, pipeline)
+	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
 	}
@@ -375,10 +309,10 @@ func testExtendCanonical(t *testing.T, full bool, scheme string, pipeline bool) 
 		}
 	}
 	// Start fork from current height
-	testFork(t, processor, length, 1, full, better, scheme, pipeline)
-	testFork(t, processor, length, 2, full, better, scheme, pipeline)
-	testFork(t, processor, length, 5, full, better, scheme, pipeline)
-	testFork(t, processor, length, 10, full, better, scheme, pipeline)
+	testFork(t, processor, length, 1, full, better, scheme)
+	testFork(t, processor, length, 2, full, better, scheme)
+	testFork(t, processor, length, 5, full, better, scheme)
+	testFork(t, processor, length, 10, full, better, scheme)
 }
 
 // Tests that given a starting canonical chain of a given size, it can be extended
@@ -396,7 +330,7 @@ func testExtendCanonicalAfterMerge(t *testing.T, full bool, scheme string) {
 	length := 5
 
 	// Make first chain starting from genesis
-	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme, false)
+	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
 	}
@@ -409,20 +343,19 @@ func testExtendCanonicalAfterMerge(t *testing.T, full bool, scheme string) {
 // Tests that given a starting canonical chain of a given size, creating shorter
 // forks do not take canonical ownership.
 func TestShorterForkHeaders(t *testing.T) {
-	testShorterFork(t, false, rawdb.HashScheme, false)
-	testShorterFork(t, false, rawdb.PathScheme, false)
+	testShorterFork(t, false, rawdb.HashScheme)
+	testShorterFork(t, false, rawdb.PathScheme)
 }
 func TestShorterForkBlocks(t *testing.T) {
-	testShorterFork(t, true, rawdb.HashScheme, false)
-	testShorterFork(t, true, rawdb.PathScheme, false)
-	testShorterFork(t, true, rawdb.HashScheme, true)
+	testShorterFork(t, true, rawdb.HashScheme)
+	testShorterFork(t, true, rawdb.PathScheme)
 }
 
-func testShorterFork(t *testing.T, full bool, scheme string, pipeline bool) {
+func testShorterFork(t *testing.T, full bool, scheme string) {
 	length := 10
 
 	// Make first chain starting from genesis
-	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme, pipeline)
+	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
 	}
@@ -435,12 +368,12 @@ func testShorterFork(t *testing.T, full bool, scheme string, pipeline bool) {
 		}
 	}
 	// Sum of numbers must be less than `length` for this to be a shorter fork
-	testFork(t, processor, 0, 3, full, worse, scheme, pipeline)
-	testFork(t, processor, 0, 7, full, worse, scheme, pipeline)
-	testFork(t, processor, 1, 1, full, worse, scheme, pipeline)
-	testFork(t, processor, 1, 7, full, worse, scheme, pipeline)
-	testFork(t, processor, 5, 3, full, worse, scheme, pipeline)
-	testFork(t, processor, 5, 4, full, worse, scheme, pipeline)
+	testFork(t, processor, 0, 3, full, worse, scheme)
+	testFork(t, processor, 0, 7, full, worse, scheme)
+	testFork(t, processor, 1, 1, full, worse, scheme)
+	testFork(t, processor, 1, 7, full, worse, scheme)
+	testFork(t, processor, 5, 3, full, worse, scheme)
+	testFork(t, processor, 5, 4, full, worse, scheme)
 }
 
 // Tests that given a starting canonical chain of a given size, creating shorter
@@ -458,7 +391,7 @@ func testShorterForkAfterMerge(t *testing.T, full bool, scheme string) {
 	length := 10
 
 	// Make first chain starting from genesis
-	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme, false)
+	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
 	}
@@ -475,20 +408,19 @@ func testShorterForkAfterMerge(t *testing.T, full bool, scheme string) {
 // Tests that given a starting canonical chain of a given size, creating longer
 // forks do take canonical ownership.
 func TestLongerForkHeaders(t *testing.T) {
-	testLongerFork(t, false, rawdb.HashScheme, false)
-	testLongerFork(t, false, rawdb.PathScheme, false)
+	testLongerFork(t, false, rawdb.HashScheme)
+	testLongerFork(t, false, rawdb.PathScheme)
 }
 func TestLongerForkBlocks(t *testing.T) {
-	testLongerFork(t, true, rawdb.HashScheme, false)
-	testLongerFork(t, true, rawdb.PathScheme, false)
-	testLongerFork(t, true, rawdb.HashScheme, true)
+	testLongerFork(t, true, rawdb.HashScheme)
+	testLongerFork(t, true, rawdb.PathScheme)
 }
 
-func testLongerFork(t *testing.T, full bool, scheme string, pipeline bool) {
+func testLongerFork(t *testing.T, full bool, scheme string) {
 	length := 10
 
 	// Make first chain starting from genesis
-	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme, pipeline)
+	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
 	}
@@ -517,7 +449,7 @@ func testLongerForkAfterMerge(t *testing.T, full bool, scheme string) {
 	length := 10
 
 	// Make first chain starting from genesis
-	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme, false)
+	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
 	}
@@ -534,20 +466,19 @@ func testLongerForkAfterMerge(t *testing.T, full bool, scheme string) {
 // Tests that given a starting canonical chain of a given size, creating equal
 // forks do take canonical ownership.
 func TestEqualForkHeaders(t *testing.T) {
-	testEqualFork(t, false, rawdb.HashScheme, false)
-	testEqualFork(t, false, rawdb.PathScheme, false)
+	testEqualFork(t, false, rawdb.HashScheme)
+	testEqualFork(t, false, rawdb.PathScheme)
 }
 func TestEqualForkBlocks(t *testing.T) {
-	testEqualFork(t, true, rawdb.HashScheme, false)
-	testEqualFork(t, true, rawdb.PathScheme, false)
-	testEqualFork(t, true, rawdb.HashScheme, true)
+	testEqualFork(t, true, rawdb.HashScheme)
+	testEqualFork(t, true, rawdb.PathScheme)
 }
 
-func testEqualFork(t *testing.T, full bool, scheme string, pipeline bool) {
+func testEqualFork(t *testing.T, full bool, scheme string) {
 	length := 10
 
 	// Make first chain starting from genesis
-	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme, pipeline)
+	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
 	}
@@ -560,12 +491,12 @@ func testEqualFork(t *testing.T, full bool, scheme string, pipeline bool) {
 		}
 	}
 	// Sum of numbers must be equal to `length` for this to be an equal fork
-	testFork(t, processor, 0, 10, full, equal, scheme, pipeline)
-	testFork(t, processor, 1, 9, full, equal, scheme, pipeline)
-	testFork(t, processor, 2, 8, full, equal, scheme, pipeline)
-	testFork(t, processor, 5, 5, full, equal, scheme, pipeline)
-	testFork(t, processor, 6, 4, full, equal, scheme, pipeline)
-	testFork(t, processor, 9, 1, full, equal, scheme, pipeline)
+	testFork(t, processor, 0, 10, full, equal, scheme)
+	testFork(t, processor, 1, 9, full, equal, scheme)
+	testFork(t, processor, 2, 8, full, equal, scheme)
+	testFork(t, processor, 5, 5, full, equal, scheme)
+	testFork(t, processor, 6, 4, full, equal, scheme)
+	testFork(t, processor, 9, 1, full, equal, scheme)
 }
 
 // Tests that given a starting canonical chain of a given size, creating equal
@@ -583,7 +514,7 @@ func testEqualForkAfterMerge(t *testing.T, full bool, scheme string) {
 	length := 10
 
 	// Make first chain starting from genesis
-	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme, false)
+	_, _, processor, err := newCanonical(ethash.NewFaker(), length, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
 	}
@@ -599,18 +530,17 @@ func testEqualForkAfterMerge(t *testing.T, full bool, scheme string) {
 
 // Tests that chains missing links do not get accepted by the processor.
 func TestBrokenHeaderChain(t *testing.T) {
-	testBrokenChain(t, false, rawdb.HashScheme, false)
-	testBrokenChain(t, false, rawdb.PathScheme, false)
+	testBrokenChain(t, false, rawdb.HashScheme)
+	testBrokenChain(t, false, rawdb.PathScheme)
 }
 func TestBrokenBlockChain(t *testing.T) {
-	testBrokenChain(t, true, rawdb.HashScheme, false)
-	testBrokenChain(t, true, rawdb.PathScheme, false)
-	testBrokenChain(t, true, rawdb.HashScheme, true)
+	testBrokenChain(t, true, rawdb.HashScheme)
+	testBrokenChain(t, true, rawdb.PathScheme)
 }
 
-func testBrokenChain(t *testing.T, full bool, scheme string, pipeline bool) {
+func testBrokenChain(t *testing.T, full bool, scheme string) {
 	// Make chain starting from genesis
-	genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 10, full, scheme, pipeline)
+	genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 10, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
 	}
@@ -618,12 +548,12 @@ func testBrokenChain(t *testing.T, full bool, scheme string, pipeline bool) {
 
 	// Create a forked chain, and try to insert with a missing link
 	if full {
-		chain := makeBlockChain(blockchain.chainConfig, blockchain.GetBlockByHash(blockchain.CurrentBlock().Hash()), 5, ethash.NewFaker(), genDb, forkSeed1)[1:]
-		if err := testBlockChainImport(chain, pipeline, blockchain); err == nil {
+		chain := makeBlockChain(blockchain.chainConfig, blockchain.GetBlockByHash(blockchain.CurrentBlock().Hash()), 5, ethash.NewFaker(), genDb, forkSeed)[1:]
+		if err := testBlockChainImport(chain, blockchain); err == nil {
 			t.Errorf("broken block chain not reported")
 		}
 	} else {
-		chain := makeHeaderChain(blockchain.chainConfig, blockchain.CurrentHeader(), 5, ethash.NewFaker(), genDb, forkSeed1)[1:]
+		chain := makeHeaderChain(blockchain.chainConfig, blockchain.CurrentHeader(), 5, ethash.NewFaker(), genDb, forkSeed)[1:]
 		if err := testHeaderChainImport(chain, blockchain); err == nil {
 			t.Errorf("broken header chain not reported")
 		}
@@ -633,32 +563,30 @@ func testBrokenChain(t *testing.T, full bool, scheme string, pipeline bool) {
 // Tests that reorganising a long difficult chain after a short easy one
 // overwrites the canonical numbers and links in the database.
 func TestReorgLongHeaders(t *testing.T) {
-	testReorgLong(t, false, rawdb.HashScheme, false)
-	testReorgLong(t, false, rawdb.PathScheme, false)
+	testReorgLong(t, false, rawdb.HashScheme)
+	testReorgLong(t, false, rawdb.PathScheme)
 }
 func TestReorgLongBlocks(t *testing.T) {
-	testReorgLong(t, true, rawdb.HashScheme, false)
-	testReorgLong(t, true, rawdb.PathScheme, false)
-	testReorgLong(t, true, rawdb.HashScheme, true)
+	testReorgLong(t, true, rawdb.HashScheme)
+	testReorgLong(t, true, rawdb.PathScheme)
 }
 
-func testReorgLong(t *testing.T, full bool, scheme string, pipeline bool) {
-	testReorg(t, []int64{0, 0, -9}, []int64{0, 0, 0, -9}, 393280+params.GenesisDifficulty.Int64(), full, scheme, pipeline)
+func testReorgLong(t *testing.T, full bool, scheme string) {
+	testReorg(t, []int64{0, 0, -9}, []int64{0, 0, 0, -9}, 393280+params.GenesisDifficulty.Int64(), full, scheme)
 }
 
 // Tests that reorganising a short difficult chain after a long easy one
 // overwrites the canonical numbers and links in the database.
 func TestReorgShortHeaders(t *testing.T) {
-	testReorgShort(t, false, rawdb.HashScheme, false)
-	testReorgShort(t, false, rawdb.PathScheme, false)
+	testReorgShort(t, false, rawdb.HashScheme)
+	testReorgShort(t, false, rawdb.PathScheme)
 }
 func TestReorgShortBlocks(t *testing.T) {
-	testReorgShort(t, true, rawdb.HashScheme, false)
-	testReorgShort(t, true, rawdb.PathScheme, false)
-	testReorgShort(t, true, rawdb.HashScheme, true)
+	testReorgShort(t, true, rawdb.HashScheme)
+	testReorgShort(t, true, rawdb.PathScheme)
 }
 
-func testReorgShort(t *testing.T, full bool, scheme string, pipeline bool) {
+func testReorgShort(t *testing.T, full bool, scheme string) {
 	// Create a long easy chain vs. a short heavy one. Due to difficulty adjustment
 	// we need a fairly long chain of blocks with different difficulties for a short
 	// one to become heavier than a long one. The 96 is an empirical value.
@@ -670,12 +598,12 @@ func testReorgShort(t *testing.T, full bool, scheme string, pipeline bool) {
 	for i := 0; i < len(diff); i++ {
 		diff[i] = -9
 	}
-	testReorg(t, easy, diff, 12615120+params.GenesisDifficulty.Int64(), full, scheme, pipeline)
+	testReorg(t, easy, diff, 12615120+params.GenesisDifficulty.Int64(), full, scheme)
 }
 
-func testReorg(t *testing.T, first, second []int64, td int64, full bool, scheme string, pipeline bool) {
+func testReorg(t *testing.T, first, second []int64, td int64, full bool, scheme string) {
 	// Create a pristine chain and database
-	genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 0, full, scheme, pipeline)
+	genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 0, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to create pristine chain: %v", err)
 	}
@@ -744,19 +672,18 @@ func testReorg(t *testing.T, first, second []int64, td int64, full bool, scheme 
 
 // Tests that the insertion functions detect banned hashes.
 func TestBadHeaderHashes(t *testing.T) {
-	testBadHashes(t, false, rawdb.HashScheme, false)
-	testBadHashes(t, false, rawdb.PathScheme, false)
+	testBadHashes(t, false, rawdb.HashScheme)
+	testBadHashes(t, false, rawdb.PathScheme)
 }
 
 func TestBadBlockHashes(t *testing.T) {
-	testBadHashes(t, true, rawdb.HashScheme, false)
-	testBadHashes(t, true, rawdb.HashScheme, true)
-	testBadHashes(t, true, rawdb.PathScheme, false)
+	testBadHashes(t, true, rawdb.HashScheme)
+	testBadHashes(t, true, rawdb.PathScheme)
 }
 
-func testBadHashes(t *testing.T, full bool, scheme string, pipeline bool) {
+func testBadHashes(t *testing.T, full bool, scheme string) {
 	// Create a pristine chain and database
-	genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 0, full, scheme, pipeline)
+	genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 0, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to create pristine chain: %v", err)
 	}
@@ -786,18 +713,17 @@ func testBadHashes(t *testing.T, full bool, scheme string, pipeline bool) {
 // Tests that bad hashes are detected on boot, and the chain rolled back to a
 // good state prior to the bad hash.
 func TestReorgBadHeaderHashes(t *testing.T) {
-	testReorgBadHashes(t, false, rawdb.HashScheme, false)
-	testReorgBadHashes(t, false, rawdb.PathScheme, false)
+	testReorgBadHashes(t, false, rawdb.HashScheme)
+	testReorgBadHashes(t, false, rawdb.PathScheme)
 }
 func TestReorgBadBlockHashes(t *testing.T) {
-	testReorgBadHashes(t, true, rawdb.HashScheme, false)
-	testReorgBadHashes(t, true, rawdb.HashScheme, true)
-	testReorgBadHashes(t, true, rawdb.PathScheme, false)
+	testReorgBadHashes(t, true, rawdb.HashScheme)
+	testReorgBadHashes(t, true, rawdb.PathScheme)
 }
 
-func testReorgBadHashes(t *testing.T, full bool, scheme string, pipeline bool) {
+func testReorgBadHashes(t *testing.T, full bool, scheme string) {
 	// Create a pristine chain and database
-	genDb, gspec, blockchain, err := newCanonical(ethash.NewFaker(), 0, full, scheme, pipeline)
+	genDb, gspec, blockchain, err := newCanonical(ethash.NewFaker(), 0, full, scheme)
 	if err != nil {
 		t.Fatalf("failed to create pristine chain: %v", err)
 	}
@@ -848,19 +774,18 @@ func testReorgBadHashes(t *testing.T, full bool, scheme string, pipeline bool) {
 
 // Tests chain insertions in the face of one entity containing an invalid nonce.
 func TestHeadersInsertNonceError(t *testing.T) {
-	testInsertNonceError(t, false, rawdb.HashScheme, false)
-	testInsertNonceError(t, false, rawdb.PathScheme, false)
+	testInsertNonceError(t, false, rawdb.HashScheme)
+	testInsertNonceError(t, false, rawdb.PathScheme)
 }
 func TestBlocksInsertNonceError(t *testing.T) {
-	testInsertNonceError(t, true, rawdb.HashScheme, false)
-	testInsertNonceError(t, true, rawdb.HashScheme, true)
-	testInsertNonceError(t, true, rawdb.PathScheme, false)
+	testInsertNonceError(t, true, rawdb.HashScheme)
+	testInsertNonceError(t, true, rawdb.PathScheme)
 }
 
-func testInsertNonceError(t *testing.T, full bool, scheme string, pipeline bool) {
+func testInsertNonceError(t *testing.T, full bool, scheme string) {
 	doTest := func(i int) {
 		// Create a pristine chain and database
-		genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 0, full, scheme, pipeline)
+		genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 0, full, scheme)
 		if err != nil {
 			t.Fatalf("failed to create pristine chain: %v", err)
 		}
@@ -1611,7 +1536,7 @@ func TestCanonicalBlockRetrieval(t *testing.T) {
 }
 
 func testCanonicalBlockRetrieval(t *testing.T, scheme string) {
-	_, gspec, blockchain, err := newCanonical(ethash.NewFaker(), 0, true, scheme, false)
+	_, gspec, blockchain, err := newCanonical(ethash.NewFaker(), 0, true, scheme)
 	if err != nil {
 		t.Fatalf("failed to create pristine chain: %v", err)
 	}

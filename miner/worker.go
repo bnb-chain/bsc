@@ -1430,15 +1430,6 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if interval != nil {
 			interval()
 		}
-		/*
-
-			err := env.state.WaitPipeVerification()
-			if err != nil {
-				return err
-			}
-			env.state.CorrectAccountsRoot(w.chain.CurrentBlock().Root)
-		*/
-
 		fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
 		feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
 		// Withdrawals are set to nil here, because this is only called in PoW.

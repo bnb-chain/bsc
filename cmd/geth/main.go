@@ -67,7 +67,6 @@ var (
 		utils.DirectBroadcastFlag,
 		utils.DisableSnapProtocolFlag,
 		utils.EnableTrustProtocolFlag,
-		utils.PipeCommitFlag,
 		utils.RangeLimitFlag,
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,

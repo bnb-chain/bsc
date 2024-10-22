@@ -117,11 +117,6 @@ var (
 		Usage:    "Enable trust protocol",
 		Category: flags.FastNodeCategory,
 	}
-	PipeCommitFlag = &cli.BoolFlag{
-		Name:     "pipecommit",
-		Usage:    "Enable MPT pipeline commit, it will improve syncing performance. It is an experimental feature(default is false)",
-		Category: flags.DeprecatedCategory,
-	}
 	RangeLimitFlag = &cli.BoolFlag{
 		Name:     "rangelimit",
 		Usage:    "Enable 5000 blocks limit for range query",
@@ -1981,9 +1976,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(EnableTrustProtocolFlag.Name) {
 		cfg.EnableTrustProtocol = ctx.IsSet(EnableTrustProtocolFlag.Name)
-	}
-	if ctx.IsSet(PipeCommitFlag.Name) {
-		log.Warn("The --pipecommit flag is deprecated and could be removed in the future!")
 	}
 	if ctx.IsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.Bool(RangeLimitFlag.Name)

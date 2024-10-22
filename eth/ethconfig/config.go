@@ -107,7 +107,6 @@ type Config struct {
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
 	EnableTrustProtocol bool // Whether enable trust protocol
-	PipeCommit          bool
 	RangeLimit          bool
 
 	// Deprecated, use 'TransactionHistory' instead.
