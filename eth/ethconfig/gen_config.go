@@ -30,7 +30,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DirectBroadcast         bool
 		DisableSnapProtocol     bool
 		EnableTrustProtocol     bool
-		PipeCommit              bool
 		RangeLimit              bool
 		TxLookupLimit           uint64 `toml:",omitempty"`
 		TransactionHistory      uint64 `toml:",omitempty"`
@@ -90,7 +89,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
 	enc.EnableTrustProtocol = c.EnableTrustProtocol
-	enc.PipeCommit = c.PipeCommit
 	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
 	enc.TransactionHistory = c.TransactionHistory
@@ -154,7 +152,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DirectBroadcast         *bool
 		DisableSnapProtocol     *bool
 		EnableTrustProtocol     *bool
-		PipeCommit              *bool
 		RangeLimit              *bool
 		TxLookupLimit           *uint64 `toml:",omitempty"`
 		TransactionHistory      *uint64 `toml:",omitempty"`
@@ -242,9 +239,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.EnableTrustProtocol != nil {
 		c.EnableTrustProtocol = *dec.EnableTrustProtocol
-	}
-	if dec.PipeCommit != nil {
-		c.PipeCommit = *dec.PipeCommit
 	}
 	if dec.RangeLimit != nil {
 		c.RangeLimit = *dec.RangeLimit

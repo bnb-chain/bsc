@@ -130,7 +130,7 @@ func TestDiskMerge(t *testing.T) {
 		conModCache:   {conModCacheSlot: reverse(conModCacheSlot[:])},
 		conDelNoCache: {conDelNoCacheSlot: nil},
 		conDelCache:   {conDelCacheSlot: nil},
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatalf("failed to update snapshot tree: %v", err)
 	}
 	if err := snaps.Cap(diffRoot, 0); err != nil {
@@ -353,7 +353,7 @@ func TestDiskPartialMerge(t *testing.T) {
 			conModCache:   {conModCacheSlot: reverse(conModCacheSlot[:])},
 			conDelNoCache: {conDelNoCacheSlot: nil},
 			conDelCache:   {conDelCacheSlot: nil},
-		}, nil); err != nil {
+		}); err != nil {
 			t.Fatalf("test %d: failed to update snapshot tree: %v", i, err)
 		}
 		if err := snaps.Cap(diffRoot, 0); err != nil {
@@ -464,7 +464,7 @@ func TestDiskGeneratorPersistence(t *testing.T) {
 	// Modify or delete some accounts, flatten everything onto disk
 	if err := snaps.Update(diffRoot, baseRoot, nil, map[common.Hash][]byte{
 		accTwo: accTwo[:],
-	}, nil, nil); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("failed to update snapshot tree: %v", err)
 	}
 	if err := snaps.Cap(diffRoot, 0); err != nil {
@@ -484,7 +484,7 @@ func TestDiskGeneratorPersistence(t *testing.T) {
 		accThree: accThree.Bytes(),
 	}, map[common.Hash]map[common.Hash][]byte{
 		accThree: {accThreeSlot: accThreeSlot.Bytes()},
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatalf("failed to update snapshot tree: %v", err)
 	}
 	diskLayer := snaps.layers[snaps.diskRoot()].(*diskLayer)

@@ -60,19 +60,6 @@ func (dl *diskLayer) Root() common.Hash {
 	return dl.root
 }
 
-func (dl *diskLayer) WaitAndGetVerifyRes() bool {
-	return true
-}
-
-func (dl *diskLayer) MarkValid() {}
-
-func (dl *diskLayer) Verified() bool {
-	return true
-}
-
-func (dl *diskLayer) CorrectAccounts(map[common.Hash][]byte) {
-}
-
 // Parent always returns nil as there's no layer below the disk.
 func (dl *diskLayer) Parent() snapshot {
 	return nil
@@ -191,6 +178,6 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 // Update creates a new layer on top of the existing snapshot diff tree with
 // the specified data items. Note, the maps are retained by the method to avoid
 // copying everything.
-func (dl *diskLayer) Update(blockHash common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified chan struct{}) *diffLayer {
-	return newDiffLayer(dl, blockHash, destructs, accounts, storage, verified)
+func (dl *diskLayer) Update(blockHash common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) *diffLayer {
+	return newDiffLayer(dl, blockHash, destructs, accounts, storage)
 }

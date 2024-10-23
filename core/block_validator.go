@@ -19,17 +19,13 @@ package core
 import (
 	"errors"
 	"fmt"
-	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
-
-const badBlockCacheExpire = 30 * time.Second
 
 type BlockValidatorOption func(*BlockValidator) *BlockValidator
 
@@ -73,9 +69,6 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	// Check whether the block is already imported.
 	if v.bc.HasBlockAndState(block.Hash(), block.NumberU64()) {
 		return ErrKnownBlock
-	}
-	if v.bc.isCachedBadBlock(block) {
-		return ErrKnownBadBlock
 	}
 	// Header validity is known at this point. Here we verify that uncles, transactions
 	// and withdrawals given in the block body match the header.
@@ -192,23 +185,12 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			return nil
 		},
 	}
-	if statedb.IsPipeCommit() {
-		validateFuns = append(validateFuns, func() error {
-			if err := statedb.WaitPipeVerification(); err != nil {
-				return err
-			}
-			statedb.CorrectAccountsRoot(common.Hash{})
-			statedb.Finalise(v.config.IsEIP158(header.Number))
-			return nil
-		})
-	} else {
-		validateFuns = append(validateFuns, func() error {
-			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
-				return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
-			}
-			return nil
-		})
-	}
+	validateFuns = append(validateFuns, func() error {
+		if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
+			return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
+		}
+		return nil
+	})
 	validateRes := make(chan error, len(validateFuns))
 	for _, f := range validateFuns {
 		tmpFunc := f

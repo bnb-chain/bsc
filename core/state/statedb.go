@@ -35,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
@@ -82,7 +81,6 @@ type StateDB struct {
 	stateRoot    common.Hash // The calculation result of IntermediateRoot
 
 	fullProcessed bool
-	pipeCommit    bool
 
 	// These maps hold the state changes (including the corresponding
 	// original value) that occurred in this **block**.
@@ -197,8 +195,7 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 	}
 
 	tr, err := db.OpenTrie(root)
-	// return error when 1. failed to open trie and 2. the snap is nil or the snap is not nil and done verification
-	if err != nil && (sdb.snap == nil || sdb.snap.Verified()) {
+	if err != nil {
 		return nil, err
 	}
 	_, sdb.noTrie = tr.(*trie.EmptyTrie)
@@ -300,20 +297,6 @@ func (s *StateDB) SetExpectedStateRoot(root common.Hash) {
 	s.expectedRoot = root
 }
 
-// Enable the pipeline commit function of statedb
-func (s *StateDB) EnablePipeCommit() {
-	if s.snap != nil && s.snaps.Layers() > 1 {
-		// after big merge, disable pipeCommit for now,
-		// because `s.db.TrieDB().Update` should be called after `s.trie.Commit(true)`
-		s.pipeCommit = false
-	}
-}
-
-// IsPipeCommit checks whether pipecommit is enabled on the statedb or not
-func (s *StateDB) IsPipeCommit() bool {
-	return s.pipeCommit
-}
-
 // Mark that the block is full processed
 func (s *StateDB) MarkFullProcessed() {
 	s.fullProcessed = true
@@ -333,22 +316,6 @@ func (s *StateDB) NoTrie() bool {
 // Error returns the memorized database failure occurred earlier.
 func (s *StateDB) Error() error {
 	return s.dbErr
-}
-
-// Not thread safe
-func (s *StateDB) Trie() (Trie, error) {
-	if s.trie == nil {
-		err := s.WaitPipeVerification()
-		if err != nil {
-			return nil, err
-		}
-		tr, err := s.db.OpenTrie(s.originalRoot)
-		if err != nil {
-			return nil, err
-		}
-		s.trie = tr
-	}
-	return s.trie, nil
 }
 
 func (s *StateDB) AddLog(log *types.Log) {
@@ -867,8 +834,7 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		// expectedRoot:         s.expectedRoot,
 		// stateRoot:            s.stateRoot,
 		originalRoot: s.originalRoot,
-		// fullProcessed:        s.fullProcessed,
-		// pipeCommit:           s.pipeCommit,
+		// fullProcessed: s.fullProcessed,
 		accounts:             make(map[common.Hash][]byte),
 		storages:             make(map[common.Hash]map[common.Hash][]byte),
 		accountsOrigin:       make(map[common.Address][]byte),
@@ -999,17 +965,6 @@ func (s *StateDB) GetRefund() uint64 {
 	return s.refund
 }
 
-// WaitPipeVerification waits until the snapshot been verified
-func (s *StateDB) WaitPipeVerification() error {
-	// Need to wait for the parent trie to commit
-	if s.snap != nil {
-		if valid := s.snap.WaitAndGetVerifyRes(); !valid {
-			return errors.New("verification on parent snap failed")
-		}
-	}
-	return nil
-}
-
 // Finalise finalises the state by removing the destructed objects and clears
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
@@ -1056,11 +1011,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 	}
 	prefetcher := s.prefetcher
 	if prefetcher != nil && len(addressesToPrefetch) > 0 {
-		if s.snap.Verified() {
-			prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch)
-		} else if prefetcher.rootParent != (common.Hash{}) {
-			prefetcher.prefetch(common.Hash{}, prefetcher.rootParent, common.Address{}, addressesToPrefetch)
-		}
+		prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch)
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
@@ -1074,76 +1025,6 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	s.Finalise(deleteEmptyObjects)
 	s.AccountsIntermediateRoot()
 	return s.StateIntermediateRoot()
-}
-
-// CorrectAccountsRoot will fix account roots in pipecommit mode
-func (s *StateDB) CorrectAccountsRoot(blockRoot common.Hash) {
-	var snapshot snapshot.Snapshot
-	if blockRoot == (common.Hash{}) {
-		snapshot = s.snap
-	} else if s.snaps != nil {
-		snapshot = s.snaps.Snapshot(blockRoot)
-	}
-
-	if snapshot == nil {
-		return
-	}
-	if accounts, err := snapshot.Accounts(); err == nil && accounts != nil {
-		for _, obj := range s.stateObjects {
-			if !obj.deleted {
-				if account, exist := accounts[crypto.Keccak256Hash(obj.address[:])]; exist {
-					if len(account.Root) == 0 {
-						obj.data.Root = types.EmptyRootHash
-					} else {
-						obj.data.Root = common.BytesToHash(account.Root)
-					}
-				}
-			}
-		}
-	}
-}
-
-// PopulateSnapAccountAndStorage tries to populate required accounts and storages for pipecommit
-func (s *StateDB) PopulateSnapAccountAndStorage() {
-	for addr := range s.stateObjectsPending {
-		if obj := s.stateObjects[addr]; !obj.deleted {
-			if s.snap != nil {
-				s.populateSnapStorage(obj)
-				s.accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
-			}
-		}
-	}
-}
-
-// populateSnapStorage tries to populate required storages for pipecommit, and returns a flag to indicate whether the storage root changed or not
-func (s *StateDB) populateSnapStorage(obj *stateObject) bool {
-	for key, value := range obj.dirtyStorage {
-		obj.pendingStorage[key] = value
-	}
-	if len(obj.pendingStorage) == 0 {
-		return false
-	}
-	hasher := crypto.NewKeccakState()
-	var storage map[common.Hash][]byte
-	for key, value := range obj.pendingStorage {
-		var v []byte
-		if (value != common.Hash{}) {
-			// Encoding []byte cannot fail, ok to ignore the error.
-			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
-		}
-		// If state snapshotting is active, cache the data til commit
-		if obj.db.snap != nil {
-			if storage == nil {
-				// Retrieve the old storage map, if available, create a new one otherwise
-				if storage = obj.db.storages[obj.addrHash]; storage == nil {
-					storage = make(map[common.Hash][]byte)
-					obj.db.storages[obj.addrHash] = storage
-				}
-			}
-			storage[crypto.HashData(hasher, key[:])] = v // v will be nil if value is 0x00
-		}
-	}
-	return true
 }
 
 func (s *StateDB) AccountsIntermediateRoot() {
@@ -1482,7 +1363,7 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 //
 // The associated block number of the state transition is also provided
 // for more chain context.
-func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
+func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash, *types.DiffLayer, error) {
 	// Short circuit in case any database failure occurred earlier.
 	if s.dbErr != nil {
 		s.StopPrefetcher()
@@ -1490,38 +1371,17 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	}
 	// Finalize any pending changes and merge everything into the tries
 	var (
-		diffLayer   *types.DiffLayer
-		verified    chan struct{}
-		snapUpdated chan struct{}
-		incomplete  map[common.Address]struct{}
-		nodes       = trienode.NewMergedNodeSet()
+		diffLayer  *types.DiffLayer
+		incomplete map[common.Address]struct{}
+		nodes      = trienode.NewMergedNodeSet()
 	)
 
 	if s.snap != nil {
 		diffLayer = &types.DiffLayer{}
 	}
-	if s.pipeCommit {
-		// async commit the MPT
-		verified = make(chan struct{})
-		snapUpdated = make(chan struct{})
-	}
 
 	commmitTrie := func() error {
 		commitErr := func() error {
-			if s.pipeCommit {
-				<-snapUpdated
-				// Due to state verification pipeline, the accounts roots are not updated, leading to the data in the difflayer is not correct, capture the correct data here
-				s.AccountsIntermediateRoot()
-				if parent := s.snap.Root(); parent != s.expectedRoot {
-					accountData := make(map[common.Hash][]byte)
-					for k, v := range s.accounts {
-						accountData[crypto.Keccak256Hash(k[:])] = v
-					}
-					s.snaps.Snapshot(s.expectedRoot).CorrectAccounts(accountData)
-				}
-				s.snap = nil
-			}
-
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
 				log.Error("Invalid merkle root", "remote", s.expectedRoot, "local", s.stateRoot)
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
@@ -1629,8 +1489,8 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				}
 			}
 
-			for _, postFunc := range postCommitFuncs {
-				err := postFunc()
+			if postCommitFunc != nil {
+				err := postCommitFunc()
 				if err != nil {
 					return err
 				}
@@ -1639,19 +1499,6 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 			return nil
 		}()
 
-		if s.pipeCommit {
-			if commitErr == nil {
-				s.snaps.Snapshot(s.stateRoot).MarkValid()
-				close(verified)
-			} else {
-				// The blockchain will do the further rewind if write block not finish yet
-				close(verified)
-				if failPostCommitFunc != nil {
-					failPostCommitFunc()
-				}
-				log.Error("state verification failed", "err", commitErr)
-			}
-		}
 		return commitErr
 	}
 
@@ -1693,15 +1540,10 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 				if metrics.EnabledExpensive {
 					defer func(start time.Time) { s.SnapshotCommits += time.Since(start) }(time.Now())
 				}
-				if s.pipeCommit {
-					defer close(snapUpdated)
-					// State verification pipeline - accounts root are not calculated here, just populate needed fields for process
-					s.PopulateSnapAccountAndStorage()
-				}
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != s.expectedRoot {
-					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages, verified)
+					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages)
 
 					if err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
@@ -1721,12 +1563,9 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 			return nil
 		},
 	}
-	if s.pipeCommit {
-		go commmitTrie()
-	} else {
-		defer s.StopPrefetcher()
-		commitFuncs = append(commitFuncs, commmitTrie)
-	}
+
+	defer s.StopPrefetcher()
+	commitFuncs = append(commitFuncs, commmitTrie)
 	commitRes := make(chan error, len(commitFuncs))
 	for _, f := range commitFuncs {
 		// commitFuncs[0] and commitFuncs[1] both read map `stateObjects`, but no conflicts
@@ -1743,11 +1582,7 @@ func (s *StateDB) Commit(block uint64, failPostCommitFunc func(), postCommitFunc
 	}
 
 	root := s.stateRoot
-	if s.pipeCommit {
-		root = s.expectedRoot
-	} else {
-		s.snap = nil
-	}
+	s.snap = nil
 	if root == (common.Hash{}) {
 		root = types.EmptyRootHash
 	}

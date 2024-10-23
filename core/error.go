@@ -39,9 +39,6 @@ var (
 
 	// ErrCurrentBlockNotFound is returned when current block not found.
 	ErrCurrentBlockNotFound = errors.New("current block not found")
-
-	// ErrKnownBadBlock is return when the block is a known bad block
-	ErrKnownBadBlock = errors.New("already known bad block")
 )
 
 // List of evm-call-message pre-checking errors. All state transition messages will
