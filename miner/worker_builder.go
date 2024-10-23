@@ -503,7 +503,8 @@ func (w *worker) simulateBundle(
 }
 
 func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
-	result := make([]types.GaslessTxSimResult, 0)
+	validResults := make([]types.GaslessTxSimResult, 0)
+	gasReachedResults := make([]types.GaslessTxSimResult, 0)
 
 	txIdx := 0
 	for _, tx := range bundle.Txs {
@@ -520,10 +521,14 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 			env.state.RevertToSnapshot(snap)
 			env.gasPool.SetGas(gp)
 			log.Error("fail to simulate gasless tx, skipped", "hash", tx.Hash(), "err", err)
+
+			if err == core.ErrGasLimitReached {
+				gasReachedResults = append(gasReachedResults, types.GaslessTxSimResult{Hash: tx.Hash()})
+			}
 		} else {
 			txIdx++
 
-			result = append(result, types.GaslessTxSimResult{
+			validResults = append(validResults, types.GaslessTxSimResult{
 				Hash:    tx.Hash(),
 				GasUsed: receipt.GasUsed,
 			})
@@ -531,8 +536,9 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 	}
 
 	return &types.SimulateGaslessBundleResp{
-		ValidResults:     result,
-		BasedBlockNumber: env.header.Number.Int64(),
+		ValidResults:      validResults,
+		GasReachedResults: gasReachedResults,
+		BasedBlockNumber:  env.header.Number.Int64(),
 	}, nil
 }
 

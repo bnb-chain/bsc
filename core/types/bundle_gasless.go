@@ -15,6 +15,7 @@ type GaslessTxSimResult struct {
 }
 
 type SimulateGaslessBundleResp struct {
-	ValidResults     []GaslessTxSimResult
-	BasedBlockNumber int64
+	ValidResults      []GaslessTxSimResult
+	GasReachedResults []GaslessTxSimResult
+	BasedBlockNumber  int64
 }
