@@ -26,6 +26,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/ethdb/bboltdb"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
@@ -680,9 +682,19 @@ func NewPebbleDBDatabase(file string, cache int, handles int, namespace string, 
 	return NewDatabase(db), nil
 }
 
+func NewBlotDBDataBase(file string, cache int, handles int, namespace string, readonly, ephemeral bool) (ethdb.Database, error) {
+	db, err := bboltdb.New(file, cache, handles, namespace, readonly, ephemeral)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("Using bblot as the backing database")
+	return NewDatabase(db), nil
+}
+
 const (
 	dbPebble  = "pebble"
 	dbLeveldb = "leveldb"
+	dbBbolt   = "bolt"
 )
 
 // PreexistingDatabase checks the given data directory whether a database is already
@@ -731,8 +743,11 @@ type OpenOptions struct {
 //	db is existent     |  from db         |  specified type (if compatible)
 func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	// Reject any unsupported database type
-	if len(o.Type) != 0 && o.Type != dbLeveldb && o.Type != dbPebble {
+	if len(o.Type) != 0 && o.Type != dbLeveldb && o.Type != dbPebble && o.Type != dbBbolt {
 		return nil, fmt.Errorf("unknown db.engine %v", o.Type)
+	}
+	if o.Type == dbBbolt {
+		return NewBlotDBDataBase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly, o.Ephemeral)
 	}
 	// Retrieve any pre-existing database's type and use that or the requested one
 	// as long as there's no conflict between the two types
