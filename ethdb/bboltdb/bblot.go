@@ -1,6 +1,8 @@
 package bboltdb
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,8 +22,9 @@ import (
 // Apart from basic data storage functionality it also supports batch writes and
 // iterating over the keyspace in binary-alphabetical order.
 type Database struct {
-	fn                  string        // Filename for reporting
-	db                  *bbolt.DB     // Underlying bbolt storage engine
+	fn                  string    // Filename for reporting
+	db                  *bbolt.DB // Underlying bbolt storage engine
+	bucket              *bbolt.Bucket
 	compTimeMeter       metrics.Meter // Meter for measuring the total time spent in database compaction
 	compReadMeter       metrics.Meter // Meter for measuring the data read during compaction
 	compWriteMeter      metrics.Meter // Meter for measuring the data written during compaction
@@ -99,17 +102,32 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to open bbolt database: %v", err)
 	}
-	return &Database{fn: file, db: db}, nil
+
+	var bucket *bbolt.Bucket
+	// Create the default bucket if it does not exist
+	err = db.Update(func(tx *bbolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
+		if err == nil {
+			bucket = b
+		}
+		return err
+	})
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to create default bucket: %v", err)
+	}
+
+	return &Database{fn: file, db: db, bucket: bucket}, nil
 }
 
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
 	return d.db.Update(func(tx *bbolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
+		b, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
 		if err != nil {
-			return fmt.Errorf("failed to create bucket: %v", err)
+			return err
 		}
-		return bucket.Put(key, value)
+		return b.Put(key, value)
 	})
 }
 
@@ -121,6 +139,7 @@ func (d *Database) Get(key []byte) ([]byte, error) {
 		if bucket == nil {
 			return fmt.Errorf("bucket does not exist")
 		}
+
 		result = bucket.Get(key)
 		return nil
 	}); err != nil {
@@ -198,10 +217,10 @@ func (d *Database) DeleteRange(start, end []byte) error {
 	if d.closed {
 		return fmt.Errorf("database is closed")
 	}
-	return d.db.Update(func(tx *bbolt.Tx) error {
+	return d.db.Batch(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
-			return fmt.Errorf("bucket does not exist")
+			return fmt.Errorf("bucket no exixt")
 		}
 		cursor := bucket.Cursor()
 		for k, _ := cursor.Seek(start); k != nil && string(k) < string(end); k, _ = cursor.Next() {
@@ -217,48 +236,70 @@ func (d *Database) Compact(start []byte, limit []byte) error {
 	return nil
 }
 
-// NewIterator returns a new iterator for traversing the keys in the database.
-func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
-	var tx *bbolt.Tx
-	var cursor *bbolt.Cursor
-	_ = d.db.View(func(t *bbolt.Tx) error {
-		tx = t
-		bucket := t.Bucket([]byte("ethdb"))
-		if bucket != nil {
-			cursor = bucket.Cursor()
-		}
-		return nil
-	})
-	return &BBoltIterator{tx: tx, cursor: cursor, prefix: prefix, start: start}
-}
-
-// NewSeekIterator creates a binary-alphabetical iterator.
-func (d *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
-	var tx *bbolt.Tx
-	var cursor *bbolt.Cursor
-	_ = d.db.View(func(t *bbolt.Tx) error {
-		tx = t
-		bucket := t.Bucket([]byte("ethdb"))
-		if bucket != nil {
-			cursor = bucket.Cursor()
-		}
-		return nil
-	})
-	return &BBoltIterator{tx: tx, cursor: cursor, prefix: prefix}
-}
-
 // BBoltIterator is an iterator for the bbolt database.
 type BBoltIterator struct {
-	tx     *bbolt.Tx
-	cursor *bbolt.Cursor
-	key    []byte
-	value  []byte
-	prefix []byte
-	start  []byte
-	moved  bool
+	tx       *bbolt.Tx
+	cursor   *bbolt.Cursor
+	key      []byte
+	value    []byte
+	prefix   []byte
+	start    []byte
+	firstKey bool
+	//firstKey []byte
+	//firstVal []byte
 }
 
-// Seek moves the iterator to the last key/value pair whose key is less than the given key.
+func (d *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
+	// Start a read-write transaction to create the bucket if it does not exist.
+	tx, _ := d.db.Begin(false) // Begin a read-write transaction
+	bucket := tx.Bucket([]byte("ethdb"))
+
+	if bucket == nil {
+		panic("bucket is nil in iterator")
+	}
+
+	cursor := bucket.Cursor()
+	cursor.Seek(prefix)
+
+	return &BBoltIterator{tx: tx, cursor: cursor, prefix: prefix, start: key}
+}
+
+// NewIterator returns a new iterator for traversing the keys in the database.
+func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
+	// Start a read transaction and create a cursor.
+	tx, _ := d.db.Begin(false) // Begin a read-only transaction
+	bucket := tx.Bucket([]byte("ethdb"))
+	var cursor *bbolt.Cursor
+	//fmt.Println("new iterator begin")
+	//var firstKey, firstVal []byte
+	if bucket != nil {
+		cursor = bucket.Cursor()
+		if len(prefix) == 0 && len(start) == 0 {
+			// No prefix or start, iterate from the beginning
+			//	firstKey, firstVal = cursor.First()
+			cursor.First()
+			//	fmt.Println("firtst key", string(k))
+			//fmt.Println("no start")
+		} else if len(start) > 0 {
+			// Seek to start key if provided
+			itKey, _ := cursor.Seek(start)
+			if itKey == nil || !bytes.HasPrefix(itKey, prefix) {
+				cursor.Seek(prefix)
+			}
+		} else {
+			// Only prefix provided, seek to prefix
+			cursor.Seek(prefix)
+		}
+	} else {
+		panic("bucket is nil")
+	}
+
+	//fmt.Println("new iterator finish")
+	return &BBoltIterator{tx: tx, cursor: cursor, prefix: prefix, start: start,
+		firstKey: true}
+}
+
+// Seek moves the iterator to the given key or the closest following key.
 // Returns true if the iterator is pointing at a valid entry and false otherwise.
 func (it *BBoltIterator) Seek(key []byte) bool {
 	/*
@@ -272,18 +313,24 @@ func (it *BBoltIterator) Seek(key []byte) bool {
 	if it.key != nil && string(it.key) >= string(key) {
 		it.key, it.value = it.cursor.Prev()
 	}
-	it.moved = true
+
 	return it.key != nil
 }
 
 // Next moves the iterator to the next key/value pair. It returns whether the iterator is exhausted.
 func (it *BBoltIterator) Next() bool {
-	if !it.moved {
+	if it.cursor == nil {
+		return false
+	}
+
+	if it.firstKey {
+		//	fmt.Println("first key")
 		it.key, it.value = it.cursor.First()
-		it.moved = true
+		it.firstKey = false
 	} else {
 		it.key, it.value = it.cursor.Next()
 	}
+	//fmt.Println("iterator finish")
 	return it.key != nil
 }
 
@@ -316,27 +363,44 @@ func (it *BBoltIterator) Release() {
 		it.tx = nil
 	}
 	it.cursor = nil
+	it.key = nil
+	it.value = nil
 }
 
 // Batch is a write-only batch that commits changes to its host database when Write is called.
 type batch struct {
-	db   *Database
-	ops  []func(*bbolt.Tx) error
-	size int
+	db         *Database
+	ops        []func(*bbolt.Tx) error
+	size       int
+	operations []operation
+}
+
+type operation struct {
+	key   []byte
+	value []byte
+	del   bool
 }
 
 // NewBatch creates a new batch for batching database operations.
 func (d *Database) NewBatch() ethdb.Batch {
-	return &batch{db: d, ops: make([]func(*bbolt.Tx) error, 0)}
+	return &batch{
+		db:         d,
+		ops:        make([]func(*bbolt.Tx) error, 0),
+		operations: make([]operation, 0, 100),
+	}
 }
 
 // Put inserts the given value into the batch for later committing.
 func (b *batch) Put(key, value []byte) error {
+	b.operations = append(b.operations, operation{
+		key:   key,
+		value: value,
+		del:   false,
+	})
+
 	b.ops = append(b.ops, func(tx *bbolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
-		if err != nil {
-			return fmt.Errorf("failed to create bucket: %v", err)
-		}
+		bucket := tx.Bucket([]byte("ethdb"))
+		//fmt.Println("put key:", string(key))
 		return bucket.Put(key, value)
 	})
 	b.size += len(key) + len(value)
@@ -345,6 +409,10 @@ func (b *batch) Put(key, value []byte) error {
 
 // Delete inserts a key removal into the batch for later committing.
 func (b *batch) Delete(key []byte) error {
+	b.operations = append(b.operations, operation{
+		key: key,
+		del: true,
+	})
 	b.ops = append(b.ops, func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
@@ -363,7 +431,7 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
-	return b.db.db.Update(func(tx *bbolt.Tx) error {
+	return b.db.db.Batch(func(tx *bbolt.Tx) error {
 		for _, op := range b.ops {
 			if err := op(tx); err != nil {
 				return err
@@ -384,16 +452,22 @@ func (b *batch) DeleteRange(start, end []byte) error {
 func (b *batch) Reset() {
 	b.ops = nil
 	b.size = 0
+	b.operations = b.operations[:0]
 }
 
 // Replay replays the batch contents.
 func (b *batch) Replay(w ethdb.KeyValueWriter) error {
-	for _, op := range b.ops {
-		err := b.db.db.View(func(tx *bbolt.Tx) error {
-			return op(tx)
-		})
-		if err != nil {
-			return err
+	for _, op := range b.operations {
+		if op.del {
+			if err := w.Delete(op.key); err != nil {
+				fmt.Println("replay delete err")
+				return err
+			}
+		} else {
+			if err := w.Put(op.key, op.value); err != nil {
+				fmt.Println("replay put err")
+				return err
+			}
 		}
 	}
 	return nil
@@ -404,55 +478,62 @@ func (d *Database) NewBatchWithSize(size int) ethdb.Batch {
 	return &batch{db: d, ops: make([]func(*bbolt.Tx) error, 0, size)}
 }
 
-// NewSnapshot creates a database snapshot based on the current state.
-func (d *Database) NewSnapshot() (ethdb.Snapshot, error) {
-	return &Snapshot{db: d.db}, nil
-}
-
-// Snapshot wraps a bbolt snapshot for implementing the Snapshot interface.
-type Snapshot struct {
+// snapshot wraps a bbolt transaction for implementing the Snapshot interface.
+type snapshot struct {
 	db *bbolt.DB
+	tx *bbolt.Tx
 }
 
-// Has retrieves if a key is present in the snapshot backing by a key-value data store.
-func (snap *Snapshot) Has(key []byte) (bool, error) {
-	var exists bool
-	err := snap.db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket([]byte("ethdb"))
-		if bucket != nil && bucket.Get(key) != nil {
-			exists = true
-		}
-		return nil
-	})
-	if err != nil {
-		return false, err
-	}
-	return exists, nil
-}
-
-// Get retrieves the given key if it's present in the snapshot backing by key-value data store.
-func (snap *Snapshot) Get(key []byte) ([]byte, error) {
-	var result []byte
-	err := snap.db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket([]byte("ethdb"))
-		if bucket == nil {
-			return fmt.Errorf("bucket does not exist")
-		}
-		result = bucket.Get(key)
-		return nil
-	})
+// NewSnapshot creates a database snapshot based on the current state.
+// The created snapshot will not be affected by all following mutations
+// happened on the database.
+func (d *Database) NewSnapshot() (ethdb.Snapshot, error) {
+	// Start a read-only transaction that will be used as the snapshot
+	tx, err := d.db.Begin(false)
 	if err != nil {
 		return nil, err
 	}
-	if result == nil {
-		return nil, fmt.Errorf("key not found")
+	return &snapshot{
+		db: d.db,
+		tx: tx,
+	}, nil
+}
+
+// Has retrieves if a key is present in the snapshot backing by a key-value
+// data store.
+func (snap *snapshot) Has(key []byte) (bool, error) {
+	bucket := snap.tx.Bucket([]byte("ethdb"))
+	if bucket == nil {
+		return false, nil
 	}
-	ret := make([]byte, len(result))
-	copy(ret, result)
+
+	value := bucket.Get(key)
+	return value != nil, nil
+}
+
+// Get retrieves the given key if it's present in the snapshot backing by
+// key-value data store.
+func (snap *snapshot) Get(key []byte) ([]byte, error) {
+	bucket := snap.tx.Bucket([]byte("ethdb"))
+	if bucket == nil {
+		return nil, errors.New("bucket not found")
+	}
+
+	value := bucket.Get(key)
+	if value == nil {
+		return nil, errors.New("not found")
+	}
+
+	ret := make([]byte, len(value))
+	copy(ret, value)
 	return ret, nil
 }
 
-// Release releases associated resources.
-func (snap *Snapshot) Release() {
-	snap.db.Close()
+// Release releases associated resources. Release should always succeed and can
+// be called multiple times without causing error.
+func (snap *snapshot) Release() {
+	if snap.tx != nil {
+		snap.tx.Rollback()
+		snap.tx = nil
+	}
 }
