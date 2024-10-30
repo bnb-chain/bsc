@@ -261,8 +261,15 @@ type BBoltIterator struct {
 // Seek moves the iterator to the last key/value pair whose key is less than the given key.
 // Returns true if the iterator is pointing at a valid entry and false otherwise.
 func (it *BBoltIterator) Seek(key []byte) bool {
-	it.key, it.value = it.cursor.Seek(append(it.prefix, key...))
-	if it.key != nil && string(it.key) >= string(append(it.prefix, key...)) {
+	/*
+		it.key, it.value = it.cursor.Seek(append(it.prefix, key...))
+		if it.key != nil && string(it.key) >= string(append(it.prefix, key...)) {
+			it.key, it.value = it.cursor.Prev()
+		}
+
+	*/
+	it.key, it.value = it.cursor.Seek(key)
+	if it.key != nil && string(it.key) >= string(key) {
 		it.key, it.value = it.cursor.Prev()
 	}
 	it.moved = true
