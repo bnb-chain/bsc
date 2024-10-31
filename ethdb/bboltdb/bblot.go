@@ -92,20 +92,23 @@ func (d *Database) onWriteStallEnd() {
 // New creates a new instance of Database.
 func New(file string, cache int, handles int, namespace string, readonly bool, ephemeral bool) (*Database, error) {
 	// Open the bbolt database file
-	options := &bbolt.Options{Timeout: 0}
+	options := &bbolt.Options{Timeout: 0,
+		ReadOnly: readonly,
+		NoSync:   ephemeral}
+
 	fullpath := filepath.Join(file, "bbolt.db")
 	dir := filepath.Dir(fullpath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %v", err)
 	}
-	db, err := bbolt.Open(fullpath, 0600, options)
+	innerDB, err := bbolt.Open(fullpath, 0600, options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open bbolt database: %v", err)
 	}
 
 	var bucket *bbolt.Bucket
 	// Create the default bucket if it does not exist
-	err = db.Update(func(tx *bbolt.Tx) error {
+	err = innerDB.Update(func(tx *bbolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
 		if err == nil {
 			bucket = b
@@ -113,11 +116,28 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 		return err
 	})
 	if err != nil {
-		db.Close()
+		innerDB.Close()
 		return nil, fmt.Errorf("failed to create default bucket: %v", err)
 	}
 
-	return &Database{fn: file, db: db, bucket: bucket}, nil
+	db := &Database{
+		fn:       file,
+		quitChan: make(chan chan error),
+		bucket:   bucket,
+	}
+
+	db.db = innerDB
+	db.compTimeMeter = metrics.NewRegisteredMeter(namespace+"compact/time", nil)
+	db.compReadMeter = metrics.NewRegisteredMeter(namespace+"compact/input", nil)
+	db.compWriteMeter = metrics.NewRegisteredMeter(namespace+"compact/output", nil)
+	db.diskSizeGauge = metrics.NewRegisteredGauge(namespace+"disk/size", nil)
+	db.diskReadMeter = metrics.NewRegisteredMeter(namespace+"disk/read", nil)
+	db.diskWriteMeter = metrics.NewRegisteredMeter(namespace+"disk/write", nil)
+
+	// Start up the metrics gathering and return
+	//go db.meter(metricsGatheringInterval, namespace)
+
+	return db, nil
 }
 
 // Put adds the given value under the specified key to the database.
@@ -240,13 +260,11 @@ func (d *Database) Compact(start []byte, limit []byte) error {
 type BBoltIterator struct {
 	tx       *bbolt.Tx
 	cursor   *bbolt.Cursor
-	key      []byte
-	value    []byte
 	prefix   []byte
 	start    []byte
+	key      []byte
+	value    []byte
 	firstKey bool
-	//firstKey []byte
-	//firstVal []byte
 }
 
 func (d *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
@@ -267,59 +285,73 @@ func (d *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
 // NewIterator returns a new iterator for traversing the keys in the database.
 func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	// Start a read transaction and create a cursor.
-	tx, _ := d.db.Begin(false) // Begin a read-only transaction
+	tx, err := d.db.Begin(false) // Begin a read-only transaction
+	if err != nil {
+		panic("err start tx" + err.Error())
+	}
+
 	bucket := tx.Bucket([]byte("ethdb"))
-	var cursor *bbolt.Cursor
-	//fmt.Println("new iterator begin")
 	if bucket == nil {
+		tx.Rollback()
 		panic("bucket is nil")
 	}
-	//var firstKey, firstVal []byte
-	if bucket != nil {
-		cursor = bucket.Cursor()
-		if len(prefix) == 0 && len(start) == 0 {
-			// No prefix or start, iterate from the beginning
-			//	firstKey, firstVal = cursor.First()
-			cursor.First()
-			//	fmt.Println("firtst key", string(k))
-			//fmt.Println("no start")
-		} else if len(start) > 0 {
-			// Seek to start key if provided
-			itKey, _ := cursor.Seek(start)
-			if itKey == nil || !bytes.HasPrefix(itKey, prefix) {
-				cursor.Seek(prefix)
-			}
-		} else {
-			// Only prefix provided, seek to prefix
-			cursor.Seek(prefix)
+
+	cursor := bucket.Cursor()
+	var k, v []byte
+
+	if len(start) > 0 {
+		k, v = cursor.Seek(start)
+		if k == nil || (len(prefix) > 0 && !bytes.HasPrefix(k, prefix)) {
+			k, v = cursor.Seek(prefix)
 		}
+	} else if len(prefix) > 0 {
+		k, v = cursor.Seek(prefix)
 	} else {
-		panic("bucket is nil")
+		k, v = cursor.First()
 	}
 
-	//fmt.Println("new iterator finish")
-	return &BBoltIterator{tx: tx, cursor: cursor, prefix: prefix, start: start,
-		firstKey: true}
+	return &BBoltIterator{
+		tx:       tx,
+		cursor:   cursor,
+		prefix:   prefix,
+		start:    start,
+		key:      k,
+		value:    v,
+		firstKey: true,
+	}
 }
 
-// Seek moves the iterator to the given key or the closest following key.
-// Returns true if the iterator is pointing at a valid entry and false otherwise.
-func (it *BBoltIterator) Seek(key []byte) bool {
-	/*
-		it.key, it.value = it.cursor.Seek(append(it.prefix, key...))
-		if it.key != nil && string(it.key) >= string(append(it.prefix, key...)) {
-			it.key, it.value = it.cursor.Prev()
-		}
-
-	*/
-	it.key, it.value = it.cursor.Seek(key)
-	if it.key != nil && string(it.key) >= string(key) {
-		it.key, it.value = it.cursor.Prev()
+// Next moves the iterator to the next key/value pair.
+func (it *BBoltIterator) Next() bool {
+	if it.cursor == nil {
+		return false
 	}
 
-	return it.key != nil
+	var k, v []byte
+	fmt.Println("call next1")
+	if it.firstKey {
+		fmt.Println("call next2")
+		k, v = it.key, it.value
+		it.firstKey = false
+	} else {
+		k, v = it.cursor.Next()
+		fmt.Println("call next3")
+	}
+
+	if k != nil && len(it.prefix) > 0 && !bytes.HasPrefix(k, it.prefix) {
+		k = nil
+	}
+
+	if k == nil {
+		return false
+	}
+
+	it.key = k
+	it.value = v
+	return true
 }
 
+/*
 // Next moves the iterator to the next key/value pair. It returns whether the iterator is exhausted.
 func (it *BBoltIterator) Next() bool {
 	if it.cursor == nil {
@@ -330,10 +362,32 @@ func (it *BBoltIterator) Next() bool {
 		//	fmt.Println("first key")
 		it.key, it.value = it.cursor.First()
 		it.firstKey = false
+		if it.key != nil && !bytes.HasPrefix(it.key, it.prefix) {
+			it.key = nil
+		}
 	} else {
+		fmt.Println("next begin")
 		it.key, it.value = it.cursor.Next()
+		fmt.Println("next is", string(it.key))
+		// Ensure prefix matches
+		if it.key != nil && !bytes.HasPrefix(it.key, it.prefix) {
+			it.key = nil
+		}
 	}
 	//fmt.Println("iterator finish")
+	return it.key != nil
+}
+
+
+*/
+// Seek moves the iterator to the given key or the closest following key.
+// Returns true if the iterator is pointing at a valid entry and false otherwise.
+func (it *BBoltIterator) Seek(key []byte) bool {
+	it.key, it.value = it.cursor.Seek(key)
+	if it.key != nil && string(it.key) >= string(key) {
+		it.key, it.value = it.cursor.Prev()
+	}
+
 	return it.key != nil
 }
 
