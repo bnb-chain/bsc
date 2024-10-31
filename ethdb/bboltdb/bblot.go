@@ -271,6 +271,9 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	bucket := tx.Bucket([]byte("ethdb"))
 	var cursor *bbolt.Cursor
 	//fmt.Println("new iterator begin")
+	if bucket == nil {
+		panic("bucket is nil")
+	}
 	//var firstKey, firstVal []byte
 	if bucket != nil {
 		cursor = bucket.Cursor()
