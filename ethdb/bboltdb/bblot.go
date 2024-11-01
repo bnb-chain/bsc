@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -143,11 +144,15 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
 	return d.db.Update(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
-		if err != nil {
-			return err
+		fmt.Println("start1")
+		bucket := tx.Bucket([]byte("ethdb"))
+		if bucket == nil {
+			return fmt.Errorf("bucket does not exist")
 		}
-		return b.Put(key, value)
+		fmt.Println("start2")
+		err := bucket.Put(key, value)
+		fmt.Println("start3")
+		return err
 	})
 }
 
@@ -575,9 +580,9 @@ func (d *Database) NewBatchWithSize(size int) ethdb.Batch {
 	return &batch{db: d, ops: make([]func(*bbolt.Tx) error, 0, size)}
 }
 
+/*
 // snapshot wraps a bbolt transaction for implementing the Snapshot interface.
 type snapshot struct {
-	db *bbolt.DB
 	tx *bbolt.Tx
 }
 
@@ -591,7 +596,6 @@ func (d *Database) NewSnapshot() (ethdb.Snapshot, error) {
 		return nil, err
 	}
 	return &snapshot{
-		db: d.db,
 		tx: tx,
 	}, nil
 }
@@ -632,5 +636,122 @@ func (snap *snapshot) Release() {
 	if snap.tx != nil {
 		snap.tx.Rollback()
 		snap.tx = nil
+	}
+}
+
+*/
+
+// snapshot wraps a database snapshot for implementing the Snapshot interface.
+type snapshot struct {
+	snapshotDB *bbolt.DB // 快照的db实例
+	path       string    // 快照文件路径
+}
+
+// NewSnapshot creates a database snapshot based on the current state.
+func (d *Database) NewSnapshot() (ethdb.Snapshot, error) {
+	// 生成快照文件路径
+	originalPath := d.db.Path()
+	dir := filepath.Dir(originalPath)
+	timestamp := time.Now().UnixNano()
+	snapPath := filepath.Join(dir, fmt.Sprintf("%v.%d.snapshot", filepath.Base(originalPath), timestamp))
+
+	// 获取一个只读事务确保复制时的数据一致性
+	tx, err := d.db.Begin(false)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// 复制数据库文件
+	if err := func() error {
+		sourceFile, err := os.Open(originalPath)
+		if err != nil {
+			return err
+		}
+		defer sourceFile.Close()
+
+		destFile, err := os.Create(snapPath)
+		if err != nil {
+			return err
+		}
+		defer destFile.Close()
+
+		_, err = io.Copy(destFile, sourceFile)
+		return err
+	}(); err != nil {
+		return nil, fmt.Errorf("failed to copy database file: %v", err)
+	}
+
+	// 打开快照数据库
+	snapDB, err := bbolt.Open(snapPath, 0600, &bbolt.Options{
+		ReadOnly: true,
+	})
+	if err != nil {
+		os.Remove(snapPath)
+		return nil, fmt.Errorf("failed to open snapshot database: %v", err)
+	}
+
+	return &snapshot{
+		snapshotDB: snapDB,
+		path:       snapPath,
+	}, nil
+}
+
+// Has retrieves if a key is present in the snapshot backing by a key-value
+// data store.
+func (snap *snapshot) Has(key []byte) (bool, error) {
+	if snap.snapshotDB == nil {
+		return false, errors.New("snapshot released")
+	}
+
+	var exists bool
+	err := snap.snapshotDB.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte("ethdb"))
+		if bucket == nil {
+			return nil
+		}
+		exists = bucket.Get(key) != nil
+		return nil
+	})
+	return exists, err
+}
+
+// Get retrieves the given key if it's present in the snapshot backing by
+// key-value data store.
+func (snap *snapshot) Get(key []byte) ([]byte, error) {
+	if snap.snapshotDB == nil {
+		return nil, errors.New("snapshot released")
+	}
+
+	var value []byte
+	err := snap.snapshotDB.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte("ethdb"))
+		if bucket == nil {
+			return errors.New("bucket not found")
+		}
+		v := bucket.Get(key)
+		if v == nil {
+			return errors.New("not found")
+		}
+		value = make([]byte, len(v))
+		copy(value, v)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+// Release releases associated resources. Release should always succeed and can
+// be called multiple times without causing error.
+func (snap *snapshot) Release() {
+	if snap.snapshotDB != nil {
+		snap.snapshotDB.Close()
+		snap.snapshotDB = nil
+	}
+	if snap.path != "" {
+		os.Remove(snap.path)
+		snap.path = ""
 	}
 }
