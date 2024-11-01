@@ -314,14 +314,35 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	cursor := bucket.Cursor()
 	var k, v []byte
 
-	if len(start) > 0 {
-		k, v = cursor.Seek(start)
-		if k == nil || (len(prefix) > 0 && !bytes.HasPrefix(k, prefix)) {
+	/*
+		if len(start) > 0 {
+			k, v = cursor.Seek(start)
+			if k == nil || (len(prefix) > 0 && !bytes.HasPrefix(k, prefix)) {
+				k, v = cursor.Seek(prefix)
+			}
+		} else if len(prefix) > 0 {
 			k, v = cursor.Seek(prefix)
+		} else {
+			k, v = cursor.First()
+		}
+
+	*/
+	if len(prefix) > 0 && len(start) > 0 {
+		k, v = cursor.Seek(append(prefix, start...))
+
+		if k != nil && !bytes.HasPrefix(k, prefix) {
+			k, v = nil, nil
 		}
 	} else if len(prefix) > 0 {
 		k, v = cursor.Seek(prefix)
+		if k != nil && !bytes.HasPrefix(k, prefix) {
+			k, v = nil, nil
+		}
+	} else if len(start) > 0 {
+		// 只有start时直接seek到start
+		k, v = cursor.Seek(start)
 	} else {
+		// 都为空时从头开始
 		k, v = cursor.First()
 	}
 
@@ -343,9 +364,8 @@ func (it *BBoltIterator) Next() bool {
 	}
 
 	var k, v []byte
-	fmt.Println("call next1")
+
 	if it.firstKey {
-		fmt.Println("call next2")
 		k, v = it.key, it.value
 		it.firstKey = false
 		if k == nil {
@@ -353,21 +373,21 @@ func (it *BBoltIterator) Next() bool {
 		}
 	} else {
 		k, v = it.cursor.Next()
-		fmt.Println("call next3")
 	}
 
+	//fmt.Println("key is ", string(k))
 	if k != nil && len(it.prefix) > 0 && !bytes.HasPrefix(k, it.prefix) {
 		k = nil
 	}
 
 	if k == nil {
-		fmt.Println("next return false")
+		//	fmt.Println("next return false")
 		return false
 	}
 
 	it.key = k
 	it.value = v
-	fmt.Println("next return true")
+	//	fmt.Println("next return true")
 	return true
 }
 
