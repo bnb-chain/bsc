@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -41,9 +40,9 @@ type Database struct {
 
 	levelsGauge []metrics.Gauge // Gauge for tracking the number of tables in levels
 
-	quitLock sync.RWMutex    // Mutex protecting the quit channel and the closed flag
-	quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
-	closed   bool            // keep track of whether we're Closed
+	//quitLock sync.RWMutex    // Mutex protecting the quit channel and the closed flag
+	//quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
+	closed bool // keep track of whether we're Closed
 
 	log log.Logger // Contextual logger tracking the database path
 
@@ -121,9 +120,10 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 	}
 
 	db := &Database{
-		fn:       file,
-		quitChan: make(chan chan error),
-		bucket:   bucket,
+		fn: file,
+		//	quitChan: make(chan chan error),
+		bucket: bucket,
+		db:     innerDB,
 	}
 
 	db.db = innerDB
@@ -184,22 +184,34 @@ func (d *Database) Delete(key []byte) error {
 
 // Close closes the database file.
 func (d *Database) Close() error {
-	d.quitLock.Lock()
-	defer d.quitLock.Unlock()
+	/*
+		d.quitLock.Lock()
+		defer d.quitLock.Unlock()
+	*/
 	if d.closed {
 		return nil
 	}
 
+	fmt.Println("close db")
+
 	d.closed = true
-	if d.quitChan != nil {
-		errc := make(chan error)
-		d.quitChan <- errc
-		if err := <-errc; err != nil {
-			d.log.Error("Metrics collection failed", "err", err)
+	/*
+		if d.quitChan != nil {
+			errc := make(chan error)
+			d.quitChan <- errc
+			if err := <-errc; err != nil {
+				d.log.Error("Metrics collection failed", "err", err)
+			}
+			d.quitChan = nil
 		}
-		d.quitChan = nil
+
+	*/
+	err := d.db.Close()
+	if err != nil {
+		fmt.Println("close db fail", err.Error())
 	}
-	return d.db.Close()
+	fmt.Println("close finish")
+	return nil
 }
 
 // Has checks if the given key exists in the database.
@@ -232,8 +244,10 @@ func (d *Database) Stat(property string) (string, error) {
 // DeleteRange deletes all of the keys (and values) in the range [start, end)
 // (inclusive on start, exclusive on end).
 func (d *Database) DeleteRange(start, end []byte) error {
-	d.quitLock.RLock()
-	defer d.quitLock.RUnlock()
+	/*
+		d.quitLock.RLock()
+		defer d.quitLock.RUnlock()
+	*/
 	if d.closed {
 		return fmt.Errorf("database is closed")
 	}
@@ -265,6 +279,7 @@ type BBoltIterator struct {
 	key      []byte
 	value    []byte
 	firstKey bool
+	emptyDB  bool
 }
 
 func (d *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
@@ -333,6 +348,9 @@ func (it *BBoltIterator) Next() bool {
 		fmt.Println("call next2")
 		k, v = it.key, it.value
 		it.firstKey = false
+		if k == nil {
+			fmt.Println("key is nil")
+		}
 	} else {
 		k, v = it.cursor.Next()
 		fmt.Println("call next3")
@@ -343,11 +361,13 @@ func (it *BBoltIterator) Next() bool {
 	}
 
 	if k == nil {
+		fmt.Println("next return false")
 		return false
 	}
 
 	it.key = k
 	it.value = v
+	fmt.Println("next return true")
 	return true
 }
 
