@@ -488,8 +488,8 @@ func (it *BBoltIterator) Release() {
 
 // Batch is a write-only batch that commits changes to its host database when Write is called.
 type batch struct {
-	db         *Database
-	ops        []func(*bbolt.Tx) error
+	db *Database
+	//	ops        []func(*bbolt.Tx) error
 	size       int
 	operations []operation
 }
@@ -503,9 +503,17 @@ type operation struct {
 // NewBatch creates a new batch for batching database operations.
 func (d *Database) NewBatch() ethdb.Batch {
 	return &batch{
+		db: d,
+		//	ops:        make([]func(*bbolt.Tx) error, 0),
+		operations: make([]operation, 0),
+	}
+}
+
+// NewBatchWithSize creates a write-only database batch with pre-allocated buffer.
+func (d *Database) NewBatchWithSize(size int) ethdb.Batch {
+	return &batch{
 		db:         d,
-		ops:        make([]func(*bbolt.Tx) error, 0),
-		operations: make([]operation, 0, 100),
+		operations: make([]operation, 0, size),
 	}
 }
 
@@ -517,11 +525,14 @@ func (b *batch) Put(key, value []byte) error {
 		del:   false,
 	})
 
-	b.ops = append(b.ops, func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket([]byte("ethdb"))
-		//fmt.Println("put key:", string(key))
-		return bucket.Put(key, value)
-	})
+	/*
+		b.ops = append(b.ops, func(tx *bbolt.Tx) error {
+			bucket := tx.Bucket([]byte("ethdb"))
+			//fmt.Println("put key:", string(key))
+			return bucket.Put(key, value)
+		})
+
+	*/
 	b.size += len(key) + len(value)
 	return nil
 }
@@ -532,13 +543,17 @@ func (b *batch) Delete(key []byte) error {
 		key: key,
 		del: true,
 	})
-	b.ops = append(b.ops, func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket([]byte("ethdb"))
-		if bucket == nil {
-			return fmt.Errorf("bucket does not exist")
-		}
-		return bucket.Delete(key)
-	})
+	/*
+		b.ops = append(b.ops, func(tx *bbolt.Tx) error {
+			bucket := tx.Bucket([]byte("ethdb"))
+			if bucket == nil {
+				return fmt.Errorf("bucket does not exist")
+			}
+			return bucket.Delete(key)
+		})
+
+
+	*/
 	b.size += len(key)
 	return nil
 }
@@ -551,14 +566,40 @@ func (b *batch) ValueSize() int {
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
 	log.Info("batch write begin")
+	/*
+		return b.db.db.Batch(func(tx *bbolt.Tx) error {
+			for _, op := range b.ops {
+				if err := op(tx); err != nil {
+					panic("batch write fail" + err.Error())
+					return err
+				}
+			}
+			log.Info("batch write finish")
+			return nil
+		})
+
+	*/
+	if len(b.operations) == 0 {
+		return nil
+	}
+
 	return b.db.db.Batch(func(tx *bbolt.Tx) error {
-		for _, op := range b.ops {
-			if err := op(tx); err != nil {
-				panic("batch write fail" + err.Error())
-				return err
+		bucket, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
+		if err != nil {
+			return err
+		}
+
+		for _, op := range b.operations {
+			if op.del {
+				if err := bucket.Delete(op.key); err != nil {
+					return err
+				}
+			} else {
+				if err := bucket.Put(op.key, op.value); err != nil {
+					return err
+				}
 			}
 		}
-		log.Info("batch write finish")
 		return nil
 	})
 }
@@ -572,7 +613,7 @@ func (b *batch) DeleteRange(start, end []byte) error {
 
 // Reset resets the batch for reuse.
 func (b *batch) Reset() {
-	b.ops = nil
+	//b.ops = nil
 	b.size = 0
 	b.operations = b.operations[:0]
 }
@@ -593,11 +634,6 @@ func (b *batch) Replay(w ethdb.KeyValueWriter) error {
 		}
 	}
 	return nil
-}
-
-// NewBatchWithSize creates a write-only database batch with pre-allocated buffer.
-func (d *Database) NewBatchWithSize(size int) ethdb.Batch {
-	return &batch{db: d, ops: make([]func(*bbolt.Tx) error, 0, size)}
 }
 
 /*
