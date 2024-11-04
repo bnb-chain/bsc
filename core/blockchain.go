@@ -1768,6 +1768,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
+		log.Info("block batch write middle1")
 		if bc.db.StateStore() != nil {
 			rawdb.WritePreimages(bc.db.StateStore(), state.Preimages())
 		} else {
@@ -1776,6 +1777,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
 		}
+		log.Info("block batch write middle2")
 		bc.hc.tdCache.Add(block.Hash(), externTd)
 		bc.blockCache.Add(block.Hash(), block)
 		bc.cacheReceipts(block.Hash(), receipts, block)
