@@ -579,6 +579,10 @@ func (b *batch) Write() error {
 		})
 
 	*/
+	start := time.Now()
+	defer func() {
+		log.Info("batch write cost time", "time", time.Since(start).Milliseconds())
+	}()
 	if len(b.operations) == 0 {
 		return nil
 	}
