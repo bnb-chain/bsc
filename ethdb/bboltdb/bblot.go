@@ -148,11 +148,16 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
 	return d.db.Update(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket([]byte("ethdb"))
+		log.Info("input key to ethdb:", "key", string(key))
+		bucket, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
 		if bucket == nil {
+			panic("put db bucket is nil")
 			return fmt.Errorf("bucket does not exist")
 		}
-		err := bucket.Put(key, value)
+		if err != nil {
+			panic("put db err2" + err.Error())
+		}
+		err = bucket.Put(key, value)
 		if err != nil {
 			panic("put db err" + err.Error())
 		}
