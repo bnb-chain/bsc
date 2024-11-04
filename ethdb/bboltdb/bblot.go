@@ -103,6 +103,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 	}
 	innerDB, err := bbolt.Open(fullpath, 0600, options)
 	if err != nil {
+		panic("open db err" + err.Error())
 		return nil, fmt.Errorf("failed to open bbolt database: %v", err)
 	}
 
@@ -128,13 +129,16 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 	}
 
 	db.db = innerDB
-	db.compTimeMeter = metrics.NewRegisteredMeter(namespace+"compact/time", nil)
-	db.compReadMeter = metrics.NewRegisteredMeter(namespace+"compact/input", nil)
-	db.compWriteMeter = metrics.NewRegisteredMeter(namespace+"compact/output", nil)
-	db.diskSizeGauge = metrics.NewRegisteredGauge(namespace+"disk/size", nil)
-	db.diskReadMeter = metrics.NewRegisteredMeter(namespace+"disk/read", nil)
-	db.diskWriteMeter = metrics.NewRegisteredMeter(namespace+"disk/write", nil)
+	/*
+		db.compTimeMeter = metrics.NewRegisteredMeter(namespace+"compact/time", nil)
+		db.compReadMeter = metrics.NewRegisteredMeter(namespace+"compact/input", nil)
+		db.compWriteMeter = metrics.NewRegisteredMeter(namespace+"compact/output", nil)
+		db.diskSizeGauge = metrics.NewRegisteredGauge(namespace+"disk/size", nil)
+		db.diskReadMeter = metrics.NewRegisteredMeter(namespace+"disk/read", nil)
+		db.diskWriteMeter = metrics.NewRegisteredMeter(namespace+"disk/write", nil)
 
+
+	*/
 	// Start up the metrics gathering and return
 	//go db.meter(metricsGatheringInterval, namespace)
 
@@ -144,14 +148,14 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
 	return d.db.Update(func(tx *bbolt.Tx) error {
-		fmt.Println("start1")
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
 			return fmt.Errorf("bucket does not exist")
 		}
-		fmt.Println("start2")
 		err := bucket.Put(key, value)
-		fmt.Println("start3")
+		if err != nil {
+			panic("put db err" + err.Error())
+		}
 		return err
 	})
 }
@@ -168,6 +172,9 @@ func (d *Database) Get(key []byte) ([]byte, error) {
 		result = bucket.Get(key)
 		return nil
 	}); err != nil {
+		if err != nil {
+			panic("get  db err" + err.Error())
+		}
 		return nil, err
 	}
 	if result == nil {
@@ -183,7 +190,11 @@ func (d *Database) Delete(key []byte) error {
 		if bucket == nil {
 			return fmt.Errorf("bucket does not exist")
 		}
-		return bucket.Delete(key)
+		err := bucket.Delete(key)
+		if err != nil {
+			panic("delete db err" + err.Error())
+		}
+		return err
 	})
 }
 
@@ -229,6 +240,7 @@ func (d *Database) Has(key []byte) (bool, error) {
 		}
 		return nil
 	}); err != nil {
+		panic("has db err" + err.Error())
 		return false, err
 	}
 	return exists, nil
