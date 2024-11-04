@@ -1739,8 +1739,9 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 // database.
 func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
 	log.Info("begin write block")
+	start := time.Now()
 	defer func() {
-		log.Info("begin finish block")
+		log.Info("begin finish block", "cost time", time.Since(start).Milliseconds(), "ms")
 	}()
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
