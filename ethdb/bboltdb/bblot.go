@@ -590,16 +590,20 @@ func (b *batch) Write() error {
 		}
 
 		for _, op := range b.operations {
+			log.Info("batch write op", "msg", string(op.key))
 			if op.del {
 				if err := bucket.Delete(op.key); err != nil {
+					log.Info("batch write err" + err.Error())
 					return err
 				}
 			} else {
 				if err := bucket.Put(op.key, op.value); err != nil {
+					log.Info("batch write err" + err.Error())
 					return err
 				}
 			}
 		}
+		log.Info("batch write finish")
 		return nil
 	})
 }
