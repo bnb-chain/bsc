@@ -1759,6 +1759,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
+		fmt.Println("block batch write start")
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
@@ -1781,6 +1782,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			bc.sidecarsCache.Add(block.Hash(), block.Sidecars())
 		}
+		fmt.Println("block batch write finish")
 		wg.Done()
 	}()
 
@@ -1794,6 +1796,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			return nil
 		}
 
+		fmt.Println("trie db write start")
 		triedb := bc.stateCache.TrieDB()
 		// If we're running an archive node, always flush
 		if bc.cacheConfig.TrieDirtyDisabled {
@@ -1862,14 +1865,18 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			}()
 		}
 		wg2.Wait()
+		fmt.Println("trie db write finish")
 		return nil
 	}
 	// Commit all cached state changes into underlying memory database.
+
+	fmt.Println("state commit start")
 	_, diffLayer, err := state.Commit(block.NumberU64(), tryCommitTrieDB)
 	if err != nil {
 		return err
 	}
 
+	fmt.Println("state commit finish")
 	// Ensure no empty block body
 	if diffLayer != nil && block.Header().TxHash != types.EmptyRootHash {
 		// Filling necessary field
@@ -1885,7 +1892,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 		go bc.cacheDiffLayer(diffLayer, diffLayerCh)
 	}
+
+	fmt.Println("state commit finish2")
 	wg.Wait()
+	fmt.Println("state commit finish3")
 	return nil
 }
 

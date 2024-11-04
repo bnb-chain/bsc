@@ -550,12 +550,15 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
+	fmt.Println("batch write begin")
 	return b.db.db.Batch(func(tx *bbolt.Tx) error {
 		for _, op := range b.ops {
 			if err := op(tx); err != nil {
+				panic("batch write fail" + err.Error())
 				return err
 			}
 		}
+		fmt.Println("batch write finish")
 		return nil
 	})
 }
