@@ -22,9 +22,9 @@ import (
 // Apart from basic data storage functionality it also supports batch writes and
 // iterating over the keyspace in binary-alphabetical order.
 type Database struct {
-	fn string    // Filename for reporting
-	db *bbolt.DB // Underlying bbolt storage engine
-	//	mu                  sync.Mutex    // Mutex to ensure atomic write operations
+	fn                  string        // Filename for reporting
+	db                  *bbolt.DB     // Underlying bbolt storage engine
+	mu                  sync.Mutex    // Mutex to ensure atomic write operations
 	compTimeMeter       metrics.Meter // Meter for measuring the total time spent in database compaction
 	compReadMeter       metrics.Meter // Meter for measuring the data read during compaction
 	compWriteMeter      metrics.Meter // Meter for measuring the data written during compaction
