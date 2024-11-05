@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -23,9 +22,9 @@ import (
 // Apart from basic data storage functionality it also supports batch writes and
 // iterating over the keyspace in binary-alphabetical order.
 type Database struct {
-	fn                  string        // Filename for reporting
-	db                  *bbolt.DB     // Underlying bbolt storage engine
-	mu                  sync.Mutex    // Mutex to ensure atomic write operations
+	fn string    // Filename for reporting
+	db *bbolt.DB // Underlying bbolt storage engine
+	//	mu                  sync.Mutex    // Mutex to ensure atomic write operations
 	compTimeMeter       metrics.Meter // Meter for measuring the total time spent in database compaction
 	compReadMeter       metrics.Meter // Meter for measuring the data read during compaction
 	compWriteMeter      metrics.Meter // Meter for measuring the data written during compaction
@@ -137,8 +136,6 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
-	d.mu.Lock()         // Lock to ensure exclusive access
-	defer d.mu.Unlock() // Unlock after the operation completes
 	log.Info("db write begin")
 	start := time.Now()
 	defer func() {
@@ -154,7 +151,7 @@ func (d *Database) Put(key []byte, value []byte) error {
 		if err != nil {
 			panic("put db err" + err.Error())
 		}
-		log.Info("db write finish")
+		log.Info("db write txn finish")
 		return err
 	})
 }
@@ -184,8 +181,10 @@ func (d *Database) Get(key []byte) ([]byte, error) {
 
 // Delete removes the specified key from the database.
 func (d *Database) Delete(key []byte) error {
-	d.mu.Lock()         // Lock to ensure exclusive access
-	defer d.mu.Unlock() // Unlock after the operation completes
+	start := time.Now()
+	defer func() {
+		log.Info("db delete cost time", "time", time.Since(start).Milliseconds())
+	}()
 	return d.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
@@ -195,26 +194,18 @@ func (d *Database) Delete(key []byte) error {
 		if err != nil {
 			panic("delete db err" + err.Error())
 		}
+		log.Info("db delete txn finish")
 		return err
 	})
 }
 
 // Close closes the database file.
 func (d *Database) Close() error {
-	d.mu.Lock()         // Lock to ensure exclusive access
-	defer d.mu.Unlock() // Unlock after the operation completes
-	if d.closed {
-		return nil
-	}
-
-	fmt.Println("close db")
-
 	d.closed = true
 	err := d.db.Close()
 	if err != nil {
-		fmt.Println("close db fail", err.Error())
+		log.Info("close db fail", "err", err.Error())
 	}
-	fmt.Println("close finish")
 	return nil
 }
 
@@ -252,9 +243,12 @@ func (d *Database) DeleteRange(start, end []byte) error {
 	if d.closed {
 		return fmt.Errorf("database is closed")
 	}
-	d.mu.Lock()         // Lock to ensure exclusive access
-	defer d.mu.Unlock() // Unlock after the operation completes
-	return d.db.Batch(func(tx *bbolt.Tx) error {
+	start1 := time.Now()
+	defer func() {
+		log.Info("db delete range cost time", "time", time.Since(start1).Milliseconds())
+	}()
+
+	return d.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
 			return fmt.Errorf("bucket no exixt")
@@ -265,6 +259,7 @@ func (d *Database) DeleteRange(start, end []byte) error {
 				return err
 			}
 		}
+		log.Info("db delete range txn finish")
 		return nil
 	})
 }
@@ -481,12 +476,10 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
-	b.db.mu.Lock()         // Lock to ensure exclusive access
-	defer b.db.mu.Unlock() // Unlock after the operation completes
 	log.Info("batch write begin")
 	start := time.Now()
 	defer func() {
-		log.Info("batch write cost time", "time", time.Since(start).Milliseconds())
+		log.Info("batch txn write cost time", "time", time.Since(start).Milliseconds())
 	}()
 	if len(b.operations) == 0 {
 		return nil
@@ -508,7 +501,7 @@ func (b *batch) Write() error {
 				}
 			}
 		}
-		log.Info("batch write finish")
+		log.Info("batch write txn finish")
 		return nil
 	})
 }
