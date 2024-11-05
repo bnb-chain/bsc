@@ -684,7 +684,6 @@ func (dl *diskLayer) generate(stats *generatorStats) {
 	// last run) but it's fine.
 	ctx := newGeneratorContext(stats, dl.diskdb, accMarker, dl.genMarker)
 	defer ctx.close()
-
 	if err := generateAccounts(ctx, dl, accMarker); err != nil {
 		// Extract the received interruption signal if exists
 		if aerr, ok := err.(*abortErr); ok {
@@ -718,9 +717,13 @@ func (dl *diskLayer) generate(stats *generatorStats) {
 	close(dl.genPending)
 	dl.lock.Unlock()
 
+	log.Info("Generated state snapshot finish0")
+	abort <- nil
 	// Someone will be looking for us, wait it out
 	abort = <-dl.genAbort
+	log.Info("Generated state snapshot finish1")
 	abort <- nil
+	log.Info("Generated state snapshot finish2")
 }
 
 // increaseKey increase the input key by one bit. Return nil if the entire

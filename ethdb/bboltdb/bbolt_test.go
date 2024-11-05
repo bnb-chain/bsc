@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/etcd-io/bbolt"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/dbtest"
+	"go.etcd.io/bbolt"
 )
 
 func TestBoltDB(t *testing.T) {

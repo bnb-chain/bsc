@@ -7,15 +7,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/etcd-io/bbolt"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"go.etcd.io/bbolt"
 )
 
 // Database is a persistent key-value store based on the bbolt storage engine.
@@ -24,7 +26,7 @@ import (
 type Database struct {
 	fn                  string        // Filename for reporting
 	db                  *bbolt.DB     // Underlying bbolt storage engine
-	mu                  sync.Mutex    // Mutex to ensure atomic write operations
+	mu                  sync.RWMutex  // Mutex to ensure atomic write operations
 	compTimeMeter       metrics.Meter // Meter for measuring the total time spent in database compaction
 	compReadMeter       metrics.Meter // Meter for measuring the data read during compaction
 	compWriteMeter      metrics.Meter // Meter for measuring the data written during compaction
@@ -57,6 +59,30 @@ type Database struct {
 	writeDelayTime      atomic.Int64  // Total time spent in write stalls
 
 	writeOptions *pebble.WriteOptions
+}
+
+// dumpGoroutines dumps the stack trace of all goroutines.
+// dumpGoroutines dumps the stack trace of all goroutines.
+func dumpGoroutines() {
+	fmt.Println("=== Starting goroutine stack dump ===")
+	buf := make([]byte, 1<<22) // 4 MB buffer to store stack traces
+	stackLen := runtime.Stack(buf, true)
+	fmt.Printf("=== Goroutine stack dump ===\n%s\n", buf[:stackLen])
+	fmt.Println("=== End of goroutine stack dump ===")
+
+	time.Sleep(30 * time.Second)
+	buf2 := make([]byte, 1<<22) // 4 MB buffer to store stack traces
+	stackLen = runtime.Stack(buf2, true)
+
+	fmt.Printf("=== Goroutine stack dump agagin===\n%s\n", buf2[:stackLen])
+	fmt.Println("=== End of goroutine stack dump ===")
+
+	time.Sleep(30 * time.Second)
+	buf3 := make([]byte, 1<<22) // 4 MB buffer to store stack traces
+	stackLen = runtime.Stack(buf2, true)
+
+	fmt.Printf("=== Goroutine stack dump agagin===\n%s\n", buf3[:stackLen])
+	fmt.Println("=== End of goroutine stack dump ===")
 }
 
 func (d *Database) onCompactionBegin(info pebble.CompactionInfo) {
@@ -92,20 +118,18 @@ func (d *Database) onWriteStallEnd() {
 // New creates a new instance of Database.
 func New(file string, cache int, handles int, namespace string, readonly bool, ephemeral bool) (*Database, error) {
 	// Open the bbolt database file
-	/*
-		options := &bbolt.Options{Timeout: 0,
-			ReadOnly: readonly,
-			NoSync:   ephemeral,
-		}
 
-	*/
+	options := &bbolt.Options{Timeout: 0,
+		ReadOnly: readonly,
+		NoSync:   ephemeral,
+	}
 
 	fullpath := filepath.Join(file, "bbolt.db")
 	dir := filepath.Dir(fullpath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %v", err)
 	}
-	innerDB, err := bbolt.Open(fullpath, 0600, bbolt.DefaultOptions)
+	innerDB, err := bbolt.Open(fullpath, 0600, options)
 	if err != nil {
 		panic("open db err" + err.Error())
 		return nil, fmt.Errorf("failed to open bbolt database: %v", err)
@@ -160,8 +184,9 @@ func (d *Database) Put(key []byte, value []byte) error {
 
 // Get retrieves the value corresponding to the specified key from the database.
 func (d *Database) Get(key []byte) ([]byte, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	//	d.mu.RLock()
+	//	defer d.mu.RUnlock()
+
 	var result []byte
 	if err := d.db.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
@@ -207,13 +232,15 @@ func (d *Database) Delete(key []byte) error {
 
 // Close closes the database file.
 func (d *Database) Close() error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	//	d.mu.Lock()
+	//	defer d.mu.Unlock()
+	fmt.Println("close db1")
+
 	if d.closed {
 		return nil
 	}
 
-	fmt.Println("close db")
+	fmt.Println("close db2")
 
 	d.closed = true
 	err := d.db.Close()
@@ -225,20 +252,22 @@ func (d *Database) Close() error {
 
 // Has checks if the given key exists in the database.
 func (d *Database) Has(key []byte) (bool, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	var exists bool
-	if err := d.db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket([]byte("ethdb"))
-		if bucket != nil && bucket.Get(key) != nil {
-			exists = true
+	//	d.mu.RLock()
+	//	defer d.mu.RUnlock()
+
+	var has bool
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("ethdb"))
+		if b == nil {
+			has = false
+		} else {
+			v := b.Get(key)
+			log.Info("has read key", "key", string(key))
+			has = v != nil
 		}
 		return nil
-	}); err != nil {
-		panic("has db err" + err.Error())
-		return false, err
-	}
-	return exists, nil
+	})
+	return has, err
 }
 
 // Stat returns a particular internal stat of the database.
@@ -321,6 +350,7 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 		panic("err start tx" + err.Error())
 	}
 
+	log.Info("iterator begin")
 	bucket := tx.Bucket([]byte("ethdb"))
 	if bucket == nil {
 		tx.Rollback()
@@ -424,8 +454,11 @@ func (it *BBoltIterator) Value() []byte {
 
 // Release releases associated resources.
 func (it *BBoltIterator) Release() {
+	log.Info("iterator release1")
 	if it.tx != nil {
 		_ = it.tx.Rollback()
+
+		log.Info("iterator release2")
 		it.tx = nil
 	}
 	it.cursor = nil
@@ -493,6 +526,7 @@ func (b *batch) ValueSize() int {
 }
 
 // Write flushes any accumulated data to disk.
+/*
 func (b *batch) Write() error {
 	b.db.mu.Lock()
 	defer b.db.mu.Unlock()
@@ -525,6 +559,53 @@ func (b *batch) Write() error {
 		log.Info("batch write txn finish")
 		return nil
 	})
+}
+
+*/
+func (b *batch) Write() error {
+	b.db.mu.Lock()
+	defer b.db.mu.Unlock()
+	log.Info("batch write begin")
+	start := time.Now()
+	defer func() {
+		log.Info("batch txn write cost time", "time", time.Since(start).Milliseconds())
+	}()
+
+	if len(b.operations) == 0 {
+		log.Info("batch write empty")
+		return nil
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- b.db.db.Update(func(tx *bbolt.Tx) error {
+			bucket := tx.Bucket([]byte("ethdb"))
+			for _, op := range b.operations {
+				log.Info("batch write op", "msg", string(op.key))
+				if op.del {
+					if err := bucket.Delete(op.key); err != nil {
+						log.Info("batch write err" + err.Error())
+						return err
+					}
+				} else {
+					if err := bucket.Put(op.key, op.value); err != nil {
+						log.Info("batch write err" + err.Error())
+						return err
+					}
+				}
+			}
+			log.Info("batch write txn finish")
+			return nil
+		})
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(5 * time.Second):
+		log.Warn("batch write txn timeout - printing goroutine stack")
+		dumpGoroutines() // 打印所有 goroutine 状态
+		return <-done    // 等待事务完成并返回结果
+	}
 }
 
 func (b *batch) DeleteRange(start, end []byte) error {
