@@ -134,6 +134,8 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
+	d.mu.Lock()         // Lock to ensure exclusive access
+	defer d.mu.Unlock() // Unlock after the operation completes
 	log.Info("db write begin")
 	start := time.Now()
 	defer func() {
@@ -179,6 +181,8 @@ func (d *Database) Get(key []byte) ([]byte, error) {
 
 // Delete removes the specified key from the database.
 func (d *Database) Delete(key []byte) error {
+	d.mu.Lock()         // Lock to ensure exclusive access
+	defer d.mu.Unlock() // Unlock after the operation completes
 	return d.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
@@ -194,6 +198,8 @@ func (d *Database) Delete(key []byte) error {
 
 // Close closes the database file.
 func (d *Database) Close() error {
+	d.mu.Lock()         // Lock to ensure exclusive access
+	defer d.mu.Unlock() // Unlock after the operation completes
 	if d.closed {
 		return nil
 	}
@@ -243,6 +249,8 @@ func (d *Database) DeleteRange(start, end []byte) error {
 	if d.closed {
 		return fmt.Errorf("database is closed")
 	}
+	d.mu.Lock()         // Lock to ensure exclusive access
+	defer d.mu.Unlock() // Unlock after the operation completes
 	return d.db.Batch(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
@@ -306,19 +314,6 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	cursor := bucket.Cursor()
 	var k, v []byte
 
-	/*
-		if len(start) > 0 {
-			k, v = cursor.Seek(start)
-			if k == nil || (len(prefix) > 0 && !bytes.HasPrefix(k, prefix)) {
-				k, v = cursor.Seek(prefix)
-			}
-		} else if len(prefix) > 0 {
-			k, v = cursor.Seek(prefix)
-		} else {
-			k, v = cursor.First()
-		}
-
-	*/
 	if len(prefix) > 0 && len(start) > 0 {
 		k, v = cursor.Seek(append(prefix, start...))
 
@@ -352,7 +347,7 @@ func (it *BBoltIterator) Next() bool {
 	if it.cursor == nil {
 		return false
 	}
-
+	log.Info("iterator next ")
 	var k, v []byte
 
 	if it.firstKey {
@@ -483,6 +478,8 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
+	b.db.mu.Lock()         // Lock to ensure exclusive access
+	defer b.db.mu.Unlock() // Unlock after the operation completes
 	log.Info("batch write begin")
 	start := time.Now()
 	defer func() {
