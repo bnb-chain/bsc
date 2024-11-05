@@ -109,13 +109,10 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 		return nil, fmt.Errorf("failed to open bbolt database: %v", err)
 	}
 
-	var bucket *bbolt.Bucket
 	// Create the default bucket if it does not exist
 	err = innerDB.Update(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
-		if err == nil {
-			bucket = b
-		} else {
+		_, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
+		if err != nil {
 			panic("fail to create bucket")
 		}
 		return err
@@ -137,6 +134,11 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
+	log.Info("db write begin")
+	start := time.Now()
+	defer func() {
+		log.Info("db write cost time", "time", time.Since(start).Milliseconds())
+	}()
 	return d.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
@@ -147,6 +149,7 @@ func (d *Database) Put(key []byte, value []byte) error {
 		if err != nil {
 			panic("put db err" + err.Error())
 		}
+		log.Info("db write finish")
 		return err
 	})
 }
