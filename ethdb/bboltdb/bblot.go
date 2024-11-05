@@ -482,6 +482,7 @@ func (b *batch) Write() error {
 		log.Info("batch txn write cost time", "time", time.Since(start).Milliseconds())
 	}()
 	if len(b.operations) == 0 {
+		log.Info("batch write empty")
 		return nil
 	}
 
