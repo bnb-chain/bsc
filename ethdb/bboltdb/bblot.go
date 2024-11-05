@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,9 +23,9 @@ import (
 // Apart from basic data storage functionality it also supports batch writes and
 // iterating over the keyspace in binary-alphabetical order.
 type Database struct {
-	fn                  string    // Filename for reporting
-	db                  *bbolt.DB // Underlying bbolt storage engine
-	bucket              *bbolt.Bucket
+	fn                  string        // Filename for reporting
+	db                  *bbolt.DB     // Underlying bbolt storage engine
+	mu                  sync.Mutex    // Mutex to ensure atomic write operations
 	compTimeMeter       metrics.Meter // Meter for measuring the total time spent in database compaction
 	compReadMeter       metrics.Meter // Meter for measuring the data read during compaction
 	compWriteMeter      metrics.Meter // Meter for measuring the data written during compaction
@@ -94,7 +95,8 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 	// Open the bbolt database file
 	options := &bbolt.Options{Timeout: 0,
 		ReadOnly: readonly,
-		NoSync:   ephemeral}
+		NoSync:   ephemeral,
+	}
 
 	fullpath := filepath.Join(file, "bbolt.db")
 	dir := filepath.Dir(fullpath)
@@ -113,6 +115,8 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 		b, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
 		if err == nil {
 			bucket = b
+		} else {
+			panic("fail to create bucket")
 		}
 		return err
 	})
@@ -123,24 +127,10 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 
 	db := &Database{
 		fn: file,
-		//	quitChan: make(chan chan error),
-		bucket: bucket,
-		db:     innerDB,
+		db: innerDB,
 	}
 
 	db.db = innerDB
-	/*
-		db.compTimeMeter = metrics.NewRegisteredMeter(namespace+"compact/time", nil)
-		db.compReadMeter = metrics.NewRegisteredMeter(namespace+"compact/input", nil)
-		db.compWriteMeter = metrics.NewRegisteredMeter(namespace+"compact/output", nil)
-		db.diskSizeGauge = metrics.NewRegisteredGauge(namespace+"disk/size", nil)
-		db.diskReadMeter = metrics.NewRegisteredMeter(namespace+"disk/read", nil)
-		db.diskWriteMeter = metrics.NewRegisteredMeter(namespace+"disk/write", nil)
-
-
-	*/
-	// Start up the metrics gathering and return
-	//go db.meter(metricsGatheringInterval, namespace)
 
 	return db, nil
 }
@@ -148,16 +138,12 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
 	return d.db.Update(func(tx *bbolt.Tx) error {
-		log.Info("input key to ethdb:", "key", string(key))
-		bucket, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
+		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
 			panic("put db bucket is nil")
 			return fmt.Errorf("bucket does not exist")
 		}
-		if err != nil {
-			panic("put db err2" + err.Error())
-		}
-		err = bucket.Put(key, value)
+		err := bucket.Put(key, value)
 		if err != nil {
 			panic("put db err" + err.Error())
 		}
@@ -205,10 +191,6 @@ func (d *Database) Delete(key []byte) error {
 
 // Close closes the database file.
 func (d *Database) Close() error {
-	/*
-		d.quitLock.Lock()
-		defer d.quitLock.Unlock()
-	*/
 	if d.closed {
 		return nil
 	}
@@ -216,17 +198,6 @@ func (d *Database) Close() error {
 	fmt.Println("close db")
 
 	d.closed = true
-	/*
-		if d.quitChan != nil {
-			errc := make(chan error)
-			d.quitChan <- errc
-			if err := <-errc; err != nil {
-				d.log.Error("Metrics collection failed", "err", err)
-			}
-			d.quitChan = nil
-		}
-
-	*/
 	err := d.db.Close()
 	if err != nil {
 		fmt.Println("close db fail", err.Error())
@@ -266,10 +237,6 @@ func (d *Database) Stat(property string) (string, error) {
 // DeleteRange deletes all of the keys (and values) in the range [start, end)
 // (inclusive on start, exclusive on end).
 func (d *Database) DeleteRange(start, end []byte) error {
-	/*
-		d.quitLock.RLock()
-		defer d.quitLock.RUnlock()
-	*/
 	if d.closed {
 		return fmt.Errorf("database is closed")
 	}
@@ -361,10 +328,8 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 			k, v = nil, nil
 		}
 	} else if len(start) > 0 {
-		// 只有start时直接seek到start
 		k, v = cursor.Seek(start)
 	} else {
-		// 都为空时从头开始
 		k, v = cursor.First()
 	}
 
@@ -397,51 +362,19 @@ func (it *BBoltIterator) Next() bool {
 		k, v = it.cursor.Next()
 	}
 
-	//fmt.Println("key is ", string(k))
 	if k != nil && len(it.prefix) > 0 && !bytes.HasPrefix(k, it.prefix) {
 		k = nil
 	}
 
 	if k == nil {
-		//	fmt.Println("next return false")
 		return false
 	}
 
 	it.key = k
 	it.value = v
-	//	fmt.Println("next return true")
 	return true
 }
 
-/*
-// Next moves the iterator to the next key/value pair. It returns whether the iterator is exhausted.
-func (it *BBoltIterator) Next() bool {
-	if it.cursor == nil {
-		return false
-	}
-
-	if it.firstKey {
-		//	fmt.Println("first key")
-		it.key, it.value = it.cursor.First()
-		it.firstKey = false
-		if it.key != nil && !bytes.HasPrefix(it.key, it.prefix) {
-			it.key = nil
-		}
-	} else {
-		fmt.Println("next begin")
-		it.key, it.value = it.cursor.Next()
-		fmt.Println("next is", string(it.key))
-		// Ensure prefix matches
-		if it.key != nil && !bytes.HasPrefix(it.key, it.prefix) {
-			it.key = nil
-		}
-	}
-	//fmt.Println("iterator finish")
-	return it.key != nil
-}
-
-
-*/
 // Seek moves the iterator to the given key or the closest following key.
 // Returns true if the iterator is pointing at a valid entry and false otherwise.
 func (it *BBoltIterator) Seek(key []byte) bool {
@@ -525,14 +458,6 @@ func (b *batch) Put(key, value []byte) error {
 		del:   false,
 	})
 
-	/*
-		b.ops = append(b.ops, func(tx *bbolt.Tx) error {
-			bucket := tx.Bucket([]byte("ethdb"))
-			//fmt.Println("put key:", string(key))
-			return bucket.Put(key, value)
-		})
-
-	*/
 	b.size += len(key) + len(value)
 	return nil
 }
@@ -543,17 +468,7 @@ func (b *batch) Delete(key []byte) error {
 		key: key,
 		del: true,
 	})
-	/*
-		b.ops = append(b.ops, func(tx *bbolt.Tx) error {
-			bucket := tx.Bucket([]byte("ethdb"))
-			if bucket == nil {
-				return fmt.Errorf("bucket does not exist")
-			}
-			return bucket.Delete(key)
-		})
 
-
-	*/
 	b.size += len(key)
 	return nil
 }
@@ -576,10 +491,6 @@ func (b *batch) Write() error {
 
 	return b.db.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
-		//	if err != nil {
-		//		return err
-		//	}
-
 		for _, op := range b.operations {
 			log.Info("batch write op", "msg", string(op.key))
 			if op.del {
@@ -694,19 +605,17 @@ func (snap *snapshot) Release() {
 
 // snapshot wraps a database snapshot for implementing the Snapshot interface.
 type snapshot struct {
-	snapshotDB *bbolt.DB // 快照的db实例
-	path       string    // 快照文件路径
+	snapshotDB *bbolt.DB // db snapshot
+	path       string    // file path
 }
 
 // NewSnapshot creates a database snapshot based on the current state.
 func (d *Database) NewSnapshot() (ethdb.Snapshot, error) {
-	// 生成快照文件路径
 	originalPath := d.db.Path()
 	dir := filepath.Dir(originalPath)
 	timestamp := time.Now().UnixNano()
 	snapPath := filepath.Join(dir, fmt.Sprintf("%v.%d.snapshot", filepath.Base(originalPath), timestamp))
 
-	// 获取一个只读事务确保复制时的数据一致性
 	tx, err := d.db.Begin(false)
 	if err != nil {
 		return nil, err
@@ -733,7 +642,6 @@ func (d *Database) NewSnapshot() (ethdb.Snapshot, error) {
 		return nil, fmt.Errorf("failed to copy database file: %v", err)
 	}
 
-	// 打开快照数据库
 	snapDB, err := bbolt.Open(snapPath, 0600, &bbolt.Options{
 		ReadOnly: true,
 	})
