@@ -566,19 +566,6 @@ func (b *batch) ValueSize() int {
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
 	log.Info("batch write begin")
-	/*
-		return b.db.db.Batch(func(tx *bbolt.Tx) error {
-			for _, op := range b.ops {
-				if err := op(tx); err != nil {
-					panic("batch write fail" + err.Error())
-					return err
-				}
-			}
-			log.Info("batch write finish")
-			return nil
-		})
-
-	*/
 	start := time.Now()
 	defer func() {
 		log.Info("batch write cost time", "time", time.Since(start).Milliseconds())
@@ -588,10 +575,10 @@ func (b *batch) Write() error {
 	}
 
 	return b.db.db.Update(func(tx *bbolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
-		if err != nil {
-			return err
-		}
+		bucket := tx.Bucket([]byte("ethdb"))
+		//	if err != nil {
+		//		return err
+		//	}
 
 		for _, op := range b.operations {
 			log.Info("batch write op", "msg", string(op.key))
