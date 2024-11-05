@@ -1,17 +1,12 @@
 import { ethers } from "ethers";
 import program from "commander";
 
-// Global Options:
 program.option("--rpc <rpc>", "Rpc");
-// GetTxCount Options:
 program.option("--startNum <startNum>", "start num")
 program.option("--endNum <endNum>", "end num")
 program.option("--miner <miner>", "miner", "")
-// GetVersion Options:
 program.option("--num <Num>", "validator num", 21)
-// GetTopAddr Options:
 program.option("--topNum <Num>", "top num of address to be displayed", 20)
-// GetSlashCount Options:
 program.option("--blockNum <Num>", "block num", 0)
 program.option("-h, --help", "")
 
@@ -31,10 +26,10 @@ function printUsage() {
     console.log("  --rpc       specify the url of RPC endpoint");
     console.log("  --startNum  the start block number");
     console.log("  --endNum    the end block number");
-    console.log("  --miner     the miner address, for command GetTxCount");
-    console.log("  --num       the number of blocks to be checked, for command GetVersion");
-    console.log("  --topNum    the topNum of blocks to be checked, for command GetVersion");
-    console.log("  --blockNum  the block number to be checked, for command GetSlashCount");
+    console.log("  --miner     the miner address");
+    console.log("  --num       the number of blocks to be checked");
+    console.log("  --topNum    the topNum of blocks to be checked");
+    console.log("  --blockNum  the block number to be checked");
     console.log("\nExample:");
     // mainnet https://bsc-mainnet.nodereal.io/v1/454e504917db4f82b756bd0cf6317dce
     console.log("  node getchainstatus.js GetTxCount --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005")
@@ -45,6 +40,7 @@ function printUsage() {
     console.log("  node getchainstatus.js GetBlobTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetFaucetStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
 }
+
 program.usage = printUsage;
 program.parse(process.argv);
 
@@ -61,16 +57,15 @@ const stakeHubAbi = [
     "function consensusToOperator(address consensusAddr) public view returns (address)"
 ]
 const addrValidatorSet = '0x0000000000000000000000000000000000001000';
-const validatorSet = new ethers.Contract(addrValidatorSet, validatorSetAbi, provider);
-
 const addrSlash = '0x0000000000000000000000000000000000001001';
-const slashIndicator = new ethers.Contract(addrSlash, slashAbi,  provider)
-
 const addrStakeHub = '0x0000000000000000000000000000000000002002';
+
+const validatorSet = new ethers.Contract(addrValidatorSet, validatorSetAbi, provider);
+const slashIndicator = new ethers.Contract(addrSlash, slashAbi,  provider)
 const stakeHub = new ethers.Contract(addrStakeHub, stakeHubAbi, provider)
 
 const validatorMap = new Map([
-    //BSC mainnet
+    // BSC mainnet
     ["0x37e9627A91DD13e453246856D58797Ad6583D762", "LegendII"],
     ["0xB4647b856CB9C3856d559C885Bed8B43e0846a47", "CertiK"],
     ["0x75B851a27D7101438F45fce31816501193239A83", "Figment"],
@@ -116,7 +111,7 @@ const validatorMap = new Map([
     ["0xd849d1dF66bFF1c2739B4399425755C2E0fAbbAb","Nexa"],
     ["0xA015d9e9206859c13201BB3D6B324d6634276534","Star"],
     ["0x5ADde0151BfAB27f329e5112c1AeDeed7f0D3692","Veri"],
-    //Chapel
+    // Chapel
     ["0x08265dA01E1A65d62b903c7B34c08cB389bF3D99","Ararat"],
     ["0x7f5f2cF1aec83bF0c74DF566a41aa7ed65EA84Ea","Kita"],
     ["0x53387F3321FD69d1E030BB921230dFb188826AFF","Fuji"],
