@@ -93,17 +93,20 @@ func (d *Database) onWriteStallEnd() {
 // New creates a new instance of Database.
 func New(file string, cache int, handles int, namespace string, readonly bool, ephemeral bool) (*Database, error) {
 	// Open the bbolt database file
-	options := &bbolt.Options{Timeout: 0,
-		ReadOnly: readonly,
-		NoSync:   ephemeral,
-	}
+	/*
+		options := &bbolt.Options{Timeout: 0,
+			ReadOnly: readonly,
+			NoSync:   ephemeral,
+		}
+
+	*/
 
 	fullpath := filepath.Join(file, "bbolt.db")
 	dir := filepath.Dir(fullpath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %v", err)
 	}
-	innerDB, err := bbolt.Open(fullpath, 0600, options)
+	innerDB, err := bbolt.Open(fullpath, 0600, bbolt.DefaultOptions)
 	if err != nil {
 		panic("open db err" + err.Error())
 		return nil, fmt.Errorf("failed to open bbolt database: %v", err)
