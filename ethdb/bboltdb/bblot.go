@@ -587,7 +587,7 @@ func (b *batch) Write() error {
 		return nil
 	}
 
-	return b.db.db.Batch(func(tx *bbolt.Tx) error {
+	return b.db.db.Update(func(tx *bbolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte("ethdb"))
 		if err != nil {
 			return err
