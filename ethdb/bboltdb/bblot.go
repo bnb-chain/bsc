@@ -136,6 +136,8 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	log.Info("db write begin")
 	start := time.Now()
 	defer func() {
@@ -158,13 +160,15 @@ func (d *Database) Put(key []byte, value []byte) error {
 
 // Get retrieves the value corresponding to the specified key from the database.
 func (d *Database) Get(key []byte) ([]byte, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	var result []byte
 	if err := d.db.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
 			return fmt.Errorf("bucket does not exist")
 		}
-
+		log.Info("read key", "key", string(key))
 		result = bucket.Get(key)
 		return nil
 	}); err != nil {
@@ -185,6 +189,8 @@ func (d *Database) Delete(key []byte) error {
 	defer func() {
 		log.Info("db delete cost time", "time", time.Since(start).Milliseconds())
 	}()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
@@ -201,6 +207,14 @@ func (d *Database) Delete(key []byte) error {
 
 // Close closes the database file.
 func (d *Database) Close() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		return nil
+	}
+
+	fmt.Println("close db")
+
 	d.closed = true
 	err := d.db.Close()
 	if err != nil {
@@ -211,6 +225,8 @@ func (d *Database) Close() error {
 
 // Has checks if the given key exists in the database.
 func (d *Database) Has(key []byte) (bool, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	var exists bool
 	if err := d.db.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
@@ -240,6 +256,8 @@ func (d *Database) Stat(property string) (string, error) {
 // DeleteRange deletes all of the keys (and values) in the range [start, end)
 // (inclusive on start, exclusive on end).
 func (d *Database) DeleteRange(start, end []byte) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.closed {
 		return fmt.Errorf("database is closed")
 	}
@@ -476,6 +494,8 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
+	b.db.mu.Lock()
+	defer b.db.mu.Unlock()
 	log.Info("batch write begin")
 	start := time.Now()
 	defer func() {
@@ -523,6 +543,8 @@ func (b *batch) Reset() {
 
 // Replay replays the batch contents.
 func (b *batch) Replay(w ethdb.KeyValueWriter) error {
+	b.db.mu.Lock()
+	defer b.db.mu.Unlock()
 	for _, op := range b.operations {
 		if op.del {
 			if err := w.Delete(op.key); err != nil {
