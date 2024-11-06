@@ -1,0 +1,5 @@
+{"ghcr.io/nikiforovall/devcontainer-features/dotnet-aspire:1": {}
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+  }ghcr.io/juan-ayala/devcontainer-features/aem-universal-editor-service:1"ghcr.io/juan-ayala/devcontainer-features/aem-universal-editor-service:1": {}ghcr.io/gmkonan/feature/airplane:1ghcr.io/paul-gilber/devcontainer-features/eksctl-homebrew:1"ghcr.io/gmkonan/feature/airplane:1": {}ghcr.io/nordcominc/devcontainer-features/android-sdk:1"ghcr.io/paul-gilber/devcontainer-features/eksctl-homebrew:1": {}"ghcr.io/nordcominc/devcontainer-features/android-sdk:1": {}ghcr.io/casl0/devcontainer-features/android-sdk:1
+}
