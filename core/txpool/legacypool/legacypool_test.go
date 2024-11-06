@@ -2289,6 +2289,109 @@ func TestTransferTransactions(t *testing.T) {
 	assert.Equal(t, 1, pool.statsOverflowPool(), "OverflowPool size unexpected")
 }
 
+func TestGappedTransactionsIssue(t *testing.T) {
+	t.Parallel()
+	// Step 1: Set up the transaction pools.
+	testTxPoolConfig.OverflowPoolSlots = 8
+	testTxPoolConfig.GlobalSlots = 6
+	testTxPoolConfig.GlobalQueue = 2
+	pool, _ := setupPoolWithConfig(eip1559Config)
+	defer pool.Close()
+
+	// Step 2: Create transactions with gapped nonces.
+	funderPrivateKeyHex := "59ba8068eb256d520179e903f43dacf6d8d57d72bd306e1bd603fdb8c8da10e8"
+	privateKey, err := crypto.HexToECDSA(funderPrivateKeyHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	funderPublicKey := privateKey.Public()
+	funderPublicKeyECDSA, _ := funderPublicKey.(*ecdsa.PublicKey)
+	addr := crypto.PubkeyToAddress(*funderPublicKeyECDSA)
+
+	resetState := func() {
+		statedb, _ := state.New(types.EmptyRootHash, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
+		statedb.AddBalance(addr, uint256.NewInt(100000000000000))
+
+		pool.chain = newTestBlockChain(pool.chainconfig, 1000000, statedb, new(event.Feed))
+		<-pool.requestReset(nil, nil)
+	}
+	resetState()
+
+	// Nonces: 5, 7, 9, 11, 14, 16 (gapped)
+	nonces := []uint64{5, 7, 9, 11, 14, 16}
+	txs := make([]*types.Transaction, len(nonces))
+	for i, nonce := range nonces {
+		signedTx := dynamicFeeTx(nonce, 100000, big.NewInt(3), big.NewInt(2), privateKey)
+		txs[i] = signedTx
+	}
+
+	// Step 3: Add transactions to the Overflow Pool.
+	for _, tx := range txs {
+		pool.localBufferPool.Add(tx)
+	}
+
+	if pool.localBufferPool.Len() != len(txs) {
+		t.Fatalf("Overflow Pool should have %d transactions, got %d", len(txs), pool.localBufferPool.Len())
+	}
+
+	// Step 4: Simulate the transfer from Overflow Pool to Main Pool.
+	// Since transferTransactions is called after new blocks or at intervals,
+	// we can call it directly for the test.
+	pool.transferTransactions() // 2 are transferred
+
+	// Step 5: Verify the Main Pool state.
+	pendingCount, queuedCount := pool.Stats()
+	assert.Equal(t, 0, pendingCount, "unexpected number of pending tx")
+	assert.Equal(t, 2, queuedCount, "unexpected number of pending tx")
+
+	// Verify that the Main Pool has the gapped transactions.
+	if pendingCount+queuedCount != (len(txs)+3)/4 {
+		t.Errorf("Main Pool should have %d transactions, got %d", (len(txs)+3)/4, pendingCount+queuedCount)
+	}
+
+	// Verify that the Main Pool is filled with unprocessable transactions.
+	for _, tx := range txs[:2] {
+		status := pool.Status(tx.Hash())
+		if status != txpool.TxStatusPending && status != txpool.TxStatusQueued {
+			t.Errorf("Transaction %s should be in pending or queued state, got %v", tx.Hash().Hex(), status)
+		}
+	}
+
+	// Transfer transactions again to fill the Main Pool.
+	pool.transferTransactions() // 2 more transferred
+
+	pendingCount, queuedCount = pool.Stats()
+	assert.Equal(t, 0, pendingCount, "unexpected number of pending tx")
+	assert.Equal(t, 4, queuedCount, "unexpected number of pending tx")
+
+	// 5.1 promotion?
+	<-pool.requestPromoteExecutables(newAccountSet(pool.signer, addr))
+
+	// No transaction is executable until now due to nonce gap. So none should be in pending
+	pendingCount, queuedCount = pool.Stats()
+	assert.Equal(t, 0, pendingCount, "unexpected number of pending tx")
+	assert.Equal(t, 6, queuedCount, "unexpected number of pending tx")
+
+	// Add missing transactions to fill the nonce gaps.
+	missingNonces := []uint64{0, 1, 2, 3, 4, 6, 8, 10}
+	for _, nonce := range missingNonces {
+		signedTx := dynamicFeeTx(nonce, 100000, big.NewInt(3), big.NewInt(2), privateKey)
+		// Add missing transactions as local to ensure they are accepted.
+		err = pool.Add([]*types.Transaction{signedTx}, true, true)[0]
+		if err != nil {
+			//continue
+			t.Errorf("Failed to add missing transaction: %v %v", err, nonce)
+		}
+	}
+	pendingCount, queuedCount = pool.Stats()
+	assert.Equal(t, 12, pendingCount, "unexpected number of pending tx")
+	assert.Equal(t, 2, queuedCount, "unexpected number of pending tx")
+	<-pool.requestPromoteExecutables(newAccountSet(pool.signer, addr))
+	pendingCount, queuedCount = pool.Stats()
+	assert.Equal(t, 12, pendingCount, "unexpected number of pending tx")
+	assert.Equal(t, 2, queuedCount, "unexpected number of pending tx")
+}
+
 // Tests that the pool rejects replacement dynamic fee transactions that don't
 // meet the minimum price bump required.
 func TestReplacementDynamicFee(t *testing.T) {

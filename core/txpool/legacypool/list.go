@@ -496,6 +496,40 @@ func (l *list) subTotalCost(txs []*types.Transaction) {
 	}
 }
 
+// GetByHash retrieves a transaction from the list by its hash.
+func (l *list) GetByHash(hash common.Hash) *types.Transaction {
+	l.txs.cacheMu.Lock()
+	defer l.txs.cacheMu.Unlock()
+	for _, tx := range l.txs.items {
+		if tx.Hash() == hash {
+			return tx
+		}
+	}
+	return nil
+}
+
+// RemoveByHash removes a transaction from the list by its hash.
+func (l *list) RemoveByHash(hash common.Hash) (*types.Transaction, bool) {
+	l.txs.cacheMu.Lock()
+	defer l.txs.cacheMu.Unlock()
+	for nonce, tx := range l.txs.items {
+		if tx.Hash() == hash {
+			// Remove the transaction
+			l.txs.Remove(nonce)
+			l.subTotalCost([]*types.Transaction{tx})
+			// In strict mode, filter out non-executable transactions
+			var invalids types.Transactions
+			if l.strict {
+				invalids = l.txs.filter(func(tx *types.Transaction) bool { return tx.Nonce() > nonce })
+				l.subTotalCost(invalids)
+				l.txs.reheap()
+			}
+			return tx, true
+		}
+	}
+	return nil, false
+}
+
 // priceHeap is a heap.Interface implementation over transactions for retrieving
 // price-sorted transactions to discard when the pool fills up. If baseFee is set
 // then the heap is sorted based on the effective tip based on the given base fee.
