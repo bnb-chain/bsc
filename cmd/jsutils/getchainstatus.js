@@ -22,6 +22,7 @@ function printUsage() {
     console.log("  GetPerformanceData: analyze the performance data of a block range");
     console.log("  GetBlobTxs: get BlobTxs of a block range");
     console.log("  GetFaucetStatus: get faucet status of BSC testnet");
+    console.log("  DumpKeyParameters: dump some key governance parameter");
     console.log("\nOptions:");
     console.log("  --rpc       specify the url of RPC endpoint");
     console.log("  --startNum  the start block number");
@@ -35,10 +36,11 @@ function printUsage() {
     console.log("  node getchainstatus.js GetTxCount --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005")
     console.log("  node getchainstatus.js GetVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21")
     console.log("  node getchainstatus.js GetTopAddr --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010 --topNum 10")
-    console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001")  // latest block if `--blockNum` is not specified
+    console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001")  // default: latest block
     console.log("  node getchainstatus.js GetPerformanceData --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetBlobTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetFaucetStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
+    console.log("  node getchainstatus.js DumpKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org") // default: latest block
 }
 
 program.usage = printUsage;
@@ -46,19 +48,39 @@ program.parse(process.argv);
 
 const provider = new ethers.JsonRpcProvider(program.rpc)
 
-const slashAbi = [
-    "function getSlashIndicator(address validatorAddr) external view returns (uint256, uint256)"
-]
-const validatorSetAbi = [
-    "function getLivingValidators() external view returns (address[], bytes[])"
-]
-const stakeHubAbi = [
-    "function getValidatorDescription(address validatorAddr) external view returns (tuple(string, string, string, string))",
-    "function consensusToOperator(address consensusAddr) public view returns (address)"
-]
 const addrValidatorSet = '0x0000000000000000000000000000000000001000';
 const addrSlash = '0x0000000000000000000000000000000000001001';
 const addrStakeHub = '0x0000000000000000000000000000000000002002';
+
+const validatorSetAbi = [
+    "function getLivingValidators() external view returns (address[], bytes[])",
+    "function numOfCabinets() external view returns (uint256)",
+    "function maxNumOfCandidates() external view returns (uint256)",
+    "function maxNumOfWorkingCandidates() external view returns (uint256)",
+    "function maxNumOfMaintaining() external view returns (uint256)",  // default 3
+    "function turnLength() external view returns (uint256)",
+    "function systemRewardAntiMEVRatio() external view returns (uint256)",
+    "function maintainSlashScale() external view returns (uint256)",   // default 2, valid: 1->9
+    "function burnRatio() external view returns (uint256)",            // default: 10%
+    "function systemRewardBaseRatio() external view returns (uint256)" // default: 1/16
+]
+const slashAbi = [
+    "function getSlashIndicator(address validatorAddr) external view returns (uint256, uint256)"
+]
+
+// https://github.com/bnb-chain/bsc-genesis-contract/blob/master/contracts/StakeHub.sol
+const stakeHubAbi = [
+    "function getValidatorElectionInfo(uint256 offset, uint256 limit) external view returns (address[], uint256[], bytes[], uint256)",
+    "function getValidatorDescription(address validatorAddr) external view returns (tuple(string, string, string, string))",
+    "function consensusToOperator(address consensusAddr) public view returns (address)",
+    "function minSelfDelegationBNB() public view returns (uint256)",  // default 2000, valid: 1000 -> 100,000
+    "function maxElectedValidators() public view returns (uint256)",  // valid: 1 -> 500
+    "function unbondPeriod() public view returns (uint256)",          // default 7days, valid: 3days ->30days
+    "function downtimeSlashAmount() public view returns (uint256)",   // default 10BNB, valid: 5 -> felonySlashAmount
+    "function felonySlashAmount() public view returns (uint256)",     // default 200BNB, valid: > max(100, downtimeSlashAmount)
+    "function downtimeJailTime() public view returns (uint256)",      // default 2days, 
+    "function felonyJailTime() public view returns (uint256)"         // default 30days, 
+]
 
 const validatorSet = new ethers.Contract(addrValidatorSet, validatorSetAbi, provider);
 const slashIndicator = new ethers.Contract(addrSlash, slashAbi,  provider)
@@ -120,8 +142,24 @@ const validatorMap = new Map([
     ["0x1a3d9D7A717D64e6088aC937d5aAcDD3E20ca963","Elbrus"],
     ["0x40D3256EB0BaBE89f0ea54EDAa398513136612f5","Bloxroute"],
     ["0xF9a1Db0d6f22Bd78ffAECCbc8F47c83Df9FBdbCf","Test"],
-    ["0xB4cd0dCF71381b452A92A359BbE7146e8825Ce46","BSCLista"]
+    ["0xB4cd0dCF71381b452A92A359BbE7146e8825Ce46","BSCLista"],
+    ["0xD7b26968D8AD24f433d422b18A11a6580654Af13","TNkgnL4"],
+    ["0xFDA4C7E5C6005511236E24f3d5eBFd65Ffa10AED","MyHave"],
+    ["0x73f86c0628e04A69dcb61944F0df5DE115bA3FD8","InfStones"],
+    ["0xcAc5E4158fAb2eB95aA5D9c8DdfC9DF7208fDc58","My5eVal"],
+    ["0x96f6a2A267C726973e40cCCBB956f1716Bac7dc0","ForDc0"],
+    ["0x15a13e315CbfB9398A26D77a299963BF034c28F8","Blxr"],
+    ["0x1d622CAcd06c0eafd0a8a4C66754C96Db50cE14C","Val9B"],
+    ["0xd6BD505f4CFc19203875A92B897B07DE13d118ce","Panipuri"],
+    ["0x9532223eAa6Eb6939A00C0A39A054d93b5cCf4Af","TrustT"],
+    ["0xB19b6057245002442123371494372719d2Beb83D","Vtwval"],
+    ["0x5530Bac059E50821E7146D951e56FC7500bda007","LedgrTrus"],
+    ["0xEe22F03961b407bCBae66499a029Be4cA0AF4ab4","AB4"],
+    ["0x1AE5f5C3Cb452E042b0B7b9DC60596C9CD84BaF6","Jake"],
+    ["0xfA4d592F9B152f7a10B5DE9bE24C27a74BCE431A","MyTWFMM"]
 ]);
+
+
 
 // 1.cmd: "GetTxCount", usage:
 // node getchainstatus.js GetTxCount --rpc https://bsc-testnet-dataseed.bnbchain.org \
@@ -223,6 +261,17 @@ async function getTopAddr()  {
 // node getchainstatus.js GetSlashCount \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //      --blockNum(optional): the block num which is based for the slash state, default: latest block
+async function getValidatorMoniker(consensusAddr, blockNum) {
+    if (validatorMap.has(consensusAddr)) {
+        return validatorMap.get(consensusAddr)
+    }
+    let opAddr = await stakeHub.consensusToOperator(consensusAddr, {blockTag:blockNum})
+    let desc = await stakeHub.getValidatorDescription(opAddr, {blockTag:blockNum})
+    let moniker = desc[0]
+    console.log(consensusAddr, moniker)
+    return moniker
+}
+
 async function getSlashCount()  {
         let blockNum = ethers.getNumber(program.blockNum)
         if (blockNum === 0) {
@@ -234,19 +283,11 @@ async function getSlashCount()  {
         let totalSlash = 0
         for (let i = 0; i < data[0].length; i++) {
             let addr = data[0][i];
-            var val
-            if (!validatorMap.has(addr)) {
-                let opAddr = await stakeHub.consensusToOperator(addr, {blockTag:blockNum})
-                let value = await stakeHub.getValidatorDescription(opAddr, {blockTag:blockNum})
-                val = value[0]
-                console.log(addr, val)
-            } else {
-                val = validatorMap.get(addr)
-            }
+            var moniker = await getValidatorMoniker(addr, blockNum)
             let info = await slashIndicator.getSlashIndicator(addr, {blockTag:blockNum})
             let count = ethers.toNumber(info[1])
             totalSlash += count
-            console.log("Slash:", count, addr, val)
+            console.log("Slash:", count, addr, moniker)
         }
         console.log("Total slash count", totalSlash)
 };
@@ -390,6 +431,51 @@ async function GetFaucetStatus()  {
     console.log("successful faucet request: ",numFaucetRequest);
 };
 
+
+// 8.cmd: "DumpKeyParameters", usage:
+// node getchainstatus.js DumpKeyParameters \
+//      --rpc https://bsc-testnet-dataseed.bnbchain.org \
+//      --blockNum(optional): the block num which is based for the slash state, default: latest block
+async function DumpKeyParameters()  {
+    let blockNum = ethers.getNumber(program.blockNum)
+    if (blockNum === 0) {
+       blockNum = await provider.getBlockNumber()
+    }
+    let block = await provider.getBlock(blockNum)
+    console.log("At block", blockNum, "time", block.date)
+
+    // part 1: validatorset
+    let numOfCabinets = await validatorSet.numOfCabinets({blockTag:blockNum})
+    if (numOfCabinets == 0) {        numOfCabinets = 21    }
+    // let maxNumOfCandidates = await validatorSet.maxNumOfCandidates({blockTag:blockNum})  // deprecated
+    // let turnLength = await validatorSet.turnLength({blockTag:blockNum})
+    let maxNumOfWorkingCandidates = await validatorSet.maxNumOfWorkingCandidates({blockTag:blockNum})
+    let maintainSlashScale = await validatorSet.maintainSlashScale({blockTag:blockNum})
+    console.log("numOfCabinets", Number(numOfCabinets), "maxNumOfWorkingCandidates", Number(maxNumOfWorkingCandidates),
+                "maintainSlashScale", maintainSlashScale)
+
+    // part 2: staking
+    // let minSelfDelegationBNB = await stakeHub.minSelfDelegationBNB({blockTag:blockNum})/BigInt(10**18)
+    let maxElectedValidators = await stakeHub.maxElectedValidators({blockTag:blockNum})
+    let validatorElectionInfo = await stakeHub.getValidatorElectionInfo(0,0,{blockTag:blockNum})
+    let consensusAddrs = validatorElectionInfo[0]
+    let votingPowers = validatorElectionInfo[1]
+    let voteAddrs = validatorElectionInfo[2]
+    let totalLength = validatorElectionInfo[3]
+    console.log("maxElectedValidators", Number(maxElectedValidators), "Registered", Number(totalLength))
+    let validatorTable = []
+    for (let i = 0; i < totalLength; i++) {
+        validatorTable.push({
+                addr: consensusAddrs[i],
+                votingPower: Number(votingPowers[i]/BigInt(10**18)),
+                voteAddr: voteAddrs[i],
+                moniker: await getValidatorMoniker(consensusAddrs[i], blockNum)
+            })
+    }
+    validatorTable.sort((a, b) => b.votingPower - a.votingPower);
+    console.table(validatorTable)
+};
+
 const main = async () => {
     if (process.argv.length <= 2) {
         console.error('invalid process.argv.length', process.argv.length);
@@ -415,6 +501,8 @@ const main = async () => {
         await GetBlobTxs()
     } else if (cmd === "GetFaucetStatus") {
         await GetFaucetStatus()
+    } else if (cmd === "DumpKeyParameters") {
+        await DumpKeyParameters()
     } else {
         console.log("unsupported cmd", cmd);
         printUsage()
