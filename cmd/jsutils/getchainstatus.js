@@ -15,14 +15,14 @@ function printUsage() {
     console.log("  node getchainstatus.js --help");
     console.log("  node getchainstatus.js [subcommand] [options]");
     console.log("\nSubcommands:");
-    console.log("  GetTxCount: find the block with max tx size of a range");
-    console.log("  GetVersion: dump validators' binary version, based on Header.Extra");
+    console.log("  GetMaxTxCountInBlockRange: find the block with max tx size of a range");
+    console.log("  GetBinaryVersion: dump validators' binary version, based on Header.Extra");
     console.log("  GetTopAddr: get hottest $topNum target address of a block range");
     console.log("  GetSlashCount: get slash state at a specific block height");
     console.log("  GetPerformanceData: analyze the performance data of a block range");
     console.log("  GetBlobTxs: get BlobTxs of a block range");
     console.log("  GetFaucetStatus: get faucet status of BSC testnet");
-    console.log("  DumpKeyParameters: dump some key governance parameter");
+    console.log("  GetKeyParameters: dump some key governance parameter");
     console.log("\nOptions:");
     console.log("  --rpc       specify the url of RPC endpoint");
     console.log("  --startNum  the start block number");
@@ -33,14 +33,14 @@ function printUsage() {
     console.log("  --blockNum  the block number to be checked");
     console.log("\nExample:");
     // mainnet https://bsc-mainnet.nodereal.io/v1/454e504917db4f82b756bd0cf6317dce
-    console.log("  node getchainstatus.js GetTxCount --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005")
-    console.log("  node getchainstatus.js GetVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21")
+    console.log("  node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005")
+    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21")
     console.log("  node getchainstatus.js GetTopAddr --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010 --topNum 10")
     console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001")  // default: latest block
     console.log("  node getchainstatus.js GetPerformanceData --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetBlobTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetFaucetStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
-    console.log("  node getchainstatus.js DumpKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org") // default: latest block
+    console.log("  node getchainstatus.js GetKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org") // default: latest block
 }
 
 program.usage = printUsage;
@@ -161,12 +161,12 @@ const validatorMap = new Map([
 
 
 
-// 1.cmd: "GetTxCount", usage:
-// node getchainstatus.js GetTxCount --rpc https://bsc-testnet-dataseed.bnbchain.org \
+// 1.cmd: "GetMaxTxCountInBlockRange", usage:
+// node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //      --startNum 40000001  --endNum 40000005 \
 //      --miner(optional): specified: find the max txCounter from the specified validator,
 //                         not specified: find the max txCounter from all validators
-async function getTxCount()  {
+async function getMaxTxCountInBlockRange()  {
     let txCount = 0;
     let num = 0;
     console.log("Find the max txs count between", program.startNum, "and", program.endNum);
@@ -188,8 +188,8 @@ async function getTxCount()  {
     console.log("BlockNum = ", num, "TxCount =", txCount);
 }
 
-// 2.cmd: "GetVersion", usage:
-// node getchainstatus.js GetVersion \
+// 2.cmd: "GetBinaryVersion", usage:
+// node getchainstatus.js GetBinaryVersion \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //       --num(optional): defualt 21, the number of blocks that will be checked
 async function getBinaryVersion()  {
@@ -292,11 +292,11 @@ async function getSlashCount()  {
         console.log("Total slash count", totalSlash)
 };
 
-// 5.cmd: "GetPerformanceData", usage:
-// node getchainstatus.js GetPerformanceData \
+// 5.cmd: "getPerformanceData", usage:
+// node getchainstatus.js getPerformanceData \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //      --startNum 40000001  --endNum 40000005
-async function GetPerformanceData()  {
+async function getPerformanceData()  {
     let txCountTotal = 0;
     let gasUsedTotal = 0;
     let inturnBlocks = 0;
@@ -364,7 +364,7 @@ async function GetPerformanceData()  {
 //      --startNum 40000001  --endNum 40000005
 // depends on ethjs v6.11.0+ for 4844, https://github.com/ethers-io/ethers.js/releases/tag/v6.11.0
 // BSC testnet enabled 4844 on block: 39539137
-async function GetBlobTxs()  {
+async function getBlobTxs()  {
     var startBlock = parseInt(program.startNum)
     var endBlock = parseInt(program.endNum)
     if (isNaN(endBlock) || isNaN(startBlock) || startBlock == 0) {
@@ -400,7 +400,7 @@ async function GetBlobTxs()  {
 // node getchainstatus.js GetFaucetStatus \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //      --startNum 40000001  --endNum 40000005
-async function GetFaucetStatus()  {
+async function getFaucetStatus()  {
     var startBlock = parseInt(program.startNum)
     var endBlock = parseInt(program.endNum)
     if (isNaN(endBlock) || isNaN(startBlock) || startBlock == 0) {
@@ -432,11 +432,11 @@ async function GetFaucetStatus()  {
 };
 
 
-// 8.cmd: "DumpKeyParameters", usage:
-// node getchainstatus.js DumpKeyParameters \
+// 8.cmd: "GetKeyParameters", usage:
+// node getchainstatus.js GetKeyParameters \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //      --blockNum(optional): the block num which is based for the slash state, default: latest block
-async function DumpKeyParameters()  {
+async function getKeyParameters()  {
     let blockNum = ethers.getNumber(program.blockNum)
     if (blockNum === 0) {
        blockNum = await provider.getBlockNumber()
@@ -487,22 +487,22 @@ const main = async () => {
         printUsage()
         return
     }
-    if (cmd === "GetTxCount") {
-        await getTxCount()
-    } else if (cmd === "GetVersion") {
+    if (cmd === "GetMaxTxCountInBlockRange") {
+        await getMaxTxCountInBlockRange()
+    } else if (cmd === "GetBinaryVersion") {
         await getBinaryVersion()
     } else if (cmd === "GetTopAddr") {
         await getTopAddr()
     } else if (cmd === "GetSlashCount") {
         await getSlashCount()
     } else if (cmd === "GetPerformanceData") {
-        await GetPerformanceData()
+        await getPerformanceData()
     } else if (cmd === "GetBlobTxs") {
-        await GetBlobTxs()
+        await getBlobTxs()
     } else if (cmd === "GetFaucetStatus") {
-        await GetFaucetStatus()
-    } else if (cmd === "DumpKeyParameters") {
-        await DumpKeyParameters()
+        await getFaucetStatus()
+    } else if (cmd === "GetKeyParameters") {
+        await getKeyParameters()
     } else {
         console.log("unsupported cmd", cmd);
         printUsage()
