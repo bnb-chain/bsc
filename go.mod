@@ -1,8 +1,8 @@
 module github.com/ethereum/go-ethereum
 
-go 1.22
+go 1.23
 
-toolchain go1.22.5
+toolchain go1.23.3
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.0
@@ -69,7 +69,7 @@ require (
 	github.com/rs/cors v1.8.2
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/status-im/keycard-go v0.2.0
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	github.com/supranational/blst v0.3.11
 	github.com/syndtr/goleveldb v1.0.1
 	github.com/tendermint/go-amino v0.14.1
@@ -80,12 +80,12 @@ require (
 	github.com/urfave/cli/v2 v2.26.0
 	github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4 v1.1.3
 	github.com/willf/bitset v1.1.3
-	go.etcd.io/bbolt v1.3.11
+	go.etcd.io/bbolt v1.4.0-beta.0.0.20241104163403-c2e4c77280fc
 	go.uber.org/automaxprocs v1.5.2
 	golang.org/x/crypto v0.21.0
 	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a
-	golang.org/x/sync v0.6.0
-	golang.org/x/sys v0.20.0
+	golang.org/x/sync v0.8.0
+	golang.org/x/sys v0.26.0
 	golang.org/x/text v0.14.0
 	golang.org/x/time v0.5.0
 	golang.org/x/tools v0.18.0
