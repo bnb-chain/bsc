@@ -718,7 +718,7 @@ func (dl *diskLayer) generate(stats *generatorStats) {
 	dl.lock.Unlock()
 
 	log.Info("Generated state snapshot finish0")
-	abort <- nil
+
 	// Someone will be looking for us, wait it out
 	abort = <-dl.genAbort
 	log.Info("Generated state snapshot finish1")
