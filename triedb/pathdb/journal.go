@@ -45,7 +45,13 @@ var (
 	errUnmatchedJournal  = errors.New("unmatched journal")
 )
 
-const journalVersion uint64 = 0
+// journalVersion ensures that an incompatible journal is detected and discarded.
+//
+// Changelog:
+//
+// - Version 0: initial version
+// - Version 1: storage.Incomplete field is removed
+const journalVersion uint64 = 1
 
 // journalNode represents a trie node persisted in the journal.
 type journalNode struct {
@@ -68,10 +74,9 @@ type journalAccounts struct {
 
 // journalStorage represents a list of storage slots belong to an account.
 type journalStorage struct {
-	Incomplete bool
-	Account    common.Address
-	Hashes     []common.Hash
-	Slots      [][]byte
+	Account common.Address
+	Hashes  []common.Hash
+	Slots   [][]byte
 }
 
 type JournalWriter interface {
@@ -245,9 +250,10 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 // loadLayers loads a pre-existing state layer backed by a key-value store.
 func (db *Database) loadLayers() layer {
 	// Retrieve the root node of persistent state.
-	_, root := rawdb.ReadAccountTrieNode(db.diskdb, nil)
-	root = types.TrieRootHash(root)
-
+	var root = types.EmptyRootHash
+	if blob := rawdb.ReadAccountTrieNode(db.diskdb, nil); len(blob) > 0 {
+		root = crypto.Keccak256Hash(blob)
+	}
 	// Load the layers by resolving the journal
 	head, err := db.loadJournal(root)
 	if err == nil {
@@ -382,11 +388,10 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, journalTypeForRea
 	}
 	// Read state changes from journal
 	var (
-		jaccounts  journalAccounts
-		jstorages  []journalStorage
-		accounts   = make(map[common.Address][]byte)
-		storages   = make(map[common.Address]map[common.Hash][]byte)
-		incomplete = make(map[common.Address]struct{})
+		jaccounts journalAccounts
+		jstorages []journalStorage
+		accounts  = make(map[common.Address][]byte)
+		storages  = make(map[common.Address]map[common.Hash][]byte)
 	)
 	if err := journalBuf.Decode(&jaccounts); err != nil {
 		return nil, fmt.Errorf("load diff accounts: %v", err)
@@ -406,9 +411,6 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, journalTypeForRea
 				set[h] = nil
 			}
 		}
-		if entry.Incomplete {
-			incomplete[entry.Account] = struct{}{}
-		}
 		storages[entry.Account] = set
 	}
 
@@ -426,7 +428,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, journalTypeForRea
 
 	log.Debug("Loaded diff layer journal", "root", root, "parent", parent.rootHash(), "id", parent.stateID()+1, "block", block)
 
-	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete)), r, journalTypeForReader)
+	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages)), r, journalTypeForReader)
 }
 
 // journal implements the layer interface, marshaling the un-flushed trie nodes
@@ -526,9 +528,6 @@ func (dl *diffLayer) journal(w io.Writer, journalType JournalType) error {
 	storage := make([]journalStorage, 0, len(dl.states.Storages))
 	for addr, slots := range dl.states.Storages {
 		entry := journalStorage{Account: addr}
-		if _, ok := dl.states.Incomplete[addr]; ok {
-			entry.Incomplete = true
-		}
 		for slotHash, slot := range slots {
 			entry.Hashes = append(entry.Hashes, slotHash)
 			entry.Slots = append(entry.Slots, slot)
@@ -594,14 +593,13 @@ func (db *Database) Journal(root common.Hash) error {
 	if err := rlp.Encode(journal, journalVersion); err != nil {
 		return err
 	}
-	// The stored state in disk might be empty, convert the
-	// root to emptyRoot in this case.
-	_, diskroot := rawdb.ReadAccountTrieNode(db.diskdb, nil)
-	diskroot = types.TrieRootHash(diskroot)
-
 	// Secondly write out the state root in disk, ensure all layers
 	// on top are continuous with disk.
-	if err := rlp.Encode(journal, diskroot); err != nil {
+	diskRoot := types.EmptyRootHash
+	if blob := rawdb.ReadAccountTrieNode(db.diskdb, nil); len(blob) > 0 {
+		diskRoot = crypto.Keccak256Hash(blob)
+	}
+	if err := rlp.Encode(journal, diskRoot); err != nil {
 		return err
 	}
 	// Finally write out the journal of each layer in reverse order.

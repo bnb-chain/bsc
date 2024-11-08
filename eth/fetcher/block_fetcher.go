@@ -18,7 +18,6 @@
 package fetcher
 
 import (
-	"errors"
 	"math/rand"
 	"time"
 
@@ -72,8 +71,6 @@ var (
 	blockInsertFailRecordslimit = 1000
 	blockInsertFailGauge        = metrics.NewRegisteredGauge("chain/insert/failed", nil)
 )
-
-var errTerminated = errors.New("terminated")
 
 // HeaderRetrievalFn is a callback type for retrieving a header from the local chain.
 type HeaderRetrievalFn func(common.Hash) *types.Header
@@ -582,7 +579,7 @@ func (f *BlockFetcher) loop() {
 					case res := <-resCh:
 						res.Done <- nil
 						// Ignoring withdrawals here, will set it to empty later if EmptyWithdrawalsHash in header.
-						txs, uncles, _, sidecars := res.Res.(*eth.BlockBodiesResponse).Unpack()
+						txs, uncles, _, sidecars, _ := res.Res.(*eth.BlockBodiesResponse).Unpack()
 						f.FilterBodies(peer, txs, uncles, sidecars, time.Now())
 
 					case <-timeout.C:
@@ -730,7 +727,7 @@ func (f *BlockFetcher) loop() {
 						// Mark the body matched, reassemble if still unknown
 						matched = true
 						if f.getBlock(hash) == nil {
-							block := types.NewBlockWithHeader(announce.header).WithBody(task.transactions[i], task.uncles[i])
+							block := types.NewBlockWithHeader(announce.header).WithBody(types.Body{Transactions: task.transactions[i], Uncles: task.uncles[i]})
 							block = block.WithSidecars(task.sidecars[i])
 							block.ReceivedAt = task.time
 							blocks = append(blocks, block)

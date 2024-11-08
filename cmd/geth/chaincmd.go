@@ -129,6 +129,8 @@ if one is set.  Otherwise it prints the genesis from the datadir.`,
 			utils.MetricsInfluxDBBucketFlag,
 			utils.MetricsInfluxDBOrganizationFlag,
 			utils.TxLookupLimitFlag,
+			utils.VMTraceFlag,
+			utils.VMTraceJsonConfigFlag,
 			utils.TransactionHistoryFlag,
 			utils.StateHistoryFlag,
 		}, utils.DatabaseFlags),
@@ -271,37 +273,36 @@ func initGenesis(ctx *cli.Context) error {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
 		overrides.OverrideVerkle = &v
 	}
-	for _, name := range []string{"chaindata", "lightchaindata"} {
-		chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false, false, false)
-		if err != nil {
-			utils.Fatalf("Failed to open database: %v", err)
-		}
-		defer chaindb.Close()
-
-		// if the trie data dir has been set, new trie db with a new state database
-		if ctx.IsSet(utils.MultiDataBaseFlag.Name) {
-			statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false, false, false, false)
-			if dbErr != nil {
-				utils.Fatalf("Failed to open separate trie database: %v", dbErr)
-			}
-			chaindb.SetStateStore(statediskdb)
-			blockdb, err := stack.OpenDatabaseWithFreezer(name+"/block", 0, 0, "", "", false, false, false, false)
-			if err != nil {
-				utils.Fatalf("Failed to open separate block database: %v", err)
-			}
-			chaindb.SetBlockStore(blockdb)
-			log.Warn("Multi-database is an experimental feature")
-		}
-
-		triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
-		defer triedb.Close()
-
-		_, hash, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
-		if err != nil {
-			utils.Fatalf("Failed to write genesis block: %v", err)
-		}
-		log.Info("Successfully wrote genesis state", "database", name, "hash", hash.String())
+	name := "chaindata"
+	chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false, false, false)
+	if err != nil {
+		utils.Fatalf("Failed to open database: %v", err)
 	}
+	defer chaindb.Close()
+
+	// if the trie data dir has been set, new trie db with a new state database
+	if ctx.IsSet(utils.MultiDataBaseFlag.Name) {
+		statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false, false, false, false)
+		if dbErr != nil {
+			utils.Fatalf("Failed to open separate trie database: %v", dbErr)
+		}
+		chaindb.SetStateStore(statediskdb)
+		blockdb, err := stack.OpenDatabaseWithFreezer(name+"/block", 0, 0, "", "", false, false, false, false)
+		if err != nil {
+			utils.Fatalf("Failed to open separate block database: %v", err)
+		}
+		chaindb.SetBlockStore(blockdb)
+		log.Warn("Multi-database is an experimental feature")
+	}
+
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
+	defer triedb.Close()
+
+	_, hash, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
+	if err != nil {
+		utils.Fatalf("Failed to write genesis block: %v", err)
+	}
+	log.Info("Successfully wrote genesis state", "database", name, "hash", hash.String())
 	return nil
 }
 
@@ -483,36 +484,29 @@ func dumpGenesis(ctx *cli.Context) error {
 
 	// dump whatever already exists in the datadir
 	stack, _ := makeConfigNode(ctx)
-	for _, name := range []string{"chaindata", "lightchaindata"} {
-		db, err := stack.OpenDatabase(name, 0, 0, "", true)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				return err
-			}
-			continue
-		}
-		// set the separate state & block database
-		if stack.CheckIfMultiDataBase() && err == nil {
-			stateDiskDb := utils.MakeStateDataBase(ctx, stack, true, false)
-			db.SetStateStore(stateDiskDb)
-			blockDb := utils.MakeBlockDatabase(ctx, stack, true, false)
-			db.SetBlockStore(blockDb)
-		}
-		genesis, err := core.ReadGenesis(db)
-		if err != nil {
-			utils.Fatalf("failed to read genesis: %s", err)
-		}
-		db.Close()
+	db, err := stack.OpenDatabase("chaindata", 0, 0, "", true)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
 
-		if err := json.NewEncoder(os.Stdout).Encode(*genesis); err != nil {
-			utils.Fatalf("could not encode stored genesis: %s", err)
-		}
-		return nil
+	// set the separate state & block database
+	if stack.CheckIfMultiDataBase() && err == nil {
+		stateDiskDb := utils.MakeStateDataBase(ctx, stack, true, false)
+		db.SetStateStore(stateDiskDb)
+		blockDb := utils.MakeBlockDatabase(ctx, stack, true, false)
+		db.SetBlockStore(blockDb)
 	}
-	if ctx.IsSet(utils.DataDirFlag.Name) {
-		utils.Fatalf("no existing datadir at %s", stack.Config().DataDir)
+
+	genesis, err = core.ReadGenesis(db)
+	if err != nil {
+		utils.Fatalf("failed to read genesis: %s", err)
 	}
-	utils.Fatalf("no network preset provided, and no genesis exists in the default datadir")
+
+	if err := json.NewEncoder(os.Stdout).Encode(*genesis); err != nil {
+		utils.Fatalf("could not encode stored genesis: %s", err)
+	}
+
 	return nil
 }
 
@@ -574,7 +568,7 @@ func importChain(ctx *cli.Context) error {
 	fmt.Printf("Import done in %v.\n\n", time.Since(start))
 
 	// Output pre-compaction stats mostly to see the import trashing
-	showLeveldbStats(db)
+	showDBStats(db)
 
 	// Print the memory statistics used by the importing
 	mem := new(runtime.MemStats)
@@ -597,7 +591,7 @@ func importChain(ctx *cli.Context) error {
 	}
 	fmt.Printf("Compaction done in %v.\n\n", time.Since(start))
 
-	showLeveldbStats(db)
+	showDBStats(db)
 	return importErr
 }
 
@@ -681,7 +675,7 @@ func importHistory(ctx *cli.Context) error {
 			return fmt.Errorf("no era1 files found in %s", dir)
 		}
 		if len(networks) > 1 {
-			return fmt.Errorf("multiple networks found, use a network flag to specify desired network")
+			return errors.New("multiple networks found, use a network flag to specify desired network")
 		}
 		network = networks[0]
 	}
@@ -751,21 +745,20 @@ func importPreimages(ctx *cli.Context) error {
 	return nil
 }
 
-func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, ethdb.Database, common.Hash, error) {
+func parseDumpConfig(ctx *cli.Context, stack *node.Node, db ethdb.Database) (*state.DumpConfig, common.Hash, error) {
+	var header *types.Header
 	if ctx.NArg() > 1 {
-		return nil, nil, common.Hash{}, fmt.Errorf("expected 1 argument (number or hash), got %d", ctx.NArg())
+		return nil, common.Hash{}, fmt.Errorf("expected 1 argument (number or hash), got %d", ctx.NArg())
 	}
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	scheme, err := rawdb.ParseStateScheme(ctx.String(utils.StateSchemeFlag.Name), db)
 	if err != nil {
-		return nil, nil, common.Hash{}, err
+		return nil, common.Hash{}, err
 	}
 	if scheme == rawdb.PathScheme {
 		fmt.Println("You are using geth dump in path mode, please use `geth dump-roothash` command to get all available blocks.")
 	}
 
-	header := &types.Header{}
 	if ctx.NArg() == 1 {
 		arg := ctx.Args().First()
 		if hashish(arg) {
@@ -773,17 +766,17 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 			if number := rawdb.ReadHeaderNumber(db, hash); number != nil {
 				header = rawdb.ReadHeader(db, hash, *number)
 			} else {
-				return nil, nil, common.Hash{}, fmt.Errorf("block %x not found", hash)
+				return nil, common.Hash{}, fmt.Errorf("block %x not found", hash)
 			}
 		} else {
 			number, err := strconv.ParseUint(arg, 10, 64)
 			if err != nil {
-				return nil, nil, common.Hash{}, err
+				return nil, common.Hash{}, err
 			}
 			if hash := rawdb.ReadCanonicalHash(db, number); hash != (common.Hash{}) {
 				header = rawdb.ReadHeader(db, hash, number)
 			} else {
-				return nil, nil, common.Hash{}, fmt.Errorf("header for block %d not found", number)
+				return nil, common.Hash{}, fmt.Errorf("header for block %d not found", number)
 			}
 		}
 	} else {
@@ -794,14 +787,14 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 			if stateRoot := triedb.Head(); stateRoot != (common.Hash{}) {
 				header.Root = stateRoot
 			} else {
-				return nil, nil, common.Hash{}, errors.New("no top state root hash in path db")
+				return nil, common.Hash{}, errors.New("no top state root hash in path db")
 			}
 		} else {
 			header = rawdb.ReadHeadHeader(db)
 		}
 	}
 	if header == nil {
-		return nil, nil, common.Hash{}, errors.New("no head block found")
+		return nil, common.Hash{}, errors.New("no head block found")
 	}
 
 	startArg := common.FromHex(ctx.String(utils.StartKeyFlag.Name))
@@ -814,10 +807,9 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 		start = crypto.Keccak256Hash(startArg)
 		log.Info("Converting start-address to hash", "address", common.BytesToAddress(startArg), "hash", start.Hex())
 	default:
-		return nil, nil, common.Hash{}, fmt.Errorf("invalid start argument: %x. 20 or 32 hex-encoded bytes required", startArg)
+		return nil, common.Hash{}, fmt.Errorf("invalid start argument: %x. 20 or 32 hex-encoded bytes required", startArg)
 	}
-
-	var conf = &state.DumpConfig{
+	conf := &state.DumpConfig{
 		SkipCode:          ctx.Bool(utils.ExcludeCodeFlag.Name),
 		SkipStorage:       ctx.Bool(utils.ExcludeStorageFlag.Name),
 		OnlyWithAddresses: !ctx.Bool(utils.IncludeIncompletesFlag.Name),
@@ -828,14 +820,17 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node) (*state.DumpConfig, eth
 	log.Info("State dump configured", "block", header.Number, "hash", header.Hash().Hex(),
 		"skipcode", conf.SkipCode, "skipstorage", conf.SkipStorage, "start", hexutil.Encode(conf.Start),
 		"limit", conf.Max, "state scheme", conf.StateScheme)
-	return conf, db, header.Root, nil
+	return conf, header.Root, nil
 }
 
 func dump(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	conf, db, root, err := parseDumpConfig(ctx, stack)
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	defer db.Close()
+
+	conf, root, err := parseDumpConfig(ctx, stack, db)
 	if err != nil {
 		return err
 	}
@@ -843,7 +838,7 @@ func dump(ctx *cli.Context) error {
 	triedb := utils.MakeTrieDatabase(ctx, stack, db, true, true, false) // always enable preimage lookup
 	defer triedb.Close()
 
-	state, err := state.New(root, state.NewDatabaseWithNodeDB(db, triedb), nil)
+	state, err := state.New(root, state.NewDatabase(triedb, nil))
 	if err != nil {
 		return err
 	}

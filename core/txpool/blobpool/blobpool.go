@@ -411,7 +411,7 @@ func (p *BlobPool) Init(gasTip uint64, head *types.Header, reserve txpool.Addres
 	if p.head.ExcessBlobGas != nil {
 		blobfee = uint256.MustFromBig(eip4844.CalcBlobFee(*p.head.ExcessBlobGas))
 	}
-	p.evict = newPriceHeap(basefee, blobfee, &p.index)
+	p.evict = newPriceHeap(basefee, blobfee, p.index)
 
 	// Pool initialized, attach the blob limbo to it to track blobs included
 	// recently but not yet finalized
@@ -482,7 +482,7 @@ func (p *BlobPool) parseTransaction(id uint64, size uint32, blob []byte) error {
 		log.Error("Rejecting duplicate blob pool entry", "id", id, "hash", tx.Hash())
 		return errors.New("duplicate blob entry")
 	}
-	sender, err := p.signer.Sender(tx)
+	sender, err := types.Sender(p.signer, tx)
 	if err != nil {
 		// This path is impossible unless the signature validity changes across
 		// restarts. For that ever improbable case, recover gracefully by ignoring
@@ -570,7 +570,7 @@ func (p *BlobPool) recheck(addr common.Address, inclusions map[common.Hash]uint6
 			ids    []uint64
 			nonces []uint64
 		)
-		for txs[0].nonce < next {
+		for len(txs) > 0 && txs[0].nonce < next {
 			ids = append(ids, txs[0].id)
 			nonces = append(nonces, txs[0].nonce)
 
@@ -896,7 +896,7 @@ func (p *BlobPool) reorg(oldHead, newHead *types.Header) (map[common.Address][]*
 	// and accumulate the transactors and transactions
 	for rem.NumberU64() > add.NumberU64() {
 		for _, tx := range rem.Transactions() {
-			from, _ := p.signer.Sender(tx)
+			from, _ := types.Sender(p.signer, tx)
 
 			discarded[from] = append(discarded[from], tx)
 			transactors[from] = struct{}{}
@@ -908,7 +908,7 @@ func (p *BlobPool) reorg(oldHead, newHead *types.Header) (map[common.Address][]*
 	}
 	for add.NumberU64() > rem.NumberU64() {
 		for _, tx := range add.Transactions() {
-			from, _ := p.signer.Sender(tx)
+			from, _ := types.Sender(p.signer, tx)
 
 			included[from] = append(included[from], tx)
 			inclusions[tx.Hash()] = add.NumberU64()
@@ -921,7 +921,7 @@ func (p *BlobPool) reorg(oldHead, newHead *types.Header) (map[common.Address][]*
 	}
 	for rem.Hash() != add.Hash() {
 		for _, tx := range rem.Transactions() {
-			from, _ := p.signer.Sender(tx)
+			from, _ := types.Sender(p.signer, tx)
 
 			discarded[from] = append(discarded[from], tx)
 			transactors[from] = struct{}{}
@@ -931,7 +931,7 @@ func (p *BlobPool) reorg(oldHead, newHead *types.Header) (map[common.Address][]*
 			return nil, nil
 		}
 		for _, tx := range add.Transactions() {
-			from, _ := p.signer.Sender(tx)
+			from, _ := types.Sender(p.signer, tx)
 
 			included[from] = append(included[from], tx)
 			inclusions[tx.Hash()] = add.NumberU64()
@@ -944,7 +944,7 @@ func (p *BlobPool) reorg(oldHead, newHead *types.Header) (map[common.Address][]*
 	}
 	// Generate the set of transactions per address to pull back into the pool,
 	// also updating the rest along the way
-	reinject := make(map[common.Address][]*types.Transaction)
+	reinject := make(map[common.Address][]*types.Transaction, len(transactors))
 	for addr := range transactors {
 		// Generate the set that was lost to reinject into the pool
 		lost := make([]*types.Transaction, 0, len(discarded[addr]))
@@ -1131,7 +1131,7 @@ func (p *BlobPool) validateTx(tx *types.Transaction) error {
 		ExistingCost: func(addr common.Address, nonce uint64) *big.Int {
 			next := p.state.GetNonce(addr)
 			if uint64(len(p.index[addr])) > nonce-next {
-				return p.index[addr][int(tx.Nonce()-next)].costCap.ToBig()
+				return p.index[addr][int(nonce-next)].costCap.ToBig()
 			}
 			return nil
 		},
@@ -1142,7 +1142,7 @@ func (p *BlobPool) validateTx(tx *types.Transaction) error {
 	// If the transaction replaces an existing one, ensure that price bumps are
 	// adhered to.
 	var (
-		from, _ = p.signer.Sender(tx) // already validated above
+		from, _ = types.Sender(p.signer, tx) // already validated above
 		next    = p.state.GetNonce(from)
 	)
 	if uint64(len(p.index[from])) > tx.Nonce()-next {
@@ -1170,11 +1170,11 @@ func (p *BlobPool) validateTx(tx *types.Transaction) error {
 		)
 		switch {
 		case tx.GasFeeCapIntCmp(minGasFeeCap.ToBig()) < 0:
-			return fmt.Errorf("%w: new tx gas fee cap %v <= %v queued + %d%% replacement penalty", txpool.ErrReplaceUnderpriced, tx.GasFeeCap(), prev.execFeeCap, p.config.PriceBump)
+			return fmt.Errorf("%w: new tx gas fee cap %v < %v queued + %d%% replacement penalty", txpool.ErrReplaceUnderpriced, tx.GasFeeCap(), prev.execFeeCap, p.config.PriceBump)
 		case tx.GasTipCapIntCmp(minGasTipCap.ToBig()) < 0:
-			return fmt.Errorf("%w: new tx gas tip cap %v <= %v queued + %d%% replacement penalty", txpool.ErrReplaceUnderpriced, tx.GasTipCap(), prev.execTipCap, p.config.PriceBump)
+			return fmt.Errorf("%w: new tx gas tip cap %v < %v queued + %d%% replacement penalty", txpool.ErrReplaceUnderpriced, tx.GasTipCap(), prev.execTipCap, p.config.PriceBump)
 		case tx.BlobGasFeeCapIntCmp(minBlobGasFeeCap.ToBig()) < 0:
-			return fmt.Errorf("%w: new tx blob gas fee cap %v <= %v queued + %d%% replacement penalty", txpool.ErrReplaceUnderpriced, tx.BlobGasFeeCap(), prev.blobFeeCap, p.config.PriceBump)
+			return fmt.Errorf("%w: new tx blob gas fee cap %v < %v queued + %d%% replacement penalty", txpool.ErrReplaceUnderpriced, tx.BlobGasFeeCap(), prev.blobFeeCap, p.config.PriceBump)
 		}
 	}
 	return nil
@@ -1241,7 +1241,7 @@ func (p *BlobPool) Add(txs []*types.Transaction, local bool, sync bool) []error 
 	return errs
 }
 
-// Add inserts a new blob transaction into the pool if it passes validation (both
+// add inserts a new blob transaction into the pool if it passes validation (both
 // consensus validity and pool restrictions).
 func (p *BlobPool) add(tx *types.Transaction) (err error) {
 	// The blob pool blocks on adding a transaction. This is because blob txs are
@@ -1619,6 +1619,7 @@ func (pool *BlobPool) SubscribeReannoTxsEvent(ch chan<- core.ReannoTxsEvent) eve
 // Nonce returns the next nonce of an account, with all transactions executable
 // by the pool already applied on top.
 func (p *BlobPool) Nonce(addr common.Address) uint64 {
+	// We need a write lock here, since state.GetNonce might write the cache.
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -1631,8 +1632,8 @@ func (p *BlobPool) Nonce(addr common.Address) uint64 {
 // Stats retrieves the current pool stats, namely the number of pending and the
 // number of queued (non-executable) transactions.
 func (p *BlobPool) Stats() (int, int) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+	p.lock.RLock()
+	defer p.lock.RUnlock()
 
 	var pending int
 	for _, txs := range p.index {

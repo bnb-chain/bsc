@@ -59,7 +59,7 @@ var (
 )
 
 type bidWorker interface {
-	prepareWork(params *generateParams) (*environment, error)
+	prepareWork(params *generateParams, witness bool) (*environment, error)
 	etherbase() common.Address
 	fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer, bidTxs mapset.Set[common.Hash]) (err error)
 }
@@ -566,7 +566,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if bidRuntime.env, err = b.bidWorker.prepareWork(&generateParams{
 		parentHash: bidRuntime.bid.ParentHash,
 		coinbase:   b.bidWorker.etherbase(),
-	}); err != nil {
+	}, false); err != nil {
 		return
 	}
 

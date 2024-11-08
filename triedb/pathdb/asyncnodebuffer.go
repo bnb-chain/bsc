@@ -1,6 +1,7 @@
 package pathdb
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sync"
@@ -48,18 +49,18 @@ func newAsyncNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.No
 }
 
 // node retrieves the trie node with given node info.
-func (a *asyncnodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {
+func (a *asyncnodebuffer) node(owner common.Hash, path []byte) (*trienode.Node, bool) {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 
-	node, err := a.current.node(owner, path, hash)
-	if err != nil {
-		return nil, err
+	node, found := a.current.node(owner, path)
+	if !found {
+		return nil, false
 	}
 	if node == nil {
-		return a.background.node(owner, path, hash)
+		return a.background.node(owner, path)
 	}
-	return node, nil
+	return node, true
 }
 
 // commit merges the dirty nodes into the nodebuffer. This operation won't take
@@ -215,21 +216,16 @@ func newNodeCache(limit, size uint64, nodes map[common.Hash]map[string]*trienode
 	}
 }
 
-func (nc *nodecache) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {
+func (nc *nodecache) node(owner common.Hash, path []byte) (*trienode.Node, bool) {
 	subset, ok := nc.nodes[owner]
 	if !ok {
-		return nil, nil
+		return nil, false
 	}
 	n, ok := subset[string(path)]
 	if !ok {
-		return nil, nil
+		return nil, false
 	}
-	if n.Hash != hash {
-		dirtyFalseMeter.Mark(1)
-		log.Error("Unexpected trie node in async node buffer", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
-		return nil, newUnexpectedNodeError("dirty", hash, n.Hash, owner, path, n.Blob)
-	}
-	return n, nil
+	return n, true
 }
 
 func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node) error {
@@ -416,14 +412,13 @@ func (nc *nodecache) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 				//
 				// In case of database rollback, don't panic if this "clean"
 				// node occurs which is not present in buffer.
-				var nhash common.Hash
+				var blob []byte
 				if owner == (common.Hash{}) {
-					_, nhash = rawdb.ReadAccountTrieNode(db, []byte(path))
+					blob = rawdb.ReadAccountTrieNode(db, []byte(path))
 				} else {
-					_, nhash = rawdb.ReadStorageTrieNode(db, owner, []byte(path))
+					blob = rawdb.ReadStorageTrieNode(db, owner, []byte(path))
 				}
-				// Ignore the clean node in the case described above.
-				if nhash == n.Hash {
+				if bytes.Equal(blob, n.Blob) {
 					continue
 				}
 				panic(fmt.Sprintf("non-existent node (%x %v) blob: %v", owner, path, crypto.Keccak256Hash(n.Blob).Hex()))

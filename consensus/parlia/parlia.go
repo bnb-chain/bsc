@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -1441,7 +1442,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		wg.Done()
 	}()
 	go func() {
-		blk = types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil))
+		blk = types.NewBlock(header, &types.Body{Transactions: txs}, receipts, trie.NewStackTrie(nil))
 		wg.Done()
 	}()
 	wg.Wait()
@@ -1814,8 +1815,8 @@ func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, he
 		rewards := new(uint256.Int)
 		rewards = rewards.Rsh(balance, systemRewardPercent)
 		if rewards.Cmp(common.U2560) > 0 {
-			state.SetBalance(consensus.SystemAddress, balance.Sub(balance, rewards))
-			state.AddBalance(coinbase, rewards)
+			state.SetBalance(consensus.SystemAddress, balance.Sub(balance, rewards), tracing.BalanceChangeUnspecified)
+			state.AddBalance(coinbase, rewards, tracing.BalanceChangeUnspecified)
 			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
 			if err != nil {
 				return err
@@ -1828,8 +1829,8 @@ func (p *Parlia) distributeIncoming(val common.Address, state *state.StateDB, he
 	if balance.Cmp(common.U2560) <= 0 {
 		return nil
 	}
-	state.SetBalance(consensus.SystemAddress, common.U2560)
-	state.AddBalance(coinbase, balance)
+	state.SetBalance(consensus.SystemAddress, common.U2560, tracing.BalanceChangeUnspecified)
+	state.AddBalance(coinbase, balance, tracing.BalanceChangeUnspecified)
 	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
 	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining)
 }
