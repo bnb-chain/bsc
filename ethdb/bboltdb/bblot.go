@@ -329,7 +329,8 @@ type BBoltIterator struct {
 	key      []byte
 	value    []byte
 	firstKey bool
-	emptyDB  bool
+	released bool
+	lock     sync.RWMutex
 }
 
 func (d *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
@@ -430,14 +431,13 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 
 // Next moves the iterator to the next key/value pair.
 func (it *BBoltIterator) Next() bool {
+	it.lock.Lock()
+	defer it.lock.Unlock()
 	//log.Info("iterator next ")
 	var k, v []byte
 	if it.firstKey {
 		k, v = it.key, it.value
 		it.firstKey = false
-		if k == nil {
-			fmt.Println("key is nil")
-		}
 	} else {
 		err := it.db.View(func(tx *bbolt.Tx) error {
 			cursor := tx.Bucket([]byte("ethdb")).Cursor()
@@ -490,23 +490,35 @@ func (it *BBoltIterator) Error() error {
 
 // Key returns the key of the current key/value pair, or nil if done.
 func (it *BBoltIterator) Key() []byte {
-	if it.key == nil {
+	it.lock.RLock()
+	defer it.lock.RUnlock()
+
+	if it.released || it.key == nil {
 		return nil
 	}
-	return it.key
+	result := make([]byte, len(it.key))
+	copy(result, it.key)
+	return result
 }
 
 // Value returns the value of the current key/value pair, or nil if done.
 func (it *BBoltIterator) Value() []byte {
-	if it.value == nil {
+	it.lock.RLock()
+	defer it.lock.RUnlock()
+
+	if it.released || it.value == nil {
 		return nil
 	}
-	return it.value
+	result := make([]byte, len(it.value))
+	copy(result, it.value)
+	return result
 }
 
 // Release releases associated resources.
 func (it *BBoltIterator) Release() {
 	fmt.Println("iterator release1")
+	it.lock.Lock()
+	defer it.lock.Unlock()
 	/*
 		if it.tx != nil {
 			_ = it.tx.Rollback()
@@ -517,6 +529,8 @@ func (it *BBoltIterator) Release() {
 		it.cursor = nil
 
 	*/
+
+	it.released = true
 	it.db = nil
 	it.key = nil
 	it.value = nil
