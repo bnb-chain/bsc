@@ -381,52 +381,52 @@ func (d *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
 
 // NewIterator returns a new iterator for traversing the keys in the database.
 func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
-	var k, v []byte
-	err := d.db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket([]byte("ethdb"))
-		if bucket == nil {
-			//		tx.Rollback()
-			panic("bucket is nil")
-		}
-		cursor := bucket.Cursor()
-
-		if len(prefix) > 0 && len(start) > 0 {
-			k, v = cursor.Seek(append(prefix, start...))
-
-			if k != nil && !bytes.HasPrefix(k, prefix) {
-				k, v = nil, nil
-			}
-
-		} else if len(prefix) > 0 {
-			k, v = cursor.Seek(prefix)
-
-			if k != nil && !bytes.HasPrefix(k, prefix) {
-				k, v = nil, nil
-			}
-
-		} else if len(start) > 0 {
-			k, v = cursor.Seek(start)
-		} else {
-			k, v = cursor.First()
-		}
-		return nil
-	})
-	if err != nil {
-		panic("err next:" + err.Error())
-	}
-
-	log.Info("iterator begin")
-
-	return &BBoltIterator{
-		//	tx:       tx,
-		//	cursor:   cursor,
+	it := &BBoltIterator{
 		db:       d.db,
 		prefix:   prefix,
-		start:    start,
-		key:      k,
-		value:    v,
 		firstKey: true,
 	}
+
+	err := it.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte("ethdb"))
+		if bucket == nil {
+			return fmt.Errorf("bucket not found")
+		}
+
+		cursor := bucket.Cursor()
+		var k, v []byte
+
+		switch {
+		case len(prefix) > 0 && len(start) > 0:
+			k, v = cursor.Seek(append(prefix, start...))
+			if k != nil && !bytes.HasPrefix(k, prefix) {
+				k, v = nil, nil
+			}
+		case len(prefix) > 0:
+			k, v = cursor.Seek(prefix)
+			if k != nil && !bytes.HasPrefix(k, prefix) {
+				k, v = nil, nil
+			}
+		case len(start) > 0:
+			k, v = cursor.Seek(start)
+		default:
+			k, v = cursor.First()
+		}
+
+		if k != nil {
+			it.key = k
+			it.value = v
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Error("Failed to initialize iterator", "err", err)
+		return &BBoltIterator{released: true}
+	}
+
+	return it
 }
 
 // Next moves the iterator to the next key/value pair.
