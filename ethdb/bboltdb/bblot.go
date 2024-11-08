@@ -247,6 +247,7 @@ func (d *Database) Close() error {
 	if err != nil {
 		log.Info("close db fail", "err", err.Error())
 	}
+	fmt.Println("finish close")
 	return nil
 }
 
@@ -317,8 +318,9 @@ func (d *Database) Compact(start []byte, limit []byte) error {
 
 // BBoltIterator is an iterator for the bbolt database.
 type BBoltIterator struct {
-	tx       *bbolt.Tx
-	cursor   *bbolt.Cursor
+	//	tx       *bbolt.Tx
+	//	cursor   *bbolt.Cursor
+	db       *bbolt.DB
 	prefix   []byte
 	start    []byte
 	key      []byte
@@ -339,47 +341,48 @@ func (d *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
 	cursor := bucket.Cursor()
 	cursor.Seek(prefix)
 
-	return &BBoltIterator{tx: tx, cursor: cursor, prefix: prefix, start: key}
+	return &BBoltIterator{prefix: prefix, start: key}
 }
 
 // NewIterator returns a new iterator for traversing the keys in the database.
 func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
-	// Start a read transaction and create a cursor.
-	tx, err := d.db.Begin(false) // Begin a read-only transaction
+	var k, v []byte
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte("ethdb"))
+		if bucket == nil {
+			tx.Rollback()
+			panic("bucket is nil")
+		}
+		cursor := bucket.Cursor()
+
+		if len(prefix) > 0 && len(start) > 0 {
+			k, v = cursor.Seek(append(prefix, start...))
+
+			if k != nil && !bytes.HasPrefix(k, prefix) {
+				k, v = nil, nil
+			}
+		} else if len(prefix) > 0 {
+			k, v = cursor.Seek(prefix)
+			if k != nil && !bytes.HasPrefix(k, prefix) {
+				k, v = nil, nil
+			}
+		} else if len(start) > 0 {
+			k, v = cursor.Seek(start)
+		} else {
+			k, v = cursor.First()
+		}
+		return nil
+	})
 	if err != nil {
-		panic("err start tx" + err.Error())
+		panic("err next:" + err.Error())
 	}
 
 	log.Info("iterator begin")
-	bucket := tx.Bucket([]byte("ethdb"))
-	if bucket == nil {
-		tx.Rollback()
-		panic("bucket is nil")
-	}
-
-	cursor := bucket.Cursor()
-	var k, v []byte
-
-	if len(prefix) > 0 && len(start) > 0 {
-		k, v = cursor.Seek(append(prefix, start...))
-
-		if k != nil && !bytes.HasPrefix(k, prefix) {
-			k, v = nil, nil
-		}
-	} else if len(prefix) > 0 {
-		k, v = cursor.Seek(prefix)
-		if k != nil && !bytes.HasPrefix(k, prefix) {
-			k, v = nil, nil
-		}
-	} else if len(start) > 0 {
-		k, v = cursor.Seek(start)
-	} else {
-		k, v = cursor.First()
-	}
 
 	return &BBoltIterator{
-		tx:       tx,
-		cursor:   cursor,
+		//	tx:       tx,
+		//	cursor:   cursor,
+		db:       d.db,
 		prefix:   prefix,
 		start:    start,
 		key:      k,
@@ -390,12 +393,8 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 
 // Next moves the iterator to the next key/value pair.
 func (it *BBoltIterator) Next() bool {
-	if it.cursor == nil {
-		return false
-	}
-	log.Info("iterator next ")
+	//log.Info("iterator next ")
 	var k, v []byte
-
 	if it.firstKey {
 		k, v = it.key, it.value
 		it.firstKey = false
@@ -403,7 +402,16 @@ func (it *BBoltIterator) Next() bool {
 			fmt.Println("key is nil")
 		}
 	} else {
-		k, v = it.cursor.Next()
+		err := it.db.View(func(tx *bbolt.Tx) error {
+			cursor := tx.Bucket([]byte("ethdb")).Cursor()
+
+			cursor.Seek(it.key)
+			k, v = cursor.Next()
+			return nil
+		})
+		if err != nil {
+			panic("err next:" + err.Error())
+		}
 	}
 
 	if k != nil && len(it.prefix) > 0 && !bytes.HasPrefix(k, it.prefix) {
@@ -422,9 +430,18 @@ func (it *BBoltIterator) Next() bool {
 // Seek moves the iterator to the given key or the closest following key.
 // Returns true if the iterator is pointing at a valid entry and false otherwise.
 func (it *BBoltIterator) Seek(key []byte) bool {
-	it.key, it.value = it.cursor.Seek(key)
-	if it.key != nil && string(it.key) >= string(key) {
-		it.key, it.value = it.cursor.Prev()
+	//	it.key, it.value = it.cursor.Seek(key
+	err := it.db.View(func(tx *bbolt.Tx) error {
+		cursor := tx.Bucket([]byte("ethdb")).Cursor()
+		it.key, it.value = cursor.Seek(key)
+
+		if it.key != nil && string(it.key) >= string(key) {
+			it.key, it.value = cursor.Prev()
+		}
+		return nil
+	})
+	if err != nil {
+		panic("err next:" + err.Error())
 	}
 
 	return it.key != nil
@@ -454,14 +471,18 @@ func (it *BBoltIterator) Value() []byte {
 
 // Release releases associated resources.
 func (it *BBoltIterator) Release() {
-	log.Info("iterator release1")
-	if it.tx != nil {
-		_ = it.tx.Rollback()
+	fmt.Println("iterator release1")
+	/*
+		if it.tx != nil {
+			_ = it.tx.Rollback()
 
-		log.Info("iterator release2")
-		it.tx = nil
-	}
-	it.cursor = nil
+			log.Info("iterator release2")
+			it.tx = nil
+		}
+		it.cursor = nil
+
+	*/
+	it.db = nil
 	it.key = nil
 	it.value = nil
 }
@@ -563,8 +584,8 @@ func (b *batch) Write() error {
 
 */
 func (b *batch) Write() error {
-	b.db.mu.Lock()
-	defer b.db.mu.Unlock()
+	//	b.db.mu.Lock()
+	//	defer b.db.mu.Unlock()
 	log.Info("batch write begin")
 	start := time.Now()
 	defer func() {
@@ -624,8 +645,8 @@ func (b *batch) Reset() {
 
 // Replay replays the batch contents.
 func (b *batch) Replay(w ethdb.KeyValueWriter) error {
-	b.db.mu.Lock()
-	defer b.db.mu.Unlock()
+	//	b.db.mu.Lock()
+	//	defer b.db.mu.Unlock()
 	for _, op := range b.operations {
 		if op.del {
 			if err := w.Delete(op.key); err != nil {

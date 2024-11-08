@@ -683,7 +683,8 @@ func (dl *diskLayer) generate(stats *generatorStats) {
 	// processed twice by the generator(they are already processed in the
 	// last run) but it's fine.
 	ctx := newGeneratorContext(stats, dl.diskdb, accMarker, dl.genMarker)
-	//defer ctx.close()
+	defer ctx.close()
+
 	if err := generateAccounts(ctx, dl, accMarker); err != nil {
 		// Extract the received interruption signal if exists
 		if aerr, ok := err.(*abortErr); ok {
@@ -719,7 +720,6 @@ func (dl *diskLayer) generate(stats *generatorStats) {
 
 	log.Info("Generated state snapshot finish0")
 
-	ctx.close()
 	// Someone will be looking for us, wait it out
 	abort = <-dl.genAbort
 	log.Info("Generated state snapshot finish1")
