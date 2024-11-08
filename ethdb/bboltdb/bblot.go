@@ -160,6 +160,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 
 // Put adds the given value under the specified key to the database.
 func (d *Database) Put(key []byte, value []byte) error {
+/*
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	log.Info("db write begin")
@@ -167,6 +168,8 @@ func (d *Database) Put(key []byte, value []byte) error {
 	defer func() {
 		log.Info("db write cost time", "time", time.Since(start).Milliseconds())
 	}()
+	
+ */
 	return d.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
@@ -214,8 +217,8 @@ func (d *Database) Delete(key []byte) error {
 	defer func() {
 		log.Info("db delete cost time", "time", time.Since(start).Milliseconds())
 	}()
-	d.mu.Lock()
-	defer d.mu.Unlock()
+//	d.mu.Lock()
+//	defer d.mu.Unlock()
 	return d.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
@@ -286,8 +289,8 @@ func (d *Database) Stat(property string) (string, error) {
 // DeleteRange deletes all of the keys (and values) in the range [start, end)
 // (inclusive on start, exclusive on end).
 func (d *Database) DeleteRange(start, end []byte) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+//	d.mu.Lock()
+//	defer d.mu.Unlock()
 	if d.closed {
 		return fmt.Errorf("database is closed")
 	}
@@ -596,36 +599,25 @@ func (b *batch) Write() error {
 		log.Info("batch write empty")
 		return nil
 	}
-	done := make(chan error, 1)
-	go func() {
-		done <- b.db.db.Update(func(tx *bbolt.Tx) error {
-			bucket := tx.Bucket([]byte("ethdb"))
-			for _, op := range b.operations {
-				log.Info("batch write op", "msg", string(op.key))
-				if op.del {
-					if err := bucket.Delete(op.key); err != nil {
-						log.Info("batch write err" + err.Error())
-						return err
-					}
-				} else {
-					if err := bucket.Put(op.key, op.value); err != nil {
-						log.Info("batch write err" + err.Error())
-						return err
-					}
+
+	return  b.db.db.Update(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte("ethdb"))
+		for _, op := range b.operations {
+			log.Info("batch write op", "msg", string(op.key))
+			if op.del {
+				if err := bucket.Delete(op.key); err != nil {
+					log.Info("batch write err" + err.Error())
+					return err
+				}
+			} else {
+				if err := bucket.Put(op.key, op.value); err != nil {
+					log.Info("batch write err" + err.Error())
+					return err
 				}
 			}
-			log.Info("batch write txn finish")
-			return nil
-		})
-	}()
-
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(5 * time.Second):
-		log.Warn("batch write txn timeout - printing goroutine stack")
-		dumpGoroutines() // 打印所有 goroutine 状态
-		return <-done    // 等待事务完成并返回结果
+		}
+		log.Info("batch write txn finish")
+		return nil
 	}
 }
 
