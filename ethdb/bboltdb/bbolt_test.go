@@ -2,6 +2,7 @@ package bboltdb
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -13,7 +14,8 @@ func TestBoltDB(t *testing.T) {
 	t.Run("DatabaseSuite", func(t *testing.T) {
 		dbtest.TestDatabaseSuite(t, func() ethdb.KeyValueStore {
 			options := &bbolt.Options{Timeout: 0}
-			db1, err := bbolt.Open("bbolt.db", 0600, options)
+
+			db1, err := bbolt.Open(string(generateKey(4))+"bbolt.db", 0600, options)
 			if err != nil {
 				t.Fatalf("failed to open bbolt database: %v", err)
 			}
@@ -33,4 +35,13 @@ func TestBoltDB(t *testing.T) {
 			}
 		})
 	})
+}
+
+func generateKey(size int64) []byte {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, size)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return b
 }

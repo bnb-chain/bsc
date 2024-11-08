@@ -334,17 +334,48 @@ type BBoltIterator struct {
 
 func (d *Database) NewSeekIterator(prefix, key []byte) ethdb.Iterator {
 	// Start a read-write transaction to create the bucket if it does not exist.
-	tx, _ := d.db.Begin(false) // Begin a read-write transaction
-	bucket := tx.Bucket([]byte("ethdb"))
+	var k, v []byte
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte("ethdb"))
+		if bucket == nil {
+			tx.Rollback()
+			panic("bucket is nil")
+		}
+		cursor := bucket.Cursor()
 
-	if bucket == nil {
-		panic("bucket is nil in iterator")
+		if len(prefix) > 0 && len(key) > 0 {
+			k, v = cursor.Seek(append(prefix, key...))
+
+			if k != nil && !bytes.HasPrefix(k, prefix) {
+				k, v = nil, nil
+			}
+		} else if len(prefix) > 0 {
+			k, v = cursor.Seek(prefix)
+			if k != nil && !bytes.HasPrefix(k, prefix) {
+				k, v = nil, nil
+			}
+		} else if len(key) > 0 {
+			k, v = cursor.Seek(key)
+		} else {
+			k, v = cursor.First()
+		}
+		return nil
+	})
+	if err != nil {
+		panic("err next:" + err.Error())
 	}
 
-	cursor := bucket.Cursor()
-	cursor.Seek(prefix)
+	log.Info("iterator begin")
 
-	return &BBoltIterator{prefix: prefix, start: key}
+	return &BBoltIterator{
+		//	tx:       tx,
+		//	cursor:   cursor,
+		db:       d.db,
+		prefix:   prefix,
+		key:      k,
+		value:    v,
+		firstKey: true,
+	}
 }
 
 // NewIterator returns a new iterator for traversing the keys in the database.
@@ -353,7 +384,7 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	err := d.db.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte("ethdb"))
 		if bucket == nil {
-			tx.Rollback()
+			//		tx.Rollback()
 			panic("bucket is nil")
 		}
 		cursor := bucket.Cursor()
@@ -364,11 +395,14 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 			if k != nil && !bytes.HasPrefix(k, prefix) {
 				k, v = nil, nil
 			}
+
 		} else if len(prefix) > 0 {
 			k, v = cursor.Seek(prefix)
+
 			if k != nil && !bytes.HasPrefix(k, prefix) {
 				k, v = nil, nil
 			}
+
 		} else if len(start) > 0 {
 			k, v = cursor.Seek(start)
 		} else {
@@ -407,18 +441,16 @@ func (it *BBoltIterator) Next() bool {
 	} else {
 		err := it.db.View(func(tx *bbolt.Tx) error {
 			cursor := tx.Bucket([]byte("ethdb")).Cursor()
-
 			cursor.Seek(it.key)
 			k, v = cursor.Next()
+			if k != nil && len(it.prefix) > 0 && !bytes.HasPrefix(k, it.prefix) {
+				k = nil
+			}
 			return nil
 		})
 		if err != nil {
 			panic("err next:" + err.Error())
 		}
-	}
-
-	if k != nil && len(it.prefix) > 0 && !bytes.HasPrefix(k, it.prefix) {
-		k = nil
 	}
 
 	if k == nil {
