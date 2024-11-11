@@ -355,13 +355,28 @@ func (miner *Miner) prepareSimulationEnv(parent *types.Header, state *state.Stat
 		timestamp = int64(parent.Time + 1)
 	}
 
+	// take the next in-turn validator as coinbase
+	coinbase, err := miner.worker.engine.NextInTurnValidator(miner.worker.chain, parent)
+	if err != nil {
+		log.Error("Failed to get next in-turn validator", "err", err)
+		return nil, err
+	}
+
+	// set validator to the consensus engine
+	if posa, ok := miner.worker.engine.(consensus.PoSA); ok {
+		posa.SetValidator(coinbase)
+	} else {
+		log.Error("Consensus engine does not support validator setting")
+		return nil, err
+	}
+
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
 		GasLimit:   core.CalcGasLimitForBuilder(parent.GasLimit, miner.worker.config.GasCeil),
 		Extra:      miner.worker.extra,
 		Time:       uint64(timestamp),
-		Coinbase:   miner.worker.etherbase(),
+		Coinbase:   coinbase,
 	}
 
 	// Set baseFee and GasLimit if we are on an EIP-1559 chain
