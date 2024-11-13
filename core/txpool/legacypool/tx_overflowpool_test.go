@@ -1,6 +1,7 @@
 package legacypool
 
 import (
+	rand3 "crypto/rand"
 	"math/big"
 	rand2 "math/rand"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/cometbft/cometbft/libs/rand"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/assert"
 )
 
 // Helper function to create a test transaction
@@ -157,6 +159,64 @@ func TestTxOverflowPoolHeapLen(t *testing.T) {
 	}
 }
 
+func TestTxOverflowPoolSlotCalculation(t *testing.T) {
+	// Initialize the pool with a maximum size of 2
+	pool := NewTxOverflowPoolHeap(2)
+
+	// Create two transactions with different slot requirements
+	tx1 := createTestTx(1, big.NewInt(1000)) // tx1 takes 1 slot
+	tx2 := createTestTx(2, big.NewInt(2000)) // tx2 takes 1 slot
+
+	// Add both transactions to fill the pool
+	pool.Add(tx1)
+	pool.Add(tx2)
+
+	if pool.Len() != 2 {
+		t.Fatalf("Expected pool size 2, but got %d", pool.Len())
+	}
+
+	// Capture the initial total size
+	initialTotalSize := pool.totalSize
+
+	dataSize := 40000
+	tx3 := createLargeTestTx(
+		3,                        // nonce
+		big.NewInt(100000000000), // gasPrice: 100 Gwei
+		dataSize,
+	) // takes 3 slots
+
+	// Create a third transaction with more slots than tx1
+	tx3Added := pool.Add(tx3)
+	assert.Equal(t, false, tx3Added)
+	assert.Equal(t, 2, pool.totalSize)
+
+	// Verify that the pool length remains at 2 after popping the oldest transaction
+	if pool.Len() != 2 {
+		t.Errorf("Expected pool size 2 after overflow, but got %d", pool.Len())
+	}
+
+	// Attempt to add a duplicate transaction (tx3) to see if it increases currentSlotsUsed erroneously
+	initialTotalSize = pool.totalSize
+	pool.Add(tx3)
+
+	// The total size should not change since tx3 is already in the pool
+	if pool.totalSize != initialTotalSize {
+		t.Errorf("Duplicate transaction incorrectly updated totalSize; expected %d but got %d", initialTotalSize, pool.totalSize)
+	}
+}
+
+func TestBiggerTx(t *testing.T) {
+	// Create a transaction with 40KB of data (which should take 2 slots)
+	dataSize := 40000
+	tx := createLargeTestTx(
+		0,                        // nonce
+		big.NewInt(100000000000), // gasPrice: 100 Gwei
+		dataSize,
+	)
+	numberOfSlots := numSlots(tx)
+	assert.Equal(t, 2, numberOfSlots)
+}
+
 // Helper function to create a random test transaction
 func createRandomTestTx() *types.Transaction {
 	nonce := uint64(rand.Intn(1000000))
@@ -174,6 +234,28 @@ func createRandomTestTxs(n int) []*types.Transaction {
 		txs[i] = createRandomTestTx()
 	}
 	return txs
+}
+
+// createLargeTestTx creates a transaction with a large data payload
+func createLargeTestTx(nonce uint64, gasPrice *big.Int, dataSize int) *types.Transaction {
+	// Generate random data of specified size
+	data := make([]byte, dataSize)
+	rand3.Read(data)
+
+	to := common.HexToAddress("0x1234567890123456789012345678901234567890")
+
+	// Calculate gas needed for the data
+	// Gas costs: 21000 (base) + 16 (per non-zero byte) or 4 (per zero byte)
+	gasLimit := uint64(21000 + (16 * len(data)))
+
+	return types.NewTransaction(
+		nonce,
+		to,
+		big.NewInt(1000),
+		gasLimit,
+		gasPrice,
+		data,
+	)
 }
 
 // goos: darwin

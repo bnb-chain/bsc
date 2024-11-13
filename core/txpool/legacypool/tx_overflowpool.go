@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // txHeapItem implements the Interface interface (https://pkg.go.dev/container/heap#Interface) of heap so that it can be heapified
@@ -65,8 +66,8 @@ type TxOverflowPool struct {
 	txHeap    txHeap
 	index     map[common.Hash]*txHeapItem
 	mu        sync.RWMutex
-	maxSize   uint64
-	totalSize int
+	maxSize   uint64 // Maximum slots
+	totalSize int    // Total number of slots currently
 }
 
 func NewTxOverflowPoolHeap(estimatedMaxSize uint64) *TxOverflowPool {
@@ -77,34 +78,52 @@ func NewTxOverflowPoolHeap(estimatedMaxSize uint64) *TxOverflowPool {
 	}
 }
 
-func (tp *TxOverflowPool) Add(tx *types.Transaction) {
+func (tp *TxOverflowPool) Add(tx *types.Transaction) bool {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 
 	if _, exists := tp.index[tx.Hash()]; exists {
 		// Transaction already in pool, ignore
-		return
+		return false
 	}
 
-	if uint64(len(tp.txHeap)) >= tp.maxSize {
-		// Remove the oldest transaction to make space
+	txSlots := numSlots(tx)
+
+	// If the transaction is too big to ever fit (and the pool isn't empty right now), reject it
+	if uint64(txSlots) >= tp.maxSize && tp.totalSize != 0 {
+		log.Warn("Transaction too large to fit in OverflowPool", "transaction", tx.Hash().String(), "requiredSlots", txSlots, "maxSlots", tp.maxSize)
+		return false
+	}
+
+	// Remove transactions until there is room for the new transaction
+	for uint64(tp.totalSize+txSlots) > tp.maxSize {
+		if tp.txHeap.Len() == 0 {
+			// No transactions left to remove, cannot make room
+			log.Warn("Not enough space in OverflowPool even after clearing", "transaction", tx.Hash().String())
+			return false
+		}
+		// Remove the oldest transaction
 		oldestItem, ok := heap.Pop(&tp.txHeap).(*txHeapItem)
 		if !ok || oldestItem == nil {
-			return
+			log.Error("Failed to pop from txHeap during Add")
+			return false
 		}
 		delete(tp.index, oldestItem.tx.Hash())
 		tp.totalSize -= numSlots(oldestItem.tx)
 		OverflowPoolGauge.Dec(1)
 	}
 
+	// Add the new transaction
 	item := &txHeapItem{
 		tx:        tx,
 		timestamp: time.Now().UnixNano(),
 	}
 	heap.Push(&tp.txHeap, item)
 	tp.index[tx.Hash()] = item
-	tp.totalSize += numSlots(tx)
+	tp.totalSize += txSlots
 	OverflowPoolGauge.Inc(1)
+
+	return true
 }
 
 func (tp *TxOverflowPool) Get(hash common.Hash) (*types.Transaction, bool) {
