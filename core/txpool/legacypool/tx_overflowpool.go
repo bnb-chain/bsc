@@ -90,7 +90,7 @@ func (tp *TxOverflowPool) Add(tx *types.Transaction) bool {
 	txSlots := numSlots(tx)
 
 	// If the transaction is too big to ever fit (and the pool isn't empty right now), reject it
-	if uint64(txSlots) >= tp.maxSize && tp.totalSize != 0 {
+	if (uint64(txSlots) > tp.maxSize) || (uint64(txSlots) == tp.maxSize && tp.totalSize != 0) {
 		log.Warn("Transaction too large to fit in OverflowPool", "transaction", tx.Hash().String(), "requiredSlots", txSlots, "maxSlots", tp.maxSize)
 		return false
 	}

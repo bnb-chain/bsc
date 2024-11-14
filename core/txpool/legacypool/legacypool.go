@@ -2097,15 +2097,6 @@ func (pool *LegacyPool) transferTransactions() {
 	pool.Add(txs, true, false)
 }
 
-func (pool *LegacyPool) availableSlotsOverflowPool() int {
-	maxOverflowPoolSize := int(pool.config.OverflowPoolSlots)
-	availableSlots := maxOverflowPoolSize - pool.localBufferPool.Size()
-	if availableSlots > 0 {
-		return availableSlots
-	}
-	return 0
-}
-
 func (pool *LegacyPool) PrintTxStats() {
 	for _, l := range pool.pending {
 		for _, transaction := range l.txs.items {

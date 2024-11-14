@@ -175,15 +175,12 @@ func TestTxOverflowPoolSlotCalculation(t *testing.T) {
 		t.Fatalf("Expected pool size 2, but got %d", pool.Len())
 	}
 
-	// Capture the initial total size
-	initialTotalSize := pool.totalSize
-
 	dataSize := 40000
 	tx3 := createLargeTestTx(
 		3,                        // nonce
 		big.NewInt(100000000000), // gasPrice: 100 Gwei
 		dataSize,
-	) // takes 3 slots
+	) // takes 2 slots
 
 	// Create a third transaction with more slots than tx1
 	tx3Added := pool.Add(tx3)
@@ -191,18 +188,14 @@ func TestTxOverflowPoolSlotCalculation(t *testing.T) {
 	assert.Equal(t, 2, pool.totalSize)
 
 	// Verify that the pool length remains at 2 after popping the oldest transaction
-	if pool.Len() != 2 {
-		t.Errorf("Expected pool size 2 after overflow, but got %d", pool.Len())
-	}
+	assert.Equal(t, 2, pool.Len(), "Expected pool size 2 after overflow")
 
 	// Attempt to add a duplicate transaction (tx3) to see if it increases currentSlotsUsed erroneously
-	initialTotalSize = pool.totalSize
+	initialTotalSize := pool.totalSize
 	pool.Add(tx3)
 
 	// The total size should not change since tx3 is already in the pool
-	if pool.totalSize != initialTotalSize {
-		t.Errorf("Duplicate transaction incorrectly updated totalSize; expected %d but got %d", initialTotalSize, pool.totalSize)
-	}
+	assert.Equal(t, initialTotalSize, pool.totalSize, "Duplicate transaction incorrectly updated totalSize")
 }
 
 func TestBiggerTx(t *testing.T) {
