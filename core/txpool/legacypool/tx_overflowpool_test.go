@@ -198,7 +198,6 @@ func TestTxOverflowPoolSlotCalculation(t *testing.T) {
 	// Verify that tx1 is no longer in the pool
 	_, exists := pool.Get(tx1.Hash())
 	assert.False(t, exists, "Expected tx1 to be evicted from the pool")
-
 }
 
 func TestBiggerTx(t *testing.T) {
