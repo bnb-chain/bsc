@@ -187,15 +187,18 @@ func TestTxOverflowPoolSlotCalculation(t *testing.T) {
 	assert.Equal(t, false, tx3Added)
 	assert.Equal(t, 2, pool.totalSize)
 
-	// Verify that the pool length remains at 2 after popping the oldest transaction
+	// Verify that the pool length remains at 2
 	assert.Equal(t, 2, pool.Len(), "Expected pool size 2 after overflow")
 
-	// Attempt to add a duplicate transaction (tx3) to see if it increases currentSlotsUsed erroneously
-	initialTotalSize := pool.totalSize
-	pool.Add(tx3)
+	tx4 := createTestTx(4, big.NewInt(3000)) // tx4 takes 1 slot
+	// Add tx4 to the pool
+	assert.True(t, pool.Add(tx4), "Failed to add tx4")
 
-	// The total size should not change since tx3 is already in the pool
-	assert.Equal(t, initialTotalSize, pool.totalSize, "Duplicate transaction incorrectly updated totalSize")
+	// The pool should evict the oldest transaction (tx1) to make room for tx4
+	// Verify that tx1 is no longer in the pool
+	_, exists := pool.Get(tx1.Hash())
+	assert.False(t, exists, "Expected tx1 to be evicted from the pool")
+
 }
 
 func TestBiggerTx(t *testing.T) {
