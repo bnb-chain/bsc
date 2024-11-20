@@ -2,10 +2,13 @@
 # python reorg_analyzer.py /path/to/logs_directory 
 # or
 # python reorg_analyzer.py bsc.log
+# or 
+# python reorg_analyzer.py bsc.log.2024-10-3*
 import re
 import os
 import argparse
 from collections import defaultdict
+import glob
 
 def parse_logs(file_paths):
     # Regular expressions to match log lines
@@ -23,37 +26,40 @@ def parse_logs(file_paths):
     reorgs = []
 
     for log_file_path in file_paths:
-        with open(log_file_path, 'r') as f:
-            for line in f:
-                # Check for imported block lines
-                match_import = re_import.search(line)
-                if match_import:
-                    block_number = int(match_import.group(1))
-                    block_hash = match_import.group(2)
-                    miner = match_import.group(3)
-                    block_info[block_hash] = {
-                        'number': block_number,
-                        'miner': miner
-                    }
-                    continue
+        try:
+            with open(log_file_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Check for imported block lines
+                    match_import = re_import.search(line)
+                    if match_import:
+                        block_number = int(match_import.group(1))
+                        block_hash = match_import.group(2)
+                        miner = match_import.group(3)
+                        block_info[block_hash] = {
+                            'number': block_number,
+                            'miner': miner
+                        }
+                        continue
 
-                # Check for reorg lines
-                match_reorg = re_reorg.search(line)
-                if match_reorg:
-                    reorg_number = int(match_reorg.group(1))
-                    reorg_hash = match_reorg.group(2)
-                    drop_count = int(match_reorg.group(3))
-                    drop_from_hash = match_reorg.group(4)
-                    add_count = int(match_reorg.group(5))
-                    add_from_hash = match_reorg.group(6)
-                    reorgs.append({
-                        'number': reorg_number,
-                        'hash': reorg_hash,
-                        'drop_count': drop_count,
-                        'drop_from_hash': drop_from_hash,
-                        'add_count': add_count,
-                        'add_from_hash': add_from_hash
-                    })
+                    # Check for reorg lines
+                    match_reorg = re_reorg.search(line)
+                    if match_reorg:
+                        reorg_number = int(match_reorg.group(1))
+                        reorg_hash = match_reorg.group(2)
+                        drop_count = int(match_reorg.group(3))
+                        drop_from_hash = match_reorg.group(4)
+                        add_count = int(match_reorg.group(5))
+                        add_from_hash = match_reorg.group(6)
+                        reorgs.append({
+                            'number': reorg_number,
+                            'hash': reorg_hash,
+                            'drop_count': drop_count,
+                            'drop_from_hash': drop_from_hash,
+                            'add_count': add_count,
+                            'add_from_hash': add_from_hash
+                        })
+        except Exception as e:
+            print(f"Error reading file {log_file_path}: {e}")
 
     return block_info, reorgs
 
@@ -88,26 +94,43 @@ def analyze_reorgs(block_info, reorgs):
 
     return results, validator_reorgs
 
-def get_log_files(path):
-    if os.path.isfile(path):
-        return [path]
-    elif os.path.isdir(path):
-        # Get all .log files in the directory
-        log_files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.log')]
-        if not log_files:
-            print(f"No .log files found in directory: {path}")
-            exit(1)
-        return log_files
-    else:
-        print(f"Invalid path: {path}")
+def get_log_files(paths):
+    log_files = []
+    for path in paths:
+        # Expand patterns
+        expanded_paths = glob.glob(path)
+        if not expanded_paths:
+            print(f"No files matched the pattern: {path}")
+            continue
+        for expanded_path in expanded_paths:
+            if os.path.isfile(expanded_path):
+                log_files.append(expanded_path)
+            elif os.path.isdir(expanded_path):
+                # Get all files in the directory
+                files_in_dir = [
+                    os.path.join(expanded_path, f)
+                    for f in os.listdir(expanded_path)
+                    if os.path.isfile(os.path.join(expanded_path, f))
+                ]
+                log_files.extend(files_in_dir)
+            else:
+                print(f"Invalid path: {expanded_path}")
+    if not log_files:
+        print("No log files to process.")
         exit(1)
+    return log_files
 
 def main():
     parser = argparse.ArgumentParser(description='Analyze BSC node logs for reorgs.')
-    parser.add_argument('path', help='Path to the log file or directory containing log files.')
+    parser.add_argument('paths', nargs='+', help='Path(s) to log files, directories, or patterns.')
     args = parser.parse_args()
 
-    log_files = get_log_files(args.path)
+    log_files = get_log_files(args.paths)
+
+    print("Processing the following files:")
+    for f in log_files:
+        print(f" - {f}")
+
     block_info, reorgs = parse_logs(log_files)
     results, validator_reorgs = analyze_reorgs(block_info, reorgs)
 
