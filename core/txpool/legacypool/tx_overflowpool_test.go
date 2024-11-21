@@ -185,7 +185,7 @@ func TestTxOverflowPoolSlotCalculation(t *testing.T) {
 	// Create a third transaction with more slots than tx1
 	tx3Added := pool.Add(tx3)
 	assert.Equal(t, false, tx3Added)
-	assert.Equal(t, 2, pool.totalSize)
+	assert.Equal(t, uint64(2), pool.totalSize)
 
 	// Verify that the pool length remains at 2
 	assert.Equal(t, 2, pool.Len(), "Expected pool size 2 after overflow")

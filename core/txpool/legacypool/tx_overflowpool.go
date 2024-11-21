@@ -67,7 +67,7 @@ type TxOverflowPool struct {
 	index     map[common.Hash]*txHeapItem
 	mu        sync.RWMutex
 	maxSize   uint64 // Maximum slots
-	totalSize int    // Total number of slots currently
+	totalSize uint64 // Total number of slots currently
 }
 
 func NewTxOverflowPoolHeap(estimatedMaxSize uint64) *TxOverflowPool {
@@ -87,16 +87,16 @@ func (tp *TxOverflowPool) Add(tx *types.Transaction) bool {
 		return false
 	}
 
-	txSlots := numSlots(tx)
+	txSlots := uint64(numSlots(tx))
 
 	// If the transaction is too big to ever fit (and the pool isn't empty right now), reject it
-	if (uint64(txSlots) > tp.maxSize) || (uint64(txSlots) == tp.maxSize && tp.totalSize != 0) {
+	if (txSlots > tp.maxSize) || (txSlots == tp.maxSize && tp.totalSize != 0) {
 		log.Warn("Transaction too large to fit in OverflowPool", "transaction", tx.Hash().String(), "requiredSlots", txSlots, "maxSlots", tp.maxSize)
 		return false
 	}
 
 	// Remove transactions until there is room for the new transaction
-	for uint64(tp.totalSize+txSlots) > tp.maxSize {
+	for tp.totalSize+txSlots > tp.maxSize {
 		if tp.txHeap.Len() == 0 {
 			// No transactions left to remove, cannot make room
 			log.Warn("Not enough space in OverflowPool even after clearing", "transaction", tx.Hash().String())
@@ -109,7 +109,7 @@ func (tp *TxOverflowPool) Add(tx *types.Transaction) bool {
 			return false
 		}
 		delete(tp.index, oldestItem.tx.Hash())
-		tp.totalSize -= numSlots(oldestItem.tx)
+		tp.totalSize -= uint64(numSlots(oldestItem.tx))
 		OverflowPoolGauge.Dec(1)
 	}
 
@@ -141,7 +141,7 @@ func (tp *TxOverflowPool) Remove(hash common.Hash) {
 	if item, ok := tp.index[hash]; ok {
 		heap.Remove(&tp.txHeap, item.index)
 		delete(tp.index, hash)
-		tp.totalSize -= numSlots(item.tx)
+		tp.totalSize -= uint64(numSlots(item.tx))
 		OverflowPoolGauge.Dec(1)
 	}
 }
@@ -160,7 +160,7 @@ func (tp *TxOverflowPool) Flush(n int) []*types.Transaction {
 		}
 		txs[i] = item.tx
 		delete(tp.index, item.tx.Hash())
-		tp.totalSize -= numSlots(item.tx)
+		tp.totalSize -= uint64(numSlots(item.tx))
 	}
 
 	OverflowPoolGauge.Dec(int64(n))
@@ -173,7 +173,7 @@ func (tp *TxOverflowPool) Len() int {
 	return tp.txHeap.Len()
 }
 
-func (tp *TxOverflowPool) Size() int {
+func (tp *TxOverflowPool) Size() uint64 {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	return tp.totalSize

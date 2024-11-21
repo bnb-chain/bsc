@@ -523,7 +523,7 @@ func (pool *LegacyPool) Stats() (int, int) {
 	return pool.stats()
 }
 
-func (pool *LegacyPool) statsOverflowPool() int {
+func (pool *LegacyPool) statsOverflowPool() uint64 {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
