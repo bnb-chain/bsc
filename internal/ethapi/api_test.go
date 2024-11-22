@@ -34,10 +34,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/holiman/uint256"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
-
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -63,11 +59,6 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
-
-var emptyBlob = kzg4844.Blob{}
-var emptyBlobCommit, _ = kzg4844.BlobToCommitment(emptyBlob)
-var emptyBlobProof, _ = kzg4844.ComputeBlobProof(emptyBlob, emptyBlobCommit)
-var emptyBlobHash common.Hash = kzg4844.CalcBlobHashV1(sha256.New(), &emptyBlobCommit)
 
 func testTransactionMarshal(t *testing.T, tests []txData, config *params.ChainConfig) {
 	var (
@@ -2514,6 +2505,7 @@ func TestFillBlobTransaction(t *testing.T) {
 		},
 	}
 	for _, tc := range suite {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -3373,8 +3365,8 @@ func makeBlkSidecars(n, nPerTx int) []*types.BlobTxSidecar {
 		commitments := make([]kzg4844.Commitment, nPerTx)
 		proofs := make([]kzg4844.Proof, nPerTx)
 		for i := 0; i < nPerTx; i++ {
-			commitments[i], _ = kzg4844.BlobToCommitment(blobs[i])
-			proofs[i], _ = kzg4844.ComputeBlobProof(blobs[i], commitments[i])
+			commitments[i], _ = kzg4844.BlobToCommitment(&blobs[i])
+			proofs[i], _ = kzg4844.ComputeBlobProof(&blobs[i], commitments[i])
 		}
 		ret[i] = &types.BlobTxSidecar{
 			Blobs:       blobs,
@@ -3459,7 +3451,6 @@ func TestRPCGetBlobSidecars(t *testing.T) {
 		{
 			test:     rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(7)),
 			fullBlob: false,
-			file:     "block-with-blobSidecars-show-little",
 			file:     "block-with-blobSidecars-show-little",
 		},
 	}

@@ -53,14 +53,11 @@ func (a *asyncnodebuffer) node(owner common.Hash, path []byte) (*trienode.Node, 
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 
-	node, found := a.current.node(owner, path)
-	if !found {
-		return nil, false
-	}
+	node := a.current.node(owner, path)
 	if node == nil {
-		return a.background.node(owner, path)
+		node = a.background.node(owner, path)
 	}
-	return node, true
+	return node, node != nil
 }
 
 // commit merges the dirty nodes into the nodebuffer. This operation won't take
@@ -216,16 +213,16 @@ func newNodeCache(limit, size uint64, nodes map[common.Hash]map[string]*trienode
 	}
 }
 
-func (nc *nodecache) node(owner common.Hash, path []byte) (*trienode.Node, bool) {
+func (nc *nodecache) node(owner common.Hash, path []byte) *trienode.Node {
 	subset, ok := nc.nodes[owner]
 	if !ok {
-		return nil, false
+		return nil
 	}
 	n, ok := subset[string(path)]
 	if !ok {
-		return nil, false
+		return nil
 	}
-	return n, true
+	return n
 }
 
 func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node) error {
@@ -295,6 +292,19 @@ func (nc *nodecache) empty() bool {
 	return nc.layers == 0
 }
 
+// allocBatch returns a database batch with pre-allocated buffer.
+func (nc *nodecache) allocBatch(db ethdb.KeyValueStore) ethdb.Batch {
+	var metasize int
+	for owner, nodes := range nc.nodes {
+		if owner == (common.Hash{}) {
+			metasize += len(nodes) * len(rawdb.TrieNodeAccountPrefix) // database key prefix
+		} else {
+			metasize += len(nodes) * (len(rawdb.TrieNodeStoragePrefix) + common.HashLength) // database key prefix + owner
+		}
+	}
+	return db.NewBatchWithSize((metasize + int(nc.size)) * 11 / 10) // extra 10% for potential pebble internal stuff
+}
+
 func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
 	if atomic.LoadUint64(&nc.immutable) != 1 {
 		return errFlushMutable
@@ -307,7 +317,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	}
 	var (
 		start = time.Now()
-		batch = db.NewBatchWithSize(int(float64(nc.size) * DefaultBatchRedundancyRate))
+		batch = nc.allocBatch(db)
 	)
 	nodes := writeNodes(batch, nc.nodes, clean)
 	rawdb.WritePersistentStateID(batch, id)

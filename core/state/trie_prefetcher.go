@@ -50,12 +50,11 @@ type prefetchMsg struct {
 //
 // Note, the prefetcher's API is not thread safe.
 type triePrefetcher struct {
-	verkle     bool                   // Flag whether the prefetcher is in verkle mode
-	db         Database               // Database to fetch trie nodes through
-	root       common.Hash            // Root hash of the account trie for metrics
-	rootParent common.Hash            // Root has of the account trie from block before the prvious one, designed for pipecommit mode
-	fetches    map[string]Trie        // Partially or fully fetched tries. Only populated for inactive copies
-	fetchers   map[string]*subfetcher // Subfetchers for each trie
+	verkle   bool                   // Flag whether the prefetcher is in verkle mode
+	db       Database               // Database to fetch trie nodes through
+	root     common.Hash            // Root hash of the account trie for metrics
+	fetches  map[string]Trie        // Partially or fully fetched tries. Only populated for inactive copies
+	fetchers map[string]*subfetcher // Subfetchers for each trie
 
 	noreads bool // Whether to ignore state-read-only prefetch requests
 
@@ -83,15 +82,14 @@ type triePrefetcher struct {
 }
 
 // newTriePrefetcher
-func newTriePrefetcher(db Database, root, rootParent common.Hash, namespace string, noreads bool) *triePrefetcher {
+func newTriePrefetcher(db Database, root common.Hash, namespace string, noreads bool) *triePrefetcher {
 	prefix := triePrefetchMetricsPrefix + namespace
 	p := &triePrefetcher{
-		verkle:     db.TrieDB().IsVerkle(),
-		db:         db,
-		root:       root,
-		rootParent: rootParent,
-		fetchers:   make(map[string]*subfetcher), // Active prefetchers use the fetchers map
-		abortChan:  make(chan *subfetcher, abortChanSize),
+		verkle:    db.TrieDB().IsVerkle(),
+		db:        db,
+		root:      root,
+		fetchers:  make(map[string]*subfetcher), // Active prefetchers use the fetchers map
+		abortChan: make(chan *subfetcher, abortChanSize),
 
 		noreads: noreads,
 
@@ -174,17 +172,6 @@ func (p *triePrefetcher) mainLoop() {
 					}
 					fetcher.lock.Unlock()
 					p.accountWasteMeter.Mark(int64(len(fetcher.seen)))
-
-				case p.rootParent:
-					p.accountStaleLoadMeter.Mark(int64(len(fetcher.seen)))
-					p.accountStaleDupMeter.Mark(int64(fetcher.dups))
-					p.accountStaleSkipMeter.Mark(int64(len(fetcher.tasks)))
-					fetcher.lock.Lock()
-					for _, key := range fetcher.used {
-						delete(fetcher.seen, string(key))
-					}
-					fetcher.lock.Unlock()
-					p.accountStaleWasteMeter.Mark(int64(len(fetcher.seen)))
 
 				default:
 					p.storageLoadMeter.Mark(int64(len(fetcher.seen)))
@@ -282,7 +269,6 @@ func (p *triePrefetcher) prefetch(owner common.Hash, root common.Hash, addr comm
 
 	select {
 	case <-p.closeMainChan: // skip closed trie prefetcher
-		// TODO: ignore whether it's terminated?
 	case p.prefetchChan <- &prefetchMsg{owner, root, addr, keys}:
 	}
 	return nil

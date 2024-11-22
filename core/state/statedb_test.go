@@ -119,9 +119,7 @@ func TestIntermediateLeaks(t *testing.T) {
 	}
 
 	// Commit and cross check the databases.
-	transState.Finalise(false)
-	transState.AccountsIntermediateRoot()
-	transRoot, _, err := transState.Commit(0, nil)
+	transRoot, _, err := transState.Commit(0, false)
 	if err != nil {
 		t.Fatalf("failed to commit transition state: %v", err)
 	}
@@ -129,9 +127,7 @@ func TestIntermediateLeaks(t *testing.T) {
 		t.Errorf("can not commit trie %v to persistent database", transRoot.Hex())
 	}
 
-	finalState.Finalise(false)
-	finalState.AccountsIntermediateRoot()
-	finalRoot, _, err := finalState.Commit(0, nil)
+	finalRoot, _, err := finalState.Commit(0, false)
 	if err != nil {
 		t.Fatalf("failed to commit final state: %v", err)
 	}
@@ -244,7 +240,7 @@ func TestCopyWithDirtyJournal(t *testing.T) {
 		obj.data.Root = common.HexToHash("0xdeadbeef")
 		orig.updateStateObject(obj)
 	}
-	root, _ := orig.Commit(0, true)
+	root, _, _ := orig.Commit(0, true)
 	orig, _ = New(root, db)
 
 	// modify all in memory without finalizing
@@ -1004,9 +1000,7 @@ func testMissingTrieNodes(t *testing.T, scheme string) {
 		a2 := common.BytesToAddress([]byte("another"))
 		state.SetBalance(a2, uint256.NewInt(100), tracing.BalanceChangeUnspecified)
 		state.SetCode(a2, []byte{1, 2, 4})
-		state.Finalise(false)
-		state.AccountsIntermediateRoot()
-		root, _, _ = state.Commit(0, nil)
+		root, _, _ = state.Commit(0, false)
 		t.Logf("root: %x", root)
 		// force-flush
 		tdb.Commit(root, false)
@@ -1030,9 +1024,7 @@ func testMissingTrieNodes(t *testing.T, scheme string) {
 	}
 	// Modify the state
 	state.SetBalance(addr, uint256.NewInt(2), tracing.BalanceChangeUnspecified)
-	state.Finalise(false)
-	state.AccountsIntermediateRoot()
-	root, _, err := state.Commit(0, nil)
+	root, _, err := state.Commit(0, false)
 	if err == nil {
 		t.Fatalf("expected error, got root :%x", root)
 	}
@@ -1227,8 +1219,7 @@ func TestFlushOrderDataLoss(t *testing.T) {
 			state.SetState(common.Address{a}, common.Hash{a, s}, common.Hash{a, s})
 		}
 	}
-	state.IntermediateRoot(false)
-	root, _, err := state.Commit(0, nil)
+	root, _, err := state.Commit(0, false)
 	if err != nil {
 		t.Fatalf("failed to commit state trie: %v", err)
 	}

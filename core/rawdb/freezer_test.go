@@ -514,7 +514,7 @@ func TestFreezerSuite(t *testing.T) {
 		for _, kind := range kinds {
 			tables[kind] = true
 		}
-		f, _ := newResettableFreezer(t.TempDir(), "", false, 2048, tables)
+		f, _ := newResettableFreezer(t.TempDir(), "", false, 0, 2048, tables)
 		return f
 	})
 }

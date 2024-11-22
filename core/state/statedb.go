@@ -148,7 +148,7 @@ type StateDB struct {
 	journal *journal
 
 	// State witness if cross validation is needed
-	witness *stateless.Witness
+	witness *stateless.Witness // TODO(Nathan): more define the relation with `noTrie`
 
 	// Measurements gathered during execution for debugging purposes
 	// MetricsMux should be used in more places, but will affect on performance, so following meteration is not accruate
@@ -187,6 +187,7 @@ func New(root common.Hash, db Database) (*StateDB, error) {
 	if err != nil {
 		return nil, err
 	}
+	_, noTrie := tr.(*trie.EmptyTrie)
 	reader, err := db.Reader(root)
 	if err != nil {
 		return nil, err
@@ -194,6 +195,7 @@ func New(root common.Hash, db Database) (*StateDB, error) {
 	sdb := &StateDB{
 		db:                   db,
 		trie:                 tr,
+		noTrie:               noTrie,
 		originalRoot:         root,
 		reader:               reader,
 		stateObjects:         make(map[common.Address]*stateObject, defaultNumOfSlots),
@@ -205,7 +207,6 @@ func New(root common.Hash, db Database) (*StateDB, error) {
 		accessList:           newAccessList(),
 		transientStorage:     newTransientStorage(),
 	}
-	_, sdb.noTrie = tr.(*trie.EmptyTrie)
 	if db.TrieDB().IsVerkle() {
 		sdb.accessEvents = NewAccessEvents(db.PointCache())
 	}
@@ -254,8 +255,19 @@ func (s *StateDB) StartPrefetcher(namespace string, witness *stateless.Witness) 
 	// Enable witness collection if requested
 	s.witness = witness
 
-	s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, common.Hash{}, namespace, witness == nil)
-
+	// With the switch to the Proof-of-Stake consensus algorithm, block production
+	// rewards are now handled at the consensus layer. Consequently, a block may
+	// have no state transitions if it contains no transactions and no withdrawals.
+	// In such cases, the account trie won't be scheduled for prefetching, leading
+	// to unnecessary error logs.
+	//
+	// To prevent this, the account trie is always scheduled for prefetching once
+	// the prefetcher is constructed. For more details, see:
+	// https://github.com/ethereum/go-ethereum/issues/29880
+	s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, namespace, witness == nil)
+	if err := s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, nil, false); err != nil {
+		log.Error("Failed to prefetch account trie", "root", s.originalRoot, "err", err)
+	}
 }
 
 // StopPrefetcher terminates a running prefetcher and reports any leftover stats
@@ -297,7 +309,7 @@ func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer)
 	}
 
 	if len(addressesToPrefetch) > 0 {
-		prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch, true)
+		prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch, false)
 	}
 }
 
@@ -691,7 +703,7 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 	// Schedule the resolved account for prefetching if it's enabled.
 	if s.prefetcher != nil {
 		if err := s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, [][]byte{addr[:]}, true); err != nil {
-			log.Error("Failed to prefetch account", "addr", addr, "err", err)
+			log.Debug("Failed to prefetch account", "addr", addr, "err", err)
 		}
 	}
 	// Insert into the live set
@@ -780,18 +792,20 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		logSize:   s.logSize,
 		preimages: maps.Clone(s.preimages),
 
-		// Do we need to copy the access list and transient storage?
-		// In practice: No. At the start of a transaction, these two lists are empty.
-		// In practice, we only ever copy state _between_ transactions/blocks, never
-		// in the middle of a transaction. However, it doesn't cost us much to copy
-		// empty lists, so we do it anyway to not blow up if we ever decide copy them
-		// in the middle of a transaction.
-		accessList:       s.accessList.Copy(),
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
 	}
 	if s.witness != nil {
 		state.witness = s.witness.Copy()
+	}
+	// Do we need to copy the access list and transient storage?
+	// In practice: No. At the start of a transaction, these two lists are empty.
+	// In practice, we only ever copy state _between_ transactions/blocks, never
+	// in the middle of a transaction. However, it doesn't cost us much to copy
+	// empty lists, so we do it anyway to not blow up if we ever decide copy them
+	// in the middle of a transaction.
+	if s.accessList != nil {
+		state.accessList = s.accessList.Copy()
 	}
 	if s.accessEvents != nil {
 		state.accessEvents = s.accessEvents.Copy()
@@ -816,6 +830,14 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 			*cpy[i] = *l
 		}
 		state.logs[hash] = cpy
+	}
+
+	state.prefetcher = s.prefetcher
+	if s.prefetcher != nil && !doPrefetch {
+		// If there's a prefetcher running, make an inactive copy of it that can
+		// only access data but does not actively preload (since the user will not
+		// know that they need to explicitly terminate an active copy).
+		state.prefetcher = state.prefetcher.copy()
 	}
 	return state
 }
@@ -893,7 +915,8 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// If there was a trie prefetcher operating, terminate it async so that the
 	// individual storage tries can be updated as soon as the disk load finishes.
 	if s.prefetcher != nil {
-		defer s.StopPrefetcher()
+		// s.prefetcher.terminate(true)
+		defer s.StopPrefetcher() // not async now!
 	}
 	// Process all storage updates concurrently. The state object update root
 	// method will internally call a blocking trie fetch from the prefetcher,
@@ -1050,7 +1073,11 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 func (s *StateDB) SetTxContext(thash common.Hash, ti int) {
 	s.thash = thash
 	s.txIndex = ti
-	s.accessList = nil // can't delete this line now, because StateDB.Prepare is not called before processing a system transaction
+}
+
+// StateDB.Prepare is not called before processing a system transaction, call ClearAccessList instead.
+func (s *StateDB) ClearAccessList() {
+	s.accessList = nil
 }
 
 func (s *StateDB) clearJournalAndRefund() {
@@ -1307,20 +1334,22 @@ func (s *StateDB) commit(deleteEmptyObjects bool) (*stateUpdate, error) {
 	// Obviously it's not an end of the world issue, just something the original
 	// code didn't anticipate for.
 	workers.Go(func() error {
-		if !s.noTrie {
-			// Write the account trie changes, measuring the amount of wasted time
-			newroot, set := s.trie.Commit(true)
-			root = newroot
-			if s.fullProcessed && s.expectedRoot != root {
-				log.Error("Invalid merkle root", "remote", s.expectedRoot, "local", root)
-				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, root)
-			}
-
-			if err := merge(set); err != nil {
-				return err
-			}
-			s.AccountCommits = time.Since(start)
+		if s.noTrie {
+			root = types.EmptyRootHash
+			return nil
 		}
+		// Write the account trie changes, measuring the amount of wasted time
+		newroot, set := s.trie.Commit(true)
+		root = newroot
+		if s.fullProcessed && s.expectedRoot != root {
+			log.Error("Invalid merkle root", "remote", s.expectedRoot, "local", root)
+			return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, root)
+		}
+
+		if err := merge(set); err != nil {
+			return err
+		}
+		s.AccountCommits = time.Since(start)
 		return nil
 	})
 	// Schedule each of the storage tries that need to be updated, so they can
@@ -1331,6 +1360,9 @@ func (s *StateDB) commit(deleteEmptyObjects bool) (*stateUpdate, error) {
 	// 2 threads in total. But that kind of depends on the account commit being
 	// more expensive than it should be, so let's fix that and revisit this todo.
 	for addr, op := range s.mutations {
+		if s.noTrie {
+			continue
+		}
 		if op.isDelete() {
 			continue
 		}
@@ -1382,9 +1414,6 @@ func (s *StateDB) commit(deleteEmptyObjects bool) (*stateUpdate, error) {
 	s.stateObjectsDestruct = make(map[common.Address]*stateObject)
 
 	origin := s.originalRoot
-	if root == (common.Hash{}) {
-		root = types.EmptyRootHash
-	}
 	s.originalRoot = root
 	return newStateUpdate(origin, root, deletes, updates, nodes), nil
 }
@@ -1422,7 +1451,6 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool) (*stateU
 		// If snapshotting is enabled, update the snapshot tree with this new version
 		if snap := s.db.Snapshot(); snap != nil && snap.Snapshot(ret.originRoot) != nil {
 			start := time.Now()
-			ret.diffLayer.Destructs, ret.diffLayer.Accounts, ret.diffLayer.Storages = ret.SnapToDiffLayer()
 			if err := snap.Update(ret.root, ret.originRoot, ret.destructs, ret.accounts, ret.storages); err != nil {
 				log.Warn("Failed to update snapshot tree", "from", ret.originRoot, "to", ret.root, "err", err)
 			}
@@ -1431,14 +1459,14 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool) (*stateU
 			// - head-1 layer is paired with HEAD-1 state
 			// - head-127 layer(bottom-most diff layer) is paired with HEAD-127 state
 			go func() {
-				if err := snap.Cap(ret.root, TriesInMemory); err != nil {
+				if err := snap.Cap(ret.root, snap.CapLimit()); err != nil {
 					log.Warn("Failed to cap snapshot tree", "root", ret.root, "layers", TriesInMemory, "err", err)
 				}
 			}()
 			s.SnapshotCommits += time.Since(start)
 		}
 		// If trie database is enabled, commit the state update as a new layer
-		if db := s.db.TrieDB(); db != nil {
+		if db := s.db.TrieDB(); db != nil && !s.noTrie {
 			start := time.Now()
 			set := triestate.New(ret.accountsOrigin, ret.storagesOrigin)
 			if err := db.Update(ret.root, ret.originRoot, block, ret.nodes, set); err != nil {

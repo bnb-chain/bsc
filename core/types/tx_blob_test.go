@@ -63,9 +63,9 @@ func TestBlobTxSize(t *testing.T) {
 }
 
 var (
-	emptyBlob          = new(kzg4844.Blob)
-	emptyBlobCommit, _ = kzg4844.BlobToCommitment(emptyBlob)
-	emptyBlobProof, _  = kzg4844.ComputeBlobProof(emptyBlob, emptyBlobCommit)
+	emptyBlob          = kzg4844.Blob{}
+	emptyBlobCommit, _ = kzg4844.BlobToCommitment(&emptyBlob)
+	emptyBlobProof, _  = kzg4844.ComputeBlobProof(&emptyBlob, emptyBlobCommit)
 )
 
 func createEmptyBlobTx(key *ecdsa.PrivateKey, withSidecar bool) *Transaction {
@@ -76,7 +76,7 @@ func createEmptyBlobTx(key *ecdsa.PrivateKey, withSidecar bool) *Transaction {
 
 func createEmptyBlobTxInner(withSidecar bool) *BlobTx {
 	sidecar := &BlobTxSidecar{
-		Blobs:       []kzg4844.Blob{*emptyBlob},
+		Blobs:       []kzg4844.Blob{emptyBlob},
 		Commitments: []kzg4844.Commitment{emptyBlobCommit},
 		Proofs:      []kzg4844.Proof{emptyBlobProof},
 	}

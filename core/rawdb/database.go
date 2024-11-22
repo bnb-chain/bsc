@@ -165,7 +165,6 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 		frdb.AncientStore.(*chainFreezer).threshold.Store(old)
 	}(frdb.AncientStore.(*chainFreezer).threshold.Load())
 	frdb.AncientStore.(*chainFreezer).threshold.Store(threshold)
-
 	// Trigger a freeze cycle and block until it's done
 	trigger := make(chan struct{}, 1)
 	frdb.AncientStore.(*chainFreezer).trigger <- trigger
@@ -508,7 +507,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	}
 
 	if pruneAncientData && !disableFreeze && !readonly {
-		frdb, err := newPrunedFreezer(resolveChainFreezerDir(ancient), db, offset)
+		frdb, err := newPrunedFreezer(chainFreezerDir, db, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -534,7 +533,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	}
 
 	// Create the idle freezer instance
-	frdb, err := newChainFreezer(resolveChainFreezerDir(ancient), namespace, readonly, offset, multiDatabase)
+	frdb, err := newChainFreezer(chainFreezerDir, namespace, readonly, offset, multiDatabase)
 
 	// We are creating the freezerdb here because the validation logic for db and freezer below requires certain interfaces
 	// that need a database type. Therefore, we are pre-creating it for subsequent use.
@@ -636,7 +635,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		WriteAncientType(db, EntireFreezerType)
 	}
 	// Freezer is consistent with the key-value database, permit combining the two
-	if !disableFreeze && readonly {
+	if !disableFreeze && !readonly {
 		frdb.wg.Add(1)
 		go func() {
 			frdb.freeze(db)

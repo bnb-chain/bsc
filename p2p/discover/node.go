@@ -51,6 +51,7 @@ func unwrapNodes(ns []*tableNode) []*enode.Node {
 	return result
 }
 
+//nolint:unused
 func (n *tableNode) addr() *net.UDPAddr {
 	return &net.UDPAddr{IP: n.IP(), Port: n.UDP()}
 }

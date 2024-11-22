@@ -3161,7 +3161,8 @@ func (bc *BlockChain) InsertHeaderChain(chain []*types.Header) (int, error) {
 func (bc *BlockChain) HeadChain() *HeaderChain {
 	return bc.hc
 }
-func (bc *BlockChain) TriesInMemory() uint64 { return state.TriesInMemory }
+
+func (bc *BlockChain) TriesInMemory() uint64 { return bc.triesInMemory }
 
 func EnablePersistDiff(limit uint64) BlockChainOption {
 	return func(chain *BlockChain) (*BlockChain, error) {
@@ -3170,7 +3171,7 @@ func EnablePersistDiff(limit uint64) BlockChainOption {
 	}
 }
 
-func EnableBlockValidator(chainConfig *params.ChainConfig, _ consensus.Engine, mode VerifyMode, peers verifyPeers) BlockChainOption {
+func EnableBlockValidator(chainConfig *params.ChainConfig, mode VerifyMode, peers verifyPeers) BlockChainOption {
 	return func(bc *BlockChain) (*BlockChain, error) {
 		if mode.NeedRemoteVerify() {
 			vm, err := NewVerifyManager(bc, peers, mode == InsecureVerify)

@@ -19,6 +19,7 @@ package rawdb
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -190,6 +191,10 @@ func (b *memoryBatch) commit(freezer *MemoryFreezer) (items uint64, writeSize in
 	// Check that count agrees on all batches.
 	items = math.MaxUint64
 	for name, next := range b.next {
+		// skip empty addition tables
+		if slices.Contains(additionTables, name) && next == 0 {
+			continue
+		}
 		if items < math.MaxUint64 && next != items {
 			return 0, 0, fmt.Errorf("table %s is at item %d, want %d", name, next, items)
 		}

@@ -80,9 +80,7 @@ func makeTestState(scheme string) (ethdb.Database, Database, *triedb.Database, c
 		}
 		accounts = append(accounts, acc)
 	}
-	state.Finalise(false)
-	state.AccountsIntermediateRoot()
-	root, _, _ := state.Commit(0, nil)
+	root, _, _ := state.Commit(0, false)
 
 	// Return the generated state
 	return db, sdb, nodeDb, root, accounts

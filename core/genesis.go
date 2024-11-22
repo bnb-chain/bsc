@@ -201,6 +201,10 @@ func getGenesisState(db ethdb.Database, blockhash common.Hash) (alloc types.Gene
 	switch blockhash {
 	case params.MainnetGenesisHash:
 		genesis = DefaultGenesisBlock()
+	case params.BSCGenesisHash:
+		genesis = DefaultBSCGenesisBlock()
+	case params.ChapelGenesisHash:
+		genesis = DefaultChapelGenesisBlock()
 	}
 	if genesis != nil {
 		return genesis.Alloc, nil
@@ -484,6 +488,7 @@ func (g *Genesis) toBlockWithRoot(root common.Hash) *types.Block {
 		if conf.IsCancun(num, g.Timestamp) {
 			if conf.Parlia != nil {
 				head.WithdrawalsHash = &types.EmptyWithdrawalsHash
+				withdrawals = make([]*types.Withdrawal, 0)
 			}
 
 			// EIP-4788: The parentBeaconBlockRoot of the genesis block is always

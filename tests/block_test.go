@@ -44,7 +44,6 @@ func TestBlockchain(t *testing.T) {
 	bt.slow(`.*/bcWalletTest/`)
 
 	// Very slow test
-	bt.skipLoad(`^GeneralStateTests/VMTests/vmPerformance/.*`)
 	bt.skipLoad(`.*/stTimeConsuming/.*`)
 	// test takes a lot for time and goes easily OOM because of sha3 calculation on a huge range,
 	// using 4.6 TGas
@@ -64,7 +63,7 @@ func TestExecutionSpecBlocktests(t *testing.T) {
 		t.Skipf("directory %s does not exist", executionSpecBlockchainTestDir)
 	}
 	bt := new(testMatcher)
-
+	bt.skipLoad(".*prague.*") // TODO(Nathan): remove it before enable prague
 	bt.walk(t, executionSpecBlockchainTestDir, func(t *testing.T, name string, test *BlockTest) {
 		execBlockTest(t, bt, test)
 	})
@@ -86,7 +85,8 @@ func execBlockTest(t *testing.T, bt *testMatcher, test *BlockTest) {
 	}
 	for _, snapshot := range snapshotConf {
 		for _, dbscheme := range dbschemeConf {
-			if err := bt.checkFailure(t, test.Run(snapshot, dbscheme, true, nil, nil)); err != nil {
+			// TODO(Nathan): enable `Running stateless self-validation` before enable verkle feature
+			if err := bt.checkFailure(t, test.Run(snapshot, dbscheme, false, nil, nil)); err != nil {
 				t.Errorf("test with config {snapshotter:%v, scheme:%v} failed: %v", snapshot, dbscheme, err)
 				return
 			}

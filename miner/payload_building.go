@@ -202,7 +202,7 @@ func (payload *Payload) ResolveFull() *engine.ExecutionPayloadEnvelope {
 }
 
 // buildPayload builds the payload according to the provided parameters.
-func (miner *Miner) buildPayload(args *BuildPayloadArgs, witness bool) (*Payload, error) {
+func (w *worker) buildPayload(args *BuildPayloadArgs, witness bool) (*Payload, error) {
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
 	// to deliver for not missing slot.
@@ -216,7 +216,7 @@ func (miner *Miner) buildPayload(args *BuildPayloadArgs, witness bool) (*Payload
 		beaconRoot:  args.BeaconRoot,
 		noTxs:       true,
 	}
-	empty := miner.worker.getSealingBlock(emptyParams)
+	empty := w.getSealingBlock(emptyParams)
 	if empty.err != nil {
 		return nil, empty.err
 	}
@@ -251,13 +251,13 @@ func (miner *Miner) buildPayload(args *BuildPayloadArgs, witness bool) (*Payload
 			select {
 			case <-timer.C:
 				start := time.Now()
-				r := miner.worker.getSealingBlock(fullParams)
+				r := w.getSealingBlock(fullParams)
 				if r.err == nil {
 					payload.update(r, time.Since(start))
 				} else {
 					log.Info("Error while generating work", "id", payload.id, "err", r.err)
 				}
-				timer.Reset(miner.worker.recommit)
+				timer.Reset(w.recommit)
 			case <-payload.stop:
 				log.Info("Stopping work on payload", "id", payload.id, "reason", "delivery")
 				return

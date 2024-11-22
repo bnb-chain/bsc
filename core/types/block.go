@@ -211,6 +211,11 @@ func (h *Header) EmptyWithdrawalsHash() bool {
 	return h.WithdrawalsHash != nil && *h.WithdrawalsHash == EmptyWithdrawalsHash
 }
 
+// EmptyRequestsHash returns true if the RequestsHash is EmptyRequestsHash.
+func (h *Header) EmptyRequestsHash() bool {
+	return h.RequestsHash != nil && *h.RequestsHash == EmptyRequestsHash
+}
+
 // Body is a simple (mutable, non-safe) data container for storing and moving
 // a block's data contents (transactions and uncles) together.
 type Body struct {
@@ -540,9 +545,9 @@ func (b *Block) WithSeal(header *Header) *Block {
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
-		sidecars:     b.sidecars,
 		requests:     b.requests,
 		witness:      b.witness,
+		sidecars:     b.sidecars,
 	}
 }
 
@@ -554,9 +559,9 @@ func (b *Block) WithBody(body Body) *Block {
 		transactions: slices.Clone(body.Transactions),
 		uncles:       make([]*Header, len(body.Uncles)),
 		withdrawals:  slices.Clone(body.Withdrawals),
-		sidecars:     b.sidecars,
 		requests:     slices.Clone(body.Requests),
 		witness:      b.witness,
+		sidecars:     b.sidecars,
 	}
 	for i := range body.Uncles {
 		block.uncles[i] = CopyHeader(body.Uncles[i])
@@ -570,9 +575,9 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 		header:       b.header,
 		transactions: b.transactions,
 		uncles:       b.uncles,
-		sidecars:     b.sidecars,
 		requests:     b.requests,
 		witness:      b.witness,
+		sidecars:     b.sidecars,
 	}
 	if withdrawals != nil {
 		block.withdrawals = make([]*Withdrawal, len(withdrawals))
@@ -604,9 +609,9 @@ func (b *Block) WithWitness(witness *ExecutionWitness) *Block {
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
-		sidecars:     b.sidecars,
 		requests:     b.requests,
 		witness:      witness,
+		sidecars:     b.sidecars,
 	}
 }
 
@@ -743,51 +748,36 @@ func SealHash(header *Header, chainId *big.Int) (hash common.Hash) {
 }
 
 func EncodeSigHeader(w io.Writer, header *Header, chainId *big.Int) {
-	var err error
+	toEncode := []interface{}{
+		chainId,
+		header.ParentHash,
+		header.UncleHash,
+		header.Coinbase,
+		header.Root,
+		header.TxHash,
+		header.ReceiptHash,
+		header.Bloom,
+		header.Difficulty,
+		header.Number,
+		header.GasLimit,
+		header.GasUsed,
+		header.Time,
+		header.Extra[:len(header.Extra)-extraSeal], // this will panic if extra is too short, should check before calling encodeSigHeader
+		header.MixDigest,
+		header.Nonce,
+	}
 	if header.ParentBeaconRoot != nil && *header.ParentBeaconRoot == (common.Hash{}) {
-		err = rlp.Encode(w, []interface{}{
-			chainId,
-			header.ParentHash,
-			header.UncleHash,
-			header.Coinbase,
-			header.Root,
-			header.TxHash,
-			header.ReceiptHash,
-			header.Bloom,
-			header.Difficulty,
-			header.Number,
-			header.GasLimit,
-			header.GasUsed,
-			header.Time,
-			header.Extra[:len(header.Extra)-extraSeal], // this will panic if extra is too short, should check before calling encodeSigHeader
-			header.MixDigest,
-			header.Nonce,
-			header.BaseFee,
+		toEncode = append(toEncode, header.BaseFee,
 			header.WithdrawalsHash,
 			header.BlobGasUsed,
 			header.ExcessBlobGas,
-			header.ParentBeaconRoot,
-		})
-	} else {
-		err = rlp.Encode(w, []interface{}{
-			chainId,
-			header.ParentHash,
-			header.UncleHash,
-			header.Coinbase,
-			header.Root,
-			header.TxHash,
-			header.ReceiptHash,
-			header.Bloom,
-			header.Difficulty,
-			header.Number,
-			header.GasLimit,
-			header.GasUsed,
-			header.Time,
-			header.Extra[:len(header.Extra)-extraSeal], // this will panic if extra is too short, should check before calling encodeSigHeader
-			header.MixDigest,
-			header.Nonce,
-		})
+			header.ParentBeaconRoot)
+
+		if header.RequestsHash != nil {
+			toEncode = append(toEncode, header.RequestsHash)
+		}
 	}
+	err := rlp.Encode(w, toEncode)
 	if err != nil {
 		panic("can't encode: " + err.Error())
 	}

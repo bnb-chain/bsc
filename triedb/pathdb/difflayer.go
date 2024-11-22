@@ -237,6 +237,7 @@ func (dl *diffLayer) node(owner common.Hash, path []byte, depth int) ([]byte, co
 			return n.Blob, n.Hash, &nodeLoc{loc: locDiffLayer, depth: depth}, nil
 		}
 	}
+	//TODO(will-2012): https://github.com/bnb-chain/bsc/pull/2508 broken
 	// Trie node unknown to this layer, resolve from parent
 	return dl.parent.node(owner, path, depth+1)
 }

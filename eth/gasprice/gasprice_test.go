@@ -235,7 +235,7 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, cancunBlock *big.Int, pe
 		panic(fmt.Errorf("error inserting block %d: %w", i, err))
 	}
 	chain.SetFinalized(chain.GetBlockByNumber(25).Header())
-	chain.SetSafe(chain.GetBlockByNumber(25).Header())
+	// chain.SetSafe(chain.GetBlockByNumber(25).Header())
 
 	return &testBackend{chain: chain, pending: pending}
 }

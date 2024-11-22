@@ -30,9 +30,10 @@ all:
 test: all
 	$(GORUN) build/ci.go test -timeout 1h
 
+#? truffle-test: Run the integration test.
 truffle-test:
-	docker build . -f ./docker/Dockerfile --target bsc-genesis -t bsc-genesis
 	docker build . -f ./docker/Dockerfile --target bsc -t bsc
+	docker build . -f ./docker/Dockerfile --target bsc-genesis -t bsc-genesis
 	docker build . -f ./docker/Dockerfile.truffle -t truffle-test
 	docker compose -f ./tests/truffle/docker-compose.yml up genesis
 	docker compose -f ./tests/truffle/docker-compose.yml up -d bsc-rpc bsc-validator1

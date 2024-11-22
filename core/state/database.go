@@ -305,6 +305,9 @@ func (db *CachingDB) Snapshot() *snapshot.Tree {
 
 // mustCopyTrie returns a deep-copied trie.
 func mustCopyTrie(t Trie) Trie {
+	if t == nil {
+		return nil
+	}
 	switch t := t.(type) {
 	case *trie.StateTrie:
 		return t.Copy()

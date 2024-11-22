@@ -94,7 +94,6 @@ type backend interface {
 type Database struct {
 	disk      ethdb.Database
 	config    *Config        // Configuration for trie database
-	diskdb    ethdb.Database // Persistent database to store the snapshot
 	preimages *preimageStore // The store for caching preimages
 	backend   backend        // The backend for managing trie nodes
 }
@@ -136,7 +135,6 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	db := &Database{
 		disk:      diskdb,
 		config:    config,
-		diskdb:    diskdb,
 		preimages: preimages,
 	}
 	/*
@@ -170,10 +168,6 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 
 func (db *Database) Config() *Config {
 	return db.config
-}
-
-func (db *Database) DiskDB() ethdb.Database {
-	return db.diskdb
 }
 
 // Reader returns a reader for accessing all trie nodes with provided state root.

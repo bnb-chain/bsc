@@ -57,10 +57,6 @@ const (
 	// DefaultBackgroundFlushInterval defines the default the wait interval
 	// that background node cache flush disk.
 	DefaultBackgroundFlushInterval = 3
-
-	// DefaultBatchRedundancyRate defines the batch size, compatible write
-	// size calculation is inaccurate
-	DefaultBatchRedundancyRate = 1.1
 )
 
 type JournalType int
@@ -210,7 +206,7 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 // repairHistory truncates leftover state history objects, which may occur due
 // to an unclean shutdown or other unexpected reasons.
 func (db *Database) repairHistory() error {
-	if !db.config.NoTries {
+	if db.config.NoTries {
 		return nil
 	}
 	// Open the freezer for state history. This mechanism ensures that

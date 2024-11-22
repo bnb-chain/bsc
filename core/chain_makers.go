@@ -334,6 +334,9 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 	genblock := func(i int, parent *types.Block, triedb *triedb.Database, statedb *state.StateDB) (*types.Block, types.Receipts) {
 		b := &BlockGen{i: i, cm: cm, parent: parent, statedb: statedb, engine: engine}
 		b.header = cm.makeHeader(parent, statedb, b.engine)
+		if b.header.EmptyWithdrawalsHash() {
+			b.withdrawals = make([]*types.Withdrawal, 0)
+		}
 
 		// Set the difficulty for clique block. The chain maker doesn't have access
 		// to a chain, so the difficulty will be left unset (nil). Set it here to the
@@ -380,12 +383,10 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 				}
 			}
 
-			block, _, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, b.txs, b.uncles, b.receipts, b.withdrawals)
+			body := types.Body{Transactions: b.txs, Uncles: b.uncles, Withdrawals: b.withdrawals, Requests: requests}
+			block, _, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, &body, b.receipts)
 			if err != nil {
 				panic(err)
-			}
-			if block.Header().EmptyWithdrawalsHash() {
-				block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
 			}
 			if config.IsCancun(block.Number(), block.Time()) {
 				for _, s := range b.sidecars {
@@ -498,7 +499,7 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 			Uncles:       b.uncles,
 			Withdrawals:  b.withdrawals,
 		}
-		block, _, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, body.Transactions, body.Uncles, b.receipts, body.Withdrawals)
+		block, _, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, body, b.receipts)
 		if err != nil {
 			panic(err)
 		}

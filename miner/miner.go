@@ -98,7 +98,7 @@ func New(eth Backend, config *Config, mux *event.TypeMux, engine consensus.Engin
 		exitCh:  make(chan struct{}),
 		startCh: make(chan struct{}),
 		stopCh:  make(chan struct{}),
-		worker:  newWorker(config, eth.BlockChain().Config(), engine, eth, mux, false),
+		worker:  newWorker(config, engine, eth, mux, false),
 	}
 
 	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
@@ -264,7 +264,7 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs, witness bool) (*Payload, error) {
-	return miner.buildPayload(args, witness)
+	return miner.worker.buildPayload(args, witness)
 }
 
 func (miner *Miner) GasCeil() uint64 {

@@ -643,8 +643,8 @@ func makeBlkBlobs(n, nPerTx int) []*types.BlobTxSidecar {
 		proofs := make([]kzg4844.Proof, nPerTx)
 		for i := 0; i < nPerTx; i++ {
 			io.ReadFull(rand2.Reader, blobs[i][:])
-			commitments[i], _ = kzg4844.BlobToCommitment(blobs[i])
-			proofs[i], _ = kzg4844.ComputeBlobProof(blobs[i], commitments[i])
+			commitments[i], _ = kzg4844.BlobToCommitment(&blobs[i])
+			proofs[i], _ = kzg4844.ComputeBlobProof(&blobs[i], commitments[i])
 		}
 		ret[i] = &types.BlobTxSidecar{
 			Blobs:       blobs,

@@ -636,16 +636,22 @@ func TestTailTruncateHistory(t *testing.T) {
 	tester := newTester(t, 10)
 	defer tester.release()
 
+	// ignore error, whether `Journal` success or not, this UT must succeed
+	tester.db.Journal(tester.lastHash())
 	tester.db.Close()
 	tester.db = New(tester.db.diskdb, &Config{StateHistory: 10}, false)
-
 	head, err := tester.db.freezer.Ancients()
 	if err != nil {
 		t.Fatalf("Failed to obtain freezer head")
 	}
-	stored := rawdb.ReadPersistentStateID(tester.db.diskdb)
-	if head != stored {
-		t.Fatalf("Failed to truncate excess history object above, stored: %d, head: %d", stored, head)
+	bottom := tester.db.tree.bottom().id
+	if head != bottom {
+		t.Fatalf("Failed to truncate excess history object above, bottom: %d, head: %d", bottom, head)
+	}
+	persistID := rawdb.ReadPersistentStateID(tester.db.diskdb)
+	diffLayers := tester.db.tree.bottom().buffer.getLayers()
+	if persistID != bottom && head != persistID+diffLayers {
+		t.Fatalf("Failed to truncate excess history object above, bottom: %d, persistID: %d, diffLayers: %d", bottom, persistID, diffLayers)
 	}
 }
 

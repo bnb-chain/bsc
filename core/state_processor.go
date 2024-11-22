@@ -58,13 +58,13 @@ func NewStateProcessor(config *params.ChainConfig, chain *HeaderChain) *StatePro
 // transactions failed to execute due to insufficient gas it will return an error.
 func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*ProcessResult, error) {
 	var (
+		receipts    = make([]*types.Receipt, 0)
 		usedGas     = new(uint64)
 		header      = block.Header()
 		blockHash   = block.Hash()
 		blockNumber = block.Number()
 		allLogs     []*types.Log
 		gp          = new(GasPool).AddGas(block.GasLimit())
-		receipts    = make([]*types.Receipt, 0)
 	)
 
 	// Mutate the block and state according to any hard-fork specs
@@ -118,6 +118,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 		if p.config.IsCancun(block.Number(), block.Time()) {
 			if len(systemTxs) > 0 {
+				bloomProcessors.Close()
 				// systemTxs should be always at the end of block.
 				return nil, fmt.Errorf("normal tx %d [%v] after systemTx", i, tx.Hash().Hex())
 			}
@@ -140,23 +141,21 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 	bloomProcessors.Close()
 
-	// Fail if Shanghai not enabled and len(withdrawals) is non-zero.
-	withdrawals := block.Withdrawals()
-	if len(withdrawals) > 0 && !p.config.IsShanghai(block.Number(), block.Time()) {
-		return nil, errors.New("withdrawals before shanghai")
-	}
-
 	// Read requests if Prague is enabled.
 	var requests types.Requests
 	if p.config.IsPrague(block.Number(), block.Time()) {
-		requests, err = ParseDepositLogs(allLogs, p.config)
+		var allCommonLogs []*types.Log
+		for _, receipt := range receipts {
+			allCommonLogs = append(allCommonLogs, receipt.Logs...)
+		}
+		requests, err = ParseDepositLogs(allCommonLogs, p.config)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	err = p.chain.engine.Finalize(p.chain, header, statedb, &commonTxs, block.Uncles(), withdrawals, &receipts, &systemTxs, usedGas)
+	err = p.chain.engine.Finalize(p.chain, header, statedb, &commonTxs, block.Uncles(), block.Withdrawals(), &receipts, &systemTxs, usedGas)
 	if err != nil {
 		return nil, err
 	}

@@ -35,9 +35,6 @@ var (
 	// errMemorydbNotFound is returned if a key is requested that is not found in
 	// the provided memory database.
 	errMemorydbNotFound = errors.New("not found")
-
-	// errNotSupported is returned if the database doesn't support the required operation.
-	errNotSupported = errors.New("this operation is not supported")
 )
 
 // Database is an ephemeral key-value store. Apart from basic data storage

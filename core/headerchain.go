@@ -127,7 +127,7 @@ func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 }
 
 func (hc *HeaderChain) GenesisHeader() *types.Header {
-	panic("not supported")
+	return hc.genesisHeader
 }
 
 // GetBlockNumber retrieves the block number belonging to the given hash

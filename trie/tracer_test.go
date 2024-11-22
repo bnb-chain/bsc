@@ -52,15 +52,6 @@ var (
 	}
 )
 
-// copySet returns a deep-copied set.
-func copySet[k comparable](set map[k][]byte) map[k][]byte {
-	copied := make(map[k][]byte, len(set))
-	for key, val := range set {
-		copied[key] = common.CopyBytes(val)
-	}
-	return copied
-}
-
 func TestTrieTracer(t *testing.T) {
 	testTrieTracer(t, tiny)
 	testTrieTracer(t, nonAligned)

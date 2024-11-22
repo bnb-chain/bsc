@@ -2054,14 +2054,14 @@ func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme 
 
 	// Force run a freeze cycle
 	type freezer interface {
-		Freeze() error
+		Freeze(threshold uint64) error
 		Ancients() (uint64, error)
 	}
 	if tt.freezeThreshold < uint64(tt.canonicalBlocks) {
 		final := uint64(tt.canonicalBlocks) - tt.freezeThreshold
 		chain.SetFinalized(canonblocks[int(final)-1].Header())
 	}
-	db.(freezer).Freeze()
+	db.(freezer).Freeze(tt.freezeThreshold)
 
 	// Set the simulated pivot block
 	if tt.pivotBlock != nil {

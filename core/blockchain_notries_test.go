@@ -104,13 +104,13 @@ func makeTestBackendWithRemoteValidator(blocks int, mode VerifyMode, failed *ver
 	peers := []VerifyPeer{peer}
 
 	verifier, err := NewBlockChain(db, nil, gspec, nil, engine, vm.Config{},
-		nil, nil, EnablePersistDiff(100000), EnableBlockValidator(params.TestChainConfig, engine2, LocalVerify, nil))
+		nil, nil, EnablePersistDiff(100000), EnableBlockValidator(params.TestChainConfig, LocalVerify, nil))
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	fastnode, err := NewBlockChain(db2, nil, gspec2, nil, engine2, vm.Config{},
-		nil, nil, EnableBlockValidator(params.TestChainConfig, engine2, mode, newMockRemoteVerifyPeer(peers)))
+		nil, nil, EnableBlockValidator(params.TestChainConfig, mode, newMockRemoteVerifyPeer(peers)))
 	if err != nil {
 		return nil, nil, nil, err
 	}
