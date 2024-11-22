@@ -2268,17 +2268,17 @@ func TestTransferTransactions(t *testing.T) {
 
 	assert.Equal(t, 0, pending, "pending transactions mismatched")
 	assert.Equal(t, 0, queue, "queued transactions mismatched")
-	assert.Equal(t, 1, pool.statsOverflowPool(), "OverflowPool size unexpected")
+	assert.Equal(t, uint64(1), pool.statsOverflowPool(), "OverflowPool size unexpected")
 
 	tx2 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[1])
 	pool.addToOverflowPool([]*types.Transaction{tx2}, true)
-	assert.Equal(t, 1, pool.statsOverflowPool(), "OverflowPool size unexpected")
+	assert.Equal(t, uint64(1), pool.statsOverflowPool(), "OverflowPool size unexpected")
 	<-pool.requestPromoteExecutables(newAccountSet(pool.signer, from))
 	pending, queue = pool.Stats()
 
 	assert.Equal(t, 0, pending, "pending transactions mismatched")
 	assert.Equal(t, 1, queue, "queued transactions mismatched")
-	assert.Equal(t, 0, pool.statsOverflowPool(), "OverflowPool size unexpected")
+	assert.Equal(t, uint64(0), pool.statsOverflowPool(), "OverflowPool size unexpected")
 
 	tx3 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[2])
 	pool.addToOverflowPool([]*types.Transaction{tx3}, true)
@@ -2286,7 +2286,7 @@ func TestTransferTransactions(t *testing.T) {
 
 	assert.Equal(t, 1, pending, "pending transactions mismatched")
 	assert.Equal(t, 0, queue, "queued transactions mismatched")
-	assert.Equal(t, 1, pool.statsOverflowPool(), "OverflowPool size unexpected")
+	assert.Equal(t, uint64(1), pool.statsOverflowPool(), "OverflowPool size unexpected")
 }
 
 // Tests that the pool rejects replacement dynamic fee transactions that don't

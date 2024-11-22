@@ -523,7 +523,7 @@ func (pool *LegacyPool) Stats() (int, int) {
 	return pool.stats()
 }
 
-func (pool *LegacyPool) statsOverflowPool() int {
+func (pool *LegacyPool) statsOverflowPool() uint64 {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
@@ -907,25 +907,14 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 }
 
 func (pool *LegacyPool) addToOverflowPool(drop types.Transactions, isLocal bool) {
-	// calculate total number of slots in drop. Accordingly add them to OverflowPool (if there is space)
-	availableSlotsOverflowPool := pool.availableSlotsOverflowPool()
-	if availableSlotsOverflowPool > 0 {
-		// transfer availableSlotsOverflowPool number of transactions slots from drop to OverflowPool
-		currentSlotsUsed := 0
-		for i, tx := range drop {
-			txSlots := numSlots(tx)
-			if currentSlotsUsed+txSlots <= availableSlotsOverflowPool {
-				from, _ := types.Sender(pool.signer, tx)
-				pool.localBufferPool.Add(tx)
-				log.Debug("adding to OverflowPool", "transaction", tx.Hash().String(), "from", from.String())
-				currentSlotsUsed += txSlots
-			} else {
-				log.Debug("not all got added to OverflowPool", "totalAdded", i+1)
-				return
-			}
+	for _, tx := range drop {
+		added := pool.localBufferPool.Add(tx)
+		if added {
+			from, _ := types.Sender(pool.signer, tx)
+			log.Debug("Added to OverflowPool", "transaction", tx.Hash().String(), "from", from.String())
+		} else {
+			log.Debug("Failed to add transaction to OverflowPool", "transaction", tx.Hash().String())
 		}
-	} else {
-		log.Debug("adding to OverflowPool unsuccessful", "availableSlotsOverflowPool", availableSlotsOverflowPool)
 	}
 }
 
@@ -2106,15 +2095,6 @@ func (pool *LegacyPool) transferTransactions() {
 	}
 
 	pool.Add(txs, true, false)
-}
-
-func (pool *LegacyPool) availableSlotsOverflowPool() int {
-	maxOverflowPoolSize := int(pool.config.OverflowPoolSlots)
-	availableSlots := maxOverflowPoolSize - pool.localBufferPool.Size()
-	if availableSlots > 0 {
-		return availableSlots
-	}
-	return 0
 }
 
 func (pool *LegacyPool) PrintTxStats() {
