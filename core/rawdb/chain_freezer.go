@@ -88,6 +88,9 @@ func newChainFreezer(datadir string, namespace string, readonly bool, offset uin
 		AncientStore: freezer,
 		quit:         make(chan struct{}),
 		trigger:      make(chan chan struct{}),
+		// After enabling pruneAncient, the ancient data is not retained. In some specific scenarios where it is
+		// necessary to roll back to blocks prior to the finalized block, it is mandatory to keep the most recent 90,000 blocks in the database to ensure proper functionality and rollback capability.
+		multiDatabase: false,
 	}
 	cf.threshold.Store(params.FullImmutabilityThreshold)
 	return &cf, nil
