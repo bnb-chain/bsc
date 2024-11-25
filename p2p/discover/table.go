@@ -493,15 +493,15 @@ func (tab *Table) bucketAtDistance(d int) *bucket {
 }
 
 //nolint:unused
-func (tab *Table) filterNode(n *tableNode) bool {
+func (tab *Table) filterNode(n *enode.Node) bool {
 	if tab.enrFilter == nil {
 		return false
 	}
-	if node, err := tab.net.RequestENR(n.Node); err != nil {
-		tab.log.Debug("ENR request failed", "id", n.ID(), "addr", n.addr(), "err", err)
+	if node, err := tab.net.RequestENR(n); err != nil {
+		tab.log.Debug("ENR request failed", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "err", err)
 		return false
 	} else if !tab.enrFilter(node.Record()) {
-		tab.log.Trace("ENR record filter out", "id", n.ID(), "addr", n.addr())
+		tab.log.Trace("ENR record filter out", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP())
 		return true
 	}
 	return false
@@ -547,6 +547,10 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 		return false
 	}
 
+	if tab.filterNode(req.node) {
+		return false
+	}
+
 	b := tab.bucket(req.node.ID())
 	n, _ := tab.bumpInBucket(b, req.node, req.isInbound)
 	if n != nil {
@@ -569,11 +573,6 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 		wn.livenessChecks = 1
 		wn.isValidatedLive = true
 	}
-
-	// TODO(Matus): fix the filterNode feature
-	// if tab.filterNode(wn) {
-	// 	return false
-	// }
 
 	b.entries = append(b.entries, wn)
 	b.replacements = deleteNode(b.replacements, wn.ID())
