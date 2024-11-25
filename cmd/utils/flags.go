@@ -117,11 +117,6 @@ var (
 		Usage:    "Enable trust protocol",
 		Category: flags.FastNodeCategory,
 	}
-	PipeCommitFlag = &cli.BoolFlag{
-		Name:     "pipecommit",
-		Usage:    "Enable MPT pipeline commit, it will improve syncing performance. It is an experimental feature(default is false)",
-		Category: flags.DeprecatedCategory,
-	}
 	RangeLimitFlag = &cli.BoolFlag{
 		Name:     "rangelimit",
 		Usage:    "Enable 5000 blocks limit for range query",
@@ -310,12 +305,17 @@ var (
 	}
 	OverridePassedForkTime = &cli.Uint64Flag{
 		Name:     "override.passedforktime",
-		Usage:    "Manually specify the hard fork timestamp except the last one, overriding the bundled setting",
+		Usage:    "Manually specify the hard fork timestamps which have passed on the mainnet, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
-	OverrideBohr = &cli.Uint64Flag{
-		Name:     "override.bohr",
-		Usage:    "Manually specify the Bohr fork timestamp, overriding the bundled setting",
+	OverridePascal = &cli.Uint64Flag{
+		Name:     "override.pascal",
+		Usage:    "Manually specify the Pascal fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	OverridePrague = &cli.Uint64Flag{
+		Name:     "override.prague",
+		Usage:    "Manually specify the Prague fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
 	OverrideVerkle = &cli.Uint64Flag{
@@ -451,6 +451,12 @@ var (
 		Name:     "txpool.globalqueue",
 		Usage:    "Maximum number of non-executable transaction slots for all accounts",
 		Value:    ethconfig.Defaults.TxPool.GlobalQueue,
+		Category: flags.TxPoolCategory,
+	}
+	TxPoolOverflowPoolSlotsFlag = &cli.Uint64Flag{
+		Name:     "txpool.overflowpoolslots",
+		Usage:    "Maximum number of transaction slots in overflow pool",
+		Value:    ethconfig.Defaults.TxPool.OverflowPoolSlots,
 		Category: flags.TxPoolCategory,
 	}
 	TxPoolLifetimeFlag = &cli.DurationFlag{
@@ -1784,6 +1790,9 @@ func setTxPool(ctx *cli.Context, cfg *legacypool.Config) {
 	if ctx.IsSet(TxPoolGlobalQueueFlag.Name) {
 		cfg.GlobalQueue = ctx.Uint64(TxPoolGlobalQueueFlag.Name)
 	}
+	if ctx.IsSet(TxPoolOverflowPoolSlotsFlag.Name) {
+		cfg.OverflowPoolSlots = ctx.Uint64(TxPoolOverflowPoolSlotsFlag.Name)
+	}
 	if ctx.IsSet(TxPoolLifetimeFlag.Name) {
 		cfg.Lifetime = ctx.Duration(TxPoolLifetimeFlag.Name)
 	}
@@ -1967,9 +1976,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(EnableTrustProtocolFlag.Name) {
 		cfg.EnableTrustProtocol = ctx.IsSet(EnableTrustProtocolFlag.Name)
-	}
-	if ctx.IsSet(PipeCommitFlag.Name) {
-		log.Warn("The --pipecommit flag is deprecated and could be removed in the future!")
 	}
 	if ctx.IsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.Bool(RangeLimitFlag.Name)
@@ -2305,16 +2311,17 @@ func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) Setup
 	return func() {
 		// register node info into metrics
 		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
-			"Enode":        nodeInfo.Enode,
-			"ENR":          nodeInfo.ENR,
-			"ID":           nodeInfo.ID,
-			"PriceLimit":   poolConfig.PriceLimit,
-			"PriceBump":    poolConfig.PriceBump,
-			"AccountSlots": poolConfig.AccountSlots,
-			"GlobalSlots":  poolConfig.GlobalSlots,
-			"AccountQueue": poolConfig.AccountQueue,
-			"GlobalQueue":  poolConfig.GlobalQueue,
-			"Lifetime":     poolConfig.Lifetime,
+			"Enode":             nodeInfo.Enode,
+			"ENR":               nodeInfo.ENR,
+			"ID":                nodeInfo.ID,
+			"PriceLimit":        poolConfig.PriceLimit,
+			"PriceBump":         poolConfig.PriceBump,
+			"AccountSlots":      poolConfig.AccountSlots,
+			"GlobalSlots":       poolConfig.GlobalSlots,
+			"AccountQueue":      poolConfig.AccountQueue,
+			"GlobalQueue":       poolConfig.GlobalQueue,
+			"OverflowPoolSlots": poolConfig.OverflowPoolSlots,
+			"Lifetime":          poolConfig.Lifetime,
 		})
 	}
 }

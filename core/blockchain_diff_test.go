@@ -237,7 +237,7 @@ func TestFreezeDiffLayer(t *testing.T) {
 		// Wait for the buffer to be zero.
 	}
 	// Minus one empty block.
-	if fullBackend.chain.diffQueue.Size() > blockNum-1 && fullBackend.chain.diffQueue.Size() < blockNum-2 {
+	if fullBackend.chain.diffQueue.Size() != blockNum-1 {
 		t.Errorf("size of diff queue is wrong, expected: %d, get: %d", blockNum-1, fullBackend.chain.diffQueue.Size())
 	}
 

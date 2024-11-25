@@ -272,9 +272,7 @@ func (a Addresses) Less(i, j int) bool {
 }
 
 func (a Addresses) Swap(i, j int) {
-	tmp := a[i]
-	a[i] = a[j]
-	a[j] = tmp
+	a[i], a[j] = a[j], a[i]
 }
 
 func blocksFromFile(chainfile string, gblock *types.Block) ([]*types.Block, error) {
