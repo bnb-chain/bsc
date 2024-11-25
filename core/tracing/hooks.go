@@ -150,6 +150,8 @@ type (
 	// beacon block root.
 	OnSystemCallEndHook = func()
 
+	// OnSystemTxEndHook is called when tracing a system transaction, which does not calculate intrinsic gas during execution.
+	// This hook will subtract intrinsic gas from the total gas used.
 	OnSystemTxEndHook = func(uint64)
 
 	/*
