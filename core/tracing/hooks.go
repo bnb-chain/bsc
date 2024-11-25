@@ -150,8 +150,7 @@ type (
 	// beacon block root.
 	OnSystemCallEndHook = func()
 
-	// TODO(Nathan,Eric): refine this func
-	OnCaptureSystemTxEndHook = func(uint64)
+	OnSystemTxEndHook = func(uint64)
 
 	/*
 		- State events -
@@ -192,7 +191,7 @@ type Hooks struct {
 	OnSystemCallStart OnSystemCallStartHook
 	OnSystemCallEnd   OnSystemCallEndHook
 
-	CaptureSystemTxEnd OnCaptureSystemTxEndHook
+	OnSystemTxEnd OnSystemTxEndHook
 
 	// State events
 	OnBalanceChange BalanceChangeHook

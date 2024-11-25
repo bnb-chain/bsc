@@ -236,8 +236,6 @@ func newJsTracer(code string, ctx *tracers.Context, cfg json.RawMessage) (*trace
 	}, nil
 }
 
-func (t *jsTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
-
 // OnTxStart implements the Tracer interface and is invoked at the beginning of
 // transaction processing.
 func (t *jsTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {

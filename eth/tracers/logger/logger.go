@@ -134,10 +134,11 @@ func NewStructLogger(cfg *Config) *StructLogger {
 
 func (l *StructLogger) Hooks() *tracing.Hooks {
 	return &tracing.Hooks{
-		OnTxStart: l.OnTxStart,
-		OnTxEnd:   l.OnTxEnd,
-		OnExit:    l.OnExit,
-		OnOpcode:  l.OnOpcode,
+		OnTxStart:     l.OnTxStart,
+		OnTxEnd:       l.OnTxEnd,
+		OnExit:        l.OnExit,
+		OnOpcode:      l.OnOpcode,
+		OnSystemTxEnd: l.OnSystemTxEnd,
 	}
 }
 
@@ -273,7 +274,7 @@ func (l *StructLogger) OnTxEnd(receipt *types.Receipt, err error) {
 	}
 }
 
-func (l *StructLogger) CaptureSystemTxEnd(intrinsicGas uint64) {
+func (l *StructLogger) OnSystemTxEnd(intrinsicGas uint64) {
 	l.usedGas -= intrinsicGas
 }
 
@@ -415,8 +416,6 @@ func (t *mdLogger) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.
 func (t *mdLogger) OnFault(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, depth int, err error) {
 	fmt.Fprintf(t.out, "\nError: at pc=%d, op=%v: %v\n", pc, op, err)
 }
-
-func (*mdLogger) CaptureSystemTxEnd(intrinsicGas uint64) {}
 
 // ExecutionResult groups all structured logs emitted by the EVM
 // while replaying a transaction in debug mode as well as transaction
