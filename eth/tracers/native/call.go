@@ -132,11 +132,12 @@ func newCallTracer(ctx *tracers.Context, cfg json.RawMessage) (*tracers.Tracer, 
 	}
 	return &tracers.Tracer{
 		Hooks: &tracing.Hooks{
-			OnTxStart: t.OnTxStart,
-			OnTxEnd:   t.OnTxEnd,
-			OnEnter:   t.OnEnter,
-			OnExit:    t.OnExit,
-			OnLog:     t.OnLog,
+			OnTxStart:     t.OnTxStart,
+			OnTxEnd:       t.OnTxEnd,
+			OnEnter:       t.OnEnter,
+			OnExit:        t.OnExit,
+			OnLog:         t.OnLog,
+			OnSystemTxEnd: t.OnSystemTxEnd,
 		},
 		GetResult: t.GetResult,
 		Stop:      t.Stop,
@@ -234,7 +235,7 @@ func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
 	}
 }
 
-func (t *callTracer) CaptureSystemTxEnd(intrinsicGas uint64) {
+func (t *callTracer) OnSystemTxEnd(intrinsicGas uint64) {
 	t.callstack[0].GasUsed -= intrinsicGas
 }
 

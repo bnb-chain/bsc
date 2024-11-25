@@ -253,8 +253,6 @@ func (t *prestateTracer) processDiffState() {
 	}
 }
 
-func (t *prestateTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
-
 // lookupAccount fetches details of an account and adds it to the prestate
 // if it doesn't exist there.
 func (t *prestateTracer) lookupAccount(addr common.Address) {

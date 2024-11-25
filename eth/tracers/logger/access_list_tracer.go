@@ -154,8 +154,6 @@ func (a *AccessListTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, sc
 	}
 }
 
-func (*AccessListTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
-
 // AccessList returns the current accesslist maintained by the tracer.
 func (a *AccessListTracer) AccessList() types.AccessList {
 	return a.list.accessList()

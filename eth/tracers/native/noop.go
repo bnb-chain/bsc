@@ -51,6 +51,7 @@ func newNoopTracer(ctx *tracers.Context, _ json.RawMessage) (*tracers.Tracer, er
 			OnCodeChange:    t.OnCodeChange,
 			OnStorageChange: t.OnStorageChange,
 			OnLog:           t.OnLog,
+			OnSystemTxEnd:   t.OnSystemTxEnd,
 		},
 		GetResult: t.GetResult,
 		Stop:      t.Stop,
@@ -88,7 +89,7 @@ func (*noopTracer) OnStorageChange(a common.Address, k, prev, new common.Hash) {
 
 func (*noopTracer) OnLog(log *types.Log) {}
 
-func (*noopTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
+func (*noopTracer) OnSystemTxEnd(intrinsicGas uint64) {}
 
 // GetResult returns an empty json object.
 func (t *noopTracer) GetResult() (json.RawMessage, error) {

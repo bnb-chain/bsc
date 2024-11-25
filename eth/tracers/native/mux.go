@@ -71,6 +71,7 @@ func newMuxTracer(ctx *tracers.Context, cfg json.RawMessage) (*tracers.Tracer, e
 			OnCodeChange:    t.OnCodeChange,
 			OnStorageChange: t.OnStorageChange,
 			OnLog:           t.OnLog,
+			OnSystemTxEnd:   t.OnSystemTxEnd,
 		},
 		GetResult: t.GetResult,
 		Stop:      t.Stop,
@@ -173,9 +174,9 @@ func (t *muxTracer) OnLog(log *types.Log) {
 	}
 }
 
-func (t *muxTracer) CaptureSystemTxEnd(intrinsicGas uint64) {
+func (t *muxTracer) OnSystemTxEnd(intrinsicGas uint64) {
 	for _, t := range t.tracers {
-		t.CaptureSystemTxEnd(intrinsicGas)
+		t.OnSystemTxEnd(intrinsicGas)
 	}
 }
 

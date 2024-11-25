@@ -175,5 +175,3 @@ func (l *jsonLogger) OnExit(depth int, output []byte, gasUsed uint64, err error,
 func (l *jsonLogger) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
 	l.env = env
 }
-
-func (l *jsonLogger) CaptureSystemTxEnd(intrinsicGas uint64) {}

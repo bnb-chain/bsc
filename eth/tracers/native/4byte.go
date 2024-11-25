@@ -114,8 +114,6 @@ func (t *fourByteTracer) OnEnter(depth int, opcode byte, from common.Address, to
 	t.store(input[0:4], len(input)-4)
 }
 
-func (*fourByteTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
-
 // GetResult returns the json-encoded nested list of call traces, and any
 // error arising from the encoding or forceful termination (via `Stop`).
 func (t *fourByteTracer) GetResult() (json.RawMessage, error) {

@@ -217,8 +217,8 @@ func (t *flatCallTracer) OnTxEnd(receipt *types.Receipt, err error) {
 	t.tracer.OnTxEnd(receipt, err)
 }
 
-func (t *flatCallTracer) CaptureSystemTxEnd(intrinsicGas uint64) {
-	t.tracer.CaptureSystemTxEnd(intrinsicGas)
+func (t *flatCallTracer) OnSystemTxEnd(intrinsicGas uint64) {
+	t.tracer.OnSystemTxEnd(intrinsicGas)
 }
 
 // GetResult returns an empty json object.

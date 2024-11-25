@@ -150,8 +150,9 @@ type (
 	// beacon block root.
 	OnSystemCallEndHook = func()
 
-	// TODO(Nathan,Eric): refine this func
-	OnCaptureSystemTxEndHook = func(uint64)
+	// OnSystemTxEndHook is called when tracing a system transaction, which does not calculate intrinsic gas during execution.
+	// this hook will subtract intrinsic gas from the total gas used.
+	OnSystemTxEndHook = func(uint64)
 
 	/*
 		- State events -
@@ -192,7 +193,7 @@ type Hooks struct {
 	OnSystemCallStart OnSystemCallStartHook
 	OnSystemCallEnd   OnSystemCallEndHook
 
-	CaptureSystemTxEnd OnCaptureSystemTxEndHook
+	OnSystemTxEnd OnSystemTxEndHook
 
 	// State events
 	OnBalanceChange BalanceChangeHook
