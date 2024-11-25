@@ -150,7 +150,7 @@ func (dl *diskLayer) markStale() {
 
 // node implements the layer interface, retrieving the trie node with the
 // provided node info. No error will be returned if the node is not found.
-func (dl *diskLayer) node(owner common.Hash, path []byte, depth int) ([]byte, common.Hash, *nodeLoc, error) {
+func (dl *diskLayer) node(owner common.Hash, path []byte, hash common.Hash, depth int) ([]byte, common.Hash, *nodeLoc, error) {
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 

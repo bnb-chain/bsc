@@ -79,7 +79,8 @@ type layer interface {
 	// already stale.
 	//
 	// Note, no error will be returned if the requested node is not found in database.
-	node(owner common.Hash, path []byte, depth int) ([]byte, common.Hash, *nodeLoc, error)
+	// Note, the hash parameter can access the diff-layer flat cache to speed up access.
+	node(owner common.Hash, path []byte, hash common.Hash, depth int) ([]byte, common.Hash, *nodeLoc, error)
 
 	// rootHash returns the root hash for which this layer was made.
 	rootHash() common.Hash
