@@ -974,7 +974,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			legacyTries.Add(size)
 		case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix):
 			tds.Add(size)
-		case bytes.HasPrefix(key, BlockBlobSidecarsPrefix) && bytes.HasSuffix(key, BlockBlobSidecarsPrefix):
+		case bytes.HasPrefix(key, BlockBlobSidecarsPrefix):
 			blobSidecars.Add(size)
 		case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix):
 			numHashPairings.Add(size)
@@ -1106,7 +1106,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				receipts.Add(size)
 			case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix):
 				tds.Add(size)
-			case bytes.HasPrefix(key, BlockBlobSidecarsPrefix) && bytes.HasSuffix(key, BlockBlobSidecarsPrefix):
+			case bytes.HasPrefix(key, BlockBlobSidecarsPrefix):
 				blobSidecars.Add(size)
 			case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix):
 				numHashPairings.Add(size)
