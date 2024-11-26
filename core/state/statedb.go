@@ -703,7 +703,7 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 	// Schedule the resolved account for prefetching if it's enabled.
 	if s.prefetcher != nil {
 		if err := s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, [][]byte{addr[:]}, true); err != nil {
-			log.Debug("Failed to prefetch account", "addr", addr, "err", err)
+			log.Error("Failed to prefetch account", "addr", addr, "err", err)
 		}
 	}
 	// Insert into the live set
@@ -999,7 +999,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	start = time.Now()
 	if s.prefetcher != nil {
 		if trie := s.prefetcher.trie(common.Hash{}, s.originalRoot); trie == nil {
-			log.Error("Failed to retrieve account pre-fetcher trie")
+			log.Debug("Failed to retrieve account pre-fetcher trie")
 		} else {
 			s.trie = trie
 		}
