@@ -337,13 +337,13 @@ func (tab *Table) addFoundNode(n *enode.Node, forceSetLive bool) bool {
 // repeatedly.
 //
 // The caller must not hold tab.mutex.
-func (tab *Table) addInboundNode(n *enode.Node) bool {
+func (tab *Table) addInboundNode(n *enode.Node) {
 	op := addNodeOp{node: n, isInbound: true}
 	select {
 	case tab.addNodeCh <- op:
-		return <-tab.addNodeHandled
+		return
 	case <-tab.closeReq:
-		return false
+		return
 	}
 }
 
@@ -387,10 +387,9 @@ loop:
 			tab.revalidation.handleResponse(tab, r)
 
 		case op := <-tab.addNodeCh:
-			tab.mutex.Lock()
-			ok := tab.handleAddNode(op)
-			tab.mutex.Unlock()
-			tab.addNodeHandled <- ok
+			go func() {
+				tab.addNodeHandled <- tab.handleAddNode(op)
+			}()
 
 		case op := <-tab.trackRequestCh:
 			tab.handleTrackRequest(op)
@@ -468,9 +467,7 @@ func (tab *Table) loadSeedNodes() {
 			addr, _ := seed.UDPEndpoint()
 			tab.log.Trace("Found seed node in database", "id", seed.ID(), "addr", addr, "age", age)
 		}
-		tab.mutex.Lock()
-		tab.handleAddNode(addNodeOp{node: seed, isInbound: false})
-		tab.mutex.Unlock()
+		go tab.handleAddNode(addNodeOp{node: seed, isInbound: false})
 	}
 }
 
@@ -541,13 +538,16 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 		return false
 	}
 
-	// For nodes from inbound contact, there is an additional safety measure: if the table
-	// is still initializing the node is not added.
-	if req.isInbound && !tab.isInitDone() {
+	if tab.filterNode(req.node) {
 		return false
 	}
 
-	if tab.filterNode(req.node) {
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+
+	// For nodes from inbound contact, there is an additional safety measure: if the table
+	// is still initializing the node is not added.
+	if req.isInbound && !tab.isInitDone() {
 		return false
 	}
 
@@ -704,8 +704,6 @@ func (tab *Table) handleTrackRequest(op trackRequestOp) {
 	}
 
 	tab.mutex.Lock()
-	defer tab.mutex.Unlock()
-
 	b := tab.bucket(op.node.ID())
 	// Remove the node from the local table if it fails to return anything useful too
 	// many times, but only if there are enough other nodes in the bucket. This latter
@@ -714,10 +712,11 @@ func (tab *Table) handleTrackRequest(op trackRequestOp) {
 	if fails >= maxFindnodeFailures && len(b.entries) >= bucketSize/4 {
 		tab.deleteInBucket(b, op.node.ID())
 	}
+	tab.mutex.Unlock()
 
 	// Add found nodes.
 	for _, n := range op.foundNodes {
-		tab.handleAddNode(addNodeOp{n, false, false})
+		go tab.handleAddNode(addNodeOp{n, false, false})
 	}
 }
 

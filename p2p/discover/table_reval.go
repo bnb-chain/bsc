@@ -121,13 +121,7 @@ func (tab *Table) doRevalidate(resp revalidationResponse, node *enode.Node) {
 		if err != nil {
 			tab.log.Debug("ENR request failed", "id", node.ID(), "err", err)
 		} else {
-			if tab.enrFilter != nil && !tab.enrFilter(newrec.Record()) {
-				tab.log.Trace("ENR record filter out", "id", node.ID(), "err", errors.New("filtered node"))
-				// TODO: use didRespond to express failure temporarily
-				resp.didRespond = false
-			} else {
-				resp.newRecord = newrec
-			}
+			resp.newRecord = newrec
 		}
 	}
 
@@ -181,6 +175,11 @@ func (tr *tableRevalidation) handleResponse(tab *Table, resp revalidationRespons
 	tab.log.Debug("Node revalidated", "b", b.index, "id", n.ID(), "checks", n.livenessChecks, "q", n.revalList.name)
 	var endpointChanged bool
 	if resp.newRecord != nil {
+		if tab.enrFilter != nil && !tab.enrFilter(resp.newRecord.Record()) {
+			tab.log.Trace("ENR record filter out", "id", n.ID(), "err", errors.New("filtered node"))
+			tab.deleteInBucket(b, n.ID())
+			return
+		}
 		_, endpointChanged = tab.bumpInBucket(b, resp.newRecord, false)
 	}
 

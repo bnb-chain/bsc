@@ -437,6 +437,9 @@ func (t *UDPv5) verifyResponseNode(c *callV5, r *enr.Record, distances []uint, s
 	if node.UDP() <= 1024 {
 		return nil, errLowPort
 	}
+	if t.tab.enrFilter != nil && !t.tab.enrFilter(r) {
+		return nil, errors.New("filtered by ENR filter")
+	}
 	if distances != nil {
 		nd := enode.LogDist(c.id, node.ID())
 		if !slices.Contains(distances, uint(nd)) {
