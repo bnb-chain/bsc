@@ -388,7 +388,7 @@ func (args *TransactionArgs) CallDefaults(globalGasCap uint64, baseFee *big.Int,
 		args.Gas = (*hexutil.Uint64)(&gas)
 	} else {
 		if globalGasCap > 0 && globalGasCap < uint64(*args.Gas) {
-			log.Warn("Caller gas above allowance, capping", "requested", args.Gas, "cap", globalGasCap)
+			log.Debug("Caller gas above allowance, capping", "requested", args.Gas, "cap", globalGasCap)
 			args.Gas = (*hexutil.Uint64)(&globalGasCap)
 		}
 	}
