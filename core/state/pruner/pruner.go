@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -155,10 +156,10 @@ func NewAllPruner(db ethdb.Database) (*Pruner, error) {
 }
 
 func (p *Pruner) PruneAll(genesis *core.Genesis) error {
-	return pruneAll(p.db, genesis)
+	return p.pruneAll(p.db, genesis)
 }
 
-func pruneAll(maindb ethdb.Database, g *core.Genesis) error {
+func (p *Pruner) pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 	var pruneDB ethdb.Database
 	if maindb != nil && maindb.StateStore() != nil {
 		pruneDB = maindb.StateStore()
@@ -232,17 +233,16 @@ func pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 		}
 		log.Info("Database compaction finished", "elapsed", common.PrettyDuration(time.Since(cstart)))
 	}
-	statedb, _ := state.New(common.Hash{}, state.NewDatabase(maindb), nil)
+	statedb, _ := state.New(common.Hash{}, state.NewDatabase(triedb.NewDatabase(maindb, nil), p.snaptree))
 	for addr, account := range g.Alloc {
-		statedb.AddBalance(addr, uint256.MustFromBig(account.Balance))
+		statedb.AddBalance(addr, uint256.MustFromBig(account.Balance), tracing.BalanceChangeUnspecified)
 		statedb.SetCode(addr, account.Code)
 		statedb.SetNonce(addr, account.Nonce)
 		for key, value := range account.Storage {
 			statedb.SetState(addr, key, value)
 		}
 	}
-	root := statedb.IntermediateRoot(false)
-	statedb.Commit(0, nil)
+	root, _, _ := statedb.Commit(0, false)
 	statedb.Database().TrieDB().Commit(root, true)
 	log.Info("State pruning successful", "pruned", size, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
@@ -612,11 +612,10 @@ func (p *Pruner) Prune(root common.Hash) error {
 	// is the presence of root can indicate the presence of the
 	// entire trie.
 	if !rawdb.HasLegacyTrieNode(trienodedb, root) {
-		// The special case is for clique based networks(goerli
-		// and some other private networks), it's possible that two
-		// consecutive blocks will have same root. In this case snapshot
-		// difflayer won't be created. So HEAD-127 may not paired with
-		// head-127 layer. Instead the paired layer is higher than the
+		// The special case is for clique based networks, it's possible
+		// that two consecutive blocks will have same root. In this case
+		// snapshot difflayer won't be created. So HEAD-127 may not paired
+		// with head-127 layer. Instead the paired layer is higher than the
 		// bottom-most diff layer. Try to find the bottom-most snapshot
 		// layer with state available.
 		//

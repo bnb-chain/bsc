@@ -49,7 +49,7 @@ Many of the below are the same as or similar to go-ethereum.
 
 For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
 
-Building `geth` requires both a Go (version 1.21 or later) and a C compiler (GCC 5 or higher). You can install
+Building `geth` requires both a Go (version 1.22 or later) and a C compiler (GCC 5 or higher). You can install
 them using your favourite package manager. Once the dependencies are installed, run
 
 ```shell

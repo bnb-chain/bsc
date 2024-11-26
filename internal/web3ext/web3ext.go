@@ -261,7 +261,6 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'chaindbProperty',
 			call: 'debug_chaindbProperty',
-			params: 1,
 			outputFormatter: console.log
 		}),
 		new web3._extend.Method({
@@ -610,6 +609,12 @@ web3._extend({
 			inputFormatter: [web3._extend.formatters.inputCallFormatter, web3._extend.formatters.inputDefaultBlockNumberFormatter, null, null],
 		}),
 		new web3._extend.Method({
+			name: 'simulateV1',
+			call: 'eth_simulateV1',
+			params: 2,
+			inputFormatter: [null, web3._extend.formatters.inputDefaultBlockNumberFormatter],
+		}),
+		new web3._extend.Method({
 			name: 'getBlockReceipts',
 			call: 'eth_getBlockReceipts',
 			params: 1,
@@ -710,10 +715,6 @@ web3._extend({
 			name: 'setRecommitInterval',
 			call: 'miner_setRecommitInterval',
 			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'getHashrate',
-			call: 'miner_getHashrate'
 		}),
 	],
 	properties: []

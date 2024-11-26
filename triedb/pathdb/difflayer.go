@@ -198,6 +198,12 @@ func (dl *diffLayer) originDiskLayer() *diskLayer {
 	return dl.origin
 }
 
+func (dl *diffLayer) updateOriginDiskLayer(persistLayer *diskLayer) {
+	dl.lock.Lock()
+	defer dl.lock.Unlock()
+	dl.origin = persistLayer
+}
+
 // rootHash implements the layer interface, returning the root hash of
 // corresponding state.
 func (dl *diffLayer) rootHash() common.Hash {
@@ -218,71 +224,65 @@ func (dl *diffLayer) parentLayer() layer {
 	return dl.parent
 }
 
-// node retrieves the node with provided node information. It's the internal
-// version of Node function with additional accessed layer tracked. No error
-// will be returned if node is not found.
-func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, depth int) ([]byte, error) {
-	// Hold the lock, ensure the parent won't be changed during the
-	// state accessing.
-	dl.lock.RLock()
-	defer dl.lock.RUnlock()
-
-	// If the trie node is known locally, return it
-	subset, ok := dl.nodes[owner]
-	if ok {
-		n, ok := subset[string(path)]
-		if ok {
-			// If the trie node is not hash matched, or marked as removed,
-			// bubble up an error here. It shouldn't happen at all.
-			if n.Hash != hash {
-				dirtyFalseMeter.Mark(1)
-				log.Error("Unexpected trie node in diff layer", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
-				return nil, newUnexpectedNodeError("diff", hash, n.Hash, owner, path, n.Blob)
-			}
-			dirtyHitMeter.Mark(1)
-			dirtyNodeHitDepthHist.Update(int64(depth))
-			dirtyReadMeter.Mark(int64(len(n.Blob)))
-			return n.Blob, nil
+// node implements the layer interface, retrieving the trie node blob with the
+// provided node information. No error will be returned if the node is not found.
+// The hash parameter can access the cache to speed up access.
+func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, depth int) ([]byte, common.Hash, *nodeLoc, error) {
+	if hash != (common.Hash{}) {
+		if n := dl.cache.Get(hash); n != nil {
+			// The query from the hash map is fastpath,
+			// avoiding recursive query of 128 difflayers.
+			diffHashCacheHitMeter.Mark(1)
+			diffHashCacheReadMeter.Mark(int64(len(n.Blob)))
+			return n.Blob, n.Hash, &nodeLoc{loc: locDiffLayer, depth: depth}, nil
 		}
 	}
-	// Trie node unknown to this layer, resolve from parent
-	if diff, ok := dl.parent.(*diffLayer); ok {
-		return diff.node(owner, path, hash, depth+1)
-	}
-	// Failed to resolve through diff layers, fallback to disk layer
-	return dl.parent.Node(owner, path, hash)
-}
 
-// Node implements the layer interface, retrieving the trie node blob with the
-// provided node information. No error will be returned if the node is not found.
-func (dl *diffLayer) Node(owner common.Hash, path []byte, hash common.Hash) ([]byte, error) {
-	if n := dl.cache.Get(hash); n != nil {
-		// The query from the hash map is fastpath,
-		// avoiding recursive query of 128 difflayers.
-		diffHashCacheHitMeter.Mark(1)
-		diffHashCacheReadMeter.Mark(int64(len(n.Blob)))
-		return n.Blob, nil
-	}
 	diffHashCacheMissMeter.Mark(1)
-
 	persistLayer := dl.originDiskLayer()
-	if persistLayer != nil {
-		blob, err := persistLayer.Node(owner, path, hash)
-		if err != nil {
+	if hash != (common.Hash{}) && persistLayer != nil {
+		blob, rhash, nloc, err := persistLayer.node(owner, path, hash, depth+1)
+		if err != nil || rhash != hash {
 			// This is a bad case with a very low probability.
 			// r/w the difflayer cache and r/w the disklayer are not in the same lock,
 			// so in extreme cases, both reading the difflayer cache and reading the disklayer may fail, eg, disklayer is stale.
 			// In this case, fallback to the original 128-layer recursive difflayer query path.
 			diffHashCacheSlowPathMeter.Mark(1)
-			log.Debug("Retry difflayer due to query origin failed", "owner", owner, "path", path, "hash", hash.String(), "error", err)
-			return dl.node(owner, path, hash, 0)
+			log.Debug("Retry difflayer due to query origin failed",
+				"owner", owner, "path", path, "query_hash", hash.String(), "return_hash", rhash.String(), "error", err)
+			return dl.intervalNode(owner, path, hash, 0)
 		} else { // This is the fastpath.
-			return blob, nil
+			return blob, rhash, nloc, nil
 		}
 	}
 	diffHashCacheSlowPathMeter.Mark(1)
-	log.Debug("Retry difflayer due to origin is nil", "owner", owner, "path", path, "hash", hash.String())
-	return dl.node(owner, path, hash, 0)
+	log.Debug("Retry difflayer due to origin is nil or hash is empty",
+		"owner", owner, "path", path, "query_hash", hash.String(), "disk_layer_is_empty", persistLayer == nil)
+	return dl.intervalNode(owner, path, hash, 0)
+}
+
+func (dl *diffLayer) intervalNode(owner common.Hash, path []byte, hash common.Hash, depth int) ([]byte, common.Hash, *nodeLoc, error) {
+	// Hold the lock, ensure the parent won't be changed during the
+	// state accessing.
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+	// If the trie node is known locally, return it
+	subset, ok := dl.nodes[owner]
+	if ok {
+		n, ok := subset[string(path)]
+		if ok {
+			dirtyHitMeter.Mark(1)
+			dirtyNodeHitDepthHist.Update(int64(depth))
+			dirtyReadMeter.Mark(int64(len(n.Blob)))
+			return n.Blob, n.Hash, &nodeLoc{loc: locDiffLayer, depth: depth}, nil
+		}
+	}
+	// Trie node unknown to this layer, resolve from parent
+	if diff, ok := dl.parent.(*diffLayer); ok {
+		return diff.intervalNode(owner, path, hash, depth+1)
+	}
+	// Failed to resolve through diff layers, fallback to disk layer
+	return dl.parent.node(owner, path, hash, depth+1)
 }
 
 // update implements the layer interface, creating a new layer on top of the

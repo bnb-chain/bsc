@@ -17,8 +17,11 @@
 package rpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -331,7 +334,7 @@ func (h *handler) addRequestOp(op *requestOp) {
 	}
 }
 
-// removeRequestOps stops waiting for the given request IDs.
+// removeRequestOp stops waiting for the given request IDs.
 func (h *handler) removeRequestOp(op *requestOp) {
 	for _, id := range op.ids {
 		delete(h.respWait, string(id))
@@ -395,7 +398,7 @@ func (h *handler) startCallProc(fn func(*callProc)) {
 	})
 }
 
-// handleResponse processes method call responses.
+// handleResponses processes method call responses.
 func (h *handler) handleResponses(batch []*jsonrpcMessage, handleCall func(*jsonrpcMessage)) {
 	var resolvedops []*requestOp
 	handleResp := func(msg *jsonrpcMessage) {
@@ -475,8 +478,8 @@ func (h *handler) handleCallMsg(ctx *callProc, reqCtx context.Context, msg *json
 
 	case msg.isCall():
 		resp := h.handleCall(ctx, msg)
-		var ctx []interface{}
-		ctx = append(ctx, "reqid", idForLog{msg.ID}, "duration", time.Since(start))
+		var logctx []any
+		logctx = append(logctx, "reqid", idForLog{msg.ID}, "duration", time.Since(start))
 		if resp.Error != nil {
 			xForward := reqCtx.Value("X-Forwarded-For")
 			h.log.Warn("Served "+msg.Method, "reqid", idForLog{msg.ID}, "t", time.Since(start), "err", resp.Error.Message, "X-Forwarded-For", xForward)
@@ -486,13 +489,13 @@ func (h *handler) handleCallMsg(ctx *callProc, reqCtx context.Context, msg *json
 				accountBlacklistRpcCounter.Inc(1)
 				log.Warn("blacklist account detected from direct rpc", "remoteAddr", h.conn.remoteAddr())
 			}
-			ctx = append(ctx, "err", resp.Error.Message)
+			logctx = append(logctx, "err", resp.Error.Message)
 			if resp.Error.Data != nil {
-				ctx = append(ctx, "errdata", resp.Error.Data)
+				logctx = append(logctx, "errdata", formatErrorData(resp.Error.Data))
 			}
-			h.log.Warn("Served "+msg.Method, ctx...)
+			h.log.Warn("Served "+msg.Method, logctx...)
 		} else {
-			h.log.Debug("Served "+msg.Method, ctx...)
+			h.log.Debug("Served "+msg.Method, logctx...)
 		}
 		return resp
 
@@ -606,4 +609,34 @@ func (id idForLog) String() string {
 		return s
 	}
 	return string(id.RawMessage)
+}
+
+var errTruncatedOutput = errors.New("truncated output")
+
+type limitedBuffer struct {
+	output []byte
+	limit  int
+}
+
+func (buf *limitedBuffer) Write(data []byte) (int, error) {
+	avail := max(buf.limit, len(buf.output))
+	if len(data) < avail {
+		buf.output = append(buf.output, data...)
+		return len(data), nil
+	}
+	buf.output = append(buf.output, data[:avail]...)
+	return avail, errTruncatedOutput
+}
+
+func formatErrorData(v any) string {
+	buf := limitedBuffer{limit: 1024}
+	err := json.NewEncoder(&buf).Encode(v)
+	switch {
+	case err == nil:
+		return string(bytes.TrimRight(buf.output, "\n"))
+	case errors.Is(err, errTruncatedOutput):
+		return fmt.Sprintf("%s... (truncated)", buf.output)
+	default:
+		return fmt.Sprintf("bad error data (err=%v)", err)
+	}
 }

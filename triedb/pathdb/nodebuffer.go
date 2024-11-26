@@ -17,7 +17,9 @@
 package pathdb
 
 import (
+	"bytes"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -61,21 +63,16 @@ func newNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.Node, l
 }
 
 // node retrieves the trie node with given node info.
-func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {
+func (b *nodebuffer) node(owner common.Hash, path []byte) (*trienode.Node, bool) {
 	subset, ok := b.nodes[owner]
 	if !ok {
-		return nil, nil
+		return nil, false
 	}
 	n, ok := subset[string(path)]
 	if !ok {
-		return nil, nil
+		return nil, false
 	}
-	if n.Hash != hash {
-		dirtyFalseMeter.Mark(1)
-		log.Error("Unexpected trie node in node buffer", "owner", owner, "path", path, "expect", hash, "got", n.Hash)
-		return nil, newUnexpectedNodeError("dirty", hash, n.Hash, owner, path, n.Blob)
-	}
-	return n, nil
+	return n, true
 }
 
 // commit merges the dirty nodes into the nodebuffer. This operation won't take
@@ -96,12 +93,10 @@ func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) tri
 			// The nodes belong to original diff layer are still accessible even
 			// after merging, thus the ownership of nodes map should still belong
 			// to original layer and any mutation on it should be prevented.
-			current = make(map[string]*trienode.Node)
 			for path, n := range subset {
-				current[path] = n
 				delta += int64(len(n.Blob) + len(path) + len(owner))
 			}
-			b.nodes[owner] = current
+			b.nodes[owner] = maps.Clone(subset)
 			continue
 		}
 		for path, n := range subset {
@@ -155,14 +150,14 @@ func (b *nodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[s
 				//
 				// In case of database rollback, don't panic if this "clean"
 				// node occurs which is not present in buffer.
-				var nhash common.Hash
+				var blob []byte
 				if owner == (common.Hash{}) {
-					_, nhash = rawdb.ReadAccountTrieNode(db, []byte(path))
+					blob = rawdb.ReadAccountTrieNode(db, []byte(path))
 				} else {
-					_, nhash = rawdb.ReadStorageTrieNode(db, owner, []byte(path))
+					blob = rawdb.ReadStorageTrieNode(db, owner, []byte(path))
 				}
 				// Ignore the clean node in the case described above.
-				if nhash == n.Hash {
+				if bytes.Equal(blob, n.Blob) {
 					continue
 				}
 				panic(fmt.Sprintf("non-existent node (%x %v) blob: %v", owner, path, crypto.Keccak256Hash(n.Blob).Hex()))
@@ -206,6 +201,19 @@ func (b *nodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.
 	return b.flush(db, clean, id, false)
 }
 
+// allocBatch returns a database batch with pre-allocated buffer.
+func (b *nodebuffer) allocBatch(db ethdb.KeyValueStore) ethdb.Batch {
+	var metasize int
+	for owner, nodes := range b.nodes {
+		if owner == (common.Hash{}) {
+			metasize += len(nodes) * len(rawdb.TrieNodeAccountPrefix) // database key prefix
+		} else {
+			metasize += len(nodes) * (len(rawdb.TrieNodeStoragePrefix) + common.HashLength) // database key prefix + owner
+		}
+	}
+	return db.NewBatchWithSize((metasize + int(b.size)) * 11 / 10) // extra 10% for potential pebble internal stuff
+}
+
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
 func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error {
@@ -219,11 +227,7 @@ func (b *nodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 	}
 	var (
 		start = time.Now()
-		// Although the calculation of b.size has been as accurate as possible,
-		// some omissions were still found during testing and code review, but
-		// we are still not sure if it is completely accurate. For better protection,
-		// some redundancy is added here.
-		batch = db.NewBatchWithSize(int(float64(b.size) * DefaultBatchRedundancyRate))
+		batch = b.allocBatch(db)
 	)
 	nodes := writeNodes(batch, b.nodes, clean)
 	rawdb.WritePersistentStateID(batch, id)

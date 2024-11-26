@@ -17,7 +17,6 @@
 package core
 
 import (
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -32,16 +31,14 @@ const checkInterval = 10
 // data from disk before the main block processor start executing.
 type statePrefetcher struct {
 	config *params.ChainConfig // Chain configuration options
-	bc     *BlockChain         // Canonical block chain
-	engine consensus.Engine    // Consensus engine used for block rewards
+	chain  *HeaderChain        // Canonical block chain
 }
 
 // NewStatePrefetcher initialises a new statePrefetcher.
-func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine consensus.Engine) *statePrefetcher {
+func NewStatePrefetcher(config *params.ChainConfig, chain *HeaderChain) *statePrefetcher {
 	return &statePrefetcher{
 		config: config,
-		bc:     bc,
-		engine: engine,
+		chain:  chain,
 	}
 }
 
@@ -63,7 +60,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 				newStatedb.EnableWriteOnSharedStorage()
 			}
 			gaspool := new(GasPool).AddGas(block.GasLimit())
-			blockContext := NewEVMBlockContext(header, p.bc, nil)
+			blockContext := NewEVMBlockContext(header, p.chain, nil)
 			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, *cfg)
 			// Iterate over and process the individual transactions
 			for {
@@ -72,7 +69,8 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 					tx := transactions[txIndex]
 					// Convert the transaction into an executable message and pre-cache its sender
 					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
-					msg.SkipAccountChecks = true
+					msg.SkipNonceChecks = true
+					msg.SkipFromEOACheck = true
 					if err != nil {
 						return // Also invalid block, bail out
 					}
@@ -112,7 +110,7 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 				newStatedb.EnableWriteOnSharedStorage()
 			}
 			gaspool := new(GasPool).AddGas(gasLimit)
-			blockContext := NewEVMBlockContext(header, p.bc, nil)
+			blockContext := NewEVMBlockContext(header, p.chain, nil)
 			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
 			// Iterate over and process the individual transactions
 			for {
@@ -120,7 +118,8 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 				case tx := <-startCh:
 					// Convert the transaction into an executable message and pre-cache its sender
 					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
-					msg.SkipAccountChecks = true
+					msg.SkipNonceChecks = true
+					msg.SkipFromEOACheck = true
 					if err != nil {
 						return // Also invalid block, bail out
 					}

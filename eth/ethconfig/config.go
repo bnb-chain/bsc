@@ -18,7 +18,6 @@
 package ethconfig
 
 import (
-	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -54,7 +53,6 @@ var Defaults = Config{
 	TxLookupLimit:      2350000,
 	TransactionHistory: 2350000,
 	StateHistory:       params.FullImmutabilityThreshold,
-	LightPeers:         100,
 	DatabaseCache:      512,
 	TrieCleanCache:     154,
 	TrieDirtyCache:     256,
@@ -96,21 +94,24 @@ type Config struct {
 	DisablePeerTxBroadcast bool
 
 	// This can be set to list of enrtree:// URLs which will be queried for
-	// for nodes to connect to.
+	// nodes to connect to.
 	EthDiscoveryURLs   []string
 	SnapDiscoveryURLs  []string
 	TrustDiscoveryURLs []string
 	BscDiscoveryURLs   []string
 
-	NoPruning           bool // Whether to disable pruning and flush everything to disk
-	NoPrefetch          bool
+	// State options.
+	NoPruning  bool // Whether to disable pruning and flush everything to disk
+	NoPrefetch bool // Whether to disable prefetching and only load state on demand
+
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
 	EnableTrustProtocol bool // Whether enable trust protocol
 	RangeLimit          bool
 
-	// Deprecated, use 'TransactionHistory' instead.
-	TxLookupLimit      uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
+	// Deprecated: use 'TransactionHistory' instead.
+	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
+
 	TransactionHistory uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 	StateHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
 	// State scheme represents the scheme used to store ethereum states and trie
@@ -124,14 +125,6 @@ type Config struct {
 	// canonical chain of all remote peers. Setting the option makes geth verify the
 	// presence of these blocks for every new peer connection.
 	RequiredBlocks map[uint64]common.Hash `toml:"-"`
-
-	// Light client options
-	LightServ        int  `toml:",omitempty"` // Maximum percentage of time allowed for serving LES requests
-	LightIngress     int  `toml:",omitempty"` // Incoming bandwidth limit for light servers
-	LightEgress      int  `toml:",omitempty"` // Outgoing bandwidth limit for light servers
-	LightPeers       int  `toml:",omitempty"` // Maximum number of LES client peers
-	LightNoPrune     bool `toml:",omitempty"` // Whether to disable light chain pruning
-	LightNoSyncServe bool `toml:",omitempty"` // Whether to serve light clients before syncing
 
 	// Database options
 	SkipBcVersionCheck bool `toml:"-"`
@@ -174,6 +167,10 @@ type Config struct {
 	// Enables tracking of SHA3 preimages in the VM
 	EnablePreimageRecording bool
 
+	// Enables VM tracing
+	VMTrace           string
+	VMTraceJsonConfig string
+
 	// Miscellaneous options
 	DocRoot string `toml:"-"`
 
@@ -213,12 +210,6 @@ func CreateConsensusEngine(config *params.ChainConfig, db ethdb.Database, ee *et
 	// If proof-of-authority is requested, set it up
 	if config.Clique != nil {
 		return clique.New(config.Clique, db), nil
-	}
-	// If defaulting to proof-of-work, enforce an already merged network since
-	// we cannot run PoW algorithms anymore, so we cannot even follow a chain
-	// not coordinated by a beacon node.
-	if !config.TerminalTotalDifficultyPassed {
-		return nil, errors.New("ethash is only supported as a historical component of already merged networks")
 	}
 	return beacon.New(ethash.NewFaker()), nil
 }

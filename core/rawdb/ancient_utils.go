@@ -92,8 +92,8 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 			}
 			infos = append(infos, info)
 
-		case StateFreezerName:
-			if ReadStateScheme(db) != PathScheme || db.StateStore() != nil {
+		case MerkleStateFreezerName, VerkleStateFreezerName:
+			if db.StateStore() != nil {
 				continue
 			}
 			datadir, err := db.AncientDatadir()
@@ -101,7 +101,8 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 				return nil, err
 			}
 
-			file, err := os.Open(filepath.Join(datadir, StateFreezerName))
+			// TODO(Nathan): handle VerkleStateFreezerName
+			file, err := os.Open(filepath.Join(datadir, MerkleStateFreezerName))
 			if err != nil {
 				return nil, err
 			}
@@ -112,13 +113,13 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 				continue
 			}
 
-			f, err := NewStateFreezer(datadir, true, 0)
+			f, err := NewStateFreezer(datadir, freezer == VerkleStateFreezerName, true, 0)
 			if err != nil {
-				return nil, err
+				continue // might be possible the state freezer is not existent
 			}
 			defer f.Close()
 
-			info, err := inspect(StateFreezerName, stateFreezerNoSnappy, f)
+			info, err := inspect(freezer, stateFreezerNoSnappy, f)
 			if err != nil {
 				return nil, err
 			}
@@ -148,7 +149,7 @@ func InspectFreezerTable(ancient string, freezerName string, tableName string, s
 			path, tables = resolveChainFreezerDir(ancient), chainFreezerNoSnappy
 		}
 
-	case StateFreezerName:
+	case MerkleStateFreezerName, VerkleStateFreezerName:
 		if multiDatabase {
 			path, tables = filepath.Join(filepath.Dir(ancient)+"/state/ancient", freezerName), stateFreezerNoSnappy
 		} else {
@@ -174,7 +175,7 @@ func InspectFreezerTable(ancient string, freezerName string, tableName string, s
 }
 
 func ResetStateFreezerTableOffset(ancient string, virtualTail uint64) error {
-	path, tables := filepath.Join(ancient, StateFreezerName), stateFreezerNoSnappy
+	path, tables := filepath.Join(ancient, MerkleStateFreezerName), stateFreezerNoSnappy
 
 	for name, disableSnappy := range tables {
 		log.Info("Handle table", "name", name, "disableSnappy", disableSnappy)
