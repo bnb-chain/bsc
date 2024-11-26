@@ -39,19 +39,19 @@ func newNoopTracer(ctx *tracers.Context, _ json.RawMessage) (*tracers.Tracer, er
 	t := &noopTracer{}
 	return &tracers.Tracer{
 		Hooks: &tracing.Hooks{
-			OnTxStart:       t.OnTxStart,
-			OnTxEnd:         t.OnTxEnd,
-			OnEnter:         t.OnEnter,
-			OnExit:          t.OnExit,
-			OnOpcode:        t.OnOpcode,
-			OnFault:         t.OnFault,
-			OnGasChange:     t.OnGasChange,
-			OnBalanceChange: t.OnBalanceChange,
-			OnNonceChange:   t.OnNonceChange,
-			OnCodeChange:    t.OnCodeChange,
-			OnStorageChange: t.OnStorageChange,
-			OnLog:           t.OnLog,
-			OnSystemTxEnd:   t.OnSystemTxEnd,
+			OnTxStart:                 t.OnTxStart,
+			OnTxEnd:                   t.OnTxEnd,
+			OnEnter:                   t.OnEnter,
+			OnExit:                    t.OnExit,
+			OnOpcode:                  t.OnOpcode,
+			OnFault:                   t.OnFault,
+			OnGasChange:               t.OnGasChange,
+			OnBalanceChange:           t.OnBalanceChange,
+			OnNonceChange:             t.OnNonceChange,
+			OnCodeChange:              t.OnCodeChange,
+			OnStorageChange:           t.OnStorageChange,
+			OnLog:                     t.OnLog,
+			OnSystemTxFixIntrinsicGas: t.OnSystemTxFixIntrinsicGas,
 		},
 		GetResult: t.GetResult,
 		Stop:      t.Stop,
@@ -89,7 +89,7 @@ func (*noopTracer) OnStorageChange(a common.Address, k, prev, new common.Hash) {
 
 func (*noopTracer) OnLog(log *types.Log) {}
 
-func (*noopTracer) OnSystemTxEnd(intrinsicGas uint64) {}
+func (*noopTracer) OnSystemTxFixIntrinsicGas(intrinsicGas uint64) {}
 
 // GetResult returns an empty json object.
 func (t *noopTracer) GetResult() (json.RawMessage, error) {
