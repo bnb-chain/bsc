@@ -1025,31 +1025,30 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		usedAddrs    [][]byte
 		deletedAddrs []common.Address
 	)
-	if !s.noTrie {
-		for addr, op := range s.mutations {
-			if op.applied {
-				continue
-			}
-			op.applied = true
+	for addr, op := range s.mutations {
+		if op.applied {
+			continue
+		}
+		op.applied = true
 
-			if op.isDelete() {
-				deletedAddrs = append(deletedAddrs, addr)
-			} else {
-				s.updateStateObject(s.stateObjects[addr])
-				s.AccountUpdated += 1
-			}
-			usedAddrs = append(usedAddrs, common.CopyBytes(addr[:])) // Copy needed for closure
+		if op.isDelete() {
+			deletedAddrs = append(deletedAddrs, addr)
+		} else {
+			s.updateStateObject(s.stateObjects[addr])
+			s.AccountUpdated += 1
 		}
-		for _, deletedAddr := range deletedAddrs {
-			s.deleteStateObject(deletedAddr)
-			s.AccountDeleted += 1
-		}
-		s.AccountUpdates += time.Since(start)
-
-		if s.prefetcher != nil {
-			s.prefetcher.used(common.Hash{}, s.originalRoot, usedAddrs)
-		}
+		usedAddrs = append(usedAddrs, common.CopyBytes(addr[:])) // Copy needed for closure
 	}
+	for _, deletedAddr := range deletedAddrs {
+		s.deleteStateObject(deletedAddr)
+		s.AccountDeleted += 1
+	}
+	s.AccountUpdates += time.Since(start)
+
+	if s.prefetcher != nil && len(usedAddrs) > 0 {
+		s.prefetcher.used(common.Hash{}, s.originalRoot, usedAddrs)
+	}
+
 	// Track the amount of time wasted on hashing the account trie
 	defer func(start time.Time) { s.AccountHashes += time.Since(start) }(time.Now())
 
@@ -1335,7 +1334,7 @@ func (s *StateDB) commit(deleteEmptyObjects bool) (*stateUpdate, error) {
 	// code didn't anticipate for.
 	workers.Go(func() error {
 		if s.noTrie {
-			root = types.EmptyRootHash
+			root = s.expectedRoot
 			return nil
 		}
 		// Write the account trie changes, measuring the amount of wasted time
@@ -1360,9 +1359,6 @@ func (s *StateDB) commit(deleteEmptyObjects bool) (*stateUpdate, error) {
 	// 2 threads in total. But that kind of depends on the account commit being
 	// more expensive than it should be, so let's fix that and revisit this todo.
 	for addr, op := range s.mutations {
-		if s.noTrie {
-			continue
-		}
 		if op.isDelete() {
 			continue
 		}
