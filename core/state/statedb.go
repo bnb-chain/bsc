@@ -1488,16 +1488,10 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool) (*stateU
 //
 // The associated block number of the state transition is also provided
 // for more chain context.
-func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool, postCommitFuncs ...func() error) (common.Hash, *types.DiffLayer, error) {
+func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool) (common.Hash, *types.DiffLayer, error) {
 	ret, err := s.commitAndFlush(block, deleteEmptyObjects)
 	if err != nil {
 		return common.Hash{}, nil, err
-	}
-	for _, postFunc := range postCommitFuncs {
-		err := postFunc()
-		if err != nil {
-			return common.Hash{}, nil, err
-		}
 	}
 	return ret.root, ret.diffLayer, nil
 }
