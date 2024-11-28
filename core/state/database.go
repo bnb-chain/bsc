@@ -198,13 +198,15 @@ func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 			readers = append(readers, sr) // snap reader is optional
 		}
 	}
-	// Set up the trie reader, which is expected to always be available
-	// as the gatekeeper unless the state is corrupted.
-	tr, err := newTrieReader(stateRoot, db.triedb, db.pointCache)
-	if err != nil {
-		return nil, err
+	if !db.NoTries() {
+		// Set up the trie reader, which is expected to always be available
+		// as the gatekeeper unless the state is corrupted.
+		tr, err := newTrieReader(stateRoot, db.triedb, db.pointCache)
+		if err != nil {
+			return nil, err
+		}
+		readers = append(readers, tr)
 	}
-	readers = append(readers, tr)
 
 	return newMultiReader(readers...)
 }

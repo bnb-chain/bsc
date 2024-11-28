@@ -520,6 +520,7 @@ func (sf *subfetcher) loop() {
 	for {
 		select {
 		case <-sf.wake:
+			//TODO(zzzckck): why OpenTrie twice?
 			// Subfetcher was woken up, retrieve any tasks to avoid spinning the lock
 			if sf.trie == nil {
 				if sf.owner == (common.Hash{}) {
