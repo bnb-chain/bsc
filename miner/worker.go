@@ -1033,9 +1033,9 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
 			if w.chainConfig.IsBohr(header.Number, header.Time) {
 				header.ParentBeaconRoot = new(common.Hash)
-				if w.chainConfig.IsPrague(header.Number, header.Time) {
-					header.RequestsHash = &types.EmptyRequestsHash
-				}
+			}
+			if w.chainConfig.IsPrague(header.Number, header.Time) {
+				header.RequestsHash = &types.EmptyRequestsHash
 			}
 		}
 	}
