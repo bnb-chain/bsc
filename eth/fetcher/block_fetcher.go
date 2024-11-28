@@ -644,6 +644,9 @@ func (f *BlockFetcher) loop() {
 							if block.Header().EmptyWithdrawalsHash() {
 								block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
 							}
+							if block.Header().EmptyRequestsHash() {
+								block = block.WithRequests(make([]*types.Request, 0))
+							}
 							block.ReceivedAt = task.time
 
 							complete = append(complete, block)
@@ -915,6 +918,9 @@ func (f *BlockFetcher) importBlocks(op *blockOrHeaderInject) {
 
 		if block.Header().EmptyWithdrawalsHash() {
 			block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
+		}
+		if block.Header().EmptyRequestsHash() {
+			block = block.WithRequests(make([]*types.Request, 0))
 		}
 
 		defer func() { f.done <- hash }()

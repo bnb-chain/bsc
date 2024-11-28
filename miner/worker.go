@@ -707,6 +707,9 @@ func (w *worker) updateSnapshot(env *environment) {
 	if env.header.EmptyWithdrawalsHash() {
 		body.Withdrawals = make([]*types.Withdrawal, 0)
 	}
+	if env.header.EmptyRequestsHash() {
+		body.Requests = make([]*types.Request, 0)
+	}
 	w.snapshotBlock = types.NewBlock(
 		env.header,
 		&body,
@@ -1024,13 +1027,16 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		}
 		header.BlobGasUsed = new(uint64)
 		header.ExcessBlobGas = &excessBlobGas
-		if w.chainConfig.Parlia != nil {
-			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
-		}
 		if w.chainConfig.Parlia == nil {
 			header.ParentBeaconRoot = genParams.beaconRoot
-		} else if w.chainConfig.IsBohr(header.Number, header.Time) {
-			header.ParentBeaconRoot = new(common.Hash)
+		} else {
+			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
+			if w.chainConfig.IsBohr(header.Number, header.Time) {
+				header.ParentBeaconRoot = new(common.Hash)
+				if w.chainConfig.IsPrague(header.Number, header.Time) {
+					header.RequestsHash = &types.EmptyRequestsHash
+				}
+			}
 		}
 	}
 	// Could potentially happen if starting to mine in an odd state.
@@ -1428,6 +1434,9 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		body := types.Body{Transactions: env.txs}
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
+		}
+		if env.header.EmptyRequestsHash() {
+			body.Requests = make([]*types.Request, 0)
 		}
 		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts)
 		if err != nil {

@@ -51,6 +51,7 @@ type BlockGen struct {
 	receipts    []*types.Receipt
 	uncles      []*types.Header
 	withdrawals []*types.Withdrawal
+	requests    []*types.Request
 
 	engine consensus.Engine
 
@@ -337,6 +338,9 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		if b.header.EmptyWithdrawalsHash() {
 			b.withdrawals = make([]*types.Withdrawal, 0)
 		}
+		if b.header.EmptyRequestsHash() {
+			b.requests = make([]*types.Request, 0)
+		}
 
 		// Set the difficulty for clique block. The chain maker doesn't have access
 		// to a chain, so the difficulty will be left unset (nil). Set it here to the
@@ -601,11 +605,16 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 		excessBlobGas := eip4844.CalcExcessBlobGas(parentExcessBlobGas, parentBlobGasUsed)
 		header.ExcessBlobGas = &excessBlobGas
 		header.BlobGasUsed = new(uint64)
-		if cm.config.Parlia != nil {
-			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
-		}
-		if cm.config.Parlia == nil || cm.config.IsBohr(header.Number, header.Time) {
+		if cm.config.Parlia == nil {
 			header.ParentBeaconRoot = new(common.Hash)
+		} else {
+			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
+			if cm.config.IsBohr(header.Number, header.Time) {
+				header.ParentBeaconRoot = new(common.Hash)
+				if cm.config.IsPrague(header.Number, header.Time) {
+					header.RequestsHash = &types.EmptyRequestsHash
+				}
+			}
 		}
 	}
 	return header
