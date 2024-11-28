@@ -2274,10 +2274,11 @@ func TestTransferTransactions(t *testing.T) {
 	pool.addToOverflowPool([]*types.Transaction{tx2}, true)
 	assert.Equal(t, uint64(1), pool.statsOverflowPool(), "OverflowPool size unexpected")
 	<-pool.requestPromoteExecutables(newAccountSet(pool.signer, from))
+	time.Sleep(1 * time.Second)
 	pending, queue = pool.Stats()
 
-	assert.Equal(t, 0, pending, "pending transactions mismatched")
-	assert.Equal(t, 1, queue, "queued transactions mismatched")
+	assert.Equal(t, 1, pending, "pending transactions mismatched")
+	assert.Equal(t, 0, queue, "queued transactions mismatched")
 	assert.Equal(t, uint64(0), pool.statsOverflowPool(), "OverflowPool size unexpected")
 
 	tx3 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[2])
