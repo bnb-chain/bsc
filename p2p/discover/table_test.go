@@ -296,7 +296,7 @@ func TestTable_addInboundNode(t *testing.T) {
 	newrec := n2.Record()
 	newrec.Set(enr.IP{99, 99, 99, 99})
 	n2v2 := enode.SignNull(newrec, n2.ID())
-	tab.addInboundNode(n2v2)
+	tab.addInboundNodeSync(n2v2)
 	checkBucketContent(t, tab, []*enode.Node{n1, n2v2})
 
 	// Try updating n2 without sequence number change. The update is accepted
@@ -305,7 +305,7 @@ func TestTable_addInboundNode(t *testing.T) {
 	newrec.Set(enr.IP{100, 100, 100, 100})
 	newrec.SetSeq(n2.Seq())
 	n2v3 := enode.SignNull(newrec, n2.ID())
-	tab.addInboundNode(n2v3)
+	tab.addInboundNodeSync(n2v3)
 	checkBucketContent(t, tab, []*enode.Node{n1, n2v3})
 }
 
@@ -349,13 +349,13 @@ func TestTable_addInboundNodeUpdateV4Accept(t *testing.T) {
 	// Add a v4 node.
 	key, _ := crypto.HexToECDSA("dd3757a8075e88d0f2b1431e7d3c5b1562e1c0aab9643707e8cbfcc8dae5cfe3")
 	n1 := enode.NewV4(&key.PublicKey, net.IP{88, 77, 66, 1}, 9000, 9000)
-	tab.addInboundNode(n1)
+	tab.addInboundNodeSync(n1)
 	checkBucketContent(t, tab, []*enode.Node{n1})
 
 	// Add an updated version with changed IP.
 	// The update will be accepted because it is inbound.
 	n1v2 := enode.NewV4(&key.PublicKey, net.IP{99, 99, 99, 99}, 9000, 9000)
-	tab.addInboundNode(n1v2)
+	tab.addInboundNodeSync(n1v2)
 	checkBucketContent(t, tab, []*enode.Node{n1v2})
 }
 

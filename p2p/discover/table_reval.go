@@ -17,7 +17,6 @@
 package discover
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -176,7 +175,7 @@ func (tr *tableRevalidation) handleResponse(tab *Table, resp revalidationRespons
 	var endpointChanged bool
 	if resp.newRecord != nil {
 		if tab.enrFilter != nil && !tab.enrFilter(resp.newRecord.Record()) {
-			tab.log.Trace("ENR record filter out", "id", n.ID(), "err", errors.New("filtered node"))
+			tab.log.Trace("ENR record filter out", "id", n.ID())
 			tab.deleteInBucket(b, n.ID())
 			return
 		}

@@ -112,9 +112,10 @@ type bucket struct {
 }
 
 type addNodeOp struct {
-	node         *enode.Node
-	isInbound    bool
-	forceSetLive bool // for tests
+	node          *enode.Node
+	isInbound     bool
+	forceSetLive  bool // for tests
+	syncExecution bool // for tests
 }
 
 type trackRequestOp struct {
@@ -320,7 +321,7 @@ func (tab *Table) len() (n int) {
 //
 // The caller must not hold tab.mutex.
 func (tab *Table) addFoundNode(n *enode.Node, forceSetLive bool) bool {
-	op := addNodeOp{node: n, isInbound: false, forceSetLive: forceSetLive}
+	op := addNodeOp{node: n, isInbound: false, forceSetLive: forceSetLive, syncExecution: true}
 	select {
 	case tab.addNodeCh <- op:
 		return <-tab.addNodeHandled
@@ -344,6 +345,17 @@ func (tab *Table) addInboundNode(n *enode.Node) {
 		return
 	case <-tab.closeReq:
 		return
+	}
+}
+
+// Only for testing purposes
+func (tab *Table) addInboundNodeSync(n *enode.Node) bool {
+	op := addNodeOp{node: n, isInbound: true, syncExecution: true}
+	select {
+	case tab.addNodeCh <- op:
+		return <-tab.addNodeHandled
+	case <-tab.closeReq:
+		return false
 	}
 }
 
@@ -387,9 +399,16 @@ loop:
 			tab.revalidation.handleResponse(tab, r)
 
 		case op := <-tab.addNodeCh:
-			go func() {
-				tab.addNodeHandled <- tab.handleAddNode(op)
-			}()
+			// only happens in tests
+			if op.syncExecution {
+				ok := tab.handleAddNode(op)
+				tab.addNodeHandled <- ok
+			} else {
+				// async execution as handleAddNode is blocking
+				go func() {
+					tab.handleAddNode(op)
+				}()
+			}
 
 		case op := <-tab.trackRequestCh:
 			tab.handleTrackRequest(op)
@@ -489,7 +508,6 @@ func (tab *Table) bucketAtDistance(d int) *bucket {
 	return tab.buckets[d-bucketMinDistance-1]
 }
 
-//nolint:unused
 func (tab *Table) filterNode(n *enode.Node) bool {
 	if tab.enrFilter == nil {
 		return false
@@ -716,7 +734,7 @@ func (tab *Table) handleTrackRequest(op trackRequestOp) {
 
 	// Add found nodes.
 	for _, n := range op.foundNodes {
-		go tab.handleAddNode(addNodeOp{n, false, false})
+		go tab.handleAddNode(addNodeOp{n, false, false, false})
 	}
 }
 
