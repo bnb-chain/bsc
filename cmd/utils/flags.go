@@ -974,7 +974,7 @@ var (
 		Aliases:  []string{"discv5"},
 		Usage:    "Enables the V5 discovery mechanism",
 		Category: flags.NetworkingCategory,
-		Value:    true,
+		Value:    false,
 	}
 	NetrestrictFlag = &cli.StringFlag{
 		Name:     "netrestrict",

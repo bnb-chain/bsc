@@ -112,9 +112,10 @@ type bucket struct {
 }
 
 type addNodeOp struct {
-	node         *enode.Node
-	isInbound    bool
-	forceSetLive bool // for tests
+	node          *enode.Node
+	isInbound     bool
+	forceSetLive  bool // for tests
+	syncExecution bool // for tests
 }
 
 type trackRequestOp struct {
@@ -320,7 +321,7 @@ func (tab *Table) len() (n int) {
 //
 // The caller must not hold tab.mutex.
 func (tab *Table) addFoundNode(n *enode.Node, forceSetLive bool) bool {
-	op := addNodeOp{node: n, isInbound: false, forceSetLive: forceSetLive}
+	op := addNodeOp{node: n, isInbound: false, forceSetLive: forceSetLive, syncExecution: true}
 	select {
 	case tab.addNodeCh <- op:
 		return <-tab.addNodeHandled
@@ -337,8 +338,19 @@ func (tab *Table) addFoundNode(n *enode.Node, forceSetLive bool) bool {
 // repeatedly.
 //
 // The caller must not hold tab.mutex.
-func (tab *Table) addInboundNode(n *enode.Node) bool {
+func (tab *Table) addInboundNode(n *enode.Node) {
 	op := addNodeOp{node: n, isInbound: true}
+	select {
+	case tab.addNodeCh <- op:
+		return
+	case <-tab.closeReq:
+		return
+	}
+}
+
+// Only for testing purposes
+func (tab *Table) addInboundNodeSync(n *enode.Node) bool {
+	op := addNodeOp{node: n, isInbound: true, syncExecution: true}
 	select {
 	case tab.addNodeCh <- op:
 		return <-tab.addNodeHandled
@@ -387,10 +399,16 @@ loop:
 			tab.revalidation.handleResponse(tab, r)
 
 		case op := <-tab.addNodeCh:
-			tab.mutex.Lock()
-			ok := tab.handleAddNode(op)
-			tab.mutex.Unlock()
-			tab.addNodeHandled <- ok
+			// only happens in tests
+			if op.syncExecution {
+				ok := tab.handleAddNode(op)
+				tab.addNodeHandled <- ok
+			} else {
+				// async execution as handleAddNode is blocking
+				go func() {
+					tab.handleAddNode(op)
+				}()
+			}
 
 		case op := <-tab.trackRequestCh:
 			tab.handleTrackRequest(op)
@@ -468,9 +486,7 @@ func (tab *Table) loadSeedNodes() {
 			addr, _ := seed.UDPEndpoint()
 			tab.log.Trace("Found seed node in database", "id", seed.ID(), "addr", addr, "age", age)
 		}
-		tab.mutex.Lock()
-		tab.handleAddNode(addNodeOp{node: seed, isInbound: false})
-		tab.mutex.Unlock()
+		go tab.handleAddNode(addNodeOp{node: seed, isInbound: false})
 	}
 }
 
@@ -492,16 +508,15 @@ func (tab *Table) bucketAtDistance(d int) *bucket {
 	return tab.buckets[d-bucketMinDistance-1]
 }
 
-//nolint:unused
-func (tab *Table) filterNode(n *tableNode) bool {
+func (tab *Table) filterNode(n *enode.Node) bool {
 	if tab.enrFilter == nil {
 		return false
 	}
-	if node, err := tab.net.RequestENR(n.Node); err != nil {
-		tab.log.Debug("ENR request failed", "id", n.ID(), "addr", n.addr(), "err", err)
+	if node, err := tab.net.RequestENR(n); err != nil {
+		tab.log.Debug("ENR request failed", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "err", err)
 		return false
 	} else if !tab.enrFilter(node.Record()) {
-		tab.log.Trace("ENR record filter out", "id", n.ID(), "addr", n.addr())
+		tab.log.Trace("ENR record filter out", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP())
 		return true
 	}
 	return false
@@ -541,6 +556,13 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 		return false
 	}
 
+	if tab.filterNode(req.node) {
+		return false
+	}
+
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+
 	// For nodes from inbound contact, there is an additional safety measure: if the table
 	// is still initializing the node is not added.
 	if req.isInbound && !tab.isInitDone() {
@@ -569,11 +591,6 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 		wn.livenessChecks = 1
 		wn.isValidatedLive = true
 	}
-
-	// TODO(Matus): fix the filterNode feature
-	// if tab.filterNode(wn) {
-	// 	return false
-	// }
 
 	b.entries = append(b.entries, wn)
 	b.replacements = deleteNode(b.replacements, wn.ID())
@@ -705,8 +722,6 @@ func (tab *Table) handleTrackRequest(op trackRequestOp) {
 	}
 
 	tab.mutex.Lock()
-	defer tab.mutex.Unlock()
-
 	b := tab.bucket(op.node.ID())
 	// Remove the node from the local table if it fails to return anything useful too
 	// many times, but only if there are enough other nodes in the bucket. This latter
@@ -715,10 +730,11 @@ func (tab *Table) handleTrackRequest(op trackRequestOp) {
 	if fails >= maxFindnodeFailures && len(b.entries) >= bucketSize/4 {
 		tab.deleteInBucket(b, op.node.ID())
 	}
+	tab.mutex.Unlock()
 
 	// Add found nodes.
 	for _, n := range op.foundNodes {
-		tab.handleAddNode(addNodeOp{n, false, false})
+		go tab.handleAddNode(addNodeOp{n, false, false, false})
 	}
 }
 
