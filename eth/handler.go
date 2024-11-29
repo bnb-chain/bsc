@@ -279,9 +279,12 @@ func newHandler(config *handlerConfig) (*handler, error) {
 
 	broadcastBlockWithCheck := func(block *types.Block, propagate bool) {
 		if propagate {
-			if !(block.Header().WithdrawalsHash == nil && block.Withdrawals() == nil) &&
-				!(block.Header().EmptyWithdrawalsHash() && block.Withdrawals() != nil && len(block.Withdrawals()) == 0) {
+			if block.Header().WithdrawalsHash == nil && block.Withdrawals() != nil {
 				log.Error("Propagated block has invalid withdrawals")
+				return
+			}
+			if block.Header().RequestsHash == nil && block.Requests() != nil {
+				log.Error("Propagated block has invalid requests")
 				return
 			}
 			if err := core.IsDataAvailable(h.chain, block); err != nil {

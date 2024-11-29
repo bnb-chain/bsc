@@ -586,6 +586,23 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 	return block
 }
 
+// WithRequests returns a copy of the block containing the given requests.
+func (b *Block) WithRequests(requests []*Request) *Block {
+	block := &Block{
+		header:       b.header,
+		transactions: b.transactions,
+		uncles:       b.uncles,
+		withdrawals:  b.withdrawals,
+		witness:      b.witness,
+		sidecars:     b.sidecars,
+	}
+	if requests != nil {
+		block.requests = make([]*Request, len(requests))
+		copy(block.requests, requests)
+	}
+	return block
+}
+
 // WithSidecars returns a block containing the given blobs.
 func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 	block := &Block{
