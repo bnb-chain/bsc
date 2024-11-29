@@ -1287,7 +1287,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		return errors.New("parent not found")
 	}
 
-	systemcontracts.ModifyBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
+	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
@@ -1372,7 +1372,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		return nil, nil, errors.New("parent not found")
 	}
 
-	systemcontracts.ModifyBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
+	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true)

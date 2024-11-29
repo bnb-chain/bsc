@@ -1050,7 +1050,7 @@ func init() {
 	}
 }
 
-func ModifyBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB, atBlockBegin bool) {
+func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB, atBlockBegin bool) {
 	if atBlockBegin {
 		if !config.IsFeynman(blockNumber, lastBlockTime) {
 			upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)

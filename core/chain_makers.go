@@ -363,7 +363,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			misc.ApplyDAOHardFork(statedb)
 		}
 
-		systemcontracts.ModifyBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true)
+		systemcontracts.TryUpdateBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true)
 
 		// Execute any user modifications to the block
 		if gen != nil {

@@ -77,7 +77,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		return nil, errors.New("could not get parent block")
 	}
 	// Handle upgrade build-in system contract code
-	systemcontracts.ModifyBuildInSystemContract(p.config, blockNumber, lastBlock.Time, block.Time(), statedb, true)
+	systemcontracts.TryUpdateBuildInSystemContract(p.config, blockNumber, lastBlock.Time, block.Time(), statedb, true)
 
 	var (
 		context vm.BlockContext

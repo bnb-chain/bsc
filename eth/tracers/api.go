@@ -288,7 +288,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 									task.statedb.AddBalance(blockCtx.Coinbase, balance, tracing.BalanceChangeUnspecified)
 								}
 
-								systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), task.block.Number(), task.parent.Time(), task.block.Time(), task.statedb, false)
+								systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), task.block.Number(), task.parent.Time(), task.block.Time(), task.statedb, false)
 								beforeSystemTx = false
 							}
 						}
@@ -402,7 +402,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 			}
 
 			// upgrade build-in system contract before normal txs if Feynman is not enabled
-			systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), next.Number(), block.Time(), next.Time(), statedb, true)
+			systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), next.Number(), block.Time(), next.Time(), statedb, true)
 
 			// Insert block's parent beacon block root in the state
 			// as per EIP-4788.
@@ -560,7 +560,7 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 	defer release()
 
 	// upgrade build-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
+	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 
 	var (
 		roots              []common.Hash
@@ -596,7 +596,7 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 				}
 
 				if beforeSystemTx {
-					systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, false)
+					systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, false)
 					beforeSystemTx = false
 				}
 			}
@@ -656,7 +656,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	defer release()
 
 	// upgrade build-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
+	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 
 	// JS tracers have high overhead. In this case run a parallel
 	// process that generates states in one thread and traces txes
@@ -695,7 +695,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 						statedb.AddBalance(blockCtx.Coinbase, balance, tracing.BalanceChangeUnspecified)
 					}
 
-					systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, false)
+					systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, false)
 					beforeSystemTx = false
 				}
 			}
@@ -786,7 +786,7 @@ txloop:
 						statedb.AddBalance(block.Header().Coinbase, balance, tracing.BalanceChangeUnspecified)
 					}
 
-					systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, false)
+					systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, false)
 					beforeSystemTx = false
 				}
 			}
@@ -852,7 +852,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 	defer release()
 
 	// upgrade build-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
+	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 
 	// Retrieve the tracing configurations, or use default values
 	var (
@@ -902,7 +902,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 						statedb.AddBalance(vmctx.Coinbase, balance, tracing.BalanceChangeUnspecified)
 					}
 
-					systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, false)
+					systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, false)
 					beforeSystemTx = false
 				}
 			}
@@ -1084,7 +1084,7 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 		if err != nil {
 			return nil, err
 		}
-		systemcontracts.ModifyBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
+		systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 	}
 
 	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
