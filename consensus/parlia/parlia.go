@@ -651,11 +651,11 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		if header.RequestsHash != nil {
 			return fmt.Errorf("invalid RequestsHash, have %#x, expected nil", header.ParentBeaconRoot)
 		}
-	} else {
-		// TODO(Nathan): need a BEP to define this and `Requests` in struct Body
-		if !header.EmptyRequestsHash() {
-			return errors.New("header has wrong RequestsHash")
-		}
+		// } else {
+		// 	// TODO(Nathan): need a BEP to define this and `Requests` in struct Body
+		// 	if !header.EmptyRequestsHash() {
+		// 		return errors.New("header has wrong RequestsHash")
+		// 	}
 	}
 
 	// All basic checks passed, verify cascading fields
@@ -1287,9 +1287,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		return errors.New("parent not found")
 	}
 
-	if p.chainConfig.IsFeynman(header.Number, header.Time) {
-		systemcontracts.UpgradeBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state)
-	}
+	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
@@ -1374,9 +1372,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		return nil, nil, errors.New("parent not found")
 	}
 
-	if p.chainConfig.IsFeynman(header.Number, header.Time) {
-		systemcontracts.UpgradeBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state)
-	}
+	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true)
