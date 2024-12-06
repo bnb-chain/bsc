@@ -1605,8 +1605,23 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 
 func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 	s.Finalise(deleteEmptyObjects)
+	destructs := make(map[common.Hash]struct{})
+	accounts := make(map[common.Hash][]byte)
+	storages := make(map[common.Hash]map[common.Hash][]byte)
+	for addr := range s.stateObjectsPending {
+		if obj := s.stateObjects[addr]; !obj.deleted {
+			accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
+			pendingstorages := obj.GetPendingStorages()
+			if pendingstorages != nil {
+				storages[obj.addrHash] = pendingstorages
+			}
+		} else {
+			destructs[obj.addrHash] = struct{}{}
+		}
+	}
+
 	if parent := s.snap.Root(); parent != s.expectedRoot {
-		err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages, false)
+		err := s.snaps.Update(s.expectedRoot, parent, destructs, accounts, storages, false)
 
 		if err != nil {
 			log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
