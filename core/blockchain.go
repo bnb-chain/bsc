@@ -232,6 +232,7 @@ type VerifyTask struct {
 	state    *state.StateDB
 	receipts types.Receipts
 	usedGas  uint64
+	logs     []*types.Log
 }
 
 // BlockChain represents the canonical chain given a database with a genesis
@@ -2071,6 +2072,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 	)
 	// Fire a single chain head event if we've progressed the chain
 	defer func() {
+		lastCanon = nil
 		if lastCanon != nil && bc.CurrentBlock().Hash() == lastCanon.Hash() {
 			bc.chainHeadFeed.Send(ChainHeadEvent{lastCanon})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
@@ -2288,6 +2290,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			state:    statedb,
 			receipts: receipts,
 			usedGas:  usedGas,
+			logs:     logs,
 		}
 		bc.verifyTaskCh <- task
 		// Validate the state using the default validator
@@ -2321,23 +2324,21 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		if err != nil {
 			log.Crit("Failed to write block", "number", block.Number(), "hash", block.Hash(), "err", err)
 		}
-		//}
-		//return it.index, err
 
 		// Write the block to the chain and get the status.
-		var (
-			wstart = time.Now()
-			status WriteStatus
-		)
-		if !setHead {
-			// Don't set the head, only insert the block
-			err = bc.writeBlockWithState(block, receipts, statedb)
-		} else {
-			status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false)
-		}
-		if err != nil {
-			return it.index, err
-		}
+		//var (
+		//	wstart = time.Now()
+		//	status WriteStatus
+		//)
+		//if !setHead {
+		//	// Don't set the head, only insert the block
+		//	err = bc.writeBlockWithState(block, receipts, statedb)
+		//} else {
+		//	status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false)
+		//}
+		//if err != nil {
+		//	return it.index, err
+		//}
 
 		// Update the metrics touched during block commit
 		accountCommitTimer.Update(statedb.AccountCommits)   // Account commits are complete, we can mark them
@@ -2345,7 +2346,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		snapshotCommitTimer.Update(statedb.SnapshotCommits) // Snapshot commits are complete, we can mark them
 		triedbCommitTimer.Update(statedb.TrieDBCommits)     // Trie database commits are complete, we can mark them
 
-		blockWriteTimer.Update(time.Since(wstart) - statedb.AccountCommits - statedb.StorageCommits - statedb.SnapshotCommits - statedb.TrieDBCommits)
+		//blockWriteTimer.Update(time.Since(wstart) - statedb.AccountCommits - statedb.StorageCommits - statedb.SnapshotCommits - statedb.TrieDBCommits)
 		blockInsertTimer.UpdateSince(start)
 
 		// Report the import stats before returning the various results
@@ -2357,7 +2358,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			snapDiffItems, snapBufItems, _ = bc.snaps.Size()
 		}
 		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
-		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, status == CanonStatTy)
+		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, true)
 
 		if !setHead {
 			// After merge we expect few side chains. Simply count
@@ -2366,49 +2367,49 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 
 			return it.index, nil // Direct block insertion of a single block
 		}
-		switch status {
-		case CanonStatTy:
-			log.Debug("Inserted new block", "number", block.Number(), "hash", block.Hash(),
-				"uncles", len(block.Uncles()), "txs", len(block.Transactions()), "gas", block.GasUsed(),
-				"elapsed", common.PrettyDuration(time.Since(start)),
-				"root", block.Root())
-
-			lastCanon = block
-
-			// Only count canonical blocks for GC processing time
-			bc.gcproc += proctime
-
-		case SideStatTy:
-			log.Debug("Inserted forked block", "number", block.Number(), "hash", block.Hash(),
-				"diff", block.Difficulty(), "elapsed", common.PrettyDuration(time.Since(start)),
-				"txs", len(block.Transactions()), "gas", block.GasUsed(), "uncles", len(block.Uncles()),
-				"root", block.Root())
-
-		default:
-			// This in theory is impossible, but lets be nice to our future selves and leave
-			// a log, instead of trying to track down blocks imports that don't emit logs.
-			log.Warn("Inserted block with unknown status", "number", block.Number(), "hash", block.Hash(),
-				"diff", block.Difficulty(), "elapsed", common.PrettyDuration(time.Since(start)),
-				"txs", len(block.Transactions()), "gas", block.GasUsed(), "uncles", len(block.Uncles()),
-				"root", block.Root())
-		}
-		bc.chainBlockFeed.Send(ChainHeadEvent{block})
+		//switch status {
+		//case CanonStatTy:
+		//	log.Debug("Inserted new block", "number", block.Number(), "hash", block.Hash(),
+		//		"uncles", len(block.Uncles()), "txs", len(block.Transactions()), "gas", block.GasUsed(),
+		//		"elapsed", common.PrettyDuration(time.Since(start)),
+		//		"root", block.Root())
+		//
+		//	lastCanon = block
+		//
+		//	// Only count canonical blocks for GC processing time
+		//	bc.gcproc += proctime
+		//
+		//case SideStatTy:
+		//	log.Debug("Inserted forked block", "number", block.Number(), "hash", block.Hash(),
+		//		"diff", block.Difficulty(), "elapsed", common.PrettyDuration(time.Since(start)),
+		//		"txs", len(block.Transactions()), "gas", block.GasUsed(), "uncles", len(block.Uncles()),
+		//		"root", block.Root())
+		//
+		//default:
+		//	// This in theory is impossible, but lets be nice to our future selves and leave
+		//	// a log, instead of trying to track down blocks imports that don't emit logs.
+		//	log.Warn("Inserted block with unknown status", "number", block.Number(), "hash", block.Hash(),
+		//		"diff", block.Difficulty(), "elapsed", common.PrettyDuration(time.Since(start)),
+		//		"txs", len(block.Transactions()), "gas", block.GasUsed(), "uncles", len(block.Uncles()),
+		//		"root", block.Root())
+		//}
+		//bc.chainBlockFeed.Send(ChainHeadEvent{block})
 	}
 
 	// Any blocks remaining here? The only ones we care about are the future ones
-	if block != nil && errors.Is(err, consensus.ErrFutureBlock) {
-		if err := bc.addFutureBlock(block); err != nil {
-			return it.index, err
-		}
-		block, err = it.next()
-
-		for ; block != nil && errors.Is(err, consensus.ErrUnknownAncestor); block, err = it.next() {
-			if err := bc.addFutureBlock(block); err != nil {
-				return it.index, err
-			}
-			stats.queued++
-		}
-	}
+	//if block != nil && errors.Is(err, consensus.ErrFutureBlock) {
+	//	if err := bc.addFutureBlock(block); err != nil {
+	//		return it.index, err
+	//	}
+	//	block, err = it.next()
+	//
+	//	for ; block != nil && errors.Is(err, consensus.ErrUnknownAncestor); block, err = it.next() {
+	//		if err := bc.addFutureBlock(block); err != nil {
+	//			return it.index, err
+	//		}
+	//		stats.queued++
+	//	}
+	//}
 	stats.ignored += it.remaining()
 
 	return it.index, err
@@ -2438,7 +2439,10 @@ func (bc *BlockChain) VerifyLoop() {
 			if err := bc.commitState(task.block, task.receipts, task.state); err != nil {
 				log.Crit("commit state failed", "error", err)
 			}
-			//status, err = bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false)
+			if _, err := bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false); err != nil {
+				log.Crit("write block and set head failed", "error", err)
+			}
+			bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
 		}
 	}
 }
