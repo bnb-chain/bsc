@@ -3,7 +3,6 @@ NetworkId = {{NetworkId}}
 SyncMode = "full"
 NoPruning = false
 NoPrefetch = false
-LightPeers = 100
 DatabaseCache = 512
 DatabaseFreezer = ""
 TrieCleanCache = 256

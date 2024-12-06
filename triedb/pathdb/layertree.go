@@ -231,9 +231,7 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 		var updateOriginFunc func(root common.Hash)
 		updateOriginFunc = func(root common.Hash) {
 			if diff, ok := tree.layers[root].(*diffLayer); ok {
-				diff.lock.Lock()
-				diff.origin = persisted
-				diff.lock.Unlock()
+				diff.updateOriginDiskLayer(persisted)
 			}
 			for _, child := range children[root] {
 				updateOriginFunc(child)
