@@ -160,12 +160,12 @@ type StateDB struct {
 
 // NewWithSharedPool creates a new state with sharedStorge on layer 1.5
 func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	statedb, err := New(root, db, snaps)
-	if err != nil {
-		return nil, err
-	}
-	statedb.storagePool = NewStoragePool()
-	return statedb, nil
+	//statedb, err := New(root, db, snaps)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//statedb.storagePool = NewStoragePool()
+	return New(root, db, snaps)
 }
 
 // New creates a new state from a given trie.
@@ -1543,7 +1543,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != s.expectedRoot {
-					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages)
+					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages, true)
 
 					if err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
@@ -1594,6 +1594,17 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 	s.stateObjectsDirty = make(map[common.Address]struct{})
 	s.stateObjectsDestruct = make(map[common.Address]*types.StateAccount)
 	return root, diffLayer, nil
+}
+
+func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
+	s.Finalise(deleteEmptyObjects)
+	if parent := s.snap.Root(); parent != s.expectedRoot {
+		err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages, false)
+
+		if err != nil {
+			log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
+		}
+	}
 }
 
 func (s *StateDB) SnapToDiffLayer() ([]common.Address, []types.DiffAccount, []types.DiffStorage) {

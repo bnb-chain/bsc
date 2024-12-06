@@ -227,6 +227,13 @@ type txLookup struct {
 	transaction *types.Transaction
 }
 
+type VerifyTask struct {
+	block    *types.Block
+	state    *state.StateDB
+	receipts types.Receipts
+	usedGas  uint64
+}
+
 // BlockChain represents the canonical chain given a database with a genesis
 // block. The Blockchain manages chain imports, reverts, chain reorganisations.
 //
@@ -313,6 +320,8 @@ type BlockChain struct {
 
 	// monitor
 	doubleSignMonitor *monitor.DoubleSignMonitor
+
+	verifyTaskCh chan *VerifyTask
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -377,6 +386,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		vmConfig:           vmConfig,
 		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
 		diffQueueBuffer:    make(chan *types.DiffLayer),
+		verifyTaskCh:       make(chan *VerifyTask, 1024),
 	}
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
@@ -1779,92 +1789,116 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		wg.Done()
 	}()
 
-	tryCommitTrieDB := func() error {
-		bc.commitLock.Lock()
-		defer bc.commitLock.Unlock()
+	//tryCommitTrieDB := func() error {
+	//	bc.commitLock.Lock()
+	//	defer bc.commitLock.Unlock()
+	//
+	//	// If node is running in path mode, skip explicit gc operation
+	//	// which is unnecessary in this mode.
+	//	if bc.triedb.Scheme() == rawdb.PathScheme {
+	//		return nil
+	//	}
+	//
+	//	triedb := bc.stateCache.TrieDB()
+	//	// If we're running an archive node, always flush
+	//	if bc.cacheConfig.TrieDirtyDisabled {
+	//		return triedb.Commit(block.Root(), false)
+	//	}
+	//	// Full but not archive node, do proper garbage collection
+	//	triedb.Reference(block.Root(), common.Hash{}) // metadata reference to keep trie alive
+	//	bc.triegc.Push(block.Root(), -int64(block.NumberU64()))
+	//
+	//	// Flush limits are not considered for the first TriesInMemory blocks.
+	//	current := block.NumberU64()
+	//	if current <= bc.TriesInMemory() {
+	//		return nil
+	//	}
+	//	// If we exceeded our memory allowance, flush matured singleton nodes to disk
+	//	var (
+	//		_, nodes, _, imgs = triedb.Size()
+	//		limit             = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
+	//	)
+	//	if nodes > limit || imgs > 4*1024*1024 {
+	//		triedb.Cap(limit - ethdb.IdealBatchSize)
+	//	}
+	//	// Find the next state trie we need to commit
+	//	chosen := current - bc.triesInMemory
+	//	flushInterval := time.Duration(bc.flushInterval.Load())
+	//	// If we exceeded out time allowance, flush an entire trie to disk
+	//	if bc.gcproc > flushInterval {
+	//		canWrite := true
+	//		if posa, ok := bc.engine.(consensus.PoSA); ok {
+	//			if !posa.EnoughDistance(bc, block.Header()) {
+	//				canWrite = false
+	//			}
+	//		}
+	//		if canWrite {
+	//			// If the header is missing (canonical chain behind), we're reorging a low
+	//			// diff sidechain. Suspend committing until this operation is completed.
+	//			header := bc.GetHeaderByNumber(chosen)
+	//			if header == nil {
+	//				log.Warn("Reorg in progress, trie commit postponed", "number", chosen)
+	//			} else {
+	//				// If we're exceeding limits but haven't reached a large enough memory gap,
+	//				// warn the user that the system is becoming unstable.
+	//				if chosen < bc.lastWrite+bc.triesInMemory && bc.gcproc >= 2*flushInterval {
+	//					log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", flushInterval, "optimum", float64(chosen-bc.lastWrite)/float64(bc.triesInMemory))
+	//				}
+	//				// Flush an entire trie and restart the counters
+	//				triedb.Commit(header.Root, true)
+	//				rawdb.WriteSafePointBlockNumber(bc.db, chosen)
+	//				bc.lastWrite = chosen
+	//				bc.gcproc = 0
+	//			}
+	//		}
+	//	}
+	//	// Garbage collect anything below our required write retention
+	//	wg2 := sync.WaitGroup{}
+	//	for !bc.triegc.Empty() {
+	//		root, number := bc.triegc.Pop()
+	//		if uint64(-number) > chosen {
+	//			bc.triegc.Push(root, number)
+	//			break
+	//		}
+	//		wg2.Add(1)
+	//		go func() {
+	//			triedb.Dereference(root)
+	//			wg2.Done()
+	//		}()
+	//	}
+	//	wg2.Wait()
+	//	return nil
+	//}
+	//// Commit all cached state changes into underlying memory database.
+	//_, diffLayer, err := state.Commit(block.NumberU64(), tryCommitTrieDB)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//// Ensure no empty block body
+	//if diffLayer != nil && block.Header().TxHash != types.EmptyRootHash {
+	//	// Filling necessary field
+	//	diffLayer.Receipts = receipts
+	//	diffLayer.BlockHash = block.Hash()
+	//	diffLayer.Number = block.NumberU64()
+	//
+	//	diffLayerCh := make(chan struct{})
+	//	if bc.diffLayerChanCache.Len() >= diffLayerCacheLimit {
+	//		bc.diffLayerChanCache.RemoveOldest()
+	//	}
+	//	bc.diffLayerChanCache.Add(diffLayer.BlockHash, diffLayerCh)
+	//
+	//	go bc.cacheDiffLayer(diffLayer, diffLayerCh)
+	//}
+	wg.Wait()
+	return nil
+}
 
-		// If node is running in path mode, skip explicit gc operation
-		// which is unnecessary in this mode.
-		if bc.triedb.Scheme() == rawdb.PathScheme {
-			return nil
-		}
-
-		triedb := bc.stateCache.TrieDB()
-		// If we're running an archive node, always flush
-		if bc.cacheConfig.TrieDirtyDisabled {
-			return triedb.Commit(block.Root(), false)
-		}
-		// Full but not archive node, do proper garbage collection
-		triedb.Reference(block.Root(), common.Hash{}) // metadata reference to keep trie alive
-		bc.triegc.Push(block.Root(), -int64(block.NumberU64()))
-
-		// Flush limits are not considered for the first TriesInMemory blocks.
-		current := block.NumberU64()
-		if current <= bc.TriesInMemory() {
-			return nil
-		}
-		// If we exceeded our memory allowance, flush matured singleton nodes to disk
-		var (
-			_, nodes, _, imgs = triedb.Size()
-			limit             = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
-		)
-		if nodes > limit || imgs > 4*1024*1024 {
-			triedb.Cap(limit - ethdb.IdealBatchSize)
-		}
-		// Find the next state trie we need to commit
-		chosen := current - bc.triesInMemory
-		flushInterval := time.Duration(bc.flushInterval.Load())
-		// If we exceeded out time allowance, flush an entire trie to disk
-		if bc.gcproc > flushInterval {
-			canWrite := true
-			if posa, ok := bc.engine.(consensus.PoSA); ok {
-				if !posa.EnoughDistance(bc, block.Header()) {
-					canWrite = false
-				}
-			}
-			if canWrite {
-				// If the header is missing (canonical chain behind), we're reorging a low
-				// diff sidechain. Suspend committing until this operation is completed.
-				header := bc.GetHeaderByNumber(chosen)
-				if header == nil {
-					log.Warn("Reorg in progress, trie commit postponed", "number", chosen)
-				} else {
-					// If we're exceeding limits but haven't reached a large enough memory gap,
-					// warn the user that the system is becoming unstable.
-					if chosen < bc.lastWrite+bc.triesInMemory && bc.gcproc >= 2*flushInterval {
-						log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", flushInterval, "optimum", float64(chosen-bc.lastWrite)/float64(bc.triesInMemory))
-					}
-					// Flush an entire trie and restart the counters
-					triedb.Commit(header.Root, true)
-					rawdb.WriteSafePointBlockNumber(bc.db, chosen)
-					bc.lastWrite = chosen
-					bc.gcproc = 0
-				}
-			}
-		}
-		// Garbage collect anything below our required write retention
-		wg2 := sync.WaitGroup{}
-		for !bc.triegc.Empty() {
-			root, number := bc.triegc.Pop()
-			if uint64(-number) > chosen {
-				bc.triegc.Push(root, number)
-				break
-			}
-			wg2.Add(1)
-			go func() {
-				triedb.Dereference(root)
-				wg2.Done()
-			}()
-		}
-		wg2.Wait()
-		return nil
-	}
-	// Commit all cached state changes into underlying memory database.
-	_, diffLayer, err := state.Commit(block.NumberU64(), tryCommitTrieDB)
+func (bc *BlockChain) commitState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
+	_, diffLayer, err := state.Commit(block.NumberU64(), nil)
 	if err != nil {
 		return err
 	}
-
 	// Ensure no empty block body
 	if diffLayer != nil && block.Header().TxHash != types.EmptyRootHash {
 		// Filling necessary field
@@ -1880,7 +1914,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 		go bc.cacheDiffLayer(diffLayer, diffLayerCh)
 	}
-	wg.Wait()
 	return nil
 }
 
@@ -2246,15 +2279,24 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			return it.index, err
 		}
 		ptime := time.Since(pstart)
+		statedb.CommitUnVerifiedSnapDifflayer(bc.chainConfig.IsEIP158(block.Number()))
 
-		// Validate the state using the default validator
 		vstart := time.Now()
-		if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
-			log.Error("validate state failed", "error", err)
-			bc.reportBlock(block, receipts, err)
-			statedb.StopPrefetcher()
-			return it.index, err
+		task := &VerifyTask{
+			block:    block,
+			state:    statedb,
+			receipts: receipts,
+			usedGas:  usedGas,
 		}
+		bc.verifyTaskCh <- task
+		// Validate the state using the default validator
+		//vstart := time.Now()
+		//if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
+		//	log.Error("validate state failed", "error", err)
+		//	bc.reportBlock(block, receipts, err)
+		//	statedb.StopPrefetcher()
+		//	return it.index, err
+		//}
 		vtime := time.Since(vstart)
 		proctime := time.Since(start) // processing + validation
 
@@ -2373,6 +2415,22 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 	if err == nil && reorg {
 		bc.highestVerifiedHeader.Store(types.CopyHeader(header))
 		log.Trace("updateHighestVerifiedHeader", "number", header.Number.Uint64(), "hash", header.Hash())
+	}
+}
+
+func (bc *BlockChain) VerifyLoop() {
+	for {
+		select {
+		case <-bc.quit:
+			return
+		case task := <-bc.verifyTaskCh:
+			if err := bc.validator.ValidateState(task.block, task.state, task.receipts, task.usedGas); err != nil {
+				log.Crit("validate state failed", "error", err)
+			}
+			if err := bc.commitState(task.block, task.receipts, task.state); err != nil {
+				log.Crit("commit state failed", "error", err)
+			}
+		}
 	}
 }
 

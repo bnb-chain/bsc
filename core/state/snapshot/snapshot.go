@@ -355,7 +355,7 @@ func (t *Tree) Snapshots(root common.Hash, limits int, nodisk bool) []Snapshot {
 
 // Update adds a new snapshot into the tree, if that can be linked to an existing
 // old parent. It is disallowed to insert a disk layer (the origin of all).
-func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) error {
+func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte, verified bool) error {
 	// Reject noop updates to avoid self-loops in the snapshot tree. This is a
 	// special case that can only happen for Clique networks where empty blocks
 	// don't modify the state (0 block subsidy).
@@ -371,6 +371,10 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 		return fmt.Errorf("parent [%#x] snapshot missing", parentRoot)
 	}
 	snap := parent.(snapshot).Update(blockRoot, destructs, accounts, storage)
+
+	if verified {
+		snap.verified.Store(verified)
+	}
 
 	// Save the new snapshot for later
 	t.lock.Lock()
@@ -480,6 +484,18 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 // survival is only known *after* capping, we need to omit it from the count if
 // we want to ensure that *at least* the requested number of diff layers remain.
 func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
+	for {
+		if parent, ok := diff.parent.(*diffLayer); ok {
+			if !parent.verified.Load() {
+				diff = parent
+			} else {
+				break
+			}
+		} else {
+			return nil
+		}
+	}
+
 	// Dive until we run out of layers or reach the persistent database
 	for i := 0; i < layers-1; i++ {
 		// If we still have diff layers below, continue down
@@ -527,6 +543,9 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	}
 	// If the bottom-most layer is larger than our memory cap, persist to disk
 	bottom := diff.parent.(*diffLayer)
+	if bottom.verified.Load() == false {
+		return nil
+	}
 
 	bottom.lock.RLock()
 	base := diffToDisk(bottom)
