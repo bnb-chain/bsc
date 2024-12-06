@@ -581,6 +581,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if txLookupLimit != nil {
 		bc.txIndexer = newTxIndexer(*txLookupLimit, bc)
 	}
+	go bc.VerifyLoop()
 	return bc, nil
 }
 
@@ -2316,6 +2317,13 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		blockExecutionTimer.Update(ptime - trieRead)                    // The time spent on EVM processing
 		blockValidationTimer.Update(vtime - (triehash + trieUpdate))    // The time spent on block validation
 
+		err = bc.writeBlockWithState(block, receipts, statedb)
+		if err != nil {
+			log.Crit("Failed to write block", "number", block.Number(), "hash", block.Hash(), "err", err)
+		}
+		//}
+		//return it.index, err
+
 		// Write the block to the chain and get the status.
 		var (
 			wstart = time.Now()
@@ -2430,6 +2438,7 @@ func (bc *BlockChain) VerifyLoop() {
 			if err := bc.commitState(task.block, task.receipts, task.state); err != nil {
 				log.Crit("commit state failed", "error", err)
 			}
+			//status, err = bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false)
 		}
 	}
 }
