@@ -984,7 +984,4 @@ func (h *handler) enableSyncedFeatures() {
 		log.Info("Snap sync complete, auto disabling")
 		h.snapSync.Store(false)
 	}
-	// if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
-	// 	h.chain.TrieDB().SetBufferSize(pathdb.DefaultBufferSize)
-	// }
 }

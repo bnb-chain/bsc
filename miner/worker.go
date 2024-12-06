@@ -173,11 +173,12 @@ type newWorkReq struct {
 type newPayloadResult struct {
 	err      error
 	block    *types.Block
-	fees     *big.Int           // total block fees
-	sidecars types.BlobSidecars // collected blobs of blob transactions
-	stateDB  *state.StateDB     // StateDB after executing the transactions
-	receipts []*types.Receipt   // Receipts collected during construction
-	witness  *stateless.Witness // Witness is an optional stateless proof
+	fees     *big.Int               // total block fees
+	sidecars []*types.BlobTxSidecar // collected blobs of blob transactions
+	stateDB  *state.StateDB         // StateDB after executing the transactions
+	receipts []*types.Receipt       // Receipts collected during construction
+	requests [][]byte               // Consensus layer requests collected during block construction
+	witness  *stateless.Witness     // Witness is an optional stateless proof
 }
 
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
@@ -439,10 +440,10 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if !w.isRunning() {
 				continue
 			}
-			clearPending(head.Block.NumberU64())
+			clearPending(head.Header.Number.Uint64())
 			timestamp = time.Now().Unix()
 			if p, ok := w.engine.(*parlia.Parlia); ok {
-				signedRecent, err := p.SignRecently(w.chain, head.Block)
+				signedRecent, err := p.SignRecently(w.chain, head.Header)
 				if err != nil {
 					log.Debug("Not allowed to propose block", "err", err)
 					continue
@@ -1170,9 +1171,9 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 
 	return &newPayloadResult{
-		block:    block,
-		fees:     fees.ToBig(),
-		sidecars: work.sidecars,
+		block: block,
+		fees:  fees.ToBig(),
+		// sidecars: work.sidecars,
 		stateDB:  work.state,
 		receipts: receipts,
 		witness:  work.witness,
