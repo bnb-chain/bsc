@@ -36,8 +36,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/internal/version"
-
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/beacon/fakebeacon"
@@ -63,6 +61,7 @@ import (
 	"github.com/ethereum/go-ethereum/graphql"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/internal/flags"
+	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/metrics/exp"
@@ -211,12 +210,6 @@ var (
 		Usage:    "Custom node name",
 		Category: flags.NetworkingCategory,
 	}
-	DocRootFlag = &flags.DirectoryFlag{
-		Name:     "docroot",
-		Usage:    "Document Root for HTTPClient file scheme",
-		Value:    flags.DirectoryString(flags.HomeDir()),
-		Category: flags.APICategory,
-	}
 	ExitWhenSyncedFlag = &cli.BoolFlag{
 		Name:     "exitwhensynced",
 		Usage:    "Exits after block synchronisation completes",
@@ -257,8 +250,7 @@ var (
 		Value: 0,
 	}
 
-	defaultSyncMode = ethconfig.Defaults.SyncMode
-	SnapshotFlag    = &cli.BoolFlag{
+	SnapshotFlag = &cli.BoolFlag{
 		Name:     "snapshot",
 		Usage:    `Enables snapshot-database mode (default = enable)`,
 		Value:    true,
@@ -286,8 +278,7 @@ var (
 		Value:    128,
 		Category: flags.PerfCategory,
 	}
-	defaultVerifyMode   = ethconfig.Defaults.TriesVerifyMode
-	TriesVerifyModeFlag = &flags.TextMarshalerFlag{
+	TriesVerifyModeFlag = &cli.StringFlag{
 		Name: "tries-verify-mode",
 		Usage: `tries verify mode:
 				"local(default): a normal full node with complete state world(both MPT and snapshot), merkle state root will
@@ -298,7 +289,7 @@ var (
 				"none: no merkle state root verification at all, there is no need to setup or connect remote verify node at all,
 				       it is more light comparing to full and insecure mode, but get a very small chance that the state is not consistent
 						with other peers."`,
-		Value:    &defaultVerifyMode,
+		Value:    ethconfig.Defaults.TriesVerifyMode.String(),
 		Category: flags.FastNodeCategory,
 	}
 	RialtoHash = &cli.StringFlag{
@@ -356,10 +347,10 @@ var (
 		Value:    params.FixedTurnLength,
 		Category: flags.EthCategory,
 	}
-	SyncModeFlag = &flags.TextMarshalerFlag{
+	SyncModeFlag = &cli.StringFlag{
 		Name:     "syncmode",
 		Usage:    `Blockchain sync mode ("snap" or "full")`,
-		Value:    &defaultSyncMode,
+		Value:    ethconfig.Defaults.SyncMode.String(),
 		Category: flags.StateCategory,
 	}
 	GCModeFlag = &cli.StringFlag{
@@ -444,7 +435,7 @@ var (
 		Usage:    "Target EL engine API URL",
 		Category: flags.BeaconCategory,
 	}
-	BlsyncJWTSecretFlag = &cli.StringFlag{
+	BlsyncJWTSecretFlag = &flags.DirectoryFlag{
 		Name:     "blsync.jwtsecret",
 		Usage:    "Path to a JWT secret to use for target engine API endpoint",
 		Category: flags.BeaconCategory,
@@ -700,6 +691,7 @@ var (
 	VMTraceJsonConfigFlag = &cli.StringFlag{
 		Name:     "vmtrace.jsonconfig",
 		Usage:    "Tracer configuration (JSON)",
+		Value:    "{}",
 		Category: flags.VMCategory,
 	}
 	// API options.
@@ -895,11 +887,6 @@ var (
 		Name:     "rpc.batch-response-max-size",
 		Usage:    "Maximum number of bytes returned from a batched call",
 		Value:    node.DefaultConfig.BatchResponseMaxSize,
-		Category: flags.APICategory,
-	}
-	EnablePersonal = &cli.BoolFlag{
-		Name:     "rpc.enabledeprecatedpersonal",
-		Usage:    "Enables the (deprecated) personal namespace",
 		Category: flags.APICategory,
 	}
 
@@ -1687,9 +1674,8 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.IsSet(JWTSecretFlag.Name) {
 		cfg.JWTSecret = ctx.String(JWTSecretFlag.Name)
 	}
-
 	if ctx.IsSet(EnablePersonal.Name) {
-		cfg.EnablePersonal = true
+		log.Warn(fmt.Sprintf("Option --%s is deprecated. The 'personal' RPC namespace has been removed.", EnablePersonal.Name))
 	}
 
 	if ctx.IsSet(ExternalSignerFlag.Name) {
@@ -2001,7 +1987,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(SyncTargetFlag.Name) {
 		cfg.SyncMode = downloader.FullSync // dev sync target forces full sync
 	} else if ctx.IsSet(SyncModeFlag.Name) {
-		cfg.SyncMode = *flags.GlobalTextMarshaler(ctx, SyncModeFlag.Name).(*downloader.SyncMode)
+		if err = cfg.SyncMode.UnmarshalText([]byte(ctx.String(SyncModeFlag.Name))); err != nil {
+			Fatalf("invalid --syncmode flag: %v", err)
+		}
 	}
 	if ctx.IsSet(NetworkIdFlag.Name) {
 		cfg.NetworkId = ctx.Uint64(NetworkIdFlag.Name)
@@ -2100,7 +2088,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.TriesInMemory = ctx.Uint64(TriesInMemoryFlag.Name)
 	}
 	if ctx.IsSet(TriesVerifyModeFlag.Name) {
-		cfg.TriesVerifyMode = *flags.GlobalTextMarshaler(ctx, TriesVerifyModeFlag.Name).(*core.VerifyMode)
+		if err = cfg.TriesVerifyMode.UnmarshalText([]byte(ctx.String(TriesVerifyModeFlag.Name))); err != nil {
+			Fatalf("invalid --tries-verify-mode flag: %v", err)
+		}
 		// If a node sets verify mode to full or insecure, it's a fast node and need
 		// to verify blocks from verify nodes, then it should enable trust protocol.
 		if cfg.TriesVerifyMode.NeedRemoteVerify() {
@@ -2137,9 +2127,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			cfg.TrieCleanCache += cfg.SnapshotCache
 			cfg.SnapshotCache = 0 // Disabled
 		}
-	}
-	if ctx.IsSet(DocRootFlag.Name) {
-		cfg.DocRoot = ctx.String(DocRootFlag.Name)
 	}
 	if ctx.IsSet(VMEnableDebugFlag.Name) {
 		// TODO(fjl): force-enable this in --dev mode
@@ -2252,9 +2239,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 				if err != nil {
 					Fatalf("Could not read genesis from database: %v", err)
 				}
-				if !genesis.Config.TerminalTotalDifficultyPassed {
-					Fatalf("Bad developer-mode genesis configuration: terminalTotalDifficultyPassed must be true")
-				}
 				if genesis.Config.TerminalTotalDifficulty == nil {
 					Fatalf("Bad developer-mode genesis configuration: terminalTotalDifficulty must be specified")
 				} else if genesis.Config.TerminalTotalDifficulty.Cmp(big.NewInt(0)) != 0 {
@@ -2297,13 +2281,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// VM tracing config.
 	if ctx.IsSet(VMTraceFlag.Name) {
 		if name := ctx.String(VMTraceFlag.Name); name != "" {
-			var config string
-			if ctx.IsSet(VMTraceJsonConfigFlag.Name) {
-				config = ctx.String(VMTraceJsonConfigFlag.Name)
-			}
-
 			cfg.VMTrace = name
-			cfg.VMTraceJsonConfig = config
+			cfg.VMTraceJsonConfig = ctx.String(VMTraceJsonConfigFlag.Name)
 		}
 	}
 }
@@ -2355,7 +2334,7 @@ func EnableBuildInfo(gitCommit, gitDate string) SetupMetricsOption {
 	return func() {
 		// register build info into metrics
 		metrics.NewRegisteredLabel("build-info", nil).Mark(map[string]interface{}{
-			"version":          params.VersionWithMeta,
+			"version":          version.WithMeta,
 			"git-commit":       gitCommit,
 			"git-commit-date":  gitDate,
 			"go-version":       runtime.Version(),
@@ -2431,7 +2410,7 @@ func parseEtherbase(cfg *ethconfig.Config) string {
 
 func parseNodeType() string {
 	git, _ := version.VCS()
-	version := []string{params.VersionWithMeta}
+	version := []string{version.WithMeta}
 	if len(git.Commit) >= 7 {
 		version = append(version, git.Commit[:7])
 	}
@@ -2733,10 +2712,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	}
 	if ctx.IsSet(VMTraceFlag.Name) {
 		if name := ctx.String(VMTraceFlag.Name); name != "" {
-			var config json.RawMessage
-			if ctx.IsSet(VMTraceJsonConfigFlag.Name) {
-				config = json.RawMessage(ctx.String(VMTraceJsonConfigFlag.Name))
-			}
+			config := json.RawMessage(ctx.String(VMTraceJsonConfigFlag.Name))
 			t, err := tracers.LiveDirectory.New(name, config)
 			if err != nil {
 				Fatalf("Failed to create tracer %q: %v", name, err)

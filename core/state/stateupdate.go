@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 // contractCode represents a contract code with associated metadata.
@@ -164,4 +165,18 @@ func newStateUpdate(originRoot common.Hash, root common.Hash, deletes map[common
 	}
 
 	return sc
+}
+
+// stateSet converts the current stateUpdate object into a triedb.StateSet
+// object. This function extracts the necessary data from the stateUpdate
+// struct and formats it into the StateSet structure consumed by the triedb
+// package.
+func (sc *stateUpdate) stateSet() *triedb.StateSet {
+	return &triedb.StateSet{
+		Destructs:      sc.destructs,
+		Accounts:       sc.accounts,
+		AccountsOrigin: sc.accountsOrigin,
+		Storages:       sc.storages,
+		StoragesOrigin: sc.storagesOrigin,
+	}
 }

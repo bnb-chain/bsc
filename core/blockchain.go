@@ -23,15 +23,13 @@ import (
 	"io"
 	"math/big"
 	"runtime"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	exlru "github.com/hashicorp/golang-lru"
-	"golang.org/x/crypto/sha3"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -58,7 +56,8 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
-	"golang.org/x/exp/slices"
+	exlru "github.com/hashicorp/golang-lru"
+	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -191,7 +190,7 @@ func (c *CacheConfig) triedbConfig(isVerkle bool) *triedb.Config {
 			SyncFlush:       c.PathSyncFlush,
 			StateHistory:    c.StateHistory,
 			CleanCacheSize:  c.TrieCleanLimit * 1024 * 1024,
-			DirtyCacheSize:  c.TrieDirtyLimit * 1024 * 1024,
+			WriteBufferSize: c.TrieDirtyLimit * 1024 * 1024,
 			JournalFilePath: c.JournalFilePath,
 			JournalFile:     c.JournalFile,
 		}
@@ -261,7 +260,6 @@ type BlockChain struct {
 	hc                       *HeaderChain
 	rmLogsFeed               event.Feed
 	chainFeed                event.Feed
-	chainSideFeed            event.Feed
 	chainHeadFeed            event.Feed
 	chainBlockFeed           event.Feed
 	logsFeed                 event.Feed
@@ -779,15 +777,14 @@ func (bc *BlockChain) SetHead(head uint64) error {
 	}
 	// Send chain head event to update the transaction pool
 	header := bc.CurrentBlock()
-	block := bc.GetBlock(header.Hash(), header.Number.Uint64())
-	if block == nil {
+	if block := bc.GetBlock(header.Hash(), header.Number.Uint64()); block == nil {
 		// This should never happen. In practice, previously currentBlock
 		// contained the entire block whereas now only a "marker", so there
 		// is an ever so slight chance for a race we should handle.
 		log.Error("Current block not found in database", "block", header.Number, "hash", header.Hash())
 		return fmt.Errorf("current block missing: #%d [%x..]", header.Number, header.Hash().Bytes()[:4])
 	}
-	bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
+	bc.chainHeadFeed.Send(ChainHeadEvent{Header: header})
 	return nil
 }
 
@@ -801,15 +798,14 @@ func (bc *BlockChain) SetHeadWithTimestamp(timestamp uint64) error {
 	}
 	// Send chain head event to update the transaction pool
 	header := bc.CurrentBlock()
-	block := bc.GetBlock(header.Hash(), header.Number.Uint64())
-	if block == nil {
+	if block := bc.GetBlock(header.Hash(), header.Number.Uint64()); block == nil {
 		// This should never happen. In practice, previously currentBlock
 		// contained the entire block whereas now only a "marker", so there
 		// is an ever so slight chance for a race we should handle.
 		log.Error("Current block not found in database", "block", header.Number, "hash", header.Hash())
 		return fmt.Errorf("current block missing: #%d [%x..]", header.Number, header.Hash().Bytes()[:4])
 	}
-	bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
+	bc.chainHeadFeed.Send(ChainHeadEvent{Header: header})
 	return nil
 }
 
@@ -1740,7 +1736,7 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 	current := bc.CurrentBlock()
 	if block.ParentHash() != current.Hash() {
-		if err := bc.reorg(current, block); err != nil {
+		if err := bc.reorg(current, block.Header()); err != nil {
 			return err
 		}
 	}
@@ -1919,7 +1915,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	if reorg {
 		// Reorganise the chain if the parent is not the head block
 		if block.ParentHash() != currentBlock.Hash() {
-			if err := bc.reorg(currentBlock, block); err != nil {
+			if err := bc.reorg(currentBlock, block.Header()); err != nil {
 				return NonStatTy, err
 			}
 		}
@@ -1934,7 +1930,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	bc.futureBlocks.Remove(block.Hash())
 
 	if status == CanonStatTy {
-		bc.chainFeed.Send(ChainEvent{Block: block, Hash: block.Hash(), Logs: logs})
+		bc.chainFeed.Send(ChainEvent{Header: block.Header()})
 		if len(logs) > 0 {
 			bc.logsFeed.Send(logs)
 		}
@@ -1950,13 +1946,11 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 			}
 		}
 		if emitHeadEvent {
-			bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
+			bc.chainHeadFeed.Send(ChainHeadEvent{Header: block.Header()})
 			if finalizedHeader != nil {
 				bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
 			}
 		}
-	} else {
-		bc.chainSideFeed.Send(ChainSideEvent{Block: block})
 	}
 	return status, nil
 }
@@ -2045,7 +2039,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	// Fire a single chain head event if we've progressed the chain
 	defer func() {
 		if lastCanon != nil && bc.CurrentBlock().Hash() == lastCanon.Hash() {
-			bc.chainHeadFeed.Send(ChainHeadEvent{lastCanon})
+			bc.chainHeadFeed.Send(ChainHeadEvent{Header: lastCanon.Header()})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
 				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header()); finalizedHeader != nil {
 					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
@@ -2228,7 +2222,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			return nil, it.index, err
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
-		statedb.SetLogger(bc.logger)
 
 		// If we are past Byzantium, enable prefetching to pull in trie node paths
 		// while processing transactions. Before Byzantium the prefetcher is mostly
@@ -2311,7 +2304,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 				"txs", len(block.Transactions()), "gas", block.GasUsed(), "uncles", len(block.Uncles()),
 				"root", block.Root())
 		}
-		bc.chainBlockFeed.Send(ChainHeadEvent{block})
+		bc.chainBlockFeed.Send(ChainHeadEvent{block.Header()})
 	}
 
 	// Any blocks remaining here? The only ones we care about are the future ones
@@ -2666,8 +2659,8 @@ func (bc *BlockChain) recoverAncestors(block *types.Block, makeWitness bool) (co
 	return block.Hash(), nil
 }
 
-// collectLogs collects the logs that were generated or removed during
-// the processing of a block. These logs are later announced as deleted or reborn.
+// collectLogs collects the logs that were generated or removed during the
+// processing of a block. These logs are later announced as deleted or reborn.
 func (bc *BlockChain) collectLogs(b *types.Block, removed bool) []*types.Log {
 	var blobGasPrice *big.Int
 	excessBlobGas := b.ExcessBlobGas()
@@ -2693,70 +2686,55 @@ func (bc *BlockChain) collectLogs(b *types.Block, removed bool) []*types.Log {
 // reorg takes two blocks, an old chain and a new chain and will reconstruct the
 // blocks and inserts them to be part of the new canonical chain and accumulates
 // potential missing transactions and post an event about them.
+//
 // Note the new head block won't be processed here, callers need to handle it
 // externally.
-func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Block) error {
+func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Header) error {
 	var (
-		newChain    types.Blocks
-		oldChain    types.Blocks
-		commonBlock *types.Block
-
-		deletedTxs []common.Hash
-		addedTxs   []common.Hash
+		newChain    []*types.Header
+		oldChain    []*types.Header
+		commonBlock *types.Header
 	)
-	oldBlock := bc.GetBlock(oldHead.Hash(), oldHead.Number.Uint64())
-	if oldBlock == nil {
-		return errors.New("current head block missing")
-	}
-	newBlock := newHead
-
 	// Reduce the longer chain to the same number as the shorter one
-	if oldBlock.NumberU64() > newBlock.NumberU64() {
+	if oldHead.Number.Uint64() > newHead.Number.Uint64() {
 		// Old chain is longer, gather all transactions and logs as deleted ones
-		for ; oldBlock != nil && oldBlock.NumberU64() != newBlock.NumberU64(); oldBlock = bc.GetBlock(oldBlock.ParentHash(), oldBlock.NumberU64()-1) {
-			oldChain = append(oldChain, oldBlock)
-			for _, tx := range oldBlock.Transactions() {
-				deletedTxs = append(deletedTxs, tx.Hash())
-			}
+		for ; oldHead != nil && oldHead.Number.Uint64() != newHead.Number.Uint64(); oldHead = bc.GetHeader(oldHead.ParentHash, oldHead.Number.Uint64()-1) {
+			oldChain = append(oldChain, oldHead)
 		}
 	} else {
 		// New chain is longer, stash all blocks away for subsequent insertion
-		for ; newBlock != nil && newBlock.NumberU64() != oldBlock.NumberU64(); newBlock = bc.GetBlock(newBlock.ParentHash(), newBlock.NumberU64()-1) {
-			newChain = append(newChain, newBlock)
+		for ; newHead != nil && newHead.Number.Uint64() != oldHead.Number.Uint64(); newHead = bc.GetHeader(newHead.ParentHash, newHead.Number.Uint64()-1) {
+			newChain = append(newChain, newHead)
 		}
 	}
-	if oldBlock == nil {
+	if oldHead == nil {
 		return errInvalidOldChain
 	}
-	if newBlock == nil {
+	if newHead == nil {
 		return errInvalidNewChain
 	}
 	// Both sides of the reorg are at the same number, reduce both until the common
 	// ancestor is found
 	for {
 		// If the common ancestor was found, bail out
-		if oldBlock.Hash() == newBlock.Hash() {
-			commonBlock = oldBlock
+		if oldHead.Hash() == newHead.Hash() {
+			commonBlock = oldHead
 			break
 		}
 		// Remove an old block as well as stash away a new block
-		oldChain = append(oldChain, oldBlock)
-		for _, tx := range oldBlock.Transactions() {
-			deletedTxs = append(deletedTxs, tx.Hash())
-		}
-		newChain = append(newChain, newBlock)
+		oldChain = append(oldChain, oldHead)
+		newChain = append(newChain, newHead)
 
 		// Step back with both chains
-		oldBlock = bc.GetBlock(oldBlock.ParentHash(), oldBlock.NumberU64()-1)
-		if oldBlock == nil {
+		oldHead = bc.GetHeader(oldHead.ParentHash, oldHead.Number.Uint64()-1)
+		if oldHead == nil {
 			return errInvalidOldChain
 		}
-		newBlock = bc.GetBlock(newBlock.ParentHash(), newBlock.NumberU64()-1)
-		if newBlock == nil {
+		newHead = bc.GetHeader(newHead.ParentHash, newHead.Number.Uint64()-1)
+		if newHead == nil {
 			return errInvalidNewChain
 		}
 	}
-
 	// Ensure the user sees large reorgs
 	if len(oldChain) > 0 && len(newChain) > 0 {
 		logFn := log.Info
@@ -2765,7 +2743,7 @@ func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Block) error {
 			msg = "Large chain reorg detected"
 			logFn = log.Warn
 		}
-		logFn(msg, "number", commonBlock.Number(), "hash", commonBlock.Hash(),
+		logFn(msg, "number", commonBlock.Number, "hash", commonBlock.Hash(),
 			"drop", len(oldChain), "dropfrom", oldChain[0].Hash(), "add", len(newChain), "addfrom", newChain[0].Hash())
 		blockReorgAddMeter.Mark(int64(len(newChain)))
 		blockReorgDropMeter.Mark(int64(len(oldChain)))
@@ -2773,49 +2751,108 @@ func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Block) error {
 	} else if len(newChain) > 0 {
 		// Special case happens in the post merge stage that current head is
 		// the ancestor of new head while these two blocks are not consecutive
-		log.Info("Extend chain", "add", len(newChain), "number", newChain[0].Number(), "hash", newChain[0].Hash())
+		log.Info("Extend chain", "add", len(newChain), "number", newChain[0].Number, "hash", newChain[0].Hash())
 		blockReorgAddMeter.Mark(int64(len(newChain)))
 	} else {
 		// len(newChain) == 0 && len(oldChain) > 0
 		// rewind the canonical chain to a lower point.
-		log.Error("Impossible reorg, please file an issue", "oldnum", oldBlock.Number(), "oldhash", oldBlock.Hash(), "oldblocks", len(oldChain), "newnum", newBlock.Number(), "newhash", newBlock.Hash(), "newblocks", len(newChain))
+		log.Error("Impossible reorg, please file an issue", "oldnum", oldHead.Number, "oldhash", oldHead.Hash(), "oldblocks", len(oldChain), "newnum", newHead.Number, "newhash", newHead.Hash(), "newblocks", len(newChain))
 	}
 	// Acquire the tx-lookup lock before mutation. This step is essential
 	// as the txlookups should be changed atomically, and all subsequent
 	// reads should be blocked until the mutation is complete.
 	bc.txLookupLock.Lock()
 
-	// Insert the new chain segment in incremental order, from the old
-	// to the new. The new chain head (newChain[0]) is not inserted here,
-	// as it will be handled separately outside of this function
-	for i := len(newChain) - 1; i >= 1; i-- {
-		// Insert the block in the canonical way, re-writing history
-		bc.writeHeadBlock(newChain[i])
+	// Reorg can be executed, start reducing the chain's old blocks and appending
+	// the new blocks
+	var (
+		deletedTxs []common.Hash
+		rebirthTxs []common.Hash
 
-		// Collect the new added transactions.
-		for _, tx := range newChain[i].Transactions() {
-			addedTxs = append(addedTxs, tx.Hash())
+		deletedLogs []*types.Log
+		rebirthLogs []*types.Log
+	)
+	// Deleted log emission on the API uses forward order, which is borked, but
+	// we'll leave it in for legacy reasons.
+	//
+	// TODO(karalabe): This should be nuked out, no idea how, deprecate some APIs?
+	{
+		for i := len(oldChain) - 1; i >= 0; i-- {
+			block := bc.GetBlock(oldChain[i].Hash(), oldChain[i].Number.Uint64())
+			if block == nil {
+				return errInvalidOldChain // Corrupt database, mostly here to avoid weird panics
+			}
+			if logs := bc.collectLogs(block, true); len(logs) > 0 {
+				deletedLogs = append(deletedLogs, logs...)
+			}
+			if len(deletedLogs) > 512 {
+				bc.rmLogsFeed.Send(RemovedLogsEvent{deletedLogs})
+				deletedLogs = nil
+			}
+		}
+		if len(deletedLogs) > 0 {
+			bc.rmLogsFeed.Send(RemovedLogsEvent{deletedLogs})
 		}
 	}
+	// Undo old blocks in reverse order
+	for i := 0; i < len(oldChain); i++ {
+		// Collect all the deleted transactions
+		block := bc.GetBlock(oldChain[i].Hash(), oldChain[i].Number.Uint64())
+		if block == nil {
+			return errInvalidOldChain // Corrupt database, mostly here to avoid weird panics
+		}
+		for _, tx := range block.Transactions() {
+			deletedTxs = append(deletedTxs, tx.Hash())
+		}
+		// Collect deleted logs and emit them for new integrations
+		if logs := bc.collectLogs(block, true); len(logs) > 0 {
+			// Emit revertals latest first, older then
+			slices.Reverse(logs)
 
+			// TODO(karalabe): Hook into the reverse emission part
+		}
+	}
+	// Apply new blocks in forward order
+	for i := len(newChain) - 1; i >= 1; i-- {
+		// Collect all the included transactions
+		block := bc.GetBlock(newChain[i].Hash(), newChain[i].Number.Uint64())
+		if block == nil {
+			return errInvalidNewChain // Corrupt database, mostly here to avoid weird panics
+		}
+		for _, tx := range block.Transactions() {
+			rebirthTxs = append(rebirthTxs, tx.Hash())
+		}
+		// Collect inserted logs and emit them
+		if logs := bc.collectLogs(block, false); len(logs) > 0 {
+			rebirthLogs = append(rebirthLogs, logs...)
+		}
+		if len(rebirthLogs) > 512 {
+			bc.logsFeed.Send(rebirthLogs)
+			rebirthLogs = nil
+		}
+		// Update the head block
+		bc.writeHeadBlock(block)
+	}
+	if len(rebirthLogs) > 0 {
+		bc.logsFeed.Send(rebirthLogs)
+	}
 	// Delete useless indexes right now which includes the non-canonical
 	// transaction indexes, canonical chain indexes which above the head.
 	var (
 		indexesBatch = bc.db.NewBatch()
-		diffs        = types.HashDifference(deletedTxs, addedTxs)
 		blockBatch   = bc.db.BlockStore().NewBatch()
 	)
-	for _, tx := range diffs {
+	for _, tx := range types.HashDifference(deletedTxs, rebirthTxs) {
 		rawdb.DeleteTxLookupEntry(indexesBatch, tx)
 	}
 	// Delete all hash markers that are not part of the new canonical chain.
 	// Because the reorg function does not handle new chain head, all hash
 	// markers greater than or equal to new chain head should be deleted.
-	number := commonBlock.NumberU64()
+	number := commonBlock.Number
 	if len(newChain) > 1 {
-		number = newChain[1].NumberU64()
+		number = newChain[1].Number
 	}
-	for i := number + 1; ; i++ {
+	for i := number.Uint64() + 1; ; i++ {
 		hash := rawdb.ReadCanonicalHash(bc.db, i)
 		if hash == (common.Hash{}) {
 			break
@@ -2834,43 +2871,6 @@ func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Block) error {
 	// Release the tx-lookup lock after mutation.
 	bc.txLookupLock.Unlock()
 
-	// Send out events for logs from the old canon chain, and 'reborn'
-	// logs from the new canon chain. The number of logs can be very
-	// high, so the events are sent in batches of size around 512.
-
-	// Deleted logs + blocks:
-	var deletedLogs []*types.Log
-	for i := len(oldChain) - 1; i >= 0; i-- {
-		// Also send event for blocks removed from the canon chain.
-		bc.chainSideFeed.Send(ChainSideEvent{Block: oldChain[i]})
-
-		// Collect deleted logs for notification
-		if logs := bc.collectLogs(oldChain[i], true); len(logs) > 0 {
-			deletedLogs = append(deletedLogs, logs...)
-		}
-		if len(deletedLogs) > 512 {
-			bc.rmLogsFeed.Send(RemovedLogsEvent{deletedLogs})
-			deletedLogs = nil
-		}
-	}
-	if len(deletedLogs) > 0 {
-		bc.rmLogsFeed.Send(RemovedLogsEvent{deletedLogs})
-	}
-
-	// New logs:
-	var rebirthLogs []*types.Log
-	for i := len(newChain) - 1; i >= 1; i-- {
-		if logs := bc.collectLogs(newChain[i], false); len(logs) > 0 {
-			rebirthLogs = append(rebirthLogs, logs...)
-		}
-		if len(rebirthLogs) > 512 {
-			bc.logsFeed.Send(rebirthLogs)
-			rebirthLogs = nil
-		}
-	}
-	if len(rebirthLogs) > 0 {
-		bc.logsFeed.Send(rebirthLogs)
-	}
 	return nil
 }
 
@@ -2908,7 +2908,7 @@ func (bc *BlockChain) SetCanonical(head *types.Block) (common.Hash, error) {
 	// Run the reorg if necessary and set the given block as new head.
 	start := time.Now()
 	if head.ParentHash() != bc.CurrentBlock().Hash() {
-		if err := bc.reorg(bc.CurrentBlock(), head); err != nil {
+		if err := bc.reorg(bc.CurrentBlock(), head.Header()); err != nil {
 			return common.Hash{}, err
 		}
 	}
@@ -2916,11 +2916,11 @@ func (bc *BlockChain) SetCanonical(head *types.Block) (common.Hash, error) {
 
 	// Emit events
 	logs := bc.collectLogs(head, false)
-	bc.chainFeed.Send(ChainEvent{Block: head, Hash: head.Hash(), Logs: logs})
+	bc.chainFeed.Send(ChainEvent{Header: head.Header()})
 	if len(logs) > 0 {
 		bc.logsFeed.Send(logs)
 	}
-	bc.chainHeadFeed.Send(ChainHeadEvent{Block: head})
+	bc.chainHeadFeed.Send(ChainHeadEvent{Header: head.Header()})
 
 	context := []interface{}{
 		"number", head.Number(),
@@ -3037,7 +3037,7 @@ func (bc *BlockChain) startDoubleSignMonitor() {
 		select {
 		case event := <-eventChan:
 			if bc.doubleSignMonitor != nil {
-				bc.doubleSignMonitor.Verify(event.Block.Header())
+				bc.doubleSignMonitor.Verify(event.Header)
 			}
 		case <-bc.quit:
 			return
