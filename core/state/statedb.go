@@ -194,12 +194,12 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 		sdb.snap = sdb.snaps.Snapshot(root)
 	}
 
-	tr, err := db.OpenTrie(root)
-	if err != nil {
-		return nil, err
-	}
-	_, sdb.noTrie = tr.(*trie.EmptyTrie)
-	sdb.trie = tr
+	//tr, err := db.OpenTrie(root)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//_, sdb.noTrie = tr.(*trie.EmptyTrie)
+	//sdb.trie = tr
 	return sdb, nil
 }
 
@@ -1023,6 +1023,13 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
+
+	tr, err := s.db.OpenTrie(s.originalRoot)
+	if err != nil {
+		panic("Failed to open state trie")
+	}
+	s.trie = tr
+
 	s.AccountsIntermediateRoot()
 	return s.StateIntermediateRoot()
 }
