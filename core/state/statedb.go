@@ -160,12 +160,12 @@ type StateDB struct {
 
 // NewWithSharedPool creates a new state with sharedStorge on layer 1.5
 func NewWithSharedPool(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
-	statedb, err := New(root, db, snaps)
-	if err != nil {
-		return nil, err
-	}
-	statedb.storagePool = NewStoragePool()
-	return statedb, nil
+	//statedb, err := New(root, db, snaps)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//statedb.storagePool = NewStoragePool()
+	return New(root, db, snaps)
 }
 
 // New creates a new state from a given trie.
@@ -194,12 +194,12 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 		sdb.snap = sdb.snaps.Snapshot(root)
 	}
 
-	tr, err := db.OpenTrie(root)
-	if err != nil {
-		return nil, err
-	}
-	_, sdb.noTrie = tr.(*trie.EmptyTrie)
-	sdb.trie = tr
+	//tr, err := db.OpenTrie(root)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//_, sdb.noTrie = tr.(*trie.EmptyTrie)
+	//sdb.trie = tr
 	return sdb, nil
 }
 
@@ -1023,6 +1023,13 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
+
+	tr, err := s.db.OpenTrie(s.originalRoot)
+	if err != nil {
+		panic("Failed to open state trie")
+	}
+	s.trie = tr
+
 	s.AccountsIntermediateRoot()
 	return s.StateIntermediateRoot()
 }
@@ -1543,7 +1550,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != s.expectedRoot {
-					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages)
+					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages, true)
 
 					if err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
@@ -1594,6 +1601,32 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 	s.stateObjectsDirty = make(map[common.Address]struct{})
 	s.stateObjectsDestruct = make(map[common.Address]*types.StateAccount)
 	return root, diffLayer, nil
+}
+
+func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
+	s.Finalise(deleteEmptyObjects)
+	destructs := make(map[common.Hash]struct{})
+	accounts := make(map[common.Hash][]byte)
+	storages := make(map[common.Hash]map[common.Hash][]byte)
+	for addr := range s.stateObjectsPending {
+		if obj := s.stateObjects[addr]; !obj.deleted {
+			accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
+			pendingstorages := obj.GetPendingStorages()
+			if pendingstorages != nil {
+				storages[obj.addrHash] = pendingstorages
+			}
+		} else {
+			destructs[obj.addrHash] = struct{}{}
+		}
+	}
+
+	if parent := s.snap.Root(); parent != s.expectedRoot {
+		err := s.snaps.Update(s.expectedRoot, parent, destructs, accounts, storages, false)
+
+		if err != nil {
+			log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
+		}
+	}
 }
 
 func (s *StateDB) SnapToDiffLayer() ([]common.Address, []types.DiffAccount, []types.DiffStorage) {

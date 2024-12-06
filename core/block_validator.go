@@ -128,15 +128,15 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 			}
 			return nil
 		},
-		func() error {
-			if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
-				if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
-					return consensus.ErrUnknownAncestor
-				}
-				return consensus.ErrPrunedAncestor
-			}
-			return nil
-		},
+		//func() error {
+		//	if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
+		//		if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
+		//			return consensus.ErrUnknownAncestor
+		//		}
+		//		return consensus.ErrPrunedAncestor
+		//	}
+		//	return nil
+		//},
 		func() error {
 			if v.remoteValidator != nil && !v.remoteValidator.AncestorVerified(block.Header()) {
 				return fmt.Errorf("%w, number: %s, hash: %s", ErrAncestorHasNotBeenVerified, block.Number(), block.Hash())

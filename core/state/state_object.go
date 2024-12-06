@@ -616,3 +616,31 @@ func (s *stateObject) Nonce() uint64 {
 func (s *stateObject) Root() common.Hash {
 	return s.data.Root
 }
+
+func (s *stateObject) GetPendingStorages() map[common.Hash][]byte {
+	var (
+		hasher = crypto.NewKeccakState()
+	)
+	if len(s.pendingStorage) > 0 {
+		dirtyStorage := make(map[common.Hash][]byte)
+		for key, value := range s.pendingStorage {
+			// Skip noop changes, persist actual changes
+			if value == s.originStorage[key] {
+				continue
+			}
+			var v []byte
+			if value != (common.Hash{}) {
+				value := value
+				v = common.TrimLeftZeroes(value[:])
+			}
+			// rlp-encoded value to be used by the snapshot
+			var encoded []byte
+			if len(v) != 0 {
+				encoded, _ = rlp.EncodeToBytes(v)
+			}
+			dirtyStorage[crypto.HashData(hasher, key[:])] = encoded
+		}
+		return dirtyStorage
+	}
+	return nil
+}

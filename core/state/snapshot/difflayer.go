@@ -122,6 +122,8 @@ type diffLayer struct {
 	diffed *bloomfilter.Filter // Bloom filter tracking all the diffed items up to the disk layer
 
 	lock sync.RWMutex
+
+	verified atomic.Bool
 }
 
 // destructBloomHash is used to convert a destruct event into a 64 bit mini hash.
