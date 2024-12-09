@@ -2271,6 +2271,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			go throwaway.TriePrefetchInAdvance(block, signer)
 		}
 
+		log.Info("begin process task", "number", block.Number(), "hash", block.Hash())
 		// Process block using the parent state as reference point
 		statedb.SetExpectedStateRoot(block.Root())
 		pstart := time.Now()
@@ -2283,6 +2284,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 		ptime := time.Since(pstart)
 		statedb.CommitUnVerifiedSnapDifflayer(bc.chainConfig.IsEIP158(block.Number()))
+		log.Info("end process task", "number", block.Number(), "hash", block.Hash())
 
 		vstart := time.Now()
 		task := &VerifyTask{
@@ -2433,6 +2435,7 @@ func (bc *BlockChain) VerifyLoop() {
 		case <-bc.quit:
 			return
 		case task := <-bc.verifyTaskCh:
+			log.Info("begin async verify task", "number", task.block.Number(), "hash", task.block.Hash())
 			if err := bc.validator.ValidateState(task.block, task.state, task.receipts, task.usedGas); err != nil {
 				log.Crit("validate state failed", "error", err)
 			}
@@ -2442,6 +2445,7 @@ func (bc *BlockChain) VerifyLoop() {
 			if _, err := bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false); err != nil {
 				log.Crit("write block and set head failed", "error", err)
 			}
+			log.Info("end async verify task", "number", task.block.Number(), "hash", task.block.Hash())
 			bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
 		}
 	}
