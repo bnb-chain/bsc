@@ -90,7 +90,7 @@ func (q *bodyQueue) request(peer *peerConnection, req *fetchRequest, resCh chan 
 // fetcher, unpacking the body data and delivering it to the downloader's queue.
 func (q *bodyQueue) deliver(peer *peerConnection, packet *eth.Response) (int, error) {
 	txs, uncles, withdrawals, sidecars := packet.Res.(*eth.BlockBodiesResponse).Unpack()
-	hashsets := packet.Meta.([][]common.Hash) // {txs hashes, uncle hashes, withdrawal hashes, requests hashes}
+	hashsets := packet.Meta.([][]common.Hash) // {txs hashes, uncle hashes, withdrawal hashes}
 
 	accepted, err := q.queue.DeliverBodies(peer.id, txs, hashsets[0], uncles, hashsets[1], withdrawals, hashsets[2], sidecars)
 	switch {

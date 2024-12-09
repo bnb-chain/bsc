@@ -458,7 +458,7 @@ func (es *EventSystem) handleVoteEvent(filters filterIndex, ev core.NewVoteEvent
 
 func (es *EventSystem) handleChainEvent(filters filterIndex, ev core.ChainEvent) {
 	for _, f := range filters[BlocksSubscription] {
-		f.headers <- ev.Block.Header()
+		f.headers <- ev.Header
 	}
 }
 

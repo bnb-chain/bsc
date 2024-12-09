@@ -434,7 +434,7 @@ func (b *bidSimulator) clearLoop() {
 			continue
 		}
 
-		clearFn(head.Block.ParentHash(), head.Block.NumberU64())
+		clearFn(head.Header.ParentHash, head.Header.Number.Uint64())
 	}
 }
 

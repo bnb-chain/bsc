@@ -10,9 +10,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -29,7 +29,7 @@ func isBreatheBlock(lastBlockTime, blockTime uint64) bool {
 }
 
 // initializeFeynmanContract initialize new contracts of Feynman fork
-func (p *Parlia) initializeFeynmanContract(state *state.StateDB, header *types.Header, chain core.ChainContext,
+func (p *Parlia) initializeFeynmanContract(state vm.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool,
 ) error {
 	// method
@@ -95,7 +95,7 @@ func (h *ValidatorHeap) Pop() interface{} {
 	return x
 }
 
-func (p *Parlia) updateValidatorSetV2(state *state.StateDB, header *types.Header, chain core.ChainContext,
+func (p *Parlia) updateValidatorSetV2(state vm.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool,
 ) error {
 	// 1. get all validators and its voting power

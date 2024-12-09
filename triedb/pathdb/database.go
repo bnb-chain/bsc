@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie/trienode"
-	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 const (
@@ -42,17 +41,17 @@ const (
 	defaultCleanSize = 16 * 1024 * 1024
 
 	// MaxDirtyBufferSize is the maximum memory allowance of node buffer.
-	// Too large nodebuffer will cause the system to pause for a long
+	// Too large buffer will cause the system to pause for a long
 	// time when write happens. Also, the largest batch that pebble can
 	// support is 4GB, node will panic if batch size exceeds this limit.
 	MaxDirtyBufferSize = 256 * 1024 * 1024
 
-	// DefaultDirtyBufferSize is the default memory allowance of node buffer
+	// defaultDirtyBufferSize is the default memory allowance of node buffer
 	// that aggregates the writes from above until it's flushed into the
 	// disk. It's meant to be used once the initial sync is finished.
 	// Do not increase the buffer size arbitrarily, otherwise the system
 	// pause time will increase when the database writes happen.
-	DefaultDirtyBufferSize = 64 * 1024 * 1024
+	defaultDirtyBufferSize = 64 * 1024 * 1024
 
 	// DefaultBackgroundFlushInterval defines the default the wait interval
 	// that background node cache flush disk.
@@ -95,7 +94,7 @@ type layer interface {
 	// the provided dirty trie nodes along with the state change set.
 	//
 	// Note, the maps are retained by the method to avoid copying everything.
-	update(root common.Hash, id uint64, block uint64, nodes map[common.Hash]map[string]*trienode.Node, states *triestate.Set) *diffLayer
+	update(root common.Hash, id uint64, block uint64, nodes *nodeSet, states *StateSetWithOrigin) *diffLayer
 
 	// journal commits an entire diff hierarchy to disk into a single journal entry.
 	// This is meant to be used during shutdown to persist the layer without
@@ -108,7 +107,7 @@ type Config struct {
 	SyncFlush       bool   // Flag of trienodebuffer sync flush cache to disk
 	StateHistory    uint64 // Number of recent blocks to maintain state history for
 	CleanCacheSize  int    // Maximum memory allowance (in bytes) for caching clean nodes
-	DirtyCacheSize  int    // Maximum memory allowance (in bytes) for caching dirty nodes
+	WriteBufferSize int    // Maximum memory allowance (in bytes) for write buffer
 	ReadOnly        bool   // Flag whether the database is opened in read only mode.
 	NoTries         bool
 	JournalFilePath string
@@ -119,18 +118,30 @@ type Config struct {
 // unreasonable or unworkable.
 func (c *Config) sanitize() *Config {
 	conf := *c
-	if conf.DirtyCacheSize > MaxDirtyBufferSize {
-		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.DirtyCacheSize), "updated", common.StorageSize(MaxDirtyBufferSize))
-		conf.DirtyCacheSize = MaxDirtyBufferSize
+	if conf.WriteBufferSize > MaxDirtyBufferSize {
+		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.WriteBufferSize), "updated", common.StorageSize(MaxDirtyBufferSize))
+		conf.WriteBufferSize = MaxDirtyBufferSize
 	}
 	return &conf
 }
 
+// fields returns a list of attributes of config for printing.
+func (c *Config) fields() []interface{} {
+	var list []interface{}
+	if c.ReadOnly {
+		list = append(list, "readonly", true)
+	}
+	list = append(list, "cache", common.StorageSize(c.CleanCacheSize))
+	list = append(list, "buffer", common.StorageSize(c.WriteBufferSize))
+	list = append(list, "history", c.StateHistory)
+	return list
+}
+
 // Defaults contains default settings for Ethereum mainnet.
 var Defaults = &Config{
-	StateHistory:   params.FullImmutabilityThreshold,
-	CleanCacheSize: defaultCleanSize,
-	DirtyCacheSize: DefaultDirtyBufferSize,
+	StateHistory:    params.FullImmutabilityThreshold,
+	CleanCacheSize:  defaultCleanSize,
+	WriteBufferSize: defaultDirtyBufferSize,
 }
 
 // ReadOnly is the config in order to open database in read only mode.
@@ -151,15 +162,15 @@ type Database struct {
 	// readOnly is the flag whether the mutation is allowed to be applied.
 	// It will be set automatically when the database is journaled during
 	// the shutdown to reject all following unexpected mutations.
-	readOnly   bool                         // Flag if database is opened in read only mode
-	waitSync   bool                         // Flag if database is deactivated due to initial state sync
-	isVerkle   bool                         // Flag if database is used for verkle tree
-	bufferSize int                          // Memory allowance (in bytes) for caching dirty nodes
-	config     *Config                      // Configuration for database
-	diskdb     ethdb.Database               // Persistent storage for matured trie nodes
-	tree       *layerTree                   // The group for all known layers
-	freezer    ethdb.ResettableAncientStore // Freezer for storing trie histories, nil possible in tests
-	lock       sync.RWMutex                 // Lock to prevent mutations from happening at the same time
+	readOnly bool // Flag if database is opened in read only mode
+	waitSync bool // Flag if database is deactivated due to initial state sync
+	isVerkle bool // Flag if database is used for verkle tree
+
+	config  *Config                      // Configuration for database
+	diskdb  ethdb.Database               // Persistent storage for matured trie nodes
+	tree    *layerTree                   // The group for all known layers
+	freezer ethdb.ResettableAncientStore // Freezer for storing trie histories, nil possible in tests
+	lock    sync.RWMutex                 // Lock to prevent mutations from happening at the same time
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -180,11 +191,10 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 		diskdb = rawdb.NewTable(diskdb, string(rawdb.VerklePrefix))
 	}
 	db := &Database{
-		readOnly:   config.ReadOnly,
-		isVerkle:   isVerkle,
-		bufferSize: config.DirtyCacheSize,
-		config:     config,
-		diskdb:     diskdb,
+		readOnly: config.ReadOnly,
+		isVerkle: isVerkle,
+		config:   config,
+		diskdb:   diskdb,
 	}
 	// Construct the layer tree by resolving the in-disk singleton state
 	// and in-memory layer journal.
@@ -193,7 +203,7 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	// Repair the state history, which might not be aligned with the state
 	// in the key-value store due to an unclean shutdown.
 	if err := db.repairHistory(); err != nil {
-		log.Crit("Failed to repair pathdb", "err", err)
+		log.Crit("Failed to repair state history", "err", err)
 	}
 	// Disable database in case node is still in the initial state sync stage.
 	if rawdb.ReadSnapSyncStatusFlag(diskdb) == rawdb.StateSyncRunning && !db.readOnly {
@@ -201,6 +211,11 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 			log.Crit("Failed to disable database", "err", err) // impossible to happen
 		}
 	}
+	fields := config.fields()
+	if db.isVerkle {
+		fields = append(fields, "verkle", true)
+	}
+	log.Info("Initialized path database", fields...)
 	return db
 }
 
@@ -264,7 +279,7 @@ func (db *Database) repairHistory() error {
 //
 // The passed in maps(nodes, states) will be retained to avoid copying everything.
 // Therefore, these maps must not be changed afterwards.
-func (db *Database) Update(root common.Hash, parentRoot common.Hash, block uint64, nodes *trienode.MergedNodeSet, states *triestate.Set) error {
+func (db *Database) Update(root common.Hash, parentRoot common.Hash, block uint64, nodes *trienode.MergedNodeSet, states *StateSetWithOrigin) error {
 	// Hold the lock to prevent concurrent mutations.
 	db.lock.Lock()
 	defer db.lock.Unlock()
@@ -364,8 +379,7 @@ func (db *Database) Enable(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	dl := newDiskLayer(root, 0, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nil, 0))
-	db.tree.reset(dl)
+	db.tree.reset(newDiskLayer(root, 0, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, 0)))
 
 	// Re-enable the database as the final step.
 	db.waitSync = false
@@ -381,19 +395,19 @@ func (db *Database) Recover(root common.Hash) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	// Short circuit if rollback operation is not supported.
+	// Short circuit if rollback operation is not supported
 	if err := db.modifyAllowed(); err != nil {
 		return err
 	}
 	if db.freezer == nil {
 		return errors.New("state rollback is non-supported")
 	}
-	// Short circuit if the target state is not recoverable.
+	// Short circuit if the target state is not recoverable
 	root = types.TrieRootHash(root)
 	if !db.Recoverable(root) {
 		return errStateUnrecoverable
 	}
-	// Apply the state histories upon the disk layer in order.
+	// Apply the state histories upon the disk layer in order
 	var (
 		start = time.Now()
 		dl    = db.tree.bottom()
@@ -478,7 +492,7 @@ func (db *Database) Close() error {
 func (db *Database) Size() (diffs common.StorageSize, nodes common.StorageSize, immutableNodes common.StorageSize) {
 	db.tree.forEach(func(layer layer) {
 		if diff, ok := layer.(*diffLayer); ok {
-			diffs += common.StorageSize(diff.memory)
+			diffs += common.StorageSize(diff.size())
 		}
 		if disk, ok := layer.(*diskLayer); ok {
 			nodes, immutableNodes = disk.size()
@@ -500,19 +514,6 @@ func (db *Database) Initialized(genesisRoot common.Hash) bool {
 		inited = rawdb.ReadSnapSyncStatusFlag(db.diskdb) != rawdb.StateSyncUnknown
 	}
 	return inited
-}
-
-// SetBufferSize sets the node buffer size to the provided value(in bytes).
-func (db *Database) SetBufferSize(size int) error {
-	db.lock.Lock()
-	defer db.lock.Unlock()
-
-	if size > MaxDirtyBufferSize {
-		log.Info("Capped node buffer size", "provided", common.StorageSize(size), "adjusted", common.StorageSize(MaxDirtyBufferSize))
-		size = MaxDirtyBufferSize
-	}
-	db.bufferSize = size
-	return db.tree.bottom().setBufferSize(db.bufferSize)
 }
 
 // Scheme returns the node scheme used in the database.
