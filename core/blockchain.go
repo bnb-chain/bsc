@@ -387,7 +387,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		vmConfig:           vmConfig,
 		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
 		diffQueueBuffer:    make(chan *types.DiffLayer),
-		verifyTaskCh:       make(chan *VerifyTask, 1024),
+		verifyTaskCh:       make(chan *VerifyTask),
 	}
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
@@ -2271,7 +2271,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			go throwaway.TriePrefetchInAdvance(block, signer)
 		}
 
-		log.Info("begin execute task", "number", block.Number(), "hash", block.Hash())
+		//log.Info("begin execute task", "number", block.Number(), "hash", block.Hash())
 		// Process block using the parent state as reference point
 		statedb.SetExpectedStateRoot(block.Root())
 		pstart := time.Now()
@@ -2284,7 +2284,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 		ptime := time.Since(pstart)
 		statedb.CommitUnVerifiedSnapDifflayer(bc.chainConfig.IsEIP158(block.Number()))
-		log.Info("end execute task", "number", block.Number(), "hash", block.Hash())
+		//log.Info("end execute task", "number", block.Number(), "hash", block.Hash())
 
 		vstart := time.Now()
 		task := &VerifyTask{
@@ -2435,17 +2435,17 @@ func (bc *BlockChain) VerifyLoop() {
 		case <-bc.quit:
 			return
 		case task := <-bc.verifyTaskCh:
-			log.Info("begin async verify task", "number", task.block.Number(), "hash", task.block.Hash())
+			//log.Info("begin async verify task", "number", task.block.Number(), "hash", task.block.Hash())
 			if err := bc.validator.ValidateState(task.block, task.state, task.receipts, task.usedGas); err != nil {
-				panic(fmt.Sprintf("validate state failed, error: %s", err.Error()))
+				panic(fmt.Sprintf("validate state failed, number: %d, hash: %s, error: %s", task.block.NumberU64(), task.block.Hash().String(), err.Error()))
 			}
 			if err := bc.commitState(task.block, task.receipts, task.state); err != nil {
-				panic(fmt.Sprintf("commit state failed, error: %s", err.Error()))
+				panic(fmt.Sprintf("commit state failed, number: %d, hash: %s, error: %s", task.block.NumberU64(), task.block.Hash().String(), err.Error()))
 			}
 			if _, err := bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false); err != nil {
-				panic(fmt.Sprintf("write block and set head failed, error: %s", err.Error()))
+				panic(fmt.Sprintf("write block and set head failed, number: %d, hash: %s, error: %s", task.block.NumberU64(), task.block.Hash().String(), err.Error()))
 			}
-			log.Info("end async verify task", "number", task.block.Number(), "hash", task.block.Hash())
+			//log.Info("end async verify task", "number", task.block.Number(), "hash", task.block.Hash())
 			bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
 		}
 	}
