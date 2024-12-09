@@ -1943,9 +1943,9 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		bc.highestVerifiedBlockFeed.Send(HighestVerifiedBlockEvent{Header: block.Header()})
 	}
 
-	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
-		return NonStatTy, err
-	}
+	//if err := bc.writeBlockWithState(block, receipts, state); err != nil {
+	//	return NonStatTy, err
+	//}
 	if reorg {
 		// Reorganise the chain if the parent is not the head block
 		if block.ParentHash() != currentBlock.Hash() {
