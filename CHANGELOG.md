@@ -1,4 +1,47 @@
 # Changelog
+## v1.5.1
+v1.5.1-alpha is for upstream code sync, it catches up with[go-ethereum release [v1.13.15, v1.14.11]](https://github.com/ethereum/go-ethereum/releases)
+
+#### Major Changes
+[eth: make transaction propagation paths in the network deterministic (#29034)](https://github.com/ethereum/go-ethereum/pull/29034)
+[core/state: parallelise parts of state commit (#29681)](https://github.com/ethereum/go-ethereum/pull/29681)
+Load trie nodes concurrently with trie updates, speeding up block import by 5-7% ([#29519](https://github.com/ethereum/go-ethereum/pull/29519), [#29768](https://github.com/ethereum/go-ethereum/pull/29768), [#29919](https://github.com/ethereum/go-ethereum/pull/29919)).
+[core/vm: reject contract creation if the storage is non-empty (](https://github.com/ethereum/go-ethereum/commit/c170cc0ab0a1f60adcde80d0af8e3050ee19da93)[#28912](https://github.com/ethereum/go-ethereum/pull/28912)[)](https://github.com/ethereum/go-ethereum/commit/c170cc0ab0a1f60adcde80d0af8e3050ee19da93)
+[Add state reader abstraction (#29761)](https://github.com/ethereum/go-ethereum/pull/29761)
+[Stateless witness prefetcher changes (#29519)](https://github.com/ethereum/go-ethereum/pull/29519)
+_not follow changes with trie_prefetcher, the implemenation in bsc is very different_
+[core: use finalized block as the chain freeze indicator (](https://github.com/ethereum/go-ethereum/commit/ca473b81cbe4a96cde4e8424c49b15ab304787bb)[#28683](https://github.com/ethereum/go-ethereum/pull/28683)[)](https://github.com/ethereum/go-ethereum/commit/ca473b81cbe4a96cde4e8424c49b15ab304787bb)
+_in bsc, this feature only enabled with multi-database_
+
+#### New EIPs
+[core/vm: enable bls-precompiles for Prague (](https://github.com/ethereum/go-ethereum/commit/823719b9e1b72174cd8245ae9e6f6f7d7072a8d6)[#29552](https://github.com/ethereum/go-ethereum/pull/29552)[)](https://github.com/ethereum/go-ethereum/commit/823719b9e1b72174cd8245ae9e6f6f7d7072a8d6)
+[EIP-2935: Serve historical block hashes from state](https://eips.ethereum.org/EIPS/eip-2935) ([#29465](https://github.com/ethereum/go-ethereum/pull/29465))
+
+#### Clear Up
+[eth, eth/downloader: remove references to LightChain, LightSync (#29711)](https://github.com/ethereum/go-ethereum/pull/29711)
+[eth/filters: remove support for pending logs(#29574)](https://github.com/ethereum/go-ethereum/pull/29574)
+[Drop large-contract (500MB+) deletion DoS protection from pathdb post Cancun (#28940)](https://github.com/ethereum/go-ethereum/pull/28940).
+Remove totalDifficulty field from RPC, in accordance with [spec update](https://github.com/ethereum/execution-apis/pull/570), [#30386](https://github.com/ethereum/go-ethereum/pull/30386)
+
+#### Merged but Reverted
+[consensus, cmd, core, eth: remove support for non-merge mode of operation (](https://github.com/ethereum/go-ethereum/commit/f4d53133f6e4b13f0dbcfef3bc45e9650d863b73)[#29169](https://github.com/ethereum/go-ethereum/pull/29169)[)](https://github.com/ethereum/go-ethereum/commit/f4d53133f6e4b13f0dbcfef3bc45e9650d863b73)
+[miner: refactor the miner, make the pending block on demand (](https://github.com/ethereum/go-ethereum/commit/d8e0807da22eb922539d15b0d5d01ccdd58b1267)[#28623](https://github.com/ethereum/go-ethereum/pull/28623)[)](https://github.com/ethereum/go-ethereum/commit/d8e0807da22eb922539d15b0d5d01ccdd58b1267)
+[miner: lower default min miner tip from 1 gwei to 0.001 gwei(#29895)](https://github.com/ethereum/go-ethereum/pull/29895)
+_bsc only has tip, 1 Gwei is the min value now_
+[eth/downloader: purge pre-merge sync code (](https://github.com/ethereum/go-ethereum/commit/45baf21111c03d2954c81fdf828e630a8d7b05c1)[#29281](https://github.com/ethereum/go-ethereum/pull/29281)[)](https://github.com/ethereum/go-ethereum/commit/45baf21111c03d2954c81fdf828e630a8d7b05c1)
+[all: remove forkchoicer and reorgNeeded (](https://github.com/ethereum/go-ethereum/commit/b0b67be0a2559073c1620555d2b6a73f825f7135)[#29179](https://github.com/ethereum/go-ethereum/pull/29179)[)](https://github.com/ethereum/go-ethereum/commit/b0b67be0a2559073c1620555d2b6a73f825f7135)
+
+#### Others
+[all: update to go version 1.23.0 (#30323)](https://github.com/ethereum/go-ethereum/pull/30323)
+[Switch to using Go's native log/slog package instead of golang/exp (#29302)](https://github.com/ethereum/go-ethereum/pull/29302).
+[Add the geth db inspect-history command to inspect pathdb state history (#29267)](https://github.com/ethereum/go-ethereum/pull/29267).
+Improve the discovery protocol's node revalidation ([#29572](https://github.com/ethereum/go-ethereum/pull/29572), [#29864](https://github.com/ethereum/go-ethereum/pull/29864), [#29836](https://github.com/ethereum/go-ethereum/pull/29836)).
+[Blobpool related flags in Geth now actually work. (#30203)](https://github.com/ethereum/go-ethereum/pull/30203)
+[core/rawdb: implement in-memory freezer (#29135)](https://github.com/ethereum/go-ethereum/commit/f46c878441e2e567e8815f1e252a38ad0ffafbc2)
+
+
+## v1.5.0
+v1.5.0 was skipped as we forgot to pump the version when create the tag, it is replaced by v1.5.1
 
 ## v1.4.16
 ### BUGFIX
