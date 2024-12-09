@@ -52,7 +52,6 @@ func TestPathExpansion(t *testing.T) {
 
 	t.Setenv(`DDDXXX`, `/tmp`)
 	for test, expected := range tests {
-		test, expected := test, expected
 		t.Run(test, func(t *testing.T) {
 			t.Parallel()
 

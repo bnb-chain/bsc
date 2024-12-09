@@ -698,7 +698,6 @@ func TestHandleNewBlock(t *testing.T) {
 
 	// Run the tests
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			err := handleNewBlock(backend, tc.msg, localEth)
 			if err != tc.err {

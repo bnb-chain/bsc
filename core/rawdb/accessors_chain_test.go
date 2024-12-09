@@ -465,7 +465,7 @@ func TestBlockBlobSidecarsStorage(t *testing.T) {
 		t.Fatalf("no sidecars returned")
 	} else {
 		if err := checkBlobSidecarsRLP(bs, sidecars); err != nil {
-			t.Fatalf(err.Error())
+			t.Fatalf("err: %v", err.Error())
 		}
 	}
 

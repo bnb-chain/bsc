@@ -60,7 +60,7 @@ type trienodebuffer interface {
 	// getSize return the trienodebuffer used size.
 	getSize() (uint64, uint64)
 
-	// getAllNodes returnthe trie nodes set are cached in trienodebuffer.
+	// getAllNodes return the trie nodes set are cached in trienodebuffer.
 	getAllNodes() *nodeSet
 
 	// getLayers return the size of cached difflayers.

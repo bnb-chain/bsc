@@ -496,6 +496,9 @@ func GetBuiltInChainConfig(ghash common.Hash) *ChainConfig {
 // NetworkNames are user friendly names to use in the chain spec banner.
 var NetworkNames = map[string]string{
 	MainnetChainConfig.ChainID.String(): "mainnet",
+	BSCChainConfig.ChainID.String():     "bsc",
+	ChapelChainConfig.ChainID.String():  "chapel",
+	RialtoChainConfig.ChainID.String():  "rialto",
 }
 
 // ChainConfig is the core config which determines the blockchain settings.
@@ -603,7 +606,26 @@ func (b *ParliaConfig) String() string {
 }
 
 func (c *ChainConfig) Description() string {
-	return ""
+	var banner string
+
+	// Create some basic network config output
+	network := NetworkNames[c.ChainID.String()]
+	if network == "" {
+		network = "unknown"
+	}
+	banner += fmt.Sprintf("Chain ID:  %v (%s)\n", c.ChainID, network)
+	switch {
+	case c.Parlia != nil:
+		banner += "Consensus: Parlia (proof-of-staked--authority)\n"
+	case c.Ethash != nil:
+		banner += "Consensus: Beacon (proof-of-stake), merged from Ethash (proof-of-work)\n"
+	case c.Clique != nil:
+		banner += "Consensus: Beacon (proof-of-stake), merged from Clique (proof-of-authority)\n"
+	default:
+		banner += "Consensus: unknown\n"
+	}
+
+	return banner
 }
 
 // String implements the fmt.Stringer interface.

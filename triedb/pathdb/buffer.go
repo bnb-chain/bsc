@@ -151,7 +151,7 @@ func (b *buffer) getSize() (uint64, uint64) {
 	return b.nodes.size, 0
 }
 
-// getAllNodes returnthe trie nodes set are cached in nodebuffer.
+// getAllNodes return the trie nodes set are cached in nodebuffer.
 func (b *buffer) getAllNodes() *nodeSet {
 	return b.nodes
 }

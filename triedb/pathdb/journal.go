@@ -275,7 +275,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 	}
 	// Resolve nodes cached in aggregated buffer
 	var nodes nodeSet
-	if err := nodes.decode(r); err != nil {
+	if err := nodes.decode(journalBuf); err != nil {
 		return nil, err
 	}
 
@@ -331,12 +331,12 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, journalTypeForRea
 	}
 	// Read in-memory trie nodes from journal
 	var nodes nodeSet
-	if err := nodes.decode(r); err != nil {
+	if err := nodes.decode(journalBuf); err != nil {
 		return nil, err
 	}
 	// Read flat states set (with original value attached) from journal
 	var stateSet StateSetWithOrigin
-	if err := stateSet.decode(r); err != nil {
+	if err := stateSet.decode(journalBuf); err != nil {
 		return nil, err
 	}
 
@@ -379,7 +379,7 @@ func (dl *diskLayer) journal(w io.Writer, journalType JournalType) error {
 		return err
 	}
 	// Step three, write the accumulated trie nodes into the journal
-	if err := dl.buffer.getAllNodes().encode(w); err != nil {
+	if err := dl.buffer.getAllNodes().encode(journalBuf); err != nil {
 		return err
 	}
 
@@ -422,11 +422,11 @@ func (dl *diffLayer) journal(w io.Writer, journalType JournalType) error {
 		return err
 	}
 	// Write the accumulated trie nodes into buffer
-	if err := dl.nodes.encode(w); err != nil {
+	if err := dl.nodes.encode(journalBuf); err != nil {
 		return err
 	}
 	// Write the associated flat state set into buffer
-	if err := dl.states.encode(w); err != nil {
+	if err := dl.states.encode(journalBuf); err != nil {
 		return err
 	}
 
@@ -445,7 +445,7 @@ func (dl *diffLayer) journal(w io.Writer, journalType JournalType) error {
 		}
 	}
 
-	log.Debug("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block)
+	log.Info("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block)
 	return nil
 }
 

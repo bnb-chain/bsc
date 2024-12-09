@@ -1158,12 +1158,46 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	defer work.discard()
 
 	if !params.noTxs {
+		interrupt := new(atomic.Int32)
+		timer := time.AfterFunc(w.config.Recommit, func() {
+			interrupt.Store(commitInterruptTimeout)
+		})
+		defer timer.Stop()
+
 		err := w.fillTransactions(nil, work, nil, nil)
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.recommit))
 		}
 	}
 	body := types.Body{Transactions: work.txs, Withdrawals: params.withdrawals}
+	allLogs := make([]*types.Log, 0)
+	for _, r := range work.receipts {
+		allLogs = append(allLogs, r.Logs...)
+	}
+	// Collect consensus-layer requests if Prague is enabled.
+	var requests [][]byte
+	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) {
+		// EIP-6110 deposits
+		depositRequests, err := core.ParseDepositLogs(allLogs, w.chainConfig)
+		if err != nil {
+			return &newPayloadResult{err: err}
+		}
+		requests = append(requests, depositRequests)
+		// create EVM for system calls
+		blockContext := core.NewEVMBlockContext(work.header, w.chain, &work.header.Coinbase)
+		vmenv := vm.NewEVM(blockContext, vm.TxContext{}, work.state, w.chainConfig, vm.Config{})
+		// EIP-7002 withdrawals
+		withdrawalRequests := core.ProcessWithdrawalQueue(vmenv, work.state)
+		requests = append(requests, withdrawalRequests)
+		// EIP-7251 consolidations
+		consolidationRequests := core.ProcessConsolidationQueue(vmenv, work.state)
+		requests = append(requests, consolidationRequests)
+	}
+	if requests != nil {
+		reqHash := types.CalcRequestsHash(requests)
+		work.header.RequestsHash = &reqHash
+	}
+
 	fees := work.state.GetBalance(consensus.SystemAddress)
 	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
 	if err != nil {
@@ -1176,6 +1210,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 		// sidecars: work.sidecars,
 		stateDB:  work.state,
 		receipts: receipts,
+		requests: requests,
 		witness:  work.witness,
 	}
 }
