@@ -19,6 +19,7 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"io"
 	"sync"
 	"time"
@@ -397,6 +398,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 				encoded, _ = rlp.EncodeToBytes(value)
 			}
 			storage[khash] = encoded // encoded will be nil if it's deleted
+			log.Info("UpdateStorageTrie", "key", khash.String(), "val", common.BytesToHash(encoded).String())
 
 			// Track the original value of slot only if it's mutated first time
 			prev := s.originStorage[key]
