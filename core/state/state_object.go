@@ -151,7 +151,7 @@ func (s *stateObject) touch() {
 
 func (s *stateObject) updateTrieRoot() {
 	acc, err := s.db.snap.Account(s.addrHash)
-	if err != nil {
+	if err != nil || acc == nil {
 		return
 	}
 	s.data.Root = common.BytesToHash(acc.Root)
