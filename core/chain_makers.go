@@ -369,42 +369,56 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		if gen != nil {
 			gen(i, b)
 		}
-		if b.engine != nil {
-			var requests types.Requests
-			if config.IsPrague(b.header.Number, b.header.Time) {
-				for _, r := range b.receipts {
-					d, err := ParseDepositLogs(r.Logs, config)
-					if err != nil {
-						panic(fmt.Sprintf("failed to parse deposit log: %v", err))
-					}
-					requests = append(requests, d...)
-				}
-			}
 
-			body := types.Body{Transactions: b.txs, Uncles: b.uncles, Withdrawals: b.withdrawals, Requests: requests}
-			block, _, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, &body, b.receipts)
+		var requests [][]byte
+		if config.IsPrague(b.header.Number, b.header.Time) {
+			// EIP-6110 deposits
+			var blockLogs []*types.Log
+			for _, r := range b.receipts {
+				blockLogs = append(blockLogs, r.Logs...)
+			}
+			depositRequests, err := ParseDepositLogs(blockLogs, config)
 			if err != nil {
-				panic(err)
+				panic(fmt.Sprintf("failed to parse deposit log: %v", err))
 			}
-			if config.IsCancun(block.Number(), block.Time()) {
-				for _, s := range b.sidecars {
-					s.BlockNumber = block.Number()
-					s.BlockHash = block.Hash()
-				}
-				block = block.WithSidecars(b.sidecars)
-			}
-
-			// Write state changes to db
-			root, _, err := statedb.Commit(b.header.Number.Uint64(), config.IsEIP158(b.header.Number))
-			if err != nil {
-				panic(fmt.Sprintf("state write error: %v", err))
-			}
-			if err = triedb.Commit(root, false); err != nil {
-				panic(fmt.Sprintf("trie write error: %v", err))
-			}
-			return block, b.receipts
+			requests = append(requests, depositRequests)
+			// create EVM for system calls
+			blockContext := NewEVMBlockContext(b.header, cm, &b.header.Coinbase)
+			vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, cm.config, vm.Config{})
+			// EIP-7002 withdrawals
+			withdrawalRequests := ProcessWithdrawalQueue(vmenv, statedb)
+			requests = append(requests, withdrawalRequests)
+			// EIP-7251 consolidations
+			consolidationRequests := ProcessConsolidationQueue(vmenv, statedb)
+			requests = append(requests, consolidationRequests)
 		}
-		return nil, nil
+		if requests != nil {
+			reqHash := types.CalcRequestsHash(requests)
+			b.header.RequestsHash = &reqHash
+		}
+
+		body := types.Body{Transactions: b.txs, Uncles: b.uncles, Withdrawals: b.withdrawals}
+		block, _, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, &body, b.receipts)
+		if err != nil {
+			panic(err)
+		}
+		if config.IsCancun(block.Number(), block.Time()) {
+			for _, s := range b.sidecars {
+				s.BlockNumber = block.Number()
+				s.BlockHash = block.Hash()
+			}
+			block = block.WithSidecars(b.sidecars)
+		}
+
+		// Write state changes to db
+		root, _, err := statedb.Commit(b.header.Number.Uint64(), config.IsEIP158(b.header.Number))
+		if err != nil {
+			panic(fmt.Sprintf("state write error: %v", err))
+		}
+		if err = triedb.Commit(root, false); err != nil {
+			panic(fmt.Sprintf("trie write error: %v", err))
+		}
+		return block, b.receipts
 	}
 
 	// Forcibly use hash-based state scheme for retaining all nodes in disk.
@@ -479,16 +493,15 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 		// Save pre state for proof generation
 		// preState := statedb.Copy()
 
-		// TODO uncomment when the 2935 PR is merged
-		// if config.IsPrague(b.header.Number, b.header.Time) {
-		// if !config.IsPrague(b.parent.Number(), b.parent.Time()) {
-		// Transition case: insert all 256 ancestors
-		// 		InsertBlockHashHistoryAtEip2935Fork(statedb, b.header.Number.Uint64()-1, b.header.ParentHash, chainreader)
-		// 	} else {
-		// 		ProcessParentBlockHash(statedb, b.header.Number.Uint64()-1, b.header.ParentHash)
-		// 	}
-		// }
-		// Execute any user modifications to the block
+		// Pre-execution system calls.
+		if config.IsPrague(b.header.Number, b.header.Time) {
+			// EIP-2935
+			blockContext := NewEVMBlockContext(b.header, cm, &b.header.Coinbase)
+			vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, cm.config, vm.Config{})
+			ProcessParentBlockHash(b.header.ParentHash, vmenv, statedb)
+		}
+
+		// Execute any user modifications to the block.
 		if gen != nil {
 			gen(i, b)
 		}
@@ -502,7 +515,7 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 			panic(err)
 		}
 
-		// Write state changes to db
+		// Write state changes to DB.
 		root, _, err := statedb.Commit(b.header.Number.Uint64(), config.IsEIP158(b.header.Number))
 		if err != nil {
 			panic(fmt.Sprintf("state write error: %v", err))

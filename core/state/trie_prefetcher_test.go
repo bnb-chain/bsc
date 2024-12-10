@@ -49,8 +49,8 @@ func filledStateDB() *StateDB {
 	return state
 }
 
-func prefetchGuaranteed(prefetcher *triePrefetcher, owner common.Hash, root common.Hash, addr common.Address, keys [][]byte) {
-	prefetcher.prefetch(owner, root, addr, keys, false)
+func prefetchGuaranteed(prefetcher *triePrefetcher, owner common.Hash, root common.Hash, addr common.Address, addrs []common.Address, slots []common.Hash) {
+	prefetcher.prefetch(owner, root, addr, addrs, slots, false)
 	for {
 		if len(prefetcher.prefetchChan) == 0 {
 			return
@@ -63,19 +63,19 @@ func TestCopyAndClose(t *testing.T) {
 	db := filledStateDB()
 	prefetcher := newTriePrefetcher(db.db, db.originalRoot, "", false)
 	skey := common.HexToHash("aaa")
-	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, [][]byte{skey.Bytes()})
-	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, [][]byte{skey.Bytes()})
+	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, nil, []common.Hash{skey})
+	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, nil, []common.Hash{skey})
 	time.Sleep(1 * time.Second)
 	a := prefetcher.trie(common.Hash{}, db.originalRoot)
-	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, [][]byte{skey.Bytes()})
+	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, nil, []common.Hash{skey})
 	b := prefetcher.trie(common.Hash{}, db.originalRoot)
 	cpy := prefetcher.copy()
-	prefetchGuaranteed(cpy, common.Hash{}, db.originalRoot, common.Address{}, [][]byte{skey.Bytes()})
-	prefetchGuaranteed(cpy, common.Hash{}, db.originalRoot, common.Address{}, [][]byte{skey.Bytes()})
+	prefetchGuaranteed(cpy, common.Hash{}, db.originalRoot, common.Address{}, nil, []common.Hash{skey})
+	prefetchGuaranteed(cpy, common.Hash{}, db.originalRoot, common.Address{}, nil, []common.Hash{skey})
 	c := cpy.trie(common.Hash{}, db.originalRoot)
 	prefetcher.close()
 	cpy2 := cpy.copy()
-	prefetchGuaranteed(cpy2, common.Hash{}, db.originalRoot, common.Address{}, [][]byte{skey.Bytes()})
+	prefetchGuaranteed(cpy2, common.Hash{}, db.originalRoot, common.Address{}, nil, []common.Hash{skey})
 	d := cpy2.trie(common.Hash{}, db.originalRoot)
 	cpy.close()
 	cpy2.close()
@@ -88,7 +88,7 @@ func TestUseAfterClose(t *testing.T) {
 	db := filledStateDB()
 	prefetcher := newTriePrefetcher(db.db, db.originalRoot, "", false)
 	skey := common.HexToHash("aaa")
-	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, [][]byte{skey.Bytes()})
+	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, nil, []common.Hash{skey})
 	a := prefetcher.trie(common.Hash{}, db.originalRoot)
 	prefetcher.close()
 	b := prefetcher.trie(common.Hash{}, db.originalRoot)
@@ -104,7 +104,7 @@ func TestCopyClose(t *testing.T) {
 	db := filledStateDB()
 	prefetcher := newTriePrefetcher(db.db, db.originalRoot, "", false)
 	skey := common.HexToHash("aaa")
-	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, [][]byte{skey.Bytes()})
+	prefetchGuaranteed(prefetcher, common.Hash{}, db.originalRoot, common.Address{}, nil, []common.Hash{skey})
 	cpy := prefetcher.copy()
 	a := prefetcher.trie(common.Hash{}, db.originalRoot)
 	b := cpy.trie(common.Hash{}, db.originalRoot)
@@ -152,14 +152,11 @@ func testVerklePrefetcher(t *testing.T) {
 	fetcher := newTriePrefetcher(sdb, root, "", false)
 
 	// Read account
-	fetcher.prefetch(common.Hash{}, root, common.Address{}, [][]byte{
-		addr.Bytes(),
-	}, false)
+	fetcher.prefetch(common.Hash{}, root, common.Address{}, []common.Address{addr}, nil, false)
 
 	// Read storage slot
-	fetcher.prefetch(crypto.Keccak256Hash(addr.Bytes()), sRoot, addr, [][]byte{
-		skey.Bytes(),
-	}, false)
+	fetcher.prefetch(crypto.Keccak256Hash(addr.Bytes()), sRoot, addr, nil, []common.Hash{skey}, false)
+
 	fetcher.close()
 	accountTrie := fetcher.trie(common.Hash{}, root)
 	storageTrie := fetcher.trie(crypto.Keccak256Hash(addr.Bytes()), sRoot)

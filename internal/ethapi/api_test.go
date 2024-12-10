@@ -602,9 +602,6 @@ func (b testBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscr
 func (b testBackend) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription {
 	panic("implement me")
 }
-func (b testBackend) SubscribeChainSideEvent(ch chan<- core.ChainSideEvent) event.Subscription {
-	panic("implement me")
-}
 func (b testBackend) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeaderEvent) event.Subscription {
 	panic("implement me")
 }
@@ -2238,6 +2235,7 @@ func TestSimulateV1(t *testing.T) {
 				t.Fatalf("failed to unmarshal result: %v", err)
 			}
 			if !reflect.DeepEqual(have, tc.want) {
+				t.Log(string(resBytes))
 				t.Errorf("test %s, result mismatch, have\n%v\n, want\n%v\n", tc.name, have, tc.want)
 			}
 		})
@@ -2505,7 +2503,6 @@ func TestFillBlobTransaction(t *testing.T) {
 		},
 	}
 	for _, tc := range suite {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -3399,55 +3396,55 @@ func TestRPCGetBlobSidecars(t *testing.T) {
 		fullBlob bool
 		file     string
 	}{
-		// 1. block without any txs(number)
+		// 0. block without any txs(number)
 		{
 			test:     rpc.BlockNumberOrHashWithNumber(0),
 			fullBlob: true,
 			file:     "number-1",
 		},
-		// 2. earliest tag
+		// 1. earliest tag
 		{
 			test:     rpc.BlockNumberOrHashWithNumber(rpc.EarliestBlockNumber),
 			fullBlob: true,
 			file:     "tag-earliest",
 		},
-		// 3. latest tag
+		// 2. latest tag
 		{
 			test:     rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
 			fullBlob: true,
 			file:     "tag-latest",
 		},
-		// 4. block is empty
+		// 3. block is empty
 		{
 			test:     rpc.BlockNumberOrHashWithHash(common.Hash{}, false),
 			fullBlob: true,
 			file:     "hash-empty",
 		},
-		// 5. block is not found
+		// 4. block is not found
 		{
 			test:     rpc.BlockNumberOrHashWithHash(common.HexToHash("deadbeef"), false),
 			fullBlob: true,
 			file:     "hash-notfound",
 		},
-		// 6. block is not found
+		// 5. block is not found
 		{
 			test:     rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(genBlocks + 1)),
 			fullBlob: true,
 			file:     "block-notfound",
 		},
-		// 7. block with blob tx
+		// 6. block with blob tx
 		{
 			test:     rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(6)),
 			fullBlob: true,
 			file:     "block-with-blob-tx",
 		},
-		// 8. block with sidecar
+		// 7. block with sidecar
 		{
 			test:     rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(7)),
 			fullBlob: true,
 			file:     "block-with-blobSidecars",
 		},
-		// 9. block with sidecar but show little
+		// 8. block with sidecar but show little
 		{
 			test:     rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(7)),
 			fullBlob: false,

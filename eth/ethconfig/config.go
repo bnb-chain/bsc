@@ -18,6 +18,7 @@
 package ethconfig
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -171,9 +172,6 @@ type Config struct {
 	VMTrace           string
 	VMTraceJsonConfig string
 
-	// Miscellaneous options
-	DocRoot string `toml:"-"`
-
 	// RPCGasCap is the global gas cap for eth-call variants.
 	RPCGasCap uint64
 
@@ -206,6 +204,9 @@ type Config struct {
 func CreateConsensusEngine(config *params.ChainConfig, db ethdb.Database, ee *ethapi.BlockChainAPI, genesisHash common.Hash) (consensus.Engine, error) {
 	if config.Parlia != nil {
 		return parlia.New(config, db, ee, genesisHash), nil
+	}
+	if config.TerminalTotalDifficulty == nil {
+		return nil, fmt.Errorf("only PoS networks are supported, please transition old ones with Geth v1.13.x")
 	}
 	// If proof-of-authority is requested, set it up
 	if config.Clique != nil {
