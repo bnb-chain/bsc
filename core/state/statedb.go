@@ -24,7 +24,9 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"bytes"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -90,6 +92,10 @@ type StateDB struct {
 	storages       map[common.Hash]map[common.Hash][]byte    // The mutated slots in prefix-zero trimmed rlp format
 	accountsOrigin map[common.Address][]byte                 // The original value of mutated accounts in 'slim RLP' encoding
 	storagesOrigin map[common.Address]map[common.Hash][]byte // The original value of mutated slots in prefix-zero trimmed rlp format
+
+	r_destructs map[common.Hash]struct{}
+        r_accounts  map[common.Hash][]byte
+        r_storages  map[common.Hash]map[common.Hash][]byte
 
 	// This map holds 'live' objects, which will get modified while processing
 	// a state transition.
@@ -200,6 +206,8 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 	//}
 	//_, sdb.noTrie = tr.(*trie.EmptyTrie)
 	//sdb.trie = tr
+	sdb.noTrie = false
+
 	return sdb, nil
 }
 
@@ -1024,11 +1032,13 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 
-	tr, err := s.db.OpenTrie(s.originalRoot)
-	if err != nil {
-		panic("Failed to open state trie")
+	if s.trie == nil {
+		tr, err := s.db.OpenTrie(s.originalRoot)
+		if err != nil {
+			panic("Richard: Failed to open state trie")
+		}
+		s.trie = tr
 	}
-	s.trie = tr
 
 	s.AccountsIntermediateRoot()
 	return s.StateIntermediateRoot()
@@ -1052,6 +1062,7 @@ func (s *StateDB) AccountsIntermediateRoot() {
 		}()
 	}
 
+	var updateAccountNum int
 	// Although naively it makes sense to retrieve the account trie and then do
 	// the contract storage and account updates sequentially, that short circuits
 	// the account prefetcher. Instead, let's process all the storage updates
@@ -1059,6 +1070,7 @@ func (s *StateDB) AccountsIntermediateRoot() {
 	// to pull useful data from disk.
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
+			updateAccountNum++
 			wg.Add(1)
 			tasks <- func() {
 				obj.updateRoot()
@@ -1075,7 +1087,14 @@ func (s *StateDB) AccountsIntermediateRoot() {
 			}
 		}
 	}
+	if len(s.r_accounts) != updateAccountNum {
+		log.Info("Richard: not the same number", "r_a_num=", len(s.r_accounts), " updateAccountNum=", updateAccountNum)
+	}
 	wg.Wait()
+}
+
+func (s *StateDB) GetModifiedStorages() *map[common.Hash]map[common.Hash][]byte {
+	return &s.r_storages
 }
 
 func (s *StateDB) StateIntermediateRoot() common.Hash {
@@ -1097,26 +1116,61 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 			s.trie = trie
 		}
 	}
-	if s.trie == nil {
-		tr, err := s.db.OpenTrie(s.originalRoot)
-		if err != nil {
-			panic(fmt.Sprintf("failed to open trie tree %s", s.originalRoot))
-		}
-		s.trie = tr
-	}
 
 	usedAddrs := make([][]byte, 0, len(s.stateObjectsPending))
+	accountNum := 0
+	destructNum := 0
 	if !s.noTrie {
+		if len(s.stateObjectsPending) > 0 && len(s.stateObjectsPending) != len(s.r_accounts) {
+			panic(fmt.Sprintf("Richard: not the same len, pend_len= %d r_acc_len=%d", len(s.stateObjectsPending), len(s.r_accounts)))
+		}
 		for addr := range s.stateObjectsPending {
 			if obj := s.stateObjects[addr]; obj.deleted {
+				log.Info("Richard: delete", " addr=", addr)
 				s.deleteStateObject(obj)
+				destructNum = destructNum + 1
+                                if _, exist := s.r_destructs[crypto.Keccak256Hash(addr[:])]; !exist{
+                                        panic(fmt.Sprintf("failed to find destruct account %x", addr))
+                                }
 			} else {
+				// log.Info("Richard: update", " addr=", addr)
 				s.updateStateObject(obj)
+				accountNum = accountNum + 1
+                                if r_acc_d, exist := s.accounts[crypto.Keccak256Hash(addr[:])]; !exist{
+                                        panic(fmt.Sprintf("failed to find account %x", addr))
+                                } else {
+                                                        r_acc := new(types.SlimAccount)
+                                                        if err := rlp.DecodeBytes(r_acc_d, r_acc); err != nil {
+                                                                panic(err)
+                                                        }
+                                                        acc := new(types.SlimAccount)
+                                                        if err := rlp.DecodeBytes(r_acc_d, acc); err != nil {
+                                                                panic(err)
+                                                        }
+
+                                                        if r_acc.Nonce != obj.data.Nonce {
+                                                                log.Crit("Richard:", "mismatch nonce for addr=", addr, " r_n=", r_acc.Nonce, " n=", obj.data.Nonce)
+                                                        }
+                                                        if !(new(uint256.Int).Sub(r_acc.Balance, obj.data.Balance).IsZero()) {
+                                                                log.Crit("Richard:", "mismatch balance for addr=", addr, " r_b=", r_acc.Balance, " b=", obj.data.Balance)
+                                                        }
+                                                        if !bytes.Equal(r_acc.CodeHash, obj.data.CodeHash) {
+                                                                if bytes.Equal(obj.data.CodeHash, types.EmptyCodeHash[:]) {
+                                                                        // log.Warn("Richard: empty code hash")
+                                                                } else {
+                                                                        log.Crit("Richard:", "mismatch codehash for addr=", addr, " r_c=", r_acc.CodeHash, " c=", obj.data.CodeHash)
+                                                                }
+                                                        }
+                                      }
 			}
 			usedAddrs = append(usedAddrs, common.CopyBytes(addr[:])) // Copy needed for closure
 		}
 		if prefetcher != nil {
 			prefetcher.used(common.Hash{}, s.originalRoot, usedAddrs)
+		}
+		
+		if (len(s.r_destructs) != destructNum || len(s.r_accounts) != accountNum) && len(s.stateObjectsPending) != 0 {
+			log.Info("Richard:", "r_de_len=", len(s.r_destructs), " destructNum=", destructNum, " r_ac_len=", len(s.r_accounts), " accountsN=", accountNum)
 		}
 	}
 
@@ -1371,6 +1425,7 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 // The associated block number of the state transition is also provided
 // for more chain context.
 func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash, *types.DiffLayer, error) {
+	// log.Info("Richard: start to commit state", "block=", block)
 	// Short circuit in case any database failure occurred earlier.
 	if s.dbErr != nil {
 		s.StopPrefetcher()
@@ -1486,6 +1541,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 					if err := s.db.TrieDB().Update(root, origin, block, nodes, set); err != nil {
 						return err
 					}
+					// log.Info("Richard:", "commit done for block=", block)
 					s.originalRoot = root
 					if metrics.EnabledExpensive {
 						s.TrieDBCommits += time.Since(start)
@@ -1542,6 +1598,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 			return nil
 		},
 		func() error {
+			// log.Info("Richard: start to update snapshot", " block=", block)
 			// If snapshotting is enabled, update the snapshot tree with this new version
 			if s.snap != nil {
 				if metrics.EnabledExpensive {
@@ -1550,7 +1607,64 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != s.expectedRoot {
+					// log.Info("Richard: start to update and verify the diff")
 					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages, true)
+					// compare
+					if len(s.r_destructs) != len(s.convertAccountSet(s.stateObjectsDestruct)) || len(s.accounts) != len(s.r_accounts) || len(s.storages) != len(s.r_storages) {
+						panic(fmt.Sprintf("Richard: no the same len, len_r_d=%d len_d=%d len_r_a=%d len_a=%d len_r_s=%d  len_s=%d", len(s.r_destructs), len(s.convertAccountSet(s.stateObjectsDestruct)), len(s.r_accounts), len(s.accounts), len(s.r_storages), len(s.storages) ))
+					}
+					for addr := range s.convertAccountSet(s.stateObjectsDestruct) {
+						if _, ok := s.r_destructs[addr]; !ok {
+							panic(fmt.Sprintf("Richard: r_destructs has no addr=%x", addr))
+						}
+					}
+					for addr, acc_d := range s.accounts {
+						if r_acc_d, ok := s.r_accounts[addr]; !ok {
+							panic(fmt.Sprintf("Richard: r_accounts has no addr=%x", addr))
+						} else {
+							// if !bytes.Equal(acc, r_acc) {
+							//	panic(fmt.Sprintf("Richard: accounts mismatch for addr=%x", addr))
+							// }
+                                                        r_acc := new(types.SlimAccount)
+                                                        if err := rlp.DecodeBytes(r_acc_d, r_acc); err != nil {
+                                                                panic(err)
+                                                        }
+                                                        acc := new(types.SlimAccount)
+                                                        if err := rlp.DecodeBytes(acc_d, acc); err != nil {
+                                                                panic(err)
+                                                        }
+
+                                                        if r_acc.Nonce != acc.Nonce {
+                                                                log.Crit("Richard:", "mismatch nonce for addr=", addr, " r_n=", r_acc.Nonce, " n=", acc.Nonce)
+                                                        }
+                                                        if !(new(uint256.Int).Sub(r_acc.Balance, acc.Balance).IsZero()) {
+                                                                log.Crit("Richard:", "mismatch balance for addr=", addr, " r_b=", r_acc.Balance, " b=", acc.Balance)
+                                                        }
+                                                        if !bytes.Equal(r_acc.CodeHash, acc.CodeHash) {
+                                                                if bytes.Equal(acc.CodeHash, types.EmptyCodeHash[:]) {
+                                                                        // log.Info("Richard: empty code hash")
+                                                                } else {
+                                                                        log.Crit("Richard:", "mismatch codehash for addr=", addr, " r_c=", r_acc.CodeHash, " c=", acc.CodeHash)
+                                                                }
+                                                        }
+						}
+					}
+					for addr, storage := range s.storages {
+						if r_storage, ok := s.r_storages[addr]; !ok {
+							panic(fmt.Sprintf("Richard: r_storages has no addr=%x", addr))
+						} else {
+							for k, v := range storage {
+								if r_v, ok := r_storage[k]; !ok {
+									panic(fmt.Sprintf("Richard: no storage for addr=%x k=%x", addr, k))
+								} else {
+									if !bytes.Equal(v, r_v) {
+										panic(fmt.Sprintf("Richard: mismatch storage for addr=%x k=%x v=%x r_v=%x", addr, k, v, r_v))
+									}
+								}
+							}
+						}
+					}
+					log.Info("Richard: commit successfully with the same created diff for block", " block=", block)
 
 					if err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
@@ -1565,6 +1679,8 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 							log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
 						}
 					}()
+				} else {
+					log.Info("Richard: not to update and verify diff", "parent=", parent)
 				}
 			}
 			return nil
@@ -1594,37 +1710,43 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 		root = types.EmptyRootHash
 	}
 	// Clear all internal flags at the end of commit operation.
+	s.r_destructs = make(map[common.Hash]struct{})
+        s.r_accounts = make(map[common.Hash][]byte)
+        s.r_storages = make(map[common.Hash]map[common.Hash][]byte)
+
 	s.accounts = make(map[common.Hash][]byte)
 	s.storages = make(map[common.Hash]map[common.Hash][]byte)
 	s.accountsOrigin = make(map[common.Address][]byte)
 	s.storagesOrigin = make(map[common.Address]map[common.Hash][]byte)
 	s.stateObjectsDirty = make(map[common.Address]struct{})
 	s.stateObjectsDestruct = make(map[common.Address]*types.StateAccount)
+	log.Info("Richard: successfully commit state", "block=", block)
 	return root, diffLayer, nil
 }
 
 func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 	s.Finalise(deleteEmptyObjects)
-	destructs := make(map[common.Hash]struct{})
-	accounts := make(map[common.Hash][]byte)
-	storages := make(map[common.Hash]map[common.Hash][]byte)
-	for addr := range s.stateObjectsPending {
-		if obj := s.stateObjects[addr]; !obj.deleted {
-			accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
-			pendingstorages := obj.GetPendingStorages()
-			if pendingstorages != nil {
-				storages[obj.addrHash] = pendingstorages
+
+	s.r_destructs = s.convertAccountSet(s.stateObjectsDestruct)
+        s.r_accounts = make(map[common.Hash][]byte)
+        s.r_storages = make(map[common.Hash]map[common.Hash][]byte)
+
+        for addr := range s.stateObjectsPending {
+                if obj := s.stateObjects[addr]; !obj.deleted {
+                        s.r_accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
+                        pendingstorages := obj.GetPendingStorages()
+                        if pendingstorages != nil {
+                                s.r_storages[obj.addrHash] = pendingstorages
+                        }
+                }
+        }
+
+	if s.snap != nil {
+		if parent := s.snap.Root(); parent != s.expectedRoot {
+			err := s.snaps.Update(s.expectedRoot, parent, s.r_destructs, s.r_accounts, s.r_storages, false)
+			if err != nil {
+				log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
 			}
-		} else {
-			destructs[obj.addrHash] = struct{}{}
-		}
-	}
-
-	if parent := s.snap.Root(); parent != s.expectedRoot {
-		err := s.snaps.Update(s.expectedRoot, parent, destructs, accounts, storages, false)
-
-		if err != nil {
-			log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
 		}
 	}
 }

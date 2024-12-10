@@ -387,7 +387,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		vmConfig:           vmConfig,
 		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
 		diffQueueBuffer:    make(chan *types.DiffLayer),
-		verifyTaskCh:       make(chan *VerifyTask, 1024),
+		// verifyTaskCh:       make(chan *VerifyTask, 1024),
+		verifyTaskCh:       make(chan *VerifyTask, 1),
 	}
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
@@ -2242,7 +2243,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 
 		// Retrieve the parent block and it's state to execute on top
-		start := time.Now()
+		// start := time.Now()
 		parent := it.previous()
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
@@ -2268,12 +2269,12 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			// 2.do trie prefetch for MPT trie node cache
 			// it is for the big state trie tree, prefetch based on transaction's From/To address.
 			// trie prefetcher is thread safe now, ok to prefetch in a separate routine
-			go throwaway.TriePrefetchInAdvance(block, signer)
+		//	go throwaway.TriePrefetchInAdvance(block, signer)
 		}
 
 		// Process block using the parent state as reference point
 		statedb.SetExpectedStateRoot(block.Root())
-		pstart := time.Now()
+		// pstart := time.Now()
 		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
 		close(interruptCh) // state prefetch can be stopped
 		if err != nil {
@@ -2281,10 +2282,22 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			statedb.StopPrefetcher()
 			return it.index, err
 		}
-		ptime := time.Since(pstart)
+//		ptime := time.Since(pstart)
 		statedb.CommitUnVerifiedSnapDifflayer(bc.chainConfig.IsEIP158(block.Number()))
+		log.Info("Richard: successfully process", " block=", block.Number())
 
-		vstart := time.Now()
+		// Add to cache
+		bc.blockCache.Add(block.Hash(), block)
+		bc.hc.numberCache.Add(block.Hash(), block.NumberU64())
+		bc.hc.headerCache.Add(block.Hash(), block.Header())
+
+		ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
+		// Make sure no inconsistent state is leaked during insertion
+		externTd := new(big.Int).Add(block.Difficulty(), ptd)
+
+		bc.hc.tdCache.Add(block.Hash(), externTd)
+
+//		vstart := time.Now()
 		task := &VerifyTask{
 			block:    block,
 			state:    statedb,
@@ -2293,6 +2306,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			logs:     logs,
 		}
 		bc.verifyTaskCh <- task
+/*
 		// Validate the state using the default validator
 		//vstart := time.Now()
 		//if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
@@ -2394,6 +2408,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		//		"root", block.Root())
 		//}
 		//bc.chainBlockFeed.Send(ChainHeadEvent{block})
+*/
 	}
 
 	// Any blocks remaining here? The only ones we care about are the future ones
@@ -2443,6 +2458,7 @@ func (bc *BlockChain) VerifyLoop() {
 				log.Crit("write block and set head failed", "error", err)
 			}
 			bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
+			log.Info("Richard: successfully verify", "block=", task.block.Number())
 		}
 	}
 }
