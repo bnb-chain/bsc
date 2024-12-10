@@ -19,15 +19,15 @@ package state
 import (
 	"bytes"
 	"fmt"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"io"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/rawdb"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -164,7 +164,7 @@ func (s *stateObject) getTrie() (Trie, error) {
 		if err != nil {
 			return nil, err
 		}
-		log.Info("richard: open ca trie for addr", "state_root=", s.db.originalRoot, " addr=", s.address, "t_root=", s.data.Root)
+		//	log.Info("richard: open ca trie for addr", "state_root=", s.db.originalRoot, " addr=", s.address, "t_root=", s.data.Root)
 		s.trie = tr
 		// }
 	}
@@ -357,25 +357,25 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Info("richard: before update trie", "addr=", s.address, " root=", s.trie.Hash())
+		//	log.Info("richard: before update trie", "addr=", s.address, " root=", s.trie.Hash())
 		for key, value := range dirtyStorage {
 			if len(value) == 0 {
 				if err := tr.DeleteStorage(s.address, key[:]); err != nil {
 					s.db.setError(err)
 				}
 				s.db.StorageDeleted += 1
-				log.Info("richard: delete key", "key=", key)
+				//		log.Info("richard: delete key", "key=", key)
 			} else {
 				if err := tr.UpdateStorage(s.address, key[:], value); err != nil {
 					s.db.setError(err)
 				}
 				s.db.StorageUpdated += 1
-				log.Info("richard: update kv", "key=", key, " val=", value)
+				//		log.Info("richard: update kv", "key=", key, " val=", value)
 			}
 			// Cache the items for preloading
 			usedStorage = append(usedStorage, common.CopyBytes(key[:]))
 		}
-		log.Info("richard: after update trie", "addr=", s.address, " root=", s.trie.Hash())
+		//	log.Info("richard: after update trie", "addr=", s.address, " root=", s.trie.Hash())
 	}()
 	// If state snapshotting is active, cache the data til commit
 	wg.Add(1)
@@ -419,24 +419,27 @@ func (s *stateObject) updateTrie() (Trie, error) {
 			}
 		}
 
-		// compare the storge
-		if r_storage, ok := s.db.r_storages[s.addrHash]; !ok && len(storage) > 0 {
-			panic(fmt.Sprintf("Richard: state object, can't find the changed storages for addr=%x", s.addrHash))
-		} else {
-			if len(storage) != len(r_storage) {
-				panic(fmt.Sprintf("Richard: state obj changes not the same len, len_r=%d len=%d", len(r_storage), len(storage)))
-			}
-			for k, v := range storage {
-				if r_v, ok := r_storage[k]; !ok {
-					panic(fmt.Sprintf("Richard: not found k=%x for addr=%x", k, s.addrHash))
-				} else {
-					if !bytes.Equal(v, r_v) {
-						panic(fmt.Sprintf("Richard: mismatch value(r_v=%x v=%x) for key=%x addr=%x", r_v, v, k, s.addrHash))
+		/*
+			// compare the storge
+			if r_storage, ok := s.db.r_storages[s.addrHash]; !ok && len(storage)>0 {
+				panic(fmt.Sprintf("Richard: state object, can't find the changed storages for addr=%x", s.addrHash))
+			} else {
+				if len(storage) != len(r_storage) {
+					panic(fmt.Sprintf("Richard: state obj changes not the same len, len_r=%d len=%d", len(r_storage), len(storage)))
+				}
+				for k,v := range storage {
+					if r_v, ok := r_storage[k]; !ok {
+						panic(fmt.Sprintf("Richard: not found k=%x for addr=%x", k, s.addrHash))
+					} else {
+						if !bytes.Equal(v, r_v) {
+							panic(fmt.Sprintf("Richard: mismatch value(r_v=%x v=%x) for key=%x addr=%x", r_v, v, k, s.addrHash))
+						}
 					}
 				}
+				// log.Info("Richard: the same state changes for addr", "addr=", s.addrHash)
 			}
-			// log.Info("Richard: the same state changes for addr", "addr=", s.addrHash)
-		}
+
+		*/
 	}()
 	wg.Wait()
 

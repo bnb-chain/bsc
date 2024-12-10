@@ -18,7 +18,6 @@
 package state
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"runtime"
@@ -36,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
@@ -1147,7 +1145,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	accountNum := 0
 	destructNum := 0
 	if !s.noTrie {
-		log.Info("richard: start to state intermediate root")
+		//log.Info("richard: start to state intermediate root")
 		// if len(s.stateObjectsPending) > 0 && len(s.stateObjectsPending) != len(s.r_accounts) {
 		// 	panic(fmt.Sprintf("Richard: not the same len, pend_len= %d r_acc_len=%d", len(s.stateObjectsPending), len(s.r_accounts)))
 		// }
@@ -1156,52 +1154,60 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 				// log.Info("Richard: delete", " addr=", addr)
 				s.deleteStateObject(obj)
 				destructNum = destructNum + 1
-				log.Info("richard: delete obj", "addr", addr)
-				if _, exist := s.r_destructs[crypto.Keccak256Hash(addr[:])]; !exist {
-					panic(fmt.Sprintf("failed to find destruct account %x", addr))
-				}
+				/*
+					log.Info("richard: delete obj", "addr", addr)
+					if _, exist := s.r_destructs[crypto.Keccak256Hash(addr[:])]; !exist {
+						panic(fmt.Sprintf("failed to find destruct account %x", addr))
+					}
+
+				*/
 			} else {
 				// log.Info("Richard: update", " addr=", addr)
 				s.updateStateObject(obj)
 				accountNum = accountNum + 1
-				log.Info("richard: update obj", "addr", addr, "obj=", obj.data)
-				if r_acc_d, exist := s.accounts[crypto.Keccak256Hash(addr[:])]; !exist {
-					panic(fmt.Sprintf("failed to find account %x", addr))
-				} else {
-					r_acc := new(types.SlimAccount)
-					if err := rlp.DecodeBytes(r_acc_d, r_acc); err != nil {
-						panic(err)
-					}
-					acc := new(types.SlimAccount)
-					if err := rlp.DecodeBytes(r_acc_d, acc); err != nil {
-						panic(err)
-					}
+				//	log.Info("richard: update obj", "addr", addr, "obj=", obj.data)
+				/*
+					if r_acc_d, exist := s.accounts[crypto.Keccak256Hash(addr[:])]; !exist {
+						panic(fmt.Sprintf("failed to find account %x", addr))
+					} else {
+						r_acc := new(types.SlimAccount)
+						if err := rlp.DecodeBytes(r_acc_d, r_acc); err != nil {
+							panic(err)
+						}
+						acc := new(types.SlimAccount)
+						if err := rlp.DecodeBytes(r_acc_d, acc); err != nil {
+							panic(err)
+						}
 
-					if r_acc.Nonce != obj.data.Nonce {
-						log.Crit("Richard:", "mismatch nonce for addr=", addr, " r_n=", r_acc.Nonce, " n=", obj.data.Nonce)
-					}
-					if !(new(uint256.Int).Sub(r_acc.Balance, obj.data.Balance).IsZero()) {
-						log.Crit("Richard:", "mismatch balance for addr=", addr, " r_b=", r_acc.Balance, " b=", obj.data.Balance)
-					}
-					if !bytes.Equal(r_acc.CodeHash, obj.data.CodeHash) {
-						if bytes.Equal(obj.data.CodeHash, types.EmptyCodeHash[:]) {
-							// log.Warn("Richard: empty code hash")
-						} else {
-							log.Crit("Richard:", "mismatch codehash for addr=", addr, " r_c=", r_acc.CodeHash, " c=", obj.data.CodeHash)
+						if r_acc.Nonce != obj.data.Nonce {
+							log.Crit("Richard:", "mismatch nonce for addr=", addr, " r_n=", r_acc.Nonce, " n=", obj.data.Nonce)
+						}
+						if !(new(uint256.Int).Sub(r_acc.Balance, obj.data.Balance).IsZero()) {
+							log.Crit("Richard:", "mismatch balance for addr=", addr, " r_b=", r_acc.Balance, " b=", obj.data.Balance)
+						}
+						if !bytes.Equal(r_acc.CodeHash, obj.data.CodeHash) {
+							if bytes.Equal(obj.data.CodeHash, types.EmptyCodeHash[:]) {
+								// log.Warn("Richard: empty code hash")
+							} else {
+								log.Crit("Richard:", "mismatch codehash for addr=", addr, " r_c=", r_acc.CodeHash, " c=", obj.data.CodeHash)
+							}
 						}
 					}
-				}
+
+				*/
 			}
 			usedAddrs = append(usedAddrs, common.CopyBytes(addr[:])) // Copy needed for closure
 		}
-		log.Info("richard: finish state intermediate root")
+		//log.Info("richard: finish state intermediate root")
 		if prefetcher != nil {
 			prefetcher.used(common.Hash{}, s.originalRoot, usedAddrs)
 		}
+		/*
+			if (len(s.r_destructs) != destructNum || len(s.r_accounts) != accountNum) && len(s.stateObjectsPending) != 0 {
+				log.Info("Richard:", "r_de_len=", len(s.r_destructs), " destructNum=", destructNum, " r_ac_len=", len(s.r_accounts), " accountsN=", accountNum)
+			}
 
-		if (len(s.r_destructs) != destructNum || len(s.r_accounts) != accountNum) && len(s.stateObjectsPending) != 0 {
-			log.Info("Richard:", "r_de_len=", len(s.r_destructs), " destructNum=", destructNum, " r_ac_len=", len(s.r_accounts), " accountsN=", accountNum)
-		}
+		*/
 	}
 
 	if len(s.stateObjectsPending) > 0 {
@@ -1214,7 +1220,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	if s.noTrie {
 		return s.expectedRoot
 	} else {
-		log.Info("richard: state root", "state_root=", s.trie.Hash())
+		//	log.Info("richard: state root", "state_root=", s.trie.Hash())
 		return s.trie.Hash()
 	}
 }
@@ -1456,7 +1462,7 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 // The associated block number of the state transition is also provided
 // for more chain context.
 func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash, *types.DiffLayer, error) {
-	log.Info("richard: commit block", "number=", block)
+	//	log.Info("richard: commit block", "number=", block)
 	// log.Info("Richard: start to commit state", "block=", block)
 	// Short circuit in case any database failure occurred earlier.
 	if s.dbErr != nil {
@@ -1641,62 +1647,65 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 				if parent := s.snap.Root(); parent != s.expectedRoot {
 					// log.Info("Richard: start to update and verify the diff")
 					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages, true)
-					// compare
-					if len(s.r_destructs) != len(s.convertAccountSet(s.stateObjectsDestruct)) || len(s.accounts) != len(s.r_accounts) || len(s.storages) != len(s.r_storages) {
-						panic(fmt.Sprintf("Richard: no the same len, len_r_d=%d len_d=%d len_r_a=%d len_a=%d len_r_s=%d  len_s=%d", len(s.r_destructs), len(s.convertAccountSet(s.stateObjectsDestruct)), len(s.r_accounts), len(s.accounts), len(s.r_storages), len(s.storages)))
-					}
-					for addr := range s.convertAccountSet(s.stateObjectsDestruct) {
-						if _, ok := s.r_destructs[addr]; !ok {
-							panic(fmt.Sprintf("Richard: r_destructs has no addr=%x", addr))
-						}
-					}
-					for addr, acc_d := range s.accounts {
-						if r_acc_d, ok := s.r_accounts[addr]; !ok {
-							panic(fmt.Sprintf("Richard: r_accounts has no addr=%x", addr))
-						} else {
-							// if !bytes.Equal(acc, r_acc) {
-							//	panic(fmt.Sprintf("Richard: accounts mismatch for addr=%x", addr))
-							// }
-							r_acc := new(types.SlimAccount)
-							if err := rlp.DecodeBytes(r_acc_d, r_acc); err != nil {
-								panic(err)
-							}
-							acc := new(types.SlimAccount)
-							if err := rlp.DecodeBytes(acc_d, acc); err != nil {
-								panic(err)
-							}
+					/*
+											// compare
+											if len(s.r_destructs) != len(s.convertAccountSet(s.stateObjectsDestruct)) || len(s.accounts) != len(s.r_accounts) || len(s.storages) != len(s.r_storages) {
+												panic(fmt.Sprintf("Richard: no the same len, len_r_d=%d len_d=%d len_r_a=%d len_a=%d len_r_s=%d  len_s=%d", len(s.r_destructs), len(s.convertAccountSet(s.stateObjectsDestruct)), len(s.r_accounts), len(s.accounts), len(s.r_storages), len(s.storages) ))
+											}
+											for addr := range s.convertAccountSet(s.stateObjectsDestruct) {
+												if _, ok := s.r_destructs[addr]; !ok {
+													panic(fmt.Sprintf("Richard: r_destructs has no addr=%x", addr))
+												}
+											}
 
-							if r_acc.Nonce != acc.Nonce {
-								log.Crit("Richard:", "mismatch nonce for addr=", addr, " r_n=", r_acc.Nonce, " n=", acc.Nonce)
-							}
-							if !(new(uint256.Int).Sub(r_acc.Balance, acc.Balance).IsZero()) {
-								log.Crit("Richard:", "mismatch balance for addr=", addr, " r_b=", r_acc.Balance, " b=", acc.Balance)
-							}
-							if !bytes.Equal(r_acc.CodeHash, acc.CodeHash) {
-								if bytes.Equal(acc.CodeHash, types.EmptyCodeHash[:]) {
-									// log.Info("Richard: empty code hash")
-								} else {
-									log.Crit("Richard:", "mismatch codehash for addr=", addr, " r_c=", r_acc.CodeHash, " c=", acc.CodeHash)
-								}
-							}
-						}
-					}
-					for addr, storage := range s.storages {
-						if r_storage, ok := s.r_storages[addr]; !ok {
-							panic(fmt.Sprintf("Richard: r_storages has no addr=%x", addr))
-						} else {
-							for k, v := range storage {
-								if r_v, ok := r_storage[k]; !ok {
-									panic(fmt.Sprintf("Richard: no storage for addr=%x k=%x", addr, k))
-								} else {
-									if !bytes.Equal(v, r_v) {
-										panic(fmt.Sprintf("Richard: mismatch storage for addr=%x k=%x v=%x r_v=%x", addr, k, v, r_v))
-									}
-								}
-							}
-						}
-					}
-					log.Info("Richard: commit successfully with the same created diff for block", " block=", block)
+											for addr, acc_d := range s.accounts {
+												if r_acc_d, ok := s.r_accounts[addr]; !ok {
+													panic(fmt.Sprintf("Richard: r_accounts has no addr=%x", addr))
+												} else {
+													 if !bytes.Equal(acc, r_acc) {
+														panic(fmt.Sprintf("Richard: accounts mismatch for addr=%x", addr))
+													 }
+						                                                        r_acc := new(types.SlimAccount)
+						                                                        if err := rlp.DecodeBytes(r_acc_d, r_acc); err != nil {
+						                                                                panic(err)
+						                                                        }
+						                                                        acc := new(types.SlimAccount)
+						                                                        if err := rlp.DecodeBytes(acc_d, acc); err != nil {
+						                                                                panic(err)
+						                                                        }
+
+						                                                        if r_acc.Nonce != acc.Nonce {
+						                                                                log.Crit("Richard:", "mismatch nonce for addr=", addr, " r_n=", r_acc.Nonce, " n=", acc.Nonce)
+						                                                        }
+						                                                        if !(new(uint256.Int).Sub(r_acc.Balance, acc.Balance).IsZero()) {
+						                                                                log.Crit("Richard:", "mismatch balance for addr=", addr, " r_b=", r_acc.Balance, " b=", acc.Balance)
+						                                                        }
+						                                                        if !bytes.Equal(r_acc.CodeHash, acc.CodeHash) {
+						                                                                if bytes.Equal(acc.CodeHash, types.EmptyCodeHash[:]) {
+						                                                                        // log.Info("Richard: empty code hash")
+						                                                                } else {
+						                                                                        log.Crit("Richard:", "mismatch codehash for addr=", addr, " r_c=", r_acc.CodeHash, " c=", acc.CodeHash)
+						                                                                }
+						                                                        }
+												}
+											}
+											for addr, storage := range s.storages {
+												if r_storage, ok := s.r_storages[addr]; !ok {
+													panic(fmt.Sprintf("Richard: r_storages has no addr=%x", addr))
+												} else {
+													for k, v := range storage {
+														if r_v, ok := r_storage[k]; !ok {
+															panic(fmt.Sprintf("Richard: no storage for addr=%x k=%x", addr, k))
+														} else {
+															if !bytes.Equal(v, r_v) {
+																panic(fmt.Sprintf("Richard: mismatch storage for addr=%x k=%x v=%x r_v=%x", addr, k, v, r_v))
+															}
+														}
+													}
+												}
+											}
+					*/
+					//		log.Info("Richard: commit successfully with the same created diff for block", " block=", block)
 
 					if err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
@@ -1711,8 +1720,6 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 							log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
 						}
 					}()
-				} else {
-					log.Info("Richard: not to update and verify diff", "parent=", parent)
 				}
 			}
 			return nil
@@ -1752,7 +1759,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 	s.storagesOrigin = make(map[common.Address]map[common.Hash][]byte)
 	s.stateObjectsDirty = make(map[common.Address]struct{})
 	s.stateObjectsDestruct = make(map[common.Address]*types.StateAccount)
-	log.Info("Richard: successfully commit state", "block=", block)
+	//log.Info("Richard: successfully commit state", "block=", block)
 	return root, diffLayer, nil
 }
 
