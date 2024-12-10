@@ -211,6 +211,8 @@ func (s *StateDB) EnableWriteOnSharedStorage() {
 // StateDB will be created for each fillTransactions with same block height.
 // Share a single triePrefetcher to avoid too much prefetch routines.
 func (s *StateDB) TransferPrefetcher(prev *StateDB) {
+	return
+
 	if prev == nil {
 		return
 	}
@@ -230,6 +232,8 @@ func (s *StateDB) TransferPrefetcher(prev *StateDB) {
 // state trie concurrently while the state is mutated so that when we reach the
 // commit phase, most of the needed data is already hot.
 func (s *StateDB) StartPrefetcher(namespace string) {
+	return
+
 	if s.noTrie {
 		return
 	}
@@ -252,6 +256,7 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 // StopPrefetcher terminates a running prefetcher and reports any leftover stats
 // from the gathered metrics.
 func (s *StateDB) StopPrefetcher() {
+	return
 	if s.noTrie {
 		return
 	}
@@ -264,6 +269,7 @@ func (s *StateDB) StopPrefetcher() {
 }
 
 func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
+	return
 	// s is a temporary throw away StateDB, s.prefetcher won't be resetted to nil
 	// so no need to add lock for s.prefetcher
 	prefetcher := s.prefetcher
@@ -1024,11 +1030,11 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 
-	tr, err := s.db.OpenTrie(s.originalRoot)
-	if err != nil {
-		panic("Failed to open state trie")
-	}
-	s.trie = tr
+	//tr, err := s.db.OpenTrie(s.originalRoot)
+	//if err != nil {
+	//	panic("Failed to open state trie")
+	//}
+	//s.trie = tr
 
 	s.AccountsIntermediateRoot()
 	return s.StateIntermediateRoot()

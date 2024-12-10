@@ -332,6 +332,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	)
 	tr, err := s.getTrie()
 	if err != nil {
+		panic("failed open storage tree")
 		s.db.setError(err)
 		return nil, err
 	}
