@@ -1043,6 +1043,9 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 func (s *StateDB) AccountsIntermediateRoot() {
 	tasks := make(chan func())
 	finishCh := make(chan struct{})
+	accounts := make(map[common.Hash]types.StateAccount)
+	addrs := make([]common.Hash, 0)
+
 	defer close(finishCh)
 	wg := sync.WaitGroup{}
 	for i := 0; i < runtime.NumCPU(); i++ {
@@ -1075,6 +1078,8 @@ func (s *StateDB) AccountsIntermediateRoot() {
 				// ensure we capture state clearing.
 				s.AccountMux.Lock()
 				s.accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
+				accounts[obj.addrHash] = obj.data
+				addrs = append(addrs, obj.addrHash)
 				s.AccountMux.Unlock()
 
 				wg.Done()
@@ -1082,6 +1087,15 @@ func (s *StateDB) AccountsIntermediateRoot() {
 		}
 	}
 	wg.Wait()
+
+	sort.Slice(addrs, func(i, j int) bool {
+		return addrs[i].Cmp(addrs[j]) < 0
+	})
+
+	log.Info("update account info", "origin root", s.originalRoot.String(), "expect root", s.expectedRoot.String())
+	for _, addr := range addrs {
+		log.Info("account info", "addr", addr, "nonce", accounts[addr].Nonce, "balance", accounts[addr].Balance, "root", accounts[addr].Root.String(), "code", common.BytesToHash(accounts[addr].CodeHash))
+	}
 }
 
 func (s *StateDB) StateIntermediateRoot() common.Hash {

@@ -19,6 +19,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -186,6 +187,7 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		},
 	}
 	validateFuns = append(validateFuns, func() error {
+		log.Info("begin validate root", "number", header.Number, "expect root", header.Root)
 		if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
 			return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
 		}
