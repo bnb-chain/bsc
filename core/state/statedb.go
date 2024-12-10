@@ -1641,7 +1641,7 @@ func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 	}
 
 	if parent := s.snap.Root(); parent != s.expectedRoot {
-		err := s.snaps.Update(s.expectedRoot, parent, destructs, accounts, storages, false)
+		err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), accounts, storages, false)
 
 		if err != nil {
 			log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)

@@ -19,6 +19,8 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/log"
 	"io"
 	"sync"
 	"time"
@@ -398,6 +400,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 				encoded, _ = rlp.EncodeToBytes(value)
 			}
 			storage[khash] = encoded // encoded will be nil if it's deleted
+			log.Info("UpdateStorageTrie", "key", khash.String(), "val", common.BytesToHash(encoded).String())
 
 			// Track the original value of slot only if it's mutated first time
 			prev := s.originStorage[key]
@@ -619,29 +622,53 @@ func (s *stateObject) Root() common.Hash {
 }
 
 func (s *stateObject) GetPendingStorages() map[common.Hash][]byte {
-	var (
-		hasher = crypto.NewKeccakState()
-	)
-	if len(s.pendingStorage) > 0 {
-		dirtyStorage := make(map[common.Hash][]byte)
-		for key, value := range s.pendingStorage {
-			// Skip noop changes, persist actual changes
-			if value == s.originStorage[key] {
-				continue
-			}
-			var v []byte
-			if value != (common.Hash{}) {
-				value := value
-				v = common.TrimLeftZeroes(value[:])
-			}
-			// rlp-encoded value to be used by the snapshot
-			var encoded []byte
-			if len(v) != 0 {
-				encoded, _ = rlp.EncodeToBytes(v)
-			}
-			dirtyStorage[crypto.HashData(hasher, key[:])] = encoded
-		}
-		return dirtyStorage
+	// Make sure all dirty slots are finalized into the pending storage area
+	s.finalise(false)
+	s.writeCode()
+
+	// Short circuit if nothing changed, don't bother with hashing anything
+	if len(s.pendingStorage) == 0 {
+		return nil
 	}
-	return nil
+
+	dirtyStorage := make(map[common.Hash][]byte)
+	for key, value := range s.pendingStorage {
+		// Skip noop changes, persist actual changes
+		if value == s.originStorage[key] {
+			continue
+		}
+		var v []byte
+		if value != (common.Hash{}) {
+			value := value
+			v = common.TrimLeftZeroes(value[:])
+		}
+		dirtyStorage[key] = v
+	}
+	if len(dirtyStorage) == 0 {
+		return nil
+	}
+
+	var (
+		storage = make(map[common.Hash][]byte, len(dirtyStorage))
+		hasher  = crypto.NewKeccakState()
+	)
+	for key, value := range dirtyStorage {
+		khash := crypto.HashData(hasher, key[:])
+
+		// rlp-encoded value to be used by the snapshot
+		var encoded []byte
+		if len(value) != 0 {
+			encoded, _ = rlp.EncodeToBytes(value)
+		}
+		storage[khash] = encoded
+		log.Info("GetPendingStorages", "key", khash.String(), "val", common.BytesToHash(encoded).String())
+	}
+
+	return storage
+}
+
+func (s *stateObject) writeCode() {
+	if s.code != nil && s.dirtyCode {
+		rawdb.WriteCode(s.db.db.DiskDB(), common.BytesToHash(s.CodeHash()), s.code)
+	}
 }
