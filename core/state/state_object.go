@@ -149,6 +149,14 @@ func (s *stateObject) touch() {
 	}
 }
 
+func (s *stateObject) updateTrieRoot() {
+	acc, err := s.db.snap.Account(s.addrHash)
+	if err != nil {
+		return
+	}
+	s.data.Root = common.BytesToHash(acc.Root)
+}
+
 // getTrie returns the associated storage trie. The trie will be opened
 // if it's not loaded previously. An error will be returned if trie can't
 // be loaded.
@@ -160,6 +168,7 @@ func (s *stateObject) getTrie() (Trie, error) {
 		//	s.trie = s.db.prefetcher.trie(s.addrHash, s.data.Root)
 		// }
 		// if s.trie == nil {
+		s.updateTrieRoot()
 		tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root, s.db.trie)
 		if err != nil {
 			return nil, err
