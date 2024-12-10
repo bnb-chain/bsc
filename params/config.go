@@ -633,8 +633,8 @@ func (c *ChainConfig) String() string {
 	var engine interface{}
 
 	switch {
-	case c.Parlia != nil:
-		engine = c.Parlia
+	case c.Ethash != nil:
+		engine = c.Ethash
 	case c.Clique != nil:
 		engine = c.Clique
 	case c.Parlia != nil:

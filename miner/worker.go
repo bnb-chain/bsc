@@ -1205,9 +1205,9 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 
 	return &newPayloadResult{
-		block: block,
-		fees:  fees.ToBig(),
-		// sidecars: work.sidecars,
+		block:    block,
+		fees:     fees.ToBig(),
+		sidecars: work.sidecars.BlobTxSidecarList(),
 		stateDB:  work.state,
 		receipts: receipts,
 		requests: requests,
