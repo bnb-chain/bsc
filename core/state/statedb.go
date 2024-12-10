@@ -1044,6 +1044,29 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	return s.StateIntermediateRoot()
 }
 
+func (s *StateDB) GetLatestVerifiedStateRoot(addrHash common.Hash) common.Hash {
+	if s.snaps != nil {
+		s.snap = s.snaps.Snapshot(s.originalRoot)
+		acc, err := s.snap.Account(addrHash)
+                if err == nil {
+                        if acc == nil {
+                                return types.EmptyRootHash
+                        }
+			data := &types.StateAccount{
+                                Nonce:    acc.Nonce,
+                                Balance:  acc.Balance,
+                                CodeHash: acc.CodeHash,
+                                Root:     common.BytesToHash(acc.Root),
+                        }
+                        if data.Root == (common.Hash{}) {
+                                data.Root = types.EmptyRootHash
+                        }
+			return data.Root
+                }
+	}
+	return types.EmptyRootHash
+}
+
 func (s *StateDB) AccountsIntermediateRoot() {
 	tasks := make(chan func())
 	finishCh := make(chan struct{})
@@ -1073,6 +1096,7 @@ func (s *StateDB) AccountsIntermediateRoot() {
 			updateAccountNum++
 			wg.Add(1)
 			tasks <- func() {
+				obj.data.Root = s.GetLatestVerifiedStateRoot(obj.addrHash)
 				obj.updateRoot()
 
 				// Cache the data until commit. Note, this update mechanism is not symmetric
@@ -1121,14 +1145,16 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	accountNum := 0
 	destructNum := 0
 	if !s.noTrie {
+		log.Info("richard: start to state intermediate root")
 		if len(s.stateObjectsPending) > 0 && len(s.stateObjectsPending) != len(s.r_accounts) {
 			panic(fmt.Sprintf("Richard: not the same len, pend_len= %d r_acc_len=%d", len(s.stateObjectsPending), len(s.r_accounts)))
 		}
 		for addr := range s.stateObjectsPending {
 			if obj := s.stateObjects[addr]; obj.deleted {
-				log.Info("Richard: delete", " addr=", addr)
+				// log.Info("Richard: delete", " addr=", addr)
 				s.deleteStateObject(obj)
 				destructNum = destructNum + 1
+				log.Info("richard: delete obj", "addr", addr)
                                 if _, exist := s.r_destructs[crypto.Keccak256Hash(addr[:])]; !exist{
                                         panic(fmt.Sprintf("failed to find destruct account %x", addr))
                                 }
@@ -1136,6 +1162,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 				// log.Info("Richard: update", " addr=", addr)
 				s.updateStateObject(obj)
 				accountNum = accountNum + 1
+				log.Info("richard: update obj", "addr", addr, "obj=", obj.data)
                                 if r_acc_d, exist := s.accounts[crypto.Keccak256Hash(addr[:])]; !exist{
                                         panic(fmt.Sprintf("failed to find account %x", addr))
                                 } else {
@@ -1165,6 +1192,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 			}
 			usedAddrs = append(usedAddrs, common.CopyBytes(addr[:])) // Copy needed for closure
 		}
+		log.Info("richard: finish state intermediate root")
 		if prefetcher != nil {
 			prefetcher.used(common.Hash{}, s.originalRoot, usedAddrs)
 		}
@@ -1184,6 +1212,7 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	if s.noTrie {
 		return s.expectedRoot
 	} else {
+		log.Info("richard: state root", "state_root=", s.trie.Hash())
 		return s.trie.Hash()
 	}
 }
@@ -1425,6 +1454,7 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 // The associated block number of the state transition is also provided
 // for more chain context.
 func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash, *types.DiffLayer, error) {
+	log.Info("richard: commit block", "number=", block)
 	// log.Info("Richard: start to commit state", "block=", block)
 	// Short circuit in case any database failure occurred earlier.
 	if s.dbErr != nil {
