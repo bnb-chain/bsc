@@ -1146,9 +1146,9 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	destructNum := 0
 	if !s.noTrie {
 		log.Info("richard: start to state intermediate root")
-		if len(s.stateObjectsPending) > 0 && len(s.stateObjectsPending) != len(s.r_accounts) {
-			panic(fmt.Sprintf("Richard: not the same len, pend_len= %d r_acc_len=%d", len(s.stateObjectsPending), len(s.r_accounts)))
-		}
+		// if len(s.stateObjectsPending) > 0 && len(s.stateObjectsPending) != len(s.r_accounts) {
+		// 	panic(fmt.Sprintf("Richard: not the same len, pend_len= %d r_acc_len=%d", len(s.stateObjectsPending), len(s.r_accounts)))
+		// }
 		for addr := range s.stateObjectsPending {
 			if obj := s.stateObjects[addr]; obj.deleted {
 				// log.Info("Richard: delete", " addr=", addr)
