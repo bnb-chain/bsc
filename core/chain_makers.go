@@ -371,7 +371,8 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		}
 
 		var requests [][]byte
-		if config.IsPrague(b.header.Number, b.header.Time) {
+		isPrague := config.IsPrague(b.header.Number, b.header.Time)
+		if isPrague && config.Parlia == nil {
 			// EIP-6110 deposits
 			var blockLogs []*types.Log
 			for _, r := range b.receipts {
@@ -391,6 +392,8 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			// EIP-7251 consolidations
 			consolidationRequests := ProcessConsolidationQueue(vmenv, statedb)
 			requests = append(requests, consolidationRequests)
+		} else if isPrague && config.Parlia != nil {
+			requests = make([][]byte, 0)
 		}
 		if requests != nil {
 			reqHash := types.CalcRequestsHash(requests)
@@ -612,11 +615,16 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 		excessBlobGas := eip4844.CalcExcessBlobGas(parentExcessBlobGas, parentBlobGasUsed)
 		header.ExcessBlobGas = &excessBlobGas
 		header.BlobGasUsed = new(uint64)
-		if cm.config.Parlia != nil {
-			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
-		}
-		if cm.config.Parlia == nil || cm.config.IsBohr(header.Number, header.Time) {
+		if cm.config.Parlia == nil {
 			header.ParentBeaconRoot = new(common.Hash)
+		} else {
+			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
+			if cm.config.IsBohr(header.Number, header.Time) {
+				header.ParentBeaconRoot = new(common.Hash)
+			}
+			if cm.config.IsPrague(header.Number, header.Time) {
+				header.RequestsHash = &types.EmptyRequestsHash
+			}
 		}
 	}
 	return header

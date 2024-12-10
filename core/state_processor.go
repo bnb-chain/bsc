@@ -149,7 +149,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	// Read requests if Prague is enabled.
 	var requests [][]byte
-	if p.config.IsPrague(block.Number(), block.Time()) {
+	isPrague := p.config.IsPrague(block.Number(), block.Time())
+	if isPrague && p.chain.config.Parlia == nil {
 		var allCommonLogs []*types.Log
 		for _, receipt := range receipts {
 			allCommonLogs = append(allCommonLogs, receipt.Logs...)
@@ -165,6 +166,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		// EIP-7251 consolidations
 		consolidationRequests := ProcessConsolidationQueue(vmenv, tracingStateDB)
 		requests = append(requests, consolidationRequests)
+	} else if isPrague && p.chain.config.Parlia != nil {
+		requests = make([][]byte, 0)
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)

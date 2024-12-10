@@ -651,11 +651,10 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		if header.RequestsHash != nil {
 			return fmt.Errorf("invalid RequestsHash, have %#x, expected nil", header.ParentBeaconRoot)
 		}
-		// } else {
-		// 	// TODO(Nathan): need a BEP to define this and `Requests` in struct Body
-		// 	if !header.EmptyRequestsHash() {
-		// 		return errors.New("header has wrong RequestsHash")
-		// 	}
+	} else {
+		if header.RequestsHash == nil || *header.RequestsHash != types.EmptyRequestsHash {
+			return errors.New("header has wrong RequestsHash")
+		}
 	}
 
 	// All basic checks passed, verify cascading fields
