@@ -2425,9 +2425,14 @@ func parseDBFeatures(cfg *ethconfig.Config, stack *node.Node) string {
 	var features []string
 	if cfg.StateScheme == rawdb.PathScheme {
 		features = append(features, "PBSS")
+	} else if cfg.StateScheme == rawdb.HashScheme {
+		features = append(features, "HBSS")
 	}
 	if stack.CheckIfMultiDataBase() {
 		features = append(features, "MultiDB")
+	}
+	if cfg.PruneAncientData {
+		features = append(features, "PruneAncient")
 	}
 	return strings.Join(features, "|")
 }
