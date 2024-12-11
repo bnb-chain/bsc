@@ -480,9 +480,11 @@ func (g *Genesis) toBlockWithRoot(root common.Hash) *types.Block {
 	)
 	if conf := g.Config; conf != nil {
 		num := big.NewInt(int64(g.Number))
-		if conf.Parlia == nil && conf.IsShanghai(num, g.Timestamp) {
-			head.WithdrawalsHash = &types.EmptyWithdrawalsHash
-			withdrawals = make([]*types.Withdrawal, 0)
+		if conf.IsShanghai(num, g.Timestamp) {
+			if conf.Parlia == nil {
+				head.WithdrawalsHash = &types.EmptyWithdrawalsHash
+				withdrawals = make([]*types.Withdrawal, 0)
+			}
 		}
 		if conf.IsCancun(num, g.Timestamp) {
 			if conf.Parlia != nil {
