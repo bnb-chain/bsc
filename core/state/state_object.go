@@ -19,14 +19,15 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"io"
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -419,13 +420,13 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		}
 
 		// compare the storge
-		if r_storage, ok := s.db.r_storages[s.addrHash]; !ok && len(storage)>0 {
+		if r_storage, ok := s.db.r_storages[s.addrHash]; !ok && len(storage) > 0 {
 			panic(fmt.Sprintf("Richard: state object, can't find the changed storages for addr=%x", s.addrHash))
 		} else {
 			if len(storage) != len(r_storage) {
 				panic(fmt.Sprintf("Richard: state obj changes not the same len, len_r=%d len=%d", len(r_storage), len(storage)))
 			}
-			for k,v := range storage {
+			for k, v := range storage {
 				if r_v, ok := r_storage[k]; !ok {
 					panic(fmt.Sprintf("Richard: not found k=%x for addr=%x", k, s.addrHash))
 				} else {
@@ -668,4 +669,10 @@ func (s *stateObject) GetPendingStorages() map[common.Hash][]byte {
 		return dirtyStorage
 	}
 	return nil
+}
+
+func (s *stateObject) WriteCode() {
+	if s.code != nil && s.dirtyCode {
+		rawdb.WriteCode(s.db.db.DiskDB(), common.BytesToHash(s.CodeHash()), s.code)
+	}
 }
