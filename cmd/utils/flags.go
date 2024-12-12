@@ -2010,11 +2010,11 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.DiffBlock = ctx.Uint64(DiffBlockFlag.Name)
 	}
 	if ctx.IsSet(PruneAncientDataFlag.Name) {
-		if cfg.SyncMode == ethconfig.FullSync {
-			cfg.PruneAncientData = ctx.Bool(PruneAncientDataFlag.Name)
-		} else {
-			log.Crit("pruneancient parameter can only be used with syncmode=full")
+		if cfg.SyncMode != ethconfig.FullSync {
+			log.Warn("pruneancient parameter can only be used with syncmode=full, force to full sync")
+			cfg.SyncMode = ethconfig.FullSync
 		}
+		cfg.PruneAncientData = ctx.Bool(PruneAncientDataFlag.Name)
 	}
 	if gcmode := ctx.String(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
 		Fatalf("--%s must be either 'full' or 'archive'", GCModeFlag.Name)
