@@ -1096,7 +1096,9 @@ func (s *StateDB) AccountsIntermediateRoot() {
 			updateAccountNum++
 			wg.Add(1)
 			tasks <- func() {
-				obj.data.Root = s.GetLatestVerifiedStateRoot(obj.addrHash)
+				if _, ok := s.r_destructs[obj.addrHash]; !ok {
+					obj.data.Root = s.GetLatestVerifiedStateRoot(obj.addrHash)
+				}
 				obj.updateRoot()
 
 				// Cache the data until commit. Note, this update mechanism is not symmetric
