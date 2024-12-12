@@ -173,11 +173,12 @@ type newWorkReq struct {
 type newPayloadResult struct {
 	err      error
 	block    *types.Block
-	fees     *big.Int           // total block fees
-	sidecars types.BlobSidecars // collected blobs of blob transactions
-	stateDB  *state.StateDB     // StateDB after executing the transactions
-	receipts []*types.Receipt   // Receipts collected during construction
-	witness  *stateless.Witness // Witness is an optional stateless proof
+	fees     *big.Int               // total block fees
+	sidecars []*types.BlobTxSidecar // collected blobs of blob transactions
+	stateDB  *state.StateDB         // StateDB after executing the transactions
+	receipts []*types.Receipt       // Receipts collected during construction
+	requests [][]byte               // Consensus layer requests collected during block construction
+	witness  *stateless.Witness     // Witness is an optional stateless proof
 }
 
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
@@ -439,10 +440,10 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if !w.isRunning() {
 				continue
 			}
-			clearPending(head.Block.NumberU64())
+			clearPending(head.Header.Number.Uint64())
 			timestamp = time.Now().Unix()
 			if p, ok := w.engine.(*parlia.Parlia); ok {
-				signedRecent, err := p.SignRecently(w.chain, head.Block)
+				signedRecent, err := p.SignRecently(w.chain, head.Header)
 				if err != nil {
 					log.Debug("Not allowed to propose block", "err", err)
 					continue
@@ -1157,12 +1158,46 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	defer work.discard()
 
 	if !params.noTxs {
+		interrupt := new(atomic.Int32)
+		timer := time.AfterFunc(w.config.Recommit, func() {
+			interrupt.Store(commitInterruptTimeout)
+		})
+		defer timer.Stop()
+
 		err := w.fillTransactions(nil, work, nil, nil)
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.recommit))
 		}
 	}
 	body := types.Body{Transactions: work.txs, Withdrawals: params.withdrawals}
+	allLogs := make([]*types.Log, 0)
+	for _, r := range work.receipts {
+		allLogs = append(allLogs, r.Logs...)
+	}
+	// Collect consensus-layer requests if Prague is enabled.
+	var requests [][]byte
+	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) {
+		// EIP-6110 deposits
+		depositRequests, err := core.ParseDepositLogs(allLogs, w.chainConfig)
+		if err != nil {
+			return &newPayloadResult{err: err}
+		}
+		requests = append(requests, depositRequests)
+		// create EVM for system calls
+		blockContext := core.NewEVMBlockContext(work.header, w.chain, &work.header.Coinbase)
+		vmenv := vm.NewEVM(blockContext, vm.TxContext{}, work.state, w.chainConfig, vm.Config{})
+		// EIP-7002 withdrawals
+		withdrawalRequests := core.ProcessWithdrawalQueue(vmenv, work.state)
+		requests = append(requests, withdrawalRequests)
+		// EIP-7251 consolidations
+		consolidationRequests := core.ProcessConsolidationQueue(vmenv, work.state)
+		requests = append(requests, consolidationRequests)
+	}
+	if requests != nil {
+		reqHash := types.CalcRequestsHash(requests)
+		work.header.RequestsHash = &reqHash
+	}
+
 	fees := work.state.GetBalance(consensus.SystemAddress)
 	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
 	if err != nil {
@@ -1172,9 +1207,10 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	return &newPayloadResult{
 		block:    block,
 		fees:     fees.ToBig(),
-		sidecars: work.sidecars,
+		sidecars: work.sidecars.BlobTxSidecarList(),
 		stateDB:  work.state,
 		receipts: receipts,
+		requests: requests,
 		witness:  work.witness,
 	}
 }

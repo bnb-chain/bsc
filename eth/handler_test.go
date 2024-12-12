@@ -233,7 +233,7 @@ func (c *mockParlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []
 	return abort, results
 }
 
-func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, _ *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal,
+func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, _ *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal,
 	_ *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64) (err error) {
 	return
 }

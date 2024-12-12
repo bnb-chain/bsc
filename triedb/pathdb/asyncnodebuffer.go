@@ -2,7 +2,6 @@ package pathdb
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -31,19 +30,13 @@ type asyncnodebuffer struct {
 }
 
 // newAsyncNodeBuffer initializes the async node buffer with the provided nodes.
-func newAsyncNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) *asyncnodebuffer {
+func newAsyncNodeBuffer(limit int, nodes *nodeSet, layers uint64) *asyncnodebuffer {
 	if nodes == nil {
-		nodes = make(map[common.Hash]map[string]*trienode.Node)
-	}
-	var size uint64
-	for _, subset := range nodes {
-		for path, n := range subset {
-			size += uint64(len(n.Blob) + len(path))
-		}
+		nodes = newNodeSet(nil)
 	}
 
 	return &asyncnodebuffer{
-		current:    newNodeCache(uint64(limit), size, nodes, layers),
+		current:    newNodeCache(uint64(limit), nodes.size, nodes.nodes, layers),
 		background: newNodeCache(uint64(limit), 0, make(map[common.Hash]map[string]*trienode.Node), 0),
 	}
 }
@@ -64,11 +57,11 @@ func (a *asyncnodebuffer) node(owner common.Hash, path []byte) (*trienode.Node, 
 // the ownership of the nodes map which belongs to the bottom-most diff layer.
 // It will just hold the node references from the given map which are safe to
 // copy.
-func (a *asyncnodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) trienodebuffer {
+func (a *asyncnodebuffer) commit(nodes *nodeSet) trienodebuffer {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
-	err := a.current.commit(nodes)
+	err := a.current.commit(nodes.nodes)
 	if err != nil {
 		log.Crit("[BUG] Failed to commit nodes to asyncnodebuffer", "error", err)
 	}
@@ -91,11 +84,6 @@ func (a *asyncnodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]
 	return a.current.revert(db, nodes)
 }
 
-// setSize is unsupported in asyncnodebuffer, due to the double buffer, blocking will occur.
-func (a *asyncnodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
-	return errors.New("not supported")
-}
-
 // reset cleans up the disk cache.
 func (a *asyncnodebuffer) reset() {
 	a.mux.Lock()
@@ -115,7 +103,7 @@ func (a *asyncnodebuffer) empty() bool {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error {
+func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force bool) error {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
@@ -131,7 +119,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
-			return a.current.flush(db, clean, id)
+			return a.current.flush(db, freezer, clean, id)
 		}
 	}
 
@@ -151,7 +139,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 	go func(persistID uint64) {
 		defer a.isFlushing.Store(false)
 		for {
-			err := a.background.flush(db, clean, persistID)
+			err := a.background.flush(db, freezer, clean, persistID)
 			if err == nil {
 				log.Debug("Succeed to flush background nodecache to disk", "state_id", persistID)
 				return
@@ -170,7 +158,7 @@ func (a *asyncnodebuffer) waitAndStopFlushing() {
 	}
 }
 
-func (a *asyncnodebuffer) getAllNodes() map[common.Hash]map[string]*trienode.Node {
+func (a *asyncnodebuffer) getAllNodes() *nodeSet {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
@@ -178,7 +166,7 @@ func (a *asyncnodebuffer) getAllNodes() map[common.Hash]map[string]*trienode.Nod
 	if err != nil {
 		log.Crit("[BUG] Failed to merge node cache under revert async node buffer", "error", err)
 	}
-	return cached.nodes
+	return newNodeSet(cached.nodes)
 }
 
 func (a *asyncnodebuffer) getLayers() uint64 {
@@ -265,8 +253,8 @@ func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node) err
 	}
 	nc.updateSize(delta)
 	nc.layers++
-	gcNodesMeter.Mark(overwrite)
-	gcBytesMeter.Mark(overwriteSize)
+	gcTrieNodeMeter.Mark(overwrite)
+	gcTrieNodeBytesMeter.Mark(overwriteSize)
 	return nil
 }
 
@@ -305,7 +293,7 @@ func (nc *nodecache) allocBatch(db ethdb.KeyValueStore) ethdb.Batch {
 	return db.NewBatchWithSize((metasize + int(nc.size)) * 11 / 10) // extra 10% for potential pebble internal stuff
 }
 
-func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+func (nc *nodecache) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64) error {
 	if atomic.LoadUint64(&nc.immutable) != 1 {
 		return errFlushMutable
 	}
@@ -319,6 +307,13 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id ui
 		start = time.Now()
 		batch = nc.allocBatch(db)
 	)
+	// Explicitly sync the state freezer, ensuring that all written
+	// data is transferred to disk before updating the key-value store.
+	if freezer != nil {
+		if err := freezer.Sync(); err != nil {
+			return err
+		}
+	}
 	nodes := writeNodes(batch, nc.nodes, clean)
 	rawdb.WritePersistentStateID(batch, id)
 

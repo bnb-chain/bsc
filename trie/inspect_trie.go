@@ -25,7 +25,7 @@ import (
 )
 
 type Database interface {
-	database.Database
+	database.NodeDatabase
 	Scheme() string
 	Cap(limit common.StorageSize) error
 	Disk() ethdb.Database

@@ -256,7 +256,7 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 }
 
 // prefetch schedules a batch of trie items to prefetch.
-func (p *triePrefetcher) prefetch(owner common.Hash, root common.Hash, addr common.Address, keys [][]byte, read bool) error {
+func (p *triePrefetcher) prefetch(owner common.Hash, root common.Hash, addr common.Address, addrs []common.Address, slots []common.Hash, read bool) error {
 	// If the state item is only being read, but reads are disabled, return
 	if read && p.noreads {
 		return nil
@@ -266,7 +266,13 @@ func (p *triePrefetcher) prefetch(owner common.Hash, root common.Hash, addr comm
 	if p.fetches != nil {
 		return nil
 	}
-
+	var keys [][]byte
+	for _, addr := range addrs {
+		keys = append(keys, addr[:])
+	}
+	for _, slot := range slots {
+		keys = append(keys, slot[:])
+	}
 	select {
 	case <-p.closeMainChan: // skip closed trie prefetcher
 	case p.prefetchChan <- &prefetchMsg{owner, root, addr, keys}:
@@ -313,7 +319,7 @@ func (p *triePrefetcher) trie(owner common.Hash, root common.Hash) Trie {
 
 // used marks a batch of state items used to allow creating statistics as to
 // how useful or wasteful the prefetcher is.
-func (p *triePrefetcher) used(owner common.Hash, root common.Hash, used [][]byte) {
+func (p *triePrefetcher) used(owner common.Hash, root common.Hash, usedAddr []common.Address, usedSlot []common.Hash) {
 	// If the prefetcher is an inactive one, bail out
 	if p.fetches != nil {
 		return
@@ -325,7 +331,12 @@ func (p *triePrefetcher) used(owner common.Hash, root common.Hash, used [][]byte
 		id := p.trieID(owner, root)
 		if fetcher := p.fetchers[id]; fetcher != nil {
 			fetcher.lock.Lock()
-			fetcher.used = append(fetcher.used, used...)
+			for _, addr := range usedAddr {
+				fetcher.used = append(fetcher.used, addr[:])
+			}
+			for _, slot := range usedSlot {
+				fetcher.used = append(fetcher.used, slot[:])
+			}
 			fetcher.lock.Unlock()
 		}
 		p.fetchersMutex.RUnlock()
