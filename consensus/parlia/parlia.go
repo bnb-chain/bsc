@@ -2002,14 +2002,16 @@ func (p *Parlia) applyTransaction(
 			tracer.OnTxStart(vmenv.GetVMContext(), expectedTx, msg.From())
 		}
 
-		if tracer.OnTxEnd != nil {
-			defer func() {
-				tracer.OnTxEnd(tracingReceipt, applyErr)
-			}()
-		}
+		// Defers are last in first out, so OnTxEnd will run before OnSystemTxEnd in this transaction,
+		// which is what we want.
 		if vmConfig.Tracer.OnSystemTxEnd != nil {
 			defer func() {
 				vmConfig.Tracer.OnSystemTxEnd()
+			}()
+		}
+		if tracer.OnTxEnd != nil {
+			defer func() {
+				tracer.OnTxEnd(tracingReceipt, applyErr)
 			}()
 		}
 	}
