@@ -173,7 +173,7 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 }
 
 // openAdditionTable create table, it will auto create new files when it was first initialized
-func openAdditionTable(datadir, name string, readMeter, writeMeter metrics.Meter, sizeGauge metrics.Gauge, maxTableSize uint32, disableSnappy, readonly bool) (*freezerTable, error) {
+func openAdditionTable(datadir, name string, readMeter, writeMeter *metrics.Meter, sizeGauge *metrics.Gauge, maxTableSize uint32, disableSnappy, readonly bool) (*freezerTable, error) {
 	if readonly {
 		f, err := newTable(datadir, name, readMeter, writeMeter, sizeGauge, maxTableSize, disableSnappy, false)
 		if err != nil {

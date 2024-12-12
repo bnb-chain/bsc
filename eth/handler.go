@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
@@ -118,7 +119,7 @@ type handlerConfig struct {
 	TxPool                 txPool           // Transaction pool to propagate from
 	VotePool               votePool
 	Network                uint64                 // Network identifier to adfvertise
-	Sync                   downloader.SyncMode    // Whether to snap or full sync
+	Sync                   ethconfig.SyncMode     // Whether to snap or full sync
 	BloomCache             uint64                 // Megabytes to alloc for snap sync bloom
 	EventMux               *event.TypeMux         // Legacy event mux, deprecate for `feed`
 	RequiredBlocks         map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
@@ -203,7 +204,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		handlerStartCh:         make(chan struct{}),
 		stopCh:                 make(chan struct{}),
 	}
-	if config.Sync == downloader.FullSync {
+	if config.Sync == ethconfig.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the snap
 		// block is ahead, so snap sync was enabled for this node at a certain point.
 		// The scenarios where this can happen is
@@ -528,7 +529,7 @@ func (h *handler) runSnapExtension(peer *snap.Peer, handler snap.Handler) error 
 	defer h.decHandlers()
 
 	if err := h.peers.registerSnapExtension(peer); err != nil {
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			if peer.Inbound() {
 				snap.IngressRegistrationErrorMeter.Mark(1)
 			} else {
@@ -552,7 +553,7 @@ func (h *handler) runTrustExtension(peer *trust.Peer, handler trust.Handler) err
 	defer h.decHandlers()
 
 	if err := h.peers.registerTrustExtension(peer); err != nil {
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			if peer.Inbound() {
 				trust.IngressRegistrationErrorMeter.Mark(1)
 			} else {
@@ -576,7 +577,7 @@ func (h *handler) runBscExtension(peer *bsc.Peer, handler bsc.Handler) error {
 	defer h.decHandlers()
 
 	if err := h.peers.registerBscExtension(peer); err != nil {
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			if peer.Inbound() {
 				bsc.IngressRegistrationErrorMeter.Mark(1)
 			} else {

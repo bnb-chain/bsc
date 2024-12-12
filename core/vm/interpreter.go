@@ -18,7 +18,6 @@ package vm
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -27,12 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
-
-var EVMInterpreterPool = sync.Pool{
-	New: func() interface{} {
-		return &EVMInterpreter{}
-	},
-}
 
 // Config are the configuration options for the Interpreter
 type Config struct {
@@ -156,13 +149,7 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 		}
 	}
 	evm.Config.ExtraEips = extraEips
-	evmInterpreter := EVMInterpreterPool.Get().(*EVMInterpreter)
-	evmInterpreter.evm = evm
-	evmInterpreter.table = table
-	evmInterpreter.readOnly = false
-	evmInterpreter.returnData = nil
-
-	return evmInterpreter
+	return &EVMInterpreter{evm: evm, table: table}
 }
 
 // Run loops and evaluates the contract's code with the given input data and returns

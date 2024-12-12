@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -296,7 +297,7 @@ func minerTestGenesisBlock(period uint64, gasLimit uint64, faucet common.Address
 }
 func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	// Create Ethash config
-	config := Config{
+	config := minerconfig.Config{
 		Etherbase: common.HexToAddress("123456789"),
 	}
 	// Create chainConfig

@@ -61,7 +61,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 			}
 			gaspool := new(GasPool).AddGas(block.GasLimit())
 			blockContext := NewEVMBlockContext(header, p.chain, nil)
-			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, *cfg)
+			evm := vm.NewEVM(blockContext, newStatedb, p.config, *cfg)
 			// Iterate over and process the individual transactions
 			for {
 				select {
@@ -75,7 +75,9 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 						return // Also invalid block, bail out
 					}
 					newStatedb.SetTxContext(tx.Hash(), txIndex)
-					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
+					// We attempt to apply a transaction. The goal is not to execute
+					// the transaction successfully, rather to warm up touched data slots.
+					ApplyMessage(evm, msg, gaspool)
 
 				case <-interruptCh:
 					// If block precaching was interrupted, abort
@@ -111,7 +113,7 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 			}
 			gaspool := new(GasPool).AddGas(gasLimit)
 			blockContext := NewEVMBlockContext(header, p.chain, nil)
-			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
+			evm := vm.NewEVM(blockContext, newStatedb, p.config, cfg)
 			// Iterate over and process the individual transactions
 			for {
 				select {
@@ -125,7 +127,7 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 					}
 					idx++
 					newStatedb.SetTxContext(tx.Hash(), idx)
-					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
+					ApplyMessage(evm, msg, gaspool)
 					gaspool = new(GasPool).AddGas(gasLimit)
 				case <-stopCh:
 					return
@@ -158,18 +160,4 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 			}
 		}
 	}(txs)
-}
-
-// precacheTransaction attempts to apply a transaction to the given state database
-// and uses the input parameters for its environment. The goal is not to execute
-// the transaction successfully, rather to warm up touched data slots.
-func precacheTransaction(msg *Message, config *params.ChainConfig, gaspool *GasPool, statedb *state.StateDB, header *types.Header, evm *vm.EVM) error {
-	// Update the evm with the new transaction context.
-	evm.Reset(NewEVMTxContext(msg), statedb)
-	// Add addresses to access list if applicable
-	_, err := ApplyMessage(evm, msg, gaspool)
-	if err == nil {
-		statedb.Finalise(true)
-	}
-	return err
 }

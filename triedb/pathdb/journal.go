@@ -49,7 +49,8 @@ var (
 //
 // - Version 0: initial version
 // - Version 1: storage.Incomplete field is removed
-const journalVersion uint64 = 1
+// - Version 2: add post-modification state values
+const journalVersion uint64 = 2
 
 type JournalWriter interface {
 	io.Writer
@@ -238,7 +239,7 @@ func (db *Database) loadLayers() layer {
 		log.Info("Failed to load journal, discard it", "err", err)
 	}
 	// Return single layer with persistent state.
-	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, 0))
+	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0))
 }
 
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
@@ -278,6 +279,11 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 	if err := nodes.decode(journalBuf); err != nil {
 		return nil, err
 	}
+	// Resolve flat state sets in aggregated buffer
+	var states stateSet
+	if err := states.decode(journalBuf); err != nil {
+		return nil, err
+	}
 
 	if journalTypeForReader == JournalFileType {
 		var shaSum [32]byte
@@ -292,7 +298,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 	}
 
 	// Calculate the internal state transitions by id difference.
-	base := newDiskLayer(root, id, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, &nodes, id-stored))
+	base := newDiskLayer(root, id, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, &nodes, &states, id-stored))
 	return base, nil
 }
 
@@ -378,8 +384,13 @@ func (dl *diskLayer) journal(w io.Writer, journalType JournalType) error {
 	if err := rlp.Encode(journalBuf, dl.id); err != nil {
 		return err
 	}
+	nodes, states := dl.buffer.getAllNodesAndStates()
 	// Step three, write the accumulated trie nodes into the journal
-	if err := dl.buffer.getAllNodes().encode(journalBuf); err != nil {
+	if err := nodes.encode(journalBuf); err != nil {
+		return err
+	}
+	// Step four, write the accumulated flat states into the journal
+	if err := states.encode(journalBuf); err != nil {
 		return err
 	}
 
