@@ -37,7 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/eth/downloader"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
@@ -194,7 +194,7 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 		TxPool:     txpool,
 		VotePool:   votepool,
 		Network:    1,
-		Sync:       downloader.SnapSync,
+		Sync:       ethconfig.SnapSync,
 		BloomCache: 1,
 	})
 	handler.Start(1000, 3)
@@ -253,7 +253,7 @@ func (c *mockParlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint
 	return big.NewInt(1)
 }
 
-func newTestParliaHandlerAfterCancun(t *testing.T, config *params.ChainConfig, mode downloader.SyncMode, preCancunBlks, postCancunBlks uint64) *testHandler {
+func newTestParliaHandlerAfterCancun(t *testing.T, config *params.ChainConfig, mode ethconfig.SyncMode, preCancunBlks, postCancunBlks uint64) *testHandler {
 	// Have N headers in the freezer
 	frdir := t.TempDir()
 	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false, false, false, false)

@@ -21,7 +21,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"maps"
 	gomath "math"
 	"math/big"
 	"strings"
@@ -266,7 +265,7 @@ func (api *TxPoolAPI) Inspect() map[string]map[string]map[string]string {
 	pending, queue := api.b.TxPoolContent()
 
 	// Define a formatter to flatten a transaction into a string
-	var format = func(tx *types.Transaction) string {
+	format := func(tx *types.Transaction) string {
 		if to := tx.To(); to != nil {
 			return fmt.Sprintf("%s: %v wei + %v gas × %v wei", tx.To().Hex(), tx.Value(), tx.Gas(), tx.GasPrice())
 		}
@@ -964,7 +963,7 @@ func doCall(ctx context.Context, b Backend, args TransactionArgs, state *state.S
 		blockOverrides.Apply(&blockCtx)
 	}
 	rules := b.ChainConfig().Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time)
-	precompiles := maps.Clone(vm.ActivePrecompiledContracts(rules))
+	precompiles := vm.ActivePrecompiledContracts(rules)
 	if err := overrides.Apply(state, precompiles); err != nil {
 		return nil, err
 	}
@@ -1003,7 +1002,7 @@ func applyMessage(ctx context.Context, b Backend, args TransactionArgs, state *s
 	if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
 		blockContext.BlobBaseFee = new(big.Int)
 	}
-	evm := b.GetEVM(ctx, msg, state, header, vmConfig, blockContext)
+	evm := b.GetEVM(ctx, state, header, vmConfig, blockContext)
 	if precompiles != nil {
 		evm.SetPrecompiles(precompiles)
 	}
@@ -1272,9 +1271,8 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 
 		// Apply transaction
 		msg, _ := core.TransactionToMessage(tx, signer, parent.Header().BaseFee)
-		txContext := core.NewEVMTxContext(msg)
 		context := core.NewEVMBlockContext(block.Header(), api.b.Chain(), nil)
-		vmenv := vm.NewEVM(context, txContext, statedb, api.b.ChainConfig(), vm.Config{})
+		evm := vm.NewEVM(context, statedb, api.b.ChainConfig(), vm.Config{})
 
 		if posa, ok := api.b.Engine().(consensus.PoSA); ok {
 			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
@@ -1286,10 +1284,10 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 			}
 		}
 
-		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
+		if _, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
-		statedb.Finalise(vmenv.ChainConfig().IsEIP158(block.Number()))
+		statedb.Finalise(evm.ChainConfig().IsEIP158(block.Number()))
 
 		if !skip {
 			// Compute account balance diff.
@@ -1657,16 +1655,17 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, args.from(), to, precompiles)
 		config := vm.Config{Tracer: tracer.Hooks(), NoBaseFee: true}
-		vmenv := b.GetEVM(ctx, msg, statedb, header, &config, nil)
+		evm := b.GetEVM(ctx, statedb, header, &config, nil)
+
 		// Lower the basefee to 0 to avoid breaking EVM
 		// invariants (basefee < feecap).
 		if msg.GasPrice.Sign() == 0 {
-			vmenv.Context.BaseFee = new(big.Int)
+			evm.Context.BaseFee = new(big.Int)
 		}
 		if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
-			vmenv.Context.BlobBaseFee = new(big.Int)
+			evm.Context.BlobBaseFee = new(big.Int)
 		}
-		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
+		res, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.ToTransaction(types.LegacyTxType).Hash(), err)
 		}
@@ -2257,11 +2256,11 @@ func (api *TransactionAPI) Resend(ctx context.Context, sendArgs TransactionArgs,
 	matchTx := sendArgs.ToTransaction(types.LegacyTxType)
 
 	// Before replacing the old transaction, ensure the _new_ transaction fee is reasonable.
-	var price = matchTx.GasPrice()
+	price := matchTx.GasPrice()
 	if gasPrice != nil {
 		price = gasPrice.ToInt()
 	}
-	var gas = matchTx.Gas()
+	gas := matchTx.Gas()
 	if gasLimit != nil {
 		gas = uint64(*gasLimit)
 	}

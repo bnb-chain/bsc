@@ -229,8 +229,8 @@ func TestProcessParentBlockHash(t *testing.T) {
 		for i := 1; i <= num; i++ {
 			header := &types.Header{ParentHash: common.Hash{byte(i)}, Number: big.NewInt(int64(i)), Difficulty: new(big.Int)}
 			vmContext := NewEVMBlockContext(header, nil, new(common.Address))
-			evm := vm.NewEVM(vmContext, vm.TxContext{}, statedb, params.MergedTestChainConfig, vm.Config{})
-			ProcessParentBlockHash(header.ParentHash, evm, statedb)
+			evm := vm.NewEVM(vmContext, statedb, params.MergedTestChainConfig, vm.Config{})
+			ProcessParentBlockHash(header.ParentHash, evm)
 		}
 		// Read block hashes for block 0 .. num-1
 		for i := 0; i < num; i++ {
@@ -1037,7 +1037,7 @@ func TestProcessVerkleSelfDestructInSameTxWithSelfBeneficiaryAndPrefundedAccount
 	)
 	// Prefund the account, at an address that the contract will be deployed at,
 	// before it selfdestrucs. We can therefore check that the account itseld is
-	// NOT destroyed, which is what the currrent version of the spec requires.
+	// NOT destroyed, which is what the current version of the spec requires.
 	// TODO(gballet) revisit after the spec has been modified.
 	gspec.Alloc[contract] = types.Account{
 		Balance: big.NewInt(100),

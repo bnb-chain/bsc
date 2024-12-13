@@ -9,9 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
-	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
-	"github.com/ethereum/go-ethereum/miner"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 )
 
 // MarshalTOML marshals as TOML.
@@ -19,7 +18,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	type Config struct {
 		Genesis                 *core.Genesis `toml:",omitempty"`
 		NetworkId               uint64
-		SyncMode                downloader.SyncMode
+		SyncMode                SyncMode
 		DisablePeerTxBroadcast  bool
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
@@ -54,7 +53,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TriesVerifyMode         core.VerifyMode
 		Preimages               bool
 		FilterLogCacheSize      int
-		Miner                   miner.Config
+		Miner                   minerconfig.Config
 		TxPool                  legacypool.Config
 		BlobPool                blobpool.Config
 		GPO                     gasprice.Config
@@ -131,7 +130,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	type Config struct {
 		Genesis                 *core.Genesis `toml:",omitempty"`
 		NetworkId               *uint64
-		SyncMode                *downloader.SyncMode
+		SyncMode                *SyncMode
 		DisablePeerTxBroadcast  *bool
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
@@ -166,7 +165,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TriesVerifyMode         *core.VerifyMode
 		Preimages               *bool
 		FilterLogCacheSize      *int
-		Miner                   *miner.Config
+		Miner                   *minerconfig.Config
 		TxPool                  *legacypool.Config
 		BlobPool                *blobpool.Config
 		GPO                     *gasprice.Config

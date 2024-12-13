@@ -46,7 +46,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/era"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
@@ -514,13 +513,11 @@ func importChain(ctx *cli.Context) error {
 	if ctx.Args().Len() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
-	// Start metrics export if enabled
-	utils.SetupMetrics(ctx)
-	// Start system runtime metrics collection
-	go metrics.CollectProcessMetrics(3 * time.Second)
-
 	stack, cfg := makeConfigNode(ctx)
 	defer stack.Close()
+
+	// Start metrics export if enabled
+	utils.SetupMetrics(&cfg.Metrics)
 
 	backend, err := eth.New(stack, &cfg.Eth)
 	if err != nil {

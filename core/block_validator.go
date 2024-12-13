@@ -111,7 +111,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 				}
 
 				// The individual checks for blob validity (version-check + not empty)
-				// happens in StateTransition.
+				// happens in state transition.
 			}
 
 			// Check blob gas usage.
@@ -188,9 +188,7 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			if receiptSha != header.ReceiptHash {
 				return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
 			}
-			return nil
-		})
-		validateFuns = append(validateFuns, func() error {
+
 			// Validate the parsed requests match the expected header value.
 			if header.RequestsHash != nil {
 				reqhash := types.CalcRequestsHash(res.Requests)

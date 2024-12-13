@@ -448,7 +448,7 @@ func (mode VerifyMode) NoTries() bool {
 	return mode != LocalVerify
 }
 
-func newVerifyMsgTypeGauge(msgType uint16, peerId string) metrics.Gauge {
+func newVerifyMsgTypeGauge(msgType uint16, peerId string) *metrics.Gauge {
 	m := fmt.Sprintf("verifymanager/message/%d/peer/%s", msgType, peerId)
 	return metrics.GetOrRegisterGauge(m, nil)
 }

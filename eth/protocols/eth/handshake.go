@@ -173,7 +173,7 @@ func (p *Peer) readUpgradeStatus(status *UpgradeStatusPacket) error {
 
 // markError registers the error with the corresponding metric.
 func markError(p *Peer, err error) {
-	if !metrics.Enabled {
+	if !metrics.Enabled() {
 		return
 	}
 	m := meters.get(p.Inbound())

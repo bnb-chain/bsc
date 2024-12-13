@@ -65,20 +65,20 @@ type triePrefetcher struct {
 	fetchersMutex     sync.RWMutex
 	prefetchChan      chan *prefetchMsg // no need to wait for return
 
-	deliveryMissMeter metrics.Meter
-	accountLoadMeter  metrics.Meter
-	accountDupMeter   metrics.Meter
-	accountSkipMeter  metrics.Meter
-	accountWasteMeter metrics.Meter
-	storageLoadMeter  metrics.Meter
-	storageDupMeter   metrics.Meter
-	storageSkipMeter  metrics.Meter
-	storageWasteMeter metrics.Meter
+	deliveryMissMeter *metrics.Meter
+	accountLoadMeter  *metrics.Meter
+	accountDupMeter   *metrics.Meter
+	accountSkipMeter  *metrics.Meter
+	accountWasteMeter *metrics.Meter
+	storageLoadMeter  *metrics.Meter
+	storageDupMeter   *metrics.Meter
+	storageSkipMeter  *metrics.Meter
+	storageWasteMeter *metrics.Meter
 
-	accountStaleLoadMeter  metrics.Meter
-	accountStaleDupMeter   metrics.Meter
-	accountStaleSkipMeter  metrics.Meter
-	accountStaleWasteMeter metrics.Meter
+	accountStaleLoadMeter  *metrics.Meter
+	accountStaleDupMeter   *metrics.Meter
+	accountStaleSkipMeter  *metrics.Meter
+	accountStaleWasteMeter *metrics.Meter
 }
 
 // newTriePrefetcher

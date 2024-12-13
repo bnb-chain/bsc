@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -99,6 +100,7 @@ type environment struct {
 	size     uint32         // almost accurate block size,
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
+	evm      *vm.EVM
 
 	header   *types.Header
 	txs      []*types.Transaction
@@ -197,7 +199,7 @@ type bidFetcher interface {
 type worker struct {
 	bidFetcher  bidFetcher
 	prefetcher  core.Prefetcher
-	config      *Config
+	config      *minerconfig.Config
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
 	eth         Backend
@@ -253,7 +255,7 @@ type worker struct {
 	recentMinedBlocks *lru.Cache
 }
 
-func newWorker(config *Config, engine consensus.Engine, eth Backend, mux *event.TypeMux, init bool) *worker {
+func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend, mux *event.TypeMux, init bool) *worker {
 	recentMinedBlocks, _ := lru.New(recentMinedCacheLimit)
 	chainConfig := eth.BlockChain().Config()
 	worker := &worker{
@@ -693,6 +695,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		coinbase: coinbase,
 		header:   header,
 		witness:  state.Witness(),
+		evm:      vm.NewEVM(core.NewEVMBlockContext(header, w.chain, &coinbase), state, w.chainConfig, vm.Config{}),
 	}
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
@@ -765,7 +768,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		gp   = env.gasPool.Gas()
 	)
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, vm.Config{}, receiptProcessors...)
+	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, receiptProcessors...)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
@@ -1047,15 +1050,11 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 	systemcontracts.TryUpdateBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
 
 	if header.ParentBeaconRoot != nil {
-		context := core.NewEVMBlockContext(header, w.chain, nil)
-		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
-		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv, env.state)
+		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, env.evm)
 	}
 
 	if w.chainConfig.IsPrague(header.Number, header.Time) {
-		context := core.NewEVMBlockContext(header, w.chain, nil)
-		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
-		core.ProcessParentBlockHash(header.ParentHash, vmenv, env.state)
+		core.ProcessParentBlockHash(header.ParentHash, env.evm)
 	}
 
 	env.size = uint32(env.header.Size())
@@ -1177,21 +1176,15 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	// Collect consensus-layer requests if Prague is enabled.
 	var requests [][]byte
 	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) {
+		requests = [][]byte{}
 		// EIP-6110 deposits
-		depositRequests, err := core.ParseDepositLogs(allLogs, w.chainConfig)
-		if err != nil {
+		if err := core.ParseDepositLogs(&requests, allLogs, w.chainConfig); err != nil {
 			return &newPayloadResult{err: err}
 		}
-		requests = append(requests, depositRequests)
-		// create EVM for system calls
-		blockContext := core.NewEVMBlockContext(work.header, w.chain, &work.header.Coinbase)
-		vmenv := vm.NewEVM(blockContext, vm.TxContext{}, work.state, w.chainConfig, vm.Config{})
-		// EIP-7002 withdrawals
-		withdrawalRequests := core.ProcessWithdrawalQueue(vmenv, work.state)
-		requests = append(requests, withdrawalRequests)
+		// EIP-7002
+		core.ProcessWithdrawalQueue(&requests, work.evm)
 		// EIP-7251 consolidations
-		consolidationRequests := core.ProcessConsolidationQueue(vmenv, work.state)
-		requests = append(requests, consolidationRequests)
+		core.ProcessConsolidationQueue(&requests, work.evm)
 	}
 	if requests != nil {
 		reqHash := types.CalcRequestsHash(requests)
