@@ -755,7 +755,7 @@ func EncodeSigHeader(w io.Writer, header *Header, chainId *big.Int) {
 		header.MixDigest,
 		header.Nonce,
 	}
-	if header.ParentBeaconRoot != nil && *header.ParentBeaconRoot == (common.Hash{}) {
+	if header.ParentBeaconRoot != nil {
 		toEncode = append(toEncode, header.BaseFee,
 			header.WithdrawalsHash,
 			header.BlobGasUsed,

@@ -4192,6 +4192,10 @@ func (c *mockParlia) VerifyUncles(chain consensus.ChainReader, block *types.Bloc
 	return nil
 }
 
+func (c *mockParlia) VerifyRequests(header *types.Header, Requests [][]byte) error {
+	return nil
+}
+
 func (c *mockParlia) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
 	return nil
 }
