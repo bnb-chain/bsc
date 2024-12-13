@@ -650,11 +650,10 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		if header.RequestsHash != nil {
 			return fmt.Errorf("invalid RequestsHash, have %#x, expected nil", header.ParentBeaconRoot)
 		}
-		// } else {
-		// 	// TODO(Nathan): need a BEP to define this and `Requests` in struct Body
-		// 	if !header.EmptyRequestsHash() {
-		// 		return errors.New("header has wrong RequestsHash")
-		// 	}
+	} else {
+		if header.RequestsHash == nil {
+			return errors.New("header has nil RequestsHash after Prague")
+		}
 	}
 
 	// All basic checks passed, verify cascading fields
@@ -855,6 +854,10 @@ func (p *Parlia) VerifyUncles(chain consensus.ChainReader, block *types.Block) e
 	if len(block.Uncles()) > 0 {
 		return errors.New("uncles not allowed")
 	}
+	return nil
+}
+
+func (p *Parlia) VerifyRequests(header *types.Header, Requests [][]byte) error {
 	return nil
 }
 

@@ -1028,13 +1028,16 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		}
 		header.BlobGasUsed = new(uint64)
 		header.ExcessBlobGas = &excessBlobGas
-		if w.chainConfig.Parlia != nil {
-			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
-		}
 		if w.chainConfig.Parlia == nil {
 			header.ParentBeaconRoot = genParams.beaconRoot
-		} else if w.chainConfig.IsBohr(header.Number, header.Time) {
-			header.ParentBeaconRoot = new(common.Hash)
+		} else {
+			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
+			if w.chainConfig.IsBohr(header.Number, header.Time) {
+				header.ParentBeaconRoot = new(common.Hash)
+			}
+			if w.chainConfig.IsPrague(header.Number, header.Time) {
+				header.RequestsHash = &types.EmptyRequestsHash
+			}
 		}
 	}
 	// Could potentially happen if starting to mine in an odd state.

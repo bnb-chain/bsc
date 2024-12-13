@@ -372,7 +372,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		}
 
 		var requests [][]byte
-		if config.IsPrague(b.header.Number, b.header.Time) {
+		if config.IsPrague(b.header.Number, b.header.Time) && config.Parlia == nil {
 			requests = [][]byte{}
 			// EIP-6110 deposits
 			var blockLogs []*types.Log
@@ -610,11 +610,16 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 		excessBlobGas := eip4844.CalcExcessBlobGas(parentExcessBlobGas, parentBlobGasUsed)
 		header.ExcessBlobGas = &excessBlobGas
 		header.BlobGasUsed = new(uint64)
-		if cm.config.Parlia != nil {
-			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
-		}
-		if cm.config.Parlia == nil || cm.config.IsBohr(header.Number, header.Time) {
+		if cm.config.Parlia == nil {
 			header.ParentBeaconRoot = new(common.Hash)
+		} else {
+			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
+			if cm.config.IsBohr(header.Number, header.Time) {
+				header.ParentBeaconRoot = new(common.Hash)
+			}
+			if cm.config.IsPrague(header.Number, header.Time) {
+				header.RequestsHash = &types.EmptyRequestsHash
+			}
 		}
 	}
 	return header

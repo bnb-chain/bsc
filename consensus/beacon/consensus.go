@@ -216,6 +216,18 @@ func (beacon *Beacon) VerifyUncles(chain consensus.ChainReader, block *types.Blo
 	return nil
 }
 
+func (beacon *Beacon) VerifyRequests(header *types.Header, Requests [][]byte) error {
+	if header.RequestsHash != nil {
+		reqhash := types.CalcRequestsHash(Requests)
+		if reqhash != *header.RequestsHash {
+			return fmt.Errorf("invalid requests hash (remote: %x local: %x)", *header.RequestsHash, reqhash)
+		}
+	} else if Requests != nil {
+		return errors.New("block has requests before prague fork")
+	}
+	return nil
+}
+
 // verifyHeader checks whether a header conforms to the consensus rules of the
 // stock Ethereum consensus engine. The difference between the beacon and classic is
 // (a) The following fields are expected to be constants:
