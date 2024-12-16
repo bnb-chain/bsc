@@ -2445,6 +2445,7 @@ func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
 }
 
 func (bc *BlockChain) VerifyLoop() {
+	wg := sync.WaitGroup{}
 	for {
 		select {
 		case <-bc.quit:
@@ -2455,16 +2456,29 @@ func (bc *BlockChain) VerifyLoop() {
 				log.Crit("validate state failed", "error", err)
 			}
 			blockValidationTimer.UpdateSince(vstart)
-			cstart := time.Now()
-			if err := bc.commitState(task.block, task.receipts, task.state); err != nil {
-				log.Crit("commit state failed", "error", err)
-			}
-			if _, err := bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false); err != nil {
-				log.Crit("write block and set head failed", "error", err)
-			}
-			blockWriteTimer.UpdateSince(cstart)
-			bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
-			log.Info("Richard: successfully verify", "block=", task.block.Number())
+
+			wg.Add(1)
+			go func() {
+				cstart := time.Now()
+				if err := bc.commitState(task.block, task.receipts, task.state); err != nil {
+					log.Crit("commit state failed", "error", err)
+				}
+				blockWriteTimer.UpdateSince(cstart)
+				wg.Done()
+			}()
+
+			wg.Add(1)
+			go func() {
+				cstart := time.Now()
+				if _, err := bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false); err != nil {
+					log.Crit("write block and set head failed", "error", err)
+				}
+				bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
+				triedbCommitTimer.UpdateSince(cstart)
+				wg.Done()
+			}()
+
+			wg.Wait()
 		}
 	}
 }

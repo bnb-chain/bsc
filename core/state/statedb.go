@@ -1706,11 +1706,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 												}
 											}
 					*/
-					//		log.Info("Richard: commit successfully with the same created diff for block", " block=", block)
-
-					if err != nil {
-						log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
-					}
+					//		log.Info("Richard: commit successfully with the same created diff for block", " block=", block
 
 					// Keep n diff layers in the memory
 					// - head layer is paired with HEAD state
