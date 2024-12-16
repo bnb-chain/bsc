@@ -20,7 +20,9 @@ import (
 	crand "crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -101,6 +103,7 @@ func TestDiskLayerExternalInvalidationFullFlatten(t *testing.T) {
 			base.root: base,
 		},
 	}
+	snaps.lookup = newLookup(snaps.layers[base.root])
 	// Retrieve a reference to the base and commit a diff on top
 	ref := snaps.Snapshot(base.root)
 
@@ -145,6 +148,7 @@ func TestDiskLayerExternalInvalidationPartialFlatten(t *testing.T) {
 			base.root: base,
 		},
 	}
+	snaps.lookup = newLookup(snaps.layers[base.root])
 	// Retrieve a reference to the base and commit two diffs on top
 	ref := snaps.Snapshot(base.root)
 
@@ -167,6 +171,9 @@ func TestDiskLayerExternalInvalidationPartialFlatten(t *testing.T) {
 	if err := snaps.Cap(common.HexToHash("0x03"), 1); err != nil {
 		t.Fatalf("failed to merge accumulator onto disk: %v", err)
 	}
+	//if acc, err := snaps.LookupAccount(common.HexToHash("0x01"), ref); err != ErrSnapshotStale {
+	//	t.Errorf("stale reference returned account: %#x (err: %v)", acc, err)
+	//}
 	// Since the base layer was modified, ensure that data retrievals on the external reference fail
 	if acc, err := ref.Account(common.HexToHash("0x01")); err != ErrSnapshotStale {
 		t.Errorf("stale reference returned account: %#x (err: %v)", acc, err)
@@ -198,6 +205,7 @@ func TestDiffLayerExternalInvalidationPartialFlatten(t *testing.T) {
 		layers: map[common.Hash]snapshot{
 			base.root: base,
 		},
+		lookup: newLookup(base),
 	}
 	// Commit three diffs on top and retrieve a reference to the bottommost
 	accounts := map[common.Hash][]byte{
@@ -261,6 +269,7 @@ func TestPostCapBasicDataAccess(t *testing.T) {
 		layers: map[common.Hash]snapshot{
 			base.root: base,
 		},
+		lookup: newLookup(base),
 	}
 	// The lowest difflayer
 	snaps.Update(common.HexToHash("0xa1"), common.HexToHash("0x01"), setAccount("0xa1"), nil)
@@ -303,6 +312,7 @@ func TestPostCapBasicDataAccess(t *testing.T) {
 	// Now, merge the a-chain
 	snaps.Cap(common.HexToHash("0xa3"), 0)
 
+	fmt.Println("after cap", "descendants", snaps.lookup.descendants)
 	// At this point, a2 got merged into a1. Thus, a1 is now modified, and as a1 is
 	// the parent of b2, b2 should no longer be able to iterate into parent.
 
@@ -333,6 +343,9 @@ func TestPostCapBasicDataAccess(t *testing.T) {
 // TestSnaphots tests the functionality for retrieving the snapshot
 // with given head root and the desired depth.
 func TestSnaphots(t *testing.T) {
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
+	//fmt.Println(t.dump(false))
+
 	// setAccount is a helper to construct a random account entry and assign it to
 	// an account slot in a snapshot
 	setAccount := func(accKey string) map[common.Hash][]byte {
@@ -355,6 +368,7 @@ func TestSnaphots(t *testing.T) {
 		layers: map[common.Hash]snapshot{
 			base.root: base,
 		},
+		lookup: newLookup(base),
 	}
 	// Construct the snapshots with 129 layers, flattening whatever's above that
 	var (
@@ -367,6 +381,37 @@ func TestSnaphots(t *testing.T) {
 		last = head
 		snaps.Cap(head, 128) // 130 layers (128 diffs + 1 accumulator + 1 disk)
 	}
+
+	{
+		var lookupData []byte
+		var err error
+		accountAddrHash := common.HexToHash("50")
+		lookupAccount := new(types.SlimAccount)
+
+		// fastpath
+		root := head
+		targetLayer := snaps.LookupAccount(accountAddrHash, root)
+		if targetLayer != nil {
+			lookupData, err = targetLayer.AccountRLP(accountAddrHash)
+			if err != nil {
+				log.Info("GlobalLookup.lookupAccount err", "hash", accountAddrHash, "root", root, "err", err)
+			}
+			if len(lookupData) == 0 { // can be both nil and []byte{}
+				log.Info("GlobalLookup.lookupAccount data nil", "hash", accountAddrHash, "root", root)
+			}
+			if err == nil && len(lookupData) != 0 {
+				if err := rlp.DecodeBytes(lookupData, lookupAccount); err != nil {
+					panic(err)
+				}
+				// lookupDone = true
+			} else {
+				log.Info("GlobalLookup.lookupAccount", "hash", accountAddrHash, "root", root, "res", lookupData, "targetLayer", targetLayer)
+			}
+
+			log.Info("GlobalLookup.lookupAccount", "hash", accountAddrHash, "root", root, "res", lookupData, "targetLayer", targetLayer)
+		}
+	}
+
 	var cases = []struct {
 		headRoot     common.Hash
 		limit        int
@@ -454,6 +499,7 @@ func TestReadStateDuringFlattening(t *testing.T) {
 		layers: map[common.Hash]snapshot{
 			base.root: base,
 		},
+		lookup: newLookup(base),
 	}
 	// 4 layers in total, 3 diff layers and 1 disk layers
 	snaps.Update(common.HexToHash("0xa1"), common.HexToHash("0x01"), setAccount("0xa1"), nil)

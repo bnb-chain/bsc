@@ -68,6 +68,40 @@ type SlimAccount struct {
 	CodeHash []byte // Nil if hash equals to types.EmptyCodeHash
 }
 
+func AreSlimAccountsEqual(a, b *SlimAccount) bool {
+	if a == b {
+		return true // 指针相同，表示内容相等
+	}
+	if a == nil || b == nil {
+		return false // 其中一个为 nil，则不相等
+	}
+
+	// 比较字段 Nonce
+	if a.Nonce != b.Nonce {
+		return false
+	}
+
+	// 比较字段 Balance（*uint256.Int 类型，可能是指针）
+	if (a.Balance == nil && b.Balance != nil) || (a.Balance != nil && b.Balance == nil) {
+		return false // Balance 指针一个为 nil，一个不为 nil
+	}
+	if a.Balance != nil && b.Balance != nil && a.Balance.Cmp(b.Balance) != 0 {
+		return false // 比较 Balance 的具体值
+	}
+
+	// 比较 Root 切片（直接字节切片比较）
+	if !bytes.Equal(a.Root, b.Root) {
+		return false
+	}
+
+	// 比较 CodeHash 切片
+	if !bytes.Equal(a.CodeHash, b.CodeHash) {
+		return false
+	}
+
+	return true // 所有字段都相等
+}
+
 // SlimAccountRLP encodes the state account in 'slim RLP' format.
 func SlimAccountRLP(account StateAccount) []byte {
 	slim := SlimAccount{
