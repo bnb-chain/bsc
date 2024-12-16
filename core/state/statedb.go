@@ -1645,8 +1645,9 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != s.expectedRoot {
-					// log.Info("Richard: start to update and verify the diff")
-					err := s.snaps.Update(s.expectedRoot, parent, s.convertAccountSet(s.stateObjectsDestruct), s.accounts, s.storages, true)
+					if err := s.snaps.CorrectAccounts(s.expectedRoot, parent, s.accounts); err != nil {
+						log.Crit("Failed to correct accounts for diff of block", "block=", block, "error", err)
+					}
 					/*
 											// compare
 											if len(s.r_destructs) != len(s.convertAccountSet(s.stateObjectsDestruct)) || len(s.accounts) != len(s.r_accounts) || len(s.storages) != len(s.r_storages) {
@@ -1786,6 +1787,9 @@ func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 			err := s.snaps.Update(s.expectedRoot, parent, s.r_destructs, s.r_accounts, s.r_storages, false)
 			if err != nil {
 				log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
+			}
+			if err := s.snaps.Cap(s.expectedRoot, s.snaps.CapLimit()); err != nil {
+				log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
 			}
 		}
 	}
