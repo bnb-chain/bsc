@@ -266,5 +266,6 @@ func (l *Lookup) LookupStorage(accountAddrHash common.Hash, slot common.Hash, he
 			return list[i]
 		}
 	}
+	return nil
 	//log.Info("LookupStorage not isDescendant", "acc", accountAddrHash, "head", head)
 }
