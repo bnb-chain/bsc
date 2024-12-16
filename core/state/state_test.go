@@ -19,6 +19,8 @@ package state
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/ethereum/go-ethereum/log"
+	"os"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -193,6 +195,7 @@ func TestSnapshotEmpty(t *testing.T) {
 }
 
 func TestCreateObjectRevert(t *testing.T) {
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stdout, log.LevelInfo, true)))
 	state, _ := New(types.EmptyRootHash, NewDatabaseForTesting())
 	addr := common.BytesToAddress([]byte("so0"))
 	snap := state.Snapshot()

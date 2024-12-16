@@ -107,6 +107,7 @@ func TestDiskMerge(t *testing.T) {
 			},
 		},
 	}
+	snaps.lookup = newLookup(snaps.layers[baseRoot])
 	base := snaps.Snapshot(baseRoot)
 	base.AccountRLP(accNoModCache)
 	base.AccountRLP(accModCache)
@@ -305,6 +306,7 @@ func TestDiskPartialMerge(t *testing.T) {
 				},
 			},
 		}
+		snaps.lookup = newLookup(snaps.layers[baseRoot])
 		snaps.layers[baseRoot].(*diskLayer).genMarker = genMarker
 		base := snaps.Snapshot(baseRoot)
 
@@ -470,6 +472,8 @@ func TestDiskGeneratorPersistence(t *testing.T) {
 			},
 		},
 	}
+	snaps.lookup = newLookup(snaps.layers[baseRoot])
+
 	// Modify or delete some accounts, flatten everything onto disk
 	if err := snaps.Update(diffRoot, baseRoot,
 		map[common.Hash][]byte{
@@ -552,6 +556,7 @@ func TestDiskSeek(t *testing.T) {
 			},
 		},
 	}
+	snaps.lookup = newLookup(snaps.layers[baseRoot])
 	// Test some different seek positions
 	type testcase struct {
 		pos    byte

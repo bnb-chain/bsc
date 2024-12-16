@@ -17,7 +17,11 @@
 package state
 
 import (
+	"bytes"
 	"errors"
+	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/log"
+	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
@@ -31,6 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/database"
 )
+
+var printInternal = 50000
 
 // ContractCodeReader defines the interface for accessing contract code.
 type ContractCodeReader interface {
@@ -127,15 +133,26 @@ func (r *cachingCodeReader) CodeSize(addr common.Address, codeHash common.Hash) 
 type flatReader struct {
 	reader database.StateReader
 	buff   crypto.KeccakState
+
+	stateRoot common.Hash
+	snap      *snapshot.Tree
 }
 
 // newFlatReader constructs a state reader with on the given state root.
-func newFlatReader(reader database.StateReader) *flatReader {
+func newFlatReader(reader database.StateReader, root common.Hash, snap *snapshot.Tree) *flatReader {
 	return &flatReader{
-		reader: reader,
-		buff:   crypto.NewKeccakState(),
+		reader:    reader,
+		buff:      crypto.NewKeccakState(),
+		stateRoot: root,
+		snap:      snap,
 	}
 }
+
+var accountSameCounter int
+var accountDiffCounter int
+
+var storageSameCounter int
+var storageDiffCounter int
 
 // Account implements StateReader, retrieving the account specified by the address.
 //
@@ -144,11 +161,32 @@ func newFlatReader(reader database.StateReader) *flatReader {
 //
 // The returned account might be nil if it's not existent.
 func (r *flatReader) Account(addr common.Address) (*types.StateAccount, error) {
+	var err error
+	accountAddrHash := crypto.HashData(r.buff, addr.Bytes())
+	var lookupAccount *types.SlimAccount
+	//log.Info("stateReader Account 11", "addr", addr, "hash", accountAddrHash)
+	if r.snap != nil {
+		// fastpath
+		//log.Info("stateReader Account", "new root", root, "old root", r.snap.Root())
+		targetLayer := r.snap.LookupAccount(accountAddrHash, r.stateRoot)
+		if targetLayer != nil && !reflect.ValueOf(targetLayer).IsNil() {
+			lookupAccount, err = targetLayer.CurrentLayerAccount(accountAddrHash)
+			if err != nil {
+				log.Info("GlobalLookup.lookupAccount err", "hash", accountAddrHash, "root", r.stateRoot, "err", err)
+			}
+			//log.Info("GlobalLookup.lookupAccount", "hash", accountAddrHash, "root", root, "res", lookupData, "targetLayer", targetLayer)
+		}
+	}
+
 	account, err := r.reader.Account(crypto.HashData(r.buff, addr.Bytes()))
 	if err != nil {
 		return nil, err
 	}
 	if account == nil {
+		if types.AreSlimAccountsEqual(account, lookupAccount) == false {
+			accountDiffCounter++
+			log.Info("stateReader Account not same real account 11", "real data", account, "lookupData", lookupAccount)
+		}
 		return nil, nil
 	}
 	acct := &types.StateAccount{
@@ -163,6 +201,18 @@ func (r *flatReader) Account(addr common.Address) (*types.StateAccount, error) {
 	if acct.Root == (common.Hash{}) {
 		acct.Root = types.EmptyRootHash
 	}
+
+	if types.AreSlimAccountsEqual(account, lookupAccount) == false {
+		accountDiffCounter++
+		log.Info("stateReader Account not same real account 22", "real data", account, "lookupData", lookupAccount)
+	} else {
+		accountSameCounter++
+	}
+
+	if (accountDiffCounter+accountSameCounter)%printInternal == 0 {
+		log.Info("stateReader Account", "accountSameCounter", accountSameCounter, "accountDiffCounter", accountDiffCounter)
+	}
+
 	return acct, nil
 }
 
@@ -176,13 +226,50 @@ func (r *flatReader) Account(addr common.Address) (*types.StateAccount, error) {
 func (r *flatReader) Storage(addr common.Address, key common.Hash) (common.Hash, error) {
 	addrHash := crypto.HashData(r.buff, addr.Bytes())
 	slotHash := crypto.HashData(r.buff, key.Bytes())
+	var lookupData []byte
+	var err error
+	// log.Info("stateReader Storage 11", "addr", addr, "key", key, "addrHash", addrHash, "slotHash", slotHash)
+	if r.snap != nil {
+		// fastpath
+		targetLayer := r.snap.LookupStorage(addrHash, slotHash, r.stateRoot)
+		if targetLayer != nil && !reflect.ValueOf(targetLayer).IsNil() {
+			lookupData, err = targetLayer.CurrentLayerStorage(addrHash, slotHash)
+			if err != nil {
+				log.Info("GlobalLookup.lookupStorage err", "addrHash", addrHash, "slotHash", slotHash, "err", err)
+			}
+			if len(lookupData) == 0 { // can be both nil and []byte{}
+				//log.Info("GlobalLookup.lookupStorage data nil", "addrHash", addrHash, "slotHash", slotHash)
+			}
+			if err == nil && len(lookupData) != 0 {
+				//log.Info("GlobalLookup.lookupStorage", "addrHash", addrHash, "slotHash", slotHash, "res", lookupData)
+			}
+			//return targetLayer.Storage(accountHash, storageHash)
+		}
+		// log.Info("GlobalLookup.lookupStorage", "addrHash", addrHash, "slotHash", slotHash, "res", lookupData)
+	}
+
 	ret, err := r.reader.Storage(addrHash, slotHash)
 	if err != nil {
 		return common.Hash{}, err
 	}
 	if len(ret) == 0 {
+		if len(lookupData) != 0 {
+			storageDiffCounter++
+			log.Info("stateReader Storage not same real account 11", "real data", ret, "lookupData", lookupData)
+		}
 		return common.Hash{}, nil
 	}
+
+	if !bytes.Equal(ret, lookupData) {
+		storageDiffCounter++
+		log.Info("stateReader Storage not same real storage 22", "data", ret, "lookupData", lookupData)
+	} else {
+		storageSameCounter++
+	}
+	if (storageDiffCounter+storageSameCounter)%printInternal == 0 {
+		log.Info("stateReader Storage", "storageSameCounter", storageSameCounter, "storageDiffCounter", storageDiffCounter)
+	}
+
 	// Perform the rlp-decode as the slot value is RLP-encoded in the state
 	// snapshot.
 	_, content, _, err := rlp.Split(ret)

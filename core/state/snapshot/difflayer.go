@@ -216,6 +216,25 @@ func (dl *diffLayer) Stale() bool {
 	return dl.stale.Load()
 }
 
+// isStale returns whether this layer has become stale or if it's still live.
+func (dl *diffLayer) isStale() bool {
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	return dl.stale.Load()
+}
+
+// markStale sets the stale flag as true.
+func (dl *diffLayer) markStale() {
+	dl.lock.Lock()
+	defer dl.lock.Unlock()
+
+	if dl.stale.Load() {
+		panic("triedb diff layer is stale")
+	}
+	dl.stale.Store(true)
+}
+
 // Account directly retrieves the account associated with a particular hash in
 // the snapshot slim data format.
 func (dl *diffLayer) Account(hash common.Hash) (*types.SlimAccount, error) {
@@ -231,6 +250,52 @@ func (dl *diffLayer) Account(hash common.Hash) (*types.SlimAccount, error) {
 		panic(err)
 	}
 	return account, nil
+}
+
+// CurrentLayerAccount directly retrieves the account associated with a particular hash in
+// the snapshot slim data format.
+func (dl *diffLayer) CurrentLayerAccount(hash common.Hash) (*types.SlimAccount, error) {
+	data, err := dl.CurrentLayerAccountRLP(hash)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 { // can be both nil and []byte{}
+		return nil, nil
+	}
+	account := new(types.SlimAccount)
+	if err := rlp.DecodeBytes(data, account); err != nil {
+		panic(err)
+	}
+	return account, nil
+}
+
+// CurrentLayerAccountRLP directly retrieves the account RLP associated with a particular
+// hash in the snapshot slim data format.
+//
+// Note the returned account is not a copy, please don't modify it.
+func (dl *diffLayer) CurrentLayerAccountRLP(hash common.Hash) ([]byte, error) {
+	// Check staleness before reaching further.
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	if dl.Stale() {
+		return nil, ErrSnapshotStale
+	}
+
+	// If the layer was flattened into, consider it invalid (any live reference to
+	// the original should be marked as unusable).
+	if dl.Stale() {
+		return nil, ErrSnapshotStale
+	}
+	// If the account is known locally, return it
+	if data, ok := dl.accountData[hash]; ok {
+		snapshotDirtyAccountHitMeter.Mark(1)
+		snapshotDirtyAccountReadMeter.Mark(int64(len(data)))
+		snapshotBloomAccountTrueHitMeter.Mark(1)
+		return data, nil
+	}
+
+	return nil, nil
 }
 
 // Accounts directly retrieves all accounts in current snapshot in
@@ -312,6 +377,52 @@ func (dl *diffLayer) accountRLP(hash common.Hash, depth int) ([]byte, error) {
 	// Failed to resolve through diff layers, mark a bloom error and use the disk
 	snapshotBloomAccountFalseHitMeter.Mark(1)
 	return dl.parent.AccountRLP(hash)
+}
+
+// CurrentLayerStorage directly retrieves the storage data associated with a particular hash,
+// within a particular account. If the slot is unknown to this diff, it's parent
+// is consulted.
+//
+// Note the returned slot is not a copy, please don't modify it.
+func (dl *diffLayer) CurrentLayerStorage(accountHash, storageHash common.Hash) ([]byte, error) {
+	// Check the bloom filter first whether there's even a point in reaching into
+	// all the maps in all the layers below
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+	// Check staleness before reaching further.
+	if dl.Stale() {
+		return nil, ErrSnapshotStale
+	}
+
+	// If the layer was flattened into, consider it invalid (any live reference to
+	// the original should be marked as unusable).
+	if dl.Stale() {
+		return nil, ErrSnapshotStale
+	}
+	// If the account is known locally, try to resolve the slot locally
+	if storage, ok := dl.storageData[accountHash]; ok {
+		if data, ok := storage[storageHash]; ok {
+			snapshotDirtyStorageHitMeter.Mark(1)
+			//snapshotDirtyStorageHitDepthHist.Update(int64(depth))
+			if n := len(data); n > 0 {
+				snapshotDirtyStorageReadMeter.Mark(int64(n))
+			} else {
+				snapshotDirtyStorageInexMeter.Mark(1)
+			}
+			snapshotBloomStorageTrueHitMeter.Mark(1)
+			return data, nil
+		}
+	}
+	//// If the account is known locally, but deleted, return an empty slot
+	//if _, ok := dl.destructSet[accountHash]; ok {
+	//	snapshotDirtyStorageHitMeter.Mark(1)
+	//	//snapshotDirtyStorageHitDepthHist.Update(int64(depth))
+	//	snapshotDirtyStorageInexMeter.Mark(1)
+	//	snapshotBloomStorageTrueHitMeter.Mark(1)
+	//	return nil, nil
+	//}
+
+	return nil, nil
 }
 
 // Storage directly retrieves the storage data associated with a particular hash,
@@ -408,6 +519,7 @@ func (dl *diffLayer) flatten() snapshot {
 	if parent.stale.Swap(true) {
 		panic("parent diff layer is stale") // we've flattened into the same parent from two children, boo
 	}
+	//log.Info("Layer flattening stale", "layer", parent.Root(), "destructs", len(dl.destructSet))
 	for hash, data := range dl.accountData {
 		parent.accountData[hash] = data
 	}
