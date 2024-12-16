@@ -387,7 +387,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		vmConfig:           vmConfig,
 		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
 		diffQueueBuffer:    make(chan *types.DiffLayer),
-		verifyTaskCh: make(chan *VerifyTask, 32),
+		verifyTaskCh:       make(chan *VerifyTask, 32),
 	}
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
@@ -2281,10 +2281,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			statedb.StopPrefetcher()
 			return it.index, err
 		}
-		ptime := time.Since(pstart)
 		statedb.CommitUnVerifiedSnapDifflayer(bc.chainConfig.IsEIP158(block.Number()))
 
-		blockExecutionTimer.Update(ptime)
 		// Add to cache
 		bc.blockCache.Add(block.Hash(), block)
 		bc.hc.numberCache.Add(block.Hash(), block.NumberU64())
@@ -2295,6 +2293,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		externTd := new(big.Int).Add(block.Difficulty(), ptd)
 
 		bc.hc.tdCache.Add(block.Hash(), externTd)
+
+		blockExecutionTimer.Update(time.Since(pstart))
 
 		//		vstart := time.Now()
 		task := &VerifyTask{
@@ -2307,16 +2307,16 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		bc.verifyTaskCh <- task
 		blockInsertTimer.UpdateSince(start)
 
-	        // Report the import stats before returning the various results
-                stats.processed++
-                stats.usedGas += usedGas
+		// Report the import stats before returning the various results
+		stats.processed++
+		stats.usedGas += usedGas
 
-                var snapDiffItems, snapBufItems common.StorageSize
-                if bc.snaps != nil {
-                        snapDiffItems, snapBufItems, _ = bc.snaps.Size()
-                }
-                trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
-                stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, true)
+		var snapDiffItems, snapBufItems common.StorageSize
+		if bc.snaps != nil {
+			snapDiffItems, snapBufItems, _ = bc.snaps.Size()
+		}
+		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
+		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, true)
 
 		/*\\
 		// Validate the state using the default validator

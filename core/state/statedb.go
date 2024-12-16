@@ -531,7 +531,9 @@ func (s *StateDB) SetNonce(addr common.Address, nonce uint64) {
 func (s *StateDB) SetCode(addr common.Address, code []byte) {
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
-		stateObject.SetCode(crypto.Keccak256Hash(code), code)
+		codeHash := crypto.Keccak256Hash(code)
+		stateObject.SetCode(codeHash, code)
+		s.db.SetCodeCache(codeHash, code)
 	}
 }
 
@@ -1636,7 +1638,7 @@ func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			s.r_accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
-			obj.WriteCode()
+			// obj.WriteCode()
 			pendingstorages := obj.GetPendingStorages()
 			if pendingstorages != nil {
 				s.r_storages[obj.addrHash] = pendingstorages

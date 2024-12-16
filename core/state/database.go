@@ -58,6 +58,9 @@ type Database interface {
 	// CopyTrie returns an independent copy of the given trie.
 	CopyTrie(Trie) Trie
 
+	// SetCodeCache
+	SetCodeCache(codeHash common.Hash, data []byte)
+
 	// ContractCode retrieves a particular contract's code.
 	ContractCode(addr common.Address, codeHash common.Hash) ([]byte, error)
 
@@ -253,6 +256,14 @@ func (db *cachingDB) ContractCode(address common.Address, codeHash common.Hash) 
 		return code, nil
 	}
 	return nil, errors.New("not found")
+}
+
+// SetCodeCache
+func (db *cachingDB) SetCodeCache(codeHash common.Hash, code []byte) {
+	if len(code) > 0 {
+		db.codeCache.Add(codeHash, code)
+		db.codeSizeCache.Add(codeHash, len(code))
+	}
 }
 
 // ContractCodeWithPrefix retrieves a particular contract's code. If the
