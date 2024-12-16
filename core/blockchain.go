@@ -387,8 +387,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		vmConfig:           vmConfig,
 		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
 		diffQueueBuffer:    make(chan *types.DiffLayer),
-		// verifyTaskCh:       make(chan *VerifyTask, 1024),
-		verifyTaskCh: make(chan *VerifyTask, 128),
+		verifyTaskCh: make(chan *VerifyTask, 32),
 	}
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
@@ -2284,7 +2283,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 		ptime := time.Since(pstart)
 		statedb.CommitUnVerifiedSnapDifflayer(bc.chainConfig.IsEIP158(block.Number()))
-		//log.Info("Richard: successfully process", " block=", block.Number())
 
 		blockExecutionTimer.Update(ptime)
 		// Add to cache
@@ -2308,6 +2306,18 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 		bc.verifyTaskCh <- task
 		blockInsertTimer.UpdateSince(start)
+
+	        // Report the import stats before returning the various results
+                stats.processed++
+                stats.usedGas += usedGas
+
+                var snapDiffItems, snapBufItems common.StorageSize
+                if bc.snaps != nil {
+                        snapDiffItems, snapBufItems, _ = bc.snaps.Size()
+                }
+                trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
+                stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, true)
+
 		/*\\
 		// Validate the state using the default validator
 		//vstart := time.Now()
