@@ -488,6 +488,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		if parent, ok := diff.parent.(*diffLayer); ok {
 			if !parent.verified.Load() {
 				diff = parent
+				layers--
 			} else {
 				break
 			}

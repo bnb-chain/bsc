@@ -481,7 +481,7 @@ func (dl *diffLayer) flatten() snapshot {
 		}
 	}
 	// Return the combo parent
-	return &diffLayer{
+	diff := &diffLayer{
 		parent:      parent.parent,
 		origin:      parent.origin,
 		root:        dl.root,
@@ -492,6 +492,8 @@ func (dl *diffLayer) flatten() snapshot {
 		diffed:      dl.diffed,
 		memory:      parent.memory + dl.memory,
 	}
+	diff.verified.Store(true)
+	return diff
 }
 
 // AccountList returns a sorted list of all accounts in this diffLayer, including
