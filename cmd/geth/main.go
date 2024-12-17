@@ -177,7 +177,6 @@ var (
 		utils.GpoMaxGasPriceFlag,
 		utils.GpoIgnoreGasPriceFlag,
 		configFileFlag,
-		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
 		utils.EnableDoubleSignMonitorFlag,
 		utils.VotingEnabledFlag,
