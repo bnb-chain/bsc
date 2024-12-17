@@ -225,6 +225,20 @@ func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
 	}
 }
 
+func (l *Lookup) addFlattenDescendant(bottomDiffLayer Snapshot) {
+	//log.Info("addDescendant", "addDescendant", topDiffLayer.Root())
+
+	// Link the new layer into the descendents set
+	for h := range diffAncestors(bottomDiffLayer) {
+		subset := l.descendants[h]
+		if subset == nil {
+			subset = make(map[common.Hash]struct{})
+			l.descendants[h] = subset
+		}
+		subset[bottomDiffLayer.Root()] = struct{}{}
+	}
+}
+
 func (l *Lookup) removeDescendant(bottomDiffLayer Snapshot) {
 	//log.Info("removeDescendant", "addDescendant", bottomDiffLayer.Root())
 	delete(l.descendants, bottomDiffLayer.Root())
