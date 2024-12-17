@@ -1635,16 +1635,54 @@ func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 	s.r_accounts = make(map[common.Hash][]byte)
 	s.r_storages = make(map[common.Hash]map[common.Hash][]byte)
 
+	type taskResult struct {
+		hash     common.Hash
+		data     []byte
+		storages map[common.Hash][]byte
+	}
+	tasks := make(chan func())
+	taskResults := make(chan *taskResult, len(s.stateObjectsPending))
+	tasksNum := 0
+	finishCh := make(chan struct{})
+	wg := sync.WaitGroup{}
+	for i := 0; i < len(s.stateObjectsPending); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case task := <-tasks:
+					task()
+				case <-finishCh:
+					return
+				}
+			}
+		}()
+	}
+
 	for addr := range s.stateObjectsPending {
 		if obj := s.stateObjects[addr]; !obj.deleted {
-			s.r_accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
-			// obj.WriteCode()
-			pendingstorages := obj.GetPendingStorages()
-			if pendingstorages != nil {
-				s.r_storages[obj.addrHash] = pendingstorages
+			tasks <- func() {
+				// s.r_accounts[obj.addrHash] = types.SlimAccountRLP(obj.data)
+				// obj.WriteCode()
+				taskResult := &taskResult{
+					hash:     obj.addrHash,
+					data:     types.SlimAccountRLP(obj.data),
+					storages: obj.GetPendingStorages(),
+				}
+				taskResults <- taskResult
 			}
+			tasksNum++
 		}
 	}
+	for i := 0; i < tasksNum; i++ {
+		res := <-taskResults
+		s.r_accounts[res.hash] = res.data[:]
+		if res.storages != nil {
+			s.r_storages[res.hash] = res.storages
+		}
+	}
+	close(finishCh)
 
 	if s.snap != nil {
 		if parent := s.snap.Root(); parent != s.expectedRoot {
@@ -1652,9 +1690,11 @@ func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 			if err != nil {
 				log.Warn("Failed to update snapshot tree", "from", parent, "to", s.expectedRoot, "err", err)
 			}
-			if err := s.snaps.Cap(s.expectedRoot, s.snaps.CapLimit()); err != nil {
-				log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
-			}
+			go func() {
+				if err := s.snaps.Cap(s.expectedRoot, s.snaps.CapLimit()); err != nil {
+					log.Warn("Failed to cap snapshot tree", "root", s.expectedRoot, "layers", s.snaps.CapLimit(), "err", err)
+				}
+			}()
 		}
 	}
 }
