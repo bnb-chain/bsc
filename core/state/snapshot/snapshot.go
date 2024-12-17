@@ -586,11 +586,11 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 
 	bottom.lock.RLock()
 	base := diffToDisk(bottom)
-	// Before actually writing all our data to the parent, first ensure that the
-	// parent hasn't been 'corrupted' by someone else already flattening into it
-	if bottom.stale.Swap(true) {
-		panic("parent diff layer is stale") // we've flattened into the same parent from two children, boo
-	}
+	//// Before actually writing all our data to the parent, first ensure that the
+	//// parent hasn't been 'corrupted' by someone else already flattening into it
+	//if bottom.stale.Swap(true) {
+	//	panic("parent diff layer is stale") // we've flattened into the same parent from two children, boo
+	//}
 	//log.Info("diffToDisk", "base", base)
 	bottom.lock.RUnlock()
 
