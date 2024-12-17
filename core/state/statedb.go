@@ -152,6 +152,9 @@ type StateDB struct {
 	SnapshotStorageReads time.Duration
 	SnapshotCommits      time.Duration
 	TrieDBCommits        time.Duration
+	TrieCommits          time.Duration
+	PipeSnapshotCommits  time.Duration
+	CodeCommit           time.Duration
 
 	AccountUpdated int
 	StorageUpdated int
@@ -1430,6 +1433,9 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 
 	commmitTrie := func() error {
 		commitErr := func() error {
+			defer func(start time.Time) {
+				s.TrieCommits += time.Since(start)
+			}(time.Now())
 			if s.stateRoot = s.StateIntermediateRoot(); s.fullProcessed && s.expectedRoot != s.stateRoot {
 				log.Error("Invalid merkle root", "remote", s.expectedRoot, "local", s.stateRoot)
 				return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, s.stateRoot)
@@ -1528,9 +1534,8 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 						return err
 					}
 					s.originalRoot = root
-					if metrics.EnabledExpensive {
-						s.TrieDBCommits += time.Since(start)
-					}
+					s.TrieDBCommits += time.Since(start)
+
 					if s.onCommit != nil {
 						s.onCommit(set)
 					}
@@ -1552,6 +1557,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 
 	commitFuncs := []func() error{
 		func() error {
+			defer func(start time.Time) { s.CodeCommit += time.Since(start) }(time.Now())
 			codeWriter := s.db.DiskDB().NewBatch()
 			for addr := range s.stateObjectsDirty {
 				if obj := s.stateObjects[addr]; !obj.deleted {
@@ -1585,9 +1591,9 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 		func() error {
 			// If snapshotting is enabled, update the snapshot tree with this new version
 			if s.snap != nil {
-				if metrics.EnabledExpensive {
-					defer func(start time.Time) { s.SnapshotCommits += time.Since(start) }(time.Now())
-				}
+
+				defer func(start time.Time) { s.SnapshotCommits += time.Since(start) }(time.Now())
+
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != s.expectedRoot {
@@ -1706,7 +1712,7 @@ func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 			}()
 		}
 	}
-	s.SnapshotCommits += time.Since(start)
+	s.PipeSnapshotCommits += time.Since(start)
 }
 
 func (s *StateDB) SnapToDiffLayer() ([]common.Address, []types.DiffAccount, []types.DiffStorage) {

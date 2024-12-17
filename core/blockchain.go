@@ -88,13 +88,21 @@ var (
 	snapshotAccountReadTimer = metrics.NewRegisteredTimer("chain/snapshot/account/reads", nil)
 	snapshotStorageReadTimer = metrics.NewRegisteredTimer("chain/snapshot/storage/reads", nil)
 	snapshotCommitTimer      = metrics.NewRegisteredTimer("chain/snapshot/commits", nil)
+	pipeSnapshotCommitTimer  = metrics.NewRegisteredTimer("chain/pipesnapshot/commits", nil)
 
-	triedbCommitTimer = metrics.NewRegisteredTimer("chain/triedb/commits", nil)
+	verifyTaskBlockTimer = metrics.NewRegisteredTimer("chain/verify", nil)
+	triedbCommitTimer    = metrics.NewRegisteredTimer("chain/triedb/commits", nil)
+	trieCommitTimer      = metrics.NewRegisteredTimer("chain/trie/commits", nil)
+	CodeCommitTimer      = metrics.NewRegisteredTimer("chain/code/commits", nil)
+	blockCommitTimer     = metrics.NewRegisteredTimer("chain/block/commits", nil)
 
-	blockInsertTimer     = metrics.NewRegisteredTimer("chain/inserts", nil)
-	blockValidationTimer = metrics.NewRegisteredTimer("chain/validation", nil)
-	blockExecutionTimer  = metrics.NewRegisteredTimer("chain/execution", nil)
-	blockWriteTimer      = metrics.NewRegisteredTimer("chain/write", nil)
+	blockInsertTimer             = metrics.NewRegisteredTimer("chain/inserts", nil)
+	blockValidationTimer         = metrics.NewRegisteredTimer("chain/validation", nil)
+	blockExecutionTimer          = metrics.NewRegisteredTimer("chain/execution", nil)
+	blockExecutionAndCommitTimer = metrics.NewRegisteredTimer("chain/pipeexecution", nil)
+	blockStartTimer              = metrics.NewRegisteredTimer("chain/start", nil)
+	blockWriteTimer              = metrics.NewRegisteredTimer("chain/write", nil)
+	blockWriteTotalTimer         = metrics.NewRegisteredTimer("chain/writetotal", nil)
 
 	blockReorgMeter     = metrics.NewRegisteredMeter("chain/reorg/executes", nil)
 	blockReorgAddMeter  = metrics.NewRegisteredMeter("chain/reorg/add", nil)
@@ -2274,6 +2282,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		// Process block using the parent state as reference point
 		statedb.SetExpectedStateRoot(block.Root())
 		pstart := time.Now()
+		blockStartTimer.UpdateSince(start)
 		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
 		close(interruptCh) // state prefetch can be stopped
 		if err != nil {
@@ -2281,8 +2290,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			statedb.StopPrefetcher()
 			return it.index, err
 		}
-		statedb.CommitUnVerifiedSnapDifflayer(bc.chainConfig.IsEIP158(block.Number()))
+		blockExecutionTimer.Update(time.Since(pstart))
 
+		statedb.CommitUnVerifiedSnapDifflayer(bc.chainConfig.IsEIP158(block.Number()))
+		pipeSnapshotCommitTimer.Update(statedb.PipeSnapshotCommits)
 		// Add to cache
 		bc.blockCache.Add(block.Hash(), block)
 		bc.hc.numberCache.Add(block.Hash(), block.NumberU64())
@@ -2294,9 +2305,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 
 		bc.hc.tdCache.Add(block.Hash(), externTd)
 
-		blockExecutionTimer.Update(time.Since(pstart))
+		blockExecutionAndCommitTimer.Update(time.Since(pstart))
 
-		//		vstart := time.Now()
+		vstart := time.Now()
 		task := &VerifyTask{
 			block:    block,
 			state:    statedb,
@@ -2305,6 +2316,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			logs:     logs,
 		}
 		bc.verifyTaskCh <- task
+		verifyTaskBlockTimer.UpdateSince(vstart)
 		blockInsertTimer.UpdateSince(start)
 
 		// Report the import stats before returning the various results
@@ -2462,6 +2474,7 @@ func (bc *BlockChain) VerifyLoop() {
 			}
 			blockValidationTimer.UpdateSince(vstart)
 
+			cstart := time.Now()
 			wg.Add(1)
 			go func() {
 				cstart := time.Now()
@@ -2479,11 +2492,16 @@ func (bc *BlockChain) VerifyLoop() {
 					log.Crit("write block and set head failed", "error", err)
 				}
 				bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
-				triedbCommitTimer.UpdateSince(cstart)
+				blockCommitTimer.UpdateSince(cstart)
 				wg.Done()
 			}()
 
 			wg.Wait()
+			blockWriteTotalTimer.UpdateSince(cstart)
+			triedbCommitTimer.Update(task.state.TrieDBCommits)
+			trieCommitTimer.Update(task.state.TrieCommits)
+			CodeCommitTimer.Update(task.state.CodeCommit)
+			snapshotCommitTimer.Update(task.state.SnapshotCommits)
 		}
 	}
 }

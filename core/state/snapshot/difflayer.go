@@ -290,6 +290,10 @@ func (dl *diffLayer) Accounts() (map[common.Hash]*types.SlimAccount, error) {
 func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	// Check staleness before reaching further.
 	dl.lock.RLock()
+	start := time.Now()
+	defer func() {
+		snapshotAccountReadMeter.UpdateSince(start)
+	}()
 	if dl.Stale() {
 		dl.lock.RUnlock()
 		return nil, ErrSnapshotStale
@@ -312,7 +316,7 @@ func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 		snapshotBloomAccountMissMeter.Mark(1)
 		return origin.AccountRLP(hash)
 	}
-		
+
 	// The bloom filter hit, start poking in the internal maps
 	return dl.accountRLP(hash, 0)
 }
@@ -363,6 +367,10 @@ func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	// Check the bloom filter first whether there's even a point in reaching into
 	// all the maps in all the layers below
 	dl.lock.RLock()
+	start := time.Now()
+	defer func() {
+		snapshotStorageReadMeter.UpdateSince(start)
+	}()
 	// Check staleness before reaching further.
 	if dl.Stale() {
 		dl.lock.RUnlock()
