@@ -387,6 +387,12 @@ var (
 		Value:    ethconfig.Defaults.TransactionHistory,
 		Category: flags.StateCategory,
 	}
+	BlockHistoryFlag = &cli.Uint64Flag{
+		Name:     "history.blocks",
+		Usage:    "Number of recent blocks to maintain in DB (default = 0, 0 = entire chain). Notice!! it only prunes old blocks when starting, and pruning is not involving TxIndex/bloomIndex.",
+		Value:    ethconfig.Defaults.BlockHistory,
+		Category: flags.BlockHistoryCategory,
+	}
 	// Beacon client light sync settings
 	BeaconApiFlag = &cli.StringSliceFlag{
 		Name:     "beacon.api",
@@ -2056,6 +2062,13 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		log.Warn("The flag --txlookuplimit is deprecated and will be removed, please use --history.transactions")
 		cfg.TransactionHistory = ctx.Uint64(TxLookupLimitFlag.Name)
 	}
+	if ctx.IsSet(BlockHistoryFlag.Name) {
+		cfg.BlockHistory = ctx.Uint64(BlockHistoryFlag.Name)
+		if cfg.BlockHistory != 0 && cfg.BlockHistory < params.FullImmutabilityThreshold {
+			log.Warn("The number of block history is too small, that it will force to 90000")
+			cfg.BlockHistory = params.FullImmutabilityThreshold
+		}
+	}
 	if ctx.IsSet(PathDBSyncFlag.Name) {
 		cfg.PathSyncFlush = true
 	}
@@ -2069,6 +2082,10 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 
 		cfg.StateScheme = rawdb.HashScheme
 		log.Warn("Forcing hash state-scheme for archive mode")
+	}
+	if ctx.String(GCModeFlag.Name) == "archive" && cfg.BlockHistory != 0 {
+		cfg.BlockHistory = 0
+		log.Warn("Disabled partial block reserve for archive node")
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheTrieFlag.Name) {
 		cfg.TrieCleanCache = ctx.Int(CacheFlag.Name) * ctx.Int(CacheTrieFlag.Name) / 100
