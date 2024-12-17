@@ -1453,23 +1453,29 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool) (*stateU
 		}
 	}
 	if !ret.empty() {
-		// If snapshotting is enabled, update the snapshot tree with this new version
-		if snap := s.db.Snapshot(); snap != nil && snap.Snapshot(ret.originRoot) != nil {
-			start := time.Now()
-			if err := snap.Update(ret.root, ret.originRoot, ret.accounts, ret.storages); err != nil {
-				log.Warn("Failed to update snapshot tree", "from", ret.originRoot, "to", ret.root, "err", err)
-			}
-			// Keep 128 diff layers in the memory, persistent layer is 129th.
-			// - head layer is paired with HEAD state
-			// - head-1 layer is paired with HEAD-1 state
-			// - head-127 layer(bottom-most diff layer) is paired with HEAD-127 state
-			go func() {
-				if err := snap.Cap(ret.root, snap.CapLimit()); err != nil {
-					log.Warn("Failed to cap snapshot tree", "root", ret.root, "layers", TriesInMemory, "err", err)
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			wg.Done()
+			// If snapshotting is enabled, update the snapshot tree with this new version
+			if snap := s.db.Snapshot(); snap != nil && snap.Snapshot(ret.originRoot) != nil {
+				start := time.Now()
+				if err := snap.Update(ret.root, ret.originRoot, ret.accounts, ret.storages); err != nil {
+					log.Warn("Failed to update snapshot tree", "from", ret.originRoot, "to", ret.root, "err", err)
 				}
-			}()
-			s.SnapshotCommits += time.Since(start)
-		}
+				// Keep 128 diff layers in the memory, persistent layer is 129th.
+				// - head layer is paired with HEAD state
+				// - head-1 layer is paired with HEAD-1 state
+				// - head-127 layer(bottom-most diff layer) is paired with HEAD-127 state
+				go func() {
+					if err := snap.Cap(ret.root, snap.CapLimit()); err != nil {
+						log.Warn("Failed to cap snapshot tree", "root", ret.root, "layers", TriesInMemory, "err", err)
+					}
+				}()
+				s.SnapshotCommits += time.Since(start)
+			}
+		}()
+
 		// If trie database is enabled, commit the state update as a new layer
 		if db := s.db.TrieDB(); db != nil && !s.noTrie {
 			start := time.Now()
@@ -1478,6 +1484,7 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool) (*stateU
 			}
 			s.TrieDBCommits += time.Since(start)
 		}
+		wg.Wait()
 	}
 	s.reader, _ = s.db.Reader(s.originalRoot)
 	return ret, err

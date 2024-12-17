@@ -19,6 +19,7 @@ package snapshot
 import (
 	"bytes"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -108,6 +109,12 @@ func (dl *diskLayer) Account(hash common.Hash) (*types.SlimAccount, error) {
 // CurrentLayerAccount directly retrieves the account associated with a particular hash in
 // the snapshot slim data format.
 func (dl *diskLayer) CurrentLayerAccount(hash common.Hash) (*types.SlimAccount, error) {
+	pstart := time.Now()
+	defer func() {
+		ptime := time.Since(pstart)
+		snapshotDiskLayerAccountTimer.Update(ptime)
+		snapshotDiskLayerAccountMeter.Mark(1)
+	}()
 	data, err := dl.AccountRLP(hash)
 	if err != nil {
 		return nil, err
@@ -125,6 +132,13 @@ func (dl *diskLayer) CurrentLayerAccount(hash common.Hash) (*types.SlimAccount, 
 // AccountRLP directly retrieves the account RLP associated with a particular
 // hash in the snapshot slim data format.
 func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
+	pstart := time.Now()
+	defer func() {
+		ptime := time.Since(pstart)
+		snapshotDiskLayerAccountTimer.Update(ptime)
+		snapshotDiskLayerAccountMeter.Mark(1)
+	}()
+
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
@@ -163,6 +177,13 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 // Storage directly retrieves the storage data associated with a particular hash,
 // within a particular account.
 func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
+	pstart := time.Now()
+	defer func() {
+		ptime := time.Since(pstart)
+		snapshotDiskLayerStorageTimer.Update(ptime)
+		snapshotDiskLayerStorageMeter.Mark(1)
+	}()
+
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
@@ -203,6 +224,12 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 // CurrentLayerStorage directly retrieves the storage data associated with a particular hash,
 // within a particular account.
 func (dl *diskLayer) CurrentLayerStorage(accountHash, storageHash common.Hash) ([]byte, error) {
+	pstart := time.Now()
+	defer func() {
+		ptime := time.Since(pstart)
+		snapshotDiskLayerStorageTimer.Update(ptime)
+		snapshotDiskLayerStorageMeter.Mark(1)
+	}()
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 

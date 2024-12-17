@@ -28,6 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	bloomfilter "github.com/holiman/bloomfilter/v2"
 	"golang.org/x/exp/maps"
@@ -171,6 +172,7 @@ func (dl *diffLayer) rebloom(origin *diskLayer) {
 
 	// Inject the new origin that triggered the rebloom
 	dl.origin = origin
+	return
 
 	// Retrieve the parent bloom or create a fresh empty one
 	if parent, ok := dl.parent.(*diffLayer); ok {
@@ -216,25 +218,6 @@ func (dl *diffLayer) Stale() bool {
 	return dl.stale.Load()
 }
 
-// isStale returns whether this layer has become stale or if it's still live.
-func (dl *diffLayer) isStale() bool {
-	dl.lock.RLock()
-	defer dl.lock.RUnlock()
-
-	return dl.stale.Load()
-}
-
-// markStale sets the stale flag as true.
-func (dl *diffLayer) markStale() {
-	dl.lock.Lock()
-	defer dl.lock.Unlock()
-
-	if dl.stale.Load() {
-		panic("triedb diff layer is stale")
-	}
-	dl.stale.Store(true)
-}
-
 // Account directly retrieves the account associated with a particular hash in
 // the snapshot slim data format.
 func (dl *diffLayer) Account(hash common.Hash) (*types.SlimAccount, error) {
@@ -255,6 +238,12 @@ func (dl *diffLayer) Account(hash common.Hash) (*types.SlimAccount, error) {
 // CurrentLayerAccount directly retrieves the account associated with a particular hash in
 // the snapshot slim data format.
 func (dl *diffLayer) CurrentLayerAccount(hash common.Hash) (*types.SlimAccount, error) {
+	pstart := time.Now()
+	defer func() {
+		ptime := time.Since(pstart)
+		snapshotDiffLayerAccountTimer.Update(ptime)
+		snapshotDiffLayerAccountMeter.Mark(1)
+	}()
 	data, err := dl.CurrentLayerAccountRLP(hash)
 	if err != nil {
 		return nil, err
@@ -274,6 +263,8 @@ func (dl *diffLayer) CurrentLayerAccount(hash common.Hash) (*types.SlimAccount, 
 //
 // Note the returned account is not a copy, please don't modify it.
 func (dl *diffLayer) CurrentLayerAccountRLP(hash common.Hash) ([]byte, error) {
+	pstart := time.Now()
+
 	// Check staleness before reaching further.
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
@@ -292,7 +283,21 @@ func (dl *diffLayer) CurrentLayerAccountRLP(hash common.Hash) ([]byte, error) {
 		snapshotDirtyAccountHitMeter.Mark(1)
 		snapshotDirtyAccountReadMeter.Mark(int64(len(data)))
 		snapshotBloomAccountTrueHitMeter.Mark(1)
+		ptime := time.Since(pstart)
+		snapshotBaseDiffLayerAccountTimer.Update(ptime)
+		snapshotBaseDiffLayerAccountMeter.Mark(1)
 		return data, nil
+	}
+
+	ptime := time.Since(pstart)
+	snapshotBaseDiffLayerAccountTimer.Update(ptime)
+
+	// Storage slot unknown to this diff, resolve from parent
+	if disk, ok := dl.parent.(*diskLayer); ok {
+		return disk.AccountRLP(hash)
+	} else {
+		// TODO may error look up cache failed
+		log.Error("Account error look up cache failed ----")
 	}
 
 	return nil, nil
@@ -387,6 +392,12 @@ func (dl *diffLayer) accountRLP(hash common.Hash, depth int) ([]byte, error) {
 func (dl *diffLayer) CurrentLayerStorage(accountHash, storageHash common.Hash) ([]byte, error) {
 	// Check the bloom filter first whether there's even a point in reaching into
 	// all the maps in all the layers below
+	pstart := time.Now()
+	defer func() {
+		ptime := time.Since(pstart)
+		snapshotDiffLayerStorageTimer.Update(ptime)
+		snapshotDiffLayerStorageMeter.Mark(1)
+	}()
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 	// Check staleness before reaching further.
@@ -410,17 +421,19 @@ func (dl *diffLayer) CurrentLayerStorage(accountHash, storageHash common.Hash) (
 				snapshotDirtyStorageInexMeter.Mark(1)
 			}
 			snapshotBloomStorageTrueHitMeter.Mark(1)
+			snapshotBaseDiffLayerStorageTimer.Update(time.Since(pstart))
 			return data, nil
 		}
 	}
-	//// If the account is known locally, but deleted, return an empty slot
-	//if _, ok := dl.destructSet[accountHash]; ok {
-	//	snapshotDirtyStorageHitMeter.Mark(1)
-	//	//snapshotDirtyStorageHitDepthHist.Update(int64(depth))
-	//	snapshotDirtyStorageInexMeter.Mark(1)
-	//	snapshotBloomStorageTrueHitMeter.Mark(1)
-	//	return nil, nil
-	//}
+
+	snapshotBaseDiffLayerStorageTimer.Update(time.Since(pstart))
+	// Storage slot unknown to this diff, resolve from parent
+	if disk, ok := dl.parent.(*diskLayer); ok {
+		return disk.Storage(accountHash, storageHash)
+	} else {
+		// TODO may error look up cache failed
+		log.Error("Account error look up cache failed ----")
+	}
 
 	return nil, nil
 }

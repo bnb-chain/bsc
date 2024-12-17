@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -76,6 +77,19 @@ var (
 	snapshotBloomStorageFalseHitMeter = metrics.NewRegisteredMeter("state/snapshot/bloom/storage/falsehit", nil)
 	snapshotBloomStorageMissMeter     = metrics.NewRegisteredMeter("state/snapshot/bloom/storage/miss", nil)
 
+	snapshotDiffLayerAccountTimer     = metrics.NewRegisteredResettingTimer("state/snapshot/diffLayer/account", nil)
+	snapshotDiskLayerAccountTimer     = metrics.NewRegisteredResettingTimer("state/snapshot/diskLayer/account", nil)
+	snapshotBaseDiffLayerAccountTimer = metrics.NewRegisteredResettingTimer("state/snapshot/diffLayer/base/account", nil)
+	snapshotDiffLayerStorageTimer     = metrics.NewRegisteredResettingTimer("state/snapshot/diffLayer/storage", nil)
+	snapshotBaseDiffLayerStorageTimer = metrics.NewRegisteredResettingTimer("state/snapshot/diffLayer/base/storage", nil)
+	snapshotDiskLayerStorageTimer     = metrics.NewRegisteredResettingTimer("state/snapshot/diskLayer/storage", nil)
+
+	snapshotDiffLayerAccountMeter     = metrics.NewRegisteredMeter("state/snapshot/diffLayer/accounthit", nil)
+	snapshotBaseDiffLayerAccountMeter = metrics.NewRegisteredMeter("state/snapshot/diffLayer/base/accounthit", nil)
+	snapshotDiskLayerAccountMeter     = metrics.NewRegisteredMeter("state/snapshot/diskLayer/accounthit", nil)
+	snapshotDiffLayerStorageMeter     = metrics.NewRegisteredMeter("state/snapshot/diffLayer/storagehit", nil)
+	snapshotDiskLayerStorageMeter     = metrics.NewRegisteredMeter("state/snapshot/diskLayer/storagehit", nil)
+
 	// ErrSnapshotStale is returned from data accessors if the underlying snapshot
 	// layer had been invalidated due to the chain progressing forward far enough
 	// to not maintain the layer's original state.
@@ -104,7 +118,7 @@ type Snapshot interface {
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*types.SlimAccount, error)
 
-	// Account directly retrieves the account associated with a particular hash in
+	// CurrentLayerAccount directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	CurrentLayerAccount(hash common.Hash) (*types.SlimAccount, error)
 
@@ -120,7 +134,7 @@ type Snapshot interface {
 	// within a particular account.
 	Storage(accountHash, storageHash common.Hash) ([]byte, error)
 
-	// Storage directly retrieves the storage data associated with a particular hash,
+	// CurrentLayerStorage directly retrieves the storage data associated with a particular hash,
 	// within a particular account.
 	CurrentLayerStorage(accountHash, storageHash common.Hash) ([]byte, error)
 
@@ -174,14 +188,16 @@ type Config struct {
 // storage data to avoid expensive multi-level trie lookups; and to allow sorted,
 // cheap iteration of the account/storage tries for sync aid.
 type Tree struct {
-	config   Config                   // Snapshots configurations
-	diskdb   ethdb.KeyValueStore      // Persistent database to store the snapshot
-	triedb   *triedb.Database         // In-memory cache to access the trie through
-	layers   map[common.Hash]snapshot // Collection of all known layers
-	lock     sync.RWMutex
-	capLimit int
+	config     Config                   // Snapshots configurations
+	diskdb     ethdb.KeyValueStore      // Persistent database to store the snapshot
+	triedb     *triedb.Database         // In-memory cache to access the trie through
+	layers     map[common.Hash]snapshot // Collection of all known layers
+	lock       sync.RWMutex
+	lookupLock sync.RWMutex
+	capLimit   int
 
 	base        *diskLayer
+	baseDiff    *diffLayer
 	descendants map[common.Hash]map[common.Hash]struct{}
 	lookup      *Lookup
 
@@ -206,7 +222,6 @@ type Tree struct {
 //   - otherwise, the entire snapshot is considered invalid and will be recreated on
 //     a background thread.
 func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, root common.Hash, cap int, withoutTrie bool) (*Tree, error) {
-	log.Info("New snapshot")
 	snap := &Tree{
 		config:   config,
 		diskdb:   diskdb,
@@ -233,21 +248,28 @@ func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, roo
 		return nil, err // Bail out the error, don't rebuild automatically.
 	}
 
-	{
-		// TODO:
-		snap.lookup = newLookup(head)
-		log.Info("init GlobalLookup success")
-	}
+	// TODO:
+	snap.lookup = newLookup(head)
+	snap.baseDiff = nil
+	snap.base = nil
 
 	// Existing snapshot loaded, seed all the layers
+	var prev snapshot
 	for head != nil {
-		if layer, ok := head.(*diskLayer); ok {
-			snap.base = layer // panic if it's a diff layer
+		if _, ok := head.(*diskLayer); ok {
+			// TODO prev is nil, when load
+			//snap.base = head.(*diskLayer)
+			snap.base = head.(*diskLayer)
+			if prev != nil {
+				snap.baseDiff = prev.(*diffLayer)
+				log.Info("Snapshot loaded set", "diskRoot", snap.diskRoot(), "root", root, "snap.baseDiff root", snap.baseDiff.Root())
+			}
 		}
 		snap.layers[head.Root()] = head
+		prev = head
 		head = head.Parent()
 	}
-	log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root)
+	log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root, "snap.baseDiff root", snap.baseDiff)
 	return snap, nil
 }
 
@@ -391,8 +413,13 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, accounts ma
 		// update lookup, which in the tree lock guard.
 		t.lookup.addLayer(snap)
 		t.lookup.addDescendant(snap)
+		if t.baseDiff == nil || reflect.ValueOf(t.baseDiff).IsNil() {
+			t.baseDiff = snap
+			log.Info("Snapshot set base diff layer", "blockRoot", blockRoot, "snap.baseDiff", t.baseDiff)
+		}
+		//log.Info("Snapshot loaded ", "snap.baseDiff", t.baseDiff)
 	}
-	log.Debug("Snapshot updated", "blockRoot", blockRoot)
+	//log.Info("Snapshot updated", "blockRoot", blockRoot, "snap.baseDiff", t.baseDiff)
 	return nil
 }
 
@@ -463,8 +490,7 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 		if !ok {
 			return
 		}
-		//diff.markStale()
-		log.Info("Layer clearing descendant 11", "layer", diff.Root())
+		//log.Info("Layer clearing descendant 11", "layer", diff.Root())
 		t.lookup.removeDescendant(snap)
 		t.lookup.removeLayer(diff)
 	}
@@ -495,7 +521,6 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 			}
 		}
 		rebloom(persisted.root)
-		t.base = persisted
 	}
 	//log.Info("Snapshot capped", "root", root, "base", t.base)
 	return nil
@@ -540,9 +565,12 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		// write lock on grandparent.
 		flattened := parent.flatten().(*diffLayer)
 		t.layers[flattened.root] = flattened
-		t.lookup.addLayer(flattened)
-		//t.lookup.addFlattenDescendant(flattened)
-		log.Info("diffLayer flattened", "flattened.root", flattened.root, "flattened", flattened)
+		{
+			t.lookupLock.Lock()
+			defer t.lookupLock.Unlock()
+			t.baseDiff = flattened
+		}
+		//log.Info("diffLayer flattened", "flattened.root", flattened.root, "flattened", flattened)
 		// TODO:
 
 		// Invoke the hook if it's registered. Ugly hack.
@@ -563,24 +591,18 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		panic(fmt.Sprintf("unknown data layer: %T", parent))
 	}
 
-	//var (
-	//	replaced snapshot
-	//)
-	//clearDiff := func(snap snapshot) {
-	//	diff, ok := snap.(*diffLayer)
-	//	if !ok {
-	//		return
-	//	}
-	//	// TODO: fix: already stale
-	//	//diff.markStale()
-	//	log.Info("Layer clearing descendant in cap", "layer", diff, "destructs", len(diff.destructSet), "accounts", len(diff.accountData), "storage", len(diff.storageData))
-	//	GlobalLookup.removeDescendant(snap)
-	//	GlobalLookup.removeLayer(diff)
-	//}
+	clearDiff := func(snap snapshot) {
+		diff, ok := snap.(*diffLayer)
+		if !ok {
+			return
+		}
+		// TODO: fix: already stale
+		//log.Info("Layer clearing descendant in cap", "layer", diff.Root())
+		t.lookup.removeDescendant(snap)
+		t.lookup.removeLayer(diff)
+	}
 
 	//TODO:check it?
-	//replaced = diff.parent
-
 	// If the bottom-most layer is larger than our memory cap, persist to disk
 	bottom := diff.parent.(*diffLayer)
 
@@ -593,11 +615,14 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	//}
 	//log.Info("diffToDisk", "base", base)
 	bottom.lock.RUnlock()
-
+	{
+		t.lookupLock.Lock()
+		defer t.lookupLock.Unlock()
+		t.baseDiff = diff
+	}
+	clearDiff(bottom)
 	t.layers[base.root] = base
 	diff.parent = base
-
-	//clearDiff(replaced)
 	return base
 }
 
@@ -816,8 +841,8 @@ func (t *Tree) Rebuild(root common.Hash) {
 		root: disk,
 	}
 	// TODO : check it ??
-	t.base = disk
 	t.lookup = newLookup(t.layers[root])
+	t.base = disk
 	log.Info("init GlobalLookup success")
 }
 
@@ -953,25 +978,48 @@ func (t *Tree) Size() (diffs common.StorageSize, buf common.StorageSize, preimag
 	return size, 0, 0
 }
 
-func (tree *Tree) LookupAccount(accountAddrHash common.Hash, head common.Hash) Snapshot {
-	tree.lock.RLock()
-	defer tree.lock.RUnlock()
+func (tree *Tree) LookupAccount(accountAddrHash common.Hash, head common.Hash) (*types.SlimAccount, error) {
+	tree.lookupLock.RLock()
+	defer tree.lookupLock.RUnlock()
 
 	targetLayer := tree.lookup.LookupAccount(accountAddrHash, head)
 	//log.Info("targetLayer LookupAccount ", "targetLayer", targetLayer)
 	if targetLayer == nil {
-		return tree.base
+		if tree.baseDiff == nil {
+			log.Info("LookupAccount", "targetLayer", targetLayer)
+			targetLayer = tree.base
+		} else {
+			targetLayer = tree.baseDiff
+		}
 	}
-	return targetLayer
+
+	if targetLayer != nil && !reflect.ValueOf(targetLayer).IsNil() {
+		lookupAccount, err := targetLayer.CurrentLayerAccount(accountAddrHash)
+		return lookupAccount, err
+	} else {
+		log.Error("GlobalLookup.lookupAccount err", "acc hash", accountAddrHash, "targetLayer", targetLayer)
+	}
+	return nil, nil
 }
 
-func (tree *Tree) LookupStorage(accountAddrHash common.Hash, slot common.Hash, head common.Hash) Snapshot {
-	tree.lock.RLock()
-	defer tree.lock.RUnlock()
+func (tree *Tree) LookupStorage(accountAddrHash common.Hash, slot common.Hash, head common.Hash) ([]byte, error) {
+	tree.lookupLock.RLock()
+	defer tree.lookupLock.RUnlock()
 
 	targetLayer := tree.lookup.LookupStorage(accountAddrHash, slot, head)
 	if targetLayer == nil {
-		return tree.base
+		if tree.baseDiff == nil {
+			targetLayer = tree.base
+			log.Info("LookupStorage", "targetLayer", targetLayer)
+		} else {
+			targetLayer = tree.baseDiff
+		}
 	}
-	return targetLayer
+
+	if targetLayer != nil && !reflect.ValueOf(targetLayer).IsNil() {
+		lookupData, err := targetLayer.CurrentLayerStorage(accountAddrHash, slot)
+		return lookupData, err
+	}
+
+	return nil, nil
 }
