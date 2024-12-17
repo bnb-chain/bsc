@@ -108,6 +108,7 @@ var (
 		utils.SnapshotFlag,
 		utils.TxLookupLimitFlag, // deprecated
 		utils.TransactionHistoryFlag,
+		utils.BlockHistoryFlag,
 		utils.StateHistoryFlag,
 		utils.PathDBSyncFlag,
 		utils.JournalFileFlag,
