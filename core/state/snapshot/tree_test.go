@@ -66,13 +66,13 @@ func TestLayerCap(t *testing.T) {
 
 			init: func() *Tree {
 				tr := newTestLayerTree()
-				tr.Update(common.Hash{0x2}, common.Hash{0x1}, nil, map[common.Hash][]byte{
+				tr.Update(common.Hash{0x2}, common.Hash{0x1}, map[common.Hash][]byte{
 					common.HexToHash("0xa1"): randomAccount(),
 				}, nil)
-				tr.Update(common.Hash{0x3}, common.Hash{0x1}, nil, map[common.Hash][]byte{
+				tr.Update(common.Hash{0x3}, common.Hash{0x1}, map[common.Hash][]byte{
 					common.HexToHash("0xa2"): randomAccount(),
 				}, nil)
-				tr.Update(common.Hash{0x4}, common.Hash{0x1}, nil, map[common.Hash][]byte{
+				tr.Update(common.Hash{0x4}, common.Hash{0x1}, map[common.Hash][]byte{
 					common.HexToHash("0xa3"): randomAccount(),
 				}, nil)
 				return tr
@@ -237,7 +237,7 @@ func TestDescendant(t *testing.T) {
 			//   C1->C2 (HEAD)
 			init: func() *Tree {
 				tr := newTestLayerTree()
-				err := tr.Update(common.Hash{0x2}, common.Hash{0x1}, nil, nil, nil)
+				err := tr.Update(common.Hash{0x2}, common.Hash{0x1}, nil, nil)
 				if err != nil {
 					fmt.Printf("Update error: %v\n", err)
 				}
@@ -247,7 +247,7 @@ func TestDescendant(t *testing.T) {
 			// Chain:
 			//   C1->C2->C3 (HEAD)
 			op: func(tr *Tree) {
-				err := tr.Update(common.Hash{0x3}, common.Hash{0x2}, nil, nil, nil)
+				err := tr.Update(common.Hash{0x3}, common.Hash{0x2}, nil, nil)
 				if err != nil {
 					fmt.Printf("Update error: %v\n", err)
 				}
@@ -543,7 +543,7 @@ func TestSnaphotsDescendants(t *testing.T) {
 	)
 	for i := 1; i < 150; i++ {
 		head = makeRoot(uint64(i + 2))
-		snaps.Update(head, last, nil, setAccount(fmt.Sprintf("%d", i+2)), nil)
+		snaps.Update(head, last, setAccount(fmt.Sprintf("%d", i+2)), nil)
 		last = head
 		snaps.Cap(head, 128) // 130 layers (128 diffs + 1 accumulator + 1 disk)
 	}
