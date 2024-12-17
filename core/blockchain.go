@@ -2311,12 +2311,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		stats.processed++
 		stats.usedGas += usedGas
 
-		var snapDiffItems, snapBufItems common.StorageSize
-		if bc.snaps != nil {
-			snapDiffItems, snapBufItems, _ = bc.snaps.Size()
-		}
-		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
-		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, true)
+		stats.report(chain, it.index, 0, 0, 0, 0, 0, true)
 
 		/*\\
 		// Validate the state using the default validator

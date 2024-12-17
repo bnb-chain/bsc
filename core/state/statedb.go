@@ -1629,6 +1629,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 }
 
 func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
+	start := time.Now()
 	s.Finalise(deleteEmptyObjects)
 
 	s.r_destructs = s.convertAccountSet(s.stateObjectsDestruct)
@@ -1697,6 +1698,7 @@ func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 			}()
 		}
 	}
+	s.SnapshotCommits += time.Since(start)
 }
 
 func (s *StateDB) SnapToDiffLayer() ([]common.Address, []types.DiffAccount, []types.DiffStorage) {
