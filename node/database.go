@@ -38,7 +38,6 @@ type openOptions struct {
 	ReadOnly          bool
 
 	DisableFreeze    bool
-	IsLastOffset     bool
 	PruneAncientData bool
 	MultiDataBase    bool
 }
@@ -61,7 +60,7 @@ func openDatabase(o openOptions) (ethdb.Database, error) {
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
-	frdb, err := rawdb.NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.IsLastOffset, o.PruneAncientData, o.MultiDataBase)
+	frdb, err := rawdb.NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.PruneAncientData, o.MultiDataBase)
 	if err != nil {
 		kvdb.Close()
 		return nil, err

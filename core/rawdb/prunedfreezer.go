@@ -203,8 +203,6 @@ func (f *prunedfreezer) TruncateTail(tail uint64) (uint64, error) {
 // SyncAncient flushes meta data tables to disk.
 func (f *prunedfreezer) SyncAncient() error {
 	WriteFrozenOfAncientFreezer(f.db, atomic.LoadUint64(&f.frozen))
-	// compatible offline prune blocks tool
-	WriteOffSetOfCurrentAncientFreezer(f.db, atomic.LoadUint64(&f.frozen))
 	return nil
 }
 

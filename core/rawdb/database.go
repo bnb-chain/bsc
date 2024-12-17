@@ -438,7 +438,7 @@ func resolveChainFreezerDir(ancient string) string {
 // value data store with a freezer moving immutable chain segments into cold
 // storage. The passed ancient indicates the path of root ancient directory
 // where the chain freezer can be opened.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, isLastOffset, pruneAncientData, multiDatabase bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, pruneAncientData, multiDatabase bool) (ethdb.Database, error) {
 	// Create the idle freezer instance. If the given ancient directory is empty,
 	// in-memory chain freezer is used (e.g. dev mode); otherwise the regular
 	// file-based freezer is created.
@@ -448,13 +448,6 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	}
 
 	var offset uint64
-	// The offset of ancientDB should be handled differently in different scenarios.
-	if isLastOffset {
-		offset = ReadOffSetOfLastAncientFreezer(db)
-	} else {
-		offset = ReadOffSetOfCurrentAncientFreezer(db)
-	}
-
 	// This case is used for someone who wants to execute geth db inspect CLI in a pruned db
 	if !disableFreeze && readonly && ReadAncientType(db) == PruneFreezerType {
 		log.Warn("Disk db is pruned, using an empty freezer db for CLI")
@@ -661,25 +654,18 @@ func (s *stat) Count() string {
 }
 
 func AncientInspect(db ethdb.Database) error {
-	offset := counter(ReadOffSetOfCurrentAncientFreezer(db))
-	// Get number of ancient rows inside the freezer.
-	ancients := counter(0)
-	if count, err := db.BlockStore().ItemAmountInAncient(); err != nil {
-		log.Error("failed to get the items amount in ancientDB", "err", err)
+	ancientTail, err := db.BlockStore().Tail()
+	if err != nil {
 		return err
-	} else {
-		ancients = counter(count)
 	}
-	var endNumber counter
-	if offset+ancients <= 0 {
-		endNumber = 0
-	} else {
-		endNumber = offset + ancients - 1
+	ancientHead, err := db.BlockStore().Ancients()
+	if err != nil {
+		return err
 	}
 	stats := [][]string{
-		{"Offset/StartBlockNumber", "Offset/StartBlockNumber of ancientDB", offset.String()},
-		{"Amount of remained items in AncientStore", "Remaining items of ancientDB", ancients.String()},
-		{"The last BlockNumber within ancientDB", "The last BlockNumber", endNumber.String()},
+		{"Offset/StartBlockNumber", "Offset/StartBlockNumber of ancientDB", counter(ancientTail).String()},
+		{"Amount of remained items in AncientStore", "Remaining items of ancientDB", counter(ancientHead - ancientTail).String()},
+		{"The last BlockNumber within ancientDB", "The last BlockNumber", counter(ancientHead - 1).String()},
 	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Items"})
