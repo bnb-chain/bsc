@@ -288,6 +288,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TrieTimeLimit:       config.TrieTimeout,
 			NoTries:             config.TriesVerifyMode != core.LocalVerify,
 			SnapshotLimit:       config.SnapshotCache,
+			SnapshotWait:        true,
+			SnapshotNoBuild:     false,
 			TriesInMemory:       config.TriesInMemory,
 			Preimages:           config.Preimages,
 			StateHistory:        config.StateHistory,
