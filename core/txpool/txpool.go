@@ -370,6 +370,17 @@ func (p *TxPool) AddBundle(bundle *types.Bundle) error {
 	return errors.New("no subpool accepts the bundle")
 }
 
+// BundleMetrics returns the metrics of the bundle subpool
+func (p *TxPool) BundleMetrics(fromBlock, toBlock int64) (ret map[int64][][]common.Hash) {
+	for _, subpool := range p.subpools {
+		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
+			return bundleSubpool.BundleMetrics(fromBlock, toBlock)
+		}
+	}
+
+	return ret
+}
+
 // PruneBundle removes a bundle from the pool.
 func (p *TxPool) PruneBundle(hash common.Hash) {
 	for _, subpool := range p.subpools {

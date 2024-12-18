@@ -806,6 +806,16 @@ func (ec *Client) BundlePrice(ctx context.Context) *big.Int {
 	return price
 }
 
+// Bundles returns the bundles in the given block range
+func (ec *Client) Bundles(ctx context.Context, fromBlock, toBlock *rpc.BlockNumber) ([]*types.BundlesItem, error) {
+	var items []*types.BundlesItem
+	err := ec.c.CallContext(ctx, &items, "eth_Bundles", fromBlock, toBlock)
+	if err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 // MevParams returns the static params of mev
 func (ec *Client) MevParams(ctx context.Context) (*types.MevParams, error) {
 	var params types.MevParams

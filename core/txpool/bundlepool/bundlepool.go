@@ -73,15 +73,20 @@ type BundlePool struct {
 	config Config
 
 	bundles    map[common.Hash]*types.Bundle
-	bundleHeap BundleHeap
+	bundleHeap BundleHeap // least price heap
 	mu         sync.RWMutex
 
 	slots uint64 // Number of slots currently allocated
 
-	simulator BundleSimulator
+	// bundleMetrics for mev data analyst
+	bundleMetrics   map[int64][][]common.Hash // receivedBlockNumber -> [[bundle tx hashes],[bundle tx hashes]...]
+	bundleMetricsMu sync.RWMutex
+
+	simulator  BundleSimulator
+	blockchain BlockChain
 }
 
-func New(config Config) *BundlePool {
+func New(config Config, chain BlockChain) *BundlePool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
 
@@ -89,9 +94,29 @@ func New(config Config) *BundlePool {
 		config:     config,
 		bundles:    make(map[common.Hash]*types.Bundle),
 		bundleHeap: make(BundleHeap, 0),
+		blockchain: chain,
 	}
 
+	go pool.clearLoop()
+
 	return pool
+}
+
+func (p *BundlePool) clearLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		currentNumber := p.blockchain.CurrentBlock().Number.Int64()
+
+		for number := range p.bundleMetrics {
+			if number <= currentNumber-types.MaxBundleAliveBlock {
+				p.bundleMetricsMu.Lock()
+				delete(p.bundleMetrics, number)
+				p.bundleMetricsMu.Unlock()
+			}
+		}
+	}
 }
 
 func (p *BundlePool) SetBundleSimulator(simulator BundleSimulator) {
@@ -125,29 +150,48 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	if err != nil {
 		return err
 	}
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if price.Cmp(p.minimalBundleGasPrice()) < 0 && p.slots+numSlots(bundle) > p.config.GlobalSlots {
-		return ErrBundleGasPriceLow
-	}
 	bundle.Price = price
 
 	hash := bundle.Hash()
 	if _, ok := p.bundles[hash]; ok {
 		return ErrBundleAlreadyExist
 	}
+
+	if price.Cmp(p.minimalBundleGasPrice()) < 0 && p.slots+numSlots(bundle) > p.config.GlobalSlots {
+		return ErrBundleGasPriceLow
+	}
+
+	p.mu.Lock()
 	for p.slots+numSlots(bundle) > p.config.GlobalSlots {
 		p.drop()
 	}
 	p.bundles[hash] = bundle
 	heap.Push(&p.bundleHeap, bundle)
 	p.slots += numSlots(bundle)
+	p.mu.Unlock()
 
 	bundleGauge.Update(int64(len(p.bundles)))
 	slotsGauge.Update(int64(p.slots))
+
+	p.bundleMetricsMu.Lock()
+	currentHeaderNumber := p.blockchain.CurrentBlock().Number.Int64()
+	p.bundleMetrics[currentHeaderNumber] = append(p.bundleMetrics[currentHeaderNumber], bundle.TxHashes())
+	p.bundleMetricsMu.Unlock()
+
 	return nil
+}
+
+func (p *BundlePool) BundleMetrics(fromBlock, toBlock int64) (ret map[int64][][]common.Hash) {
+	p.bundleMetricsMu.RLock()
+	defer p.bundleMetricsMu.RUnlock()
+
+	for number := fromBlock; number <= toBlock; number++ {
+		if bundles, ok := p.bundleMetrics[number]; ok {
+			ret[number] = bundles
+		}
+	}
+
+	return ret
 }
 
 func (p *BundlePool) GetBundle(hash common.Hash) *types.Bundle {

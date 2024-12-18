@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const InvalidBundleParamError = -38000
@@ -140,4 +141,36 @@ type bundleError struct {
 // See: https://github.com/ethereum/wiki/wiki/JSON-RPC-Error-Codes-Improvement-Proposal
 func (e *bundleError) ErrorCode() int {
 	return InvalidBundleParamError
+}
+
+// Bundles returns the bundles in the given block range.
+// fromBlock is beginning of the queried range, must be the hex value of a block number,
+// toBlock   is end of the range, nil means latest block.
+func (s *PrivateTxBundleAPI) Bundles(ctx context.Context, fromBlock, toBlock *rpc.BlockNumber) ([]*types.BundlesItem, error) {
+	if fromBlock == nil {
+		return nil, newBundleError(errors.New("the fromBlock is required"))
+	}
+
+	if fromBlock.Int64() <= 0 {
+		return nil, newBundleError(errors.New("the fromBlock must be hex value number and greater than 0"))
+	}
+
+	from := fromBlock.Int64()
+
+	var to int64
+	if toBlock == nil || *toBlock == rpc.LatestBlockNumber || *toBlock == rpc.PendingBlockNumber {
+		to = s.b.CurrentHeader().Number.Int64()
+	} else {
+		to = toBlock.Int64()
+	}
+
+	if to > s.b.CurrentHeader().Number.Int64() {
+		return nil, newBundleError(errors.New("the toBlock must be no more than the latest block number"))
+	}
+
+	if to < from || to >= from+types.MaxBundleAliveBlock {
+		return nil, newBundleError(errors.New("the toBlock must be greater than fromBlock and less than fromBlock + 100"))
+	}
+
+	return s.b.Bundles(ctx, from, to), nil
 }

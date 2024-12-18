@@ -20,11 +20,12 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/holiman/uint256"
 )
 
 // LazyTransaction contains a small subset of the transaction properties that is
@@ -187,4 +188,7 @@ type BundleSubpool interface {
 
 	// PruneBundle removes a bundle from the pool.
 	PruneBundle(hash common.Hash)
+
+	// BundleMetrics queries the metrics in the bundle pool.
+	BundleMetrics(fromBlock, toBlock int64) map[int64][][]common.Hash
 }

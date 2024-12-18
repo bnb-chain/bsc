@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
@@ -328,6 +329,28 @@ func (b *EthAPIBackend) BundlePrice() *big.Int {
 	}
 
 	return bundles[idx].Price
+}
+
+func (b *EthAPIBackend) Bundles(_ context.Context, fromBlock, toBlock int64) []*types.BundlesItem {
+	numberToBundles := b.eth.txPool.BundleMetrics(fromBlock, toBlock)
+
+	ret := make([]*types.BundlesItem, 0)
+
+	for i := fromBlock; i <= toBlock; i++ {
+		if bundles, ok := numberToBundles[i]; ok {
+			ret = append(ret, &types.BundlesItem{
+				ReceivedBlock: hexutil.Uint64(i),
+				Bundles:       bundles,
+			})
+		} else {
+			ret = append(ret, &types.BundlesItem{
+				ReceivedBlock: hexutil.Uint64(i),
+				Bundles:       [][]common.Hash{},
+			})
+		}
+	}
+
+	return ret
 }
 
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
