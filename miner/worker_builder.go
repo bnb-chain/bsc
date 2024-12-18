@@ -413,14 +413,27 @@ func (w *worker) simulateBundle(
 		ethSentToSystem = new(big.Int)
 	)
 
+	currentState := state.Copy()
+
 	for i, tx := range bundle.Txs {
 		state.SetTxContext(tx.Hash(), i+currentTxCount)
 		sysBalanceBefore := state.GetBalance(consensus.SystemAddress)
+
+		prevState := currentState.Copy()
+		prevGasPool := new(core.GasPool).AddGas(gasPool.Gas())
 
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, env.header, tx,
 			&tempGasUsed, *w.chain.GetVMConfig())
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
+
+			if containsHash(bundle.DroppingTxHashes, tx.Hash()) {
+				log.Warn("drop tx in bundle", "hash", tx.Hash().String())
+				state = prevState
+				gasPool = prevGasPool
+				bundle.Txs = bundle.Txs.Remove(i)
+				continue
+			}
 
 			if prune {
 				if errors.Is(err, core.ErrGasLimitReached) && !pruneGasExceed {
@@ -435,6 +448,15 @@ func (w *worker) simulateBundle(
 		}
 
 		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
+			// for unRevertible tx but itself can be dropped, we drop it and revert the state and gas pool
+			if containsHash(bundle.DroppingTxHashes, receipt.TxHash) {
+				log.Warn("drop tx in bundle", "hash", receipt.TxHash.String())
+				state = prevState
+				gasPool = prevGasPool
+				bundle.Txs = bundle.Txs.Remove(i)
+				continue
+			}
+
 			err = errNonRevertingTxInBundleFailed
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 
@@ -472,6 +494,13 @@ func (w *worker) simulateBundle(
 			sysDelta.Sub(sysDelta, uint256.MustFromBig(txGasFees))
 			ethSentToSystem.Add(ethSentToSystem, sysDelta.ToBig())
 		}
+	}
+
+	// prune bundle when all txs are dropped
+	if len(bundle.Txs) == 0 {
+		log.Warn("prune bundle", "hash", bundle.Hash().String(), "err", "empty bundle")
+		w.eth.TxPool().PruneBundle(bundle.Hash())
+		return nil, errors.New("empty bundle")
 	}
 
 	// if all txs in the bundle are from mempool, we accept the bundle without checking gas price

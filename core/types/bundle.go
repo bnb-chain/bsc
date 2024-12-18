@@ -23,6 +23,7 @@ type SendBundleArgs struct {
 	MinTimestamp      *uint64         `json:"minTimestamp"`
 	MaxTimestamp      *uint64         `json:"maxTimestamp"`
 	RevertingTxHashes []common.Hash   `json:"revertingTxHashes"`
+	DroppingTxHashes  []common.Hash   `json:"droppingTxHashes"`
 }
 
 type Bundle struct {
@@ -31,6 +32,7 @@ type Bundle struct {
 	MinTimestamp      uint64
 	MaxTimestamp      uint64
 	RevertingTxHashes []common.Hash
+	DroppingTxHashes  []common.Hash
 
 	Price *big.Int // for bundle compare and prune
 
