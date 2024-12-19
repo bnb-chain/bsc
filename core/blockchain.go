@@ -91,11 +91,11 @@ var (
 	snapshotCommitTimer = metrics.NewRegisteredResettingTimer("chain/snapshot/commits", nil)
 	triedbCommitTimer   = metrics.NewRegisteredResettingTimer("chain/triedb/commits", nil)
 
-	blockInsertTimer          = metrics.NewRegisteredResettingTimer("chain/inserts", nil)
-	blockValidationTimer      = metrics.NewRegisteredResettingTimer("chain/validation", nil)
+	blockInsertTimer          = metrics.NewRegisteredTimer("chain/inserts", nil)
+	blockValidationTimer      = metrics.NewRegisteredTimer("chain/validation", nil)
 	blockCrossValidationTimer = metrics.NewRegisteredResettingTimer("chain/crossvalidation", nil)
-	blockExecutionTimer       = metrics.NewRegisteredResettingTimer("chain/execution", nil)
-	blockWriteTimer           = metrics.NewRegisteredResettingTimer("chain/write", nil)
+	blockExecutionTimer       = metrics.NewRegisteredTimer("chain/execution", nil)
+	blockWriteTimer           = metrics.NewRegisteredTimer("chain/write", nil)
 
 	blockReorgMeter     = metrics.NewRegisteredMeter("chain/reorg/executes", nil)
 	blockReorgAddMeter  = metrics.NewRegisteredMeter("chain/reorg/add", nil)
