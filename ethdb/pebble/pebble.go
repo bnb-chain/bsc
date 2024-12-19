@@ -190,7 +190,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		fn:           file,
 		log:          logger,
 		quitChan:     make(chan chan error),
-		writeOptions: &pebble.WriteOptions{Sync: false},
+		writeOptions: pebble.Sync,
 	}
 	opt := &pebble.Options{
 		// Pebble has a single combined cache area and the write
