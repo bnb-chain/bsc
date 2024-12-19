@@ -18,6 +18,7 @@
 package ethconfig
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -29,11 +30,11 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
-	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/miner"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -48,7 +49,7 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
-	SyncMode:           downloader.SnapSync,
+	SyncMode:           SnapSync,
 	NetworkId:          0, // enable auto configuration of networkID == chainID
 	TxLookupLimit:      2350000,
 	TransactionHistory: 2350000,
@@ -62,7 +63,7 @@ var Defaults = Config{
 	SnapshotCache:      102,
 	DiffBlock:          uint64(86400),
 	FilterLogCacheSize: 32,
-	Miner:              miner.DefaultConfig,
+	Miner:              minerconfig.DefaultConfig,
 	TxPool:             legacypool.DefaultConfig,
 	BlobPool:           blobpool.DefaultConfig,
 	RPCGasCap:          50000000,
@@ -83,7 +84,7 @@ type Config struct {
 	// Network ID separates blockchains on the peer-to-peer networking level. When left
 	// zero, the chain ID is used as network ID.
 	NetworkId uint64
-	SyncMode  downloader.SyncMode
+	SyncMode  SyncMode
 
 	// DisablePeerTxBroadcast is an optional config and disabled by default, and usually you do not need it.
 	// When this flag is enabled, you are requesting remote peers to stop broadcasting new transactions to you, and
@@ -155,7 +156,7 @@ type Config struct {
 	FilterLogCacheSize int
 
 	// Mining options
-	Miner miner.Config
+	Miner minerconfig.Config
 
 	// Transaction pool options
 	TxPool   legacypool.Config
@@ -170,9 +171,6 @@ type Config struct {
 	// Enables VM tracing
 	VMTrace           string
 	VMTraceJsonConfig string
-
-	// Miscellaneous options
-	DocRoot string `toml:"-"`
 
 	// RPCGasCap is the global gas cap for eth-call variants.
 	RPCGasCap uint64
@@ -206,6 +204,10 @@ type Config struct {
 func CreateConsensusEngine(config *params.ChainConfig, db ethdb.Database, ee *ethapi.BlockChainAPI, genesisHash common.Hash) (consensus.Engine, error) {
 	if config.Parlia != nil {
 		return parlia.New(config, db, ee, genesisHash), nil
+	}
+	if config.TerminalTotalDifficulty == nil {
+		log.Error("Geth only supports PoS networks. Please transition legacy networks using Geth v1.13.x.")
+		return nil, fmt.Errorf("'terminalTotalDifficulty' is not set in genesis block")
 	}
 	// If proof-of-authority is requested, set it up
 	if config.Clique != nil {

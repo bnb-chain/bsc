@@ -19,11 +19,11 @@ package rawdb
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -449,4 +449,10 @@ func (f *MemoryFreezer) TruncateTableTail(kind string, tail uint64) (uint64, err
 func (f *MemoryFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
 	//TODO implement me
 	panic("not supported")
+}
+
+// AncientDatadir returns the path of the ancient store.
+// Since the memory freezer is ephemeral, an empty string is returned.
+func (f *MemoryFreezer) AncientDatadir() (string, error) {
+	return "", nil
 }

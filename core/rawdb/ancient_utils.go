@@ -179,7 +179,7 @@ func ResetStateFreezerTableOffset(ancient string, virtualTail uint64) error {
 
 	for name, disableSnappy := range tables {
 		log.Info("Handle table", "name", name, "disableSnappy", disableSnappy)
-		table, err := newTable(path, name, metrics.NilMeter{}, metrics.NilMeter{}, metrics.NilGauge{}, freezerTableSize, disableSnappy, false)
+		table, err := newTable(path, name, metrics.NewInactiveMeter(), metrics.NewInactiveMeter(), metrics.NewGauge(), freezerTableSize, disableSnappy, false)
 		if err != nil {
 			log.Error("New table failed", "error", err)
 			return err
