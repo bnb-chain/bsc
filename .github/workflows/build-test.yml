@@ -45,5 +45,7 @@ jobs:
 
     - name: Test Build
       run: |
-        go mod download
-        make geth
+        go run build/ci.go check_tidy
+        go run build/ci.go check_generate
+        go run build/ci.go check_baddeps
+        go mod download && make geth

@@ -18,7 +18,6 @@ package vm
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -27,12 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
-
-var EVMInterpreterPool = sync.Pool{
-	New: func() interface{} {
-		return &EVMInterpreter{}
-	},
-}
 
 // Config are the configuration options for the Interpreter
 type Config struct {
@@ -116,6 +109,8 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 	case evm.chainRules.IsVerkle:
 		// TODO replace with proper instruction set when fork is specified
 		table = &verkleInstructionSet
+	case evm.chainRules.IsPrague:
+		table = &pragueInstructionSet
 	case evm.chainRules.IsCancun:
 		table = &cancunInstructionSet
 	case evm.chainRules.IsShanghai:
@@ -156,13 +151,7 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 		}
 	}
 	evm.Config.ExtraEips = extraEips
-	evmInterpreter := EVMInterpreterPool.Get().(*EVMInterpreter)
-	evmInterpreter.evm = evm
-	evmInterpreter.table = table
-	evmInterpreter.readOnly = false
-	evmInterpreter.returnData = nil
-
-	return evmInterpreter
+	return &EVMInterpreter{evm: evm, table: table}
 }
 
 // Run loops and evaluates the contract's code with the given input data and returns
@@ -263,8 +252,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		} else if sLen > operation.maxStack {
 			return nil, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
 		}
-		if !contract.UseGas(cost, in.evm.Config.Tracer, tracing.GasChangeIgnored) {
+		// for tracing: this gas consumption event is emitted below in the debug section.
+		if contract.Gas < cost {
 			return nil, ErrOutOfGas
+		} else {
+			contract.Gas -= cost
 		}
 
 		if operation.dynamicGas != nil {
@@ -294,8 +286,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if err != nil {
 				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 			}
-			if !contract.UseGas(dynamicCost, in.evm.Config.Tracer, tracing.GasChangeIgnored) {
+			// for tracing: this gas consumption event is emitted below in the debug section.
+			if contract.Gas < dynamicCost {
 				return nil, ErrOutOfGas
+			} else {
+				contract.Gas -= dynamicCost
 			}
 
 			// Do tracing before memory expansion

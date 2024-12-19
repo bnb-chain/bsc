@@ -93,8 +93,6 @@ type TxPool interface {
 func MakeProtocols(backend Backend, network uint64, dnsdisc enode.Iterator) []p2p.Protocol {
 	protocols := make([]p2p.Protocol, 0, len(ProtocolVersions))
 	for _, version := range ProtocolVersions {
-		version := version // Closure
-
 		protocols = append(protocols, p2p.Protocol{
 			Name:    ProtocolName,
 			Version: version,
@@ -192,7 +190,7 @@ func handleMessage(backend Backend, peer *Peer) error {
 	var handlers = eth68
 
 	// Track the amount of time it takes to serve the request and run the handler
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		h := fmt.Sprintf("%s/%s/%d/%#02x", p2p.HandleHistName, ProtocolName, peer.Version(), msg.Code)
 		defer func(start time.Time) {
 			sampler := func() metrics.Sample {

@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -99,6 +100,7 @@ type environment struct {
 	size     uint32         // almost accurate block size,
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
+	evm      *vm.EVM
 
 	header   *types.Header
 	txs      []*types.Transaction
@@ -173,11 +175,12 @@ type newWorkReq struct {
 type newPayloadResult struct {
 	err      error
 	block    *types.Block
-	fees     *big.Int           // total block fees
-	sidecars types.BlobSidecars // collected blobs of blob transactions
-	stateDB  *state.StateDB     // StateDB after executing the transactions
-	receipts []*types.Receipt   // Receipts collected during construction
-	witness  *stateless.Witness // Witness is an optional stateless proof
+	fees     *big.Int               // total block fees
+	sidecars []*types.BlobTxSidecar // collected blobs of blob transactions
+	stateDB  *state.StateDB         // StateDB after executing the transactions
+	receipts []*types.Receipt       // Receipts collected during construction
+	requests [][]byte               // Consensus layer requests collected during block construction
+	witness  *stateless.Witness     // Witness is an optional stateless proof
 }
 
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
@@ -196,7 +199,7 @@ type bidFetcher interface {
 type worker struct {
 	bidFetcher  bidFetcher
 	prefetcher  core.Prefetcher
-	config      *Config
+	config      *minerconfig.Config
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
 	eth         Backend
@@ -252,7 +255,7 @@ type worker struct {
 	recentMinedBlocks *lru.Cache
 }
 
-func newWorker(config *Config, engine consensus.Engine, eth Backend, mux *event.TypeMux, init bool) *worker {
+func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend, mux *event.TypeMux, init bool) *worker {
 	recentMinedBlocks, _ := lru.New(recentMinedCacheLimit)
 	chainConfig := eth.BlockChain().Config()
 	worker := &worker{
@@ -439,10 +442,10 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if !w.isRunning() {
 				continue
 			}
-			clearPending(head.Block.NumberU64())
+			clearPending(head.Header.Number.Uint64())
 			timestamp = time.Now().Unix()
 			if p, ok := w.engine.(*parlia.Parlia); ok {
-				signedRecent, err := p.SignRecently(w.chain, head.Block)
+				signedRecent, err := p.SignRecently(w.chain, head.Header)
 				if err != nil {
 					log.Debug("Not allowed to propose block", "err", err)
 					continue
@@ -692,6 +695,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		coinbase: coinbase,
 		header:   header,
 		witness:  state.Witness(),
+		evm:      vm.NewEVM(core.NewEVMBlockContext(header, w.chain, &coinbase), state, w.chainConfig, vm.Config{}),
 	}
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
@@ -764,7 +768,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		gp   = env.gasPool.Gas()
 	)
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, vm.Config{}, receiptProcessors...)
+	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, receiptProcessors...)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
@@ -1024,13 +1028,16 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		}
 		header.BlobGasUsed = new(uint64)
 		header.ExcessBlobGas = &excessBlobGas
-		if w.chainConfig.Parlia != nil {
-			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
-		}
 		if w.chainConfig.Parlia == nil {
 			header.ParentBeaconRoot = genParams.beaconRoot
-		} else if w.chainConfig.IsBohr(header.Number, header.Time) {
-			header.ParentBeaconRoot = new(common.Hash)
+		} else {
+			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
+			if w.chainConfig.IsBohr(header.Number, header.Time) {
+				header.ParentBeaconRoot = new(common.Hash)
+			}
+			if w.chainConfig.IsPrague(header.Number, header.Time) {
+				header.RequestsHash = &types.EmptyRequestsHash
+			}
 		}
 	}
 	// Could potentially happen if starting to mine in an odd state.
@@ -1046,15 +1053,11 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 	systemcontracts.TryUpdateBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
 
 	if header.ParentBeaconRoot != nil {
-		context := core.NewEVMBlockContext(header, w.chain, nil)
-		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
-		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv, env.state)
+		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, env.evm)
 	}
 
 	if w.chainConfig.IsPrague(header.Number, header.Time) {
-		context := core.NewEVMBlockContext(header, w.chain, nil)
-		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
-		core.ProcessParentBlockHash(header.ParentHash, vmenv, env.state)
+		core.ProcessParentBlockHash(header.ParentHash, env.evm)
 	}
 
 	env.size = uint32(env.header.Size())
@@ -1157,12 +1160,40 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	defer work.discard()
 
 	if !params.noTxs {
+		interrupt := new(atomic.Int32)
+		timer := time.AfterFunc(w.config.Recommit, func() {
+			interrupt.Store(commitInterruptTimeout)
+		})
+		defer timer.Stop()
+
 		err := w.fillTransactions(nil, work, nil, nil)
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.recommit))
 		}
 	}
 	body := types.Body{Transactions: work.txs, Withdrawals: params.withdrawals}
+	allLogs := make([]*types.Log, 0)
+	for _, r := range work.receipts {
+		allLogs = append(allLogs, r.Logs...)
+	}
+	// Collect consensus-layer requests if Prague is enabled.
+	var requests [][]byte
+	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) {
+		requests = [][]byte{}
+		// EIP-6110 deposits
+		if err := core.ParseDepositLogs(&requests, allLogs, w.chainConfig); err != nil {
+			return &newPayloadResult{err: err}
+		}
+		// EIP-7002
+		core.ProcessWithdrawalQueue(&requests, work.evm)
+		// EIP-7251 consolidations
+		core.ProcessConsolidationQueue(&requests, work.evm)
+	}
+	if requests != nil {
+		reqHash := types.CalcRequestsHash(requests)
+		work.header.RequestsHash = &reqHash
+	}
+
 	fees := work.state.GetBalance(consensus.SystemAddress)
 	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
 	if err != nil {
@@ -1172,9 +1203,10 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	return &newPayloadResult{
 		block:    block,
 		fees:     fees.ToBig(),
-		sidecars: work.sidecars,
+		sidecars: work.sidecars.BlobTxSidecarList(),
 		stateDB:  work.state,
 		receipts: receipts,
+		requests: requests,
 		witness:  work.witness,
 	}
 }

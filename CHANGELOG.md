@@ -1,4 +1,28 @@
 # Changelog
+## v1.5.2
+v1.5.2-alpha is another release for upstream code sync, it catches up with [go-ethereum release [v1.14.12]](https://github.com/ethereum/go-ethereum/releases/tag/v1.14.12) and supported 4 BEPs for BSC Pascal hard fork.
+- BEP-439: Implement EIP-2537: Precompile for BLS12-381 curve operations
+- BEP-440: Implement EIP-2935: Serve historical block hashes from state
+- BEP-441: Implement EIP-7702: Set EOA account code
+- BEP-466: Make the block format compatible with EIP-7685
+
+#### Code Sync
+- [upstream: merge geth v1.14.12](https://github.com/bnb-chain/bsc/pull/2791)
+- [upstream: merge geth date 1210](https://github.com/bnb-chain/bsc/pull/2799)
+- [upstream: merge geth date 1213](https://github.com/bnb-chain/bsc/pull/2806)
+
+#### Pascal BEPs
+- [BEP-441: Implement EIP-7702: Set EOA account code](https://github.com/bnb-chain/bsc/pull/2807)
+- [BEP-466: Make the block header format compatible with EIP-7685](https://github.com/bnb-chain/bsc/pull/2777)
+- Note: BEP-439 and BEP-440 have already been implemented in previous v1.5.1-alpha release
+
+#### Others
+- [eth/fetcher: remove light mode in block fetcher](https://github.com/bnb-chain/bsc/pull/2804)
+- [fix: Opt pruneancient issues](https://github.com/bnb-chain/bsc/pull/2800)
+- [build(deps): bump github.com/golang-jwt/jwt/v4 from 4.5.0 to 4.5.1](https://github.com/bnb-chain/bsc/pull/2788)
+- [build(deps): bump golang.org/x/crypto from 0.22.0 to 0.31.0](https://github.com/bnb-chain/bsc/pull/2797)
+- [misc: mini fix and clearup](https://github.com/bnb-chain/bsc/pull/2811)
+
 ## v1.5.1
 v1.5.1-alpha is for upstream code sync, it catches up with[go-ethereum release [v1.13.15, v1.14.11]](https://github.com/ethereum/go-ethereum/releases)
 
