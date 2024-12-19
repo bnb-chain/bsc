@@ -110,7 +110,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 	for {
 		select {
 		case h := <-vm.chainBlockCh:
-			vm.NewBlockVerifyTask(h.Block.Header())
+			vm.NewBlockVerifyTask(h.Header)
 		case hash := <-vm.verifyCh:
 			vm.cacheBlockVerified(hash)
 			vm.taskLock.Lock()
@@ -448,7 +448,7 @@ func (mode VerifyMode) NoTries() bool {
 	return mode != LocalVerify
 }
 
-func newVerifyMsgTypeGauge(msgType uint16, peerId string) metrics.Gauge {
+func newVerifyMsgTypeGauge(msgType uint16, peerId string) *metrics.Gauge {
 	m := fmt.Sprintf("verifymanager/message/%d/peer/%s", msgType, peerId)
 	return metrics.GetOrRegisterGauge(m, nil)
 }

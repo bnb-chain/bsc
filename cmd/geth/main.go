@@ -20,6 +20,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,7 +57,7 @@ const (
 
 var (
 	// flags that configure the node
-	nodeFlags = flags.Merge([]cli.Flag{
+	nodeFlags = slices.Concat([]cli.Flag{
 		utils.IdentityFlag,
 		utils.UnlockedAccountFlag,
 		utils.PasswordFileFlag,
@@ -81,7 +82,7 @@ var (
 		utils.OverrideDefaultExtraReserveForBlobRequests,
 		utils.OverrideBreatheBlockInterval,
 		utils.OverrideFixedTurnLength,
-		utils.EnablePersonal,
+		utils.EnablePersonal, // deprecated
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
 		utils.TxPoolJournalFlag,
@@ -161,9 +162,9 @@ var (
 		utils.NodeKeyFileFlag,
 		utils.NodeKeyHexFlag,
 		utils.DNSDiscoveryFlag,
-		utils.DeveloperFlag,
-		utils.DeveloperGasLimitFlag,
-		utils.DeveloperPeriodFlag,
+		// utils.DeveloperFlag,
+		// utils.DeveloperGasLimitFlag,
+		// utils.DeveloperPeriodFlag,
 		utils.VMEnableDebugFlag,
 		utils.VMTraceFlag,
 		utils.VMTraceJsonConfigFlag,
@@ -187,14 +188,14 @@ var (
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
 		utils.BlobExtraReserveFlag,
-		utils.BeaconApiFlag,
-		utils.BeaconApiHeaderFlag,
-		utils.BeaconThresholdFlag,
-		utils.BeaconNoFilterFlag,
-		utils.BeaconConfigFlag,
-		utils.BeaconGenesisRootFlag,
-		utils.BeaconGenesisTimeFlag,
-		utils.BeaconCheckpointFlag,
+		// utils.BeaconApiFlag,
+		// utils.BeaconApiHeaderFlag,
+		// utils.BeaconThresholdFlag,
+		// utils.BeaconNoFilterFlag,
+		// utils.BeaconConfigFlag,
+		// utils.BeaconGenesisRootFlag,
+		// utils.BeaconGenesisTimeFlag,
+		// utils.BeaconCheckpointFlag,
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{
@@ -299,7 +300,7 @@ func init() {
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
 
-	app.Flags = flags.Merge(
+	app.Flags = slices.Concat(
 		nodeFlags,
 		rpcFlags,
 		consoleFlags,

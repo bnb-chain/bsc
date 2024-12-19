@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -66,7 +67,7 @@ var (
 	pendingTxs []*types.Transaction
 	newTxs     []*types.Transaction
 
-	testConfig = &Config{
+	testConfig = &minerconfig.Config{
 		Recommit: time.Second,
 		GasCeil:  params.GenesisGasLimit,
 	}

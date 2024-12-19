@@ -18,6 +18,7 @@
 package memorydb
 
 import (
+	"bytes"
 	"errors"
 	"sort"
 	"strings"
@@ -199,6 +200,20 @@ func (db *Database) Delete(key []byte) error {
 	return nil
 }
 
+// DeleteRange deletes all of the keys (and values) in the range [start,end)
+// (inclusive on start, exclusive on end).
+func (db *Database) DeleteRange(start, end []byte) error {
+	it := db.NewIterator(nil, start)
+	defer it.Release()
+
+	for it.Next() && bytes.Compare(end, it.Key()) > 0 {
+		if err := db.Delete(it.Key()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // NewBatch creates a write-only key-value store that buffers changes to its host
 // database until a final write is called.
 func (db *Database) NewBatch() ethdb.Batch {
@@ -279,13 +294,6 @@ func (db *Database) StateStoreReader() ethdb.Reader {
 }
 
 func (db *Database) BlockStoreReader() ethdb.Reader {
-	if db.blockStore == nil {
-		return db
-	}
-	return db.blockStore
-}
-
-func (db *Database) BlockStoreWriter() ethdb.Writer {
 	if db.blockStore == nil {
 		return db
 	}

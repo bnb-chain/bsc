@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner/builderclient"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -79,7 +80,7 @@ type newBidPackage struct {
 // bidSimulator is in charge of receiving bid from builders, reporting issue to builders.
 // And take care of bid simulation, rewards computing, best bid maintaining.
 type bidSimulator struct {
-	config        *MevConfig
+	config        *minerconfig.MevConfig
 	delayLeftOver time.Duration
 	minGasPrice   *big.Int
 	chain         *core.BlockChain
@@ -117,7 +118,7 @@ type bidSimulator struct {
 }
 
 func newBidSimulator(
-	config *MevConfig,
+	config *minerconfig.MevConfig,
 	delayLeftOver time.Duration,
 	minGasPrice *big.Int,
 	eth Backend,
@@ -434,7 +435,7 @@ func (b *bidSimulator) clearLoop() {
 			continue
 		}
 
-		clearFn(head.Block.ParentHash(), head.Block.NumberU64())
+		clearFn(head.Header.ParentHash, head.Header.Number.Uint64())
 	}
 }
 
@@ -845,8 +846,8 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 	}
 
-	receipt, err := core.ApplyTransaction(chainConfig, chain, &env.coinbase, env.gasPool, env.state, env.header, tx,
-		&env.header.GasUsed, *chain.GetVMConfig(), core.NewReceiptBloomGenerator())
+	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx,
+		&env.header.GasUsed, core.NewReceiptBloomGenerator())
 	if err != nil {
 		return err
 	} else if unRevertible && receipt.Status == types.ReceiptStatusFailed {

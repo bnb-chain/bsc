@@ -220,12 +220,6 @@ Generate ownership proof for the selected BLS account from the BLS wallet. The p
 // blsWalletCreate creates a BLS wallet in <DATADIR>/bls/wallet.
 func blsWalletCreate(ctx *cli.Context) error {
 	cfg := gethConfig{Node: defaultNodeConfig()}
-	// Load config file.
-	if file := ctx.String(configFileFlag.Name); file != "" {
-		if err := loadConfig(file, &cfg); err != nil {
-			utils.Fatalf("%v", err)
-		}
-	}
 	utils.SetNodeConfig(ctx, &cfg.Node)
 
 	dir := filepath.Join(cfg.Node.DataDir, BLSWalletPath)
@@ -308,12 +302,6 @@ func openOrCreateBLSWallet(ctx *cli.Context, cfg *gethConfig) (*wallet.Wallet, e
 // and import the created account into the BLS wallet.
 func blsAccountCreate(ctx *cli.Context) error {
 	cfg := gethConfig{Node: defaultNodeConfig()}
-	// Load config file.
-	if file := ctx.String(configFileFlag.Name); file != "" {
-		if err := loadConfig(file, &cfg); err != nil {
-			utils.Fatalf("%v", err)
-		}
-	}
 	utils.SetNodeConfig(ctx, &cfg.Node)
 
 	w, _ := openOrCreateBLSWallet(ctx, &cfg)
@@ -392,12 +380,6 @@ func blsAccountCreate(ctx *cli.Context) error {
 // blsAccountImport imports a BLS account into the BLS wallet.
 func blsAccountImport(ctx *cli.Context) error {
 	cfg := gethConfig{Node: defaultNodeConfig()}
-	// Load config file.
-	if file := ctx.String(configFileFlag.Name); file != "" {
-		if err := loadConfig(file, &cfg); err != nil {
-			utils.Fatalf("%v", err)
-		}
-	}
 	utils.SetNodeConfig(ctx, &cfg.Node)
 
 	w, _ := openOrCreateBLSWallet(ctx, &cfg)
@@ -476,12 +458,6 @@ func blsAccountImport(ctx *cli.Context) error {
 // blsAccountList prints existing BLS accounts in the BLS wallet.
 func blsAccountList(ctx *cli.Context) error {
 	cfg := gethConfig{Node: defaultNodeConfig()}
-	// Load config file.
-	if file := ctx.String(configFileFlag.Name); file != "" {
-		if err := loadConfig(file, &cfg); err != nil {
-			utils.Fatalf("%v", err)
-		}
-	}
 	utils.SetNodeConfig(ctx, &cfg.Node)
 
 	walletDir := filepath.Join(cfg.Node.DataDir, BLSWalletPath)
@@ -555,12 +531,6 @@ func blsAccountDelete(ctx *cli.Context) error {
 	}
 
 	cfg := gethConfig{Node: defaultNodeConfig()}
-	// Load config file.
-	if file := ctx.String(configFileFlag.Name); file != "" {
-		if err := loadConfig(file, &cfg); err != nil {
-			utils.Fatalf("%v", err)
-		}
-	}
 	utils.SetNodeConfig(ctx, &cfg.Node)
 
 	walletDir := filepath.Join(cfg.Node.DataDir, BLSWalletPath)
@@ -653,12 +623,6 @@ func blsAccountGenerateProof(ctx *cli.Context) error {
 	}
 
 	cfg := gethConfig{Node: defaultNodeConfig()}
-	// Load config file.
-	if file := ctx.String(configFileFlag.Name); file != "" {
-		if err := loadConfig(file, &cfg); err != nil {
-			utils.Fatalf("%v", err)
-		}
-	}
 	utils.SetNodeConfig(ctx, &cfg.Node)
 
 	walletDir := filepath.Join(cfg.Node.DataDir, BLSWalletPath)

@@ -36,10 +36,6 @@ func (db *Database) BlockStoreReader() ethdb.Reader {
 	return db
 }
 
-func (db *Database) BlockStoreWriter() ethdb.Writer {
-	return db
-}
-
 func (db *Database) BlockStore() ethdb.Database {
 	return db
 }
@@ -143,6 +139,10 @@ func (db *Database) Put(key []byte, value []byte) error {
 }
 
 func (db *Database) Delete(key []byte) error {
+	panic("not supported")
+}
+
+func (db *Database) DeleteRange(start, end []byte) error {
 	panic("not supported")
 }
 

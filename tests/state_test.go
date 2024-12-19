@@ -96,7 +96,6 @@ func TestExecutionSpecState(t *testing.T) {
 		t.Skipf("directory %s does not exist", executionSpecStateTestDir)
 	}
 	st := new(testMatcher)
-	st.skipLoad(".*prague.*") // TODO(Nathan): remove it before enable prague
 	st.walk(t, executionSpecStateTestDir, func(t *testing.T, name string, test *StateTest) {
 		execStateTest(t, st, test)
 	})
@@ -104,7 +103,6 @@ func TestExecutionSpecState(t *testing.T) {
 
 func execStateTest(t *testing.T, st *testMatcher, test *StateTest) {
 	for _, subtest := range test.Subtests() {
-		subtest := subtest
 		key := fmt.Sprintf("%s/%d", subtest.Fork, subtest.Index)
 
 		// If -short flag is used, we don't execute all four permutations, only
@@ -242,14 +240,12 @@ func runBenchmarkFile(b *testing.B, path string) {
 		b.Fatal("expected single benchmark in a file")
 	}
 	for _, t := range m {
-		t := t
 		runBenchmark(b, &t)
 	}
 }
 
 func runBenchmark(b *testing.B, t *StateTest) {
 	for _, subtest := range t.Subtests() {
-		subtest := subtest
 		key := fmt.Sprintf("%s/%d", subtest.Fork, subtest.Index)
 
 		b.Run(key, func(b *testing.B) {
@@ -303,7 +299,8 @@ func runBenchmark(b *testing.B, t *StateTest) {
 			context := core.NewEVMBlockContext(block.Header(), nil, &t.json.Env.Coinbase)
 			context.GetHash = vmTestBlockHash
 			context.BaseFee = baseFee
-			evm := vm.NewEVM(context, txContext, state.StateDB, config, vmconfig)
+			evm := vm.NewEVM(context, state.StateDB, config, vmconfig)
+			evm.SetTxContext(txContext)
 
 			// Create "contract" for sender to cache code analysis.
 			sender := vm.NewContract(vm.AccountRef(msg.From), vm.AccountRef(msg.From),

@@ -63,7 +63,6 @@ func TestExecutionSpecBlocktests(t *testing.T) {
 		t.Skipf("directory %s does not exist", executionSpecBlockchainTestDir)
 	}
 	bt := new(testMatcher)
-	bt.skipLoad(".*prague.*") // TODO(Nathan): remove it before enable prague
 	bt.walk(t, executionSpecBlockchainTestDir, func(t *testing.T, name string, test *BlockTest) {
 		execBlockTest(t, bt, test)
 	})

@@ -1,9 +1,7 @@
 package pathdb
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,8 +9,6 @@ import (
 	"github.com/VictoriaMetrics/fastcache"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -30,22 +26,34 @@ type asyncnodebuffer struct {
 	stopFlushing atomic.Bool
 }
 
-// newAsyncNodeBuffer initializes the async node buffer with the provided nodes.
-func newAsyncNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) *asyncnodebuffer {
-	if nodes == nil {
-		nodes = make(map[common.Hash]map[string]*trienode.Node)
-	}
-	var size uint64
-	for _, subset := range nodes {
-		for path, n := range subset {
-			size += uint64(len(n.Blob) + len(path))
-		}
-	}
-
+// newAsyncNodeBuffer initializes the async node buffer with the provided nodes and states.
+func newAsyncNodeBuffer(limit int, nodes *nodeSet, states *stateSet, layers uint64) *asyncnodebuffer {
 	return &asyncnodebuffer{
-		current:    newNodeCache(uint64(limit), size, nodes, layers),
-		background: newNodeCache(uint64(limit), 0, make(map[common.Hash]map[string]*trienode.Node), 0),
+		current:    newNodeCache(limit, nodes, states, layers),
+		background: newNodeCache(limit, nil, nil, 0),
 	}
+}
+
+func (a *asyncnodebuffer) account(hash common.Hash) ([]byte, bool) {
+	a.mux.RLock()
+	defer a.mux.RUnlock()
+
+	node, found := a.current.account(hash)
+	if !found {
+		node, found = a.background.account(hash)
+	}
+	return node, found
+}
+
+func (a *asyncnodebuffer) storage(addrHash common.Hash, storageHash common.Hash) ([]byte, bool) {
+	a.mux.RLock()
+	defer a.mux.RUnlock()
+
+	node, found := a.current.storage(addrHash, storageHash)
+	if !found {
+		node, found = a.background.storage(addrHash, storageHash)
+	}
+	return node, found
 }
 
 // node retrieves the trie node with given node info.
@@ -53,32 +61,32 @@ func (a *asyncnodebuffer) node(owner common.Hash, path []byte) (*trienode.Node, 
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 
-	node := a.current.node(owner, path)
-	if node == nil {
-		node = a.background.node(owner, path)
+	node, found := a.current.node(owner, path)
+	if !found {
+		node, found = a.background.node(owner, path)
 	}
-	return node, node != nil
+	return node, found
 }
 
-// commit merges the dirty nodes into the nodebuffer. This operation won't take
+// commit merges the provided states and trie nodesinto the nodebuffer. This operation won't take
 // the ownership of the nodes map which belongs to the bottom-most diff layer.
 // It will just hold the node references from the given map which are safe to
 // copy.
-func (a *asyncnodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) trienodebuffer {
+func (a *asyncnodebuffer) commit(nodes *nodeSet, states *stateSet) trienodebuffer {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
-	err := a.current.commit(nodes)
+	err := a.current.commit(nodes, states)
 	if err != nil {
 		log.Crit("[BUG] Failed to commit nodes to asyncnodebuffer", "error", err)
 	}
 	return a
 }
 
-// revert is the reverse operation of commit. It also merges the provided nodes
+// revertTo is the reverse operation of commit. It also merges the provided nodes
 // into the nodebuffer, the difference is that the provided node set should
 // revert the changes made by the last state transition.
-func (a *asyncnodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node) error {
+func (a *asyncnodebuffer) revertTo(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node, accounts map[common.Hash][]byte, storages map[common.Hash]map[common.Hash][]byte) error {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
@@ -88,12 +96,7 @@ func (a *asyncnodebuffer) revert(db ethdb.KeyValueReader, nodes map[common.Hash]
 		log.Crit("[BUG] Failed to merge node cache under revert async node buffer", "error", err)
 	}
 	a.background.reset()
-	return a.current.revert(db, nodes)
-}
-
-// setSize is unsupported in asyncnodebuffer, due to the double buffer, blocking will occur.
-func (a *asyncnodebuffer) setSize(size int, db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
-	return errors.New("not supported")
+	return a.current.revertTo(db, nodes, accounts, storages)
 }
 
 // reset cleans up the disk cache.
@@ -113,9 +116,13 @@ func (a *asyncnodebuffer) empty() bool {
 	return a.current.empty() && a.background.empty()
 }
 
+func (a *asyncnodebuffer) full() bool {
+	return a.current.full()
+}
+
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64, force bool) error {
+func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force bool) error {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
@@ -131,11 +138,11 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
-			return a.current.flush(db, clean, id)
+			return a.current.flush(db, freezer, clean, id, true)
 		}
 	}
 
-	if a.current.size < a.current.limit {
+	if !a.full() {
 		return nil
 	}
 
@@ -151,7 +158,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, 
 	go func(persistID uint64) {
 		defer a.isFlushing.Store(false)
 		for {
-			err := a.background.flush(db, clean, persistID)
+			err := a.background.flush(db, freezer, clean, persistID, true)
 			if err == nil {
 				log.Debug("Succeed to flush background nodecache to disk", "state_id", persistID)
 				return
@@ -170,7 +177,7 @@ func (a *asyncnodebuffer) waitAndStopFlushing() {
 	}
 }
 
-func (a *asyncnodebuffer) getAllNodes() map[common.Hash]map[string]*trienode.Node {
+func (a *asyncnodebuffer) getAllNodesAndStates() (*nodeSet, *stateSet) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
@@ -178,7 +185,7 @@ func (a *asyncnodebuffer) getAllNodes() map[common.Hash]map[string]*trienode.Nod
 	if err != nil {
 		log.Crit("[BUG] Failed to merge node cache under revert async node buffer", "error", err)
 	}
-	return cached.nodes
+	return cached.nodes, cached.states
 }
 
 func (a *asyncnodebuffer) getLayers() uint64 {
@@ -192,146 +199,48 @@ func (a *asyncnodebuffer) getSize() (uint64, uint64) {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 
-	return a.current.size, a.background.size
+	return a.current.size(), a.background.size()
 }
 
 type nodecache struct {
-	layers    uint64                                    // The number of diff layers aggregated inside
-	size      uint64                                    // The size of aggregated writes
-	limit     uint64                                    // The maximum memory allowance in bytes
-	nodes     map[common.Hash]map[string]*trienode.Node // The dirty node set, mapped by owner and path
-	immutable uint64                                    // The flag equal 1, flush nodes to disk background
+	*buffer
+	immutable uint64 // The flag equal 1, flush nodes to disk background
 }
 
-func newNodeCache(limit, size uint64, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) *nodecache {
+func newNodeCache(limit int, nodes *nodeSet, states *stateSet, layers uint64) *nodecache {
 	return &nodecache{
-		layers:    layers,
-		size:      size,
-		limit:     limit,
-		nodes:     nodes,
+		buffer:    newBuffer(limit, nodes, states, layers),
 		immutable: 0,
 	}
 }
 
-func (nc *nodecache) node(owner common.Hash, path []byte) *trienode.Node {
-	subset, ok := nc.nodes[owner]
-	if !ok {
-		return nil
-	}
-	n, ok := subset[string(path)]
-	if !ok {
-		return nil
-	}
-	return n
-}
-
-func (nc *nodecache) commit(nodes map[common.Hash]map[string]*trienode.Node) error {
+func (nc *nodecache) commit(nodes *nodeSet, states *stateSet) error {
 	if atomic.LoadUint64(&nc.immutable) == 1 {
 		return errWriteImmutable
 	}
-
-	var (
-		delta         int64
-		overwrite     int64
-		overwriteSize int64
-	)
-	for owner, subset := range nodes {
-		current, exist := nc.nodes[owner]
-		if !exist {
-			// Allocate a new map for the subset instead of claiming it directly
-			// from the passed map to avoid potential concurrent map read/write.
-			// The nodes belong to original diff layer are still accessible even
-			// after merging, thus the ownership of nodes map should still belong
-			// to original layer and any mutation on it should be prevented.
-			current = make(map[string]*trienode.Node)
-			for path, n := range subset {
-				current[path] = n
-				delta += int64(len(n.Blob) + len(path))
-			}
-			nc.nodes[owner] = current
-			continue
-		}
-		for path, n := range subset {
-			if orig, exist := current[path]; !exist {
-				delta += int64(len(n.Blob) + len(path))
-			} else {
-				delta += int64(len(n.Blob) - len(orig.Blob))
-				overwrite++
-				overwriteSize += int64(len(orig.Blob) + len(path))
-			}
-			current[path] = n
-		}
-		nc.nodes[owner] = current
-	}
-	nc.updateSize(delta)
-	nc.layers++
-	gcNodesMeter.Mark(overwrite)
-	gcBytesMeter.Mark(overwriteSize)
+	nc.buffer.commit(nodes, states)
 	return nil
 }
 
-func (nc *nodecache) updateSize(delta int64) {
-	size := int64(nc.size) + delta
-	if size >= 0 {
-		nc.size = uint64(size)
-		return
+func (nc *nodecache) revertTo(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node, accounts map[common.Hash][]byte, storages map[common.Hash]map[common.Hash][]byte) error {
+	if atomic.LoadUint64(&nc.immutable) == 1 {
+		return errRevertImmutable
 	}
-	s := nc.size
-	nc.size = 0
-	log.Error("Invalid pathdb buffer size", "prev", common.StorageSize(s), "delta", common.StorageSize(delta))
+	nc.buffer.revertTo(db, nodes, accounts, storages)
+	return nil
 }
 
 func (nc *nodecache) reset() {
 	atomic.StoreUint64(&nc.immutable, 0)
-	nc.layers = 0
-	nc.size = 0
-	nc.nodes = make(map[common.Hash]map[string]*trienode.Node)
+	nc.buffer.reset()
 }
 
-func (nc *nodecache) empty() bool {
-	return nc.layers == 0
-}
-
-// allocBatch returns a database batch with pre-allocated buffer.
-func (nc *nodecache) allocBatch(db ethdb.KeyValueStore) ethdb.Batch {
-	var metasize int
-	for owner, nodes := range nc.nodes {
-		if owner == (common.Hash{}) {
-			metasize += len(nodes) * len(rawdb.TrieNodeAccountPrefix) // database key prefix
-		} else {
-			metasize += len(nodes) * (len(rawdb.TrieNodeStoragePrefix) + common.HashLength) // database key prefix + owner
-		}
-	}
-	return db.NewBatchWithSize((metasize + int(nc.size)) * 11 / 10) // extra 10% for potential pebble internal stuff
-}
-
-func (nc *nodecache) flush(db ethdb.KeyValueStore, clean *fastcache.Cache, id uint64) error {
+func (nc *nodecache) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force bool) error {
 	if atomic.LoadUint64(&nc.immutable) != 1 {
 		return errFlushMutable
 	}
-
-	// Ensure the target state id is aligned with the internal counter.
-	head := rawdb.ReadPersistentStateID(db)
-	if head+nc.layers != id {
-		return fmt.Errorf("buffer layers (%d) cannot be applied on top of persisted state id (%d) to reach requested state id (%d)", nc.layers, head, id)
-	}
-	var (
-		start = time.Now()
-		batch = nc.allocBatch(db)
-	)
-	nodes := writeNodes(batch, nc.nodes, clean)
-	rawdb.WritePersistentStateID(batch, id)
-
-	// Flush all mutations in a single batch
-	size := batch.ValueSize()
-	if err := batch.Write(); err != nil {
-		return err
-	}
-	commitBytesMeter.Mark(int64(size))
-	commitNodesMeter.Mark(int64(nodes))
-	commitTimeTimer.UpdateSince(start)
-	log.Debug("Persisted pathdb nodes", "nodes", len(nc.nodes), "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
-	nc.reset()
+	nc.buffer.flush(db, freezer, nodesCache, id, force)
+	atomic.StoreUint64(&nc.immutable, 0)
 	return nil
 }
 
@@ -356,7 +265,6 @@ func (nc *nodecache) merge(nc1 *nodecache) (*nodecache, error) {
 	var (
 		immutable *nodecache
 		mutable   *nodecache
-		res       = &nodecache{}
 	)
 	if atomic.LoadUint64(&nc.immutable) == 1 {
 		immutable = nc
@@ -365,100 +273,29 @@ func (nc *nodecache) merge(nc1 *nodecache) (*nodecache, error) {
 		immutable = nc1
 		mutable = nc
 	}
-	res.size = immutable.size + mutable.size
-	res.layers = immutable.layers + mutable.layers
-	res.limit = immutable.limit
-	res.nodes = make(map[common.Hash]map[string]*trienode.Node)
-	for acc, subTree := range immutable.nodes {
-		if _, ok := res.nodes[acc]; !ok {
-			res.nodes[acc] = make(map[string]*trienode.Node)
-		}
-		for path, node := range subTree {
-			res.nodes[acc][path] = node
-		}
-	}
-
-	for acc, subTree := range mutable.nodes {
-		if _, ok := res.nodes[acc]; !ok {
-			res.nodes[acc] = make(map[string]*trienode.Node)
-		}
-		for path, node := range subTree {
-			res.nodes[acc][path] = node
-		}
-	}
+	res := copyNodeCache(immutable)
+	atomic.StoreUint64(&res.immutable, 0)
+	res.nodes.merge(mutable.nodes)
+	res.states.merge(mutable.states)
 	return res, nil
 }
 
-func (nc *nodecache) revert(db ethdb.KeyValueReader, nodes map[common.Hash]map[string]*trienode.Node) error {
-	if atomic.LoadUint64(&nc.immutable) == 1 {
-		return errRevertImmutable
-	}
-
-	// Short circuit if no embedded state transition to revert.
-	if nc.layers == 0 {
-		return errStateUnrecoverable
-	}
-	nc.layers--
-
-	// Reset the entire buffer if only a single transition left.
-	if nc.layers == 0 {
-		nc.reset()
-		return nil
-	}
-	var delta int64
-	for owner, subset := range nodes {
-		current, ok := nc.nodes[owner]
-		if !ok {
-			panic(fmt.Sprintf("non-existent subset (%x)", owner))
-		}
-		for path, n := range subset {
-			orig, ok := current[path]
-			if !ok {
-				// There is a special case in MPT that one child is removed from
-				// a fullNode which only has two children, and then a new child
-				// with different position is immediately inserted into the fullNode.
-				// In this case, the clean child of the fullNode will also be
-				// marked as dirty because of node collapse and expansion.
-				//
-				// In case of database rollback, don't panic if this "clean"
-				// node occurs which is not present in buffer.
-				var blob []byte
-				if owner == (common.Hash{}) {
-					blob = rawdb.ReadAccountTrieNode(db, []byte(path))
-				} else {
-					blob = rawdb.ReadStorageTrieNode(db, owner, []byte(path))
-				}
-				if bytes.Equal(blob, n.Blob) {
-					continue
-				}
-				panic(fmt.Sprintf("non-existent node (%x %v) blob: %v", owner, path, crypto.Keccak256Hash(n.Blob).Hex()))
-			}
-			current[path] = n
-			delta += int64(len(n.Blob)) - int64(len(orig.Blob))
-		}
-	}
-	nc.updateSize(delta)
-	return nil
-}
-
 func copyNodeCache(n *nodecache) *nodecache {
-	if n == nil {
+	if n == nil || n.buffer == nil {
 		return nil
 	}
-	nc := &nodecache{
-		layers:    n.layers,
-		size:      n.size,
-		limit:     n.limit,
-		immutable: atomic.LoadUint64(&n.immutable),
-		nodes:     make(map[common.Hash]map[string]*trienode.Node),
+	nc := newNodeCache(int(n.limit), n.nodes, n.states, n.layers)
+	nc.immutable = atomic.LoadUint64(&n.immutable)
+
+	for acc, subTree := range n.nodes.nodes {
+		nc.nodes.nodes[acc] = maps.Clone(subTree)
 	}
-	for acc, subTree := range n.nodes {
-		if _, ok := nc.nodes[acc]; !ok {
-			nc.nodes[acc] = make(map[string]*trienode.Node)
-		}
-		for path, node := range subTree {
-			nc.nodes[acc][path] = node
-		}
+	nc.nodes.size = n.nodes.size
+
+	storageData := make(map[common.Hash]map[common.Hash][]byte, len(n.states.storageData))
+	for accountHash, storage := range n.states.storageData {
+		storageData[accountHash] = maps.Clone(storage)
 	}
+	nc.states = newStates(maps.Clone(n.states.accountData), storageData)
 	return nc
 }

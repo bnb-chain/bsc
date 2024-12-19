@@ -31,10 +31,6 @@ func (t *table) BlockStoreReader() ethdb.Reader {
 	return t
 }
 
-func (t *table) BlockStoreWriter() ethdb.Writer {
-	return t
-}
-
 func (t *table) BlockStore() ethdb.Database {
 	return t
 }
@@ -167,6 +163,12 @@ func (t *table) Put(key []byte, value []byte) error {
 // Delete removes the given prefixed key from the database.
 func (t *table) Delete(key []byte) error {
 	return t.db.Delete(append([]byte(t.prefix), key...))
+}
+
+// DeleteRange deletes all of the keys (and values) in the range [start,end)
+// (inclusive on start, exclusive on end).
+func (t *table) DeleteRange(start, end []byte) error {
+	return t.db.DeleteRange(append([]byte(t.prefix), start...), append([]byte(t.prefix), end...))
 }
 
 // NewIterator creates a binary-alphabetical iterator over a subset

@@ -31,7 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/jsre"
-	"github.com/ethereum/go-ethereum/miner"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/node"
 )
 
@@ -95,7 +95,7 @@ func newTester(t *testing.T, confOverride func(*ethconfig.Config)) *tester {
 	}
 	ethConf := &ethconfig.Config{
 		Genesis: core.DeveloperGenesisBlock(11_500_000, nil),
-		Miner: miner.Config{
+		Miner: minerconfig.Config{
 			Etherbase: common.HexToAddress(testAddress),
 		},
 	}

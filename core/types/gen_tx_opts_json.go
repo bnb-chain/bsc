@@ -4,6 +4,7 @@ package types
 
 import (
 	"encoding/json"
+
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 

@@ -21,14 +21,14 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/stretchr/testify/require"
-
 	"github.com/ethereum/go-ethereum/eth/downloader"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/stretchr/testify/require"
 )
 
 // Tests that snap sync is disabled after a successful sync cycle.
@@ -89,7 +89,7 @@ func testSnapSyncDisabling(t *testing.T, ethVer uint, snapVer uint) {
 	time.Sleep(250 * time.Millisecond)
 
 	// Check that snap sync was disabled
-	op := peerToSyncOp(downloader.SnapSync, empty.handler.peers.peerWithHighestTD())
+	op := peerToSyncOp(ethconfig.SnapSync, empty.handler.peers.peerWithHighestTD())
 	if err := empty.handler.doSync(op); err != nil {
 		t.Fatal("sync failed:", err)
 	}
@@ -99,11 +99,11 @@ func testSnapSyncDisabling(t *testing.T, ethVer uint, snapVer uint) {
 }
 
 func TestFullSyncWithBlobs(t *testing.T) {
-	testChainSyncWithBlobs(t, downloader.FullSync, 128, 128)
+	testChainSyncWithBlobs(t, ethconfig.FullSync, 128, 128)
 }
 
 func TestSnapSyncWithBlobs(t *testing.T) {
-	testChainSyncWithBlobs(t, downloader.SnapSync, 128, 128)
+	testChainSyncWithBlobs(t, ethconfig.SnapSync, 128, 128)
 }
 
 func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlks, postCancunBlks uint64) {
@@ -115,14 +115,14 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 	// Create an empty handler
 	empty := newTestParliaHandlerAfterCancun(t, &config, mode, 0, 0)
 	defer empty.close()
-	if downloader.SnapSync == mode && !empty.handler.snapSync.Load() {
+	if ethconfig.SnapSync == mode && !empty.handler.snapSync.Load() {
 		t.Fatalf("snap sync disabled on pristine blockchain")
 	}
 
 	// Create a full handler
 	full := newTestParliaHandlerAfterCancun(t, &config, mode, preCancunBlks, postCancunBlks)
 	defer full.close()
-	if downloader.SnapSync == mode && full.handler.snapSync.Load() {
+	if ethconfig.SnapSync == mode && full.handler.snapSync.Load() {
 		t.Fatalf("snap sync not disabled on non-empty blockchain")
 	}
 
