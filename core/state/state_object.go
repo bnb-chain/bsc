@@ -93,6 +93,9 @@ type stateObject struct {
 
 	// Flag whether the object was created in the current transaction
 	created bool
+
+	// Slots to prefetch
+	SlotsToPrefetch [][]byte
 }
 
 // empty returns whether the account is considered empty.
@@ -289,16 +292,16 @@ func (s *stateObject) setState(key, value common.Hash) {
 // finalise moves all dirty storage slots into the pending area to be hashed or
 // committed later. It is invoked at the end of every transaction.
 func (s *stateObject) finalise(prefetch bool) {
-	slotsToPrefetch := make([][]byte, 0, len(s.dirtyStorage))
+	if s.db.TriePrefetch {
+		s.SlotsToPrefetch = make([][]byte, 0, len(s.dirtyStorage))
+	}
 	for key, value := range s.dirtyStorage {
 		s.pendingStorage[key] = value
 		if value != s.originStorage[key] {
-			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
+			s.SlotsToPrefetch = append(s.SlotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
 		}
 	}
-	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != types.EmptyRootHash {
-		s.db.prefetcher.prefetch(s.addrHash, s.data.Root, s.address, slotsToPrefetch)
-	}
+
 	if len(s.dirtyStorage) > 0 {
 		s.dirtyStorage = make(Storage)
 	}
@@ -313,6 +316,10 @@ func (s *stateObject) finalise(prefetch bool) {
 func (s *stateObject) updateTrie() (Trie, error) {
 	// Make sure all dirty slots are finalized into the pending storage area
 	s.finalise(false)
+
+	if s.db.prefetcher != nil && len(s.SlotsToPrefetch) > 0 && s.data.Root != types.EmptyRootHash {
+		s.db.prefetcher.prefetch(s.addrHash, s.data.Root, s.address, s.SlotsToPrefetch)
+	}
 
 	// Short circuit if nothing changed, don't bother with hashing anything
 	if len(s.pendingStorage) == 0 {

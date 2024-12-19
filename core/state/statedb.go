@@ -158,6 +158,8 @@ type StateDB struct {
 	AccountDeleted int
 	StorageDeleted int
 
+	TriePrefetch bool
+
 	// Testing hooks
 	onCommit func(states *triestate.Set) // Hook invoked when commit is performed
 }
@@ -1012,14 +1014,18 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		s.stateObjectsPending[addr] = struct{}{}
 		s.stateObjectsDirty[addr] = struct{}{}
 
-		// At this point, also ship the address off to the precacher. The precacher
-		// will start loading tries, and when the change is eventually committed,
-		// the commit-phase will be a lot faster
-		addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
+		if s.TriePrefetch {
+			// At this point, also ship the address off to the precacher. The precacher
+			// will start loading tries, and when the change is eventually committed,
+			// the commit-phase will be a lot faster
+			addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
+		}
 	}
-	prefetcher := s.prefetcher
-	if prefetcher != nil && len(addressesToPrefetch) > 0 {
-		prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch)
+	if s.TriePrefetch {
+		prefetcher := s.prefetcher
+		if prefetcher != nil && len(addressesToPrefetch) > 0 {
+			prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch)
+		}
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
@@ -1029,6 +1035,8 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
+	s.TriePrefetch = true
+
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 
