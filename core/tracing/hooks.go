@@ -154,9 +154,41 @@ type (
 	// beacon block root.
 	OnSystemCallEndHook = func()
 
-	// OnSystemTxEndHook is called when tracing a system transaction, which does not calculate intrinsic gas during execution.
+	// OnSystemTxFixIntrinsicGasHook is called when tracing a system transaction, which does not calculate intrinsic gas during execution.
 	// this hook will subtract intrinsic gas from the total gas used.
-	OnSystemTxEndHook = func(uint64)
+	OnSystemTxFixIntrinsicGasHook = func(uint64)
+
+	// OnSystemTxStartHook is called when a system transaction is about to be executed within the Parlia consensus
+	// engine, like before upgrading system contracts, distribution of rewards, and other "chain" related transactions.
+	//
+	// This will be called in addition to the `OnTxStart` hook so the flow of event you will receive in your tracer will
+	// look kike this:
+	//
+	// - OnSystemTxStart
+	// - OnTxStart
+	// - OnTxEnd
+	// - OnSystemTxEnd
+	//
+	// This event flow enables transactions to be traced correctly with just OnTxStart/End being set but also
+	// enables special routing of those transactions by having OnSystemTxStart/End defined and keeping a special
+	// system state to do something different when OnTxEnd is called.
+	OnSystemTxStartHook func()
+
+	// OnSystemTxEnd is called when a system transaction is about to completed its execution within the Parlia consensus
+	// engine, like after upgrading system contracts, distribution of rewards, and other "chain" related transactions.
+	//
+	// This will be called in addition to the `OnTxStart` hook so the flow of event you will receive in your tracer will
+	// look kike this:
+	//
+	// - OnSystemTxStart
+	// - OnTxStart
+	// - OnTxEnd
+	// - OnSystemTxEnd
+	//
+	// This event flow enables transactions to be traced correctly with just OnTxStart/End being set but also
+	// enables special routing of those transactions by having OnSystemTxStart/End defined and keeping a special
+	// system state to do something different when OnTxEnd is called.
+	OnSystemTxEndHook func()
 
 	/*
 		- State events -
@@ -198,7 +230,9 @@ type Hooks struct {
 	OnSystemCallStartV2 OnSystemCallStartHookV2
 	OnSystemCallEnd     OnSystemCallEndHook
 
-	OnSystemTxEnd OnSystemTxEndHook
+	OnSystemTxStart           OnSystemTxStartHook
+	OnSystemTxEnd             OnSystemTxEndHook
+	OnSystemTxFixIntrinsicGas OnSystemTxFixIntrinsicGasHook
 
 	// State events
 	OnBalanceChange BalanceChangeHook
@@ -257,6 +291,15 @@ const (
 	// account within the same tx (captured at end of tx).
 	// Note it doesn't account for a self-destruct which appoints itself as recipient.
 	BalanceDecreaseSelfdestructBurn BalanceChangeReason = 14
+
+	// BSC specific balance changes
+
+	// BalanceDecreaseBSCDistributeReward is a balance change that decreases system address' balance and happens
+	// when BSC is distributing rewards to validator.
+	BalanceDecreaseBSCDistributeReward BalanceChangeReason = 210
+	// BalanceIncreaseBSCDistributeReward is a balance change that increases the block validator's balance and
+	// happens when BSC is distributing rewards to validator.
+	BalanceIncreaseBSCDistributeReward BalanceChangeReason = 211
 )
 
 // GasChangeReason is used to indicate the reason for a gas change, useful
