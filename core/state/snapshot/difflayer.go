@@ -288,32 +288,31 @@ func (dl *diffLayer) Accounts() (map[common.Hash]*types.SlimAccount, error) {
 //
 // Note the returned account is not a copy, please don't modify it.
 func (dl *diffLayer) AccountRLP(hash common.Hash) ([]byte, error) {
-	/*
-		// Check staleness before reaching further.
-		dl.lock.RLock()
-		if dl.Stale() {
-			dl.lock.RUnlock()
-			return nil, ErrSnapshotStale
-		}
-		// Check the bloom filter first whether there's even a point in reaching into
-		// all the maps in all the layers below
-		hit := dl.diffed.ContainsHash(accountBloomHash(hash))
-		if !hit {
-			hit = dl.diffed.ContainsHash(destructBloomHash(hash))
-		}
-		var origin *diskLayer
-		if !hit {
-			origin = dl.origin // extract origin while holding the lock
-		}
+	// Check staleness before reaching further.
+	dl.lock.RLock()
+	if dl.Stale() {
 		dl.lock.RUnlock()
+		return nil, ErrSnapshotStale
+	}
+	// Check the bloom filter first whether there's even a point in reaching into
+	// all the maps in all the layers below
+	hit := dl.diffed.ContainsHash(accountBloomHash(hash))
+	if !hit {
+		hit = dl.diffed.ContainsHash(destructBloomHash(hash))
+	}
+	var origin *diskLayer
+	if !hit {
+		origin = dl.origin // extract origin while holding the lock
+	}
+	dl.lock.RUnlock()
 
-		// If the bloom filter misses, don't even bother with traversing the memory
-		// diff layers, reach straight into the bottom persistent disk layer
-		if origin != nil {
-			snapshotBloomAccountMissMeter.Mark(1)
-			return origin.AccountRLP(hash)
-		}
-	*/
+	// If the bloom filter misses, don't even bother with traversing the memory
+	// diff layers, reach straight into the bottom persistent disk layer
+	if origin != nil {
+		snapshotBloomAccountMissMeter.Mark(1)
+		return origin.AccountRLP(hash)
+	}
+		
 	// The bloom filter hit, start poking in the internal maps
 	return dl.accountRLP(hash, 0)
 }
@@ -361,32 +360,31 @@ func (dl *diffLayer) accountRLP(hash common.Hash, depth int) ([]byte, error) {
 //
 // Note the returned slot is not a copy, please don't modify it.
 func (dl *diffLayer) Storage(accountHash, storageHash common.Hash) ([]byte, error) {
-	/*
-		// Check the bloom filter first whether there's even a point in reaching into
-		// all the maps in all the layers below
-		dl.lock.RLock()
-		// Check staleness before reaching further.
-		if dl.Stale() {
-			dl.lock.RUnlock()
-			return nil, ErrSnapshotStale
-		}
-		hit := dl.diffed.ContainsHash(storageBloomHash(accountHash, storageHash))
-		if !hit {
-			hit = dl.diffed.ContainsHash(destructBloomHash(accountHash))
-		}
-		var origin *diskLayer
-		if !hit {
-			origin = dl.origin // extract origin while holding the lock
-		}
+	// Check the bloom filter first whether there's even a point in reaching into
+	// all the maps in all the layers below
+	dl.lock.RLock()
+	// Check staleness before reaching further.
+	if dl.Stale() {
 		dl.lock.RUnlock()
+		return nil, ErrSnapshotStale
+	}
+	hit := dl.diffed.ContainsHash(storageBloomHash(accountHash, storageHash))
+	if !hit {
+		hit = dl.diffed.ContainsHash(destructBloomHash(accountHash))
+	}
+	var origin *diskLayer
+	if !hit {
+		origin = dl.origin // extract origin while holding the lock
+	}
+	dl.lock.RUnlock()
 
-		// If the bloom filter misses, don't even bother with traversing the memory
-		// diff layers, reach straight into the bottom persistent disk layer
-		if origin != nil {
-			snapshotBloomStorageMissMeter.Mark(1)
-			return origin.Storage(accountHash, storageHash)
-		}
-	*/
+	// If the bloom filter misses, don't even bother with traversing the memory
+	// diff layers, reach straight into the bottom persistent disk layer
+	if origin != nil {
+		snapshotBloomStorageMissMeter.Mark(1)
+		return origin.Storage(accountHash, storageHash)
+	}
+
 	// The bloom filter hit, start poking in the internal maps
 	return dl.storage(accountHash, storageHash, 0)
 }
