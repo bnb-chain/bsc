@@ -84,12 +84,6 @@ var (
 	// database.
 	fastTxLookupLimitKey = []byte("FastTransactionLookupLimit")
 
-	//offSet of new updated ancientDB.
-	offSetOfCurrentAncientFreezer = []byte("offSetOfCurrentAncientFreezer")
-
-	//offSet of the ancientDB before updated version.
-	offSetOfLastAncientFreezer = []byte("offSetOfLastAncientFreezer")
-
 	//frozenOfAncientDBKey tracks the block number for ancientDB to save.
 	frozenOfAncientDBKey = []byte("FrozenOfAncientDB")
 
