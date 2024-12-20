@@ -250,7 +250,6 @@ func (db *Database) loadLayers() layer {
 
 // loadDiskLayerWithAsyncBuffer try to load legacy async buffer data from journal
 func (db *Database) loadDiskLayerWithAsyncBuffer(diskRoot common.Hash) (layer, error) {
-	start := time.Now()
 	journalTypeForReader := db.DetermineJournalTypeForReader()
 	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, journalTypeForReader)
 
@@ -283,9 +282,7 @@ func (db *Database) loadDiskLayerWithAsyncBuffer(diskRoot common.Hash) (layer, e
 		return nil, fmt.Errorf("%w want %x got %x", errUnmatchedJournal, root, diskRoot)
 	}
 	// Load the disk layer from the journal
-	base, err := db.loadDiskLayer(r, journalTypeForReader, version)
-	log.Info("Loaded disk layer with async buffer", "diskroot", diskRoot, "elapsed", common.PrettyDuration(time.Since(start)))
-	return base, nil
+	return db.loadDiskLayer(r, journalTypeForReader, version)
 }
 
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
