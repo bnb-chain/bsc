@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"math/big"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -71,6 +70,7 @@ func NewVoteManager(eth Backend, chain *core.BlockChain, pool *VotePool, journal
 	}
 	log.Info("Create voteSigner successfully")
 	voteManager.signer = voteSigner
+	metrics.GetOrRegisterLabel("miner-info", nil).Mark(map[string]interface{}{"VoteKey": common.Bytes2Hex(voteManager.signer.PubKey[:])})
 
 	// Create voteJournal
 	voteJournal, err := NewVoteJournal(journalPath)
@@ -107,7 +107,6 @@ func (voteManager *VoteManager) loop() {
 
 	startVote := true
 	blockCountSinceMining := 0
-	var once sync.Once
 	for {
 		select {
 		case ev := <-dlEventCh:
@@ -165,14 +164,6 @@ func (voteManager *VoteManager) loop() {
 				log.Debug("local validator with voteKey is not within the validatorSet at curHead")
 				continue
 			}
-
-			// Add VoteKey to `miner-info`
-			once.Do(func() {
-				minerInfo := metrics.Get("miner-info")
-				if minerInfo != nil {
-					minerInfo.(metrics.Label).Value()["VoteKey"] = common.Bytes2Hex(voteManager.signer.PubKey[:])
-				}
-			})
 
 			// Vote for curBlockHeader block.
 			vote := &types.VoteData{

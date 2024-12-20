@@ -2332,7 +2332,7 @@ type SetupMetricsOption func()
 func EnableBuildInfo(gitCommit, gitDate string) SetupMetricsOption {
 	return func() {
 		// register build info into metrics
-		metrics.NewRegisteredLabel("build-info", nil).Mark(map[string]interface{}{
+		metrics.GetOrRegisterLabel("build-info", nil).Mark(map[string]interface{}{
 			"version":          version.WithMeta,
 			"git-commit":       gitCommit,
 			"git-commit-date":  gitDate,
@@ -2349,7 +2349,7 @@ func EnableMinerInfo(ctx *cli.Context, minerConfig *minerconfig.Config) SetupMet
 			// register miner info into metrics
 			minerInfo := structs.Map(minerConfig)
 			minerInfo[UnlockedAccountFlag.Name] = ctx.String(UnlockedAccountFlag.Name)
-			metrics.NewRegisteredLabel("miner-info", nil).Mark(minerInfo)
+			metrics.GetOrRegisterLabel("miner-info", nil).Mark(minerInfo)
 		}
 	}
 }
@@ -2369,7 +2369,7 @@ func RegisterFilterAPI(stack *node.Node, backend ethapi.Backend, ethcfg *ethconf
 func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) SetupMetricsOption {
 	return func() {
 		// register node info into metrics
-		metrics.NewRegisteredLabel("node-info", nil).Mark(map[string]interface{}{
+		metrics.GetOrRegisterLabel("node-info", nil).Mark(map[string]interface{}{
 			"Enode":             nodeInfo.Enode,
 			"ENR":               nodeInfo.ENR,
 			"ID":                nodeInfo.ID,
@@ -2389,7 +2389,7 @@ func EnableNodeTrack(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) 
 	nodeInfo := stack.Server().NodeInfo()
 	return func() {
 		// register node info into metrics
-		metrics.NewRegisteredLabel("node-stats", nil).Mark(map[string]interface{}{
+		metrics.GetOrRegisterLabel("node-stats", nil).Mark(map[string]interface{}{
 			"NodeType":       parseNodeType(),
 			"ENR":            nodeInfo.ENR,
 			"Mining":         ctx.Bool(MiningEnabledFlag.Name),

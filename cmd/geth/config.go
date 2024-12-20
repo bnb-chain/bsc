@@ -234,9 +234,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		params.FixedTurnLength = ctx.Uint64(utils.OverrideFixedTurnLength.Name)
 	}
 
-	// Start metrics export if enabled
-	utils.SetupMetrics(&cfg.Metrics)
-
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)
 
 	// Create gauge with geth system and build information
