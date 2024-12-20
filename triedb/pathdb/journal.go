@@ -243,6 +243,7 @@ func (db *Database) loadLayers() layer {
 	if err == nil {
 		return base
 	}
+	log.Warn("Failed to load disk journal with async buffer, discard it", "err", err)
 	// Return single layer with persistent state.
 	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0))
 }
