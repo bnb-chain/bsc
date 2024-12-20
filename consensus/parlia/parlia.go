@@ -648,7 +648,7 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	prague := chain.Config().IsPrague(header.Number, header.Time)
 	if !prague {
 		if header.RequestsHash != nil {
-			return fmt.Errorf("invalid RequestsHash, have %#x, expected nil", header.ParentBeaconRoot)
+			return fmt.Errorf("invalid RequestsHash, have %#x, expected nil", header.RequestsHash)
 		}
 	} else {
 		if header.RequestsHash == nil {
