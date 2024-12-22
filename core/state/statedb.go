@@ -1591,16 +1591,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 		func() error {
 			// If snapshotting is enabled, update the snapshot tree with this new version
 			if s.snap != nil {
-
-				defer func(start time.Time) { s.SnapshotCommits += time.Since(start) }(time.Now())
-
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
-				// Only update if there's a state transition (skip empty Clique blocks)
-				if parent := s.snap.Root(); parent != s.expectedRoot {
-					if err := s.snaps.CorrectAccounts(s.expectedRoot, parent, s.accounts); err != nil {
-						log.Crit("Failed to correct accounts for diff of block", "block=", block, "error", err)
-					}
-				}
 			}
 			return nil
 		},
@@ -1622,7 +1613,16 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 			return common.Hash{}, nil, r
 		}
 	}
-
+	// Correct snap diff after trie data persisted
+	if s.snap != nil {
+		// Only update if there's a state transition (skip empty Clique blocks)
+		if parent := s.snap.Root(); parent != s.expectedRoot {
+			defer func(start time.Time) { s.SnapshotCommits += time.Since(start) }(time.Now())
+			if err := s.snaps.CorrectAccounts(s.expectedRoot, parent, s.accounts); err != nil {
+				log.Crit("Failed to correct accounts for diff of block", "block=", block, "error", err)
+			}
+		}
+	}
 	root := s.stateRoot
 	s.snap = nil
 	if root == (common.Hash{}) {
