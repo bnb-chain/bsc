@@ -1359,6 +1359,19 @@ func (bc *BlockChain) stopWithoutSaving() {
 func (bc *BlockChain) Stop() {
 	bc.stopWithoutSaving()
 
+	// Waiting the background state verification and commit work done
+	sentNilTask := false
+	for {
+		if !sentNilTask {
+			bc.verifyTaskCh <- nil
+			sentNilTask = true
+		}
+		if bc.verifyTaskCh == nil {
+			break
+		} else {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
 	// Ensure that the entirety of the state snapshot is journaled to disk.
 	var snapBase common.Hash
 	if bc.snaps != nil {
@@ -2465,9 +2478,14 @@ func (bc *BlockChain) VerifyLoop() {
 	wg := sync.WaitGroup{}
 	for {
 		select {
-		case <-bc.quit:
-			return
+		// case <-bc.quit:
+		//	return
 		case task := <-bc.verifyTaskCh:
+			if task == nil {
+				bc.verifyTaskCh = nil
+				log.Info("Verify task done")
+				return
+			}
 			vstart := time.Now()
 			if err := bc.validator.ValidateState(task.block, task.state, task.receipts, task.usedGas); err != nil {
 				log.Crit("validate state failed", "error", err)
