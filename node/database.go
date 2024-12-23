@@ -37,9 +37,8 @@ type openOptions struct {
 	Handles           int    // number of files to be open simultaneously
 	ReadOnly          bool
 
-	DisableFreeze    bool
-	PruneAncientData bool
-	MultiDataBase    bool
+	DisableFreeze bool
+	MultiDataBase bool
 }
 
 // openDatabase opens both a disk-based key-value database such as leveldb or pebble, but also
@@ -52,15 +51,10 @@ func openDatabase(o openOptions) (ethdb.Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	if rawdb.ReadAncientType(kvdb) == rawdb.PruneFreezerType {
-		if !o.PruneAncientData {
-			log.Warn("NOTICE: You're opening a pruned disk db!")
-		}
-	}
 	if len(o.AncientsDirectory) == 0 {
 		return kvdb, nil
 	}
-	frdb, err := rawdb.NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.PruneAncientData, o.MultiDataBase)
+	frdb, err := rawdb.NewDatabaseWithFreezer(kvdb, o.AncientsDirectory, o.Namespace, o.ReadOnly, o.DisableFreeze, o.MultiDataBase)
 	if err != nil {
 		kvdb.Close()
 		return nil, err

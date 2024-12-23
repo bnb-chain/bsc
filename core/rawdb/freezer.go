@@ -84,7 +84,7 @@ type Freezer struct {
 // The 'tables' argument defines the data tables. If the value of a map
 // entry is true, snappy compression is disabled for the table.
 // additionTables indicates the new add tables for freezerDB, it has some special rules.
-func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32, tables map[string]bool) (*Freezer, error) {
+func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize uint32, tables map[string]bool) (*Freezer, error) {
 	// Create the initial freezer object
 	var (
 		readMeter  = metrics.NewRegisteredMeter(namespace+"ancient/read", nil)
@@ -124,7 +124,6 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 		readonly:     readonly,
 		tables:       make(map[string]*freezerTable),
 		instanceLock: lock,
-		offset:       offset,
 	}
 
 	// Create the tables.
@@ -163,11 +162,6 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 		lock.Unlock()
 		return nil, err
 	}
-
-	// Some blocks in ancientDB may have already been frozen and been pruned, so adding the offset to
-	// represent the absolute number of blocks already frozen.
-	freezer.frozen.Add(offset)
-	freezer.tail.Add(offset)
 
 	// Create the write batch.
 	freezer.writeBatch = newFreezerBatch(freezer)
