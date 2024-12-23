@@ -330,7 +330,10 @@ type BlockChain struct {
 	// monitor
 	doubleSignMonitor *monitor.DoubleSignMonitor
 
-	verifyTaskCh chan *VerifyTask
+	verifyTaskCh      chan *VerifyTask
+	verifyHeaderCache *lru.Cache[common.Hash, *types.Header]
+	verifyTdCache     *lru.Cache[common.Hash, *big.Int] // most recent total difficulties
+	verifyNumberCache *lru.Cache[common.Hash, uint64]   // most recent block numbers
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -396,6 +399,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
 		diffQueueBuffer:    make(chan *types.DiffLayer),
 		verifyTaskCh:       make(chan *VerifyTask, 32),
+		verifyHeaderCache:  lru.NewCache[common.Hash, *types.Header](128),
+		verifyTdCache:      lru.NewCache[common.Hash, *big.Int](128),
+		verifyNumberCache:  lru.NewCache[common.Hash, uint64](128),
 	}
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
@@ -2309,14 +2315,17 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		pipeSnapshotCommitTimer.Update(statedb.PipeSnapshotCommits)
 		// Add to cache
 		bc.blockCache.Add(block.Hash(), block)
-		bc.hc.numberCache.Add(block.Hash(), block.NumberU64())
-		bc.hc.headerCache.Add(block.Hash(), block.Header())
+		// bc.hc.numberCache.Add(block.Hash(), block.NumberU64())
+		// bc.hc.headerCache.Add(block.Hash(), block.Header())
+		bc.verifyHeaderCache.Add(block.Hash(), block.Header())
+		bc.verifyNumberCache.Add(block.Hash(), block.NumberU64())
 
 		ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 		// Make sure no inconsistent state is leaked during insertion
 		externTd := new(big.Int).Add(block.Difficulty(), ptd)
 
-		bc.hc.tdCache.Add(block.Hash(), externTd)
+		// bc.hc.tdCache.Add(block.Hash(), externTd)
+		bc.verifyTdCache.Add(block.Hash(), externTd)
 
 		blockExecutionAndCommitTimer.Update(time.Since(pstart))
 
