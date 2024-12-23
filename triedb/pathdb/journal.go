@@ -239,7 +239,7 @@ func (db *Database) loadLayers() layer {
 		log.Info("Failed to load journal, discard it", "err", err)
 	}
 	// try to load async buffer only, it can be compatible with old journal ver
-	base, err := db.loadDiskLayerWithAsyncBuffer(root)
+	base, err := db.loadAsyncBufferAsJournalV0V1(root)
 	if err == nil {
 		return base
 	}
@@ -248,8 +248,8 @@ func (db *Database) loadLayers() layer {
 	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0))
 }
 
-// loadDiskLayerWithAsyncBuffer try to load legacy async buffer data from journal
-func (db *Database) loadDiskLayerWithAsyncBuffer(diskRoot common.Hash) (layer, error) {
+// loadAsyncBufferAsJournalV0V1 try to load legacy async buffer data from journal
+func (db *Database) loadAsyncBufferAsJournalV0V1(diskRoot common.Hash) (layer, error) {
 	journalTypeForReader := db.DetermineJournalTypeForReader()
 	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, journalTypeForReader)
 
@@ -261,7 +261,7 @@ func (db *Database) loadDiskLayerWithAsyncBuffer(diskRoot common.Hash) (layer, e
 	}
 	r := rlp.NewStream(reader, 0)
 
-	// Firstly, resolve the first element as the journal version
+	// read & check journal version
 	version, err := r.Uint64()
 	if err != nil {
 		return nil, errMissVersion
@@ -269,19 +269,15 @@ func (db *Database) loadDiskLayerWithAsyncBuffer(diskRoot common.Hash) (layer, e
 	if version == journalVersion {
 		return nil, fmt.Errorf("%w, only handle legacy journal version, got %v", errUnexpectedVersion, version)
 	}
-	// Secondly, resolve the disk layer root, ensure it's continuous
-	// with disk layer. Note now we can ensure it's the layer journal
-	// correct version, so we expect everything can be resolved properly.
+
+	// read & check disk root
 	var root common.Hash
 	if err := r.Decode(&root); err != nil {
 		return nil, errMissDiskRoot
 	}
-	// The journal is not matched with persistent state, discard them.
-	// It can happen that geth crashes without persisting the journal.
 	if !bytes.Equal(root.Bytes(), diskRoot.Bytes()) {
 		return nil, fmt.Errorf("%w want %x got %x", errUnmatchedJournal, root, diskRoot)
 	}
-	// Load the disk layer from the journal
 	return db.loadDiskLayer(r, journalTypeForReader, version)
 }
 
@@ -323,7 +319,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 		return nil, err
 	}
 
-	// handle new states in new journal version
+	// handle new states in journal v2
 	var states stateSet
 	if version == journalVersion {
 		// Resolve flat state sets in aggregated buffer
