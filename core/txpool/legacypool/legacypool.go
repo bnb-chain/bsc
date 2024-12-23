@@ -299,7 +299,8 @@ func New(config Config, chain BlockChain) *LegacyPool {
 // pool, specifically, whether it is a Legacy, AccessList or Dynamic transaction.
 func (pool *LegacyPool) Filter(tx *types.Transaction) bool {
 	switch tx.Type() {
-	//TODO(Nathan): add SetCodeTxType into LegacyPool for test, finally will rollback and be consistent with upstream
+	// TODO(Nathan): add SetCodeTxType into LegacyPool for test
+	// finally will rollback and be consistent with upstream
 	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType, types.SetCodeTxType:
 		return true
 	default:
@@ -688,11 +689,16 @@ func (pool *LegacyPool) validateTxBasics(tx *types.Transaction, local bool) erro
 		Accept: 0 |
 			1<<types.LegacyTxType |
 			1<<types.AccessListTxType |
-			1<<types.DynamicFeeTxType |
-			1<<types.SetCodeTxType,
+			1<<types.DynamicFeeTxType,
 		MaxSize: txMaxSize,
 		MinTip:  pool.gasTip.Load().ToBig(),
 		MaxGas:  pool.GetMaxGas(),
+	}
+	// TODO(Nathan): ensure before prague, no SetCodeTxType will be accepted and propagated
+	// finally will rollback and be consistent with upstream
+	currentBlock := pool.chain.CurrentBlock()
+	if pool.chainconfig.IsPrague(currentBlock.Number, currentBlock.Time) {
+		opts.Accept |= 1 << types.SetCodeTxType
 	}
 	if local {
 		opts.MinTip = new(big.Int)
