@@ -238,18 +238,19 @@ func (db *Database) loadLayers() layer {
 	if !(root == types.EmptyRootHash && errors.Is(err, errMissJournal)) {
 		log.Info("Failed to load journal, discard it", "err", err)
 	}
-	// try to load async buffer only, it can be compatible with old journal ver
-	base, err := db.loadAsyncBufferAsJournalV0V1(root)
+	// try to load node buffer only, it can be compatible with old journal ver
+	base, err := db.loadNodeBufferAsJournalV0V1(root)
 	if err == nil {
+		log.Info("load legacy node buffer successful", "new root", base.rootHash(), "disk root", root)
 		return base
 	}
-	log.Warn("Failed to load disk journal with async buffer, discard it", "err", err)
+	log.Warn("Failed to load disk journal with node buffer, discard it", "err", err)
 	// Return single layer with persistent state.
 	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0))
 }
 
-// loadAsyncBufferAsJournalV0V1 try to load legacy async buffer data from journal
-func (db *Database) loadAsyncBufferAsJournalV0V1(diskRoot common.Hash) (layer, error) {
+// loadNodeBufferAsJournalV0V1 try to load legacy node buffer data from journal
+func (db *Database) loadNodeBufferAsJournalV0V1(diskRoot common.Hash) (layer, error) {
 	journalTypeForReader := db.DetermineJournalTypeForReader()
 	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, journalTypeForReader)
 

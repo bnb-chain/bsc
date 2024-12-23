@@ -434,12 +434,14 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			var diskRoot common.Hash
 			if bc.cacheConfig.SnapshotLimit > 0 {
 				diskRoot = rawdb.ReadSnapshotRoot(bc.db)
+				log.Debug("Head state missing, ReadSnapshotRoot", "snap root", diskRoot)
 			}
 			if bc.triedb.Scheme() == rawdb.PathScheme && !bc.NoTries() {
 				recoverable, _ := bc.triedb.Recoverable(diskRoot)
 				if !bc.HasState(diskRoot) && !recoverable {
 					diskRoot = bc.triedb.Head()
 				}
+				log.Debug("Head state missing, check recoverable", "disk root", diskRoot, "recoverable", recoverable)
 			}
 			if diskRoot != (common.Hash{}) {
 				log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash(), "diskRoot", diskRoot)
