@@ -98,6 +98,7 @@ func (b *buffer) revertTo(db ethdb.KeyValueReader, nodes map[common.Hash]map[str
 	// TODO(galaio): In order to be compatible with the legacy version, a temporary empty check is added,
 	// which may affect the reading result of pbss as flatReader, see: flatReader.Account()
 	// it could be removed in the future
+	// Caution: there is also a panic issue with non-empty states when rewinding the chain again, but it is a very low possibility with finality.
 	if len(b.states.accountData) != 0 || len(b.states.storageData) != 0 {
 		b.states.revertTo(accounts, storages)
 	}
