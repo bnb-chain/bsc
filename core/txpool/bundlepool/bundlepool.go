@@ -91,10 +91,11 @@ func New(config Config, chain BlockChain) *BundlePool {
 	config = (&config).sanitize()
 
 	pool := &BundlePool{
-		config:     config,
-		bundles:    make(map[common.Hash]*types.Bundle),
-		bundleHeap: make(BundleHeap, 0),
-		blockchain: chain,
+		config:        config,
+		bundles:       make(map[common.Hash]*types.Bundle),
+		bundleHeap:    make(BundleHeap, 0),
+		blockchain:    chain,
+		bundleMetrics: make(map[int64][][]common.Hash),
 	}
 
 	go pool.clearLoop()
