@@ -2,6 +2,8 @@ package snapshot
 
 import (
 	"fmt"
+	"sync"
+
 	//"sort"
 	"time"
 
@@ -29,10 +31,13 @@ type Lookup struct {
 	// todo: add lock?? or in layer tree lock??
 	state2LayerRoots map[string][]Snapshot // think more about it
 	descendants      map[common.Hash]map[common.Hash]struct{}
+
+	lock sync.RWMutex
 }
 
 // newLookup initializes the lookup structure.
 func newLookup(head Snapshot) *Lookup {
+
 	l := new(Lookup)
 
 	{ // setup state mapping
@@ -108,6 +113,8 @@ func (l *Lookup) addLayer(diff *diffLayer) {
 		lookupAddLayerTimer.UpdateSince(now)
 	}(time.Now())
 	layerIDCounter++
+	l.lock.Lock()
+	defer l.lock.Unlock()
 	//log.Info("Layer add", "layer", diff.Root(), "layerID", layerIDCounter)
 
 	for accountHash, _ := range diff.accountData {
@@ -148,6 +155,8 @@ func (l *Lookup) removeLayer(diff *diffLayer) error {
 		lookupRemoveLayerTimer.UpdateSince(now)
 	}(time.Now())
 	layerIDRemoveCounter++
+	l.lock.Lock()
+	defer l.lock.Unlock()
 	//log.Info("Layer removing", "layer", diff.Root(), "layerID", layerIDRemoveCounter)
 
 	diffRoot := diff.Root()
@@ -234,6 +243,8 @@ func diffAncestors(layer Snapshot) map[common.Hash]struct{} {
 
 func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
 	//log.Info("addDescendant", "addDescendant", topDiffLayer.Root())
+	l.lock.Lock()
+	defer l.lock.Unlock()
 
 	// Link the new layer into the descendents set
 	for h := range diffAncestors(topDiffLayer) {
@@ -246,27 +257,18 @@ func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
 	}
 }
 
-func (l *Lookup) addFlattenDescendant(bottomDiffLayer Snapshot) {
-	//log.Info("addDescendant", "addDescendant", topDiffLayer.Root())
-
-	// Link the new layer into the descendents set
-	for h := range diffAncestors(bottomDiffLayer) {
-		subset := l.descendants[h]
-		if subset == nil {
-			subset = make(map[common.Hash]struct{})
-			l.descendants[h] = subset
-		}
-		subset[bottomDiffLayer.Root()] = struct{}{}
-	}
-}
-
 func (l *Lookup) removeDescendant(bottomDiffLayer Snapshot) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
 	//log.Info("removeDescendant", "addDescendant", bottomDiffLayer.Root())
 	delete(l.descendants, bottomDiffLayer.Root())
 }
 
 func (l *Lookup) LookupAccount(accountAddrHash common.Hash, head common.Hash) Snapshot {
 	//log.Info("lookupAccount", "acc", accountAddrHash, "head", head)
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+
 	list, exists := l.state2LayerRoots[accountAddrHash.String()]
 	if !exists {
 		//log.Info("lookupAccount not exist", "acc", accountAddrHash, "head", head)
@@ -286,6 +288,9 @@ func (l *Lookup) LookupAccount(accountAddrHash common.Hash, head common.Hash) Sn
 }
 
 func (l *Lookup) LookupStorage(accountAddrHash common.Hash, slot common.Hash, head common.Hash) Snapshot {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+
 	list, exists := l.state2LayerRoots[accountAddrHash.String()+slot.String()]
 	if !exists {
 		//log.Info("LookupStorage not exist", "acc", accountAddrHash, "head", head)
