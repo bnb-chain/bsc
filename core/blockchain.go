@@ -100,6 +100,7 @@ var (
 	blockValidationTimer         = metrics.NewRegisteredTimer("chain/validation", nil)
 	blockExecutionTimer          = metrics.NewRegisteredTimer("chain/execution", nil)
 	blockExecutionAndCommitTimer = metrics.NewRegisteredTimer("chain/pipeexecution", nil)
+	blockWaitResultTimer         = metrics.NewRegisteredTimer("chain/wait", nil)
 	blockStartTimer              = metrics.NewRegisteredTimer("chain/start", nil)
 	blockWriteTimer              = metrics.NewRegisteredTimer("chain/write", nil)
 	blockWriteTotalTimer         = metrics.NewRegisteredTimer("chain/writetotal", nil)
@@ -241,6 +242,10 @@ type VerifyTask struct {
 	receipts types.Receipts
 	usedGas  uint64
 	logs     []*types.Log
+	hasError bool
+	done     bool
+	doneCh   chan struct{}
+	index    int
 }
 
 // BlockChain represents the canonical chain given a database with a genesis
@@ -2217,6 +2222,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		return it.index, err
 	}
 
+	taskNum := 0
+	tasks := make([]*VerifyTask, 0)
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
@@ -2302,6 +2309,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		statedb.SetExpectedStateRoot(block.Root())
 		pstart := time.Now()
 		blockStartTimer.UpdateSince(start)
+
 		statedb, receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig)
 		close(interruptCh) // state prefetch can be stopped
 		if err != nil {
@@ -2336,7 +2344,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			receipts: receipts,
 			usedGas:  usedGas,
 			logs:     logs,
+			doneCh:   make(chan struct{}),
+			index:    it.index,
 		}
+		taskNum++
+		tasks = append(tasks, task)
 		bc.verifyTaskCh <- task
 		verifyTaskBlockTimer.UpdateSince(vstart)
 		blockInsertTimer.UpdateSince(start)
@@ -2346,110 +2358,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		stats.usedGas += usedGas
 
 		stats.report(chain, it.index, 0, 0, 0, 0, 0, true)
-
-		/*\\
-		// Validate the state using the default validator
-		//vstart := time.Now()
-		//if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
-		//	log.Error("validate state failed", "error", err)
-		//	bc.reportBlock(block, receipts, err)
-		//	statedb.StopPrefetcher()
-		//	return it.index, err
-		//}
-		vtime := time.Since(vstart)
-		proctime := time.Since(start) // processing + validation
-
-		// Update the metrics touched during block processing and validation
-		accountReadTimer.Update(statedb.AccountReads)                   // Account reads are complete(in processing)
-		storageReadTimer.Update(statedb.StorageReads)                   // Storage reads are complete(in processing)
-		snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads)   // Account reads are complete(in processing)
-		snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads)   // Storage reads are complete(in processing)
-		accountUpdateTimer.Update(statedb.AccountUpdates)               // Account updates are complete(in validation)
-		storageUpdateTimer.Update(statedb.StorageUpdates)               // Storage updates are complete(in validation)
-		accountHashTimer.Update(statedb.AccountHashes)                  // Account hashes are complete(in validation)
-		storageHashTimer.Update(statedb.StorageHashes)                  // Storage hashes are complete(in validation)
-		triehash := statedb.AccountHashes + statedb.StorageHashes       // The time spent on tries hashing
-		trieUpdate := statedb.AccountUpdates + statedb.StorageUpdates   // The time spent on tries update
-		trieRead := statedb.SnapshotAccountReads + statedb.AccountReads // The time spent on account read
-		trieRead += statedb.SnapshotStorageReads + statedb.StorageReads // The time spent on storage read
-		blockExecutionTimer.Update(ptime - trieRead)                    // The time spent on EVM processing
-		blockValidationTimer.Update(vtime - (triehash + trieUpdate))    // The time spent on block validation
-
-		err = bc.writeBlockWithState(block, receipts, statedb)
-		if err != nil {
-			log.Crit("Failed to write block", "number", block.Number(), "hash", block.Hash(), "err", err)
-		}
-
-		// Write the block to the chain and get the status.
-		//var (
-		//	wstart = time.Now()
-		//	status WriteStatus
-		//)
-		//if !setHead {
-		//	// Don't set the head, only insert the block
-		//	err = bc.writeBlockWithState(block, receipts, statedb)
-		//} else {
-		//	status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false)
-		//}
-		//if err != nil {
-		//	return it.index, err
-		//}
-
-		// Update the metrics touched during block commit
-		accountCommitTimer.Update(statedb.AccountCommits)   // Account commits are complete, we can mark them
-		storageCommitTimer.Update(statedb.StorageCommits)   // Storage commits are complete, we can mark them
-		snapshotCommitTimer.Update(statedb.SnapshotCommits) // Snapshot commits are complete, we can mark them
-		triedbCommitTimer.Update(statedb.TrieDBCommits)     // Trie database commits are complete, we can mark them
-
-		//blockWriteTimer.Update(time.Since(wstart) - statedb.AccountCommits - statedb.StorageCommits - statedb.SnapshotCommits - statedb.TrieDBCommits)
-		blockInsertTimer.UpdateSince(start)
-
-		// Report the import stats before returning the various results
-		stats.processed++
-		stats.usedGas += usedGas
-
-		var snapDiffItems, snapBufItems common.StorageSize
-		if bc.snaps != nil {
-			snapDiffItems, snapBufItems, _ = bc.snaps.Size()
-		}
-		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
-		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, true)
-
-		if !setHead {
-			// After merge we expect few side chains. Simply count
-			// all blocks the CL gives us for GC processing time
-			bc.gcproc += proctime
-
-			return it.index, nil // Direct block insertion of a single block
-		}
-		//switch status {
-		//case CanonStatTy:
-		//	log.Debug("Inserted new block", "number", block.Number(), "hash", block.Hash(),
-		//		"uncles", len(block.Uncles()), "txs", len(block.Transactions()), "gas", block.GasUsed(),
-		//		"elapsed", common.PrettyDuration(time.Since(start)),
-		//		"root", block.Root())
-		//
-		//	lastCanon = block
-		//
-		//	// Only count canonical blocks for GC processing time
-		//	bc.gcproc += proctime
-		//
-		//case SideStatTy:
-		//	log.Debug("Inserted forked block", "number", block.Number(), "hash", block.Hash(),
-		//		"diff", block.Difficulty(), "elapsed", common.PrettyDuration(time.Since(start)),
-		//		"txs", len(block.Transactions()), "gas", block.GasUsed(), "uncles", len(block.Uncles()),
-		//		"root", block.Root())
-		//
-		//default:
-		//	// This in theory is impossible, but lets be nice to our future selves and leave
-		//	// a log, instead of trying to track down blocks imports that don't emit logs.
-		//	log.Warn("Inserted block with unknown status", "number", block.Number(), "hash", block.Hash(),
-		//		"diff", block.Difficulty(), "elapsed", common.PrettyDuration(time.Since(start)),
-		//		"txs", len(block.Transactions()), "gas", block.GasUsed(), "uncles", len(block.Uncles()),
-		//		"root", block.Root())
-		//}
-		//bc.chainBlockFeed.Send(ChainHeadEvent{block})
-		*/
 	}
 
 	// Any blocks remaining here? The only ones we care about are the future ones
@@ -2466,6 +2374,19 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 	//		stats.queued++
 	//	}
 	//}
+
+	start := time.Now()
+	for _, task := range tasks {
+		if !task.done {
+			<-task.doneCh
+		}
+
+		if task.hasError {
+			log.Error("Task failed during verification", "block", task.block.Number(), "hash", task.block.Hash())
+			return task.index, errors.New("verification failed") // 返回任务失败的 index 和错误信息
+		}
+	}
+	blockWaitResultTimer.UpdateSince(start)
 	stats.ignored += it.remaining()
 
 	return it.index, err
@@ -2496,34 +2417,43 @@ func (bc *BlockChain) VerifyLoop() {
 				return
 			}
 			vstart := time.Now()
-			if err := bc.validator.ValidateState(task.block, task.state, task.receipts, task.usedGas); err != nil {
-				log.Crit("validate state failed", "error", err)
+			var err error
+			if err = bc.validator.ValidateState(task.block, task.state, task.receipts, task.usedGas); err != nil {
+				log.Error("validate state failed", "error", err)
+				task.hasError = true
 			}
 			blockValidationTimer.UpdateSince(vstart)
 
 			cstart := time.Now()
-			wg.Add(1)
-			go func() {
-				cstart := time.Now()
-				if err := bc.commitState(task.block, task.receipts, task.state); err != nil {
-					log.Crit("commit state failed", "error", err)
-				}
-				blockWriteTimer.UpdateSince(cstart)
-				wg.Done()
-			}()
+			if err == nil {
+				wg.Add(1)
+				go func() {
+					cstart := time.Now()
+					if err = bc.commitState(task.block, task.receipts, task.state); err != nil {
+						task.hasError = true
+						log.Error("commit state failed", "error", err)
+					}
+					blockWriteTimer.UpdateSince(cstart)
+					wg.Done()
+				}()
+				wg.Add(1)
+				go func() {
+					cstart := time.Now()
+					if _, err = bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false); err != nil {
+						task.hasError = true
+						log.Error("write block and set head failed", "error", err)
+					}
+					bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
+					blockCommitTimer.UpdateSince(cstart)
+					wg.Done()
+				}()
 
-			wg.Add(1)
-			go func() {
-				cstart := time.Now()
-				if _, err := bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false); err != nil {
-					log.Crit("write block and set head failed", "error", err)
-				}
-				bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
-				blockCommitTimer.UpdateSince(cstart)
-				wg.Done()
-			}()
+				wg.Wait()
+			}
 
-			wg.Wait()
+			task.done = true
+			close(task.doneCh)
+
 			blockWriteTotalTimer.UpdateSince(cstart)
 			triedbCommitTimer.Update(task.state.TrieDBCommits)
 			trieCommitTimer.Update(task.state.TrieCommits)
