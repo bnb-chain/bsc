@@ -250,6 +250,7 @@ func (db *Database) loadLayers() layer {
 }
 
 // loadNodeBufferAsJournalV0V1 try to load legacy node buffer data from journal
+// TODO(galaio): the method is a temporary solution for legacy journal, it could be removed in the future
 func (db *Database) loadNodeBufferAsJournalV0V1(diskRoot common.Hash) (layer, error) {
 	journalTypeForReader := db.DetermineJournalTypeForReader()
 	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, journalTypeForReader)
