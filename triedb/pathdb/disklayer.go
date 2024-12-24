@@ -58,9 +58,6 @@ type trienodebuffer interface {
 	// memory threshold is reached. Note, all data must be written atomically.
 	flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force bool) error
 
-	// reset cleans up the disk cache.
-	reset()
-
 	// empty returns an indicator if trienodebuffer contains any state transition inside.
 	empty() bool
 
