@@ -99,25 +99,12 @@ func (a *asyncnodebuffer) revertTo(db ethdb.KeyValueReader, nodes map[common.Has
 	return a.current.revertTo(db, nodes, accounts, storages)
 }
 
-// reset cleans up the disk cache.
-func (a *asyncnodebuffer) reset() {
-	a.mux.Lock()
-	defer a.mux.Unlock()
-
-	a.current.reset()
-	a.background.reset()
-}
-
 // empty returns an indicator if nodebuffer contains any state transition inside.
 func (a *asyncnodebuffer) empty() bool {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 
 	return a.current.empty() && a.background.empty()
-}
-
-func (a *asyncnodebuffer) full() bool {
-	return a.current.full()
 }
 
 // flush persists the in-memory dirty trie node into the disk if the configured
@@ -142,7 +129,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWri
 		}
 	}
 
-	if !a.full() {
+	if !a.current.full() {
 		return nil
 	}
 
@@ -284,7 +271,7 @@ func copyNodeCache(n *nodecache) *nodecache {
 	if n == nil || n.buffer == nil {
 		return nil
 	}
-	nc := newNodeCache(int(n.limit), n.nodes, n.states, n.layers)
+	nc := newNodeCache(int(n.limit), nil, nil, n.layers)
 	nc.immutable = atomic.LoadUint64(&n.immutable)
 
 	for acc, subTree := range n.nodes.nodes {
