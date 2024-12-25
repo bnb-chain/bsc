@@ -188,13 +188,13 @@ type Config struct {
 // storage data to avoid expensive multi-level trie lookups; and to allow sorted,
 // cheap iteration of the account/storage tries for sync aid.
 type Tree struct {
-	config     Config                   // Snapshots configurations
-	diskdb     ethdb.KeyValueStore      // Persistent database to store the snapshot
-	triedb     *triedb.Database         // In-memory cache to access the trie through
-	layers     map[common.Hash]snapshot // Collection of all known layers
-	lock       sync.RWMutex
-	lookupLock sync.RWMutex
-	capLimit   int
+	config Config                   // Snapshots configurations
+	diskdb ethdb.KeyValueStore      // Persistent database to store the snapshot
+	triedb *triedb.Database         // In-memory cache to access the trie through
+	layers map[common.Hash]snapshot // Collection of all known layers
+	lock   sync.RWMutex
+	//lookupLock sync.RWMutex
+	capLimit int
 
 	base        *diskLayer
 	baseDiff    *diffLayer
@@ -560,15 +560,17 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		// meantime.
 		diff.lock.Lock()
 		defer diff.lock.Unlock()
-		t.lookupLock.Lock()
+		//t.lookupLock.Lock()
 
 		// Flatten the parent into the grandparent. The flattening internally obtains a
 		// write lock on grandparent.
 		flattened := parent.flatten().(*diffLayer)
 		t.layers[flattened.root] = flattened
 		t.baseDiff = flattened
-		t.lookupLock.Unlock()
+		//t.lookupLock.Unlock()
 
+		// (1 2 3 4 5 22) -> 22  --- 120   (128) 150
+		//                    -- 23' - delete
 		//log.Info("diffLayer flattened", "flattened.root", flattened.root, "flattened", flattened)
 		// TODO:
 
@@ -606,7 +608,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	bottom := diff.parent.(*diffLayer)
 
 	bottom.lock.RLock()
-	t.lookupLock.Lock()
+	//t.lookupLock.Lock()
 
 	base := diffToDisk(bottom)
 	//// Before actually writing all our data to the parent, first ensure that the
@@ -617,7 +619,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	//log.Info("diffToDisk", "base", base)
 	t.baseDiff = diff
 	bottom.lock.RUnlock()
-	t.lookupLock.Unlock()
+	//t.lookupLock.Unlock()
 	clearDiff(bottom)
 	t.layers[base.root] = base
 	diff.parent = base
@@ -977,8 +979,8 @@ func (t *Tree) Size() (diffs common.StorageSize, buf common.StorageSize, preimag
 }
 
 func (tree *Tree) LookupAccount(accountAddrHash common.Hash, head common.Hash) (*types.SlimAccount, error) {
-	tree.lookupLock.RLock()
-	defer tree.lookupLock.RUnlock()
+	//tree.lookupLock.RLock()
+	//defer tree.lookupLock.RUnlock()
 
 	targetLayer := tree.lookup.LookupAccount(accountAddrHash, head)
 	//log.Info("targetLayer LookupAccount ", "targetLayer", targetLayer)
@@ -1001,8 +1003,8 @@ func (tree *Tree) LookupAccount(accountAddrHash common.Hash, head common.Hash) (
 }
 
 func (tree *Tree) LookupStorage(accountAddrHash common.Hash, slot common.Hash, head common.Hash) ([]byte, error) {
-	tree.lookupLock.RLock()
-	defer tree.lookupLock.RUnlock()
+	//tree.lookupLock.RLock()
+	//defer tree.lookupLock.RUnlock()
 
 	targetLayer := tree.lookup.LookupStorage(accountAddrHash, slot, head)
 	if targetLayer == nil {
