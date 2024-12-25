@@ -199,7 +199,7 @@ func (exp *exp) publishResettingTimer(name string, metric *metrics.ResettingTime
 	exp.getFloat(name + ".99-percentile").Set(ps[3])
 }
 
-func (exp *exp) publishLabel(name string, metric metrics.Label) {
+func (exp *exp) publishLabel(name string, metric *metrics.Label) {
 	labels := metric.Value()
 	for k, v := range labels {
 		exp.getMap(name).Set(k, exp.interfaceToExpVal(v))
@@ -274,7 +274,7 @@ func (exp *exp) syncToExpvar() {
 			exp.publishTimer(name, i)
 		case *metrics.ResettingTimer:
 			exp.publishResettingTimer(name, i)
-		case metrics.Label:
+		case *metrics.Label:
 			exp.publishLabel(name, i)
 		default:
 			panic(fmt.Sprintf("unsupported type for '%s': %T", name, i))

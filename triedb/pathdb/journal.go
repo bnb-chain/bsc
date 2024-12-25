@@ -207,7 +207,7 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 		return nil, fmt.Errorf("%w want %x got %x", errUnmatchedJournal, root, diskRoot)
 	}
 	// Load the disk layer from the journal
-	base, err := db.loadDiskLayer(r, journalTypeForReader)
+	base, err := db.loadDiskLayer(r, journalTypeForReader, version)
 	if err != nil {
 		return nil, err
 	}
@@ -238,13 +238,54 @@ func (db *Database) loadLayers() layer {
 	if !(root == types.EmptyRootHash && errors.Is(err, errMissJournal)) {
 		log.Info("Failed to load journal, discard it", "err", err)
 	}
+	// try to load node buffer only, it can be compatible with old journal ver
+	base, err := db.loadNodeBufferAsJournalV0V1(root)
+	if err == nil {
+		log.Info("load legacy node buffer successful", "new root", base.rootHash(), "disk root", root)
+		return base
+	}
+	log.Warn("Failed to load disk journal with node buffer, discard it", "err", err)
 	// Return single layer with persistent state.
 	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0))
 }
 
+// loadNodeBufferAsJournalV0V1 try to load legacy node buffer data from journal
+// TODO(galaio): the method is a temporary solution for legacy journal, it could be removed in the future
+func (db *Database) loadNodeBufferAsJournalV0V1(diskRoot common.Hash) (layer, error) {
+	journalTypeForReader := db.DetermineJournalTypeForReader()
+	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, journalTypeForReader)
+
+	if err != nil {
+		return nil, err
+	}
+	if reader != nil {
+		defer reader.Close()
+	}
+	r := rlp.NewStream(reader, 0)
+
+	// read & check journal version
+	version, err := r.Uint64()
+	if err != nil {
+		return nil, errMissVersion
+	}
+	if version == journalVersion {
+		return nil, fmt.Errorf("%w, only handle legacy journal version, got %v", errUnexpectedVersion, version)
+	}
+
+	// read & check disk root
+	var root common.Hash
+	if err := r.Decode(&root); err != nil {
+		return nil, errMissDiskRoot
+	}
+	if !bytes.Equal(root.Bytes(), diskRoot.Bytes()) {
+		return nil, fmt.Errorf("%w want %x got %x", errUnmatchedJournal, root, diskRoot)
+	}
+	return db.loadDiskLayer(r, journalTypeForReader, version)
+}
+
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
 // a new disk layer on it.
-func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalType) (layer, error) {
+func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalType, version uint64) (layer, error) {
 	// Resolve disk layer root
 	var (
 		root               common.Hash
@@ -279,10 +320,14 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 	if err := nodes.decode(journalBuf); err != nil {
 		return nil, err
 	}
-	// Resolve flat state sets in aggregated buffer
+
+	// handle new states in journal v2
 	var states stateSet
-	if err := states.decode(journalBuf); err != nil {
-		return nil, err
+	if version == journalVersion {
+		// Resolve flat state sets in aggregated buffer
+		if err := states.decode(journalBuf); err != nil {
+			return nil, err
+		}
 	}
 
 	if journalTypeForReader == JournalFileType {

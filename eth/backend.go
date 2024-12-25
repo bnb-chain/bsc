@@ -56,7 +56,6 @@ import (
 	"github.com/ethereum/go-ethereum/internal/shutdowncheck"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -178,6 +177,32 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Override the chain config with provided settings.
+	var overrides core.ChainOverrides
+	if config.OverridePassedForkTime != nil {
+		chainConfig.ShanghaiTime = config.OverridePassedForkTime
+		chainConfig.KeplerTime = config.OverridePassedForkTime
+		chainConfig.FeynmanTime = config.OverridePassedForkTime
+		chainConfig.FeynmanFixTime = config.OverridePassedForkTime
+		chainConfig.CancunTime = config.OverridePassedForkTime
+		chainConfig.HaberTime = config.OverridePassedForkTime
+		chainConfig.HaberFixTime = config.OverridePassedForkTime
+		chainConfig.BohrTime = config.OverridePassedForkTime
+		overrides.OverridePassedForkTime = config.OverridePassedForkTime
+	}
+	if config.OverridePascal != nil {
+		chainConfig.PascalTime = config.OverridePascal
+		overrides.OverridePascal = config.OverridePascal
+	}
+	if config.OverridePrague != nil {
+		chainConfig.PragueTime = config.OverridePrague
+		overrides.OverridePrague = config.OverridePrague
+	}
+	if config.OverrideVerkle != nil {
+		chainConfig.VerkleTime = config.OverrideVerkle
+		overrides.OverrideVerkle = config.OverrideVerkle
+	}
+
 	// startup ancient freeze
 	freezeDb := chainDb
 	if stack.CheckIfMultiDataBase() {
@@ -278,31 +303,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return nil, fmt.Errorf("failed to create tracer %s: %v", config.VMTrace, err)
 		}
 		vmConfig.Tracer = t
-	}
-	// Override the chain config with provided settings.
-	var overrides core.ChainOverrides
-	if config.OverridePassedForkTime != nil {
-		chainConfig.ShanghaiTime = config.OverridePassedForkTime
-		chainConfig.KeplerTime = config.OverridePassedForkTime
-		chainConfig.FeynmanTime = config.OverridePassedForkTime
-		chainConfig.FeynmanFixTime = config.OverridePassedForkTime
-		chainConfig.CancunTime = config.OverridePassedForkTime
-		chainConfig.HaberTime = config.OverridePassedForkTime
-		chainConfig.HaberFixTime = config.OverridePassedForkTime
-		chainConfig.BohrTime = config.OverridePassedForkTime
-		overrides.OverridePassedForkTime = config.OverridePassedForkTime
-	}
-	if config.OverridePascal != nil {
-		chainConfig.PascalTime = config.OverridePascal
-		overrides.OverridePascal = config.OverridePascal
-	}
-	if config.OverridePrague != nil {
-		chainConfig.PragueTime = config.OverridePrague
-		overrides.OverridePrague = config.OverridePrague
-	}
-	if config.OverrideVerkle != nil {
-		chainConfig.VerkleTime = config.OverrideVerkle
-		overrides.OverrideVerkle = config.OverrideVerkle
 	}
 
 	bcOps := make([]core.BlockChainOption, 0)
@@ -510,11 +510,6 @@ func (s *Ethereum) StartMining() error {
 				return fmt.Errorf("signer missing: %v", err)
 			}
 			parlia.Authorize(eb, wallet.SignData, wallet.SignTx)
-
-			minerInfo := metrics.Get("miner-info")
-			if minerInfo != nil {
-				minerInfo.(metrics.Label).Value()["Etherbase"] = eb.String()
-			}
 		}
 		// If mining is started, we can disable the transaction rejection mechanism
 		// introduced to speed sync times.

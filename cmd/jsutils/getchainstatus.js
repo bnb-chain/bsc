@@ -53,6 +53,7 @@ const addrSlash = '0x0000000000000000000000000000000000001001';
 const addrStakeHub = '0x0000000000000000000000000000000000002002';
 
 const validatorSetAbi = [
+    "function validatorExtraSet(uint256 offset) external view returns (uint256, bool, bytes)",
     "function getLivingValidators() external view returns (address[], bytes[])",
     "function numOfCabinets() external view returns (uint256)",
     "function maxNumOfCandidates() external view returns (uint256)",
@@ -277,6 +278,11 @@ async function getSlashCount()  {
         if (blockNum === 0) {
            blockNum = await provider.getBlockNumber()
         }
+        let slashScale = await validatorSet.maintainSlashScale({blockTag:blockNum})
+        let maxElected = await stakeHub.maxElectedValidators({blockTag:blockNum})
+        const maintainThreshold = BigInt(50)  // governable, hardcode to avoid one RPC call
+        const felonyThreshold = BigInt(150)   // governable, hardcode to avoid one RPC call
+
         let block = await provider.getBlock(blockNum)
         console.log("At block", blockNum, "time", block.date)
         const data = await validatorSet.getLivingValidators({blockTag:blockNum})
@@ -285,9 +291,22 @@ async function getSlashCount()  {
             let addr = data[0][i];
             var moniker = await getValidatorMoniker(addr, blockNum)
             let info = await slashIndicator.getSlashIndicator(addr, {blockTag:blockNum})
-            let count = ethers.toNumber(info[1])
-            totalSlash += count
-            console.log("Slash:", count, addr, moniker)
+            let slashHeight = ethers.toNumber(info[0])
+            let slashCount = ethers.toNumber(info[1])
+            totalSlash += slashCount
+            console.log("Slash:", slashCount, addr, moniker, slashHeight)
+            if (slashCount >= maintainThreshold) {
+                let validatorExtra = await validatorSet.validatorExtraSet(i, {blockTag:blockNum})
+                let enterMaintenanceHeight = validatorExtra[0]
+                let isMaintaining = validatorExtra[1]
+                // let voteAddress = validatorExtra[2]
+                if (isMaintaining) {
+                    let jailHeight = (felonyThreshold - slashCount) * slashScale * maxElected + BigInt(enterMaintenanceHeight)
+                    console.log("          in maintenance mode since", enterMaintenanceHeight, "will jail after", ethers.toNumber(jailHeight))    
+                } else {
+                    console.log("          exited maintenance mode")
+                }
+            }
         }
         console.log("Total slash count", totalSlash)
 };
