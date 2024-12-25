@@ -219,6 +219,9 @@ func diffAncestors(layer Snapshot) map[common.Hash]struct{} {
 }
 
 func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
+	defer func(now time.Time) {
+		lookupAddDescendantTimer.UpdateSince(now)
+	}(time.Now())
 	l.lock.Lock()
 	defer l.lock.Unlock()
 
@@ -234,6 +237,9 @@ func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
 }
 
 func (l *Lookup) removeDescendant(bottomDiffLayer Snapshot) {
+	defer func(now time.Time) {
+		lookupRemoveDescendantTimer.UpdateSince(now)
+	}(time.Now())
 	l.lock.Lock()
 	defer l.lock.Unlock()
 
