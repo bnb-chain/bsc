@@ -167,19 +167,16 @@ var storageDiffCounter int
 // The returned account might be nil if it's not existent.
 func (r *flatReader) Account(addr common.Address) (*types.StateAccount, error) {
 	accountAddrHash := crypto.HashData(r.buff, addr.Bytes())
-	//log.Info("stateReader Account 11", "addr", addr, "hash", accountAddrHash)
 	var lookupAccount *types.SlimAccount
 	var err error
 
 	if r.snap != nil {
 		// fastpath
 		pstart := time.Now()
-		//log.Info("stateReader Account", "acc", accountAddrHash, "root", r.stateRoot)
 		lookupAccount, err = r.snap.LookupAccount(accountAddrHash, r.stateRoot)
 		ptime := time.Since(pstart)
 		snapshotCacheTimer.Update(ptime)
 		if err != nil {
-			log.Info("GlobalLookup.lookupAccount err", "acc hash", accountAddrHash, "err", err)
 			return nil, err
 		}
 		if lookupAccount == nil {
@@ -198,11 +195,9 @@ func (r *flatReader) Account(addr common.Address) (*types.StateAccount, error) {
 		if acct.Root == (common.Hash{}) {
 			acct.Root = types.EmptyRootHash
 		}
-		//log.Info("GlobalLookup.lookupAccount err", "acc hash", accountAddrHash, "root", r.stateRoot, "targetLayer root", targetLayer.Root(), "err", err)
 		return acct, nil
 	}
 
-	//log.Error("GlobalLookup.lookupAccount not exist", "hash", accountAddrHash)
 	pstart := time.Now()
 	account, err := r.reader.Account(crypto.HashData(r.buff, addr.Bytes()))
 	ptime := time.Since(pstart)
@@ -258,18 +253,14 @@ func (r *flatReader) Storage(addr common.Address, key common.Hash) (common.Hash,
 	var lookupData []byte
 	var err error
 
-	// log.Info("stateReader Storage 11", "addr", addr, "key", key, "addrHash", addrHash, "slotHash", slotHash)
 	if r.snap != nil {
 		// fastpath
-		//log.Info("stateReader Storage", "acc", addrHash, "slot", slotHash, "root", r.stateRoot)
 		lookupData, err = r.snap.LookupStorage(addrHash, slotHash, r.stateRoot)
 		if err != nil {
-			//log.Info("GlobalLookup.lookupStorage err", "addrHash", addrHash, "slotHash", slotHash, "err", err)
 			return common.Hash{}, err
 		}
 		if len(lookupData) == 0 { // can be both nil and []byte{}
 			return common.Hash{}, nil
-			//log.Info("GlobalLookup.lookupStorage data nil", "addrHash", addrHash, "slotHash", slotHash)
 		}
 		if err == nil && len(lookupData) != 0 {
 			// Perform the rlp-decode as the slot value is RLP-encoded in the state
@@ -281,12 +272,9 @@ func (r *flatReader) Storage(addr common.Address, key common.Hash) (common.Hash,
 			var value common.Hash
 			value.SetBytes(content)
 			return value, nil
-			//log.Info("GlobalLookup.lookupStorage", "addrHash", addrHash, "slotHash", slotHash, "res", lookupData)
 		}
-		// log.Info("GlobalLookup.lookupStorage", "addrHash", addrHash, "slotHash", slotHash, "res", lookupData)
 	}
 
-	//log.Info("GlobalLookup.lookup Storage not exist", "acc", addrHash, "slot", slotHash)
 	ret, err := r.reader.Storage(addrHash, slotHash)
 	if err != nil {
 		return common.Hash{}, err

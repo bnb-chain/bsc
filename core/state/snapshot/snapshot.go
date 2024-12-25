@@ -188,18 +188,18 @@ type Config struct {
 // storage data to avoid expensive multi-level trie lookups; and to allow sorted,
 // cheap iteration of the account/storage tries for sync aid.
 type Tree struct {
-	config Config                   // Snapshots configurations
-	diskdb ethdb.KeyValueStore      // Persistent database to store the snapshot
-	triedb *triedb.Database         // In-memory cache to access the trie through
-	layers map[common.Hash]snapshot // Collection of all known layers
-	lock   sync.RWMutex
-	//lookupLock sync.RWMutex
+	config   Config                   // Snapshots configurations
+	diskdb   ethdb.KeyValueStore      // Persistent database to store the snapshot
+	triedb   *triedb.Database         // In-memory cache to access the trie through
+	layers   map[common.Hash]snapshot // Collection of all known layers
+	lock     sync.RWMutex
 	capLimit int
 
-	base        *diskLayer
-	baseDiff    *diffLayer
-	descendants map[common.Hash]map[common.Hash]struct{}
-	lookup      *Lookup
+	enableLookUp bool
+	base         *diskLayer
+	baseDiff     *diffLayer
+	descendants  map[common.Hash]map[common.Hash]struct{}
+	lookup       *Lookup
 
 	// Test hooks
 	onFlatten func() // Hook invoked when the bottom most diff layers are flattened
@@ -258,7 +258,6 @@ func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, roo
 	for head != nil {
 		if _, ok := head.(*diskLayer); ok {
 			// TODO prev is nil, when load
-			//snap.base = head.(*diskLayer)
 			snap.base = head.(*diskLayer)
 			if prev != nil {
 				snap.baseDiff = prev.(*diffLayer)
@@ -269,7 +268,7 @@ func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, roo
 		prev = head
 		head = head.Parent()
 	}
-	log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root, "snap.baseDiff root", snap.baseDiff)
+	log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root, "base diff layer root", snap.baseDiff, "base disk layer root", snap.base)
 	return snap, nil
 }
 
@@ -409,16 +408,12 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, accounts ma
 	defer t.lock.Unlock()
 
 	t.layers[snap.root] = snap
-	{
-		// update lookup, which in the tree lock guard.
-		t.lookup.addLayer(snap)
-		t.lookup.addDescendant(snap)
-		if t.baseDiff == nil || reflect.ValueOf(t.baseDiff).IsNil() {
-			t.baseDiff = snap
-			log.Info("Snapshot set base diff layer", "blockRoot", blockRoot, "snap.baseDiff", t.baseDiff)
-		}
-		//log.Info("Snapshot loaded ", "snap.baseDiff", t.baseDiff)
+	// update lookup, which in the tree lock guard.
+	t.lookup.addLayer(snap)
+	if t.baseDiff == nil || reflect.ValueOf(t.baseDiff).IsNil() {
+		t.baseDiff = snap
 	}
+	//log.Info("Snapshot loaded ", "snap.baseDiff", t.baseDiff)
 	//log.Info("Snapshot updated", "blockRoot", blockRoot, "snap.baseDiff", t.baseDiff)
 	return nil
 }
@@ -490,8 +485,6 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 		if !ok {
 			return
 		}
-		//log.Info("Layer clearing descendant 11", "layer", diff.Root())
-		t.lookup.removeDescendant(snap)
 		t.lookup.removeLayer(diff)
 	}
 	var remove func(root common.Hash, snap snapshot)
@@ -560,19 +553,12 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		// meantime.
 		diff.lock.Lock()
 		defer diff.lock.Unlock()
-		//t.lookupLock.Lock()
 
 		// Flatten the parent into the grandparent. The flattening internally obtains a
 		// write lock on grandparent.
 		flattened := parent.flatten().(*diffLayer)
 		t.layers[flattened.root] = flattened
 		t.baseDiff = flattened
-		//t.lookupLock.Unlock()
-
-		// (1 2 3 4 5 22) -> 22  --- 120   (128) 150
-		//                    -- 23' - delete
-		//log.Info("diffLayer flattened", "flattened.root", flattened.root, "flattened", flattened)
-		// TODO:
 
 		// Invoke the hook if it's registered. Ugly hack.
 		if t.onFlatten != nil {
@@ -597,9 +583,6 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		if !ok {
 			return
 		}
-		// TODO: fix: already stale
-		//log.Info("Layer clearing descendant in cap", "layer", diff.Root())
-		t.lookup.removeDescendant(snap)
 		t.lookup.removeLayer(diff)
 	}
 
@@ -608,7 +591,6 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	bottom := diff.parent.(*diffLayer)
 
 	bottom.lock.RLock()
-	//t.lookupLock.Lock()
 
 	base := diffToDisk(bottom)
 	//// Before actually writing all our data to the parent, first ensure that the
@@ -616,10 +598,8 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	//if bottom.stale.Swap(true) {
 	//	panic("parent diff layer is stale") // we've flattened into the same parent from two children, boo
 	//}
-	//log.Info("diffToDisk", "base", base)
 	t.baseDiff = diff
 	bottom.lock.RUnlock()
-	//t.lookupLock.Unlock()
 	clearDiff(bottom)
 	t.layers[base.root] = base
 	diff.parent = base
@@ -843,7 +823,6 @@ func (t *Tree) Rebuild(root common.Hash) {
 	// TODO : check it ??
 	t.lookup = newLookup(t.layers[root])
 	t.base = disk
-	log.Info("init GlobalLookup success")
 }
 
 // AccountIterator creates a new account iterator for the specified root hash and
@@ -978,18 +957,13 @@ func (t *Tree) Size() (diffs common.StorageSize, buf common.StorageSize, preimag
 	return size, 0, 0
 }
 
-func (tree *Tree) LookupAccount(accountAddrHash common.Hash, head common.Hash) (*types.SlimAccount, error) {
-	//tree.lookupLock.RLock()
-	//defer tree.lookupLock.RUnlock()
-
-	targetLayer := tree.lookup.LookupAccount(accountAddrHash, head)
-	//log.Info("targetLayer LookupAccount ", "targetLayer", targetLayer)
+func (t *Tree) LookupAccount(accountAddrHash common.Hash, head common.Hash) (*types.SlimAccount, error) {
+	targetLayer := t.lookup.LookupAccount(accountAddrHash, head)
 	if targetLayer == nil {
-		if tree.baseDiff == nil {
-			log.Info("LookupAccount", "targetLayer", targetLayer)
-			targetLayer = tree.base
+		if t.baseDiff == nil {
+			targetLayer = t.base
 		} else {
-			targetLayer = tree.baseDiff
+			targetLayer = t.baseDiff
 		}
 	}
 
@@ -1002,17 +976,14 @@ func (tree *Tree) LookupAccount(accountAddrHash common.Hash, head common.Hash) (
 	return nil, nil
 }
 
-func (tree *Tree) LookupStorage(accountAddrHash common.Hash, slot common.Hash, head common.Hash) ([]byte, error) {
-	//tree.lookupLock.RLock()
-	//defer tree.lookupLock.RUnlock()
-
-	targetLayer := tree.lookup.LookupStorage(accountAddrHash, slot, head)
+func (t *Tree) LookupStorage(accountAddrHash common.Hash, slot common.Hash, head common.Hash) ([]byte, error) {
+	targetLayer := t.lookup.LookupStorage(accountAddrHash, slot, head)
 	if targetLayer == nil {
-		if tree.baseDiff == nil {
-			targetLayer = tree.base
+		if t.baseDiff == nil {
+			targetLayer = t.base
 			log.Info("LookupStorage", "targetLayer", targetLayer)
 		} else {
-			targetLayer = tree.baseDiff
+			targetLayer = t.baseDiff
 		}
 	}
 

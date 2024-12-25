@@ -3,8 +3,6 @@ package snapshot
 import (
 	"fmt"
 	"sync"
-
-	//"sort"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -28,7 +26,6 @@ func collectDiffLayerAncestors(layer Snapshot) map[common.Hash]struct{} {
 
 // Lookup is an internal help structure to quickly identify
 type Lookup struct {
-	// todo: add lock?? or in layer tree lock??
 	state2LayerRoots map[string][]Snapshot // think more about it
 	descendants      map[common.Hash]map[common.Hash]struct{}
 
@@ -37,7 +34,6 @@ type Lookup struct {
 
 // newLookup initializes the lookup structure.
 func newLookup(head Snapshot) *Lookup {
-
 	l := new(Lookup)
 
 	{ // setup state mapping
@@ -94,7 +90,6 @@ func newLookup(head Snapshot) *Lookup {
 }
 
 func (l *Lookup) isDescendant(state common.Hash, ancestor common.Hash) bool {
-	//log.Info("isDescendant", "descendants size", len(l.descendants), "descendants subset", l.descendants[ancestor], "ancestor", ancestor)
 	subset := l.descendants[ancestor]
 	if subset == nil {
 		return false
@@ -115,7 +110,6 @@ func (l *Lookup) addLayer(diff *diffLayer) {
 	layerIDCounter++
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	//log.Info("Layer add", "layer", diff.Root(), "layerID", layerIDCounter)
 
 	for accountHash, _ := range diff.accountData {
 		l.state2LayerRoots[accountHash.String()] = append(l.state2LayerRoots[accountHash.String()], diff)
@@ -126,27 +120,9 @@ func (l *Lookup) addLayer(diff *diffLayer) {
 			l.state2LayerRoots[accountHash.String()+storageHash.String()] = append(l.state2LayerRoots[accountHash.String()+storageHash.String()], diff)
 		}
 	}
-}
 
-//// addLayer traverses all the dirty state within the given diff layer and links
-//// them into the lookup set.
-//func (l *Lookup) diffLayerFlatten(diff *diffLayer) {
-//	defer func(now time.Time) {
-//		lookupAddLayerTimer.UpdateSince(now)
-//	}(time.Now())
-//	layerIDCounter++
-//	//log.Info("Layer add", "layer", diff.Root(), "layerID", layerIDCounter)
-//
-//	for accountHash, _ := range diff.accountData {
-//		l.state2LayerRoots[accountHash.String()] = append(l.state2LayerRoots[accountHash.String()], diff)
-//	}
-//
-//	for accountHash, slots := range diff.storageData {
-//		for storageHash := range slots {
-//			l.state2LayerRoots[accountHash.String()+storageHash.String()] = append(l.state2LayerRoots[accountHash.String()+storageHash.String()], diff)
-//		}
-//	}
-//}
+	l.addDescendant(diff)
+}
 
 // removeLayer traverses all the dirty state within the given diff layer and
 // unlinks them from the lookup set.
@@ -157,7 +133,6 @@ func (l *Lookup) removeLayer(diff *diffLayer) error {
 	layerIDRemoveCounter++
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	//log.Info("Layer removing", "layer", diff.Root(), "layerID", layerIDRemoveCounter)
 
 	diffRoot := diff.Root()
 	for accountHash, _ := range diff.accountData {
@@ -220,6 +195,8 @@ func (l *Lookup) removeLayer(diff *diffLayer) error {
 		}
 	}
 
+	l.removeDescendant(diff)
+
 	return nil
 }
 
@@ -242,10 +219,6 @@ func diffAncestors(layer Snapshot) map[common.Hash]struct{} {
 }
 
 func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
-	//log.Info("addDescendant", "addDescendant", topDiffLayer.Root())
-	l.lock.Lock()
-	defer l.lock.Unlock()
-
 	// Link the new layer into the descendents set
 	for h := range diffAncestors(topDiffLayer) {
 		subset := l.descendants[h]
@@ -258,14 +231,10 @@ func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
 }
 
 func (l *Lookup) removeDescendant(bottomDiffLayer Snapshot) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	//log.Info("removeDescendant", "addDescendant", bottomDiffLayer.Root())
 	delete(l.descendants, bottomDiffLayer.Root())
 }
 
 func (l *Lookup) LookupAccount(accountAddrHash common.Hash, head common.Hash) Snapshot {
-	//log.Info("lookupAccount", "acc", accountAddrHash, "head", head)
 	l.lock.RLock()
 	defer l.lock.RUnlock()
 
@@ -275,7 +244,6 @@ func (l *Lookup) LookupAccount(accountAddrHash common.Hash, head common.Hash) Sn
 		return nil
 	}
 
-	//log.Info("lookupAccount", "acc", accountAddrHash, "head", head, "snapshot", list)
 	// Traverse the list in reverse order to find the first entry that either
 	// matches the specified head or is a descendant of it.
 	for i := len(list) - 1; i >= 0; i-- {
@@ -283,7 +251,6 @@ func (l *Lookup) LookupAccount(accountAddrHash common.Hash, head common.Hash) Sn
 			return list[i]
 		}
 	}
-	//log.Info("lookupAccount not isDescendant", "acc", accountAddrHash, "head", head)
 	return nil
 }
 
@@ -305,5 +272,4 @@ func (l *Lookup) LookupStorage(accountAddrHash common.Hash, slot common.Hash, he
 		}
 	}
 	return nil
-	//log.Info("LookupStorage not isDescendant", "acc", accountAddrHash, "head", head)
 }
