@@ -242,7 +242,7 @@ type VerifyTask struct {
 	receipts types.Receipts
 	usedGas  uint64
 	logs     []*types.Log
-	hasError bool
+	err      error
 	done     bool
 	doneCh   chan struct{}
 	index    int
@@ -2346,6 +2346,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			logs:     logs,
 			doneCh:   make(chan struct{}),
 			index:    it.index,
+			err:      nil,
 		}
 		taskNum++
 		tasks = append(tasks, task)
@@ -2381,9 +2382,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			<-task.doneCh
 		}
 
-		if task.hasError {
+		if task.err != nil {
 			log.Error("Task failed during verification", "block", task.block.Number(), "hash", task.block.Hash())
-			return task.index, errors.New("verification failed") // 返回任务失败的 index 和错误信息
+			bc.reportBlock(block, nil, task.err)
+			return task.index, errors.New("verification failed")
 		}
 	}
 	blockWaitResultTimer.UpdateSince(start)
@@ -2420,7 +2422,7 @@ func (bc *BlockChain) VerifyLoop() {
 			var err error
 			if err = bc.validator.ValidateState(task.block, task.state, task.receipts, task.usedGas); err != nil {
 				log.Error("validate state failed", "error", err)
-				task.hasError = true
+				task.err = err
 			}
 			blockValidationTimer.UpdateSince(vstart)
 
@@ -2430,7 +2432,7 @@ func (bc *BlockChain) VerifyLoop() {
 				go func() {
 					cstart := time.Now()
 					if err = bc.commitState(task.block, task.receipts, task.state); err != nil {
-						task.hasError = true
+						task.err = err
 						log.Error("commit state failed", "error", err)
 					}
 					blockWriteTimer.UpdateSince(cstart)
@@ -2440,7 +2442,7 @@ func (bc *BlockChain) VerifyLoop() {
 				go func() {
 					cstart := time.Now()
 					if _, err = bc.writeBlockAndSetHead(task.block, task.receipts, task.logs, task.state, false); err != nil {
-						task.hasError = true
+						task.err = err
 						log.Error("write block and set head failed", "error", err)
 					}
 					bc.chainBlockFeed.Send(ChainHeadEvent{task.block})
