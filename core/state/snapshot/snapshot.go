@@ -635,6 +635,8 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		panic("parent disk layer is stale") // we've committed into the same base from two children, boo
 	}
 	base.stale = true
+	base.canLookUp = true
+
 	base.lock.Unlock()
 
 	// Push all updated accounts into the database

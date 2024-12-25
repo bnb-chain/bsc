@@ -36,8 +36,9 @@ type diskLayer struct {
 	triedb *triedb.Database    // Trie node cache for reconstruction purposes
 	cache  *fastcache.Cache    // Cache to avoid hitting the disk for direct access
 
-	root  common.Hash // Root hash of the base snapshot
-	stale bool        // Signals that the layer became stale (state progressed)
+	root      common.Hash // Root hash of the base snapshot
+	stale     bool        // Signals that the layer became stale (state progressed)
+	canLookUp bool        //
 
 	genMarker  []byte                    // Marker for the state that's indexed during initial layer generation
 	genPending chan struct{}             // Notification channel when generation is done (test synchronicity)
@@ -73,6 +74,13 @@ func (dl *diskLayer) Stale() bool {
 	defer dl.lock.RUnlock()
 
 	return dl.stale
+}
+
+func (dl *diskLayer) CanLookUp() bool {
+	dl.lock.RLock()
+	defer dl.lock.RUnlock()
+
+	return dl.canLookUp
 }
 
 // Accounts directly retrieves all accounts in current snapshot in
@@ -144,7 +152,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 
 	// If the layer was flattened into, consider it invalid (any live reference to
 	// the original should be marked as unusable).
-	if dl.stale {
+	if dl.stale && !dl.canLookUp {
 		return nil, ErrSnapshotStale
 	}
 	// If the layer is being generated, ensure the requested hash has already been
@@ -189,7 +197,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 
 	// If the layer was flattened into, consider it invalid (any live reference to
 	// the original should be marked as unusable).
-	if dl.stale {
+	if dl.stale && !dl.canLookUp {
 		return nil, ErrSnapshotStale
 	}
 	key := append(accountHash[:], storageHash[:]...)
