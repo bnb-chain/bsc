@@ -560,12 +560,12 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		// meantime.
 		diff.lock.Lock()
 		defer diff.lock.Unlock()
+		t.lookupLock.Lock()
 
 		// Flatten the parent into the grandparent. The flattening internally obtains a
 		// write lock on grandparent.
 		flattened := parent.flatten().(*diffLayer)
 		t.layers[flattened.root] = flattened
-		t.lookupLock.Lock()
 		t.baseDiff = flattened
 		t.lookupLock.Unlock()
 
@@ -606,6 +606,8 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	bottom := diff.parent.(*diffLayer)
 
 	bottom.lock.RLock()
+	t.lookupLock.Lock()
+
 	base := diffToDisk(bottom)
 	//// Before actually writing all our data to the parent, first ensure that the
 	//// parent hasn't been 'corrupted' by someone else already flattening into it
@@ -613,9 +615,8 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	//	panic("parent diff layer is stale") // we've flattened into the same parent from two children, boo
 	//}
 	//log.Info("diffToDisk", "base", base)
-	bottom.lock.RUnlock()
-	t.lookupLock.Lock()
 	t.baseDiff = diff
+	bottom.lock.RUnlock()
 	t.lookupLock.Unlock()
 	clearDiff(bottom)
 	t.layers[base.root] = base
