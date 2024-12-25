@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -28,7 +29,7 @@ type Lookup struct {
 	state2LayerRoots map[string][]Snapshot // think more about it
 	descendants      map[common.Hash]map[common.Hash]struct{}
 
-	//lock sync.RWMutex
+	lock sync.RWMutex
 }
 
 // newLookup initializes the lookup structure.
@@ -107,8 +108,8 @@ func (l *Lookup) addLayer(diff *diffLayer) {
 		lookupAddLayerTimer.UpdateSince(now)
 	}(time.Now())
 	layerIDCounter++
-	//l.lock.Lock()
-	//defer l.lock.Unlock()
+	l.lock.Lock()
+	defer l.lock.Unlock()
 
 	for accountHash, _ := range diff.accountData {
 		l.state2LayerRoots[accountHash.String()] = append(l.state2LayerRoots[accountHash.String()], diff)
@@ -130,8 +131,8 @@ func (l *Lookup) removeLayer(diff *diffLayer) error {
 		lookupRemoveLayerTimer.UpdateSince(now)
 	}(time.Now())
 	layerIDRemoveCounter++
-	//l.lock.Lock()
-	//defer l.lock.Unlock()
+	l.lock.Lock()
+	defer l.lock.Unlock()
 
 	diffRoot := diff.Root()
 	for accountHash, _ := range diff.accountData {
@@ -218,6 +219,9 @@ func diffAncestors(layer Snapshot) map[common.Hash]struct{} {
 }
 
 func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+
 	// Link the new layer into the descendents set
 	for h := range diffAncestors(topDiffLayer) {
 		subset := l.descendants[h]
@@ -230,12 +234,15 @@ func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
 }
 
 func (l *Lookup) removeDescendant(bottomDiffLayer Snapshot) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+
 	delete(l.descendants, bottomDiffLayer.Root())
 }
 
 func (l *Lookup) LookupAccount(accountAddrHash common.Hash, head common.Hash) Snapshot {
-	//l.lock.RLock()
-	//defer l.lock.RUnlock()
+	l.lock.RLock()
+	defer l.lock.RUnlock()
 
 	list, exists := l.state2LayerRoots[accountAddrHash.String()]
 	if !exists {
@@ -254,8 +261,8 @@ func (l *Lookup) LookupAccount(accountAddrHash common.Hash, head common.Hash) Sn
 }
 
 func (l *Lookup) LookupStorage(accountAddrHash common.Hash, slot common.Hash, head common.Hash) Snapshot {
-	//l.lock.RLock()
-	//defer l.lock.RUnlock()
+	l.lock.RLock()
+	defer l.lock.RUnlock()
 
 	list, exists := l.state2LayerRoots[accountAddrHash.String()+slot.String()]
 	if !exists {
