@@ -410,6 +410,7 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, accounts ma
 	t.layers[snap.root] = snap
 	// update lookup, which in the tree lock guard.
 	t.lookup.addLayer(snap)
+	t.lookup.addDescendant(snap)
 	if t.baseDiff == nil || reflect.ValueOf(t.baseDiff).IsNil() {
 		t.baseDiff = snap
 	}
@@ -486,6 +487,7 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 			return
 		}
 		t.lookup.removeLayer(diff)
+		t.lookup.removeDescendant(diff)
 	}
 	var remove func(root common.Hash, snap snapshot)
 	remove = func(root common.Hash, snap snapshot) {
@@ -584,6 +586,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 			return
 		}
 		t.lookup.removeLayer(diff)
+		t.lookup.removeDescendant(diff)
 	}
 
 	//TODO:check it?

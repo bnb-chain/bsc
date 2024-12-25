@@ -120,7 +120,7 @@ func (l *Lookup) addLayer(diff *diffLayer) {
 		}
 	}
 
-	l.addDescendant(diff)
+	//l.addDescendant(diff)
 }
 
 // removeLayer traverses all the dirty state within the given diff layer and
@@ -194,7 +194,7 @@ func (l *Lookup) removeLayer(diff *diffLayer) error {
 		}
 	}
 
-	l.removeDescendant(diff)
+	//l.removeDescendant(diff)
 
 	return nil
 }
