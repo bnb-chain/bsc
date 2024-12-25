@@ -1046,7 +1046,8 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	if s.trie == nil {
 		tr, err := s.db.OpenTrie(s.originalRoot)
 		if err != nil {
-			panic("Failed to open state trie")
+			log.Warn("Failed to open state trie", "state_root", s.originalRoot, "err", err)
+			return types.EmptyRootHash
 		}
 		s.trie = tr
 	}
