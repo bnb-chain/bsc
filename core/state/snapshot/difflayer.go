@@ -528,12 +528,14 @@ func (dl *diffLayer) flatten() snapshot {
 
 	// Before actually writing all our data to the parent, first ensure that the
 	// parent hasn't been 'corrupted' by someone else already flattening into it
-	if parent.stale.Swap(true) {
-		panic("parent diff layer is stale") // we've flattened into the same parent from two children, boo
-	}
 	if parent.canLookup.Swap(true) {
 		panic("parent diff layer is stale") // we've flattened into the same parent from two children, boo
 	}
+
+	if parent.stale.Swap(true) {
+		panic("parent diff layer is stale") // we've flattened into the same parent from two children, boo
+	}
+
 	//log.Info("Layer flattening stale", "layer", parent.Root(), "destructs", len(dl.destructSet))
 	for hash, data := range dl.accountData {
 		parent.accountData[hash] = data

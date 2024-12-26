@@ -108,8 +108,6 @@ func (l *Lookup) addLayer(diff *diffLayer) {
 		lookupAddLayerTimer.UpdateSince(now)
 	}(time.Now())
 	layerIDCounter++
-	l.lock.Lock()
-	defer l.lock.Unlock()
 
 	for accountHash, _ := range diff.accountData {
 		l.state2LayerRoots[accountHash.String()] = append(l.state2LayerRoots[accountHash.String()], diff)
@@ -120,8 +118,6 @@ func (l *Lookup) addLayer(diff *diffLayer) {
 			l.state2LayerRoots[accountHash.String()+storageHash.String()] = append(l.state2LayerRoots[accountHash.String()+storageHash.String()], diff)
 		}
 	}
-
-	//l.addDescendant(diff)
 }
 
 // removeLayer traverses all the dirty state within the given diff layer and
@@ -131,8 +127,6 @@ func (l *Lookup) removeLayer(diff *diffLayer) error {
 		lookupRemoveLayerTimer.UpdateSince(now)
 	}(time.Now())
 	layerIDRemoveCounter++
-	l.lock.Lock()
-	defer l.lock.Unlock()
 
 	diffRoot := diff.Root()
 	for accountHash, _ := range diff.accountData {
@@ -195,8 +189,6 @@ func (l *Lookup) removeLayer(diff *diffLayer) error {
 		}
 	}
 
-	//l.removeDescendant(diff)
-
 	return nil
 }
 
@@ -222,8 +214,6 @@ func (l *Lookup) addDescendant(topDiffLayer Snapshot) {
 	defer func(now time.Time) {
 		lookupAddDescendantTimer.UpdateSince(now)
 	}(time.Now())
-	l.lock.Lock()
-	defer l.lock.Unlock()
 
 	// Link the new layer into the descendents set
 	for h := range diffAncestors(topDiffLayer) {
@@ -240,10 +230,22 @@ func (l *Lookup) removeDescendant(bottomDiffLayer Snapshot) {
 	defer func(now time.Time) {
 		lookupRemoveDescendantTimer.UpdateSince(now)
 	}(time.Now())
-	l.lock.Lock()
-	defer l.lock.Unlock()
 
 	delete(l.descendants, bottomDiffLayer.Root())
+}
+
+func (l *Lookup) AddSnapshot(diff *diffLayer) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	l.addLayer(diff)
+	l.addDescendant(diff)
+}
+
+func (l *Lookup) RemoveSnapshot(diff *diffLayer) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	l.removeLayer(diff)
+	l.removeDescendant(diff)
 }
 
 func (l *Lookup) LookupAccount(accountAddrHash common.Hash, head common.Hash) Snapshot {
