@@ -382,35 +382,35 @@ func TestSnaphots(t *testing.T) {
 		snaps.Cap(head, 128) // 130 layers (128 diffs + 1 accumulator + 1 disk)
 	}
 
-	{
-		var lookupData []byte
-		var err error
-		accountAddrHash := common.HexToHash("50")
-		lookupAccount := new(types.SlimAccount)
-
-		// fastpath
-		root := head
-		targetLayer := snaps.LookupAccount(accountAddrHash, root)
-		if targetLayer != nil {
-			lookupData, err = targetLayer.AccountRLP(accountAddrHash)
-			if err != nil {
-				log.Info("GlobalLookup.lookupAccount err", "hash", accountAddrHash, "root", root, "err", err)
-			}
-			if len(lookupData) == 0 { // can be both nil and []byte{}
-				log.Info("GlobalLookup.lookupAccount data nil", "hash", accountAddrHash, "root", root)
-			}
-			if err == nil && len(lookupData) != 0 {
-				if err := rlp.DecodeBytes(lookupData, lookupAccount); err != nil {
-					panic(err)
-				}
-				// lookupDone = true
-			} else {
-				log.Info("GlobalLookup.lookupAccount", "hash", accountAddrHash, "root", root, "res", lookupData, "targetLayer", targetLayer)
-			}
-
-			log.Info("GlobalLookup.lookupAccount", "hash", accountAddrHash, "root", root, "res", lookupData, "targetLayer", targetLayer)
-		}
-	}
+	//{
+	//	var lookupData []byte
+	//	var err error
+	//	accountAddrHash := common.HexToHash("50")
+	//	lookupAccount := new(types.SlimAccount)
+	//
+	//	// fastpath
+	//	root := head
+	//	targetLayer := snaps.LookupAccount(accountAddrHash, root)
+	//	if targetLayer != nil {
+	//		lookupData, err = targetLayer.AccountRLP(accountAddrHash)
+	//		if err != nil {
+	//			log.Info("GlobalLookup.lookupAccount err", "hash", accountAddrHash, "root", root, "err", err)
+	//		}
+	//		if len(lookupData) == 0 { // can be both nil and []byte{}
+	//			log.Info("GlobalLookup.lookupAccount data nil", "hash", accountAddrHash, "root", root)
+	//		}
+	//		if err == nil && len(lookupData) != 0 {
+	//			if err := rlp.DecodeBytes(lookupData, lookupAccount); err != nil {
+	//				panic(err)
+	//			}
+	//			// lookupDone = true
+	//		} else {
+	//			log.Info("GlobalLookup.lookupAccount", "hash", accountAddrHash, "root", root, "res", lookupData, "targetLayer", targetLayer)
+	//		}
+	//
+	//		log.Info("GlobalLookup.lookupAccount", "hash", accountAddrHash, "root", root, "res", lookupData, "targetLayer", targetLayer)
+	//	}
+	//}
 
 	var cases = []struct {
 		headRoot     common.Hash

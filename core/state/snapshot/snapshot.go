@@ -408,13 +408,11 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, accounts ma
 	defer t.lock.Unlock()
 
 	t.layers[snap.root] = snap
-	go func() {
-		// update lookup, which in the tree lock guard.
-		t.lookup.AddSnapshot(snap)
-		if t.baseDiff == nil || reflect.ValueOf(t.baseDiff).IsNil() {
-			t.baseDiff = snap
-		}
-	}()
+	// update lookup, which in the tree lock guard.
+	t.lookup.AddSnapshot(snap)
+	if t.baseDiff == nil || reflect.ValueOf(t.baseDiff).IsNil() {
+		t.baseDiff = snap
+	}
 
 	//log.Info("Snapshot loaded ", "snap.baseDiff", t.baseDiff)
 	//log.Info("Snapshot updated", "blockRoot", blockRoot, "snap.baseDiff", t.baseDiff)
@@ -964,7 +962,6 @@ func (t *Tree) Size() (diffs common.StorageSize, buf common.StorageSize, preimag
 
 func (t *Tree) LookupAccount(accountAddrHash common.Hash, head common.Hash) (*types.SlimAccount, error) {
 	//t.lock.RLock()
-
 	targetLayer := t.lookup.LookupAccount(accountAddrHash, head)
 	if targetLayer == nil {
 		if t.baseDiff == nil {
