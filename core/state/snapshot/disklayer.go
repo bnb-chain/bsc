@@ -186,3 +186,8 @@ func (dl *diskLayer) Update(blockHash common.Hash, destructs map[common.Hash]str
 func (dl *diskLayer) CorrectAccounts(blockRoot common.Hash, parentRoot common.Hash, accounts map[common.Hash][]byte) error {
 	return nil
 }
+
+// Verified return whether the layer has been verified
+func (dl *diskLayer) Verified() bool {
+	return true
+}

@@ -366,6 +366,10 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 	if bc.NoTries() {
 		return bc.snaps != nil && bc.snaps.Snapshot(hash) != nil
 	}
+	// If parent snap is pending on verification, treat it as state exist
+	if s := bc.snaps.Snapshot(hash); s != nil && !s.Verified() {
+		return true
+	}
 	_, err := bc.stateCache.OpenTrie(hash)
 	return err == nil
 }

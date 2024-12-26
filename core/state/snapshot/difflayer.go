@@ -446,6 +446,11 @@ func (dl *diffLayer) Update(blockRoot common.Hash, destructs map[common.Hash]str
 	return newDiffLayer(dl, blockRoot, destructs, accounts, storage)
 }
 
+// Verified return whether the layer has been verified
+func (dl *diffLayer) Verified() bool {
+	return dl.verified.Load()
+}
+
 // flatten pushes all data from this point downwards, flattening everything into
 // a single diff at the bottom. Since usually the lowermost diff is the largest,
 // the flattening builds up from there in reverse.

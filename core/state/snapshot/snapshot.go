@@ -103,6 +103,9 @@ type Snapshot interface {
 	// Root returns the root hash for which this snapshot was made.
 	Root() common.Hash
 
+	// Verified return whether the layer has been verified
+	Verified() bool
+
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*types.SlimAccount, error)
