@@ -475,26 +475,13 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		chainFreezerDir = resolveChainFreezerDir(chainFreezerDir)
 	}
 
-	// TODO(galaio): clear metadata
-	// TODO(galaio): read legacy offset metadata from prune-block/pruneancient
-	// This case is used for someone who wants to execute geth db inspect CLI in a pruned db
-	// and reset freezer meta/index
-	//if !disableFreeze && readonly && ReadAncientType(db) == PruneFreezerType {
-	//	log.Warn("Disk db is pruned, using an empty freezer db for CLI")
-	//	return NewEmptyFreezeDB(db), nil
-	//}
-	//
-	//var offset uint64
-	//if pruneAncientData && !disableFreeze && !readonly {
-	//}
-	//
-	//if pruneAncientData {
-	//	log.Error("pruneancient not take effect, disableFreezer or readonly be set")
-	//}
-	//
-	//if prunedFrozen := ReadFrozenOfAncientFreezer(db); prunedFrozen > offset {
-	//	offset = prunedFrozen
-	//}
+	// if there has legacy offset, try to clean & reset the freezer metadata
+	if legacyOffset := ReadLegacyOffset(db); legacyOffset > 0 {
+		if err := resetFreezerMeta(chainFreezerDir, namespace, legacyOffset); err != nil {
+			return nil, err
+		}
+		CleanLegacyOffset(db)
+	}
 
 	// Create the idle freezer instance
 	frdb, err := newChainFreezer(chainFreezerDir, namespace, readonly, multiDatabase)
@@ -597,10 +584,6 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		}
 	}
 
-	// no prune ancient start success
-	if !readonly {
-		WriteAncientType(db, EntireFreezerType)
-	}
 	// Freezer is consistent with the key-value database, permit combining the two
 	if !disableFreeze && !readonly {
 		frdb.wg.Add(1)

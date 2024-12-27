@@ -1334,3 +1334,41 @@ func (t *freezerTable) resetItems(startAt uint64) (*freezerTable, error) {
 
 	return newFreezerTable(t.path, t.name, t.noCompression, t.readonly)
 }
+
+// resetTailMeta reset freezer table with new legacyOffset
+// Caution: the table cannot be used anymore, it will release all data files
+func (t *freezerTable) resetTailMeta(legacyOffset uint64) error {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	if t.readonly {
+		return errors.New("resetItems in readonly mode")
+	}
+
+	// if the table enable the tail truncation, add the hidden items
+	legacyOffset += t.itemHidden.Load()
+
+	// overwrite metadata file
+	if err := writeMetadata(t.meta, newMetadata(legacyOffset)); err != nil {
+		return err
+	}
+	if err := t.meta.Sync(); err != nil {
+		return err
+	}
+	t.meta.Close()
+
+	// overwrite first index
+	var firstIndex indexEntry
+	buffer := make([]byte, indexEntrySize)
+	t.index.ReadAt(buffer, 0)
+	firstIndex.unmarshalBinary(buffer)
+	firstIndex.offset = uint32(legacyOffset)
+	if _, err := t.index.WriteAt(firstIndex.append(nil), 0); err != nil {
+		return err
+	}
+	if err := t.index.Sync(); err != nil {
+		return err
+	}
+	t.index.Close()
+
+	return nil
+}

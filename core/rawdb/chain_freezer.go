@@ -96,6 +96,20 @@ func newChainFreezer(datadir string, namespace string, readonly bool, multiDatab
 	return &cf, nil
 }
 
+// resetFreezerMeta resets the tail metadata of the chain freezer.
+func resetFreezerMeta(datadir string, namespace string, legacyOffset uint64) error {
+	if datadir == "" {
+		return nil
+	}
+
+	freezer, err := NewFreezer(datadir, namespace, false, freezerTableSize, chainFreezerNoSnappy)
+	if err != nil {
+		return err
+	}
+	defer freezer.Close()
+	return freezer.resetTailMeta(legacyOffset)
+}
+
 // Close closes the chain freezer instance and terminates the background thread.
 func (f *chainFreezer) Close() error {
 	select {
