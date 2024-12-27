@@ -60,6 +60,7 @@ type chainFreezer struct {
 	threshold atomic.Uint64 // Number of recent blocks not to freeze (params.FullImmutabilityThreshold apart from tests)
 
 	freezeEnv    atomic.Value
+	blockHistory atomic.Uint64
 	waitEnvTimes int
 
 	multiDatabase bool
@@ -409,6 +410,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		if isCancun(env, head.Number, head.Time) {
 			f.tryPruneBlobAncientTable(env, *number)
 		}
+		f.tryPruneHistoryBlock(*number)
 
 		// Avoid database thrashing with tiny writes
 		if frozen-first < freezerBatchLimit {
@@ -565,8 +567,9 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 	return hashes, err
 }
 
-func (f *chainFreezer) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+func (f *chainFreezer) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	f.freezeEnv.Store(env)
+	f.blockHistory.Store(blockHistory)
 	return nil
 }
 
@@ -576,6 +579,30 @@ func (f *chainFreezer) checkFreezerEnv() error {
 		return nil
 	}
 	return missFreezerEnvErr
+}
+
+// tryPruneHistoryBlock try prune ancient data keep blockHistory
+func (f *chainFreezer) tryPruneHistoryBlock(best uint64) {
+	blockHistory := f.blockHistory.Load()
+	if blockHistory == 0 || best <= blockHistory {
+		return
+	}
+
+	expectTail := best - blockHistory
+	ancientHead, err := f.Ancients()
+	if err != nil {
+		log.Warn("PruneHistoryBlock query Ancients error", "best", best, "err", err)
+	}
+	if expectTail > ancientHead {
+		expectTail = ancientHead
+	}
+	old, err := f.TruncateTail(expectTail)
+	if err != nil {
+		log.Warn("PruneHistoryBlock TruncateTail error", "best", best,
+			"expectTail", expectTail, "blockHistory", blockHistory, "err", err)
+		return
+	}
+	log.Debug("Prune block history successful", "oldtail", old, "tail", expectTail, "best", best, "history", blockHistory)
 }
 
 func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {

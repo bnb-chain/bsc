@@ -163,8 +163,8 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 	return nil
 }
 
-func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
-	return frdb.AncientFreezer.SetupFreezerEnv(env)
+func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
+	return frdb.AncientFreezer.SetupFreezerEnv(env, blockHistory)
 }
 
 // nofreezedb is a database wrapper that disables freezer data retrievals.
@@ -317,7 +317,7 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
 
-func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	return nil
 }
 
@@ -415,7 +415,7 @@ func (db *emptyfreezedb) AncientOffSet() uint64 { return 0 }
 func (db *emptyfreezedb) AncientDatadir() (string, error) {
 	return "", nil
 }
-func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	return nil
 }
 

@@ -2005,7 +2005,7 @@ func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme 
 	if err = db.SetupFreezerEnv(&ethdb.FreezerEnv{
 		ChainCfg:         gspec.Config,
 		BlobExtraReserve: params.DefaultExtraReserveForBlobRequests,
-	}); err != nil {
+	}, 0); err != nil {
 		t.Fatalf("Failed to create chain: %v", err)
 	}
 	chain, err := NewBlockChain(db, config, gspec, nil, engine, vm.Config{}, nil, nil)
