@@ -598,11 +598,6 @@ var (
 		Value:    uint64(86400),
 		Category: flags.FastNodeCategory,
 	}
-	PruneAncientDataFlag = &cli.BoolFlag{
-		Name:     "pruneancient",
-		Usage:    "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
-		Category: flags.BlockHistoryCategory,
-	}
 	CacheLogSizeFlag = &cli.IntFlag{
 		Name:     "cache.blocklogs",
 		Usage:    "Size (in number of blocks) of the log cache for filtering",
@@ -2014,10 +2009,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.DiffBlock = ctx.Uint64(DiffBlockFlag.Name)
 	}
 	if ctx.IsSet(PruneAncientDataFlag.Name) {
-		if cfg.SyncMode != ethconfig.FullSync {
-			log.Warn("pruneancient parameter can only be used with syncmode=full, force to full sync")
-			cfg.SyncMode = ethconfig.FullSync
-		}
+		log.Warn(fmt.Sprintf("Option --%s is deprecated. Please using --%s in the future", PruneAncientDataFlag.Name, BlockHistoryFlag.Name))
 		cfg.PruneAncientData = ctx.Bool(PruneAncientDataFlag.Name)
 	}
 	if gcmode := ctx.String(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
@@ -2446,8 +2438,8 @@ func parseDBFeatures(cfg *ethconfig.Config, stack *node.Node) string {
 	if stack.CheckIfMultiDataBase() {
 		features = append(features, "MultiDB")
 	}
-	if cfg.PruneAncientData {
-		features = append(features, "PruneAncient")
+	if cfg.PruneAncientData || cfg.BlockHistory > 0 {
+		features = append(features, "PruneBlocks")
 	}
 	return strings.Join(features, "|")
 }

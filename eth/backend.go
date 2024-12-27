@@ -345,10 +345,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	if config.PruneAncientData && config.BlockHistory != 0 {
-		log.Warn("The node enables PruneAncientData, BlockHistory wille force to 0")
-		config.BlockHistory = 0
-	}
 	eth.bloomIndexer.Start(eth.blockchain)
 
 	if config.BlobPool.Datadir != "" {
