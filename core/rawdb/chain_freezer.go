@@ -592,6 +592,7 @@ func (f *chainFreezer) tryPruneHistoryBlock(best uint64) {
 	ancientHead, err := f.Ancients()
 	if err != nil {
 		log.Warn("PruneHistoryBlock query Ancients error", "best", best, "err", err)
+		return
 	}
 	if expectTail > ancientHead {
 		expectTail = ancientHead

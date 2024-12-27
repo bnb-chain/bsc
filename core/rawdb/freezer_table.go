@@ -1336,7 +1336,7 @@ func (t *freezerTable) resetItems(startAt uint64) (*freezerTable, error) {
 }
 
 // resetTailMeta reset freezer table with new legacyOffset
-// Caution: the table cannot be used anymore, it will release all data files
+// Caution: the table cannot be used anymore, it will sync/close all data files
 func (t *freezerTable) resetTailMeta(legacyOffset uint64) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
