@@ -322,7 +322,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 	}
 
 	// handle new states in journal v2
-	var states stateSet
+	var states = newStates(nil, nil)
 	if version == journalVersion {
 		// Resolve flat state sets in aggregated buffer
 		if err := states.decode(journalBuf); err != nil {
@@ -343,7 +343,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 	}
 
 	// Calculate the internal state transitions by id difference.
-	base := newDiskLayer(root, id, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, &nodes, &states, id-stored))
+	base := newDiskLayer(root, id, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, &nodes, states, id-stored))
 	return base, nil
 }
 
