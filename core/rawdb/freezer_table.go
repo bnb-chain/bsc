@@ -131,11 +131,6 @@ func newFreezerTable(path, name string, disableSnappy, readonly bool) (*freezerT
 	return newTable(path, name, metrics.NewInactiveMeter(), metrics.NewInactiveMeter(), metrics.NewGauge(), freezerTableSize, disableSnappy, readonly)
 }
 
-// newAdditionTable opens the given path as a addition table.
-func newAdditionTable(path, name string, disableSnappy, readonly bool) (*freezerTable, error) {
-	return openAdditionTable(path, name, metrics.NewInactiveMeter(), metrics.NewInactiveMeter(), metrics.NewGauge(), freezerTableSize, disableSnappy, readonly)
-}
-
 // newTable opens a freezer table, creating the data and index files if they are
 // non-existent. Both files are truncated to the shortest common length to ensure
 // they don't go out of sync.
