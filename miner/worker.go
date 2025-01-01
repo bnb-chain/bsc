@@ -1195,7 +1195,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 
 	fees := work.state.GetBalance(consensus.SystemAddress)
-	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
+	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts, nil)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
@@ -1459,7 +1459,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts)
+		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, nil)
 		if err != nil {
 			return err
 		}
