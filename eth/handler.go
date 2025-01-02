@@ -136,6 +136,7 @@ type handler struct {
 
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
 	synced          atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
+	acceptTxs       atomic.Bool
 	directBroadcast bool
 
 	database             ethdb.Database
@@ -240,7 +241,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return nil, errors.New("snap sync not supported with snapshots disabled")
 	}
 	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.removePeer, h.enableSyncedFeatures)
+	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.removePeer, nil)
 
 	// Construct the fetcher (short sync)
 	validator := func(header *types.Header) error {
@@ -978,6 +979,10 @@ func (h *handler) voteBroadcastLoop() {
 func (h *handler) enableSyncedFeatures() {
 	// Mark the local node as synced.
 	h.synced.Store(true)
+	if !h.acceptTxs.Load() {
+		h.acceptTxs.Store(true)
+		log.Info("Enable transaction acceptance when synced.")
+	}
 
 	// If we were running snap sync and it finished, disable doing another
 	// round on next sync cycle

@@ -163,6 +163,11 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	mode, ourTD := cs.modeAndLocalHead()
 	op := peerToSyncOp(mode, peer)
 	if op.td.Cmp(ourTD) <= 0 {
+		if !cs.handler.acceptTxs.Load() {
+			// Occurs only during a quick restart.
+			cs.handler.acceptTxs.Store(true)
+			log.Info("Enable transaction acceptance for already in sync.")
+		}
 		// We seem to be in sync according to the legacy rules. In the merge
 		// world, it can also mean we're stuck on the merge block, waiting for
 		// a beacon client. In the latter case, notify the user.
@@ -171,6 +176,13 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 			cs.warned = time.Now()
 		}
 		return nil // We're in sync
+		// } else if op.td.Cmp(new(big.Int).Add(ourTD, new(big.Int).SetUint64(10*2))) > 0 {
+		// 	if cs.handler.acceptTxs.Load() && rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(10) < 1 {
+		// 		// There is only a 1/10 probability of disabling transaction acceptance.
+		// 		// This randomness helps protect against attacks where a malicious node falsely claims to have higher blocks.
+		// 		cs.handler.acceptTxs.Store(false)
+		// 		log.Info("Disable transaction acceptance randomly for the delay exceeding 10 blocks.")
+		// 	}
 	}
 	return op
 }
