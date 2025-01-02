@@ -586,10 +586,10 @@ func TestTransactionPendingReannounce(t *testing.T) {
 
 // Tests that blocks are broadcast to a sqrt number of peers only.
 func TestBroadcastBlock1Peer(t *testing.T)    { testBroadcastBlock(t, 1, 1) }
-func TestBroadcastBlock2Peers(t *testing.T)   { testBroadcastBlock(t, 2, 1) }
-func TestBroadcastBlock3Peers(t *testing.T)   { testBroadcastBlock(t, 3, 1) }
-func TestBroadcastBlock4Peers(t *testing.T)   { testBroadcastBlock(t, 4, 2) }
-func TestBroadcastBlock5Peers(t *testing.T)   { testBroadcastBlock(t, 5, 2) }
+func TestBroadcastBlock2Peers(t *testing.T)   { testBroadcastBlock(t, 2, 2) }
+func TestBroadcastBlock3Peers(t *testing.T)   { testBroadcastBlock(t, 3, 3) }
+func TestBroadcastBlock4Peers(t *testing.T)   { testBroadcastBlock(t, 4, 3) }
+func TestBroadcastBlock5Peers(t *testing.T)   { testBroadcastBlock(t, 5, 3) }
 func TestBroadcastBlock8Peers(t *testing.T)   { testBroadcastBlock(t, 9, 3) }
 func TestBroadcastBlock12Peers(t *testing.T)  { testBroadcastBlock(t, 12, 3) }
 func TestBroadcastBlock16Peers(t *testing.T)  { testBroadcastBlock(t, 16, 4) }

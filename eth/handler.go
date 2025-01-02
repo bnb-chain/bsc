@@ -64,6 +64,10 @@ const (
 	// All transactions with a higher size will be announced and need to be fetched
 	// by the peer.
 	txMaxBroadcastSize = 4096
+
+	// minPeers2DirectBroadcast defines the minimum number of peers required
+	// to directly broadcast blocks in order to enhance stability on a small network.
+	minPeers2DirectBroadcast = 3
 )
 
 var (
@@ -760,10 +764,10 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		}
 		// Send the block to a subset of our peers
 		var transfer []*ethPeer
-		if h.directBroadcast {
+		if h.directBroadcast || len(peers) <= minPeers2DirectBroadcast {
 			transfer = peers[:]
 		} else {
-			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
+			transfer = peers[:max(int(math.Sqrt(float64(len(peers)))), minPeers2DirectBroadcast)]
 		}
 
 		for _, peer := range transfer {
