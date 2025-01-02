@@ -2384,7 +2384,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 
 		if task.err != nil {
 			log.Error("Task failed during verification", "block", task.block.Number(), "hash", task.block.Hash())
-			bc.reportBlock(block, nil, task.err)
+			bc.reportBlock(task.block, nil, task.err)
 			return task.index, errors.New("verification failed")
 		}
 	}

@@ -1059,6 +1059,9 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 func (s *StateDB) GetLatestVerifiedStateRoot(addrHash common.Hash) common.Hash {
 	if s.snaps != nil {
 		s.snap = s.snaps.Snapshot(s.originalRoot)
+		if !s.snap.Verified() {
+			panic("Layer of the snap is not verified")
+		}
 		acc, err := s.snap.Account(addrHash)
 		if err == nil {
 			if acc == nil {
@@ -1594,10 +1597,17 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 			if s.snap != nil {
 				diffLayer.Destructs, diffLayer.Accounts, diffLayer.Storages = s.SnapToDiffLayer()
 				// Only update if there's a state transition (skip empty Clique blocks)
-				if parent := s.snap.Root(); parent != s.expectedRoot && !s.snap.Verified() {
+				if parent := s.snap.Root(); parent != s.expectedRoot {
 					defer func(start time.Time) { s.SnapshotCommits += time.Since(start) }(time.Now())
-					if err := s.snap.CorrectAccounts(s.accounts); err != nil {
-						log.Crit("Failed to correct accounts for diff of block", "block=", block, "error", err)
+					toCorrectSnap := s.snaps.Snapshot(s.expectedRoot)
+					if toCorrectSnap != nil {
+						if !toCorrectSnap.Verified() {
+							if err := toCorrectSnap.CorrectAccounts(s.accounts); err != nil {
+								log.Crit("Failed to correct accounts for diff of block", "block=", block, "error", err)
+							}
+						}
+					} else {
+						panic("Failed to find the snap to correct")
 					}
 				}
 			}
