@@ -106,6 +106,9 @@ type Snapshot interface {
 	// Verified return whether the layer has been verified
 	Verified() bool
 
+	// CorrectAccounts
+	CorrectAccounts(accounts map[common.Hash][]byte) error
+
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*types.SlimAccount, error)
@@ -137,9 +140,6 @@ type snapshot interface {
 	//
 	// Note, the maps are retained by the method to avoid copying everything.
 	Update(blockRoot common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) *diffLayer
-
-	// CorrectAccounts
-	CorrectAccounts(blockRoot common.Hash, parentRoot common.Hash, accounts map[common.Hash][]byte) error
 
 	// Journal commits an entire diff hierarchy to disk into a single journal entry.
 	// This is meant to be used during shutdown to persist the snapshot without
@@ -391,15 +391,6 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 
 	t.layers[snap.root] = snap
 	log.Debug("Snapshot updated", "blockRoot", blockRoot)
-	return nil
-}
-
-func (t *Tree) CorrectAccounts(blockRoot common.Hash, parentRoot common.Hash, accounts map[common.Hash][]byte) error {
-	snap := t.Snapshot(blockRoot)
-	if snap == nil {
-		return fmt.Errorf("snap [%#x] missing", blockRoot)
-	}
-	snap.(snapshot).CorrectAccounts(blockRoot, parentRoot, accounts)
 	return nil
 }
 

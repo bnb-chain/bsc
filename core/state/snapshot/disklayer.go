@@ -183,7 +183,7 @@ func (dl *diskLayer) Update(blockHash common.Hash, destructs map[common.Hash]str
 }
 
 // CorrectAccounts
-func (dl *diskLayer) CorrectAccounts(blockRoot common.Hash, parentRoot common.Hash, accounts map[common.Hash][]byte) error {
+func (dl *diskLayer) CorrectAccounts(accounts map[common.Hash][]byte) error {
 	return nil
 }
 
