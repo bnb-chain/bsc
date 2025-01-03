@@ -687,7 +687,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	bidRuntime.env.gasPool.AddGas(params.PayBidTxGasLimit)
 	err = bidRuntime.commitTransaction(b.chain, b.chainConfig, payBidTx, true)
 	if err != nil {
-		log.Error("BidSimulator: failed to commit tx", "builder", bidRuntime.bid.Builder,
+		log.Error("BidSimulator: failed to commit pay bid tx", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "tx", payBidTx.Hash(), "err", err)
 		err = fmt.Errorf("invalid tx in bid, %v", err)
 		return
