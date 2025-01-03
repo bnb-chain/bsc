@@ -581,6 +581,14 @@ func (dl *diffLayer) StorageList(accountHash common.Hash) ([]common.Hash, bool) 
 	return storageList, destructed
 }
 
+// newVerifiedDiffLayer creates a new diff based on journal on top of an existing snapshot, whether that's a low
+// level persistent database or a hierarchical diff already.
+func newVerifiedDiffLayer(parent snapshot, root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) *diffLayer {
+	dl := newDiffLayer(parent, root, destructs, accounts, storage)
+	dl.verified.Store(true)
+	return dl
+}
+
 // CorrectAccounts
 func (dl *diffLayer) CorrectAccounts(accounts map[common.Hash][]byte) error {
 	dl.lock.Lock()
