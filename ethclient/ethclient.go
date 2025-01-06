@@ -253,11 +253,9 @@ func (ec *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.H
 }
 
 // GetFinalizedHeader returns the requested finalized block header.
-//   - probabilisticFinalized should be in range [2,21],
-//     then the block header with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
-func (ec *Client) FinalizedHeader(ctx context.Context, probabilisticFinalized int64) (*types.Header, error) {
+func (ec *Client) FinalizedHeader(ctx context.Context, verifiedValidatorNum int64) (*types.Header, error) {
 	var head *types.Header
-	err := ec.c.CallContext(ctx, &head, "eth_getFinalizedHeader", probabilisticFinalized)
+	err := ec.c.CallContext(ctx, &head, "eth_getFinalizedHeader", verifiedValidatorNum)
 	if err == nil && head == nil {
 		err = ethereum.NotFound
 	}
@@ -265,12 +263,8 @@ func (ec *Client) FinalizedHeader(ctx context.Context, probabilisticFinalized in
 }
 
 // GetFinalizedBlock returns the requested finalized block.
-//   - probabilisticFinalized should be in range [2,21],
-//     then the block with number `max(fastFinalized, latest-probabilisticFinalized)` is returned
-//   - When fullTx is true all transactions in the block are returned, otherwise
-//     only the transaction hash is returned.
-func (ec *Client) FinalizedBlock(ctx context.Context, probabilisticFinalized int64, fullTx bool) (*types.Block, error) {
-	return ec.getBlock(ctx, "eth_getFinalizedBlock", probabilisticFinalized, true)
+func (ec *Client) FinalizedBlock(ctx context.Context, verifiedValidatorNum int64, fullTx bool) (*types.Block, error) {
+	return ec.getBlock(ctx, "eth_getFinalizedBlock", verifiedValidatorNum, fullTx)
 }
 
 func (ec *Client) GetRootByDiffHash(ctx context.Context, blockNr *big.Int, blockHash common.Hash, diffHash common.Hash) (*core.VerifyResult, error) {
