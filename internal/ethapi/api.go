@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
+	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
@@ -549,9 +550,15 @@ func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValida
 	if err != nil { // impossible
 		return 0, err
 	}
-	valLen := int64(len(curValidators))
-	if verifiedValidatorNum < 1 || verifiedValidatorNum > valLen {
-		return 0, fmt.Errorf("%d out of range [1,%d]", verifiedValidatorNum, valLen)
+	valLen := len(curValidators)
+	if verifiedValidatorNum == -1 {
+		verifiedValidatorNum = int64(cmath.CeilDiv(valLen, 2))
+	} else if verifiedValidatorNum == -2 {
+		verifiedValidatorNum = int64(cmath.CeilDiv(valLen*2, 3))
+	} else if verifiedValidatorNum == -3 {
+		verifiedValidatorNum = int64(valLen)
+	} else if verifiedValidatorNum < 1 || verifiedValidatorNum > int64(valLen) {
+		return 0, fmt.Errorf("%d neither within the range [1,%d] nor the range [-3,-1]", verifiedValidatorNum, valLen)
 	}
 
 	fastFinalizedHeader, err := api.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
@@ -582,7 +589,10 @@ func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValida
 }
 
 // GetFinalizedHeader returns the finalized block header based on the specified parameters.
-//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)].
+//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)],with the exception that:
+//     -1 represents at least len(currentValidators) * 1/2
+//     -2 represents at least len(currentValidators) * 2/3
+//     -3 represents at least len(currentValidators)
 //   - The function calculates `probabilisticFinalizedHeight` as the highest height of the block verified by `verifiedValidatorNum` validators,
 //     it then returns the block header with a height equal to `max(fastFinalizedHeight, probabilisticFinalizedHeight)`.
 //   - The height of the returned block header is guaranteed to be monotonically increasing.
@@ -595,7 +605,10 @@ func (api *BlockChainAPI) GetFinalizedHeader(ctx context.Context, verifiedValida
 }
 
 // GetFinalizedBlock returns the finalized block based on the specified parameters.
-//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)].
+//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)],with the exception that:
+//     -1 represents at least len(currentValidators) * 1/2
+//     -2 represents at least len(currentValidators) * 2/3
+//     -3 represents at least len(currentValidators)
 //   - The function calculates `probabilisticFinalizedHeight` as the highest height of the block verified by `verifiedValidatorNum` validators,
 //     it then returns the block with a height equal to `max(fastFinalizedHeight, probabilisticFinalizedHeight)`.
 //   - If `fullTx` is true, the block includes all transactions; otherwise, only transaction hashes are included.
