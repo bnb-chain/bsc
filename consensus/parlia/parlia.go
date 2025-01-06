@@ -2123,6 +2123,19 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 	}
 }
 
+func (p *Parlia) BlockInterval() uint64 {
+	return p.config.Period
+}
+
+func (p *Parlia) NextProposalBlock(chain consensus.ChainHeaderReader, header *types.Header, proposer common.Address) (uint64, uint64, error) {
+	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return snap.nextProposalBlock(proposer)
+}
+
 // chain context
 type chainContext struct {
 	Chain  consensus.ChainHeaderReader

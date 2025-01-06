@@ -28,14 +28,15 @@ import (
 
 // Config is the configuration parameters of mining.
 type Config struct {
-	Etherbase     common.Address `toml:",omitempty"` // Public address for block mining rewards
-	ExtraData     hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
-	DelayLeftOver time.Duration  // Time reserved to finalize a block(calculate root, distribute income...)
-	GasFloor      uint64         // Target gas floor for mined blocks.
-	GasCeil       uint64         // Target gas ceiling for mined blocks.
-	GasPrice      *big.Int       // Minimum gas price for mining a transaction
-	Recommit      time.Duration  // The time interval for miner to re-create mining work.
-	VoteEnable    bool           // Whether to vote when mining
+	Etherbase             common.Address `toml:",omitempty"` // Public address for block mining rewards
+	ExtraData             hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
+	DelayLeftOver         time.Duration  // Time reserved to finalize a block(calculate root, distribute income...)
+	GasFloor              uint64         // Target gas floor for mined blocks.
+	GasCeil               uint64         // Target gas ceiling for mined blocks.
+	GasPrice              *big.Int       // Minimum gas price for mining a transaction
+	Recommit              time.Duration  // The time interval for miner to re-create mining work.
+	VoteEnable            bool           // Whether to vote when mining
+	MaxWaitProposalInSecs uint64         // The maximum time to wait for the proposal to be done, it's aimed to prevent validator slashed when restarting
 
 	DisableVoteAttestation bool // Whether to skip assembling vote attestation
 
@@ -53,6 +54,10 @@ var DefaultConfig = Config{
 	// run 3 rounds.
 	Recommit:      3 * time.Second,
 	DelayLeftOver: 50 * time.Millisecond,
+
+	// The default value is set to 30 seconds.
+	// Because the avg restart time in mainnet is around 30s, so the node try to wait for next proposal done.
+	MaxWaitProposalInSecs: 30,
 
 	Mev: DefaultMevConfig,
 }

@@ -174,6 +174,10 @@ func (miner *Miner) InTurn() bool {
 	return miner.worker.inTurn()
 }
 
+func (miner *Miner) TryWaitProposalDoneWhenStopping() {
+	miner.worker.tryWaitProposalDoneWhenStopping()
+}
+
 // Pending returns the currently pending block and associated receipts, logs
 // and statedb. The returned values can be nil in case the pending block is
 // not initialized.
