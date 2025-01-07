@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
+	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
@@ -479,7 +480,7 @@ func decodeHash(s string) (h common.Hash, inputLength int, err error) {
 func (api *BlockChainAPI) GetHeaderByNumber(ctx context.Context, number rpc.BlockNumber) (map[string]interface{}, error) {
 	header, err := api.b.HeaderByNumber(ctx, number)
 	if header != nil && err == nil {
-		response := RPCMarshalHeader(header)
+		response := api.rpcMarshalHeader(ctx, header)
 		if number == rpc.PendingBlockNumber {
 			// Pending header need to nil out a few fields
 			for _, field := range []string{"hash", "nonce", "miner"} {
@@ -495,7 +496,7 @@ func (api *BlockChainAPI) GetHeaderByNumber(ctx context.Context, number rpc.Bloc
 func (api *BlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.Hash) map[string]interface{} {
 	header, _ := api.b.HeaderByHash(ctx, hash)
 	if header != nil {
-		return RPCMarshalHeader(header)
+		return api.rpcMarshalHeader(ctx, header)
 	}
 	return nil
 }
@@ -510,14 +511,14 @@ func (api *BlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.Hash)
 func (api *BlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (map[string]interface{}, error) {
 	block, err := api.b.BlockByNumber(ctx, number)
 	if block != nil && err == nil {
-		response := RPCMarshalBlock(block, true, fullTx, api.b.ChainConfig())
-		if number == rpc.PendingBlockNumber {
+		response, err := api.rpcMarshalBlock(ctx, block, true, fullTx)
+		if err == nil && number == rpc.PendingBlockNumber {
 			// Pending blocks need to nil out a few fields
 			for _, field := range []string{"hash", "nonce", "miner"} {
 				response[field] = nil
 			}
 		}
-		return response, nil
+		return response, err
 	}
 	return nil, err
 }
@@ -527,7 +528,7 @@ func (api *BlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.Block
 func (api *BlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Hash, fullTx bool) (map[string]interface{}, error) {
 	block, err := api.b.BlockByHash(ctx, hash)
 	if block != nil {
-		return RPCMarshalBlock(block, true, fullTx, api.b.ChainConfig()), nil
+		return api.rpcMarshalBlock(ctx, block, true, fullTx)
 	}
 	return nil, err
 }
@@ -549,9 +550,15 @@ func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValida
 	if err != nil { // impossible
 		return 0, err
 	}
-	valLen := int64(len(curValidators))
-	if verifiedValidatorNum < 1 || verifiedValidatorNum > valLen {
-		return 0, fmt.Errorf("%d out of range [1,%d]", verifiedValidatorNum, valLen)
+	valLen := len(curValidators)
+	if verifiedValidatorNum == -1 {
+		verifiedValidatorNum = int64(cmath.CeilDiv(valLen, 2))
+	} else if verifiedValidatorNum == -2 {
+		verifiedValidatorNum = int64(cmath.CeilDiv(valLen*2, 3))
+	} else if verifiedValidatorNum == -3 {
+		verifiedValidatorNum = int64(valLen)
+	} else if verifiedValidatorNum < 1 || verifiedValidatorNum > int64(valLen) {
+		return 0, fmt.Errorf("%d neither within the range [1,%d] nor the range [-3,-1]", verifiedValidatorNum, valLen)
 	}
 
 	fastFinalizedHeader, err := api.b.HeaderByNumber(ctx, rpc.FinalizedBlockNumber)
@@ -582,7 +589,10 @@ func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValida
 }
 
 // GetFinalizedHeader returns the finalized block header based on the specified parameters.
-//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)].
+//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)],with the exception that:
+//     -1 represents at least len(currentValidators) * 1/2
+//     -2 represents at least len(currentValidators) * 2/3
+//     -3 represents at least len(currentValidators)
 //   - The function calculates `probabilisticFinalizedHeight` as the highest height of the block verified by `verifiedValidatorNum` validators,
 //     it then returns the block header with a height equal to `max(fastFinalizedHeight, probabilisticFinalizedHeight)`.
 //   - The height of the returned block header is guaranteed to be monotonically increasing.
@@ -595,7 +605,10 @@ func (api *BlockChainAPI) GetFinalizedHeader(ctx context.Context, verifiedValida
 }
 
 // GetFinalizedBlock returns the finalized block based on the specified parameters.
-//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)].
+//   - `verifiedValidatorNum` must be within the range [1, len(currentValidators)],with the exception that:
+//     -1 represents at least len(currentValidators) * 1/2
+//     -2 represents at least len(currentValidators) * 2/3
+//     -3 represents at least len(currentValidators)
 //   - The function calculates `probabilisticFinalizedHeight` as the highest height of the block verified by `verifiedValidatorNum` validators,
 //     it then returns the block with a height equal to `max(fastFinalizedHeight, probabilisticFinalizedHeight)`.
 //   - If `fullTx` is true, the block includes all transactions; otherwise, only transaction hashes are included.
@@ -619,7 +632,7 @@ func (api *BlockChainAPI) GetUncleByBlockNumberAndIndex(ctx context.Context, blo
 			return nil, nil
 		}
 		block = types.NewBlockWithHeader(uncles[index])
-		return RPCMarshalBlock(block, false, false, api.b.ChainConfig()), nil
+		return api.rpcMarshalBlock(ctx, block, false, false)
 	}
 	return nil, err
 }
@@ -634,7 +647,7 @@ func (api *BlockChainAPI) GetUncleByBlockHashAndIndex(ctx context.Context, block
 			return nil, nil
 		}
 		block = types.NewBlockWithHeader(uncles[index])
-		return RPCMarshalBlock(block, false, false, api.b.ChainConfig()), nil
+		return api.rpcMarshalBlock(ctx, block, false, false)
 	}
 	return nil, err
 }
@@ -1414,6 +1427,24 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 		fields["withdrawals"] = block.Withdrawals()
 	}
 	return fields
+}
+
+// rpcMarshalHeader uses the generalized output filler, then adds the total difficulty field, which requires
+// a `BlockchainAPI`.
+func (api *BlockChainAPI) rpcMarshalHeader(ctx context.Context, header *types.Header) map[string]interface{} {
+	fields := RPCMarshalHeader(header)
+	fields["totalDifficulty"] = (*hexutil.Big)(api.b.GetTd(ctx, header.Hash()))
+	return fields
+}
+
+// rpcMarshalBlock uses the generalized output filler, then adds the total difficulty field, which requires
+// a `BlockchainAPI`.
+func (api *BlockChainAPI) rpcMarshalBlock(ctx context.Context, b *types.Block, inclTx bool, fullTx bool) (map[string]interface{}, error) {
+	fields := RPCMarshalBlock(b, inclTx, fullTx, api.b.ChainConfig())
+	if inclTx {
+		fields["totalDifficulty"] = (*hexutil.Big)(api.b.GetTd(ctx, b.Hash()))
+	}
+	return fields, nil
 }
 
 // RPCTransaction represents a transaction that will serialize to the RPC representation of a transaction

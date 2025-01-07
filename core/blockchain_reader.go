@@ -20,6 +20,8 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/log"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -359,7 +361,16 @@ func (bc *BlockChain) GetTd(hash common.Hash, number uint64) *big.Int {
 // HasState checks if state trie is fully present in the database or not.
 func (bc *BlockChain) HasState(hash common.Hash) bool {
 	if bc.NoTries() {
-		return bc.snaps != nil && bc.snaps.Snapshot(hash) != nil
+		if bc.snaps != nil {
+			return bc.snaps.Snapshot(hash) != nil
+		}
+		// snaps is nil when the blockchain creates
+		found, err := snapshot.PreCheckSnapshot(bc.db, hash)
+		if err != nil {
+			log.Warn("Check HasState in NoTries mode failed", "root", hash, "err", err)
+			return false
+		}
+		return found
 	}
 	_, err := bc.statedb.OpenTrie(hash)
 	return err == nil

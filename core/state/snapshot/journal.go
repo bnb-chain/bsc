@@ -123,6 +123,24 @@ func loadAndParseJournal(db ethdb.KeyValueStore, base *diskLayer) (snapshot, jou
 	return current, generator, nil
 }
 
+func PreCheckSnapshot(db ethdb.KeyValueStore, root common.Hash) (bool, error) {
+	baseRoot := rawdb.ReadSnapshotRoot(db)
+	if baseRoot == (common.Hash{}) {
+		return false, errors.New("missing or corrupted snapshot")
+	}
+	if baseRoot == root {
+		return true, nil
+	}
+	var found bool
+	err := iterateJournal(db, func(parent common.Hash, current common.Hash, accountData map[common.Hash][]byte, storageData map[common.Hash]map[common.Hash][]byte) error {
+		if current == root {
+			found = true
+		}
+		return nil
+	})
+	return found, err
+}
+
 // loadSnapshot loads a pre-existing state snapshot backed by a key-value store.
 func loadSnapshot(diskdb ethdb.KeyValueStore, triedb *triedb.Database, root common.Hash, cache int, recovery bool, noBuild bool, withoutTrie bool) (snapshot, bool, error) {
 	// If snapshotting is disabled (initial sync in progress), don't do anything,

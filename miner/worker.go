@@ -1195,7 +1195,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 
 	fees := work.state.GetBalance(consensus.SystemAddress)
-	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
+	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts, nil)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
@@ -1459,7 +1459,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts)
+		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, nil)
 		if err != nil {
 			return err
 		}
@@ -1506,6 +1506,39 @@ func (w *worker) getSealingBlock(params *generateParams) *newPayloadResult {
 	case <-w.exitCh:
 		return &newPayloadResult{err: errors.New("miner closed")}
 	}
+}
+
+func (w *worker) tryWaitProposalDoneWhenStopping() {
+	posa, ok := w.engine.(consensus.PoSA)
+	// if the consensus is not PoSA, just skip waiting
+	if !ok {
+		return
+	}
+
+	currentHeader := w.chain.CurrentBlock()
+	currentBlock := currentHeader.Number.Uint64()
+	startBlock, endBlock, err := posa.NextProposalBlock(w.chain, currentHeader, w.coinbase)
+	if err != nil {
+		log.Warn("Failed to get next proposal block, skip waiting", "err", err)
+		return
+	}
+
+	log.Info("Checking miner's next proposal block", "current", currentBlock,
+		"proposalStart", startBlock, "proposalEnd", endBlock, "maxWait", w.config.MaxWaitProposalInSecs)
+	if endBlock <= currentBlock {
+		log.Warn("next proposal end block has passed, ignore")
+		return
+	}
+	if startBlock > currentBlock && (startBlock-currentBlock)*posa.BlockInterval() > w.config.MaxWaitProposalInSecs {
+		log.Warn("the next proposal start block is too far, just skip waiting")
+		return
+	}
+
+	// wait one more block for safety
+	waitSecs := (endBlock - currentBlock + 1) * posa.BlockInterval()
+	log.Info("The miner will propose in later, waiting for the proposal to be done",
+		"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
+	time.Sleep(time.Duration(waitSecs) * time.Second)
 }
 
 // copyReceipts makes a deep copy of the given receipts.

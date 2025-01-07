@@ -411,6 +411,37 @@ func (s *Snapshot) inturnValidator() common.Address {
 	return validators[offset]
 }
 
+func (s *Snapshot) nexValidatorsChangeBlock() uint64 {
+	currentEpoch := s.Number - s.Number%s.config.Epoch
+	checkLen := s.minerHistoryCheckLen()
+	if s.Number%s.config.Epoch < checkLen {
+		return currentEpoch + checkLen
+	}
+	return currentEpoch + s.config.Epoch + checkLen
+}
+
+// nextProposalBlock returns the validator next proposal block.
+func (s *Snapshot) nextProposalBlock(proposer common.Address) (uint64, uint64, error) {
+	validators := s.validators()
+	currentIndex := int(s.Number / uint64(s.TurnLength) % uint64(len(validators)))
+	expectIndex := s.indexOfVal(proposer)
+	if expectIndex < 0 {
+		return 0, 0, errors.New("proposer not in validator set")
+	}
+	startBlock := s.Number + uint64(((expectIndex+len(validators)-currentIndex)%len(validators))*int(s.TurnLength))
+	startBlock = startBlock - startBlock%uint64(s.TurnLength)
+	endBlock := startBlock + uint64(s.TurnLength) - 1
+
+	changeValidatorsBlock := s.nexValidatorsChangeBlock()
+	if startBlock >= changeValidatorsBlock {
+		return 0, 0, errors.New("next proposal block is out of current epoch")
+	}
+	if endBlock >= changeValidatorsBlock {
+		endBlock = changeValidatorsBlock
+	}
+	return startBlock, endBlock, nil
+}
+
 func (s *Snapshot) enoughDistance(validator common.Address, header *types.Header) bool {
 	idx := s.indexOfVal(validator)
 	if idx < 0 {
