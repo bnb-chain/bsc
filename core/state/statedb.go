@@ -74,6 +74,7 @@ type StateDB struct {
 	snaps          *snapshot.Tree    // Nil if snapshot is not available
 	snap           snapshot.Snapshot // Nil if snapshot is not available
 
+	addressToPrefetch [][]byte
 	// originalRoot is the pre-state root, before any changes were made.
 	// It will be updated when the Commit is called.
 	originalRoot common.Hash
@@ -197,6 +198,7 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 		accessList:           newAccessList(),
 		transientStorage:     newTransientStorage(),
 		hasher:               crypto.NewKeccakState(),
+		addressToPrefetch:    make([][]byte, 0),
 	}
 
 	if sdb.snaps != nil {
@@ -982,7 +984,7 @@ func (s *StateDB) GetRefund() uint64 {
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
-	addressesToPrefetch := make([][]byte, 0, len(s.journal.dirties))
+	//addressesToPrefetch := make([][]byte, 0, len(s.journal.dirties))
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]
 		if !exist {
@@ -1017,17 +1019,15 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		s.stateObjectsPending[addr] = struct{}{}
 		s.stateObjectsDirty[addr] = struct{}{}
 
-		if s.TriePrefetch {
-			// At this point, also ship the address off to the precacher. The precacher
-			// will start loading tries, and when the change is eventually committed,
-			// the commit-phase will be a lot faster
-			addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
-		}
+		// At this point, also ship the address off to the precacher. The precacher
+		// will start loading tries, and when the change is eventually committed,
+		// the commit-phase will be a lot faster
+		s.addressToPrefetch = append(s.addressToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
 	}
 	if s.TriePrefetch {
 		prefetcher := s.prefetcher
-		if prefetcher != nil && len(addressesToPrefetch) > 0 {
-			prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch)
+		if prefetcher != nil && len(s.addressToPrefetch) > 0 {
+			prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, s.addressToPrefetch)
 		}
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
@@ -1648,6 +1648,7 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 	s.storagesOrigin = make(map[common.Address]map[common.Hash][]byte)
 	s.stateObjectsDirty = make(map[common.Address]struct{})
 	s.stateObjectsDestruct = make(map[common.Address]*types.StateAccount)
+	s.addressToPrefetch = make([][]byte, 0)
 	return root, diffLayer, nil
 }
 
