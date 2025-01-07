@@ -1,4 +1,20 @@
 # Changelog
+## v1.5.3
+### BUGFIX
+* [\#2827](https://github.com/bnb-chain/bsc/pull/2827) triedb/pathdb: fix nil field for stateSet
+* [\#2830](https://github.com/bnb-chain/bsc/pull/2830) fastnode: fix some pbss saving&rewind issues
+* [\#2835](https://github.com/bnb-chain/bsc/pull/2835) dep: fix nancy issues
+* [\#2836](https://github.com/bnb-chain/bsc/pull/2836) Revert "internal/ethapi: remove td field from block (#30386)"
+
+### FEATURE
+NA
+
+### IMPROVEMENT
+* [\#2834](https://github.com/bnb-chain/bsc/pull/2834) eth: make transaction acceptance depends on syncing status
+* [\#2844](https://github.com/bnb-chain/bsc/pull/2844) internal/ethapi: support GetFinalizedBlock by common ratio validators
+* [\#2772](https://github.com/bnb-chain/bsc/pull/2772) Push tracing of Parlia system transactions so that live tracers can properly traces those state changes
+* [\#2845](https://github.com/bnb-chain/bsc/pull/2845) feat: wait miner finish the later multi-proposals when restarting the node
+
 ## v1.5.2
 v1.5.2-alpha is another release for upstream code sync, it catches up with [go-ethereum release [v1.14.12]](https://github.com/ethereum/go-ethereum/releases/tag/v1.14.12) and supported 4 BEPs for BSC Pascal hard fork.
 - BEP-439: Implement EIP-2537: Precompile for BLS12-381 curve operations
