@@ -1522,19 +1522,23 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 		log.Warn("Failed to get next proposal block", "err", err)
 		return
 	}
+
 	log.Info("Checking miner's next proposal block", "current", currentBlock,
 		"proposalStart", startBlock, "proposalEnd", endBlock, "maxWait", w.config.MaxWaitProposalInSecs)
-
-	if endBlock < currentBlock {
+	if endBlock <= currentBlock {
 		log.Warn("next proposal end block has passed, ignore")
 		return
 	}
-	waitSecs := (endBlock - currentBlock) * posa.BlockInterval()
-	if waitSecs > 0 && waitSecs <= w.config.MaxWaitProposalInSecs {
-		log.Info("The miner will propose in later, waiting for the proposal to be done",
-			"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
-		time.Sleep(time.Duration(waitSecs) * time.Second)
+	if startBlock > currentBlock && (startBlock-currentBlock)*posa.BlockInterval() > w.config.MaxWaitProposalInSecs {
+		log.Warn("the next proposal start block is too far, just skip waiting")
+		return
 	}
+
+	// wait a more block for safety
+	waitSecs := (endBlock - currentBlock + 1) * posa.BlockInterval()
+	log.Info("The miner will propose in later, waiting for the proposal to be done",
+		"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
+	time.Sleep(time.Duration(waitSecs) * time.Second)
 }
 
 // copyReceipts makes a deep copy of the given receipts.
@@ -1567,3 +1571,5 @@ func signalToErr(signal int32) error {
 		panic(fmt.Errorf("undefined signal %d", signal))
 	}
 }
+
+// signalToErr converts the interruption signal to a concrete error type for return.

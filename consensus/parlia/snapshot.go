@@ -441,7 +441,7 @@ func (s *Snapshot) nextProposalBlock(proposer common.Address) (uint64, uint64, e
 		return 0, 0, errors.New("next proposal block is out of current epoch")
 	}
 	if endBlock >= changeValidatorsBlock {
-		endBlock = changeValidatorsBlock - 1
+		endBlock = changeValidatorsBlock
 	}
 	return startBlock, endBlock, nil
 }
