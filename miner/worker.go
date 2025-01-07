@@ -1519,7 +1519,7 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 	currentBlock := currentHeader.Number.Uint64()
 	startBlock, endBlock, err := posa.NextProposalBlock(w.chain, currentHeader, w.coinbase)
 	if err != nil {
-		log.Warn("Failed to get next proposal block", "err", err)
+		log.Warn("Failed to get next proposal block, skip waiting", "err", err)
 		return
 	}
 
@@ -1534,7 +1534,7 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 		return
 	}
 
-	// wait a more block for safety
+	// wait one more block for safety
 	waitSecs := (endBlock - currentBlock + 1) * posa.BlockInterval()
 	log.Info("The miner will propose in later, waiting for the proposal to be done",
 		"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
@@ -1571,5 +1571,3 @@ func signalToErr(signal int32) error {
 		panic(fmt.Errorf("undefined signal %d", signal))
 	}
 }
-
-// signalToErr converts the interruption signal to a concrete error type for return.
