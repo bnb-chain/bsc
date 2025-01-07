@@ -373,7 +373,7 @@ func (miner *Miner) prepareSimulationEnv(parent *types.Header, state *state.Stat
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
-		GasLimit:   core.CalcGasLimitForBuilder(parent.GasLimit, miner.worker.config.GasCeil),
+		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.worker.config.GasCeil),
 		Extra:      miner.worker.extra,
 		Time:       uint64(timestamp),
 		Coinbase:   coinbase,
