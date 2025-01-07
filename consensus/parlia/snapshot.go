@@ -426,10 +426,13 @@ func (s *Snapshot) nextProposalBlock(proposer common.Address) (uint64, uint64, e
 	currentProposer := validators[s.Number/uint64(s.TurnLength)%uint64(len(validators))]
 	currentIndex := s.indexOfVal(currentProposer)
 	expectIndex := s.indexOfVal(proposer)
+	if currentIndex < 0 {
+		return 0, 0, errors.New("currentProposer not in validator set")
+	}
 	if expectIndex < 0 {
 		return 0, 0, errors.New("proposer not in validator set")
 	}
-	startBlock := uint64((expectIndex+len(validators)-currentIndex)%len(validators)*int(s.TurnLength)) + s.Number
+	startBlock := s.Number + uint64(((expectIndex+len(validators)-currentIndex)%len(validators))*int(s.TurnLength))
 	startBlock = startBlock - startBlock%uint64(s.TurnLength)
 	endBlock := startBlock + uint64(s.TurnLength) - 1
 

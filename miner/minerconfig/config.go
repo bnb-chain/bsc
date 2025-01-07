@@ -36,7 +36,7 @@ type Config struct {
 	GasPrice              *big.Int       // Minimum gas price for mining a transaction
 	Recommit              time.Duration  // The time interval for miner to re-create mining work.
 	VoteEnable            bool           // Whether to vote when mining
-	MaxWaitProposalInSecs uint64         // The maximum time to wait for the proposal to be done, it's aimed to prevent validator slashed when restarting
+	MaxWaitProposalInSecs uint64         // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
 
 	DisableVoteAttestation bool // Whether to skip assembling vote attestation
 
@@ -56,7 +56,7 @@ var DefaultConfig = Config{
 	DelayLeftOver: 50 * time.Millisecond,
 
 	// The default value is set to 30 seconds.
-	// Because the avg restart time in mainnet is around 30s, so the node try to wait for next proposal done.
+	// Because the avg restart time in mainnet is around 30s, so the node try to wait for the next multi-proposals to be done.
 	MaxWaitProposalInSecs: 30,
 
 	Mev: DefaultMevConfig,

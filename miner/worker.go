@@ -1516,21 +1516,22 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 	}
 
 	currentHeader := w.chain.CurrentBlock()
-	startBlock, endBlock, err := posa.NextProposalBlock(w.chain, w.chain.CurrentBlock(), w.coinbase)
+	currentBlock := currentHeader.Number.Uint64()
+	startBlock, endBlock, err := posa.NextProposalBlock(w.chain, currentHeader, w.coinbase)
 	if err != nil {
 		log.Warn("Failed to get next proposal block", "err", err)
 		return
 	}
+	log.Info("Checking miner's next proposal block", "current", currentBlock,
+		"proposalStart", startBlock, "proposalEnd", endBlock, "maxWait", w.config.MaxWaitProposalInSecs)
 
-	currentBlock := currentHeader.Number.Uint64()
+	if endBlock < currentBlock {
+		log.Warn("next proposal end block has passed, ignore")
+		return
+	}
 	waitSecs := (endBlock - currentBlock) * posa.BlockInterval()
 	if waitSecs > 0 && waitSecs <= w.config.MaxWaitProposalInSecs {
 		log.Info("The miner will propose in later, waiting for the proposal to be done",
-			"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
-		time.Sleep(time.Duration(waitSecs) * time.Second)
-	}
-	if startBlock <= currentBlock && currentBlock < endBlock {
-		log.Info("The miner is proposing, waiting for the proposal to be done",
 			"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
 		time.Sleep(time.Duration(waitSecs) * time.Second)
 	}
