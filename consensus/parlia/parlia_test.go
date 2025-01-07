@@ -160,12 +160,13 @@ func simulateValidatorOutOfService(totalValidators int, downValidators int, turn
 }
 
 func producerBlockDelay(candidates map[int]bool, height, numOfValidators int) (int, uint64) {
+	orderOffset := 1
 	s := mrand.NewSource(int64(height))
 	r := mrand.New(s)
 	n := numOfValidators
 	backOffSteps := make([]int, 0, n)
 	for idx := 0; idx < n; idx++ {
-		backOffSteps = append(backOffSteps, idx)
+		backOffSteps = append(backOffSteps, idx+orderOffset)
 	}
 	r.Shuffle(n, func(i, j int) {
 		backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
@@ -178,7 +179,7 @@ func producerBlockDelay(candidates map[int]bool, height, numOfValidators int) (i
 			minCandidate = c
 		}
 	}
-	delay := initialBackOffTime + uint64(minDelay)*wiggleTime
+	delay := uint64(minDelay) * wiggleTime
 	return minCandidate, delay
 }
 

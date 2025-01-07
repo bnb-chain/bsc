@@ -66,8 +66,7 @@ const (
 	validatorBytesLength            = common.AddressLength + types.BLSPublicKeyLength
 	validatorNumberSize             = 1 // Fixed number of extra prefix bytes reserved for validator number after Luban
 
-	wiggleTime         = uint64(1) // second, Random delay (per signer) to allow concurrent signers
-	initialBackOffTime = uint64(1) // second
+	wiggleTime = uint64(1) // second, Random delay (per signer) to allow concurrent signers
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
@@ -2089,7 +2088,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		log.Debug("backOffTime", "blockNumber", header.Number, "in turn validator", val)
 		return 0
 	} else {
-		delay := initialBackOffTime
+		orderOffset := uint64(1)
 		validators := snap.validators()
 		if p.chainConfig.IsPlanck(header.Number) {
 			counts := snap.countRecents()
@@ -2104,9 +2103,9 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 
 			inTurnAddr := snap.inturnValidator()
 			if snap.signRecentlyByCounts(inTurnAddr, counts) {
-				log.Debug("in turn validator has recently signed, skip initialBackOffTime",
+				log.Debug("in turn validator has recently signed, no order Offset",
 					"inTurnAddr", inTurnAddr)
-				delay = 0
+				orderOffset = 0
 			}
 
 			// Exclude the recently signed validators and the in turn validator
@@ -2145,17 +2144,14 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		r := rand.New(s)
 		n := len(validators)
 		backOffSteps := make([]uint64, 0, n)
-
 		for i := uint64(0); i < uint64(n); i++ {
-			backOffSteps = append(backOffSteps, i)
+			backOffSteps = append(backOffSteps, i+orderOffset)
 		}
-
 		r.Shuffle(n, func(i, j int) {
 			backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
 		})
 
-		delay += backOffSteps[idx] * wiggleTime
-		return delay
+		return backOffSteps[idx] * wiggleTime
 	}
 }
 
