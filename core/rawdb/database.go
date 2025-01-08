@@ -477,6 +477,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 
 	// if there has legacy offset, try to clean & reset the freezer metadata
 	if legacyOffset := ReadLegacyOffset(db); legacyOffset > 0 {
+		log.Info("Found legacy offset in freezerDB, will reset freezer meta", "offset", legacyOffset)
 		if err := resetFreezerMeta(chainFreezerDir, namespace, legacyOffset); err != nil {
 			return nil, err
 		}
