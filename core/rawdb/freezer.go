@@ -574,6 +574,11 @@ func (f *Freezer) resetTailMeta(legacyOffset uint64) error {
 		return errReadOnly
 	}
 
+	// if the tail is already reset, just skip
+	if f.tail.Load() == legacyOffset {
+		return nil
+	}
+
 	if f.tail.Load() > 0 {
 		return errors.New("the freezer's tail > 0, cannot reset again")
 	}
