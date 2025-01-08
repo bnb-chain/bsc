@@ -423,7 +423,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 		log.Info("Faucet funds requested", "url", msg.URL, "tier", msg.Tier, "ip", ip)
 
 		// check #1: captcha verifications to exclude robot
-		if *captchaToken != "" {
+		if *captchaToken != "" && msg.Captcha != "noCaptchaToken" {
 			form := url.Values{}
 			form.Add("secret", *captchaSecret)
 			form.Add("response", msg.Captcha)
