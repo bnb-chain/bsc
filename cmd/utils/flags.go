@@ -2457,6 +2457,10 @@ func SetupMetrics(cfg *metrics.Config, options ...SetupMetricsOption) {
 	}
 	log.Info("Enabling metrics collection")
 	metrics.Enable()
+	if cfg.EnabledExpensive {
+		log.Info("Enabling expensive metrics collection")
+		metrics.EnableExpensive()
+	}
 
 	// InfluxDB exporter.
 	var (
