@@ -175,7 +175,9 @@ func (t *muxTracer) OnLog(log *types.Log) {
 
 func (t *muxTracer) OnSystemTxFixIntrinsicGas(intrinsicGas uint64) {
 	for _, t := range t.tracers {
-		t.OnSystemTxFixIntrinsicGas(intrinsicGas)
+		if t.OnSystemTxFixIntrinsicGas != nil {
+			t.OnSystemTxFixIntrinsicGas(intrinsicGas)
+		}
 	}
 }
 
