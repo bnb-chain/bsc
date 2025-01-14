@@ -405,9 +405,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
 		diffQueueBuffer:    make(chan *types.DiffLayer),
 		verifyTaskCh:       make(chan *VerifyTask, 32),
-		verifyHeaderCache:  lru.NewCache[common.Hash, *types.Header](128),
-		verifyTdCache:      lru.NewCache[common.Hash, *big.Int](128),
-		verifyNumberCache:  lru.NewCache[common.Hash, uint64](128),
+		verifyHeaderCache:  lru.NewCache[common.Hash, *types.Header](512),
+		verifyTdCache:      lru.NewCache[common.Hash, *big.Int](512),
+		verifyNumberCache:  lru.NewCache[common.Hash, uint64](512),
 	}
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
