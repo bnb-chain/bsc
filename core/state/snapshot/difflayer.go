@@ -600,3 +600,12 @@ func (dl *diffLayer) CorrectAccounts(accounts map[common.Hash][]byte) error {
 	}
 	return nil
 }
+
+// SetStale set unverified diff to stale
+func (dl *diffLayer) SetStale() {
+	dl.lock.Lock()
+	defer dl.lock.Unlock()
+	if !dl.verified.Load() && !dl.Stale() {
+		dl.stale.Store(true)
+	}
+}

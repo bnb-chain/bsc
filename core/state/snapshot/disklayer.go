@@ -191,3 +191,8 @@ func (dl *diskLayer) CorrectAccounts(accounts map[common.Hash][]byte) error {
 func (dl *diskLayer) Verified() bool {
 	return true
 }
+
+// SetStale
+func (dl *diskLayer) SetStale() {
+	return
+}

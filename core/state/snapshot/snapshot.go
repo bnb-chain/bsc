@@ -109,6 +109,9 @@ type Snapshot interface {
 	// CorrectAccounts
 	CorrectAccounts(accounts map[common.Hash][]byte) error
 
+	// SetStale set unverified diff to stale
+	SetStale()
+
 	// Account directly retrieves the account associated with a particular hash in
 	// the snapshot slim data format.
 	Account(hash common.Hash) (*types.SlimAccount, error)
@@ -325,6 +328,10 @@ func (t *Tree) Disable() {
 func (t *Tree) Snapshot(blockRoot common.Hash) Snapshot {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
+
+	if t.layers[blockRoot].Stale() && !t.layers[blockRoot].Verified() {
+		return nil
+	}
 
 	return t.layers[blockRoot]
 }

@@ -1109,7 +1109,7 @@ func (s *StateDB) AccountsIntermediateRoot() {
 		if obj := s.stateObjects[addr]; !obj.deleted {
 			wg.Add(1)
 			tasks <- func() {
-				if _, ok := s.r_destructs[obj.addrHash]; !ok {
+				if _, ok := s.r_destructs[obj.addrHash]; !ok && !obj.created {
 					obj.data.Root = s.GetLatestVerifiedStateRoot(obj.addrHash)
 				}
 				obj.updateRoot()
@@ -1652,6 +1652,17 @@ func (s *StateDB) Commit(block uint64, postCommitFunc func() error) (common.Hash
 	return root, diffLayer, nil
 }
 
+// SetStaleForUnverifiedDiff set the unverified difflayer to stale
+func (s *StateDB) SetStaleForUnverifiedDiff() {
+	toStaleSnap := s.snaps.Snapshot(s.expectedRoot)
+	if toStaleSnap != nil {
+		if !toStaleSnap.Verified() {
+			toStaleSnap.SetStale()
+		}
+	}
+}
+
+// CommitUnVerifiedSnapDifflayer apply new difflayer after block execution
 func (s *StateDB) CommitUnVerifiedSnapDifflayer(deleteEmptyObjects bool) {
 	start := time.Now()
 	s.Finalise(deleteEmptyObjects)
