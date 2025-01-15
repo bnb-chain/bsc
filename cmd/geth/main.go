@@ -131,6 +131,7 @@ var (
 		utils.MultiDataBaseFlag,
 		utils.PersistDiffFlag,
 		utils.DiffBlockFlag,
+		utils.PipeLineFlag,
 		utils.PruneAncientDataFlag,
 		utils.CacheLogSizeFlag,
 		utils.FDLimitFlag,

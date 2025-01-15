@@ -542,7 +542,7 @@ var (
 		Value:    uint64(86400),
 		Category: flags.FastNodeCategory,
 	}
-	PipeCommitFlag = cli.BoolFlag{
+	PipeLineFlag = &cli.BoolFlag{
 		Name:  "pipeline",
 		Usage: "Enable pipeline sync mode , it will improve syncing performance. It is an experimental feature(default is false)",
 	}
@@ -1960,8 +1960,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(DiffBlockFlag.Name) {
 		cfg.DiffBlock = ctx.Uint64(DiffBlockFlag.Name)
 	}
-	if ctx.IsSet(PipeCommitFlag.Name) {
-		cfg.PipelineMode = ctx.Bool(PipeCommitFlag.Name)
+	if ctx.IsSet(PipeLineFlag.Name) {
+		cfg.PipelineMode = ctx.Bool(PipeLineFlag.Name)
 	}
 
 	if ctx.IsSet(PruneAncientDataFlag.Name) {
