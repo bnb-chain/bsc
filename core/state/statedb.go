@@ -80,6 +80,7 @@ type StateDB struct {
 	originalRoot common.Hash
 	expectedRoot common.Hash // The state root in the block header
 	stateRoot    common.Hash // The calculation result of IntermediateRoot
+	pipeline     bool
 
 	fullProcessed bool
 
@@ -303,6 +304,18 @@ func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer)
 	if len(addressesToPrefetch) > 0 {
 		prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch)
 	}
+}
+
+// Enable the pipeline commit function of statedb
+func (s *StateDB) EnablePipeline() {
+	if s.snap != nil && s.snaps.Layers() > 1 {
+		s.pipeline = true
+	}
+}
+
+// IsPipeCommit checks whether pipecommit is enabled on the statedb or not
+func (s *StateDB) IsPipeLineMode() bool {
+	return s.pipeline
 }
 
 // Mark that the block is processed by diff layer

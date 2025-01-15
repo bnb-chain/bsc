@@ -542,6 +542,11 @@ var (
 		Value:    uint64(86400),
 		Category: flags.FastNodeCategory,
 	}
+	PipeCommitFlag = cli.BoolFlag{
+		Name:  "pipeline",
+		Usage: "Enable pipeline sync mode , it will improve syncing performance. It is an experimental feature(default is false)",
+	}
+
 	PruneAncientDataFlag = &cli.BoolFlag{
 		Name:     "pruneancient",
 		Usage:    "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
@@ -1955,6 +1960,10 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(DiffBlockFlag.Name) {
 		cfg.DiffBlock = ctx.Uint64(DiffBlockFlag.Name)
 	}
+	if ctx.IsSet(PipeCommitFlag.Name) {
+		cfg.PipeCommit = ctx.GlobalBool(PipeCommitFlag.Name)
+	}
+
 	if ctx.IsSet(PruneAncientDataFlag.Name) {
 		if cfg.SyncMode == downloader.FullSync {
 			cfg.PruneAncientData = ctx.Bool(PruneAncientDataFlag.Name)

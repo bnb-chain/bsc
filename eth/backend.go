@@ -303,6 +303,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.PersistDiff {
 		bcOps = append(bcOps, core.EnablePersistDiff(config.DiffBlock))
 	}
+	if config.PipelineMode {
+		bcOps = append(bcOps, core.EnablePipelineMode)
+	}
 	if stack.Config().EnableDoubleSignMonitor {
 		bcOps = append(bcOps, core.EnableDoubleSignChecker)
 	}
