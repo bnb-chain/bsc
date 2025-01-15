@@ -601,6 +601,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		bc.txIndexer = newTxIndexer(*txLookupLimit, bc)
 	}
 	if bc.pipeline {
+		log.Info("blockchain start with pipeline mode1")
 		bc.verifyHeaderCache = lru.NewCache[common.Hash, *types.Header](512)
 		bc.verifyTdCache = lru.NewCache[common.Hash, *big.Int](512)
 		bc.verifyNumberCache = lru.NewCache[common.Hash, uint64](512)
@@ -2419,20 +2420,20 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			proctime := time.Since(start) // processing + validation
 
 			// Update the metrics touched during block processing and validation
-			accountReadTimer.Update(statedb.AccountReads)                 // Account reads are complete(in processing)
-			storageReadTimer.Update(statedb.StorageReads)                 // Storage reads are complete(in processing)
-			snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads) // Account reads are complete(in processing)
-			snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads) // Storage reads are complete(in processing)
-			accountUpdateTimer.Update(statedb.AccountUpdates)             // Account updates are complete(in validation)
-			storageUpdateTimer.Update(statedb.StorageUpdates)             // Storage updates are complete(in validation)
-			accountHashTimer.Update(statedb.AccountHashes)                // Account hashes are complete(in validation)
-			storageHashTimer.Update(statedb.StorageHashes)                // Storage hashes are complete(in validation)
-			//triehash := statedb.AccountHashes + statedb.StorageHashes       // The time spent on tries hashing
-			//trieUpdate := statedb.AccountUpdates + statedb.StorageUpdates   // The time spent on tries update
+			accountReadTimer.Update(statedb.AccountReads)                   // Account reads are complete(in processing)
+			storageReadTimer.Update(statedb.StorageReads)                   // Storage reads are complete(in processing)
+			snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads)   // Account reads are complete(in processing)
+			snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads)   // Storage reads are complete(in processing)
+			accountUpdateTimer.Update(statedb.AccountUpdates)               // Account updates are complete(in validation)
+			storageUpdateTimer.Update(statedb.StorageUpdates)               // Storage updates are complete(in validation)
+			accountHashTimer.Update(statedb.AccountHashes)                  // Account hashes are complete(in validation)
+			storageHashTimer.Update(statedb.StorageHashes)                  // Storage hashes are complete(in validation)
+			triehash := statedb.AccountHashes + statedb.StorageHashes       // The time spent on tries hashing
+			trieUpdate := statedb.AccountUpdates + statedb.StorageUpdates   // The time spent on tries update
 			trieRead := statedb.SnapshotAccountReads + statedb.AccountReads // The time spent on account read
 			trieRead += statedb.SnapshotStorageReads + statedb.StorageReads // The time spent on storage read
-			blockExecutionTimer.Update(ptime)                               // The time spent on EVM processing
-			blockValidationTimer.Update(vtime)                              // The time spent on block validation
+			blockExecutionTimer.Update(ptime - trieRead)                    // The time spent on EVM processing
+			blockValidationTimer.Update(vtime - (triehash + trieUpdate))    // The time spent on block validation                          // The time spent on block validation
 
 			// Write the block to the chain and get the status.
 			var (
