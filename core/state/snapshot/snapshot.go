@@ -329,11 +329,14 @@ func (t *Tree) Snapshot(blockRoot common.Hash) Snapshot {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
 
-	if t.layers[blockRoot].Stale() && !t.layers[blockRoot].Verified() {
-		return nil
+	snap := t.layers[blockRoot]
+	if snap != nil {
+		if snap.Stale() && !snap.Verified() {
+			return nil
+		}
 	}
 
-	return t.layers[blockRoot]
+	return snap
 }
 
 // Snapshots returns all visited layers from the topmost layer with specific
