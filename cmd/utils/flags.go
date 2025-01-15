@@ -1961,7 +1961,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.DiffBlock = ctx.Uint64(DiffBlockFlag.Name)
 	}
 	if ctx.IsSet(PipeCommitFlag.Name) {
-		cfg.PipeCommit = ctx.GlobalBool(PipeCommitFlag.Name)
+		cfg.PipelineMode = ctx.Bool(PipeCommitFlag.Name)
 	}
 
 	if ctx.IsSet(PruneAncientDataFlag.Name) {
