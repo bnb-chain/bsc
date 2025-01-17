@@ -262,7 +262,7 @@ func buildFlags(env build.Environment, staticLinking bool, buildTags []string) (
 		// regarding the options --build-id=none and --strip-all. It is needed for
 		// reproducible builds; removing references to temporary files in C-land, and
 		// making build-id reproducibly absent.
-		extld := []string{"-Wl,-z,stack-size=0x800000,--build-id=none,--strip-all"}
+		extld := []string{"-Wl,-z,noexecstack,--build-id=none,--strip-all"}
 		if staticLinking {
 			extld = append(extld, "-static")
 			// Under static linking, use of certain glibc features must be
