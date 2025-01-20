@@ -67,6 +67,9 @@ type trienodebuffer interface {
 	// getAllNodesAndStates return the trie nodes and states cached in nodebuffer.
 	getAllNodesAndStates() (*nodeSet, *stateSet)
 
+	// getStates return the states cached in nodebuffer.
+	getStates() *stateSet
+
 	// getLayers return the size of cached difflayers.
 	getLayers() uint64
 

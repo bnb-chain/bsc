@@ -555,6 +555,19 @@ type ChainConfig struct {
 
 	DepositContractAddress common.Address `json:"depositContractAddress,omitempty"`
 
+	// EnableVerkleAtGenesis is a flag that specifies whether the network uses
+	// the Verkle tree starting from the genesis block. If set to true, the
+	// genesis state will be committed using the Verkle tree, eliminating the
+	// need for any Verkle transition later.
+	//
+	// This is a temporary flag only for verkle devnet testing, where verkle is
+	// activated at genesis, and the configured activation date has already passed.
+	//
+	// In production networks (mainnet and public testnets), verkle activation
+	// always occurs after the genesis block, making this flag irrelevant in
+	// those cases.
+	EnableVerkleAtGenesis bool `json:"enableVerkleAtGenesis,omitempty"`
+
 	RamanujanBlock  *big.Int `json:"ramanujanBlock,omitempty"`  // ramanujanBlock switch block (nil = no fork, 0 = already activated)
 	NielsBlock      *big.Int `json:"nielsBlock,omitempty"`      // nielsBlock switch block (nil = no fork, 0 = already activated)
 	MirrorSyncBlock *big.Int `json:"mirrorSyncBlock,omitempty"` // mirrorSyncBlock switch block (nil = no fork, 0 = already activated)
@@ -1066,6 +1079,20 @@ func (c *ChainConfig) IsOnPrague(currentBlockNumber *big.Int, lastBlockTime uint
 // IsVerkle returns whether time is either equal to the Verkle fork time or greater.
 func (c *ChainConfig) IsVerkle(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.VerkleTime, time)
+}
+
+// IsVerkleGenesis checks whether the verkle fork is activated at the genesis block.
+//
+// Verkle mode is considered enabled if the verkle fork time is configured,
+// regardless of whether the local time has surpassed the fork activation time.
+// This is a temporary workaround for verkle devnet testing, where verkle is
+// activated at genesis, and the configured activation date has already passed.
+//
+// In production networks (mainnet and public testnets), verkle activation
+// always occurs after the genesis block, making this function irrelevant in
+// those cases.
+func (c *ChainConfig) IsVerkleGenesis() bool {
+	return c.EnableVerkleAtGenesis
 }
 
 // IsEIP4762 returns whether eip 4762 has been activated at given block.

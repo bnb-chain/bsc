@@ -140,7 +140,7 @@ type stTransactionMarshaling struct {
 
 // Authorization is an authorization from an account to deploy code at it's address.
 type stAuthorization struct {
-	ChainID uint64
+	ChainID *big.Int       `json:"chainId" gencodec:"required"`
 	Address common.Address `json:"address" gencodec:"required"`
 	Nonce   uint64         `json:"nonce" gencodec:"required"`
 	V       uint8          `json:"v" gencodec:"required"`
@@ -150,7 +150,7 @@ type stAuthorization struct {
 
 // field type overrides for gencodec
 type stAuthorizationMarshaling struct {
-	ChainID math.HexOrDecimal64
+	ChainID *math.HexOrDecimal256
 	Nonce   math.HexOrDecimal64
 	V       math.HexOrDecimal64
 	R       *math.HexOrDecimal256
@@ -444,12 +444,12 @@ func (tx *stTransaction) toMessage(ps stPostState, baseFee *big.Int) (*core.Mess
 	if gasPrice == nil {
 		return nil, errors.New("no gas price provided")
 	}
-	var authList []types.Authorization
+	var authList []types.SetCodeAuthorization
 	if tx.AuthorizationList != nil {
-		authList = make([]types.Authorization, len(tx.AuthorizationList))
+		authList = make([]types.SetCodeAuthorization, len(tx.AuthorizationList))
 		for i, auth := range tx.AuthorizationList {
-			authList[i] = types.Authorization{
-				ChainID: auth.ChainID,
+			authList[i] = types.SetCodeAuthorization{
+				ChainID: *uint256.MustFromBig(auth.ChainID),
 				Address: auth.Address,
 				Nonce:   auth.Nonce,
 				V:       auth.V,
@@ -460,19 +460,19 @@ func (tx *stTransaction) toMessage(ps stPostState, baseFee *big.Int) (*core.Mess
 	}
 
 	msg := &core.Message{
-		From:          from,
-		To:            to,
-		Nonce:         tx.Nonce,
-		Value:         value,
-		GasLimit:      gasLimit,
-		GasPrice:      gasPrice,
-		GasFeeCap:     tx.MaxFeePerGas,
-		GasTipCap:     tx.MaxPriorityFeePerGas,
-		Data:          data,
-		AccessList:    accessList,
-		BlobHashes:    tx.BlobVersionedHashes,
-		BlobGasFeeCap: tx.BlobGasFeeCap,
-		AuthList:      authList,
+		From:                  from,
+		To:                    to,
+		Nonce:                 tx.Nonce,
+		Value:                 value,
+		GasLimit:              gasLimit,
+		GasPrice:              gasPrice,
+		GasFeeCap:             tx.MaxFeePerGas,
+		GasTipCap:             tx.MaxPriorityFeePerGas,
+		Data:                  data,
+		AccessList:            accessList,
+		BlobHashes:            tx.BlobVersionedHashes,
+		BlobGasFeeCap:         tx.BlobGasFeeCap,
+		SetCodeAuthorizations: authList,
 	}
 	return msg, nil
 }

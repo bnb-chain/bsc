@@ -73,7 +73,7 @@ type TransactionArgs struct {
 	Proofs      []kzg4844.Proof      `json:"proofs"`
 
 	// For SetCodeTxType
-	AuthorizationList []types.Authorization `json:"authorizationList"`
+	AuthorizationList []types.SetCodeAuthorization `json:"authorizationList"`
 
 	// This configures whether blobs are allowed to be passed.
 	blobSidecarAllowed bool
@@ -456,20 +456,21 @@ func (args *TransactionArgs) ToMessage(baseFee *big.Int, skipNonceCheck, skipEoA
 		accessList = *args.AccessList
 	}
 	return &core.Message{
-		From:             args.from(),
-		To:               args.To,
-		Value:            (*big.Int)(args.Value),
-		Nonce:            uint64(*args.Nonce),
-		GasLimit:         uint64(*args.Gas),
-		GasPrice:         gasPrice,
-		GasFeeCap:        gasFeeCap,
-		GasTipCap:        gasTipCap,
-		Data:             args.data(),
-		AccessList:       accessList,
-		BlobGasFeeCap:    (*big.Int)(args.BlobFeeCap),
-		BlobHashes:       args.BlobHashes,
-		SkipNonceChecks:  skipNonceCheck,
-		SkipFromEOACheck: skipEoACheck,
+		From:                  args.from(),
+		To:                    args.To,
+		Value:                 (*big.Int)(args.Value),
+		Nonce:                 uint64(*args.Nonce),
+		GasLimit:              uint64(*args.Gas),
+		GasPrice:              gasPrice,
+		GasFeeCap:             gasFeeCap,
+		GasTipCap:             gasTipCap,
+		Data:                  args.data(),
+		AccessList:            accessList,
+		BlobGasFeeCap:         (*big.Int)(args.BlobFeeCap),
+		BlobHashes:            args.BlobHashes,
+		SetCodeAuthorizations: args.AuthorizationList,
+		SkipNonceChecks:       skipNonceCheck,
+		SkipFromEOACheck:      skipEoACheck,
 	}
 }
 
@@ -498,13 +499,13 @@ func (args *TransactionArgs) ToTransaction(defaultType int) *types.Transaction {
 		if args.AccessList != nil {
 			al = *args.AccessList
 		}
-		authList := []types.Authorization{}
+		authList := []types.SetCodeAuthorization{}
 		if args.AuthorizationList != nil {
 			authList = args.AuthorizationList
 		}
 		data = &types.SetCodeTx{
 			To:         *args.To,
-			ChainID:    args.ChainID.ToInt().Uint64(),
+			ChainID:    uint256.MustFromBig(args.ChainID.ToInt()),
 			Nonce:      uint64(*args.Nonce),
 			Gas:        uint64(*args.Gas),
 			GasFeeCap:  uint256.MustFromBig((*big.Int)(args.MaxFeePerGas)),

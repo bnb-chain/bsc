@@ -138,8 +138,8 @@ func newStateUpdate(originRoot common.Hash, root common.Hash, deletes map[common
 		}
 	}
 	sc := &stateUpdate{
-		originRoot:     types.TrieRootHash(originRoot),
-		root:           types.TrieRootHash(root),
+		originRoot:     originRoot,
+		root:           root,
 		accounts:       accounts,
 		accountsOrigin: accountsOrigin,
 		storages:       storages,
