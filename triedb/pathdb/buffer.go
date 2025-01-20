@@ -175,6 +175,10 @@ func (b *buffer) getAllNodesAndStates() (*nodeSet, *stateSet) {
 	return b.nodes, b.states
 }
 
+func (b *buffer) getStates() *stateSet {
+	return b.states
+}
+
 // getLayers return the size of cached difflayers.
 func (b *buffer) getLayers() uint64 {
 	return b.layers

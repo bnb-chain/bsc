@@ -175,6 +175,11 @@ func (a *asyncnodebuffer) getAllNodesAndStates() (*nodeSet, *stateSet) {
 	return cached.nodes, cached.states
 }
 
+func (a *asyncnodebuffer) getStates() *stateSet {
+	_, states := a.getAllNodesAndStates()
+	return states
+}
+
 func (a *asyncnodebuffer) getLayers() uint64 {
 	a.mux.RLock()
 	defer a.mux.RUnlock()

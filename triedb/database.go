@@ -67,12 +67,11 @@ type backend interface {
 	// state. An error will be returned if the specified state is not available.
 	StateReader(root common.Hash) (database.StateReader, error)
 
-	// Initialized returns an indicator if the state data is already initialized
-	// according to the state scheme.
-	Initialized(genesisRoot common.Hash) bool
-
-	// Size returns the current storage size of the memory cache in front of the
-	// persistent database layer.
+	// Size returns the current storage size of the diff layers on top of the
+	// disk layer and the storage size of the nodes cached in the disk layer.
+	//
+	// For hash scheme, there is no differentiation between diff layer nodes
+	// and dirty disk layer nodes, so both are merged into the second return.
 	Size() (common.StorageSize, common.StorageSize, common.StorageSize)
 
 	// Commit writes all relevant trie nodes belonging to the specified state
@@ -221,12 +220,6 @@ func (db *Database) Size() (common.StorageSize, common.StorageSize, common.Stora
 		preimages = db.preimages.size()
 	}
 	return diffs, nodes, immutablenodes, preimages
-}
-
-// Initialized returns an indicator if the state data is already initialized
-// according to the state scheme.
-func (db *Database) Initialized(genesisRoot common.Hash) bool {
-	return db.backend.Initialized(genesisRoot)
 }
 
 // Scheme returns the node scheme used in the database.

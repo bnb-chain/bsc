@@ -1,4 +1,4 @@
-// Copyright 2019 The go-ethereum Authors
+// Copyright 2024 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package snapshot
+package pathdb
 
 import (
 	"bytes"
@@ -52,9 +52,6 @@ func (it *weightedIterator) Cmp(other *weightedIterator) int {
 // fastIterator is a more optimized multi-layer iterator which maintains a
 // direct mapping of all iterators leading down to the bottom layer.
 type fastIterator struct {
-	tree *Tree       // Snapshot tree to reinitialize stale sub-iterators with
-	root common.Hash // Root hash to reinitialize stale sub-iterators through
-
 	curAccount []byte
 	curSlot    []byte
 
@@ -66,31 +63,78 @@ type fastIterator struct {
 
 // newFastIterator creates a new hierarchical account or storage iterator with one
 // element per diff layer. The returned combo iterator can be used to walk over
-// the entire snapshot diff stack simultaneously.
-func newFastIterator(tree *Tree, root common.Hash, account common.Hash, seek common.Hash, accountIterator bool) (*fastIterator, error) {
-	snap := tree.Snapshot(root)
-	if snap == nil {
-		return nil, fmt.Errorf("unknown snapshot: %x", root)
+// the entire layer stack simultaneously.
+func newFastIterator(db *Database, root common.Hash, account common.Hash, seek common.Hash, accountIterator bool) (*fastIterator, error) {
+	current := db.tree.get(root)
+	if current == nil {
+		return nil, fmt.Errorf("unknown layer: %x", root)
 	}
 	fi := &fastIterator{
-		tree:    tree,
-		root:    root,
 		account: accountIterator,
 	}
-	current := snap.(snapshot)
 	for depth := 0; current != nil; depth++ {
 		if accountIterator {
-			fi.iterators = append(fi.iterators, &weightedIterator{
-				it:       current.AccountIterator(seek),
-				priority: depth,
-			})
+			switch dl := current.(type) {
+			case *diskLayer:
+				fi.iterators = append(fi.iterators, &weightedIterator{
+					// The state set in the disk layer is mutable, and the entire state becomes stale
+					// if a diff layer above is merged into it. Therefore, staleness must be checked,
+					// and the storage slot should be retrieved with read lock protection.
+					it: newDiffAccountIterator(seek, dl.buffer.getStates(), func(hash common.Hash) ([]byte, error) {
+						dl.lock.RLock()
+						defer dl.lock.RUnlock()
+
+						if dl.stale {
+							return nil, errSnapshotStale
+						}
+						return dl.buffer.getStates().mustAccount(hash)
+					}),
+					priority: depth,
+				})
+				fi.iterators = append(fi.iterators, &weightedIterator{
+					it:       newDiskAccountIterator(dl.db.diskdb, seek),
+					priority: depth + 1,
+				})
+			case *diffLayer:
+				// The state set in diff layer is immutable and will never be stale,
+				// so the read lock protection is unnecessary.
+				fi.iterators = append(fi.iterators, &weightedIterator{
+					it:       newDiffAccountIterator(seek, dl.states.stateSet, dl.states.mustAccount),
+					priority: depth,
+				})
+			}
 		} else {
-			fi.iterators = append(fi.iterators, &weightedIterator{
-				it:       current.StorageIterator(account, seek),
-				priority: depth,
-			})
+			switch dl := current.(type) {
+			case *diskLayer:
+				fi.iterators = append(fi.iterators, &weightedIterator{
+					// The state set in the disk layer is mutable, and the entire state becomes stale
+					// if a diff layer above is merged into it. Therefore, staleness must be checked,
+					// and the storage slot should be retrieved with read lock protection.
+					it: newDiffStorageIterator(account, seek, dl.buffer.getStates(), func(addrHash common.Hash, slotHash common.Hash) ([]byte, error) {
+						dl.lock.RLock()
+						defer dl.lock.RUnlock()
+
+						if dl.stale {
+							return nil, errSnapshotStale
+						}
+						return dl.buffer.getStates().mustStorage(addrHash, slotHash)
+					}),
+					priority: depth,
+				})
+				fi.iterators = append(fi.iterators, &weightedIterator{
+					it:       newDiskStorageIterator(dl.db.diskdb, account, seek),
+					priority: depth + 1,
+				})
+			case *diffLayer:
+				// The state set in diff layer is immutable and will never be stale,
+				// so the read lock protection is unnecessary.
+				fi.iterators = append(fi.iterators, &weightedIterator{
+					it:       newDiffStorageIterator(account, seek, dl.states.stateSet, dl.states.mustStorage),
+					priority: depth,
+				})
+			}
 		}
-		current = current.Parent()
+		current = current.parentLayer()
 	}
 	fi.init()
 	return fi, nil
@@ -106,7 +150,7 @@ func (fi *fastIterator) init() {
 	for i := 0; i < len(fi.iterators); i++ {
 		// Retrieve the first element and if it clashes with a previous iterator,
 		// advance either the current one or the old one. Repeat until nothing is
-		// clashing any more.
+		// clashing anymore.
 		it := fi.iterators[i]
 		for {
 			// If the iterator is exhausted, drop it off the end
@@ -319,13 +363,13 @@ func (fi *fastIterator) Debug() {
 // newFastAccountIterator creates a new hierarchical account iterator with one
 // element per diff layer. The returned combo iterator can be used to walk over
 // the entire snapshot diff stack simultaneously.
-func newFastAccountIterator(tree *Tree, root common.Hash, seek common.Hash) (AccountIterator, error) {
-	return newFastIterator(tree, root, common.Hash{}, seek, true)
+func newFastAccountIterator(db *Database, root common.Hash, seek common.Hash) (AccountIterator, error) {
+	return newFastIterator(db, root, common.Hash{}, seek, true)
 }
 
 // newFastStorageIterator creates a new hierarchical storage iterator with one
 // element per diff layer. The returned combo iterator can be used to walk over
 // the entire snapshot diff stack simultaneously.
-func newFastStorageIterator(tree *Tree, root common.Hash, account common.Hash, seek common.Hash) (StorageIterator, error) {
-	return newFastIterator(tree, root, account, seek, false)
+func newFastStorageIterator(db *Database, root common.Hash, account common.Hash, seek common.Hash) (StorageIterator, error) {
+	return newFastIterator(db, root, account, seek, false)
 }
