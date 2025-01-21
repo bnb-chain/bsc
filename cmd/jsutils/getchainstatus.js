@@ -41,6 +41,7 @@ function printUsage() {
     console.log("  node getchainstatus.js GetBlobTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetFaucetStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org") // default: latest block
+    console.log("  node getchainstatus.js GetEip7736 --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
 }
 
 program.usage = printUsage;
@@ -493,7 +494,58 @@ async function getKeyParameters()  {
     }
     validatorTable.sort((a, b) => b.votingPower - a.votingPower);
     console.table(validatorTable)
-};
+}
+
+// 9.cmd: "getEip7736", usage:
+// node getEip7736.js GetEip7736 \
+//      --rpc https://bsc-testnet-dataseed.bnbchain.org \
+//      --startNum 40000001  --endNum 40000005
+async function getEip7736()  {
+    var startBlock = parseInt(program.startNum)
+    var endBlock = parseInt(program.endNum)
+    if (isNaN(endBlock) || isNaN(startBlock) || startBlock === 0) {
+        console.error("invalid input, --startNum", program.startNum, "--end", program.endNum)
+        return
+    }
+    // if --endNum is not specified, set it to the latest block number.
+    if (endBlock === 0) {
+        endBlock = await provider.getBlockNumber();
+    }
+    if (startBlock > endBlock) {
+        console.error("invalid input, startBlock:",startBlock, " endBlock:", endBlock);
+        return
+    }
+
+    const startTime = Date.now();
+
+    const TOTAL_COST_FLOOR_PER_TOKEN = 10
+    const intrinsicGas = 21000
+    for (let blockNumber = startBlock; blockNumber <= endBlock; blockNumber++) {
+        const block = await provider.getBlock(blockNumber, true);
+
+        for (let txHash of block.transactions) {
+            let tx = block.getPrefetchedTransaction(txHash)
+            const receipt = await provider.getTransactionReceipt(tx.hash);
+            let tokens_in_calldata = -4; // means '0x'
+            let calldata = tx.data;
+            for (let i = 0; i < calldata.length; i += 2) {
+                const byte = parseInt(calldata.substr(i, 2), 16);
+                if (byte === 0) {
+                    tokens_in_calldata++;
+                } else {
+                    tokens_in_calldata = tokens_in_calldata + 4;
+                }
+            }
+            let  want = TOTAL_COST_FLOOR_PER_TOKEN  * tokens_in_calldata + intrinsicGas
+            if (want > receipt.gasUsed) {
+                console.log("Cost more gas, blockNum:", tx.blockNumber, "txHash", tx.hash, " gasUsed", receipt.gasUsed.toString(), " New GasUsed", want)
+            }
+        }
+    }
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000;
+    console.log(`Script executed in: ${duration} seconds`);
+}
 
 const main = async () => {
     if (process.argv.length <= 2) {
@@ -522,6 +574,8 @@ const main = async () => {
         await getFaucetStatus()
     } else if (cmd === "GetKeyParameters") {
         await getKeyParameters()
+    } else if (cmd === "GetEip7736"){
+        await getEip7736()
     } else {
         console.log("unsupported cmd", cmd);
         printUsage()
