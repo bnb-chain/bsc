@@ -30,6 +30,8 @@ import (
 
 	"golang.org/x/crypto/sha3"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -154,6 +156,23 @@ type headerMarshaling struct {
 // RLP encoding.
 func (h *Header) Hash() common.Hash {
 	return rlpHash(h)
+}
+
+// SetMilliseconds can be called once millisecond representation supported
+func (h *Header) SetMilliseconds(milliseconds uint64) {
+	h.MixDigest = common.Hash(uint256.NewInt(milliseconds % 1000).Bytes32())
+}
+
+// Ensure h.Milliseconds() is less than 1000 when verifying the block header
+func (h *Header) Milliseconds() uint64 {
+	if h.MixDigest == (common.Hash{}) {
+		return 0
+	}
+	return uint256.NewInt(0).SetBytes32(h.MixDigest[:]).Uint64()
+}
+
+func (h *Header) MilliTimestamp() uint64 {
+	return h.Time*1000 + h.Milliseconds()
 }
 
 var headerSize = common.StorageSize(reflect.TypeOf(Header{}).Size())

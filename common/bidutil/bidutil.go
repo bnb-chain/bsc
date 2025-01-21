@@ -17,7 +17,7 @@ func BidBetterBefore(parentHeader *types.Header, blockPeriod uint64, delayLeftOv
 // BidMustBefore returns the time when the next bid must be received,
 // only considering the consensus delay but not bid simulation duration.
 func BidMustBefore(parentHeader *types.Header, blockPeriod uint64, delayLeftOver time.Duration) time.Time {
-	nextHeaderTime := time.Unix(int64(parentHeader.Time+blockPeriod), 0)
+	nextHeaderTime := time.UnixMilli(int64(parentHeader.MilliTimestamp() + blockPeriod))
 	nextHeaderTime = nextHeaderTime.Add(-delayLeftOver)
 	return nextHeaderTime
 }

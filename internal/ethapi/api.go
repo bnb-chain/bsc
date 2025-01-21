@@ -1439,6 +1439,7 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 func (api *BlockChainAPI) rpcMarshalHeader(ctx context.Context, header *types.Header) map[string]interface{} {
 	fields := RPCMarshalHeader(header)
 	fields["totalDifficulty"] = (*hexutil.Big)(api.b.GetTd(ctx, header.Hash()))
+	fields["milliTimestamp"] = hexutil.Uint64(header.MilliTimestamp())
 	return fields
 }
 
@@ -1448,6 +1449,7 @@ func (api *BlockChainAPI) rpcMarshalBlock(ctx context.Context, b *types.Block, i
 	fields := RPCMarshalBlock(b, inclTx, fullTx, api.b.ChainConfig())
 	if inclTx {
 		fields["totalDifficulty"] = (*hexutil.Big)(api.b.GetTd(ctx, b.Hash()))
+		fields["milliTimestamp"] = hexutil.Uint64(b.Header().MilliTimestamp())
 	}
 	return fields, nil
 }
